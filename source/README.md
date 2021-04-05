@@ -1,6 +1,6 @@
 This directory contains an experimental project for formally verifying Rust-like code.
 It is currently unfinished and under construction.
-See [Goals](../wiki/Goals) for a brief description of the project's goals.
+See [Goals](../../../wiki/Goals) for a brief description of the project's goals.
 
 # Building the project
 
@@ -64,7 +64,7 @@ First, go to the `verify` subdirectory:
 cd verify
 ```
 
-Then use `cargo.exe` to build the verifier:
+Then use `cargo` to build the verifier:
 
 ```
 ../install/bin/cargo build
