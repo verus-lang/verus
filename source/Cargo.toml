@@ -1,0 +1,7 @@
+[workspace]
+members = [
+  "air",
+  "builtin",
+  "vir",
+  "rust_verify",
+]
