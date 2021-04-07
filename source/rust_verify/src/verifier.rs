@@ -1,40 +1,53 @@
+use crate::config::Args;
 use air::ast::{CommandX, ValidityResult};
 use rustc_span::Span;
+use std::fs::File;
 use vir::ast::Function;
 
-pub struct Verifier {
+pub(crate) struct Verifier {
     pub count_verified: u64,
     pub count_errors: u64,
+    args: Args,
 }
 
 impl Verifier {
-    pub fn new() -> Verifier {
-        Verifier { count_verified: 0, count_errors: 0 }
+    pub fn new(args: Args) -> Verifier {
+        Verifier { count_verified: 0, count_errors: 0, args: args }
     }
 
     fn verify(&mut self, compiler: &rustc_interface::interface::Compiler, krate: Vec<Function>) {
         let mut z3_config = z3::Config::new();
         z3_config.set_param_value("auto_config", "false");
-        z3_config.set_param_value("type_check", "true");
-        // z3_config.set_param_value("rlimit", "1");
 
         let z3_context = z3::Context::new(&z3_config);
         let z3_solver = z3::Solver::new(&z3_context);
-
-        let mut z3_params = z3::Params::new(&z3_context);
-        //z3_params.set_bool("auto_config", false);
-        z3_params.set_bool("smt.mbqi", false);
-        z3_params.set_u32("smt.case_split", 3);
-        z3_params.set_f64("smt.qi.eager_threshold", 100.0);
-        z3_params.set_bool("smt.delay_units", true);
-        z3_params.set_u32("smt.arith.solver", 2);
-        z3_params.set_bool("smt.arith.nl", false);
-        z3_solver.set_params(&z3_params);
-        //z3_params.set_u32("rlimit", 1);
-        //dbg!(z3_params);
-
         let mut air_context = air::context::Context::new(&z3_context, &z3_solver);
+
+        air_context.set_rlimit(self.args.rlimit * 1000000);
+        if let Some(filename) = &self.args.log_air_initial {
+            let file = File::create(filename).expect(&format!("could not open file {}", filename));
+            air_context.set_air_initial_log(Box::new(file));
+        }
+        if let Some(filename) = &self.args.log_air_final {
+            let file = File::create(filename).expect(&format!("could not open file {}", filename));
+            air_context.set_air_final_log(Box::new(file));
+        }
+        if let Some(filename) = &self.args.log_smt {
+            let file = File::create(filename).expect(&format!("could not open file {}", filename));
+            air_context.set_smt_log(Box::new(file));
+        }
+
+        air_context.set_z3_param_bool("auto_config", false, true);
+        air_context.set_z3_param_bool("smt.mbqi", false, true);
+        air_context.set_z3_param_u32("smt.case_split", 3, true);
+        air_context.set_z3_param_f64("smt.qi.eager_threshold", 100.0, true);
+        air_context.set_z3_param_bool("smt.delay_units", true, true);
+        air_context.set_z3_param_u32("smt.arith.solver", 2, true);
+        air_context.set_z3_param_bool("smt.arith.nl", false, true);
+
         for function in krate {
+            air_context.blank_line();
+            air_context.comment(&("Function ".to_string() + &function.x.name));
             let commands = vir::function_to_air(&function);
             for command in commands.iter() {
                 let result = air_context.command(&command);
@@ -49,8 +62,8 @@ impl Verifier {
                             None => {
                                 panic!("internal error: found Error with no span")
                             }
-                            Some(span_any) => {
-                                let span: &Span = (*span_any)
+                            Some(air::ast::Span { raw_span, .. }) => {
+                                let span: &Span = (*raw_span)
                                     .downcast_ref::<Span>()
                                     .expect("internal error: failed to cast to Span");
                                 dbg!(span);

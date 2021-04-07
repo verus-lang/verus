@@ -1,18 +1,14 @@
 use crate::ast::{
-    BinaryOp, Const, Declaration, DeclarationX, Expr, ExprX, LogicalOp, Query, Stmt, StmtX, Typ,
-    UnaryOp, ValidityResult,
+    BinaryOp, Const, Declaration, DeclarationX, Expr, ExprX, Ident, LogicalOp, Query, Span,
+    SpanOption, StmtX, Typ, UnaryOp, ValidityResult,
 };
-use crate::context::{AssertionInfo, Context};
+use crate::context::Context;
 use std::collections::HashMap;
-use z3::ast::{Bool, Dynamic, Int};
+use std::rc::Rc;
+use z3::ast::{Ast, Bool, Dynamic, Int};
 use z3::SatResult;
 
-const PREFIX_LABEL: &str = "?lbl";
-const PREFIX_USER_ID: &str = ".";
-
-fn make_eq<'ctx, A: z3::ast::Ast<'ctx>>(lhs: &A, rhs: &A) -> Bool<'ctx> {
-    lhs._eq(rhs)
-}
+pub const PREFIX_LABEL: &str = "%%location_label%%";
 
 fn expr_to_smt<'ctx>(context: &mut Context<'ctx>, expr: &Expr) -> Dynamic<'ctx> {
     match &**expr {
@@ -29,8 +25,7 @@ fn expr_to_smt<'ctx>(context: &mut Context<'ctx>, expr: &Expr) -> Dynamic<'ctx> 
             let rh = expr_to_smt(context, rhs);
             match op {
                 BinaryOp::Implies => lh.as_bool().unwrap().implies(&rh.as_bool().unwrap()).into(),
-                BinaryOp::Eq => make_eq(&lh, &rh).into(),
-                BinaryOp::Ne => make_eq(&lh, &rh).not().into(),
+                BinaryOp::Eq => lh._eq(&rh).into(),
                 BinaryOp::Le => lh.as_int().unwrap().le(&rh.as_int().unwrap()).into(),
                 BinaryOp::Ge => lh.as_int().unwrap().ge(&rh.as_int().unwrap()).into(),
                 BinaryOp::Lt => lh.as_int().unwrap().lt(&rh.as_int().unwrap()).into(),
@@ -65,25 +60,59 @@ fn expr_to_smt<'ctx>(context: &mut Context<'ctx>, expr: &Expr) -> Dynamic<'ctx> 
                 LogicalOp::Or => Bool::or(&context.context, &smt_exprs).into(),
             }
         }
-        ExprX::LabeledAssertion(span, expr) => {
-            let label = Bool::fresh_const(&context.context, PREFIX_LABEL);
-            let assertion_info = AssertionInfo { span: span.clone(), label: label.clone() };
-            context.assertion_infos.push(assertion_info);
-            let smt_expr = expr_to_smt(context, expr).as_bool().unwrap();
-            // See comments about Z3_model_eval below for why do we use => instead of or.
-            // Bool::or(&context.context, &[&label, &smt_expr])
-            label.implies(&smt_expr).into()
+        ExprX::LabeledAssertion(_, _) => panic!("internal error: LabeledAssertion"),
+    }
+}
+
+#[derive(Debug)]
+pub(crate) struct AssertionInfo {
+    pub(crate) span: SpanOption,
+    pub(crate) label: Ident,
+    pub(crate) decl: Declaration,
+}
+
+fn label_asserts<'ctx>(
+    context: &mut Context<'ctx>,
+    infos: &mut Vec<AssertionInfo>,
+    expr: &Expr,
+) -> Expr {
+    match &**expr {
+        ExprX::Binary(BinaryOp::Implies, lhs, rhs) => {
+            // asserts are on rhs
+            Rc::new(ExprX::Binary(
+                BinaryOp::Implies,
+                lhs.clone(),
+                label_asserts(context, infos, rhs),
+            ))
         }
+        ExprX::Logical(op, exprs) => {
+            let mut exprs_vec: Vec<Expr> = Vec::new();
+            for expr in exprs.iter() {
+                exprs_vec.push(label_asserts(context, infos, expr));
+            }
+            Rc::new(ExprX::Logical(*op, Rc::new(exprs_vec.into_boxed_slice())))
+        }
+        ExprX::LabeledAssertion(span, expr) => {
+            let label = Rc::new(PREFIX_LABEL.to_string() + &infos.len().to_string());
+            let decl = Rc::new(DeclarationX::Const(label.clone(), Typ::Bool));
+            let assertion_info = AssertionInfo { span: span.clone(), label: label.clone(), decl };
+            infos.push(assertion_info);
+            let lhs = Rc::new(ExprX::Var(label));
+            // See comments about Z3_model_eval below for why do we use => instead of or.
+            Rc::new(ExprX::Binary(BinaryOp::Implies, lhs, expr.clone()))
+        }
+        _ => expr.clone(),
     }
 }
 
 pub fn smt_add_decl<'ctx>(context: &mut Context<'ctx>, decl: &Declaration, is_global: bool) {
     match &**decl {
         DeclarationX::Const(x, typ) => {
+            context.smt_log.log_function_decl(x, &[], typ);
             if is_global {
                 todo!(); // push and pop groups of variables
             }
-            let name = PREFIX_USER_ID.to_string() + x;
+            let name = &**x;
             let x_smt: Dynamic<'ctx> = match typ {
                 Typ::Bool => Bool::new_const(context.context, name.clone()).into(),
                 Typ::Int => Int::new_const(context.context, name.clone()).into(),
@@ -92,82 +121,101 @@ pub fn smt_add_decl<'ctx>(context: &mut Context<'ctx>, decl: &Declaration, is_gl
             assert_eq!(prev, None);
         }
         DeclarationX::Axiom(expr) => {
+            context.smt_log.log_assert(&expr);
             let smt_expr = expr_to_smt(context, &expr).as_bool().unwrap();
             context.solver.assert(&smt_expr);
         }
     }
 }
 
-fn smt_check_assertion<'ctx>(context: &mut Context<'ctx>, stmt: &Stmt) -> ValidityResult {
-    match &**stmt {
-        StmtX::Assert(span, expr) => {
-            let mut discovered_span = span.clone();
-            let smt_expr = expr_to_smt(context, &expr).as_bool().unwrap();
-            let not_expr = Bool::not(&smt_expr);
-            context.solver.assert(&not_expr);
-            //dbg!(not_expr);
+fn smt_check_assertion<'ctx>(
+    context: &mut Context<'ctx>,
+    infos: &Vec<AssertionInfo>,
+    expr: &Expr,
+) -> ValidityResult {
+    let mut discovered_span = Rc::new(None);
+    let not_expr = Rc::new(ExprX::Unary(UnaryOp::Not, expr.clone()));
+    context.smt_log.log_assert(&not_expr);
+    context.solver.assert(&expr_to_smt(context, &not_expr).as_bool().unwrap());
 
-            let mut params = z3::Params::new(&context.context);
-            params.set_u32("rlimit", context.rlimit);
-            context.solver.set_params(&params);
+    context.smt_log.log_set_option("rlimit", &context.rlimit.to_string());
+    context.set_z3_param_u32("rlimit", context.rlimit, false);
 
-            let sat = context.solver.check();
+    context.smt_log.log_word("check-sat");
+    let sat = context.solver.check();
 
-            params.set_u32("rlimit", 0);
-            context.solver.set_params(&params);
+    context.smt_log.log_set_option("rlimit", "0");
+    context.set_z3_param_u32("rlimit", 0, false);
 
-            //dbg!(context.solver);
-
-            match sat {
-                SatResult::Unsat => ValidityResult::Valid,
-                SatResult::Sat | SatResult::Unknown => {
-                    let model = context.solver.get_model();
-                    match model {
-                        None => {
-                            panic!("SMT solver did not generate a model");
-                        }
-                        Some(model) => {
-                            // dbg!(&context.solver);
-                            // println!("model = >>{}<<", model.to_string());
-                            for info in context.assertion_infos.iter() {
-                                /*
-                                Unfortunately, the Rust Z3 crate's eval calls Z3_model_eval
-                                with model_completion = true.
-                                This hides exactly what we're interested in:
-                                the set of variables that are actually assigned in the model.
-                                It happens, though, that Z3 completes boolean variables in
-                                the model with false,
-                                so we can just look for the variables that evaluate to true.
-                                */
-                                if let Some(b) = model.eval(&info.label) {
-                                    if let Some(b) = b.as_bool() {
-                                        if b {
-                                            discovered_span = info.span.clone();
-                                        }
-                                    }
+    match sat {
+        SatResult::Unsat => ValidityResult::Valid,
+        SatResult::Sat | SatResult::Unknown => {
+            context.smt_log.log_word("get-model");
+            let model = context.solver.get_model();
+            match model {
+                None => {
+                    panic!("SMT solver did not generate a model");
+                }
+                Some(model) => {
+                    // dbg!(&context.solver);
+                    // println!("model = >>{}<<", model.to_string());
+                    for info in infos.iter() {
+                        /*
+                        Unfortunately, the Rust Z3 crate's eval calls Z3_model_eval
+                        with model_completion = true.
+                        This hides exactly what we're interested in:
+                        the set of variables that are actually assigned in the model.
+                        It happens, though, that Z3 completes boolean variables in
+                        the model with false,
+                        so we can just look for the variables that evaluate to true.
+                        */
+                        let x_info = context.vars[&info.label].as_bool().unwrap();
+                        if let Some(b) = model.eval(&x_info) {
+                            if let Some(b2) = b.as_bool() {
+                                if b2 {
+                                    discovered_span = info.span.clone();
                                 }
                             }
                         }
                     }
-                    ValidityResult::Error(discovered_span)
                 }
             }
-        }
-        _ => {
-            panic!("internal error: expected assertion, found {:?}", stmt)
+            ValidityResult::Error(discovered_span)
         }
     }
 }
 
 pub fn smt_check_query<'ctx>(context: &mut Context<'ctx>, query: &Query) -> ValidityResult {
+    context.smt_log.log_push();
     context.solver.push();
+
+    // add query-local declarations
     for decl in query.local.iter() {
         smt_add_decl(context, decl, false);
     }
-    context.assertion_infos = Vec::new();
-    let assertion = crate::block_to_assert::block_to_assert(&query.assertion);
-    let result = smt_check_assertion(context, &assertion);
+
+    // after lowering, there should be just one assertion
+    let assertion = match &*query.assertion {
+        StmtX::Assert(_, expr) => expr,
+        _ => panic!("internal error: query not lowered"),
+    };
+
+    // add labels to assertions for error reporting
+    let mut infos: Vec<AssertionInfo> = Vec::new();
+    let labeled_assertion = label_asserts(context, &mut infos, &assertion);
+    for info in &infos {
+        if let Some(Span { as_string, .. }) = &*info.span {
+            context.smt_log.comment(as_string);
+        }
+        smt_add_decl(context, &info.decl, false);
+    }
+
+    // check assertion
+    let result = smt_check_assertion(context, &infos, &labeled_assertion);
+
+    // clean up
     context.vars = HashMap::new(); // TODO: selectively pop variables
+    context.smt_log.log_pop();
     context.solver.pop(1);
     result
 }

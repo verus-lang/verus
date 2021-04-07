@@ -1,8 +1,14 @@
-use crate::ast::{BinaryOp, Params, Typ, UnaryOp};
+use crate::ast::{BinaryOp, Ident, Params, Typ, UnaryOp};
 use crate::sst::{Exp, ExpX, Stm, StmX};
 use crate::util::box_slice_map;
 use air::ast::{CommandX, Commands, DeclarationX, Expr, ExprX, LogicalOp, QueryX, Stmt, StmtX};
 use std::rc::Rc;
+
+pub const SUFFIX_USER_ID: &str = "@";
+
+fn suffixed_id(ident: &Ident) -> Ident {
+    Rc::new(ident.to_string() + SUFFIX_USER_ID)
+}
 
 fn exp_to_expr(exp: &Exp) -> Expr {
     match &exp.x {
@@ -10,7 +16,7 @@ fn exp_to_expr(exp: &Exp) -> Expr {
             let expr = Rc::new(ExprX::Const(*c));
             expr
         }
-        ExpX::Var(x) => Rc::new(ExprX::Var(x.clone())),
+        ExpX::Var(x) => Rc::new(ExprX::Var(suffixed_id(x))),
         ExpX::Unary(op, exp) => match op {
             UnaryOp::Not => Rc::new(ExprX::Unary(air::ast::UnaryOp::Not, exp_to_expr(exp))),
         },
@@ -20,13 +26,17 @@ fn exp_to_expr(exp: &Exp) -> Expr {
             let expx = match op {
                 BinaryOp::And => ExprX::Logical(LogicalOp::And, Rc::new(Box::new([lh, rh]))),
                 BinaryOp::Or => ExprX::Logical(LogicalOp::Or, Rc::new(Box::new([lh, rh]))),
+                BinaryOp::Ne => {
+                    let eq = ExprX::Binary(air::ast::BinaryOp::Eq, lh, rh);
+                    ExprX::Unary(air::ast::UnaryOp::Not, Rc::new(eq))
+                }
                 _ => {
                     let aop = match op {
                         BinaryOp::And => panic!("internal error"),
                         BinaryOp::Or => panic!("internal error"),
                         BinaryOp::Implies => air::ast::BinaryOp::Implies,
                         BinaryOp::Eq => air::ast::BinaryOp::Eq,
-                        BinaryOp::Ne => air::ast::BinaryOp::Ne,
+                        BinaryOp::Ne => panic!("internal error"),
                         BinaryOp::Le => air::ast::BinaryOp::Le,
                         BinaryOp::Ge => air::ast::BinaryOp::Ge,
                         BinaryOp::Lt => air::ast::BinaryOp::Lt,
@@ -66,7 +76,7 @@ pub fn typ_to_air(typ: &Typ) -> air::ast::Typ {
 
 pub fn stm_to_air(params: &Params, stm: &Stm) -> Commands {
     let local = box_slice_map(params, |param| {
-        Rc::new(DeclarationX::Const(param.x.name.clone(), typ_to_air(&param.x.typ)))
+        Rc::new(DeclarationX::Const(suffixed_id(&param.x.name), typ_to_air(&param.x.typ)))
     });
     let assertion = stm_to_stmt(&stm);
     let query = Rc::new(QueryX { local: Rc::new(local), assertion });

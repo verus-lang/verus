@@ -16,6 +16,20 @@ impl std::ops::Add for int {
     }
 }
 
+impl std::ops::Sub for int {
+    type Output = Self;
+    fn sub(self, _other: Self) -> Self::Output {
+        unimplemented!()
+    }
+}
+
+impl std::ops::Mul for int {
+    type Output = Self;
+    fn mul(self, _other: Self) -> Self::Output {
+        unimplemented!()
+    }
+}
+
 impl PartialEq for int {
     fn eq(&self, _other: &Self) -> bool {
         unimplemented!()

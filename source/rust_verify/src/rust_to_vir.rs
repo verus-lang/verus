@@ -26,7 +26,9 @@ use vir::ast::{BinaryOp, ExprX, Function, FunctionX, ParamX, StmtX, Typ, UnaryOp
 use vir::def::Spanned;
 
 fn spanned_new<X>(span: Span, x: X) -> Rc<Spanned<X>> {
-    Spanned::new(Rc::new(span), x)
+    let raw_span = Rc::new(span);
+    let as_string = format!("{:?}", span);
+    Spanned::new(air::ast::Span { raw_span, as_string }, x)
 }
 
 // TODO: proper handling of def_ids
@@ -333,8 +335,9 @@ fn check_item<'tcx>(
                 }
             }
             let vir_body = body_to_vir(tcx, body_id, body);
+            let name = Rc::new(item.ident.to_string());
             let params = Rc::new(vir_params.into_boxed_slice());
-            let function = spanned_new(sig.span, FunctionX { params, body: vir_body });
+            let function = spanned_new(sig.span, FunctionX { name, params, body: vir_body });
             vir.push(function);
         }
         ItemKind::Use { .. } => {}

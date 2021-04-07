@@ -1,5 +1,6 @@
 #![feature(rustc_private)]
 
+mod config;
 mod rust_to_vir;
 mod util;
 mod verifier;
@@ -13,6 +14,7 @@ extern crate rustc_mir_build;
 extern crate rustc_span;
 extern crate rustc_typeck;
 
+use config::take_our_args;
 use std::env;
 use verifier::Verifier;
 
@@ -21,10 +23,11 @@ struct CompilerCallbacks;
 impl rustc_driver::Callbacks for CompilerCallbacks {}
 
 pub fn main() {
-    let args: Vec<String> = env::args().collect();
+    let mut args: Vec<String> = env::args().collect();
+    let our_args = take_our_args(&mut args);
 
     // Run verifier callback to build VIR tree and run verifier
-    let mut verifier = Verifier::new();
+    let mut verifier = Verifier::new(our_args);
     let status = rustc_driver::RunCompiler::new(&args, &mut verifier).run();
     println!(
         "Verification results:: verified: {} errors: {}",

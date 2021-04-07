@@ -63,6 +63,7 @@ pub struct ParamX {
 pub type Function = Rc<Spanned<FunctionX>>;
 #[derive(Debug)]
 pub struct FunctionX {
+    pub name: Ident,
     pub params: Params,
     pub body: Expr,
 }

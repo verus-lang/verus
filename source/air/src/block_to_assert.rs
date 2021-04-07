@@ -1,4 +1,4 @@
-use crate::ast::{BinaryOp, Const, Expr, ExprX, LogicalOp, Stmt, StmtX};
+use crate::ast::{BinaryOp, Const, Expr, ExprX, LogicalOp, Query, QueryX, Stmt, StmtX};
 use std::rc::Rc;
 
 pub fn stmt_to_expr(stmt: &Stmt, pred: Expr) -> Expr {
@@ -23,9 +23,13 @@ pub fn stmt_to_expr(stmt: &Stmt, pred: Expr) -> Expr {
     }
 }
 
-pub fn block_to_assert(stmt: &Stmt) -> Stmt {
-    let span = Rc::new(None);
+pub fn block_to_assert(stmt: &Stmt) -> Expr {
     let tru = Rc::new(ExprX::Const(Const::Bool(true)));
-    let expr = stmt_to_expr(&stmt, tru);
-    Rc::new(StmtX::Assert(span, expr))
+    stmt_to_expr(&stmt, tru)
+}
+
+pub fn lower_query(query: &Query) -> Query {
+    let expr = crate::block_to_assert::block_to_assert(&query.assertion);
+    let assertion = Rc::new(StmtX::Assert(Rc::new(None), expr));
+    Rc::new(QueryX { local: query.local.clone(), assertion })
 }

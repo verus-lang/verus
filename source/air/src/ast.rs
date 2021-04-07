@@ -1,6 +1,11 @@
 use std::rc::Rc;
 
-pub type Span = Rc<dyn std::any::Any>;
+pub type RawSpan = Rc<dyn std::any::Any>;
+#[derive(Clone, Debug)]
+pub struct Span {
+    pub raw_span: RawSpan,
+    pub as_string: String,
+}
 pub type SpanOption = Rc<Option<Span>>;
 
 #[derive(Debug)]
@@ -37,7 +42,6 @@ pub enum LogicalOp {
 pub enum BinaryOp {
     Implies,
     Eq,
-    Ne,
     Le,
     Ge,
     Lt,
