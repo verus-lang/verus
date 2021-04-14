@@ -1,12 +1,19 @@
 use std::rc::Rc;
+use std::fmt::Debug;
 
 pub type RawSpan = Rc<dyn std::any::Any>;
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct Span {
     pub raw_span: RawSpan,
     pub as_string: String,
 }
 pub type SpanOption = Rc<Option<Span>>;
+
+impl Debug for Span {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
+        f.debug_tuple("Span").field(&self.as_string).finish()
+    }
+}
 
 #[derive(Debug)]
 pub enum ValidityResult {

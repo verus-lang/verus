@@ -2,6 +2,7 @@ use crate::config::Args;
 use air::ast::{CommandX, ValidityResult};
 use rustc_span::Span;
 use std::fs::File;
+use std::io::Write;
 use vir::ast::Function;
 
 pub(crate) struct Verifier {
@@ -93,6 +94,18 @@ impl rustc_driver::Callbacks for Verifier {
             rustc_typeck::check_crate(tcx).expect("type error");
             let hir = tcx.hir();
             let vir_crate = crate::rust_to_vir::crate_to_vir(tcx, hir.krate());
+            if let Some(filename) = &self.args.log_vir {
+                let mut file = File::create(filename).expect(&format!("could not open file {}", filename));
+                for func in vir_crate.iter() {
+                    writeln!(&mut file, "fn {} @ {:?}", func.x.name, func.span).expect("cannot write to vir file");
+                    for param in func.x.params.iter() {
+                        writeln!(&mut file, "parameter {}: {:?} @ {:?}", param.x.name, param.x.typ, param.span).expect("cannot write to vir file");
+                    }
+                    write!(&mut file, "body {:#?}", func.x.body).expect("cannot write to vir file");
+                    writeln!(&mut file).expect("cannot write to vir file");
+                    writeln!(&mut file).expect("cannot write to vir file");
+                }
+            }
             self.verify(&compiler, vir_crate);
         });
         rustc_driver::Compilation::Stop

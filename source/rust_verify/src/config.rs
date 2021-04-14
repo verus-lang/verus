@@ -1,12 +1,14 @@
+#[derive(Debug, Default)]
 pub(crate) struct Args {
     pub(crate) rlimit: u32,
+    pub(crate) log_vir: Option<String>,
     pub(crate) log_air_initial: Option<String>,
     pub(crate) log_air_final: Option<String>,
     pub(crate) log_smt: Option<String>,
 }
 
 pub(crate) fn take_our_args(args: &mut Vec<String>) -> Args {
-    let mut a = Args { rlimit: 0, log_air_initial: None, log_air_final: None, log_smt: None };
+    let mut a: Args = Default::default();
     let mut i = 1;
     if args.len() == i {
         args.push("--help".to_string());
@@ -25,6 +27,7 @@ pub(crate) fn take_our_args(args: &mut Vec<String>) -> Args {
             println!(
                 "    --rlimit INTEGER              Set SMT resource limit (roughly in seconds)"
             );
+            println!("    --log_vir FILENAME            Log VIR");
             println!("    --log_air FILENAME            Log AIR queries in initial form");
             println!("    --log_air_final FILENAME      Log AIR queries in final form");
             println!("    --log_smt FILENAME            Log SMT queries");
@@ -39,11 +42,13 @@ pub(crate) fn take_our_args(args: &mut Vec<String>) -> Args {
             }
             args.remove(i);
             args.remove(i);
-        } else if arg == "--log_air" || arg == "--log_air_final" || arg == "--log_smt" {
+        } else if arg == "--log_vir" || arg == "--log_air" || arg == "--log_air_final" || arg == "--log_smt" {
             match next_arg {
                 None => panic!("expected filename after {}", arg),
                 Some(filename) => {
-                    if arg == "--log_air" {
+                    if arg == "--log_vir" {
+                        a.log_vir = Some(filename);
+                    } else if arg == "--log_air" {
                         a.log_air_initial = Some(filename);
                     } else if arg == "--log_air_final" {
                         a.log_air_final = Some(filename);
