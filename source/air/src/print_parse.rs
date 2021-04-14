@@ -120,14 +120,16 @@ pub fn sort_decl_to_node(x: &Ident) -> Node {
 }
 
 pub fn const_decl_to_node(x: &Ident, typ: &Typ) -> Node {
-    nodes!(const {str_to_node(x)} {typ_to_node(typ)})
+    nodes!(declare-const {str_to_node(x)} {typ_to_node(typ)})
 }
 
+/*
 pub fn function_decl_to_node(x: &Ident, typs: &[Typ], typ: &Typ) -> Node {
     let typs_nodes: Vec<Node> = typs.iter().map(typ_to_node).collect();
     let typs_node = Node::List(typs_nodes);
     nodes!(declare-fun {str_to_node(x)} {typs_node} {typ_to_node(typ)})
 }
+*/
 
 pub fn decl_to_node(decl: &Declaration) -> Node {
     match &**decl {
@@ -293,17 +295,13 @@ impl Logger {
         }
     }
 
-    pub fn log_sort_decl(&mut self, x: &Ident) {
-        if let Some(_) = self.writer {
-            self.log_node(&sort_decl_to_node(x));
-        }
-    }
-
+    /*
     pub fn log_function_decl(&mut self, x: &Ident, typs: &[Typ], typ: &Typ) {
         if let Some(_) = self.writer {
             self.log_node(&function_decl_to_node(x, typs, typ));
         }
     }
+    */
 
     pub fn log_decl(&mut self, decl: &Declaration) {
         if let Some(_) = self.writer {
@@ -441,7 +439,9 @@ fn node_to_decl(node: &Node) -> Result<Declaration, String> {
             [Node::Atom(s), Node::Atom(x)] if s.to_string() == "declare-sort" && is_symbol(x) => {
                 Ok(Rc::new(DeclarationX::Sort(Rc::new(x.clone()))))
             }
-            [Node::Atom(s), Node::Atom(x), t] if s.to_string() == "const" && is_symbol(x) => {
+            [Node::Atom(s), Node::Atom(x), t]
+                if s.to_string() == "declare-const" && is_symbol(x) =>
+            {
                 let typ = node_to_typ(t)?;
                 Ok(Rc::new(DeclarationX::Const(Rc::new(x.clone()), typ)))
             }

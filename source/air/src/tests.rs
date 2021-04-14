@@ -105,8 +105,8 @@ fn no_int_const() {
 fn yes_int_vars() {
     yes!(
         (check-valid
-            (const x Int)
-            (const y Int)
+            (declare-const x Int)
+            (declare-const y Int)
             (assert
                 (= (+ x y) (+ y x))
             )
@@ -118,8 +118,8 @@ fn yes_int_vars() {
 fn no_int_vars() {
     no!(
         (check-valid
-            (const x Int)
-            (const y Int)
+            (declare-const x Int)
+            (declare-const y Int)
             (assert
                 (= (+ x y) (+ y y))
             )
@@ -131,7 +131,7 @@ fn no_int_vars() {
 fn yes_int_axiom() {
     yes!(
         (check-valid
-            (const x Int)
+            (declare-const x Int)
             (axiom (> x 3))
             (assert
                 (>= x 3)
@@ -144,7 +144,7 @@ fn yes_int_axiom() {
 fn no_int_axiom() {
     no!(
         (check-valid
-            (const x Int)
+            (declare-const x Int)
             (axiom (>= x 3))
             (assert
                 (> x 3)
@@ -157,7 +157,7 @@ fn no_int_axiom() {
 fn yes_test_block() {
     yes!(
         (check-valid
-            (const x Int)
+            (declare-const x Int)
             (block
                 (assume (> x 3))
                 (assert (>= x 3))
@@ -172,7 +172,7 @@ fn yes_test_block() {
 fn no_test_block() {
     no!(
         (check-valid
-            (const x Int)
+            (declare-const x Int)
             (block
                 (assume (> x 3))
                 (assert (>= x 3))
@@ -187,7 +187,7 @@ fn no_test_block() {
 fn yes_test_block_nest() {
     yes!(
         (check-valid
-            (const x Int)
+            (declare-const x Int)
             (block
                 (assume (> x 3))
                 (block
@@ -229,7 +229,7 @@ fn yes_type() {
     yes!(
         (check-valid
             (declare-sort T)
-            (const x T)
+            (declare-const x T)
             (assert
                 (= x x)
             )
@@ -242,8 +242,8 @@ fn no_type() {
     no!(
         (check-valid
             (declare-sort T)
-            (const x T)
-            (const y T)
+            (declare-const x T)
+            (declare-const y T)
             (assert
                 (= x y)
             )

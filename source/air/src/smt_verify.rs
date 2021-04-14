@@ -109,13 +109,13 @@ fn label_asserts<'ctx>(
 pub fn smt_add_decl<'ctx>(context: &mut Context<'ctx>, decl: &Declaration, is_global: bool) {
     match &**decl {
         DeclarationX::Sort(x) => {
-            context.smt_log.log_sort_decl(x);
+            context.smt_log.log_decl(decl);
             let sort = Sort::uninterpreted(context.context, Symbol::String((**x).clone()));
             let prev = context.typs.insert(x.clone(), sort);
             assert_eq!(prev, None);
         }
         DeclarationX::Const(x, typ) => {
-            context.smt_log.log_function_decl(x, &[], typ);
+            context.smt_log.log_decl(decl);
             if is_global {
                 todo!(); // push and pop groups of variables
             }
