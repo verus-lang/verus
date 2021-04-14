@@ -49,11 +49,25 @@ Note: this first step may take more than an hour, since the Rust source code is 
 Download the [Z3 binaries](https://github.com/Z3Prover/z3/releases).
 The Z3 `bin` folder contain the libraries `libz3.*`.
 The easiest way to make these libraries available to the build is to copy them into the `install` directory.
-For example, on Windows:
+For example,
+
+on Windows:
 
 ```
 cp /z3/bin/libz3.lib install/lib/rustlib/x86_64-pc-windows-msvc/lib
 cp /z3/bin/libz3.dll install/bin
+```
+
+on Darwin (Mac):
+
+```
+curl -O -L https://github.com/Z3Prover/z3/releases/download/z3-4.8.10/z3-4.8.10-x64-osx-10.15.7.zip
+unzip z3-4.8.10-x64-osx-10.15.7.zip
+cp z3-4.8.10-x64-osx-10.15.7/bin/libz3.a install/lib/rustlib/x86_64-apple-darwin/lib/.
+cp z3-4.8.10-x64-osx-10.15.7/bin/libz3.dylib install/lib/rustlib/x86_64-apple-darwin/lib/.
+cp z3-4.8.10-x64-osx-10.15.7/bin/z3 install/bin/.
+rm -R z3-4.8.10-x64-osx-10.15.7
+rm z3-4.8.10-x64-osx-10.15.7.zip
 ```
 
 ## Step 3: build the verifier
@@ -68,6 +82,12 @@ Then use `cargo` to build the verifier:
 
 ```
 ../install/bin/cargo build
+```
+
+On Darwin (and likely Linux), if you have other toolchains installed (with rustup), you'll need instead:
+
+```
+RUSTC=../install/bin/rustc ../install/bin/cargo build
 ```
 
 This will build four crates:
@@ -88,8 +108,16 @@ This will build four crates:
 After running the build steps above, you can verify an example file.
 From the `verify` directory, run:
 
+on Windows:
+
 ```
 ../install/bin/rust_verify rust_verify/examples/basic.rs -L ../install/bin/
+```
+
+on Darwin (and likely Linux):
+
+```
+LD_LIBRARY_PATH=../install/lib ../install/bin/rust_verify rust_verify/examples/basic.rs -L ../install/bin/
 ```
 
 This runs the `Rust --> VIR --> AIR --> Z3` pipeline on `basic.rs`
