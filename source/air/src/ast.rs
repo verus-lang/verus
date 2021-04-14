@@ -43,12 +43,6 @@ pub enum UnaryOp {
 }
 
 #[derive(Copy, Clone, Debug)]
-pub enum LogicalOp {
-    And,
-    Or,
-}
-
-#[derive(Copy, Clone, Debug)]
 pub enum BinaryOp {
     Implies,
     Eq,
@@ -56,11 +50,17 @@ pub enum BinaryOp {
     Ge,
     Lt,
     Gt,
+    EuclideanDiv,
+    EuclideanMod,
+}
+
+#[derive(Copy, Clone, Debug)]
+pub enum MultiOp {
+    And,
+    Or,
     Add,
     Sub,
     Mul,
-    EuclideanDiv,
-    EuclideanMod,
 }
 
 pub type Expr = Rc<ExprX>;
@@ -71,7 +71,7 @@ pub enum ExprX {
     Var(Ident),
     Unary(UnaryOp, Expr),
     Binary(BinaryOp, Expr, Expr),
-    Logical(LogicalOp, Exprs),
+    Multi(MultiOp, Exprs),
     LabeledAssertion(SpanOption, Expr),
 }
 

@@ -1,5 +1,5 @@
 use crate::ast::{
-    BinaryOp, Const, Declaration, DeclarationX, Expr, ExprX, Ident, LogicalOp, Query, Span,
+    BinaryOp, Const, Declaration, DeclarationX, Expr, ExprX, Ident, MultiOp, Query, Span,
     SpanOption, StmtX, TypX, UnaryOp, ValidityResult,
 };
 use crate::context::Context;
@@ -31,23 +31,11 @@ fn expr_to_smt<'ctx>(context: &mut Context<'ctx>, expr: &Expr) -> Dynamic<'ctx> 
                 BinaryOp::Ge => lh.as_int().unwrap().ge(&rh.as_int().unwrap()).into(),
                 BinaryOp::Lt => lh.as_int().unwrap().lt(&rh.as_int().unwrap()).into(),
                 BinaryOp::Gt => lh.as_int().unwrap().gt(&rh.as_int().unwrap()).into(),
-                BinaryOp::Add => {
-                    Int::add(context.context, &[&lh.as_int().unwrap(), &rh.as_int().unwrap()])
-                        .into()
-                }
-                BinaryOp::Sub => {
-                    Int::sub(context.context, &[&lh.as_int().unwrap(), &rh.as_int().unwrap()])
-                        .into()
-                }
-                BinaryOp::Mul => {
-                    Int::mul(context.context, &[&lh.as_int().unwrap(), &rh.as_int().unwrap()])
-                        .into()
-                }
                 BinaryOp::EuclideanDiv => lh.as_int().unwrap().div(&rh.as_int().unwrap()).into(),
                 BinaryOp::EuclideanMod => lh.as_int().unwrap().rem(&rh.as_int().unwrap()).into(),
             }
         }
-        ExprX::Logical(op, exprs) => {
+        ExprX::Multi(op @ MultiOp::And, exprs) | ExprX::Multi(op @ MultiOp::Or, exprs) => {
             let mut exprs_vec: Vec<Bool> = Vec::new();
             for expr in exprs.iter() {
                 exprs_vec.push(expr_to_smt(context, expr).as_bool().unwrap());
@@ -57,8 +45,26 @@ fn expr_to_smt<'ctx>(context: &mut Context<'ctx>, expr: &Expr) -> Dynamic<'ctx> 
                 smt_exprs.push(&exprs_vec[i]);
             }
             match op {
-                LogicalOp::And => Bool::and(&context.context, &smt_exprs).into(),
-                LogicalOp::Or => Bool::or(&context.context, &smt_exprs).into(),
+                MultiOp::And => Bool::and(&context.context, &smt_exprs).into(),
+                MultiOp::Or => Bool::or(&context.context, &smt_exprs).into(),
+                _ => panic!("internal error: MultiOp"),
+            }
+        }
+        ExprX::Multi(op, exprs) => {
+            let mut exprs_vec: Vec<Int> = Vec::new();
+            for expr in exprs.iter() {
+                exprs_vec.push(expr_to_smt(context, expr).as_int().unwrap());
+            }
+            let mut smt_exprs: Vec<&Int> = Vec::new();
+            for i in 0..exprs_vec.len() {
+                smt_exprs.push(&exprs_vec[i]);
+            }
+            match (op, &smt_exprs[..]) {
+                (MultiOp::Add, _) => Int::add(&context.context, &smt_exprs).into(),
+                (MultiOp::Sub, [unary]) => unary.unary_minus().into(),
+                (MultiOp::Sub, _) => Int::sub(&context.context, &smt_exprs).into(),
+                (MultiOp::Mul, _) => Int::mul(&context.context, &smt_exprs).into(),
+                _ => panic!("internal error: MultiOp"),
             }
         }
         ExprX::LabeledAssertion(_, _) => panic!("internal error: LabeledAssertion"),
@@ -86,12 +92,12 @@ fn label_asserts<'ctx>(
                 label_asserts(context, infos, rhs),
             ))
         }
-        ExprX::Logical(op, exprs) => {
+        ExprX::Multi(op, exprs) => {
             let mut exprs_vec: Vec<Expr> = Vec::new();
             for expr in exprs.iter() {
                 exprs_vec.push(label_asserts(context, infos, expr));
             }
-            Rc::new(ExprX::Logical(*op, Rc::new(exprs_vec.into_boxed_slice())))
+            Rc::new(ExprX::Multi(*op, Rc::new(exprs_vec.into_boxed_slice())))
         }
         ExprX::LabeledAssertion(span, expr) => {
             let label = Rc::new(PREFIX_LABEL.to_string() + &infos.len().to_string());

@@ -1,4 +1,4 @@
-use crate::ast::{BinaryOp, Const, Expr, ExprX, LogicalOp, Query, QueryX, Stmt, StmtX};
+use crate::ast::{BinaryOp, Const, Expr, ExprX, MultiOp, Query, QueryX, Stmt, StmtX};
 use std::rc::Rc;
 
 pub fn stmt_to_expr(stmt: &Stmt, pred: Expr) -> Expr {
@@ -10,7 +10,7 @@ pub fn stmt_to_expr(stmt: &Stmt, pred: Expr) -> Expr {
         StmtX::Assert(span, expr) => {
             // wp((assert Q), P) = Q /\ P
             let assertion = Rc::new(ExprX::LabeledAssertion(span.clone(), expr.clone()));
-            Rc::new(ExprX::Logical(LogicalOp::And, Rc::new(Box::new([assertion, pred]))))
+            Rc::new(ExprX::Multi(MultiOp::And, Rc::new(Box::new([assertion, pred]))))
         }
         StmtX::Block(stmts) => {
             // wp((s1; s2), P) = wp(s1, wp(s2, P))

@@ -1,6 +1,6 @@
 use crate::ast::{
     BinaryOp, Command, CommandX, Commands, Const, Declaration, DeclarationX, Declarations, Expr,
-    ExprX, Exprs, Ident, LogicalOp, Query, QueryX, Stmt, StmtX, Stmts, Typ, TypX, UnaryOp,
+    ExprX, Exprs, Ident, MultiOp, Query, QueryX, Stmt, StmtX, Stmts, Typ, TypX, UnaryOp,
 };
 use sise::{Node, Writer};
 use std::io::Write;
@@ -24,7 +24,7 @@ pub(crate) fn macro_push_node(nodes: &mut Vec<Node>, node: Node) {
     if len != 0 {
         if let Node::Atom(cur) = &node {
             if let Node::Atom(prev) = &nodes[len - 1] {
-                if node == "-" || prev.ends_with("-") {
+                if node == "-" || (prev != "-" && prev.ends_with("-")) {
                     nodes[len - 1] = Node::Atom(prev.to_owned() + cur);
                     return;
                 }
@@ -85,18 +85,18 @@ pub(crate) fn expr_to_node(expr: &Expr) -> Node {
                 BinaryOp::Ge => ">=",
                 BinaryOp::Lt => "<",
                 BinaryOp::Gt => ">",
-                BinaryOp::Add => "+",
-                BinaryOp::Sub => "-",
-                BinaryOp::Mul => "*",
                 BinaryOp::EuclideanDiv => "div",
                 BinaryOp::EuclideanMod => "mod",
             };
             Node::List(vec![str_to_node(sop), expr_to_node(lhs), expr_to_node(rhs)])
         }
-        ExprX::Logical(op, exprs) => {
+        ExprX::Multi(op, exprs) => {
             let sop = match op {
-                LogicalOp::And => "and",
-                LogicalOp::Or => "or",
+                MultiOp::And => "and",
+                MultiOp::Or => "or",
+                MultiOp::Add => "+",
+                MultiOp::Sub => "-",
+                MultiOp::Mul => "*",
             };
             let mut nodes: Vec<Node> = Vec::new();
             nodes.push(str_to_node(sop));
@@ -378,16 +378,16 @@ pub(crate) fn node_to_expr(node: &Node) -> Result<Expr, String> {
                 Node::Atom(s) if s.to_string() == ">=" => Some(BinaryOp::Ge),
                 Node::Atom(s) if s.to_string() == "<" => Some(BinaryOp::Lt),
                 Node::Atom(s) if s.to_string() == ">" => Some(BinaryOp::Gt),
-                Node::Atom(s) if s.to_string() == "+" => Some(BinaryOp::Add),
-                Node::Atom(s) if s.to_string() == "-" => Some(BinaryOp::Sub),
-                Node::Atom(s) if s.to_string() == "*" => Some(BinaryOp::Mul),
                 Node::Atom(s) if s.to_string() == "div" => Some(BinaryOp::EuclideanDiv),
                 Node::Atom(s) if s.to_string() == "mod" => Some(BinaryOp::EuclideanMod),
                 _ => None,
             };
             let lop = match &nodes[0] {
-                Node::Atom(s) if s.to_string() == "and" => Some(LogicalOp::And),
-                Node::Atom(s) if s.to_string() == "or" => Some(LogicalOp::Or),
+                Node::Atom(s) if s.to_string() == "and" => Some(MultiOp::And),
+                Node::Atom(s) if s.to_string() == "or" => Some(MultiOp::Or),
+                Node::Atom(s) if s.to_string() == "+" => Some(MultiOp::Add),
+                Node::Atom(s) if s.to_string() == "-" => Some(MultiOp::Sub),
+                Node::Atom(s) if s.to_string() == "*" => Some(MultiOp::Mul),
                 _ => None,
             };
             match (args.len(), uop, bop, lop) {
@@ -395,7 +395,7 @@ pub(crate) fn node_to_expr(node: &Node) -> Result<Expr, String> {
                 (2, _, Some(op), _) => {
                     Ok(Rc::new(ExprX::Binary(op, args[0].clone(), args[1].clone())))
                 }
-                (_, _, _, Some(op)) => Ok(Rc::new(ExprX::Logical(op, args))),
+                (_, _, _, Some(op)) => Ok(Rc::new(ExprX::Multi(op, args))),
                 _ => Err(format!("expected expression, found: {}", node_to_string(node))),
             }
         }

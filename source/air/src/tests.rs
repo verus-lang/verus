@@ -107,8 +107,9 @@ fn yes_int_vars() {
         (check-valid
             (declare-const x Int)
             (declare-const y Int)
+            (declare-const z Int)
             (assert
-                (= (+ x y) (+ y x))
+                (= (+ x y z) (+ z y x))
             )
         )
     );
@@ -122,6 +123,18 @@ fn no_int_vars() {
             (declare-const y Int)
             (assert
                 (= (+ x y) (+ y y))
+            )
+        )
+    );
+}
+
+#[test]
+fn yes_int_neg() {
+    yes!(
+        (check-valid
+            (declare-const x Int)
+            (assert
+                (= (+ x (- 2)) (- x 2))
             )
         )
     );

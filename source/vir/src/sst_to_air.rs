@@ -1,7 +1,7 @@
 use crate::ast::{BinaryOp, Ident, Params, Typ, UnaryOp};
 use crate::sst::{Exp, ExpX, Stm, StmX};
 use crate::util::box_slice_map;
-use air::ast::{CommandX, Commands, DeclarationX, Expr, ExprX, LogicalOp, QueryX, Stmt, StmtX};
+use air::ast::{CommandX, Commands, DeclarationX, Expr, ExprX, MultiOp, QueryX, Stmt, StmtX};
 use std::rc::Rc;
 
 pub const SUFFIX_USER_ID: &str = "@";
@@ -24,8 +24,11 @@ fn exp_to_expr(exp: &Exp) -> Expr {
             let lh = exp_to_expr(lhs);
             let rh = exp_to_expr(rhs);
             let expx = match op {
-                BinaryOp::And => ExprX::Logical(LogicalOp::And, Rc::new(Box::new([lh, rh]))),
-                BinaryOp::Or => ExprX::Logical(LogicalOp::Or, Rc::new(Box::new([lh, rh]))),
+                BinaryOp::And => ExprX::Multi(MultiOp::And, Rc::new(Box::new([lh, rh]))),
+                BinaryOp::Or => ExprX::Multi(MultiOp::Or, Rc::new(Box::new([lh, rh]))),
+                BinaryOp::Add => ExprX::Multi(MultiOp::Add, Rc::new(Box::new([lh, rh]))),
+                BinaryOp::Sub => ExprX::Multi(MultiOp::Sub, Rc::new(Box::new([lh, rh]))),
+                BinaryOp::Mul => ExprX::Multi(MultiOp::Mul, Rc::new(Box::new([lh, rh]))),
                 BinaryOp::Ne => {
                     let eq = ExprX::Binary(air::ast::BinaryOp::Eq, lh, rh);
                     ExprX::Unary(air::ast::UnaryOp::Not, Rc::new(eq))
@@ -41,9 +44,9 @@ fn exp_to_expr(exp: &Exp) -> Expr {
                         BinaryOp::Ge => air::ast::BinaryOp::Ge,
                         BinaryOp::Lt => air::ast::BinaryOp::Lt,
                         BinaryOp::Gt => air::ast::BinaryOp::Gt,
-                        BinaryOp::Add => air::ast::BinaryOp::Add,
-                        BinaryOp::Sub => air::ast::BinaryOp::Sub,
-                        BinaryOp::Mul => air::ast::BinaryOp::Mul,
+                        BinaryOp::Add => panic!("internal error"),
+                        BinaryOp::Sub => panic!("internal error"),
+                        BinaryOp::Mul => panic!("internal error"),
                         BinaryOp::EuclideanDiv => air::ast::BinaryOp::EuclideanDiv,
                         BinaryOp::EuclideanMod => air::ast::BinaryOp::EuclideanMod,
                     };
