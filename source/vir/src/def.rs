@@ -1,6 +1,5 @@
 use air::ast::Span;
 use std::fmt::Debug;
-use std::ops::Deref;
 use std::rc::Rc;
 
 pub struct Spanned<X> {
