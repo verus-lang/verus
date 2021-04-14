@@ -1,7 +1,7 @@
 use air::ast::Span;
-use std::rc::Rc;
-use std::ops::Deref;
 use std::fmt::Debug;
+use std::ops::Deref;
+use std::rc::Rc;
 
 pub struct Spanned<X> {
     pub span: Span,

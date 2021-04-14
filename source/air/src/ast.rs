@@ -1,5 +1,5 @@
-use std::rc::Rc;
 use std::fmt::Debug;
+use std::rc::Rc;
 
 pub type RawSpan = Rc<dyn std::any::Any>;
 #[derive(Clone)]

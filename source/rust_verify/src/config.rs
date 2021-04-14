@@ -42,7 +42,11 @@ pub(crate) fn take_our_args(args: &mut Vec<String>) -> Args {
             }
             args.remove(i);
             args.remove(i);
-        } else if arg == "--log_vir" || arg == "--log_air" || arg == "--log_air_final" || arg == "--log_smt" {
+        } else if arg == "--log_vir"
+            || arg == "--log_air"
+            || arg == "--log_air_final"
+            || arg == "--log_smt"
+        {
             match next_arg {
                 None => panic!("expected filename after {}", arg),
                 Some(filename) => {
