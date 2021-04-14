@@ -1,12 +1,12 @@
 use crate::ast::{
     BinaryOp, Const, Declaration, DeclarationX, Expr, ExprX, Ident, LogicalOp, Query, Span,
-    SpanOption, StmtX, Typ, UnaryOp, ValidityResult,
+    SpanOption, StmtX, TypX, UnaryOp, ValidityResult,
 };
 use crate::context::Context;
 use std::collections::HashMap;
 use std::rc::Rc;
 use z3::ast::{Ast, Bool, Dynamic, Int};
-use z3::SatResult;
+use z3::{SatResult, Sort, Symbol};
 
 pub const PREFIX_LABEL: &str = "%%location_label%%";
 
@@ -95,7 +95,7 @@ fn label_asserts<'ctx>(
         }
         ExprX::LabeledAssertion(span, expr) => {
             let label = Rc::new(PREFIX_LABEL.to_string() + &infos.len().to_string());
-            let decl = Rc::new(DeclarationX::Const(label.clone(), Typ::Bool));
+            let decl = Rc::new(DeclarationX::Const(label.clone(), Rc::new(TypX::Bool)));
             let assertion_info = AssertionInfo { span: span.clone(), label: label.clone(), decl };
             infos.push(assertion_info);
             let lhs = Rc::new(ExprX::Var(label));
@@ -108,15 +108,26 @@ fn label_asserts<'ctx>(
 
 pub fn smt_add_decl<'ctx>(context: &mut Context<'ctx>, decl: &Declaration, is_global: bool) {
     match &**decl {
+        DeclarationX::Sort(x) => {
+            context.smt_log.log_sort_decl(x);
+            let sort = Sort::uninterpreted(context.context, Symbol::String((**x).clone()));
+            let prev = context.typs.insert(x.clone(), sort);
+            assert_eq!(prev, None);
+        }
         DeclarationX::Const(x, typ) => {
             context.smt_log.log_function_decl(x, &[], typ);
             if is_global {
                 todo!(); // push and pop groups of variables
             }
             let name = &**x;
-            let x_smt: Dynamic<'ctx> = match typ {
-                Typ::Bool => Bool::new_const(context.context, name.clone()).into(),
-                Typ::Int => Int::new_const(context.context, name.clone()).into(),
+            let x_smt: Dynamic<'ctx> = match &**typ {
+                TypX::Bool => Bool::new_const(context.context, name.clone()).into(),
+                TypX::Int => Int::new_const(context.context, name.clone()).into(),
+                TypX::Named(x) => {
+                    let sort = &context.typs[x];
+                    let fdecl = z3::FuncDecl::new(context.context, name.clone(), &[], sort);
+                    fdecl.apply(&[])
+                }
             };
             let prev = context.vars.insert(x.clone(), x_smt);
             assert_eq!(prev, None);

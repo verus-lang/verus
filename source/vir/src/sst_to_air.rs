@@ -69,8 +69,8 @@ pub fn stm_to_stmt(stm: &Stm) -> Stmt {
 
 pub fn typ_to_air(typ: &Typ) -> air::ast::Typ {
     match typ {
-        Typ::Int => air::ast::Typ::Int,
-        Typ::Bool => air::ast::Typ::Bool,
+        Typ::Int => Rc::new(air::ast::TypX::Int),
+        Typ::Bool => Rc::new(air::ast::TypX::Bool),
     }
 }
 

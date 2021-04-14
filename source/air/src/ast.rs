@@ -23,10 +23,12 @@ pub enum ValidityResult {
 
 pub type Ident = Rc<String>;
 
+pub type Typ = Rc<TypX>;
 #[derive(Debug)]
-pub enum Typ {
+pub enum TypX {
     Bool,
     Int,
+    Named(Ident),
 }
 
 #[derive(Clone, Debug)]
@@ -86,6 +88,7 @@ pub type Declaration = Rc<DeclarationX>;
 pub type Declarations = Rc<Box<[Declaration]>>;
 #[derive(Debug)]
 pub enum DeclarationX {
+    Sort(Ident),
     Const(Ident, Typ),
     Axiom(Expr),
 }

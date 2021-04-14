@@ -223,3 +223,30 @@ fn no_global() {
         )
     );
 }
+
+#[test]
+fn yes_type() {
+    yes!(
+        (check-valid
+            (declare-sort T)
+            (const x T)
+            (assert
+                (= x x)
+            )
+        )
+    );
+}
+
+#[test]
+fn no_type() {
+    no!(
+        (check-valid
+            (declare-sort T)
+            (const x T)
+            (const y T)
+            (assert
+                (= x y)
+            )
+        )
+    );
+}

@@ -2,10 +2,12 @@ use crate::ast::{Command, CommandX, Declaration, Ident, Query, ValidityResult};
 use crate::print_parse::Logger;
 use std::collections::HashMap;
 use z3::ast::Dynamic;
+use z3::Sort;
 
 pub struct Context<'ctx> {
     pub(crate) context: &'ctx z3::Context,
     pub(crate) solver: &'ctx z3::Solver<'ctx>,
+    pub(crate) typs: HashMap<Ident, Sort<'ctx>>,
     pub(crate) vars: HashMap<Ident, Dynamic<'ctx>>,
     pub(crate) rlimit: u32,
     pub(crate) air_initial_log: Logger,
@@ -18,6 +20,7 @@ impl<'ctx> Context<'ctx> {
         Context {
             context,
             solver,
+            typs: HashMap::new(),
             vars: HashMap::new(),
             rlimit: 0,
             air_initial_log: Logger::new(None),

@@ -1,6 +1,6 @@
 use crate::ast::{
     BinaryOp, Command, CommandX, Commands, Const, Declaration, DeclarationX, Declarations, Expr,
-    ExprX, Exprs, Ident, LogicalOp, Query, QueryX, Stmt, StmtX, Stmts, Typ, UnaryOp,
+    ExprX, Exprs, Ident, LogicalOp, Query, QueryX, Stmt, StmtX, Stmts, Typ, TypX, UnaryOp,
 };
 use sise::{Node, Writer};
 use std::io::Write;
@@ -11,9 +11,10 @@ pub(crate) fn str_to_node(s: &str) -> Node {
 }
 
 pub(crate) fn typ_to_node(typ: &Typ) -> Node {
-    match *typ {
-        Typ::Bool => str_to_node("Bool"),
-        Typ::Int => str_to_node("Int"),
+    match &**typ {
+        TypX::Bool => str_to_node("Bool"),
+        TypX::Int => str_to_node("Int"),
+        TypX::Named(name) => str_to_node(&name.clone()),
     }
 }
 
@@ -114,6 +115,10 @@ pub(crate) fn expr_to_node(expr: &Expr) -> Node {
     }
 }
 
+pub fn sort_decl_to_node(x: &Ident) -> Node {
+    node!((declare-sort {str_to_node(x)}))
+}
+
 pub fn const_decl_to_node(x: &Ident, typ: &Typ) -> Node {
     nodes!(const {str_to_node(x)} {typ_to_node(typ)})
 }
@@ -126,6 +131,7 @@ pub fn function_decl_to_node(x: &Ident, typs: &[Typ], typ: &Typ) -> Node {
 
 pub fn decl_to_node(decl: &Declaration) -> Node {
     match &**decl {
+        DeclarationX::Sort(x) => sort_decl_to_node(x),
         DeclarationX::Const(x, typ) => const_decl_to_node(x, typ),
         DeclarationX::Axiom(expr) => nodes!(axiom {expr_to_node(expr)}),
     }
@@ -287,6 +293,12 @@ impl Logger {
         }
     }
 
+    pub fn log_sort_decl(&mut self, x: &Ident) {
+        if let Some(_) = self.writer {
+            self.log_node(&sort_decl_to_node(x));
+        }
+    }
+
     pub fn log_function_decl(&mut self, x: &Ident, typs: &[Typ], typ: &Typ) {
         if let Some(_) = self.writer {
             self.log_node(&function_decl_to_node(x, typs, typ));
@@ -340,8 +352,9 @@ fn nodes_to_box_slice<A, F: Fn(&Node) -> Result<A, String>>(
 
 pub(crate) fn node_to_typ(node: &Node) -> Result<Typ, String> {
     match node {
-        Node::Atom(s) if s.to_string() == "Bool" => Ok(Typ::Bool),
-        Node::Atom(s) if s.to_string() == "Int" => Ok(Typ::Int),
+        Node::Atom(s) if s.to_string() == "Bool" => Ok(Rc::new(TypX::Bool)),
+        Node::Atom(s) if s.to_string() == "Int" => Ok(Rc::new(TypX::Int)),
+        Node::Atom(s) if is_symbol(s) => Ok(Rc::new(TypX::Named(Rc::new(s.clone())))),
         _ => Err(format!("expected type, found: {}", node_to_string(node))),
     }
 }
@@ -425,6 +438,9 @@ fn nodes_to_stmts(nodes: &[Node]) -> Result<Stmts, String> {
 fn node_to_decl(node: &Node) -> Result<Declaration, String> {
     match node {
         Node::List(nodes) => match &nodes[..] {
+            [Node::Atom(s), Node::Atom(x)] if s.to_string() == "declare-sort" && is_symbol(x) => {
+                Ok(Rc::new(DeclarationX::Sort(Rc::new(x.clone()))))
+            }
             [Node::Atom(s), Node::Atom(x), t] if s.to_string() == "const" && is_symbol(x) => {
                 let typ = node_to_typ(t)?;
                 Ok(Rc::new(DeclarationX::Const(Rc::new(x.clone()), typ)))
