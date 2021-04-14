@@ -29,9 +29,10 @@ pub enum Typ {
     Int,
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Clone, Debug)]
 pub enum Const {
     Bool(bool),
+    Nat(Rc<String>),
 }
 
 #[derive(Copy, Clone, Debug)]

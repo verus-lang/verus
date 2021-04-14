@@ -13,6 +13,7 @@ pub const PREFIX_LABEL: &str = "%%location_label%%";
 fn expr_to_smt<'ctx>(context: &mut Context<'ctx>, expr: &Expr) -> Dynamic<'ctx> {
     match &**expr {
         ExprX::Const(Const::Bool(b)) => Bool::from_bool(&context.context, *b).into(),
+        ExprX::Const(Const::Nat(n)) => Int::from_str(&context.context, n).unwrap().into(),
         ExprX::Var(x) => match context.vars.get(x) {
             None => panic!("internal error: variable {} not found", x),
             Some(x) => x.clone(),

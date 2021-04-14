@@ -13,7 +13,7 @@ fn suffixed_id(ident: &Ident) -> Ident {
 fn exp_to_expr(exp: &Exp) -> Expr {
     match &exp.x {
         ExpX::Const(c) => {
-            let expr = Rc::new(ExprX::Const(*c));
+            let expr = Rc::new(ExprX::Const(c.clone()));
             expr
         }
         ExpX::Var(x) => Rc::new(ExprX::Var(suffixed_id(x))),

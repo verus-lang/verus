@@ -111,13 +111,13 @@ From the `verify` directory, run:
 on Windows:
 
 ```
-../install/bin/rust_verify rust_verify/examples/basic.rs -L ../install/bin/
+../install/bin/rust_verify rust_verify/example/basic.rs -L ../install/bin/
 ```
 
 on Darwin (and likely Linux):
 
 ```
-LD_LIBRARY_PATH=../install/lib ../install/bin/rust_verify rust_verify/examples/basic.rs -L ../install/bin/
+LD_LIBRARY_PATH=../install/lib ../install/bin/rust_verify rust_verify/example/basic.rs -L ../install/bin/
 ```
 
 This runs the `Rust --> VIR --> AIR --> Z3` pipeline on `basic.rs`
