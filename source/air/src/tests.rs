@@ -221,7 +221,7 @@ fn yes_global() {
 
 #[test]
 fn no_global() {
-    yes!(
+    no!(
         (push)
             (axiom false)
         (pop)
@@ -289,6 +289,105 @@ fn no_assign() {
                 (assign x (+ x 1))
                 (assert (not (= x 102)))
             )
+        )
+    );
+}
+
+#[test]
+#[should_panic]
+fn panic_scope1() {
+    yes!(
+        (declare-const x Int)
+        (declare-const x Int) // error: x already in scope
+    );
+}
+
+#[test]
+#[should_panic]
+fn panic_scope2() {
+    yes!(
+        (declare-const x Int)
+        (push)
+            (declare-const x Int) // error: x already in scope
+        (pop)
+    );
+}
+
+#[test]
+#[should_panic]
+fn panic_scope3() {
+    yes!(
+        (declare-const x Int)
+        (check-valid
+            (declare-const x Int) // error: x already in scope
+            (assert true)
+        )
+    );
+}
+
+#[test]
+#[should_panic]
+fn panic_scope4() {
+    yes!(
+        (declare-const x Int)
+        (check-valid
+            (declare-var x Int) // error: x already in scope
+            (assert true)
+        )
+    );
+}
+
+#[test]
+#[should_panic]
+fn panic_scope5() {
+    yes!(
+        (declare-const "x@0" Int)
+        (check-valid
+            (declare-var x Int) // error: x@0 already in scope
+            (assert true)
+        )
+    );
+}
+
+#[test]
+#[should_panic]
+fn panic_scope6() {
+    yes!(
+        (declare-var x Int) // error: declare-var not allowed in global scope
+    );
+}
+
+#[test]
+fn yes_scope1() {
+    yes!(
+        (push)
+            (declare-const x Int)
+        (pop)
+        (push)
+            (declare-const x Int)
+        (pop)
+    );
+}
+
+#[test]
+fn yes_scope2() {
+    yes!(
+        (push)
+            (declare-const x Int)
+        (pop)
+        (declare-const x Int)
+    );
+}
+
+#[test]
+fn yes_scope3() {
+    yes!(
+        (push)
+            (declare-const x Int)
+        (pop)
+        (check-valid
+            (declare-var x Int)
+            (assert true)
         )
     );
 }

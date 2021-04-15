@@ -1,6 +1,6 @@
 use crate::ast::{Command, CommandX, Declaration, Ident, Query, ValidityResult};
 use crate::print_parse::Logger;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use z3::ast::Dynamic;
 use z3::Sort;
 
@@ -13,6 +13,9 @@ pub struct Context<'ctx> {
     pub(crate) air_initial_log: Logger,
     pub(crate) air_final_log: Logger,
     pub(crate) smt_log: Logger,
+    // For simplicity, global and local names must be unique (bound variables can have the same name)
+    pub(crate) names: HashSet<Ident>,
+    pub(crate) name_scopes: Vec<Vec<Ident>>,
 }
 
 impl<'ctx> Context<'ctx> {
@@ -26,6 +29,8 @@ impl<'ctx> Context<'ctx> {
             air_initial_log: Logger::new(None),
             air_final_log: Logger::new(None),
             smt_log: Logger::new(None),
+            names: HashSet::new(),
+            name_scopes: [Vec::new()].to_vec(),
         }
     }
 
@@ -126,11 +131,34 @@ impl<'ctx> Context<'ctx> {
         }
     }
 
+    pub(crate) fn push_name_scope(&mut self) {
+        self.name_scopes.push(Vec::new());
+    }
+
+    pub(crate) fn push_name(&mut self, x: &Ident) {
+        let len = self.name_scopes.len();
+        self.name_scopes[len - 1].push(x.clone());
+        let prev = self.names.insert(x.clone());
+        if !prev {
+            panic!("name {} is already in scope", x);
+        }
+    }
+
+    pub(crate) fn pop_name_scope(&mut self) {
+        let scope: Vec<Ident> = self.name_scopes.pop().unwrap();
+        for x in scope {
+            self.names.remove(&x);
+            self.typs.remove(&x);
+            self.vars.remove(&x);
+        }
+    }
+
     pub fn push(&mut self) {
         self.air_initial_log.log_push();
         self.air_final_log.log_push();
         self.smt_log.log_push();
         self.solver.push();
+        self.push_name_scope();
     }
 
     pub fn pop(&mut self) {
@@ -138,6 +166,7 @@ impl<'ctx> Context<'ctx> {
         self.air_final_log.log_pop();
         self.smt_log.log_pop();
         self.solver.pop(1);
+        self.pop_name_scope();
     }
 
     pub fn global(&mut self, decl: &Declaration) {
@@ -164,7 +193,7 @@ impl<'ctx> Context<'ctx> {
                 ValidityResult::Valid
             }
             CommandX::Pop => {
-                self.push();
+                self.pop();
                 ValidityResult::Valid
             }
             CommandX::SetOption(option, value) => {

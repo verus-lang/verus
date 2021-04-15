@@ -3,7 +3,6 @@ use crate::ast::{
     SpanOption, StmtX, TypX, UnaryOp, ValidityResult,
 };
 use crate::context::Context;
-use std::collections::HashMap;
 use std::rc::Rc;
 use z3::ast::{Ast, Bool, Dynamic, Int};
 use z3::{SatResult, Sort, Symbol};
@@ -116,15 +115,14 @@ pub(crate) fn smt_add_decl<'ctx>(context: &mut Context<'ctx>, decl: &Declaration
     match &**decl {
         DeclarationX::Sort(x) => {
             context.smt_log.log_decl(decl);
+            context.push_name(x);
             let sort = Sort::uninterpreted(context.context, Symbol::String((**x).clone()));
             let prev = context.typs.insert(x.clone(), sort);
             assert_eq!(prev, None);
         }
         DeclarationX::Const(x, typ) => {
             context.smt_log.log_decl(decl);
-            if is_global {
-                todo!(); // push and pop groups of variables
-            }
+            context.push_name(x);
             let name = &**x;
             let x_smt: Dynamic<'ctx> = match &**typ {
                 TypX::Bool => Bool::new_const(context.context, name.clone()).into(),
@@ -138,7 +136,12 @@ pub(crate) fn smt_add_decl<'ctx>(context: &mut Context<'ctx>, decl: &Declaration
             let prev = context.vars.insert(x.clone(), x_smt);
             assert_eq!(prev, None);
         }
-        DeclarationX::Var(_, _) => panic!("internal error: Var in smt_add_decl"),
+        DeclarationX::Var(x, _) => {
+            if is_global {
+                panic!("declare-var {} not allowed in global scope", x);
+            }
+            context.push_name(x);
+        }
         DeclarationX::Axiom(expr) => {
             context.smt_log.log_assert(&expr);
             let smt_expr = expr_to_smt(context, &expr).as_bool().unwrap();
@@ -207,6 +210,7 @@ fn smt_check_assertion<'ctx>(
 pub(crate) fn smt_check_query<'ctx>(context: &mut Context<'ctx>, query: &Query) -> ValidityResult {
     context.smt_log.log_push();
     context.solver.push();
+    context.push_name_scope();
 
     // add query-local declarations
     for decl in query.local.iter() {
@@ -233,7 +237,7 @@ pub(crate) fn smt_check_query<'ctx>(context: &mut Context<'ctx>, query: &Query) 
     let result = smt_check_assertion(context, &infos, &labeled_assertion);
 
     // clean up
-    context.vars = HashMap::new(); // TODO: selectively pop variables
+    context.pop_name_scope();
     context.smt_log.log_pop();
     context.solver.pop(1);
     result

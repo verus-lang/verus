@@ -20,14 +20,13 @@ pub(crate) fn lower_query(query: &Query) -> Query {
     let mut versions: HashMap<Ident, u32> = HashMap::new();
     let mut types: HashMap<Ident, Typ> = HashMap::new();
     for decl in local.iter() {
+        decls.push(decl.clone());
         if let DeclarationX::Var(x, t) = &**decl {
             versions.insert(x.clone(), 0);
             types.insert(x.clone(), t.clone());
             let x = Rc::new(rename_var(x, 0));
             let decl = Rc::new(DeclarationX::Const(x.clone(), t.clone()));
             decls.push(decl);
-        } else {
-            decls.push(decl.clone())
         }
     }
     let assertion = crate::visitor::map_stmt_visitor(assertion, &mut |s| {
