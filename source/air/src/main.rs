@@ -1,30 +1,44 @@
 use air::ast::{CommandX, Span, ValidityResult};
 use air::context::Context;
-use clap::{App, Arg};
 use sise::Node;
+use getopts::Options;
 use std::fs::File;
 use std::io::Read;
 
 pub fn main() {
-    let matches = App::new("AIR (Assertion Intermediate Language)")
-        .arg(Arg::with_name("INPUT").required(true).help("Specifies .air file to verify"))
-        .arg(Arg::with_name("auto-config").long("auto-config").help("Set Z3 auto_config=true"))
-        .arg(
-            Arg::with_name("AIR-FILENAME")
-                .long("log-air-final")
-                .takes_value(true)
-                .help("Log AIR queries in final form"),
-        )
-        .arg(
-            Arg::with_name("SMT-FILENAME")
-                .long("log-smt")
-                .takes_value(true)
-                .help("Log SMT queries"),
-        )
-        .get_matches();
+    let mut args = std::env::args();
+    let program = args.next().unwrap();
+
+    let mut opts = Options::new();
+    opts.optflag("", "auto-config", "Set Z3 auto_config=true");
+    opts.optopt("", "log-air-final", "Log AIR queries in final form", "FILENAME");
+    opts.optopt("", "log-smt", "Log SMT queries", "FILENAME");
+    opts.optflag("h", "help", "print this help menu");
+
+    let print_usage = || {
+        let brief = format!("Usage: {} INPUT [options]", program);
+        eprint!("{}", opts.usage(&brief));
+    };
+
+    let matches = match opts.parse(args) {
+        Ok(m) => {
+            if m.opt_present("h") { print_usage(); return; }
+            match m.free.len() {
+                0 => { print_usage(); std::process::exit(-1); },
+                1 => { m },
+                _ => { print_usage(); std::process::exit(-1); },
+            }
+        }
+        Err(f) => {
+            eprintln!("Error: {}", f.to_string());
+            print_usage();
+            std::process::exit(-1);
+        }
+    };
+
 
     // Open input file
-    let in_filename = matches.value_of("INPUT").unwrap();
+    let in_filename = &matches.free[0];
     let mut in_bytes: Vec<u8> = Vec::new();
     in_bytes.push('(' as u8);
     {
@@ -49,19 +63,19 @@ pub fn main() {
     let mut z3_config = z3::Config::new();
     z3_config.set_param_value(
         "auto_config",
-        if matches.is_present("auto-config") { "true" } else { "false" },
+        if matches.opt_present("auto-config") { "true" } else { "false" },
     );
     let z3_context = z3::Context::new(&z3_config);
     let z3_solver = z3::Solver::new(&z3_context);
     let mut air_context = Context::new(&z3_context, &z3_solver);
 
     // Start logging
-    if let Some(filename) = matches.value_of("AIR-FILENAME") {
-        let file = File::create(filename).expect(&format!("could not open file {}", filename));
+    if let Some(filename) = matches.opt_str("log-air-final") {
+        let file = File::create(&filename).expect(&format!("could not open file {}", &filename));
         air_context.set_air_final_log(Box::new(file));
     }
-    if let Some(filename) = matches.value_of("SMT-FILENAME") {
-        let file = File::create(filename).expect(&format!("could not open file {}", filename));
+    if let Some(filename) = matches.opt_str("log-smt") {
+        let file = File::create(&filename).expect(&format!("could not open file {}", &filename));
         air_context.set_smt_log(Box::new(file));
     }
 
