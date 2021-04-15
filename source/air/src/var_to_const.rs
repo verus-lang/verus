@@ -1,5 +1,5 @@
 // Replace declare-var and assign with declare-const and assume
-use crate::ast::{BinaryOp, Declaration, DeclarationX, ExprX, Ident, Query, QueryX, StmtX, Typ};
+use crate::ast::{BinaryOp, Decl, DeclX, ExprX, Ident, Query, QueryX, StmtX, Typ};
 use std::collections::HashMap;
 use std::rc::Rc;
 
@@ -16,16 +16,16 @@ fn rename_var(x: &String, n: u32) -> String {
 
 pub(crate) fn lower_query(query: &Query) -> Query {
     let QueryX { local, assertion } = &**query;
-    let mut decls: Vec<Declaration> = Vec::new();
+    let mut decls: Vec<Decl> = Vec::new();
     let mut versions: HashMap<Ident, u32> = HashMap::new();
     let mut types: HashMap<Ident, Typ> = HashMap::new();
     for decl in local.iter() {
         decls.push(decl.clone());
-        if let DeclarationX::Var(x, t) = &**decl {
+        if let DeclX::Var(x, t) = &**decl {
             versions.insert(x.clone(), 0);
             types.insert(x.clone(), t.clone());
             let x = Rc::new(rename_var(x, 0));
-            let decl = Rc::new(DeclarationX::Const(x.clone(), t.clone()));
+            let decl = Rc::new(DeclX::Const(x.clone(), t.clone()));
             decls.push(decl);
         }
     }
@@ -43,7 +43,7 @@ pub(crate) fn lower_query(query: &Query) -> Query {
                 let typ = types[x].clone();
                 versions.insert(x.clone(), n + 1);
                 let x = Rc::new(rename_var(x, n + 1));
-                let decl = Rc::new(DeclarationX::Const(x.clone(), typ));
+                let decl = Rc::new(DeclX::Const(x.clone(), typ));
                 decls.push(decl);
                 let expr1 = Rc::new(ExprX::Var(x));
                 let expr = Rc::new(ExprX::Binary(BinaryOp::Eq, expr1, e.clone()));

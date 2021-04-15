@@ -1,7 +1,7 @@
 use crate::ast::{BinaryOp, Ident, Params, Typ, UnaryOp};
 use crate::sst::{Exp, ExpX, Stm, StmX};
 use crate::util::box_slice_map;
-use air::ast::{CommandX, Commands, DeclarationX, Expr, ExprX, MultiOp, QueryX, Stmt, StmtX};
+use air::ast::{CommandX, Commands, DeclX, Expr, ExprX, MultiOp, QueryX, Stmt, StmtX};
 use std::rc::Rc;
 
 pub const SUFFIX_USER_ID: &str = "@";
@@ -79,7 +79,7 @@ pub fn typ_to_air(typ: &Typ) -> air::ast::Typ {
 
 pub fn stm_to_air(params: &Params, stm: &Stm) -> Commands {
     let local = box_slice_map(params, |param| {
-        Rc::new(DeclarationX::Const(suffixed_id(&param.x.name), typ_to_air(&param.x.typ)))
+        Rc::new(DeclX::Const(suffixed_id(&param.x.name), typ_to_air(&param.x.typ)))
     });
     let assertion = stm_to_stmt(&stm);
     let query = Rc::new(QueryX { local: Rc::new(local), assertion });

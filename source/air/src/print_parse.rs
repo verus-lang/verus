@@ -1,7 +1,6 @@
 use crate::ast::{
-    BinaryOp, Command, CommandX, Commands, Const, Declaration, DeclarationX, Declarations, Expr,
-    ExprX, Exprs, Ident, MultiOp, Query, QueryX, Span, Stmt, StmtX, Stmts, Typ, TypX, Typs,
-    UnaryOp,
+    BinaryOp, Command, CommandX, Commands, Const, Decl, DeclX, Decls, Expr, ExprX, Exprs, Ident,
+    MultiOp, Query, QueryX, Span, Stmt, StmtX, Stmts, Typ, TypX, Typs, UnaryOp,
 };
 use sise::{Node, Writer};
 use std::io::Write;
@@ -144,13 +143,13 @@ pub fn var_decl_to_node(x: &Ident, typ: &Typ) -> Node {
     nodes!(declare-var {str_to_node(x)} {typ_to_node(typ)})
 }
 
-pub fn decl_to_node(decl: &Declaration) -> Node {
+pub fn decl_to_node(decl: &Decl) -> Node {
     match &**decl {
-        DeclarationX::Sort(x) => sort_decl_to_node(x),
-        DeclarationX::Const(x, typ) => const_decl_to_node(x, typ),
-        DeclarationX::Fun(x, typs, typ) => fun_decl_to_node(x, typs, typ),
-        DeclarationX::Var(x, typ) => var_decl_to_node(x, typ),
-        DeclarationX::Axiom(expr) => nodes!(axiom {expr_to_node(expr)}),
+        DeclX::Sort(x) => sort_decl_to_node(x),
+        DeclX::Const(x, typ) => const_decl_to_node(x, typ),
+        DeclX::Fun(x, typs, typ) => fun_decl_to_node(x, typs, typ),
+        DeclX::Var(x, typ) => var_decl_to_node(x, typ),
+        DeclX::Axiom(expr) => nodes!(axiom {expr_to_node(expr)}),
     }
 }
 
@@ -319,7 +318,7 @@ impl Logger {
     }
     */
 
-    pub fn log_decl(&mut self, decl: &Declaration) {
+    pub fn log_decl(&mut self, decl: &Decl) {
         if let Some(_) = self.writer {
             self.log_node(&decl_to_node(decl));
         }
@@ -483,17 +482,17 @@ fn nodes_to_stmts(nodes: &[Node]) -> Result<Stmts, String> {
     nodes_to_box_slice(nodes, node_to_stmt)
 }
 
-fn node_to_decl(node: &Node) -> Result<Declaration, String> {
+fn node_to_decl(node: &Node) -> Result<Decl, String> {
     match node {
         Node::List(nodes) => match &nodes[..] {
             [Node::Atom(s), Node::Atom(x)] if s.to_string() == "declare-sort" && is_symbol(x) => {
-                Ok(Rc::new(DeclarationX::Sort(Rc::new(x.clone()))))
+                Ok(Rc::new(DeclX::Sort(Rc::new(x.clone()))))
             }
             [Node::Atom(s), Node::Atom(x), t]
                 if s.to_string() == "declare-const" && is_symbol(x) =>
             {
                 let typ = node_to_typ(t)?;
-                Ok(Rc::new(DeclarationX::Const(Rc::new(x.clone()), typ)))
+                Ok(Rc::new(DeclX::Const(Rc::new(x.clone()), typ)))
             }
             [Node::Atom(s), Node::Atom(x), Node::List(ts), t]
                 if s.to_string() == "declare-fun" && is_symbol(x) =>
@@ -503,19 +502,15 @@ fn node_to_decl(node: &Node) -> Result<Declaration, String> {
                     typs.push(node_to_typ(ta)?);
                 }
                 let typ = node_to_typ(t)?;
-                Ok(Rc::new(DeclarationX::Fun(
-                    Rc::new(x.clone()),
-                    Rc::new(typs.into_boxed_slice()),
-                    typ,
-                )))
+                Ok(Rc::new(DeclX::Fun(Rc::new(x.clone()), Rc::new(typs.into_boxed_slice()), typ)))
             }
             [Node::Atom(s), Node::Atom(x), t] if s.to_string() == "declare-var" && is_symbol(x) => {
                 let typ = node_to_typ(t)?;
-                Ok(Rc::new(DeclarationX::Var(Rc::new(x.clone()), typ)))
+                Ok(Rc::new(DeclX::Var(Rc::new(x.clone()), typ)))
             }
             [Node::Atom(s), e] if s.to_string() == "axiom" => {
                 let expr = node_to_expr(e)?;
-                Ok(Rc::new(DeclarationX::Axiom(expr)))
+                Ok(Rc::new(DeclX::Axiom(expr)))
             }
             _ => Err(format!("expected declaration, found: {}", node_to_string(node))),
         },
@@ -523,7 +518,7 @@ fn node_to_decl(node: &Node) -> Result<Declaration, String> {
     }
 }
 
-fn nodes_to_decls(nodes: &[Node]) -> Result<Declarations, String> {
+fn nodes_to_decls(nodes: &[Node]) -> Result<Decls, String> {
     nodes_to_box_slice(nodes, node_to_decl)
 }
 

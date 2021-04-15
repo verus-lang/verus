@@ -87,10 +87,10 @@ pub enum StmtX {
     Block(Stmts),
 }
 
-pub type Declaration = Rc<DeclarationX>;
-pub type Declarations = Rc<Box<[Declaration]>>;
+pub type Decl = Rc<DeclX>;
+pub type Decls = Rc<Box<[Decl]>>;
 #[derive(Debug)]
-pub enum DeclarationX {
+pub enum DeclX {
     Sort(Ident),
     Const(Ident, Typ),
     Fun(Ident, Typs, Typ),
@@ -101,8 +101,8 @@ pub enum DeclarationX {
 pub type Query = Rc<QueryX>;
 #[derive(Debug)]
 pub struct QueryX {
-    pub local: Declarations, // local declarations
-    pub assertion: Stmt,     // checked by SMT with global and local declarations
+    pub local: Decls,    // local declarations
+    pub assertion: Stmt, // checked by SMT with global and local declarations
 }
 
 pub type Command = Rc<CommandX>;
@@ -112,6 +112,6 @@ pub enum CommandX {
     Push,                    // push space for temporary global declarations
     Pop,                     // pop temporary global declarations
     SetOption(Ident, Ident), // set-option option value (no colon on the option)
-    Global(Declaration),     // global declarations
+    Global(Decl),            // global declarations
     CheckValid(Query),       // SMT check-sat (reporting validity rather than satisfiability)
 }

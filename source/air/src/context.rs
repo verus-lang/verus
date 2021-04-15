@@ -1,4 +1,4 @@
-use crate::ast::{Command, CommandX, Declaration, Ident, Query, ValidityResult};
+use crate::ast::{Command, CommandX, Decl, Ident, Query, ValidityResult};
 use crate::print_parse::Logger;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
@@ -172,7 +172,7 @@ impl<'ctx> Context<'ctx> {
         self.pop_name_scope();
     }
 
-    pub fn global(&mut self, decl: &Declaration) {
+    pub fn global(&mut self, decl: &Decl) {
         self.air_initial_log.log_decl(decl);
         self.air_final_log.log_decl(decl);
         crate::smt_verify::smt_add_decl(self, &decl, true);

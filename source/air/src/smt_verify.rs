@@ -1,6 +1,6 @@
 use crate::ast::{
-    BinaryOp, Const, Declaration, DeclarationX, Expr, ExprX, Ident, MultiOp, Query, Span,
-    SpanOption, StmtX, Typ, TypX, UnaryOp, ValidityResult,
+    BinaryOp, Const, Decl, DeclX, Expr, ExprX, Ident, MultiOp, Query, Span, SpanOption, StmtX, Typ,
+    TypX, UnaryOp, ValidityResult,
 };
 use crate::context::Context;
 use std::rc::Rc;
@@ -85,7 +85,7 @@ fn expr_to_smt<'ctx>(context: &mut Context<'ctx>, expr: &Expr) -> Dynamic<'ctx> 
 pub(crate) struct AssertionInfo {
     pub(crate) span: SpanOption,
     pub(crate) label: Ident,
-    pub(crate) decl: Declaration,
+    pub(crate) decl: Decl,
 }
 
 fn label_asserts<'ctx>(
@@ -111,7 +111,7 @@ fn label_asserts<'ctx>(
         }
         ExprX::LabeledAssertion(span, expr) => {
             let label = Rc::new(PREFIX_LABEL.to_string() + &infos.len().to_string());
-            let decl = Rc::new(DeclarationX::Const(label.clone(), Rc::new(TypX::Bool)));
+            let decl = Rc::new(DeclX::Const(label.clone(), Rc::new(TypX::Bool)));
             let assertion_info = AssertionInfo { span: span.clone(), label: label.clone(), decl };
             infos.push(assertion_info);
             let lhs = Rc::new(ExprX::Var(label));
@@ -130,16 +130,16 @@ fn get_sort<'ctx>(context: &Context<'ctx>, typ: &Typ) -> Rc<Sort<'ctx>> {
     }
 }
 
-pub(crate) fn smt_add_decl<'ctx>(context: &mut Context<'ctx>, decl: &Declaration, is_global: bool) {
+pub(crate) fn smt_add_decl<'ctx>(context: &mut Context<'ctx>, decl: &Decl, is_global: bool) {
     match &**decl {
-        DeclarationX::Sort(x) => {
+        DeclX::Sort(x) => {
             context.smt_log.log_decl(decl);
             context.push_name(x);
             let sort = Sort::uninterpreted(context.context, Symbol::String((**x).clone()));
             let prev = context.typs.insert(x.clone(), Rc::new(sort));
             assert_eq!(prev, None);
         }
-        DeclarationX::Const(x, typ) => {
+        DeclX::Const(x, typ) => {
             context.smt_log.log_decl(decl);
             context.push_name(x);
             let name = &**x;
@@ -154,7 +154,7 @@ pub(crate) fn smt_add_decl<'ctx>(context: &mut Context<'ctx>, decl: &Declaration
             };
             context.vars.insert(x.clone(), x_smt);
         }
-        DeclarationX::Fun(x, typs, typ) => {
+        DeclX::Fun(x, typs, typ) => {
             context.smt_log.log_decl(decl);
             context.push_name(x);
             let sort = get_sort(context, typ);
@@ -171,13 +171,13 @@ pub(crate) fn smt_add_decl<'ctx>(context: &mut Context<'ctx>, decl: &Declaration
             );
             context.funs.insert(x.clone(), Rc::new(fdecl));
         }
-        DeclarationX::Var(x, _) => {
+        DeclX::Var(x, _) => {
             if is_global {
                 panic!("declare-var {} not allowed in global scope", x);
             }
             context.push_name(x);
         }
-        DeclarationX::Axiom(expr) => {
+        DeclX::Axiom(expr) => {
             context.smt_log.log_assert(&expr);
             let smt_expr = expr_to_smt(context, &expr).as_bool().unwrap();
             context.solver.assert(&smt_expr);
