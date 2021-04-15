@@ -358,6 +358,15 @@ fn panic_scope6() {
 }
 
 #[test]
+#[should_panic]
+fn panic_scope7() {
+    yes!(
+        (declare-const x Int)
+        (declare-fun x (Int Int) Int) // error: x already in scope
+    );
+}
+
+#[test]
 fn yes_scope1() {
     yes!(
         (push)
@@ -390,4 +399,30 @@ fn yes_scope3() {
             (assert true)
         )
     );
+}
+
+#[test]
+fn yes_fun1() {
+    yes!(
+        (check-valid
+            (declare-fun f (Int Bool) Bool)
+            (block
+                (assume (f 10 true))
+                (assert (f 10 true))
+            )
+        )
+    )
+}
+
+#[test]
+fn no_fun1() {
+    no!(
+        (check-valid
+            (declare-fun f (Int Bool) Bool)
+            (block
+                (assume (f 10 true))
+                (assert (f 11 true))
+            )
+        )
+    )
 }

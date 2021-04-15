@@ -24,6 +24,7 @@ pub enum ValidityResult {
 pub type Ident = Rc<String>;
 
 pub type Typ = Rc<TypX>;
+pub type Typs = Rc<Box<[Typ]>>;
 #[derive(Debug)]
 pub enum TypX {
     Bool,
@@ -69,6 +70,7 @@ pub type Exprs = Rc<Box<[Expr]>>;
 pub enum ExprX {
     Const(Const),
     Var(Ident),
+    Apply(Ident, Exprs),
     Unary(UnaryOp, Expr),
     Binary(BinaryOp, Expr, Expr),
     Multi(MultiOp, Exprs),
@@ -91,6 +93,7 @@ pub type Declarations = Rc<Box<[Declaration]>>;
 pub enum DeclarationX {
     Sort(Ident),
     Const(Ident, Typ),
+    Fun(Ident, Typs, Typ),
     Var(Ident, Typ),
     Axiom(Expr),
 }

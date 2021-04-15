@@ -1,6 +1,6 @@
 use crate::ast::{
     BinaryOp, Const, Declaration, DeclarationX, Expr, ExprX, Ident, MultiOp, Query, Span,
-    SpanOption, StmtX, TypX, UnaryOp, ValidityResult,
+    SpanOption, StmtX, Typ, TypX, UnaryOp, ValidityResult,
 };
 use crate::context::Context;
 use std::rc::Rc;
@@ -17,6 +17,17 @@ fn expr_to_smt<'ctx>(context: &mut Context<'ctx>, expr: &Expr) -> Dynamic<'ctx> 
             None => panic!("internal error: variable {} not found", x),
             Some(x) => x.clone(),
         },
+        ExprX::Apply(x, exprs) => {
+            let mut exprs_vec: Vec<Dynamic> = Vec::new();
+            for expr in exprs.iter() {
+                exprs_vec.push(expr_to_smt(context, expr));
+            }
+            let mut smt_exprs: Vec<&Dynamic> = Vec::new();
+            for i in 0..exprs_vec.len() {
+                smt_exprs.push(&exprs_vec[i]);
+            }
+            context.funs[x].apply(&smt_exprs)
+        }
         ExprX::Unary(op, expr) => match op {
             UnaryOp::Not => Bool::not(&expr_to_smt(context, expr).as_bool().unwrap()).into(),
         },
@@ -111,13 +122,21 @@ fn label_asserts<'ctx>(
     }
 }
 
+fn get_sort<'ctx>(context: &Context<'ctx>, typ: &Typ) -> Rc<Sort<'ctx>> {
+    match &**typ {
+        TypX::Bool => Rc::new(Sort::bool(context.context)),
+        TypX::Int => Rc::new(Sort::int(context.context)),
+        TypX::Named(x) => context.typs[x].clone(),
+    }
+}
+
 pub(crate) fn smt_add_decl<'ctx>(context: &mut Context<'ctx>, decl: &Declaration, is_global: bool) {
     match &**decl {
         DeclarationX::Sort(x) => {
             context.smt_log.log_decl(decl);
             context.push_name(x);
             let sort = Sort::uninterpreted(context.context, Symbol::String((**x).clone()));
-            let prev = context.typs.insert(x.clone(), sort);
+            let prev = context.typs.insert(x.clone(), Rc::new(sort));
             assert_eq!(prev, None);
         }
         DeclarationX::Const(x, typ) => {
@@ -133,8 +152,24 @@ pub(crate) fn smt_add_decl<'ctx>(context: &mut Context<'ctx>, decl: &Declaration
                     fdecl.apply(&[])
                 }
             };
-            let prev = context.vars.insert(x.clone(), x_smt);
-            assert_eq!(prev, None);
+            context.vars.insert(x.clone(), x_smt);
+        }
+        DeclarationX::Fun(x, typs, typ) => {
+            context.smt_log.log_decl(decl);
+            context.push_name(x);
+            let sort = get_sort(context, typ);
+            let sorts = crate::util::box_slice_map(typs, |t| get_sort(context, t));
+            let mut sorts_borrow: Vec<&Sort> = Vec::new();
+            for i in 0..sorts.len() {
+                sorts_borrow.push(&*sorts[i]);
+            }
+            let fdecl = z3::FuncDecl::new(
+                context.context,
+                (**x).clone(),
+                &sorts_borrow.into_boxed_slice(),
+                &*sort,
+            );
+            context.funs.insert(x.clone(), Rc::new(fdecl));
         }
         DeclarationX::Var(x, _) => {
             if is_global {

@@ -1,6 +1,7 @@
 use crate::ast::{
     BinaryOp, Command, CommandX, Commands, Const, Declaration, DeclarationX, Declarations, Expr,
-    ExprX, Exprs, Ident, MultiOp, Query, QueryX, Span, Stmt, StmtX, Stmts, Typ, TypX, UnaryOp,
+    ExprX, Exprs, Ident, MultiOp, Query, QueryX, Span, Stmt, StmtX, Stmts, Typ, TypX, Typs,
+    UnaryOp,
 };
 use sise::{Node, Writer};
 use std::io::Write;
@@ -8,14 +9,6 @@ use std::rc::Rc;
 
 pub(crate) fn str_to_node(s: &str) -> Node {
     Node::Atom(s.to_string())
-}
-
-pub(crate) fn typ_to_node(typ: &Typ) -> Node {
-    match &**typ {
-        TypX::Bool => str_to_node("Bool"),
-        TypX::Int => str_to_node("Int"),
-        TypX::Named(name) => str_to_node(&name.clone()),
-    }
 }
 
 pub(crate) fn macro_push_node(nodes: &mut Vec<Node>, node: Node) {
@@ -66,11 +59,31 @@ macro_rules! nodes {
    };
 }
 
+pub(crate) fn typ_to_node(typ: &Typ) -> Node {
+    match &**typ {
+        TypX::Bool => str_to_node("Bool"),
+        TypX::Int => str_to_node("Int"),
+        TypX::Named(name) => str_to_node(&name.clone()),
+    }
+}
+
+pub(crate) fn typs_to_node(typs: &Typs) -> Node {
+    Node::List(crate::util::box_slice_map(typs, typ_to_node).to_vec())
+}
+
 pub(crate) fn expr_to_node(expr: &Expr) -> Node {
     match &**expr {
         ExprX::Const(Const::Bool(b)) => Node::Atom(b.to_string()),
         ExprX::Const(Const::Nat(n)) => Node::Atom((**n).clone()),
         ExprX::Var(x) => Node::Atom(x.to_string()),
+        ExprX::Apply(x, exprs) => {
+            let mut nodes: Vec<Node> = Vec::new();
+            nodes.push(str_to_node(x));
+            for expr in exprs.iter() {
+                nodes.push(expr_to_node(expr));
+            }
+            Node::List(nodes)
+        }
         ExprX::Unary(op, expr) => {
             let sop = match op {
                 UnaryOp::Not => "not",
@@ -123,22 +136,19 @@ pub fn const_decl_to_node(x: &Ident, typ: &Typ) -> Node {
     nodes!(declare-const {str_to_node(x)} {typ_to_node(typ)})
 }
 
+pub fn fun_decl_to_node(x: &Ident, typs: &Typs, typ: &Typ) -> Node {
+    nodes!(declare-fun {str_to_node(x)} {typs_to_node(typs)} {typ_to_node(typ)})
+}
+
 pub fn var_decl_to_node(x: &Ident, typ: &Typ) -> Node {
     nodes!(declare-var {str_to_node(x)} {typ_to_node(typ)})
 }
-
-/*
-pub fn function_decl_to_node(x: &Ident, typs: &[Typ], typ: &Typ) -> Node {
-    let typs_nodes: Vec<Node> = typs.iter().map(typ_to_node).collect();
-    let typs_node = Node::List(typs_nodes);
-    nodes!(declare-fun {str_to_node(x)} {typs_node} {typ_to_node(typ)})
-}
-*/
 
 pub fn decl_to_node(decl: &Declaration) -> Node {
     match &**decl {
         DeclarationX::Sort(x) => sort_decl_to_node(x),
         DeclarationX::Const(x, typ) => const_decl_to_node(x, typ),
+        DeclarationX::Fun(x, typs, typ) => fun_decl_to_node(x, typs, typ),
         DeclarationX::Var(x, typ) => var_decl_to_node(x, typ),
         DeclarationX::Axiom(expr) => nodes!(axiom {expr_to_node(expr)}),
     }
@@ -410,12 +420,17 @@ pub(crate) fn node_to_expr(node: &Node) -> Result<Expr, String> {
                 Node::Atom(s) if s.to_string() == "*" => Some(MultiOp::Mul),
                 _ => None,
             };
-            match (args.len(), uop, bop, lop) {
-                (1, Some(op), _, _) => Ok(Rc::new(ExprX::Unary(op, args[0].clone()))),
-                (2, _, Some(op), _) => {
+            let fun = match &nodes[0] {
+                Node::Atom(s) if is_symbol(s) => Some(s),
+                _ => None,
+            };
+            match (args.len(), uop, bop, lop, fun) {
+                (1, Some(op), _, _, _) => Ok(Rc::new(ExprX::Unary(op, args[0].clone()))),
+                (2, _, Some(op), _, _) => {
                     Ok(Rc::new(ExprX::Binary(op, args[0].clone(), args[1].clone())))
                 }
-                (_, _, _, Some(op)) => Ok(Rc::new(ExprX::Multi(op, args))),
+                (_, _, _, Some(op), _) => Ok(Rc::new(ExprX::Multi(op, args))),
+                (_, _, _, _, Some(x)) => Ok(Rc::new(ExprX::Apply(Rc::new(x.clone()), args))),
                 _ => Err(format!("expected expression, found: {}", node_to_string(node))),
             }
         }
@@ -479,6 +494,20 @@ fn node_to_decl(node: &Node) -> Result<Declaration, String> {
             {
                 let typ = node_to_typ(t)?;
                 Ok(Rc::new(DeclarationX::Const(Rc::new(x.clone()), typ)))
+            }
+            [Node::Atom(s), Node::Atom(x), Node::List(ts), t]
+                if s.to_string() == "declare-fun" && is_symbol(x) =>
+            {
+                let mut typs: Vec<Typ> = Vec::new();
+                for ta in ts {
+                    typs.push(node_to_typ(ta)?);
+                }
+                let typ = node_to_typ(t)?;
+                Ok(Rc::new(DeclarationX::Fun(
+                    Rc::new(x.clone()),
+                    Rc::new(typs.into_boxed_slice()),
+                    typ,
+                )))
             }
             [Node::Atom(s), Node::Atom(x), t] if s.to_string() == "declare-var" && is_symbol(x) => {
                 let typ = node_to_typ(t)?;

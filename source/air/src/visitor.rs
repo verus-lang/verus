@@ -5,6 +5,14 @@ pub(crate) fn map_expr_visitor<F: FnMut(&Expr) -> Expr>(expr: &Expr, f: &mut F) 
     match &**expr {
         ExprX::Const(_) => f(expr),
         ExprX::Var(_) => f(expr),
+        ExprX::Apply(x, es) => {
+            let mut exprs: Vec<Expr> = Vec::new();
+            for e in es.iter() {
+                exprs.push(map_expr_visitor(e, f));
+            }
+            let expr = Rc::new(ExprX::Apply(x.clone(), Rc::new(exprs.into_boxed_slice())));
+            f(&expr)
+        }
         ExprX::Unary(op, e1) => {
             let expr1 = map_expr_visitor(e1, f);
             let expr = Rc::new(ExprX::Unary(*op, expr1));

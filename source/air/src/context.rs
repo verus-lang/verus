@@ -1,14 +1,16 @@
 use crate::ast::{Command, CommandX, Declaration, Ident, Query, ValidityResult};
 use crate::print_parse::Logger;
 use std::collections::{HashMap, HashSet};
+use std::rc::Rc;
 use z3::ast::Dynamic;
-use z3::Sort;
+use z3::{FuncDecl, Sort};
 
 pub struct Context<'ctx> {
     pub(crate) context: &'ctx z3::Context,
     pub(crate) solver: &'ctx z3::Solver<'ctx>,
-    pub(crate) typs: HashMap<Ident, Sort<'ctx>>,
-    pub(crate) vars: HashMap<Ident, Dynamic<'ctx>>,
+    pub(crate) typs: HashMap<Ident, Rc<Sort<'ctx>>>,
+    pub(crate) vars: HashMap<Ident, Dynamic<'ctx>>, // no Rc; Dynamic implements Clone
+    pub(crate) funs: HashMap<Ident, Rc<FuncDecl<'ctx>>>,
     pub(crate) rlimit: u32,
     pub(crate) air_initial_log: Logger,
     pub(crate) air_final_log: Logger,
@@ -25,6 +27,7 @@ impl<'ctx> Context<'ctx> {
             solver,
             typs: HashMap::new(),
             vars: HashMap::new(),
+            funs: HashMap::new(),
             rlimit: 0,
             air_initial_log: Logger::new(None),
             air_final_log: Logger::new(None),
