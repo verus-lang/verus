@@ -257,3 +257,38 @@ fn no_type() {
         )
     );
 }
+
+#[test]
+fn yes_assign() {
+    no!(
+        (check-valid
+            (declare-var x Int)
+            (declare-var y Int)
+            (block
+                (assume (= x 100))
+                (assume (= y 200))
+                (assign x (+ x 1))
+                (assign x (+ x 1))
+                (assert (= x 102))
+                (assert (= y 100))
+            )
+        )
+    );
+}
+
+#[test]
+fn no_assign() {
+    no!(
+        (check-valid
+            (declare-var x Int)
+            (declare-var y Int)
+            (block
+                (assume (= x 100))
+                (assume (= y 200))
+                (assign x (+ x 1))
+                (assign x (+ x 1))
+                (assert (not (= x 102)))
+            )
+        )
+    );
+}

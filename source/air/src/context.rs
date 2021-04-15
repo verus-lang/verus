@@ -148,10 +148,11 @@ impl<'ctx> Context<'ctx> {
 
     pub fn check_valid(&mut self, query: &Query) -> ValidityResult {
         self.air_initial_log.log_query(query);
-        let low_query = crate::block_to_assert::lower_query(&query);
-        self.air_final_log.log_query(&low_query);
+        let query = crate::var_to_const::lower_query(&query);
+        let query = crate::block_to_assert::lower_query(&query);
+        self.air_final_log.log_query(&query);
 
-        let validity = crate::smt_verify::smt_check_query(self, &low_query);
+        let validity = crate::smt_verify::smt_check_query(self, &query);
 
         validity
     }

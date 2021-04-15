@@ -112,7 +112,7 @@ fn label_asserts<'ctx>(
     }
 }
 
-pub fn smt_add_decl<'ctx>(context: &mut Context<'ctx>, decl: &Declaration, is_global: bool) {
+pub(crate) fn smt_add_decl<'ctx>(context: &mut Context<'ctx>, decl: &Declaration, is_global: bool) {
     match &**decl {
         DeclarationX::Sort(x) => {
             context.smt_log.log_decl(decl);
@@ -138,6 +138,7 @@ pub fn smt_add_decl<'ctx>(context: &mut Context<'ctx>, decl: &Declaration, is_gl
             let prev = context.vars.insert(x.clone(), x_smt);
             assert_eq!(prev, None);
         }
+        DeclarationX::Var(_, _) => panic!("internal error: Var in smt_add_decl"),
         DeclarationX::Axiom(expr) => {
             context.smt_log.log_assert(&expr);
             let smt_expr = expr_to_smt(context, &expr).as_bool().unwrap();
@@ -203,7 +204,7 @@ fn smt_check_assertion<'ctx>(
     }
 }
 
-pub fn smt_check_query<'ctx>(context: &mut Context<'ctx>, query: &Query) -> ValidityResult {
+pub(crate) fn smt_check_query<'ctx>(context: &mut Context<'ctx>, query: &Query) -> ValidityResult {
     context.smt_log.log_push();
     context.solver.push();
 

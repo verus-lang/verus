@@ -8,3 +8,5 @@ mod block_to_assert;
 mod smt_verify;
 mod tests;
 mod util;
+mod var_to_const;
+mod visitor;

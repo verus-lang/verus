@@ -81,6 +81,7 @@ pub type Stmts = Rc<Box<[Stmt]>>;
 pub enum StmtX {
     Assume(Expr),
     Assert(SpanOption, Expr),
+    Assign(Ident, Expr),
     Block(Stmts),
 }
 
@@ -90,6 +91,7 @@ pub type Declarations = Rc<Box<[Declaration]>>;
 pub enum DeclarationX {
     Sort(Ident),
     Const(Ident, Typ),
+    Var(Ident, Typ),
     Axiom(Expr),
 }
 
