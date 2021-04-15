@@ -24,7 +24,6 @@ impl Verifier {
         let z3_solver = z3::Solver::new(&z3_context);
         let mut air_context = air::context::Context::new(&z3_context, &z3_solver);
 
-        air_context.set_rlimit(self.args.rlimit * 1000000);
         if let Some(filename) = &self.args.log_air_initial {
             let file = File::create(filename).expect(&format!("could not open file {}", filename));
             air_context.set_air_initial_log(Box::new(file));
@@ -38,13 +37,8 @@ impl Verifier {
             air_context.set_smt_log(Box::new(file));
         }
 
-        air_context.set_z3_param_bool("auto_config", false, true);
-        air_context.set_z3_param_bool("smt.mbqi", false, true);
-        air_context.set_z3_param_u32("smt.case_split", 3, true);
-        air_context.set_z3_param_f64("smt.qi.eager_threshold", 100.0, true);
-        air_context.set_z3_param_bool("smt.delay_units", true, true);
-        air_context.set_z3_param_u32("smt.arith.solver", 2, true);
-        air_context.set_z3_param_bool("smt.arith.nl", false, true);
+        air_context.set_z3_param("air_recommended_options", "true");
+        air_context.set_rlimit(self.args.rlimit * 1000000);
 
         for function in krate {
             air_context.blank_line();

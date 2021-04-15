@@ -92,7 +92,7 @@ fn label_asserts<'ctx>(
                 label_asserts(context, infos, rhs),
             ))
         }
-        ExprX::Multi(op, exprs) => {
+        ExprX::Multi(op @ MultiOp::And, exprs) | ExprX::Multi(op @ MultiOp::Or, exprs) => {
             let mut exprs_vec: Vec<Expr> = Vec::new();
             for expr in exprs.iter() {
                 exprs_vec.push(label_asserts(context, infos, expr));
@@ -106,7 +106,7 @@ fn label_asserts<'ctx>(
             infos.push(assertion_info);
             let lhs = Rc::new(ExprX::Var(label));
             // See comments about Z3_model_eval below for why do we use => instead of or.
-            Rc::new(ExprX::Binary(BinaryOp::Implies, lhs, expr.clone()))
+            Rc::new(ExprX::Binary(BinaryOp::Implies, lhs, label_asserts(context, infos, expr)))
         }
         _ => expr.clone(),
     }

@@ -1,6 +1,6 @@
 use crate::ast::{
     BinaryOp, Command, CommandX, Commands, Const, Declaration, DeclarationX, Declarations, Expr,
-    ExprX, Exprs, Ident, MultiOp, Query, QueryX, Stmt, StmtX, Stmts, Typ, TypX, UnaryOp,
+    ExprX, Exprs, Ident, MultiOp, Query, QueryX, Span, Stmt, StmtX, Stmts, Typ, TypX, UnaryOp,
 };
 use sise::{Node, Writer};
 use std::io::Write;
@@ -366,6 +366,20 @@ pub(crate) fn node_to_expr(node: &Node) -> Result<Expr, String> {
         }
         Node::Atom(s) if is_symbol(s) => Ok(Rc::new(ExprX::Var(Rc::new(s.clone())))),
         Node::List(nodes) if nodes.len() > 0 => {
+            match &nodes[..] {
+                [Node::Atom(s), Node::Atom(label), e]
+                    if s.to_string() == "location"
+                        && label.starts_with("\"")
+                        && label.ends_with("\"") =>
+                {
+                    let raw_span = Rc::new(());
+                    let as_string = label[1..label.len() - 1].to_string();
+                    let span = Rc::new(Some(Span { raw_span, as_string }));
+                    let expr = node_to_expr(e)?;
+                    return Ok(Rc::new(ExprX::LabeledAssertion(span, expr)));
+                }
+                _ => {}
+            }
             let args = nodes_to_exprs(&nodes[1..])?;
             let uop = match &nodes[0] {
                 Node::Atom(s) if s.to_string() == "not" => Some(UnaryOp::Not),
@@ -418,6 +432,17 @@ pub(crate) fn node_to_stmt(node: &Node) -> Result<Stmt, String> {
                 let expr = node_to_expr(&e)?;
                 Ok(Rc::new(StmtX::Assert(Rc::new(None), expr)))
             }
+            [Node::Atom(s), Node::Atom(label), e]
+                if s.to_string() == "assert"
+                    && label.starts_with("\"")
+                    && label.ends_with("\"") =>
+            {
+                let raw_span = Rc::new(());
+                let as_string = label[1..label.len() - 1].to_string();
+                let span = Span { raw_span, as_string };
+                let expr = node_to_expr(&e)?;
+                Ok(Rc::new(StmtX::Assert(Rc::new(Some(span)), expr)))
+            }
             _ => match &nodes[0] {
                 Node::Atom(s) if s.to_string() == "block" => {
                     Ok(Rc::new(StmtX::Block(nodes_to_stmts(&nodes[1..])?)))
@@ -468,6 +493,16 @@ pub(crate) fn node_to_command(node: &Node) -> Result<Command, String> {
             Node::Atom(s) if s.to_string() == "pop" && nodes.len() == 1 => {
                 Ok(Rc::new(CommandX::Pop))
             }
+            Node::Atom(s) if s.to_string() == "set-option" && nodes.len() == 3 => {
+                match &nodes[..] {
+                    [_, Node::Atom(option), Node::Atom(value)] if option.starts_with(":") => {
+                        let opt = Rc::new(option[1..].to_string());
+                        let val = Rc::new(value.clone());
+                        Ok(Rc::new(CommandX::SetOption(opt, val)))
+                    }
+                    _ => Err(format!("expected command, found: {}", node_to_string(node))),
+                }
+            }
             Node::Atom(s) if s.to_string() == "check-valid" && nodes.len() >= 2 => {
                 let assertion = node_to_stmt(&nodes[nodes.len() - 1])?;
                 let local = nodes_to_decls(&nodes[1..nodes.len() - 1])?;
@@ -483,6 +518,6 @@ pub(crate) fn node_to_command(node: &Node) -> Result<Command, String> {
     }
 }
 
-pub(crate) fn nodes_to_commands(nodes: &[Node]) -> Result<Commands, String> {
+pub fn nodes_to_commands(nodes: &[Node]) -> Result<Commands, String> {
     nodes_to_box_slice(nodes, node_to_command)
 }

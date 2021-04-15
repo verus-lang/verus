@@ -43,6 +43,8 @@ impl<'ctx> Context<'ctx> {
 
     pub fn set_rlimit(&mut self, rlimit: u32) {
         self.rlimit = rlimit;
+        self.air_initial_log.log_set_option("rlimit", &rlimit.to_string());
+        self.air_final_log.log_set_option("rlimit", &rlimit.to_string());
     }
 
     // emit blank line into log files
@@ -65,25 +67,39 @@ impl<'ctx> Context<'ctx> {
         self.smt_log.log_set_option(option, value);
     }
 
-    pub fn set_z3_param_bool(&mut self, option: &str, value: bool, write_to_logs: bool) {
-        let mut z3_params = z3::Params::new(&self.context);
-        z3_params.set_bool(option, value);
-        if write_to_logs {
-            self.log_set_z3_param(option, &value.to_string());
+    pub(crate) fn set_z3_param_bool(&mut self, option: &str, value: bool, write_to_logs: bool) {
+        if option == "air_recommended_options" && value {
+            self.set_z3_param_bool("auto_config", false, true);
+            self.set_z3_param_bool("smt.mbqi", false, true);
+            self.set_z3_param_u32("smt.case_split", 3, true);
+            self.set_z3_param_f64("smt.qi.eager_threshold", 100.0, true);
+            self.set_z3_param_bool("smt.delay_units", true, true);
+            self.set_z3_param_u32("smt.arith.solver", 2, true);
+            self.set_z3_param_bool("smt.arith.nl", false, true);
+        } else {
+            let mut z3_params = z3::Params::new(&self.context);
+            z3_params.set_bool(option, value);
+            if write_to_logs {
+                self.log_set_z3_param(option, &value.to_string());
+            }
+            self.solver.set_params(&z3_params);
         }
-        self.solver.set_params(&z3_params);
     }
 
-    pub fn set_z3_param_u32(&mut self, option: &str, value: u32, write_to_logs: bool) {
-        let mut z3_params = z3::Params::new(&self.context);
-        z3_params.set_u32(option, value);
-        if write_to_logs {
-            self.log_set_z3_param(option, &value.to_string());
+    pub(crate) fn set_z3_param_u32(&mut self, option: &str, value: u32, write_to_logs: bool) {
+        if option == "rlimit" && write_to_logs {
+            self.set_rlimit(value);
+        } else {
+            let mut z3_params = z3::Params::new(&self.context);
+            z3_params.set_u32(option, value);
+            if write_to_logs {
+                self.log_set_z3_param(option, &value.to_string());
+            }
+            self.solver.set_params(&z3_params);
         }
-        self.solver.set_params(&z3_params);
     }
 
-    pub fn set_z3_param_f64(&mut self, option: &str, value: f64, write_to_logs: bool) {
+    pub(crate) fn set_z3_param_f64(&mut self, option: &str, value: f64, write_to_logs: bool) {
         let mut z3_params = z3::Params::new(&self.context);
         z3_params.set_f64(option, value);
         if write_to_logs {
@@ -94,6 +110,20 @@ impl<'ctx> Context<'ctx> {
             self.log_set_z3_param(option, &s);
         }
         self.solver.set_params(&z3_params);
+    }
+
+    pub fn set_z3_param(&mut self, option: &str, value: &str) {
+        if value == "true" {
+            self.set_z3_param_bool(option, true, true);
+        } else if value == "false" {
+            self.set_z3_param_bool(option, true, true);
+        } else if value.contains(".") {
+            let v = value.parse::<f64>().expect(&format!("could not parse option value {}", value));
+            self.set_z3_param_f64(option, v, true);
+        } else {
+            let v = value.parse::<u32>().expect(&format!("could not parse option value {}", value));
+            self.set_z3_param_u32(option, v, true);
+        }
     }
 
     pub fn push(&mut self) {
@@ -117,17 +147,11 @@ impl<'ctx> Context<'ctx> {
     }
 
     pub fn check_valid(&mut self, query: &Query) -> ValidityResult {
-        self.air_initial_log.log_set_option("rlimit", &self.rlimit.to_string());
-        self.air_final_log.log_set_option("rlimit", &self.rlimit.to_string());
-
         self.air_initial_log.log_query(query);
         let low_query = crate::block_to_assert::lower_query(&query);
         self.air_final_log.log_query(&low_query);
 
         let validity = crate::smt_verify::smt_check_query(self, &low_query);
-
-        self.air_initial_log.log_set_option("rlimit", "0");
-        self.air_final_log.log_set_option("rlimit", "0");
 
         validity
     }
@@ -140,6 +164,10 @@ impl<'ctx> Context<'ctx> {
             }
             CommandX::Pop => {
                 self.push();
+                ValidityResult::Valid
+            }
+            CommandX::SetOption(option, value) => {
+                self.set_z3_param(option, value);
                 ValidityResult::Valid
             }
             CommandX::Global(decl) => {

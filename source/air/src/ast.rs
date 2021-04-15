@@ -104,8 +104,9 @@ pub type Command = Rc<CommandX>;
 pub type Commands = Rc<Box<[Command]>>;
 #[derive(Debug)]
 pub enum CommandX {
-    Push,                // push space for temporary global declarations
-    Pop,                 // pop temporary global declarations
-    Global(Declaration), // global declarations
-    CheckValid(Query),   // SMT check-sat (reporting validity rather than satisfiability)
+    Push,                    // push space for temporary global declarations
+    Pop,                     // pop temporary global declarations
+    SetOption(Ident, Ident), // set-option option value (no colon on the option)
+    Global(Declaration),     // global declarations
+    CheckValid(Query),       // SMT check-sat (reporting validity rather than satisfiability)
 }

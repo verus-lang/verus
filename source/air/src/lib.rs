@@ -2,7 +2,7 @@ pub mod ast;
 pub mod context;
 
 #[macro_use]
-mod print_parse;
+pub mod print_parse;
 
 mod block_to_assert;
 mod smt_verify;

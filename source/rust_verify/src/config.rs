@@ -27,10 +27,10 @@ pub(crate) fn take_our_args(args: &mut Vec<String>) -> Args {
             println!(
                 "    --rlimit INTEGER              Set SMT resource limit (roughly in seconds)"
             );
-            println!("    --log_vir FILENAME            Log VIR");
-            println!("    --log_air FILENAME            Log AIR queries in initial form");
-            println!("    --log_air_final FILENAME      Log AIR queries in final form");
-            println!("    --log_smt FILENAME            Log SMT queries");
+            println!("    --log-vir FILENAME            Log VIR");
+            println!("    --log-air FILENAME            Log AIR queries in initial form");
+            println!("    --log-air-final FILENAME      Log AIR queries in final form");
+            println!("    --log-smt FILENAME            Log SMT queries");
             println!();
             i = i + 1;
         } else if arg == "--rlimit" {
@@ -42,21 +42,21 @@ pub(crate) fn take_our_args(args: &mut Vec<String>) -> Args {
             }
             args.remove(i);
             args.remove(i);
-        } else if arg == "--log_vir"
-            || arg == "--log_air"
-            || arg == "--log_air_final"
-            || arg == "--log_smt"
+        } else if arg == "--log-vir"
+            || arg == "--log-air"
+            || arg == "--log-air-final"
+            || arg == "--log-smt"
         {
             match next_arg {
                 None => panic!("expected filename after {}", arg),
                 Some(filename) => {
-                    if arg == "--log_vir" {
+                    if arg == "--log-vir" {
                         a.log_vir = Some(filename);
-                    } else if arg == "--log_air" {
+                    } else if arg == "--log-air" {
                         a.log_air_initial = Some(filename);
-                    } else if arg == "--log_air_final" {
+                    } else if arg == "--log-air-final" {
                         a.log_air_final = Some(filename);
-                    } else if arg == "--log_smt" {
+                    } else if arg == "--log-smt" {
                         a.log_smt = Some(filename);
                     }
                 }

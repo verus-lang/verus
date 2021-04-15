@@ -11,13 +11,7 @@ fn run_nodes_as_test(should_succeed: bool, nodes: &[Node]) {
     let z3_context = z3::Context::new(&z3_config);
     let z3_solver = z3::Solver::new(&z3_context);
     let mut air_context = crate::context::Context::new(&z3_context, &z3_solver);
-    air_context.set_z3_param_bool("auto_config", false, true);
-    air_context.set_z3_param_bool("smt.mbqi", false, true);
-    air_context.set_z3_param_u32("smt.case_split", 3, true);
-    air_context.set_z3_param_f64("smt.qi.eager_threshold", 100.0, true);
-    air_context.set_z3_param_bool("smt.delay_units", true, true);
-    air_context.set_z3_param_u32("smt.arith.solver", 2, true);
-    air_context.set_z3_param_bool("smt.arith.nl", false, true);
+    air_context.set_z3_param("air_recommended_options", "true");
     match nodes_to_commands(&nodes) {
         Ok(commands) => {
             for command in commands.iter() {
