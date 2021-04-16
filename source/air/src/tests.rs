@@ -755,3 +755,42 @@ fn no_exists1() {
         )
     )
 }
+
+#[test]
+fn yes_ite1() {
+    yes!(
+        (check-valid
+            (block
+                (assert (= (ite true 10 20) 10))
+                (assert (= (ite false 10 20) 20))
+            )
+        )
+    )
+}
+
+#[test]
+fn no_ite1() {
+    no!(
+        (check-valid
+            (assert (= (ite true 10 20) 20))
+        )
+    )
+}
+
+#[test]
+fn untyped_ite1() {
+    untyped!(
+        (check-valid
+            (assert (= (ite 0 10 20) 20))
+        )
+    )
+}
+
+#[test]
+fn untyped_ite2() {
+    untyped!(
+        (check-valid
+            (assert (= (ite true 10 true) 20))
+        )
+    )
+}

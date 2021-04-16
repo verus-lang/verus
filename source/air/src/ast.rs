@@ -101,6 +101,7 @@ pub enum ExprX {
     Unary(UnaryOp, Expr),
     Binary(BinaryOp, Expr, Expr),
     Multi(MultiOp, Exprs),
+    IfElse(Expr, Expr, Expr),
     Bind(Bind, Expr),
     LabeledAssertion(SpanOption, Expr),
 }

@@ -183,6 +183,25 @@ pub(crate) fn check_expr(typing: &mut Typing, expr: &Expr) -> Result<Typ, TypeEr
             let f_typs = crate::util::box_slice_map(exprs, |_| t.clone());
             check_exprs(typing, x, &f_typs, &t, exprs)
         }
+        ExprX::IfElse(e1, e2, e3) => {
+            let t1 = check_expr(typing, e1)?;
+            let t2 = check_expr(typing, e2)?;
+            let t3 = check_expr(typing, e3)?;
+            if !typ_eq(&t1, &bt()) {
+                Err(format!(
+                    "in if/then/else, condition has type {} instead of Bool",
+                    typ_name(&t1)
+                ))
+            } else if !typ_eq(&t2, &t3) {
+                Err(format!(
+                    "in if/then/else, left expression has type {} and right expression has different type {}",
+                    typ_name(&t2),
+                    typ_name(&t3)
+                ))
+            } else {
+                Ok(t2)
+            }
+        }
         ExprX::Bind(bind, e1) => {
             // For Let, get types of binder expressions
             let binders: Binders<Typ> = match &**bind {

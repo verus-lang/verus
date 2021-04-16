@@ -32,6 +32,13 @@ pub(crate) fn map_expr_visitor<F: FnMut(&Expr) -> Expr>(expr: &Expr, f: &mut F) 
             let expr = Rc::new(ExprX::Multi(*op, Rc::new(exprs.into_boxed_slice())));
             f(&expr)
         }
+        ExprX::IfElse(e1, e2, e3) => {
+            let expr1 = map_expr_visitor(e1, f);
+            let expr2 = map_expr_visitor(e2, f);
+            let expr3 = map_expr_visitor(e3, f);
+            let expr = Rc::new(ExprX::IfElse(expr1, expr2, expr3));
+            f(&expr)
+        }
         ExprX::Bind(bind, e1) => {
             let bind = match &**bind {
                 BindX::Let(bs) => {

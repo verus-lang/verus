@@ -90,6 +90,12 @@ fn expr_to_smt<'ctx>(context: &mut Context<'ctx>, expr: &Expr) -> Dynamic<'ctx> 
                 _ => panic!("internal error: MultiOp"),
             }
         }
+        ExprX::IfElse(expr1, expr2, expr3) => {
+            let smt1 = expr_to_smt(context, expr1);
+            let smt2 = expr_to_smt(context, expr2);
+            let smt3 = expr_to_smt(context, expr3);
+            smt1.as_bool().unwrap().ite(&smt2, &smt3)
+        }
         ExprX::Bind(bind, e1) => {
             let mut bound_vars: Vec<(Ident, Dynamic<'ctx>)> = Vec::new();
             match &**bind {

@@ -119,6 +119,9 @@ pub(crate) fn expr_to_node(expr: &Expr) -> Node {
             }
             Node::List(nodes)
         }
+        ExprX::IfElse(expr1, expr2, expr3) => {
+            nodes!(ite {expr_to_node(expr1)} {expr_to_node(expr2)} {expr_to_node(expr3)})
+        }
         ExprX::Bind(bind, expr) => match &**bind {
             BindX::Let(binders) => {
                 nodes!(let {binders_to_node(binders, &expr_to_node)} {expr_to_node(expr)})
@@ -473,17 +476,24 @@ pub(crate) fn node_to_expr(node: &Node) -> Result<Expr, String> {
                 Node::Atom(s) if s.to_string() == "*" => Some(MultiOp::Mul),
                 _ => None,
             };
+            let ite = match &nodes[0] {
+                Node::Atom(s) if s.to_string() == "ite" => true,
+                _ => false,
+            };
             let fun = match &nodes[0] {
                 Node::Atom(s) if is_symbol(s) => Some(s),
                 _ => None,
             };
-            match (args.len(), uop, bop, lop, fun) {
-                (1, Some(op), _, _, _) => Ok(Rc::new(ExprX::Unary(op, args[0].clone()))),
-                (2, _, Some(op), _, _) => {
+            match (args.len(), uop, bop, lop, ite, fun) {
+                (1, Some(op), _, _, _, _) => Ok(Rc::new(ExprX::Unary(op, args[0].clone()))),
+                (2, _, Some(op), _, _, _) => {
                     Ok(Rc::new(ExprX::Binary(op, args[0].clone(), args[1].clone())))
                 }
-                (_, _, _, Some(op), _) => Ok(Rc::new(ExprX::Multi(op, args))),
-                (_, _, _, _, Some(x)) => Ok(Rc::new(ExprX::Apply(Rc::new(x.clone()), args))),
+                (_, _, _, Some(op), _, _) => Ok(Rc::new(ExprX::Multi(op, args))),
+                (_, _, _, _, true, _) => {
+                    Ok(Rc::new(ExprX::IfElse(args[0].clone(), args[1].clone(), args[2].clone())))
+                }
+                (_, _, _, _, _, Some(x)) => Ok(Rc::new(ExprX::Apply(Rc::new(x.clone()), args))),
                 _ => Err(format!("expected expression, found: {}", node_to_string(node))),
             }
         }
