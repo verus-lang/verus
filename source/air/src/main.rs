@@ -16,7 +16,7 @@ pub fn main() {
     opts.optflag("h", "help", "print this help menu");
 
     let print_usage = || {
-        let brief = format!("Usage: {} INPUT [options]", program);
+        let brief = format!("Usage: {} INPUT [OPTIONS]", program);
         eprint!("{}", opts.usage(&brief));
     };
 

@@ -9,4 +9,4 @@ edition = "2018"
 [dependencies]
 z3 = "0.10.0"
 sise = "0.6.0"
-getopts = "0.2"
+getopts = { git = "https://github.com/utaal/getopts.git", branch = "parse-partial" }
