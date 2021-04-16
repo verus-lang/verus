@@ -17,8 +17,6 @@ pub struct Context<'ctx> {
     pub(crate) air_initial_log: Logger,
     pub(crate) air_final_log: Logger,
     pub(crate) smt_log: Logger,
-    // For simplicity, global and local names must be unique (bound variables can have the same name)
-    pub(crate) names: HashSet<Ident>,
     pub(crate) name_scopes: Vec<Vec<Ident>>,
 }
 
@@ -30,12 +28,16 @@ impl<'ctx> Context<'ctx> {
             typs: HashMap::new(),
             vars: HashMap::new(),
             funs: HashMap::new(),
-            typing: Typing { typs: HashSet::new(), vars: HashMap::new(), funs: HashMap::new() },
+            typing: Typing {
+                names: HashSet::new(),
+                typs: HashSet::new(),
+                vars: HashMap::new(),
+                funs: HashMap::new(),
+            },
             rlimit: 0,
             air_initial_log: Logger::new(None),
             air_final_log: Logger::new(None),
             smt_log: Logger::new(None),
-            names: HashSet::new(),
             name_scopes: [Vec::new()].to_vec(),
         }
     }
@@ -144,14 +146,14 @@ impl<'ctx> Context<'ctx> {
     pub(crate) fn push_name(&mut self, x: &Ident) -> Result<(), TypeError> {
         let len = self.name_scopes.len();
         self.name_scopes[len - 1].push(x.clone());
-        let prev = self.names.insert(x.clone());
+        let prev = self.typing.names.insert(x.clone());
         if prev { Ok(()) } else { Err(format!("name {} is already in scope", x)) }
     }
 
     pub(crate) fn pop_name_scope(&mut self) {
         let scope: Vec<Ident> = self.name_scopes.pop().unwrap();
         for x in scope {
-            self.names.remove(&x);
+            self.typing.names.remove(&x);
             self.typs.remove(&x);
             self.vars.remove(&x);
             self.funs.remove(&x);
@@ -180,7 +182,7 @@ impl<'ctx> Context<'ctx> {
     pub fn global(&mut self, decl: &Decl) -> Result<(), TypeError> {
         self.air_initial_log.log_decl(decl);
         self.air_final_log.log_decl(decl);
-        crate::typecheck::check_decl(&self.typing, decl)?;
+        crate::typecheck::check_decl(&mut self.typing, decl)?;
         crate::typecheck::add_decl(self, decl, true)?;
         crate::smt_verify::smt_add_decl(self, decl);
         Ok(())

@@ -1,13 +1,26 @@
 use crate::ast::{
-    BinaryOp, Const, Decl, DeclX, Expr, ExprX, Ident, MultiOp, Query, Span, SpanOption, StmtX, Typ,
-    TypX, UnaryOp, ValidityResult,
+    BinaryOp, BindX, Const, Decl, DeclX, Expr, ExprX, Ident, MultiOp, Quant, Query, Span,
+    SpanOption, StmtX, Typ, TypX, UnaryOp, ValidityResult,
 };
 use crate::context::Context;
+use std::collections::HashMap;
 use std::rc::Rc;
 use z3::ast::{Ast, Bool, Dynamic, Int};
-use z3::{SatResult, Sort, Symbol};
+use z3::{Pattern, SatResult, Sort, Symbol};
 
 pub const PREFIX_LABEL: &str = "%%location_label%%";
+
+fn new_const<'ctx>(context: &mut Context<'ctx>, name: &String, typ: &Typ) -> Dynamic<'ctx> {
+    match &**typ {
+        TypX::Bool => Bool::new_const(context.context, name.clone()).into(),
+        TypX::Int => Int::new_const(context.context, name.clone()).into(),
+        TypX::Named(x) => {
+            let sort = &context.typs[x];
+            let fdecl = z3::FuncDecl::new(context.context, name.clone(), &[], sort);
+            fdecl.apply(&[])
+        }
+    }
+}
 
 fn expr_to_smt<'ctx>(context: &mut Context<'ctx>, expr: &Expr) -> Dynamic<'ctx> {
     match &**expr {
@@ -77,6 +90,77 @@ fn expr_to_smt<'ctx>(context: &mut Context<'ctx>, expr: &Expr) -> Dynamic<'ctx> 
                 _ => panic!("internal error: MultiOp"),
             }
         }
+        ExprX::Bind(bind, e1) => {
+            let mut bound_vars: Vec<(Ident, Dynamic<'ctx>)> = Vec::new();
+            match &**bind {
+                BindX::Let(binders) => {
+                    for binder in binders.iter() {
+                        bound_vars.push((binder.name.clone(), expr_to_smt(context, &binder.a)));
+                    }
+                }
+                BindX::Quant(_, binders, _) => {
+                    for binder in binders.iter() {
+                        let x_smt = new_const(context, &binder.name, &binder.a);
+                        bound_vars.push((binder.name.clone(), x_smt));
+                    }
+                }
+            }
+            // Push our bindings
+            // Remember any overwritten shadowed bindings so we can restore them
+            let mut undos: HashMap<Ident, Option<Dynamic<'ctx>>> = HashMap::new();
+            for (x, x_smt) in &bound_vars {
+                let prev_var = context.vars.insert(x.clone(), x_smt.clone());
+                undos.insert(x.clone(), prev_var);
+            }
+            // Translate subexpressions (in context with bound variables)
+            let expr_smt = match &**bind {
+                BindX::Let(_) => expr_to_smt(context, e1),
+                BindX::Quant(quant, _, triggers) => {
+                    let mut bounds: Vec<&Dynamic<'ctx>> = Vec::new();
+                    for i in 0..bound_vars.len() {
+                        bounds.push(&bound_vars[i].1);
+                    }
+                    let mut patterns: Vec<Pattern<'ctx>> = Vec::new();
+                    for trigger in triggers.iter() {
+                        let mut trigger_smt: Vec<Dynamic<'ctx>> = Vec::new();
+                        for expr in trigger.iter() {
+                            trigger_smt.push(expr_to_smt(context, expr));
+                        }
+                        let mut pattern: Vec<&Dynamic<'ctx>> = Vec::new();
+                        for i in 0..trigger_smt.len() {
+                            pattern.push(&trigger_smt[i]);
+                        }
+                        patterns.push(Pattern::new(context.context, &pattern));
+                    }
+                    let mut patterns_borrow: Vec<&Pattern<'ctx>> = Vec::new();
+                    for i in 0..patterns.len() {
+                        patterns_borrow.push(&patterns[i]);
+                    }
+                    let body = expr_to_smt(context, e1);
+                    match quant {
+                        Quant::Forall => {
+                            z3::ast::forall_const(context.context, &bounds, &patterns_borrow, &body)
+                        }
+                        Quant::Exists => {
+                            z3::ast::exists_const(context.context, &bounds, &patterns_borrow, &body)
+                        }
+                    }
+                }
+            };
+            // Remove our bindings from the context, restore any shadowed bindings
+            for (x, undo) in undos {
+                match undo {
+                    None => {
+                        context.vars.remove(&x);
+                    }
+                    Some(prev) => {
+                        context.vars.insert(x.clone(), prev);
+                    }
+                }
+            }
+            // Done
+            expr_smt
+        }
         ExprX::LabeledAssertion(_, _) => panic!("internal error: LabeledAssertion"),
     }
 }
@@ -140,16 +224,7 @@ pub(crate) fn smt_add_decl<'ctx>(context: &mut Context<'ctx>, decl: &Decl) {
         }
         DeclX::Const(x, typ) => {
             context.smt_log.log_decl(decl);
-            let name = &**x;
-            let x_smt: Dynamic<'ctx> = match &**typ {
-                TypX::Bool => Bool::new_const(context.context, name.clone()).into(),
-                TypX::Int => Int::new_const(context.context, name.clone()).into(),
-                TypX::Named(x) => {
-                    let sort = &context.typs[x];
-                    let fdecl = z3::FuncDecl::new(context.context, name.clone(), &[], sort);
-                    fdecl.apply(&[])
-                }
-            };
+            let x_smt = new_const(context, x, typ);
             context.vars.insert(x.clone(), x_smt);
         }
         DeclX::Fun(x, typs, typ) => {

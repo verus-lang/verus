@@ -1,6 +1,7 @@
 use crate::ast::{
-    BinaryOp, Command, CommandX, Commands, Const, Decl, DeclX, Decls, Expr, ExprX, Exprs, Ident,
-    MultiOp, Query, QueryX, Span, Stmt, StmtX, Stmts, Typ, TypX, Typs, UnaryOp,
+    BinaryOp, BindX, Binder, BinderX, Binders, Command, CommandX, Commands, Const, Decl, DeclX,
+    Decls, Expr, ExprX, Exprs, Ident, MultiOp, Quant, Query, QueryX, Span, Stmt, StmtX, Stmts,
+    Trigger, Typ, TypX, Typs, UnaryOp,
 };
 use sise::{Node, Writer};
 use std::io::Write;
@@ -41,6 +42,7 @@ macro_rules! node {
     ( $x:literal ) => { Node::Atom($x.to_string()) };
     ( ( $( $x:tt )* ) ) => {
         {
+            #[allow(unused_mut)]
             let mut v = Vec::new();
             $(macro_push_node(&mut v, node!($x));)*
             Node::List(v)
@@ -117,6 +119,31 @@ pub(crate) fn expr_to_node(expr: &Expr) -> Node {
             }
             Node::List(nodes)
         }
+        ExprX::Bind(bind, expr) => match &**bind {
+            BindX::Let(binders) => {
+                nodes!(let {binders_to_node(binders, &expr_to_node)} {expr_to_node(expr)})
+            }
+            BindX::Quant(quant, binders, triggers) => {
+                let s_quant = match quant {
+                    Quant::Forall => "forall",
+                    Quant::Exists => "exists",
+                };
+                let s_binders = binders_to_node(binders, &typ_to_node);
+                let inner = nodes!({str_to_node(s_quant)} {s_binders} {expr_to_node(expr)});
+                if triggers.len() == 0 {
+                    inner
+                } else {
+                    let mut nodes: Vec<Node> = Vec::new();
+                    nodes.push(str_to_node("!"));
+                    nodes.push(inner);
+                    for trigger in triggers.iter() {
+                        nodes.push(str_to_node(":pattern"));
+                        nodes.push(exprs_to_node(trigger));
+                    }
+                    Node::List(nodes)
+                }
+            }
+        },
         ExprX::LabeledAssertion(span, expr) => match &**span {
             None => expr_to_node(expr),
             Some(s) => {
@@ -125,6 +152,18 @@ pub(crate) fn expr_to_node(expr: &Expr) -> Node {
             }
         },
     }
+}
+
+pub(crate) fn exprs_to_node(exprs: &Exprs) -> Node {
+    Node::List(crate::util::box_slice_map(exprs, expr_to_node).to_vec())
+}
+
+pub(crate) fn binder_to_node<A: Clone, F: Fn(&A) -> Node>(binder: &Binder<A>, f: &F) -> Node {
+    Node::List([str_to_node(&binder.name), f(&binder.a)].to_vec())
+}
+
+pub(crate) fn binders_to_node<A: Clone, F: Fn(&A) -> Node>(binders: &Binders<A>, f: &F) -> Node {
+    Node::List(crate::util::box_slice_map(binders, |b| binder_to_node(b, f)).to_vec())
 }
 
 pub fn sort_decl_to_node(x: &Ident) -> Node {
@@ -393,6 +432,21 @@ pub(crate) fn node_to_expr(node: &Node) -> Result<Expr, String> {
                     let expr = node_to_expr(e)?;
                     return Ok(Rc::new(ExprX::LabeledAssertion(span, expr)));
                 }
+                [Node::Atom(s), Node::List(binders), e] if s.to_string() == "let" => {
+                    return node_to_let_expr(binders, e);
+                }
+                [Node::Atom(s), Node::List(binders), e] if s.to_string() == "forall" => {
+                    return node_to_quant_expr(Quant::Forall, binders, e);
+                }
+                [Node::Atom(s), Node::List(binders), e] if s.to_string() == "exists" => {
+                    return node_to_quant_expr(Quant::Exists, binders, e);
+                }
+                _ => {}
+            }
+            match &nodes[0] {
+                Node::Atom(s) if s.to_string() == "!" && nodes.len() >= 2 => {
+                    return node_to_bang_expr(&nodes[1], &nodes[2..]);
+                }
                 _ => {}
             }
             let args = nodes_to_exprs(&nodes[1..])?;
@@ -439,6 +493,81 @@ pub(crate) fn node_to_expr(node: &Node) -> Result<Expr, String> {
 
 fn nodes_to_exprs(nodes: &[Node]) -> Result<Exprs, String> {
     nodes_to_box_slice(nodes, node_to_expr)
+}
+
+fn node_to_binder<A, F>(node: &Node, f: &F) -> Result<Binder<A>, String>
+where
+    A: Clone,
+    F: Fn(&Node) -> Result<A, String>,
+{
+    match node {
+        Node::List(nodes) => match &nodes[..] {
+            [Node::Atom(name), node] if is_symbol(name) => {
+                let a = f(node)?;
+                return Ok(Rc::new(BinderX { name: Rc::new(name.clone()), a }));
+            }
+            _ => {}
+        },
+        _ => {}
+    }
+    Err(format!("expected binder (...), found: {}", node_to_string(node)))
+}
+
+fn nodes_to_binders<A, F>(nodes: &[Node], f: &F) -> Result<Binders<A>, String>
+where
+    A: Clone,
+    F: Fn(&Node) -> Result<A, String>,
+{
+    let mut binders: Vec<Binder<A>> = Vec::new();
+    for node in nodes {
+        binders.push(node_to_binder(node, f)?);
+    }
+    Ok(Rc::new(binders.into_boxed_slice()))
+}
+
+fn node_to_let_expr(binder_nodes: &[Node], expr: &Node) -> Result<Expr, String> {
+    let binders = nodes_to_binders(binder_nodes, &node_to_expr)?;
+    let bind = Rc::new(BindX::Let(binders));
+    Ok(Rc::new(ExprX::Bind(bind, node_to_expr(expr)?)))
+}
+
+fn node_to_quant_expr(quant: Quant, binder_nodes: &[Node], expr: &Node) -> Result<Expr, String> {
+    let binders = nodes_to_binders(binder_nodes, &node_to_typ)?;
+    let bind = Rc::new(BindX::Quant(quant, binders, Rc::new(Box::new([]))));
+    Ok(Rc::new(ExprX::Bind(bind, node_to_expr(expr)?)))
+}
+
+fn node_to_bang_expr(inner_node: &Node, nodes: &[Node]) -> Result<Expr, String> {
+    let inner = node_to_expr(inner_node)?;
+    let mut triggers: Vec<Trigger> = Vec::new();
+    let mut expect_pattern = true;
+    let mut ok = true;
+    for node in nodes {
+        match node {
+            Node::Atom(s) if s.to_string() == ":pattern" && expect_pattern => {}
+            Node::List(trigger_nodes) if !expect_pattern => {
+                triggers.push(nodes_to_exprs(trigger_nodes)?);
+            }
+            _ => {
+                ok = false;
+            }
+        }
+        expect_pattern = !expect_pattern;
+    }
+    if ok {
+        match &*inner {
+            ExprX::Bind(bind, expr) => match &**bind {
+                BindX::Quant(quant, binders, ts) if ts.len() == 0 => {
+                    let triggers = Rc::new(triggers.into_boxed_slice());
+                    let bind = Rc::new(BindX::Quant(*quant, binders.clone(), triggers));
+                    return Ok(Rc::new(ExprX::Bind(bind, expr.clone())));
+                }
+                _ => {}
+            },
+            _ => {}
+        }
+    }
+    Err(format!("expected quantifier with patterns, found: {}", node_to_string(inner_node)))
 }
 
 pub(crate) fn node_to_stmt(node: &Node) -> Result<Stmt, String> {

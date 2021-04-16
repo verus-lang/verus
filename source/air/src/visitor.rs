@@ -1,4 +1,4 @@
-use crate::ast::{Expr, ExprX, Stmt, StmtX};
+use crate::ast::{BindX, Binder, BinderX, Expr, ExprX, Stmt, StmtX, Trigger};
 use std::rc::Rc;
 
 pub(crate) fn map_expr_visitor<F: FnMut(&Expr) -> Expr>(expr: &Expr, f: &mut F) -> Expr {
@@ -30,6 +30,32 @@ pub(crate) fn map_expr_visitor<F: FnMut(&Expr) -> Expr>(expr: &Expr, f: &mut F) 
                 exprs.push(map_expr_visitor(e, f));
             }
             let expr = Rc::new(ExprX::Multi(*op, Rc::new(exprs.into_boxed_slice())));
+            f(&expr)
+        }
+        ExprX::Bind(bind, e1) => {
+            let bind = match &**bind {
+                BindX::Let(bs) => {
+                    let mut binders: Vec<Binder<Expr>> = Vec::new();
+                    for b in bs.iter() {
+                        let a = map_expr_visitor(&b.a, f);
+                        binders.push(Rc::new(BinderX { name: b.name.clone(), a }));
+                    }
+                    BindX::Let(Rc::new(binders.into_boxed_slice()))
+                }
+                BindX::Quant(quant, binders, ts) => {
+                    let mut triggers: Vec<Trigger> = Vec::new();
+                    for t in ts.iter() {
+                        let mut exprs: Vec<Expr> = Vec::new();
+                        for expr in t.iter() {
+                            exprs.push(map_expr_visitor(expr, f));
+                        }
+                        triggers.push(Rc::new(exprs.into_boxed_slice()));
+                    }
+                    BindX::Quant(*quant, binders.clone(), Rc::new(triggers.into_boxed_slice()))
+                }
+            };
+            let e1 = map_expr_visitor(e1, f);
+            let expr = Rc::new(ExprX::Bind(Rc::new(bind), e1));
             f(&expr)
         }
         ExprX::LabeledAssertion(span, e1) => {

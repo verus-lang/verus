@@ -2,8 +2,8 @@
 // (Z3 and the Z3 crate will also type-check, but their type errors are uninformative panics)
 
 use crate::ast::{
-    BinaryOp, Const, Decl, DeclX, Expr, ExprX, Ident, MultiOp, Query, Stmt, StmtX, Typ, TypX,
-    TypeError, Typs, UnaryOp,
+    BinaryOp, BindX, Binder, BinderX, Binders, Const, Decl, DeclX, Expr, ExprX, Ident, MultiOp,
+    Query, Stmt, StmtX, Typ, TypX, TypeError, Typs, UnaryOp,
 };
 use crate::context::Context;
 use crate::print_parse::{decl_to_node, expr_to_node, node_to_string, stmt_to_node};
@@ -23,9 +23,22 @@ pub(crate) struct Fun {
 }
 
 pub struct Typing {
+    // For simplicity, global and local names must be unique (bound variables can have the same name)
+    pub(crate) names: HashSet<Ident>,
     pub(crate) typs: HashSet<Ident>,
     pub(crate) vars: HashMap<Ident, Rc<Var>>,
     pub(crate) funs: HashMap<Ident, Rc<Fun>>,
+}
+
+impl Typing {
+    // For binders, check that the name doesn't conflict with existing name, but don't push it
+    pub(crate) fn check_binder_name(&mut self, x: &Ident) -> Result<(), TypeError> {
+        if !self.names.contains(x) {
+            Ok(())
+        } else {
+            Err(format!("name {} is already in scope", x))
+        }
+    }
 }
 
 pub fn bt() -> Typ {
@@ -53,6 +66,10 @@ fn typ_eq(typ1: &Typ, typ2: &Typ) -> bool {
     }
 }
 
+fn expect_typ(typ1: &Typ, typ2: &Typ, msg: &str) -> Result<(), TypeError> {
+    if typ_eq(typ1, typ2) { Ok(()) } else { Err(msg.to_string()) }
+}
+
 pub(crate) fn check_typ(typing: &Typing, typ: &Typ) -> Result<(), TypeError> {
     match &**typ {
         TypX::Bool => Ok(()),
@@ -75,7 +92,7 @@ fn check_typs(typing: &Typing, typs: &[Typ]) -> Result<(), TypeError> {
 }
 
 fn check_exprs(
-    typing: &Typing,
+    typing: &mut Typing,
     f_name: &str,
     f_typs: &[Typ],
     f_typ: &Typ,
@@ -104,7 +121,7 @@ fn check_exprs(
     Ok(f_typ.clone())
 }
 
-pub(crate) fn check_expr(typing: &Typing, expr: &Expr) -> Result<Typ, TypeError> {
+pub(crate) fn check_expr(typing: &mut Typing, expr: &Expr) -> Result<Typ, TypeError> {
     let result = match &**expr {
         ExprX::Const(Const::Bool(_)) => Ok(Rc::new(TypX::Bool)),
         ExprX::Const(Const::Nat(_)) => Ok(Rc::new(TypX::Int)),
@@ -112,8 +129,8 @@ pub(crate) fn check_expr(typing: &Typing, expr: &Expr) -> Result<Typ, TypeError>
             None => Err(format!("use of undeclared variable {}", x)),
             Some(var) => Ok(var.typ.clone()),
         },
-        ExprX::Apply(x, es) => match typing.funs.get(x) {
-            None => Err(format!("use of undeclared variable {}", x)),
+        ExprX::Apply(x, es) => match typing.funs.get(x).cloned() {
+            None => Err(format!("use of undeclared function {}", x)),
             Some(fun) => {
                 let f_typ = &fun.typ;
                 let f_typs = &fun.typs;
@@ -166,6 +183,66 @@ pub(crate) fn check_expr(typing: &Typing, expr: &Expr) -> Result<Typ, TypeError>
             let f_typs = crate::util::box_slice_map(exprs, |_| t.clone());
             check_exprs(typing, x, &f_typs, &t, exprs)
         }
+        ExprX::Bind(bind, e1) => {
+            // For Let, get types of binder expressions
+            let binders: Binders<Typ> = match &**bind {
+                BindX::Let(bs) => {
+                    let mut binders: Vec<Binder<Typ>> = Vec::new();
+                    for b in bs.iter() {
+                        let typ = check_expr(typing, &b.a)?;
+                        binders.push(Rc::new(BinderX { name: b.name.clone(), a: typ }));
+                    }
+                    Rc::new(binders.into_boxed_slice())
+                }
+                BindX::Quant(_, binders, _) => binders.clone(),
+            };
+            // Collect all binder names, make sure they are unique
+            // Push our bindings
+            // Remember any overwritten shadowed bindings so we can restore them
+            let mut names: HashMap<Ident, Option<Rc<Var>>> = HashMap::new();
+            for binder in binders.iter() {
+                let x = &binder.name;
+                let var = Var { typ: binder.a.clone(), mutable: false };
+                typing.check_binder_name(x)?;
+                let prev_var = typing.vars.insert(x.clone(), Rc::new(var));
+                let prev_bind = names.insert(x.clone(), prev_var);
+                if let Some(_) = prev_bind {
+                    return Err(format!("name {} appears more than once in binder", x));
+                }
+            }
+            // Type-check triggers
+            match &**bind {
+                BindX::Let(_) => {}
+                BindX::Quant(_, _, triggers) => {
+                    for trigger in triggers.iter() {
+                        for expr in trigger.iter() {
+                            check_expr(typing, expr)?;
+                        }
+                    }
+                }
+            }
+            // Type-check expr
+            let t1 = check_expr(typing, e1)?;
+            match &**bind {
+                BindX::Let(_) => {}
+                BindX::Quant(_, _, _) => {
+                    expect_typ(&t1, &bt(), "forall/exists body must have type bool")?;
+                }
+            }
+            // Remove our bindings from the typing, restore any shadowed bindings
+            for (x, undo) in names {
+                match undo {
+                    None => {
+                        typing.vars.remove(&x);
+                    }
+                    Some(prev) => {
+                        typing.vars.insert(x.clone(), prev);
+                    }
+                }
+            }
+            // Done
+            Ok(t1)
+        }
         ExprX::LabeledAssertion(_, expr) => check_expr(typing, expr),
     };
     match result {
@@ -177,11 +254,7 @@ pub(crate) fn check_expr(typing: &Typing, expr: &Expr) -> Result<Typ, TypeError>
     }
 }
 
-fn expect_typ(typ1: &Typ, typ2: &Typ, msg: &str) -> Result<(), TypeError> {
-    if typ_eq(typ1, typ2) { Ok(()) } else { Err(msg.to_string()) }
-}
-
-pub(crate) fn check_stmt(typing: &Typing, stmt: &Stmt) -> Result<(), TypeError> {
+pub(crate) fn check_stmt(typing: &mut Typing, stmt: &Stmt) -> Result<(), TypeError> {
     let result = match &**stmt {
         StmtX::Assume(expr) => expect_typ(
             &check_expr(typing, expr)?,
@@ -193,7 +266,7 @@ pub(crate) fn check_stmt(typing: &Typing, stmt: &Stmt) -> Result<(), TypeError> 
             &bt(),
             "assume statement expects expression of type bool",
         ),
-        StmtX::Assign(x, expr) => match typing.vars.get(x) {
+        StmtX::Assign(x, expr) => match typing.vars.get(x).cloned() {
             None => Err(format!("assignment to undeclared variable {}", x)),
             Some(var) => {
                 if !var.mutable {
@@ -229,7 +302,7 @@ pub(crate) fn check_stmt(typing: &Typing, stmt: &Stmt) -> Result<(), TypeError> 
     }
 }
 
-pub(crate) fn check_decl(typing: &Typing, decl: &Decl) -> Result<(), TypeError> {
+pub(crate) fn check_decl(typing: &mut Typing, decl: &Decl) -> Result<(), TypeError> {
     let result = match &**decl {
         DeclX::Sort(_) => Ok(()),
         DeclX::Const(_, typ) => check_typ(typing, typ),
@@ -288,10 +361,10 @@ pub(crate) fn add_decl<'ctx>(
 pub(crate) fn check_query(context: &mut Context, query: &Query) -> Result<(), TypeError> {
     context.push_name_scope();
     for decl in query.local.iter() {
-        check_decl(&context.typing, decl)?;
+        check_decl(&mut context.typing, decl)?;
         add_decl(context, decl, false)?;
     }
-    check_stmt(&context.typing, &query.assertion)?;
+    check_stmt(&mut context.typing, &query.assertion)?;
     context.pop_name_scope();
     Ok(())
 }

@@ -309,7 +309,7 @@ fn no_assign() {
 }
 
 #[test]
-fn panic_scope1() {
+fn untyped_scope1() {
     untyped!(
         (declare-const x Int)
         (declare-const x Int) // error: x already in scope
@@ -317,7 +317,7 @@ fn panic_scope1() {
 }
 
 #[test]
-fn panic_scope2() {
+fn untyped_scope2() {
     untyped!(
         (declare-const x Int)
         (push)
@@ -327,7 +327,7 @@ fn panic_scope2() {
 }
 
 #[test]
-fn panic_scope3() {
+fn untyped_scope3() {
     untyped!(
         (declare-const x Int)
         (check-valid
@@ -338,7 +338,7 @@ fn panic_scope3() {
 }
 
 #[test]
-fn panic_scope4() {
+fn untyped_scope4() {
     untyped!(
         (declare-const x Int)
         (check-valid
@@ -349,7 +349,7 @@ fn panic_scope4() {
 }
 
 #[test]
-fn panic_scope5() {
+fn untyped_scope5() {
     untyped!(
         (declare-const "x@0" Int)
         (check-valid
@@ -360,14 +360,14 @@ fn panic_scope5() {
 }
 
 #[test]
-fn panic_scope6() {
+fn untyped_scope6() {
     untyped!(
         (declare-var x Int) // error: declare-var not allowed in global scope
     );
 }
 
 #[test]
-fn panic_scope7() {
+fn untyped_scope7() {
     untyped!(
         (declare-const x Int)
         (declare-fun x (Int Int) Int) // error: x already in scope
@@ -471,6 +471,287 @@ fn no_typing5() {
         (check-valid
             (declare-var x Int)
             (assign x true)
+        )
+    )
+}
+
+#[test]
+fn yes_let1() {
+    yes!(
+        (check-valid
+            (assert (let ((x 10) (y 20)) (< x y)))
+        )
+    )
+}
+
+#[test]
+fn yes_let2() {
+    yes!(
+        (check-valid
+            (assert
+                (let ((x 10) (y 20))
+                    (=
+                        40
+                        (let ((x (+ x 10))) (+ x y)) // can shadow other let/forall bindings
+                    )
+                )
+            )
+        )
+    )
+}
+
+#[test]
+fn yes_let3() {
+    yes!(
+        (check-valid
+            (assert
+                (let ((x 10) (y 20))
+                    (=
+                        (let ((x (+ x 10))) (+ x y)) // can shadow other let/forall bindings
+                        (+ x x y) // make sure old values are restored here
+                    )
+                )
+            )
+        )
+    )
+}
+
+#[test]
+fn yes_let4() {
+    yes!(
+        (check-valid
+            (assert
+                (let ((x true) (y 20))
+                    (and
+                        (=
+                            (let ((x (+ y 10))) (+ x y))
+                            50
+                        )
+                        x // make sure old type is restored here
+                    )
+                )
+            )
+        )
+    )
+}
+
+#[test]
+fn untyped_let1() {
+    untyped!(
+        (check-valid
+            (assert (let ((x 10) (x 20)) true)) // no duplicates allowed in single let
+        )
+    )
+}
+
+#[test]
+fn untyped_let2() {
+    untyped!(
+        (declare-const y Int)
+        (check-valid
+            (assert (let ((x 10) (y 20)) true)) // cannot shadow global name
+        )
+    )
+}
+
+#[test]
+fn untyped_let3() {
+    untyped!(
+        (declare-fun y (Int) Int)
+        (check-valid
+            (assert (let ((x 10) (y 20)) true)) // cannot shadow global name
+        )
+    )
+}
+
+#[test]
+fn untyped_let4() {
+    untyped!(
+        (declare-sort y)
+        (check-valid
+            (assert (let ((x 10) (y 20)) true)) // cannot shadow global name
+        )
+    )
+}
+
+#[test]
+fn no_let1() {
+    no!(
+        (check-valid
+            (assert
+                (let ((x 10) (y 20))
+                    (=
+                        (let ((x (+ x 10))) (+ x y))
+                        (+ x y) // make sure old values are restored here
+                    )
+                )
+            )
+        )
+    )
+}
+
+#[test]
+fn yes_forall1() {
+    yes!(
+        (check-valid
+            (assert
+                (forall ((i Int)) true)
+            )
+        )
+    )
+}
+
+#[test]
+fn yes_forall2() {
+    yes!(
+        (declare-fun f (Int Int) Bool)
+        (check-valid
+            (assert
+                (=>
+                    (forall ((i Int) (j Int)) (f i j))
+                    (f 10 20)
+                )
+            )
+        )
+    )
+}
+
+#[test]
+fn yes_forall3() {
+    yes!(
+        (declare-fun f (Int Int) Bool)
+        (check-valid
+            (assert
+                (=>
+                    (!
+                        (forall ((i Int) (j Int)) (f i j))
+                        ":pattern" ((f i j))
+                    )
+                    (f 10 20)
+                )
+            )
+        )
+    )
+}
+
+#[test]
+fn yes_forall4() {
+    yes!(
+        (declare-fun f (Int Int) Bool)
+        (declare-fun g (Int Int) Bool)
+        (check-valid
+            (assert
+                (=>
+                    (!
+                        (forall ((i Int) (j Int)) (f i j))
+                        ":pattern" ((g i j))
+                        ":pattern" ((f i j))
+                    )
+                    (f 10 20)
+                )
+            )
+        )
+    )
+}
+
+#[test]
+fn yes_forall5() {
+    yes!(
+        (declare-fun f (Int) Bool)
+        (declare-fun g (Int) Bool)
+        (axiom
+            (!
+                (forall ((i Int) (j Int)) (=> (f i) (g j)))
+                ":pattern" ((f i) (g j))
+            )
+        )
+        (check-valid
+            (assert
+                (=> (f 10) (g 10))
+            )
+        )
+    )
+}
+
+#[test]
+fn no_forall1() {
+    no!(
+        (check-valid
+            (assert
+                (forall ((i Int)) false)
+            )
+        )
+    )
+}
+
+#[test]
+fn no_forall2() {
+    no!(
+        (declare-fun f (Int Int) Bool)
+        (declare-fun g (Int Int) Bool)
+        (check-valid
+            (assert
+                (=>
+                    (!
+                        (forall ((i Int) (j Int)) (f i j))
+                        ":pattern" ((g i j))
+                    )
+                    (f 10 20) // doesn't match (g i j)
+                )
+            )
+        )
+    )
+}
+
+#[test]
+fn untyped_forall1() {
+    untyped!(
+        (check-valid
+            (assert
+                (let
+                    ((
+                        x
+                        (forall ((i Int)) i)
+                    ))
+                    true
+                )
+            )
+        )
+    )
+}
+
+#[test]
+fn yes_exists1() {
+    yes!(
+        (declare-fun f (Int Int) Bool)
+        (check-valid
+            (assert
+                (=>
+                    (f 10 20)
+                    (!
+                        (exists ((i Int) (j Int)) (f i j))
+                        ":pattern" ((f i j))
+                    )
+                )
+            )
+        )
+    )
+}
+
+#[test]
+fn no_exists1() {
+    no!(
+        (declare-fun f (Int Int) Bool)
+        (check-valid
+            (assert
+                (=>
+                    (!
+                        (exists ((i Int) (j Int)) (f i j))
+                        ":pattern" ((f i j))
+                    )
+                    (f 10 20)
+                )
+            )
         )
     )
 }
