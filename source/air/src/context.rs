@@ -1,5 +1,6 @@
-use crate::ast::{Command, CommandX, Decl, Ident, Query, ValidityResult};
+use crate::ast::{Command, CommandX, Decl, Ident, Query, TypeError, ValidityResult};
 use crate::print_parse::Logger;
+use crate::typecheck::Typing;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 use z3::ast::Dynamic;
@@ -11,6 +12,7 @@ pub struct Context<'ctx> {
     pub(crate) typs: HashMap<Ident, Rc<Sort<'ctx>>>,
     pub(crate) vars: HashMap<Ident, Dynamic<'ctx>>, // no Rc; Dynamic implements Clone
     pub(crate) funs: HashMap<Ident, Rc<FuncDecl<'ctx>>>,
+    pub(crate) typing: Typing,
     pub(crate) rlimit: u32,
     pub(crate) air_initial_log: Logger,
     pub(crate) air_final_log: Logger,
@@ -28,6 +30,7 @@ impl<'ctx> Context<'ctx> {
             typs: HashMap::new(),
             vars: HashMap::new(),
             funs: HashMap::new(),
+            typing: Typing { typs: HashSet::new(), vars: HashMap::new(), funs: HashMap::new() },
             rlimit: 0,
             air_initial_log: Logger::new(None),
             air_final_log: Logger::new(None),
@@ -138,13 +141,11 @@ impl<'ctx> Context<'ctx> {
         self.name_scopes.push(Vec::new());
     }
 
-    pub(crate) fn push_name(&mut self, x: &Ident) {
+    pub(crate) fn push_name(&mut self, x: &Ident) -> Result<(), TypeError> {
         let len = self.name_scopes.len();
         self.name_scopes[len - 1].push(x.clone());
         let prev = self.names.insert(x.clone());
-        if !prev {
-            panic!("name {} is already in scope", x);
-        }
+        if prev { Ok(()) } else { Err(format!("name {} is already in scope", x)) }
     }
 
     pub(crate) fn pop_name_scope(&mut self) {
@@ -153,6 +154,10 @@ impl<'ctx> Context<'ctx> {
             self.names.remove(&x);
             self.typs.remove(&x);
             self.vars.remove(&x);
+            self.funs.remove(&x);
+            self.typing.typs.remove(&x);
+            self.typing.vars.remove(&x);
+            self.typing.funs.remove(&x);
         }
     }
 
@@ -172,15 +177,21 @@ impl<'ctx> Context<'ctx> {
         self.pop_name_scope();
     }
 
-    pub fn global(&mut self, decl: &Decl) {
+    pub fn global(&mut self, decl: &Decl) -> Result<(), TypeError> {
         self.air_initial_log.log_decl(decl);
         self.air_final_log.log_decl(decl);
-        crate::smt_verify::smt_add_decl(self, &decl, true);
+        crate::typecheck::check_decl(&self.typing, decl)?;
+        crate::typecheck::add_decl(self, decl, true)?;
+        crate::smt_verify::smt_add_decl(self, decl);
+        Ok(())
     }
 
     pub fn check_valid(&mut self, query: &Query) -> ValidityResult {
         self.air_initial_log.log_query(query);
-        let query = crate::var_to_const::lower_query(&query);
+        if let Err(err) = crate::typecheck::check_query(self, query) {
+            return ValidityResult::TypeError(err);
+        }
+        let query = crate::var_to_const::lower_query(query);
         let query = crate::block_to_assert::lower_query(&query);
         self.air_final_log.log_query(&query);
 
@@ -204,8 +215,11 @@ impl<'ctx> Context<'ctx> {
                 ValidityResult::Valid
             }
             CommandX::Global(decl) => {
-                self.global(&decl);
-                ValidityResult::Valid
+                if let Err(err) = self.global(&decl) {
+                    ValidityResult::TypeError(err)
+                } else {
+                    ValidityResult::Valid
+                }
             }
             CommandX::CheckValid(query) => self.check_valid(&query),
         }

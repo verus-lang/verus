@@ -15,10 +15,13 @@ impl Debug for Span {
     }
 }
 
+pub type TypeError = String;
+
 #[derive(Debug)]
 pub enum ValidityResult {
     Valid,
-    Error(SpanOption),
+    Invalid(SpanOption),
+    TypeError(TypeError),
 }
 
 pub type Ident = Rc<String>;

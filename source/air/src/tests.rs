@@ -5,7 +5,7 @@ use crate::print_parse::{macro_push_node, nodes_to_commands};
 use sise::Node;
 
 #[allow(dead_code)]
-fn run_nodes_as_test(should_succeed: bool, nodes: &[Node]) {
+fn run_nodes_as_test(should_typecheck: bool, should_be_valid: bool, nodes: &[Node]) {
     let mut z3_config = z3::Config::new();
     z3_config.set_param_value("auto_config", "false");
     let z3_context = z3::Context::new(&z3_config);
@@ -16,10 +16,14 @@ fn run_nodes_as_test(should_succeed: bool, nodes: &[Node]) {
         Ok(commands) => {
             for command in commands.iter() {
                 let result = air_context.command(&command);
-                match (&**command, should_succeed, result) {
-                    (_, true, ValidityResult::Valid) => {}
-                    (_, false, ValidityResult::Error(_)) => {}
-                    (CommandX::CheckValid(_), _, _) => {
+                match (&**command, should_typecheck, should_be_valid, result) {
+                    (_, false, _, ValidityResult::TypeError(_)) => {}
+                    (_, true, _, ValidityResult::TypeError(s)) => {
+                        panic!("type error: {}", s);
+                    }
+                    (_, _, true, ValidityResult::Valid) => {}
+                    (_, _, false, ValidityResult::Invalid(_)) => {}
+                    (CommandX::CheckValid(_), _, _, _) => {
                         panic!("unexpected result");
                     }
                     _ => {}
@@ -39,7 +43,7 @@ macro_rules! yes {
        {
            let mut v = Vec::new();
            $(macro_push_node(&mut v, node!($x));)*
-           run_nodes_as_test(true, &v)
+           run_nodes_as_test(true, true, &v)
        }
     };
 }
@@ -50,7 +54,18 @@ macro_rules! no {
        {
            let mut v = Vec::new();
            $(macro_push_node(&mut v, node!($x));)*
-           run_nodes_as_test(false, &v)
+           run_nodes_as_test(true, false, &v)
+       }
+    };
+}
+
+#[allow(unused_macros)]
+macro_rules! untyped {
+    ( $( $x:tt )* ) => {
+       {
+           let mut v = Vec::new();
+           $(macro_push_node(&mut v, node!($x));)*
+           run_nodes_as_test(false, false, &v)
        }
     };
 }
@@ -294,18 +309,16 @@ fn no_assign() {
 }
 
 #[test]
-#[should_panic]
 fn panic_scope1() {
-    yes!(
+    untyped!(
         (declare-const x Int)
         (declare-const x Int) // error: x already in scope
     );
 }
 
 #[test]
-#[should_panic]
 fn panic_scope2() {
-    yes!(
+    untyped!(
         (declare-const x Int)
         (push)
             (declare-const x Int) // error: x already in scope
@@ -314,9 +327,8 @@ fn panic_scope2() {
 }
 
 #[test]
-#[should_panic]
 fn panic_scope3() {
-    yes!(
+    untyped!(
         (declare-const x Int)
         (check-valid
             (declare-const x Int) // error: x already in scope
@@ -326,9 +338,8 @@ fn panic_scope3() {
 }
 
 #[test]
-#[should_panic]
 fn panic_scope4() {
-    yes!(
+    untyped!(
         (declare-const x Int)
         (check-valid
             (declare-var x Int) // error: x already in scope
@@ -338,9 +349,8 @@ fn panic_scope4() {
 }
 
 #[test]
-#[should_panic]
 fn panic_scope5() {
-    yes!(
+    untyped!(
         (declare-const "x@0" Int)
         (check-valid
             (declare-var x Int) // error: x@0 already in scope
@@ -350,17 +360,15 @@ fn panic_scope5() {
 }
 
 #[test]
-#[should_panic]
 fn panic_scope6() {
-    yes!(
+    untyped!(
         (declare-var x Int) // error: declare-var not allowed in global scope
     );
 }
 
 #[test]
-#[should_panic]
 fn panic_scope7() {
-    yes!(
+    untyped!(
         (declare-const x Int)
         (declare-fun x (Int Int) Int) // error: x already in scope
     );
@@ -423,6 +431,46 @@ fn no_fun1() {
                 (assume (f 10 true))
                 (assert (f 11 true))
             )
+        )
+    )
+}
+
+#[test]
+fn no_typing1() {
+    untyped!(
+        (axiom 10)
+    )
+}
+
+#[test]
+fn no_typing2() {
+    untyped!(
+        (axiom b)
+    )
+}
+
+#[test]
+fn no_typing3() {
+    untyped!(
+        (declare-fun f (Int Bool) Bool)
+        (axiom (f 10))
+    )
+}
+
+#[test]
+fn no_typing4() {
+    untyped!(
+        (declare-fun f (Int Bool) Bool)
+        (axiom (f 10 20))
+    )
+}
+
+#[test]
+fn no_typing5() {
+    untyped!(
+        (check-valid
+            (declare-var x Int)
+            (assign x true)
         )
     )
 }

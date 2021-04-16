@@ -130,18 +130,16 @@ fn get_sort<'ctx>(context: &Context<'ctx>, typ: &Typ) -> Rc<Sort<'ctx>> {
     }
 }
 
-pub(crate) fn smt_add_decl<'ctx>(context: &mut Context<'ctx>, decl: &Decl, is_global: bool) {
+pub(crate) fn smt_add_decl<'ctx>(context: &mut Context<'ctx>, decl: &Decl) {
     match &**decl {
         DeclX::Sort(x) => {
             context.smt_log.log_decl(decl);
-            context.push_name(x);
             let sort = Sort::uninterpreted(context.context, Symbol::String((**x).clone()));
             let prev = context.typs.insert(x.clone(), Rc::new(sort));
             assert_eq!(prev, None);
         }
         DeclX::Const(x, typ) => {
             context.smt_log.log_decl(decl);
-            context.push_name(x);
             let name = &**x;
             let x_smt: Dynamic<'ctx> = match &**typ {
                 TypX::Bool => Bool::new_const(context.context, name.clone()).into(),
@@ -156,7 +154,6 @@ pub(crate) fn smt_add_decl<'ctx>(context: &mut Context<'ctx>, decl: &Decl, is_gl
         }
         DeclX::Fun(x, typs, typ) => {
             context.smt_log.log_decl(decl);
-            context.push_name(x);
             let sort = get_sort(context, typ);
             let sorts = crate::util::box_slice_map(typs, |t| get_sort(context, t));
             let mut sorts_borrow: Vec<&Sort> = Vec::new();
@@ -171,12 +168,7 @@ pub(crate) fn smt_add_decl<'ctx>(context: &mut Context<'ctx>, decl: &Decl, is_gl
             );
             context.funs.insert(x.clone(), Rc::new(fdecl));
         }
-        DeclX::Var(x, _) => {
-            if is_global {
-                panic!("declare-var {} not allowed in global scope", x);
-            }
-            context.push_name(x);
-        }
+        DeclX::Var(_, _) => {}
         DeclX::Axiom(expr) => {
             context.smt_log.log_assert(&expr);
             let smt_expr = expr_to_smt(context, &expr).as_bool().unwrap();
@@ -237,7 +229,7 @@ fn smt_check_assertion<'ctx>(
                     }
                 }
             }
-            ValidityResult::Error(discovered_span)
+            ValidityResult::Invalid(discovered_span)
         }
     }
 }
@@ -249,7 +241,10 @@ pub(crate) fn smt_check_query<'ctx>(context: &mut Context<'ctx>, query: &Query) 
 
     // add query-local declarations
     for decl in query.local.iter() {
-        smt_add_decl(context, decl, false);
+        if let Err(err) = crate::typecheck::add_decl(context, decl, false) {
+            return ValidityResult::TypeError(err);
+        }
+        smt_add_decl(context, decl);
     }
 
     // after lowering, there should be just one assertion
@@ -265,7 +260,10 @@ pub(crate) fn smt_check_query<'ctx>(context: &mut Context<'ctx>, query: &Query) 
         if let Some(Span { as_string, .. }) = &*info.span {
             context.smt_log.comment(as_string);
         }
-        smt_add_decl(context, &info.decl, false);
+        if let Err(err) = crate::typecheck::add_decl(context, &info.decl, false) {
+            return ValidityResult::TypeError(err);
+        }
+        smt_add_decl(context, &info.decl);
     }
 
     // check assertion

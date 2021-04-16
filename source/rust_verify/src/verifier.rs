@@ -52,7 +52,10 @@ impl Verifier {
                             self.count_verified += 1;
                         }
                     }
-                    ValidityResult::Error(span_option) => {
+                    ValidityResult::TypeError(err) => {
+                        panic!("internal error: generated ill-typed AIR code: {}", err);
+                    }
+                    ValidityResult::Invalid(span_option) => {
                         match &*span_option {
                             None => {
                                 panic!("internal error: found Error with no span")

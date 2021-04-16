@@ -70,22 +70,25 @@ pub fn main() {
     let mut count_verified = 0;
     for command in commands.iter() {
         let result = air_context.command(&command);
-        if let CommandX::CheckValid(_) = &**command {
-            match result {
-                ValidityResult::Valid => {
+        match result {
+            ValidityResult::Valid => {
+                if let CommandX::CheckValid(_) = &**command {
                     count_verified += 1;
                 }
-                ValidityResult::Error(span) => {
-                    count_errors += 1;
-                    match &*span {
-                        None => {
-                            println!(
-                                "Error at unlabeled assert (use 'assert \"...label...\" e') for better errors"
-                            );
-                        }
-                        Some(Span { as_string, .. }) => {
-                            println!("Error at {}", as_string);
-                        }
+            }
+            ValidityResult::TypeError(err) => {
+                panic!("Type error: {}", err);
+            }
+            ValidityResult::Invalid(span) => {
+                count_errors += 1;
+                match &*span {
+                    None => {
+                        println!(
+                            "Error at unlabeled assert (use 'assert \"...label...\" e') for better errors"
+                        );
+                    }
+                    Some(Span { as_string, .. }) => {
+                        println!("Error at {}", as_string);
                     }
                 }
             }
