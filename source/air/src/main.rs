@@ -1,7 +1,7 @@
 use air::ast::{CommandX, Span, ValidityResult};
 use air::context::Context;
-use sise::Node;
 use getopts::Options;
+use sise::Node;
 use std::fs::File;
 use std::io::Read;
 
@@ -22,11 +22,20 @@ pub fn main() {
 
     let matches = match opts.parse(args) {
         Ok(m) => {
-            if m.opt_present("h") { print_usage(); return; }
+            if m.opt_present("h") {
+                print_usage();
+                return;
+            }
             match m.free.len() {
-                0 => { print_usage(); std::process::exit(-1); },
-                1 => { m },
-                _ => { print_usage(); std::process::exit(-1); },
+                0 => {
+                    print_usage();
+                    std::process::exit(-1);
+                }
+                1 => m,
+                _ => {
+                    print_usage();
+                    std::process::exit(-1);
+                }
             }
         }
         Err(f) => {
@@ -35,7 +44,6 @@ pub fn main() {
             std::process::exit(-1);
         }
     };
-
 
     // Open input file
     let in_filename = &matches.free[0];
