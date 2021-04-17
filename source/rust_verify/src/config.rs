@@ -42,7 +42,7 @@ pub(crate) fn parse_args(
                 print_usage();
                 std::process::exit(-1);
             }
-            unmatched.extend(m.free[1..].iter().cloned());
+            unmatched.insert(0, program.clone());
             (m, unmatched)
         }
         Err(f) => {
