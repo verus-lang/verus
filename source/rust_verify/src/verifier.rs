@@ -3,6 +3,7 @@ use air::ast::{CommandX, ValidityResult};
 use rustc_span::Span;
 use std::fs::File;
 use std::io::Write;
+use std::rc::Rc;
 use vir::ast::Function;
 
 pub(crate) struct Verifier {
@@ -40,10 +41,29 @@ impl Verifier {
         air_context.set_z3_param("air_recommended_options", "true");
         air_context.set_rlimit(self.args.rlimit * 1000000);
 
-        for function in krate {
-            air_context.blank_line();
-            air_context.comment(&("Function ".to_string() + &function.x.name));
-            let commands = vir::function_to_air(&function);
+        let ctx = vir::context::Ctx::new(&Rc::new(krate.clone().into_boxed_slice()));
+
+        for function in &krate {
+            let commands = vir::func_to_air::func_decl_to_air(&function).unwrap();
+            if commands.len() > 0 {
+                air_context.blank_line();
+                air_context.comment(&("Function-Decl ".to_string() + &function.x.name));
+            }
+            for command in commands.iter() {
+                let result = air_context.command(&command);
+                match result {
+                    ValidityResult::Valid => {}
+                    _ => panic!("internal error: decls should not generate queries"),
+                }
+            }
+        }
+
+        for function in &krate {
+            let commands = vir::func_to_air::func_def_to_air(&ctx, &function).unwrap();
+            if commands.len() > 0 {
+                air_context.blank_line();
+                air_context.comment(&("Function-Def ".to_string() + &function.x.name));
+            }
             for command in commands.iter() {
                 let result = air_context.command(&command);
                 match result {

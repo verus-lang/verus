@@ -2,7 +2,15 @@ use crate::def::Spanned;
 use air::ast::Const;
 use std::rc::Rc;
 
+pub type VirErr = Rc<Spanned<String>>;
 pub type Ident = Rc<String>;
+
+#[derive(Copy, Clone, Debug)]
+pub enum Mode {
+    Spec,
+    Proof,
+    Exec,
+}
 
 #[derive(Debug)]
 pub enum Typ {
@@ -34,10 +42,12 @@ pub enum BinaryOp {
 }
 
 pub type Expr = Rc<Spanned<ExprX>>;
+pub type Exprs = Rc<Box<[Expr]>>;
 #[derive(Debug)]
 pub enum ExprX {
     Const(Const),
     Var(Ident),
+    Call(Ident, Exprs),
     Assume(Expr),
     Assert(Expr),
     Unary(UnaryOp, Expr),
@@ -64,6 +74,10 @@ pub type Function = Rc<Spanned<FunctionX>>;
 #[derive(Debug)]
 pub struct FunctionX {
     pub name: Ident,
+    pub mode: Mode,
     pub params: Params,
-    pub body: Expr,
+    pub ret: Option<Typ>,
+    pub body: Option<Expr>,
 }
+
+pub type Krate = Rc<Box<[Function]>>;

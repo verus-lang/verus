@@ -6,6 +6,10 @@ pub fn assert(_b: bool) {
     unimplemented!();
 }
 
+pub fn imply(_b1: bool, _b2: bool) -> bool {
+    unimplemented!();
+}
+
 #[allow(non_camel_case_types)]
 pub struct int;
 

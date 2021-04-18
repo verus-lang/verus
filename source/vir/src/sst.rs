@@ -11,10 +11,12 @@ use air::ast::{Const, Ident};
 use std::rc::Rc;
 
 pub type Exp = Rc<Spanned<ExpX>>;
+pub type Exps = Rc<Box<[Exp]>>;
 #[derive(Debug)]
 pub enum ExpX {
     Const(Const),
     Var(Ident),
+    Call(Ident, Exps),
     Unary(UnaryOp, Exp),
     Binary(BinaryOp, Exp, Exp),
 }

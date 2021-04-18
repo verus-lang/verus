@@ -8,11 +8,12 @@ For soundness's sake, be as defensive as possible:
 
 use crate::util::box_slice_map;
 use crate::{unsupported, unsupported_unless};
-use rustc_ast::Attribute;
+use rustc_ast::{AttrKind, Attribute};
 use rustc_hir::def::{DefKind, Res};
 use rustc_hir::{
-    BindingAnnotation, Body, BodyId, Crate, FnDecl, FnHeader, FnSig, Generics, HirId, Item, ItemId,
-    ItemKind, ModuleItems, Node, Param, Pat, PatKind, PrimTy, QPath, Ty, Unsafety,
+    BindingAnnotation, Body, BodyId, Crate, FnDecl, FnHeader, FnSig, ForeignItem, ForeignItemId,
+    ForeignItemKind, Generics, HirId, Item, ItemId, ItemKind, ModuleItems, Node, Param, Pat,
+    PatKind, PrimTy, QPath, Ty, Unsafety,
 };
 use rustc_middle::mir::interpret::{ConstValue, Scalar};
 use rustc_middle::mir::{BinOp, BorrowKind, UnOp};
@@ -20,9 +21,10 @@ use rustc_middle::ty::{ConstKind, TyCtxt, TyKind};
 use rustc_mir_build::thir;
 use rustc_mir_build::thir::{Expr, ExprKind, LogicalOp, Stmt, StmtKind};
 use rustc_span::def_id::{DefId, LocalDefId};
+use rustc_span::symbol::Ident;
 use rustc_span::Span;
 use std::rc::Rc;
-use vir::ast::{BinaryOp, ExprX, Function, FunctionX, ParamX, StmtX, Typ, UnaryOp};
+use vir::ast::{BinaryOp, ExprX, Function, FunctionX, Mode, ParamX, StmtX, Typ, UnaryOp};
 use vir::def::Spanned;
 
 fn spanned_new<X>(span: Span, x: X) -> Rc<Spanned<X>> {
@@ -32,11 +34,22 @@ fn spanned_new<X>(span: Span, x: X) -> Rc<Spanned<X>> {
 }
 
 // TODO: proper handling of def_ids
+fn hack_get_def_name<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> String {
+    let debug_name = tcx.def_path_debug_str(def_id);
+    let last_colon = debug_name.rfind(':').unwrap();
+    debug_name[last_colon + 1..].to_string()
+}
+
+// TODO: proper handling of def_ids
 fn hack_check_def_name<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId, krate: &str, path: &str) -> bool {
     let debug_name = tcx.def_path_debug_str(def_id);
     let krate_prefix = format!("{}[", krate);
     let path_suffix = format!("]::{}", path);
     debug_name.starts_with(&krate_prefix) && debug_name.ends_with(&path_suffix)
+}
+
+fn ident_to_var<'tcx>(ident: &Ident) -> String {
+    ident.to_string()
 }
 
 fn pat_to_var<'tcx>(pat: &Pat) -> String {
@@ -56,7 +69,7 @@ fn pat_to_var<'tcx>(pat: &Pat) -> String {
                     unsupported!(format!("pattern {:?}", kind))
                 }
             }
-            ident.to_string()
+            ident_to_var(ident)
         }
         _ => {
             unsupported!(format!("pattern {:?}", kind))
@@ -106,6 +119,7 @@ fn expr_to_vir<'thir, 'tcx>(tcx: TyCtxt<'tcx>, expr: &'thir Expr<'thir, 'tcx>) -
             let f = expr_to_function(fun);
             let is_assume = hack_check_def_name(tcx, f, "builtin", "assume");
             let is_assert = hack_check_def_name(tcx, f, "builtin", "assert");
+            let is_implies = hack_check_def_name(tcx, f, "builtin", "imply");
             let is_eq = hack_check_def_name(tcx, f, "core", "cmp::PartialEq::eq");
             let is_ne = hack_check_def_name(tcx, f, "core", "cmp::PartialEq::ne");
             let is_le = hack_check_def_name(tcx, f, "core", "cmp::PartialOrd::le");
@@ -115,8 +129,8 @@ fn expr_to_vir<'thir, 'tcx>(tcx: TyCtxt<'tcx>, expr: &'thir Expr<'thir, 'tcx>) -
             let is_add = hack_check_def_name(tcx, f, "core", "ops::arith::Add::add");
             let is_sub = hack_check_def_name(tcx, f, "core", "ops::arith::Sub::sub");
             let is_mul = hack_check_def_name(tcx, f, "core", "ops::arith::Mul::mul");
-            let is_binary =
-                is_eq || is_ne || is_le || is_ge || is_lt || is_gt || is_add || is_sub || is_mul;
+            let is_cmp = is_eq || is_ne || is_le || is_ge || is_lt || is_gt;
+            let is_arith_binary = is_add || is_sub || is_mul;
             let vir_args = box_slice_map(args, |arg| expr_to_vir(tcx, arg));
             if is_assume || is_assert {
                 unsupported_unless!(args.len() == 1, "expected assume/assert", args, expr.span);
@@ -126,7 +140,7 @@ fn expr_to_vir<'thir, 'tcx>(tcx: TyCtxt<'tcx>, expr: &'thir Expr<'thir, 'tcx>) -
                 } else {
                     spanned_new(expr.span, ExprX::Assert(arg))
                 }
-            } else if is_binary {
+            } else if is_cmp || is_arith_binary || is_implies {
                 unsupported_unless!(args.len() == 2, "expected binary op", args, expr.span);
                 let lhs = vir_args[0].clone();
                 let rhs = vir_args[1].clone();
@@ -148,16 +162,15 @@ fn expr_to_vir<'thir, 'tcx>(tcx: TyCtxt<'tcx>, expr: &'thir Expr<'thir, 'tcx>) -
                     BinaryOp::Sub
                 } else if is_mul {
                     BinaryOp::Mul
+                } else if is_implies {
+                    BinaryOp::Implies
                 } else {
                     panic!("internal error")
                 };
                 spanned_new(expr.span, ExprX::Binary(vop, lhs, rhs))
             } else {
-                unsupported!(format!(
-                    "unsupported function {:?} {:?}",
-                    tcx.def_path_debug_str(f),
-                    expr.span
-                ))
+                let name = hack_get_def_name(tcx, f); // TODO: proper handling of paths
+                spanned_new(expr.span, ExprX::Call(Rc::new(name), Rc::new(vir_args)))
             }
         }
         ExprKind::Literal { literal, user_ty: _, const_id: _ } => {
@@ -285,6 +298,47 @@ fn ty_to_vir<'tcx>(tcx: TyCtxt<'tcx>, ty: &Ty) -> Typ {
     }
 }
 
+fn check_fn_decl<'tcx>(tcx: TyCtxt<'tcx>, decl: &'tcx FnDecl<'tcx>) -> Option<vir::ast::Typ> {
+    let FnDecl { inputs: _, output, c_variadic, implicit_self } = decl;
+    unsupported_unless!(!c_variadic, "c_variadic");
+    match implicit_self {
+        rustc_hir::ImplicitSelfKind::None => {}
+        _ => unsupported!("implicit_self"),
+    }
+    match output {
+        rustc_hir::FnRetTy::DefaultReturn(_) => None,
+        rustc_hir::FnRetTy::Return(ty) => Some(ty_to_vir(tcx, ty)),
+    }
+}
+
+fn check_generics<'tcx>(generics: &'tcx Generics<'tcx>) {
+    match generics {
+        Generics { params, where_clause, span: _ } => {
+            unsupported_unless!(params.len() == 0, "generics");
+            unsupported_unless!(where_clause.predicates.len() == 0, "where clause");
+        }
+    }
+}
+
+fn get_mode(attrs: &[Attribute]) -> Mode {
+    let mut mode = Mode::Exec;
+    for attr in attrs {
+        match &attr.kind {
+            AttrKind::Normal(item, _) => match &item.path.segments[..] {
+                [segment] => match ident_to_var(&segment.ident).as_str() {
+                    "spec" => mode = Mode::Spec,
+                    "proof" => mode = Mode::Proof,
+                    "exec" => mode = Mode::Exec,
+                    _ => {}
+                },
+                _ => {}
+            },
+            _ => {}
+        }
+    }
+    mode
+}
+
 fn check_item<'tcx>(
     tcx: TyCtxt<'tcx>,
     krate: &'tcx Crate<'tcx>,
@@ -297,26 +351,22 @@ fn check_item<'tcx>(
             match sig {
                 FnSig {
                     header: FnHeader { unsafety, constness: _, asyncness: _, abi: _ },
-                    decl: FnDecl { inputs: _, output, c_variadic, implicit_self },
+                    decl,
                     span: _,
                 } => {
                     unsupported_unless!(*unsafety == Unsafety::Normal, "unsafe");
+                    let output = check_fn_decl(tcx, decl);
                     match output {
-                        rustc_hir::FnRetTy::DefaultReturn(_) => {}
+                        None => {}
                         _ => unsupported!("function return values"),
-                    }
-                    unsupported_unless!(!c_variadic, "c_variadic");
-                    match implicit_self {
-                        rustc_hir::ImplicitSelfKind::None => {}
-                        _ => unsupported!("implicit_self"),
                     }
                 }
             }
-            match generics {
-                Generics { params, where_clause, span: _ } => {
-                    unsupported_unless!(params.len() == 0, "generics");
-                    unsupported_unless!(where_clause.predicates.len() == 0, "where clause");
-                }
+            check_generics(generics);
+            let mode = get_mode(tcx.hir().attrs(item.hir_id()));
+            match mode {
+                Mode::Exec | Mode::Proof => {}
+                Mode::Spec => unsupported!("spec functions"),
             }
             let body = &krate.bodies[body_id];
             let Body { params, value: _, generator_kind } = body;
@@ -335,14 +385,18 @@ fn check_item<'tcx>(
                 }
             }
             let vir_body = body_to_vir(tcx, body_id, body);
-            let name = Rc::new(item.ident.to_string());
+            let name = Rc::new(ident_to_var(&item.ident));
             let params = Rc::new(vir_params.into_boxed_slice());
-            let function = spanned_new(sig.span, FunctionX { name, params, body: vir_body });
+            let function = spanned_new(
+                sig.span,
+                FunctionX { name, mode, params, ret: None, body: Some(vir_body) },
+            );
             vir.push(function);
         }
         ItemKind::Use { .. } => {}
         ItemKind::ExternCrate { .. } => {}
         ItemKind::Mod { .. } => {}
+        ItemKind::ForeignMod { .. } => {}
         _ => {
             unsupported!("unsupported item", item);
         }
@@ -357,7 +411,39 @@ fn check_module<'tcx>(_tcx: TyCtxt<'tcx>, _id: &LocalDefId, module_items: &'tcx 
             }
             unsupported_unless!(trait_items.len() == 0, "trait definitions", trait_items);
             unsupported_unless!(impl_items.len() == 0, "impl definitions", impl_items);
-            unsupported_unless!(foreign_items.len() == 0, "foreign items", foreign_items);
+            for _id in foreign_items {
+                // TODO
+            }
+        }
+    }
+}
+
+fn check_foreign_item<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    vir: &mut Vec<Function>,
+    _id: &ForeignItemId,
+    item: &'tcx ForeignItem<'tcx>,
+) {
+    match &item.kind {
+        ForeignItemKind::Fn(decl, idents, generics) => {
+            let ret = check_fn_decl(tcx, decl);
+            check_generics(generics);
+            let mode = get_mode(tcx.hir().attrs(item.hir_id()));
+            let mut vir_params: Vec<vir::ast::Param> = Vec::new();
+            for (param, input) in idents.iter().zip(decl.inputs.iter()) {
+                let name = Rc::new(ident_to_var(param));
+                let typ = ty_to_vir(tcx, input);
+                let vir_param = spanned_new(param.span, ParamX { name, typ });
+                vir_params.push(vir_param);
+            }
+            let name = Rc::new(ident_to_var(&item.ident));
+            let params = Rc::new(vir_params.into_boxed_slice());
+            let function =
+                spanned_new(item.span, FunctionX { name, mode, params, ret, body: None });
+            vir.push(function);
+        }
+        _ => {
+            unsupported!("unsupported item", item);
         }
     }
 }
@@ -399,7 +485,9 @@ pub fn crate_to_vir<'tcx>(tcx: TyCtxt<'tcx>, krate: &'tcx Crate<'tcx>) -> Vec<Fu
     }
     unsupported_unless!(trait_items.len() == 0, "trait definitions", trait_items);
     unsupported_unless!(impl_items.len() == 0, "impl definitions", impl_items);
-    unsupported_unless!(foreign_items.len() == 0, "foreign items", foreign_items);
+    for (id, item) in foreign_items {
+        check_foreign_item(tcx, &mut vir, id, item);
+    }
     unsupported_unless!(trait_impls.len() == 0, "trait implementations", trait_impls);
     for (id, module) in modules {
         check_module(tcx, id, module);

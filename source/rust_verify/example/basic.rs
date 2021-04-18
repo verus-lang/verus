@@ -1,7 +1,12 @@
 extern crate builtin;
-use builtin::{assert, assume, int};
+use builtin::{assert, assume, imply, int};
 
 fn main() {}
+
+extern {
+    #[spec]
+    fn f(i: int, j: int) -> bool;
+}
 
 fn test1() {
     assert(true);
@@ -19,6 +24,8 @@ fn test2(b: bool, x: int, y: int, z: int) {
 
     assume(b);
     assert(b);
+
+    assert(imply(x == y, f(x, y) == f(y, x)));
 
     assert(x + y == y + x);
 

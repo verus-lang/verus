@@ -17,6 +17,9 @@ fn exp_to_expr(exp: &Exp) -> Expr {
             expr
         }
         ExpX::Var(x) => Rc::new(ExprX::Var(suffixed_id(x))),
+        ExpX::Call(x, args) => {
+            Rc::new(ExprX::Apply(x.clone(), Rc::new(box_slice_map(args, exp_to_expr))))
+        }
         ExpX::Unary(op, exp) => match op {
             UnaryOp::Not => Rc::new(ExprX::Unary(air::ast::UnaryOp::Not, exp_to_expr(exp))),
         },

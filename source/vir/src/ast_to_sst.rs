@@ -1,18 +1,38 @@
-use crate::ast::{Expr, ExprX, Stmt, StmtX};
+use crate::ast::{Expr, ExprX, Mode, Stmt, StmtX, VirErr};
+use crate::context::Ctx;
 use crate::def::Spanned;
 use crate::sst::{Exp, ExpX, Stm, StmX};
-use crate::util::box_slice_map;
+use crate::util::box_slice_map_result;
 use std::rc::Rc;
 
-fn expr_to_exp(expr: &Expr) -> Exp {
+fn expr_to_exp(ctx: &Ctx, expr: &Expr) -> Result<Exp, VirErr> {
     match &expr.x {
-        ExprX::Const(c) => Spanned::new(expr.span.clone(), ExpX::Const(c.clone())),
-        ExprX::Var(x) => Spanned::new(expr.span.clone(), ExpX::Var(x.clone())),
+        ExprX::Const(c) => Ok(Spanned::new(expr.span.clone(), ExpX::Const(c.clone()))),
+        ExprX::Var(x) => Ok(Spanned::new(expr.span.clone(), ExpX::Var(x.clone()))),
+        ExprX::Call(x, args) => {
+            match ctx.functions.get(x) {
+                None => {
+                    return Err(Spanned::new(
+                        expr.span.clone(),
+                        format!("could not find function {}", &x),
+                    ));
+                }
+                Some(fun) => match fun.x.mode {
+                    Mode::Spec => {}
+                    _ => {
+                        unimplemented!("call to non-spec function {} {:?}", &x, expr.span)
+                    }
+                },
+            }
+            let exps = box_slice_map_result(args, |e| expr_to_exp(ctx, e))?;
+            Ok(Spanned::new(expr.span.clone(), ExpX::Call(x.clone(), Rc::new(exps))))
+        }
         ExprX::Unary(op, expr) => {
-            Spanned::new(expr.span.clone(), ExpX::Unary(*op, expr_to_exp(expr)))
+            Ok(Spanned::new(expr.span.clone(), ExpX::Unary(*op, expr_to_exp(ctx, expr)?)))
         }
         ExprX::Binary(op, lhs, rhs) => {
-            Spanned::new(expr.span.clone(), ExpX::Binary(*op, expr_to_exp(lhs), expr_to_exp(rhs)))
+            let bin = ExpX::Binary(*op, expr_to_exp(ctx, lhs)?, expr_to_exp(ctx, rhs)?);
+            Ok(Spanned::new(expr.span.clone(), bin))
         }
         _ => {
             todo!()
@@ -20,13 +40,17 @@ fn expr_to_exp(expr: &Expr) -> Exp {
     }
 }
 
-pub fn expr_to_stm(expr: &Expr) -> Stm {
+pub fn expr_to_stm(ctx: &Ctx, expr: &Expr) -> Result<Stm, VirErr> {
     match &expr.x {
-        ExprX::Assume(expr) => Spanned::new(expr.span.clone(), StmX::Assume(expr_to_exp(expr))),
-        ExprX::Assert(expr) => Spanned::new(expr.span.clone(), StmX::Assert(expr_to_exp(expr))),
+        ExprX::Assume(expr) => {
+            Ok(Spanned::new(expr.span.clone(), StmX::Assume(expr_to_exp(ctx, expr)?)))
+        }
+        ExprX::Assert(expr) => {
+            Ok(Spanned::new(expr.span.clone(), StmX::Assert(expr_to_exp(ctx, expr)?)))
+        }
         ExprX::Block(stmts) => {
-            let stms = Rc::new(box_slice_map(stmts, stmt_to_stm));
-            Spanned::new(expr.span.clone(), StmX::Block(stms))
+            let stms = Rc::new(box_slice_map_result(stmts, |s| stmt_to_stm(ctx, s))?);
+            Ok(Spanned::new(expr.span.clone(), StmX::Block(stms)))
         }
         _ => {
             todo!()
@@ -34,8 +58,8 @@ pub fn expr_to_stm(expr: &Expr) -> Stm {
     }
 }
 
-pub fn stmt_to_stm(stmt: &Stmt) -> Stm {
+pub fn stmt_to_stm(ctx: &Ctx, stmt: &Stmt) -> Result<Stm, VirErr> {
     match &stmt.x {
-        StmtX::Expr(expr) => expr_to_stm(&expr),
+        StmtX::Expr(expr) => expr_to_stm(ctx, &expr),
     }
 }
