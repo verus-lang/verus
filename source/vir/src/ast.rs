@@ -53,6 +53,7 @@ pub enum ExprX {
     Unary(UnaryOp, Expr),
     Binary(BinaryOp, Expr, Expr),
     Block(Stmts),
+    Assign(Expr, Expr),
 }
 
 pub type Stmt = Rc<Spanned<StmtX>>;
@@ -60,7 +61,7 @@ pub type Stmts = Rc<Box<[Stmt]>>;
 #[derive(Debug)]
 pub enum StmtX {
     Expr(Expr),
-    Decl(ParamX),
+    Decl { param: ParamX, mutable: bool },
 }
 
 pub type Param = Rc<Spanned<ParamX>>;

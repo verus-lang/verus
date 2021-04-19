@@ -28,5 +28,6 @@ pub enum StmX {
     Assume(Exp),
     Assert(Exp),
     Block(Stms),
-    Decl(Ident, Typ),
+    Decl { ident: Ident, typ: Typ, mutable: bool },
+    Assign(Exp, Exp),
 }

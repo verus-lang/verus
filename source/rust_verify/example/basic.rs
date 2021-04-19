@@ -43,3 +43,10 @@ fn test_assign(a: int, b: int) {
 
     assert(c < a + b); // FAILS
 }
+
+fn test_assign_mut(a: int, b: int) {
+    let mut c = a;
+    c = c + b;
+    assert(c == a + b);
+    assert(c == a); // FAILS
+}

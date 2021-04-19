@@ -92,6 +92,7 @@ pub(crate) fn pat_to_var<'tcx>(pat: &Pat) -> String {
         PatKind::Binding(annotation, _id, ident, pat) => {
             match annotation {
                 BindingAnnotation::Unannotated => {}
+                BindingAnnotation::Mutable => {}
                 _ => {
                     unsupported!(format!("binding annotation {:?}", annotation))
                 }
@@ -279,6 +280,9 @@ pub(crate) fn expr_to_vir<'thir, 'tcx>(
                 unsupported!(format!("VarRef {:?}", node))
             }
         },
+        ExprKind::Assign { lhs, rhs } => {
+            spanned_new(expr.span, ExprX::Assign(expr_to_vir(tcx, lhs), expr_to_vir(tcx, rhs)))
+        }
         _ => {
             dbg!(expr);
             dbg!(expr.span);
@@ -297,10 +301,6 @@ pub(crate) fn let_stmt_to_vir<'thir, 'tcx>(
     let (decl, var) = match pattern.kind.deref() {
         rustc_mir_build::thir::PatKind::Binding { var, mutability, mode, ty, .. } => {
             unsupported_unless!(
-                *mutability == rustc_middle::mir::Mutability::Not,
-                "mutable_binding"
-            );
-            unsupported_unless!(
                 *mode == rustc_mir_build::thir::BindingMode::ByValue,
                 "by_ref_bindings"
             );
@@ -315,8 +315,7 @@ pub(crate) fn let_stmt_to_vir<'thir, 'tcx>(
             let typ = match ty.kind() {
                 rustc_middle::ty::TyKind::Bool => Typ::Bool,
                 rustc_middle::ty::TyKind::Adt(adt, params)
-                    if params.len() == 0
-                        && hack_check_def_name(tcx, adt.did, "builtin", "int") =>
+                    if params.len() == 0 && hack_check_def_name(tcx, adt.did, "builtin", "int") =>
                 {
                     Typ::Int
                 }
@@ -325,7 +324,16 @@ pub(crate) fn let_stmt_to_vir<'thir, 'tcx>(
                 }
             };
             (
-                spanned_new(pattern.span, StmtX::Decl(ParamX { name: name.clone(), typ })),
+                spanned_new(
+                    pattern.span,
+                    StmtX::Decl {
+                        param: ParamX { name: name.clone(), typ },
+                        mutable: match *mutability {
+                            rustc_middle::mir::Mutability::Not => false,
+                            rustc_middle::mir::Mutability::Mut => true,
+                        },
+                    },
+                ),
                 spanned_new(pattern.span, ExprX::Var(name)),
             )
         }

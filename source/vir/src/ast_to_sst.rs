@@ -48,6 +48,10 @@ pub fn expr_to_stm(ctx: &Ctx, expr: &Expr) -> Result<Stm, VirErr> {
         ExprX::Assert(expr) => {
             Ok(Spanned::new(expr.span.clone(), StmX::Assert(expr_to_exp(ctx, expr)?)))
         }
+        ExprX::Assign(lhs, rhs) => Ok(Spanned::new(
+            expr.span.clone(),
+            StmX::Assign(expr_to_exp(ctx, lhs)?, expr_to_exp(ctx, rhs)?),
+        )),
         ExprX::Block(stmts) => {
             let stms = Rc::new(box_slice_map_result(stmts, |s| stmt_to_stm(ctx, s))?);
             Ok(Spanned::new(expr.span.clone(), StmX::Block(stms)))
@@ -61,8 +65,9 @@ pub fn expr_to_stm(ctx: &Ctx, expr: &Expr) -> Result<Stm, VirErr> {
 pub fn stmt_to_stm(ctx: &Ctx, stmt: &Stmt) -> Result<Stm, VirErr> {
     match &stmt.x {
         StmtX::Expr(expr) => expr_to_stm(ctx, &expr),
-        StmtX::Decl(param) => {
-            Ok(Spanned::new(stmt.span.clone(), StmX::Decl(param.name.clone(), param.typ)))
-        }
+        StmtX::Decl { param, mutable } => Ok(Spanned::new(
+            stmt.span.clone(),
+            StmX::Decl { ident: param.name.clone(), typ: param.typ, mutable: *mutable },
+        )),
     }
 }

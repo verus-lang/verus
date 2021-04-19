@@ -69,13 +69,24 @@ pub fn stm_to_stmt(stm: &Stm, decls: &mut Vec<Decl>) -> Option<Stmt> {
             let option_span = Rc::new(Some(stm.span.clone()));
             Some(Rc::new(StmtX::Assert(option_span, air_expr)))
         }
+        StmX::Decl { ident, typ, mutable } => {
+            decls.push(if *mutable {
+                Rc::new(DeclX::Var(suffixed_id(&ident), typ_to_air(&typ)))
+            } else {
+                Rc::new(DeclX::Const(suffixed_id(&ident), typ_to_air(&typ)))
+            });
+            None
+        }
+        StmX::Assign(lhs, rhs) => {
+            let ident = match &lhs.x {
+                ExpX::Var(ident) => ident,
+                _ => panic!("unexpected lhs {:?} in assign", lhs),
+            };
+            Some(Rc::new(StmtX::Assign(suffixed_id(&ident), exp_to_expr(rhs))))
+        }
         StmX::Block(stms) => {
             let stmts = stms.iter().filter_map(|s| stm_to_stmt(s, decls)).collect::<Vec<_>>();
             Some(Rc::new(StmtX::Block(Rc::new(stmts.into_boxed_slice()))))
-        }
-        StmX::Decl(ident, typ) => {
-            decls.push(Rc::new(DeclX::Const(suffixed_id(&ident), typ_to_air(&typ))));
-            None
         }
     }
 }
