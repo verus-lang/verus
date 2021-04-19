@@ -37,4 +37,9 @@ fn test2(b: bool, x: int, y: int, z: int) {
 fn test_assign(a: int, b: int) {
     let c = a + b;
     assert(c == a + b);
+
+    let d = false;
+    assert(!d);
+
+    assert(c < a + b); // FAILS
 }
