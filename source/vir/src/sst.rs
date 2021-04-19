@@ -5,7 +5,7 @@ Whereas ast supports statements inside expressions,
 sst expressions cannot contain statments.
 */
 
-use crate::ast::{BinaryOp, UnaryOp};
+use crate::ast::{BinaryOp, Typ, UnaryOp};
 use crate::def::Spanned;
 use air::ast::{Const, Ident};
 use std::rc::Rc;
@@ -28,4 +28,5 @@ pub enum StmX {
     Assume(Exp),
     Assert(Exp),
     Block(Stms),
+    Decl(Ident, Typ),
 }

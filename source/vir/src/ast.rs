@@ -12,7 +12,7 @@ pub enum Mode {
     Exec,
 }
 
-#[derive(Debug)]
+#[derive(Copy, Clone, Debug)]
 pub enum Typ {
     Bool,
     Int,
@@ -60,6 +60,7 @@ pub type Stmts = Rc<Box<[Stmt]>>;
 #[derive(Debug)]
 pub enum StmtX {
     Expr(Expr),
+    Decl(ParamX),
 }
 
 pub type Param = Rc<Spanned<ParamX>>;

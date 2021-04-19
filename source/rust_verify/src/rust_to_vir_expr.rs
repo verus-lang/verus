@@ -11,7 +11,7 @@ use rustc_span::def_id::DefId;
 use rustc_span::symbol::Ident;
 use rustc_span::Span;
 use std::rc::Rc;
-use vir::ast::{BinaryOp, ExprX, Mode, StmtX, Typ, UnaryOp};
+use vir::ast::{BinaryOp, ExprX, Mode, ParamX, StmtX, Typ, UnaryOp};
 use vir::def::Spanned;
 
 pub(crate) fn spanned_new<X>(span: Span, x: X) -> Rc<Spanned<X>> {
@@ -139,8 +139,9 @@ pub(crate) fn expr_to_vir<'thir, 'tcx>(
     match &expr.kind {
         ExprKind::Scope { value, .. } => expr_to_vir(tcx, value),
         ExprKind::Block { body, .. } => {
-            let vir_stmts = box_slice_map(body.stmts, |stmt| stmt_to_vir(tcx, stmt));
-            spanned_new(expr.span, ExprX::Block(Rc::new(vir_stmts)))
+            let vir_stmts =
+                body.stmts.iter().flat_map(|stmt| stmt_to_vir(tcx, stmt)).collect::<Vec<_>>();
+            spanned_new(expr.span, ExprX::Block(Rc::new(vir_stmts.into_boxed_slice())))
         }
         ExprKind::Borrow { arg, borrow_kind } => {
             match borrow_kind {
@@ -286,18 +287,74 @@ pub(crate) fn expr_to_vir<'thir, 'tcx>(
     }
 }
 
+pub(crate) fn let_stmt_to_vir<'thir, 'tcx>(
+    tcx: TyCtxt<'tcx>,
+    pattern: &'thir rustc_mir_build::thir::Pat<'thir>,
+    initializer: &'thir Option<&'thir Expr<'thir, 'tcx>>,
+) -> Vec<vir::ast::Stmt> {
+    // dbg!(pattern);
+    use std::ops::Deref;
+    let (decl, var) = match pattern.kind.deref() {
+        rustc_mir_build::thir::PatKind::Binding { var, mutability, mode, ty, .. } => {
+            unsupported_unless!(
+                *mutability == rustc_middle::mir::Mutability::Not,
+                "mutable_binding"
+            );
+            unsupported_unless!(
+                *mode == rustc_mir_build::thir::BindingMode::ByValue,
+                "by_ref_bindings"
+            );
+            // TODO: need unique identifiers!
+            let name = Rc::new(match tcx.hir().get(*var) {
+                Node::Binding(pat) => pat_to_var(pat),
+                node => {
+                    unsupported!(format!("VarRef {:?}", node))
+                }
+            });
+            // TODO: what's the relationship of this with ty_to_vir
+            let typ = match ty.kind() {
+                rustc_middle::ty::TyKind::Bool => Typ::Bool,
+                rustc_middle::ty::TyKind::Adt(adt, params)
+                    if params.len() == 0
+                        && hack_check_def_name(tcx, adt.did, "builtin", "int") =>
+                {
+                    Typ::Int
+                }
+                _ => {
+                    unsupported!(format!("type {:?}", ty.kind()))
+                }
+            };
+            (
+                spanned_new(pattern.span, StmtX::Decl(ParamX { name: name.clone(), typ })),
+                spanned_new(pattern.span, ExprX::Var(name)),
+            )
+        }
+        _ => {
+            unsupported!("let_pattern", pattern, pattern.span);
+        }
+    };
+
+    let mut vir_stmts = vec![decl];
+
+    if let Some(initializer) = initializer {
+        let rhs = expr_to_vir(tcx, initializer);
+        let expr = spanned_new(initializer.span, ExprX::Binary(BinaryOp::Eq, var, rhs));
+        let assume = spanned_new(initializer.span, ExprX::Assume(expr));
+        vir_stmts.push(spanned_new(initializer.span, StmtX::Expr(assume)));
+    }
+
+    vir_stmts
+}
+
 pub(crate) fn stmt_to_vir<'thir, 'tcx>(
     tcx: TyCtxt<'tcx>,
     stmt: &'thir Stmt<'thir, 'tcx>,
-) -> vir::ast::Stmt {
+) -> Vec<vir::ast::Stmt> {
     match &stmt.kind {
         StmtKind::Expr { expr, .. } => {
             let vir_expr = expr_to_vir(tcx, expr);
-            spanned_new(expr.span, StmtX::Expr(vir_expr))
+            vec![spanned_new(expr.span, StmtX::Expr(vir_expr))]
         }
-        _ => {
-            dbg!(stmt);
-            unsupported!("statement")
-        }
+        StmtKind::Let { pattern, initializer, .. } => let_stmt_to_vir(tcx, pattern, initializer),
     }
 }

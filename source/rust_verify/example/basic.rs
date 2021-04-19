@@ -33,3 +33,8 @@ fn test2(b: bool, x: int, y: int, z: int) {
     assert(x <= z);
     assert(x < z); // FAILS
 }
+
+fn test_assign(a: int, b: int) {
+    let c = a + b;
+    assert(c == a + b);
+}

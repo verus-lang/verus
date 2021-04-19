@@ -1,7 +1,7 @@
 use crate::ast::{BinaryOp, Ident, Params, Typ, UnaryOp};
 use crate::sst::{Exp, ExpX, Stm, StmX};
 use crate::util::box_slice_map;
-use air::ast::{CommandX, Commands, DeclX, Expr, ExprX, MultiOp, QueryX, Stmt, StmtX};
+use air::ast::{CommandX, Commands, Decl, DeclX, Expr, ExprX, MultiOp, QueryX, Stmt, StmtX};
 use std::rc::Rc;
 
 pub const SUFFIX_USER_ID: &str = "@";
@@ -61,15 +61,22 @@ fn exp_to_expr(exp: &Exp) -> Expr {
     }
 }
 
-pub fn stm_to_stmt(stm: &Stm) -> Stmt {
+pub fn stm_to_stmt(stm: &Stm, decls: &mut Vec<Decl>) -> Option<Stmt> {
     match &stm.x {
-        StmX::Assume(expr) => Rc::new(StmtX::Assume(exp_to_expr(&expr))),
+        StmX::Assume(expr) => Some(Rc::new(StmtX::Assume(exp_to_expr(&expr)))),
         StmX::Assert(expr) => {
             let air_expr = exp_to_expr(&expr);
             let option_span = Rc::new(Some(stm.span.clone()));
-            Rc::new(StmtX::Assert(option_span, air_expr))
+            Some(Rc::new(StmtX::Assert(option_span, air_expr)))
         }
-        StmX::Block(stms) => Rc::new(StmtX::Block(Rc::new(box_slice_map(stms, stm_to_stmt)))),
+        StmX::Block(stms) => {
+            let stmts = stms.iter().filter_map(|s| stm_to_stmt(s, decls)).collect::<Vec<_>>();
+            Some(Rc::new(StmtX::Block(Rc::new(stmts.into_boxed_slice()))))
+        }
+        StmX::Decl(ident, typ) => {
+            decls.push(Rc::new(DeclX::Const(suffixed_id(&ident), typ_to_air(&typ))));
+            None
+        }
     }
 }
 
@@ -81,11 +88,13 @@ pub fn typ_to_air(typ: &Typ) -> air::ast::Typ {
 }
 
 pub fn stm_to_air(params: &Params, stm: &Stm) -> Commands {
-    let local = box_slice_map(params, |param| {
-        Rc::new(DeclX::Const(suffixed_id(&param.x.name), typ_to_air(&param.x.typ)))
-    });
-    let assertion = stm_to_stmt(&stm);
-    let query = Rc::new(QueryX { local: Rc::new(local), assertion });
+    let mut local = params
+        .iter()
+        .map(|param| Rc::new(DeclX::Const(suffixed_id(&param.x.name), typ_to_air(&param.x.typ))))
+        .collect::<Vec<Decl>>();
+    let assertion = stm_to_stmt(&stm, &mut local)
+        .unwrap_or(Rc::new(StmtX::Block(Rc::new(vec![].into_boxed_slice()))));
+    let query = Rc::new(QueryX { local: Rc::new(local.into_boxed_slice()), assertion });
     let command = Rc::new(CommandX::CheckValid(query));
     Rc::new(Box::new([command]))
 }

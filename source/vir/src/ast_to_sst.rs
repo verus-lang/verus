@@ -61,5 +61,8 @@ pub fn expr_to_stm(ctx: &Ctx, expr: &Expr) -> Result<Stm, VirErr> {
 pub fn stmt_to_stm(ctx: &Ctx, stmt: &Stmt) -> Result<Stm, VirErr> {
     match &stmt.x {
         StmtX::Expr(expr) => expr_to_stm(ctx, &expr),
+        StmtX::Decl(param) => {
+            Ok(Spanned::new(stmt.span.clone(), StmX::Decl(param.name.clone(), param.typ)))
+        }
     }
 }
