@@ -251,7 +251,7 @@ pub(crate) fn expr_to_vir<'thir, 'tcx>(
             match (literal.ty.kind(), literal.val) {
                 (TyKind::Bool, ConstKind::Value(ConstValue::Scalar(Scalar::Int(v)))) => {
                     let b = v.assert_bits(v.size()) != 0;
-                    let c = air::ast::Const::Bool(b);
+                    let c = air::ast::Constant::Bool(b);
                     spanned_new(expr.span, ExprX::Const(c))
                 }
                 /*

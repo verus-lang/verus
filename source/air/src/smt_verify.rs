@@ -1,5 +1,5 @@
 use crate::ast::{
-    BinaryOp, BindX, Const, Decl, DeclX, Expr, ExprX, Ident, MultiOp, Quant, Query, Span,
+    BinaryOp, BindX, Constant, Decl, DeclX, Expr, ExprX, Ident, MultiOp, Quant, Query, Span,
     SpanOption, StmtX, Typ, TypX, UnaryOp, ValidityResult,
 };
 use crate::context::Context;
@@ -24,8 +24,8 @@ fn new_const<'ctx>(context: &mut Context<'ctx>, name: &String, typ: &Typ) -> Dyn
 
 fn expr_to_smt<'ctx>(context: &mut Context<'ctx>, expr: &Expr) -> Dynamic<'ctx> {
     match &**expr {
-        ExprX::Const(Const::Bool(b)) => Bool::from_bool(&context.context, *b).into(),
-        ExprX::Const(Const::Nat(n)) => Int::from_str(&context.context, n).unwrap().into(),
+        ExprX::Const(Constant::Bool(b)) => Bool::from_bool(&context.context, *b).into(),
+        ExprX::Const(Constant::Nat(n)) => Int::from_str(&context.context, n).unwrap().into(),
         ExprX::Var(x) => match context.vars.get(x) {
             None => panic!("internal error: variable {} not found", x),
             Some(x) => x.clone(),

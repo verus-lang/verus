@@ -1,7 +1,7 @@
 use crate::ast::{
-    BinaryOp, BindX, Binder, BinderX, Binders, Command, CommandX, Commands, Const, Datatypes, Decl,
-    DeclX, Decls, Expr, ExprX, Exprs, Ident, MultiOp, Quant, Query, QueryX, Span, Stmt, StmtX,
-    Stmts, Trigger, Typ, TypX, Typs, UnaryOp,
+    BinaryOp, BindX, Binder, BinderX, Binders, Command, CommandX, Commands, Constant, Datatypes,
+    Decl, DeclX, Decls, Expr, ExprX, Exprs, Ident, MultiOp, Quant, Query, QueryX, Span, Stmt,
+    StmtX, Stmts, Trigger, Typ, TypX, Typs, UnaryOp,
 };
 use sise::{Node, Writer};
 use std::io::Write;
@@ -87,8 +87,8 @@ pub(crate) fn typs_to_node(typs: &Typs) -> Node {
 
 pub(crate) fn expr_to_node(expr: &Expr) -> Node {
     match &**expr {
-        ExprX::Const(Const::Bool(b)) => Node::Atom(b.to_string()),
-        ExprX::Const(Const::Nat(n)) => Node::Atom((**n).clone()),
+        ExprX::Const(Constant::Bool(b)) => Node::Atom(b.to_string()),
+        ExprX::Const(Constant::Nat(n)) => Node::Atom((**n).clone()),
         ExprX::Var(x) => Node::Atom(x.to_string()),
         ExprX::Apply(x, exprs) => {
             let mut nodes: Vec<Node> = Vec::new();
@@ -463,10 +463,12 @@ pub(crate) fn node_to_typ(node: &Node) -> Result<Typ, String> {
 
 pub(crate) fn node_to_expr(node: &Node) -> Result<Expr, String> {
     match node {
-        Node::Atom(s) if s.to_string() == "true" => Ok(Rc::new(ExprX::Const(Const::Bool(true)))),
-        Node::Atom(s) if s.to_string() == "false" => Ok(Rc::new(ExprX::Const(Const::Bool(false)))),
+        Node::Atom(s) if s.to_string() == "true" => Ok(Rc::new(ExprX::Const(Constant::Bool(true)))),
+        Node::Atom(s) if s.to_string() == "false" => {
+            Ok(Rc::new(ExprX::Const(Constant::Bool(false))))
+        }
         Node::Atom(s) if s.len() > 0 && s.chars().all(|c| c.is_ascii_digit()) => {
-            Ok(Rc::new(ExprX::Const(Const::Nat(Rc::new(s.clone())))))
+            Ok(Rc::new(ExprX::Const(Constant::Nat(Rc::new(s.clone())))))
         }
         Node::Atom(s) if is_symbol(s) => Ok(Rc::new(ExprX::Var(Rc::new(s.clone())))),
         Node::List(nodes) if nodes.len() > 0 => {

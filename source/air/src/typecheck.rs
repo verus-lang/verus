@@ -2,7 +2,7 @@
 // (Z3 and the Z3 crate will also type-check, but their type errors are uninformative panics)
 
 use crate::ast::{
-    BinaryOp, BindX, Binder, BinderX, Binders, Const, Decl, DeclX, Expr, ExprX, Ident, MultiOp,
+    BinaryOp, BindX, Binder, BinderX, Binders, Constant, Decl, DeclX, Expr, ExprX, Ident, MultiOp,
     Query, Stmt, StmtX, Typ, TypX, TypeError, Typs, UnaryOp,
 };
 use crate::context::Context;
@@ -124,8 +124,8 @@ fn check_exprs(
 
 pub(crate) fn check_expr(typing: &mut Typing, expr: &Expr) -> Result<Typ, TypeError> {
     let result = match &**expr {
-        ExprX::Const(Const::Bool(_)) => Ok(Rc::new(TypX::Bool)),
-        ExprX::Const(Const::Nat(_)) => Ok(Rc::new(TypX::Int)),
+        ExprX::Const(Constant::Bool(_)) => Ok(Rc::new(TypX::Bool)),
+        ExprX::Const(Constant::Nat(_)) => Ok(Rc::new(TypX::Int)),
         ExprX::Var(x) => match typing.vars.get(x) {
             None => Err(format!("use of undeclared variable {}", x)),
             Some(var) => Ok(var.typ.clone()),

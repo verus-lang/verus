@@ -7,14 +7,14 @@ sst expressions cannot contain statments.
 
 use crate::ast::{BinaryOp, Typ, UnaryOp};
 use crate::def::Spanned;
-use air::ast::{Const, Ident};
+use air::ast::{Constant, Ident};
 use std::rc::Rc;
 
 pub type Exp = Rc<Spanned<ExpX>>;
 pub type Exps = Rc<Box<[Exp]>>;
 #[derive(Debug)]
 pub enum ExpX {
-    Const(Const),
+    Const(Constant),
     Var(Ident),
     Call(Ident, Exps),
     Unary(UnaryOp, Exp),

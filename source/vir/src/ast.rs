@@ -1,5 +1,5 @@
 use crate::def::Spanned;
-use air::ast::Const;
+use air::ast::Constant;
 use std::rc::Rc;
 
 pub type VirErr = Rc<Spanned<String>>;
@@ -45,7 +45,7 @@ pub type Expr = Rc<Spanned<ExprX>>;
 pub type Exprs = Rc<Box<[Expr]>>;
 #[derive(Debug)]
 pub enum ExprX {
-    Const(Const),
+    Const(Constant),
     Var(Ident),
     Call(Ident, Exprs),
     Assume(Expr),

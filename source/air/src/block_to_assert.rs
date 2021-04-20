@@ -1,4 +1,4 @@
-use crate::ast::{BinaryOp, Const, Expr, ExprX, MultiOp, Query, QueryX, Stmt, StmtX};
+use crate::ast::{BinaryOp, Constant, Expr, ExprX, MultiOp, Query, QueryX, Stmt, StmtX};
 use std::rc::Rc;
 
 fn stmt_to_expr(stmt: &Stmt, pred: Expr) -> Expr {
@@ -25,7 +25,7 @@ fn stmt_to_expr(stmt: &Stmt, pred: Expr) -> Expr {
 }
 
 fn block_to_assert(stmt: &Stmt) -> Expr {
-    let tru = Rc::new(ExprX::Const(Const::Bool(true)));
+    let tru = Rc::new(ExprX::Const(Constant::Bool(true)));
     stmt_to_expr(&stmt, tru)
 }
 

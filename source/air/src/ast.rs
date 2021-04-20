@@ -36,7 +36,7 @@ pub enum TypX {
 }
 
 #[derive(Clone, Debug)]
-pub enum Const {
+pub enum Constant {
     Bool(bool),
     Nat(Rc<String>),
 }
@@ -96,7 +96,7 @@ pub type Expr = Rc<ExprX>;
 pub type Exprs = Rc<Box<[Expr]>>;
 #[derive(Debug)]
 pub enum ExprX {
-    Const(Const),
+    Const(Constant),
     Var(Ident),
     Apply(Ident, Exprs),
     Unary(UnaryOp, Expr),
