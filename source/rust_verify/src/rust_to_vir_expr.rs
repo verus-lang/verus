@@ -1,4 +1,4 @@
-use crate::util::slice_vec_map;
+use crate::util::slice_vec_map_result;
 use crate::{unsupported, unsupported_unless};
 use rustc_ast::{AttrKind, Attribute};
 use rustc_hir::def::{DefKind, Res};
@@ -11,7 +11,7 @@ use rustc_span::def_id::DefId;
 use rustc_span::symbol::Ident;
 use rustc_span::Span;
 use std::rc::Rc;
-use vir::ast::{BinaryOp, ExprX, Mode, ParamX, StmtX, Typ, UnaryOp};
+use vir::ast::{BinaryOp, ExprX, Mode, ParamX, StmtX, Stmts, Typ, UnaryOp, VirErr};
 use vir::def::Spanned;
 
 pub(crate) fn spanned_new<X>(span: Span, x: X) -> Rc<Spanned<X>> {
@@ -153,14 +153,18 @@ fn expr_to_function<'thir, 'tcx>(expr: &'thir Expr<'thir, 'tcx>) -> DefId {
 pub(crate) fn expr_to_vir<'thir, 'tcx>(
     tcx: TyCtxt<'tcx>,
     expr: &'thir Expr<'thir, 'tcx>,
-) -> vir::ast::Expr {
+) -> Result<vir::ast::Expr, VirErr> {
     match &expr.kind {
         ExprKind::Scope { value, .. } => expr_to_vir(tcx, value),
         ExprKind::Block { body, .. } => {
-            let vir_stmts =
-                body.stmts.iter().flat_map(|stmt| stmt_to_vir(tcx, stmt)).collect::<Vec<_>>();
-            let vir_expr = body.expr.map(|expr| expr_to_vir(tcx, &expr));
-            spanned_new(expr.span, ExprX::Block(Rc::new(vir_stmts), vir_expr))
+            let vir_stmts: Stmts = Rc::new(
+                slice_vec_map_result(body.stmts, |stmt| stmt_to_vir(tcx, stmt))?
+                    .into_iter()
+                    .flatten()
+                    .collect(),
+            );
+            let vir_expr = body.expr.map(|expr| expr_to_vir(tcx, &expr)).transpose()?;
+            Ok(spanned_new(expr.span, ExprX::Block(vir_stmts, vir_expr)))
         }
         ExprKind::Borrow { arg, borrow_kind } => {
             match borrow_kind {
@@ -189,24 +193,23 @@ pub(crate) fn expr_to_vir<'thir, 'tcx>(
             let is_mul = hack_check_def_name(tcx, f, "core", "ops::arith::Mul::mul");
             let is_cmp = is_eq || is_ne || is_le || is_ge || is_lt || is_gt;
             let is_arith_binary = is_add || is_sub || is_mul;
-            let vir_args = slice_vec_map(args, |arg| expr_to_vir(tcx, arg));
+            let vir_args = slice_vec_map_result(args, |arg| expr_to_vir(tcx, arg))?;
             if is_assume || is_assert {
                 unsupported_unless!(args.len() == 1, "expected assume/assert", args, expr.span);
                 let arg = vir_args[0].clone();
                 if is_assume {
-                    spanned_new(expr.span, ExprX::Assume(arg))
+                    Ok(spanned_new(expr.span, ExprX::Assume(arg)))
                 } else {
-                    spanned_new(expr.span, ExprX::Assert(arg))
+                    Ok(spanned_new(expr.span, ExprX::Assert(arg)))
                 }
             } else if is_hide || is_reveal {
                 unsupported_unless!(args.len() == 1, "expected hide/reveal", args, expr.span);
                 let arg = vir_args[0].clone();
                 if let ExprX::Var(x) = &arg.x {
                     let fuel = if is_hide { 0 } else { 1 };
-                    spanned_new(expr.span, ExprX::Fuel(x.clone(), fuel))
+                    Ok(spanned_new(expr.span, ExprX::Fuel(x.clone(), fuel)))
                 } else {
-                    // TODO: this should be a VirErr, not a panic
-                    panic!("hide/reveal: expected identifier at location {:?}", expr.span)
+                    Err(spanned_new(expr.span, "hide/reveal: expected identifier".to_string()))
                 }
             } else if is_cmp || is_arith_binary || is_implies {
                 unsupported_unless!(args.len() == 2, "expected binary op", args, expr.span);
@@ -235,10 +238,10 @@ pub(crate) fn expr_to_vir<'thir, 'tcx>(
                 } else {
                     panic!("internal error")
                 };
-                spanned_new(expr.span, ExprX::Binary(vop, lhs, rhs))
+                Ok(spanned_new(expr.span, ExprX::Binary(vop, lhs, rhs)))
             } else {
                 let name = hack_get_def_name(tcx, f); // TODO: proper handling of paths
-                spanned_new(expr.span, ExprX::Call(Rc::new(name), Rc::new(vir_args)))
+                Ok(spanned_new(expr.span, ExprX::Call(Rc::new(name), Rc::new(vir_args))))
             }
         }
         ExprKind::Literal { literal, user_ty: _, const_id: _ } => {
@@ -252,7 +255,7 @@ pub(crate) fn expr_to_vir<'thir, 'tcx>(
                 (TyKind::Bool, ConstKind::Value(ConstValue::Scalar(Scalar::Int(v)))) => {
                     let b = v.assert_bits(v.size()) != 0;
                     let c = air::ast::Constant::Bool(b);
-                    spanned_new(expr.span, ExprX::Const(c))
+                    Ok(spanned_new(expr.span, ExprX::Const(c)))
                 }
                 /*
                 (TyKind::Uint(_), ConstKind::Value(ConstValue::Scalar(Scalar::Int(v)))) => {
@@ -262,12 +265,12 @@ pub(crate) fn expr_to_vir<'thir, 'tcx>(
                 _ => {
                     let f = expr_to_function(expr);
                     let name = hack_get_def_name(tcx, f); // TODO: proper handling of paths
-                    spanned_new(expr.span, ExprX::Var(Rc::new(name)))
+                    Ok(spanned_new(expr.span, ExprX::Var(Rc::new(name))))
                 }
             }
         }
         ExprKind::Unary { op, arg } => {
-            let varg = expr_to_vir(tcx, arg);
+            let varg = expr_to_vir(tcx, arg)?;
             let vop = match op {
                 UnOp::Not => UnaryOp::Not,
                 _ => {
@@ -276,20 +279,20 @@ pub(crate) fn expr_to_vir<'thir, 'tcx>(
                     unsupported!("unary expression")
                 }
             };
-            spanned_new(expr.span, ExprX::Unary(vop, varg))
+            Ok(spanned_new(expr.span, ExprX::Unary(vop, varg)))
         }
         ExprKind::LogicalOp { op, lhs, rhs } => {
-            let vlhs = expr_to_vir(tcx, lhs);
-            let vrhs = expr_to_vir(tcx, rhs);
+            let vlhs = expr_to_vir(tcx, lhs)?;
+            let vrhs = expr_to_vir(tcx, rhs)?;
             let vop = match op {
                 LogicalOp::And => BinaryOp::And,
                 LogicalOp::Or => BinaryOp::Or,
             };
-            spanned_new(expr.span, ExprX::Binary(vop, vlhs, vrhs))
+            Ok(spanned_new(expr.span, ExprX::Binary(vop, vlhs, vrhs)))
         }
         ExprKind::Binary { op, lhs, rhs } => {
-            let vlhs = expr_to_vir(tcx, lhs);
-            let vrhs = expr_to_vir(tcx, rhs);
+            let vlhs = expr_to_vir(tcx, lhs)?;
+            let vrhs = expr_to_vir(tcx, rhs)?;
             let vop = match op {
                 BinOp::Eq => BinaryOp::Eq,
                 BinOp::Ne => BinaryOp::Ne,
@@ -302,17 +305,18 @@ pub(crate) fn expr_to_vir<'thir, 'tcx>(
                 BinOp::Mul => BinaryOp::Mul,
                 _ => unsupported!(format!("binary operator {:?} {:?}", op, expr.span)),
             };
-            spanned_new(expr.span, ExprX::Binary(vop, vlhs, vrhs))
+            Ok(spanned_new(expr.span, ExprX::Binary(vop, vlhs, vrhs)))
         }
         ExprKind::VarRef { id } => match tcx.hir().get(*id) {
-            Node::Binding(pat) => spanned_new(expr.span, ExprX::Var(Rc::new(pat_to_var(pat)))),
+            Node::Binding(pat) => Ok(spanned_new(expr.span, ExprX::Var(Rc::new(pat_to_var(pat))))),
             node => {
                 unsupported!(format!("VarRef {:?}", node))
             }
         },
-        ExprKind::Assign { lhs, rhs } => {
-            spanned_new(expr.span, ExprX::Assign(expr_to_vir(tcx, lhs), expr_to_vir(tcx, rhs)))
-        }
+        ExprKind::Assign { lhs, rhs } => Ok(spanned_new(
+            expr.span,
+            ExprX::Assign(expr_to_vir(tcx, lhs)?, expr_to_vir(tcx, rhs)?),
+        )),
         _ => {
             dbg!(expr);
             dbg!(expr.span);
@@ -325,7 +329,7 @@ pub(crate) fn let_stmt_to_vir<'thir, 'tcx>(
     tcx: TyCtxt<'tcx>,
     pattern: &'thir rustc_mir_build::thir::Pat<'thir>,
     initializer: &'thir Option<&'thir Expr<'thir, 'tcx>>,
-) -> Vec<vir::ast::Stmt> {
+) -> Result<Vec<vir::ast::Stmt>, VirErr> {
     // dbg!(pattern);
     use std::ops::Deref;
     let (decl, var) = match pattern.kind.deref() {
@@ -375,23 +379,23 @@ pub(crate) fn let_stmt_to_vir<'thir, 'tcx>(
     let mut vir_stmts = vec![decl];
 
     if let Some(initializer) = initializer {
-        let rhs = expr_to_vir(tcx, initializer);
+        let rhs = expr_to_vir(tcx, initializer)?;
         let expr = spanned_new(initializer.span, ExprX::Binary(BinaryOp::Eq, var, rhs));
         let assume = spanned_new(initializer.span, ExprX::Assume(expr));
         vir_stmts.push(spanned_new(initializer.span, StmtX::Expr(assume)));
     }
 
-    vir_stmts
+    Ok(vir_stmts)
 }
 
 pub(crate) fn stmt_to_vir<'thir, 'tcx>(
     tcx: TyCtxt<'tcx>,
     stmt: &'thir Stmt<'thir, 'tcx>,
-) -> Vec<vir::ast::Stmt> {
+) -> Result<Vec<vir::ast::Stmt>, VirErr> {
     match &stmt.kind {
         StmtKind::Expr { expr, .. } => {
-            let vir_expr = expr_to_vir(tcx, expr);
-            vec![spanned_new(expr.span, StmtX::Expr(vir_expr))]
+            let vir_expr = expr_to_vir(tcx, expr)?;
+            Ok(vec![spanned_new(expr.span, StmtX::Expr(vir_expr))])
         }
         StmtKind::Let { pattern, initializer, .. } => let_stmt_to_vir(tcx, pattern, initializer),
     }

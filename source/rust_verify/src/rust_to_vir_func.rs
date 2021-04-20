@@ -9,9 +9,13 @@ use rustc_mir_build::thir;
 use rustc_span::symbol::Ident;
 use rustc_span::Span;
 use std::rc::Rc;
-use vir::ast::{Function, FunctionX, Mode, ParamX};
+use vir::ast::{Function, FunctionX, Mode, ParamX, VirErr};
 
-fn body_to_vir<'tcx>(tcx: TyCtxt<'tcx>, id: &BodyId, body: &'tcx Body<'tcx>) -> vir::ast::Expr {
+fn body_to_vir<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    id: &BodyId,
+    body: &'tcx Body<'tcx>,
+) -> Result<vir::ast::Expr, VirErr> {
     let did = id.hir_id.owner;
     let arena = thir::Arena::default();
     let expr = thir::build_thir(
@@ -20,11 +24,13 @@ fn body_to_vir<'tcx>(tcx: TyCtxt<'tcx>, id: &BodyId, body: &'tcx Body<'tcx>) -> 
         &arena,
         &body.value,
     );
-    let vir_expr = expr_to_vir(tcx, expr);
-    vir_expr
+    expr_to_vir(tcx, expr)
 }
 
-fn check_fn_decl<'tcx>(tcx: TyCtxt<'tcx>, decl: &'tcx FnDecl<'tcx>) -> Option<vir::ast::Typ> {
+fn check_fn_decl<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    decl: &'tcx FnDecl<'tcx>,
+) -> Result<Option<vir::ast::Typ>, VirErr> {
     let FnDecl { inputs: _, output, c_variadic, implicit_self } = decl;
     unsupported_unless!(!c_variadic, "c_variadic");
     match implicit_self {
@@ -32,18 +38,19 @@ fn check_fn_decl<'tcx>(tcx: TyCtxt<'tcx>, decl: &'tcx FnDecl<'tcx>) -> Option<vi
         _ => unsupported!("implicit_self"),
     }
     match output {
-        rustc_hir::FnRetTy::DefaultReturn(_) => None,
-        rustc_hir::FnRetTy::Return(ty) => Some(ty_to_vir(tcx, ty)),
+        rustc_hir::FnRetTy::DefaultReturn(_) => Ok(None),
+        rustc_hir::FnRetTy::Return(ty) => Ok(Some(ty_to_vir(tcx, ty))),
     }
 }
 
-fn check_generics<'tcx>(generics: &'tcx Generics<'tcx>) {
+fn check_generics<'tcx>(generics: &'tcx Generics<'tcx>) -> Result<(), VirErr> {
     match generics {
         Generics { params, where_clause, span: _ } => {
             unsupported_unless!(params.len() == 0, "generics");
             unsupported_unless!(where_clause.predicates.len() == 0, "where clause");
         }
     }
+    Ok(())
 }
 
 pub(crate) fn check_item_fn<'tcx>(
@@ -55,7 +62,7 @@ pub(crate) fn check_item_fn<'tcx>(
     sig: &'tcx FnSig<'tcx>,
     generics: &Generics,
     body_id: &BodyId,
-) {
+) -> Result<(), VirErr> {
     let ret = match sig {
         FnSig {
             header: FnHeader { unsafety, constness: _, asyncness: _, abi: _ },
@@ -63,10 +70,10 @@ pub(crate) fn check_item_fn<'tcx>(
             span: _,
         } => {
             unsupported_unless!(*unsafety == Unsafety::Normal, "unsafe");
-            check_fn_decl(tcx, decl)
+            check_fn_decl(tcx, decl)?
         }
     };
-    check_generics(generics);
+    check_generics(generics)?;
     let mode = get_mode(attrs);
     let fuel = get_fuel(attrs);
     match (mode, &ret) {
@@ -92,12 +99,13 @@ pub(crate) fn check_item_fn<'tcx>(
             unsupported!("generator_kind", generator_kind);
         }
     }
-    let vir_body = body_to_vir(tcx, body_id, body);
+    let vir_body = body_to_vir(tcx, body_id, body)?;
     let name = Rc::new(ident_to_var(&id));
     let params = Rc::new(vir_params);
     let function =
         spanned_new(sig.span, FunctionX { name, mode, fuel, params, ret, body: Some(vir_body) });
     vir.push(function);
+    Ok(())
 }
 
 pub(crate) fn check_foreign_item_fn<'tcx>(
@@ -109,9 +117,9 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
     decl: &'tcx FnDecl<'tcx>,
     idents: &[Ident],
     generics: &Generics,
-) {
-    let ret = check_fn_decl(tcx, decl);
-    check_generics(generics);
+) -> Result<(), VirErr> {
+    let ret = check_fn_decl(tcx, decl)?;
+    check_generics(generics)?;
     let mode = get_mode(attrs);
     let fuel = get_fuel(attrs);
     let mut vir_params: Vec<vir::ast::Param> = Vec::new();
@@ -125,4 +133,5 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
     let params = Rc::new(vir_params);
     let function = spanned_new(span, FunctionX { name, fuel, mode, params, ret, body: None });
     vir.push(function);
+    Ok(())
 }

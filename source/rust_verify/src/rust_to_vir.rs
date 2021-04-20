@@ -14,7 +14,7 @@ use rustc_hir::{
 };
 use rustc_middle::ty::TyCtxt;
 use rustc_span::def_id::LocalDefId;
-use vir::ast::Function;
+use vir::ast::{Function, VirErr};
 
 fn check_item<'tcx>(
     tcx: TyCtxt<'tcx>,
@@ -22,7 +22,7 @@ fn check_item<'tcx>(
     vir: &mut Vec<Function>,
     _id: &ItemId,
     item: &'tcx Item<'tcx>,
-) {
+) -> Result<(), VirErr> {
     match &item.kind {
         ItemKind::Fn(sig, generics, body_id) => {
             check_item_fn(
@@ -34,7 +34,7 @@ fn check_item<'tcx>(
                 sig,
                 generics,
                 body_id,
-            );
+            )?;
         }
         ItemKind::Use { .. } => {}
         ItemKind::ExternCrate { .. } => {}
@@ -44,9 +44,14 @@ fn check_item<'tcx>(
             unsupported!("unsupported item", item);
         }
     }
+    Ok(())
 }
 
-fn check_module<'tcx>(_tcx: TyCtxt<'tcx>, _id: &LocalDefId, module_items: &'tcx ModuleItems) {
+fn check_module<'tcx>(
+    _tcx: TyCtxt<'tcx>,
+    _id: &LocalDefId,
+    module_items: &'tcx ModuleItems,
+) -> Result<(), VirErr> {
     match module_items {
         ModuleItems { items, trait_items, impl_items, foreign_items } => {
             for _id in items {
@@ -59,6 +64,7 @@ fn check_module<'tcx>(_tcx: TyCtxt<'tcx>, _id: &LocalDefId, module_items: &'tcx 
             }
         }
     }
+    Ok(())
 }
 
 fn check_foreign_item<'tcx>(
@@ -66,7 +72,7 @@ fn check_foreign_item<'tcx>(
     vir: &mut Vec<Function>,
     _id: &ForeignItemId,
     item: &'tcx ForeignItem<'tcx>,
-) {
+) -> Result<(), VirErr> {
     match &item.kind {
         ForeignItemKind::Fn(decl, idents, generics) => {
             check_foreign_item_fn(
@@ -78,19 +84,28 @@ fn check_foreign_item<'tcx>(
                 decl,
                 idents,
                 generics,
-            );
+            )?;
         }
         _ => {
             unsupported!("unsupported item", item);
         }
     }
+    Ok(())
 }
 
-fn check_attr<'tcx>(_tcx: TyCtxt<'tcx>, _id: &HirId, _attr: &'tcx [Attribute]) {
+fn check_attr<'tcx>(
+    _tcx: TyCtxt<'tcx>,
+    _id: &HirId,
+    _attr: &'tcx [Attribute],
+) -> Result<(), VirErr> {
     // TODO
+    Ok(())
 }
 
-pub fn crate_to_vir<'tcx>(tcx: TyCtxt<'tcx>, krate: &'tcx Crate<'tcx>) -> Vec<Function> {
+pub fn crate_to_vir<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    krate: &'tcx Crate<'tcx>,
+) -> Result<Vec<Function>, VirErr> {
     let Crate {
         item: _,
         exported_macros,
@@ -119,21 +134,21 @@ pub fn crate_to_vir<'tcx>(tcx: TyCtxt<'tcx>, krate: &'tcx Crate<'tcx>) -> Vec<Fu
         non_exported_macro_attrs
     );
     for (id, item) in foreign_items {
-        check_foreign_item(tcx, &mut vir, id, item);
+        check_foreign_item(tcx, &mut vir, id, item)?;
     }
     for (id, item) in items {
-        check_item(tcx, krate, &mut vir, id, item);
+        check_item(tcx, krate, &mut vir, id, item)?;
     }
     unsupported_unless!(trait_items.len() == 0, "trait definitions", trait_items);
     unsupported_unless!(impl_items.len() == 0, "impl definitions", impl_items);
     unsupported_unless!(trait_impls.len() == 0, "trait implementations", trait_impls);
     for (id, module) in modules {
-        check_module(tcx, id, module);
+        check_module(tcx, id, module)?;
     }
     unsupported_unless!(proc_macros.len() == 0, "procedural macros", proc_macros);
     unsupported_unless!(trait_map.len() == 0, "traits", trait_map);
     for (id, attr) in attrs {
-        check_attr(tcx, id, attr);
+        check_attr(tcx, id, attr)?;
     }
-    vir
+    Ok(vir)
 }

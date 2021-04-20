@@ -125,7 +125,10 @@ impl rustc_driver::Callbacks for Verifier {
             queries.expansion().expect("expansion");
             rustc_typeck::check_crate(tcx).expect("type error");
             let hir = tcx.hir();
-            let vir_crate = crate::rust_to_vir::crate_to_vir(tcx, hir.krate());
+            let vir_crate = match crate::rust_to_vir::crate_to_vir(tcx, hir.krate()) {
+                Ok(vir_crate) => vir_crate,
+                Err(err) => panic!("error: %{:?}", err),
+            };
             if let Some(filename) = &self.args.log_vir {
                 let mut file =
                     File::create(filename).expect(&format!("could not open file {}", filename));

@@ -36,6 +36,9 @@ macro_rules! unsupported_unless {
     };
 }
 
-pub(crate) fn slice_vec_map<A, B, F: Fn(&A) -> B>(slice: &[A], f: F) -> Vec<B> {
-    slice.iter().map(f).collect::<Vec<B>>()
+pub(crate) fn slice_vec_map_result<A, B, E, F: Fn(&A) -> Result<B, E>>(
+    slice: &[A],
+    f: F,
+) -> Result<Vec<B>, E> {
+    slice.iter().map(f).collect::<Result<Vec<B>, E>>()
 }
