@@ -1,5 +1,5 @@
 extern crate builtin;
-use builtin::{assert, assume, imply, int};
+use builtin::{assert, assume, hide, imply, int, reveal};
 
 fn main() {}
 
@@ -49,4 +49,33 @@ fn test_assign_mut(a: int, b: int) {
     c = c + b;
     assert(c == a + b);
     assert(c == a); // FAILS
+}
+
+#[spec]
+fn f1(i: int, j: int) -> bool {
+    i <= j
+}
+
+#[spec]
+fn f2(i: int, j: int) -> bool {
+    i < j
+}
+
+#[spec]
+#[opaque]
+fn f3(i: int, j: int) -> bool {
+    f1(j, i)
+}
+
+fn test_spec_fn(a: int, b: int) {
+    hide(f2);
+
+    assume(f2(a, b));
+
+    reveal(f2);
+    assert(f1(a, b));
+
+    reveal(f3);
+    assert(f3(b, a));
+    assert(f3(a, b)); // FAILS
 }

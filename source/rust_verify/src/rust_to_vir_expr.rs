@@ -63,6 +63,23 @@ pub(crate) fn get_mode(attrs: &[Attribute]) -> Mode {
     mode
 }
 
+pub(crate) fn get_fuel(attrs: &[Attribute]) -> u32 {
+    let mut fuel: u32 = 1;
+    for attr in attrs {
+        match &attr.kind {
+            AttrKind::Normal(item, _) => match &item.path.segments[..] {
+                [segment] => match ident_to_var(&segment.ident).as_str() {
+                    "opaque" => fuel = 0,
+                    _ => {}
+                },
+                _ => {}
+            },
+            _ => {}
+        }
+    }
+    fuel
+}
+
 pub(crate) fn ty_to_vir<'tcx>(tcx: TyCtxt<'tcx>, ty: &Ty) -> Typ {
     let Ty { hir_id: _, kind, span } = ty;
     match kind {
@@ -142,7 +159,8 @@ pub(crate) fn expr_to_vir<'thir, 'tcx>(
         ExprKind::Block { body, .. } => {
             let vir_stmts =
                 body.stmts.iter().flat_map(|stmt| stmt_to_vir(tcx, stmt)).collect::<Vec<_>>();
-            spanned_new(expr.span, ExprX::Block(Rc::new(vir_stmts.into_boxed_slice())))
+            let vir_expr = body.expr.map(|expr| expr_to_vir(tcx, &expr));
+            spanned_new(expr.span, ExprX::Block(Rc::new(vir_stmts.into_boxed_slice()), vir_expr))
         }
         ExprKind::Borrow { arg, borrow_kind } => {
             match borrow_kind {
@@ -157,6 +175,8 @@ pub(crate) fn expr_to_vir<'thir, 'tcx>(
             let f = expr_to_function(fun);
             let is_assume = hack_check_def_name(tcx, f, "builtin", "assume");
             let is_assert = hack_check_def_name(tcx, f, "builtin", "assert");
+            let is_hide = hack_check_def_name(tcx, f, "builtin", "hide");
+            let is_reveal = hack_check_def_name(tcx, f, "builtin", "reveal");
             let is_implies = hack_check_def_name(tcx, f, "builtin", "imply");
             let is_eq = hack_check_def_name(tcx, f, "core", "cmp::PartialEq::eq");
             let is_ne = hack_check_def_name(tcx, f, "core", "cmp::PartialEq::ne");
@@ -177,6 +197,16 @@ pub(crate) fn expr_to_vir<'thir, 'tcx>(
                     spanned_new(expr.span, ExprX::Assume(arg))
                 } else {
                     spanned_new(expr.span, ExprX::Assert(arg))
+                }
+            } else if is_hide || is_reveal {
+                unsupported_unless!(args.len() == 1, "expected hide/reveal", args, expr.span);
+                let arg = vir_args[0].clone();
+                if let ExprX::Var(x) = &arg.x {
+                    let fuel = if is_hide { 0 } else { 1 };
+                    spanned_new(expr.span, ExprX::Fuel(x.clone(), fuel))
+                } else {
+                    // TODO: this should be a VirErr, not a panic
+                    panic!("hide/reveal: expected identifier at location {:?}", expr.span)
                 }
             } else if is_cmp || is_arith_binary || is_implies {
                 unsupported_unless!(args.len() == 2, "expected binary op", args, expr.span);
@@ -230,9 +260,9 @@ pub(crate) fn expr_to_vir<'thir, 'tcx>(
                 }
                 */
                 _ => {
-                    dbg!(literal);
-                    dbg!(expr.span);
-                    unsupported!("literal")
+                    let f = expr_to_function(expr);
+                    let name = hack_get_def_name(tcx, f); // TODO: proper handling of paths
+                    spanned_new(expr.span, ExprX::Var(Rc::new(name)))
                 }
             }
         }

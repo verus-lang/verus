@@ -52,8 +52,9 @@ pub enum ExprX {
     Assert(Expr),
     Unary(UnaryOp, Expr),
     Binary(BinaryOp, Expr, Expr),
-    Block(Stmts),
     Assign(Expr, Expr),
+    Fuel(Ident, u32),
+    Block(Stmts, Option<Expr>),
 }
 
 pub type Stmt = Rc<Spanned<StmtX>>;
@@ -77,6 +78,7 @@ pub type Function = Rc<Spanned<FunctionX>>;
 pub struct FunctionX {
     pub name: Ident,
     pub mode: Mode,
+    pub fuel: u32,
     pub params: Params,
     pub ret: Option<Typ>,
     pub body: Option<Expr>,

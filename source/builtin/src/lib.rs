@@ -6,6 +6,15 @@ pub fn assert(_b: bool) {
     unimplemented!();
 }
 
+// Can only appear at beginning of function body
+pub fn hide<F>(_f: F) {
+    unimplemented!();
+}
+
+pub fn reveal<F>(_f: F) {
+    unimplemented!();
+}
+
 pub fn imply(_b1: bool, _b2: bool) -> bool {
     unimplemented!();
 }

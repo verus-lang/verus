@@ -1,4 +1,5 @@
 pub mod ast;
+pub mod ast_util;
 pub mod context;
 
 #[macro_use]

@@ -8,3 +8,4 @@ edition = "2018"
 
 [dependencies]
 air = { path = "../air" }
+sise = "0.6.0"

@@ -65,6 +65,7 @@ pub enum MultiOp {
     Add,
     Sub,
     Mul,
+    Distinct,
 }
 
 pub type Binder<A> = Rc<BinderX<A>>;

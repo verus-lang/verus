@@ -179,9 +179,20 @@ pub(crate) fn check_expr(typing: &mut Typing, expr: &Expr) -> Result<Typ, TypeEr
                 MultiOp::Add => ("+", it()),
                 MultiOp::Sub => ("-", it()),
                 MultiOp::Mul => ("*", it()),
+                MultiOp::Distinct => ("distinct", it()),
             };
             let f_typs = crate::util::box_slice_map(exprs, |_| t.clone());
-            check_exprs(typing, x, &f_typs, &t, exprs)
+            match op {
+                MultiOp::Distinct if exprs.len() > 0 => {
+                    let t0 = check_expr(typing, &exprs[0])?;
+                    for e in &exprs[1..] {
+                        let tk = check_expr(typing, e)?;
+                        expect_typ(&tk, &t0, "arguments to distinct must all have same type")?;
+                    }
+                    Ok(bt())
+                }
+                _ => check_exprs(typing, x, &f_typs, &t, exprs),
+            }
         }
         ExprX::IfElse(e1, e2, e3) => {
             let t1 = check_expr(typing, e1)?;

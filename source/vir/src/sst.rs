@@ -27,7 +27,8 @@ pub type Stms = Rc<Box<[Stm]>>;
 pub enum StmX {
     Assume(Exp),
     Assert(Exp),
-    Block(Stms),
     Decl { ident: Ident, typ: Typ, mutable: bool },
     Assign(Exp, Exp),
+    Fuel(Ident, u32),
+    Block(Stms),
 }

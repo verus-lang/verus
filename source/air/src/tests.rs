@@ -275,7 +275,7 @@ fn no_type() {
 
 #[test]
 fn yes_assign() {
-    no!(
+    yes!(
         (check-valid
             (declare-var x Int)
             (declare-var y Int)
@@ -285,7 +285,7 @@ fn yes_assign() {
                 (assign x (+ x 1))
                 (assign x (+ x 1))
                 (assert (= x 102))
-                (assert (= y 100))
+                (assert (= y 200))
             )
         )
     );
@@ -791,6 +791,33 @@ fn untyped_ite2() {
     untyped!(
         (check-valid
             (assert (= (ite true 10 true) 20))
+        )
+    )
+}
+
+#[test]
+fn yes_distinct() {
+    yes!(
+        (check-valid
+            (assert (distinct 10 20 30))
+        )
+    )
+}
+
+#[test]
+fn no_distinct() {
+    no!(
+        (check-valid
+            (assert (distinct 10 20 10))
+        )
+    )
+}
+
+#[test]
+fn untyped_distinct() {
+    untyped!(
+        (check-valid
+            (assert (distinct 10 20 true))
         )
     )
 }

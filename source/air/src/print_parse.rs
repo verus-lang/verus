@@ -7,11 +7,11 @@ use sise::{Node, Writer};
 use std::io::Write;
 use std::rc::Rc;
 
-pub(crate) fn str_to_node(s: &str) -> Node {
+pub fn str_to_node(s: &str) -> Node {
     Node::Atom(s.to_string())
 }
 
-pub(crate) fn macro_push_node(nodes: &mut Vec<Node>, node: Node) {
+pub fn macro_push_node(nodes: &mut Vec<Node>, node: Node) {
     // turn a - b into a-b
     let len = nodes.len();
     if len != 0 {
@@ -36,9 +36,11 @@ examples:
   node!((atom1 {x} atom-3))
 There's some limited support for atoms containing hyphens, at least for atoms inside a list.
 */
+#[macro_export]
 macro_rules! node {
     ( - ) => { Node::Atom("-".to_string()) };
     ( { $x:expr } ) => { $x };
+    ( [ $x:expr ] ) => { $x.clone() };
     ( $x:literal ) => { Node::Atom($x.to_string()) };
     ( ( $( $x:tt )* ) ) => {
         {
@@ -50,12 +52,23 @@ macro_rules! node {
     };
     ( $x:tt ) => { Node::Atom(stringify!($x).to_string()) };
 }
+#[macro_export]
 macro_rules! nodes {
    ( $( $x:tt )* ) => {
        {
            let mut v = Vec::new();
            $(macro_push_node(&mut v, node!($x));)*
            Node::List(v)
+       }
+   };
+}
+#[macro_export]
+macro_rules! nodes_vec {
+   ( $( $x:tt )* ) => {
+       {
+           let mut v = Vec::new();
+           $(macro_push_node(&mut v, node!($x));)*
+           v
        }
    };
 }
@@ -111,6 +124,7 @@ pub(crate) fn expr_to_node(expr: &Expr) -> Node {
                 MultiOp::Add => "+",
                 MultiOp::Sub => "-",
                 MultiOp::Mul => "*",
+                MultiOp::Distinct => "distinct",
             };
             let mut nodes: Vec<Node> = Vec::new();
             nodes.push(str_to_node(sop));
@@ -243,8 +257,10 @@ pub(crate) fn write_node(
         Node::List(l) => {
             writer.begin_list(opts).unwrap();
             let mut brk = false;
+            let mut was_pattern = false;
             for n in l {
-                write_node(writer, n, break_len + 1, brk);
+                write_node(writer, n, break_len + 1, brk && !was_pattern);
+                was_pattern = false;
                 match n {
                     Node::Atom(a)
                         if a == "=>"
@@ -253,9 +269,13 @@ pub(crate) fn write_node(
                             || a == "assert"
                             || a == "location"
                             || a == "check-valid"
+                            || a == "!"
                             || a == "block" =>
                     {
                         brk = true;
+                    }
+                    Node::Atom(a) if a == ":pattern" => {
+                        was_pattern = true;
                     }
                     _ => {}
                 }
@@ -474,6 +494,7 @@ pub(crate) fn node_to_expr(node: &Node) -> Result<Expr, String> {
                 Node::Atom(s) if s.to_string() == "+" => Some(MultiOp::Add),
                 Node::Atom(s) if s.to_string() == "-" => Some(MultiOp::Sub),
                 Node::Atom(s) if s.to_string() == "*" => Some(MultiOp::Mul),
+                Node::Atom(s) if s.to_string() == "distinct" => Some(MultiOp::Distinct),
                 _ => None,
             };
             let ite = match &nodes[0] {

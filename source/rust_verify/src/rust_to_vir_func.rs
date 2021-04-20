@@ -1,5 +1,5 @@
 use crate::rust_to_vir_expr::{
-    expr_to_vir, get_mode, ident_to_var, pat_to_var, spanned_new, ty_to_vir,
+    expr_to_vir, get_fuel, get_mode, ident_to_var, pat_to_var, spanned_new, ty_to_vir,
 };
 use crate::{unsupported, unsupported_unless};
 use rustc_ast::Attribute;
@@ -56,25 +56,25 @@ pub(crate) fn check_item_fn<'tcx>(
     generics: &Generics,
     body_id: &BodyId,
 ) {
-    match sig {
+    let ret = match sig {
         FnSig {
             header: FnHeader { unsafety, constness: _, asyncness: _, abi: _ },
             decl,
             span: _,
         } => {
             unsupported_unless!(*unsafety == Unsafety::Normal, "unsafe");
-            let output = check_fn_decl(tcx, decl);
-            match output {
-                None => {}
-                _ => unsupported!("function return values"),
-            }
+            check_fn_decl(tcx, decl)
         }
-    }
+    };
     check_generics(generics);
     let mode = get_mode(attrs);
-    match mode {
-        Mode::Exec | Mode::Proof => {}
-        Mode::Spec => unsupported!("spec functions"),
+    let fuel = get_fuel(attrs);
+    match (mode, &ret) {
+        (Mode::Exec, None) | (Mode::Proof, None) => {}
+        (Mode::Exec, Some(_)) | (Mode::Proof, Some(_)) => {
+            unsupported!("non-spec function return values");
+        }
+        (Mode::Spec, _) => {}
     }
     let body = &krate.bodies[body_id];
     let Body { params, value: _, generator_kind } = body;
@@ -96,7 +96,7 @@ pub(crate) fn check_item_fn<'tcx>(
     let name = Rc::new(ident_to_var(&id));
     let params = Rc::new(vir_params.into_boxed_slice());
     let function =
-        spanned_new(sig.span, FunctionX { name, mode, params, ret: None, body: Some(vir_body) });
+        spanned_new(sig.span, FunctionX { name, mode, fuel, params, ret, body: Some(vir_body) });
     vir.push(function);
 }
 
@@ -113,6 +113,7 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
     let ret = check_fn_decl(tcx, decl);
     check_generics(generics);
     let mode = get_mode(attrs);
+    let fuel = get_fuel(attrs);
     let mut vir_params: Vec<vir::ast::Param> = Vec::new();
     for (param, input) in idents.iter().zip(decl.inputs.iter()) {
         let name = Rc::new(ident_to_var(param));
@@ -122,6 +123,6 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
     }
     let name = Rc::new(ident_to_var(&id));
     let params = Rc::new(vir_params.into_boxed_slice());
-    let function = spanned_new(span, FunctionX { name, mode, params, ret, body: None });
+    let function = spanned_new(span, FunctionX { name, fuel, mode, params, ret, body: None });
     vir.push(function);
 }

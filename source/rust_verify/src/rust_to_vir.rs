@@ -118,14 +118,14 @@ pub fn crate_to_vir<'tcx>(tcx: TyCtxt<'tcx>, krate: &'tcx Crate<'tcx>) -> Vec<Fu
         "non-exported macro attributes",
         non_exported_macro_attrs
     );
+    for (id, item) in foreign_items {
+        check_foreign_item(tcx, &mut vir, id, item);
+    }
     for (id, item) in items {
         check_item(tcx, krate, &mut vir, id, item);
     }
     unsupported_unless!(trait_items.len() == 0, "trait definitions", trait_items);
     unsupported_unless!(impl_items.len() == 0, "impl definitions", impl_items);
-    for (id, item) in foreign_items {
-        check_foreign_item(tcx, &mut vir, id, item);
-    }
     unsupported_unless!(trait_impls.len() == 0, "trait implementations", trait_impls);
     for (id, module) in modules {
         check_module(tcx, id, module);

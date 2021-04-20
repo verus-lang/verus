@@ -41,10 +41,23 @@ impl Verifier {
         air_context.set_z3_param("air_recommended_options", "true");
         air_context.set_rlimit(self.args.rlimit * 1000000);
 
-        let ctx = vir::context::Ctx::new(&Rc::new(krate.clone().into_boxed_slice()));
+        let ctx =
+            vir::context::Ctx::new(&Rc::new(krate.clone().into_boxed_slice())).expect("error");
+
+        air_context.blank_line();
+        air_context.comment("Prelude");
+        for command in ctx.prelude().iter() {
+            air_context.command(&command);
+        }
+
+        air_context.blank_line();
+        air_context.comment("Fuel");
+        for command in ctx.fuel().iter() {
+            air_context.command(&command);
+        }
 
         for function in &krate {
-            let commands = vir::func_to_air::func_decl_to_air(&function).unwrap();
+            let commands = vir::func_to_air::func_decl_to_air(&ctx, &function).unwrap();
             if commands.len() > 0 {
                 air_context.blank_line();
                 air_context.comment(&("Function-Decl ".to_string() + &function.x.name));
@@ -53,6 +66,9 @@ impl Verifier {
                 let result = air_context.command(&command);
                 match result {
                     ValidityResult::Valid => {}
+                    ValidityResult::TypeError(err) => {
+                        panic!("internal error: ill-typed AIR code: {}", err)
+                    }
                     _ => panic!("internal error: decls should not generate queries"),
                 }
             }

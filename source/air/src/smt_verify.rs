@@ -73,6 +73,17 @@ fn expr_to_smt<'ctx>(context: &mut Context<'ctx>, expr: &Expr) -> Dynamic<'ctx> 
                 _ => panic!("internal error: MultiOp"),
             }
         }
+        ExprX::Multi(MultiOp::Distinct, exprs) => {
+            let mut exprs_vec: Vec<Dynamic> = Vec::new();
+            for expr in exprs.iter() {
+                exprs_vec.push(expr_to_smt(context, expr));
+            }
+            let mut smt_exprs: Vec<&Dynamic> = Vec::new();
+            for i in 0..exprs_vec.len() {
+                smt_exprs.push(&exprs_vec[i]);
+            }
+            Dynamic::distinct(&context.context, &smt_exprs[..]).into()
+        }
         ExprX::Multi(op, exprs) => {
             let mut exprs_vec: Vec<Int> = Vec::new();
             for expr in exprs.iter() {
