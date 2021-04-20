@@ -10,7 +10,7 @@ fn stmt_to_expr(stmt: &Stmt, pred: Expr) -> Expr {
         StmtX::Assert(span, expr) => {
             // wp((assert Q), P) = Q /\ P
             let assertion = Rc::new(ExprX::LabeledAssertion(span.clone(), expr.clone()));
-            Rc::new(ExprX::Multi(MultiOp::And, Rc::new(Box::new([assertion, pred]))))
+            Rc::new(ExprX::Multi(MultiOp::And, Rc::new(vec![assertion, pred])))
         }
         StmtX::Assign(_, _) => panic!("internal error: Assign in block_to_assert"),
         StmtX::Block(stmts) => {

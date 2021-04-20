@@ -27,7 +27,7 @@ pub enum ValidityResult {
 pub type Ident = Rc<String>;
 
 pub type Typ = Rc<TypX>;
-pub type Typs = Rc<Box<[Typ]>>;
+pub type Typs = Rc<Vec<Typ>>;
 #[derive(Debug)]
 pub enum TypX {
     Bool,
@@ -69,7 +69,7 @@ pub enum MultiOp {
 }
 
 pub type Binder<A> = Rc<BinderX<A>>;
-pub type Binders<A> = Rc<Box<[Binder<A>]>>;
+pub type Binders<A> = Rc<Vec<Binder<A>>>;
 #[derive(Clone, Debug)]
 pub struct BinderX<A: Clone> {
     pub name: Ident,
@@ -83,7 +83,7 @@ pub enum Quant {
 }
 
 pub type Trigger = Exprs;
-pub type Triggers = Rc<Box<[Trigger]>>;
+pub type Triggers = Rc<Vec<Trigger>>;
 
 pub type Bind = Rc<BindX>;
 #[derive(Clone, Debug)]
@@ -93,7 +93,7 @@ pub enum BindX {
 }
 
 pub type Expr = Rc<ExprX>;
-pub type Exprs = Rc<Box<[Expr]>>;
+pub type Exprs = Rc<Vec<Expr>>;
 #[derive(Debug)]
 pub enum ExprX {
     Const(Constant),
@@ -108,7 +108,7 @@ pub enum ExprX {
 }
 
 pub type Stmt = Rc<StmtX>;
-pub type Stmts = Rc<Box<[Stmt]>>;
+pub type Stmts = Rc<Vec<Stmt>>;
 #[derive(Debug)]
 pub enum StmtX {
     Assume(Expr),
@@ -125,7 +125,7 @@ pub type Datatype = Binder<Variants>;
 pub type Datatypes = Binders<Variants>;
 
 pub type Decl = Rc<DeclX>;
-pub type Decls = Rc<Box<[Decl]>>;
+pub type Decls = Rc<Vec<Decl>>;
 #[derive(Debug)]
 pub enum DeclX {
     Sort(Ident),
@@ -144,7 +144,7 @@ pub struct QueryX {
 }
 
 pub type Command = Rc<CommandX>;
-pub type Commands = Rc<Box<[Command]>>;
+pub type Commands = Rc<Vec<Command>>;
 #[derive(Debug)]
 pub enum CommandX {
     Push,                    // push space for temporary global declarations

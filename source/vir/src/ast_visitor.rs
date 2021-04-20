@@ -14,10 +14,7 @@ where
             for e in es.iter() {
                 exprs.push(map_expr_visitor(e, f)?);
             }
-            let expr = Spanned::new(
-                expr.span.clone(),
-                ExprX::Call(x.clone(), Rc::new(exprs.into_boxed_slice())),
-            );
+            let expr = Spanned::new(expr.span.clone(), ExprX::Call(x.clone(), Rc::new(exprs)));
             f(&expr)
         }
         ExprX::Assume(e1) => {
@@ -57,10 +54,7 @@ where
                 None => None,
                 Some(e) => Some(map_expr_visitor(e, f)?),
             };
-            let expr = Spanned::new(
-                expr.span.clone(),
-                ExprX::Block(Rc::new(exprs.into_boxed_slice()), expr1),
-            );
+            let expr = Spanned::new(expr.span.clone(), ExprX::Block(Rc::new(exprs), expr1));
             f(&expr)
         }
     }

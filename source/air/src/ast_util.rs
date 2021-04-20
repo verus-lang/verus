@@ -17,28 +17,16 @@ pub fn str_var(x: &str) -> Expr {
     Rc::new(ExprX::Var(Rc::new(x.to_string())))
 }
 
-pub fn ident_apply(x: &Ident, args: &Box<[Expr]>) -> Expr {
+pub fn ident_apply(x: &Ident, args: &Vec<Expr>) -> Expr {
     Rc::new(ExprX::Apply(x.clone(), Rc::new(args.clone())))
 }
 
-pub fn string_apply(x: &String, args: &Box<[Expr]>) -> Expr {
+pub fn string_apply(x: &String, args: &Vec<Expr>) -> Expr {
     Rc::new(ExprX::Apply(Rc::new(x.clone()), Rc::new(args.clone())))
 }
 
-pub fn str_apply(x: &str, args: &Box<[Expr]>) -> Expr {
+pub fn str_apply(x: &str, args: &Vec<Expr>) -> Expr {
     Rc::new(ExprX::Apply(Rc::new(x.to_string()), Rc::new(args.clone())))
-}
-
-pub fn ident_apply_vec(x: &Ident, args: &Vec<Expr>) -> Expr {
-    Rc::new(ExprX::Apply(x.clone(), Rc::new(args.clone().into_boxed_slice())))
-}
-
-pub fn string_apply_vec(x: &String, args: &Vec<Expr>) -> Expr {
-    Rc::new(ExprX::Apply(Rc::new(x.clone()), Rc::new(args.clone().into_boxed_slice())))
-}
-
-pub fn str_apply_vec(x: &str, args: &Vec<Expr>) -> Expr {
-    Rc::new(ExprX::Apply(Rc::new(x.to_string()), Rc::new(args.clone().into_boxed_slice())))
 }
 
 pub fn int_typ() -> Typ {

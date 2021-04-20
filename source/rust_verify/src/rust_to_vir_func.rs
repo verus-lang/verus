@@ -94,7 +94,7 @@ pub(crate) fn check_item_fn<'tcx>(
     }
     let vir_body = body_to_vir(tcx, body_id, body);
     let name = Rc::new(ident_to_var(&id));
-    let params = Rc::new(vir_params.into_boxed_slice());
+    let params = Rc::new(vir_params);
     let function =
         spanned_new(sig.span, FunctionX { name, mode, fuel, params, ret, body: Some(vir_body) });
     vir.push(function);
@@ -122,7 +122,7 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
         vir_params.push(vir_param);
     }
     let name = Rc::new(ident_to_var(&id));
-    let params = Rc::new(vir_params.into_boxed_slice());
+    let params = Rc::new(vir_params);
     let function = spanned_new(span, FunctionX { name, fuel, mode, params, ret, body: None });
     vir.push(function);
 }

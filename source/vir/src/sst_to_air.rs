@@ -4,13 +4,13 @@ use crate::def::{
     FUEL_ID,
 };
 use crate::sst::{Exp, ExpX, Stm, StmX};
-use crate::util::box_slice_map;
+use crate::util::vec_map;
 use air::ast::{
     BindX, Binders, CommandX, Commands, Decl, DeclX, Expr, ExprX, MultiOp, Quant, QueryX, Stmt,
     StmtX, Trigger, Triggers,
 };
 use air::ast_util::{
-    bool_typ, ident_apply, ident_binder, ident_var, int_typ, str_apply_vec, str_ident, str_typ,
+    bool_typ, ident_apply, ident_binder, ident_var, int_typ, str_apply, str_ident, str_typ,
     str_var, string_var,
 };
 use std::rc::Rc;
@@ -31,7 +31,7 @@ pub(crate) fn exp_to_expr(exp: &Exp) -> Expr {
         ExpX::Var(x) => string_var(&suffix_local_id(x)),
         ExpX::Call(x, args) => {
             let name = suffix_global_id(&x);
-            ident_apply(&name, &box_slice_map(args, exp_to_expr))
+            ident_apply(&name, &vec_map(args, exp_to_expr))
         }
         ExpX::Unary(op, exp) => match op {
             UnaryOp::Not => Rc::new(ExprX::Unary(air::ast::UnaryOp::Not, exp_to_expr(exp))),
@@ -40,11 +40,11 @@ pub(crate) fn exp_to_expr(exp: &Exp) -> Expr {
             let lh = exp_to_expr(lhs);
             let rh = exp_to_expr(rhs);
             let expx = match op {
-                BinaryOp::And => ExprX::Multi(MultiOp::And, Rc::new(Box::new([lh, rh]))),
-                BinaryOp::Or => ExprX::Multi(MultiOp::Or, Rc::new(Box::new([lh, rh]))),
-                BinaryOp::Add => ExprX::Multi(MultiOp::Add, Rc::new(Box::new([lh, rh]))),
-                BinaryOp::Sub => ExprX::Multi(MultiOp::Sub, Rc::new(Box::new([lh, rh]))),
-                BinaryOp::Mul => ExprX::Multi(MultiOp::Mul, Rc::new(Box::new([lh, rh]))),
+                BinaryOp::And => ExprX::Multi(MultiOp::And, Rc::new(vec![lh, rh])),
+                BinaryOp::Or => ExprX::Multi(MultiOp::Or, Rc::new(vec![lh, rh])),
+                BinaryOp::Add => ExprX::Multi(MultiOp::Add, Rc::new(vec![lh, rh])),
+                BinaryOp::Sub => ExprX::Multi(MultiOp::Sub, Rc::new(vec![lh, rh])),
+                BinaryOp::Mul => ExprX::Multi(MultiOp::Mul, Rc::new(vec![lh, rh])),
                 BinaryOp::Ne => {
                     let eq = ExprX::Binary(air::ast::BinaryOp::Eq, lh, rh);
                     ExprX::Unary(air::ast::UnaryOp::Not, Rc::new(eq))
@@ -103,13 +103,13 @@ pub fn stm_to_stmt(stm: &Stm, decls: &mut Vec<Decl>) -> Option<Stmt> {
             } else {
                 // (assume (fuel_bool fuel%f))
                 let id_fuel = prefix_fuel_id(&x);
-                let expr_fuel_bool = str_apply_vec(&FUEL_BOOL, &vec![ident_var(&id_fuel)]);
+                let expr_fuel_bool = str_apply(&FUEL_BOOL, &vec![ident_var(&id_fuel)]);
                 Some(Rc::new(StmtX::Assume(expr_fuel_bool)))
             }
         }
         StmX::Block(stms) => {
             let stmts = stms.iter().filter_map(|s| stm_to_stmt(s, decls)).collect::<Vec<_>>();
-            Some(Rc::new(StmtX::Block(Rc::new(stmts.into_boxed_slice()))))
+            Some(Rc::new(StmtX::Block(Rc::new(stmts))))
         }
     }
 }
@@ -123,8 +123,8 @@ fn set_fuel(local: &mut Vec<Decl>, hidden: &Vec<Ident>) {
         let x_id = ident_var(&id);
 
         // (= (fuel_bool id) (fuel_bool_default id))
-        let fuel_bool = str_apply_vec(&FUEL_BOOL, &vec![x_id.clone()]);
-        let fuel_bool_default = str_apply_vec(&FUEL_BOOL_DEFAULT, &vec![x_id.clone()]);
+        let fuel_bool = str_apply(&FUEL_BOOL, &vec![x_id.clone()]);
+        let fuel_bool_default = str_apply(&FUEL_BOOL_DEFAULT, &vec![x_id.clone()]);
         let eq = air::ast::BinaryOp::Eq;
         disjuncts.push(Rc::new(ExprX::Binary(eq, fuel_bool.clone(), fuel_bool_default)));
 
@@ -135,13 +135,11 @@ fn set_fuel(local: &mut Vec<Decl>, hidden: &Vec<Ident>) {
         }
 
         // (forall ((id FuelId)) ...)
-        let trigger: Trigger = Rc::new(Box::new([fuel_bool.clone()]));
-        let triggers: Triggers = Rc::new(Box::new([trigger]));
-        let binders: Binders<air::ast::Typ> =
-            Rc::new(Box::new([ident_binder(&id, &str_typ(FUEL_ID))]));
+        let trigger: Trigger = Rc::new(vec![fuel_bool.clone()]);
+        let triggers: Triggers = Rc::new(vec![trigger]);
+        let binders: Binders<air::ast::Typ> = Rc::new(vec![ident_binder(&id, &str_typ(FUEL_ID))]);
         let bind = Rc::new(BindX::Quant(Quant::Forall, binders, triggers));
-        let or =
-            Rc::new(ExprX::Multi(air::ast::MultiOp::Or, Rc::new(disjuncts.into_boxed_slice())));
+        let or = Rc::new(ExprX::Multi(air::ast::MultiOp::Or, Rc::new(disjuncts)));
         Rc::new(ExprX::Bind(bind, or))
     };
     local.push(Rc::new(DeclX::Axiom(fuel_expr)));
@@ -154,10 +152,9 @@ pub fn stm_to_air(params: &Params, hidden: &Vec<Ident>, stm: &Stm) -> Commands {
             Rc::new(DeclX::Const(suffix_local_id(&param.x.name), typ_to_air(&param.x.typ)))
         })
         .collect();
-    let assertion = stm_to_stmt(&stm, &mut local)
-        .unwrap_or(Rc::new(StmtX::Block(Rc::new(vec![].into_boxed_slice()))));
+    let assertion = stm_to_stmt(&stm, &mut local).unwrap_or(Rc::new(StmtX::Block(Rc::new(vec![]))));
     set_fuel(&mut local, hidden);
-    let query = Rc::new(QueryX { local: Rc::new(local.into_boxed_slice()), assertion });
+    let query = Rc::new(QueryX { local: Rc::new(local), assertion });
     let command = Rc::new(CommandX::CheckValid(query));
-    Rc::new(Box::new([command]))
+    Rc::new(vec![command])
 }

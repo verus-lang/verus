@@ -1,4 +1,4 @@
-use crate::util::box_slice_map;
+use crate::util::slice_vec_map;
 use crate::{unsupported, unsupported_unless};
 use rustc_ast::{AttrKind, Attribute};
 use rustc_hir::def::{DefKind, Res};
@@ -160,7 +160,7 @@ pub(crate) fn expr_to_vir<'thir, 'tcx>(
             let vir_stmts =
                 body.stmts.iter().flat_map(|stmt| stmt_to_vir(tcx, stmt)).collect::<Vec<_>>();
             let vir_expr = body.expr.map(|expr| expr_to_vir(tcx, &expr));
-            spanned_new(expr.span, ExprX::Block(Rc::new(vir_stmts.into_boxed_slice()), vir_expr))
+            spanned_new(expr.span, ExprX::Block(Rc::new(vir_stmts), vir_expr))
         }
         ExprKind::Borrow { arg, borrow_kind } => {
             match borrow_kind {
@@ -189,7 +189,7 @@ pub(crate) fn expr_to_vir<'thir, 'tcx>(
             let is_mul = hack_check_def_name(tcx, f, "core", "ops::arith::Mul::mul");
             let is_cmp = is_eq || is_ne || is_le || is_ge || is_lt || is_gt;
             let is_arith_binary = is_add || is_sub || is_mul;
-            let vir_args = box_slice_map(args, |arg| expr_to_vir(tcx, arg));
+            let vir_args = slice_vec_map(args, |arg| expr_to_vir(tcx, arg));
             if is_assume || is_assert {
                 unsupported_unless!(args.len() == 1, "expected assume/assert", args, expr.span);
                 let arg = vir_args[0].clone();

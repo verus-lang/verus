@@ -11,7 +11,7 @@ use air::ast::{Constant, Ident};
 use std::rc::Rc;
 
 pub type Exp = Rc<Spanned<ExpX>>;
-pub type Exps = Rc<Box<[Exp]>>;
+pub type Exps = Rc<Vec<Exp>>;
 #[derive(Debug)]
 pub enum ExpX {
     Const(Constant),
@@ -22,7 +22,7 @@ pub enum ExpX {
 }
 
 pub type Stm = Rc<Spanned<StmX>>;
-pub type Stms = Rc<Box<[Stm]>>;
+pub type Stms = Rc<Vec<Stm>>;
 #[derive(Debug)]
 pub enum StmX {
     Assume(Exp),

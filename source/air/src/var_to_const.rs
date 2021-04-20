@@ -52,6 +52,6 @@ pub(crate) fn lower_query(query: &Query) -> Query {
             _ => s,
         }
     });
-    let local = Rc::new(decls.into_boxed_slice());
+    let local = Rc::new(decls);
     Rc::new(QueryX { local, assertion })
 }

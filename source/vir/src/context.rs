@@ -76,10 +76,9 @@ impl Ctx {
                 _ => {}
             }
         }
-        let distinct =
-            Rc::new(air::ast::ExprX::Multi(MultiOp::Distinct, Rc::new(ids.into_boxed_slice())));
+        let distinct = Rc::new(air::ast::ExprX::Multi(MultiOp::Distinct, Rc::new(ids)));
         let decl = Rc::new(DeclX::Axiom(distinct));
         commands.push(Rc::new(CommandX::Global(decl)));
-        Rc::new(commands.into_boxed_slice())
+        Rc::new(commands)
     }
 }

@@ -208,7 +208,7 @@ fn label_asserts<'ctx>(
             for expr in exprs.iter() {
                 exprs_vec.push(label_asserts(context, infos, expr));
             }
-            Rc::new(ExprX::Multi(*op, Rc::new(exprs_vec.into_boxed_slice())))
+            Rc::new(ExprX::Multi(*op, Rc::new(exprs_vec)))
         }
         ExprX::LabeledAssertion(span, expr) => {
             let label = Rc::new(PREFIX_LABEL.to_string() + &infos.len().to_string());
@@ -309,7 +309,7 @@ pub(crate) fn smt_add_decl<'ctx>(context: &mut Context<'ctx>, decl: &Decl) {
         DeclX::Fun(x, typs, typ) => {
             context.smt_log.log_decl(decl);
             let sort = get_sort(context, typ);
-            let sorts = crate::util::box_slice_map(typs, |t| get_sort(context, t));
+            let sorts = crate::util::vec_map(typs, |t| get_sort(context, t));
             let mut sorts_borrow: Vec<&Sort> = Vec::new();
             for i in 0..sorts.len() {
                 sorts_borrow.push(&*sorts[i]);

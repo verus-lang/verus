@@ -7,7 +7,7 @@ use crate::ast::{
 };
 use crate::context::Context;
 use crate::print_parse::{decl_to_node, expr_to_node, node_to_string, stmt_to_node};
-use crate::util::box_slice_map;
+use crate::util::vec_map;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
@@ -182,7 +182,7 @@ pub(crate) fn check_expr(typing: &mut Typing, expr: &Expr) -> Result<Typ, TypeEr
                 MultiOp::Mul => ("*", it()),
                 MultiOp::Distinct => ("distinct", it()),
             };
-            let f_typs = box_slice_map(exprs, |_| t.clone());
+            let f_typs = vec_map(exprs, |_| t.clone());
             match op {
                 MultiOp::Distinct if exprs.len() > 0 => {
                     let t0 = check_expr(typing, &exprs[0])?;
@@ -223,7 +223,7 @@ pub(crate) fn check_expr(typing: &mut Typing, expr: &Expr) -> Result<Typ, TypeEr
                         let typ = check_expr(typing, &b.a)?;
                         binders.push(Rc::new(BinderX { name: b.name.clone(), a: typ }));
                     }
-                    Rc::new(binders.into_boxed_slice())
+                    Rc::new(binders)
                 }
                 BindX::Quant(_, binders, _) => binders.clone(),
             };
@@ -376,16 +376,16 @@ pub(crate) fn add_decl<'ctx>(
                 for variant in datatype.a.iter() {
                     context.push_name(&variant.name)?;
                     let typ = Rc::new(TypX::Named(datatype.name.clone()));
-                    let typs = box_slice_map(&variant.a, |field| field.a.clone());
+                    let typs = vec_map(&variant.a, |field| field.a.clone());
                     let fun = Fun { typ: typ.clone(), typs: Rc::new(typs) };
                     context.typing.funs.insert(variant.name.clone(), Rc::new(fun));
                     let is_variant = Rc::new("is-".to_string() + &variant.name.to_string());
-                    let fun = Fun { typ: bt(), typs: Rc::new(Box::new([typ.clone()])) };
+                    let fun = Fun { typ: bt(), typs: Rc::new(vec![typ.clone()]) };
                     context.typing.funs.insert(is_variant, Rc::new(fun));
                     for field in variant.a.iter() {
                         context.push_name(&field.name)?;
                         check_typ(&context.typing, &field.a)?;
-                        let typs: Typs = Rc::new(Box::new([typ.clone()]));
+                        let typs: Typs = Rc::new(vec![typ.clone()]);
                         let fun = Fun { typ: field.a.clone(), typs };
                         context.typing.funs.insert(field.name.clone(), Rc::new(fun));
                     }

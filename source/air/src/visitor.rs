@@ -10,7 +10,7 @@ pub(crate) fn map_expr_visitor<F: FnMut(&Expr) -> Expr>(expr: &Expr, f: &mut F) 
             for e in es.iter() {
                 exprs.push(map_expr_visitor(e, f));
             }
-            let expr = Rc::new(ExprX::Apply(x.clone(), Rc::new(exprs.into_boxed_slice())));
+            let expr = Rc::new(ExprX::Apply(x.clone(), Rc::new(exprs)));
             f(&expr)
         }
         ExprX::Unary(op, e1) => {
@@ -29,7 +29,7 @@ pub(crate) fn map_expr_visitor<F: FnMut(&Expr) -> Expr>(expr: &Expr, f: &mut F) 
             for e in es.iter() {
                 exprs.push(map_expr_visitor(e, f));
             }
-            let expr = Rc::new(ExprX::Multi(*op, Rc::new(exprs.into_boxed_slice())));
+            let expr = Rc::new(ExprX::Multi(*op, Rc::new(exprs)));
             f(&expr)
         }
         ExprX::IfElse(e1, e2, e3) => {
@@ -47,7 +47,7 @@ pub(crate) fn map_expr_visitor<F: FnMut(&Expr) -> Expr>(expr: &Expr, f: &mut F) 
                         let a = map_expr_visitor(&b.a, f);
                         binders.push(Rc::new(BinderX { name: b.name.clone(), a }));
                     }
-                    BindX::Let(Rc::new(binders.into_boxed_slice()))
+                    BindX::Let(Rc::new(binders))
                 }
                 BindX::Quant(quant, binders, ts) => {
                     let mut triggers: Vec<Trigger> = Vec::new();
@@ -56,9 +56,9 @@ pub(crate) fn map_expr_visitor<F: FnMut(&Expr) -> Expr>(expr: &Expr, f: &mut F) 
                         for expr in t.iter() {
                             exprs.push(map_expr_visitor(expr, f));
                         }
-                        triggers.push(Rc::new(exprs.into_boxed_slice()));
+                        triggers.push(Rc::new(exprs));
                     }
-                    BindX::Quant(*quant, binders.clone(), Rc::new(triggers.into_boxed_slice()))
+                    BindX::Quant(*quant, binders.clone(), Rc::new(triggers))
                 }
             };
             let e1 = map_expr_visitor(e1, f);
@@ -101,7 +101,7 @@ pub(crate) fn map_stmt_visitor<F: FnMut(&Stmt) -> Stmt>(stmt: &Stmt, f: &mut F) 
             for s in ss.iter() {
                 stmts.push(map_stmt_visitor(s, f));
             }
-            let stmt = Rc::new(StmtX::Block(Rc::new(stmts.into_boxed_slice())));
+            let stmt = Rc::new(StmtX::Block(Rc::new(stmts)));
             f(&stmt)
         }
     }

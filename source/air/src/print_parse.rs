@@ -3,6 +3,7 @@ use crate::ast::{
     Decl, DeclX, Decls, Expr, ExprX, Exprs, Ident, MultiOp, Quant, Query, QueryX, Span, Stmt,
     StmtX, Stmts, Trigger, Typ, TypX, Typs, UnaryOp,
 };
+use crate::util::vec_map;
 use sise::{Node, Writer};
 use std::io::Write;
 use std::rc::Rc;
@@ -82,7 +83,7 @@ pub(crate) fn typ_to_node(typ: &Typ) -> Node {
 }
 
 pub(crate) fn typs_to_node(typs: &Typs) -> Node {
-    Node::List(crate::util::box_slice_map(typs, typ_to_node).to_vec())
+    Node::List(vec_map(typs, typ_to_node))
 }
 
 pub(crate) fn expr_to_node(expr: &Expr) -> Node {
@@ -172,7 +173,7 @@ pub(crate) fn expr_to_node(expr: &Expr) -> Node {
 }
 
 pub(crate) fn exprs_to_node(exprs: &Exprs) -> Node {
-    Node::List(crate::util::box_slice_map(exprs, expr_to_node).to_vec())
+    Node::List(vec_map(exprs, expr_to_node))
 }
 
 pub(crate) fn binder_to_node<A: Clone, F: Fn(&A) -> Node>(binder: &Binder<A>, f: &F) -> Node {
@@ -180,11 +181,11 @@ pub(crate) fn binder_to_node<A: Clone, F: Fn(&A) -> Node>(binder: &Binder<A>, f:
 }
 
 pub(crate) fn binders_to_node<A: Clone, F: Fn(&A) -> Node>(binders: &Binders<A>, f: &F) -> Node {
-    Node::List(crate::util::box_slice_map(binders, |b| binder_to_node(b, f)).to_vec())
+    Node::List(vec_map(binders, |b| binder_to_node(b, f)))
 }
 
 pub(crate) fn multibinder_to_node<A: Clone, F: Fn(&A) -> Node>(
-    binder: &Binder<Rc<Box<[A]>>>,
+    binder: &Binder<Rc<Vec<A>>>,
     f: &F,
 ) -> Node {
     let mut nodes: Vec<Node> = Vec::new();
@@ -196,10 +197,10 @@ pub(crate) fn multibinder_to_node<A: Clone, F: Fn(&A) -> Node>(
 }
 
 pub(crate) fn multibinders_to_node<A: Clone, F: Fn(&A) -> Node>(
-    binders: &Binders<Rc<Box<[A]>>>,
+    binders: &Binders<Rc<Vec<A>>>,
     f: &F,
 ) -> Node {
-    Node::List(crate::util::box_slice_map(binders, |b| multibinder_to_node(b, f)).to_vec())
+    Node::List(vec_map(binders, |b| multibinder_to_node(b, f)))
 }
 
 pub fn sort_decl_to_node(x: &Ident) -> Node {
@@ -441,15 +442,15 @@ fn is_symbol(s: &String) -> bool {
     s.len() > 0 && s.chars().all(is_symbol_char)
 }
 
-fn nodes_to_box_slice<A, F: Fn(&Node) -> Result<A, String>>(
-    nodes: &[Node],
-    f: F,
-) -> Result<Rc<Box<[A]>>, String> {
+fn map_nodes_to_vec<A, F>(nodes: &[Node], f: F) -> Result<Rc<Vec<A>>, String>
+where
+    F: Fn(&Node) -> Result<A, String>,
+{
     let mut v: Vec<A> = Vec::new();
     for node in nodes.iter() {
         v.push(f(node)?);
     }
-    Ok(Rc::new(v.into_boxed_slice()))
+    Ok(Rc::new(v))
 }
 
 pub(crate) fn node_to_typ(node: &Node) -> Result<Typ, String> {
@@ -552,7 +553,7 @@ pub(crate) fn node_to_expr(node: &Node) -> Result<Expr, String> {
 }
 
 fn nodes_to_exprs(nodes: &[Node]) -> Result<Exprs, String> {
-    nodes_to_box_slice(nodes, node_to_expr)
+    map_nodes_to_vec(nodes, node_to_expr)
 }
 
 fn node_to_binder<A, F>(node: &Node, f: &F) -> Result<Binder<A>, String>
@@ -573,7 +574,7 @@ where
     Err(format!("expected binder (...), found: {}", node_to_string(node)))
 }
 
-fn node_to_multibinder<A, F>(node: &Node, f: &F) -> Result<Binder<Rc<Box<[A]>>>, String>
+fn node_to_multibinder<A, F>(node: &Node, f: &F) -> Result<Binder<Rc<Vec<A>>>, String>
 where
     A: Clone,
     F: Fn(&Node) -> Result<A, String>,
@@ -585,10 +586,7 @@ where
                 for node in &nodes[1..] {
                     tail.push(f(node)?);
                 }
-                return Ok(Rc::new(BinderX {
-                    name: Rc::new(name.clone()),
-                    a: Rc::new(tail.into_boxed_slice()),
-                }));
+                return Ok(Rc::new(BinderX { name: Rc::new(name.clone()), a: Rc::new(tail) }));
             }
             _ => {}
         },
@@ -606,19 +604,19 @@ where
     for node in nodes {
         binders.push(node_to_binder(node, f)?);
     }
-    Ok(Rc::new(binders.into_boxed_slice()))
+    Ok(Rc::new(binders))
 }
 
-fn nodes_to_multibinders<A, F>(nodes: &[Node], f: &F) -> Result<Binders<Rc<Box<[A]>>>, String>
+fn nodes_to_multibinders<A, F>(nodes: &[Node], f: &F) -> Result<Binders<Rc<Vec<A>>>, String>
 where
     A: Clone,
     F: Fn(&Node) -> Result<A, String>,
 {
-    let mut binders: Vec<Binder<Rc<Box<[A]>>>> = Vec::new();
+    let mut binders: Vec<Binder<Rc<Vec<A>>>> = Vec::new();
     for node in nodes {
         binders.push(node_to_multibinder(node, f)?);
     }
-    Ok(Rc::new(binders.into_boxed_slice()))
+    Ok(Rc::new(binders))
 }
 
 fn node_to_let_expr(binder_nodes: &[Node], expr: &Node) -> Result<Expr, String> {
@@ -629,7 +627,7 @@ fn node_to_let_expr(binder_nodes: &[Node], expr: &Node) -> Result<Expr, String> 
 
 fn node_to_quant_expr(quant: Quant, binder_nodes: &[Node], expr: &Node) -> Result<Expr, String> {
     let binders = nodes_to_binders(binder_nodes, &node_to_typ)?;
-    let bind = Rc::new(BindX::Quant(quant, binders, Rc::new(Box::new([]))));
+    let bind = Rc::new(BindX::Quant(quant, binders, Rc::new(vec![])));
     Ok(Rc::new(ExprX::Bind(bind, node_to_expr(expr)?)))
 }
 
@@ -654,7 +652,7 @@ fn node_to_bang_expr(inner_node: &Node, nodes: &[Node]) -> Result<Expr, String> 
         match &*inner {
             ExprX::Bind(bind, expr) => match &**bind {
                 BindX::Quant(quant, binders, ts) if ts.len() == 0 => {
-                    let triggers = Rc::new(triggers.into_boxed_slice());
+                    let triggers = Rc::new(triggers);
                     let bind = Rc::new(BindX::Quant(*quant, binders.clone(), triggers));
                     return Ok(Rc::new(ExprX::Bind(bind, expr.clone())));
                 }
@@ -704,7 +702,7 @@ pub(crate) fn node_to_stmt(node: &Node) -> Result<Stmt, String> {
 }
 
 fn nodes_to_stmts(nodes: &[Node]) -> Result<Stmts, String> {
-    nodes_to_box_slice(nodes, node_to_stmt)
+    map_nodes_to_vec(nodes, node_to_stmt)
 }
 
 fn node_to_decl(node: &Node) -> Result<Decl, String> {
@@ -735,7 +733,7 @@ fn node_to_decl(node: &Node) -> Result<Decl, String> {
                     typs.push(node_to_typ(ta)?);
                 }
                 let typ = node_to_typ(t)?;
-                Ok(Rc::new(DeclX::Fun(Rc::new(x.clone()), Rc::new(typs.into_boxed_slice()), typ)))
+                Ok(Rc::new(DeclX::Fun(Rc::new(x.clone()), Rc::new(typs), typ)))
             }
             [Node::Atom(s), Node::Atom(x), t] if s.to_string() == "declare-var" && is_symbol(x) => {
                 let typ = node_to_typ(t)?;
@@ -752,7 +750,7 @@ fn node_to_decl(node: &Node) -> Result<Decl, String> {
 }
 
 fn nodes_to_decls(nodes: &[Node]) -> Result<Decls, String> {
-    nodes_to_box_slice(nodes, node_to_decl)
+    map_nodes_to_vec(nodes, node_to_decl)
 }
 
 pub(crate) fn node_to_command(node: &Node) -> Result<Command, String> {
@@ -790,5 +788,5 @@ pub(crate) fn node_to_command(node: &Node) -> Result<Command, String> {
 }
 
 pub fn nodes_to_commands(nodes: &[Node]) -> Result<Commands, String> {
-    nodes_to_box_slice(nodes, node_to_command)
+    map_nodes_to_vec(nodes, node_to_command)
 }

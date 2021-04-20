@@ -42,7 +42,7 @@ pub enum BinaryOp {
 }
 
 pub type Expr = Rc<Spanned<ExprX>>;
-pub type Exprs = Rc<Box<[Expr]>>;
+pub type Exprs = Rc<Vec<Expr>>;
 #[derive(Debug)]
 pub enum ExprX {
     Const(Constant),
@@ -58,7 +58,7 @@ pub enum ExprX {
 }
 
 pub type Stmt = Rc<Spanned<StmtX>>;
-pub type Stmts = Rc<Box<[Stmt]>>;
+pub type Stmts = Rc<Vec<Stmt>>;
 #[derive(Debug)]
 pub enum StmtX {
     Expr(Expr),
@@ -66,7 +66,7 @@ pub enum StmtX {
 }
 
 pub type Param = Rc<Spanned<ParamX>>;
-pub type Params = Rc<Box<[Param]>>;
+pub type Params = Rc<Vec<Param>>;
 #[derive(Debug)]
 pub struct ParamX {
     pub name: Ident,
@@ -84,4 +84,4 @@ pub struct FunctionX {
     pub body: Option<Expr>,
 }
 
-pub type Krate = Rc<Box<[Function]>>;
+pub type Krate = Rc<Vec<Function>>;
