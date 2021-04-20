@@ -1,7 +1,7 @@
 use crate::ast::{
-    BinaryOp, BindX, Binder, BinderX, Binders, Command, CommandX, Commands, Const, Decl, DeclX,
-    Decls, Expr, ExprX, Exprs, Ident, MultiOp, Quant, Query, QueryX, Span, Stmt, StmtX, Stmts,
-    Trigger, Typ, TypX, Typs, UnaryOp,
+    BinaryOp, BindX, Binder, BinderX, Binders, Command, CommandX, Commands, Const, Datatypes, Decl,
+    DeclX, Decls, Expr, ExprX, Exprs, Ident, MultiOp, Quant, Query, QueryX, Span, Stmt, StmtX,
+    Stmts, Trigger, Typ, TypX, Typs, UnaryOp,
 };
 use sise::{Node, Writer};
 use std::io::Write;
@@ -183,8 +183,34 @@ pub(crate) fn binders_to_node<A: Clone, F: Fn(&A) -> Node>(binders: &Binders<A>,
     Node::List(crate::util::box_slice_map(binders, |b| binder_to_node(b, f)).to_vec())
 }
 
+pub(crate) fn multibinder_to_node<A: Clone, F: Fn(&A) -> Node>(
+    binder: &Binder<Rc<Box<[A]>>>,
+    f: &F,
+) -> Node {
+    let mut nodes: Vec<Node> = Vec::new();
+    nodes.push(str_to_node(&binder.name));
+    for a in binder.a.iter() {
+        nodes.push(f(a));
+    }
+    Node::List(nodes)
+}
+
+pub(crate) fn multibinders_to_node<A: Clone, F: Fn(&A) -> Node>(
+    binders: &Binders<Rc<Box<[A]>>>,
+    f: &F,
+) -> Node {
+    Node::List(crate::util::box_slice_map(binders, |b| multibinder_to_node(b, f)).to_vec())
+}
+
 pub fn sort_decl_to_node(x: &Ident) -> Node {
     node!((declare-sort {str_to_node(x)}))
+}
+
+pub fn datatypes_decl_to_node(datatypes: &Datatypes) -> Node {
+    let ds = multibinders_to_node(&datatypes, &|variant| {
+        multibinder_to_node(&variant, &|field| binder_to_node(&field, &typ_to_node))
+    });
+    node!((declare-datatypes () {ds}))
 }
 
 pub fn const_decl_to_node(x: &Ident, typ: &Typ) -> Node {
@@ -202,6 +228,7 @@ pub fn var_decl_to_node(x: &Ident, typ: &Typ) -> Node {
 pub fn decl_to_node(decl: &Decl) -> Node {
     match &**decl {
         DeclX::Sort(x) => sort_decl_to_node(x),
+        DeclX::Datatypes(datatypes) => datatypes_decl_to_node(datatypes),
         DeclX::Const(x, typ) => const_decl_to_node(x, typ),
         DeclX::Fun(x, typs, typ) => fun_decl_to_node(x, typs, typ),
         DeclX::Var(x, typ) => var_decl_to_node(x, typ),
@@ -544,6 +571,30 @@ where
     Err(format!("expected binder (...), found: {}", node_to_string(node)))
 }
 
+fn node_to_multibinder<A, F>(node: &Node, f: &F) -> Result<Binder<Rc<Box<[A]>>>, String>
+where
+    A: Clone,
+    F: Fn(&Node) -> Result<A, String>,
+{
+    match node {
+        Node::List(nodes) => match &nodes[0] {
+            Node::Atom(name) if is_symbol(name) => {
+                let mut tail: Vec<A> = Vec::new();
+                for node in &nodes[1..] {
+                    tail.push(f(node)?);
+                }
+                return Ok(Rc::new(BinderX {
+                    name: Rc::new(name.clone()),
+                    a: Rc::new(tail.into_boxed_slice()),
+                }));
+            }
+            _ => {}
+        },
+        _ => {}
+    }
+    Err(format!("expected binder (...), found: {}", node_to_string(node)))
+}
+
 fn nodes_to_binders<A, F>(nodes: &[Node], f: &F) -> Result<Binders<A>, String>
 where
     A: Clone,
@@ -552,6 +603,18 @@ where
     let mut binders: Vec<Binder<A>> = Vec::new();
     for node in nodes {
         binders.push(node_to_binder(node, f)?);
+    }
+    Ok(Rc::new(binders.into_boxed_slice()))
+}
+
+fn nodes_to_multibinders<A, F>(nodes: &[Node], f: &F) -> Result<Binders<Rc<Box<[A]>>>, String>
+where
+    A: Clone,
+    F: Fn(&Node) -> Result<A, String>,
+{
+    let mut binders: Vec<Binder<Rc<Box<[A]>>>> = Vec::new();
+    for node in nodes {
+        binders.push(node_to_multibinder(node, f)?);
     }
     Ok(Rc::new(binders.into_boxed_slice()))
 }
@@ -647,6 +710,14 @@ fn node_to_decl(node: &Node) -> Result<Decl, String> {
         Node::List(nodes) => match &nodes[..] {
             [Node::Atom(s), Node::Atom(x)] if s.to_string() == "declare-sort" && is_symbol(x) => {
                 Ok(Rc::new(DeclX::Sort(Rc::new(x.clone()))))
+            }
+            [Node::Atom(s), Node::List(l), Node::List(datatypes)]
+                if s.to_string() == "declare-datatypes" && l.len() == 0 =>
+            {
+                let ds = nodes_to_multibinders(datatypes, &|variant| {
+                    node_to_multibinder(variant, &|field| node_to_binder(field, &node_to_typ))
+                })?;
+                Ok(Rc::new(DeclX::Datatypes(ds)))
             }
             [Node::Atom(s), Node::Atom(x), t]
                 if s.to_string() == "declare-const" && is_symbol(x) =>

@@ -117,11 +117,19 @@ pub enum StmtX {
     Block(Stmts),
 }
 
+pub type Field = Binder<Typ>;
+pub type Fields = Binders<Typ>;
+pub type Variant = Binder<Fields>;
+pub type Variants = Binders<Fields>;
+pub type Datatype = Binder<Variants>;
+pub type Datatypes = Binders<Variants>;
+
 pub type Decl = Rc<DeclX>;
 pub type Decls = Rc<Box<[Decl]>>;
 #[derive(Debug)]
 pub enum DeclX {
     Sort(Ident),
+    Datatypes(Datatypes),
     Const(Ident, Typ),
     Fun(Ident, Typs, Typ),
     Var(Ident, Typ),

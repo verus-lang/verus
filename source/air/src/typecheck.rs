@@ -7,6 +7,7 @@ use crate::ast::{
 };
 use crate::context::Context;
 use crate::print_parse::{decl_to_node, expr_to_node, node_to_string, stmt_to_node};
+use crate::util::box_slice_map;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
@@ -181,7 +182,7 @@ pub(crate) fn check_expr(typing: &mut Typing, expr: &Expr) -> Result<Typ, TypeEr
                 MultiOp::Mul => ("*", it()),
                 MultiOp::Distinct => ("distinct", it()),
             };
-            let f_typs = crate::util::box_slice_map(exprs, |_| t.clone());
+            let f_typs = box_slice_map(exprs, |_| t.clone());
             match op {
                 MultiOp::Distinct if exprs.len() > 0 => {
                     let t0 = check_expr(typing, &exprs[0])?;
@@ -335,6 +336,7 @@ pub(crate) fn check_stmt(typing: &mut Typing, stmt: &Stmt) -> Result<(), TypeErr
 pub(crate) fn check_decl(typing: &mut Typing, decl: &Decl) -> Result<(), TypeError> {
     let result = match &**decl {
         DeclX::Sort(_) => Ok(()),
+        DeclX::Datatypes(_) => Ok(()), // it's easier to do the checking in add_decl
         DeclX::Const(_, typ) => check_typ(typing, typ),
         DeclX::Fun(_, typs, typ) => {
             let mut typs_vec = typs.to_vec();
@@ -364,6 +366,31 @@ pub(crate) fn add_decl<'ctx>(
         DeclX::Sort(x) => {
             context.push_name(x)?;
             context.typing.typs.insert(x.clone());
+        }
+        DeclX::Datatypes(datatypes) => {
+            for datatype in datatypes.iter() {
+                context.push_name(&datatype.name)?;
+                context.typing.typs.insert(datatype.name.clone());
+            }
+            for datatype in datatypes.iter() {
+                for variant in datatype.a.iter() {
+                    context.push_name(&variant.name)?;
+                    let typ = Rc::new(TypX::Named(datatype.name.clone()));
+                    let typs = box_slice_map(&variant.a, |field| field.a.clone());
+                    let fun = Fun { typ: typ.clone(), typs: Rc::new(typs) };
+                    context.typing.funs.insert(variant.name.clone(), Rc::new(fun));
+                    let is_variant = Rc::new("is-".to_string() + &variant.name.to_string());
+                    let fun = Fun { typ: bt(), typs: Rc::new(Box::new([typ.clone()])) };
+                    context.typing.funs.insert(is_variant, Rc::new(fun));
+                    for field in variant.a.iter() {
+                        context.push_name(&field.name)?;
+                        check_typ(&context.typing, &field.a)?;
+                        let typs: Typs = Rc::new(Box::new([typ.clone()]));
+                        let fun = Fun { typ: field.a.clone(), typs };
+                        context.typing.funs.insert(field.name.clone(), Rc::new(fun));
+                    }
+                }
+            }
         }
         DeclX::Const(x, typ) => {
             context.push_name(x)?;

@@ -821,3 +821,52 @@ fn untyped_distinct() {
         )
     )
 }
+
+#[test]
+fn yes_datatype1() {
+    yes!(
+        (declare-datatypes () (
+            (IntPair
+                (int_pair
+                    (ip1 Int)
+                    (ip2 Int)
+                )
+            )
+        ))
+        (check-valid
+            (declare-const x IntPair)
+            (block
+                (assume (= x (int_pair 10 20)))
+                (assert (= 10 (ip1 x)))
+            )
+        )
+    )
+}
+
+#[test]
+fn yes_datatype2() {
+    yes!(
+        (declare-datatypes () (
+            (Tree
+                (empty)
+                (full
+                    (children Pair)
+                )
+            )
+            (Pair
+                (pair
+                    (fst Tree)
+                    (snd Tree)
+                )
+            )
+        ))
+        (check-valid
+            (declare-const x Tree)
+            (block
+                (assume (= x (full (pair (empty) (empty)))))
+                (assert (= (empty) (fst (children x))))
+                (assert (is-empty (snd (children x))))
+            )
+        )
+    )
+}

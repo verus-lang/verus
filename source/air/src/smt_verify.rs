@@ -3,7 +3,7 @@ use crate::ast::{
     SpanOption, StmtX, Typ, TypX, UnaryOp, ValidityResult,
 };
 use crate::context::Context;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 use z3::ast::{Ast, Bool, Dynamic, Int};
 use z3::{Pattern, SatResult, Sort, Symbol};
@@ -238,6 +238,68 @@ pub(crate) fn smt_add_decl<'ctx>(context: &mut Context<'ctx>, decl: &Decl) {
             let sort = Sort::uninterpreted(context.context, Symbol::String((**x).clone()));
             let prev = context.typs.insert(x.clone(), Rc::new(sort));
             assert_eq!(prev, None);
+        }
+        DeclX::Datatypes(datatypes) => {
+            context.smt_log.log_decl(decl);
+            let mut names: HashSet<Ident> = HashSet::new();
+            for datatype in datatypes.iter() {
+                names.insert(datatype.name.clone());
+            }
+            let mut sorts: Vec<Vec<Vec<Rc<Sort>>>> = Vec::new();
+            for datatype in datatypes.iter() {
+                let mut sorts0: Vec<Vec<Rc<Sort>>> = Vec::new();
+                for variant in datatype.a.iter() {
+                    let mut sorts1: Vec<Rc<Sort>> = Vec::new();
+                    for field in variant.a.iter() {
+                        match &*field.a {
+                            TypX::Named(x) if names.contains(x) => {
+                                sorts1.push(Rc::new(Sort::bool(context.context))); // dummy sort
+                            }
+                            _ => {
+                                sorts1.push(get_sort(context, &field.a));
+                            }
+                        }
+                    }
+                    sorts0.push(sorts1);
+                }
+                sorts.push(sorts0);
+            }
+            let mut builders = Vec::new();
+            for i in 0..datatypes.len() {
+                let datatype = &datatypes[i];
+                let mut builder =
+                    z3::DatatypeBuilder::new(&context.context, datatype.name.to_string());
+                for j in 0..datatype.a.len() {
+                    let variant = &datatype.a[j];
+                    let mut smt_fields: Vec<(&str, z3::DatatypeAccessor)> = Vec::new();
+                    for k in 0..variant.a.len() {
+                        let field = &variant.a[k];
+                        let sort = &sorts[i][j][k];
+                        let accessor = match &*field.a {
+                            TypX::Named(x) if names.contains(x) => {
+                                z3::DatatypeAccessor::Datatype(z3::Symbol::String(x.to_string()))
+                            }
+                            _ => z3::DatatypeAccessor::Sort(sort),
+                        };
+                        smt_fields.push((field.name.as_str(), accessor));
+                    }
+                    builder = builder.variant(&variant.name.to_string(), smt_fields);
+                }
+                builders.push(builder);
+            }
+            let datatype_sorts = z3::datatype_builder::create_datatypes(builders);
+            for (datatype, sort) in datatypes.iter().zip(datatype_sorts) {
+                let prev = context.typs.insert(datatype.name.clone(), Rc::new(sort.sort));
+                assert_eq!(prev, None);
+                for (variant, smt_variant) in datatype.a.iter().zip(sort.variants) {
+                    context.funs.insert(variant.name.clone(), Rc::new(smt_variant.constructor));
+                    let is_variant = Rc::new("is-".to_string() + &variant.name.to_string());
+                    context.funs.insert(is_variant, Rc::new(smt_variant.tester));
+                    for (field, smt_field) in variant.a.iter().zip(smt_variant.accessors) {
+                        context.funs.insert(field.name.clone(), Rc::new(smt_field));
+                    }
+                }
+            }
         }
         DeclX::Const(x, typ) => {
             context.smt_log.log_decl(decl);
