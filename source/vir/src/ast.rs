@@ -92,7 +92,7 @@ pub type Fields = Binders<Typ>;
 pub type Variant = Binder<Fields>;
 pub type Variants = Binders<Fields>;
 pub type Datatype = Rc<Spanned<Binder<Variants>>>;
-pub type Datatypes = Binders<Variants>;
+pub type Datatypes = Vec<Rc<Spanned<Binder<Variants>>>>;
 
 pub type Krate = Rc<KrateX>;
 #[derive(Debug, Default)]

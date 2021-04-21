@@ -1,9 +1,7 @@
 use crate::rust_to_vir_expr::{hack_get_def_name, spanned_new, ty_to_vir};
 use crate::rust_to_vir_func::check_generics;
 use crate::{unsupported, unsupported_unless};
-use rustc_hir::{
-    Crate, EnumDef, Generics, ItemId, VariantData,
-};
+use rustc_hir::{Crate, EnumDef, Generics, ItemId, VariantData};
 use rustc_middle::ty::TyCtxt;
 use rustc_span::Span;
 use std::rc::Rc;
@@ -60,9 +58,10 @@ pub fn check_item_struct<'tcx>(
     generics: &'tcx Generics<'tcx>,
 ) {
     check_generics(generics);
-    let name = Rc::new(hack_get_def_name(tcx, id.def_id.to_def_id()));
-    let variants = Rc::new(vec![check_variant_data(tcx, krate, &name, variant_data)]);
-    vir.datatypes.push(spanned_new(span, ident_binder(&name, &variants)));
+    let name = hack_get_def_name(tcx, id.def_id.to_def_id());
+    let variant_name = str_ident(format!("{}::{}", name, name).as_str());
+    let variants = Rc::new(vec![check_variant_data(tcx, krate, &variant_name, variant_data)]);
+    vir.datatypes.push(spanned_new(span, ident_binder(&Rc::new(name), &variants)));
 }
 
 // TODO(andreal): move to adt file
@@ -82,7 +81,9 @@ pub fn check_item_enum<'tcx>(
             .variants
             .iter()
             .map(|variant| {
-                check_variant_data(tcx, krate, &str_ident(&variant.ident.as_str()), &variant.data)
+                let rust_variant_name = variant.ident.as_str();
+                let variant_name = str_ident(format!("{}::{}", name, rust_variant_name).as_str());
+                check_variant_data(tcx, krate, &variant_name, &variant.data)
             })
             .collect::<Vec<_>>(),
     );

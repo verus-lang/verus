@@ -76,6 +76,12 @@ pub struct BinderX<A: Clone> {
     pub a: A,
 }
 
+impl<A: Clone> BinderX<A> {
+    pub fn map_a<B: Clone>(&self, f: impl FnOnce(&A) -> B) -> BinderX<B> {
+        BinderX { name: self.name.clone(), a: f(&self.a) }
+    }
+}
+
 impl<A: Clone + Debug> std::fmt::Debug for BinderX<A> {
     fn fmt(&self, fmt: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
         self.name.fmt(fmt)?;

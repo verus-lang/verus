@@ -15,7 +15,7 @@ use air::ast_util::{
 };
 use std::rc::Rc;
 
-pub fn typ_to_air(typ: &Typ) -> air::ast::Typ {
+pub(crate) fn typ_to_air(typ: &Typ) -> air::ast::Typ {
     match typ {
         Typ::Int => int_typ(),
         Typ::Bool => bool_typ(),

@@ -72,6 +72,29 @@ impl Verifier {
             }
         }
 
+        let commands = vir::datatype_to_air::datatypes_to_air(&krate.datatypes);
+        // TODO(andrea): deduplicate
+        if commands.len() > 0 {
+            air_context.blank_line();
+            air_context.comment(&("Datatypes".to_string()));
+        }
+        for command in commands.iter() {
+            let result = air_context.command(&command);
+            match result {
+                ValidityResult::Valid => {
+                    if let CommandX::CheckValid(_) = **command {
+                        self.count_verified += 1;
+                    }
+                }
+                ValidityResult::TypeError(err) => {
+                    panic!("internal error: generated ill-typed AIR code: {}", err);
+                }
+                ValidityResult::Invalid(span_option) => {
+                    panic!("internal error: unexpected invalid result: {:?}", span_option);
+                }
+            }
+        }
+
         for function in &krate.functions {
             let commands = vir::func_to_air::func_def_to_air(&ctx, &function).unwrap();
             if commands.len() > 0 {
@@ -111,11 +134,6 @@ impl Verifier {
                 }
             }
         }
-
-        for datatype in &krate.datatypes {
-            todo!();
-            dbg!(datatype);
-        }
     }
 }
 
@@ -136,6 +154,12 @@ impl rustc_driver::Callbacks for Verifier {
             if let Some(filename) = &self.args.log_vir {
                 let mut file =
                     File::create(filename).expect(&format!("could not open file {}", filename));
+                for datatype in vir_crate.datatypes.iter() {
+                    writeln!(&mut file, "datatype {} @ {:?}", datatype.x.name, datatype.span)
+                        .expect("cannot write to vir file");
+                    writeln!(&mut file, "{:?}", datatype.x.a).expect("cannot write to vir file");
+                    writeln!(&mut file).expect("cannot write to vir file");
+                }
                 for func in vir_crate.functions.iter() {
                     writeln!(&mut file, "fn {} @ {:?}", func.x.name, func.span)
                         .expect("cannot write to vir file");
@@ -149,13 +173,6 @@ impl rustc_driver::Callbacks for Verifier {
                     }
                     writeln!(&mut file, "body {:#?}", func.x.body)
                         .expect("cannot write to vir file");
-                    writeln!(&mut file).expect("cannot write to vir file");
-                }
-
-                for datatype in vir_crate.datatypes.iter() {
-                    writeln!(&mut file, "datatype {} @ {:?}", datatype.x.name, datatype.span)
-                        .expect("cannot write to vir file");
-                    writeln!(&mut file, "{:?}", datatype.x.a).expect("cannot write to vir file");
                     writeln!(&mut file).expect("cannot write to vir file");
                 }
             }
