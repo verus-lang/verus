@@ -110,10 +110,7 @@ fn check_attr<'tcx>(
     Ok(())
 }
 
-pub fn crate_to_vir<'tcx>(
-    tcx: TyCtxt<'tcx>,
-    krate: &'tcx Crate<'tcx>,
-) -> Result<Krate, VirErr> {
+pub fn crate_to_vir<'tcx>(tcx: TyCtxt<'tcx>, krate: &'tcx Crate<'tcx>) -> Result<Krate, VirErr> {
     let Crate {
         item: _,
         exported_macros,

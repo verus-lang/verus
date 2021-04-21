@@ -8,7 +8,6 @@ use std::rc::Rc;
 use vir::ast::{Ident, KrateX, Variant};
 use vir::ast_util::{ident_binder, str_ident};
 
-// TODO(andreal): move to adt file
 fn check_variant_data<'tcx>(
     tcx: TyCtxt<'tcx>,
     _krate: &'tcx Crate<'tcx>,
@@ -47,7 +46,6 @@ fn check_variant_data<'tcx>(
     )
 }
 
-// TODO(andreal): move to adt file
 pub fn check_item_struct<'tcx>(
     tcx: TyCtxt<'tcx>,
     krate: &'tcx Crate<'tcx>,
@@ -64,7 +62,6 @@ pub fn check_item_struct<'tcx>(
     vir.datatypes.push(spanned_new(span, ident_binder(&Rc::new(name), &variants)));
 }
 
-// TODO(andreal): move to adt file
 pub fn check_item_enum<'tcx>(
     tcx: TyCtxt<'tcx>,
     krate: &'tcx Crate<'tcx>,
