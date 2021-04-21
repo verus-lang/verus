@@ -241,6 +241,9 @@ pub(crate) fn smt_add_decl<'ctx>(context: &mut Context<'ctx>, decl: &Decl) {
         }
         DeclX::Datatypes(datatypes) => {
             context.smt_log.log_decl(decl);
+            if datatypes.len() == 0 {
+                return; // Z3 crate doesn't like 0 datatypes, so don't call it
+            }
             let mut names: HashSet<Ident> = HashSet::new();
             for datatype in datatypes.iter() {
                 names.insert(datatype.name.clone());
