@@ -3,8 +3,7 @@ use air::ast::{CommandX, ValidityResult};
 use rustc_span::Span;
 use std::fs::File;
 use std::io::Write;
-use std::rc::Rc;
-use vir::ast::Function;
+use vir::ast::Krate;
 
 pub(crate) struct Verifier {
     pub count_verified: u64,
@@ -17,7 +16,7 @@ impl Verifier {
         Verifier { count_verified: 0, count_errors: 0, args: args }
     }
 
-    fn verify(&mut self, compiler: &rustc_interface::interface::Compiler, krate: Vec<Function>) {
+    fn verify(&mut self, compiler: &rustc_interface::interface::Compiler, krate: Krate) {
         let mut z3_config = z3::Config::new();
         z3_config.set_param_value("auto_config", "false");
 
@@ -41,7 +40,7 @@ impl Verifier {
         air_context.set_z3_param("air_recommended_options", "true");
         air_context.set_rlimit(self.args.rlimit * 1000000);
 
-        let ctx = vir::context::Ctx::new(&Rc::new(krate.clone())).expect("error");
+        let ctx = vir::context::Ctx::new(&krate).expect("error");
 
         air_context.blank_line();
         air_context.comment("Prelude");
@@ -55,7 +54,7 @@ impl Verifier {
             air_context.command(&command);
         }
 
-        for function in &krate {
+        for function in &krate.functions {
             let commands = vir::func_to_air::func_decl_to_air(&ctx, &function).unwrap();
             if commands.len() > 0 {
                 air_context.blank_line();
@@ -73,7 +72,7 @@ impl Verifier {
             }
         }
 
-        for function in &krate {
+        for function in &krate.functions {
             let commands = vir::func_to_air::func_def_to_air(&ctx, &function).unwrap();
             if commands.len() > 0 {
                 air_context.blank_line();
@@ -112,6 +111,11 @@ impl Verifier {
                 }
             }
         }
+
+        for datatype in &krate.datatypes {
+            todo!();
+            dbg!(datatype);
+        }
     }
 }
 
@@ -132,7 +136,7 @@ impl rustc_driver::Callbacks for Verifier {
             if let Some(filename) = &self.args.log_vir {
                 let mut file =
                     File::create(filename).expect(&format!("could not open file {}", filename));
-                for func in vir_crate.iter() {
+                for func in vir_crate.functions.iter() {
                     writeln!(&mut file, "fn {} @ {:?}", func.x.name, func.span)
                         .expect("cannot write to vir file");
                     for param in func.x.params.iter() {
@@ -143,8 +147,15 @@ impl rustc_driver::Callbacks for Verifier {
                         )
                         .expect("cannot write to vir file");
                     }
-                    write!(&mut file, "body {:#?}", func.x.body).expect("cannot write to vir file");
+                    writeln!(&mut file, "body {:#?}", func.x.body)
+                        .expect("cannot write to vir file");
                     writeln!(&mut file).expect("cannot write to vir file");
+                }
+
+                for datatype in vir_crate.datatypes.iter() {
+                    writeln!(&mut file, "datatype {} @ {:?}", datatype.x.name, datatype.span)
+                        .expect("cannot write to vir file");
+                    writeln!(&mut file, "{:?}", datatype.x.a).expect("cannot write to vir file");
                     writeln!(&mut file).expect("cannot write to vir file");
                 }
             }

@@ -253,7 +253,8 @@ pub(crate) fn smt_add_decl<'ctx>(context: &mut Context<'ctx>, decl: &Decl) {
                     for field in variant.a.iter() {
                         match &*field.a {
                             TypX::Named(x) if names.contains(x) => {
-                                sorts1.push(Rc::new(Sort::bool(context.context))); // dummy sort
+                                sorts1.push(Rc::new(Sort::bool(context.context)));
+                                // dummy sort
                             }
                             _ => {
                                 sorts1.push(get_sort(context, &field.a));

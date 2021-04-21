@@ -9,7 +9,7 @@ use rustc_mir_build::thir;
 use rustc_span::symbol::Ident;
 use rustc_span::Span;
 use std::rc::Rc;
-use vir::ast::{Function, FunctionX, Mode, ParamX, VirErr};
+use vir::ast::{FunctionX, KrateX, Mode, ParamX, VirErr};
 
 fn body_to_vir<'tcx>(
     tcx: TyCtxt<'tcx>,
@@ -43,7 +43,7 @@ fn check_fn_decl<'tcx>(
     }
 }
 
-fn check_generics<'tcx>(generics: &'tcx Generics<'tcx>) -> Result<(), VirErr> {
+pub(crate) fn check_generics<'tcx>(generics: &'tcx Generics<'tcx>) -> Result<(), VirErr> {
     match generics {
         Generics { params, where_clause, span: _ } => {
             unsupported_unless!(params.len() == 0, "generics");
@@ -56,7 +56,7 @@ fn check_generics<'tcx>(generics: &'tcx Generics<'tcx>) -> Result<(), VirErr> {
 pub(crate) fn check_item_fn<'tcx>(
     tcx: TyCtxt<'tcx>,
     krate: &'tcx Crate<'tcx>,
-    vir: &mut Vec<Function>,
+    vir: &mut KrateX,
     id: Ident,
     attrs: &[Attribute],
     sig: &'tcx FnSig<'tcx>,
@@ -104,13 +104,13 @@ pub(crate) fn check_item_fn<'tcx>(
     let params = Rc::new(vir_params);
     let function =
         spanned_new(sig.span, FunctionX { name, mode, fuel, params, ret, body: Some(vir_body) });
-    vir.push(function);
+    vir.functions.push(function);
     Ok(())
 }
 
 pub(crate) fn check_foreign_item_fn<'tcx>(
     tcx: TyCtxt<'tcx>,
-    vir: &mut Vec<Function>,
+    vir: &mut KrateX,
     id: Ident,
     span: Span,
     attrs: &[Attribute],
@@ -132,6 +132,6 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
     let name = Rc::new(ident_to_var(&id));
     let params = Rc::new(vir_params);
     let function = spanned_new(span, FunctionX { name, fuel, mode, params, ret, body: None });
-    vir.push(function);
+    vir.functions.push(function);
     Ok(())
 }

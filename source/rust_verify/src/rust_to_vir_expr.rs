@@ -20,6 +20,12 @@ pub(crate) fn spanned_new<X>(span: Span, x: X) -> Rc<Spanned<X>> {
     Spanned::new(air::ast::Span { raw_span, as_string }, x)
 }
 
+pub(crate) fn path_to_ty_path<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> Typ {
+    let ds =
+        tcx.def_path(def_id).data.iter().map(|d| Rc::new(format!("{}", d))).collect::<Vec<_>>();
+    Typ::Path(ds)
+}
+
 // TODO: proper handling of def_ids
 pub(crate) fn hack_get_def_name<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> String {
     let debug_name = tcx.def_path_debug_str(def_id);
@@ -89,7 +95,7 @@ pub(crate) fn ty_to_vir<'tcx>(tcx: TyCtxt<'tcx>, ty: &Ty) -> Typ {
                 if hack_check_def_name(tcx, def_id, "builtin", "int") {
                     Typ::Int
                 } else {
-                    unsupported!(format!("type {:?} {:?}", kind, span))
+                    path_to_ty_path(tcx, def_id)
                 }
             }
             _ => {

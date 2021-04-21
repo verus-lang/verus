@@ -69,7 +69,7 @@ pub fn stmt_to_stm(ctx: &Ctx, stmt: &Stmt) -> Result<Stm, VirErr> {
         StmtX::Expr(expr) => expr_to_stm(ctx, &expr),
         StmtX::Decl { param, mutable } => Ok(Spanned::new(
             stmt.span.clone(),
-            StmX::Decl { ident: param.name.clone(), typ: param.typ, mutable: *mutable },
+            StmX::Decl { ident: param.name.clone(), typ: param.typ.clone(), mutable: *mutable },
         )),
     }
 }

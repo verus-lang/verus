@@ -6,6 +6,7 @@ For soundness's sake, be as defensive as possible:
 - explicitly match all fields of the Rust AST so we catch any features added in the future
 */
 
+use crate::rust_to_vir_adts::{check_item_enum, check_item_struct};
 use crate::rust_to_vir_func::{check_foreign_item_fn, check_item_fn};
 use crate::{unsupported, unsupported_unless};
 use rustc_ast::Attribute;
@@ -14,13 +15,14 @@ use rustc_hir::{
 };
 use rustc_middle::ty::TyCtxt;
 use rustc_span::def_id::LocalDefId;
-use vir::ast::{Function, VirErr};
+use std::rc::Rc;
+use vir::ast::{Krate, KrateX, VirErr};
 
 fn check_item<'tcx>(
     tcx: TyCtxt<'tcx>,
     krate: &'tcx Crate<'tcx>,
-    vir: &mut Vec<Function>,
-    _id: &ItemId,
+    vir: &mut KrateX,
+    id: &ItemId,
     item: &'tcx Item<'tcx>,
 ) -> Result<(), VirErr> {
     match &item.kind {
@@ -40,6 +42,12 @@ fn check_item<'tcx>(
         ItemKind::ExternCrate { .. } => {}
         ItemKind::Mod { .. } => {}
         ItemKind::ForeignMod { .. } => {}
+        ItemKind::Struct(variant_data, generics) => {
+            check_item_struct(tcx, krate, vir, item.span, id, variant_data, generics);
+        }
+        ItemKind::Enum(enum_def, generics) => {
+            check_item_enum(tcx, krate, vir, item.span, id, enum_def, generics);
+        }
         _ => {
             unsupported!("unsupported item", item);
         }
@@ -69,7 +77,7 @@ fn check_module<'tcx>(
 
 fn check_foreign_item<'tcx>(
     tcx: TyCtxt<'tcx>,
-    vir: &mut Vec<Function>,
+    vir: &mut KrateX,
     _id: &ForeignItemId,
     item: &'tcx ForeignItem<'tcx>,
 ) -> Result<(), VirErr> {
@@ -105,7 +113,7 @@ fn check_attr<'tcx>(
 pub fn crate_to_vir<'tcx>(
     tcx: TyCtxt<'tcx>,
     krate: &'tcx Crate<'tcx>,
-) -> Result<Vec<Function>, VirErr> {
+) -> Result<Krate, VirErr> {
     let Crate {
         item: _,
         exported_macros,
@@ -122,7 +130,7 @@ pub fn crate_to_vir<'tcx>(
         trait_map,
         attrs,
     } = krate;
-    let mut vir: Vec<Function> = Vec::new();
+    let mut vir: KrateX = Default::default();
     unsupported_unless!(
         exported_macros.len() == 0,
         "exported macros from a crate",
@@ -150,5 +158,5 @@ pub fn crate_to_vir<'tcx>(
     for (id, attr) in attrs {
         check_attr(tcx, id, attr)?;
     }
-    Ok(vir)
+    Ok(Rc::new(vir))
 }

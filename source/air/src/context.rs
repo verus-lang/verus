@@ -147,7 +147,11 @@ impl<'ctx> Context<'ctx> {
         let len = self.name_scopes.len();
         self.name_scopes[len - 1].push(x.clone());
         let prev = self.typing.names.insert(x.clone());
-        if prev { Ok(()) } else { Err(format!("name {} is already in scope", x)) }
+        if prev {
+            Ok(())
+        } else {
+            Err(format!("name {} is already in scope", x))
+        }
     }
 
     pub(crate) fn pop_name_scope(&mut self) {

@@ -48,7 +48,7 @@ impl Ctx {
     pub fn new(krate: &Krate) -> Result<Self, VirErr> {
         let mut functions: Vec<Function> = Vec::new();
         let mut func_map: HashMap<Ident, Function> = HashMap::new();
-        for function in krate.iter() {
+        for function in krate.functions.iter() {
             Self::check_no_recursion(&func_map, function)?;
             functions.push(function.clone());
             func_map.insert(function.x.name.clone(), function.clone());

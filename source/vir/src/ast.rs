@@ -12,10 +12,11 @@ pub enum Mode {
     Exec,
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Clone, Debug)]
 pub enum Typ {
     Bool,
     Int,
+    Path(Vec<Ident>),
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -84,4 +85,18 @@ pub struct FunctionX {
     pub body: Option<Expr>,
 }
 
-pub type Krate = Rc<Vec<Function>>;
+pub use air::ast::Binder;
+pub use air::ast::Binders;
+pub type Field = Binder<Typ>;
+pub type Fields = Binders<Typ>;
+pub type Variant = Binder<Fields>;
+pub type Variants = Binders<Fields>;
+pub type Datatype = Rc<Spanned<Binder<Variants>>>;
+pub type Datatypes = Binders<Variants>;
+
+pub type Krate = Rc<KrateX>;
+#[derive(Debug, Default)]
+pub struct KrateX {
+    pub functions: Vec<Function>,
+    pub datatypes: Vec<Datatype>,
+}

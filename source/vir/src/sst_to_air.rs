@@ -10,8 +10,8 @@ use air::ast::{
     StmtX, Trigger, Triggers,
 };
 use air::ast_util::{
-    bool_typ, ident_apply, ident_binder, ident_var, int_typ, str_apply, str_ident, str_typ,
-    str_var, string_var,
+    bool_typ, ident_apply, ident_binder, ident_typ, ident_var, int_typ, str_apply, str_ident,
+    str_typ, str_var, string_var,
 };
 use std::rc::Rc;
 
@@ -19,6 +19,9 @@ pub fn typ_to_air(typ: &Typ) -> air::ast::Typ {
     match typ {
         Typ::Int => int_typ(),
         Typ::Bool => bool_typ(),
+        Typ::Path(segments) => ident_typ(&Rc::new(
+            segments.iter().map(|x| (**x).as_str()).collect::<Vec<_>>().join("::"),
+        )),
     }
 }
 
@@ -116,7 +119,11 @@ pub fn stm_to_stmts(stm: &Stm, decls: &mut Vec<Decl>) -> Vec<Stmt> {
 
 pub fn stm_to_one_stmt(stm: &Stm, decls: &mut Vec<Decl>) -> Stmt {
     let stmts = stm_to_stmts(stm, decls);
-    if stmts.len() == 1 { stmts[0].clone() } else { Rc::new(StmtX::Block(Rc::new(stmts))) }
+    if stmts.len() == 1 {
+        stmts[0].clone()
+    } else {
+        Rc::new(StmtX::Block(Rc::new(stmts)))
+    }
 }
 
 fn set_fuel(local: &mut Vec<Decl>, hidden: &Vec<Ident>) {

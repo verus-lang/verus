@@ -70,10 +70,19 @@ pub enum MultiOp {
 
 pub type Binder<A> = Rc<BinderX<A>>;
 pub type Binders<A> = Rc<Vec<Binder<A>>>;
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct BinderX<A: Clone> {
     pub name: Ident,
     pub a: A,
+}
+
+impl<A: Clone + Debug> std::fmt::Debug for BinderX<A> {
+    fn fmt(&self, fmt: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
+        self.name.fmt(fmt)?;
+        fmt.write_str(" -> ")?;
+        self.a.fmt(fmt)?;
+        Ok(())
+    }
 }
 
 #[derive(Copy, Clone, Debug)]
