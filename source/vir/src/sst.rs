@@ -16,7 +16,7 @@ pub type Exps = Rc<Vec<Exp>>;
 pub enum ExpX {
     Const(Constant),
     Var(Ident),
-    Call(Ident, Exps),
+    Call(Ident, Exps), // call to function without requires/ensures/mut
     Field(Exp, Ident),
     Unary(UnaryOp, Exp),
     Binary(BinaryOp, Exp, Exp),
@@ -26,6 +26,7 @@ pub type Stm = Rc<Spanned<StmX>>;
 pub type Stms = Rc<Vec<Stm>>;
 #[derive(Debug)]
 pub enum StmX {
+    Call(Ident, Exps), // call to function with requires/ensures/mut
     Assume(Exp),
     Assert(Exp),
     Decl { ident: Ident, typ: Typ, mutable: bool },

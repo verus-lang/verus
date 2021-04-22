@@ -1,4 +1,4 @@
-use crate::util::slice_vec_map_result;
+use crate::util::{slice_vec_map_result, vec_map_result};
 use crate::{unsupported, unsupported_unless};
 use rustc_ast::{AttrKind, Attribute};
 use rustc_hir::def::{DefKind, Res};
@@ -158,6 +158,14 @@ fn expr_to_function<'thir, 'tcx>(expr: &'thir Expr<'thir, 'tcx>) -> DefId {
     }
 }
 
+fn extract_array<'thir, 'tcx>(expr: &'thir Expr<'thir, 'tcx>) -> Vec<&'thir Expr<'thir, 'tcx>> {
+    match &expr.kind {
+        ExprKind::Scope { value, .. } => extract_array(value),
+        ExprKind::Array { fields, .. } => fields.iter().collect(),
+        _ => vec![expr],
+    }
+}
+
 pub(crate) fn expr_to_vir<'thir, 'tcx>(
     tcx: TyCtxt<'tcx>,
     expr: &'thir Expr<'thir, 'tcx>,
@@ -183,10 +191,12 @@ pub(crate) fn expr_to_vir<'thir, 'tcx>(
             }
             expr_to_vir(tcx, arg)
         }
-        ExprKind::Call { fun, args, .. } => {
+        ExprKind::Call { fun, args: args_slice, .. } => {
+            let mut args: Vec<&'thir Expr<'thir, 'tcx>> = args_slice.iter().collect();
             let f = expr_to_function(fun);
             let is_assume = hack_check_def_name(tcx, f, "builtin", "assume");
             let is_assert = hack_check_def_name(tcx, f, "builtin", "assert");
+            let is_requires = hack_check_def_name(tcx, f, "builtin", "requires");
             let is_hide = hack_check_def_name(tcx, f, "builtin", "hide");
             let is_reveal = hack_check_def_name(tcx, f, "builtin", "reveal");
             let is_implies = hack_check_def_name(tcx, f, "builtin", "imply");
@@ -201,7 +211,16 @@ pub(crate) fn expr_to_vir<'thir, 'tcx>(
             let is_mul = hack_check_def_name(tcx, f, "core", "ops::arith::Mul::mul");
             let is_cmp = is_eq || is_ne || is_le || is_ge || is_lt || is_gt;
             let is_arith_binary = is_add || is_sub || is_mul;
-            let vir_args = slice_vec_map_result(args, |arg| expr_to_vir(tcx, arg))?;
+            if is_requires {
+                args = extract_array(args[0]);
+                for arg in &args {
+                    if !matches!(arg.ty.kind(), TyKind::Bool) {
+                        let s = "requires needs a bool expression".to_string();
+                        return Err(spanned_new(arg.span, s));
+                    }
+                }
+            }
+            let vir_args = vec_map_result(&args, |arg| expr_to_vir(tcx, arg))?;
             if is_assume || is_assert {
                 unsupported_unless!(args.len() == 1, "expected assume/assert", args, expr.span);
                 let arg = vir_args[0].clone();

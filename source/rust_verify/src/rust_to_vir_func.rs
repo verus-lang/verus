@@ -9,7 +9,53 @@ use rustc_mir_build::thir;
 use rustc_span::symbol::Ident;
 use rustc_span::Span;
 use std::rc::Rc;
-use vir::ast::{FunctionX, KrateX, Mode, ParamX, VirErr};
+use vir::ast::{ExprX, Exprs, FunctionX, KrateX, Mode, ParamX, StmtX, VirErr};
+use vir::def::Spanned;
+
+#[derive(Clone, Debug)]
+struct Header {
+    hidden: Vec<vir::ast::Ident>,
+    require: Exprs,
+}
+
+fn read_header_block(block: &mut Vec<vir::ast::Stmt>) -> Result<Header, VirErr> {
+    let mut hidden: Vec<vir::ast::Ident> = Vec::new();
+    let mut require: Option<Exprs> = None;
+    let mut n = 0;
+    for stmt in block.iter() {
+        match &stmt.x {
+            StmtX::Expr(expr) => match &expr.x {
+                ExprX::Call(x, es) if x.as_str() == "requires" => {
+                    if require.is_some() {
+                        return Err(Spanned::new(stmt.span.clone(),
+                            "only one call to requires allowed (use requires([e1, ..., en]) for multiple expressions".to_string()));
+                    }
+                    require = Some(es.clone());
+                }
+                ExprX::Fuel(x, 0) => {
+                    hidden.push(x.clone());
+                }
+                _ => break,
+            },
+            _ => break,
+        }
+        n += 1;
+    }
+    *block = block[n..].to_vec();
+    Ok(Header { hidden, require: require.unwrap_or(Rc::new(vec![])) })
+}
+
+fn read_header(body: &mut vir::ast::Expr) -> Result<Header, VirErr> {
+    match &body.x {
+        ExprX::Block(stmts, expr) => {
+            let mut block: Vec<vir::ast::Stmt> = (**stmts).clone();
+            let header = read_header_block(&mut block)?;
+            *body = Spanned::new(body.span.clone(), ExprX::Block(Rc::new(block), expr.clone()));
+            Ok(header)
+        }
+        _ => read_header_block(&mut vec![]),
+    }
+}
 
 fn body_to_vir<'tcx>(
     tcx: TyCtxt<'tcx>,
@@ -99,11 +145,25 @@ pub(crate) fn check_item_fn<'tcx>(
             unsupported!("generator_kind", generator_kind);
         }
     }
-    let vir_body = body_to_vir(tcx, body_id, body)?;
+    let mut vir_body = body_to_vir(tcx, body_id, body)?;
+    let header = read_header(&mut vir_body)?;
+    if mode == Mode::Spec && header.require.len() > 0 {
+        let s = "spec functions cannot have requires/ensures";
+        return Err(spanned_new(sig.span, s.to_string()));
+    }
     let name = Rc::new(ident_to_var(&id));
     let params = Rc::new(vir_params);
-    let function =
-        spanned_new(sig.span, FunctionX { name, mode, fuel, params, ret, body: Some(vir_body) });
+    let func = FunctionX {
+        name,
+        mode,
+        fuel,
+        params,
+        ret,
+        require: header.require,
+        hidden: Rc::new(header.hidden),
+        body: Some(vir_body),
+    };
+    let function = spanned_new(sig.span, func);
     vir.functions.push(function);
     Ok(())
 }
@@ -131,7 +191,17 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
     }
     let name = Rc::new(ident_to_var(&id));
     let params = Rc::new(vir_params);
-    let function = spanned_new(span, FunctionX { name, fuel, mode, params, ret, body: None });
+    let func = FunctionX {
+        name,
+        fuel,
+        mode,
+        params,
+        ret,
+        require: Rc::new(vec![]),
+        hidden: Rc::new(vec![]),
+        body: None,
+    };
+    let function = spanned_new(span, func);
     vir.functions.push(function);
     Ok(())
 }

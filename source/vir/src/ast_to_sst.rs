@@ -46,6 +46,10 @@ pub(crate) fn expr_to_exp(ctx: &Ctx, expr: &Expr) -> Result<Exp, VirErr> {
 
 pub fn expr_to_stm(ctx: &Ctx, expr: &Expr) -> Result<Stm, VirErr> {
     match &expr.x {
+        ExprX::Call(x, args) => {
+            let exps = vec_map_result(args, |e| expr_to_exp(ctx, e))?;
+            Ok(Spanned::new(expr.span.clone(), StmX::Call(x.clone(), Rc::new(exps))))
+        }
         ExprX::Assume(expr) => {
             Ok(Spanned::new(expr.span.clone(), StmX::Assume(expr_to_exp(ctx, expr)?)))
         }
@@ -62,7 +66,7 @@ pub fn expr_to_stm(ctx: &Ctx, expr: &Expr) -> Result<Stm, VirErr> {
             Ok(Spanned::new(expr.span.clone(), StmX::Block(stms)))
         }
         _ => {
-            todo!()
+            todo!("{}", expr.span.as_string)
         }
     }
 }

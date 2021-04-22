@@ -7,6 +7,16 @@ pub fn assert(_b: bool) {
 }
 
 // Can only appear at beginning of function body
+pub fn requires<A>(_a: A) {
+    unimplemented!();
+}
+
+// Can only appear at beginning of function body
+pub fn ensures<A>(_a: A) {
+    unimplemented!();
+}
+
+// Can only appear at beginning of function body
 pub fn hide<F>(_f: F) {
     unimplemented!();
 }

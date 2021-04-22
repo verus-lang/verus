@@ -1,7 +1,8 @@
 use crate::ast::{BinaryOp, Ident, Params, Typ, UnaryOp};
+use crate::context::Ctx;
 use crate::def::{
-    prefix_fuel_id, suffix_global_id, suffix_local_id, FUEL_BOOL, FUEL_BOOL_DEFAULT, FUEL_DEFAULTS,
-    FUEL_ID,
+    prefix_fuel_id, prefix_requires, suffix_global_id, suffix_local_id, FUEL_BOOL,
+    FUEL_BOOL_DEFAULT, FUEL_DEFAULTS, FUEL_ID,
 };
 use crate::sst::{Exp, ExpX, Stm, StmX};
 use crate::util::vec_map;
@@ -81,8 +82,20 @@ pub(crate) fn exp_to_expr(exp: &Exp) -> Expr {
     }
 }
 
-pub fn stm_to_stmts(stm: &Stm, decls: &mut Vec<Decl>) -> Vec<Stmt> {
+pub fn stm_to_stmts(ctx: &Ctx, stm: &Stm, decls: &mut Vec<Decl>) -> Vec<Stmt> {
     match &stm.x {
+        StmX::Call(x, args) => {
+            let mut stmts: Vec<Stmt> = Vec::new();
+            let func = &ctx.func_map[x];
+            if func.x.require.len() > 0 {
+                let f_req = prefix_requires(&func.x.name);
+                let args = Rc::new(vec_map(args, exp_to_expr));
+                let e_req = Rc::new(ExprX::Apply(f_req, args));
+                let option_span = Rc::new(Some(stm.span.clone()));
+                stmts.push(Rc::new(StmtX::Assert(option_span, e_req)));
+            }
+            stmts
+        }
         StmX::Assume(expr) => vec![Rc::new(StmtX::Assume(exp_to_expr(&expr)))],
         StmX::Assert(expr) => {
             let air_expr = exp_to_expr(&expr);
@@ -115,14 +128,15 @@ pub fn stm_to_stmts(stm: &Stm, decls: &mut Vec<Decl>) -> Vec<Stmt> {
             }
         }
         StmX::Block(stms) => {
-            let stmts = stms.iter().map(|s| stm_to_stmts(s, decls)).flatten().collect::<Vec<_>>();
+            let stmts: Vec<Stmt> =
+                stms.iter().map(|s| stm_to_stmts(ctx, s, decls)).flatten().collect();
             vec![Rc::new(StmtX::Block(Rc::new(stmts)))]
         }
     }
 }
 
-pub fn stm_to_one_stmt(stm: &Stm, decls: &mut Vec<Decl>) -> Stmt {
-    let stmts = stm_to_stmts(stm, decls);
+pub fn stm_to_one_stmt(ctx: &Ctx, stm: &Stm, decls: &mut Vec<Decl>) -> Stmt {
+    let stmts = stm_to_stmts(ctx, stm, decls);
     if stmts.len() == 1 { stmts[0].clone() } else { Rc::new(StmtX::Block(Rc::new(stmts))) }
 }
 
@@ -157,12 +171,21 @@ fn set_fuel(local: &mut Vec<Decl>, hidden: &Vec<Ident>) {
     local.push(Rc::new(DeclX::Axiom(fuel_expr)));
 }
 
-pub fn stm_to_air(params: &Params, hidden: &Vec<Ident>, stm: &Stm) -> Commands {
+pub fn stm_to_air(
+    ctx: &Ctx,
+    params: &Params,
+    hidden: &Vec<Ident>,
+    reqs: &Vec<Exp>,
+    stm: &Stm,
+) -> Commands {
     let mut local: Vec<Decl> = vec_map(params, |param| {
         Rc::new(DeclX::Const(suffix_local_id(&param.x.name), typ_to_air(&param.x.typ)))
     });
-    let assertion = stm_to_one_stmt(&stm, &mut local);
+    let assertion = stm_to_one_stmt(ctx, &stm, &mut local);
     set_fuel(&mut local, hidden);
+    for req in reqs {
+        local.push(Rc::new(DeclX::Axiom(exp_to_expr(req))));
+    }
     let query = Rc::new(QueryX { local: Rc::new(local), assertion });
     let command = Rc::new(CommandX::CheckValid(query));
     Rc::new(vec![command])

@@ -3,9 +3,11 @@ use air::ast::Constant;
 use std::rc::Rc;
 
 pub type VirErr = Rc<Spanned<String>>;
-pub type Ident = Rc<String>;
 
-#[derive(Copy, Clone, Debug)]
+pub type Ident = Rc<String>;
+pub type Idents = Rc<Vec<Ident>>;
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum Mode {
     Spec,
     Proof,
@@ -76,13 +78,15 @@ pub struct ParamX {
 }
 
 pub type Function = Rc<Spanned<FunctionX>>;
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct FunctionX {
     pub name: Ident,
     pub mode: Mode,
     pub fuel: u32,
     pub params: Params,
     pub ret: Option<Typ>,
+    pub require: Exprs,
+    pub hidden: Idents,
     pub body: Option<Expr>,
 }
 
