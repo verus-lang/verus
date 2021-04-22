@@ -12,6 +12,7 @@ use rustc_span::symbol::Ident;
 use rustc_span::Span;
 use std::rc::Rc;
 use vir::ast::{BinaryOp, ExprX, Mode, ParamX, StmtX, Stmts, Typ, UnaryOp, VirErr};
+use vir::ast_util::str_ident;
 use vir::def::Spanned;
 
 pub(crate) fn spanned_new<X>(span: Span, x: X) -> Rc<Spanned<X>> {
@@ -98,8 +99,9 @@ pub(crate) fn ty_to_vir<'tcx>(tcx: TyCtxt<'tcx>, ty: &Ty) -> Typ {
                     path_to_ty_path(tcx, def_id)
                 }
             }
+            Res::Def(DefKind::Enum, def_id) => path_to_ty_path(tcx, def_id),
             _ => {
-                unsupported!(format!("type {:?} {:?}", kind, span))
+                unsupported!(format!("type {:?} {:?} {:?}", kind, path.res, span))
             }
         },
         _ => {
@@ -323,6 +325,22 @@ pub(crate) fn expr_to_vir<'thir, 'tcx>(
             expr.span,
             ExprX::Assign(expr_to_vir(tcx, lhs)?, expr_to_vir(tcx, rhs)?),
         )),
+        ExprKind::Field { lhs, name } => {
+            let vir_lhs = expr_to_vir(tcx, lhs)?;
+            let field_ident = if let Some(adt_def) = lhs.ty.ty_adt_def() {
+                unsupported_unless!(
+                    adt_def.variants.len() == 1,
+                    "field_of_adt_with_multiple_variants",
+                    expr,
+                    expr.span
+                );
+                let variant = adt_def.variants.iter().next().unwrap();
+                str_ident(&variant.fields[name.index()].ident.as_str())
+            } else {
+                unsupported!("field_of_non_adt", expr, expr.span);
+            };
+            Ok(spanned_new(expr.span, ExprX::Field(vir_lhs, field_ident)))
+        }
         _ => {
             dbg!(expr);
             dbg!(expr.span);

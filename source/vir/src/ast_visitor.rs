@@ -17,6 +17,11 @@ where
             let expr = Spanned::new(expr.span.clone(), ExprX::Call(x.clone(), Rc::new(exprs)));
             f(&expr)
         }
+        ExprX::Field(lhs, name) => {
+            let lhs1 = map_expr_visitor(lhs, f)?;
+            let expr = Spanned::new(expr.span.clone(), ExprX::Field(lhs1, name.clone()));
+            f(&expr)
+        }
         ExprX::Assume(e1) => {
             let expr1 = map_expr_visitor(e1, f)?;
             let expr = Spanned::new(expr.span.clone(), ExprX::Assume(expr1));

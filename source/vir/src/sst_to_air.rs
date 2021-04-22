@@ -74,6 +74,10 @@ pub(crate) fn exp_to_expr(exp: &Exp) -> Expr {
             };
             Rc::new(expx)
         }
+        ExpX::Field(lhs, name) => {
+            let lh = exp_to_expr(lhs);
+            Rc::new(ExprX::Apply(name.clone(), Rc::new(vec![lh])))
+        }
     }
 }
 

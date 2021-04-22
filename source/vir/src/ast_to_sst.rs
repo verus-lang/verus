@@ -35,6 +35,9 @@ pub(crate) fn expr_to_exp(ctx: &Ctx, expr: &Expr) -> Result<Exp, VirErr> {
             Ok(Spanned::new(expr.span.clone(), bin))
         }
         ExprX::Block(stmts, Some(expr)) if stmts.len() == 0 => expr_to_exp(ctx, expr),
+        ExprX::Field(lhs, name) => {
+            Ok(Spanned::new(expr.span.clone(), ExpX::Field(expr_to_exp(ctx, lhs)?, name.clone())))
+        }
         _ => {
             todo!("{:?}", expr)
         }

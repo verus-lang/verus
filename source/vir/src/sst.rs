@@ -17,6 +17,7 @@ pub enum ExpX {
     Const(Constant),
     Var(Ident),
     Call(Ident, Exps),
+    Field(Exp, Ident),
     Unary(UnaryOp, Exp),
     Binary(BinaryOp, Exp, Exp),
 }

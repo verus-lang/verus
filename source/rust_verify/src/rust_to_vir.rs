@@ -151,7 +151,7 @@ pub fn crate_to_vir<'tcx>(tcx: TyCtxt<'tcx>, krate: &'tcx Crate<'tcx>) -> Result
         check_module(tcx, id, module)?;
     }
     unsupported_unless!(proc_macros.len() == 0, "procedural macros", proc_macros);
-    unsupported_unless!(trait_map.len() == 0, "traits", trait_map);
+    unsupported_unless!(trait_map.iter().all(|(_, v)| v.len() == 0), "traits", trait_map);
     for (id, attr) in attrs {
         check_attr(tcx, id, attr)?;
     }

@@ -49,6 +49,7 @@ pub enum ExprX {
     Const(Constant),
     Var(Ident),
     Call(Ident, Exprs),
+    Field(Expr, Ident),
     Assume(Expr),
     Assert(Expr),
     Unary(UnaryOp, Expr),
