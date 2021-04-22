@@ -16,12 +16,10 @@ pub(crate) fn prelude_nodes() -> Vec<Node> {
         (declare-fun [fuel_bool_default] ([FuelId]) Bool)
         (declare-const [fuel_defaults] Bool)
         (axiom (=> [fuel_defaults]
-            (!
-                (forall ((id [FuelId]))
-                    (= ([fuel_bool] id) ([fuel_bool_default] id))
-                )
+            (forall ((id [FuelId])) (!
+                (= ([fuel_bool] id) ([fuel_bool_default] id))
                 ":pattern" (([fuel_bool] id))
-            )
+            ))
         ))
     )
 }

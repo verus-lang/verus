@@ -623,10 +623,10 @@ fn yes_forall3() {
         (check-valid
             (assert
                 (=>
-                    (!
-                        (forall ((i Int) (j Int)) (f i j))
+                    (forall ((i Int) (j Int)) (!
+                        (f i j)
                         ":pattern" ((f i j))
-                    )
+                    ))
                     (f 10 20)
                 )
             )
@@ -642,11 +642,11 @@ fn yes_forall4() {
         (check-valid
             (assert
                 (=>
-                    (!
-                        (forall ((i Int) (j Int)) (f i j))
+                    (forall ((i Int) (j Int)) (!
+                        (f i j)
                         ":pattern" ((g i j))
                         ":pattern" ((f i j))
-                    )
+                    ))
                     (f 10 20)
                 )
             )
@@ -660,10 +660,10 @@ fn yes_forall5() {
         (declare-fun f (Int) Bool)
         (declare-fun g (Int) Bool)
         (axiom
-            (!
-                (forall ((i Int) (j Int)) (=> (f i) (g j)))
+            (forall ((i Int) (j Int)) (!
+                (=> (f i) (g j))
                 ":pattern" ((f i) (g j))
-            )
+            ))
         )
         (check-valid
             (assert
@@ -692,10 +692,10 @@ fn no_forall2() {
         (check-valid
             (assert
                 (=>
-                    (!
-                        (forall ((i Int) (j Int)) (f i j))
+                    (forall ((i Int) (j Int)) (!
+                        (f i j)
                         ":pattern" ((g i j))
-                    )
+                    ))
                     (f 10 20) // doesn't match (g i j)
                 )
             )
@@ -728,10 +728,10 @@ fn yes_exists1() {
             (assert
                 (=>
                     (f 10 20)
-                    (!
-                        (exists ((i Int) (j Int)) (f i j))
+                    (exists ((i Int) (j Int)) (!
+                        (f i j)
                         ":pattern" ((f i j))
-                    )
+                    ))
                 )
             )
         )
@@ -745,10 +745,10 @@ fn no_exists1() {
         (check-valid
             (assert
                 (=>
-                    (!
-                        (exists ((i Int) (j Int)) (f i j))
+                    (exists ((i Int) (j Int)) (!
+                        (f i j)
                         ":pattern" ((f i j))
-                    )
+                    ))
                     (f 10 20)
                 )
             )

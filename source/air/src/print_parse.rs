@@ -1,7 +1,7 @@
 use crate::ast::{
     BinaryOp, BindX, Binder, BinderX, Binders, Command, CommandX, Commands, Constant, Datatypes,
     Decl, DeclX, Decls, Expr, ExprX, Exprs, Ident, MultiOp, Quant, Query, QueryX, Span, Stmt,
-    StmtX, Stmts, Trigger, Typ, TypX, Typs, UnaryOp,
+    StmtX, Stmts, Trigger, Triggers, Typ, TypX, Typs, UnaryOp,
 };
 use crate::util::vec_map;
 use sise::{Node, Writer};
@@ -147,19 +147,19 @@ pub(crate) fn expr_to_node(expr: &Expr) -> Node {
                     Quant::Exists => "exists",
                 };
                 let s_binders = binders_to_node(binders, &typ_to_node);
-                let inner = nodes!({str_to_node(s_quant)} {s_binders} {expr_to_node(expr)});
-                if triggers.len() == 0 {
-                    inner
+                let body = if triggers.len() == 0 {
+                    expr_to_node(expr)
                 } else {
                     let mut nodes: Vec<Node> = Vec::new();
                     nodes.push(str_to_node("!"));
-                    nodes.push(inner);
+                    nodes.push(expr_to_node(expr));
                     for trigger in triggers.iter() {
                         nodes.push(str_to_node(":pattern"));
                         nodes.push(exprs_to_node(trigger));
                     }
                     Node::List(nodes)
-                }
+                };
+                nodes!({str_to_node(s_quant)} {s_binders} {body})
             }
         },
         ExprX::LabeledAssertion(span, expr) => match &**span {
@@ -496,12 +496,6 @@ pub(crate) fn node_to_expr(node: &Node) -> Result<Expr, String> {
                 }
                 _ => {}
             }
-            match &nodes[0] {
-                Node::Atom(s) if s.to_string() == "!" && nodes.len() >= 2 => {
-                    return node_to_bang_expr(&nodes[1], &nodes[2..]);
-                }
-                _ => {}
-            }
             let args = nodes_to_exprs(&nodes[1..])?;
             let uop = match &nodes[0] {
                 Node::Atom(s) if s.to_string() == "not" => Some(UnaryOp::Not),
@@ -625,17 +619,9 @@ fn node_to_let_expr(binder_nodes: &[Node], expr: &Node) -> Result<Expr, String> 
     Ok(Rc::new(ExprX::Bind(bind, node_to_expr(expr)?)))
 }
 
-fn node_to_quant_expr(quant: Quant, binder_nodes: &[Node], expr: &Node) -> Result<Expr, String> {
-    let binders = nodes_to_binders(binder_nodes, &node_to_typ)?;
-    let bind = Rc::new(BindX::Quant(quant, binders, Rc::new(vec![])));
-    Ok(Rc::new(ExprX::Bind(bind, node_to_expr(expr)?)))
-}
-
-fn node_to_bang_expr(inner_node: &Node, nodes: &[Node]) -> Result<Expr, String> {
-    let inner = node_to_expr(inner_node)?;
+fn nodes_to_triggers(nodes: &[Node]) -> Result<Triggers, String> {
     let mut triggers: Vec<Trigger> = Vec::new();
     let mut expect_pattern = true;
-    let mut ok = true;
     for node in nodes {
         match node {
             Node::Atom(s) if s.to_string() == ":pattern" && expect_pattern => {}
@@ -643,25 +629,25 @@ fn node_to_bang_expr(inner_node: &Node, nodes: &[Node]) -> Result<Expr, String> 
                 triggers.push(nodes_to_exprs(trigger_nodes)?);
             }
             _ => {
-                ok = false;
+                return Err(format!("expected quantifier pattern, found {}", node_to_string(node)));
             }
         }
         expect_pattern = !expect_pattern;
     }
-    if ok {
-        match &*inner {
-            ExprX::Bind(bind, expr) => match &**bind {
-                BindX::Quant(quant, binders, ts) if ts.len() == 0 => {
-                    let triggers = Rc::new(triggers);
-                    let bind = Rc::new(BindX::Quant(*quant, binders.clone(), triggers));
-                    return Ok(Rc::new(ExprX::Bind(bind, expr.clone())));
-                }
-                _ => {}
-            },
-            _ => {}
-        }
-    }
-    Err(format!("expected quantifier with patterns, found: {}", node_to_string(inner_node)))
+    Ok(Rc::new(triggers))
+}
+
+fn node_to_quant_expr(quant: Quant, binder_nodes: &[Node], expr: &Node) -> Result<Expr, String> {
+    let binders = nodes_to_binders(binder_nodes, &node_to_typ)?;
+    let (body, triggers) = match &expr {
+        Node::List(nodes) if nodes.len() >= 2 => match &nodes[0] {
+            Node::Atom(s) if s.to_string() == "!" => (&nodes[1], nodes_to_triggers(&nodes[2..])?),
+            _ => (expr, Rc::new(vec![])),
+        },
+        _ => (expr, Rc::new(vec![])),
+    };
+    let bind = Rc::new(BindX::Quant(quant, binders, triggers));
+    Ok(Rc::new(ExprX::Bind(bind, node_to_expr(body)?)))
 }
 
 pub(crate) fn node_to_stmt(node: &Node) -> Result<Stmt, String> {
