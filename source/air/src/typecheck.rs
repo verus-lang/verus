@@ -68,11 +68,7 @@ fn typ_eq(typ1: &Typ, typ2: &Typ) -> bool {
 }
 
 fn expect_typ(typ1: &Typ, typ2: &Typ, msg: &str) -> Result<(), TypeError> {
-    if typ_eq(typ1, typ2) {
-        Ok(())
-    } else {
-        Err(msg.to_string())
-    }
+    if typ_eq(typ1, typ2) { Ok(()) } else { Err(msg.to_string()) }
 }
 
 pub(crate) fn check_typ(typing: &Typing, typ: &Typ) -> Result<(), TypeError> {

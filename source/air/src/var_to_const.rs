@@ -11,11 +11,7 @@ fn find_version(versions: &HashMap<Ident, u32>, x: &String) -> u32 {
 }
 
 fn rename_var(x: &String, n: u32) -> String {
-    if x.ends_with("@") {
-        format!("{}{}", x, n)
-    } else {
-        format!("{}@{}", x, n)
-    }
+    if x.ends_with("@") { format!("{}{}", x, n) } else { format!("{}@{}", x, n) }
 }
 
 pub(crate) fn lower_query(query: &Query) -> Query {

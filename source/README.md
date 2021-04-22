@@ -136,6 +136,19 @@ To check the source code, type the following from the `verify` directory:
 ../install/bin/cargo-fmt -- --check
 ```
 
+If you have other toolchains installed (with `rustup`) this will run the active
+toolchain by default, and not the `rust-fmt` that we compiled with the `rust` compiler.
+
+To switch to the correct tools, you can add the custom toolchain to `rustup`, and set an
+override for this project:
+
+```
+cd ..
+# In the project root:
+rustup toolchain link rust-verify install/
+rustup override set rust-verify
+```
+
 If the source code follows the guidelines, `cargo-fmt -- --check` will produce no output.
 Otherwise, it will report suggestions on how to reformat the source code.
 

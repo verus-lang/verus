@@ -119,11 +119,7 @@ pub fn stm_to_stmts(stm: &Stm, decls: &mut Vec<Decl>) -> Vec<Stmt> {
 
 pub fn stm_to_one_stmt(stm: &Stm, decls: &mut Vec<Decl>) -> Stmt {
     let stmts = stm_to_stmts(stm, decls);
-    if stmts.len() == 1 {
-        stmts[0].clone()
-    } else {
-        Rc::new(StmtX::Block(Rc::new(stmts)))
-    }
+    if stmts.len() == 1 { stmts[0].clone() } else { Rc::new(StmtX::Block(Rc::new(stmts))) }
 }
 
 fn set_fuel(local: &mut Vec<Decl>, hidden: &Vec<Ident>) {
