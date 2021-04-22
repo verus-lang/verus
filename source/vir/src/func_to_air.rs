@@ -7,8 +7,8 @@ use crate::def::{
 use crate::sst_to_air::{exp_to_expr, typ_to_air};
 use crate::util::{vec_map, vec_map_result};
 use air::ast::{
-    BinaryOp, BindX, Command, CommandX, Commands, DeclX, Expr, ExprX, MultiOp, Quant, Trigger,
-    Triggers,
+    BinaryOp, BindX, Command, CommandX, Commands, DeclX, Expr, ExprX, MultiOp, Quant, Span,
+    Trigger, Triggers,
 };
 use air::ast_util::{bool_typ, ident_binder, ident_var, str_apply, string_apply};
 use std::rc::Rc;
@@ -84,7 +84,11 @@ pub fn func_decl_to_air(ctx: &Ctx, function: &Function) -> Result<Commands, VirE
                 let mut exprs: Vec<Expr> = Vec::new();
                 for e in function.x.require.iter() {
                     let exp = crate::ast_to_sst::expr_to_exp(&ctx, &e)?;
-                    exprs.push(exp_to_expr(&exp));
+                    let expr = exp_to_expr(&exp);
+                    let description = Some("failed precondition".to_string());
+                    let option_span = Rc::new(Some(Span { description, ..e.span.clone() }));
+                    let loc_expr = Rc::new(ExprX::LabeledAssertion(option_span, expr));
+                    exprs.push(loc_expr);
                 }
                 let body = Rc::new(ExprX::Multi(MultiOp::And, Rc::new(exprs)));
                 let e_forall = func_def_quant(&name, &function.x.params, body)?;

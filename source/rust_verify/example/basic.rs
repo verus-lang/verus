@@ -97,3 +97,10 @@ fn test_requires2(a: int, b: int, c: int) {
     test_requires1(a + a, b + b, c + c);
     test_requires1(a + a, b + b, a + c); // FAILS
 }
+
+fn test_requires3(a: int, b: int, c: int) {
+    assume(a <= b);
+    assume(b <= c);
+    test_requires1(a + a, b + b, c + c);
+    test_requires1(a + c, b + b, c + c); // FAILS
+}

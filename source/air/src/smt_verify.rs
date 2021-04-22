@@ -1,14 +1,15 @@
 use crate::ast::{
-    BinaryOp, BindX, Constant, Decl, DeclX, Expr, ExprX, Ident, MultiOp, Quant, Query, Span,
-    SpanOption, StmtX, Typ, TypX, UnaryOp, ValidityResult,
+    BinaryOp, BindX, Constant, Decl, DeclX, Expr, ExprX, Ident, MultiOp, Quant, Query, Span, StmtX,
+    Typ, TypX, UnaryOp, ValidityResult,
 };
-use crate::context::Context;
+use crate::context::{AssertionInfo, Context};
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 use z3::ast::{Ast, Bool, Dynamic, Int};
 use z3::{Pattern, SatResult, Sort, Symbol};
 
 pub const PREFIX_LABEL: &str = "%%location_label%%";
+pub const GLOBAL_PREFIX_LABEL: &str = "%%global_location_label%%";
 
 fn new_const<'ctx>(context: &mut Context<'ctx>, name: &String, typ: &Typ) -> Dynamic<'ctx> {
     match &**typ {
@@ -182,42 +183,50 @@ fn expr_to_smt<'ctx>(context: &mut Context<'ctx>, expr: &Expr) -> Dynamic<'ctx> 
     }
 }
 
-#[derive(Debug)]
-pub(crate) struct AssertionInfo {
-    pub(crate) span: SpanOption,
-    pub(crate) label: Ident,
-    pub(crate) decl: Decl,
-}
-
 fn label_asserts<'ctx>(
     context: &mut Context<'ctx>,
     infos: &mut Vec<AssertionInfo>,
     expr: &Expr,
+    is_global: bool,
 ) -> Expr {
     match &**expr {
-        ExprX::Binary(BinaryOp::Implies, lhs, rhs) => {
-            // asserts are on rhs
-            Rc::new(ExprX::Binary(
-                BinaryOp::Implies,
-                lhs.clone(),
-                label_asserts(context, infos, rhs),
-            ))
+        ExprX::Binary(op @ BinaryOp::Implies, lhs, rhs)
+        | ExprX::Binary(op @ BinaryOp::Eq, lhs, rhs) => {
+            // asserts are on rhs of =>
+            // (slight hack to also allow rhs of == for quantified function definitions)
+            Rc::new(ExprX::Binary(*op, lhs.clone(), label_asserts(context, infos, rhs, is_global)))
         }
         ExprX::Multi(op @ MultiOp::And, exprs) | ExprX::Multi(op @ MultiOp::Or, exprs) => {
             let mut exprs_vec: Vec<Expr> = Vec::new();
             for expr in exprs.iter() {
-                exprs_vec.push(label_asserts(context, infos, expr));
+                exprs_vec.push(label_asserts(context, infos, expr, is_global));
             }
             Rc::new(ExprX::Multi(*op, Rc::new(exprs_vec)))
         }
+        ExprX::Bind(bind, body) => match &**bind {
+            BindX::Quant(Quant::Forall, _, _) => {
+                Rc::new(ExprX::Bind(bind.clone(), label_asserts(context, infos, body, is_global)))
+            }
+            _ => expr.clone(),
+        },
         ExprX::LabeledAssertion(span, expr) => {
-            let label = Rc::new(PREFIX_LABEL.to_string() + &infos.len().to_string());
+            let label = if is_global {
+                let count = context.assert_infos_count;
+                context.assert_infos_count += 1;
+                Rc::new(GLOBAL_PREFIX_LABEL.to_string() + &count.to_string())
+            } else {
+                Rc::new(PREFIX_LABEL.to_string() + &infos.len().to_string())
+            };
             let decl = Rc::new(DeclX::Const(label.clone(), Rc::new(TypX::Bool)));
             let assertion_info = AssertionInfo { span: span.clone(), label: label.clone(), decl };
             infos.push(assertion_info);
             let lhs = Rc::new(ExprX::Var(label));
             // See comments about Z3_model_eval below for why do we use => instead of or.
-            Rc::new(ExprX::Binary(BinaryOp::Implies, lhs, label_asserts(context, infos, expr)))
+            Rc::new(ExprX::Binary(
+                BinaryOp::Implies,
+                lhs,
+                label_asserts(context, infos, expr, is_global),
+            ))
         }
         _ => expr.clone(),
     }
@@ -328,8 +337,15 @@ pub(crate) fn smt_add_decl<'ctx>(context: &mut Context<'ctx>, decl: &Decl) {
         }
         DeclX::Var(_, _) => {}
         DeclX::Axiom(expr) => {
-            context.smt_log.log_assert(&expr);
-            let smt_expr = expr_to_smt(context, &expr).as_bool().unwrap();
+            let mut infos: Vec<AssertionInfo> = Vec::new();
+            let labeled_expr = label_asserts(context, &mut infos, &expr, true);
+            for info in infos {
+                crate::typecheck::add_decl(context, &info.decl, true).unwrap();
+                context.assert_infos.insert(info.label.clone(), Rc::new(info.clone()));
+                smt_add_decl(context, &info.decl);
+            }
+            context.smt_log.log_assert(&labeled_expr);
+            let smt_expr = expr_to_smt(context, &labeled_expr).as_bool().unwrap();
             context.solver.assert(&smt_expr);
         }
     }
@@ -341,6 +357,7 @@ fn smt_check_assertion<'ctx>(
     expr: &Expr,
 ) -> ValidityResult {
     let mut discovered_span = Rc::new(None);
+    let mut discovered_global_span = Rc::new(None);
     let not_expr = Rc::new(ExprX::Unary(UnaryOp::Not, expr.clone()));
     context.smt_log.log_assert(&not_expr);
     context.solver.assert(&expr_to_smt(context, &not_expr).as_bool().unwrap());
@@ -385,9 +402,19 @@ fn smt_check_assertion<'ctx>(
                             }
                         }
                     }
+                    for (_, info) in context.assert_infos.iter() {
+                        let x_info = context.vars[&info.label].as_bool().unwrap();
+                        if let Some(b) = model.eval(&x_info) {
+                            if let Some(b2) = b.as_bool() {
+                                if b2 {
+                                    discovered_global_span = info.span.clone();
+                                }
+                            }
+                        }
+                    }
                 }
             }
-            ValidityResult::Invalid(discovered_span)
+            ValidityResult::Invalid(discovered_span, discovered_global_span)
         }
     }
 }
@@ -413,7 +440,7 @@ pub(crate) fn smt_check_query<'ctx>(context: &mut Context<'ctx>, query: &Query) 
 
     // add labels to assertions for error reporting
     let mut infos: Vec<AssertionInfo> = Vec::new();
-    let labeled_assertion = label_asserts(context, &mut infos, &assertion);
+    let labeled_assertion = label_asserts(context, &mut infos, &assertion, false);
     for info in &infos {
         if let Some(Span { as_string, .. }) = &*info.span {
             context.smt_log.comment(as_string);

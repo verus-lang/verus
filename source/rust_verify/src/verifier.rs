@@ -1,6 +1,6 @@
 use crate::config::Args;
 use air::ast::{CommandX, ValidityResult};
-use rustc_span::Span;
+use rustc_span::{MultiSpan, Span};
 use std::fs::File;
 use std::io::Write;
 use vir::ast::Krate;
@@ -89,7 +89,7 @@ impl Verifier {
                 ValidityResult::TypeError(err) => {
                     panic!("internal error: generated ill-typed AIR code: {}", err);
                 }
-                ValidityResult::Invalid(span_option) => {
+                ValidityResult::Invalid(span_option, _) => {
                     panic!("internal error: unexpected invalid result: {:?}", span_option);
                 }
             }
@@ -112,21 +112,40 @@ impl Verifier {
                     ValidityResult::TypeError(err) => {
                         panic!("internal error: generated ill-typed AIR code: {}", err);
                     }
-                    ValidityResult::Invalid(span_option) => {
-                        match &*span_option {
+                    ValidityResult::Invalid(span1, span2) => {
+                        match &*span1 {
                             None => {
                                 panic!("internal error: found Error with no span")
                             }
-                            Some(air::ast::Span { raw_span, .. }) => {
+                            Some(air::ast::Span { description, raw_span, .. }) => {
+                                let msg = description
+                                    .as_ref()
+                                    .unwrap_or(&"assertion failed".to_string())
+                                    .clone();
                                 let span: &Span = (*raw_span)
                                     .downcast_ref::<Span>()
                                     .expect("internal error: failed to cast to Span");
-                                dbg!(span);
+                                //dbg!(span);
+                                let mut multispan = MultiSpan::from_span(*span);
+                                match &*span2 {
+                                    None => {}
+                                    Some(air::ast::Span { description, raw_span, .. }) => {
+                                        let msg = description
+                                            .as_ref()
+                                            .unwrap_or(&"related location".to_string())
+                                            .clone();
+                                        let span: &Span = (*raw_span)
+                                            .downcast_ref::<Span>()
+                                            .expect("internal error: failed to cast to Span");
+                                        //dbg!(span);
+                                        multispan.push_span_label(*span, msg);
+                                    }
+                                }
                                 compiler
                                     .session()
                                     .parse_sess
                                     .span_diagnostic
-                                    .span_err(*span, "assertion failed");
+                                    .span_err(multispan, &msg);
                             }
                         }
                         self.count_errors += 1;

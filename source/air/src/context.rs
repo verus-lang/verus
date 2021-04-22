@@ -1,4 +1,4 @@
-use crate::ast::{Command, CommandX, Decl, Ident, Query, TypeError, ValidityResult};
+use crate::ast::{Command, CommandX, Decl, Ident, Query, SpanOption, TypeError, ValidityResult};
 use crate::print_parse::Logger;
 use crate::typecheck::Typing;
 use std::collections::{HashMap, HashSet};
@@ -6,12 +6,21 @@ use std::rc::Rc;
 use z3::ast::Dynamic;
 use z3::{FuncDecl, Sort};
 
+#[derive(Clone, Debug)]
+pub(crate) struct AssertionInfo {
+    pub(crate) span: SpanOption,
+    pub(crate) label: Ident,
+    pub(crate) decl: Decl,
+}
+
 pub struct Context<'ctx> {
     pub(crate) context: &'ctx z3::Context,
     pub(crate) solver: &'ctx z3::Solver<'ctx>,
     pub(crate) typs: HashMap<Ident, Rc<Sort<'ctx>>>,
     pub(crate) vars: HashMap<Ident, Dynamic<'ctx>>, // no Rc; Dynamic implements Clone
     pub(crate) funs: HashMap<Ident, Rc<FuncDecl<'ctx>>>,
+    pub(crate) assert_infos: HashMap<Ident, Rc<AssertionInfo>>,
+    pub(crate) assert_infos_count: u64,
     pub(crate) typing: Typing,
     pub(crate) rlimit: u32,
     pub(crate) air_initial_log: Logger,
@@ -28,6 +37,8 @@ impl<'ctx> Context<'ctx> {
             typs: HashMap::new(),
             vars: HashMap::new(),
             funs: HashMap::new(),
+            assert_infos: HashMap::new(),
+            assert_infos_count: 0,
             typing: Typing {
                 names: HashSet::new(),
                 typs: HashSet::new(),
@@ -157,6 +168,7 @@ impl<'ctx> Context<'ctx> {
             self.typs.remove(&x);
             self.vars.remove(&x);
             self.funs.remove(&x);
+            self.assert_infos.remove(&x);
             self.typing.typs.remove(&x);
             self.typing.vars.remove(&x);
             self.typing.funs.remove(&x);

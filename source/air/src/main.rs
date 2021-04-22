@@ -101,9 +101,9 @@ pub fn main() {
             ValidityResult::TypeError(err) => {
                 panic!("Type error: {}", err);
             }
-            ValidityResult::Invalid(span) => {
+            ValidityResult::Invalid(span1, span2) => {
                 count_errors += 1;
-                match &*span {
+                match &*span1 {
                     None => {
                         println!(
                             "Error at unlabeled assert (use 'assert \"...label...\" e') for better errors"
@@ -111,6 +111,12 @@ pub fn main() {
                     }
                     Some(Span { as_string, .. }) => {
                         println!("Error at {}", as_string);
+                    }
+                }
+                match &*span2 {
+                    None => {}
+                    Some(Span { as_string, .. }) => {
+                        println!("Additional error detail at {}", as_string);
                     }
                 }
             }

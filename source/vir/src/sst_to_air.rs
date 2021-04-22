@@ -7,8 +7,8 @@ use crate::def::{
 use crate::sst::{Exp, ExpX, Stm, StmX};
 use crate::util::vec_map;
 use air::ast::{
-    BindX, Binders, CommandX, Commands, Decl, DeclX, Expr, ExprX, MultiOp, Quant, QueryX, Stmt,
-    StmtX, Trigger, Triggers,
+    BindX, Binders, CommandX, Commands, Decl, DeclX, Expr, ExprX, MultiOp, Quant, QueryX, Span,
+    Stmt, StmtX, Trigger, Triggers,
 };
 use air::ast_util::{
     bool_typ, ident_apply, ident_binder, ident_typ, ident_var, int_typ, str_apply, str_ident,
@@ -91,7 +91,8 @@ pub fn stm_to_stmts(ctx: &Ctx, stm: &Stm, decls: &mut Vec<Decl>) -> Vec<Stmt> {
                 let f_req = prefix_requires(&func.x.name);
                 let args = Rc::new(vec_map(args, exp_to_expr));
                 let e_req = Rc::new(ExprX::Apply(f_req, args));
-                let option_span = Rc::new(Some(stm.span.clone()));
+                let description = Some("precondition not satisfied".to_string());
+                let option_span = Rc::new(Some(Span { description, ..stm.span.clone() }));
                 stmts.push(Rc::new(StmtX::Assert(option_span, e_req)));
             }
             stmts

@@ -4,8 +4,9 @@ use std::rc::Rc;
 pub type RawSpan = Rc<dyn std::any::Any>;
 #[derive(Clone)]
 pub struct Span {
+    pub description: Option<String>,
     pub raw_span: RawSpan,
-    pub as_string: String,
+    pub as_string: String, // if we can't print (description, raw_span), print as_string instead
 }
 pub type SpanOption = Rc<Option<Span>>;
 
@@ -20,7 +21,7 @@ pub type TypeError = String;
 #[derive(Debug)]
 pub enum ValidityResult {
     Valid,
-    Invalid(SpanOption),
+    Invalid(SpanOption, SpanOption),
     TypeError(TypeError),
 }
 

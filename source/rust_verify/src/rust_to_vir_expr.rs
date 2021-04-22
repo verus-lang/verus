@@ -18,7 +18,7 @@ use vir::def::Spanned;
 pub(crate) fn spanned_new<X>(span: Span, x: X) -> Rc<Spanned<X>> {
     let raw_span = Rc::new(span);
     let as_string = format!("{:?}", span);
-    Spanned::new(air::ast::Span { raw_span, as_string }, x)
+    Spanned::new(air::ast::Span { description: None, raw_span, as_string }, x)
 }
 
 pub(crate) fn path_to_ty_path<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> Typ {
