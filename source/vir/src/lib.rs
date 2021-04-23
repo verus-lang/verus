@@ -1,7 +1,7 @@
 pub mod ast;
 mod ast_to_sst;
 pub mod ast_util;
-mod ast_visitor;
+pub mod ast_visitor;
 pub mod context;
 pub mod datatype_to_air;
 pub mod def;

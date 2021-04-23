@@ -128,17 +128,8 @@ pub fn stm_to_stmts(ctx: &Ctx, stm: &Stm, decls: &mut Vec<Decl>) -> Vec<Stmt> {
                 vec![Rc::new(StmtX::Assume(expr_fuel_bool))]
             }
         }
-        StmX::Block(stms) => {
-            let stmts: Vec<Stmt> =
-                stms.iter().map(|s| stm_to_stmts(ctx, s, decls)).flatten().collect();
-            vec![Rc::new(StmtX::Block(Rc::new(stmts)))]
-        }
+        StmX::Block(stms) => stms.iter().map(|s| stm_to_stmts(ctx, s, decls)).flatten().collect(),
     }
-}
-
-pub fn stm_to_one_stmt(ctx: &Ctx, stm: &Stm, decls: &mut Vec<Decl>) -> Stmt {
-    let stmts = stm_to_stmts(ctx, stm, decls);
-    if stmts.len() == 1 { stmts[0].clone() } else { Rc::new(StmtX::Block(Rc::new(stmts))) }
 }
 
 fn set_fuel(local: &mut Vec<Decl>, hidden: &Vec<Ident>) {
@@ -175,14 +166,32 @@ fn set_fuel(local: &mut Vec<Decl>, hidden: &Vec<Ident>) {
 pub fn stm_to_air(
     ctx: &Ctx,
     params: &Params,
+    ret: &Option<(Ident, Typ)>,
     hidden: &Vec<Ident>,
     reqs: &Vec<Exp>,
+    enss: &Vec<Exp>,
     stm: &Stm,
 ) -> Commands {
     let mut local: Vec<Decl> = vec_map(params, |param| {
         Rc::new(DeclX::Const(suffix_local_id(&param.x.name), typ_to_air(&param.x.typ)))
     });
-    let assertion = stm_to_one_stmt(ctx, &stm, &mut local);
+    match ret {
+        None => {}
+        Some((x, typ)) => {
+            local.push(Rc::new(DeclX::Const(suffix_local_id(&x), typ_to_air(&typ))));
+        }
+    }
+
+    let mut stmts = stm_to_stmts(ctx, &stm, &mut local);
+    for ens in enss {
+        let description = Some("postcondition not satisfied".to_string());
+        let option_span = Rc::new(Some(Span { description, ..ens.span.clone() }));
+        let ens_stmt = StmtX::Assert(option_span, exp_to_expr(ens));
+        stmts.push(Rc::new(ens_stmt));
+    }
+    let assertion =
+        if stmts.len() == 1 { stmts[0].clone() } else { Rc::new(StmtX::Block(Rc::new(stmts))) };
+
     set_fuel(&mut local, hidden);
     for req in reqs {
         local.push(Rc::new(DeclX::Axiom(exp_to_expr(req))));

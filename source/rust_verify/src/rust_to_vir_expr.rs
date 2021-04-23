@@ -2,16 +2,18 @@ use crate::util::{slice_vec_map_result, vec_map_result};
 use crate::{unsupported, unsupported_unless};
 use rustc_ast::{AttrKind, Attribute};
 use rustc_hir::def::{DefKind, Res};
-use rustc_hir::{BindingAnnotation, Node, Pat, PatKind, PrimTy, QPath, Ty};
+use rustc_hir::{BindingAnnotation, BodyId, Node, Pat, PatKind, PrimTy, QPath, Ty};
 use rustc_middle::mir::interpret::{ConstValue, Scalar};
 use rustc_middle::mir::{BinOp, BorrowKind, UnOp};
 use rustc_middle::ty::{ConstKind, TyCtxt, TyKind};
-use rustc_mir_build::thir::{Expr, ExprKind, LogicalOp, Stmt, StmtKind};
+use rustc_mir_build::thir::{build_thir, Arena, Expr, ExprKind, LogicalOp, Stmt, StmtKind};
 use rustc_span::def_id::DefId;
 use rustc_span::symbol::Ident;
 use rustc_span::Span;
 use std::rc::Rc;
-use vir::ast::{BinaryOp, ExprX, Mode, ParamX, StmtX, Stmts, Typ, UnaryOp, VirErr};
+use vir::ast::{
+    BinaryOp, ExprX, HeaderExpr, HeaderExprX, Mode, ParamX, StmtX, Stmts, Typ, UnaryOp, VirErr,
+};
 use vir::ast_util::str_ident;
 use vir::def::Spanned;
 
@@ -85,6 +87,16 @@ pub(crate) fn get_fuel(attrs: &[Attribute]) -> u32 {
         }
     }
     fuel
+}
+
+pub(crate) fn build_thir_body<'thir, 'tcx>(
+    tcx: TyCtxt<'tcx>,
+    arena: &'thir Arena<'thir, 'tcx>,
+    body_id: &BodyId,
+) -> &'thir Expr<'thir, 'tcx> {
+    let body = tcx.hir().body(*body_id);
+    let did = body_id.hir_id.owner;
+    build_thir(tcx, rustc_middle::ty::WithOptConstParam::unknown(did), arena, &body.value)
 }
 
 pub(crate) fn ty_to_vir<'tcx>(tcx: TyCtxt<'tcx>, ty: &Ty) -> Typ {
@@ -166,6 +178,51 @@ fn extract_array<'thir, 'tcx>(expr: &'thir Expr<'thir, 'tcx>) -> Vec<&'thir Expr
     }
 }
 
+fn get_ensures_arg<'thir, 'tcx>(
+    tcx: TyCtxt<'tcx>,
+    expr: &'thir Expr<'thir, 'tcx>,
+) -> Result<vir::ast::Expr, VirErr> {
+    if matches!(expr.ty.kind(), TyKind::Bool) {
+        expr_to_vir(tcx, expr)
+    } else {
+        Err(spanned_new(expr.span, "ensures needs a bool expression".to_string()))
+    }
+}
+
+fn extract_ensures<'thir, 'tcx>(
+    tcx: TyCtxt<'tcx>,
+    expr: &'thir Expr<'thir, 'tcx>,
+) -> Result<HeaderExpr, VirErr> {
+    match &expr.kind {
+        ExprKind::Scope { value, .. } => extract_ensures(tcx, value),
+        ExprKind::Closure { closure_id, .. } => match tcx.hir().get_if_local(*closure_id) {
+            Some(Node::Expr(expr)) => match expr.kind {
+                rustc_hir::ExprKind::Closure(_, fn_decl, body_id, _, _) => {
+                    let typs: Vec<Typ> = fn_decl.inputs.iter().map(|t| ty_to_vir(tcx, t)).collect();
+                    let body = tcx.hir().body(body_id);
+                    let xs: Vec<String> =
+                        body.params.iter().map(|param| pat_to_var(param.pat)).collect();
+                    let arena = Arena::default();
+                    let expr = build_thir_body(tcx, &arena, &body_id);
+                    let args = vec_map_result(&extract_array(expr), |e| get_ensures_arg(tcx, e))?;
+                    if typs.len() == 1 && xs.len() == 1 {
+                        let id_typ = Some((Rc::new(xs[0].clone()), typs[0].clone()));
+                        Ok(Rc::new(HeaderExprX::Ensures(id_typ, Rc::new(args))))
+                    } else {
+                        Err(spanned_new(expr.span, "expected 1 parameter in closure".to_string()))
+                    }
+                }
+                _ => panic!("internal error: expected closure"),
+            },
+            _ => panic!("internal error: expected closure"),
+        },
+        _ => {
+            let args = vec_map_result(&extract_array(expr), |e| get_ensures_arg(tcx, e))?;
+            Ok(Rc::new(HeaderExprX::Ensures(None, Rc::new(args))))
+        }
+    }
+}
+
 pub(crate) fn expr_to_vir<'thir, 'tcx>(
     tcx: TyCtxt<'tcx>,
     expr: &'thir Expr<'thir, 'tcx>,
@@ -197,6 +254,7 @@ pub(crate) fn expr_to_vir<'thir, 'tcx>(
             let is_assume = hack_check_def_name(tcx, f, "builtin", "assume");
             let is_assert = hack_check_def_name(tcx, f, "builtin", "assert");
             let is_requires = hack_check_def_name(tcx, f, "builtin", "requires");
+            let is_ensures = hack_check_def_name(tcx, f, "builtin", "ensures");
             let is_hide = hack_check_def_name(tcx, f, "builtin", "hide");
             let is_reveal = hack_check_def_name(tcx, f, "builtin", "reveal");
             let is_implies = hack_check_def_name(tcx, f, "builtin", "imply");
@@ -211,6 +269,7 @@ pub(crate) fn expr_to_vir<'thir, 'tcx>(
             let is_mul = hack_check_def_name(tcx, f, "core", "ops::arith::Mul::mul");
             let is_cmp = is_eq || is_ne || is_le || is_ge || is_lt || is_gt;
             let is_arith_binary = is_add || is_sub || is_mul;
+
             if is_requires {
                 args = extract_array(args[0]);
                 for arg in &args {
@@ -220,8 +279,18 @@ pub(crate) fn expr_to_vir<'thir, 'tcx>(
                     }
                 }
             }
+            if is_ensures {
+                let header = extract_ensures(tcx, args[0])?;
+                let expr = spanned_new(args[0].span, ExprX::Header(header));
+                return Ok(expr);
+            }
+
             let vir_args = vec_map_result(&args, |arg| expr_to_vir(tcx, arg))?;
-            if is_assume || is_assert {
+
+            if is_requires {
+                let header = Rc::new(HeaderExprX::Requires(Rc::new(vir_args)));
+                Ok(spanned_new(expr.span, ExprX::Header(header)))
+            } else if is_assume || is_assert {
                 unsupported_unless!(args.len() == 1, "expected assume/assert", args, expr.span);
                 let arg = vir_args[0].clone();
                 if is_assume {
@@ -233,8 +302,12 @@ pub(crate) fn expr_to_vir<'thir, 'tcx>(
                 unsupported_unless!(args.len() == 1, "expected hide/reveal", args, expr.span);
                 let arg = vir_args[0].clone();
                 if let ExprX::Var(x) = &arg.x {
-                    let fuel = if is_hide { 0 } else { 1 };
-                    Ok(spanned_new(expr.span, ExprX::Fuel(x.clone(), fuel)))
+                    if is_hide {
+                        let header = Rc::new(HeaderExprX::Hide(x.clone()));
+                        Ok(spanned_new(expr.span, ExprX::Header(header)))
+                    } else {
+                        Ok(spanned_new(expr.span, ExprX::Fuel(x.clone(), 1)))
+                    }
                 } else {
                     Err(spanned_new(expr.span, "hide/reveal: expected identifier".to_string()))
                 }

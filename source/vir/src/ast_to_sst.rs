@@ -1,4 +1,4 @@
-use crate::ast::{Expr, ExprX, Mode, Stmt, StmtX, VirErr};
+use crate::ast::{BinaryOp, Expr, ExprX, Ident, Mode, Stmt, StmtX, VirErr};
 use crate::context::Ctx;
 use crate::def::Spanned;
 use crate::sst::{Exp, ExpX, Stm, StmX};
@@ -44,7 +44,7 @@ pub(crate) fn expr_to_exp(ctx: &Ctx, expr: &Expr) -> Result<Exp, VirErr> {
     }
 }
 
-pub fn expr_to_stm(ctx: &Ctx, expr: &Expr) -> Result<Stm, VirErr> {
+pub fn expr_to_stm(ctx: &Ctx, expr: &Expr, dest: &Option<Ident>) -> Result<Stm, VirErr> {
     match &expr.x {
         ExprX::Call(x, args) => {
             let exps = vec_map_result(args, |e| expr_to_exp(ctx, e))?;
@@ -61,9 +61,20 @@ pub fn expr_to_stm(ctx: &Ctx, expr: &Expr) -> Result<Stm, VirErr> {
             StmX::Assign(expr_to_exp(ctx, lhs)?, expr_to_exp(ctx, rhs)?),
         )),
         ExprX::Fuel(x, fuel) => Ok(Spanned::new(expr.span.clone(), StmX::Fuel(x.clone(), *fuel))),
-        ExprX::Block(stmts, None) => {
-            let stms = Rc::new(vec_map_result(stmts, |s| stmt_to_stm(ctx, s))?);
-            Ok(Spanned::new(expr.span.clone(), StmX::Block(stms)))
+        ExprX::Block(stmts, expr_opt) => {
+            let mut stms = vec_map_result(stmts, |s| stmt_to_stm(ctx, s))?;
+            match (dest, expr_opt) {
+                (None, None) => {}
+                (Some(dest), Some(expr)) => {
+                    let _ = expr_to_exp(ctx, expr);
+                    let x_dest = Spanned::new(expr.span.clone(), ExpX::Var(dest.clone()));
+                    let eq = ExpX::Binary(BinaryOp::Eq, x_dest, expr_to_exp(ctx, expr)?);
+                    let assign = StmX::Assume(Spanned::new(expr.span.clone(), eq));
+                    stms.push(Spanned::new(expr.span.clone(), assign));
+                }
+                _ => panic!("internal error: ExprX::Block {}", expr.span.as_string),
+            }
+            Ok(Spanned::new(expr.span.clone(), StmX::Block(Rc::new(stms))))
         }
         _ => {
             todo!("{}", expr.span.as_string)
@@ -73,7 +84,7 @@ pub fn expr_to_stm(ctx: &Ctx, expr: &Expr) -> Result<Stm, VirErr> {
 
 pub fn stmt_to_stm(ctx: &Ctx, stmt: &Stmt) -> Result<Stm, VirErr> {
     match &stmt.x {
-        StmtX::Expr(expr) => expr_to_stm(ctx, &expr),
+        StmtX::Expr(expr) => expr_to_stm(ctx, &expr, &None),
         StmtX::Decl { param, mutable } => Ok(Spanned::new(
             stmt.span.clone(),
             StmX::Decl { ident: param.name.clone(), typ: param.typ.clone(), mutable: *mutable },

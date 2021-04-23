@@ -1,5 +1,5 @@
 extern crate builtin;
-use builtin::{assert, assume, hide, imply, int, requires, reveal};
+use builtin::{assert, assume, ensures, hide, imply, int, requires, reveal};
 
 fn main() {}
 
@@ -103,4 +103,15 @@ fn test_requires3(a: int, b: int, c: int) {
     assume(b <= c);
     test_requires1(a + a, b + b, c + c);
     test_requires1(a + c, b + b, c + c); // FAILS
+}
+
+fn test_ret(a: int, b: int) -> int {
+    requires(a <= b);
+    ensures(|ret: int| [
+        ret <= a + b,
+        ret <= a + a, // FAILS
+        ret <= b + b,
+    ]);
+
+    a + b
 }

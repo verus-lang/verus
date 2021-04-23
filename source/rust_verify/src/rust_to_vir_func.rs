@@ -1,5 +1,6 @@
 use crate::rust_to_vir_expr::{
-    expr_to_vir, get_fuel, get_mode, ident_to_var, pat_to_var, spanned_new, ty_to_vir,
+    build_thir_body, expr_to_vir, get_fuel, get_mode, ident_to_var, pat_to_var, spanned_new,
+    ty_to_vir,
 };
 use crate::{unsupported, unsupported_unless};
 use rustc_ast::Attribute;
@@ -9,32 +10,44 @@ use rustc_mir_build::thir;
 use rustc_span::symbol::Ident;
 use rustc_span::Span;
 use std::rc::Rc;
-use vir::ast::{ExprX, Exprs, FunctionX, KrateX, Mode, ParamX, StmtX, VirErr};
-use vir::def::Spanned;
+use vir::ast::{ExprX, Exprs, FunctionX, HeaderExprX, KrateX, Mode, ParamX, StmtX, Typ, VirErr};
+use vir::def::{Spanned, RETURN_VALUE};
 
 #[derive(Clone, Debug)]
 struct Header {
     hidden: Vec<vir::ast::Ident>,
     require: Exprs,
+    ensure_id_typ: Option<(vir::ast::Ident, Typ)>,
+    ensure: Exprs,
 }
 
 fn read_header_block(block: &mut Vec<vir::ast::Stmt>) -> Result<Header, VirErr> {
     let mut hidden: Vec<vir::ast::Ident> = Vec::new();
     let mut require: Option<Exprs> = None;
+    let mut ensure: Option<(Option<(vir::ast::Ident, Typ)>, Exprs)> = None;
     let mut n = 0;
     for stmt in block.iter() {
         match &stmt.x {
             StmtX::Expr(expr) => match &expr.x {
-                ExprX::Call(x, es) if x.as_str() == "requires" => {
-                    if require.is_some() {
-                        return Err(Spanned::new(stmt.span.clone(),
-                            "only one call to requires allowed (use requires([e1, ..., en]) for multiple expressions".to_string()));
+                ExprX::Header(header) => match &**header {
+                    HeaderExprX::Requires(es) => {
+                        if require.is_some() {
+                            return Err(Spanned::new(stmt.span.clone(),
+                                "only one call to requires allowed (use requires([e1, ..., en]) for multiple expressions".to_string()));
+                        }
+                        require = Some(es.clone());
                     }
-                    require = Some(es.clone());
-                }
-                ExprX::Fuel(x, 0) => {
-                    hidden.push(x.clone());
-                }
+                    HeaderExprX::Ensures(id_typ, es) => {
+                        if ensure.is_some() {
+                            return Err(Spanned::new(stmt.span.clone(),
+                                "only one call to ensures allowed (use ensures([e1, ..., en]) for multiple expressions".to_string()));
+                        }
+                        ensure = Some((id_typ.clone(), es.clone()));
+                    }
+                    HeaderExprX::Hide(x) => {
+                        hidden.push(x.clone());
+                    }
+                },
                 _ => break,
             },
             _ => break,
@@ -42,7 +55,12 @@ fn read_header_block(block: &mut Vec<vir::ast::Stmt>) -> Result<Header, VirErr> 
         n += 1;
     }
     *block = block[n..].to_vec();
-    Ok(Header { hidden, require: require.unwrap_or(Rc::new(vec![])) })
+    let require = require.unwrap_or(Rc::new(vec![]));
+    let (ensure_id_typ, ensure) = match ensure {
+        None => (None, Rc::new(vec![])),
+        Some((id_typ, es)) => (id_typ, es),
+    };
+    Ok(Header { hidden, require, ensure_id_typ, ensure })
 }
 
 fn read_header(body: &mut vir::ast::Expr) -> Result<Header, VirErr> {
@@ -57,19 +75,9 @@ fn read_header(body: &mut vir::ast::Expr) -> Result<Header, VirErr> {
     }
 }
 
-fn body_to_vir<'tcx>(
-    tcx: TyCtxt<'tcx>,
-    id: &BodyId,
-    body: &'tcx Body<'tcx>,
-) -> Result<vir::ast::Expr, VirErr> {
-    let did = id.hir_id.owner;
+pub(crate) fn body_to_vir<'tcx>(tcx: TyCtxt<'tcx>, id: &BodyId) -> Result<vir::ast::Expr, VirErr> {
     let arena = thir::Arena::default();
-    let expr = thir::build_thir(
-        tcx,
-        rustc_middle::ty::WithOptConstParam::unknown(did),
-        &arena,
-        &body.value,
-    );
+    let expr = build_thir_body(tcx, &arena, id);
     expr_to_vir(tcx, expr)
 }
 
@@ -109,7 +117,7 @@ pub(crate) fn check_item_fn<'tcx>(
     generics: &Generics,
     body_id: &BodyId,
 ) -> Result<(), VirErr> {
-    let ret = match sig {
+    let ret_typ = match sig {
         FnSig {
             header: FnHeader { unsafety, constness: _, asyncness: _, abi: _ },
             decl,
@@ -122,13 +130,6 @@ pub(crate) fn check_item_fn<'tcx>(
     check_generics(generics)?;
     let mode = get_mode(attrs);
     let fuel = get_fuel(attrs);
-    match (mode, &ret) {
-        (Mode::Exec, None) | (Mode::Proof, None) => {}
-        (Mode::Exec, Some(_)) | (Mode::Proof, Some(_)) => {
-            unsupported!("non-spec function return values");
-        }
-        (Mode::Spec, _) => {}
-    }
     let body = &krate.bodies[body_id];
     let Body { params, value: _, generator_kind } = body;
     let mut vir_params: Vec<vir::ast::Param> = Vec::new();
@@ -145,14 +146,42 @@ pub(crate) fn check_item_fn<'tcx>(
             unsupported!("generator_kind", generator_kind);
         }
     }
-    let mut vir_body = body_to_vir(tcx, body_id, body)?;
+    let mut vir_body = body_to_vir(tcx, body_id)?;
     let header = read_header(&mut vir_body)?;
-    if mode == Mode::Spec && header.require.len() > 0 {
+    if mode == Mode::Spec && (header.require.len() + header.ensure.len()) > 0 {
         let s = "spec functions cannot have requires/ensures";
         return Err(spanned_new(sig.span, s.to_string()));
     }
+    if header.ensure.len() > 0 {
+        match (&header.ensure_id_typ, ret_typ.as_ref()) {
+            (None, None) => {}
+            (None, Some(_)) => {
+                let s = format!("ensures clause must be a closure");
+                return Err(spanned_new(sig.span, s));
+            }
+            (Some(_), None) => {
+                let s = format!("ensures clause cannot be a closure");
+                return Err(spanned_new(sig.span, s));
+            }
+            (Some((_, typ)), Some(ret_typ)) => {
+                if !vir::ast_visitor::types_equal(&typ, &ret_typ) {
+                    let s = format!(
+                        "return type is {:?}, but ensures expects type {:?}",
+                        &ret_typ, &typ
+                    );
+                    return Err(spanned_new(sig.span, s));
+                }
+            }
+        }
+    }
     let name = Rc::new(ident_to_var(&id));
     let params = Rc::new(vir_params);
+    let ret = match (header.ensure_id_typ, ret_typ) {
+        (None, None) => None,
+        (None, Some(typ)) => Some((Rc::new(RETURN_VALUE.to_string()), typ)),
+        (Some((x, _)), Some(typ)) => Some((x, typ)),
+        _ => panic!("internal error: ret_typ"),
+    };
     let func = FunctionX {
         name,
         mode,
@@ -160,6 +189,7 @@ pub(crate) fn check_item_fn<'tcx>(
         params,
         ret,
         require: header.require,
+        ensure: header.ensure,
         hidden: Rc::new(header.hidden),
         body: Some(vir_body),
     };
@@ -178,7 +208,7 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
     idents: &[Ident],
     generics: &Generics,
 ) -> Result<(), VirErr> {
-    let ret = check_fn_decl(tcx, decl)?;
+    let ret_typ = check_fn_decl(tcx, decl)?;
     check_generics(generics)?;
     let mode = get_mode(attrs);
     let fuel = get_fuel(attrs);
@@ -196,8 +226,9 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
         fuel,
         mode,
         params,
-        ret,
+        ret: ret_typ.map(|typ| (Rc::new(RETURN_VALUE.to_string()), typ)),
         require: Rc::new(vec![]),
+        ensure: Rc::new(vec![]),
         hidden: Rc::new(vec![]),
         body: None,
     };

@@ -44,6 +44,14 @@ pub enum BinaryOp {
     EuclideanMod,
 }
 
+pub type HeaderExpr = Rc<HeaderExprX>;
+#[derive(Debug)]
+pub enum HeaderExprX {
+    Requires(Exprs),
+    Ensures(Option<(Ident, Typ)>, Exprs),
+    Hide(Ident),
+}
+
 pub type Expr = Rc<Spanned<ExprX>>;
 pub type Exprs = Rc<Vec<Expr>>;
 #[derive(Debug)]
@@ -58,6 +66,7 @@ pub enum ExprX {
     Binary(BinaryOp, Expr, Expr),
     Assign(Expr, Expr),
     Fuel(Ident, u32),
+    Header(HeaderExpr),
     Block(Stmts, Option<Expr>),
 }
 
@@ -84,8 +93,9 @@ pub struct FunctionX {
     pub mode: Mode,
     pub fuel: u32,
     pub params: Params,
-    pub ret: Option<Typ>,
+    pub ret: Option<(Ident, Typ)>,
     pub require: Exprs,
+    pub ensure: Exprs,
     pub hidden: Idents,
     pub body: Option<Expr>,
 }
