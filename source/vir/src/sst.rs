@@ -16,17 +16,23 @@ pub type Exps = Rc<Vec<Exp>>;
 pub enum ExpX {
     Const(Constant),
     Var(Ident),
-    Call(Ident, Exps), // call to function without requires/ensures/mut
+    Call(Ident, Exps), // call to spec function
     Field(Exp, Ident),
     Unary(UnaryOp, Exp),
     Binary(BinaryOp, Exp, Exp),
+}
+
+#[derive(Debug)]
+pub struct Dest {
+    pub var: Ident,
+    pub mutable: bool,
 }
 
 pub type Stm = Rc<Spanned<StmX>>;
 pub type Stms = Rc<Vec<Stm>>;
 #[derive(Debug)]
 pub enum StmX {
-    Call(Ident, Exps), // call to function with requires/ensures/mut
+    Call(Ident, Exps, Option<Dest>), // call to exec/proof function
     Assume(Exp),
     Assert(Exp),
     Decl { ident: Ident, typ: Typ, mutable: bool },

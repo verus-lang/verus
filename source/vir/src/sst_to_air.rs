@@ -1,10 +1,10 @@
 use crate::ast::{BinaryOp, Ident, Params, Typ, UnaryOp};
 use crate::context::Ctx;
 use crate::def::{
-    prefix_fuel_id, prefix_requires, suffix_global_id, suffix_local_id, FUEL_BOOL,
+    prefix_ensures, prefix_fuel_id, prefix_requires, suffix_global_id, suffix_local_id, FUEL_BOOL,
     FUEL_BOOL_DEFAULT, FUEL_DEFAULTS, FUEL_ID,
 };
-use crate::sst::{Exp, ExpX, Stm, StmX};
+use crate::sst::{Dest, Exp, ExpX, Stm, StmX};
 use crate::util::vec_map;
 use air::ast::{
     BindX, Binders, CommandX, Commands, Decl, DeclX, Expr, ExprX, MultiOp, Quant, QueryX, Span,
@@ -84,7 +84,7 @@ pub(crate) fn exp_to_expr(exp: &Exp) -> Expr {
 
 pub fn stm_to_stmts(ctx: &Ctx, stm: &Stm, decls: &mut Vec<Decl>) -> Vec<Stmt> {
     match &stm.x {
-        StmX::Call(x, args) => {
+        StmX::Call(x, args, dest) => {
             let mut stmts: Vec<Stmt> = Vec::new();
             let func = &ctx.func_map[x];
             if func.x.require.len() > 0 {
@@ -94,6 +94,36 @@ pub fn stm_to_stmts(ctx: &Ctx, stm: &Stm, decls: &mut Vec<Decl>) -> Vec<Stmt> {
                 let description = Some("precondition not satisfied".to_string());
                 let option_span = Rc::new(Some(Span { description, ..stm.span.clone() }));
                 stmts.push(Rc::new(StmtX::Assert(option_span, e_req)));
+            }
+            let mut ens_args = vec_map(args, exp_to_expr);
+            match dest {
+                None => {}
+                Some(Dest { var, mutable }) => {
+                    let x = suffix_local_id(&var.clone());
+                    if *mutable {
+                        let havoc = StmtX::Havoc(x.clone());
+                        stmts.push(Rc::new(havoc));
+                    }
+                    let mut overwrite = false;
+                    for arg in args.iter() {
+                        let _ = crate::sst_visitor::map_exp_visitor(arg, &mut |e| {
+                            match &e.x {
+                                ExpX::Var(x) if x == var => overwrite = true,
+                                _ => {}
+                            }
+                            e.clone()
+                        });
+                    }
+                    if overwrite {
+                        todo!("call whose output overwrites inputs {:?}", &stm.span);
+                    }
+                    ens_args.push(Rc::new(ExprX::Var(x.clone())));
+                }
+            }
+            if func.x.ensure.len() > 0 {
+                let f_ens = prefix_ensures(&func.x.name);
+                let e_ens = Rc::new(ExprX::Apply(f_ens, Rc::new(ens_args)));
+                stmts.push(Rc::new(StmtX::Assume(e_ens)));
             }
             stmts
         }

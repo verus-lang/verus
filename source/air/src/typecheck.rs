@@ -297,6 +297,16 @@ pub(crate) fn check_stmt(typing: &mut Typing, stmt: &Stmt) -> Result<(), TypeErr
             &bt(),
             "assume statement expects expression of type bool",
         ),
+        StmtX::Havoc(x) => match typing.vars.get(x).cloned() {
+            None => Err(format!("assignment to undeclared variable {}", x)),
+            Some(var) => {
+                if !var.mutable {
+                    Err(format!("cannot assign to const variable {}", x))
+                } else {
+                    Ok(())
+                }
+            }
+        },
         StmtX::Assign(x, expr) => match typing.vars.get(x).cloned() {
             None => Err(format!("assignment to undeclared variable {}", x)),
             Some(var) => {

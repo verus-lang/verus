@@ -83,6 +83,7 @@ pub(crate) fn map_stmt_expr_visitor<F: FnMut(&Expr) -> Expr>(stmt: &Stmt, f: &mu
             let expr = map_expr_visitor(e, f);
             Rc::new(StmtX::Assert(span.clone(), f(&expr)))
         }
+        StmtX::Havoc(_) => stmt.clone(),
         StmtX::Assign(x, e) => {
             let expr = map_expr_visitor(e, f);
             Rc::new(StmtX::Assign(x.clone(), f(&expr)))
@@ -95,6 +96,7 @@ pub(crate) fn map_stmt_visitor<F: FnMut(&Stmt) -> Stmt>(stmt: &Stmt, f: &mut F) 
     match &**stmt {
         StmtX::Assume(_) => f(stmt),
         StmtX::Assert(_, _) => f(stmt),
+        StmtX::Havoc(_) => f(stmt),
         StmtX::Assign(_, _) => f(stmt),
         StmtX::Block(ss) => {
             let mut stmts: Vec<Stmt> = Vec::new();

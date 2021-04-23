@@ -309,6 +309,38 @@ fn no_assign() {
 }
 
 #[test]
+fn yes_havoc() {
+    yes!(
+        (check-valid
+            (declare-var x Int)
+            (declare-var y Int)
+            (block
+                (assume (= x 100))
+                (assume (= y 200))
+                (havoc x)
+                (assert (= y 200))
+            )
+        )
+    );
+}
+
+#[test]
+fn no_havoc() {
+    no!(
+        (check-valid
+            (declare-var x Int)
+            (declare-var y Int)
+            (block
+                (assume (= x 100))
+                (assume (= y 200))
+                (havoc y)
+                (assert (= y 200))
+            )
+        )
+    );
+}
+
+#[test]
 fn untyped_scope1() {
     untyped!(
         (declare-const x Int)

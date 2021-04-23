@@ -12,6 +12,7 @@ fn stmt_to_expr(stmt: &Stmt, pred: Expr) -> Expr {
             let assertion = Rc::new(ExprX::LabeledAssertion(span.clone(), expr.clone()));
             Rc::new(ExprX::Multi(MultiOp::And, Rc::new(vec![assertion, pred])))
         }
+        StmtX::Havoc(_) => panic!("internal error: Havoc in block_to_assert"),
         StmtX::Assign(_, _) => panic!("internal error: Assign in block_to_assert"),
         StmtX::Block(stmts) => {
             // wp((s1; s2), P) = wp(s1, wp(s2, P))

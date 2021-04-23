@@ -164,7 +164,7 @@ pub(crate) fn check_item_fn<'tcx>(
                 return Err(spanned_new(sig.span, s));
             }
             (Some((_, typ)), Some(ret_typ)) => {
-                if !vir::ast_visitor::types_equal(&typ, &ret_typ) {
+                if !vir::ast_util::types_equal(&typ, &ret_typ) {
                     let s = format!(
                         "return type is {:?}, but ensures expects type {:?}",
                         &ret_typ, &typ

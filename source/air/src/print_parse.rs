@@ -247,6 +247,7 @@ pub fn stmt_to_node(stmt: &Stmt) -> Node {
                 nodes!(assert {Node::Atom(quoted)} {expr_to_node(expr)})
             }
         },
+        StmtX::Havoc(x) => nodes!(havoc {str_to_node(x)}),
         StmtX::Assign(x, expr) => nodes!(assign {str_to_node(x)} {expr_to_node(expr)}),
         StmtX::Block(stmts) => {
             let mut nodes = Vec::new();
@@ -660,6 +661,9 @@ pub(crate) fn node_to_stmt(node: &Node) -> Result<Stmt, String> {
             [Node::Atom(s), e] if s.to_string() == "assert" => {
                 let expr = node_to_expr(&e)?;
                 Ok(Rc::new(StmtX::Assert(Rc::new(None), expr)))
+            }
+            [Node::Atom(s), Node::Atom(x)] if s.to_string() == "havoc" && is_symbol(x) => {
+                Ok(Rc::new(StmtX::Havoc(Rc::new(x.clone()))))
             }
             [Node::Atom(s), Node::Atom(x), e] if s.to_string() == "assign" && is_symbol(x) => {
                 let expr = node_to_expr(&e)?;

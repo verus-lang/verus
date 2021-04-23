@@ -38,16 +38,21 @@ pub(crate) fn lower_query(query: &Query) -> Query {
             _ => e.clone(),
         });
         match &*s {
-            StmtX::Assign(x, e) => {
+            StmtX::Havoc(x) | StmtX::Assign(x, _) => {
                 let n = find_version(&versions, x);
                 let typ = types[x].clone();
                 versions.insert(x.clone(), n + 1);
                 let x = Rc::new(rename_var(x, n + 1));
                 let decl = Rc::new(DeclX::Const(x.clone(), typ));
                 decls.push(decl);
-                let expr1 = Rc::new(ExprX::Var(x));
-                let expr = Rc::new(ExprX::Binary(BinaryOp::Eq, expr1, e.clone()));
-                Rc::new(StmtX::Assume(expr))
+                match &*s {
+                    StmtX::Assign(_, e) => {
+                        let expr1 = Rc::new(ExprX::Var(x));
+                        let expr = Rc::new(ExprX::Binary(BinaryOp::Eq, expr1, e.clone()));
+                        Rc::new(StmtX::Assume(expr))
+                    }
+                    _ => Rc::new(StmtX::Block(Rc::new(vec![]))),
+                }
             }
             _ => s,
         }

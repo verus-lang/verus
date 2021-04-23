@@ -1,15 +1,6 @@
-use crate::ast::{Expr, ExprX, Stmt, StmtX, Typ, VirErr};
+use crate::ast::{Expr, ExprX, Stmt, StmtX, VirErr};
 use crate::def::Spanned;
 use std::rc::Rc;
-
-pub fn types_equal(typ1: &Typ, typ2: &Typ) -> bool {
-    match (typ1, typ2) {
-        (Typ::Bool, Typ::Bool) => true,
-        (Typ::Int, Typ::Int) => true,
-        (Typ::Path(p1), Typ::Path(p2)) => p1 == p2,
-        _ => false,
-    }
-}
 
 pub(crate) fn map_expr_visitor<F>(expr: &Expr, f: &mut F) -> Result<Expr, VirErr>
 where

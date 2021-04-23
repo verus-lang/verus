@@ -75,7 +75,7 @@ pub type Stmts = Rc<Vec<Stmt>>;
 #[derive(Debug)]
 pub enum StmtX {
     Expr(Expr),
-    Decl { param: ParamX, mutable: bool },
+    Decl { param: ParamX, mutable: bool, init: Option<Expr> },
 }
 
 pub type Param = Rc<Spanned<ParamX>>;

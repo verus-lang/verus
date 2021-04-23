@@ -129,6 +129,7 @@ pub type Stmts = Rc<Vec<Stmt>>;
 pub enum StmtX {
     Assume(Expr),
     Assert(SpanOption, Expr),
+    Havoc(Ident),
     Assign(Ident, Expr),
     Block(Stmts),
 }

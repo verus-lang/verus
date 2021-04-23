@@ -115,3 +115,17 @@ fn test_ret(a: int, b: int) -> int {
 
     a + b
 }
+
+fn test_ret2(a: int, b: int) -> int {
+    requires(a <= b);
+    ensures(|ret: int| [
+        ret <= a + b,
+        ret <= a + a,
+        ret <= b + b,
+    ]);
+
+    let mut x = test_ret(a, a);
+    x = test_ret(b, b);
+    x = test_ret(a, b);
+    x
+}

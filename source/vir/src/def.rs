@@ -30,6 +30,7 @@ pub const SUFFIX_GLOBAL: &str = ".";
 pub const SUFFIX_LOCAL: &str = "@";
 pub const PREFIX_FUEL_ID: &str = "fuel%";
 pub const PREFIX_REQUIRES: &str = "req%";
+pub const PREFIX_ENSURES: &str = "ens%";
 pub const FUEL_ID: &str = "FuelId";
 pub const FUEL_BOOL: &str = "fuel_bool";
 pub const FUEL_BOOL_DEFAULT: &str = "fuel_bool_default";
@@ -50,6 +51,10 @@ pub fn prefix_fuel_id(ident: &Ident) -> Ident {
 
 pub fn prefix_requires(ident: &Ident) -> Ident {
     Rc::new(PREFIX_REQUIRES.to_string() + ident)
+}
+
+pub fn prefix_ensures(ident: &Ident) -> Ident {
+    Rc::new(PREFIX_ENSURES.to_string() + ident)
 }
 
 pub struct Spanned<X> {

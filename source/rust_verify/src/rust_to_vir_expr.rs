@@ -448,7 +448,7 @@ pub(crate) fn let_stmt_to_vir<'thir, 'tcx>(
 ) -> Result<Vec<vir::ast::Stmt>, VirErr> {
     // dbg!(pattern);
     use std::ops::Deref;
-    let (decl, var) = match pattern.kind.deref() {
+    match pattern.kind.deref() {
         rustc_mir_build::thir::PatKind::Binding { var, mutability, mode, ty, .. } => {
             unsupported_unless!(
                 *mode == rustc_mir_build::thir::BindingMode::ByValue,
@@ -473,35 +473,23 @@ pub(crate) fn let_stmt_to_vir<'thir, 'tcx>(
                     unsupported!(format!("type {:?}", ty.kind()))
                 }
             };
-            (
-                spanned_new(
-                    pattern.span,
-                    StmtX::Decl {
-                        param: ParamX { name: name.clone(), typ },
-                        mutable: match *mutability {
-                            rustc_middle::mir::Mutability::Not => false,
-                            rustc_middle::mir::Mutability::Mut => true,
-                        },
+            Ok(vec![spanned_new(
+                pattern.span,
+                StmtX::Decl {
+                    param: ParamX { name: name.clone(), typ },
+                    mutable: match *mutability {
+                        rustc_middle::mir::Mutability::Not => false,
+                        rustc_middle::mir::Mutability::Mut => true,
                     },
-                ),
-                spanned_new(pattern.span, ExprX::Var(name)),
-            )
+                    init: initializer.map(|e| expr_to_vir(tcx, e)).transpose()?,
+                },
+            )])
         }
         _ => {
-            unsupported!("let_pattern", pattern, pattern.span);
+            dbg!(pattern, pattern.span);
+            unsupported!("let_pattern")
         }
-    };
-
-    let mut vir_stmts = vec![decl];
-
-    if let Some(initializer) = initializer {
-        let rhs = expr_to_vir(tcx, initializer)?;
-        let expr = spanned_new(initializer.span, ExprX::Binary(BinaryOp::Eq, var, rhs));
-        let assume = spanned_new(initializer.span, ExprX::Assume(expr));
-        vir_stmts.push(spanned_new(initializer.span, StmtX::Expr(assume)));
     }
-
-    Ok(vir_stmts)
 }
 
 pub(crate) fn stmt_to_vir<'thir, 'tcx>(
