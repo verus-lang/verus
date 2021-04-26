@@ -1,4 +1,4 @@
-use crate::ast::{BinaryOp, Ident, Params, Typ, UnaryOp};
+use crate::ast::{BinaryOp, Ident, IntRange, Params, Typ, UnaryOp};
 use crate::context::Ctx;
 use crate::def::{
     prefix_ensures, prefix_fuel_id, prefix_requires, suffix_global_id, suffix_local_id, FUEL_BOOL,
@@ -7,8 +7,8 @@ use crate::def::{
 use crate::sst::{Dest, Exp, ExpX, Stm, StmX};
 use crate::util::vec_map;
 use air::ast::{
-    BindX, Binders, CommandX, Commands, Decl, DeclX, Expr, ExprX, MultiOp, Quant, QueryX, Span,
-    Stmt, StmtX, Trigger, Triggers,
+    BindX, Binders, CommandX, Commands, Constant, Decl, DeclX, Expr, ExprX, MultiOp, Quant, QueryX,
+    Span, Stmt, StmtX, Trigger, Triggers,
 };
 use air::ast_util::{
     bool_typ, ident_apply, ident_binder, ident_typ, ident_var, int_typ, str_apply, str_ident,
@@ -18,7 +18,7 @@ use std::rc::Rc;
 
 pub(crate) fn typ_to_air(typ: &Typ) -> air::ast::Typ {
     match typ {
-        Typ::Int => int_typ(),
+        Typ::Int(_) => int_typ(),
         Typ::Bool => bool_typ(),
         Typ::Path(segments) => ident_typ(&Rc::new(
             segments.iter().map(|x| (**x).as_str()).collect::<Vec<_>>().join("::"),
@@ -39,6 +39,28 @@ pub(crate) fn exp_to_expr(exp: &Exp) -> Expr {
         }
         ExpX::Unary(op, exp) => match op {
             UnaryOp::Not => Rc::new(ExprX::Unary(air::ast::UnaryOp::Not, exp_to_expr(exp))),
+            UnaryOp::Clip(IntRange::Int) => exp_to_expr(exp),
+            UnaryOp::Clip(range) => {
+                let expr = exp_to_expr(exp);
+                let f_name = match range {
+                    IntRange::Int => panic!("internal error: Int"),
+                    IntRange::Nat => crate::def::NAT_CLIP,
+                    IntRange::U(_) | IntRange::USize => crate::def::U_CLIP,
+                    IntRange::I(_) | IntRange::ISize => crate::def::I_CLIP,
+                };
+                match range {
+                    IntRange::Int => panic!("internal error: Int"),
+                    IntRange::Nat => str_apply(f_name, &vec![expr]),
+                    IntRange::U(range) | IntRange::I(range) => {
+                        let bits = Constant::Nat(Rc::new(range.to_string()));
+                        str_apply(f_name, &vec![Rc::new(ExprX::Const(bits)), expr])
+                    }
+                    IntRange::USize | IntRange::ISize => {
+                        let bits = str_var(crate::def::ARCH_SIZE);
+                        str_apply(f_name, &vec![bits, expr])
+                    }
+                }
+            }
         },
         ExpX::Binary(op, lhs, rhs) => {
             let lh = exp_to_expr(lhs);

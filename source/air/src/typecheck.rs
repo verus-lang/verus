@@ -184,11 +184,13 @@ pub(crate) fn check_expr(typing: &mut Typing, expr: &Expr) -> Result<Typ, TypeEr
             };
             let f_typs = vec_map(exprs, |_| t.clone());
             match op {
-                MultiOp::Distinct if exprs.len() > 0 => {
-                    let t0 = check_expr(typing, &exprs[0])?;
-                    for e in &exprs[1..] {
-                        let tk = check_expr(typing, e)?;
-                        expect_typ(&tk, &t0, "arguments to distinct must all have same type")?;
+                MultiOp::Distinct => {
+                    if exprs.len() > 0 {
+                        let t0 = check_expr(typing, &exprs[0])?;
+                        for e in &exprs[1..] {
+                            let tk = check_expr(typing, e)?;
+                            expect_typ(&tk, &t0, "arguments to distinct must all have same type")?;
+                        }
                     }
                     Ok(bt())
                 }

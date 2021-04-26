@@ -5,6 +5,7 @@ mod rust_to_vir;
 mod rust_to_vir_adts;
 mod rust_to_vir_expr;
 mod rust_to_vir_func;
+mod typecheck;
 mod util;
 mod verifier;
 

@@ -1,6 +1,6 @@
 use crate::util::{slice_vec_map_result, vec_map_result};
 use crate::{unsupported, unsupported_unless};
-use rustc_ast::{AttrKind, Attribute};
+use rustc_ast::{AttrKind, Attribute, IntTy, UintTy};
 use rustc_hir::def::{DefKind, Res};
 use rustc_hir::{BindingAnnotation, BodyId, Node, Pat, PatKind, PrimTy, QPath, Ty};
 use rustc_middle::mir::interpret::{ConstValue, Scalar};
@@ -12,7 +12,8 @@ use rustc_span::symbol::Ident;
 use rustc_span::Span;
 use std::rc::Rc;
 use vir::ast::{
-    BinaryOp, ExprX, HeaderExpr, HeaderExprX, Mode, ParamX, StmtX, Stmts, Typ, UnaryOp, VirErr,
+    BinaryOp, ExprX, HeaderExpr, HeaderExprX, IntRange, Mode, ParamX, StmtX, Stmts, Typ, UnaryOp,
+    VirErr,
 };
 use vir::ast_util::str_ident;
 use vir::def::Spanned;
@@ -104,9 +105,23 @@ pub(crate) fn ty_to_vir<'tcx>(tcx: TyCtxt<'tcx>, ty: &Ty) -> Typ {
     match kind {
         rustc_hir::TyKind::Path(QPath::Resolved(None, path)) => match path.res {
             Res::PrimTy(PrimTy::Bool) => Typ::Bool,
+            Res::PrimTy(PrimTy::Uint(UintTy::U8)) => Typ::Int(IntRange::U(8)),
+            Res::PrimTy(PrimTy::Uint(UintTy::U16)) => Typ::Int(IntRange::U(16)),
+            Res::PrimTy(PrimTy::Uint(UintTy::U32)) => Typ::Int(IntRange::U(32)),
+            Res::PrimTy(PrimTy::Uint(UintTy::U64)) => Typ::Int(IntRange::U(64)),
+            Res::PrimTy(PrimTy::Uint(UintTy::U128)) => Typ::Int(IntRange::U(128)),
+            Res::PrimTy(PrimTy::Uint(UintTy::Usize)) => Typ::Int(IntRange::USize),
+            Res::PrimTy(PrimTy::Int(IntTy::I8)) => Typ::Int(IntRange::I(8)),
+            Res::PrimTy(PrimTy::Int(IntTy::I16)) => Typ::Int(IntRange::I(16)),
+            Res::PrimTy(PrimTy::Int(IntTy::I32)) => Typ::Int(IntRange::I(32)),
+            Res::PrimTy(PrimTy::Int(IntTy::I64)) => Typ::Int(IntRange::I(64)),
+            Res::PrimTy(PrimTy::Int(IntTy::I128)) => Typ::Int(IntRange::I(128)),
+            Res::PrimTy(PrimTy::Int(IntTy::Isize)) => Typ::Int(IntRange::ISize),
             Res::Def(DefKind::Struct, def_id) => {
                 if hack_check_def_name(tcx, def_id, "builtin", "int") {
-                    Typ::Int
+                    Typ::Int(IntRange::Int)
+                } else if hack_check_def_name(tcx, def_id, "builtin", "nat") {
+                    Typ::Int(IntRange::Nat)
                 } else {
                     path_to_ty_path(tcx, def_id)
                 }
@@ -220,6 +235,33 @@ fn extract_ensures<'thir, 'tcx>(
             let args = vec_map_result(&extract_array(expr), |e| get_ensures_arg(tcx, e))?;
             Ok(Rc::new(HeaderExprX::Ensures(None, Rc::new(args))))
         }
+    }
+}
+
+fn mk_range<'tcx>(ty: rustc_middle::ty::Ty<'tcx>) -> IntRange {
+    match ty.kind() {
+        TyKind::Adt(_, _) if ty.to_string() == crate::typecheck::BUILTIN_INT => IntRange::Int,
+        TyKind::Adt(_, _) if ty.to_string() == crate::typecheck::BUILTIN_NAT => IntRange::Nat,
+        TyKind::Uint(rustc_middle::ty::UintTy::U8) => IntRange::U(8),
+        TyKind::Uint(rustc_middle::ty::UintTy::U16) => IntRange::U(16),
+        TyKind::Uint(rustc_middle::ty::UintTy::U32) => IntRange::U(32),
+        TyKind::Uint(rustc_middle::ty::UintTy::U64) => IntRange::U(64),
+        TyKind::Uint(rustc_middle::ty::UintTy::U128) => IntRange::U(128),
+        TyKind::Uint(rustc_middle::ty::UintTy::Usize) => IntRange::USize,
+        TyKind::Int(rustc_middle::ty::IntTy::I8) => IntRange::I(8),
+        TyKind::Int(rustc_middle::ty::IntTy::I16) => IntRange::I(16),
+        TyKind::Int(rustc_middle::ty::IntTy::I32) => IntRange::I(32),
+        TyKind::Int(rustc_middle::ty::IntTy::I64) => IntRange::I(64),
+        TyKind::Int(rustc_middle::ty::IntTy::I128) => IntRange::I(128),
+        TyKind::Int(rustc_middle::ty::IntTy::Isize) => IntRange::ISize,
+        _ => panic!("mk_range {:?}", ty),
+    }
+}
+
+fn mk_clip<'tcx>(ty: rustc_middle::ty::Ty<'tcx>, expr: &vir::ast::Expr) -> vir::ast::Expr {
+    match mk_range(ty) {
+        IntRange::Int => expr.clone(),
+        range => Spanned::new(expr.span.clone(), ExprX::Unary(UnaryOp::Clip(range), expr.clone())),
     }
 }
 
@@ -338,7 +380,8 @@ pub(crate) fn expr_to_vir<'thir, 'tcx>(
                 } else {
                     panic!("internal error")
                 };
-                Ok(spanned_new(expr.span, ExprX::Binary(vop, lhs, rhs)))
+                let e = spanned_new(expr.span, ExprX::Binary(vop, lhs, rhs));
+                if is_arith_binary { Ok(mk_clip(expr.ty, &e)) } else { Ok(e) }
             } else {
                 let name = hack_get_def_name(tcx, f); // TODO: proper handling of paths
                 Ok(spanned_new(expr.span, ExprX::Call(Rc::new(name), Rc::new(vir_args))))
@@ -357,11 +400,26 @@ pub(crate) fn expr_to_vir<'thir, 'tcx>(
                     let c = air::ast::Constant::Bool(b);
                     Ok(spanned_new(expr.span, ExprX::Const(c)))
                 }
-                /*
-                (TyKind::Uint(_), ConstKind::Value(ConstValue::Scalar(Scalar::Int(v)))) => {
-                    let i = v.assert_bits(v.size());
+                (TyKind::Adt(_, _), ConstKind::Value(ConstValue::Scalar(Scalar::Int(v)))) => {
+                    let s = literal.ty.to_string();
+                    if s == crate::typecheck::BUILTIN_INT || s == crate::typecheck::BUILTIN_NAT {
+                        let v = v.assert_bits(v.size()).to_string();
+                        let c = air::ast::Constant::Nat(Rc::new(v));
+                        Ok(spanned_new(expr.span, ExprX::Const(c)))
+                    } else {
+                        Err(spanned_new(expr.span, "unexpected literal".to_string()))
+                    }
                 }
-                */
+                (TyKind::Uint(_), ConstKind::Value(ConstValue::Scalar(Scalar::Int(v)))) => {
+                    let v = v.assert_bits(v.size()).to_string();
+                    let c = air::ast::Constant::Nat(Rc::new(v));
+                    Ok(spanned_new(expr.span, ExprX::Const(c)))
+                }
+                (TyKind::Int(_), ConstKind::Value(ConstValue::Scalar(Scalar::Int(v)))) => {
+                    let v = v.assert_bits(v.size()).to_string();
+                    let c = air::ast::Constant::Nat(Rc::new(v));
+                    Ok(mk_clip(literal.ty, &spanned_new(expr.span, ExprX::Const(c))))
+                }
                 _ => {
                     let f = expr_to_function(expr);
                     let name = hack_get_def_name(tcx, f); // TODO: proper handling of paths
@@ -369,6 +427,7 @@ pub(crate) fn expr_to_vir<'thir, 'tcx>(
                 }
             }
         }
+        ExprKind::Cast { source } => Ok(mk_clip(expr.ty, &expr_to_vir(tcx, source)?)),
         ExprKind::Unary { op, arg } => {
             let varg = expr_to_vir(tcx, arg)?;
             let vop = match op {
@@ -405,7 +464,11 @@ pub(crate) fn expr_to_vir<'thir, 'tcx>(
                 BinOp::Mul => BinaryOp::Mul,
                 _ => unsupported!(format!("binary operator {:?} {:?}", op, expr.span)),
             };
-            Ok(spanned_new(expr.span, ExprX::Binary(vop, vlhs, vrhs)))
+            let e = spanned_new(expr.span, ExprX::Binary(vop, vlhs, vrhs));
+            match op {
+                BinOp::Add | BinOp::Sub | BinOp::Mul => Ok(mk_clip(expr.ty, &e)),
+                _ => Ok(e),
+            }
         }
         ExprKind::VarRef { id } => match tcx.hir().get(*id) {
             Node::Binding(pat) => Ok(spanned_new(expr.span, ExprX::Var(Rc::new(pat_to_var(pat))))),
@@ -467,7 +530,7 @@ pub(crate) fn let_stmt_to_vir<'thir, 'tcx>(
                 rustc_middle::ty::TyKind::Adt(adt, params)
                     if params.len() == 0 && hack_check_def_name(tcx, adt.did, "builtin", "int") =>
                 {
-                    Typ::Int
+                    Typ::Int(IntRange::Int)
                 }
                 _ => {
                     unsupported!(format!("type {:?}", ty.kind()))

@@ -1,5 +1,5 @@
 extern crate builtin;
-use builtin::{assert, assume, ensures, hide, imply, int, requires, reveal};
+use builtin::*;
 
 fn main() {}
 

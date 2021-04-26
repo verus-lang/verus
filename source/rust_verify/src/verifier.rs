@@ -42,16 +42,24 @@ impl Verifier {
 
         let ctx = vir::context::Ctx::new(&krate).expect("error");
 
+        let check_internal_result = |result| match result {
+            ValidityResult::Valid => {}
+            ValidityResult::TypeError(err) => {
+                panic!("internal error: ill-typed AIR code: {}", err)
+            }
+            _ => panic!("internal error: decls should not generate queries"),
+        };
+
         air_context.blank_line();
         air_context.comment("Prelude");
         for command in ctx.prelude().iter() {
-            air_context.command(&command);
+            check_internal_result(air_context.command(&command));
         }
 
         air_context.blank_line();
         air_context.comment("Fuel");
         for command in ctx.fuel().iter() {
-            air_context.command(&command);
+            check_internal_result(air_context.command(&command));
         }
 
         for function in &krate.functions {
@@ -61,14 +69,7 @@ impl Verifier {
                 air_context.comment(&("Function-Decl ".to_string() + &function.x.name));
             }
             for command in commands.iter() {
-                let result = air_context.command(&command);
-                match result {
-                    ValidityResult::Valid => {}
-                    ValidityResult::TypeError(err) => {
-                        panic!("internal error: ill-typed AIR code: {}", err)
-                    }
-                    _ => panic!("internal error: decls should not generate queries"),
-                }
+                check_internal_result(air_context.command(&command));
             }
         }
 
@@ -164,7 +165,14 @@ impl rustc_driver::Callbacks for Verifier {
     ) -> rustc_driver::Compilation {
         let _result = queries.global_ctxt().expect("global_ctxt").peek_mut().enter(|tcx| {
             queries.expansion().expect("expansion");
+
+            let _ =
+                tcx.formal_verifier_callback.replace(Some(Box::new(crate::typecheck::Typecheck {
+                    int_ty_id: None,
+                    nat_ty_id: None,
+                })));
             rustc_typeck::check_crate(tcx).expect("type error");
+
             let hir = tcx.hir();
             let vir_crate = match crate::rust_to_vir::crate_to_vir(tcx, hir.krate()) {
                 Ok(vir_crate) => vir_crate,

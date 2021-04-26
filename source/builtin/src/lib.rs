@@ -53,6 +53,13 @@ impl std::ops::Mul for int {
     }
 }
 
+impl std::ops::Neg for int {
+    type Output = Self;
+    fn neg(self) -> Self::Output {
+        unimplemented!()
+    }
+}
+
 impl PartialEq for int {
     fn eq(&self, _other: &Self) -> bool {
         unimplemented!()
@@ -68,6 +75,50 @@ impl std::cmp::PartialOrd for int {
 }
 
 impl std::cmp::Ord for int {
+    fn cmp(&self, _other: &Self) -> std::cmp::Ordering {
+        unimplemented!()
+    }
+}
+
+#[allow(non_camel_case_types)]
+pub struct nat;
+
+impl std::ops::Add for nat {
+    type Output = Self;
+    fn add(self, _other: Self) -> Self::Output {
+        unimplemented!()
+    }
+}
+
+impl std::ops::Sub for nat {
+    type Output = Self;
+    fn sub(self, _other: Self) -> Self::Output {
+        unimplemented!()
+    }
+}
+
+impl std::ops::Mul for nat {
+    type Output = Self;
+    fn mul(self, _other: Self) -> Self::Output {
+        unimplemented!()
+    }
+}
+
+impl PartialEq for nat {
+    fn eq(&self, _other: &Self) -> bool {
+        unimplemented!()
+    }
+}
+
+impl Eq for nat {}
+
+impl std::cmp::PartialOrd for nat {
+    fn partial_cmp(&self, _other: &Self) -> Option<std::cmp::Ordering> {
+        unimplemented!()
+    }
+}
+
+impl std::cmp::Ord for nat {
     fn cmp(&self, _other: &Self) -> std::cmp::Ordering {
         unimplemented!()
     }

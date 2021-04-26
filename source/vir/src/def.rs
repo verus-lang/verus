@@ -36,6 +36,13 @@ pub const FUEL_BOOL: &str = "fuel_bool";
 pub const FUEL_BOOL_DEFAULT: &str = "fuel_bool_default";
 pub const FUEL_DEFAULTS: &str = "fuel_defaults";
 pub const RETURN_VALUE: &str = "%return";
+pub const U_HI: &str = "uHi";
+pub const I_LO: &str = "iLo";
+pub const I_HI: &str = "iHi";
+pub const U_CLIP: &str = "uClip";
+pub const I_CLIP: &str = "iClip";
+pub const NAT_CLIP: &str = "nClip";
+pub const ARCH_SIZE: &str = "SZ";
 
 pub fn suffix_global_id(ident: &Ident) -> Ident {
     Rc::new(ident.to_string() + SUFFIX_GLOBAL)

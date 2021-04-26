@@ -14,16 +14,28 @@ pub enum Mode {
     Exec,
 }
 
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum IntRange {
+    Int,
+    Nat,
+    U(u32), // number of bits
+    I(u32), // number of bits
+    USize,
+    ISize,
+}
+
+// Deliberately not marked Eq -- use explicit match instead, so we know where types are compared
 #[derive(Clone, Debug)]
 pub enum Typ {
     Bool,
-    Int,
+    Int(IntRange),
     Path(Vec<Ident>),
 }
 
 #[derive(Copy, Clone, Debug)]
 pub enum UnaryOp {
     Not,
+    Clip(IntRange), // force integer value into range given by IntRange (e.g. by using mod)
 }
 
 #[derive(Copy, Clone, Debug)]

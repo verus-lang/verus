@@ -18,7 +18,7 @@ pub fn macro_push_node(nodes: &mut Vec<Node>, node: Node) {
     if len != 0 {
         if let Node::Atom(cur) = &node {
             if let Node::Atom(prev) = &nodes[len - 1] {
-                if node == "-" || (prev != "-" && prev.ends_with("-")) {
+                if node == "-" || prev == ":" || (prev != "-" && prev.ends_with("-")) {
                     nodes[len - 1] = Node::Atom(prev.to_owned() + cur);
                     return;
                 }
@@ -315,14 +315,32 @@ pub(crate) fn write_node(
 }
 
 pub(crate) fn node_to_string_indent(indent: &String, node: &Node) -> String {
-    let style = sise::SpacedStringWriterStyle {
-        line_break: &("\n".to_string() + &indent),
-        indentation: " ",
-    };
+    let indentation = " ";
+    let style =
+        sise::SpacedStringWriterStyle { line_break: &("\n".to_string() + &indent), indentation };
     let mut result = String::new();
     let mut string_writer = sise::SpacedStringWriter::new(style, &mut result);
     write_node(&mut string_writer, &node, 80, false);
     string_writer.finish(()).unwrap();
+    // Clean up result:
+    let lines: Vec<&str> = result.lines().collect();
+    let mut result: String = "".to_string();
+    let mut i = 0;
+    while i < lines.len() {
+        let mut line = lines[i].to_owned();
+        // Consolidate closing ) lines:
+        if line.trim() == ")" {
+            while i + 1 < lines.len() && lines[i + 1].trim() == ")" {
+                line = lines[i + 1].to_string() + &indentation[1..] + line.trim();
+                i += 1;
+            }
+        }
+        result.push_str(&line);
+        i += 1;
+        if i < lines.len() {
+            result.push_str("\n");
+        }
+    }
     result
 }
 
