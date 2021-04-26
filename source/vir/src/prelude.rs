@@ -15,6 +15,8 @@ pub(crate) fn prelude_nodes() -> Vec<Node> {
     let u_clip = str_to_node(U_CLIP);
     let i_clip = str_to_node(I_CLIP);
     let nat_clip = str_to_node(NAT_CLIP);
+    let u_inv = str_to_node(U_INV);
+    let i_inv = str_to_node(I_INV);
     let arch_size = str_to_node(ARCH_SIZE);
 
     nodes_vec!(
@@ -83,6 +85,21 @@ pub(crate) fn prelude_nodes() -> Vec<Node> {
                 )
             )
             :pattern (([i_clip] bits i))
+        )))
+        // type invariants inv(num_bits, value)
+        (declare-fun [u_inv] (Int Int) Bool)
+        (declare-fun [i_inv] (Int Int) Bool)
+        (axiom (forall ((bits Int) (i Int)) (!
+            (= ([u_inv] bits i)
+                (and (<= 0 i) (< i ([u_hi] bits))
+            ))
+            :pattern (([u_inv] bits i))
+        )))
+        (axiom (forall ((bits Int) (i Int)) (!
+            (= ([i_inv] bits i)
+                (and (<= ([i_lo] bits) i) (< i ([i_hi] bits))
+            ))
+            :pattern (([i_inv] bits i))
         )))
     )
 }

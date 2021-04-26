@@ -26,6 +26,41 @@ pub(crate) fn typ_to_air(typ: &Typ) -> air::ast::Typ {
     }
 }
 
+pub(crate) fn apply_range_fun(name: &str, range: &IntRange, expr: &Expr) -> Expr {
+    match range {
+        IntRange::Int | IntRange::Nat => str_apply(name, &vec![expr.clone()]),
+        IntRange::U(range) | IntRange::I(range) => {
+            let bits = Constant::Nat(Rc::new(range.to_string()));
+            str_apply(name, &vec![Rc::new(ExprX::Const(bits)), expr.clone()])
+        }
+        IntRange::USize | IntRange::ISize => {
+            let bits = str_var(crate::def::ARCH_SIZE);
+            str_apply(name, &vec![bits, expr.clone()])
+        }
+    }
+}
+
+// If expr has type typ, what can we assume to be true about expr?
+pub(crate) fn typ_invariant(typ: &Typ, expr: &Expr) -> Option<Expr> {
+    match typ {
+        Typ::Int(IntRange::Int) => None,
+        Typ::Int(IntRange::Nat) => {
+            let zero = Rc::new(ExprX::Const(Constant::Nat(Rc::new("0".to_string()))));
+            Some(Rc::new(ExprX::Binary(air::ast::BinaryOp::Le, zero, expr.clone())))
+        }
+        Typ::Int(range) => {
+            let f_name = match range {
+                IntRange::Int => panic!("internal error: Int"),
+                IntRange::Nat => panic!("internal error: Int"),
+                IntRange::U(_) | IntRange::USize => crate::def::U_INV,
+                IntRange::I(_) | IntRange::ISize => crate::def::I_INV,
+            };
+            Some(apply_range_fun(&f_name, &range, &expr))
+        }
+        _ => None,
+    }
+}
+
 pub(crate) fn exp_to_expr(exp: &Exp) -> Expr {
     match &exp.x {
         ExpX::Const(c) => {
@@ -48,18 +83,7 @@ pub(crate) fn exp_to_expr(exp: &Exp) -> Expr {
                     IntRange::U(_) | IntRange::USize => crate::def::U_CLIP,
                     IntRange::I(_) | IntRange::ISize => crate::def::I_CLIP,
                 };
-                match range {
-                    IntRange::Int => panic!("internal error: Int"),
-                    IntRange::Nat => str_apply(f_name, &vec![expr]),
-                    IntRange::U(range) | IntRange::I(range) => {
-                        let bits = Constant::Nat(Rc::new(range.to_string()));
-                        str_apply(f_name, &vec![Rc::new(ExprX::Const(bits)), expr])
-                    }
-                    IntRange::USize | IntRange::ISize => {
-                        let bits = str_var(crate::def::ARCH_SIZE);
-                        str_apply(f_name, &vec![bits, expr])
-                    }
-                }
+                apply_range_fun(&f_name, &range, &expr)
             }
         },
         ExpX::Binary(op, lhs, rhs) => {
@@ -245,6 +269,12 @@ pub fn stm_to_air(
         if stmts.len() == 1 { stmts[0].clone() } else { Rc::new(StmtX::Block(Rc::new(stmts))) };
 
     set_fuel(&mut local, hidden);
+    for param in params.iter() {
+        let typ_inv = typ_invariant(&param.x.typ, &ident_var(&suffix_local_id(&param.x.name)));
+        if let Some(expr) = typ_inv {
+            local.push(Rc::new(DeclX::Axiom(expr)));
+        }
+    }
     for req in reqs {
         local.push(Rc::new(DeclX::Axiom(exp_to_expr(req))));
     }

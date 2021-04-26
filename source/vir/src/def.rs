@@ -42,6 +42,8 @@ pub const I_HI: &str = "iHi";
 pub const U_CLIP: &str = "uClip";
 pub const I_CLIP: &str = "iClip";
 pub const NAT_CLIP: &str = "nClip";
+pub const U_INV: &str = "uInv";
+pub const I_INV: &str = "iInv";
 pub const ARCH_SIZE: &str = "SZ";
 
 pub fn suffix_global_id(ident: &Ident) -> Ident {

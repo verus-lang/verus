@@ -4,14 +4,23 @@ use crate::def::{
     prefix_ensures, prefix_fuel_id, prefix_requires, suffix_global_id, suffix_local_id, Spanned,
     FUEL_BOOL, FUEL_BOOL_DEFAULT,
 };
-use crate::sst_to_air::{exp_to_expr, typ_to_air};
+use crate::sst_to_air::{exp_to_expr, typ_invariant, typ_to_air};
 use crate::util::{vec_map, vec_map_result};
 use air::ast::{
-    BinaryOp, BindX, Command, CommandX, Commands, DeclX, Expr, ExprX, MultiOp, Quant, Span,
+    BinaryOp, Bind, BindX, Command, CommandX, Commands, DeclX, Expr, ExprX, MultiOp, Quant, Span,
     Trigger, Triggers,
 };
-use air::ast_util::{bool_typ, ident_binder, ident_var, str_apply, string_apply};
+use air::ast_util::{bool_typ, ident_apply, ident_binder, ident_var, str_apply, string_apply};
 use std::rc::Rc;
+
+fn func_bind(params: &Params, trig_expr: &Expr) -> Bind {
+    let binders = Rc::new(vec_map(params, |param| {
+        ident_binder(&suffix_local_id(&param.x.name.clone()), &typ_to_air(&param.x.typ))
+    }));
+    let trigger: Trigger = Rc::new(vec![trig_expr.clone()]);
+    let triggers: Triggers = Rc::new(vec![trigger]);
+    Rc::new(BindX::Quant(Quant::Forall, binders, triggers))
+}
 
 // (forall (...) (= (f ...) body))
 fn func_def_quant(name: &Ident, params: &Params, body: Expr) -> Result<Expr, VirErr> {
@@ -19,13 +28,7 @@ fn func_def_quant(name: &Ident, params: &Params, body: Expr) -> Result<Expr, Vir
         Rc::new(vec_map(params, |param| ident_var(&suffix_local_id(&param.x.name.clone()))));
     let f_app = string_apply(name, &f_args);
     let f_eq = Rc::new(ExprX::Binary(BinaryOp::Eq, f_app.clone(), body));
-    let binders = Rc::new(vec_map(params, |param| {
-        ident_binder(&suffix_local_id(&param.x.name.clone()), &typ_to_air(&param.x.typ))
-    }));
-    let trigger: Trigger = Rc::new(vec![f_app.clone()]);
-    let triggers: Triggers = Rc::new(vec![trigger]);
-    let bind = Rc::new(BindX::Quant(Quant::Forall, binders, triggers));
-    Ok(Rc::new(ExprX::Bind(bind, f_eq)))
+    Ok(Rc::new(ExprX::Bind(func_bind(params, &f_app), f_eq)))
 }
 
 fn func_body_to_air(
@@ -59,15 +62,19 @@ pub fn req_ens_to_air(
     ctx: &Ctx,
     commands: &mut Vec<Command>,
     params: &Params,
+    typing_invs: &Vec<Expr>,
     specs: &Vec<crate::ast::Expr>,
     typs: &air::ast::Typs,
     name: &Ident,
     msg: &Option<String>,
 ) -> Result<(), VirErr> {
-    if specs.len() > 0 {
+    if specs.len() + typing_invs.len() > 0 {
         let decl = Rc::new(DeclX::Fun(name.clone(), typs.clone(), bool_typ()));
         commands.push(Rc::new(CommandX::Global(decl)));
         let mut exprs: Vec<Expr> = Vec::new();
+        for e in typing_invs {
+            exprs.push(e.clone());
+        }
         for e in specs.iter() {
             let exp = crate::ast_to_sst::expr_to_exp(ctx, e)?;
             let expr = exp_to_expr(&exp);
@@ -83,8 +90,8 @@ pub fn req_ens_to_air(
         }
         let body = Rc::new(ExprX::Multi(MultiOp::And, Rc::new(exprs)));
         let e_forall = func_def_quant(&name, params, body)?;
-        let req_axiom = Rc::new(DeclX::Axiom(e_forall));
-        commands.push(Rc::new(CommandX::Global(req_axiom)));
+        let req_ens_axiom = Rc::new(DeclX::Axiom(e_forall));
+        commands.push(Rc::new(CommandX::Global(req_ens_axiom)));
     }
     Ok(())
 }
@@ -98,15 +105,24 @@ pub fn func_decl_to_air(ctx: &Ctx, function: &Function) -> Result<Commands, VirE
 
             // Declare function
             let name = suffix_global_id(&function.x.name);
-            let decl = Rc::new(DeclX::Fun(name, typs.clone(), typ));
+            let decl = Rc::new(DeclX::Fun(name.clone(), typs.clone(), typ));
             commands.push(Rc::new(CommandX::Global(decl)));
 
             // Body
-            match &function.x.body {
-                None => {}
-                Some(body) => {
-                    func_body_to_air(ctx, &mut commands, function, body)?;
-                }
+            if let Some(body) = &function.x.body {
+                func_body_to_air(ctx, &mut commands, function, body)?;
+            }
+
+            // Return typing invariant
+            let f_args = Rc::new(vec_map(&function.x.params, |param| {
+                ident_var(&suffix_local_id(&param.x.name.clone()))
+            }));
+            let f_app = ident_apply(&name, &f_args);
+            if let Some(expr) = typ_invariant(&ret, &f_app) {
+                // (axiom (forall (...) expr))
+                let e_forall = Rc::new(ExprX::Bind(func_bind(&function.x.params, &f_app), expr));
+                let inv_axiom = Rc::new(DeclX::Axiom(e_forall));
+                commands.push(Rc::new(CommandX::Global(inv_axiom)));
             }
         }
         (Mode::Exec, _) | (Mode::Proof, _) => {
@@ -114,6 +130,7 @@ pub fn func_decl_to_air(ctx: &Ctx, function: &Function) -> Result<Commands, VirE
                 ctx,
                 &mut commands,
                 &function.x.params,
+                &vec![],
                 &function.x.require,
                 &typs,
                 &prefix_requires(&function.x.name),
@@ -121,15 +138,20 @@ pub fn func_decl_to_air(ctx: &Ctx, function: &Function) -> Result<Commands, VirE
             )?;
             let mut ens_typs = (*typs).clone();
             let mut ens_params = (*function.x.params).clone();
+            let mut ens_typing_invs: Vec<Expr> = Vec::new();
             if let Some((name, typ)) = &function.x.ret {
                 let param = ParamX { name: name.clone(), typ: typ.clone() };
                 ens_typs.push(typ_to_air(&typ));
                 ens_params.push(Spanned::new(function.span.clone(), param));
+                if let Some(expr) = typ_invariant(&typ, &ident_var(&suffix_local_id(&name))) {
+                    ens_typing_invs.push(expr.clone());
+                }
             }
             req_ens_to_air(
                 ctx,
                 &mut commands,
                 &Rc::new(ens_params),
+                &ens_typing_invs,
                 &function.x.ensure,
                 &Rc::new(ens_typs),
                 &prefix_ensures(&function.x.name),
