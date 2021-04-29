@@ -100,6 +100,26 @@ pub(crate) fn build_thir_body<'thir, 'tcx>(
     build_thir(tcx, rustc_middle::ty::WithOptConstParam::unknown(did), arena, &body.value)
 }
 
+fn mk_range<'tcx>(ty: rustc_middle::ty::Ty<'tcx>) -> IntRange {
+    match ty.kind() {
+        TyKind::Adt(_, _) if ty.to_string() == crate::typecheck::BUILTIN_INT => IntRange::Int,
+        TyKind::Adt(_, _) if ty.to_string() == crate::typecheck::BUILTIN_NAT => IntRange::Nat,
+        TyKind::Uint(rustc_middle::ty::UintTy::U8) => IntRange::U(8),
+        TyKind::Uint(rustc_middle::ty::UintTy::U16) => IntRange::U(16),
+        TyKind::Uint(rustc_middle::ty::UintTy::U32) => IntRange::U(32),
+        TyKind::Uint(rustc_middle::ty::UintTy::U64) => IntRange::U(64),
+        TyKind::Uint(rustc_middle::ty::UintTy::U128) => IntRange::U(128),
+        TyKind::Uint(rustc_middle::ty::UintTy::Usize) => IntRange::USize,
+        TyKind::Int(rustc_middle::ty::IntTy::I8) => IntRange::I(8),
+        TyKind::Int(rustc_middle::ty::IntTy::I16) => IntRange::I(16),
+        TyKind::Int(rustc_middle::ty::IntTy::I32) => IntRange::I(32),
+        TyKind::Int(rustc_middle::ty::IntTy::I64) => IntRange::I(64),
+        TyKind::Int(rustc_middle::ty::IntTy::I128) => IntRange::I(128),
+        TyKind::Int(rustc_middle::ty::IntTy::Isize) => IntRange::ISize,
+        _ => panic!("mk_range {:?}", ty),
+    }
+}
+
 pub(crate) fn mid_ty_to_vir<'tcx>(tcx: TyCtxt<'tcx>, ty: rustc_middle::ty::Ty) -> Typ {
     unsupported_unless!(ty.flags().is_empty(), "ty.flags", ty);
     match ty.kind() {
@@ -114,18 +134,7 @@ pub(crate) fn mid_ty_to_vir<'tcx>(tcx: TyCtxt<'tcx>, ty: rustc_middle::ty::Ty) -
                 path_to_ty_path(tcx, *did)
             }
         }
-        TyKind::Uint(rustc_middle::ty::UintTy::U8) => Typ::Int(IntRange::U(8)),
-        TyKind::Uint(rustc_middle::ty::UintTy::U16) => Typ::Int(IntRange::U(16)),
-        TyKind::Uint(rustc_middle::ty::UintTy::U32) => Typ::Int(IntRange::U(32)),
-        TyKind::Uint(rustc_middle::ty::UintTy::U64) => Typ::Int(IntRange::U(64)),
-        TyKind::Uint(rustc_middle::ty::UintTy::U128) => Typ::Int(IntRange::U(128)),
-        TyKind::Uint(rustc_middle::ty::UintTy::Usize) => Typ::Int(IntRange::USize),
-        TyKind::Int(rustc_middle::ty::IntTy::I8) => Typ::Int(IntRange::I(8)),
-        TyKind::Int(rustc_middle::ty::IntTy::I16) => Typ::Int(IntRange::I(16)),
-        TyKind::Int(rustc_middle::ty::IntTy::I32) => Typ::Int(IntRange::I(32)),
-        TyKind::Int(rustc_middle::ty::IntTy::I64) => Typ::Int(IntRange::I(64)),
-        TyKind::Int(rustc_middle::ty::IntTy::I128) => Typ::Int(IntRange::I(128)),
-        TyKind::Int(rustc_middle::ty::IntTy::Isize) => Typ::Int(IntRange::ISize),
+        TyKind::Uint(_) | TyKind::Int(_) => Typ::Int(mk_range(ty)),
         _ => {
             unsupported!(format!("type {:?}", ty))
         }
@@ -267,26 +276,6 @@ fn extract_ensures<'thir, 'tcx>(
             let args = vec_map_result(&extract_array(expr), |e| get_ensures_arg(tcx, e))?;
             Ok(Rc::new(HeaderExprX::Ensures(None, Rc::new(args))))
         }
-    }
-}
-
-fn mk_range<'tcx>(ty: rustc_middle::ty::Ty<'tcx>) -> IntRange {
-    match ty.kind() {
-        TyKind::Adt(_, _) if ty.to_string() == crate::typecheck::BUILTIN_INT => IntRange::Int,
-        TyKind::Adt(_, _) if ty.to_string() == crate::typecheck::BUILTIN_NAT => IntRange::Nat,
-        TyKind::Uint(rustc_middle::ty::UintTy::U8) => IntRange::U(8),
-        TyKind::Uint(rustc_middle::ty::UintTy::U16) => IntRange::U(16),
-        TyKind::Uint(rustc_middle::ty::UintTy::U32) => IntRange::U(32),
-        TyKind::Uint(rustc_middle::ty::UintTy::U64) => IntRange::U(64),
-        TyKind::Uint(rustc_middle::ty::UintTy::U128) => IntRange::U(128),
-        TyKind::Uint(rustc_middle::ty::UintTy::Usize) => IntRange::USize,
-        TyKind::Int(rustc_middle::ty::IntTy::I8) => IntRange::I(8),
-        TyKind::Int(rustc_middle::ty::IntTy::I16) => IntRange::I(16),
-        TyKind::Int(rustc_middle::ty::IntTy::I32) => IntRange::I(32),
-        TyKind::Int(rustc_middle::ty::IntTy::I64) => IntRange::I(64),
-        TyKind::Int(rustc_middle::ty::IntTy::I128) => IntRange::I(128),
-        TyKind::Int(rustc_middle::ty::IntTy::Isize) => IntRange::ISize,
-        _ => panic!("mk_range {:?}", ty),
     }
 }
 
