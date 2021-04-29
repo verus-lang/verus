@@ -2,11 +2,11 @@ use crate::util::{slice_vec_map_result, vec_map_result};
 use crate::{unsupported, unsupported_unless};
 use rustc_ast::{AttrKind, Attribute, IntTy, UintTy};
 use rustc_hir::def::{DefKind, Res};
-use rustc_hir::{BindingAnnotation, BodyId, Node, Pat, PatKind, PrimTy, QPath, Ty};
-use rustc_middle::mir::interpret::{ConstValue, Scalar};
-use rustc_middle::mir::{BinOp, BorrowKind, UnOp};
-use rustc_middle::ty::{AdtDef, ConstKind, TyCtxt, TyKind};
-use rustc_mir_build::thir::{build_thir, Arena, Expr, ExprKind, LogicalOp, Stmt, StmtKind};
+use rustc_hir::{
+    BinOpKind, BindingAnnotation, Expr, ExprKind, HirId, Local, Node, Pat, PatKind, PrimTy, QPath,
+    Stmt, StmtKind, Ty, UnOp,
+};
+use rustc_middle::ty::{AdtDef, TyCtxt, TyKind, TypeckResults};
 use rustc_span::def_id::DefId;
 use rustc_span::symbol::Ident;
 use rustc_span::Span;
@@ -90,16 +90,6 @@ pub(crate) fn get_fuel(attrs: &[Attribute]) -> u32 {
     fuel
 }
 
-pub(crate) fn build_thir_body<'thir, 'tcx>(
-    tcx: TyCtxt<'tcx>,
-    arena: &'thir Arena<'thir, 'tcx>,
-    body_id: &BodyId,
-) -> &'thir Expr<'thir, 'tcx> {
-    let body = tcx.hir().body(*body_id);
-    let did = body_id.hir_id.owner;
-    build_thir(tcx, rustc_middle::ty::WithOptConstParam::unknown(did), arena, &body.value)
-}
-
 fn mk_range<'tcx>(ty: rustc_middle::ty::Ty<'tcx>) -> IntRange {
     match ty.kind() {
         TyKind::Adt(_, _) if ty.to_string() == crate::typecheck::BUILTIN_INT => IntRange::Int,
@@ -178,6 +168,10 @@ pub(crate) fn ty_to_vir<'tcx>(tcx: TyCtxt<'tcx>, ty: &Ty) -> Typ {
     }
 }
 
+pub(crate) fn typ_of_node<'tcx>(tcx: TyCtxt<'tcx>, tc: &TypeckResults<'tcx>, id: &HirId) -> Typ {
+    mid_ty_to_vir(tcx, tc.node_type(*id))
+}
+
 pub(crate) fn pat_to_var<'tcx>(pat: &Pat) -> String {
     let Pat { hir_id: _, kind, span: _, default_binding_modes } = pat;
     unsupported_unless!(default_binding_modes, "default_binding_modes");
@@ -204,18 +198,10 @@ pub(crate) fn pat_to_var<'tcx>(pat: &Pat) -> String {
     }
 }
 
-fn expr_descope<'thir, 'tcx>(expr: &'thir Expr<'thir, 'tcx>) -> &'thir Expr<'thir, 'tcx> {
-    match &expr.kind {
-        ExprKind::Scope { value, .. } => value,
-        _ => expr,
-    }
-}
-
-fn expr_to_function<'thir, 'tcx>(expr: &'thir Expr<'thir, 'tcx>) -> DefId {
-    let v = match &expr_descope(expr).kind {
-        ExprKind::Literal { literal, .. } => match literal.ty.kind() {
-            // TODO: proper handling of functions
-            TyKind::FnDef(id, _) => Some(*id),
+fn expr_to_function<'hir>(expr: &Expr<'hir>) -> DefId {
+    let v = match &expr.kind {
+        ExprKind::Path(rustc_hir::QPath::Resolved(_, path)) => match path.res {
+            rustc_hir::def::Res::Def(_, def_id) => Some(def_id),
             _ => None,
         },
         _ => None,
@@ -226,93 +212,80 @@ fn expr_to_function<'thir, 'tcx>(expr: &'thir Expr<'thir, 'tcx>) -> DefId {
     }
 }
 
-fn extract_array<'thir, 'tcx>(expr: &'thir Expr<'thir, 'tcx>) -> Vec<&'thir Expr<'thir, 'tcx>> {
+fn extract_array<'tcx>(expr: &'tcx Expr<'tcx>) -> Vec<&'tcx Expr<'tcx>> {
     match &expr.kind {
-        ExprKind::Scope { value, .. } => extract_array(value),
-        ExprKind::Array { fields, .. } => fields.iter().collect(),
+        ExprKind::Array(fields) => fields.iter().collect(),
         _ => vec![expr],
     }
 }
 
-fn get_ensures_arg<'thir, 'tcx>(
+fn get_ensures_arg<'tcx>(
     tcx: TyCtxt<'tcx>,
-    expr: &'thir Expr<'thir, 'tcx>,
+    tc: &TypeckResults<'tcx>,
+    expr: &Expr<'tcx>,
 ) -> Result<vir::ast::Expr, VirErr> {
-    if matches!(expr.ty.kind(), TyKind::Bool) {
-        expr_to_vir(tcx, expr)
+    if matches!(tc.node_type(expr.hir_id).kind(), TyKind::Bool) {
+        expr_to_vir(tcx, tc, expr)
     } else {
         Err(spanned_new(expr.span, "ensures needs a bool expression".to_string()))
     }
 }
 
-fn extract_ensures<'thir, 'tcx>(
+fn extract_ensures<'tcx>(
     tcx: TyCtxt<'tcx>,
-    expr: &'thir Expr<'thir, 'tcx>,
+    tc: &TypeckResults<'tcx>,
+    expr: &'tcx Expr<'tcx>,
 ) -> Result<HeaderExpr, VirErr> {
     match &expr.kind {
-        ExprKind::Scope { value, .. } => extract_ensures(tcx, value),
-        ExprKind::Closure { closure_id, .. } => match tcx.hir().get_if_local(*closure_id) {
-            Some(Node::Expr(expr)) => match expr.kind {
-                rustc_hir::ExprKind::Closure(_, fn_decl, body_id, _, _) => {
-                    let typs: Vec<Typ> = fn_decl.inputs.iter().map(|t| ty_to_vir(tcx, t)).collect();
-                    let body = tcx.hir().body(body_id);
-                    let xs: Vec<String> =
-                        body.params.iter().map(|param| pat_to_var(param.pat)).collect();
-                    let arena = Arena::default();
-                    let expr = build_thir_body(tcx, &arena, &body_id);
-                    let args = vec_map_result(&extract_array(expr), |e| get_ensures_arg(tcx, e))?;
-                    if typs.len() == 1 && xs.len() == 1 {
-                        let id_typ = Some((Rc::new(xs[0].clone()), typs[0].clone()));
-                        Ok(Rc::new(HeaderExprX::Ensures(id_typ, Rc::new(args))))
-                    } else {
-                        Err(spanned_new(expr.span, "expected 1 parameter in closure".to_string()))
-                    }
-                }
-                _ => panic!("internal error: expected closure"),
-            },
-            _ => panic!("internal error: expected closure"),
-        },
+        ExprKind::Closure(_, fn_decl, body_id, _, _) => {
+            let typs: Vec<Typ> = fn_decl.inputs.iter().map(|t| ty_to_vir(tcx, t)).collect();
+            let body = tcx.hir().body(*body_id);
+            let xs: Vec<String> = body.params.iter().map(|param| pat_to_var(param.pat)).collect();
+            let expr = &body.value;
+            let args = vec_map_result(&extract_array(expr), |e| get_ensures_arg(tcx, tc, e))?;
+            if typs.len() == 1 && xs.len() == 1 {
+                let id_typ = Some((Rc::new(xs[0].clone()), typs[0].clone()));
+                Ok(Rc::new(HeaderExprX::Ensures(id_typ, Rc::new(args))))
+            } else {
+                Err(spanned_new(expr.span, "expected 1 parameter in closure".to_string()))
+            }
+        }
         _ => {
-            let args = vec_map_result(&extract_array(expr), |e| get_ensures_arg(tcx, e))?;
+            let args = vec_map_result(&extract_array(expr), |e| get_ensures_arg(tcx, tc, e))?;
             Ok(Rc::new(HeaderExprX::Ensures(None, Rc::new(args))))
         }
     }
 }
 
-fn mk_clip<'tcx>(ty: rustc_middle::ty::Ty<'tcx>, expr: &vir::ast::Expr) -> vir::ast::Expr {
-    match mk_range(ty) {
+fn mk_clip<'tcx>(range: &IntRange, expr: &vir::ast::Expr) -> vir::ast::Expr {
+    match range {
         IntRange::Int => expr.clone(),
-        range => Spanned::new(expr.span.clone(), ExprX::Unary(UnaryOp::Clip(range), expr.clone())),
+        range => Spanned::new(expr.span.clone(), ExprX::Unary(UnaryOp::Clip(*range), expr.clone())),
     }
 }
 
-pub(crate) fn expr_to_vir<'thir, 'tcx>(
+fn mk_ty_clip<'tcx>(ty: rustc_middle::ty::Ty<'tcx>, expr: &vir::ast::Expr) -> vir::ast::Expr {
+    mk_clip(&mk_range(ty), expr)
+}
+
+pub(crate) fn expr_to_vir<'tcx>(
     tcx: TyCtxt<'tcx>,
-    expr: &'thir Expr<'thir, 'tcx>,
+    tc: &TypeckResults<'tcx>,
+    expr: &Expr<'tcx>,
 ) -> Result<vir::ast::Expr, VirErr> {
     match &expr.kind {
-        ExprKind::Scope { value, .. } => expr_to_vir(tcx, value),
-        ExprKind::Block { body, .. } => {
+        ExprKind::Block(body, _) => {
             let vir_stmts: Stmts = Rc::new(
-                slice_vec_map_result(body.stmts, |stmt| stmt_to_vir(tcx, stmt))?
+                slice_vec_map_result(body.stmts, |stmt| stmt_to_vir(tcx, tc, stmt))?
                     .into_iter()
                     .flatten()
                     .collect(),
             );
-            let vir_expr = body.expr.map(|expr| expr_to_vir(tcx, &expr)).transpose()?;
+            let vir_expr = body.expr.map(|expr| expr_to_vir(tcx, tc, &expr)).transpose()?;
             Ok(spanned_new(expr.span, ExprX::Block(vir_stmts, vir_expr)))
         }
-        ExprKind::Borrow { arg, borrow_kind } => {
-            match borrow_kind {
-                BorrowKind::Shared => {}
-                _ => {
-                    unsupported!("borrow_kind", borrow_kind, expr.span);
-                }
-            }
-            expr_to_vir(tcx, arg)
-        }
-        ExprKind::Call { fun, args: args_slice, .. } => {
-            let mut args: Vec<&'thir Expr<'thir, 'tcx>> = args_slice.iter().collect();
+        ExprKind::Call(fun, args_slice) => {
+            let mut args: Vec<&'tcx Expr<'tcx>> = args_slice.iter().collect();
             let f = expr_to_function(fun);
             let is_assume = hack_check_def_name(tcx, f, "builtin", "assume");
             let is_assert = hack_check_def_name(tcx, f, "builtin", "assert");
@@ -336,19 +309,19 @@ pub(crate) fn expr_to_vir<'thir, 'tcx>(
             if is_requires {
                 args = extract_array(args[0]);
                 for arg in &args {
-                    if !matches!(arg.ty.kind(), TyKind::Bool) {
+                    if !matches!(tc.node_type(arg.hir_id).kind(), TyKind::Bool) {
                         let s = "requires needs a bool expression".to_string();
                         return Err(spanned_new(arg.span, s));
                     }
                 }
             }
             if is_ensures {
-                let header = extract_ensures(tcx, args[0])?;
+                let header = extract_ensures(tcx, tc, args[0])?;
                 let expr = spanned_new(args[0].span, ExprX::Header(header));
                 return Ok(expr);
             }
 
-            let vir_args = vec_map_result(&args, |arg| expr_to_vir(tcx, arg))?;
+            let vir_args = vec_map_result(&args, |arg| expr_to_vir(tcx, tc, arg))?;
 
             if is_requires {
                 let header = Rc::new(HeaderExprX::Requires(Rc::new(vir_args)));
@@ -402,48 +375,43 @@ pub(crate) fn expr_to_vir<'thir, 'tcx>(
                     panic!("internal error")
                 };
                 let e = spanned_new(expr.span, ExprX::Binary(vop, lhs, rhs));
-                if is_arith_binary { Ok(mk_clip(expr.ty, &e)) } else { Ok(e) }
+                let ty = tc.node_type(expr.hir_id);
+                if is_arith_binary { Ok(mk_ty_clip(ty, &e)) } else { Ok(e) }
             } else {
                 let name = hack_get_def_name(tcx, f); // TODO: proper handling of paths
                 Ok(spanned_new(expr.span, ExprX::Call(Rc::new(name), Rc::new(vir_args))))
             }
         }
-        ExprKind::Literal { literal, user_ty: _, const_id: _ } => {
-            match literal.ty.kind() {
-                TyKind::FnDef(_, _) => {
-                    let f = expr_to_function(expr);
-                    let name = hack_get_def_name(tcx, f); // TODO: proper handling of paths
-                    return Ok(spanned_new(expr.span, ExprX::Var(Rc::new(name))));
-                }
-                _ => {}
+        ExprKind::Lit(lit) => match lit.node {
+            rustc_ast::LitKind::Bool(b) => {
+                let c = air::ast::Constant::Bool(b);
+                Ok(spanned_new(expr.span, ExprX::Const(c)))
             }
-            let typ = mid_ty_to_vir(tcx, literal.ty);
-            match (&typ, literal.val) {
-                (Typ::Bool, ConstKind::Value(ConstValue::Scalar(Scalar::Int(v)))) => {
-                    let b = v.assert_bits(v.size()) != 0;
-                    let c = air::ast::Constant::Bool(b);
-                    Ok(spanned_new(expr.span, ExprX::Const(c)))
-                }
-                (Typ::Int(range), ConstKind::Value(ConstValue::Scalar(Scalar::Int(v)))) => {
-                    let v = v.assert_bits(v.size()).to_string();
-                    let c = air::ast::Constant::Nat(Rc::new(v));
+            rustc_ast::LitKind::Int(i, _) => {
+                let typ = typ_of_node(tcx, tc, &expr.hir_id);
+                let c = air::ast::Constant::Nat(Rc::new(i.to_string()));
+                if let Typ::Int(range) = typ {
                     match range {
                         IntRange::Int | IntRange::Nat | IntRange::U(_) | IntRange::USize => {
                             Ok(spanned_new(expr.span, ExprX::Const(c)))
                         }
                         IntRange::I(_) | IntRange::ISize => {
-                            Ok(mk_clip(literal.ty, &spanned_new(expr.span, ExprX::Const(c))))
+                            Ok(mk_clip(&range, &spanned_new(expr.span, ExprX::Const(c))))
                         }
                     }
-                }
-                _ => {
-                    panic!("unexpected constant: {:?} {:?}", literal, typ)
+                } else {
+                    panic!("unexpected constant: {:?} {:?}", lit, typ)
                 }
             }
+            _ => {
+                panic!("unexpected constant: {:?}", lit)
+            }
+        },
+        ExprKind::Cast(source, _) => {
+            Ok(mk_ty_clip(tc.node_type(expr.hir_id), &expr_to_vir(tcx, tc, source)?))
         }
-        ExprKind::Cast { source } => Ok(mk_clip(expr.ty, &expr_to_vir(tcx, source)?)),
-        ExprKind::Unary { op, arg } => {
-            let varg = expr_to_vir(tcx, arg)?;
+        ExprKind::Unary(op, arg) => {
+            let varg = expr_to_vir(tcx, tc, arg)?;
             let vop = match op {
                 UnOp::Not => UnaryOp::Not,
                 _ => {
@@ -454,57 +422,59 @@ pub(crate) fn expr_to_vir<'thir, 'tcx>(
             };
             Ok(spanned_new(expr.span, ExprX::Unary(vop, varg)))
         }
-        ExprKind::LogicalOp { op, lhs, rhs } => {
-            let vlhs = expr_to_vir(tcx, lhs)?;
-            let vrhs = expr_to_vir(tcx, rhs)?;
-            let vop = match op {
-                LogicalOp::And => BinaryOp::And,
-                LogicalOp::Or => BinaryOp::Or,
-            };
-            Ok(spanned_new(expr.span, ExprX::Binary(vop, vlhs, vrhs)))
-        }
-        ExprKind::Binary { op, lhs, rhs } => {
-            let vlhs = expr_to_vir(tcx, lhs)?;
-            let vrhs = expr_to_vir(tcx, rhs)?;
-            let vop = match op {
-                BinOp::Eq => BinaryOp::Eq,
-                BinOp::Ne => BinaryOp::Ne,
-                BinOp::Le => BinaryOp::Le,
-                BinOp::Ge => BinaryOp::Ge,
-                BinOp::Lt => BinaryOp::Lt,
-                BinOp::Gt => BinaryOp::Gt,
-                BinOp::Add => BinaryOp::Add,
-                BinOp::Sub => BinaryOp::Sub,
-                BinOp::Mul => BinaryOp::Mul,
+        ExprKind::Binary(op, lhs, rhs) => {
+            let vlhs = expr_to_vir(tcx, tc, lhs)?;
+            let vrhs = expr_to_vir(tcx, tc, rhs)?;
+            let vop = match op.node {
+                BinOpKind::And => BinaryOp::And,
+                BinOpKind::Or => BinaryOp::Or,
+                BinOpKind::Eq => BinaryOp::Eq,
+                BinOpKind::Ne => BinaryOp::Ne,
+                BinOpKind::Le => BinaryOp::Le,
+                BinOpKind::Ge => BinaryOp::Ge,
+                BinOpKind::Lt => BinaryOp::Lt,
+                BinOpKind::Gt => BinaryOp::Gt,
+                BinOpKind::Add => BinaryOp::Add,
+                BinOpKind::Sub => BinaryOp::Sub,
+                BinOpKind::Mul => BinaryOp::Mul,
                 _ => unsupported!(format!("binary operator {:?} {:?}", op, expr.span)),
             };
             let e = spanned_new(expr.span, ExprX::Binary(vop, vlhs, vrhs));
-            match op {
-                BinOp::Add | BinOp::Sub | BinOp::Mul => Ok(mk_clip(expr.ty, &e)),
+            match op.node {
+                BinOpKind::Add | BinOpKind::Sub | BinOpKind::Mul => {
+                    Ok(mk_ty_clip(tc.node_type(expr.hir_id), &e))
+                }
                 _ => Ok(e),
             }
         }
-        ExprKind::VarRef { id } => match tcx.hir().get(*id) {
-            Node::Binding(pat) => Ok(spanned_new(expr.span, ExprX::Var(Rc::new(pat_to_var(pat))))),
-            node => {
-                unsupported!(format!("VarRef {:?}", node))
+        ExprKind::Path(QPath::Resolved(None, path)) => match path.res {
+            Res::Local(id) => match tcx.hir().get(id) {
+                Node::Binding(pat) => {
+                    Ok(spanned_new(expr.span, ExprX::Var(Rc::new(pat_to_var(pat)))))
+                }
+                node => unsupported!(format!("Path {:?} {:?}", node, expr.span)),
+            },
+            Res::Def(_, id) => {
+                let name = hack_get_def_name(tcx, id); // TODO: proper handling of paths
+                Ok(spanned_new(expr.span, ExprX::Var(Rc::new(name))))
             }
+            res => unsupported!(format!("Path {:?} {:?}", res, expr.span)),
         },
-        ExprKind::Assign { lhs, rhs } => Ok(spanned_new(
+        ExprKind::Assign(lhs, rhs, _) => Ok(spanned_new(
             expr.span,
-            ExprX::Assign(expr_to_vir(tcx, lhs)?, expr_to_vir(tcx, rhs)?),
+            ExprX::Assign(expr_to_vir(tcx, tc, lhs)?, expr_to_vir(tcx, tc, rhs)?),
         )),
-        ExprKind::Field { lhs, name } => {
-            let vir_lhs = expr_to_vir(tcx, lhs)?;
-            let field_ident = if let Some(adt_def) = lhs.ty.ty_adt_def() {
+        ExprKind::Field(lhs, name) => {
+            let vir_lhs = expr_to_vir(tcx, tc, lhs)?;
+            let lhs_ty = tc.node_type(lhs.hir_id);
+            let field_ident = if let Some(adt_def) = lhs_ty.ty_adt_def() {
                 unsupported_unless!(
                     adt_def.variants.len() == 1,
                     "field_of_adt_with_multiple_variants",
                     expr,
                     expr.span
                 );
-                let variant = adt_def.variants.iter().next().unwrap();
-                str_ident(&variant.fields[name.index()].ident.as_str())
+                str_ident(&name.as_str())
             } else {
                 unsupported!("field_of_non_adt", expr, expr.span);
             };
@@ -518,36 +488,38 @@ pub(crate) fn expr_to_vir<'thir, 'tcx>(
     }
 }
 
-pub(crate) fn let_stmt_to_vir<'thir, 'tcx>(
+pub(crate) fn let_stmt_to_vir<'tcx>(
     tcx: TyCtxt<'tcx>,
-    pattern: &'thir rustc_mir_build::thir::Pat<'thir>,
-    initializer: &'thir Option<&'thir Expr<'thir, 'tcx>>,
+    tc: &TypeckResults<'tcx>,
+    pattern: &rustc_hir::Pat<'tcx>,
+    initializer: &Option<&Expr<'tcx>>,
 ) -> Result<Vec<vir::ast::Stmt>, VirErr> {
-    // dbg!(pattern);
-    use std::ops::Deref;
-    match pattern.kind.deref() {
-        rustc_mir_build::thir::PatKind::Binding { var, mutability, mode, ty, .. } => {
-            unsupported_unless!(
-                *mode == rustc_mir_build::thir::BindingMode::ByValue,
-                "by_ref_bindings"
-            );
-            // TODO: need unique identifiers!
-            let name = Rc::new(match tcx.hir().get(*var) {
-                Node::Binding(pat) => pat_to_var(pat),
-                node => {
-                    unsupported!(format!("VarRef {:?}", node))
+    let Pat { hir_id, kind, span: _, default_binding_modes } = pattern;
+    unsupported_unless!(default_binding_modes, "default_binding_modes");
+    match pattern.kind {
+        PatKind::Binding(annotation, _id, ident, pat) => {
+            let mutable = match annotation {
+                BindingAnnotation::Unannotated => false,
+                BindingAnnotation::Mutable => true,
+                _ => {
+                    unsupported!(format!("binding annotation {:?}", annotation))
                 }
-            });
-            let typ = mid_ty_to_vir(tcx, ty);
+            };
+            match pat {
+                None => {}
+                _ => {
+                    unsupported!(format!("pattern {:?}", kind))
+                }
+            }
+            // TODO: need unique identifiers!
+            let name = Rc::new(ident_to_var(&ident));
+            let typ = typ_of_node(tcx, tc, hir_id);
             Ok(vec![spanned_new(
                 pattern.span,
                 StmtX::Decl {
                     param: ParamX { name: name.clone(), typ },
-                    mutable: match *mutability {
-                        rustc_middle::mir::Mutability::Not => false,
-                        rustc_middle::mir::Mutability::Mut => true,
-                    },
-                    init: initializer.map(|e| expr_to_vir(tcx, e)).transpose()?,
+                    mutable,
+                    init: initializer.map(|e| expr_to_vir(tcx, tc, e)).transpose()?,
                 },
             )])
         }
@@ -558,15 +530,21 @@ pub(crate) fn let_stmt_to_vir<'thir, 'tcx>(
     }
 }
 
-pub(crate) fn stmt_to_vir<'thir, 'tcx>(
+pub(crate) fn stmt_to_vir<'tcx>(
     tcx: TyCtxt<'tcx>,
-    stmt: &'thir Stmt<'thir, 'tcx>,
+    tc: &TypeckResults<'tcx>,
+    stmt: &Stmt<'tcx>,
 ) -> Result<Vec<vir::ast::Stmt>, VirErr> {
     match &stmt.kind {
-        StmtKind::Expr { expr, .. } => {
-            let vir_expr = expr_to_vir(tcx, expr)?;
+        StmtKind::Expr(expr) | StmtKind::Semi(expr) => {
+            let vir_expr = expr_to_vir(tcx, tc, expr)?;
             Ok(vec![spanned_new(expr.span, StmtX::Expr(vir_expr))])
         }
-        StmtKind::Let { pattern, initializer, .. } => let_stmt_to_vir(tcx, pattern, initializer),
+        StmtKind::Local(Local { pat, init, .. }) => let_stmt_to_vir(tcx, tc, pat, init),
+        _ => {
+            dbg!(stmt);
+            dbg!(stmt.span);
+            unsupported!("statement")
+        }
     }
 }

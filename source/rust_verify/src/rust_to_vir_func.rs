@@ -1,12 +1,10 @@
 use crate::rust_to_vir_expr::{
-    build_thir_body, expr_to_vir, get_fuel, get_mode, ident_to_var, pat_to_var, spanned_new,
-    ty_to_vir,
+    expr_to_vir, get_fuel, get_mode, ident_to_var, pat_to_var, spanned_new, ty_to_vir,
 };
 use crate::{unsupported, unsupported_unless};
 use rustc_ast::Attribute;
 use rustc_hir::{Body, BodyId, Crate, FnDecl, FnHeader, FnSig, Generics, Param, Unsafety};
 use rustc_middle::ty::TyCtxt;
-use rustc_mir_build::thir;
 use rustc_span::symbol::Ident;
 use rustc_span::Span;
 use std::rc::Rc;
@@ -75,10 +73,14 @@ fn read_header(body: &mut vir::ast::Expr) -> Result<Header, VirErr> {
     }
 }
 
-pub(crate) fn body_to_vir<'tcx>(tcx: TyCtxt<'tcx>, id: &BodyId) -> Result<vir::ast::Expr, VirErr> {
-    let arena = thir::Arena::default();
-    let expr = build_thir_body(tcx, &arena, id);
-    expr_to_vir(tcx, expr)
+pub(crate) fn body_to_vir<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    id: &BodyId,
+    body: &Body<'tcx>,
+) -> Result<vir::ast::Expr, VirErr> {
+    let def = rustc_middle::ty::WithOptConstParam::unknown(id.hir_id.owner);
+    let tc = tcx.typeck_opt_const_arg(def);
+    expr_to_vir(tcx, tc, &body.value)
 }
 
 fn check_fn_decl<'tcx>(
@@ -146,7 +148,7 @@ pub(crate) fn check_item_fn<'tcx>(
             unsupported!("generator_kind", generator_kind);
         }
     }
-    let mut vir_body = body_to_vir(tcx, body_id)?;
+    let mut vir_body = body_to_vir(tcx, body_id, body)?;
     let header = read_header(&mut vir_body)?;
     if mode == Mode::Spec && (header.require.len() + header.ensure.len()) > 0 {
         let s = "spec functions cannot have requires/ensures";
