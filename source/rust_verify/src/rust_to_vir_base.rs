@@ -160,6 +160,11 @@ pub(crate) fn ty_to_vir<'tcx>(tcx: TyCtxt<'tcx>, ty: &Ty) -> Typ {
     }
 }
 
-pub(crate) fn typ_of_node<'tcx>(tcx: TyCtxt<'tcx>, tc: &TypeckResults<'tcx>, id: &HirId) -> Typ {
-    mid_ty_to_vir(tcx, tc.node_type(*id))
+pub(crate) struct Ctxt<'tcx> {
+    pub(crate) tcx: TyCtxt<'tcx>,
+    pub(crate) types: &'tcx TypeckResults<'tcx>,
+}
+
+pub(crate) fn typ_of_node<'tcx>(ctxt: &Ctxt<'tcx>, id: &HirId) -> Typ {
+    mid_ty_to_vir(ctxt.tcx, ctxt.types.node_type(*id))
 }

@@ -1,4 +1,4 @@
-use crate::rust_to_vir_base::{get_fuel, get_mode, ident_to_var, spanned_new, ty_to_vir};
+use crate::rust_to_vir_base::{get_fuel, get_mode, ident_to_var, spanned_new, ty_to_vir, Ctxt};
 use crate::rust_to_vir_expr::{expr_to_vir, pat_to_var};
 use crate::{unsupported, unsupported_unless};
 use rustc_ast::Attribute;
@@ -78,8 +78,9 @@ pub(crate) fn body_to_vir<'tcx>(
     body: &Body<'tcx>,
 ) -> Result<vir::ast::Expr, VirErr> {
     let def = rustc_middle::ty::WithOptConstParam::unknown(id.hir_id.owner);
-    let tc = tcx.typeck_opt_const_arg(def);
-    expr_to_vir(tcx, tc, &body.value)
+    let types = tcx.typeck_opt_const_arg(def);
+    let ctxt = Ctxt { tcx, types };
+    expr_to_vir(&ctxt, &body.value)
 }
 
 fn check_fn_decl<'tcx>(
