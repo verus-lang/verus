@@ -1,6 +1,5 @@
-use crate::rust_to_vir_expr::{
-    expr_to_vir, get_fuel, get_mode, ident_to_var, pat_to_var, spanned_new, ty_to_vir,
-};
+use crate::rust_to_vir_base::{get_fuel, get_mode, ident_to_var, spanned_new, ty_to_vir};
+use crate::rust_to_vir_expr::{expr_to_vir, pat_to_var};
 use crate::{unsupported, unsupported_unless};
 use rustc_ast::Attribute;
 use rustc_hir::{Body, BodyId, Crate, FnDecl, FnHeader, FnSig, Generics, Param, Unsafety};

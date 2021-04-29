@@ -43,10 +43,10 @@ fn check_item<'tcx>(
         ItemKind::Mod { .. } => {}
         ItemKind::ForeignMod { .. } => {}
         ItemKind::Struct(variant_data, generics) => {
-            check_item_struct(tcx, krate, vir, item.span, id, variant_data, generics);
+            check_item_struct(tcx, krate, vir, item.span, id, variant_data, generics)?;
         }
         ItemKind::Enum(enum_def, generics) => {
-            check_item_enum(tcx, krate, vir, item.span, id, enum_def, generics);
+            check_item_enum(tcx, krate, vir, item.span, id, enum_def, generics)?;
         }
         _ => {
             unsupported!("unsupported item", item);
