@@ -5,7 +5,7 @@ use rustc_hir::def::{DefKind, Res};
 use rustc_hir::{BindingAnnotation, BodyId, Node, Pat, PatKind, PrimTy, QPath, Ty};
 use rustc_middle::mir::interpret::{ConstValue, Scalar};
 use rustc_middle::mir::{BinOp, BorrowKind, UnOp};
-use rustc_middle::ty::{ConstKind, TyCtxt, TyKind};
+use rustc_middle::ty::{AdtDef, ConstKind, TyCtxt, TyKind};
 use rustc_mir_build::thir::{build_thir, Arena, Expr, ExprKind, LogicalOp, Stmt, StmtKind};
 use rustc_span::def_id::DefId;
 use rustc_span::symbol::Ident;
@@ -98,6 +98,38 @@ pub(crate) fn build_thir_body<'thir, 'tcx>(
     let body = tcx.hir().body(*body_id);
     let did = body_id.hir_id.owner;
     build_thir(tcx, rustc_middle::ty::WithOptConstParam::unknown(did), arena, &body.value)
+}
+
+pub(crate) fn mid_ty_to_vir<'tcx>(tcx: TyCtxt<'tcx>, ty: rustc_middle::ty::Ty) -> Typ {
+    unsupported_unless!(ty.flags().is_empty(), "ty.flags", ty);
+    match ty.kind() {
+        TyKind::Bool => Typ::Bool,
+        TyKind::Adt(AdtDef { did, .. }, _) => {
+            let s = ty.to_string();
+            if s == crate::typecheck::BUILTIN_INT {
+                Typ::Int(IntRange::Int)
+            } else if s == crate::typecheck::BUILTIN_NAT {
+                Typ::Int(IntRange::Nat)
+            } else {
+                path_to_ty_path(tcx, *did)
+            }
+        }
+        TyKind::Uint(rustc_middle::ty::UintTy::U8) => Typ::Int(IntRange::U(8)),
+        TyKind::Uint(rustc_middle::ty::UintTy::U16) => Typ::Int(IntRange::U(16)),
+        TyKind::Uint(rustc_middle::ty::UintTy::U32) => Typ::Int(IntRange::U(32)),
+        TyKind::Uint(rustc_middle::ty::UintTy::U64) => Typ::Int(IntRange::U(64)),
+        TyKind::Uint(rustc_middle::ty::UintTy::U128) => Typ::Int(IntRange::U(128)),
+        TyKind::Uint(rustc_middle::ty::UintTy::Usize) => Typ::Int(IntRange::USize),
+        TyKind::Int(rustc_middle::ty::IntTy::I8) => Typ::Int(IntRange::I(8)),
+        TyKind::Int(rustc_middle::ty::IntTy::I16) => Typ::Int(IntRange::I(16)),
+        TyKind::Int(rustc_middle::ty::IntTy::I32) => Typ::Int(IntRange::I(32)),
+        TyKind::Int(rustc_middle::ty::IntTy::I64) => Typ::Int(IntRange::I(64)),
+        TyKind::Int(rustc_middle::ty::IntTy::I128) => Typ::Int(IntRange::I(128)),
+        TyKind::Int(rustc_middle::ty::IntTy::Isize) => Typ::Int(IntRange::ISize),
+        _ => {
+            unsupported!(format!("type {:?}", ty))
+        }
+    }
 }
 
 pub(crate) fn ty_to_vir<'tcx>(tcx: TyCtxt<'tcx>, ty: &Ty) -> Typ {
@@ -388,42 +420,35 @@ pub(crate) fn expr_to_vir<'thir, 'tcx>(
             }
         }
         ExprKind::Literal { literal, user_ty: _, const_id: _ } => {
-            unsupported_unless!(
-                literal.ty.flags().is_empty(),
-                "literal.ty.flags",
-                literal,
-                expr.span
-            );
-            match (literal.ty.kind(), literal.val) {
-                (TyKind::Bool, ConstKind::Value(ConstValue::Scalar(Scalar::Int(v)))) => {
+            match literal.ty.kind() {
+                TyKind::FnDef(_, _) => {
+                    let f = expr_to_function(expr);
+                    let name = hack_get_def_name(tcx, f); // TODO: proper handling of paths
+                    return Ok(spanned_new(expr.span, ExprX::Var(Rc::new(name))));
+                }
+                _ => {}
+            }
+            let typ = mid_ty_to_vir(tcx, literal.ty);
+            match (&typ, literal.val) {
+                (Typ::Bool, ConstKind::Value(ConstValue::Scalar(Scalar::Int(v)))) => {
                     let b = v.assert_bits(v.size()) != 0;
                     let c = air::ast::Constant::Bool(b);
                     Ok(spanned_new(expr.span, ExprX::Const(c)))
                 }
-                (TyKind::Adt(_, _), ConstKind::Value(ConstValue::Scalar(Scalar::Int(v)))) => {
-                    let s = literal.ty.to_string();
-                    if s == crate::typecheck::BUILTIN_INT || s == crate::typecheck::BUILTIN_NAT {
-                        let v = v.assert_bits(v.size()).to_string();
-                        let c = air::ast::Constant::Nat(Rc::new(v));
-                        Ok(spanned_new(expr.span, ExprX::Const(c)))
-                    } else {
-                        Err(spanned_new(expr.span, "unexpected literal".to_string()))
+                (Typ::Int(range), ConstKind::Value(ConstValue::Scalar(Scalar::Int(v)))) => {
+                    let v = v.assert_bits(v.size()).to_string();
+                    let c = air::ast::Constant::Nat(Rc::new(v));
+                    match range {
+                        IntRange::Int | IntRange::Nat | IntRange::U(_) | IntRange::USize => {
+                            Ok(spanned_new(expr.span, ExprX::Const(c)))
+                        }
+                        IntRange::I(_) | IntRange::ISize => {
+                            Ok(mk_clip(literal.ty, &spanned_new(expr.span, ExprX::Const(c))))
+                        }
                     }
                 }
-                (TyKind::Uint(_), ConstKind::Value(ConstValue::Scalar(Scalar::Int(v)))) => {
-                    let v = v.assert_bits(v.size()).to_string();
-                    let c = air::ast::Constant::Nat(Rc::new(v));
-                    Ok(spanned_new(expr.span, ExprX::Const(c)))
-                }
-                (TyKind::Int(_), ConstKind::Value(ConstValue::Scalar(Scalar::Int(v)))) => {
-                    let v = v.assert_bits(v.size()).to_string();
-                    let c = air::ast::Constant::Nat(Rc::new(v));
-                    Ok(mk_clip(literal.ty, &spanned_new(expr.span, ExprX::Const(c))))
-                }
                 _ => {
-                    let f = expr_to_function(expr);
-                    let name = hack_get_def_name(tcx, f); // TODO: proper handling of paths
-                    Ok(spanned_new(expr.span, ExprX::Var(Rc::new(name))))
+                    panic!("unexpected constant: {:?} {:?}", literal, typ)
                 }
             }
         }
@@ -524,18 +549,7 @@ pub(crate) fn let_stmt_to_vir<'thir, 'tcx>(
                     unsupported!(format!("VarRef {:?}", node))
                 }
             });
-            // TODO: what's the relationship of this with ty_to_vir
-            let typ = match ty.kind() {
-                rustc_middle::ty::TyKind::Bool => Typ::Bool,
-                rustc_middle::ty::TyKind::Adt(adt, params)
-                    if params.len() == 0 && hack_check_def_name(tcx, adt.did, "builtin", "int") =>
-                {
-                    Typ::Int(IntRange::Int)
-                }
-                _ => {
-                    unsupported!(format!("type {:?}", ty.kind()))
-                }
-            };
+            let typ = mid_ty_to_vir(tcx, ty);
             Ok(vec![spanned_new(
                 pattern.span,
                 StmtX::Decl {
