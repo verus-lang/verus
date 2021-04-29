@@ -54,7 +54,7 @@ pub(crate) fn expr_to_exp(ctx: &Ctx, expr: &Expr) -> Result<Exp, VirErr> {
             Ok(Spanned::new(expr.span.clone(), bin))
         }
         ExprX::Block(stmts, Some(expr)) if stmts.len() == 0 => expr_to_exp(ctx, expr),
-        ExprX::Field(lhs, name) => {
+        ExprX::Field { lhs, field_name: name, .. } => {
             Ok(Spanned::new(expr.span.clone(), ExpX::Field(expr_to_exp(ctx, lhs)?, name.clone())))
         }
         _ => {
@@ -116,14 +116,18 @@ pub fn stmt_to_stm(ctx: &Ctx, stmt: &Stmt) -> Result<Vec<Stm>, VirErr> {
         StmtX::Decl { param, mutable, init } => {
             let decl = Spanned::new(
                 stmt.span.clone(),
-                StmX::Decl { ident: param.name.clone(), typ: param.typ.clone(), mutable: *mutable },
+                StmX::Decl {
+                    ident: param.x.name.clone(),
+                    typ: param.x.typ.clone(),
+                    mutable: *mutable,
+                },
             );
             let mut stms = vec![decl];
             match init {
                 None => {}
                 Some(init) => {
                     let span = &init.span;
-                    let var = Spanned::new(span.clone(), ExpX::Var(param.name.clone()));
+                    let var = Spanned::new(span.clone(), ExpX::Var(param.x.name.clone()));
                     match &expr_must_be_call_stm(ctx, init)? {
                         None => {
                             let rhs = expr_to_exp(ctx, init)?;
@@ -132,7 +136,7 @@ pub fn stmt_to_stm(ctx: &Ctx, stmt: &Stmt) -> Result<Vec<Stm>, VirErr> {
                             stms.push(Spanned::new(span.clone(), StmX::Assume(eq)));
                         }
                         Some((func_name, args)) => {
-                            let dest = Some(Dest { var: param.name.clone(), mutable: *mutable });
+                            let dest = Some(Dest { var: param.x.name.clone(), mutable: *mutable });
                             let call = StmX::Call(func_name.clone(), args.clone(), dest);
                             stms.push(Spanned::new(span.clone(), call));
                         }

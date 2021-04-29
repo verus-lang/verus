@@ -12,9 +12,7 @@ fn datatype_to_air(datatype: &crate::ast::Datatype) -> air::ast::Datatype {
                         Rc::new(
                             fields
                                 .iter()
-                                .map(|field| {
-                                    Rc::new(field.map_a(|typ: &crate::ast::Typ| typ_to_air(typ)))
-                                })
+                                .map(|field| Rc::new(field.map_a(|(typ, _)| typ_to_air(typ))))
                                 .collect::<Vec<_>>(),
                         )
                     }))

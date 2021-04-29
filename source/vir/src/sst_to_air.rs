@@ -1,4 +1,4 @@
-use crate::ast::{BinaryOp, Ident, IntRange, Params, Typ, UnaryOp};
+use crate::ast::{BinaryOp, Ident, IntRange, Mode, Params, Typ, UnaryOp};
 use crate::context::Ctx;
 use crate::def::{
     prefix_ensures, prefix_fuel_id, prefix_requires, suffix_global_id, suffix_local_id, FUEL_BOOL,
@@ -242,7 +242,7 @@ fn set_fuel(local: &mut Vec<Decl>, hidden: &Vec<Ident>) {
 pub fn stm_to_air(
     ctx: &Ctx,
     params: &Params,
-    ret: &Option<(Ident, Typ)>,
+    ret: &Option<(Ident, Typ, Mode)>,
     hidden: &Vec<Ident>,
     reqs: &Vec<Exp>,
     enss: &Vec<Exp>,
@@ -253,7 +253,7 @@ pub fn stm_to_air(
     });
     match ret {
         None => {}
-        Some((x, typ)) => {
+        Some((x, typ, _)) => {
             local.push(Rc::new(DeclX::Const(suffix_local_id(&x), typ_to_air(&typ))));
         }
     }

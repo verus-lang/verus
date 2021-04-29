@@ -17,6 +17,11 @@ impl Verifier {
     }
 
     fn verify(&mut self, compiler: &rustc_interface::interface::Compiler, krate: Krate) {
+        match vir::modes::check_crate(&krate) {
+            Ok(_) => {}
+            Err(err) => panic!("error: %{:?}", err),
+        }
+
         let mut z3_config = z3::Config::new();
         z3_config.set_param_value("auto_config", "false");
 

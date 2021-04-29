@@ -71,7 +71,7 @@ pub enum ExprX {
     Const(Constant),
     Var(Ident),
     Call(Ident, Exprs),
-    Field(Expr, Ident),
+    Field { lhs: Expr, datatype_name: Ident, field_name: Ident },
     Assume(Expr),
     Assert(Expr),
     Unary(UnaryOp, Expr),
@@ -87,7 +87,7 @@ pub type Stmts = Rc<Vec<Stmt>>;
 #[derive(Debug)]
 pub enum StmtX {
     Expr(Expr),
-    Decl { param: ParamX, mutable: bool, init: Option<Expr> },
+    Decl { param: Param, mutable: bool, init: Option<Expr> },
 }
 
 pub type Param = Rc<Spanned<ParamX>>;
@@ -96,6 +96,7 @@ pub type Params = Rc<Vec<Param>>;
 pub struct ParamX {
     pub name: Ident,
     pub typ: Typ,
+    pub mode: Mode,
 }
 
 pub type Function = Rc<Spanned<FunctionX>>;
@@ -105,7 +106,7 @@ pub struct FunctionX {
     pub mode: Mode,
     pub fuel: u32,
     pub params: Params,
-    pub ret: Option<(Ident, Typ)>,
+    pub ret: Option<(Ident, Typ, Mode)>,
     pub require: Exprs,
     pub ensure: Exprs,
     pub hidden: Idents,
@@ -114,8 +115,8 @@ pub struct FunctionX {
 
 pub use air::ast::Binder;
 pub use air::ast::Binders;
-pub type Field = Binder<Typ>;
-pub type Fields = Binders<Typ>;
+pub type Field = Binder<(Typ, Mode)>;
+pub type Fields = Binders<(Typ, Mode)>;
 pub type Variant = Binder<Fields>;
 pub type Variants = Binders<Fields>;
 pub type Datatype = Rc<Spanned<Binder<Variants>>>;

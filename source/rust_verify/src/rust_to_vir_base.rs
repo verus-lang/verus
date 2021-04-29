@@ -46,8 +46,8 @@ pub(crate) fn ident_to_var<'tcx>(ident: &Ident) -> String {
     ident.to_string()
 }
 
-pub(crate) fn get_mode(attrs: &[Attribute]) -> Mode {
-    let mut mode = Mode::Exec;
+pub(crate) fn get_mode(default_mode: Mode, attrs: &[Attribute]) -> Mode {
+    let mut mode = default_mode;
     for attr in attrs {
         match &attr.kind {
             AttrKind::Normal(item, _) => match &item.path.segments[..] {
@@ -63,6 +63,11 @@ pub(crate) fn get_mode(attrs: &[Attribute]) -> Mode {
         }
     }
     mode
+}
+
+pub(crate) fn get_var_mode(function_mode: Mode, attrs: &[Attribute]) -> Mode {
+    let default_mode = if function_mode == Mode::Proof { Mode::Spec } else { function_mode };
+    get_mode(default_mode, attrs)
 }
 
 pub(crate) fn get_fuel(attrs: &[Attribute]) -> u32 {
@@ -163,6 +168,7 @@ pub(crate) fn ty_to_vir<'tcx>(tcx: TyCtxt<'tcx>, ty: &Ty) -> Typ {
 pub(crate) struct Ctxt<'tcx> {
     pub(crate) tcx: TyCtxt<'tcx>,
     pub(crate) types: &'tcx TypeckResults<'tcx>,
+    pub(crate) mode: Mode,
 }
 
 pub(crate) fn typ_of_node<'tcx>(ctxt: &Ctxt<'tcx>, id: &HirId) -> Typ {

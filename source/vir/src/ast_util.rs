@@ -1,5 +1,16 @@
-use crate::ast::Typ;
+use crate::ast::{Mode, Typ};
 pub use air::ast_util::{ident_binder, str_ident};
+use std::fmt;
+
+impl fmt::Display for Mode {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Mode::Spec => write!(f, "spec"),
+            Mode::Proof => write!(f, "proof"),
+            Mode::Exec => write!(f, "exec"),
+        }
+    }
+}
 
 pub fn types_equal(typ1: &Typ, typ2: &Typ) -> bool {
     match (typ1, typ2) {

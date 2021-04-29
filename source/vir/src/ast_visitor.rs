@@ -17,9 +17,16 @@ where
             let expr = Spanned::new(expr.span.clone(), ExprX::Call(x.clone(), Rc::new(exprs)));
             f(&expr)
         }
-        ExprX::Field(lhs, name) => {
+        ExprX::Field { lhs, datatype_name, field_name } => {
             let lhs1 = map_expr_visitor(lhs, f)?;
-            let expr = Spanned::new(expr.span.clone(), ExprX::Field(lhs1, name.clone()));
+            let expr = Spanned::new(
+                expr.span.clone(),
+                ExprX::Field {
+                    lhs: lhs1,
+                    datatype_name: datatype_name.clone(),
+                    field_name: field_name.clone(),
+                },
+            );
             f(&expr)
         }
         ExprX::Assume(e1) => {
@@ -75,6 +82,10 @@ where
             let expr = map_expr_visitor(e, f)?;
             Ok(Spanned::new(stmt.span.clone(), StmtX::Expr(f(&expr)?)))
         }
-        StmtX::Decl { .. } => Ok(stmt.clone()),
+        StmtX::Decl { param, mutable, init } => {
+            let param = param.clone();
+            let init = init.as_ref().map(|expr| f(expr)).transpose()?;
+            Ok(Spanned::new(stmt.span.clone(), StmtX::Decl { param, mutable: *mutable, init }))
+        }
     }
 }

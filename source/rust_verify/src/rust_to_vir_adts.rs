@@ -1,11 +1,11 @@
-use crate::rust_to_vir_base::{hack_get_def_name, spanned_new, ty_to_vir};
+use crate::rust_to_vir_base::{get_mode, hack_get_def_name, spanned_new, ty_to_vir};
 use crate::rust_to_vir_func::check_generics;
 use crate::{unsupported, unsupported_unless};
 use rustc_hir::{Crate, EnumDef, Generics, ItemId, VariantData};
 use rustc_middle::ty::TyCtxt;
 use rustc_span::Span;
 use std::rc::Rc;
-use vir::ast::{Ident, KrateX, Variant, VirErr};
+use vir::ast::{Ident, KrateX, Mode, Variant, VirErr};
 use vir::ast_util::{ident_binder, str_ident};
 
 fn check_variant_data<'tcx>(
@@ -25,7 +25,10 @@ fn check_variant_data<'tcx>(
                         .map(|field| {
                             ident_binder(
                                 &str_ident(&field.ident.as_str()),
-                                &ty_to_vir(tcx, field.ty),
+                                &(
+                                    ty_to_vir(tcx, field.ty),
+                                    get_mode(Mode::Exec, tcx.hir().attrs(field.hir_id)),
+                                ),
                             )
                         })
                         .collect::<Vec<_>>(),
@@ -35,7 +38,13 @@ fn check_variant_data<'tcx>(
                 fields
                     .iter()
                     .map(|field| {
-                        ident_binder(&str_ident(&field.ident.as_str()), &ty_to_vir(tcx, field.ty))
+                        ident_binder(
+                            &str_ident(&field.ident.as_str()),
+                            &(
+                                ty_to_vir(tcx, field.ty),
+                                get_mode(Mode::Exec, tcx.hir().attrs(field.hir_id)),
+                            ),
+                        )
                     })
                     .collect::<Vec<_>>(),
             ),

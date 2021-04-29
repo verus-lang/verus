@@ -6,6 +6,7 @@ pub mod context;
 pub mod datatype_to_air;
 pub mod def;
 pub mod func_to_air;
+pub mod modes;
 mod prelude;
 mod sst;
 mod sst_to_air;

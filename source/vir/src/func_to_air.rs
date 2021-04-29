@@ -100,7 +100,7 @@ pub fn func_decl_to_air(ctx: &Ctx, function: &Function) -> Result<Commands, VirE
     let typs = Rc::new(vec_map(&function.x.params, |param| typ_to_air(&param.x.typ)));
     let mut commands: Vec<Command> = Vec::new();
     match (function.x.mode, function.x.ret.as_ref()) {
-        (Mode::Spec, Some((_, ret))) => {
+        (Mode::Spec, Some((_, ret, _))) => {
             let typ = typ_to_air(&ret);
 
             // Declare function
@@ -139,8 +139,8 @@ pub fn func_decl_to_air(ctx: &Ctx, function: &Function) -> Result<Commands, VirE
             let mut ens_typs = (*typs).clone();
             let mut ens_params = (*function.x.params).clone();
             let mut ens_typing_invs: Vec<Expr> = Vec::new();
-            if let Some((name, typ)) = &function.x.ret {
-                let param = ParamX { name: name.clone(), typ: typ.clone() };
+            if let Some((name, typ, mode)) = &function.x.ret {
+                let param = ParamX { name: name.clone(), typ: typ.clone(), mode: *mode };
                 ens_typs.push(typ_to_air(&typ));
                 ens_params.push(Spanned::new(function.span.clone(), param));
                 if let Some(expr) = typ_invariant(&typ, &ident_var(&suffix_local_id(&name))) {
@@ -166,7 +166,7 @@ pub fn func_decl_to_air(ctx: &Ctx, function: &Function) -> Result<Commands, VirE
 pub fn func_def_to_air(ctx: &Ctx, function: &Function) -> Result<Commands, VirErr> {
     match (function.x.mode, function.x.ret.as_ref(), function.x.body.as_ref()) {
         (Mode::Exec, _, Some(body)) | (Mode::Proof, _, Some(body)) => {
-            let dest = function.x.ret.as_ref().map(|(x, _)| x.clone());
+            let dest = function.x.ret.as_ref().map(|(x, _, _)| x.clone());
             let reqs =
                 vec_map_result(&*function.x.require, |e| crate::ast_to_sst::expr_to_exp(ctx, e))?;
             let enss =

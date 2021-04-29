@@ -1,9 +1,10 @@
 use crate::rust_to_vir_base::{
-    hack_check_def_name, hack_get_def_name, ident_to_var, mk_range, spanned_new, ty_to_vir,
-    typ_of_node, Ctxt,
+    get_var_mode, hack_check_def_name, hack_get_def_name, ident_to_var, mk_range, spanned_new,
+    ty_to_vir, typ_of_node, Ctxt,
 };
 use crate::util::{slice_vec_map_result, vec_map_result};
 use crate::{unsupported, unsupported_unless};
+use rustc_ast::Attribute;
 use rustc_hir::def::Res;
 use rustc_hir::{
     BinOpKind, BindingAnnotation, Expr, ExprKind, Local, Node, Pat, PatKind, QPath, Stmt, StmtKind,
@@ -307,18 +308,18 @@ pub(crate) fn expr_to_vir<'tcx>(
         ExprKind::Field(lhs, name) => {
             let vir_lhs = expr_to_vir(ctxt, lhs)?;
             let lhs_ty = tc.node_type(lhs.hir_id);
-            let field_ident = if let Some(adt_def) = lhs_ty.ty_adt_def() {
+            let (datatype_name, field_name) = if let Some(adt_def) = lhs_ty.ty_adt_def() {
                 unsupported_unless!(
                     adt_def.variants.len() == 1,
                     "field_of_adt_with_multiple_variants",
                     expr,
                     expr.span
                 );
-                str_ident(&name.as_str())
+                (Rc::new(hack_get_def_name(tcx, adt_def.did)), str_ident(&name.as_str()))
             } else {
                 unsupported!("field_of_non_adt", expr, expr.span);
             };
-            Ok(spanned_new(expr.span, ExprX::Field(vir_lhs, field_ident)))
+            Ok(spanned_new(expr.span, ExprX::Field { lhs: vir_lhs, datatype_name, field_name }))
         }
         _ => {
             dbg!(expr);
@@ -332,6 +333,7 @@ pub(crate) fn let_stmt_to_vir<'tcx>(
     ctxt: &Ctxt<'tcx>,
     pattern: &rustc_hir::Pat<'tcx>,
     initializer: &Option<&Expr<'tcx>>,
+    attrs: &[Attribute],
 ) -> Result<Vec<vir::ast::Stmt>, VirErr> {
     let Pat { hir_id, kind, span: _, default_binding_modes } = pattern;
     unsupported_unless!(default_binding_modes, "default_binding_modes");
@@ -353,10 +355,11 @@ pub(crate) fn let_stmt_to_vir<'tcx>(
             // TODO: need unique identifiers!
             let name = Rc::new(ident_to_var(&ident));
             let typ = typ_of_node(ctxt, hir_id);
+            let mode = get_var_mode(ctxt.mode, attrs);
             Ok(vec![spanned_new(
                 pattern.span,
                 StmtX::Decl {
-                    param: ParamX { name: name.clone(), typ },
+                    param: spanned_new(pattern.span, ParamX { name: name.clone(), typ, mode }),
                     mutable,
                     init: initializer.map(|e| expr_to_vir(ctxt, e)).transpose()?,
                 },
@@ -378,7 +381,9 @@ pub(crate) fn stmt_to_vir<'tcx>(
             let vir_expr = expr_to_vir(ctxt, expr)?;
             Ok(vec![spanned_new(expr.span, StmtX::Expr(vir_expr))])
         }
-        StmtKind::Local(Local { pat, init, .. }) => let_stmt_to_vir(ctxt, pat, init),
+        StmtKind::Local(Local { pat, init, .. }) => {
+            let_stmt_to_vir(ctxt, pat, init, ctxt.tcx.hir().attrs(stmt.hir_id))
+        }
         _ => {
             dbg!(stmt);
             dbg!(stmt.span);
