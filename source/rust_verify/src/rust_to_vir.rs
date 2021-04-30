@@ -8,7 +8,8 @@ For soundness's sake, be as defensive as possible:
 
 use crate::rust_to_vir_adts::{check_item_enum, check_item_struct};
 use crate::rust_to_vir_func::{check_foreign_item_fn, check_item_fn};
-use crate::{unsupported, unsupported_unless};
+use crate::util::unsupported_err_span;
+use crate::{unsupported_err, unsupported_unless};
 use rustc_ast::Attribute;
 use rustc_hir::{
     Crate, ForeignItem, ForeignItemId, ForeignItemKind, HirId, Item, ItemId, ItemKind, ModuleItems,
@@ -49,7 +50,7 @@ fn check_item<'tcx>(
             check_item_enum(tcx, krate, vir, item.span, id, enum_def, generics)?;
         }
         _ => {
-            unsupported!("unsupported item", item);
+            unsupported_err!(item.span, "unsupported item", item);
         }
     }
     Ok(())
@@ -95,7 +96,7 @@ fn check_foreign_item<'tcx>(
             )?;
         }
         _ => {
-            unsupported!("unsupported item", item);
+            unsupported_err!(item.span, "unsupported item", item);
         }
     }
     Ok(())

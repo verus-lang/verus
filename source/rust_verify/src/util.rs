@@ -1,17 +1,66 @@
+use rustc_span::Span;
+use std::rc::Rc;
+use vir::ast::{VirErr, VirErrX};
+use vir::def::Spanned;
+
+pub(crate) fn spanned_new<X>(span: Span, x: X) -> Rc<Spanned<X>> {
+    let raw_span = Rc::new(span);
+    let as_string = format!("{:?}", span);
+    Spanned::new(air::ast::Span { description: None, raw_span, as_string }, x)
+}
+
+pub(crate) fn err_span_str<A>(span: Span, msg: &str) -> Result<A, VirErr> {
+    Err(spanned_new(span, VirErrX::Str(msg.to_string())))
+}
+
+pub(crate) fn err_span_string<A>(span: Span, msg: String) -> Result<A, VirErr> {
+    Err(spanned_new(span, VirErrX::Str(msg)))
+}
+
+pub(crate) fn unsupported_err_span<A>(span: Span, msg: String) -> Result<A, VirErr> {
+    err_span_string(
+        span,
+        format!("The verifier does not yet support the following Rust feature: {}", msg),
+    )
+}
+
+#[macro_export]
+macro_rules! unsupported_err {
+    ($span: expr, $msg: expr) => {{
+        dbg!();
+        unsupported_err_span($span, $msg.to_string())?
+    }};
+    ($span: expr, $msg: expr, $info: expr) => {{
+        dbg!($info);
+        unsupported_err_span($span, $msg.to_string())?
+    }};
+}
+
+#[macro_export]
+macro_rules! unsupported_err_unless {
+    ($assertion: expr, $span: expr, $msg: expr) => {
+        if (!$assertion) {
+            dbg!();
+            unsupported_err_span($span, $msg.to_string())?;
+        }
+    };
+    ($assertion: expr, $span: expr, $msg: expr, $info: expr) => {
+        if (!$assertion) {
+            dbg!($info);
+            unsupported_err_span($span, $msg.to_string())?;
+        }
+    };
+}
+
 #[macro_export]
 macro_rules! unsupported {
-    ($msg: expr) => {
+    ($msg: expr) => {{
         panic!("The verifier does not yet support the following Rust feature: {}", $msg)
-    };
-    ($msg: expr, $info: expr) => {
+    }};
+    ($msg: expr, $info: expr) => {{
         dbg!($info);
         panic!("The verifier does not yet support the following Rust feature: {}", $msg)
-    };
-    ($msg: expr, $info1: expr, $info2: expr) => {
-        dbg!($info1);
-        dbg!($info2);
-        panic!("The verifier does not yet support the following Rust feature: {}", $msg)
-    };
+    }};
 }
 
 #[macro_export]
@@ -24,13 +73,6 @@ macro_rules! unsupported_unless {
     ($assertion: expr, $msg: expr, $info: expr) => {
         if (!$assertion) {
             dbg!($info);
-            panic!("The verifier does not yet support the following Rust feature: {}", $msg)
-        }
-    };
-    ($assertion: expr, $msg: expr, $info1: expr, $info2: expr) => {
-        if (!$assertion) {
-            dbg!($info1);
-            dbg!($info2);
             panic!("The verifier does not yet support the following Rust feature: {}", $msg)
         }
     };

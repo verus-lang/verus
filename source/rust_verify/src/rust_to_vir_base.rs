@@ -5,24 +5,8 @@ use rustc_hir::{HirId, PrimTy, QPath, Ty};
 use rustc_middle::ty::{AdtDef, TyCtxt, TyKind, TypeckResults};
 use rustc_span::def_id::DefId;
 use rustc_span::symbol::Ident;
-use rustc_span::Span;
 use std::rc::Rc;
-use vir::ast::{IntRange, Mode, Typ, VirErr, VirErrX};
-use vir::def::Spanned;
-
-pub(crate) fn spanned_new<X>(span: Span, x: X) -> Rc<Spanned<X>> {
-    let raw_span = Rc::new(span);
-    let as_string = format!("{:?}", span);
-    Spanned::new(air::ast::Span { description: None, raw_span, as_string }, x)
-}
-
-pub(crate) fn err_span_str<A>(span: Span, msg: &str) -> Result<A, VirErr> {
-    Err(spanned_new(span, VirErrX::Str(msg.to_string())))
-}
-
-pub(crate) fn err_span_string<A>(span: Span, msg: String) -> Result<A, VirErr> {
-    Err(spanned_new(span, VirErrX::Str(msg)))
-}
+use vir::ast::{IntRange, Mode, Typ};
 
 pub(crate) fn path_to_ty_path<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> Typ {
     let ds =

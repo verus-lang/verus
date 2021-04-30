@@ -1,9 +1,11 @@
 use crate::rust_to_vir_base::{
-    err_span_str, get_var_mode, hack_check_def_name, hack_get_def_name, ident_to_var, mk_range,
-    spanned_new, ty_to_vir, typ_of_node, Ctxt,
+    get_var_mode, hack_check_def_name, hack_get_def_name, ident_to_var, mk_range, ty_to_vir,
+    typ_of_node, Ctxt,
 };
-use crate::util::{slice_vec_map_result, vec_map_result};
-use crate::{unsupported, unsupported_unless};
+use crate::util::{
+    err_span_str, slice_vec_map_result, spanned_new, unsupported_err_span, vec_map_result,
+};
+use crate::{unsupported, unsupported_err, unsupported_err_unless, unsupported_unless};
 use rustc_ast::Attribute;
 use rustc_hir::def::Res;
 use rustc_hir::{
@@ -167,7 +169,7 @@ pub(crate) fn expr_to_vir<'tcx>(
                 let header = Rc::new(HeaderExprX::Requires(Rc::new(vir_args)));
                 Ok(spanned_new(expr.span, ExprX::Header(header)))
             } else if is_assume || is_assert {
-                unsupported_unless!(args.len() == 1, "expected assume/assert", args, expr.span);
+                unsupported_err_unless!(args.len() == 1, expr.span, "expected assume/assert", args);
                 let arg = vir_args[0].clone();
                 if is_assume {
                     Ok(spanned_new(expr.span, ExprX::Assume(arg)))
@@ -175,7 +177,7 @@ pub(crate) fn expr_to_vir<'tcx>(
                     Ok(spanned_new(expr.span, ExprX::Assert(arg)))
                 }
             } else if is_hide || is_reveal {
-                unsupported_unless!(args.len() == 1, "expected hide/reveal", args, expr.span);
+                unsupported_err_unless!(args.len() == 1, expr.span, "expected hide/reveal", args);
                 let arg = vir_args[0].clone();
                 if let ExprX::Var(x) = &arg.x {
                     if is_hide {
@@ -188,7 +190,7 @@ pub(crate) fn expr_to_vir<'tcx>(
                     err_span_str(expr.span, "hide/reveal: expected identifier")
                 }
             } else if is_cmp || is_arith_binary || is_implies {
-                unsupported_unless!(args.len() == 2, "expected binary op", args, expr.span);
+                unsupported_err_unless!(args.len() == 2, expr.span, "expected binary op", args);
                 let lhs = vir_args[0].clone();
                 let rhs = vir_args[1].clone();
                 let vop = if is_eq {
@@ -255,9 +257,7 @@ pub(crate) fn expr_to_vir<'tcx>(
             let vop = match op {
                 UnOp::Not => UnaryOp::Not,
                 _ => {
-                    dbg!(expr);
-                    dbg!(expr.span);
-                    unsupported!("unary expression")
+                    unsupported_err!(expr.span, "unary expression", expr)
                 }
             };
             Ok(spanned_new(expr.span, ExprX::Unary(vop, varg)))
@@ -277,7 +277,7 @@ pub(crate) fn expr_to_vir<'tcx>(
                 BinOpKind::Add => BinaryOp::Add,
                 BinOpKind::Sub => BinaryOp::Sub,
                 BinOpKind::Mul => BinaryOp::Mul,
-                _ => unsupported!(format!("binary operator {:?} {:?}", op, expr.span)),
+                _ => unsupported_err!(expr.span, format!("binary operator {:?}", op)),
             };
             let e = spanned_new(expr.span, ExprX::Binary(vop, vlhs, vrhs));
             match op.node {
@@ -292,13 +292,13 @@ pub(crate) fn expr_to_vir<'tcx>(
                 Node::Binding(pat) => {
                     Ok(spanned_new(expr.span, ExprX::Var(Rc::new(pat_to_var(pat)))))
                 }
-                node => unsupported!(format!("Path {:?} {:?}", node, expr.span)),
+                node => unsupported_err!(expr.span, format!("Path {:?}", node)),
             },
             Res::Def(_, id) => {
                 let name = hack_get_def_name(tcx, id); // TODO: proper handling of paths
                 Ok(spanned_new(expr.span, ExprX::Var(Rc::new(name))))
             }
-            res => unsupported!(format!("Path {:?} {:?}", res, expr.span)),
+            res => unsupported_err!(expr.span, format!("Path {:?}", res)),
         },
         ExprKind::Assign(lhs, rhs, _) => Ok(spanned_new(
             expr.span,
@@ -308,22 +308,20 @@ pub(crate) fn expr_to_vir<'tcx>(
             let vir_lhs = expr_to_vir(ctxt, lhs)?;
             let lhs_ty = tc.node_type(lhs.hir_id);
             let (datatype_name, field_name) = if let Some(adt_def) = lhs_ty.ty_adt_def() {
-                unsupported_unless!(
+                unsupported_err_unless!(
                     adt_def.variants.len() == 1,
+                    expr.span,
                     "field_of_adt_with_multiple_variants",
-                    expr,
-                    expr.span
+                    expr
                 );
                 (Rc::new(hack_get_def_name(tcx, adt_def.did)), str_ident(&name.as_str()))
             } else {
-                unsupported!("field_of_non_adt", expr, expr.span);
+                unsupported_err!(expr.span, "field_of_non_adt", expr)
             };
             Ok(spanned_new(expr.span, ExprX::Field { lhs: vir_lhs, datatype_name, field_name }))
         }
         _ => {
-            dbg!(expr);
-            dbg!(expr.span);
-            unsupported!("expression")
+            unsupported_err!(expr.span, format!("expression"), expr)
         }
     }
 }
@@ -335,20 +333,20 @@ pub(crate) fn let_stmt_to_vir<'tcx>(
     attrs: &[Attribute],
 ) -> Result<Vec<vir::ast::Stmt>, VirErr> {
     let Pat { hir_id, kind, span: _, default_binding_modes } = pattern;
-    unsupported_unless!(default_binding_modes, "default_binding_modes");
+    unsupported_err_unless!(default_binding_modes, pattern.span, "default_binding_modes");
     match pattern.kind {
         PatKind::Binding(annotation, _id, ident, pat) => {
             let mutable = match annotation {
                 BindingAnnotation::Unannotated => false,
                 BindingAnnotation::Mutable => true,
                 _ => {
-                    unsupported!(format!("binding annotation {:?}", annotation))
+                    unsupported_err!(pattern.span, format!("binding annotation {:?}", annotation))
                 }
             };
             match pat {
                 None => {}
                 _ => {
-                    unsupported!(format!("pattern {:?}", kind))
+                    unsupported_err!(pattern.span, format!("pattern {:?}", kind))
                 }
             }
             // TODO: need unique identifiers!
@@ -365,8 +363,7 @@ pub(crate) fn let_stmt_to_vir<'tcx>(
             )])
         }
         _ => {
-            dbg!(pattern, pattern.span);
-            unsupported!("let_pattern")
+            unsupported_err!(pattern.span, "let_pattern", pattern)
         }
     }
 }
@@ -384,9 +381,7 @@ pub(crate) fn stmt_to_vir<'tcx>(
             let_stmt_to_vir(ctxt, pat, init, ctxt.tcx.hir().attrs(stmt.hir_id))
         }
         _ => {
-            dbg!(stmt);
-            dbg!(stmt.span);
-            unsupported!("statement")
+            unsupported_err!(stmt.span, "statement", stmt)
         }
     }
 }

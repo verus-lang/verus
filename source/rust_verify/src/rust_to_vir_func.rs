@@ -1,9 +1,7 @@
-use crate::rust_to_vir_base::{
-    err_span_str, err_span_string, get_fuel, get_mode, get_var_mode, ident_to_var, spanned_new,
-    ty_to_vir, Ctxt,
-};
+use crate::rust_to_vir_base::{get_fuel, get_mode, get_var_mode, ident_to_var, ty_to_vir, Ctxt};
 use crate::rust_to_vir_expr::{expr_to_vir, pat_to_var};
-use crate::{unsupported, unsupported_unless};
+use crate::util::{err_span_str, err_span_string, spanned_new, unsupported_err_span};
+use crate::{unsupported, unsupported_err, unsupported_err_unless, unsupported_unless};
 use rustc_ast::Attribute;
 use rustc_hir::{Body, BodyId, Crate, FnDecl, FnHeader, FnSig, Generics, Param, Unsafety};
 use rustc_middle::ty::TyCtxt;
@@ -115,8 +113,12 @@ fn check_fn_decl<'tcx>(
 pub(crate) fn check_generics<'tcx>(generics: &'tcx Generics<'tcx>) -> Result<(), VirErr> {
     match generics {
         Generics { params, where_clause, span: _ } => {
-            unsupported_unless!(params.len() == 0, "generics");
-            unsupported_unless!(where_clause.predicates.len() == 0, "where clause");
+            unsupported_err_unless!(params.len() == 0, generics.span, "generics");
+            unsupported_err_unless!(
+                where_clause.predicates.len() == 0,
+                generics.span,
+                "where clause"
+            );
         }
     }
     Ok(())
@@ -139,7 +141,7 @@ pub(crate) fn check_item_fn<'tcx>(
             decl,
             span: _,
         } => {
-            unsupported_unless!(*unsafety == Unsafety::Normal, "unsafe");
+            unsupported_err_unless!(*unsafety == Unsafety::Normal, sig.span, "unsafe");
             check_fn_decl(tcx, decl, mode)?
         }
     };
@@ -159,7 +161,7 @@ pub(crate) fn check_item_fn<'tcx>(
     match generator_kind {
         None => {}
         _ => {
-            unsupported!("generator_kind", generator_kind);
+            unsupported_err!(sig.span, "generator_kind", generator_kind);
         }
     }
     let mut vir_body = body_to_vir(tcx, body_id, body, mode)?;

@@ -1,5 +1,6 @@
-use crate::rust_to_vir_base::{get_mode, hack_get_def_name, spanned_new, ty_to_vir};
+use crate::rust_to_vir_base::{get_mode, hack_get_def_name, ty_to_vir};
 use crate::rust_to_vir_func::check_generics;
+use crate::util::spanned_new;
 use crate::{unsupported, unsupported_unless};
 use rustc_hir::{Crate, EnumDef, Generics, ItemId, VariantData};
 use rustc_middle::ty::TyCtxt;
