@@ -1,6 +1,16 @@
-use crate::ast::{Mode, Typ};
+use crate::ast::{Mode, Typ, VirErr, VirErrX};
+use crate::def::Spanned;
+use air::ast::Span;
 pub use air::ast_util::{ident_binder, str_ident};
 use std::fmt;
+
+pub fn err_str<A>(span: &Span, msg: &str) -> Result<A, VirErr> {
+    Err(Spanned::new(span.clone(), VirErrX::Str(msg.to_string())))
+}
+
+pub fn err_string<A>(span: &Span, msg: String) -> Result<A, VirErr> {
+    Err(Spanned::new(span.clone(), VirErrX::Str(msg)))
+}
 
 impl fmt::Display for Mode {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

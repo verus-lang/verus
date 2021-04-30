@@ -1,5 +1,6 @@
 use crate::rust_to_vir_base::{
-    get_fuel, get_mode, get_var_mode, ident_to_var, spanned_new, ty_to_vir, Ctxt,
+    err_span_str, err_span_string, get_fuel, get_mode, get_var_mode, ident_to_var, spanned_new,
+    ty_to_vir, Ctxt,
 };
 use crate::rust_to_vir_expr::{expr_to_vir, pat_to_var};
 use crate::{unsupported, unsupported_unless};
@@ -10,6 +11,7 @@ use rustc_span::symbol::Ident;
 use rustc_span::Span;
 use std::rc::Rc;
 use vir::ast::{ExprX, Exprs, FunctionX, HeaderExprX, KrateX, Mode, ParamX, StmtX, Typ, VirErr};
+use vir::ast_util::err_str;
 use vir::def::{Spanned, RETURN_VALUE};
 
 #[derive(Clone, Debug)]
@@ -31,15 +33,19 @@ fn read_header_block(block: &mut Vec<vir::ast::Stmt>) -> Result<Header, VirErr> 
                 ExprX::Header(header) => match &**header {
                     HeaderExprX::Requires(es) => {
                         if require.is_some() {
-                            return Err(Spanned::new(stmt.span.clone(),
-                                "only one call to requires allowed (use requires([e1, ..., en]) for multiple expressions".to_string()));
+                            return err_str(
+                                &stmt.span,
+                                "only one call to requires allowed (use requires([e1, ..., en]) for multiple expressions",
+                            );
                         }
                         require = Some(es.clone());
                     }
                     HeaderExprX::Ensures(id_typ, es) => {
                         if ensure.is_some() {
-                            return Err(Spanned::new(stmt.span.clone(),
-                                "only one call to ensures allowed (use ensures([e1, ..., en]) for multiple expressions".to_string()));
+                            return err_str(
+                                &stmt.span,
+                                "only one call to ensures allowed (use ensures([e1, ..., en]) for multiple expressions",
+                            );
                         }
                         ensure = Some((id_typ.clone(), es.clone()));
                     }
@@ -159,27 +165,26 @@ pub(crate) fn check_item_fn<'tcx>(
     let mut vir_body = body_to_vir(tcx, body_id, body, mode)?;
     let header = read_header(&mut vir_body)?;
     if mode == Mode::Spec && (header.require.len() + header.ensure.len()) > 0 {
-        let s = "spec functions cannot have requires/ensures";
-        return Err(spanned_new(sig.span, s.to_string()));
+        return err_span_str(sig.span, "spec functions cannot have requires/ensures");
     }
     if header.ensure.len() > 0 {
         match (&header.ensure_id_typ, ret_typ_mode.as_ref()) {
             (None, None) => {}
             (None, Some(_)) => {
-                let s = format!("ensures clause must be a closure");
-                return Err(spanned_new(sig.span, s));
+                return err_span_str(sig.span, "ensures clause must be a closure");
             }
             (Some(_), None) => {
-                let s = format!("ensures clause cannot be a closure");
-                return Err(spanned_new(sig.span, s));
+                return err_span_str(sig.span, "ensures clause cannot be a closure");
             }
             (Some((_, typ)), Some((ret_typ, _))) => {
                 if !vir::ast_util::types_equal(&typ, &ret_typ) {
-                    let s = format!(
-                        "return type is {:?}, but ensures expects type {:?}",
-                        &ret_typ, &typ
+                    return err_span_string(
+                        sig.span,
+                        format!(
+                            "return type is {:?}, but ensures expects type {:?}",
+                            &ret_typ, &typ
+                        ),
                     );
-                    return Err(spanned_new(sig.span, s));
                 }
             }
         }

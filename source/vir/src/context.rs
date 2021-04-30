@@ -1,6 +1,7 @@
 use crate::ast::{Expr, ExprX, Function, Ident, Krate, Mode, VirErr};
+use crate::ast_util::err_string;
 use crate::ast_visitor::map_expr_visitor;
-use crate::def::{Spanned, FUEL_ID};
+use crate::def::FUEL_ID;
 use air::ast::{Command, CommandX, Commands, DeclX, MultiOp};
 use air::ast_util::str_typ;
 use std::collections::HashMap;
@@ -19,13 +20,13 @@ impl Ctx {
         match &expr.x {
             ExprX::Call(x, _) | ExprX::Fuel(x, _) => {
                 if !func_map.contains_key(x) {
-                    return Err(Spanned::new(
-                        expr.span.clone(),
+                    return err_string(
+                        &expr.span,
                         format!(
                             "because support for recursion isn't yet implemented, {} must be defined before it is called",
                             &x
                         ),
-                    ));
+                    );
                 }
             }
             _ => {}

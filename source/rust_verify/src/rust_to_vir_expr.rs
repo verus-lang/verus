@@ -1,6 +1,6 @@
 use crate::rust_to_vir_base::{
-    get_var_mode, hack_check_def_name, hack_get_def_name, ident_to_var, mk_range, spanned_new,
-    ty_to_vir, typ_of_node, Ctxt,
+    err_span_str, get_var_mode, hack_check_def_name, hack_get_def_name, ident_to_var, mk_range,
+    spanned_new, ty_to_vir, typ_of_node, Ctxt,
 };
 use crate::util::{slice_vec_map_result, vec_map_result};
 use crate::{unsupported, unsupported_unless};
@@ -70,7 +70,7 @@ fn get_ensures_arg<'tcx>(ctxt: &Ctxt<'tcx>, expr: &Expr<'tcx>) -> Result<vir::as
     if matches!(ctxt.types.node_type(expr.hir_id).kind(), TyKind::Bool) {
         expr_to_vir(ctxt, expr)
     } else {
-        Err(spanned_new(expr.span, "ensures needs a bool expression".to_string()))
+        err_span_str(expr.span, "ensures needs a bool expression")
     }
 }
 
@@ -87,7 +87,7 @@ fn extract_ensures<'tcx>(ctxt: &Ctxt<'tcx>, expr: &'tcx Expr<'tcx>) -> Result<He
                 let id_typ = Some((Rc::new(xs[0].clone()), typs[0].clone()));
                 Ok(Rc::new(HeaderExprX::Ensures(id_typ, Rc::new(args))))
             } else {
-                Err(spanned_new(expr.span, "expected 1 parameter in closure".to_string()))
+                err_span_str(expr.span, "expected 1 parameter in closure")
             }
         }
         _ => {
@@ -151,8 +151,7 @@ pub(crate) fn expr_to_vir<'tcx>(
                 args = extract_array(args[0]);
                 for arg in &args {
                     if !matches!(tc.node_type(arg.hir_id).kind(), TyKind::Bool) {
-                        let s = "requires needs a bool expression".to_string();
-                        return Err(spanned_new(arg.span, s));
+                        return err_span_str(arg.span, "requires needs a bool expression");
                     }
                 }
             }
@@ -186,7 +185,7 @@ pub(crate) fn expr_to_vir<'tcx>(
                         Ok(spanned_new(expr.span, ExprX::Fuel(x.clone(), 1)))
                     }
                 } else {
-                    Err(spanned_new(expr.span, "hide/reveal: expected identifier".to_string()))
+                    err_span_str(expr.span, "hide/reveal: expected identifier")
                 }
             } else if is_cmp || is_arith_binary || is_implies {
                 unsupported_unless!(args.len() == 2, "expected binary op", args, expr.span);

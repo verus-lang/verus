@@ -1,4 +1,5 @@
 use crate::ast::{BinaryOp, Expr, ExprX, Ident, Mode, Stmt, StmtX, VirErr};
+use crate::ast_util::err_string;
 use crate::context::Ctx;
 use crate::def::Spanned;
 use crate::sst::{Dest, Exp, ExpX, Exps, Stm, StmX};
@@ -31,10 +32,7 @@ pub(crate) fn expr_to_exp(ctx: &Ctx, expr: &Expr) -> Result<Exp, VirErr> {
         ExprX::Call(x, args) => {
             match ctx.func_map.get(x) {
                 None => {
-                    return Err(Spanned::new(
-                        expr.span.clone(),
-                        format!("could not find function {}", &x),
-                    ));
+                    return err_string(&expr.span, format!("could not find function {}", &x));
                 }
                 Some(fun) => match fun.x.mode {
                     Mode::Spec => {}

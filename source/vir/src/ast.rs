@@ -2,7 +2,10 @@ use crate::def::Spanned;
 use air::ast::Constant;
 use std::rc::Rc;
 
-pub type VirErr = Rc<Spanned<String>>;
+pub type VirErr = Rc<Spanned<VirErrX>>;
+pub enum VirErrX {
+    Str(String),
+}
 
 pub type Ident = Rc<String>;
 pub type Idents = Rc<Vec<Ident>>;

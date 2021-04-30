@@ -1,5 +1,5 @@
 use crate::ast::{Datatype, Expr, ExprX, Function, Ident, Krate, Mode, Stmt, StmtX, VirErr};
-use crate::def::Spanned;
+use crate::ast_util::err_string;
 use std::collections::HashMap;
 
 // Exec <= Proof <= Spec
@@ -37,10 +37,7 @@ fn check_expr_has_mode(
 ) -> Result<(), VirErr> {
     let mode = check_expr(typing, outer_mode, expr)?;
     if !mode_le(mode, expected) {
-        Err(Spanned::new(
-            expr.span.clone(),
-            format!("expression has mode {}, expected mode {}", mode, expected),
-        ))
+        err_string(&expr.span, format!("expression has mode {}, expected mode {}", mode, expected))
     } else {
         Ok(())
     }
@@ -53,10 +50,10 @@ fn check_expr(typing: &mut Typing, outer_mode: Mode, expr: &Expr) -> Result<Mode
         ExprX::Call(x, es) => {
             let function = &typing.funs[x].clone();
             if !mode_le(outer_mode, function.x.mode) {
-                return Err(Spanned::new(
-                    expr.span.clone(),
+                return err_string(
+                    &expr.span,
                     format!("cannot call function with mode {}", function.x.mode),
-                ));
+                );
             }
             for (param, arg) in function.x.params.iter().zip(es.iter()) {
                 check_expr_has_mode(typing, outer_mode, arg, param.x.mode)?;
@@ -136,10 +133,10 @@ fn check_stmt(
         }
         StmtX::Decl { param, mutable: _, init } => {
             if !mode_le(outer_mode, param.x.mode) {
-                return Err(Spanned::new(
-                    stmt.span.clone(),
+                return err_string(
+                    &stmt.span,
                     format!("variable {} cannot have mode {}", param.x.name, param.x.mode),
-                ));
+                );
             }
             let prev = typing.vars.insert(param.x.name.clone(), param.x.mode);
             pushed_vars.push((param.x.name.clone(), prev));
@@ -157,19 +154,19 @@ fn check_stmt(
 fn check_function(typing: &mut Typing, function: &Function) -> Result<(), VirErr> {
     for param in function.x.params.iter() {
         if !mode_le(function.x.mode, param.x.mode) {
-            return Err(Spanned::new(
-                function.span.clone(),
+            return err_string(
+                &function.span,
                 format!("parameter {} cannot have mode {}", param.x.name, param.x.mode),
-            ));
+            );
         }
         typing.vars.insert(param.x.name.clone(), param.x.mode);
     }
     if let Some((_, _, ret_mode)) = function.x.ret {
         if !mode_le(function.x.mode, ret_mode) {
-            return Err(Spanned::new(
-                function.span.clone(),
+            return err_string(
+                &function.span,
                 format!("return type cannot have mode {}", ret_mode),
-            ));
+            );
         }
     }
     if let Some(body) = &function.x.body {
