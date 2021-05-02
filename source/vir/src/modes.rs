@@ -86,6 +86,10 @@ fn check_expr(typing: &mut Typing, outer_mode: Mode, expr: &Expr) -> Result<Mode
             let mode2 = check_expr(typing, outer_mode, e2)?;
             Ok(mode_join(mode1, mode2))
         }
+        ExprX::Quant(_, _, e1) => {
+            check_expr_has_mode(typing, Mode::Spec, e1, Mode::Spec)?;
+            Ok(Mode::Spec)
+        }
         ExprX::Assign(lhs, rhs) => match &lhs.x {
             ExprX::Var(x) => {
                 let x_mode = typing.vars[x];

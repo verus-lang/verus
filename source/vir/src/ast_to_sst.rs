@@ -2,7 +2,7 @@ use crate::ast::{BinaryOp, Expr, ExprX, Ident, Mode, Stmt, StmtX, VirErr};
 use crate::ast_util::err_string;
 use crate::context::Ctx;
 use crate::def::Spanned;
-use crate::sst::{Dest, Exp, ExpX, Exps, Stm, StmX};
+use crate::sst::{BndX, Dest, Exp, ExpX, Exps, Stm, StmX};
 use crate::util::vec_map_result;
 use std::rc::Rc;
 
@@ -51,10 +51,22 @@ pub(crate) fn expr_to_exp(ctx: &Ctx, expr: &Expr) -> Result<Exp, VirErr> {
             let bin = ExpX::Binary(*op, expr_to_exp(ctx, lhs)?, expr_to_exp(ctx, rhs)?);
             Ok(Spanned::new(expr.span.clone(), bin))
         }
-        ExprX::Block(stmts, Some(expr)) if stmts.len() == 0 => expr_to_exp(ctx, expr),
-        ExprX::Field { lhs, field_name: name, .. } => {
-            Ok(Spanned::new(expr.span.clone(), ExpX::Field(expr_to_exp(ctx, lhs)?, name.clone())))
+        ExprX::Quant(quant, binders, body) => {
+            let exp = expr_to_exp(ctx, body)?;
+            let vars: Vec<Ident> = binders.iter().map(|b| b.name.clone()).collect();
+            let trigs = crate::triggers::build_triggers(ctx, &expr.span, &vars, &exp)?;
+            let bnd = Spanned::new(body.span.clone(), BndX::Quant(*quant, binders.clone(), trigs));
+            Ok(Spanned::new(body.span.clone(), ExpX::Bind(bnd, exp)))
         }
+        ExprX::Block(stmts, Some(expr)) if stmts.len() == 0 => expr_to_exp(ctx, expr),
+        ExprX::Field { lhs, datatype_name, field_name } => Ok(Spanned::new(
+            expr.span.clone(),
+            ExpX::Field {
+                lhs: expr_to_exp(ctx, lhs)?,
+                datatype_name: datatype_name.clone(),
+                field_name: field_name.clone(),
+            },
+        )),
         _ => {
             todo!("{:?}", expr)
         }

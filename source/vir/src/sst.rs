@@ -5,10 +5,21 @@ Whereas ast supports statements inside expressions,
 sst expressions cannot contain statments.
 */
 
-use crate::ast::{BinaryOp, Typ, UnaryOp};
+use crate::ast::{BinaryOp, TernaryOp, Typ, UnaryOp};
 use crate::def::Spanned;
-use air::ast::{Constant, Ident};
+use air::ast::{Binders, Constant, Ident, Quant};
 use std::rc::Rc;
+
+pub type Trig = Exps;
+pub type Trigs = Rc<Vec<Trig>>;
+
+pub type Bnd = Rc<Spanned<BndX>>;
+#[derive(Clone, Debug)]
+pub enum BndX {
+    #[allow(dead_code)]
+    Let(Binders<Exp>),
+    Quant(Quant, Binders<Typ>, Trigs),
+}
 
 pub type Exp = Rc<Spanned<ExpX>>;
 pub type Exps = Rc<Vec<Exp>>;
@@ -17,9 +28,16 @@ pub enum ExpX {
     Const(Constant),
     Var(Ident),
     Call(Ident, Exps), // call to spec function
-    Field(Exp, Ident),
+    Field {
+        lhs: Exp,
+        datatype_name: Ident,
+        field_name: Ident,
+    },
     Unary(UnaryOp, Exp),
     Binary(BinaryOp, Exp, Exp),
+    #[allow(dead_code)]
+    Ternary(TernaryOp, Exp, Exp, Exp),
+    Bind(Bnd, Exp),
 }
 
 #[derive(Debug)]

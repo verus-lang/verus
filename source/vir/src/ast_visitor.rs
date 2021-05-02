@@ -50,6 +50,12 @@ where
             let expr = Spanned::new(expr.span.clone(), ExprX::Binary(*op, expr1, expr2));
             f(&expr)
         }
+        ExprX::Quant(quant, binders, e1) => {
+            let expr1 = map_expr_visitor(e1, f)?;
+            let expr =
+                Spanned::new(expr.span.clone(), ExprX::Quant(*quant, binders.clone(), expr1));
+            f(&expr)
+        }
         ExprX::Assign(e1, e2) => {
             let expr1 = map_expr_visitor(e1, f)?;
             let expr2 = map_expr_visitor(e2, f)?;

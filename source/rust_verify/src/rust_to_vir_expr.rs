@@ -1,11 +1,12 @@
 use crate::rust_to_vir_base::{
-    get_var_mode, hack_check_def_name, hack_get_def_name, ident_to_var, mk_range, ty_to_vir,
-    typ_of_node, Ctxt,
+    get_trigger, get_var_mode, hack_check_def_name, hack_get_def_name, ident_to_var, mk_range,
+    ty_to_vir, typ_of_node, Ctxt,
 };
 use crate::util::{
     err_span_str, slice_vec_map_result, spanned_new, unsupported_err_span, vec_map_result,
 };
 use crate::{unsupported, unsupported_err, unsupported_err_unless, unsupported_unless};
+use air::ast::{Binder, BinderX, Quant};
 use rustc_ast::Attribute;
 use rustc_hir::def::Res;
 use rustc_hir::{
@@ -14,6 +15,7 @@ use rustc_hir::{
 };
 use rustc_middle::ty::TyKind;
 use rustc_span::def_id::DefId;
+use rustc_span::Span;
 use std::rc::Rc;
 use vir::ast::{
     BinaryOp, ExprX, HeaderExpr, HeaderExprX, IntRange, ParamX, StmtX, Stmts, Typ, UnaryOp, VirErr,
@@ -99,6 +101,35 @@ fn extract_ensures<'tcx>(ctxt: &Ctxt<'tcx>, expr: &'tcx Expr<'tcx>) -> Result<He
     }
 }
 
+fn extract_quant<'tcx>(
+    ctxt: &Ctxt<'tcx>,
+    span: Span,
+    quant: Quant,
+    expr: &'tcx Expr<'tcx>,
+) -> Result<vir::ast::Expr, VirErr> {
+    let tcx = ctxt.tcx;
+    match &expr.kind {
+        ExprKind::Closure(_, fn_decl, body_id, _, _) => {
+            let body = tcx.hir().body(*body_id);
+            let binders: Vec<Binder<Typ>> = body
+                .params
+                .iter()
+                .zip(fn_decl.inputs)
+                .map(|(x, t)| {
+                    Rc::new(BinderX { name: Rc::new(pat_to_var(x.pat)), a: ty_to_vir(tcx, t) })
+                })
+                .collect();
+            let expr = &body.value;
+            if !matches!(ctxt.types.node_type(expr.hir_id).kind(), TyKind::Bool) {
+                return err_span_str(expr.span, "forall/ensures needs a bool expression");
+            }
+            let vir_expr = expr_to_vir(ctxt, expr)?;
+            Ok(spanned_new(span, ExprX::Quant(quant, Rc::new(binders), vir_expr)))
+        }
+        _ => err_span_str(expr.span, "argument to forall/exists must be a closure"),
+    }
+}
+
 fn mk_clip<'tcx>(range: &IntRange, expr: &vir::ast::Expr) -> vir::ast::Expr {
     match range {
         IntRange::Int => expr.clone(),
@@ -111,6 +142,17 @@ fn mk_ty_clip<'tcx>(ty: rustc_middle::ty::Ty<'tcx>, expr: &vir::ast::Expr) -> vi
 }
 
 pub(crate) fn expr_to_vir<'tcx>(
+    ctxt: &Ctxt<'tcx>,
+    expr: &Expr<'tcx>,
+) -> Result<vir::ast::Expr, VirErr> {
+    let mut vir_expr = expr_to_vir_inner(ctxt, expr)?;
+    for group in get_trigger(expr.span, ctxt.tcx.hir().attrs(expr.hir_id))? {
+        vir_expr = spanned_new(expr.span, ExprX::Unary(UnaryOp::Trigger(group), vir_expr));
+    }
+    Ok(vir_expr)
+}
+
+pub(crate) fn expr_to_vir_inner<'tcx>(
     ctxt: &Ctxt<'tcx>,
     expr: &Expr<'tcx>,
 ) -> Result<vir::ast::Expr, VirErr> {
@@ -134,6 +176,8 @@ pub(crate) fn expr_to_vir<'tcx>(
             let is_assert = hack_check_def_name(tcx, f, "builtin", "assert");
             let is_requires = hack_check_def_name(tcx, f, "builtin", "requires");
             let is_ensures = hack_check_def_name(tcx, f, "builtin", "ensures");
+            let is_forall = hack_check_def_name(tcx, f, "builtin", "forall");
+            let is_exists = hack_check_def_name(tcx, f, "builtin", "exists");
             let is_hide = hack_check_def_name(tcx, f, "builtin", "hide");
             let is_reveal = hack_check_def_name(tcx, f, "builtin", "reveal");
             let is_implies = hack_check_def_name(tcx, f, "builtin", "imply");
@@ -149,7 +193,9 @@ pub(crate) fn expr_to_vir<'tcx>(
             let is_cmp = is_eq || is_ne || is_le || is_ge || is_lt || is_gt;
             let is_arith_binary = is_add || is_sub || is_mul;
 
+            let len = args.len();
             if is_requires {
+                unsupported_err_unless!(len == 1, expr.span, "expected requires", &args);
                 args = extract_array(args[0]);
                 for arg in &args {
                     if !matches!(tc.node_type(arg.hir_id).kind(), TyKind::Bool) {
@@ -158,9 +204,15 @@ pub(crate) fn expr_to_vir<'tcx>(
                 }
             }
             if is_ensures {
+                unsupported_err_unless!(len == 1, expr.span, "expected ensures", &args);
                 let header = extract_ensures(ctxt, args[0])?;
                 let expr = spanned_new(args[0].span, ExprX::Header(header));
                 return Ok(expr);
+            }
+            if is_forall || is_exists {
+                unsupported_err_unless!(len == 1, expr.span, "expected forall/exists", &args);
+                let quant = if is_forall { Quant::Forall } else { Quant::Exists };
+                return extract_quant(ctxt, expr.span, quant, args[0]);
             }
 
             let vir_args = vec_map_result(&args, |arg| expr_to_vir(ctxt, arg))?;
@@ -169,7 +221,7 @@ pub(crate) fn expr_to_vir<'tcx>(
                 let header = Rc::new(HeaderExprX::Requires(Rc::new(vir_args)));
                 Ok(spanned_new(expr.span, ExprX::Header(header)))
             } else if is_assume || is_assert {
-                unsupported_err_unless!(args.len() == 1, expr.span, "expected assume/assert", args);
+                unsupported_err_unless!(len == 1, expr.span, "expected assume/assert", args);
                 let arg = vir_args[0].clone();
                 if is_assume {
                     Ok(spanned_new(expr.span, ExprX::Assume(arg)))
@@ -177,7 +229,7 @@ pub(crate) fn expr_to_vir<'tcx>(
                     Ok(spanned_new(expr.span, ExprX::Assert(arg)))
                 }
             } else if is_hide || is_reveal {
-                unsupported_err_unless!(args.len() == 1, expr.span, "expected hide/reveal", args);
+                unsupported_err_unless!(len == 1, expr.span, "expected hide/reveal", args);
                 let arg = vir_args[0].clone();
                 if let ExprX::Var(x) = &arg.x {
                     if is_hide {
@@ -190,7 +242,7 @@ pub(crate) fn expr_to_vir<'tcx>(
                     err_span_str(expr.span, "hide/reveal: expected identifier")
                 }
             } else if is_cmp || is_arith_binary || is_implies {
-                unsupported_err_unless!(args.len() == 2, expr.span, "expected binary op", args);
+                unsupported_err_unless!(len == 2, expr.span, "expected binary op", args);
                 let lhs = vir_args[0].clone();
                 let rhs = vir_args[1].clone();
                 let vop = if is_eq {

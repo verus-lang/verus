@@ -1,8 +1,9 @@
 use crate::def::Spanned;
-use air::ast::Constant;
+use air::ast::{Constant, Quant};
 use std::rc::Rc;
 
 pub type VirErr = Rc<Spanned<VirErrX>>;
+#[derive(Clone, Debug)]
 pub enum VirErrX {
     Str(String),
 }
@@ -38,7 +39,8 @@ pub enum Typ {
 #[derive(Copy, Clone, Debug)]
 pub enum UnaryOp {
     Not,
-    Clip(IntRange), // force integer value into range given by IntRange (e.g. by using mod)
+    Trigger(Option<u64>), // mark an expression as a member of a quantifier trigger group
+    Clip(IntRange),       // force integer value into range given by IntRange (e.g. by using mod)
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -57,6 +59,11 @@ pub enum BinaryOp {
     Mul,
     EuclideanDiv,
     EuclideanMod,
+}
+
+#[derive(Copy, Clone, Debug)]
+pub enum TernaryOp {
+    If,
 }
 
 pub type HeaderExpr = Rc<HeaderExprX>;
@@ -79,6 +86,7 @@ pub enum ExprX {
     Assert(Expr),
     Unary(UnaryOp, Expr),
     Binary(BinaryOp, Expr, Expr),
+    Quant(Quant, Binders<Typ>, Expr),
     Assign(Expr, Expr),
     Fuel(Ident, u32),
     Header(HeaderExpr),

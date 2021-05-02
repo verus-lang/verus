@@ -1,5 +1,36 @@
-use crate::ast::{Binder, BinderX, Expr, ExprX, Ident, Typ, TypX};
+use crate::ast::{Binder, BinderX, Constant, Expr, ExprX, Ident, Span, Typ, TypX};
+use std::fmt::Debug;
 use std::rc::Rc;
+
+impl Debug for Span {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
+        f.debug_tuple("Span").field(&self.as_string).finish()
+    }
+}
+
+impl Debug for Constant {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
+        match self {
+            Constant::Bool(b) => write!(f, "{}", b),
+            Constant::Nat(n) => write!(f, "{}", n),
+        }
+    }
+}
+
+impl<A: Clone> BinderX<A> {
+    pub fn map_a<B: Clone>(&self, f: impl FnOnce(&A) -> B) -> BinderX<B> {
+        BinderX { name: self.name.clone(), a: f(&self.a) }
+    }
+}
+
+impl<A: Clone + Debug> std::fmt::Debug for BinderX<A> {
+    fn fmt(&self, fmt: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
+        self.name.fmt(fmt)?;
+        fmt.write_str(" -> ")?;
+        self.a.fmt(fmt)?;
+        Ok(())
+    }
+}
 
 pub fn str_ident(x: &str) -> Ident {
     Rc::new(x.to_string())

@@ -7,6 +7,8 @@ pub(crate) struct Args {
     pub(crate) log_air_initial: Option<String>,
     pub(crate) log_air_final: Option<String>,
     pub(crate) log_smt: Option<String>,
+    pub(crate) log_triggers: Option<String>,
+    pub(crate) show_triggers: bool,
 }
 
 pub(crate) fn parse_args(
@@ -18,6 +20,8 @@ pub(crate) fn parse_args(
     const OPT_LOG_AIR_INITIAL: &str = "log-air";
     const OPT_LOG_AIR_FINAL: &str = "log-air-final";
     const OPT_LOG_SMT: &str = "log-smt";
+    const OPT_LOG_TRIGGERS: &str = "log-triggers";
+    const OPT_TRIGGERS: &str = "triggers";
 
     let mut opts = Options::new();
     opts.optopt("", OPT_RLIMIT, "Set SMT resource limit (roughly in seconds)", "INTEGER");
@@ -25,6 +29,8 @@ pub(crate) fn parse_args(
     opts.optopt("", OPT_LOG_AIR_INITIAL, "Log AIR queries in initial form", "FILENAME");
     opts.optopt("", OPT_LOG_AIR_FINAL, "Log AIR queries in final form", "FILENAME");
     opts.optopt("", OPT_LOG_SMT, "Log SMT queries", "FILENAME");
+    opts.optopt("", OPT_LOG_TRIGGERS, "Log automatically chosen triggers", "FILENAME");
+    opts.optflag("", OPT_TRIGGERS, "Show automatically chosen triggers");
     opts.optflag("h", "help", "print this help menu");
 
     let print_usage = || {
@@ -61,6 +67,8 @@ pub(crate) fn parse_args(
         log_air_initial: matches.opt_str(OPT_LOG_AIR_INITIAL),
         log_air_final: matches.opt_str(OPT_LOG_AIR_FINAL),
         log_smt: matches.opt_str(OPT_LOG_SMT),
+        log_triggers: matches.opt_str(OPT_LOG_TRIGGERS),
+        show_triggers: matches.opt_present(OPT_TRIGGERS),
     };
 
     (args, unmatched)

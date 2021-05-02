@@ -1,12 +1,16 @@
+use crate::util::{err_span_str, err_span_string};
 use crate::{unsupported, unsupported_unless};
-use rustc_ast::{AttrKind, Attribute, IntTy, UintTy};
+use rustc_ast::token::{Token, TokenKind};
+use rustc_ast::tokenstream::TokenTree;
+use rustc_ast::{AttrKind, Attribute, IntTy, MacArgs, UintTy};
 use rustc_hir::def::{DefKind, Res};
 use rustc_hir::{HirId, PrimTy, QPath, Ty};
 use rustc_middle::ty::{AdtDef, TyCtxt, TyKind, TypeckResults};
 use rustc_span::def_id::DefId;
 use rustc_span::symbol::Ident;
+use rustc_span::Span;
 use std::rc::Rc;
-use vir::ast::{IntRange, Mode, Typ};
+use vir::ast::{IntRange, Mode, Typ, VirErr};
 
 pub(crate) fn path_to_ty_path<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> Typ {
     let ds =
@@ -60,6 +64,55 @@ pub(crate) fn get_mode(default_mode: Mode, attrs: &[Attribute]) -> Mode {
 pub(crate) fn get_var_mode(function_mode: Mode, attrs: &[Attribute]) -> Mode {
     let default_mode = if function_mode == Mode::Proof { Mode::Spec } else { function_mode };
     get_mode(default_mode, attrs)
+}
+
+fn get_trigger_arg(span: Span, token_tree: TokenTree) -> Result<u64, VirErr> {
+    let i = match &token_tree {
+        TokenTree::Token(Token { kind: TokenKind::Literal(lit), .. }) => {
+            match lit.symbol.as_str().parse::<u64>() {
+                Ok(i) => Some(i),
+                _ => None,
+            }
+        }
+        _ => None,
+    };
+    match i {
+        Some(i) => Ok(i),
+        None => {
+            err_span_string(span, format!("expected integer constant, found {:?}", &token_tree))
+        }
+    }
+}
+
+pub(crate) fn get_trigger(span: Span, attrs: &[Attribute]) -> Result<Vec<Option<u64>>, VirErr> {
+    let mut groups: Vec<Option<u64>> = Vec::new();
+    for attr in attrs {
+        match &attr.kind {
+            AttrKind::Normal(item, _) => match &item.path.segments[..] {
+                [segment] => match ident_to_var(&segment.ident).as_str() {
+                    "trigger" => match &item.args {
+                        MacArgs::Empty => groups.push(None),
+                        MacArgs::Delimited(_, _, token_stream) => {
+                            for arg in token_stream.trees().step_by(2) {
+                                groups.push(Some(get_trigger_arg(span, arg)?));
+                            }
+                            if groups.len() == 0 {
+                                return err_span_str(
+                                    span,
+                                    "expected either #[trigger] or non-empty #[trigger(...)]",
+                                );
+                            }
+                        }
+                        _ => panic!("internal error: get_trigger"),
+                    },
+                    _ => {}
+                },
+                _ => {}
+            },
+            _ => {}
+        }
+    }
+    Ok(groups)
 }
 
 pub(crate) fn get_fuel(attrs: &[Attribute]) -> u32 {

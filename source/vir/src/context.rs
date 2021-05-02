@@ -2,7 +2,7 @@ use crate::ast::{Expr, ExprX, Function, Ident, Krate, Mode, VirErr};
 use crate::ast_util::err_string;
 use crate::ast_visitor::map_expr_visitor;
 use crate::def::FUEL_ID;
-use air::ast::{Command, CommandX, Commands, DeclX, MultiOp};
+use air::ast::{Command, CommandX, Commands, DeclX, MultiOp, Span};
 use air::ast_util::str_typ;
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -10,6 +10,7 @@ use std::rc::Rc;
 pub struct Ctx {
     pub(crate) functions: Vec<Function>,
     pub(crate) func_map: HashMap<Ident, Function>,
+    pub(crate) chosen_triggers: std::cell::RefCell<Vec<(Span, Vec<Vec<String>>)>>, // diagnostics
 }
 
 impl Ctx {
@@ -54,7 +55,9 @@ impl Ctx {
             functions.push(function.clone());
             func_map.insert(function.x.name.clone(), function.clone());
         }
-        Ok(Ctx { functions, func_map })
+        let chosen_triggers: std::cell::RefCell<Vec<(Span, Vec<Vec<String>>)>> =
+            std::cell::RefCell::new(Vec::new());
+        Ok(Ctx { functions, func_map, chosen_triggers })
     }
 
     pub fn prelude(&self) -> Commands {
@@ -81,5 +84,10 @@ impl Ctx {
         let decl = Rc::new(DeclX::Axiom(distinct));
         commands.push(Rc::new(CommandX::Global(decl)));
         Rc::new(commands)
+    }
+
+    // Report chosen triggers as strings for printing diagnostics
+    pub fn get_chosen_triggers(&self) -> Vec<(Span, Vec<Vec<String>>)> {
+        self.chosen_triggers.borrow().clone()
     }
 }

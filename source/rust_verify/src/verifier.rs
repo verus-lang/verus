@@ -52,6 +52,18 @@ fn report_verify_error(compiler: &Compiler, span1: &SpanOption, span2: &SpanOpti
     }
 }
 
+fn report_chosen_triggers(
+    compiler: &Compiler,
+    air_span: &air::ast::Span,
+    triggers: &Vec<Vec<String>>,
+) {
+    let span: &Span = (*air_span.raw_span)
+        .downcast_ref::<Span>()
+        .expect("internal error: failed to cast to Span");
+    let msg = format!("chosen triggers: {:#?}", triggers);
+    compiler.session().parse_sess.span_diagnostic.span_note_without_error(*span, &msg);
+}
+
 impl Verifier {
     pub fn new(args: Args) -> Verifier {
         Verifier { count_verified: 0, count_errors: 0, args: args }
@@ -161,6 +173,22 @@ impl Verifier {
                         self.count_errors += 1;
                     }
                 }
+            }
+        }
+
+        if let Some(filename) = &self.args.log_triggers {
+            let mut file =
+                File::create(filename).expect(&format!("could not open file {}", filename));
+            let chosen_triggers = ctx.get_chosen_triggers();
+            for triggers in chosen_triggers {
+                writeln!(file, "{:#?}", triggers)
+                    .expect(&format!("error writing to file {}", filename));
+            }
+        }
+        if self.args.show_triggers {
+            let chosen_triggers = ctx.get_chosen_triggers();
+            for (span, triggers) in chosen_triggers {
+                report_chosen_triggers(compiler, &span, &triggers);
             }
         }
 

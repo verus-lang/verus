@@ -11,4 +11,6 @@ mod prelude;
 mod sst;
 mod sst_to_air;
 mod sst_visitor;
+mod triggers;
+mod triggers_auto;
 mod util;

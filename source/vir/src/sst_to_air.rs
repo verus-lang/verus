@@ -1,14 +1,14 @@
-use crate::ast::{BinaryOp, Ident, IntRange, Mode, Params, Typ, UnaryOp};
+use crate::ast::{BinaryOp, Ident, IntRange, Mode, Params, TernaryOp, Typ, UnaryOp};
 use crate::context::Ctx;
 use crate::def::{
     prefix_ensures, prefix_fuel_id, prefix_requires, suffix_global_id, suffix_local_id, FUEL_BOOL,
     FUEL_BOOL_DEFAULT, FUEL_DEFAULTS, FUEL_ID,
 };
-use crate::sst::{Dest, Exp, ExpX, Stm, StmX};
+use crate::sst::{BndX, Dest, Exp, ExpX, Stm, StmX};
 use crate::util::vec_map;
 use air::ast::{
-    BindX, Binders, CommandX, Commands, Constant, Decl, DeclX, Expr, ExprX, MultiOp, Quant, QueryX,
-    Span, Stmt, StmtX, Trigger, Triggers,
+    BindX, BinderX, Binders, CommandX, Commands, Constant, Decl, DeclX, Expr, ExprX, MultiOp,
+    Quant, QueryX, Span, Stmt, StmtX, Trigger, Triggers,
 };
 use air::ast_util::{
     bool_typ, ident_apply, ident_binder, ident_typ, ident_var, int_typ, str_apply, str_ident,
@@ -74,6 +74,7 @@ pub(crate) fn exp_to_expr(exp: &Exp) -> Expr {
         }
         ExpX::Unary(op, exp) => match op {
             UnaryOp::Not => Rc::new(ExprX::Unary(air::ast::UnaryOp::Not, exp_to_expr(exp))),
+            UnaryOp::Trigger(_) => exp_to_expr(exp),
             UnaryOp::Clip(IntRange::Int) => exp_to_expr(exp),
             UnaryOp::Clip(range) => {
                 let expr = exp_to_expr(exp);
@@ -121,10 +122,34 @@ pub(crate) fn exp_to_expr(exp: &Exp) -> Expr {
             };
             Rc::new(expx)
         }
-        ExpX::Field(lhs, name) => {
+        ExpX::Ternary(TernaryOp::If, e1, e2, e3) => {
+            Rc::new(ExprX::IfElse(exp_to_expr(e1), exp_to_expr(e2), exp_to_expr(e3)))
+        }
+        ExpX::Field { lhs, datatype_name: _, field_name: name } => {
+            // TODO: this should include datatype_name in the function name
             let lh = exp_to_expr(lhs);
             Rc::new(ExprX::Apply(name.clone(), Rc::new(vec![lh])))
         }
+        ExpX::Bind(bnd, exp) => match &bnd.x {
+            BndX::Let(binders) => {
+                let expr = exp_to_expr(exp);
+                let binders = vec_map(&*binders, |b| {
+                    Rc::new(BinderX { name: suffix_local_id(&b.name), a: exp_to_expr(&b.a) })
+                });
+                Rc::new(ExprX::Bind(Rc::new(BindX::Let(Rc::new(binders))), expr))
+            }
+            BndX::Quant(quant, binders, trigs) => {
+                let expr = exp_to_expr(exp);
+                let binders = vec_map(&*binders, |b| {
+                    Rc::new(BinderX { name: suffix_local_id(&b.name), a: typ_to_air(&b.a) })
+                });
+                let triggers = vec_map(&*trigs, |trig| Rc::new(vec_map(trig, exp_to_expr)));
+                Rc::new(ExprX::Bind(
+                    Rc::new(BindX::Quant(*quant, Rc::new(binders), Rc::new(triggers))),
+                    expr,
+                ))
+            }
+        },
     }
 }
 

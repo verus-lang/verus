@@ -1,20 +1,13 @@
-use std::fmt::Debug;
 use std::rc::Rc;
 
 pub type RawSpan = Rc<dyn std::any::Any>;
-#[derive(Clone)]
+#[derive(Clone)] // for Debug, see ast_util
 pub struct Span {
     pub description: Option<String>,
     pub raw_span: RawSpan,
     pub as_string: String, // if we can't print (description, raw_span), print as_string instead
 }
 pub type SpanOption = Rc<Option<Span>>;
-
-impl Debug for Span {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
-        f.debug_tuple("Span").field(&self.as_string).finish()
-    }
-}
 
 pub type TypeError = String;
 
@@ -36,7 +29,7 @@ pub enum TypX {
     Named(Ident),
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, PartialEq, Eq, Hash)] // for Debug, see ast_util
 pub enum Constant {
     Bool(bool),
     Nat(Rc<String>),
@@ -71,25 +64,10 @@ pub enum MultiOp {
 
 pub type Binder<A> = Rc<BinderX<A>>;
 pub type Binders<A> = Rc<Vec<Binder<A>>>;
-#[derive(Clone)]
+#[derive(Clone)] // for Debug, see ast_util
 pub struct BinderX<A: Clone> {
     pub name: Ident,
     pub a: A,
-}
-
-impl<A: Clone> BinderX<A> {
-    pub fn map_a<B: Clone>(&self, f: impl FnOnce(&A) -> B) -> BinderX<B> {
-        BinderX { name: self.name.clone(), a: f(&self.a) }
-    }
-}
-
-impl<A: Clone + Debug> std::fmt::Debug for BinderX<A> {
-    fn fmt(&self, fmt: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
-        self.name.fmt(fmt)?;
-        fmt.write_str(" -> ")?;
-        self.a.fmt(fmt)?;
-        Ok(())
-    }
 }
 
 #[derive(Copy, Clone, Debug)]

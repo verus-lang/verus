@@ -29,6 +29,14 @@ pub fn imply(_b1: bool, _b2: bool) -> bool {
     unimplemented!();
 }
 
+pub fn forall<A>(_a: A) -> bool {
+    unimplemented!();
+}
+
+pub fn exists<A>(_a: A) -> bool {
+    unimplemented!();
+}
+
 #[allow(non_camel_case_types)]
 pub struct int;
 

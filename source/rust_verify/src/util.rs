@@ -54,9 +54,7 @@ macro_rules! unsupported_err_unless {
 
 #[macro_export]
 macro_rules! unsupported {
-    ($msg: expr) => {{
-        panic!("The verifier does not yet support the following Rust feature: {}", $msg)
-    }};
+    ($msg: expr) => {{ panic!("The verifier does not yet support the following Rust feature: {}", $msg) }};
     ($msg: expr, $info: expr) => {{
         dbg!($info);
         panic!("The verifier does not yet support the following Rust feature: {}", $msg)
