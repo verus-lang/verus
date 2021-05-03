@@ -1,7 +1,6 @@
 use crate::ast::{BinaryOp, Ident, TernaryOp, UnaryOp, VirErr};
 use crate::ast_util::err_str;
 use crate::context::Ctx;
-use crate::def::Spanned;
 use crate::sst::{Exp, ExpX, Trig, Trigs};
 use crate::util::vec_map;
 use air::ast::{Constant, Span};
@@ -67,24 +66,6 @@ impl std::fmt::Debug for TermX {
     }
 }
 
-fn term_to_exp(span: &Span, term: &Term) -> Exp {
-    let exp_x = match &**term {
-        TermX::Var(x) => ExpX::Var(x.clone()),
-        TermX::App(App::Const(c), _) => ExpX::Const(c.clone()),
-        TermX::App(App::Field(x, y), es) => ExpX::Field {
-            lhs: term_to_exp(span, &es[0]),
-            datatype_name: x.clone(),
-            field_name: y.clone(),
-        },
-        TermX::App(App::Call(x), args) => {
-            let exps = vec_map(args, |t| term_to_exp(span, t));
-            ExpX::Call(x.clone(), Rc::new(exps))
-        }
-        TermX::App(App::Other(_), _) => panic!("internal error: term_to_exp {:?}", term),
-    };
-    Spanned::new(span.clone(), exp_x)
-}
-
 /*
 First, we prefer triggers containing the fewest number of terms:
 - {f(x, y)} (1 term) is better (safer) than {g(x), h(y)} (2 terms)
@@ -125,13 +106,13 @@ impl Score {
 }
 
 struct Ctxt {
-    trigger_vars: HashSet<Ident>,    // variables the triggers must cover
-    all_terms: HashMap<Term, Span>,  // terms with App
-    pure_terms: HashMap<Term, Span>, // terms with App and without Other
+    trigger_vars: HashSet<Ident>,   // variables the triggers must cover
+    all_terms: HashMap<Term, Span>, // terms with App
+    pure_terms: HashMap<Term, Exp>, // terms with App and without Other
     all_terms_by_app: HashMap<App, HashMap<Term, Span>>, // all_terms, indexed by head App
     pure_terms_by_var: HashMap<Ident, HashMap<Term, Span>>, // pure_terms, indexed by trigger_vars
     pure_best_scores: HashMap<Term, Score>, // best score for this term
-    next_id: u64,                    // used for Other
+    next_id: u64,                   // used for Other
 }
 
 struct Timer {
@@ -262,7 +243,7 @@ fn gather_terms(ctxt: &mut Ctxt, exp: &Exp, depth: u64) -> (bool, Term) {
     if is_pure {
         if let Some(var_depth) = trigger_var_depth(ctxt, &term, depth) {
             if !ctxt.pure_terms.contains_key(&term) {
-                ctxt.pure_terms.insert(term.clone(), exp.span.clone());
+                ctxt.pure_terms.insert(term.clone(), exp.clone());
             }
             let score = make_score(&term, var_depth);
             if !ctxt.pure_best_scores.contains_key(&term)
@@ -456,7 +437,7 @@ pub(crate) fn build_triggers(
     //println!();
     if state.best_so_far.len() >= 1 {
         let trigs: Vec<Trig> = vec_map(&state.best_so_far, |trig| {
-            Rc::new(vec_map(&trig, |(term, span)| term_to_exp(span, term)))
+            Rc::new(vec_map(&trig, |(term, _)| ctxt.pure_terms[term].clone()))
         });
         Ok(Rc::new(trigs))
     } else {
