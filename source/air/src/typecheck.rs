@@ -345,6 +345,14 @@ pub(crate) fn check_stmt(typing: &mut Typing, stmt: &Stmt) -> Result<(), TypeErr
             }
             Ok(())
         }
+        StmtX::Switch(stmts) => {
+            let snapshots = typing.snapshots.clone(); // snapshots from branches are not retained
+            for s in stmts.iter() {
+                check_stmt(typing, s)?;
+                typing.snapshots = snapshots.clone(); // reset to pre-branch snapshots
+            }
+            Ok(())
+        }
     };
     match result {
         Ok(()) => Ok(()),

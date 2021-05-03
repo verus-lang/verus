@@ -366,6 +366,113 @@ fn yes_snapshot() {
 }
 
 #[test]
+fn yes_test_switch1() {
+    yes!(
+        (check-valid
+            (declare-const x Int)
+            (block
+                (switch
+                    (assume (> x 20))
+                    (assume (< x 10))
+                )
+                (assert (or (> x 20) (< x 10)))
+            )
+        )
+    );
+}
+
+#[test]
+fn no_test_switch1() {
+    no!(
+        (check-valid
+            (declare-const x Int)
+            (block
+                (switch
+                    (assume (> x 20))
+                    (assume (< x 10))
+                )
+                (assert (> x 20))
+            )
+        )
+    );
+}
+
+#[test]
+fn yes_test_switch2() {
+    yes!(
+        (check-valid
+            (declare-var x Int)
+            (block
+                (assign x 10)
+                (switch
+                    (block
+                    )
+                    (assign x 15)
+                    (block
+                        (assign x 20)
+                        (assign x (+ x 30))
+                        (assign x (- x 40))
+                    )
+                    (assign x (+ x 7))
+                )
+                (assert (>= x 10))
+                (assert (<= x 20))
+            )
+        )
+    );
+}
+
+#[test]
+fn no_test_switch2() {
+    no!(
+        (check-valid
+            (declare-var x Int)
+            (block
+                (assign x 10)
+                (switch
+                    (block
+                    )
+                    (assign x 15)
+                    (block
+                        (assign x 20)
+                        (assign x (+ x 30))
+                        (assign x (- x 40))
+                    )
+                    (assign x (+ x 7))
+                )
+                (assert (> x 10))
+                (assert (<= x 20))
+            )
+        )
+    );
+}
+
+#[test]
+fn no_test_switch3() {
+    no!(
+        (check-valid
+            (declare-var x Int)
+            (block
+                (assign x 10)
+                (switch
+                    (block
+                    )
+                    (assign x 15)
+                    (block
+                        (assign x 20)
+                        (assign x (+ x 30))
+                        (assign x (- x 40))
+                    )
+                    (assign x (+ x 7))
+                )
+                (assert (>= x 10))
+                (assert (< x 17))
+            )
+        )
+    );
+}
+
+#[test]
 fn untyped_scope1() {
     untyped!(
         (declare-const x Int)

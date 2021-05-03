@@ -11,6 +11,7 @@ pub fn main() {
 
     let mut opts = Options::new();
     opts.optflag("", "auto-config", "Set Z3 auto_config=true");
+    opts.optopt("", "log-air-middle", "Log AIR queries in middle form", "FILENAME");
     opts.optopt("", "log-air-final", "Log AIR queries in final form", "FILENAME");
     opts.optopt("", "log-smt", "Log SMT queries", "FILENAME");
     opts.optflag("h", "help", "print this help menu");
@@ -78,6 +79,10 @@ pub fn main() {
     let mut air_context = Context::new(&z3_context, &z3_solver);
 
     // Start logging
+    if let Some(filename) = matches.opt_str("log-air-middle") {
+        let file = File::create(&filename).expect(&format!("could not open file {}", &filename));
+        air_context.set_air_middle_log(Box::new(file));
+    }
     if let Some(filename) = matches.opt_str("log-air-final") {
         let file = File::create(&filename).expect(&format!("could not open file {}", &filename));
         air_context.set_air_final_log(Box::new(file));

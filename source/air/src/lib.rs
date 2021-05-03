@@ -6,6 +6,7 @@ pub mod context;
 pub mod print_parse;
 
 mod block_to_assert;
+mod def;
 mod smt_verify;
 mod tests;
 mod typecheck;

@@ -112,6 +112,7 @@ pub enum StmtX {
     Assign(Ident, Expr),
     Snapshot(Ident), // create a named snapshot of the state of the variables
     Block(Stmts),
+    Switch(Stmts),
 }
 
 pub type Field = Binder<Typ>;

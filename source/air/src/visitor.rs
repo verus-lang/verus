@@ -91,9 +91,11 @@ pub(crate) fn map_stmt_expr_visitor<F: FnMut(&Expr) -> Expr>(stmt: &Stmt, f: &mu
         }
         StmtX::Snapshot(_) => stmt.clone(),
         StmtX::Block(_) => stmt.clone(),
+        StmtX::Switch(_) => stmt.clone(),
     }
 }
 
+/*
 pub(crate) fn map_stmt_visitor<F: FnMut(&Stmt) -> Stmt>(stmt: &Stmt, f: &mut F) -> Stmt {
     match &**stmt {
         StmtX::Assume(_) => f(stmt),
@@ -106,8 +108,15 @@ pub(crate) fn map_stmt_visitor<F: FnMut(&Stmt) -> Stmt>(stmt: &Stmt, f: &mut F) 
             for s in ss.iter() {
                 stmts.push(map_stmt_visitor(s, f));
             }
-            let stmt = Rc::new(StmtX::Block(Rc::new(stmts)));
-            f(&stmt)
+            f(&Rc::new(StmtX::Block(Rc::new(stmts))))
+        }
+        StmtX::Switch(ss) => {
+            let mut stmts: Vec<Stmt> = Vec::new();
+            for s in ss.iter() {
+                stmts.push(map_stmt_visitor(s, f));
+            }
+            f(&Rc::new(StmtX::Switch(Rc::new(stmts))))
         }
     }
 }
+*/

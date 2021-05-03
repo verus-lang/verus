@@ -24,6 +24,7 @@ pub struct Context<'ctx> {
     pub(crate) typing: Typing,
     pub(crate) rlimit: u32,
     pub(crate) air_initial_log: Logger,
+    pub(crate) air_middle_log: Logger,
     pub(crate) air_final_log: Logger,
     pub(crate) smt_log: Logger,
     pub(crate) name_scopes: Vec<Vec<Ident>>,
@@ -48,6 +49,7 @@ impl<'ctx> Context<'ctx> {
             },
             rlimit: 0,
             air_initial_log: Logger::new(None),
+            air_middle_log: Logger::new(None),
             air_final_log: Logger::new(None),
             smt_log: Logger::new(None),
             name_scopes: [Vec::new()].to_vec(),
@@ -56,6 +58,10 @@ impl<'ctx> Context<'ctx> {
 
     pub fn set_air_initial_log(&mut self, writer: Box<dyn std::io::Write>) {
         self.air_initial_log = Logger::new(Some(writer));
+    }
+
+    pub fn set_air_middle_log(&mut self, writer: Box<dyn std::io::Write>) {
+        self.air_middle_log = Logger::new(Some(writer));
     }
 
     pub fn set_air_final_log(&mut self, writer: Box<dyn std::io::Write>) {
@@ -69,12 +75,14 @@ impl<'ctx> Context<'ctx> {
     pub fn set_rlimit(&mut self, rlimit: u32) {
         self.rlimit = rlimit;
         self.air_initial_log.log_set_option("rlimit", &rlimit.to_string());
+        self.air_middle_log.log_set_option("rlimit", &rlimit.to_string());
         self.air_final_log.log_set_option("rlimit", &rlimit.to_string());
     }
 
     // emit blank line into log files
     pub fn blank_line(&mut self) {
         self.air_initial_log.blank_line();
+        self.air_middle_log.blank_line();
         self.air_final_log.blank_line();
         self.smt_log.blank_line();
     }
@@ -82,12 +90,14 @@ impl<'ctx> Context<'ctx> {
     // Single-line comment, emitted with ";;" into log files
     pub fn comment(&mut self, s: &str) {
         self.air_initial_log.comment(s);
+        self.air_middle_log.comment(s);
         self.air_final_log.comment(s);
         self.smt_log.comment(s);
     }
 
     fn log_set_z3_param(&mut self, option: &str, value: &str) {
         self.air_initial_log.log_set_option(option, value);
+        self.air_middle_log.log_set_option(option, value);
         self.air_final_log.log_set_option(option, value);
         self.smt_log.log_set_option(option, value);
     }
@@ -178,6 +188,7 @@ impl<'ctx> Context<'ctx> {
 
     pub fn push(&mut self) {
         self.air_initial_log.log_push();
+        self.air_middle_log.log_push();
         self.air_final_log.log_push();
         self.smt_log.log_push();
         self.solver.push();
@@ -186,6 +197,7 @@ impl<'ctx> Context<'ctx> {
 
     pub fn pop(&mut self) {
         self.air_initial_log.log_pop();
+        self.air_middle_log.log_pop();
         self.air_final_log.log_pop();
         self.smt_log.log_pop();
         self.solver.pop(1);
@@ -194,6 +206,7 @@ impl<'ctx> Context<'ctx> {
 
     pub fn global(&mut self, decl: &Decl) -> Result<(), TypeError> {
         self.air_initial_log.log_decl(decl);
+        self.air_middle_log.log_decl(decl);
         self.air_final_log.log_decl(decl);
         crate::typecheck::check_decl(&mut self.typing, decl)?;
         crate::typecheck::add_decl(self, decl, true)?;
@@ -207,6 +220,7 @@ impl<'ctx> Context<'ctx> {
             return ValidityResult::TypeError(err);
         }
         let query = crate::var_to_const::lower_query(query);
+        self.air_middle_log.log_query(&query);
         let query = crate::block_to_assert::lower_query(&query);
         self.air_final_log.log_query(&query);
 

@@ -3,13 +3,11 @@ use crate::ast::{
     Typ, TypX, UnaryOp, ValidityResult,
 };
 use crate::context::{AssertionInfo, Context};
+use crate::def::{GLOBAL_PREFIX_LABEL, PREFIX_LABEL};
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 use z3::ast::{Ast, Bool, Dynamic, Int};
 use z3::{Pattern, SatResult, Sort, Symbol};
-
-pub const PREFIX_LABEL: &str = "%%location_label%%";
-pub const GLOBAL_PREFIX_LABEL: &str = "%%global_location_label%%";
 
 fn new_const<'ctx>(context: &mut Context<'ctx>, name: &String, typ: &Typ) -> Dynamic<'ctx> {
     match &**typ {

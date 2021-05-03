@@ -253,9 +253,13 @@ pub fn stmt_to_node(stmt: &Stmt) -> Node {
         StmtX::Havoc(x) => nodes!(havoc {str_to_node(x)}),
         StmtX::Assign(x, expr) => nodes!(assign {str_to_node(x)} {expr_to_node(expr)}),
         StmtX::Snapshot(snap) => nodes!(snapshot {str_to_node(snap)}),
-        StmtX::Block(stmts) => {
+        StmtX::Block(stmts) | StmtX::Switch(stmts) => {
             let mut nodes = Vec::new();
-            nodes.push(str_to_node("block"));
+            let s = match &**stmt {
+                StmtX::Block(_) => "block",
+                _ => "switch",
+            };
+            nodes.push(str_to_node(s));
             for stmt in stmts.iter() {
                 nodes.push(stmt_to_node(stmt));
             }
@@ -298,11 +302,13 @@ pub(crate) fn write_node(
                     Node::Atom(a)
                         if a == "=>"
                             || a == "and"
+                            || a == "or"
                             || a == "assume"
                             || a == "assert"
                             || a == "location"
                             || a == "check-valid"
                             || a == "!"
+                            || a == "switch"
                             || a == "block" =>
                     {
                         brk = true;
@@ -713,6 +719,9 @@ pub(crate) fn node_to_stmt(node: &Node) -> Result<Stmt, String> {
             _ => match &nodes[0] {
                 Node::Atom(s) if s.to_string() == "block" => {
                     Ok(Rc::new(StmtX::Block(nodes_to_stmts(&nodes[1..])?)))
+                }
+                Node::Atom(s) if s.to_string() == "switch" => {
+                    Ok(Rc::new(StmtX::Switch(nodes_to_stmts(&nodes[1..])?)))
                 }
                 _ => Err(format!("expected statement, found: {}", node_to_string(node))),
             },
