@@ -14,6 +14,7 @@ fn stmt_to_expr(stmt: &Stmt, pred: Expr) -> Expr {
         }
         StmtX::Havoc(_) => panic!("internal error: Havoc in block_to_assert"),
         StmtX::Assign(_, _) => panic!("internal error: Assign in block_to_assert"),
+        StmtX::Snapshot(_) => panic!("internal error: Snapshot in block_to_assert"),
         StmtX::Block(stmts) => {
             // wp((s1; s2), P) = wp(s1, wp(s2, P))
             let mut p = pred;

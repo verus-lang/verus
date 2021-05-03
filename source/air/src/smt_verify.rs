@@ -31,6 +31,7 @@ fn expr_to_smt<'ctx>(context: &mut Context<'ctx>, expr: &Expr) -> Dynamic<'ctx> 
             None => panic!("internal error: variable {} not found", x),
             Some(x) => x.clone(),
         },
+        ExprX::Old(_, _) => panic!("internal error: Old"),
         ExprX::Apply(x, exprs) => {
             let mut exprs_vec: Vec<Dynamic> = Vec::new();
             for expr in exprs.iter() {

@@ -92,6 +92,7 @@ pub type Exprs = Rc<Vec<Expr>>;
 pub enum ExprX {
     Const(Constant),
     Var(Ident),
+    Old(Ident, Ident), // Old(snap, x) reads x from snapshot snap
     Apply(Ident, Exprs),
     Unary(UnaryOp, Expr),
     Binary(BinaryOp, Expr, Expr),
@@ -109,6 +110,7 @@ pub enum StmtX {
     Assert(SpanOption, Expr),
     Havoc(Ident),
     Assign(Ident, Expr),
+    Snapshot(Ident), // create a named snapshot of the state of the variables
     Block(Stmts),
 }
 

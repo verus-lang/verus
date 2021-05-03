@@ -27,6 +27,7 @@ pub type Exps = Rc<Vec<Exp>>;
 pub enum ExpX {
     Const(Constant),
     Var(Ident),
+    Old(Ident, Ident), // used only during sst_to_air to generate AIR Old
     Call(Ident, Exps), // call to spec function
     Field {
         lhs: Exp,

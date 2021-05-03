@@ -1,8 +1,8 @@
 use crate::ast::{BinaryOp, Ident, IntRange, Mode, Params, TernaryOp, Typ, UnaryOp};
 use crate::context::Ctx;
 use crate::def::{
-    prefix_ensures, prefix_fuel_id, prefix_requires, suffix_global_id, suffix_local_id, FUEL_BOOL,
-    FUEL_BOOL_DEFAULT, FUEL_DEFAULTS, FUEL_ID,
+    prefix_ensures, prefix_fuel_id, prefix_requires, suffix_global_id, suffix_local_id, Spanned,
+    FUEL_BOOL, FUEL_BOOL_DEFAULT, FUEL_DEFAULTS, FUEL_ID, SNAPSHOT_CALL,
 };
 use crate::sst::{BndX, Dest, Exp, ExpX, Stm, StmX};
 use crate::util::vec_map;
@@ -68,6 +68,7 @@ pub(crate) fn exp_to_expr(exp: &Exp) -> Expr {
             expr
         }
         ExpX::Var(x) => string_var(&suffix_local_id(x)),
+        ExpX::Old(span, x) => Rc::new(ExprX::Old(span.clone(), suffix_local_id(x))),
         ExpX::Call(x, args) => {
             let name = suffix_global_id(&x);
             ident_apply(&name, &vec_map(args, exp_to_expr))
@@ -166,29 +167,36 @@ pub fn stm_to_stmts(ctx: &Ctx, stm: &Stm, decls: &mut Vec<Decl>) -> Vec<Stmt> {
                 let option_span = Rc::new(Some(Span { description, ..stm.span.clone() }));
                 stmts.push(Rc::new(StmtX::Assert(option_span, e_req)));
             }
-            let mut ens_args = vec_map(args, exp_to_expr);
+            let mut ens_args: Vec<Expr>;
             match dest {
-                None => {}
+                None => {
+                    ens_args = vec_map(args, exp_to_expr);
+                }
                 Some(Dest { var, mutable }) => {
+                    ens_args = Vec::new();
                     let x = suffix_local_id(&var.clone());
+                    let mut overwrite = false;
+                    for arg in args.iter() {
+                        let arg_x = crate::sst_visitor::map_exp_visitor(arg, &mut |e| match &e.x {
+                            ExpX::Var(x) if x == var => {
+                                overwrite = true;
+                                Spanned::new(
+                                    arg.span.clone(),
+                                    ExpX::Old(str_ident(SNAPSHOT_CALL), x.clone()),
+                                )
+                            }
+                            _ => e.clone(),
+                        });
+                        ens_args.push(exp_to_expr(&arg_x));
+                    }
+                    if overwrite {
+                        stmts.push(Rc::new(StmtX::Snapshot(str_ident(SNAPSHOT_CALL))));
+                    }
+                    ens_args.push(Rc::new(ExprX::Var(x.clone())));
                     if *mutable {
                         let havoc = StmtX::Havoc(x.clone());
                         stmts.push(Rc::new(havoc));
                     }
-                    let mut overwrite = false;
-                    for arg in args.iter() {
-                        let _ = crate::sst_visitor::map_exp_visitor(arg, &mut |e| {
-                            match &e.x {
-                                ExpX::Var(x) if x == var => overwrite = true,
-                                _ => {}
-                            }
-                            e.clone()
-                        });
-                    }
-                    if overwrite {
-                        todo!("call whose output overwrites inputs {:?}", &stm.span);
-                    }
-                    ens_args.push(Rc::new(ExprX::Var(x.clone())));
                 }
             }
             if func.x.ensure.len() > 0 {
@@ -196,7 +204,7 @@ pub fn stm_to_stmts(ctx: &Ctx, stm: &Stm, decls: &mut Vec<Decl>) -> Vec<Stmt> {
                 let e_ens = Rc::new(ExprX::Apply(f_ens, Rc::new(ens_args)));
                 stmts.push(Rc::new(StmtX::Assume(e_ens)));
             }
-            stmts
+            vec![Rc::new(StmtX::Block(Rc::new(stmts)))] // wrap in block for readability
         }
         StmX::Assume(expr) => vec![Rc::new(StmtX::Assume(exp_to_expr(&expr)))],
         StmX::Assert(expr) => {

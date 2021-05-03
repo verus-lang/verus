@@ -175,6 +175,7 @@ fn gather_terms(ctxt: &mut Ctxt, exp: &Exp, depth: u64) -> (bool, Term) {
         ExpX::Var(x) => {
             return (true, Rc::new(TermX::Var(x.clone())));
         }
+        ExpX::Old(_, _) => panic!("internal error: Old"),
         ExpX::Call(x, args) => {
             let (is_pures, terms): (Vec<bool>, Vec<Term>) =
                 args.iter().map(|e| gather_terms(ctxt, e, depth + 1)).unzip();

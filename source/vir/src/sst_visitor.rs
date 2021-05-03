@@ -12,6 +12,7 @@ where
     match &exp.x {
         ExpX::Const(_) => f(exp),
         ExpX::Var(_) => f(exp),
+        ExpX::Old(_, _) => f(exp),
         ExpX::Call(x, es) => {
             let mut exps: Vec<Exp> = Vec::new();
             for e in es.iter() {

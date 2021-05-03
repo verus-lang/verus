@@ -5,6 +5,7 @@ pub(crate) fn map_expr_visitor<F: FnMut(&Expr) -> Expr>(expr: &Expr, f: &mut F) 
     match &**expr {
         ExprX::Const(_) => f(expr),
         ExprX::Var(_) => f(expr),
+        ExprX::Old(_, _) => f(expr),
         ExprX::Apply(x, es) => {
             let mut exprs: Vec<Expr> = Vec::new();
             for e in es.iter() {
@@ -88,6 +89,7 @@ pub(crate) fn map_stmt_expr_visitor<F: FnMut(&Expr) -> Expr>(stmt: &Stmt, f: &mu
             let expr = map_expr_visitor(e, f);
             Rc::new(StmtX::Assign(x.clone(), f(&expr)))
         }
+        StmtX::Snapshot(_) => stmt.clone(),
         StmtX::Block(_) => stmt.clone(),
     }
 }
@@ -98,6 +100,7 @@ pub(crate) fn map_stmt_visitor<F: FnMut(&Stmt) -> Stmt>(stmt: &Stmt, f: &mut F) 
         StmtX::Assert(_, _) => f(stmt),
         StmtX::Havoc(_) => f(stmt),
         StmtX::Assign(_, _) => f(stmt),
+        StmtX::Snapshot(_) => f(stmt),
         StmtX::Block(ss) => {
             let mut stmts: Vec<Stmt> = Vec::new();
             for s in ss.iter() {

@@ -44,6 +44,7 @@ impl<'ctx> Context<'ctx> {
                 typs: HashSet::new(),
                 vars: HashMap::new(),
                 funs: HashMap::new(),
+                snapshots: HashSet::new(),
             },
             rlimit: 0,
             air_initial_log: Logger::new(None),

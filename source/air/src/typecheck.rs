@@ -29,6 +29,7 @@ pub struct Typing {
     pub(crate) typs: HashSet<Ident>,
     pub(crate) vars: HashMap<Ident, Rc<Var>>,
     pub(crate) funs: HashMap<Ident, Rc<Fun>>,
+    pub(crate) snapshots: HashSet<Ident>,
 }
 
 impl Typing {
@@ -129,6 +130,11 @@ pub(crate) fn check_expr(typing: &mut Typing, expr: &Expr) -> Result<Typ, TypeEr
         ExprX::Var(x) => match typing.vars.get(x) {
             None => Err(format!("use of undeclared variable {}", x)),
             Some(var) => Ok(var.typ.clone()),
+        },
+        ExprX::Old(snap, x) => match (typing.snapshots.contains(snap), typing.vars.get(x)) {
+            (false, _) => Err(format!("use of undeclared snapshot {}", snap)),
+            (_, None) => Err(format!("use of undeclared variable {}", x)),
+            (true, Some(var)) => Ok(var.typ.clone()),
         },
         ExprX::Apply(x, es) => match typing.funs.get(x).cloned() {
             None => Err(format!("use of undeclared function {}", x)),
@@ -329,6 +335,10 @@ pub(crate) fn check_stmt(typing: &mut Typing, stmt: &Stmt) -> Result<(), TypeErr
                 }
             }
         },
+        StmtX::Snapshot(snap) => {
+            typing.snapshots.insert(snap.clone());
+            Ok(())
+        }
         StmtX::Block(stmts) => {
             for s in stmts.iter() {
                 check_stmt(typing, s)?;

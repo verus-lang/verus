@@ -125,7 +125,14 @@ fn test_ret2(a: int, b: int) -> int {
     ]);
 
     let mut x = test_ret(a, a);
+    x = test_ret(x, x);
+    assert(x <= 4 * a);
     x = test_ret(b, b);
+    x = test_ret(x, x);
+    assert(x <= 4 * b);
+    x = test_ret(a + 1, a + 2);
+    x = test_ret(x + 3, x + 4);
+    assert(x <= 4 * a + 4 + 6);
     x = test_ret(a, b);
     x
 }

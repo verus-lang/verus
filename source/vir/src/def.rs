@@ -26,6 +26,7 @@ Other generated names:
 - fuel_x for global name x
 */
 
+// List of constant strings that can appear in generated AIR code
 pub const SUFFIX_GLOBAL: &str = ".";
 pub const SUFFIX_LOCAL: &str = "@";
 pub const PREFIX_FUEL_ID: &str = "fuel%";
@@ -45,6 +46,7 @@ pub const NAT_CLIP: &str = "nClip";
 pub const U_INV: &str = "uInv";
 pub const I_INV: &str = "iInv";
 pub const ARCH_SIZE: &str = "SZ";
+pub const SNAPSHOT_CALL: &str = "CALL";
 
 pub fn suffix_global_id(ident: &Ident) -> Ident {
     Rc::new(ident.to_string() + SUFFIX_GLOBAL)

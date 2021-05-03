@@ -91,6 +91,9 @@ pub(crate) fn expr_to_node(expr: &Expr) -> Node {
         ExprX::Const(Constant::Bool(b)) => Node::Atom(b.to_string()),
         ExprX::Const(Constant::Nat(n)) => Node::Atom((**n).clone()),
         ExprX::Var(x) => Node::Atom(x.to_string()),
+        ExprX::Old(snap, x) => {
+            nodes!(old {str_to_node(&snap.to_string())} {str_to_node(&x.to_string())})
+        }
         ExprX::Apply(x, exprs) => {
             let mut nodes: Vec<Node> = Vec::new();
             nodes.push(str_to_node(x));
@@ -249,6 +252,7 @@ pub fn stmt_to_node(stmt: &Stmt) -> Node {
         },
         StmtX::Havoc(x) => nodes!(havoc {str_to_node(x)}),
         StmtX::Assign(x, expr) => nodes!(assign {str_to_node(x)} {expr_to_node(expr)}),
+        StmtX::Snapshot(snap) => nodes!(snapshot {str_to_node(snap)}),
         StmtX::Block(stmts) => {
             let mut nodes = Vec::new();
             nodes.push(str_to_node("block"));
@@ -504,6 +508,11 @@ pub(crate) fn node_to_expr(node: &Node) -> Result<Expr, String> {
                     let expr = node_to_expr(e)?;
                     return Ok(Rc::new(ExprX::LabeledAssertion(span, expr)));
                 }
+                [Node::Atom(s), Node::Atom(snap), Node::Atom(x)]
+                    if s.to_string() == "old" && is_symbol(snap) && is_symbol(x) =>
+                {
+                    return Ok(Rc::new(ExprX::Old(Rc::new(snap.clone()), Rc::new(x.clone()))));
+                }
                 [Node::Atom(s), Node::List(binders), e] if s.to_string() == "let" => {
                     return node_to_let_expr(binders, e);
                 }
@@ -686,6 +695,9 @@ pub(crate) fn node_to_stmt(node: &Node) -> Result<Stmt, String> {
             [Node::Atom(s), Node::Atom(x), e] if s.to_string() == "assign" && is_symbol(x) => {
                 let expr = node_to_expr(&e)?;
                 Ok(Rc::new(StmtX::Assign(Rc::new(x.clone()), expr)))
+            }
+            [Node::Atom(s), Node::Atom(snap)] if s.to_string() == "snapshot" && is_symbol(snap) => {
+                Ok(Rc::new(StmtX::Snapshot(Rc::new(snap.clone()))))
             }
             [Node::Atom(s), Node::Atom(label), e]
                 if s.to_string() == "assert"

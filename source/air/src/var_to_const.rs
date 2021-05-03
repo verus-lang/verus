@@ -18,6 +18,7 @@ pub(crate) fn lower_query(query: &Query) -> Query {
     let QueryX { local, assertion } = &**query;
     let mut decls: Vec<Decl> = Vec::new();
     let mut versions: HashMap<Ident, u32> = HashMap::new();
+    let mut snapshots: HashMap<Ident, HashMap<Ident, u32>> = HashMap::new();
     let mut types: HashMap<Ident, Typ> = HashMap::new();
     for decl in local.iter() {
         decls.push(decl.clone());
@@ -35,6 +36,13 @@ pub(crate) fn lower_query(query: &Query) -> Query {
                 let xn = rename_var(x, find_version(&versions, x));
                 Rc::new(ExprX::Var(Rc::new(xn)))
             }
+            ExprX::Old(snap, x)
+                if snapshots.contains_key(snap) && snapshots[snap].contains_key(x) =>
+            {
+                let xn = rename_var(x, find_version(&snapshots[snap], x));
+                Rc::new(ExprX::Var(Rc::new(xn)))
+            }
+            ExprX::Old(_, x) => Rc::new(ExprX::Var(x.clone())),
             _ => e.clone(),
         });
         match &*s {
@@ -53,6 +61,10 @@ pub(crate) fn lower_query(query: &Query) -> Query {
                     }
                     _ => Rc::new(StmtX::Block(Rc::new(vec![]))),
                 }
+            }
+            StmtX::Snapshot(snap) => {
+                snapshots.insert(snap.clone(), versions.clone());
+                Rc::new(StmtX::Block(Rc::new(vec![])))
             }
             _ => s,
         }

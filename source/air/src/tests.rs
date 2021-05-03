@@ -341,6 +341,31 @@ fn no_havoc() {
 }
 
 #[test]
+fn yes_snapshot() {
+    yes!(
+        (check-valid
+            (declare-var x Int)
+            (declare-var y Int)
+            (block
+                (assume (= x 100))
+                (assume (= y 200))
+                (assign x (+ x 1))
+                (snapshot A)
+                (snapshot B)
+                (assign x (+ x 1))
+                (assert (= (old A x) 101))
+                (assert (= (old B x) 101))
+                (assert (= x 102))
+                (assert (= y 200))
+                (snapshot A)
+                (assert (= (old A x) 102))
+                (assert (= (old B x) 101))
+            )
+        )
+    )
+}
+
+#[test]
 fn untyped_scope1() {
     untyped!(
         (declare-const x Int)
