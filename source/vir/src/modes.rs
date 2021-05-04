@@ -100,6 +100,21 @@ fn check_expr(typing: &mut Typing, outer_mode: Mode, expr: &Expr) -> Result<Mode
         },
         ExprX::Fuel(_, _) => Ok(outer_mode),
         ExprX::Header(_) => panic!("internal error: Header shouldn't exist here"),
+        ExprX::If(e1, e2, e3) => {
+            let mode1 = check_expr(typing, outer_mode, e1)?;
+            let mode_branch = match (outer_mode, mode1) {
+                (Mode::Exec, Mode::Spec) => Mode::Proof,
+                _ => mode1,
+            };
+            let mode2 = check_expr(typing, mode_branch, e2)?;
+            match e3 {
+                None => Ok(mode2),
+                Some(e3) => {
+                    let mode3 = check_expr(typing, mode_branch, e3)?;
+                    Ok(mode_join(mode2, mode3))
+                }
+            }
+        }
         ExprX::Block(ss, e1) => {
             let mut pushed_vars: Vec<(Ident, Option<Mode>)> = Vec::new();
             for stmt in ss.iter() {

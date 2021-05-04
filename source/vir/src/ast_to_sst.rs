@@ -56,8 +56,12 @@ pub(crate) fn expr_to_exp(ctx: &Ctx, expr: &Expr) -> Result<Exp, VirErr> {
             let vars: Vec<Ident> = binders.iter().map(|b| b.name.clone()).collect();
             let trigs = crate::triggers::build_triggers(ctx, &expr.span, &vars, &exp)?;
             let bnd = Spanned::new(body.span.clone(), BndX::Quant(*quant, binders.clone(), trigs));
-            Ok(Spanned::new(body.span.clone(), ExpX::Bind(bnd, exp)))
+            Ok(Spanned::new(expr.span.clone(), ExpX::Bind(bnd, exp)))
         }
+        ExprX::If(cond, lhs, Some(rhs)) => Ok(Spanned::new(
+            expr.span.clone(),
+            ExpX::If(expr_to_exp(ctx, cond)?, expr_to_exp(ctx, lhs)?, expr_to_exp(ctx, rhs)?),
+        )),
         ExprX::Block(stmts, Some(expr)) if stmts.len() == 0 => expr_to_exp(ctx, expr),
         ExprX::Field { lhs, datatype_name, field_name } => Ok(Spanned::new(
             expr.span.clone(),
@@ -98,11 +102,20 @@ pub fn expr_to_stm(ctx: &Ctx, expr: &Expr, dest: &Option<Ident>) -> Result<Stm, 
             }
         }
         ExprX::Fuel(x, fuel) => Ok(Spanned::new(expr.span.clone(), StmX::Fuel(x.clone(), *fuel))),
+        ExprX::If(cond, lhs, rhs) => {
+            let scond = expr_to_exp(ctx, cond)?;
+            let slhs = expr_to_stm(ctx, lhs, dest)?;
+            let srhs = rhs.as_ref().map(|e| expr_to_stm(ctx, e, dest)).transpose()?;
+            Ok(Spanned::new(expr.span.clone(), StmX::If(scond, slhs, srhs)))
+        }
         ExprX::Block(stmts, expr_opt) => {
             let stms_vec = vec_map_result(stmts, |s| stmt_to_stm(ctx, s))?;
             let mut stms: Vec<Stm> = stms_vec.into_iter().flatten().collect();
             match (dest, expr_opt) {
                 (None, None) => {}
+                (None, Some(expr)) => {
+                    stms.push(expr_to_stm(ctx, expr, &None)?);
+                }
                 (Some(dest), Some(expr)) => {
                     let _ = expr_to_exp(ctx, expr);
                     let x_dest = Spanned::new(expr.span.clone(), ExpX::Var(dest.clone()));
@@ -110,7 +123,7 @@ pub fn expr_to_stm(ctx: &Ctx, expr: &Expr, dest: &Option<Ident>) -> Result<Stm, 
                     let assign = StmX::Assume(Spanned::new(expr.span.clone(), eq));
                     stms.push(Spanned::new(expr.span.clone(), assign));
                 }
-                _ => panic!("internal error: ExprX::Block {}", expr.span.as_string),
+                _ => panic!("internal error: ExprX::Block {:?} {}", dest, expr.span.as_string),
             }
             Ok(Spanned::new(expr.span.clone(), StmX::Block(Rc::new(stms))))
         }

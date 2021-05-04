@@ -64,6 +64,13 @@ where
         }
         ExprX::Fuel(_, _) => f(&expr),
         ExprX::Header(_) => panic!("internal error: Header shouldn't exist here"),
+        ExprX::If(e1, e2, e3) => {
+            let expr1 = map_expr_visitor(e1, f)?;
+            let expr2 = map_expr_visitor(e2, f)?;
+            let expr3 = e3.as_ref().map(|e| map_expr_visitor(e, f)).transpose()?;
+            let expr = Spanned::new(expr.span.clone(), ExprX::If(expr1, expr2, expr3));
+            f(&expr)
+        }
         ExprX::Block(ss, e1) => {
             let mut exprs: Vec<Stmt> = Vec::new();
             for s in ss.iter() {

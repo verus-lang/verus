@@ -44,11 +44,11 @@ where
             let exp = Spanned::new(exp.span.clone(), ExpX::Binary(*op, expr1, expr2));
             f(&exp)
         }
-        ExpX::Ternary(op, e1, e2, e3) => {
+        ExpX::If(e1, e2, e3) => {
             let expr1 = map_exp_visitor_bind(e1, fb, f)?;
             let expr2 = map_exp_visitor_bind(e2, fb, f)?;
             let expr3 = map_exp_visitor_bind(e3, fb, f)?;
-            let exp = Spanned::new(exp.span.clone(), ExpX::Ternary(*op, expr1, expr2, expr3));
+            let exp = Spanned::new(exp.span.clone(), ExpX::If(expr1, expr2, expr3));
             f(&exp)
         }
         ExpX::Bind(bnd, e1) => {

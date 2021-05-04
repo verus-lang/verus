@@ -372,6 +372,12 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
             };
             Ok(spanned_new(expr.span, ExprX::Field { lhs: vir_lhs, datatype_name, field_name }))
         }
+        ExprKind::If(cond, lhs, rhs) => {
+            let vir_cond = expr_to_vir(ctxt, cond)?;
+            let vir_lhs = expr_to_vir(ctxt, lhs)?;
+            let vir_rhs = rhs.map(|e| expr_to_vir(ctxt, e)).transpose()?;
+            Ok(spanned_new(expr.span, ExprX::If(vir_cond, vir_lhs, vir_rhs)))
+        }
         _ => {
             unsupported_err!(expr.span, format!("expression"), expr)
         }

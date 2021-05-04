@@ -1,4 +1,4 @@
-use crate::ast::{BinaryOp, Ident, TernaryOp, UnaryOp, VirErr};
+use crate::ast::{BinaryOp, Ident, UnaryOp, VirErr};
 use crate::ast_util::{err_str, err_string};
 use crate::context::Ctx;
 use crate::sst::{Bnd, BndX, Exp, ExpX, Trig, Trigs};
@@ -43,9 +43,7 @@ fn check_trigger_expr(exp: &Exp, free_vars: &mut HashSet<Ident>) -> Result<(), V
                 Add | Sub | Mul | EuclideanDiv | EuclideanMod => Ok(exp.clone()),
             }
         }
-        ExpX::Ternary(TernaryOp::If, _, _, _) => {
-            err_str(&exp.span, "triggers cannot contain if/else")
-        }
+        ExpX::If(_, _, _) => err_str(&exp.span, "triggers cannot contain if/else"),
         ExpX::Bind(_, _) => err_str(&exp.span, "triggers cannot contain let/forall/exists"),
     };
     let _ = crate::sst_visitor::map_exp_visitor_bind(exp, &mut fb, &mut f)?;

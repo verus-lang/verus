@@ -1,4 +1,4 @@
-use crate::ast::{BinaryOp, Ident, TernaryOp, UnaryOp, VirErr};
+use crate::ast::{BinaryOp, Ident, UnaryOp, VirErr};
 use crate::ast_util::err_str;
 use crate::context::Ctx;
 use crate::sst::{Exp, ExpX, Trig, Trigs};
@@ -213,10 +213,8 @@ fn gather_terms(ctxt: &mut Ctxt, exp: &Exp, depth: u64) -> (bool, Term) {
             ctxt.next_id += 1;
             (false, Rc::new(TermX::App(App::Other(ctxt.next_id), Rc::new(vec![term1, term2]))))
         }
-        ExpX::Ternary(op, e1, e2, e3) => {
-            let depth = match op {
-                TernaryOp::If => 1,
-            };
+        ExpX::If(e1, e2, e3) => {
+            let depth = 1;
             let (_, term1) = gather_terms(ctxt, e1, depth);
             let (_, term2) = gather_terms(ctxt, e2, depth);
             let (_, term3) = gather_terms(ctxt, e3, depth);

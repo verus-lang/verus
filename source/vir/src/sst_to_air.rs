@@ -1,4 +1,4 @@
-use crate::ast::{BinaryOp, Ident, IntRange, Mode, Params, TernaryOp, Typ, UnaryOp};
+use crate::ast::{BinaryOp, Ident, IntRange, Mode, Params, Typ, UnaryOp};
 use crate::context::Ctx;
 use crate::def::{
     prefix_ensures, prefix_fuel_id, prefix_requires, suffix_global_id, suffix_local_id, Spanned,
@@ -123,7 +123,7 @@ pub(crate) fn exp_to_expr(exp: &Exp) -> Expr {
             };
             Rc::new(expx)
         }
-        ExpX::Ternary(TernaryOp::If, e1, e2, e3) => {
+        ExpX::If(e1, e2, e3) => {
             Rc::new(ExprX::IfElse(exp_to_expr(e1), exp_to_expr(e2), exp_to_expr(e3)))
         }
         ExpX::Field { lhs, datatype_name: _, field_name: name } => {
@@ -226,6 +226,22 @@ pub fn stm_to_stmts(ctx: &Ctx, stm: &Stm, decls: &mut Vec<Decl>) -> Vec<Stmt> {
                 _ => panic!("unexpected lhs {:?} in assign", lhs),
             };
             vec![Rc::new(StmtX::Assign(suffix_local_id(&ident), exp_to_expr(rhs)))]
+        }
+        StmX::If(cond, lhs, rhs) => {
+            let pos_cond = exp_to_expr(&cond);
+            let neg_cond = Rc::new(ExprX::Unary(air::ast::UnaryOp::Not, pos_cond.clone()));
+            let pos_assume = Rc::new(StmtX::Assume(pos_cond));
+            let neg_assume = Rc::new(StmtX::Assume(neg_cond));
+            let mut lhss = stm_to_stmts(ctx, lhs, decls);
+            let mut rhss = match rhs {
+                None => vec![],
+                Some(rhs) => stm_to_stmts(ctx, rhs, decls),
+            };
+            lhss.insert(0, pos_assume);
+            rhss.insert(0, neg_assume);
+            let lblock = Rc::new(StmtX::Block(Rc::new(lhss)));
+            let rblock = Rc::new(StmtX::Block(Rc::new(rhss)));
+            vec![Rc::new(StmtX::Switch(Rc::new(vec![lblock, rblock])))]
         }
         StmX::Fuel(x, fuel) => {
             if *fuel == 0 {

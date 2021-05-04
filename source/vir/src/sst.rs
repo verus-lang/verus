@@ -5,7 +5,7 @@ Whereas ast supports statements inside expressions,
 sst expressions cannot contain statments.
 */
 
-use crate::ast::{BinaryOp, TernaryOp, Typ, UnaryOp};
+use crate::ast::{BinaryOp, Typ, UnaryOp};
 use crate::def::Spanned;
 use air::ast::{Binders, Constant, Ident, Quant};
 use std::rc::Rc;
@@ -29,15 +29,10 @@ pub enum ExpX {
     Var(Ident),
     Old(Ident, Ident), // used only during sst_to_air to generate AIR Old
     Call(Ident, Exps), // call to spec function
-    Field {
-        lhs: Exp,
-        datatype_name: Ident,
-        field_name: Ident,
-    },
+    Field { lhs: Exp, datatype_name: Ident, field_name: Ident },
     Unary(UnaryOp, Exp),
     Binary(BinaryOp, Exp, Exp),
-    #[allow(dead_code)]
-    Ternary(TernaryOp, Exp, Exp, Exp),
+    If(Exp, Exp, Exp),
     Bind(Bnd, Exp),
 }
 
@@ -57,5 +52,6 @@ pub enum StmX {
     Decl { ident: Ident, typ: Typ, mutable: bool },
     Assign(Exp, Exp),
     Fuel(Ident, u32),
+    If(Exp, Stm, Option<Stm>),
     Block(Stms),
 }

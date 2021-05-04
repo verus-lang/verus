@@ -61,11 +61,6 @@ pub enum BinaryOp {
     EuclideanMod,
 }
 
-#[derive(Copy, Clone, Debug)]
-pub enum TernaryOp {
-    If,
-}
-
 pub type HeaderExpr = Rc<HeaderExprX>;
 #[derive(Debug)]
 pub enum HeaderExprX {
@@ -90,6 +85,7 @@ pub enum ExprX {
     Assign(Expr, Expr),
     Fuel(Ident, u32),
     Header(HeaderExpr),
+    If(Expr, Expr, Option<Expr>),
     Block(Stmts, Option<Expr>),
 }
 
