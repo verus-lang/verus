@@ -4,6 +4,7 @@ use crate::context::Ctx;
 use crate::def::Spanned;
 use crate::sst::{BndX, Dest, Exp, ExpX, Exps, Stm, StmX};
 use crate::util::vec_map_result;
+use air::ast::BinderX;
 use std::rc::Rc;
 
 fn function_can_be_exp(ctx: &Ctx, name: &Ident) -> bool {
@@ -62,7 +63,22 @@ pub(crate) fn expr_to_exp(ctx: &Ctx, expr: &Expr) -> Result<Exp, VirErr> {
             expr.span.clone(),
             ExpX::If(expr_to_exp(ctx, cond)?, expr_to_exp(ctx, lhs)?, expr_to_exp(ctx, rhs)?),
         )),
-        ExprX::Block(stmts, Some(expr)) if stmts.len() == 0 => expr_to_exp(ctx, expr),
+        ExprX::Block(stmts, Some(body)) => {
+            let mut exp = expr_to_exp(ctx, body)?;
+            for stmt in stmts.iter().rev() {
+                match &stmt.x {
+                    StmtX::Decl { param, mutable: false, init: Some(init) } => {
+                        let name = param.x.name.clone();
+                        let binder = Rc::new(BinderX { name, a: expr_to_exp(ctx, init)? });
+                        let binders = Rc::new(vec![binder]);
+                        let bnd = Spanned::new(param.span.clone(), BndX::Let(binders));
+                        exp = Spanned::new(expr.span.clone(), ExpX::Bind(bnd, exp));
+                    }
+                    _ => todo!("{:#?}", expr),
+                }
+            }
+            Ok(exp)
+        }
         ExprX::Field { lhs, datatype_name, field_name } => Ok(Spanned::new(
             expr.span.clone(),
             ExpX::Field {
@@ -72,7 +88,7 @@ pub(crate) fn expr_to_exp(ctx: &Ctx, expr: &Expr) -> Result<Exp, VirErr> {
             },
         )),
         _ => {
-            todo!("{:?}", expr)
+            todo!("{:#?}", expr)
         }
     }
 }

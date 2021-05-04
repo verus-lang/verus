@@ -58,7 +58,9 @@ fn f1(i: int, j: int) -> bool {
 
 #[spec]
 fn f2(i: int, j: int) -> bool {
-    i < j
+    let x = i;
+    let y = j;
+    x < y
 }
 
 #[spec]

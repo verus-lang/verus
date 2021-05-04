@@ -16,7 +16,6 @@ pub type Trigs = Rc<Vec<Trig>>;
 pub type Bnd = Rc<Spanned<BndX>>;
 #[derive(Clone, Debug)]
 pub enum BndX {
-    #[allow(dead_code)]
     Let(Binders<Exp>),
     Quant(Quant, Binders<Typ>, Trigs),
 }
