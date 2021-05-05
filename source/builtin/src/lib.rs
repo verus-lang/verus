@@ -1,8 +1,4 @@
-pub fn assume(_b: bool) {
-    unimplemented!();
-}
-
-pub fn assert(_b: bool) {
+pub fn admit() {
     unimplemented!();
 }
 

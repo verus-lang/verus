@@ -4,7 +4,7 @@ use crate::context::Ctx;
 use crate::def::Spanned;
 use crate::sst::{BndX, Dest, Exp, ExpX, Exps, Stm, StmX};
 use crate::util::vec_map_result;
-use air::ast::BinderX;
+use air::ast::{BinderX, Constant};
 use std::rc::Rc;
 
 fn function_can_be_exp(ctx: &Ctx, name: &Ident) -> bool {
@@ -99,12 +99,6 @@ pub fn expr_to_stm(ctx: &Ctx, expr: &Expr, dest: &Option<Ident>) -> Result<Stm, 
             let exps = vec_map_result(args, |e| expr_to_exp(ctx, e))?;
             Ok(Spanned::new(expr.span.clone(), StmX::Call(x.clone(), Rc::new(exps), None)))
         }
-        ExprX::Assume(expr) => {
-            Ok(Spanned::new(expr.span.clone(), StmX::Assume(expr_to_exp(ctx, expr)?)))
-        }
-        ExprX::Assert(expr) => {
-            Ok(Spanned::new(expr.span.clone(), StmX::Assert(expr_to_exp(ctx, expr)?)))
-        }
         ExprX::Assign(lhs, rhs) => {
             let dest = expr_to_exp(ctx, lhs)?;
             match (expr_must_be_call_stm(ctx, rhs)?, &dest.x) {
@@ -118,6 +112,10 @@ pub fn expr_to_stm(ctx: &Ctx, expr: &Expr, dest: &Option<Ident>) -> Result<Stm, 
             }
         }
         ExprX::Fuel(x, fuel) => Ok(Spanned::new(expr.span.clone(), StmX::Fuel(x.clone(), *fuel))),
+        ExprX::Admit => {
+            let f = Spanned::new(expr.span.clone(), ExpX::Const(Constant::Bool(false)));
+            Ok(Spanned::new(expr.span.clone(), StmX::Assume(f)))
+        }
         ExprX::If(cond, lhs, rhs) => {
             let scond = expr_to_exp(ctx, cond)?;
             let slhs = expr_to_stm(ctx, lhs, dest)?;

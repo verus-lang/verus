@@ -76,10 +76,6 @@ fn check_expr(typing: &mut Typing, outer_mode: Mode, expr: &Expr) -> Result<Mode
             }
             panic!("internal error: missing field {}", &field_name)
         }
-        ExprX::Assume(e1) | ExprX::Assert(e1) => {
-            check_expr_has_mode(typing, Mode::Spec, e1, Mode::Spec)?;
-            Ok(outer_mode)
-        }
         ExprX::Unary(_, e1) => check_expr(typing, outer_mode, e1),
         ExprX::Binary(_, e1, e2) => {
             let mode1 = check_expr(typing, outer_mode, e1)?;
@@ -100,6 +96,7 @@ fn check_expr(typing: &mut Typing, outer_mode: Mode, expr: &Expr) -> Result<Mode
         },
         ExprX::Fuel(_, _) => Ok(outer_mode),
         ExprX::Header(_) => panic!("internal error: Header shouldn't exist here"),
+        ExprX::Admit => Ok(outer_mode),
         ExprX::If(e1, e2, e3) => {
             let mode1 = check_expr(typing, outer_mode, e1)?;
             let mode_branch = match (outer_mode, mode1) {

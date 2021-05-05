@@ -1,5 +1,7 @@
 extern crate builtin;
-use builtin::{assert, assume, imply, int};
+use builtin::*;
+mod pervasive;
+use pervasive::*;
 
 struct Car {
     four_doors: bool,

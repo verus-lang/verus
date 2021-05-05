@@ -19,7 +19,7 @@ pub(crate) fn stm_assign(
             modified.insert(dest.var.clone());
             stm.clone()
         }
-        StmX::Call(_, _, _) | StmX::Assume(_) | StmX::Assert(_) | StmX::Fuel(_, _) => stm.clone(),
+        StmX::Call(_, _, _) | StmX::Assume(_) | StmX::Fuel(_, _) => stm.clone(),
         StmX::Decl { ident: x, typ, init, .. } => {
             if declared.contains_key(x) {
                 // If we want to support shadowed variables, we should rename them to be unique

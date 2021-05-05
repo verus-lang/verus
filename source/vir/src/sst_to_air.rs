@@ -213,11 +213,6 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
             vec![Rc::new(StmtX::Block(Rc::new(stmts)))] // wrap in block for readability
         }
         StmX::Assume(expr) => vec![Rc::new(StmtX::Assume(exp_to_expr(&expr)))],
-        StmX::Assert(expr) => {
-            let air_expr = exp_to_expr(&expr);
-            let option_span = Rc::new(Some(stm.span.clone()));
-            vec![Rc::new(StmtX::Assert(option_span, air_expr))]
-        }
         StmX::Decl { ident, typ, mutable, init: _ } => {
             state.local_shared.push(if *mutable {
                 Rc::new(DeclX::Var(suffix_local_id(&ident), typ_to_air(&typ)))

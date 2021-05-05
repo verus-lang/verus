@@ -30,16 +30,6 @@ where
             );
             f(&expr)
         }
-        ExprX::Assume(e1) => {
-            let expr1 = map_expr_visitor(e1, f)?;
-            let expr = Spanned::new(expr.span.clone(), ExprX::Assume(expr1));
-            f(&expr)
-        }
-        ExprX::Assert(e1) => {
-            let expr1 = map_expr_visitor(e1, f)?;
-            let expr = Spanned::new(expr.span.clone(), ExprX::Assert(expr1));
-            f(&expr)
-        }
         ExprX::Unary(op, e1) => {
             let expr1 = map_expr_visitor(e1, f)?;
             let expr = Spanned::new(expr.span.clone(), ExprX::Unary(*op, expr1));
@@ -65,6 +55,7 @@ where
         }
         ExprX::Fuel(_, _) => f(&expr),
         ExprX::Header(_) => panic!("internal error: Header shouldn't exist here"),
+        ExprX::Admit => f(&expr),
         ExprX::If(e1, e2, e3) => {
             let expr1 = map_expr_visitor(e1, f)?;
             let expr2 = map_expr_visitor(e2, f)?;

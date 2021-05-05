@@ -172,8 +172,7 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
         ExprKind::Call(fun, args_slice) => {
             let mut args: Vec<&'tcx Expr<'tcx>> = args_slice.iter().collect();
             let f = expr_to_function(fun);
-            let is_assume = hack_check_def_name(tcx, f, "builtin", "assume");
-            let is_assert = hack_check_def_name(tcx, f, "builtin", "assert");
+            let is_admit = hack_check_def_name(tcx, f, "builtin", "admit");
             let is_requires = hack_check_def_name(tcx, f, "builtin", "requires");
             let is_ensures = hack_check_def_name(tcx, f, "builtin", "ensures");
             let is_invariant = hack_check_def_name(tcx, f, "builtin", "invariant");
@@ -233,14 +232,9 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
             } else if is_invariant {
                 let header = Rc::new(HeaderExprX::Invariant(Rc::new(vir_args)));
                 Ok(spanned_new(expr.span, ExprX::Header(header)))
-            } else if is_assume || is_assert {
-                unsupported_err_unless!(len == 1, expr.span, "expected assume/assert", args);
-                let arg = vir_args[0].clone();
-                if is_assume {
-                    Ok(spanned_new(expr.span, ExprX::Assume(arg)))
-                } else {
-                    Ok(spanned_new(expr.span, ExprX::Assert(arg)))
-                }
+            } else if is_admit {
+                unsupported_err_unless!(len == 0, expr.span, "expected admit", args);
+                Ok(spanned_new(expr.span, ExprX::Admit))
             } else if is_hide || is_reveal {
                 unsupported_err_unless!(len == 1, expr.span, "expected hide/reveal", args);
                 let arg = vir_args[0].clone();

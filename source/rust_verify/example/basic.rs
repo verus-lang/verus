@@ -1,5 +1,7 @@
 extern crate builtin;
 use builtin::*;
+mod pervasive;
+use pervasive::*;
 
 fn main() {}
 
@@ -79,12 +81,6 @@ fn test_spec_fn(a: int, b: int) {
     reveal(f3);
     assert(f3(b, a));
     assert(f3(a, b)); // FAILS
-}
-
-fn affirm(b: bool) {
-    requires(b);
-
-    assert(b);
 }
 
 fn test_requires1(a: int, b: int, c: int) {
