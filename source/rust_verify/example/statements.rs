@@ -28,3 +28,26 @@ fn test_if(b: bool) {
         assert(x == 17);
     }
 }
+
+fn test_loop() {
+    let mut i: u64 = 10;
+    let mut b1: u8 = 20;
+    let mut b2: u8 = 200;
+    let mut b3: u8 = 30;
+
+    while i < 100 {
+        invariant([
+            10 <= i,
+            i <= 100,
+            b1 as u64 == i * 2,
+        ]);
+
+        assert(b2 as int <= 255);
+        i = i + 1;
+        b1 = b1 + 2;
+        b2 = b2 + 1;
+    }
+
+    assert(b1 == 200);
+    assert(b3 == 30);
+}

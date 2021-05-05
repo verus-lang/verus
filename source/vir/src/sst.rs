@@ -48,9 +48,21 @@ pub enum StmX {
     Call(Ident, Exps, Option<Dest>), // call to exec/proof function
     Assume(Exp),
     Assert(Exp),
-    Decl { ident: Ident, typ: Typ, mutable: bool },
+    Decl {
+        ident: Ident,
+        typ: Typ,
+        mutable: bool,
+        init: bool,
+    },
     Assign(Exp, Exp),
     Fuel(Ident, u32),
     If(Exp, Stm, Option<Stm>),
+    While {
+        cond: Exp,
+        body: Stm,
+        invs: Exps,
+        typ_inv_vars: Rc<Vec<(Ident, Typ)>>,
+        modified_vars: Rc<Vec<Ident>>,
+    },
     Block(Stms),
 }

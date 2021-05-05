@@ -1,5 +1,6 @@
 use crate::ast::{Expr, ExprX, Stmt, StmtX, VirErr};
 use crate::def::Spanned;
+use crate::util::vec_map_result;
 use std::rc::Rc;
 
 pub(crate) fn map_expr_visitor<F>(expr: &Expr, f: &mut F) -> Result<Expr, VirErr>
@@ -69,6 +70,13 @@ where
             let expr2 = map_expr_visitor(e2, f)?;
             let expr3 = e3.as_ref().map(|e| map_expr_visitor(e, f)).transpose()?;
             let expr = Spanned::new(expr.span.clone(), ExprX::If(expr1, expr2, expr3));
+            f(&expr)
+        }
+        ExprX::While { cond, body, invs } => {
+            let cond = map_expr_visitor(cond, f)?;
+            let body = map_expr_visitor(body, f)?;
+            let invs = Rc::new(vec_map_result(invs, |e| map_expr_visitor(e, f))?);
+            let expr = Spanned::new(expr.span.clone(), ExprX::While { cond, body, invs });
             f(&expr)
         }
         ExprX::Block(ss, e1) => {

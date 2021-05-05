@@ -115,6 +115,15 @@ fn check_expr(typing: &mut Typing, outer_mode: Mode, expr: &Expr) -> Result<Mode
                 }
             }
         }
+        ExprX::While { cond, body, invs } => {
+            // We could also allow this for proof, if we check it for termination
+            check_expr_has_mode(typing, outer_mode, cond, Mode::Exec)?;
+            check_expr_has_mode(typing, outer_mode, body, Mode::Exec)?;
+            for inv in invs.iter() {
+                check_expr_has_mode(typing, Mode::Spec, inv, Mode::Spec)?;
+            }
+            Ok(Mode::Exec)
+        }
         ExprX::Block(ss, e1) => {
             let mut pushed_vars: Vec<(Ident, Option<Mode>)> = Vec::new();
             for stmt in ss.iter() {

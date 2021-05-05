@@ -67,6 +67,7 @@ pub enum HeaderExprX {
     Requires(Exprs),
     Ensures(Option<(Ident, Typ)>, Exprs),
     Hide(Ident),
+    Invariant(Exprs),
 }
 
 pub type Expr = Rc<Spanned<ExprX>>;
@@ -86,6 +87,7 @@ pub enum ExprX {
     Fuel(Ident, u32),
     Header(HeaderExpr),
     If(Expr, Expr, Option<Expr>),
+    While { cond: Expr, body: Expr, invs: Exprs },
     Block(Stmts, Option<Expr>),
 }
 

@@ -1,5 +1,5 @@
 use crate::ast::{BinaryOp, Expr, ExprX, Ident, Mode, Stmt, StmtX, VirErr};
-use crate::ast_util::err_string;
+use crate::ast_util::{err_str, err_string};
 use crate::context::Ctx;
 use crate::def::Spanned;
 use crate::sst::{BndX, Dest, Exp, ExpX, Exps, Stm, StmX};
@@ -124,6 +124,22 @@ pub fn expr_to_stm(ctx: &Ctx, expr: &Expr, dest: &Option<Ident>) -> Result<Stm, 
             let srhs = rhs.as_ref().map(|e| expr_to_stm(ctx, e, dest)).transpose()?;
             Ok(Spanned::new(expr.span.clone(), StmX::If(scond, slhs, srhs)))
         }
+        ExprX::While { cond, body, invs } => {
+            assert_eq!(*dest, None);
+            let cond = expr_to_exp(ctx, cond)?;
+            let body = expr_to_stm(ctx, body, &None)?;
+            let invs = Rc::new(vec_map_result(invs, |e| expr_to_exp(ctx, e))?);
+            Ok(Spanned::new(
+                expr.span.clone(),
+                StmX::While {
+                    cond,
+                    body,
+                    invs,
+                    typ_inv_vars: Rc::new(vec![]),
+                    modified_vars: Rc::new(vec![]),
+                },
+            ))
+        }
         ExprX::Block(stmts, expr_opt) => {
             let stms_vec = vec_map_result(stmts, |s| stmt_to_stm(ctx, s))?;
             let mut stms: Vec<Stm> = stms_vec.into_iter().flatten().collect();
@@ -159,12 +175,17 @@ pub fn stmt_to_stm(ctx: &Ctx, stmt: &Stmt) -> Result<Vec<Stm>, VirErr> {
                     ident: param.x.name.clone(),
                     typ: param.x.typ.clone(),
                     mutable: *mutable,
+                    init: matches!(init, Some(_)),
                 },
             );
             let mut stms = vec![decl];
-            match init {
-                None => {}
-                Some(init) => {
+            match (*mutable, init) {
+                (false, None) => {
+                    // We don't yet support Assign to non-mutable
+                    return err_str(&stmt.span, "non-mut variable must have an initializer");
+                }
+                (true, None) => {}
+                (_, Some(init)) => {
                     let span = &init.span;
                     let var = Spanned::new(span.clone(), ExpX::Var(param.x.name.clone()));
                     match &expr_must_be_call_stm(ctx, init)? {

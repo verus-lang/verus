@@ -8,75 +8,8 @@ use rustc_middle::ty::TyCtxt;
 use rustc_span::symbol::Ident;
 use rustc_span::Span;
 use std::rc::Rc;
-use vir::ast::{ExprX, Exprs, FunctionX, HeaderExprX, KrateX, Mode, ParamX, StmtX, Typ, VirErr};
-use vir::ast_util::err_str;
-use vir::def::{Spanned, RETURN_VALUE};
-
-#[derive(Clone, Debug)]
-struct Header {
-    hidden: Vec<vir::ast::Ident>,
-    require: Exprs,
-    ensure_id_typ: Option<(vir::ast::Ident, Typ)>,
-    ensure: Exprs,
-}
-
-fn read_header_block(block: &mut Vec<vir::ast::Stmt>) -> Result<Header, VirErr> {
-    let mut hidden: Vec<vir::ast::Ident> = Vec::new();
-    let mut require: Option<Exprs> = None;
-    let mut ensure: Option<(Option<(vir::ast::Ident, Typ)>, Exprs)> = None;
-    let mut n = 0;
-    for stmt in block.iter() {
-        match &stmt.x {
-            StmtX::Expr(expr) => match &expr.x {
-                ExprX::Header(header) => match &**header {
-                    HeaderExprX::Requires(es) => {
-                        if require.is_some() {
-                            return err_str(
-                                &stmt.span,
-                                "only one call to requires allowed (use requires([e1, ..., en]) for multiple expressions",
-                            );
-                        }
-                        require = Some(es.clone());
-                    }
-                    HeaderExprX::Ensures(id_typ, es) => {
-                        if ensure.is_some() {
-                            return err_str(
-                                &stmt.span,
-                                "only one call to ensures allowed (use ensures([e1, ..., en]) for multiple expressions",
-                            );
-                        }
-                        ensure = Some((id_typ.clone(), es.clone()));
-                    }
-                    HeaderExprX::Hide(x) => {
-                        hidden.push(x.clone());
-                    }
-                },
-                _ => break,
-            },
-            _ => break,
-        }
-        n += 1;
-    }
-    *block = block[n..].to_vec();
-    let require = require.unwrap_or(Rc::new(vec![]));
-    let (ensure_id_typ, ensure) = match ensure {
-        None => (None, Rc::new(vec![])),
-        Some((id_typ, es)) => (id_typ, es),
-    };
-    Ok(Header { hidden, require, ensure_id_typ, ensure })
-}
-
-fn read_header(body: &mut vir::ast::Expr) -> Result<Header, VirErr> {
-    match &body.x {
-        ExprX::Block(stmts, expr) => {
-            let mut block: Vec<vir::ast::Stmt> = (**stmts).clone();
-            let header = read_header_block(&mut block)?;
-            *body = Spanned::new(body.span.clone(), ExprX::Block(Rc::new(block), expr.clone()));
-            Ok(header)
-        }
-        _ => read_header_block(&mut vec![]),
-    }
-}
+use vir::ast::{FunctionX, KrateX, Mode, ParamX, Typ, VirErr};
+use vir::def::RETURN_VALUE;
 
 pub(crate) fn body_to_vir<'tcx>(
     tcx: TyCtxt<'tcx>,
@@ -165,7 +98,7 @@ pub(crate) fn check_item_fn<'tcx>(
         }
     }
     let mut vir_body = body_to_vir(tcx, body_id, body, mode)?;
-    let header = read_header(&mut vir_body)?;
+    let header = vir::headers::read_header(&mut vir_body)?;
     if mode == Mode::Spec && (header.require.len() + header.ensure.len()) > 0 {
         return err_span_str(sig.span, "spec functions cannot have requires/ensures");
     }

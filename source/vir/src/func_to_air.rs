@@ -172,7 +172,7 @@ pub fn func_def_to_air(ctx: &Ctx, function: &Function) -> Result<Commands, VirEr
             let enss =
                 vec_map_result(&*function.x.ensure, |e| crate::ast_to_sst::expr_to_exp(ctx, e))?;
             let stm = crate::ast_to_sst::expr_to_stm(&ctx, &body, &dest)?;
-            let commands = crate::sst_to_air::stm_to_air(
+            let commands = crate::sst_to_air::body_stm_to_air(
                 ctx,
                 &function.x.params,
                 &function.x.ret,

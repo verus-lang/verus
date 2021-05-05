@@ -1,5 +1,5 @@
 // Replace declare-var and assign with declare-const and assume
-use crate::ast::{BinaryOp, Decl, DeclX, ExprX, Ident, Query, QueryX, Stmt, StmtX, Typ};
+use crate::ast::{BinaryOp, Decl, DeclX, Expr, ExprX, Ident, Query, QueryX, Stmt, StmtX, Typ};
 use crate::ast_util::string_var;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
@@ -15,15 +15,12 @@ fn rename_var(x: &String, n: u32) -> String {
     if x.ends_with("@") { format!("{}{}", x, n) } else { format!("{}@{}", x, n) }
 }
 
-fn lower_stmt(
-    decls: &mut Vec<Decl>,
-    versions: &mut HashMap<Ident, u32>,
-    version_decls: &mut HashSet<(Ident, u32)>,
-    snapshots: &mut HashMap<Ident, HashMap<Ident, u32>>,
-    types: &HashMap<Ident, Typ>,
-    stmt: &Stmt,
-) -> Stmt {
-    let stmt = crate::visitor::map_stmt_expr_visitor(&stmt, &mut |e| match &**e {
+fn lower_expr_visitor(
+    versions: &HashMap<Ident, u32>,
+    snapshots: &HashMap<Ident, HashMap<Ident, u32>>,
+    expr: &Expr,
+) -> Expr {
+    match &**expr {
         ExprX::Var(x) if versions.contains_key(x) => {
             let xn = rename_var(x, find_version(&versions, x));
             Rc::new(ExprX::Var(Rc::new(xn)))
@@ -33,7 +30,28 @@ fn lower_stmt(
             Rc::new(ExprX::Var(Rc::new(xn)))
         }
         ExprX::Old(_, x) => Rc::new(ExprX::Var(x.clone())),
-        _ => e.clone(),
+        _ => expr.clone(),
+    }
+}
+
+fn lower_expr(
+    versions: &HashMap<Ident, u32>,
+    snapshots: &HashMap<Ident, HashMap<Ident, u32>>,
+    expr: &Expr,
+) -> Expr {
+    crate::visitor::map_expr_visitor(&expr, &mut |e| lower_expr_visitor(versions, snapshots, e))
+}
+
+fn lower_stmt(
+    decls: &mut Vec<Decl>,
+    versions: &mut HashMap<Ident, u32>,
+    version_decls: &mut HashSet<(Ident, u32)>,
+    snapshots: &mut HashMap<Ident, HashMap<Ident, u32>>,
+    types: &HashMap<Ident, Typ>,
+    stmt: &Stmt,
+) -> Stmt {
+    let stmt = crate::visitor::map_stmt_expr_visitor(&stmt, &mut |e| {
+        lower_expr_visitor(versions, snapshots, e)
     });
     match &*stmt {
         StmtX::Assume(_) | StmtX::Assert(_, _) => stmt,
@@ -118,7 +136,12 @@ pub(crate) fn lower_query(query: &Query) -> Query {
     let mut snapshots: HashMap<Ident, HashMap<Ident, u32>> = HashMap::new();
     let mut types: HashMap<Ident, Typ> = HashMap::new();
     for decl in local.iter() {
-        decls.push(decl.clone());
+        if let DeclX::Axiom(expr) = &**decl {
+            let decl_x = DeclX::Axiom(lower_expr(&versions, &snapshots, expr));
+            decls.push(Rc::new(decl_x));
+        } else {
+            decls.push(decl.clone());
+        }
         if let DeclX::Var(x, t) = &**decl {
             versions.insert(x.clone(), 0);
             types.insert(x.clone(), t.clone());

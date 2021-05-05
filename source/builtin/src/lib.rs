@@ -16,6 +16,11 @@ pub fn ensures<A>(_a: A) {
     unimplemented!();
 }
 
+// Can only appear at beginning of loop body
+pub fn invariant<A>(_a: A) {
+    unimplemented!();
+}
+
 // Can only appear at beginning of function body
 pub fn hide<F>(_f: F) {
     unimplemented!();

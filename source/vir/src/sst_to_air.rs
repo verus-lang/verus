@@ -7,13 +7,14 @@ use crate::def::{
 use crate::sst::{BndX, Dest, Exp, ExpX, Stm, StmX};
 use crate::util::vec_map;
 use air::ast::{
-    BindX, BinderX, Binders, CommandX, Commands, Constant, Decl, DeclX, Expr, ExprX, MultiOp,
-    Quant, QueryX, Span, Stmt, StmtX, Trigger, Triggers,
+    BindX, BinderX, Binders, Command, CommandX, Commands, Constant, Decl, DeclX, Expr, ExprX,
+    MultiOp, Quant, QueryX, Span, Stmt, StmtX, Trigger, Triggers,
 };
 use air::ast_util::{
     bool_typ, ident_apply, ident_binder, ident_typ, ident_var, int_typ, str_apply, str_ident,
     str_typ, str_var, string_var,
 };
+use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
 pub(crate) fn typ_to_air(typ: &Typ) -> air::ast::Typ {
@@ -154,7 +155,12 @@ pub(crate) fn exp_to_expr(exp: &Exp) -> Expr {
     }
 }
 
-pub fn stm_to_stmts(ctx: &Ctx, stm: &Stm, decls: &mut Vec<Decl>) -> Vec<Stmt> {
+struct State {
+    local_shared: Vec<Decl>, // shared between all queries for a single function
+    commands: Vec<Command>,
+}
+
+fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
     match &stm.x {
         StmX::Call(x, args, dest) => {
             let mut stmts: Vec<Stmt> = Vec::new();
@@ -212,8 +218,8 @@ pub fn stm_to_stmts(ctx: &Ctx, stm: &Stm, decls: &mut Vec<Decl>) -> Vec<Stmt> {
             let option_span = Rc::new(Some(stm.span.clone()));
             vec![Rc::new(StmtX::Assert(option_span, air_expr))]
         }
-        StmX::Decl { ident, typ, mutable } => {
-            decls.push(if *mutable {
+        StmX::Decl { ident, typ, mutable, init: _ } => {
+            state.local_shared.push(if *mutable {
                 Rc::new(DeclX::Var(suffix_local_id(&ident), typ_to_air(&typ)))
             } else {
                 Rc::new(DeclX::Const(suffix_local_id(&ident), typ_to_air(&typ)))
@@ -232,16 +238,93 @@ pub fn stm_to_stmts(ctx: &Ctx, stm: &Stm, decls: &mut Vec<Decl>) -> Vec<Stmt> {
             let neg_cond = Rc::new(ExprX::Unary(air::ast::UnaryOp::Not, pos_cond.clone()));
             let pos_assume = Rc::new(StmtX::Assume(pos_cond));
             let neg_assume = Rc::new(StmtX::Assume(neg_cond));
-            let mut lhss = stm_to_stmts(ctx, lhs, decls);
+            let mut lhss = stm_to_stmts(ctx, state, lhs);
             let mut rhss = match rhs {
                 None => vec![],
-                Some(rhs) => stm_to_stmts(ctx, rhs, decls),
+                Some(rhs) => stm_to_stmts(ctx, state, rhs),
             };
             lhss.insert(0, pos_assume);
             rhss.insert(0, neg_assume);
             let lblock = Rc::new(StmtX::Block(Rc::new(lhss)));
             let rblock = Rc::new(StmtX::Block(Rc::new(rhss)));
             vec![Rc::new(StmtX::Switch(Rc::new(vec![lblock, rblock])))]
+        }
+        StmX::While { cond, body, invs, typ_inv_vars, modified_vars } => {
+            let pos_cond = exp_to_expr(&cond);
+            let neg_cond = Rc::new(ExprX::Unary(air::ast::UnaryOp::Not, pos_cond.clone()));
+            let pos_assume = Rc::new(DeclX::Axiom(pos_cond));
+            let neg_assume = Rc::new(StmtX::Assume(neg_cond));
+            let invs: Vec<(Span, Expr)> =
+                invs.iter().map(|e| (e.span.clone(), exp_to_expr(e))).collect();
+            let mut air_body = stm_to_stmts(ctx, state, body);
+
+            /*
+            Generate a separate SMT query for the loop body.
+            Rationale: large functions with while loops tend to be slow to verify.
+            Therefore, it's good to try to factor large functions
+            into smaller, easier-to-verify pieces.
+            Since we have programmer-supplied invariants anyway,
+            this is a good place for such refactoring.
+            This isn't necessarily a benefit for small functions or small loops,
+            but in practice, verification for large functions and large loops are slow
+            enough that programmers often do this refactoring by hand anyway,
+            so it's a benefit when verification gets hard, which is arguably what matters most.
+            (The downside: the programmer might have to write more complete invariants,
+            but this is part of the point: the invariants specify a precise interface
+            between the outer function and the inner loop body, so we don't have to import
+            the outer function's entire context into the verification of the loop body,
+            which would slow verification of the loop body.)
+            */
+            let mut local = state.local_shared.clone();
+            for (x, typ) in typ_inv_vars.iter() {
+                let typ_inv = typ_invariant(typ, &ident_var(&suffix_local_id(x)));
+                if let Some(expr) = typ_inv {
+                    local.push(Rc::new(DeclX::Axiom(expr)));
+                }
+            }
+            for (_, inv) in invs.iter() {
+                local.push(Rc::new(DeclX::Axiom(inv.clone())));
+            }
+            local.push(pos_assume);
+            for (span, inv) in invs.iter() {
+                let description = Some("invariant not satisfied at end of loop body".to_string());
+                let option_span = Rc::new(Some(Span { description, ..span.clone() }));
+                let inv_stmt = StmtX::Assert(option_span, inv.clone());
+                air_body.push(Rc::new(inv_stmt));
+            }
+            let assertion = if air_body.len() == 1 {
+                air_body[0].clone()
+            } else {
+                Rc::new(StmtX::Block(Rc::new(air_body)))
+            };
+            let query = Rc::new(QueryX { local: Rc::new(local), assertion });
+            state.commands.push(Rc::new(CommandX::CheckValid(query)));
+
+            // At original site of while loop, assert invariant, havoc, assume invariant + neg_cond
+            let mut stmts: Vec<Stmt> = Vec::new();
+            for (span, inv) in invs.iter() {
+                let description = Some("invariant not satisfied before loop".to_string());
+                let option_span = Rc::new(Some(Span { description, ..span.clone() }));
+                let inv_stmt = StmtX::Assert(option_span, inv.clone());
+                stmts.push(Rc::new(inv_stmt));
+            }
+            for x in modified_vars.iter() {
+                stmts.push(Rc::new(StmtX::Havoc(suffix_local_id(&x))));
+            }
+            for (x, typ) in typ_inv_vars.iter() {
+                if modified_vars.contains(x) {
+                    let typ_inv = typ_invariant(typ, &ident_var(&suffix_local_id(x)));
+                    if let Some(expr) = typ_inv {
+                        stmts.push(Rc::new(StmtX::Assume(expr)));
+                    }
+                }
+            }
+            for (_, inv) in invs.iter() {
+                let inv_stmt = StmtX::Assume(inv.clone());
+                stmts.push(Rc::new(inv_stmt));
+            }
+            stmts.push(neg_assume);
+            stmts
         }
         StmX::Fuel(x, fuel) => {
             if *fuel == 0 {
@@ -253,7 +336,7 @@ pub fn stm_to_stmts(ctx: &Ctx, stm: &Stm, decls: &mut Vec<Decl>) -> Vec<Stmt> {
                 vec![Rc::new(StmtX::Assume(expr_fuel_bool))]
             }
         }
-        StmX::Block(stms) => stms.iter().map(|s| stm_to_stmts(ctx, s, decls)).flatten().collect(),
+        StmX::Block(stms) => stms.iter().map(|s| stm_to_stmts(ctx, state, s)).flatten().collect(),
     }
 }
 
@@ -288,7 +371,7 @@ fn set_fuel(local: &mut Vec<Decl>, hidden: &Vec<Ident>) {
     local.push(Rc::new(DeclX::Axiom(fuel_expr)));
 }
 
-pub fn stm_to_air(
+pub fn body_stm_to_air(
     ctx: &Ctx,
     params: &Params,
     ret: &Option<(Ident, Typ, Mode)>,
@@ -297,17 +380,35 @@ pub fn stm_to_air(
     enss: &Vec<Exp>,
     stm: &Stm,
 ) -> Commands {
-    let mut local: Vec<Decl> = vec_map(params, |param| {
+    // Verifying a single function can generate multiple SMT queries.
+    // Some declarations (local_shared) are shared among the queries.
+    // Others are private to each query.
+    let mut local_shared: Vec<Decl> = vec_map(params, |param| {
         Rc::new(DeclX::Const(suffix_local_id(&param.x.name), typ_to_air(&param.x.typ)))
     });
     match ret {
         None => {}
         Some((x, typ, _)) => {
-            local.push(Rc::new(DeclX::Const(suffix_local_id(&x), typ_to_air(&typ))));
+            local_shared.push(Rc::new(DeclX::Const(suffix_local_id(&x), typ_to_air(&typ))));
         }
     }
 
-    let mut stmts = stm_to_stmts(ctx, &stm, &mut local);
+    set_fuel(&mut local_shared, hidden);
+
+    let mut declared: HashMap<Ident, Typ> = HashMap::new();
+    let mut assigned: HashSet<Ident> = HashSet::new();
+    for param in params.iter() {
+        declared.insert(param.x.name.clone(), param.x.typ.clone());
+        assigned.insert(param.x.name.clone());
+    }
+
+    let mut state = State { local_shared, commands: Vec::new() };
+
+    let stm = crate::sst_vars::stm_assign(&mut declared, &mut assigned, &mut HashSet::new(), stm);
+    let mut stmts = stm_to_stmts(ctx, &mut state, &stm);
+
+    let mut local = state.local_shared.clone();
+
     for ens in enss {
         let description = Some("postcondition not satisfied".to_string());
         let option_span = Rc::new(Some(Span { description, ..ens.span.clone() }));
@@ -317,17 +418,18 @@ pub fn stm_to_air(
     let assertion =
         if stmts.len() == 1 { stmts[0].clone() } else { Rc::new(StmtX::Block(Rc::new(stmts))) };
 
-    set_fuel(&mut local, hidden);
     for param in params.iter() {
         let typ_inv = typ_invariant(&param.x.typ, &ident_var(&suffix_local_id(&param.x.name)));
         if let Some(expr) = typ_inv {
             local.push(Rc::new(DeclX::Axiom(expr)));
         }
     }
+
     for req in reqs {
         local.push(Rc::new(DeclX::Axiom(exp_to_expr(req))));
     }
+
     let query = Rc::new(QueryX { local: Rc::new(local), assertion });
-    let command = Rc::new(CommandX::CheckValid(query));
-    Rc::new(vec![command])
+    state.commands.push(Rc::new(CommandX::CheckValid(query)));
+    Rc::new(state.commands)
 }

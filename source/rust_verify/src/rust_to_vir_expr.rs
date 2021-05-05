@@ -7,11 +7,11 @@ use crate::util::{
 };
 use crate::{unsupported, unsupported_err, unsupported_err_unless, unsupported_unless};
 use air::ast::{Binder, BinderX, Quant};
-use rustc_ast::Attribute;
+use rustc_ast::{Attribute, LitKind};
 use rustc_hir::def::Res;
 use rustc_hir::{
-    BinOpKind, BindingAnnotation, Expr, ExprKind, Local, Node, Pat, PatKind, QPath, Stmt, StmtKind,
-    UnOp,
+    Arm, BinOpKind, BindingAnnotation, Block, Destination, Expr, ExprKind, Local, LoopSource,
+    MatchSource, Node, Pat, PatKind, QPath, Stmt, StmtKind, UnOp,
 };
 use rustc_middle::ty::TyKind;
 use rustc_span::def_id::DefId;
@@ -176,6 +176,7 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
             let is_assert = hack_check_def_name(tcx, f, "builtin", "assert");
             let is_requires = hack_check_def_name(tcx, f, "builtin", "requires");
             let is_ensures = hack_check_def_name(tcx, f, "builtin", "ensures");
+            let is_invariant = hack_check_def_name(tcx, f, "builtin", "invariant");
             let is_forall = hack_check_def_name(tcx, f, "builtin", "forall");
             let is_exists = hack_check_def_name(tcx, f, "builtin", "exists");
             let is_hide = hack_check_def_name(tcx, f, "builtin", "hide");
@@ -209,6 +210,15 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                 let expr = spanned_new(args[0].span, ExprX::Header(header));
                 return Ok(expr);
             }
+            if is_invariant {
+                unsupported_err_unless!(len == 1, expr.span, "expected invariant", &args);
+                args = extract_array(args[0]);
+                for arg in &args {
+                    if !matches!(tc.node_type(arg.hir_id).kind(), TyKind::Bool) {
+                        return err_span_str(arg.span, "invariant needs a bool expression");
+                    }
+                }
+            }
             if is_forall || is_exists {
                 unsupported_err_unless!(len == 1, expr.span, "expected forall/exists", &args);
                 let quant = if is_forall { Quant::Forall } else { Quant::Exists };
@@ -219,6 +229,9 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
 
             if is_requires {
                 let header = Rc::new(HeaderExprX::Requires(Rc::new(vir_args)));
+                Ok(spanned_new(expr.span, ExprX::Header(header)))
+            } else if is_invariant {
+                let header = Rc::new(HeaderExprX::Invariant(Rc::new(vir_args)));
                 Ok(spanned_new(expr.span, ExprX::Header(header)))
             } else if is_assume || is_assert {
                 unsupported_err_unless!(len == 1, expr.span, "expected assume/assert", args);
@@ -377,6 +390,62 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
             let vir_lhs = expr_to_vir(ctxt, lhs)?;
             let vir_rhs = rhs.map(|e| expr_to_vir(ctxt, e)).transpose()?;
             Ok(spanned_new(expr.span, ExprX::If(vir_cond, vir_lhs, vir_rhs)))
+        }
+        ExprKind::Loop(
+            Block {
+                stmts: [],
+                expr:
+                    Some(Expr {
+                        kind:
+                            ExprKind::Match(
+                                cond,
+                                [Arm {
+                                    pat:
+                                        Pat {
+                                            kind:
+                                                PatKind::Lit(Expr {
+                                                    kind:
+                                                        ExprKind::Lit(rustc_span::source_map::Spanned {
+                                                            node: LitKind::Bool(true),
+                                                            ..
+                                                        }),
+                                                    ..
+                                                }),
+                                            ..
+                                        },
+                                    guard: None,
+                                    body,
+                                    ..
+                                }, Arm {
+                                    pat: Pat { kind: PatKind::Wild, .. },
+                                    guard: None,
+                                    body:
+                                        Expr {
+                                            kind:
+                                                ExprKind::Break(Destination { label: None, .. }, None),
+                                            ..
+                                        },
+                                    ..
+                                }],
+                                MatchSource::WhileDesugar,
+                            ),
+                        ..
+                    }),
+                ..
+            },
+            None,
+            LoopSource::While,
+            _span,
+        ) => {
+            let cond = match cond {
+                Expr { kind: ExprKind::DropTemps(cond), .. } => cond,
+                _ => cond,
+            };
+            let cond = expr_to_vir(ctxt, cond)?;
+            let mut body = expr_to_vir(ctxt, body)?;
+            let header = vir::headers::read_header(&mut body)?;
+            let invs = header.invariant;
+            Ok(spanned_new(expr.span, ExprX::While { cond, body, invs }))
         }
         _ => {
             unsupported_err!(expr.span, format!("expression"), expr)
