@@ -1,4 +1,4 @@
-use crate::ast::{Mode, Typ, VirErr, VirErrX};
+use crate::ast::{Mode, Typ, TypX, VirErr, VirErrX};
 use crate::def::Spanned;
 use air::ast::Span;
 pub use air::ast_util::{ident_binder, str_ident};
@@ -23,10 +23,10 @@ impl fmt::Display for Mode {
 }
 
 pub fn types_equal(typ1: &Typ, typ2: &Typ) -> bool {
-    match (typ1, typ2) {
-        (Typ::Bool, Typ::Bool) => true,
-        (Typ::Int(range1), Typ::Int(range2)) => range1 == range2,
-        (Typ::Path(p1), Typ::Path(p2)) => p1 == p2,
+    match (&**typ1, &**typ2) {
+        (TypX::Bool, TypX::Bool) => true,
+        (TypX::Int(range1), TypX::Int(range2)) => range1 == range2,
+        (TypX::Path(p1), TypX::Path(p2)) => p1 == p2,
         _ => false,
     }
 }

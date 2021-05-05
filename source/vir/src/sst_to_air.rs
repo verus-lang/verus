@@ -1,4 +1,4 @@
-use crate::ast::{BinaryOp, Ident, IntRange, Mode, Params, Typ, UnaryOp};
+use crate::ast::{BinaryOp, Ident, IntRange, Mode, Params, Typ, TypX, UnaryOp};
 use crate::context::Ctx;
 use crate::def::{
     prefix_ensures, prefix_fuel_id, prefix_requires, suffix_global_id, suffix_local_id, Spanned,
@@ -18,10 +18,10 @@ use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
 pub(crate) fn typ_to_air(typ: &Typ) -> air::ast::Typ {
-    match typ {
-        Typ::Int(_) => int_typ(),
-        Typ::Bool => bool_typ(),
-        Typ::Path(segments) => ident_typ(&Rc::new(
+    match &**typ {
+        TypX::Int(_) => int_typ(),
+        TypX::Bool => bool_typ(),
+        TypX::Path(segments) => ident_typ(&Rc::new(
             segments.iter().map(|x| (**x).as_str()).collect::<Vec<_>>().join("::"),
         )),
     }
@@ -43,13 +43,13 @@ pub(crate) fn apply_range_fun(name: &str, range: &IntRange, expr: &Expr) -> Expr
 
 // If expr has type typ, what can we assume to be true about expr?
 pub(crate) fn typ_invariant(typ: &Typ, expr: &Expr) -> Option<Expr> {
-    match typ {
-        Typ::Int(IntRange::Int) => None,
-        Typ::Int(IntRange::Nat) => {
+    match **typ {
+        TypX::Int(IntRange::Int) => None,
+        TypX::Int(IntRange::Nat) => {
             let zero = Rc::new(ExprX::Const(Constant::Nat(Rc::new("0".to_string()))));
             Some(Rc::new(ExprX::Binary(air::ast::BinaryOp::Le, zero, expr.clone())))
         }
-        Typ::Int(range) => {
+        TypX::Int(range) => {
             let f_name = match range {
                 IntRange::Int => panic!("internal error: Int"),
                 IntRange::Nat => panic!("internal error: Int"),

@@ -28,12 +28,15 @@ pub enum IntRange {
     ISize,
 }
 
+pub type Path = Rc<Vec<Ident>>;
+
+pub type Typ = Rc<TypX>;
 // Deliberately not marked Eq -- use explicit match instead, so we know where types are compared
-#[derive(Clone, Debug)]
-pub enum Typ {
+#[derive(Debug)]
+pub enum TypX {
     Bool,
     Int(IntRange),
-    Path(Vec<Ident>),
+    Path(Path),
 }
 
 #[derive(Copy, Clone, Debug)]

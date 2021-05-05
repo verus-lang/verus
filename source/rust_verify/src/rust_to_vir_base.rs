@@ -10,12 +10,12 @@ use rustc_span::def_id::DefId;
 use rustc_span::symbol::Ident;
 use rustc_span::Span;
 use std::rc::Rc;
-use vir::ast::{IntRange, Mode, Typ, VirErr};
+use vir::ast::{IntRange, Mode, Typ, TypX, VirErr};
 
-pub(crate) fn path_to_ty_path<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> Typ {
+pub(crate) fn path_to_ty_path<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> TypX {
     let ds =
         tcx.def_path(def_id).data.iter().map(|d| Rc::new(format!("{}", d))).collect::<Vec<_>>();
-    Typ::Path(ds)
+    TypX::Path(Rc::new(ds))
 }
 
 // TODO: proper handling of def_ids
@@ -154,47 +154,48 @@ pub(crate) fn mk_range<'tcx>(ty: rustc_middle::ty::Ty<'tcx>) -> IntRange {
 
 pub(crate) fn mid_ty_to_vir<'tcx>(tcx: TyCtxt<'tcx>, ty: rustc_middle::ty::Ty) -> Typ {
     unsupported_unless!(ty.flags().is_empty(), "ty.flags", ty);
-    match ty.kind() {
-        TyKind::Bool => Typ::Bool,
+    let typ_x = match ty.kind() {
+        TyKind::Bool => TypX::Bool,
         TyKind::Adt(AdtDef { did, .. }, _) => {
             let s = ty.to_string();
             if s == crate::typecheck::BUILTIN_INT {
-                Typ::Int(IntRange::Int)
+                TypX::Int(IntRange::Int)
             } else if s == crate::typecheck::BUILTIN_NAT {
-                Typ::Int(IntRange::Nat)
+                TypX::Int(IntRange::Nat)
             } else {
                 path_to_ty_path(tcx, *did)
             }
         }
-        TyKind::Uint(_) | TyKind::Int(_) => Typ::Int(mk_range(ty)),
+        TyKind::Uint(_) | TyKind::Int(_) => TypX::Int(mk_range(ty)),
         _ => {
             unsupported!(format!("type {:?}", ty))
         }
-    }
+    };
+    Rc::new(typ_x)
 }
 
 pub(crate) fn ty_to_vir<'tcx>(tcx: TyCtxt<'tcx>, ty: &Ty) -> Typ {
     let Ty { hir_id: _, kind, span } = ty;
-    match kind {
+    let typ_x = match kind {
         rustc_hir::TyKind::Path(QPath::Resolved(None, path)) => match path.res {
-            Res::PrimTy(PrimTy::Bool) => Typ::Bool,
-            Res::PrimTy(PrimTy::Uint(UintTy::U8)) => Typ::Int(IntRange::U(8)),
-            Res::PrimTy(PrimTy::Uint(UintTy::U16)) => Typ::Int(IntRange::U(16)),
-            Res::PrimTy(PrimTy::Uint(UintTy::U32)) => Typ::Int(IntRange::U(32)),
-            Res::PrimTy(PrimTy::Uint(UintTy::U64)) => Typ::Int(IntRange::U(64)),
-            Res::PrimTy(PrimTy::Uint(UintTy::U128)) => Typ::Int(IntRange::U(128)),
-            Res::PrimTy(PrimTy::Uint(UintTy::Usize)) => Typ::Int(IntRange::USize),
-            Res::PrimTy(PrimTy::Int(IntTy::I8)) => Typ::Int(IntRange::I(8)),
-            Res::PrimTy(PrimTy::Int(IntTy::I16)) => Typ::Int(IntRange::I(16)),
-            Res::PrimTy(PrimTy::Int(IntTy::I32)) => Typ::Int(IntRange::I(32)),
-            Res::PrimTy(PrimTy::Int(IntTy::I64)) => Typ::Int(IntRange::I(64)),
-            Res::PrimTy(PrimTy::Int(IntTy::I128)) => Typ::Int(IntRange::I(128)),
-            Res::PrimTy(PrimTy::Int(IntTy::Isize)) => Typ::Int(IntRange::ISize),
+            Res::PrimTy(PrimTy::Bool) => TypX::Bool,
+            Res::PrimTy(PrimTy::Uint(UintTy::U8)) => TypX::Int(IntRange::U(8)),
+            Res::PrimTy(PrimTy::Uint(UintTy::U16)) => TypX::Int(IntRange::U(16)),
+            Res::PrimTy(PrimTy::Uint(UintTy::U32)) => TypX::Int(IntRange::U(32)),
+            Res::PrimTy(PrimTy::Uint(UintTy::U64)) => TypX::Int(IntRange::U(64)),
+            Res::PrimTy(PrimTy::Uint(UintTy::U128)) => TypX::Int(IntRange::U(128)),
+            Res::PrimTy(PrimTy::Uint(UintTy::Usize)) => TypX::Int(IntRange::USize),
+            Res::PrimTy(PrimTy::Int(IntTy::I8)) => TypX::Int(IntRange::I(8)),
+            Res::PrimTy(PrimTy::Int(IntTy::I16)) => TypX::Int(IntRange::I(16)),
+            Res::PrimTy(PrimTy::Int(IntTy::I32)) => TypX::Int(IntRange::I(32)),
+            Res::PrimTy(PrimTy::Int(IntTy::I64)) => TypX::Int(IntRange::I(64)),
+            Res::PrimTy(PrimTy::Int(IntTy::I128)) => TypX::Int(IntRange::I(128)),
+            Res::PrimTy(PrimTy::Int(IntTy::Isize)) => TypX::Int(IntRange::ISize),
             Res::Def(DefKind::Struct, def_id) => {
                 if hack_check_def_name(tcx, def_id, "builtin", "int") {
-                    Typ::Int(IntRange::Int)
+                    TypX::Int(IntRange::Int)
                 } else if hack_check_def_name(tcx, def_id, "builtin", "nat") {
-                    Typ::Int(IntRange::Nat)
+                    TypX::Int(IntRange::Nat)
                 } else {
                     path_to_ty_path(tcx, def_id)
                 }
@@ -207,7 +208,8 @@ pub(crate) fn ty_to_vir<'tcx>(tcx: TyCtxt<'tcx>, ty: &Ty) -> Typ {
         _ => {
             unsupported!(format!("type {:?} {:?}", kind, span))
         }
-    }
+    };
+    Rc::new(typ_x)
 }
 
 pub(crate) struct Ctxt<'tcx> {

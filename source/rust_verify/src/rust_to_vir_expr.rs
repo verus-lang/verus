@@ -18,7 +18,8 @@ use rustc_span::def_id::DefId;
 use rustc_span::Span;
 use std::rc::Rc;
 use vir::ast::{
-    BinaryOp, ExprX, HeaderExpr, HeaderExprX, IntRange, ParamX, StmtX, Stmts, Typ, UnaryOp, VirErr,
+    BinaryOp, ExprX, HeaderExpr, HeaderExprX, IntRange, ParamX, StmtX, Stmts, Typ, TypX, UnaryOp,
+    VirErr,
 };
 use vir::ast_util::str_ident;
 use vir::def::Spanned;
@@ -291,7 +292,7 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
             rustc_ast::LitKind::Int(i, _) => {
                 let typ = typ_of_node(ctxt, &expr.hir_id);
                 let c = air::ast::Constant::Nat(Rc::new(i.to_string()));
-                if let Typ::Int(range) = typ {
+                if let TypX::Int(range) = *typ {
                     match range {
                         IntRange::Int | IntRange::Nat | IntRange::U(_) | IntRange::USize => {
                             Ok(spanned_new(expr.span, ExprX::Const(c)))
