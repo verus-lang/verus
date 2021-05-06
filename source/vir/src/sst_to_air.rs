@@ -1,8 +1,11 @@
-use crate::ast::{BinaryOp, Ident, IntRange, Mode, Params, Typ, TypX, UnaryOp};
+use crate::ast::{
+    BinaryOp, Ident, Idents, IntRange, Mode, Params, Path, Typ, TypX, UnaryOp, UnaryOpr,
+};
 use crate::context::Ctx;
 use crate::def::{
-    prefix_ensures, prefix_fuel_id, prefix_requires, suffix_global_id, suffix_local_id, Spanned,
-    FUEL_BOOL, FUEL_BOOL_DEFAULT, FUEL_DEFAULTS, FUEL_ID, SNAPSHOT_CALL,
+    prefix_ensures, prefix_fuel_id, prefix_requires, prefix_type_id, suffix_global_id,
+    suffix_local_id, suffix_typ_param_id, Spanned, FUEL_BOOL, FUEL_BOOL_DEFAULT, FUEL_DEFAULTS,
+    FUEL_ID, POLY, SNAPSHOT_CALL,
 };
 use crate::sst::{BndX, Dest, Exp, ExpX, Stm, StmX};
 use crate::util::vec_map;
@@ -17,27 +20,50 @@ use air::ast_util::{
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
+fn path_to_string(path: &Path) -> String {
+    let sep = crate::def::TYPE_PATH_SEPARATOR;
+    path.iter().map(|x| (**x).as_str()).collect::<Vec<_>>().join(sep)
+}
+
+pub(crate) fn apply_range_fun(name: &str, range: &IntRange, exprs: Vec<Expr>) -> Expr {
+    let mut args = exprs;
+    match range {
+        IntRange::Int | IntRange::Nat => {}
+        IntRange::U(range) | IntRange::I(range) => {
+            let bits = Constant::Nat(Rc::new(range.to_string()));
+            args.insert(0, Rc::new(ExprX::Const(bits)));
+        }
+        IntRange::USize | IntRange::ISize => {
+            args.insert(0, str_var(crate::def::ARCH_SIZE));
+        }
+    }
+    str_apply(name, &args)
+}
+
 pub(crate) fn typ_to_air(typ: &Typ) -> air::ast::Typ {
     match &**typ {
         TypX::Int(_) => int_typ(),
         TypX::Bool => bool_typ(),
-        TypX::Path(segments) => ident_typ(&Rc::new(
-            segments.iter().map(|x| (**x).as_str()).collect::<Vec<_>>().join("::"),
-        )),
+        TypX::Path(path) => ident_typ(&Rc::new(path_to_string(&path))),
+        TypX::TypParam(_) => str_typ(POLY),
     }
 }
 
-pub(crate) fn apply_range_fun(name: &str, range: &IntRange, expr: &Expr) -> Expr {
-    match range {
-        IntRange::Int | IntRange::Nat => str_apply(name, &vec![expr.clone()]),
-        IntRange::U(range) | IntRange::I(range) => {
-            let bits = Constant::Nat(Rc::new(range.to_string()));
-            str_apply(name, &vec![Rc::new(ExprX::Const(bits)), expr.clone()])
-        }
-        IntRange::USize | IntRange::ISize => {
-            let bits = str_var(crate::def::ARCH_SIZE);
-            str_apply(name, &vec![bits, expr.clone()])
-        }
+pub fn typ_to_id(typ: &Typ) -> Expr {
+    match &**typ {
+        TypX::Int(range) => match range {
+            IntRange::Int => str_var(crate::def::TYPE_ID_INT),
+            IntRange::Nat => str_var(crate::def::TYPE_ID_NAT),
+            IntRange::U(_) | IntRange::USize => {
+                apply_range_fun(crate::def::TYPE_ID_UINT, range, vec![])
+            }
+            IntRange::I(_) | IntRange::ISize => {
+                apply_range_fun(crate::def::TYPE_ID_SINT, range, vec![])
+            }
+        },
+        TypX::Bool => str_var(crate::def::TYPE_ID_BOOL),
+        TypX::Path(path) => string_var(&prefix_type_id(&Rc::new(path_to_string(&path)))),
+        TypX::TypParam(x) => ident_var(&suffix_typ_param_id(x)),
     }
 }
 
@@ -56,7 +82,7 @@ pub(crate) fn typ_invariant(typ: &Typ, expr: &Expr) -> Option<Expr> {
                 IntRange::U(_) | IntRange::USize => crate::def::U_INV,
                 IntRange::I(_) | IntRange::ISize => crate::def::I_INV,
             };
-            Some(apply_range_fun(&f_name, &range, &expr))
+            Some(apply_range_fun(&f_name, &range, vec![expr.clone()]))
         }
         _ => None,
     }
@@ -70,9 +96,13 @@ pub(crate) fn exp_to_expr(exp: &Exp) -> Expr {
         }
         ExpX::Var(x) => string_var(&suffix_local_id(x)),
         ExpX::Old(span, x) => Rc::new(ExprX::Old(span.clone(), suffix_local_id(x))),
-        ExpX::Call(x, args) => {
+        ExpX::Call(x, typs, args) => {
             let name = suffix_global_id(&x);
-            ident_apply(&name, &vec_map(args, exp_to_expr))
+            let mut exprs: Vec<Expr> = vec_map(typs, typ_to_id);
+            for arg in args.iter() {
+                exprs.push(exp_to_expr(arg));
+            }
+            ident_apply(&name, &exprs)
         }
         ExpX::Unary(op, exp) => match op {
             UnaryOp::Not => Rc::new(ExprX::Unary(air::ast::UnaryOp::Not, exp_to_expr(exp))),
@@ -86,7 +116,29 @@ pub(crate) fn exp_to_expr(exp: &Exp) -> Expr {
                     IntRange::U(_) | IntRange::USize => crate::def::U_CLIP,
                     IntRange::I(_) | IntRange::ISize => crate::def::I_CLIP,
                 };
-                apply_range_fun(&f_name, &range, &expr)
+                apply_range_fun(&f_name, &range, vec![expr])
+            }
+        },
+        ExpX::UnaryOpr(op, exp) => match op {
+            UnaryOpr::Box(typ) => {
+                let expr = exp_to_expr(exp);
+                let f_name = match &**typ {
+                    TypX::Bool => str_ident(crate::def::BOX_BOOL),
+                    TypX::Int(_) => str_ident(crate::def::BOX_INT),
+                    TypX::Path(path) => crate::def::prefix_box(&Rc::new(path_to_string(&path))),
+                    TypX::TypParam(_) => panic!("internal error: Box(TypParam)"),
+                };
+                ident_apply(&f_name, &vec![expr])
+            }
+            UnaryOpr::Unbox(typ) => {
+                let expr = exp_to_expr(exp);
+                let f_name = match &**typ {
+                    TypX::Bool => str_ident(crate::def::UNBOX_BOOL),
+                    TypX::Int(_) => str_ident(crate::def::UNBOX_INT),
+                    TypX::Path(path) => crate::def::prefix_unbox(&Rc::new(path_to_string(&path))),
+                    TypX::TypParam(_) => panic!("internal error: Box(TypParam)"),
+                };
+                ident_apply(&f_name, &vec![expr])
             }
         },
         ExpX::Binary(op, lhs, rhs) => {
@@ -162,24 +214,28 @@ struct State {
 
 fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
     match &stm.x {
-        StmX::Call(x, args, dest) => {
+        StmX::Call(x, typs, args, dest) => {
             let mut stmts: Vec<Stmt> = Vec::new();
             let func = &ctx.func_map[x];
             if func.x.require.len() > 0 {
                 let f_req = prefix_requires(&func.x.name);
-                let args = Rc::new(vec_map(args, exp_to_expr));
-                let e_req = Rc::new(ExprX::Apply(f_req, args));
+                let mut req_args = vec_map(typs, typ_to_id);
+                for arg in args.iter() {
+                    req_args.push(exp_to_expr(arg));
+                }
+                let e_req = Rc::new(ExprX::Apply(f_req, Rc::new(req_args)));
                 let description = Some("precondition not satisfied".to_string());
                 let option_span = Rc::new(Some(Span { description, ..stm.span.clone() }));
                 stmts.push(Rc::new(StmtX::Assert(option_span, e_req)));
             }
-            let mut ens_args: Vec<Expr>;
+            let mut ens_args: Vec<Expr> = vec_map(typs, typ_to_id);
             match dest {
                 None => {
-                    ens_args = vec_map(args, exp_to_expr);
+                    for arg in args.iter() {
+                        ens_args.push(exp_to_expr(arg));
+                    }
                 }
                 Some(Dest { var, mutable }) => {
-                    ens_args = Vec::new();
                     let x = suffix_local_id(&var.clone());
                     let mut overwrite = false;
                     for arg in args.iter() {
@@ -368,6 +424,7 @@ fn set_fuel(local: &mut Vec<Decl>, hidden: &Vec<Ident>) {
 
 pub fn body_stm_to_air(
     ctx: &Ctx,
+    typ_params: &Idents,
     params: &Params,
     ret: &Option<(Ident, Typ, Mode)>,
     hidden: &Vec<Ident>,
@@ -378,9 +435,15 @@ pub fn body_stm_to_air(
     // Verifying a single function can generate multiple SMT queries.
     // Some declarations (local_shared) are shared among the queries.
     // Others are private to each query.
-    let mut local_shared: Vec<Decl> = vec_map(params, |param| {
-        Rc::new(DeclX::Const(suffix_local_id(&param.x.name), typ_to_air(&param.x.typ)))
-    });
+    let mut local_shared: Vec<Decl> = Vec::new();
+    for x in typ_params.iter() {
+        local_shared
+            .push(Rc::new(DeclX::Const(suffix_typ_param_id(&x), str_typ(crate::def::TYPE))));
+    }
+    for param in params.iter() {
+        local_shared
+            .push(Rc::new(DeclX::Const(suffix_local_id(&param.x.name), typ_to_air(&param.x.typ))));
+    }
     match ret {
         None => {}
         Some((x, typ, _)) => {

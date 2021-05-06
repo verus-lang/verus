@@ -5,7 +5,7 @@ Whereas ast supports statements inside expressions,
 sst expressions cannot contain statments.
 */
 
-use crate::ast::{BinaryOp, Typ, UnaryOp};
+use crate::ast::{BinaryOp, Typ, Typs, UnaryOp, UnaryOpr};
 use crate::def::Spanned;
 use air::ast::{Binders, Constant, Ident, Quant};
 use std::rc::Rc;
@@ -26,10 +26,11 @@ pub type Exps = Rc<Vec<Exp>>;
 pub enum ExpX {
     Const(Constant),
     Var(Ident),
-    Old(Ident, Ident), // used only during sst_to_air to generate AIR Old
-    Call(Ident, Exps), // call to spec function
+    Old(Ident, Ident),       // used only during sst_to_air to generate AIR Old
+    Call(Ident, Typs, Exps), // call to spec function
     Field { lhs: Exp, datatype_name: Ident, field_name: Ident },
     Unary(UnaryOp, Exp),
+    UnaryOpr(UnaryOpr, Exp),
     Binary(BinaryOp, Exp, Exp),
     If(Exp, Exp, Exp),
     Bind(Bnd, Exp),
@@ -45,7 +46,7 @@ pub type Stm = Rc<Spanned<StmX>>;
 pub type Stms = Rc<Vec<Stm>>;
 #[derive(Debug)]
 pub enum StmX {
-    Call(Ident, Exps, Option<Dest>), // call to exec/proof function
+    Call(Ident, Typs, Exps, Option<Dest>), // call to exec/proof function
     Assume(Exp),
     Decl {
         ident: Ident,

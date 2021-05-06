@@ -18,6 +18,18 @@ pub(crate) fn prelude_nodes() -> Vec<Node> {
     let u_inv = str_to_node(U_INV);
     let i_inv = str_to_node(I_INV);
     let arch_size = str_to_node(ARCH_SIZE);
+    #[allow(non_snake_case)]
+    let Poly = str_to_node(POLY);
+    let box_int = str_to_node(BOX_INT);
+    let box_bool = str_to_node(BOX_BOOL);
+    let unbox_int = str_to_node(UNBOX_INT);
+    let unbox_bool = str_to_node(UNBOX_BOOL);
+    let typ = str_to_node(TYPE);
+    let type_id_bool = str_to_node(TYPE_ID_BOOL);
+    let type_id_int = str_to_node(TYPE_ID_INT);
+    let type_id_nat = str_to_node(TYPE_ID_NAT);
+    let type_id_uint = str_to_node(TYPE_ID_UINT);
+    let type_id_sint = str_to_node(TYPE_ID_SINT);
 
     nodes_vec!(
 
@@ -32,6 +44,19 @@ pub(crate) fn prelude_nodes() -> Vec<Node> {
                 :pattern (([fuel_bool] id))
             ))
         ))
+
+        // Polymorphism
+        (declare-sort [Poly])
+        (declare-fun [box_int] (Int) [Poly])
+        (declare-fun [box_bool] (Bool) [Poly])
+        (declare-fun [unbox_int] ([Poly]) Int)
+        (declare-fun [unbox_bool] ([Poly]) Bool)
+        (declare-sort [typ])
+        (declare-const [type_id_bool] [typ])
+        (declare-const [type_id_int] [typ])
+        (declare-const [type_id_nat] [typ])
+        (declare-fun [type_id_uint] (Int) [typ])
+        (declare-fun [type_id_sint] (Int) [typ])
 
         // Integers
         // TODO: make this more configurable via options or HeaderExpr directives

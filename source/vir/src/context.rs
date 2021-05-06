@@ -19,7 +19,7 @@ impl Ctx {
         expr: &Expr,
     ) -> Result<Expr, VirErr> {
         match &expr.x {
-            ExprX::Call(x, _) | ExprX::Fuel(x, _) => {
+            ExprX::Call(x, _, _) | ExprX::Fuel(x, _) => {
                 if !func_map.contains_key(x) {
                     return err_string(
                         &expr.span,

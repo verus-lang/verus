@@ -47,7 +47,7 @@ fn check_expr(typing: &mut Typing, outer_mode: Mode, expr: &Expr) -> Result<Mode
     match &expr.x {
         ExprX::Const(_) => Ok(outer_mode),
         ExprX::Var(x) => Ok(mode_join(outer_mode, typing.vars[x])),
-        ExprX::Call(x, es) => {
+        ExprX::Call(x, _, es) => {
             let function = &typing.funs[x].clone();
             if !mode_le(outer_mode, function.x.mode) {
                 return err_string(
@@ -77,6 +77,7 @@ fn check_expr(typing: &mut Typing, outer_mode: Mode, expr: &Expr) -> Result<Mode
             panic!("internal error: missing field {}", &field_name)
         }
         ExprX::Unary(_, e1) => check_expr(typing, outer_mode, e1),
+        ExprX::UnaryOpr(_, e1) => check_expr(typing, outer_mode, e1),
         ExprX::Binary(_, e1, e2) => {
             let mode1 = check_expr(typing, outer_mode, e1)?;
             let mode2 = check_expr(typing, outer_mode, e2)?;

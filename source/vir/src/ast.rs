@@ -10,6 +10,7 @@ pub enum VirErrX {
 
 pub type Ident = Rc<String>;
 pub type Idents = Rc<Vec<Ident>>;
+pub type Path = Rc<Vec<Ident>>;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum Mode {
@@ -28,15 +29,15 @@ pub enum IntRange {
     ISize,
 }
 
-pub type Path = Rc<Vec<Ident>>;
-
 pub type Typ = Rc<TypX>;
+pub type Typs = Rc<Vec<Typ>>;
 // Deliberately not marked Eq -- use explicit match instead, so we know where types are compared
 #[derive(Debug)]
 pub enum TypX {
     Bool,
     Int(IntRange),
     Path(Path),
+    TypParam(Ident),
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -44,6 +45,12 @@ pub enum UnaryOp {
     Not,
     Trigger(Option<u64>), // mark an expression as a member of a quantifier trigger group
     Clip(IntRange),       // force integer value into range given by IntRange (e.g. by using mod)
+}
+
+#[derive(Clone, Debug)]
+pub enum UnaryOpr {
+    Box(Typ),   // coerce Typ --> boxed
+    Unbox(Typ), // coerce boxed --> Typ
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -79,9 +86,10 @@ pub type Exprs = Rc<Vec<Expr>>;
 pub enum ExprX {
     Const(Constant),
     Var(Ident),
-    Call(Ident, Exprs),
+    Call(Ident, Typs, Exprs),
     Field { lhs: Expr, datatype_name: Ident, field_name: Ident },
     Unary(UnaryOp, Expr),
+    UnaryOpr(UnaryOpr, Expr),
     Binary(BinaryOp, Expr, Expr),
     Quant(Quant, Binders<Typ>, Expr),
     Assign(Expr, Expr),
@@ -116,6 +124,7 @@ pub struct FunctionX {
     pub name: Ident,
     pub mode: Mode,
     pub fuel: u32,
+    pub typ_params: Idents,
     pub params: Params,
     pub ret: Option<(Ident, Typ, Mode)>,
     pub require: Exprs,

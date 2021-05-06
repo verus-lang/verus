@@ -14,12 +14,12 @@ pub(crate) fn stm_assign(
     stm: &Stm,
 ) -> Stm {
     match &stm.x {
-        StmX::Call(_, _, Some(dest)) => {
+        StmX::Call(_, _, _, Some(dest)) => {
             assigned.insert(dest.var.clone());
             modified.insert(dest.var.clone());
             stm.clone()
         }
-        StmX::Call(_, _, _) | StmX::Assume(_) | StmX::Fuel(_, _) => stm.clone(),
+        StmX::Call(_, _, _, _) | StmX::Assume(_) | StmX::Fuel(_, _) => stm.clone(),
         StmX::Decl { ident: x, typ, init, .. } => {
             if declared.contains_key(x) {
                 // If we want to support shadowed variables, we should rename them to be unique

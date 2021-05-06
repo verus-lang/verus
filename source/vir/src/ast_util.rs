@@ -27,6 +27,7 @@ pub fn types_equal(typ1: &Typ, typ2: &Typ) -> bool {
         (TypX::Bool, TypX::Bool) => true,
         (TypX::Int(range1), TypX::Int(range2)) => range1 == range2,
         (TypX::Path(p1), TypX::Path(p2)) => p1 == p2,
+        (TypX::TypParam(x1), TypX::TypParam(x2)) => x1 == x2,
         _ => false,
     }
 }

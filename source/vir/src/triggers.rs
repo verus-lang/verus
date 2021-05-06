@@ -1,4 +1,4 @@
-use crate::ast::{BinaryOp, Ident, UnaryOp, VirErr};
+use crate::ast::{BinaryOp, Ident, UnaryOp, UnaryOpr, VirErr};
 use crate::ast_util::{err_str, err_string};
 use crate::context::Ctx;
 use crate::sst::{Bnd, BndX, Exp, ExpX, Trig, Trigs};
@@ -16,14 +16,14 @@ struct State {
 fn check_trigger_expr(exp: &Exp, free_vars: &mut HashSet<Ident>) -> Result<(), VirErr> {
     let mut fb = |bnd: &Bnd| Ok(bnd.clone());
     match &exp.x {
-        ExpX::Call(_, _) | ExpX::Field { .. } | ExpX::Unary(UnaryOp::Trigger(_), _) => {}
+        ExpX::Call(_, _, _) | ExpX::Field { .. } | ExpX::Unary(UnaryOp::Trigger(_), _) => {}
         // REVIEW: Z3 allows some arithmetic, but it's not clear we want to allow it
         _ => {
             return err_str(&exp.span, "trigger must be a function call or a field access");
         }
     }
     let mut f = |exp: &Exp| match &exp.x {
-        ExpX::Const(_) | ExpX::Call(_, _) | ExpX::Field { .. } => Ok(exp.clone()),
+        ExpX::Const(_) | ExpX::Call(_, _, _) | ExpX::Field { .. } => Ok(exp.clone()),
         ExpX::Var(x) => {
             free_vars.insert(x.clone());
             Ok(exp.clone())
@@ -32,6 +32,9 @@ fn check_trigger_expr(exp: &Exp, free_vars: &mut HashSet<Ident>) -> Result<(), V
         ExpX::Unary(op, _) => match op {
             UnaryOp::Trigger(_) | UnaryOp::Clip(_) => Ok(exp.clone()),
             UnaryOp::Not => err_str(&exp.span, "triggers cannot contain boolean operators"),
+        },
+        ExpX::UnaryOpr(op, _) => match op {
+            UnaryOpr::Box(_) | UnaryOpr::Unbox(_) => Ok(exp.clone()),
         },
         ExpX::Binary(op, _, _) => {
             use BinaryOp::*;

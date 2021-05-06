@@ -1,9 +1,9 @@
 use crate::rust_to_vir_base::{
-    get_trigger, get_var_mode, hack_check_def_name, hack_get_def_name, ident_to_var, mk_range,
-    ty_to_vir, typ_of_node, Ctxt,
+    get_trigger, get_var_mode, hack_check_def_name, hack_get_def_name, ident_to_var, mid_ty_to_vir,
+    mid_ty_to_vir_opt, mk_range, ty_to_vir, typ_of_node, Ctxt,
 };
 use crate::util::{
-    err_span_str, slice_vec_map_result, spanned_new, unsupported_err_span, vec_map_result,
+    err_span_str, slice_vec_map_result, spanned_new, unsupported_err_span, vec_map, vec_map_result,
 };
 use crate::{unsupported, unsupported_err, unsupported_err_unless, unsupported_unless};
 use air::ast::{Binder, BinderX, Quant};
@@ -13,13 +13,14 @@ use rustc_hir::{
     Arm, BinOpKind, BindingAnnotation, Block, Destination, Expr, ExprKind, Local, LoopSource,
     MatchSource, Node, Pat, PatKind, QPath, Stmt, StmtKind, UnOp,
 };
+use rustc_middle::ty::subst::GenericArgKind;
 use rustc_middle::ty::TyKind;
 use rustc_span::def_id::DefId;
 use rustc_span::Span;
 use std::rc::Rc;
 use vir::ast::{
     BinaryOp, ExprX, HeaderExpr, HeaderExprX, IntRange, ParamX, StmtX, Stmts, Typ, TypX, UnaryOp,
-    VirErr,
+    UnaryOpr, VirErr,
 };
 use vir::ast_util::str_ident;
 use vir::def::Spanned;
@@ -225,7 +226,7 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                 return extract_quant(ctxt, expr.span, quant, args[0]);
             }
 
-            let vir_args = vec_map_result(&args, |arg| expr_to_vir(ctxt, arg))?;
+            let mut vir_args = vec_map_result(&args, |arg| expr_to_vir(ctxt, arg))?;
 
             if is_requires {
                 let header = Rc::new(HeaderExprX::Requires(Rc::new(vir_args)));
@@ -280,8 +281,77 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                 let ty = tc.node_type(expr.hir_id);
                 if is_arith_binary { Ok(mk_ty_clip(ty, &e)) } else { Ok(e) }
             } else {
+                let fun_ty = ctxt.types.node_type(fun.hir_id);
+                let (param_typs, ret_typ) = match fun_ty.kind() {
+                    TyKind::FnDef(def_id, _substs) => {
+                        match ctxt.tcx.fn_sig(*def_id).no_bound_vars() {
+                            None => unsupported_err!(
+                                expr.span,
+                                format!("found bound vars in function"),
+                                expr
+                            ),
+                            Some(f) => {
+                                let params: Vec<Typ> = f
+                                    .inputs()
+                                    .iter()
+                                    .map(|t| mid_ty_to_vir(ctxt.tcx, *t))
+                                    .collect();
+                                let ret = mid_ty_to_vir_opt(ctxt.tcx, f.output());
+                                (params, ret)
+                            }
+                        }
+                    }
+                    _ => unsupported_err!(expr.span, format!("call to non-FnDef function"), expr),
+                };
+                // box arguments where necessary
+                let arg_typs = vec_map(&args, |arg| typ_of_node(ctxt, &arg.hir_id));
+                assert_eq!(vir_args.len(), param_typs.len());
+                assert_eq!(vir_args.len(), arg_typs.len());
+                for i in 0..vir_args.len() {
+                    match (&*param_typs[i], &*arg_typs[i]) {
+                        (TypX::TypParam(_), TypX::TypParam(_)) => {} // already boxed
+                        (TypX::TypParam(_), _) => {
+                            let arg = &vir_args[i];
+                            let arg_x =
+                                ExprX::UnaryOpr(UnaryOpr::Box(arg_typs[i].clone()), arg.clone());
+                            vir_args[i] = Spanned::new(arg.span.clone(), arg_x);
+                        }
+                        _ => {}
+                    }
+                }
+                // type arguments
+                let mut typ_args: Vec<Typ> = Vec::new();
+                for typ_arg in ctxt.types.node_substs(fun.hir_id) {
+                    match typ_arg.unpack() {
+                        GenericArgKind::Type(ty) => {
+                            typ_args.push(mid_ty_to_vir(ctxt.tcx, ty));
+                        }
+                        _ => unsupported_err!(
+                            expr.span,
+                            format!("lifetime/const type arguments"),
+                            expr
+                        ),
+                    }
+                }
+                // make call
                 let name = hack_get_def_name(tcx, f); // TODO: proper handling of paths
-                Ok(spanned_new(expr.span, ExprX::Call(Rc::new(name), Rc::new(vir_args))))
+                let mut call = spanned_new(
+                    expr.span,
+                    ExprX::Call(Rc::new(name), Rc::new(typ_args), Rc::new(vir_args)),
+                );
+                // unbox result if necessary
+                if let Some(ret_typ) = ret_typ {
+                    let expr_typ = typ_of_node(ctxt, &expr.hir_id);
+                    match (&*ret_typ, &*expr_typ) {
+                        (TypX::TypParam(_), TypX::TypParam(_)) => {} // already boxed
+                        (TypX::TypParam(_), _) => {
+                            let call_x = ExprX::UnaryOpr(UnaryOpr::Unbox(expr_typ.clone()), call);
+                            call = spanned_new(expr.span, call_x);
+                        }
+                        _ => {}
+                    }
+                }
+                Ok(call)
             }
         }
         ExprKind::Lit(lit) => match lit.node {

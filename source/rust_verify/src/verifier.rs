@@ -117,17 +117,6 @@ impl Verifier {
             check_internal_result(air_context.command(&command));
         }
 
-        for function in &krate.functions {
-            let commands = vir::func_to_air::func_decl_to_air(&ctx, &function)?;
-            if commands.len() > 0 {
-                air_context.blank_line();
-                air_context.comment(&("Function-Decl ".to_string() + &function.x.name));
-            }
-            for command in commands.iter() {
-                check_internal_result(air_context.command(&command));
-            }
-        }
-
         let commands = vir::datatype_to_air::datatypes_to_air(&krate.datatypes);
         // TODO(andrea): deduplicate
         if commands.len() > 0 {
@@ -148,6 +137,17 @@ impl Verifier {
                 ValidityResult::Invalid(span_option, _) => {
                     panic!("internal error: unexpected invalid result: {:?}", span_option);
                 }
+            }
+        }
+
+        for function in &krate.functions {
+            let commands = vir::func_to_air::func_decl_to_air(&ctx, &function)?;
+            if commands.len() > 0 {
+                air_context.blank_line();
+                air_context.comment(&("Function-Decl ".to_string() + &function.x.name));
+            }
+            for command in commands.iter() {
+                check_internal_result(air_context.command(&command));
             }
         }
 

@@ -1,4 +1,4 @@
-use crate::ast::{BinaryOp, Ident, UnaryOp, VirErr};
+use crate::ast::{BinaryOp, Ident, UnaryOp, UnaryOpr, VirErr};
 use crate::ast_util::err_str;
 use crate::context::Ctx;
 use crate::sst::{Exp, ExpX, Trig, Trigs};
@@ -176,7 +176,7 @@ fn gather_terms(ctxt: &mut Ctxt, exp: &Exp, depth: u64) -> (bool, Term) {
             return (true, Rc::new(TermX::Var(x.clone())));
         }
         ExpX::Old(_, _) => panic!("internal error: Old"),
-        ExpX::Call(x, args) => {
+        ExpX::Call(x, _, args) => {
             let (is_pures, terms): (Vec<bool>, Vec<Term>) =
                 args.iter().map(|e| gather_terms(ctxt, e, depth + 1)).unzip();
             let is_pure = is_pures.into_iter().all(|b| b);
@@ -202,6 +202,8 @@ fn gather_terms(ctxt: &mut Ctxt, exp: &Exp, depth: u64) -> (bool, Term) {
             ctxt.next_id += 1;
             (false, Rc::new(TermX::App(App::Other(ctxt.next_id), Rc::new(vec![term1]))))
         }
+        ExpX::UnaryOpr(UnaryOpr::Box(_), e1) => gather_terms(ctxt, e1, depth),
+        ExpX::UnaryOpr(UnaryOpr::Unbox(_), e1) => gather_terms(ctxt, e1, depth),
         ExpX::Binary(op, e1, e2) => {
             use BinaryOp::*;
             let depth = match op {

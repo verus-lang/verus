@@ -10,12 +10,15 @@ where
     match &expr.x {
         ExprX::Const(_) => f(expr),
         ExprX::Var(_) => f(expr),
-        ExprX::Call(x, es) => {
+        ExprX::Call(x, typs, es) => {
             let mut exprs: Vec<Expr> = Vec::new();
             for e in es.iter() {
                 exprs.push(map_expr_visitor(e, f)?);
             }
-            let expr = Spanned::new(expr.span.clone(), ExprX::Call(x.clone(), Rc::new(exprs)));
+            let expr = Spanned::new(
+                expr.span.clone(),
+                ExprX::Call(x.clone(), typs.clone(), Rc::new(exprs)),
+            );
             f(&expr)
         }
         ExprX::Field { lhs, datatype_name, field_name } => {
@@ -33,6 +36,11 @@ where
         ExprX::Unary(op, e1) => {
             let expr1 = map_expr_visitor(e1, f)?;
             let expr = Spanned::new(expr.span.clone(), ExprX::Unary(*op, expr1));
+            f(&expr)
+        }
+        ExprX::UnaryOpr(op, e1) => {
+            let expr1 = map_expr_visitor(e1, f)?;
+            let expr = Spanned::new(expr.span.clone(), ExprX::UnaryOpr(op.clone(), expr1));
             f(&expr)
         }
         ExprX::Binary(op, e1, e2) => {

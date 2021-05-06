@@ -1,21 +1,23 @@
-use crate::util::{err_span_str, err_span_string};
-use crate::{unsupported, unsupported_unless};
+use crate::util::{err_span_str, err_span_string, unsupported_err_span};
+use crate::{unsupported, unsupported_err, unsupported_err_unless, unsupported_unless};
 use rustc_ast::token::{Token, TokenKind};
 use rustc_ast::tokenstream::TokenTree;
 use rustc_ast::{AttrKind, Attribute, IntTy, MacArgs, UintTy};
 use rustc_hir::def::{DefKind, Res};
-use rustc_hir::{HirId, PrimTy, QPath, Ty};
+use rustc_hir::{GenericParam, GenericParamKind, Generics, HirId, ParamName, PrimTy, QPath, Ty};
 use rustc_middle::ty::{AdtDef, TyCtxt, TyKind, TypeckResults};
 use rustc_span::def_id::DefId;
 use rustc_span::symbol::Ident;
 use rustc_span::Span;
 use std::rc::Rc;
-use vir::ast::{IntRange, Mode, Typ, TypX, VirErr};
+use vir::ast::{Idents, IntRange, Mode, Path, Typ, TypX, VirErr};
+
+pub(crate) fn def_to_path<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> Path {
+    Rc::new(tcx.def_path(def_id).data.iter().map(|d| Rc::new(format!("{}", d))).collect::<Vec<_>>())
+}
 
 pub(crate) fn path_to_ty_path<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> TypX {
-    let ds =
-        tcx.def_path(def_id).data.iter().map(|d| Rc::new(format!("{}", d))).collect::<Vec<_>>();
-    TypX::Path(Rc::new(ds))
+    TypX::Path(def_to_path(tcx, def_id))
 }
 
 // TODO: proper handling of def_ids
@@ -153,7 +155,6 @@ pub(crate) fn mk_range<'tcx>(ty: rustc_middle::ty::Ty<'tcx>) -> IntRange {
 }
 
 pub(crate) fn mid_ty_to_vir<'tcx>(tcx: TyCtxt<'tcx>, ty: rustc_middle::ty::Ty) -> Typ {
-    unsupported_unless!(ty.flags().is_empty(), "ty.flags", ty);
     let typ_x = match ty.kind() {
         TyKind::Bool => TypX::Bool,
         TyKind::Adt(AdtDef { did, .. }, _) => {
@@ -167,11 +168,23 @@ pub(crate) fn mid_ty_to_vir<'tcx>(tcx: TyCtxt<'tcx>, ty: rustc_middle::ty::Ty) -
             }
         }
         TyKind::Uint(_) | TyKind::Int(_) => TypX::Int(mk_range(ty)),
+        TyKind::Param(param) => {
+            return Rc::new(TypX::TypParam(Rc::new(param.name.to_string())));
+        }
         _ => {
             unsupported!(format!("type {:?}", ty))
         }
     };
+    unsupported_unless!(ty.flags().is_empty(), "ty.flags", ty);
     Rc::new(typ_x)
+}
+
+pub(crate) fn mid_ty_to_vir_opt<'tcx>(tcx: TyCtxt<'tcx>, ty: rustc_middle::ty::Ty) -> Option<Typ> {
+    match ty.kind() {
+        TyKind::Never => None,
+        TyKind::Tuple(_) if ty.tuple_fields().count() == 0 => None,
+        _ => Some(mid_ty_to_vir(tcx, ty)),
+    }
 }
 
 pub(crate) fn ty_to_vir<'tcx>(tcx: TyCtxt<'tcx>, ty: &Ty) -> Typ {
@@ -191,6 +204,10 @@ pub(crate) fn ty_to_vir<'tcx>(tcx: TyCtxt<'tcx>, ty: &Ty) -> Typ {
             Res::PrimTy(PrimTy::Int(IntTy::I64)) => TypX::Int(IntRange::I(64)),
             Res::PrimTy(PrimTy::Int(IntTy::I128)) => TypX::Int(IntRange::I(128)),
             Res::PrimTy(PrimTy::Int(IntTy::Isize)) => TypX::Int(IntRange::ISize),
+            Res::Def(DefKind::TyParam, def_id) => {
+                let path = def_to_path(tcx, def_id);
+                TypX::TypParam(path.last().unwrap().clone())
+            }
             Res::Def(DefKind::Struct, def_id) => {
                 if hack_check_def_name(tcx, def_id, "builtin", "int") {
                     TypX::Int(IntRange::Int)
@@ -202,11 +219,11 @@ pub(crate) fn ty_to_vir<'tcx>(tcx: TyCtxt<'tcx>, ty: &Ty) -> Typ {
             }
             Res::Def(DefKind::Enum, def_id) => path_to_ty_path(tcx, def_id),
             _ => {
-                unsupported!(format!("type {:?} {:?} {:?}", kind, path.res, span))
+                unsupported!(format!("type {:#?} {:?} {:?}", kind, path.res, span))
             }
         },
         _ => {
-            unsupported!(format!("type {:?} {:?}", kind, span))
+            unsupported!(format!("type {:#?} {:?}", kind, span))
         }
     };
     Rc::new(typ_x)
@@ -220,4 +237,22 @@ pub(crate) struct Ctxt<'tcx> {
 
 pub(crate) fn typ_of_node<'tcx>(ctxt: &Ctxt<'tcx>, id: &HirId) -> Typ {
     mid_ty_to_vir(ctxt.tcx, ctxt.types.node_type(*id))
+}
+
+pub(crate) fn check_generics<'tcx>(generics: &'tcx Generics<'tcx>) -> Result<Idents, VirErr> {
+    let Generics { params, where_clause, span: _ } = generics;
+    let mut typ_params: Vec<vir::ast::Ident> = Vec::new();
+    for param in params.iter() {
+        let GenericParam { hir_id: _, name, bounds, span: _, pure_wrt_drop, kind } = param;
+        unsupported_err_unless!(bounds.len() == 0, generics.span, "generic bounds");
+        unsupported_err_unless!(!pure_wrt_drop, generics.span, "generic pure_wrt_drop");
+        match (name, kind) {
+            (ParamName::Plain(id), GenericParamKind::Type { default: None, synthetic: None }) => {
+                typ_params.push(Rc::new(id.name.as_str().to_string()));
+            }
+            _ => unsupported_err!(generics.span, "complex generics"),
+        }
+    }
+    unsupported_err_unless!(where_clause.predicates.len() == 0, generics.span, "where clause");
+    Ok(Rc::new(typ_params))
 }

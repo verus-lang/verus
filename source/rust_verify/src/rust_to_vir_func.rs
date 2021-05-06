@@ -1,4 +1,6 @@
-use crate::rust_to_vir_base::{get_fuel, get_mode, get_var_mode, ident_to_var, ty_to_vir, Ctxt};
+use crate::rust_to_vir_base::{
+    check_generics, get_fuel, get_mode, get_var_mode, ident_to_var, ty_to_vir, Ctxt,
+};
 use crate::rust_to_vir_expr::{expr_to_vir, pat_to_var};
 use crate::util::{err_span_str, err_span_string, spanned_new, unsupported_err_span};
 use crate::{unsupported, unsupported_err, unsupported_err_unless, unsupported_unless};
@@ -43,20 +45,6 @@ fn check_fn_decl<'tcx>(
     }
 }
 
-pub(crate) fn check_generics<'tcx>(generics: &'tcx Generics<'tcx>) -> Result<(), VirErr> {
-    match generics {
-        Generics { params, where_clause, span: _ } => {
-            unsupported_err_unless!(params.len() == 0, generics.span, "generics");
-            unsupported_err_unless!(
-                where_clause.predicates.len() == 0,
-                generics.span,
-                "where clause"
-            );
-        }
-    }
-    Ok(())
-}
-
 pub(crate) fn check_item_fn<'tcx>(
     tcx: TyCtxt<'tcx>,
     krate: &'tcx Crate<'tcx>,
@@ -78,7 +66,7 @@ pub(crate) fn check_item_fn<'tcx>(
             check_fn_decl(tcx, decl, mode)?
         }
     };
-    check_generics(generics)?;
+    let typ_params = check_generics(generics)?;
     let fuel = get_fuel(attrs);
     let body = &krate.bodies[body_id];
     let Body { params, value: _, generator_kind } = body;
@@ -136,6 +124,7 @@ pub(crate) fn check_item_fn<'tcx>(
         name,
         mode,
         fuel,
+        typ_params,
         params,
         ret,
         require: header.require,
@@ -160,7 +149,7 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
 ) -> Result<(), VirErr> {
     let mode = get_mode(Mode::Exec, attrs);
     let ret_typ_mode = check_fn_decl(tcx, decl, mode)?;
-    check_generics(generics)?;
+    let typ_params = check_generics(generics)?;
     let fuel = get_fuel(attrs);
     let mut vir_params: Vec<vir::ast::Param> = Vec::new();
     for (param, input) in idents.iter().zip(decl.inputs.iter()) {
@@ -176,6 +165,7 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
         name,
         fuel,
         mode,
+        typ_params,
         params,
         ret: ret_typ_mode.map(|(typ, mode)| (Rc::new(RETURN_VALUE.to_string()), typ, mode)),
         require: Rc::new(vec![]),

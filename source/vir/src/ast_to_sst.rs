@@ -1,4 +1,4 @@
-use crate::ast::{BinaryOp, Expr, ExprX, Ident, Mode, Stmt, StmtX, VirErr};
+use crate::ast::{BinaryOp, Expr, ExprX, Ident, Mode, Stmt, StmtX, Typs, VirErr};
 use crate::ast_util::{err_str, err_string};
 use crate::context::Ctx;
 use crate::def::Spanned;
@@ -16,11 +16,11 @@ fn function_can_be_exp(ctx: &Ctx, name: &Ident) -> bool {
 }
 
 // If the Expr is a call that must be a Stm (not an Exp), return it
-fn expr_must_be_call_stm(ctx: &Ctx, expr: &Expr) -> Result<Option<(Ident, Exps)>, VirErr> {
+fn expr_must_be_call_stm(ctx: &Ctx, expr: &Expr) -> Result<Option<(Ident, Typs, Exps)>, VirErr> {
     match &expr.x {
-        ExprX::Call(x, args) if !function_can_be_exp(ctx, x) => {
+        ExprX::Call(x, typs, args) if !function_can_be_exp(ctx, x) => {
             let exps = vec_map_result(args, |e| expr_to_exp(ctx, e))?;
-            Ok(Some((x.clone(), Rc::new(exps))))
+            Ok(Some((x.clone(), typs.clone(), Rc::new(exps))))
         }
         _ => Ok(None),
     }
@@ -30,7 +30,7 @@ pub(crate) fn expr_to_exp(ctx: &Ctx, expr: &Expr) -> Result<Exp, VirErr> {
     match &expr.x {
         ExprX::Const(c) => Ok(Spanned::new(expr.span.clone(), ExpX::Const(c.clone()))),
         ExprX::Var(x) => Ok(Spanned::new(expr.span.clone(), ExpX::Var(x.clone()))),
-        ExprX::Call(x, args) => {
+        ExprX::Call(x, typs, args) => {
             match ctx.func_map.get(x) {
                 None => {
                     return err_string(&expr.span, format!("could not find function {}", &x));
@@ -43,10 +43,13 @@ pub(crate) fn expr_to_exp(ctx: &Ctx, expr: &Expr) -> Result<Exp, VirErr> {
                 },
             }
             let exps = vec_map_result(args, |e| expr_to_exp(ctx, e))?;
-            Ok(Spanned::new(expr.span.clone(), ExpX::Call(x.clone(), Rc::new(exps))))
+            Ok(Spanned::new(expr.span.clone(), ExpX::Call(x.clone(), typs.clone(), Rc::new(exps))))
         }
         ExprX::Unary(op, expr) => {
             Ok(Spanned::new(expr.span.clone(), ExpX::Unary(*op, expr_to_exp(ctx, expr)?)))
+        }
+        ExprX::UnaryOpr(op, expr) => {
+            Ok(Spanned::new(expr.span.clone(), ExpX::UnaryOpr(op.clone(), expr_to_exp(ctx, expr)?)))
         }
         ExprX::Binary(op, lhs, rhs) => {
             let bin = ExpX::Binary(*op, expr_to_exp(ctx, lhs)?, expr_to_exp(ctx, rhs)?);
@@ -95,16 +98,24 @@ pub(crate) fn expr_to_exp(ctx: &Ctx, expr: &Expr) -> Result<Exp, VirErr> {
 
 pub fn expr_to_stm(ctx: &Ctx, expr: &Expr, dest: &Option<Ident>) -> Result<Stm, VirErr> {
     match &expr.x {
-        ExprX::Call(x, args) => {
+        ExprX::Call(x, typs, args) => {
             let exps = vec_map_result(args, |e| expr_to_exp(ctx, e))?;
-            Ok(Spanned::new(expr.span.clone(), StmX::Call(x.clone(), Rc::new(exps), None)))
+            Ok(Spanned::new(
+                expr.span.clone(),
+                StmX::Call(x.clone(), typs.clone(), Rc::new(exps), None),
+            ))
         }
         ExprX::Assign(lhs, rhs) => {
             let dest = expr_to_exp(ctx, lhs)?;
             match (expr_must_be_call_stm(ctx, rhs)?, &dest.x) {
-                (Some((func_name, args)), ExpX::Var(var)) => Ok(Spanned::new(
+                (Some((func_name, typs, args)), ExpX::Var(var)) => Ok(Spanned::new(
                     expr.span.clone(),
-                    StmX::Call(func_name, args, Some(Dest { var: var.clone(), mutable: true })),
+                    StmX::Call(
+                        func_name,
+                        typs,
+                        args,
+                        Some(Dest { var: var.clone(), mutable: true }),
+                    ),
                 )),
                 _ => {
                     Ok(Spanned::new(expr.span.clone(), StmX::Assign(dest, expr_to_exp(ctx, rhs)?)))
@@ -193,9 +204,10 @@ pub fn stmt_to_stm(ctx: &Ctx, stmt: &Stmt) -> Result<Vec<Stm>, VirErr> {
                                 Spanned::new(span.clone(), ExpX::Binary(BinaryOp::Eq, var, rhs));
                             stms.push(Spanned::new(span.clone(), StmX::Assume(eq)));
                         }
-                        Some((func_name, args)) => {
+                        Some((func_name, typs, args)) => {
                             let dest = Some(Dest { var: param.x.name.clone(), mutable: *mutable });
-                            let call = StmX::Call(func_name.clone(), args.clone(), dest);
+                            let call =
+                                StmX::Call(func_name.clone(), typs.clone(), args.clone(), dest);
                             stms.push(Spanned::new(span.clone(), call));
                         }
                     }

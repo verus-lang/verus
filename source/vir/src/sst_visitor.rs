@@ -13,12 +13,13 @@ where
         ExpX::Const(_) => f(exp),
         ExpX::Var(_) => f(exp),
         ExpX::Old(_, _) => f(exp),
-        ExpX::Call(x, es) => {
+        ExpX::Call(x, typs, es) => {
             let mut exps: Vec<Exp> = Vec::new();
             for e in es.iter() {
                 exps.push(map_exp_visitor_bind(e, fb, f)?);
             }
-            let exp = Spanned::new(exp.span.clone(), ExpX::Call(x.clone(), Rc::new(exps)));
+            let exp =
+                Spanned::new(exp.span.clone(), ExpX::Call(x.clone(), typs.clone(), Rc::new(exps)));
             f(&exp)
         }
         ExpX::Field { lhs, datatype_name, field_name } => {
@@ -36,6 +37,11 @@ where
         ExpX::Unary(op, e1) => {
             let expr1 = map_exp_visitor_bind(e1, fb, f)?;
             let exp = Spanned::new(exp.span.clone(), ExpX::Unary(*op, expr1));
+            f(&exp)
+        }
+        ExpX::UnaryOpr(op, e1) => {
+            let expr1 = map_exp_visitor_bind(e1, fb, f)?;
+            let exp = Spanned::new(exp.span.clone(), ExpX::UnaryOpr(op.clone(), expr1));
             f(&exp)
         }
         ExpX::Binary(op, e1, e2) => {
