@@ -65,7 +65,7 @@ fn func_body_to_air(
 
     // (axiom (=> (fuel_bool fuel%f) (forall (...) (= (f ...) ...)))
     let body_exp = crate::ast_to_sst::expr_to_exp(&ctx, &body)?;
-    let body_expr = exp_to_expr(&body_exp);
+    let body_expr = exp_to_expr(&ctx, &body_exp);
     let e_forall = func_def_quant(
         &suffix_global_id(&function.x.name),
         &function.x.typ_params,
@@ -103,7 +103,7 @@ pub fn req_ens_to_air(
         }
         for e in specs.iter() {
             let exp = crate::ast_to_sst::expr_to_exp(ctx, e)?;
-            let expr = exp_to_expr(&exp);
+            let expr = exp_to_expr(ctx, &exp);
             let loc_expr = match msg {
                 None => expr,
                 Some(msg) => {

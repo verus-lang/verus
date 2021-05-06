@@ -1,6 +1,6 @@
 use crate::rust_to_vir_base::{
-    get_trigger, get_var_mode, hack_check_def_name, hack_get_def_name, ident_to_var, mid_ty_to_vir,
-    mid_ty_to_vir_opt, mk_range, ty_to_vir, typ_of_node, Ctxt,
+    def_id_to_vir_path, get_trigger, get_var_mode, hack_check_def_name, hack_get_def_name,
+    ident_to_var, mid_ty_to_vir, mid_ty_to_vir_opt, mk_range, ty_to_vir, typ_of_node, Ctxt,
 };
 use crate::util::{
     err_span_str, slice_vec_map_result, spanned_new, unsupported_err_span, vec_map, vec_map_result,
@@ -8,7 +8,7 @@ use crate::util::{
 use crate::{unsupported, unsupported_err, unsupported_err_unless, unsupported_unless};
 use air::ast::{Binder, BinderX, Quant};
 use rustc_ast::{Attribute, LitKind};
-use rustc_hir::def::Res;
+use rustc_hir::def::{DefKind, Res};
 use rustc_hir::{
     Arm, BinOpKind, BindingAnnotation, Block, Destination, Expr, ExprKind, Local, LoopSource,
     MatchSource, Node, Pat, PatKind, QPath, Stmt, StmtKind, UnOp,
@@ -19,11 +19,11 @@ use rustc_span::def_id::DefId;
 use rustc_span::Span;
 use std::rc::Rc;
 use vir::ast::{
-    BinaryOp, ExprX, HeaderExpr, HeaderExprX, IntRange, ParamX, StmtX, Stmts, Typ, TypX, UnaryOp,
-    UnaryOpr, VirErr,
+    BinaryOp, Constant, ExprX, HeaderExpr, HeaderExprX, IntRange, ParamX, StmtX, Stmts, Typ, TypX,
+    UnaryOp, UnaryOpr, VirErr,
 };
-use vir::ast_util::str_ident;
-use vir::def::Spanned;
+use vir::ast_util::{ident_binder, str_ident};
+use vir::def::{variant_ident, Spanned};
 
 pub(crate) fn pat_to_var<'tcx>(pat: &Pat) -> String {
     let Pat { hir_id: _, kind, span: _, default_binding_modes } = pat;
@@ -356,12 +356,12 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
         }
         ExprKind::Lit(lit) => match lit.node {
             rustc_ast::LitKind::Bool(b) => {
-                let c = air::ast::Constant::Bool(b);
+                let c = vir::ast::Constant::Bool(b);
                 Ok(spanned_new(expr.span, ExprX::Const(c)))
             }
             rustc_ast::LitKind::Int(i, _) => {
                 let typ = typ_of_node(ctxt, &expr.hir_id);
-                let c = air::ast::Constant::Nat(Rc::new(i.to_string()));
+                let c = vir::ast::Constant::Nat(Rc::new(i.to_string()));
                 if let TypX::Int(range) = *typ {
                     match range {
                         IntRange::Int | IntRange::Nat | IntRange::U(_) | IntRange::USize => {
@@ -511,6 +511,32 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
             let header = vir::headers::read_header(&mut body)?;
             let invs = header.invariant;
             Ok(spanned_new(expr.span, ExprX::While { cond, body, invs }))
+        }
+        ExprKind::Struct(qpath, fields, spread) => {
+            unsupported_unless!(spread.is_none(), "spread_in_struct_ctor");
+            let (path, variant_name) = match qpath {
+                QPath::Resolved(slf, path) => {
+                    unsupported_unless!(
+                        matches!(path.res, Res::Def(DefKind::Struct, _)),
+                        "non_struct_ctor"
+                    );
+                    unsupported_unless!(slf.is_none(), "self_in_struct_qpath");
+                    let vir_path = def_id_to_vir_path(ctxt.tcx, path.res.def_id());
+                    let name = hack_get_def_name(ctxt.tcx, path.res.def_id());
+                    let variant_name = variant_ident(&name, &name);
+                    (vir_path, variant_name)
+                }
+                _ => panic!("unexpected qpath {:?}", qpath),
+            };
+            let vir_fields = Rc::new(
+                fields
+                    .iter()
+                    .map(|f| -> Result<_, VirErr> {
+                        Ok(ident_binder(&str_ident(&f.ident.as_str()), &expr_to_vir(ctxt, f.expr)?))
+                    })
+                    .collect::<Result<Vec<_>, _>>()?,
+            );
+            Ok(spanned_new(expr.span, ExprX::Const(Constant::Ctor(path, variant_name, vir_fields))))
         }
         _ => {
             unsupported_err!(expr.span, format!("expression"), expr)

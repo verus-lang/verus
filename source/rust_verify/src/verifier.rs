@@ -213,9 +213,9 @@ impl Verifier {
             let mut file =
                 File::create(filename).expect(&format!("could not open file {}", filename));
             for datatype in vir_crate.datatypes.iter() {
-                writeln!(&mut file, "datatype {} @ {:?}", datatype.x.name, datatype.span)
+                writeln!(&mut file, "datatype {:?} @ {:?}", datatype.x.path, datatype.span)
                     .expect("cannot write to vir file");
-                writeln!(&mut file, "{:?}", datatype.x.a).expect("cannot write to vir file");
+                writeln!(&mut file, "{:?}", datatype.x.variants).expect("cannot write to vir file");
                 writeln!(&mut file).expect("cannot write to vir file");
             }
             for func in vir_crate.functions.iter() {

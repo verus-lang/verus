@@ -1,6 +1,8 @@
 use crate::def::Spanned;
-use air::ast::{Constant, Quant};
+use air::ast::Quant;
 use std::rc::Rc;
+
+pub use air::ast::{Binder, Binders};
 
 pub type VirErr = Rc<Spanned<VirErrX>>;
 #[derive(Clone, Debug)]
@@ -80,6 +82,13 @@ pub enum HeaderExprX {
     Invariant(Exprs),
 }
 
+#[derive(Clone, Debug)]
+pub enum Constant {
+    Bool(bool),
+    Nat(Rc<String>),
+    Ctor(Path, Ident, Binders<Expr>),
+}
+
 pub type Expr = Rc<Spanned<ExprX>>;
 pub type Exprs = Rc<Vec<Expr>>;
 #[derive(Debug)]
@@ -133,14 +142,18 @@ pub struct FunctionX {
     pub body: Option<Expr>,
 }
 
-pub use air::ast::Binder;
-pub use air::ast::Binders;
 pub type Field = Binder<(Typ, Mode)>;
 pub type Fields = Binders<(Typ, Mode)>;
 pub type Variant = Binder<Fields>;
 pub type Variants = Binders<Fields>;
-pub type Datatype = Rc<Spanned<Binder<Variants>>>;
-pub type Datatypes = Vec<Rc<Spanned<Binder<Variants>>>>;
+
+#[derive(Debug)]
+pub struct DatatypeX {
+    pub path: Path,
+    pub variants: Variants,
+}
+pub type Datatype = Rc<Spanned<DatatypeX>>;
+pub type Datatypes = Vec<Datatype>;
 
 pub type Krate = Rc<KrateX>;
 #[derive(Debug, Default)]

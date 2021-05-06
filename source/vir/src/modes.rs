@@ -1,5 +1,6 @@
 use crate::ast::{Datatype, Expr, ExprX, Function, Ident, Krate, Mode, Stmt, StmtX, VirErr};
 use crate::ast_util::err_string;
+use crate::sst_to_air::path_to_air_ident;
 use std::collections::HashMap;
 
 // Exec <= Proof <= Spec
@@ -66,7 +67,7 @@ fn check_expr(typing: &mut Typing, outer_mode: Mode, expr: &Expr) -> Result<Mode
         ExprX::Field { lhs, datatype_name, field_name } => {
             let lhs_mode = check_expr(typing, outer_mode, lhs)?;
             let datatype = &typing.datatypes[datatype_name].clone();
-            let variants = &datatype.x.a;
+            let variants = &datatype.x.variants;
             assert_eq!(variants.len(), 1);
             let fields = &variants[0].a;
             for field in fields.iter() {
@@ -208,7 +209,7 @@ pub fn check_crate(krate: &Krate) -> Result<(), VirErr> {
         funs.insert(function.x.name.clone(), function.clone());
     }
     for datatype in krate.datatypes.iter() {
-        datatypes.insert(datatype.x.name.clone(), datatype.clone());
+        datatypes.insert(path_to_air_ident(&datatype.x.path.clone()), datatype.clone());
     }
     let mut typing = Typing { funs, datatypes, vars: HashMap::new() };
     for function in krate.functions.iter() {

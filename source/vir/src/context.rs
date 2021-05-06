@@ -1,4 +1,4 @@
-use crate::ast::{Expr, ExprX, Function, Ident, Krate, Mode, VirErr};
+use crate::ast::{Expr, ExprX, Function, Ident, Krate, Mode, Path, Variants, VirErr};
 use crate::ast_util::err_string;
 use crate::ast_visitor::map_expr_visitor;
 use crate::def::FUEL_ID;
@@ -8,6 +8,7 @@ use std::collections::HashMap;
 use std::rc::Rc;
 
 pub struct Ctx {
+    pub(crate) datatypes: HashMap<Path, Variants>,
     pub(crate) functions: Vec<Function>,
     pub(crate) func_map: HashMap<Ident, Function>,
     pub(crate) chosen_triggers: std::cell::RefCell<Vec<(Span, Vec<Vec<String>>)>>, // diagnostics
@@ -48,6 +49,11 @@ impl Ctx {
     }
 
     pub fn new(krate: &Krate) -> Result<Self, VirErr> {
+        let datatypes = krate
+            .datatypes
+            .iter()
+            .map(|d| (d.x.path.clone(), d.x.variants.clone()))
+            .collect::<HashMap<_, _>>();
         let mut functions: Vec<Function> = Vec::new();
         let mut func_map: HashMap<Ident, Function> = HashMap::new();
         for function in krate.functions.iter() {
@@ -57,7 +63,7 @@ impl Ctx {
         }
         let chosen_triggers: std::cell::RefCell<Vec<(Span, Vec<Vec<String>>)>> =
             std::cell::RefCell::new(Vec::new());
-        Ok(Ctx { functions, func_map, chosen_triggers })
+        Ok(Ctx { datatypes, functions, func_map, chosen_triggers })
     }
 
     pub fn prelude(&self) -> Commands {

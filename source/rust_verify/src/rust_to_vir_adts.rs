@@ -1,12 +1,15 @@
-use crate::rust_to_vir_base::{check_generics, get_mode, hack_get_def_name, ty_to_vir};
+use crate::rust_to_vir_base::{
+    check_generics, def_id_to_vir_path, get_mode, hack_get_def_name, ty_to_vir,
+};
 use crate::util::spanned_new;
 use crate::{unsupported, unsupported_unless};
 use rustc_hir::{Crate, EnumDef, Generics, ItemId, VariantData};
 use rustc_middle::ty::TyCtxt;
 use rustc_span::Span;
 use std::rc::Rc;
-use vir::ast::{Ident, KrateX, Mode, Variant, VirErr};
+use vir::ast::{DatatypeX, Ident, KrateX, Mode, Variant, VirErr};
 use vir::ast_util::{ident_binder, str_ident};
+use vir::def::variant_ident;
 
 fn check_variant_data<'tcx>(
     tcx: TyCtxt<'tcx>,
@@ -66,10 +69,10 @@ pub fn check_item_struct<'tcx>(
 ) -> Result<(), VirErr> {
     check_generics(generics)?;
     let name = hack_get_def_name(tcx, id.def_id.to_def_id());
-    let variant_name =
-        str_ident(format!("{}{}{}", name, vir::def::VARIANT_SEPARATOR, name).as_str());
+    let path = def_id_to_vir_path(tcx, id.def_id.to_def_id());
+    let variant_name = variant_ident(&name, &name);
     let variants = Rc::new(vec![check_variant_data(tcx, krate, &variant_name, variant_data)]);
-    vir.datatypes.push(spanned_new(span, ident_binder(&Rc::new(name), &variants)));
+    vir.datatypes.push(spanned_new(span, DatatypeX { path, variants }));
     Ok(())
 }
 
@@ -84,6 +87,7 @@ pub fn check_item_enum<'tcx>(
 ) -> Result<(), VirErr> {
     check_generics(generics)?;
     let name = Rc::new(hack_get_def_name(tcx, id.def_id.to_def_id()));
+    let path = def_id_to_vir_path(tcx, id.def_id.to_def_id());
     let variants = Rc::new(
         enum_def
             .variants
@@ -98,6 +102,6 @@ pub fn check_item_enum<'tcx>(
             })
             .collect::<Vec<_>>(),
     );
-    vir.datatypes.push(spanned_new(span, ident_binder(&name, &variants)));
+    vir.datatypes.push(spanned_new(span, DatatypeX { path, variants }));
     Ok(())
 }

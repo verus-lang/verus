@@ -25,6 +25,11 @@ fn path_to_string(path: &Path) -> String {
     path.iter().map(|x| (**x).as_str()).collect::<Vec<_>>().join(sep)
 }
 
+#[inline(always)]
+pub(crate) fn path_to_air_ident(path: &Path) -> Ident {
+    Rc::new(path_to_string(path))
+}
+
 pub(crate) fn apply_range_fun(name: &str, range: &IntRange, exprs: Vec<Expr>) -> Expr {
     let mut args = exprs;
     match range {
@@ -44,7 +49,7 @@ pub(crate) fn typ_to_air(typ: &Typ) -> air::ast::Typ {
     match &**typ {
         TypX::Int(_) => int_typ(),
         TypX::Bool => bool_typ(),
-        TypX::Path(path) => ident_typ(&Rc::new(path_to_string(&path))),
+        TypX::Path(path) => ident_typ(&path_to_air_ident(path)),
         TypX::TypParam(_) => str_typ(POLY),
     }
 }
@@ -92,10 +97,39 @@ pub(crate) fn typ_invariant(typ: &Typ, expr: &Expr, use_has_type: bool) -> Optio
     }
 }
 
-pub(crate) fn exp_to_expr(exp: &Exp) -> Expr {
+pub(crate) fn constant_to_expr(ctx: &Ctx, constant: &crate::sst::Constant) -> Expr {
+    match constant {
+        crate::sst::Constant::Bool(b) => Rc::new(ExprX::Const(Constant::Bool(*b))),
+        crate::sst::Constant::Nat(s) => Rc::new(ExprX::Const(Constant::Nat(s.clone()))),
+        crate::sst::Constant::Ctor(path, variant, binders) => {
+            let fields = &ctx.datatypes[path]
+                .iter()
+                .find(|variant| variant.name == variant.name)
+                .expect(format!("couldn't find datatype variant {} in ctor", variant).as_str())
+                .a;
+            Rc::new(ExprX::Apply(
+                variant.clone(),
+                Rc::new(
+                    fields
+                        .iter()
+                        .map(|f| {
+                            let b = binders.iter().find(|binder| binder.name == f.name).expect(
+                                format!("couldn't find datatype binder {} in ctor", f.name)
+                                    .as_str(),
+                            );
+                            exp_to_expr(ctx, &b.a)
+                        })
+                        .collect::<Vec<_>>(),
+                ),
+            ))
+        }
+    }
+}
+
+pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp) -> Expr {
     match &exp.x {
         ExpX::Const(c) => {
-            let expr = Rc::new(ExprX::Const(c.clone()));
+            let expr = constant_to_expr(ctx, c);
             expr
         }
         ExpX::Var(x) => string_var(&suffix_local_id(x)),
@@ -104,16 +138,16 @@ pub(crate) fn exp_to_expr(exp: &Exp) -> Expr {
             let name = suffix_global_id(&x);
             let mut exprs: Vec<Expr> = vec_map(typs, typ_to_id);
             for arg in args.iter() {
-                exprs.push(exp_to_expr(arg));
+                exprs.push(exp_to_expr(ctx, arg));
             }
             ident_apply(&name, &exprs)
         }
         ExpX::Unary(op, exp) => match op {
-            UnaryOp::Not => Rc::new(ExprX::Unary(air::ast::UnaryOp::Not, exp_to_expr(exp))),
-            UnaryOp::Trigger(_) => exp_to_expr(exp),
-            UnaryOp::Clip(IntRange::Int) => exp_to_expr(exp),
+            UnaryOp::Not => Rc::new(ExprX::Unary(air::ast::UnaryOp::Not, exp_to_expr(ctx, exp))),
+            UnaryOp::Trigger(_) => exp_to_expr(ctx, exp),
+            UnaryOp::Clip(IntRange::Int) => exp_to_expr(ctx, exp),
             UnaryOp::Clip(range) => {
-                let expr = exp_to_expr(exp);
+                let expr = exp_to_expr(ctx, exp);
                 let f_name = match range {
                     IntRange::Int => panic!("internal error: Int"),
                     IntRange::Nat => crate::def::NAT_CLIP,
@@ -125,7 +159,7 @@ pub(crate) fn exp_to_expr(exp: &Exp) -> Expr {
         },
         ExpX::UnaryOpr(op, exp) => match op {
             UnaryOpr::Box(typ) => {
-                let expr = exp_to_expr(exp);
+                let expr = exp_to_expr(ctx, exp);
                 let f_name = match &**typ {
                     TypX::Bool => str_ident(crate::def::BOX_BOOL),
                     TypX::Int(_) => str_ident(crate::def::BOX_INT),
@@ -135,7 +169,7 @@ pub(crate) fn exp_to_expr(exp: &Exp) -> Expr {
                 ident_apply(&f_name, &vec![expr])
             }
             UnaryOpr::Unbox(typ) => {
-                let expr = exp_to_expr(exp);
+                let expr = exp_to_expr(ctx, exp);
                 let f_name = match &**typ {
                     TypX::Bool => str_ident(crate::def::UNBOX_BOOL),
                     TypX::Int(_) => str_ident(crate::def::UNBOX_INT),
@@ -146,8 +180,8 @@ pub(crate) fn exp_to_expr(exp: &Exp) -> Expr {
             }
         },
         ExpX::Binary(op, lhs, rhs) => {
-            let lh = exp_to_expr(lhs);
-            let rh = exp_to_expr(rhs);
+            let lh = exp_to_expr(ctx, lhs);
+            let rh = exp_to_expr(ctx, rhs);
             let expx = match op {
                 BinaryOp::And => ExprX::Multi(MultiOp::And, Rc::new(vec![lh, rh])),
                 BinaryOp::Or => ExprX::Multi(MultiOp::Or, Rc::new(vec![lh, rh])),
@@ -181,27 +215,28 @@ pub(crate) fn exp_to_expr(exp: &Exp) -> Expr {
             Rc::new(expx)
         }
         ExpX::If(e1, e2, e3) => {
-            Rc::new(ExprX::IfElse(exp_to_expr(e1), exp_to_expr(e2), exp_to_expr(e3)))
+            Rc::new(ExprX::IfElse(exp_to_expr(ctx, e1), exp_to_expr(ctx, e2), exp_to_expr(ctx, e3)))
         }
         ExpX::Field { lhs, datatype_name: _, field_name: name } => {
             // TODO: this should include datatype_name in the function name
-            let lh = exp_to_expr(lhs);
+            let lh = exp_to_expr(ctx, lhs);
             Rc::new(ExprX::Apply(name.clone(), Rc::new(vec![lh])))
         }
         ExpX::Bind(bnd, exp) => match &bnd.x {
             BndX::Let(binders) => {
-                let expr = exp_to_expr(exp);
+                let expr = exp_to_expr(ctx, exp);
                 let binders = vec_map(&*binders, |b| {
-                    Rc::new(BinderX { name: suffix_local_id(&b.name), a: exp_to_expr(&b.a) })
+                    Rc::new(BinderX { name: suffix_local_id(&b.name), a: exp_to_expr(ctx, &b.a) })
                 });
                 Rc::new(ExprX::Bind(Rc::new(BindX::Let(Rc::new(binders))), expr))
             }
             BndX::Quant(quant, binders, trigs) => {
-                let expr = exp_to_expr(exp);
+                let expr = exp_to_expr(ctx, exp);
                 let binders = vec_map(&*binders, |b| {
                     Rc::new(BinderX { name: suffix_local_id(&b.name), a: typ_to_air(&b.a) })
                 });
-                let triggers = vec_map(&*trigs, |trig| Rc::new(vec_map(trig, exp_to_expr)));
+                let triggers =
+                    vec_map(&*trigs, |trig| Rc::new(vec_map(trig, |x| exp_to_expr(ctx, x))));
                 Rc::new(ExprX::Bind(
                     Rc::new(BindX::Quant(*quant, Rc::new(binders), Rc::new(triggers))),
                     expr,
@@ -225,7 +260,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
                 let f_req = prefix_requires(&func.x.name);
                 let mut req_args = vec_map(typs, typ_to_id);
                 for arg in args.iter() {
-                    req_args.push(exp_to_expr(arg));
+                    req_args.push(exp_to_expr(ctx, arg));
                 }
                 let e_req = Rc::new(ExprX::Apply(f_req, Rc::new(req_args)));
                 let description = Some("precondition not satisfied".to_string());
@@ -236,7 +271,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
             match dest {
                 None => {
                     for arg in args.iter() {
-                        ens_args.push(exp_to_expr(arg));
+                        ens_args.push(exp_to_expr(ctx, arg));
                     }
                 }
                 Some(Dest { var, mutable }) => {
@@ -253,7 +288,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
                             }
                             _ => e.clone(),
                         });
-                        ens_args.push(exp_to_expr(&arg_x));
+                        ens_args.push(exp_to_expr(ctx, &arg_x));
                     }
                     if overwrite {
                         stmts.push(Rc::new(StmtX::Snapshot(str_ident(SNAPSHOT_CALL))));
@@ -272,7 +307,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
             }
             vec![Rc::new(StmtX::Block(Rc::new(stmts)))] // wrap in block for readability
         }
-        StmX::Assume(expr) => vec![Rc::new(StmtX::Assume(exp_to_expr(&expr)))],
+        StmX::Assume(expr) => vec![Rc::new(StmtX::Assume(exp_to_expr(ctx, &expr)))],
         StmX::Decl { ident, typ, mutable, init: _ } => {
             state.local_shared.push(if *mutable {
                 Rc::new(DeclX::Var(suffix_local_id(&ident), typ_to_air(&typ)))
@@ -286,10 +321,10 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
                 ExpX::Var(ident) => ident,
                 _ => panic!("unexpected lhs {:?} in assign", lhs),
             };
-            vec![Rc::new(StmtX::Assign(suffix_local_id(&ident), exp_to_expr(rhs)))]
+            vec![Rc::new(StmtX::Assign(suffix_local_id(&ident), exp_to_expr(ctx, rhs)))]
         }
         StmX::If(cond, lhs, rhs) => {
-            let pos_cond = exp_to_expr(&cond);
+            let pos_cond = exp_to_expr(ctx, &cond);
             let neg_cond = Rc::new(ExprX::Unary(air::ast::UnaryOp::Not, pos_cond.clone()));
             let pos_assume = Rc::new(StmtX::Assume(pos_cond));
             let neg_assume = Rc::new(StmtX::Assume(neg_cond));
@@ -305,12 +340,12 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
             vec![Rc::new(StmtX::Switch(Rc::new(vec![lblock, rblock])))]
         }
         StmX::While { cond, body, invs, typ_inv_vars, modified_vars } => {
-            let pos_cond = exp_to_expr(&cond);
+            let pos_cond = exp_to_expr(ctx, &cond);
             let neg_cond = Rc::new(ExprX::Unary(air::ast::UnaryOp::Not, pos_cond.clone()));
             let pos_assume = Rc::new(DeclX::Axiom(pos_cond));
             let neg_assume = Rc::new(StmtX::Assume(neg_cond));
             let invs: Vec<(Span, Expr)> =
-                invs.iter().map(|e| (e.span.clone(), exp_to_expr(e))).collect();
+                invs.iter().map(|e| (e.span.clone(), exp_to_expr(ctx, e))).collect();
             let mut air_body = stm_to_stmts(ctx, state, body);
 
             /*
@@ -474,7 +509,7 @@ pub fn body_stm_to_air(
     for ens in enss {
         let description = Some("postcondition not satisfied".to_string());
         let option_span = Rc::new(Some(Span { description, ..ens.span.clone() }));
-        let ens_stmt = StmtX::Assert(option_span, exp_to_expr(ens));
+        let ens_stmt = StmtX::Assert(option_span, exp_to_expr(ctx, ens));
         stmts.push(Rc::new(ens_stmt));
     }
     let assertion =
@@ -489,7 +524,7 @@ pub fn body_stm_to_air(
     }
 
     for req in reqs {
-        local.push(Rc::new(DeclX::Axiom(exp_to_expr(req))));
+        local.push(Rc::new(DeclX::Axiom(exp_to_expr(ctx, req))));
     }
 
     let query = Rc::new(QueryX { local: Rc::new(local), assertion });

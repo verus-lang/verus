@@ -4,6 +4,7 @@ use rustc_ast::token::{Token, TokenKind};
 use rustc_ast::tokenstream::TokenTree;
 use rustc_ast::{AttrKind, Attribute, IntTy, MacArgs, UintTy};
 use rustc_hir::def::{DefKind, Res};
+use rustc_hir::definitions::DefPath;
 use rustc_hir::{GenericParam, GenericParamKind, Generics, HirId, ParamName, PrimTy, QPath, Ty};
 use rustc_middle::ty::{AdtDef, TyCtxt, TyKind, TypeckResults};
 use rustc_span::def_id::DefId;
@@ -16,8 +17,18 @@ pub(crate) fn def_to_path<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> Path {
     Rc::new(tcx.def_path(def_id).data.iter().map(|d| Rc::new(format!("{}", d))).collect::<Vec<_>>())
 }
 
-pub(crate) fn path_to_ty_path<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> TypX {
-    TypX::Path(def_to_path(tcx, def_id))
+#[inline(always)]
+pub(crate) fn def_id_to_ty_path<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> TypX {
+    TypX::Path(def_id_to_vir_path(tcx, def_id))
+}
+
+#[inline(always)]
+pub(crate) fn def_id_to_vir_path<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> Path {
+    def_path_to_vir_path(tcx, tcx.def_path(def_id))
+}
+
+pub(crate) fn def_path_to_vir_path<'tcx>(_tcx: TyCtxt<'tcx>, def_path: DefPath) -> Path {
+    Rc::new(def_path.data.iter().map(|d| Rc::new(format!("{}", d))).collect::<Vec<_>>())
 }
 
 // TODO: proper handling of def_ids
@@ -164,7 +175,7 @@ pub(crate) fn mid_ty_to_vir<'tcx>(tcx: TyCtxt<'tcx>, ty: rustc_middle::ty::Ty) -
             } else if s == crate::typecheck::BUILTIN_NAT {
                 TypX::Int(IntRange::Nat)
             } else {
-                path_to_ty_path(tcx, *did)
+                def_id_to_ty_path(tcx, *did)
             }
         }
         TyKind::Uint(_) | TyKind::Int(_) => TypX::Int(mk_range(ty)),
@@ -211,10 +222,10 @@ pub(crate) fn ty_to_vir<'tcx>(tcx: TyCtxt<'tcx>, ty: &Ty) -> Typ {
                 } else if hack_check_def_name(tcx, def_id, "builtin", "nat") {
                     TypX::Int(IntRange::Nat)
                 } else {
-                    path_to_ty_path(tcx, def_id)
+                    def_id_to_ty_path(tcx, def_id)
                 }
             }
-            Res::Def(DefKind::Enum, def_id) => path_to_ty_path(tcx, def_id),
+            Res::Def(DefKind::Enum, def_id) => def_id_to_ty_path(tcx, def_id),
             _ => {
                 unsupported!(format!("type {:#?} {:?} {:?}", kind, path.res, span))
             }

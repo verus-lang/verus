@@ -102,6 +102,10 @@ pub fn prefix_ensures(ident: &Ident) -> Ident {
     Rc::new(PREFIX_ENSURES.to_string() + ident)
 }
 
+pub fn variant_ident(adt_name: &str, variant_name: &str) -> Ident {
+    Rc::new(format!("{}{}{}", adt_name, VARIANT_SEPARATOR, variant_name))
+}
+
 pub struct Spanned<X> {
     pub span: Span,
     pub x: X,

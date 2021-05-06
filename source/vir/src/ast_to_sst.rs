@@ -1,10 +1,10 @@
-use crate::ast::{BinaryOp, Expr, ExprX, Ident, Mode, Stmt, StmtX, Typs, VirErr};
+use crate::ast::{BinaryOp, Constant, Expr, ExprX, Ident, Mode, Stmt, StmtX, Typs, VirErr};
 use crate::ast_util::{err_str, err_string};
 use crate::context::Ctx;
 use crate::def::Spanned;
 use crate::sst::{BndX, Dest, Exp, ExpX, Exps, Stm, StmX};
 use crate::util::vec_map_result;
-use air::ast::{BinderX, Constant};
+use air::ast::BinderX;
 use std::rc::Rc;
 
 fn function_can_be_exp(ctx: &Ctx, name: &Ident) -> bool {
@@ -26,9 +26,31 @@ fn expr_must_be_call_stm(ctx: &Ctx, expr: &Expr) -> Result<Option<(Ident, Typs, 
     }
 }
 
+pub(crate) fn constant_to_sst_constant(
+    ctx: &Ctx,
+    constant: &Constant,
+) -> Result<crate::sst::Constant, VirErr> {
+    Ok(match constant {
+        Constant::Bool(b) => crate::sst::Constant::Bool(*b),
+        Constant::Nat(n) => crate::sst::Constant::Nat(n.clone()),
+        Constant::Ctor(p, i, binders) => crate::sst::Constant::Ctor(
+            p.clone(),
+            i.clone(),
+            Rc::new(
+                binders
+                    .iter()
+                    .map(|b| b.map_result(|a| expr_to_exp(ctx, a)))
+                    .collect::<Result<Vec<_>, _>>()?,
+            ),
+        ),
+    })
+}
+
 pub(crate) fn expr_to_exp(ctx: &Ctx, expr: &Expr) -> Result<Exp, VirErr> {
     match &expr.x {
-        ExprX::Const(c) => Ok(Spanned::new(expr.span.clone(), ExpX::Const(c.clone()))),
+        ExprX::Const(c) => {
+            Ok(Spanned::new(expr.span.clone(), ExpX::Const(constant_to_sst_constant(ctx, c)?)))
+        }
         ExprX::Var(x) => Ok(Spanned::new(expr.span.clone(), ExpX::Var(x.clone()))),
         ExprX::Call(x, typs, args) => {
             match ctx.func_map.get(x) {
@@ -124,7 +146,7 @@ pub fn expr_to_stm(ctx: &Ctx, expr: &Expr, dest: &Option<Ident>) -> Result<Stm, 
         }
         ExprX::Fuel(x, fuel) => Ok(Spanned::new(expr.span.clone(), StmX::Fuel(x.clone(), *fuel))),
         ExprX::Admit => {
-            let f = Spanned::new(expr.span.clone(), ExpX::Const(Constant::Bool(false)));
+            let f = Spanned::new(expr.span.clone(), ExpX::Const(crate::sst::Constant::Bool(false)));
             Ok(Spanned::new(expr.span.clone(), StmX::Assume(f)))
         }
         ExprX::If(cond, lhs, rhs) => {

@@ -170,7 +170,18 @@ fn make_score(term: &Term, depth: u64) -> Score {
 fn gather_terms(ctxt: &mut Ctxt, exp: &Exp, depth: u64) -> (bool, Term) {
     let (is_pure, term) = match &exp.x {
         ExpX::Const(c) => {
-            return (true, Rc::new(TermX::App(App::Const(c.clone()), Rc::new(vec![]))));
+            let term = match c {
+                crate::sst::Constant::Bool(b) => {
+                    Rc::new(TermX::App(App::Const(Constant::Bool(*b)), Rc::new(vec![])))
+                }
+                crate::sst::Constant::Nat(n) => {
+                    Rc::new(TermX::App(App::Const(Constant::Nat(n.clone())), Rc::new(vec![])))
+                }
+                crate::sst::Constant::Ctor(path, variant, fields) => {
+                    todo!("gather_terms for datatype ctor")
+                }
+            };
+            return (true, term);
         }
         ExpX::Var(x) => {
             return (true, Rc::new(TermX::Var(x.clone())));
