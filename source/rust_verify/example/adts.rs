@@ -31,3 +31,7 @@ fn test3(p: int) {
     assert(c.passengers == p);
     assert(!c.four_doors); // FAILS
 }
+
+fn test4(passengers: int) {
+    assert((Car { passengers, four_doors: true }).passengers == passengers);
+}
