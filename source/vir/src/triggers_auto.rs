@@ -2,6 +2,7 @@ use crate::ast::{BinaryOp, Ident, UnaryOp, UnaryOpr, VirErr};
 use crate::ast_util::err_str;
 use crate::context::Ctx;
 use crate::sst::{Exp, ExpX, Trig, Trigs};
+use crate::sst_to_air::path_to_air_ident;
 use crate::util::vec_map;
 use air::ast::{Constant, Span};
 use std::collections::{HashMap, HashSet};
@@ -32,7 +33,8 @@ enum App {
     Const(Constant),
     Field(Ident, Ident),
     Call(Ident),
-    Other(u64), // u64 is an id, assigned via a simple counter
+    Ctor(Ident, Ident), // datatype constructor: (Path, Variant)
+    Other(u64),         // u64 is an id, assigned via a simple counter
 }
 
 type Term = Rc<TermX>;
@@ -49,8 +51,14 @@ impl std::fmt::Debug for TermX {
             TermX::Var(x) => write!(f, "{}", x),
             TermX::App(App::Const(c), _) => write!(f, "{:?}", c),
             TermX::App(App::Field(_, x), es) => write!(f, "{:?}.{}", es[0], x),
-            TermX::App(App::Call(x), es) => {
-                write!(f, "{}(", x)?;
+            TermX::App(c @ (App::Call(_) | App::Ctor(_, _)), es) => {
+                match c {
+                    App::Call(x) => write!(f, "{}(", x)?,
+                    App::Ctor(path, variant) => {
+                        write!(f, "{}{}{}(", path, crate::def::VARIANT_SEPARATOR, variant)?
+                    }
+                    _ => unreachable!(),
+                }
                 for i in 0..es.len() {
                     write!(f, "{:?}", es[i])?;
                     if i < es.len() - 1 {
@@ -184,7 +192,13 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
                     let (is_pures, terms): (Vec<bool>, Vec<Term>) =
                         args.map(|e| gather_terms(ctxt, ctx, &e.a, depth + 1)).unzip();
                     let is_pure = is_pures.into_iter().all(|b| b);
-                    (is_pure, Rc::new(TermX::App(App::Call(variant), Rc::new(terms))))
+                    (
+                        is_pure,
+                        Rc::new(TermX::App(
+                            App::Ctor(path_to_air_ident(path), variant),
+                            Rc::new(terms),
+                        )),
+                    )
                 }
             };
         }
