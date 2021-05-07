@@ -9,7 +9,7 @@ use rustc_span::Span;
 use std::rc::Rc;
 use vir::ast::{DatatypeX, Ident, KrateX, Mode, Variant, VirErr};
 use vir::ast_util::{ident_binder, str_ident};
-use vir::def::variant_ident;
+use vir::def::{variant_field_ident, variant_ident, variant_positional_field_ident};
 
 fn check_variant_data<'tcx>(
     tcx: TyCtxt<'tcx>,
@@ -27,7 +27,7 @@ fn check_variant_data<'tcx>(
                         .iter()
                         .map(|field| {
                             ident_binder(
-                                &str_ident(&field.ident.as_str()),
+                                &variant_field_ident(name, &field.ident.as_str()),
                                 &(
                                     ty_to_vir(tcx, field.ty),
                                     get_mode(Mode::Exec, tcx.hir().attrs(field.hir_id)),
@@ -40,9 +40,10 @@ fn check_variant_data<'tcx>(
             VariantData::Tuple(fields, _variant_id) => Rc::new(
                 fields
                     .iter()
-                    .map(|field| {
+                    .enumerate()
+                    .map(|(i, field)| {
                         ident_binder(
-                            &str_ident(&field.ident.as_str()),
+                            &variant_positional_field_ident(name, i),
                             &(
                                 ty_to_vir(tcx, field.ty),
                                 get_mode(Mode::Exec, tcx.hir().attrs(field.hir_id)),

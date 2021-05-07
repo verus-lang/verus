@@ -65,6 +65,7 @@ pub const TYPE_ID_UINT: &str = "UINT";
 pub const TYPE_ID_SINT: &str = "SINT";
 pub const PREFIX_TYPE_ID: &str = "TYPE%";
 pub const HAS_TYPE: &str = "has_type";
+pub const VARIANT_FIELD_SEPARATOR: &str = "/";
 
 pub fn suffix_global_id(ident: &Ident) -> Ident {
     Rc::new(ident.to_string() + SUFFIX_GLOBAL)
@@ -104,6 +105,15 @@ pub fn prefix_ensures(ident: &Ident) -> Ident {
 
 pub fn variant_ident(adt_name: &str, variant_name: &str) -> Ident {
     Rc::new(format!("{}{}{}", adt_name, VARIANT_SEPARATOR, variant_name))
+}
+
+pub fn variant_field_ident(variant_ident: &Ident, name: &str) -> Ident {
+    Rc::new(format!("{}{}{}", variant_ident.as_str(), VARIANT_FIELD_SEPARATOR, name))
+}
+
+#[inline(always)]
+pub fn variant_positional_field_ident(variant_ident: &Ident, idx: usize) -> Ident {
+    variant_field_ident(variant_ident, format!("{}", idx).as_str())
 }
 
 pub struct Spanned<X> {

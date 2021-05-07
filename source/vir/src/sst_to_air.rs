@@ -105,7 +105,7 @@ pub(crate) fn ctor_to_apply<'a>(
 ) -> (Ident, impl Iterator<Item = &'a Rc<BinderX<Rc<Spanned<ExpX>>>>>) {
     let fields = &ctx.datatypes[path]
         .iter()
-        .find(|variant| variant.name == variant.name)
+        .find(|v| &v.name == variant)
         .expect(format!("couldn't find datatype variant {} in ctor", variant).as_str())
         .a;
     (

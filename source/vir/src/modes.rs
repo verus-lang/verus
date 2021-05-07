@@ -70,12 +70,10 @@ fn check_expr(typing: &mut Typing, outer_mode: Mode, expr: &Expr) -> Result<Mode
             let variants = &datatype.x.variants;
             assert_eq!(variants.len(), 1);
             let fields = &variants[0].a;
-            for field in fields.iter() {
-                if field.name == *field_name {
-                    return Ok(mode_join(lhs_mode, field.a.1));
-                }
+            match fields.iter().find(|field| field.name == *field_name) {
+                Some(field) => Ok(mode_join(lhs_mode, field.a.1)),
+                None => panic!("internal error: missing field {}", &field_name),
             }
-            panic!("internal error: missing field {}", &field_name)
         }
         ExprX::Unary(_, e1) => check_expr(typing, outer_mode, e1),
         ExprX::UnaryOpr(_, e1) => check_expr(typing, outer_mode, e1),
