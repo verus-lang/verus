@@ -167,21 +167,26 @@ fn make_score(term: &Term, depth: u64) -> Score {
     Score { depth, size: term_size(term) }
 }
 
-fn gather_terms(ctxt: &mut Ctxt, exp: &Exp, depth: u64) -> (bool, Term) {
+fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Term) {
     let (is_pure, term) = match &exp.x {
         ExpX::Const(c) => {
-            let term = match c {
+            return match c {
                 crate::sst::Constant::Bool(b) => {
-                    Rc::new(TermX::App(App::Const(Constant::Bool(*b)), Rc::new(vec![])))
+                    (true, Rc::new(TermX::App(App::Const(Constant::Bool(*b)), Rc::new(vec![]))))
                 }
-                crate::sst::Constant::Nat(n) => {
-                    Rc::new(TermX::App(App::Const(Constant::Nat(n.clone())), Rc::new(vec![])))
-                }
+                crate::sst::Constant::Nat(n) => (
+                    true,
+                    Rc::new(TermX::App(App::Const(Constant::Nat(n.clone())), Rc::new(vec![]))),
+                ),
                 crate::sst::Constant::Ctor(path, variant, fields) => {
-                    todo!("gather_terms for datatype ctor")
+                    let (variant, args) =
+                        crate::sst_to_air::ctor_to_apply(ctx, path, variant, fields);
+                    let (is_pures, terms): (Vec<bool>, Vec<Term>) =
+                        args.map(|e| gather_terms(ctxt, ctx, &e.a, depth + 1)).unzip();
+                    let is_pure = is_pures.into_iter().all(|b| b);
+                    (is_pure, Rc::new(TermX::App(App::Call(variant), Rc::new(terms))))
                 }
             };
-            return (true, term);
         }
         ExpX::Var(x) => {
             return (true, Rc::new(TermX::Var(x.clone())));
@@ -189,12 +194,12 @@ fn gather_terms(ctxt: &mut Ctxt, exp: &Exp, depth: u64) -> (bool, Term) {
         ExpX::Old(_, _) => panic!("internal error: Old"),
         ExpX::Call(x, _, args) => {
             let (is_pures, terms): (Vec<bool>, Vec<Term>) =
-                args.iter().map(|e| gather_terms(ctxt, e, depth + 1)).unzip();
+                args.iter().map(|e| gather_terms(ctxt, ctx, e, depth + 1)).unzip();
             let is_pure = is_pures.into_iter().all(|b| b);
             (is_pure, Rc::new(TermX::App(App::Call(x.clone()), Rc::new(terms))))
         }
         ExpX::Field { lhs, datatype_name, field_name } => {
-            let (is_pure, arg) = gather_terms(ctxt, lhs, depth + 1);
+            let (is_pure, arg) = gather_terms(ctxt, ctx, lhs, depth + 1);
             (
                 is_pure,
                 Rc::new(TermX::App(
@@ -203,34 +208,34 @@ fn gather_terms(ctxt: &mut Ctxt, exp: &Exp, depth: u64) -> (bool, Term) {
                 )),
             )
         }
-        ExpX::Unary(UnaryOp::Trigger(_), e1) => gather_terms(ctxt, e1, depth),
+        ExpX::Unary(UnaryOp::Trigger(_), e1) => gather_terms(ctxt, ctx, e1, depth),
         ExpX::Unary(op, e1) => {
             let depth = match op {
                 UnaryOp::Not => 0,
                 UnaryOp::Trigger(_) | UnaryOp::Clip(_) => 1,
             };
-            let (_, term1) = gather_terms(ctxt, e1, depth);
+            let (_, term1) = gather_terms(ctxt, ctx, e1, depth);
             ctxt.next_id += 1;
             (false, Rc::new(TermX::App(App::Other(ctxt.next_id), Rc::new(vec![term1]))))
         }
-        ExpX::UnaryOpr(UnaryOpr::Box(_), e1) => gather_terms(ctxt, e1, depth),
-        ExpX::UnaryOpr(UnaryOpr::Unbox(_), e1) => gather_terms(ctxt, e1, depth),
+        ExpX::UnaryOpr(UnaryOpr::Box(_), e1) => gather_terms(ctxt, ctx, e1, depth),
+        ExpX::UnaryOpr(UnaryOpr::Unbox(_), e1) => gather_terms(ctxt, ctx, e1, depth),
         ExpX::Binary(op, e1, e2) => {
             use BinaryOp::*;
             let depth = match op {
                 And | Or | Implies | Eq => 0,
                 Ne | Le | Ge | Lt | Gt | Add | Sub | Mul | EuclideanDiv | EuclideanMod => 1,
             };
-            let (_, term1) = gather_terms(ctxt, e1, depth);
-            let (_, term2) = gather_terms(ctxt, e2, depth);
+            let (_, term1) = gather_terms(ctxt, ctx, e1, depth);
+            let (_, term2) = gather_terms(ctxt, ctx, e2, depth);
             ctxt.next_id += 1;
             (false, Rc::new(TermX::App(App::Other(ctxt.next_id), Rc::new(vec![term1, term2]))))
         }
         ExpX::If(e1, e2, e3) => {
             let depth = 1;
-            let (_, term1) = gather_terms(ctxt, e1, depth);
-            let (_, term2) = gather_terms(ctxt, e2, depth);
-            let (_, term3) = gather_terms(ctxt, e3, depth);
+            let (_, term1) = gather_terms(ctxt, ctx, e1, depth);
+            let (_, term2) = gather_terms(ctxt, ctx, e2, depth);
+            let (_, term3) = gather_terms(ctxt, ctx, e3, depth);
             ctxt.next_id += 1;
             (
                 false,
@@ -402,7 +407,7 @@ pub(crate) fn build_triggers(
         ctxt.pure_terms_by_var.insert(x.clone(), HashMap::new());
     }
     let mut timer = Timer { span: span.clone(), timeout_countdown: 10000 };
-    gather_terms(&mut ctxt, exp, 0);
+    gather_terms(&mut ctxt, ctx, exp, 0);
     /*
     println!();
     println!("all:");

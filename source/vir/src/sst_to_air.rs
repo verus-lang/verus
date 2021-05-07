@@ -97,31 +97,36 @@ pub(crate) fn typ_invariant(typ: &Typ, expr: &Expr, use_has_type: bool) -> Optio
     }
 }
 
+pub(crate) fn ctor_to_apply<'a>(
+    ctx: &'a Ctx,
+    path: &Path,
+    variant: &Ident,
+    binders: &'a Binders<Exp>,
+) -> (Ident, impl Iterator<Item = &'a Rc<BinderX<Rc<Spanned<ExpX>>>>>) {
+    let fields = &ctx.datatypes[path]
+        .iter()
+        .find(|variant| variant.name == variant.name)
+        .expect(format!("couldn't find datatype variant {} in ctor", variant).as_str())
+        .a;
+    (
+        variant.clone(),
+        fields.iter().map(move |f| {
+            binders
+                .iter()
+                .find(|binder| binder.name == f.name)
+                .expect(format!("couldn't find datatype binder {} in ctor", f.name).as_str())
+        }),
+    )
+}
+
 pub(crate) fn constant_to_expr(ctx: &Ctx, constant: &crate::sst::Constant) -> Expr {
     match constant {
         crate::sst::Constant::Bool(b) => Rc::new(ExprX::Const(Constant::Bool(*b))),
         crate::sst::Constant::Nat(s) => Rc::new(ExprX::Const(Constant::Nat(s.clone()))),
         crate::sst::Constant::Ctor(path, variant, binders) => {
-            let fields = &ctx.datatypes[path]
-                .iter()
-                .find(|variant| variant.name == variant.name)
-                .expect(format!("couldn't find datatype variant {} in ctor", variant).as_str())
-                .a;
-            Rc::new(ExprX::Apply(
-                variant.clone(),
-                Rc::new(
-                    fields
-                        .iter()
-                        .map(|f| {
-                            let b = binders.iter().find(|binder| binder.name == f.name).expect(
-                                format!("couldn't find datatype binder {} in ctor", f.name)
-                                    .as_str(),
-                            );
-                            exp_to_expr(ctx, &b.a)
-                        })
-                        .collect::<Vec<_>>(),
-                ),
-            ))
+            let (variant, args) = ctor_to_apply(ctx, path, variant, binders);
+            let args = args.map(|b| exp_to_expr(ctx, &b.a)).collect::<Vec<_>>();
+            Rc::new(ExprX::Apply(variant, Rc::new(args)))
         }
     }
 }
