@@ -1,4 +1,5 @@
 use crate::def::*;
+use air::ast::Ident;
 use air::print_parse::{macro_push_node, str_to_node};
 use air::{node, nodes_vec};
 use sise::Node;
@@ -30,6 +31,7 @@ pub(crate) fn prelude_nodes() -> Vec<Node> {
     let type_id_nat = str_to_node(TYPE_ID_NAT);
     let type_id_uint = str_to_node(TYPE_ID_UINT);
     let type_id_sint = str_to_node(TYPE_ID_SINT);
+    let has_type = str_to_node(HAS_TYPE);
 
     nodes_vec!(
 
@@ -57,6 +59,50 @@ pub(crate) fn prelude_nodes() -> Vec<Node> {
         (declare-const [type_id_nat] [typ])
         (declare-fun [type_id_uint] (Int) [typ])
         (declare-fun [type_id_sint] (Int) [typ])
+        (declare-fun [has_type] ([Poly] [typ]) Bool)
+        (axiom (forall ((x Bool)) (!
+            (= x ([unbox_bool] ([box_bool] x)))
+            :pattern (([box_bool] x))
+        )))
+        (axiom (forall ((x Int)) (!
+            (= x ([unbox_int] ([box_int] x)))
+            :pattern (([box_int] x))
+        )))
+        (axiom (forall ((x [Poly])) (!
+            (=>
+                ([has_type] x [type_id_bool])
+                (= x ([box_bool] ([unbox_bool] x)))
+            )
+            :pattern (([has_type] x [type_id_bool]))
+        )))
+        (axiom (forall ((x [Poly])) (!
+            (=>
+                ([has_type] x [type_id_int])
+                (= x ([box_int] ([unbox_int] x)))
+            )
+            :pattern (([has_type] x [type_id_int]))
+        )))
+        (axiom (forall ((x [Poly])) (!
+            (=>
+                ([has_type] x [type_id_nat])
+                (= x ([box_int] ([unbox_int] x)))
+            )
+            :pattern (([has_type] x [type_id_nat]))
+        )))
+        (axiom (forall ((bits Int) (x [Poly])) (!
+            (=>
+                ([has_type] x ([type_id_uint] bits))
+                (= x ([box_int] ([unbox_int] x)))
+            )
+            :pattern (([has_type] x ([type_id_uint] bits)))
+        )))
+        (axiom (forall ((bits Int) (x [Poly])) (!
+            (=>
+                ([has_type] x ([type_id_sint] bits))
+                (= x ([box_int] ([unbox_int] x)))
+            )
+            :pattern (([has_type] x ([type_id_sint] bits)))
+        )))
 
         // Integers
         // TODO: make this more configurable via options or HeaderExpr directives
@@ -125,6 +171,50 @@ pub(crate) fn prelude_nodes() -> Vec<Node> {
                 (and (<= ([i_lo] bits) i) (< i ([i_hi] bits))
             ))
             :pattern (([i_inv] bits i))
+        )))
+        (axiom (forall ((x Poly)) (!
+            (=>
+                ([has_type] x [type_id_nat])
+                (<= 0 ([unbox_int] x))
+            )
+            :pattern (([has_type] x [type_id_nat]))
+        )))
+        (axiom (forall ((bits Int) (x Poly)) (!
+            (=>
+                ([has_type] x ([type_id_uint] bits))
+                ([u_inv] bits ([unbox_int] x))
+            )
+            :pattern (([has_type] x ([type_id_uint] bits)))
+        )))
+        (axiom (forall ((bits Int) (x Poly)) (!
+            (=>
+                ([has_type] x ([type_id_sint] bits))
+                ([i_inv] bits ([unbox_int] x))
+            )
+            :pattern (([has_type] x ([type_id_sint] bits)))
+        )))
+    )
+}
+
+pub(crate) fn datatype_box_axioms(typ_name: &Ident) -> Vec<Node> {
+    let typ = str_to_node(typ_name.as_str());
+    let type_id = str_to_node(prefix_type_id(typ_name).as_str());
+    let box_t = str_to_node(prefix_box(typ_name).as_str());
+    let unbox_t = str_to_node(prefix_unbox(typ_name).as_str());
+    #[allow(non_snake_case)]
+    let Poly = str_to_node(POLY);
+    let has_type = str_to_node(HAS_TYPE);
+    nodes_vec!(
+        (axiom (forall ((x [typ])) (!
+            (= x ([unbox_t] ([box_t] x)))
+            :pattern (([box_t] x))
+        )))
+        (axiom (forall ((x [Poly])) (!
+            (=>
+                ([has_type] x [type_id])
+                (= x ([box_t] ([unbox_t] x)))
+            )
+            :pattern (([has_type] x [type_id]))
         )))
     )
 }

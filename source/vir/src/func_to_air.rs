@@ -144,11 +144,15 @@ pub fn func_decl_to_air(ctx: &Ctx, function: &Function) -> Result<Commands, VirE
             }
 
             // Return typing invariant
-            let f_args = Rc::new(vec_map(&function.x.params, |param| {
-                ident_var(&suffix_local_id(&param.x.name.clone()))
-            }));
-            let f_app = ident_apply(&name, &f_args);
-            if let Some(expr) = typ_invariant(&ret, &f_app) {
+            let mut f_args: Vec<Expr> = Vec::new();
+            for typ_param in function.x.typ_params.iter() {
+                f_args.push(ident_var(&suffix_typ_param_id(&typ_param.clone())));
+            }
+            for param in function.x.params.iter() {
+                f_args.push(ident_var(&suffix_local_id(&param.x.name.clone())));
+            }
+            let f_app = ident_apply(&name, &Rc::new(f_args));
+            if let Some(expr) = typ_invariant(&ret, &f_app, true) {
                 // (axiom (forall (...) expr))
                 let e_forall = Rc::new(ExprX::Bind(
                     func_bind(&function.x.typ_params, &function.x.params, &f_app),
@@ -177,7 +181,7 @@ pub fn func_decl_to_air(ctx: &Ctx, function: &Function) -> Result<Commands, VirE
                 let param = ParamX { name: name.clone(), typ: typ.clone(), mode: *mode };
                 ens_typs.push(typ_to_air(&typ));
                 ens_params.push(Spanned::new(function.span.clone(), param));
-                if let Some(expr) = typ_invariant(&typ, &ident_var(&suffix_local_id(&name))) {
+                if let Some(expr) = typ_invariant(&typ, &ident_var(&suffix_local_id(&name)), true) {
                     ens_typing_invs.push(expr.clone());
                 }
             }

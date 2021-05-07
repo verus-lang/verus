@@ -1,5 +1,5 @@
 use crate::util::{err_span_str, err_span_string, unsupported_err_span};
-use crate::{unsupported, unsupported_err, unsupported_err_unless, unsupported_unless};
+use crate::{unsupported, unsupported_err, unsupported_err_unless};
 use rustc_ast::token::{Token, TokenKind};
 use rustc_ast::tokenstream::TokenTree;
 use rustc_ast::{AttrKind, Attribute, IntTy, MacArgs, UintTy};
@@ -168,14 +168,11 @@ pub(crate) fn mid_ty_to_vir<'tcx>(tcx: TyCtxt<'tcx>, ty: rustc_middle::ty::Ty) -
             }
         }
         TyKind::Uint(_) | TyKind::Int(_) => TypX::Int(mk_range(ty)),
-        TyKind::Param(param) => {
-            return Rc::new(TypX::TypParam(Rc::new(param.name.to_string())));
-        }
+        TyKind::Param(param) => TypX::TypParam(Rc::new(param.name.to_string())),
         _ => {
             unsupported!(format!("type {:?}", ty))
         }
     };
-    unsupported_unless!(ty.flags().is_empty(), "ty.flags", ty);
     Rc::new(typ_x)
 }
 

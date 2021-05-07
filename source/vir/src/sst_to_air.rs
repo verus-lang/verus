@@ -68,8 +68,8 @@ pub fn typ_to_id(typ: &Typ) -> Expr {
 }
 
 // If expr has type typ, what can we assume to be true about expr?
-pub(crate) fn typ_invariant(typ: &Typ, expr: &Expr) -> Option<Expr> {
-    match **typ {
+pub(crate) fn typ_invariant(typ: &Typ, expr: &Expr, use_has_type: bool) -> Option<Expr> {
+    match &**typ {
         TypX::Int(IntRange::Int) => None,
         TypX::Int(IntRange::Nat) => {
             let zero = Rc::new(ExprX::Const(Constant::Nat(Rc::new("0".to_string()))));
@@ -84,6 +84,10 @@ pub(crate) fn typ_invariant(typ: &Typ, expr: &Expr) -> Option<Expr> {
             };
             Some(apply_range_fun(&f_name, &range, vec![expr.clone()]))
         }
+        TypX::TypParam(x) if use_has_type => Some(str_apply(
+            crate::def::HAS_TYPE,
+            &vec![expr.clone(), ident_var(&suffix_typ_param_id(&x))],
+        )),
         _ => None,
     }
 }
@@ -328,7 +332,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
             */
             let mut local = state.local_shared.clone();
             for (x, typ) in typ_inv_vars.iter() {
-                let typ_inv = typ_invariant(typ, &ident_var(&suffix_local_id(x)));
+                let typ_inv = typ_invariant(typ, &ident_var(&suffix_local_id(x)), false);
                 if let Some(expr) = typ_inv {
                     local.push(Rc::new(DeclX::Axiom(expr)));
                 }
@@ -364,7 +368,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
             }
             for (x, typ) in typ_inv_vars.iter() {
                 if modified_vars.contains(x) {
-                    let typ_inv = typ_invariant(typ, &ident_var(&suffix_local_id(x)));
+                    let typ_inv = typ_invariant(typ, &ident_var(&suffix_local_id(x)), false);
                     if let Some(expr) = typ_inv {
                         stmts.push(Rc::new(StmtX::Assume(expr)));
                     }
@@ -477,7 +481,8 @@ pub fn body_stm_to_air(
         if stmts.len() == 1 { stmts[0].clone() } else { Rc::new(StmtX::Block(Rc::new(stmts))) };
 
     for param in params.iter() {
-        let typ_inv = typ_invariant(&param.x.typ, &ident_var(&suffix_local_id(&param.x.name)));
+        let typ_inv =
+            typ_invariant(&param.x.typ, &ident_var(&suffix_local_id(&param.x.name)), false);
         if let Some(expr) = typ_inv {
             local.push(Rc::new(DeclX::Axiom(expr)));
         }

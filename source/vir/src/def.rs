@@ -64,6 +64,7 @@ pub const TYPE_ID_NAT: &str = "NAT";
 pub const TYPE_ID_UINT: &str = "UINT";
 pub const TYPE_ID_SINT: &str = "SINT";
 pub const PREFIX_TYPE_ID: &str = "TYPE%";
+pub const HAS_TYPE: &str = "has_type";
 
 pub fn suffix_global_id(ident: &Ident) -> Ident {
     Rc::new(ident.to_string() + SUFFIX_GLOBAL)
