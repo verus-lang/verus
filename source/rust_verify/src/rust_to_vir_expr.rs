@@ -166,6 +166,7 @@ fn fn_call_to_vir<'tcx>(
     let is_requires = hack_check_def_name(ctxt.tcx, f, "builtin", "requires");
     let is_ensures = hack_check_def_name(ctxt.tcx, f, "builtin", "ensures");
     let is_invariant = hack_check_def_name(ctxt.tcx, f, "builtin", "invariant");
+    let is_decreases = hack_check_def_name(ctxt.tcx, f, "builtin", "decreases");
     let is_forall = hack_check_def_name(ctxt.tcx, f, "builtin", "forall");
     let is_exists = hack_check_def_name(ctxt.tcx, f, "builtin", "exists");
     let is_hide = hack_check_def_name(ctxt.tcx, f, "builtin", "hide");
@@ -221,6 +222,11 @@ fn fn_call_to_vir<'tcx>(
         Ok(spanned_new(expr.span, ExprX::Header(header)))
     } else if is_invariant {
         let header = Rc::new(HeaderExprX::Invariant(Rc::new(vir_args)));
+        Ok(spanned_new(expr.span, ExprX::Header(header)))
+    } else if is_decreases {
+        unsupported_err_unless!(len == 1, expr.span, "expected decreases", &args);
+        let typ = typ_of_node(ctxt, &args[0].hir_id);
+        let header = Rc::new(HeaderExprX::Decreases(vir_args[0].clone(), typ));
         Ok(spanned_new(expr.span, ExprX::Header(header)))
     } else if is_admit {
         unsupported_err_unless!(len == 0, expr.span, "expected admit", args);

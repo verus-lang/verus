@@ -11,6 +11,7 @@ pub mod func_to_air;
 pub mod headers;
 pub mod modes;
 mod prelude;
+mod recursion;
 mod sst;
 mod sst_to_air;
 mod sst_vars;

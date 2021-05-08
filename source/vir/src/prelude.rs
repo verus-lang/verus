@@ -1,5 +1,6 @@
 use crate::def::*;
 use air::ast::Ident;
+use air::ast_util::str_ident;
 use air::print_parse::{macro_push_node, str_to_node};
 use air::{node, nodes_vec};
 use sise::Node;
@@ -7,8 +8,14 @@ use sise::Node;
 pub(crate) fn prelude_nodes() -> Vec<Node> {
     #[allow(non_snake_case)]
     let FuelId = str_to_node(FUEL_ID);
+    #[allow(non_snake_case)]
+    let Fuel = str_to_node(FUEL_TYPE);
+    let zero = str_to_node(ZERO);
+    let succ = str_to_node(SUCC);
     let fuel_bool = str_to_node(FUEL_BOOL);
     let fuel_bool_default = str_to_node(FUEL_BOOL_DEFAULT);
+    let fuel_nat = str_to_node(FUEL_NAT);
+    let fuel_nat_default = str_to_node(FUEL_NAT_DEFAULT);
     let fuel_defaults = str_to_node(FUEL_DEFAULTS);
     let u_hi = str_to_node(U_HI);
     let i_lo = str_to_node(I_LO);
@@ -19,6 +26,7 @@ pub(crate) fn prelude_nodes() -> Vec<Node> {
     let u_inv = str_to_node(U_INV);
     let i_inv = str_to_node(I_INV);
     let arch_size = str_to_node(ARCH_SIZE);
+    let check_decrease_int = str_to_node(&suffix_global_id(&str_ident(CHECK_DECREASE_INT)));
     #[allow(non_snake_case)]
     let Poly = str_to_node(POLY);
     let box_int = str_to_node(BOX_INT);
@@ -37,13 +45,24 @@ pub(crate) fn prelude_nodes() -> Vec<Node> {
 
         // Fuel
         (declare-sort [FuelId])
+        (declare-sort [Fuel])
+        (declare-const [zero] [Fuel])
+        (declare-fun [succ] ([Fuel]) [Fuel])
         (declare-fun [fuel_bool] ([FuelId]) Bool)
         (declare-fun [fuel_bool_default] ([FuelId]) Bool)
+        (declare-fun [fuel_nat] ([FuelId]) [Fuel])
+        (declare-fun [fuel_nat_default] ([FuelId]) [Fuel])
         (declare-const [fuel_defaults] Bool)
         (axiom (=> [fuel_defaults]
             (forall ((id [FuelId])) (!
                 (= ([fuel_bool] id) ([fuel_bool_default] id))
                 :pattern (([fuel_bool] id))
+            ))
+        ))
+        (axiom (=> [fuel_defaults]
+            (forall ((id [FuelId])) (!
+                (= ([fuel_nat] id) ([fuel_nat_default] id))
+                :pattern (([fuel_nat] id))
             ))
         ))
 
@@ -192,6 +211,15 @@ pub(crate) fn prelude_nodes() -> Vec<Node> {
                 ([i_inv] bits ([unbox_int] x))
             )
             :pattern (([has_type] x ([type_id_sint] bits)))
+        )))
+
+        // Decreases
+        (declare-fun [check_decrease_int] (Int Int) Bool)
+        (axiom (forall ((cur Int) (prev Int)) (!
+            (= ([check_decrease_int] cur prev)
+                (and (<= 0 cur) (< cur prev))
+            )
+            :pattern (([check_decrease_int] cur prev))
         )))
     )
 }

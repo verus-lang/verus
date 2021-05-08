@@ -1,5 +1,5 @@
 use crate::config::Args;
-use air::ast::{CommandX, SpanOption, ValidityResult};
+use air::ast::{Command, CommandX, SpanOption, ValidityResult};
 use rustc_interface::interface::Compiler;
 use rustc_middle::ty::TyCtxt;
 use rustc_span::{MultiSpan, Span};
@@ -69,6 +69,38 @@ impl Verifier {
         Verifier { count_verified: 0, count_errors: 0, args: args }
     }
 
+    fn check_internal_result(result: ValidityResult) {
+        match result {
+            ValidityResult::Valid => {}
+            ValidityResult::TypeError(err) => {
+                panic!("internal error: ill-typed AIR code: {}", err)
+            }
+            _ => panic!("internal error: decls should not generate queries"),
+        }
+    }
+
+    fn check_result_validity(
+        &mut self,
+        compiler: &Compiler,
+        command: &Command,
+        result: ValidityResult,
+    ) {
+        match result {
+            ValidityResult::Valid => {
+                if let CommandX::CheckValid(_) = **command {
+                    self.count_verified += 1;
+                }
+            }
+            ValidityResult::TypeError(err) => {
+                panic!("internal error: generated ill-typed AIR code: {}", err);
+            }
+            ValidityResult::Invalid(span1, span2) => {
+                report_verify_error(compiler, &span1, &span2);
+                self.count_errors += 1;
+            }
+        }
+    }
+
     fn verify(&mut self, compiler: &Compiler, krate: Krate) -> Result<(), VirErr> {
         vir::modes::check_crate(&krate)?;
 
@@ -97,24 +129,16 @@ impl Verifier {
 
         let ctx = vir::context::Ctx::new(&krate)?;
 
-        let check_internal_result = |result| match result {
-            ValidityResult::Valid => {}
-            ValidityResult::TypeError(err) => {
-                panic!("internal error: ill-typed AIR code: {}", err)
-            }
-            _ => panic!("internal error: decls should not generate queries"),
-        };
-
         air_context.blank_line();
         air_context.comment("Prelude");
         for command in ctx.prelude().iter() {
-            check_internal_result(air_context.command(&command));
+            Self::check_internal_result(air_context.command(&command));
         }
 
         air_context.blank_line();
         air_context.comment("Fuel");
         for command in ctx.fuel().iter() {
-            check_internal_result(air_context.command(&command));
+            Self::check_internal_result(air_context.command(&command));
         }
 
         let commands = vir::datatype_to_air::datatypes_to_air(&krate.datatypes);
@@ -124,20 +148,7 @@ impl Verifier {
             air_context.comment(&("Datatypes".to_string()));
         }
         for command in commands.iter() {
-            let result = air_context.command(&command);
-            match result {
-                ValidityResult::Valid => {
-                    if let CommandX::CheckValid(_) = **command {
-                        self.count_verified += 1;
-                    }
-                }
-                ValidityResult::TypeError(err) => {
-                    panic!("internal error: generated ill-typed AIR code: {}", err);
-                }
-                ValidityResult::Invalid(span_option, _) => {
-                    panic!("internal error: unexpected invalid result: {:?}", span_option);
-                }
-            }
+            Self::check_internal_result(air_context.command(&command));
         }
 
         for function in &krate.functions {
@@ -147,7 +158,7 @@ impl Verifier {
                 air_context.comment(&("Function-Decl ".to_string() + &function.x.name));
             }
             for command in commands.iter() {
-                check_internal_result(air_context.command(&command));
+                self.check_result_validity(compiler, &command, air_context.command(&command));
             }
         }
 
@@ -158,21 +169,7 @@ impl Verifier {
                 air_context.comment(&("Function-Def ".to_string() + &function.x.name));
             }
             for command in commands.iter() {
-                let result = air_context.command(&command);
-                match result {
-                    ValidityResult::Valid => {
-                        if let CommandX::CheckValid(_) = **command {
-                            self.count_verified += 1;
-                        }
-                    }
-                    ValidityResult::TypeError(err) => {
-                        panic!("internal error: generated ill-typed AIR code: {}", err);
-                    }
-                    ValidityResult::Invalid(span1, span2) => {
-                        report_verify_error(compiler, &span1, &span2);
-                        self.count_errors += 1;
-                    }
-                }
+                self.check_result_validity(compiler, &command, air_context.command(&command));
             }
         }
 

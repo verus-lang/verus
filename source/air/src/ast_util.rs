@@ -1,4 +1,7 @@
-use crate::ast::{Binder, BinderX, Constant, Expr, ExprX, Ident, Span, Typ, TypX};
+use crate::ast::{
+    BinaryOp, BindX, Binder, BinderX, Constant, Expr, ExprX, Ident, MultiOp, Quant, Span, Trigger,
+    Typ, TypX,
+};
 use std::fmt::Debug;
 use std::rc::Rc;
 
@@ -82,4 +85,76 @@ pub fn str_typ(x: &str) -> Typ {
 
 pub fn ident_binder<A: Clone>(x: &Ident, a: &A) -> Binder<A> {
     Rc::new(BinderX { name: x.clone(), a: a.clone() })
+}
+
+pub fn mk_quantifier(
+    quant: Quant,
+    binders: &Vec<Binder<Typ>>,
+    triggers: &Vec<Trigger>,
+    body: &Expr,
+) -> Expr {
+    Rc::new(ExprX::Bind(
+        Rc::new(BindX::Quant(quant, Rc::new(binders.clone()), Rc::new(triggers.clone()))),
+        body.clone(),
+    ))
+}
+
+pub fn mk_forall(binders: &Vec<Binder<Typ>>, triggers: &Vec<Trigger>, body: &Expr) -> Expr {
+    mk_quantifier(Quant::Forall, binders, triggers, body)
+}
+
+pub fn mk_exists(binders: &Vec<Binder<Typ>>, triggers: &Vec<Trigger>, body: &Expr) -> Expr {
+    mk_quantifier(Quant::Exists, binders, triggers, body)
+}
+
+pub fn mk_true() -> Expr {
+    Rc::new(ExprX::Const(Constant::Bool(true)))
+}
+
+pub fn mk_false() -> Expr {
+    Rc::new(ExprX::Const(Constant::Bool(false)))
+}
+
+pub fn mk_and(exprs: &Vec<Expr>) -> Expr {
+    if exprs.iter().any(|expr| matches!(**expr, ExprX::Const(Constant::Bool(false)))) {
+        return mk_false();
+    }
+    let exprs: Vec<Expr> = exprs
+        .iter()
+        .filter(|expr| !matches!(***expr, ExprX::Const(Constant::Bool(true))))
+        .cloned()
+        .collect();
+    if exprs.len() == 0 {
+        mk_true()
+    } else if exprs.len() == 1 {
+        exprs[0].clone()
+    } else {
+        Rc::new(ExprX::Multi(MultiOp::And, Rc::new(exprs)))
+    }
+}
+
+pub fn mk_or(exprs: &Vec<Expr>) -> Expr {
+    if exprs.iter().any(|expr| matches!(**expr, ExprX::Const(Constant::Bool(true)))) {
+        return mk_true();
+    }
+    let exprs: Vec<Expr> = exprs
+        .iter()
+        .filter(|expr| !matches!(***expr, ExprX::Const(Constant::Bool(false))))
+        .cloned()
+        .collect();
+    if exprs.len() == 0 {
+        mk_false()
+    } else if exprs.len() == 1 {
+        exprs[0].clone()
+    } else {
+        Rc::new(ExprX::Multi(MultiOp::Or, Rc::new(exprs)))
+    }
+}
+
+pub fn mk_implies(e1: &Expr, e2: &Expr) -> Expr {
+    Rc::new(ExprX::Binary(BinaryOp::Implies, e1.clone(), e2.clone()))
+}
+
+pub fn mk_eq(e1: &Expr, e2: &Expr) -> Expr {
+    Rc::new(ExprX::Binary(BinaryOp::Eq, e1.clone(), e2.clone()))
 }

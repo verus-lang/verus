@@ -129,6 +129,7 @@ pub(crate) fn check_item_fn<'tcx>(
         ret,
         require: header.require,
         ensure: header.ensure,
+        decrease: header.decrease,
         hidden: Rc::new(header.hidden),
         body: Some(vir_body),
     };
@@ -170,6 +171,7 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
         ret: ret_typ_mode.map(|(typ, mode)| (Rc::new(RETURN_VALUE.to_string()), typ, mode)),
         require: Rc::new(vec![]),
         ensure: Rc::new(vec![]),
+        decrease: None,
         hidden: Rc::new(vec![]),
         body: None,
     };

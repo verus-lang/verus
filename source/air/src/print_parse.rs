@@ -303,6 +303,8 @@ pub(crate) fn write_node(
                         if a == "=>"
                             || a == "and"
                             || a == "or"
+                            || a == "ite"
+                            || a == "let"
                             || a == "assume"
                             || a == "assert"
                             || a == "location"

@@ -101,7 +101,7 @@ fn check_expr(typing: &mut Typing, outer_mode: Mode, expr: &Expr) -> Result<Mode
             let mode1 = check_expr(typing, outer_mode, e1)?;
             let mode_branch = match (outer_mode, mode1) {
                 (Mode::Exec, Mode::Spec) => Mode::Proof,
-                _ => mode1,
+                _ => outer_mode,
             };
             let mode2 = check_expr(typing, mode_branch, e2)?;
             match e3 {

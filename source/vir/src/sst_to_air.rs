@@ -14,8 +14,8 @@ use air::ast::{
     MultiOp, Quant, QueryX, Span, Stmt, StmtX, Trigger, Triggers,
 };
 use air::ast_util::{
-    bool_typ, ident_apply, ident_binder, ident_typ, ident_var, int_typ, str_apply, str_ident,
-    str_typ, str_var, string_var,
+    bool_typ, ident_apply, ident_binder, ident_typ, ident_var, int_typ, mk_and, mk_or, str_apply,
+    str_ident, str_typ, str_var, string_var,
 };
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
@@ -188,8 +188,12 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp) -> Expr {
             let lh = exp_to_expr(ctx, lhs);
             let rh = exp_to_expr(ctx, rhs);
             let expx = match op {
-                BinaryOp::And => ExprX::Multi(MultiOp::And, Rc::new(vec![lh, rh])),
-                BinaryOp::Or => ExprX::Multi(MultiOp::Or, Rc::new(vec![lh, rh])),
+                BinaryOp::And => {
+                    return mk_and(&vec![lh, rh]);
+                }
+                BinaryOp::Or => {
+                    return mk_or(&vec![lh, rh]);
+                }
                 BinaryOp::Add => ExprX::Multi(MultiOp::Add, Rc::new(vec![lh, rh])),
                 BinaryOp::Sub => ExprX::Multi(MultiOp::Sub, Rc::new(vec![lh, rh])),
                 BinaryOp::Mul => ExprX::Multi(MultiOp::Mul, Rc::new(vec![lh, rh])),
@@ -311,6 +315,11 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
                 stmts.push(Rc::new(StmtX::Assume(e_ens)));
             }
             vec![Rc::new(StmtX::Block(Rc::new(stmts)))] // wrap in block for readability
+        }
+        StmX::Assert(expr) => {
+            let air_expr = exp_to_expr(ctx, &expr);
+            let option_span = Rc::new(Some(stm.span.clone()));
+            vec![Rc::new(StmtX::Assert(option_span, air_expr))]
         }
         StmX::Assume(expr) => vec![Rc::new(StmtX::Assume(exp_to_expr(ctx, &expr)))],
         StmX::Decl { ident, typ, mutable, init: _ } => {

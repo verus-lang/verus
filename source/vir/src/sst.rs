@@ -54,6 +54,7 @@ pub type Stms = Rc<Vec<Stm>>;
 #[derive(Debug)]
 pub enum StmX {
     Call(Ident, Typs, Exps, Option<Dest>), // call to exec/proof function
+    Assert(Exp),
     Assume(Exp),
     Decl {
         ident: Ident,

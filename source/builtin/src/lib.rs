@@ -18,6 +18,11 @@ pub fn invariant<A>(_a: A) {
 }
 
 // Can only appear at beginning of function body
+pub fn decreases<A>(_a: A) {
+    unimplemented!();
+}
+
+// Can only appear at beginning of function body
 pub fn hide<F>(_f: F) {
     unimplemented!();
 }

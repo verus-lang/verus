@@ -78,8 +78,9 @@ pub type HeaderExpr = Rc<HeaderExprX>;
 pub enum HeaderExprX {
     Requires(Exprs),
     Ensures(Option<(Ident, Typ)>, Exprs),
-    Hide(Ident),
     Invariant(Exprs),
+    Decreases(Expr, Typ),
+    Hide(Ident),
 }
 
 #[derive(Clone, Debug)]
@@ -138,6 +139,7 @@ pub struct FunctionX {
     pub ret: Option<(Ident, Typ, Mode)>,
     pub require: Exprs,
     pub ensure: Exprs,
+    pub decrease: Option<(Expr, Typ)>,
     pub hidden: Idents,
     pub body: Option<Expr>,
 }

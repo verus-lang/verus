@@ -30,14 +30,23 @@ Other generated names:
 pub const SUFFIX_GLOBAL: &str = ".";
 pub const SUFFIX_LOCAL: &str = "@";
 pub const SUFFIX_TYPE_PARAM: &str = "&";
+pub const SUFFIX_RENAME: &str = "!$";
 pub const TYPE_PATH_SEPARATOR: &str = ".";
 pub const VARIANT_SEPARATOR: &str = "/";
 pub const PREFIX_FUEL_ID: &str = "fuel%";
 pub const PREFIX_REQUIRES: &str = "req%";
 pub const PREFIX_ENSURES: &str = "ens%";
+pub const PREFIX_RECURSIVE: &str = "rec%";
 pub const FUEL_ID: &str = "FuelId";
+pub const FUEL_TYPE: &str = "Fuel";
+pub const ZERO: &str = "zero";
+pub const SUCC: &str = "succ";
+pub const FUEL_PARAM: &str = "fuel%";
+pub const FUEL_LOCAL: &str = "fuel%@";
 pub const FUEL_BOOL: &str = "fuel_bool";
 pub const FUEL_BOOL_DEFAULT: &str = "fuel_bool_default";
+pub const FUEL_NAT: &str = "fuel_nat";
+pub const FUEL_NAT_DEFAULT: &str = "fuel_nat_default";
 pub const FUEL_DEFAULTS: &str = "fuel_defaults";
 pub const RETURN_VALUE: &str = "%return";
 pub const U_HI: &str = "uHi";
@@ -49,6 +58,8 @@ pub const NAT_CLIP: &str = "nClip";
 pub const U_INV: &str = "uInv";
 pub const I_INV: &str = "iInv";
 pub const ARCH_SIZE: &str = "SZ";
+pub const CHECK_DECREASE_INT: &str = "check_decrease_int";
+pub const DECREASE_AT_ENTRY: &str = "decrease%init";
 pub const SNAPSHOT_CALL: &str = "CALL";
 pub const POLY: &str = "Poly";
 pub const BOX_INT: &str = "I";
@@ -79,6 +90,10 @@ pub fn suffix_typ_param_id(ident: &Ident) -> Ident {
     Rc::new(ident.to_string() + SUFFIX_TYPE_PARAM)
 }
 
+pub fn suffix_rename(ident: &Ident) -> Ident {
+    Rc::new(ident.to_string() + SUFFIX_RENAME)
+}
+
 pub fn prefix_type_id(ident: &Ident) -> Ident {
     Rc::new(PREFIX_TYPE_ID.to_string() + ident)
 }
@@ -101,6 +116,10 @@ pub fn prefix_requires(ident: &Ident) -> Ident {
 
 pub fn prefix_ensures(ident: &Ident) -> Ident {
     Rc::new(PREFIX_ENSURES.to_string() + ident)
+}
+
+pub fn prefix_recursive(ident: &Ident) -> Ident {
+    Rc::new(PREFIX_RECURSIVE.to_string() + ident)
 }
 
 pub fn variant_ident(adt_name: &str, variant_name: &str) -> Ident {

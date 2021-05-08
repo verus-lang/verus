@@ -151,7 +151,7 @@ impl<'ctx> Context<'ctx> {
         if value == "true" {
             self.set_z3_param_bool(option, true, true);
         } else if value == "false" {
-            self.set_z3_param_bool(option, true, true);
+            self.set_z3_param_bool(option, false, true);
         } else if value.contains(".") {
             let v = value.parse::<f64>().expect(&format!("could not parse option value {}", value));
             self.set_z3_param_f64(option, v, true);

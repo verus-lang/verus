@@ -1,6 +1,4 @@
-use crate::ast::{Expr, ExprX, Function, Ident, Krate, Mode, Path, Variants, VirErr};
-use crate::ast_util::err_string;
-use crate::ast_visitor::map_expr_visitor;
+use crate::ast::{Function, Ident, Krate, Mode, Path, Variants, VirErr};
 use crate::def::FUEL_ID;
 use air::ast::{Command, CommandX, Commands, DeclX, MultiOp, Span};
 use air::ast_util::str_typ;
@@ -15,39 +13,6 @@ pub struct Ctx {
 }
 
 impl Ctx {
-    fn check_defined_earlier(
-        func_map: &HashMap<Ident, Function>,
-        expr: &Expr,
-    ) -> Result<Expr, VirErr> {
-        match &expr.x {
-            ExprX::Call(x, _, _) | ExprX::Fuel(x, _) => {
-                if !func_map.contains_key(x) {
-                    return err_string(
-                        &expr.span,
-                        format!(
-                            "because support for recursion isn't yet implemented, {} must be defined before it is called",
-                            &x
-                        ),
-                    );
-                }
-            }
-            _ => {}
-        }
-        Ok(expr.clone())
-    }
-
-    fn check_no_recursion(
-        func_map: &HashMap<Ident, Function>,
-        function: &Function,
-    ) -> Result<(), VirErr> {
-        // Recursion is not implemented yet, so make sure there is no recursion.
-        // Check this by simply forcing all the declarations to be in order.
-        if let Some(body) = &function.x.body {
-            map_expr_visitor(body, &mut |expr| Self::check_defined_earlier(func_map, expr))?;
-        }
-        Ok(())
-    }
-
     pub fn new(krate: &Krate) -> Result<Self, VirErr> {
         let datatypes = krate
             .datatypes
@@ -57,9 +22,9 @@ impl Ctx {
         let mut functions: Vec<Function> = Vec::new();
         let mut func_map: HashMap<Ident, Function> = HashMap::new();
         for function in krate.functions.iter() {
-            Self::check_no_recursion(&func_map, function)?;
-            functions.push(function.clone());
             func_map.insert(function.x.name.clone(), function.clone());
+            crate::recursion::check_no_mutual_recursion(&func_map, function)?;
+            functions.push(function.clone());
         }
         let chosen_triggers: std::cell::RefCell<Vec<(Span, Vec<Vec<String>>)>> =
             std::cell::RefCell::new(Vec::new());
