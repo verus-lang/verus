@@ -171,6 +171,7 @@ fn fn_call_to_vir<'tcx>(
     let is_exists = hack_check_def_name(ctxt.tcx, f, "builtin", "exists");
     let is_hide = hack_check_def_name(ctxt.tcx, f, "builtin", "hide");
     let is_reveal = hack_check_def_name(ctxt.tcx, f, "builtin", "reveal");
+    let is_reveal_fuel = hack_check_def_name(ctxt.tcx, f, "builtin", "reveal_with_fuel");
     let is_implies = hack_check_def_name(ctxt.tcx, f, "builtin", "imply");
     let is_eq = hack_check_def_name(ctxt.tcx, f, "core", "cmp::PartialEq::eq");
     let is_ne = hack_check_def_name(ctxt.tcx, f, "core", "cmp::PartialEq::ne");
@@ -243,6 +244,16 @@ fn fn_call_to_vir<'tcx>(
             }
         } else {
             err_span_str(expr.span, "hide/reveal: expected identifier")
+        }
+    } else if is_reveal_fuel {
+        unsupported_err_unless!(len == 2, expr.span, "expected reveal_fuel", args);
+        match (&vir_args[0].x, &vir_args[1].x) {
+            (ExprX::Var(x), ExprX::Const(Constant::Nat(s))) => {
+                let n = s.parse::<u32>().expect(&format!("internal error: parse {}", s));
+                Ok(spanned_new(expr.span, ExprX::Fuel(x.clone(), n)))
+            }
+            (ExprX::Var(_), _) => panic!("internal error: is_reveal_fuel"),
+            _ => err_span_str(expr.span, "hide/reveal: expected identifier"),
         }
     } else if is_cmp || is_arith_binary || is_implies {
         unsupported_err_unless!(len == 2, expr.span, "expected binary op", args);

@@ -34,6 +34,7 @@ pub const SUFFIX_RENAME: &str = "!$";
 pub const TYPE_PATH_SEPARATOR: &str = ".";
 pub const VARIANT_SEPARATOR: &str = "/";
 pub const PREFIX_FUEL_ID: &str = "fuel%";
+pub const PREFIX_FUEL_NAT: &str = "fuel_nat%";
 pub const PREFIX_REQUIRES: &str = "req%";
 pub const PREFIX_ENSURES: &str = "ens%";
 pub const PREFIX_RECURSIVE: &str = "rec%";
@@ -45,8 +46,6 @@ pub const FUEL_PARAM: &str = "fuel%";
 pub const FUEL_LOCAL: &str = "fuel%@";
 pub const FUEL_BOOL: &str = "fuel_bool";
 pub const FUEL_BOOL_DEFAULT: &str = "fuel_bool_default";
-pub const FUEL_NAT: &str = "fuel_nat";
-pub const FUEL_NAT_DEFAULT: &str = "fuel_nat_default";
 pub const FUEL_DEFAULTS: &str = "fuel_defaults";
 pub const RETURN_VALUE: &str = "%return";
 pub const U_HI: &str = "uHi";
@@ -108,6 +107,10 @@ pub fn prefix_unbox(ident: &Ident) -> Ident {
 
 pub fn prefix_fuel_id(ident: &Ident) -> Ident {
     Rc::new(PREFIX_FUEL_ID.to_string() + ident)
+}
+
+pub fn prefix_fuel_nat(ident: &Ident) -> Ident {
+    Rc::new(PREFIX_FUEL_NAT.to_string() + ident)
 }
 
 pub fn prefix_requires(ident: &Ident) -> Ident {

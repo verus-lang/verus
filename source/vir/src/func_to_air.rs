@@ -1,9 +1,9 @@
 use crate::ast::{Function, Ident, Idents, Mode, ParamX, Params, VirErr};
 use crate::context::Ctx;
 use crate::def::{
-    prefix_ensures, prefix_fuel_id, prefix_recursive, prefix_requires, suffix_global_id,
-    suffix_local_id, suffix_typ_param_id, Spanned, FUEL_BOOL, FUEL_BOOL_DEFAULT, FUEL_LOCAL,
-    FUEL_NAT, FUEL_NAT_DEFAULT, FUEL_PARAM, FUEL_TYPE, SUCC,
+    prefix_ensures, prefix_fuel_id, prefix_fuel_nat, prefix_recursive, prefix_requires,
+    suffix_global_id, suffix_local_id, suffix_typ_param_id, Spanned, FUEL_BOOL, FUEL_BOOL_DEFAULT,
+    FUEL_LOCAL, FUEL_TYPE, SUCC, ZERO,
 };
 use crate::sst_to_air::{exp_to_expr, typ_invariant, typ_to_air};
 use crate::util::{vec_map, vec_map_result};
@@ -12,8 +12,8 @@ use air::ast::{
     Trigger, Triggers,
 };
 use air::ast_util::{
-    bool_typ, ident_apply, ident_binder, ident_var, mk_and, mk_eq, mk_exists, mk_implies,
-    str_apply, str_ident, str_typ, str_var, string_apply,
+    bool_typ, ident_apply, ident_binder, ident_var, mk_eq, mk_implies, str_apply, str_ident,
+    str_typ, str_var, string_apply,
 };
 use std::rc::Rc;
 
@@ -76,20 +76,8 @@ fn func_body_to_air(
 
     // non-recursive:
     //   (axiom (fuel_bool_default fuel%f))
-    // recursive:
-    //   (axiom (exists ((fuel Fuel)) (= (fuel_nat_default fuel%f) (succ fuel))))
     if function.x.fuel > 0 {
-        let axiom_expr = if !is_recursive {
-            str_apply(&FUEL_BOOL_DEFAULT, &vec![ident_var(&id_fuel)])
-        } else {
-            let mut default_fuel = str_var(FUEL_PARAM);
-            for _ in 0..function.x.fuel {
-                default_fuel = str_apply(SUCC, &vec![default_fuel]);
-            }
-            let fuel_default = str_apply(&FUEL_NAT_DEFAULT, &vec![ident_var(&id_fuel)]);
-            let binder = ident_binder(&str_ident(FUEL_PARAM), &str_typ(FUEL_TYPE));
-            mk_exists(&vec![binder], &vec![], &mk_eq(&fuel_default, &default_fuel))
-        };
+        let axiom_expr = str_apply(&FUEL_BOOL_DEFAULT, &vec![ident_var(&id_fuel)]);
         let fuel_axiom = Rc::new(DeclX::Axiom(axiom_expr));
         commands.push(Rc::new(CommandX::Global(fuel_axiom)));
     }
@@ -97,60 +85,57 @@ fn func_body_to_air(
     // non-recursive:
     //   (axiom (=> (fuel_bool fuel%f) (forall (...) (= (f ...) body))))
     // recursive:
-    //   (axiom (forall (... fuel) (and
-    //     (= (rec%f ... succ(fuel)) (rec%f ... zero) )
-    //     (= (rec%f ... succ(fuel)) body[rec%f ... fuel] )
-    //   )))
-    //   (axiom (forall (...) (= (f ...) (rec%f ... (fuel_nat fuel%f)))))
+    //   (declare-const fuel_nat%f Fuel)
+    //   (axiom (forall (... fuel) (= (rec%f ... fuel) (rec%f ... zero) )))
+    //   (axiom (forall (... fuel) (= (rec%f ... (succ fuel)) body[rec%f ... fuel] )))
+    //   (axiom (=> (fuel_bool fuel%f) (forall (...) (= (f ...) (rec%f ... (succ fuel_nat%f))))))
     let body_expr = exp_to_expr(&ctx, &body_exp);
-    if !is_recursive {
-        let e_forall = func_def_quant(
-            &suffix_global_id(&function.x.name),
-            &function.x.typ_params,
-            &function.x.params,
-            body_expr,
-        )?;
-        let fuel_bool = str_apply(FUEL_BOOL, &vec![ident_var(&id_fuel)]);
-        let imply = mk_implies(&fuel_bool, &e_forall);
-        let def_axiom = Rc::new(DeclX::Axiom(imply));
-        commands.push(Rc::new(CommandX::Global(def_axiom)));
+    let def_body = if !is_recursive {
+        body_expr
     } else {
         let rec_f = suffix_global_id(&prefix_recursive(&function.x.name));
+        let fuel_nat_f = prefix_fuel_nat(&function.x.name);
         let args = func_def_args(&function.x.typ_params, &function.x.params);
-        let mut args_bump = args.clone();
-        let mut args_succ = args.clone();
+        let mut args_zero = args.clone();
         let mut args_fuel = args.clone();
-        // REVIEW: ZERO looks more efficient than FUEL_LOCAL, but less flexible.
-        // Specifically, FUEL_LOCAL allows saying fuel >= value,
-        // while ZERO only works with fuel == value.
-        //   args_bump.push(str_var(ZERO));
-        args_bump.push(str_var(FUEL_LOCAL));
+        let mut args_succ = args.clone();
+        let mut args_def = args.clone();
+        args_zero.push(str_var(ZERO));
+        args_fuel.push(str_var(FUEL_LOCAL));
         args_succ.push(str_apply(SUCC, &vec![str_var(FUEL_LOCAL)]));
-        args_fuel.push(str_apply(FUEL_NAT, &vec![ident_var(&id_fuel)]));
-        let rec_f_bump = ident_apply(&rec_f, &args_bump);
-        let rec_f_succ = ident_apply(&rec_f, &args_succ);
+        args_def.push(str_apply(SUCC, &vec![ident_var(&fuel_nat_f)]));
+        let rec_f_zero = ident_apply(&rec_f, &args_zero);
         let rec_f_fuel = ident_apply(&rec_f, &args_fuel);
-        let eq_bump = mk_eq(&rec_f_succ, &rec_f_bump);
+        let rec_f_succ = ident_apply(&rec_f, &args_succ);
+        let rec_f_def = ident_apply(&rec_f, &args_def);
+        let eq_zero = mk_eq(&rec_f_fuel, &rec_f_zero);
         let eq_body = mk_eq(&rec_f_succ, &body_expr);
-        let and = mk_and(&vec![eq_bump, eq_body]);
-        let bind = func_bind(&function.x.typ_params, &function.x.params, &rec_f_succ, true);
-        let rec_forall = Rc::new(ExprX::Bind(bind, and));
-        let def_forall = func_def_quant(
-            &suffix_global_id(&function.x.name),
-            &function.x.typ_params,
-            &function.x.params,
-            rec_f_fuel,
-        )?;
+        let bind_zero = func_bind(&function.x.typ_params, &function.x.params, &rec_f_fuel, true);
+        let bind_body = func_bind(&function.x.typ_params, &function.x.params, &rec_f_succ, true);
+        let forall_zero = Rc::new(ExprX::Bind(bind_zero, eq_zero));
+        let forall_body = Rc::new(ExprX::Bind(bind_body, eq_body));
         let mut rec_typs = vec_map(&*function.x.params, |param| typ_to_air(&param.x.typ));
         rec_typs.push(str_typ(FUEL_TYPE));
         let rec_typ = typ_to_air(&function.x.ret.as_ref().unwrap().1);
+        let fuel_nat_decl = Rc::new(DeclX::Const(fuel_nat_f, str_typ(FUEL_TYPE)));
         let rec_decl = Rc::new(DeclX::Fun(rec_f, Rc::new(rec_typs), rec_typ));
-        let rec_axiom = Rc::new(DeclX::Axiom(rec_forall));
-        let def_axiom = Rc::new(DeclX::Axiom(def_forall));
+        let axiom_zero = Rc::new(DeclX::Axiom(forall_zero));
+        let axiom_body = Rc::new(DeclX::Axiom(forall_body));
+        commands.push(Rc::new(CommandX::Global(fuel_nat_decl)));
         commands.push(Rc::new(CommandX::Global(rec_decl)));
-        commands.push(Rc::new(CommandX::Global(rec_axiom)));
-        commands.push(Rc::new(CommandX::Global(def_axiom)));
-    }
+        commands.push(Rc::new(CommandX::Global(axiom_zero)));
+        commands.push(Rc::new(CommandX::Global(axiom_body)));
+        rec_f_def
+    };
+    let e_forall = func_def_quant(
+        &suffix_global_id(&function.x.name),
+        &function.x.typ_params,
+        &function.x.params,
+        def_body,
+    )?;
+    let fuel_bool = str_apply(FUEL_BOOL, &vec![ident_var(&id_fuel)]);
+    let def_axiom = Rc::new(DeclX::Axiom(mk_implies(&fuel_bool, &e_forall)));
+    commands.push(Rc::new(CommandX::Global(def_axiom)));
     Ok(())
 }
 

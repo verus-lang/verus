@@ -31,6 +31,10 @@ pub fn reveal<F>(_f: F) {
     unimplemented!();
 }
 
+pub fn reveal_with_fuel<F>(_f: F, _n: u32) {
+    unimplemented!();
+}
+
 pub fn imply(_b1: bool, _b2: bool) -> bool {
     unimplemented!();
 }

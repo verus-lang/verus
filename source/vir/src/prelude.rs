@@ -14,8 +14,6 @@ pub(crate) fn prelude_nodes() -> Vec<Node> {
     let succ = str_to_node(SUCC);
     let fuel_bool = str_to_node(FUEL_BOOL);
     let fuel_bool_default = str_to_node(FUEL_BOOL_DEFAULT);
-    let fuel_nat = str_to_node(FUEL_NAT);
-    let fuel_nat_default = str_to_node(FUEL_NAT_DEFAULT);
     let fuel_defaults = str_to_node(FUEL_DEFAULTS);
     let u_hi = str_to_node(U_HI);
     let i_lo = str_to_node(I_LO);
@@ -50,19 +48,11 @@ pub(crate) fn prelude_nodes() -> Vec<Node> {
         (declare-fun [succ] ([Fuel]) [Fuel])
         (declare-fun [fuel_bool] ([FuelId]) Bool)
         (declare-fun [fuel_bool_default] ([FuelId]) Bool)
-        (declare-fun [fuel_nat] ([FuelId]) [Fuel])
-        (declare-fun [fuel_nat_default] ([FuelId]) [Fuel])
         (declare-const [fuel_defaults] Bool)
         (axiom (=> [fuel_defaults]
             (forall ((id [FuelId])) (!
                 (= ([fuel_bool] id) ([fuel_bool_default] id))
                 :pattern (([fuel_bool] id))
-            ))
-        ))
-        (axiom (=> [fuel_defaults]
-            (forall ((id [FuelId])) (!
-                (= ([fuel_nat] id) ([fuel_nat_default] id))
-                :pattern (([fuel_nat] id))
             ))
         ))
 

@@ -5,7 +5,7 @@ use crate::context::Ctx;
 use crate::def::{
     prefix_ensures, prefix_fuel_id, prefix_requires, prefix_type_id, suffix_global_id,
     suffix_local_id, suffix_typ_param_id, Spanned, FUEL_BOOL, FUEL_BOOL_DEFAULT, FUEL_DEFAULTS,
-    FUEL_ID, POLY, SNAPSHOT_CALL,
+    FUEL_ID, FUEL_PARAM, FUEL_TYPE, POLY, SNAPSHOT_CALL, SUCC,
 };
 use crate::sst::{BndX, Dest, Exp, ExpX, Stm, StmX};
 use crate::util::vec_map;
@@ -14,8 +14,8 @@ use air::ast::{
     MultiOp, Quant, QueryX, Span, Stmt, StmtX, Trigger, Triggers,
 };
 use air::ast_util::{
-    bool_typ, ident_apply, ident_binder, ident_typ, ident_var, int_typ, mk_and, mk_or, str_apply,
-    str_ident, str_typ, str_var, string_var,
+    bool_typ, ident_apply, ident_binder, ident_typ, ident_var, int_typ, mk_and, mk_eq, mk_exists,
+    mk_or, str_apply, str_ident, str_typ, str_var, string_var,
 };
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
@@ -431,14 +431,24 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
             stmts
         }
         StmX::Fuel(x, fuel) => {
-            if *fuel == 0 {
-                vec![]
-            } else {
+            let mut stmts: Vec<Stmt> = Vec::new();
+            if *fuel >= 1 {
                 // (assume (fuel_bool fuel%f))
                 let id_fuel = prefix_fuel_id(&x);
                 let expr_fuel_bool = str_apply(&FUEL_BOOL, &vec![ident_var(&id_fuel)]);
-                vec![Rc::new(StmtX::Assume(expr_fuel_bool))]
+                stmts.push(Rc::new(StmtX::Assume(expr_fuel_bool)));
             }
+            if *fuel >= 2 {
+                // (assume (exists ((fuel Fuel)) (= fuel_nat%f (succ ... succ fuel))))
+                let mut added_fuel = str_var(FUEL_PARAM);
+                for _ in 0..*fuel - 1 {
+                    added_fuel = str_apply(SUCC, &vec![added_fuel]);
+                }
+                let eq = mk_eq(&ident_var(&crate::def::prefix_fuel_nat(&x)), &added_fuel);
+                let binder = ident_binder(&str_ident(FUEL_PARAM), &str_typ(FUEL_TYPE));
+                stmts.push(Rc::new(StmtX::Assume(mk_exists(&vec![binder], &vec![], &eq))));
+            }
+            stmts
         }
         StmX::Block(stms) => stms.iter().map(|s| stm_to_stmts(ctx, state, s)).flatten().collect(),
     }

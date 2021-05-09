@@ -20,6 +20,7 @@ fn arith_sum_nat(i: nat) -> nat {
 }
 
 #[spec]
+#[opaque]
 fn arith_sum_u64(i: u64) -> u64 {
     decreases(i);
 
@@ -42,4 +43,16 @@ fn arith_sum_test1() {
     assert(arith_sum_int(1) == 1);
     assert(arith_sum_int(2) == 3);
     assert(arith_sum_int(3) == 6);
+}
+
+#[proof]
+fn arith_sum_test2() {
+    reveal_with_fuel(arith_sum_int, 4);
+    assert(arith_sum_int(3) == 6);
+}
+
+#[proof]
+fn arith_sum_test3() {
+    reveal_with_fuel(arith_sum_u64, 4);
+    assert(arith_sum_u64(3) == 6);
 }
