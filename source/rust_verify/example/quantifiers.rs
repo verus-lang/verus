@@ -112,3 +112,15 @@ fn test_manual() {
             f1(#[trigger(1, 2)] g1(i), #[trigger(2)] g2(j))
         )));
 }
+
+#[spec]
+fn tr(i: int) -> bool {
+    true
+}
+
+fn test_nat() {
+    assert(forall(|i: nat| i >= 0 && tr(i)));
+    assert(tr(300));
+    assert(exists(|i: nat| i >= 0 && tr(i)));
+    assert(exists(|i: u16| i >= 300 && tr(i)));
+}

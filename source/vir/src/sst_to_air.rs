@@ -15,7 +15,7 @@ use air::ast::{
 };
 use air::ast_util::{
     bool_typ, ident_apply, ident_binder, ident_typ, ident_var, int_typ, mk_and, mk_eq, mk_exists,
-    mk_or, str_apply, str_ident, str_typ, str_var, string_var,
+    mk_implies, mk_ite, mk_not, mk_or, str_apply, str_ident, str_typ, str_var, string_var,
 };
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
@@ -148,7 +148,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp) -> Expr {
             ident_apply(&name, &exprs)
         }
         ExpX::Unary(op, exp) => match op {
-            UnaryOp::Not => Rc::new(ExprX::Unary(air::ast::UnaryOp::Not, exp_to_expr(ctx, exp))),
+            UnaryOp::Not => mk_not(&exp_to_expr(ctx, exp)),
             UnaryOp::Trigger(_) => exp_to_expr(ctx, exp),
             UnaryOp::Clip(IntRange::Int) => exp_to_expr(ctx, exp),
             UnaryOp::Clip(range) => {
@@ -194,6 +194,9 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp) -> Expr {
                 BinaryOp::Or => {
                     return mk_or(&vec![lh, rh]);
                 }
+                BinaryOp::Implies => {
+                    return mk_implies(&lh, &rh);
+                }
                 BinaryOp::Add => ExprX::Multi(MultiOp::Add, Rc::new(vec![lh, rh])),
                 BinaryOp::Sub => ExprX::Multi(MultiOp::Sub, Rc::new(vec![lh, rh])),
                 BinaryOp::Mul => ExprX::Multi(MultiOp::Mul, Rc::new(vec![lh, rh])),
@@ -205,7 +208,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp) -> Expr {
                     let aop = match op {
                         BinaryOp::And => panic!("internal error"),
                         BinaryOp::Or => panic!("internal error"),
-                        BinaryOp::Implies => air::ast::BinaryOp::Implies,
+                        BinaryOp::Implies => panic!("internal error"),
                         BinaryOp::Eq => air::ast::BinaryOp::Eq,
                         BinaryOp::Ne => panic!("internal error"),
                         BinaryOp::Le => air::ast::BinaryOp::Le,
@@ -224,7 +227,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp) -> Expr {
             Rc::new(expx)
         }
         ExpX::If(e1, e2, e3) => {
-            Rc::new(ExprX::IfElse(exp_to_expr(ctx, e1), exp_to_expr(ctx, e2), exp_to_expr(ctx, e3)))
+            mk_ite(&exp_to_expr(ctx, e1), &exp_to_expr(ctx, e2), &exp_to_expr(ctx, e3))
         }
         ExpX::Field { lhs, datatype_name: _, field_name: name } => {
             // TODO: this should include datatype_name in the function name
@@ -241,6 +244,19 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp) -> Expr {
             }
             BndX::Quant(quant, binders, trigs) => {
                 let expr = exp_to_expr(ctx, exp);
+                let mut invs: Vec<Expr> = Vec::new();
+                for binder in binders.iter() {
+                    let typ_inv =
+                        typ_invariant(&binder.a, &ident_var(&suffix_local_id(&binder.name)), true);
+                    if let Some(inv) = typ_inv {
+                        invs.push(inv);
+                    }
+                }
+                let inv = mk_and(&invs);
+                let expr = match quant {
+                    Quant::Forall => mk_implies(&inv, &expr),
+                    Quant::Exists => mk_and(&vec![inv, expr]),
+                };
                 let binders = vec_map(&*binders, |b| {
                     Rc::new(BinderX { name: suffix_local_id(&b.name), a: typ_to_air(&b.a) })
                 });

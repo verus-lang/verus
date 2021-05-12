@@ -1,6 +1,6 @@
 use crate::ast::{
     BinaryOp, BindX, Binder, BinderX, Constant, Expr, ExprX, Ident, MultiOp, Quant, Span, Trigger,
-    Typ, TypX,
+    Typ, TypX, UnaryOp,
 };
 use std::fmt::Debug;
 use std::rc::Rc;
@@ -151,8 +151,35 @@ pub fn mk_or(exprs: &Vec<Expr>) -> Expr {
     }
 }
 
+pub fn mk_not(e1: &Expr) -> Expr {
+    match &**e1 {
+        ExprX::Const(Constant::Bool(false)) => mk_true(),
+        ExprX::Const(Constant::Bool(true)) => mk_false(),
+        ExprX::Unary(UnaryOp::Not, e) => e.clone(),
+        _ => Rc::new(ExprX::Unary(UnaryOp::Not, e1.clone())),
+    }
+}
+
 pub fn mk_implies(e1: &Expr, e2: &Expr) -> Expr {
-    Rc::new(ExprX::Binary(BinaryOp::Implies, e1.clone(), e2.clone()))
+    match (&**e1, &**e2) {
+        (ExprX::Const(Constant::Bool(false)), _) => mk_true(),
+        (ExprX::Const(Constant::Bool(true)), _) => e2.clone(),
+        (_, ExprX::Const(Constant::Bool(false))) => mk_not(e1),
+        (_, ExprX::Const(Constant::Bool(true))) => mk_true(),
+        _ => Rc::new(ExprX::Binary(BinaryOp::Implies, e1.clone(), e2.clone())),
+    }
+}
+
+pub fn mk_ite(e1: &Expr, e2: &Expr, e3: &Expr) -> Expr {
+    match (&**e1, &**e2, &**e3) {
+        (ExprX::Const(Constant::Bool(true)), _, _) => e2.clone(),
+        (ExprX::Const(Constant::Bool(false)), _, _) => e3.clone(),
+        (_, _, ExprX::Const(Constant::Bool(true))) => mk_implies(e1, e2),
+        (_, _, ExprX::Const(Constant::Bool(false))) => mk_and(&vec![e1.clone(), e2.clone()]),
+        (_, ExprX::Const(Constant::Bool(true)), _) => mk_implies(&mk_not(e1), e3),
+        (_, ExprX::Const(Constant::Bool(false)), _) => mk_and(&vec![mk_not(e1), e3.clone()]),
+        _ => Rc::new(ExprX::IfElse(e1.clone(), e2.clone(), e3.clone())),
+    }
 }
 
 pub fn mk_eq(e1: &Expr, e2: &Expr) -> Expr {
