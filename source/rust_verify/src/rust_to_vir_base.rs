@@ -195,6 +195,16 @@ pub(crate) fn mid_ty_to_vir_opt<'tcx>(tcx: TyCtxt<'tcx>, ty: rustc_middle::ty::T
     }
 }
 
+pub(crate) fn ty_resolved_path_to_debug_path(_tcx: TyCtxt<'_>, ty: &Ty) -> String {
+    let Ty { hir_id: _, kind, span: _ } = ty;
+    match kind {
+        rustc_hir::TyKind::Path(QPath::Resolved(None, path)) => {
+            path.segments.iter().map(|x| x.ident.name.to_ident_string()).collect::<Vec<_>>().join("::")
+        }
+        _ => panic!("{:?} does not have a resolved path", ty)
+    }
+}
+
 pub(crate) fn ty_to_vir<'tcx>(tcx: TyCtxt<'tcx>, ty: &Ty) -> Typ {
     let Ty { hir_id: _, kind, span } = ty;
     let typ_x = match kind {

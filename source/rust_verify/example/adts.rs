@@ -3,11 +3,13 @@ use builtin::*;
 mod pervasive;
 use pervasive::*;
 
+#[derive(PartialEq, Eq)]
 struct Car {
     four_doors: bool,
     passengers: int,
 }
 
+#[derive(PartialEq, Eq)]
 enum Vehicle {
     Car(Car),
     Train(bool),
@@ -41,7 +43,17 @@ fn test_enum_1(passengers: int) {
     let t = Vehicle::Train(true);
     let c1 = Vehicle::Car(Car { passengers, four_doors: true });
     let c2 = Vehicle::Car(Car { passengers, four_doors: false });
-    // assert(t != c1);
-    // assert(c1 != c2);
 }
 
+fn test_neq(passengers: int) {
+    let c1 = Car { passengers, four_doors: true };
+    let c2 = Car { passengers, four_doors: false };
+
+    assert(c1 != c2);
+
+    let t = Vehicle::Train(true);
+    let ca = Vehicle::Car(c1);
+
+    assert(t != ca);
+    assert(t == ca); // FAILS
+}
