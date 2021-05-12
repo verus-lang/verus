@@ -247,6 +247,25 @@ pub(crate) fn typ_of_node<'tcx>(ctxt: &Ctxt<'tcx>, id: &HirId) -> Typ {
     mid_ty_to_vir(ctxt.tcx, ctxt.types.node_type(*id))
 }
 
+// Do equality operations on these operands translate into the SMT solver's == operation?
+pub(crate) fn is_smt_equality<'tcx>(ctxt: &Ctxt<'tcx>, id1: &HirId, id2: &HirId) -> bool {
+    match (&*typ_of_node(ctxt, id1), &*typ_of_node(ctxt, id2)) {
+        (TypX::Bool, TypX::Bool) => true,
+        (TypX::Int(_), TypX::Int(_)) => true,
+        _ => false,
+    }
+}
+
+// Do arithmetic operations on these operands translate into the SMT solver's <=, +, =>, etc.?
+// (possibly with clipping/wrapping for finite-size integers?)
+pub(crate) fn is_smt_arith<'tcx>(ctxt: &Ctxt<'tcx>, id1: &HirId, id2: &HirId) -> bool {
+    match (&*typ_of_node(ctxt, id1), &*typ_of_node(ctxt, id2)) {
+        (TypX::Bool, TypX::Bool) => true,
+        (TypX::Int(_), TypX::Int(_)) => true,
+        _ => false,
+    }
+}
+
 pub(crate) fn check_generics<'tcx>(generics: &'tcx Generics<'tcx>) -> Result<Idents, VirErr> {
     let Generics { params, where_clause, span: _ } = generics;
     let mut typ_params: Vec<vir::ast::Ident> = Vec::new();

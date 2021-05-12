@@ -1,6 +1,7 @@
 use crate::rust_to_vir_base::{
     def_id_to_vir_path, get_trigger, get_var_mode, hack_check_def_name, hack_get_def_name,
-    ident_to_var, mid_ty_to_vir, mid_ty_to_vir_opt, mk_range, ty_to_vir, typ_of_node, Ctxt,
+    ident_to_var, is_smt_arith, is_smt_equality, mid_ty_to_vir, mid_ty_to_vir_opt, mk_range,
+    ty_to_vir, typ_of_node, Ctxt,
 };
 use crate::util::{
     err_span_str, slice_vec_map_result, spanned_new, unsupported_err_span, vec_map, vec_map_result,
@@ -218,6 +219,14 @@ fn fn_call_to_vir<'tcx>(
 
     let mut vir_args = vec_map_result(&args, |arg| expr_to_vir(ctxt, arg))?;
 
+    let is_smt_binary = if is_eq || is_ne {
+        is_smt_equality(ctxt, &args[0].hir_id, &args[1].hir_id)
+    } else if is_cmp || is_arith_binary || is_implies {
+        is_smt_arith(ctxt, &args[0].hir_id, &args[1].hir_id)
+    } else {
+        false
+    };
+
     if is_requires {
         let header = Rc::new(HeaderExprX::Requires(Rc::new(vir_args)));
         Ok(spanned_new(expr.span, ExprX::Header(header)))
@@ -255,7 +264,7 @@ fn fn_call_to_vir<'tcx>(
             (ExprX::Var(_), _) => panic!("internal error: is_reveal_fuel"),
             _ => err_span_str(expr.span, "hide/reveal: expected identifier"),
         }
-    } else if is_cmp || is_arith_binary || is_implies {
+    } else if is_smt_binary {
         unsupported_err_unless!(len == 2, expr.span, "expected binary op", args);
         let lhs = vir_args[0].clone();
         let rhs = vir_args[1].clone();
