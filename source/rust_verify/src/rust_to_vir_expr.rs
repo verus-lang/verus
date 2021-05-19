@@ -471,10 +471,23 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
             let vlhs = expr_to_vir(ctxt, lhs)?;
             let vrhs = expr_to_vir(ctxt, rhs)?;
             match op.node {
-                BinOpKind::Eq | BinOpKind::Ne => unsupported_unless!(is_smt_equality(ctxt, expr.span, &lhs.hir_id, &rhs.hir_id), "==/!= for non smt equality types", expr),
-                BinOpKind::Add | BinOpKind::Sub | BinOpKind::Mul |
-                    BinOpKind::Le | BinOpKind::Ge | BinOpKind::Lt | BinOpKind::Gt => unsupported_unless!(is_smt_arith(ctxt, &lhs.hir_id, &rhs.hir_id), "cmp or arithmetic for non smt arithmetic types", expr),
-                _ => ()
+                BinOpKind::Eq | BinOpKind::Ne => unsupported_unless!(
+                    is_smt_equality(ctxt, expr.span, &lhs.hir_id, &rhs.hir_id),
+                    "==/!= for non smt equality types",
+                    expr
+                ),
+                BinOpKind::Add
+                | BinOpKind::Sub
+                | BinOpKind::Mul
+                | BinOpKind::Le
+                | BinOpKind::Ge
+                | BinOpKind::Lt
+                | BinOpKind::Gt => unsupported_unless!(
+                    is_smt_arith(ctxt, &lhs.hir_id, &rhs.hir_id),
+                    "cmp or arithmetic for non smt arithmetic types",
+                    expr
+                ),
+                _ => (),
             }
             let vop = match op.node {
                 BinOpKind::And => BinaryOp::And,

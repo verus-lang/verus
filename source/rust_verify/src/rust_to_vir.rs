@@ -7,13 +7,14 @@ For soundness's sake, be as defensive as possible:
 */
 
 use crate::rust_to_vir_adts::{check_item_enum, check_item_struct};
-use crate::rust_to_vir_func::{check_foreign_item_fn, check_item_fn};
 use crate::rust_to_vir_base::{hack_check_def_name, hack_get_def_name};
+use crate::rust_to_vir_func::{check_foreign_item_fn, check_item_fn};
 use crate::util::unsupported_err_span;
 use crate::{unsupported_err, unsupported_unless};
 use rustc_ast::Attribute;
 use rustc_hir::{
-    Crate, ForeignItem, ForeignItemId, ForeignItemKind, HirId, Item, ItemId, ItemKind, ModuleItems, TraitRef,
+    Crate, ForeignItem, ForeignItemId, ForeignItemKind, HirId, Item, ItemId, ItemKind, ModuleItems,
+    TraitRef,
 };
 use rustc_middle::ty::TyCtxt;
 use rustc_span::def_id::LocalDefId;
@@ -53,11 +54,18 @@ fn check_item<'tcx>(
         ItemKind::Impl(impll) => {
             if let Some(TraitRef { path, hir_ref_id: _ }) = impll.of_trait {
                 unsupported_unless!(
-                    hack_check_def_name(tcx, path.res.def_id(), "core", "marker::StructuralEq") ||
-                    hack_check_def_name(tcx, path.res.def_id(), "core", "cmp::Eq") ||
-                    hack_check_def_name(tcx, path.res.def_id(), "core", "marker::StructuralPartialEq") ||
-                    hack_check_def_name(tcx, path.res.def_id(), "core", "cmp::PartialEq"),
-                    "non_eq_trait_impl", path);
+                    hack_check_def_name(tcx, path.res.def_id(), "core", "marker::StructuralEq")
+                        || hack_check_def_name(tcx, path.res.def_id(), "core", "cmp::Eq")
+                        || hack_check_def_name(
+                            tcx,
+                            path.res.def_id(),
+                            "core",
+                            "marker::StructuralPartialEq"
+                        )
+                        || hack_check_def_name(tcx, path.res.def_id(), "core", "cmp::PartialEq"),
+                    "non_eq_trait_impl",
+                    path
+                );
             } else {
                 unsupported_err!(item.span, "unsupported impl of non-trait", item);
             }
@@ -85,9 +93,12 @@ fn check_module<'tcx>(
                 let def_name = hack_get_def_name(tcx, id.def_id.to_def_id());
                 // TODO: check whether these implement the correct trait
                 unsupported_unless!(
-                    def_name == "assert_receiver_is_total_eq" ||
-                    def_name == "eq" ||
-                    def_name == "ne", "impl definition in module", id);
+                    def_name == "assert_receiver_is_total_eq"
+                        || def_name == "eq"
+                        || def_name == "ne",
+                    "impl definition in module",
+                    id
+                );
             }
             for _id in foreign_items {
                 // TODO
@@ -171,17 +182,22 @@ pub fn crate_to_vir<'tcx>(tcx: TyCtxt<'tcx>, krate: &'tcx Crate<'tcx>) -> Result
         let impl_item_ident = impl_item.ident.as_str();
         // TODO: check whether these implement the correct trait
         unsupported_unless!(
-            impl_item_ident == "assert_receiver_is_total_eq" ||
-            impl_item_ident == "eq" ||
-            impl_item_ident == "ne", "impl definition", impl_item);
+            impl_item_ident == "assert_receiver_is_total_eq"
+                || impl_item_ident == "eq"
+                || impl_item_ident == "ne",
+            "impl definition",
+            impl_item
+        );
     }
     for (id, _trait_impl) in trait_impls {
         unsupported_unless!(
-            hack_check_def_name(tcx, *id, "core", "marker::StructuralEq") ||
-            hack_check_def_name(tcx, *id, "core", "cmp::Eq") ||
-            hack_check_def_name(tcx, *id, "core", "marker::StructuralPartialEq") ||
-            hack_check_def_name(tcx, *id, "core", "cmp::PartialEq"),
-            "non_eq_trait_impl", id);
+            hack_check_def_name(tcx, *id, "core", "marker::StructuralEq")
+                || hack_check_def_name(tcx, *id, "core", "cmp::Eq")
+                || hack_check_def_name(tcx, *id, "core", "marker::StructuralPartialEq")
+                || hack_check_def_name(tcx, *id, "core", "cmp::PartialEq"),
+            "non_eq_trait_impl",
+            id
+        );
     }
     for (id, module) in modules {
         check_module(tcx, id, module)?;

@@ -1,4 +1,4 @@
-use crate::ast::{Mode, Typ, TypX, VirErr, VirErrX, Path};
+use crate::ast::{Mode, Path, Typ, TypX, VirErr, VirErrX};
 use crate::def::Spanned;
 use air::ast::Span;
 pub use air::ast_util::{ident_binder, str_ident};

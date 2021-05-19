@@ -199,10 +199,13 @@ pub(crate) fn mid_ty_to_vir_opt<'tcx>(tcx: TyCtxt<'tcx>, ty: rustc_middle::ty::T
 pub(crate) fn ty_resolved_path_to_debug_path(_tcx: TyCtxt<'_>, ty: &Ty) -> String {
     let Ty { hir_id: _, kind, span: _ } = ty;
     match kind {
-        rustc_hir::TyKind::Path(QPath::Resolved(None, path)) => {
-            path.segments.iter().map(|x| x.ident.name.to_ident_string()).collect::<Vec<_>>().join("::")
-        }
-        _ => panic!("{:?} does not have a resolved path", ty)
+        rustc_hir::TyKind::Path(QPath::Resolved(None, path)) => path
+            .segments
+            .iter()
+            .map(|x| x.ident.name.to_ident_string())
+            .collect::<Vec<_>>()
+            .join("::"),
+        _ => panic!("{:?} does not have a resolved path", ty),
     }
 }
 
@@ -259,7 +262,12 @@ pub(crate) fn typ_of_node<'tcx>(ctxt: &Ctxt<'tcx>, id: &HirId) -> Typ {
 }
 
 // Do equality operations on these operands translate into the SMT solver's == operation?
-pub(crate) fn is_smt_equality<'tcx>(ctxt: &Ctxt<'tcx>, span: Span, id1: &HirId, id2: &HirId) -> bool {
+pub(crate) fn is_smt_equality<'tcx>(
+    ctxt: &Ctxt<'tcx>,
+    span: Span,
+    id1: &HirId,
+    id2: &HirId,
+) -> bool {
     let (t1, t2) = (typ_of_node(ctxt, id1), typ_of_node(ctxt, id2));
     match (&*t1, &*t2) {
         (TypX::Bool, TypX::Bool) => true,
@@ -270,9 +278,15 @@ pub(crate) fn is_smt_equality<'tcx>(ctxt: &Ctxt<'tcx>, span: Span, id1: &HirId, 
             // (member-wise) adt equality. We should check whether the PartialEq implementation
             // is compatible with adt equality before allowing these. For now, warn that there
             // may be unsoundness.
-            warning_span(span, format!("the verifier will assume structural equality for {}, which may be unsound", path_to_string(p)));
+            warning_span(
+                span,
+                format!(
+                    "the verifier will assume structural equality for {}, which may be unsound",
+                    path_to_string(p)
+                ),
+            );
             true
-        },
+        }
         _ => false,
     }
 }
