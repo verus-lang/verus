@@ -1,6 +1,7 @@
 use crate::ast::{
     BinaryOp, Ident, Idents, IntRange, Mode, Params, Path, Typ, TypX, UnaryOp, UnaryOpr,
 };
+use crate::ast_util::path_to_string;
 use crate::context::Ctx;
 use crate::def::{
     prefix_ensures, prefix_fuel_id, prefix_requires, prefix_type_id, suffix_global_id,
@@ -19,11 +20,6 @@ use air::ast_util::{
 };
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
-
-fn path_to_string(path: &Path) -> String {
-    let sep = crate::def::TYPE_PATH_SEPARATOR;
-    path.iter().map(|x| (**x).as_str()).collect::<Vec<_>>().join(sep)
-}
 
 #[inline(always)]
 pub(crate) fn path_to_air_ident(path: &Path) -> Ident {

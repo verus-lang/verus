@@ -48,7 +48,9 @@ fn test_enum_1(passengers: int) {
 fn test_neq(passengers: int) {
     let c1 = Car { passengers, four_doors: true };
     let c2 = Car { passengers, four_doors: false };
+    let c3 = Car { passengers, four_doors: true };
 
+    assert(c1 == c3);
     assert(c1 != c2);
 
     let t = Vehicle::Train(true);

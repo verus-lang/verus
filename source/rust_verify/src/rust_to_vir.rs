@@ -9,7 +9,7 @@ For soundness's sake, be as defensive as possible:
 use crate::rust_to_vir_adts::{check_item_enum, check_item_struct};
 use crate::rust_to_vir_func::{check_foreign_item_fn, check_item_fn};
 use crate::rust_to_vir_base::{hack_check_def_name, hack_get_def_name};
-use crate::util::{unsupported_err_span, warning_span};
+use crate::util::unsupported_err_span;
 use crate::{unsupported_err, unsupported_unless};
 use rustc_ast::Attribute;
 use rustc_hir::{
@@ -58,15 +58,6 @@ fn check_item<'tcx>(
                     hack_check_def_name(tcx, path.res.def_id(), "core", "marker::StructuralPartialEq") ||
                     hack_check_def_name(tcx, path.res.def_id(), "core", "cmp::PartialEq"),
                     "non_eq_trait_impl", path);
-                let selfty_path = crate::rust_to_vir_base::ty_resolved_path_to_debug_path(tcx, impll.self_ty);
-                // TODO: a type may provide a custom PartialEq implementation, or have interior
-                // mutability; this means that PartialEq::eq may not be the same as structural
-                // (member-wise) adt equality. We should check whether the PartialEq implementation
-                // is compatible with adt equality before allowing these. For now, warn that there
-                // may be unsoundness.
-                if hack_check_def_name(tcx, path.res.def_id(), "core", "cmp::PartialEq") {
-                    warning_span(impll.self_ty.span, format!("verifier support for the equality impl of {} may be unsound", selfty_path));
-                }
             } else {
                 unsupported_err!(item.span, "unsupported impl of non-trait", item);
             }

@@ -1,4 +1,4 @@
-use crate::ast::{Mode, Typ, TypX, VirErr, VirErrX};
+use crate::ast::{Mode, Typ, TypX, VirErr, VirErrX, Path};
 use crate::def::Spanned;
 use air::ast::Span;
 pub use air::ast_util::{ident_binder, str_ident};
@@ -30,4 +30,9 @@ pub fn types_equal(typ1: &Typ, typ2: &Typ) -> bool {
         (TypX::TypParam(x1), TypX::TypParam(x2)) => x1 == x2,
         _ => false,
     }
+}
+
+pub fn path_to_string(path: &Path) -> String {
+    let sep = crate::def::TYPE_PATH_SEPARATOR;
+    path.iter().map(|x| (**x).as_str()).collect::<Vec<_>>().join(sep)
 }

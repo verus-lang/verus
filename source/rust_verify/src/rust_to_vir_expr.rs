@@ -220,7 +220,7 @@ fn fn_call_to_vir<'tcx>(
     let mut vir_args = vec_map_result(&args, |arg| expr_to_vir(ctxt, arg))?;
 
     let is_smt_binary = if is_eq || is_ne {
-        is_smt_equality(ctxt, &args[0].hir_id, &args[1].hir_id)
+        is_smt_equality(ctxt, expr.span, &args[0].hir_id, &args[1].hir_id)
     } else if is_cmp || is_arith_binary || is_implies {
         is_smt_arith(ctxt, &args[0].hir_id, &args[1].hir_id)
     } else {
@@ -470,6 +470,12 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
         ExprKind::Binary(op, lhs, rhs) => {
             let vlhs = expr_to_vir(ctxt, lhs)?;
             let vrhs = expr_to_vir(ctxt, rhs)?;
+            match op.node {
+                BinOpKind::Eq | BinOpKind::Ne => unsupported_unless!(is_smt_equality(ctxt, expr.span, &lhs.hir_id, &rhs.hir_id), "==/!= for non smt equality types", expr),
+                BinOpKind::Add | BinOpKind::Sub | BinOpKind::Mul |
+                    BinOpKind::Le | BinOpKind::Ge | BinOpKind::Lt | BinOpKind::Gt => unsupported_unless!(is_smt_arith(ctxt, &lhs.hir_id, &rhs.hir_id), "cmp or arithmetic for non smt arithmetic types", expr),
+                _ => ()
+            }
             let vop = match op.node {
                 BinOpKind::And => BinaryOp::And,
                 BinOpKind::Or => BinaryOp::Or,
