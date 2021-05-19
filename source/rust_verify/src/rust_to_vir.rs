@@ -59,7 +59,9 @@ fn check_item<'tcx>(
                     hack_check_def_name(tcx, path.res.def_id(), "core", "cmp::PartialEq"),
                     "non_eq_trait_impl", path);
                 let selfty_path = crate::rust_to_vir_base::ty_resolved_path_to_debug_path(tcx, impll.self_ty);
-                warning_span(impll.self_ty.span, format!("verifier support for the equality impl of {} may be unsound", selfty_path));
+                if hack_check_def_name(tcx, path.res.def_id(), "core", "cmp::PartialEq") {
+                    warning_span(impll.self_ty.span, format!("verifier support for the equality impl of {} may be unsound", selfty_path));
+                }
             } else {
                 unsupported_err!(item.span, "unsupported impl of non-trait", item);
             }
