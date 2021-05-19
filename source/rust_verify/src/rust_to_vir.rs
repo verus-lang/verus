@@ -59,6 +59,11 @@ fn check_item<'tcx>(
                     hack_check_def_name(tcx, path.res.def_id(), "core", "cmp::PartialEq"),
                     "non_eq_trait_impl", path);
                 let selfty_path = crate::rust_to_vir_base::ty_resolved_path_to_debug_path(tcx, impll.self_ty);
+                // TODO: a type may provide a custom PartialEq implementation, or have interior
+                // mutability; this means that PartialEq::eq may not be the same as structural
+                // (member-wise) adt equality. We should check whether the PartialEq implementation
+                // is compatible with adt equality before allowing these. For now, warn that there
+                // may be unsoundness.
                 if hack_check_def_name(tcx, path.res.def_id(), "core", "cmp::PartialEq") {
                     warning_span(impll.self_ty.span, format!("verifier support for the equality impl of {} may be unsound", selfty_path));
                 }
