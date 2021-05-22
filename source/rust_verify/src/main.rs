@@ -1,15 +1,5 @@
 #![feature(rustc_private)]
 
-mod config;
-mod rust_to_vir;
-mod rust_to_vir_adts;
-mod rust_to_vir_base;
-mod rust_to_vir_expr;
-mod rust_to_vir_func;
-mod typecheck;
-mod util;
-mod verifier;
-
 extern crate rustc_ast;
 extern crate rustc_driver;
 extern crate rustc_errors;
@@ -20,7 +10,8 @@ extern crate rustc_mir_build;
 extern crate rustc_span;
 extern crate rustc_typeck;
 
-use verifier::Verifier;
+use rust_verify::config;
+use rust_verify::verifier::Verifier;
 
 struct CompilerCallbacks;
 
@@ -36,7 +27,8 @@ pub fn main() {
     let status = rustc_driver::RunCompiler::new(&rustc_args, &mut verifier).run();
     println!(
         "Verification results:: verified: {} errors: {}",
-        verifier.count_verified, verifier.count_errors
+        verifier.count_verified,
+        verifier.errors.len()
     );
     match status {
         Ok(_) => {}

@@ -1,16 +1,53 @@
 use crate::config::Args;
+use crate::unsupported;
 use air::ast::{Command, CommandX, SpanOption, ValidityResult};
 use rustc_interface::interface::Compiler;
 use rustc_middle::ty::TyCtxt;
-use rustc_span::{MultiSpan, Span};
+use rustc_span::source_map::SourceMap;
+use rustc_span::{CharPos, FileName, MultiSpan, Span};
 use std::fs::File;
 use std::io::Write;
 use vir::ast::{Krate, VirErr, VirErrX};
 
-pub(crate) struct Verifier {
+pub struct Verifier {
     pub count_verified: u64,
-    pub count_errors: u64,
+    pub errors: Vec<(Option<ErrorSpan>, Option<ErrorSpan>)>,
     args: Args,
+    pub test_capture_output: Option<std::sync::Arc<std::sync::Mutex<Vec<u8>>>>,
+}
+
+#[derive(Debug)]
+pub struct ErrorSpan {
+    pub description: Option<String>,
+    pub span_data: (String, (usize, CharPos), (usize, CharPos)),
+    pub test_span_line: String,
+}
+
+impl ErrorSpan {
+    fn new_from_air_span(source_map: &SourceMap, air_span: &air::ast::Span) -> Self {
+        let span: &Span = (*air_span.raw_span)
+            .downcast_ref::<Span>()
+            .expect("internal error: failed to cast to Span");
+        let filename: String = match source_map.span_to_filename(*span) {
+            FileName::Real(rfn) => rfn
+                .local_path()
+                .to_str()
+                .expect("internal error: path is not a valid string")
+                .to_string(),
+            _ => unsupported!("non real filenames in verifier errors", air_span),
+        };
+        let (start, end) = source_map.is_valid_span(*span).expect("internal error: invalid Span");
+        let test_span_line = {
+            let span = source_map.span_extend_to_prev_char(*span, '\n', false);
+            let span = source_map.span_extend_to_next_char(span, '\n', false);
+            source_map.span_to_snippet(span).expect("internal error: cannot extract Span line")
+        };
+        Self {
+            description: air_span.description.clone(),
+            span_data: (filename, (start.line, start.col), (end.line, end.col)),
+            test_span_line: test_span_line,
+        }
+    }
 }
 
 fn report_vir_error(compiler: &Compiler, vir_err: VirErr) {
@@ -66,7 +103,7 @@ fn report_chosen_triggers(
 
 impl Verifier {
     pub fn new(args: Args) -> Verifier {
-        Verifier { count_verified: 0, count_errors: 0, args: args }
+        Verifier { count_verified: 0, errors: Vec::new(), args: args, test_capture_output: None }
     }
 
     fn check_internal_result(result: ValidityResult) {
@@ -96,7 +133,16 @@ impl Verifier {
             }
             ValidityResult::Invalid(span1, span2) => {
                 report_verify_error(compiler, &span1, &span2);
-                self.count_errors += 1;
+                self.errors.push((
+                    span1
+                        .as_ref()
+                        .as_ref()
+                        .map(|x| ErrorSpan::new_from_air_span(compiler.session().source_map(), x)),
+                    span2
+                        .as_ref()
+                        .as_ref()
+                        .map(|x| ErrorSpan::new_from_air_span(compiler.session().source_map(), x)),
+                ))
             }
         }
     }
@@ -235,7 +281,29 @@ impl Verifier {
     }
 }
 
+struct DiagnostricOutputWriter {
+    output: std::sync::Arc<std::sync::Mutex<Vec<u8>>>,
+}
+
+impl std::io::Write for DiagnostricOutputWriter {
+    fn write(&mut self, buf: &[u8]) -> Result<usize, std::io::Error> {
+        self.output.lock().expect("internal error: cannot lock captured output").write(buf)
+    }
+    fn flush(&mut self) -> Result<(), std::io::Error> {
+        self.output.lock().expect("internal error: cannot lock captured output").flush()
+    }
+}
+
 impl rustc_driver::Callbacks for Verifier {
+    fn config(&mut self, config: &mut rustc_interface::interface::Config) {
+        if let Some(target) = &self.test_capture_output {
+            config.diagnostic_output =
+                rustc_session::DiagnosticOutput::Raw(Box::new(DiagnostricOutputWriter {
+                    output: target.clone(),
+                }));
+        }
+    }
+
     fn after_expansion<'tcx>(
         &mut self,
         compiler: &Compiler,

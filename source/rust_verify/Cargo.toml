@@ -11,3 +11,6 @@ z3 = "0.10.0"
 air = { path = "../air" }
 vir = { path = "../vir" }
 getopts = { git = "https://github.com/utaal/getopts.git", branch = "parse-partial" }
+
+[dev-dependencies]
+indoc = "1.0"

@@ -1,20 +1,17 @@
 use getopts::Options;
 
 #[derive(Debug, Default)]
-pub(crate) struct Args {
-    pub(crate) rlimit: u32,
-    pub(crate) log_vir: Option<String>,
-    pub(crate) log_air_initial: Option<String>,
-    pub(crate) log_air_final: Option<String>,
-    pub(crate) log_smt: Option<String>,
-    pub(crate) log_triggers: Option<String>,
-    pub(crate) show_triggers: bool,
+pub struct Args {
+    pub rlimit: u32,
+    pub log_vir: Option<String>,
+    pub log_air_initial: Option<String>,
+    pub log_air_final: Option<String>,
+    pub log_smt: Option<String>,
+    pub log_triggers: Option<String>,
+    pub show_triggers: bool,
 }
 
-pub(crate) fn parse_args(
-    program: &String,
-    args: impl Iterator<Item = String>,
-) -> (Args, Vec<String>) {
+pub fn parse_args(program: &String, args: impl Iterator<Item = String>) -> (Args, Vec<String>) {
     const OPT_RLIMIT: &str = "rlimit";
     const OPT_LOG_VIR: &str = "log-vir";
     const OPT_LOG_AIR_INITIAL: &str = "log-air";
