@@ -3,8 +3,9 @@ extern crate rustc_errors;
 extern crate rustc_span;
 
 mod pervasive;
-pub use pervasive::pervasive;
+pub use pervasive::{PERVASIVE, PERVASIVE_IMPORT_PRELUDE};
 pub use rust_verify::verifier::ErrorSpan;
+pub use rust_verify_test_macros::{rust_code, rust_code_str};
 
 use rust_verify::config::Args;
 use rust_verify::verifier::Verifier;
@@ -64,23 +65,12 @@ pub fn rust_verify_files(
     status.map_err(|_| verifier.errors)
 }
 
-const PERVASIVE_IMPORT_PRELUDE: &str = indoc::indoc!(
-    r###"
-    extern crate builtin;
-    use builtin::*;
-    mod pervasive;
-    use pervasive::*;
-"###
-);
-
 pub fn rust_verify_with_pervasive(
     code: String,
 ) -> Result<(), Vec<(Option<ErrorSpan>, Option<ErrorSpan>)>> {
-    rust_verify_files(
-        vec![
-            pervasive(),
-            ("test.rs".to_string(), format!("{}\n\n{}", PERVASIVE_IMPORT_PRELUDE, code.as_str())),
-        ],
-        "test.rs".to_string(),
-    )
+    let files = vec![
+        ("pervasive.rs".to_string(), PERVASIVE.to_string()),
+        ("test.rs".to_string(), format!("{}\n\n{}", PERVASIVE_IMPORT_PRELUDE, code.as_str())),
+    ];
+    rust_verify_files(files, "test.rs".to_string())
 }

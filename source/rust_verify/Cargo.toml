@@ -13,4 +13,4 @@ vir = { path = "../vir" }
 getopts = { git = "https://github.com/utaal/getopts.git", branch = "parse-partial" }
 
 [dev-dependencies]
-indoc = "1.0"
+rust_verify_test_macros = { path = "../rust_verify_test_macros" }

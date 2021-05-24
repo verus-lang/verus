@@ -281,11 +281,11 @@ impl Verifier {
     }
 }
 
-struct DiagnostricOutputWriter {
+struct DiagnosticOutputBuffer {
     output: std::sync::Arc<std::sync::Mutex<Vec<u8>>>,
 }
 
-impl std::io::Write for DiagnostricOutputWriter {
+impl std::io::Write for DiagnosticOutputBuffer {
     fn write(&mut self, buf: &[u8]) -> Result<usize, std::io::Error> {
         self.output.lock().expect("internal error: cannot lock captured output").write(buf)
     }
@@ -298,7 +298,7 @@ impl rustc_driver::Callbacks for Verifier {
     fn config(&mut self, config: &mut rustc_interface::interface::Config) {
         if let Some(target) = &self.test_capture_output {
             config.diagnostic_output =
-                rustc_session::DiagnosticOutput::Raw(Box::new(DiagnostricOutputWriter {
+                rustc_session::DiagnosticOutput::Raw(Box::new(DiagnosticOutputBuffer {
                     output: target.clone(),
                 }));
         }
@@ -314,11 +314,11 @@ impl rustc_driver::Callbacks for Verifier {
             match self.run(compiler, tcx) {
                 Ok(true) => {}
                 Ok(false) => {
-                    std::process::exit(1);
+                    // TODO do we need this? it interferes with in-process tests: std::process::exit(1);
                 }
                 Err(err) => {
                     report_vir_error(compiler, err);
-                    std::process::exit(1);
+                    // TODO do we need this? it interferes with in-process tests:  std::process::exit(1);
                 }
             }
         });

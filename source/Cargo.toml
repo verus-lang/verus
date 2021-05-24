@@ -4,4 +4,5 @@ members = [
   "builtin",
   "vir",
   "rust_verify",
+  "rust_verify_test_macros",
 ]

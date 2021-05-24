@@ -1,30 +1,29 @@
-pub fn pervasive() -> (String, String) {
-    (
-        "pervasive.rs".into(),
-        indoc::indoc!(
-            r###"
-            extern crate builtin;
-            use builtin::*;
+pub const PERVASIVE: &str = crate::common::rust_code_str! {
+    extern crate builtin;
+    use builtin::*;
 
-            #[proof]
-            pub fn assume(b: bool) {
-                ensures(b);
+    #[proof]
+    pub fn assume(b: bool) {
+        ensures(b);
 
-                admit();
-            }
+        admit();
+    }
 
-            #[proof]
-            pub fn assert(b: bool) {
-                requires(b);
-                ensures(b);
-            }
+    #[proof]
+    pub fn assert(b: bool) {
+        requires(b);
+        ensures(b);
+    }
 
-            #[proof]
-            pub fn affirm(b: bool) {
-                requires(b);
-            }
-        "###
-        )
-        .to_string(),
-    )
-}
+    #[proof]
+    pub fn affirm(b: bool) {
+        requires(b);
+    }
+};
+
+pub const PERVASIVE_IMPORT_PRELUDE: &str = crate::common::rust_code_str! {
+    extern crate builtin;
+    use builtin::*;
+    mod pervasive;
+    use pervasive::*;
+};
