@@ -5,7 +5,7 @@ extern crate rustc_span;
 mod pervasive;
 pub use pervasive::{PERVASIVE, PERVASIVE_IMPORT_PRELUDE};
 pub use rust_verify::verifier::ErrorSpan;
-pub use rust_verify_test_macros::{rust_code, rust_code_str};
+pub use rust_verify_test_macros::{code, code_str};
 
 use rust_verify::config::Args;
 use rust_verify::verifier::Verifier;
@@ -30,7 +30,7 @@ impl FileLoader for TestFileLoader {
     }
 }
 
-pub fn rust_verify_files(
+pub fn verify_files(
     files: impl IntoIterator<Item = (String, String)>,
     entry_file: String,
 ) -> Result<(), Vec<(Option<ErrorSpan>, Option<ErrorSpan>)>> {
@@ -65,12 +65,42 @@ pub fn rust_verify_files(
     status.map_err(|_| verifier.errors)
 }
 
-pub fn rust_verify_with_pervasive(
+pub fn verify_with_pervasive(
     code: String,
 ) -> Result<(), Vec<(Option<ErrorSpan>, Option<ErrorSpan>)>> {
     let files = vec![
         ("pervasive.rs".to_string(), PERVASIVE.to_string()),
         ("test.rs".to_string(), format!("{}\n\n{}", PERVASIVE_IMPORT_PRELUDE, code.as_str())),
     ];
-    rust_verify_files(files, "test.rs".to_string())
+    verify_files(files, "test.rs".to_string())
+}
+
+#[macro_export]
+macro_rules! test_verify_with_pervasive {
+    (#[test] $name:ident $body:expr => $result:pat => $assertions:expr ) => {
+        #[test]
+        fn $name() {
+            let result = verify_with_pervasive($body);
+            if let $result = result {
+                $assertions
+            } else {
+                assert!(false, "{:?} does not match $result", result);
+            }
+        }
+    };
+    (#[test] $name:ident $body:expr => $result:pat) => {
+        #[test]
+        fn $name() {
+            let result = verify_with_pervasive($body);
+            if let $result = result {
+            } else {
+                assert!(false, "{:?} does not match $result", result);
+            }
+        }
+    };
+}
+
+pub fn assert_one_fails(err: Vec<(Option<ErrorSpan>, Option<ErrorSpan>)>) {
+    assert_eq!(err.len(), 1);
+    assert!(err[0].0.as_ref().expect("span").test_span_line.contains("FAILS"));
 }

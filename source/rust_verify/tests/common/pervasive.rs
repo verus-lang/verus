@@ -1,4 +1,4 @@
-pub const PERVASIVE: &str = crate::common::rust_code_str! {
+pub const PERVASIVE: &str = crate::common::code_str! {
     extern crate builtin;
     use builtin::*;
 
@@ -21,7 +21,7 @@ pub const PERVASIVE: &str = crate::common::rust_code_str! {
     }
 };
 
-pub const PERVASIVE_IMPORT_PRELUDE: &str = crate::common::rust_code_str! {
+pub const PERVASIVE_IMPORT_PRELUDE: &str = crate::common::code_str! {
     extern crate builtin;
     use builtin::*;
     mod pervasive;
