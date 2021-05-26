@@ -55,10 +55,7 @@ test_verify_with_pervasive! {
             assume(x <= y && y <= z);
             assert(x < z); // FAILS
         }
-    } => Err(err) => {
-        assert_eq!(err.len(), 1);
-        assert!(err[0].0.as_ref().expect("span").test_span_line.contains("FAILS"));
-    }
+    } => Err(err) => assert_one_fails(err)
 }
 
 test_verify_with_pervasive! {
