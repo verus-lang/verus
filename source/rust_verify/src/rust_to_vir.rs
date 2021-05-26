@@ -10,11 +10,11 @@ use crate::rust_to_vir_adts::{check_item_enum, check_item_struct};
 use crate::rust_to_vir_base::{hack_check_def_name, hack_get_def_name};
 use crate::rust_to_vir_func::{check_foreign_item_fn, check_item_fn};
 use crate::util::unsupported_err_span;
-use crate::{unsupported_err, unsupported_unless};
+use crate::{unsupported_err, unsupported_err_unless, unsupported_unless};
 use rustc_ast::Attribute;
 use rustc_hir::{
     Crate, ForeignItem, ForeignItemId, ForeignItemKind, HirId, Item, ItemId, ItemKind, ModuleItems,
-    TraitRef,
+    QPath, TraitRef, TyKind,
 };
 use rustc_middle::ty::TyCtxt;
 use rustc_span::def_id::LocalDefId;
@@ -53,7 +53,7 @@ fn check_item<'tcx>(
         }
         ItemKind::Impl(impll) => {
             if let Some(TraitRef { path, hir_ref_id: _ }) = impll.of_trait {
-                unsupported_unless!(
+                unsupported_err_unless!(
                     hack_check_def_name(tcx, path.res.def_id(), "core", "marker::StructuralEq")
                         || hack_check_def_name(tcx, path.res.def_id(), "core", "cmp::Eq")
                         || hack_check_def_name(
@@ -63,11 +63,34 @@ fn check_item<'tcx>(
                             "marker::StructuralPartialEq"
                         )
                         || hack_check_def_name(tcx, path.res.def_id(), "core", "cmp::PartialEq"),
+                    item.span,
                     "non_eq_trait_impl",
                     path
                 );
             } else {
-                unsupported_err!(item.span, "unsupported impl of non-trait", item);
+                unsupported_err_unless!(
+                    impll.of_trait.is_none(),
+                    item.span,
+                    "unsupported impl of trait",
+                    item
+                );
+                unsupported_err_unless!(
+                    impll.generics.params.len() == 0,
+                    item.span,
+                    "unsupported impl of non-trait with generics",
+                    item
+                );
+                match impll.self_ty.kind {
+                    TyKind::Path(QPath::Resolved(_, _path)) => {
+                        for impl_item in impll.items {
+                            // TODO once we have references
+                            unsupported_err!(item.span, "unsupported method in impl", impl_item);
+                        }
+                    }
+                    _ => {
+                        unsupported_err!(item.span, "unsupported impl of non-path type", item);
+                    }
+                }
             }
         }
         _ => {
