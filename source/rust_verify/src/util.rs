@@ -24,7 +24,8 @@ pub(crate) fn unsupported_err_span<A>(span: Span, msg: String) -> Result<A, VirE
     )
 }
 
-pub(crate) fn warning_span(span: Span, msg: String) -> () {
+// TODO remove if unused
+pub(crate) fn _warning_span(span: Span, msg: String) -> () {
     eprintln!("warning: {}", msg);
     eprintln!("   --> {:?}", span);
 }
