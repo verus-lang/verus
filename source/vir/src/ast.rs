@@ -87,7 +87,6 @@ pub enum HeaderExprX {
 pub enum Constant {
     Bool(bool),
     Nat(Rc<String>),
-    Ctor(Path, Ident, Binders<Expr>),
 }
 
 pub type Expr = Rc<Spanned<ExprX>>;
@@ -97,6 +96,7 @@ pub enum ExprX {
     Const(Constant),
     Var(Ident),
     Call(Ident, Typs, Exprs),
+    Ctor(Path, Ident, Binders<Expr>),
     Field { lhs: Expr, datatype_name: Ident, field_name: Ident },
     Unary(UnaryOp, Expr),
     UnaryOpr(UnaryOpr, Expr),

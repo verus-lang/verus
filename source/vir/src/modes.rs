@@ -64,6 +64,13 @@ fn check_expr(typing: &mut Typing, outer_mode: Mode, expr: &Expr) -> Result<Mode
                 Some((_, _, ret_mode)) => Ok(ret_mode),
             }
         }
+        ExprX::Ctor(_path, _ident, binders) => {
+            let binder_modes = binders
+                .iter()
+                .map(|b| check_expr(typing, outer_mode, &b.a))
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(binder_modes.into_iter().fold(outer_mode, mode_join))
+        }
         ExprX::Field { lhs, datatype_name, field_name } => {
             let lhs_mode = check_expr(typing, outer_mode, lhs)?;
             let datatype = &typing.datatypes[datatype_name].clone();

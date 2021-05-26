@@ -413,10 +413,7 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                                 })
                                 .collect::<Result<Vec<_>, _>>()?,
                         );
-                        Ok(spanned_new(
-                            expr.span,
-                            ExprX::Const(Constant::Ctor(vir_path, variant_name, vir_fields)),
-                        ))
+                        Ok(spanned_new(expr.span, ExprX::Ctor(vir_path, variant_name, vir_fields)))
                     } else {
                         unreachable!()
                     }
@@ -635,7 +632,7 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                     })
                     .collect::<Result<Vec<_>, _>>()?,
             );
-            Ok(spanned_new(expr.span, ExprX::Const(Constant::Ctor(path, variant_name, vir_fields))))
+            Ok(spanned_new(expr.span, ExprX::Ctor(path, variant_name, vir_fields)))
         }
         _ => {
             unsupported_err!(expr.span, format!("expression"), expr)

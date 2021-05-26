@@ -23,7 +23,9 @@ fn check_trigger_expr(exp: &Exp, free_vars: &mut HashSet<Ident>) -> Result<(), V
         }
     }
     let mut f = |exp: &Exp| match &exp.x {
-        ExpX::Const(_) | ExpX::Call(_, _, _) | ExpX::Field { .. } => Ok(exp.clone()),
+        ExpX::Const(_) | ExpX::Call(_, _, _) | ExpX::Field { .. } | ExpX::Ctor(_, _, _) => {
+            Ok(exp.clone())
+        }
         ExpX::Var(x) => {
             free_vars.insert(x.clone());
             Ok(exp.clone())

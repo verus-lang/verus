@@ -186,20 +186,6 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
                     true,
                     Rc::new(TermX::App(App::Const(Constant::Nat(n.clone())), Rc::new(vec![]))),
                 ),
-                crate::sst::Constant::Ctor(path, variant, fields) => {
-                    let (variant, args) =
-                        crate::sst_to_air::ctor_to_apply(ctx, path, variant, fields);
-                    let (is_pures, terms): (Vec<bool>, Vec<Term>) =
-                        args.map(|e| gather_terms(ctxt, ctx, &e.a, depth + 1)).unzip();
-                    let is_pure = is_pures.into_iter().all(|b| b);
-                    (
-                        is_pure,
-                        Rc::new(TermX::App(
-                            App::Ctor(path_to_air_ident(path), variant),
-                            Rc::new(terms),
-                        )),
-                    )
-                }
             };
         }
         ExpX::Var(x) => {
@@ -211,6 +197,16 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
                 args.iter().map(|e| gather_terms(ctxt, ctx, e, depth + 1)).unzip();
             let is_pure = is_pures.into_iter().all(|b| b);
             (is_pure, Rc::new(TermX::App(App::Call(x.clone()), Rc::new(terms))))
+        }
+        ExpX::Ctor(path, variant, fields) => {
+            let (variant, args) = crate::sst_to_air::ctor_to_apply(ctx, path, variant, fields);
+            let (is_pures, terms): (Vec<bool>, Vec<Term>) =
+                args.map(|e| gather_terms(ctxt, ctx, &e.a, depth + 1)).unzip();
+            let is_pure = is_pures.into_iter().all(|b| b);
+            (
+                is_pure,
+                Rc::new(TermX::App(App::Ctor(path_to_air_ident(path), variant), Rc::new(terms))),
+            )
         }
         ExpX::Field { lhs, datatype_name, field_name } => {
             let (is_pure, arg) = gather_terms(ctxt, ctx, lhs, depth + 1);

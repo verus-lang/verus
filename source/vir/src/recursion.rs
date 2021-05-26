@@ -76,6 +76,14 @@ fn terminates(ctxt: &Ctxt, exp: &Exp) -> Exp {
             }
             e
         }
+        ExpX::Ctor(_path, _ident, binders) => {
+            let mut e = Spanned::new(exp.span.clone(), ExpX::Const(Constant::Bool(true)));
+            for binder in binders.iter().rev() {
+                let e_binder = terminates(ctxt, &binder.a);
+                e = Spanned::new(exp.span.clone(), ExpX::Binary(BinaryOp::And, e_binder, e));
+            }
+            e
+        }
         ExpX::Field { lhs, .. } => terminates(ctxt, lhs),
         ExpX::Unary(_, e1) => terminates(ctxt, e1),
         ExpX::UnaryOpr(_, e1) => terminates(ctxt, e1),

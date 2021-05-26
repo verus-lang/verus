@@ -115,15 +115,10 @@ pub(crate) fn ctor_to_apply<'a>(
     )
 }
 
-pub(crate) fn constant_to_expr(ctx: &Ctx, constant: &crate::sst::Constant) -> Expr {
+pub(crate) fn constant_to_expr(_ctx: &Ctx, constant: &crate::sst::Constant) -> Expr {
     match constant {
         crate::sst::Constant::Bool(b) => Rc::new(ExprX::Const(Constant::Bool(*b))),
         crate::sst::Constant::Nat(s) => Rc::new(ExprX::Const(Constant::Nat(s.clone()))),
-        crate::sst::Constant::Ctor(path, variant, binders) => {
-            let (variant, args) = ctor_to_apply(ctx, path, variant, binders);
-            let args = args.map(|b| exp_to_expr(ctx, &b.a)).collect::<Vec<_>>();
-            Rc::new(ExprX::Apply(variant, Rc::new(args)))
-        }
     }
 }
 
@@ -142,6 +137,11 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp) -> Expr {
                 exprs.push(exp_to_expr(ctx, arg));
             }
             ident_apply(&name, &exprs)
+        }
+        ExpX::Ctor(path, variant, binders) => {
+            let (variant, args) = ctor_to_apply(ctx, path, variant, binders);
+            let args = args.map(|b| exp_to_expr(ctx, &b.a)).collect::<Vec<_>>();
+            Rc::new(ExprX::Apply(variant, Rc::new(args)))
         }
         ExpX::Unary(op, exp) => match op {
             UnaryOp::Not => mk_not(&exp_to_expr(ctx, exp)),

@@ -196,7 +196,8 @@ pub(crate) fn mid_ty_to_vir_opt<'tcx>(tcx: TyCtxt<'tcx>, ty: rustc_middle::ty::T
     }
 }
 
-pub(crate) fn ty_resolved_path_to_debug_path(_tcx: TyCtxt<'_>, ty: &Ty) -> String {
+// TODO remove if unused
+pub(crate) fn _ty_resolved_path_to_debug_path(_tcx: TyCtxt<'_>, ty: &Ty) -> String {
     let Ty { hir_id: _, kind, span: _ } = ty;
     match kind {
         rustc_hir::TyKind::Path(QPath::Resolved(None, path)) => path

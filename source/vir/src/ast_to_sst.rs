@@ -27,22 +27,12 @@ fn expr_must_be_call_stm(ctx: &Ctx, expr: &Expr) -> Result<Option<(Ident, Typs, 
 }
 
 pub(crate) fn constant_to_sst_constant(
-    ctx: &Ctx,
+    _ctx: &Ctx,
     constant: &Constant,
 ) -> Result<crate::sst::Constant, VirErr> {
     Ok(match constant {
         Constant::Bool(b) => crate::sst::Constant::Bool(*b),
         Constant::Nat(n) => crate::sst::Constant::Nat(n.clone()),
-        Constant::Ctor(p, i, binders) => crate::sst::Constant::Ctor(
-            p.clone(),
-            i.clone(),
-            Rc::new(
-                binders
-                    .iter()
-                    .map(|b| b.map_result(|a| expr_to_exp(ctx, a)))
-                    .collect::<Result<Vec<_>, _>>()?,
-            ),
-        ),
     })
 }
 
@@ -67,6 +57,19 @@ pub(crate) fn expr_to_exp(ctx: &Ctx, expr: &Expr) -> Result<Exp, VirErr> {
             let exps = vec_map_result(args, |e| expr_to_exp(ctx, e))?;
             Ok(Spanned::new(expr.span.clone(), ExpX::Call(x.clone(), typs.clone(), Rc::new(exps))))
         }
+        ExprX::Ctor(p, i, binders) => Ok(Spanned::new(
+            expr.span.clone(),
+            ExpX::Ctor(
+                p.clone(),
+                i.clone(),
+                Rc::new(
+                    binders
+                        .iter()
+                        .map(|b| b.map_result(|a| expr_to_exp(ctx, a)))
+                        .collect::<Result<Vec<_>, _>>()?,
+                ),
+            ),
+        )),
         ExprX::Unary(op, expr) => {
             Ok(Spanned::new(expr.span.clone(), ExpX::Unary(*op, expr_to_exp(ctx, expr)?)))
         }

@@ -24,7 +24,6 @@ pub enum BndX {
 pub enum Constant {
     Bool(bool),
     Nat(Rc<String>),
-    Ctor(Path, Ident, Binders<Exp>),
 }
 
 pub type Exp = Rc<Spanned<ExpX>>;
@@ -35,6 +34,7 @@ pub enum ExpX {
     Var(Ident),
     Old(Ident, Ident),       // used only during sst_to_air to generate AIR Old
     Call(Ident, Typs, Exps), // call to spec function
+    Ctor(Path, Ident, Binders<Exp>),
     Field { lhs: Exp, datatype_name: Ident, field_name: Ident },
     Unary(UnaryOp, Exp),
     UnaryOpr(UnaryOpr, Exp),

@@ -21,6 +21,17 @@ where
             );
             f(&expr)
         }
+        ExprX::Ctor(path, ident, binders) => {
+            let mapped_binders = binders
+                .iter()
+                .map(|b| b.map_result(|a| map_expr_visitor(a, f)))
+                .collect::<Result<Vec<_>, _>>()?;
+            let expr = Spanned::new(
+                expr.span.clone(),
+                ExprX::Ctor(path.clone(), ident.clone(), Rc::new(mapped_binders)),
+            );
+            f(&expr)
+        }
         ExprX::Field { lhs, datatype_name, field_name } => {
             let lhs1 = map_expr_visitor(lhs, f)?;
             let expr = Spanned::new(

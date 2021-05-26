@@ -23,6 +23,17 @@ where
                 Spanned::new(exp.span.clone(), ExpX::Call(x.clone(), typs.clone(), Rc::new(exps)));
             f(&exp)
         }
+        ExpX::Ctor(path, ident, binders) => {
+            let mapped_binders = binders
+                .iter()
+                .map(|b| b.map_result(|a| map_exp_visitor_bind(a, fb, f)))
+                .collect::<Result<Vec<_>, _>>()?;
+            let exp = Spanned::new(
+                exp.span.clone(),
+                ExpX::Ctor(path.clone(), ident.clone(), Rc::new(mapped_binders)),
+            );
+            f(&exp)
+        }
         ExpX::Field { lhs, datatype_name, field_name } => {
             let lhs1 = map_exp_visitor_bind(lhs, fb, f)?;
             let exp = Spanned::new(
