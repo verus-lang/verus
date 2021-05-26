@@ -234,6 +234,7 @@ pub(crate) fn ty_to_vir<'tcx>(tcx: TyCtxt<'tcx>, ty: &Ty) -> Typ {
                 TypX::TypParam(path.last().unwrap().clone())
             }
             Res::Def(DefKind::Struct, def_id) => {
+                // TODO: consider using #[rust_diagnostic_item] and https://doc.rust-lang.org/stable/nightly-rustc/rustc_middle/ty/query/query_stored/type.diagnostic_items.html for the builtin lib
                 if hack_check_def_name(tcx, def_id, "builtin", "int") {
                     TypX::Int(IntRange::Int)
                 } else if hack_check_def_name(tcx, def_id, "builtin", "nat") {
