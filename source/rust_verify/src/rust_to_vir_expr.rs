@@ -377,9 +377,10 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                 // a tuple-style datatype constructor
                 ExprKind::Path(QPath::Resolved(
                     None,
-                    rustc_hir::Path { res: Res::Def(ctor @ DefKind::Ctor(_, _), def_id), .. },
+                    rustc_hir::Path { res: res @ Res::Def(DefKind::Ctor(_, _), _), .. },
                 )) => {
-                    if let DefKind::Ctor(ctor_of, ctor_kind) = ctor {
+                    let variant = tcx.expect_variant_res(*res);
+                    if let Res::Def(DefKind::Ctor(ctor_of, ctor_kind), _def_id) = res {
                         unsupported_unless!(
                             ctor_of == &rustc_hir::def::CtorOf::Variant,
                             "non_variant_ctor_in_call_expr",
@@ -390,33 +391,44 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                             "non_fn_ctor_in_call_expr",
                             fun
                         );
-                        let (vir_path, variant) = {
-                            let mut vir_path = def_id_to_vir_path(tcx, *def_id);
-                            Rc::get_mut(&mut vir_path).unwrap().pop(); // remove constructor
-                            let variant = Rc::get_mut(&mut vir_path)
-                                .unwrap()
-                                .pop()
-                                .expect("invalid path in datatype ctor");
-                            (vir_path, variant)
-                        };
-                        let name = vir_path.last().expect("invalid path in datatype ctor");
-                        let variant_name = variant_ident(name.as_str(), variant.as_str());
-                        let vir_fields = Rc::new(
-                            args_slice
-                                .iter()
-                                .enumerate()
-                                .map(|(i, e)| -> Result<_, VirErr> {
-                                    Ok(ident_binder(
-                                        &variant_positional_field_ident(&variant_name, i),
-                                        &expr_to_vir(ctxt, e)?,
-                                    ))
-                                })
-                                .collect::<Result<Vec<_>, _>>()?,
-                        );
-                        Ok(spanned_new(expr.span, ExprX::Ctor(vir_path, variant_name, vir_fields)))
-                    } else {
-                        unreachable!()
                     }
+                    let vir_path = {
+                        // TODO is there a safer way to do this?
+                        let mut vir_path = def_id_to_vir_path(tcx, res.def_id());
+                        Rc::get_mut(&mut vir_path).unwrap().pop(); // remove constructor
+                        Rc::get_mut(&mut vir_path).unwrap().pop(); // remove variant
+                        vir_path
+                    };
+                    let name = vir_path.last().expect("invalid path in datatype ctor");
+                    let variant_name = variant_ident(name.as_str(), &variant.ident.as_str());
+                    let vir_fields = Rc::new(
+                        args_slice
+                            .iter()
+                            .enumerate()
+                            .map(|(i, e)| -> Result<_, VirErr> {
+                                // TODO: deduplicate with Struct?
+                                let fielddef = &variant.fields[i];
+                                let field_typ = mid_ty_to_vir(ctxt.tcx, tcx.type_of(fielddef.did));
+                                let expr_typ = typ_of_node(ctxt, &e.hir_id);
+                                let mut vir = expr_to_vir(ctxt, e)?;
+                                match (&*field_typ, &*expr_typ) {
+                                    (TypX::TypParam(_), TypX::TypParam(_)) => {} // already boxed
+                                    (TypX::TypParam(_), _) => {
+                                        vir = Spanned::new(
+                                            vir.span.clone(),
+                                            ExprX::UnaryOpr(UnaryOpr::Box(expr_typ), vir),
+                                        );
+                                    }
+                                    _ => {}
+                                }
+                                Ok(ident_binder(
+                                    &variant_positional_field_ident(&variant_name, i),
+                                    &vir,
+                                ))
+                            })
+                            .collect::<Result<Vec<_>, _>>()?,
+                    );
+                    Ok(spanned_new(expr.span, ExprX::Ctor(vir_path, variant_name, vir_fields)))
                 }
                 // a function
                 ExprKind::Path(QPath::Resolved(
@@ -528,7 +540,7 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
         ExprKind::Field(lhs, name) => {
             let vir_lhs = expr_to_vir(ctxt, lhs)?;
             let lhs_ty = tc.node_type(lhs.hir_id);
-            let (datatype_name, field_name) = if let Some(adt_def) = lhs_ty.ty_adt_def() {
+            let (datatype_name, field_name, unbox) = if let Some(adt_def) = lhs_ty.ty_adt_def() {
                 unsupported_err_unless!(
                     adt_def.variants.len() == 1,
                     expr.span,
@@ -536,12 +548,33 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                     expr
                 );
                 let datatype_name = hack_get_def_name(tcx, adt_def.did);
-                let variant_name = variant_ident(datatype_name.as_str(), datatype_name.as_str());
-                (Rc::new(datatype_name), variant_field_ident(&variant_name, &name.as_str()))
+                let variant = adt_def.variants.iter().next().unwrap();
+                let variant_name = variant_ident(datatype_name.as_str(), &variant.ident.as_str());
+                // TODO: deduplicate with Ctor?
+                // TODO: is there a compiler function to do this instead?
+                let fielddef = variant.fields.iter().find(|x| &x.ident == name).expect(
+                    format!("cannot find field {:?} in struct {:?}", name, datatype_name).as_str(),
+                );
+                let field_typ = mid_ty_to_vir(ctxt.tcx, tcx.type_of(fielddef.did));
+                let target_typ = typ_of_node(ctxt, &expr.hir_id);
+                let unbox = match (&*target_typ, &*field_typ) {
+                    (TypX::TypParam(_), TypX::TypParam(_)) => None,
+                    (_, TypX::TypParam(_)) => Some(target_typ),
+                    _ => None,
+                };
+                (Rc::new(datatype_name), variant_field_ident(&variant_name, &name.as_str()), unbox)
             } else {
                 unsupported_err!(expr.span, "field_of_non_adt", expr)
             };
-            Ok(spanned_new(expr.span, ExprX::Field { lhs: vir_lhs, datatype_name, field_name }))
+            let mut vir =
+                spanned_new(expr.span, ExprX::Field { lhs: vir_lhs, datatype_name, field_name });
+            if let Some(target_typ) = unbox {
+                vir = Spanned::new(
+                    vir.span.clone(),
+                    ExprX::UnaryOpr(UnaryOpr::Unbox(target_typ), vir),
+                );
+            }
+            Ok(vir)
         }
         ExprKind::If(cond, lhs, rhs) => {
             let vir_cond = expr_to_vir(ctxt, cond)?;
@@ -607,17 +640,18 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
         }
         ExprKind::Struct(qpath, fields, spread) => {
             unsupported_unless!(spread.is_none(), "spread_in_struct_ctor");
-            let (path, variant_name) = match qpath {
+            let (path, variant, variant_name) = match qpath {
                 QPath::Resolved(slf, path) => {
                     unsupported_unless!(
                         matches!(path.res, Res::Def(DefKind::Struct, _)),
                         "non_struct_ctor"
                     );
                     unsupported_unless!(slf.is_none(), "self_in_struct_qpath");
+                    let variant = tcx.expect_variant_res(path.res);
                     let vir_path = def_id_to_vir_path(ctxt.tcx, path.res.def_id());
                     let name = hack_get_def_name(ctxt.tcx, path.res.def_id());
-                    let variant_name = variant_ident(&name, &name);
-                    (vir_path, variant_name)
+                    let variant_name = variant_ident(&name, &variant.ident.as_str());
+                    (vir_path, variant, variant_name)
                 }
                 _ => panic!("unexpected qpath {:?}", qpath),
             };
@@ -625,9 +659,28 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                 fields
                     .iter()
                     .map(|f| -> Result<_, VirErr> {
+                        // TODO: is there a compiler function to do this instead?
+                        let fielddef = variant.fields.iter().find(|x| x.ident == f.ident).expect(
+                            format!("cannot find field {:?} in struct {:?}", f.ident, path)
+                                .as_str(),
+                        );
+                        let field_typ = mid_ty_to_vir(ctxt.tcx, tcx.type_of(fielddef.did));
+                        let expr_typ = typ_of_node(ctxt, &f.expr.hir_id);
+                        let mut vir = expr_to_vir(ctxt, f.expr)?;
+                        // TODO: deduplicate with Call?
+                        match (&*field_typ, &*expr_typ) {
+                            (TypX::TypParam(_), TypX::TypParam(_)) => {} // already boxed
+                            (TypX::TypParam(_), _) => {
+                                vir = Spanned::new(
+                                    vir.span.clone(),
+                                    ExprX::UnaryOpr(UnaryOpr::Box(expr_typ), vir),
+                                );
+                            }
+                            _ => {}
+                        }
                         Ok(ident_binder(
                             &variant_field_ident(&variant_name, &f.ident.as_str()),
-                            &expr_to_vir(ctxt, f.expr)?,
+                            &vir,
                         ))
                     })
                     .collect::<Result<Vec<_>, _>>()?,

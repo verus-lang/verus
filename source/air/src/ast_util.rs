@@ -24,6 +24,13 @@ impl<A: Clone> BinderX<A> {
     pub fn map_a<B: Clone>(&self, f: impl FnOnce(&A) -> B) -> BinderX<B> {
         BinderX { name: self.name.clone(), a: f(&self.a) }
     }
+
+    pub fn map_result<B: Clone, E>(
+        &self,
+        f: impl FnOnce(&A) -> Result<B, E>,
+    ) -> Result<Binder<B>, E> {
+        Ok(Rc::new(BinderX { name: self.name.clone(), a: f(&self.a)? }))
+    }
 }
 
 impl<A: Clone + Debug> std::fmt::Debug for BinderX<A> {

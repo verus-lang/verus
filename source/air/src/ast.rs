@@ -70,15 +70,6 @@ pub struct BinderX<A: Clone> {
     pub a: A,
 }
 
-impl<A: Clone> BinderX<A> {
-    pub fn map_result<B: Clone, E>(
-        &self,
-        f: impl FnOnce(&A) -> Result<B, E>,
-    ) -> Result<Binder<B>, E> {
-        Ok(Rc::new(BinderX { name: self.name.clone(), a: f(&self.a)? }))
-    }
-}
-
 #[derive(Copy, Clone, Debug)]
 pub enum Quant {
     Forall,
