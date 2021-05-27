@@ -83,3 +83,17 @@ test_verify_with_pervasive! {
         }
     } => Err(err) => assert_one_fails(err)
 }
+
+test_verify_with_pervasive! {
+    #[test] test_enum_struct code! {
+        #[derive(PartialEq, Eq)]
+        enum Thing {
+            One { a: int },
+            Two(int),
+        }
+
+        fn test(v: int) {
+            let t = Thing::One { a: v };
+        }
+    } => Ok(())
+}

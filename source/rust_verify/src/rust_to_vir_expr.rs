@@ -643,13 +643,22 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
             let (path, variant, variant_name) = match qpath {
                 QPath::Resolved(slf, path) => {
                     unsupported_unless!(
-                        matches!(path.res, Res::Def(DefKind::Struct, _)),
-                        "non_struct_ctor"
+                        matches!(path.res, Res::Def(DefKind::Struct | DefKind::Variant, _)),
+                        "non_struct_ctor",
+                        path.res
                     );
                     unsupported_unless!(slf.is_none(), "self_in_struct_qpath");
                     let variant = tcx.expect_variant_res(path.res);
-                    let vir_path = def_id_to_vir_path(ctxt.tcx, path.res.def_id());
-                    let name = hack_get_def_name(ctxt.tcx, path.res.def_id());
+                    let mut vir_path = def_id_to_vir_path(ctxt.tcx, path.res.def_id());
+                    if let Res::Def(DefKind::Variant, _) = path.res {
+                        Rc::get_mut(&mut vir_path)
+                            .unwrap()
+                            .pop()
+                            .expect(format!("variant name in Struct ctor for {:?}", path).as_str());
+                    }
+                    let name = vir_path
+                        .last()
+                        .expect(format!("adt name in Struct ctor for {:?}", path).as_str());
                     let variant_name = variant_ident(&name, &variant.ident.as_str());
                     (vir_path, variant, variant_name)
                 }
