@@ -46,7 +46,27 @@ pub fn verify_files(
         "-L".to_string(),
         "../../install/bin/".to_string(),
     ];
-    let our_args: Args = Default::default();
+    let our_args = {
+        let mut our_args: Args = Default::default();
+        match std::env::var("VERIFY_LOG_IR_PATH") {
+            Ok(path) => {
+                let path = std::path::Path::new(&path);
+                if !path.is_dir() {
+                    panic!(
+                        "VERIFY_LOG_IR_PATH is not a directory, std::env::current_dir() is {:?}",
+                        std::env::current_dir()
+                    );
+                }
+                our_args.log_vir = Some(path.join("log.vir").to_string_lossy().to_string());
+                our_args.log_air_initial = Some(path.join("log.air").to_string_lossy().to_string());
+                our_args.log_air_final =
+                    Some(path.join("log.air-final").to_string_lossy().to_string());
+                our_args.log_smt = Some(path.join("log.smt").to_string_lossy().to_string());
+            }
+            _ => (),
+        }
+        our_args
+    };
     let captured_output = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
     let mut verifier = Verifier::new(our_args);
     verifier.test_capture_output = Some(captured_output.clone());

@@ -157,3 +157,33 @@ To automatically apply these suggestions to the source code, type:
 ```
 ../install/bin/cargo-fmt
 ```
+
+# Running tests for the rust to vir translation, and inspecting the resulting vir/air/smt
+
+`cargo test` will run the tests for `rust_verify`,
+
+```
+RUSTC=../install/bin/rustc ../install/bin/cargo test -p rust_verify
+```
+
+As discussed above, you may only need the RUSTC variable on Darwin/Linux.
+
+You can run a single test file and a specific test within with the following:
+
+```
+RUSTC=../install/bin/rustc ../install/bin/cargo test -p rust_verify --test <test file> <test name>
+```
+
+See the cargo help for more info on the test flags.
+
+If you'd like to inspect the vir/air/smt produced by a test, you can provide a target directory path as an
+environment variable, `VERIFY_LOG_IR_PATH`.
+You should only run a single test, as only the latest logged IR is preserved.
+For example, the following will emit the vir/air/smt logs to `rust_verify/logs`:
+
+```
+VERIFY_LOG_IR_PATH="log" RUSTC=../install/bin/rustc ../install/bin/cargo test -p rust_verify --test refs_basic test_struct_ref
+```
+
+@utaal has not yet figured out how to determine what test is currently running, to enable running
+an entire file/suite and have the resulting logs organized by file/test name.
