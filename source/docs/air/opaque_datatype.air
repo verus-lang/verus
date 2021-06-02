@@ -1,0 +1,28 @@
+(declare-sort OPAQ&Car)
+
+(declare-fun passengers (OPAQ&Car) Int)
+
+(check-valid
+ (declare-const car@ OPAQ&Car)
+ (block
+  (assume
+   (= (passengers car@) 10)
+  )
+  (block
+   (assert
+    "000"
+    (and
+     (= (passengers car@) 10)
+     (not (= (passengers car@) 11))
+    )
+   )
+  )
+  (block
+   ;; should fail
+   (assert
+    "001"
+    (= (passengers car@) 14)
+   )
+  )
+ )
+)
