@@ -97,8 +97,8 @@ pub fn verify_with_pervasive(
 
 #[macro_export]
 macro_rules! test_verify_with_pervasive {
-    (#[test] $name:ident $body:expr => $result:pat => $assertions:expr ) => {
-        #[test]
+    ($(#[$attrs:meta])* $name:ident $body:expr => $result:pat => $assertions:expr ) => {
+        $(#[$attrs])*
         fn $name() {
             let result = verify_with_pervasive($body);
             if let $result = result {
@@ -108,8 +108,8 @@ macro_rules! test_verify_with_pervasive {
             }
         }
     };
-    (#[test] $name:ident $body:expr => $result:pat) => {
-        #[test]
+    ($(#[$attrs:meta])* $name:ident $body:expr => $result:pat) => {
+        $(#[$attrs])*
         fn $name() {
             let result = verify_with_pervasive($body);
             if let $result = result {
