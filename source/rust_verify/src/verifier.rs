@@ -10,6 +10,7 @@ use std::io::Write;
 use vir::ast::{Krate, VirErr, VirErrX};
 
 pub struct Verifier {
+    pub encountered_vir_error: bool,
     pub count_verified: u64,
     pub errors: Vec<(Option<ErrorSpan>, Option<ErrorSpan>)>,
     args: Args,
@@ -58,7 +59,6 @@ fn report_vir_error(compiler: &Compiler, vir_err: VirErr) {
     match &vir_err.x {
         VirErrX::Str(msg) => {
             compiler.session().parse_sess.span_diagnostic.span_err(multispan, &msg);
-            std::process::exit(1)
         }
     }
 }
@@ -103,7 +103,13 @@ fn report_chosen_triggers(
 
 impl Verifier {
     pub fn new(args: Args) -> Verifier {
-        Verifier { count_verified: 0, errors: Vec::new(), args: args, test_capture_output: None }
+        Verifier {
+            encountered_vir_error: false,
+            count_verified: 0,
+            errors: Vec::new(),
+            args: args,
+            test_capture_output: None,
+        }
     }
 
     fn check_internal_result(result: ValidityResult) {
@@ -313,12 +319,10 @@ impl rustc_driver::Callbacks for Verifier {
             queries.expansion().expect("expansion");
             match self.run(compiler, tcx) {
                 Ok(true) => {}
-                Ok(false) => {
-                    // TODO do we need this? it interferes with in-process tests: std::process::exit(1);
-                }
+                Ok(false) => {}
                 Err(err) => {
                     report_vir_error(compiler, err);
-                    // TODO do we need this? it interferes with in-process tests:  std::process::exit(1);
+                    self.encountered_vir_error = true;
                 }
             }
         });

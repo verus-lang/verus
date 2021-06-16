@@ -25,11 +25,13 @@ pub fn main() {
     // Run verifier callback to build VIR tree and run verifier
     let mut verifier = Verifier::new(our_args);
     let status = rustc_driver::RunCompiler::new(&rustc_args, &mut verifier).run();
-    println!(
-        "Verification results:: verified: {} errors: {}",
-        verifier.count_verified,
-        verifier.errors.len()
-    );
+    if !verifier.encountered_vir_error {
+        println!(
+            "Verification results:: verified: {} errors: {}",
+            verifier.count_verified,
+            verifier.errors.len()
+        );
+    }
     match status {
         Ok(_) => {}
         Err(_) => {

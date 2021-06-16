@@ -277,37 +277,19 @@ pub(crate) fn is_smt_equality<'tcx>(
         (TypX::Bool, TypX::Bool) => true,
         (TypX::Int(_), TypX::Int(_)) => true,
         (TypX::Path(p), TypX::Path(_)) if types_equal(&t1, &t2) => {
-            // TODO: a type may provide a custom PartialEq implementation, or have interior
-            // mutability; this means that PartialEq::eq may not be the same as structural
-            // (member-wise) adt equality. We should check whether the PartialEq implementation
-            // is compatible with adt equality before allowing these. For now, warn that there
-            // may be unsoundness.
-            // As used here, StructuralEq is only sufficient for a shallow check.
-            // In the rust doc for `StructuralEq`:
-            // > Any type that derives Eq automatically implements this trait,
-            // > regardless of whether its type parameters implement Eq.
-            warning_span(
-                span,
-                format!(
-                    "the verifier will assume structural equality for {}, which may be un sound",
-                    path_to_string(p)
-                ),
-            );
-            let struct_eq_def_id = ctxt
+            let structural_def_id = ctxt
                 .tcx
-                .lang_items()
-                .structural_teq_trait()
-                .expect("structural eq trait is not defined");
+                .get_diagnostic_item(rustc_span::Symbol::intern("builtin::Structural"))
+                .expect("structural trait is not defined");
             let ty = ctxt.types.node_type(*id1);
-            let substs_ref = ctxt.tcx.mk_substs_trait(ty, &[]);
-            let type_impls_struct_eq = ctxt.tcx.type_implements_trait((
-                struct_eq_def_id,
+            let substs_ref = ctxt.tcx.mk_substs([].iter());
+            let ty_impls_structural = ctxt.tcx.type_implements_trait((
+                structural_def_id,
                 ty,
                 substs_ref,
                 rustc_middle::ty::ParamEnv::empty(),
             ));
-            unsupported_unless!(type_impls_struct_eq, "eq_for_non_structural_eq");
-            true
+            ty_impls_structural
         }
         _ => false,
     }
