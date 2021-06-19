@@ -72,3 +72,15 @@ test_verify_with_pervasive! {
         }
     } => Err(err) => assert_eq!(err.len(), 0)
 }
+
+test_verify_with_pervasive! {
+    #[test] test_not_structural_fields code! {
+        #[derive(PartialEq, Eq)]
+        struct Other { }
+
+        #[derive(PartialEq, Eq, Structural)]
+        struct Thing {
+            o: Other,
+        }
+    } => Err(err) => assert_eq!(err.len(), 0)
+}
