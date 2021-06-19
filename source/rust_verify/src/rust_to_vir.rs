@@ -196,7 +196,8 @@ fn check_module<'tcx>(
                 unsupported_unless!(
                     def_name == "assert_receiver_is_total_eq"
                         || def_name == "eq"
-                        || def_name == "ne",
+                        || def_name == "ne"
+                        || def_name == "assert_receiver_is_structural",
                     "impl definition in module",
                     id
                 );
@@ -285,7 +286,8 @@ pub fn crate_to_vir<'tcx>(tcx: TyCtxt<'tcx>, krate: &'tcx Crate<'tcx>) -> Result
         unsupported_unless!(
             impl_item_ident == "assert_receiver_is_total_eq"
                 || impl_item_ident == "eq"
-                || impl_item_ident == "ne",
+                || impl_item_ident == "ne"
+                || impl_item_ident == "assert_receiver_is_structural",
             "impl definition",
             impl_item
         );

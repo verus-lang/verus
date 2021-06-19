@@ -146,7 +146,15 @@ impl std::cmp::Ord for nat {
 
 // TODO(andreal) bake this into the compiler as a lang_item
 #[rustc_diagnostic_item = "builtin::Structural"]
-pub trait Structural {}
+pub trait Structural {
+    #[doc(hidden)]
+    fn assert_receiver_is_structural(&self) -> () {}
+}
+
+#[doc(hidden)]
+pub struct AssertParamIsStructural<T: Structural + ?Sized> {
+    _field: std::marker::PhantomData<T>,
+}
 
 macro_rules! impl_structural {
     ($($t:ty)*) => {
