@@ -1,5 +1,5 @@
-use crate::util::{err_span_str, err_span_string, unsupported_err_span, warning_span};
-use crate::{unsupported, unsupported_err, unsupported_err_unless, unsupported_unless};
+use crate::util::{err_span_str, err_span_string, unsupported_err_span};
+use crate::{unsupported, unsupported_err, unsupported_err_unless};
 use rustc_ast::token::{Token, TokenKind};
 use rustc_ast::tokenstream::TokenTree;
 use rustc_ast::{AttrKind, Attribute, IntTy, MacArgs, UintTy};
@@ -12,7 +12,7 @@ use rustc_span::symbol::Ident;
 use rustc_span::Span;
 use std::rc::Rc;
 use vir::ast::{Idents, IntRange, Mode, Path, Typ, TypX, VirErr};
-use vir::ast_util::{path_to_string, types_equal};
+use vir::ast_util::types_equal;
 
 pub(crate) fn def_to_path<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> Path {
     Rc::new(tcx.def_path(def_id).data.iter().map(|d| Rc::new(format!("{}", d))).collect::<Vec<_>>())
@@ -268,7 +268,7 @@ pub(crate) fn typ_of_node<'tcx>(ctxt: &Ctxt<'tcx>, id: &HirId) -> Typ {
 // Do equality operations on these operands translate into the SMT solver's == operation?
 pub(crate) fn is_smt_equality<'tcx>(
     ctxt: &Ctxt<'tcx>,
-    span: Span,
+    _span: Span,
     id1: &HirId,
     id2: &HirId,
 ) -> bool {
@@ -276,7 +276,7 @@ pub(crate) fn is_smt_equality<'tcx>(
     match (&*t1, &*t2) {
         (TypX::Bool, TypX::Bool) => true,
         (TypX::Int(_), TypX::Int(_)) => true,
-        (TypX::Path(p), TypX::Path(_)) if types_equal(&t1, &t2) => {
+        (TypX::Path(_), TypX::Path(_)) if types_equal(&t1, &t2) => {
             let structural_def_id = ctxt
                 .tcx
                 .get_diagnostic_item(rustc_span::Symbol::intern("builtin::Structural"))
