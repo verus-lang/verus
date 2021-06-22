@@ -66,25 +66,6 @@ test_verify_with_pervasive! {
 }
 
 test_verify_with_pervasive! {
-    #[test] test_neq STRUCTS.to_string() + code_str! {
-        fn test_neq(passengers: int) {
-            let c1 = Car { passengers, four_doors: true };
-            let c2 = Car { passengers, four_doors: false };
-            let c3 = Car { passengers, four_doors: true };
-
-            assert(c1 == c3);
-            assert(c1 != c2);
-
-            let t = Vehicle::Train(true);
-            let ca = Vehicle::Car(c1);
-
-            assert(t != ca);
-            assert(t == ca); // FAILS
-        }
-    } => Err(err) => assert_one_fails(err)
-}
-
-test_verify_with_pervasive! {
     #[test] test_enum_struct code! {
         #[derive(PartialEq, Eq)]
         enum Thing {

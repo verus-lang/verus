@@ -2,6 +2,7 @@
 members = [
   "air",
   "builtin",
+  "builtin_macros",
   "vir",
   "rust_verify",
   "rust_verify_test_macros",

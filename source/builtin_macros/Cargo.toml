@@ -1,0 +1,14 @@
+[package]
+name = "builtin_macros"
+version = "0.1.0"
+authors = ["Chris Hawblitzel <Chris.Hawblitzel@microsoft.com>", "Andrea Lattuada <andrealattuada@inf.ethz.ch>"]
+edition = "2018"
+
+[lib]
+proc-macro = true
+
+[dependencies]
+proc-macro2 = "1.0"
+quote = "1.0"
+synstructure = "0.12"
+syn = "1.0"

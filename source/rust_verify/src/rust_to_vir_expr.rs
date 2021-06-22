@@ -480,8 +480,9 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
             let vlhs = expr_to_vir(ctxt, lhs)?;
             let vrhs = expr_to_vir(ctxt, rhs)?;
             match op.node {
-                BinOpKind::Eq | BinOpKind::Ne => unsupported_unless!(
+                BinOpKind::Eq | BinOpKind::Ne => unsupported_err_unless!(
                     is_smt_equality(ctxt, expr.span, &lhs.hir_id, &rhs.hir_id),
+                    expr.span,
                     "==/!= for non smt equality types",
                     expr
                 ),

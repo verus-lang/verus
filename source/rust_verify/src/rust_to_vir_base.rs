@@ -1,5 +1,5 @@
-use crate::util::{err_span_str, err_span_string, unsupported_err_span, warning_span};
-use crate::{unsupported, unsupported_err, unsupported_err_unless, unsupported_unless};
+use crate::util::{err_span_str, err_span_string, unsupported_err_span};
+use crate::{unsupported, unsupported_err, unsupported_err_unless};
 use rustc_ast::token::{Token, TokenKind};
 use rustc_ast::tokenstream::TokenTree;
 use rustc_ast::{AttrKind, Attribute, IntTy, MacArgs, UintTy};
@@ -12,7 +12,7 @@ use rustc_span::symbol::Ident;
 use rustc_span::Span;
 use std::rc::Rc;
 use vir::ast::{Idents, IntRange, Mode, Path, Typ, TypX, VirErr};
-use vir::ast_util::{path_to_string, types_equal};
+use vir::ast_util::types_equal;
 
 pub(crate) fn def_to_path<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> Path {
     Rc::new(tcx.def_path(def_id).data.iter().map(|d| Rc::new(format!("{}", d))).collect::<Vec<_>>())
@@ -268,7 +268,7 @@ pub(crate) fn typ_of_node<'tcx>(ctxt: &Ctxt<'tcx>, id: &HirId) -> Typ {
 // Do equality operations on these operands translate into the SMT solver's == operation?
 pub(crate) fn is_smt_equality<'tcx>(
     ctxt: &Ctxt<'tcx>,
-    span: Span,
+    _span: Span,
     id1: &HirId,
     id2: &HirId,
 ) -> bool {
@@ -276,38 +276,20 @@ pub(crate) fn is_smt_equality<'tcx>(
     match (&*t1, &*t2) {
         (TypX::Bool, TypX::Bool) => true,
         (TypX::Int(_), TypX::Int(_)) => true,
-        (TypX::Path(p), TypX::Path(_)) if types_equal(&t1, &t2) => {
-            // TODO: a type may provide a custom PartialEq implementation, or have interior
-            // mutability; this means that PartialEq::eq may not be the same as structural
-            // (member-wise) adt equality. We should check whether the PartialEq implementation
-            // is compatible with adt equality before allowing these. For now, warn that there
-            // may be unsoundness.
-            // As used here, StructuralEq is only sufficient for a shallow check.
-            // In the rust doc for `StructuralEq`:
-            // > Any type that derives Eq automatically implements this trait,
-            // > regardless of whether its type parameters implement Eq.
-            warning_span(
-                span,
-                format!(
-                    "the verifier will assume structural equality for {}, which may be un sound",
-                    path_to_string(p)
-                ),
-            );
-            let struct_eq_def_id = ctxt
+        (TypX::Path(_), TypX::Path(_)) if types_equal(&t1, &t2) => {
+            let structural_def_id = ctxt
                 .tcx
-                .lang_items()
-                .structural_teq_trait()
-                .expect("structural eq trait is not defined");
+                .get_diagnostic_item(rustc_span::Symbol::intern("builtin::Structural"))
+                .expect("structural trait is not defined");
             let ty = ctxt.types.node_type(*id1);
-            let substs_ref = ctxt.tcx.mk_substs_trait(ty, &[]);
-            let type_impls_struct_eq = ctxt.tcx.type_implements_trait((
-                struct_eq_def_id,
+            let substs_ref = ctxt.tcx.mk_substs([].iter());
+            let ty_impls_structural = ctxt.tcx.type_implements_trait((
+                structural_def_id,
                 ty,
                 substs_ref,
                 rustc_middle::ty::ParamEnv::empty(),
             ));
-            unsupported_unless!(type_impls_struct_eq, "eq_for_non_structural_eq");
-            true
+            ty_impls_structural
         }
         _ => false,
     }

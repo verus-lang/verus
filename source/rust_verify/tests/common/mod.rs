@@ -3,7 +3,7 @@ extern crate rustc_errors;
 extern crate rustc_span;
 
 mod pervasive;
-pub use pervasive::{PERVASIVE, PERVASIVE_IMPORT_PRELUDE};
+pub use pervasive::{LIB, PERVASIVE, PERVASIVE_IMPORT_PRELUDE};
 pub use rust_verify::verifier::ErrorSpan;
 pub use rust_verify_test_macros::{code, code_str};
 
@@ -89,6 +89,7 @@ pub fn verify_with_pervasive(
     code: String,
 ) -> Result<(), Vec<(Option<ErrorSpan>, Option<ErrorSpan>)>> {
     let files = vec![
+        ("lib.rs".to_string(), LIB.to_string()),
         ("pervasive.rs".to_string(), PERVASIVE.to_string()),
         ("test.rs".to_string(), format!("{}\n\n{}", PERVASIVE_IMPORT_PRELUDE, code.as_str())),
     ];
@@ -101,6 +102,7 @@ macro_rules! test_verify_with_pervasive {
         $(#[$attrs])*
         fn $name() {
             let result = verify_with_pervasive($body);
+            #[allow(irrefutable_let_patterns)]
             if let $result = result {
                 $assertions
             } else {
@@ -112,6 +114,7 @@ macro_rules! test_verify_with_pervasive {
         $(#[$attrs])*
         fn $name() {
             let result = verify_with_pervasive($body);
+            #[allow(irrefutable_let_patterns)]
             if let $result = result {
             } else {
                 assert!(false, "{:?} does not match $result", result);
@@ -120,6 +123,7 @@ macro_rules! test_verify_with_pervasive {
     };
 }
 
+#[allow(dead_code)]
 pub fn assert_one_fails(err: Vec<(Option<ErrorSpan>, Option<ErrorSpan>)>) {
     assert_eq!(err.len(), 1);
     assert!(err[0].0.as_ref().expect("span").test_span_line.contains("FAILS"));

@@ -10,7 +10,7 @@ use crate::rust_to_vir_adts::{check_item_enum, check_item_struct};
 use crate::rust_to_vir_base::{hack_check_def_name, hack_get_def_name};
 use crate::rust_to_vir_func::{check_foreign_item_fn, check_item_fn};
 use crate::util::unsupported_err_span;
-use crate::{unsupported_err, unsupported_err_unless, unsupported_unless};
+use crate::{err_unless, unsupported_err, unsupported_err_unless, unsupported_unless};
 use rustc_ast::Attribute;
 use rustc_hir::{
     Crate, ForeignItem, ForeignItemId, ForeignItemKind, HirId, Item, ItemId, ItemKind, ModuleItems,
@@ -62,11 +62,52 @@ fn check_item<'tcx>(
                             "core",
                             "marker::StructuralPartialEq"
                         )
-                        || hack_check_def_name(tcx, path.res.def_id(), "core", "cmp::PartialEq"),
+                        || hack_check_def_name(tcx, path.res.def_id(), "core", "cmp::PartialEq")
+                        || hack_check_def_name(tcx, path.res.def_id(), "builtin", "Structural"),
                     item.span,
                     "non_eq_trait_impl",
                     path
                 );
+                if hack_check_def_name(tcx, path.res.def_id(), "builtin", "Structural") {
+                    let ty = {
+                        // TODO extract to rust_to_vir_base, or use
+                        // https://doc.rust-lang.org/nightly/nightly-rustc/rustc_typeck/fn.hir_ty_to_ty.html
+                        // ?
+                        let def_id = match impll.self_ty.kind {
+                            rustc_hir::TyKind::Path(QPath::Resolved(None, path)) => {
+                                path.res.def_id()
+                            }
+                            _ => panic!(
+                                "self type of impl is not resolved: {:?}",
+                                impll.self_ty.kind
+                            ),
+                        };
+                        tcx.type_of(def_id)
+                    };
+                    // TODO: this may be a bit of a hack: to query the TyCtxt for the StructuralEq impl it seems we need
+                    // a concrete type, so apply ! to all type parameters
+                    let ty_kind_applied_never =
+                        if let rustc_middle::ty::TyKind::Adt(def, substs) = ty.kind() {
+                            rustc_middle::ty::TyKind::Adt(
+                                def,
+                                tcx.mk_substs(substs.iter().map(|g| match g.unpack() {
+                                    rustc_middle::ty::subst::GenericArgKind::Type(_) => {
+                                        (*tcx).types.never.into()
+                                    }
+                                    _ => g,
+                                })),
+                            )
+                        } else {
+                            panic!("Structural impl for non-adt type");
+                        };
+                    let ty_applied_never = tcx.mk_ty(ty_kind_applied_never);
+                    err_unless!(
+                        ty_applied_never.is_structural_eq_shallow(tcx),
+                        item.span,
+                        format!("Structural impl for non-structural type {:?}", ty),
+                        ty
+                    );
+                }
             } else {
                 unsupported_err_unless!(
                     impll.of_trait.is_none(),
@@ -93,6 +134,15 @@ fn check_item<'tcx>(
                 }
             }
         }
+        ItemKind::Const(_ty, _body_id) => {
+            unsupported_err_unless!(
+                hack_get_def_name(tcx, _body_id.hir_id.owner.to_def_id())
+                    .starts_with("_DERIVE_builtin_Structural_FOR_"),
+                item.span,
+                "unsupported const",
+                item
+            );
+        }
         _ => {
             unsupported_err!(item.span, "unsupported item", item);
         }
@@ -118,7 +168,8 @@ fn check_module<'tcx>(
                 unsupported_unless!(
                     def_name == "assert_receiver_is_total_eq"
                         || def_name == "eq"
-                        || def_name == "ne",
+                        || def_name == "ne"
+                        || def_name == "assert_receiver_is_structural",
                     "impl definition in module",
                     id
                 );
@@ -207,7 +258,8 @@ pub fn crate_to_vir<'tcx>(tcx: TyCtxt<'tcx>, krate: &'tcx Crate<'tcx>) -> Result
         unsupported_unless!(
             impl_item_ident == "assert_receiver_is_total_eq"
                 || impl_item_ident == "eq"
-                || impl_item_ident == "ne",
+                || impl_item_ident == "ne"
+                || impl_item_ident == "assert_receiver_is_structural",
             "impl definition",
             impl_item
         );
@@ -217,7 +269,8 @@ pub fn crate_to_vir<'tcx>(tcx: TyCtxt<'tcx>, krate: &'tcx Crate<'tcx>) -> Result
             hack_check_def_name(tcx, *id, "core", "marker::StructuralEq")
                 || hack_check_def_name(tcx, *id, "core", "cmp::Eq")
                 || hack_check_def_name(tcx, *id, "core", "marker::StructuralPartialEq")
-                || hack_check_def_name(tcx, *id, "core", "cmp::PartialEq"),
+                || hack_check_def_name(tcx, *id, "core", "cmp::PartialEq")
+                || hack_check_def_name(tcx, *id, "builtin", "Structural"),
             "non_eq_trait_impl",
             id
         );

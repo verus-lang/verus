@@ -1,3 +1,5 @@
+#![feature(rustc_attrs)]
+
 pub fn admit() {
     unimplemented!();
 }
@@ -140,4 +142,32 @@ impl std::cmp::Ord for nat {
     fn cmp(&self, _other: &Self) -> std::cmp::Ordering {
         unimplemented!()
     }
+}
+
+// TODO(andreal) bake this into the compiler as a lang_item
+#[rustc_diagnostic_item = "builtin::Structural"]
+pub trait Structural {
+    #[doc(hidden)]
+    fn assert_receiver_is_structural(&self) -> () {}
+}
+
+#[doc(hidden)]
+pub struct AssertParamIsStructural<T: Structural + ?Sized> {
+    _field: std::marker::PhantomData<T>,
+}
+
+macro_rules! impl_structural {
+    ($($t:ty)*) => {
+        $(
+            impl Structural for $t { }
+        )*
+    }
+}
+
+impl_structural! {
+    int nat
+    usize u8 u16 u32 u64 u128
+    isize i8 i16 i32 i64 i128
+    // TODO: support f32 f64 ?
+    bool char
 }
