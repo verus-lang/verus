@@ -19,8 +19,10 @@ mkdir -p $rs_file_dir/log
 RUSTC=../install/bin/rustc ../install/bin/cargo build && \
         LD_LIBRARY_PATH=../install/lib ../install/bin/rust_verify $rs_file -L ../install/bin/ \
         --log-air $rs_file_dir/log/$rs_file_basename.air --log-vir $rs_file_dir/log/$rs_file_basename.vir --log-smt $rs_file_dir/log/$rs_file_basename.smt
+result=$?
 
 echo
 echo -e "${color_blue}log-air${color_reset}" "$rs_file_dir/log/$rs_file_basename.air"
 echo -e "${color_blue}log-vir${color_reset}" "$rs_file_dir/log/$rs_file_basename.vir"
 echo -e "${color_blue}log-smt${color_reset}" "$rs_file_dir/log/$rs_file_basename.smt"
+exit $?
