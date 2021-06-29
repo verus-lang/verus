@@ -111,16 +111,22 @@ From the `verify` directory, run:
 on Windows:
 
 ```
-../install/bin/rust_verify rust_verify/example/basic.rs -L ../install/bin/
+../install/bin/rust_verify rust_verify/example/recursion.rs -L ../install/bin/
 ```
 
 on Darwin (and likely Linux):
 
 ```
-LD_LIBRARY_PATH=../install/lib ../install/bin/rust_verify rust_verify/example/basic.rs -L ../install/bin/
+DYLD_LIBRARY_PATH=../install/lib/rustlib/x86_64-apple-darwin/lib LD_LIBRARY_PATH=../install/lib ../install/bin/rust_verify rust_verify/example/recursion.rs -L ../install/bin/
 ```
 
-This runs the `Rust --> VIR --> AIR --> Z3` pipeline on `basic.rs`
+You can also use the helper script:
+
+```
+./tools/rust-verify.sh rust_verify/example/recursion.rs
+```
+
+This runs the `Rust --> VIR --> AIR --> Z3` pipeline on `recursion.rs`
 and reports the errors that Z3 finds.
 
 The `-L ../install/bin/` is used to link to the `builtin` crate.
