@@ -80,7 +80,7 @@ pub enum HeaderExprX {
     Ensures(Option<(Ident, Typ)>, Exprs),
     Invariant(Exprs),
     Decreases(Expr, Typ),
-    Hide(Ident),
+    Hide(Ident), // Opposite of reveal.  Allows local hiding of a definition.  Must appear at the start of a function.
 }
 
 #[derive(Clone, Debug)]

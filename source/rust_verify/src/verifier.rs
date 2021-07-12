@@ -12,7 +12,8 @@ use vir::ast::{Krate, VirErr, VirErrX};
 pub struct Verifier {
     pub encountered_vir_error: bool,
     pub count_verified: u64,
-    pub errors: Vec<(Option<ErrorSpan>, Option<ErrorSpan>)>,
+    // Two error slots that can be filled in if needed.  TODO: Convert to list/vec
+    pub errors: Vec<(Option<ErrorSpan>, Option<ErrorSpan>)>,    
     args: Args,
     pub test_capture_output: Option<std::sync::Arc<std::sync::Mutex<Vec<u8>>>>,
 }
@@ -21,7 +22,7 @@ pub struct Verifier {
 pub struct ErrorSpan {
     pub description: Option<String>,
     pub span_data: (String, (usize, CharPos), (usize, CharPos)),
-    pub test_span_line: String,
+    pub test_span_line: String, // Used by the testing infrastructure
 }
 
 impl ErrorSpan {
@@ -176,6 +177,7 @@ impl Verifier {
             air_context.set_smt_log(Box::new(file));
         }
 
+        // air_recommended_options causes AIR to apply a preset collection of Z3 options
         air_context.set_z3_param("air_recommended_options", "true");
         air_context.set_rlimit(self.args.rlimit * 1000000);
 

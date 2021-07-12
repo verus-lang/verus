@@ -14,7 +14,12 @@ src
 verify
 ```
 
-All but the `verify` subdirectory come from the Rust source code.
+All but the `verify` subdirectory come from the Rust compiler's public
+repository.  Thus far, we have made only minor modifications to the Rust
+compiler, primarily to add additional hooks for the verification code.  See
+[Code.md] for more details about files in the `verify` directory.  See the
+[official docs](https://rustc-dev-guide.rust-lang.org/) for more about the
+normal Rust compiler.
 
 ## Step 1: build Rust
 
@@ -163,6 +168,10 @@ To automatically apply these suggestions to the source code, type:
 ```
 ../install/bin/cargo-fmt
 ```
+
+Commenting the code is *strongly encouraged*!  Use `///` to create comments
+that [`rustdoc`](https://doc.rust-lang.org/rustdoc/what-is-rustdoc.html) can
+automatically extract into HTML documentation.
 
 # Running tests for the rust to vir translation, and inspecting the resulting vir/air/smt
 

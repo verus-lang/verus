@@ -200,6 +200,7 @@ fn fn_call_to_vir<'tcx>(
         unsupported_err_unless!(len == 1, expr.span, "expected ensures", &args);
         let header = extract_ensures(ctxt, args[0])?;
         let expr = spanned_new(args[0].span, ExprX::Header(header));
+        // extract_ensures does most of the necessary work, so we can return at this point
         return Ok(expr);
     }
     if is_invariant {
