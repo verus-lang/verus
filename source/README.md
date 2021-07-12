@@ -197,7 +197,7 @@ You should only run a single test, as only the latest logged IR is preserved.
 For example, the following will emit the vir/air/smt logs to `rust_verify/logs`:
 
 ```
-VERIFY_LOG_IR_PATH="log" RUSTC=../install/bin/rustc ../install/bin/cargo test -p rust_verify --test refs_basic test_struct_ref
+VERIFY_LOG_IR_PATH="logs" RUSTC=../install/bin/rustc ../install/bin/cargo test -p rust_verify --test refs_basic test_struct_ref
 ```
 
 @utaal has not yet figured out how to determine what test is currently running, to enable running
