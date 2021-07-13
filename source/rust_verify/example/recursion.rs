@@ -5,6 +5,7 @@ use pervasive::*;
 
 fn main() {}
 
+
 #[spec]
 fn arith_sum_int(i: int) -> int {
     decreases(i);
@@ -56,3 +57,20 @@ fn arith_sum_test3() {
     reveal_with_fuel(arith_sum_u64, 4);
     assert(arith_sum_u64(3) == 6);
 }
+
+/*
+// Test mutual recursion
+#[spec]
+fn count_down_a(i:nat) -> nat {
+    decreases(i);
+
+    if i == 0 { 0 } else { i + count_down_b(i - 1) }
+}
+
+#[spec]
+fn count_down_b(i:nat) -> nat {
+    decreases(i);
+
+    if i == 0 { 0 } else { i + count_down_a(i - 1) }
+}
+*/
