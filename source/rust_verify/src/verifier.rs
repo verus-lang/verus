@@ -13,7 +13,7 @@ pub struct Verifier {
     pub encountered_vir_error: bool,
     pub count_verified: u64,
     // Two error slots that can be filled in if needed.  TODO: Convert to list/vec
-    pub errors: Vec<(Option<ErrorSpan>, Option<ErrorSpan>)>,    
+    pub errors: Vec<(Option<ErrorSpan>, Option<ErrorSpan>)>,
     args: Args,
     pub test_capture_output: Option<std::sync::Arc<std::sync::Mutex<Vec<u8>>>>,
 }
