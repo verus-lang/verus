@@ -58,8 +58,7 @@ fn arith_sum_test3() {
     assert(arith_sum_u64(3) == 6);
 }
 
-/*
-// Test mutual recursion
+// Basic test of mutually recursive expressions
 #[spec]
 fn count_down_a(i:nat) -> nat {
     decreases(i);
@@ -73,4 +72,28 @@ fn count_down_b(i:nat) -> nat {
 
     if i == 0 { 0 } else { i + count_down_a(i - 1) }
 }
-*/
+
+// Basic test of mutually recursive statements
+#[spec]
+fn count_down_a_stmt(i:nat) -> nat {
+    decreases(i);
+
+    if i == 0 {
+        0 
+    } else { 
+        let r = count_down_b_stmt(i - 1);
+        i + r
+    }
+}
+
+#[spec]
+fn count_down_b_stmt(i:nat) -> nat {
+    decreases(i);
+
+    if i == 0 { 
+        0 
+    } else { 
+        count_down_a_stmt(i - 1);
+        i + count_down_a_stmt(i - 1) 
+    }
+}

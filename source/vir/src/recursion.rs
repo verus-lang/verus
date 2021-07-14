@@ -152,6 +152,7 @@ fn terminates(ctxt: &Ctxt, exp: &Exp) -> Exp {
 pub(crate) fn is_recursive_exp(ctx: &Ctx, name: &Ident, body: &Exp) -> bool {
     if ctx.func_call_graph.get_scc_size(name) > 1 {
         // This function is part of a mutually recursive component
+        println!("Found a mutually recursive expression: {}", name);
         return true;
     } else {
         // Check for self-recursion, which SCC computation does not account for
@@ -167,17 +168,24 @@ pub(crate) fn is_recursive_exp(ctx: &Ctx, name: &Ident, body: &Exp) -> bool {
     }
 }
 
-pub(crate) fn is_recursive_stm(name: &Ident, body: &Stm) -> bool {
-    let mut recurse = false;
-    map_stm_visitor(body, &mut |stm| match &stm.x {
-        StmX::Call(x, _, _, _) if x == name => {
-            recurse = true;
-            Ok(stm.clone())
-        }
-        _ => Ok(stm.clone()),
-    })
-    .unwrap();
-    recurse
+pub(crate) fn is_recursive_stm(ctx: &Ctx, name: &Ident, body: &Stm) -> bool {
+    if ctx.func_call_graph.get_scc_size(name) > 1 {
+        // This function is part of a mutually recursive component
+        println!("Found a mutually recursive statement: {}", name);
+        return true;
+    } else {
+        // Check for self-recursion, which SCC computation does not account for
+        let mut recurse = false;
+        map_stm_visitor(body, &mut |stm| match &stm.x {
+            StmX::Call(x, _, _, _) if x == name => {
+                recurse = true;
+                Ok(stm.clone())
+            }
+            _ => Ok(stm.clone()),
+        })
+        .unwrap();
+        recurse
+    }
 }
 
 fn mk_decreases_at_entry(ctxt: &Ctxt, span: &Span) -> (Stm, Stm) {
@@ -268,7 +276,7 @@ pub(crate) fn check_termination_stm(
     function: &Function,
     body: &Stm,
 ) -> Result<Stm, VirErr> {
-    if !is_recursive_stm(&function.x.name, body) {
+    if !is_recursive_stm(ctx, &function.x.name, body) {
         return Ok(body.clone());
     }
 
@@ -325,11 +333,11 @@ fn add_call_graph_edges(
     Ok(expr.clone())
 }
 
-// TODO: Add a traversal over statements too?
 pub(crate) fn expand_call_graph(
     call_graph: &mut Graph<Ident>,
     function: &Function,
 ) -> Result<(), VirErr> {
+    // We only traverse expressions (not statements), since calls only appear in the former (see ast.rs)
     if let Some(body) = &function.x.body {
         map_expr_visitor(body, &mut |expr| add_call_graph_edges(call_graph, &function.x.name, expr))?;
     }
