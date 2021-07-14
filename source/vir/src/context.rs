@@ -26,10 +26,10 @@ impl Ctx {
         let mut func_call_graph: Graph<Ident> = Graph::new();
         for function in krate.functions.iter() {
             func_map.insert(function.x.name.clone(), function.clone());
-            //crate::recursion::check_no_mutual_recursion(&func_map, function)?;
             crate::recursion::expand_call_graph(&mut func_call_graph, function)?;
             functions.push(function.clone());
         }
+        func_call_graph.compute_sccs();
         let chosen_triggers: std::cell::RefCell<Vec<(Span, Vec<Vec<String>>)>> =
             std::cell::RefCell::new(Vec::new());
         Ok(Ctx { datatypes, functions, func_map, func_call_graph, chosen_triggers })

@@ -154,7 +154,7 @@ impl<T: std::cmp::Eq + std::hash::Hash + Clone> Graph<T> {
         }
     }
 
-    pub fn get_scc_size(&self, t: T) -> usize {
+    pub fn get_scc_size(&self, t: &T) -> usize {
         assert!(self.mapping.contains_key(&t));
         match self.mapping.get(&t) {
             Some(i) => self.sccs[*i].size(),
@@ -162,7 +162,7 @@ impl<T: std::cmp::Eq + std::hash::Hash + Clone> Graph<T> {
         }
     }
 
-    pub fn get_scc_rep(&self, t: T) -> T {
+    pub fn get_scc_rep(&self, t: &T) -> T {
         assert!(self.mapping.contains_key(&t));
         match self.mapping.get(&t) {
             Some(i) => self.nodes[self.sccs[*i].rep()].t.clone(),

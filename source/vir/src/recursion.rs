@@ -149,16 +149,22 @@ fn terminates(ctxt: &Ctxt, exp: &Exp) -> Exp {
     }
 }
 
-pub(crate) fn is_recursive_exp(name: &Ident, body: &Exp) -> bool {
-    let mut recurse = false;
-    map_exp_visitor(body, &mut |exp| match &exp.x {
-        ExpX::Call(x, _, _) if x == name => {
-            recurse = true;
-            exp.clone()
-        }
-        _ => exp.clone(),
-    });
-    recurse
+pub(crate) fn is_recursive_exp(ctx: &Ctx, name: &Ident, body: &Exp) -> bool {
+    if ctx.func_call_graph.get_scc_size(name) > 1 {
+        // This function is part of a mutually recursive component
+        return true;
+    } else {
+        // Check for self-recursion, which SCC computation does not account for
+        let mut recurse = false;
+        map_exp_visitor(body, &mut |exp| match &exp.x {
+            ExpX::Call(x, _, _) if x == name => {
+                recurse = true;
+                exp.clone()
+            }
+            _ => exp.clone(),
+        });
+        recurse
+    }
 }
 
 pub(crate) fn is_recursive_stm(name: &Ident, body: &Stm) -> bool {
@@ -203,7 +209,7 @@ pub(crate) fn check_termination_exp(
     function: &Function,
     body: &Exp,
 ) -> Result<(bool, Commands, Exp), VirErr> {
-    if !is_recursive_exp(&function.x.name, body) {
+    if !is_recursive_exp(ctx, &function.x.name, body) {
         return Ok((false, Rc::new(vec![]), body.clone()));
     }
 
@@ -319,6 +325,7 @@ fn add_call_graph_edges(
     Ok(expr.clone())
 }
 
+// TODO: Add a traversal over statements too?
 pub(crate) fn expand_call_graph(
     call_graph: &mut Graph<Ident>,
     function: &Function,
@@ -329,6 +336,7 @@ pub(crate) fn expand_call_graph(
     Ok(())
 }
 
+/*
 pub(crate) fn check_defined_earlier(
     func_map: &HashMap<Ident, Function>,
     expr: &crate::ast::Expr,
@@ -363,3 +371,4 @@ pub(crate) fn check_no_mutual_recursion(
     }
     Ok(())
 }
+*/
