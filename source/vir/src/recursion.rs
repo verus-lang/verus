@@ -1,5 +1,5 @@
 use crate::ast::{BinaryOp, Function, Ident, Params, Typ, TypX, UnaryOp, VirErr};
-use crate::ast_util::{err_str, err_string};
+use crate::ast_util::{err_str};
 use crate::ast_visitor::map_expr_visitor;
 use crate::context::Ctx;
 use crate::def::{
@@ -344,39 +344,3 @@ pub(crate) fn expand_call_graph(
     Ok(())
 }
 
-/*
-pub(crate) fn check_defined_earlier(
-    func_map: &HashMap<Ident, Function>,
-    expr: &crate::ast::Expr,
-) -> Result<crate::ast::Expr, VirErr> {
-    use crate::ast::ExprX;
-
-    match &expr.x {
-        ExprX::Call(x, _, _) | ExprX::Fuel(x, _) => {
-            if !func_map.contains_key(x) {
-                return err_string(
-                    &expr.span,
-                    format!(
-                        "because support for mutual recursion isn't yet implemented, {} must be defined before it is called",
-                        &x
-                    ),
-                );
-            }
-        }
-        _ => {}
-    }
-    Ok(expr.clone())
-}
-
-pub(crate) fn check_no_mutual_recursion(
-    func_map: &HashMap<Ident, Function>,
-    function: &Function,
-) -> Result<(), VirErr> {
-    // Mutual recursion is not implemented yet, so make sure there is no mutual recursion.
-    // Check this by simply forcing all the declarations to be in order.
-    if let Some(body) = &function.x.body {
-        map_expr_visitor(body, &mut |expr| check_defined_earlier(func_map, expr))?;
-    }
-    Ok(())
-}
-*/
