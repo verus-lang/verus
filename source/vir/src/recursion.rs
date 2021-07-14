@@ -11,6 +11,7 @@ use air::ast::{Binder, Commands, Quant, Span};
 use air::ast_util::{ident_binder, str_ident};
 use std::collections::HashMap;
 use std::rc::Rc;
+use crate::scc::Graph;
 
 struct Ctxt {
     recursive_function_name: Ident,
@@ -300,6 +301,31 @@ pub(crate) fn check_termination_stm(
         StmX::Block(Rc::new(vec![stm_decl, stm_assign, stm.clone()])),
     );
     Ok(stm_block)
+}
+
+fn add_call_graph_edges(
+    call_graph: &Graph<Ident>,
+    src: &Ident,
+    expr: &crate::ast::Expr,
+) -> Result<crate::ast::Expr, VirErr> {
+    use crate::ast::ExprX;
+
+    match &expr.x {
+        ExprX::Call(x, _, _) | ExprX::Fuel(x, _) => {
+            call_graph.add_edge(src, x)
+        }
+        _ => {}
+    }
+    Ok(expr.clone())
+}
+
+pub(crate) fn expand_call_graph(
+    call_graph: &Graph<Ident>,
+    function: &Function,
+) {
+    if let Some(body) = &function.x.body {
+        map_expr_visitor(body, &mut |expr| add_call_graph_edges(call_graph, &function.x.name, expr));
+    }
 }
 
 pub(crate) fn check_defined_earlier(

@@ -3,12 +3,14 @@ use crate::def::FUEL_ID;
 use air::ast::{Command, CommandX, Commands, DeclX, MultiOp, Span};
 use air::ast_util::str_typ;
 use std::collections::HashMap;
+use crate::scc::Graph;
 use std::rc::Rc;
 
 pub struct Ctx {
     pub(crate) datatypes: HashMap<Path, Variants>,
     pub(crate) functions: Vec<Function>,
     pub(crate) func_map: HashMap<Ident, Function>,
+    pub(crate) func_call_graph : Graph<Ident>,
     pub(crate) chosen_triggers: std::cell::RefCell<Vec<(Span, Vec<Vec<String>>)>>, // diagnostics
 }
 
@@ -21,14 +23,16 @@ impl Ctx {
             .collect::<HashMap<_, _>>();
         let mut functions: Vec<Function> = Vec::new();
         let mut func_map: HashMap<Ident, Function> = HashMap::new();
+        let mut func_call_graph: Graph<Ident> = Graph::new();
         for function in krate.functions.iter() {
             func_map.insert(function.x.name.clone(), function.clone());
-            crate::recursion::check_no_mutual_recursion(&func_map, function)?;
+            //crate::recursion::check_no_mutual_recursion(&func_map, function)?;
+            crate::recursion::expand_call_graph(&func_call_graph, function);
             functions.push(function.clone());
         }
         let chosen_triggers: std::cell::RefCell<Vec<(Span, Vec<Vec<String>>)>> =
             std::cell::RefCell::new(Vec::new());
-        Ok(Ctx { datatypes, functions, func_map, chosen_triggers })
+        Ok(Ctx { datatypes, functions, func_map, func_call_graph, chosen_triggers })
     }
 
     pub fn prelude(&self) -> Commands {
