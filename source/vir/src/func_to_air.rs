@@ -182,6 +182,23 @@ pub fn req_ens_to_air(
     Ok(())
 }
 
+/// Returns vector of 0 or 1 commands (to match the calling convention of other AIR-producing
+/// functions) that declare the function symbol itself, if the function is a spec function.
+pub fn func_name_to_air(function: &Function) -> Commands {
+    let mut all_typs = vec_map(&function.x.params, |param| typ_to_air(&param.x.typ));
+    for _ in function.x.typ_params.iter() {
+        all_typs.insert(0, str_typ(crate::def::TYPE));
+    }
+    let mut commands: Vec<Command> = Vec::new();
+    if let (Mode::Spec, Some((_, ret, _))) = (function.x.mode, function.x.ret.as_ref()) {
+        let typ = typ_to_air(&ret);
+        let name = suffix_global_id(&function.x.name);
+        let decl = Rc::new(DeclX::Fun(name, Rc::new(all_typs), typ));
+        commands.push(Rc::new(CommandX::Global(decl)));
+    }
+    Rc::new(commands)
+}
+
 pub fn func_decl_to_air(ctx: &Ctx, function: &Function) -> Result<Commands, VirErr> {
     let mut all_typs = vec_map(&function.x.params, |param| typ_to_air(&param.x.typ));
     let param_typs = Rc::new(all_typs.clone());
@@ -191,12 +208,7 @@ pub fn func_decl_to_air(ctx: &Ctx, function: &Function) -> Result<Commands, VirE
     let mut commands: Vec<Command> = Vec::new();
     match (function.x.mode, function.x.ret.as_ref()) {
         (Mode::Spec, Some((_, ret, _))) => {
-            let typ = typ_to_air(&ret);
-
-            // Declare function
             let name = suffix_global_id(&function.x.name);
-            let decl = Rc::new(DeclX::Fun(name.clone(), Rc::new(all_typs), typ));
-            commands.push(Rc::new(CommandX::Global(decl)));
 
             // Body
             if let Some(body) = &function.x.body {

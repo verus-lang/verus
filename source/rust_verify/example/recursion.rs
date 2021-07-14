@@ -73,6 +73,7 @@ fn count_down_b(i:nat) -> nat {
     if i == 0 { 0 } else { i + count_down_a(i - 1) }
 }
 
+/*
 // Basic test of mutually recursive statements
 #[spec]
 fn count_down_a_stmt(i:nat) -> nat {
@@ -97,3 +98,4 @@ fn count_down_b_stmt(i:nat) -> nat {
         i + count_down_a_stmt(i - 1) 
     }
 }
+*/

@@ -155,10 +155,9 @@ impl<T: std::cmp::Eq + std::hash::Hash + Clone> Graph<T> {
     }
 
     pub fn get_scc_size(&self, t: &T) -> usize {
-        assert!(self.mapping.contains_key(&t));
         match self.mapping.get(&t) {
             Some(i) => self.sccs[*i].size(),
-            None => unreachable!(),
+            None => 1,
         }
     }
 
