@@ -258,12 +258,14 @@ pub(crate) fn check_termination_exp(
     );
 
     // New body: substitute rec%f(args, fuel) for f(args)
+    let scc_rep = ctx.func_call_graph.get_scc_rep(&function.x.name);
     let body = map_exp_visitor(&body, &mut |exp| match &exp.x {
-        ExpX::Call(x, typs, args) if *x == function.x.name => {
-            let rec_x = prefix_recursive(x);
-            let mut args = (**args).clone();
-            args.push(Spanned::new(exp.span.clone(), ExpX::Var(str_ident(FUEL_PARAM))));
-            Spanned::new(exp.span.clone(), ExpX::Call(rec_x, typs.clone(), Rc::new(args)))
+        ExpX::Call(x, typs, args) if *x == function.x.name || ctx.func_call_graph.get_scc_rep(x) == scc_rep => {
+                let rec_x = prefix_recursive(x);
+                let mut args = (**args).clone();
+                args.push(Spanned::new(exp.span.clone(), ExpX::Var(str_ident(FUEL_PARAM))));
+                Spanned::new(exp.span.clone(), ExpX::Call(rec_x, typs.clone(), Rc::new(args)))
+            
         }
         _ => exp.clone(),
     });
