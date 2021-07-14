@@ -207,7 +207,7 @@ impl Verifier {
 
         // Pre-declare the function symbols, to allow for the possibility of non-sorted function usage
         for function in &krate.functions {
-            let commands = vir::func_to_air::func_name_to_air(&function);
+            let commands = vir::func_to_air::func_name_to_air(&ctx, &function)?;
             if commands.len() > 0 {
                 air_context.blank_line();
                 air_context.comment(&("Function-PreDecl ".to_string() + &function.x.name));
