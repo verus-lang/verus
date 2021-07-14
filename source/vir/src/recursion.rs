@@ -304,7 +304,7 @@ pub(crate) fn check_termination_stm(
 }
 
 fn add_call_graph_edges(
-    call_graph: &Graph<Ident>,
+    call_graph: &mut Graph<Ident>,
     src: &Ident,
     expr: &crate::ast::Expr,
 ) -> Result<crate::ast::Expr, VirErr> {
@@ -312,7 +312,7 @@ fn add_call_graph_edges(
 
     match &expr.x {
         ExprX::Call(x, _, _) | ExprX::Fuel(x, _) => {
-            call_graph.add_edge(src, x)
+            call_graph.add_edge(src.clone(), x.clone())
         }
         _ => {}
     }
@@ -320,12 +320,13 @@ fn add_call_graph_edges(
 }
 
 pub(crate) fn expand_call_graph(
-    call_graph: &Graph<Ident>,
+    call_graph: &mut Graph<Ident>,
     function: &Function,
-) {
+) -> Result<(), VirErr> {
     if let Some(body) = &function.x.body {
-        map_expr_visitor(body, &mut |expr| add_call_graph_edges(call_graph, &function.x.name, expr));
+        map_expr_visitor(body, &mut |expr| add_call_graph_edges(call_graph, &function.x.name, expr))?;
     }
+    Ok(())
 }
 
 pub(crate) fn check_defined_earlier(

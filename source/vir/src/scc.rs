@@ -49,7 +49,7 @@ impl SCC {
     }
 }
 
-impl<T: std::cmp::Eq + std::hash::Hash + Copy> Graph<T> {
+impl<T: std::cmp::Eq + std::hash::Hash + Clone> Graph<T> {
     pub fn new() -> Graph<T> {
         Graph {
             h: HashMap::new(),
@@ -65,7 +65,7 @@ impl<T: std::cmp::Eq + std::hash::Hash + Copy> Graph<T> {
 
     pub fn add_node(&mut self, value: T) {
         if !self.h.contains_key(&value) {
-            self.h.insert(value, self.nodes.len());
+            self.h.insert(value.clone(), self.nodes.len());
             self.nodes.push(Node {
                 t: value,
                 edges: Vec::new(),
@@ -80,7 +80,7 @@ impl<T: std::cmp::Eq + std::hash::Hash + Copy> Graph<T> {
         match self.h.get(&value) {
             Some(v) => *v,
             None => {
-                self.add_node(value);
+                self.add_node(value.clone());
                 match self.h.get(&value) {
                     Some(v) => *v,
                     None => unreachable!(),
@@ -132,7 +132,7 @@ impl<T: std::cmp::Eq + std::hash::Hash + Copy> Graph<T> {
                 self.stack_len -= 1;
                 self.nodes[w].on_stack = false;
                 component.nodes.push(w);
-                self.mapping.insert(self.nodes[w].t, component.id);
+                self.mapping.insert(self.nodes[w].t.clone(), component.id);
                 if w == v {
                     break;
                 }
@@ -165,7 +165,7 @@ impl<T: std::cmp::Eq + std::hash::Hash + Copy> Graph<T> {
     pub fn get_scc_rep(&self, t: T) -> T {
         assert!(self.mapping.contains_key(&t));
         match self.mapping.get(&t) {
-            Some(i) => self.nodes[self.sccs[*i].rep()].t,
+            Some(i) => self.nodes[self.sccs[*i].rep()].t.clone(),
             None => unreachable!(),
         }
     }
