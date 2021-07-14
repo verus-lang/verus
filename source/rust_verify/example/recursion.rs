@@ -63,14 +63,20 @@ fn arith_sum_test3() {
 fn count_down_a(i:nat) -> nat {
     decreases(i);
 
-    if i == 0 { 0 } else { i + count_down_b(i - 1) }
+    if i == 0 { 0 } else { 1 + count_down_b(i - 1) }
 }
 
 #[spec]
 fn count_down_b(i:nat) -> nat {
     decreases(i);
 
-    if i == 0 { 0 } else { i + count_down_a(i - 1) }
+    if i == 0 { 0 } else { 1 + count_down_a(i - 1) }
+}
+
+#[proof]
+fn count_down_properties() {
+    //assert(count_down_b(0) == 0);
+    assert(count_down_a(1) == 1);
 }
 
 /*
