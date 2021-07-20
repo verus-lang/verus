@@ -75,7 +75,7 @@ fn count_down_b(i:nat) -> nat {
 
 #[proof]
 fn count_down_properties() {
-    //assert(count_down_b(0) == 0);
+    assert(count_down_b(0) == 0);
     assert(count_down_a(1) == 1);
 }
 
@@ -105,3 +105,25 @@ fn count_down_b_stmt(i:nat) -> nat {
     }
 }
 */
+
+// Test decreases of mutually recursive expressions
+#[spec]
+fn count_down_a_tricky(i:nat) -> nat {
+    decreases(i);
+
+    if i == 0 { 0 } else { 1 + count_down_b_tricky(i - 1) }
+}
+
+#[spec]
+fn count_down_b_tricky(i:nat) -> nat {
+    decreases(5 - i);
+
+    if i >= 5 { 0 } else { 1 + count_down_a_tricky(i + 1) }
+}
+
+//#[proof]
+//fn count_down_properties() {
+//    assert(count_down_b(0) == 0);
+//    assert(count_down_a(1) == 1);
+//}
+
