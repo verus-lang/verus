@@ -5,7 +5,6 @@ use pervasive::*;
 
 fn main() {}
 
-
 #[spec]
 fn arith_sum_int(i: int) -> int {
     decreases(i);
@@ -13,6 +12,7 @@ fn arith_sum_int(i: int) -> int {
     if i <= 0 { 0 } else { i + arith_sum_int(i - 1) }
 }
 
+/*
 #[spec]
 fn arith_sum_nat(i: nat) -> nat {
     decreases(i);
@@ -105,7 +105,7 @@ fn count_down_b_stmt(i:nat) -> nat {
     }
 }
 */
-
+*/
 // Test decreases of mutually recursive expressions
 #[spec]
 fn count_down_a_tricky(i:nat) -> nat {

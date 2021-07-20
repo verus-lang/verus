@@ -13,12 +13,14 @@ use std::collections::HashMap;
 use std::rc::Rc;
 use crate::scc::Graph;
 
-struct Ctxt {
+struct Ctxt<'a> {
     recursive_function_name: Ident,
     params: Params,
     decreases_at_entry: Ident,
     decreases_exp: Exp,
     decreases_typ: Typ,
+    scc_rep: Ident,
+    ctx: &'a Ctx,
 }
 
 fn check_decrease(ctxt: &Ctxt, exp: &Exp) -> Exp {
@@ -66,7 +68,7 @@ fn terminates(ctxt: &Ctxt, exp: &Exp) -> Exp {
             Spanned::new(exp.span.clone(), ExpX::Const(Constant::Bool(true)))
         }
         ExpX::Call(x, _, args) => {
-            let mut e = if *x == ctxt.recursive_function_name {
+            let mut e = if *x == ctxt.recursive_function_name || ctxt.ctx.func_call_graph.get_scc_rep(x) == ctxt.scc_rep {
                 check_decrease_rename(ctxt, &exp.span, args)
             } else {
                 Spanned::new(exp.span.clone(), ExpX::Const(Constant::Bool(true)))
@@ -229,12 +231,16 @@ pub(crate) fn check_termination_exp(
     };
     let decreases_exp = crate::ast_to_sst::expr_to_exp(ctx, &decreases_expr)?;
     let decreases_at_entry = str_ident(DECREASE_AT_ENTRY);
+    let scc_rep = ctx.func_call_graph.get_scc_rep(&function.x.name);
+    let scc_rep_clone = scc_rep.clone();
     let ctxt = Ctxt {
         recursive_function_name: function.x.name.clone(),
         params: function.x.params.clone(),
         decreases_at_entry,
         decreases_exp,
         decreases_typ,
+        scc_rep,
+        ctx,
     };
     let check = terminates(&ctxt, &body);
     let (stm_decl, stm_assign) = mk_decreases_at_entry(&ctxt, &body.span);
@@ -258,9 +264,8 @@ pub(crate) fn check_termination_exp(
     );
 
     // New body: substitute rec%f(args, fuel) for f(args)
-    let scc_rep = ctx.func_call_graph.get_scc_rep(&function.x.name);
     let body = map_exp_visitor(&body, &mut |exp| match &exp.x {
-        ExpX::Call(x, typs, args) if *x == function.x.name || ctx.func_call_graph.get_scc_rep(x) == scc_rep => {
+        ExpX::Call(x, typs, args) if *x == function.x.name || ctx.func_call_graph.get_scc_rep(x) == scc_rep_clone => {
                 let rec_x = prefix_recursive(x);
                 let mut args = (**args).clone();
                 args.push(Spanned::new(exp.span.clone(), ExpX::Var(str_ident(FUEL_PARAM))));
@@ -290,12 +295,15 @@ pub(crate) fn check_termination_stm(
     };
     let decreases_exp = crate::ast_to_sst::expr_to_exp(ctx, &decreases_expr)?;
     let decreases_at_entry = str_ident(DECREASE_AT_ENTRY);
+    let scc_rep = ctx.func_call_graph.get_scc_rep(&function.x.name);
     let ctxt = Ctxt {
         recursive_function_name: function.x.name.clone(),
         params: function.x.params.clone(),
         decreases_at_entry,
         decreases_exp,
         decreases_typ,
+        scc_rep,
+        ctx,
     };
     let stm = map_stm_visitor(body, &mut |s| match &s.x {
         StmX::Call(x, _, args, _) if *x == function.x.name => {
