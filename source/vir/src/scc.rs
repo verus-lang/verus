@@ -1,4 +1,4 @@
-/* 
+/*
  * Create a graph and then compute the strongly-connected components
  * of that graph.
  * Derived from code written by Travis Hance.
@@ -34,10 +34,7 @@ struct Node<T> {
 
 impl SCC {
     pub fn new(id: usize) -> SCC {
-        SCC {
-            id,
-            nodes: Vec::new(),
-        }
+        SCC { id, nodes: Vec::new() }
     }
 
     fn size(&self) -> usize {

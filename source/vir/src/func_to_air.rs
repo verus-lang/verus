@@ -99,7 +99,7 @@ fn func_body_to_air(
         let mut args_zero = args.clone();
         let mut args_fuel = args.clone();
         let mut args_succ = args.clone();
-        let mut args_def = args.clone();
+        let mut args_def = args;
         args_zero.push(str_var(ZERO));
         args_fuel.push(str_var(FUEL_LOCAL));
         args_succ.push(str_apply(SUCC, &vec![str_var(FUEL_LOCAL)]));
@@ -177,7 +177,7 @@ pub fn req_ens_to_air(
     Ok(())
 }
 
-/// Returns vector of commands that declare the function symbol itself, 
+/// Returns vector of commands that declare the function symbol itself,
 /// as well as any related functions symbols (e.g., recursive versions),
 /// if the function is a spec function.
 pub fn func_name_to_air(ctx: &Ctx, function: &Function) -> Result<Commands, VirErr> {
@@ -264,7 +264,7 @@ pub fn func_decl_to_air(ctx: &Ctx, function: &Function) -> Result<Commands, VirE
                 ens_typs.push(typ_to_air(&typ));
                 ens_params.push(Spanned::new(function.span.clone(), param));
                 if let Some(expr) = typ_invariant(&typ, &ident_var(&suffix_local_id(&name)), true) {
-                    ens_typing_invs.push(expr.clone());
+                    ens_typing_invs.push(expr);
                 }
             }
             req_ens_to_air(

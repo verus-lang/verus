@@ -1,16 +1,16 @@
 use crate::ast::{Function, Ident, Krate, Mode, Path, Variants, VirErr};
 use crate::def::FUEL_ID;
+use crate::scc::Graph;
 use air::ast::{Command, CommandX, Commands, DeclX, MultiOp, Span};
 use air::ast_util::str_typ;
 use std::collections::HashMap;
-use crate::scc::Graph;
 use std::rc::Rc;
 
 pub struct Ctx {
     pub(crate) datatypes: HashMap<Path, Variants>,
     pub(crate) functions: Vec<Function>,
     pub(crate) func_map: HashMap<Ident, Function>,
-    pub(crate) func_call_graph : Graph<Ident>,
+    pub(crate) func_call_graph: Graph<Ident>,
     pub(crate) chosen_triggers: std::cell::RefCell<Vec<(Span, Vec<Vec<String>>)>>, // diagnostics
 }
 

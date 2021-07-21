@@ -1,17 +1,17 @@
 use crate::ast::{BinaryOp, Function, Ident, Params, Typ, TypX, UnaryOp, VirErr};
-use crate::ast_util::{err_str};
+use crate::ast_util::err_str;
 use crate::ast_visitor::map_expr_visitor;
 use crate::context::Ctx;
 use crate::def::{
     prefix_recursive, suffix_rename, Spanned, CHECK_DECREASE_INT, DECREASE_AT_ENTRY, FUEL_PARAM,
 };
+use crate::scc::Graph;
 use crate::sst::{BndX, Constant, Exp, ExpX, Exps, Stm, StmX};
 use crate::sst_visitor::{exp_rename_vars, map_exp_visitor, map_stm_visitor};
 use air::ast::{Binder, Commands, Quant, Span};
 use air::ast_util::{ident_binder, str_ident};
 use std::collections::HashMap;
 use std::rc::Rc;
-use crate::scc::Graph;
 
 struct Ctxt<'a> {
     recursive_function_name: Ident,
@@ -68,12 +68,16 @@ fn terminates(ctxt: &Ctxt, exp: &Exp) -> Result<Exp, VirErr> {
             Ok(Spanned::new(exp.span.clone(), ExpX::Const(Constant::Bool(true))))
         }
         ExpX::Call(x, _, args) => {
-            let mut e = if *x == ctxt.recursive_function_name || ctxt.ctx.func_call_graph.get_scc_rep(x) == ctxt.scc_rep {
+            let mut e = if *x == ctxt.recursive_function_name
+                || ctxt.ctx.func_call_graph.get_scc_rep(x) == ctxt.scc_rep
+            {
                 let new_decreases_exp = match ctxt.ctx.func_map.get(x) {
                     None => unreachable!(),
                     Some(function) => {
                         let (new_decreases_expr, _) = match &function.x.decrease {
-                            None => { unreachable!() }
+                            None => {
+                                unreachable!()
+                            }
                             Some(dec) => dec.clone(),
                         };
                         crate::ast_to_sst::expr_to_exp(ctxt.ctx, &new_decreases_expr)?
@@ -173,7 +177,7 @@ fn terminates(ctxt: &Ctxt, exp: &Exp) -> Result<Exp, VirErr> {
 pub(crate) fn is_recursive_exp(ctx: &Ctx, name: &Ident, body: &Exp) -> bool {
     if ctx.func_call_graph.get_scc_size(name) > 1 {
         // This function is part of a mutually recursive component
-        return true;
+        true
     } else {
         // Check for self-recursion, which SCC computation does not account for
         let mut recurse = false;
@@ -191,7 +195,7 @@ pub(crate) fn is_recursive_exp(ctx: &Ctx, name: &Ident, body: &Exp) -> bool {
 pub(crate) fn is_recursive_stm(ctx: &Ctx, name: &Ident, body: &Stm) -> bool {
     if ctx.func_call_graph.get_scc_size(name) > 1 {
         // This function is part of a mutually recursive component
-        return true;
+        true
     } else {
         // Check for self-recursion, which SCC computation does not account for
         let mut recurse = false;
@@ -282,12 +286,13 @@ pub(crate) fn check_termination_exp(
 
     // New body: substitute rec%f(args, fuel) for f(args)
     let body = map_exp_visitor(&body, &mut |exp| match &exp.x {
-        ExpX::Call(x, typs, args) if *x == function.x.name || ctx.func_call_graph.get_scc_rep(x) == scc_rep_clone => {
-                let rec_x = prefix_recursive(x);
-                let mut args = (**args).clone();
-                args.push(Spanned::new(exp.span.clone(), ExpX::Var(str_ident(FUEL_PARAM))));
-                Spanned::new(exp.span.clone(), ExpX::Call(rec_x, typs.clone(), Rc::new(args)))
-            
+        ExpX::Call(x, typs, args)
+            if *x == function.x.name || ctx.func_call_graph.get_scc_rep(x) == scc_rep_clone =>
+        {
+            let rec_x = prefix_recursive(x);
+            let mut args = (**args).clone();
+            args.push(Spanned::new(exp.span.clone(), ExpX::Var(str_ident(FUEL_PARAM))));
+            Spanned::new(exp.span.clone(), ExpX::Call(rec_x, typs.clone(), Rc::new(args)))
         }
         _ => exp.clone(),
     });
@@ -352,9 +357,7 @@ fn add_call_graph_edges(
     use crate::ast::ExprX;
 
     match &expr.x {
-        ExprX::Call(x, _, _) | ExprX::Fuel(x, _) => {
-            call_graph.add_edge(src.clone(), x.clone())
-        }
+        ExprX::Call(x, _, _) | ExprX::Fuel(x, _) => call_graph.add_edge(src.clone(), x.clone()),
         _ => {}
     }
     Ok(expr.clone())
@@ -366,8 +369,9 @@ pub(crate) fn expand_call_graph(
 ) -> Result<(), VirErr> {
     // We only traverse expressions (not statements), since calls only appear in the former (see ast.rs)
     if let Some(body) = &function.x.body {
-        map_expr_visitor(body, &mut |expr| add_call_graph_edges(call_graph, &function.x.name, expr))?;
+        map_expr_visitor(body, &mut |expr| {
+            add_call_graph_edges(call_graph, &function.x.name, expr)
+        })?;
     }
     Ok(())
 }
-
