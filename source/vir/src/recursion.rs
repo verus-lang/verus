@@ -13,6 +13,7 @@ use air::ast_util::{ident_binder, str_ident};
 use std::collections::HashMap;
 use std::rc::Rc;
 
+#[derive(Clone)]
 struct Ctxt<'a> {
     recursive_function_name: Ident,
     params: Params,
@@ -62,26 +63,12 @@ fn check_decrease_rename(ctxt: &Ctxt, span: &Span, args: &Exps) -> Exp {
 }
 
 fn update_decreases_exp<'a>(ctxt: &'a Ctxt, name: &Ident) -> Result<Ctxt<'a>, VirErr> {
-    let new_decreases_exp = match ctxt.ctx.func_map.get(name) {
-        None => unreachable!(),
-        Some(function) => {
-            let (new_decreases_expr, _) = match &function.x.decrease {
-                None => {
-                    unreachable!()
-                }
-                Some(dec) => dec.clone(),
-            };
-            crate::ast_to_sst::expr_to_exp(ctxt.ctx, &new_decreases_expr)?
-        }
-    };
+    let function = ctxt.ctx.func_map.get(name).unwrap();
+    let (new_decreases_expr, _) = function.x.decrease.as_ref().unwrap().clone();
+    let new_decreases_exp = crate::ast_to_sst::expr_to_exp(ctxt.ctx, &new_decreases_expr)?;
     Ok(Ctxt {
-        recursive_function_name: ctxt.recursive_function_name.clone(),
-        params: ctxt.params.clone(),
-        decreases_at_entry: ctxt.decreases_at_entry.clone(),
         decreases_exp: new_decreases_exp,
-        decreases_typ: ctxt.decreases_typ.clone(),
-        scc_rep: ctxt.scc_rep.clone(),
-        ctx: ctxt.ctx,
+        ..ctxt.clone()
     })
 }
 
