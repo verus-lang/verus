@@ -101,7 +101,7 @@ test_verify_with_pervasive! {
     
 test_verify_with_pervasive! {
     // Expression that fails to decrease
-    #[test] expr_decrease_fail code! {
+    #[test] expr_decrease_fail_1 code! {
         #[spec]
         fn arith_sum_int(i: int) -> int {
             decreases(i);
@@ -124,6 +124,67 @@ test_verify_with_pervasive! {
         }
     } => Err(err) => assert_one_fails(err)
 }
+
+test_verify_with_pervasive! {
+    // Expression that decreases, but not based on the decreases clause provided
+    #[test] expr_wrong_decreases code! {
+        #[spec]
+        fn arith_sum_int(i: int) -> int {
+            decreases(100 - i);
+
+            if i <= 0 { 0 } else { i + arith_sum_int(i - 1) }  // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_with_pervasive! {
+    // Expression that decreases, but not based on the decreases clause provided
+    #[test] expr_wrong_decreases_2 code! {
+        #[spec]
+        fn arith_sum_int(x:nat, i: int) -> int {
+            decreases(x);
+
+            if i <= 0 { 0 } else { i + arith_sum_int(x, i - 1) }  // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_with_pervasive! {
+    // Expression that decreases, but not based on the decreases clause provided
+    #[test] expr_wrong_decreases_3 code! {
+        #[spec]
+        fn arith_sum_int(i: int) -> int {
+            decreases(5);
+
+            if i <= 0 { 0 } else { i + arith_sum_int(4) }  // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_with_pervasive! {
+    // Expression that doesn't decrease due to extra clause
+    #[test] expr_decrease_fail_2 code! {
+        #[spec]
+        fn arith_sum_int(x:nat, y:nat, i: int) -> int {
+            decreases(i);
+
+            if i <= 0 && x < y { 0 } else { i + arith_sum_int(x, y, i - 1) }  // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_with_pervasive! {
+    // Expression that fails to decrease
+    #[test] expr_decrease_fail_3 code! {
+        #[spec]
+        fn arith_sum_int(i: int) -> int {
+            decreases(i);
+
+            if i <= 0 { 0 } else { i + arith_sum_int(i) }  // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
 
 test_verify_with_pervasive! {
     // Mutually recursive expressions fail to decrease
