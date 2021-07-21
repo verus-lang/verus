@@ -62,62 +62,81 @@ fn check_decrease_rename(ctxt: &Ctxt, span: &Span, args: &Exps) -> Exp {
 }
 
 // Check that exp terminates
-fn terminates(ctxt: &Ctxt, exp: &Exp) -> Exp {
+fn terminates(ctxt: &Ctxt, exp: &Exp) -> Result<Exp, VirErr> {
     match &exp.x {
         ExpX::Const(_) | ExpX::Var(_) | ExpX::Old(_, _) => {
-            Spanned::new(exp.span.clone(), ExpX::Const(Constant::Bool(true)))
+            Ok(Spanned::new(exp.span.clone(), ExpX::Const(Constant::Bool(true))))
         }
         ExpX::Call(x, _, args) => {
             let mut e = if *x == ctxt.recursive_function_name || ctxt.ctx.func_call_graph.get_scc_rep(x) == ctxt.scc_rep {
-                check_decrease_rename(ctxt, &exp.span, args)
+                let new_decreases_exp = match ctxt.ctx.func_map.get(x) {
+                    None => unreachable!(),
+                    Some(function) => {
+                        let (new_decreases_expr, _) = match &function.x.decrease {
+                            None => { unreachable!() }
+                            Some(dec) => dec.clone(),
+                        };
+                        crate::ast_to_sst::expr_to_exp(ctxt.ctx, &new_decreases_expr)?
+                    }
+                };
+                let new_ctxt = Ctxt {
+                    recursive_function_name: ctxt.recursive_function_name.clone(),
+                    params: ctxt.params.clone(),
+                    decreases_at_entry: ctxt.decreases_at_entry.clone(),
+                    decreases_exp: new_decreases_exp,
+                    decreases_typ: ctxt.decreases_typ.clone(),
+                    scc_rep: ctxt.scc_rep.clone(),
+                    ctx: ctxt.ctx,
+                };
+                check_decrease_rename(&new_ctxt, &exp.span, args)
             } else {
                 Spanned::new(exp.span.clone(), ExpX::Const(Constant::Bool(true)))
             };
             for arg in args.iter().rev() {
-                let e_arg = terminates(ctxt, arg);
+                let e_arg = terminates(ctxt, arg)?;
                 e = Spanned::new(exp.span.clone(), ExpX::Binary(BinaryOp::And, e_arg, e));
             }
-            e
+            Ok(e)
         }
         ExpX::Ctor(_path, _ident, binders) => {
             let mut e = Spanned::new(exp.span.clone(), ExpX::Const(Constant::Bool(true)));
             for binder in binders.iter().rev() {
-                let e_binder = terminates(ctxt, &binder.a);
+                let e_binder = terminates(ctxt, &binder.a)?;
                 e = Spanned::new(exp.span.clone(), ExpX::Binary(BinaryOp::And, e_binder, e));
             }
-            e
+            Ok(e)
         }
         ExpX::Field { lhs, .. } => terminates(ctxt, lhs),
         ExpX::Unary(_, e1) => terminates(ctxt, e1),
         ExpX::UnaryOpr(_, e1) => terminates(ctxt, e1),
         ExpX::Binary(BinaryOp::And, e1, e2) | ExpX::Binary(BinaryOp::Implies, e1, e2) => {
-            let t_e1 = terminates(ctxt, e1);
-            let t_e2 = terminates(ctxt, e2);
+            let t_e1 = terminates(ctxt, e1)?;
+            let t_e2 = terminates(ctxt, e2)?;
             let imply =
                 Spanned::new(exp.span.clone(), ExpX::Binary(BinaryOp::Implies, e1.clone(), t_e2));
-            Spanned::new(exp.span.clone(), ExpX::Binary(BinaryOp::And, t_e1, imply))
+            Ok(Spanned::new(exp.span.clone(), ExpX::Binary(BinaryOp::And, t_e1, imply)))
         }
         ExpX::Binary(BinaryOp::Or, e1, e2) => {
-            let t_e1 = terminates(ctxt, e1);
-            let t_e2 = terminates(ctxt, e2);
+            let t_e1 = terminates(ctxt, e1)?;
+            let t_e2 = terminates(ctxt, e2)?;
             let not = Spanned::new(exp.span.clone(), ExpX::Unary(UnaryOp::Not, e1.clone()));
             let imply = Spanned::new(exp.span.clone(), ExpX::Binary(BinaryOp::Implies, not, t_e2));
-            Spanned::new(exp.span.clone(), ExpX::Binary(BinaryOp::And, t_e1, imply))
+            Ok(Spanned::new(exp.span.clone(), ExpX::Binary(BinaryOp::And, t_e1, imply)))
         }
         ExpX::Binary(_, e1, e2) => {
-            let e1 = terminates(ctxt, e1);
-            let e2 = terminates(ctxt, e2);
-            Spanned::new(exp.span.clone(), ExpX::Binary(BinaryOp::And, e1, e2))
+            let e1 = terminates(ctxt, e1)?;
+            let e2 = terminates(ctxt, e2)?;
+            Ok(Spanned::new(exp.span.clone(), ExpX::Binary(BinaryOp::And, e1, e2)))
         }
         ExpX::If(e1, e2, e3) => {
-            let t_e1 = terminates(ctxt, e1);
-            let t_e2 = terminates(ctxt, e2);
-            let t_e3 = terminates(ctxt, e3);
+            let t_e1 = terminates(ctxt, e1)?;
+            let t_e2 = terminates(ctxt, e2)?;
+            let t_e3 = terminates(ctxt, e3)?;
             let e_if = Spanned::new(exp.span.clone(), ExpX::If(e1.clone(), t_e2, t_e3));
-            Spanned::new(exp.span.clone(), ExpX::Binary(BinaryOp::And, t_e1, e_if))
+            Ok(Spanned::new(exp.span.clone(), ExpX::Binary(BinaryOp::And, t_e1, e_if)))
         }
         ExpX::Bind(bnd, e1) => {
-            let t_e1 = terminates(ctxt, e1);
+            let t_e1 = terminates(ctxt, e1)?;
             match &bnd.x {
                 BndX::Let(binders) => {
                     let mut e_bind = Spanned::new(
@@ -128,15 +147,15 @@ fn terminates(ctxt: &Ctxt, exp: &Exp) -> Exp {
                         ),
                     );
                     for binder in binders.iter().rev() {
-                        let e_binder = terminates(ctxt, &binder.a);
+                        let e_binder = terminates(ctxt, &binder.a)?;
                         e_bind = Spanned::new(
                             exp.span.clone(),
                             ExpX::Binary(BinaryOp::And, e_binder, e_bind),
                         );
                     }
-                    e_bind
+                    Ok(e_bind)
                 }
-                BndX::Quant(_, binders, triggers) => Spanned::new(
+                BndX::Quant(_, binders, triggers) => Ok(Spanned::new(
                     exp.span.clone(),
                     ExpX::Bind(
                         Spanned::new(
@@ -145,7 +164,7 @@ fn terminates(ctxt: &Ctxt, exp: &Exp) -> Exp {
                         ),
                         t_e1,
                     ),
-                ),
+                )),
             }
         }
     }
@@ -154,7 +173,6 @@ fn terminates(ctxt: &Ctxt, exp: &Exp) -> Exp {
 pub(crate) fn is_recursive_exp(ctx: &Ctx, name: &Ident, body: &Exp) -> bool {
     if ctx.func_call_graph.get_scc_size(name) > 1 {
         // This function is part of a mutually recursive component
-        println!("Found a mutually recursive expression: {}", name);
         return true;
     } else {
         // Check for self-recursion, which SCC computation does not account for
@@ -173,7 +191,6 @@ pub(crate) fn is_recursive_exp(ctx: &Ctx, name: &Ident, body: &Exp) -> bool {
 pub(crate) fn is_recursive_stm(ctx: &Ctx, name: &Ident, body: &Stm) -> bool {
     if ctx.func_call_graph.get_scc_size(name) > 1 {
         // This function is part of a mutually recursive component
-        println!("Found a mutually recursive statement: {}", name);
         return true;
     } else {
         // Check for self-recursion, which SCC computation does not account for
@@ -242,7 +259,7 @@ pub(crate) fn check_termination_exp(
         scc_rep,
         ctx,
     };
-    let check = terminates(&ctxt, &body);
+    let check = terminates(&ctxt, &body)?;
     let (stm_decl, stm_assign) = mk_decreases_at_entry(&ctxt, &body.span);
     let span =
         Span { description: Some("could not prove termination".to_string()), ..body.span.clone() };
