@@ -61,6 +61,30 @@ fn check_decrease_rename(ctxt: &Ctxt, span: &Span, args: &Exps) -> Exp {
     check_decrease(ctxt, &e_dec)
 }
 
+fn update_decreases_exp<'a>(ctxt: &'a Ctxt, name: &Ident) -> Result<Ctxt<'a>, VirErr> {
+    let new_decreases_exp = match ctxt.ctx.func_map.get(name) {
+        None => unreachable!(),
+        Some(function) => {
+            let (new_decreases_expr, _) = match &function.x.decrease {
+                None => {
+                    unreachable!()
+                }
+                Some(dec) => dec.clone(),
+            };
+            crate::ast_to_sst::expr_to_exp(ctxt.ctx, &new_decreases_expr)?
+        }
+    };
+    Ok(Ctxt {
+        recursive_function_name: ctxt.recursive_function_name.clone(),
+        params: ctxt.params.clone(),
+        decreases_at_entry: ctxt.decreases_at_entry.clone(),
+        decreases_exp: new_decreases_exp,
+        decreases_typ: ctxt.decreases_typ.clone(),
+        scc_rep: ctxt.scc_rep.clone(),
+        ctx: ctxt.ctx,
+    })
+}
+
 // Check that exp terminates
 fn terminates(ctxt: &Ctxt, exp: &Exp) -> Result<Exp, VirErr> {
     match &exp.x {
@@ -71,27 +95,7 @@ fn terminates(ctxt: &Ctxt, exp: &Exp) -> Result<Exp, VirErr> {
             let mut e = if *x == ctxt.recursive_function_name
                 || ctxt.ctx.func_call_graph.get_scc_rep(x) == ctxt.scc_rep
             {
-                let new_decreases_exp = match ctxt.ctx.func_map.get(x) {
-                    None => unreachable!(),
-                    Some(function) => {
-                        let (new_decreases_expr, _) = match &function.x.decrease {
-                            None => {
-                                unreachable!()
-                            }
-                            Some(dec) => dec.clone(),
-                        };
-                        crate::ast_to_sst::expr_to_exp(ctxt.ctx, &new_decreases_expr)?
-                    }
-                };
-                let new_ctxt = Ctxt {
-                    recursive_function_name: ctxt.recursive_function_name.clone(),
-                    params: ctxt.params.clone(),
-                    decreases_at_entry: ctxt.decreases_at_entry.clone(),
-                    decreases_exp: new_decreases_exp,
-                    decreases_typ: ctxt.decreases_typ.clone(),
-                    scc_rep: ctxt.scc_rep.clone(),
-                    ctx: ctxt.ctx,
-                };
+                let new_ctxt = update_decreases_exp(&ctxt, x)?;
                 check_decrease_rename(&new_ctxt, &exp.span, args)
             } else {
                 Spanned::new(exp.span.clone(), ExpX::Const(Constant::Bool(true)))
@@ -328,19 +332,22 @@ pub(crate) fn check_termination_stm(
         ctx,
     };
     let stm = map_stm_visitor(body, &mut |s| match &s.x {
-        StmX::Call(x, _, args, _) if *x == function.x.name => {
-            let check = check_decrease_rename(&ctxt, &s.span, &args);
-            let span = Span {
-                description: Some("could not prove termination".to_string()),
-                ..s.span.clone()
-            };
-            let stm_assert = Spanned::new(span, StmX::Assert(check));
-            let stm_block =
-                Spanned::new(s.span.clone(), StmX::Block(Rc::new(vec![stm_assert, s.clone()])));
-            Ok(stm_block)
-        }
+        StmX::Call(x, _, args, _) 
+            if *x == function.x.name  
+                || ctx.func_call_graph.get_scc_rep(x) == ctxt.scc_rep => {
+                let new_ctxt = update_decreases_exp(&ctxt, x)?; 
+                let check = check_decrease_rename(&new_ctxt, &s.span, &args);
+                let span = Span {
+                    description: Some("could not prove termination".to_string()),
+                    ..s.span.clone()
+                };
+                let stm_assert = Spanned::new(span, StmX::Assert(check));
+                let stm_block =
+                    Spanned::new(s.span.clone(), StmX::Block(Rc::new(vec![stm_assert, s.clone()])));
+                Ok(stm_block)
+            }, 
         _ => Ok(s.clone()),
-    })?;
+        })?;
     let (stm_decl, stm_assign) = mk_decreases_at_entry(&ctxt, &stm.span);
     let stm_block = Spanned::new(
         stm.span.clone(),

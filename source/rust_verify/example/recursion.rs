@@ -77,33 +77,36 @@ fn count_down_properties() {
     assert(count_down_b(0) == 0);
     assert(count_down_a(1) == 1);
 }
-/*
+
+#[proof]
+fn count_down_stmt(i:nat) {
+    decreases(i);
+
+    if i != 0 {
+        count_down_stmt(i - 1);
+    }
+}
+
 // Basic test of mutually recursive statements
-#[spec]
-fn count_down_a_stmt(i:nat) -> nat {
+#[proof]
+fn count_down_a_stmt(i:nat) {
     decreases(i);
 
-    if i == 0 {
-        0 
-    } else { 
-        let r = count_down_b_stmt(i - 1);
-        i + r
+    if i != 0 {
+        count_down_b_stmt(i - 1);
     }
 }
 
-#[spec]
-fn count_down_b_stmt(i:nat) -> nat {
+#[proof]
+fn count_down_b_stmt(i:nat) {
     decreases(i);
 
-    if i == 0 { 
-        0 
-    } else { 
+    if i != 0 { 
         count_down_a_stmt(i - 1);
-        i + count_down_a_stmt(i - 1) 
     }
 }
-*/
-// Test decreases of mutually recursive expressions
+
+// Test invalid decreases of mutually recursive expressions
 #[spec]
 fn count_down_a_tricky(i:nat) -> nat {
     decreases(i);
@@ -118,3 +121,21 @@ fn count_down_b_tricky(i:nat) -> nat {
     if i >= 5 { 0 } else { 1 + count_down_a_tricky(i + 1) }
 }
 
+// Test invalid decreases of mutually recursive statements
+#[proof]
+fn count_down_a_stmt_tricky(i:nat) {
+    decreases(i);
+
+    if i != 0 {
+        count_down_b_stmt_tricky(i + 1);
+    }
+}
+
+#[proof]
+fn count_down_b_stmt_tricky(i:nat) {
+    decreases(i);
+
+    if i != 0 { 
+        count_down_a_stmt_tricky(i + 1);
+    }
+}
