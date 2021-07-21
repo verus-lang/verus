@@ -332,22 +332,22 @@ pub(crate) fn check_termination_stm(
         ctx,
     };
     let stm = map_stm_visitor(body, &mut |s| match &s.x {
-        StmX::Call(x, _, args, _) 
-            if *x == function.x.name  
-                || ctx.func_call_graph.get_scc_rep(x) == ctxt.scc_rep => {
-                let new_ctxt = update_decreases_exp(&ctxt, x)?; 
-                let check = check_decrease_rename(&new_ctxt, &s.span, &args);
-                let span = Span {
-                    description: Some("could not prove termination".to_string()),
-                    ..s.span.clone()
-                };
-                let stm_assert = Spanned::new(span, StmX::Assert(check));
-                let stm_block =
-                    Spanned::new(s.span.clone(), StmX::Block(Rc::new(vec![stm_assert, s.clone()])));
-                Ok(stm_block)
-            }, 
+        StmX::Call(x, _, args, _)
+            if *x == function.x.name || ctx.func_call_graph.get_scc_rep(x) == ctxt.scc_rep =>
+        {
+            let new_ctxt = update_decreases_exp(&ctxt, x)?;
+            let check = check_decrease_rename(&new_ctxt, &s.span, &args);
+            let span = Span {
+                description: Some("could not prove termination".to_string()),
+                ..s.span.clone()
+            };
+            let stm_assert = Spanned::new(span, StmX::Assert(check));
+            let stm_block =
+                Spanned::new(s.span.clone(), StmX::Block(Rc::new(vec![stm_assert, s.clone()])));
+            Ok(stm_block)
+        }
         _ => Ok(s.clone()),
-        })?;
+    })?;
     let (stm_decl, stm_assign) = mk_decreases_at_entry(&ctxt, &stm.span);
     let stm_block = Spanned::new(
         stm.span.clone(),
