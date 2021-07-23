@@ -92,13 +92,13 @@ test_verify_with_pervasive! {
         fn count_down_b_stmt(i:nat) {
             decreases(i);
 
-            if i != 0 { 
+            if i != 0 {
                 count_down_a_stmt(i - 1);
             }
         }
     } => Ok(())
 }
-    
+
 test_verify_with_pervasive! {
     // Expression that fails to decrease
     #[test] expr_decrease_fail_1 code! {
@@ -185,7 +185,6 @@ test_verify_with_pervasive! {
     } => Err(err) => assert_one_fails(err)
 }
 
-
 test_verify_with_pervasive! {
     // Mutually recursive expressions fail to decrease
     #[test] mutual_expr_decrease_fail code! {
@@ -221,15 +220,15 @@ test_verify_with_pervasive! {
         fn count_down_b_stmt(i:nat) {
             decreases(i);
 
-            if i != 0 { 
+            if i != 0 {
                 count_down_a_stmt(i + 1);   // FAILS
             }
         }
     } => Err(err) => assert_two_fails(err)
 }
-    
-    // TODO: Expression that fails to decrease in a function returning unit
-    /*
+
+// TODO: Expression that fails to decrease in a function returning unit
+/*
 test_verify_with_pervasive! {
     #[test] unit_expr_decrease_fail code! {
         #[spec]
@@ -243,4 +242,3 @@ test_verify_with_pervasive! {
     } => Err(err) => assert_one_fails(err)
 }
 */
-

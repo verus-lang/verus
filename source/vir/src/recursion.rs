@@ -63,13 +63,15 @@ fn check_decrease_rename(ctxt: &Ctxt, span: &Span, args: &Exps) -> Exp {
 }
 
 fn update_decreases_exp<'a>(ctxt: &'a Ctxt, name: &Ident) -> Result<Ctxt<'a>, VirErr> {
-    let function = ctxt.ctx.func_map.get(name).unwrap();
-    let (new_decreases_expr, _) = function.x.decrease.as_ref().unwrap().clone();
+    let function = ctxt.ctx.func_map.get(name).expect("func_map should hold all functions");
+    let (new_decreases_expr, _) = function
+        .x
+        .decrease
+        .as_ref()
+        .expect("shouldn't call update_decreases_exp on a function without a decreases clause")
+        .clone();
     let new_decreases_exp = crate::ast_to_sst::expr_to_exp(ctxt.ctx, &new_decreases_expr)?;
-    Ok(Ctxt {
-        decreases_exp: new_decreases_exp,
-        ..ctxt.clone()
-    })
+    Ok(Ctxt { decreases_exp: new_decreases_exp, ..ctxt.clone() })
 }
 
 // Check that exp terminates

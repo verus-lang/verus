@@ -78,7 +78,7 @@ impl<T: std::cmp::Eq + std::hash::Hash + Clone> Graph<T> {
             Some(v) => *v,
             None => {
                 self.add_node(value.clone());
-                *self.h.get(&value).unwrap()
+                *self.h.get(&value).expect("Just added this node, so get should always succeed")
             }
         }
     }
@@ -159,7 +159,7 @@ impl<T: std::cmp::Eq + std::hash::Hash + Clone> Graph<T> {
     pub fn get_scc_rep(&self, t: &T) -> T {
         assert!(self.has_run);
         assert!(self.mapping.contains_key(&t));
-        let id = self.mapping.get(&t).unwrap();
+        let id = self.mapping.get(&t).expect("key was present in the line above");
         self.nodes[self.sccs[*id].rep()].t.clone()
     }
 }
