@@ -22,7 +22,10 @@ pub struct Verifier {
 pub struct ErrorSpan {
     pub description: Option<String>,
     pub span_data: (String, (usize, CharPos), (usize, CharPos)),
-    pub test_span_line: String, // Used by the testing infrastructure
+    /// The source line containing the span that caused the error.
+    /// This is mainly used for testing, so that we can easily check that we got an error on the
+    /// line we expected.
+    pub test_span_line: String,
 }
 
 impl ErrorSpan {
