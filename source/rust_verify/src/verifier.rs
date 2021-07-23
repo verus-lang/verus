@@ -208,6 +208,18 @@ impl Verifier {
             Self::check_internal_result(air_context.command(&command));
         }
 
+        // Pre-declare the function symbols, to allow for the possibility of non-sorted function usage
+        for function in &krate.functions {
+            let commands = vir::func_to_air::func_name_to_air(&ctx, &function)?;
+            if commands.len() > 0 {
+                air_context.blank_line();
+                air_context.comment(&("Function-PreDecl ".to_string() + &function.x.name));
+            }
+            for command in commands.iter() {
+                self.check_result_validity(compiler, &command, air_context.command(&command));
+            }
+        }
+
         for function in &krate.functions {
             let commands = vir::func_to_air::func_decl_to_air(&ctx, &function)?;
             if commands.len() > 0 {

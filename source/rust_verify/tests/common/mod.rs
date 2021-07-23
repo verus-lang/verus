@@ -128,3 +128,10 @@ pub fn assert_one_fails(err: Vec<(Option<ErrorSpan>, Option<ErrorSpan>)>) {
     assert_eq!(err.len(), 1);
     assert!(err[0].0.as_ref().expect("span").test_span_line.contains("FAILS"));
 }
+
+#[allow(dead_code)]
+pub fn assert_two_fails(err: Vec<(Option<ErrorSpan>, Option<ErrorSpan>)>) {
+    assert_eq!(err.len(), 2);
+    assert!(err[0].0.as_ref().expect("span").test_span_line.contains("FAILS"));
+    assert!(err[1].0.as_ref().expect("span").test_span_line.contains("FAILS"));
+}

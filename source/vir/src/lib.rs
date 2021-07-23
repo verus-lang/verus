@@ -12,6 +12,7 @@ pub mod headers;
 pub mod modes;
 mod prelude;
 mod recursion;
+mod scc;
 mod sst;
 mod sst_to_air;
 mod sst_vars;

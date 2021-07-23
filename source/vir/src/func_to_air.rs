@@ -99,7 +99,7 @@ fn func_body_to_air(
         let mut args_zero = args.clone();
         let mut args_fuel = args.clone();
         let mut args_succ = args.clone();
-        let mut args_def = args.clone();
+        let mut args_def = args;
         args_zero.push(str_var(ZERO));
         args_fuel.push(str_var(FUEL_LOCAL));
         args_succ.push(str_apply(SUCC, &vec![str_var(FUEL_LOCAL)]));
@@ -114,15 +114,10 @@ fn func_body_to_air(
         let bind_body = func_bind(&function.x.typ_params, &function.x.params, &rec_f_succ, true);
         let forall_zero = Rc::new(ExprX::Bind(bind_zero, eq_zero));
         let forall_body = Rc::new(ExprX::Bind(bind_body, eq_body));
-        let mut rec_typs = vec_map(&*function.x.params, |param| typ_to_air(&param.x.typ));
-        rec_typs.push(str_typ(FUEL_TYPE));
-        let rec_typ = typ_to_air(&function.x.ret.as_ref().unwrap().1);
         let fuel_nat_decl = Rc::new(DeclX::Const(fuel_nat_f, str_typ(FUEL_TYPE)));
-        let rec_decl = Rc::new(DeclX::Fun(rec_f, Rc::new(rec_typs), rec_typ));
         let axiom_zero = Rc::new(DeclX::Axiom(forall_zero));
         let axiom_body = Rc::new(DeclX::Axiom(forall_body));
         commands.push(Rc::new(CommandX::Global(fuel_nat_decl)));
-        commands.push(Rc::new(CommandX::Global(rec_decl)));
         commands.push(Rc::new(CommandX::Global(axiom_zero)));
         commands.push(Rc::new(CommandX::Global(axiom_body)));
         rec_f_def
@@ -182,6 +177,38 @@ pub fn req_ens_to_air(
     Ok(())
 }
 
+/// Returns vector of commands that declare the function symbol itself,
+/// as well as any related functions symbols (e.g., recursive versions),
+/// if the function is a spec function.
+pub fn func_name_to_air(ctx: &Ctx, function: &Function) -> Result<Commands, VirErr> {
+    let mut all_typs = vec_map(&function.x.params, |param| typ_to_air(&param.x.typ));
+    for _ in function.x.typ_params.iter() {
+        all_typs.insert(0, str_typ(crate::def::TYPE));
+    }
+    let mut commands: Vec<Command> = Vec::new();
+    if let (Mode::Spec, Some((_, ret, _))) = (function.x.mode, function.x.ret.as_ref()) {
+        // Declare the function symbol itself
+        let typ = typ_to_air(&ret);
+        let name = suffix_global_id(&function.x.name);
+        let decl = Rc::new(DeclX::Fun(name, Rc::new(all_typs), typ));
+        commands.push(Rc::new(CommandX::Global(decl)));
+
+        // Check whether we need to declare the recursive version too
+        if let Some(body) = &function.x.body {
+            let body_exp = crate::ast_to_sst::expr_to_exp(&ctx, &body)?;
+            if crate::recursion::is_recursive_exp(ctx, &function.x.name, &body_exp) {
+                let rec_f = suffix_global_id(&prefix_recursive(&function.x.name));
+                let mut rec_typs = vec_map(&*function.x.params, |param| typ_to_air(&param.x.typ));
+                rec_typs.push(str_typ(FUEL_TYPE));
+                let rec_typ = typ_to_air(&function.x.ret.as_ref().unwrap().1);
+                let rec_decl = Rc::new(DeclX::Fun(rec_f, Rc::new(rec_typs), rec_typ));
+                commands.push(Rc::new(CommandX::Global(rec_decl)));
+            }
+        }
+    }
+    Ok(Rc::new(commands))
+}
+
 pub fn func_decl_to_air(ctx: &Ctx, function: &Function) -> Result<Commands, VirErr> {
     let mut all_typs = vec_map(&function.x.params, |param| typ_to_air(&param.x.typ));
     let param_typs = Rc::new(all_typs.clone());
@@ -191,12 +218,7 @@ pub fn func_decl_to_air(ctx: &Ctx, function: &Function) -> Result<Commands, VirE
     let mut commands: Vec<Command> = Vec::new();
     match (function.x.mode, function.x.ret.as_ref()) {
         (Mode::Spec, Some((_, ret, _))) => {
-            let typ = typ_to_air(&ret);
-
-            // Declare function
             let name = suffix_global_id(&function.x.name);
-            let decl = Rc::new(DeclX::Fun(name.clone(), Rc::new(all_typs), typ));
-            commands.push(Rc::new(CommandX::Global(decl)));
 
             // Body
             if let Some(body) = &function.x.body {
@@ -242,7 +264,7 @@ pub fn func_decl_to_air(ctx: &Ctx, function: &Function) -> Result<Commands, VirE
                 ens_typs.push(typ_to_air(&typ));
                 ens_params.push(Spanned::new(function.span.clone(), param));
                 if let Some(expr) = typ_invariant(&typ, &ident_var(&suffix_local_id(&name)), true) {
-                    ens_typing_invs.push(expr.clone());
+                    ens_typing_invs.push(expr);
                 }
             }
             req_ens_to_air(
