@@ -169,9 +169,17 @@ To automatically apply these suggestions to the source code, type:
 ../install/bin/cargo-fmt
 ```
 
+# Documentation
+
 Commenting the code is *strongly encouraged*!  Use `///` to create comments
 that [`rustdoc`](https://doc.rust-lang.org/rustdoc/what-is-rustdoc.html) can
 automatically extract into HTML documentation.
+
+You can compile the current documentation by running (in the `verify` directory)
+```
+RUSTC=../install/bin/rustc RUSTDOC=../install/bin/rustdoc ../install/bin/cargo doc 
+```
+which will produce documentation files, e.g., `./target/doc/rust_verify/index.html`
 
 # Running tests for the rust to vir translation, and inspecting the resulting vir/air/smt
 
