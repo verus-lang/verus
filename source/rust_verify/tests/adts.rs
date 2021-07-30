@@ -78,3 +78,18 @@ test_verify_with_pervasive! {
         }
     } => Ok(())
 }
+
+test_verify_with_pervasive! {
+    #[test] test_enum_unit code! {
+        #[derive(PartialEq, Eq, Structural)]
+        enum AB {
+            A,
+            B(nat),
+        }
+
+        #[spec]
+        fn is_a(l: AB) -> bool {
+            l == AB::A
+        }
+    } => Ok(())
+}
