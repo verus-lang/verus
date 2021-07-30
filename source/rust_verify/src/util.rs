@@ -24,12 +24,6 @@ pub(crate) fn unsupported_err_span<A>(span: Span, msg: String) -> Result<A, VirE
     )
 }
 
-// TODO remove if unused
-pub(crate) fn warning_span(span: Span, msg: String) -> () {
-    eprintln!("warning: {}", msg);
-    eprintln!("   --> {:?}", span);
-}
-
 #[macro_export]
 macro_rules! unsupported_err {
     ($span: expr, $msg: expr) => {{
