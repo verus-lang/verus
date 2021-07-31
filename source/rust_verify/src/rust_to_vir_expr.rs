@@ -356,6 +356,62 @@ fn fn_call_to_vir<'tcx>(
     }
 }
 
+pub(crate) fn expr_tuple_datatype_ctor_to_vir<'tcx>(
+    ctxt: &Ctxt<'tcx>,
+    expr: &Expr<'tcx>,
+    res: &Res,
+    args_slice: &[Expr<'tcx>],
+) -> Result<vir::ast::Expr, VirErr> {
+    let variant = ctxt.tcx.expect_variant_res(*res);
+    if let Res::Def(DefKind::Ctor(ctor_of, ctor_kind), _def_id) = res {
+        unsupported_unless!(
+            ctor_of == &rustc_hir::def::CtorOf::Variant,
+            "non_variant_ctor_in_call_expr",
+            expr
+        );
+        unsupported_unless!(
+            ctor_kind == &rustc_hir::def::CtorKind::Fn
+                || ctor_kind == &rustc_hir::def::CtorKind::Const,
+            "non_fn_ctor_in_call_expr",
+            expr
+        );
+    }
+    let vir_path = {
+        // TODO is there a safer way to do this?
+        let mut vir_path = def_id_to_vir_path(ctxt.tcx, res.def_id());
+        Rc::get_mut(&mut vir_path).unwrap().pop(); // remove constructor
+        Rc::get_mut(&mut vir_path).unwrap().pop(); // remove variant
+        vir_path
+    };
+    let name = vir_path.last().expect("invalid path in datatype ctor");
+    let variant_name = variant_ident(name.as_str(), &variant.ident.as_str());
+    let vir_fields = Rc::new(
+        args_slice
+            .iter()
+            .enumerate()
+            .map(|(i, e)| -> Result<_, VirErr> {
+                // TODO: deduplicate with Struct?
+                let fielddef = &variant.fields[i];
+                let field_typ = mid_ty_to_vir(ctxt.tcx, ctxt.tcx.type_of(fielddef.did));
+                let expr_typ = typ_of_node(ctxt, &e.hir_id);
+                let mut vir = expr_to_vir(ctxt, e)?;
+                match (&*field_typ, &*expr_typ) {
+                    (TypX::TypParam(_), TypX::TypParam(_)) => {} // already boxed
+                    (TypX::TypParam(_), _) => {
+                        vir = Spanned::new(
+                            vir.span.clone(),
+                            ExprX::UnaryOpr(UnaryOpr::Box(expr_typ), vir),
+                        );
+                    }
+                    _ => {}
+                }
+                Ok(ident_binder(&variant_positional_field_ident(&variant_name, i), &vir))
+            })
+            .collect::<Result<Vec<_>, _>>()?,
+    );
+    Ok(spanned_new(expr.span, ExprX::Ctor(vir_path, variant_name, vir_fields)))
+}
+
 pub(crate) fn expr_to_vir_inner<'tcx>(
     ctxt: &Ctxt<'tcx>,
     expr: &Expr<'tcx>,
@@ -379,58 +435,7 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                 ExprKind::Path(QPath::Resolved(
                     None,
                     rustc_hir::Path { res: res @ Res::Def(DefKind::Ctor(_, _), _), .. },
-                )) => {
-                    let variant = tcx.expect_variant_res(*res);
-                    if let Res::Def(DefKind::Ctor(ctor_of, ctor_kind), _def_id) = res {
-                        unsupported_unless!(
-                            ctor_of == &rustc_hir::def::CtorOf::Variant,
-                            "non_variant_ctor_in_call_expr",
-                            fun
-                        );
-                        unsupported_unless!(
-                            ctor_kind == &rustc_hir::def::CtorKind::Fn,
-                            "non_fn_ctor_in_call_expr",
-                            fun
-                        );
-                    }
-                    let vir_path = {
-                        // TODO is there a safer way to do this?
-                        let mut vir_path = def_id_to_vir_path(tcx, res.def_id());
-                        Rc::get_mut(&mut vir_path).unwrap().pop(); // remove constructor
-                        Rc::get_mut(&mut vir_path).unwrap().pop(); // remove variant
-                        vir_path
-                    };
-                    let name = vir_path.last().expect("invalid path in datatype ctor");
-                    let variant_name = variant_ident(name.as_str(), &variant.ident.as_str());
-                    let vir_fields = Rc::new(
-                        args_slice
-                            .iter()
-                            .enumerate()
-                            .map(|(i, e)| -> Result<_, VirErr> {
-                                // TODO: deduplicate with Struct?
-                                let fielddef = &variant.fields[i];
-                                let field_typ = mid_ty_to_vir(ctxt.tcx, tcx.type_of(fielddef.did));
-                                let expr_typ = typ_of_node(ctxt, &e.hir_id);
-                                let mut vir = expr_to_vir(ctxt, e)?;
-                                match (&*field_typ, &*expr_typ) {
-                                    (TypX::TypParam(_), TypX::TypParam(_)) => {} // already boxed
-                                    (TypX::TypParam(_), _) => {
-                                        vir = Spanned::new(
-                                            vir.span.clone(),
-                                            ExprX::UnaryOpr(UnaryOpr::Box(expr_typ), vir),
-                                        );
-                                    }
-                                    _ => {}
-                                }
-                                Ok(ident_binder(
-                                    &variant_positional_field_ident(&variant_name, i),
-                                    &vir,
-                                ))
-                            })
-                            .collect::<Result<Vec<_>, _>>()?,
-                    );
-                    Ok(spanned_new(expr.span, ExprX::Ctor(vir_path, variant_name, vir_fields)))
-                }
+                )) => expr_tuple_datatype_ctor_to_vir(ctxt, expr, res, *args_slice),
                 // a function
                 ExprKind::Path(QPath::Resolved(
                     None,
@@ -529,9 +534,19 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                 }
                 node => unsupported_err!(expr.span, format!("Path {:?}", node)),
             },
-            Res::Def(_, id) => {
-                let name = hack_get_def_name(tcx, id); // TODO: proper handling of paths
-                Ok(spanned_new(expr.span, ExprX::Var(Rc::new(name))))
+            Res::Def(def_kind, id) => {
+                match def_kind {
+                    DefKind::Fn => {
+                        let name = hack_get_def_name(tcx, id); // TODO: proper handling of paths
+                        Ok(spanned_new(expr.span, ExprX::Var(Rc::new(name))))
+                    }
+                    DefKind::Ctor(_, _ctor_kind) => {
+                        expr_tuple_datatype_ctor_to_vir(ctxt, expr, &path.res, &[])
+                    }
+                    _ => {
+                        unsupported_err!(expr.span, format!("Path {:?} kind {:?}", id, def_kind))
+                    }
+                }
             }
             res => unsupported_err!(expr.span, format!("Path {:?}", res)),
         },

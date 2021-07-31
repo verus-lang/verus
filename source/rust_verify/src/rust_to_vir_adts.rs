@@ -1,8 +1,8 @@
 use crate::rust_to_vir_base::{
     check_generics, def_id_to_vir_path, get_mode, hack_get_def_name, ty_to_vir,
 };
+use crate::unsupported_unless;
 use crate::util::spanned_new;
-use crate::{unsupported, unsupported_unless};
 use rustc_hir::{Crate, EnumDef, Generics, ItemId, VariantData};
 use rustc_middle::ty::TyCtxt;
 use rustc_span::Span;
@@ -52,9 +52,7 @@ fn check_variant_data<'tcx>(
                     })
                     .collect::<Vec<_>>(),
             ),
-            VariantData::Unit(_) => {
-                unsupported!("unit_adt", variant_data);
-            }
+            VariantData::Unit(_vairant_id) => Rc::new(vec![]),
         }),
     )
 }
