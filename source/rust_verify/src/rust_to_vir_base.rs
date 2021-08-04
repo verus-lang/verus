@@ -168,6 +168,7 @@ pub(crate) fn mk_range<'tcx>(ty: rustc_middle::ty::Ty<'tcx>) -> IntRange {
     }
 }
 
+// TODO review and cosolidate type translation, e.g. with `ty_to_vir`, if possible
 pub(crate) fn mid_ty_to_vir<'tcx>(tcx: TyCtxt<'tcx>, ty: rustc_middle::ty::Ty) -> Typ {
     let typ_x = match ty.kind() {
         TyKind::Bool => TypX::Bool,
