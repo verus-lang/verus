@@ -173,6 +173,7 @@ pub(crate) fn mid_ty_to_vir<'tcx>(tcx: TyCtxt<'tcx>, ty: rustc_middle::ty::Ty) -
         TyKind::Bool => TypX::Bool,
         TyKind::Adt(AdtDef { did, .. }, _) => {
             let s = ty.to_string();
+            // TODO use lang items instead of string comparisons
             if s == crate::typecheck::BUILTIN_INT {
                 TypX::Int(IntRange::Int)
             } else if s == crate::typecheck::BUILTIN_NAT {
