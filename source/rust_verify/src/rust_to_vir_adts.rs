@@ -17,6 +17,8 @@ fn check_variant_data<'tcx>(
     name: &Ident,
     variant_data: &'tcx VariantData<'tcx>,
 ) -> Variant {
+    // TODO handle field visibility; does rustc_middle::ty::Visibility have better visibility
+    // information than hir?
     ident_binder(
         name,
         &(match variant_data {
