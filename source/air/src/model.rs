@@ -1,5 +1,5 @@
 use std::collections::{HashMap};
-use std::fmt::Write;
+use std::fmt;
 //use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 use crate::ast::{Ident,SnapShots};
@@ -57,16 +57,17 @@ impl<'a> Model<'a> {
     pub fn query_variable(&self, snapshot: Ident, name:Ident) -> Option<String> {
         Some(self.value_snapshots.get(&snapshot)?.get(&name)?.to_string())
     }
+}
 
-    pub fn to_string(&self) -> String {
-        let mut result = String::from("");
+impl<'a> fmt::Display for Model<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         for (snap_id, value_snapshot) in &self.value_snapshots {
-            write!(result, "Snapshot: {}:\n", snap_id);
+            write!(f, "Snapshot: {}:\n", snap_id)?;
             for (var_name, value) in *value_snapshot {
-                write!(result, "\t{} -> {}", var_name, value);
+                write!(f, "\t{} -> {}", var_name, value)?;
             }
         }
-        result
+        Ok(())
     }
 }
 
