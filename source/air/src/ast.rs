@@ -1,4 +1,5 @@
 use std::rc::Rc;
+use std::collections::HashMap;
 
 pub type RawSpan = Rc<dyn std::any::Any>;
 #[derive(Clone)] // for Debug, see ast_util
@@ -12,6 +13,9 @@ pub type SpanOption = Rc<Option<Span>>;
 pub type TypeError = String;
 
 pub type Ident = Rc<String>;
+
+pub(crate) type SnapShot = HashMap<Ident, u32>;
+pub(crate) type SnapShots = HashMap<Ident, SnapShot>;
 
 pub type Typ = Rc<TypX>;
 pub type Typs = Rc<Vec<Typ>>;

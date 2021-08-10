@@ -1,11 +1,10 @@
 use crate::ast::{
-    BinaryOp, BindX, Constant, Decl, DeclX, Expr, ExprX, Ident, MultiOp, Quant, Query, Span, SpanOption, StmtX,
+    BinaryOp, BindX, Constant, Decl, DeclX, Expr, ExprX, Ident, MultiOp, Quant, Query, SnapShots, Span, SpanOption, StmtX,
     Typ, TypX, TypeError, UnaryOp,
 };
 use crate::context::{AssertionInfo, Context};
 use crate::def::{GLOBAL_PREFIX_LABEL, PREFIX_LABEL};
 pub use crate::model::Model;
-use crate::model::{SnapShots};
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 use z3::ast::{Ast, Bool, Dynamic, Int};
@@ -18,14 +17,14 @@ pub enum ValidityResult<'a> {
     TypeError(TypeError),
 }
 
-impl<'a> ValidityResult<'a> {
-    pub fn save_snapshots(&self, snapshots: SnapShots) {
-        match &self {
-            ValidityResult::Invalid(m, _, _) => m.save_snapshots(snapshots),
-            _ => ()
-        }
-    }
-}
+//impl<'a> ValidityResult<'a> {
+//    pub fn save_snapshots(&self, snapshots: SnapShots) {
+//        match &self {
+//            ValidityResult::Invalid(m, _, _) => m.save_snapshots(snapshots),
+//            _ => ()
+//        }
+//    }
+//}
 
 fn new_const<'ctx>(context: &mut Context<'ctx>, name: &String, typ: &Typ) -> Dynamic<'ctx> {
     match &**typ {
@@ -371,6 +370,7 @@ pub(crate) fn smt_add_decl<'ctx>(context: &mut Context<'ctx>, decl: &Decl) {
 fn smt_check_assertion<'ctx>(
     context: &mut Context<'ctx>,
     infos: &Vec<AssertionInfo>,
+    snapshots: SnapShots,
     expr: &Expr,
 ) -> ValidityResult<'ctx> {
     let mut discovered_span = Rc::new(None);
@@ -429,15 +429,18 @@ fn smt_check_assertion<'ctx>(
                             }
                         }
                     }
-                    Model::new(model)
+                    Model::new(model, snapshots)
                 }
             };
+            if context.debug {
+                air_model.build(context);
+            }
             ValidityResult::Invalid(air_model, discovered_span, discovered_global_span)
         }
     }
 }
 
-pub(crate) fn smt_check_query<'ctx>(context: &mut Context<'ctx>, query: &Query) -> ValidityResult<'ctx> {
+pub(crate) fn smt_check_query<'ctx>(context: &mut Context<'ctx>, query: &Query, snapshots: SnapShots) -> ValidityResult<'ctx> {
     context.smt_log.log_push();
     context.solver.push();
     context.push_name_scope();
@@ -470,7 +473,7 @@ pub(crate) fn smt_check_query<'ctx>(context: &mut Context<'ctx>, query: &Query) 
     }
 
     // check assertion
-    let result = smt_check_assertion(context, &infos, &labeled_assertion);
+    let result = smt_check_assertion(context, &infos, snapshots, &labeled_assertion);
 
     // clean up
     context.pop_name_scope();

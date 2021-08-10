@@ -1,15 +1,14 @@
 // Replace declare-var and assign with declare-const and assume
-use crate::ast::{BinaryOp, Decl, DeclX, Expr, ExprX, Ident, Query, QueryX, Stmt, StmtX, Typ};
+use crate::ast::{BinaryOp, Decl, DeclX, Expr, ExprX, Ident, Query, QueryX, SnapShots, Stmt, StmtX, Typ};
 use crate::ast_util::string_var;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
-use crate::model::SnapShots;
 
 fn find_version(versions: &HashMap<Ident, u32>, x: &String) -> u32 {
     *versions.get(x).unwrap_or_else(|| panic!("variable {} not declared", x))
 }
 
-fn rename_var(x: &String, n: u32) -> String {
+pub fn rename_var(x: &String, n: u32) -> String {
     if x.ends_with("@") { format!("{}{}", x, n) } else { format!("{}@{}", x, n) }
 }
 

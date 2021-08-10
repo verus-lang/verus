@@ -231,7 +231,7 @@ impl<'ctx> Context<'ctx> {
         let query = crate::block_to_assert::lower_query(&query);
         self.air_final_log.log_query(&query);
 
-        let validity = crate::smt_verify::smt_check_query(self, &query);
+        let validity = crate::smt_verify::smt_check_query(self, &query, snapshots);
 
         validity
     }
