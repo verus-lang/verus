@@ -1,6 +1,7 @@
-use crate::ast::{Command, CommandX, Decl, Ident, Query, SpanOption, TypeError, ValidityResult};
+use crate::ast::{Command, CommandX, Decl, Ident, Query, SpanOption, TypeError};
 use crate::print_parse::Logger;
 use crate::typecheck::Typing;
+use crate::smt_verify::ValidityResult;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 use z3::ast::Dynamic;
@@ -22,6 +23,7 @@ pub struct Context<'ctx> {
     pub(crate) assert_infos: HashMap<Ident, Rc<AssertionInfo>>,
     pub(crate) assert_infos_count: u64,
     pub(crate) typing: Typing,
+    pub(crate) debug: bool,
     pub(crate) rlimit: u32,
     pub(crate) air_initial_log: Logger,
     pub(crate) air_middle_log: Logger,
@@ -47,6 +49,7 @@ impl<'ctx> Context<'ctx> {
                 funs: HashMap::new(),
                 snapshots: HashSet::new(),
             },
+            debug: false,
             rlimit: 0,
             air_initial_log: Logger::new(None),
             air_middle_log: Logger::new(None),
@@ -70,6 +73,10 @@ impl<'ctx> Context<'ctx> {
 
     pub fn set_smt_log(&mut self, writer: Box<dyn std::io::Write>) {
         self.smt_log = Logger::new(Some(writer));
+    }
+
+    pub fn set_debug(&mut self, debug: bool) {
+        self.debug = debug;
     }
 
     pub fn set_rlimit(&mut self, rlimit: u32) {

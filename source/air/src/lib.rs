@@ -1,6 +1,7 @@
 pub mod ast;
 pub mod ast_util;
 pub mod context;
+pub mod model;
 
 #[macro_use]
 pub mod print_parse;

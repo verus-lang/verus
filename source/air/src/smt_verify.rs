@@ -1,13 +1,21 @@
 use crate::ast::{
-    BinaryOp, BindX, Constant, Decl, DeclX, Expr, ExprX, Ident, MultiOp, Quant, Query, Span, StmtX,
-    Typ, TypX, UnaryOp, ValidityResult,
+    BinaryOp, BindX, Constant, Decl, DeclX, Expr, ExprX, Ident, MultiOp, Quant, Query, Span, SpanOption, StmtX,
+    Typ, TypX, TypeError, UnaryOp,
 };
 use crate::context::{AssertionInfo, Context};
 use crate::def::{GLOBAL_PREFIX_LABEL, PREFIX_LABEL};
+use crate::model::Model;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 use z3::ast::{Ast, Bool, Dynamic, Int};
 use z3::{Pattern, SatResult, Sort, Symbol};
+
+#[derive(Debug)]
+pub enum ValidityResult<'a> {
+    Valid,
+    Invalid(Model<'a>, SpanOption, SpanOption),
+    TypeError(TypeError),
+}
 
 fn new_const<'ctx>(context: &mut Context<'ctx>, name: &String, typ: &Typ) -> Dynamic<'ctx> {
     match &**typ {
@@ -354,7 +362,7 @@ fn smt_check_assertion<'ctx>(
     context: &mut Context<'ctx>,
     infos: &Vec<AssertionInfo>,
     expr: &Expr,
-) -> ValidityResult {
+) -> ValidityResult<'ctx> {
     let mut discovered_span = Rc::new(None);
     let mut discovered_global_span = Rc::new(None);
     let not_expr = Rc::new(ExprX::Unary(UnaryOp::Not, expr.clone()));
@@ -375,7 +383,7 @@ fn smt_check_assertion<'ctx>(
         SatResult::Sat | SatResult::Unknown => {
             context.smt_log.log_word("get-model");
             let model = context.solver.get_model();
-            match model {
+            let air_model = match model {
                 None => {
                     panic!("SMT solver did not generate a model");
                 }
@@ -411,14 +419,15 @@ fn smt_check_assertion<'ctx>(
                             }
                         }
                     }
+                    Model::new(model)
                 }
-            }
-            ValidityResult::Invalid(discovered_span, discovered_global_span)
+            };
+            ValidityResult::Invalid(air_model, discovered_span, discovered_global_span)
         }
     }
 }
 
-pub(crate) fn smt_check_query<'ctx>(context: &mut Context<'ctx>, query: &Query) -> ValidityResult {
+pub(crate) fn smt_check_query<'ctx>(context: &mut Context<'ctx>, query: &Query) -> ValidityResult<'ctx> {
     context.smt_log.log_push();
     context.solver.push();
     context.push_name_scope();

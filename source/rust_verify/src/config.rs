@@ -9,6 +9,7 @@ pub struct Args {
     pub log_smt: Option<String>,
     pub log_triggers: Option<String>,
     pub show_triggers: bool,
+    pub debug: bool,
 }
 
 pub fn parse_args(program: &String, args: impl Iterator<Item = String>) -> (Args, Vec<String>) {
@@ -19,6 +20,7 @@ pub fn parse_args(program: &String, args: impl Iterator<Item = String>) -> (Args
     const OPT_LOG_SMT: &str = "log-smt";
     const OPT_LOG_TRIGGERS: &str = "log-triggers";
     const OPT_TRIGGERS: &str = "triggers";
+    const OPT_DEBUG: &str = "debug";
 
     let mut opts = Options::new();
     opts.optopt("", OPT_RLIMIT, "Set SMT resource limit (roughly in seconds)", "INTEGER");
@@ -28,6 +30,7 @@ pub fn parse_args(program: &String, args: impl Iterator<Item = String>) -> (Args
     opts.optopt("", OPT_LOG_SMT, "Log SMT queries", "FILENAME");
     opts.optopt("", OPT_LOG_TRIGGERS, "Log automatically chosen triggers", "FILENAME");
     opts.optflag("", OPT_TRIGGERS, "Show automatically chosen triggers");
+    opts.optflag("", OPT_DEBUG, "Enable debugging of proof failures");
     opts.optflag("h", "help", "print this help menu");
 
     let print_usage = || {
@@ -66,6 +69,7 @@ pub fn parse_args(program: &String, args: impl Iterator<Item = String>) -> (Args
         log_smt: matches.opt_str(OPT_LOG_SMT),
         log_triggers: matches.opt_str(OPT_LOG_TRIGGERS),
         show_triggers: matches.opt_present(OPT_TRIGGERS),
+        debug: matches.opt_present(OPT_DEBUG),
     };
 
     (args, unmatched)

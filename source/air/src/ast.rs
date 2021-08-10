@@ -11,13 +11,6 @@ pub type SpanOption = Rc<Option<Span>>;
 
 pub type TypeError = String;
 
-#[derive(Debug)]
-pub enum ValidityResult {
-    Valid,
-    Invalid(SpanOption, SpanOption),
-    TypeError(TypeError),
-}
-
 pub type Ident = Rc<String>;
 
 pub type Typ = Rc<TypX>;

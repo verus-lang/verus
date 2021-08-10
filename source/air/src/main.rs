@@ -1,5 +1,6 @@
-use air::ast::{CommandX, Span, ValidityResult};
+use air::ast::{CommandX, Span};
 use air::context::Context;
+use air::smt_verify::ValidityResult;
 use getopts::Options;
 use sise::Node;
 use std::fs::File;
@@ -106,7 +107,7 @@ pub fn main() {
             ValidityResult::TypeError(err) => {
                 panic!("Type error: {}", err);
             }
-            ValidityResult::Invalid(span1, span2) => {
+            ValidityResult::Invalid(_, span1, span2) => {
                 count_errors += 1;
                 match &*span1 {
                     None => {

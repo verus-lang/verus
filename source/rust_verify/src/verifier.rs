@@ -171,6 +171,7 @@ impl Verifier {
         let z3_context = z3::Context::new(&z3_config);
         let z3_solver = z3::Solver::new(&z3_context);
         let mut air_context = air::context::Context::new(&z3_context, &z3_solver);
+        air_context.set_debug(self.args.debug);
 
         if let Some(filename) = &self.args.log_air_initial {
             let file = File::create(filename).expect(&format!("could not open file {}", filename));

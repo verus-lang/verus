@@ -1,4 +1,5 @@
-use crate::ast::{CommandX, ValidityResult};
+use crate::ast::CommandX;
+use crate::smt_verify::ValidityResult;
 #[allow(unused_imports)]
 use crate::print_parse::{macro_push_node, nodes_to_commands};
 #[allow(unused_imports)]
@@ -22,7 +23,7 @@ fn run_nodes_as_test(should_typecheck: bool, should_be_valid: bool, nodes: &[Nod
                         panic!("type error: {}", s);
                     }
                     (_, _, true, ValidityResult::Valid) => {}
-                    (_, _, false, ValidityResult::Invalid(_, _)) => {}
+                    (_, _, false, ValidityResult::Invalid(_, _, _)) => {}
                     (CommandX::CheckValid(_), _, _, _) => {
                         panic!("unexpected result");
                     }
