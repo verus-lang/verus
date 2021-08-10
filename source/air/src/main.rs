@@ -15,6 +15,7 @@ pub fn main() {
     opts.optopt("", "log-air-middle", "Log AIR queries in middle form", "FILENAME");
     opts.optopt("", "log-air-final", "Log AIR queries in final form", "FILENAME");
     opts.optopt("", "log-smt", "Log SMT queries", "FILENAME");
+    opts.optflag("d", "debug", "Debug verification failures");
     opts.optflag("h", "help", "print this help menu");
 
     let print_usage = || {
@@ -78,6 +79,7 @@ pub fn main() {
     let z3_context = z3::Context::new(&z3_config);
     let z3_solver = z3::Solver::new(&z3_context);
     let mut air_context = Context::new(&z3_context, &z3_solver);
+    air_context.set_debug(matches.opt_present("debug"));
 
     // Start logging
     if let Some(filename) = matches.opt_str("log-air-middle") {
@@ -107,7 +109,7 @@ pub fn main() {
             ValidityResult::TypeError(err) => {
                 panic!("Type error: {}", err);
             }
-            ValidityResult::Invalid(_, span1, span2) => {
+            ValidityResult::Invalid(m, span1, span2) => {
                 count_errors += 1;
                 match &*span1 {
                     None => {
@@ -124,6 +126,9 @@ pub fn main() {
                     Some(Span { as_string, .. }) => {
                         println!("Additional error detail at {}", as_string);
                     }
+                }
+                if air_context.debug {
+                    println!("Model: {}", m);
                 }
             }
         }
