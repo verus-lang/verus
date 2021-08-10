@@ -5,10 +5,7 @@ use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
 fn find_version(versions: &HashMap<Ident, u32>, x: &String) -> u32 {
-    match versions.get(x) {
-        None => panic!("variable {} not declared", x),
-        Some(n) => *n,
-    }
+    *versions.get(x).unwrap_or_else(|| panic!("variable {} not declared", x))
 }
 
 fn rename_var(x: &String, n: u32) -> String {
@@ -45,7 +42,7 @@ fn lower_expr(
 fn lower_stmt(
     decls: &mut Vec<Decl>,
     versions: &mut HashMap<Ident, u32>,
-    version_decls: &mut HashSet<(Ident, u32)>,
+    version_decls: &mut HashSet<Ident>,
     snapshots: &mut HashMap<Ident, HashMap<Ident, u32>>,
     types: &HashMap<Ident, Typ>,
     stmt: &Stmt,
@@ -60,10 +57,10 @@ fn lower_stmt(
             let typ = types[x].clone();
             versions.insert(x.clone(), n + 1);
             let x = Rc::new(rename_var(x, n + 1));
-            if !version_decls.contains(&(x.clone(), n + 1)) {
+            if !version_decls.contains(&x) {
                 let decl = Rc::new(DeclX::Const(x.clone(), typ));
                 decls.push(decl);
-                version_decls.insert((x.clone(), n + 1));
+                version_decls.insert(x.clone());
             }
             match &*stmt {
                 StmtX::Assign(_, e) => {
@@ -132,7 +129,7 @@ pub(crate) fn lower_query(query: &Query) -> Query {
     let QueryX { local, assertion } = &**query;
     let mut decls: Vec<Decl> = Vec::new();
     let mut versions: HashMap<Ident, u32> = HashMap::new();
-    let mut version_decls: HashSet<(Ident, u32)> = HashSet::new();
+    let mut version_decls: HashSet<Ident> = HashSet::new();
     let mut snapshots: HashMap<Ident, HashMap<Ident, u32>> = HashMap::new();
     let mut types: HashMap<Ident, Typ> = HashMap::new();
     for decl in local.iter() {

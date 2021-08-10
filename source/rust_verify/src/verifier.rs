@@ -116,6 +116,9 @@ impl Verifier {
         }
     }
 
+    /// Use when we expect our call to Z3 to always succeed
+    /// If it doesn't, it's an internal error, not a failure
+    /// to validate user code.
     fn check_internal_result(result: ValidityResult) {
         match result {
             ValidityResult::Valid => {}
@@ -126,6 +129,8 @@ impl Verifier {
         }
     }
 
+    /// Check the result of a query that was based on user input.
+    /// Success/failure will (eventually) be communicated back to the user.
     fn check_result_validity(
         &mut self,
         compiler: &Compiler,
@@ -216,10 +221,11 @@ impl Verifier {
                 air_context.comment(&("Function-PreDecl ".to_string() + &function.x.name));
             }
             for command in commands.iter() {
-                self.check_result_validity(compiler, &command, air_context.command(&command));
+                Self::check_internal_result(air_context.command(&command));
             }
         }
 
+        // Declare consequence axioms for spec functions, and function signatures for proof/exec functions
         for function in &krate.functions {
             let commands = vir::func_to_air::func_decl_to_air(&ctx, &function)?;
             if commands.len() > 0 {
@@ -231,6 +237,7 @@ impl Verifier {
             }
         }
 
+        // Create queries to check the validity of proof/exec function bodies
         for function in &krate.functions {
             let commands = vir::func_to_air::func_def_to_air(&ctx, &function)?;
             if commands.len() > 0 {
