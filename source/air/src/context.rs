@@ -226,7 +226,7 @@ impl<'ctx> Context<'ctx> {
         if let Err(err) = crate::typecheck::check_query(self, query) {
             return ValidityResult::TypeError(err);
         }
-        let query = crate::var_to_const::lower_query(query);
+        let (query, snapshots) = crate::var_to_const::lower_query(query);
         self.air_middle_log.log_query(&query);
         let query = crate::block_to_assert::lower_query(&query);
         self.air_final_log.log_query(&query);

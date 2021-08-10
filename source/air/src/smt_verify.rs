@@ -4,7 +4,8 @@ use crate::ast::{
 };
 use crate::context::{AssertionInfo, Context};
 use crate::def::{GLOBAL_PREFIX_LABEL, PREFIX_LABEL};
-use crate::model::Model;
+pub use crate::model::Model;
+use crate::model::{SnapShots};
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 use z3::ast::{Ast, Bool, Dynamic, Int};
@@ -15,6 +16,15 @@ pub enum ValidityResult<'a> {
     Valid,
     Invalid(Model<'a>, SpanOption, SpanOption),
     TypeError(TypeError),
+}
+
+impl<'a> ValidityResult<'a> {
+    pub fn save_snapshots(&self, snapshots: SnapShots) {
+        match &self {
+            ValidityResult::Invalid(m, _, _) => m.save_snapshots(snapshots),
+            _ => ()
+        }
+    }
 }
 
 fn new_const<'ctx>(context: &mut Context<'ctx>, name: &String, typ: &Typ) -> Dynamic<'ctx> {

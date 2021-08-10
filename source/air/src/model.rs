@@ -1,14 +1,17 @@
-use std::collections::{HashMap, HashSet};
-use std::rc::Rc;
+use std::collections::{HashMap};
+//use std::collections::{HashMap, HashSet};
+//use std::rc::Rc;
 use crate::ast::{Ident};
 //use z3::ast::Dynamic;
 //use z3::{FuncDecl, Sort};
 
+pub(crate) type SnapShot = HashMap<Ident, u32>;
+pub(crate) type SnapShots = HashMap<Ident, SnapShot>;
 
 #[derive(Debug)]
 pub(crate) struct Model<'a> {
-    pub(crate) z3: z3::Model<'a>,
-    pub(crate) snapshots: HashMap<Ident, HashMap<Ident, u32>>,
+    z3: z3::Model<'a>,
+    snapshots: SnapShots,
 }
 
 
@@ -18,6 +21,10 @@ impl<'a> Model<'a> {
             z3: model,
             snapshots: HashMap::new(),
         }
+    }
+
+    pub fn save_snapshots(&self, snapshots: SnapShots) {
+        self.snapshots = snapshots.clone();
     }
 }
 

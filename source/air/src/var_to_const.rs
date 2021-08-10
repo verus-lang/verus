@@ -3,6 +3,7 @@ use crate::ast::{BinaryOp, Decl, DeclX, Expr, ExprX, Ident, Query, QueryX, Stmt,
 use crate::ast_util::string_var;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
+use crate::model::SnapShots;
 
 fn find_version(versions: &HashMap<Ident, u32>, x: &String) -> u32 {
     *versions.get(x).unwrap_or_else(|| panic!("variable {} not declared", x))
@@ -14,7 +15,7 @@ fn rename_var(x: &String, n: u32) -> String {
 
 fn lower_expr_visitor(
     versions: &HashMap<Ident, u32>,
-    snapshots: &HashMap<Ident, HashMap<Ident, u32>>,
+    snapshots: &SnapShots,
     expr: &Expr,
 ) -> Expr {
     match &**expr {
@@ -33,7 +34,7 @@ fn lower_expr_visitor(
 
 fn lower_expr(
     versions: &HashMap<Ident, u32>,
-    snapshots: &HashMap<Ident, HashMap<Ident, u32>>,
+    snapshots: &SnapShots,
     expr: &Expr,
 ) -> Expr {
     crate::visitor::map_expr_visitor(&expr, &mut |e| lower_expr_visitor(versions, snapshots, e))
@@ -43,7 +44,7 @@ fn lower_stmt(
     decls: &mut Vec<Decl>,
     versions: &mut HashMap<Ident, u32>,
     version_decls: &mut HashSet<Ident>,
-    snapshots: &mut HashMap<Ident, HashMap<Ident, u32>>,
+    snapshots: &mut SnapShots,
     types: &HashMap<Ident, Typ>,
     stmt: &Stmt,
 ) -> Stmt {
@@ -125,12 +126,12 @@ fn lower_stmt(
     }
 }
 
-pub(crate) fn lower_query(query: &Query) -> Query {
+pub(crate) fn lower_query(query: &Query) -> (Query, SnapShots) {
     let QueryX { local, assertion } = &**query;
     let mut decls: Vec<Decl> = Vec::new();
     let mut versions: HashMap<Ident, u32> = HashMap::new();
     let mut version_decls: HashSet<Ident> = HashSet::new();
-    let mut snapshots: HashMap<Ident, HashMap<Ident, u32>> = HashMap::new();
+    let mut snapshots: SnapShots = HashMap::new();
     let mut types: HashMap<Ident, Typ> = HashMap::new();
     for decl in local.iter() {
         if let DeclX::Axiom(expr) = &**decl {
@@ -156,5 +157,5 @@ pub(crate) fn lower_query(query: &Query) -> Query {
         assertion,
     );
     let local = Rc::new(decls);
-    Rc::new(QueryX { local, assertion })
+    (Rc::new(QueryX { local, assertion }), snapshots)
 }
