@@ -1,7 +1,7 @@
 use crate::ast::{Command, CommandX, Decl, Ident, Query, SpanOption, TypeError};
 use crate::print_parse::Logger;
 use crate::typecheck::Typing;
-use crate::smt_verify::ValidityResult;
+use crate::model::Model;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 use z3::ast::Dynamic;
@@ -12,6 +12,13 @@ pub(crate) struct AssertionInfo {
     pub(crate) span: SpanOption,
     pub(crate) label: Ident,
     pub(crate) decl: Decl,
+}
+
+#[derive(Debug)]
+pub enum ValidityResult<'a> {
+    Valid,
+    Invalid(Model<'a>, SpanOption, SpanOption),
+    TypeError(TypeError),
 }
 
 pub struct Context<'ctx> {
@@ -77,6 +84,10 @@ impl<'ctx> Context<'ctx> {
 
     pub fn set_debug(&mut self, debug: bool) {
         self.debug = debug;
+    }
+    
+    pub fn get_debug(&self) -> bool {
+        self.debug
     }
 
     pub fn set_rlimit(&mut self, rlimit: u32) {

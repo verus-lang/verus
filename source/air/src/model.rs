@@ -17,6 +17,7 @@ pub struct Model<'a> {
 
 impl<'a> Model<'a> {
     pub fn new(model: z3::Model<'a>, snapshots:SnapShots) -> Model<'a> {
+        println!("Creating a new model with {} snapshots", snapshots.len());
         Model {
             z3_model: model,
             id_snapshots: snapshots,
@@ -29,11 +30,13 @@ impl<'a> Model<'a> {
 //    }
 
     /// Reconstruct an AIR-level model based on the Z3 model
-    pub fn build(&self, context: &Context) {
+    pub fn build(&mut self, context: &Context) {
+        println!("Building the AIR model"); 
         for (snap_id, id_snapshot) in &self.id_snapshots {
-            let value_snapshot = HashMap::new();
-            for (var_id, var_count) in *id_snapshot {
-                let var_name = crate::var_to_const::rename_var(&*var_id, var_count);
+            let mut value_snapshot = HashMap::new();
+            println!("Snapshot {} has {} variables", snap_id, id_snapshot.len());
+            for (var_id, var_count) in &*id_snapshot {
+                let var_name = crate::var_to_const::rename_var(&*var_id, *var_count);
                 let var_smt = context.vars.get(&var_name).unwrap_or_else(|| panic!("internal error: variable {} not found", var_name));
                 let val = if let Some(x) = self.z3_model.eval(var_smt) {
                     if let Some(b) = x.as_bool() {
@@ -50,7 +53,7 @@ impl<'a> Model<'a> {
                 };
                 value_snapshot.insert(Rc::new(var_name), val);
             }
-            self.value_snapshots.insert(*snap_id, value_snapshot);
+            self.value_snapshots.insert(snap_id.clone(), value_snapshot);
         }
     }
 
@@ -63,7 +66,7 @@ impl<'a> fmt::Display for Model<'a> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         for (snap_id, value_snapshot) in &self.value_snapshots {
             write!(f, "Snapshot: {}:\n", snap_id)?;
-            for (var_name, value) in *value_snapshot {
+            for (var_name, value) in &*value_snapshot {
                 write!(f, "\t{} -> {}", var_name, value)?;
             }
         }

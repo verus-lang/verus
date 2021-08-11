@@ -1,5 +1,5 @@
 use crate::ast::CommandX;
-use crate::smt_verify::ValidityResult;
+use crate::context::ValidityResult;
 #[allow(unused_imports)]
 use crate::print_parse::{macro_push_node, nodes_to_commands};
 #[allow(unused_imports)]

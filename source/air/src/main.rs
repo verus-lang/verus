@@ -1,6 +1,5 @@
 use air::ast::{CommandX, Span};
-use air::context::Context;
-use air::smt_verify::ValidityResult;
+use air::context::{Context,ValidityResult};
 use getopts::Options;
 use sise::Node;
 use std::fs::File;
@@ -79,7 +78,8 @@ pub fn main() {
     let z3_context = z3::Context::new(&z3_config);
     let z3_solver = z3::Solver::new(&z3_context);
     let mut air_context = Context::new(&z3_context, &z3_solver);
-    air_context.set_debug(matches.opt_present("debug"));
+    let debug = matches.opt_present("debug");
+    air_context.set_debug(debug);
 
     // Start logging
     if let Some(filename) = matches.opt_str("log-air-middle") {
@@ -127,7 +127,7 @@ pub fn main() {
                         println!("Additional error detail at {}", as_string);
                     }
                 }
-                if air_context.debug {
+                if debug {
                     println!("Model: {}", m);
                 }
             }

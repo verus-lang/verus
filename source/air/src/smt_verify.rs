@@ -1,21 +1,14 @@
 use crate::ast::{
-    BinaryOp, BindX, Constant, Decl, DeclX, Expr, ExprX, Ident, MultiOp, Quant, Query, SnapShots, Span, SpanOption, StmtX,
-    Typ, TypX, TypeError, UnaryOp,
+    BinaryOp, BindX, Constant, Decl, DeclX, Expr, ExprX, Ident, MultiOp, Quant, Query, SnapShots, Span, StmtX,
+    Typ, TypX, UnaryOp,
 };
-use crate::context::{AssertionInfo, Context};
+use crate::context::{AssertionInfo, Context, ValidityResult};
 use crate::def::{GLOBAL_PREFIX_LABEL, PREFIX_LABEL};
 pub use crate::model::Model;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 use z3::ast::{Ast, Bool, Dynamic, Int};
 use z3::{Pattern, SatResult, Sort, Symbol};
-
-#[derive(Debug)]
-pub enum ValidityResult<'a> {
-    Valid,
-    Invalid(Model<'a>, SpanOption, SpanOption),
-    TypeError(TypeError),
-}
 
 //impl<'a> ValidityResult<'a> {
 //    pub fn save_snapshots(&self, snapshots: SnapShots) {
@@ -393,7 +386,7 @@ fn smt_check_assertion<'ctx>(
         SatResult::Sat | SatResult::Unknown => {
             context.smt_log.log_word("get-model");
             let model = context.solver.get_model();
-            let air_model = match model {
+            let mut air_model = match model {
                 None => {
                     panic!("SMT solver did not generate a model");
                 }
@@ -429,6 +422,7 @@ fn smt_check_assertion<'ctx>(
                             }
                         }
                     }
+                    println!("Z3 model: {}", model);
                     Model::new(model, snapshots)
                 }
             };

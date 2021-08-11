@@ -540,6 +540,14 @@ pub fn body_stm_to_air(
     let stm = crate::sst_vars::stm_assign(&mut declared, &mut assigned, &mut HashSet::new(), stm);
     let mut stmts = stm_to_stmts(ctx, &mut state, &stm);
 
+    let debug = true;
+    if debug {
+        let snapshot = Rc::new(StmtX::Snapshot(Rc::new("Entry".to_string())));
+        let mut new_stmts = vec![snapshot];
+        new_stmts.append(&mut stmts);
+        stmts = new_stmts;
+    }
+
     let mut local = state.local_shared.clone();
 
     for ens in enss {

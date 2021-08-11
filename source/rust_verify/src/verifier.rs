@@ -1,6 +1,7 @@
 use crate::config::Args;
 use crate::unsupported;
-use air::ast::{Command, CommandX, SpanOption, ValidityResult};
+use air::ast::{Command, CommandX, SpanOption};
+use air::context::ValidityResult;
 use rustc_interface::interface::Compiler;
 use rustc_middle::ty::TyCtxt;
 use rustc_span::source_map::SourceMap;
@@ -146,7 +147,7 @@ impl Verifier {
             ValidityResult::TypeError(err) => {
                 panic!("internal error: generated ill-typed AIR code: {}", err);
             }
-            ValidityResult::Invalid(span1, span2) => {
+            ValidityResult::Invalid(m, span1, span2) => {
                 report_verify_error(compiler, &span1, &span2);
                 self.errors.push((
                     span1
@@ -157,7 +158,8 @@ impl Verifier {
                         .as_ref()
                         .as_ref()
                         .map(|x| ErrorSpan::new_from_air_span(compiler.session().source_map(), x)),
-                ))
+                ));
+                println!("Received model: {}", m);
             }
         }
     }
