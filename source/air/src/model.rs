@@ -8,7 +8,7 @@ use crate::context::Context;
 //use z3::{FuncDecl, Sort};
 
 #[derive(Debug)]
-pub(crate) struct Model<'a> {
+pub struct Model<'a> {
     z3_model: z3::Model<'a>,
     id_snapshots: SnapShots,
     value_snapshots: HashMap<Ident, HashMap<Ident, String>>
