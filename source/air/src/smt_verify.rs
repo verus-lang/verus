@@ -364,6 +364,7 @@ fn smt_check_assertion<'ctx>(
     context: &mut Context<'ctx>,
     infos: &Vec<AssertionInfo>,
     snapshots: SnapShots,
+    local_vars: &Decls,  // Expected to be entirely DeclX::Const
     expr: &Expr,
 ) -> ValidityResult<'ctx> {
     let mut discovered_span = Rc::new(None);
@@ -427,7 +428,7 @@ fn smt_check_assertion<'ctx>(
                 }
             };
             if context.debug {
-                air_model.build(context);
+                air_model.build(context, local_vars);
             }
             ValidityResult::Invalid(air_model, discovered_span, discovered_global_span)
         }
@@ -439,10 +440,15 @@ pub(crate) fn smt_check_query<'ctx>(context: &mut Context<'ctx>, query: &Query, 
     context.solver.push();
     context.push_name_scope();
 
+    let mut local_vars: Decls = Rc::new(Vec::new());
+
     // add query-local declarations
     for decl in query.local.iter() {
         if let Err(err) = crate::typecheck::add_decl(context, decl, false) {
             return ValidityResult::TypeError(err);
+        }
+        if let DeclX::Const(_, _) = decl {
+            local_vars.push(decl);
         }
         smt_add_decl(context, decl);
     }
@@ -467,7 +473,7 @@ pub(crate) fn smt_check_query<'ctx>(context: &mut Context<'ctx>, query: &Query, 
     }
 
     // check assertion
-    let result = smt_check_assertion(context, &infos, snapshots, &labeled_assertion);
+    let result = smt_check_assertion(context, &infos, snapshots, local_vars, &labeled_assertion);
 
     // clean up
     context.pop_name_scope();
