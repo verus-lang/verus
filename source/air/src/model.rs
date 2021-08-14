@@ -66,13 +66,16 @@ impl<'a> Model<'a> {
             println!("Snapshot {} has {} variables", snap_id, id_snapshot.len());
             for (var_id, var_count) in &*id_snapshot {
                 let var_name = crate::var_to_const::rename_var(&*var_id, *var_count);
+                println!("\t{}", var_name);
                 let var_smt = context.vars.get(&var_name).unwrap_or_else(|| panic!("internal error: variable {} not found", var_name));
                 let val = self.lookup_var(&var_name, var_smt);
                 value_snapshot.insert(Rc::new(var_name), val);
             }
             // Add the local variables to every snapshot for uniformity
+            println!("local_vars has {} variables", local_vars.len());
             for decl in local_vars.iter() {
                 if let DeclX::Const(var_name, typ) = &**decl {
+                    println!("\t{}", var_name);
                     let var_smt = new_const(context, &var_name, &typ);
                     let val = self.lookup_var(&var_name, &var_smt);
                     value_snapshot.insert(var_name.clone(), val);
