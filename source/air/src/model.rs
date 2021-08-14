@@ -92,7 +92,7 @@ impl<'a> Model<'a> {
 
 impl<'a> fmt::Display for Model<'a> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "\nDisplaying model with {} snapshots\n", self.value_snapshots.len());
+        write!(f, "\nDisplaying model with {} snapshots\n", self.value_snapshots.len())?;
         for (snap_id, value_snapshot) in &self.value_snapshots {
             write!(f, "Snapshot <{}>:\n", snap_id)?;
             for (var_name, value) in &*value_snapshot {
