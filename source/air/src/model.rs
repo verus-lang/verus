@@ -2,7 +2,7 @@ use std::collections::{HashMap};
 use std::fmt;
 //use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
-use crate::ast::{Decls, DeclX, Ident,SnapShots, Typ, TypX};
+use crate::ast::{Decl, DeclX, Ident,SnapShots, Typ, TypX};
 use crate::context::Context;
 use z3::ast::{Bool, Dynamic, Int};
 //use z3::{FuncDecl, Sort};
@@ -12,6 +12,19 @@ pub struct Model<'a> {
     z3_model: z3::Model<'a>,
     id_snapshots: SnapShots,
     value_snapshots: HashMap<Ident, HashMap<Ident, String>>
+}
+
+// TODO: Duplicated from smt_verify
+fn new_const<'ctx>(context: &mut Context<'ctx>, name: &String, typ: &Typ) -> Dynamic<'ctx> {
+    match &**typ {
+        TypX::Bool => Bool::new_const(context.context, name.clone()).into(),
+        TypX::Int => Int::new_const(context.context, name.clone()).into(),
+        TypX::Named(x) => {
+            let sort = &context.typs[x];
+            let fdecl = z3::FuncDecl::new(context.context, name.clone(), &[], sort);
+            fdecl.apply(&[])
+        }
+    }
 }
 
 
@@ -45,21 +58,8 @@ impl<'a> Model<'a> {
     }
 
 
-    // TODO: Duplicated from smt_verify
-    fn new_const<'ctx>(context: &mut Context<'ctx>, name: &String, typ: &Typ) -> Dynamic<'ctx> {
-        match &**typ {
-            TypX::Bool => Bool::new_const(context.context, name.clone()).into(),
-            TypX::Int => Int::new_const(context.context, name.clone()).into(),
-            TypX::Named(x) => {
-                let sort = &context.typs[x];
-                let fdecl = z3::FuncDecl::new(context.context, name.clone(), &[], sort);
-                fdecl.apply(&[])
-            }
-        }
-    }
-
     /// Reconstruct an AIR-level model based on the Z3 model
-    pub fn build(&mut self, context: &Context, local_vars: &Decls) {
+    pub fn build(&mut self, context: &mut Context, local_vars: &Vec<Decl>) {
         println!("Building the AIR model"); 
         for (snap_id, id_snapshot) in &self.id_snapshots {
             let mut value_snapshot = HashMap::new();
@@ -71,11 +71,15 @@ impl<'a> Model<'a> {
                 value_snapshot.insert(Rc::new(var_name), val);
             }
             // Add the local variables to every snapshot for uniformity
-            for decl in local_vars {
-                let DeclX::Const(var_name, typ) = decl;
-                let var_smt = new_const(context, var_name, typ);
-                let val = self.lookup_var(&var_name, var_smt);
-                value_snapshot.insert(Rc::new(*var_name.clone()), val);
+            for decl in local_vars.iter() {
+                if let DeclX::Const(var_name, typ) = &**decl {
+                    let var_smt = new_const(context, &var_name, &typ);
+                    let val = self.lookup_var(&var_name, &var_smt);
+                    value_snapshot.insert(var_name.clone(), val);
+                    //value_snapshot.insert(Rc::new((*var_name).clone()), val);
+                } else {
+                    panic!("Expected local vars to all be constants at this point");
+                }
             }
             self.value_snapshots.insert(snap_id.clone(), value_snapshot);
         }

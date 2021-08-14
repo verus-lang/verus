@@ -1,5 +1,5 @@
 use crate::ast::{
-    BinaryOp, BindX, Constant, Decl, DeclX, Expr, ExprX, Ident, MultiOp, Quant, Query, SnapShots, Span, StmtX,
+    BinaryOp, BindX, Constant, Decl,  DeclX,Expr, ExprX, Ident, MultiOp, Quant, Query, SnapShots, Span, StmtX,
     Typ, TypX, UnaryOp,
 };
 use crate::context::{AssertionInfo, Context, ValidityResult};
@@ -364,7 +364,7 @@ fn smt_check_assertion<'ctx>(
     context: &mut Context<'ctx>,
     infos: &Vec<AssertionInfo>,
     snapshots: SnapShots,
-    local_vars: &Decls,  // Expected to be entirely DeclX::Const
+    local_vars: &Vec<Decl>,  // Expected to be entirely DeclX::Const
     expr: &Expr,
 ) -> ValidityResult<'ctx> {
     let mut discovered_span = Rc::new(None);
@@ -440,15 +440,15 @@ pub(crate) fn smt_check_query<'ctx>(context: &mut Context<'ctx>, query: &Query, 
     context.solver.push();
     context.push_name_scope();
 
-    let mut local_vars: Decls = Rc::new(Vec::new());
+    let mut local_vars = Vec::new();
 
     // add query-local declarations
     for decl in query.local.iter() {
         if let Err(err) = crate::typecheck::add_decl(context, decl, false) {
             return ValidityResult::TypeError(err);
         }
-        if let DeclX::Const(_, _) = decl {
-            local_vars.push(decl);
+        if let DeclX::Const(_, _) = **decl {
+            local_vars.push(decl.clone());
         }
         smt_add_decl(context, decl);
     }
@@ -473,7 +473,7 @@ pub(crate) fn smt_check_query<'ctx>(context: &mut Context<'ctx>, query: &Query, 
     }
 
     // check assertion
-    let result = smt_check_assertion(context, &infos, snapshots, local_vars, &labeled_assertion);
+    let result = smt_check_assertion(context, &infos, snapshots, &local_vars, &labeled_assertion);
 
     // clean up
     context.pop_name_scope();
