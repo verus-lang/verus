@@ -21,7 +21,7 @@ struct Ctxt<'a> {
     decreases_exp: Exp,
     decreases_typ: Typ,
     scc_rep: Ident,
-    ctx: &'a Ctx,
+    ctx: &'a Ctx<'a>,
 }
 
 fn check_decrease(ctxt: &Ctxt, exp: &Exp) -> Exp {

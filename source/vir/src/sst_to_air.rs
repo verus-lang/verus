@@ -18,6 +18,7 @@ use air::ast_util::{
     bool_typ, ident_apply, ident_binder, ident_typ, ident_var, int_typ, mk_and, mk_eq, mk_exists,
     mk_implies, mk_ite, mk_not, mk_or, str_apply, str_ident, str_typ, str_var, string_var,
 };
+use rustc_span::Pos; //CharPos, FileName, MultiSpan, Span};
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
@@ -356,8 +357,13 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
             };
             if ctx.debug {
                 // Add a snapshot before we modify the destination
-                //let (start, end) = source_map.is_valid_span(*stm.span).expect("internal error: invalid Span");
-                let name = format!("{}_{:?}", ident.clone(), stm.span.raw_span); // TODO: Use line number?
+                // TODO: Factor out the span reasoning, so we don't pull rustc into this part of
+                // the code base?
+                let span: &rustc_span::Span = (*stm.span.raw_span)
+                    .downcast_ref::<rustc_span::Span>()
+                    .expect("internal error: failed to cast to Span");
+                let (start, _end) = ctx.source_map.is_valid_span(*span).expect("internal error: invalid Span");
+                let name = format!("{}_{}_{}", ident.clone(), start.line, start.col.to_usize());
                 let snapshot = Rc::new(StmtX::Snapshot(Rc::new(name)));
                 stmts.push(snapshot);
             }

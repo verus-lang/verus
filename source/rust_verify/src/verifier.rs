@@ -192,7 +192,7 @@ impl Verifier {
         air_context.set_z3_param("air_recommended_options", "true");
         air_context.set_rlimit(self.args.rlimit * 1000000);
 
-        let ctx = vir::context::Ctx::new(&krate, self.args.debug)?;
+        let ctx = vir::context::Ctx::new(&krate, compiler.session().source_map(), self.args.debug)?;
 
         air_context.blank_line();
         air_context.comment("Prelude");
