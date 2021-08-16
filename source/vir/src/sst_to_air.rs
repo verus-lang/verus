@@ -297,12 +297,6 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
                     }
                 }
                 Some(Dest { var, mutable }) => {
-                    if ctx.debug {
-                        // Add a snapshot before we modify the destination
-                        let name = format!("{}_{:?}", var.clone(), stm.span.raw_span); // TODO: Use line number?
-                        let snapshot = Rc::new(StmtX::Snapshot(Rc::new(name)));
-                        stmts.push(snapshot);
-                    }
                     let x = suffix_local_id(&var.clone());
                     let mut overwrite = false;
                     for arg in args.iter() {
@@ -325,6 +319,12 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
                     if *mutable {
                         let havoc = StmtX::Havoc(x.clone());
                         stmts.push(Rc::new(havoc));
+                    }
+                    if ctx.debug {
+                        // Add a snapshot after we modify the destination
+                        let name = format!("{}_{:?}", var.clone(), stm.span.raw_span); // TODO: Use line number?
+                        let snapshot = Rc::new(StmtX::Snapshot(Rc::new(name)));
+                        stmts.push(snapshot);
                     }
                 }
             }
@@ -355,8 +355,9 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
                 ExpX::Var(ident) => ident,
                 _ => panic!("unexpected lhs {:?} in assign", lhs),
             };
+            stmts.push(Rc::new(StmtX::Assign(suffix_local_id(&ident), exp_to_expr(ctx, rhs))));
             if ctx.debug {
-                // Add a snapshot before we modify the destination
+                // Add a snapshot after we modify the destination
                 // TODO: Factor out the span reasoning, so we don't pull rustc into this part of
                 // the code base?
                 let span: &rustc_span::Span = (*stm.span.raw_span)
@@ -367,7 +368,6 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
                 let snapshot = Rc::new(StmtX::Snapshot(Rc::new(name)));
                 stmts.push(snapshot);
             }
-            stmts.push(Rc::new(StmtX::Assign(suffix_local_id(&ident), exp_to_expr(ctx, rhs))));
             stmts
         }
         StmX::If(cond, lhs, rhs) => {
