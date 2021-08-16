@@ -7,6 +7,11 @@ pub struct Span {
     pub description: Option<String>,
     pub raw_span: RawSpan,
     pub as_string: String, // if we can't print (description, raw_span), print as_string instead
+    pub filename: String,
+    pub start_row: u32,
+    pub start_col: u32,
+    pub end_row: u32,
+    pub end_col: u32,
 }
 pub type SpanOption = Rc<Option<Span>>;
 

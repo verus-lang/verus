@@ -1,12 +1,25 @@
-use rustc_span::Span;
+use rustc_span::{FileName, Span};
+use rustc_span::source_map::SourceMap;
 use std::rc::Rc;
+use crate::unsupported;
 use vir::ast::{VirErr, VirErrX};
 use vir::def::Spanned;
 
-pub(crate) fn spanned_new<X>(span: Span, x: X) -> Rc<Spanned<X>> {
+static mut SOURCE_MAP: Option<SourceMap> = None;
+
+pub(crate) fn spanned_new<X>(map: &SourceMap, span: Span, x: X) -> Rc<Spanned<X>> {
     let raw_span = Rc::new(span);
     let as_string = format!("{:?}", span);
-    Spanned::new(air::ast::Span { description: None, raw_span, as_string }, x)
+    let filename: String = match map.span_to_filename(span) {
+        FileName::Real(rfn) => rfn
+            .local_path()
+            .to_str()
+            .expect("internal error: path is not a valid string")
+            .to_string(),
+        _ => unsupported!("non real filenames in verifier errors", span),
+    };
+    let (start, end) = map.is_valid_span(span).expect("internal error: invalid Span");
+    Spanned::new(air::ast::Span { description: None, raw_span, as_string, filename, start_row:start.line, start_col:start.col.to_u32(), end_row:end.line, end_col:end.col.to_u32() }, x)
 }
 
 pub(crate) fn err_span_str<A>(span: Span, msg: &str) -> Result<A, VirErr> {
