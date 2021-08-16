@@ -59,7 +59,7 @@ impl<'a> Model<'a> {
 
 
     /// Reconstruct an AIR-level model based on the Z3 model
-    pub fn build(&mut self, context: &mut Context, local_vars: &Vec<Decl>) {
+    pub fn build(&mut self, context: &mut Context, local_vars: Vec<Decl>) {
         println!("Building the AIR model"); 
         for (snap_id, id_snapshot) in &self.id_snapshots {
             let mut value_snapshot = HashMap::new();

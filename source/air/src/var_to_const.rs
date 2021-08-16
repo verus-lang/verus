@@ -125,13 +125,15 @@ fn lower_stmt(
     }
 }
 
-pub(crate) fn lower_query(query: &Query) -> (Query, SnapShots) {
+pub(crate) fn lower_query(query: &Query) -> (Query, SnapShots, Vec<Decl>) {
     let QueryX { local, assertion } = &**query;
     let mut decls: Vec<Decl> = Vec::new();
     let mut versions: HashMap<Ident, u32> = HashMap::new();
     let mut version_decls: HashSet<Ident> = HashSet::new();
     let mut snapshots: SnapShots = HashMap::new();
     let mut types: HashMap<Ident, Typ> = HashMap::new();
+    let mut local_vars: Vec<Decl> = Vec::new();
+
     for decl in local.iter() {
         if let DeclX::Axiom(expr) = &**decl {
             let decl_x = DeclX::Axiom(lower_expr(&versions, &snapshots, expr));
@@ -140,11 +142,15 @@ pub(crate) fn lower_query(query: &Query) -> (Query, SnapShots) {
             decls.push(decl.clone());
         }
         if let DeclX::Var(x, t) = &**decl {
+            println!("In var_to_const, lower_query, DeclX::Var of {}", x);
             versions.insert(x.clone(), 0);
             types.insert(x.clone(), t.clone());
             let x = Rc::new(rename_var(x, 0));
             let decl = Rc::new(DeclX::Const(x.clone(), t.clone()));
             decls.push(decl);
+        }
+        if let DeclX::Const(_, _) = &**decl {
+            local_vars.push(decl.clone());
         }
     }
     let assertion = lower_stmt(
@@ -156,5 +162,5 @@ pub(crate) fn lower_query(query: &Query) -> (Query, SnapShots) {
         assertion,
     );
     let local = Rc::new(decls);
-    (Rc::new(QueryX { local, assertion }), snapshots)
+    (Rc::new(QueryX { local, assertion }), snapshots, local_vars)
 }
