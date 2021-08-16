@@ -296,6 +296,12 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
                     }
                 }
                 Some(Dest { var, mutable }) => {
+                    if ctx.debug {
+                        // Add a snapshot before we modify the destination
+                        let name = format!("{}_{:?}", var.clone(), stm.span.raw_span); // TODO: Use line number?
+                        let snapshot = Rc::new(StmtX::Snapshot(Rc::new(name)));
+                        stmts.push(snapshot);
+                    }
                     let x = suffix_local_id(&var.clone());
                     let mut overwrite = false;
                     for arg in args.iter() {
@@ -343,11 +349,20 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
             vec![]
         }
         StmX::Assign(lhs, rhs) => {
+            let mut stmts: Vec<Stmt> = Vec::new();
             let ident = match &lhs.x {
                 ExpX::Var(ident) => ident,
                 _ => panic!("unexpected lhs {:?} in assign", lhs),
             };
-            vec![Rc::new(StmtX::Assign(suffix_local_id(&ident), exp_to_expr(ctx, rhs)))]
+            if ctx.debug {
+                // Add a snapshot before we modify the destination
+                //let (start, end) = source_map.is_valid_span(*stm.span).expect("internal error: invalid Span");
+                let name = format!("{}_{:?}", ident.clone(), stm.span.raw_span); // TODO: Use line number?
+                let snapshot = Rc::new(StmtX::Snapshot(Rc::new(name)));
+                stmts.push(snapshot);
+            }
+            stmts.push(Rc::new(StmtX::Assign(suffix_local_id(&ident), exp_to_expr(ctx, rhs))));
+            stmts
         }
         StmX::If(cond, lhs, rhs) => {
             let pos_cond = exp_to_expr(ctx, &cond);
