@@ -1,7 +1,4 @@
-#![feature(rustc_private)]
 #![feature(or_patterns)]
-
-extern crate rustc_span;
 
 pub mod ast;
 mod ast_to_sst;

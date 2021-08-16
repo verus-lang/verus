@@ -1,24 +1,22 @@
 use crate::ast::{Function, Ident, Krate, Mode, Path, Variants, VirErr};
 use crate::def::FUEL_ID;
 use crate::scc::Graph;
-use rustc_span::source_map::SourceMap;
 use air::ast::{Command, CommandX, Commands, DeclX, MultiOp, Span};
 use air::ast_util::str_typ;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-pub struct Ctx<'a> {
+pub struct Ctx {
     pub(crate) datatypes: HashMap<Path, Variants>,
     pub(crate) functions: Vec<Function>,
     pub(crate) func_map: HashMap<Ident, Function>,
     pub(crate) func_call_graph: Graph<Ident>,
-    pub(crate) source_map: &'a SourceMap,
     pub(crate) chosen_triggers: std::cell::RefCell<Vec<(Span, Vec<Vec<String>>)>>, // diagnostics
     pub(crate) debug: bool,
 }
 
-impl <'a> Ctx<'a> {
-    pub fn new(krate: &Krate, source_map: &'a SourceMap, debug:bool) -> Result<Self, VirErr> {
+impl Ctx {
+    pub fn new(krate: &Krate, debug:bool) -> Result<Self, VirErr> {
         let datatypes = krate
             .datatypes
             .iter()
@@ -35,7 +33,7 @@ impl <'a> Ctx<'a> {
         func_call_graph.compute_sccs();
         let chosen_triggers: std::cell::RefCell<Vec<(Span, Vec<Vec<String>>)>> =
             std::cell::RefCell::new(Vec::new());
-        Ok(Ctx { datatypes, functions, func_map, func_call_graph, source_map, chosen_triggers, debug })
+        Ok(Ctx { datatypes, functions, func_map, func_call_graph, chosen_triggers, debug })
     }
 
     pub fn prelude(&self) -> Commands {
