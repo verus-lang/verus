@@ -6,6 +6,7 @@ For soundness's sake, be as defensive as possible:
 - explicitly match all fields of the Rust AST so we catch any features added in the future
 */
 
+use crate::context::Context;
 use crate::rust_to_vir_adts::{check_item_enum, check_item_struct};
 use crate::rust_to_vir_base::{hack_check_def_name, hack_get_def_name};
 use crate::rust_to_vir_func::{check_foreign_item_fn, check_item_fn};
@@ -22,8 +23,7 @@ use std::rc::Rc;
 use vir::ast::{Krate, KrateX, VirErr};
 
 fn check_item<'tcx>(
-    tcx: TyCtxt<'tcx>,
-    krate: &'tcx Crate<'tcx>,
+    ctxt: &'tcx Context<'tcx>,
     vir: &mut KrateX,
     id: &ItemId,
     item: &'tcx Item<'tcx>,
@@ -31,11 +31,10 @@ fn check_item<'tcx>(
     match &item.kind {
         ItemKind::Fn(sig, generics, body_id) => {
             check_item_fn(
-                tcx,
-                krate,
+                ctxt,
                 vir,
                 item.ident,
-                tcx.hir().attrs(item.hir_id()),
+                ctxt.tcx.hir().attrs(item.hir_id()),
                 sig,
                 generics,
                 body_id,
@@ -49,30 +48,31 @@ fn check_item<'tcx>(
             // TODO use rustc_middle info here? if sufficient, it may allow for a single code path
             // for definitions of the local crate and imported crates
             // let adt_def = tcx.adt_def(item.def_id);
-            check_item_struct(tcx, krate, vir, item.span, id, variant_data, generics)?;
+            check_item_struct(ctxt, vir, item.span, id, variant_data, generics)?;
         }
         ItemKind::Enum(enum_def, generics) => {
             // TODO use rustc_middle? see `Struct` case
-            check_item_enum(tcx, krate, vir, item.span, id, enum_def, generics)?;
+            check_item_enum(ctxt, vir, item.span, id, enum_def, generics)?;
         }
         ItemKind::Impl(impll) => {
             if let Some(TraitRef { path, hir_ref_id: _ }) = impll.of_trait {
                 unsupported_err_unless!(
-                    hack_check_def_name(tcx, path.res.def_id(), "core", "marker::StructuralEq")
-                        || hack_check_def_name(tcx, path.res.def_id(), "core", "cmp::Eq")
+                    ctxt,
+                    hack_check_def_name(ctxt.tcx, path.res.def_id(), "core", "marker::StructuralEq")
+                        || hack_check_def_name(ctxt.tcx, path.res.def_id(), "core", "cmp::Eq")
                         || hack_check_def_name(
-                            tcx,
+                            ctxt.tcx,
                             path.res.def_id(),
                             "core",
                             "marker::StructuralPartialEq"
                         )
-                        || hack_check_def_name(tcx, path.res.def_id(), "core", "cmp::PartialEq")
-                        || hack_check_def_name(tcx, path.res.def_id(), "builtin", "Structural"),
+                        || hack_check_def_name(ctxt.tcx, path.res.def_id(), "core", "cmp::PartialEq")
+                        || hack_check_def_name(ctxt.tcx, path.res.def_id(), "builtin", "Structural"),
                     item.span,
                     "non_eq_trait_impl",
                     path
                 );
-                if hack_check_def_name(tcx, path.res.def_id(), "builtin", "Structural") {
+                if hack_check_def_name(ctxt.tcx, path.res.def_id(), "builtin", "Structural") {
                     let ty = {
                         // TODO extract to rust_to_vir_base, or use
                         // https://doc.rust-lang.org/nightly/nightly-rustc/rustc_typeck/fn.hir_ty_to_ty.html
@@ -86,7 +86,7 @@ fn check_item<'tcx>(
                                 impll.self_ty.kind
                             ),
                         };
-                        tcx.type_of(def_id)
+                        ctxt.tcx.type_of(def_id)
                     };
                     // TODO: this may be a bit of a hack: to query the TyCtxt for the StructuralEq impl it seems we need
                     // a concrete type, so apply ! to all type parameters
@@ -94,9 +94,9 @@ fn check_item<'tcx>(
                         if let rustc_middle::ty::TyKind::Adt(def, substs) = ty.kind() {
                             rustc_middle::ty::TyKind::Adt(
                                 def,
-                                tcx.mk_substs(substs.iter().map(|g| match g.unpack() {
+                                ctxt.tcx.mk_substs(substs.iter().map(|g| match g.unpack() {
                                     rustc_middle::ty::subst::GenericArgKind::Type(_) => {
-                                        (*tcx).types.never.into()
+                                        (*ctxt.tcx).types.never.into()
                                     }
                                     _ => g,
                                 })),
@@ -104,9 +104,10 @@ fn check_item<'tcx>(
                         } else {
                             panic!("Structural impl for non-adt type");
                         };
-                    let ty_applied_never = tcx.mk_ty(ty_kind_applied_never);
+                    let ty_applied_never = ctxt.tcx.mk_ty(ty_kind_applied_never);
                     err_unless!(
-                        ty_applied_never.is_structural_eq_shallow(tcx),
+                        ctxt,
+                        ty_applied_never.is_structural_eq_shallow(ctxt.tcx),
                         item.span,
                         format!("Structural impl for non-structural type {:?}", ty),
                         ty
@@ -114,12 +115,14 @@ fn check_item<'tcx>(
                 }
             } else {
                 unsupported_err_unless!(
+                    ctxt,
                     impll.of_trait.is_none(),
                     item.span,
                     "unsupported impl of trait",
                     item
                 );
                 unsupported_err_unless!(
+                    ctxt,
                     impll.generics.params.len() == 0,
                     item.span,
                     "unsupported impl of non-trait with generics",
@@ -129,18 +132,19 @@ fn check_item<'tcx>(
                     TyKind::Path(QPath::Resolved(_, _path)) => {
                         for impl_item in impll.items {
                             // TODO once we have references
-                            unsupported_err!(item.span, "unsupported method in impl", impl_item);
+                            unsupported_err!(ctxt, item.span, "unsupported method in impl", impl_item);
                         }
                     }
                     _ => {
-                        unsupported_err!(item.span, "unsupported impl of non-path type", item);
+                        unsupported_err!(ctxt, item.span, "unsupported impl of non-path type", item);
                     }
                 }
             }
         }
         ItemKind::Const(_ty, _body_id) => {
             unsupported_err_unless!(
-                hack_get_def_name(tcx, _body_id.hir_id.owner.to_def_id())
+                ctxt,
+                hack_get_def_name(ctxt.tcx, _body_id.hir_id.owner.to_def_id())
                     .starts_with("_DERIVE_builtin_Structural_FOR_"),
                 item.span,
                 "unsupported const",
@@ -148,7 +152,7 @@ fn check_item<'tcx>(
             );
         }
         _ => {
-            unsupported_err!(item.span, "unsupported item", item);
+            unsupported_err!(ctxt, item.span, "unsupported item", item);
         }
     }
     Ok(())
@@ -187,7 +191,7 @@ fn check_module<'tcx>(
 }
 
 fn check_foreign_item<'tcx>(
-    tcx: TyCtxt<'tcx>,
+    ctxt: &Context<'tcx>,
     vir: &mut KrateX,
     _id: &ForeignItemId,
     item: &'tcx ForeignItem<'tcx>,
@@ -195,18 +199,18 @@ fn check_foreign_item<'tcx>(
     match &item.kind {
         ForeignItemKind::Fn(decl, idents, generics) => {
             check_foreign_item_fn(
-                tcx,
+                ctxt,
                 vir,
                 item.ident,
                 item.span,
-                tcx.hir().attrs(item.hir_id()),
+                ctxt.tcx.hir().attrs(item.hir_id()),
                 decl,
                 idents,
                 generics,
             )?;
         }
         _ => {
-            unsupported_err!(item.span, "unsupported item", item);
+            unsupported_err!(ctxt, item.span, "unsupported item", item);
         }
     }
     Ok(())
@@ -221,7 +225,7 @@ fn check_attr<'tcx>(
     Ok(())
 }
 
-pub fn crate_to_vir<'tcx>(tcx: TyCtxt<'tcx>, krate: &'tcx Crate<'tcx>) -> Result<Krate, VirErr> {
+pub fn crate_to_vir<'tcx>(ctxt: &Context<'tcx>) -> Result<Krate, VirErr> {
     let Crate {
         item: _,
         exported_macros,
@@ -237,7 +241,7 @@ pub fn crate_to_vir<'tcx>(tcx: TyCtxt<'tcx>, krate: &'tcx Crate<'tcx>) -> Result
         proc_macros,
         trait_map,
         attrs,
-    } = krate;
+    } = ctxt.krate;
     let mut vir: KrateX = Default::default();
     unsupported_unless!(
         exported_macros.len() == 0,
@@ -250,10 +254,10 @@ pub fn crate_to_vir<'tcx>(tcx: TyCtxt<'tcx>, krate: &'tcx Crate<'tcx>) -> Result
         non_exported_macro_attrs
     );
     for (id, item) in foreign_items {
-        check_foreign_item(tcx, &mut vir, id, item)?;
+        check_foreign_item(ctxt, &mut vir, id, item)?;
     }
     for (id, item) in items {
-        check_item(tcx, krate, &mut vir, id, item)?;
+        check_item(ctxt, &mut vir, id, item)?;
     }
     unsupported_unless!(trait_items.len() == 0, "trait definitions", trait_items);
     for (_id, impl_item) in impl_items {
@@ -270,22 +274,22 @@ pub fn crate_to_vir<'tcx>(tcx: TyCtxt<'tcx>, krate: &'tcx Crate<'tcx>) -> Result
     }
     for (id, _trait_impl) in trait_impls {
         unsupported_unless!(
-            hack_check_def_name(tcx, *id, "core", "marker::StructuralEq")
-                || hack_check_def_name(tcx, *id, "core", "cmp::Eq")
-                || hack_check_def_name(tcx, *id, "core", "marker::StructuralPartialEq")
-                || hack_check_def_name(tcx, *id, "core", "cmp::PartialEq")
-                || hack_check_def_name(tcx, *id, "builtin", "Structural"),
+            hack_check_def_name(ctxt.tcx, *id, "core", "marker::StructuralEq")
+                || hack_check_def_name(ctxt.tcx, *id, "core", "cmp::Eq")
+                || hack_check_def_name(ctxt.tcx, *id, "core", "marker::StructuralPartialEq")
+                || hack_check_def_name(ctxt.tcx, *id, "core", "cmp::PartialEq")
+                || hack_check_def_name(ctxt.tcx, *id, "builtin", "Structural"),
             "non_eq_trait_impl",
             id
         );
     }
     for (id, module) in modules {
-        check_module(tcx, id, module)?;
+        check_module(ctxt.tcx, id, module)?;
     }
     unsupported_unless!(proc_macros.len() == 0, "procedural macros", proc_macros);
     unsupported_unless!(trait_map.iter().all(|(_, v)| v.len() == 0), "traits", trait_map);
     for (id, attr) in attrs {
-        check_attr(tcx, id, attr)?;
+        check_attr(ctxt.tcx, id, attr)?;
     }
     Ok(Rc::new(vir))
 }

@@ -1,3 +1,4 @@
+use crate::context::Context;
 use crate::config::Args;
 use crate::unsupported;
 use air::ast::{Command, CommandX, SpanOption};
@@ -272,7 +273,7 @@ impl Verifier {
         Ok(())
     }
 
-    fn run<'tcx>(&mut self, compiler: &Compiler, tcx: TyCtxt<'tcx>) -> Result<bool, VirErr> {
+    fn run<'tcx>(&mut self, compiler: &'tcx Compiler, tcx: TyCtxt<'tcx>) -> Result<bool, VirErr> {
         let _ = tcx.formal_verifier_callback.replace(Some(Box::new(crate::typecheck::Typecheck {
             int_ty_id: None,
             nat_ty_id: None,
@@ -285,7 +286,8 @@ impl Verifier {
         }
 
         let hir = tcx.hir();
-        let vir_crate = crate::rust_to_vir::crate_to_vir(tcx, hir.krate())?;
+        let ctxt = Context { tcx, krate:hir.krate(), source_map: compiler.session().source_map() };
+        let vir_crate = crate::rust_to_vir::crate_to_vir(&ctxt)?;
         if let Some(filename) = &self.args.log_vir {
             let mut file =
                 File::create(filename).expect(&format!("could not open file {}", filename));

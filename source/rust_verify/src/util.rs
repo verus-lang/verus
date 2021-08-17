@@ -4,10 +4,9 @@ use std::rc::Rc;
 use crate::unsupported;
 use vir::ast::{VirErr, VirErrX};
 use vir::def::Spanned;
+use crate::context::Context;
 
-static mut SOURCE_MAP: Option<SourceMap> = None;
-
-pub(crate) fn spanned_new<X>(map: &SourceMap, span: Span, x: X) -> Rc<Spanned<X>> {
+pub(crate) fn spanned_new<X>(ctxt: &Context, span: Span, x: X) -> Rc<Spanned<X>> {
     let raw_span = Rc::new(span);
     let as_string = format!("{:?}", span);
     let filename: String = match map.span_to_filename(span) {
@@ -22,16 +21,17 @@ pub(crate) fn spanned_new<X>(map: &SourceMap, span: Span, x: X) -> Rc<Spanned<X>
     Spanned::new(air::ast::Span { description: None, raw_span, as_string, filename, start_row:start.line, start_col:start.col.to_u32(), end_row:end.line, end_col:end.col.to_u32() }, x)
 }
 
-pub(crate) fn err_span_str<A>(span: Span, msg: &str) -> Result<A, VirErr> {
-    Err(spanned_new(span, VirErrX::Str(msg.to_string())))
+pub(crate) fn err_span_str<A>(ctxt: &Context, span: Span, msg: &str) -> Result<A, VirErr> {
+    Err(spanned_new(ctxt, span, VirErrX::Str(msg.to_string())))
 }
 
-pub(crate) fn err_span_string<A>(span: Span, msg: String) -> Result<A, VirErr> {
-    Err(spanned_new(span, VirErrX::Str(msg)))
+pub(crate) fn err_span_string<A>(ctxt: &Context, span: Span, msg: String) -> Result<A, VirErr> {
+    Err(spanned_new(ctxt, span, VirErrX::Str(msg)))
 }
 
-pub(crate) fn unsupported_err_span<A>(span: Span, msg: String) -> Result<A, VirErr> {
+pub(crate) fn unsupported_err_span<A>(ctxt: &Context, span: Span, msg: String) -> Result<A, VirErr> {
     err_span_string(
+        ctxt,
         span,
         format!("The verifier does not yet support the following Rust feature: {}", msg),
     )
@@ -39,44 +39,44 @@ pub(crate) fn unsupported_err_span<A>(span: Span, msg: String) -> Result<A, VirE
 
 #[macro_export]
 macro_rules! unsupported_err {
-    ($span: expr, $msg: expr) => {{
+    ($ctxt: expr, $span: expr, $msg: expr) => {{
         dbg!();
-        unsupported_err_span($span, $msg.to_string())?
+        unsupported_err_span($ctxt, $span, $msg.to_string())?
     }};
-    ($span: expr, $msg: expr, $info: expr) => {{
+    ($ctxt: expr, $span: expr, $msg: expr, $info: expr) => {{
         dbg!($info);
-        unsupported_err_span($span, $msg.to_string())?
+        unsupported_err_span($ctxt, $span, $msg.to_string())?
     }};
 }
 
 #[macro_export]
 macro_rules! unsupported_err_unless {
-    ($assertion: expr, $span: expr, $msg: expr) => {
+    ($ctxt: expr, $assertion: expr, $span: expr, $msg: expr) => {
         if (!$assertion) {
             dbg!();
-            unsupported_err_span($span, $msg.to_string())?;
+            unsupported_err_span($ctxt, $span, $msg.to_string())?;
         }
     };
-    ($assertion: expr, $span: expr, $msg: expr, $info: expr) => {
+    ($ctxt: expr, $assertion: expr, $span: expr, $msg: expr, $info: expr) => {
         if (!$assertion) {
             dbg!($info);
-            unsupported_err_span($span, $msg.to_string())?;
+            unsupported_err_span($ctxt, $span, $msg.to_string())?;
         }
     };
 }
 
 #[macro_export]
 macro_rules! err_unless {
-    ($assertion: expr, $span: expr, $msg: expr) => {
+    ($ctxt: expr, $assertion: expr, $span: expr, $msg: expr) => {
         if (!$assertion) {
             dbg!();
-            crate::util::err_span_string($span, $msg)?;
+            crate::util::err_span_string($ctxt, $span, $msg)?;
         }
     };
-    ($assertion: expr, $span: expr, $msg: expr, $info: expr) => {
+    ($ctxt: expr, $assertion: expr, $span: expr, $msg: expr, $info: expr) => {
         if (!$assertion) {
             dbg!($info);
-            crate::util::err_span_string($span, $msg)?;
+            crate::util::err_span_string($ctxt, $span, $msg)?;
         }
     };
 }

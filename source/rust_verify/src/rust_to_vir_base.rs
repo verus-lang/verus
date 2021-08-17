@@ -1,3 +1,4 @@
+use crate::context::Context;
 use crate::util::{err_span_str, err_span_string, unsupported_err_span};
 use crate::{unsupported, unsupported_err, unsupported_err_unless};
 use rustc_ast::token::{Token, TokenKind};
@@ -82,7 +83,7 @@ pub(crate) fn get_var_mode(function_mode: Mode, attrs: &[Attribute]) -> Mode {
     get_mode(default_mode, attrs)
 }
 
-fn get_trigger_arg(span: Span, token_tree: TokenTree) -> Result<u64, VirErr> {
+fn get_trigger_arg(ctxt: &Context, span: Span, token_tree: TokenTree) -> Result<u64, VirErr> {
     let i = match &token_tree {
         TokenTree::Token(Token { kind: TokenKind::Literal(lit), .. }) => {
             match lit.symbol.as_str().parse::<u64>() {
@@ -95,12 +96,12 @@ fn get_trigger_arg(span: Span, token_tree: TokenTree) -> Result<u64, VirErr> {
     match i {
         Some(i) => Ok(i),
         None => {
-            err_span_string(span, format!("expected integer constant, found {:?}", &token_tree))
+            err_span_string(ctxt, span, format!("expected integer constant, found {:?}", &token_tree))
         }
     }
 }
 
-pub(crate) fn get_trigger(span: Span, attrs: &[Attribute]) -> Result<Vec<Option<u64>>, VirErr> {
+pub(crate) fn get_trigger(ctxt: &Context, span: Span, attrs: &[Attribute]) -> Result<Vec<Option<u64>>, VirErr> {
     let mut groups: Vec<Option<u64>> = Vec::new();
     for attr in attrs {
         match &attr.kind {
@@ -110,10 +111,11 @@ pub(crate) fn get_trigger(span: Span, attrs: &[Attribute]) -> Result<Vec<Option<
                         MacArgs::Empty => groups.push(None),
                         MacArgs::Delimited(_, _, token_stream) => {
                             for arg in token_stream.trees().step_by(2) {
-                                groups.push(Some(get_trigger_arg(span, arg)?));
+                                groups.push(Some(get_trigger_arg(ctxt, span, arg)?));
                             }
                             if groups.len() == 0 {
                                 return err_span_str(
+                                    ctxt,
                                     span,
                                     "expected either #[trigger] or non-empty #[trigger(...)]",
                                 );
@@ -257,19 +259,19 @@ pub(crate) fn ty_to_vir<'tcx>(tcx: TyCtxt<'tcx>, ty: &Ty) -> Typ {
     Rc::new(typ_x)
 }
 
-pub(crate) struct Ctxt<'tcx> {
-    pub(crate) tcx: TyCtxt<'tcx>,
+pub(crate) struct BodyCtxt<'tcx> {
+    pub(crate) ctxt: &'tcx Context<'tcx>,
     pub(crate) types: &'tcx TypeckResults<'tcx>,
     pub(crate) mode: Mode,
 }
 
-pub(crate) fn typ_of_node<'tcx>(ctxt: &Ctxt<'tcx>, id: &HirId) -> Typ {
-    mid_ty_to_vir(ctxt.tcx, ctxt.types.node_type(*id))
+pub(crate) fn typ_of_node<'tcx>(ctxt: &BodyCtxt<'tcx>, id: &HirId) -> Typ {
+    mid_ty_to_vir(ctxt.ctxt.tcx, ctxt.types.node_type(*id))
 }
 
 // Do equality operations on these operands translate into the SMT solver's == operation?
 pub(crate) fn is_smt_equality<'tcx>(
-    ctxt: &Ctxt<'tcx>,
+    ctxt: &BodyCtxt<'tcx>,
     _span: Span,
     id1: &HirId,
     id2: &HirId,
@@ -280,12 +282,13 @@ pub(crate) fn is_smt_equality<'tcx>(
         (TypX::Int(_), TypX::Int(_)) => true,
         (TypX::Path(_), TypX::Path(_)) if types_equal(&t1, &t2) => {
             let structural_def_id = ctxt
+                .ctxt
                 .tcx
                 .get_diagnostic_item(rustc_span::Symbol::intern("builtin::Structural"))
                 .expect("structural trait is not defined");
             let ty = ctxt.types.node_type(*id1);
-            let substs_ref = ctxt.tcx.mk_substs([].iter());
-            let ty_impls_structural = ctxt.tcx.type_implements_trait((
+            let substs_ref = ctxt.ctxt.tcx.mk_substs([].iter());
+            let ty_impls_structural = ctxt.ctxt.tcx.type_implements_trait((
                 structural_def_id,
                 ty,
                 substs_ref,
@@ -299,7 +302,7 @@ pub(crate) fn is_smt_equality<'tcx>(
 
 // Do arithmetic operations on these operands translate into the SMT solver's <=, +, =>, etc.?
 // (possibly with clipping/wrapping for finite-size integers?)
-pub(crate) fn is_smt_arith<'tcx>(ctxt: &Ctxt<'tcx>, id1: &HirId, id2: &HirId) -> bool {
+pub(crate) fn is_smt_arith<'tcx>(ctxt: &BodyCtxt<'tcx>, id1: &HirId, id2: &HirId) -> bool {
     match (&*typ_of_node(ctxt, id1), &*typ_of_node(ctxt, id2)) {
         (TypX::Bool, TypX::Bool) => true,
         (TypX::Int(_), TypX::Int(_)) => true,
@@ -307,20 +310,20 @@ pub(crate) fn is_smt_arith<'tcx>(ctxt: &Ctxt<'tcx>, id1: &HirId, id2: &HirId) ->
     }
 }
 
-pub(crate) fn check_generics<'tcx>(generics: &'tcx Generics<'tcx>) -> Result<Idents, VirErr> {
+pub(crate) fn check_generics<'tcx>(ctxt: &Context<'tcx>, generics: &'tcx Generics<'tcx>) -> Result<Idents, VirErr> {
     let Generics { params, where_clause, span: _ } = generics;
     let mut typ_params: Vec<vir::ast::Ident> = Vec::new();
     for param in params.iter() {
         let GenericParam { hir_id: _, name, bounds, span: _, pure_wrt_drop, kind } = param;
-        unsupported_err_unless!(bounds.len() == 0, generics.span, "generic bounds");
-        unsupported_err_unless!(!pure_wrt_drop, generics.span, "generic pure_wrt_drop");
+        unsupported_err_unless!(ctxt, bounds.len() == 0, generics.span, "generic bounds");
+        unsupported_err_unless!(ctxt, !pure_wrt_drop, generics.span, "generic pure_wrt_drop");
         match (name, kind) {
             (ParamName::Plain(id), GenericParamKind::Type { default: None, synthetic: None }) => {
                 typ_params.push(Rc::new(id.name.as_str().to_string()));
             }
-            _ => unsupported_err!(generics.span, "complex generics"),
+            _ => unsupported_err!(ctxt, generics.span, "complex generics"),
         }
     }
-    unsupported_err_unless!(where_clause.predicates.len() == 0, generics.span, "where clause");
+    unsupported_err_unless!(ctxt, where_clause.predicates.len() == 0, generics.span, "where clause");
     Ok(Rc::new(typ_params))
 }
