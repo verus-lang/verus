@@ -273,7 +273,7 @@ impl Verifier {
         Ok(())
     }
 
-    fn run<'tcx>(&mut self, compiler: &'tcx Compiler, tcx: TyCtxt<'tcx>) -> Result<bool, VirErr> {
+    fn run<'tcx>(&mut self, compiler: &Compiler, tcx: TyCtxt<'tcx>) -> Result<bool, VirErr> {
         let _ = tcx.formal_verifier_callback.replace(Some(Box::new(crate::typecheck::Typecheck {
             int_ty_id: None,
             nat_ty_id: None,
@@ -340,9 +340,9 @@ impl rustc_driver::Callbacks for Verifier {
         }
     }
 
-    fn after_expansion<'tcx>(
-        &mut self,
-        compiler: &Compiler,
+    fn after_expansion<'a,'tcx>(
+        &'a mut self,
+        compiler: &'a Compiler,
         queries: &'tcx rustc_interface::Queries<'tcx>,
     ) -> rustc_driver::Compilation {
         let _result = queries.global_ctxt().expect("global_ctxt").peek_mut().enter(|tcx| {

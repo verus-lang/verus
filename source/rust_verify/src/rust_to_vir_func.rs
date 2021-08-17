@@ -14,16 +14,16 @@ use std::rc::Rc;
 use vir::ast::{FunctionX, KrateX, Mode, ParamX, Typ, VirErr};
 use vir::def::RETURN_VALUE;
 
-pub(crate) fn body_to_vir<'tcx>(
-    ctxt: &'tcx Context<'tcx>,
+pub(crate) fn body_to_vir<'tcx,'sm>(
+    ctxt: &Context<'tcx,'sm>,
     id: &BodyId,
     body: &Body<'tcx>,
     mode: Mode,
 ) -> Result<vir::ast::Expr, VirErr> {
     let def = rustc_middle::ty::WithOptConstParam::unknown(id.hir_id.owner);
     let types = ctxt.tcx.typeck_opt_const_arg(def);
-    let ctxt = BodyCtxt { ctxt, types, mode };
-    expr_to_vir(&ctxt, &body.value)
+    let bctx = BodyCtxt { ctxt, types, mode };
+    expr_to_vir(&bctx, &body.value)
 }
 
 fn check_fn_decl<'tcx>(
@@ -46,8 +46,8 @@ fn check_fn_decl<'tcx>(
     }
 }
 
-pub(crate) fn check_item_fn<'tcx>(
-    ctxt: &'tcx Context<'tcx>,
+pub(crate) fn check_item_fn<'tcx,'sm>(
+    ctxt: &Context<'tcx,'sm>,
     vir: &mut KrateX,
     id: Ident,
     attrs: &[Attribute],
@@ -139,8 +139,8 @@ pub(crate) fn check_item_fn<'tcx>(
     Ok(())
 }
 
-pub(crate) fn check_foreign_item_fn<'tcx>(
-    ctxt: &Context<'tcx>,
+pub(crate) fn check_foreign_item_fn<'tcx,'sm>(
+    ctxt: &Context<'tcx,'sm>,
     vir: &mut KrateX,
     id: Ident,
     span: Span,

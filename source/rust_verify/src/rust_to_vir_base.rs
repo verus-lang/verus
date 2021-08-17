@@ -259,19 +259,19 @@ pub(crate) fn ty_to_vir<'tcx>(tcx: TyCtxt<'tcx>, ty: &Ty) -> Typ {
     Rc::new(typ_x)
 }
 
-pub(crate) struct BodyCtxt<'tcx> {
-    pub(crate) ctxt: &'tcx Context<'tcx>,
+pub(crate) struct BodyCtxt<'tcx, 'sm> {
+    pub(crate) ctxt: &'sm Context<'tcx,'sm>,
     pub(crate) types: &'tcx TypeckResults<'tcx>,
     pub(crate) mode: Mode,
 }
 
-pub(crate) fn typ_of_node<'tcx>(ctxt: &BodyCtxt<'tcx>, id: &HirId) -> Typ {
+pub(crate) fn typ_of_node<'tcx,'sm>(ctxt: &BodyCtxt<'tcx,'sm>, id: &HirId) -> Typ {
     mid_ty_to_vir(ctxt.ctxt.tcx, ctxt.types.node_type(*id))
 }
 
 // Do equality operations on these operands translate into the SMT solver's == operation?
-pub(crate) fn is_smt_equality<'tcx>(
-    ctxt: &BodyCtxt<'tcx>,
+pub(crate) fn is_smt_equality<'tcx,'sm>(
+    ctxt: &BodyCtxt<'tcx,'sm>,
     _span: Span,
     id1: &HirId,
     id2: &HirId,
@@ -302,7 +302,7 @@ pub(crate) fn is_smt_equality<'tcx>(
 
 // Do arithmetic operations on these operands translate into the SMT solver's <=, +, =>, etc.?
 // (possibly with clipping/wrapping for finite-size integers?)
-pub(crate) fn is_smt_arith<'tcx>(ctxt: &BodyCtxt<'tcx>, id1: &HirId, id2: &HirId) -> bool {
+pub(crate) fn is_smt_arith<'tcx,'sm>(ctxt: &BodyCtxt<'tcx,'sm>, id1: &HirId, id2: &HirId) -> bool {
     match (&*typ_of_node(ctxt, id1), &*typ_of_node(ctxt, id2)) {
         (TypX::Bool, TypX::Bool) => true,
         (TypX::Int(_), TypX::Int(_)) => true,
@@ -310,7 +310,7 @@ pub(crate) fn is_smt_arith<'tcx>(ctxt: &BodyCtxt<'tcx>, id1: &HirId, id2: &HirId
     }
 }
 
-pub(crate) fn check_generics<'tcx>(ctxt: &Context<'tcx>, generics: &'tcx Generics<'tcx>) -> Result<Idents, VirErr> {
+pub(crate) fn check_generics<'tcx,'sm>(ctxt: &Context<'tcx,'sm>, generics: &'tcx Generics<'tcx>) -> Result<Idents, VirErr> {
     let Generics { params, where_clause, span: _ } = generics;
     let mut typ_params: Vec<vir::ast::Ident> = Vec::new();
     for param in params.iter() {

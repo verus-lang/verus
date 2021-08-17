@@ -11,8 +11,8 @@ use vir::ast::{DatatypeX, Ident, KrateX, Mode, Variant, VirErr};
 use vir::ast_util::{ident_binder, str_ident};
 use vir::def::{variant_field_ident, variant_ident, variant_positional_field_ident};
 
-fn check_variant_data<'tcx>(
-    ctxt: &Context<'tcx>,
+fn check_variant_data<'tcx,'sm>(
+    ctxt: &Context<'tcx,'sm>,
     name: &Ident,
     variant_data: &'tcx VariantData<'tcx>,
 ) -> Variant {
@@ -58,8 +58,8 @@ fn check_variant_data<'tcx>(
     )
 }
 
-pub fn check_item_struct<'tcx>(
-    ctxt: &Context<'tcx>,
+pub fn check_item_struct<'tcx,'sm>(
+    ctxt: &Context<'tcx,'sm>,
     vir: &mut KrateX,
     span: Span,
     id: &ItemId,
@@ -75,8 +75,8 @@ pub fn check_item_struct<'tcx>(
     Ok(())
 }
 
-pub fn check_item_enum<'tcx>(
-    ctxt: &Context<'tcx>,
+pub fn check_item_enum<'tcx,'sm>(
+    ctxt: &Context<'tcx,'sm>,
     vir: &mut KrateX,
     span: Span,
     id: &ItemId,

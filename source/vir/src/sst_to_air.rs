@@ -321,7 +321,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
                     }
                     if ctx.debug {
                         // Add a snapshot after we modify the destination
-                        let name = format!("{}_{:?}", var.clone(), stm.span.raw_span); // TODO: Use line number?
+                        let name = format!("{}_{}_{}", var.clone(), stm.span.start_row, stm.span.start_col);
                         let snapshot = Rc::new(StmtX::Snapshot(Rc::new(name)));
                         stmts.push(snapshot);
                     }
@@ -356,10 +356,8 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
             };
             stmts.push(Rc::new(StmtX::Assign(suffix_local_id(&ident), exp_to_expr(ctx, rhs))));
             if ctx.debug {
-                //let name = format!("{}_{}_{}", ident.clone(), start.line, start.col.to_usize());
                 // Add a snapshot after we modify the destination
-                //let (start, end) = source_map.is_valid_span(*stm.span).expect("internal error: invalid Span");
-                let name = format!("{}_{:?}", ident.clone(), stm.span.raw_span); // TODO: Use line number?
+                let name = format!("{}_{}_{}", ident.clone(), stm.span.start_row, stm.span.start_col);
                 let snapshot = Rc::new(StmtX::Snapshot(Rc::new(name)));
                 stmts.push(snapshot);
             }
