@@ -85,6 +85,14 @@ pub fn suffix_local_id(ident: &Ident) -> Ident {
     Rc::new(ident.to_string() + SUFFIX_LOCAL)
 }
 
+pub fn rm_suffix_local_id(ident: &Ident) -> Ident {
+    let mut name = ident.to_string();
+    if name.ends_with(SUFFIX_LOCAL) {
+        name = name[..name.len() - SUFFIX_LOCAL.len()].to_string();
+    }
+    Rc::new(name)
+}
+
 pub fn suffix_typ_param_id(ident: &Ident) -> Ident {
     Rc::new(ident.to_string() + SUFFIX_TYPE_PARAM)
 }
