@@ -1,28 +1,15 @@
-use crate::ast::{Decl, DeclX, Ident, SnapShots, Typ, TypX};
+use crate::ast::{Decl, DeclX, Ident, SnapShots};
 use crate::context::Context;
+use crate::smt_util::new_const;
 use std::collections::HashMap;
 use std::fmt;
-use z3::ast::{Bool, Dynamic, Int};
-//use z3::{FuncDecl, Sort};
+use z3::ast::Dynamic;
 
 #[derive(Debug)]
 pub struct Model<'a> {
     z3_model: z3::Model<'a>,
     id_snapshots: SnapShots,
     value_snapshots: HashMap<Ident, HashMap<Ident, String>>,
-}
-
-// TODO: Duplicated from smt_verify
-fn new_const<'ctx>(context: &mut Context<'ctx>, name: &String, typ: &Typ) -> Dynamic<'ctx> {
-    match &**typ {
-        TypX::Bool => Bool::new_const(context.context, name.clone()).into(),
-        TypX::Int => Int::new_const(context.context, name.clone()).into(),
-        TypX::Named(x) => {
-            let sort = &context.typs[x];
-            let fdecl = z3::FuncDecl::new(context.context, name.clone(), &[], sort);
-            fdecl.apply(&[])
-        }
-    }
 }
 
 impl<'a> Model<'a> {
