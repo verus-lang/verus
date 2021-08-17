@@ -1,7 +1,5 @@
 use std::collections::{HashMap};
 use std::fmt;
-//use std::collections::{HashMap, HashSet};
-use std::rc::Rc;
 use crate::ast::{Decl, DeclX, Ident,SnapShots, Typ, TypX};
 use crate::context::Context;
 use z3::ast::{Bool, Dynamic, Int};
@@ -41,7 +39,7 @@ impl<'a> Model<'a> {
 //    pub fn save_snapshots(&self, snapshots: SnapShots) {
 //        self.snapshots = snapshots.clone();
 //    }
-    fn lookup_var(&self, var_name:&String, var_smt:&Dynamic) -> String {
+    fn lookup_z3_var(&self, var_name:&String, var_smt:&Dynamic) -> String {
         if let Some(x) = self.z3_model.eval(var_smt) {
             if let Some(b) = x.as_bool() {
                 format!("{}", b)
@@ -68,8 +66,8 @@ impl<'a> Model<'a> {
                 let var_name = crate::var_to_const::rename_var(&*var_id, *var_count);
                 println!("\t{}", var_name);
                 let var_smt = context.vars.get(&var_name).unwrap_or_else(|| panic!("internal error: variable {} not found", var_name));
-                let val = self.lookup_var(&var_name, var_smt);
-                value_snapshot.insert(Rc::new(var_name), val);
+                let val = self.lookup_z3_var(&var_name, var_smt);
+                value_snapshot.insert(var_id.clone(), val);
             }
             // Add the local variables to every snapshot for uniformity
             println!("local_vars has {} variables", local_vars.len());
@@ -77,7 +75,7 @@ impl<'a> Model<'a> {
                 if let DeclX::Const(var_name, typ) = &**decl {
                     println!("\t{}", var_name);
                     let var_smt = new_const(context, &var_name, &typ);
-                    let val = self.lookup_var(&var_name, &var_smt);
+                    let val = self.lookup_z3_var(&var_name, &var_smt);
                     value_snapshot.insert(var_name.clone(), val);
                     //value_snapshot.insert(Rc::new((*var_name).clone()), val);
                 } else {
