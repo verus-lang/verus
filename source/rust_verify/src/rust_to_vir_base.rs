@@ -271,30 +271,30 @@ pub(crate) struct BodyCtxt<'tcx, 'sm> {
     pub(crate) mode: Mode,
 }
 
-pub(crate) fn typ_of_node<'tcx, 'sm>(ctxt: &BodyCtxt<'tcx, 'sm>, id: &HirId) -> Typ {
-    mid_ty_to_vir(ctxt.ctxt.tcx, ctxt.types.node_type(*id))
+pub(crate) fn typ_of_node<'tcx, 'sm>(bctx: &BodyCtxt<'tcx, 'sm>, id: &HirId) -> Typ {
+    mid_ty_to_vir(bctx.ctxt.tcx, bctx.types.node_type(*id))
 }
 
 // Do equality operations on these operands translate into the SMT solver's == operation?
 pub(crate) fn is_smt_equality<'tcx, 'sm>(
-    ctxt: &BodyCtxt<'tcx, 'sm>,
+    bctx: &BodyCtxt<'tcx, 'sm>,
     _span: Span,
     id1: &HirId,
     id2: &HirId,
 ) -> bool {
-    let (t1, t2) = (typ_of_node(ctxt, id1), typ_of_node(ctxt, id2));
+    let (t1, t2) = (typ_of_node(bctx, id1), typ_of_node(bctx, id2));
     match (&*t1, &*t2) {
         (TypX::Bool, TypX::Bool) => true,
         (TypX::Int(_), TypX::Int(_)) => true,
         (TypX::Path(_), TypX::Path(_)) if types_equal(&t1, &t2) => {
-            let structural_def_id = ctxt
+            let structural_def_id = bctx
                 .ctxt
                 .tcx
                 .get_diagnostic_item(rustc_span::Symbol::intern("builtin::Structural"))
                 .expect("structural trait is not defined");
-            let ty = ctxt.types.node_type(*id1);
-            let substs_ref = ctxt.ctxt.tcx.mk_substs([].iter());
-            let ty_impls_structural = ctxt.ctxt.tcx.type_implements_trait((
+            let ty = bctx.types.node_type(*id1);
+            let substs_ref = bctx.ctxt.tcx.mk_substs([].iter());
+            let ty_impls_structural = bctx.ctxt.tcx.type_implements_trait((
                 structural_def_id,
                 ty,
                 substs_ref,
@@ -309,11 +309,11 @@ pub(crate) fn is_smt_equality<'tcx, 'sm>(
 // Do arithmetic operations on these operands translate into the SMT solver's <=, +, =>, etc.?
 // (possibly with clipping/wrapping for finite-size integers?)
 pub(crate) fn is_smt_arith<'tcx, 'sm>(
-    ctxt: &BodyCtxt<'tcx, 'sm>,
+    bctx: &BodyCtxt<'tcx, 'sm>,
     id1: &HirId,
     id2: &HirId,
 ) -> bool {
-    match (&*typ_of_node(ctxt, id1), &*typ_of_node(ctxt, id2)) {
+    match (&*typ_of_node(bctx, id1), &*typ_of_node(bctx, id2)) {
         (TypX::Bool, TypX::Bool) => true,
         (TypX::Int(_), TypX::Int(_)) => true,
         _ => false,
