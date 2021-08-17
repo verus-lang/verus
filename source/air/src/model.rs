@@ -27,13 +27,10 @@ fn new_const<'ctx>(context: &mut Context<'ctx>, name: &String, typ: &Typ) -> Dyn
 
 impl<'a> Model<'a> {
     pub fn new(model: z3::Model<'a>, snapshots: SnapShots) -> Model<'a> {
-        println!("Creating a new model with {} snapshots", snapshots.len());
+        // println!("Creating a new model with {} snapshots", snapshots.len());
         Model { z3_model: model, id_snapshots: snapshots, value_snapshots: HashMap::new() }
     }
 
-    //    pub fn save_snapshots(&self, snapshots: SnapShots) {
-    //        self.snapshots = snapshots.clone();
-    //    }
     fn lookup_z3_var(&self, var_name: &String, var_smt: &Dynamic) -> String {
         if let Some(x) = self.z3_model.eval(var_smt) {
             if let Some(b) = x.as_bool() {

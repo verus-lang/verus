@@ -160,7 +160,9 @@ impl Verifier {
                         .as_ref()
                         .map(|x| ErrorSpan::new_from_air_span(compiler.session().source_map(), x)),
                 ));
-                println!("Received model: {}", m);
+                if self.args.debug {
+                    println!("Received model: {}", m);
+                }
             }
         }
     }
@@ -243,7 +245,6 @@ impl Verifier {
 
         // Create queries to check the validity of proof/exec function bodies
         for function in &krate.functions {
-            println!("Function: {}", function.x.name);
             let commands = vir::func_to_air::func_def_to_air(&ctx, &function)?;
             if commands.len() > 0 {
                 air_context.blank_line();

@@ -10,15 +10,6 @@ use std::rc::Rc;
 use z3::ast::{Ast, Bool, Dynamic, Int};
 use z3::{Pattern, SatResult, Sort, Symbol};
 
-//impl<'a> ValidityResult<'a> {
-//    pub fn save_snapshots(&self, snapshots: SnapShots) {
-//        match &self {
-//            ValidityResult::Invalid(m, _, _) => m.save_snapshots(snapshots),
-//            _ => ()
-//        }
-//    }
-//}
-
 fn new_const<'ctx>(context: &mut Context<'ctx>, name: &String, typ: &Typ) -> Dynamic<'ctx> {
     match &**typ {
         TypX::Bool => Bool::new_const(context.context, name.clone()).into(),
@@ -423,7 +414,9 @@ fn smt_check_assertion<'ctx>(
                             }
                         }
                     }
-                    println!("Z3 model: {}", model);
+                    if context.debug {
+                        println!("Z3 model: {}", model);
+                    }
                     Model::new(model, snapshots)
                 }
             };

@@ -136,7 +136,6 @@ pub(crate) fn lower_query(query: &Query) -> (Query, SnapShots, Vec<Decl>) {
             decls.push(decl.clone());
         }
         if let DeclX::Var(x, t) = &**decl {
-            println!("In var_to_const, lower_query, DeclX::Var of {}", x);
             versions.insert(x.clone(), 0);
             types.insert(x.clone(), t.clone());
             let x = Rc::new(rename_var(x, 0));
