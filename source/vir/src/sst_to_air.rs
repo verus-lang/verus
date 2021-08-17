@@ -321,7 +321,12 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
                     }
                     if ctx.debug {
                         // Add a snapshot after we modify the destination
-                        let name = format!("{}_{}_{}", var.clone(), stm.span.start_row, stm.span.start_col);
+                        let name = format!(
+                            "{}_{}_{}",
+                            var.clone(),
+                            stm.span.start_row,
+                            stm.span.start_col
+                        );
                         let snapshot = Rc::new(StmtX::Snapshot(Rc::new(name)));
                         stmts.push(snapshot);
                     }
@@ -357,7 +362,8 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
             stmts.push(Rc::new(StmtX::Assign(suffix_local_id(&ident), exp_to_expr(ctx, rhs))));
             if ctx.debug {
                 // Add a snapshot after we modify the destination
-                let name = format!("{}_{}_{}", ident.clone(), stm.span.start_row, stm.span.start_col);
+                let name =
+                    format!("{}_{}_{}", ident.clone(), stm.span.start_row, stm.span.start_col);
                 let snapshot = Rc::new(StmtX::Snapshot(Rc::new(name)));
                 stmts.push(snapshot);
             }

@@ -1,5 +1,5 @@
 use air::ast::{CommandX, Span};
-use air::context::{Context,ValidityResult};
+use air::context::{Context, ValidityResult};
 use getopts::Options;
 use sise::Node;
 use std::fs::File;

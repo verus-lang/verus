@@ -22,8 +22,8 @@ use rustc_span::def_id::LocalDefId;
 use std::rc::Rc;
 use vir::ast::{Krate, KrateX, VirErr};
 
-fn check_item<'tcx,'sm>(
-    ctxt: &Context<'tcx,'sm>,
+fn check_item<'tcx, 'sm>(
+    ctxt: &Context<'tcx, 'sm>,
     vir: &mut KrateX,
     id: &ItemId,
     item: &'tcx Item<'tcx>,
@@ -58,16 +58,30 @@ fn check_item<'tcx,'sm>(
             if let Some(TraitRef { path, hir_ref_id: _ }) = impll.of_trait {
                 unsupported_err_unless!(
                     ctxt,
-                    hack_check_def_name(ctxt.tcx, path.res.def_id(), "core", "marker::StructuralEq")
-                        || hack_check_def_name(ctxt.tcx, path.res.def_id(), "core", "cmp::Eq")
+                    hack_check_def_name(
+                        ctxt.tcx,
+                        path.res.def_id(),
+                        "core",
+                        "marker::StructuralEq"
+                    ) || hack_check_def_name(ctxt.tcx, path.res.def_id(), "core", "cmp::Eq")
                         || hack_check_def_name(
                             ctxt.tcx,
                             path.res.def_id(),
                             "core",
                             "marker::StructuralPartialEq"
                         )
-                        || hack_check_def_name(ctxt.tcx, path.res.def_id(), "core", "cmp::PartialEq")
-                        || hack_check_def_name(ctxt.tcx, path.res.def_id(), "builtin", "Structural"),
+                        || hack_check_def_name(
+                            ctxt.tcx,
+                            path.res.def_id(),
+                            "core",
+                            "cmp::PartialEq"
+                        )
+                        || hack_check_def_name(
+                            ctxt.tcx,
+                            path.res.def_id(),
+                            "builtin",
+                            "Structural"
+                        ),
                     item.span,
                     "non_eq_trait_impl",
                     path
@@ -132,11 +146,21 @@ fn check_item<'tcx,'sm>(
                     TyKind::Path(QPath::Resolved(_, _path)) => {
                         for impl_item in impll.items {
                             // TODO once we have references
-                            unsupported_err!(ctxt, item.span, "unsupported method in impl", impl_item);
+                            unsupported_err!(
+                                ctxt,
+                                item.span,
+                                "unsupported method in impl",
+                                impl_item
+                            );
                         }
                     }
                     _ => {
-                        unsupported_err!(ctxt, item.span, "unsupported impl of non-path type", item);
+                        unsupported_err!(
+                            ctxt,
+                            item.span,
+                            "unsupported impl of non-path type",
+                            item
+                        );
                     }
                 }
             }
@@ -190,8 +214,8 @@ fn check_module<'tcx>(
     Ok(())
 }
 
-fn check_foreign_item<'tcx,'sm>(
-    ctxt: &Context<'tcx,'sm>,
+fn check_foreign_item<'tcx, 'sm>(
+    ctxt: &Context<'tcx, 'sm>,
     vir: &mut KrateX,
     _id: &ForeignItemId,
     item: &'tcx ForeignItem<'tcx>,
@@ -225,7 +249,7 @@ fn check_attr<'tcx>(
     Ok(())
 }
 
-pub fn crate_to_vir<'tcx,'sm>(ctxt: &Context<'tcx,'sm>) -> Result<Krate, VirErr> {
+pub fn crate_to_vir<'tcx, 'sm>(ctxt: &Context<'tcx, 'sm>) -> Result<Krate, VirErr> {
     let Crate {
         item: _,
         exported_macros,

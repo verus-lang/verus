@@ -14,8 +14,8 @@ use std::rc::Rc;
 use vir::ast::{FunctionX, KrateX, Mode, ParamX, Typ, VirErr};
 use vir::def::RETURN_VALUE;
 
-pub(crate) fn body_to_vir<'tcx,'sm>(
-    ctxt: &Context<'tcx,'sm>,
+pub(crate) fn body_to_vir<'tcx, 'sm>(
+    ctxt: &Context<'tcx, 'sm>,
     id: &BodyId,
     body: &Body<'tcx>,
     mode: Mode,
@@ -46,8 +46,8 @@ fn check_fn_decl<'tcx>(
     }
 }
 
-pub(crate) fn check_item_fn<'tcx,'sm>(
-    ctxt: &Context<'tcx,'sm>,
+pub(crate) fn check_item_fn<'tcx, 'sm>(
+    ctxt: &Context<'tcx, 'sm>,
     vir: &mut KrateX,
     id: Ident,
     attrs: &[Attribute],
@@ -139,8 +139,8 @@ pub(crate) fn check_item_fn<'tcx,'sm>(
     Ok(())
 }
 
-pub(crate) fn check_foreign_item_fn<'tcx,'sm>(
-    ctxt: &Context<'tcx,'sm>,
+pub(crate) fn check_foreign_item_fn<'tcx, 'sm>(
+    ctxt: &Context<'tcx, 'sm>,
     vir: &mut KrateX,
     id: Ident,
     span: Span,

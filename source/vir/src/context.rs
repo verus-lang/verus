@@ -16,7 +16,7 @@ pub struct Ctx {
 }
 
 impl Ctx {
-    pub fn new(krate: &Krate, debug:bool) -> Result<Self, VirErr> {
+    pub fn new(krate: &Krate, debug: bool) -> Result<Self, VirErr> {
         let datatypes = krate
             .datatypes
             .iter()

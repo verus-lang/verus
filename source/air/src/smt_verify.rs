@@ -1,6 +1,6 @@
 use crate::ast::{
-    BinaryOp, BindX, Constant, Decl, DeclX, Expr, ExprX, Ident, MultiOp, Quant, Query, SnapShots, Span, StmtX,
-    Typ, TypX, UnaryOp,
+    BinaryOp, BindX, Constant, Decl, DeclX, Expr, ExprX, Ident, MultiOp, Quant, Query, SnapShots,
+    Span, StmtX, Typ, TypX, UnaryOp,
 };
 use crate::context::{AssertionInfo, Context, ValidityResult};
 use crate::def::{GLOBAL_PREFIX_LABEL, PREFIX_LABEL};
@@ -364,7 +364,7 @@ fn smt_check_assertion<'ctx>(
     context: &mut Context<'ctx>,
     infos: &Vec<AssertionInfo>,
     snapshots: SnapShots,
-    local_vars: Vec<Decl>,  // Expected to be entirely DeclX::Const
+    local_vars: Vec<Decl>, // Expected to be entirely DeclX::Const
     expr: &Expr,
 ) -> ValidityResult<'ctx> {
     let mut discovered_span = Rc::new(None);
@@ -435,7 +435,12 @@ fn smt_check_assertion<'ctx>(
     }
 }
 
-pub(crate) fn smt_check_query<'ctx>(context: &mut Context<'ctx>, query: &Query, snapshots: SnapShots, local_vars: Vec<Decl>) -> ValidityResult<'ctx> {
+pub(crate) fn smt_check_query<'ctx>(
+    context: &mut Context<'ctx>,
+    query: &Query,
+    snapshots: SnapShots,
+    local_vars: Vec<Decl>,
+) -> ValidityResult<'ctx> {
     context.smt_log.log_push();
     context.solver.push();
     context.push_name_scope();

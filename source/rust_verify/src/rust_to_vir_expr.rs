@@ -73,7 +73,10 @@ fn extract_array<'tcx>(expr: &'tcx Expr<'tcx>) -> Vec<&'tcx Expr<'tcx>> {
     }
 }
 
-fn get_ensures_arg<'tcx,'sm>(ctxt: &BodyCtxt<'tcx,'sm>, expr: &Expr<'tcx>) -> Result<vir::ast::Expr, VirErr> {
+fn get_ensures_arg<'tcx, 'sm>(
+    ctxt: &BodyCtxt<'tcx, 'sm>,
+    expr: &Expr<'tcx>,
+) -> Result<vir::ast::Expr, VirErr> {
     if matches!(ctxt.types.node_type(expr.hir_id).kind(), TyKind::Bool) {
         expr_to_vir(ctxt, expr)
     } else {
@@ -81,7 +84,10 @@ fn get_ensures_arg<'tcx,'sm>(ctxt: &BodyCtxt<'tcx,'sm>, expr: &Expr<'tcx>) -> Re
     }
 }
 
-fn extract_ensures<'tcx,'sm>(ctxt: &BodyCtxt<'tcx,'sm>, expr: &'tcx Expr<'tcx>) -> Result<HeaderExpr, VirErr> {
+fn extract_ensures<'tcx, 'sm>(
+    ctxt: &BodyCtxt<'tcx, 'sm>,
+    expr: &'tcx Expr<'tcx>,
+) -> Result<HeaderExpr, VirErr> {
     let tcx = ctxt.ctxt.tcx;
     match &expr.kind {
         ExprKind::Closure(_, fn_decl, body_id, _, _) => {
@@ -104,8 +110,8 @@ fn extract_ensures<'tcx,'sm>(ctxt: &BodyCtxt<'tcx,'sm>, expr: &'tcx Expr<'tcx>) 
     }
 }
 
-fn extract_quant<'tcx,'sm>(
-    ctxt: &BodyCtxt<'tcx,'sm>,
+fn extract_quant<'tcx, 'sm>(
+    ctxt: &BodyCtxt<'tcx, 'sm>,
     span: Span,
     quant: Quant,
     expr: &'tcx Expr<'tcx>,
@@ -124,7 +130,11 @@ fn extract_quant<'tcx,'sm>(
                 .collect();
             let expr = &body.value;
             if !matches!(ctxt.types.node_type(expr.hir_id).kind(), TyKind::Bool) {
-                return err_span_str(ctxt.ctxt, expr.span, "forall/ensures needs a bool expression");
+                return err_span_str(
+                    ctxt.ctxt,
+                    expr.span,
+                    "forall/ensures needs a bool expression",
+                );
             }
             let vir_expr = expr_to_vir(ctxt, expr)?;
             Ok(spanned_new(ctxt.ctxt, span, ExprX::Quant(quant, Rc::new(binders), vir_expr)))
@@ -144,19 +154,20 @@ fn mk_ty_clip<'tcx>(ty: rustc_middle::ty::Ty<'tcx>, expr: &vir::ast::Expr) -> vi
     mk_clip(&mk_range(ty), expr)
 }
 
-pub(crate) fn expr_to_vir<'tcx,'sm>(
-    ctxt: &BodyCtxt<'tcx,'sm>,
+pub(crate) fn expr_to_vir<'tcx, 'sm>(
+    ctxt: &BodyCtxt<'tcx, 'sm>,
     expr: &Expr<'tcx>,
 ) -> Result<vir::ast::Expr, VirErr> {
     let mut vir_expr = expr_to_vir_inner(ctxt, expr)?;
     for group in get_trigger(ctxt.ctxt, expr.span, ctxt.ctxt.tcx.hir().attrs(expr.hir_id))? {
-        vir_expr = spanned_new(ctxt.ctxt, expr.span, ExprX::Unary(UnaryOp::Trigger(group), vir_expr));
+        vir_expr =
+            spanned_new(ctxt.ctxt, expr.span, ExprX::Unary(UnaryOp::Trigger(group), vir_expr));
     }
     Ok(vir_expr)
 }
 
-fn fn_call_to_vir<'tcx,'sm>(
-    ctxt: &BodyCtxt<'tcx,'sm>,
+fn fn_call_to_vir<'tcx, 'sm>(
+    ctxt: &BodyCtxt<'tcx, 'sm>,
     expr: &Expr<'tcx>,
     fun: &'tcx Expr<'tcx>,
     args_slice: &'tcx [Expr<'tcx>],
@@ -300,7 +311,12 @@ fn fn_call_to_vir<'tcx,'sm>(
         let fun_ty = ctxt.types.node_type(fun.hir_id);
         let (param_typs, ret_typ) = match fun_ty.kind() {
             TyKind::FnDef(def_id, _substs) => match tcx.fn_sig(*def_id).no_bound_vars() {
-                None => unsupported_err!(ctxt.ctxt, expr.span, format!("found bound vars in function"), expr),
+                None => unsupported_err!(
+                    ctxt.ctxt,
+                    expr.span,
+                    format!("found bound vars in function"),
+                    expr
+                ),
                 Some(f) => {
                     let params: Vec<Typ> =
                         f.inputs().iter().map(|t| mid_ty_to_vir(tcx, *t)).collect();
@@ -308,7 +324,9 @@ fn fn_call_to_vir<'tcx,'sm>(
                     (params, ret)
                 }
             },
-            _ => unsupported_err!(ctxt.ctxt, expr.span, format!("call to non-FnDef function"), expr),
+            _ => {
+                unsupported_err!(ctxt.ctxt, expr.span, format!("call to non-FnDef function"), expr)
+            }
         };
         // box arguments where necessary
         let arg_typs = vec_map(&args, |arg| typ_of_node(ctxt, &arg.hir_id));
@@ -332,7 +350,12 @@ fn fn_call_to_vir<'tcx,'sm>(
                 GenericArgKind::Type(ty) => {
                     typ_args.push(mid_ty_to_vir(tcx, ty));
                 }
-                _ => unsupported_err!(ctxt.ctxt, expr.span, format!("lifetime/const type arguments"), expr),
+                _ => unsupported_err!(
+                    ctxt.ctxt,
+                    expr.span,
+                    format!("lifetime/const type arguments"),
+                    expr
+                ),
             }
         }
         // make call
@@ -358,8 +381,8 @@ fn fn_call_to_vir<'tcx,'sm>(
     }
 }
 
-pub(crate) fn expr_tuple_datatype_ctor_to_vir<'tcx,'sm>(
-    ctxt: &BodyCtxt<'tcx,'sm>,
+pub(crate) fn expr_tuple_datatype_ctor_to_vir<'tcx, 'sm>(
+    ctxt: &BodyCtxt<'tcx, 'sm>,
     expr: &Expr<'tcx>,
     res: &Res,
     args_slice: &[Expr<'tcx>],
@@ -415,8 +438,8 @@ pub(crate) fn expr_tuple_datatype_ctor_to_vir<'tcx,'sm>(
     Ok(spanned_new(ctxt.ctxt, expr.span, ExprX::Ctor(vir_path, variant_name, vir_fields)))
 }
 
-pub(crate) fn expr_to_vir_inner<'tcx,'sm>(
-    ctxt: &BodyCtxt<'tcx,'sm>,
+pub(crate) fn expr_to_vir_inner<'tcx, 'sm>(
+    ctxt: &BodyCtxt<'tcx, 'sm>,
     expr: &Expr<'tcx>,
 ) -> Result<vir::ast::Expr, VirErr> {
     let tcx = ctxt.ctxt.tcx;
@@ -490,7 +513,7 @@ pub(crate) fn expr_to_vir_inner<'tcx,'sm>(
             let vrhs = expr_to_vir(ctxt, rhs)?;
             match op.node {
                 BinOpKind::Eq | BinOpKind::Ne => unsupported_err_unless!(
-                    ctxt.ctxt, 
+                    ctxt.ctxt,
                     is_smt_equality(ctxt, expr.span, &lhs.hir_id, &rhs.hir_id),
                     expr.span,
                     "==/!= for non smt equality types",
@@ -548,13 +571,18 @@ pub(crate) fn expr_to_vir_inner<'tcx,'sm>(
                         expr_tuple_datatype_ctor_to_vir(ctxt, expr, &path.res, &[])
                     }
                     _ => {
-                        unsupported_err!(ctxt.ctxt, expr.span, format!("Path {:?} kind {:?}", id, def_kind))
+                        unsupported_err!(
+                            ctxt.ctxt,
+                            expr.span,
+                            format!("Path {:?} kind {:?}", id, def_kind)
+                        )
                     }
                 }
             }
             res => unsupported_err!(ctxt.ctxt, expr.span, format!("Path {:?}", res)),
         },
-        ExprKind::Assign(lhs, rhs, _) => Ok(spanned_new(ctxt.ctxt, 
+        ExprKind::Assign(lhs, rhs, _) => Ok(spanned_new(
+            ctxt.ctxt,
             expr.span,
             ExprX::Assign(expr_to_vir(ctxt, lhs)?, expr_to_vir(ctxt, rhs)?),
         )),
@@ -563,7 +591,7 @@ pub(crate) fn expr_to_vir_inner<'tcx,'sm>(
             let lhs_ty = tc.node_type(lhs.hir_id);
             let (datatype_name, field_name, unbox) = if let Some(adt_def) = lhs_ty.ty_adt_def() {
                 unsupported_err_unless!(
-                    ctxt.ctxt, 
+                    ctxt.ctxt,
                     adt_def.variants.len() == 1,
                     expr.span,
                     "field_of_adt_with_multiple_variants",
@@ -588,8 +616,11 @@ pub(crate) fn expr_to_vir_inner<'tcx,'sm>(
             } else {
                 unsupported_err!(ctxt.ctxt, expr.span, "field_of_non_adt", expr)
             };
-            let mut vir =
-                spanned_new(ctxt.ctxt, expr.span, ExprX::Field { lhs: vir_lhs, datatype_name, field_name });
+            let mut vir = spanned_new(
+                ctxt.ctxt,
+                expr.span,
+                ExprX::Field { lhs: vir_lhs, datatype_name, field_name },
+            );
             if let Some(target_typ) = unbox {
                 vir = Spanned::new(
                     vir.span.clone(),
@@ -724,21 +755,30 @@ pub(crate) fn expr_to_vir_inner<'tcx,'sm>(
     }
 }
 
-pub(crate) fn let_stmt_to_vir<'tcx,'sm>(
-    ctxt: &BodyCtxt<'tcx,'sm>,
+pub(crate) fn let_stmt_to_vir<'tcx, 'sm>(
+    ctxt: &BodyCtxt<'tcx, 'sm>,
     pattern: &rustc_hir::Pat<'tcx>,
     initializer: &Option<&Expr<'tcx>>,
     attrs: &[Attribute],
 ) -> Result<Vec<vir::ast::Stmt>, VirErr> {
     let Pat { hir_id, kind, span: _, default_binding_modes } = pattern;
-    unsupported_err_unless!(ctxt.ctxt, default_binding_modes, pattern.span, "default_binding_modes");
+    unsupported_err_unless!(
+        ctxt.ctxt,
+        default_binding_modes,
+        pattern.span,
+        "default_binding_modes"
+    );
     match pattern.kind {
         PatKind::Binding(annotation, _id, ident, pat) => {
             let mutable = match annotation {
                 BindingAnnotation::Unannotated => false,
                 BindingAnnotation::Mutable => true,
                 _ => {
-                    unsupported_err!(ctxt.ctxt, pattern.span, format!("binding annotation {:?}", annotation))
+                    unsupported_err!(
+                        ctxt.ctxt,
+                        pattern.span,
+                        format!("binding annotation {:?}", annotation)
+                    )
                 }
             };
             match pat {
@@ -751,10 +791,15 @@ pub(crate) fn let_stmt_to_vir<'tcx,'sm>(
             let name = Rc::new(ident_to_var(&ident));
             let typ = typ_of_node(ctxt, hir_id);
             let mode = get_var_mode(ctxt.mode, attrs);
-            Ok(vec![spanned_new(ctxt.ctxt, 
+            Ok(vec![spanned_new(
+                ctxt.ctxt,
                 pattern.span,
                 StmtX::Decl {
-                    param: spanned_new(ctxt.ctxt, pattern.span, ParamX { name: name.clone(), typ, mode }),
+                    param: spanned_new(
+                        ctxt.ctxt,
+                        pattern.span,
+                        ParamX { name: name.clone(), typ, mode },
+                    ),
                     mutable,
                     init: initializer.map(|e| expr_to_vir(ctxt, e)).transpose()?,
                 },
@@ -766,8 +811,8 @@ pub(crate) fn let_stmt_to_vir<'tcx,'sm>(
     }
 }
 
-pub(crate) fn stmt_to_vir<'tcx,'sm>(
-    ctxt: &BodyCtxt<'tcx,'sm>,
+pub(crate) fn stmt_to_vir<'tcx, 'sm>(
+    ctxt: &BodyCtxt<'tcx, 'sm>,
     stmt: &Stmt<'tcx>,
 ) -> Result<Vec<vir::ast::Stmt>, VirErr> {
     match &stmt.kind {

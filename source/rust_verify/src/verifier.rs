@@ -1,5 +1,5 @@
-use crate::context::Context;
 use crate::config::Args;
+use crate::context::Context;
 use crate::unsupported;
 use air::ast::{Command, CommandX, SpanOption};
 use air::context::ValidityResult;
@@ -286,7 +286,7 @@ impl Verifier {
         }
 
         let hir = tcx.hir();
-        let ctxt = Context { tcx, krate:hir.krate(), source_map: compiler.session().source_map() };
+        let ctxt = Context { tcx, krate: hir.krate(), source_map: compiler.session().source_map() };
         let vir_crate = crate::rust_to_vir::crate_to_vir(&ctxt)?;
         if let Some(filename) = &self.args.log_vir {
             let mut file =
@@ -340,7 +340,7 @@ impl rustc_driver::Callbacks for Verifier {
         }
     }
 
-    fn after_expansion<'a,'tcx>(
+    fn after_expansion<'a, 'tcx>(
         &'a mut self,
         compiler: &'a Compiler,
         queries: &'tcx rustc_interface::Queries<'tcx>,

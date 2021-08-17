@@ -1,7 +1,7 @@
 use crate::ast::{Command, CommandX, Decl, Ident, Query, SpanOption, TypeError};
+use crate::model::Model;
 use crate::print_parse::Logger;
 use crate::typecheck::Typing;
-use crate::model::Model;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 use z3::ast::Dynamic;
@@ -85,7 +85,7 @@ impl<'ctx> Context<'ctx> {
     pub fn set_debug(&mut self, debug: bool) {
         self.debug = debug;
     }
-    
+
     pub fn get_debug(&self) -> bool {
         self.debug
     }

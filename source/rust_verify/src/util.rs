@@ -1,9 +1,9 @@
-use rustc_span::{FileName, Span, Pos};
-use std::rc::Rc;
+use crate::context::Context;
 use crate::unsupported;
+use rustc_span::{FileName, Pos, Span};
+use std::rc::Rc;
 use vir::ast::{VirErr, VirErrX};
 use vir::def::Spanned;
-use crate::context::Context;
 
 pub(crate) fn spanned_new<X>(ctxt: &Context, span: Span, x: X) -> Rc<Spanned<X>> {
     let raw_span = Rc::new(span);
@@ -17,7 +17,19 @@ pub(crate) fn spanned_new<X>(ctxt: &Context, span: Span, x: X) -> Rc<Spanned<X>>
         _ => unsupported!("non real filenames in verifier errors", span),
     };
     let (start, end) = ctxt.source_map.is_valid_span(span).expect("internal error: invalid Span");
-    Spanned::new(air::ast::Span { description: None, raw_span, as_string, filename, start_row:start.line, start_col:start.col.to_usize(), end_row:end.line, end_col:end.col.to_usize() }, x)
+    Spanned::new(
+        air::ast::Span {
+            description: None,
+            raw_span,
+            as_string,
+            filename,
+            start_row: start.line,
+            start_col: start.col.to_usize(),
+            end_row: end.line,
+            end_col: end.col.to_usize(),
+        },
+        x,
+    )
 }
 
 pub(crate) fn err_span_str<A>(ctxt: &Context, span: Span, msg: &str) -> Result<A, VirErr> {
@@ -28,7 +40,11 @@ pub(crate) fn err_span_string<A>(ctxt: &Context, span: Span, msg: String) -> Res
     Err(spanned_new(ctxt, span, VirErrX::Str(msg)))
 }
 
-pub(crate) fn unsupported_err_span<A>(ctxt: &Context, span: Span, msg: String) -> Result<A, VirErr> {
+pub(crate) fn unsupported_err_span<A>(
+    ctxt: &Context,
+    span: Span,
+    msg: String,
+) -> Result<A, VirErr> {
     err_span_string(
         ctxt,
         span,

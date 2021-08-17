@@ -1,5 +1,5 @@
-use std::rc::Rc;
 use std::collections::HashMap;
+use std::rc::Rc;
 
 pub type RawSpan = Rc<dyn std::any::Any>;
 #[derive(Clone)] // for Debug, see ast_util
