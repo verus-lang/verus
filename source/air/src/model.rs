@@ -54,6 +54,8 @@ impl<'a> Model<'a> {
     /// `local_vars` should be a list of [DeclX::Const] values
     /// representing the function's local non-mutable variables
     /// (e.g., function parameters)
+    /// This is decoupled from the Model's constructor so that
+    /// we only do this expensive work when called in debug mode.
     pub fn build(&mut self, context: &mut Context, local_vars: Vec<Decl>) {
         println!("Building the AIR model");
         for (snap_id, id_snapshot) in &self.id_snapshots {
