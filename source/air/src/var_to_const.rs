@@ -1,6 +1,6 @@
 // Replace declare-var and assign with declare-const and assume
 use crate::ast::{
-    BinaryOp, Decl, DeclX, Expr, ExprX, Ident, Query, QueryX, SnapShots, Stmt, StmtX, Typ,
+    BinaryOp, Decl, DeclX, Expr, ExprX, Ident, Query, QueryX, Snapshots, Stmt, StmtX, Typ,
 };
 use crate::ast_util::string_var;
 use std::collections::{HashMap, HashSet};
@@ -14,7 +14,7 @@ pub fn rename_var(x: &String, n: u32) -> String {
     if x.ends_with("@") { format!("{}{}", x, n) } else { format!("{}@{}", x, n) }
 }
 
-fn lower_expr_visitor(versions: &HashMap<Ident, u32>, snapshots: &SnapShots, expr: &Expr) -> Expr {
+fn lower_expr_visitor(versions: &HashMap<Ident, u32>, snapshots: &Snapshots, expr: &Expr) -> Expr {
     match &**expr {
         ExprX::Var(x) if versions.contains_key(x) => {
             let xn = rename_var(x, find_version(&versions, x));
@@ -29,7 +29,7 @@ fn lower_expr_visitor(versions: &HashMap<Ident, u32>, snapshots: &SnapShots, exp
     }
 }
 
-fn lower_expr(versions: &HashMap<Ident, u32>, snapshots: &SnapShots, expr: &Expr) -> Expr {
+fn lower_expr(versions: &HashMap<Ident, u32>, snapshots: &Snapshots, expr: &Expr) -> Expr {
     crate::visitor::map_expr_visitor(&expr, &mut |e| lower_expr_visitor(versions, snapshots, e))
 }
 
@@ -37,7 +37,7 @@ fn lower_stmt(
     decls: &mut Vec<Decl>,
     versions: &mut HashMap<Ident, u32>,
     version_decls: &mut HashSet<Ident>,
-    snapshots: &mut SnapShots,
+    snapshots: &mut Snapshots,
     types: &HashMap<Ident, Typ>,
     stmt: &Stmt,
 ) -> Stmt {
@@ -119,12 +119,12 @@ fn lower_stmt(
     }
 }
 
-pub(crate) fn lower_query(query: &Query) -> (Query, SnapShots, Vec<Decl>) {
+pub(crate) fn lower_query(query: &Query) -> (Query, Snapshots, Vec<Decl>) {
     let QueryX { local, assertion } = &**query;
     let mut decls: Vec<Decl> = Vec::new();
     let mut versions: HashMap<Ident, u32> = HashMap::new();
     let mut version_decls: HashSet<Ident> = HashSet::new();
-    let mut snapshots: SnapShots = HashMap::new();
+    let mut snapshots: Snapshots = HashMap::new();
     let mut types: HashMap<Ident, Typ> = HashMap::new();
     let mut local_vars: Vec<Decl> = Vec::new();
 

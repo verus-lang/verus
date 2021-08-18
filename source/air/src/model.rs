@@ -1,7 +1,7 @@
 //! Provides an AIR-level interface to the model returned by the SMT solver
 //! when it reaches a SAT conclusion
 
-use crate::ast::{Decl, DeclX, Ident, SnapShots};
+use crate::ast::{Decl, DeclX, Ident, Snapshots};
 use crate::context::Context;
 use crate::smt_util::new_const;
 use std::collections::HashMap;
@@ -11,11 +11,11 @@ use z3::ast::Dynamic;
 #[derive(Debug)]
 /// AIR-level model of a concrete counterexample
 pub struct Model<'a> {
-    /// Handle to the original Z3 model
+    /// Handle to the original Z3 model; only for internal use, e.g., for `eval`
     z3_model: z3::Model<'a>,
     /// Internal mapping of snapshot IDs to snapshots that map AIR variables to usage counts.
     /// Generated when converting mutable variables to Z3-level constants.
-    id_snapshots: SnapShots,
+    id_snapshots: Snapshots,
     /// Externally facing mapping from snapshot IDs to snapshots that map AIR variables
     /// to their concrete values.
     /// TODO: Upgrade to a semantics-preserving value type, instead of String.
@@ -27,7 +27,7 @@ impl<'a> Model<'a> {
     /// # Arguments
     /// * `model` - The model that Z3 returns
     /// * `snapshots` - Internal mapping of snapshot IDs to snapshots that map AIR variables to usage counts.
-    pub fn new(model: z3::Model<'a>, snapshots: SnapShots) -> Model<'a> {
+    pub fn new(model: z3::Model<'a>, snapshots: Snapshots) -> Model<'a> {
         // println!("Creating a new model with {} snapshots", snapshots.len());
         Model { z3_model: model, id_snapshots: snapshots, value_snapshots: HashMap::new() }
     }

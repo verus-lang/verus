@@ -1,5 +1,5 @@
 use crate::ast::{
-    BinaryOp, BindX, Constant, Decl, DeclX, Expr, ExprX, Ident, MultiOp, Quant, Query, SnapShots,
+    BinaryOp, BindX, Constant, Decl, DeclX, Expr, ExprX, Ident, MultiOp, Quant, Query, Snapshots,
     Span, StmtX, Typ, TypX, UnaryOp,
 };
 use crate::context::{AssertionInfo, Context, ValidityResult};
@@ -343,7 +343,7 @@ pub(crate) fn smt_add_decl<'ctx>(context: &mut Context<'ctx>, decl: &Decl) {
 fn smt_check_assertion<'ctx>(
     context: &mut Context<'ctx>,
     infos: &Vec<AssertionInfo>,
-    snapshots: SnapShots,
+    snapshots: Snapshots,
     local_vars: Vec<Decl>, // Expected to be entirely DeclX::Const
     expr: &Expr,
 ) -> ValidityResult<'ctx> {
@@ -420,7 +420,7 @@ fn smt_check_assertion<'ctx>(
 pub(crate) fn smt_check_query<'ctx>(
     context: &mut Context<'ctx>,
     query: &Query,
-    snapshots: SnapShots,
+    snapshots: Snapshots,
     local_vars: Vec<Decl>,
 ) -> ValidityResult<'ctx> {
     context.smt_log.log_push();

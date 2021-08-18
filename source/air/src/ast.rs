@@ -19,8 +19,8 @@ pub type TypeError = String;
 
 pub type Ident = Rc<String>;
 
-pub(crate) type SnapShot = HashMap<Ident, u32>;
-pub(crate) type SnapShots = HashMap<Ident, SnapShot>;
+pub(crate) type Snapshot = HashMap<Ident, u32>;
+pub(crate) type Snapshots = HashMap<Ident, Snapshot>;
 
 pub type Typ = Rc<TypX>;
 pub type Typs = Rc<Vec<Typ>>;
