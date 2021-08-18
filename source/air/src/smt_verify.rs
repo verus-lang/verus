@@ -4,23 +4,12 @@ use crate::ast::{
 };
 use crate::context::{AssertionInfo, Context, ValidityResult};
 use crate::def::{GLOBAL_PREFIX_LABEL, PREFIX_LABEL};
+use crate::smt_util::new_const;
 pub use crate::model::Model;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 use z3::ast::{Ast, Bool, Dynamic, Int};
 use z3::{Pattern, SatResult, Sort, Symbol};
-
-fn new_const<'ctx>(context: &mut Context<'ctx>, name: &String, typ: &Typ) -> Dynamic<'ctx> {
-    match &**typ {
-        TypX::Bool => Bool::new_const(context.context, name.clone()).into(),
-        TypX::Int => Int::new_const(context.context, name.clone()).into(),
-        TypX::Named(x) => {
-            let sort = &context.typs[x];
-            let fdecl = z3::FuncDecl::new(context.context, name.clone(), &[], sort);
-            fdecl.apply(&[])
-        }
-    }
-}
 
 fn expr_to_smt<'ctx>(context: &mut Context<'ctx>, expr: &Expr) -> Dynamic<'ctx> {
     match &**expr {
