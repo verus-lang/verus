@@ -73,8 +73,8 @@ fn extract_array<'tcx>(expr: &'tcx Expr<'tcx>) -> Vec<&'tcx Expr<'tcx>> {
     }
 }
 
-fn get_ensures_arg<'tcx, 'sm>(
-    bctx: &BodyCtxt<'tcx, 'sm>,
+fn get_ensures_arg<'tcx>(
+    bctx: &BodyCtxt<'tcx>,
     expr: &Expr<'tcx>,
 ) -> Result<vir::ast::Expr, VirErr> {
     if matches!(bctx.types.node_type(expr.hir_id).kind(), TyKind::Bool) {
@@ -84,8 +84,8 @@ fn get_ensures_arg<'tcx, 'sm>(
     }
 }
 
-fn extract_ensures<'tcx, 'sm>(
-    bctx: &BodyCtxt<'tcx, 'sm>,
+fn extract_ensures<'tcx>(
+    bctx: &BodyCtxt<'tcx>,
     expr: &'tcx Expr<'tcx>,
 ) -> Result<HeaderExpr, VirErr> {
     let tcx = bctx.ctxt.tcx;
@@ -110,8 +110,8 @@ fn extract_ensures<'tcx, 'sm>(
     }
 }
 
-fn extract_quant<'tcx, 'sm>(
-    bctx: &BodyCtxt<'tcx, 'sm>,
+fn extract_quant<'tcx>(
+    bctx: &BodyCtxt<'tcx>,
     span: Span,
     quant: Quant,
     expr: &'tcx Expr<'tcx>,
@@ -154,8 +154,8 @@ fn mk_ty_clip<'tcx>(ty: rustc_middle::ty::Ty<'tcx>, expr: &vir::ast::Expr) -> vi
     mk_clip(&mk_range(ty), expr)
 }
 
-pub(crate) fn expr_to_vir<'tcx, 'sm>(
-    bctx: &BodyCtxt<'tcx, 'sm>,
+pub(crate) fn expr_to_vir<'tcx>(
+    bctx: &BodyCtxt<'tcx>,
     expr: &Expr<'tcx>,
 ) -> Result<vir::ast::Expr, VirErr> {
     let mut vir_expr = expr_to_vir_inner(bctx, expr)?;
@@ -166,8 +166,8 @@ pub(crate) fn expr_to_vir<'tcx, 'sm>(
     Ok(vir_expr)
 }
 
-fn fn_call_to_vir<'tcx, 'sm>(
-    bctx: &BodyCtxt<'tcx, 'sm>,
+fn fn_call_to_vir<'tcx>(
+    bctx: &BodyCtxt<'tcx>,
     expr: &Expr<'tcx>,
     fun: &'tcx Expr<'tcx>,
     args_slice: &'tcx [Expr<'tcx>],
@@ -381,8 +381,8 @@ fn fn_call_to_vir<'tcx, 'sm>(
     }
 }
 
-pub(crate) fn expr_tuple_datatype_ctor_to_vir<'tcx, 'sm>(
-    bctx: &BodyCtxt<'tcx, 'sm>,
+pub(crate) fn expr_tuple_datatype_ctor_to_vir<'tcx>(
+    bctx: &BodyCtxt<'tcx>,
     expr: &Expr<'tcx>,
     res: &Res,
     args_slice: &[Expr<'tcx>],
@@ -438,8 +438,8 @@ pub(crate) fn expr_tuple_datatype_ctor_to_vir<'tcx, 'sm>(
     Ok(spanned_new(bctx.ctxt, expr.span, ExprX::Ctor(vir_path, variant_name, vir_fields)))
 }
 
-pub(crate) fn expr_to_vir_inner<'tcx, 'sm>(
-    bctx: &BodyCtxt<'tcx, 'sm>,
+pub(crate) fn expr_to_vir_inner<'tcx>(
+    bctx: &BodyCtxt<'tcx>,
     expr: &Expr<'tcx>,
 ) -> Result<vir::ast::Expr, VirErr> {
     let tcx = bctx.ctxt.tcx;
@@ -755,8 +755,8 @@ pub(crate) fn expr_to_vir_inner<'tcx, 'sm>(
     }
 }
 
-pub(crate) fn let_stmt_to_vir<'tcx, 'sm>(
-    bctx: &BodyCtxt<'tcx, 'sm>,
+pub(crate) fn let_stmt_to_vir<'tcx>(
+    bctx: &BodyCtxt<'tcx>,
     pattern: &rustc_hir::Pat<'tcx>,
     initializer: &Option<&Expr<'tcx>>,
     attrs: &[Attribute],
@@ -811,8 +811,8 @@ pub(crate) fn let_stmt_to_vir<'tcx, 'sm>(
     }
 }
 
-pub(crate) fn stmt_to_vir<'tcx, 'sm>(
-    bctx: &BodyCtxt<'tcx, 'sm>,
+pub(crate) fn stmt_to_vir<'tcx>(
+    bctx: &BodyCtxt<'tcx>,
     stmt: &Stmt<'tcx>,
 ) -> Result<Vec<vir::ast::Stmt>, VirErr> {
     match &stmt.kind {

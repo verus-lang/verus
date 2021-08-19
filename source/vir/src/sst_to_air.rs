@@ -270,6 +270,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp) -> Expr {
 struct State {
     local_shared: Vec<Decl>, // shared between all queries for a single function
     commands: Vec<Command>,
+    snapshot_count: u32,
 }
 
 fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
@@ -321,12 +322,8 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
                     }
                     if ctx.debug {
                         // Add a snapshot after we modify the destination
-                        let name = format!(
-                            "{}_{}_{}",
-                            var.clone(),
-                            stm.span.start_row,
-                            stm.span.start_col
-                        );
+                        state.snapshot_count += 1;
+                        let name = format!("Mutation_{}", state.snapshot_count);
                         let snapshot = Rc::new(StmtX::Snapshot(Rc::new(name)));
                         stmts.push(snapshot);
                     }
@@ -362,8 +359,8 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
             stmts.push(Rc::new(StmtX::Assign(suffix_local_id(&ident), exp_to_expr(ctx, rhs))));
             if ctx.debug {
                 // Add a snapshot after we modify the destination
-                let name =
-                    format!("{}_{}_{}", ident.clone(), stm.span.start_row, stm.span.start_col);
+                state.snapshot_count += 1;
+                let name = format!("Mutation_{}", state.snapshot_count);
                 let snapshot = Rc::new(StmtX::Snapshot(Rc::new(name)));
                 stmts.push(snapshot);
             }
@@ -555,7 +552,7 @@ pub fn body_stm_to_air(
         assigned.insert(param.x.name.clone());
     }
 
-    let mut state = State { local_shared, commands: Vec::new() };
+    let mut state = State { local_shared, commands: Vec::new(), snapshot_count: 0 };
 
     let stm = crate::sst_vars::stm_assign(&mut declared, &mut assigned, &mut HashSet::new(), stm);
     let mut stmts = stm_to_stmts(ctx, &mut state, &stm);

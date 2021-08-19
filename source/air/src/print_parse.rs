@@ -512,16 +512,10 @@ pub(crate) fn node_to_expr(node: &Node) -> Result<Expr, String> {
                 {
                     let raw_span = Rc::new(());
                     let as_string = label[1..label.len() - 1].to_string();
-                    // TODO: Update AIR syntax to support file info
                     let span = Rc::new(Some(Span {
                         description: None,
                         raw_span,
                         as_string,
-                        filename: "".to_string(),
-                        start_row: 0,
-                        start_col: 0,
-                        end_row: 0,
-                        end_col: 0,
                     }));
                     let expr = node_to_expr(e)?;
                     return Ok(Rc::new(ExprX::LabeledAssertion(span, expr)));
@@ -724,17 +718,7 @@ pub(crate) fn node_to_stmt(node: &Node) -> Result<Stmt, String> {
             {
                 let raw_span = Rc::new(());
                 let as_string = label[1..label.len() - 1].to_string();
-                // TODO: Update AIR syntax to support file info
-                let span = Span {
-                    description: None,
-                    raw_span,
-                    as_string,
-                    filename: "".to_string(),
-                    start_row: 0,
-                    start_col: 0,
-                    end_row: 0,
-                    end_col: 0,
-                };
+                let span = Span { description: None, raw_span, as_string };
                 let expr = node_to_expr(&e)?;
                 Ok(Rc::new(StmtX::Assert(Rc::new(Some(span)), expr)))
             }

@@ -22,8 +22,8 @@ use rustc_span::def_id::LocalDefId;
 use std::rc::Rc;
 use vir::ast::{Krate, KrateX, VirErr};
 
-fn check_item<'tcx, 'sm>(
-    ctxt: &Context<'tcx, 'sm>,
+fn check_item<'tcx>(
+    ctxt: &'tcx Context<'tcx>,
     vir: &mut KrateX,
     id: &ItemId,
     item: &'tcx Item<'tcx>,
@@ -214,8 +214,8 @@ fn check_module<'tcx>(
     Ok(())
 }
 
-fn check_foreign_item<'tcx, 'sm>(
-    ctxt: &Context<'tcx, 'sm>,
+fn check_foreign_item<'tcx>(
+    ctxt: &Context<'tcx>,
     vir: &mut KrateX,
     _id: &ForeignItemId,
     item: &'tcx ForeignItem<'tcx>,
@@ -249,7 +249,7 @@ fn check_attr<'tcx>(
     Ok(())
 }
 
-pub fn crate_to_vir<'tcx, 'sm>(ctxt: &Context<'tcx, 'sm>) -> Result<Krate, VirErr> {
+pub fn crate_to_vir<'tcx>(ctxt: &'tcx Context<'tcx>) -> Result<Krate, VirErr> {
     let Crate {
         item: _,
         exported_macros,

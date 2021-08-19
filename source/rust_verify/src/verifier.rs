@@ -287,7 +287,7 @@ impl Verifier {
         }
 
         let hir = tcx.hir();
-        let ctxt = Context { tcx, krate: hir.krate(), source_map: compiler.session().source_map() };
+        let ctxt = Context { tcx, krate: hir.krate() };
         let vir_crate = crate::rust_to_vir::crate_to_vir(&ctxt)?;
         if let Some(filename) = &self.args.log_vir {
             let mut file =
