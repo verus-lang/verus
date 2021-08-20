@@ -17,10 +17,7 @@ pub(crate) fn err_span_string<A>(span: Span, msg: String) -> Result<A, VirErr> {
     Err(spanned_new(span, VirErrX::Str(msg)))
 }
 
-pub(crate) fn unsupported_err_span<A>(
-    span: Span,
-    msg: String,
-) -> Result<A, VirErr> {
+pub(crate) fn unsupported_err_span<A>(span: Span, msg: String) -> Result<A, VirErr> {
     err_span_string(
         span,
         format!("The verifier does not yet support the following Rust feature: {}", msg),

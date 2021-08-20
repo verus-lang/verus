@@ -142,19 +142,11 @@ fn check_item<'tcx>(
                     TyKind::Path(QPath::Resolved(_, _path)) => {
                         for impl_item in impll.items {
                             // TODO once we have references
-                            unsupported_err!(
-                                item.span,
-                                "unsupported method in impl",
-                                impl_item
-                            );
+                            unsupported_err!(item.span, "unsupported method in impl", impl_item);
                         }
                     }
                     _ => {
-                        unsupported_err!(
-                            item.span,
-                            "unsupported impl of non-path type",
-                            item
-                        );
+                        unsupported_err!(item.span, "unsupported impl of non-path type", item);
                     }
                 }
             }

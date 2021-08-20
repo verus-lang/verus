@@ -130,10 +130,7 @@ fn extract_quant<'tcx>(
                 .collect();
             let expr = &body.value;
             if !matches!(bctx.types.node_type(expr.hir_id).kind(), TyKind::Bool) {
-                return err_span_str(
-                    expr.span,
-                    "forall/ensures needs a bool expression",
-                );
+                return err_span_str(expr.span, "forall/ensures needs a bool expression");
             }
             let vir_expr = expr_to_vir(bctx, expr)?;
             Ok(spanned_new(span, ExprX::Quant(quant, Rc::new(binders), vir_expr)))
@@ -159,8 +156,7 @@ pub(crate) fn expr_to_vir<'tcx>(
 ) -> Result<vir::ast::Expr, VirErr> {
     let mut vir_expr = expr_to_vir_inner(bctx, expr)?;
     for group in get_trigger(expr.span, bctx.ctxt.tcx.hir().attrs(expr.hir_id))? {
-        vir_expr =
-            spanned_new(expr.span, ExprX::Unary(UnaryOp::Trigger(group), vir_expr));
+        vir_expr = spanned_new(expr.span, ExprX::Unary(UnaryOp::Trigger(group), vir_expr));
     }
     Ok(vir_expr)
 }
@@ -310,11 +306,7 @@ fn fn_call_to_vir<'tcx>(
         let fun_ty = bctx.types.node_type(fun.hir_id);
         let (param_typs, ret_typ) = match fun_ty.kind() {
             TyKind::FnDef(def_id, _substs) => match tcx.fn_sig(*def_id).no_bound_vars() {
-                None => unsupported_err!(
-                    expr.span,
-                    format!("found bound vars in function"),
-                    expr
-                ),
+                None => unsupported_err!(expr.span, format!("found bound vars in function"), expr),
                 Some(f) => {
                     let params: Vec<Typ> =
                         f.inputs().iter().map(|t| mid_ty_to_vir(tcx, *t)).collect();
@@ -348,11 +340,7 @@ fn fn_call_to_vir<'tcx>(
                 GenericArgKind::Type(ty) => {
                     typ_args.push(mid_ty_to_vir(tcx, ty));
                 }
-                _ => unsupported_err!(
-                    expr.span,
-                    format!("lifetime/const type arguments"),
-                    expr
-                ),
+                _ => unsupported_err!(expr.span, format!("lifetime/const type arguments"), expr),
             }
         }
         // make call
@@ -479,10 +467,9 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                         IntRange::Int | IntRange::Nat | IntRange::U(_) | IntRange::USize => {
                             Ok(spanned_new(expr.span, ExprX::Const(c)))
                         }
-                        IntRange::I(_) | IntRange::ISize => Ok(mk_clip(
-                            &range,
-                            &spanned_new(expr.span, ExprX::Const(c)),
-                        )),
+                        IntRange::I(_) | IntRange::ISize => {
+                            Ok(mk_clip(&range, &spanned_new(expr.span, ExprX::Const(c))))
+                        }
                     }
                 } else {
                     panic!("unexpected constant: {:?} {:?}", lit, typ)
@@ -567,10 +554,7 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                         expr_tuple_datatype_ctor_to_vir(bctx, expr, &path.res, &[])
                     }
                     _ => {
-                        unsupported_err!(
-                            expr.span,
-                            format!("Path {:?} kind {:?}", id, def_kind)
-                        )
+                        unsupported_err!(expr.span, format!("Path {:?} kind {:?}", id, def_kind))
                     }
                 }
             }
@@ -609,10 +593,8 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
             } else {
                 unsupported_err!(expr.span, "field_of_non_adt", expr)
             };
-            let mut vir = spanned_new(
-                expr.span,
-                ExprX::Field { lhs: vir_lhs, datatype_name, field_name },
-            );
+            let mut vir =
+                spanned_new(expr.span, ExprX::Field { lhs: vir_lhs, datatype_name, field_name });
             if let Some(target_typ) = unbox {
                 vir = Spanned::new(
                     vir.span.clone(),
@@ -754,21 +736,14 @@ pub(crate) fn let_stmt_to_vir<'tcx>(
     attrs: &[Attribute],
 ) -> Result<Vec<vir::ast::Stmt>, VirErr> {
     let Pat { hir_id, kind, span: _, default_binding_modes } = pattern;
-    unsupported_err_unless!(
-        default_binding_modes,
-        pattern.span,
-        "default_binding_modes"
-    );
+    unsupported_err_unless!(default_binding_modes, pattern.span, "default_binding_modes");
     match pattern.kind {
         PatKind::Binding(annotation, _id, ident, pat) => {
             let mutable = match annotation {
                 BindingAnnotation::Unannotated => false,
                 BindingAnnotation::Mutable => true,
                 _ => {
-                    unsupported_err!(
-                        pattern.span,
-                        format!("binding annotation {:?}", annotation)
-                    )
+                    unsupported_err!(pattern.span, format!("binding annotation {:?}", annotation))
                 }
             };
             match pat {
@@ -784,10 +759,7 @@ pub(crate) fn let_stmt_to_vir<'tcx>(
             Ok(vec![spanned_new(
                 pattern.span,
                 StmtX::Decl {
-                    param: spanned_new(
-                        pattern.span,
-                        ParamX { name: name.clone(), typ, mode },
-                    ),
+                    param: spanned_new(pattern.span, ParamX { name: name.clone(), typ, mode }),
                     mutable,
                     init: initializer.map(|e| expr_to_vir(bctx, e)).transpose()?,
                 },

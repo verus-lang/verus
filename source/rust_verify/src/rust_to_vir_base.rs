@@ -95,17 +95,13 @@ fn get_trigger_arg(span: Span, token_tree: TokenTree) -> Result<u64, VirErr> {
     };
     match i {
         Some(i) => Ok(i),
-        None => err_span_string(
-            span,
-            format!("expected integer constant, found {:?}", &token_tree),
-        ),
+        None => {
+            err_span_string(span, format!("expected integer constant, found {:?}", &token_tree))
+        }
     }
 }
 
-pub(crate) fn get_trigger(
-    span: Span,
-    attrs: &[Attribute],
-) -> Result<Vec<Option<u64>>, VirErr> {
+pub(crate) fn get_trigger(span: Span, attrs: &[Attribute]) -> Result<Vec<Option<u64>>, VirErr> {
     let mut groups: Vec<Option<u64>> = Vec::new();
     for attr in attrs {
         match &attr.kind {
@@ -313,9 +309,7 @@ pub(crate) fn is_smt_arith<'tcx>(bctx: &BodyCtxt<'tcx>, id1: &HirId, id2: &HirId
     }
 }
 
-pub(crate) fn check_generics<'tcx>(
-    generics: &'tcx Generics<'tcx>,
-) -> Result<Idents, VirErr> {
+pub(crate) fn check_generics<'tcx>(generics: &'tcx Generics<'tcx>) -> Result<Idents, VirErr> {
     let Generics { params, where_clause, span: _ } = generics;
     let mut typ_params: Vec<vir::ast::Ident> = Vec::new();
     for param in params.iter() {
@@ -329,10 +323,6 @@ pub(crate) fn check_generics<'tcx>(
             _ => unsupported_err!(generics.span, "complex generics"),
         }
     }
-    unsupported_err_unless!(
-        where_clause.predicates.len() == 0,
-        generics.span,
-        "where clause"
-    );
+    unsupported_err_unless!(where_clause.predicates.len() == 0, generics.span, "where clause");
     Ok(Rc::new(typ_params))
 }
