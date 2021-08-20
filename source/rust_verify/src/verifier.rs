@@ -250,6 +250,7 @@ impl Verifier {
                 air_context.blank_line();
                 air_context.comment(&("Function-Def ".to_string() + &function.x.name));
             }
+            println!("Checking {} commands for {}", commands.len(), function.x.name);
             for command in commands.iter() {
                 self.check_result_validity(compiler, &command, air_context.command(&command));
             }

@@ -323,7 +323,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
                     if ctx.debug {
                         // Add a snapshot after we modify the destination
                         state.snapshot_count += 1;
-                        let name = format!("Mutation_{}", state.snapshot_count);
+                        let name = format!("{}_mutation", state.snapshot_count);
                         let snapshot = Rc::new(StmtX::Snapshot(Rc::new(name)));
                         stmts.push(snapshot);
                     }
@@ -360,7 +360,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
             if ctx.debug {
                 // Add a snapshot after we modify the destination
                 state.snapshot_count += 1;
-                let name = format!("Mutation_{}", state.snapshot_count);
+                let name = format!("{}_mutation", state.snapshot_count);
                 let snapshot = Rc::new(StmtX::Snapshot(Rc::new(name)));
                 stmts.push(snapshot);
             }
@@ -380,7 +380,15 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
             rhss.insert(0, neg_assume);
             let lblock = Rc::new(StmtX::Block(Rc::new(lhss)));
             let rblock = Rc::new(StmtX::Block(Rc::new(rhss)));
-            vec![Rc::new(StmtX::Switch(Rc::new(vec![lblock, rblock])))]
+            let mut stmts = vec![Rc::new(StmtX::Switch(Rc::new(vec![lblock, rblock])))];
+            if ctx.debug {
+                // Add a snapshot for the state after we join the lhs and rhs back together
+                state.snapshot_count += 1;
+                let name = format!("{}_join", state.snapshot_count);
+                let snapshot = Rc::new(StmtX::Snapshot(Rc::new(name)));
+                stmts.push(snapshot);
+            }
+            stmts
         }
         StmX::While { cond, body, invs, typ_inv_vars, modified_vars } => {
             let pos_cond = exp_to_expr(ctx, &cond);
@@ -430,6 +438,20 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
             } else {
                 Rc::new(StmtX::Block(Rc::new(air_body)))
             };
+
+            let assertion = if !ctx.debug {
+                assertion
+            } else {
+                // Add a snapshot to capture the start of the while loop
+                // We add the snapshot via Block to avoid copying the entire AST of the loop body
+                state.snapshot_count += 1;
+                let name = format!("{}_while_begin", state.snapshot_count);
+                let snapshot:Stmt = Rc::new(StmtX::Snapshot(Rc::new(name)));
+                let block_contents:Vec<Stmt> = vec!(snapshot, assertion);
+                let new_block:Stmt = Rc::new(StmtX::Block(Rc::new(block_contents)));
+                new_block
+            };
+
             let query = Rc::new(QueryX { local: Rc::new(local), assertion });
             state.commands.push(Rc::new(CommandX::CheckValid(query)));
 
@@ -457,6 +479,13 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
                 stmts.push(Rc::new(inv_stmt));
             }
             stmts.push(neg_assume);
+            if ctx.debug {
+                // Add a snapshot for the state after we emerge from the while loop
+                state.snapshot_count += 1;
+                let name = format!("{}_while_end", state.snapshot_count);
+                let snapshot = Rc::new(StmtX::Snapshot(Rc::new(name)));
+                stmts.push(snapshot);
+            }
             stmts
         }
         StmX::Fuel(x, fuel) => {
@@ -558,7 +587,7 @@ pub fn body_stm_to_air(
     let mut stmts = stm_to_stmts(ctx, &mut state, &stm);
 
     if ctx.debug {
-        let snapshot = Rc::new(StmtX::Snapshot(Rc::new("Entry".to_string())));
+        let snapshot = Rc::new(StmtX::Snapshot(Rc::new("0_entry".to_string())));
         let mut new_stmts = vec![snapshot];
         new_stmts.append(&mut stmts);
         stmts = new_stmts;
