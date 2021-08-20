@@ -4,8 +4,8 @@ use crate::ast::{
 };
 use crate::context::{AssertionInfo, Context, ValidityResult};
 use crate::def::{GLOBAL_PREFIX_LABEL, PREFIX_LABEL};
-use crate::smt_util::new_const;
 pub use crate::model::Model;
+use crate::smt_util::new_const;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 use z3::ast::{Ast, Bool, Dynamic, Int};

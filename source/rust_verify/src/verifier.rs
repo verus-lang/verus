@@ -341,9 +341,9 @@ impl rustc_driver::Callbacks for Verifier {
         }
     }
 
-    fn after_expansion<'a, 'tcx>(
-        &'a mut self,
-        compiler: &'a Compiler,
+    fn after_expansion<'tcx>(
+        &mut self,
+        compiler: &Compiler,
         queries: &'tcx rustc_interface::Queries<'tcx>,
     ) -> rustc_driver::Compilation {
         let _result = queries.global_ctxt().expect("global_ctxt").peek_mut().enter(|tcx| {

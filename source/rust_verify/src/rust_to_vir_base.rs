@@ -308,11 +308,7 @@ pub(crate) fn is_smt_equality<'tcx>(
 
 // Do arithmetic operations on these operands translate into the SMT solver's <=, +, =>, etc.?
 // (possibly with clipping/wrapping for finite-size integers?)
-pub(crate) fn is_smt_arith<'tcx>(
-    bctx: &BodyCtxt<'tcx>,
-    id1: &HirId,
-    id2: &HirId,
-) -> bool {
+pub(crate) fn is_smt_arith<'tcx>(bctx: &BodyCtxt<'tcx>, id1: &HirId, id2: &HirId) -> bool {
     match (&*typ_of_node(bctx, id1), &*typ_of_node(bctx, id2)) {
         (TypX::Bool, TypX::Bool) => true,
         (TypX::Int(_), TypX::Int(_)) => true,

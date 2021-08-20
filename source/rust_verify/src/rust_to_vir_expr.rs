@@ -483,9 +483,10 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                         IntRange::Int | IntRange::Nat | IntRange::U(_) | IntRange::USize => {
                             Ok(spanned_new(&bctx.ctxt, expr.span, ExprX::Const(c)))
                         }
-                        IntRange::I(_) | IntRange::ISize => {
-                            Ok(mk_clip(&range, &spanned_new(&bctx.ctxt, expr.span, ExprX::Const(c))))
-                        }
+                        IntRange::I(_) | IntRange::ISize => Ok(mk_clip(
+                            &range,
+                            &spanned_new(&bctx.ctxt, expr.span, ExprX::Const(c)),
+                        )),
                     }
                 } else {
                     panic!("unexpected constant: {:?} {:?}", lit, typ)

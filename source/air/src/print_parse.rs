@@ -512,11 +512,7 @@ pub(crate) fn node_to_expr(node: &Node) -> Result<Expr, String> {
                 {
                     let raw_span = Rc::new(());
                     let as_string = label[1..label.len() - 1].to_string();
-                    let span = Rc::new(Some(Span {
-                        description: None,
-                        raw_span,
-                        as_string,
-                    }));
+                    let span = Rc::new(Some(Span { description: None, raw_span, as_string }));
                     let expr = node_to_expr(e)?;
                     return Ok(Rc::new(ExprX::LabeledAssertion(span, expr)));
                 }
