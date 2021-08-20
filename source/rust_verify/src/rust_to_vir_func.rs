@@ -15,14 +15,14 @@ use vir::ast::{FunctionX, KrateX, Mode, ParamX, Typ, VirErr};
 use vir::def::RETURN_VALUE;
 
 pub(crate) fn body_to_vir<'tcx>(
-    ctxt: &'tcx Context<'tcx>,
+    ctxt: &Context<'tcx>,
     id: &BodyId,
     body: &Body<'tcx>,
     mode: Mode,
 ) -> Result<vir::ast::Expr, VirErr> {
     let def = rustc_middle::ty::WithOptConstParam::unknown(id.hir_id.owner);
     let types = ctxt.tcx.typeck_opt_const_arg(def);
-    let bctx = BodyCtxt { ctxt, types, mode };
+    let bctx = BodyCtxt { ctxt: ctxt.clone(), types, mode };
     expr_to_vir(&bctx, &body.value)
 }
 
@@ -47,7 +47,7 @@ fn check_fn_decl<'tcx>(
 }
 
 pub(crate) fn check_item_fn<'tcx>(
-    ctxt: &'tcx Context<'tcx>,
+    ctxt: &Context<'tcx>,
     vir: &mut KrateX,
     id: Ident,
     attrs: &[Attribute],

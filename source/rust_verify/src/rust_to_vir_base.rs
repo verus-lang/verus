@@ -266,7 +266,7 @@ pub(crate) fn ty_to_vir<'tcx>(tcx: TyCtxt<'tcx>, ty: &Ty) -> Typ {
 }
 
 pub(crate) struct BodyCtxt<'tcx> {
-    pub(crate) ctxt: &'tcx Context<'tcx>,
+    pub(crate) ctxt: Context<'tcx>,
     pub(crate) types: &'tcx TypeckResults<'tcx>,
     pub(crate) mode: Mode,
 }

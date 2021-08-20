@@ -23,7 +23,7 @@ use std::rc::Rc;
 use vir::ast::{Krate, KrateX, VirErr};
 
 fn check_item<'tcx>(
-    ctxt: &'tcx Context<'tcx>,
+    ctxt: &Context<'tcx>,
     vir: &mut KrateX,
     id: &ItemId,
     item: &'tcx Item<'tcx>,
@@ -249,7 +249,7 @@ fn check_attr<'tcx>(
     Ok(())
 }
 
-pub fn crate_to_vir<'tcx>(ctxt: &'tcx Context<'tcx>) -> Result<Krate, VirErr> {
+pub fn crate_to_vir<'tcx>(ctxt: &Context<'tcx>) -> Result<Krate, VirErr> {
     let Crate {
         item: _,
         exported_macros,
