@@ -57,7 +57,6 @@ fn check_item<'tcx>(
         ItemKind::Impl(impll) => {
             if let Some(TraitRef { path, hir_ref_id: _ }) = impll.of_trait {
                 unsupported_err_unless!(
-                    ctxt,
                     hack_check_def_name(
                         ctxt.tcx,
                         path.res.def_id(),
@@ -120,7 +119,6 @@ fn check_item<'tcx>(
                         };
                     let ty_applied_never = ctxt.tcx.mk_ty(ty_kind_applied_never);
                     err_unless!(
-                        ctxt,
                         ty_applied_never.is_structural_eq_shallow(ctxt.tcx),
                         item.span,
                         format!("Structural impl for non-structural type {:?}", ty),
@@ -129,14 +127,12 @@ fn check_item<'tcx>(
                 }
             } else {
                 unsupported_err_unless!(
-                    ctxt,
                     impll.of_trait.is_none(),
                     item.span,
                     "unsupported impl of trait",
                     item
                 );
                 unsupported_err_unless!(
-                    ctxt,
                     impll.generics.params.len() == 0,
                     item.span,
                     "unsupported impl of non-trait with generics",
@@ -147,7 +143,6 @@ fn check_item<'tcx>(
                         for impl_item in impll.items {
                             // TODO once we have references
                             unsupported_err!(
-                                ctxt,
                                 item.span,
                                 "unsupported method in impl",
                                 impl_item
@@ -156,7 +151,6 @@ fn check_item<'tcx>(
                     }
                     _ => {
                         unsupported_err!(
-                            ctxt,
                             item.span,
                             "unsupported impl of non-path type",
                             item
@@ -167,7 +161,6 @@ fn check_item<'tcx>(
         }
         ItemKind::Const(_ty, _body_id) => {
             unsupported_err_unless!(
-                ctxt,
                 hack_get_def_name(ctxt.tcx, _body_id.hir_id.owner.to_def_id())
                     .starts_with("_DERIVE_builtin_Structural_FOR_"),
                 item.span,
@@ -176,7 +169,7 @@ fn check_item<'tcx>(
             );
         }
         _ => {
-            unsupported_err!(ctxt, item.span, "unsupported item", item);
+            unsupported_err!(item.span, "unsupported item", item);
         }
     }
     Ok(())
@@ -234,7 +227,7 @@ fn check_foreign_item<'tcx>(
             )?;
         }
         _ => {
-            unsupported_err!(ctxt, item.span, "unsupported item", item);
+            unsupported_err!(item.span, "unsupported item", item);
         }
     }
     Ok(())

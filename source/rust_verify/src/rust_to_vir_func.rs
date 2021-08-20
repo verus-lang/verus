@@ -62,11 +62,11 @@ pub(crate) fn check_item_fn<'tcx>(
             decl,
             span: _,
         } => {
-            unsupported_err_unless!(ctxt, *unsafety == Unsafety::Normal, sig.span, "unsafe");
+            unsupported_err_unless!(*unsafety == Unsafety::Normal, sig.span, "unsafe");
             check_fn_decl(ctxt.tcx, decl, mode)?
         }
     };
-    let typ_params = check_generics(ctxt, generics)?;
+    let typ_params = check_generics(generics)?;
     let fuel = get_fuel(attrs);
     let body = &ctxt.krate.bodies[body_id];
     let Body { params, value: _, generator_kind } = body;
@@ -76,33 +76,32 @@ pub(crate) fn check_item_fn<'tcx>(
         let name = Rc::new(pat_to_var(pat));
         let typ = ty_to_vir(ctxt.tcx, input);
         let mode = get_var_mode(mode, ctxt.tcx.hir().attrs(*hir_id));
-        let vir_param = spanned_new(ctxt, *span, ParamX { name, typ, mode });
+        let vir_param = spanned_new(*span, ParamX { name, typ, mode });
         vir_params.push(vir_param);
     }
     match generator_kind {
         None => {}
         _ => {
-            unsupported_err!(ctxt, sig.span, "generator_kind", generator_kind);
+            unsupported_err!(sig.span, "generator_kind", generator_kind);
         }
     }
     let mut vir_body = body_to_vir(ctxt, body_id, body, mode)?;
     let header = vir::headers::read_header(&mut vir_body)?;
     if mode == Mode::Spec && (header.require.len() + header.ensure.len()) > 0 {
-        return err_span_str(ctxt, sig.span, "spec functions cannot have requires/ensures");
+        return err_span_str(sig.span, "spec functions cannot have requires/ensures");
     }
     if header.ensure.len() > 0 {
         match (&header.ensure_id_typ, ret_typ_mode.as_ref()) {
             (None, None) => {}
             (None, Some(_)) => {
-                return err_span_str(ctxt, sig.span, "ensures clause must be a closure");
+                return err_span_str(sig.span, "ensures clause must be a closure");
             }
             (Some(_), None) => {
-                return err_span_str(ctxt, sig.span, "ensures clause cannot be a closure");
+                return err_span_str(sig.span, "ensures clause cannot be a closure");
             }
             (Some((_, typ)), Some((ret_typ, _))) => {
                 if !vir::ast_util::types_equal(&typ, &ret_typ) {
                     return err_span_string(
-                        ctxt,
                         sig.span,
                         format!(
                             "return type is {:?}, but ensures expects type {:?}",
@@ -134,7 +133,7 @@ pub(crate) fn check_item_fn<'tcx>(
         hidden: Rc::new(header.hidden),
         body: Some(vir_body),
     };
-    let function = spanned_new(ctxt, sig.span, func);
+    let function = spanned_new(sig.span, func);
     vir.functions.push(function);
     Ok(())
 }
@@ -151,14 +150,14 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
 ) -> Result<(), VirErr> {
     let mode = get_mode(Mode::Exec, attrs);
     let ret_typ_mode = check_fn_decl(ctxt.tcx, decl, mode)?;
-    let typ_params = check_generics(ctxt, generics)?;
+    let typ_params = check_generics(generics)?;
     let fuel = get_fuel(attrs);
     let mut vir_params: Vec<vir::ast::Param> = Vec::new();
     for (param, input) in idents.iter().zip(decl.inputs.iter()) {
         let name = Rc::new(ident_to_var(param));
         let typ = ty_to_vir(ctxt.tcx, input);
         // REVIEW: the parameters don't have attributes, so we use the overall mode
-        let vir_param = spanned_new(ctxt, param.span, ParamX { name, typ, mode });
+        let vir_param = spanned_new(param.span, ParamX { name, typ, mode });
         vir_params.push(vir_param);
     }
     let name = Rc::new(ident_to_var(&id));
@@ -176,7 +175,7 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
         hidden: Rc::new(vec![]),
         body: None,
     };
-    let function = spanned_new(ctxt, span, func);
+    let function = spanned_new(span, func);
     vir.functions.push(function);
     Ok(())
 }
