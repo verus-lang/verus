@@ -270,10 +270,15 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp) -> Expr {
 struct State {
     local_shared: Vec<Decl>, // shared between all queries for a single function
     commands: Vec<Command>,
-    snapshot_count: u32,
+    snapshot_count: u32,     // Used to ensure unique Idents for each snapshot
+    latest_snapshot: Ident,  // The ID of the closest snapshot that dominates the current position in the AST
+    snap_map: Vec<(Span, Ident)>, // Maps each statement's span to the closest dominating snapshot's ID
 }
 
 fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
+    if ctx.debug {
+        state.snap_map.push((stm.span.clone(), state.latest_snapshot.clone()));
+    }
     match &stm.x {
         StmX::Call(x, typs, args, dest) => {
             let mut stmts: Vec<Stmt> = Vec::new();
@@ -324,8 +329,9 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
                         // Add a snapshot after we modify the destination
                         state.snapshot_count += 1;
                         let name = format!("{}_mutation", state.snapshot_count);
-                        let snapshot = Rc::new(StmtX::Snapshot(Rc::new(name)));
+                        let snapshot = Rc::new(StmtX::Snapshot(Rc::new(name.clone())));
                         stmts.push(snapshot);
+                        state.latest_snapshot = Rc::new(name);
                     }
                 }
             }
@@ -361,8 +367,9 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
                 // Add a snapshot after we modify the destination
                 state.snapshot_count += 1;
                 let name = format!("{}_mutation", state.snapshot_count);
-                let snapshot = Rc::new(StmtX::Snapshot(Rc::new(name)));
+                let snapshot = Rc::new(StmtX::Snapshot(Rc::new(name.clone())));
                 stmts.push(snapshot);
+                state.latest_snapshot = Rc::new(name);
             }
             stmts
         }
@@ -385,8 +392,9 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
                 // Add a snapshot for the state after we join the lhs and rhs back together
                 state.snapshot_count += 1;
                 let name = format!("{}_join", state.snapshot_count);
-                let snapshot = Rc::new(StmtX::Snapshot(Rc::new(name)));
+                let snapshot = Rc::new(StmtX::Snapshot(Rc::new(name.clone())));
                 stmts.push(snapshot);
+                state.latest_snapshot = Rc::new(name);
             }
             stmts
         }
@@ -446,7 +454,8 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
                 // We add the snapshot via Block to avoid copying the entire AST of the loop body
                 state.snapshot_count += 1;
                 let name = format!("{}_while_begin", state.snapshot_count);
-                let snapshot:Stmt = Rc::new(StmtX::Snapshot(Rc::new(name)));
+                let snapshot:Stmt = Rc::new(StmtX::Snapshot(Rc::new(name.clone())));
+                state.latest_snapshot = Rc::new(name);
                 let block_contents:Vec<Stmt> = vec!(snapshot, assertion);
                 let new_block:Stmt = Rc::new(StmtX::Block(Rc::new(block_contents)));
                 new_block
@@ -483,8 +492,9 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
                 // Add a snapshot for the state after we emerge from the while loop
                 state.snapshot_count += 1;
                 let name = format!("{}_while_end", state.snapshot_count);
-                let snapshot = Rc::new(StmtX::Snapshot(Rc::new(name)));
+                let snapshot = Rc::new(StmtX::Snapshot(Rc::new(name.clone())));
                 stmts.push(snapshot);
+                state.latest_snapshot = Rc::new(name);
             }
             stmts
         }
@@ -581,13 +591,15 @@ pub fn body_stm_to_air(
         assigned.insert(param.x.name.clone());
     }
 
-    let mut state = State { local_shared, commands: Vec::new(), snapshot_count: 0 };
+    let initial_snapshot_name = Rc::new("0_entry".to_string());
+
+    let mut state = State { local_shared, commands: Vec::new(), snapshot_count: 0, latest_snapshot: initial_snapshot_name.clone(), snap_map: Vec::new() };
 
     let stm = crate::sst_vars::stm_assign(&mut declared, &mut assigned, &mut HashSet::new(), stm);
     let mut stmts = stm_to_stmts(ctx, &mut state, &stm);
 
     if ctx.debug {
-        let snapshot = Rc::new(StmtX::Snapshot(Rc::new("0_entry".to_string())));
+        let snapshot = Rc::new(StmtX::Snapshot(initial_snapshot_name));
         let mut new_stmts = vec![snapshot];
         new_stmts.append(&mut stmts);
         stmts = new_stmts;
