@@ -1,25 +1,15 @@
 use crate::ast::{
-    BinaryOp, BindX, Constant, Decl, DeclX, Expr, ExprX, Ident, MultiOp, Quant, Query, Span, StmtX,
-    Typ, TypX, UnaryOp, ValidityResult,
+    BinaryOp, BindX, Constant, Decl, DeclX, Expr, ExprX, Ident, MultiOp, Quant, Query, Snapshots,
+    Span, StmtX, Typ, TypX, UnaryOp,
 };
-use crate::context::{AssertionInfo, Context};
+use crate::context::{AssertionInfo, Context, ValidityResult};
 use crate::def::{GLOBAL_PREFIX_LABEL, PREFIX_LABEL};
+pub use crate::model::Model;
+use crate::smt_util::new_const;
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 use z3::ast::{Ast, Bool, Dynamic, Int};
 use z3::{Pattern, SatResult, Sort, Symbol};
-
-fn new_const<'ctx>(context: &mut Context<'ctx>, name: &String, typ: &Typ) -> Dynamic<'ctx> {
-    match &**typ {
-        TypX::Bool => Bool::new_const(context.context, name.clone()).into(),
-        TypX::Int => Int::new_const(context.context, name.clone()).into(),
-        TypX::Named(x) => {
-            let sort = &context.typs[x];
-            let fdecl = z3::FuncDecl::new(context.context, name.clone(), &[], sort);
-            fdecl.apply(&[])
-        }
-    }
-}
 
 fn expr_to_smt<'ctx>(context: &mut Context<'ctx>, expr: &Expr) -> Dynamic<'ctx> {
     match &**expr {
@@ -353,8 +343,10 @@ pub(crate) fn smt_add_decl<'ctx>(context: &mut Context<'ctx>, decl: &Decl) {
 fn smt_check_assertion<'ctx>(
     context: &mut Context<'ctx>,
     infos: &Vec<AssertionInfo>,
+    snapshots: Snapshots,
+    local_vars: Vec<Decl>, // Expected to be entirely DeclX::Const
     expr: &Expr,
-) -> ValidityResult {
+) -> ValidityResult<'ctx> {
     let mut discovered_span = Rc::new(None);
     let mut discovered_global_span = Rc::new(None);
     let not_expr = Rc::new(ExprX::Unary(UnaryOp::Not, expr.clone()));
@@ -375,7 +367,7 @@ fn smt_check_assertion<'ctx>(
         SatResult::Sat | SatResult::Unknown => {
             context.smt_log.log_word("get-model");
             let model = context.solver.get_model();
-            match model {
+            let mut air_model = match model {
                 None => {
                     panic!("SMT solver did not generate a model");
                 }
@@ -411,14 +403,26 @@ fn smt_check_assertion<'ctx>(
                             }
                         }
                     }
+                    if context.debug {
+                        println!("Z3 model: {}", model);
+                    }
+                    Model::new(model, snapshots)
                 }
+            };
+            if context.debug {
+                air_model.build(context, local_vars);
             }
-            ValidityResult::Invalid(discovered_span, discovered_global_span)
+            ValidityResult::Invalid(air_model, discovered_span, discovered_global_span)
         }
     }
 }
 
-pub(crate) fn smt_check_query<'ctx>(context: &mut Context<'ctx>, query: &Query) -> ValidityResult {
+pub(crate) fn smt_check_query<'ctx>(
+    context: &mut Context<'ctx>,
+    query: &Query,
+    snapshots: Snapshots,
+    local_vars: Vec<Decl>,
+) -> ValidityResult<'ctx> {
     context.smt_log.log_push();
     context.solver.push();
     context.push_name_scope();
@@ -451,7 +455,7 @@ pub(crate) fn smt_check_query<'ctx>(context: &mut Context<'ctx>, query: &Query) 
     }
 
     // check assertion
-    let result = smt_check_assertion(context, &infos, &labeled_assertion);
+    let result = smt_check_assertion(context, &infos, snapshots, local_vars, &labeled_assertion);
 
     // clean up
     context.pop_name_scope();

@@ -270,6 +270,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp) -> Expr {
 struct State {
     local_shared: Vec<Decl>, // shared between all queries for a single function
     commands: Vec<Command>,
+    snapshot_count: u32,
 }
 
 fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
@@ -319,6 +320,13 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
                         let havoc = StmtX::Havoc(x.clone());
                         stmts.push(Rc::new(havoc));
                     }
+                    if ctx.debug {
+                        // Add a snapshot after we modify the destination
+                        state.snapshot_count += 1;
+                        let name = format!("Mutation_{}", state.snapshot_count);
+                        let snapshot = Rc::new(StmtX::Snapshot(Rc::new(name)));
+                        stmts.push(snapshot);
+                    }
                 }
             }
             if func.x.ensure.len() > 0 {
@@ -343,11 +351,20 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
             vec![]
         }
         StmX::Assign(lhs, rhs) => {
+            let mut stmts: Vec<Stmt> = Vec::new();
             let ident = match &lhs.x {
                 ExpX::Var(ident) => ident,
                 _ => panic!("unexpected lhs {:?} in assign", lhs),
             };
-            vec![Rc::new(StmtX::Assign(suffix_local_id(&ident), exp_to_expr(ctx, rhs)))]
+            stmts.push(Rc::new(StmtX::Assign(suffix_local_id(&ident), exp_to_expr(ctx, rhs))));
+            if ctx.debug {
+                // Add a snapshot after we modify the destination
+                state.snapshot_count += 1;
+                let name = format!("Mutation_{}", state.snapshot_count);
+                let snapshot = Rc::new(StmtX::Snapshot(Rc::new(name)));
+                stmts.push(snapshot);
+            }
+            stmts
         }
         StmX::If(cond, lhs, rhs) => {
             let pos_cond = exp_to_expr(ctx, &cond);
@@ -535,10 +552,17 @@ pub fn body_stm_to_air(
         assigned.insert(param.x.name.clone());
     }
 
-    let mut state = State { local_shared, commands: Vec::new() };
+    let mut state = State { local_shared, commands: Vec::new(), snapshot_count: 0 };
 
     let stm = crate::sst_vars::stm_assign(&mut declared, &mut assigned, &mut HashSet::new(), stm);
     let mut stmts = stm_to_stmts(ctx, &mut state, &stm);
+
+    if ctx.debug {
+        let snapshot = Rc::new(StmtX::Snapshot(Rc::new("Entry".to_string())));
+        let mut new_stmts = vec![snapshot];
+        new_stmts.append(&mut stmts);
+        stmts = new_stmts;
+    }
 
     let mut local = state.local_shared.clone();
 

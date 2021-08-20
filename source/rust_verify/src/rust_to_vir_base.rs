@@ -1,3 +1,4 @@
+use crate::context::Context;
 use crate::util::{err_span_str, err_span_string, unsupported_err_span};
 use crate::{unsupported, unsupported_err, unsupported_err_unless};
 use rustc_ast::token::{Token, TokenKind};
@@ -257,35 +258,36 @@ pub(crate) fn ty_to_vir<'tcx>(tcx: TyCtxt<'tcx>, ty: &Ty) -> Typ {
     Rc::new(typ_x)
 }
 
-pub(crate) struct Ctxt<'tcx> {
-    pub(crate) tcx: TyCtxt<'tcx>,
+pub(crate) struct BodyCtxt<'tcx> {
+    pub(crate) ctxt: Context<'tcx>,
     pub(crate) types: &'tcx TypeckResults<'tcx>,
     pub(crate) mode: Mode,
 }
 
-pub(crate) fn typ_of_node<'tcx>(ctxt: &Ctxt<'tcx>, id: &HirId) -> Typ {
-    mid_ty_to_vir(ctxt.tcx, ctxt.types.node_type(*id))
+pub(crate) fn typ_of_node<'tcx>(bctx: &BodyCtxt<'tcx>, id: &HirId) -> Typ {
+    mid_ty_to_vir(bctx.ctxt.tcx, bctx.types.node_type(*id))
 }
 
 // Do equality operations on these operands translate into the SMT solver's == operation?
 pub(crate) fn is_smt_equality<'tcx>(
-    ctxt: &Ctxt<'tcx>,
+    bctx: &BodyCtxt<'tcx>,
     _span: Span,
     id1: &HirId,
     id2: &HirId,
 ) -> bool {
-    let (t1, t2) = (typ_of_node(ctxt, id1), typ_of_node(ctxt, id2));
+    let (t1, t2) = (typ_of_node(bctx, id1), typ_of_node(bctx, id2));
     match (&*t1, &*t2) {
         (TypX::Bool, TypX::Bool) => true,
         (TypX::Int(_), TypX::Int(_)) => true,
         (TypX::Path(_), TypX::Path(_)) if types_equal(&t1, &t2) => {
-            let structural_def_id = ctxt
+            let structural_def_id = bctx
+                .ctxt
                 .tcx
                 .get_diagnostic_item(rustc_span::Symbol::intern("builtin::Structural"))
                 .expect("structural trait is not defined");
-            let ty = ctxt.types.node_type(*id1);
-            let substs_ref = ctxt.tcx.mk_substs([].iter());
-            let ty_impls_structural = ctxt.tcx.type_implements_trait((
+            let ty = bctx.types.node_type(*id1);
+            let substs_ref = bctx.ctxt.tcx.mk_substs([].iter());
+            let ty_impls_structural = bctx.ctxt.tcx.type_implements_trait((
                 structural_def_id,
                 ty,
                 substs_ref,
@@ -299,8 +301,8 @@ pub(crate) fn is_smt_equality<'tcx>(
 
 // Do arithmetic operations on these operands translate into the SMT solver's <=, +, =>, etc.?
 // (possibly with clipping/wrapping for finite-size integers?)
-pub(crate) fn is_smt_arith<'tcx>(ctxt: &Ctxt<'tcx>, id1: &HirId, id2: &HirId) -> bool {
-    match (&*typ_of_node(ctxt, id1), &*typ_of_node(ctxt, id2)) {
+pub(crate) fn is_smt_arith<'tcx>(bctx: &BodyCtxt<'tcx>, id1: &HirId, id2: &HirId) -> bool {
+    match (&*typ_of_node(bctx, id1), &*typ_of_node(bctx, id2)) {
         (TypX::Bool, TypX::Bool) => true,
         (TypX::Int(_), TypX::Int(_)) => true,
         _ => false,

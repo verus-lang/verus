@@ -1,10 +1,10 @@
+use crate::context::Context;
 use crate::rust_to_vir_base::{
     check_generics, def_id_to_vir_path, get_mode, hack_get_def_name, ty_to_vir,
 };
 use crate::unsupported_unless;
 use crate::util::spanned_new;
-use rustc_hir::{Crate, EnumDef, Generics, ItemId, VariantData};
-use rustc_middle::ty::TyCtxt;
+use rustc_hir::{EnumDef, Generics, ItemId, VariantData};
 use rustc_span::Span;
 use std::rc::Rc;
 use vir::ast::{DatatypeX, Ident, KrateX, Mode, Variant, VirErr};
@@ -12,8 +12,7 @@ use vir::ast_util::{ident_binder, str_ident};
 use vir::def::{variant_field_ident, variant_ident, variant_positional_field_ident};
 
 fn check_variant_data<'tcx>(
-    tcx: TyCtxt<'tcx>,
-    _krate: &'tcx Crate<'tcx>,
+    ctxt: &Context<'tcx>,
     name: &Ident,
     variant_data: &'tcx VariantData<'tcx>,
 ) -> Variant {
@@ -31,8 +30,8 @@ fn check_variant_data<'tcx>(
                             ident_binder(
                                 &variant_field_ident(name, &field.ident.as_str()),
                                 &(
-                                    ty_to_vir(tcx, field.ty),
-                                    get_mode(Mode::Exec, tcx.hir().attrs(field.hir_id)),
+                                    ty_to_vir(ctxt.tcx, field.ty),
+                                    get_mode(Mode::Exec, ctxt.tcx.hir().attrs(field.hir_id)),
                                 ),
                             )
                         })
@@ -47,8 +46,8 @@ fn check_variant_data<'tcx>(
                         ident_binder(
                             &variant_positional_field_ident(name, i),
                             &(
-                                ty_to_vir(tcx, field.ty),
-                                get_mode(Mode::Exec, tcx.hir().attrs(field.hir_id)),
+                                ty_to_vir(ctxt.tcx, field.ty),
+                                get_mode(Mode::Exec, ctxt.tcx.hir().attrs(field.hir_id)),
                             ),
                         )
                     })
@@ -60,8 +59,7 @@ fn check_variant_data<'tcx>(
 }
 
 pub fn check_item_struct<'tcx>(
-    tcx: TyCtxt<'tcx>,
-    krate: &'tcx Crate<'tcx>,
+    ctxt: &Context<'tcx>,
     vir: &mut KrateX,
     span: Span,
     id: &ItemId,
@@ -69,17 +67,16 @@ pub fn check_item_struct<'tcx>(
     generics: &'tcx Generics<'tcx>,
 ) -> Result<(), VirErr> {
     check_generics(generics)?;
-    let name = hack_get_def_name(tcx, id.def_id.to_def_id());
-    let path = def_id_to_vir_path(tcx, id.def_id.to_def_id());
+    let name = hack_get_def_name(ctxt.tcx, id.def_id.to_def_id());
+    let path = def_id_to_vir_path(ctxt.tcx, id.def_id.to_def_id());
     let variant_name = variant_ident(&name, &name);
-    let variants = Rc::new(vec![check_variant_data(tcx, krate, &variant_name, variant_data)]);
+    let variants = Rc::new(vec![check_variant_data(ctxt, &variant_name, variant_data)]);
     vir.datatypes.push(spanned_new(span, DatatypeX { path, variants }));
     Ok(())
 }
 
 pub fn check_item_enum<'tcx>(
-    tcx: TyCtxt<'tcx>,
-    krate: &'tcx Crate<'tcx>,
+    ctxt: &Context<'tcx>,
     vir: &mut KrateX,
     span: Span,
     id: &ItemId,
@@ -87,8 +84,8 @@ pub fn check_item_enum<'tcx>(
     generics: &'tcx Generics<'tcx>,
 ) -> Result<(), VirErr> {
     check_generics(generics)?;
-    let name = Rc::new(hack_get_def_name(tcx, id.def_id.to_def_id()));
-    let path = def_id_to_vir_path(tcx, id.def_id.to_def_id());
+    let name = Rc::new(hack_get_def_name(ctxt.tcx, id.def_id.to_def_id()));
+    let path = def_id_to_vir_path(ctxt.tcx, id.def_id.to_def_id());
     let variants = Rc::new(
         enum_def
             .variants
@@ -99,7 +96,7 @@ pub fn check_item_enum<'tcx>(
                     format!("{}{}{}", name, vir::def::VARIANT_SEPARATOR, rust_variant_name)
                         .as_str(),
                 );
-                check_variant_data(tcx, krate, &variant_name, &variant.data)
+                check_variant_data(ctxt, &variant_name, &variant.data)
             })
             .collect::<Vec<_>>(),
     );

@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::rc::Rc;
 
 pub type RawSpan = Rc<dyn std::any::Any>;
@@ -11,14 +12,10 @@ pub type SpanOption = Rc<Option<Span>>;
 
 pub type TypeError = String;
 
-#[derive(Debug)]
-pub enum ValidityResult {
-    Valid,
-    Invalid(SpanOption, SpanOption),
-    TypeError(TypeError),
-}
-
 pub type Ident = Rc<String>;
+
+pub(crate) type Snapshot = HashMap<Ident, u32>;
+pub(crate) type Snapshots = HashMap<Ident, Snapshot>;
 
 pub type Typ = Rc<TypX>;
 pub type Typs = Rc<Vec<Typ>>;

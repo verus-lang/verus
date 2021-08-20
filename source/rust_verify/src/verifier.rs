@@ -1,6 +1,8 @@
 use crate::config::Args;
+use crate::context::Context;
 use crate::unsupported;
-use air::ast::{Command, CommandX, SpanOption, ValidityResult};
+use air::ast::{Command, CommandX, SpanOption};
+use air::context::ValidityResult;
 use rustc_interface::interface::Compiler;
 use rustc_middle::ty::TyCtxt;
 use rustc_span::source_map::SourceMap;
@@ -146,7 +148,7 @@ impl Verifier {
             ValidityResult::TypeError(err) => {
                 panic!("internal error: generated ill-typed AIR code: {}", err);
             }
-            ValidityResult::Invalid(span1, span2) => {
+            ValidityResult::Invalid(m, span1, span2) => {
                 report_verify_error(compiler, &span1, &span2);
                 self.errors.push((
                     span1
@@ -157,7 +159,10 @@ impl Verifier {
                         .as_ref()
                         .as_ref()
                         .map(|x| ErrorSpan::new_from_air_span(compiler.session().source_map(), x)),
-                ))
+                ));
+                if self.args.debug {
+                    println!("Received model: {}", m);
+                }
             }
         }
     }
@@ -171,6 +176,7 @@ impl Verifier {
         let z3_context = z3::Context::new(&z3_config);
         let z3_solver = z3::Solver::new(&z3_context);
         let mut air_context = air::context::Context::new(&z3_context, &z3_solver);
+        air_context.set_debug(self.args.debug);
 
         if let Some(filename) = &self.args.log_air_initial {
             let file = File::create(filename).expect(&format!("could not open file {}", filename));
@@ -189,7 +195,7 @@ impl Verifier {
         air_context.set_z3_param("air_recommended_options", "true");
         air_context.set_rlimit(self.args.rlimit * 1000000);
 
-        let ctx = vir::context::Ctx::new(&krate)?;
+        let ctx = vir::context::Ctx::new(&krate, self.args.debug)?;
 
         air_context.blank_line();
         air_context.comment("Prelude");
@@ -281,7 +287,8 @@ impl Verifier {
         }
 
         let hir = tcx.hir();
-        let vir_crate = crate::rust_to_vir::crate_to_vir(tcx, hir.krate())?;
+        let ctxt = Context { tcx, krate: hir.krate() };
+        let vir_crate = crate::rust_to_vir::crate_to_vir(&ctxt)?;
         if let Some(filename) = &self.args.log_vir {
             let mut file =
                 File::create(filename).expect(&format!("could not open file {}", filename));

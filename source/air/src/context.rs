@@ -1,4 +1,5 @@
-use crate::ast::{Command, CommandX, Decl, Ident, Query, SpanOption, TypeError, ValidityResult};
+use crate::ast::{Command, CommandX, Decl, Ident, Query, SpanOption, TypeError};
+use crate::model::Model;
 use crate::print_parse::Logger;
 use crate::typecheck::Typing;
 use std::collections::{HashMap, HashSet};
@@ -13,6 +14,13 @@ pub(crate) struct AssertionInfo {
     pub(crate) decl: Decl,
 }
 
+#[derive(Debug)]
+pub enum ValidityResult<'a> {
+    Valid,
+    Invalid(Model<'a>, SpanOption, SpanOption),
+    TypeError(TypeError),
+}
+
 pub struct Context<'ctx> {
     pub(crate) context: &'ctx z3::Context,
     pub(crate) solver: &'ctx z3::Solver<'ctx>,
@@ -22,6 +30,7 @@ pub struct Context<'ctx> {
     pub(crate) assert_infos: HashMap<Ident, Rc<AssertionInfo>>,
     pub(crate) assert_infos_count: u64,
     pub(crate) typing: Typing,
+    pub(crate) debug: bool,
     pub(crate) rlimit: u32,
     pub(crate) air_initial_log: Logger,
     pub(crate) air_middle_log: Logger,
@@ -47,6 +56,7 @@ impl<'ctx> Context<'ctx> {
                 funs: HashMap::new(),
                 snapshots: HashSet::new(),
             },
+            debug: false,
             rlimit: 0,
             air_initial_log: Logger::new(None),
             air_middle_log: Logger::new(None),
@@ -70,6 +80,14 @@ impl<'ctx> Context<'ctx> {
 
     pub fn set_smt_log(&mut self, writer: Box<dyn std::io::Write>) {
         self.smt_log = Logger::new(Some(writer));
+    }
+
+    pub fn set_debug(&mut self, debug: bool) {
+        self.debug = debug;
+    }
+
+    pub fn get_debug(&self) -> bool {
+        self.debug
     }
 
     pub fn set_rlimit(&mut self, rlimit: u32) {
@@ -219,12 +237,12 @@ impl<'ctx> Context<'ctx> {
         if let Err(err) = crate::typecheck::check_query(self, query) {
             return ValidityResult::TypeError(err);
         }
-        let query = crate::var_to_const::lower_query(query);
+        let (query, snapshots, local_vars) = crate::var_to_const::lower_query(query);
         self.air_middle_log.log_query(&query);
         let query = crate::block_to_assert::lower_query(&query);
         self.air_final_log.log_query(&query);
 
-        let validity = crate::smt_verify::smt_check_query(self, &query);
+        let validity = crate::smt_verify::smt_check_query(self, &query, snapshots, local_vars);
 
         validity
     }
