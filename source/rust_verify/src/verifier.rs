@@ -1,7 +1,7 @@
 use crate::config::Args;
 use crate::context::Context;
 use crate::unsupported;
-use air::ast::{Command, CommandX, SpanOption};
+use air::ast::{Command, CommandX, Ident, SpanOption};
 use air::context::ValidityResult;
 use rustc_interface::interface::Compiler;
 use rustc_middle::ty::TyCtxt;
@@ -136,6 +136,7 @@ impl Verifier {
     fn check_result_validity(
         &mut self,
         compiler: &Compiler,
+        snap_map: &Vec<(air::ast::Span, Ident)>,
         command: &Command,
         result: ValidityResult,
     ) {
@@ -239,20 +240,20 @@ impl Verifier {
                 air_context.comment(&("Function-Decl ".to_string() + &function.x.name));
             }
             for command in commands.iter() {
-                self.check_result_validity(compiler, &command, air_context.command(&command));
+                Self::check_internal_result(air_context.command(&command));
             }
         }
 
         // Create queries to check the validity of proof/exec function bodies
         for function in &krate.functions {
-            let commands = vir::func_to_air::func_def_to_air(&ctx, &function)?;
+            let (commands, snap_map) = vir::func_to_air::func_def_to_air(&ctx, &function)?;
             if commands.len() > 0 {
                 air_context.blank_line();
                 air_context.comment(&("Function-Def ".to_string() + &function.x.name));
             }
             println!("Checking {} commands for {}", commands.len(), function.x.name);
             for command in commands.iter() {
-                self.check_result_validity(compiler, &command, air_context.command(&command));
+                self.check_result_validity(compiler, &snap_map, &command, air_context.command(&command));
             }
         }
 

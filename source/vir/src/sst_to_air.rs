@@ -562,7 +562,7 @@ pub fn body_stm_to_air(
     reqs: &Vec<Exp>,
     enss: &Vec<Exp>,
     stm: &Stm,
-) -> Commands {
+) -> (Commands, Vec<(Span, Ident)>) {
     // Verifying a single function can generate multiple SMT queries.
     // Some declarations (local_shared) are shared among the queries.
     // Others are private to each query.
@@ -630,5 +630,5 @@ pub fn body_stm_to_air(
 
     let query = Rc::new(QueryX { local: Rc::new(local), assertion });
     state.commands.push(Rc::new(CommandX::CheckValid(query)));
-    Rc::new(state.commands)
+    (Rc::new(state.commands), state.snap_map)
 }

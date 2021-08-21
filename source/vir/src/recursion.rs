@@ -266,7 +266,9 @@ pub(crate) fn check_termination_exp(
         StmX::Block(Rc::new(vec![stm_decl, stm_assign, stm_assert])),
     );
 
-    let commands = crate::sst_to_air::body_stm_to_air(
+    // TODO: If we decide to support debugging decreases failures, we should plumb _snap_map
+    // up to the VIR model
+    let (commands, _snap_map) = crate::sst_to_air::body_stm_to_air(     
         ctx,
         &function.x.typ_params,
         &function.x.params,

@@ -284,7 +284,7 @@ pub fn func_decl_to_air(ctx: &Ctx, function: &Function) -> Result<Commands, VirE
     Ok(Rc::new(commands))
 }
 
-pub fn func_def_to_air(ctx: &Ctx, function: &Function) -> Result<Commands, VirErr> {
+pub fn func_def_to_air(ctx: &Ctx, function: &Function) -> Result<(Commands, Vec<(Span, Ident)>), VirErr> {
     match (function.x.mode, function.x.ret.as_ref(), function.x.body.as_ref()) {
         (Mode::Exec, _, Some(body)) | (Mode::Proof, _, Some(body)) => {
             let dest = function.x.ret.as_ref().map(|(x, _, _)| x.clone());
@@ -294,7 +294,7 @@ pub fn func_def_to_air(ctx: &Ctx, function: &Function) -> Result<Commands, VirEr
                 vec_map_result(&*function.x.ensure, |e| crate::ast_to_sst::expr_to_exp(ctx, e))?;
             let stm = crate::ast_to_sst::expr_to_stm(&ctx, &body, &dest)?;
             let stm = crate::recursion::check_termination_stm(ctx, function, &stm)?;
-            let commands = crate::sst_to_air::body_stm_to_air(
+            let (commands, snap_map) = crate::sst_to_air::body_stm_to_air(
                 ctx,
                 &function.x.typ_params,
                 &function.x.params,
@@ -304,8 +304,8 @@ pub fn func_def_to_air(ctx: &Ctx, function: &Function) -> Result<Commands, VirEr
                 &enss,
                 &stm,
             );
-            Ok(commands)
+            Ok((commands, snap_map))
         }
-        _ => Ok(Rc::new(vec![])),
+        _ => Ok((Rc::new(vec![]), vec![])),
     }
 }
