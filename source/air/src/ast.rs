@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::rc::Rc;
 
-pub type RawSpan = Rc<dyn std::any::Any>;
+pub type RawSpan = Rc<dyn std::any::Any + std::marker::Sync + std::marker::Send>;
 #[derive(Clone)] // for Debug, see ast_util
 pub struct Span {
     pub description: Option<String>,
