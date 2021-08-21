@@ -1,5 +1,6 @@
 use crate::config::Args;
 use crate::context::Context;
+use crate::model::Model;
 use crate::unsupported;
 use air::ast::{Command, CommandX, Ident, SpanOption};
 use air::context::ValidityResult;
@@ -10,6 +11,7 @@ use rustc_span::{CharPos, FileName, MultiSpan, Span};
 use std::fs::File;
 use std::io::Write;
 use vir::ast::{Krate, VirErr, VirErrX};
+use vir::model::Model as VModel;
 
 pub struct Verifier {
     pub encountered_vir_error: bool,
@@ -149,7 +151,7 @@ impl Verifier {
             ValidityResult::TypeError(err) => {
                 panic!("internal error: generated ill-typed AIR code: {}", err);
             }
-            ValidityResult::Invalid(m, span1, span2) => {
+            ValidityResult::Invalid(air_model, span1, span2) => {
                 report_verify_error(compiler, &span1, &span2);
                 self.errors.push((
                     span1
@@ -162,7 +164,10 @@ impl Verifier {
                         .map(|x| ErrorSpan::new_from_air_span(compiler.session().source_map(), x)),
                 ));
                 if self.args.debug {
-                    println!("Received model: {}", m);
+                    println!("Received AIR model: {}", air_model);
+                    let vir_model = VModel::new(air_model);
+                    let model = Model::new(vir_model, snap_map, compiler.session().source_map());
+                    println!("Build Rust model: {}", model);
                 }
             }
         }

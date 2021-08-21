@@ -4,10 +4,13 @@ use air::model::Model as AModel;
 use std::collections::HashMap;
 
 #[derive(Debug)]
+/// VIR-level model of a concrete counterexample
 pub struct Model<'a> {
+    /// Handle to the AIR-level model; only for internal use, e.g., for `eval`
     air_model: AModel<'a>,
+    /// Internal mapping from snapshot IDs to snapshots that map VIR variables to values
+    /// TODO: Upgrade to a semantics-preserving value type, instead of String.
     vir_snapshots: HashMap<Ident, HashMap<Ident, String>>,
-    line_snapshots: HashMap<usize, HashMap<Ident, String>>,
 }
 
 impl<'a> Model<'a> {
@@ -22,7 +25,6 @@ impl<'a> Model<'a> {
             vir_snapshots.insert(snap_id.clone(), vir_snapshot);
         }
 
-        let line_snapshots = HashMap::new();
-        Model { air_model, vir_snapshots, line_snapshots }
+        Model { air_model, vir_snapshots }
     }
 }

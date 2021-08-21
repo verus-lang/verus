@@ -20,7 +20,7 @@ pub struct Model<'a> {
     /// to their concrete values.
     /// TODO: Upgrade to a semantics-preserving value type, instead of String.
     /// TODO: Expose via a more abstract interface
-    value_snapshots: HashMap<Ident, HashMap<Ident, String>>,
+    pub value_snapshots: HashMap<Ident, HashMap<Ident, String>>,
 }
 
 impl<'a> Model<'a> {
