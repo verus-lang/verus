@@ -1,7 +1,7 @@
 use crate::ast::{Expr, ExprX, Stmt, StmtX, VirErr};
 use crate::def::Spanned;
 use crate::util::vec_map_result;
-use std::rc::Rc;
+use std::sync::Arc;
 
 pub(crate) fn map_expr_visitor<F>(expr: &Expr, f: &mut F) -> Result<Expr, VirErr>
 where
@@ -17,7 +17,7 @@ where
             }
             let expr = Spanned::new(
                 expr.span.clone(),
-                ExprX::Call(x.clone(), typs.clone(), Rc::new(exprs)),
+                ExprX::Call(x.clone(), typs.clone(), Arc::new(exprs)),
             );
             f(&expr)
         }
@@ -28,7 +28,7 @@ where
                 .collect::<Result<Vec<_>, _>>()?;
             let expr = Spanned::new(
                 expr.span.clone(),
-                ExprX::Ctor(path.clone(), ident.clone(), Rc::new(mapped_binders)),
+                ExprX::Ctor(path.clone(), ident.clone(), Arc::new(mapped_binders)),
             );
             f(&expr)
         }
@@ -85,7 +85,7 @@ where
         ExprX::While { cond, body, invs } => {
             let cond = map_expr_visitor(cond, f)?;
             let body = map_expr_visitor(body, f)?;
-            let invs = Rc::new(vec_map_result(invs, |e| map_expr_visitor(e, f))?);
+            let invs = Arc::new(vec_map_result(invs, |e| map_expr_visitor(e, f))?);
             let expr = Spanned::new(expr.span.clone(), ExprX::While { cond, body, invs });
             f(&expr)
         }
@@ -98,7 +98,7 @@ where
                 None => None,
                 Some(e) => Some(map_expr_visitor(e, f)?),
             };
-            let expr = Spanned::new(expr.span.clone(), ExprX::Block(Rc::new(exprs), expr1));
+            let expr = Spanned::new(expr.span.clone(), ExprX::Block(Arc::new(exprs), expr1));
             f(&expr)
         }
     }

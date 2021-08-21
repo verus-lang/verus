@@ -15,7 +15,7 @@ use air::ast_util::{
     bool_typ, ident_apply, ident_binder, ident_var, mk_eq, mk_implies, str_apply, str_ident,
     str_typ, str_var, string_apply,
 };
-use std::rc::Rc;
+use std::sync::Arc;
 
 fn func_bind(typ_params: &Idents, params: &Params, trig_expr: &Expr, add_fuel: bool) -> Bind {
     let mut binders: Vec<air::ast::Binder<air::ast::Typ>> = Vec::new();
@@ -29,9 +29,9 @@ fn func_bind(typ_params: &Idents, params: &Params, trig_expr: &Expr, add_fuel: b
     if add_fuel {
         binders.push(ident_binder(&str_ident(FUEL_LOCAL), &str_typ(FUEL_TYPE)));
     }
-    let trigger: Trigger = Rc::new(vec![trig_expr.clone()]);
-    let triggers: Triggers = Rc::new(vec![trigger]);
-    Rc::new(BindX::Quant(Quant::Forall, Rc::new(binders), triggers))
+    let trigger: Trigger = Arc::new(vec![trig_expr.clone()]);
+    let triggers: Triggers = Arc::new(vec![trigger]);
+    Arc::new(BindX::Quant(Quant::Forall, Arc::new(binders), triggers))
 }
 
 fn func_def_args(typ_params: &Idents, params: &Params) -> Vec<Expr> {
@@ -53,9 +53,9 @@ fn func_def_quant(
     body: Expr,
 ) -> Result<Expr, VirErr> {
     let f_args = func_def_args(typ_params, params);
-    let f_app = string_apply(name, &Rc::new(f_args));
-    let f_eq = Rc::new(ExprX::Binary(BinaryOp::Eq, f_app.clone(), body));
-    Ok(Rc::new(ExprX::Bind(func_bind(typ_params, params, &f_app, false), f_eq)))
+    let f_app = string_apply(name, &Arc::new(f_args));
+    let f_eq = Arc::new(ExprX::Binary(BinaryOp::Eq, f_app.clone(), body));
+    Ok(Arc::new(ExprX::Bind(func_bind(typ_params, params, &f_app, false), f_eq)))
 }
 
 fn func_body_to_air(
@@ -78,8 +78,8 @@ fn func_body_to_air(
     //   (axiom (fuel_bool_default fuel%f))
     if function.x.fuel > 0 {
         let axiom_expr = str_apply(&FUEL_BOOL_DEFAULT, &vec![ident_var(&id_fuel)]);
-        let fuel_axiom = Rc::new(DeclX::Axiom(axiom_expr));
-        commands.push(Rc::new(CommandX::Global(fuel_axiom)));
+        let fuel_axiom = Arc::new(DeclX::Axiom(axiom_expr));
+        commands.push(Arc::new(CommandX::Global(fuel_axiom)));
     }
 
     // non-recursive:
@@ -112,14 +112,14 @@ fn func_body_to_air(
         let eq_body = mk_eq(&rec_f_succ, &body_expr);
         let bind_zero = func_bind(&function.x.typ_params, &function.x.params, &rec_f_fuel, true);
         let bind_body = func_bind(&function.x.typ_params, &function.x.params, &rec_f_succ, true);
-        let forall_zero = Rc::new(ExprX::Bind(bind_zero, eq_zero));
-        let forall_body = Rc::new(ExprX::Bind(bind_body, eq_body));
-        let fuel_nat_decl = Rc::new(DeclX::Const(fuel_nat_f, str_typ(FUEL_TYPE)));
-        let axiom_zero = Rc::new(DeclX::Axiom(forall_zero));
-        let axiom_body = Rc::new(DeclX::Axiom(forall_body));
-        commands.push(Rc::new(CommandX::Global(fuel_nat_decl)));
-        commands.push(Rc::new(CommandX::Global(axiom_zero)));
-        commands.push(Rc::new(CommandX::Global(axiom_body)));
+        let forall_zero = Arc::new(ExprX::Bind(bind_zero, eq_zero));
+        let forall_body = Arc::new(ExprX::Bind(bind_body, eq_body));
+        let fuel_nat_decl = Arc::new(DeclX::Const(fuel_nat_f, str_typ(FUEL_TYPE)));
+        let axiom_zero = Arc::new(DeclX::Axiom(forall_zero));
+        let axiom_body = Arc::new(DeclX::Axiom(forall_body));
+        commands.push(Arc::new(CommandX::Global(fuel_nat_decl)));
+        commands.push(Arc::new(CommandX::Global(axiom_zero)));
+        commands.push(Arc::new(CommandX::Global(axiom_body)));
         rec_f_def
     };
     let e_forall = func_def_quant(
@@ -129,8 +129,8 @@ fn func_body_to_air(
         def_body,
     )?;
     let fuel_bool = str_apply(FUEL_BOOL, &vec![ident_var(&id_fuel)]);
-    let def_axiom = Rc::new(DeclX::Axiom(mk_implies(&fuel_bool, &e_forall)));
-    commands.push(Rc::new(CommandX::Global(def_axiom)));
+    let def_axiom = Arc::new(DeclX::Axiom(mk_implies(&fuel_bool, &e_forall)));
+    commands.push(Arc::new(CommandX::Global(def_axiom)));
     Ok(())
 }
 
@@ -150,8 +150,8 @@ pub fn req_ens_to_air(
         for _ in typ_params.iter() {
             all_typs.insert(0, str_typ(crate::def::TYPE));
         }
-        let decl = Rc::new(DeclX::Fun(name.clone(), Rc::new(all_typs), bool_typ()));
-        commands.push(Rc::new(CommandX::Global(decl)));
+        let decl = Arc::new(DeclX::Fun(name.clone(), Arc::new(all_typs), bool_typ()));
+        commands.push(Arc::new(CommandX::Global(decl)));
         let mut exprs: Vec<Expr> = Vec::new();
         for e in typing_invs {
             exprs.push(e.clone());
@@ -163,16 +163,16 @@ pub fn req_ens_to_air(
                 None => expr,
                 Some(msg) => {
                     let description = Some(msg.clone());
-                    let option_span = Rc::new(Some(Span { description, ..e.span.clone() }));
-                    Rc::new(ExprX::LabeledAssertion(option_span, expr))
+                    let option_span = Arc::new(Some(Span { description, ..e.span.clone() }));
+                    Arc::new(ExprX::LabeledAssertion(option_span, expr))
                 }
             };
             exprs.push(loc_expr);
         }
-        let body = Rc::new(ExprX::Multi(MultiOp::And, Rc::new(exprs)));
+        let body = Arc::new(ExprX::Multi(MultiOp::And, Arc::new(exprs)));
         let e_forall = func_def_quant(&name, &typ_params, &params, body)?;
-        let req_ens_axiom = Rc::new(DeclX::Axiom(e_forall));
-        commands.push(Rc::new(CommandX::Global(req_ens_axiom)));
+        let req_ens_axiom = Arc::new(DeclX::Axiom(e_forall));
+        commands.push(Arc::new(CommandX::Global(req_ens_axiom)));
     }
     Ok(())
 }
@@ -190,8 +190,8 @@ pub fn func_name_to_air(ctx: &Ctx, function: &Function) -> Result<Commands, VirE
         // Declare the function symbol itself
         let typ = typ_to_air(&ret);
         let name = suffix_global_id(&function.x.name);
-        let decl = Rc::new(DeclX::Fun(name, Rc::new(all_typs), typ));
-        commands.push(Rc::new(CommandX::Global(decl)));
+        let decl = Arc::new(DeclX::Fun(name, Arc::new(all_typs), typ));
+        commands.push(Arc::new(CommandX::Global(decl)));
 
         // Check whether we need to declare the recursive version too
         if let Some(body) = &function.x.body {
@@ -201,17 +201,17 @@ pub fn func_name_to_air(ctx: &Ctx, function: &Function) -> Result<Commands, VirE
                 let mut rec_typs = vec_map(&*function.x.params, |param| typ_to_air(&param.x.typ));
                 rec_typs.push(str_typ(FUEL_TYPE));
                 let rec_typ = typ_to_air(&function.x.ret.as_ref().unwrap().1);
-                let rec_decl = Rc::new(DeclX::Fun(rec_f, Rc::new(rec_typs), rec_typ));
-                commands.push(Rc::new(CommandX::Global(rec_decl)));
+                let rec_decl = Arc::new(DeclX::Fun(rec_f, Arc::new(rec_typs), rec_typ));
+                commands.push(Arc::new(CommandX::Global(rec_decl)));
             }
         }
     }
-    Ok(Rc::new(commands))
+    Ok(Arc::new(commands))
 }
 
 pub fn func_decl_to_air(ctx: &Ctx, function: &Function) -> Result<Commands, VirErr> {
     let mut all_typs = vec_map(&function.x.params, |param| typ_to_air(&param.x.typ));
-    let param_typs = Rc::new(all_typs.clone());
+    let param_typs = Arc::new(all_typs.clone());
     for _ in function.x.typ_params.iter() {
         all_typs.insert(0, str_typ(crate::def::TYPE));
     }
@@ -233,15 +233,15 @@ pub fn func_decl_to_air(ctx: &Ctx, function: &Function) -> Result<Commands, VirE
             for param in function.x.params.iter() {
                 f_args.push(ident_var(&suffix_local_id(&param.x.name.clone())));
             }
-            let f_app = ident_apply(&name, &Rc::new(f_args));
+            let f_app = ident_apply(&name, &Arc::new(f_args));
             if let Some(expr) = typ_invariant(&ret, &f_app, true) {
                 // (axiom (forall (...) expr))
-                let e_forall = Rc::new(ExprX::Bind(
+                let e_forall = Arc::new(ExprX::Bind(
                     func_bind(&function.x.typ_params, &function.x.params, &f_app, false),
                     expr,
                 ));
-                let inv_axiom = Rc::new(DeclX::Axiom(e_forall));
-                commands.push(Rc::new(CommandX::Global(inv_axiom)));
+                let inv_axiom = Arc::new(DeclX::Axiom(e_forall));
+                commands.push(Arc::new(CommandX::Global(inv_axiom)));
             }
         }
         (Mode::Exec, _) | (Mode::Proof, _) => {
@@ -270,18 +270,18 @@ pub fn func_decl_to_air(ctx: &Ctx, function: &Function) -> Result<Commands, VirE
             req_ens_to_air(
                 ctx,
                 &mut commands,
-                &Rc::new(ens_params),
+                &Arc::new(ens_params),
                 &ens_typing_invs,
                 &function.x.ensure,
                 &function.x.typ_params,
-                &Rc::new(ens_typs),
+                &Arc::new(ens_typs),
                 &prefix_ensures(&function.x.name),
                 &None,
             )?;
         }
         _ => {}
     }
-    Ok(Rc::new(commands))
+    Ok(Arc::new(commands))
 }
 
 pub fn func_def_to_air(ctx: &Ctx, function: &Function) -> Result<Commands, VirErr> {
@@ -306,6 +306,6 @@ pub fn func_def_to_air(ctx: &Ctx, function: &Function) -> Result<Commands, VirEr
             );
             Ok(commands)
         }
-        _ => Ok(Rc::new(vec![])),
+        _ => Ok(Arc::new(vec![])),
     }
 }

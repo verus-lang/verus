@@ -4,7 +4,7 @@ use crate::scc::Graph;
 use air::ast::{Command, CommandX, Commands, DeclX, MultiOp, Span};
 use air::ast_util::str_typ;
 use std::collections::HashMap;
-use std::rc::Rc;
+use std::sync::Arc;
 
 pub struct Ctx {
     pub(crate) datatypes: HashMap<Path, Variants>,
@@ -50,16 +50,16 @@ impl Ctx {
                     let id = crate::def::prefix_fuel_id(&function.x.name);
                     ids.push(air::ast_util::ident_var(&id));
                     let typ_fuel_id = str_typ(&FUEL_ID);
-                    let decl = Rc::new(DeclX::Const(id, typ_fuel_id));
-                    commands.push(Rc::new(CommandX::Global(decl)));
+                    let decl = Arc::new(DeclX::Const(id, typ_fuel_id));
+                    commands.push(Arc::new(CommandX::Global(decl)));
                 }
                 _ => {}
             }
         }
-        let distinct = Rc::new(air::ast::ExprX::Multi(MultiOp::Distinct, Rc::new(ids)));
-        let decl = Rc::new(DeclX::Axiom(distinct));
-        commands.push(Rc::new(CommandX::Global(decl)));
-        Rc::new(commands)
+        let distinct = Arc::new(air::ast::ExprX::Multi(MultiOp::Distinct, Arc::new(ids)));
+        let decl = Arc::new(DeclX::Axiom(distinct));
+        commands.push(Arc::new(CommandX::Global(decl)));
+        Arc::new(commands)
     }
 
     // Report chosen triggers as strings for printing diagnostics

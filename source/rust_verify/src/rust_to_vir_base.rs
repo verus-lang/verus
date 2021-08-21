@@ -11,12 +11,14 @@ use rustc_middle::ty::{AdtDef, TyCtxt, TyKind, TypeckResults};
 use rustc_span::def_id::DefId;
 use rustc_span::symbol::Ident;
 use rustc_span::Span;
-use std::rc::Rc;
+use std::sync::Arc;
 use vir::ast::{Idents, IntRange, Mode, Path, Typ, TypX, VirErr};
 use vir::ast_util::types_equal;
 
 pub(crate) fn def_to_path<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> Path {
-    Rc::new(tcx.def_path(def_id).data.iter().map(|d| Rc::new(format!("{}", d))).collect::<Vec<_>>())
+    Arc::new(
+        tcx.def_path(def_id).data.iter().map(|d| Arc::new(format!("{}", d))).collect::<Vec<_>>(),
+    )
 }
 
 #[inline(always)]
@@ -30,7 +32,7 @@ pub(crate) fn def_id_to_vir_path<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> Path
 }
 
 pub(crate) fn def_path_to_vir_path<'tcx>(_tcx: TyCtxt<'tcx>, def_path: DefPath) -> Path {
-    Rc::new(def_path.data.iter().map(|d| Rc::new(format!("{}", d))).collect::<Vec<_>>())
+    Arc::new(def_path.data.iter().map(|d| Arc::new(format!("{}", d))).collect::<Vec<_>>())
 }
 
 // TODO: proper handling of def_ids
@@ -185,12 +187,12 @@ pub(crate) fn mid_ty_to_vir<'tcx>(tcx: TyCtxt<'tcx>, ty: rustc_middle::ty::Ty) -
             }
         }
         TyKind::Uint(_) | TyKind::Int(_) => TypX::Int(mk_range(ty)),
-        TyKind::Param(param) => TypX::TypParam(Rc::new(param.name.to_string())),
+        TyKind::Param(param) => TypX::TypParam(Arc::new(param.name.to_string())),
         _ => {
             unsupported!(format!("type {:?}", ty))
         }
     };
-    Rc::new(typ_x)
+    Arc::new(typ_x)
 }
 
 pub(crate) fn mid_ty_to_vir_opt<'tcx>(tcx: TyCtxt<'tcx>, ty: rustc_middle::ty::Ty) -> Option<Typ> {
@@ -255,7 +257,7 @@ pub(crate) fn ty_to_vir<'tcx>(tcx: TyCtxt<'tcx>, ty: &Ty) -> Typ {
             unsupported!(format!("type {:#?} {:?}", kind, span))
         }
     };
-    Rc::new(typ_x)
+    Arc::new(typ_x)
 }
 
 pub(crate) struct BodyCtxt<'tcx> {
@@ -318,11 +320,11 @@ pub(crate) fn check_generics<'tcx>(generics: &'tcx Generics<'tcx>) -> Result<Ide
         unsupported_err_unless!(!pure_wrt_drop, generics.span, "generic pure_wrt_drop");
         match (name, kind) {
             (ParamName::Plain(id), GenericParamKind::Type { default: None, synthetic: None }) => {
-                typ_params.push(Rc::new(id.name.as_str().to_string()));
+                typ_params.push(Arc::new(id.name.as_str().to_string()));
             }
             _ => unsupported_err!(generics.span, "complex generics"),
         }
     }
     unsupported_err_unless!(where_clause.predicates.len() == 0, generics.span, "where clause");
-    Ok(Rc::new(typ_params))
+    Ok(Arc::new(typ_params))
 }

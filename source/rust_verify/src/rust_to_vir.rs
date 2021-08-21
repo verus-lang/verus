@@ -19,7 +19,7 @@ use rustc_hir::{
 };
 use rustc_middle::ty::TyCtxt;
 use rustc_span::def_id::LocalDefId;
-use std::rc::Rc;
+use std::sync::Arc;
 use vir::ast::{Krate, KrateX, VirErr};
 
 fn check_item<'tcx>(
@@ -300,5 +300,5 @@ pub fn crate_to_vir<'tcx>(ctxt: &Context<'tcx>) -> Result<Krate, VirErr> {
     for (id, attr) in attrs {
         check_attr(ctxt.tcx, id, attr)?;
     }
-    Ok(Rc::new(vir))
+    Ok(Arc::new(vir))
 }

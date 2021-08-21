@@ -8,12 +8,12 @@ sst expressions cannot contain statments.
 use crate::ast::{BinaryOp, Path, Typ, Typs, UnaryOp, UnaryOpr};
 use crate::def::Spanned;
 use air::ast::{Binders, Ident, Quant};
-use std::rc::Rc;
+use std::sync::Arc;
 
 pub type Trig = Exps;
-pub type Trigs = Rc<Vec<Trig>>;
+pub type Trigs = Arc<Vec<Trig>>;
 
-pub type Bnd = Rc<Spanned<BndX>>;
+pub type Bnd = Arc<Spanned<BndX>>;
 #[derive(Clone, Debug)]
 pub enum BndX {
     Let(Binders<Exp>),
@@ -23,11 +23,11 @@ pub enum BndX {
 #[derive(Clone, Debug)]
 pub enum Constant {
     Bool(bool),
-    Nat(Rc<String>),
+    Nat(Arc<String>),
 }
 
-pub type Exp = Rc<Spanned<ExpX>>;
-pub type Exps = Rc<Vec<Exp>>;
+pub type Exp = Arc<Spanned<ExpX>>;
+pub type Exps = Arc<Vec<Exp>>;
 #[derive(Debug)]
 pub enum ExpX {
     Const(Constant),
@@ -49,8 +49,8 @@ pub struct Dest {
     pub mutable: bool,
 }
 
-pub type Stm = Rc<Spanned<StmX>>;
-pub type Stms = Rc<Vec<Stm>>;
+pub type Stm = Arc<Spanned<StmX>>;
+pub type Stms = Arc<Vec<Stm>>;
 #[derive(Debug)]
 pub enum StmX {
     Call(Ident, Typs, Exps, Option<Dest>), // call to exec/proof function
@@ -69,8 +69,8 @@ pub enum StmX {
         cond: Exp,
         body: Stm,
         invs: Exps,
-        typ_inv_vars: Rc<Vec<(Ident, Typ)>>,
-        modified_vars: Rc<Vec<Ident>>,
+        typ_inv_vars: Arc<Vec<(Ident, Typ)>>,
+        modified_vars: Arc<Vec<Ident>>,
     },
     Block(Stms),
 }

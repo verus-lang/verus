@@ -1,18 +1,18 @@
 use crate::def::Spanned;
 use air::ast::Quant;
-use std::rc::Rc;
+use std::sync::Arc;
 
 pub use air::ast::{Binder, Binders};
 
-pub type VirErr = Rc<Spanned<VirErrX>>;
+pub type VirErr = Arc<Spanned<VirErrX>>;
 #[derive(Clone, Debug)]
 pub enum VirErrX {
     Str(String),
 }
 
-pub type Ident = Rc<String>;
-pub type Idents = Rc<Vec<Ident>>;
-pub type Path = Rc<Vec<Ident>>;
+pub type Ident = Arc<String>;
+pub type Idents = Arc<Vec<Ident>>;
+pub type Path = Arc<Vec<Ident>>;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum Mode {
@@ -31,8 +31,8 @@ pub enum IntRange {
     ISize,
 }
 
-pub type Typ = Rc<TypX>;
-pub type Typs = Rc<Vec<Typ>>;
+pub type Typ = Arc<TypX>;
+pub type Typs = Arc<Vec<Typ>>;
 // Deliberately not marked Eq -- use explicit match instead, so we know where types are compared
 #[derive(Debug)]
 pub enum TypX {
@@ -73,7 +73,7 @@ pub enum BinaryOp {
     EuclideanMod,
 }
 
-pub type HeaderExpr = Rc<HeaderExprX>;
+pub type HeaderExpr = Arc<HeaderExprX>;
 #[derive(Debug)]
 pub enum HeaderExprX {
     Requires(Exprs),
@@ -86,11 +86,11 @@ pub enum HeaderExprX {
 #[derive(Clone, Debug)]
 pub enum Constant {
     Bool(bool),
-    Nat(Rc<String>),
+    Nat(Arc<String>),
 }
 
-pub type Expr = Rc<Spanned<ExprX>>;
-pub type Exprs = Rc<Vec<Expr>>;
+pub type Expr = Arc<Spanned<ExprX>>;
+pub type Exprs = Arc<Vec<Expr>>;
 #[derive(Debug)]
 pub enum ExprX {
     Const(Constant),
@@ -111,16 +111,16 @@ pub enum ExprX {
     Block(Stmts, Option<Expr>),
 }
 
-pub type Stmt = Rc<Spanned<StmtX>>;
-pub type Stmts = Rc<Vec<Stmt>>;
+pub type Stmt = Arc<Spanned<StmtX>>;
+pub type Stmts = Arc<Vec<Stmt>>;
 #[derive(Debug)]
 pub enum StmtX {
     Expr(Expr),
     Decl { param: Param, mutable: bool, init: Option<Expr> },
 }
 
-pub type Param = Rc<Spanned<ParamX>>;
-pub type Params = Rc<Vec<Param>>;
+pub type Param = Arc<Spanned<ParamX>>;
+pub type Params = Arc<Vec<Param>>;
 #[derive(Debug)]
 pub struct ParamX {
     pub name: Ident,
@@ -128,7 +128,7 @@ pub struct ParamX {
     pub mode: Mode,
 }
 
-pub type Function = Rc<Spanned<FunctionX>>;
+pub type Function = Arc<Spanned<FunctionX>>;
 #[derive(Debug, Clone)]
 pub struct FunctionX {
     pub name: Ident,
@@ -154,10 +154,10 @@ pub struct DatatypeX {
     pub path: Path,
     pub variants: Variants,
 }
-pub type Datatype = Rc<Spanned<DatatypeX>>;
+pub type Datatype = Arc<Spanned<DatatypeX>>;
 pub type Datatypes = Vec<Datatype>;
 
-pub type Krate = Rc<KrateX>;
+pub type Krate = Arc<KrateX>;
 #[derive(Debug, Default)]
 pub struct KrateX {
     pub functions: Vec<Function>,

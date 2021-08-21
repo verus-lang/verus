@@ -9,7 +9,7 @@ use crate::context::Context;
 use crate::print_parse::{decl_to_node, expr_to_node, node_to_string, stmt_to_node};
 use crate::util::vec_map;
 use std::collections::{HashMap, HashSet};
-use std::rc::Rc;
+use std::sync::Arc;
 
 #[derive(Clone)]
 pub(crate) struct Var {
@@ -27,8 +27,8 @@ pub struct Typing {
     // For simplicity, global and local names must be unique (bound variables can have the same name)
     pub(crate) names: HashSet<Ident>,
     pub(crate) typs: HashSet<Ident>,
-    pub(crate) vars: HashMap<Ident, Rc<Var>>,
-    pub(crate) funs: HashMap<Ident, Rc<Fun>>,
+    pub(crate) vars: HashMap<Ident, Arc<Var>>,
+    pub(crate) funs: HashMap<Ident, Arc<Fun>>,
     pub(crate) snapshots: HashSet<Ident>,
 }
 
@@ -44,11 +44,11 @@ impl Typing {
 }
 
 pub fn bt() -> Typ {
-    Rc::new(TypX::Bool)
+    Arc::new(TypX::Bool)
 }
 
 pub fn it() -> Typ {
-    Rc::new(TypX::Int)
+    Arc::new(TypX::Int)
 }
 
 fn typ_name(typ: &Typ) -> String {
@@ -125,8 +125,8 @@ fn check_exprs(
 
 pub(crate) fn check_expr(typing: &mut Typing, expr: &Expr) -> Result<Typ, TypeError> {
     let result = match &**expr {
-        ExprX::Const(Constant::Bool(_)) => Ok(Rc::new(TypX::Bool)),
-        ExprX::Const(Constant::Nat(_)) => Ok(Rc::new(TypX::Int)),
+        ExprX::Const(Constant::Bool(_)) => Ok(Arc::new(TypX::Bool)),
+        ExprX::Const(Constant::Nat(_)) => Ok(Arc::new(TypX::Int)),
         ExprX::Var(x) => match typing.vars.get(x) {
             None => Err(format!("use of undeclared variable {}", x)),
             Some(var) => Ok(var.typ.clone()),
@@ -229,21 +229,21 @@ pub(crate) fn check_expr(typing: &mut Typing, expr: &Expr) -> Result<Typ, TypeEr
                     let mut binders: Vec<Binder<Typ>> = Vec::new();
                     for b in bs.iter() {
                         let typ = check_expr(typing, &b.a)?;
-                        binders.push(Rc::new(BinderX { name: b.name.clone(), a: typ }));
+                        binders.push(Arc::new(BinderX { name: b.name.clone(), a: typ }));
                     }
-                    Rc::new(binders)
+                    Arc::new(binders)
                 }
                 BindX::Quant(_, binders, _) => binders.clone(),
             };
             // Collect all binder names, make sure they are unique
             // Push our bindings
             // Remember any overwritten shadowed bindings so we can restore them
-            let mut names: HashMap<Ident, Option<Rc<Var>>> = HashMap::new();
+            let mut names: HashMap<Ident, Option<Arc<Var>>> = HashMap::new();
             for binder in binders.iter() {
                 let x = &binder.name;
                 let var = Var { typ: binder.a.clone(), mutable: false };
                 typing.check_binder_name(x)?;
-                let prev_var = typing.vars.insert(x.clone(), Rc::new(var));
+                let prev_var = typing.vars.insert(x.clone(), Arc::new(var));
                 let prev_bind = names.insert(x.clone(), prev_var);
                 if let Some(_) = prev_bind {
                     return Err(format!("name {} appears more than once in binder", x));
@@ -405,39 +405,39 @@ pub(crate) fn add_decl<'ctx>(
             for datatype in datatypes.iter() {
                 for variant in datatype.a.iter() {
                     context.push_name(&variant.name)?;
-                    let typ = Rc::new(TypX::Named(datatype.name.clone()));
+                    let typ = Arc::new(TypX::Named(datatype.name.clone()));
                     let typs = vec_map(&variant.a, |field| field.a.clone());
-                    let fun = Fun { typ: typ.clone(), typs: Rc::new(typs) };
-                    context.typing.funs.insert(variant.name.clone(), Rc::new(fun));
-                    let is_variant = Rc::new("is-".to_string() + &variant.name.to_string());
-                    let fun = Fun { typ: bt(), typs: Rc::new(vec![typ.clone()]) };
-                    context.typing.funs.insert(is_variant, Rc::new(fun));
+                    let fun = Fun { typ: typ.clone(), typs: Arc::new(typs) };
+                    context.typing.funs.insert(variant.name.clone(), Arc::new(fun));
+                    let is_variant = Arc::new("is-".to_string() + &variant.name.to_string());
+                    let fun = Fun { typ: bt(), typs: Arc::new(vec![typ.clone()]) };
+                    context.typing.funs.insert(is_variant, Arc::new(fun));
                     for field in variant.a.iter() {
                         context.push_name(&field.name)?;
                         check_typ(&context.typing, &field.a)?;
-                        let typs: Typs = Rc::new(vec![typ.clone()]);
+                        let typs: Typs = Arc::new(vec![typ.clone()]);
                         let fun = Fun { typ: field.a.clone(), typs };
-                        context.typing.funs.insert(field.name.clone(), Rc::new(fun));
+                        context.typing.funs.insert(field.name.clone(), Arc::new(fun));
                     }
                 }
             }
         }
         DeclX::Const(x, typ) => {
             context.push_name(x)?;
-            let var = Rc::new(Var { typ: typ.clone(), mutable: false });
+            let var = Arc::new(Var { typ: typ.clone(), mutable: false });
             context.typing.vars.insert(x.clone(), var);
         }
         DeclX::Fun(x, typs, typ) => {
             context.push_name(x)?;
             let fun = Fun { typ: typ.clone(), typs: typs.clone() };
-            context.typing.funs.insert(x.clone(), Rc::new(fun));
+            context.typing.funs.insert(x.clone(), Arc::new(fun));
         }
         DeclX::Var(x, typ) => {
             if is_global {
                 return Err(format!("declare-var {} not allowed in global scope", x));
             }
             context.push_name(x)?;
-            let var = Rc::new(Var { typ: typ.clone(), mutable: true });
+            let var = Arc::new(Var { typ: typ.clone(), mutable: true });
             context.typing.vars.insert(x.clone(), var);
         }
         DeclX::Axiom(_) => {}

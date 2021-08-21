@@ -6,7 +6,7 @@ use crate::sst_to_air::path_to_air_ident;
 use crate::util::vec_map;
 use air::ast::{Constant, Span};
 use std::collections::{HashMap, HashSet};
-use std::rc::Rc;
+use std::sync::Arc;
 
 /*
 This trigger selection algorithm is experimental and somewhat different from the usual
@@ -37,8 +37,8 @@ enum App {
     Other(u64),         // u64 is an id, assigned via a simple counter
 }
 
-type Term = Rc<TermX>;
-type Terms = Rc<Vec<Term>>;
+type Term = Arc<TermX>;
+type Terms = Arc<Vec<Term>>;
 #[derive(PartialEq, Eq, Hash)]
 enum TermX {
     Var(Ident),
@@ -180,23 +180,23 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
         ExpX::Const(c) => {
             return match c {
                 crate::sst::Constant::Bool(b) => {
-                    (true, Rc::new(TermX::App(App::Const(Constant::Bool(*b)), Rc::new(vec![]))))
+                    (true, Arc::new(TermX::App(App::Const(Constant::Bool(*b)), Arc::new(vec![]))))
                 }
                 crate::sst::Constant::Nat(n) => (
                     true,
-                    Rc::new(TermX::App(App::Const(Constant::Nat(n.clone())), Rc::new(vec![]))),
+                    Arc::new(TermX::App(App::Const(Constant::Nat(n.clone())), Arc::new(vec![]))),
                 ),
             };
         }
         ExpX::Var(x) => {
-            return (true, Rc::new(TermX::Var(x.clone())));
+            return (true, Arc::new(TermX::Var(x.clone())));
         }
         ExpX::Old(_, _) => panic!("internal error: Old"),
         ExpX::Call(x, _, args) => {
             let (is_pures, terms): (Vec<bool>, Vec<Term>) =
                 args.iter().map(|e| gather_terms(ctxt, ctx, e, depth + 1)).unzip();
             let is_pure = is_pures.into_iter().all(|b| b);
-            (is_pure, Rc::new(TermX::App(App::Call(x.clone()), Rc::new(terms))))
+            (is_pure, Arc::new(TermX::App(App::Call(x.clone()), Arc::new(terms))))
         }
         ExpX::Ctor(path, variant, fields) => {
             let (variant, args) = crate::sst_to_air::ctor_to_apply(ctx, path, variant, fields);
@@ -205,16 +205,16 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
             let is_pure = is_pures.into_iter().all(|b| b);
             (
                 is_pure,
-                Rc::new(TermX::App(App::Ctor(path_to_air_ident(path), variant), Rc::new(terms))),
+                Arc::new(TermX::App(App::Ctor(path_to_air_ident(path), variant), Arc::new(terms))),
             )
         }
         ExpX::Field { lhs, datatype_name, field_name } => {
             let (is_pure, arg) = gather_terms(ctxt, ctx, lhs, depth + 1);
             (
                 is_pure,
-                Rc::new(TermX::App(
+                Arc::new(TermX::App(
                     App::Field(datatype_name.clone(), field_name.clone()),
-                    Rc::new(vec![arg]),
+                    Arc::new(vec![arg]),
                 )),
             )
         }
@@ -226,7 +226,7 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
             };
             let (_, term1) = gather_terms(ctxt, ctx, e1, depth);
             ctxt.next_id += 1;
-            (false, Rc::new(TermX::App(App::Other(ctxt.next_id), Rc::new(vec![term1]))))
+            (false, Arc::new(TermX::App(App::Other(ctxt.next_id), Arc::new(vec![term1]))))
         }
         ExpX::UnaryOpr(UnaryOpr::Box(_), e1) => gather_terms(ctxt, ctx, e1, depth),
         ExpX::UnaryOpr(UnaryOpr::Unbox(_), e1) => gather_terms(ctxt, ctx, e1, depth),
@@ -239,7 +239,7 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
             let (_, term1) = gather_terms(ctxt, ctx, e1, depth);
             let (_, term2) = gather_terms(ctxt, ctx, e2, depth);
             ctxt.next_id += 1;
-            (false, Rc::new(TermX::App(App::Other(ctxt.next_id), Rc::new(vec![term1, term2]))))
+            (false, Arc::new(TermX::App(App::Other(ctxt.next_id), Arc::new(vec![term1, term2]))))
         }
         ExpX::If(e1, e2, e3) => {
             let depth = 1;
@@ -249,13 +249,13 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
             ctxt.next_id += 1;
             (
                 false,
-                Rc::new(TermX::App(App::Other(ctxt.next_id), Rc::new(vec![term1, term2, term3]))),
+                Arc::new(TermX::App(App::Other(ctxt.next_id), Arc::new(vec![term1, term2, term3]))),
             )
         }
         ExpX::Bind(_, _) => {
             // REVIEW: we could at least look for matching loops here
             ctxt.next_id += 1;
-            (false, Rc::new(TermX::App(App::Other(ctxt.next_id), Rc::new(vec![]))))
+            (false, Arc::new(TermX::App(App::Other(ctxt.next_id), Arc::new(vec![]))))
         }
     };
     if !ctxt.all_terms.contains_key(&term) {
@@ -464,9 +464,9 @@ pub(crate) fn build_triggers(
     //println!();
     if state.best_so_far.len() >= 1 {
         let trigs: Vec<Trig> = vec_map(&state.best_so_far, |trig| {
-            Rc::new(vec_map(&trig, |(term, _)| ctxt.pure_terms[term].clone()))
+            Arc::new(vec_map(&trig, |(term, _)| ctxt.pure_terms[term].clone()))
         });
-        Ok(Rc::new(trigs))
+        Ok(Arc::new(trigs))
     } else {
         err_str(
             span,

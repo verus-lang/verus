@@ -2,7 +2,7 @@ use crate::ast::{Ident, Typ};
 use crate::def::Spanned;
 use crate::sst::{ExpX, Stm, StmX};
 use std::collections::{HashMap, HashSet};
-use std::rc::Rc;
+use std::sync::Arc;
 
 // Compute:
 // - which variables have definitely been assigned to up to each statement
@@ -92,8 +92,8 @@ pub(crate) fn stm_assign(
                 cond: cond.clone(),
                 body,
                 invs: invs.clone(),
-                typ_inv_vars: Rc::new(typ_inv_vars),
-                modified_vars: Rc::new(modified_vars),
+                typ_inv_vars: Arc::new(typ_inv_vars),
+                modified_vars: Arc::new(modified_vars),
             };
             Spanned::new(stm.span.clone(), while_x)
         }
@@ -109,7 +109,7 @@ pub(crate) fn stm_assign(
             }
             *assigned = pre_assigned;
             *declared = pre_declared;
-            Spanned::new(stm.span.clone(), StmX::Block(Rc::new(stms)))
+            Spanned::new(stm.span.clone(), StmX::Block(Arc::new(stms)))
         }
     }
 }

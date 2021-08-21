@@ -4,7 +4,7 @@ use crate::context::Ctx;
 use crate::sst::{Bnd, BndX, Exp, ExpX, Trig, Trigs};
 use air::ast::Span;
 use std::collections::{HashMap, HashSet};
-use std::rc::Rc;
+use std::sync::Arc;
 
 // Manual triggers
 struct State {
@@ -158,9 +158,9 @@ pub(crate) fn build_triggers(
                     );
                 }
             }
-            trigs.push(Rc::new(trig.clone()));
+            trigs.push(Arc::new(trig.clone()));
         }
-        Ok(Rc::new(trigs))
+        Ok(Arc::new(trigs))
     } else {
         crate::triggers_auto::build_triggers(ctx, span, vars, exp)
     }

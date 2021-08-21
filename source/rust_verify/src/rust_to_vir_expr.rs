@@ -18,7 +18,7 @@ use rustc_middle::ty::subst::GenericArgKind;
 use rustc_middle::ty::TyKind;
 use rustc_span::def_id::DefId;
 use rustc_span::Span;
-use std::rc::Rc;
+use std::sync::Arc;
 use vir::ast::{
     BinaryOp, Constant, ExprX, HeaderExpr, HeaderExprX, IntRange, ParamX, StmtX, Stmts, Typ, TypX,
     UnaryOp, UnaryOpr, VirErr,
@@ -97,15 +97,15 @@ fn extract_ensures<'tcx>(
             let expr = &body.value;
             let args = vec_map_result(&extract_array(expr), |e| get_ensures_arg(bctx, e))?;
             if typs.len() == 1 && xs.len() == 1 {
-                let id_typ = Some((Rc::new(xs[0].clone()), typs[0].clone()));
-                Ok(Rc::new(HeaderExprX::Ensures(id_typ, Rc::new(args))))
+                let id_typ = Some((Arc::new(xs[0].clone()), typs[0].clone()));
+                Ok(Arc::new(HeaderExprX::Ensures(id_typ, Arc::new(args))))
             } else {
                 err_span_str(expr.span, "expected 1 parameter in closure")
             }
         }
         _ => {
             let args = vec_map_result(&extract_array(expr), |e| get_ensures_arg(bctx, e))?;
-            Ok(Rc::new(HeaderExprX::Ensures(None, Rc::new(args))))
+            Ok(Arc::new(HeaderExprX::Ensures(None, Arc::new(args))))
         }
     }
 }
@@ -125,7 +125,7 @@ fn extract_quant<'tcx>(
                 .iter()
                 .zip(fn_decl.inputs)
                 .map(|(x, t)| {
-                    Rc::new(BinderX { name: Rc::new(pat_to_var(x.pat)), a: ty_to_vir(tcx, t) })
+                    Arc::new(BinderX { name: Arc::new(pat_to_var(x.pat)), a: ty_to_vir(tcx, t) })
                 })
                 .collect();
             let expr = &body.value;
@@ -133,7 +133,7 @@ fn extract_quant<'tcx>(
                 return err_span_str(expr.span, "forall/ensures needs a bool expression");
             }
             let vir_expr = expr_to_vir(bctx, expr)?;
-            Ok(spanned_new(span, ExprX::Quant(quant, Rc::new(binders), vir_expr)))
+            Ok(spanned_new(span, ExprX::Quant(quant, Arc::new(binders), vir_expr)))
         }
         _ => err_span_str(expr.span, "argument to forall/exists must be a closure"),
     }
@@ -236,15 +236,15 @@ fn fn_call_to_vir<'tcx>(
     };
 
     if is_requires {
-        let header = Rc::new(HeaderExprX::Requires(Rc::new(vir_args)));
+        let header = Arc::new(HeaderExprX::Requires(Arc::new(vir_args)));
         Ok(spanned_new(expr.span, ExprX::Header(header)))
     } else if is_invariant {
-        let header = Rc::new(HeaderExprX::Invariant(Rc::new(vir_args)));
+        let header = Arc::new(HeaderExprX::Invariant(Arc::new(vir_args)));
         Ok(spanned_new(expr.span, ExprX::Header(header)))
     } else if is_decreases {
         unsupported_err_unless!(len == 1, expr.span, "expected decreases", &args);
         let typ = typ_of_node(bctx, &args[0].hir_id);
-        let header = Rc::new(HeaderExprX::Decreases(vir_args[0].clone(), typ));
+        let header = Arc::new(HeaderExprX::Decreases(vir_args[0].clone(), typ));
         Ok(spanned_new(expr.span, ExprX::Header(header)))
     } else if is_admit {
         unsupported_err_unless!(len == 0, expr.span, "expected admit", args);
@@ -254,7 +254,7 @@ fn fn_call_to_vir<'tcx>(
         let arg = vir_args[0].clone();
         if let ExprX::Var(x) = &arg.x {
             if is_hide {
-                let header = Rc::new(HeaderExprX::Hide(x.clone()));
+                let header = Arc::new(HeaderExprX::Hide(x.clone()));
                 Ok(spanned_new(expr.span, ExprX::Header(header)))
             } else {
                 Ok(spanned_new(expr.span, ExprX::Fuel(x.clone(), 1)))
@@ -347,7 +347,7 @@ fn fn_call_to_vir<'tcx>(
         let name = hack_get_def_name(tcx, f); // TODO: proper handling of paths
         let mut call = spanned_new(
             expr.span,
-            ExprX::Call(Rc::new(name), Rc::new(typ_args), Rc::new(vir_args)),
+            ExprX::Call(Arc::new(name), Arc::new(typ_args), Arc::new(vir_args)),
         );
         // unbox result if necessary
         if let Some(ret_typ) = ret_typ {
@@ -389,13 +389,13 @@ pub(crate) fn expr_tuple_datatype_ctor_to_vir<'tcx>(
     let vir_path = {
         // TODO is there a safer way to do this?
         let mut vir_path = def_id_to_vir_path(tcx, res.def_id());
-        Rc::get_mut(&mut vir_path).unwrap().pop(); // remove constructor
-        Rc::get_mut(&mut vir_path).unwrap().pop(); // remove variant
+        Arc::get_mut(&mut vir_path).unwrap().pop(); // remove constructor
+        Arc::get_mut(&mut vir_path).unwrap().pop(); // remove variant
         vir_path
     };
     let name = vir_path.last().expect("invalid path in datatype ctor");
     let variant_name = variant_ident(name.as_str(), &variant.ident.as_str());
-    let vir_fields = Rc::new(
+    let vir_fields = Arc::new(
         args_slice
             .iter()
             .enumerate()
@@ -430,7 +430,7 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
     let tc = bctx.types;
     match &expr.kind {
         ExprKind::Block(body, _) => {
-            let vir_stmts: Stmts = Rc::new(
+            let vir_stmts: Stmts = Arc::new(
                 slice_vec_map_result(body.stmts, |stmt| stmt_to_vir(bctx, stmt))?
                     .into_iter()
                     .flatten()
@@ -461,7 +461,7 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
             }
             rustc_ast::LitKind::Int(i, _) => {
                 let typ = typ_of_node(bctx, &expr.hir_id);
-                let c = vir::ast::Constant::Nat(Rc::new(i.to_string()));
+                let c = vir::ast::Constant::Nat(Arc::new(i.to_string()));
                 if let TypX::Int(range) = *typ {
                     match range {
                         IntRange::Int | IntRange::Nat | IntRange::U(_) | IntRange::USize => {
@@ -540,7 +540,7 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
         ExprKind::Path(QPath::Resolved(None, path)) => match path.res {
             Res::Local(id) => match tcx.hir().get(id) {
                 Node::Binding(pat) => {
-                    Ok(spanned_new(expr.span, ExprX::Var(Rc::new(pat_to_var(pat)))))
+                    Ok(spanned_new(expr.span, ExprX::Var(Arc::new(pat_to_var(pat)))))
                 }
                 node => unsupported_err!(expr.span, format!("Path {:?}", node)),
             },
@@ -548,7 +548,7 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                 match def_kind {
                     DefKind::Fn => {
                         let name = hack_get_def_name(tcx, id); // TODO: proper handling of paths
-                        Ok(spanned_new(expr.span, ExprX::Var(Rc::new(name))))
+                        Ok(spanned_new(expr.span, ExprX::Var(Arc::new(name))))
                     }
                     DefKind::Ctor(_, _ctor_kind) => {
                         expr_tuple_datatype_ctor_to_vir(bctx, expr, &path.res, &[])
@@ -589,7 +589,7 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                     (_, TypX::TypParam(_)) => Some(target_typ),
                     _ => None,
                 };
-                (Rc::new(datatype_name), variant_field_ident(&variant_name, &name.as_str()), unbox)
+                (Arc::new(datatype_name), variant_field_ident(&variant_name, &name.as_str()), unbox)
             } else {
                 unsupported_err!(expr.span, "field_of_non_adt", expr)
             };
@@ -678,7 +678,7 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                     let variant = tcx.expect_variant_res(path.res);
                     let mut vir_path = def_id_to_vir_path(tcx, path.res.def_id());
                     if let Res::Def(DefKind::Variant, _) = path.res {
-                        Rc::get_mut(&mut vir_path)
+                        Arc::get_mut(&mut vir_path)
                             .unwrap()
                             .pop()
                             .expect(format!("variant name in Struct ctor for {:?}", path).as_str());
@@ -691,7 +691,7 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                 }
                 _ => panic!("unexpected qpath {:?}", qpath),
             };
-            let vir_fields = Rc::new(
+            let vir_fields = Arc::new(
                 fields
                     .iter()
                     .map(|f| -> Result<_, VirErr> {
@@ -753,7 +753,7 @@ pub(crate) fn let_stmt_to_vir<'tcx>(
                 }
             }
             // TODO: need unique identifiers!
-            let name = Rc::new(ident_to_var(&ident));
+            let name = Arc::new(ident_to_var(&ident));
             let typ = typ_of_node(bctx, hir_id);
             let mode = get_var_mode(bctx.mode, attrs);
             Ok(vec![spanned_new(

@@ -7,7 +7,7 @@ use crate::def::{GLOBAL_PREFIX_LABEL, PREFIX_LABEL};
 pub use crate::model::Model;
 use crate::smt_util::new_const;
 use std::collections::{HashMap, HashSet};
-use std::rc::Rc;
+use std::sync::Arc;
 use z3::ast::{Ast, Bool, Dynamic, Int};
 use z3::{Pattern, SatResult, Sort, Symbol};
 
@@ -183,18 +183,18 @@ fn label_asserts<'ctx>(
         | ExprX::Binary(op @ BinaryOp::Eq, lhs, rhs) => {
             // asserts are on rhs of =>
             // (slight hack to also allow rhs of == for quantified function definitions)
-            Rc::new(ExprX::Binary(*op, lhs.clone(), label_asserts(context, infos, rhs, is_global)))
+            Arc::new(ExprX::Binary(*op, lhs.clone(), label_asserts(context, infos, rhs, is_global)))
         }
         ExprX::Multi(op @ MultiOp::And, exprs) | ExprX::Multi(op @ MultiOp::Or, exprs) => {
             let mut exprs_vec: Vec<Expr> = Vec::new();
             for expr in exprs.iter() {
                 exprs_vec.push(label_asserts(context, infos, expr, is_global));
             }
-            Rc::new(ExprX::Multi(*op, Rc::new(exprs_vec)))
+            Arc::new(ExprX::Multi(*op, Arc::new(exprs_vec)))
         }
         ExprX::Bind(bind, body) => match &**bind {
             BindX::Quant(Quant::Forall, _, _) => {
-                Rc::new(ExprX::Bind(bind.clone(), label_asserts(context, infos, body, is_global)))
+                Arc::new(ExprX::Bind(bind.clone(), label_asserts(context, infos, body, is_global)))
             }
             _ => expr.clone(),
         },
@@ -202,16 +202,16 @@ fn label_asserts<'ctx>(
             let label = if is_global {
                 let count = context.assert_infos_count;
                 context.assert_infos_count += 1;
-                Rc::new(GLOBAL_PREFIX_LABEL.to_string() + &count.to_string())
+                Arc::new(GLOBAL_PREFIX_LABEL.to_string() + &count.to_string())
             } else {
-                Rc::new(PREFIX_LABEL.to_string() + &infos.len().to_string())
+                Arc::new(PREFIX_LABEL.to_string() + &infos.len().to_string())
             };
-            let decl = Rc::new(DeclX::Const(label.clone(), Rc::new(TypX::Bool)));
+            let decl = Arc::new(DeclX::Const(label.clone(), Arc::new(TypX::Bool)));
             let assertion_info = AssertionInfo { span: span.clone(), label: label.clone(), decl };
             infos.push(assertion_info);
-            let lhs = Rc::new(ExprX::Var(label));
+            let lhs = Arc::new(ExprX::Var(label));
             // See comments about Z3_model_eval below for why do we use => instead of or.
-            Rc::new(ExprX::Binary(
+            Arc::new(ExprX::Binary(
                 BinaryOp::Implies,
                 lhs,
                 label_asserts(context, infos, expr, is_global),
@@ -221,10 +221,10 @@ fn label_asserts<'ctx>(
     }
 }
 
-fn get_sort<'ctx>(context: &Context<'ctx>, typ: &Typ) -> Rc<Sort<'ctx>> {
+fn get_sort<'ctx>(context: &Context<'ctx>, typ: &Typ) -> Arc<Sort<'ctx>> {
     match &**typ {
-        TypX::Bool => Rc::new(Sort::bool(context.context)),
-        TypX::Int => Rc::new(Sort::int(context.context)),
+        TypX::Bool => Arc::new(Sort::bool(context.context)),
+        TypX::Int => Arc::new(Sort::int(context.context)),
         TypX::Named(x) => context.typs[x].clone(),
     }
 }
@@ -234,7 +234,7 @@ pub(crate) fn smt_add_decl<'ctx>(context: &mut Context<'ctx>, decl: &Decl) {
         DeclX::Sort(x) => {
             context.smt_log.log_decl(decl);
             let sort = Sort::uninterpreted(context.context, Symbol::String((**x).clone()));
-            let prev = context.typs.insert(x.clone(), Rc::new(sort));
+            let prev = context.typs.insert(x.clone(), Arc::new(sort));
             assert_eq!(prev, None);
         }
         DeclX::Datatypes(datatypes) => {
@@ -246,15 +246,15 @@ pub(crate) fn smt_add_decl<'ctx>(context: &mut Context<'ctx>, decl: &Decl) {
             for datatype in datatypes.iter() {
                 names.insert(datatype.name.clone());
             }
-            let mut sorts: Vec<Vec<Vec<Rc<Sort>>>> = Vec::new();
+            let mut sorts: Vec<Vec<Vec<Arc<Sort>>>> = Vec::new();
             for datatype in datatypes.iter() {
-                let mut sorts0: Vec<Vec<Rc<Sort>>> = Vec::new();
+                let mut sorts0: Vec<Vec<Arc<Sort>>> = Vec::new();
                 for variant in datatype.a.iter() {
-                    let mut sorts1: Vec<Rc<Sort>> = Vec::new();
+                    let mut sorts1: Vec<Arc<Sort>> = Vec::new();
                     for field in variant.a.iter() {
                         match &*field.a {
                             TypX::Named(x) if names.contains(x) => {
-                                sorts1.push(Rc::new(Sort::bool(context.context)));
+                                sorts1.push(Arc::new(Sort::bool(context.context)));
                                 // dummy sort
                             }
                             _ => {
@@ -291,14 +291,14 @@ pub(crate) fn smt_add_decl<'ctx>(context: &mut Context<'ctx>, decl: &Decl) {
             }
             let datatype_sorts = z3::datatype_builder::create_datatypes(builders);
             for (datatype, sort) in datatypes.iter().zip(datatype_sorts) {
-                let prev = context.typs.insert(datatype.name.clone(), Rc::new(sort.sort));
+                let prev = context.typs.insert(datatype.name.clone(), Arc::new(sort.sort));
                 assert_eq!(prev, None);
                 for (variant, smt_variant) in datatype.a.iter().zip(sort.variants) {
-                    context.funs.insert(variant.name.clone(), Rc::new(smt_variant.constructor));
-                    let is_variant = Rc::new("is-".to_string() + &variant.name.to_string());
-                    context.funs.insert(is_variant, Rc::new(smt_variant.tester));
+                    context.funs.insert(variant.name.clone(), Arc::new(smt_variant.constructor));
+                    let is_variant = Arc::new("is-".to_string() + &variant.name.to_string());
+                    context.funs.insert(is_variant, Arc::new(smt_variant.tester));
                     for (field, smt_field) in variant.a.iter().zip(smt_variant.accessors) {
-                        context.funs.insert(field.name.clone(), Rc::new(smt_field));
+                        context.funs.insert(field.name.clone(), Arc::new(smt_field));
                     }
                 }
             }
@@ -322,7 +322,7 @@ pub(crate) fn smt_add_decl<'ctx>(context: &mut Context<'ctx>, decl: &Decl) {
                 &sorts_borrow.into_boxed_slice(),
                 &*sort,
             );
-            context.funs.insert(x.clone(), Rc::new(fdecl));
+            context.funs.insert(x.clone(), Arc::new(fdecl));
         }
         DeclX::Var(_, _) => {}
         DeclX::Axiom(expr) => {
@@ -330,7 +330,7 @@ pub(crate) fn smt_add_decl<'ctx>(context: &mut Context<'ctx>, decl: &Decl) {
             let labeled_expr = label_asserts(context, &mut infos, &expr, true);
             for info in infos {
                 crate::typecheck::add_decl(context, &info.decl, true).unwrap();
-                context.assert_infos.insert(info.label.clone(), Rc::new(info.clone()));
+                context.assert_infos.insert(info.label.clone(), Arc::new(info.clone()));
                 smt_add_decl(context, &info.decl);
             }
             context.smt_log.log_assert(&labeled_expr);
@@ -347,9 +347,9 @@ fn smt_check_assertion<'ctx>(
     local_vars: Vec<Decl>, // Expected to be entirely DeclX::Const
     expr: &Expr,
 ) -> ValidityResult<'ctx> {
-    let mut discovered_span = Rc::new(None);
-    let mut discovered_global_span = Rc::new(None);
-    let not_expr = Rc::new(ExprX::Unary(UnaryOp::Not, expr.clone()));
+    let mut discovered_span = Arc::new(None);
+    let mut discovered_global_span = Arc::new(None);
+    let not_expr = Arc::new(ExprX::Unary(UnaryOp::Not, expr.clone()));
     context.smt_log.log_assert(&not_expr);
     context.solver.assert(&expr_to_smt(context, &not_expr).as_bool().unwrap());
 
