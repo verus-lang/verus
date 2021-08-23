@@ -19,7 +19,8 @@ pub struct Model<'a> {
     /// Externally facing mapping from snapshot IDs to snapshots that map AIR variables
     /// to their concrete values.
     /// TODO: Upgrade to a semantics-preserving value type, instead of String.
-    value_snapshots: HashMap<Ident, HashMap<Ident, String>>,
+    /// TODO: Expose via a more abstract interface
+    pub value_snapshots: HashMap<Ident, HashMap<Ident, String>>,
 }
 
 impl<'a> Model<'a> {

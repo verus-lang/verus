@@ -85,6 +85,14 @@ pub fn suffix_local_id(ident: &Ident) -> Ident {
     Arc::new(ident.to_string() + SUFFIX_LOCAL)
 }
 
+pub fn rm_suffix_local_id(ident: &Ident) -> Ident {
+    let mut name = ident.to_string();
+    if name.ends_with(SUFFIX_LOCAL) {
+        name = name[..name.len() - SUFFIX_LOCAL.len()].to_string();
+    }
+    Arc::new(name)
+}
+
 pub fn suffix_typ_param_id(ident: &Ident) -> Ident {
     Arc::new(ident.to_string() + SUFFIX_TYPE_PARAM)
 }
@@ -136,6 +144,15 @@ pub fn variant_field_ident(variant_ident: &Ident, name: &str) -> Ident {
 #[inline(always)]
 pub fn variant_positional_field_ident(variant_ident: &Ident, idx: usize) -> Ident {
     variant_field_ident(variant_ident, format!("{}", idx).as_str())
+}
+
+/// For a given snapshot, does it represent the state
+/// at the start of the corresponding span, the end, or the full span?
+#[derive(Debug)]
+pub enum SnapPos {
+    Start(Ident),
+    Full(Ident),
+    End(Ident),
 }
 
 pub struct Spanned<X> {

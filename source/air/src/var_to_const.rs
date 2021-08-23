@@ -38,6 +38,7 @@ fn lower_stmt(
     versions: &mut HashMap<Ident, u32>,
     version_decls: &mut HashSet<Ident>,
     snapshots: &mut Snapshots,
+    all_snapshots: &mut Snapshots,
     types: &HashMap<Ident, Typ>,
     stmt: &Stmt,
 ) -> Stmt {
@@ -67,12 +68,21 @@ fn lower_stmt(
         }
         StmtX::Snapshot(snap) => {
             snapshots.insert(snap.clone(), versions.clone());
+            all_snapshots.insert(snap.clone(), versions.clone());
             Arc::new(StmtX::Block(Arc::new(vec![])))
         }
         StmtX::Block(ss) => {
             let mut stmts: Vec<Stmt> = Vec::new();
             for s in ss.iter() {
-                stmts.push(lower_stmt(decls, versions, version_decls, snapshots, types, s));
+                stmts.push(lower_stmt(
+                    decls,
+                    versions,
+                    version_decls,
+                    snapshots,
+                    all_snapshots,
+                    types,
+                    s,
+                ));
             }
             Arc::new(StmtX::Block(Arc::new(stmts)))
         }
@@ -88,10 +98,12 @@ fn lower_stmt(
                     &mut versions_i,
                     version_decls,
                     &mut snapshots_i,
+                    all_snapshots,
                     types,
                     s,
                 ));
                 all_versions.push(versions_i);
+                all_snapshots.extend(snapshots_i);
             }
             for x in all_versions[0].keys() {
                 // For each variable x, the different branches may have different versions[x],
@@ -125,6 +137,7 @@ pub(crate) fn lower_query(query: &Query) -> (Query, Snapshots, Vec<Decl>) {
     let mut versions: HashMap<Ident, u32> = HashMap::new();
     let mut version_decls: HashSet<Ident> = HashSet::new();
     let mut snapshots: Snapshots = HashMap::new();
+    let mut all_snapshots: Snapshots = HashMap::new();
     let mut types: HashMap<Ident, Typ> = HashMap::new();
     let mut local_vars: Vec<Decl> = Vec::new();
 
@@ -151,9 +164,10 @@ pub(crate) fn lower_query(query: &Query) -> (Query, Snapshots, Vec<Decl>) {
         &mut versions,
         &mut version_decls,
         &mut snapshots,
+        &mut all_snapshots,
         &types,
         assertion,
     );
     let local = Arc::new(decls);
-    (Arc::new(QueryX { local, assertion }), snapshots, local_vars)
+    (Arc::new(QueryX { local, assertion }), all_snapshots, local_vars)
 }

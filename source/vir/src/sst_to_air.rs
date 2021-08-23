@@ -5,8 +5,8 @@ use crate::ast_util::path_to_string;
 use crate::context::Ctx;
 use crate::def::{
     prefix_ensures, prefix_fuel_id, prefix_requires, prefix_type_id, suffix_global_id,
-    suffix_local_id, suffix_typ_param_id, Spanned, FUEL_BOOL, FUEL_BOOL_DEFAULT, FUEL_DEFAULTS,
-    FUEL_ID, FUEL_PARAM, FUEL_TYPE, POLY, SNAPSHOT_CALL, SUCC,
+    suffix_local_id, suffix_typ_param_id, SnapPos, Spanned, FUEL_BOOL, FUEL_BOOL_DEFAULT,
+    FUEL_DEFAULTS, FUEL_ID, FUEL_PARAM, FUEL_TYPE, POLY, SNAPSHOT_CALL, SUCC,
 };
 use crate::sst::{BndX, Dest, Exp, ExpX, Stm, StmX};
 use crate::util::vec_map;
@@ -270,7 +270,9 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp) -> Expr {
 struct State {
     local_shared: Vec<Decl>, // shared between all queries for a single function
     commands: Vec<Command>,
-    snapshot_count: u32,
+    snapshot_count: u32,    // Used to ensure unique Idents for each snapshot
+    latest_snapshot: Ident, // The ID of the closest snapshot that dominates the current position in the AST
+    snap_map: Vec<(Span, SnapPos)>, // Maps each statement's span to the closest dominating snapshot's ID
 }
 
 fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
@@ -294,6 +296,11 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
                 None => {
                     for arg in args.iter() {
                         ens_args.push(exp_to_expr(ctx, arg));
+                    }
+                    if ctx.debug {
+                        state
+                            .snap_map
+                            .push((stm.span.clone(), SnapPos::Full(state.latest_snapshot.clone())));
                     }
                 }
                 Some(Dest { var, mutable }) => {
@@ -323,9 +330,15 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
                     if ctx.debug {
                         // Add a snapshot after we modify the destination
                         state.snapshot_count += 1;
-                        let name = format!("Mutation_{}", state.snapshot_count);
-                        let snapshot = Arc::new(StmtX::Snapshot(Arc::new(name)));
+                        let name = format!("{}_mutation", state.snapshot_count);
+                        let snapshot = Arc::new(StmtX::Snapshot(Arc::new(name.clone())));
                         stmts.push(snapshot);
+                        state.latest_snapshot = Arc::new(name);
+                        // Update the snap_map so that it reflects the state _after_ the
+                        // statement takes effect.
+                        state
+                            .snap_map
+                            .push((stm.span.clone(), SnapPos::Full(state.latest_snapshot.clone())));
                     }
                 }
             }
@@ -339,15 +352,32 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
         StmX::Assert(expr) => {
             let air_expr = exp_to_expr(ctx, &expr);
             let option_span = Arc::new(Some(stm.span.clone()));
+            if ctx.debug {
+                state
+                    .snap_map
+                    .push((stm.span.clone(), SnapPos::Full(state.latest_snapshot.clone())));
+            }
             vec![Arc::new(StmtX::Assert(option_span, air_expr))]
         }
-        StmX::Assume(expr) => vec![Arc::new(StmtX::Assume(exp_to_expr(ctx, &expr)))],
+        StmX::Assume(expr) => {
+            if ctx.debug {
+                state
+                    .snap_map
+                    .push((stm.span.clone(), SnapPos::Full(state.latest_snapshot.clone())));
+            }
+            vec![Arc::new(StmtX::Assume(exp_to_expr(ctx, &expr)))]
+        }
         StmX::Decl { ident, typ, mutable, init: _ } => {
             state.local_shared.push(if *mutable {
                 Arc::new(DeclX::Var(suffix_local_id(&ident), typ_to_air(&typ)))
             } else {
                 Arc::new(DeclX::Const(suffix_local_id(&ident), typ_to_air(&typ)))
             });
+            if ctx.debug {
+                state
+                    .snap_map
+                    .push((stm.span.clone(), SnapPos::Full(state.latest_snapshot.clone())));
+            }
             vec![]
         }
         StmX::Assign(lhs, rhs) => {
@@ -360,9 +390,15 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
             if ctx.debug {
                 // Add a snapshot after we modify the destination
                 state.snapshot_count += 1;
-                let name = format!("Mutation_{}", state.snapshot_count);
-                let snapshot = Arc::new(StmtX::Snapshot(Arc::new(name)));
+                let name = format!("{}_mutation", state.snapshot_count);
+                let snapshot = Arc::new(StmtX::Snapshot(Arc::new(name.clone())));
                 stmts.push(snapshot);
+                state.latest_snapshot = Arc::new(name);
+                // Update the snap_map so that it reflects the state _after_ the
+                // statement takes effect.
+                state
+                    .snap_map
+                    .push((stm.span.clone(), SnapPos::Full(state.latest_snapshot.clone())));
             }
             stmts
         }
@@ -380,7 +416,21 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
             rhss.insert(0, neg_assume);
             let lblock = Arc::new(StmtX::Block(Arc::new(lhss)));
             let rblock = Arc::new(StmtX::Block(Arc::new(rhss)));
-            vec![Arc::new(StmtX::Switch(Arc::new(vec![lblock, rblock])))]
+            let mut stmts = vec![Arc::new(StmtX::Switch(Arc::new(vec![lblock, rblock])))];
+            if ctx.debug {
+                // Add a snapshot for the state after we join the lhs and rhs back together
+                state.snapshot_count += 1;
+                let name = format!("{}_join", state.snapshot_count);
+                let snapshot = Arc::new(StmtX::Snapshot(Arc::new(name.clone())));
+                stmts.push(snapshot);
+                state.latest_snapshot = Arc::new(name);
+                // Update the snap_map so that it reflects the state _after_ the
+                // statement takes effect.
+                state
+                    .snap_map
+                    .push((stm.span.clone(), SnapPos::End(state.latest_snapshot.clone())));
+            }
+            stmts
         }
         StmX::While { cond, body, invs, typ_inv_vars, modified_vars } => {
             let pos_cond = exp_to_expr(ctx, &cond);
@@ -389,6 +439,19 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
             let neg_assume = Arc::new(StmtX::Assume(neg_cond));
             let invs: Vec<(Span, Expr)> =
                 invs.iter().map(|e| (e.span.clone(), exp_to_expr(ctx, e))).collect();
+
+            let entry_snap_id = if ctx.debug {
+                // Add a snapshot to capture the start of the while loop
+                // We add the snapshot via Block to avoid copying the entire AST of the loop body
+                state.snapshot_count += 1;
+                let name = format!("{}_while_begin", state.snapshot_count);
+                let entry_snap = Arc::new(name);
+                state.latest_snapshot = entry_snap.clone();
+                Some(entry_snap)
+            } else {
+                None
+            };
+
             let mut air_body = stm_to_stmts(ctx, state, body);
 
             /*
@@ -430,6 +493,19 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
             } else {
                 Arc::new(StmtX::Block(Arc::new(air_body)))
             };
+
+            let assertion = if !ctx.debug {
+                assertion
+            } else {
+                // Update the snap_map to associate the start of the while loop with the new snapshot
+                let entry_snap_id = entry_snap_id.unwrap(); // Always Some if ctx.debug
+                let snapshot: Stmt = Arc::new(StmtX::Snapshot(Arc::new(entry_snap_id.to_string())));
+                state.snap_map.push((body.span.clone(), SnapPos::Start(entry_snap_id.clone())));
+                let block_contents: Vec<Stmt> = vec![snapshot, assertion];
+                let new_block: Stmt = Arc::new(StmtX::Block(Arc::new(block_contents)));
+                new_block
+            };
+
             let query = Arc::new(QueryX { local: Arc::new(local), assertion });
             state.commands.push(Arc::new(CommandX::CheckValid(query)));
 
@@ -457,6 +533,19 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
                 stmts.push(Arc::new(inv_stmt));
             }
             stmts.push(neg_assume);
+            if ctx.debug {
+                // Add a snapshot for the state after we emerge from the while loop
+                state.snapshot_count += 1;
+                let name = format!("{}_while_end", state.snapshot_count);
+                let snapshot = Arc::new(StmtX::Snapshot(Arc::new(name.clone())));
+                stmts.push(snapshot);
+                // Update the snap_map so that it reflects the state _after_ the
+                // statement takes effect.
+                state.latest_snapshot = Arc::new(name);
+                state
+                    .snap_map
+                    .push((stm.span.clone(), SnapPos::End(state.latest_snapshot.clone())));
+            }
             stmts
         }
         StmX::Fuel(x, fuel) => {
@@ -476,6 +565,11 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
                 let eq = mk_eq(&ident_var(&crate::def::prefix_fuel_nat(&x)), &added_fuel);
                 let binder = ident_binder(&str_ident(FUEL_PARAM), &str_typ(FUEL_TYPE));
                 stmts.push(Arc::new(StmtX::Assume(mk_exists(&vec![binder], &vec![], &eq))));
+            }
+            if ctx.debug {
+                state
+                    .snap_map
+                    .push((stm.span.clone(), SnapPos::Full(state.latest_snapshot.clone())));
             }
             stmts
         }
@@ -523,7 +617,7 @@ pub fn body_stm_to_air(
     reqs: &Vec<Exp>,
     enss: &Vec<Exp>,
     stm: &Stm,
-) -> Commands {
+) -> (Commands, Vec<(Span, SnapPos)>) {
     // Verifying a single function can generate multiple SMT queries.
     // Some declarations (local_shared) are shared among the queries.
     // Others are private to each query.
@@ -552,13 +646,21 @@ pub fn body_stm_to_air(
         assigned.insert(param.x.name.clone());
     }
 
-    let mut state = State { local_shared, commands: Vec::new(), snapshot_count: 0 };
+    let initial_snapshot_name = Arc::new("0_entry".to_string());
+
+    let mut state = State {
+        local_shared,
+        commands: Vec::new(),
+        snapshot_count: 0,
+        latest_snapshot: initial_snapshot_name.clone(),
+        snap_map: Vec::new(),
+    };
 
     let stm = crate::sst_vars::stm_assign(&mut declared, &mut assigned, &mut HashSet::new(), stm);
     let mut stmts = stm_to_stmts(ctx, &mut state, &stm);
 
     if ctx.debug {
-        let snapshot = Arc::new(StmtX::Snapshot(Arc::new("Entry".to_string())));
+        let snapshot = Arc::new(StmtX::Snapshot(initial_snapshot_name));
         let mut new_stmts = vec![snapshot];
         new_stmts.append(&mut stmts);
         stmts = new_stmts;
@@ -589,5 +691,5 @@ pub fn body_stm_to_air(
 
     let query = Arc::new(QueryX { local: Arc::new(local), assertion });
     state.commands.push(Arc::new(CommandX::CheckValid(query)));
-    Arc::new(state.commands)
+    (Arc::new(state.commands), state.snap_map)
 }

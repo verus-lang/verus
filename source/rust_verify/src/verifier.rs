@@ -1,5 +1,6 @@
 use crate::config::Args;
 use crate::context::Context;
+use crate::model::Model;
 use crate::unsupported;
 use crate::util::from_raw_span;
 use air::ast::{Command, CommandX, SpanOption};
@@ -11,6 +12,8 @@ use rustc_span::{CharPos, FileName, MultiSpan, Span};
 use std::fs::File;
 use std::io::Write;
 use vir::ast::{Krate, VirErr, VirErrX};
+use vir::def::SnapPos;
+use vir::model::Model as VModel;
 
 pub struct Verifier {
     pub encountered_vir_error: bool,
@@ -128,6 +131,7 @@ impl Verifier {
     fn check_result_validity(
         &mut self,
         compiler: &Compiler,
+        snap_map: &Vec<(air::ast::Span, SnapPos)>,
         command: &Command,
         result: ValidityResult,
     ) {
@@ -140,7 +144,7 @@ impl Verifier {
             ValidityResult::TypeError(err) => {
                 panic!("internal error: generated ill-typed AIR code: {}", err);
             }
-            ValidityResult::Invalid(m, span1, span2) => {
+            ValidityResult::Invalid(air_model, span1, span2) => {
                 report_verify_error(compiler, &span1, &span2);
                 self.errors.push((
                     span1
@@ -153,7 +157,10 @@ impl Verifier {
                         .map(|x| ErrorSpan::new_from_air_span(compiler.session().source_map(), x)),
                 ));
                 if self.args.debug {
-                    println!("Received model: {}", m);
+                    println!("Received AIR model: {}", air_model);
+                    let vir_model = VModel::new(air_model);
+                    let model = Model::new(vir_model, snap_map, compiler.session().source_map());
+                    println!("Build Rust model: {}", model);
                 }
             }
         }
@@ -231,19 +238,24 @@ impl Verifier {
                 air_context.comment(&("Function-Decl ".to_string() + &function.x.name));
             }
             for command in commands.iter() {
-                self.check_result_validity(compiler, &command, air_context.command(&command));
+                Self::check_internal_result(air_context.command(&command));
             }
         }
 
         // Create queries to check the validity of proof/exec function bodies
         for function in &krate.functions {
-            let commands = vir::func_to_air::func_def_to_air(&ctx, &function)?;
+            let (commands, snap_map) = vir::func_to_air::func_def_to_air(&ctx, &function)?;
             if commands.len() > 0 {
                 air_context.blank_line();
                 air_context.comment(&("Function-Def ".to_string() + &function.x.name));
             }
             for command in commands.iter() {
-                self.check_result_validity(compiler, &command, air_context.command(&command));
+                self.check_result_validity(
+                    compiler,
+                    &snap_map,
+                    &command,
+                    air_context.command(&command),
+                );
             }
         }
 

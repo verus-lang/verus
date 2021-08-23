@@ -9,6 +9,7 @@ pub mod datatype_to_air;
 pub mod def;
 pub mod func_to_air;
 pub mod headers;
+pub mod model;
 pub mod modes;
 mod prelude;
 mod recursion;
