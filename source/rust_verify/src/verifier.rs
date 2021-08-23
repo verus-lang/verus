@@ -11,8 +11,8 @@ use rustc_span::{CharPos, FileName, MultiSpan, Span};
 use std::fs::File;
 use std::io::Write;
 use vir::ast::{Krate, VirErr, VirErrX};
-use vir::model::Model as VModel;
 use vir::def::SnapPos;
+use vir::model::Model as VModel;
 
 pub struct Verifier {
     pub encountered_vir_error: bool,
@@ -257,9 +257,13 @@ impl Verifier {
                 air_context.blank_line();
                 air_context.comment(&("Function-Def ".to_string() + &function.x.name));
             }
-            println!("Checking {} commands for {}", commands.len(), function.x.name);
             for command in commands.iter() {
-                self.check_result_validity(compiler, &snap_map, &command, air_context.command(&command));
+                self.check_result_validity(
+                    compiler,
+                    &snap_map,
+                    &command,
+                    air_context.command(&command),
+                );
             }
         }
 

@@ -2,8 +2,8 @@ use crate::ast::{Function, Ident, Idents, Mode, ParamX, Params, VirErr};
 use crate::context::Ctx;
 use crate::def::{
     prefix_ensures, prefix_fuel_id, prefix_fuel_nat, prefix_recursive, prefix_requires,
-    suffix_global_id, suffix_local_id, suffix_typ_param_id, SnapPos, Spanned, FUEL_BOOL, FUEL_BOOL_DEFAULT,
-    FUEL_LOCAL, FUEL_TYPE, SUCC, ZERO,
+    suffix_global_id, suffix_local_id, suffix_typ_param_id, SnapPos, Spanned, FUEL_BOOL,
+    FUEL_BOOL_DEFAULT, FUEL_LOCAL, FUEL_TYPE, SUCC, ZERO,
 };
 use crate::sst_to_air::{exp_to_expr, typ_invariant, typ_to_air};
 use crate::util::{vec_map, vec_map_result};
@@ -284,7 +284,10 @@ pub fn func_decl_to_air(ctx: &Ctx, function: &Function) -> Result<Commands, VirE
     Ok(Rc::new(commands))
 }
 
-pub fn func_def_to_air(ctx: &Ctx, function: &Function) -> Result<(Commands, Vec<(Span, SnapPos)>), VirErr> {
+pub fn func_def_to_air(
+    ctx: &Ctx,
+    function: &Function,
+) -> Result<(Commands, Vec<(Span, SnapPos)>), VirErr> {
     match (function.x.mode, function.x.ret.as_ref(), function.x.body.as_ref()) {
         (Mode::Exec, _, Some(body)) | (Mode::Proof, _, Some(body)) => {
             let dest = function.x.ret.as_ref().map(|(x, _, _)| x.clone());

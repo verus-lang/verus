@@ -268,7 +268,7 @@ pub(crate) fn check_termination_exp(
 
     // TODO: If we decide to support debugging decreases failures, we should plumb _snap_map
     // up to the VIR model
-    let (commands, _snap_map) = crate::sst_to_air::body_stm_to_air(     
+    let (commands, _snap_map) = crate::sst_to_air::body_stm_to_air(
         ctx,
         &function.x.typ_params,
         &function.x.params,

@@ -74,7 +74,15 @@ fn lower_stmt(
         StmtX::Block(ss) => {
             let mut stmts: Vec<Stmt> = Vec::new();
             for s in ss.iter() {
-                stmts.push(lower_stmt(decls, versions, version_decls, snapshots, all_snapshots, types, s));
+                stmts.push(lower_stmt(
+                    decls,
+                    versions,
+                    version_decls,
+                    snapshots,
+                    all_snapshots,
+                    types,
+                    s,
+                ));
             }
             Rc::new(StmtX::Block(Rc::new(stmts)))
         }
