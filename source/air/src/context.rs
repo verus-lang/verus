@@ -238,10 +238,6 @@ impl<'ctx> Context<'ctx> {
             return ValidityResult::TypeError(err);
         }
         let (query, snapshots, local_vars) = crate::var_to_const::lower_query(query);
-
-        for (snap_id, _id_snapshot) in &snapshots {
-            println!("check_valid snap: {}", snap_id);
-        }
         self.air_middle_log.log_query(&query);
         let query = crate::block_to_assert::lower_query(&query);
         self.air_final_log.log_query(&query);
