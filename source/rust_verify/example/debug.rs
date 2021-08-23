@@ -17,6 +17,7 @@ fn test_mutation(i: int, n: nat, u: u8) {
     x = x + u;
     assert(x >= 5);
 }
+*/
 
 fn test_if_else(b:bool, z:int) {
     let mut x : int = 0;
@@ -31,8 +32,8 @@ fn test_if_else(b:bool, z:int) {
     }
     assert(x + y > 5); // 6_join
 }
-*/
 
+/*
 fn test_loop() {
     let mut i: u64 = 10;
     let mut b1: u8 = 20;
@@ -56,3 +57,4 @@ fn test_loop() {
 
     assert(true);   // 7_while_end
 }
+*/
