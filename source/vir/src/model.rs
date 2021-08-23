@@ -27,4 +27,9 @@ impl<'a> Model<'a> {
 
         Model { air_model, vir_snapshots }
     }
+
+    /// Look up the value of a VIR variable `name` in a given `snapshot`
+    pub fn query_variable(&self, snapshot: Ident, name: Ident) -> Option<String> {
+        Some(self.vir_snapshots.get(&snapshot)?.get(&name)?.to_string())
+    }
 }

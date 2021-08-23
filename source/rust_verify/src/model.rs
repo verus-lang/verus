@@ -6,7 +6,6 @@ use std::collections::HashMap;
 use std::fmt;
 use vir::def::SnapPos;
 use vir::model::Model as VModel;
-//use itertools::Itertools;
 
 #[derive(Debug)]
 /// Rust-level model of a concrete counterexample
@@ -89,6 +88,10 @@ impl<'a> Model<'a> {
             println!("Span from {} to {} => {:?}", start.line, end.line, snap_pos);
         }
         Model { vir_model, line_map }
+    }
+
+    pub fn query_variable(&self, line: usize, name: Ident) -> Option<String> {
+        Some(self.vir_model.query_variable(self.line_map.get(&line)?.clone(), name)?)
     }
 }
 
