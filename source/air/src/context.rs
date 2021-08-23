@@ -3,7 +3,7 @@ use crate::model::Model;
 use crate::print_parse::Logger;
 use crate::typecheck::Typing;
 use std::collections::{HashMap, HashSet};
-use std::rc::Rc;
+use std::sync::Arc;
 use z3::ast::Dynamic;
 use z3::{FuncDecl, Sort};
 
@@ -24,10 +24,10 @@ pub enum ValidityResult<'a> {
 pub struct Context<'ctx> {
     pub(crate) context: &'ctx z3::Context,
     pub(crate) solver: &'ctx z3::Solver<'ctx>,
-    pub(crate) typs: HashMap<Ident, Rc<Sort<'ctx>>>,
-    pub(crate) vars: HashMap<Ident, Dynamic<'ctx>>, // no Rc; Dynamic implements Clone
-    pub(crate) funs: HashMap<Ident, Rc<FuncDecl<'ctx>>>,
-    pub(crate) assert_infos: HashMap<Ident, Rc<AssertionInfo>>,
+    pub(crate) typs: HashMap<Ident, Arc<Sort<'ctx>>>,
+    pub(crate) vars: HashMap<Ident, Dynamic<'ctx>>, // no Arc; Dynamic implements Clone
+    pub(crate) funs: HashMap<Ident, Arc<FuncDecl<'ctx>>>,
+    pub(crate) assert_infos: HashMap<Ident, Arc<AssertionInfo>>,
     pub(crate) assert_infos_count: u64,
     pub(crate) typing: Typing,
     pub(crate) debug: bool,

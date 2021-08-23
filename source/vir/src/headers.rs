@@ -1,7 +1,7 @@
 use crate::ast::{Expr, ExprX, Exprs, HeaderExprX, Ident, Stmt, StmtX, Typ, VirErr};
 use crate::ast_util::err_str;
 use crate::def::Spanned;
-use std::rc::Rc;
+use std::sync::Arc;
 
 #[derive(Clone, Debug)]
 pub struct Header {
@@ -71,12 +71,12 @@ fn read_header_block(block: &mut Vec<Stmt>) -> Result<Header, VirErr> {
         n += 1;
     }
     *block = block[n..].to_vec();
-    let require = require.unwrap_or(Rc::new(vec![]));
+    let require = require.unwrap_or(Arc::new(vec![]));
     let (ensure_id_typ, ensure) = match ensure {
-        None => (None, Rc::new(vec![])),
+        None => (None, Arc::new(vec![])),
         Some((id_typ, es)) => (id_typ, es),
     };
-    let invariant = invariant.unwrap_or(Rc::new(vec![]));
+    let invariant = invariant.unwrap_or(Arc::new(vec![]));
     Ok(Header { hidden, require, ensure_id_typ, ensure, invariant, decrease })
 }
 
@@ -85,7 +85,7 @@ pub fn read_header(body: &mut Expr) -> Result<Header, VirErr> {
         ExprX::Block(stmts, expr) => {
             let mut block: Vec<Stmt> = (**stmts).clone();
             let header = read_header_block(&mut block)?;
-            *body = Spanned::new(body.span.clone(), ExprX::Block(Rc::new(block), expr.clone()));
+            *body = Spanned::new(body.span.clone(), ExprX::Block(Arc::new(block), expr.clone()));
             Ok(header)
         }
         _ => read_header_block(&mut vec![]),

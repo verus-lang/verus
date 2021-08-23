@@ -2,6 +2,7 @@ use crate::config::Args;
 use crate::context::Context;
 use crate::model::Model;
 use crate::unsupported;
+use crate::util::from_raw_span;
 use air::ast::{Command, CommandX, SpanOption};
 use air::context::ValidityResult;
 use rustc_interface::interface::Compiler;
@@ -35,10 +36,8 @@ pub struct ErrorSpan {
 
 impl ErrorSpan {
     fn new_from_air_span(source_map: &SourceMap, air_span: &air::ast::Span) -> Self {
-        let span: &Span = (*air_span.raw_span)
-            .downcast_ref::<Span>()
-            .expect("internal error: failed to cast to Span");
-        let filename: String = match source_map.span_to_filename(*span) {
+        let span: Span = from_raw_span(&air_span.raw_span);
+        let filename: String = match source_map.span_to_filename(span) {
             FileName::Real(rfn) => rfn
                 .local_path()
                 .to_str()
@@ -46,9 +45,9 @@ impl ErrorSpan {
                 .to_string(),
             _ => unsupported!("non real filenames in verifier errors", air_span),
         };
-        let (start, end) = source_map.is_valid_span(*span).expect("internal error: invalid Span");
+        let (start, end) = source_map.is_valid_span(span).expect("internal error: invalid Span");
         let test_span_line = {
-            let span = source_map.span_extend_to_prev_char(*span, '\n', false);
+            let span = source_map.span_extend_to_prev_char(span, '\n', false);
             let span = source_map.span_extend_to_next_char(span, '\n', false);
             source_map.span_to_snippet(span).expect("internal error: cannot extract Span line")
         };
@@ -61,10 +60,8 @@ impl ErrorSpan {
 }
 
 fn report_vir_error(compiler: &Compiler, vir_err: VirErr) {
-    let span: &Span = (*vir_err.span.raw_span)
-        .downcast_ref::<Span>()
-        .expect("internal error: failed to cast to Span");
-    let multispan = MultiSpan::from_span(*span);
+    let span: Span = from_raw_span(&vir_err.span.raw_span);
+    let multispan = MultiSpan::from_span(span);
     match &vir_err.x {
         VirErrX::Str(msg) => {
             compiler.session().parse_sess.span_diagnostic.span_err(multispan, &msg);
@@ -79,18 +76,15 @@ fn report_verify_error(compiler: &Compiler, span1: &SpanOption, span2: &SpanOpti
         }
         Some(air::ast::Span { description, raw_span, .. }) => {
             let msg = description.as_ref().unwrap_or(&"assertion failed".to_string()).clone();
-            let span: &Span =
-                (*raw_span).downcast_ref::<Span>().expect("internal error: failed to cast to Span");
-            let mut multispan = MultiSpan::from_span(*span);
+            let span: Span = from_raw_span(raw_span);
+            let mut multispan = MultiSpan::from_span(span);
             match &**span2 {
                 None => {}
                 Some(air::ast::Span { description, raw_span, .. }) => {
                     let msg =
                         description.as_ref().unwrap_or(&"related location".to_string()).clone();
-                    let span: &Span = (*raw_span)
-                        .downcast_ref::<Span>()
-                        .expect("internal error: failed to cast to Span");
-                    multispan.push_span_label(*span, msg);
+                    let span: Span = from_raw_span(raw_span);
+                    multispan.push_span_label(span, msg);
                 }
             }
             compiler.session().parse_sess.span_diagnostic.span_err(multispan, &msg);
@@ -103,11 +97,9 @@ fn report_chosen_triggers(
     air_span: &air::ast::Span,
     triggers: &Vec<Vec<String>>,
 ) {
-    let span: &Span = (*air_span.raw_span)
-        .downcast_ref::<Span>()
-        .expect("internal error: failed to cast to Span");
+    let span: Span = from_raw_span(&air_span.raw_span);
     let msg = format!("chosen triggers: {:#?}", triggers);
-    compiler.session().parse_sess.span_diagnostic.span_note_without_error(*span, &msg);
+    compiler.session().parse_sess.span_diagnostic.span_note_without_error(span, &msg);
 }
 
 impl Verifier {

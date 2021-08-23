@@ -1,10 +1,18 @@
-use rustc_span::Span;
-use std::rc::Rc;
+use rustc_span::{Span, SpanData};
+use std::sync::Arc;
 use vir::ast::{VirErr, VirErrX};
 use vir::def::Spanned;
 
-pub(crate) fn spanned_new<X>(span: Span, x: X) -> Rc<Spanned<X>> {
-    let raw_span = Rc::new(span);
+pub(crate) fn to_raw_span(span: Span) -> air::ast::RawSpan {
+    Arc::new(span.data())
+}
+
+pub(crate) fn from_raw_span(raw_span: &air::ast::RawSpan) -> Span {
+    (**raw_span).downcast_ref::<SpanData>().expect("internal error: failed to cast to Span").span()
+}
+
+pub(crate) fn spanned_new<X>(span: Span, x: X) -> Arc<Spanned<X>> {
+    let raw_span = to_raw_span(span);
     let as_string = format!("{:?}", span);
     Spanned::new(air::ast::Span { description: None, raw_span, as_string }, x)
 }

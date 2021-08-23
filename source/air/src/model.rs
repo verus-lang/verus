@@ -80,7 +80,7 @@ impl<'a> Model<'a> {
                     let var_smt = new_const(context, &var_name, &typ);
                     let val = self.lookup_z3_var(&var_name, &var_smt);
                     value_snapshot.insert(var_name.clone(), val);
-                    //value_snapshot.insert(Rc::new((*var_name).clone()), val);
+                    //value_snapshot.insert(Arc::new((*var_name).clone()), val);
                 } else {
                     panic!("Expected local vars to all be constants at this point");
                 }
