@@ -5,7 +5,7 @@ use crate::def::Spanned;
 use crate::sst::{BndX, Dest, Exp, ExpX, Exps, Stm, StmX};
 use crate::util::vec_map_result;
 use air::ast::BinderX;
-use std::rc::Rc;
+use std::sync::Arc;
 
 fn function_can_be_exp(ctx: &Ctx, name: &Ident) -> bool {
     let func = &ctx.func_map[name];
@@ -20,7 +20,7 @@ fn expr_must_be_call_stm(ctx: &Ctx, expr: &Expr) -> Result<Option<(Ident, Typs, 
     match &expr.x {
         ExprX::Call(x, typs, args) if !function_can_be_exp(ctx, x) => {
             let exps = vec_map_result(args, |e| expr_to_exp(ctx, e))?;
-            Ok(Some((x.clone(), typs.clone(), Rc::new(exps))))
+            Ok(Some((x.clone(), typs.clone(), Arc::new(exps))))
         }
         _ => Ok(None),
     }
@@ -55,14 +55,14 @@ pub(crate) fn expr_to_exp(ctx: &Ctx, expr: &Expr) -> Result<Exp, VirErr> {
                 },
             }
             let exps = vec_map_result(args, |e| expr_to_exp(ctx, e))?;
-            Ok(Spanned::new(expr.span.clone(), ExpX::Call(x.clone(), typs.clone(), Rc::new(exps))))
+            Ok(Spanned::new(expr.span.clone(), ExpX::Call(x.clone(), typs.clone(), Arc::new(exps))))
         }
         ExprX::Ctor(p, i, binders) => Ok(Spanned::new(
             expr.span.clone(),
             ExpX::Ctor(
                 p.clone(),
                 i.clone(),
-                Rc::new(
+                Arc::new(
                     binders
                         .iter()
                         .map(|b| b.map_result(|a| expr_to_exp(ctx, a)))
@@ -97,8 +97,8 @@ pub(crate) fn expr_to_exp(ctx: &Ctx, expr: &Expr) -> Result<Exp, VirErr> {
                 match &stmt.x {
                     StmtX::Decl { param, mutable: false, init: Some(init) } => {
                         let name = param.x.name.clone();
-                        let binder = Rc::new(BinderX { name, a: expr_to_exp(ctx, init)? });
-                        let binders = Rc::new(vec![binder]);
+                        let binder = Arc::new(BinderX { name, a: expr_to_exp(ctx, init)? });
+                        let binders = Arc::new(vec![binder]);
                         let bnd = Spanned::new(param.span.clone(), BndX::Let(binders));
                         exp = Spanned::new(expr.span.clone(), ExpX::Bind(bnd, exp));
                     }
@@ -127,7 +127,7 @@ pub fn expr_to_stm(ctx: &Ctx, expr: &Expr, dest: &Option<Ident>) -> Result<Stm, 
             let exps = vec_map_result(args, |e| expr_to_exp(ctx, e))?;
             Ok(Spanned::new(
                 expr.span.clone(),
-                StmX::Call(x.clone(), typs.clone(), Rc::new(exps), None),
+                StmX::Call(x.clone(), typs.clone(), Arc::new(exps), None),
             ))
         }
         ExprX::Assign(lhs, rhs) => {
@@ -162,15 +162,15 @@ pub fn expr_to_stm(ctx: &Ctx, expr: &Expr, dest: &Option<Ident>) -> Result<Stm, 
             assert_eq!(*dest, None);
             let cond = expr_to_exp(ctx, cond)?;
             let body = expr_to_stm(ctx, body, &None)?;
-            let invs = Rc::new(vec_map_result(invs, |e| expr_to_exp(ctx, e))?);
+            let invs = Arc::new(vec_map_result(invs, |e| expr_to_exp(ctx, e))?);
             Ok(Spanned::new(
                 expr.span.clone(),
                 StmX::While {
                     cond,
                     body,
                     invs,
-                    typ_inv_vars: Rc::new(vec![]),
-                    modified_vars: Rc::new(vec![]),
+                    typ_inv_vars: Arc::new(vec![]),
+                    modified_vars: Arc::new(vec![]),
                 },
             ))
         }
@@ -191,7 +191,7 @@ pub fn expr_to_stm(ctx: &Ctx, expr: &Expr, dest: &Option<Ident>) -> Result<Stm, 
                 }
                 _ => panic!("internal error: ExprX::Block {:?} {}", dest, expr.span.as_string),
             }
-            Ok(Spanned::new(expr.span.clone(), StmX::Block(Rc::new(stms))))
+            Ok(Spanned::new(expr.span.clone(), StmX::Block(Arc::new(stms))))
         }
         _ => {
             todo!("{}", expr.span.as_string)

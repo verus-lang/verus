@@ -10,7 +10,7 @@ use rustc_hir::{Body, BodyId, FnDecl, FnHeader, FnSig, Generics, Param, Unsafety
 use rustc_middle::ty::TyCtxt;
 use rustc_span::symbol::Ident;
 use rustc_span::Span;
-use std::rc::Rc;
+use std::sync::Arc;
 use vir::ast::{FunctionX, KrateX, Mode, ParamX, Typ, VirErr};
 use vir::def::RETURN_VALUE;
 
@@ -73,7 +73,7 @@ pub(crate) fn check_item_fn<'tcx>(
     let mut vir_params: Vec<vir::ast::Param> = Vec::new();
     for (param, input) in params.iter().zip(sig.decl.inputs.iter()) {
         let Param { hir_id, pat, ty_span: _, span } = param;
-        let name = Rc::new(pat_to_var(pat));
+        let name = Arc::new(pat_to_var(pat));
         let typ = ty_to_vir(ctxt.tcx, input);
         let mode = get_var_mode(mode, ctxt.tcx.hir().attrs(*hir_id));
         let vir_param = spanned_new(*span, ParamX { name, typ, mode });
@@ -112,11 +112,11 @@ pub(crate) fn check_item_fn<'tcx>(
             }
         }
     }
-    let name = Rc::new(ident_to_var(&id));
-    let params = Rc::new(vir_params);
+    let name = Arc::new(ident_to_var(&id));
+    let params = Arc::new(vir_params);
     let ret = match (header.ensure_id_typ, ret_typ_mode) {
         (None, None) => None,
-        (None, Some((typ, mode))) => Some((Rc::new(RETURN_VALUE.to_string()), typ, mode)),
+        (None, Some((typ, mode))) => Some((Arc::new(RETURN_VALUE.to_string()), typ, mode)),
         (Some((x, _)), Some((typ, mode))) => Some((x, typ, mode)),
         _ => panic!("internal error: ret_typ"),
     };
@@ -130,7 +130,7 @@ pub(crate) fn check_item_fn<'tcx>(
         require: header.require,
         ensure: header.ensure,
         decrease: header.decrease,
-        hidden: Rc::new(header.hidden),
+        hidden: Arc::new(header.hidden),
         body: Some(vir_body),
     };
     let function = spanned_new(sig.span, func);
@@ -154,25 +154,25 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
     let fuel = get_fuel(attrs);
     let mut vir_params: Vec<vir::ast::Param> = Vec::new();
     for (param, input) in idents.iter().zip(decl.inputs.iter()) {
-        let name = Rc::new(ident_to_var(param));
+        let name = Arc::new(ident_to_var(param));
         let typ = ty_to_vir(ctxt.tcx, input);
         // REVIEW: the parameters don't have attributes, so we use the overall mode
         let vir_param = spanned_new(param.span, ParamX { name, typ, mode });
         vir_params.push(vir_param);
     }
-    let name = Rc::new(ident_to_var(&id));
-    let params = Rc::new(vir_params);
+    let name = Arc::new(ident_to_var(&id));
+    let params = Arc::new(vir_params);
     let func = FunctionX {
         name,
         fuel,
         mode,
         typ_params,
         params,
-        ret: ret_typ_mode.map(|(typ, mode)| (Rc::new(RETURN_VALUE.to_string()), typ, mode)),
-        require: Rc::new(vec![]),
-        ensure: Rc::new(vec![]),
+        ret: ret_typ_mode.map(|(typ, mode)| (Arc::new(RETURN_VALUE.to_string()), typ, mode)),
+        require: Arc::new(vec![]),
+        ensure: Arc::new(vec![]),
         decrease: None,
-        hidden: Rc::new(vec![]),
+        hidden: Arc::new(vec![]),
         body: None,
     };
     let function = spanned_new(span, func);

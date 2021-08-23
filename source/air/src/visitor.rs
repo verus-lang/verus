@@ -1,5 +1,5 @@
 use crate::ast::{BindX, Binder, BinderX, Expr, ExprX, Stmt, StmtX, Trigger};
-use std::rc::Rc;
+use std::sync::Arc;
 
 pub(crate) fn map_expr_visitor<F: FnMut(&Expr) -> Expr>(expr: &Expr, f: &mut F) -> Expr {
     match &**expr {
@@ -11,18 +11,18 @@ pub(crate) fn map_expr_visitor<F: FnMut(&Expr) -> Expr>(expr: &Expr, f: &mut F) 
             for e in es.iter() {
                 exprs.push(map_expr_visitor(e, f));
             }
-            let expr = Rc::new(ExprX::Apply(x.clone(), Rc::new(exprs)));
+            let expr = Arc::new(ExprX::Apply(x.clone(), Arc::new(exprs)));
             f(&expr)
         }
         ExprX::Unary(op, e1) => {
             let expr1 = map_expr_visitor(e1, f);
-            let expr = Rc::new(ExprX::Unary(*op, expr1));
+            let expr = Arc::new(ExprX::Unary(*op, expr1));
             f(&expr)
         }
         ExprX::Binary(op, e1, e2) => {
             let expr1 = map_expr_visitor(e1, f);
             let expr2 = map_expr_visitor(e2, f);
-            let expr = Rc::new(ExprX::Binary(*op, expr1, expr2));
+            let expr = Arc::new(ExprX::Binary(*op, expr1, expr2));
             f(&expr)
         }
         ExprX::Multi(op, es) => {
@@ -30,14 +30,14 @@ pub(crate) fn map_expr_visitor<F: FnMut(&Expr) -> Expr>(expr: &Expr, f: &mut F) 
             for e in es.iter() {
                 exprs.push(map_expr_visitor(e, f));
             }
-            let expr = Rc::new(ExprX::Multi(*op, Rc::new(exprs)));
+            let expr = Arc::new(ExprX::Multi(*op, Arc::new(exprs)));
             f(&expr)
         }
         ExprX::IfElse(e1, e2, e3) => {
             let expr1 = map_expr_visitor(e1, f);
             let expr2 = map_expr_visitor(e2, f);
             let expr3 = map_expr_visitor(e3, f);
-            let expr = Rc::new(ExprX::IfElse(expr1, expr2, expr3));
+            let expr = Arc::new(ExprX::IfElse(expr1, expr2, expr3));
             f(&expr)
         }
         ExprX::Bind(bind, e1) => {
@@ -46,9 +46,9 @@ pub(crate) fn map_expr_visitor<F: FnMut(&Expr) -> Expr>(expr: &Expr, f: &mut F) 
                     let mut binders: Vec<Binder<Expr>> = Vec::new();
                     for b in bs.iter() {
                         let a = map_expr_visitor(&b.a, f);
-                        binders.push(Rc::new(BinderX { name: b.name.clone(), a }));
+                        binders.push(Arc::new(BinderX { name: b.name.clone(), a }));
                     }
-                    BindX::Let(Rc::new(binders))
+                    BindX::Let(Arc::new(binders))
                 }
                 BindX::Quant(quant, binders, ts) => {
                     let mut triggers: Vec<Trigger> = Vec::new();
@@ -57,18 +57,18 @@ pub(crate) fn map_expr_visitor<F: FnMut(&Expr) -> Expr>(expr: &Expr, f: &mut F) 
                         for expr in t.iter() {
                             exprs.push(map_expr_visitor(expr, f));
                         }
-                        triggers.push(Rc::new(exprs));
+                        triggers.push(Arc::new(exprs));
                     }
-                    BindX::Quant(*quant, binders.clone(), Rc::new(triggers))
+                    BindX::Quant(*quant, binders.clone(), Arc::new(triggers))
                 }
             };
             let e1 = map_expr_visitor(e1, f);
-            let expr = Rc::new(ExprX::Bind(Rc::new(bind), e1));
+            let expr = Arc::new(ExprX::Bind(Arc::new(bind), e1));
             f(&expr)
         }
         ExprX::LabeledAssertion(span, e1) => {
             let expr1 = map_expr_visitor(e1, f);
-            let expr = Rc::new(ExprX::LabeledAssertion(span.clone(), expr1));
+            let expr = Arc::new(ExprX::LabeledAssertion(span.clone(), expr1));
             f(&expr)
         }
     }
@@ -78,16 +78,16 @@ pub(crate) fn map_stmt_expr_visitor<F: FnMut(&Expr) -> Expr>(stmt: &Stmt, f: &mu
     match &**stmt {
         StmtX::Assume(e) => {
             let expr = map_expr_visitor(e, f);
-            Rc::new(StmtX::Assume(f(&expr)))
+            Arc::new(StmtX::Assume(f(&expr)))
         }
         StmtX::Assert(span, e) => {
             let expr = map_expr_visitor(e, f);
-            Rc::new(StmtX::Assert(span.clone(), f(&expr)))
+            Arc::new(StmtX::Assert(span.clone(), f(&expr)))
         }
         StmtX::Havoc(_) => stmt.clone(),
         StmtX::Assign(x, e) => {
             let expr = map_expr_visitor(e, f);
-            Rc::new(StmtX::Assign(x.clone(), f(&expr)))
+            Arc::new(StmtX::Assign(x.clone(), f(&expr)))
         }
         StmtX::Snapshot(_) => stmt.clone(),
         StmtX::Block(_) => stmt.clone(),
@@ -108,14 +108,14 @@ pub(crate) fn map_stmt_visitor<F: FnMut(&Stmt) -> Stmt>(stmt: &Stmt, f: &mut F) 
             for s in ss.iter() {
                 stmts.push(map_stmt_visitor(s, f));
             }
-            f(&Rc::new(StmtX::Block(Rc::new(stmts))))
+            f(&Arc::new(StmtX::Block(Arc::new(stmts))))
         }
         StmtX::Switch(ss) => {
             let mut stmts: Vec<Stmt> = Vec::new();
             for s in ss.iter() {
                 stmts.push(map_stmt_visitor(s, f));
             }
-            f(&Rc::new(StmtX::Switch(Rc::new(stmts))))
+            f(&Arc::new(StmtX::Switch(Arc::new(stmts))))
         }
     }
 }

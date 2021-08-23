@@ -6,7 +6,7 @@ use crate::unsupported_unless;
 use crate::util::spanned_new;
 use rustc_hir::{EnumDef, Generics, ItemId, VariantData};
 use rustc_span::Span;
-use std::rc::Rc;
+use std::sync::Arc;
 use vir::ast::{DatatypeX, Ident, KrateX, Mode, Variant, VirErr};
 use vir::ast_util::{ident_binder, str_ident};
 use vir::def::{variant_field_ident, variant_ident, variant_positional_field_ident};
@@ -23,7 +23,7 @@ fn check_variant_data<'tcx>(
         &(match variant_data {
             VariantData::Struct(fields, recovered) => {
                 unsupported_unless!(!recovered, "recovered_struct", variant_data);
-                Rc::new(
+                Arc::new(
                     fields
                         .iter()
                         .map(|field| {
@@ -38,7 +38,7 @@ fn check_variant_data<'tcx>(
                         .collect::<Vec<_>>(),
                 )
             }
-            VariantData::Tuple(fields, _variant_id) => Rc::new(
+            VariantData::Tuple(fields, _variant_id) => Arc::new(
                 fields
                     .iter()
                     .enumerate()
@@ -53,7 +53,7 @@ fn check_variant_data<'tcx>(
                     })
                     .collect::<Vec<_>>(),
             ),
-            VariantData::Unit(_vairant_id) => Rc::new(vec![]),
+            VariantData::Unit(_vairant_id) => Arc::new(vec![]),
         }),
     )
 }
@@ -70,7 +70,7 @@ pub fn check_item_struct<'tcx>(
     let name = hack_get_def_name(ctxt.tcx, id.def_id.to_def_id());
     let path = def_id_to_vir_path(ctxt.tcx, id.def_id.to_def_id());
     let variant_name = variant_ident(&name, &name);
-    let variants = Rc::new(vec![check_variant_data(ctxt, &variant_name, variant_data)]);
+    let variants = Arc::new(vec![check_variant_data(ctxt, &variant_name, variant_data)]);
     vir.datatypes.push(spanned_new(span, DatatypeX { path, variants }));
     Ok(())
 }
@@ -84,9 +84,9 @@ pub fn check_item_enum<'tcx>(
     generics: &'tcx Generics<'tcx>,
 ) -> Result<(), VirErr> {
     check_generics(generics)?;
-    let name = Rc::new(hack_get_def_name(ctxt.tcx, id.def_id.to_def_id()));
+    let name = Arc::new(hack_get_def_name(ctxt.tcx, id.def_id.to_def_id()));
     let path = def_id_to_vir_path(ctxt.tcx, id.def_id.to_def_id());
-    let variants = Rc::new(
+    let variants = Arc::new(
         enum_def
             .variants
             .iter()

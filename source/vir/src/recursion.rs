@@ -11,7 +11,7 @@ use crate::sst_visitor::{exp_rename_vars, map_exp_visitor, map_stm_visitor};
 use air::ast::{Binder, Commands, Quant, Span};
 use air::ast_util::{ident_binder, str_ident};
 use std::collections::HashMap;
-use std::rc::Rc;
+use std::sync::Arc;
 
 #[derive(Clone)]
 struct Ctxt<'a> {
@@ -32,8 +32,8 @@ fn check_decrease(ctxt: &Ctxt, exp: &Exp) -> Exp {
             // 0 <= decreases_exp < decreases_at_entry
             let call = ExpX::Call(
                 str_ident(CHECK_DECREASE_INT),
-                Rc::new(vec![]),
-                Rc::new(vec![exp.clone(), decreases_at_entry]),
+                Arc::new(vec![]),
+                Arc::new(vec![exp.clone(), decreases_at_entry]),
             );
             Spanned::new(exp.span.clone(), call)
         }
@@ -57,7 +57,7 @@ fn check_decrease_rename(ctxt: &Ctxt, span: &Span, args: &Exps) -> Exp {
     let dec_exp = exp_rename_vars(&ctxt.decreases_exp, &renames);
     let e_dec = Spanned::new(
         span.clone(),
-        ExpX::Bind(Spanned::new(span.clone(), BndX::Let(Rc::new(binders))), dec_exp),
+        ExpX::Bind(Spanned::new(span.clone(), BndX::Let(Arc::new(binders))), dec_exp),
     );
     check_decrease(ctxt, &e_dec)
 }
@@ -234,7 +234,7 @@ pub(crate) fn check_termination_exp(
     body: &Exp,
 ) -> Result<(bool, Commands, Exp), VirErr> {
     if !is_recursive_exp(ctx, &function.x.name, body) {
-        return Ok((false, Rc::new(vec![]), body.clone()));
+        return Ok((false, Arc::new(vec![]), body.clone()));
     }
 
     let (decreases_expr, decreases_typ) = match &function.x.decrease {
@@ -263,7 +263,7 @@ pub(crate) fn check_termination_exp(
     let stm_assert = Spanned::new(span, StmX::Assert(check));
     let stm_block = Spanned::new(
         body.span.clone(),
-        StmX::Block(Rc::new(vec![stm_decl, stm_assign, stm_assert])),
+        StmX::Block(Arc::new(vec![stm_decl, stm_assign, stm_assert])),
     );
 
     let commands = crate::sst_to_air::body_stm_to_air(
@@ -271,9 +271,9 @@ pub(crate) fn check_termination_exp(
         &function.x.typ_params,
         &function.x.params,
         &None,
-        &Rc::new(vec![]),
-        &Rc::new(vec![]),
-        &Rc::new(vec![]),
+        &Arc::new(vec![]),
+        &Arc::new(vec![]),
+        &Arc::new(vec![]),
         &stm_block,
     );
 
@@ -285,7 +285,7 @@ pub(crate) fn check_termination_exp(
             let rec_x = prefix_recursive(x);
             let mut args = (**args).clone();
             args.push(Spanned::new(exp.span.clone(), ExpX::Var(str_ident(FUEL_PARAM))));
-            Spanned::new(exp.span.clone(), ExpX::Call(rec_x, typs.clone(), Rc::new(args)))
+            Spanned::new(exp.span.clone(), ExpX::Call(rec_x, typs.clone(), Arc::new(args)))
         }
         _ => exp.clone(),
     });
@@ -332,7 +332,7 @@ pub(crate) fn check_termination_stm(
             };
             let stm_assert = Spanned::new(span, StmX::Assert(check));
             let stm_block =
-                Spanned::new(s.span.clone(), StmX::Block(Rc::new(vec![stm_assert, s.clone()])));
+                Spanned::new(s.span.clone(), StmX::Block(Arc::new(vec![stm_assert, s.clone()])));
             Ok(stm_block)
         }
         _ => Ok(s.clone()),
@@ -340,7 +340,7 @@ pub(crate) fn check_termination_stm(
     let (stm_decl, stm_assign) = mk_decreases_at_entry(&ctxt, &stm.span);
     let stm_block = Spanned::new(
         stm.span.clone(),
-        StmX::Block(Rc::new(vec![stm_decl, stm_assign, stm.clone()])),
+        StmX::Block(Arc::new(vec![stm_decl, stm_assign, stm.clone()])),
     );
     Ok(stm_block)
 }

@@ -3,7 +3,7 @@ use crate::def::Spanned;
 use crate::sst::{Bnd, BndX, Exp, ExpX, Stm, StmX, Trig};
 use air::ast::{Binder, BinderX, Binders};
 use std::collections::HashMap;
-use std::rc::Rc;
+use std::sync::Arc;
 
 pub(crate) fn map_exp_visitor_bind<FB, F>(exp: &Exp, fb: &mut FB, f: &mut F) -> Result<Exp, VirErr>
 where
@@ -20,7 +20,7 @@ where
                 exps.push(map_exp_visitor_bind(e, fb, f)?);
             }
             let exp =
-                Spanned::new(exp.span.clone(), ExpX::Call(x.clone(), typs.clone(), Rc::new(exps)));
+                Spanned::new(exp.span.clone(), ExpX::Call(x.clone(), typs.clone(), Arc::new(exps)));
             f(&exp)
         }
         ExpX::Ctor(path, ident, binders) => {
@@ -30,7 +30,7 @@ where
                 .collect::<Result<Vec<_>, _>>()?;
             let exp = Spanned::new(
                 exp.span.clone(),
-                ExpX::Ctor(path.clone(), ident.clone(), Rc::new(mapped_binders)),
+                ExpX::Ctor(path.clone(), ident.clone(), Arc::new(mapped_binders)),
             );
             f(&exp)
         }
@@ -75,9 +75,9 @@ where
                     let mut binders: Vec<Binder<Exp>> = Vec::new();
                     for b in bs.iter() {
                         let a = map_exp_visitor_bind(&b.a, fb, f)?;
-                        binders.push(Rc::new(BinderX { name: b.name.clone(), a }));
+                        binders.push(Arc::new(BinderX { name: b.name.clone(), a }));
                     }
-                    BndX::Let(Rc::new(binders))
+                    BndX::Let(Arc::new(binders))
                 }
                 BndX::Quant(quant, binders, ts) => {
                     let mut triggers: Vec<Trig> = Vec::new();
@@ -86,9 +86,9 @@ where
                         for exp in t.iter() {
                             exprs.push(map_exp_visitor_bind(exp, fb, f)?);
                         }
-                        triggers.push(Rc::new(exprs));
+                        triggers.push(Arc::new(exprs));
                     }
-                    BndX::Quant(*quant, binders.clone(), Rc::new(triggers))
+                    BndX::Quant(*quant, binders.clone(), Arc::new(triggers))
                 }
             };
             let bnd = fb(&Spanned::new(bnd.span.clone(), bndx))?;
@@ -190,7 +190,7 @@ where
             for s in ss.iter() {
                 stms.push(map_stm_visitor(s, f)?);
             }
-            let stm = Spanned::new(stm.span.clone(), StmX::Block(Rc::new(stms)));
+            let stm = Spanned::new(stm.span.clone(), StmX::Block(Arc::new(stms)));
             f(&stm)
         }
     }

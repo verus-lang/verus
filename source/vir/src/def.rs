@@ -1,6 +1,6 @@
 use air::ast::{Ident, Span};
 use std::fmt::Debug;
-use std::rc::Rc;
+use std::sync::Arc;
 
 /*
 In SMT-LIB format (used by Z3), symbols are built of letters, digits, and:
@@ -78,59 +78,59 @@ pub const HAS_TYPE: &str = "has_type";
 pub const VARIANT_FIELD_SEPARATOR: &str = "/";
 
 pub fn suffix_global_id(ident: &Ident) -> Ident {
-    Rc::new(ident.to_string() + SUFFIX_GLOBAL)
+    Arc::new(ident.to_string() + SUFFIX_GLOBAL)
 }
 
 pub fn suffix_local_id(ident: &Ident) -> Ident {
-    Rc::new(ident.to_string() + SUFFIX_LOCAL)
+    Arc::new(ident.to_string() + SUFFIX_LOCAL)
 }
 
 pub fn suffix_typ_param_id(ident: &Ident) -> Ident {
-    Rc::new(ident.to_string() + SUFFIX_TYPE_PARAM)
+    Arc::new(ident.to_string() + SUFFIX_TYPE_PARAM)
 }
 
 pub fn suffix_rename(ident: &Ident) -> Ident {
-    Rc::new(ident.to_string() + SUFFIX_RENAME)
+    Arc::new(ident.to_string() + SUFFIX_RENAME)
 }
 
 pub fn prefix_type_id(ident: &Ident) -> Ident {
-    Rc::new(PREFIX_TYPE_ID.to_string() + ident)
+    Arc::new(PREFIX_TYPE_ID.to_string() + ident)
 }
 
 pub fn prefix_box(ident: &Ident) -> Ident {
-    Rc::new(PREFIX_BOX.to_string() + ident)
+    Arc::new(PREFIX_BOX.to_string() + ident)
 }
 
 pub fn prefix_unbox(ident: &Ident) -> Ident {
-    Rc::new(PREFIX_UNBOX.to_string() + ident)
+    Arc::new(PREFIX_UNBOX.to_string() + ident)
 }
 
 pub fn prefix_fuel_id(ident: &Ident) -> Ident {
-    Rc::new(PREFIX_FUEL_ID.to_string() + ident)
+    Arc::new(PREFIX_FUEL_ID.to_string() + ident)
 }
 
 pub fn prefix_fuel_nat(ident: &Ident) -> Ident {
-    Rc::new(PREFIX_FUEL_NAT.to_string() + ident)
+    Arc::new(PREFIX_FUEL_NAT.to_string() + ident)
 }
 
 pub fn prefix_requires(ident: &Ident) -> Ident {
-    Rc::new(PREFIX_REQUIRES.to_string() + ident)
+    Arc::new(PREFIX_REQUIRES.to_string() + ident)
 }
 
 pub fn prefix_ensures(ident: &Ident) -> Ident {
-    Rc::new(PREFIX_ENSURES.to_string() + ident)
+    Arc::new(PREFIX_ENSURES.to_string() + ident)
 }
 
 pub fn prefix_recursive(ident: &Ident) -> Ident {
-    Rc::new(PREFIX_RECURSIVE.to_string() + ident)
+    Arc::new(PREFIX_RECURSIVE.to_string() + ident)
 }
 
 pub fn variant_ident(adt_name: &str, variant_name: &str) -> Ident {
-    Rc::new(format!("{}{}{}", adt_name, VARIANT_SEPARATOR, variant_name))
+    Arc::new(format!("{}{}{}", adt_name, VARIANT_SEPARATOR, variant_name))
 }
 
 pub fn variant_field_ident(variant_ident: &Ident, name: &str) -> Ident {
-    Rc::new(format!("{}{}{}", variant_ident.as_str(), VARIANT_FIELD_SEPARATOR, name))
+    Arc::new(format!("{}{}{}", variant_ident.as_str(), VARIANT_FIELD_SEPARATOR, name))
 }
 
 #[inline(always)]
@@ -144,8 +144,8 @@ pub struct Spanned<X> {
 }
 
 impl<X> Spanned<X> {
-    pub fn new(span: Span, x: X) -> Rc<Spanned<X>> {
-        Rc::new(Spanned { span: span, x: x })
+    pub fn new(span: Span, x: X) -> Arc<Spanned<X>> {
+        Arc::new(Spanned { span: span, x: x })
     }
 }
 

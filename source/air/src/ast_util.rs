@@ -3,7 +3,7 @@ use crate::ast::{
     Typ, TypX, UnaryOp,
 };
 use std::fmt::Debug;
-use std::rc::Rc;
+use std::sync::Arc;
 
 impl Debug for Span {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
@@ -29,7 +29,7 @@ impl<A: Clone> BinderX<A> {
         &self,
         f: impl FnOnce(&A) -> Result<B, E>,
     ) -> Result<Binder<B>, E> {
-        Ok(Rc::new(BinderX { name: self.name.clone(), a: f(&self.a)? }))
+        Ok(Arc::new(BinderX { name: self.name.clone(), a: f(&self.a)? }))
     }
 }
 
@@ -43,55 +43,55 @@ impl<A: Clone + Debug> std::fmt::Debug for BinderX<A> {
 }
 
 pub fn str_ident(x: &str) -> Ident {
-    Rc::new(x.to_string())
+    Arc::new(x.to_string())
 }
 
 pub fn ident_var(x: &Ident) -> Expr {
-    Rc::new(ExprX::Var(x.clone()))
+    Arc::new(ExprX::Var(x.clone()))
 }
 
 pub fn string_var(x: &String) -> Expr {
-    Rc::new(ExprX::Var(Rc::new(x.clone())))
+    Arc::new(ExprX::Var(Arc::new(x.clone())))
 }
 
 pub fn str_var(x: &str) -> Expr {
-    Rc::new(ExprX::Var(Rc::new(x.to_string())))
+    Arc::new(ExprX::Var(Arc::new(x.to_string())))
 }
 
 pub fn ident_apply(x: &Ident, args: &Vec<Expr>) -> Expr {
-    Rc::new(ExprX::Apply(x.clone(), Rc::new(args.clone())))
+    Arc::new(ExprX::Apply(x.clone(), Arc::new(args.clone())))
 }
 
 pub fn string_apply(x: &String, args: &Vec<Expr>) -> Expr {
-    Rc::new(ExprX::Apply(Rc::new(x.clone()), Rc::new(args.clone())))
+    Arc::new(ExprX::Apply(Arc::new(x.clone()), Arc::new(args.clone())))
 }
 
 pub fn str_apply(x: &str, args: &Vec<Expr>) -> Expr {
-    Rc::new(ExprX::Apply(Rc::new(x.to_string()), Rc::new(args.clone())))
+    Arc::new(ExprX::Apply(Arc::new(x.to_string()), Arc::new(args.clone())))
 }
 
 pub fn int_typ() -> Typ {
-    Rc::new(TypX::Int)
+    Arc::new(TypX::Int)
 }
 
 pub fn bool_typ() -> Typ {
-    Rc::new(TypX::Bool)
+    Arc::new(TypX::Bool)
 }
 
 pub fn ident_typ(x: &Ident) -> Typ {
-    Rc::new(TypX::Named(x.clone()))
+    Arc::new(TypX::Named(x.clone()))
 }
 
 pub fn string_typ(x: &String) -> Typ {
-    Rc::new(TypX::Named(Rc::new(x.clone())))
+    Arc::new(TypX::Named(Arc::new(x.clone())))
 }
 
 pub fn str_typ(x: &str) -> Typ {
-    Rc::new(TypX::Named(Rc::new(x.to_string())))
+    Arc::new(TypX::Named(Arc::new(x.to_string())))
 }
 
 pub fn ident_binder<A: Clone>(x: &Ident, a: &A) -> Binder<A> {
-    Rc::new(BinderX { name: x.clone(), a: a.clone() })
+    Arc::new(BinderX { name: x.clone(), a: a.clone() })
 }
 
 pub fn mk_quantifier(
@@ -100,8 +100,8 @@ pub fn mk_quantifier(
     triggers: &Vec<Trigger>,
     body: &Expr,
 ) -> Expr {
-    Rc::new(ExprX::Bind(
-        Rc::new(BindX::Quant(quant, Rc::new(binders.clone()), Rc::new(triggers.clone()))),
+    Arc::new(ExprX::Bind(
+        Arc::new(BindX::Quant(quant, Arc::new(binders.clone()), Arc::new(triggers.clone()))),
         body.clone(),
     ))
 }
@@ -115,11 +115,11 @@ pub fn mk_exists(binders: &Vec<Binder<Typ>>, triggers: &Vec<Trigger>, body: &Exp
 }
 
 pub fn mk_true() -> Expr {
-    Rc::new(ExprX::Const(Constant::Bool(true)))
+    Arc::new(ExprX::Const(Constant::Bool(true)))
 }
 
 pub fn mk_false() -> Expr {
-    Rc::new(ExprX::Const(Constant::Bool(false)))
+    Arc::new(ExprX::Const(Constant::Bool(false)))
 }
 
 pub fn mk_and(exprs: &Vec<Expr>) -> Expr {
@@ -136,7 +136,7 @@ pub fn mk_and(exprs: &Vec<Expr>) -> Expr {
     } else if exprs.len() == 1 {
         exprs[0].clone()
     } else {
-        Rc::new(ExprX::Multi(MultiOp::And, Rc::new(exprs)))
+        Arc::new(ExprX::Multi(MultiOp::And, Arc::new(exprs)))
     }
 }
 
@@ -154,7 +154,7 @@ pub fn mk_or(exprs: &Vec<Expr>) -> Expr {
     } else if exprs.len() == 1 {
         exprs[0].clone()
     } else {
-        Rc::new(ExprX::Multi(MultiOp::Or, Rc::new(exprs)))
+        Arc::new(ExprX::Multi(MultiOp::Or, Arc::new(exprs)))
     }
 }
 
@@ -163,7 +163,7 @@ pub fn mk_not(e1: &Expr) -> Expr {
         ExprX::Const(Constant::Bool(false)) => mk_true(),
         ExprX::Const(Constant::Bool(true)) => mk_false(),
         ExprX::Unary(UnaryOp::Not, e) => e.clone(),
-        _ => Rc::new(ExprX::Unary(UnaryOp::Not, e1.clone())),
+        _ => Arc::new(ExprX::Unary(UnaryOp::Not, e1.clone())),
     }
 }
 
@@ -173,7 +173,7 @@ pub fn mk_implies(e1: &Expr, e2: &Expr) -> Expr {
         (ExprX::Const(Constant::Bool(true)), _) => e2.clone(),
         (_, ExprX::Const(Constant::Bool(false))) => mk_not(e1),
         (_, ExprX::Const(Constant::Bool(true))) => mk_true(),
-        _ => Rc::new(ExprX::Binary(BinaryOp::Implies, e1.clone(), e2.clone())),
+        _ => Arc::new(ExprX::Binary(BinaryOp::Implies, e1.clone(), e2.clone())),
     }
 }
 
@@ -185,10 +185,10 @@ pub fn mk_ite(e1: &Expr, e2: &Expr, e3: &Expr) -> Expr {
         (_, _, ExprX::Const(Constant::Bool(false))) => mk_and(&vec![e1.clone(), e2.clone()]),
         (_, ExprX::Const(Constant::Bool(true)), _) => mk_implies(&mk_not(e1), e3),
         (_, ExprX::Const(Constant::Bool(false)), _) => mk_and(&vec![mk_not(e1), e3.clone()]),
-        _ => Rc::new(ExprX::IfElse(e1.clone(), e2.clone(), e3.clone())),
+        _ => Arc::new(ExprX::IfElse(e1.clone(), e2.clone(), e3.clone())),
     }
 }
 
 pub fn mk_eq(e1: &Expr, e2: &Expr) -> Expr {
-    Rc::new(ExprX::Binary(BinaryOp::Eq, e1.clone(), e2.clone()))
+    Arc::new(ExprX::Binary(BinaryOp::Eq, e1.clone(), e2.clone()))
 }
