@@ -147,10 +147,11 @@ pub fn variant_positional_field_ident(variant_ident: &Ident, idx: usize) -> Iden
 }
 
 /// For a given snapshot, does it represent the state
-/// at the start of the corresponding span, or at the end?
+/// at the start of the corresponding span, the end, or the full span?
 #[derive(Debug)]
 pub enum SnapPos {
     Start(Ident),
+    Full(Ident),
     End(Ident),
 }
 

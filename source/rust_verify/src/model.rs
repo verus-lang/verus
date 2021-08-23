@@ -31,6 +31,7 @@ impl<'a> Model<'a> {
 
             let mut min_snap:Ident = match snap_pos { 
                 SnapPos::Start(span_id) => span_id.clone(),
+                SnapPos::Full(span_id) => span_id.clone(),
                 SnapPos::End(span_id) => span_id.clone(),
             };
             let mut min_line = start.line;
@@ -43,7 +44,8 @@ impl<'a> Model<'a> {
                 let (span_start, span_end) = source_map.is_valid_span(*span).expect("internal error: invalid Span");
 
                 let (start, end, cur_snap) = match snap_pos {
-                    SnapPos::Start(span_id) => (span_start.line, span_end.line + 1, span_id),
+                    SnapPos::Start(span_id) => (span_start.line, span_start.line + 1, span_id),
+                    SnapPos::Full(span_id) => (span_start.line, span_end.line + 1, span_id),
                     SnapPos::End(span_id) => (span_end.line, span_end.line + 1, span_id),
                 };
 

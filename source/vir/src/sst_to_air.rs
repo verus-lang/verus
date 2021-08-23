@@ -298,7 +298,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
                         ens_args.push(exp_to_expr(ctx, arg));
                     }
                     if ctx.debug {
-                        state.snap_map.push((stm.span.clone(), SnapPos::Start(state.latest_snapshot.clone())));
+                        state.snap_map.push((stm.span.clone(), SnapPos::Full(state.latest_snapshot.clone())));
                     }
                 }
                 Some(Dest { var, mutable }) => {
@@ -334,7 +334,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
                         state.latest_snapshot = Rc::new(name);
                         // Update the snap_map so that it reflects the state _after_ the 
                         // statement takes effect.
-                        state.snap_map.push((stm.span.clone(), SnapPos::Start(state.latest_snapshot.clone())));
+                        state.snap_map.push((stm.span.clone(), SnapPos::Full(state.latest_snapshot.clone())));
                     }
                 }
             }
@@ -349,13 +349,13 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
             let air_expr = exp_to_expr(ctx, &expr);
             let option_span = Rc::new(Some(stm.span.clone()));
             if ctx.debug {
-                state.snap_map.push((stm.span.clone(), SnapPos::Start(state.latest_snapshot.clone())));
+                state.snap_map.push((stm.span.clone(), SnapPos::Full(state.latest_snapshot.clone())));
             }
             vec![Rc::new(StmtX::Assert(option_span, air_expr))]
         }
         StmX::Assume(expr) => {
             if ctx.debug {
-                state.snap_map.push((stm.span.clone(), SnapPos::Start(state.latest_snapshot.clone())));
+                state.snap_map.push((stm.span.clone(), SnapPos::Full(state.latest_snapshot.clone())));
             }
             vec![Rc::new(StmtX::Assume(exp_to_expr(ctx, &expr)))]
         }
@@ -366,7 +366,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
                 Rc::new(DeclX::Const(suffix_local_id(&ident), typ_to_air(&typ)))
             });
             if ctx.debug {
-                state.snap_map.push((stm.span.clone(), SnapPos::Start(state.latest_snapshot.clone())));
+                state.snap_map.push((stm.span.clone(), SnapPos::Full(state.latest_snapshot.clone())));
             }
             vec![]
         }
@@ -386,7 +386,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
                 state.latest_snapshot = Rc::new(name);
                 // Update the snap_map so that it reflects the state _after_ the 
                 // statement takes effect.
-                state.snap_map.push((stm.span.clone(), SnapPos::Start(state.latest_snapshot.clone())));
+                state.snap_map.push((stm.span.clone(), SnapPos::Full(state.latest_snapshot.clone())));
             }
             stmts
         }
@@ -425,6 +425,19 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
             let neg_assume = Rc::new(StmtX::Assume(neg_cond));
             let invs: Vec<(Span, Expr)> =
                 invs.iter().map(|e| (e.span.clone(), exp_to_expr(ctx, e))).collect();
+
+            let entry_snap_id = if ctx.debug {
+                // Add a snapshot to capture the start of the while loop
+                // We add the snapshot via Block to avoid copying the entire AST of the loop body
+                state.snapshot_count += 1;
+                let name = format!("{}_while_begin", state.snapshot_count);
+                let entry_snap = Rc::new(name);
+                state.latest_snapshot = entry_snap.clone();
+                Some(entry_snap)
+            } else {
+                None
+            };
+
             let mut air_body = stm_to_stmts(ctx, state, body);
 
             /*
@@ -470,15 +483,10 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
             let assertion = if !ctx.debug {
                 assertion
             } else {
-                // Add a snapshot to capture the start of the while loop
-                // We add the snapshot via Block to avoid copying the entire AST of the loop body
-                state.snapshot_count += 1;
-                let name = format!("{}_while_begin", state.snapshot_count);
-                let snapshot:Stmt = Rc::new(StmtX::Snapshot(Rc::new(name.clone())));
-                state.latest_snapshot = Rc::new(name);
-                // Update the snap_map so that it reflects the state _after_ the 
-                // statement takes effect.
-                state.snap_map.push((body.span.clone(), SnapPos::Start(state.latest_snapshot.clone())));
+                // Update the snap_map to associate the start of the while loop with the new snapshot
+                let entry_snap_id = entry_snap_id.unwrap();   // Always Some if ctx.debug
+                let snapshot:Stmt = Rc::new(StmtX::Snapshot(Rc::new(entry_snap_id.to_string())));
+                state.snap_map.push((body.span.clone(), SnapPos::Start(entry_snap_id.clone())));
                 let block_contents:Vec<Stmt> = vec!(snapshot, assertion);
                 let new_block:Stmt = Rc::new(StmtX::Block(Rc::new(block_contents)));
                 new_block
@@ -519,10 +527,8 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
                 stmts.push(snapshot);
                 // Update the snap_map so that it reflects the state _after_ the 
                 // statement takes effect.
-                // TODO: This should really be the span _after* the while loop.  
-                // I don't think stm.span is the right span
-                state.snap_map.push((stm.span.clone(), SnapPos::End(state.latest_snapshot.clone())));
                 state.latest_snapshot = Rc::new(name);
+                state.snap_map.push((stm.span.clone(), SnapPos::End(state.latest_snapshot.clone())));
             }
             stmts
         }
@@ -545,7 +551,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
                 stmts.push(Rc::new(StmtX::Assume(mk_exists(&vec![binder], &vec![], &eq))));
             }
             if ctx.debug {
-                state.snap_map.push((stm.span.clone(), SnapPos::Start(state.latest_snapshot.clone())));
+                state.snap_map.push((stm.span.clone(), SnapPos::Full(state.latest_snapshot.clone())));
             }
             stmts
         }
