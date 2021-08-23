@@ -5,7 +5,7 @@ use crate::ast_util::path_to_string;
 use crate::context::Ctx;
 use crate::def::{
     prefix_ensures, prefix_fuel_id, prefix_requires, prefix_type_id, suffix_global_id,
-    suffix_local_id, suffix_typ_param_id, Spanned, FUEL_BOOL, FUEL_BOOL_DEFAULT, FUEL_DEFAULTS,
+    suffix_local_id, suffix_typ_param_id, SnapPos, Spanned, FUEL_BOOL, FUEL_BOOL_DEFAULT, FUEL_DEFAULTS,
     FUEL_ID, FUEL_PARAM, FUEL_TYPE, POLY, SNAPSHOT_CALL, SUCC,
 };
 use crate::sst::{BndX, Dest, Exp, ExpX, Stm, StmX};
@@ -272,13 +272,10 @@ struct State {
     commands: Vec<Command>,
     snapshot_count: u32,     // Used to ensure unique Idents for each snapshot
     latest_snapshot: Ident,  // The ID of the closest snapshot that dominates the current position in the AST
-    snap_map: Vec<(Span, Ident)>, // Maps each statement's span to the closest dominating snapshot's ID
+    snap_map: Vec<(Span, SnapPos)>, // Maps each statement's span to the closest dominating snapshot's ID
 }
 
 fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
-    if ctx.debug {
-        state.snap_map.push((stm.span.clone(), state.latest_snapshot.clone()));
-    }
     match &stm.x {
         StmX::Call(x, typs, args, dest) => {
             let mut stmts: Vec<Stmt> = Vec::new();
@@ -299,6 +296,9 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
                 None => {
                     for arg in args.iter() {
                         ens_args.push(exp_to_expr(ctx, arg));
+                    }
+                    if ctx.debug {
+                        state.snap_map.push((stm.span.clone(), SnapPos::Start(state.latest_snapshot.clone())));
                     }
                 }
                 Some(Dest { var, mutable }) => {
@@ -332,6 +332,9 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
                         let snapshot = Rc::new(StmtX::Snapshot(Rc::new(name.clone())));
                         stmts.push(snapshot);
                         state.latest_snapshot = Rc::new(name);
+                        // Update the snap_map so that it reflects the state _after_ the 
+                        // statement takes effect.
+                        state.snap_map.push((stm.span.clone(), SnapPos::Start(state.latest_snapshot.clone())));
                     }
                 }
             }
@@ -345,15 +348,26 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
         StmX::Assert(expr) => {
             let air_expr = exp_to_expr(ctx, &expr);
             let option_span = Rc::new(Some(stm.span.clone()));
+            if ctx.debug {
+                state.snap_map.push((stm.span.clone(), SnapPos::Start(state.latest_snapshot.clone())));
+            }
             vec![Rc::new(StmtX::Assert(option_span, air_expr))]
         }
-        StmX::Assume(expr) => vec![Rc::new(StmtX::Assume(exp_to_expr(ctx, &expr)))],
+        StmX::Assume(expr) => {
+            if ctx.debug {
+                state.snap_map.push((stm.span.clone(), SnapPos::Start(state.latest_snapshot.clone())));
+            }
+            vec![Rc::new(StmtX::Assume(exp_to_expr(ctx, &expr)))]
+        }
         StmX::Decl { ident, typ, mutable, init: _ } => {
             state.local_shared.push(if *mutable {
                 Rc::new(DeclX::Var(suffix_local_id(&ident), typ_to_air(&typ)))
             } else {
                 Rc::new(DeclX::Const(suffix_local_id(&ident), typ_to_air(&typ)))
             });
+            if ctx.debug {
+                state.snap_map.push((stm.span.clone(), SnapPos::Start(state.latest_snapshot.clone())));
+            }
             vec![]
         }
         StmX::Assign(lhs, rhs) => {
@@ -370,6 +384,9 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
                 let snapshot = Rc::new(StmtX::Snapshot(Rc::new(name.clone())));
                 stmts.push(snapshot);
                 state.latest_snapshot = Rc::new(name);
+                // Update the snap_map so that it reflects the state _after_ the 
+                // statement takes effect.
+                state.snap_map.push((stm.span.clone(), SnapPos::Start(state.latest_snapshot.clone())));
             }
             stmts
         }
@@ -395,6 +412,9 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
                 let snapshot = Rc::new(StmtX::Snapshot(Rc::new(name.clone())));
                 stmts.push(snapshot);
                 state.latest_snapshot = Rc::new(name);
+                // Update the snap_map so that it reflects the state _after_ the 
+                // statement takes effect.
+                state.snap_map.push((stm.span.clone(), SnapPos::End(state.latest_snapshot.clone())));
             }
             stmts
         }
@@ -456,6 +476,9 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
                 let name = format!("{}_while_begin", state.snapshot_count);
                 let snapshot:Stmt = Rc::new(StmtX::Snapshot(Rc::new(name.clone())));
                 state.latest_snapshot = Rc::new(name);
+                // Update the snap_map so that it reflects the state _after_ the 
+                // statement takes effect.
+                state.snap_map.push((body.span.clone(), SnapPos::Start(state.latest_snapshot.clone())));
                 let block_contents:Vec<Stmt> = vec!(snapshot, assertion);
                 let new_block:Stmt = Rc::new(StmtX::Block(Rc::new(block_contents)));
                 new_block
@@ -494,6 +517,11 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
                 let name = format!("{}_while_end", state.snapshot_count);
                 let snapshot = Rc::new(StmtX::Snapshot(Rc::new(name.clone())));
                 stmts.push(snapshot);
+                // Update the snap_map so that it reflects the state _after_ the 
+                // statement takes effect.
+                // TODO: This should really be the span _after* the while loop.  
+                // I don't think stm.span is the right span
+                state.snap_map.push((stm.span.clone(), SnapPos::End(state.latest_snapshot.clone())));
                 state.latest_snapshot = Rc::new(name);
             }
             stmts
@@ -515,6 +543,9 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
                 let eq = mk_eq(&ident_var(&crate::def::prefix_fuel_nat(&x)), &added_fuel);
                 let binder = ident_binder(&str_ident(FUEL_PARAM), &str_typ(FUEL_TYPE));
                 stmts.push(Rc::new(StmtX::Assume(mk_exists(&vec![binder], &vec![], &eq))));
+            }
+            if ctx.debug {
+                state.snap_map.push((stm.span.clone(), SnapPos::Start(state.latest_snapshot.clone())));
             }
             stmts
         }
@@ -562,7 +593,7 @@ pub fn body_stm_to_air(
     reqs: &Vec<Exp>,
     enss: &Vec<Exp>,
     stm: &Stm,
-) -> (Commands, Vec<(Span, Ident)>) {
+) -> (Commands, Vec<(Span, SnapPos)>) {
     // Verifying a single function can generate multiple SMT queries.
     // Some declarations (local_shared) are shared among the queries.
     // Others are private to each query.

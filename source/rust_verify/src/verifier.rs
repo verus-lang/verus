@@ -2,7 +2,7 @@ use crate::config::Args;
 use crate::context::Context;
 use crate::model::Model;
 use crate::unsupported;
-use air::ast::{Command, CommandX, Ident, SpanOption};
+use air::ast::{Command, CommandX, SpanOption};
 use air::context::ValidityResult;
 use rustc_interface::interface::Compiler;
 use rustc_middle::ty::TyCtxt;
@@ -12,6 +12,7 @@ use std::fs::File;
 use std::io::Write;
 use vir::ast::{Krate, VirErr, VirErrX};
 use vir::model::Model as VModel;
+use vir::def::SnapPos;
 
 pub struct Verifier {
     pub encountered_vir_error: bool,
@@ -138,7 +139,7 @@ impl Verifier {
     fn check_result_validity(
         &mut self,
         compiler: &Compiler,
-        snap_map: &Vec<(air::ast::Span, Ident)>,
+        snap_map: &Vec<(air::ast::Span, SnapPos)>,
         command: &Command,
         result: ValidityResult,
     ) {

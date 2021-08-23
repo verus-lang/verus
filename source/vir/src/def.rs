@@ -146,6 +146,14 @@ pub fn variant_positional_field_ident(variant_ident: &Ident, idx: usize) -> Iden
     variant_field_ident(variant_ident, format!("{}", idx).as_str())
 }
 
+/// For a given snapshot, does it represent the state
+/// at the start of the corresponding span, or at the end?
+#[derive(Debug)]
+pub enum SnapPos {
+    Start(Ident),
+    End(Ident),
+}
+
 pub struct Spanned<X> {
     pub span: Span,
     pub x: X,

@@ -22,15 +22,15 @@ fn test_mutation(i: int, n: nat, u: u8) {
 fn test_if_else(b:bool, z:int) {
     let mut x : int = 0;
     let mut y : int = z;
-    x = x + y;
+    x = x + y;      // 1_mutation
     if b {
-        x = 2*x;
-        y = x + 1;
+        x = 2*x;    // 2_mutation
+        y = x + 1;  // 3_mutation
     } else {
-        x = y + 1;
-        y = 7;
+        x = y + 1;  // 4_mutation
+        y = 7;      // 5_mutation
     }
-    assert(x + y > 5);
+    assert(x + y > 5); // 6_join
 }
 
 /*
