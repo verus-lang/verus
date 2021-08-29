@@ -451,7 +451,7 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                     None,
                     rustc_hir::Path { res: Res::Def(DefKind::Fn, _), .. },
                 )) => fn_call_to_vir(bctx, expr, fun, args_slice),
-                _ => unsupported!("fun_kind_not_ctor_or_fn"),
+                _ => unsupported!("fun_kind_not_ctor_or_fn", expr.span),
             }
         }
         ExprKind::Lit(lit) => match lit.node {

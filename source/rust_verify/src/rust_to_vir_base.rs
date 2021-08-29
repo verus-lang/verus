@@ -125,7 +125,8 @@ pub(crate) fn attrs_to_trees(attrs: &[Attribute]) -> Vec<AttrTree> {
 
 pub(crate) enum Attr {
     Mode(Mode),
-    NoVerify,
+    NoVerify, // parse function to get header, but don't verify body
+    External, // don't parse function; function can't be called directly from verified code
     Opaque,
     Trigger(Option<Vec<u64>>),
 }
@@ -155,7 +156,6 @@ pub(crate) fn parse_attrs(attrs: &[Attribute]) -> Result<Vec<Attr>, VirErr> {
             AttrTree::Fun(_, name, None) if name == "spec" => v.push(Attr::Mode(Mode::Spec)),
             AttrTree::Fun(_, name, None) if name == "proof" => v.push(Attr::Mode(Mode::Proof)),
             AttrTree::Fun(_, name, None) if name == "exec" => v.push(Attr::Mode(Mode::Exec)),
-            AttrTree::Fun(_, name, None) if name == "no_verify" => v.push(Attr::NoVerify),
             AttrTree::Fun(_, name, None) if name == "opaque" => v.push(Attr::Opaque),
             AttrTree::Fun(_, name, None) if name == "trigger" => v.push(Attr::Trigger(None)),
             AttrTree::Fun(span, name, Some(args)) if name == "trigger" => {
@@ -170,6 +170,11 @@ pub(crate) fn parse_attrs(attrs: &[Attribute]) -> Result<Vec<Attr>, VirErr> {
                     );
                 }
                 v.push(Attr::Trigger(Some(groups)));
+            }
+            AttrTree::Fun(span, name, args) if name == "verifier" => match &args {
+                Some(box [AttrTree::Fun(_, arg, None)]) if arg == "no_verify" => v.push(Attr::NoVerify),
+                Some(box [AttrTree::Fun(_, arg, None)]) if arg == "external" => v.push(Attr::External),
+                _ => return err_span_str(span, "unrecognized verifier attribute"),
             }
             _ => {}
         }
@@ -223,6 +228,23 @@ pub(crate) fn get_fuel(attrs: &[Attribute]) -> u32 {
         }
     }
     fuel
+}
+
+pub(crate) struct VerifierAttrs {
+    pub(crate) do_verify: bool,
+    pub(crate) external: bool,
+}
+
+pub(crate) fn get_verifier_attrs(attrs: &[Attribute]) -> Result<VerifierAttrs, VirErr> {
+    let mut vs = VerifierAttrs { do_verify: true, external: false };
+    for attr in parse_attrs(attrs)? {
+        match attr {
+            Attr::NoVerify => vs.do_verify = false,
+            Attr::External => vs.external = true,
+            _ => {}
+        }
+    }
+    Ok(vs)
 }
 
 pub(crate) fn mk_range<'tcx>(ty: rustc_middle::ty::Ty<'tcx>) -> IntRange {

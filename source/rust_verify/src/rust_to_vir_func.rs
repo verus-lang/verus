@@ -1,6 +1,6 @@
 use crate::context::Context;
 use crate::rust_to_vir_base::{
-    check_generics, get_fuel, get_mode, get_var_mode, ident_to_var, ty_to_vir, BodyCtxt,
+    check_generics, get_fuel, get_mode, get_var_mode, get_verifier_attrs, ident_to_var, ty_to_vir, BodyCtxt,
 };
 use crate::rust_to_vir_expr::{expr_to_vir, pat_to_var};
 use crate::util::{err_span_str, err_span_string, spanned_new, unsupported_err_span};
@@ -68,6 +68,10 @@ pub(crate) fn check_item_fn<'tcx>(
     };
     let typ_params = check_generics(generics)?;
     let fuel = get_fuel(attrs);
+    let vattrs = get_verifier_attrs(attrs)?;
+    if vattrs.external {
+        return Ok(());
+    }
     let body = &ctxt.krate.bodies[body_id];
     let Body { params, value: _, generator_kind } = body;
     let mut vir_params: Vec<vir::ast::Param> = Vec::new();
@@ -131,7 +135,7 @@ pub(crate) fn check_item_fn<'tcx>(
         ensure: header.ensure,
         decrease: header.decrease,
         hidden: Arc::new(header.hidden),
-        body: Some(vir_body),
+        body: if vattrs.do_verify { Some(vir_body) } else { None },
     };
     let function = spanned_new(sig.span, func);
     vir.functions.push(function);
