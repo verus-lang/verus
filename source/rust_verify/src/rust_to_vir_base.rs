@@ -61,19 +61,134 @@ pub(crate) fn ident_to_var<'tcx>(ident: &Ident) -> String {
     ident.to_string()
 }
 
+#[derive(Debug)]
+pub(crate) enum AttrTree {
+    Fun(Span, String, Option<Box<[AttrTree]>>),
+    Eq(Span, String, String),
+}
+
+pub(crate) fn token_to_string(token: &Token) -> Result<String, ()> {
+    match token.kind {
+        TokenKind::Literal(lit) => Ok(lit.symbol.as_str().to_string()),
+        TokenKind::Ident(symbol, _) => Ok(symbol.as_str().to_string()),
+        _ => Err(()),
+    }
+}
+
+pub(crate) fn token_tree_to_tree(token_tree: TokenTree) -> Result<AttrTree, ()> {
+    match &token_tree {
+        TokenTree::Token(token) => {
+            Ok(AttrTree::Fun(token.span, token_to_string(token)?, None))
+        }
+        _ => Err(()),
+    }
+}
+
+pub(crate) fn mac_args_to_tree(span: Span, name: String, args: &MacArgs) -> Result<AttrTree, ()> {
+    match args {
+        MacArgs::Empty => Ok(AttrTree::Fun(span, name, None)),
+        MacArgs::Delimited(_, _, token_stream) => {
+            let mut fargs: Vec<AttrTree> = Vec::new();
+            for arg in token_stream.trees().step_by(2) {
+                fargs.push(token_tree_to_tree(arg)?);
+            }
+            Ok(AttrTree::Fun(span, name, Some(fargs.into_boxed_slice())))
+        }
+        MacArgs::Eq(_, token) => {
+            Ok(AttrTree::Eq(span, name, token_to_string(token)?))
+        }
+    }
+}
+
+pub(crate) fn attr_to_tree(attr: &Attribute) -> Result<AttrTree, ()> {
+    match &attr.kind {
+        AttrKind::Normal(item, _) => match &item.path.segments[..] {
+            [segment] => {
+                let name = ident_to_var(&segment.ident).as_str().to_string();
+                mac_args_to_tree(attr.span, name, &item.args)
+            }
+            _ => Err(()),
+        }
+        _ => Err(()),
+    }
+}
+
+pub(crate) fn attrs_to_trees(attrs: &[Attribute]) -> Vec<AttrTree> {
+    let mut attr_trees: Vec<AttrTree> = Vec::new();
+    for attr in attrs {
+        if let Ok(tree) = attr_to_tree(attr) {
+            attr_trees.push(tree);
+        }
+    }
+    attr_trees
+}
+
+pub(crate) enum Attr {
+    Mode(Mode),
+    NoVerify,
+    Opaque,
+    Trigger(Option<Vec<u64>>),
+}
+
+fn get_trigger_arg(span: Span, attr_tree: &AttrTree) -> Result<u64, VirErr> {
+    let i = match attr_tree {
+        AttrTree::Fun(_, name, None) => {
+            match name.parse::<u64>() {
+                Ok(i) => Some(i),
+                _ => None,
+            }
+        }
+        _ => None,
+    };
+    match i {
+        Some(i) => Ok(i),
+        None => {
+            err_span_string(span, format!("expected integer constant, found {:?}", &attr_tree))
+        }
+    }
+}
+
+pub(crate) fn parse_attrs(attrs: &[Attribute]) -> Result<Vec<Attr>, VirErr> {
+    let mut v: Vec<Attr> = Vec::new();
+    for attr in attrs_to_trees(attrs) {
+        match attr {
+            AttrTree::Fun(_, name, None) if name == "spec" => v.push(Attr::Mode(Mode::Spec)),
+            AttrTree::Fun(_, name, None) if name == "proof" => v.push(Attr::Mode(Mode::Proof)),
+            AttrTree::Fun(_, name, None) if name == "exec" => v.push(Attr::Mode(Mode::Exec)),
+            AttrTree::Fun(_, name, None) if name == "no_verify" => v.push(Attr::NoVerify),
+            AttrTree::Fun(_, name, None) if name == "opaque" => v.push(Attr::Opaque),
+            AttrTree::Fun(_, name, None) if name == "trigger" => v.push(Attr::Trigger(None)),
+            AttrTree::Fun(span, name, Some(args)) if name == "trigger" => {
+                let mut groups: Vec<u64> = Vec::new();
+                for arg in args.iter() {
+                    groups.push(get_trigger_arg(span, arg)?);
+                }
+                if groups.len() == 0 {
+                    return err_span_str(
+                        span,
+                        "expected either #[trigger] or non-empty #[trigger(...)]",
+                    );
+                }
+                v.push(Attr::Trigger(Some(groups)));
+            }
+            _ => {}
+        }
+    }
+    Ok(v)
+}
+
+pub(crate) fn parse_attrs_opt(attrs: &[Attribute]) -> Vec<Attr> {
+    match parse_attrs(attrs) {
+        Ok(attrs) => attrs,
+        Err(_) => vec![],
+    }
+}
+
 pub(crate) fn get_mode(default_mode: Mode, attrs: &[Attribute]) -> Mode {
     let mut mode = default_mode;
-    for attr in attrs {
-        match &attr.kind {
-            AttrKind::Normal(item, _) => match &item.path.segments[..] {
-                [segment] => match ident_to_var(&segment.ident).as_str() {
-                    "spec" => mode = Mode::Spec,
-                    "proof" => mode = Mode::Proof,
-                    "exec" => mode = Mode::Exec,
-                    _ => {}
-                },
-                _ => {}
-            },
+    for attr in parse_attrs_opt(attrs) {
+        match attr {
+            Attr::Mode(m) => mode = m,
             _ => {}
         }
     }
@@ -85,49 +200,14 @@ pub(crate) fn get_var_mode(function_mode: Mode, attrs: &[Attribute]) -> Mode {
     get_mode(default_mode, attrs)
 }
 
-fn get_trigger_arg(span: Span, token_tree: TokenTree) -> Result<u64, VirErr> {
-    let i = match &token_tree {
-        TokenTree::Token(Token { kind: TokenKind::Literal(lit), .. }) => {
-            match lit.symbol.as_str().parse::<u64>() {
-                Ok(i) => Some(i),
-                _ => None,
-            }
-        }
-        _ => None,
-    };
-    match i {
-        Some(i) => Ok(i),
-        None => {
-            err_span_string(span, format!("expected integer constant, found {:?}", &token_tree))
-        }
-    }
-}
-
-pub(crate) fn get_trigger(span: Span, attrs: &[Attribute]) -> Result<Vec<Option<u64>>, VirErr> {
+pub(crate) fn get_trigger(attrs: &[Attribute]) -> Result<Vec<Option<u64>>, VirErr> {
     let mut groups: Vec<Option<u64>> = Vec::new();
-    for attr in attrs {
-        match &attr.kind {
-            AttrKind::Normal(item, _) => match &item.path.segments[..] {
-                [segment] => match ident_to_var(&segment.ident).as_str() {
-                    "trigger" => match &item.args {
-                        MacArgs::Empty => groups.push(None),
-                        MacArgs::Delimited(_, _, token_stream) => {
-                            for arg in token_stream.trees().step_by(2) {
-                                groups.push(Some(get_trigger_arg(span, arg)?));
-                            }
-                            if groups.len() == 0 {
-                                return err_span_str(
-                                    span,
-                                    "expected either #[trigger] or non-empty #[trigger(...)]",
-                                );
-                            }
-                        }
-                        _ => panic!("internal error: get_trigger"),
-                    },
-                    _ => {}
-                },
-                _ => {}
-            },
+    for attr in parse_attrs(attrs)? {
+        match attr {
+            Attr::Trigger(None) => groups.push(None),
+            Attr::Trigger(Some(group_ids)) => {
+                groups.extend(group_ids.into_iter().map(|id| Some(id)));
+            }
             _ => {}
         }
     }
@@ -136,15 +216,9 @@ pub(crate) fn get_trigger(span: Span, attrs: &[Attribute]) -> Result<Vec<Option<
 
 pub(crate) fn get_fuel(attrs: &[Attribute]) -> u32 {
     let mut fuel: u32 = 1;
-    for attr in attrs {
-        match &attr.kind {
-            AttrKind::Normal(item, _) => match &item.path.segments[..] {
-                [segment] => match ident_to_var(&segment.ident).as_str() {
-                    "opaque" => fuel = 0,
-                    _ => {}
-                },
-                _ => {}
-            },
+    for attr in parse_attrs_opt(attrs) {
+        match attr {
+            Attr::Opaque => fuel = 0,
             _ => {}
         }
     }

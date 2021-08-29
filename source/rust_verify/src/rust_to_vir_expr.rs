@@ -155,7 +155,7 @@ pub(crate) fn expr_to_vir<'tcx>(
     expr: &Expr<'tcx>,
 ) -> Result<vir::ast::Expr, VirErr> {
     let mut vir_expr = expr_to_vir_inner(bctx, expr)?;
-    for group in get_trigger(expr.span, bctx.ctxt.tcx.hir().attrs(expr.hir_id))? {
+    for group in get_trigger(bctx.ctxt.tcx.hir().attrs(expr.hir_id))? {
         vir_expr = spanned_new(expr.span, ExprX::Unary(UnaryOp::Trigger(group), vir_expr));
     }
     Ok(vir_expr)
