@@ -8,11 +8,11 @@ fn test_impl(n: u64) {
 }
 
 #[verifier(no_verify)]
-fn test(n: u64) {
-    requires(n > 10);
+fn test(n: u64, #[spec] s: int) {
+    requires(n > 10 && s >= n);
     test_impl(n);
 }
 
 fn main() {
-    test(15);
+    test(15, 200);
 }

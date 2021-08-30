@@ -3,8 +3,6 @@ use builtin::*;
 mod pervasive;
 use pervasive::*;
 
-fn main() {}
-
 #[spec]
 fn arith_sum_int(i: int) -> int {
     decreases(i);
@@ -54,3 +52,51 @@ fn arith_sum_test3() {
     assert(arith_sum_u64(3) == 6);
 }
 
+#[proof]
+fn arith_sum_monotonic(i: nat, j: nat) {
+    requires(i <= j);
+    ensures(arith_sum_int(i) <= arith_sum_int(j));
+    decreases(j);
+
+    if i < j {
+        arith_sum_monotonic(i, j - 1);
+    }
+}
+
+fn compute_arith_sum(n: u64) -> u64 {
+    requires(n < 100);
+    ensures(|ret: u64| arith_sum_int(n) == ret);
+
+    let mut i: u64 = 0;
+    let mut sum: u64 = 0;
+    while i < n {
+        invariant([
+            n < 100,
+            i <= n,
+            arith_sum_int(i) == sum,
+            sum <= 100 * i,
+        ]);
+
+        i = i + 1;
+        sum = sum + i;
+    }
+    sum
+}
+
+fn run_arith_sum(n: u64) -> u64 {
+    let mut result: u64 = 0;
+    if n < 100 {
+        result = compute_arith_sum(n);
+    }
+    result
+}
+
+#[verifier(external)]
+fn main() {
+    let args = std::env::args();
+    for arg in args {
+        if let Ok(n) = arg.parse::<u64>() {
+            println!("{}", run_arith_sum(n));
+        }
+    }
+}

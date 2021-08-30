@@ -77,9 +77,7 @@ pub(crate) fn token_to_string(token: &Token) -> Result<String, ()> {
 
 pub(crate) fn token_tree_to_tree(token_tree: TokenTree) -> Result<AttrTree, ()> {
     match &token_tree {
-        TokenTree::Token(token) => {
-            Ok(AttrTree::Fun(token.span, token_to_string(token)?, None))
-        }
+        TokenTree::Token(token) => Ok(AttrTree::Fun(token.span, token_to_string(token)?, None)),
         _ => Err(()),
     }
 }
@@ -94,9 +92,7 @@ pub(crate) fn mac_args_to_tree(span: Span, name: String, args: &MacArgs) -> Resu
             }
             Ok(AttrTree::Fun(span, name, Some(fargs.into_boxed_slice())))
         }
-        MacArgs::Eq(_, token) => {
-            Ok(AttrTree::Eq(span, name, token_to_string(token)?))
-        }
+        MacArgs::Eq(_, token) => Ok(AttrTree::Eq(span, name, token_to_string(token)?)),
     }
 }
 
@@ -108,7 +104,7 @@ pub(crate) fn attr_to_tree(attr: &Attribute) -> Result<AttrTree, ()> {
                 mac_args_to_tree(attr.span, name, &item.args)
             }
             _ => Err(()),
-        }
+        },
         _ => Err(()),
     }
 }
@@ -133,19 +129,15 @@ pub(crate) enum Attr {
 
 fn get_trigger_arg(span: Span, attr_tree: &AttrTree) -> Result<u64, VirErr> {
     let i = match attr_tree {
-        AttrTree::Fun(_, name, None) => {
-            match name.parse::<u64>() {
-                Ok(i) => Some(i),
-                _ => None,
-            }
-        }
+        AttrTree::Fun(_, name, None) => match name.parse::<u64>() {
+            Ok(i) => Some(i),
+            _ => None,
+        },
         _ => None,
     };
     match i {
         Some(i) => Ok(i),
-        None => {
-            err_span_string(span, format!("expected integer constant, found {:?}", &attr_tree))
-        }
+        None => err_span_string(span, format!("expected integer constant, found {:?}", &attr_tree)),
     }
 }
 
@@ -172,10 +164,14 @@ pub(crate) fn parse_attrs(attrs: &[Attribute]) -> Result<Vec<Attr>, VirErr> {
                 v.push(Attr::Trigger(Some(groups)));
             }
             AttrTree::Fun(span, name, args) if name == "verifier" => match &args {
-                Some(box [AttrTree::Fun(_, arg, None)]) if arg == "no_verify" => v.push(Attr::NoVerify),
-                Some(box [AttrTree::Fun(_, arg, None)]) if arg == "external" => v.push(Attr::External),
+                Some(box [AttrTree::Fun(_, arg, None)]) if arg == "no_verify" => {
+                    v.push(Attr::NoVerify)
+                }
+                Some(box [AttrTree::Fun(_, arg, None)]) if arg == "external" => {
+                    v.push(Attr::External)
+                }
                 _ => return err_span_str(span, "unrecognized verifier attribute"),
-            }
+            },
             _ => {}
         }
     }

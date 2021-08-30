@@ -1,3 +1,4 @@
+use crate::erase::ResolvedCall;
 use crate::rust_to_vir_base::{
     def_id_to_vir_path, get_trigger, get_var_mode, hack_check_def_name, hack_get_def_name,
     ident_to_var, is_smt_arith, is_smt_equality, mid_ty_to_vir, mid_ty_to_vir_opt, mk_range,
@@ -161,6 +162,24 @@ pub(crate) fn expr_to_vir<'tcx>(
     Ok(vir_expr)
 }
 
+fn record_fun(
+    ctxt: &crate::context::Context,
+    span: Span,
+    id: DefId,
+    is_spec: bool,
+    is_compilable_operator: bool,
+) {
+    let mut erasure_info = ctxt.erasure_info.borrow_mut();
+    let resolved_call = if is_spec {
+        ResolvedCall::Spec
+    } else if is_compilable_operator {
+        ResolvedCall::CompilableOperator
+    } else {
+        ResolvedCall::Call(Arc::new(hack_get_def_name(ctxt.tcx, id)))
+    };
+    erasure_info.resolved_calls.push((span.data(), resolved_call));
+}
+
 fn fn_call_to_vir<'tcx>(
     bctx: &BodyCtxt<'tcx>,
     expr: &Expr<'tcx>,
@@ -190,8 +209,12 @@ fn fn_call_to_vir<'tcx>(
     let is_add = hack_check_def_name(tcx, f, "core", "ops::arith::Add::add");
     let is_sub = hack_check_def_name(tcx, f, "core", "ops::arith::Sub::sub");
     let is_mul = hack_check_def_name(tcx, f, "core", "ops::arith::Mul::mul");
+    let is_spec = is_admit || is_requires || is_ensures || is_invariant || is_decreases;
+    let is_quant = is_forall || is_exists;
+    let is_directive = is_hide || is_reveal || is_reveal_fuel;
     let is_cmp = is_eq || is_ne || is_le || is_ge || is_lt || is_gt;
     let is_arith_binary = is_add || is_sub || is_mul;
+    record_fun(&bctx.ctxt, fun.span, f, is_spec || is_quant || is_directive, is_implies);
 
     let len = args.len();
     if is_requires {

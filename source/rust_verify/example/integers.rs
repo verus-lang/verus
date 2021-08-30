@@ -21,11 +21,13 @@ fn add1_nat_opaque(i: nat) -> nat {
     i + 1
 }
 
+#[proof]
 fn test0() -> nat {
     ensures(|n: nat| true);
     100
 }
 
+#[proof]
 fn test1(i: int, n: nat, u: u8) {
     assert(n >= 0);
     assert(u >= 0);

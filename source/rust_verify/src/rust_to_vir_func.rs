@@ -1,6 +1,7 @@
 use crate::context::Context;
 use crate::rust_to_vir_base::{
-    check_generics, get_fuel, get_mode, get_var_mode, get_verifier_attrs, ident_to_var, ty_to_vir, BodyCtxt,
+    check_generics, get_fuel, get_mode, get_var_mode, get_verifier_attrs, ident_to_var, ty_to_vir,
+    BodyCtxt,
 };
 use crate::rust_to_vir_expr::{expr_to_vir, pat_to_var};
 use crate::util::{err_span_str, err_span_string, spanned_new, unsupported_err_span};
@@ -55,6 +56,7 @@ pub(crate) fn check_item_fn<'tcx>(
     generics: &'tcx Generics,
     body_id: &BodyId,
 ) -> Result<(), VirErr> {
+    let name = Arc::new(ident_to_var(&id));
     let mode = get_mode(Mode::Exec, attrs);
     let ret_typ_mode = match sig {
         FnSig {
@@ -70,6 +72,8 @@ pub(crate) fn check_item_fn<'tcx>(
     let fuel = get_fuel(attrs);
     let vattrs = get_verifier_attrs(attrs)?;
     if vattrs.external {
+        let mut erasure_info = ctxt.erasure_info.borrow_mut();
+        erasure_info.external_functions.push(name);
         return Ok(());
     }
     let body = &ctxt.krate.bodies[body_id];
@@ -116,7 +120,6 @@ pub(crate) fn check_item_fn<'tcx>(
             }
         }
     }
-    let name = Arc::new(ident_to_var(&id));
     let params = Arc::new(vir_params);
     let ret = match (header.ensure_id_typ, ret_typ_mode) {
         (None, None) => None,

@@ -1,5 +1,5 @@
 use crate::config::Args;
-use crate::context::Context;
+use crate::context::{Context, ErasureInfo};
 use crate::model::Model;
 use crate::unsupported;
 use crate::util::from_raw_span;
@@ -14,6 +14,7 @@ use std::io::Write;
 use vir::ast::{Krate, VirErr, VirErrX};
 use vir::def::SnapPos;
 use vir::model::Model as VModel;
+use vir::modes::ErasureModes;
 
 pub struct Verifier {
     pub encountered_vir_error: bool,
@@ -22,6 +23,7 @@ pub struct Verifier {
     pub errors: Vec<(Option<ErrorSpan>, Option<ErrorSpan>)>,
     args: Args,
     pub test_capture_output: Option<std::sync::Arc<std::sync::Mutex<Vec<u8>>>>,
+    pub erasure_hints: Option<crate::erase::ErasureHints>,
 }
 
 #[derive(Debug)]
@@ -110,6 +112,7 @@ impl Verifier {
             errors: Vec::new(),
             args: args,
             test_capture_output: None,
+            erasure_hints: None,
         }
     }
 
@@ -166,8 +169,8 @@ impl Verifier {
         }
     }
 
-    fn verify(&mut self, compiler: &Compiler, krate: Krate) -> Result<(), VirErr> {
-        vir::modes::check_crate(&krate)?;
+    fn verify(&mut self, compiler: &Compiler, krate: &Krate) -> Result<ErasureModes, VirErr> {
+        let erasure_modes = vir::modes::check_crate(&krate)?;
 
         let mut z3_config = z3::Config::new();
         z3_config.set_param_value("auto_config", "false");
@@ -275,7 +278,7 @@ impl Verifier {
             }
         }
 
-        Ok(())
+        Ok(erasure_modes)
     }
 
     fn run<'tcx>(&mut self, compiler: &Compiler, tcx: TyCtxt<'tcx>) -> Result<bool, VirErr> {
@@ -291,7 +294,13 @@ impl Verifier {
         }
 
         let hir = tcx.hir();
-        let ctxt = Context { tcx, krate: hir.krate() };
+        let erasure_info = ErasureInfo {
+            resolved_calls: vec![],
+            condition_modes: vec![],
+            external_functions: vec![],
+        };
+        let erasure_info = std::rc::Rc::new(std::cell::RefCell::new(erasure_info));
+        let ctxt = Context { tcx, krate: hir.krate(), erasure_info };
         let vir_crate = crate::rust_to_vir::crate_to_vir(&ctxt)?;
         if let Some(filename) = &self.args.log_vir {
             let mut file =
@@ -317,7 +326,17 @@ impl Verifier {
                 writeln!(&mut file).expect("cannot write to vir file");
             }
         }
-        self.verify(&compiler, vir_crate)?;
+        let erasure_modes = self.verify(&compiler, &vir_crate)?;
+        let erasure_info = ctxt.erasure_info.borrow();
+        let resolved_calls = erasure_info.resolved_calls.clone();
+        let external_functions = erasure_info.external_functions.clone();
+        let erasure_hints = crate::erase::ErasureHints {
+            vir_crate,
+            resolved_calls,
+            erasure_modes,
+            external_functions,
+        };
+        self.erasure_hints = Some(erasure_hints);
         Ok(true)
     }
 }

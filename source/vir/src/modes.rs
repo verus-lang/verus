@@ -1,6 +1,7 @@
 use crate::ast::{Datatype, Expr, ExprX, Function, Ident, Krate, Mode, Stmt, StmtX, VirErr};
 use crate::ast_util::err_string;
 use crate::sst_to_air::path_to_air_ident;
+use air::ast::Span;
 use std::collections::HashMap;
 
 // Exec <= Proof <= Spec
@@ -24,10 +25,19 @@ pub fn mode_join(m1: Mode, m2: Mode) -> Mode {
     }
 }
 
+#[derive(Clone)]
+pub struct ErasureModes {
+    // Modes of conditions in If
+    pub condition_modes: Vec<(Span, Mode)>,
+    // Modes of variables in Var, Assign, Decl
+    pub var_modes: Vec<(Span, Mode)>,
+}
+
 struct Typing {
     pub(crate) funs: HashMap<Ident, Function>,
     pub(crate) datatypes: HashMap<Ident, Datatype>,
     pub(crate) vars: HashMap<Ident, Mode>,
+    pub(crate) erasure_modes: ErasureModes,
 }
 
 fn check_expr_has_mode(
@@ -47,7 +57,11 @@ fn check_expr_has_mode(
 fn check_expr(typing: &mut Typing, outer_mode: Mode, expr: &Expr) -> Result<Mode, VirErr> {
     match &expr.x {
         ExprX::Const(_) => Ok(outer_mode),
-        ExprX::Var(x) => Ok(mode_join(outer_mode, typing.vars[x])),
+        ExprX::Var(x) => {
+            let mode = mode_join(outer_mode, typing.vars[x]);
+            typing.erasure_modes.var_modes.push((expr.span.clone(), mode));
+            Ok(mode)
+        }
         ExprX::Call(x, _, es) => {
             let function = &typing.funs[x].clone();
             if !mode_le(outer_mode, function.x.mode) {
@@ -57,7 +71,12 @@ fn check_expr(typing: &mut Typing, outer_mode: Mode, expr: &Expr) -> Result<Mode
                 );
             }
             for (param, arg) in function.x.params.iter().zip(es.iter()) {
-                check_expr_has_mode(typing, outer_mode, arg, param.x.mode)?;
+                check_expr_has_mode(
+                    typing,
+                    mode_join(outer_mode, param.x.mode),
+                    arg,
+                    param.x.mode,
+                )?;
             }
             match function.x.ret {
                 None => Ok(function.x.mode),
@@ -96,6 +115,7 @@ fn check_expr(typing: &mut Typing, outer_mode: Mode, expr: &Expr) -> Result<Mode
         ExprX::Assign(lhs, rhs) => match &lhs.x {
             ExprX::Var(x) => {
                 let x_mode = typing.vars[x];
+                typing.erasure_modes.var_modes.push((lhs.span.clone(), x_mode));
                 check_expr_has_mode(typing, outer_mode, rhs, x_mode)?;
                 Ok(x_mode)
             }
@@ -106,6 +126,7 @@ fn check_expr(typing: &mut Typing, outer_mode: Mode, expr: &Expr) -> Result<Mode
         ExprX::Admit => Ok(outer_mode),
         ExprX::If(e1, e2, e3) => {
             let mode1 = check_expr(typing, outer_mode, e1)?;
+            typing.erasure_modes.condition_modes.push((expr.span.clone(), mode1));
             let mode_branch = match (outer_mode, mode1) {
                 (Mode::Exec, Mode::Spec) => Mode::Proof,
                 _ => outer_mode,
@@ -170,6 +191,7 @@ fn check_stmt(
                     format!("variable {} cannot have mode {}", param.x.name, param.x.mode),
                 );
             }
+            typing.erasure_modes.var_modes.push((param.span.clone(), param.x.mode));
             let prev = typing.vars.insert(param.x.name.clone(), param.x.mode);
             pushed_vars.push((param.x.name.clone(), prev));
             match init.as_ref() {
@@ -207,7 +229,7 @@ fn check_function(typing: &mut Typing, function: &Function) -> Result<(), VirErr
     Ok(())
 }
 
-pub fn check_crate(krate: &Krate) -> Result<(), VirErr> {
+pub fn check_crate(krate: &Krate) -> Result<ErasureModes, VirErr> {
     let mut funs: HashMap<Ident, Function> = HashMap::new();
     let mut datatypes: HashMap<Ident, Datatype> = HashMap::new();
     for function in krate.functions.iter() {
@@ -216,9 +238,10 @@ pub fn check_crate(krate: &Krate) -> Result<(), VirErr> {
     for datatype in krate.datatypes.iter() {
         datatypes.insert(path_to_air_ident(&datatype.x.path.clone()), datatype.clone());
     }
-    let mut typing = Typing { funs, datatypes, vars: HashMap::new() };
+    let erasure_modes = ErasureModes { condition_modes: vec![], var_modes: vec![] };
+    let mut typing = Typing { funs, datatypes, vars: HashMap::new(), erasure_modes };
     for function in krate.functions.iter() {
         check_function(&mut typing, function)?;
     }
-    Ok(())
+    Ok(typing.erasure_modes)
 }
