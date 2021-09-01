@@ -1,3 +1,41 @@
+//! This module erases the non-compiled code ("ghost code") so that Rust can compile the
+//! remaining code.  Ghost code includes #[spec] and #[proof] code.
+//! This "erasure" step happens after verification, since the ghost code is needed
+//! for verification.
+//! 
+//! There are many possible ways we could potentially implement erasure:
+//! - Erase ghost code from the VIR (vir::ast).  This would have the advantage that VIR contains
+//!   the information that determines which code is ghost and which code is compiled.
+//!   However, VIR is designed for verification and not compilation.
+//!   It doesn't contain all of the original Rust code that the Rust compiler needs for
+//!   compilation -- the translation from Rust to VIR is lossy and we can't recover the
+//!   original Rust code from the VIR.
+//! - Erase ghost code from Rust MIR or HIR.  These would be the most principled approaches:
+//!   we would first verify the HIR/VIR code, and then remove the ghost code at a later
+//!   stage in the overall Rust pipeline (AST -> HIR -> MIR -> LLVM -> machine code).
+//!   However, this is easier said than done.  Erasure is a global operation that changes
+//!   not just statements and expressions, but also datatypes and function types
+//!   (for example, by removing fields from structs or parameters from functions).
+//!   Doing this on HIR or MIR would likely require intrusive changes to the Rust compiler,
+//!   which we're trying to avoid.
+//! - After verifying HIR/VIR, throw away the HIR/VIR code, back up to an earlier stage
+//!   (like Rust AST), erase the ghost code from that, and then run the whole pipeline
+//!   (AST -> HIR -> MIR -> ...) on the erased code.  This isn't elegant, but it's relatively
+//!   simple to implement, and it's therefore what we do.
+//!
+//! Specifically, after verifying HIR/VIR, we rerun the Rust compiler, but in this second
+//! run, we intercept and rewrite the Rust AST to remove ghost code.
+//! Deciding which code is ghost depends on the HIR/VIR analysis from the first run,
+//! so we have to save information from the first run and pass it into the second run
+//! (this information is passed in the ErasureHints struct defined below.)
+//! In this saved information, we rely on Spans to match expressions and statements in the
+//! HIR/VIR with the corresponding expressions and statements in the AST.
+//!
+//! Notes:
+//!
+//! #[verifier(external)] functions are kept verbatim.
+//! #[verifier(no_verify)] functions, on the other hand, need erasure to remove requires/ensures.
+
 use crate::rust_to_vir_base::get_verifier_attrs;
 use crate::util::{from_raw_span, vec_map};
 use crate::{unsupported, unsupported_unless};
@@ -14,27 +52,46 @@ use std::sync::Arc;
 use vir::ast::{Function, Krate, Mode};
 use vir::modes::ErasureModes;
 
+/// Information about each call in the AST (each ExprKind::Call).
 #[derive(Clone, Debug)]
 pub enum ResolvedCall {
+    /// The call is to a spec or proof function, and should be erased
     Spec,
+    /// The call is to an operator like == or + that should be compiled.
     CompilableOperator,
+    /// The call is to a function, and we record the resolved name of the function here.
     Call(Ident),
 }
 
 #[derive(Clone)]
 pub struct ErasureHints {
+    /// Copy of the entire VIR crate that was created in the first run's HIR -> VIR transformation
     pub vir_crate: Krate,
+    /// Details of each call in the first run's HIR
     pub resolved_calls: Vec<(SpanData, ResolvedCall)>,
+    /// Results of mode (spec/proof/exec) inference from first run's VIR
     pub erasure_modes: ErasureModes,
+    /// List of #[verifier(external)] functions.  (These don't appear in vir_crate,
+    /// so we need to record them separately here.)
     pub external_functions: Vec<Ident>,
 }
 
 #[derive(Clone)]
 pub struct Ctxt {
+    /// Copy of the entire VIR crate that was created in the first run's HIR -> VIR transformation
     vir_crate: Krate,
+    /// Map each function name to its VIR Function, or to None if it is a #[verifier(external)]
+    /// function
     functions: HashMap<Ident, Option<Function>>,
+    /// Details of each call in the first run's HIR
     calls: HashMap<Span, ResolvedCall>,
+    /// Mode of each if/else or match condition, used to decide how to erase if/else and match
+    /// condition.  For example, in "if x < 10 { x + 1 } else { x + 2 }", this will record the span
+    /// and mode of the expression "x < 10"
     condition_modes: HashMap<Span, Mode>,
+    /// Mode of each variable declaration and use.  For example, in
+    /// "if x < 10 { x + 1 } else { x + 2 }", we will have three entries, one for each
+    /// occurence of "x"
     var_modes: HashMap<Span, Mode>,
 }
 
@@ -51,7 +108,7 @@ fn erase_expr(ctxt: &Ctxt, is_exec: bool, expr: &Expr) -> Expr {
     erase_expr_opt(ctxt, is_exec, expr).expect("erase_expr")
 }
 
-// replace e with e1; e2; ...; en, simplifying if possible
+/// Replace e with e1; e2; ...; en, simplifying if possible
 fn replace_with_exprs(expr: &Expr, exprs: Vec<Option<Expr>>) -> Option<Expr> {
     let mut exprs: Vec<Expr> = exprs.into_iter().filter_map(|e| e).collect();
     if exprs.len() == 0 {
@@ -78,6 +135,8 @@ fn replace_with_exprs(expr: &Expr, exprs: Vec<Option<Expr>>) -> Option<Expr> {
     }
 }
 
+/// Erase ghost code from expr, and return Some resulting expression.
+/// If the entire expression is ghost, return None.
 fn erase_expr_opt(ctxt: &Ctxt, is_exec: bool, expr: &Expr) -> Option<Expr> {
     let kind = match &expr.kind {
         ExprKind::Lit(_) => {
@@ -169,6 +228,8 @@ fn erase_expr_opt(ctxt: &Ctxt, is_exec: bool, expr: &Expr) -> Option<Expr> {
     Some(Expr { id, kind, span, attrs: expr.attrs.clone(), tokens: expr.tokens.clone() })
 }
 
+/// Erase ghost code from stmt, and return Some resulting statement.
+/// If the entire statment is ghost, return None.
 fn erase_stmt(ctxt: &Ctxt, is_exec: bool, stmt: &Stmt) -> Option<Stmt> {
     let kind = match &stmt.kind {
         StmtKind::Local(local) => {
@@ -289,6 +350,8 @@ struct EraseRewrite {
     ctxt: Ctxt,
 }
 
+/// Implement the callback from Rust that rewrites the AST
+/// (Rust will call rewrite_crate just before transforming AST into HIR).
 impl rustc_lint::FormalVerifierRewrite for EraseRewrite {
     fn rewrite_crate(&mut self, c: &rustc_ast::ast::Crate) -> rustc_ast::ast::Crate {
         crate::erase::erase_crate(&self.ctxt, c)
@@ -335,6 +398,7 @@ impl rustc_driver::Callbacks for CompilerCallbacks {
         queries: &'tcx rustc_interface::Queries<'tcx>,
     ) -> rustc_driver::Compilation {
         let _ = {
+            // Install the EraseRewrite callback so that Rust will later call us back on the AST
             let expansion_result = queries.expansion().expect("expansion");
             let peeked = expansion_result.peek();
             let lint_store = &peeked.2;
