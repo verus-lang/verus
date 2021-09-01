@@ -292,6 +292,8 @@ pub type Variants = Binders<Fields>;
 pub struct DatatypeX {
     pub path: Path,
     pub visibility: Visibility,
+    /// Whether at least one of the datatype fields (in any variant) is private
+    pub one_field_private: bool,
     pub variants: Variants,
 }
 pub type Datatype = Arc<Spanned<DatatypeX>>;

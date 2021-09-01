@@ -35,6 +35,7 @@ fn check_function(ctxt: &Ctxt, function: &Function) -> Result<(), VirErr> {
                         );
                     }
                 }
+                // TODO: disallow private fields, unless function is marked #[verified(pub_abstract)]
                 ExprX::Field { datatype: path, .. } => {
                     if !ctxt.dts.contains_key(path) {
                         return err_string(

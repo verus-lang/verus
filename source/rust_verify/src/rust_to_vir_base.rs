@@ -64,17 +64,23 @@ pub(crate) fn ident_to_var<'tcx>(ident: &Ident) -> String {
     ident.to_string()
 }
 
-pub(crate) fn mk_visibility<'tcx>(
-    owning_module: &Option<Path>,
-    vis: &Visibility<'tcx>,
-) -> vir::ast::Visibility {
-    let is_private = match vis.node {
+pub(crate) fn is_visibility_private(vis_kind: &VisibilityKind) -> bool {
+    match vis_kind {
         VisibilityKind::Inherited => true,
         VisibilityKind::Public => false,
         VisibilityKind::Crate(_) => false,
         VisibilityKind::Restricted { .. } => unsupported!("restricted visibility"),
-    };
-    vir::ast::Visibility { owning_module: owning_module.clone(), is_private }
+    }
+}
+
+pub(crate) fn mk_visibility<'tcx>(
+    owning_module: &Option<Path>,
+    vis: &Visibility<'tcx>,
+) -> vir::ast::Visibility {
+    vir::ast::Visibility {
+        owning_module: owning_module.clone(),
+        is_private: is_visibility_private(&vis.node),
+    }
 }
 
 #[derive(Debug)]
@@ -318,6 +324,7 @@ pub(crate) fn mid_ty_to_vir<'tcx>(tcx: TyCtxt<'tcx>, ty: rustc_middle::ty::Ty) -
         TyKind::Tuple(_) if ty.tuple_fields().count() == 0 => TypX::Unit,
         TyKind::Bool => TypX::Bool,
         TyKind::Adt(AdtDef { did, .. }, _) => {
+            dbg!(ty);
             let s = ty.to_string();
             // TODO use lang items instead of string comparisons
             if s == crate::typecheck::BUILTIN_INT {
