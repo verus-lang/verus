@@ -125,7 +125,7 @@ impl Verifier {
             ValidityResult::TypeError(err) => {
                 panic!("internal error: ill-typed AIR code: {}", err)
             }
-            _ => panic!("internal error: decls should not generate queries"),
+            _ => panic!("internal error: decls should not generate queries ({:?})", result),
         }
     }
 
