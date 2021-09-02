@@ -8,7 +8,7 @@ For soundness's sake, be as defensive as possible:
 
 use crate::context::Context;
 use crate::rust_to_vir_adts::{check_item_enum, check_item_struct};
-use crate::rust_to_vir_base::{hack_check_def_name, hack_get_def_name};
+use crate::rust_to_vir_base::{hack_check_def_name, hack_get_def_name, mk_visibility};
 use crate::rust_to_vir_func::{check_foreign_item_fn, check_item_fn};
 use crate::util::unsupported_err_span;
 use crate::{err_unless, unsupported_err, unsupported_err_unless, unsupported_unless};
@@ -18,13 +18,14 @@ use rustc_hir::{
     QPath, TraitRef, TyKind,
 };
 use rustc_middle::ty::TyCtxt;
-use rustc_span::def_id::LocalDefId;
+use std::collections::HashMap;
 use std::sync::Arc;
-use vir::ast::{Krate, KrateX, VirErr};
+use vir::ast::{Krate, KrateX, Path, VirErr};
 
 fn check_item<'tcx>(
     ctxt: &Context<'tcx>,
     vir: &mut KrateX,
+    module_path: &Path,
     id: &ItemId,
     item: &'tcx Item<'tcx>,
 ) -> Result<(), VirErr> {
@@ -34,6 +35,7 @@ fn check_item<'tcx>(
                 ctxt,
                 vir,
                 item.ident,
+                mk_visibility(&Some(module_path.clone()), &item.vis),
                 ctxt.tcx.hir().attrs(item.hir_id()),
                 sig,
                 generics,
@@ -169,13 +171,14 @@ fn check_item<'tcx>(
 
 fn check_module<'tcx>(
     tcx: TyCtxt<'tcx>,
-    _id: &LocalDefId,
+    module_path: &Path,
     module_items: &'tcx ModuleItems,
+    item_to_module: &mut HashMap<ItemId, Path>,
 ) -> Result<(), VirErr> {
     match module_items {
         ModuleItems { items, trait_items, impl_items, foreign_items } => {
-            for _id in items {
-                // TODO
+            for item_id in items {
+                item_to_module.insert(*item_id, module_path.clone());
             }
             unsupported_unless!(trait_items.len() == 0, "trait definitions", trait_items);
             // TODO: deduplicate with crate_to_vir
@@ -212,6 +215,7 @@ fn check_foreign_item<'tcx>(
                 vir,
                 item.ident,
                 item.span,
+                mk_visibility(&None, &item.vis),
                 ctxt.tcx.hir().attrs(item.hir_id()),
                 decl,
                 idents,
@@ -262,11 +266,17 @@ pub fn crate_to_vir<'tcx>(ctxt: &Context<'tcx>) -> Result<Krate, VirErr> {
         "non-exported macro attributes",
         non_exported_macro_attrs
     );
+    let mut item_to_module: HashMap<ItemId, Path> = HashMap::new();
+    for (id, module) in modules {
+        let path = crate::rust_to_vir_base::def_to_path(ctxt.tcx, id.to_def_id());
+        check_module(ctxt.tcx, &path, module, &mut item_to_module)?;
+        vir.module_ids.push(path);
+    }
     for (id, item) in foreign_items {
         check_foreign_item(ctxt, &mut vir, id, item)?;
     }
     for (id, item) in items {
-        check_item(ctxt, &mut vir, id, item)?;
+        check_item(ctxt, &mut vir, &item_to_module[id], id, item)?;
     }
     unsupported_unless!(trait_items.len() == 0, "trait definitions", trait_items);
     for (_id, impl_item) in impl_items {
@@ -291,9 +301,6 @@ pub fn crate_to_vir<'tcx>(ctxt: &Context<'tcx>) -> Result<Krate, VirErr> {
             "non_eq_trait_impl",
             id
         );
-    }
-    for (id, module) in modules {
-        check_module(ctxt.tcx, id, module)?;
     }
     unsupported_unless!(proc_macros.len() == 0, "procedural macros", proc_macros);
     unsupported_unless!(trait_map.iter().all(|(_, v)| v.len() == 0), "traits", trait_map);

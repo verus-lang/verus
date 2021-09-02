@@ -11,10 +11,9 @@ use rustc_span::source_map::SourceMap;
 use rustc_span::{CharPos, FileName, MultiSpan, Span};
 use std::fs::File;
 use std::io::Write;
-use vir::ast::{Krate, VirErr, VirErrX};
+use vir::ast::{Krate, Path, VirErr, VirErrX, Visibility};
 use vir::def::SnapPos;
 use vir::model::Model as VModel;
-use vir::modes::ErasureModes;
 
 pub struct Verifier {
     pub encountered_vir_error: bool,
@@ -169,9 +168,99 @@ impl Verifier {
         }
     }
 
-    fn verify(&mut self, compiler: &Compiler, krate: &Krate) -> Result<ErasureModes, VirErr> {
-        let erasure_modes = vir::modes::check_crate(&krate)?;
+    // Can source_module see an item with target_visibility?
+    fn is_visible_to(target_visibility: &Visibility, source_module: &Path) -> bool {
+        let Visibility { owning_module, is_private } = target_visibility;
+        match owning_module {
+            _ if !is_private => true,
+            None => true,
+            Some(target) if target.len() > source_module.len() => false,
+            // Child can access private item in parent, so check if target is parent:
+            Some(target) => target[..] == source_module[..target.len()],
+        }
+    }
 
+    // Verify a single module
+    fn verify_module(
+        &mut self,
+        compiler: &Compiler,
+        krate: &Krate,
+        air_context: &mut air::context::Context,
+        ctx: &vir::context::Ctx,
+        module: &Path,
+    ) -> Result<(), VirErr> {
+        air_context.blank_line();
+        air_context.comment("Fuel");
+        for command in ctx.fuel().iter() {
+            Self::check_internal_result(air_context.command(&command));
+        }
+
+        let commands = vir::datatype_to_air::datatypes_to_air(&krate.datatypes);
+        // TODO(andrea): deduplicate
+        if commands.len() > 0 {
+            air_context.blank_line();
+            air_context.comment(&("Datatypes".to_string()));
+        }
+        for command in commands.iter() {
+            Self::check_internal_result(air_context.command(&command));
+        }
+
+        // Declare the function symbols
+        for function in &krate.functions {
+            if !Verifier::is_visible_to(&function.x.visibility, module) {
+                continue;
+            }
+            let commands = vir::func_to_air::func_name_to_air(&ctx, &function)?;
+            if commands.len() > 0 {
+                air_context.blank_line();
+                air_context.comment(&("Function-Decl ".to_string() + &function.x.name));
+            }
+            for command in commands.iter() {
+                Self::check_internal_result(air_context.command(&command));
+            }
+        }
+
+        // Declare consequence axioms for spec functions, and function signatures for proof/exec functions
+        for function in &krate.functions {
+            let vis = function.x.visibility.clone();
+            let vis = Visibility { is_private: vis.is_private || function.x.is_abstract, ..vis };
+            if !Verifier::is_visible_to(&vis, module) {
+                continue;
+            }
+            let commands = vir::func_to_air::func_decl_to_air(&ctx, &function)?;
+            if commands.len() > 0 {
+                air_context.blank_line();
+                air_context.comment(&("Function-Axiom ".to_string() + &function.x.name));
+            }
+            for command in commands.iter() {
+                Self::check_internal_result(air_context.command(&command));
+            }
+        }
+
+        // Create queries to check the validity of proof/exec function bodies
+        for function in &krate.functions {
+            if Some(module.clone()) == function.x.visibility.owning_module {
+                let (commands, snap_map) = vir::func_to_air::func_def_to_air(&ctx, &function)?;
+                if commands.len() > 0 {
+                    air_context.blank_line();
+                    air_context.comment(&("Function-Def ".to_string() + &function.x.name));
+                }
+                for command in commands.iter() {
+                    self.check_result_validity(
+                        compiler,
+                        &snap_map,
+                        &command,
+                        air_context.command(&command),
+                    );
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    // Verify one or more modules in a crate
+    fn verify_crate(&mut self, compiler: &Compiler, krate: &Krate) -> Result<(), VirErr> {
         let mut z3_config = z3::Config::new();
         z3_config.set_param_value("auto_config", "false");
 
@@ -205,61 +294,25 @@ impl Verifier {
             Self::check_internal_result(air_context.command(&command));
         }
 
-        air_context.blank_line();
-        air_context.comment("Fuel");
-        for command in ctx.fuel().iter() {
-            Self::check_internal_result(air_context.command(&command));
-        }
-
-        let commands = vir::datatype_to_air::datatypes_to_air(&krate.datatypes);
-        // TODO(andrea): deduplicate
-        if commands.len() > 0 {
+        let verify_entire_crate = !self.args.verify_root && self.args.verify_module.is_none();
+        for module in &krate.module_ids {
+            let module_name = module.iter().map(|s| s.to_string()).collect::<Vec<_>>().join("::");
+            if module.len() == 0 {
+                if !verify_entire_crate && !self.args.verify_root {
+                    continue;
+                }
+                println!("Verifying root module");
+            } else {
+                if !verify_entire_crate && self.args.verify_module != Some(module_name.clone()) {
+                    continue;
+                }
+                println!("Verifying module {}", &module_name);
+            }
             air_context.blank_line();
-            air_context.comment(&("Datatypes".to_string()));
-        }
-        for command in commands.iter() {
-            Self::check_internal_result(air_context.command(&command));
-        }
-
-        // Pre-declare the function symbols, to allow for the possibility of non-sorted function usage
-        for function in &krate.functions {
-            let commands = vir::func_to_air::func_name_to_air(&ctx, &function)?;
-            if commands.len() > 0 {
-                air_context.blank_line();
-                air_context.comment(&("Function-PreDecl ".to_string() + &function.x.name));
-            }
-            for command in commands.iter() {
-                Self::check_internal_result(air_context.command(&command));
-            }
-        }
-
-        // Declare consequence axioms for spec functions, and function signatures for proof/exec functions
-        for function in &krate.functions {
-            let commands = vir::func_to_air::func_decl_to_air(&ctx, &function)?;
-            if commands.len() > 0 {
-                air_context.blank_line();
-                air_context.comment(&("Function-Decl ".to_string() + &function.x.name));
-            }
-            for command in commands.iter() {
-                Self::check_internal_result(air_context.command(&command));
-            }
-        }
-
-        // Create queries to check the validity of proof/exec function bodies
-        for function in &krate.functions {
-            let (commands, snap_map) = vir::func_to_air::func_def_to_air(&ctx, &function)?;
-            if commands.len() > 0 {
-                air_context.blank_line();
-                air_context.comment(&("Function-Def ".to_string() + &function.x.name));
-            }
-            for command in commands.iter() {
-                self.check_result_validity(
-                    compiler,
-                    &snap_map,
-                    &command,
-                    air_context.command(&command),
-                );
-            }
+            air_context.comment(&("MODULE '".to_string() + &module_name + "'"));
+            air_context.push();
+            self.verify_module(compiler, krate, &mut air_context, &ctx, module)?;
+            air_context.pop();
         }
 
         if let Some(filename) = &self.args.log_triggers {
@@ -278,7 +331,7 @@ impl Verifier {
             }
         }
 
-        Ok(erasure_modes)
+        Ok(())
     }
 
     fn run<'tcx>(&mut self, compiler: &Compiler, tcx: TyCtxt<'tcx>) -> Result<bool, VirErr> {
@@ -326,7 +379,11 @@ impl Verifier {
                 writeln!(&mut file).expect("cannot write to vir file");
             }
         }
-        let erasure_modes = self.verify(&compiler, &vir_crate)?;
+        vir::well_formed::check_crate(&vir_crate)?;
+        let erasure_modes = vir::modes::check_crate(&vir_crate)?;
+        if !self.args.no_verify {
+            self.verify_crate(&compiler, &vir_crate)?;
+        }
         let erasure_info = ctxt.erasure_info.borrow();
         let resolved_calls = erasure_info.resolved_calls.clone();
         let external_functions = erasure_info.external_functions.clone();

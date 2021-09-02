@@ -2,7 +2,7 @@
 //! remaining code.  Ghost code includes #[spec] and #[proof] code.
 //! This "erasure" step happens after verification, since the ghost code is needed
 //! for verification.
-//! 
+//!
 //! There are many possible ways we could potentially implement erasure:
 //! - Erase ghost code from the VIR (vir::ast).  This would have the advantage that VIR contains
 //!   the information that determines which code is ghost and which code is compiled.

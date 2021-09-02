@@ -51,6 +51,7 @@ pub(crate) fn check_item_fn<'tcx>(
     ctxt: &Context<'tcx>,
     vir: &mut KrateX,
     id: Ident,
+    visibility: vir::ast::Visibility,
     attrs: &[Attribute],
     sig: &'tcx FnSig<'tcx>,
     generics: &'tcx Generics,
@@ -129,6 +130,7 @@ pub(crate) fn check_item_fn<'tcx>(
     };
     let func = FunctionX {
         name,
+        visibility,
         mode,
         fuel,
         typ_params,
@@ -138,6 +140,7 @@ pub(crate) fn check_item_fn<'tcx>(
         ensure: header.ensure,
         decrease: header.decrease,
         hidden: Arc::new(header.hidden),
+        is_abstract: vattrs.is_abstract,
         body: if vattrs.do_verify { Some(vir_body) } else { None },
     };
     let function = spanned_new(sig.span, func);
@@ -150,6 +153,7 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
     vir: &mut KrateX,
     id: Ident,
     span: Span,
+    visibility: vir::ast::Visibility,
     attrs: &[Attribute],
     decl: &'tcx FnDecl<'tcx>,
     idents: &[Ident],
@@ -171,6 +175,7 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
     let params = Arc::new(vir_params);
     let func = FunctionX {
         name,
+        visibility,
         fuel,
         mode,
         typ_params,
@@ -180,6 +185,7 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
         ensure: Arc::new(vec![]),
         decrease: None,
         hidden: Arc::new(vec![]),
+        is_abstract: false,
         body: None,
     };
     let function = spanned_new(span, func);

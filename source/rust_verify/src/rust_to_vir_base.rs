@@ -6,7 +6,10 @@ use rustc_ast::tokenstream::TokenTree;
 use rustc_ast::{AttrKind, Attribute, IntTy, MacArgs, UintTy};
 use rustc_hir::def::{DefKind, Res};
 use rustc_hir::definitions::DefPath;
-use rustc_hir::{GenericParam, GenericParamKind, Generics, HirId, ParamName, PrimTy, QPath, Ty};
+use rustc_hir::{
+    GenericParam, GenericParamKind, Generics, HirId, ParamName, PrimTy, QPath, Ty, Visibility,
+    VisibilityKind,
+};
 use rustc_middle::ty::{AdtDef, TyCtxt, TyKind, TypeckResults};
 use rustc_span::def_id::DefId;
 use rustc_span::symbol::Ident;
@@ -59,6 +62,19 @@ pub(crate) fn hack_check_def_name<'tcx>(
 
 pub(crate) fn ident_to_var<'tcx>(ident: &Ident) -> String {
     ident.to_string()
+}
+
+pub(crate) fn mk_visibility<'tcx>(
+    owning_module: &Option<Path>,
+    vis: &Visibility<'tcx>,
+) -> vir::ast::Visibility {
+    let is_private = match vis.node {
+        VisibilityKind::Inherited => true,
+        VisibilityKind::Public => false,
+        VisibilityKind::Crate(_) => false,
+        VisibilityKind::Restricted { .. } => unsupported!("restricted visibility"),
+    };
+    vir::ast::Visibility { owning_module: owning_module.clone(), is_private }
 }
 
 #[derive(Debug)]
@@ -120,10 +136,17 @@ pub(crate) fn attrs_to_trees(attrs: &[Attribute]) -> Vec<AttrTree> {
 }
 
 pub(crate) enum Attr {
+    // specify mode (spec, proof, exec)
     Mode(Mode),
-    NoVerify, // parse function to get header, but don't verify body
-    External, // don't parse function; function can't be called directly from verified code
+    // parse function to get header, but don't verify body
+    NoVerify,
+    // don't parse function; function can't be called directly from verified code
+    External,
+    // hide body from other modules
+    Abstract,
+    // hide body (from all modules) until revealed
     Opaque,
+    // add manual trigger to expression inside quantifier
     Trigger(Option<Vec<u64>>),
 }
 
@@ -169,6 +192,9 @@ pub(crate) fn parse_attrs(attrs: &[Attribute]) -> Result<Vec<Attr>, VirErr> {
                 }
                 Some(box [AttrTree::Fun(_, arg, None)]) if arg == "external" => {
                     v.push(Attr::External)
+                }
+                Some(box [AttrTree::Fun(_, arg, None)]) if arg == "pub_abstract" => {
+                    v.push(Attr::Abstract)
                 }
                 _ => return err_span_str(span, "unrecognized verifier attribute"),
             },
@@ -229,14 +255,16 @@ pub(crate) fn get_fuel(attrs: &[Attribute]) -> u32 {
 pub(crate) struct VerifierAttrs {
     pub(crate) do_verify: bool,
     pub(crate) external: bool,
+    pub(crate) is_abstract: bool,
 }
 
 pub(crate) fn get_verifier_attrs(attrs: &[Attribute]) -> Result<VerifierAttrs, VirErr> {
-    let mut vs = VerifierAttrs { do_verify: true, external: false };
+    let mut vs = VerifierAttrs { do_verify: true, external: false, is_abstract: false };
     for attr in parse_attrs(attrs)? {
         match attr {
             Attr::NoVerify => vs.do_verify = false,
             Attr::External => vs.external = true,
+            Attr::Abstract => vs.is_abstract = true,
             _ => {}
         }
     }

@@ -2,6 +2,9 @@ use getopts::Options;
 
 #[derive(Debug, Default)]
 pub struct Args {
+    pub verify_root: bool,
+    pub verify_module: Option<String>,
+    pub no_verify: bool,
     pub rlimit: u32,
     pub log_vir: Option<String>,
     pub log_air_initial: Option<String>,
@@ -14,6 +17,9 @@ pub struct Args {
 }
 
 pub fn parse_args(program: &String, args: impl Iterator<Item = String>) -> (Args, Vec<String>) {
+    const OPT_VERIFY_ROOT: &str = "verify-root";
+    const OPT_VERIFY_MODULE: &str = "verify-module";
+    const OPT_NO_VERIFY: &str = "no-verify";
     const OPT_RLIMIT: &str = "rlimit";
     const OPT_LOG_VIR: &str = "log-vir";
     const OPT_LOG_AIR_INITIAL: &str = "log-air";
@@ -25,6 +31,14 @@ pub fn parse_args(program: &String, args: impl Iterator<Item = String>) -> (Args
     const OPT_COMPILE: &str = "compile";
 
     let mut opts = Options::new();
+    opts.optflag("", OPT_VERIFY_ROOT, "Verify just the root module of crate");
+    opts.optopt(
+        "",
+        OPT_VERIFY_MODULE,
+        "Verify just one submodule within crate (e.g. 'foo' or 'foo::bar')",
+        "MODULE",
+    );
+    opts.optflag("", OPT_NO_VERIFY, "Do not run verification");
     opts.optopt("", OPT_RLIMIT, "Set SMT resource limit (roughly in seconds)", "INTEGER");
     opts.optopt("", OPT_LOG_VIR, "Log VIR", "FILENAME");
     opts.optopt("", OPT_LOG_AIR_INITIAL, "Log AIR queries in initial form", "FILENAME");
@@ -62,6 +76,9 @@ pub fn parse_args(program: &String, args: impl Iterator<Item = String>) -> (Args
     };
 
     let args = Args {
+        verify_root: matches.opt_present(OPT_VERIFY_ROOT),
+        verify_module: matches.opt_str(OPT_VERIFY_MODULE),
+        no_verify: matches.opt_present(OPT_NO_VERIFY),
         rlimit: matches
             .opt_get::<u32>(OPT_RLIMIT)
             .expect("expected integer after rlimit")

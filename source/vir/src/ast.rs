@@ -14,6 +14,14 @@ pub type Ident = Arc<String>;
 pub type Idents = Arc<Vec<Ident>>;
 pub type Path = Arc<Vec<Ident>>;
 
+#[derive(Clone, Debug)]
+pub struct Visibility {
+    /// Module that owns this item, or None for a foreign module
+    pub owning_module: Option<Path>,
+    /// true for private, false for pub, pub(crate)
+    pub is_private: bool,
+}
+
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum Mode {
     Spec,
@@ -132,6 +140,7 @@ pub type Function = Arc<Spanned<FunctionX>>;
 #[derive(Debug, Clone)]
 pub struct FunctionX {
     pub name: Ident,
+    pub visibility: Visibility,
     pub mode: Mode,
     pub fuel: u32,
     pub typ_params: Idents,
@@ -141,6 +150,7 @@ pub struct FunctionX {
     pub ensure: Exprs,
     pub decrease: Option<(Expr, Typ)>,
     pub hidden: Idents,
+    pub is_abstract: bool,
     pub body: Option<Expr>,
 }
 
@@ -162,4 +172,5 @@ pub type Krate = Arc<KrateX>;
 pub struct KrateX {
     pub functions: Vec<Function>,
     pub datatypes: Vec<Datatype>,
+    pub module_ids: Vec<Path>,
 }
