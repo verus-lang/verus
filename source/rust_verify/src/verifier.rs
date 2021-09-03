@@ -180,6 +180,37 @@ impl Verifier {
         }
     }
 
+    fn run_commands(
+        air_context: &mut air::context::Context,
+        commands: &Vec<Command>,
+        comment: &str,
+    ) {
+        if commands.len() > 0 {
+            air_context.blank_line();
+            air_context.comment(comment);
+        }
+        for command in commands.iter() {
+            Self::check_internal_result(air_context.command(&command));
+        }
+    }
+
+    fn run_commands_queries(
+        &mut self,
+        compiler: &Compiler,
+        air_context: &mut air::context::Context,
+        commands: &Vec<Command>,
+        snap_map: &Vec<(air::ast::Span, SnapPos)>,
+        comment: &str,
+    ) {
+        if commands.len() > 0 {
+            air_context.blank_line();
+            air_context.comment(comment);
+        }
+        for command in commands.iter() {
+            self.check_result_validity(compiler, snap_map, &command, air_context.command(&command));
+        }
+    }
+
     // Verify a single module
     fn verify_module(
         &mut self,
@@ -195,15 +226,8 @@ impl Verifier {
             Self::check_internal_result(air_context.command(&command));
         }
 
-        let commands = vir::datatype_to_air::datatypes_to_air(&krate.datatypes);
-        // TODO(andrea): deduplicate
-        if commands.len() > 0 {
-            air_context.blank_line();
-            air_context.comment(&("Datatypes".to_string()));
-        }
-        for command in commands.iter() {
-            Self::check_internal_result(air_context.command(&command));
-        }
+        let datatype_commands = vir::datatype_to_air::datatypes_to_air(&krate.datatypes);
+        Self::run_commands(air_context, &datatype_commands, &("Datatypes".to_string()));
 
         // Declare the function symbols
         for function in &krate.functions {
@@ -211,49 +235,55 @@ impl Verifier {
                 continue;
             }
             let commands = vir::func_to_air::func_name_to_air(&ctx, &function)?;
-            if commands.len() > 0 {
-                air_context.blank_line();
-                air_context.comment(&("Function-Decl ".to_string() + &function.x.name));
-            }
-            for command in commands.iter() {
-                Self::check_internal_result(air_context.command(&command));
-            }
+            Self::run_commands(
+                air_context,
+                &commands,
+                &("Function-Decl ".to_string() + &function.x.name),
+            );
         }
 
         // Declare consequence axioms for spec functions, and function signatures for proof/exec functions
+        // Also check termination
         for function in &krate.functions {
             let vis = function.x.visibility.clone();
             let vis = Visibility { is_private: vis.is_private || function.x.is_abstract, ..vis };
             if !Verifier::is_visible_to(&vis, module) {
                 continue;
             }
-            let commands = vir::func_to_air::func_decl_to_air(&ctx, &function)?;
-            if commands.len() > 0 {
-                air_context.blank_line();
-                air_context.comment(&("Function-Axiom ".to_string() + &function.x.name));
+            let (decl_commands, check_commands) =
+                vir::func_to_air::func_decl_to_air(&ctx, &function)?;
+            Self::run_commands(
+                air_context,
+                &decl_commands,
+                &("Function-Axioms ".to_string() + &function.x.name),
+            );
+
+            // Check termination
+            if Some(module.clone()) != function.x.visibility.owning_module {
+                continue;
             }
-            for command in commands.iter() {
-                self.check_result_validity(compiler, &Vec::new(), &command, air_context.command(&command));
-            }
+            self.run_commands_queries(
+                compiler,
+                air_context,
+                &check_commands,
+                &vec![],
+                &("Function-Termination ".to_string() + &function.x.name),
+            );
         }
 
         // Create queries to check the validity of proof/exec function bodies
         for function in &krate.functions {
-            if Some(module.clone()) == function.x.visibility.owning_module {
-                let (commands, snap_map) = vir::func_to_air::func_def_to_air(&ctx, &function)?;
-                if commands.len() > 0 {
-                    air_context.blank_line();
-                    air_context.comment(&("Function-Def ".to_string() + &function.x.name));
-                }
-                for command in commands.iter() {
-                    self.check_result_validity(
-                        compiler,
-                        &snap_map,
-                        &command,
-                        air_context.command(&command),
-                    );
-                }
+            if Some(module.clone()) != function.x.visibility.owning_module {
+                continue;
             }
+            let (commands, snap_map) = vir::func_to_air::func_def_to_air(&ctx, &function)?;
+            self.run_commands_queries(
+                compiler,
+                air_context,
+                &commands,
+                &snap_map,
+                &("Function-Def ".to_string() + &function.x.name),
+            );
         }
 
         Ok(())
