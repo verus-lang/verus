@@ -1,9 +1,10 @@
-/*
-Statement-oriented syntax tree
-
-Whereas ast supports statements inside expressions,
-sst expressions cannot contain statments.
-*/
+//! VIR-SST (Statement-oriented Syntax Tree)
+//!
+//! Rust-AST --> Rust-HIR --> VIR-AST --> VIR-SST --> AIR --> Z3-SMT
+//!
+//! Whereas VIR-AST supports statements inside expressions,
+//! SST expressions cannot contain statments.
+//! SST is designed to make the translation to AIR as straightforward as possible.
 
 use crate::ast::{BinaryOp, Path, Typ, Typs, UnaryOp, UnaryOpr};
 use crate::def::Spanned;
