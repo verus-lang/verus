@@ -107,11 +107,11 @@ pub(crate) fn expr_to_exp(ctx: &Ctx, expr: &Expr) -> Result<Exp, VirErr> {
             }
             Ok(exp)
         }
-        ExprX::Field { lhs, datatype_name, field_name } => Ok(Spanned::new(
+        ExprX::Field { lhs, datatype, field_name } => Ok(Spanned::new(
             expr.span.clone(),
             ExpX::Field {
                 lhs: expr_to_exp(ctx, lhs)?,
-                datatype_name: datatype_name.clone(),
+                datatype: datatype.clone(),
                 field_name: field_name.clone(),
             },
         )),

@@ -1,4 +1,4 @@
-use crate::ast::{BinaryOp, Ident, UnaryOp, UnaryOpr, VirErr};
+use crate::ast::{BinaryOp, Ident, Path, UnaryOp, UnaryOpr, VirErr};
 use crate::ast_util::err_str;
 use crate::context::Ctx;
 use crate::sst::{Exp, ExpX, Trig, Trigs};
@@ -31,7 +31,7 @@ and programmers having to use manual triggers to eliminate the timeouts.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 enum App {
     Const(Constant),
-    Field(Ident, Ident),
+    Field(Path, Ident),
     Call(Ident),
     Ctor(Ident, Ident), // datatype constructor: (Path, Variant)
     Other(u64),         // u64 is an id, assigned via a simple counter
@@ -208,12 +208,12 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
                 Arc::new(TermX::App(App::Ctor(path_to_air_ident(path), variant), Arc::new(terms))),
             )
         }
-        ExpX::Field { lhs, datatype_name, field_name } => {
+        ExpX::Field { lhs, datatype, field_name } => {
             let (is_pure, arg) = gather_terms(ctxt, ctx, lhs, depth + 1);
             (
                 is_pure,
                 Arc::new(TermX::App(
-                    App::Field(datatype_name.clone(), field_name.clone()),
+                    App::Field(datatype.clone(), field_name.clone()),
                     Arc::new(vec![arg]),
                 )),
             )

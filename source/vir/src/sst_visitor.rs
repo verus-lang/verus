@@ -34,13 +34,13 @@ where
             );
             f(&exp)
         }
-        ExpX::Field { lhs, datatype_name, field_name } => {
+        ExpX::Field { lhs, datatype, field_name } => {
             let lhs1 = map_exp_visitor_bind(lhs, fb, f)?;
             let exp = Spanned::new(
                 exp.span.clone(),
                 ExpX::Field {
                     lhs: lhs1,
-                    datatype_name: datatype_name.clone(),
+                    datatype: datatype.clone(),
                     field_name: field_name.clone(),
                 },
             );

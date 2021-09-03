@@ -184,8 +184,7 @@ pub enum ExprX {
     /// Construct datatype value of type Path and variant Ident, with field initializers Binders<Expr>
     Ctor(Path, Ident, Binders<Expr>),
     /// Read field from datatype
-    /// TODO: datatype_name should be Path, not Ident
-    Field { lhs: Expr, datatype_name: Ident, field_name: Ident },
+    Field { lhs: Expr, datatype: Path, field_name: Ident },
     /// Primitive unary operation
     Unary(UnaryOp, Expr),
     /// Special unary operator
@@ -278,6 +277,7 @@ pub type Variants = Binders<Fields>;
 #[derive(Debug)]
 pub struct DatatypeX {
     pub path: Path,
+    pub visibility: Visibility,
     pub variants: Variants,
 }
 pub type Datatype = Arc<Spanned<DatatypeX>>;

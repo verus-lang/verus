@@ -590,20 +590,21 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
         ExprKind::Field(lhs, name) => {
             let vir_lhs = expr_to_vir(bctx, lhs)?;
             let lhs_ty = tc.node_type(lhs.hir_id);
-            let (datatype_name, field_name, unbox) = if let Some(adt_def) = lhs_ty.ty_adt_def() {
+            let (datatype, field_name, unbox) = if let Some(adt_def) = lhs_ty.ty_adt_def() {
                 unsupported_err_unless!(
                     adt_def.variants.len() == 1,
                     expr.span,
                     "field_of_adt_with_multiple_variants",
                     expr
                 );
-                let datatype_name = hack_get_def_name(tcx, adt_def.did);
+                let datatype_path = def_id_to_vir_path(tcx, adt_def.did);
+                let datatype_name = datatype_path.last().unwrap();
                 let variant = adt_def.variants.iter().next().unwrap();
                 let variant_name = variant_ident(datatype_name.as_str(), &variant.ident.as_str());
                 // TODO: deduplicate with Ctor?
                 // TODO: is there a compiler function to do this instead?
                 let fielddef = variant.fields.iter().find(|x| &x.ident == name).expect(
-                    format!("cannot find field {:?} in struct {:?}", name, datatype_name).as_str(),
+                    format!("cannot find field {:?} in struct {:?}", name, datatype_path).as_str(),
                 );
                 let field_typ = mid_ty_to_vir(tcx, tcx.type_of(fielddef.did));
                 let target_typ = typ_of_node(bctx, &expr.hir_id);
@@ -612,12 +613,12 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                     (_, TypX::TypParam(_)) => Some(target_typ),
                     _ => None,
                 };
-                (Arc::new(datatype_name), variant_field_ident(&variant_name, &name.as_str()), unbox)
+                (datatype_path, variant_field_ident(&variant_name, &name.as_str()), unbox)
             } else {
                 unsupported_err!(expr.span, "field_of_non_adt", expr)
             };
             let mut vir =
-                spanned_new(expr.span, ExprX::Field { lhs: vir_lhs, datatype_name, field_name });
+                spanned_new(expr.span, ExprX::Field { lhs: vir_lhs, datatype, field_name });
             if let Some(target_typ) = unbox {
                 vir = Spanned::new(
                     vir.span.clone(),

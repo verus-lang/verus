@@ -226,7 +226,14 @@ impl Verifier {
             Self::check_internal_result(air_context.command(&command));
         }
 
-        let datatype_commands = vir::datatype_to_air::datatypes_to_air(&krate.datatypes);
+        let datatype_commands = vir::datatype_to_air::datatypes_to_air(
+            &krate
+                .datatypes
+                .iter()
+                .cloned()
+                .filter(|d| Verifier::is_visible_to(&d.x.visibility, module))
+                .collect(),
+        );
         Self::run_commands(air_context, &datatype_commands, &("Datatypes".to_string()));
 
         // Declare the function symbols
