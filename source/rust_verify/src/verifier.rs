@@ -233,7 +233,7 @@ impl Verifier {
                 air_context.comment(&("Function-Axiom ".to_string() + &function.x.name));
             }
             for command in commands.iter() {
-                Self::check_internal_result(air_context.command(&command));
+                self.check_result_validity(compiler, &Vec::new(), &command, air_context.command(&command));
             }
         }
 
