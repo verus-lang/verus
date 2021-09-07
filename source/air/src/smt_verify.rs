@@ -141,6 +141,7 @@ fn smt_check_assertion<'ctx>(
                 if let Some(def) = model_defs.get(&info.label) {
                     if *def.body == "true" {
                         discovered_span = info.span.clone();
+                        break;
                     }
                 }
             }
@@ -148,6 +149,7 @@ fn smt_check_assertion<'ctx>(
                 if let Some(def) = model_defs.get(&info.label) {
                     if *def.body == "true" {
                         discovered_global_span = info.span.clone();
+                        break;
                     }
                 }
             }
