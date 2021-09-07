@@ -5,17 +5,21 @@ use sise::Node;
 use std::fs::File;
 use std::io::Read;
 
+#[cfg(target_family = "windows")]
 fn os_setup() -> Result<(), Box<dyn std::error::Error>> {
-    if cfg!(target_os = "windows") {
-        // Configure Windows to kill the child SMT process if the parent is killed
-        let job = win32job::Job::create()?;
-        let mut info = job.query_extended_limit_info()?;
-        info.limit_kill_on_job_close();
-        job.set_extended_limit_info(&mut info)?;
-        job.assign_current_process()?;
-        // dropping the job object would kill us immediately, so just let it live forever instead:
-        std::mem::forget(job);
-    }
+    // Configure Windows to kill the child SMT process if the parent is killed
+    let job = win32job::Job::create()?;
+    let mut info = job.query_extended_limit_info()?;
+    info.limit_kill_on_job_close();
+    job.set_extended_limit_info(&mut info)?;
+    job.assign_current_process()?;
+    // dropping the job object would kill us immediately, so just let it live forever instead:
+    std::mem::forget(job);
+    Ok(())
+}
+
+#[cfg(target_family = "unix")]
+fn os_setup() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
