@@ -49,11 +49,19 @@ nothing is installed outside the project directory
 
 Note: this first step may take more than an hour, since the Rust source code is large, but all other steps are fast.
 
-## Step 2: make sure the Z3 executable is in your path
+## Step 2: z3
+
+### Option A: make sure the Z3 executable is in your path
 
 Download the [Z3 binaries](https://github.com/Z3Prover/z3/releases).
 The Z3 `bin` folder contain the executable `z3.exe` or `z3`.
 Either add the Z3 `bin` folder to your path or copy the Z3 executable file to one of the folders in your path.
+
+### Option B (on unix): get a local Z3
+
+Use the script `./tools/get-z3.sh` to download Z3.
+The `./tools/cargo.sh` script will correctly set the `DUST_Z3_PATH` environment variable for the verifier to find Z3.
+If you run the verifier manually, set `DUST_Z3_PATH` to `path_to/verify/z3`.
 
 ## Step 3: build the verifier
 

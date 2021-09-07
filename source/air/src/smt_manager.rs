@@ -7,7 +7,11 @@ pub struct SmtManager {
 
 impl SmtManager {
     pub fn new() -> Self {
-        let smt_executable_name = if cfg!(windows) { "z3.exe" } else { "z3" }.to_string();
+        let smt_executable_name = if let Ok(path) = std::env::var("DUST_Z3_PATH") {
+            path
+        } else {
+            if cfg!(windows) { "z3.exe" } else { "z3" }.to_string()
+        };
         SmtManager { smt_process: None, smt_executable_name }
     }
 
