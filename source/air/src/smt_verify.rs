@@ -1,179 +1,15 @@
 use crate::ast::{
-    BinaryOp, BindX, Constant, Decl, DeclX, Expr, ExprX, Ident, MultiOp, Quant, Query, Snapshots,
-    Span, StmtX, Typ, TypX, UnaryOp,
+    BinaryOp, BindX, Decl, DeclX, Expr, ExprX, Ident, MultiOp, Quant, Query, Snapshots, Span,
+    StmtX, TypX, UnaryOp,
 };
 use crate::context::{AssertionInfo, Context, ValidityResult};
 use crate::def::{GLOBAL_PREFIX_LABEL, PREFIX_LABEL};
-pub use crate::model::Model;
-use crate::smt_util::new_const;
-use std::collections::{HashMap, HashSet};
+pub use crate::model::{Model, ModelDef};
+use std::collections::HashMap;
 use std::sync::Arc;
-use z3::ast::{Ast, Bool, Dynamic, Int};
-use z3::{Pattern, SatResult, Sort, Symbol};
-
-fn expr_to_smt<'ctx>(context: &mut Context<'ctx>, expr: &Expr) -> Dynamic<'ctx> {
-    match &**expr {
-        ExprX::Const(Constant::Bool(b)) => Bool::from_bool(&context.context, *b).into(),
-        ExprX::Const(Constant::Nat(n)) => Int::from_str(&context.context, n).unwrap().into(),
-        ExprX::Var(x) => match context.vars.get(x) {
-            None => panic!("internal error: variable {} not found", x),
-            Some(x) => x.clone(),
-        },
-        ExprX::Old(_, _) => panic!("internal error: Old"),
-        ExprX::Apply(x, exprs) => {
-            let mut exprs_vec: Vec<Dynamic> = Vec::new();
-            for expr in exprs.iter() {
-                exprs_vec.push(expr_to_smt(context, expr));
-            }
-            let mut smt_exprs: Vec<&Dynamic> = Vec::new();
-            for i in 0..exprs_vec.len() {
-                smt_exprs.push(&exprs_vec[i]);
-            }
-            context.funs[x].apply(&smt_exprs)
-        }
-        ExprX::Unary(op, expr) => match op {
-            UnaryOp::Not => Bool::not(&expr_to_smt(context, expr).as_bool().unwrap()).into(),
-        },
-        ExprX::Binary(op, lhs, rhs) => {
-            let lh = expr_to_smt(context, lhs);
-            let rh = expr_to_smt(context, rhs);
-            match op {
-                BinaryOp::Implies => lh.as_bool().unwrap().implies(&rh.as_bool().unwrap()).into(),
-                BinaryOp::Eq => lh._eq(&rh).into(),
-                BinaryOp::Le => lh.as_int().unwrap().le(&rh.as_int().unwrap()).into(),
-                BinaryOp::Ge => lh.as_int().unwrap().ge(&rh.as_int().unwrap()).into(),
-                BinaryOp::Lt => lh.as_int().unwrap().lt(&rh.as_int().unwrap()).into(),
-                BinaryOp::Gt => lh.as_int().unwrap().gt(&rh.as_int().unwrap()).into(),
-                BinaryOp::EuclideanDiv => lh.as_int().unwrap().div(&rh.as_int().unwrap()).into(),
-                BinaryOp::EuclideanMod => lh.as_int().unwrap().rem(&rh.as_int().unwrap()).into(),
-            }
-        }
-        ExprX::Multi(op @ MultiOp::And, exprs) | ExprX::Multi(op @ MultiOp::Or, exprs) => {
-            let mut exprs_vec: Vec<Bool> = Vec::new();
-            for expr in exprs.iter() {
-                exprs_vec.push(expr_to_smt(context, expr).as_bool().unwrap());
-            }
-            let mut smt_exprs: Vec<&Bool> = Vec::new();
-            for i in 0..exprs_vec.len() {
-                smt_exprs.push(&exprs_vec[i]);
-            }
-            match op {
-                MultiOp::And => Bool::and(&context.context, &smt_exprs).into(),
-                MultiOp::Or => Bool::or(&context.context, &smt_exprs).into(),
-                _ => panic!("internal error: MultiOp"),
-            }
-        }
-        ExprX::Multi(MultiOp::Distinct, exprs) => {
-            let mut exprs_vec: Vec<Dynamic> = Vec::new();
-            for expr in exprs.iter() {
-                exprs_vec.push(expr_to_smt(context, expr));
-            }
-            let mut smt_exprs: Vec<&Dynamic> = Vec::new();
-            for i in 0..exprs_vec.len() {
-                smt_exprs.push(&exprs_vec[i]);
-            }
-            Dynamic::distinct(&context.context, &smt_exprs[..]).into()
-        }
-        ExprX::Multi(op, exprs) => {
-            let mut exprs_vec: Vec<Int> = Vec::new();
-            for expr in exprs.iter() {
-                exprs_vec.push(expr_to_smt(context, expr).as_int().unwrap());
-            }
-            let mut smt_exprs: Vec<&Int> = Vec::new();
-            for i in 0..exprs_vec.len() {
-                smt_exprs.push(&exprs_vec[i]);
-            }
-            match (op, &smt_exprs[..]) {
-                (MultiOp::Add, _) => Int::add(&context.context, &smt_exprs).into(),
-                (MultiOp::Sub, [unary]) => unary.unary_minus().into(),
-                (MultiOp::Sub, _) => Int::sub(&context.context, &smt_exprs).into(),
-                (MultiOp::Mul, _) => Int::mul(&context.context, &smt_exprs).into(),
-                _ => panic!("internal error: MultiOp"),
-            }
-        }
-        ExprX::IfElse(expr1, expr2, expr3) => {
-            let smt1 = expr_to_smt(context, expr1);
-            let smt2 = expr_to_smt(context, expr2);
-            let smt3 = expr_to_smt(context, expr3);
-            smt1.as_bool().unwrap().ite(&smt2, &smt3)
-        }
-        ExprX::Bind(bind, e1) => {
-            let mut bound_vars: Vec<(Ident, Dynamic<'ctx>)> = Vec::new();
-            match &**bind {
-                BindX::Let(binders) => {
-                    for binder in binders.iter() {
-                        bound_vars.push((binder.name.clone(), expr_to_smt(context, &binder.a)));
-                    }
-                }
-                BindX::Quant(_, binders, _) => {
-                    for binder in binders.iter() {
-                        let x_smt = new_const(context, &binder.name, &binder.a);
-                        bound_vars.push((binder.name.clone(), x_smt));
-                    }
-                }
-            }
-            // Push our bindings
-            // Remember any overwritten shadowed bindings so we can restore them
-            let mut undos: HashMap<Ident, Option<Dynamic<'ctx>>> = HashMap::new();
-            for (x, x_smt) in &bound_vars {
-                let prev_var = context.vars.insert(x.clone(), x_smt.clone());
-                undos.insert(x.clone(), prev_var);
-            }
-            // Translate subexpressions (in context with bound variables)
-            let expr_smt = match &**bind {
-                BindX::Let(_) => expr_to_smt(context, e1),
-                BindX::Quant(quant, _, triggers) => {
-                    let mut bounds: Vec<&Dynamic<'ctx>> = Vec::new();
-                    for i in 0..bound_vars.len() {
-                        bounds.push(&bound_vars[i].1);
-                    }
-                    let mut patterns: Vec<Pattern<'ctx>> = Vec::new();
-                    for trigger in triggers.iter() {
-                        let mut trigger_smt: Vec<Dynamic<'ctx>> = Vec::new();
-                        for expr in trigger.iter() {
-                            trigger_smt.push(expr_to_smt(context, expr));
-                        }
-                        let mut pattern: Vec<&Dynamic<'ctx>> = Vec::new();
-                        for i in 0..trigger_smt.len() {
-                            pattern.push(&trigger_smt[i]);
-                        }
-                        patterns.push(Pattern::new(context.context, &pattern));
-                    }
-                    let mut patterns_borrow: Vec<&Pattern<'ctx>> = Vec::new();
-                    for i in 0..patterns.len() {
-                        patterns_borrow.push(&patterns[i]);
-                    }
-                    let body = expr_to_smt(context, e1);
-                    match quant {
-                        Quant::Forall => {
-                            z3::ast::forall_const(context.context, &bounds, &patterns_borrow, &body)
-                        }
-                        Quant::Exists => {
-                            z3::ast::exists_const(context.context, &bounds, &patterns_borrow, &body)
-                        }
-                    }
-                }
-            };
-            // Remove our bindings from the context, restore any shadowed bindings
-            for (x, undo) in undos {
-                match undo {
-                    None => {
-                        context.vars.remove(&x);
-                    }
-                    Some(prev) => {
-                        context.vars.insert(x.clone(), prev);
-                    }
-                }
-            }
-            // Done
-            expr_smt
-        }
-        ExprX::LabeledAssertion(_, _) => panic!("internal error: LabeledAssertion"),
-    }
-}
 
 fn label_asserts<'ctx>(
-    context: &mut Context<'ctx>,
+    context: &mut Context,
     infos: &mut Vec<AssertionInfo>,
     expr: &Expr,
     is_global: bool,
@@ -221,111 +57,23 @@ fn label_asserts<'ctx>(
     }
 }
 
-fn get_sort<'ctx>(context: &Context<'ctx>, typ: &Typ) -> Arc<Sort<'ctx>> {
-    match &**typ {
-        TypX::Bool => Arc::new(Sort::bool(context.context)),
-        TypX::Int => Arc::new(Sort::int(context.context)),
-        TypX::Named(x) => context.typs[x].clone(),
-    }
+/// In SMT-LIB, functions applied to zero arguments are considered constants.
+/// REVIEW: maybe AIR should follow this design for consistency.
+fn elim_zero_args_expr(expr: &Expr) -> Expr {
+    crate::visitor::map_expr_visitor(expr, &mut |expr| match &**expr {
+        ExprX::Apply(x, es) if es.len() == 0 => Arc::new(ExprX::Var(x.clone())),
+        _ => expr.clone(),
+    })
 }
 
-pub(crate) fn smt_add_decl<'ctx>(context: &mut Context<'ctx>, decl: &Decl) {
+pub(crate) fn smt_add_decl<'ctx>(context: &mut Context, decl: &Decl) {
     match &**decl {
-        DeclX::Sort(x) => {
+        DeclX::Sort(_) | DeclX::Datatypes(_) | DeclX::Const(_, _) | DeclX::Fun(_, _, _) => {
             context.smt_log.log_decl(decl);
-            let sort = Sort::uninterpreted(context.context, Symbol::String((**x).clone()));
-            let prev = context.typs.insert(x.clone(), Arc::new(sort));
-            assert_eq!(prev, None);
-        }
-        DeclX::Datatypes(datatypes) => {
-            context.smt_log.log_decl(decl);
-            if datatypes.len() == 0 {
-                return; // Z3 crate doesn't like 0 datatypes, so don't call it
-            }
-            let mut names: HashSet<Ident> = HashSet::new();
-            for datatype in datatypes.iter() {
-                names.insert(datatype.name.clone());
-            }
-            let mut sorts: Vec<Vec<Vec<Arc<Sort>>>> = Vec::new();
-            for datatype in datatypes.iter() {
-                let mut sorts0: Vec<Vec<Arc<Sort>>> = Vec::new();
-                for variant in datatype.a.iter() {
-                    let mut sorts1: Vec<Arc<Sort>> = Vec::new();
-                    for field in variant.a.iter() {
-                        match &*field.a {
-                            TypX::Named(x) if names.contains(x) => {
-                                sorts1.push(Arc::new(Sort::bool(context.context)));
-                                // dummy sort
-                            }
-                            _ => {
-                                sorts1.push(get_sort(context, &field.a));
-                            }
-                        }
-                    }
-                    sorts0.push(sorts1);
-                }
-                sorts.push(sorts0);
-            }
-            let mut builders = Vec::new();
-            for i in 0..datatypes.len() {
-                let datatype = &datatypes[i];
-                let mut builder =
-                    z3::DatatypeBuilder::new(&context.context, datatype.name.to_string());
-                for j in 0..datatype.a.len() {
-                    let variant = &datatype.a[j];
-                    let mut smt_fields: Vec<(&str, z3::DatatypeAccessor)> = Vec::new();
-                    for k in 0..variant.a.len() {
-                        let field = &variant.a[k];
-                        let sort = &sorts[i][j][k];
-                        let accessor = match &*field.a {
-                            TypX::Named(x) if names.contains(x) => {
-                                z3::DatatypeAccessor::Datatype(z3::Symbol::String(x.to_string()))
-                            }
-                            _ => z3::DatatypeAccessor::Sort(sort),
-                        };
-                        smt_fields.push((field.name.as_str(), accessor));
-                    }
-                    builder = builder.variant(&variant.name.to_string(), smt_fields);
-                }
-                builders.push(builder);
-            }
-            let datatype_sorts = z3::datatype_builder::create_datatypes(builders);
-            for (datatype, sort) in datatypes.iter().zip(datatype_sorts) {
-                let prev = context.typs.insert(datatype.name.clone(), Arc::new(sort.sort));
-                assert_eq!(prev, None);
-                for (variant, smt_variant) in datatype.a.iter().zip(sort.variants) {
-                    context.funs.insert(variant.name.clone(), Arc::new(smt_variant.constructor));
-                    let is_variant = Arc::new("is-".to_string() + &variant.name.to_string());
-                    context.funs.insert(is_variant, Arc::new(smt_variant.tester));
-                    for (field, smt_field) in variant.a.iter().zip(smt_variant.accessors) {
-                        context.funs.insert(field.name.clone(), Arc::new(smt_field));
-                    }
-                }
-            }
-        }
-        DeclX::Const(x, typ) => {
-            context.smt_log.log_decl(decl);
-            let x_smt = new_const(context, x, typ);
-            context.vars.insert(x.clone(), x_smt);
-        }
-        DeclX::Fun(x, typs, typ) => {
-            context.smt_log.log_decl(decl);
-            let sort = get_sort(context, typ);
-            let sorts = crate::util::vec_map(typs, |t| get_sort(context, t));
-            let mut sorts_borrow: Vec<&Sort> = Vec::new();
-            for i in 0..sorts.len() {
-                sorts_borrow.push(&*sorts[i]);
-            }
-            let fdecl = z3::FuncDecl::new(
-                context.context,
-                (**x).clone(),
-                &sorts_borrow.into_boxed_slice(),
-                &*sort,
-            );
-            context.funs.insert(x.clone(), Arc::new(fdecl));
         }
         DeclX::Var(_, _) => {}
         DeclX::Axiom(expr) => {
+            let expr = elim_zero_args_expr(expr);
             let mut infos: Vec<AssertionInfo> = Vec::new();
             let labeled_expr = label_asserts(context, &mut infos, &expr, true);
             for info in infos {
@@ -334,81 +82,80 @@ pub(crate) fn smt_add_decl<'ctx>(context: &mut Context<'ctx>, decl: &Decl) {
                 smt_add_decl(context, &info.decl);
             }
             context.smt_log.log_assert(&labeled_expr);
-            let smt_expr = expr_to_smt(context, &labeled_expr).as_bool().unwrap();
-            context.solver.assert(&smt_expr);
         }
     }
 }
 
 fn smt_check_assertion<'ctx>(
-    context: &mut Context<'ctx>,
+    context: &mut Context,
     infos: &Vec<AssertionInfo>,
     snapshots: Snapshots,
     local_vars: Vec<Decl>, // Expected to be entirely DeclX::Const
     expr: &Expr,
-) -> ValidityResult<'ctx> {
+) -> ValidityResult {
     let mut discovered_span = Arc::new(None);
     let mut discovered_global_span = Arc::new(None);
     let not_expr = Arc::new(ExprX::Unary(UnaryOp::Not, expr.clone()));
     context.smt_log.log_assert(&not_expr);
-    context.solver.assert(&expr_to_smt(context, &not_expr).as_bool().unwrap());
 
     context.smt_log.log_set_option("rlimit", &context.rlimit.to_string());
     context.set_z3_param_u32("rlimit", context.rlimit, false);
 
     context.smt_log.log_word("check-sat");
-    let sat = context.solver.check();
+
+    let smt_output =
+        context.smt_manager.get_smt_process().send_commands(context.smt_log.take_pipe_data());
+    let mut unsat = None;
+    for line in smt_output {
+        if line == "unsat" {
+            assert!(unsat == None);
+            unsat = Some(true);
+        } else if line == "sat" || line == "unknown" {
+            assert!(unsat == None);
+            unsat = Some(false);
+        } else {
+            println!("warning: unexpected SMT output: {}", line);
+        }
+    }
 
     context.smt_log.log_set_option("rlimit", "0");
     context.set_z3_param_u32("rlimit", 0, false);
 
-    match sat {
-        SatResult::Unsat => ValidityResult::Valid,
-        SatResult::Sat | SatResult::Unknown => {
+    match unsat {
+        None => {
+            panic!("expected sat/unsat/unknown from SMT solver");
+        }
+        Some(true) => ValidityResult::Valid,
+        Some(false) => {
             context.smt_log.log_word("get-model");
-            let model = context.solver.get_model();
-            let mut air_model = match model {
-                None => {
-                    panic!("SMT solver did not generate a model");
+            let smt_output = context
+                .smt_manager
+                .get_smt_process()
+                .send_commands(context.smt_log.take_pipe_data());
+            let model = crate::print_parse::lines_to_model(&smt_output);
+            let mut model_defs: HashMap<Ident, ModelDef> = HashMap::new();
+            for def in model.iter() {
+                model_defs.insert(def.name.clone(), def.clone());
+            }
+            for info in infos.iter() {
+                if let Some(def) = model_defs.get(&info.label) {
+                    if *def.body == "true" {
+                        discovered_span = info.span.clone();
+                    }
                 }
-                Some(model) => {
-                    // dbg!(&context.solver);
-                    // println!("model = >>{}<<", model.to_string());
-                    for info in infos.iter() {
-                        /*
-                        Unfortunately, the Rust Z3 crate's eval calls Z3_model_eval
-                        with model_completion = true.
-                        This hides exactly what we're interested in:
-                        the set of variables that are actually assigned in the model.
-                        It happens, though, that Z3 completes boolean variables in
-                        the model with false,
-                        so we can just look for the variables that evaluate to true.
-                        */
-                        let x_info = context.vars[&info.label].as_bool().unwrap();
-                        if let Some(b) = model.eval(&x_info) {
-                            if let Some(b2) = b.as_bool() {
-                                if b2 {
-                                    discovered_span = info.span.clone();
-                                }
-                            }
-                        }
+            }
+            for (_, info) in context.assert_infos.iter() {
+                if let Some(def) = model_defs.get(&info.label) {
+                    if *def.body == "true" {
+                        discovered_global_span = info.span.clone();
                     }
-                    for (_, info) in context.assert_infos.iter() {
-                        let x_info = context.vars[&info.label].as_bool().unwrap();
-                        if let Some(b) = model.eval(&x_info) {
-                            if let Some(b2) = b.as_bool() {
-                                if b2 {
-                                    discovered_global_span = info.span.clone();
-                                }
-                            }
-                        }
-                    }
-                    if context.debug {
-                        println!("Z3 model: {}", model);
-                    }
-                    Model::new(model, snapshots)
                 }
-            };
+            }
+
+            if context.debug {
+                println!("Z3 model: {:?}", &model);
+            }
+            let mut air_model = Model::new(snapshots);
             if context.debug {
                 air_model.build(context, local_vars);
             }
@@ -418,13 +165,12 @@ fn smt_check_assertion<'ctx>(
 }
 
 pub(crate) fn smt_check_query<'ctx>(
-    context: &mut Context<'ctx>,
+    context: &mut Context,
     query: &Query,
     snapshots: Snapshots,
     local_vars: Vec<Decl>,
-) -> ValidityResult<'ctx> {
+) -> ValidityResult {
     context.smt_log.log_push();
-    context.solver.push();
     context.push_name_scope();
 
     // add query-local declarations
@@ -440,6 +186,7 @@ pub(crate) fn smt_check_query<'ctx>(
         StmtX::Assert(_, expr) => expr,
         _ => panic!("internal error: query not lowered"),
     };
+    let assertion = elim_zero_args_expr(assertion);
 
     // add labels to assertions for error reporting
     let mut infos: Vec<AssertionInfo> = Vec::new();
@@ -460,6 +207,5 @@ pub(crate) fn smt_check_query<'ctx>(
     // clean up
     context.pop_name_scope();
     context.smt_log.log_pop();
-    context.solver.pop(1);
     result
 }

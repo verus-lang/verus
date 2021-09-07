@@ -2,16 +2,13 @@ use crate::ast::CommandX;
 use crate::context::ValidityResult;
 #[allow(unused_imports)]
 use crate::print_parse::{macro_push_node, nodes_to_commands};
+use crate::smt_manager::SmtManager;
 #[allow(unused_imports)]
 use sise::Node;
 
 #[allow(dead_code)]
 fn run_nodes_as_test(should_typecheck: bool, should_be_valid: bool, nodes: &[Node]) {
-    let mut z3_config = z3::Config::new();
-    z3_config.set_param_value("auto_config", "false");
-    let z3_context = z3::Context::new(&z3_config);
-    let z3_solver = z3::Solver::new(&z3_context);
-    let mut air_context = crate::context::Context::new(&z3_context, &z3_solver);
+    let mut air_context = crate::context::Context::new(SmtManager::new());
     air_context.set_z3_param("air_recommended_options", "true");
     match nodes_to_commands(&nodes) {
         Ok(commands) => {

@@ -49,31 +49,11 @@ nothing is installed outside the project directory
 
 Note: this first step may take more than an hour, since the Rust source code is large, but all other steps are fast.
 
-## Step 2: copy the Z3 libraries into install directory
+## Step 2: make sure the Z3 executable is in your path
 
 Download the [Z3 binaries](https://github.com/Z3Prover/z3/releases).
-The Z3 `bin` folder contain the libraries `libz3.*`.
-The easiest way to make these libraries available to the build is to copy them into the `install` directory.
-For example,
-
-on Windows:
-
-```
-cp /z3/bin/libz3.lib install/lib/rustlib/x86_64-pc-windows-msvc/lib
-cp /z3/bin/libz3.dll install/bin
-```
-
-on Darwin (Mac):
-
-```
-curl -O -L https://github.com/Z3Prover/z3/releases/download/z3-4.8.10/z3-4.8.10-x64-osx-10.15.7.zip
-unzip z3-4.8.10-x64-osx-10.15.7.zip
-cp z3-4.8.10-x64-osx-10.15.7/bin/libz3.a install/lib/rustlib/x86_64-apple-darwin/lib/.
-cp z3-4.8.10-x64-osx-10.15.7/bin/libz3.dylib install/lib/rustlib/x86_64-apple-darwin/lib/.
-cp z3-4.8.10-x64-osx-10.15.7/bin/z3 install/bin/.
-rm -R z3-4.8.10-x64-osx-10.15.7
-rm z3-4.8.10-x64-osx-10.15.7.zip
-```
+The Z3 `bin` folder contain the executable `z3.exe` or `z3`.
+Either add the Z3 `bin` folder to your path or copy the Z3 executable file to one of the folders in your path.
 
 ## Step 3: build the verifier
 
@@ -83,13 +63,13 @@ First, go to the `verify` subdirectory:
 cd verify
 ```
 
-Then use `cargo` to build the verifier:
+Then set the RUSTC environment variable to point to `../install/bin/rustc` and use `cargo` to build the verifier:
 
 ```
 ../install/bin/cargo build
 ```
 
-On Darwin (and likely Linux), if you have other toolchains installed (with rustup), you'll need instead:
+For example, on Darwin (and likely Linux):
 
 ```
 RUSTC=../install/bin/rustc ../install/bin/cargo build

@@ -291,12 +291,7 @@ impl Verifier {
 
     // Verify one or more modules in a crate
     fn verify_crate(&mut self, compiler: &Compiler, krate: &Krate) -> Result<(), VirErr> {
-        let mut z3_config = z3::Config::new();
-        z3_config.set_param_value("auto_config", "false");
-
-        let z3_context = z3::Context::new(&z3_config);
-        let z3_solver = z3::Solver::new(&z3_context);
-        let mut air_context = air::context::Context::new(&z3_context, &z3_solver);
+        let mut air_context = air::context::Context::new(air::smt_manager::SmtManager::new());
         air_context.set_debug(self.args.debug);
 
         if let Some(filename) = &self.args.log_air_initial {

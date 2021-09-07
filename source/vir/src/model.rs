@@ -5,16 +5,16 @@ use std::collections::HashMap;
 
 #[derive(Debug)]
 /// VIR-level model of a concrete counterexample
-pub struct Model<'a> {
+pub struct Model {
     /// Handle to the AIR-level model; only for internal use, e.g., for `eval`
-    air_model: AModel<'a>,
+    air_model: AModel,
     /// Internal mapping from snapshot IDs to snapshots that map VIR variables to values
     /// TODO: Upgrade to a semantics-preserving value type, instead of String.
     vir_snapshots: HashMap<Ident, HashMap<Ident, String>>,
 }
 
-impl<'a> Model<'a> {
-    pub fn new(air_model: AModel<'a>) -> Model<'a> {
+impl Model {
+    pub fn new(air_model: AModel) -> Model {
         let mut vir_snapshots = HashMap::new();
 
         for (snap_id, value_snapshot) in &air_model.value_snapshots {

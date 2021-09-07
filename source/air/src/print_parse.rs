@@ -3,6 +3,7 @@ use crate::ast::{
     Decl, DeclX, Decls, Expr, ExprX, Exprs, Ident, MultiOp, Quant, Query, QueryX, Span, Stmt,
     StmtX, Stmts, Trigger, Triggers, Typ, TypX, Typs, UnaryOp,
 };
+use crate::model::{ModelDef, ModelDefX, ModelDefs, ModelExpr};
 use crate::util::vec_map;
 use sise::{Node, Writer};
 use std::io::Write;
@@ -134,6 +135,13 @@ pub(crate) fn expr_to_node(expr: &Expr) -> Node {
             nodes.push(str_to_node(sop));
             for expr in exprs.iter() {
                 nodes.push(expr_to_node(expr));
+            }
+            match op {
+                MultiOp::Distinct if exprs.len() == 0 => {
+                    // Z3 doesn't like the expression "(distinct)"
+                    return Node::Atom("true".to_string());
+                }
+                _ => {}
             }
             Node::List(nodes)
         }
@@ -360,44 +368,68 @@ pub(crate) fn node_to_string(node: &Node) -> String {
     node_to_string_indent(&"".to_string(), node)
 }
 
-pub(crate) struct Logger {
-    writer: Option<Box<dyn std::io::Write>>,
+pub(crate) struct Emitter {
+    /// buffer for data to be sent across pipe to Z3 process
+    pipe_buffer: Option<Vec<u8>>,
+    /// log file
+    log: Option<Box<dyn std::io::Write>>,
+    /// string of space characters representing current indentation level
     current_indent: String,
 }
 
-impl Logger {
-    pub fn new(writer: Option<Box<dyn std::io::Write>>) -> Self {
-        Logger { writer, current_indent: "".to_string() }
+impl Emitter {
+    pub fn new(use_pipe: bool, writer: Option<Box<dyn std::io::Write>>) -> Self {
+        let pipe_buffer = if use_pipe { Some(Vec::new()) } else { None };
+        Emitter { pipe_buffer, log: writer, current_indent: "".to_string() }
+    }
+
+    pub fn set_log(&mut self, writer: Option<Box<dyn std::io::Write>>) {
+        self.log = writer;
+    }
+
+    fn is_none(&self) -> bool {
+        self.pipe_buffer.is_none() && self.log.is_none()
+    }
+
+    /// Return all the data in pipe_buffer, and reset pipe_buffer to Some empty vector
+    pub fn take_pipe_data(&mut self) -> Vec<u8> {
+        let data = self.pipe_buffer.take().expect("use_pipe must be set to true to take pipe");
+        self.pipe_buffer = Some(Vec::new());
+        data
     }
 
     pub fn indent(&mut self) {
-        if let Some(_) = self.writer {
+        if let Some(_) = self.log {
             self.current_indent = self.current_indent.clone() + " ";
         }
     }
 
     pub fn unindent(&mut self) {
-        if let Some(_) = self.writer {
+        if let Some(_) = self.log {
             self.current_indent = self.current_indent[1..].to_string();
         }
     }
 
     pub fn blank_line(&mut self) {
-        if let Some(w) = &mut self.writer {
+        if let Some(w) = &mut self.log {
             writeln!(w, "").unwrap();
             w.flush().unwrap();
         }
     }
 
     pub fn comment(&mut self, s: &str) {
-        if let Some(w) = &mut self.writer {
+        if let Some(w) = &mut self.log {
             writeln!(w, "{};; {}", self.current_indent, s).unwrap();
             w.flush().unwrap();
         }
     }
 
     pub fn log_node(&mut self, node: &Node) {
-        if let Some(w) = &mut self.writer {
+        if let Some(w) = &mut self.pipe_buffer {
+            writeln!(w, "{}", node_to_string_indent(&self.current_indent, &node)).unwrap();
+            w.flush().unwrap();
+        }
+        if let Some(w) = &mut self.log {
             writeln!(
                 w,
                 "{}{}",
@@ -410,7 +442,7 @@ impl Logger {
     }
 
     pub fn log_set_option(&mut self, option: &str, value: &str) {
-        if let Some(_) = self.writer {
+        if !self.is_none() {
             self.log_node(&node!(
                 (set-option {Node::Atom(":".to_owned() + option)} {Node::Atom(value.to_string())})
             ));
@@ -418,14 +450,14 @@ impl Logger {
     }
 
     pub fn log_push(&mut self) {
-        if let Some(_) = self.writer {
+        if !self.is_none() {
             self.log_node(&nodes!(push));
             self.indent();
         }
     }
 
     pub fn log_pop(&mut self) {
-        if let Some(_) = self.writer {
+        if !self.is_none() {
             self.unindent();
             self.log_node(&nodes!(pop));
         }
@@ -433,33 +465,39 @@ impl Logger {
 
     /*
     pub fn log_function_decl(&mut self, x: &Ident, typs: &[Typ], typ: &Typ) {
-        if let Some(_) = self.writer {
+        if let Some(_) = self.log {
             self.log_node(&function_decl_to_node(x, typs, typ));
         }
     }
     */
 
     pub fn log_decl(&mut self, decl: &Decl) {
-        if let Some(_) = self.writer {
+        if !self.is_none() {
             self.log_node(&decl_to_node(decl));
         }
     }
 
     pub fn log_assert(&mut self, expr: &Expr) {
-        if let Some(_) = self.writer {
+        if !self.is_none() {
             self.log_node(&nodes!(assert {expr_to_node(expr)}));
         }
     }
 
     pub fn log_word(&mut self, s: &str) {
-        if let Some(_) = self.writer {
+        if !self.is_none() {
             self.log_node(&Node::List(vec![Node::Atom(s.to_string())]));
         }
     }
 
     pub fn log_query(&mut self, query: &Query) {
-        if let Some(_) = self.writer {
+        if !self.is_none() {
             self.log_node(&query_to_node(query));
+        }
+    }
+
+    pub fn log_eval(&mut self, expr: ModelExpr) {
+        if !self.is_none() {
+            self.log_node(&nodes!(eval {Node::Atom(expr.to_string())}));
         }
     }
 }
@@ -480,6 +518,19 @@ where
     let mut v: Vec<A> = Vec::new();
     for node in nodes.iter() {
         v.push(f(node)?);
+    }
+    Ok(Arc::new(v))
+}
+
+fn map_nodes_to_vec_opt<A, F>(nodes: &[Node], f: F) -> Result<Arc<Vec<A>>, String>
+where
+    F: Fn(&Node) -> Result<Option<A>, String>,
+{
+    let mut v: Vec<A> = Vec::new();
+    for node in nodes.iter() {
+        if let Some(a) = f(node)? {
+            v.push(a);
+        }
     }
     Ok(Arc::new(v))
 }
@@ -822,4 +873,43 @@ pub(crate) fn node_to_command(node: &Node) -> Result<Command, String> {
 
 pub fn nodes_to_commands(nodes: &[Node]) -> Result<Commands, String> {
     map_nodes_to_vec(nodes, node_to_command)
+}
+
+fn node_to_model_def(node: &Node) -> Result<Option<ModelDef>, String> {
+    match node {
+        Node::List(nodes) => match &nodes[..] {
+            [Node::Atom(s), Node::Atom(x), Node::List(param_nodes), t, body]
+                if s.to_string() == "define-fun" && is_symbol(x) =>
+            {
+                let name = Arc::new(x.clone());
+                let params = nodes_to_binders(param_nodes, &node_to_typ)?;
+                let ret = node_to_typ(t)?;
+                let body = Arc::new(node_to_string(body));
+                Ok(Some(Arc::new(ModelDefX { name, params, ret, body })))
+            }
+            _ => Ok(None),
+        },
+        _ => Ok(None),
+    }
+}
+
+fn nodes_to_model_defs(nodes: &[Node]) -> Result<ModelDefs, String> {
+    map_nodes_to_vec_opt(nodes, node_to_model_def)
+}
+
+pub fn node_to_model(node: &Node) -> Result<ModelDefs, String> {
+    match node {
+        Node::Atom(_) => Err(format!("expected model, found: {}", node_to_string(node))),
+        Node::List(nodes) => nodes_to_model_defs(nodes),
+    }
+}
+
+pub fn lines_to_model(lines: &Vec<String>) -> ModelDefs {
+    let mut model_bytes: Vec<u8> = Vec::new();
+    for line in lines {
+        writeln!(model_bytes, "{}", line).expect("model_bytes");
+    }
+    let mut parser = sise::Parser::new(&model_bytes[..]);
+    let node = sise::read_into_tree(&mut parser).unwrap();
+    node_to_model(&node).expect("failed to parse SMT model")
 }

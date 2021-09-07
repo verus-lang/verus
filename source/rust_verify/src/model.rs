@@ -10,19 +10,19 @@ use vir::model::Model as VModel;
 
 #[derive(Debug)]
 /// Rust-level model of a concrete counterexample
-pub struct Model<'a> {
+pub struct Model {
     /// Handle to the AIR-level model; only for internal use, e.g., for `eval`
-    vir_model: VModel<'a>,
+    vir_model: VModel,
     /// Internal mapping from a line in the source file to a snapshot ID
     line_map: HashMap<usize, Ident>,
 }
 
-impl<'a> Model<'a> {
+impl Model {
     pub fn new(
-        vir_model: VModel<'a>,
+        vir_model: VModel,
         snap_map: &Vec<(ASpan, SnapPos)>,
         source_map: &SourceMap,
-    ) -> Model<'a> {
+    ) -> Model {
         let mut line_map = HashMap::new();
 
         if snap_map.len() > 0 {
@@ -90,7 +90,7 @@ impl<'a> Model<'a> {
     }
 }
 
-impl<'a> fmt::Display for Model<'a> {
+impl fmt::Display for Model {
     /// Dump the contents of the Rust model for debugging purposes
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "\nDisplaying model with {} lines\n", self.line_map.len())?;

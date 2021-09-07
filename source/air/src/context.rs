@@ -1,11 +1,10 @@
 use crate::ast::{Command, CommandX, Decl, Ident, Query, SpanOption, TypeError};
 use crate::model::Model;
-use crate::print_parse::Logger;
+use crate::print_parse::Emitter;
+use crate::smt_manager::SmtManager;
 use crate::typecheck::Typing;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
-use z3::ast::Dynamic;
-use z3::{FuncDecl, Sort};
 
 #[derive(Clone, Debug)]
 pub(crate) struct AssertionInfo {
@@ -15,38 +14,30 @@ pub(crate) struct AssertionInfo {
 }
 
 #[derive(Debug)]
-pub enum ValidityResult<'a> {
+pub enum ValidityResult {
     Valid,
-    Invalid(Model<'a>, SpanOption, SpanOption),
+    Invalid(Model, SpanOption, SpanOption),
     TypeError(TypeError),
 }
 
-pub struct Context<'ctx> {
-    pub(crate) context: &'ctx z3::Context,
-    pub(crate) solver: &'ctx z3::Solver<'ctx>,
-    pub(crate) typs: HashMap<Ident, Arc<Sort<'ctx>>>,
-    pub(crate) vars: HashMap<Ident, Dynamic<'ctx>>, // no Arc; Dynamic implements Clone
-    pub(crate) funs: HashMap<Ident, Arc<FuncDecl<'ctx>>>,
+pub struct Context {
+    pub(crate) smt_manager: SmtManager,
     pub(crate) assert_infos: HashMap<Ident, Arc<AssertionInfo>>,
     pub(crate) assert_infos_count: u64,
     pub(crate) typing: Typing,
     pub(crate) debug: bool,
     pub(crate) rlimit: u32,
-    pub(crate) air_initial_log: Logger,
-    pub(crate) air_middle_log: Logger,
-    pub(crate) air_final_log: Logger,
-    pub(crate) smt_log: Logger,
+    pub(crate) air_initial_log: Emitter,
+    pub(crate) air_middle_log: Emitter,
+    pub(crate) air_final_log: Emitter,
+    pub(crate) smt_log: Emitter,
     pub(crate) name_scopes: Vec<Vec<Ident>>,
 }
 
-impl<'ctx> Context<'ctx> {
-    pub fn new(context: &'ctx z3::Context, solver: &'ctx z3::Solver<'ctx>) -> Context<'ctx> {
+impl Context {
+    pub fn new(smt_manager: SmtManager) -> Context {
         Context {
-            context,
-            solver,
-            typs: HashMap::new(),
-            vars: HashMap::new(),
-            funs: HashMap::new(),
+            smt_manager,
             assert_infos: HashMap::new(),
             assert_infos_count: 0,
             typing: Typing {
@@ -58,28 +49,28 @@ impl<'ctx> Context<'ctx> {
             },
             debug: false,
             rlimit: 0,
-            air_initial_log: Logger::new(None),
-            air_middle_log: Logger::new(None),
-            air_final_log: Logger::new(None),
-            smt_log: Logger::new(None),
+            air_initial_log: Emitter::new(false, None),
+            air_middle_log: Emitter::new(false, None),
+            air_final_log: Emitter::new(false, None),
+            smt_log: Emitter::new(true, None),
             name_scopes: [Vec::new()].to_vec(),
         }
     }
 
     pub fn set_air_initial_log(&mut self, writer: Box<dyn std::io::Write>) {
-        self.air_initial_log = Logger::new(Some(writer));
+        self.air_initial_log.set_log(Some(writer));
     }
 
     pub fn set_air_middle_log(&mut self, writer: Box<dyn std::io::Write>) {
-        self.air_middle_log = Logger::new(Some(writer));
+        self.air_middle_log.set_log(Some(writer));
     }
 
     pub fn set_air_final_log(&mut self, writer: Box<dyn std::io::Write>) {
-        self.air_final_log = Logger::new(Some(writer));
+        self.air_final_log.set_log(Some(writer));
     }
 
     pub fn set_smt_log(&mut self, writer: Box<dyn std::io::Write>) {
-        self.smt_log = Logger::new(Some(writer));
+        self.smt_log.set_log(Some(writer));
     }
 
     pub fn set_debug(&mut self, debug: bool) {
@@ -130,12 +121,9 @@ impl<'ctx> Context<'ctx> {
             self.set_z3_param_u32("smt.arith.solver", 2, true);
             self.set_z3_param_bool("smt.arith.nl", false, true);
         } else {
-            let mut z3_params = z3::Params::new(&self.context);
-            z3_params.set_bool(option, value);
             if write_to_logs {
                 self.log_set_z3_param(option, &value.to_string());
             }
-            self.solver.set_params(&z3_params);
         }
     }
 
@@ -143,18 +131,13 @@ impl<'ctx> Context<'ctx> {
         if option == "rlimit" && write_to_logs {
             self.set_rlimit(value);
         } else {
-            let mut z3_params = z3::Params::new(&self.context);
-            z3_params.set_u32(option, value);
             if write_to_logs {
                 self.log_set_z3_param(option, &value.to_string());
             }
-            self.solver.set_params(&z3_params);
         }
     }
 
     pub(crate) fn set_z3_param_f64(&mut self, option: &str, value: f64, write_to_logs: bool) {
-        let mut z3_params = z3::Params::new(&self.context);
-        z3_params.set_f64(option, value);
         if write_to_logs {
             let mut s = value.to_string();
             if !s.contains(".") {
@@ -162,7 +145,6 @@ impl<'ctx> Context<'ctx> {
             }
             self.log_set_z3_param(option, &s);
         }
-        self.solver.set_params(&z3_params);
     }
 
     pub fn set_z3_param(&mut self, option: &str, value: &str) {
@@ -194,9 +176,6 @@ impl<'ctx> Context<'ctx> {
         let scope: Vec<Ident> = self.name_scopes.pop().unwrap();
         for x in scope {
             self.typing.names.remove(&x);
-            self.typs.remove(&x);
-            self.vars.remove(&x);
-            self.funs.remove(&x);
             self.assert_infos.remove(&x);
             self.typing.typs.remove(&x);
             self.typing.vars.remove(&x);
@@ -209,7 +188,6 @@ impl<'ctx> Context<'ctx> {
         self.air_middle_log.log_push();
         self.air_final_log.log_push();
         self.smt_log.log_push();
-        self.solver.push();
         self.push_name_scope();
     }
 
@@ -218,7 +196,6 @@ impl<'ctx> Context<'ctx> {
         self.air_middle_log.log_pop();
         self.air_final_log.log_pop();
         self.smt_log.log_pop();
-        self.solver.pop(1);
         self.pop_name_scope();
     }
 

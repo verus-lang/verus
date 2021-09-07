@@ -7,10 +7,12 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-z3 = "0.10.0"
 air = { path = "../air" }
 vir = { path = "../vir" }
 getopts = { git = "https://github.com/utaal/getopts.git", branch = "parse-partial" }
+
+[target.'cfg(windows)'.dependencies]
+win32job = "1"
 
 [dev-dependencies]
 rust_verify_test_macros = { path = "../rust_verify_test_macros" }

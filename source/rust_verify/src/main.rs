@@ -14,7 +14,23 @@ use rust_verify::config;
 use rust_verify::erase::CompilerCallbacks;
 use rust_verify::verifier::Verifier;
 
+fn os_setup() -> Result<(), Box<dyn std::error::Error>> {
+    if cfg!(target_os = "windows") {
+        // Configure Windows to kill the child SMT process if the parent is killed
+        let job = win32job::Job::create()?;
+        let mut info = job.query_extended_limit_info()?;
+        info.limit_kill_on_job_close();
+        job.set_extended_limit_info(&mut info)?;
+        job.assign_current_process()?;
+        // dropping the job object would kill us immediately, so just let it live forever instead:
+        std::mem::forget(job);
+    }
+    Ok(())
+}
+
 pub fn main() {
+    let _ = os_setup();
+
     let mut args = std::env::args();
     let program = args.next().unwrap();
     let (our_args, rustc_args) = config::parse_args(&program, args);

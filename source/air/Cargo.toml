@@ -8,6 +8,8 @@ edition = "2018"
 
 # Note: do not add any dependencies on rustc -- AIR deliberately abstracts away from rustc's internals
 [dependencies]
-z3 = "0.10.0"
 sise = "0.6.0"
 getopts = { git = "https://github.com/utaal/getopts.git", branch = "parse-partial" }
+
+[target.'cfg(windows)'.dependencies]
+win32job = "1"

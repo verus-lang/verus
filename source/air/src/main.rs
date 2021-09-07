@@ -5,7 +5,23 @@ use sise::Node;
 use std::fs::File;
 use std::io::Read;
 
+fn os_setup() -> Result<(), Box<dyn std::error::Error>> {
+    if cfg!(target_os = "windows") {
+        // Configure Windows to kill the child SMT process if the parent is killed
+        let job = win32job::Job::create()?;
+        let mut info = job.query_extended_limit_info()?;
+        info.limit_kill_on_job_close();
+        job.set_extended_limit_info(&mut info)?;
+        job.assign_current_process()?;
+        // dropping the job object would kill us immediately, so just let it live forever instead:
+        std::mem::forget(job);
+    }
+    Ok(())
+}
+
 pub fn main() {
+    let _ = os_setup();
+
     let mut args = std::env::args();
     let program = args.next().unwrap();
 
@@ -69,15 +85,8 @@ pub fn main() {
     // Parse vector of Node to commands
     let commands = air::print_parse::nodes_to_commands(&nodes).expect("parse error");
 
-    // Start Z3
-    let mut z3_config = z3::Config::new();
-    z3_config.set_param_value(
-        "auto_config",
-        if matches.opt_present("auto-config") { "true" } else { "false" },
-    );
-    let z3_context = z3::Context::new(&z3_config);
-    let z3_solver = z3::Solver::new(&z3_context);
-    let mut air_context = Context::new(&z3_context, &z3_solver);
+    // Start AIR
+    let mut air_context = Context::new(air::smt_manager::SmtManager::new());
     let debug = matches.opt_present("debug");
     air_context.set_debug(debug);
 

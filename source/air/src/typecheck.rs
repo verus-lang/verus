@@ -388,7 +388,7 @@ pub(crate) fn check_decl(typing: &mut Typing, decl: &Decl) -> Result<(), TypeErr
 }
 
 pub(crate) fn add_decl<'ctx>(
-    context: &mut Context<'ctx>,
+    context: &mut Context,
     decl: &Decl,
     is_global: bool,
 ) -> Result<(), TypeError> {
