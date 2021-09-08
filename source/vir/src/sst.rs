@@ -36,7 +36,7 @@ pub enum ExpX {
     Old(Ident, Ident),       // used only during sst_to_air to generate AIR Old
     Call(Ident, Typs, Exps), // call to spec function
     Ctor(Path, Ident, Binders<Exp>),
-    Field { lhs: Exp, datatype_name: Ident, field_name: Ident },
+    Field { lhs: Exp, datatype: Path, field_name: Ident },
     Unary(UnaryOp, Exp),
     UnaryOpr(UnaryOpr, Exp),
     Binary(BinaryOp, Exp, Exp),

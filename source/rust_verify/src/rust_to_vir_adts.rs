@@ -63,6 +63,7 @@ pub fn check_item_struct<'tcx>(
     vir: &mut KrateX,
     span: Span,
     id: &ItemId,
+    visibility: vir::ast::Visibility,
     variant_data: &'tcx VariantData<'tcx>,
     generics: &'tcx Generics<'tcx>,
 ) -> Result<(), VirErr> {
@@ -71,7 +72,7 @@ pub fn check_item_struct<'tcx>(
     let path = def_id_to_vir_path(ctxt.tcx, id.def_id.to_def_id());
     let variant_name = variant_ident(&name, &name);
     let variants = Arc::new(vec![check_variant_data(ctxt, &variant_name, variant_data)]);
-    vir.datatypes.push(spanned_new(span, DatatypeX { path, variants }));
+    vir.datatypes.push(spanned_new(span, DatatypeX { path, visibility, variants }));
     Ok(())
 }
 
@@ -80,6 +81,7 @@ pub fn check_item_enum<'tcx>(
     vir: &mut KrateX,
     span: Span,
     id: &ItemId,
+    visibility: vir::ast::Visibility,
     enum_def: &'tcx EnumDef<'tcx>,
     generics: &'tcx Generics<'tcx>,
 ) -> Result<(), VirErr> {
@@ -100,6 +102,6 @@ pub fn check_item_enum<'tcx>(
             })
             .collect::<Vec<_>>(),
     );
-    vir.datatypes.push(spanned_new(span, DatatypeX { path, variants }));
+    vir.datatypes.push(spanned_new(span, DatatypeX { path, visibility, variants }));
     Ok(())
 }

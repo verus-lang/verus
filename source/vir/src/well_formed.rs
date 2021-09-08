@@ -1,10 +1,11 @@
-use crate::ast::{Expr, ExprX, Function, Ident, Krate, Mode, VirErr};
+use crate::ast::{Datatype, Expr, ExprX, Function, Ident, Krate, Mode, Path, VirErr};
 use crate::ast_util::err_string;
 use crate::ast_visitor::map_expr_visitor;
 use std::collections::HashMap;
 
 struct Ctxt {
     pub(crate) funs: HashMap<Ident, Function>,
+    pub(crate) dts: HashMap<Path, Datatype>,
 }
 
 fn check_function(ctxt: &Ctxt, function: &Function) -> Result<(), VirErr> {
@@ -26,6 +27,22 @@ fn check_function(ctxt: &Ctxt, function: &Function) -> Result<(), VirErr> {
                         );
                     }
                 }
+                ExprX::Ctor(path, _, _) => {
+                    if !ctxt.dts.contains_key(path) {
+                        return err_string(
+                            &expr.span,
+                            format!("constructor of datatype not visible here"),
+                        );
+                    }
+                }
+                ExprX::Field { datatype: path, .. } => {
+                    if !ctxt.dts.contains_key(path) {
+                        return err_string(
+                            &expr.span,
+                            format!("field access of datatype not visible here"),
+                        );
+                    }
+                }
                 _ => {}
             }
             Ok(expr.clone())
@@ -35,11 +52,17 @@ fn check_function(ctxt: &Ctxt, function: &Function) -> Result<(), VirErr> {
 }
 
 pub fn check_crate(krate: &Krate) -> Result<(), VirErr> {
-    let mut funs: HashMap<Ident, Function> = HashMap::new();
-    for function in krate.functions.iter() {
-        funs.insert(function.x.name.clone(), function.clone());
-    }
-    let ctxt = Ctxt { funs };
+    let funs = krate
+        .functions
+        .iter()
+        .map(|function| (function.x.name.clone(), function.clone()))
+        .collect();
+    let dts = krate
+        .datatypes
+        .iter()
+        .map(|datatype| (datatype.x.path.clone(), datatype.clone()))
+        .collect();
+    let ctxt = Ctxt { funs, dts };
     for function in krate.functions.iter() {
         check_function(&ctxt, function)?;
     }

@@ -29,13 +29,14 @@ fn check_item<'tcx>(
     id: &ItemId,
     item: &'tcx Item<'tcx>,
 ) -> Result<(), VirErr> {
+    let visibility = mk_visibility(&Some(module_path.clone()), &item.vis);
     match &item.kind {
         ItemKind::Fn(sig, generics, body_id) => {
             check_item_fn(
                 ctxt,
                 vir,
                 item.ident,
-                mk_visibility(&Some(module_path.clone()), &item.vis),
+                visibility,
                 ctxt.tcx.hir().attrs(item.hir_id()),
                 sig,
                 generics,
@@ -50,11 +51,11 @@ fn check_item<'tcx>(
             // TODO use rustc_middle info here? if sufficient, it may allow for a single code path
             // for definitions of the local crate and imported crates
             // let adt_def = tcx.adt_def(item.def_id);
-            check_item_struct(ctxt, vir, item.span, id, variant_data, generics)?;
+            check_item_struct(ctxt, vir, item.span, id, visibility, variant_data, generics)?;
         }
         ItemKind::Enum(enum_def, generics) => {
             // TODO use rustc_middle? see `Struct` case
-            check_item_enum(ctxt, vir, item.span, id, enum_def, generics)?;
+            check_item_enum(ctxt, vir, item.span, id, visibility, enum_def, generics)?;
         }
         ItemKind::Impl(impll) => {
             if let Some(TraitRef { path, hir_ref_id: _ }) = impll.of_trait {

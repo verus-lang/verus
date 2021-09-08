@@ -225,7 +225,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp) -> Expr {
         ExpX::If(e1, e2, e3) => {
             mk_ite(&exp_to_expr(ctx, e1), &exp_to_expr(ctx, e2), &exp_to_expr(ctx, e3))
         }
-        ExpX::Field { lhs, datatype_name: _, field_name: name } => {
+        ExpX::Field { lhs, datatype: _, field_name: name } => {
             // TODO: this should include datatype_name in the function name
             let lh = exp_to_expr(ctx, lhs);
             Arc::new(ExprX::Apply(name.clone(), Arc::new(vec![lh])))

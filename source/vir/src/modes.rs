@@ -1,6 +1,5 @@
-use crate::ast::{Datatype, Expr, ExprX, Function, Ident, Krate, Mode, Stmt, StmtX, VirErr};
+use crate::ast::{Datatype, Expr, ExprX, Function, Ident, Krate, Mode, Path, Stmt, StmtX, VirErr};
 use crate::ast_util::err_string;
-use crate::sst_to_air::path_to_air_ident;
 use air::ast::Span;
 use std::collections::HashMap;
 
@@ -35,7 +34,7 @@ pub struct ErasureModes {
 
 struct Typing {
     pub(crate) funs: HashMap<Ident, Function>,
-    pub(crate) datatypes: HashMap<Ident, Datatype>,
+    pub(crate) datatypes: HashMap<Path, Datatype>,
     pub(crate) vars: HashMap<Ident, Mode>,
     pub(crate) erasure_modes: ErasureModes,
 }
@@ -90,9 +89,9 @@ fn check_expr(typing: &mut Typing, outer_mode: Mode, expr: &Expr) -> Result<Mode
                 .collect::<Result<Vec<_>, _>>()?;
             Ok(binder_modes.into_iter().fold(outer_mode, mode_join))
         }
-        ExprX::Field { lhs, datatype_name, field_name } => {
+        ExprX::Field { lhs, datatype: datatype_path, field_name } => {
             let lhs_mode = check_expr(typing, outer_mode, lhs)?;
-            let datatype = &typing.datatypes[datatype_name].clone();
+            let datatype = &typing.datatypes[datatype_path].clone();
             let variants = &datatype.x.variants;
             assert_eq!(variants.len(), 1);
             let fields = &variants[0].a;
@@ -231,12 +230,12 @@ fn check_function(typing: &mut Typing, function: &Function) -> Result<(), VirErr
 
 pub fn check_crate(krate: &Krate) -> Result<ErasureModes, VirErr> {
     let mut funs: HashMap<Ident, Function> = HashMap::new();
-    let mut datatypes: HashMap<Ident, Datatype> = HashMap::new();
+    let mut datatypes: HashMap<Path, Datatype> = HashMap::new();
     for function in krate.functions.iter() {
         funs.insert(function.x.name.clone(), function.clone());
     }
     for datatype in krate.datatypes.iter() {
-        datatypes.insert(path_to_air_ident(&datatype.x.path.clone()), datatype.clone());
+        datatypes.insert(datatype.x.path.clone(), datatype.clone());
     }
     let erasure_modes = ErasureModes { condition_modes: vec![], var_modes: vec![] };
     let mut typing = Typing { funs, datatypes, vars: HashMap::new(), erasure_modes };
