@@ -1,7 +1,6 @@
 use crate::ast::{
-    BinaryOp, BindX, Binder, Binders, Constant, Datatypes,
-    Decl, DeclX, Expr, ExprX, Exprs, Ident, MultiOp, Quant, Query, QueryX, Stmt,
-    StmtX, Typ, TypX, Typs, UnaryOp,
+    BinaryOp, BindX, Binder, Binders, Constant, Datatypes, Decl, DeclX, Expr, ExprX, Exprs, Ident,
+    MultiOp, Quant, Query, QueryX, Stmt, StmtX, Typ, TypX, Typs, UnaryOp,
 };
 use crate::util::vec_map;
 use sise::{Node, Writer};

@@ -1,9 +1,9 @@
-use crate::{node, nodes};
-use crate::ast::{
-    Decl, Expr, Query,
-};
+use crate::ast::{Decl, Expr, Query};
 use crate::model::ModelExpr;
-use crate::printer::{decl_to_node, expr_to_node, macro_push_node, node_to_string_indent, query_to_node};
+use crate::printer::{
+    decl_to_node, expr_to_node, macro_push_node, node_to_string_indent, query_to_node,
+};
+use crate::{node, nodes};
 use sise::Node;
 use std::io::Write;
 

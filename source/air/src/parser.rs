@@ -1,7 +1,7 @@
 use crate::ast::{
-    BinaryOp, BindX, Binder, BinderX, Binders, Command, CommandX, Commands, Constant,
-    Decl, DeclX, Decls, Expr, ExprX, Exprs, MultiOp, Quant, QueryX, Span, Stmt,
-    StmtX, Stmts, Trigger, Triggers, Typ, TypX, UnaryOp,
+    BinaryOp, BindX, Binder, BinderX, Binders, Command, CommandX, Commands, Constant, Decl, DeclX,
+    Decls, Expr, ExprX, Exprs, MultiOp, Quant, QueryX, Span, Stmt, StmtX, Stmts, Trigger, Triggers,
+    Typ, TypX, UnaryOp,
 };
 use crate::model::{ModelDef, ModelDefX, ModelDefs};
 use crate::printer::node_to_string;
