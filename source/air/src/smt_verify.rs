@@ -132,7 +132,7 @@ fn smt_check_assertion<'ctx>(
                 .smt_manager
                 .get_smt_process()
                 .send_commands(context.smt_log.take_pipe_data());
-            let model = crate::print_parse::lines_to_model(&smt_output);
+            let model = crate::parser::lines_to_model(&smt_output);
             let mut model_defs: HashMap<Ident, ModelDef> = HashMap::new();
             for def in model.iter() {
                 model_defs.insert(def.name.clone(), def.clone());

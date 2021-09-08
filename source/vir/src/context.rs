@@ -38,7 +38,7 @@ impl Ctx {
 
     pub fn prelude(&self) -> Commands {
         let nodes = crate::prelude::prelude_nodes();
-        air::print_parse::nodes_to_commands(&nodes).expect("internal error: malformed prelude")
+        air::parser::nodes_to_commands(&nodes).expect("internal error: malformed prelude")
     }
 
     pub fn fuel(&self) -> Commands {

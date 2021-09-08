@@ -87,7 +87,7 @@ pub fn main() {
     };
 
     // Parse vector of Node to commands
-    let commands = air::print_parse::nodes_to_commands(&nodes).expect("parse error");
+    let commands = air::parser::nodes_to_commands(&nodes).expect("parse error");
 
     // Start AIR
     let mut air_context = Context::new(air::smt_manager::SmtManager::new());

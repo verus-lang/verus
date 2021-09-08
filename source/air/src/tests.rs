@@ -1,7 +1,7 @@
 use crate::ast::CommandX;
 use crate::context::ValidityResult;
 #[allow(unused_imports)]
-use crate::print_parse::nodes_to_commands;
+use crate::parser::nodes_to_commands;
 #[allow(unused_imports)]
 use crate::printer::macro_push_node;
 use crate::smt_manager::SmtManager;

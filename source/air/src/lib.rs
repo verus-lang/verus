@@ -3,7 +3,7 @@ pub mod ast_util;
 pub mod context;
 pub mod emitter;
 pub mod model;
-pub mod print_parse;
+pub mod parser;
 pub mod smt_manager;
 
 #[macro_use]

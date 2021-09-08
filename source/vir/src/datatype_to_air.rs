@@ -55,7 +55,7 @@ pub fn datatypes_to_air(datatypes: &crate::ast::Datatypes) -> Commands {
     }
     for datatype in datatypes.iter() {
         let nodes = crate::prelude::datatype_box_axioms(&path_to_air_ident(&datatype.x.path));
-        let axioms = air::print_parse::nodes_to_commands(&nodes)
+        let axioms = air::parser::nodes_to_commands(&nodes)
             .expect("internal error: malformed datatype axioms");
         commands.extend(axioms.iter().cloned());
     }
