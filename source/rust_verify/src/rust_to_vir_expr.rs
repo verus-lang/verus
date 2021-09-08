@@ -550,12 +550,27 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                 BinOpKind::Add => BinaryOp::Add,
                 BinOpKind::Sub => BinaryOp::Sub,
                 BinOpKind::Mul => BinaryOp::Mul,
+                BinOpKind::Div => BinaryOp::EuclideanDiv,
+                BinOpKind::Rem => BinaryOp::EuclideanMod,
                 _ => unsupported_err!(expr.span, format!("binary operator {:?}", op)),
             };
             let e = spanned_new(expr.span, ExprX::Binary(vop, vlhs, vrhs));
             match op.node {
                 BinOpKind::Add | BinOpKind::Sub | BinOpKind::Mul => {
                     Ok(mk_ty_clip(tc.node_type(expr.hir_id), &e))
+                }
+                BinOpKind::Div | BinOpKind::Rem => {
+                    // TODO: disallow divide-by-zero in executable code?
+                    match mk_range(tc.node_type(expr.hir_id)) {
+                        IntRange::Int | IntRange::Nat | IntRange::U(_) | IntRange::USize => {
+                            // Euclidean division
+                            Ok(e)
+                        }
+                        IntRange::I(_) | IntRange::ISize => {
+                            // Non-Euclidean division, which will need more encoding
+                            unsupported_err!(expr.span, "div/mod on signed finite-width integers")
+                        }
+                    }
                 }
                 _ => Ok(e),
             }

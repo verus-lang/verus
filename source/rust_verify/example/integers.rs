@@ -41,6 +41,10 @@ fn test1(i: int, n: nat, u: u8) {
     let n0 = test0();
     assert(n0 >= 0);
     assert(add1_nat_opaque(5) >= 0);
+    // assert(i / 2 <= n); // FAILS
+    assert(n / 2 <= n);
+    assert(u / 2 <= u);
+    assert(u % 10 < 10);
 }
 
 /*

@@ -73,6 +73,20 @@ impl std::ops::Mul for int {
     }
 }
 
+impl std::ops::Div for int {
+    type Output = Self;
+    fn div(self, _other: Self) -> Self::Output {
+        unimplemented!()
+    }
+}
+
+impl std::ops::Rem for int {
+    type Output = Self;
+    fn rem(self, _other: Self) -> Self::Output {
+        unimplemented!()
+    }
+}
+
 impl std::ops::Neg for int {
     type Output = Self;
     fn neg(self) -> Self::Output {
@@ -120,6 +134,20 @@ impl std::ops::Sub for nat {
 impl std::ops::Mul for nat {
     type Output = Self;
     fn mul(self, _other: Self) -> Self::Output {
+        unimplemented!()
+    }
+}
+
+impl std::ops::Div for nat {
+    type Output = Self;
+    fn div(self, _other: Self) -> Self::Output {
+        unimplemented!()
+    }
+}
+
+impl std::ops::Rem for nat {
+    type Output = Self;
+    fn rem(self, _other: Self) -> Self::Output {
         unimplemented!()
     }
 }
