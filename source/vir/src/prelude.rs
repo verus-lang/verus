@@ -1,7 +1,7 @@
 use crate::def::*;
 use air::ast::Ident;
 use air::ast_util::str_ident;
-use air::print_parse::{macro_push_node, str_to_node};
+use air::printer::{macro_push_node, str_to_node};
 use air::{node, nodes_vec};
 use sise::Node;
 

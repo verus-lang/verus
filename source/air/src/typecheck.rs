@@ -6,7 +6,7 @@ use crate::ast::{
     Query, Stmt, StmtX, Typ, TypX, TypeError, Typs, UnaryOp,
 };
 use crate::context::Context;
-use crate::print_parse::{decl_to_node, expr_to_node, node_to_string, stmt_to_node};
+use crate::printer::{decl_to_node, expr_to_node, node_to_string, stmt_to_node};
 use crate::util::vec_map;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;

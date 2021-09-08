@@ -1,6 +1,6 @@
 use crate::ast::{Command, CommandX, Decl, Ident, Query, SpanOption, TypeError};
 use crate::model::Model;
-use crate::print_parse::Emitter;
+use crate::emitter::Emitter;
 use crate::smt_manager::SmtManager;
 use crate::typecheck::Typing;
 use std::collections::{HashMap, HashSet};

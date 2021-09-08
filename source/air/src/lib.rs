@@ -1,11 +1,13 @@
 pub mod ast;
 pub mod ast_util;
 pub mod context;
+pub mod emitter;
 pub mod model;
+pub mod print_parse;
 pub mod smt_manager;
 
 #[macro_use]
-pub mod print_parse;
+pub mod printer;
 
 mod block_to_assert;
 mod def;
