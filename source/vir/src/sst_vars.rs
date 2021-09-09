@@ -78,8 +78,10 @@ pub(crate) fn stm_assign(
             assert!(modified_vars.len() == 0);
             let mut modified_vars: Vec<Ident> = Vec::new();
             for x in modified.iter() {
-                modified_vars.push(x.clone());
-                pre_modified.insert(x.clone());
+                if declared.contains_key(x) {
+                    modified_vars.push(x.clone());
+                    pre_modified.insert(x.clone());
+                }
             }
             *modified = pre_modified;
 
