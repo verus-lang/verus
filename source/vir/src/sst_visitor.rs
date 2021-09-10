@@ -1,41 +1,45 @@
 use crate::ast::{Ident, VirErr};
 use crate::def::Spanned;
-use crate::sst::{Bnd, BndX, Exp, ExpX, Stm, StmX, Trig};
-use air::ast::{Binder, BinderX, Binders};
+use crate::sst::{BndX, Exp, ExpX, Stm, StmX, Trig};
+use air::ast::{Binder, BinderX};
+use air::scope_map::ScopeMap;
 use std::collections::HashMap;
 use std::sync::Arc;
 
-pub(crate) fn map_exp_visitor_bind<FB, F>(exp: &Exp, fb: &mut FB, f: &mut F) -> Result<Exp, VirErr>
+pub(crate) fn map_exp_visitor_bind<F>(
+    exp: &Exp,
+    map: &mut ScopeMap<Ident, bool>,
+    f: &mut F,
+) -> Result<Exp, VirErr>
 where
-    FB: FnMut(&Bnd) -> Result<Bnd, VirErr>,
-    F: FnMut(&Exp) -> Result<Exp, VirErr>,
+    F: FnMut(&Exp, &mut ScopeMap<Ident, bool>) -> Result<Exp, VirErr>,
 {
     match &exp.x {
-        ExpX::Const(_) => f(exp),
-        ExpX::Var(_) => f(exp),
-        ExpX::Old(_, _) => f(exp),
+        ExpX::Const(_) => f(exp, map),
+        ExpX::Var(_) => f(exp, map),
+        ExpX::Old(_, _) => f(exp, map),
         ExpX::Call(x, typs, es) => {
             let mut exps: Vec<Exp> = Vec::new();
             for e in es.iter() {
-                exps.push(map_exp_visitor_bind(e, fb, f)?);
+                exps.push(map_exp_visitor_bind(e, map, f)?);
             }
             let exp =
                 Spanned::new(exp.span.clone(), ExpX::Call(x.clone(), typs.clone(), Arc::new(exps)));
-            f(&exp)
+            f(&exp, map)
         }
         ExpX::Ctor(path, ident, binders) => {
             let mapped_binders = binders
                 .iter()
-                .map(|b| b.map_result(|a| map_exp_visitor_bind(a, fb, f)))
+                .map(|b| b.map_result(|a| map_exp_visitor_bind(a, map, f)))
                 .collect::<Result<Vec<_>, _>>()?;
             let exp = Spanned::new(
                 exp.span.clone(),
                 ExpX::Ctor(path.clone(), ident.clone(), Arc::new(mapped_binders)),
             );
-            f(&exp)
+            f(&exp, map)
         }
         ExpX::Field { lhs, datatype, field_name } => {
-            let lhs1 = map_exp_visitor_bind(lhs, fb, f)?;
+            let lhs1 = map_exp_visitor_bind(lhs, map, f)?;
             let exp = Spanned::new(
                 exp.span.clone(),
                 ExpX::Field {
@@ -44,58 +48,68 @@ where
                     field_name: field_name.clone(),
                 },
             );
-            f(&exp)
+            f(&exp, map)
         }
         ExpX::Unary(op, e1) => {
-            let expr1 = map_exp_visitor_bind(e1, fb, f)?;
+            let expr1 = map_exp_visitor_bind(e1, map, f)?;
             let exp = Spanned::new(exp.span.clone(), ExpX::Unary(*op, expr1));
-            f(&exp)
+            f(&exp, map)
         }
         ExpX::UnaryOpr(op, e1) => {
-            let expr1 = map_exp_visitor_bind(e1, fb, f)?;
+            let expr1 = map_exp_visitor_bind(e1, map, f)?;
             let exp = Spanned::new(exp.span.clone(), ExpX::UnaryOpr(op.clone(), expr1));
-            f(&exp)
+            f(&exp, map)
         }
         ExpX::Binary(op, e1, e2) => {
-            let expr1 = map_exp_visitor_bind(e1, fb, f)?;
-            let expr2 = map_exp_visitor_bind(e2, fb, f)?;
+            let expr1 = map_exp_visitor_bind(e1, map, f)?;
+            let expr2 = map_exp_visitor_bind(e2, map, f)?;
             let exp = Spanned::new(exp.span.clone(), ExpX::Binary(*op, expr1, expr2));
-            f(&exp)
+            f(&exp, map)
         }
         ExpX::If(e1, e2, e3) => {
-            let expr1 = map_exp_visitor_bind(e1, fb, f)?;
-            let expr2 = map_exp_visitor_bind(e2, fb, f)?;
-            let expr3 = map_exp_visitor_bind(e3, fb, f)?;
+            let expr1 = map_exp_visitor_bind(e1, map, f)?;
+            let expr2 = map_exp_visitor_bind(e2, map, f)?;
+            let expr3 = map_exp_visitor_bind(e3, map, f)?;
             let exp = Spanned::new(exp.span.clone(), ExpX::If(expr1, expr2, expr3));
-            f(&exp)
+            f(&exp, map)
         }
         ExpX::Bind(bnd, e1) => {
+            let mut bvars: Vec<(Ident, bool)> = Vec::new();
             let bndx = match &bnd.x {
                 BndX::Let(bs) => {
                     let mut binders: Vec<Binder<Exp>> = Vec::new();
                     for b in bs.iter() {
-                        let a = map_exp_visitor_bind(&b.a, fb, f)?;
+                        let a = map_exp_visitor_bind(&b.a, map, f)?;
                         binders.push(Arc::new(BinderX { name: b.name.clone(), a }));
+                        bvars.push((b.name.clone(), false));
                     }
                     BndX::Let(Arc::new(binders))
                 }
                 BndX::Quant(quant, binders, ts) => {
                     let mut triggers: Vec<Trig> = Vec::new();
+                    for b in binders.iter() {
+                        bvars.push((b.name.clone(), true));
+                    }
                     for t in ts.iter() {
                         let mut exprs: Vec<Exp> = Vec::new();
                         for exp in t.iter() {
-                            exprs.push(map_exp_visitor_bind(exp, fb, f)?);
+                            exprs.push(map_exp_visitor_bind(exp, map, f)?);
                         }
                         triggers.push(Arc::new(exprs));
                     }
                     BndX::Quant(*quant, binders.clone(), Arc::new(triggers))
                 }
             };
-            let bnd = fb(&Spanned::new(bnd.span.clone(), bndx))?;
-            let e1 = map_exp_visitor_bind(e1, fb, f)?;
+            let bnd = Spanned::new(bnd.span.clone(), bndx);
+            map.push_scope(true);
+            for (x, is_quant) in bvars {
+                let _ = map.insert(x, is_quant);
+            }
+            let e1 = map_exp_visitor_bind(e1, map, f)?;
+            map.pop_scope();
             let expx = ExpX::Bind(bnd, e1);
             let exp = Spanned::new(exp.span.clone(), expx);
-            f(&exp)
+            f(&exp, map)
         }
     }
 }
@@ -104,53 +118,18 @@ pub(crate) fn map_exp_visitor<F>(exp: &Exp, f: &mut F) -> Exp
 where
     F: FnMut(&Exp) -> Exp,
 {
-    map_exp_visitor_bind(exp, &mut |b| Ok(b.clone()), &mut |e| Ok(f(e))).unwrap()
-}
-
-fn bump_shadowed<A: Clone>(shadowed: &mut HashMap<Ident, i64>, incr: i64, binders: &Binders<A>) {
-    for binder in binders.iter() {
-        *shadowed.get_mut(&binder.name).unwrap() += incr;
-    }
+    let mut map: ScopeMap<Ident, bool> = ScopeMap::new();
+    map_exp_visitor_bind(exp, &mut map, &mut |e, _| Ok(f(e))).unwrap()
 }
 
 pub(crate) fn exp_rename_vars(exp: &Exp, map: &HashMap<Ident, Ident>) -> Exp {
-    let shadowed: HashMap<Ident, i64> = map.iter().map(|(x, _)| (x.clone(), 0)).collect();
-    let shadowed_cell = std::cell::RefCell::new(shadowed);
-    map_exp_visitor_bind(
-        exp,
-        &mut |bnd| {
-            let mut shadowed = shadowed_cell.borrow_mut();
-            match &bnd.x {
-                BndX::Let(bs) => {
-                    bump_shadowed(&mut shadowed, 1, bs);
-                }
-                BndX::Quant(_, bs, _) => {
-                    bump_shadowed(&mut shadowed, 1, bs);
-                }
-            }
-            Ok(bnd.clone())
-        },
-        &mut |exp| {
-            let mut shadowed = shadowed_cell.borrow_mut();
-            match &exp.x {
-                ExpX::Var(x) if map.contains_key(x) && shadowed[x] == 0 => {
-                    Ok(Spanned::new(exp.span.clone(), ExpX::Var(map[x].clone())))
-                }
-                ExpX::Bind(bnd, _) => {
-                    match &bnd.x {
-                        BndX::Let(bs) => {
-                            bump_shadowed(&mut shadowed, -1, bs);
-                        }
-                        BndX::Quant(_, bs, _) => {
-                            bump_shadowed(&mut shadowed, -1, bs);
-                        }
-                    }
-                    Ok(exp.clone())
-                }
-                _ => Ok(exp.clone()),
-            }
-        },
-    )
+    let mut shadows: ScopeMap<Ident, bool> = ScopeMap::new();
+    map_exp_visitor_bind(exp, &mut shadows, &mut |exp, shadows| match &exp.x {
+        ExpX::Var(x) if map.contains_key(x) && !shadows.contains_key(x) => {
+            Ok(Spanned::new(exp.span.clone(), ExpX::Var(map[x].clone())))
+        }
+        _ => Ok(exp.clone()),
+    })
     .unwrap()
 }
 

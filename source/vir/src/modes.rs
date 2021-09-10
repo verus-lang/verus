@@ -1,6 +1,7 @@
 use crate::ast::{Datatype, Expr, ExprX, Function, Ident, Krate, Mode, Path, Stmt, StmtX, VirErr};
-use crate::ast_util::err_string;
+use crate::ast_util::{err_str, err_string};
 use air::ast::Span;
+use air::scope_map::ScopeMap;
 use std::collections::HashMap;
 
 // Exec <= Proof <= Spec
@@ -35,8 +36,21 @@ pub struct ErasureModes {
 struct Typing {
     pub(crate) funs: HashMap<Ident, Function>,
     pub(crate) datatypes: HashMap<Path, Datatype>,
-    pub(crate) vars: HashMap<Ident, Mode>,
+    pub(crate) vars: ScopeMap<Ident, Mode>,
     pub(crate) erasure_modes: ErasureModes,
+}
+
+impl Typing {
+    fn get(&self, x: &Ident) -> Mode {
+        *self.vars.get(x).expect("internal error: missing mode")
+    }
+
+    fn insert(&mut self, span: &Span, x: &Ident, mode: Mode) -> Result<(), VirErr> {
+        match self.vars.insert(x.clone(), mode) {
+            Ok(()) => Ok(()),
+            Err(()) => err_str(span, "variable shadowing not yet supported"),
+        }
+    }
 }
 
 fn check_expr_has_mode(
@@ -57,7 +71,7 @@ fn check_expr(typing: &mut Typing, outer_mode: Mode, expr: &Expr) -> Result<Mode
     match &expr.x {
         ExprX::Const(_) => Ok(outer_mode),
         ExprX::Var(x) => {
-            let mode = mode_join(outer_mode, typing.vars[x]);
+            let mode = mode_join(outer_mode, typing.get(x));
             typing.erasure_modes.var_modes.push((expr.span.clone(), mode));
             Ok(mode)
         }
@@ -107,13 +121,18 @@ fn check_expr(typing: &mut Typing, outer_mode: Mode, expr: &Expr) -> Result<Mode
             let mode2 = check_expr(typing, outer_mode, e2)?;
             Ok(mode_join(mode1, mode2))
         }
-        ExprX::Quant(_, _, e1) => {
+        ExprX::Quant(_, binders, e1) => {
+            typing.vars.push_scope(false);
+            for binder in binders.iter() {
+                typing.insert(&expr.span, &binder.name, Mode::Spec)?;
+            }
             check_expr_has_mode(typing, Mode::Spec, e1, Mode::Spec)?;
+            typing.vars.pop_scope();
             Ok(Mode::Spec)
         }
         ExprX::Assign(lhs, rhs) => match &lhs.x {
             ExprX::Var(x) => {
-                let x_mode = typing.vars[x];
+                let x_mode = typing.get(x);
                 typing.erasure_modes.var_modes.push((lhs.span.clone(), x_mode));
                 check_expr_has_mode(typing, outer_mode, rhs, x_mode)?;
                 Ok(x_mode)
@@ -149,35 +168,21 @@ fn check_expr(typing: &mut Typing, outer_mode: Mode, expr: &Expr) -> Result<Mode
             Ok(Mode::Exec)
         }
         ExprX::Block(ss, e1) => {
-            let mut pushed_vars: Vec<(Ident, Option<Mode>)> = Vec::new();
+            typing.vars.push_scope(false);
             for stmt in ss.iter() {
-                check_stmt(typing, &mut pushed_vars, outer_mode, stmt)?;
+                check_stmt(typing, outer_mode, stmt)?;
             }
             let mode = match e1 {
                 None => outer_mode,
                 Some(expr) => check_expr(typing, outer_mode, expr)?,
             };
-            for (x, prev_mode) in pushed_vars {
-                match prev_mode {
-                    None => {
-                        typing.vars.remove(&x);
-                    }
-                    Some(prev) => {
-                        typing.vars.insert(x, prev);
-                    }
-                }
-            }
+            typing.vars.pop_scope();
             Ok(mode)
         }
     }
 }
 
-fn check_stmt(
-    typing: &mut Typing,
-    pushed_vars: &mut Vec<(Ident, Option<Mode>)>,
-    outer_mode: Mode,
-    stmt: &Stmt,
-) -> Result<(), VirErr> {
+fn check_stmt(typing: &mut Typing, outer_mode: Mode, stmt: &Stmt) -> Result<(), VirErr> {
     match &stmt.x {
         StmtX::Expr(e) => {
             let _ = check_expr(typing, outer_mode, e)?;
@@ -191,8 +196,7 @@ fn check_stmt(
                 );
             }
             typing.erasure_modes.var_modes.push((param.span.clone(), param.x.mode));
-            let prev = typing.vars.insert(param.x.name.clone(), param.x.mode);
-            pushed_vars.push((param.x.name.clone(), prev));
+            typing.insert(&stmt.span, &param.x.name, param.x.mode)?;
             match init.as_ref() {
                 None => {}
                 Some(expr) => {
@@ -205,6 +209,7 @@ fn check_stmt(
 }
 
 fn check_function(typing: &mut Typing, function: &Function) -> Result<(), VirErr> {
+    typing.vars.push_scope(false);
     for param in function.x.params.iter() {
         if !mode_le(function.x.mode, param.x.mode) {
             return err_string(
@@ -212,7 +217,7 @@ fn check_function(typing: &mut Typing, function: &Function) -> Result<(), VirErr
                 format!("parameter {} cannot have mode {}", param.x.name, param.x.mode),
             );
         }
-        typing.vars.insert(param.x.name.clone(), param.x.mode);
+        typing.insert(&function.span, &param.x.name, param.x.mode)?;
     }
     if let Some((_, _, ret_mode)) = function.x.ret {
         if !mode_le(function.x.mode, ret_mode) {
@@ -225,6 +230,8 @@ fn check_function(typing: &mut Typing, function: &Function) -> Result<(), VirErr
     if let Some(body) = &function.x.body {
         check_expr(typing, function.x.mode, body)?;
     }
+    typing.vars.pop_scope();
+    assert_eq!(typing.vars.num_scopes(), 0);
     Ok(())
 }
 
@@ -238,7 +245,7 @@ pub fn check_crate(krate: &Krate) -> Result<ErasureModes, VirErr> {
         datatypes.insert(datatype.x.path.clone(), datatype.clone());
     }
     let erasure_modes = ErasureModes { condition_modes: vec![], var_modes: vec![] };
-    let mut typing = Typing { funs, datatypes, vars: HashMap::new(), erasure_modes };
+    let mut typing = Typing { funs, datatypes, vars: ScopeMap::new(), erasure_modes };
     for function in krate.functions.iter() {
         check_function(&mut typing, function)?;
     }

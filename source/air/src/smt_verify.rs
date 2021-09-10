@@ -78,7 +78,10 @@ pub(crate) fn smt_add_decl<'ctx>(context: &mut Context, decl: &Decl) {
             let labeled_expr = label_asserts(context, &mut infos, &expr, true);
             for info in infos {
                 crate::typecheck::add_decl(context, &info.decl, true).unwrap();
-                context.assert_infos.insert(info.label.clone(), Arc::new(info.clone()));
+                context
+                    .assert_infos
+                    .insert(info.label.clone(), Arc::new(info.clone()))
+                    .expect("internal error: duplicate assert_info");
                 smt_add_decl(context, &info.decl);
             }
             context.smt_log.log_assert(&labeled_expr);
@@ -145,7 +148,7 @@ fn smt_check_assertion<'ctx>(
                     }
                 }
             }
-            for (_, info) in context.assert_infos.iter() {
+            for (_, info) in context.assert_infos.map().iter() {
                 if let Some(def) = model_defs.get(&info.label) {
                     if *def.body == "true" {
                         discovered_global_span = info.span.clone();

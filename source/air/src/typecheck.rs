@@ -7,9 +7,18 @@ use crate::ast::{
 };
 use crate::context::Context;
 use crate::printer::{decl_to_node, expr_to_node, node_to_string, stmt_to_node};
+use crate::scope_map::ScopeMap;
 use crate::util::vec_map;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::sync::Arc;
+
+#[derive(Clone)]
+pub(crate) enum DeclaredX {
+    Type,
+    Var { typ: Typ, mutable: bool },
+    Fun(Typs, Typ),
+}
+pub(crate) type Declared = Arc<DeclaredX>;
 
 #[derive(Clone)]
 pub(crate) struct Var {
@@ -25,21 +34,20 @@ pub(crate) struct Fun {
 
 pub struct Typing {
     // For simplicity, global and local names must be unique (bound variables can have the same name)
-    pub(crate) names: HashSet<Ident>,
-    pub(crate) typs: HashSet<Ident>,
-    pub(crate) vars: HashMap<Ident, Arc<Var>>,
-    pub(crate) funs: HashMap<Ident, Arc<Fun>>,
+    pub(crate) decls: ScopeMap<Ident, Declared>,
     pub(crate) snapshots: HashSet<Ident>,
 }
 
 impl Typing {
-    // For binders, check that the name doesn't conflict with existing name, but don't push it
-    pub(crate) fn check_binder_name(&mut self, x: &Ident) -> Result<(), TypeError> {
-        if !self.names.contains(x) {
-            Ok(())
-        } else {
-            Err(format!("name {} is already in scope", x))
+    pub(crate) fn get(&self, x: &Ident) -> Option<&DeclaredX> {
+        match self.decls.get(x) {
+            None => None,
+            Some(declared) => Some(&**declared),
         }
+    }
+
+    pub(crate) fn insert(&mut self, x: &Ident, d: Declared) -> Result<(), TypeError> {
+        self.decls.insert(x.clone(), d).map_err(|_| format!("name {} is already in scope", x))
     }
 }
 
@@ -76,9 +84,9 @@ pub(crate) fn check_typ(typing: &Typing, typ: &Typ) -> Result<(), TypeError> {
     match &**typ {
         TypX::Bool => Ok(()),
         TypX::Int => Ok(()),
-        TypX::Named(x) => match typing.typs.get(x) {
-            None => Err(format!("use of undeclared type {}", x)),
-            Some(_) => Ok(()),
+        TypX::Named(x) => match typing.get(x) {
+            Some(DeclaredX::Type) => Ok(()),
+            _ => Err(format!("use of undeclared type {}", x)),
         },
     }
 }
@@ -127,22 +135,18 @@ pub(crate) fn check_expr(typing: &mut Typing, expr: &Expr) -> Result<Typ, TypeEr
     let result = match &**expr {
         ExprX::Const(Constant::Bool(_)) => Ok(Arc::new(TypX::Bool)),
         ExprX::Const(Constant::Nat(_)) => Ok(Arc::new(TypX::Int)),
-        ExprX::Var(x) => match typing.vars.get(x) {
-            None => Err(format!("use of undeclared variable {}", x)),
-            Some(var) => Ok(var.typ.clone()),
+        ExprX::Var(x) => match typing.get(x) {
+            Some(DeclaredX::Var { typ, .. }) => Ok(typ.clone()),
+            _ => Err(format!("use of undeclared variable {}", x)),
         },
-        ExprX::Old(snap, x) => match (typing.snapshots.contains(snap), typing.vars.get(x)) {
+        ExprX::Old(snap, x) => match (typing.snapshots.contains(snap), typing.get(x)) {
             (false, _) => Err(format!("use of undeclared snapshot {}", snap)),
-            (_, None) => Err(format!("use of undeclared variable {}", x)),
-            (true, Some(var)) => Ok(var.typ.clone()),
+            (true, Some(DeclaredX::Var { typ, .. })) => Ok(typ.clone()),
+            (true, _) => Err(format!("use of undeclared variable {}", x)),
         },
-        ExprX::Apply(x, es) => match typing.funs.get(x).cloned() {
-            None => Err(format!("use of undeclared function {}", x)),
-            Some(fun) => {
-                let f_typ = &fun.typ;
-                let f_typs = &fun.typs;
-                check_exprs(typing, x, f_typs, f_typ, es)
-            }
+        ExprX::Apply(x, es) => match typing.get(x).cloned() {
+            Some(DeclaredX::Fun(f_typs, f_typ)) => check_exprs(typing, x, &f_typs, &f_typ, es),
+            _ => Err(format!("use of undeclared function {}", x)),
         },
         ExprX::Unary(UnaryOp::Not, e1) => check_exprs(typing, "not", &[bt()], &bt(), &[e1.clone()]),
         ExprX::Binary(BinaryOp::Implies, e1, e2) => {
@@ -236,18 +240,11 @@ pub(crate) fn check_expr(typing: &mut Typing, expr: &Expr) -> Result<Typ, TypeEr
                 BindX::Quant(_, binders, _) => binders.clone(),
             };
             // Collect all binder names, make sure they are unique
-            // Push our bindings
-            // Remember any overwritten shadowed bindings so we can restore them
-            let mut names: HashMap<Ident, Option<Arc<Var>>> = HashMap::new();
+            typing.decls.push_scope(true);
             for binder in binders.iter() {
                 let x = &binder.name;
-                let var = Var { typ: binder.a.clone(), mutable: false };
-                typing.check_binder_name(x)?;
-                let prev_var = typing.vars.insert(x.clone(), Arc::new(var));
-                let prev_bind = names.insert(x.clone(), prev_var);
-                if let Some(_) = prev_bind {
-                    return Err(format!("name {} appears more than once in binder", x));
-                }
+                let var = DeclaredX::Var { typ: binder.a.clone(), mutable: false };
+                typing.insert(x, Arc::new(var))?;
             }
             // Type-check triggers
             match &**bind {
@@ -268,18 +265,8 @@ pub(crate) fn check_expr(typing: &mut Typing, expr: &Expr) -> Result<Typ, TypeEr
                     expect_typ(&t1, &bt(), "forall/exists body must have type bool")?;
                 }
             }
-            // Remove our bindings from the typing, restore any shadowed bindings
-            for (x, undo) in names {
-                match undo {
-                    None => {
-                        typing.vars.remove(&x);
-                    }
-                    Some(prev) => {
-                        typing.vars.insert(x.clone(), prev);
-                    }
-                }
-            }
             // Done
+            typing.decls.pop_scope();
             Ok(t1)
         }
         ExprX::LabeledAssertion(_, expr) => check_expr(typing, expr),
@@ -305,28 +292,27 @@ pub(crate) fn check_stmt(typing: &mut Typing, stmt: &Stmt) -> Result<(), TypeErr
             &bt(),
             "assume statement expects expression of type bool",
         ),
-        StmtX::Havoc(x) => match typing.vars.get(x).cloned() {
-            None => Err(format!("assignment to undeclared variable {}", x)),
-            Some(var) => {
-                if !var.mutable {
+        StmtX::Havoc(x) => match typing.get(x).cloned() {
+            Some(DeclaredX::Var { mutable, .. }) => {
+                if !mutable {
                     Err(format!("cannot assign to const variable {}", x))
                 } else {
                     Ok(())
                 }
             }
+            _ => Err(format!("assignment to undeclared variable {}", x)),
         },
-        StmtX::Assign(x, expr) => match typing.vars.get(x).cloned() {
-            None => Err(format!("assignment to undeclared variable {}", x)),
-            Some(var) => {
-                if !var.mutable {
+        StmtX::Assign(x, expr) => match typing.get(x).cloned() {
+            Some(DeclaredX::Var { typ, mutable }) => {
+                if !mutable {
                     Err(format!("cannot assign to const variable {}", x))
                 } else {
                     let t_expr = check_expr(typing, expr)?;
-                    if !typ_eq(&t_expr, &var.typ) {
+                    if !typ_eq(&t_expr, &typ) {
                         Err(format!(
                             "in assignment, {} has type {}, while expression has type {}",
                             x,
-                            typ_name(&var.typ),
+                            typ_name(&typ),
                             typ_name(&t_expr)
                         ))
                     } else {
@@ -334,6 +320,7 @@ pub(crate) fn check_stmt(typing: &mut Typing, stmt: &Stmt) -> Result<(), TypeErr
                     }
                 }
             }
+            _ => Err(format!("assignment to undeclared variable {}", x)),
         },
         StmtX::Snapshot(snap) => {
             typing.snapshots.insert(snap.clone());
@@ -392,60 +379,56 @@ pub(crate) fn add_decl<'ctx>(
     decl: &Decl,
     is_global: bool,
 ) -> Result<(), TypeError> {
+    let num_scopes = context.typing.decls.num_scopes();
     match &**decl {
         DeclX::Sort(x) => {
-            context.push_name(x)?;
-            context.typing.typs.insert(x.clone());
+            context.typing.insert(x, Arc::new(DeclaredX::Type))?;
         }
         DeclX::Datatypes(datatypes) => {
             for datatype in datatypes.iter() {
-                context.push_name(&datatype.name)?;
-                context.typing.typs.insert(datatype.name.clone());
+                context.typing.insert(&datatype.name, Arc::new(DeclaredX::Type))?;
             }
             for datatype in datatypes.iter() {
                 for variant in datatype.a.iter() {
-                    context.push_name(&variant.name)?;
                     let typ = Arc::new(TypX::Named(datatype.name.clone()));
                     let typs = vec_map(&variant.a, |field| field.a.clone());
-                    let fun = Fun { typ: typ.clone(), typs: Arc::new(typs) };
-                    context.typing.funs.insert(variant.name.clone(), Arc::new(fun));
+                    let fun = DeclaredX::Fun(Arc::new(typs), typ.clone());
+                    context.typing.insert(&variant.name, Arc::new(fun))?;
                     let is_variant = Arc::new("is-".to_string() + &variant.name.to_string());
-                    let fun = Fun { typ: bt(), typs: Arc::new(vec![typ.clone()]) };
-                    context.typing.funs.insert(is_variant, Arc::new(fun));
+                    let fun = DeclaredX::Fun(Arc::new(vec![typ.clone()]), bt());
+                    context.typing.insert(&is_variant, Arc::new(fun))?;
                     for field in variant.a.iter() {
-                        context.push_name(&field.name)?;
                         check_typ(&context.typing, &field.a)?;
                         let typs: Typs = Arc::new(vec![typ.clone()]);
-                        let fun = Fun { typ: field.a.clone(), typs };
-                        context.typing.funs.insert(field.name.clone(), Arc::new(fun));
+                        let fun = DeclaredX::Fun(typs, field.a.clone());
+                        context.typing.insert(&field.name, Arc::new(fun))?;
                     }
                 }
             }
         }
         DeclX::Const(x, typ) => {
-            context.push_name(x)?;
-            let var = Arc::new(Var { typ: typ.clone(), mutable: false });
-            context.typing.vars.insert(x.clone(), var);
+            let var = Arc::new(DeclaredX::Var { typ: typ.clone(), mutable: false });
+            context.typing.insert(x, var)?;
         }
         DeclX::Fun(x, typs, typ) => {
-            context.push_name(x)?;
-            let fun = Fun { typ: typ.clone(), typs: typs.clone() };
-            context.typing.funs.insert(x.clone(), Arc::new(fun));
+            let fun = DeclaredX::Fun(typs.clone(), typ.clone());
+            context.typing.insert(x, Arc::new(fun))?;
         }
         DeclX::Var(x, typ) => {
             if is_global {
                 return Err(format!("declare-var {} not allowed in global scope", x));
             }
-            context.push_name(x)?;
-            let var = Arc::new(Var { typ: typ.clone(), mutable: true });
-            context.typing.vars.insert(x.clone(), var);
+            let var = Arc::new(DeclaredX::Var { typ: typ.clone(), mutable: true });
+            context.typing.insert(x, var)?;
         }
         DeclX::Axiom(_) => {}
     }
+    assert_eq!(context.typing.decls.num_scopes(), num_scopes);
     Ok(())
 }
 
 pub(crate) fn check_query(context: &mut Context, query: &Query) -> Result<(), TypeError> {
+    let num_scopes = context.typing.decls.num_scopes();
     context.push_name_scope();
     for decl in query.local.iter() {
         check_decl(&mut context.typing, decl)?;
@@ -453,5 +436,6 @@ pub(crate) fn check_query(context: &mut Context, query: &Query) -> Result<(), Ty
     }
     check_stmt(&mut context.typing, &query.assertion)?;
     context.pop_name_scope();
+    assert_eq!(context.typing.decls.num_scopes(), num_scopes);
     Ok(())
 }

@@ -1,8 +1,9 @@
 use crate::ast::{BinaryOp, Ident, UnaryOp, UnaryOpr, VirErr};
 use crate::ast_util::{err_str, err_string};
 use crate::context::Ctx;
-use crate::sst::{Bnd, BndX, Exp, ExpX, Trig, Trigs};
+use crate::sst::{BndX, Exp, ExpX, Trig, Trigs};
 use air::ast::Span;
+use air::scope_map::ScopeMap;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
@@ -14,7 +15,6 @@ struct State {
 }
 
 fn check_trigger_expr(exp: &Exp, free_vars: &mut HashSet<Ident>) -> Result<(), VirErr> {
-    let mut fb = |bnd: &Bnd| Ok(bnd.clone());
     match &exp.x {
         ExpX::Call(_, _, _) | ExpX::Field { .. } | ExpX::Unary(UnaryOp::Trigger(_), _) => {}
         // REVIEW: Z3 allows some arithmetic, but it's not clear we want to allow it
@@ -22,7 +22,7 @@ fn check_trigger_expr(exp: &Exp, free_vars: &mut HashSet<Ident>) -> Result<(), V
             return err_str(&exp.span, "trigger must be a function call or a field access");
         }
     }
-    let mut f = |exp: &Exp| match &exp.x {
+    let mut f = |exp: &Exp, _: &mut _| match &exp.x {
         ExpX::Const(_) | ExpX::Call(_, _, _) | ExpX::Field { .. } | ExpX::Ctor(_, _, _) => {
             Ok(exp.clone())
         }
@@ -51,53 +51,23 @@ fn check_trigger_expr(exp: &Exp, free_vars: &mut HashSet<Ident>) -> Result<(), V
         ExpX::If(_, _, _) => err_str(&exp.span, "triggers cannot contain if/else"),
         ExpX::Bind(_, _) => err_str(&exp.span, "triggers cannot contain let/forall/exists"),
     };
-    let _ = crate::sst_visitor::map_exp_visitor_bind(exp, &mut fb, &mut f)?;
+    let mut map: ScopeMap<Ident, bool> = ScopeMap::new();
+    let _ = crate::sst_visitor::map_exp_visitor_bind(exp, &mut map, &mut f)?;
     Ok(())
 }
 
 fn get_manual_triggers(state: &mut State, exp: &Exp) -> Result<(), VirErr> {
-    let quant_vars: HashSet<Ident> = state.trigger_vars.clone();
-    let quant_vars_cell = std::cell::RefCell::new(quant_vars);
-    let mut fb = |bnd: &Bnd| match &bnd.x {
-        BndX::Let(binders) => {
-            let quant_vars = quant_vars_cell.borrow();
-            for binder in binders.iter() {
-                if quant_vars.contains(&*binder.name) {
-                    return err_string(
-                        &bnd.span,
-                        format!(
-                            "variable {} cannot shadow quantifier variable with same name",
-                            binder.name
-                        ),
-                    );
-                }
-            }
-            Ok(bnd.clone())
-        }
-        BndX::Quant(_, binders, _) => {
-            let mut quant_vars = quant_vars_cell.borrow_mut();
-            for binder in binders.iter() {
-                if quant_vars.contains(&*binder.name) {
-                    return err_string(
-                        &bnd.span,
-                        format!(
-                            "variable {} cannot shadow quantifier variable with same name",
-                            binder.name
-                        ),
-                    );
-                }
-                quant_vars.insert(binder.name.clone());
-            }
-            Ok(bnd.clone())
-        }
-    };
-    let mut f = |exp: &Exp| match &exp.x {
+    let mut map: ScopeMap<Ident, bool> = ScopeMap::new();
+    map.push_scope(false);
+    for x in &state.trigger_vars {
+        map.insert(x.clone(), true).expect("duplicate bound variables");
+    }
+    let mut f = |exp: &Exp, map: &mut ScopeMap<Ident, bool>| match &exp.x {
         ExpX::Unary(UnaryOp::Trigger(group), e1) => {
-            let quant_vars = quant_vars_cell.borrow();
             let mut free_vars: HashSet<Ident> = HashSet::new();
             check_trigger_expr(e1, &mut free_vars)?;
             for x in &free_vars {
-                if quant_vars.contains(x) && !state.trigger_vars.contains(x) {
+                if map.get(x).cloned() == Some(true) && !state.trigger_vars.contains(x) {
                     // If the trigger contains variables declared by a nested quantifier,
                     // it must be the nested quantifier's trigger, not ours.
                     return Ok(exp.clone());
@@ -115,19 +85,23 @@ fn get_manual_triggers(state: &mut State, exp: &Exp) -> Result<(), VirErr> {
             }
             Ok(exp.clone())
         }
-        ExpX::Bind(bnd, _) => match &bnd.x {
-            BndX::Quant(_, binders, _) => {
-                let mut quant_vars = quant_vars_cell.borrow_mut();
-                for binder in binders.iter() {
-                    quant_vars.remove(&binder.name);
+        ExpX::Bind(bnd, _) => {
+            let bvars: Vec<Ident> = match &bnd.x {
+                BndX::Let(binders) => binders.iter().map(|b| b.name.clone()).collect(),
+                BndX::Quant(_, binders, _) => binders.iter().map(|b| b.name.clone()).collect(),
+            };
+            for x in bvars {
+                if map.contains_key(&x) {
+                    return err_str(&bnd.span, "variable shadowing not yet supported");
                 }
-                Ok(exp.clone())
             }
-            _ => Ok(exp.clone()),
-        },
+            Ok(exp.clone())
+        }
         _ => Ok(exp.clone()),
     };
-    let _ = crate::sst_visitor::map_exp_visitor_bind(exp, &mut fb, &mut f)?;
+    let _ = crate::sst_visitor::map_exp_visitor_bind(exp, &mut map, &mut f)?;
+    map.pop_scope();
+    assert_eq!(map.num_scopes(), 0);
     Ok(())
 }
 

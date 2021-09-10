@@ -1,9 +1,10 @@
 use crate::ast::{Command, CommandX, Decl, Ident, Query, SpanOption, TypeError};
 use crate::emitter::Emitter;
 use crate::model::Model;
+use crate::scope_map::ScopeMap;
 use crate::smt_manager::SmtManager;
 use crate::typecheck::Typing;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::sync::Arc;
 
 #[derive(Clone, Debug)]
@@ -22,7 +23,7 @@ pub enum ValidityResult {
 
 pub struct Context {
     pub(crate) smt_manager: SmtManager,
-    pub(crate) assert_infos: HashMap<Ident, Arc<AssertionInfo>>,
+    pub(crate) assert_infos: ScopeMap<Ident, Arc<AssertionInfo>>,
     pub(crate) assert_infos_count: u64,
     pub(crate) typing: Typing,
     pub(crate) debug: bool,
@@ -31,30 +32,25 @@ pub struct Context {
     pub(crate) air_middle_log: Emitter,
     pub(crate) air_final_log: Emitter,
     pub(crate) smt_log: Emitter,
-    pub(crate) name_scopes: Vec<Vec<Ident>>,
 }
 
 impl Context {
     pub fn new(smt_manager: SmtManager) -> Context {
-        Context {
+        let mut context = Context {
             smt_manager,
-            assert_infos: HashMap::new(),
+            assert_infos: ScopeMap::new(),
             assert_infos_count: 0,
-            typing: Typing {
-                names: HashSet::new(),
-                typs: HashSet::new(),
-                vars: HashMap::new(),
-                funs: HashMap::new(),
-                snapshots: HashSet::new(),
-            },
+            typing: Typing { decls: crate::scope_map::ScopeMap::new(), snapshots: HashSet::new() },
             debug: false,
             rlimit: 0,
             air_initial_log: Emitter::new(false, None),
             air_middle_log: Emitter::new(false, None),
             air_final_log: Emitter::new(false, None),
             smt_log: Emitter::new(true, None),
-            name_scopes: [Vec::new()].to_vec(),
-        }
+        };
+        context.assert_infos.push_scope(false);
+        context.typing.decls.push_scope(false);
+        context
     }
 
     pub fn set_air_initial_log(&mut self, writer: Box<dyn std::io::Write>) {
@@ -162,25 +158,13 @@ impl Context {
     }
 
     pub(crate) fn push_name_scope(&mut self) {
-        self.name_scopes.push(Vec::new());
-    }
-
-    pub(crate) fn push_name(&mut self, x: &Ident) -> Result<(), TypeError> {
-        let len = self.name_scopes.len();
-        self.name_scopes[len - 1].push(x.clone());
-        let prev = self.typing.names.insert(x.clone());
-        if prev { Ok(()) } else { Err(format!("name {} is already in scope", x)) }
+        self.assert_infos.push_scope(false);
+        self.typing.decls.push_scope(false);
     }
 
     pub(crate) fn pop_name_scope(&mut self) {
-        let scope: Vec<Ident> = self.name_scopes.pop().unwrap();
-        for x in scope {
-            self.typing.names.remove(&x);
-            self.assert_infos.remove(&x);
-            self.typing.typs.remove(&x);
-            self.typing.vars.remove(&x);
-            self.typing.funs.remove(&x);
-        }
+        self.assert_infos.pop_scope();
+        self.typing.decls.pop_scope();
     }
 
     pub fn push(&mut self) {
