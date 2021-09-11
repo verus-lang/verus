@@ -1,6 +1,5 @@
 use crate::ast::{Expr, ExprX, Exprs, HeaderExprX, Ident, Stmt, StmtX, Typ, VirErr};
 use crate::ast_util::err_str;
-use crate::def::Spanned;
 use std::sync::Arc;
 
 #[derive(Clone, Debug)]
@@ -85,7 +84,7 @@ pub fn read_header(body: &mut Expr) -> Result<Header, VirErr> {
         ExprX::Block(stmts, expr) => {
             let mut block: Vec<Stmt> = (**stmts).clone();
             let header = read_header_block(&mut block)?;
-            *body = Spanned::new(body.span.clone(), ExprX::Block(Arc::new(block), expr.clone()));
+            *body = body.new_x(ExprX::Block(Arc::new(block), expr.clone()));
             Ok(header)
         }
         _ => read_header_block(&mut vec![]),

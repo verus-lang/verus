@@ -271,6 +271,13 @@ pub(crate) fn get_verifier_attrs(attrs: &[Attribute]) -> Result<VerifierAttrs, V
     Ok(vs)
 }
 
+pub(crate) fn get_range(typ: &Typ) -> IntRange {
+    match &**typ {
+        TypX::Int(range) => *range,
+        _ => panic!("get_range {:?}", typ),
+    }
+}
+
 pub(crate) fn mk_range<'tcx>(ty: rustc_middle::ty::Ty<'tcx>) -> IntRange {
     match ty.kind() {
         TyKind::Adt(_, _) if ty.to_string() == crate::typecheck::BUILTIN_INT => IntRange::Int,
@@ -294,6 +301,7 @@ pub(crate) fn mk_range<'tcx>(ty: rustc_middle::ty::Ty<'tcx>) -> IntRange {
 // TODO review and cosolidate type translation, e.g. with `ty_to_vir`, if possible
 pub(crate) fn mid_ty_to_vir<'tcx>(tcx: TyCtxt<'tcx>, ty: rustc_middle::ty::Ty) -> Typ {
     let typ_x = match ty.kind() {
+        TyKind::Tuple(_) if ty.tuple_fields().count() == 0 => TypX::Unit,
         TyKind::Bool => TypX::Bool,
         TyKind::Adt(AdtDef { did, .. }, _) => {
             let s = ty.to_string();

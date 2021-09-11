@@ -6,7 +6,7 @@
 //! for verification.
 
 use crate::def::Spanned;
-use air::ast::Quant;
+use air::ast::{Quant, Span};
 use std::sync::Arc;
 
 pub use air::ast::{Binder, Binders};
@@ -69,9 +69,14 @@ pub type Typs = Arc<Vec<Typ>>;
 // Deliberately not marked Eq -- use explicit match instead, so we know where types are compared
 #[derive(Debug)]
 pub enum TypX {
+    /// Unit, Bool, Int, Path are translated directly into corresponding SMT types (they are not SMT-boxed)
+    Unit,
     Bool,
     Int(IntRange),
     Path(Path),
+    /// Boxed for SMT encoding (unrelated to Rust Box type), can be unboxed:
+    Boxed(Typ),
+    /// Type parameter (inherently SMT-boxed, and cannot be unboxed)
     TypParam(Ident),
 }
 
@@ -97,9 +102,9 @@ pub enum UnaryOp {
 /// ("boxed" refers to boxing types in the SMT encoding, not the Rust Box type)
 #[derive(Clone, Debug)]
 pub enum UnaryOpr {
-    /// coerce Typ --> boxed
+    /// coerce Typ --> Boxed(Typ)
     Box(Typ),
-    /// coerce boxed --> Typ
+    /// coerce Boxed(Typ) --> Typ
     Unbox(Typ),
 }
 
@@ -168,8 +173,15 @@ pub enum Constant {
     Nat(Arc<String>),
 }
 
+#[derive(Debug)]
+pub struct SpannedTyped<X> {
+    pub span: Span,
+    pub typ: Typ,
+    pub x: X,
+}
+
 /// Expression, similar to rustc_hir::Expr
-pub type Expr = Arc<Spanned<ExprX>>;
+pub type Expr = Arc<SpannedTyped<ExprX>>;
 pub type Exprs = Arc<Vec<Expr>>;
 #[derive(Debug)]
 pub enum ExprX {

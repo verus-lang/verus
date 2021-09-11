@@ -6,7 +6,7 @@ use crate::context::Ctx;
 use crate::def::{
     prefix_ensures, prefix_fuel_id, prefix_requires, prefix_type_id, suffix_global_id,
     suffix_local_id, suffix_typ_param_id, SnapPos, Spanned, FUEL_BOOL, FUEL_BOOL_DEFAULT,
-    FUEL_DEFAULTS, FUEL_ID, FUEL_PARAM, FUEL_TYPE, POLY, SNAPSHOT_CALL, SUCC,
+    FUEL_DEFAULTS, FUEL_ID, FUEL_PARAM, FUEL_TYPE, POLY, SNAPSHOT_CALL, SUCC, UNIT,
 };
 use crate::sst::{BndX, Dest, Exp, ExpX, Stm, StmX};
 use crate::util::vec_map;
@@ -43,15 +43,18 @@ pub(crate) fn apply_range_fun(name: &str, range: &IntRange, exprs: Vec<Expr>) ->
 
 pub(crate) fn typ_to_air(typ: &Typ) -> air::ast::Typ {
     match &**typ {
+        TypX::Unit => str_typ(UNIT),
         TypX::Int(_) => int_typ(),
         TypX::Bool => bool_typ(),
         TypX::Path(path) => ident_typ(&path_to_air_ident(path)),
+        TypX::Boxed(_) => str_typ(POLY),
         TypX::TypParam(_) => str_typ(POLY),
     }
 }
 
 pub fn typ_to_id(typ: &Typ) -> Expr {
     match &**typ {
+        TypX::Unit => str_var(crate::def::TYPE_ID_UNIT),
         TypX::Int(range) => match range {
             IntRange::Int => str_var(crate::def::TYPE_ID_INT),
             IntRange::Nat => str_var(crate::def::TYPE_ID_NAT),
@@ -64,6 +67,7 @@ pub fn typ_to_id(typ: &Typ) -> Expr {
         },
         TypX::Bool => str_var(crate::def::TYPE_ID_BOOL),
         TypX::Path(path) => string_var(&prefix_type_id(&Arc::new(path_to_string(&path)))),
+        TypX::Boxed(_) => panic!("internal error: type arguments should be unboxed"),
         TypX::TypParam(x) => ident_var(&suffix_typ_param_id(x)),
     }
 }
@@ -162,9 +166,11 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp) -> Expr {
             UnaryOpr::Box(typ) => {
                 let expr = exp_to_expr(ctx, exp);
                 let f_name = match &**typ {
+                    TypX::Unit => str_ident(crate::def::BOX_UNIT),
                     TypX::Bool => str_ident(crate::def::BOX_BOOL),
                     TypX::Int(_) => str_ident(crate::def::BOX_INT),
                     TypX::Path(path) => crate::def::prefix_box(&Arc::new(path_to_string(&path))),
+                    TypX::Boxed(_) => panic!("internal error: Box(Boxed)"),
                     TypX::TypParam(_) => panic!("internal error: Box(TypParam)"),
                 };
                 ident_apply(&f_name, &vec![expr])
@@ -172,9 +178,11 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp) -> Expr {
             UnaryOpr::Unbox(typ) => {
                 let expr = exp_to_expr(ctx, exp);
                 let f_name = match &**typ {
+                    TypX::Unit => str_ident(crate::def::UNBOX_UNIT),
                     TypX::Bool => str_ident(crate::def::UNBOX_BOOL),
                     TypX::Int(_) => str_ident(crate::def::UNBOX_INT),
                     TypX::Path(path) => crate::def::prefix_unbox(&Arc::new(path_to_string(&path))),
+                    TypX::Boxed(_) => panic!("internal error: Box(Boxed)"),
                     TypX::TypParam(_) => panic!("internal error: Box(TypParam)"),
                 };
                 ident_apply(&f_name, &vec![expr])

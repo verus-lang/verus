@@ -28,9 +28,7 @@ fn expr_must_be_call_stm(ctx: &Ctx, expr: &Expr) -> Result<Option<(Ident, Typs, 
 
 pub(crate) fn expr_to_exp(ctx: &Ctx, expr: &Expr) -> Result<Exp, VirErr> {
     match &expr.x {
-        ExprX::Const(c) => {
-            Ok(Spanned::new(expr.span.clone(), ExpX::Const(c.clone())))
-        }
+        ExprX::Const(c) => Ok(Spanned::new(expr.span.clone(), ExpX::Const(c.clone()))),
         ExprX::Var(x) => Ok(Spanned::new(expr.span.clone(), ExpX::Var(x.clone()))),
         ExprX::Call(x, typs, args) => {
             match ctx.func_map.get(x) {

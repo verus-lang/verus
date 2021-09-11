@@ -1,6 +1,6 @@
 use rustc_span::{Span, SpanData};
 use std::sync::Arc;
-use vir::ast::{VirErr, VirErrX};
+use vir::ast::{SpannedTyped, Typ, VirErr, VirErrX};
 use vir::def::Spanned;
 
 pub(crate) fn to_raw_span(span: Span) -> air::ast::RawSpan {
@@ -15,6 +15,12 @@ pub(crate) fn spanned_new<X>(span: Span, x: X) -> Arc<Spanned<X>> {
     let raw_span = to_raw_span(span);
     let as_string = format!("{:?}", span);
     Spanned::new(air::ast::Span { description: None, raw_span, as_string }, x)
+}
+
+pub(crate) fn spanned_typed_new<X>(span: Span, typ: &Typ, x: X) -> Arc<SpannedTyped<X>> {
+    let raw_span = to_raw_span(span);
+    let as_string = format!("{:?}", span);
+    SpannedTyped::new(&air::ast::Span { description: None, raw_span, as_string }, typ, x)
 }
 
 pub(crate) fn err_span_str<A>(span: Span, msg: &str) -> Result<A, VirErr> {

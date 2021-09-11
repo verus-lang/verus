@@ -15,10 +15,7 @@ where
             for e in es.iter() {
                 exprs.push(map_expr_visitor(e, f)?);
             }
-            let expr = Spanned::new(
-                expr.span.clone(),
-                ExprX::Call(x.clone(), typs.clone(), Arc::new(exprs)),
-            );
+            let expr = expr.new_x(ExprX::Call(x.clone(), typs.clone(), Arc::new(exprs)));
             f(&expr)
         }
         ExprX::Ctor(path, ident, binders) => {
@@ -26,50 +23,44 @@ where
                 .iter()
                 .map(|b| b.map_result(|a| map_expr_visitor(a, f)))
                 .collect::<Result<Vec<_>, _>>()?;
-            let expr = Spanned::new(
-                expr.span.clone(),
-                ExprX::Ctor(path.clone(), ident.clone(), Arc::new(mapped_binders)),
-            );
+            let expr =
+                expr.new_x(ExprX::Ctor(path.clone(), ident.clone(), Arc::new(mapped_binders)));
             f(&expr)
         }
         ExprX::Field { lhs, datatype, field_name } => {
             let lhs1 = map_expr_visitor(lhs, f)?;
-            let expr = Spanned::new(
-                expr.span.clone(),
-                ExprX::Field {
-                    lhs: lhs1,
-                    datatype: datatype.clone(),
-                    field_name: field_name.clone(),
-                },
-            );
+            let expr = expr.new_x(ExprX::Field {
+                lhs: lhs1,
+                datatype: datatype.clone(),
+                field_name: field_name.clone(),
+            });
             f(&expr)
         }
         ExprX::Unary(op, e1) => {
             let expr1 = map_expr_visitor(e1, f)?;
-            let expr = Spanned::new(expr.span.clone(), ExprX::Unary(*op, expr1));
+            let expr = expr.new_x(ExprX::Unary(*op, expr1));
             f(&expr)
         }
         ExprX::UnaryOpr(op, e1) => {
             let expr1 = map_expr_visitor(e1, f)?;
-            let expr = Spanned::new(expr.span.clone(), ExprX::UnaryOpr(op.clone(), expr1));
+            let expr = expr.new_x(ExprX::UnaryOpr(op.clone(), expr1));
             f(&expr)
         }
         ExprX::Binary(op, e1, e2) => {
             let expr1 = map_expr_visitor(e1, f)?;
             let expr2 = map_expr_visitor(e2, f)?;
-            let expr = Spanned::new(expr.span.clone(), ExprX::Binary(*op, expr1, expr2));
+            let expr = expr.new_x(ExprX::Binary(*op, expr1, expr2));
             f(&expr)
         }
         ExprX::Quant(quant, binders, e1) => {
             let expr1 = map_expr_visitor(e1, f)?;
-            let expr =
-                Spanned::new(expr.span.clone(), ExprX::Quant(*quant, binders.clone(), expr1));
+            let expr = expr.new_x(ExprX::Quant(*quant, binders.clone(), expr1));
             f(&expr)
         }
         ExprX::Assign(e1, e2) => {
             let expr1 = map_expr_visitor(e1, f)?;
             let expr2 = map_expr_visitor(e2, f)?;
-            let expr = Spanned::new(expr.span.clone(), ExprX::Assign(expr1, expr2));
+            let expr = expr.new_x(ExprX::Assign(expr1, expr2));
             f(&expr)
         }
         ExprX::Fuel(_, _) => f(&expr),
@@ -79,14 +70,14 @@ where
             let expr1 = map_expr_visitor(e1, f)?;
             let expr2 = map_expr_visitor(e2, f)?;
             let expr3 = e3.as_ref().map(|e| map_expr_visitor(e, f)).transpose()?;
-            let expr = Spanned::new(expr.span.clone(), ExprX::If(expr1, expr2, expr3));
+            let expr = expr.new_x(ExprX::If(expr1, expr2, expr3));
             f(&expr)
         }
         ExprX::While { cond, body, invs } => {
             let cond = map_expr_visitor(cond, f)?;
             let body = map_expr_visitor(body, f)?;
             let invs = Arc::new(vec_map_result(invs, |e| map_expr_visitor(e, f))?);
-            let expr = Spanned::new(expr.span.clone(), ExprX::While { cond, body, invs });
+            let expr = expr.new_x(ExprX::While { cond, body, invs });
             f(&expr)
         }
         ExprX::Block(ss, e1) => {
@@ -98,7 +89,7 @@ where
                 None => None,
                 Some(e) => Some(map_expr_visitor(e, f)?),
             };
-            let expr = Spanned::new(expr.span.clone(), ExprX::Block(Arc::new(exprs), expr1));
+            let expr = expr.new_x(ExprX::Block(Arc::new(exprs), expr1));
             f(&expr)
         }
     }

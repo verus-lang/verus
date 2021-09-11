@@ -1,8 +1,9 @@
-use crate::ast::{Mode, Path, Typ, TypX, VirErr, VirErrX};
+use crate::ast::{Mode, Path, SpannedTyped, Typ, TypX, VirErr, VirErrX};
 use crate::def::Spanned;
 use air::ast::Span;
 pub use air::ast_util::{ident_binder, str_ident};
 use std::fmt;
+use std::sync::Arc;
 
 pub fn err_str<A>(span: &Span, msg: &str) -> Result<A, VirErr> {
     Err(Spanned::new(span.clone(), VirErrX::Str(msg.to_string())))
@@ -35,4 +36,14 @@ pub fn types_equal(typ1: &Typ, typ2: &Typ) -> bool {
 pub fn path_to_string(path: &Path) -> String {
     let sep = crate::def::TYPE_PATH_SEPARATOR;
     path.iter().map(|x| (**x).as_str()).collect::<Vec<_>>().join(sep)
+}
+
+impl<X> SpannedTyped<X> {
+    pub fn new(span: &Span, typ: &Typ, x: X) -> Arc<Self> {
+        Arc::new(SpannedTyped { span: span.clone(), typ: typ.clone(), x })
+    }
+
+    pub fn new_x(&self, x: X) -> Arc<Self> {
+        Arc::new(SpannedTyped { span: self.span.clone(), typ: self.typ.clone(), x })
+    }
 }

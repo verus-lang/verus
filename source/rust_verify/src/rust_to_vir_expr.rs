@@ -1,14 +1,15 @@
 use crate::erase::ResolvedCall;
 use crate::rust_to_vir_base::{
-    def_id_to_vir_path, get_trigger, get_var_mode, hack_check_def_name, hack_get_def_name,
-    ident_to_var, is_smt_arith, is_smt_equality, mid_ty_to_vir, mid_ty_to_vir_opt, mk_range,
-    ty_to_vir, typ_of_node, BodyCtxt,
+    def_id_to_vir_path, get_range, get_trigger, get_var_mode, hack_check_def_name,
+    hack_get_def_name, ident_to_var, is_smt_arith, is_smt_equality, mid_ty_to_vir,
+    mid_ty_to_vir_opt, mk_range, ty_to_vir, typ_of_node, BodyCtxt,
 };
 use crate::util::{
-    err_span_str, slice_vec_map_result, spanned_new, unsupported_err_span, vec_map, vec_map_result,
+    err_span_str, slice_vec_map_result, spanned_new, spanned_typed_new, unsupported_err_span,
+    vec_map_result,
 };
 use crate::{unsupported, unsupported_err, unsupported_err_unless, unsupported_unless};
-use air::ast::{Binder, BinderX, Quant};
+use air::ast::{Binder, BinderX, Ident, Quant};
 use rustc_ast::{Attribute, LitKind};
 use rustc_hir::def::{DefKind, Res};
 use rustc_hir::{
@@ -16,16 +17,16 @@ use rustc_hir::{
     MatchSource, Node, Pat, PatKind, QPath, Stmt, StmtKind, UnOp,
 };
 use rustc_middle::ty::subst::GenericArgKind;
-use rustc_middle::ty::TyKind;
+use rustc_middle::ty::{TyCtxt, TyKind};
 use rustc_span::def_id::DefId;
 use rustc_span::Span;
 use std::sync::Arc;
 use vir::ast::{
-    BinaryOp, Constant, ExprX, HeaderExpr, HeaderExprX, IntRange, ParamX, StmtX, Stmts, Typ, TypX,
-    UnaryOp, UnaryOpr, VirErr,
+    BinaryOp, Constant, ExprX, HeaderExpr, HeaderExprX, IntRange, ParamX, SpannedTyped, StmtX,
+    Stmts, Typ, TypX, UnaryOp, UnaryOpr, VirErr,
 };
 use vir::ast_util::ident_binder;
-use vir::def::{variant_field_ident, variant_ident, variant_positional_field_ident, Spanned};
+use vir::def::{variant_field_ident, variant_ident, variant_positional_field_ident};
 
 pub(crate) fn pat_to_var<'tcx>(pat: &Pat) -> String {
     let Pat { hir_id: _, kind, span: _, default_binding_modes } = pat;
@@ -134,7 +135,8 @@ fn extract_quant<'tcx>(
                 return err_span_str(expr.span, "forall/ensures needs a bool expression");
             }
             let vir_expr = expr_to_vir(bctx, expr)?;
-            Ok(spanned_new(span, ExprX::Quant(quant, Arc::new(binders), vir_expr)))
+            let typ = Arc::new(TypX::Bool);
+            Ok(spanned_typed_new(span, &typ, ExprX::Quant(quant, Arc::new(binders), vir_expr)))
         }
         _ => err_span_str(expr.span, "argument to forall/exists must be a closure"),
     }
@@ -143,12 +145,16 @@ fn extract_quant<'tcx>(
 fn mk_clip<'tcx>(range: &IntRange, expr: &vir::ast::Expr) -> vir::ast::Expr {
     match range {
         IntRange::Int => expr.clone(),
-        range => Spanned::new(expr.span.clone(), ExprX::Unary(UnaryOp::Clip(*range), expr.clone())),
+        range => SpannedTyped::new(
+            &expr.span,
+            &Arc::new(TypX::Int(*range)),
+            ExprX::Unary(UnaryOp::Clip(*range), expr.clone()),
+        ),
     }
 }
 
-fn mk_ty_clip<'tcx>(ty: rustc_middle::ty::Ty<'tcx>, expr: &vir::ast::Expr) -> vir::ast::Expr {
-    mk_clip(&mk_range(ty), expr)
+fn mk_ty_clip<'tcx>(typ: &Typ, expr: &vir::ast::Expr) -> vir::ast::Expr {
+    mk_clip(&get_range(typ), expr)
 }
 
 pub(crate) fn expr_to_vir<'tcx>(
@@ -157,7 +163,7 @@ pub(crate) fn expr_to_vir<'tcx>(
 ) -> Result<vir::ast::Expr, VirErr> {
     let mut vir_expr = expr_to_vir_inner(bctx, expr)?;
     for group in get_trigger(bctx.ctxt.tcx.hir().attrs(expr.hir_id))? {
-        vir_expr = spanned_new(expr.span, ExprX::Unary(UnaryOp::Trigger(group), vir_expr));
+        vir_expr = vir_expr.new_x(ExprX::Unary(UnaryOp::Trigger(group), vir_expr.clone()));
     }
     Ok(vir_expr)
 }
@@ -180,6 +186,18 @@ fn record_fun(
     erasure_info.resolved_calls.push((span.data(), resolved_call));
 }
 
+fn get_fn_name<'tcx>(tcx: TyCtxt<'tcx>, expr: &Expr<'tcx>) -> Result<Ident, VirErr> {
+    match &expr.kind {
+        ExprKind::Path(QPath::Resolved(None, path)) => match path.res {
+            Res::Def(DefKind::Fn, id) => {
+                Ok(Arc::new(hack_get_def_name(tcx, id))) // TODO: proper handling of paths
+            }
+            res => unsupported_err!(expr.span, format!("Path {:?}", res)),
+        },
+        _ => unsupported_err!(expr.span, format!("{:?}", expr)),
+    }
+}
+
 fn fn_call_to_vir<'tcx>(
     bctx: &BodyCtxt<'tcx>,
     expr: &Expr<'tcx>,
@@ -188,7 +206,12 @@ fn fn_call_to_vir<'tcx>(
 ) -> Result<vir::ast::Expr, VirErr> {
     let mut args: Vec<&'tcx Expr<'tcx>> = args_slice.iter().collect();
     let f = expr_to_function(fun);
+
     let tcx = bctx.ctxt.tcx;
+    let expr_typ = typ_of_node(bctx, &expr.hir_id);
+    let mk_expr = |x: ExprX| spanned_typed_new(expr.span, &expr_typ, x);
+    let mk_expr_span = |span: Span, x: ExprX| spanned_typed_new(span, &expr_typ, x);
+
     let is_admit = hack_check_def_name(tcx, f, "builtin", "admit");
     let is_requires = hack_check_def_name(tcx, f, "builtin", "requires");
     let is_ensures = hack_check_def_name(tcx, f, "builtin", "ensures");
@@ -229,7 +252,7 @@ fn fn_call_to_vir<'tcx>(
     if is_ensures {
         unsupported_err_unless!(len == 1, expr.span, "expected ensures", &args);
         let header = extract_ensures(bctx, args[0])?;
-        let expr = spanned_new(args[0].span, ExprX::Header(header));
+        let expr = mk_expr_span(args[0].span, ExprX::Header(header));
         // extract_ensures does most of the necessary work, so we can return at this point
         return Ok(expr);
     }
@@ -248,6 +271,28 @@ fn fn_call_to_vir<'tcx>(
         return extract_quant(bctx, expr.span, quant, args[0]);
     }
 
+    if is_hide || is_reveal {
+        unsupported_err_unless!(len == 1, expr.span, "expected hide/reveal", &args);
+        let x = get_fn_name(tcx, &args[0])?;
+        if is_hide {
+            let header = Arc::new(HeaderExprX::Hide(x));
+            return Ok(mk_expr(ExprX::Header(header)));
+        } else {
+            return Ok(mk_expr(ExprX::Fuel(x, 1)));
+        }
+    }
+    if is_reveal_fuel {
+        unsupported_err_unless!(len == 2, expr.span, "expected reveal_fuel", &args);
+        let x = get_fn_name(tcx, &args[0])?;
+        match &expr_to_vir(bctx, &args[1])?.x {
+            ExprX::Const(Constant::Nat(s)) => {
+                let n = s.parse::<u32>().expect(&format!("internal error: parse {}", s));
+                return Ok(mk_expr(ExprX::Fuel(x, n)));
+            }
+            _ => panic!("internal error: is_reveal_fuel"),
+        }
+    }
+
     let mut vir_args = vec_map_result(&args, |arg| expr_to_vir(bctx, arg))?;
 
     let is_smt_binary = if is_eq || is_ne {
@@ -260,41 +305,18 @@ fn fn_call_to_vir<'tcx>(
 
     if is_requires {
         let header = Arc::new(HeaderExprX::Requires(Arc::new(vir_args)));
-        Ok(spanned_new(expr.span, ExprX::Header(header)))
+        Ok(mk_expr(ExprX::Header(header)))
     } else if is_invariant {
         let header = Arc::new(HeaderExprX::Invariant(Arc::new(vir_args)));
-        Ok(spanned_new(expr.span, ExprX::Header(header)))
+        Ok(mk_expr(ExprX::Header(header)))
     } else if is_decreases {
         unsupported_err_unless!(len == 1, expr.span, "expected decreases", &args);
         let typ = typ_of_node(bctx, &args[0].hir_id);
         let header = Arc::new(HeaderExprX::Decreases(vir_args[0].clone(), typ));
-        Ok(spanned_new(expr.span, ExprX::Header(header)))
+        Ok(mk_expr(ExprX::Header(header)))
     } else if is_admit {
         unsupported_err_unless!(len == 0, expr.span, "expected admit", args);
-        Ok(spanned_new(expr.span, ExprX::Admit))
-    } else if is_hide || is_reveal {
-        unsupported_err_unless!(len == 1, expr.span, "expected hide/reveal", args);
-        let arg = vir_args[0].clone();
-        if let ExprX::Var(x) = &arg.x {
-            if is_hide {
-                let header = Arc::new(HeaderExprX::Hide(x.clone()));
-                Ok(spanned_new(expr.span, ExprX::Header(header)))
-            } else {
-                Ok(spanned_new(expr.span, ExprX::Fuel(x.clone(), 1)))
-            }
-        } else {
-            err_span_str(expr.span, "hide/reveal: expected identifier")
-        }
-    } else if is_reveal_fuel {
-        unsupported_err_unless!(len == 2, expr.span, "expected reveal_fuel", args);
-        match (&vir_args[0].x, &vir_args[1].x) {
-            (ExprX::Var(x), ExprX::Const(Constant::Nat(s))) => {
-                let n = s.parse::<u32>().expect(&format!("internal error: parse {}", s));
-                Ok(spanned_new(expr.span, ExprX::Fuel(x.clone(), n)))
-            }
-            (ExprX::Var(_), _) => panic!("internal error: is_reveal_fuel"),
-            _ => err_span_str(expr.span, "hide/reveal: expected identifier"),
-        }
+        Ok(mk_expr(ExprX::Admit))
     } else if is_smt_binary {
         unsupported_err_unless!(len == 2, expr.span, "expected binary op", args);
         let lhs = vir_args[0].clone();
@@ -322,9 +344,8 @@ fn fn_call_to_vir<'tcx>(
         } else {
             panic!("internal error")
         };
-        let e = spanned_new(expr.span, ExprX::Binary(vop, lhs, rhs));
-        let ty = bctx.types.node_type(expr.hir_id);
-        if is_arith_binary { Ok(mk_ty_clip(ty, &e)) } else { Ok(e) }
+        let e = mk_expr(ExprX::Binary(vop, lhs, rhs));
+        if is_arith_binary { Ok(mk_ty_clip(&expr_typ, &e)) } else { Ok(e) }
     } else {
         let fun_ty = bctx.types.node_type(fun.hir_id);
         let (param_typs, ret_typ) = match fun_ty.kind() {
@@ -342,16 +363,15 @@ fn fn_call_to_vir<'tcx>(
             }
         };
         // box arguments where necessary
-        let arg_typs = vec_map(&args, |arg| typ_of_node(bctx, &arg.hir_id));
         assert_eq!(vir_args.len(), param_typs.len());
-        assert_eq!(vir_args.len(), arg_typs.len());
         for i in 0..vir_args.len() {
-            match (&*param_typs[i], &*arg_typs[i]) {
+            let arg = &vir_args[i].clone();
+            match (&*param_typs[i], &*arg.typ) {
                 (TypX::TypParam(_), TypX::TypParam(_)) => {} // already boxed
                 (TypX::TypParam(_), _) => {
-                    let arg = &vir_args[i];
-                    let arg_x = ExprX::UnaryOpr(UnaryOpr::Box(arg_typs[i].clone()), arg.clone());
-                    vir_args[i] = Spanned::new(arg.span.clone(), arg_x);
+                    let arg_typ = Arc::new(TypX::Boxed(arg.typ.clone()));
+                    let arg_x = ExprX::UnaryOpr(UnaryOpr::Box(arg.typ.clone()), arg.clone());
+                    vir_args[i] = SpannedTyped::new(&arg.span, &arg_typ, arg_x);
                 }
                 _ => {}
             }
@@ -366,20 +386,29 @@ fn fn_call_to_vir<'tcx>(
                 _ => unsupported_err!(expr.span, format!("lifetime/const type arguments"), expr),
             }
         }
+        // return type
+        let possibly_boxed_ret_typ = match &ret_typ {
+            None => Arc::new(TypX::Unit),
+            Some(ret_typ) => match (&**ret_typ, &*expr_typ) {
+                (TypX::TypParam(_), TypX::TypParam(_)) => expr_typ.clone(), // already boxed
+                (TypX::TypParam(_), _) => Arc::new(TypX::Boxed(expr_typ.clone())),
+                _ => expr_typ.clone(),
+            },
+        };
         // make call
         let name = hack_get_def_name(tcx, f); // TODO: proper handling of paths
-        let mut call = spanned_new(
+        let mut call = spanned_typed_new(
             expr.span,
+            &possibly_boxed_ret_typ,
             ExprX::Call(Arc::new(name), Arc::new(typ_args), Arc::new(vir_args)),
         );
         // unbox result if necessary
         if let Some(ret_typ) = ret_typ {
-            let expr_typ = typ_of_node(bctx, &expr.hir_id);
             match (&*ret_typ, &*expr_typ) {
                 (TypX::TypParam(_), TypX::TypParam(_)) => {} // already boxed
                 (TypX::TypParam(_), _) => {
                     let call_x = ExprX::UnaryOpr(UnaryOpr::Unbox(expr_typ.clone()), call);
-                    call = spanned_new(expr.span, call_x);
+                    call = mk_expr(call_x);
                 }
                 _ => {}
             }
@@ -395,6 +424,7 @@ pub(crate) fn expr_tuple_datatype_ctor_to_vir<'tcx>(
     args_slice: &[Expr<'tcx>],
 ) -> Result<vir::ast::Expr, VirErr> {
     let tcx = bctx.ctxt.tcx;
+    let expr_typ = typ_of_node(bctx, &expr.hir_id);
     let variant = tcx.expect_variant_res(*res);
     if let Res::Def(DefKind::Ctor(ctor_of, ctor_kind), _def_id) = res {
         unsupported_unless!(
@@ -426,14 +456,15 @@ pub(crate) fn expr_tuple_datatype_ctor_to_vir<'tcx>(
                 // TODO: deduplicate with Struct?
                 let fielddef = &variant.fields[i];
                 let field_typ = mid_ty_to_vir(tcx, tcx.type_of(fielddef.did));
-                let expr_typ = typ_of_node(bctx, &e.hir_id);
+                let f_expr_typ = typ_of_node(bctx, &e.hir_id);
                 let mut vir = expr_to_vir(bctx, e)?;
-                match (&*field_typ, &*expr_typ) {
+                match (&*field_typ, &*f_expr_typ) {
                     (TypX::TypParam(_), TypX::TypParam(_)) => {} // already boxed
                     (TypX::TypParam(_), _) => {
-                        vir = Spanned::new(
-                            vir.span.clone(),
-                            ExprX::UnaryOpr(UnaryOpr::Box(expr_typ), vir),
+                        vir = SpannedTyped::new(
+                            &vir.span,
+                            &Arc::new(TypX::Boxed(f_expr_typ.clone())),
+                            ExprX::UnaryOpr(UnaryOpr::Box(f_expr_typ), vir.clone()),
                         );
                     }
                     _ => {}
@@ -442,7 +473,7 @@ pub(crate) fn expr_tuple_datatype_ctor_to_vir<'tcx>(
             })
             .collect::<Result<Vec<_>, _>>()?,
     );
-    Ok(spanned_new(expr.span, ExprX::Ctor(vir_path, variant_name, vir_fields)))
+    Ok(spanned_typed_new(expr.span, &expr_typ, ExprX::Ctor(vir_path, variant_name, vir_fields)))
 }
 
 pub(crate) fn expr_to_vir_inner<'tcx>(
@@ -451,6 +482,9 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
 ) -> Result<vir::ast::Expr, VirErr> {
     let tcx = bctx.ctxt.tcx;
     let tc = bctx.types;
+    let expr_typ = typ_of_node(bctx, &expr.hir_id);
+    let mk_expr = |x: ExprX| spanned_typed_new(expr.span, &expr_typ, x);
+
     match &expr.kind {
         ExprKind::Block(body, _) => {
             let vir_stmts: Stmts = Arc::new(
@@ -460,7 +494,7 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                     .collect(),
             );
             let vir_expr = body.expr.map(|expr| expr_to_vir(bctx, &expr)).transpose()?;
-            Ok(spanned_new(expr.span, ExprX::Block(vir_stmts, vir_expr)))
+            Ok(mk_expr(ExprX::Block(vir_stmts, vir_expr)))
         }
         ExprKind::Call(fun, args_slice) => {
             match fun.kind {
@@ -480,7 +514,7 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
         ExprKind::Lit(lit) => match lit.node {
             rustc_ast::LitKind::Bool(b) => {
                 let c = vir::ast::Constant::Bool(b);
-                Ok(spanned_new(expr.span, ExprX::Const(c)))
+                Ok(mk_expr(ExprX::Const(c)))
             }
             rustc_ast::LitKind::Int(i, _) => {
                 let typ = typ_of_node(bctx, &expr.hir_id);
@@ -488,10 +522,10 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                 if let TypX::Int(range) = *typ {
                     match range {
                         IntRange::Int | IntRange::Nat | IntRange::U(_) | IntRange::USize => {
-                            Ok(spanned_new(expr.span, ExprX::Const(c)))
+                            Ok(mk_expr(ExprX::Const(c)))
                         }
                         IntRange::I(_) | IntRange::ISize => {
-                            Ok(mk_clip(&range, &spanned_new(expr.span, ExprX::Const(c))))
+                            Ok(mk_clip(&range, &mk_expr(ExprX::Const(c))))
                         }
                     }
                 } else {
@@ -502,9 +536,7 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                 panic!("unexpected constant: {:?}", lit)
             }
         },
-        ExprKind::Cast(source, _) => {
-            Ok(mk_ty_clip(tc.node_type(expr.hir_id), &expr_to_vir(bctx, source)?))
-        }
+        ExprKind::Cast(source, _) => Ok(mk_ty_clip(&expr_typ, &expr_to_vir(bctx, source)?)),
         ExprKind::Unary(op, arg) => {
             let varg = expr_to_vir(bctx, arg)?;
             let vop = match op {
@@ -513,7 +545,7 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                     unsupported_err!(expr.span, "unary expression", expr)
                 }
             };
-            Ok(spanned_new(expr.span, ExprX::Unary(vop, varg)))
+            Ok(mk_expr(ExprX::Unary(vop, varg)))
         }
         ExprKind::Binary(op, lhs, rhs) => {
             let vlhs = expr_to_vir(bctx, lhs)?;
@@ -554,11 +586,9 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                 BinOpKind::Rem => BinaryOp::EuclideanMod,
                 _ => unsupported_err!(expr.span, format!("binary operator {:?}", op)),
             };
-            let e = spanned_new(expr.span, ExprX::Binary(vop, vlhs, vrhs));
+            let e = mk_expr(ExprX::Binary(vop, vlhs, vrhs));
             match op.node {
-                BinOpKind::Add | BinOpKind::Sub | BinOpKind::Mul => {
-                    Ok(mk_ty_clip(tc.node_type(expr.hir_id), &e))
-                }
+                BinOpKind::Add | BinOpKind::Sub | BinOpKind::Mul => Ok(mk_ty_clip(&expr_typ, &e)),
                 BinOpKind::Div | BinOpKind::Rem => {
                     // TODO: disallow divide-by-zero in executable code?
                     match mk_range(tc.node_type(expr.hir_id)) {
@@ -577,16 +607,14 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
         }
         ExprKind::Path(QPath::Resolved(None, path)) => match path.res {
             Res::Local(id) => match tcx.hir().get(id) {
-                Node::Binding(pat) => {
-                    Ok(spanned_new(expr.span, ExprX::Var(Arc::new(pat_to_var(pat)))))
-                }
+                Node::Binding(pat) => Ok(mk_expr(ExprX::Var(Arc::new(pat_to_var(pat))))),
                 node => unsupported_err!(expr.span, format!("Path {:?}", node)),
             },
             Res::Def(def_kind, id) => {
                 match def_kind {
                     DefKind::Fn => {
                         let name = hack_get_def_name(tcx, id); // TODO: proper handling of paths
-                        Ok(spanned_new(expr.span, ExprX::Var(Arc::new(name))))
+                        Ok(mk_expr(ExprX::Var(Arc::new(name))))
                     }
                     DefKind::Ctor(_, _ctor_kind) => {
                         expr_tuple_datatype_ctor_to_vir(bctx, expr, &path.res, &[])
@@ -598,10 +626,9 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
             }
             res => unsupported_err!(expr.span, format!("Path {:?}", res)),
         },
-        ExprKind::Assign(lhs, rhs, _) => Ok(spanned_new(
-            expr.span,
-            ExprX::Assign(expr_to_vir(bctx, lhs)?, expr_to_vir(bctx, rhs)?),
-        )),
+        ExprKind::Assign(lhs, rhs, _) => {
+            Ok(mk_expr(ExprX::Assign(expr_to_vir(bctx, lhs)?, expr_to_vir(bctx, rhs)?)))
+        }
         ExprKind::Field(lhs, name) => {
             let vir_lhs = expr_to_vir(bctx, lhs)?;
             let lhs_ty = tc.node_type(lhs.hir_id);
@@ -622,22 +649,29 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                     format!("cannot find field {:?} in struct {:?}", name, datatype_path).as_str(),
                 );
                 let field_typ = mid_ty_to_vir(tcx, tcx.type_of(fielddef.did));
-                let target_typ = typ_of_node(bctx, &expr.hir_id);
-                let unbox = match (&*target_typ, &*field_typ) {
+                let unbox = match (&*expr_typ, &*field_typ) {
                     (TypX::TypParam(_), TypX::TypParam(_)) => None,
-                    (_, TypX::TypParam(_)) => Some(target_typ),
+                    (_, TypX::TypParam(_)) => Some(expr_typ.clone()),
                     _ => None,
                 };
                 (datatype_path, variant_field_ident(&variant_name, &name.as_str()), unbox)
             } else {
                 unsupported_err!(expr.span, "field_of_non_adt", expr)
             };
-            let mut vir =
-                spanned_new(expr.span, ExprX::Field { lhs: vir_lhs, datatype, field_name });
+            let field_type = match &unbox {
+                None => expr_typ.clone(),
+                Some(_) => Arc::new(TypX::Boxed(expr_typ.clone())),
+            };
+            let mut vir = spanned_typed_new(
+                expr.span,
+                &field_type,
+                ExprX::Field { lhs: vir_lhs, datatype, field_name },
+            );
             if let Some(target_typ) = unbox {
-                vir = Spanned::new(
-                    vir.span.clone(),
-                    ExprX::UnaryOpr(UnaryOpr::Unbox(target_typ), vir),
+                vir = SpannedTyped::new(
+                    &vir.span,
+                    &expr_typ,
+                    ExprX::UnaryOpr(UnaryOpr::Unbox(target_typ), vir.clone()),
                 );
             }
             Ok(vir)
@@ -646,7 +680,7 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
             let vir_cond = expr_to_vir(bctx, cond)?;
             let vir_lhs = expr_to_vir(bctx, lhs)?;
             let vir_rhs = rhs.map(|e| expr_to_vir(bctx, e)).transpose()?;
-            Ok(spanned_new(expr.span, ExprX::If(vir_cond, vir_lhs, vir_rhs)))
+            Ok(mk_expr(ExprX::If(vir_cond, vir_lhs, vir_rhs)))
         }
         ExprKind::Loop(
             Block {
@@ -702,7 +736,7 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
             let mut body = expr_to_vir(bctx, body)?;
             let header = vir::headers::read_header(&mut body)?;
             let invs = header.invariant;
-            Ok(spanned_new(expr.span, ExprX::While { cond, body, invs }))
+            Ok(mk_expr(ExprX::While { cond, body, invs }))
         }
         ExprKind::Struct(qpath, fields, spread) => {
             unsupported_unless!(spread.is_none(), "spread_in_struct_ctor");
@@ -740,15 +774,16 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                                 .as_str(),
                         );
                         let field_typ = mid_ty_to_vir(tcx, tcx.type_of(fielddef.did));
-                        let expr_typ = typ_of_node(bctx, &f.expr.hir_id);
+                        let f_expr_typ = typ_of_node(bctx, &f.expr.hir_id);
                         let mut vir = expr_to_vir(bctx, f.expr)?;
                         // TODO: deduplicate with Call?
-                        match (&*field_typ, &*expr_typ) {
+                        match (&*field_typ, &*f_expr_typ) {
                             (TypX::TypParam(_), TypX::TypParam(_)) => {} // already boxed
                             (TypX::TypParam(_), _) => {
-                                vir = Spanned::new(
-                                    vir.span.clone(),
-                                    ExprX::UnaryOpr(UnaryOpr::Box(expr_typ), vir),
+                                vir = SpannedTyped::new(
+                                    &vir.span,
+                                    &Arc::new(TypX::Boxed(f_expr_typ.clone())),
+                                    ExprX::UnaryOpr(UnaryOpr::Box(f_expr_typ.clone()), vir.clone()),
                                 );
                             }
                             _ => {}
@@ -760,7 +795,7 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                     })
                     .collect::<Result<Vec<_>, _>>()?,
             );
-            Ok(spanned_new(expr.span, ExprX::Ctor(path, variant_name, vir_fields)))
+            Ok(mk_expr(ExprX::Ctor(path, variant_name, vir_fields)))
         }
         _ => {
             unsupported_err!(expr.span, format!("expression"), expr)
