@@ -179,10 +179,10 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
     let (is_pure, term) = match &exp.x {
         ExpX::Const(c) => {
             return match c {
-                crate::sst::Constant::Bool(b) => {
+                crate::ast::Constant::Bool(b) => {
                     (true, Arc::new(TermX::App(App::Const(Constant::Bool(*b)), Arc::new(vec![]))))
                 }
-                crate::sst::Constant::Nat(n) => (
+                crate::ast::Constant::Nat(n) => (
                     true,
                     Arc::new(TermX::App(App::Const(Constant::Nat(n.clone())), Arc::new(vec![]))),
                 ),

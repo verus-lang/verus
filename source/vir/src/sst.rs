@@ -6,7 +6,7 @@
 //! SST expressions cannot contain statments.
 //! SST is designed to make the translation to AIR as straightforward as possible.
 
-use crate::ast::{BinaryOp, Path, Typ, Typs, UnaryOp, UnaryOpr};
+use crate::ast::{BinaryOp, Constant, Path, Typ, Typs, UnaryOp, UnaryOpr};
 use crate::def::Spanned;
 use air::ast::{Binders, Ident, Quant};
 use std::sync::Arc;
@@ -19,12 +19,6 @@ pub type Bnd = Arc<Spanned<BndX>>;
 pub enum BndX {
     Let(Binders<Exp>),
     Quant(Quant, Binders<Typ>, Trigs),
-}
-
-#[derive(Clone, Debug)]
-pub enum Constant {
-    Bool(bool),
-    Nat(Arc<String>),
 }
 
 pub type Exp = Arc<Spanned<ExpX>>;

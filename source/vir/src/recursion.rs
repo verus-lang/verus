@@ -1,4 +1,4 @@
-use crate::ast::{BinaryOp, Function, Ident, Params, Typ, TypX, UnaryOp, VirErr};
+use crate::ast::{BinaryOp, Constant, Function, Ident, Params, Typ, TypX, UnaryOp, VirErr};
 use crate::ast_util::err_str;
 use crate::ast_visitor::map_expr_visitor;
 use crate::context::Ctx;
@@ -6,7 +6,7 @@ use crate::def::{
     prefix_recursive, suffix_rename, Spanned, CHECK_DECREASE_INT, DECREASE_AT_ENTRY, FUEL_PARAM,
 };
 use crate::scc::Graph;
-use crate::sst::{BndX, Constant, Exp, ExpX, Exps, Stm, StmX};
+use crate::sst::{BndX, Exp, ExpX, Exps, Stm, StmX};
 use crate::sst_visitor::{exp_rename_vars, map_exp_visitor, map_stm_visitor};
 use air::ast::{Binder, Commands, Quant, Span};
 use air::ast_util::{ident_binder, str_ident};

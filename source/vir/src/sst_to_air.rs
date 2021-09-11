@@ -115,10 +115,10 @@ pub(crate) fn ctor_to_apply<'a>(
     )
 }
 
-pub(crate) fn constant_to_expr(_ctx: &Ctx, constant: &crate::sst::Constant) -> Expr {
+pub(crate) fn constant_to_expr(_ctx: &Ctx, constant: &crate::ast::Constant) -> Expr {
     match constant {
-        crate::sst::Constant::Bool(b) => Arc::new(ExprX::Const(Constant::Bool(*b))),
-        crate::sst::Constant::Nat(s) => Arc::new(ExprX::Const(Constant::Nat(s.clone()))),
+        crate::ast::Constant::Bool(b) => Arc::new(ExprX::Const(Constant::Bool(*b))),
+        crate::ast::Constant::Nat(s) => Arc::new(ExprX::Const(Constant::Nat(s.clone()))),
     }
 }
 
