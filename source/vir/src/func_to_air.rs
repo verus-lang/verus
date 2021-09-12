@@ -297,7 +297,8 @@ pub fn func_def_to_air(
                 vec_map_result(&*function.x.require, |e| crate::ast_to_sst::expr_to_exp(ctx, e))?;
             let enss =
                 vec_map_result(&*function.x.ensure, |e| crate::ast_to_sst::expr_to_exp(ctx, e))?;
-            let stm = crate::ast_to_sst::expr_to_stm(&ctx, &body, &dest)?;
+            let mut state = crate::ast_to_sst::State::new();
+            let stm = crate::ast_to_sst::expr_to_one_stm_dest(&ctx, &mut state, &body, &dest)?;
             let stm = crate::recursion::check_termination_stm(ctx, function, &stm)?;
             let (commands, snap_map) = crate::sst_to_air::body_stm_to_air(
                 ctx,

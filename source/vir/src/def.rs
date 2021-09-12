@@ -38,6 +38,7 @@ pub const PREFIX_FUEL_NAT: &str = "fuel_nat%";
 pub const PREFIX_REQUIRES: &str = "req%";
 pub const PREFIX_ENSURES: &str = "ens%";
 pub const PREFIX_RECURSIVE: &str = "rec%";
+pub const PREFIX_TEMP_VAR: &str = "tmp%";
 pub const FUEL_ID: &str = "FuelId";
 pub const FUEL_TYPE: &str = "Fuel";
 pub const ZERO: &str = "zero";
@@ -135,6 +136,10 @@ pub fn prefix_ensures(ident: &Ident) -> Ident {
 
 pub fn prefix_recursive(ident: &Ident) -> Ident {
     Arc::new(PREFIX_RECURSIVE.to_string() + ident)
+}
+
+pub fn prefix_temp_var(n: u64) -> Ident {
+    Arc::new(PREFIX_TEMP_VAR.to_string() + &n.to_string())
 }
 
 pub fn variant_ident(adt_name: &str, variant_name: &str) -> Ident {

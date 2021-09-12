@@ -98,8 +98,8 @@ pub enum UnaryOp {
     Clip(IntRange),
 }
 
-/// Special operations relevant to SMT encoding
-/// ("boxed" refers to boxing types in the SMT encoding, not the Rust Box type)
+/// More complex unary operations (requires Clone rather than Copy)
+/// (Below, "boxed" refers to boxing types in the SMT encoding, not the Rust Box type)
 #[derive(Clone, Debug)]
 pub enum UnaryOpr {
     /// coerce Typ --> Boxed(Typ)
