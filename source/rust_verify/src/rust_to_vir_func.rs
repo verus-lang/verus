@@ -139,6 +139,7 @@ pub(crate) fn check_item_fn<'tcx>(
         require: header.require,
         ensure: header.ensure,
         decrease: header.decrease,
+        custom_req_err: vattrs.custom_req_err,
         hidden: Arc::new(header.hidden),
         is_abstract: vattrs.is_abstract,
         body: if vattrs.do_verify { Some(vir_body) } else { None },

@@ -148,6 +148,8 @@ pub(crate) enum Attr {
     Opaque,
     // add manual trigger to expression inside quantifier
     Trigger(Option<Vec<u64>>),
+    // custom error string to report for precondition failures
+    CustomReqErr(String),
 }
 
 fn get_trigger_arg(span: Span, attr_tree: &AttrTree) -> Result<u64, VirErr> {
@@ -195,6 +197,9 @@ pub(crate) fn parse_attrs(attrs: &[Attribute]) -> Result<Vec<Attr>, VirErr> {
                 }
                 Some(box [AttrTree::Fun(_, arg, None)]) if arg == "pub_abstract" => {
                     v.push(Attr::Abstract)
+                }
+                Some(box [AttrTree::Fun(_, arg, Some(box [AttrTree::Fun(_, msg, None)]))]) if arg == "custom_req_err" => {
+                    v.push(Attr::CustomReqErr(msg))
                 }
                 _ => return err_span_str(span, "unrecognized verifier attribute"),
             },
@@ -256,15 +261,17 @@ pub(crate) struct VerifierAttrs {
     pub(crate) do_verify: bool,
     pub(crate) external: bool,
     pub(crate) is_abstract: bool,
+    pub(crate) custom_req_err: Option<String>,
 }
 
 pub(crate) fn get_verifier_attrs(attrs: &[Attribute]) -> Result<VerifierAttrs, VirErr> {
-    let mut vs = VerifierAttrs { do_verify: true, external: false, is_abstract: false };
+    let mut vs = VerifierAttrs { do_verify: true, external: false, is_abstract: false, custom_req_err: None };
     for attr in parse_attrs(attrs)? {
         match attr {
             Attr::NoVerify => vs.do_verify = false,
             Attr::External => vs.external = true,
             Attr::Abstract => vs.is_abstract = true,
+            Attr::CustomReqErr(s) => vs.custom_req_err = s.clone(),
             _ => {}
         }
     }

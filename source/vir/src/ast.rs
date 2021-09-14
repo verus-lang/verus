@@ -271,6 +271,8 @@ pub struct FunctionX {
     pub ensure: Exprs,
     /// Decreases clause to ensure recursive function termination
     pub decrease: Option<(Expr, Typ)>,
+    /// Custom error message to display when a pre-condition fails
+    pub custom_req_err: Option<String>,
     /// List of functions that this function wants to view as opaque
     pub hidden: Idents,
     /// For public spec functions, is_abstract == true means that the body is private
