@@ -295,9 +295,9 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
                     req_args.push(exp_to_expr(ctx, arg));
                 }
                 let e_req = Arc::new(ExprX::Apply(f_req, Arc::new(req_args)));
-                let description = match func.x.custom_req_err {
+                let description = match &func.x.custom_req_err {
                     None => Some("precondition not satisfied".to_string()),
-                    Some(s) => Some(s),
+                    Some(s) => Some(s.clone()),
                 };
                 let option_span = Arc::new(Some(Span { description, ..stm.span.clone() }));
                 stmts.push(Arc::new(StmtX::Assert(option_span, e_req)));

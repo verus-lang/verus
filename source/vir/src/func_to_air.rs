@@ -247,6 +247,12 @@ pub fn func_decl_to_air(ctx: &Ctx, function: &Function) -> Result<(Commands, Com
             }
         }
         (Mode::Exec, _) | (Mode::Proof, _) => {
+            let msg = match &function.x.custom_req_err {
+                // Standard message
+                None => Some("failed precondition".to_string()),
+                // We don't highlight the failed precondition if the programmer supplied their own msg
+                Some(_) => None,
+            };
             req_ens_to_air(
                 ctx,
                 &mut decl_commands,
@@ -256,7 +262,7 @@ pub fn func_decl_to_air(ctx: &Ctx, function: &Function) -> Result<(Commands, Com
                 &function.x.typ_params,
                 &param_typs,
                 &prefix_requires(&function.x.name),
-                &Some("failed precondition".to_string()),
+                &msg,
             )?;
             let mut ens_typs = (*param_typs).clone();
             let mut ens_params = (*function.x.params).clone();

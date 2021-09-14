@@ -198,10 +198,12 @@ pub(crate) fn parse_attrs(attrs: &[Attribute]) -> Result<Vec<Attr>, VirErr> {
                 Some(box [AttrTree::Fun(_, arg, None)]) if arg == "pub_abstract" => {
                     v.push(Attr::Abstract)
                 }
-                Some(box [AttrTree::Fun(_, arg, Some(box [AttrTree::Fun(_, msg, None)]))]) if arg == "custom_req_err" => {
-                    v.push(Attr::CustomReqErr(msg))
+                Some(box [AttrTree::Fun(_, arg, None), AttrTree::Fun(_, msg, None)]) if arg == "custom_req_err" => {
+                    v.push(Attr::CustomReqErr(msg.clone()))
                 }
-                _ => return err_span_str(span, "unrecognized verifier attribute"),
+                _ => {
+                    return err_span_str(span, "unrecognized verifier attribute")
+                }
             },
             _ => {}
         }
@@ -271,7 +273,7 @@ pub(crate) fn get_verifier_attrs(attrs: &[Attribute]) -> Result<VerifierAttrs, V
             Attr::NoVerify => vs.do_verify = false,
             Attr::External => vs.external = true,
             Attr::Abstract => vs.is_abstract = true,
-            Attr::CustomReqErr(s) => vs.custom_req_err = s.clone(),
+            Attr::CustomReqErr(s) => vs.custom_req_err = Some(s.clone()),
             _ => {}
         }
     }

@@ -14,6 +14,7 @@ pub const PERVASIVE: &str = crate::common::code_str! {
     }
 
     #[proof]
+    #[verifier(custom_req_err, "Assertion failure")]
     pub fn assert(b: bool) {
         requires(b);
         ensures(b);
