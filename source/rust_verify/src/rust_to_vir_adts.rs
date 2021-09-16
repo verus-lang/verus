@@ -1,14 +1,15 @@
 use crate::context::Context;
 use crate::rust_to_vir_base::{
-    check_generics, def_id_to_vir_path, get_mode, hack_get_def_name, is_visibility_private,
-    ty_to_vir,
+    check_generics, def_id_to_vir_path, get_mode, get_verifier_attrs, hack_get_def_name,
+    is_visibility_private, ty_to_vir,
 };
 use crate::unsupported_unless;
 use crate::util::spanned_new;
+use rustc_ast::Attribute;
 use rustc_hir::{EnumDef, Generics, ItemId, VariantData};
 use rustc_span::Span;
 use std::sync::Arc;
-use vir::ast::{DatatypeX, Ident, KrateX, Mode, Variant, VirErr};
+use vir::ast::{DatatypeTransparency, DatatypeX, Ident, KrateX, Mode, Variant, VirErr};
 use vir::ast_util::{ident_binder, str_ident};
 use vir::def::{variant_field_ident, variant_ident, variant_positional_field_ident};
 
@@ -69,6 +70,7 @@ pub fn check_item_struct<'tcx>(
     span: Span,
     id: &ItemId,
     visibility: vir::ast::Visibility,
+    attrs: &[Attribute],
     variant_data: &'tcx VariantData<'tcx>,
     generics: &'tcx Generics<'tcx>,
 ) -> Result<(), VirErr> {
@@ -77,9 +79,16 @@ pub fn check_item_struct<'tcx>(
     let path = def_id_to_vir_path(ctxt.tcx, id.def_id.to_def_id());
     let variant_name = variant_ident(&name, &name);
     let (variant, one_field_private) = check_variant_data(ctxt, &variant_name, variant_data);
+    let vattrs = get_verifier_attrs(attrs)?;
+    let transparency = if !vattrs.do_verify {
+        DatatypeTransparency::Never
+    } else if one_field_private {
+        DatatypeTransparency::WithinModule
+    } else {
+        DatatypeTransparency::Always
+    };
     let variants = Arc::new(vec![variant]);
-    vir.datatypes
-        .push(spanned_new(span, DatatypeX { path, visibility, one_field_private, variants }));
+    vir.datatypes.push(spanned_new(span, DatatypeX { path, visibility, transparency, variants }));
     Ok(())
 }
 
@@ -89,6 +98,7 @@ pub fn check_item_enum<'tcx>(
     span: Span,
     id: &ItemId,
     visibility: vir::ast::Visibility,
+    attrs: &[Attribute],
     enum_def: &'tcx EnumDef<'tcx>,
     generics: &'tcx Generics<'tcx>,
 ) -> Result<(), VirErr> {
@@ -107,9 +117,17 @@ pub fn check_item_enum<'tcx>(
         })
         .unzip();
     let one_field_private = one_field_private.into_iter().any(|x| x);
+    let vattrs = get_verifier_attrs(attrs)?;
+    let transparency = if !vattrs.do_verify {
+        DatatypeTransparency::Never
+    } else if one_field_private {
+        DatatypeTransparency::WithinModule
+    } else {
+        DatatypeTransparency::Always
+    };
     vir.datatypes.push(spanned_new(
         span,
-        DatatypeX { path, visibility, one_field_private, variants: Arc::new(variants) },
+        DatatypeX { path, visibility, transparency, variants: Arc::new(variants) },
     ));
     Ok(())
 }

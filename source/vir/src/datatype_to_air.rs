@@ -1,4 +1,4 @@
-use crate::ast::Path;
+use crate::ast::{DatatypeTransparency, Path};
 use crate::context::Ctx;
 use crate::def::{prefix_box, prefix_type_id, prefix_unbox};
 use crate::sst_to_air::{path_to_air_ident, typ_to_air};
@@ -29,27 +29,27 @@ fn datatype_to_air<'a>(ctx: &'a Ctx, datatype: &crate::ast::Datatype) -> air::as
     })
 }
 
+pub fn is_datatype_transparent(source_module: &Path, datatype: &crate::ast::Datatype) -> bool {
+    match datatype.x.transparency {
+        DatatypeTransparency::Never => false,
+        DatatypeTransparency::WithinModule => match &datatype.x.visibility.owning_module {
+            None => true,
+            Some(target) if target.len() > source_module.len() => false,
+            // Child can access private item in parent, so check if target is parent:
+            Some(target) => target[..] == source_module[..target.len()],
+        },
+        DatatypeTransparency::Always => true,
+    }
+}
+
 pub fn datatypes_to_air<'a>(
     ctx: &'a Ctx,
     source_module: &Path,
     datatypes: &crate::ast::Datatypes,
 ) -> Commands {
     let mut commands: Vec<Command> = Vec::new();
-    for dt in datatypes.iter() {
-        eprintln!(
-            "::DT {:?} owning={:?} priv_field={:?} ?={:?}",
-            dt.x.path, dt.x.visibility.owning_module, dt.x.one_field_private, source_module
-        );
-    }
     let (transparent, opaque): (Vec<_>, Vec<_>) =
-        datatypes.iter().partition(|datatype| match &datatype.x.visibility.owning_module {
-            None => true,
-            Some(target) if target.len() > source_module.len() => !datatype.x.one_field_private,
-            // Child can access private item in parent, so check if target is parent:
-            Some(target) => {
-                target[..] == source_module[..target.len()] || !datatype.x.one_field_private
-            }
-        });
+        datatypes.iter().partition(|datatype| is_datatype_transparent(source_module, *datatype));
     // Encode transparent types as air datatypes
     let transparent_air_datatypes: Vec<_> =
         transparent.iter().map(|datatype| datatype_to_air(ctx, datatype)).collect();
@@ -61,7 +61,7 @@ pub fn datatypes_to_air<'a>(
         let decl_opaq_sort = Arc::new(air::ast::DeclX::Sort(path_to_air_ident(&datatype.x.path)));
         commands.push(Arc::new(CommandX::Global(decl_opaq_sort)));
     }
-    for (_is_transparent, datatypes) in &[(true, transparent), (false, opaque)] {
+    for datatypes in &[transparent, opaque] {
         for datatype in datatypes.iter() {
             let decl_type_id = Arc::new(DeclX::Const(
                 prefix_type_id(&path_to_air_ident(&datatype.x.path)),
