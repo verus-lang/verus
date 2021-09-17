@@ -41,7 +41,7 @@ pub(crate) fn apply_range_fun(name: &str, range: &IntRange, exprs: Vec<Expr>) ->
     str_apply(name, &args)
 }
 
-pub(crate) fn typ_to_air<'a>(_ctx: &'a Ctx, typ: &Typ) -> air::ast::Typ {
+pub(crate) fn typ_to_air(_ctx: &Ctx, typ: &Typ) -> air::ast::Typ {
     match &**typ {
         TypX::Unit => str_typ(UNIT),
         TypX::Int(_) => int_typ(),
