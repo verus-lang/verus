@@ -227,6 +227,8 @@ impl Verifier {
         }
 
         let datatype_commands = vir::datatype_to_air::datatypes_to_air(
+            ctx,
+            module,
             &krate
                 .datatypes
                 .iter()

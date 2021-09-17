@@ -17,14 +17,22 @@ use air::ast_util::{
 };
 use std::sync::Arc;
 
-fn func_bind(typ_params: &Idents, params: &Params, trig_expr: &Expr, add_fuel: bool) -> Bind {
+fn func_bind<'a>(
+    ctx: &'a Ctx,
+    typ_params: &Idents,
+    params: &Params,
+    trig_expr: &Expr,
+    add_fuel: bool,
+) -> Bind {
     let mut binders: Vec<air::ast::Binder<air::ast::Typ>> = Vec::new();
     for typ_param in typ_params.iter() {
         binders.push(ident_binder(&suffix_typ_param_id(&typ_param), &str_typ(crate::def::TYPE)));
     }
     for param in params.iter() {
-        binders
-            .push(ident_binder(&suffix_local_id(&param.x.name.clone()), &typ_to_air(&param.x.typ)));
+        binders.push(ident_binder(
+            &suffix_local_id(&param.x.name.clone()),
+            &typ_to_air(ctx, &param.x.typ),
+        ));
     }
     if add_fuel {
         binders.push(ident_binder(&str_ident(FUEL_LOCAL), &str_typ(FUEL_TYPE)));
@@ -46,7 +54,8 @@ fn func_def_args(typ_params: &Idents, params: &Params) -> Vec<Expr> {
 }
 
 // (forall (...) (= (f ...) body))
-fn func_def_quant(
+fn func_def_quant<'a>(
+    ctx: &'a Ctx,
     name: &Ident,
     typ_params: &Idents,
     params: &Params,
@@ -55,7 +64,7 @@ fn func_def_quant(
     let f_args = func_def_args(typ_params, params);
     let f_app = string_apply(name, &Arc::new(f_args));
     let f_eq = Arc::new(ExprX::Binary(BinaryOp::Eq, f_app.clone(), body));
-    Ok(Arc::new(ExprX::Bind(func_bind(typ_params, params, &f_app, false), f_eq)))
+    Ok(Arc::new(ExprX::Bind(func_bind(ctx, typ_params, params, &f_app, false), f_eq)))
 }
 
 fn func_body_to_air(
@@ -111,8 +120,10 @@ fn func_body_to_air(
         let rec_f_def = ident_apply(&rec_f, &args_def);
         let eq_zero = mk_eq(&rec_f_fuel, &rec_f_zero);
         let eq_body = mk_eq(&rec_f_succ, &body_expr);
-        let bind_zero = func_bind(&function.x.typ_params, &function.x.params, &rec_f_fuel, true);
-        let bind_body = func_bind(&function.x.typ_params, &function.x.params, &rec_f_succ, true);
+        let bind_zero =
+            func_bind(ctx, &function.x.typ_params, &function.x.params, &rec_f_fuel, true);
+        let bind_body =
+            func_bind(ctx, &function.x.typ_params, &function.x.params, &rec_f_succ, true);
         let forall_zero = Arc::new(ExprX::Bind(bind_zero, eq_zero));
         let forall_body = Arc::new(ExprX::Bind(bind_body, eq_body));
         let fuel_nat_decl = Arc::new(DeclX::Const(fuel_nat_f, str_typ(FUEL_TYPE)));
@@ -124,6 +135,7 @@ fn func_body_to_air(
         rec_f_def
     };
     let e_forall = func_def_quant(
+        ctx,
         &suffix_global_id(&function.x.name),
         &function.x.typ_params,
         &function.x.params,
@@ -171,7 +183,7 @@ pub fn req_ens_to_air(
             exprs.push(loc_expr);
         }
         let body = Arc::new(ExprX::Multi(MultiOp::And, Arc::new(exprs)));
-        let e_forall = func_def_quant(&name, &typ_params, &params, body)?;
+        let e_forall = func_def_quant(ctx, &name, &typ_params, &params, body)?;
         let req_ens_axiom = Arc::new(DeclX::Axiom(e_forall));
         commands.push(Arc::new(CommandX::Global(req_ens_axiom)));
     }
@@ -182,14 +194,14 @@ pub fn req_ens_to_air(
 /// as well as any related functions symbols (e.g., recursive versions),
 /// if the function is a spec function.
 pub fn func_name_to_air(ctx: &Ctx, function: &Function) -> Result<Commands, VirErr> {
-    let mut all_typs = vec_map(&function.x.params, |param| typ_to_air(&param.x.typ));
+    let mut all_typs = vec_map(&function.x.params, |param| typ_to_air(ctx, &param.x.typ));
     for _ in function.x.typ_params.iter() {
         all_typs.insert(0, str_typ(crate::def::TYPE));
     }
     let mut commands: Vec<Command> = Vec::new();
     if let (Mode::Spec, Some((_, ret, _))) = (function.x.mode, function.x.ret.as_ref()) {
         // Declare the function symbol itself
-        let typ = typ_to_air(&ret);
+        let typ = typ_to_air(ctx, &ret);
         let name = suffix_global_id(&function.x.name);
         let decl = Arc::new(DeclX::Fun(name, Arc::new(all_typs), typ));
         commands.push(Arc::new(CommandX::Global(decl)));
@@ -199,9 +211,10 @@ pub fn func_name_to_air(ctx: &Ctx, function: &Function) -> Result<Commands, VirE
             let body_exp = crate::ast_to_sst::expr_to_exp(&ctx, &body)?;
             if crate::recursion::is_recursive_exp(ctx, &function.x.name, &body_exp) {
                 let rec_f = suffix_global_id(&prefix_recursive(&function.x.name));
-                let mut rec_typs = vec_map(&*function.x.params, |param| typ_to_air(&param.x.typ));
+                let mut rec_typs =
+                    vec_map(&*function.x.params, |param| typ_to_air(ctx, &param.x.typ));
                 rec_typs.push(str_typ(FUEL_TYPE));
-                let rec_typ = typ_to_air(&function.x.ret.as_ref().unwrap().1);
+                let rec_typ = typ_to_air(ctx, &function.x.ret.as_ref().unwrap().1);
                 let rec_decl = Arc::new(DeclX::Fun(rec_f, Arc::new(rec_typs), rec_typ));
                 commands.push(Arc::new(CommandX::Global(rec_decl)));
             }
@@ -211,7 +224,7 @@ pub fn func_name_to_air(ctx: &Ctx, function: &Function) -> Result<Commands, VirE
 }
 
 pub fn func_decl_to_air(ctx: &Ctx, function: &Function) -> Result<(Commands, Commands), VirErr> {
-    let mut all_typs = vec_map(&function.x.params, |param| typ_to_air(&param.x.typ));
+    let mut all_typs = vec_map(&function.x.params, |param| typ_to_air(ctx, &param.x.typ));
     let param_typs = Arc::new(all_typs.clone());
     for _ in function.x.typ_params.iter() {
         all_typs.insert(0, str_typ(crate::def::TYPE));
@@ -239,7 +252,7 @@ pub fn func_decl_to_air(ctx: &Ctx, function: &Function) -> Result<(Commands, Com
             if let Some(expr) = typ_invariant(&ret, &f_app, true) {
                 // (axiom (forall (...) expr))
                 let e_forall = Arc::new(ExprX::Bind(
-                    func_bind(&function.x.typ_params, &function.x.params, &f_app, false),
+                    func_bind(ctx, &function.x.typ_params, &function.x.params, &f_app, false),
                     expr,
                 ));
                 let inv_axiom = Arc::new(DeclX::Axiom(e_forall));
@@ -269,7 +282,7 @@ pub fn func_decl_to_air(ctx: &Ctx, function: &Function) -> Result<(Commands, Com
             let mut ens_typing_invs: Vec<Expr> = Vec::new();
             if let Some((name, typ, mode)) = &function.x.ret {
                 let param = ParamX { name: name.clone(), typ: typ.clone(), mode: *mode };
-                ens_typs.push(typ_to_air(&typ));
+                ens_typs.push(typ_to_air(ctx, &typ));
                 ens_params.push(Spanned::new(function.span.clone(), param));
                 if let Some(expr) = typ_invariant(&typ, &ident_var(&suffix_local_id(&name)), true) {
                     ens_typing_invs.push(expr);

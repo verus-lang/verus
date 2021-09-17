@@ -23,3 +23,17 @@ test_verify_with_pervasive! {
         }
     } => Ok(())
 }
+
+test_verify_with_pervasive! {
+    #[test] test_mod_adt_no_verify code! {
+        #[verifier(no_verify)]
+        #[derive(PartialEq, Eq)]
+        pub struct Car {
+            pub four_doors: bool,
+        }
+
+        fn mod_adt_no_verify() {
+            assert(!Car { four_doors: false }.four_doors);
+        }
+    } => Err(err) => assert_eq!(err.len(), 0)
+}

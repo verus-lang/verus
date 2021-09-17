@@ -287,11 +287,19 @@ pub type Fields = Binders<(Typ, Mode)>;
 pub type Variant = Binder<Fields>;
 pub type Variants = Binders<Fields>;
 
+#[derive(Debug)]
+pub enum DatatypeTransparency {
+    Never,
+    WithinModule,
+    Always,
+}
+
 /// struct or enum
 #[derive(Debug)]
 pub struct DatatypeX {
     pub path: Path,
     pub visibility: Visibility,
+    pub transparency: DatatypeTransparency,
     pub variants: Variants,
 }
 pub type Datatype = Arc<Spanned<DatatypeX>>;

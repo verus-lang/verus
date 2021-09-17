@@ -41,7 +41,7 @@ pub(crate) fn apply_range_fun(name: &str, range: &IntRange, exprs: Vec<Expr>) ->
     str_apply(name, &args)
 }
 
-pub(crate) fn typ_to_air(typ: &Typ) -> air::ast::Typ {
+pub(crate) fn typ_to_air(_ctx: &Ctx, typ: &Typ) -> air::ast::Typ {
     match &**typ {
         TypX::Unit => str_typ(UNIT),
         TypX::Int(_) => int_typ(),
@@ -262,7 +262,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp) -> Expr {
                     Quant::Exists => mk_and(&vec![inv, expr]),
                 };
                 let binders = vec_map(&*binders, |b| {
-                    Arc::new(BinderX { name: suffix_local_id(&b.name), a: typ_to_air(&b.a) })
+                    Arc::new(BinderX { name: suffix_local_id(&b.name), a: typ_to_air(ctx, &b.a) })
                 });
                 let triggers =
                     vec_map(&*trigs, |trig| Arc::new(vec_map(trig, |x| exp_to_expr(ctx, x))));
@@ -380,9 +380,9 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
         }
         StmX::Decl { ident, typ, mutable, init: _ } => {
             state.local_shared.push(if *mutable {
-                Arc::new(DeclX::Var(suffix_local_id(&ident), typ_to_air(&typ)))
+                Arc::new(DeclX::Var(suffix_local_id(&ident), typ_to_air(ctx, &typ)))
             } else {
-                Arc::new(DeclX::Const(suffix_local_id(&ident), typ_to_air(&typ)))
+                Arc::new(DeclX::Const(suffix_local_id(&ident), typ_to_air(ctx, &typ)))
             });
             if ctx.debug {
                 state
@@ -638,13 +638,15 @@ pub fn body_stm_to_air(
             .push(Arc::new(DeclX::Const(suffix_typ_param_id(&x), str_typ(crate::def::TYPE))));
     }
     for param in params.iter() {
-        local_shared
-            .push(Arc::new(DeclX::Const(suffix_local_id(&param.x.name), typ_to_air(&param.x.typ))));
+        local_shared.push(Arc::new(DeclX::Const(
+            suffix_local_id(&param.x.name),
+            typ_to_air(ctx, &param.x.typ),
+        )));
     }
     match ret {
         None => {}
         Some((x, typ, _)) => {
-            local_shared.push(Arc::new(DeclX::Const(suffix_local_id(&x), typ_to_air(&typ))));
+            local_shared.push(Arc::new(DeclX::Const(suffix_local_id(&x), typ_to_air(ctx, &typ))));
         }
     }
 

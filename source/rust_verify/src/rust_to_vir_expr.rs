@@ -10,7 +10,7 @@ use crate::util::{
 };
 use crate::{unsupported, unsupported_err, unsupported_err_unless, unsupported_unless};
 use air::ast::{Binder, BinderX, Ident, Quant};
-use rustc_ast::{Attribute, LitKind};
+use rustc_ast::{Attribute, BorrowKind, LitKind, Mutability};
 use rustc_hir::def::{DefKind, Res};
 use rustc_hir::{
     Arm, BinOpKind, BindingAnnotation, Block, Destination, Expr, ExprKind, Local, LoopSource,
@@ -537,16 +537,20 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
             }
         },
         ExprKind::Cast(source, _) => Ok(mk_ty_clip(&expr_typ, &expr_to_vir(bctx, source)?)),
-        ExprKind::Unary(op, arg) => {
-            let varg = expr_to_vir(bctx, arg)?;
-            let vop = match op {
-                UnOp::Not => UnaryOp::Not,
-                _ => {
-                    unsupported_err!(expr.span, "unary expression", expr)
-                }
-            };
-            Ok(mk_expr(ExprX::Unary(vop, varg)))
-        }
+        ExprKind::AddrOf(BorrowKind::Ref, Mutability::Not, e) => expr_to_vir_inner(bctx, e),
+        ExprKind::Unary(op, arg) => match op {
+            UnOp::Not => {
+                let varg = expr_to_vir(bctx, arg)?;
+                Ok(mk_expr(ExprX::Unary(UnaryOp::Not, varg)))
+            }
+            UnOp::Deref => match bctx.types.node_type(arg.hir_id).kind() {
+                TyKind::Ref(_, _tys, rustc_ast::Mutability::Not) => expr_to_vir_inner(bctx, arg),
+                _ => unsupported_err!(expr.span, "dereferencing this type is unsupported", expr),
+            },
+            _ => {
+                unsupported_err!(expr.span, "unary expression", expr)
+            }
+        },
         ExprKind::Binary(op, lhs, rhs) => {
             let vlhs = expr_to_vir(bctx, lhs)?;
             let vrhs = expr_to_vir(bctx, rhs)?;

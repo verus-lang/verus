@@ -64,17 +64,23 @@ pub(crate) fn ident_to_var<'tcx>(ident: &Ident) -> String {
     ident.to_string()
 }
 
-pub(crate) fn mk_visibility<'tcx>(
-    owning_module: &Option<Path>,
-    vis: &Visibility<'tcx>,
-) -> vir::ast::Visibility {
-    let is_private = match vis.node {
+pub(crate) fn is_visibility_private(vis_kind: &VisibilityKind) -> bool {
+    match vis_kind {
         VisibilityKind::Inherited => true,
         VisibilityKind::Public => false,
         VisibilityKind::Crate(_) => false,
         VisibilityKind::Restricted { .. } => unsupported!("restricted visibility"),
-    };
-    vir::ast::Visibility { owning_module: owning_module.clone(), is_private }
+    }
+}
+
+pub(crate) fn mk_visibility<'tcx>(
+    owning_module: &Option<Path>,
+    vis: &Visibility<'tcx>,
+) -> vir::ast::Visibility {
+    vir::ast::Visibility {
+        owning_module: owning_module.clone(),
+        is_private: is_visibility_private(&vis.node),
+    }
 }
 
 #[derive(Debug)]
@@ -313,11 +319,11 @@ pub(crate) fn mk_range<'tcx>(ty: rustc_middle::ty::Ty<'tcx>) -> IntRange {
 }
 
 // TODO review and cosolidate type translation, e.g. with `ty_to_vir`, if possible
-pub(crate) fn mid_ty_to_vir<'tcx>(tcx: TyCtxt<'tcx>, ty: rustc_middle::ty::Ty) -> Typ {
-    let typ_x = match ty.kind() {
-        TyKind::Tuple(_) if ty.tuple_fields().count() == 0 => TypX::Unit,
-        TyKind::Bool => TypX::Bool,
-        TyKind::Adt(AdtDef { did, .. }, _) => {
+pub(crate) fn mid_ty_to_vir<'tcx>(tcx: TyCtxt<'tcx>, ty: rustc_middle::ty::Ty<'tcx>) -> Typ {
+    match ty.kind() {
+        TyKind::Tuple(_) if ty.tuple_fields().count() == 0 => Arc::new(TypX::Unit),
+        TyKind::Bool => Arc::new(TypX::Bool),
+        TyKind::Adt(AdtDef { did, .. }, _) => Arc::new({
             let s = ty.to_string();
             // TODO use lang items instead of string comparisons
             if s == crate::typecheck::BUILTIN_INT {
@@ -327,17 +333,20 @@ pub(crate) fn mid_ty_to_vir<'tcx>(tcx: TyCtxt<'tcx>, ty: rustc_middle::ty::Ty) -
             } else {
                 def_id_to_ty_path(tcx, *did)
             }
-        }
-        TyKind::Uint(_) | TyKind::Int(_) => TypX::Int(mk_range(ty)),
-        TyKind::Param(param) => TypX::TypParam(Arc::new(param.name.to_string())),
+        }),
+        TyKind::Ref(_, tys, rustc_ast::Mutability::Not) => mid_ty_to_vir(tcx, tys),
+        TyKind::Uint(_) | TyKind::Int(_) => Arc::new(TypX::Int(mk_range(ty))),
+        TyKind::Param(param) => Arc::new(TypX::TypParam(Arc::new(param.name.to_string()))),
         _ => {
             unsupported!(format!("type {:?}", ty))
         }
-    };
-    Arc::new(typ_x)
+    }
 }
 
-pub(crate) fn mid_ty_to_vir_opt<'tcx>(tcx: TyCtxt<'tcx>, ty: rustc_middle::ty::Ty) -> Option<Typ> {
+pub(crate) fn mid_ty_to_vir_opt<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    ty: rustc_middle::ty::Ty<'tcx>,
+) -> Option<Typ> {
     match ty.kind() {
         TyKind::Never => None,
         TyKind::Tuple(_) if ty.tuple_fields().count() == 0 => None,
@@ -361,8 +370,8 @@ pub(crate) fn _ty_resolved_path_to_debug_path(_tcx: TyCtxt<'_>, ty: &Ty) -> Stri
 
 pub(crate) fn ty_to_vir<'tcx>(tcx: TyCtxt<'tcx>, ty: &Ty) -> Typ {
     let Ty { hir_id: _, kind, span } = ty;
-    let typ_x = match kind {
-        rustc_hir::TyKind::Path(QPath::Resolved(None, path)) => match path.res {
+    match kind {
+        rustc_hir::TyKind::Path(QPath::Resolved(None, path)) => Arc::new(match path.res {
             Res::PrimTy(PrimTy::Bool) => TypX::Bool,
             Res::PrimTy(PrimTy::Uint(UintTy::U8)) => TypX::Int(IntRange::U(8)),
             Res::PrimTy(PrimTy::Uint(UintTy::U16)) => TypX::Int(IntRange::U(16)),
@@ -394,12 +403,15 @@ pub(crate) fn ty_to_vir<'tcx>(tcx: TyCtxt<'tcx>, ty: &Ty) -> Typ {
             _ => {
                 unsupported!(format!("type {:#?} {:?} {:?}", kind, path.res, span))
             }
-        },
+        }),
+        rustc_hir::TyKind::Rptr(
+            _,
+            rustc_hir::MutTy { ty: tys, mutbl: rustc_ast::Mutability::Not },
+        ) => ty_to_vir(tcx, tys),
         _ => {
             unsupported!(format!("type {:#?} {:?}", kind, span))
         }
-    };
-    Arc::new(typ_x)
+    }
 }
 
 pub(crate) struct BodyCtxt<'tcx> {
@@ -410,6 +422,23 @@ pub(crate) struct BodyCtxt<'tcx> {
 
 pub(crate) fn typ_of_node<'tcx>(bctx: &BodyCtxt<'tcx>, id: &HirId) -> Typ {
     mid_ty_to_vir(bctx.ctxt.tcx, bctx.types.node_type(*id))
+}
+
+pub(crate) fn implements_structural<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    ty: &'tcx rustc_middle::ty::TyS<'tcx>,
+) -> bool {
+    let structural_def_id = tcx
+        .get_diagnostic_item(rustc_span::Symbol::intern("builtin::Structural"))
+        .expect("structural trait is not defined");
+    let substs_ref = tcx.mk_substs([].iter());
+    let ty_impls_structural = tcx.type_implements_trait((
+        structural_def_id,
+        ty,
+        substs_ref,
+        rustc_middle::ty::ParamEnv::empty(),
+    ));
+    ty_impls_structural
 }
 
 // Do equality operations on these operands translate into the SMT solver's == operation?
@@ -424,20 +453,8 @@ pub(crate) fn is_smt_equality<'tcx>(
         (TypX::Bool, TypX::Bool) => true,
         (TypX::Int(_), TypX::Int(_)) => true,
         (TypX::Path(_), TypX::Path(_)) if types_equal(&t1, &t2) => {
-            let structural_def_id = bctx
-                .ctxt
-                .tcx
-                .get_diagnostic_item(rustc_span::Symbol::intern("builtin::Structural"))
-                .expect("structural trait is not defined");
             let ty = bctx.types.node_type(*id1);
-            let substs_ref = bctx.ctxt.tcx.mk_substs([].iter());
-            let ty_impls_structural = bctx.ctxt.tcx.type_implements_trait((
-                structural_def_id,
-                ty,
-                substs_ref,
-                rustc_middle::ty::ParamEnv::empty(),
-            ));
-            ty_impls_structural
+            implements_structural(bctx.ctxt.tcx, &ty)
         }
         _ => false,
     }
