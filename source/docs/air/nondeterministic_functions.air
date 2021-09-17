@@ -1,0 +1,23 @@
+(declare-sort Vec)
+
+(declare-fun capacity (Vec) Int)
+
+(check-valid
+ (declare-const v@ Vec)
+ (declare-const c1@ Int)
+ (declare-const c2@ Int)
+ (block
+  (assume
+   (= c1@ (capacity v@))
+  )
+  (assume
+   (= c2@ (capacity v@))
+  )
+  (block
+   (assert
+    "000"
+    (= c1@ c2@)
+   )
+  )
+ )
+)
