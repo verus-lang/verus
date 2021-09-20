@@ -37,6 +37,14 @@ pub(crate) fn def_id_to_ty_path<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> TypX 
     TypX::Path(def_id_to_vir_path(tcx, def_id))
 }
 
+pub(crate) fn def_to_path_ident<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> vir::ast::Ident {
+    let def_path = tcx.def_path(def_id);
+    match def_path.data.last().expect("unexpected empty impl path").data {
+        rustc_hir::definitions::DefPathData::ValueNs(name) => Arc::new(name.to_string()),
+        _ => panic!("unexpected name of impl"),
+    }
+}
+
 // TODO: proper handling of def_ids
 // use https://doc.rust-lang.org/stable/nightly-rustc/rustc_middle/ty/context/struct.TyCtxt.html#method.lang_items ?
 pub(crate) fn hack_get_def_name<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> String {
@@ -391,6 +399,7 @@ pub(crate) fn ty_to_vir<'tcx>(tcx: TyCtxt<'tcx>, ty: &Ty) -> Typ {
                 }
             }
             Res::Def(DefKind::Enum, def_id) => def_id_to_ty_path(tcx, def_id),
+            Res::SelfTy(None, Some((impl_def_id, false))) => def_id_to_ty_path(tcx, impl_def_id),
             _ => {
                 unsupported!(format!("type {:#?} {:?} {:?}", kind, path.res, span))
             }

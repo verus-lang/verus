@@ -1,7 +1,7 @@
 use crate::context::Context;
 use crate::rust_to_vir_base::{
-    check_generics, def_id_to_vir_path, get_fuel, get_mode, get_var_mode, get_verifier_attrs,
-    ident_to_var, ty_to_vir, BodyCtxt,
+    check_generics, def_id_to_vir_path, def_to_path_ident, get_fuel, get_mode, get_var_mode,
+    get_verifier_attrs, ident_to_var, ty_to_vir, BodyCtxt,
 };
 use crate::rust_to_vir_expr::{expr_to_vir, pat_to_var};
 use crate::util::{err_span_str, err_span_string, spanned_new, unsupported_err_span};
@@ -12,7 +12,7 @@ use rustc_middle::ty::TyCtxt;
 use rustc_span::symbol::Ident;
 use rustc_span::Span;
 use std::sync::Arc;
-use vir::ast::{FunctionX, KrateX, Mode, ParamX, Typ, VirErr};
+use vir::ast::{FunctionX, KrateX, Mode, ParamX, Typ, TypX, VirErr};
 use vir::def::RETURN_VALUE;
 
 pub(crate) fn body_to_vir<'tcx>(
@@ -36,6 +36,8 @@ fn check_fn_decl<'tcx>(
     unsupported_unless!(!c_variadic, "c_variadic");
     match implicit_self {
         rustc_hir::ImplicitSelfKind::None => {}
+        rustc_hir::ImplicitSelfKind::Imm => {}
+        rustc_hir::ImplicitSelfKind::ImmRef => {}
         _ => unsupported!("implicit_self"),
     }
     match output {
@@ -50,7 +52,7 @@ fn check_fn_decl<'tcx>(
 pub(crate) fn check_item_fn<'tcx>(
     ctxt: &Context<'tcx>,
     vir: &mut KrateX,
-    _self_path: Option<&'tcx rustc_hir::Path<'tcx>>,
+    self_path: Option<vir::ast::Path>,
     id: rustc_span::def_id::DefId,
     visibility: vir::ast::Visibility,
     attrs: &[Attribute],
@@ -58,7 +60,13 @@ pub(crate) fn check_item_fn<'tcx>(
     generics: &'tcx Generics,
     body_id: &BodyId,
 ) -> Result<(), VirErr> {
-    let path = def_id_to_vir_path(ctxt.tcx, id);
+    let path = if let Some(self_path) = &self_path {
+        let mut full_path = (**self_path).clone();
+        Arc::make_mut(&mut full_path.segments).push(def_to_path_ident(ctxt.tcx, id));
+        Arc::new(full_path)
+    } else {
+        def_id_to_vir_path(ctxt.tcx, id)
+    };
     let mode = get_mode(Mode::Exec, attrs);
     let ret_typ_mode = match sig {
         FnSig {
@@ -84,7 +92,29 @@ pub(crate) fn check_item_fn<'tcx>(
     for (param, input) in params.iter().zip(sig.decl.inputs.iter()) {
         let Param { hir_id, pat, ty_span: _, span } = param;
         let name = Arc::new(pat_to_var(pat));
-        let typ = ty_to_vir(ctxt.tcx, input);
+        fn is_self_or_self_ref(span: Span, ty: &rustc_hir::Ty) -> Result<bool, VirErr> {
+            match ty.kind {
+                rustc_hir::TyKind::Rptr(
+                    _,
+                    rustc_hir::MutTy { ty: rty, mutbl: rustc_hir::Mutability::Not, .. },
+                ) => is_self_or_self_ref(span, rty),
+                rustc_hir::TyKind::Path(rustc_hir::QPath::Resolved(None, path)) => match path.res {
+                    rustc_hir::def::Res::SelfTy(Some(_), _impl_def_id) => {
+                        unsupported_err!(span, "trait self", ty)
+                    }
+                    rustc_hir::def::Res::SelfTy(None, _) => Ok(true),
+                    _ => Ok(false),
+                },
+                _ => Ok(false),
+            }
+        }
+        let typ = if is_self_or_self_ref(*span, &input)? {
+            Arc::new(TypX::Path(
+                self_path.as_ref().expect("a param is Self, so this must be an impl").clone(),
+            ))
+        } else {
+            ty_to_vir(ctxt.tcx, input)
+        };
         let mode = get_var_mode(mode, ctxt.tcx.hir().attrs(*hir_id));
         let vir_param = spanned_new(*span, ParamX { name, typ, mode });
         vir_params.push(vir_param);
