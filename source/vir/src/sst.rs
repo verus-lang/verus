@@ -27,8 +27,8 @@ pub type Exps = Arc<Vec<Exp>>;
 pub enum ExpX {
     Const(Constant),
     Var(Ident),
-    Old(Ident, Ident),       // used only during sst_to_air to generate AIR Old
-    Call(Ident, Typs, Exps), // call to spec function
+    Old(Ident, Ident), // used only during sst_to_air to generate AIR Old
+    Call(/* recursive: */ bool, Path, Typs, Exps), // call to spec function
     Ctor(Path, Ident, Binders<Exp>),
     Field { lhs: Exp, datatype: Path, field_name: Ident },
     Unary(UnaryOp, Exp),
@@ -48,7 +48,7 @@ pub type Stm = Arc<Spanned<StmX>>;
 pub type Stms = Arc<Vec<Stm>>;
 #[derive(Debug)]
 pub enum StmX {
-    Call(Ident, Typs, Exps, Option<Dest>), // call to exec/proof function
+    Call(Path, Typs, Exps, Option<Dest>), // call to exec/proof function
     Assert(Exp),
     Assume(Exp),
     Decl {
@@ -58,7 +58,7 @@ pub enum StmX {
         init: bool,
     },
     Assign(Exp, Exp),
-    Fuel(Ident, u32),
+    Fuel(Path, u32),
     If(Exp, Stm, Option<Stm>),
     While {
         cond: Exp,

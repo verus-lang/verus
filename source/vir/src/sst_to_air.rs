@@ -4,9 +4,10 @@ use crate::ast::{
 use crate::ast_util::path_to_string;
 use crate::context::Ctx;
 use crate::def::{
-    prefix_ensures, prefix_fuel_id, prefix_requires, prefix_type_id, suffix_global_id,
-    suffix_local_id, suffix_typ_param_id, SnapPos, Spanned, FUEL_BOOL, FUEL_BOOL_DEFAULT,
-    FUEL_DEFAULTS, FUEL_ID, FUEL_PARAM, FUEL_TYPE, POLY, SNAPSHOT_CALL, SUCC, UNIT,
+    prefix_ensures, prefix_fuel_id, prefix_recursive, prefix_requires, prefix_type_id,
+    suffix_global_id, suffix_local_id, suffix_typ_param_id, SnapPos, Spanned, FUEL_BOOL,
+    FUEL_BOOL_DEFAULT, FUEL_DEFAULTS, FUEL_ID, FUEL_PARAM, FUEL_TYPE, POLY, SNAPSHOT_CALL, SUCC,
+    UNIT,
 };
 use crate::sst::{BndX, Dest, Exp, ExpX, Stm, StmX};
 use crate::util::vec_map;
@@ -134,8 +135,10 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp) -> Expr {
         }
         ExpX::Var(x) => string_var(&suffix_local_id(x)),
         ExpX::Old(span, x) => Arc::new(ExprX::Old(span.clone(), suffix_local_id(x))),
-        ExpX::Call(x, typs, args) => {
-            let name = suffix_global_id(&x);
+        ExpX::Call(rec, x, typs, args) => {
+            let air_ident = path_to_air_ident(&x);
+            let name =
+                suffix_global_id(&if *rec { prefix_recursive(&air_ident) } else { air_ident });
             let mut exprs: Vec<Expr> = vec_map(typs, typ_to_id);
             for arg in args.iter() {
                 exprs.push(exp_to_expr(ctx, arg));
@@ -289,7 +292,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
             let mut stmts: Vec<Stmt> = Vec::new();
             let func = &ctx.func_map[x];
             if func.x.require.len() > 0 {
-                let f_req = prefix_requires(&func.x.name);
+                let f_req = prefix_requires(&path_to_air_ident(&func.x.path));
                 let mut req_args = vec_map(typs, typ_to_id);
                 for arg in args.iter() {
                     req_args.push(exp_to_expr(ctx, arg));
@@ -354,7 +357,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
                 }
             }
             if func.x.ensure.len() > 0 {
-                let f_ens = prefix_ensures(&func.x.name);
+                let f_ens = prefix_ensures(&path_to_air_ident(&func.x.path));
                 let e_ens = Arc::new(ExprX::Apply(f_ens, Arc::new(ens_args)));
                 stmts.push(Arc::new(StmtX::Assume(e_ens)));
             }
@@ -563,7 +566,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
             let mut stmts: Vec<Stmt> = Vec::new();
             if *fuel >= 1 {
                 // (assume (fuel_bool fuel%f))
-                let id_fuel = prefix_fuel_id(&x);
+                let id_fuel = prefix_fuel_id(&path_to_air_ident(&x));
                 let expr_fuel_bool = str_apply(&FUEL_BOOL, &vec![ident_var(&id_fuel)]);
                 stmts.push(Arc::new(StmtX::Assume(expr_fuel_bool)));
             }
@@ -573,7 +576,10 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
                 for _ in 0..*fuel - 1 {
                     added_fuel = str_apply(SUCC, &vec![added_fuel]);
                 }
-                let eq = mk_eq(&ident_var(&crate::def::prefix_fuel_nat(&x)), &added_fuel);
+                let eq = mk_eq(
+                    &ident_var(&crate::def::prefix_fuel_nat(&path_to_air_ident(&x))),
+                    &added_fuel,
+                );
                 let binder = ident_binder(&str_ident(FUEL_PARAM), &str_typ(FUEL_TYPE));
                 stmts.push(Arc::new(StmtX::Assume(mk_exists(&vec![binder], &vec![], &eq))));
             }
@@ -588,7 +594,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
     }
 }
 
-fn set_fuel(local: &mut Vec<Decl>, hidden: &Vec<Ident>) {
+fn set_fuel(local: &mut Vec<Decl>, hidden: &Vec<Path>) {
     let fuel_expr = if hidden.len() == 0 {
         str_var(&FUEL_DEFAULTS)
     } else {
@@ -604,7 +610,7 @@ fn set_fuel(local: &mut Vec<Decl>, hidden: &Vec<Ident>) {
 
         // ... || id == hidden1 || id == hidden2 || ...
         for hide in hidden {
-            let x_hide = ident_var(&prefix_fuel_id(&hide));
+            let x_hide = ident_var(&prefix_fuel_id(&path_to_air_ident(hide)));
             disjuncts.push(Arc::new(ExprX::Binary(air::ast::BinaryOp::Eq, x_id.clone(), x_hide)));
         }
 
@@ -624,7 +630,7 @@ pub fn body_stm_to_air(
     typ_params: &Idents,
     params: &Params,
     ret: &Option<(Ident, Typ, Mode)>,
-    hidden: &Vec<Ident>,
+    hidden: &Vec<Path>,
     reqs: &Vec<Exp>,
     enss: &Vec<Exp>,
     stm: &Stm,

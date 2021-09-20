@@ -1,7 +1,7 @@
 use crate::context::Context;
 use crate::rust_to_vir_base::{
-    check_generics, get_fuel, get_mode, get_var_mode, get_verifier_attrs, ident_to_var, ty_to_vir,
-    BodyCtxt,
+    check_generics, def_id_to_vir_path, get_fuel, get_mode, get_var_mode, get_verifier_attrs,
+    ident_to_var, ty_to_vir, BodyCtxt,
 };
 use crate::rust_to_vir_expr::{expr_to_vir, pat_to_var};
 use crate::util::{err_span_str, err_span_string, spanned_new, unsupported_err_span};
@@ -50,14 +50,15 @@ fn check_fn_decl<'tcx>(
 pub(crate) fn check_item_fn<'tcx>(
     ctxt: &Context<'tcx>,
     vir: &mut KrateX,
-    id: Ident,
+    _self_path: Option<&'tcx rustc_hir::Path<'tcx>>,
+    id: rustc_span::def_id::DefId,
     visibility: vir::ast::Visibility,
     attrs: &[Attribute],
     sig: &'tcx FnSig<'tcx>,
     generics: &'tcx Generics,
     body_id: &BodyId,
 ) -> Result<(), VirErr> {
-    let name = Arc::new(ident_to_var(&id));
+    let path = def_id_to_vir_path(ctxt.tcx, id);
     let mode = get_mode(Mode::Exec, attrs);
     let ret_typ_mode = match sig {
         FnSig {
@@ -74,7 +75,7 @@ pub(crate) fn check_item_fn<'tcx>(
     let vattrs = get_verifier_attrs(attrs)?;
     if vattrs.external {
         let mut erasure_info = ctxt.erasure_info.borrow_mut();
-        erasure_info.external_functions.push(name);
+        erasure_info.external_functions.push(path);
         return Ok(());
     }
     let body = &ctxt.krate.bodies[body_id];
@@ -129,7 +130,7 @@ pub(crate) fn check_item_fn<'tcx>(
         _ => panic!("internal error: ret_typ"),
     };
     let func = FunctionX {
-        name,
+        path,
         visibility,
         mode,
         fuel,
@@ -152,7 +153,7 @@ pub(crate) fn check_item_fn<'tcx>(
 pub(crate) fn check_foreign_item_fn<'tcx>(
     ctxt: &Context<'tcx>,
     vir: &mut KrateX,
-    id: Ident,
+    id: rustc_span::def_id::DefId,
     span: Span,
     visibility: vir::ast::Visibility,
     attrs: &[Attribute],
@@ -172,10 +173,10 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
         let vir_param = spanned_new(param.span, ParamX { name, typ, mode });
         vir_params.push(vir_param);
     }
-    let name = Arc::new(ident_to_var(&id));
+    let path = def_id_to_vir_path(ctxt.tcx, id);
     let params = Arc::new(vir_params);
     let func = FunctionX {
-        name,
+        path,
         visibility,
         fuel,
         mode,

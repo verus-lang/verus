@@ -1,11 +1,11 @@
-use crate::ast::{Datatype, Expr, ExprX, Function, Ident, Krate, Mode, Path, VirErr};
+use crate::ast::{Datatype, Expr, ExprX, Function, Krate, Mode, Path, VirErr};
 use crate::ast_util::err_string;
 use crate::ast_visitor::map_expr_visitor;
 use crate::datatype_to_air::is_datatype_transparent;
 use std::collections::HashMap;
 
 struct Ctxt {
-    pub(crate) funs: HashMap<Ident, Function>,
+    pub(crate) funs: HashMap<Path, Function>,
     pub(crate) dts: HashMap<Path, Datatype>,
 }
 
@@ -71,7 +71,7 @@ pub fn check_crate(krate: &Krate) -> Result<(), VirErr> {
     let funs = krate
         .functions
         .iter()
-        .map(|function| (function.x.name.clone(), function.clone()))
+        .map(|function| (function.x.path.clone(), function.clone()))
         .collect();
     let dts = krate
         .datatypes

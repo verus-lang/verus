@@ -1,3 +1,4 @@
+use crate::ast_util::str_ident;
 use air::ast::{Ident, Span};
 use std::fmt::Debug;
 use std::sync::Arc;
@@ -58,7 +59,6 @@ pub const NAT_CLIP: &str = "nClip";
 pub const U_INV: &str = "uInv";
 pub const I_INV: &str = "iInv";
 pub const ARCH_SIZE: &str = "SZ";
-pub const CHECK_DECREASE_INT: &str = "check_decrease_int";
 pub const DECREASE_AT_ENTRY: &str = "decrease%init";
 pub const SNAPSHOT_CALL: &str = "CALL";
 pub const UNIT: &str = "Unit";
@@ -81,6 +81,10 @@ pub const TYPE_ID_SINT: &str = "SINT";
 pub const PREFIX_TYPE_ID: &str = "TYPE%";
 pub const HAS_TYPE: &str = "has_type";
 pub const VARIANT_FIELD_SEPARATOR: &str = "/";
+
+pub fn check_decrease_int() -> crate::ast::Path {
+    Arc::new(vec![str_ident("check_decrease_int")])
+}
 
 pub fn suffix_global_id(ident: &Ident) -> Ident {
     Arc::new(ident.to_string() + SUFFIX_GLOBAL)

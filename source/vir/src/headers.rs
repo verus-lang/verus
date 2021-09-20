@@ -1,10 +1,10 @@
-use crate::ast::{Expr, ExprX, Exprs, HeaderExprX, Ident, Stmt, StmtX, Typ, VirErr};
+use crate::ast::{Expr, ExprX, Exprs, HeaderExprX, Ident, Path, Stmt, StmtX, Typ, VirErr};
 use crate::ast_util::err_str;
 use std::sync::Arc;
 
 #[derive(Clone, Debug)]
 pub struct Header {
-    pub hidden: Vec<Ident>,
+    pub hidden: Vec<Path>,
     pub require: Exprs,
     pub ensure_id_typ: Option<(Ident, Typ)>,
     pub ensure: Exprs,
@@ -13,7 +13,7 @@ pub struct Header {
 }
 
 fn read_header_block(block: &mut Vec<Stmt>) -> Result<Header, VirErr> {
-    let mut hidden: Vec<Ident> = Vec::new();
+    let mut hidden: Vec<Path> = Vec::new();
     let mut require: Option<Exprs> = None;
     let mut ensure: Option<(Option<(Ident, Typ)>, Exprs)> = None;
     let mut invariant: Option<Exprs> = None;

@@ -18,13 +18,15 @@ where
         ExpX::Const(_) => f(exp, map),
         ExpX::Var(_) => f(exp, map),
         ExpX::Old(_, _) => f(exp, map),
-        ExpX::Call(x, typs, es) => {
+        ExpX::Call(rec, x, typs, es) => {
             let mut exps: Vec<Exp> = Vec::new();
             for e in es.iter() {
                 exps.push(map_exp_visitor_bind(e, map, f)?);
             }
-            let exp =
-                Spanned::new(exp.span.clone(), ExpX::Call(x.clone(), typs.clone(), Arc::new(exps)));
+            let exp = Spanned::new(
+                exp.span.clone(),
+                ExpX::Call(*rec, x.clone(), typs.clone(), Arc::new(exps)),
+            );
             f(&exp, map)
         }
         ExpX::Ctor(path, ident, binders) => {

@@ -8,7 +8,7 @@ use vir::ast::Mode;
 pub struct ErasureInfo {
     pub(crate) resolved_calls: Vec<(SpanData, ResolvedCall)>,
     pub(crate) condition_modes: Vec<(SpanData, Mode)>,
-    pub(crate) external_functions: Vec<air::ast::Ident>,
+    pub(crate) external_functions: Vec<vir::ast::Path>,
 }
 
 type ErasureInfoRef = std::rc::Rc<std::cell::RefCell<ErasureInfo>>;

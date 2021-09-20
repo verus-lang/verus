@@ -161,7 +161,7 @@ pub enum HeaderExprX {
     Decreases(Expr, Typ),
     /// Make a function f opaque (definition hidden) within the current function body.
     /// (The current function body can later reveal f in specific parts of the current function body if desired.)
-    Hide(Ident),
+    Hide(Path),
 }
 
 /// Primitive constant values
@@ -192,7 +192,7 @@ pub enum ExprX {
     /// Call to function with given name, passing some type arguments and some expression arguments
     /// TODO: should be Path, not Ident
     /// Note: higher-order functions aren't yet supported
-    Call(Ident, Typs, Exprs),
+    Call(Path, Typs, Exprs),
     /// Construct datatype value of type Path and variant Ident, with field initializers Binders<Expr>
     Ctor(Path, Ident, Binders<Expr>),
     /// Read field from datatype
@@ -208,7 +208,7 @@ pub enum ExprX {
     /// Assign to local variable
     Assign(Expr, Expr),
     /// Reveal definition of an opaque function with some integer fuel amount
-    Fuel(Ident, u32),
+    Fuel(Path, u32),
     /// Header, which must appear at the beginning of a function or while loop.
     /// Note: this only appears temporarily during rust_to_vir construction, and should not
     /// appear in the final Expr produced by rust_to_vir (see vir::headers::read_header).
@@ -248,8 +248,7 @@ pub struct ParamX {
 pub type Function = Arc<Spanned<FunctionX>>;
 #[derive(Debug, Clone)]
 pub struct FunctionX {
-    /// TODO: should be Path, not Ident
-    pub name: Ident,
+    pub path: Path,
     pub visibility: Visibility,
     /// exec functions are compiled, proof/spec are erased
     /// exec/proof functions can have requires/ensures, spec cannot
@@ -274,7 +273,7 @@ pub struct FunctionX {
     /// Custom error message to display when a pre-condition fails
     pub custom_req_err: Option<String>,
     /// List of functions that this function wants to view as opaque
-    pub hidden: Idents,
+    pub hidden: Arc<Vec<Path>>,
     /// For public spec functions, is_abstract == true means that the body is private
     /// even though the function is public
     pub is_abstract: bool,
