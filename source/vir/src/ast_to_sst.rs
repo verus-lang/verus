@@ -1,5 +1,5 @@
 use crate::ast::{
-    BinaryOp, Constant, Expr, ExprX, Function, Ident, Mode, Stmt, StmtX, Typs, VirErr,
+    BinaryOp, Constant, Expr, ExprX, Function, Ident, Mode, Path, Stmt, StmtX, Typs, VirErr,
 };
 use crate::ast_util::{err_str, err_string};
 use crate::context::Ctx;
@@ -30,15 +30,15 @@ fn assume_var(span: &Span, x: &Ident, exp: &Exp) -> Stm {
     Spanned::new(span.clone(), StmX::Assume(eq))
 }
 
-fn get_function(ctx: &Ctx, expr: &Expr, name: &Ident) -> Result<Function, VirErr> {
+fn get_function(ctx: &Ctx, expr: &Expr, name: &Path) -> Result<Function, VirErr> {
     match ctx.func_map.get(name) {
-        None => err_string(&expr.span, format!("could not find function {}", &name)),
+        None => err_string(&expr.span, format!("could not find function {:?}", &name)),
         Some(func) => Ok(func.clone()),
     }
 }
 
-fn function_can_be_exp(ctx: &Ctx, expr: &Expr, name: &Ident) -> Result<bool, VirErr> {
-    match get_function(ctx, expr, name)?.x.mode {
+fn function_can_be_exp(ctx: &Ctx, expr: &Expr, path: &Path) -> Result<bool, VirErr> {
+    match get_function(ctx, expr, path)?.x.mode {
         Mode::Spec => Ok(true),
         Mode::Proof | Mode::Exec => Ok(false),
     }
@@ -48,7 +48,7 @@ fn expr_get_call(
     ctx: &Ctx,
     state: &mut State,
     expr: &Expr,
-) -> Result<Option<(Vec<Stm>, Ident, Typs, bool, Exps)>, VirErr> {
+) -> Result<Option<(Vec<Stm>, Path, Typs, bool, Exps)>, VirErr> {
     match &expr.x {
         ExprX::Call(x, typs, args) => {
             let mut stms: Vec<Stm> = Vec::new();
@@ -70,7 +70,7 @@ fn expr_must_be_call_stm(
     ctx: &Ctx,
     state: &mut State,
     expr: &Expr,
-) -> Result<Option<(Vec<Stm>, Ident, Typs, bool, Exps)>, VirErr> {
+) -> Result<Option<(Vec<Stm>, Path, Typs, bool, Exps)>, VirErr> {
     match &expr.x {
         ExprX::Call(x, _, _) if !function_can_be_exp(ctx, expr, x)? => {
             expr_get_call(ctx, state, expr)
@@ -163,10 +163,10 @@ pub(crate) fn expr_to_stm_opt(
                 _ => err_str(&expr1.span, "complex assignments not yet supported"),
             };
             match expr_must_be_call_stm(ctx, state, expr2)? {
-                Some((mut stms2, func_name, typs, _, args)) => {
+                Some((mut stms2, func_path, typs, _, args)) => {
                     // make a Call
                     let dest = Dest { var: dest_x?.clone(), mutable: true };
-                    let call = StmX::Call(func_name, typs, args, Some(dest));
+                    let call = StmX::Call(func_path, typs, args, Some(dest));
                     stms2.push(Spanned::new(expr.span.clone(), call));
                     Ok((stms2, None))
                 }
@@ -184,7 +184,7 @@ pub(crate) fn expr_to_stm_opt(
             let (mut stms, x, typs, ret, args) = expr_get_call(ctx, state, expr)?.expect("Call");
             if function_can_be_exp(ctx, expr, &x)? {
                 // ExpX::Call
-                let call = ExpX::Call(x.clone(), typs.clone(), args);
+                let call = ExpX::Call(false, x.clone(), typs.clone(), args);
                 Ok((stms, Some(Spanned::new(expr.span.clone(), call))))
             } else if ret {
                 let temp = state.next_temp();

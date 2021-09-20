@@ -1,6 +1,6 @@
 use crate::def::*;
+use crate::sst_to_air::path_to_air_ident;
 use air::ast::Ident;
-use air::ast_util::str_ident;
 use air::printer::{macro_push_node, str_to_node};
 use air::{node, nodes_vec};
 use sise::Node;
@@ -24,7 +24,8 @@ pub(crate) fn prelude_nodes() -> Vec<Node> {
     let u_inv = str_to_node(U_INV);
     let i_inv = str_to_node(I_INV);
     let arch_size = str_to_node(ARCH_SIZE);
-    let check_decrease_int = str_to_node(&suffix_global_id(&str_ident(CHECK_DECREASE_INT)));
+    let check_decrease_int =
+        str_to_node(&suffix_global_id(&path_to_air_ident(&check_decrease_int())));
     #[allow(non_snake_case)]
     let Unit = str_to_node(UNIT);
     #[allow(non_snake_case)]

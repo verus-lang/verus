@@ -5,7 +5,7 @@ use crate::def::{
     suffix_global_id, suffix_local_id, suffix_typ_param_id, SnapPos, Spanned, FUEL_BOOL,
     FUEL_BOOL_DEFAULT, FUEL_LOCAL, FUEL_TYPE, SUCC, ZERO,
 };
-use crate::sst_to_air::{exp_to_expr, typ_invariant, typ_to_air};
+use crate::sst_to_air::{exp_to_expr, path_to_air_ident, typ_invariant, typ_to_air};
 use crate::util::{vec_map, vec_map_result};
 use air::ast::{
     BinaryOp, Bind, BindX, Command, CommandX, Commands, DeclX, Expr, ExprX, MultiOp, Quant, Span,
@@ -74,7 +74,7 @@ fn func_body_to_air(
     function: &Function,
     body: &crate::ast::Expr,
 ) -> Result<(), VirErr> {
-    let id_fuel = prefix_fuel_id(&function.x.name);
+    let id_fuel = prefix_fuel_id(&path_to_air_ident(&function.x.path));
 
     // ast --> sst
     let body_exp = crate::ast_to_sst::expr_to_exp(&ctx, &body)?;
@@ -103,8 +103,8 @@ fn func_body_to_air(
     let def_body = if !is_recursive {
         body_expr
     } else {
-        let rec_f = suffix_global_id(&prefix_recursive(&function.x.name));
-        let fuel_nat_f = prefix_fuel_nat(&function.x.name);
+        let rec_f = suffix_global_id(&prefix_recursive(&path_to_air_ident(&function.x.path)));
+        let fuel_nat_f = prefix_fuel_nat(&path_to_air_ident(&function.x.path));
         let args = func_def_args(&function.x.typ_params, &function.x.params);
         let mut args_zero = args.clone();
         let mut args_fuel = args.clone();
@@ -136,7 +136,7 @@ fn func_body_to_air(
     };
     let e_forall = func_def_quant(
         ctx,
-        &suffix_global_id(&function.x.name),
+        &suffix_global_id(&path_to_air_ident(&function.x.path)),
         &function.x.typ_params,
         &function.x.params,
         def_body,
@@ -202,15 +202,16 @@ pub fn func_name_to_air(ctx: &Ctx, function: &Function) -> Result<Commands, VirE
     if let (Mode::Spec, Some((_, ret, _))) = (function.x.mode, function.x.ret.as_ref()) {
         // Declare the function symbol itself
         let typ = typ_to_air(ctx, &ret);
-        let name = suffix_global_id(&function.x.name);
+        let name = suffix_global_id(&path_to_air_ident(&function.x.path));
         let decl = Arc::new(DeclX::Fun(name, Arc::new(all_typs), typ));
         commands.push(Arc::new(CommandX::Global(decl)));
 
         // Check whether we need to declare the recursive version too
         if let Some(body) = &function.x.body {
             let body_exp = crate::ast_to_sst::expr_to_exp(&ctx, &body)?;
-            if crate::recursion::is_recursive_exp(ctx, &function.x.name, &body_exp) {
-                let rec_f = suffix_global_id(&prefix_recursive(&function.x.name));
+            if crate::recursion::is_recursive_exp(ctx, &function.x.path, &body_exp) {
+                let rec_f =
+                    suffix_global_id(&prefix_recursive(&path_to_air_ident(&function.x.path)));
                 let mut rec_typs =
                     vec_map(&*function.x.params, |param| typ_to_air(ctx, &param.x.typ));
                 rec_typs.push(str_typ(FUEL_TYPE));
@@ -233,7 +234,7 @@ pub fn func_decl_to_air(ctx: &Ctx, function: &Function) -> Result<(Commands, Com
     let mut check_commands: Vec<Command> = Vec::new();
     match (function.x.mode, function.x.ret.as_ref()) {
         (Mode::Spec, Some((_, ret, _))) => {
-            let name = suffix_global_id(&function.x.name);
+            let name = suffix_global_id(&path_to_air_ident(&function.x.path));
 
             // Body
             if let Some(body) = &function.x.body {
@@ -274,7 +275,7 @@ pub fn func_decl_to_air(ctx: &Ctx, function: &Function) -> Result<(Commands, Com
                 &function.x.require,
                 &function.x.typ_params,
                 &param_typs,
-                &prefix_requires(&function.x.name),
+                &prefix_requires(&path_to_air_ident(&function.x.path)),
                 &msg,
             )?;
             let mut ens_typs = (*param_typs).clone();
@@ -296,7 +297,7 @@ pub fn func_decl_to_air(ctx: &Ctx, function: &Function) -> Result<(Commands, Com
                 &function.x.ensure,
                 &function.x.typ_params,
                 &Arc::new(ens_typs),
-                &prefix_ensures(&function.x.name),
+                &prefix_ensures(&path_to_air_ident(&function.x.path)),
                 &None,
             )?;
         }

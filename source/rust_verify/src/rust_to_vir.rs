@@ -14,8 +14,8 @@ use crate::util::unsupported_err_span;
 use crate::{err_unless, unsupported_err, unsupported_err_unless, unsupported_unless};
 use rustc_ast::Attribute;
 use rustc_hir::{
-    Crate, ForeignItem, ForeignItemId, ForeignItemKind, HirId, Item, ItemId, ItemKind, ModuleItems,
-    QPath, TraitRef, TyKind,
+    Crate, ForeignItem, ForeignItemId, ForeignItemKind, HirId, Item,
+    ItemId, ItemKind, ModuleItems, QPath, TraitRef, TyKind,
 };
 use rustc_middle::ty::TyCtxt;
 use std::collections::HashMap;
@@ -35,7 +35,8 @@ fn check_item<'tcx>(
             check_item_fn(
                 ctxt,
                 vir,
-                item.ident,
+                None,
+                item.def_id.to_def_id(),
                 visibility,
                 ctxt.tcx.hir().attrs(item.hir_id()),
                 sig,
@@ -189,7 +190,7 @@ fn check_item<'tcx>(
 }
 
 fn check_module<'tcx>(
-    tcx: TyCtxt<'tcx>,
+    _tcx: TyCtxt<'tcx>,
     module_path: &Path,
     module_items: &'tcx ModuleItems,
     item_to_module: &mut HashMap<ItemId, Path>,
@@ -200,18 +201,8 @@ fn check_module<'tcx>(
                 item_to_module.insert(*item_id, module_path.clone());
             }
             unsupported_unless!(trait_items.len() == 0, "trait definitions", trait_items);
-            // TODO: deduplicate with crate_to_vir
-            for id in impl_items {
-                let def_name = hack_get_def_name(tcx, id.def_id.to_def_id());
-                // TODO: check whether these implement the correct trait
-                unsupported_unless!(
-                    def_name == "assert_receiver_is_total_eq"
-                        || def_name == "eq"
-                        || def_name == "ne"
-                        || def_name == "assert_receiver_is_structural",
-                    "impl definition in module",
-                    id
-                );
+            for _id in impl_items {
+                // TODO?
             }
             for _id in foreign_items {
                 // TODO
@@ -232,7 +223,7 @@ fn check_foreign_item<'tcx>(
             check_foreign_item_fn(
                 ctxt,
                 vir,
-                item.ident,
+                item.def_id.to_def_id(),
                 item.span,
                 mk_visibility(&None, &item.vis),
                 ctxt.tcx.hir().attrs(item.hir_id()),

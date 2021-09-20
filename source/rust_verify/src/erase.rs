@@ -39,7 +39,7 @@
 use crate::rust_to_vir_base::get_verifier_attrs;
 use crate::util::{from_raw_span, vec_map};
 use crate::{unsupported, unsupported_unless};
-use air::ast::Ident;
+
 use rustc_ast::ast::{
     Block, Crate, Expr, ExprKind, FnDecl, FnKind, FnSig, Item, ItemKind, Local, ModKind, Param,
     Stmt, StmtKind,
@@ -48,7 +48,8 @@ use rustc_ast::ptr::P;
 use rustc_interface::interface::Compiler;
 use rustc_span::{Span, SpanData};
 use std::collections::HashMap;
-use std::sync::Arc;
+use vir::ast::Path;
+
 use vir::ast::{Function, Krate, Mode};
 use vir::modes::ErasureModes;
 
@@ -60,7 +61,7 @@ pub enum ResolvedCall {
     /// The call is to an operator like == or + that should be compiled.
     CompilableOperator,
     /// The call is to a function, and we record the resolved name of the function here.
-    Call(Ident),
+    Call(Path),
 }
 
 #[derive(Clone)]
@@ -73,16 +74,18 @@ pub struct ErasureHints {
     pub erasure_modes: ErasureModes,
     /// List of #[verifier(external)] functions.  (These don't appear in vir_crate,
     /// so we need to record them separately here.)
-    pub external_functions: Vec<Ident>,
+    pub external_functions: Vec<Path>,
 }
 
 #[derive(Clone)]
 pub struct Ctxt {
     /// Copy of the entire VIR crate that was created in the first run's HIR -> VIR transformation
     vir_crate: Krate,
-    /// Map each function name to its VIR Function, or to None if it is a #[verifier(external)]
+    /// Map each function path to its VIR Function, or to None if it is a #[verifier(external)]
     /// function
-    functions: HashMap<Ident, Option<Function>>,
+    functions: HashMap<Path, Option<Function>>,
+    /// Map each function span to its VIR Function, excluding #[verifier(external)] functions
+    functions_by_span: HashMap<Span, Function>,
     /// Details of each call in the first run's HIR
     calls: HashMap<Span, ResolvedCall>,
     /// Mode of each if/else or match condition, used to decide how to erase if/else and match
@@ -181,8 +184,8 @@ fn erase_expr_opt(ctxt: &Ctxt, is_exec: bool, expr: &Expr) -> Option<Expr> {
                     f_expr.clone(),
                     vec_map(args, |e| P(erase_expr(ctxt, is_exec, e))),
                 ),
-                ResolvedCall::Call(f_name) => {
-                    let f = &ctxt.functions[f_name];
+                ResolvedCall::Call(f_path) => {
+                    let f = &ctxt.functions[f_path];
                     if let Some(f) = f {
                         match f.x.mode {
                             Mode::Spec | Mode::Proof => return None,
@@ -271,13 +274,13 @@ fn erase_block(ctxt: &Ctxt, is_exec: bool, block: &Block) -> Block {
     Block { stmts, id, rules, span, tokens: block.tokens.clone() }
 }
 
-fn erase_fn(ctxt: &Ctxt, f_name: &String, f: &FnKind) -> Option<FnKind> {
-    let f_vir = &ctxt.functions[&Arc::new(f_name.clone())].as_ref().expect("erase_fn");
+fn erase_fn(ctxt: &Ctxt, f: &FnKind) -> Option<FnKind> {
+    let FnKind(defaultness, sig, generics, body_opt) = f;
+    let f_vir = &ctxt.functions_by_span[&sig.span];
     match f_vir.x.mode {
         Mode::Spec | Mode::Proof => return None,
         Mode::Exec => {}
     }
-    let FnKind(defaultness, sig, generics, body_opt) = f;
     let FnSig { header: _, decl, span: _ } = sig;
     let FnDecl { inputs, output } = &**decl;
     let mut new_inputs: Vec<Param> = Vec::new();
@@ -315,7 +318,7 @@ fn erase_item(ctxt: &Ctxt, item: &Item) -> Vec<P<Item>> {
             if vattrs.external {
                 return vec![P(item.clone())];
             }
-            match erase_fn(ctxt, &item.ident.name.to_string(), kind) {
+            match erase_fn(ctxt, kind) {
                 None => return vec![],
                 Some(kind) => ItemKind::Fn(Box::new(kind)),
             }
@@ -364,9 +367,11 @@ pub struct CompilerCallbacks {
 
 fn mk_ctxt(erasure_hints: &ErasureHints) -> Ctxt {
     let mut functions = HashMap::new();
+    let mut functions_by_span = HashMap::new();
     let mut calls: HashMap<Span, ResolvedCall> = HashMap::new();
     for f in &erasure_hints.vir_crate.functions {
-        functions.insert(f.x.name.clone(), Some(f.clone()));
+        functions.insert(f.x.path.clone(), Some(f.clone()));
+        functions_by_span.insert(from_raw_span(&f.span.raw_span), f.clone());
     }
     for name in &erasure_hints.external_functions {
         functions.insert(name.clone(), None);
@@ -385,6 +390,7 @@ fn mk_ctxt(erasure_hints: &ErasureHints) -> Ctxt {
     Ctxt {
         vir_crate: erasure_hints.vir_crate.clone(),
         functions,
+        functions_by_span,
         calls,
         condition_modes,
         var_modes,

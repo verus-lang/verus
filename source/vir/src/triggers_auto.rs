@@ -1,6 +1,7 @@
 use crate::ast::{BinaryOp, Ident, Path, UnaryOp, UnaryOpr, VirErr};
 use crate::ast_util::err_str;
 use crate::context::Ctx;
+use crate::def::prefix_recursive;
 use crate::sst::{Exp, ExpX, Trig, Trigs};
 use crate::sst_to_air::path_to_air_ident;
 use crate::util::vec_map;
@@ -192,11 +193,18 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
             return (true, Arc::new(TermX::Var(x.clone())));
         }
         ExpX::Old(_, _) => panic!("internal error: Old"),
-        ExpX::Call(x, _, args) => {
+        ExpX::Call(recursive, x, _, args) => {
             let (is_pures, terms): (Vec<bool>, Vec<Term>) =
                 args.iter().map(|e| gather_terms(ctxt, ctx, e, depth + 1)).unzip();
             let is_pure = is_pures.into_iter().all(|b| b);
-            (is_pure, Arc::new(TermX::App(App::Call(x.clone()), Arc::new(terms))))
+            let air_ident = path_to_air_ident(&x);
+            (
+                is_pure,
+                Arc::new(TermX::App(
+                    App::Call(if *recursive { prefix_recursive(&air_ident) } else { air_ident }),
+                    Arc::new(terms),
+                )),
+            )
         }
         ExpX::Ctor(path, variant, fields) => {
             let (variant, args) = crate::sst_to_air::ctor_to_apply(ctx, path, variant, fields);

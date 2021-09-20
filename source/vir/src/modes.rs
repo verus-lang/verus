@@ -34,7 +34,7 @@ pub struct ErasureModes {
 }
 
 struct Typing {
-    pub(crate) funs: HashMap<Ident, Function>,
+    pub(crate) funs: HashMap<Path, Function>,
     pub(crate) datatypes: HashMap<Path, Datatype>,
     pub(crate) vars: ScopeMap<Ident, Mode>,
     pub(crate) erasure_modes: ErasureModes,
@@ -236,10 +236,10 @@ fn check_function(typing: &mut Typing, function: &Function) -> Result<(), VirErr
 }
 
 pub fn check_crate(krate: &Krate) -> Result<ErasureModes, VirErr> {
-    let mut funs: HashMap<Ident, Function> = HashMap::new();
+    let mut funs: HashMap<Path, Function> = HashMap::new();
     let mut datatypes: HashMap<Path, Datatype> = HashMap::new();
     for function in krate.functions.iter() {
-        funs.insert(function.x.name.clone(), function.clone());
+        funs.insert(function.x.path.clone(), function.clone());
     }
     for datatype in krate.datatypes.iter() {
         datatypes.insert(datatype.x.path.clone(), datatype.clone());

@@ -12,6 +12,7 @@ use rustc_span::{CharPos, FileName, MultiSpan, Span};
 use std::fs::File;
 use std::io::Write;
 use vir::ast::{Krate, Path, VirErr, VirErrX, Visibility};
+use vir::ast_util::path_to_string;
 use vir::def::SnapPos;
 use vir::model::Model as VModel;
 
@@ -247,7 +248,7 @@ impl Verifier {
             Self::run_commands(
                 air_context,
                 &commands,
-                &("Function-Decl ".to_string() + &function.x.name),
+                &("Function-Decl ".to_string() + &path_to_string(&function.x.path)),
             );
         }
 
@@ -264,7 +265,7 @@ impl Verifier {
             Self::run_commands(
                 air_context,
                 &decl_commands,
-                &("Function-Axioms ".to_string() + &function.x.name),
+                &("Function-Axioms ".to_string() + &path_to_string(&function.x.path)),
             );
 
             // Check termination
@@ -276,7 +277,7 @@ impl Verifier {
                 air_context,
                 &check_commands,
                 &vec![],
-                &("Function-Termination ".to_string() + &function.x.name),
+                &("Function-Termination ".to_string() + &path_to_string(&function.x.path)),
             );
         }
 
@@ -291,7 +292,7 @@ impl Verifier {
                 air_context,
                 &commands,
                 &snap_map,
-                &("Function-Def ".to_string() + &function.x.name),
+                &("Function-Def ".to_string() + &path_to_string(&function.x.path)),
             );
         }
 
@@ -399,7 +400,7 @@ impl Verifier {
                 writeln!(&mut file).expect("cannot write to vir file");
             }
             for func in vir_crate.functions.iter() {
-                writeln!(&mut file, "fn {} @ {:?}", func.x.name, func.span)
+                writeln!(&mut file, "fn {} @ {:?}", path_to_string(&func.x.path), func.span)
                     .expect("cannot write to vir file");
                 for param in func.x.params.iter() {
                     writeln!(
