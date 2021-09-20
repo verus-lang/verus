@@ -274,13 +274,13 @@ fn erase_block(ctxt: &Ctxt, is_exec: bool, block: &Block) -> Block {
     Block { stmts, id, rules, span, tokens: block.tokens.clone() }
 }
 
-fn erase_fn(ctxt: &Ctxt, f_span: &Span, f: &FnKind) -> Option<FnKind> {
-    let f_vir = &ctxt.functions_by_span[f_span];
+fn erase_fn(ctxt: &Ctxt, f: &FnKind) -> Option<FnKind> {
+    let FnKind(defaultness, sig, generics, body_opt) = f;
+    let f_vir = &ctxt.functions_by_span[&sig.span];
     match f_vir.x.mode {
         Mode::Spec | Mode::Proof => return None,
         Mode::Exec => {}
     }
-    let FnKind(defaultness, sig, generics, body_opt) = f;
     let FnSig { header: _, decl, span: _ } = sig;
     let FnDecl { inputs, output } = &**decl;
     let mut new_inputs: Vec<Param> = Vec::new();
@@ -318,7 +318,7 @@ fn erase_item(ctxt: &Ctxt, item: &Item) -> Vec<P<Item>> {
             if vattrs.external {
                 return vec![P(item.clone())];
             }
-            match erase_fn(ctxt, &item.span, kind) {
+            match erase_fn(ctxt, kind) {
                 None => return vec![],
                 Some(kind) => ItemKind::Fn(Box::new(kind)),
             }
