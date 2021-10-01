@@ -24,5 +24,39 @@ test_verify_with_pervasive! {
             assert(b.hard_tail);
         }
 
+        fn test_impl_2(b: &Bike) {
+            requires(b.is_hard_tail());
+            assert(b.hard_tail);
+        }
+
+    } => Ok(())
+}
+
+test_verify_with_pervasive! {
+    #[test] test_impl_mod code! {
+        mod M1 {
+            #[derive(PartialEq, Eq)]
+            pub struct Bike {
+                hard_tail: bool,
+            }
+
+            impl Bike {
+                #[spec]
+                pub fn is_hard_tail(&self) -> bool {
+                    self.hard_tail
+                }
+            }
+        }
+
+        mod M2 {
+            use super::M1::Bike;
+            use builtin::*;
+            use crate::pervasive::*;
+
+            fn test_impl_1(b: Bike) {
+                requires(b.is_hard_tail());
+                assert(b.is_hard_tail());
+            }
+        }
     } => Ok(())
 }
