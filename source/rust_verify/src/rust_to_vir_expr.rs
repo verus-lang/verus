@@ -347,15 +347,12 @@ fn fn_call_to_vir<'tcx>(
     } else {
         let fun_ty = bctx.types.node_type(fun.hir_id);
         let (param_typs, ret_typ) = match fun_ty.kind() {
-            TyKind::FnDef(def_id, _substs) => match tcx.fn_sig(*def_id).no_bound_vars() {
-                None => unsupported_err!(expr.span, format!("found bound vars in function"), expr),
-                Some(f) => {
-                    let params: Vec<Typ> =
-                        f.inputs().iter().map(|t| mid_ty_to_vir(tcx, *t)).collect();
-                    let ret = mid_ty_to_vir_opt(tcx, f.output());
-                    (params, ret)
-                }
-            },
+            TyKind::FnDef(def_id, _substs) => {
+                let f = tcx.fn_sig(*def_id).skip_binder();
+                let params: Vec<Typ> = f.inputs().iter().map(|t| mid_ty_to_vir(tcx, *t)).collect();
+                let ret = mid_ty_to_vir_opt(tcx, f.output());
+                (params, ret)
+            }
             _ => {
                 unsupported_err!(expr.span, format!("call to non-FnDef function"), expr)
             }
