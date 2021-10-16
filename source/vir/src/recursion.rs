@@ -1,4 +1,6 @@
-use crate::ast::{BinaryOp, Constant, Function, Ident, Params, Path, Typ, TypX, UnaryOp, VirErr};
+use crate::ast::{
+    BinaryOp, Constant, Function, Ident, Mode, Params, Path, Typ, TypX, UnaryOp, VirErr,
+};
 use crate::ast_util::err_str;
 use crate::ast_visitor::map_expr_visitor;
 use crate::context::Ctx;
@@ -218,7 +220,7 @@ fn mk_decreases_at_entry(ctxt: &Ctxt, span: &Span) -> (Stm, Stm) {
         StmX::Assume(Spanned::new(
             span.clone(),
             ExpX::Binary(
-                BinaryOp::Eq,
+                BinaryOp::Eq(Mode::Spec),
                 Spanned::new(span.clone(), ExpX::Var(ctxt.decreases_at_entry.clone())),
                 ctxt.decreases_exp.clone(),
             ),

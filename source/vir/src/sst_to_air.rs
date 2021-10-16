@@ -216,7 +216,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp) -> Expr {
                         BinaryOp::And => panic!("internal error"),
                         BinaryOp::Or => panic!("internal error"),
                         BinaryOp::Implies => panic!("internal error"),
-                        BinaryOp::Eq => air::ast::BinaryOp::Eq,
+                        BinaryOp::Eq(_) => air::ast::BinaryOp::Eq,
                         BinaryOp::Ne => panic!("internal error"),
                         BinaryOp::Le => air::ast::BinaryOp::Le,
                         BinaryOp::Ge => air::ast::BinaryOp::Ge,

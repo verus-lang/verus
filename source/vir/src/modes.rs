@@ -1,4 +1,6 @@
-use crate::ast::{Datatype, Expr, ExprX, Function, Ident, Krate, Mode, Path, Stmt, StmtX, VirErr};
+use crate::ast::{
+    BinaryOp, Datatype, Expr, ExprX, Function, Ident, Krate, Mode, Path, Stmt, StmtX, VirErr,
+};
 use crate::ast_util::{err_str, err_string};
 use air::ast::Span;
 use air::scope_map::ScopeMap;
@@ -116,10 +118,14 @@ fn check_expr(typing: &mut Typing, outer_mode: Mode, expr: &Expr) -> Result<Mode
         }
         ExprX::Unary(_, e1) => check_expr(typing, outer_mode, e1),
         ExprX::UnaryOpr(_, e1) => check_expr(typing, outer_mode, e1),
-        ExprX::Binary(_, e1, e2) => {
+        ExprX::Binary(op, e1, e2) => {
+            let op_mode = match op {
+                BinaryOp::Eq(mode) => *mode,
+                _ => Mode::Exec,
+            };
             let mode1 = check_expr(typing, outer_mode, e1)?;
             let mode2 = check_expr(typing, outer_mode, e2)?;
-            Ok(mode_join(mode1, mode2))
+            Ok(mode_join(op_mode, mode_join(mode1, mode2)))
         }
         ExprX::Quant(_, binders, e1) => {
             typing.vars.push_scope(false);

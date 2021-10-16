@@ -22,8 +22,8 @@ use rustc_span::def_id::DefId;
 use rustc_span::Span;
 use std::sync::Arc;
 use vir::ast::{
-    BinaryOp, Constant, ExprX, HeaderExpr, HeaderExprX, IntRange, ParamX, SpannedTyped, StmtX,
-    Stmts, Typ, TypX, UnaryOp, UnaryOpr, VirErr,
+    BinaryOp, Constant, ExprX, HeaderExpr, HeaderExprX, IntRange, Mode, ParamX, SpannedTyped,
+    StmtX, Stmts, Typ, TypX, UnaryOp, UnaryOpr, VirErr,
 };
 use vir::ast_util::ident_binder;
 use vir::def::{variant_field_ident, variant_ident, variant_positional_field_ident};
@@ -217,6 +217,7 @@ fn fn_call_to_vir<'tcx>(
     let is_decreases = hack_check_def_name(tcx, f, "builtin", "decreases");
     let is_forall = hack_check_def_name(tcx, f, "builtin", "forall");
     let is_exists = hack_check_def_name(tcx, f, "builtin", "exists");
+    let is_equal = hack_check_def_name(tcx, f, "builtin", "equal");
     let is_hide = hack_check_def_name(tcx, f, "builtin", "hide");
     let is_reveal = hack_check_def_name(tcx, f, "builtin", "reveal");
     let is_reveal_fuel = hack_check_def_name(tcx, f, "builtin", "reveal_with_fuel");
@@ -233,7 +234,7 @@ fn fn_call_to_vir<'tcx>(
     let is_spec = is_admit || is_requires || is_ensures || is_invariant || is_decreases;
     let is_quant = is_forall || is_exists;
     let is_directive = is_hide || is_reveal || is_reveal_fuel;
-    let is_cmp = is_eq || is_ne || is_le || is_ge || is_lt || is_gt;
+    let is_cmp = is_equal || is_eq || is_ne || is_le || is_ge || is_lt || is_gt;
     let is_arith_binary = is_add || is_sub || is_mul;
     record_fun(&bctx.ctxt, fun.span, f, is_spec || is_quant || is_directive, is_implies);
 
@@ -293,7 +294,9 @@ fn fn_call_to_vir<'tcx>(
 
     let mut vir_args = vec_map_result(&args, |arg| expr_to_vir(bctx, arg))?;
 
-    let is_smt_binary = if is_eq || is_ne {
+    let is_smt_binary = if is_equal {
+        true
+    } else if is_eq || is_ne {
         is_smt_equality(bctx, expr.span, &args[0].hir_id, &args[1].hir_id)
     } else if is_cmp || is_arith_binary || is_implies {
         is_smt_arith(bctx, &args[0].hir_id, &args[1].hir_id)
@@ -319,8 +322,10 @@ fn fn_call_to_vir<'tcx>(
         unsupported_err_unless!(len == 2, expr.span, "expected binary op", args);
         let lhs = vir_args[0].clone();
         let rhs = vir_args[1].clone();
-        let vop = if is_eq {
-            BinaryOp::Eq
+        let vop = if is_equal {
+            BinaryOp::Eq(Mode::Spec)
+        } else if is_eq {
+            BinaryOp::Eq(Mode::Exec)
         } else if is_ne {
             BinaryOp::Ne
         } else if is_le {
@@ -571,7 +576,7 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
             let vop = match op.node {
                 BinOpKind::And => BinaryOp::And,
                 BinOpKind::Or => BinaryOp::Or,
-                BinOpKind::Eq => BinaryOp::Eq,
+                BinOpKind::Eq => BinaryOp::Eq(Mode::Exec),
                 BinOpKind::Ne => BinaryOp::Ne,
                 BinOpKind::Le => BinaryOp::Le,
                 BinOpKind::Ge => BinaryOp::Ge,

@@ -241,7 +241,7 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
         ExpX::Binary(op, e1, e2) => {
             use BinaryOp::*;
             let depth = match op {
-                And | Or | Implies | Eq => 0,
+                And | Or | Implies | Eq(_) => 0,
                 Ne | Le | Ge | Lt | Gt | Add | Sub | Mul | EuclideanDiv | EuclideanMod => 1,
             };
             let (_, term1) = gather_terms(ctxt, ctx, e1, depth);

@@ -123,7 +123,8 @@ pub enum BinaryOp {
     /// boolean implies
     Implies,
     /// SMT equality for any type -- two expressions are exactly the same value
-    Eq,
+    /// Some types support compilable equality (Mode == Exec); others only support spec equality (Mode == Spec)
+    Eq(Mode),
     /// not Eq
     Ne,
     /// IntRange::Int <=

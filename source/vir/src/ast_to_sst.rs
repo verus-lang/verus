@@ -26,7 +26,7 @@ impl State {
 
 fn assume_var(span: &Span, x: &Ident, exp: &Exp) -> Stm {
     let x_var = Spanned::new(span.clone(), ExpX::Var(x.clone()));
-    let eq = Spanned::new(span.clone(), ExpX::Binary(BinaryOp::Eq, x_var, exp.clone()));
+    let eq = Spanned::new(span.clone(), ExpX::Binary(BinaryOp::Eq(Mode::Spec), x_var, exp.clone()));
     Spanned::new(span.clone(), StmX::Assume(eq))
 }
 

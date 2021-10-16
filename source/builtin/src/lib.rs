@@ -49,6 +49,10 @@ pub fn exists<A>(_a: A) -> bool {
     unimplemented!();
 }
 
+pub fn equal<A>(_: A, _: A) -> bool {
+    unimplemented!();
+}
+
 #[allow(non_camel_case_types)]
 pub struct int;
 

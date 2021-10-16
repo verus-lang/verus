@@ -41,7 +41,7 @@ fn check_trigger_expr(exp: &Exp, free_vars: &mut HashSet<Ident>) -> Result<(), V
         ExpX::Binary(op, _, _) => {
             use BinaryOp::*;
             match op {
-                And | Or | Implies | Eq | Ne => {
+                And | Or | Implies | Eq(_) | Ne => {
                     err_str(&exp.span, "triggers cannot contain boolean operators")
                 }
                 Le | Ge | Lt | Gt => Ok(exp.clone()),

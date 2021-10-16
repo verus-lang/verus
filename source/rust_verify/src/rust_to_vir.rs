@@ -14,8 +14,8 @@ use crate::util::unsupported_err_span;
 use crate::{err_unless, unsupported_err, unsupported_err_unless, unsupported_unless};
 use rustc_ast::Attribute;
 use rustc_hir::{
-    Crate, ForeignItem, ForeignItemId, ForeignItemKind, HirId, Item,
-    ItemId, ItemKind, ModuleItems, QPath, TraitRef, TyKind,
+    Crate, ForeignItem, ForeignItemId, ForeignItemKind, HirId, Item, ItemId, ItemKind, ModuleItems,
+    QPath, TraitRef, TyKind,
 };
 use rustc_middle::ty::TyCtxt;
 use std::collections::HashMap;
