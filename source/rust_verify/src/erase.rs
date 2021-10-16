@@ -153,6 +153,28 @@ fn erase_expr_opt(ctxt: &Ctxt, is_exec: bool, expr: &Expr) -> Option<Expr> {
             Mode::Exec if is_exec => expr.kind.clone(),
             _ => return None,
         },
+        ExprKind::Paren(e) => match erase_expr_opt(ctxt, is_exec, e) {
+            None => return None,
+            Some(e) => ExprKind::Paren(P(e)),
+        },
+        ExprKind::AddrOf(borrow, mutability, e1) => {
+            if is_exec {
+                let e1 = erase_expr(ctxt, is_exec, e1);
+                ExprKind::AddrOf(*borrow, *mutability, P(e1))
+            } else {
+                let e1 = erase_expr_opt(ctxt, is_exec, e1);
+                return replace_with_exprs(expr, vec![e1]);
+            }
+        }
+        ExprKind::Unary(op, e1) => {
+            if is_exec {
+                let e1 = erase_expr(ctxt, is_exec, e1);
+                ExprKind::Unary(*op, P(e1))
+            } else {
+                let e1 = erase_expr_opt(ctxt, is_exec, e1);
+                return replace_with_exprs(expr, vec![e1]);
+            }
+        }
         ExprKind::Binary(op, e1, e2) => {
             if is_exec {
                 let e1 = erase_expr(ctxt, is_exec, e1);
@@ -313,6 +335,13 @@ fn erase_item(ctxt: &Ctxt, item: &Item) -> Vec<P<Item>> {
         ItemKind::ExternCrate(_) => item.kind.clone(),
         ItemKind::Use(_) => item.kind.clone(),
         ItemKind::Mod(unsafety, kind) => ItemKind::Mod(*unsafety, erase_mod(ctxt, kind)),
+        ItemKind::ForeignMod { .. } => item.kind.clone(),
+        ItemKind::Struct(_, _) => {
+            // TODO:
+            // We don't yet have ghost structs or ghost fields.
+            // When we do, we will need to erase them here.
+            item.kind.clone()
+        }
         ItemKind::Fn(kind) => {
             let vattrs = get_verifier_attrs(&item.attrs).expect("get_verifier_attrs");
             if vattrs.external {
