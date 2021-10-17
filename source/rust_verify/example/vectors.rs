@@ -8,19 +8,19 @@ use pervasive_vec::*;
 
 fn binary_search(v: &Vec<u64>, length: usize, k: u64) -> usize {
     requires([
-        len(v) == length,
+        length == len(v),
         forall(|i:int, j:int| imply(0 <= i && i <= j && j < length, index(v, i) <= index(v, j))),
-        exists(|i:int| 0 <= i && i < length && index(v, i) == k),
+        exists(|i:int| 0 <= i && i < length && k == index(v, i)),
     ]);
-    ensures(|r: usize| r < length && index(v, r) == k);
+    ensures(|r: usize| r < length && k == index(v, r));
 
     let mut i1: usize = 0;
     let mut i2: usize = length - 1;
     while i1 != i2 {
         invariant([
-            len(v) == length,
+            length == len(v),
             i2 < length,
-            exists(|i:int| i1 as int <= i && i <= i2 && index(v, i) == k),
+            exists(|i:int| i1 <= i && i <= i2 && k == index(v, i)),
             forall(|i:int, j:int| imply(0 <= i && i <= j && j < length, index(v, i) <= index(v, j))),
         ]);
         #[spec] let d = i2 - i1;
@@ -39,21 +39,21 @@ fn binary_search(v: &Vec<u64>, length: usize, k: u64) -> usize {
 
 fn reverse(v1: Vec<u64>, length: usize) -> Vec<u64> {
     requires([
-        len(&v1) == length,
+        length == len(&v1),
     ]);
     ensures(|r: Vec<u64>| [
-        len(&r) == length,
-        forall(|i: int| imply(0 <= i && i < length, index(&r, i) == index(&v1, length as int - 1 - i))),
+        length == len(&r),
+        forall(|i: int| imply(0 <= i && i < length, index(&r, i) == index(&v1, length - i - 1))),
     ]);
 
     let mut v2 = v1;
     let mut n: usize = 0;
     while n < length / 2 {
         invariant([
-            len(&v2) == length,
-            forall(|i: int| imply(i >= n && i < length as int - n, index(&v2, i) == index(&v1, i))),
-            forall(|i: int| imply(0 <= i && i < n, index(&v2, i) == index(&v1, length as int - 1 - i))),
-            forall(|i: int| imply(0 <= i && i < n, index(&v1, i) == index(&v2, length as int - 1 - i))),
+            length == len(&v2),
+            forall(|i: int| imply(n <= i && i + n < length, index(&v2, i) == index(&v1, i))),
+            forall(|i: int| imply(0 <= i && i < n, index(&v2, i) == index(&v1, length - i - 1))),
+            forall(|i: int| imply(0 <= i && i < n, index(&v1, i) == index(&v2, length - i - 1))),
         ]);
 
         let x = *get(&v2, n);

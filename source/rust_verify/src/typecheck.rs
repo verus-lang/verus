@@ -1,4 +1,4 @@
-use rustc_hir::{Expr, ExprKind};
+use rustc_hir::{BinOp, BinOpKind, Expr, ExprKind};
 use rustc_middle::ty::{FormalVerifierTyping, Ty, TyCtxt, TyKind};
 use rustc_span::def_id::DefId;
 
@@ -32,6 +32,18 @@ fn is_t<'tcx>(ty: Ty<'tcx>, name: &str, def: &mut Option<DefId>) -> bool {
     }
 }
 
+fn allow_widen<'tcx>(expr: &'tcx Expr<'tcx>) -> bool {
+    // Implicitly coercing arithmetic results could be confusing
+    // and deceptive, so don't do it.
+    // Example: if x: u64, then coercing (x + 1) to int would
+    // only coerce to int *after* performing the + 1 and potentially overflowing.
+    // Here, the programmer probably meant (x as int) + 1.
+    match &expr.kind {
+        ExprKind::Unary(_, _) | ExprKind::Binary(_, _, _) => false,
+        _ => true,
+    }
+}
+
 impl Typecheck {
     fn is_int<'tcx>(&mut self, ty: Ty<'tcx>) -> bool {
         is_t(ty, BUILTIN_INT, &mut self.int_ty_id)
@@ -56,20 +68,55 @@ impl FormalVerifierTyping for Typecheck {
     ) -> Ty<'tcx> {
         // For convenience, allow implicit coercions from integral types to int in some situations.
         // This is strictly opportunistic; in many situations you still need "as int".
-        // For example, "i == n" might work but "n == i" might fail (requiring "n as int == i").
-        match (ty.kind(), expected_ty, &expr.kind) {
-            (_, _, ExprKind::Unary(_, _)) | (_, _, ExprKind::Binary(_, _, _)) => {
-                // Implicitly coercing arithmetic results could be confusing
-                // and deceptive, so don't do it.
-                // Example: if x: u64, then coercing (x + 1) to int would
-                // only coerce to int *after* performing the + 1 and potentially overflowing.
-                // Here, the programmer probably meant (x as int) + 1.
-                ty
-            }
+        match (ty.kind(), expected_ty, allow_widen(expr)) {
+            (_, _, false) => ty,
             (TyKind::Int(_), Some(t_coerce), _) if self.is_int(t_coerce) => t_coerce,
             (TyKind::Uint(_), Some(t_coerce), _) if self.is_int_or_nat(t_coerce) => t_coerce,
             (_, Some(t_coerce), _) if self.is_int(t_coerce) && self.is_nat(ty) => t_coerce,
             _ => ty,
+        }
+    }
+
+    fn widen_binary_types<'tcx>(
+        &mut self,
+        tcx: TyCtxt<'tcx>,
+        op: BinOp,
+        lhs_expr: &'tcx Expr<'tcx>,
+        rhs_expr: &'tcx Expr<'tcx>,
+        lhs_ty: Ty<'tcx>,
+        rhs_ty: Ty<'tcx>,
+    ) -> Option<(bool, Ty<'tcx>)> {
+        // For convenience, allow implicit coercions from integral types to int in some situations.
+        // This is strictly opportunistic; in many situations you still need "as int".
+
+        // widen_left = false: widen rhs_expr to lhs_ty
+        // widen_left = true:  widen lhs_expr to rhs_ty
+        let widen_left = match (&lhs_ty.kind(), &rhs_ty.kind()) {
+            (_, TyKind::Int(_)) if self.is_int(lhs_ty) => false,
+            (TyKind::Int(_), _) if self.is_int(rhs_ty) => true,
+            (_, TyKind::Uint(_)) if self.is_int_or_nat(lhs_ty) => false,
+            (TyKind::Uint(_), _) if self.is_int_or_nat(rhs_ty) => true,
+            _ if self.is_int(lhs_ty) && self.is_nat(rhs_ty) => false,
+            _ if self.is_nat(lhs_ty) && self.is_int(rhs_ty) => true,
+            _ => return None,
+        };
+        let is_cmp = match op.node {
+            BinOpKind::Add | BinOpKind::Sub | BinOpKind::Mul => false,
+            BinOpKind::Eq | BinOpKind::Ne => true,
+            BinOpKind::Lt | BinOpKind::Le | BinOpKind::Ge | BinOpKind::Gt => true,
+            _ => return None,
+        };
+        let t = if is_cmp {
+            tcx.types.bool
+        } else if widen_left {
+            rhs_ty
+        } else {
+            lhs_ty
+        };
+        match (widen_left, allow_widen(lhs_expr), allow_widen(rhs_expr)) {
+            (false, _, false) => None,
+            (true, false, _) => None,
+            _ => Some((widen_left, t)),
         }
     }
 

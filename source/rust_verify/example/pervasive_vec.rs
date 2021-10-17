@@ -38,7 +38,7 @@ pub fn index<A>(v: &Vec<A>, i: int) -> A {
 
 #[verifier(no_verify)]
 pub fn get<A>(v: &Vec<A>, i: usize) -> &A {
-    requires((i as nat) < len(v));
+    requires(i < len(v));
     ensures(|r: A| equal(r, index(v, i)));
 
     get_external(v, i)
@@ -46,7 +46,7 @@ pub fn get<A>(v: &Vec<A>, i: usize) -> &A {
 
 #[verifier(no_verify)]
 pub fn set<A>(v1: Vec<A>, i: usize, a: A) -> Vec<A> {
-    requires((i as nat) < len(&v1));
+    requires(i < len(&v1));
     ensures(|v2: Vec<A>| [
         len(&v2) == len(&v1),
         equal(a, index(&v2, i)),
