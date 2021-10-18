@@ -9,7 +9,7 @@ pub fn assume(b: bool) {
 }
 
 #[proof]
-#[verifier(custom_req_err, "Assertion failure")]
+#[verifier(custom_req_err, "assertion failure")]
 pub fn assert(b: bool) {
     requires(b);
     ensures(b);
@@ -18,4 +18,11 @@ pub fn assert(b: bool) {
 #[proof]
 pub fn affirm(b: bool) {
     requires(b);
+}
+
+/// In spec, all types are inhabited
+#[spec]
+#[verifier(external)]
+pub fn arbitrary<A>() -> A {
+    unimplemented!()
 }

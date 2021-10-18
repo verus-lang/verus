@@ -1,5 +1,6 @@
 extern crate builtin;
 use builtin::*;
+use pervasive::*;
 
 #[verifier(no_verify)]
 pub struct Vec<A> {
@@ -25,7 +26,7 @@ fn length_external<A>(v: &Vec<A>) -> usize {
 #[verifier(no_verify)]
 #[spec]
 pub fn len<A>(v: &Vec<A>) -> nat {
-    len(v) // TODO: use unimplemented!() here
+    arbitrary()
 }
 
 #[verifier(no_verify)]
