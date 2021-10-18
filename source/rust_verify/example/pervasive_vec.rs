@@ -17,12 +17,10 @@ fn set_external<A>(mut v1: Vec<A>, i: usize, a: A) -> Vec<A> {
     v1
 }
 
-/* TODO
 #[verifier(external)]
 fn length_external<A>(v: &Vec<A>) -> usize {
     v.vec.len()
 }
-*/
 
 #[verifier(no_verify)]
 #[spec]
@@ -54,4 +52,11 @@ pub fn set<A>(v1: Vec<A>, i: usize, a: A) -> Vec<A> {
     ]);
 
     set_external(v1, i, a)
+}
+
+#[verifier(no_verify)]
+pub fn length<A>(v: &Vec<A>) -> usize {
+    ensures(|l: usize| l == len(v));
+
+    length_external(v)
 }

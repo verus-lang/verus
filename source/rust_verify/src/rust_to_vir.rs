@@ -262,7 +262,7 @@ pub fn crate_to_vir<'tcx>(ctxt: &Context<'tcx>) -> Result<Krate, VirErr> {
         body_ids: _,
         modules,
         proc_macros,
-        trait_map,
+        trait_map: _,
         attrs,
     } = ctxt.krate;
     let mut vir: KrateX = Default::default();
@@ -313,7 +313,7 @@ pub fn crate_to_vir<'tcx>(ctxt: &Context<'tcx>) -> Result<Krate, VirErr> {
         );
     }
     unsupported_unless!(proc_macros.len() == 0, "procedural macros", proc_macros);
-    unsupported_unless!(trait_map.iter().all(|(_, v)| v.len() == 0), "traits", trait_map);
+    // unsupported_unless!(trait_map.iter().all(|(_, v)| v.len() == 0), "traits", trait_map);
     for (id, attr) in attrs {
         check_attr(ctxt.tcx, id, attr)?;
     }

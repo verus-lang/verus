@@ -6,14 +6,14 @@ mod pervasive_vec;
 use pervasive::*;
 use pervasive_vec::*;
 
-fn binary_search(v: &Vec<u64>, length: usize, k: u64) -> usize {
+fn binary_search(v: &Vec<u64>, k: u64) -> usize {
     requires([
-        length == len(v),
-        forall(|i:int, j:int| imply(0 <= i && i <= j && j < length, index(v, i) <= index(v, j))),
-        exists(|i:int| 0 <= i && i < length && k == index(v, i)),
+        forall(|i:int, j:int| imply(0 <= i && i <= j && j < len(v), index(v, i) <= index(v, j))),
+        exists(|i:int| 0 <= i && i < len(v) && k == index(v, i)),
     ]);
-    ensures(|r: usize| r < length && k == index(v, r));
+    ensures(|r: usize| r < len(v) && k == index(v, r));
 
+    let length = length(&v);
     let mut i1: usize = 0;
     let mut i2: usize = length - 1;
     while i1 != i2 {
@@ -37,15 +37,13 @@ fn binary_search(v: &Vec<u64>, length: usize, k: u64) -> usize {
     i1
 }
 
-fn reverse(v1: Vec<u64>, length: usize) -> Vec<u64> {
-    requires([
-        length == len(&v1),
-    ]);
+fn reverse(v1: Vec<u64>) -> Vec<u64> {
     ensures(|r: Vec<u64>| [
-        length == len(&r),
-        forall(|i: int| imply(0 <= i && i < length, index(&r, i) == index(&v1, length - i - 1))),
+        len(&r) == len(&v1),
+        forall(|i: int| imply(0 <= i && i < len(&v1), index(&r, i) == index(&v1, len(&v1) - i - 1))),
     ]);
 
+    let length = length(&v1);
     let mut v2 = v1;
     let mut n: usize = 0;
     while n < length / 2 {
@@ -69,10 +67,9 @@ fn reverse(v1: Vec<u64>, length: usize) -> Vec<u64> {
 #[verifier(external)]
 fn main() {
     let v = Vec{vec: vec![0, 10, 20, 30, 40, 50, 60, 70, 80, 90]};
-    let length = 10; // TODO: let length = v.vec.len();
-    println!("{}", binary_search(&v, length, 70));
+    println!("{}", binary_search(&v, 70));
     println!();
-    for x in reverse(v, length).vec {
+    for x in reverse(v).vec {
         println!("{}", x);
     }
 }
