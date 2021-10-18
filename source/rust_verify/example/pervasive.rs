@@ -23,6 +23,7 @@ pub fn affirm(b: bool) {
 /// In spec, all types are inhabited
 #[spec]
 #[verifier(external)]
+#[allow(dead_code)]
 pub fn arbitrary<A>() -> A {
     unimplemented!()
 }

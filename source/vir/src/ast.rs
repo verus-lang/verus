@@ -166,7 +166,7 @@ pub enum HeaderExprX {
 }
 
 /// Primitive constant values
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Constant {
     /// true or false
     Bool(bool),

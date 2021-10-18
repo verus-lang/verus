@@ -1,11 +1,11 @@
-use crate::ast::{BinaryOp, Ident, Path, UnaryOp, UnaryOpr, VirErr};
+use crate::ast::{BinaryOp, Constant, Ident, Path, UnaryOp, UnaryOpr, VirErr};
 use crate::ast_util::err_str;
 use crate::context::Ctx;
 use crate::def::prefix_recursive;
 use crate::sst::{Exp, ExpX, Trig, Trigs};
 use crate::sst_to_air::path_to_air_ident;
 use crate::util::vec_map;
-use air::ast::{Constant, Span};
+use air::ast::Span;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
@@ -178,17 +178,7 @@ fn make_score(term: &Term, depth: u64) -> Score {
 
 fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Term) {
     let (is_pure, term) = match &exp.x {
-        ExpX::Const(c) => {
-            return match c {
-                crate::ast::Constant::Bool(b) => {
-                    (true, Arc::new(TermX::App(App::Const(Constant::Bool(*b)), Arc::new(vec![]))))
-                }
-                crate::ast::Constant::Nat(n) => (
-                    true,
-                    Arc::new(TermX::App(App::Const(Constant::Nat(n.clone())), Arc::new(vec![]))),
-                ),
-            };
-        }
+        ExpX::Const(c) => (true, Arc::new(TermX::App(App::Const(c.clone()), Arc::new(vec![])))),
         ExpX::Var(x) => {
             return (true, Arc::new(TermX::Var(x.clone())));
         }
