@@ -557,8 +557,7 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                 BinOpKind::Eq | BinOpKind::Ne => unsupported_err_unless!(
                     is_smt_equality(bctx, expr.span, &lhs.hir_id, &rhs.hir_id),
                     expr.span,
-                    "==/!= for non smt equality types",
-                    expr
+                    "==/!= for non smt equality types"
                 ),
                 BinOpKind::Add
                 | BinOpKind::Sub
