@@ -520,10 +520,13 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                 let c = vir::ast::Constant::Nat(Arc::new(i.to_string()));
                 if let TypX::Int(range) = *typ {
                     match range {
-                        IntRange::Int | IntRange::Nat | IntRange::U(_) | IntRange::USize => {
+                        IntRange::Int | IntRange::Nat => Ok(mk_expr(ExprX::Const(c))),
+                        IntRange::U(n) if n < 128 && i < (1u128 << n) => {
                             Ok(mk_expr(ExprX::Const(c)))
                         }
-                        IntRange::I(_) | IntRange::ISize => {
+                        _ => {
+                            // If we're not sure the constant fits in the range,
+                            // be cautious and clip it
                             Ok(mk_clip(&range, &mk_expr(ExprX::Const(c))))
                         }
                     }
@@ -542,13 +545,16 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                 let varg = expr_to_vir(bctx, arg)?;
                 Ok(mk_expr(ExprX::Unary(UnaryOp::Not, varg)))
             }
+            UnOp::Neg => {
+                let zero_const = vir::ast::Constant::Nat(Arc::new("0".to_string()));
+                let zero = mk_expr(ExprX::Const(zero_const));
+                let varg = expr_to_vir(bctx, arg)?;
+                Ok(mk_expr(ExprX::Binary(BinaryOp::Sub, zero, varg)))
+            }
             UnOp::Deref => match bctx.types.node_type(arg.hir_id).kind() {
                 TyKind::Ref(_, _tys, rustc_ast::Mutability::Not) => expr_to_vir_inner(bctx, arg),
                 _ => unsupported_err!(expr.span, "dereferencing this type is unsupported", expr),
             },
-            _ => {
-                unsupported_err!(expr.span, "unary expression", expr)
-            }
         },
         ExprKind::Binary(op, lhs, rhs) => {
             let vlhs = expr_to_vir(bctx, lhs)?;
