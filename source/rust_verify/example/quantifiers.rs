@@ -31,12 +31,6 @@ fn g3(i: int) -> int {
     i + 3
 }
 
-// TODO: this should be the definition of assert
-fn assert_ensure(#[spec] b: bool) {
-    requires(b);
-    ensures(b);
-}
-
 // Automatically chosen triggers
 fn test_auto() {
     // :pattern ((f1. i@ j@))
@@ -76,7 +70,7 @@ fn test_auto() {
     assert(forall(|i: int, j: int| g1(i) >= i && g1(j) >= j));
 
     // :pattern ((g1. i@) (g2. j@))
-    assert_ensure(g1(3) == g2(2));
+    assert(g1(3) == g2(2));
     assert(exists(|i: int, j: int| g1(i) == g2(j)));
 }
 

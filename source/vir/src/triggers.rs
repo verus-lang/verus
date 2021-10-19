@@ -14,6 +14,15 @@ struct State {
     coverage: HashMap<Option<u64>, HashSet<Ident>>, // trigger_vars covered by each trigger
 }
 
+fn remove_boxing(exp: &Exp) -> Exp {
+    match &exp.x {
+        ExpX::UnaryOpr(UnaryOpr::Box(_), e) | ExpX::UnaryOpr(UnaryOpr::Unbox(_), e) => {
+            remove_boxing(e)
+        }
+        _ => exp.clone(),
+    }
+}
+
 fn check_trigger_expr(exp: &Exp, free_vars: &mut HashSet<Ident>) -> Result<(), VirErr> {
     match &exp.x {
         ExpX::Call(_, _, _, _) | ExpX::Field { .. } | ExpX::Unary(UnaryOp::Trigger(_), _) => {}
@@ -65,7 +74,8 @@ fn get_manual_triggers(state: &mut State, exp: &Exp) -> Result<(), VirErr> {
     let mut f = |exp: &Exp, map: &mut ScopeMap<Ident, bool>| match &exp.x {
         ExpX::Unary(UnaryOp::Trigger(group), e1) => {
             let mut free_vars: HashSet<Ident> = HashSet::new();
-            check_trigger_expr(e1, &mut free_vars)?;
+            let e1 = remove_boxing(&e1);
+            check_trigger_expr(&e1, &mut free_vars)?;
             for x in &free_vars {
                 if map.get(x).cloned() == Some(true) && !state.trigger_vars.contains(x) {
                     // If the trigger contains variables declared by a nested quantifier,
