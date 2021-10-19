@@ -218,7 +218,7 @@ impl Verifier {
         compiler: &Compiler,
         krate: &Krate,
         air_context: &mut air::context::Context,
-        ctx: &vir::context::Ctx,
+        ctx: &mut vir::context::Ctx,
         module: &Path,
     ) -> Result<(), VirErr> {
         air_context.blank_line();
@@ -244,7 +244,7 @@ impl Verifier {
             if !Verifier::is_visible_to(&function.x.visibility, module) {
                 continue;
             }
-            let commands = vir::func_to_air::func_name_to_air(&ctx, &function)?;
+            let commands = vir::func_to_air::func_name_to_air(ctx, &function)?;
             Self::run_commands(
                 air_context,
                 &commands,
@@ -261,7 +261,7 @@ impl Verifier {
                 continue;
             }
             let (decl_commands, check_commands) =
-                vir::func_to_air::func_decl_to_air(&ctx, &function)?;
+                vir::func_to_air::func_decl_to_air(ctx, &function)?;
             Self::run_commands(
                 air_context,
                 &decl_commands,
@@ -286,7 +286,7 @@ impl Verifier {
             if Some(module.clone()) != function.x.visibility.owning_module {
                 continue;
             }
-            let (commands, snap_map) = vir::func_to_air::func_def_to_air(&ctx, &function)?;
+            let (commands, snap_map) = vir::func_to_air::func_def_to_air(ctx, &function)?;
             self.run_commands_queries(
                 compiler,
                 air_context,
@@ -321,7 +321,7 @@ impl Verifier {
         air_context.set_z3_param("air_recommended_options", "true");
         air_context.set_rlimit(self.args.rlimit * 1000000);
 
-        let ctx = vir::context::Ctx::new(&krate, self.args.debug)?;
+        let mut ctx = vir::context::Ctx::new(&krate, self.args.debug)?;
 
         air_context.blank_line();
         air_context.comment("Prelude");
@@ -346,7 +346,7 @@ impl Verifier {
             air_context.blank_line();
             air_context.comment(&("MODULE '".to_string() + &module_name + "'"));
             air_context.push();
-            self.verify_module(compiler, krate, &mut air_context, &ctx, module)?;
+            self.verify_module(compiler, krate, &mut air_context, &mut ctx, module)?;
             air_context.pop();
         }
 

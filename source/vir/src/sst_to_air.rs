@@ -356,7 +356,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
                     }
                 }
             }
-            if func.x.ensure.len() > 0 {
+            if ctx.funcs_with_ensure_predicate.contains(&func.x.path) {
                 let f_ens = prefix_ensures(&path_to_air_ident(&func.x.path));
                 let e_ens = Arc::new(ExprX::Apply(f_ens, Arc::new(ens_args)));
                 stmts.push(Arc::new(StmtX::Assume(e_ens)));

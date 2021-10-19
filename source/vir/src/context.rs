@@ -4,7 +4,7 @@ use crate::scc::Graph;
 use crate::sst_to_air::path_to_air_ident;
 use air::ast::{Command, CommandX, Commands, DeclX, MultiOp, Span};
 use air::ast_util::str_typ;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 pub struct Ctx {
@@ -12,6 +12,7 @@ pub struct Ctx {
     pub(crate) functions: Vec<Function>,
     pub(crate) func_map: HashMap<Path, Function>,
     pub(crate) func_call_graph: Graph<Path>,
+    pub(crate) funcs_with_ensure_predicate: HashSet<Path>,
     pub(crate) chosen_triggers: std::cell::RefCell<Vec<(Span, Vec<Vec<String>>)>>, // diagnostics
     pub(crate) debug: bool,
 }
@@ -26,6 +27,7 @@ impl Ctx {
         let mut functions: Vec<Function> = Vec::new();
         let mut func_map: HashMap<Path, Function> = HashMap::new();
         let mut func_call_graph: Graph<Path> = Graph::new();
+        let funcs_with_ensure_predicate: HashSet<Path> = HashSet::new();
         for function in krate.functions.iter() {
             func_map.insert(function.x.path.clone(), function.clone());
             crate::recursion::expand_call_graph(&mut func_call_graph, function)?;
@@ -34,7 +36,15 @@ impl Ctx {
         func_call_graph.compute_sccs();
         let chosen_triggers: std::cell::RefCell<Vec<(Span, Vec<Vec<String>>)>> =
             std::cell::RefCell::new(Vec::new());
-        Ok(Ctx { datatypes, functions, func_map, func_call_graph, chosen_triggers, debug })
+        Ok(Ctx {
+            datatypes,
+            functions,
+            func_map,
+            func_call_graph,
+            funcs_with_ensure_predicate,
+            chosen_triggers,
+            debug,
+        })
     }
 
     pub fn prelude(&self) -> Commands {

@@ -157,7 +157,7 @@ pub fn req_ens_to_air(
     typs: &air::ast::Typs,
     name: &Ident,
     msg: &Option<String>,
-) -> Result<(), VirErr> {
+) -> Result<bool, VirErr> {
     if specs.len() + typing_invs.len() > 0 {
         let mut all_typs = (**typs).clone();
         for _ in typ_params.iter() {
@@ -186,8 +186,10 @@ pub fn req_ens_to_air(
         let e_forall = func_def_quant(ctx, &name, &typ_params, &params, body)?;
         let req_ens_axiom = Arc::new(DeclX::Axiom(e_forall));
         commands.push(Arc::new(CommandX::Global(req_ens_axiom)));
+        Ok(true)
+    } else {
+        Ok(false)
     }
-    Ok(())
 }
 
 /// Returns vector of commands that declare the function symbol itself,
@@ -224,7 +226,10 @@ pub fn func_name_to_air(ctx: &Ctx, function: &Function) -> Result<Commands, VirE
     Ok(Arc::new(commands))
 }
 
-pub fn func_decl_to_air(ctx: &Ctx, function: &Function) -> Result<(Commands, Commands), VirErr> {
+pub fn func_decl_to_air(
+    ctx: &mut Ctx,
+    function: &Function,
+) -> Result<(Commands, Commands), VirErr> {
     let mut all_typs = vec_map(&function.x.params, |param| typ_to_air(ctx, &param.x.typ));
     let param_typs = Arc::new(all_typs.clone());
     for _ in function.x.typ_params.iter() {
@@ -267,7 +272,7 @@ pub fn func_decl_to_air(ctx: &Ctx, function: &Function) -> Result<(Commands, Com
                 // We don't highlight the failed precondition if the programmer supplied their own msg
                 Some(_) => None,
             };
-            req_ens_to_air(
+            let _ = req_ens_to_air(
                 ctx,
                 &mut decl_commands,
                 &function.x.params,
@@ -289,7 +294,7 @@ pub fn func_decl_to_air(ctx: &Ctx, function: &Function) -> Result<(Commands, Com
                     ens_typing_invs.push(expr);
                 }
             }
-            req_ens_to_air(
+            let has_ens_pred = req_ens_to_air(
                 ctx,
                 &mut decl_commands,
                 &Arc::new(ens_params),
@@ -300,6 +305,9 @@ pub fn func_decl_to_air(ctx: &Ctx, function: &Function) -> Result<(Commands, Com
                 &prefix_ensures(&path_to_air_ident(&function.x.path)),
                 &None,
             )?;
+            if has_ens_pred {
+                ctx.funcs_with_ensure_predicate.insert(function.x.path.clone());
+            }
         }
         _ => {}
     }

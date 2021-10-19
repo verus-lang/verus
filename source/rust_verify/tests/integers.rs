@@ -28,6 +28,11 @@ test_verify_with_pervasive! {
         }
 
         #[proof]
+        fn test0x() -> nat {
+            100
+        }
+
+        #[proof]
         fn test1(i: int, n: nat, u: u8) {
             assert(n >= 0);
             assert(u >= 0);
@@ -38,6 +43,8 @@ test_verify_with_pervasive! {
             assert(add1_nat(u) == u as nat + 1);
             let n0 = test0();
             assert(n0 >= 0);
+            let n0x = test0x();
+            assert(n0x >= 0);
             assert(add1_nat_opaque(5) >= 0);
             assert(n / 2 <= n);
             assert(u / 2 <= u);
