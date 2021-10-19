@@ -82,6 +82,9 @@ pub const PREFIX_TYPE_ID: &str = "TYPE%";
 pub const HAS_TYPE: &str = "has_type";
 pub const VARIANT_FIELD_SEPARATOR: &str = "/";
 
+// We assume that usize is at least ARCH_SIZE_MIN_BITS wide
+pub const ARCH_SIZE_MIN_BITS: u32 = 32;
+
 pub fn check_decrease_int() -> crate::ast::Path {
     Arc::new(vec![str_ident("check_decrease_int")])
 }

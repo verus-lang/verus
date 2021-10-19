@@ -120,7 +120,7 @@ pub(crate) fn prelude_nodes() -> Vec<Node> {
         // Integers
         // TODO: make this more configurable via options or HeaderExpr directives
         (declare-const [arch_size] Int) // number of bits for usize/isize
-        (axiom (or (= [arch_size] 32) (= [arch_size] 64)))
+        (axiom (or (= [arch_size] {str_to_node(&ARCH_SIZE_MIN_BITS.to_string())}) (= [arch_size] 64)))
         (declare-fun [u_hi] (Int) Int) // \
         (declare-fun [i_lo] (Int) Int) // - convert number of bits to integer ranges
         (declare-fun [i_hi] (Int) Int) // /

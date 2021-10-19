@@ -524,6 +524,9 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                         IntRange::U(n) if n < 128 && i < (1u128 << n) => {
                             Ok(mk_expr(ExprX::Const(c)))
                         }
+                        IntRange::USize if i < (1u128 << vir::def::ARCH_SIZE_MIN_BITS) => {
+                            Ok(mk_expr(ExprX::Const(c)))
+                        }
                         _ => {
                             // If we're not sure the constant fits in the range,
                             // be cautious and clip it
