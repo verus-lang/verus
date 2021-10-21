@@ -323,6 +323,9 @@ pub(crate) fn expr_to_stm_opt(
             }
             let exp = if let Some(expr) = body_opt {
                 let (mut stms1, exp) = expr_to_stm_opt(ctx, state, expr)?;
+                if stms1.len() > 0 {
+                    is_pure_exp = false;
+                }
                 stms.append(&mut stms1);
                 exp
             } else {
