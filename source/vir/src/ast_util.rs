@@ -1,4 +1,4 @@
-use crate::ast::{Mode, Path, SpannedTyped, Typ, TypX, VirErr, VirErrX};
+use crate::ast::{Mode, Path, SpannedTyped, Typ, TypX, VirErr, VirErrX, Visibility};
 use crate::def::Spanned;
 use air::ast::Span;
 pub use air::ast_util::{ident_binder, str_ident};
@@ -34,8 +34,35 @@ pub fn types_equal(typ1: &Typ, typ2: &Typ) -> bool {
 }
 
 pub fn path_to_string(path: &Path) -> String {
-    let sep = crate::def::TYPE_PATH_SEPARATOR;
-    path.iter().map(|x| (**x).as_str()).collect::<Vec<_>>().join(sep)
+    let krate = match &path.krate {
+        None => "".to_string(),
+        Some(krate) => krate.to_string(),
+    };
+    let mut strings: Vec<String> = vec![krate];
+    for segment in path.segments.iter() {
+        strings.push(segment.to_string());
+    }
+    strings.join(crate::def::TYPE_PATH_SEPARATOR)
+}
+
+// Can source_module see an item owned by owning_module?
+pub fn is_visible_to_of_owner(owning_module: &Option<Path>, source_module: &Path) -> bool {
+    let sources = &source_module.segments;
+    match owning_module {
+        None => true,
+        Some(target) if target.segments.len() > sources.len() => false,
+        Some(target) => {
+            // Child can access private item in parent, so check if target is parent:
+            let targets = &target.segments;
+            target.krate == source_module.krate && targets[..] == sources[..targets.len()]
+        }
+    }
+}
+
+// Can source_module see an item with target_visibility?
+pub fn is_visible_to(target_visibility: &Visibility, source_module: &Path) -> bool {
+    let Visibility { owning_module, is_private } = target_visibility;
+    !is_private || is_visible_to_of_owner(owning_module, source_module)
 }
 
 impl<X> SpannedTyped<X> {

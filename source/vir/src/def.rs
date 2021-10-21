@@ -1,3 +1,4 @@
+use crate::ast::{Path, PathX};
 use crate::ast_util::str_ident;
 use air::ast::{Ident, Span};
 use std::fmt::Debug;
@@ -85,8 +86,8 @@ pub const VARIANT_FIELD_SEPARATOR: &str = "/";
 // We assume that usize is at least ARCH_SIZE_MIN_BITS wide
 pub const ARCH_SIZE_MIN_BITS: u32 = 32;
 
-pub fn check_decrease_int() -> crate::ast::Path {
-    Arc::new(vec![str_ident("check_decrease_int")])
+pub fn check_decrease_int() -> Path {
+    Arc::new(PathX { krate: None, segments: Arc::new(vec![str_ident("check_decrease_int")]) })
 }
 
 pub fn suffix_global_id(ident: &Ident) -> Ident {

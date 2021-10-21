@@ -12,7 +12,7 @@ use rustc_span::{CharPos, FileName, MultiSpan, Span};
 use std::fs::File;
 use std::io::Write;
 use vir::ast::{Krate, Path, VirErr, VirErrX, Visibility};
-use vir::ast_util::path_to_string;
+use vir::ast_util::{is_visible_to, path_to_string};
 use vir::def::SnapPos;
 use vir::model::Model as VModel;
 
@@ -169,18 +169,6 @@ impl Verifier {
         }
     }
 
-    // Can source_module see an item with target_visibility?
-    fn is_visible_to(target_visibility: &Visibility, source_module: &Path) -> bool {
-        let Visibility { owning_module, is_private } = target_visibility;
-        match owning_module {
-            _ if !is_private => true,
-            None => true,
-            Some(target) if target.len() > source_module.len() => false,
-            // Child can access private item in parent, so check if target is parent:
-            Some(target) => target[..] == source_module[..target.len()],
-        }
-    }
-
     fn run_commands(
         air_context: &mut air::context::Context,
         commands: &Vec<Command>,
@@ -234,14 +222,14 @@ impl Verifier {
                 .datatypes
                 .iter()
                 .cloned()
-                .filter(|d| Verifier::is_visible_to(&d.x.visibility, module))
+                .filter(|d| is_visible_to(&d.x.visibility, module))
                 .collect(),
         );
         Self::run_commands(air_context, &datatype_commands, &("Datatypes".to_string()));
 
         // Declare the function symbols
         for function in &krate.functions {
-            if !Verifier::is_visible_to(&function.x.visibility, module) {
+            if !is_visible_to(&function.x.visibility, module) {
                 continue;
             }
             let commands = vir::func_to_air::func_name_to_air(ctx, &function)?;
@@ -257,7 +245,7 @@ impl Verifier {
         for function in &krate.functions {
             let vis = function.x.visibility.clone();
             let vis = Visibility { is_private: vis.is_private || function.x.is_abstract, ..vis };
-            if !Verifier::is_visible_to(&vis, module) {
+            if !is_visible_to(&vis, module) {
                 continue;
             }
             let (decl_commands, check_commands) =
@@ -331,8 +319,9 @@ impl Verifier {
 
         let verify_entire_crate = !self.args.verify_root && self.args.verify_module.is_none();
         for module in &krate.module_ids {
-            let module_name = module.iter().map(|s| s.to_string()).collect::<Vec<_>>().join("::");
-            if module.len() == 0 {
+            let module_name =
+                module.segments.iter().map(|s| s.to_string()).collect::<Vec<_>>().join("::");
+            if module.segments.len() == 0 {
                 if !verify_entire_crate && !self.args.verify_root {
                     continue;
                 }

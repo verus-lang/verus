@@ -1,4 +1,5 @@
 use crate::ast::{DatatypeTransparency, Path};
+use crate::ast_util::is_visible_to_of_owner;
 use crate::context::Ctx;
 use crate::def::{prefix_box, prefix_type_id, prefix_unbox};
 use crate::sst_to_air::{path_to_air_ident, typ_to_air};
@@ -32,12 +33,9 @@ fn datatype_to_air<'a>(ctx: &'a Ctx, datatype: &crate::ast::Datatype) -> air::as
 pub fn is_datatype_transparent(source_module: &Path, datatype: &crate::ast::Datatype) -> bool {
     match datatype.x.transparency {
         DatatypeTransparency::Never => false,
-        DatatypeTransparency::WithinModule => match &datatype.x.visibility.owning_module {
-            None => true,
-            Some(target) if target.len() > source_module.len() => false,
-            // Child can access private item in parent, so check if target is parent:
-            Some(target) => target[..] == source_module[..target.len()],
-        },
+        DatatypeTransparency::WithinModule => {
+            is_visible_to_of_owner(&datatype.x.visibility.owning_module, source_module)
+        }
         DatatypeTransparency::Always => true,
     }
 }

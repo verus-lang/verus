@@ -8,7 +8,9 @@ For soundness's sake, be as defensive as possible:
 
 use crate::context::Context;
 use crate::rust_to_vir_adts::{check_item_enum, check_item_struct};
-use crate::rust_to_vir_base::{hack_check_def_name, hack_get_def_name, mk_visibility};
+use crate::rust_to_vir_base::{
+    def_id_to_vir_path, hack_get_def_name, mk_visibility, path_as_string,
+};
 use crate::rust_to_vir_func::{check_foreign_item_fn, check_item_fn};
 use crate::util::unsupported_err_span;
 use crate::{err_unless, unsupported_err, unsupported_err_unless, unsupported_unless};
@@ -78,36 +80,18 @@ fn check_item<'tcx>(
         }
         ItemKind::Impl(impll) => {
             if let Some(TraitRef { path, hir_ref_id: _ }) = impll.of_trait {
+                let path_name = path_as_string(&def_id_to_vir_path(ctxt.tcx, path.res.def_id()));
                 unsupported_err_unless!(
-                    hack_check_def_name(
-                        ctxt.tcx,
-                        path.res.def_id(),
-                        "core",
-                        "marker::StructuralEq"
-                    ) || hack_check_def_name(ctxt.tcx, path.res.def_id(), "core", "cmp::Eq")
-                        || hack_check_def_name(
-                            ctxt.tcx,
-                            path.res.def_id(),
-                            "core",
-                            "marker::StructuralPartialEq"
-                        )
-                        || hack_check_def_name(
-                            ctxt.tcx,
-                            path.res.def_id(),
-                            "core",
-                            "cmp::PartialEq"
-                        )
-                        || hack_check_def_name(
-                            ctxt.tcx,
-                            path.res.def_id(),
-                            "builtin",
-                            "Structural"
-                        ),
+                    path_name == "core::marker::StructuralEq"
+                        || path_name == "core::cmp::Eq"
+                        || path_name == "core::marker::StructuralPartialEq"
+                        || path_name == "core::cmp::PartialEq"
+                        || path_name == "builtin::Structural",
                     item.span,
                     "non_eq_trait_impl",
                     path
                 );
-                if hack_check_def_name(ctxt.tcx, path.res.def_id(), "builtin", "Structural") {
+                if path_name == "builtin::Structural" {
                     let ty = {
                         // TODO extract to rust_to_vir_base, or use
                         // https://doc.rust-lang.org/nightly/nightly-rustc/rustc_typeck/fn.hir_ty_to_ty.html
@@ -278,7 +262,7 @@ pub fn crate_to_vir<'tcx>(ctxt: &Context<'tcx>) -> Result<Krate, VirErr> {
     );
     let mut item_to_module: HashMap<ItemId, Path> = HashMap::new();
     for (id, module) in modules {
-        let path = crate::rust_to_vir_base::def_to_path(ctxt.tcx, id.to_def_id());
+        let path = crate::rust_to_vir_base::def_id_to_vir_path(ctxt.tcx, id.to_def_id());
         check_module(ctxt.tcx, &path, module, &mut item_to_module)?;
         vir.module_ids.push(path);
     }
@@ -302,12 +286,13 @@ pub fn crate_to_vir<'tcx>(ctxt: &Context<'tcx>) -> Result<Krate, VirErr> {
         );
     }
     for (id, _trait_impl) in trait_impls {
+        let id_name = path_as_string(&def_id_to_vir_path(ctxt.tcx, *id));
         unsupported_unless!(
-            hack_check_def_name(ctxt.tcx, *id, "core", "marker::StructuralEq")
-                || hack_check_def_name(ctxt.tcx, *id, "core", "cmp::Eq")
-                || hack_check_def_name(ctxt.tcx, *id, "core", "marker::StructuralPartialEq")
-                || hack_check_def_name(ctxt.tcx, *id, "core", "cmp::PartialEq")
-                || hack_check_def_name(ctxt.tcx, *id, "builtin", "Structural"),
+            id_name == "core::marker::StructuralEq"
+                || id_name == "core::cmp::Eq"
+                || id_name == "core::marker::StructuralPartialEq"
+                || id_name == "core::cmp::PartialEq"
+                || id_name == "builtin::Structural",
             "non_eq_trait_impl",
             id
         );

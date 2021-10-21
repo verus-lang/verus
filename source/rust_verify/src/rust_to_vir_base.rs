@@ -11,31 +11,30 @@ use rustc_hir::{
     VisibilityKind,
 };
 use rustc_middle::ty::{AdtDef, TyCtxt, TyKind, TypeckResults};
-use rustc_span::def_id::DefId;
+use rustc_span::def_id::{DefId, LOCAL_CRATE};
 use rustc_span::symbol::Ident;
 use rustc_span::Span;
 use std::sync::Arc;
-use vir::ast::{Idents, IntRange, Mode, Path, Typ, TypX, VirErr};
+use vir::ast::{Idents, IntRange, Mode, Path, PathX, Typ, TypX, VirErr};
 use vir::ast_util::types_equal;
 
-pub(crate) fn def_to_path<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> Path {
-    Arc::new(
-        tcx.def_path(def_id).data.iter().map(|d| Arc::new(format!("{}", d))).collect::<Vec<_>>(),
-    )
+pub(crate) fn def_path_to_vir_path<'tcx>(tcx: TyCtxt<'tcx>, def_path: DefPath) -> Path {
+    let krate = if def_path.krate == LOCAL_CRATE {
+        None
+    } else {
+        Some(Arc::new(tcx.crate_name(def_path.krate).to_string()))
+    };
+    let segments =
+        Arc::new(def_path.data.iter().map(|d| Arc::new(format!("{}", d))).collect::<Vec<_>>());
+    Arc::new(PathX { krate, segments })
 }
 
-#[inline(always)]
-pub(crate) fn def_id_to_ty_path<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> TypX {
-    TypX::Path(def_id_to_vir_path(tcx, def_id))
-}
-
-#[inline(always)]
 pub(crate) fn def_id_to_vir_path<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> Path {
     def_path_to_vir_path(tcx, tcx.def_path(def_id))
 }
 
-pub(crate) fn def_path_to_vir_path<'tcx>(_tcx: TyCtxt<'tcx>, def_path: DefPath) -> Path {
-    Arc::new(def_path.data.iter().map(|d| Arc::new(format!("{}", d))).collect::<Vec<_>>())
+pub(crate) fn def_id_to_ty_path<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> TypX {
+    TypX::Path(def_id_to_vir_path(tcx, def_id))
 }
 
 // TODO: proper handling of def_ids
@@ -46,18 +45,9 @@ pub(crate) fn hack_get_def_name<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> Strin
     debug_name[last_colon + 1..].to_string()
 }
 
-// TODO: proper handling of def_ids
-// use https://doc.rust-lang.org/stable/nightly-rustc/rustc_middle/ty/context/struct.TyCtxt.html#method.lang_items ?
-pub(crate) fn hack_check_def_name<'tcx>(
-    tcx: TyCtxt<'tcx>,
-    def_id: DefId,
-    krate: &str,
-    path: &str,
-) -> bool {
-    let debug_name = tcx.def_path_debug_str(def_id);
-    let krate_prefix = format!("{}[", krate);
-    let path_suffix = format!("]::{}", path);
-    debug_name.starts_with(&krate_prefix) && debug_name.ends_with(&path_suffix)
+pub(crate) fn path_as_string(path: &Path) -> String {
+    let s = vir::ast_util::path_to_string(path);
+    s.replace(vir::def::TYPE_PATH_SEPARATOR, "::")
 }
 
 pub(crate) fn ident_to_var<'tcx>(ident: &Ident) -> String {
@@ -386,14 +376,15 @@ pub(crate) fn ty_to_vir<'tcx>(tcx: TyCtxt<'tcx>, ty: &Ty) -> Typ {
             Res::PrimTy(PrimTy::Int(IntTy::I128)) => TypX::Int(IntRange::I(128)),
             Res::PrimTy(PrimTy::Int(IntTy::Isize)) => TypX::Int(IntRange::ISize),
             Res::Def(DefKind::TyParam, def_id) => {
-                let path = def_to_path(tcx, def_id);
-                TypX::TypParam(path.last().unwrap().clone())
+                let path = def_id_to_vir_path(tcx, def_id);
+                TypX::TypParam(path.segments.last().unwrap().clone())
             }
             Res::Def(DefKind::Struct, def_id) => {
                 // TODO: consider using #[rust_diagnostic_item] and https://doc.rust-lang.org/stable/nightly-rustc/rustc_middle/ty/query/query_stored/type.diagnostic_items.html for the builtin lib
-                if hack_check_def_name(tcx, def_id, "builtin", "int") {
+                let def_name = path_as_string(&def_id_to_vir_path(tcx, def_id));
+                if def_name == "builtin::int" {
                     TypX::Int(IntRange::Int)
-                } else if hack_check_def_name(tcx, def_id, "builtin", "nat") {
+                } else if def_name == "builtin::nat" {
                     TypX::Int(IntRange::Nat)
                 } else {
                     def_id_to_ty_path(tcx, def_id)

@@ -24,7 +24,12 @@ pub type Ident = Arc<String>;
 pub type Idents = Arc<Vec<Ident>>;
 
 /// A fully-qualified name, such as a module name, function name, or datatype name
-pub type Path = Arc<Vec<Ident>>;
+pub type Path = Arc<PathX>;
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct PathX {
+    pub krate: Option<Ident>, // None for local crate
+    pub segments: Idents,
+}
 
 /// Describes what access other modules have to a function, datatype, etc.
 #[derive(Clone, Debug)]

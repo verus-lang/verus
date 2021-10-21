@@ -1,8 +1,8 @@
 use crate::erase::ResolvedCall;
 use crate::rust_to_vir_base::{
-    def_id_to_vir_path, get_range, get_trigger, get_var_mode, hack_check_def_name,
-    hack_get_def_name, ident_to_var, is_smt_arith, is_smt_equality, mid_ty_to_vir,
-    mid_ty_to_vir_opt, mk_range, ty_to_vir, typ_of_node, BodyCtxt,
+    def_id_to_vir_path, get_range, get_trigger, get_var_mode, hack_get_def_name, ident_to_var,
+    is_smt_arith, is_smt_equality, mid_ty_to_vir, mid_ty_to_vir_opt, mk_range, path_as_string,
+    ty_to_vir, typ_of_node, BodyCtxt,
 };
 use crate::util::{
     err_span_str, slice_vec_map_result, spanned_new, spanned_typed_new, unsupported_err_span,
@@ -210,27 +210,28 @@ fn fn_call_to_vir<'tcx>(
     let mk_expr = |x: ExprX| spanned_typed_new(expr.span, &expr_typ, x);
     let mk_expr_span = |span: Span, x: ExprX| spanned_typed_new(span, &expr_typ, x);
 
-    let is_admit = hack_check_def_name(tcx, f, "builtin", "admit");
-    let is_requires = hack_check_def_name(tcx, f, "builtin", "requires");
-    let is_ensures = hack_check_def_name(tcx, f, "builtin", "ensures");
-    let is_invariant = hack_check_def_name(tcx, f, "builtin", "invariant");
-    let is_decreases = hack_check_def_name(tcx, f, "builtin", "decreases");
-    let is_forall = hack_check_def_name(tcx, f, "builtin", "forall");
-    let is_exists = hack_check_def_name(tcx, f, "builtin", "exists");
-    let is_equal = hack_check_def_name(tcx, f, "builtin", "equal");
-    let is_hide = hack_check_def_name(tcx, f, "builtin", "hide");
-    let is_reveal = hack_check_def_name(tcx, f, "builtin", "reveal");
-    let is_reveal_fuel = hack_check_def_name(tcx, f, "builtin", "reveal_with_fuel");
-    let is_implies = hack_check_def_name(tcx, f, "builtin", "imply");
-    let is_eq = hack_check_def_name(tcx, f, "core", "cmp::PartialEq::eq");
-    let is_ne = hack_check_def_name(tcx, f, "core", "cmp::PartialEq::ne");
-    let is_le = hack_check_def_name(tcx, f, "core", "cmp::PartialOrd::le");
-    let is_ge = hack_check_def_name(tcx, f, "core", "cmp::PartialOrd::ge");
-    let is_lt = hack_check_def_name(tcx, f, "core", "cmp::PartialOrd::lt");
-    let is_gt = hack_check_def_name(tcx, f, "core", "cmp::PartialOrd::gt");
-    let is_add = hack_check_def_name(tcx, f, "core", "ops::arith::Add::add");
-    let is_sub = hack_check_def_name(tcx, f, "core", "ops::arith::Sub::sub");
-    let is_mul = hack_check_def_name(tcx, f, "core", "ops::arith::Mul::mul");
+    let f_name = path_as_string(&def_id_to_vir_path(tcx, f));
+    let is_admit = f_name == "builtin::admit";
+    let is_requires = f_name == "builtin::requires";
+    let is_ensures = f_name == "builtin::ensures";
+    let is_invariant = f_name == "builtin::invariant";
+    let is_decreases = f_name == "builtin::decreases";
+    let is_forall = f_name == "builtin::forall";
+    let is_exists = f_name == "builtin::exists";
+    let is_equal = f_name == "builtin::equal";
+    let is_hide = f_name == "builtin::hide";
+    let is_reveal = f_name == "builtin::reveal";
+    let is_reveal_fuel = f_name == "builtin::reveal_with_fuel";
+    let is_implies = f_name == "builtin::imply";
+    let is_eq = f_name == "core::cmp::PartialEq::eq";
+    let is_ne = f_name == "core::cmp::PartialEq::ne";
+    let is_le = f_name == "core::cmp::PartialOrd::le";
+    let is_ge = f_name == "core::cmp::PartialOrd::ge";
+    let is_lt = f_name == "core::cmp::PartialOrd::lt";
+    let is_gt = f_name == "core::cmp::PartialOrd::gt";
+    let is_add = f_name == "core::ops::arith::Add::add";
+    let is_sub = f_name == "core::ops::arith::Sub::sub";
+    let is_mul = f_name == "core::ops::arith::Mul::mul";
     let is_spec = is_admit || is_requires || is_ensures || is_invariant || is_decreases;
     let is_quant = is_forall || is_exists;
     let is_directive = is_hide || is_reveal || is_reveal_fuel;
@@ -441,11 +442,12 @@ pub(crate) fn expr_tuple_datatype_ctor_to_vir<'tcx>(
     let vir_path = {
         // TODO is there a safer way to do this?
         let mut vir_path = def_id_to_vir_path(tcx, res.def_id());
-        Arc::get_mut(&mut vir_path).unwrap().pop(); // remove constructor
-        Arc::get_mut(&mut vir_path).unwrap().pop(); // remove variant
+        let segments = Arc::get_mut(&mut Arc::get_mut(&mut vir_path).unwrap().segments).unwrap();
+        segments.pop(); // remove constructor
+        segments.pop(); // remove variant
         vir_path
     };
-    let name = vir_path.last().expect("invalid path in datatype ctor");
+    let name = vir_path.segments.last().expect("invalid path in datatype ctor");
     let variant_name = variant_ident(name.as_str(), &variant.ident.as_str());
     let vir_fields = Arc::new(
         args_slice
@@ -651,7 +653,7 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                     expr
                 );
                 let datatype_path = def_id_to_vir_path(tcx, adt_def.did);
-                let datatype_name = datatype_path.last().unwrap();
+                let datatype_name = datatype_path.segments.last().unwrap();
                 let variant = adt_def.variants.iter().next().unwrap();
                 let variant_name = variant_ident(datatype_name.as_str(), &variant.ident.as_str());
                 // TODO: deduplicate with Ctor?
@@ -762,12 +764,13 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                     let variant = tcx.expect_variant_res(path.res);
                     let mut vir_path = def_id_to_vir_path(tcx, path.res.def_id());
                     if let Res::Def(DefKind::Variant, _) = path.res {
-                        Arc::get_mut(&mut vir_path)
+                        Arc::get_mut(&mut Arc::get_mut(&mut vir_path).unwrap().segments)
                             .unwrap()
                             .pop()
                             .expect(format!("variant name in Struct ctor for {:?}", path).as_str());
                     }
                     let name = vir_path
+                        .segments
                         .last()
                         .expect(format!("adt name in Struct ctor for {:?}", path).as_str());
                     let variant_name = variant_ident(&name, &variant.ident.as_str());
