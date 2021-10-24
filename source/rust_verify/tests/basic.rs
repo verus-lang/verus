@@ -200,3 +200,58 @@ test_verify_with_pervasive! {
         }
     } => Ok(())
 }
+
+test_verify_with_pervasive! {
+    #[test] test_short_circuit code! {
+        fn f1(a: bool, b: bool) {
+            let mut x: u64 = 0;
+            let y = a && b;
+            let z = a && { x = x + 1; b };
+            assert(y == z);
+            assert((x == 1) == a);
+        }
+
+        fn f2(a: bool, b: bool) {
+            let mut x: u64 = 0;
+            let y = a || b;
+            let z = a || { x = x + 1; b };
+            assert(y == z);
+            assert((x == 1) == !a);
+        }
+
+        fn f3(a: bool, b: bool) {
+            #[spec]
+            let mut x: u64 = 0;
+            #[spec]
+            let y = imply(a, b);
+            #[spec]
+            let z = imply(a, { x = x + 1; b });
+            assert(y == z);
+            assert((x == 1) == a);
+        }
+    } => Ok(())
+}
+
+test_verify_with_pervasive! {
+    #[test] test_short_circuit2 code! {
+        fn f1(a: bool, b: bool) {
+            let mut x: u64 = 0;
+            let y = a && b;
+            let z = a && { x = x + 1; b };
+            assert(y == z);
+            assert(x == 0); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_with_pervasive! {
+    #[test] test_short_circuit3 code! {
+        fn f1(a: bool, b: bool) {
+            let mut x: u64 = 0;
+            let y = a && b;
+            let z = a && { x = x + 1; b };
+            assert(y == z);
+            assert(x == 1); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}

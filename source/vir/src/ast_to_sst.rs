@@ -147,6 +147,34 @@ pub(crate) fn expr_to_one_stm_dest(
     Ok(stms_to_one_stm(&expr.span, stms))
 }
 
+fn if_to_stm(
+    state: &mut State,
+    expr: &Expr,
+    stms0: &mut Vec<Stm>,
+    e0: Exp,
+    mut stms1: Vec<Stm>,
+    e1: &Exp,
+    mut stms2: Vec<Stm>,
+    e2: &Exp,
+) -> Exp {
+    // If statement, put results from e1/e2 in a temp variable, return temp variable
+    let temp = state.next_temp();
+    // let temp;
+    let typ = expr.typ.clone();
+    let ident = temp.clone();
+    let temp_decl = StmX::Decl { ident, typ, mutable: false, init: false };
+    stms0.push(Spanned::new(expr.span.clone(), temp_decl));
+    // if e0 { stms1; temp = e1; } else { stms2; temp = e2; }
+    stms1.push(assume_var(&expr.span, &temp, &e1));
+    stms2.push(assume_var(&expr.span, &temp, &e2));
+    let stm1 = stms_to_one_stm(&expr.span, stms1);
+    let stm2 = stms_to_one_stm(&expr.span, stms2);
+    let if_stmt = StmX::If(e0, stm1, Some(stm2));
+    stms0.push(Spanned::new(expr.span.clone(), if_stmt));
+    // temp
+    Spanned::new(expr.span.clone(), ExpX::Var(temp))
+}
+
 pub(crate) fn expr_to_stm_opt(
     ctx: &Ctx,
     state: &mut State,
@@ -227,11 +255,40 @@ pub(crate) fn expr_to_stm_opt(
             Ok((stms, Some(Spanned::new(expr.span.clone(), ExpX::UnaryOpr(op.clone(), exp)))))
         }
         ExprX::Binary(op, e1, e2) => {
+            let short_circuit = match op {
+                BinaryOp::And => Some((true, false)),
+                BinaryOp::Implies => Some((true, true)),
+                BinaryOp::Or => Some((false, true)),
+                _ => None,
+            };
             let (mut stms1, e1) = expr_to_stm(ctx, state, e1)?;
             let (mut stms2, e2) = expr_to_stm(ctx, state, e2)?;
-            stms1.append(&mut stms2);
-            let bin = ExpX::Binary(*op, e1, e2);
-            Ok((stms1, Some(Spanned::new(expr.span.clone(), bin))))
+            let bin = match (short_circuit, stms2.len()) {
+                (Some((proceed_on, other)), n) if n > 0 => {
+                    // and:
+                    //   if e1 { stmts2; e2 } else { false }
+                    // implies:
+                    //   if e1 { stmts2; e2 } else { true }
+                    // or:
+                    //   if e1 { true } else { stmts2; e2 }
+                    let bx = ExpX::Const(Constant::Bool(other));
+                    let b = Spanned::new(expr.span.clone(), bx);
+                    if proceed_on {
+                        let temp_var =
+                            if_to_stm(state, expr, &mut stms1, e1, stms2, &e2, vec![], &b);
+                        temp_var
+                    } else {
+                        let temp_var =
+                            if_to_stm(state, expr, &mut stms1, e1, vec![], &b, stms2, &e2);
+                        temp_var
+                    }
+                }
+                _ => {
+                    stms1.append(&mut stms2);
+                    Spanned::new(expr.span.clone(), ExpX::Binary(*op, e1, e2))
+                }
+            };
+            Ok((stms1, Some(bin)))
         }
         ExprX::Quant(quant, binders, body) => {
             let exp = expr_to_exp_state(ctx, state, body)?;
@@ -248,8 +305,8 @@ pub(crate) fn expr_to_stm_opt(
         }
         ExprX::If(expr0, expr1, Some(expr2)) => {
             let (mut stms0, e0) = expr_to_stm(ctx, state, expr0)?;
-            let (mut stms1, e1) = expr_to_stm_opt(ctx, state, expr1)?;
-            let (mut stms2, e2) = expr_to_stm_opt(ctx, state, expr2)?;
+            let (stms1, e1) = expr_to_stm_opt(ctx, state, expr1)?;
+            let (stms2, e2) = expr_to_stm_opt(ctx, state, expr2)?;
             match (e1, e2) {
                 (Some(e1), Some(e2)) if stms1.len() == 0 && stms2.len() == 0 => {
                     // If expression
@@ -257,21 +314,7 @@ pub(crate) fn expr_to_stm_opt(
                 }
                 (Some(e1), Some(e2)) => {
                     // If statement, put results from e1/e2 in a temp variable, return temp variable
-                    let temp = state.next_temp();
-                    // let temp;
-                    let typ = expr.typ.clone();
-                    let ident = temp.clone();
-                    let temp_decl = StmX::Decl { ident, typ, mutable: false, init: false };
-                    stms0.push(Spanned::new(expr.span.clone(), temp_decl));
-                    // if e0 { stms1; temp = e1; } else { stms2; temp = e2; }
-                    stms1.push(assume_var(&expr.span, &temp, &e1));
-                    stms2.push(assume_var(&expr.span, &temp, &e2));
-                    let stm1 = stms_to_one_stm(&expr.span, stms1);
-                    let stm2 = stms_to_one_stm(&expr.span, stms2);
-                    let if_stmt = StmX::If(e0, stm1, Some(stm2));
-                    stms0.push(Spanned::new(expr.span.clone(), if_stmt));
-                    // temp
-                    let temp_var = Spanned::new(expr.span.clone(), ExpX::Var(temp));
+                    let temp_var = if_to_stm(state, expr, &mut stms0, e0, stms1, &e1, stms2, &e2);
                     Ok((stms0, Some(temp_var)))
                 }
                 _ => {

@@ -123,6 +123,11 @@ fn check_expr(typing: &mut Typing, outer_mode: Mode, expr: &Expr) -> Result<Mode
                 BinaryOp::Eq(mode) => *mode,
                 _ => Mode::Exec,
             };
+            let outer_mode = match op {
+                // because Implies isn't compiled, make it spec-only
+                BinaryOp::Implies => mode_join(outer_mode, Mode::Spec),
+                _ => outer_mode,
+            };
             let mode1 = check_expr(typing, outer_mode, e1)?;
             let mode2 = check_expr(typing, outer_mode, e2)?;
             Ok(mode_join(op_mode, mode_join(mode1, mode2)))

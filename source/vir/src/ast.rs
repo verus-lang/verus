@@ -121,11 +121,11 @@ pub enum UnaryOpr {
 /// and UnaryOp::Clip.
 #[derive(Copy, Clone, Debug)]
 pub enum BinaryOp {
-    /// boolean and
+    /// boolean and (short-circuiting: right side is evaluated only if left side is true)
     And,
-    /// boolean or
+    /// boolean or (short-circuiting: right side is evaluated only if left side is false)
     Or,
-    /// boolean implies
+    /// boolean implies (short-circuiting: right side is evaluated only if left side is true)
     Implies,
     /// SMT equality for any type -- two expressions are exactly the same value
     /// Some types support compilable equality (Mode == Exec); others only support spec equality (Mode == Spec)

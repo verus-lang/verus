@@ -27,3 +27,13 @@ pub fn affirm(b: bool) {
 pub fn arbitrary<A>() -> A {
     unimplemented!()
 }
+
+#[verifier(external)]
+pub fn print_u64_external(i: u64) {
+    println!("{}", i);
+}
+
+#[verifier(no_verify)]
+pub fn print_u64(i: u64) {
+    print_u64_external(i);
+}
