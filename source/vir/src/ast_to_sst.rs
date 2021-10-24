@@ -1,13 +1,17 @@
 use crate::ast::{
-    BinaryOp, Constant, Expr, ExprX, Function, Ident, Mode, Path, Stmt, StmtX, Typs, VirErr,
+    BinaryOp, Constant, Expr, ExprX, Function, Ident, Mode, Path, Stmt, StmtX, Typ, Typs, UnaryOp,
+    UnaryOpr, VirErr,
 };
 use crate::ast_util::{err_str, err_string};
 use crate::context::Ctx;
 use crate::def::Spanned;
-use crate::sst::{Bnd, BndX, Dest, Exp, ExpX, Exps, Stm, StmX};
-use crate::util::vec_map_result;
+use crate::sst::{Bnd, BndX, Dest, Exp, ExpX, Stm, StmX};
+use crate::util::{vec_map, vec_map_result};
 use air::ast::{Binder, BinderX, Span};
 use std::sync::Arc;
+
+type Arg = (Exp, Typ);
+type Args = Arc<Vec<Arg>>;
 
 pub struct State {
     next_var: u64,
@@ -48,15 +52,15 @@ fn expr_get_call(
     ctx: &Ctx,
     state: &mut State,
     expr: &Expr,
-) -> Result<Option<(Vec<Stm>, Path, Typs, bool, Exps)>, VirErr> {
+) -> Result<Option<(Vec<Stm>, Path, Typs, bool, Args)>, VirErr> {
     match &expr.x {
         ExprX::Call(x, typs, args) => {
             let mut stms: Vec<Stm> = Vec::new();
-            let mut exps: Vec<Exp> = Vec::new();
+            let mut exps: Vec<Arg> = Vec::new();
             for arg in args.iter() {
                 let (mut stms0, e0) = expr_to_stm(ctx, state, arg)?;
                 stms.append(&mut stms0);
-                exps.push(e0);
+                exps.push((e0, arg.typ.clone()));
             }
             let has_ret = !get_function(ctx, expr, x)?.x.ret.is_none();
             Ok(Some((stms, x.clone(), typs.clone(), has_ret, Arc::new(exps))))
@@ -70,7 +74,7 @@ fn expr_must_be_call_stm(
     ctx: &Ctx,
     state: &mut State,
     expr: &Expr,
-) -> Result<Option<(Vec<Stm>, Path, Typs, bool, Exps)>, VirErr> {
+) -> Result<Option<(Vec<Stm>, Path, Typs, bool, Args)>, VirErr> {
     match &expr.x {
         ExprX::Call(x, _, _) if !function_can_be_exp(ctx, expr, x)? => {
             expr_get_call(ctx, state, expr)
@@ -147,6 +151,46 @@ pub(crate) fn expr_to_one_stm_dest(
     Ok(stms_to_one_stm(&expr.span, stms))
 }
 
+fn is_small_exp(exp: &Exp) -> bool {
+    match &exp.x {
+        ExpX::Const(_) => true,
+        ExpX::Var(_) => true,
+        ExpX::Old(_, _) => true,
+        ExpX::Unary(UnaryOp::Not | UnaryOp::Clip(_), e) => is_small_exp(e),
+        ExpX::UnaryOpr(UnaryOpr::Box(_) | UnaryOpr::Unbox(_), e) => is_small_exp(e),
+        _ => false,
+    }
+}
+
+fn stm_call(
+    state: &mut State,
+    span: &Span,
+    path: Path,
+    typs: Typs,
+    args: Args,
+    dest: Option<Dest>,
+) -> Stm {
+    let mut small_args: Vec<Exp> = Vec::new();
+    let mut stms: Vec<Stm> = Vec::new();
+    for arg in args.iter() {
+        if is_small_exp(&arg.0) {
+            small_args.push(arg.0.clone());
+        } else {
+            // To avoid copying arg in preconditions and postconditions,
+            // put arg into a temporary variable
+            let temp = state.next_temp();
+            small_args.push(Spanned::new(arg.0.span.clone(), ExpX::Var(temp.clone())));
+            let typ = arg.1.clone();
+            let temp_decl = StmX::Decl { ident: temp.clone(), typ, mutable: false, init: false };
+            stms.push(Spanned::new(arg.0.span.clone(), temp_decl));
+            stms.push(assume_var(&arg.0.span, &temp, &arg.0));
+        }
+    }
+    let call = StmX::Call(path, typs, Arc::new(small_args), dest);
+    stms.push(Spanned::new(span.clone(), call));
+    stms_to_one_stm(span, stms)
+}
+
 fn if_to_stm(
     state: &mut State,
     expr: &Expr,
@@ -194,8 +238,7 @@ pub(crate) fn expr_to_stm_opt(
                 Some((mut stms2, func_path, typs, _, args)) => {
                     // make a Call
                     let dest = Dest { var: dest_x?.clone(), mutable: true };
-                    let call = StmX::Call(func_path, typs, args, Some(dest));
-                    stms2.push(Spanned::new(expr.span.clone(), call));
+                    stms2.push(stm_call(state, &expr.span, func_path, typs, args, Some(dest)));
                     Ok((stms2, None))
                 }
                 None => {
@@ -212,6 +255,7 @@ pub(crate) fn expr_to_stm_opt(
             let (mut stms, x, typs, ret, args) = expr_get_call(ctx, state, expr)?.expect("Call");
             if function_can_be_exp(ctx, expr, &x)? {
                 // ExpX::Call
+                let args = Arc::new(vec_map(&args, |(a, _)| a.clone()));
                 let call = ExpX::Call(false, x.clone(), typs.clone(), args);
                 Ok((stms, Some(Spanned::new(expr.span.clone(), call))))
             } else if ret {
@@ -223,14 +267,12 @@ pub(crate) fn expr_to_stm_opt(
                 stms.push(Spanned::new(expr.span.clone(), temp_decl));
                 // tmp = StmX::Call;
                 let dest = Dest { var: temp.clone(), mutable: false };
-                let call = StmX::Call(x.clone(), typs.clone(), args, Some(dest));
-                stms.push(Spanned::new(expr.span.clone(), call));
+                stms.push(stm_call(state, &expr.span, x.clone(), typs.clone(), args, Some(dest)));
                 // tmp
                 Ok((stms, Some(Spanned::new(expr.span.clone(), ExpX::Var(temp)))))
             } else {
                 // StmX::Call
-                let call = StmX::Call(x.clone(), typs.clone(), args, None);
-                stms.push(Spanned::new(expr.span.clone(), call));
+                stms.push(stm_call(state, &expr.span, x.clone(), typs.clone(), args, None));
                 Ok((stms, None))
             }
         }
@@ -430,9 +472,8 @@ pub fn stmt_to_stm(
                     Some((mut stms, func_name, typs, _, args)) => {
                         // Special case: convert to a Call
                         let dest = Dest { var: param.x.name.clone(), mutable: *mutable };
-                        let call = StmX::Call(func_name, typs, args, Some(dest));
                         stms.push(Spanned::new(stmt.span.clone(), decl));
-                        stms.push(Spanned::new(init.span.clone(), call));
+                        stms.push(stm_call(state, &init.span, func_name, typs, args, Some(dest)));
                         return Ok((stms, None, None));
                     }
                     None => {}

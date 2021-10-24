@@ -247,7 +247,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp) -> Expr {
                 let binders = vec_map(&*binders, |b| {
                     Arc::new(BinderX { name: suffix_local_id(&b.name), a: exp_to_expr(ctx, &b.a) })
                 });
-                Arc::new(ExprX::Bind(Arc::new(BindX::Let(Arc::new(binders))), expr))
+                air::ast_util::mk_let(&binders, &expr)
             }
             BndX::Quant(quant, binders, trigs) => {
                 let expr = exp_to_expr(ctx, exp);
@@ -269,10 +269,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp) -> Expr {
                 });
                 let triggers =
                     vec_map(&*trigs, |trig| Arc::new(vec_map(trig, |x| exp_to_expr(ctx, x))));
-                Arc::new(ExprX::Bind(
-                    Arc::new(BindX::Quant(*quant, Arc::new(binders), Arc::new(triggers))),
-                    expr,
-                ))
+                air::ast_util::mk_quantifier(*quant, &binders, &triggers, &expr)
             }
         },
     }

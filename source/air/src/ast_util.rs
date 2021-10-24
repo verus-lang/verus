@@ -94,16 +94,28 @@ pub fn ident_binder<A: Clone>(x: &Ident, a: &A) -> Binder<A> {
     Arc::new(BinderX { name: x.clone(), a: a.clone() })
 }
 
+pub fn mk_let(binders: &Vec<Binder<Expr>>, body: &Expr) -> Expr {
+    if binders.len() == 0 {
+        body.clone()
+    } else {
+        Arc::new(ExprX::Bind(Arc::new(BindX::Let(Arc::new(binders.clone()))), body.clone()))
+    }
+}
+
 pub fn mk_quantifier(
     quant: Quant,
     binders: &Vec<Binder<Typ>>,
     triggers: &Vec<Trigger>,
     body: &Expr,
 ) -> Expr {
-    Arc::new(ExprX::Bind(
-        Arc::new(BindX::Quant(quant, Arc::new(binders.clone()), Arc::new(triggers.clone()))),
-        body.clone(),
-    ))
+    if binders.len() == 0 {
+        body.clone()
+    } else {
+        Arc::new(ExprX::Bind(
+            Arc::new(BindX::Quant(quant, Arc::new(binders.clone()), Arc::new(triggers.clone()))),
+            body.clone(),
+        ))
+    }
 }
 
 pub fn mk_forall(binders: &Vec<Binder<Typ>>, triggers: &Vec<Trigger>, body: &Expr) -> Expr {
