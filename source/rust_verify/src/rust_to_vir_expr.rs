@@ -187,7 +187,6 @@ fn record_fun(
 }
 
 fn get_fn_path<'tcx>(tcx: TyCtxt<'tcx>, expr: &Expr<'tcx>) -> Result<vir::ast::Path, VirErr> {
-    // TODO: support for member functions
     match &expr.kind {
         ExprKind::Path(QPath::Resolved(None, path)) => match path.res {
             Res::Def(DefKind::Fn, id) => Ok(def_id_to_vir_path(tcx, id)),
