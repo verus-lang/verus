@@ -393,8 +393,8 @@ impl Verifier {
                     .expect("cannot write to vir file");
                 writeln!(
                     &mut file,
-                    "visibility {:?} mode {:?} fuel {}",
-                    func.x.visibility, func.x.mode, func.x.fuel
+                    "visibility {:?} mode {:?} fuel {} is_abstract {}",
+                    func.x.visibility, func.x.mode, func.x.fuel, func.x.is_abstract
                 )
                 .expect("cannot write to vir file");
                 for require in func.x.require.iter() {

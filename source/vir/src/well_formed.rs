@@ -44,7 +44,7 @@ fn check_function(ctxt: &Ctxt, function: &Function) -> Result<(), VirErr> {
                         panic!("constructor of undefined datatype");
                     }
                 }
-                // TODO: disallow private fields, unless function is marked #[verified(pub_abstract)]
+                // TODO: disallow private fields, unless function is marked #[verifier(pub_abstract)]
                 ExprX::Field { datatype: path, .. } => {
                     if let Some(dt) = ctxt.dts.get(path) {
                         if let Some(module) = &function.x.visibility.owning_module {
