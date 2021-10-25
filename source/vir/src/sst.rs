@@ -55,6 +55,7 @@ pub enum StmX {
         ident: Ident,
         typ: Typ,
         mutable: bool,
+        /// init = true means we use Assume rather than Assign to initialize an ident that might span a while loop
         init: bool,
     },
     Assign(Exp, Exp),

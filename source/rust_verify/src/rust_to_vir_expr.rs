@@ -13,8 +13,8 @@ use air::ast::{Binder, BinderX, Quant};
 use rustc_ast::{Attribute, BorrowKind, LitKind, Mutability};
 use rustc_hir::def::{DefKind, Res};
 use rustc_hir::{
-    Arm, BinOpKind, BindingAnnotation, Block, Destination, Expr, ExprKind, Local, LoopSource,
-    MatchSource, Node, Pat, PatKind, QPath, Stmt, StmtKind, UnOp,
+    Arm, BinOpKind, BindingAnnotation, Block, Destination, Expr, ExprKind, Guard, Local,
+    LoopSource, MatchSource, Node, Pat, PatKind, QPath, Stmt, StmtKind, UnOp,
 };
 use rustc_middle::ty::subst::GenericArgKind;
 use rustc_middle::ty::{TyCtxt, TyKind};
@@ -22,8 +22,8 @@ use rustc_span::def_id::DefId;
 use rustc_span::Span;
 use std::sync::Arc;
 use vir::ast::{
-    BinaryOp, Constant, ExprX, HeaderExpr, HeaderExprX, IntRange, Mode, ParamX, SpannedTyped,
-    StmtX, Stmts, Typ, TypX, UnaryOp, UnaryOpr, VirErr,
+    ArmX, BinaryOp, Constant, ExprX, HeaderExpr, HeaderExprX, Ident, IntRange, Mode, ParamX,
+    PatternX, SpannedTyped, StmtX, Stmts, Typ, TypX, UnaryOp, UnaryOpr, VirErr,
 };
 use vir::ast_util::ident_binder;
 use vir::def::{variant_field_ident, variant_ident, variant_positional_field_ident};
@@ -429,6 +429,22 @@ fn fn_call_to_vir<'tcx>(
     }
 }
 
+fn datatype_of_path(mut path: vir::ast::Path) -> vir::ast::Path {
+    // TODO is there a safer way to do this?
+    let segments = Arc::get_mut(&mut Arc::get_mut(&mut path).unwrap().segments).unwrap();
+    segments.pop(); // remove constructor
+    segments.pop(); // remove variant
+    path
+}
+
+fn datatype_variant_of_res<'tcx>(tcx: TyCtxt<'tcx>, res: &Res) -> (vir::ast::Path, Ident) {
+    let variant = tcx.expect_variant_res(*res);
+    let vir_path = datatype_of_path(def_id_to_vir_path(tcx, res.def_id()));
+    let name = vir_path.segments.last().expect("invalid path in datatype ctor");
+    let variant_name = variant_ident(name.as_str(), &variant.ident.as_str());
+    (vir_path, variant_name)
+}
+
 pub(crate) fn expr_tuple_datatype_ctor_to_vir<'tcx>(
     bctx: &BodyCtxt<'tcx>,
     expr: &Expr<'tcx>,
@@ -451,16 +467,7 @@ pub(crate) fn expr_tuple_datatype_ctor_to_vir<'tcx>(
             expr
         );
     }
-    let vir_path = {
-        // TODO is there a safer way to do this?
-        let mut vir_path = def_id_to_vir_path(tcx, res.def_id());
-        let segments = Arc::get_mut(&mut Arc::get_mut(&mut vir_path).unwrap().segments).unwrap();
-        segments.pop(); // remove constructor
-        segments.pop(); // remove variant
-        vir_path
-    };
-    let name = vir_path.segments.last().expect("invalid path in datatype ctor");
-    let variant_name = variant_ident(name.as_str(), &variant.ident.as_str());
+    let (vir_path, variant_name) = datatype_variant_of_res(tcx, res);
     let vir_fields = Arc::new(
         args_slice
             .iter()
@@ -487,6 +494,72 @@ pub(crate) fn expr_tuple_datatype_ctor_to_vir<'tcx>(
             .collect::<Result<Vec<_>, _>>()?,
     );
     Ok(spanned_typed_new(expr.span, &expr_typ, ExprX::Ctor(vir_path, variant_name, vir_fields)))
+}
+
+pub(crate) fn pattern_to_vir<'tcx>(
+    bctx: &BodyCtxt<'tcx>,
+    pat: &Pat<'tcx>,
+) -> Result<vir::ast::Pattern, VirErr> {
+    let tcx = bctx.ctxt.tcx;
+    unsupported_err_unless!(pat.default_binding_modes, pat.span, "complex pattern");
+    let pattern = match &pat.kind {
+        PatKind::Wild => PatternX::Wildcard,
+        PatKind::Binding(BindingAnnotation::Unannotated, _canonical, x, None) => {
+            PatternX::Var(Arc::new(x.as_str().to_string()))
+        }
+        PatKind::Path(QPath::Resolved(
+            None,
+            rustc_hir::Path {
+                res:
+                    res
+                    @
+                    Res::Def(
+                        DefKind::Ctor(
+                            rustc_hir::def::CtorOf::Variant,
+                            rustc_hir::def::CtorKind::Const,
+                        ),
+                        _,
+                    ),
+                ..
+            },
+        )) => {
+            let (vir_path, variant_name) = datatype_variant_of_res(tcx, res);
+            PatternX::Constructor(vir_path, variant_name, Arc::new(vec![]))
+        }
+        PatKind::TupleStruct(
+            QPath::Resolved(
+                None,
+                rustc_hir::Path {
+                    res:
+                        res
+                        @
+                        Res::Def(
+                            DefKind::Ctor(
+                                rustc_hir::def::CtorOf::Variant,
+                                rustc_hir::def::CtorKind::Fn,
+                            ),
+                            _,
+                        ),
+                    ..
+                },
+            ),
+            pats,
+            None,
+        ) => {
+            let (vir_path, variant_name) = datatype_variant_of_res(tcx, res);
+            let mut binders: Vec<Binder<vir::ast::Pattern>> = Vec::new();
+            for (i, pat) in pats.iter().enumerate() {
+                let pattern = pattern_to_vir(bctx, pat)?;
+                let binder =
+                    ident_binder(&variant_positional_field_ident(&variant_name, i), &pattern);
+                binders.push(binder);
+            }
+            PatternX::Constructor(vir_path, variant_name, Arc::new(binders))
+        }
+        _ => return unsupported_err!(pat.span, "complex pattern", pat),
+    };
+    let pat_typ = typ_of_node(bctx, &pat.hir_id);
+    Ok(spanned_typed_new(pat.span, &pat_typ, pattern))
 }
 
 pub(crate) fn expr_to_vir_inner<'tcx>(
@@ -566,6 +639,7 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
         },
         ExprKind::Cast(source, _) => Ok(mk_ty_clip(&expr_typ, &expr_to_vir(bctx, source)?)),
         ExprKind::AddrOf(BorrowKind::Ref, Mutability::Not, e) => expr_to_vir_inner(bctx, e),
+        ExprKind::Box(e) => expr_to_vir_inner(bctx, e),
         ExprKind::Unary(op, arg) => match op {
             UnOp::Not => {
                 let varg = expr_to_vir(bctx, arg)?;
@@ -719,6 +793,22 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
             let vir_lhs = expr_to_vir(bctx, lhs)?;
             let vir_rhs = rhs.map(|e| expr_to_vir(bctx, e)).transpose()?;
             Ok(mk_expr(ExprX::If(vir_cond, vir_lhs, vir_rhs)))
+        }
+        ExprKind::Match(expr, arms, _match_source) => {
+            let vir_expr = expr_to_vir(bctx, expr)?;
+            let mut vir_arms: Vec<vir::ast::Arm> = Vec::new();
+            for arm in arms.iter() {
+                let pattern = pattern_to_vir(bctx, &arm.pat)?;
+                let guard = match &arm.guard {
+                    None => mk_expr(ExprX::Const(Constant::Bool(true))),
+                    Some(Guard::If(guard)) => expr_to_vir(bctx, guard)?,
+                    Some(Guard::IfLet(_, _)) => unsupported_err!(expr.span, "Guard IfLet"),
+                };
+                let body = expr_to_vir(bctx, &arm.body)?;
+                let vir_arm = ArmX { pattern, guard, body };
+                vir_arms.push(spanned_new(arm.span, vir_arm));
+            }
+            Ok(mk_expr(ExprX::Match(vir_expr, Arc::new(vir_arms))))
         }
         ExprKind::Loop(
             Block {

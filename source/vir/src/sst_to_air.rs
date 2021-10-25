@@ -190,6 +190,12 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp) -> Expr {
                 };
                 ident_apply(&f_name, &vec![expr])
             }
+            UnaryOpr::IsVariant(_, variant) => {
+                // TODO: this should include the path in the function name
+                let expr = exp_to_expr(ctx, exp);
+                let name = Arc::new(format!("is-{}", variant));
+                Arc::new(ExprX::Apply(name, Arc::new(vec![expr])))
+            }
         },
         ExpX::Binary(op, lhs, rhs) => {
             let lh = exp_to_expr(ctx, lhs);

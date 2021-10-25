@@ -111,6 +111,8 @@ pub enum UnaryOpr {
     Box(Typ),
     /// coerce Boxed(Typ) --> Typ
     Unbox(Typ),
+    /// Test whether expression is a particular variant Ident of a datatype Path
+    IsVariant(Path, Ident),
 }
 
 /// Primitive binary operations
@@ -186,6 +188,28 @@ pub struct SpannedTyped<X> {
     pub x: X,
 }
 
+/// Patterns for match expressions
+pub type Pattern = Arc<SpannedTyped<PatternX>>;
+#[derive(Debug)]
+pub enum PatternX {
+    Wildcard,
+    Var(Ident),
+    Constructor(Path, Ident, Binders<Pattern>),
+}
+
+/// Arms of match expressions
+pub type Arm = Arc<Spanned<ArmX>>;
+pub type Arms = Arc<Vec<Arm>>;
+#[derive(Debug)]
+pub struct ArmX {
+    /// pattern
+    pub pattern: Pattern,
+    /// "if" condition on a case
+    pub guard: Expr,
+    /// expression or statement the executes when case matches
+    pub body: Expr,
+}
+
 /// Expression, similar to rustc_hir::Expr
 pub type Expr = Arc<SpannedTyped<ExprX>>;
 pub type Exprs = Arc<Vec<Expr>>;
@@ -223,6 +247,8 @@ pub enum ExprX {
     Admit,
     /// If-else
     If(Expr, Expr, Option<Expr>),
+    /// Match
+    Match(Expr, Arms),
     /// While loop, with invariants
     While { cond: Expr, body: Expr, invs: Exprs },
     /// Sequence of statements, optionally including an expression at the end

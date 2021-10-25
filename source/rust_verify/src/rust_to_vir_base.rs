@@ -394,6 +394,11 @@ pub(crate) fn ty_to_vir<'tcx>(tcx: TyCtxt<'tcx>, ty: &Ty) -> Typ {
                     TypX::Int(IntRange::Int)
                 } else if def_name == "builtin::nat" {
                     TypX::Int(IntRange::Nat)
+                } else if def_name == "alloc::boxed::Box" {
+                    match &path.segments[0].args.expect("Box arg").args[0] {
+                        rustc_hir::GenericArg::Type(t) => return ty_to_vir(tcx, t),
+                        _ => panic!("unexpected arg to Box"),
+                    }
                 } else {
                     def_id_to_ty_path(tcx, def_id)
                 }

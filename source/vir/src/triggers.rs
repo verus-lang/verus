@@ -45,7 +45,7 @@ fn check_trigger_expr(exp: &Exp, free_vars: &mut HashSet<Ident>) -> Result<(), V
             UnaryOp::Not => err_str(&exp.span, "triggers cannot contain boolean operators"),
         },
         ExpX::UnaryOpr(op, _) => match op {
-            UnaryOpr::Box(_) | UnaryOpr::Unbox(_) => Ok(exp.clone()),
+            UnaryOpr::Box(_) | UnaryOpr::Unbox(_) | UnaryOpr::IsVariant(_, _) => Ok(exp.clone()),
         },
         ExpX::Binary(op, _, _) => {
             use BinaryOp::*;

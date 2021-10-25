@@ -1,4 +1,4 @@
-use crate::ast::{Expr, ExprX, Stmt, StmtX, VirErr};
+use crate::ast::{Arm, ArmX, Expr, ExprX, Stmt, StmtX, VirErr};
 use crate::def::Spanned;
 use crate::util::vec_map_result;
 use std::sync::Arc;
@@ -71,6 +71,17 @@ where
             let expr2 = map_expr_visitor(e2, f)?;
             let expr3 = e3.as_ref().map(|e| map_expr_visitor(e, f)).transpose()?;
             let expr = expr.new_x(ExprX::If(expr1, expr2, expr3));
+            f(&expr)
+        }
+        ExprX::Match(e1, arms) => {
+            let expr1 = map_expr_visitor(e1, f)?;
+            let arms: Result<Vec<Arm>, VirErr> = vec_map_result(arms, |arm| {
+                let pattern = arm.x.pattern.clone();
+                let guard = map_expr_visitor(&arm.x.guard, f)?;
+                let body = map_expr_visitor(&arm.x.body, f)?;
+                Ok(Spanned::new(arm.span.clone(), ArmX { pattern, guard, body }))
+            });
+            let expr = expr.new_x(ExprX::Match(expr1, Arc::new(arms?)));
             f(&expr)
         }
         ExprX::While { cond, body, invs } => {

@@ -1,5 +1,6 @@
 use crate::ast::{
-    BinaryOp, Datatype, Expr, ExprX, Function, Ident, Krate, Mode, Path, Stmt, StmtX, VirErr,
+    BinaryOp, Datatype, Expr, ExprX, Function, Ident, Krate, Mode, Path, Pattern, PatternX, Stmt,
+    StmtX, VirErr,
 };
 use crate::ast_util::{err_str, err_string};
 use air::ast::Span;
@@ -66,6 +67,24 @@ fn check_expr_has_mode(
         err_string(&expr.span, format!("expression has mode {}, expected mode {}", mode, expected))
     } else {
         Ok(())
+    }
+}
+
+fn add_pattern(typing: &mut Typing, mode: Mode, pattern: &Pattern) -> Result<(), VirErr> {
+    match &pattern.x {
+        PatternX::Wildcard => Ok(()),
+        PatternX::Var(x) => {
+            typing.insert(&pattern.span, x, mode)?;
+            Ok(())
+        }
+        PatternX::Constructor(_path, _variant, patterns) => {
+            for binder in patterns.iter() {
+                // TODO: fields should have mode annotations on them; for now, treat all fields as #[exec]
+                let field_mode = Mode::Exec;
+                add_pattern(typing, mode_join(field_mode, mode), &binder.a)?;
+            }
+            Ok(())
+        }
     }
 }
 
@@ -168,6 +187,35 @@ fn check_expr(typing: &mut Typing, outer_mode: Mode, expr: &Expr) -> Result<Mode
                     Ok(mode_join(mode2, mode3))
                 }
             }
+        }
+        ExprX::Match(e1, arms) => {
+            let mode1 = check_expr(typing, outer_mode, e1)?;
+            match (mode1, arms.len()) {
+                (Mode::Spec, 0) => {
+                    // We treat spec types as inhabited,
+                    // so empty matches on spec values would be unsound.
+                    return err_str(&expr.span, "match must have at least one arm");
+                }
+                _ => {}
+            }
+            let mut final_mode = outer_mode;
+            for arm in arms.iter() {
+                typing.vars.push_scope(false);
+                add_pattern(typing, mode1, &arm.x.pattern)?;
+                let arm_outer_mode = match (outer_mode, mode1) {
+                    (Mode::Exec, Mode::Spec | Mode::Proof) => Mode::Proof,
+                    (m, _) => m,
+                };
+                let guard_mode = check_expr(typing, arm_outer_mode, &arm.x.guard)?;
+                let arm_outer_mode = match (arm_outer_mode, guard_mode) {
+                    (Mode::Exec, Mode::Spec | Mode::Proof) => Mode::Proof,
+                    (m, _) => m,
+                };
+                let arm_mode = check_expr(typing, arm_outer_mode, &arm.x.body)?;
+                final_mode = mode_join(final_mode, arm_mode);
+                typing.vars.pop_scope();
+            }
+            Ok(final_mode)
         }
         ExprX::While { cond, body, invs } => {
             // We could also allow this for proof, if we check it for termination
