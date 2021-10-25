@@ -391,6 +391,19 @@ impl Verifier {
             for func in vir_crate.functions.iter() {
                 writeln!(&mut file, "fn {} @ {:?}", path_to_string(&func.x.path), func.span)
                     .expect("cannot write to vir file");
+                writeln!(
+                    &mut file,
+                    "visibility {:?} mode {:?} fuel {} is_abstract {}",
+                    func.x.visibility, func.x.mode, func.x.fuel, func.x.is_abstract
+                )
+                .expect("cannot write to vir file");
+                for require in func.x.require.iter() {
+                    writeln!(&mut file, "requires {:#?}", require)
+                        .expect("cannot write to vir file");
+                }
+                for ensure in func.x.ensure.iter() {
+                    writeln!(&mut file, "ensures {:#?}", ensure).expect("cannot write to vir file");
+                }
                 for param in func.x.params.iter() {
                     writeln!(
                         &mut file,
@@ -399,6 +412,7 @@ impl Verifier {
                     )
                     .expect("cannot write to vir file");
                 }
+                writeln!(&mut file, "returns {:?}", func.x.ret).expect("cannot write to vir file");
                 writeln!(&mut file, "body {:#?}", func.x.body).expect("cannot write to vir file");
                 writeln!(&mut file).expect("cannot write to vir file");
             }

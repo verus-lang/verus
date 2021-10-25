@@ -10,6 +10,11 @@ test_verify_with_pervasive! {
             pub struct Car {
                 pub four_doors: bool,
             }
+
+            #[spec]
+            pub fn is_four_doors(c: Car) -> bool {
+                c.four_doors
+            }
         }
 
         mod M2 {

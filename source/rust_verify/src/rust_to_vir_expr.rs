@@ -1,8 +1,8 @@
 use crate::erase::ResolvedCall;
 use crate::rust_to_vir_base::{
-    def_id_to_vir_path, get_range, get_trigger, get_var_mode, hack_get_def_name, ident_to_var,
-    is_smt_arith, is_smt_equality, mid_ty_to_vir, mid_ty_to_vir_opt, mk_range, path_as_string,
-    ty_to_vir, typ_of_node, BodyCtxt,
+    def_id_to_vir_path, def_to_path_ident, get_range, get_trigger, get_var_mode, hack_get_def_name,
+    ident_to_var, is_smt_arith, is_smt_equality, mid_ty_to_vir, mid_ty_to_vir_opt, mk_range,
+    path_as_string, ty_to_vir, typ_of_node, BodyCtxt,
 };
 use crate::util::{
     err_span_str, slice_vec_map_result, spanned_new, spanned_typed_new, unsupported_err_span,
@@ -199,16 +199,26 @@ fn get_fn_path<'tcx>(tcx: TyCtxt<'tcx>, expr: &Expr<'tcx>) -> Result<vir::ast::P
 fn fn_call_to_vir<'tcx>(
     bctx: &BodyCtxt<'tcx>,
     expr: &Expr<'tcx>,
-    fun: &'tcx Expr<'tcx>,
+    self_path: Option<vir::ast::Path>,
+    f: DefId,
+    fun_ty: &'tcx rustc_middle::ty::TyS<'tcx>,
+    node_substs: &[rustc_middle::ty::subst::GenericArg<'tcx>],
+    fn_span: Span,
     args_slice: &'tcx [Expr<'tcx>],
 ) -> Result<vir::ast::Expr, VirErr> {
     let mut args: Vec<&'tcx Expr<'tcx>> = args_slice.iter().collect();
-    let f = expr_to_function(fun);
 
     let tcx = bctx.ctxt.tcx;
     let expr_typ = typ_of_node(bctx, &expr.hir_id);
     let mk_expr = |x: ExprX| spanned_typed_new(expr.span, &expr_typ, x);
     let mk_expr_span = |span: Span, x: ExprX| spanned_typed_new(span, &expr_typ, x);
+    let path = if let Some(self_path) = &self_path {
+        let mut full_path = (**self_path).clone();
+        Arc::make_mut(&mut full_path.segments).push(def_to_path_ident(tcx, f));
+        Arc::new(full_path)
+    } else {
+        def_id_to_vir_path(tcx, f)
+    };
 
     let f_name = path_as_string(&def_id_to_vir_path(tcx, f));
     let is_admit = f_name == "builtin::admit";
@@ -237,7 +247,7 @@ fn fn_call_to_vir<'tcx>(
     let is_directive = is_hide || is_reveal || is_reveal_fuel;
     let is_cmp = is_equal || is_eq || is_ne || is_le || is_ge || is_lt || is_gt;
     let is_arith_binary = is_add || is_sub || is_mul;
-    record_fun(&bctx.ctxt, fun.span, f, is_spec || is_quant || is_directive, is_implies);
+    record_fun(&bctx.ctxt, fn_span, f, is_spec || is_quant || is_directive, is_implies);
 
     let len = args.len();
     if is_requires {
@@ -351,10 +361,12 @@ fn fn_call_to_vir<'tcx>(
         let e = mk_expr(ExprX::Binary(vop, lhs, rhs));
         if is_arith_binary { Ok(mk_ty_clip(&expr_typ, &e)) } else { Ok(e) }
     } else {
-        let fun_ty = bctx.types.node_type(fun.hir_id);
         let (param_typs, ret_typ) = match fun_ty.kind() {
             TyKind::FnDef(def_id, _substs) => {
-                let f = tcx.fn_sig(*def_id).skip_binder();
+                let fn_sig = tcx.fn_sig(*def_id);
+                // TODO: I believe this remains safe in this context until we implement mutable
+                // references, at least
+                let f = fn_sig.skip_binder();
                 let params: Vec<Typ> = f.inputs().iter().map(|t| mid_ty_to_vir(tcx, *t)).collect();
                 let ret = mid_ty_to_vir_opt(tcx, f.output());
                 (params, ret)
@@ -379,7 +391,7 @@ fn fn_call_to_vir<'tcx>(
         }
         // type arguments
         let mut typ_args: Vec<Typ> = Vec::new();
-        for typ_arg in bctx.types.node_substs(fun.hir_id) {
+        for typ_arg in node_substs {
             match typ_arg.unpack() {
                 GenericArgKind::Type(ty) => {
                     typ_args.push(mid_ty_to_vir(tcx, ty));
@@ -400,7 +412,7 @@ fn fn_call_to_vir<'tcx>(
         let mut call = spanned_typed_new(
             expr.span,
             &possibly_boxed_ret_typ,
-            ExprX::Call(def_id_to_vir_path(tcx, f), Arc::new(typ_args), Arc::new(vir_args)),
+            ExprX::Call(path, Arc::new(typ_args), Arc::new(vir_args)),
         );
         // unbox result if necessary
         if let Some(ret_typ) = ret_typ {
@@ -508,7 +520,16 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                 ExprKind::Path(QPath::Resolved(
                     None,
                     rustc_hir::Path { res: Res::Def(DefKind::Fn, _), .. },
-                )) => fn_call_to_vir(bctx, expr, fun, args_slice),
+                )) => fn_call_to_vir(
+                    bctx,
+                    expr,
+                    None,
+                    expr_to_function(fun),
+                    bctx.types.node_type(fun.hir_id),
+                    bctx.types.node_substs(fun.hir_id),
+                    fun.span,
+                    args_slice,
+                ),
                 _ => unsupported!("fun_kind_not_ctor_or_fn", expr.span),
             }
         }
@@ -645,6 +666,10 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
         ExprKind::Field(lhs, name) => {
             let vir_lhs = expr_to_vir(bctx, lhs)?;
             let lhs_ty = tc.node_type(lhs.hir_id);
+            let lhs_ty = match lhs_ty.kind() {
+                TyKind::Ref(_, lt, Mutability::Not) => lt,
+                _ => lhs_ty,
+            };
             let (datatype, field_name, unbox) = if let Some(adt_def) = lhs_ty.ty_adt_def() {
                 unsupported_err_unless!(
                     adt_def.variants.len() == 1,
@@ -810,6 +835,36 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                     .collect::<Result<Vec<_>, _>>()?,
             );
             Ok(mk_expr(ExprX::Ctor(path, variant_name, vir_fields)))
+        }
+        ExprKind::MethodCall(_name_and_generics, _call_span_0, all_args, _call_span_1) => {
+            let receiver = all_args.first().expect("receiver in method call");
+            let self_path = match &(*typ_of_node(bctx, &receiver.hir_id)) {
+                TypX::Path(path) => path.clone(),
+                _ => panic!("unexpected receiver type"),
+            };
+            let fn_def_id = bctx
+                .types
+                .type_dependent_def_id(expr.hir_id)
+                .expect("def id of the method definition");
+            let sig = if let rustc_hir::Node::ImplItem(rustc_hir::ImplItem {
+                kind: rustc_hir::ImplItemKind::Fn(sig, _body_id),
+                ..
+            }) = tcx.hir().get_if_local(fn_def_id).expect("fn def for method in hir")
+            {
+                sig
+            } else {
+                panic!("unexpected hir for method impl item");
+            };
+            fn_call_to_vir(
+                bctx,
+                expr,
+                Some(self_path),
+                fn_def_id,
+                tcx.type_of(fn_def_id),
+                bctx.types.node_substs(expr.hir_id),
+                sig.span,
+                all_args,
+            )
         }
         _ => {
             unsupported_err!(expr.span, format!("expression"), expr)
