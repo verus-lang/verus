@@ -153,6 +153,7 @@ fn check_item<'tcx>(
                             match impl_item_ref.kind {
                                 AssocItemKind::Fn { has_self } if has_self => {
                                     let impl_item = ctxt.tcx.hir().impl_item(impl_item_ref.id);
+                                    let impl_item_visibility = mk_visibility(&Some(module_path.clone()), &impl_item.vis);
                                     match &impl_item.kind {
                                         ImplItemKind::Fn(sig, body_id) => {
                                             let self_path =
@@ -162,7 +163,7 @@ fn check_item<'tcx>(
                                                 vir,
                                                 Some(self_path),
                                                 impl_item.def_id.to_def_id(),
-                                                visibility.clone(),
+                                                impl_item_visibility,
                                                 ctxt.tcx.hir().attrs(impl_item.hir_id()),
                                                 sig,
                                                 // TODO: make sure this is correct once supported
