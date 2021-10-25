@@ -9,15 +9,15 @@ For soundness's sake, be as defensive as possible:
 use crate::context::Context;
 use crate::rust_to_vir_adts::{check_item_enum, check_item_struct};
 use crate::rust_to_vir_base::{
-    def_id_to_vir_path, mk_visibility, path_as_string, hack_get_def_name,
+    def_id_to_vir_path, hack_get_def_name, mk_visibility, path_as_string,
 };
 use crate::rust_to_vir_func::{check_foreign_item_fn, check_item_fn};
 use crate::util::unsupported_err_span;
 use crate::{err_unless, unsupported_err, unsupported_err_unless, unsupported_unless};
 use rustc_ast::Attribute;
 use rustc_hir::{
-    AssocItemKind, Crate, ForeignItem, ForeignItemId, ForeignItemKind, ImplItemKind, HirId, Item, ItemId, ItemKind, ModuleItems,
-    QPath, TraitRef, TyKind,
+    AssocItemKind, Crate, ForeignItem, ForeignItemId, ForeignItemKind, HirId, ImplItemKind, Item,
+    ItemId, ItemKind, ModuleItems, QPath, TraitRef, TyKind,
 };
 use rustc_middle::ty::TyCtxt;
 use std::collections::HashMap;
@@ -153,7 +153,8 @@ fn check_item<'tcx>(
                             match impl_item_ref.kind {
                                 AssocItemKind::Fn { has_self } if has_self => {
                                     let impl_item = ctxt.tcx.hir().impl_item(impl_item_ref.id);
-                                    let impl_item_visibility = mk_visibility(&Some(module_path.clone()), &impl_item.vis);
+                                    let impl_item_visibility =
+                                        mk_visibility(&Some(module_path.clone()), &impl_item.vis);
                                     match &impl_item.kind {
                                         ImplItemKind::Fn(sig, body_id) => {
                                             let self_path =
