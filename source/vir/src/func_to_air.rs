@@ -12,16 +12,17 @@ use air::ast::{
     Trigger, Triggers,
 };
 use air::ast_util::{
-    bool_typ, ident_apply, ident_binder, ident_var, mk_eq, mk_implies, str_apply, str_ident,
-    str_typ, str_var, string_apply,
+    bool_typ, ident_apply, ident_binder, ident_var, mk_and, mk_bind_expr, mk_eq, mk_implies,
+    str_apply, str_ident, str_typ, str_var, string_apply,
 };
 use std::sync::Arc;
 
-fn func_bind<'a>(
-    ctx: &'a Ctx,
+// binder for forall (typ_params params)
+pub(crate) fn func_bind_trig(
+    ctx: &Ctx,
     typ_params: &Idents,
     params: &Params,
-    trig_expr: &Expr,
+    trig_exprs: &Vec<Expr>,
     add_fuel: bool,
 ) -> Bind {
     let mut binders: Vec<air::ast::Binder<air::ast::Typ>> = Vec::new();
@@ -37,12 +38,24 @@ fn func_bind<'a>(
     if add_fuel {
         binders.push(ident_binder(&str_ident(FUEL_LOCAL), &str_typ(FUEL_TYPE)));
     }
-    let trigger: Trigger = Arc::new(vec![trig_expr.clone()]);
+    let trigger: Trigger = Arc::new(trig_exprs.clone());
     let triggers: Triggers = Arc::new(vec![trigger]);
     Arc::new(BindX::Quant(Quant::Forall, Arc::new(binders), triggers))
 }
 
-fn func_def_args(typ_params: &Idents, params: &Params) -> Vec<Expr> {
+// binder for forall (typ_params params)
+pub(crate) fn func_bind(
+    ctx: &Ctx,
+    typ_params: &Idents,
+    params: &Params,
+    trig_expr: &Expr,
+    add_fuel: bool,
+) -> Bind {
+    func_bind_trig(ctx, typ_params, params, &vec![trig_expr.clone()], add_fuel)
+}
+
+// arguments for function call f(typ_params, params)
+pub(crate) fn func_def_args(typ_params: &Idents, params: &Params) -> Vec<Expr> {
     let mut f_args: Vec<Expr> = Vec::new();
     for typ_param in typ_params.iter() {
         f_args.push(ident_var(&suffix_typ_param_id(&typ_param)));
@@ -54,8 +67,8 @@ fn func_def_args(typ_params: &Idents, params: &Params) -> Vec<Expr> {
 }
 
 // (forall (...) (= (f ...) body))
-fn func_def_quant<'a>(
-    ctx: &'a Ctx,
+fn func_def_quant(
+    ctx: &Ctx,
     name: &Ident,
     typ_params: &Idents,
     params: &Params,
@@ -64,7 +77,7 @@ fn func_def_quant<'a>(
     let f_args = func_def_args(typ_params, params);
     let f_app = string_apply(name, &Arc::new(f_args));
     let f_eq = Arc::new(ExprX::Binary(BinaryOp::Eq, f_app.clone(), body));
-    Ok(Arc::new(ExprX::Bind(func_bind(ctx, typ_params, params, &f_app, false), f_eq)))
+    Ok(mk_bind_expr(&func_bind(ctx, typ_params, params, &f_app, false), &f_eq))
 }
 
 fn func_body_to_air(
@@ -124,8 +137,8 @@ fn func_body_to_air(
             func_bind(ctx, &function.x.typ_params, &function.x.params, &rec_f_fuel, true);
         let bind_body =
             func_bind(ctx, &function.x.typ_params, &function.x.params, &rec_f_succ, true);
-        let forall_zero = Arc::new(ExprX::Bind(bind_zero, eq_zero));
-        let forall_body = Arc::new(ExprX::Bind(bind_body, eq_body));
+        let forall_zero = mk_bind_expr(&bind_zero, &eq_zero);
+        let forall_body = mk_bind_expr(&bind_body, &eq_body);
         let fuel_nat_decl = Arc::new(DeclX::Const(fuel_nat_f, str_typ(FUEL_TYPE)));
         let axiom_zero = Arc::new(DeclX::Axiom(forall_zero));
         let axiom_body = Arc::new(DeclX::Axiom(forall_body));
@@ -248,19 +261,24 @@ pub fn func_decl_to_air(
 
             // Return typing invariant
             let mut f_args: Vec<Expr> = Vec::new();
+            let mut f_pre: Vec<Expr> = Vec::new();
             for typ_param in function.x.typ_params.iter() {
                 f_args.push(ident_var(&suffix_typ_param_id(&typ_param.clone())));
             }
             for param in function.x.params.iter() {
-                f_args.push(ident_var(&suffix_local_id(&param.x.name.clone())));
+                let arg = ident_var(&suffix_local_id(&param.x.name.clone()));
+                f_args.push(arg.clone());
+                if let Some(pre) = typ_invariant(ctx, &param.x.typ, &arg) {
+                    f_pre.push(pre.clone());
+                }
             }
             let f_app = ident_apply(&name, &Arc::new(f_args));
-            if let Some(expr) = typ_invariant(&ret, &f_app, true) {
-                // (axiom (forall (...) expr))
-                let e_forall = Arc::new(ExprX::Bind(
-                    func_bind(ctx, &function.x.typ_params, &function.x.params, &f_app, false),
-                    expr,
-                ));
+            if let Some(post) = typ_invariant(ctx, &ret, &f_app) {
+                // (axiom (forall (...) (=> pre post)))
+                let e_forall = mk_bind_expr(
+                    &func_bind(ctx, &function.x.typ_params, &function.x.params, &f_app, false),
+                    &mk_implies(&mk_and(&f_pre), &post),
+                );
                 let inv_axiom = Arc::new(DeclX::Axiom(e_forall));
                 decl_commands.push(Arc::new(CommandX::Global(inv_axiom)));
             }
@@ -290,7 +308,7 @@ pub fn func_decl_to_air(
                 let param = ParamX { name: name.clone(), typ: typ.clone(), mode: *mode };
                 ens_typs.push(typ_to_air(ctx, &typ));
                 ens_params.push(Spanned::new(function.span.clone(), param));
-                if let Some(expr) = typ_invariant(&typ, &ident_var(&suffix_local_id(&name)), true) {
+                if let Some(expr) = typ_invariant(ctx, &typ, &ident_var(&suffix_local_id(&name))) {
                     ens_typing_invs.push(expr);
                 }
             }

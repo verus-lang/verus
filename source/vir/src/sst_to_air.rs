@@ -16,8 +16,9 @@ use air::ast::{
     MultiOp, Quant, QueryX, Span, Stmt, StmtX, Trigger, Triggers,
 };
 use air::ast_util::{
-    bool_typ, ident_apply, ident_binder, ident_typ, ident_var, int_typ, mk_and, mk_eq, mk_exists,
-    mk_implies, mk_ite, mk_not, mk_or, str_apply, str_ident, str_typ, str_var, string_var,
+    bool_typ, ident_apply, ident_binder, ident_typ, ident_var, int_typ, mk_and, mk_bind_expr,
+    mk_eq, mk_exists, mk_implies, mk_ite, mk_not, mk_or, str_apply, str_ident, str_typ, str_var,
+    string_var,
 };
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -47,12 +48,16 @@ pub(crate) fn typ_to_air(_ctx: &Ctx, typ: &Typ) -> air::ast::Typ {
         TypX::Unit => str_typ(UNIT),
         TypX::Int(_) => int_typ(),
         TypX::Bool => bool_typ(),
-        TypX::Path(path) => ident_typ(&path_to_air_ident(path)),
+        TypX::Datatype(path, _) => ident_typ(&path_to_air_ident(path)),
         TypX::Boxed(_) => str_typ(POLY),
         TypX::TypParam(_) => str_typ(POLY),
     }
 }
 
+// SMT-level type identifiers.
+// We currently rely on these type identifiers for:
+// 1) Axioms about unboxing integer refinement types (nat, u8, etc.)
+// 2) The box(unbox(x)) == x axiom
 pub fn typ_to_id(typ: &Typ) -> Expr {
     match &**typ {
         TypX::Unit => str_var(crate::def::TYPE_ID_UNIT),
@@ -67,14 +72,19 @@ pub fn typ_to_id(typ: &Typ) -> Expr {
             }
         },
         TypX::Bool => str_var(crate::def::TYPE_ID_BOOL),
-        TypX::Path(path) => string_var(&prefix_type_id(&Arc::new(path_to_string(&path)))),
+        TypX::Datatype(path, _) => string_var(&prefix_type_id(&Arc::new(path_to_string(&path)))),
         TypX::Boxed(_) => panic!("internal error: type arguments should be unboxed"),
         TypX::TypParam(x) => ident_var(&suffix_typ_param_id(x)),
     }
 }
 
 // If expr has type typ, what can we assume to be true about expr?
-pub(crate) fn typ_invariant(typ: &Typ, expr: &Expr, use_has_type: bool) -> Option<Expr> {
+// For refinement types, transparent datatypes potentially containing refinement types,
+// and type variables potentially instantiated with refinement types, return Some invariant.
+// For non-refinement types and abstract types, return None,
+// since the SMT sorts for these types can express the types precisely with no need for refinement.
+pub(crate) fn typ_invariant(ctx: &Ctx, typ: &Typ, expr: &Expr) -> Option<Expr> {
+    // Should be kept in sync with vir::context::datatypes_invs
     match &**typ {
         TypX::Int(IntRange::Int) => None,
         TypX::Int(IntRange::Nat) => {
@@ -90,7 +100,13 @@ pub(crate) fn typ_invariant(typ: &Typ, expr: &Expr, use_has_type: bool) -> Optio
             };
             Some(apply_range_fun(&f_name, &range, vec![expr.clone()]))
         }
-        TypX::TypParam(x) if use_has_type => Some(str_apply(
+        TypX::Datatype(path, typs) if ctx.datatypes_with_invariant.contains(path) => {
+            let f_name = crate::def::prefix_datatype_inv(path);
+            let mut args = vec_map(typs, typ_to_id);
+            args.push(expr.clone());
+            Some(str_apply(&f_name, &args))
+        }
+        TypX::TypParam(x) => Some(str_apply(
             crate::def::HAS_TYPE,
             &vec![expr.clone(), ident_var(&suffix_typ_param_id(&x))],
         )),
@@ -103,7 +119,7 @@ pub(crate) fn ctor_to_apply<'a>(
     path: &Path,
     variant: &Ident,
     binders: &'a Binders<Exp>,
-) -> (Ident, impl Iterator<Item = &'a Arc<BinderX<Arc<Spanned<ExpX>>>>>) {
+) -> (Ident, impl Iterator<Item = &'a Arc<BinderX<Exp>>>) {
     let fields = &ctx.datatypes[path]
         .iter()
         .find(|v| &v.name == variant)
@@ -172,7 +188,9 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp) -> Expr {
                     TypX::Unit => str_ident(crate::def::BOX_UNIT),
                     TypX::Bool => str_ident(crate::def::BOX_BOOL),
                     TypX::Int(_) => str_ident(crate::def::BOX_INT),
-                    TypX::Path(path) => crate::def::prefix_box(&Arc::new(path_to_string(&path))),
+                    TypX::Datatype(path, _) => {
+                        crate::def::prefix_box(&Arc::new(path_to_string(&path)))
+                    }
                     TypX::Boxed(_) => panic!("internal error: Box(Boxed)"),
                     TypX::TypParam(_) => panic!("internal error: Box(TypParam)"),
                 };
@@ -184,7 +202,9 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp) -> Expr {
                     TypX::Unit => str_ident(crate::def::UNBOX_UNIT),
                     TypX::Bool => str_ident(crate::def::UNBOX_BOOL),
                     TypX::Int(_) => str_ident(crate::def::UNBOX_INT),
-                    TypX::Path(path) => crate::def::prefix_unbox(&Arc::new(path_to_string(&path))),
+                    TypX::Datatype(path, _) => {
+                        crate::def::prefix_unbox(&Arc::new(path_to_string(&path)))
+                    }
                     TypX::Boxed(_) => panic!("internal error: Box(Boxed)"),
                     TypX::TypParam(_) => panic!("internal error: Box(TypParam)"),
                 };
@@ -260,7 +280,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp) -> Expr {
                 let mut invs: Vec<Expr> = Vec::new();
                 for binder in binders.iter() {
                     let typ_inv =
-                        typ_invariant(&binder.a, &ident_var(&suffix_local_id(&binder.name)), true);
+                        typ_invariant(ctx, &binder.a, &ident_var(&suffix_local_id(&binder.name)));
                     if let Some(inv) = typ_inv {
                         invs.push(inv);
                     }
@@ -490,7 +510,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
             */
             let mut local = state.local_shared.clone();
             for (x, typ) in typ_inv_vars.iter() {
-                let typ_inv = typ_invariant(typ, &ident_var(&suffix_local_id(x)), false);
+                let typ_inv = typ_invariant(ctx, typ, &ident_var(&suffix_local_id(x)));
                 if let Some(expr) = typ_inv {
                     local.push(Arc::new(DeclX::Axiom(expr)));
                 }
@@ -539,7 +559,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
             }
             for (x, typ) in typ_inv_vars.iter() {
                 if modified_vars.contains(x) {
-                    let typ_inv = typ_invariant(typ, &ident_var(&suffix_local_id(x)), false);
+                    let typ_inv = typ_invariant(ctx, typ, &ident_var(&suffix_local_id(x)));
                     if let Some(expr) = typ_inv {
                         stmts.push(Arc::new(StmtX::Assume(expr)));
                     }
@@ -623,7 +643,7 @@ fn set_fuel(local: &mut Vec<Decl>, hidden: &Vec<Path>) {
         let binders: Binders<air::ast::Typ> = Arc::new(vec![ident_binder(&id, &str_typ(FUEL_ID))]);
         let bind = Arc::new(BindX::Quant(Quant::Forall, binders, triggers));
         let or = Arc::new(ExprX::Multi(air::ast::MultiOp::Or, Arc::new(disjuncts)));
-        Arc::new(ExprX::Bind(bind, or))
+        mk_bind_expr(&bind, &or)
     };
     local.push(Arc::new(DeclX::Axiom(fuel_expr)));
 }
@@ -700,8 +720,7 @@ pub fn body_stm_to_air(
         if stmts.len() == 1 { stmts[0].clone() } else { Arc::new(StmtX::Block(Arc::new(stmts))) };
 
     for param in params.iter() {
-        let typ_inv =
-            typ_invariant(&param.x.typ, &ident_var(&suffix_local_id(&param.x.name)), false);
+        let typ_inv = typ_invariant(ctx, &param.x.typ, &ident_var(&suffix_local_id(&param.x.name)));
         if let Some(expr) = typ_inv {
             local.push(Arc::new(DeclX::Axiom(expr)));
         }

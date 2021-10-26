@@ -7,15 +7,15 @@ use rustc_ast::{AttrKind, Attribute, IntTy, MacArgs, UintTy};
 use rustc_hir::def::{DefKind, Res};
 use rustc_hir::definitions::DefPath;
 use rustc_hir::{
-    GenericParam, GenericParamKind, Generics, HirId, ParamName, PrimTy, QPath, Ty, Visibility,
-    VisibilityKind,
+    GenericParam, GenericParamKind, Generics, HirId, ParamName, PathSegment, PrimTy, QPath, Ty,
+    Visibility, VisibilityKind,
 };
 use rustc_middle::ty::{AdtDef, TyCtxt, TyKind, TypeckResults};
 use rustc_span::def_id::{DefId, LOCAL_CRATE};
 use rustc_span::symbol::Ident;
 use rustc_span::Span;
 use std::sync::Arc;
-use vir::ast::{Idents, IntRange, Mode, Path, PathX, Typ, TypX, VirErr};
+use vir::ast::{Idents, IntRange, Mode, Path, PathX, Typ, TypX, Typs, VirErr};
 use vir::ast_util::types_equal;
 
 pub(crate) fn def_path_to_vir_path<'tcx>(tcx: TyCtxt<'tcx>, def_path: DefPath) -> Path {
@@ -33,16 +33,39 @@ pub(crate) fn def_id_to_vir_path<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> Path
     def_path_to_vir_path(tcx, tcx.def_path(def_id))
 }
 
-pub(crate) fn def_id_to_ty_path<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> TypX {
-    TypX::Path(def_id_to_vir_path(tcx, def_id))
-}
-
 pub(crate) fn def_to_path_ident<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> vir::ast::Ident {
     let def_path = tcx.def_path(def_id);
     match def_path.data.last().expect("unexpected empty impl path").data {
         rustc_hir::definitions::DefPathData::ValueNs(name) => Arc::new(name.to_string()),
         _ => panic!("unexpected name of impl"),
     }
+}
+
+pub(crate) fn def_id_to_datatype<'tcx, 'hir>(
+    tcx: TyCtxt<'tcx>,
+    def_id: DefId,
+    typ_args: Typs,
+) -> TypX {
+    TypX::Datatype(def_id_to_vir_path(tcx, def_id), typ_args)
+}
+
+pub(crate) fn def_id_to_datatype_segments<'tcx, 'hir>(
+    tcx: TyCtxt<'tcx>,
+    def_id: DefId,
+    segments: &'hir [PathSegment<'hir>],
+) -> TypX {
+    let typ_args: Vec<Typ> = match &segments.last().expect("type must have a segment").args {
+        None => vec![],
+        Some(args) => args
+            .args
+            .iter()
+            .map(|a| match a {
+                rustc_hir::GenericArg::Type(t) => ty_to_vir(tcx, &t),
+                _ => panic!("unexpected type arguments"),
+            })
+            .collect(),
+    };
+    TypX::Datatype(def_id_to_vir_path(tcx, def_id), Arc::new(typ_args))
 }
 
 // TODO: proper handling of def_ids
@@ -321,7 +344,7 @@ pub(crate) fn mid_ty_to_vir<'tcx>(tcx: TyCtxt<'tcx>, ty: rustc_middle::ty::Ty<'t
     match ty.kind() {
         TyKind::Tuple(_) if ty.tuple_fields().count() == 0 => Arc::new(TypX::Unit),
         TyKind::Bool => Arc::new(TypX::Bool),
-        TyKind::Adt(AdtDef { did, .. }, _) => Arc::new({
+        TyKind::Adt(AdtDef { did, .. }, args) => Arc::new({
             let s = ty.to_string();
             // TODO use lang items instead of string comparisons
             if s == crate::typecheck::BUILTIN_INT {
@@ -329,7 +352,14 @@ pub(crate) fn mid_ty_to_vir<'tcx>(tcx: TyCtxt<'tcx>, ty: rustc_middle::ty::Ty<'t
             } else if s == crate::typecheck::BUILTIN_NAT {
                 TypX::Int(IntRange::Nat)
             } else {
-                def_id_to_ty_path(tcx, *did)
+                let typ_args: Vec<Typ> = args
+                    .iter()
+                    .map(|arg| match arg.unpack() {
+                        rustc_middle::ty::subst::GenericArgKind::Type(t) => mid_ty_to_vir(tcx, t),
+                        _ => panic!("unexpected type argument"),
+                    })
+                    .collect();
+                def_id_to_datatype(tcx, *did, Arc::new(typ_args))
             }
         }),
         TyKind::Ref(_, tys, rustc_ast::Mutability::Not) => mid_ty_to_vir(tcx, tys),
@@ -400,11 +430,15 @@ pub(crate) fn ty_to_vir<'tcx>(tcx: TyCtxt<'tcx>, ty: &Ty) -> Typ {
                         _ => panic!("unexpected arg to Box"),
                     }
                 } else {
-                    def_id_to_ty_path(tcx, def_id)
+                    def_id_to_datatype_segments(tcx, def_id, &path.segments)
                 }
             }
-            Res::Def(DefKind::Enum, def_id) => def_id_to_ty_path(tcx, def_id),
-            Res::SelfTy(None, Some((impl_def_id, false))) => def_id_to_ty_path(tcx, impl_def_id),
+            Res::Def(DefKind::Enum, def_id) => {
+                def_id_to_datatype_segments(tcx, def_id, &path.segments)
+            }
+            Res::SelfTy(None, Some((impl_def_id, false))) => {
+                def_id_to_datatype_segments(tcx, impl_def_id, &path.segments)
+            }
             _ => {
                 unsupported!(format!("type {:#?} {:?} {:?}", kind, path.res, span))
             }
@@ -457,7 +491,7 @@ pub(crate) fn is_smt_equality<'tcx>(
     match (&*t1, &*t2) {
         (TypX::Bool, TypX::Bool) => true,
         (TypX::Int(_), TypX::Int(_)) => true,
-        (TypX::Path(_), TypX::Path(_)) if types_equal(&t1, &t2) => {
+        (TypX::Datatype(..), TypX::Datatype(..)) if types_equal(&t1, &t2) => {
             let ty = bctx.types.node_type(*id1);
             implements_structural(bctx.ctxt.tcx, &ty)
         }

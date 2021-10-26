@@ -929,7 +929,7 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
         ExprKind::MethodCall(_name_and_generics, _call_span_0, all_args, _call_span_1) => {
             let receiver = all_args.first().expect("receiver in method call");
             let self_path = match &(*typ_of_node(bctx, &receiver.hir_id)) {
-                TypX::Path(path) => path.clone(),
+                TypX::Datatype(path, _) => path.clone(),
                 _ => panic!("unexpected receiver type"),
             };
             let fn_def_id = bctx

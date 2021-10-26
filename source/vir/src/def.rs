@@ -1,5 +1,5 @@
 use crate::ast::{Path, PathX};
-use crate::ast_util::str_ident;
+use crate::ast_util::{path_to_string, str_ident};
 use air::ast::{Ident, Span};
 use std::fmt::Debug;
 use std::sync::Arc;
@@ -37,6 +37,7 @@ pub const TYPE_PATH_SEPARATOR: &str = ".";
 pub const VARIANT_SEPARATOR: &str = "/";
 pub const PREFIX_FUEL_ID: &str = "fuel%";
 pub const PREFIX_FUEL_NAT: &str = "fuel_nat%";
+pub const PREFIX_DATATYPE_INV: &str = "inv%";
 pub const PREFIX_REQUIRES: &str = "req%";
 pub const PREFIX_ENSURES: &str = "ens%";
 pub const PREFIX_RECURSIVE: &str = "rec%";
@@ -132,6 +133,10 @@ pub fn prefix_fuel_id(ident: &Ident) -> Ident {
 
 pub fn prefix_fuel_nat(ident: &Ident) -> Ident {
     Arc::new(PREFIX_FUEL_NAT.to_string() + ident)
+}
+
+pub fn prefix_datatype_inv(path: &Path) -> Ident {
+    Arc::new(PREFIX_DATATYPE_INV.to_string() + &path_to_string(path))
 }
 
 pub fn prefix_requires(ident: &Ident) -> Ident {

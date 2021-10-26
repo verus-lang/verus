@@ -78,7 +78,8 @@ pub enum TypX {
     Unit,
     Bool,
     Int(IntRange),
-    Path(Path),
+    /// Datatype (concrete or abstract) applied to type arguments
+    Datatype(Path, Typs),
     /// Boxed for SMT encoding (unrelated to Rust Box type), can be unboxed:
     Boxed(Typ),
     /// Type parameter (inherently SMT-boxed, and cannot be unboxed)
@@ -331,6 +332,7 @@ pub struct DatatypeX {
     pub path: Path,
     pub visibility: Visibility,
     pub transparency: DatatypeTransparency,
+    pub typ_params: Idents,
     pub variants: Variants,
 }
 pub type Datatype = Arc<Spanned<DatatypeX>>;

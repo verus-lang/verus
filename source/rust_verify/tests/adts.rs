@@ -11,6 +11,12 @@ const STRUCTS: &str = code_str! {
     }
 
     #[derive(PartialEq, Eq)]
+    struct CompactCar {
+        four_doors: bool,
+        passengers: u8,
+    }
+
+    #[derive(PartialEq, Eq)]
     enum Vehicle {
         Car(Car),
         Train(bool),
@@ -92,4 +98,28 @@ test_verify_with_pervasive! {
             l == AB::A
         }
     } => Ok(())
+}
+
+test_verify_with_pervasive! {
+    #[test] test_struct_u8 STRUCTS.to_string() + code_str! {
+        fn test_struct_u8(car: CompactCar) {
+            assert(car.passengers >= 0);
+        }
+    } => Ok(())
+}
+
+test_verify_with_pervasive! {
+    #[test] test_struct_u8n STRUCTS.to_string() + code_str! {
+        fn test_struct_u8(car: CompactCar) {
+            assert(car.passengers >= 1); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_with_pervasive! {
+    #[test] test_struct_int STRUCTS.to_string() + code_str! {
+        fn test_struct_u8(car: Car) {
+            assert(car.passengers >= 0); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
 }

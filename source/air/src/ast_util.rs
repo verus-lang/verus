@@ -1,6 +1,6 @@
 use crate::ast::{
-    BinaryOp, BindX, Binder, BinderX, Constant, Expr, ExprX, Ident, MultiOp, Quant, Span, Trigger,
-    Typ, TypX, UnaryOp,
+    BinaryOp, Bind, BindX, Binder, BinderX, Constant, Expr, ExprX, Ident, MultiOp, Quant, Span,
+    Trigger, Typ, TypX, UnaryOp,
 };
 use std::fmt::Debug;
 use std::sync::Arc;
@@ -92,6 +92,14 @@ pub fn str_typ(x: &str) -> Typ {
 
 pub fn ident_binder<A: Clone>(x: &Ident, a: &A) -> Binder<A> {
     Arc::new(BinderX { name: x.clone(), a: a.clone() })
+}
+
+pub fn mk_bind_expr(bind: &Bind, body: &Expr) -> Expr {
+    let n = match &**bind {
+        BindX::Let(bs) => bs.len(),
+        BindX::Quant(_, bs, _) => bs.len(),
+    };
+    if n == 0 { body.clone() } else { Arc::new(ExprX::Bind(bind.clone(), body.clone())) }
 }
 
 pub fn mk_let(binders: &Vec<Binder<Expr>>, body: &Expr) -> Expr {

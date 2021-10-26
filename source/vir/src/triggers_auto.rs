@@ -462,7 +462,7 @@ pub(crate) fn build_triggers(
         println!("FOUND: {} {:?}", score, found.iter().map(|(t, _)| t).collect::<Vec<_>>());
     }
     */
-    let mut chosen_triggers = ctx.chosen_triggers.borrow_mut();
+    let mut chosen_triggers = ctx.global.chosen_triggers.borrow_mut();
     let found_strings: Vec<Vec<String>> =
         vec_map(&state.best_so_far, |trig| vec_map(&trig, |(term, _)| format!("{:?}", term)));
     chosen_triggers.push((span.clone(), found_strings));

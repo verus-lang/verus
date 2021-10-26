@@ -27,7 +27,11 @@ pub fn types_equal(typ1: &Typ, typ2: &Typ) -> bool {
     match (&**typ1, &**typ2) {
         (TypX::Bool, TypX::Bool) => true,
         (TypX::Int(range1), TypX::Int(range2)) => range1 == range2,
-        (TypX::Path(p1), TypX::Path(p2)) => p1 == p2,
+        (TypX::Datatype(p1, typs1), TypX::Datatype(p2, typs2)) => {
+            p1 == p2
+                && typs1.len() == typs2.len()
+                && typs1.iter().zip(typs2.iter()).all(|(t1, t2)| types_equal(t1, t2))
+        }
         (TypX::TypParam(x1), TypX::TypParam(x2)) => x1 == x2,
         _ => false,
     }

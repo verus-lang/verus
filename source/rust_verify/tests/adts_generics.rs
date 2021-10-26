@@ -15,6 +15,10 @@ test_verify_with_pervasive! {
             let t2 = Thing { a: v };
             let a: int = t2.a;
         }
+
+        fn two(v: Thing<u8>) {
+            assert(v.a >= 0);
+        }
     } => Ok(())
 }
 
@@ -45,6 +49,19 @@ test_verify_with_pervasive! {
             let a2: int = t2.a;
             assert(a1 == a2);
             assert(a1 != a2); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_with_pervasive! {
+    #[test] test_generic_adt_u8 code! {
+        #[derive(Eq, PartialEq)]
+        struct Thing<A> {
+            a: A,
+        }
+
+        fn two(v: Thing<u8>) {
+            assert(v.a >= 1); // FAILS
         }
     } => Err(err) => assert_one_fails(err)
 }

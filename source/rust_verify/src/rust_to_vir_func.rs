@@ -4,7 +4,7 @@ use crate::rust_to_vir_base::{
     get_verifier_attrs, ident_to_var, ty_to_vir, BodyCtxt,
 };
 use crate::rust_to_vir_expr::{expr_to_vir, pat_to_var};
-use crate::util::{err_span_str, err_span_string, spanned_new, unsupported_err_span};
+use crate::util::{err_span_str, err_span_string, spanned_new, unsupported_err_span, vec_map};
 use crate::{unsupported, unsupported_err, unsupported_err_unless, unsupported_unless};
 use rustc_ast::Attribute;
 use rustc_hir::{Body, BodyId, FnDecl, FnHeader, FnSig, Generics, Param, Unsafety};
@@ -108,9 +108,11 @@ pub(crate) fn check_item_fn<'tcx>(
                 _ => Ok(false),
             }
         }
+        let typ_args = vec_map(&typ_params, |t| Arc::new(TypX::TypParam(t.clone())));
         let typ = if is_self_or_self_ref(*span, &input)? {
-            Arc::new(TypX::Path(
+            Arc::new(TypX::Datatype(
                 self_path.as_ref().expect("a param is Self, so this must be an impl").clone(),
+                Arc::new(typ_args),
             ))
         } else {
             ty_to_vir(ctxt.tcx, input)

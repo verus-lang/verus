@@ -11,7 +11,7 @@ use rustc_span::source_map::SourceMap;
 use rustc_span::{CharPos, FileName, MultiSpan, Span};
 use std::fs::File;
 use std::io::Write;
-use vir::ast::{Krate, Path, VirErr, VirErrX, Visibility};
+use vir::ast::{Krate, VirErr, VirErrX, Visibility};
 use vir::ast_util::{is_visible_to, path_to_string};
 use vir::def::SnapPos;
 use vir::model::Model as VModel;
@@ -207,8 +207,8 @@ impl Verifier {
         krate: &Krate,
         air_context: &mut air::context::Context,
         ctx: &mut vir::context::Ctx,
-        module: &Path,
     ) -> Result<(), VirErr> {
+        let module = &ctx.module();
         air_context.blank_line();
         air_context.comment("Fuel");
         for command in ctx.fuel().iter() {
@@ -217,7 +217,6 @@ impl Verifier {
 
         let datatype_commands = vir::datatype_to_air::datatypes_to_air(
             ctx,
-            module,
             &krate
                 .datatypes
                 .iter()
@@ -309,11 +308,11 @@ impl Verifier {
         air_context.set_z3_param("air_recommended_options", "true");
         air_context.set_rlimit(self.args.rlimit * 1000000);
 
-        let mut ctx = vir::context::Ctx::new(&krate, self.args.debug)?;
+        let mut global_ctx = vir::context::GlobalCtx::new();
 
         air_context.blank_line();
         air_context.comment("Prelude");
-        for command in ctx.prelude().iter() {
+        for command in vir::context::Ctx::prelude().iter() {
             Self::check_internal_result(air_context.command(&command));
         }
 
@@ -335,21 +334,24 @@ impl Verifier {
             air_context.blank_line();
             air_context.comment(&("MODULE '".to_string() + &module_name + "'"));
             air_context.push();
-            self.verify_module(compiler, krate, &mut air_context, &mut ctx, module)?;
+            let mut ctx =
+                vir::context::Ctx::new(&krate, global_ctx, module.clone(), self.args.debug)?;
+            self.verify_module(compiler, krate, &mut air_context, &mut ctx)?;
+            global_ctx = ctx.free();
             air_context.pop();
         }
 
         if let Some(filename) = &self.args.log_triggers {
             let mut file =
                 File::create(filename).expect(&format!("could not open file {}", filename));
-            let chosen_triggers = ctx.get_chosen_triggers();
+            let chosen_triggers = global_ctx.get_chosen_triggers();
             for triggers in chosen_triggers {
                 writeln!(file, "{:#?}", triggers)
                     .expect(&format!("error writing to file {}", filename));
             }
         }
         if self.args.show_triggers {
-            let chosen_triggers = ctx.get_chosen_triggers();
+            let chosen_triggers = global_ctx.get_chosen_triggers();
             for (span, triggers) in chosen_triggers {
                 report_chosen_triggers(compiler, &span, &triggers);
             }

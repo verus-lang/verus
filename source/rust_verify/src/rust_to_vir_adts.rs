@@ -74,7 +74,7 @@ pub fn check_item_struct<'tcx>(
     variant_data: &'tcx VariantData<'tcx>,
     generics: &'tcx Generics<'tcx>,
 ) -> Result<(), VirErr> {
-    check_generics(generics)?;
+    let typ_params = check_generics(generics)?;
     let name = hack_get_def_name(ctxt.tcx, id.def_id.to_def_id());
     let path = def_id_to_vir_path(ctxt.tcx, id.def_id.to_def_id());
     let variant_name = variant_ident(&name, &name);
@@ -88,7 +88,8 @@ pub fn check_item_struct<'tcx>(
         DatatypeTransparency::Always
     };
     let variants = Arc::new(vec![variant]);
-    vir.datatypes.push(spanned_new(span, DatatypeX { path, visibility, transparency, variants }));
+    let datatype = DatatypeX { path, visibility, transparency, typ_params, variants };
+    vir.datatypes.push(spanned_new(span, datatype));
     Ok(())
 }
 
@@ -102,7 +103,7 @@ pub fn check_item_enum<'tcx>(
     enum_def: &'tcx EnumDef<'tcx>,
     generics: &'tcx Generics<'tcx>,
 ) -> Result<(), VirErr> {
-    check_generics(generics)?;
+    let typ_params = check_generics(generics)?;
     let name = Arc::new(hack_get_def_name(ctxt.tcx, id.def_id.to_def_id()));
     let path = def_id_to_vir_path(ctxt.tcx, id.def_id.to_def_id());
     let (variants, one_field_private): (Vec<_>, Vec<_>) = enum_def
@@ -127,7 +128,7 @@ pub fn check_item_enum<'tcx>(
     };
     vir.datatypes.push(spanned_new(
         span,
-        DatatypeX { path, visibility, transparency, variants: Arc::new(variants) },
+        DatatypeX { path, visibility, transparency, typ_params, variants: Arc::new(variants) },
     ));
     Ok(())
 }
