@@ -229,6 +229,9 @@ pub fn func_name_to_air(ctx: &Ctx, function: &Function) -> Result<Commands, VirE
                     suffix_global_id(&prefix_recursive(&path_to_air_ident(&function.x.path)));
                 let mut rec_typs =
                     vec_map(&*function.x.params, |param| typ_to_air(ctx, &param.x.typ));
+                for _ in function.x.typ_params.iter() {
+                    rec_typs.insert(0, str_typ(crate::def::TYPE));
+                }
                 rec_typs.push(str_typ(FUEL_TYPE));
                 let rec_typ = typ_to_air(ctx, &function.x.ret.as_ref().unwrap().1);
                 let rec_decl = Arc::new(DeclX::Fun(rec_f, Arc::new(rec_typs), rec_typ));

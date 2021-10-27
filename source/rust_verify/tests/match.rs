@@ -68,3 +68,92 @@ test_verify_with_pervasive! {
         }
     } => Err(err) => assert_one_fails(err)
 }
+
+test_verify_with_pervasive! {
+    #[test] test2 code! {
+        enum List<A> {
+            Nil,
+            Cons(A, Box<List<A>>),
+        }
+
+        #[spec]
+        fn len<A>(list: &List<A>) -> nat {
+            decreases(list);
+            match list {
+                List::Nil => 0,
+                List::Cons(_, tl) => 1 + len(tl),
+            }
+        }
+
+        fn get_len<A>(list: &List<A>) -> u64 {
+            requires(len(list) <= 0xffffffffffffffff);
+            ensures(|r: u64| r == len(list));
+
+            let mut n: u64 = 0;
+            let mut done = false;
+            let mut iter = list;
+            while !done {
+                invariant([
+                    len(list) <= 0xffffffffffffffff,
+                    n + len(iter) == len(list),
+                    imply(done, len(iter) == 0),
+                ]);
+
+                match iter {
+                    List::Nil => {
+                        done = true;
+                    }
+                    List::Cons(_, tl) => {
+                        iter = tl;
+                        n = n + 1;
+                    }
+                }
+            }
+            n
+        }
+    } => Ok(())
+}
+
+test_verify_with_pervasive! {
+    #[test] test2_fails code! {
+        enum List<A> {
+            Nil,
+            Cons(A, Box<List<A>>),
+        }
+
+        #[spec]
+        fn len<A>(list: &List<A>) -> nat {
+            decreases(list);
+            match list {
+                List::Nil => 0,
+                List::Cons(_, tl) => 1 + len(tl),
+            }
+        }
+
+        fn get_len<A>(list: &List<A>) -> u64 {
+            requires(len(list) <= 0xffffffffffffffff);
+            ensures(|r: u64| r == len(list));
+
+            let mut n: u64 = 0;
+            let mut done = false;
+            let mut iter = list;
+            while !done {
+                invariant([
+                    n + len(iter) == len(list), // FAILS
+                    imply(done, len(iter) == 0),
+                ]);
+
+                match iter {
+                    List::Nil => {
+                        done = true;
+                    }
+                    List::Cons(_, tl) => {
+                        iter = tl;
+                        n = n + 1;
+                    }
+                }
+            }
+            n
+        }
+    } => Err(err) => assert_one_fails(err)
+}

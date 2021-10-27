@@ -91,6 +91,10 @@ pub fn check_decrease_int() -> Path {
     Arc::new(PathX { krate: None, segments: Arc::new(vec![str_ident("check_decrease_int")]) })
 }
 
+pub fn height() -> Path {
+    Arc::new(PathX { krate: None, segments: Arc::new(vec![str_ident("height")]) })
+}
+
 pub fn suffix_global_id(ident: &Ident) -> Ident {
     Arc::new(ident.to_string() + SUFFIX_GLOBAL)
 }

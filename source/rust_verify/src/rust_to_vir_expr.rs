@@ -323,8 +323,7 @@ fn fn_call_to_vir<'tcx>(
         Ok(mk_expr(ExprX::Header(header)))
     } else if is_decreases {
         unsupported_err_unless!(len == 1, expr.span, "expected decreases", &args);
-        let typ = typ_of_node(bctx, &args[0].hir_id);
-        let header = Arc::new(HeaderExprX::Decreases(vir_args[0].clone(), typ));
+        let header = Arc::new(HeaderExprX::Decreases(vir_args[0].clone()));
         Ok(mk_expr(ExprX::Header(header)))
     } else if is_admit {
         unsupported_err_unless!(len == 0, expr.span, "expected admit", args);

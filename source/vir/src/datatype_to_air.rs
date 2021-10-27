@@ -64,7 +64,7 @@ pub fn datatypes_to_air(ctx: &Ctx, datatypes: &crate::ast::Datatypes) -> Command
         let decl_opaq_sort = Arc::new(air::ast::DeclX::Sort(path_to_air_ident(&datatype.x.path)));
         commands.push(Arc::new(CommandX::Global(decl_opaq_sort)));
     }
-    for datatypes in &[transparent, opaque] {
+    for datatypes in &[&transparent, &opaque] {
         // TYPE token
         for datatype in datatypes.iter() {
             let decl_type_id = Arc::new(DeclX::Const(
@@ -172,6 +172,27 @@ pub fn datatypes_to_air(ctx: &Ctx, datatypes: &crate::ast::Datatypes) -> Command
                             commands.push(Arc::new(CommandX::Global(axiom)));
                         }
                     }
+                }
+            }
+        }
+    }
+    // height axioms
+    for datatype in transparent.iter() {
+        for variant in datatype.x.variants.iter() {
+            for field in variant.a.iter() {
+                let typ = &field.a.0;
+                match &**typ {
+                    TypX::Datatype(path, _) => {
+                        let node = crate::prelude::datatype_height_axiom(
+                            &path_to_air_ident(&datatype.x.path),
+                            &path_to_air_ident(&path),
+                            &field.name,
+                        );
+                        let axiom = air::parser::node_to_command(&node)
+                            .expect("internal error: malformed datatype axiom");
+                        commands.push(axiom);
+                    }
+                    _ => {}
                 }
             }
         }

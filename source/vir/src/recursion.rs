@@ -1,10 +1,13 @@
 use crate::ast::{
-    BinaryOp, Constant, Function, Ident, Mode, Params, Path, Typ, TypX, UnaryOp, VirErr,
+    BinaryOp, Constant, Function, Ident, IntRange, Mode, Params, Path, Typ, TypX, UnaryOp,
+    UnaryOpr, VirErr,
 };
 use crate::ast_util::err_str;
 use crate::ast_visitor::map_expr_visitor;
 use crate::context::Ctx;
-use crate::def::{check_decrease_int, suffix_rename, Spanned, DECREASE_AT_ENTRY, FUEL_PARAM};
+use crate::def::{
+    check_decrease_int, height, suffix_rename, Spanned, DECREASE_AT_ENTRY, FUEL_PARAM,
+};
 use crate::scc::Graph;
 use crate::sst::{BndX, Exp, ExpX, Exps, Stm, StmX};
 use crate::sst_visitor::{exp_rename_vars, map_exp_visitor, map_stm_visitor};
@@ -24,22 +27,27 @@ struct Ctxt<'a> {
     ctx: &'a Ctx,
 }
 
+fn height_of_exp(ctxt: &Ctxt, exp: &Exp) -> Exp {
+    match &*ctxt.decreases_typ {
+        TypX::Int(_) => exp.clone(),
+        TypX::Datatype(..) => {
+            let op = UnaryOpr::Box(ctxt.decreases_typ.clone());
+            let arg = Spanned::new(exp.span.clone(), ExpX::UnaryOpr(op, exp.clone()));
+            let call = ExpX::Call(false, height(), Arc::new(vec![]), Arc::new(vec![arg]));
+            Spanned::new(exp.span.clone(), call)
+        }
+        // TODO: non-panic error message
+        _ => panic!("internal error: unsupported type for decreases {:?}", ctxt.decreases_typ),
+    }
+}
+
 fn check_decrease(ctxt: &Ctxt, exp: &Exp) -> Exp {
     let decreases_at_entry =
         Spanned::new(exp.span.clone(), ExpX::Var(ctxt.decreases_at_entry.clone()));
-    match &*ctxt.decreases_typ {
-        TypX::Int(_) => {
-            // 0 <= decreases_exp < decreases_at_entry
-            let call = ExpX::Call(
-                false,
-                check_decrease_int(),
-                Arc::new(vec![]),
-                Arc::new(vec![exp.clone(), decreases_at_entry]),
-            );
-            Spanned::new(exp.span.clone(), call)
-        }
-        _ => panic!("internal error: unsupported type for decreases {:?}", ctxt.decreases_typ),
-    }
+    // 0 <= decreases_exp < decreases_at_entry
+    let args = vec![height_of_exp(ctxt, exp), decreases_at_entry];
+    let call = ExpX::Call(false, check_decrease_int(), Arc::new(vec![]), Arc::new(args));
+    Spanned::new(exp.span.clone(), call)
 }
 
 fn check_decrease_rename(ctxt: &Ctxt, span: &Span, args: &Exps) -> Exp {
@@ -65,7 +73,7 @@ fn check_decrease_rename(ctxt: &Ctxt, span: &Span, args: &Exps) -> Exp {
 
 fn update_decreases_exp<'a>(ctxt: &'a Ctxt, name: &Path) -> Result<Ctxt<'a>, VirErr> {
     let function = ctxt.ctx.func_map.get(name).expect("func_map should hold all functions");
-    let (new_decreases_expr, _) = function
+    let new_decreases_expr = function
         .x
         .decrease
         .as_ref()
@@ -210,7 +218,7 @@ fn mk_decreases_at_entry(ctxt: &Ctxt, span: &Span) -> (Stm, Stm) {
         span.clone(),
         StmX::Decl {
             ident: ctxt.decreases_at_entry.clone(),
-            typ: ctxt.decreases_typ.clone(),
+            typ: Arc::new(TypX::Int(IntRange::Int)),
             mutable: false,
             init: true,
         },
@@ -222,7 +230,7 @@ fn mk_decreases_at_entry(ctxt: &Ctxt, span: &Span) -> (Stm, Stm) {
             ExpX::Binary(
                 BinaryOp::Eq(Mode::Spec),
                 Spanned::new(span.clone(), ExpX::Var(ctxt.decreases_at_entry.clone())),
-                ctxt.decreases_exp.clone(),
+                height_of_exp(ctxt, &ctxt.decreases_exp),
             ),
         )),
     );
@@ -238,12 +246,13 @@ pub(crate) fn check_termination_exp(
         return Ok((false, Arc::new(vec![]), body.clone()));
     }
 
-    let (decreases_expr, decreases_typ) = match &function.x.decrease {
+    let decreases_expr = match &function.x.decrease {
         None => {
             return err_str(&function.span, "recursive function must call decreases(...)");
         }
         Some(dec) => dec.clone(),
     };
+    let decreases_typ = decreases_expr.typ.clone();
     let decreases_exp = crate::ast_to_sst::expr_to_exp(ctx, &decreases_expr)?;
     let decreases_at_entry = str_ident(DECREASE_AT_ENTRY);
     let scc_rep = ctx.func_call_graph.get_scc_rep(&function.x.path);
@@ -307,12 +316,13 @@ pub(crate) fn check_termination_stm(
         return Ok(body.clone());
     }
 
-    let (decreases_expr, decreases_typ) = match &function.x.decrease {
+    let decreases_expr = match &function.x.decrease {
         None => {
             return err_str(&function.span, "recursive function must call decreases(...)");
         }
         Some(dec) => dec.clone(),
     };
+    let decreases_typ = decreases_expr.typ.clone();
     let decreases_exp = crate::ast_to_sst::expr_to_exp(ctx, &decreases_expr)?;
     let decreases_at_entry = str_ident(DECREASE_AT_ENTRY);
     let scc_rep = ctx.func_call_graph.get_scc_rep(&function.x.path);

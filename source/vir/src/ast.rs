@@ -167,7 +167,7 @@ pub enum HeaderExprX {
     /// Invariants on while loops
     Invariant(Exprs),
     /// Decreases clauses for functions (possibly also for while loops, but this isn't implemented yet)
-    Decreases(Expr, Typ),
+    Decreases(Expr),
     /// Make a function f opaque (definition hidden) within the current function body.
     /// (The current function body can later reveal f in specific parts of the current function body if desired.)
     Hide(Path),
@@ -302,7 +302,7 @@ pub struct FunctionX {
     /// Postconditions
     pub ensure: Exprs,
     /// Decreases clause to ensure recursive function termination
-    pub decrease: Option<(Expr, Typ)>,
+    pub decrease: Option<Expr>,
     /// Custom error message to display when a pre-condition fails
     pub custom_req_err: Option<String>,
     /// List of functions that this function wants to view as opaque

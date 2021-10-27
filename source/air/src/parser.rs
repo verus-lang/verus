@@ -344,7 +344,7 @@ fn nodes_to_decls(nodes: &[Node]) -> Result<Decls, String> {
     map_nodes_to_vec(nodes, node_to_decl)
 }
 
-pub(crate) fn node_to_command(node: &Node) -> Result<Command, String> {
+pub fn node_to_command(node: &Node) -> Result<Command, String> {
     match node {
         Node::List(nodes) if nodes.len() >= 1 => match &nodes[0] {
             Node::Atom(s) if s.to_string() == "push" && nodes.len() == 1 => {

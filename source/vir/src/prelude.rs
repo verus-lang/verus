@@ -26,6 +26,7 @@ pub(crate) fn prelude_nodes() -> Vec<Node> {
     let arch_size = str_to_node(ARCH_SIZE);
     let check_decrease_int =
         str_to_node(&suffix_global_id(&path_to_air_ident(&check_decrease_int())));
+    let height = str_to_node(&suffix_global_id(&path_to_air_ident(&height())));
     #[allow(non_snake_case)]
     let Unit = str_to_node(UNIT);
     #[allow(non_snake_case)]
@@ -214,6 +215,28 @@ pub(crate) fn prelude_nodes() -> Vec<Node> {
                 (and (<= 0 cur) (< cur prev))
             )
             :pattern (([check_decrease_int] cur prev))
+        )))
+        (declare-fun [height] (Poly) Int)
+        (axiom (forall ((x Poly)) (!
+            (<= 0 ([height] x))
+            :pattern (([height] x))
+        )))
+    )
+}
+
+pub(crate) fn datatype_height_axiom(typ_name1: &Ident, typ_name2: &Ident, field: &Ident) -> Node {
+    let height = str_to_node(&suffix_global_id(&path_to_air_ident(&height())));
+    let field = str_to_node(field.as_str());
+    let typ1 = str_to_node(typ_name1.as_str());
+    let box_t1 = str_to_node(prefix_box(typ_name1).as_str());
+    let box_t2 = str_to_node(prefix_box(typ_name2).as_str());
+    node!(
+        (axiom (forall ((x [typ1])) (!
+            (<
+                ([height] ([box_t2] ([field] x)))
+                ([height] ([box_t1] x))
+            )
+            :pattern (([height] ([box_t2] ([field] x))))
         )))
     )
 }
