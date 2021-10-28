@@ -54,10 +54,12 @@ pub enum StmX {
         ident: Ident,
         typ: Typ,
         mutable: bool,
-        /// init = true means we use Assume rather than Assign to initialize an ident that might span a while loop
-        init: bool,
     },
-    Assign(Exp, Exp),
+    Assign {
+        lhs: Ident,
+        rhs: Exp,
+        is_init: bool,
+    },
     Fuel(Path, u32),
     If(Exp, Stm, Option<Stm>),
     While {

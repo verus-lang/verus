@@ -1,6 +1,6 @@
 use crate::ast::{
-    BinaryOp, Constant, Function, Ident, IntRange, Mode, Params, Path, Typ, TypX, UnaryOp,
-    UnaryOpr, VirErr,
+    BinaryOp, Constant, Function, Ident, IntRange, Params, Path, Typ, TypX, UnaryOp, UnaryOpr,
+    VirErr,
 };
 use crate::ast_util::err_str;
 use crate::ast_visitor::map_expr_visitor;
@@ -219,19 +219,15 @@ fn mk_decreases_at_entry(ctxt: &Ctxt, span: &Span) -> (Stm, Stm) {
             ident: ctxt.decreases_at_entry.clone(),
             typ: Arc::new(TypX::Int(IntRange::Int)),
             mutable: false,
-            init: true,
         },
     );
     let stm_assign = Spanned::new(
         span.clone(),
-        StmX::Assume(Spanned::new(
-            span.clone(),
-            ExpX::Binary(
-                BinaryOp::Eq(Mode::Spec),
-                Spanned::new(span.clone(), ExpX::Var(ctxt.decreases_at_entry.clone())),
-                height_of_exp(ctxt, &ctxt.decreases_exp),
-            ),
-        )),
+        StmX::Assign {
+            lhs: ctxt.decreases_at_entry.clone(),
+            rhs: height_of_exp(ctxt, &ctxt.decreases_exp),
+            is_init: true,
+        },
     );
     (stm_decl, stm_assign)
 }

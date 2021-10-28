@@ -28,10 +28,8 @@ impl State {
     }
 }
 
-fn assume_var(span: &Span, x: &Ident, exp: &Exp) -> Stm {
-    let x_var = Spanned::new(span.clone(), ExpX::Var(x.clone()));
-    let eq = Spanned::new(span.clone(), ExpX::Binary(BinaryOp::Eq(Mode::Spec), x_var, exp.clone()));
-    Spanned::new(span.clone(), StmX::Assume(eq))
+fn init_var(span: &Span, x: &Ident, exp: &Exp) -> Stm {
+    Spanned::new(span.clone(), StmX::Assign { lhs: x.clone(), rhs: exp.clone(), is_init: true })
 }
 
 fn get_function(ctx: &Ctx, expr: &Expr, name: &Path) -> Result<Function, VirErr> {
@@ -145,7 +143,7 @@ pub(crate) fn expr_to_one_stm_dest(
             panic!("internal error: missing return value")
         }
         (Some(dest), Some(exp)) => {
-            stms.push(assume_var(&expr.span, dest, &exp));
+            stms.push(init_var(&expr.span, dest, &exp));
         }
     }
     Ok(stms_to_one_stm(&expr.span, stms))
@@ -191,9 +189,9 @@ fn stm_call(
             let temp = state.next_temp();
             small_args.push(Spanned::new(arg.0.span.clone(), ExpX::Var(temp.clone())));
             let typ = arg.1.clone();
-            let temp_decl = StmX::Decl { ident: temp.clone(), typ, mutable: false, init: false };
+            let temp_decl = StmX::Decl { ident: temp.clone(), typ, mutable: false };
             stms.push(Spanned::new(arg.0.span.clone(), temp_decl));
-            stms.push(assume_var(&arg.0.span, &temp, &arg.0));
+            stms.push(init_var(&arg.0.span, &temp, &arg.0));
         }
     }
     let call = StmX::Call(path, typs, Arc::new(small_args), dest);
@@ -272,11 +270,11 @@ fn if_to_stm(
     // let temp;
     let typ = expr.typ.clone();
     let ident = temp.clone();
-    let temp_decl = StmX::Decl { ident, typ, mutable: false, init: false };
+    let temp_decl = StmX::Decl { ident, typ, mutable: false };
     stms0.push(Spanned::new(expr.span.clone(), temp_decl));
     // if e0 { stms1; temp = e1; } else { stms2; temp = e2; }
-    stms1.push(assume_var(&expr.span, &temp, &e1));
-    stms2.push(assume_var(&expr.span, &temp, &e2));
+    stms1.push(init_var(&expr.span, &temp, &e1));
+    stms2.push(init_var(&expr.span, &temp, &e2));
     let stm1 = stms_to_one_stm(&expr.span, stms1);
     let stm2 = stms_to_one_stm(&expr.span, stms2);
     let if_stmt = StmX::If(e0, stm1, Some(stm2));
@@ -310,8 +308,7 @@ pub(crate) fn expr_to_stm_opt(
                 None => {
                     // make an Assign
                     let (mut stms2, e2) = expr_to_stm(ctx, state, expr2)?;
-                    let dest = Spanned::new(expr1.span.clone(), ExpX::Var(dest_x?));
-                    let assign = StmX::Assign(dest, e2);
+                    let assign = StmX::Assign { lhs: dest_x?, rhs: e2, is_init: false };
                     stms2.push(Spanned::new(expr.span.clone(), assign));
                     Ok((stms2, None))
                 }
@@ -329,7 +326,7 @@ pub(crate) fn expr_to_stm_opt(
                 // let tmp;
                 let typ = expr.typ.clone();
                 let ident = temp.clone();
-                let temp_decl = StmX::Decl { ident, typ, mutable: false, init: false };
+                let temp_decl = StmX::Decl { ident, typ, mutable: false };
                 stms.push(Spanned::new(expr.span.clone(), temp_decl));
                 // tmp = StmX::Call;
                 let dest = Dest { var: temp.clone(), mutable: false };
@@ -578,7 +575,7 @@ pub fn stmt_to_stm(
         StmtX::Decl { param, mutable, init } => {
             let ident = param.x.name.clone();
             let typ = param.x.typ.clone();
-            let decl = StmX::Decl { ident, typ, mutable: *mutable, init: !init.is_none() };
+            let decl = StmX::Decl { ident, typ, mutable: *mutable };
 
             if let Some(init) = init {
                 match expr_must_be_call_stm(ctx, state, init)? {
@@ -617,7 +614,7 @@ pub fn stmt_to_stm(
                 }
                 (true, None) => {}
                 (_, Some(exp)) => {
-                    stms.push(assume_var(&stmt.span, &param.x.name, exp));
+                    stms.push(init_var(&stmt.span, &param.x.name, exp));
                 }
             }
 

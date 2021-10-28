@@ -1,6 +1,6 @@
 use crate::ast::{Ident, Typ};
 use crate::def::Spanned;
-use crate::sst::{ExpX, Stm, StmX};
+use crate::sst::{Stm, StmX};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
@@ -22,25 +22,19 @@ pub(crate) fn stm_assign(
         StmX::Call(_, _, _, _) | StmX::Assert(_) | StmX::Assume(_) | StmX::Fuel(_, _) => {
             stm.clone()
         }
-        StmX::Decl { ident: x, typ, init, .. } => {
+        StmX::Decl { ident: x, typ, .. } => {
             if declared.contains_key(x) {
                 // If we want to support shadowed variables, we should rename them to be unique
                 panic!("shadowed variables not yet supported {:?}", &stm.span);
             }
             declared.insert(x.clone(), typ.clone());
-            if *init {
-                assigned.insert(x.clone());
-            }
             stm.clone()
         }
-        StmX::Assign(lhs, _) => {
-            match &lhs.x {
-                ExpX::Var(x) => {
-                    assigned.insert(x.clone());
-                    modified.insert(x.clone());
-                }
-                _ => panic!("unexpected lhs {:?} in assign", lhs),
-            };
+        StmX::Assign { lhs, rhs: _, is_init } => {
+            assigned.insert(lhs.clone());
+            if !is_init {
+                modified.insert(lhs.clone());
+            }
             stm.clone()
         }
         StmX::If(cond, lhs, rhs) => {

@@ -310,6 +310,12 @@ struct State {
     snap_map: Vec<(Span, SnapPos)>, // Maps each statement's span to the closest dominating snapshot's ID
 }
 
+fn assume_var(span: &Span, x: &Ident, exp: &Exp) -> Stm {
+    let x_var = Spanned::new(span.clone(), ExpX::Var(x.clone()));
+    let eq = Spanned::new(span.clone(), ExpX::Binary(BinaryOp::Eq(Mode::Spec), x_var, exp.clone()));
+    Spanned::new(span.clone(), StmX::Assume(eq))
+}
+
 fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
     match &stm.x {
         StmX::Call(x, typs, args, dest) => {
@@ -405,7 +411,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
             }
             vec![Arc::new(StmtX::Assume(exp_to_expr(ctx, &expr)))]
         }
-        StmX::Decl { ident, typ, mutable, init: _ } => {
+        StmX::Decl { ident, typ, mutable } => {
             state.local_shared.push(if *mutable {
                 Arc::new(DeclX::Var(suffix_local_id(&ident), typ_to_air(ctx, &typ)))
             } else {
@@ -418,13 +424,12 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
             }
             vec![]
         }
-        StmX::Assign(lhs, rhs) => {
+        StmX::Assign { lhs, rhs, is_init: true } => {
+            stm_to_stmts(ctx, state, &assume_var(&stm.span, lhs, rhs))
+        }
+        StmX::Assign { lhs, rhs, is_init: false } => {
             let mut stmts: Vec<Stmt> = Vec::new();
-            let ident = match &lhs.x {
-                ExpX::Var(ident) => ident,
-                _ => panic!("unexpected lhs {:?} in assign", lhs),
-            };
-            stmts.push(Arc::new(StmtX::Assign(suffix_local_id(&ident), exp_to_expr(ctx, rhs))));
+            stmts.push(Arc::new(StmtX::Assign(suffix_local_id(&lhs), exp_to_expr(ctx, rhs))));
             if ctx.debug {
                 // Add a snapshot after we modify the destination
                 state.snapshot_count += 1;
