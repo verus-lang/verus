@@ -8,7 +8,7 @@ use crate::def::{
     variant_ident, SnapPos, Spanned, FUEL_BOOL, FUEL_BOOL_DEFAULT, FUEL_DEFAULTS, FUEL_ID,
     FUEL_PARAM, FUEL_TYPE, POLY, SNAPSHOT_CALL, SUCC, UNIT,
 };
-use crate::sst::{BndX, Dest, Exp, ExpX, Stm, StmX};
+use crate::sst::{BndX, Dest, Exp, ExpX, LocalDecl, Stm, StmX};
 use crate::util::vec_map;
 use air::ast::{
     BindX, BinderX, Binders, Command, CommandX, Commands, Constant, Decl, DeclX, Expr, ExprX,
@@ -347,7 +347,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
                             .push((stm.span.clone(), SnapPos::Full(state.latest_snapshot.clone())));
                     }
                 }
-                Some(Dest { var, mutable }) => {
+                Some(Dest { var, is_init }) => {
                     let x = suffix_local_id(&var.clone());
                     let mut overwrite = false;
                     for arg in args.iter() {
@@ -367,7 +367,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
                         stmts.push(Arc::new(StmtX::Snapshot(str_ident(SNAPSHOT_CALL))));
                     }
                     ens_args.push(Arc::new(ExprX::Var(x.clone())));
-                    if *mutable {
+                    if !*is_init {
                         let havoc = StmtX::Havoc(x.clone());
                         stmts.push(Arc::new(havoc));
                     }
@@ -410,19 +410,6 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
                     .push((stm.span.clone(), SnapPos::Full(state.latest_snapshot.clone())));
             }
             vec![Arc::new(StmtX::Assume(exp_to_expr(ctx, &expr)))]
-        }
-        StmX::Decl { ident, typ, mutable } => {
-            state.local_shared.push(if *mutable {
-                Arc::new(DeclX::Var(suffix_local_id(&ident), typ_to_air(ctx, &typ)))
-            } else {
-                Arc::new(DeclX::Const(suffix_local_id(&ident), typ_to_air(ctx, &typ)))
-            });
-            if ctx.debug {
-                state
-                    .snap_map
-                    .push((stm.span.clone(), SnapPos::Full(state.latest_snapshot.clone())));
-            }
-            vec![]
         }
         StmX::Assign { lhs, rhs, is_init: true } => {
             stm_to_stmts(ctx, state, &assume_var(&stm.span, lhs, rhs))
@@ -658,6 +645,7 @@ pub fn body_stm_to_air(
     ctx: &Ctx,
     typ_params: &Idents,
     params: &Params,
+    local_decls: &Vec<LocalDecl>,
     ret: &Option<(Ident, Typ, Mode)>,
     hidden: &Vec<Path>,
     reqs: &Vec<Exp>,
@@ -678,6 +666,13 @@ pub fn body_stm_to_air(
             typ_to_air(ctx, &param.x.typ),
         )));
     }
+    for decl in local_decls {
+        local_shared.push(if decl.mutable {
+            Arc::new(DeclX::Var(suffix_local_id(&decl.ident), typ_to_air(ctx, &decl.typ)))
+        } else {
+            Arc::new(DeclX::Const(suffix_local_id(&decl.ident), typ_to_air(ctx, &decl.typ)))
+        });
+    }
     match ret {
         None => {}
         Some((x, typ, _)) => {
@@ -693,6 +688,9 @@ pub fn body_stm_to_air(
         declared.insert(param.x.name.clone(), param.x.typ.clone());
         assigned.insert(param.x.name.clone());
     }
+    for decl in local_decls {
+        declared.insert(decl.ident.clone(), decl.typ.clone());
+    }
 
     let initial_snapshot_name = Arc::new("0_entry".to_string());
 
@@ -704,7 +702,7 @@ pub fn body_stm_to_air(
         snap_map: Vec::new(),
     };
 
-    let stm = crate::sst_vars::stm_assign(&mut declared, &mut assigned, &mut HashSet::new(), stm);
+    let stm = crate::sst_vars::stm_assign(&declared, &mut assigned, &mut HashSet::new(), stm);
     let mut stmts = stm_to_stmts(ctx, &mut state, &stm);
 
     if ctx.debug {

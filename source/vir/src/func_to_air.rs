@@ -348,11 +348,13 @@ pub fn func_def_to_air(
                 vec_map_result(&*function.x.ensure, |e| crate::ast_to_sst::expr_to_exp(ctx, e))?;
             let mut state = crate::ast_to_sst::State::new();
             let stm = crate::ast_to_sst::expr_to_one_stm_dest(&ctx, &mut state, &body, &dest)?;
-            let stm = crate::recursion::check_termination_stm(ctx, function, &stm)?;
+            let (mut decls, stm) = crate::recursion::check_termination_stm(ctx, function, &stm)?;
+            state.local_decls.append(&mut decls);
             let (commands, snap_map) = crate::sst_to_air::body_stm_to_air(
                 ctx,
                 &function.x.typ_params,
                 &function.x.params,
+                &state.local_decls,
                 &function.x.ret,
                 &function.x.hidden,
                 &reqs,

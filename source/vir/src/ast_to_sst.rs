@@ -5,7 +5,7 @@ use crate::ast::{
 use crate::ast_util::{err_str, err_string};
 use crate::context::Ctx;
 use crate::def::Spanned;
-use crate::sst::{Bnd, BndX, Dest, Exp, ExpX, Stm, StmX};
+use crate::sst::{Bnd, BndX, Dest, Exp, ExpX, LocalDecl, LocalDeclX, Stm, StmX};
 use crate::util::{vec_map, vec_map_result};
 use air::ast::{Binder, BinderX, Span};
 use std::sync::Arc;
@@ -13,18 +13,24 @@ use std::sync::Arc;
 type Arg = (Exp, Typ);
 type Args = Arc<Vec<Arg>>;
 
-pub struct State {
+pub(crate) struct State {
     next_var: u64,
+    pub(crate) local_decls: Vec<LocalDecl>,
 }
 
 impl State {
     pub fn new() -> Self {
-        State { next_var: 0 }
+        State { next_var: 0, local_decls: Vec::new() }
     }
 
     fn next_temp(&mut self) -> Ident {
         self.next_var += 1;
         crate::def::prefix_temp_var(self.next_var)
+    }
+
+    fn declare_var(&mut self, ident: &Ident, typ: &Typ, mutable: bool) {
+        let decl = LocalDeclX { ident: ident.clone(), typ: typ.clone(), mutable };
+        self.local_decls.push(Arc::new(decl));
     }
 }
 
@@ -188,9 +194,7 @@ fn stm_call(
             // put arg into a temporary variable
             let temp = state.next_temp();
             small_args.push(Spanned::new(arg.0.span.clone(), ExpX::Var(temp.clone())));
-            let typ = arg.1.clone();
-            let temp_decl = StmX::Decl { ident: temp.clone(), typ, mutable: false };
-            stms.push(Spanned::new(arg.0.span.clone(), temp_decl));
+            state.declare_var(&temp, &arg.1, false);
             stms.push(init_var(&arg.0.span, &temp, &arg.0));
         }
     }
@@ -267,11 +271,7 @@ fn if_to_stm(
 ) -> Exp {
     // If statement, put results from e1/e2 in a temp variable, return temp variable
     let temp = state.next_temp();
-    // let temp;
-    let typ = expr.typ.clone();
-    let ident = temp.clone();
-    let temp_decl = StmX::Decl { ident, typ, mutable: false };
-    stms0.push(Spanned::new(expr.span.clone(), temp_decl));
+    state.declare_var(&temp, &expr.typ, false);
     // if e0 { stms1; temp = e1; } else { stms2; temp = e2; }
     stms1.push(init_var(&expr.span, &temp, &e1));
     stms2.push(init_var(&expr.span, &temp, &e2));
@@ -301,7 +301,7 @@ pub(crate) fn expr_to_stm_opt(
             match expr_must_be_call_stm(ctx, state, expr2)? {
                 Some((mut stms2, func_path, typs, _, args)) => {
                     // make a Call
-                    let dest = Dest { var: dest_x?.clone(), mutable: true };
+                    let dest = Dest { var: dest_x?.clone(), is_init: false };
                     stms2.push(stm_call(state, &expr.span, func_path, typs, args, Some(dest)));
                     Ok((stms2, None))
                 }
@@ -323,13 +323,9 @@ pub(crate) fn expr_to_stm_opt(
                 Ok((stms, Some(Spanned::new(expr.span.clone(), call))))
             } else if ret {
                 let temp = state.next_temp();
-                // let tmp;
-                let typ = expr.typ.clone();
-                let ident = temp.clone();
-                let temp_decl = StmX::Decl { ident, typ, mutable: false };
-                stms.push(Spanned::new(expr.span.clone(), temp_decl));
+                state.declare_var(&temp, &expr.typ, false);
                 // tmp = StmX::Call;
-                let dest = Dest { var: temp.clone(), mutable: false };
+                let dest = Dest { var: temp.clone(), is_init: true };
                 stms.push(stm_call(state, &expr.span, x.clone(), typs.clone(), args, Some(dest)));
                 // tmp
                 Ok((stms, Some(Spanned::new(expr.span.clone(), ExpX::Var(temp)))))
@@ -507,13 +503,19 @@ pub(crate) fn expr_to_stm_opt(
         }
         ExprX::Block(stmts, body_opt) => {
             let mut stms: Vec<Stm> = Vec::new();
-            let mut decls: Vec<Bnd> = Vec::new();
+            let mut local_decls: Vec<LocalDecl> = Vec::new();
+            let mut binds: Vec<Bnd> = Vec::new();
             let mut is_pure_exp = true;
             for stmt in stmts.iter() {
-                let (mut stms0, e0, bnd_opt) = stmt_to_stm(ctx, state, stmt)?;
-                match bnd_opt {
-                    Some(bnd) => {
-                        decls.push(bnd);
+                let (mut stms0, e0, decl_bnd_opt) = stmt_to_stm(ctx, state, stmt)?;
+                match decl_bnd_opt {
+                    Some((decl, Some(bnd))) => {
+                        local_decls.push(decl);
+                        binds.push(bnd);
+                    }
+                    Some((decl, None)) => {
+                        local_decls.push(decl);
+                        is_pure_exp = false;
                     }
                     _ => {
                         is_pure_exp = false;
@@ -535,13 +537,14 @@ pub(crate) fn expr_to_stm_opt(
             match exp {
                 Some(mut exp) if is_pure_exp => {
                     // Pure expression: fold decls into Let bindings and return a single expression
-                    for bnd in decls.iter().rev() {
+                    for bnd in binds.iter().rev() {
                         exp = Spanned::new(expr.span.clone(), ExpX::Bind(bnd.clone(), exp));
                     }
                     return Ok((vec![], Some(exp)));
                 }
                 _ => {
                     // Not pure: return statements
+                    state.local_decls.append(&mut local_decls);
                     let block = Spanned::new(expr.span.clone(), StmX::Block(Arc::new(stms)));
                     Ok((vec![block], exp))
                 }
@@ -562,11 +565,11 @@ pub(crate) fn expr_to_stm_opt(
     }
 }
 
-pub fn stmt_to_stm(
+pub(crate) fn stmt_to_stm(
     ctx: &Ctx,
     state: &mut State,
     stmt: &Stmt,
-) -> Result<(Vec<Stm>, Option<Exp>, Option<Bnd>), VirErr> {
+) -> Result<(Vec<Stm>, Option<Exp>, Option<(LocalDecl, Option<Bnd>)>), VirErr> {
     match &stmt.x {
         StmtX::Expr(expr) => {
             let (stms, exp) = expr_to_stm_opt(ctx, state, expr)?;
@@ -575,16 +578,15 @@ pub fn stmt_to_stm(
         StmtX::Decl { param, mutable, init } => {
             let ident = param.x.name.clone();
             let typ = param.x.typ.clone();
-            let decl = StmX::Decl { ident, typ, mutable: *mutable };
+            let decl = Arc::new(LocalDeclX { ident, typ, mutable: *mutable });
 
             if let Some(init) = init {
                 match expr_must_be_call_stm(ctx, state, init)? {
                     Some((mut stms, func_name, typs, _, args)) => {
                         // Special case: convert to a Call
-                        let dest = Dest { var: param.x.name.clone(), mutable: *mutable };
-                        stms.push(Spanned::new(stmt.span.clone(), decl));
+                        let dest = Dest { var: param.x.name.clone(), is_init: true };
                         stms.push(stm_call(state, &init.span, func_name, typs, args, Some(dest)));
-                        return Ok((stms, None, None));
+                        return Ok((stms, None, Some((decl, None))));
                     }
                     None => {}
                 }
@@ -605,8 +607,6 @@ pub fn stmt_to_stm(
                 _ => None,
             };
 
-            stms.push(Spanned::new(stmt.span.clone(), decl));
-
             match (*mutable, &exp) {
                 (false, None) => {
                     // We don't yet support Assign to non-mutable
@@ -618,7 +618,7 @@ pub fn stmt_to_stm(
                 }
             }
 
-            Ok((stms, None, bnd))
+            Ok((stms, None, Some((decl, bnd))))
         }
     }
 }

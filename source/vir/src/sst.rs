@@ -40,7 +40,7 @@ pub enum ExpX {
 #[derive(Debug)]
 pub struct Dest {
     pub var: Ident,
-    pub mutable: bool,
+    pub is_init: bool,
 }
 
 pub type Stm = Arc<Spanned<StmX>>;
@@ -50,11 +50,6 @@ pub enum StmX {
     Call(Path, Typs, Exps, Option<Dest>), // call to exec/proof function
     Assert(Exp),
     Assume(Exp),
-    Decl {
-        ident: Ident,
-        typ: Typ,
-        mutable: bool,
-    },
     Assign {
         lhs: Ident,
         rhs: Exp,
@@ -70,4 +65,11 @@ pub enum StmX {
         modified_vars: Arc<Vec<Ident>>,
     },
     Block(Stms),
+}
+
+pub type LocalDecl = Arc<LocalDeclX>;
+pub struct LocalDeclX {
+    pub ident: Ident,
+    pub typ: Typ,
+    pub mutable: bool,
 }

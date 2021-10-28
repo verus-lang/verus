@@ -9,7 +9,7 @@ use crate::def::{
     check_decrease_int, height, suffix_rename, Spanned, DECREASE_AT_ENTRY, FUEL_PARAM,
 };
 use crate::scc::Graph;
-use crate::sst::{BndX, Exp, ExpX, Exps, Stm, StmX};
+use crate::sst::{BndX, Exp, ExpX, Exps, LocalDecl, LocalDeclX, Stm, StmX};
 use crate::sst_visitor::{exp_rename_vars, map_exp_visitor, map_stm_visitor};
 use air::ast::{Binder, Commands, Quant, Span};
 use air::ast_util::{ident_binder, str_ident};
@@ -212,15 +212,12 @@ pub(crate) fn is_recursive_stm(ctx: &Ctx, name: &Path, body: &Stm) -> bool {
     }
 }
 
-fn mk_decreases_at_entry(ctxt: &Ctxt, span: &Span) -> (Stm, Stm) {
-    let stm_decl = Spanned::new(
-        span.clone(),
-        StmX::Decl {
-            ident: ctxt.decreases_at_entry.clone(),
-            typ: Arc::new(TypX::Int(IntRange::Int)),
-            mutable: false,
-        },
-    );
+fn mk_decreases_at_entry(ctxt: &Ctxt, span: &Span) -> (LocalDecl, Stm) {
+    let decl = Arc::new(LocalDeclX {
+        ident: ctxt.decreases_at_entry.clone(),
+        typ: Arc::new(TypX::Int(IntRange::Int)),
+        mutable: false,
+    });
     let stm_assign = Spanned::new(
         span.clone(),
         StmX::Assign {
@@ -229,7 +226,7 @@ fn mk_decreases_at_entry(ctxt: &Ctxt, span: &Span) -> (Stm, Stm) {
             is_init: true,
         },
     );
-    (stm_decl, stm_assign)
+    (decl, stm_assign)
 }
 
 pub(crate) fn check_termination_exp(
@@ -262,14 +259,12 @@ pub(crate) fn check_termination_exp(
         ctx,
     };
     let check = terminates(&ctxt, &body)?;
-    let (stm_decl, stm_assign) = mk_decreases_at_entry(&ctxt, &body.span);
+    let (decl, stm_assign) = mk_decreases_at_entry(&ctxt, &body.span);
     let span =
         Span { description: Some("could not prove termination".to_string()), ..body.span.clone() };
     let stm_assert = Spanned::new(span, StmX::Assert(check));
-    let stm_block = Spanned::new(
-        body.span.clone(),
-        StmX::Block(Arc::new(vec![stm_decl, stm_assign, stm_assert])),
-    );
+    let stm_block =
+        Spanned::new(body.span.clone(), StmX::Block(Arc::new(vec![stm_assign, stm_assert])));
 
     // TODO: If we decide to support debugging decreases failures, we should plumb _snap_map
     // up to the VIR model
@@ -277,6 +272,7 @@ pub(crate) fn check_termination_exp(
         ctx,
         &function.x.typ_params,
         &function.x.params,
+        &Arc::new(vec![decl]),
         &None,
         &Arc::new(vec![]),
         &Arc::new(vec![]),
@@ -306,9 +302,9 @@ pub(crate) fn check_termination_stm(
     ctx: &Ctx,
     function: &Function,
     body: &Stm,
-) -> Result<Stm, VirErr> {
+) -> Result<(Vec<LocalDecl>, Stm), VirErr> {
     if !is_recursive_stm(ctx, &function.x.path, body) {
-        return Ok(body.clone());
+        return Ok((vec![], body.clone()));
     }
 
     let decreases_expr = match &function.x.decrease {
@@ -347,12 +343,10 @@ pub(crate) fn check_termination_stm(
         }
         _ => Ok(s.clone()),
     })?;
-    let (stm_decl, stm_assign) = mk_decreases_at_entry(&ctxt, &stm.span);
-    let stm_block = Spanned::new(
-        stm.span.clone(),
-        StmX::Block(Arc::new(vec![stm_decl, stm_assign, stm.clone()])),
-    );
-    Ok(stm_block)
+    let (decl, stm_assign) = mk_decreases_at_entry(&ctxt, &stm.span);
+    let stm_block =
+        Spanned::new(stm.span.clone(), StmX::Block(Arc::new(vec![stm_assign, stm.clone()])));
+    Ok((vec![decl], stm_block))
 }
 
 fn add_call_graph_edges(

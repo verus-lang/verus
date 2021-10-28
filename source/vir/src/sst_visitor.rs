@@ -131,7 +131,6 @@ where
         StmX::Call(_, _, _, _) => f(stm),
         StmX::Assert(_) => f(stm),
         StmX::Assume(_) => f(stm),
-        StmX::Decl { .. } => f(stm),
         StmX::Assign { .. } => f(stm),
         StmX::Fuel(_, _) => f(stm),
         StmX::If(cond, lhs, rhs) => {
