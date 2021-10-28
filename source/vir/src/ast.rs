@@ -112,8 +112,10 @@ pub enum UnaryOpr {
     Box(Typ),
     /// coerce Boxed(Typ) --> Typ
     Unbox(Typ),
-    /// Test whether expression is a particular variant Ident of a datatype Path
-    IsVariant(Path, Ident),
+    /// Test whether expression is a particular variant of a datatype
+    IsVariant { datatype: Path, variant: Ident },
+    /// Read field from variant of datatype
+    Field { datatype: Path, variant: Ident, field: Ident },
 }
 
 /// Primitive binary operations
@@ -226,8 +228,6 @@ pub enum ExprX {
     Call(Path, Typs, Exprs),
     /// Construct datatype value of type Path and variant Ident, with field initializers Binders<Expr>
     Ctor(Path, Ident, Binders<Expr>),
-    /// Read field from datatype
-    Field { lhs: Expr, datatype: Path, field_name: Ident },
     /// Primitive unary operation
     Unary(UnaryOp, Expr),
     /// Special unary operator

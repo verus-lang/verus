@@ -21,6 +21,12 @@ const STRUCTS: &str = code_str! {
         Car(Car),
         Train(bool),
     }
+
+    mod M {
+        struct Car {
+            four_doors: bool,
+        }
+    }
 };
 
 test_verify_with_pervasive! {

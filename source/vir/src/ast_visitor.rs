@@ -27,15 +27,6 @@ where
                 expr.new_x(ExprX::Ctor(path.clone(), ident.clone(), Arc::new(mapped_binders)));
             f(&expr)
         }
-        ExprX::Field { lhs, datatype, field_name } => {
-            let lhs1 = map_expr_visitor(lhs, f)?;
-            let expr = expr.new_x(ExprX::Field {
-                lhs: lhs1,
-                datatype: datatype.clone(),
-                field_name: field_name.clone(),
-            });
-            f(&expr)
-        }
         ExprX::Unary(op, e1) => {
             let expr1 = map_expr_visitor(e1, f)?;
             let expr = expr.new_x(ExprX::Unary(*op, expr1));

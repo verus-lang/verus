@@ -1,6 +1,6 @@
 use crate::ast::{Path, PathX};
-use crate::ast_util::{path_to_string, str_ident};
 use air::ast::{Ident, Span};
+use air::ast_util::str_ident;
 use std::fmt::Debug;
 use std::sync::Arc;
 
@@ -15,33 +15,41 @@ $ and % and & and ? are probably safe for prefixes and suffixes.
 AIR uses @ as a suffix for versions of mutable variables (x@0, x@1, ...).
 
 For VIR -> AIR, we use these suffixes:
-- globals
+- types
     - x.
-    - x.y.z
+    - x.y.z.
+- globals
+    - x.?
+    - x.y.z.?
 - locals inside functions
     - x@ (works well with AIR's mutable variable convention)
-- shadowed locals inside functions
+- shadowed (or otherwise repeatedly declared) locals inside functions
     - x$0, x$1, ...
 - bindings inside expressions (e.g. let, forall)
     - x$
-Other generated names:
-- fuel_x for global name x
 */
 
+// List of prefixes, suffixes, and separators that can appear in generated AIR code
+const SUFFIX_GLOBAL: &str = "?";
+const SUFFIX_LOCAL: &str = "@";
+const SUFFIX_TYPE_PARAM: &str = "&";
+const SUFFIX_RENAME: &str = "!$";
+const SUFFIX_PATH: &str = ".";
+const PREFIX_FUEL_ID: &str = "fuel%";
+const PREFIX_FUEL_NAT: &str = "fuel_nat%";
+const PREFIX_DATATYPE_INV: &str = "inv%";
+const PREFIX_REQUIRES: &str = "req%";
+const PREFIX_ENSURES: &str = "ens%";
+const PREFIX_RECURSIVE: &str = "rec%";
+const PREFIX_TEMP_VAR: &str = "tmp%";
+const PREFIX_BOX: &str = "Poly%";
+const PREFIX_UNBOX: &str = "%Poly%";
+const PREFIX_TYPE_ID: &str = "TYPE%";
+const PATH_SEPARATOR: &str = ".";
+const VARIANT_SEPARATOR: &str = "/";
+const VARIANT_FIELD_SEPARATOR: &str = "/";
+
 // List of constant strings that can appear in generated AIR code
-pub const SUFFIX_GLOBAL: &str = ".";
-pub const SUFFIX_LOCAL: &str = "@";
-pub const SUFFIX_TYPE_PARAM: &str = "&";
-pub const SUFFIX_RENAME: &str = "!$";
-pub const TYPE_PATH_SEPARATOR: &str = ".";
-pub const VARIANT_SEPARATOR: &str = "/";
-pub const PREFIX_FUEL_ID: &str = "fuel%";
-pub const PREFIX_FUEL_NAT: &str = "fuel_nat%";
-pub const PREFIX_DATATYPE_INV: &str = "inv%";
-pub const PREFIX_REQUIRES: &str = "req%";
-pub const PREFIX_ENSURES: &str = "ens%";
-pub const PREFIX_RECURSIVE: &str = "rec%";
-pub const PREFIX_TEMP_VAR: &str = "tmp%";
 pub const FUEL_ID: &str = "FuelId";
 pub const FUEL_TYPE: &str = "Fuel";
 pub const ZERO: &str = "zero";
@@ -71,8 +79,6 @@ pub const BOX_BOOL: &str = "B";
 pub const UNBOX_UNIT: &str = "%U";
 pub const UNBOX_INT: &str = "%I";
 pub const UNBOX_BOOL: &str = "%B";
-pub const PREFIX_BOX: &str = "Poly%";
-pub const PREFIX_UNBOX: &str = "%Poly%";
 pub const TYPE: &str = "Type";
 pub const TYPE_ID_UNIT: &str = "UNIT";
 pub const TYPE_ID_BOOL: &str = "BOOL";
@@ -80,19 +86,30 @@ pub const TYPE_ID_INT: &str = "INT";
 pub const TYPE_ID_NAT: &str = "NAT";
 pub const TYPE_ID_UINT: &str = "UINT";
 pub const TYPE_ID_SINT: &str = "SINT";
-pub const PREFIX_TYPE_ID: &str = "TYPE%";
 pub const HAS_TYPE: &str = "has_type";
-pub const VARIANT_FIELD_SEPARATOR: &str = "/";
+const CHECK_DECREASE_INT: &str = "check_decrease_int";
+const HEIGHT: &str = "height";
 
 // We assume that usize is at least ARCH_SIZE_MIN_BITS wide
 pub const ARCH_SIZE_MIN_BITS: u32 = 32;
 
+pub fn path_to_string(path: &Path) -> String {
+    let mut strings: Vec<String> = match &path.krate {
+        None => vec![],
+        Some(krate) => vec![krate.to_string()],
+    };
+    for segment in path.segments.iter() {
+        strings.push(segment.to_string());
+    }
+    strings.join(crate::def::PATH_SEPARATOR) + crate::def::SUFFIX_PATH
+}
+
 pub fn check_decrease_int() -> Path {
-    Arc::new(PathX { krate: None, segments: Arc::new(vec![str_ident("check_decrease_int")]) })
+    Arc::new(PathX { krate: None, segments: Arc::new(vec![str_ident(CHECK_DECREASE_INT)]) })
 }
 
 pub fn height() -> Path {
-    Arc::new(PathX { krate: None, segments: Arc::new(vec![str_ident("height")]) })
+    Arc::new(PathX { krate: None, segments: Arc::new(vec![str_ident(HEIGHT)]) })
 }
 
 pub fn suffix_global_id(ident: &Ident) -> Ident {
@@ -159,17 +176,27 @@ pub fn prefix_temp_var(n: u64) -> Ident {
     Arc::new(PREFIX_TEMP_VAR.to_string() + &n.to_string())
 }
 
-pub fn variant_ident(adt_name: &str, variant_name: &str) -> Ident {
-    Arc::new(format!("{}{}{}", adt_name, VARIANT_SEPARATOR, variant_name))
+pub fn is_temp_var(x: &Ident) -> bool {
+    x.starts_with(PREFIX_TEMP_VAR)
 }
 
-pub fn variant_field_ident(variant_ident: &Ident, name: &str) -> Ident {
-    Arc::new(format!("{}{}{}", variant_ident.as_str(), VARIANT_FIELD_SEPARATOR, name))
+pub fn variant_ident(datatype: &Path, variant: &str) -> Ident {
+    Arc::new(format!("{}{}{}", path_to_string(datatype), VARIANT_SEPARATOR, variant))
 }
 
-#[inline(always)]
-pub fn variant_positional_field_ident(variant_ident: &Ident, idx: usize) -> Ident {
-    variant_field_ident(variant_ident, format!("{}", idx).as_str())
+pub fn variant_field_ident(datatype: &Path, variant: &Ident, field: &Ident) -> Ident {
+    Arc::new(format!(
+        "{}{}{}{}{}",
+        path_to_string(datatype),
+        VARIANT_SEPARATOR,
+        variant.as_str(),
+        VARIANT_FIELD_SEPARATOR,
+        field.as_str()
+    ))
+}
+
+pub fn positional_field_ident(idx: usize) -> Ident {
+    Arc::new(format!("_{}", idx))
 }
 
 /// For a given snapshot, does it represent the state

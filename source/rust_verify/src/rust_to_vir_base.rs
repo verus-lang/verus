@@ -76,11 +76,6 @@ pub(crate) fn hack_get_def_name<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> Strin
     debug_name[last_colon + 1..].to_string()
 }
 
-pub(crate) fn path_as_string(path: &Path) -> String {
-    let s = vir::ast_util::path_to_string(path);
-    s.replace(vir::def::TYPE_PATH_SEPARATOR, "::")
-}
-
 pub(crate) fn ident_to_var<'tcx>(ident: &Ident) -> String {
     ident.to_string()
 }
@@ -419,7 +414,7 @@ pub(crate) fn ty_to_vir<'tcx>(tcx: TyCtxt<'tcx>, ty: &Ty) -> Typ {
             }
             Res::Def(DefKind::Struct, def_id) => {
                 // TODO: consider using #[rust_diagnostic_item] and https://doc.rust-lang.org/stable/nightly-rustc/rustc_middle/ty/query/query_stored/type.diagnostic_items.html for the builtin lib
-                let def_name = path_as_string(&def_id_to_vir_path(tcx, def_id));
+                let def_name = vir::ast_util::path_as_rust_name(&def_id_to_vir_path(tcx, def_id));
                 if def_name == "builtin::int" {
                     TypX::Int(IntRange::Int)
                 } else if def_name == "builtin::nat" {

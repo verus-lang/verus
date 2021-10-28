@@ -1,13 +1,12 @@
 use crate::ast::{
     BinaryOp, Ident, Idents, IntRange, Mode, Params, Path, Typ, TypX, UnaryOp, UnaryOpr,
 };
-use crate::ast_util::path_to_string;
 use crate::context::Ctx;
 use crate::def::{
-    prefix_ensures, prefix_fuel_id, prefix_recursive, prefix_requires, prefix_type_id,
-    suffix_global_id, suffix_local_id, suffix_typ_param_id, SnapPos, Spanned, FUEL_BOOL,
-    FUEL_BOOL_DEFAULT, FUEL_DEFAULTS, FUEL_ID, FUEL_PARAM, FUEL_TYPE, POLY, SNAPSHOT_CALL, SUCC,
-    UNIT,
+    path_to_string, prefix_ensures, prefix_fuel_id, prefix_recursive, prefix_requires,
+    prefix_type_id, suffix_global_id, suffix_local_id, suffix_typ_param_id, variant_field_ident,
+    variant_ident, SnapPos, Spanned, FUEL_BOOL, FUEL_BOOL_DEFAULT, FUEL_DEFAULTS, FUEL_ID,
+    FUEL_PARAM, FUEL_TYPE, POLY, SNAPSHOT_CALL, SUCC, UNIT,
 };
 use crate::sst::{BndX, Dest, Exp, ExpX, Stm, StmX};
 use crate::util::vec_map;
@@ -126,7 +125,7 @@ pub(crate) fn ctor_to_apply<'a>(
         .expect(format!("couldn't find datatype variant {} in ctor", variant).as_str())
         .a;
     (
-        variant.clone(),
+        variant_ident(path, &variant),
         fields.iter().map(move |f| {
             binders
                 .iter()
@@ -210,11 +209,18 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp) -> Expr {
                 };
                 ident_apply(&f_name, &vec![expr])
             }
-            UnaryOpr::IsVariant(_, variant) => {
-                // TODO: this should include the path in the function name
+            UnaryOpr::IsVariant { datatype, variant } => {
                 let expr = exp_to_expr(ctx, exp);
-                let name = Arc::new(format!("is-{}", variant));
+                let name = Arc::new(format!("is-{}", variant_ident(datatype, variant)));
                 Arc::new(ExprX::Apply(name, Arc::new(vec![expr])))
+            }
+            UnaryOpr::Field { datatype, variant, field } => {
+                // TODO: this should include datatype, variant in the function name
+                let expr = exp_to_expr(ctx, exp);
+                Arc::new(ExprX::Apply(
+                    variant_field_ident(datatype, variant, field),
+                    Arc::new(vec![expr]),
+                ))
             }
         },
         ExpX::Binary(op, lhs, rhs) => {
@@ -261,11 +267,6 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp) -> Expr {
         }
         ExpX::If(e1, e2, e3) => {
             mk_ite(&exp_to_expr(ctx, e1), &exp_to_expr(ctx, e2), &exp_to_expr(ctx, e3))
-        }
-        ExpX::Field { lhs, datatype: _, field_name: name } => {
-            // TODO: this should include datatype_name in the function name
-            let lh = exp_to_expr(ctx, lhs);
-            Arc::new(ExprX::Apply(name.clone(), Arc::new(vec![lh])))
         }
         ExpX::Bind(bnd, exp) => match &bnd.x {
             BndX::Let(binders) => {

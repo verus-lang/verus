@@ -8,9 +8,7 @@ For soundness's sake, be as defensive as possible:
 
 use crate::context::Context;
 use crate::rust_to_vir_adts::{check_item_enum, check_item_struct};
-use crate::rust_to_vir_base::{
-    def_id_to_vir_path, hack_get_def_name, mk_visibility, path_as_string,
-};
+use crate::rust_to_vir_base::{def_id_to_vir_path, hack_get_def_name, mk_visibility};
 use crate::rust_to_vir_func::{check_foreign_item_fn, check_item_fn};
 use crate::util::unsupported_err_span;
 use crate::{err_unless, unsupported_err, unsupported_err_unless, unsupported_unless};
@@ -23,6 +21,7 @@ use rustc_middle::ty::TyCtxt;
 use std::collections::HashMap;
 use std::sync::Arc;
 use vir::ast::{Krate, KrateX, Path, VirErr};
+use vir::ast_util::path_as_rust_name;
 
 fn check_item<'tcx>(
     ctxt: &Context<'tcx>,
@@ -80,7 +79,7 @@ fn check_item<'tcx>(
         }
         ItemKind::Impl(impll) => {
             if let Some(TraitRef { path, hir_ref_id: _ }) = impll.of_trait {
-                let path_name = path_as_string(&def_id_to_vir_path(ctxt.tcx, path.res.def_id()));
+                let path_name = path_as_rust_name(&def_id_to_vir_path(ctxt.tcx, path.res.def_id()));
                 unsupported_err_unless!(
                     path_name == "core::marker::StructuralEq"
                         || path_name == "core::cmp::Eq"
@@ -327,7 +326,7 @@ pub fn crate_to_vir<'tcx>(ctxt: &Context<'tcx>) -> Result<Krate, VirErr> {
         }
     }
     for (id, _trait_impl) in trait_impls {
-        let id_name = path_as_string(&def_id_to_vir_path(ctxt.tcx, *id));
+        let id_name = path_as_rust_name(&def_id_to_vir_path(ctxt.tcx, *id));
         unsupported_unless!(
             id_name == "core::marker::StructuralEq"
                 || id_name == "core::cmp::Eq"

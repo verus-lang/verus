@@ -37,16 +37,16 @@ pub fn types_equal(typ1: &Typ, typ2: &Typ) -> bool {
     }
 }
 
-pub fn path_to_string(path: &Path) -> String {
+pub fn path_as_rust_name(path: &Path) -> String {
     let krate = match &path.krate {
-        None => "".to_string(),
+        None => "crate".to_string(),
         Some(krate) => krate.to_string(),
     };
     let mut strings: Vec<String> = vec![krate];
     for segment in path.segments.iter() {
         strings.push(segment.to_string());
     }
-    strings.join(crate::def::TYPE_PATH_SEPARATOR)
+    strings.join("::")
 }
 
 // Can source_module see an item owned by owning_module?

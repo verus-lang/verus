@@ -1,4 +1,4 @@
-use crate::ast::{Datatype, Expr, ExprX, Function, Krate, Mode, Path, VirErr};
+use crate::ast::{Datatype, Expr, ExprX, Function, Krate, Mode, Path, UnaryOpr, VirErr};
 use crate::ast_util::err_string;
 use crate::ast_visitor::map_expr_visitor;
 use crate::datatype_to_air::is_datatype_transparent;
@@ -45,7 +45,7 @@ fn check_function(ctxt: &Ctxt, function: &Function) -> Result<(), VirErr> {
                     }
                 }
                 // TODO: disallow private fields, unless function is marked #[verifier(pub_abstract)]
-                ExprX::Field { datatype: path, .. } => {
+                ExprX::UnaryOpr(UnaryOpr::Field { datatype: path, .. }, _) => {
                     if let Some(dt) = ctxt.dts.get(path) {
                         if let Some(module) = &function.x.visibility.owning_module {
                             if !is_datatype_transparent(&module, dt) {

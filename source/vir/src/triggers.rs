@@ -25,16 +25,16 @@ fn remove_boxing(exp: &Exp) -> Exp {
 
 fn check_trigger_expr(exp: &Exp, free_vars: &mut HashSet<Ident>) -> Result<(), VirErr> {
     match &exp.x {
-        ExpX::Call(_, _, _, _) | ExpX::Field { .. } | ExpX::Unary(UnaryOp::Trigger(_), _) => {}
+        ExpX::Call(_, _, _, _)
+        | ExpX::UnaryOpr(UnaryOpr::Field { .. }, _)
+        | ExpX::Unary(UnaryOp::Trigger(_), _) => {}
         // REVIEW: Z3 allows some arithmetic, but it's not clear we want to allow it
         _ => {
             return err_str(&exp.span, "trigger must be a function call or a field access");
         }
     }
     let mut f = |exp: &Exp, _: &mut _| match &exp.x {
-        ExpX::Const(_) | ExpX::Call(_, _, _, _) | ExpX::Field { .. } | ExpX::Ctor(_, _, _) => {
-            Ok(exp.clone())
-        }
+        ExpX::Const(_) | ExpX::Call(_, _, _, _) | ExpX::Ctor(_, _, _) => Ok(exp.clone()),
         ExpX::Var(x) => {
             free_vars.insert(x.clone());
             Ok(exp.clone())
@@ -45,7 +45,10 @@ fn check_trigger_expr(exp: &Exp, free_vars: &mut HashSet<Ident>) -> Result<(), V
             UnaryOp::Not => err_str(&exp.span, "triggers cannot contain boolean operators"),
         },
         ExpX::UnaryOpr(op, _) => match op {
-            UnaryOpr::Box(_) | UnaryOpr::Unbox(_) | UnaryOpr::IsVariant(_, _) => Ok(exp.clone()),
+            UnaryOpr::Box(_)
+            | UnaryOpr::Unbox(_)
+            | UnaryOpr::IsVariant { .. }
+            | UnaryOpr::Field { .. } => Ok(exp.clone()),
         },
         ExpX::Binary(op, _, _) => {
             use BinaryOp::*;

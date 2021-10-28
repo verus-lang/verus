@@ -40,18 +40,6 @@ where
             );
             f(&exp, map)
         }
-        ExpX::Field { lhs, datatype, field_name } => {
-            let lhs1 = map_exp_visitor_bind(lhs, map, f)?;
-            let exp = Spanned::new(
-                exp.span.clone(),
-                ExpX::Field {
-                    lhs: lhs1,
-                    datatype: datatype.clone(),
-                    field_name: field_name.clone(),
-                },
-            );
-            f(&exp, map)
-        }
         ExpX::Unary(op, e1) => {
             let expr1 = map_exp_visitor_bind(e1, map, f)?;
             let exp = Spanned::new(exp.span.clone(), ExpX::Unary(*op, expr1));

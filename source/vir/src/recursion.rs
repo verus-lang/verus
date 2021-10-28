@@ -112,7 +112,6 @@ fn terminates(ctxt: &Ctxt, exp: &Exp) -> Result<Exp, VirErr> {
             }
             Ok(e)
         }
-        ExpX::Field { lhs, .. } => terminates(ctxt, lhs),
         ExpX::Unary(_, e1) => terminates(ctxt, e1),
         ExpX::UnaryOpr(_, e1) => terminates(ctxt, e1),
         ExpX::Binary(BinaryOp::And, e1, e2) | ExpX::Binary(BinaryOp::Implies, e1, e2) => {

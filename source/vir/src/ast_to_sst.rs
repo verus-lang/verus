@@ -118,7 +118,7 @@ fn check_no_exp(exp: &Option<Exp>) -> Result<(), VirErr> {
     match exp {
         None => Ok(()),
         Some(exp) => match &exp.x {
-            ExpX::Var(x) if x.starts_with(crate::def::PREFIX_TEMP_VAR) => Ok(()),
+            ExpX::Var(x) if crate::def::is_temp_var(x) => Ok(()),
             // REVIEW: we could lift this restriction by putting exp into a dummy VIR node:
             // (we can't just drop it; the erasure depends on information from VIR)
             _ => err_str(&exp.span, "expressions with no effect are not supported"),
@@ -225,16 +225,17 @@ fn pattern_to_exprs(ctx: &Ctx, expr: &Expr, pattern: &Pattern, decls: &mut Vec<S
             SpannedTyped::new(&pattern.span, &t_bool, ExprX::Const(Constant::Bool(true)))
         }
         PatternX::Constructor(path, variant, patterns) => {
-            let is_variant_opr = UnaryOpr::IsVariant(path.clone(), variant.clone());
+            let is_variant_opr =
+                UnaryOpr::IsVariant { datatype: path.clone(), variant: variant.clone() };
             let test_variant = ExprX::UnaryOpr(is_variant_opr, expr.clone());
             let mut test = SpannedTyped::new(&pattern.span, &t_bool, test_variant);
             for binder in patterns.iter() {
-                // TODO: Field should include variant name
-                let field = ExprX::Field {
-                    lhs: expr.clone(),
+                let field_op = UnaryOpr::Field {
                     datatype: path.clone(),
-                    field_name: binder.name.clone(),
+                    variant: variant.clone(),
+                    field: binder.name.clone(),
                 };
+                let field = ExprX::UnaryOpr(field_op, expr.clone());
                 let field_typ = datatype_field_typ(ctx, path, variant, &binder.name);
                 let field_exp = SpannedTyped::new(&pattern.span, &field_typ, field);
                 let field_exp = match (&*field_typ, &*binder.a.typ) {
@@ -548,12 +549,6 @@ pub(crate) fn expr_to_stm_opt(
                     Ok((vec![block], exp))
                 }
             }
-        }
-        ExprX::Field { lhs, datatype, field_name } => {
-            let (stms, lhs) = expr_to_stm(ctx, state, lhs)?;
-            let field =
-                ExpX::Field { lhs, datatype: datatype.clone(), field_name: field_name.clone() };
-            Ok((stms, Some(Spanned::new(expr.span.clone(), field))))
         }
         ExprX::Fuel(x, fuel) => {
             let stm = Spanned::new(expr.span.clone(), StmX::Fuel(x.clone(), *fuel));

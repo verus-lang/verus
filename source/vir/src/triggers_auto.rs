@@ -32,10 +32,10 @@ and programmers having to use manual triggers to eliminate the timeouts.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 enum App {
     Const(Constant),
-    Field(Path, Ident),
+    Field(Path, Ident, Ident),
     Call(Ident),
-    Ctor(Ident, Ident), // datatype constructor: (Path, Variant)
-    Other(u64),         // u64 is an id, assigned via a simple counter
+    Ctor(Path, Ident), // datatype constructor: (Path, Variant)
+    Other(u64),        // u64 is an id, assigned via a simple counter
 }
 
 type Term = Arc<TermX>;
@@ -51,12 +51,12 @@ impl std::fmt::Debug for TermX {
         match self {
             TermX::Var(x) => write!(f, "{}", x),
             TermX::App(App::Const(c), _) => write!(f, "{:?}", c),
-            TermX::App(App::Field(_, x), es) => write!(f, "{:?}.{}", es[0], x),
+            TermX::App(App::Field(_, x, y), es) => write!(f, "{:?}.{}/{}", es[0], x, y),
             TermX::App(c @ (App::Call(_) | App::Ctor(_, _)), es) => {
                 match c {
                     App::Call(x) => write!(f, "{}(", x)?,
                     App::Ctor(path, variant) => {
-                        write!(f, "{}{}{}(", path, crate::def::VARIANT_SEPARATOR, variant)?
+                        write!(f, "{}(", crate::def::variant_ident(path, variant))?
                     }
                     _ => unreachable!(),
                 }
@@ -201,20 +201,7 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
             let (is_pures, terms): (Vec<bool>, Vec<Term>) =
                 args.map(|e| gather_terms(ctxt, ctx, &e.a, depth + 1)).unzip();
             let is_pure = is_pures.into_iter().all(|b| b);
-            (
-                is_pure,
-                Arc::new(TermX::App(App::Ctor(path_to_air_ident(path), variant), Arc::new(terms))),
-            )
-        }
-        ExpX::Field { lhs, datatype, field_name } => {
-            let (is_pure, arg) = gather_terms(ctxt, ctx, lhs, depth + 1);
-            (
-                is_pure,
-                Arc::new(TermX::App(
-                    App::Field(datatype.clone(), field_name.clone()),
-                    Arc::new(vec![arg]),
-                )),
-            )
+            (is_pure, Arc::new(TermX::App(App::Ctor(path.clone(), variant), Arc::new(terms))))
         }
         ExpX::Unary(UnaryOp::Trigger(_), e1) => gather_terms(ctxt, ctx, e1, depth),
         ExpX::Unary(op, e1) => {
@@ -228,12 +215,22 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
         }
         ExpX::UnaryOpr(UnaryOpr::Box(_), e1) => gather_terms(ctxt, ctx, e1, depth),
         ExpX::UnaryOpr(UnaryOpr::Unbox(_), e1) => gather_terms(ctxt, ctx, e1, depth),
-        ExpX::UnaryOpr(UnaryOpr::IsVariant(_, _), e1) => {
+        ExpX::UnaryOpr(UnaryOpr::IsVariant { .. }, e1) => {
             // We currently don't auto-trigger on IsVariant
             // Even if we did, it might be best not to trigger on IsVariants generated from Match
             let (_, term1) = gather_terms(ctxt, ctx, e1, 1);
             ctxt.next_id += 1;
             (false, Arc::new(TermX::App(App::Other(ctxt.next_id), Arc::new(vec![term1]))))
+        }
+        ExpX::UnaryOpr(UnaryOpr::Field { datatype, variant, field }, lhs) => {
+            let (is_pure, arg) = gather_terms(ctxt, ctx, lhs, depth + 1);
+            (
+                is_pure,
+                Arc::new(TermX::App(
+                    App::Field(datatype.clone(), variant.clone(), field.clone()),
+                    Arc::new(vec![arg]),
+                )),
+            )
         }
         ExpX::Binary(op, e1, e2) => {
             use BinaryOp::*;

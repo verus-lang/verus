@@ -5,13 +5,14 @@ use crate::rust_to_vir_base::{
 };
 use crate::unsupported_unless;
 use crate::util::spanned_new;
+use air::ast_util::str_ident;
 use rustc_ast::Attribute;
 use rustc_hir::{EnumDef, Generics, ItemId, VariantData};
 use rustc_span::Span;
 use std::sync::Arc;
 use vir::ast::{DatatypeTransparency, DatatypeX, Ident, KrateX, Mode, Variant, VirErr};
-use vir::ast_util::{ident_binder, str_ident};
-use vir::def::{variant_field_ident, variant_ident, variant_positional_field_ident};
+use vir::ast_util::ident_binder;
+use vir::def::positional_field_ident;
 
 fn check_variant_data<'tcx>(
     ctxt: &Context<'tcx>,
@@ -28,7 +29,7 @@ fn check_variant_data<'tcx>(
                 .map(|field| {
                     (
                         ident_binder(
-                            &variant_field_ident(name, &field.ident.as_str()),
+                            &str_ident(&field.ident.as_str()),
                             &(
                                 ty_to_vir(ctxt.tcx, field.ty),
                                 get_mode(Mode::Exec, ctxt.tcx.hir().attrs(field.hir_id)),
@@ -47,7 +48,7 @@ fn check_variant_data<'tcx>(
                 .map(|(i, field)| {
                     (
                         ident_binder(
-                            &variant_positional_field_ident(name, i),
+                            &positional_field_ident(i),
                             &(
                                 ty_to_vir(ctxt.tcx, field.ty),
                                 get_mode(Mode::Exec, ctxt.tcx.hir().attrs(field.hir_id)),
@@ -77,7 +78,7 @@ pub fn check_item_struct<'tcx>(
     let typ_params = check_generics(generics)?;
     let name = hack_get_def_name(ctxt.tcx, id.def_id.to_def_id());
     let path = def_id_to_vir_path(ctxt.tcx, id.def_id.to_def_id());
-    let variant_name = variant_ident(&name, &name);
+    let variant_name = Arc::new(name.clone());
     let (variant, one_field_private) = check_variant_data(ctxt, &variant_name, variant_data);
     let vattrs = get_verifier_attrs(attrs)?;
     let transparency = if !vattrs.do_verify {
@@ -104,16 +105,12 @@ pub fn check_item_enum<'tcx>(
     generics: &'tcx Generics<'tcx>,
 ) -> Result<(), VirErr> {
     let typ_params = check_generics(generics)?;
-    let name = Arc::new(hack_get_def_name(ctxt.tcx, id.def_id.to_def_id()));
     let path = def_id_to_vir_path(ctxt.tcx, id.def_id.to_def_id());
     let (variants, one_field_private): (Vec<_>, Vec<_>) = enum_def
         .variants
         .iter()
         .map(|variant| {
-            let rust_variant_name = variant.ident.as_str();
-            let variant_name = str_ident(
-                format!("{}{}{}", name, vir::def::VARIANT_SEPARATOR, rust_variant_name).as_str(),
-            );
+            let variant_name = str_ident(&variant.ident.as_str());
             check_variant_data(ctxt, &variant_name, &variant.data)
         })
         .unzip();

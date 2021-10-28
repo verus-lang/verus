@@ -2,36 +2,30 @@ use crate::ast::{DatatypeTransparency, Field, Mode, Param, ParamX, Path, TypX};
 use crate::ast_util::is_visible_to_of_owner;
 use crate::context::Ctx;
 use crate::def::{
-    prefix_box, prefix_datatype_inv, prefix_type_id, prefix_unbox, suffix_local_id, Spanned,
+    prefix_box, prefix_datatype_inv, prefix_type_id, prefix_unbox, suffix_local_id,
+    variant_field_ident, variant_ident, Spanned,
 };
 use crate::func_to_air::{func_bind, func_bind_trig, func_def_args};
 use crate::sst_to_air::{path_to_air_ident, typ_invariant, typ_to_air};
 use crate::util::vec_map;
 use air::ast::{Command, CommandX, Commands, DeclX, Expr, Span};
-use air::ast_util::{ident_apply, ident_var, mk_and, mk_bind_expr, mk_implies, str_ident, str_typ};
+use air::ast_util::{
+    ident_apply, ident_binder, ident_var, mk_and, mk_bind_expr, mk_implies, str_ident, str_typ,
+};
 use std::sync::Arc;
 
 fn datatype_to_air(ctx: &Ctx, datatype: &crate::ast::Datatype) -> air::ast::Datatype {
-    Arc::new(air::ast::BinderX {
-        name: path_to_air_ident(&datatype.x.path),
-        a: Arc::new(
-            datatype
-                .x
-                .variants
-                .iter()
-                .map(|variant| {
-                    Arc::new(variant.map_a(|fields| {
-                        Arc::new(
-                            fields
-                                .iter()
-                                .map(|field| Arc::new(field.map_a(|(typ, _)| typ_to_air(ctx, typ))))
-                                .collect::<Vec<_>>(),
-                        )
-                    }))
-                })
-                .collect::<Vec<_>>(),
-        ),
-    })
+    let mut variants: Vec<air::ast::Variant> = Vec::new();
+    for variant in datatype.x.variants.iter() {
+        let mut fields: Vec<air::ast::Field> = Vec::new();
+        for field in variant.a.iter() {
+            let id = variant_field_ident(&datatype.x.path, &variant.name, &field.name);
+            fields.push(ident_binder(&id, &typ_to_air(ctx, &field.a.0)));
+        }
+        let id = variant_ident(&datatype.x.path, &variant.name);
+        variants.push(ident_binder(&id, &Arc::new(fields)));
+    }
+    Arc::new(air::ast::BinderX { name: path_to_air_ident(&datatype.x.path), a: Arc::new(variants) })
 }
 
 pub fn is_datatype_transparent(source_module: &Path, datatype: &crate::ast::Datatype) -> bool {
@@ -117,7 +111,8 @@ pub fn datatypes_to_air(ctx: &Ctx, datatypes: &crate::ast::Datatypes) -> Command
                     let params = vec_map(&*variant.a, |f| field_to_param(&datatype.span, f));
                     let params = Arc::new(params);
                     let ctor_args = func_def_args(&Arc::new(vec![]), &params);
-                    let ctor = ident_apply(&variant.name, &ctor_args);
+                    let ctor =
+                        ident_apply(&variant_ident(&datatype.x.path, &variant.name), &ctor_args);
                     let mut inv_args = func_def_args(&datatype.x.typ_params, &Arc::new(vec![]));
                     inv_args.push(ctor);
                     let inv = ident_apply(&prefix_datatype_inv(&datatype.x.path), &inv_args);
@@ -145,7 +140,10 @@ pub fn datatypes_to_air(ctx: &Ctx, datatypes: &crate::ast::Datatypes) -> Command
                         let (typ, _) = &field.a;
                         let x = str_ident("x");
                         let x_var = ident_var(&suffix_local_id(&x));
-                        let xfield = ident_apply(&field.name, &vec![x_var.clone()]);
+                        let xfield = ident_apply(
+                            &variant_field_ident(&datatype.x.path, &variant.name, &field.name),
+                            &vec![x_var.clone()],
+                        );
                         if let Some(inv_f) = typ_invariant(ctx, typ, &xfield) {
                             // forall typs, x. inv(typs, x) => inv_f(x.f)
                             // trigger on x.f, inv(typs, x)
@@ -186,7 +184,7 @@ pub fn datatypes_to_air(ctx: &Ctx, datatypes: &crate::ast::Datatypes) -> Command
                         let node = crate::prelude::datatype_height_axiom(
                             &path_to_air_ident(&datatype.x.path),
                             &path_to_air_ident(&path),
-                            &field.name,
+                            &variant_field_ident(&datatype.x.path, &variant.name, &field.name),
                         );
                         let axiom = air::parser::node_to_command(&node)
                             .expect("internal error: malformed datatype axiom");

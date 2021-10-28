@@ -1,6 +1,6 @@
 use crate::ast::{
     BinaryOp, Datatype, Expr, ExprX, Function, Ident, Krate, Mode, Path, Pattern, PatternX, Stmt,
-    StmtX, VirErr,
+    StmtX, UnaryOpr, VirErr,
 };
 use crate::ast_util::{err_str, err_string};
 use air::ast::Span;
@@ -77,10 +77,12 @@ fn add_pattern(typing: &mut Typing, mode: Mode, pattern: &Pattern) -> Result<(),
             typing.insert(&pattern.span, x, mode)?;
             Ok(())
         }
-        PatternX::Constructor(_path, _variant, patterns) => {
-            for binder in patterns.iter() {
-                // TODO: fields should have mode annotations on them; for now, treat all fields as #[exec]
-                let field_mode = Mode::Exec;
+        PatternX::Constructor(datatype, variant, patterns) => {
+            let datatype = typing.datatypes[datatype].clone();
+            let variant =
+                datatype.x.variants.iter().find(|v| v.name == *variant).expect("missing variant");
+            for (binder, field) in patterns.iter().zip(variant.a.iter()) {
+                let (_, field_mode) = field.a;
                 add_pattern(typing, mode_join(field_mode, mode), &binder.a)?;
             }
             Ok(())
@@ -124,19 +126,21 @@ fn check_expr(typing: &mut Typing, outer_mode: Mode, expr: &Expr) -> Result<Mode
                 .collect::<Result<Vec<_>, _>>()?;
             Ok(binder_modes.into_iter().fold(outer_mode, mode_join))
         }
-        ExprX::Field { lhs, datatype: datatype_path, field_name } => {
-            let lhs_mode = check_expr(typing, outer_mode, lhs)?;
-            let datatype = &typing.datatypes[datatype_path].clone();
+        ExprX::Unary(_, e1) => check_expr(typing, outer_mode, e1),
+        ExprX::UnaryOpr(UnaryOpr::Box(_), e1) => check_expr(typing, outer_mode, e1),
+        ExprX::UnaryOpr(UnaryOpr::Unbox(_), e1) => check_expr(typing, outer_mode, e1),
+        ExprX::UnaryOpr(UnaryOpr::IsVariant { .. }, e1) => check_expr(typing, outer_mode, e1),
+        ExprX::UnaryOpr(UnaryOpr::Field { datatype, variant: _, field }, e1) => {
+            let e1_mode = check_expr(typing, outer_mode, e1)?;
+            let datatype = &typing.datatypes[datatype].clone();
             let variants = &datatype.x.variants;
             assert_eq!(variants.len(), 1);
             let fields = &variants[0].a;
-            match fields.iter().find(|field| field.name == *field_name) {
-                Some(field) => Ok(mode_join(lhs_mode, field.a.1)),
-                None => panic!("internal error: missing field {}", &field_name),
+            match fields.iter().find(|f| f.name == *field) {
+                Some(field) => Ok(mode_join(e1_mode, field.a.1)),
+                None => panic!("internal error: missing field {}", &field),
             }
         }
-        ExprX::Unary(_, e1) => check_expr(typing, outer_mode, e1),
-        ExprX::UnaryOpr(_, e1) => check_expr(typing, outer_mode, e1),
         ExprX::Binary(op, e1, e2) => {
             let op_mode = match op {
                 BinaryOp::Eq(mode) => *mode,
