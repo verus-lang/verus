@@ -3,12 +3,13 @@ use crate::ast::{
 };
 use crate::context::Ctx;
 use crate::def::{
-    path_to_string, prefix_ensures, prefix_fuel_id, prefix_recursive, prefix_requires,
-    prefix_type_id, suffix_global_id, suffix_local_id, suffix_typ_param_id, variant_field_ident,
-    variant_ident, SnapPos, Spanned, FUEL_BOOL, FUEL_BOOL_DEFAULT, FUEL_DEFAULTS, FUEL_ID,
-    FUEL_PARAM, FUEL_TYPE, POLY, SNAPSHOT_CALL, SUCC, UNIT,
+    path_to_string, prefix_ensures, prefix_fuel_id, prefix_requires, prefix_type_id,
+    suffix_global_id, suffix_local_expr_id, suffix_local_stmt_id, suffix_local_unique_id,
+    suffix_typ_param_id, variant_field_ident, variant_ident, SnapPos, Spanned, FUEL_BOOL,
+    FUEL_BOOL_DEFAULT, FUEL_DEFAULTS, FUEL_ID, FUEL_PARAM, FUEL_TYPE, POLY, SNAPSHOT_CALL, SUCC,
+    UNIT,
 };
-use crate::sst::{BndX, Dest, Exp, ExpX, LocalDecl, Stm, StmX};
+use crate::sst::{BndX, Dest, Exp, ExpX, LocalDecl, Stm, StmX, UniqueIdent};
 use crate::util::vec_map;
 use air::ast::{
     BindX, BinderX, Binders, Command, CommandX, Commands, Constant, Decl, DeclX, Expr, ExprX,
@@ -148,12 +149,10 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp) -> Expr {
             let expr = constant_to_expr(ctx, c);
             expr
         }
-        ExpX::Var(x) => string_var(&suffix_local_id(x)),
-        ExpX::Old(span, x) => Arc::new(ExprX::Old(span.clone(), suffix_local_id(x))),
-        ExpX::Call(rec, x, typs, args) => {
-            let air_ident = path_to_air_ident(&x);
-            let name =
-                suffix_global_id(&if *rec { prefix_recursive(&air_ident) } else { air_ident });
+        ExpX::Var(x) => string_var(&suffix_local_unique_id(x)),
+        ExpX::Old(span, x) => Arc::new(ExprX::Old(span.clone(), suffix_local_stmt_id(x))),
+        ExpX::Call(x, typs, args) => {
+            let name = suffix_global_id(&path_to_air_ident(&x));
             let mut exprs: Vec<Expr> = vec_map(typs, typ_to_id);
             for arg in args.iter() {
                 exprs.push(exp_to_expr(ctx, arg));
@@ -272,7 +271,10 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp) -> Expr {
             BndX::Let(binders) => {
                 let expr = exp_to_expr(ctx, exp);
                 let binders = vec_map(&*binders, |b| {
-                    Arc::new(BinderX { name: suffix_local_id(&b.name), a: exp_to_expr(ctx, &b.a) })
+                    Arc::new(BinderX {
+                        name: suffix_local_expr_id(&b.name),
+                        a: exp_to_expr(ctx, &b.a),
+                    })
                 });
                 air::ast_util::mk_let(&binders, &expr)
             }
@@ -280,8 +282,11 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp) -> Expr {
                 let expr = exp_to_expr(ctx, exp);
                 let mut invs: Vec<Expr> = Vec::new();
                 for binder in binders.iter() {
-                    let typ_inv =
-                        typ_invariant(ctx, &binder.a, &ident_var(&suffix_local_id(&binder.name)));
+                    let typ_inv = typ_invariant(
+                        ctx,
+                        &binder.a,
+                        &ident_var(&suffix_local_expr_id(&binder.name)),
+                    );
                     if let Some(inv) = typ_inv {
                         invs.push(inv);
                     }
@@ -292,7 +297,10 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp) -> Expr {
                     Quant::Exists => mk_and(&vec![inv, expr]),
                 };
                 let binders = vec_map(&*binders, |b| {
-                    Arc::new(BinderX { name: suffix_local_id(&b.name), a: typ_to_air(ctx, &b.a) })
+                    Arc::new(BinderX {
+                        name: suffix_local_expr_id(&b.name),
+                        a: typ_to_air(ctx, &b.a),
+                    })
                 });
                 let triggers =
                     vec_map(&*trigs, |trig| Arc::new(vec_map(trig, |x| exp_to_expr(ctx, x))));
@@ -310,7 +318,7 @@ struct State {
     snap_map: Vec<(Span, SnapPos)>, // Maps each statement's span to the closest dominating snapshot's ID
 }
 
-fn assume_var(span: &Span, x: &Ident, exp: &Exp) -> Stm {
+fn assume_var(span: &Span, x: &UniqueIdent, exp: &Exp) -> Stm {
     let x_var = Spanned::new(span.clone(), ExpX::Var(x.clone()));
     let eq = Spanned::new(span.clone(), ExpX::Binary(BinaryOp::Eq(Mode::Spec), x_var, exp.clone()));
     Spanned::new(span.clone(), StmX::Assume(eq))
@@ -348,7 +356,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
                     }
                 }
                 Some(Dest { var, is_init }) => {
-                    let x = suffix_local_id(&var.clone());
+                    let x = suffix_local_unique_id(&var);
                     let mut overwrite = false;
                     for arg in args.iter() {
                         let arg_x = crate::sst_visitor::map_exp_visitor(arg, &mut |e| match &e.x {
@@ -356,7 +364,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
                                 overwrite = true;
                                 Spanned::new(
                                     arg.span.clone(),
-                                    ExpX::Old(str_ident(SNAPSHOT_CALL), x.clone()),
+                                    ExpX::Old(str_ident(SNAPSHOT_CALL), x.0.clone()),
                                 )
                             }
                             _ => e.clone(),
@@ -416,7 +424,8 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
         }
         StmX::Assign { lhs, rhs, is_init: false } => {
             let mut stmts: Vec<Stmt> = Vec::new();
-            stmts.push(Arc::new(StmtX::Assign(suffix_local_id(&lhs), exp_to_expr(ctx, rhs))));
+            let name = suffix_local_unique_id(lhs);
+            stmts.push(Arc::new(StmtX::Assign(name, exp_to_expr(ctx, rhs))));
             if ctx.debug {
                 // Add a snapshot after we modify the destination
                 state.snapshot_count += 1;
@@ -503,7 +512,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
             */
             let mut local = state.local_shared.clone();
             for (x, typ) in typ_inv_vars.iter() {
-                let typ_inv = typ_invariant(ctx, typ, &ident_var(&suffix_local_id(x)));
+                let typ_inv = typ_invariant(ctx, typ, &ident_var(&suffix_local_unique_id(x)));
                 if let Some(expr) = typ_inv {
                     local.push(Arc::new(DeclX::Axiom(expr)));
                 }
@@ -548,11 +557,11 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
                 stmts.push(Arc::new(inv_stmt));
             }
             for x in modified_vars.iter() {
-                stmts.push(Arc::new(StmtX::Havoc(suffix_local_id(&x))));
+                stmts.push(Arc::new(StmtX::Havoc(suffix_local_unique_id(&x))));
             }
             for (x, typ) in typ_inv_vars.iter() {
                 if modified_vars.contains(x) {
-                    let typ_inv = typ_invariant(ctx, typ, &ident_var(&suffix_local_id(x)));
+                    let typ_inv = typ_invariant(ctx, typ, &ident_var(&suffix_local_unique_id(x)));
                     if let Some(expr) = typ_inv {
                         stmts.push(Arc::new(StmtX::Assume(expr)));
                     }
@@ -646,7 +655,6 @@ pub fn body_stm_to_air(
     typ_params: &Idents,
     params: &Params,
     local_decls: &Vec<LocalDecl>,
-    ret: &Option<(Ident, Typ, Mode)>,
     hidden: &Vec<Path>,
     reqs: &Vec<Exp>,
     enss: &Vec<Exp>,
@@ -660,33 +668,21 @@ pub fn body_stm_to_air(
         local_shared
             .push(Arc::new(DeclX::Const(suffix_typ_param_id(&x), str_typ(crate::def::TYPE))));
     }
-    for param in params.iter() {
-        local_shared.push(Arc::new(DeclX::Const(
-            suffix_local_id(&param.x.name),
-            typ_to_air(ctx, &param.x.typ),
-        )));
-    }
     for decl in local_decls {
         local_shared.push(if decl.mutable {
-            Arc::new(DeclX::Var(suffix_local_id(&decl.ident), typ_to_air(ctx, &decl.typ)))
+            Arc::new(DeclX::Var(suffix_local_unique_id(&decl.ident), typ_to_air(ctx, &decl.typ)))
         } else {
-            Arc::new(DeclX::Const(suffix_local_id(&decl.ident), typ_to_air(ctx, &decl.typ)))
+            Arc::new(DeclX::Const(suffix_local_unique_id(&decl.ident), typ_to_air(ctx, &decl.typ)))
         });
-    }
-    match ret {
-        None => {}
-        Some((x, typ, _)) => {
-            local_shared.push(Arc::new(DeclX::Const(suffix_local_id(&x), typ_to_air(ctx, &typ))));
-        }
     }
 
     set_fuel(&mut local_shared, hidden);
 
-    let mut declared: HashMap<Ident, Typ> = HashMap::new();
-    let mut assigned: HashSet<Ident> = HashSet::new();
+    let mut declared: HashMap<UniqueIdent, Typ> = HashMap::new();
+    let mut assigned: HashSet<UniqueIdent> = HashSet::new();
     for param in params.iter() {
-        declared.insert(param.x.name.clone(), param.x.typ.clone());
-        assigned.insert(param.x.name.clone());
+        declared.insert((param.x.name.clone(), Some(0)), param.x.typ.clone());
+        assigned.insert((param.x.name.clone(), Some(0)));
     }
     for decl in local_decls {
         declared.insert(decl.ident.clone(), decl.typ.clone());
@@ -724,7 +720,8 @@ pub fn body_stm_to_air(
         if stmts.len() == 1 { stmts[0].clone() } else { Arc::new(StmtX::Block(Arc::new(stmts))) };
 
     for param in params.iter() {
-        let typ_inv = typ_invariant(ctx, &param.x.typ, &ident_var(&suffix_local_id(&param.x.name)));
+        let typ_inv =
+            typ_invariant(ctx, &param.x.typ, &ident_var(&suffix_local_stmt_id(&param.x.name)));
         if let Some(expr) = typ_inv {
             local.push(Arc::new(DeclX::Axiom(expr)));
         }

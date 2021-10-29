@@ -1,6 +1,6 @@
-use crate::ast::{Ident, Typ};
+use crate::ast::Typ;
 use crate::def::Spanned;
-use crate::sst::{Stm, StmX};
+use crate::sst::{Stm, StmX, UniqueIdent};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
@@ -8,9 +8,9 @@ use std::sync::Arc;
 // - which variables have definitely been assigned to up to each statement
 // - which variables have been modified within each statement
 pub(crate) fn stm_assign(
-    declared: &HashMap<Ident, Typ>,
-    assigned: &mut HashSet<Ident>,
-    modified: &mut HashSet<Ident>,
+    declared: &HashMap<UniqueIdent, Typ>,
+    assigned: &mut HashSet<UniqueIdent>,
+    modified: &mut HashSet<UniqueIdent>,
     stm: &Stm,
 ) -> Stm {
     match &stm.x {
@@ -59,7 +59,7 @@ pub(crate) fn stm_assign(
             *assigned = pre_assigned;
 
             assert!(modified_vars.len() == 0);
-            let mut modified_vars: Vec<Ident> = Vec::new();
+            let mut modified_vars: Vec<UniqueIdent> = Vec::new();
             for x in modified.iter() {
                 if declared.contains_key(x) {
                     modified_vars.push(x.clone());
@@ -69,7 +69,7 @@ pub(crate) fn stm_assign(
             *modified = pre_modified;
 
             assert!(typ_inv_vars.len() == 0);
-            let mut typ_inv_vars: Vec<(Ident, Typ)> = Vec::new();
+            let mut typ_inv_vars: Vec<(UniqueIdent, Typ)> = Vec::new();
             for x in assigned.iter() {
                 typ_inv_vars.push((x.clone(), declared[x].clone()));
             }

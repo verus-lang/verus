@@ -2,7 +2,7 @@ use crate::ast::{DatatypeTransparency, Field, Mode, Param, ParamX, Path, TypX};
 use crate::ast_util::is_visible_to_of_owner;
 use crate::context::Ctx;
 use crate::def::{
-    prefix_box, prefix_datatype_inv, prefix_type_id, prefix_unbox, suffix_local_id,
+    prefix_box, prefix_datatype_inv, prefix_type_id, prefix_unbox, suffix_local_stmt_id,
     variant_field_ident, variant_ident, Spanned,
 };
 use crate::func_to_air::{func_bind, func_bind_trig, func_def_args};
@@ -119,7 +119,7 @@ pub fn datatypes_to_air(ctx: &Ctx, datatypes: &crate::ast::Datatypes) -> Command
                     let mut pre: Vec<Expr> = Vec::new();
                     for field in variant.a.iter() {
                         let (typ, _) = &field.a;
-                        let name = suffix_local_id(&field.name);
+                        let name = suffix_local_stmt_id(&field.name);
                         if let Some(inv) = typ_invariant(ctx, typ, &ident_var(&name)) {
                             pre.push(inv);
                         }
@@ -139,7 +139,7 @@ pub fn datatypes_to_air(ctx: &Ctx, datatypes: &crate::ast::Datatypes) -> Command
                     for field in variant.a.iter() {
                         let (typ, _) = &field.a;
                         let x = str_ident("x");
-                        let x_var = ident_var(&suffix_local_id(&x));
+                        let x_var = ident_var(&suffix_local_stmt_id(&x));
                         let xfield = ident_apply(
                             &variant_field_ident(&datatype.x.path, &variant.name, &field.name),
                             &vec![x_var.clone()],

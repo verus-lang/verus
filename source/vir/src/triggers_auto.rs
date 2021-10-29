@@ -1,9 +1,7 @@
 use crate::ast::{BinaryOp, Constant, Ident, Path, UnaryOp, UnaryOpr, VirErr};
 use crate::ast_util::err_str;
 use crate::context::Ctx;
-use crate::def::prefix_recursive;
-use crate::sst::{Exp, ExpX, Trig, Trigs};
-use crate::sst_to_air::path_to_air_ident;
+use crate::sst::{Exp, ExpX, Trig, Trigs, UniqueIdent};
 use crate::util::vec_map;
 use air::ast::Span;
 use std::collections::{HashMap, HashSet};
@@ -33,7 +31,7 @@ and programmers having to use manual triggers to eliminate the timeouts.
 enum App {
     Const(Constant),
     Field(Path, Ident, Ident),
-    Call(Ident),
+    Call(Path),
     Ctor(Path, Ident), // datatype constructor: (Path, Variant)
     Other(u64),        // u64 is an id, assigned via a simple counter
 }
@@ -42,19 +40,19 @@ type Term = Arc<TermX>;
 type Terms = Arc<Vec<Term>>;
 #[derive(PartialEq, Eq, Hash)]
 enum TermX {
-    Var(Ident),
+    Var(UniqueIdent),
     App(App, Terms),
 }
 
 impl std::fmt::Debug for TermX {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
         match self {
-            TermX::Var(x) => write!(f, "{}", x),
+            TermX::Var(x) => write!(f, "{:?}", x),
             TermX::App(App::Const(c), _) => write!(f, "{:?}", c),
             TermX::App(App::Field(_, x, y), es) => write!(f, "{:?}.{}/{}", es[0], x, y),
             TermX::App(c @ (App::Call(_) | App::Ctor(_, _)), es) => {
                 match c {
-                    App::Call(x) => write!(f, "{}(", x)?,
+                    App::Call(x) => write!(f, "{:?}(", x)?,
                     App::Ctor(path, variant) => {
                         write!(f, "{}(", crate::def::variant_ident(path, variant))?
                     }
@@ -143,10 +141,10 @@ fn check_timeout(timer: &mut Timer) -> Result<(), VirErr> {
 
 fn trigger_vars_in_term(ctxt: &Ctxt, vars: &mut HashSet<Ident>, term: &Term) {
     match &**term {
-        TermX::Var(x) if ctxt.trigger_vars.contains(x) => {
+        TermX::Var((x, None)) if ctxt.trigger_vars.contains(x) => {
             vars.insert(x.clone());
         }
-        TermX::Var(_) => {}
+        TermX::Var(..) => {}
         TermX::App(_, args) => {
             for arg in args.iter() {
                 trigger_vars_in_term(ctxt, vars, arg);
@@ -157,15 +155,15 @@ fn trigger_vars_in_term(ctxt: &Ctxt, vars: &mut HashSet<Ident>, term: &Term) {
 
 fn term_size(term: &Term) -> u64 {
     match &**term {
-        TermX::Var(_) => 1,
+        TermX::Var(..) => 1,
         TermX::App(_, args) => 1 + args.iter().map(term_size).sum::<u64>(),
     }
 }
 
 fn trigger_var_depth(ctxt: &Ctxt, term: &Term, depth: u64) -> Option<u64> {
     match &**term {
-        TermX::Var(x) if ctxt.trigger_vars.contains(x) => Some(depth),
-        TermX::Var(_) => None,
+        TermX::Var((x, None)) if ctxt.trigger_vars.contains(x) => Some(depth),
+        TermX::Var(..) => None,
         TermX::App(_, args) => {
             args.iter().filter_map(|t| trigger_var_depth(ctxt, t, depth + 1)).max()
         }
@@ -183,18 +181,11 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
             return (true, Arc::new(TermX::Var(x.clone())));
         }
         ExpX::Old(_, _) => panic!("internal error: Old"),
-        ExpX::Call(recursive, x, _, args) => {
+        ExpX::Call(x, _, args) => {
             let (is_pures, terms): (Vec<bool>, Vec<Term>) =
                 args.iter().map(|e| gather_terms(ctxt, ctx, e, depth + 1)).unzip();
             let is_pure = is_pures.into_iter().all(|b| b);
-            let air_ident = path_to_air_ident(&x);
-            (
-                is_pure,
-                Arc::new(TermX::App(
-                    App::Call(if *recursive { prefix_recursive(&air_ident) } else { air_ident }),
-                    Arc::new(terms),
-                )),
-            )
+            (is_pure, Arc::new(TermX::App(App::Call(x.clone()), Arc::new(terms))))
         }
         ExpX::Ctor(path, variant, fields) => {
             let (variant, args) = crate::sst_to_air::ctor_to_apply(ctx, path, variant, fields);
@@ -289,8 +280,10 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
 // Second bool: is the instantiation potentially bigger than the original template?
 fn structure_matches(ctxt: &Ctxt, template: &Term, term: &Term) -> (bool, bool) {
     match (&**template, &**term) {
-        (TermX::Var(x1), TermX::App(_, _)) if ctxt.trigger_vars.contains(x1) => (true, true),
-        (TermX::Var(x1), _) if ctxt.trigger_vars.contains(x1) => (true, false),
+        (TermX::Var((x1, None)), TermX::App(_, _)) if ctxt.trigger_vars.contains(x1) => {
+            (true, true)
+        }
+        (TermX::Var((x1, None)), _) if ctxt.trigger_vars.contains(x1) => (true, false),
         (TermX::Var(x1), TermX::Var(x2)) => (x1 == x2, false),
         (TermX::App(a1, args1), TermX::App(a2, args2))
             if a1 == a2 && args1.len() == args2.len() =>

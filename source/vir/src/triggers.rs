@@ -25,7 +25,7 @@ fn remove_boxing(exp: &Exp) -> Exp {
 
 fn check_trigger_expr(exp: &Exp, free_vars: &mut HashSet<Ident>) -> Result<(), VirErr> {
     match &exp.x {
-        ExpX::Call(_, _, _, _)
+        ExpX::Call(..)
         | ExpX::UnaryOpr(UnaryOpr::Field { .. }, _)
         | ExpX::Unary(UnaryOp::Trigger(_), _) => {}
         // REVIEW: Z3 allows some arithmetic, but it's not clear we want to allow it
@@ -34,11 +34,12 @@ fn check_trigger_expr(exp: &Exp, free_vars: &mut HashSet<Ident>) -> Result<(), V
         }
     }
     let mut f = |exp: &Exp, _: &mut _| match &exp.x {
-        ExpX::Const(_) | ExpX::Call(_, _, _, _) | ExpX::Ctor(_, _, _) => Ok(exp.clone()),
-        ExpX::Var(x) => {
+        ExpX::Const(_) | ExpX::Call(..) | ExpX::Ctor(..) => Ok(exp.clone()),
+        ExpX::Var((x, None)) => {
             free_vars.insert(x.clone());
             Ok(exp.clone())
         }
+        ExpX::Var((_, Some(_))) => Ok(exp.clone()),
         ExpX::Old(_, _) => panic!("internal error: Old"),
         ExpX::Unary(op, _) => match op {
             UnaryOp::Trigger(_) | UnaryOp::Clip(_) => Ok(exp.clone()),

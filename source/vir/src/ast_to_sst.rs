@@ -1,41 +1,136 @@
 use crate::ast::{
-    BinaryOp, Constant, Expr, ExprX, Function, Ident, Mode, ParamX, Path, Pattern, PatternX,
-    SpannedTyped, Stmt, StmtX, Typ, TypX, Typs, UnaryOp, UnaryOpr, VirErr,
+    BinaryOp, Constant, Expr, ExprX, Function, Ident, Mode, ParamX, Params, Path, Pattern,
+    PatternX, SpannedTyped, Stmt, StmtX, Typ, TypX, Typs, UnaryOp, UnaryOpr, VirErr,
 };
 use crate::ast_util::{err_str, err_string};
 use crate::context::Ctx;
 use crate::def::Spanned;
-use crate::sst::{Bnd, BndX, Dest, Exp, ExpX, LocalDecl, LocalDeclX, Stm, StmX};
+use crate::sst::{Bnd, BndX, Dest, Exp, ExpX, LocalDecl, LocalDeclX, Stm, StmX, UniqueIdent};
+use crate::sst_visitor::{map_exp_visitor, map_stm_exp_visitor};
 use crate::util::{vec_map, vec_map_result};
-use air::ast::{Binder, BinderX, Span};
+use air::ast::{Binder, BinderX, Binders, Span};
+use air::scope_map::ScopeMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 type Arg = (Exp, Typ);
 type Args = Arc<Vec<Arg>>;
 
 pub(crate) struct State {
+    // Counter to generate temporary variables
     next_var: u64,
+    // Collect all local variable declarations
     pub(crate) local_decls: Vec<LocalDecl>,
+    // Rename local variables when needed, using unique integers, to avoid collisions.
+    // This is only needed for statement-level declarations (Some(unique_int)),
+    // not for expression-level bindings (None).
+    rename_map: ScopeMap<Ident, Option<u64>>,
+    // Next integer to use for renaming each variable
+    rename_counters: HashMap<Ident, u64>,
+    // Variables that we considered renaming, but ended up being Bind variables
+    // rather than LocalDecls
+    dont_rename: HashSet<UniqueIdent>,
 }
 
 impl State {
     pub fn new() -> Self {
-        State { next_var: 0, local_decls: Vec::new() }
+        let mut rename_map = ScopeMap::new();
+        rename_map.push_scope(true);
+        State {
+            next_var: 0,
+            local_decls: Vec::new(),
+            rename_map,
+            rename_counters: HashMap::new(),
+            dont_rename: HashSet::new(),
+        }
     }
 
-    fn next_temp(&mut self) -> Ident {
+    fn next_temp(&mut self, span: &Span) -> (Ident, Exp) {
         self.next_var += 1;
-        crate::def::prefix_temp_var(self.next_var)
+        let x = crate::def::prefix_temp_var(self.next_var);
+        (x.clone(), Spanned::new(span.clone(), ExpX::Var((x.clone(), Some(0)))))
     }
 
-    fn declare_var(&mut self, ident: &Ident, typ: &Typ, mutable: bool) {
-        let decl = LocalDeclX { ident: ident.clone(), typ: typ.clone(), mutable };
+    pub(crate) fn push_scope(&mut self) {
+        self.rename_map.push_scope(true);
+    }
+
+    pub(crate) fn pop_scope(&mut self) {
+        self.rename_map.pop_scope();
+    }
+
+    pub(crate) fn get_var_unique_id(&self, x: &Ident) -> UniqueIdent {
+        match self.rename_map.get(x) {
+            None => panic!("internal error: variable not in rename_map: {}", x),
+            Some(id) => (x.clone(), *id),
+        }
+    }
+
+    pub(crate) fn new_statement_var(&mut self, x: &Ident) {
+        self.rename_counters.insert(x.clone(), 0);
+        self.rename_map.insert(x.clone(), Some(0)).expect("new var");
+    }
+
+    pub(crate) fn declare_expression_var(&mut self, x: &Ident) {
+        self.rename_map.insert(x.clone(), None).expect("declare var");
+    }
+
+    pub(crate) fn alloc_unique_var(&mut self, x: &Ident) -> UniqueIdent {
+        let i = match self.rename_counters.get(x).copied() {
+            None => 0,
+            Some(i) => i + 1,
+        };
+        self.rename_counters.insert(x.clone(), i);
+        (x.clone(), Some(i))
+    }
+
+    pub(crate) fn insert_unique_var(&mut self, x: &UniqueIdent) {
+        self.rename_map.insert(x.0.clone(), x.1).expect("declare var");
+    }
+
+    pub(crate) fn declare_binders<A: Clone>(&mut self, binders: &Binders<A>) {
+        for binder in binders.iter() {
+            self.declare_expression_var(&binder.name);
+        }
+    }
+
+    pub(crate) fn declare_new_var(
+        &mut self,
+        ident: &Ident,
+        typ: &Typ,
+        mutable: bool,
+    ) -> UniqueIdent {
+        let unique_ident = (ident.clone(), Some(0));
+        let decl = LocalDeclX { ident: unique_ident.clone(), typ: typ.clone(), mutable };
+        self.new_statement_var(&ident);
         self.local_decls.push(Arc::new(decl));
+        unique_ident
+    }
+
+    // Erase unused unique ids from Vars
+    pub(crate) fn finalize_exp(&self, exp: &Exp) -> Exp {
+        map_exp_visitor(exp, &mut |exp| match &exp.x {
+            ExpX::Var(x) if self.dont_rename.contains(&x) => {
+                Spanned::new(exp.span.clone(), ExpX::Var((x.0.clone(), None)))
+            }
+            _ => exp.clone(),
+        })
+    }
+
+    // Erase unused unique ids from Vars
+    pub(crate) fn finalize_stm(&self, stm: &Stm) -> Stm {
+        map_stm_exp_visitor(stm, &|exp| self.finalize_exp(exp)).expect("finalize_stm")
+    }
+
+    pub(crate) fn finalize(&mut self) {
+        self.pop_scope();
+        assert_eq!(self.rename_map.num_scopes(), 0);
     }
 }
 
-fn init_var(span: &Span, x: &Ident, exp: &Exp) -> Stm {
-    Spanned::new(span.clone(), StmX::Assign { lhs: x.clone(), rhs: exp.clone(), is_init: true })
+fn init_var(span: &Span, x: &UniqueIdent, exp: &Exp) -> Stm {
+    let lhs = x.clone();
+    Spanned::new(span.clone(), StmX::Assign { lhs, rhs: exp.clone(), is_init: true })
 }
 
 fn get_function(ctx: &Ctx, expr: &Expr, name: &Path) -> Result<Function, VirErr> {
@@ -96,9 +191,23 @@ pub(crate) fn expr_to_exp_state(ctx: &Ctx, state: &mut State, expr: &Expr) -> Re
     }
 }
 
-pub(crate) fn expr_to_exp(ctx: &Ctx, expr: &Expr) -> Result<Exp, VirErr> {
+pub(crate) fn expr_to_decls_exp(
+    ctx: &Ctx,
+    params: &Params,
+    expr: &Expr,
+) -> Result<(Vec<LocalDecl>, Exp), VirErr> {
     let mut state = State::new();
-    expr_to_exp_state(ctx, &mut state, expr)
+    for param in params.iter() {
+        state.declare_new_var(&param.x.name, &param.x.typ, false);
+    }
+    let exp = expr_to_exp_state(ctx, &mut state, expr)?;
+    let exp = state.finalize_exp(&exp);
+    state.finalize();
+    Ok((state.local_decls, exp))
+}
+
+pub(crate) fn expr_to_exp(ctx: &Ctx, params: &Params, expr: &Expr) -> Result<Exp, VirErr> {
+    Ok(expr_to_decls_exp(ctx, params, expr)?.1)
 }
 
 pub(crate) fn expr_to_stm(
@@ -122,7 +231,7 @@ fn check_no_exp(exp: &Option<Exp>) -> Result<(), VirErr> {
     match exp {
         None => Ok(()),
         Some(exp) => match &exp.x {
-            ExpX::Var(x) if crate::def::is_temp_var(x) => Ok(()),
+            ExpX::Var((x, _)) if crate::def::is_temp_var(x) => Ok(()),
             // REVIEW: we could lift this restriction by putting exp into a dummy VIR node:
             // (we can't just drop it; the erasure depends on information from VIR)
             _ => err_str(&exp.span, "expressions with no effect are not supported"),
@@ -140,7 +249,7 @@ pub(crate) fn expr_to_one_stm_dest(
     ctx: &Ctx,
     state: &mut State,
     expr: &Expr,
-    dest: &Option<Ident>,
+    dest: &Option<UniqueIdent>,
 ) -> Result<Stm, VirErr> {
     let (mut stms, exp) = expr_to_stm_opt(ctx, state, expr)?;
     match (dest, exp) {
@@ -149,7 +258,7 @@ pub(crate) fn expr_to_one_stm_dest(
             panic!("internal error: missing return value")
         }
         (Some(dest), Some(exp)) => {
-            stms.push(init_var(&expr.span, dest, &exp));
+            stms.push(init_var(&expr.span, &dest, &exp));
         }
     }
     Ok(stms_to_one_stm(&expr.span, stms))
@@ -168,8 +277,8 @@ fn is_small_expr(expr: &Expr) -> bool {
 fn is_small_exp(exp: &Exp) -> bool {
     match &exp.x {
         ExpX::Const(_) => true,
-        ExpX::Var(_) => true,
-        ExpX::Old(_, _) => true,
+        ExpX::Var(..) => true,
+        ExpX::Old(..) => true,
         ExpX::Unary(UnaryOp::Not | UnaryOp::Clip(_), e) => is_small_exp(e),
         ExpX::UnaryOpr(UnaryOpr::Box(_) | UnaryOpr::Unbox(_), e) => is_small_exp(e),
         _ => false,
@@ -192,10 +301,10 @@ fn stm_call(
         } else {
             // To avoid copying arg in preconditions and postconditions,
             // put arg into a temporary variable
-            let temp = state.next_temp();
-            small_args.push(Spanned::new(arg.0.span.clone(), ExpX::Var(temp.clone())));
-            state.declare_var(&temp, &arg.1, false);
-            stms.push(init_var(&arg.0.span, &temp, &arg.0));
+            let (temp, temp_var) = state.next_temp(&arg.0.span);
+            small_args.push(temp_var);
+            let temp_id = state.declare_new_var(&temp, &arg.1, false);
+            stms.push(init_var(&arg.0.span, &temp_id, &arg.0));
         }
     }
     let call = StmX::Call(path, typs, Arc::new(small_args), dest);
@@ -270,17 +379,17 @@ fn if_to_stm(
     e2: &Exp,
 ) -> Exp {
     // If statement, put results from e1/e2 in a temp variable, return temp variable
-    let temp = state.next_temp();
-    state.declare_var(&temp, &expr.typ, false);
+    let (temp, temp_var) = state.next_temp(&expr.span);
+    let temp_id = state.declare_new_var(&temp, &expr.typ, false);
     // if e0 { stms1; temp = e1; } else { stms2; temp = e2; }
-    stms1.push(init_var(&expr.span, &temp, &e1));
-    stms2.push(init_var(&expr.span, &temp, &e2));
+    stms1.push(init_var(&expr.span, &temp_id, &e1));
+    stms2.push(init_var(&expr.span, &temp_id, &e2));
     let stm1 = stms_to_one_stm(&expr.span, stms1);
     let stm2 = stms_to_one_stm(&expr.span, stms2);
     let if_stmt = StmX::If(e0, stm1, Some(stm2));
     stms0.push(Spanned::new(expr.span.clone(), if_stmt));
     // temp
-    Spanned::new(expr.span.clone(), ExpX::Var(temp))
+    temp_var
 }
 
 pub(crate) fn expr_to_stm_opt(
@@ -292,10 +401,13 @@ pub(crate) fn expr_to_stm_opt(
         ExprX::Const(c) => {
             Ok((vec![], Some(Spanned::new(expr.span.clone(), ExpX::Const(c.clone())))))
         }
-        ExprX::Var(x) => Ok((vec![], Some(Spanned::new(expr.span.clone(), ExpX::Var(x.clone()))))),
+        ExprX::Var(x) => {
+            let unique_id = state.get_var_unique_id(&x);
+            Ok((vec![], Some(Spanned::new(expr.span.clone(), ExpX::Var(unique_id)))))
+        }
         ExprX::Assign(expr1, expr2) => {
             let dest_x = match &expr1.x {
-                ExprX::Var(x) => Ok(x.clone()),
+                ExprX::Var(x) => Ok(state.get_var_unique_id(&x)),
                 _ => err_str(&expr1.span, "complex assignments not yet supported"),
             };
             match expr_must_be_call_stm(ctx, state, expr2)? {
@@ -319,16 +431,16 @@ pub(crate) fn expr_to_stm_opt(
             if function_can_be_exp(ctx, expr, &x)? {
                 // ExpX::Call
                 let args = Arc::new(vec_map(&args, |(a, _)| a.clone()));
-                let call = ExpX::Call(false, x.clone(), typs.clone(), args);
+                let call = ExpX::Call(x.clone(), typs.clone(), args);
                 Ok((stms, Some(Spanned::new(expr.span.clone(), call))))
             } else if ret {
-                let temp = state.next_temp();
-                state.declare_var(&temp, &expr.typ, false);
+                let (temp, temp_var) = state.next_temp(&expr.span);
+                state.declare_new_var(&temp, &expr.typ, false);
                 // tmp = StmX::Call;
-                let dest = Dest { var: temp.clone(), is_init: true };
+                let dest = Dest { var: (temp.clone(), Some(0)), is_init: true };
                 stms.push(stm_call(state, &expr.span, x.clone(), typs.clone(), args, Some(dest)));
                 // tmp
-                Ok((stms, Some(Spanned::new(expr.span.clone(), ExpX::Var(temp)))))
+                Ok((stms, Some(temp_var)))
             } else {
                 // StmX::Call
                 stms.push(stm_call(state, &expr.span, x.clone(), typs.clone(), args, None));
@@ -392,7 +504,10 @@ pub(crate) fn expr_to_stm_opt(
             Ok((stms1, Some(bin)))
         }
         ExprX::Quant(quant, binders, body) => {
+            state.push_scope();
+            state.declare_binders(binders);
             let exp = expr_to_exp_state(ctx, state, body)?;
+            state.pop_scope();
             let vars: Vec<Ident> = binders.iter().map(|b| b.name.clone()).collect();
             let trigs = crate::triggers::build_triggers(ctx, &expr.span, &vars, &exp)?;
             let bnd = Spanned::new(body.span.clone(), BndX::Quant(*quant, binders.clone(), trigs));
@@ -433,7 +548,7 @@ pub(crate) fn expr_to_stm_opt(
                 expr0.clone()
             } else {
                 // put expr0 into a temp variable to avoid duplicating it
-                let temp = state.next_temp();
+                let (temp, _) = state.next_temp(&expr0.span);
                 let name = temp.clone();
                 let paramx = ParamX { name, typ: expr0.typ.clone(), mode: Mode::Exec };
                 let param = Spanned::new(expr0.span.clone(), paramx);
@@ -509,13 +624,18 @@ pub(crate) fn expr_to_stm_opt(
             for stmt in stmts.iter() {
                 let (mut stms0, e0, decl_bnd_opt) = stmt_to_stm(ctx, state, stmt)?;
                 match decl_bnd_opt {
-                    Some((decl, Some(bnd))) => {
-                        local_decls.push(decl);
-                        binds.push(bnd);
-                    }
-                    Some((decl, None)) => {
-                        local_decls.push(decl);
-                        is_pure_exp = false;
+                    Some((decl, bnd)) => {
+                        state.push_scope();
+                        local_decls.push(decl.clone());
+                        state.insert_unique_var(&decl.ident);
+                        match bnd {
+                            None => {
+                                is_pure_exp = false;
+                            }
+                            Some(bnd) => {
+                                binds.push(bnd);
+                            }
+                        }
                     }
                     _ => {
                         is_pure_exp = false;
@@ -534,17 +654,26 @@ pub(crate) fn expr_to_stm_opt(
             } else {
                 None
             };
+            for _ in local_decls.iter() {
+                state.pop_scope();
+            }
             match exp {
                 Some(mut exp) if is_pure_exp => {
                     // Pure expression: fold decls into Let bindings and return a single expression
                     for bnd in binds.iter().rev() {
                         exp = Spanned::new(expr.span.clone(), ExpX::Bind(bnd.clone(), exp));
                     }
+                    // We don't generate a LocalDecl, so we don't want to rename the variables
+                    for decl in local_decls {
+                        state.dont_rename.insert(decl.ident.clone());
+                    }
                     return Ok((vec![], Some(exp)));
                 }
                 _ => {
                     // Not pure: return statements
-                    state.local_decls.append(&mut local_decls);
+                    for decl in local_decls {
+                        state.local_decls.push(decl);
+                    }
                     let block = Spanned::new(expr.span.clone(), StmX::Block(Arc::new(stms)));
                     Ok((vec![block], exp))
                 }
@@ -576,7 +705,7 @@ pub(crate) fn stmt_to_stm(
             Ok((stms, exp, None))
         }
         StmtX::Decl { param, mutable, init } => {
-            let ident = param.x.name.clone();
+            let ident = state.alloc_unique_var(&param.x.name.clone());
             let typ = param.x.typ.clone();
             let decl = Arc::new(LocalDeclX { ident, typ, mutable: *mutable });
 
@@ -584,7 +713,7 @@ pub(crate) fn stmt_to_stm(
                 match expr_must_be_call_stm(ctx, state, init)? {
                     Some((mut stms, func_name, typs, _, args)) => {
                         // Special case: convert to a Call
-                        let dest = Dest { var: param.x.name.clone(), is_init: true };
+                        let dest = Dest { var: decl.ident.clone(), is_init: true };
                         stms.push(stm_call(state, &init.span, func_name, typs, args, Some(dest)));
                         return Ok((stms, None, Some((decl, None))));
                     }
@@ -614,7 +743,7 @@ pub(crate) fn stmt_to_stm(
                 }
                 (true, None) => {}
                 (_, Some(exp)) => {
-                    stms.push(init_var(&stmt.span, &param.x.name, exp));
+                    stms.push(init_var(&stmt.span, &decl.ident, exp));
                 }
             }
 

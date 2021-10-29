@@ -60,12 +60,12 @@ fn main() {
     let mut j: u64 = 0;
     match x {
         List::Nil => { j = 1; }
-        List::Cons(hd, _) => { j = hd; }
+        List::Cons(n, _) => { j = n; }
     }
     assert(j == 100);
     let k: u32 = match List::Cons(100u64, box(List::Nil)) {
         List::Nil => { j = 11; 6 }
-        List::Cons(h, _) => { j = h + 1; 7 }
+        List::Cons(n, _) => { j = n + 1; 7 }
     };
     assert(j == 101);
     assert(k == 7);

@@ -21,14 +21,19 @@ pub enum BndX {
     Quant(Quant, Binders<Typ>, Trigs),
 }
 
+// variable name with optional unique id for renaming (equal to unique_id in LocalDeclX)
+pub type UniqueIdent = (Ident, Option<u64>);
+
 pub type Exp = Arc<Spanned<ExpX>>;
 pub type Exps = Arc<Vec<Exp>>;
 #[derive(Debug)]
 pub enum ExpX {
     Const(Constant),
-    Var(Ident),
-    Old(Ident, Ident), // used only during sst_to_air to generate AIR Old
-    Call(/* recursive: */ bool, Path, Typs, Exps), // call to spec function
+    Var(UniqueIdent),
+    // used only during sst_to_air to generate AIR Old
+    Old(Ident, Ident),
+    // call to spec function
+    Call(Path, Typs, Exps),
     Ctor(Path, Ident, Binders<Exp>),
     Unary(UnaryOp, Exp),
     UnaryOpr(UnaryOpr, Exp),
@@ -37,9 +42,9 @@ pub enum ExpX {
     Bind(Bnd, Exp),
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Dest {
-    pub var: Ident,
+    pub var: UniqueIdent,
     pub is_init: bool,
 }
 
@@ -51,7 +56,7 @@ pub enum StmX {
     Assert(Exp),
     Assume(Exp),
     Assign {
-        lhs: Ident,
+        lhs: UniqueIdent,
         rhs: Exp,
         is_init: bool,
     },
@@ -61,15 +66,16 @@ pub enum StmX {
         cond: Exp,
         body: Stm,
         invs: Exps,
-        typ_inv_vars: Arc<Vec<(Ident, Typ)>>,
-        modified_vars: Arc<Vec<Ident>>,
+        typ_inv_vars: Arc<Vec<(UniqueIdent, Typ)>>,
+        modified_vars: Arc<Vec<UniqueIdent>>,
     },
     Block(Stms),
 }
 
 pub type LocalDecl = Arc<LocalDeclX>;
+#[derive(Debug)]
 pub struct LocalDeclX {
-    pub ident: Ident,
+    pub ident: UniqueIdent,
     pub typ: Typ,
     pub mutable: bool,
 }

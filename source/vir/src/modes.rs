@@ -48,11 +48,8 @@ impl Typing {
         *self.vars.get(x).expect("internal error: missing mode")
     }
 
-    fn insert(&mut self, span: &Span, x: &Ident, mode: Mode) -> Result<(), VirErr> {
-        match self.vars.insert(x.clone(), mode) {
-            Ok(()) => Ok(()),
-            Err(()) => err_str(span, "variable shadowing not yet supported"),
-        }
+    fn insert(&mut self, _span: &Span, x: &Ident, mode: Mode) {
+        self.vars.insert(x.clone(), mode).expect("internal error: Typing insert");
     }
 }
 
@@ -74,7 +71,7 @@ fn add_pattern(typing: &mut Typing, mode: Mode, pattern: &Pattern) -> Result<(),
     match &pattern.x {
         PatternX::Wildcard => Ok(()),
         PatternX::Var(x) => {
-            typing.insert(&pattern.span, x, mode)?;
+            typing.insert(&pattern.span, x, mode);
             Ok(())
         }
         PatternX::Constructor(datatype, variant, patterns) => {
@@ -156,9 +153,9 @@ fn check_expr(typing: &mut Typing, outer_mode: Mode, expr: &Expr) -> Result<Mode
             Ok(mode_join(op_mode, mode_join(mode1, mode2)))
         }
         ExprX::Quant(_, binders, e1) => {
-            typing.vars.push_scope(false);
+            typing.vars.push_scope(true);
             for binder in binders.iter() {
-                typing.insert(&expr.span, &binder.name, Mode::Spec)?;
+                typing.insert(&expr.span, &binder.name, Mode::Spec);
             }
             check_expr_has_mode(typing, Mode::Spec, e1, Mode::Spec)?;
             typing.vars.pop_scope();
@@ -204,7 +201,7 @@ fn check_expr(typing: &mut Typing, outer_mode: Mode, expr: &Expr) -> Result<Mode
             }
             let mut final_mode = outer_mode;
             for arm in arms.iter() {
-                typing.vars.push_scope(false);
+                typing.vars.push_scope(true);
                 add_pattern(typing, mode1, &arm.x.pattern)?;
                 let arm_outer_mode = match (outer_mode, mode1) {
                     (Mode::Exec, Mode::Spec | Mode::Proof) => Mode::Proof,
@@ -231,15 +228,17 @@ fn check_expr(typing: &mut Typing, outer_mode: Mode, expr: &Expr) -> Result<Mode
             Ok(Mode::Exec)
         }
         ExprX::Block(ss, e1) => {
-            typing.vars.push_scope(false);
             for stmt in ss.iter() {
+                typing.vars.push_scope(true);
                 check_stmt(typing, outer_mode, stmt)?;
             }
             let mode = match e1 {
                 None => outer_mode,
                 Some(expr) => check_expr(typing, outer_mode, expr)?,
             };
-            typing.vars.pop_scope();
+            for _ in ss.iter() {
+                typing.vars.pop_scope();
+            }
             Ok(mode)
         }
     }
@@ -259,7 +258,7 @@ fn check_stmt(typing: &mut Typing, outer_mode: Mode, stmt: &Stmt) -> Result<(), 
                 );
             }
             typing.erasure_modes.var_modes.push((param.span.clone(), param.x.mode));
-            typing.insert(&stmt.span, &param.x.name, param.x.mode)?;
+            typing.insert(&stmt.span, &param.x.name, param.x.mode);
             match init.as_ref() {
                 None => {}
                 Some(expr) => {
@@ -272,7 +271,7 @@ fn check_stmt(typing: &mut Typing, outer_mode: Mode, stmt: &Stmt) -> Result<(), 
 }
 
 fn check_function(typing: &mut Typing, function: &Function) -> Result<(), VirErr> {
-    typing.vars.push_scope(false);
+    typing.vars.push_scope(true);
     for param in function.x.params.iter() {
         if !mode_le(function.x.mode, param.x.mode) {
             return err_string(
@@ -280,7 +279,7 @@ fn check_function(typing: &mut Typing, function: &Function) -> Result<(), VirErr
                 format!("parameter {} cannot have mode {}", param.x.name, param.x.mode),
             );
         }
-        typing.insert(&function.span, &param.x.name, param.x.mode)?;
+        typing.insert(&function.span, &param.x.name, param.x.mode);
     }
     if let Some((_, _, ret_mode)) = function.x.ret {
         if !mode_le(function.x.mode, ret_mode) {

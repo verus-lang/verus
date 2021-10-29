@@ -1,4 +1,5 @@
 use crate::ast::{Path, PathX};
+use crate::sst::UniqueIdent;
 use air::ast::{Ident, Span};
 use air::ast_util::str_ident;
 use std::fmt::Debug;
@@ -24,16 +25,17 @@ For VIR -> AIR, we use these suffixes:
 - locals inside functions
     - x@ (works well with AIR's mutable variable convention)
 - shadowed (or otherwise repeatedly declared) locals inside functions
-    - x$0, x$1, ...
+    - x@, x$1@, x$2@, ...
 - bindings inside expressions (e.g. let, forall)
     - x$
 */
 
 // List of prefixes, suffixes, and separators that can appear in generated AIR code
 const SUFFIX_GLOBAL: &str = "?";
-const SUFFIX_LOCAL: &str = "@";
+const SUFFIX_LOCAL_STMT: &str = "@";
+const SUFFIX_LOCAL_EXPR: &str = "$";
 const SUFFIX_TYPE_PARAM: &str = "&";
-const SUFFIX_RENAME: &str = "!$";
+const SUFFIX_RENAME: &str = "!";
 const SUFFIX_PATH: &str = ".";
 const PREFIX_FUEL_ID: &str = "fuel%";
 const PREFIX_FUEL_NAT: &str = "fuel_nat%";
@@ -116,14 +118,35 @@ pub fn suffix_global_id(ident: &Ident) -> Ident {
     Arc::new(ident.to_string() + SUFFIX_GLOBAL)
 }
 
-pub fn suffix_local_id(ident: &Ident) -> Ident {
-    Arc::new(ident.to_string() + SUFFIX_LOCAL)
+pub fn suffix_local_expr_id(ident: &Ident) -> Ident {
+    Arc::new(ident.to_string() + SUFFIX_LOCAL_EXPR)
+}
+
+pub fn suffix_local_stmt_id(ident: &Ident) -> Ident {
+    Arc::new(ident.to_string() + SUFFIX_LOCAL_STMT)
+}
+
+pub fn suffix_local_unique_id(ident: &UniqueIdent) -> Ident {
+    let (x, id) = ident;
+    match id {
+        None => suffix_local_expr_id(x),
+        Some(0) => suffix_local_stmt_id(x),
+        Some(i) => {
+            Arc::new(format!("{}{}{}{}", x.to_string(), SUFFIX_LOCAL_EXPR, i, SUFFIX_LOCAL_STMT))
+        }
+    }
 }
 
 pub fn rm_suffix_local_id(ident: &Ident) -> Ident {
     let mut name = ident.to_string();
-    if name.ends_with(SUFFIX_LOCAL) {
-        name = name[..name.len() - SUFFIX_LOCAL.len()].to_string();
+    if name.ends_with(SUFFIX_LOCAL_STMT) {
+        name = name[..name.len() - SUFFIX_LOCAL_STMT.len()].to_string();
+    }
+    match name.rfind(SUFFIX_LOCAL_EXPR) {
+        None => {}
+        Some(i) => {
+            name = name[..i].to_string();
+        }
     }
     Arc::new(name)
 }
@@ -168,8 +191,16 @@ pub fn prefix_ensures(ident: &Ident) -> Ident {
     Arc::new(PREFIX_ENSURES.to_string() + ident)
 }
 
-pub fn prefix_recursive(ident: &Ident) -> Ident {
-    Arc::new(PREFIX_RECURSIVE.to_string() + ident)
+fn prefix_path(prefix: String, path: &Path) -> Path {
+    let mut segments: Vec<Ident> = (*path.segments).clone();
+    let last: &mut Ident = segments.last_mut().expect("path last segment");
+    *last = Arc::new(prefix + &**last);
+    let pathx = PathX { krate: path.krate.clone(), segments: Arc::new(segments) };
+    Arc::new(pathx)
+}
+
+pub fn prefix_recursive(path: &Path) -> Path {
+    prefix_path(PREFIX_RECURSIVE.to_string(), path)
 }
 
 pub fn prefix_temp_var(n: u64) -> Ident {

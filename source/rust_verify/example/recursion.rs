@@ -65,7 +65,7 @@ fn arith_sum_monotonic(i: nat, j: nat) {
 
 fn compute_arith_sum(n: u64) -> u64 {
     requires(n < 100);
-    ensures(|ret: u64| arith_sum_int(n) == ret);
+    ensures(|sum: u64| arith_sum_int(n) == sum);
 
     let mut i: u64 = 0;
     let mut sum: u64 = 0;
