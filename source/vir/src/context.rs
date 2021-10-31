@@ -11,12 +11,12 @@ use std::sync::Arc;
 // Context for across all modules
 pub struct GlobalCtx {
     pub(crate) chosen_triggers: std::cell::RefCell<Vec<(Span, Vec<Vec<String>>)>>, // diagnostics
+    pub(crate) datatypes: HashMap<Path, Variants>,
 }
 
 // Context for verifying one module
 pub struct Ctx {
     pub(crate) module: Path,
-    pub(crate) datatypes: HashMap<Path, Variants>,
     pub(crate) datatypes_with_invariant: HashSet<Path>,
     pub(crate) functions: Vec<Function>,
     pub(crate) func_map: HashMap<Path, Function>,
@@ -76,10 +76,12 @@ fn datatypes_invs(module: &Path, datatypes: &Vec<Datatype>) -> HashSet<Path> {
 }
 
 impl GlobalCtx {
-    pub fn new() -> Self {
+    pub fn new(krate: &Krate) -> Self {
         let chosen_triggers: std::cell::RefCell<Vec<(Span, Vec<Vec<String>>)>> =
             std::cell::RefCell::new(Vec::new());
-        GlobalCtx { chosen_triggers }
+        let datatypes: HashMap<Path, Variants> =
+            krate.datatypes.iter().map(|d| (d.x.path.clone(), d.x.variants.clone())).collect();
+        GlobalCtx { chosen_triggers, datatypes }
     }
 
     // Report chosen triggers as strings for printing diagnostics
@@ -95,11 +97,6 @@ impl Ctx {
         module: Path,
         debug: bool,
     ) -> Result<Self, VirErr> {
-        let datatypes = krate
-            .datatypes
-            .iter()
-            .map(|d| (d.x.path.clone(), d.x.variants.clone()))
-            .collect::<HashMap<_, _>>();
         let datatypes_with_invariant = datatypes_invs(&module, &krate.datatypes);
         let mut functions: Vec<Function> = Vec::new();
         let mut func_map: HashMap<Path, Function> = HashMap::new();
@@ -113,7 +110,6 @@ impl Ctx {
         func_call_graph.compute_sccs();
         Ok(Ctx {
             module,
-            datatypes,
             datatypes_with_invariant,
             functions,
             func_map,

@@ -308,7 +308,8 @@ impl Verifier {
         air_context.set_z3_param("air_recommended_options", "true");
         air_context.set_rlimit(self.args.rlimit * 1000000);
 
-        let mut global_ctx = vir::context::GlobalCtx::new();
+        let mut global_ctx = vir::context::GlobalCtx::new(&krate);
+        let krate = vir::ast_simplify::simplify_krate(&global_ctx, &krate)?;
 
         air_context.blank_line();
         air_context.comment("Prelude");
@@ -336,7 +337,7 @@ impl Verifier {
             air_context.push();
             let mut ctx =
                 vir::context::Ctx::new(&krate, global_ctx, module.clone(), self.args.debug)?;
-            self.verify_module(compiler, krate, &mut air_context, &mut ctx)?;
+            self.verify_module(compiler, &krate, &mut air_context, &mut ctx)?;
             global_ctx = ctx.free();
             air_context.pop();
         }

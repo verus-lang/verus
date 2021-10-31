@@ -29,6 +29,7 @@
 #![feature(or_patterns)]
 
 pub mod ast;
+pub mod ast_simplify;
 mod ast_to_sst;
 pub mod ast_util;
 mod ast_visitor;

@@ -43,6 +43,7 @@ const PREFIX_DATATYPE_INV: &str = "inv%";
 const PREFIX_REQUIRES: &str = "req%";
 const PREFIX_ENSURES: &str = "ens%";
 const PREFIX_RECURSIVE: &str = "rec%";
+const PREFIX_SIMPLIFY_TEMP_VAR: &str = "tmp%%";
 const PREFIX_TEMP_VAR: &str = "tmp%";
 const PREFIX_BOX: &str = "Poly%";
 const PREFIX_UNBOX: &str = "%Poly%";
@@ -209,6 +210,11 @@ pub fn prefix_temp_var(n: u64) -> Ident {
 
 pub fn is_temp_var(x: &Ident) -> bool {
     x.starts_with(PREFIX_TEMP_VAR)
+}
+
+// ast_simplify introduces its own temporary variables; we don't want these to conflict with prefix_temp_var
+pub fn prefix_simplify_temp_var(n: u64) -> Ident {
+    Arc::new(PREFIX_SIMPLIFY_TEMP_VAR.to_string() + &n.to_string())
 }
 
 pub fn variant_ident(datatype: &Path, variant: &str) -> Ident {

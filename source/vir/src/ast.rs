@@ -340,7 +340,7 @@ pub type Datatypes = Vec<Datatype>;
 
 /// An entire crate
 pub type Krate = Arc<KrateX>;
-#[derive(Debug, Default)]
+#[derive(Clone, Debug, Default)]
 pub struct KrateX {
     /// All functions in the crate, plus foreign functions
     pub functions: Vec<Function>,
