@@ -1,7 +1,7 @@
 //! VIR-AST -> VIR-AST transformation to simplify away some complicated features
 
 use crate::ast::{
-    BinaryOp, Constant, Expr, ExprX, Function, FunctionX, Ident, Krate, KrateX, Mode, ParamX, Path,
+    BinaryOp, Constant, Expr, ExprX, Function, FunctionX, Ident, Krate, KrateX, Mode, Path,
     Pattern, PatternX, SpannedTyped, Stmt, StmtX, Typ, TypX, UnaryOp, UnaryOpr, VirErr,
 };
 use crate::ast_util::err_str;
@@ -36,6 +36,21 @@ fn is_small_expr(expr: &Expr) -> bool {
     }
 }
 
+fn small_or_temp(state: &mut State, expr: &Expr) -> (Option<Stmt>, Expr) {
+    if is_small_expr(&expr) {
+        (None, expr.clone())
+    } else {
+        // put expr into a temp variable to avoid duplicating it
+        let temp = state.next_temp();
+        let name = temp.clone();
+        let patternx = PatternX::Var { name, mutable: false };
+        let pattern = SpannedTyped::new(&expr.span, &expr.typ, patternx);
+        let decl = StmtX::Decl { pattern, mode: Mode::Exec, init: Some(expr.clone()) };
+        let temp_decl = Some(Spanned::new(expr.span.clone(), decl));
+        (temp_decl, SpannedTyped::new(&expr.span, &expr.typ, ExprX::Var(temp)))
+    }
+}
+
 fn datatype_field_typ(ctx: &GlobalCtx, path: &Path, variant: &Ident, field: &Ident) -> Typ {
     let fields =
         &ctx.datatypes[path].iter().find(|v| v.name == *variant).expect("couldn't find variant").a;
@@ -51,18 +66,18 @@ fn pattern_to_exprs(
     expr: &Expr,
     pattern: &Pattern,
     decls: &mut Vec<Stmt>,
-) -> Expr {
+) -> Result<Expr, VirErr> {
     let t_bool = Arc::new(TypX::Bool);
     match &pattern.x {
         PatternX::Wildcard => {
-            SpannedTyped::new(&pattern.span, &t_bool, ExprX::Const(Constant::Bool(true)))
+            Ok(SpannedTyped::new(&pattern.span, &t_bool, ExprX::Const(Constant::Bool(true))))
         }
-        PatternX::Var(x) => {
-            let paramx = ParamX { name: x.clone(), typ: expr.typ.clone(), mode: Mode::Exec };
-            let param = Spanned::new(expr.span.clone(), paramx);
-            let decl = StmtX::Decl { param, mutable: false, init: Some(expr.clone()) };
+        PatternX::Var { name: x, mutable } => {
+            let patternx = PatternX::Var { name: x.clone(), mutable: *mutable };
+            let pattern = SpannedTyped::new(&expr.span, &expr.typ, patternx);
+            let decl = StmtX::Decl { pattern, mode: Mode::Exec, init: Some(expr.clone()) };
             decls.push(Spanned::new(expr.span.clone(), decl));
-            SpannedTyped::new(&pattern.span, &t_bool, ExprX::Const(Constant::Bool(true)))
+            Ok(SpannedTyped::new(&expr.span, &t_bool, ExprX::Const(Constant::Bool(true))))
         }
         PatternX::Constructor(path, variant, patterns) => {
             let is_variant_opr =
@@ -88,11 +103,11 @@ fn pattern_to_exprs(
                     }
                     _ => field_exp,
                 };
-                let pattern_test = pattern_to_exprs(ctx, &field_exp, &binder.a, decls);
+                let pattern_test = pattern_to_exprs(ctx, &field_exp, &binder.a, decls)?;
                 let and = ExprX::Binary(BinaryOp::And, test, pattern_test);
                 test = SpannedTyped::new(&pattern.span, &t_bool, and);
             }
-            test
+            Ok(test)
         }
     }
 }
@@ -100,25 +115,13 @@ fn pattern_to_exprs(
 fn simplify_one_expr(ctx: &GlobalCtx, state: &mut State, expr: &Expr) -> Result<Expr, VirErr> {
     match &expr.x {
         ExprX::Match(expr0, arms1) => {
-            let mut temp_decl: Option<Stmt> = None;
-            let expr0 = if is_small_expr(&expr0) {
-                expr0.clone()
-            } else {
-                // put expr0 into a temp variable to avoid duplicating it
-                let temp = state.next_temp();
-                let name = temp.clone();
-                let paramx = ParamX { name, typ: expr0.typ.clone(), mode: Mode::Exec };
-                let param = Spanned::new(expr0.span.clone(), paramx);
-                let decl = StmtX::Decl { param, mutable: false, init: Some(expr0.clone()) };
-                temp_decl = Some(Spanned::new(expr0.span.clone(), decl));
-                SpannedTyped::new(&expr0.span, &expr0.typ, ExprX::Var(temp))
-            };
+            let (temp_decl, expr0) = small_or_temp(state, &expr0);
             // Translate into If expression
             let t_bool = Arc::new(TypX::Bool);
             let mut if_expr: Option<Expr> = None;
             for arm in arms1.iter().rev() {
                 let mut decls: Vec<Stmt> = Vec::new();
-                let test_pattern = pattern_to_exprs(ctx, &expr0, &arm.x.pattern, &mut decls);
+                let test_pattern = pattern_to_exprs(ctx, &expr0, &arm.x.pattern, &mut decls)?;
                 let test = match &arm.x.guard.x {
                     ExprX::Const(Constant::Bool(true)) => test_pattern,
                     _ => {
@@ -156,8 +159,32 @@ fn simplify_one_expr(ctx: &GlobalCtx, state: &mut State, expr: &Expr) -> Result<
     }
 }
 
+fn simplify_one_stmt(ctx: &GlobalCtx, state: &mut State, stmt: &Stmt) -> Result<Vec<Stmt>, VirErr> {
+    match &stmt.x {
+        StmtX::Decl { pattern, mode: _, init: None } => match &pattern.x {
+            PatternX::Var { .. } => Ok(vec![stmt.clone()]),
+            _ => err_str(&stmt.span, "let-pattern declaration must have an initializer"),
+        },
+        StmtX::Decl { pattern, mode: _, init: Some(init) } => {
+            let mut decls: Vec<Stmt> = Vec::new();
+            let (temp_decl, init) = small_or_temp(state, init);
+            if let Some(temp_decl) = temp_decl {
+                decls.push(temp_decl);
+            }
+            let _ = pattern_to_exprs(ctx, &init, &pattern, &mut decls)?;
+            Ok(decls)
+        }
+        _ => Ok(vec![stmt.clone()]),
+    }
+}
+
 fn simplify_expr(ctx: &GlobalCtx, state: &mut State, expr: &Expr) -> Result<Expr, VirErr> {
-    crate::ast_visitor::map_expr_visitor(expr, &mut |expr| simplify_one_expr(ctx, state, expr))
+    crate::ast_visitor::map_expr_visitor_env(
+        expr,
+        state,
+        &|state, expr| simplify_one_expr(ctx, state, expr),
+        &|state, stmt| simplify_one_stmt(ctx, state, stmt),
+    )
 }
 
 pub fn simplify_function(ctx: &GlobalCtx, function: &Function) -> Result<Function, VirErr> {

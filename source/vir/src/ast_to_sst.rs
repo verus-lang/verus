@@ -1,6 +1,6 @@
 use crate::ast::{
-    BinaryOp, Constant, Expr, ExprX, Function, Ident, Mode, Params, Path, Stmt, StmtX, Typ, Typs,
-    UnaryOp, UnaryOpr, VirErr,
+    BinaryOp, Constant, Expr, ExprX, Function, Ident, Mode, Params, Path, PatternX, Stmt, StmtX,
+    Typ, Typs, UnaryOp, UnaryOpr, VirErr,
 };
 use crate::ast_util::{err_str, err_string};
 use crate::context::Ctx;
@@ -588,9 +588,14 @@ pub(crate) fn stmt_to_stm(
             let (stms, exp) = expr_to_stm_opt(ctx, state, expr)?;
             Ok((stms, exp, None))
         }
-        StmtX::Decl { param, mutable, init } => {
-            let ident = state.alloc_unique_var(&param.x.name.clone());
-            let typ = param.x.typ.clone();
+        StmtX::Decl { pattern, mode: _, init } => {
+            let (name, mutable) = match &pattern.x {
+                PatternX::Var { name, mutable } => (name, mutable),
+                _ => panic!("internal error: Decl should have been simplified by ast_simplify"),
+            };
+
+            let ident = state.alloc_unique_var(&name.clone());
+            let typ = pattern.typ.clone();
             let decl = Arc::new(LocalDeclX { ident, typ, mutable: *mutable });
 
             if let Some(init) = init {
@@ -613,7 +618,7 @@ pub(crate) fn stmt_to_stm(
             // For a pure expression, return a binder
             let bnd = match &exp {
                 Some(exp) if stms.len() == 0 => {
-                    let binder = BinderX { name: param.x.name.clone(), a: exp.clone() };
+                    let binder = BinderX { name: name.clone(), a: exp.clone() };
                     let bnd = BndX::Let(Arc::new(vec![Arc::new(binder)]));
                     Some(Spanned::new(stmt.span.clone(), bnd))
                 }

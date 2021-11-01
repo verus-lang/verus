@@ -157,3 +157,85 @@ test_verify_with_pervasive! {
         }
     } => Err(err) => assert_one_fails(err)
 }
+
+test_verify_with_pervasive! {
+    #[test] test3 code! {
+        enum Pair<A, B> {
+            Pair(A, B),
+        }
+
+        fn test() {
+            let Pair::Pair(mut y, z) = Pair::Pair(true, false);
+            assert(y);
+            y = false;
+            assert(!y);
+            assert(!z);
+        }
+    } => Ok(())
+}
+
+test_verify_with_pervasive! {
+    #[test] test3b code! {
+        enum Pair<A, B> {
+            Pair(A, B),
+        }
+
+        fn test() {
+            let x = Pair::Pair(true, false);
+            let Pair::Pair(mut y, z) = x;
+            assert(y);
+            y = false;
+            assert(!y);
+            assert(!z);
+        }
+    } => Ok(())
+}
+
+test_verify_with_pervasive! {
+    #[test] test3_fails code! {
+        enum Pair<A, B> {
+            Pair(A, B),
+        }
+
+        fn test() {
+            let Pair::Pair(mut y, z) = Pair::Pair(true, false);
+            assert(!y); // FAILS
+            y = false;
+            assert(!y);
+            assert(!z);
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_with_pervasive! {
+    #[test] test3_fails2 code! {
+        enum Pair<A, B> {
+            Pair(A, B),
+        }
+
+        fn test() {
+            let Pair::Pair(mut y, z) = Pair::Pair(true, false);
+            assert(y);
+            y = false;
+            assert(y); // FAILS
+            assert(!z);
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_with_pervasive! {
+    #[test] test3_fails3 code! {
+        enum Pair<A, B> {
+            Pair(A, B),
+        }
+
+        fn test() {
+            let x = Pair::Pair(true, false);
+            let Pair::Pair(mut y, z) = x;
+            assert(y);
+            y = false;
+            assert(!y);
+            assert(z); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}

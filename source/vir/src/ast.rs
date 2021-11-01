@@ -196,7 +196,7 @@ pub type Pattern = Arc<SpannedTyped<PatternX>>;
 #[derive(Debug)]
 pub enum PatternX {
     Wildcard,
-    Var(Ident),
+    Var { name: Ident, mutable: bool },
     Constructor(Path, Ident, Binders<Pattern>),
 }
 
@@ -264,7 +264,7 @@ pub enum StmtX {
     /// Single expression
     Expr(Expr),
     /// Declare a local variable, which may be mutable, and may have an initial value
-    Decl { param: Param, mutable: bool, init: Option<Expr> },
+    Decl { pattern: Pattern, mode: Mode, init: Option<Expr> },
 }
 
 /// Function parameter

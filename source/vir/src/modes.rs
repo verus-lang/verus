@@ -70,7 +70,8 @@ fn check_expr_has_mode(
 fn add_pattern(typing: &mut Typing, mode: Mode, pattern: &Pattern) -> Result<(), VirErr> {
     match &pattern.x {
         PatternX::Wildcard => Ok(()),
-        PatternX::Var(x) => {
+        PatternX::Var { name: x, mutable: _ } => {
+            typing.erasure_modes.var_modes.push((pattern.span.clone(), mode));
             typing.insert(&pattern.span, x, mode);
             Ok(())
         }
@@ -250,19 +251,15 @@ fn check_stmt(typing: &mut Typing, outer_mode: Mode, stmt: &Stmt) -> Result<(), 
             let _ = check_expr(typing, outer_mode, e)?;
             Ok(())
         }
-        StmtX::Decl { param, mutable: _, init } => {
-            if !mode_le(outer_mode, param.x.mode) {
-                return err_string(
-                    &stmt.span,
-                    format!("variable {} cannot have mode {}", param.x.name, param.x.mode),
-                );
+        StmtX::Decl { pattern, mode, init } => {
+            if !mode_le(outer_mode, *mode) {
+                return err_string(&stmt.span, format!("pattern cannot have mode {}", *mode));
             }
-            typing.erasure_modes.var_modes.push((param.span.clone(), param.x.mode));
-            typing.insert(&stmt.span, &param.x.name, param.x.mode);
+            add_pattern(typing, *mode, pattern)?;
             match init.as_ref() {
                 None => {}
                 Some(expr) => {
-                    check_expr_has_mode(typing, outer_mode, expr, param.x.mode)?;
+                    check_expr_has_mode(typing, outer_mode, expr, *mode)?;
                 }
             }
             Ok(())

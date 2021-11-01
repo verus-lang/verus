@@ -23,8 +23,8 @@ use rustc_span::def_id::DefId;
 use rustc_span::Span;
 use std::sync::Arc;
 use vir::ast::{
-    ArmX, BinaryOp, Constant, ExprX, HeaderExpr, HeaderExprX, Ident, IntRange, Mode, ParamX,
-    PatternX, SpannedTyped, StmtX, Stmts, Typ, TypX, UnaryOp, UnaryOpr, VirErr,
+    ArmX, BinaryOp, Constant, ExprX, HeaderExpr, HeaderExprX, Ident, IntRange, Mode, PatternX,
+    SpannedTyped, StmtX, Stmts, Typ, TypX, UnaryOp, UnaryOpr, VirErr,
 };
 use vir::ast_util::{ident_binder, path_as_rust_name};
 use vir::def::positional_field_ident;
@@ -504,7 +504,10 @@ pub(crate) fn pattern_to_vir<'tcx>(
     let pattern = match &pat.kind {
         PatKind::Wild => PatternX::Wildcard,
         PatKind::Binding(BindingAnnotation::Unannotated, _canonical, x, None) => {
-            PatternX::Var(Arc::new(x.as_str().to_string()))
+            PatternX::Var { name: Arc::new(x.as_str().to_string()), mutable: false }
+        }
+        PatKind::Binding(BindingAnnotation::Mutable, _canonical, x, None) => {
+            PatternX::Var { name: Arc::new(x.as_str().to_string()), mutable: true }
         }
         PatKind::Path(QPath::Resolved(
             None,
@@ -963,40 +966,10 @@ pub(crate) fn let_stmt_to_vir<'tcx>(
     initializer: &Option<&Expr<'tcx>>,
     attrs: &[Attribute],
 ) -> Result<Vec<vir::ast::Stmt>, VirErr> {
-    let Pat { hir_id, kind, span: _, default_binding_modes } = pattern;
-    unsupported_err_unless!(default_binding_modes, pattern.span, "default_binding_modes");
-    match pattern.kind {
-        PatKind::Binding(annotation, _id, ident, pat) => {
-            let mutable = match annotation {
-                BindingAnnotation::Unannotated => false,
-                BindingAnnotation::Mutable => true,
-                _ => {
-                    unsupported_err!(pattern.span, format!("binding annotation {:?}", annotation))
-                }
-            };
-            match pat {
-                None => {}
-                _ => {
-                    unsupported_err!(pattern.span, format!("pattern {:?}", kind))
-                }
-            }
-            // TODO: need unique identifiers!
-            let name = Arc::new(ident_to_var(&ident));
-            let typ = typ_of_node(bctx, hir_id);
-            let mode = get_var_mode(bctx.mode, attrs);
-            Ok(vec![spanned_new(
-                pattern.span,
-                StmtX::Decl {
-                    param: spanned_new(pattern.span, ParamX { name: name.clone(), typ, mode }),
-                    mutable,
-                    init: initializer.map(|e| expr_to_vir(bctx, e)).transpose()?,
-                },
-            )])
-        }
-        _ => {
-            unsupported_err!(pattern.span, "let_pattern", pattern)
-        }
-    }
+    let vir_pattern = pattern_to_vir(bctx, pattern)?;
+    let mode = get_var_mode(bctx.mode, attrs);
+    let init = initializer.map(|e| expr_to_vir(bctx, e)).transpose()?;
+    Ok(vec![spanned_new(pattern.span, StmtX::Decl { pattern: vir_pattern, mode, init })])
 }
 
 pub(crate) fn stmt_to_vir<'tcx>(
