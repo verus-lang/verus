@@ -7,7 +7,6 @@ use crate::def::{
     suffix_global_id, suffix_local_expr_id, suffix_local_stmt_id, suffix_local_unique_id,
     suffix_typ_param_id, variant_field_ident, variant_ident, SnapPos, Spanned, FUEL_BOOL,
     FUEL_BOOL_DEFAULT, FUEL_DEFAULTS, FUEL_ID, FUEL_PARAM, FUEL_TYPE, POLY, SNAPSHOT_CALL, SUCC,
-    UNIT,
 };
 use crate::sst::{BndX, Dest, Exp, ExpX, LocalDecl, Stm, StmX, UniqueIdent};
 use crate::util::vec_map;
@@ -45,9 +44,9 @@ pub(crate) fn apply_range_fun(name: &str, range: &IntRange, exprs: Vec<Expr>) ->
 
 pub(crate) fn typ_to_air(_ctx: &Ctx, typ: &Typ) -> air::ast::Typ {
     match &**typ {
-        TypX::Unit => str_typ(UNIT),
         TypX::Int(_) => int_typ(),
         TypX::Bool => bool_typ(),
+        TypX::Tuple(_) => panic!("internal error: Tuple should have been removed by ast_simplify"),
         TypX::Datatype(path, _) => ident_typ(&path_to_air_ident(path)),
         TypX::Boxed(_) => str_typ(POLY),
         TypX::TypParam(_) => str_typ(POLY),
@@ -60,7 +59,6 @@ pub(crate) fn typ_to_air(_ctx: &Ctx, typ: &Typ) -> air::ast::Typ {
 // 2) The box(unbox(x)) == x axiom
 pub fn typ_to_id(typ: &Typ) -> Expr {
     match &**typ {
-        TypX::Unit => str_var(crate::def::TYPE_ID_UNIT),
         TypX::Int(range) => match range {
             IntRange::Int => str_var(crate::def::TYPE_ID_INT),
             IntRange::Nat => str_var(crate::def::TYPE_ID_NAT),
@@ -72,6 +70,7 @@ pub fn typ_to_id(typ: &Typ) -> Expr {
             }
         },
         TypX::Bool => str_var(crate::def::TYPE_ID_BOOL),
+        TypX::Tuple(_) => panic!("internal error: Tuple should have been removed by ast_simplify"),
         TypX::Datatype(path, _) => string_var(&prefix_type_id(&Arc::new(path_to_string(&path)))),
         TypX::Boxed(_) => panic!("internal error: type arguments should be unboxed"),
         TypX::TypParam(x) => ident_var(&suffix_typ_param_id(x)),
@@ -183,12 +182,12 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp) -> Expr {
             UnaryOpr::Box(typ) => {
                 let expr = exp_to_expr(ctx, exp);
                 let f_name = match &**typ {
-                    TypX::Unit => str_ident(crate::def::BOX_UNIT),
                     TypX::Bool => str_ident(crate::def::BOX_BOOL),
                     TypX::Int(_) => str_ident(crate::def::BOX_INT),
                     TypX::Datatype(path, _) => {
                         crate::def::prefix_box(&Arc::new(path_to_string(&path)))
                     }
+                    TypX::Tuple(_) => panic!("internal error: Box(Tuple)"),
                     TypX::Boxed(_) => panic!("internal error: Box(Boxed)"),
                     TypX::TypParam(_) => panic!("internal error: Box(TypParam)"),
                 };
@@ -197,14 +196,14 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp) -> Expr {
             UnaryOpr::Unbox(typ) => {
                 let expr = exp_to_expr(ctx, exp);
                 let f_name = match &**typ {
-                    TypX::Unit => str_ident(crate::def::UNBOX_UNIT),
                     TypX::Bool => str_ident(crate::def::UNBOX_BOOL),
                     TypX::Int(_) => str_ident(crate::def::UNBOX_INT),
                     TypX::Datatype(path, _) => {
                         crate::def::prefix_unbox(&Arc::new(path_to_string(&path)))
                     }
-                    TypX::Boxed(_) => panic!("internal error: Box(Boxed)"),
-                    TypX::TypParam(_) => panic!("internal error: Box(TypParam)"),
+                    TypX::Tuple(_) => panic!("internal error: Box(Tuple)"),
+                    TypX::Boxed(_) => panic!("internal error: Unbox(Boxed)"),
+                    TypX::TypParam(_) => panic!("internal error: Unbox(TypParam)"),
                 };
                 ident_apply(&f_name, &vec![expr])
             }
@@ -212,6 +211,9 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp) -> Expr {
                 let expr = exp_to_expr(ctx, exp);
                 let name = Arc::new(format!("is-{}", variant_ident(datatype, variant)));
                 Arc::new(ExprX::Apply(name, Arc::new(vec![expr])))
+            }
+            UnaryOpr::TupleField { .. } => {
+                panic!("internal error: TupleField should have been removed before here")
             }
             UnaryOpr::Field { datatype, variant, field } => {
                 // TODO: this should include datatype, variant in the function name

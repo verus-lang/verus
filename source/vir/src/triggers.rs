@@ -49,6 +49,7 @@ fn check_trigger_expr(exp: &Exp, free_vars: &mut HashSet<Ident>) -> Result<(), V
             UnaryOpr::Box(_)
             | UnaryOpr::Unbox(_)
             | UnaryOpr::IsVariant { .. }
+            | UnaryOpr::TupleField { .. }
             | UnaryOpr::Field { .. } => Ok(exp.clone()),
         },
         ExpX::Binary(op, _, _) => {

@@ -401,7 +401,7 @@ fn fn_call_to_vir<'tcx>(
         }
         // return type
         let possibly_boxed_ret_typ = match &ret_typ {
-            None => Arc::new(TypX::Unit),
+            None => Arc::new(TypX::Tuple(Arc::new(vec![]))),
             Some(ret_typ) => match (&**ret_typ, &*expr_typ) {
                 (TypX::TypParam(_), TypX::TypParam(_)) => expr_typ.clone(), // already boxed
                 (TypX::TypParam(_), _) => Arc::new(TypX::Boxed(expr_typ.clone())),
@@ -528,6 +528,13 @@ pub(crate) fn pattern_to_vir<'tcx>(
             let (vir_path, variant_name) = datatype_variant_of_res(tcx, res);
             PatternX::Constructor(vir_path, variant_name, Arc::new(vec![]))
         }
+        PatKind::Tuple(pats, None) => {
+            let mut patterns: Vec<vir::ast::Pattern> = Vec::new();
+            for pat in pats.iter() {
+                patterns.push(pattern_to_vir(bctx, pat)?);
+            }
+            PatternX::Tuple(Arc::new(patterns))
+        }
         PatKind::TupleStruct(
             QPath::Resolved(
                 None,
@@ -606,6 +613,11 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                 ),
                 _ => unsupported!("fun_kind_not_ctor_or_fn", expr.span),
             }
+        }
+        ExprKind::Tup(exprs) => {
+            let args: Result<Vec<vir::ast::Expr>, VirErr> =
+                exprs.iter().map(|e| expr_to_vir(bctx, e)).collect();
+            Ok(mk_expr(ExprX::Tuple(Arc::new(args?))))
         }
         ExprKind::Lit(lit) => match lit.node {
             rustc_ast::LitKind::Bool(b) => {
@@ -770,6 +782,13 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                 };
                 (datatype_path, variant_name, str_ident(&name.as_str()), unbox)
             } else {
+                let lhs_typ = typ_of_node(bctx, &lhs.hir_id);
+                if let TypX::Tuple(ts) = &*lhs_typ {
+                    let field: usize =
+                        str::parse(&name.as_str()).expect("integer index into tuple");
+                    let field_opr = UnaryOpr::TupleField { tuple_arity: ts.len(), field };
+                    return Ok(mk_expr(ExprX::UnaryOpr(field_opr, vir_lhs)));
+                }
                 unsupported_err!(expr.span, "field_of_non_adt", expr)
             };
             let field_type = match &unbox {

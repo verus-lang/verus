@@ -287,7 +287,12 @@ impl Verifier {
     }
 
     // Verify one or more modules in a crate
-    fn verify_crate(&mut self, compiler: &Compiler, krate: &Krate) -> Result<(), VirErr> {
+    fn verify_crate(
+        &mut self,
+        compiler: &Compiler,
+        krate: &Krate,
+        no_span: Span,
+    ) -> Result<(), VirErr> {
         let mut air_context = air::context::Context::new(air::smt_manager::SmtManager::new());
         air_context.set_debug(self.args.debug);
 
@@ -308,8 +313,13 @@ impl Verifier {
         air_context.set_z3_param("air_recommended_options", "true");
         air_context.set_rlimit(self.args.rlimit * 1000000);
 
-        let mut global_ctx = vir::context::GlobalCtx::new(&krate);
-        let krate = vir::ast_simplify::simplify_krate(&global_ctx, &krate)?;
+        let air_no_span = air::ast::Span {
+            description: None,
+            raw_span: crate::util::to_raw_span(no_span),
+            as_string: "no location".to_string(),
+        };
+        let mut global_ctx = vir::context::GlobalCtx::new(&krate, air_no_span);
+        let krate = vir::ast_simplify::simplify_krate(&mut global_ctx, &krate)?;
 
         air_context.blank_line();
         air_context.comment("Prelude");
@@ -423,7 +433,7 @@ impl Verifier {
         vir::well_formed::check_crate(&vir_crate)?;
         let erasure_modes = vir::modes::check_crate(&vir_crate)?;
         if !self.args.no_verify {
-            self.verify_crate(&compiler, &vir_crate)?;
+            self.verify_crate(&compiler, &vir_crate, hir.krate().item.span)?;
         }
         let erasure_info = ctxt.erasure_info.borrow();
         let resolved_calls = erasure_info.resolved_calls.clone();

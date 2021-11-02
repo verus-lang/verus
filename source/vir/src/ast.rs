@@ -74,10 +74,11 @@ pub type Typs = Arc<Vec<Typ>>;
 // Deliberately not marked Eq -- use explicit match instead, so we know where types are compared
 #[derive(Debug)]
 pub enum TypX {
-    /// Unit, Bool, Int, Path are translated directly into corresponding SMT types (they are not SMT-boxed)
-    Unit,
+    /// Bool, Int, Datatype are translated directly into corresponding SMT types (they are not SMT-boxed)
     Bool,
     Int(IntRange),
+    /// Tuple type (t1, ..., tn).  Note: ast_simplify replaces Tuple with Datatype.
+    Tuple(Arc<Vec<(Typ, Mode)>>),
     /// Datatype (concrete or abstract) applied to type arguments
     Datatype(Path, Typs),
     /// Boxed for SMT encoding (unrelated to Rust Box type), can be unboxed:
@@ -114,6 +115,8 @@ pub enum UnaryOpr {
     Unbox(Typ),
     /// Test whether expression is a particular variant of a datatype
     IsVariant { datatype: Path, variant: Ident },
+    /// Read .0, .1, etc. from tuple (Note: ast_simplify replaces this with Field)
+    TupleField { tuple_arity: usize, field: usize },
     /// Read field from variant of datatype
     Field { datatype: Path, variant: Ident, field: Ident },
 }
@@ -193,10 +196,16 @@ pub struct SpannedTyped<X> {
 
 /// Patterns for match expressions
 pub type Pattern = Arc<SpannedTyped<PatternX>>;
+pub type Patterns = Arc<Vec<Pattern>>;
 #[derive(Debug)]
 pub enum PatternX {
+    /// _
     Wildcard,
+    /// x or mut x
     Var { name: Ident, mutable: bool },
+    /// Note: ast_simplify replaces this with Constructor
+    Tuple(Patterns),
+    /// Match constructor of datatype Path, variant Ident
     Constructor(Path, Ident, Binders<Pattern>),
 }
 
@@ -223,9 +232,10 @@ pub enum ExprX {
     /// Local variable
     Var(Ident),
     /// Call to function with given name, passing some type arguments and some expression arguments
-    /// TODO: should be Path, not Ident
     /// Note: higher-order functions aren't yet supported
     Call(Path, Typs, Exprs),
+    /// Note: ast_simplify replaces this with Ctor
+    Tuple(Exprs),
     /// Construct datatype value of type Path and variant Ident, with field initializers Binders<Expr>
     Ctor(Path, Ident, Binders<Expr>),
     /// Primitive unary operation
@@ -248,7 +258,7 @@ pub enum ExprX {
     Admit,
     /// If-else
     If(Expr, Expr, Option<Expr>),
-    /// Match
+    /// Match (Note: ast_simplify replaces Match with other expressions)
     Match(Expr, Arms),
     /// While loop, with invariants
     While { cond: Expr, body: Expr, invs: Exprs },
@@ -264,6 +274,8 @@ pub enum StmtX {
     /// Single expression
     Expr(Expr),
     /// Declare a local variable, which may be mutable, and may have an initial value
+    /// The declaration may contain a pattern;
+    /// however, ast_simplify replaces all patterns with PatternX::Var
     Decl { pattern: Pattern, mode: Mode, init: Option<Expr> },
 }
 
@@ -319,7 +331,7 @@ pub type Fields = Binders<(Typ, Mode)>;
 pub type Variant = Binder<Fields>;
 pub type Variants = Binders<Fields>;
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum DatatypeTransparency {
     Never,
     WithinModule,
@@ -327,7 +339,7 @@ pub enum DatatypeTransparency {
 }
 
 /// struct or enum
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct DatatypeX {
     pub path: Path,
     pub visibility: Visibility,

@@ -12,6 +12,8 @@ use std::sync::Arc;
 pub struct GlobalCtx {
     pub(crate) chosen_triggers: std::cell::RefCell<Vec<(Span, Vec<Vec<String>>)>>, // diagnostics
     pub(crate) datatypes: HashMap<Path, Variants>,
+    // Used for synthesized AST nodes that have no relation to any location in the original code:
+    pub(crate) no_span: Span,
 }
 
 // Context for verifying one module
@@ -76,12 +78,12 @@ fn datatypes_invs(module: &Path, datatypes: &Vec<Datatype>) -> HashSet<Path> {
 }
 
 impl GlobalCtx {
-    pub fn new(krate: &Krate) -> Self {
+    pub fn new(krate: &Krate, no_span: Span) -> Self {
         let chosen_triggers: std::cell::RefCell<Vec<(Span, Vec<Vec<String>>)>> =
             std::cell::RefCell::new(Vec::new());
         let datatypes: HashMap<Path, Variants> =
             krate.datatypes.iter().map(|d| (d.x.path.clone(), d.x.variants.clone())).collect();
-        GlobalCtx { chosen_triggers, datatypes }
+        GlobalCtx { chosen_triggers, datatypes, no_span }
     }
 
     // Report chosen triggers as strings for printing diagnostics

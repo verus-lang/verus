@@ -337,8 +337,15 @@ pub(crate) fn mk_range<'tcx>(ty: rustc_middle::ty::Ty<'tcx>) -> IntRange {
 // TODO review and cosolidate type translation, e.g. with `ty_to_vir`, if possible
 pub(crate) fn mid_ty_to_vir<'tcx>(tcx: TyCtxt<'tcx>, ty: rustc_middle::ty::Ty<'tcx>) -> Typ {
     match ty.kind() {
-        TyKind::Tuple(_) if ty.tuple_fields().count() == 0 => Arc::new(TypX::Unit),
         TyKind::Bool => Arc::new(TypX::Bool),
+        TyKind::Uint(_) | TyKind::Int(_) => Arc::new(TypX::Int(mk_range(ty))),
+        TyKind::Ref(_, tys, rustc_ast::Mutability::Not) => mid_ty_to_vir(tcx, tys),
+        TyKind::Param(param) => Arc::new(TypX::TypParam(Arc::new(param.name.to_string()))),
+        TyKind::Tuple(_) => {
+            let typs: Vec<(Typ, Mode)> =
+                ty.tuple_fields().map(|t| (mid_ty_to_vir(tcx, t), Mode::Exec)).collect();
+            Arc::new(TypX::Tuple(Arc::new(typs)))
+        }
         TyKind::Adt(AdtDef { did, .. }, args) => Arc::new({
             let s = ty.to_string();
             // TODO use lang items instead of string comparisons
@@ -357,9 +364,6 @@ pub(crate) fn mid_ty_to_vir<'tcx>(tcx: TyCtxt<'tcx>, ty: rustc_middle::ty::Ty<'t
                 def_id_to_datatype(tcx, *did, Arc::new(typ_args))
             }
         }),
-        TyKind::Ref(_, tys, rustc_ast::Mutability::Not) => mid_ty_to_vir(tcx, tys),
-        TyKind::Uint(_) | TyKind::Int(_) => Arc::new(TypX::Int(mk_range(ty))),
-        TyKind::Param(param) => Arc::new(TypX::TypParam(Arc::new(param.name.to_string()))),
         _ => {
             unsupported!(format!("type {:?}", ty))
         }
@@ -394,6 +398,13 @@ pub(crate) fn _ty_resolved_path_to_debug_path(_tcx: TyCtxt<'_>, ty: &Ty) -> Stri
 pub(crate) fn ty_to_vir<'tcx>(tcx: TyCtxt<'tcx>, ty: &Ty) -> Typ {
     let Ty { hir_id: _, kind, span } = ty;
     match kind {
+        rustc_hir::TyKind::Tup(tys) => Arc::new(TypX::Tuple(Arc::new(
+            tys.iter().map(|t| (ty_to_vir(tcx, t), Mode::Exec)).collect(),
+        ))),
+        rustc_hir::TyKind::Rptr(
+            _,
+            rustc_hir::MutTy { ty: tys, mutbl: rustc_ast::Mutability::Not },
+        ) => ty_to_vir(tcx, tys),
         rustc_hir::TyKind::Path(QPath::Resolved(None, path)) => Arc::new(match path.res {
             Res::PrimTy(PrimTy::Bool) => TypX::Bool,
             Res::PrimTy(PrimTy::Uint(UintTy::U8)) => TypX::Int(IntRange::U(8)),
@@ -438,10 +449,6 @@ pub(crate) fn ty_to_vir<'tcx>(tcx: TyCtxt<'tcx>, ty: &Ty) -> Typ {
                 unsupported!(format!("type {:#?} {:?} {:?}", kind, path.res, span))
             }
         }),
-        rustc_hir::TyKind::Rptr(
-            _,
-            rustc_hir::MutTy { ty: tys, mutbl: rustc_ast::Mutability::Not },
-        ) => ty_to_vir(tcx, tys),
         _ => {
             unsupported!(format!("type {:#?} {:?}", kind, span))
         }

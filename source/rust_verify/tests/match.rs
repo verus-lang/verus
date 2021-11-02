@@ -158,6 +158,8 @@ test_verify_with_pervasive! {
     } => Err(err) => assert_one_fails(err)
 }
 
+/////////
+
 test_verify_with_pervasive! {
     #[test] test3 code! {
         enum Pair<A, B> {
@@ -236,6 +238,95 @@ test_verify_with_pervasive! {
             y = false;
             assert(!y);
             assert(z); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+/////////
+
+test_verify_with_pervasive! {
+    #[test] test4 code! {
+        fn test() {
+            let (mut y, z) = (true, false);
+            assert(y);
+            y = false;
+            assert(!y);
+            assert(!z);
+        }
+    } => Ok(())
+}
+
+test_verify_with_pervasive! {
+    #[test] test4b code! {
+        fn test() {
+            let x = (true, false);
+            let (mut y, z) = x;
+            assert(y);
+            y = false;
+            assert(!y);
+            assert(!z);
+        }
+    } => Ok(())
+}
+
+test_verify_with_pervasive! {
+    #[test] test4_fails code! {
+        fn test() {
+            let (mut y, z) = (true, false);
+            assert(!y); // FAILS
+            y = false;
+            assert(!y);
+            assert(!z);
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_with_pervasive! {
+    #[test] test4_fails2 code! {
+        fn test() {
+            let (mut y, z) = (true, false);
+            assert(y);
+            y = false;
+            assert(y); // FAILS
+            assert(!z);
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_with_pervasive! {
+    #[test] test4_fails3 code! {
+        fn test() {
+            let x = (true, false);
+            let (mut y, z) = x;
+            assert(y);
+            y = false;
+            assert(!y);
+            assert(z); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_with_pervasive! {
+    #[test] test5 code! {
+        fn test<A>(t: (bool, u8, A)) {
+            let (x, y, z) = t;
+            assert(equal((x, y, z), t));
+            assert(x == t.0);
+            assert(y == t.1);
+            assert(equal(z, t.2));
+        }
+    } => Ok(())
+}
+
+test_verify_with_pervasive! {
+    #[test] test5_fails code! {
+        fn test<A>(t: (bool, u8, A)) {
+            let (x, y, z) = t;
+            assert(equal((x, y, z), t));
+            assert(x == t.0);
+            assert(y == t.1);
+            assert(equal(z, t.2));
+            assert(false); // FAILS
         }
     } => Err(err) => assert_one_fails(err)
 }

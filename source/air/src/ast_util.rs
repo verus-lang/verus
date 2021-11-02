@@ -21,6 +21,10 @@ impl Debug for Constant {
 }
 
 impl<A: Clone> BinderX<A> {
+    pub fn new_a<B: Clone>(&self, a: B) -> Binder<B> {
+        Arc::new(BinderX { name: self.name.clone(), a })
+    }
+
     pub fn map_a<B: Clone>(&self, f: impl FnOnce(&A) -> B) -> BinderX<B> {
         BinderX { name: self.name.clone(), a: f(&self.a) }
     }

@@ -213,6 +213,9 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
             ctxt.next_id += 1;
             (false, Arc::new(TermX::App(App::Other(ctxt.next_id), Arc::new(vec![term1]))))
         }
+        ExpX::UnaryOpr(UnaryOpr::TupleField { .. }, _) => {
+            panic!("internal error: TupleField should have been removed before here")
+        }
         ExpX::UnaryOpr(UnaryOpr::Field { datatype, variant, field }, lhs) => {
             let (is_pure, arg) = gather_terms(ctxt, ctx, lhs, depth + 1);
             (

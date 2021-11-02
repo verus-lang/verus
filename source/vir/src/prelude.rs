@@ -28,8 +28,6 @@ pub(crate) fn prelude_nodes() -> Vec<Node> {
         str_to_node(&suffix_global_id(&path_to_air_ident(&check_decrease_int())));
     let height = str_to_node(&suffix_global_id(&path_to_air_ident(&height())));
     #[allow(non_snake_case)]
-    let Unit = str_to_node(UNIT);
-    #[allow(non_snake_case)]
     let Poly = str_to_node(POLY);
     let box_int = str_to_node(BOX_INT);
     let box_bool = str_to_node(BOX_BOOL);
@@ -44,8 +42,6 @@ pub(crate) fn prelude_nodes() -> Vec<Node> {
     let has_type = str_to_node(HAS_TYPE);
 
     nodes_vec!(
-        (declare-datatypes () (([Unit] (mk_unit))))
-
         // Fuel
         (declare-sort [FuelId])
         (declare-sort [Fuel])
