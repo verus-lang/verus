@@ -240,10 +240,7 @@ where
     let fuel = *fuel;
     let typ_params = typ_params.clone();
     let params = Arc::new(vec_map_result(params, |p| map_param_visitor(p, env, ft))?);
-    let ret = match ret {
-        None => None,
-        Some((x, typ, mode)) => Some((x.clone(), map_typ_visitor_env(typ, env, ft)?, *mode)),
-    };
+    let ret = map_param_visitor(ret, env, ft)?;
     let require = Arc::new(vec_map_result(require, |e| map_expr_visitor_env(e, env, fe, fs, ft))?);
     let ensure = Arc::new(vec_map_result(ensure, |e| map_expr_visitor_env(e, env, fe, fs, ft))?);
     let decrease =

@@ -2,7 +2,7 @@ use crate::ast::{Function, Ident, Idents, Mode, ParamX, Params, VirErr};
 use crate::context::Ctx;
 use crate::def::{
     prefix_ensures, prefix_fuel_id, prefix_fuel_nat, prefix_recursive, prefix_requires,
-    suffix_global_id, suffix_local_stmt_id, suffix_typ_param_id, SnapPos, Spanned, FUEL_BOOL,
+    suffix_global_id, suffix_local_stmt_id, suffix_typ_param_id, SnapPos, FUEL_BOOL,
     FUEL_BOOL_DEFAULT, FUEL_LOCAL, FUEL_TYPE, SUCC, ZERO,
 };
 use crate::sst_to_air::{exp_to_expr, path_to_air_ident, typ_invariant, typ_to_air};
@@ -215,11 +215,11 @@ pub fn func_name_to_air(ctx: &Ctx, function: &Function) -> Result<Commands, VirE
         all_typs.insert(0, str_typ(crate::def::TYPE));
     }
     let mut commands: Vec<Command> = Vec::new();
-    if let (Mode::Spec, Some((_, ret, _))) = (function.x.mode, function.x.ret.as_ref()) {
+    if function.x.mode == Mode::Spec {
         // Declare the function symbol itself
-        let typ = typ_to_air(ctx, &ret);
+        let typ = typ_to_air(ctx, &function.x.ret.x.typ);
         let name = suffix_global_id(&path_to_air_ident(&function.x.path));
-        let decl = Arc::new(DeclX::Fun(name, Arc::new(all_typs), typ));
+        let decl = Arc::new(DeclX::Fun(name, Arc::new(all_typs), typ.clone()));
         commands.push(Arc::new(CommandX::Global(decl)));
 
         // Check whether we need to declare the recursive version too
@@ -234,8 +234,7 @@ pub fn func_name_to_air(ctx: &Ctx, function: &Function) -> Result<Commands, VirE
                     rec_typs.insert(0, str_typ(crate::def::TYPE));
                 }
                 rec_typs.push(str_typ(FUEL_TYPE));
-                let rec_typ = typ_to_air(ctx, &function.x.ret.as_ref().unwrap().1);
-                let rec_decl = Arc::new(DeclX::Fun(rec_f, Arc::new(rec_typs), rec_typ));
+                let rec_decl = Arc::new(DeclX::Fun(rec_f, Arc::new(rec_typs), typ));
                 commands.push(Arc::new(CommandX::Global(rec_decl)));
             }
         }
@@ -254,8 +253,8 @@ pub fn func_decl_to_air(
     }
     let mut decl_commands: Vec<Command> = Vec::new();
     let mut check_commands: Vec<Command> = Vec::new();
-    match (function.x.mode, function.x.ret.as_ref()) {
-        (Mode::Spec, Some((_, ret, _))) => {
+    match function.x.mode {
+        Mode::Spec => {
             let name = suffix_global_id(&path_to_air_ident(&function.x.path));
 
             // Body
@@ -277,7 +276,7 @@ pub fn func_decl_to_air(
                 }
             }
             let f_app = ident_apply(&name, &Arc::new(f_args));
-            if let Some(post) = typ_invariant(ctx, &ret, &f_app) {
+            if let Some(post) = typ_invariant(ctx, &function.x.ret.x.typ, &f_app) {
                 // (axiom (forall (...) (=> pre post)))
                 let e_forall = mk_bind_expr(
                     &func_bind(ctx, &function.x.typ_params, &function.x.params, &f_app, false),
@@ -287,7 +286,7 @@ pub fn func_decl_to_air(
                 decl_commands.push(Arc::new(CommandX::Global(inv_axiom)));
             }
         }
-        (Mode::Exec, _) | (Mode::Proof, _) => {
+        Mode::Exec | Mode::Proof => {
             let msg = match &function.x.custom_req_err {
                 // Standard message
                 None => Some("failed precondition".to_string()),
@@ -308,10 +307,10 @@ pub fn func_decl_to_air(
             let mut ens_typs = (*param_typs).clone();
             let mut ens_params = (*function.x.params).clone();
             let mut ens_typing_invs: Vec<Expr> = Vec::new();
-            if let Some((name, typ, mode)) = &function.x.ret {
-                let param = ParamX { name: name.clone(), typ: typ.clone(), mode: *mode };
+            if function.x.has_return() {
+                let ParamX { name, typ, .. } = &function.x.ret.x;
                 ens_typs.push(typ_to_air(ctx, &typ));
-                ens_params.push(Spanned::new(function.span.clone(), param));
+                ens_params.push(function.x.ret.clone());
                 if let Some(expr) =
                     typ_invariant(ctx, &typ, &ident_var(&suffix_local_stmt_id(&name)))
                 {
@@ -333,7 +332,6 @@ pub fn func_decl_to_air(
                 ctx.funcs_with_ensure_predicate.insert(function.x.path.clone());
             }
         }
-        _ => {}
     }
     Ok((Arc::new(decl_commands), Arc::new(check_commands)))
 }
@@ -345,13 +343,15 @@ pub fn func_def_to_air(
     match (function.x.mode, function.x.ret.as_ref(), function.x.body.as_ref()) {
         (Mode::Exec, _, Some(body)) | (Mode::Proof, _, Some(body)) => {
             let mut state = crate::ast_to_sst::State::new();
-            let dest = function.x.ret.as_ref().map(|(x, _, _)| (x.clone(), Some(0)));
             let mut ens_params = (*function.x.params).clone();
-            if let Some((name, typ, mode)) = &function.x.ret {
-                let param = ParamX { name: name.clone(), typ: typ.clone(), mode: *mode };
-                ens_params.push(Spanned::new(function.span.clone(), param));
-                state.declare_new_var(&name, &typ, false);
-            }
+            let dest = if function.x.has_return() {
+                let ParamX { name, typ, .. } = &function.x.ret.x;
+                ens_params.push(function.x.ret.clone());
+                state.declare_new_var(name, typ, false);
+                Some((name.clone(), Some(0)))
+            } else {
+                None
+            };
             let ens_params = Arc::new(ens_params);
             let reqs = vec_map_result(&*function.x.require, |e| {
                 crate::ast_to_sst::expr_to_exp(ctx, &function.x.params, e)

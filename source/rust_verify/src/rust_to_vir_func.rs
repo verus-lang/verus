@@ -155,12 +155,15 @@ pub(crate) fn check_item_fn<'tcx>(
         }
     }
     let params = Arc::new(vir_params);
-    let ret = match (header.ensure_id_typ, ret_typ_mode) {
-        (None, None) => None,
-        (None, Some((typ, mode))) => Some((Arc::new(RETURN_VALUE.to_string()), typ, mode)),
-        (Some((x, _)), Some((typ, mode))) => Some((x, typ, mode)),
+    let (ret_name, ret_typ, ret_mode) = match (header.ensure_id_typ, ret_typ_mode) {
+        (None, None) => {
+            (Arc::new(RETURN_VALUE.to_string()), Arc::new(TypX::Tuple(Arc::new(vec![]))), mode)
+        }
+        (None, Some((typ, mode))) => (Arc::new(RETURN_VALUE.to_string()), typ, mode),
+        (Some((x, _)), Some((typ, mode))) => (x, typ, mode),
         _ => panic!("internal error: ret_typ"),
     };
+    let ret = spanned_new(sig.span, ParamX { name: ret_name, typ: ret_typ, mode: ret_mode });
     let func = FunctionX {
         path,
         visibility,
@@ -207,6 +210,13 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
     }
     let path = def_id_to_vir_path(ctxt.tcx, id);
     let params = Arc::new(vir_params);
+    let (ret_typ, ret_mode) = match ret_typ_mode {
+        None => (Arc::new(TypX::Tuple(Arc::new(vec![]))), mode),
+        Some((typ, mode)) => (typ, mode),
+    };
+    let ret_param =
+        ParamX { name: Arc::new(RETURN_VALUE.to_string()), typ: ret_typ, mode: ret_mode };
+    let ret = spanned_new(span, ret_param);
     let func = FunctionX {
         path,
         visibility,
@@ -214,7 +224,7 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
         mode,
         typ_params,
         params,
-        ret: ret_typ_mode.map(|(typ, mode)| (Arc::new(RETURN_VALUE.to_string()), typ, mode)),
+        ret,
         require: Arc::new(vec![]),
         ensure: Arc::new(vec![]),
         decrease: None,

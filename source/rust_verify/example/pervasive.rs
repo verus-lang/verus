@@ -24,8 +24,15 @@ pub fn affirm(b: bool) {
 #[spec]
 #[verifier(external)]
 #[allow(dead_code)]
-pub fn arbitrary<A>() -> A {
+pub fn arbitrary_external<A>() -> A {
     unimplemented!()
+}
+
+#[spec]
+#[verifier(no_verify)]
+#[allow(dead_code)]
+pub fn arbitrary<A>() -> A {
+    arbitrary_external()
 }
 
 #[verifier(external)]

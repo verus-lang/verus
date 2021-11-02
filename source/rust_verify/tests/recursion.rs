@@ -227,18 +227,17 @@ test_verify_with_pervasive! {
     } => Err(err) => assert_two_fails(err)
 }
 
-// TODO: Expression that fails to decrease in a function returning unit
-/*
 test_verify_with_pervasive! {
     #[test] unit_expr_decrease_fail code! {
         #[spec]
-        fn count_down_tricky(i:nat) {
+        fn count_down_tricky(i: nat) {
             decreases(i);
 
             if i != 0 {
-                count_down_tricky(i + 1)
+                count_down_tricky(i + 1) // FAILS
+            } else {
+                ()
             }
         }
     } => Err(err) => assert_one_fails(err)
 }
-*/

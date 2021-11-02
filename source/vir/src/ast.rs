@@ -306,9 +306,8 @@ pub struct FunctionX {
     pub typ_params: Idents,
     /// Function parameters
     pub params: Params,
-    /// Optional return value
-    /// TODO: rather than an Option, it might be cleaner to use the unit type
-    pub ret: Option<(Ident, Typ, Mode)>,
+    /// Return value (unit return type is treated specially; see FunctionX::has_return in ast_util)
+    pub ret: Param,
     /// Preconditions
     pub require: Exprs,
     /// Postconditions

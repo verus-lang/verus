@@ -3,6 +3,7 @@ pub const LIB: &str = crate::common::code_str! {
     extern crate builtin_macros;
 };
 
+// stripped-down version of pervasive.rs just for assume and assert
 pub const PERVASIVE: &str = crate::common::code_str! {
     use builtin::*;
 
@@ -14,15 +15,9 @@ pub const PERVASIVE: &str = crate::common::code_str! {
     }
 
     #[proof]
-    #[verifier(custom_req_err, "Assertion failure")]
     pub fn assert(b: bool) {
         requires(b);
         ensures(b);
-    }
-
-    #[proof]
-    pub fn affirm(b: bool) {
-        requires(b);
     }
 };
 

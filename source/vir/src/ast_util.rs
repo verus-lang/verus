@@ -1,4 +1,4 @@
-use crate::ast::{Mode, Path, SpannedTyped, Typ, TypX, VirErr, VirErrX, Visibility};
+use crate::ast::{FunctionX, Mode, Path, SpannedTyped, Typ, TypX, VirErr, VirErrX, Visibility};
 use crate::def::Spanned;
 use air::ast::Span;
 pub use air::ast_util::{ident_binder, str_ident};
@@ -27,11 +27,19 @@ pub fn types_equal(typ1: &Typ, typ2: &Typ) -> bool {
     match (&**typ1, &**typ2) {
         (TypX::Bool, TypX::Bool) => true,
         (TypX::Int(range1), TypX::Int(range2)) => range1 == range2,
+        (TypX::Tuple(typs1), TypX::Tuple(typs2)) => {
+            typs1.len() == typs2.len()
+                && typs1
+                    .iter()
+                    .zip(typs2.iter())
+                    .all(|((t1, m1), (t2, m2))| m1 == m2 && types_equal(t1, t2))
+        }
         (TypX::Datatype(p1, typs1), TypX::Datatype(p2, typs2)) => {
             p1 == p2
                 && typs1.len() == typs2.len()
                 && typs1.iter().zip(typs2.iter()).all(|(t1, t2)| types_equal(t1, t2))
         }
+        (TypX::Boxed(t1), TypX::Boxed(t2)) => types_equal(t1, t2),
         (TypX::TypParam(x1), TypX::TypParam(x2)) => x1 == x2,
         _ => false,
     }
@@ -76,5 +84,16 @@ impl<X> SpannedTyped<X> {
 
     pub fn new_x(&self, x: X) -> Arc<Self> {
         Arc::new(SpannedTyped { span: self.span.clone(), typ: self.typ.clone(), x })
+    }
+}
+
+impl FunctionX {
+    // unit return values are treated as no return value
+    pub fn has_return(&self) -> bool {
+        match &*self.ret.x.typ {
+            TypX::Tuple(ts) if ts.len() == 0 => false,
+            TypX::Datatype(path, _) if path == &crate::def::prefix_tuple_type(0) => false,
+            _ => true,
+        }
     }
 }

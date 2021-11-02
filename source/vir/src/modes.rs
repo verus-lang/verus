@@ -109,7 +109,13 @@ fn check_expr(typing: &mut Typing, outer_mode: Mode, expr: &Expr) -> Result<Mode
             Ok(mode)
         }
         ExprX::Call(x, _, es) => {
-            let function = &typing.funs[x].clone();
+            let function = match typing.funs.get(x) {
+                None => {
+                    let name = crate::ast_util::path_as_rust_name(x);
+                    return err_string(&expr.span, format!("cannot find function {}", name));
+                }
+                Some(f) => f.clone(),
+            };
             if !mode_le(outer_mode, function.x.mode) {
                 return err_string(
                     &expr.span,
@@ -124,10 +130,7 @@ fn check_expr(typing: &mut Typing, outer_mode: Mode, expr: &Expr) -> Result<Mode
                     param.x.mode,
                 )?;
             }
-            match function.x.ret {
-                None => Ok(function.x.mode),
-                Some((_, _, ret_mode)) => Ok(ret_mode),
-            }
+            Ok(function.x.ret.x.mode)
         }
         ExprX::Tuple(es) => {
             let modes = vec_map_result(es, |e| check_expr(typing, outer_mode, e))?;
@@ -304,7 +307,8 @@ fn check_function(typing: &mut Typing, function: &Function) -> Result<(), VirErr
         }
         typing.insert(&function.span, &param.x.name, param.x.mode);
     }
-    if let Some((_, _, ret_mode)) = function.x.ret {
+    if function.x.has_return() {
+        let ret_mode = function.x.ret.x.mode;
         if !mode_le(function.x.mode, ret_mode) {
             return err_string(
                 &function.span,

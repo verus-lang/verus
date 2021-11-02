@@ -161,7 +161,7 @@ fn expr_get_call(
                 stms.append(&mut stms0);
                 exps.push((e0, arg.typ.clone()));
             }
-            let has_ret = !get_function(ctx, expr, x)?.x.ret.is_none();
+            let has_ret = get_function(ctx, expr, x)?.x.has_return();
             Ok(Some((stms, x.clone(), typs.clone(), has_ret, Arc::new(exps))))
         }
         _ => Ok(None),
