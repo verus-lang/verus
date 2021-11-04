@@ -51,13 +51,14 @@ Note: this first step may take more than an hour, since the Rust source code is 
 
 ## Step 2: z3
 
-### Option A: make sure the Z3 executable is in your path
+### On Windows: make sure the Z3 executable is in your path
 
 Download the [Z3 binaries](https://github.com/Z3Prover/z3/releases).
+Make sure you get Z3 10.14.2.
 The Z3 `bin` folder contain the executable `z3.exe` or `z3`.
 Either add the Z3 `bin` folder to your path or copy the Z3 executable file to one of the folders in your path.
 
-### Option B (on unix): get a local Z3
+### On Unix/Mac: get a local Z3
 
 Use the script `./tools/get-z3.sh` to download Z3.
 The `./tools/cargo.sh` script will correctly set the `DUST_Z3_PATH` environment variable for the verifier to find Z3.
