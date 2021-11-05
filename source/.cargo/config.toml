@@ -2,4 +2,4 @@
 unstable-options = true
 
 [build]
-out-dir = "../install/bin"
+out-dir = "../rust/install/bin"
