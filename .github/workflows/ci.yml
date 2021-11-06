@@ -1,0 +1,25 @@
+name: run_CI_test
+
+on: [push, pull_request]      # to disable pull_request, change this to ->  on: [push]
+
+jobs:
+  run_ci_test:
+    # only one self-hosted runner available now, "yi-rust"
+    runs-on: [self-hosted, linux]       
+    steps:
+      # make our repository available for github workflow
+      - name: Checkout repository
+        uses: actions/checkout@v2
+
+      # run "cargo test" using our latest rustc binary
+      - name: running cargo test
+        working-directory: ./source   # "cd source"   
+        run: |
+          mv .cargo/config.toml .cargo/config2.toml
+          sed 's/..\/rust\//..\//' .cargo/config2.toml > .cargo/config.toml   # ../rust/install  -> ../install
+          ln -sf ~/local_bin/install ../install
+          ../install/bin/rustc --version     # just checking if this is a right rustc
+          RUSTC=../install/bin/rustc ../install/bin/cargo build  # check .cargo/config.toml if this line fails
+          DUST_Z3_PATH="/home/chanheec/local_bin/z3" RUSTC=../install/bin/rustc RUSTDOC=../install/bin/rustdoc  ../install/bin/cargo test  # -p rust_verify
+
+ 

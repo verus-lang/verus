@@ -1,0 +1,27 @@
+Chanhee Cho, chanheec(at)andrew.cmu.edu
+    
+Both CI for "rustc repo" and "dust repo" runs on a CMU server. It is connected as a "self-hosted runner" on github action.
+Adding a self-hosted runner is possible on the settings tab on github repository. "Settings->Actions->Runners".
+
+"rust repo" is for our custum rust compilation. "dust repo" runs CI test using the lastest binary of our custum rust.
+    
+For rust repo, CI is just for building and uploading binary for now. It is expected to be done within an hour.
+Note that we are currently skipping the CI tests that offical rust lang repo is doing. It would be nice to do some test that officla rust-lang CI does.
+   
+rust-lang compiler community uses "x.py" for building rust.
+x.py will use "config.toml" for its configuration
+if you want to update our rust compile configuration, 
+make changes at config.toml.verify, not config.toml
+    
+In the compile-rust.yml file, it is assumed that  
+prefix = "install" in config.toml.verify 
+search "General install configuration options" and "[install]" in config.toml file for detailed information on this.
+   
+For dust repo, it first graps the latest binary from above repo. 
+However, since two CI is running on the same machine, it can be simply done by "ln -s" or "cp -r".
+
+When making changes for Dust CI, make sure to pass the z3 binary path("DUST_Z3_PATH") to run tests.
+If something breaks, it is worth checking .cargo/config.toml file.
+
+
+
