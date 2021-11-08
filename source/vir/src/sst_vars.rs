@@ -3,17 +3,27 @@ use crate::def::Spanned;
 use crate::sst::{Stm, StmX, UniqueIdent};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
+use air::ast::{Span};
+
+fn to_ident_set(input: &HashSet<UniqueIdent>) -> HashSet<Arc<String>> {
+    let mut output = HashSet::new();
+    for item in input {
+        output.insert(item.0.clone());
+    };
+    output
+}
 
 // Compute:
 // - which variables have definitely been assigned to up to each statement
 // - which variables have been modified within each statement
 pub(crate) fn stm_assign(
+    queryable: &mut Vec<(Span, HashSet<Arc<String>>)>, 
     declared: &HashMap<UniqueIdent, Typ>,
     assigned: &mut HashSet<UniqueIdent>,
     modified: &mut HashSet<UniqueIdent>,
     stm: &Stm,
 ) -> Stm {
-    match &stm.x {
+    let result = match &stm.x {
         StmX::Call(_, _, _, Some(dest)) => {
             assigned.insert(dest.var.clone());
             if !dest.is_init {
@@ -34,11 +44,11 @@ pub(crate) fn stm_assign(
         StmX::If(cond, lhs, rhs) => {
             let mut pre_assigned = assigned.clone();
 
-            let lhs = stm_assign(declared, assigned, modified, lhs);
+            let lhs = stm_assign(queryable, declared, assigned, modified, lhs);
             let lhs_assigned = assigned.clone();
             *assigned = pre_assigned.clone();
 
-            let rhs = rhs.as_ref().map(|s| stm_assign(declared, assigned, modified, s));
+            let rhs = rhs.as_ref().map(|s| stm_assign(queryable, declared, assigned, modified, s));
             let rhs_assigned = &assigned;
 
             for x in declared.keys() {
@@ -55,8 +65,9 @@ pub(crate) fn stm_assign(
             let pre_assigned = assigned.clone();
             let mut pre_modified = modified.clone();
             *modified = HashSet::new();
-            let body = stm_assign(declared, assigned, modified, body);
+            let body = stm_assign(queryable, declared, assigned, modified, body);
             *assigned = pre_assigned;
+            
 
             assert!(modified_vars.len() == 0);
             let mut modified_vars: Vec<UniqueIdent> = Vec::new();
@@ -85,14 +96,18 @@ pub(crate) fn stm_assign(
         StmX::Block(stms) => {
             let mut pre_assigned = assigned.clone();
             let stms: Vec<Stm> =
-                stms.iter().map(|s| stm_assign(declared, assigned, modified, s)).collect();
+                stms.iter().map(|s| stm_assign(queryable, declared, assigned, modified, s)).collect();
             for x in declared.keys() {
                 if assigned.contains(x) && !pre_assigned.contains(x) {
                     pre_assigned.insert(x.clone());
                 }
             }
-            *assigned = pre_assigned;
             Spanned::new(stm.span.clone(), StmX::Block(Arc::new(stms)))
         }
-    }
+    };
+
+    let a = (stm.span.clone(), to_ident_set(assigned));
+    queryable.push(a);
+
+    result
 }

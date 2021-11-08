@@ -208,6 +208,23 @@ impl Context {
         validity
     }
 
+    pub fn cleanup_check_valid(&mut self)
+    {
+      // clean up
+      self.pop_name_scope();
+      self.smt_log.log_pop();
+    }
+
+    pub fn eval_expr(&mut self, expr: sise::Node) -> String {
+        self.smt_log.log_eval(expr);
+        let smt_output =
+            self.smt_manager.get_smt_process().send_commands(self.smt_log.take_pipe_data());
+        if smt_output.len() != 1 {
+            panic!("unexpected output from SMT eval {:?}", &smt_output);
+        }
+        smt_output[0].clone()
+    }
+
     pub fn command(&mut self, command: &Command) -> ValidityResult {
         match &**command {
             CommandX::Push => {
@@ -229,7 +246,8 @@ impl Context {
                     ValidityResult::Valid
                 }
             }
-            CommandX::CheckValid(query) => self.check_valid(&query),
+            CommandX::CheckValid(query) =>
+                self.check_valid(&query)
         }
     }
 }

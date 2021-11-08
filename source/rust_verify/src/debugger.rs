@@ -5,24 +5,30 @@ use rustc_span::source_map::SourceMap;
 use rustc_span::Span;
 use std::collections::HashMap;
 use std::fmt;
-use vir::def::SnapPos;
-use vir::model::Model as VModel;
+use vir::def::{SnapPos, suffix_local_stmt_id};
+use std::sync::Arc;
+use sise::Node;
+use air::model::Model as AModel;
+use std::collections::{HashSet};
 
 #[derive(Debug)]
 /// Rust-level model of a concrete counterexample
-pub struct Model {
+pub struct Debugger {
     /// Handle to the AIR-level model; only for internal use, e.g., for `eval`
-    vir_model: VModel,
+    air_model: AModel,
     /// Internal mapping from a line in the source file to a snapshot ID
     line_map: HashMap<usize, Ident>,
+    // the current line number
+    line: usize,
 }
 
-impl Model {
+impl Debugger {
     pub fn new(
-        vir_model: VModel,
+        air_model: AModel,
+        assign_map: &Vec<(ASpan, HashSet<Arc<String>>)>, 
         snap_map: &Vec<(ASpan, SnapPos)>,
         source_map: &SourceMap,
-    ) -> Model {
+    ) -> Debugger {
         let mut line_map = HashMap::new();
 
         if snap_map.len() > 0 {
@@ -75,6 +81,13 @@ impl Model {
             }
         }
 
+        // if assign_map.len() > 0 {
+        //     let (air_span, vars) = &assign_map[0];
+        //     let span: &Span = &from_raw_span(&air_span.raw_span);
+        //     let (start, end) =
+        //         source_map.is_valid_span(*span).expect("internal error: invalid Span");
+        //     println!("lines {}..{}, has {:?}", start.line, end.line, vars);
+        // }
         // Debugging sanity checks
         for (air_span, snap_pos) in snap_map {
             let span: &Span = &from_raw_span(&air_span.raw_span);
@@ -82,15 +95,73 @@ impl Model {
                 source_map.is_valid_span(*span).expect("internal error: invalid Span");
             println!("Span from {} to {} => {:?}", start.line, end.line, snap_pos);
         }
-        Model { vir_model, line_map }
+        Debugger { air_model, line_map, line: 0 }
     }
 
-    pub fn query_variable(&self, line: usize, name: Ident) -> Option<String> {
-        Some(self.vir_model.query_variable(self.line_map.get(&line)?.clone(), name)?)
+    fn set_line(&mut self, line: usize) {
+        if let None = self.line_map.get(&line) {
+            println!("invalid line number {}, no snapshot found", line);
+        } else {
+            self.line = line;
+            println!("line number set to {}", line);
+        }
+    }
+
+    fn translate_variable(&self, name: &Ident) -> Option<String>
+    {
+        let sid = self.line_map.get(&self.line)?;
+        let name = suffix_local_stmt_id(&(Arc::new(name.to_string())));
+        self.air_model.translate_variable(sid, &name)
+    }
+
+    fn rewrite_eval_expr(&self, expr: &sise::Node) -> Option<sise::Node>
+    {
+        match expr {
+            Node::Atom(var) => {
+                let name = self.translate_variable(&Arc::new(String::from(var)))?;
+                Some(Node::Atom(name))
+            }
+            Node::List(app) => {
+                if let Node::Atom(var) = &app[0] {
+                    // TODO: should use suffix_global_id + path_to_air_ident?
+                    let mut func_name = var.clone();
+                    func_name.push('.');
+                    func_name.push('?');
+                    let mut items = vec![Node::Atom(func_name)];
+                    for name in app.iter().skip(1) {
+                        let name = self.rewrite_eval_expr(name)?;
+                        items.push(name);
+                    }
+                    Some(Node::List(items))
+                } else {
+                    None
+                }
+            }
+        }
+    }
+
+    fn eval_expr(&self, context: &mut air::context::Context, expr: &[u8])
+    {
+        let mut parser = sise::Parser::new(expr);
+        let node = sise::read_into_tree(&mut parser).unwrap();
+        let expr = self.rewrite_eval_expr(&node).unwrap();
+        let result = context.eval_expr(expr);
+        println!("{}", result);
+    }
+
+    pub fn start_shell(&mut self, context: &mut air::context::Context) {
+        println!("welcome to verus debugger shell");
+
+        self.set_line(26);
+
+        self.eval_expr(context, b"x");
+        // self.eval_expr(context, b"y");
+        self.eval_expr(context, b"(add_one x)");
+        // self.eval_expr(context, b"(add_one (add_one x))");
     }
 }
 
-impl fmt::Display for Model {
+impl fmt::Display for Debugger {
     /// Dump the contents of the Rust model for debugging purposes
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "\nDisplaying model with {} lines\n", self.line_map.len())?;

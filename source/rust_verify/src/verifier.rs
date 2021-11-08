@@ -1,6 +1,6 @@
 use crate::config::Args;
 use crate::context::{Context, ErasureInfo};
-use crate::model::Model;
+use crate::debugger::Debugger;
 use crate::unsupported;
 use crate::util::from_raw_span;
 use air::ast::{Command, CommandX, SpanOption};
@@ -14,7 +14,8 @@ use std::io::Write;
 use vir::ast::{Krate, VirErr, VirErrX, Visibility};
 use vir::ast_util::{is_visible_to, path_as_rust_name};
 use vir::def::SnapPos;
-use vir::model::Model as VModel;
+use std::sync::Arc;
+use std::collections::HashSet;
 
 pub struct Verifier {
     pub encountered_vir_error: bool,
@@ -134,10 +135,13 @@ impl Verifier {
     fn check_result_validity(
         &mut self,
         compiler: &Compiler,
+        air_context: &mut air::context::Context,
+        assign_map: &Vec<(air::ast::Span, HashSet<Arc<String>>)>, 
         snap_map: &Vec<(air::ast::Span, SnapPos)>,
-        command: &Command,
-        result: ValidityResult,
+        command: &Command
     ) {
+        let result = air_context.command(&command);
+
         match result {
             ValidityResult::Valid => {
                 if let CommandX::CheckValid(_) = **command {
@@ -160,12 +164,13 @@ impl Verifier {
                         .map(|x| ErrorSpan::new_from_air_span(compiler.session().source_map(), x)),
                 ));
                 if self.args.debug {
-                    println!("Received AIR model: {}", air_model);
-                    let vir_model = VModel::new(air_model);
-                    let model = Model::new(vir_model, snap_map, compiler.session().source_map());
-                    println!("Build Rust model: {}", model);
+                    let mut debugger = Debugger::new(air_model, assign_map, snap_map, compiler.session().source_map());
+                    debugger.start_shell(air_context);
                 }
             }
+        }
+        if let CommandX::CheckValid(_) = **command {
+            air_context.cleanup_check_valid();
         }
     }
 
@@ -188,6 +193,7 @@ impl Verifier {
         compiler: &Compiler,
         air_context: &mut air::context::Context,
         commands: &Vec<Command>,
+        assign_map: &Vec<(air::ast::Span, HashSet<Arc<String>>)>, 
         snap_map: &Vec<(air::ast::Span, SnapPos)>,
         comment: &str,
     ) {
@@ -196,7 +202,7 @@ impl Verifier {
             air_context.comment(comment);
         }
         for command in commands.iter() {
-            self.check_result_validity(compiler, snap_map, &command, air_context.command(&command));
+            self.check_result_validity(compiler, air_context, assign_map, snap_map, &command);
         }
     }
 
@@ -264,6 +270,7 @@ impl Verifier {
                 air_context,
                 &check_commands,
                 &vec![],
+                &vec![],
                 &("Function-Termination ".to_string() + &path_as_rust_name(&function.x.path)),
             );
         }
@@ -273,11 +280,12 @@ impl Verifier {
             if Some(module.clone()) != function.x.visibility.owning_module {
                 continue;
             }
-            let (commands, snap_map) = vir::func_to_air::func_def_to_air(ctx, &function)?;
+            let (commands, assign_map, snap_map) = vir::func_to_air::func_def_to_air(ctx, &function)?;
             self.run_commands_queries(
                 compiler,
                 air_context,
                 &commands,
+                &assign_map,
                 &snap_map,
                 &("Function-Def ".to_string() + &path_as_rust_name(&function.x.path)),
             );

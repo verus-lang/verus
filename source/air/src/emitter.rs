@@ -1,5 +1,4 @@
 use crate::ast::{Decl, Expr, Query};
-use crate::model::ModelExpr;
 use crate::printer::{
     decl_to_node, expr_to_node, macro_push_node, node_to_string_indent, query_to_node,
 };
@@ -134,9 +133,9 @@ impl Emitter {
         }
     }
 
-    pub fn log_eval(&mut self, expr: ModelExpr) {
+    pub fn log_eval(&mut self, expr: Node) {
         if !self.is_none() {
-            self.log_node(&nodes!(eval {Node::Atom(expr.to_string())}));
+            self.log_node(&nodes!(eval {expr}));
         }
     }
 }

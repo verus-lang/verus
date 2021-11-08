@@ -16,6 +16,7 @@ use air::ast_util::{
     str_apply, str_ident, str_typ, str_var, string_apply,
 };
 use std::sync::Arc;
+use std::collections::{HashSet};
 
 // binder for forall (typ_params params)
 pub(crate) fn func_bind_trig(
@@ -339,7 +340,7 @@ pub fn func_decl_to_air(
 pub fn func_def_to_air(
     ctx: &Ctx,
     function: &Function,
-) -> Result<(Commands, Vec<(Span, SnapPos)>), VirErr> {
+) -> Result<(Commands, Vec<(Span, HashSet<Arc<String>>)>, Vec<(Span, SnapPos)>), VirErr> {
     match (function.x.mode, function.x.ret.as_ref(), function.x.body.as_ref()) {
         (Mode::Exec, _, Some(body)) | (Mode::Proof, _, Some(body)) => {
             let mut state = crate::ast_to_sst::State::new();
@@ -369,7 +370,7 @@ pub fn func_def_to_air(
                 state.new_statement_var(&decl.ident.0);
                 state.local_decls.push(decl.clone());
             }
-            let (commands, snap_map) = crate::sst_to_air::body_stm_to_air(
+            let (commands, assign_map, snap_map) = crate::sst_to_air::body_stm_to_air(
                 ctx,
                 &function.x.typ_params,
                 &function.x.params,
@@ -380,8 +381,8 @@ pub fn func_def_to_air(
                 &stm,
             );
             state.finalize();
-            Ok((commands, snap_map))
+            Ok((commands, assign_map, snap_map))
         }
-        _ => Ok((Arc::new(vec![]), vec![])),
+        _ => Ok((Arc::new(vec![]), vec![], vec![])),
     }
 }

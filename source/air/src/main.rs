@@ -140,9 +140,6 @@ pub fn main() {
                         println!("Additional error detail at {}", as_string);
                     }
                 }
-                if debug {
-                    println!("Model: {}", m);
-                }
             }
         }
     }

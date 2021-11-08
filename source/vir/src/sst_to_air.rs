@@ -318,6 +318,7 @@ struct State {
     snapshot_count: u32,    // Used to ensure unique Idents for each snapshot
     latest_snapshot: Ident, // The ID of the closest snapshot that dominates the current position in the AST
     snap_map: Vec<(Span, SnapPos)>, // Maps each statement's span to the closest dominating snapshot's ID
+    assign_map: Vec<(Span, HashSet<Ident>)>, // Maps Maps each statement's span to the assigned variables (that can potentially be queried)
 }
 
 fn assume_var(span: &Span, x: &UniqueIdent, exp: &Exp) -> Stm {
@@ -661,7 +662,7 @@ pub fn body_stm_to_air(
     reqs: &Vec<Exp>,
     enss: &Vec<Exp>,
     stm: &Stm,
-) -> (Commands, Vec<(Span, SnapPos)>) {
+) -> (Commands, Vec<(Span, HashSet<Arc<String>>)>, Vec<(Span, SnapPos)>) {
     // Verifying a single function can generate multiple SMT queries.
     // Some declarations (local_shared) are shared among the queries.
     // Others are private to each query.
@@ -698,10 +699,15 @@ pub fn body_stm_to_air(
         snapshot_count: 0,
         latest_snapshot: initial_snapshot_name.clone(),
         snap_map: Vec::new(),
+        assign_map: Vec::new(),
     };
 
-    let stm = crate::sst_vars::stm_assign(&declared, &mut assigned, &mut HashSet::new(), stm);
+    println!("assign map {:?}", stm);
+    let stm = crate::sst_vars::stm_assign(&mut state.assign_map, &declared, &mut assigned, &mut HashSet::new(), stm);
+    // println!("assign map {:?}", stm);
     let mut stmts = stm_to_stmts(ctx, &mut state, &stm);
+
+    println!("assign map {:?}", state.snap_map);
 
     if ctx.debug {
         let snapshot = Arc::new(StmtX::Snapshot(initial_snapshot_name));
@@ -735,5 +741,5 @@ pub fn body_stm_to_air(
 
     let query = Arc::new(QueryX { local: Arc::new(local), assertion });
     state.commands.push(Arc::new(CommandX::CheckValid(query)));
-    (Arc::new(state.commands), state.snap_map)
+    (Arc::new(state.commands), state.assign_map, state.snap_map)
 }

@@ -160,11 +160,7 @@ fn smt_check_assertion<'ctx>(
             if context.debug {
                 println!("Z3 model: {:?}", &model);
             }
-            let mut air_model = Model::new(snapshots);
-            if context.debug {
-                air_model.build(context, local_vars);
-            }
-            ValidityResult::Invalid(air_model, discovered_span, discovered_global_span)
+            ValidityResult::Invalid(Model::new(snapshots), discovered_span, discovered_global_span)
         }
     }
 }
@@ -209,8 +205,5 @@ pub(crate) fn smt_check_query<'ctx>(
     // check assertion
     let result = smt_check_assertion(context, &infos, snapshots, local_vars, &labeled_assertion);
 
-    // clean up
-    context.pop_name_scope();
-    context.smt_log.log_pop();
     result
 }
