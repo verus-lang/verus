@@ -9,7 +9,7 @@ cloning a modified version of the rust compiler into a new `rust` directory.
 Thus far, we have made only minor modifications to the Rust
 compiler, primarily to add additional hooks for the verification code.
 
-See[source/Code.md] for more details about files in `source`.  See the
+[See](source/CODE.md) for more details about files in `source`.  See the
 [official docs](https://rustc-dev-guide.rust-lang.org/) for more about the
 normal Rust compiler.
 
