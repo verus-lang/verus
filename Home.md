@@ -1,1 +1,1 @@
-Welcome to the verus wiki!
+## Design and project goals: [[Goals]]
