@@ -1,6 +1,6 @@
 See [Goals](../../../wiki/Goals) for a brief description of the project's goals.
 
-# Building the project
+## Building the project
 
 The main project source is in `source`.
 
@@ -13,7 +13,7 @@ See [source/Code.md] for more details about files in `source`.  See the
 [official docs](https://rustc-dev-guide.rust-lang.org/) for more about the
 normal Rust compiler.
 
-## Step 1: build Rust
+### Step 1: build Rust
 
 On Linux and Mac, start in the project root directory and run the `tools/set-up-rust.sh` script.
 The script clones `secure-foundations/rust` into the `rust` subdirectory. It also creates a `config.toml` file based on `config.toml.verify`.
@@ -47,7 +47,7 @@ Change directory back to the project root:
 cd ..
 ```
 
-## Step 2: z3
+### Step 2: z3
 
 Change directory to `source`:
 
@@ -55,20 +55,20 @@ Change directory to `source`:
 cd source
 ```
 
-### On Windows: make sure the Z3 executable is in your path
+#### On Windows: make sure the Z3 executable is in your path
 
 Download the [Z3 binaries](https://github.com/Z3Prover/z3/releases).
 Make sure you get Z3 10.14.2.
 The Z3 `bin` folder contain the executable `z3.exe` or `z3`.
 Either add the Z3 `bin` folder to your path or copy the Z3 executable file to one of the folders in your path.
 
-### On Unix/Mac: get a local Z3
+#### On Unix/Mac: get a local Z3
 
 Use the script `./tools/get-z3.sh` to download Z3.
 The `./tools/cargo.sh` script will correctly set the `VERUS_Z3_PATH` environment variable for the verifier to find Z3.
 If you run the verifier manually, set `VERUS_Z3_PATH` to `path_to/verify/z3`.
 
-## Step 3: build the verifier
+### Step 3: build the verifier
 
 You should be in the `source` subdirectory.
 
@@ -97,7 +97,7 @@ This will build four crates:
 - one crate that contains built-in definitions used by code being verified:
     - builtin
 
-# Running the verifier 
+## Running the verifier 
 
 
 After running the build steps above, you can verify an example file.
@@ -126,7 +126,7 @@ and reports the errors that Z3 finds.
 
 The `-L ../rust/install/bin/` is used to link to the `builtin` crate.
 
-# Editing the source code
+## Editing the source code
 
 Before committing any changes to the source code,
 make sure that it conforms to the `rustfmt` tool's guidelines.
@@ -145,7 +145,7 @@ override for this project:
 
 ```
 cd ..
-# In the project root:
+## In the project root:
 rustup toolchain link rust-verify rust/install/
 rustup override set rust-verify
 ```
@@ -159,7 +159,7 @@ To automatically apply these suggestions to the source code, type:
 ../rust/install/bin/cargo-fmt
 ```
 
-# Documentation
+## Documentation
 
 Commenting the code is *strongly encouraged*!  Use `///` to create comments
 that [`rustdoc`](https://doc.rust-lang.org/rustdoc/what-is-rustdoc.html) can
@@ -171,7 +171,7 @@ RUSTC=../rust/install/bin/rustc RUSTDOC=../rust/install/bin/rustdoc ../rust/inst
 ```
 which will produce documentation files, e.g., `./target/doc/rust_verify/index.html`
 
-# Running tests for the rust to vir translation, and inspecting the resulting vir/air/smt
+## Running tests for the rust to vir translation, and inspecting the resulting vir/air/smt
 
 `cargo test` will run the tests for `rust_verify`,
 
