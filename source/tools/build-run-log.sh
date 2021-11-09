@@ -16,8 +16,8 @@ rs_file_basename=`basename "$rs_file"`
 
 mkdir -p $rs_file_dir/log
 
-RUSTC=../install/bin/rustc ../install/bin/cargo build && \
-        DYLD_LIBRARY_PATH=../install/lib/rustlib/x86_64-apple-darwin/lib LD_LIBRARY_PATH=../install/lib ../install/bin/rust_verify --edition=2018 $rs_file -L ../install/bin/ \
+RUSTC=../rust/install/bin/rustc ../rust/install/bin/cargo build && \
+        DYLD_LIBRARY_PATH=../rust/install/lib/rustlib/x86_64-apple-darwin/lib LD_LIBRARY_PATH=../rust/install/lib ../rust/install/bin/rust_verify --edition=2018 $rs_file -L ../rust/install/bin/ \
         --log-air $rs_file_dir/log/$rs_file_basename.air --log-vir $rs_file_dir/log/$rs_file_basename.vir --log-smt $rs_file_dir/log/$rs_file_basename.smt
 result=$?
 

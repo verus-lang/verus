@@ -20,6 +20,6 @@ jobs:
           ln -sf ~/local_bin/install ../install
           ../install/bin/rustc --version     # just checking if this is a right rustc
           RUSTC=../install/bin/rustc ../install/bin/cargo build  # check .cargo/config.toml if this line fails
-          DUST_Z3_PATH="/home/chanheec/local_bin/z3" RUSTC=../install/bin/rustc RUSTDOC=../install/bin/rustdoc  ../install/bin/cargo test  # -p rust_verify
+          VERUS_Z3_PATH="/home/chanheec/local_bin/z3" RUSTC=../install/bin/rustc RUSTDOC=../install/bin/rustdoc  ../install/bin/cargo test  # -p rust_verify
 
  

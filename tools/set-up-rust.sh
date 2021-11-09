@@ -14,3 +14,7 @@ if [ -d rust ]; then
 fi
 
 git clone git@github.com:secure-foundations/rust.git
+(
+    cd rust
+    cp config.toml.verify config.toml
+)

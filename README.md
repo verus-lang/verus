@@ -1,46 +1,38 @@
-This directory contains an experimental project for formally verifying Rust-like code.
-It is currently unfinished and under construction.
 See [Goals](../../../wiki/Goals) for a brief description of the project's goals.
 
 # Building the project
 
-The project root directory contains the following subdirectories:
+The main project source is in `source`.
 
-```
-.github
-compiler
-library
-src
-verify
-```
+`tools` contains scripts for setting up the development environment by
+cloning a modified version of the rust compiler into a new `rust` directory.
+Thus far, we have made only minor modifications to the Rust
+compiler, primarily to add additional hooks for the verification code.
 
-All but the `verify` subdirectory come from the Rust compiler's public
-repository.  Thus far, we have made only minor modifications to the Rust
-compiler, primarily to add additional hooks for the verification code.  See
-[Code.md] for more details about files in the `verify` directory.  See the
+See [source/Code.md] for more details about files in `source`.  See the
 [official docs](https://rustc-dev-guide.rust-lang.org/) for more about the
 normal Rust compiler.
 
 ## Step 1: build Rust
 
-Start in the project root directory.
-Create a `config.toml` file based on `config.toml.verify`, and run `x.py install`:
+On Linux and Mac, start in the project root directory and run the `tools/set-up-rust.sh` script.
+The script clones `secure-foundations/rust` into the `rust` subdirectory. It also creates a `config.toml` file based on `config.toml.verify`.
+
+On Windows you need to perform those steps manually.
+
+Once you have the rust clone, build the rust compiler with `python x.py install` in the `rust` directory:
 
 ```
-cp config.toml.verify config.toml
+cd rust
 python x.py install
 ```
 
-Running `x.py install` creates both a `build` and an `install` directory in the project root directory:
+Running `x.py install` creates both a `build` and an `install` directory in the `rust` directory:
 
 ```
-.github
+$ ls
 build
-compiler
 install
-library
-src
-verify
 ```
 
 All the installation goes into the project `install` directory;
@@ -49,7 +41,19 @@ nothing is installed outside the project directory
 
 Note: this first step may take more than an hour, since the Rust source code is large, but all other steps are fast.
 
+Change directory back to the project root:
+
+```
+cd ..
+```
+
 ## Step 2: z3
+
+Change directory to `source`:
+
+```
+cd source
+```
 
 ### On Windows: make sure the Z3 executable is in your path
 
@@ -61,27 +65,23 @@ Either add the Z3 `bin` folder to your path or copy the Z3 executable file to on
 ### On Unix/Mac: get a local Z3
 
 Use the script `./tools/get-z3.sh` to download Z3.
-The `./tools/cargo.sh` script will correctly set the `DUST_Z3_PATH` environment variable for the verifier to find Z3.
-If you run the verifier manually, set `DUST_Z3_PATH` to `path_to/verify/z3`.
+The `./tools/cargo.sh` script will correctly set the `VERUS_Z3_PATH` environment variable for the verifier to find Z3.
+If you run the verifier manually, set `VERUS_Z3_PATH` to `path_to/verify/z3`.
 
 ## Step 3: build the verifier
 
-First, go to the `verify` subdirectory:
+You should be in the `source` subdirectory.
+
+Set the RUSTC environment variable to point to `../rust/install/bin/rustc` and use `cargo` to build the verifier:
 
 ```
-cd verify
-```
-
-Then set the RUSTC environment variable to point to `../install/bin/rustc` and use `cargo` to build the verifier:
-
-```
-../install/bin/cargo build
+../rust/install/bin/cargo build
 ```
 
 For example, on Darwin (and likely Linux):
 
 ```
-RUSTC=../install/bin/rustc ../install/bin/cargo build
+RUSTC=../rust/install/bin/rustc ../rust/install/bin/cargo build
 ```
 
 This will build four crates:
@@ -99,19 +99,20 @@ This will build four crates:
 
 # Running the verifier 
 
+
 After running the build steps above, you can verify an example file.
-From the `verify` directory, run:
+From the `source` directory, run:
 
 on Windows:
 
 ```
-../install/bin/rust_verify rust_verify/example/recursion.rs -L ../install/bin/
+../rust/install/bin/rust_verify rust_verify/example/recursion.rs -L ../rust/install/bin/
 ```
 
 on Darwin (and likely Linux):
 
 ```
-DYLD_LIBRARY_PATH=../install/lib/rustlib/x86_64-apple-darwin/lib LD_LIBRARY_PATH=../install/lib ../install/bin/rust_verify rust_verify/example/recursion.rs -L ../install/bin/
+DYLD_LIBRARY_PATH=../rust/install/lib/rustlib/x86_64-apple-darwin/lib LD_LIBRARY_PATH=../rust/install/lib ../rust/install/bin/rust_verify rust_verify/example/recursion.rs -L ../rust/install/bin/
 ```
 
 You can also use the helper script:
@@ -123,7 +124,7 @@ You can also use the helper script:
 This runs the `Rust --> VIR --> AIR --> Z3` pipeline on `recursion.rs`
 and reports the errors that Z3 finds.
 
-The `-L ../install/bin/` is used to link to the `builtin` crate.
+The `-L ../rust/install/bin/` is used to link to the `builtin` crate.
 
 # Editing the source code
 
@@ -133,7 +134,7 @@ We are using the default `rustfmt` settings from the Rust repository.
 To check the source code, type the following from the `verify` directory:
 
 ```
-../install/bin/cargo-fmt -- --check
+../rust/install/bin/cargo-fmt -- --check
 ```
 
 If you have other toolchains installed (with `rustup`) this will run the active
@@ -145,7 +146,7 @@ override for this project:
 ```
 cd ..
 # In the project root:
-rustup toolchain link rust-verify install/
+rustup toolchain link rust-verify rust/install/
 rustup override set rust-verify
 ```
 
@@ -155,7 +156,7 @@ Otherwise, it will report suggestions on how to reformat the source code.
 To automatically apply these suggestions to the source code, type:
 
 ```
-../install/bin/cargo-fmt
+../rust/install/bin/cargo-fmt
 ```
 
 # Documentation
@@ -166,7 +167,7 @@ automatically extract into HTML documentation.
 
 You can compile the current documentation by running (in the `verify` directory)
 ```
-RUSTC=../install/bin/rustc RUSTDOC=../install/bin/rustdoc ../install/bin/cargo doc 
+RUSTC=../rust/install/bin/rustc RUSTDOC=../rust/install/bin/rustdoc ../rust/install/bin/cargo doc 
 ```
 which will produce documentation files, e.g., `./target/doc/rust_verify/index.html`
 
@@ -175,7 +176,7 @@ which will produce documentation files, e.g., `./target/doc/rust_verify/index.ht
 `cargo test` will run the tests for `rust_verify`,
 
 ```
-RUSTC=../install/bin/rustc ../install/bin/cargo test -p rust_verify
+RUSTC=../rust/install/bin/rustc ../rust/install/bin/cargo test -p rust_verify
 ```
 
 As discussed above, you may only need the RUSTC variable on Darwin/Linux.
@@ -183,7 +184,7 @@ As discussed above, you may only need the RUSTC variable on Darwin/Linux.
 You can run a single test file and a specific test within with the following:
 
 ```
-RUSTC=../install/bin/rustc ../install/bin/cargo test -p rust_verify --test <test file> <test name>
+RUSTC=../rust/install/bin/rustc ../rust/install/bin/cargo test -p rust_verify --test <test file> <test name>
 ```
 
 See the cargo help for more info on the test flags.
@@ -194,7 +195,7 @@ You should only run a single test, as only the latest logged IR is preserved.
 For example, the following will emit the vir/air/smt logs to `rust_verify/logs`:
 
 ```
-VERIFY_LOG_IR_PATH="logs" RUSTC=../install/bin/rustc ../install/bin/cargo test -p rust_verify --test refs_basic test_struct_ref
+VERIFY_LOG_IR_PATH="logs" RUSTC=../rust/install/bin/rustc ../rust/install/bin/cargo test -p rust_verify --test refs_basic test_struct_ref
 ```
 
 @utaal has not yet figured out how to determine what test is currently running, to enable running
