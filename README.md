@@ -9,11 +9,11 @@ cloning a modified version of the rust compiler into a new `rust` directory.
 Thus far, we have made only minor modifications to the Rust
 compiler, primarily to add additional hooks for the verification code.
 
-[See](source/CODE.md) for more details about files in `source`.  See the
+See [our guide](source/CODE.md) for more details about files in `source`.  See the
 [official docs](https://rustc-dev-guide.rust-lang.org/) for more about the
 normal Rust compiler.
 
-### Step 1: build Rust
+### Step 1: Build Rust
 
 On Linux and Mac, start in the project root directory and run the `tools/set-up-rust.sh` script.
 The script clones `secure-foundations/rust` into the `rust` subdirectory. It also creates a `config.toml` file based on `config.toml.verify`.
@@ -47,6 +47,8 @@ Change directory back to the project root:
 cd ..
 ```
 
+You can pull in future updates to Rust via [update-rust.sh](./tools/update-rust.sh).
+
 ### Step 2: Setup z3
 
 Change directory to `source`:
@@ -68,7 +70,7 @@ Use the script `./tools/get-z3.sh` to download Z3.
 The `./tools/cargo.sh` script will correctly set the `VERUS_Z3_PATH` environment variable for the verifier to find Z3.
 If you run the verifier manually, set `VERUS_Z3_PATH` to `path_to/verify/z3`.
 
-### Step 3: build the verifier
+### Step 3: Build the verifier
 
 You should be in the `source` subdirectory.
 
