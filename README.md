@@ -9,7 +9,7 @@ cloning a modified version of the rust compiler into a new `rust` directory.
 Thus far, we have made only minor modifications to the Rust
 compiler, primarily to add additional hooks for the verification code.
 
-See [source/Code.md] for more details about files in `source`.  See the
+See[source/Code.md] for more details about files in `source`.  See the
 [official docs](https://rustc-dev-guide.rust-lang.org/) for more about the
 normal Rust compiler.
 
@@ -47,7 +47,7 @@ Change directory back to the project root:
 cd ..
 ```
 
-### Step 2: z3
+### Step 2: Setup z3
 
 Change directory to `source`:
 
