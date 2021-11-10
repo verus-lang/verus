@@ -201,7 +201,7 @@ test_verify_with_pervasive! {
 
             if i >= 5 { 0 } else { 1 + count_down_a(i + 1) }  // FAILS
         }
-    } => Err(err) => assert_two_fails(err)
+    } => Err(err) => assert_fails(err, 2)
 }
 
 test_verify_with_pervasive! {
@@ -224,7 +224,7 @@ test_verify_with_pervasive! {
                 count_down_a_stmt(i + 1);   // FAILS
             }
         }
-    } => Err(err) => assert_two_fails(err)
+    } => Err(err) => assert_fails(err, 2)
 }
 
 test_verify_with_pervasive! {

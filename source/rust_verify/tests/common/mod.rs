@@ -132,15 +132,18 @@ macro_rules! test_verify_with_pervasive {
     };
 }
 
+/// Assert that one verification failure happened on source lines containin the string "FAILS".
 #[allow(dead_code)]
 pub fn assert_one_fails(err: Vec<(Option<ErrorSpan>, Option<ErrorSpan>)>) {
     assert_eq!(err.len(), 1);
     assert!(err[0].0.as_ref().expect("span").test_span_line.contains("FAILS"));
 }
 
+/// Assert that `count` verification failures happened on source lines containin the string "FAILS".
 #[allow(dead_code)]
-pub fn assert_two_fails(err: Vec<(Option<ErrorSpan>, Option<ErrorSpan>)>) {
-    assert_eq!(err.len(), 2);
-    assert!(err[0].0.as_ref().expect("span").test_span_line.contains("FAILS"));
-    assert!(err[1].0.as_ref().expect("span").test_span_line.contains("FAILS"));
+pub fn assert_fails(err: Vec<(Option<ErrorSpan>, Option<ErrorSpan>)>, count: usize) {
+    assert_eq!(err.len(), count);
+    for c in 0..count {
+        assert!(err[c].0.as_ref().expect("span").test_span_line.contains("FAILS"));
+    }
 }
