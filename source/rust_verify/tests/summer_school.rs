@@ -1,4 +1,5 @@
 // tools/cargo.sh test -p rust_verify --test summer_school
+// VERIFY_LOG_IR_PATH="logs" tools/cargo.sh test -p rust_verify --test summer_school -- e05_pas
 
 #![feature(rustc_private)]
 #[macro_use]
@@ -403,6 +404,50 @@ test_verify_with_pervasive! {
 
 // -- e10 --
 
+const DIRECTIONS_SHARED_CODE: &str = code_str! {
+    #[allow(unused_imports)] use builtin::*;
+    #[allow(unused_imports)] use builtin_macros::*;
+    use crate::pervasive::*;
+
+    #[derive(PartialEq, Eq, Structural)]
+    pub enum Direction {
+        North,
+        East,
+        South,
+        West,
+    }
+
+    #[spec]
+    pub fn turn_right(direction: Direction) -> Direction {
+        // TODO do we want the ADT dependent typing that dafny does for enums?
+        // NOTE(Chris): there is already an expression in VIR for this
+        if direction == Direction::North {
+            Direction::East
+        } else if direction == Direction::East {
+            Direction::South
+        } else if direction == Direction::South {
+            Direction::West
+        } else {
+            Direction::North
+        }
+    }
+
+    #[proof]
+    fn rotation() {
+        assert(turn_right(Direction::North) == Direction::East);
+    }
+
+    #[spec]
+    pub fn turn_left(direction: Direction) -> Direction {
+        match direction {
+            Direction::North => Direction::West,
+            Direction::West => Direction::South,
+            Direction::South => Direction::East,
+            Direction::East => Direction::North,
+        }
+    }
+};
+
 #[test]
 fn e10_pass() {
     let files = vec![
@@ -418,52 +463,7 @@ fn e10_pass() {
         ),
         ("pervasive.rs".to_string(), PERVASIVE.to_string()),
         // TODO: maybe use the prelude here
-        (
-            "directions.rs".to_string(),
-            code! {
-                #[allow(unused_imports)] use builtin::*;
-                #[allow(unused_imports)] use builtin_macros::*;
-                use crate::pervasive::*;
-
-                #[derive(PartialEq, Eq, Structural)]
-                pub enum Direction {
-                    North,
-                    East,
-                    South,
-                    West,
-                }
-
-                #[spec]
-                pub fn turn_right(direction: Direction) -> Direction {
-                    // TODO do we want the ADT dependent typing that dafny does for enums?
-                    // NOTE(Chris): there is already an expression in VIR for this
-                    if direction == Direction::North {
-                        Direction::East
-                    } else if direction == Direction::East {
-                        Direction::South
-                    } else if direction == Direction::South {
-                        Direction::West
-                    } else {
-                        Direction::North
-                    }
-                }
-
-                #[proof]
-                fn rotation() {
-                    assert(turn_right(Direction::North) == Direction::East);
-                }
-
-                #[spec]
-                pub fn turn_left(direction: Direction) -> Direction {
-                    match direction {
-                        Direction::North => Direction::West,
-                        Direction::West => Direction::South,
-                        Direction::South => Direction::East,
-                        Direction::East => Direction::North,
-                    }
-                }
-            },
-        ),
+        ("directions.rs".to_string(), DIRECTIONS_SHARED_CODE.to_string()),
         (
             "test.rs".to_string(),
             code! {
@@ -481,6 +481,188 @@ fn e10_pass() {
                 #[proof]
                 fn two_wrongs_dont_make_a_right(dir: Direction) {
                     assert(turn_left(turn_left(dir)) == turn_right(turn_right(dir)));
+                }
+            },
+        ),
+    ];
+    let result = verify_files(files, "test.rs".to_string());
+    assert!(result.is_ok());
+}
+
+// TODO(jonh): e10_fail
+
+// -- e11 --
+
+#[test]
+#[ignore]
+fn e11_pass() {
+    let files = vec![
+        (
+            "lib.rs".to_string(),
+            code! {
+                extern crate builtin;
+                extern crate builtin_macros;
+
+                pub mod pervasive;
+                pub mod pervasive_set;
+            },
+        ),
+        ("pervasive.rs".to_string(), include_str!("../example/pervasive.rs").to_string()),
+        ("pervasive_set.rs".to_string(), include_str!("../example/pervasive_set.rs").to_string()),
+        (
+            "test.rs".to_string(),
+            code! {
+                extern crate builtin;
+                extern crate builtin_macros;
+
+                mod pervasive;  // TODO(utaal): eliminate these lines.
+                mod pervasive_set;
+
+                #[allow(unused_imports)] use builtin::*;
+                #[allow(unused_imports)] use builtin_macros::*;
+                use crate::pervasive::*;
+                use crate::pervasive_set::*;
+            } + code_str! {
+                #[derive(PartialEq, Eq, Structural)]
+                pub enum HAlign { Left, Center, Right }
+
+                #[derive(PartialEq, Eq, Structural)]
+                pub enum VAlign { Top, Middle, Bottom }
+
+                #[derive(PartialEq, Eq, Structural)]
+                pub struct TextAlign {
+                    hAlign: HAlign,
+                    vAlign: VAlign,
+                }
+
+                #[derive(PartialEq, Eq, Structural)]
+                pub enum GraphicsAlign { Square, Round }
+
+                #[derive(PartialEq, Eq, Structural)]
+                pub enum PageElement {
+                    Text(TextAlign),
+                    Graphics(GraphicsAlign),
+                }
+
+                #[proof]
+                fn num_page_elements()
+                {
+                    set_axioms::<int>();    // TODO(chris): magic to not have to call this
+                    /*
+                    ensures([
+                        exists(|eltSet:Set<HAlign>| cardinality(eltSet) == 3), // bound is tight
+                        forall(|eltSet:Set<HAlign>| cardinality(eltSet) <= 3), // bound is upper
+                    ]);
+                    */
+
+                    let maxSet = insert(insert(insert(empty(), HAlign::Left), HAlign::Center), HAlign::Right);
+
+                    let intSet = insert(insert(empty(), 8), 4);
+                    assert(cardinality::<int>(empty()) == 0);
+                    // TODO remove: trigger the wrong trigger while waiting for the right trigger
+                    assert(!contains::<int>(empty(), 1) && cardinality::<int>(insert(empty(), 1)) == cardinality::<int>(empty()) + 1);
+                    assert(cardinality::<int>(insert(empty(), 1)) == cardinality::<int>(empty()) + 1);
+
+                    set_axioms::<HAlign>();
+                    // TODO remove: more manual triggering of undesirable trigger
+                    assert(!contains(empty(), HAlign::Left));
+                    assert(!contains(insert(empty(), HAlign::Left), HAlign::Center));
+                    assert(!contains(insert(insert(empty(), HAlign::Left), HAlign::Center), HAlign::Right));
+                    // TODO(chris): some missing axioms about has_type
+                    //assert(cardinality(maxSet) == 3);
+
+                    // TODO(jonh): Complete rest of forall proof.
+                }
+            },
+        ),
+    ];
+    let result = verify_files(files, "test.rs".to_string());
+    assert!(result.is_ok());
+}
+
+// -- e12 --
+//
+const LUNCH_SHARED_CODE: &str = code_str! {
+    #[allow(unused_imports)] use builtin::*;
+    #[allow(unused_imports)] use builtin_macros::*;
+
+    #[derive(PartialEq, Eq, Structural)]
+    pub enum Meat { Salami, Ham }
+
+    #[derive(PartialEq, Eq, Structural)]
+    pub enum Cheese { Provolone, Swiss, Cheddar, Jack }
+
+    #[derive(PartialEq, Eq, Structural)]
+    pub enum Veggie { Olive, Onion, Pepper }
+
+    #[derive(PartialEq, Eq, Structural)]
+    pub enum Order {
+        Sandwich { meat: Meat, cheese: Cheese },
+        Pizza { meat: Meat, veggie: Veggie },
+        Appetizer { cheese: Cheese },
+    }
+};
+
+#[test]
+fn e13_pass() {
+    let files = vec![
+        (
+            "lib.rs".to_string(),
+            code! {
+                extern crate builtin;
+                extern crate builtin_macros;
+
+                pub mod pervasive;
+                pub mod directions;
+                pub mod lunch;
+            },
+        ),
+        ("pervasive.rs".to_string(), PERVASIVE.to_string()),
+        // TODO: maybe use the prelude here
+        ("directions.rs".to_string(), DIRECTIONS_SHARED_CODE.to_string()),
+        ("lunch.rs".to_string(), LUNCH_SHARED_CODE.to_string()),
+        (
+            "test.rs".to_string(),
+            code! {
+                extern crate builtin;
+                extern crate builtin_macros;
+
+                mod pervasive;
+                mod directions;
+                mod lunch;
+
+                #[allow(unused_imports)] use builtin::*;
+                #[allow(unused_imports)] use builtin_macros::*;
+                use crate::pervasive::*;
+                use crate::directions::{Direction, turn_left, turn_right};
+
+                #[spec]
+                fn add(x: int, y:int) -> int {
+                    x + y
+                }
+
+                #[proof]
+                fn forall_lemma() {
+                    // NB: The original version here fails with:
+                    // "Could not automatically infer triggers for this quantifer."
+                    // We decided that this use case -- a forall that can be proven but
+                    // never used (in any reasonable setting because no way is Chris
+                    // gonna trigger on '+'!) -- is extremely rare. Relevant in teaching,
+                    // perhaps, but not even in proof debugging.
+                    // assert(forall(|x:int| x + x == 2 * x));
+
+                    assert(forall(|x:int| add(x, x) == 2 * x));
+                }
+
+                #[proof]
+                fn another_forall_lemma() {
+                    assert(forall(|dir: Direction| turn_left(turn_left(dir))
+                                    == turn_right(turn_right(dir))));
+                }
+
+                #[proof]
+                fn cheese_take_two() {
+                    // TODO(chris) Forall statements!
                 }
             },
         ),
