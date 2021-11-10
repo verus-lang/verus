@@ -41,7 +41,7 @@ pub fn verify_files(
         "--crate-type".to_string(),
         "lib".to_string(),
         "--sysroot".to_string(),
-        "../../install".to_string(),
+        "../../rust/install".to_string(),
         entry_file,
         "-L".to_string(),
         "../../rust/install/bin/".to_string(),
