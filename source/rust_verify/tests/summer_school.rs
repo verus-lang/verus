@@ -1,3 +1,5 @@
+// tools/cargo.sh test -p rust_verify --test summer_school
+
 #![feature(rustc_private)]
 #[macro_use]
 mod common;
@@ -131,28 +133,69 @@ const E05_SHARED: &str = code_str! {
     // TODO: Set<> does not exist yet
     #[spec]
     fn has_seven_and_not_nine(intset: Set::<int>) -> bool {
-        intset.contains(7) && (!intset.contains(9))
+        // TODO(utaal): implement generic arguments to struct methods
+        // WANT: intset.contains(7) && (!intset.contains(9))
+        contains(intset, 7) && (!contains(intset, 9))
     }
 };
 
-test_verify_with_pervasive! {
-    #[test] #[ignore] e05_pass E05_SHARED.to_string() + code_str! {
-        #[proof]
-        fn try_out_some_set_literals(x: int, y: int)
-        {
-            // TODO: What should be the literal for mathematical Sets, and the encoding?
-            // TODO: This is probably what it would look like for rust HashSet
-            assert(Set::<int>::from([1, 3, 8]) == Set::<int>::from([8, 1, 3]));
-            // NOTE(Chris): The way you encode set literals influences what you can prove about it
-            // - axiom for conversion from slice (has quantifiers)
-            // - set![8, 1, 3] to sequence of insertions
-            // - construct an axiom about that particular literal (most efficient encoding)
+#[test]
+fn e05_pass() {
+    let files = vec![
+        ("lib.rs".to_string(), code! {
+            extern crate builtin;
+            extern crate builtin_macros;
 
-            assert(has_seven_and_not_nine(Set::<int>::from([7])));
+            pub mod pervasive;
+            pub mod pervasive_set;
+        }),
+        ("pervasive.rs".to_string(), include_str!("../example/pervasive.rs").to_string()),
+        ("pervasive_set.rs".to_string(), include_str!("../example/pervasive_set.rs").to_string()),
+        ("test.rs".to_string(), code! {
+            extern crate builtin;
+            extern crate builtin_macros;
 
-            assert(has_seven_and_not_nine(Set::<int>::from([7, 6, 5])));
+            mod pervasive;  // TODO(utaal): eliminate these lines.
+            mod pervasive_set;
+
+            #[allow(unused_imports)] use builtin::*;
+            #[allow(unused_imports)] use builtin_macros::*;
+            use crate::pervasive::*;
+            use crate::pervasive_set::*;
         }
-    } => Ok(())
+        + E05_SHARED
+        + code_str! {
+            #[proof]
+            fn try_out_some_set_literals(x: int, y: int)
+            {
+                // TODO(chris): make these axioms ambient when you include set library
+                set_axioms::<int>();
+
+                // TODO: What should be the literal for mathematical Sets, and the encoding?
+                // TODO: This is probably what it would look like for rust HashSet
+                // TODO(utaal): not even THIS works
+                // assert(Set::<int>::from([1, 3, 8]) == Set::<int>::from([8, 1, 3]));
+                let set138 = insert(insert(insert::<int>(empty(), 1), 3), 8);
+                let set813 = insert(insert(insert(empty(), 8), 1), 3);
+                // TODO(utaal): fix sets to allow == syntax for equality
+                //assert(set138 == set813);
+                assert(ext_equal(set138, set813));
+
+                // NOTE(Chris): The way you encode set literals influences what you can prove about it
+                // - axiom for conversion from slice (has quantifiers)
+                // - set![8, 1, 3] to sequence of insertions
+                // - construct an axiom about that particular literal (most efficient encoding)
+
+                let set7 = insert(empty(), 7);
+                let set765 = insert(insert(insert(empty(), 7), 6), 5);
+                assert(has_seven_and_not_nine(set7));
+
+                assert(has_seven_and_not_nine(set765));
+            }
+        })
+    ];
+    let result = verify_files(files, "test.rs".to_string());
+    assert!(result.is_ok());
 }
 
 test_verify_with_pervasive! {
