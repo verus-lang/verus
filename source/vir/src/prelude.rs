@@ -183,21 +183,25 @@ pub(crate) fn prelude_nodes() -> Vec<Node> {
             :pattern (([i_inv] bits i))
         )))
         (axiom (forall ((x Poly)) (!
-            (=>
+            ([has_type] x [type_id_int])
+            :pattern (([has_type] x [type_id_int]))
+        )))
+        (axiom (forall ((x Poly)) (!
+            (=
                 ([has_type] x [type_id_nat])
                 (<= 0 ([unbox_int] x))
             )
             :pattern (([has_type] x [type_id_nat]))
         )))
         (axiom (forall ((bits Int) (x Poly)) (!
-            (=>
+            (=
                 ([has_type] x ([type_id_uint] bits))
                 ([u_inv] bits ([unbox_int] x))
             )
             :pattern (([has_type] x ([type_id_uint] bits)))
         )))
         (axiom (forall ((bits Int) (x Poly)) (!
-            (=>
+            (=
                 ([has_type] x ([type_id_sint] bits))
                 ([i_inv] bits ([unbox_int] x))
             )
