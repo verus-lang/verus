@@ -203,5 +203,3 @@ For example, the following will emit the vir/air/smt logs to `rust_verify/logs`:
 VERIFY_LOG_IR_PATH="logs" RUSTC=../rust/install/bin/rustc ../rust/install/bin/cargo test -p rust_verify --test refs_basic test_struct_ref
 ```
 
-@utaal has not yet figured out how to determine what test is currently running, to enable running
-an entire file/suite and have the resulting logs organized by file/test name.
