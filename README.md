@@ -15,17 +15,20 @@ normal Rust compiler.
 
 ### Step 1: Build Rust
 
-On Linux and macOS, start in the project root directory and run the [`tools/set-up-rust.sh`](./tools/set-up-rust.sh) script.
-The script clones `secure-foundations/rust` into the `rust` subdirectory. It also creates a `config.toml` file based on `config.toml.verify`.
+On **Linux and macOS**, start in the project root directory and run the [`tools/set-up-rust.sh`](./tools/set-up-rust.sh) script.
 
-On Windows you need to perform those steps manually.
+On **Windows** you need to perform those steps manually.
 
-Once you have the rust clone, build the rust compiler with `python x.py install` in the `rust` directory:
+#### Build the Rust compiler
+
+Build the rust compiler with `python x.py install` in the `rust` directory:
 
 ```
 cd rust
 python x.py install
 ```
+
+(Or use python3, if that's what you've got.)
 
 Running `x.py install` creates both a `build` and an `install` directory in the `rust` directory:
 
@@ -76,12 +79,7 @@ You should be in the `source` subdirectory.
 
 Set the RUSTC environment variable to point to `../rust/install/bin/rustc` and use `cargo` to build the verifier:
 
-```
-../rust/install/bin/cargo build
-```
-
-For example, on macOS (and likely Linux):
-
+For example, on **macOS and Linux**:
 ```
 RUSTC=../rust/install/bin/rustc ../rust/install/bin/cargo build
 ```
@@ -105,19 +103,13 @@ This will build four crates:
 After running the build steps above, you can verify an example file.
 From the `source` directory, run:
 
-on Windows:
+on **Windows**:
 
 ```
 ../rust/install/bin/rust_verify rust_verify/example/recursion.rs -L ../rust/install/bin/
 ```
 
-on macOS (and likely Linux):
-
-```
-DYLD_LIBRARY_PATH=../rust/install/lib/rustlib/x86_64-apple-darwin/lib LD_LIBRARY_PATH=../rust/install/lib ../rust/install/bin/rust_verify rust_verify/example/recursion.rs -L ../rust/install/bin/
-```
-
-You can also use the helper script:
+You can also use the helper script on **Linux and macOS**:
 
 ```
 ./tools/rust-verify.sh rust_verify/example/recursion.rs
