@@ -35,7 +35,7 @@ pub fn verify_files(
     entry_file: String,
 ) -> Result<(), Vec<(Option<ErrorSpan>, Option<ErrorSpan>)>> {
     let rustc_args = vec![
-        "../../install/bin/rust_verify".to_string(),
+        "../../rust/install/bin/rust_verify".to_string(),
         "--edition".to_string(),
         "2018".to_string(),
         "--crate-type".to_string(),
@@ -44,7 +44,7 @@ pub fn verify_files(
         "../../install".to_string(),
         entry_file,
         "-L".to_string(),
-        "../../install/bin/".to_string(),
+        "../../rust/install/bin/".to_string(),
     ];
     let our_args = {
         let mut our_args: Args = Default::default();
@@ -67,22 +67,31 @@ pub fn verify_files(
         }
         our_args
     };
-    let captured_output = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
-    let mut verifier = Verifier::new(our_args);
-    verifier.test_capture_output = Some(captured_output.clone());
-    let mut compiler = rustc_driver::RunCompiler::new(&rustc_args, &mut verifier);
-    let file_loader: TestFileLoader =
-        TestFileLoader { files: files.into_iter().map(|(p, f)| (p.into(), f)).collect() };
-    compiler.set_file_loader(Some(Box::new(file_loader)));
-    let status = compiler.run();
-    eprintln!(
-        "{}",
-        std::str::from_utf8(
-            &captured_output.lock().expect("internal error: cannot lock captured output")
-        )
-        .expect("captured output is invalid utf8")
-    );
-    status.map_err(|_| verifier.errors)
+    let files = files.into_iter().map(|(p, f)| (p.into(), f)).collect();
+    let result = std::panic::catch_unwind(move || {
+        let captured_output = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let mut verifier = Verifier::new(our_args);
+        verifier.test_capture_output = Some(captured_output.clone());
+        let mut compiler = rustc_driver::RunCompiler::new(&rustc_args, &mut verifier);
+        let file_loader: TestFileLoader =
+            TestFileLoader { files };
+        compiler.set_file_loader(Some(Box::new(file_loader)));
+        let status = compiler.run();
+        eprintln!(
+            "{}",
+            std::str::from_utf8(
+                &captured_output.lock().expect("internal error: cannot lock captured output")
+            )
+            .expect("captured output is invalid utf8")
+        );
+        status.map_err(|_| verifier.errors)
+    });
+    match result {
+        Ok(result) => result,
+        Err(_) => {
+            panic!("The compiler panicked. This may be due to rustc not being available in the `rust` directory in the project root. Check the README for more information.")
+        },
+    }
 }
 
 pub fn verify_with_pervasive(

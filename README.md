@@ -9,13 +9,13 @@ cloning a modified version of the rust compiler into a new `rust` directory.
 Thus far, we have made only minor modifications to the Rust
 compiler, primarily to add additional hooks for the verification code.
 
-See [our guide](source/CODE.md) for more details about files in `source`.  See the
+See [`source/CODE.md`](source/CODE.md) for more details about files in `source`.  See the
 [official docs](https://rustc-dev-guide.rust-lang.org/) for more about the
 normal Rust compiler.
 
 ### Step 1: Build Rust
 
-On Linux and Mac, start in the project root directory and run the `tools/set-up-rust.sh` script.
+On Linux and macOS, start in the project root directory and run the [`tools/set-up-rust.sh`](./tools/set-up-rust.sh) script.
 The script clones `secure-foundations/rust` into the `rust` subdirectory. It also creates a `config.toml` file based on `config.toml.verify`.
 
 On Windows you need to perform those steps manually.
@@ -47,7 +47,7 @@ Change directory back to the project root:
 cd ..
 ```
 
-You can pull in future updates to Rust via [update-rust.sh](./tools/update-rust.sh).
+You can pull in future updates to our fork of rust via [`tools/update-rust.sh`](./tools/update-rust.sh).
 
 ### Step 2: Setup z3
 
@@ -64,7 +64,7 @@ Make sure you get Z3 10.14.2.
 The Z3 `bin` folder contain the executable `z3.exe` or `z3`.
 Either add the Z3 `bin` folder to your path or copy the Z3 executable file to one of the folders in your path.
 
-#### On Unix/Mac: get a local Z3
+#### On Unix/macOS: get a local Z3
 
 Use the script `./tools/get-z3.sh` to download Z3.
 The `./tools/cargo.sh` script will correctly set the `VERUS_Z3_PATH` environment variable for the verifier to find Z3.
@@ -80,7 +80,7 @@ Set the RUSTC environment variable to point to `../rust/install/bin/rustc` and u
 ../rust/install/bin/cargo build
 ```
 
-For example, on Darwin (and likely Linux):
+For example, on macOS (and likely Linux):
 
 ```
 RUSTC=../rust/install/bin/rustc ../rust/install/bin/cargo build
@@ -111,7 +111,7 @@ on Windows:
 ../rust/install/bin/rust_verify rust_verify/example/recursion.rs -L ../rust/install/bin/
 ```
 
-on Darwin (and likely Linux):
+on macOS (and likely Linux):
 
 ```
 DYLD_LIBRARY_PATH=../rust/install/lib/rustlib/x86_64-apple-darwin/lib LD_LIBRARY_PATH=../rust/install/lib ../rust/install/bin/rust_verify rust_verify/example/recursion.rs -L ../rust/install/bin/
@@ -130,10 +130,13 @@ The `-L ../rust/install/bin/` is used to link to the `builtin` crate.
 
 ## Editing the source code
 
+You should make sure that your check-out of `rust` is up to date.
+Use the `./tools/update-rust.sh` script from the project root.
+
 Before committing any changes to the source code,
 make sure that it conforms to the `rustfmt` tool's guidelines.
 We are using the default `rustfmt` settings from the Rust repository.
-To check the source code, type the following from the `verify` directory:
+To check the source code, type the following from the `source` directory:
 
 ```
 ../rust/install/bin/cargo-fmt -- --check
@@ -181,7 +184,7 @@ which will produce documentation files, e.g., `./target/doc/rust_verify/index.ht
 RUSTC=../rust/install/bin/rustc ../rust/install/bin/cargo test -p rust_verify
 ```
 
-As discussed above, you may only need the RUSTC variable on Darwin/Linux.
+As discussed above, you may only need the RUSTC variable on macOS/Linux.
 
 You can run a single test file and a specific test within with the following:
 
