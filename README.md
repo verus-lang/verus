@@ -1,4 +1,4 @@
-See [Goals](../../../wiki/Goals) for a brief description of the project's goals.
+See [Goals](../../wiki/Goals) for a brief description of the project's goals.
 
 ## Building the project
 
@@ -17,14 +17,16 @@ normal Rust compiler.
 
 On **Linux and macOS**, start in the project root directory and run the [`tools/set-up-rust.sh`](./tools/set-up-rust.sh) script.
 
-On **Windows** you need to perform those steps manually.
+On **Windows** you need to perform Step 1 manually:
 
-#### Build the Rust compiler
+#### Build the Rust compiler (manually)
 
-Build the rust compiler with `python x.py install` in the `rust` directory:
+Build the rust compiler from (https://github.com/secure-foundations/rust) with `python x.py install` in the `rust` directory:
 
 ```
+git clone git@github.com:secure-foundations/rust.git
 cd rust
+cp config.toml.verify config.toml
 python x.py install
 ```
 
@@ -63,8 +65,8 @@ cd source
 #### On Windows: make sure the Z3 executable is in your path
 
 Download the [Z3 binaries](https://github.com/Z3Prover/z3/releases).
-Make sure you get Z3 10.14.2.
-The Z3 `bin` folder contain the executable `z3.exe` or `z3`.
+Make sure you get Z3 4.8.5.
+The Z3 `bin` folder contain the executable `z3.exe`.
 Either add the Z3 `bin` folder to your path or copy the Z3 executable file to one of the folders in your path.
 
 #### On Unix/macOS: get a local Z3
