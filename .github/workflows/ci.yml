@@ -12,7 +12,7 @@ jobs:
         uses: actions/checkout@v2
 
       # run "cargo test" using our latest rustc binary
-      - name: running cargo test
+      - name: cargo test
         working-directory: ./source   # "cd source"   
         run: |
           mkdir ../rust
@@ -21,4 +21,8 @@ jobs:
           RUSTC=../rust/install/bin/rustc ../rust/install/bin/cargo build  # check .cargo/config.toml if this line fails
           VERUS_Z3_PATH="/home/chanheec/local_bin/z3" RUSTC=../rust/install/bin/rustc RUSTDOC=../rust/install/bin/rustdoc  ../rust/install/bin/cargo test
 
+      - name: check cargo fmt
+        working-directory: ./source
+        run: |
+          ../rust/install/bin/cargo-fmt -- --check
  
