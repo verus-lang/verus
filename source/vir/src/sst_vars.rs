@@ -1,15 +1,15 @@
 use crate::ast::Typ;
 use crate::def::Spanned;
 use crate::sst::{Stm, StmX, UniqueIdent};
+use air::ast::Span;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
-use air::ast::{Span};
 
 fn to_ident_set(input: &HashSet<UniqueIdent>) -> HashSet<Arc<String>> {
     let mut output = HashSet::new();
     for item in input {
         output.insert(item.0.clone());
-    };
+    }
     output
 }
 
@@ -17,7 +17,7 @@ fn to_ident_set(input: &HashSet<UniqueIdent>) -> HashSet<Arc<String>> {
 // - which variables have definitely been assigned to up to each statement
 // - which variables have been modified within each statement
 pub(crate) fn stm_assign(
-    queryable: &mut Vec<(Span, HashSet<Arc<String>>)>, 
+    queryable: &mut Vec<(Span, HashSet<Arc<String>>)>,
     declared: &HashMap<UniqueIdent, Typ>,
     assigned: &mut HashSet<UniqueIdent>,
     modified: &mut HashSet<UniqueIdent>,
@@ -67,7 +67,6 @@ pub(crate) fn stm_assign(
             *modified = HashSet::new();
             let body = stm_assign(queryable, declared, assigned, modified, body);
             *assigned = pre_assigned;
-            
 
             assert!(modified_vars.len() == 0);
             let mut modified_vars: Vec<UniqueIdent> = Vec::new();
@@ -95,8 +94,10 @@ pub(crate) fn stm_assign(
         }
         StmX::Block(stms) => {
             let mut pre_assigned = assigned.clone();
-            let stms: Vec<Stm> =
-                stms.iter().map(|s| stm_assign(queryable, declared, assigned, modified, s)).collect();
+            let stms: Vec<Stm> = stms
+                .iter()
+                .map(|s| stm_assign(queryable, declared, assigned, modified, s))
+                .collect();
             for x in declared.keys() {
                 if assigned.contains(x) && !pre_assigned.contains(x) {
                     pre_assigned.insert(x.clone());

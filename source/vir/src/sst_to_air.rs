@@ -703,7 +703,13 @@ pub fn body_stm_to_air(
     };
 
     println!("assign map {:?}", stm);
-    let stm = crate::sst_vars::stm_assign(&mut state.assign_map, &declared, &mut assigned, &mut HashSet::new(), stm);
+    let stm = crate::sst_vars::stm_assign(
+        &mut state.assign_map,
+        &declared,
+        &mut assigned,
+        &mut HashSet::new(),
+        stm,
+    );
     // println!("assign map {:?}", stm);
     let mut stmts = stm_to_stmts(ctx, &mut state, &stm);
 

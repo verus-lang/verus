@@ -17,8 +17,8 @@ extern crate rustc_typeck;
 
 pub mod config;
 pub mod context;
-pub mod erase;
 pub mod debugger;
+pub mod erase;
 pub mod rust_to_vir;
 pub mod rust_to_vir_adts;
 pub mod rust_to_vir_base;

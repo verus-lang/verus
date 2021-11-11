@@ -9,13 +9,13 @@ use rustc_interface::interface::Compiler;
 use rustc_middle::ty::TyCtxt;
 use rustc_span::source_map::SourceMap;
 use rustc_span::{CharPos, FileName, MultiSpan, Span};
+use std::collections::HashSet;
 use std::fs::File;
 use std::io::Write;
+use std::sync::Arc;
 use vir::ast::{Krate, VirErr, VirErrX, Visibility};
 use vir::ast_util::{is_visible_to, path_as_rust_name};
 use vir::def::SnapPos;
-use std::sync::Arc;
-use std::collections::HashSet;
 
 pub struct Verifier {
     pub encountered_vir_error: bool,
@@ -136,9 +136,9 @@ impl Verifier {
         &mut self,
         compiler: &Compiler,
         air_context: &mut air::context::Context,
-        assign_map: &Vec<(air::ast::Span, HashSet<Arc<String>>)>, 
+        assign_map: &Vec<(air::ast::Span, HashSet<Arc<String>>)>,
         snap_map: &Vec<(air::ast::Span, SnapPos)>,
-        command: &Command
+        command: &Command,
     ) {
         let result = air_context.command(&command);
 
@@ -164,7 +164,12 @@ impl Verifier {
                         .map(|x| ErrorSpan::new_from_air_span(compiler.session().source_map(), x)),
                 ));
                 if self.args.debug {
-                    let mut debugger = Debugger::new(air_model, assign_map, snap_map, compiler.session().source_map());
+                    let mut debugger = Debugger::new(
+                        air_model,
+                        assign_map,
+                        snap_map,
+                        compiler.session().source_map(),
+                    );
                     debugger.start_shell(air_context);
                 }
             }
@@ -193,7 +198,7 @@ impl Verifier {
         compiler: &Compiler,
         air_context: &mut air::context::Context,
         commands: &Vec<Command>,
-        assign_map: &Vec<(air::ast::Span, HashSet<Arc<String>>)>, 
+        assign_map: &Vec<(air::ast::Span, HashSet<Arc<String>>)>,
         snap_map: &Vec<(air::ast::Span, SnapPos)>,
         comment: &str,
     ) {
@@ -280,7 +285,8 @@ impl Verifier {
             if Some(module.clone()) != function.x.visibility.owning_module {
                 continue;
             }
-            let (commands, assign_map, snap_map) = vir::func_to_air::func_def_to_air(ctx, &function)?;
+            let (commands, assign_map, snap_map) =
+                vir::func_to_air::func_def_to_air(ctx, &function)?;
             self.run_commands_queries(
                 compiler,
                 air_context,
@@ -308,6 +314,7 @@ impl Verifier {
             let file = File::create(filename).expect(&format!("could not open file {}", filename));
             air_context.set_air_initial_log(Box::new(file));
         }
+        
         if let Some(filename) = &self.args.log_air_final {
             let file = File::create(filename).expect(&format!("could not open file {}", filename));
             air_context.set_air_final_log(Box::new(file));

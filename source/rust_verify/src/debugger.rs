@@ -1,15 +1,15 @@
 use crate::util::from_raw_span;
 use air::ast::Ident;
 use air::ast::Span as ASpan;
+use air::model::Model as AModel;
 use rustc_span::source_map::SourceMap;
 use rustc_span::Span;
-use std::collections::HashMap;
-use std::fmt;
-use vir::def::{SnapPos, suffix_local_stmt_id};
-use std::sync::Arc;
 use sise::Node;
-use air::model::Model as AModel;
-use std::collections::{HashSet};
+use std::collections::HashMap;
+use std::collections::HashSet;
+use std::fmt;
+use std::sync::Arc;
+use vir::def::{suffix_local_stmt_id, SnapPos};
 
 #[derive(Debug)]
 /// Rust-level model of a concrete counterexample
@@ -25,7 +25,7 @@ pub struct Debugger {
 impl Debugger {
     pub fn new(
         air_model: AModel,
-        assign_map: &Vec<(ASpan, HashSet<Arc<String>>)>, 
+        assign_map: &Vec<(ASpan, HashSet<Arc<String>>)>,
         snap_map: &Vec<(ASpan, SnapPos)>,
         source_map: &SourceMap,
     ) -> Debugger {
@@ -107,15 +107,13 @@ impl Debugger {
         }
     }
 
-    fn translate_variable(&self, name: &Ident) -> Option<String>
-    {
+    fn translate_variable(&self, name: &Ident) -> Option<String> {
         let sid = self.line_map.get(&self.line)?;
         let name = suffix_local_stmt_id(&(Arc::new(name.to_string())));
         self.air_model.translate_variable(sid, &name)
     }
 
-    fn rewrite_eval_expr(&self, expr: &sise::Node) -> Option<sise::Node>
-    {
+    fn rewrite_eval_expr(&self, expr: &sise::Node) -> Option<sise::Node> {
         match expr {
             Node::Atom(var) => {
                 let name = self.translate_variable(&Arc::new(String::from(var)))?;
@@ -140,8 +138,7 @@ impl Debugger {
         }
     }
 
-    fn eval_expr(&self, context: &mut air::context::Context, expr: &[u8])
-    {
+    fn eval_expr(&self, context: &mut air::context::Context, expr: &[u8]) {
         let mut parser = sise::Parser::new(expr);
         let node = sise::read_into_tree(&mut parser).unwrap();
         let expr = self.rewrite_eval_expr(&node).unwrap();

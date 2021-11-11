@@ -208,11 +208,10 @@ impl Context {
         validity
     }
 
-    pub fn cleanup_check_valid(&mut self)
-    {
-      // clean up
-      self.pop_name_scope();
-      self.smt_log.log_pop();
+    pub fn cleanup_check_valid(&mut self) {
+        // clean up
+        self.pop_name_scope();
+        self.smt_log.log_pop();
     }
 
     pub fn eval_expr(&mut self, expr: sise::Node) -> String {
@@ -246,8 +245,7 @@ impl Context {
                     ValidityResult::Valid
                 }
             }
-            CommandX::CheckValid(query) =>
-                self.check_valid(&query)
+            CommandX::CheckValid(query) => self.check_valid(&query),
         }
     }
 }

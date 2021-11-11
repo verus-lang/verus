@@ -135,7 +135,7 @@ impl Emitter {
 
     pub fn log_eval(&mut self, expr: Node) {
         if !self.is_none() {
-            self.log_node(&nodes!(eval {expr}));
+            self.log_node(&nodes!(eval { expr }));
         }
     }
 }

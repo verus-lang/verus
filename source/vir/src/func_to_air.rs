@@ -15,8 +15,8 @@ use air::ast_util::{
     bool_typ, ident_apply, ident_binder, ident_var, mk_and, mk_bind_expr, mk_eq, mk_implies,
     str_apply, str_ident, str_typ, str_var, string_apply,
 };
+use std::collections::HashSet;
 use std::sync::Arc;
-use std::collections::{HashSet};
 
 // binder for forall (typ_params params)
 pub(crate) fn func_bind_trig(
