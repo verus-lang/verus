@@ -182,26 +182,47 @@ pub(crate) fn prelude_nodes() -> Vec<Node> {
             ))
             :pattern (([i_inv] bits i))
         )))
-        (axiom (forall ((x Poly)) (!
-            ([has_type] x [type_id_int])
-            :pattern (([has_type] x [type_id_int]))
+        (axiom (forall ((x Int)) (!
+            ([has_type] ([box_int] x) [type_id_int])
+            :pattern (([has_type] ([box_int] x) [type_id_int]))
+        )))
+        (axiom (forall ((x Int)) (!
+            (=>
+                (<= 0 x)
+                ([has_type] ([box_int] x) [type_id_nat])
+            )
+            :pattern (([has_type] ([box_int] x) [type_id_nat]))
+        )))
+        (axiom (forall ((bits Int) (x Int)) (!
+            (=>
+                ([u_inv] bits x)
+                ([has_type] ([box_int] x) ([type_id_uint] bits))
+            )
+            :pattern (([has_type] ([box_int] x) ([type_id_uint] bits)))
+        )))
+        (axiom (forall ((bits Int) (x Int)) (!
+            (=>
+                ([i_inv] bits x)
+                ([has_type] ([box_int] x) ([type_id_sint] bits))
+            )
+            :pattern (([has_type] ([box_int] x) ([type_id_sint] bits)))
         )))
         (axiom (forall ((x Poly)) (!
-            (=
+            (=>
                 ([has_type] x [type_id_nat])
                 (<= 0 ([unbox_int] x))
             )
             :pattern (([has_type] x [type_id_nat]))
         )))
         (axiom (forall ((bits Int) (x Poly)) (!
-            (=
+            (=>
                 ([has_type] x ([type_id_uint] bits))
                 ([u_inv] bits ([unbox_int] x))
             )
             :pattern (([has_type] x ([type_id_uint] bits)))
         )))
         (axiom (forall ((bits Int) (x Poly)) (!
-            (=
+            (=>
                 ([has_type] x ([type_id_sint] bits))
                 ([i_inv] bits ([unbox_int] x))
             )
@@ -241,7 +262,7 @@ pub(crate) fn datatype_height_axiom(typ_name1: &Ident, typ_name2: &Ident, field:
     )
 }
 
-pub(crate) fn datatype_box_axioms(typ_name: &Ident) -> Vec<Node> {
+pub(crate) fn datatype_box_axioms(typ_name: &Ident, always_has_type: bool) -> Vec<Node> {
     let typ = str_to_node(typ_name.as_str());
     let type_id = str_to_node(prefix_type_id(typ_name).as_str());
     let box_t = str_to_node(prefix_box(typ_name).as_str());
@@ -249,7 +270,7 @@ pub(crate) fn datatype_box_axioms(typ_name: &Ident) -> Vec<Node> {
     #[allow(non_snake_case)]
     let Poly = str_to_node(POLY);
     let has_type = str_to_node(HAS_TYPE);
-    nodes_vec!(
+    let mut axioms: Vec<Node> = nodes_vec!(
         (axiom (forall ((x [typ])) (!
             (= x ([unbox_t] ([box_t] x)))
             :pattern (([box_t] x))
@@ -261,5 +282,16 @@ pub(crate) fn datatype_box_axioms(typ_name: &Ident) -> Vec<Node> {
             )
             :pattern (([has_type] x [type_id]))
         )))
-    )
+    );
+    // If there are no visible refinement types (e.g. no refinement type fields,
+    // or type is completely abstract to us), then has_type always holds:
+    if always_has_type {
+        axioms.push(node!(
+            (axiom (forall ((x [typ])) (!
+                ([has_type] ([box_t] x) [type_id])
+                :pattern (([has_type] ([box_t] x) [type_id]))
+            )))
+        ));
+    }
+    axioms
 }
