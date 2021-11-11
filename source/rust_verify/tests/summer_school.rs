@@ -142,57 +142,62 @@ const E05_SHARED: &str = code_str! {
 #[test]
 fn e05_pass() {
     let files = vec![
-        ("lib.rs".to_string(), code! {
-            extern crate builtin;
-            extern crate builtin_macros;
+        (
+            "lib.rs".to_string(),
+            code! {
+                extern crate builtin;
+                extern crate builtin_macros;
 
-            pub mod pervasive;
-            pub mod pervasive_set;
-        }),
+                pub mod pervasive;
+                pub mod pervasive_set;
+            },
+        ),
         ("pervasive.rs".to_string(), include_str!("../example/pervasive.rs").to_string()),
         ("pervasive_set.rs".to_string(), include_str!("../example/pervasive_set.rs").to_string()),
-        ("test.rs".to_string(), code! {
-            extern crate builtin;
-            extern crate builtin_macros;
+        (
+            "test.rs".to_string(),
+            code! {
+                extern crate builtin;
+                extern crate builtin_macros;
 
-            mod pervasive;  // TODO(utaal): eliminate these lines.
-            mod pervasive_set;
+                mod pervasive;  // TODO(utaal): eliminate these lines.
+                mod pervasive_set;
 
-            #[allow(unused_imports)] use builtin::*;
-            #[allow(unused_imports)] use builtin_macros::*;
-            use crate::pervasive::*;
-            use crate::pervasive_set::*;
-        }
-        + E05_SHARED
-        + code_str! {
-            #[proof]
-            fn try_out_some_set_literals(x: int, y: int)
-            {
-                // TODO(chris): make these axioms ambient when you include set library
-                set_axioms::<int>();
+                #[allow(unused_imports)] use builtin::*;
+                #[allow(unused_imports)] use builtin_macros::*;
+                use crate::pervasive::*;
+                use crate::pervasive_set::*;
+            } + E05_SHARED
+                + code_str! {
+                    #[proof]
+                    fn try_out_some_set_literals(x: int, y: int)
+                    {
+                        // TODO(chris): make these axioms ambient when you include set library
+                        set_axioms::<int>();
 
-                // TODO: What should be the literal for mathematical Sets, and the encoding?
-                // TODO: This is probably what it would look like for rust HashSet
-                // TODO(utaal): not even THIS works
-                // assert(Set::<int>::from([1, 3, 8]) == Set::<int>::from([8, 1, 3]));
-                let set138 = insert(insert(insert::<int>(empty(), 1), 3), 8);
-                let set813 = insert(insert(insert(empty(), 8), 1), 3);
-                // TODO(utaal): fix sets to allow == syntax for equality
-                //assert(set138 == set813);
-                assert(ext_equal(set138, set813));
+                        // TODO: What should be the literal for mathematical Sets, and the encoding?
+                        // TODO: This is probably what it would look like for rust HashSet
+                        // TODO(utaal): not even THIS works
+                        // assert(Set::<int>::from([1, 3, 8]) == Set::<int>::from([8, 1, 3]));
+                        let set138 = insert(insert(insert::<int>(empty(), 1), 3), 8);
+                        let set813 = insert(insert(insert(empty(), 8), 1), 3);
+                        // TODO(utaal): fix sets to allow == syntax for equality
+                        //assert(set138 == set813);
+                        assert(ext_equal(set138, set813));
 
-                // NOTE(Chris): The way you encode set literals influences what you can prove about it
-                // - axiom for conversion from slice (has quantifiers)
-                // - set![8, 1, 3] to sequence of insertions
-                // - construct an axiom about that particular literal (most efficient encoding)
+                        // NOTE(Chris): The way you encode set literals influences what you can prove about it
+                        // - axiom for conversion from slice (has quantifiers)
+                        // - set![8, 1, 3] to sequence of insertions
+                        // - construct an axiom about that particular literal (most efficient encoding)
 
-                let set7 = insert(empty(), 7);
-                let set765 = insert(insert(insert(empty(), 7), 6), 5);
-                assert(has_seven_and_not_nine(set7));
+                        let set7 = insert(empty(), 7);
+                        let set765 = insert(insert(insert(empty(), 7), 6), 5);
+                        assert(has_seven_and_not_nine(set7));
 
-                assert(has_seven_and_not_nine(set765));
-            }
-        })
+                        assert(has_seven_and_not_nine(set765));
+                    }
+                },
+        ),
     ];
     let result = verify_files(files, "test.rs".to_string());
     assert!(result.is_ok());
@@ -229,7 +234,7 @@ test_verify_with_pervasive! {
         {
             // TODO literals?
             assert(!has_four_five_six(Set::<int>::from([1, 2, 4, 6, 7])));
-            
+
             let happySet = Set::<int>::from([1, 2, 4, 6, 7, 5]);
 
             assert(has_four_five_six(happySet));
@@ -401,77 +406,85 @@ test_verify_with_pervasive! {
 #[test]
 fn e10_pass() {
     let files = vec![
-        ("lib.rs".to_string(), code! {
-            extern crate builtin;
-            extern crate builtin_macros;
+        (
+            "lib.rs".to_string(),
+            code! {
+                extern crate builtin;
+                extern crate builtin_macros;
 
-            pub mod pervasive;
-            pub mod directions;
-        }),
+                pub mod pervasive;
+                pub mod directions;
+            },
+        ),
         ("pervasive.rs".to_string(), PERVASIVE.to_string()),
         // TODO: maybe use the prelude here
-        ("directions.rs".to_string(), code! {
-            #[allow(unused_imports)] use builtin::*;
-            #[allow(unused_imports)] use builtin_macros::*;
-            use crate::pervasive::*;
+        (
+            "directions.rs".to_string(),
+            code! {
+                #[allow(unused_imports)] use builtin::*;
+                #[allow(unused_imports)] use builtin_macros::*;
+                use crate::pervasive::*;
 
-            #[derive(PartialEq, Eq, Structural)]
-            pub enum Direction {
-                North,
-                East,
-                South,
-                West,
-            }
-
-            #[spec]
-            pub fn turn_right(direction: Direction) -> Direction {
-                // TODO do we want the ADT dependent typing that dafny does for enums?
-                // NOTE(Chris): there is already an expression in VIR for this
-                if direction == Direction::North {
-                    Direction::East
-                } else if direction == Direction::East {
-                    Direction::South
-                } else if direction == Direction::South {
-                    Direction::West
-                } else {
-                    Direction::North
+                #[derive(PartialEq, Eq, Structural)]
+                pub enum Direction {
+                    North,
+                    East,
+                    South,
+                    West,
                 }
-            }
 
-            #[proof]
-            fn rotation() {
-                assert(turn_right(Direction::North) == Direction::East);
-            }
-
-            #[spec]
-            pub fn turn_left(direction: Direction) -> Direction {
-                match direction {
-                    Direction::North => Direction::West,
-                    Direction::West => Direction::South,
-                    Direction::South => Direction::East,
-                    Direction::East => Direction::North,
+                #[spec]
+                pub fn turn_right(direction: Direction) -> Direction {
+                    // TODO do we want the ADT dependent typing that dafny does for enums?
+                    // NOTE(Chris): there is already an expression in VIR for this
+                    if direction == Direction::North {
+                        Direction::East
+                    } else if direction == Direction::East {
+                        Direction::South
+                    } else if direction == Direction::South {
+                        Direction::West
+                    } else {
+                        Direction::North
+                    }
                 }
-            }
-        }),
-        ("test.rs".to_string(), code! {
-            extern crate builtin;
-            extern crate builtin_macros;
 
-            mod pervasive;
-            mod directions;
+                #[proof]
+                fn rotation() {
+                    assert(turn_right(Direction::North) == Direction::East);
+                }
 
-            #[allow(unused_imports)] use builtin::*;
-            #[allow(unused_imports)] use builtin_macros::*;
-            use crate::pervasive::*;
-            use crate::directions::{Direction, turn_left, turn_right};
+                #[spec]
+                pub fn turn_left(direction: Direction) -> Direction {
+                    match direction {
+                        Direction::North => Direction::West,
+                        Direction::West => Direction::South,
+                        Direction::South => Direction::East,
+                        Direction::East => Direction::North,
+                    }
+                }
+            },
+        ),
+        (
+            "test.rs".to_string(),
+            code! {
+                extern crate builtin;
+                extern crate builtin_macros;
 
-            #[proof]
-            fn two_wrongs_dont_make_a_right(dir: Direction) {
-                assert(turn_left(turn_left(dir)) == turn_right(turn_right(dir)));
-            }
-        }),
+                mod pervasive;
+                mod directions;
+
+                #[allow(unused_imports)] use builtin::*;
+                #[allow(unused_imports)] use builtin_macros::*;
+                use crate::pervasive::*;
+                use crate::directions::{Direction, turn_left, turn_right};
+
+                #[proof]
+                fn two_wrongs_dont_make_a_right(dir: Direction) {
+                    assert(turn_left(turn_left(dir)) == turn_right(turn_right(dir)));
+                }
+            },
+        ),
     ];
     let result = verify_files(files, "test.rs".to_string());
     assert!(result.is_ok());
 }
-

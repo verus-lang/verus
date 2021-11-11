@@ -73,8 +73,7 @@ pub fn verify_files(
         let mut verifier = Verifier::new(our_args);
         verifier.test_capture_output = Some(captured_output.clone());
         let mut compiler = rustc_driver::RunCompiler::new(&rustc_args, &mut verifier);
-        let file_loader: TestFileLoader =
-            TestFileLoader { files };
+        let file_loader: TestFileLoader = TestFileLoader { files };
         compiler.set_file_loader(Some(Box::new(file_loader)));
         let status = compiler.run();
         eprintln!(
@@ -89,8 +88,10 @@ pub fn verify_files(
     match result {
         Ok(result) => result,
         Err(_) => {
-            panic!("The compiler panicked. This may be due to rustc not being available in the `rust` directory in the project root. Check the README for more information.")
-        },
+            panic!(
+                "The compiler panicked. This may be due to rustc not being available in the `rust` directory in the project root. Check the README for more information."
+            )
+        }
     }
 }
 
