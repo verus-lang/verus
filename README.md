@@ -21,10 +21,10 @@ On **Windows** you need to perform Step 1 manually:
 
 #### Build the Rust compiler (manually)
 
-Build the rust compiler from (https://github.com/secure-foundations/rust) with `python x.py install` in the `rust` directory:
+Build the rust compiler from [https://github.com/secure-foundations/rust](https://github.com/secure-foundations/rust) with `python x.py install` in the `rust` directory:
 
 ```
-git clone git@github.com:secure-foundations/rust.git
+git clone https://github.com/secure-foundations/rust.git
 cd rust
 cp config.toml.verify config.toml
 python x.py install
@@ -160,7 +160,7 @@ To automatically apply these suggestions to the source code, type:
 
 ## Documentation
 
-Commenting the code is *strongly encouraged*!  Use `///` to create comments
+Commenting the code is strongly encouraged.  Use `///` to create comments
 that [`rustdoc`](https://doc.rust-lang.org/rustdoc/what-is-rustdoc.html) can
 automatically extract into HTML documentation.
 
