@@ -314,7 +314,6 @@ impl Verifier {
             let file = File::create(filename).expect(&format!("could not open file {}", filename));
             air_context.set_air_initial_log(Box::new(file));
         }
-        
         if let Some(filename) = &self.args.log_air_final {
             let file = File::create(filename).expect(&format!("could not open file {}", filename));
             air_context.set_air_final_log(Box::new(file));
