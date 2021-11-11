@@ -1,6 +1,6 @@
 name: run_CI_test
 
-on: [push, pull_request]      # to disable pull_request, change this to ->  on: [push]
+on: [push, pull_request, workflow_dispatch]      # to disable pull_request, change this to ->  on: [push]
 
 jobs:
   run_ci_test:
