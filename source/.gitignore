@@ -1,2 +1,3 @@
 target/
 z3
+Cargo.lock

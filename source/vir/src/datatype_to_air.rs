@@ -97,7 +97,11 @@ pub fn datatypes_to_air(ctx: &Ctx, datatypes: &crate::ast::Datatypes) -> Command
         }
         // box/unbox axioms
         for datatype in datatypes.iter() {
-            let nodes = crate::prelude::datatype_box_axioms(&path_to_air_ident(&datatype.x.path));
+            let always_has_type = !ctx.datatypes_with_invariant.contains(&datatype.x.path);
+            let nodes = crate::prelude::datatype_box_axioms(
+                &path_to_air_ident(&datatype.x.path),
+                always_has_type,
+            );
             let axioms = air::parser::nodes_to_commands(&nodes)
                 .expect("internal error: malformed datatype axioms");
             commands.extend(axioms.iter().cloned());

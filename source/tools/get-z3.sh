@@ -13,5 +13,5 @@ elif [ `uname` == "Linux" ]; then
     unzip z3-$z3_version-x64-ubuntu-16.04.zip
     cp z3-$z3_version-x64-ubuntu-16.04/bin/z3 .
     rm -r z3-$z3_version-x64-ubuntu-16.04
-    rm z3-$z3_version-x64-ubuntu-16.04
+    rm z3-$z3_version-x64-ubuntu-16.04.zip
 fi

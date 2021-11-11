@@ -24,15 +24,17 @@ fn length_external<A>(v: &Vec<A>) -> usize {
 }
 
 #[verifier(no_verify)]
+#[verifier(pub_abstract)]
 #[spec]
 pub fn len<A>(v: &Vec<A>) -> nat {
     arbitrary()
 }
 
 #[verifier(no_verify)]
+#[verifier(pub_abstract)]
 #[spec]
 pub fn index<A>(v: &Vec<A>, i: int) -> A {
-    index(v, i) // TODO: use unimplemented!() here
+    arbitrary()
 }
 
 #[verifier(no_verify)]
