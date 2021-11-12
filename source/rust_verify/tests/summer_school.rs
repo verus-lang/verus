@@ -140,68 +140,38 @@ const E05_SHARED: &str = code_str! {
     }
 };
 
-#[test]
-fn e05_pass() {
-    let files = vec![
-        (
-            "lib.rs".to_string(),
-            code! {
-                extern crate builtin;
-                extern crate builtin_macros;
+test_verify_with_pervasive! {
+    #[test] e05_pass E05_SHARED.to_string() + code_str! {
+        use set::*;
 
-                pub mod pervasive;
-                pub mod pervasive_set;
-            },
-        ),
-        ("pervasive.rs".to_string(), include_str!("../example/pervasive.rs").to_string()),
-        ("pervasive_set.rs".to_string(), include_str!("../example/pervasive_set.rs").to_string()),
-        (
-            "test.rs".to_string(),
-            code! {
-                extern crate builtin;
-                extern crate builtin_macros;
+        #[proof]
+        fn try_out_some_set_literals(x: int, y: int)
+        {
+            // TODO(chris): make these axioms ambient when you include set library
+            set_axioms::<int>();
 
-                mod pervasive;  // TODO(utaal): eliminate these lines.
-                mod pervasive_set;
+            // TODO: What should be the literal for mathematical Sets, and the encoding?
+            // TODO: This is probably what it would look like for rust HashSet
+            // TODO(utaal): not even THIS works
+            // assert(Set::<int>::from([1, 3, 8]) == Set::<int>::from([8, 1, 3]));
+            let set138 = insert(insert(insert::<int>(empty(), 1), 3), 8);
+            let set813 = insert(insert(insert(empty(), 8), 1), 3);
+            // TODO(utaal): fix sets to allow == syntax for equality
+            //assert(set138 == set813);
+            assert(ext_equal(set138, set813));
 
-                #[allow(unused_imports)] use builtin::*;
-                #[allow(unused_imports)] use builtin_macros::*;
-                use crate::pervasive::*;
-                use crate::pervasive_set::*;
-            } + E05_SHARED
-                + code_str! {
-                    #[proof]
-                    fn try_out_some_set_literals(x: int, y: int)
-                    {
-                        // TODO(chris): make these axioms ambient when you include set library
-                        set_axioms::<int>();
+            // NOTE(Chris): The way you encode set literals influences what you can prove about it
+            // - axiom for conversion from slice (has quantifiers)
+            // - set![8, 1, 3] to sequence of insertions
+            // - construct an axiom about that particular literal (most efficient encoding)
 
-                        // TODO: What should be the literal for mathematical Sets, and the encoding?
-                        // TODO: This is probably what it would look like for rust HashSet
-                        // TODO(utaal): not even THIS works
-                        // assert(Set::<int>::from([1, 3, 8]) == Set::<int>::from([8, 1, 3]));
-                        let set138 = insert(insert(insert::<int>(empty(), 1), 3), 8);
-                        let set813 = insert(insert(insert(empty(), 8), 1), 3);
-                        // TODO(utaal): fix sets to allow == syntax for equality
-                        //assert(set138 == set813);
-                        assert(ext_equal(set138, set813));
+            let set7 = insert(empty(), 7);
+            let set765 = insert(insert(insert(empty(), 7), 6), 5);
+            assert(has_seven_and_not_nine(set7));
 
-                        // NOTE(Chris): The way you encode set literals influences what you can prove about it
-                        // - axiom for conversion from slice (has quantifiers)
-                        // - set![8, 1, 3] to sequence of insertions
-                        // - construct an axiom about that particular literal (most efficient encoding)
-
-                        let set7 = insert(empty(), 7);
-                        let set765 = insert(insert(insert(empty(), 7), 6), 5);
-                        assert(has_seven_and_not_nine(set7));
-
-                        assert(has_seven_and_not_nine(set765));
-                    }
-                },
-        ),
-    ];
-    let result = verify_files(files, "test.rs".to_string());
-    assert!(result.is_ok());
+            assert(has_seven_and_not_nine(set765));
+        }
+    } => Ok(())
 }
 
 test_verify_with_pervasive! {
@@ -209,6 +179,7 @@ test_verify_with_pervasive! {
         #[proof]
         fn try_out_some_set_literals(x: int, y: int)
         {
+            // TODO literals
             assert(has_seven_and_not_nine(Set::<int>::from([])));
 
             assert(has_seven_and_not_nine(Set::<int>::from([7, 9])));
@@ -407,7 +378,7 @@ test_verify_with_pervasive! {
 const DIRECTIONS_SHARED_CODE: &str = code_str! {
     #[allow(unused_imports)] use builtin::*;
     #[allow(unused_imports)] use builtin_macros::*;
-    use crate::pervasive::*;
+    mod pervasive; use pervasive::*;
 
     #[derive(PartialEq, Eq, Structural)]
     pub enum Direction {
@@ -451,32 +422,15 @@ const DIRECTIONS_SHARED_CODE: &str = code_str! {
 #[test]
 fn e10_pass() {
     let files = vec![
-        (
-            "lib.rs".to_string(),
-            code! {
-                extern crate builtin;
-                extern crate builtin_macros;
-
-                pub mod pervasive;
-                pub mod directions;
-            },
-        ),
-        ("pervasive.rs".to_string(), PERVASIVE.to_string()),
-        // TODO: maybe use the prelude here
         ("directions.rs".to_string(), DIRECTIONS_SHARED_CODE.to_string()),
         (
             "test.rs".to_string(),
             code! {
-                extern crate builtin;
-                extern crate builtin_macros;
-
                 mod pervasive;
                 mod directions;
 
-                #[allow(unused_imports)] use builtin::*;
-                #[allow(unused_imports)] use builtin_macros::*;
-                use crate::pervasive::*;
-                use crate::directions::{Direction, turn_left, turn_right};
+                use pervasive::*;
+                use directions::{Direction, turn_left, turn_right};
 
                 #[proof]
                 fn two_wrongs_dont_make_a_right(dir: Direction) {
@@ -493,91 +447,61 @@ fn e10_pass() {
 
 // -- e11 --
 
-#[test]
-#[ignore]
-fn e11_pass() {
-    let files = vec![
-        (
-            "lib.rs".to_string(),
-            code! {
-                extern crate builtin;
-                extern crate builtin_macros;
+test_verify_with_pervasive! {
+    #[test] e11_pass code! {
+        use set::*;
 
-                pub mod pervasive;
-                pub mod pervasive_set;
-            },
-        ),
-        ("pervasive.rs".to_string(), include_str!("../example/pervasive.rs").to_string()),
-        ("pervasive_set.rs".to_string(), include_str!("../example/pervasive_set.rs").to_string()),
-        (
-            "test.rs".to_string(),
-            code! {
-                extern crate builtin;
-                extern crate builtin_macros;
+        #[derive(PartialEq, Eq, Structural)]
+        pub enum HAlign { Left, Center, Right }
 
-                mod pervasive;  // TODO(utaal): eliminate these lines.
-                mod pervasive_set;
+        #[derive(PartialEq, Eq, Structural)]
+        pub enum VAlign { Top, Middle, Bottom }
 
-                #[allow(unused_imports)] use builtin::*;
-                #[allow(unused_imports)] use builtin_macros::*;
-                use crate::pervasive::*;
-                use crate::pervasive_set::*;
-            } + code_str! {
-                #[derive(PartialEq, Eq, Structural)]
-                pub enum HAlign { Left, Center, Right }
+        #[derive(PartialEq, Eq, Structural)]
+        pub struct TextAlign {
+            hAlign: HAlign,
+            vAlign: VAlign,
+        }
 
-                #[derive(PartialEq, Eq, Structural)]
-                pub enum VAlign { Top, Middle, Bottom }
+        #[derive(PartialEq, Eq, Structural)]
+        pub enum GraphicsAlign { Square, Round }
 
-                #[derive(PartialEq, Eq, Structural)]
-                pub struct TextAlign {
-                    hAlign: HAlign,
-                    vAlign: VAlign,
-                }
+        #[derive(PartialEq, Eq, Structural)]
+        pub enum PageElement {
+            Text(TextAlign),
+            Graphics(GraphicsAlign),
+        }
 
-                #[derive(PartialEq, Eq, Structural)]
-                pub enum GraphicsAlign { Square, Round }
+        #[proof]
+        fn num_page_elements()
+        {
+            set_axioms::<int>();    // TODO(chris): magic to not have to call this
+            /*
+            ensures([
+                exists(|eltSet:Set<HAlign>| cardinality(eltSet) == 3), // bound is tight
+                forall(|eltSet:Set<HAlign>| cardinality(eltSet) <= 3), // bound is upper
+            ]);
+            */
 
-                #[derive(PartialEq, Eq, Structural)]
-                pub enum PageElement {
-                    Text(TextAlign),
-                    Graphics(GraphicsAlign),
-                }
+            let maxSet = insert(insert(insert(empty(), HAlign::Left), HAlign::Center), HAlign::Right);
 
-                #[proof]
-                fn num_page_elements()
-                {
-                    set_axioms::<int>();    // TODO(chris): magic to not have to call this
-                    /*
-                    ensures([
-                        exists(|eltSet:Set<HAlign>| cardinality(eltSet) == 3), // bound is tight
-                        forall(|eltSet:Set<HAlign>| cardinality(eltSet) <= 3), // bound is upper
-                    ]);
-                    */
+            let intSet = insert(insert(empty(), 8), 4);
+            assert(cardinality::<int>(empty()) == 0);
+            // TODO remove: trigger the wrong trigger while waiting for the right trigger
+            assert(!contains::<int>(empty(), 1) && cardinality::<int>(insert(empty(), 1)) == cardinality::<int>(empty()) + 1);
+            assert(cardinality::<int>(insert(empty(), 1)) == cardinality::<int>(empty()) + 1);
 
-                    let maxSet = insert(insert(insert(empty(), HAlign::Left), HAlign::Center), HAlign::Right);
+            set_axioms::<HAlign>();
+            // TODO remove: more manual triggering of undesirable trigger
+            assert(!contains(empty(), HAlign::Left));
+            assert(!contains(insert(empty(), HAlign::Left), HAlign::Center));
+            assert(!contains(insert(insert(empty(), HAlign::Left), HAlign::Center), HAlign::Right));
+            // TODO(chris): some missing axioms about has_type
+            //assert(cardinality(maxSet) == 3);
 
-                    let intSet = insert(insert(empty(), 8), 4);
-                    assert(cardinality::<int>(empty()) == 0);
-                    // TODO remove: trigger the wrong trigger while waiting for the right trigger
-                    assert(!contains::<int>(empty(), 1) && cardinality::<int>(insert(empty(), 1)) == cardinality::<int>(empty()) + 1);
-                    assert(cardinality::<int>(insert(empty(), 1)) == cardinality::<int>(empty()) + 1);
-
-                    set_axioms::<HAlign>();
-                    // TODO remove: more manual triggering of undesirable trigger
-                    assert(!contains(empty(), HAlign::Left));
-                    assert(!contains(insert(empty(), HAlign::Left), HAlign::Center));
-                    assert(!contains(insert(insert(empty(), HAlign::Left), HAlign::Center), HAlign::Right));
-                    // TODO(chris): some missing axioms about has_type
-                    //assert(cardinality(maxSet) == 3);
-
-                    // TODO(jonh): Complete rest of forall proof.
-                }
-            },
-        ),
-    ];
-    let result = verify_files(files, "test.rs".to_string());
-    assert!(result.is_ok());
+            // TODO(jonh): Complete rest of forall proof.
+        }
+    } => Ok(())
 }
 
 // -- e12 --
@@ -585,6 +509,8 @@ fn e11_pass() {
 const LUNCH_SHARED_CODE: &str = code_str! {
     #[allow(unused_imports)] use builtin::*;
     #[allow(unused_imports)] use builtin_macros::*;
+
+    mod pervasive; use pervasive::*;
 
     #[derive(PartialEq, Eq, Structural)]
     pub enum Meat { Salami, Ham }
@@ -606,35 +532,16 @@ const LUNCH_SHARED_CODE: &str = code_str! {
 #[test]
 fn e13_pass() {
     let files = vec![
-        (
-            "lib.rs".to_string(),
-            code! {
-                extern crate builtin;
-                extern crate builtin_macros;
-
-                pub mod pervasive;
-                pub mod directions;
-                pub mod lunch;
-            },
-        ),
-        ("pervasive.rs".to_string(), PERVASIVE.to_string()),
-        // TODO: maybe use the prelude here
         ("directions.rs".to_string(), DIRECTIONS_SHARED_CODE.to_string()),
         ("lunch.rs".to_string(), LUNCH_SHARED_CODE.to_string()),
         (
             "test.rs".to_string(),
             code! {
-                extern crate builtin;
-                extern crate builtin_macros;
-
-                mod pervasive;
-                mod directions;
-                mod lunch;
-
                 #[allow(unused_imports)] use builtin::*;
                 #[allow(unused_imports)] use builtin_macros::*;
-                use crate::pervasive::*;
-                use crate::directions::{Direction, turn_left, turn_right};
+                mod pervasive; use pervasive::*;
+                mod directions; use directions::{Direction, turn_left, turn_right};
+                mod lunch;
 
                 #[spec]
                 fn add(x: int, y:int) -> int {
