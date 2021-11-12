@@ -1,4 +1,3 @@
-// extern crate builtin;
 use builtin::*;
 mod pervasive;
 #[allow(unused_imports)]

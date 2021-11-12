@@ -48,7 +48,7 @@ pub fn verify_files(
     files: impl IntoIterator<Item = (String, String)>,
     entry_file: String,
 ) -> Result<(), Vec<(Option<ErrorSpan>, Option<ErrorSpan>)>> {
-    let rustc_args = vec![
+    let mut rustc_args = vec![
         "../../rust/install/bin/rust_verify".to_string(),
         "--edition".to_string(),
         "2018".to_string(),
@@ -58,12 +58,35 @@ pub fn verify_files(
         "lib".to_string(),
         "--sysroot".to_string(),
         "../../rust/install".to_string(),
+    ];
+
+    #[cfg(target_os = "macos")]
+    rustc_args.append(&mut vec![
         "--extern".to_string(),
         "builtin=../../rust/install/bin/libbuiltin.rlib".to_string(),
         "--extern".to_string(),
         "builtin_macros=../../rust/install/bin/libbuiltin_macros.dylib".to_string(),
-        entry_file,
-    ];
+    ]);
+
+    // TODO: I've guessed the library types for the other OSes, they are likely wrong
+
+    #[cfg(target_os = "linux")]
+    rustc_args.append(&mut vec![
+        "--extern".to_string(),
+        "builtin=../../rust/install/bin/libbuiltin.rlib".to_string(),
+        "--extern".to_string(),
+        "builtin_macros=../../rust/install/bin/libbuiltin_macros.so".to_string(),
+    ]);
+
+    #[cfg(target_os = "windows")]
+    rustc_args.append(&mut vec![
+        "--extern".to_string(),
+        "builtin=../../rust/install/bin/libbuiltin.rlib".to_string(),
+        "--extern".to_string(),
+        "builtin_macros=../../rust/install/bin/builtin_macros.dll".to_string(),
+    ]);
+
+    rustc_args.push(entry_file);
     let our_args = {
         let mut our_args: Args = Default::default();
         match std::env::var("VERIFY_LOG_IR_PATH") {

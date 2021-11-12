@@ -55,13 +55,11 @@ impl PervasiveFileLoader {
 impl rustc_span::source_map::FileLoader for PervasiveFileLoader {
     fn file_exists(&self, path: &std::path::Path) -> bool {
         let path = self.remap_pervasive_path(path);
-        eprintln!("?? exists {:?}", &path);
         self.real_file_loader.file_exists(&path)
     }
 
     fn read_file(&self, path: &std::path::Path) -> Result<String, std::io::Error> {
         let path = self.remap_pervasive_path(path);
-        eprintln!("?? read {:?}", &path);
         self.real_file_loader.read_file(&path)
     }
 }
