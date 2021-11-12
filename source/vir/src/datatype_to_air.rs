@@ -62,8 +62,8 @@ pub fn datatypes_to_air(ctx: &Ctx, datatypes: &crate::ast::Datatypes) -> Command
         commands.push(Arc::new(CommandX::Global(decl_opaq_sort)));
     }
 
+    // datatype TYPE tokens
     for datatype in datatypes.iter() {
-        // TYPE token
         let decl_type_id = Arc::new(DeclX::fun_or_const(
             prefix_type_id(&datatype.x.path),
             Arc::new(vec_map(&*datatype.x.typ_params, |_| str_typ(crate::def::TYPE))),
@@ -72,29 +72,14 @@ pub fn datatypes_to_air(ctx: &Ctx, datatypes: &crate::ast::Datatypes) -> Command
         commands.push(Arc::new(CommandX::Global(decl_type_id)));
     }
 
+    let x = str_ident("x");
+    let x_var = ident_var(&suffix_local_stmt_id(&x));
+
+    // datatype box/unbox
     for datatype in datatypes.iter() {
-        let x = str_ident("x");
-        let x_var = ident_var(&suffix_local_stmt_id(&x));
-        let x_param = |typ: &Typ| {
-            Spanned::new(
-                datatype.span.clone(),
-                ParamX { name: x.clone(), typ: typ.clone(), mode: Mode::Exec },
-            )
-        };
-        let x_params = |typ: &Typ| Arc::new(vec![x_param(typ)]);
         let dtyp = str_typ(&path_to_air_ident(&datatype.x.path));
-        let tparams = &datatype.x.typ_params;
-        let typ_args = Arc::new(vec_map(&tparams, |t| Arc::new(TypX::TypParam(t.clone()))));
         let dpath = &datatype.x.path;
-        let datatyp = Arc::new(TypX::Datatype(dpath.clone(), typ_args.clone()));
-        let box_x = ident_apply(&prefix_box(&dpath), &vec![x_var.clone()]);
-        let unbox_x = ident_apply(&prefix_unbox(&dpath), &vec![x_var.clone()]);
-        let box_unbox_x = ident_apply(&prefix_box(&dpath), &vec![unbox_x.clone()]);
-        let unbox_box_x = ident_apply(&prefix_unbox(&dpath), &vec![box_x.clone()]);
-        let has = datatype_has_type(dpath, &typ_args, &x_var);
-        let has_box = datatype_has_type(dpath, &typ_args, &box_x);
         let apolytyp = str_typ(crate::def::POLY);
-        let vpolytyp = Arc::new(TypX::Boxed(datatyp.clone()));
 
         // box
         let decl_box = Arc::new(DeclX::Fun(
@@ -111,6 +96,28 @@ pub fn datatypes_to_air(ctx: &Ctx, datatypes: &crate::ast::Datatypes) -> Command
             dtyp.clone(),
         ));
         commands.push(Arc::new(CommandX::Global(decl_unbox)));
+    }
+
+    // datatype axioms
+    for datatype in datatypes.iter() {
+        let x_param = |typ: &Typ| {
+            Spanned::new(
+                datatype.span.clone(),
+                ParamX { name: x.clone(), typ: typ.clone(), mode: Mode::Exec },
+            )
+        };
+        let x_params = |typ: &Typ| Arc::new(vec![x_param(typ)]);
+        let tparams = &datatype.x.typ_params;
+        let typ_args = Arc::new(vec_map(&tparams, |t| Arc::new(TypX::TypParam(t.clone()))));
+        let dpath = &datatype.x.path;
+        let datatyp = Arc::new(TypX::Datatype(dpath.clone(), typ_args.clone()));
+        let box_x = ident_apply(&prefix_box(&dpath), &vec![x_var.clone()]);
+        let unbox_x = ident_apply(&prefix_unbox(&dpath), &vec![x_var.clone()]);
+        let box_unbox_x = ident_apply(&prefix_box(&dpath), &vec![unbox_x.clone()]);
+        let unbox_box_x = ident_apply(&prefix_unbox(&dpath), &vec![box_x.clone()]);
+        let has = datatype_has_type(dpath, &typ_args, &x_var);
+        let has_box = datatype_has_type(dpath, &typ_args, &box_x);
+        let vpolytyp = Arc::new(TypX::Boxed(datatyp.clone()));
 
         // box axiom:
         //   forall x. x == unbox(box(x))

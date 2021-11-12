@@ -159,3 +159,14 @@ test_verify_with_pervasive! {
         }
     } => Err(err) => assert_one_fails(err)
 }
+
+test_verify_with_pervasive! {
+    #[test] test_out_of_order code! {
+        struct XY {
+            tz: TZ,
+        }
+        struct TZ {
+            p: (u64, u64),
+        }
+    } => Ok(())
+}
