@@ -65,3 +65,97 @@ test_verify_with_pervasive! {
         }
     } => Err(err) => assert_one_fails(err)
 }
+
+test_verify_with_pervasive! {
+    #[test] test_refinements1 code! {
+        struct X {
+            u: u64,
+        }
+
+        fn aa<A>(a: A) -> A {
+            a
+        }
+
+        #[spec]
+        #[opaque]
+        fn id<A>(a: A) -> A {
+            a
+        }
+
+        fn f() -> X {
+            let x = X { u: 3 };
+            let y = aa(x);
+            assert(id(y.u) >= 0);
+            assert(y.u >= 0);
+            y
+        }
+    } => Ok(())
+}
+
+test_verify_with_pervasive! {
+    #[test] test_refinements1_fail code! {
+        struct X {
+            u: u64,
+        }
+
+        fn aa<A>(a: A) -> A {
+            a
+        }
+
+        #[spec]
+        #[opaque]
+        fn id<A>(a: A) -> A {
+            a
+        }
+
+        fn f() -> X {
+            let x = X { u: 3 };
+            let y = aa(x);
+            assert(id(y.u) >= 1); // FAILS
+            assert(y.u >= 0);
+            y
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_with_pervasive! {
+    #[test] test_refinements2 code! {
+        struct P<A> {
+            a: A,
+        }
+
+        #[spec]
+        #[opaque]
+        fn id<A>(a: A) -> A {
+            a
+        }
+
+        fn fp(p: P<u64>) {
+            assert(p.a >= 0);
+            let p2: P<u8> = P { a: 2 };
+            assert(id(p).a >= 0);
+            assert(id(p2).a >= 0);
+        }
+    } => Ok(())
+}
+
+test_verify_with_pervasive! {
+    #[test] test_refinements2_fails code! {
+        struct P<A> {
+            a: A,
+        }
+
+        #[spec]
+        #[opaque]
+        fn id<A>(a: A) -> A {
+            a
+        }
+
+        fn fp(p: P<u64>) {
+            assert(p.a >= 0);
+            let p2: P<u8> = P { a: 2 };
+            assert(id(p).a >= 0);
+            assert(id(p2).a >= 1); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}

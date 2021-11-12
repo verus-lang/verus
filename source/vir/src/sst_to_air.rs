@@ -1,12 +1,12 @@
 use crate::ast::{
-    BinaryOp, Ident, Idents, IntRange, Mode, Params, Path, Typ, TypX, UnaryOp, UnaryOpr,
+    BinaryOp, Ident, Idents, IntRange, Mode, Params, Path, Typ, TypX, Typs, UnaryOp, UnaryOpr,
 };
 use crate::context::Ctx;
 use crate::def::{
-    path_to_string, prefix_ensures, prefix_fuel_id, prefix_requires, prefix_type_id,
-    suffix_global_id, suffix_local_expr_id, suffix_local_stmt_id, suffix_local_unique_id,
-    suffix_typ_param_id, variant_field_ident, variant_ident, SnapPos, Spanned, FUEL_BOOL,
-    FUEL_BOOL_DEFAULT, FUEL_DEFAULTS, FUEL_ID, FUEL_PARAM, FUEL_TYPE, POLY, SNAPSHOT_CALL, SUCC,
+    path_to_string, prefix_box, prefix_ensures, prefix_fuel_id, prefix_requires, suffix_global_id,
+    suffix_local_expr_id, suffix_local_stmt_id, suffix_local_unique_id, suffix_typ_param_id,
+    variant_field_ident, variant_ident, SnapPos, Spanned, FUEL_BOOL, FUEL_BOOL_DEFAULT,
+    FUEL_DEFAULTS, FUEL_ID, FUEL_PARAM, FUEL_TYPE, POLY, SNAPSHOT_CALL, SUCC,
 };
 use crate::sst::{BndX, Dest, Exp, ExpX, LocalDecl, Stm, StmX, UniqueIdent};
 use crate::util::vec_map;
@@ -71,10 +71,19 @@ pub fn typ_to_id(typ: &Typ) -> Expr {
         },
         TypX::Bool => str_var(crate::def::TYPE_ID_BOOL),
         TypX::Tuple(_) => panic!("internal error: Tuple should have been removed by ast_simplify"),
-        TypX::Datatype(path, _) => string_var(&prefix_type_id(&Arc::new(path_to_string(&path)))),
+        TypX::Datatype(path, typs) => datatype_id(path, typs),
         TypX::Boxed(_) => panic!("internal error: type arguments should be unboxed"),
         TypX::TypParam(x) => ident_var(&suffix_typ_param_id(x)),
     }
+}
+
+pub(crate) fn datatype_id(path: &Path, typs: &Typs) -> Expr {
+    let f_name = crate::def::prefix_type_id(path);
+    air::ast_util::ident_apply_or_var(&f_name, &Arc::new(vec_map(&**typs, typ_to_id)))
+}
+
+pub(crate) fn datatype_has_type(path: &Path, typs: &Typs, expr: &Expr) -> Expr {
+    str_apply(crate::def::HAS_TYPE, &vec![expr.clone(), datatype_id(path, typs)])
 }
 
 // If expr has type typ, what can we assume to be true about expr?
@@ -100,10 +109,8 @@ pub(crate) fn typ_invariant(ctx: &Ctx, typ: &Typ, expr: &Expr) -> Option<Expr> {
             Some(apply_range_fun(&f_name, &range, vec![expr.clone()]))
         }
         TypX::Datatype(path, typs) if ctx.datatypes_with_invariant.contains(path) => {
-            let f_name = crate::def::prefix_datatype_inv(path);
-            let mut args = vec_map(typs, typ_to_id);
-            args.push(expr.clone());
-            Some(str_apply(&f_name, &args))
+            let box_expr = ident_apply(&prefix_box(&path), &vec![expr.clone()]);
+            Some(datatype_has_type(path, typs, &box_expr))
         }
         TypX::TypParam(x) => Some(str_apply(
             crate::def::HAS_TYPE,
@@ -184,9 +191,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp) -> Expr {
                 let f_name = match &**typ {
                     TypX::Bool => str_ident(crate::def::BOX_BOOL),
                     TypX::Int(_) => str_ident(crate::def::BOX_INT),
-                    TypX::Datatype(path, _) => {
-                        crate::def::prefix_box(&Arc::new(path_to_string(&path)))
-                    }
+                    TypX::Datatype(path, _) => prefix_box(&path),
                     TypX::Tuple(_) => panic!("internal error: Box(Tuple)"),
                     TypX::Boxed(_) => panic!("internal error: Box(Boxed)"),
                     TypX::TypParam(_) => panic!("internal error: Box(TypParam)"),
@@ -198,9 +203,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp) -> Expr {
                 let f_name = match &**typ {
                     TypX::Bool => str_ident(crate::def::UNBOX_BOOL),
                     TypX::Int(_) => str_ident(crate::def::UNBOX_INT),
-                    TypX::Datatype(path, _) => {
-                        crate::def::prefix_unbox(&Arc::new(path_to_string(&path)))
-                    }
+                    TypX::Datatype(path, _) => crate::def::prefix_unbox(&path),
                     TypX::Tuple(_) => panic!("internal error: Box(Tuple)"),
                     TypX::Boxed(_) => panic!("internal error: Unbox(Boxed)"),
                     TypX::TypParam(_) => panic!("internal error: Unbox(TypParam)"),

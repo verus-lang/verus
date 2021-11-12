@@ -39,7 +39,6 @@ const SUFFIX_RENAME: &str = "!";
 const SUFFIX_PATH: &str = ".";
 const PREFIX_FUEL_ID: &str = "fuel%";
 const PREFIX_FUEL_NAT: &str = "fuel_nat%";
-const PREFIX_DATATYPE_INV: &str = "inv%";
 const PREFIX_REQUIRES: &str = "req%";
 const PREFIX_ENSURES: &str = "ens%";
 const PREFIX_RECURSIVE: &str = "rec%";
@@ -159,8 +158,8 @@ pub fn suffix_rename(ident: &Ident) -> Ident {
     Arc::new(ident.to_string() + SUFFIX_RENAME)
 }
 
-pub fn prefix_type_id(ident: &Ident) -> Ident {
-    Arc::new(PREFIX_TYPE_ID.to_string() + ident)
+pub fn prefix_type_id(path: &Path) -> Ident {
+    Arc::new(PREFIX_TYPE_ID.to_string() + &path_to_string(path))
 }
 
 pub fn prefix_tuple_type(i: usize) -> Path {
@@ -180,12 +179,12 @@ pub fn prefix_tuple_field(i: usize) -> Ident {
     Arc::new(format!("{}{}", PREFIX_TUPLE_FIELD, i))
 }
 
-pub fn prefix_box(ident: &Ident) -> Ident {
-    Arc::new(PREFIX_BOX.to_string() + ident)
+pub fn prefix_box(ident: &Path) -> Ident {
+    Arc::new(PREFIX_BOX.to_string() + &path_to_string(ident))
 }
 
-pub fn prefix_unbox(ident: &Ident) -> Ident {
-    Arc::new(PREFIX_UNBOX.to_string() + ident)
+pub fn prefix_unbox(ident: &Path) -> Ident {
+    Arc::new(PREFIX_UNBOX.to_string() + &path_to_string(ident))
 }
 
 pub fn prefix_fuel_id(ident: &Ident) -> Ident {
@@ -194,10 +193,6 @@ pub fn prefix_fuel_id(ident: &Ident) -> Ident {
 
 pub fn prefix_fuel_nat(ident: &Ident) -> Ident {
     Arc::new(PREFIX_FUEL_NAT.to_string() + ident)
-}
-
-pub fn prefix_datatype_inv(path: &Path) -> Ident {
-    Arc::new(PREFIX_DATATYPE_INV.to_string() + &path_to_string(path))
 }
 
 pub fn prefix_requires(ident: &Ident) -> Ident {

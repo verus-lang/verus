@@ -1,6 +1,6 @@
 use crate::ast::{
-    BinaryOp, Bind, BindX, Binder, BinderX, Constant, Expr, ExprX, Ident, MultiOp, Quant, Span,
-    Trigger, Typ, TypX, UnaryOp,
+    BinaryOp, Bind, BindX, Binder, BinderX, Constant, DeclX, Expr, ExprX, Exprs, Ident, MultiOp,
+    Quant, Span, Trigger, Typ, TypX, Typs, UnaryOp,
 };
 use std::fmt::Debug;
 use std::sync::Arc;
@@ -46,6 +46,18 @@ impl<A: Clone + Debug> std::fmt::Debug for BinderX<A> {
     }
 }
 
+impl ExprX {
+    pub fn apply_or_var(x: Ident, args: Exprs) -> ExprX {
+        if args.len() == 0 { ExprX::Var(x) } else { ExprX::Apply(x, args) }
+    }
+}
+
+impl DeclX {
+    pub fn fun_or_const(x: Ident, typs: Typs, typ: Typ) -> DeclX {
+        if typs.len() == 0 { DeclX::Const(x, typ) } else { DeclX::Fun(x, typs, typ) }
+    }
+}
+
 pub fn str_ident(x: &str) -> Ident {
     Arc::new(x.to_string())
 }
@@ -64,6 +76,10 @@ pub fn str_var(x: &str) -> Expr {
 
 pub fn ident_apply(x: &Ident, args: &Vec<Expr>) -> Expr {
     Arc::new(ExprX::Apply(x.clone(), Arc::new(args.clone())))
+}
+
+pub fn ident_apply_or_var(x: &Ident, args: &Vec<Expr>) -> Expr {
+    Arc::new(ExprX::apply_or_var(x.clone(), Arc::new(args.clone())))
 }
 
 pub fn string_apply(x: &String, args: &Vec<Expr>) -> Expr {
