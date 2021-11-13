@@ -381,6 +381,9 @@ pub(crate) fn expr_to_stm_opt(
                 Ok((stms, None))
             }
         }
+        ExprX::Tuple(_) => {
+            panic!("internal error: Tuple should have been simplified by ast_simplify")
+        }
         ExprX::Ctor(p, i, binders) => {
             let mut stms: Vec<Stm> = Vec::new();
             let mut args: Vec<Binder<Exp>> = Vec::new();
@@ -446,6 +449,18 @@ pub(crate) fn expr_to_stm_opt(
             let trigs = crate::triggers::build_triggers(ctx, &expr.span, &vars, &exp)?;
             let bnd = Spanned::new(body.span.clone(), BndX::Quant(*quant, binders.clone(), trigs));
             Ok((vec![], Some(Spanned::new(expr.span.clone(), ExpX::Bind(bnd, exp)))))
+        }
+        ExprX::Fuel(x, fuel) => {
+            let stm = Spanned::new(expr.span.clone(), StmX::Fuel(x.clone(), *fuel));
+            Ok((vec![stm], None))
+        }
+        ExprX::Header(_) => {
+            panic!("internal error: Header should have been removed")
+        }
+        ExprX::Admit => {
+            let exp = Spanned::new(expr.span.clone(), ExpX::Const(Constant::Bool(false)));
+            let stm = Spanned::new(expr.span.clone(), StmX::Assume(exp));
+            Ok((vec![stm], None))
         }
         ExprX::If(e0, e1, None) => {
             let (mut stms0, e0) = expr_to_stm(ctx, state, e0)?;
@@ -562,18 +577,6 @@ pub(crate) fn expr_to_stm_opt(
                     Ok((vec![block], exp))
                 }
             }
-        }
-        ExprX::Fuel(x, fuel) => {
-            let stm = Spanned::new(expr.span.clone(), StmX::Fuel(x.clone(), *fuel));
-            Ok((vec![stm], None))
-        }
-        ExprX::Admit => {
-            let exp = Spanned::new(expr.span.clone(), ExpX::Const(Constant::Bool(false)));
-            let stm = Spanned::new(expr.span.clone(), StmX::Assume(exp));
-            Ok((vec![stm], None))
-        }
-        _ => {
-            todo!("{}", expr.span.as_string)
         }
     }
 }
