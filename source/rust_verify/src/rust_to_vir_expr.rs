@@ -132,12 +132,24 @@ fn extract_quant<'tcx>(
                 })
                 .collect();
             let expr = &body.value;
-            if !matches!(bctx.types.node_type(expr.hir_id).kind(), TyKind::Bool) {
-                return err_span_str(expr.span, "forall/ensures needs a bool expression");
+            let mut vir_expr = expr_to_vir(bctx, expr)?;
+            let header = vir::headers::read_header(&mut vir_expr)?;
+            if header.ensure.len() == 1 && header.ensure_id_typ.is_none() && quant == Quant::Forall
+            {
+                // forall statement
+                let typ = Arc::new(TypX::Tuple(Arc::new(vec![])));
+                let vars = Arc::new(binders);
+                let ensure = header.ensure[0].clone();
+                let forallx = ExprX::Forall { vars, ensure, proof: vir_expr };
+                Ok(spanned_typed_new(span, &typ, forallx))
+            } else {
+                // forall/exists expression
+                let typ = Arc::new(TypX::Bool);
+                if !matches!(bctx.types.node_type(expr.hir_id).kind(), TyKind::Bool) {
+                    return err_span_str(expr.span, "forall/ensures needs a bool expression");
+                }
+                Ok(spanned_typed_new(span, &typ, ExprX::Quant(quant, Arc::new(binders), vir_expr)))
             }
-            let vir_expr = expr_to_vir(bctx, expr)?;
-            let typ = Arc::new(TypX::Bool);
-            Ok(spanned_typed_new(span, &typ, ExprX::Quant(quant, Arc::new(binders), vir_expr)))
         }
         _ => err_span_str(expr.span, "argument to forall/exists must be a closure"),
     }
@@ -234,6 +246,7 @@ fn fn_call_to_vir<'tcx>(
     let is_reveal = f_name == "builtin::reveal";
     let is_reveal_fuel = f_name == "builtin::reveal_with_fuel";
     let is_implies = f_name == "builtin::imply";
+    let is_assert_by = f_name == "builtin::assert_by";
     let is_eq = f_name == "core::cmp::PartialEq::eq";
     let is_ne = f_name == "core::cmp::PartialEq::ne";
     let is_le = f_name == "core::cmp::PartialOrd::le";
@@ -302,6 +315,13 @@ fn fn_call_to_vir<'tcx>(
             }
             _ => panic!("internal error: is_reveal_fuel"),
         }
+    }
+    if is_assert_by {
+        unsupported_err_unless!(len == 2, expr.span, "expected assert_by", &args);
+        let vars = Arc::new(vec![]);
+        let ensure = expr_to_vir(bctx, &args[0])?;
+        let proof = expr_to_vir(bctx, &args[1])?;
+        return Ok(mk_expr(ExprX::Forall { vars, ensure, proof }));
     }
 
     let mut vir_args = vec_map_result(&args, |arg| expr_to_vir(bctx, arg))?;

@@ -53,6 +53,10 @@ pub fn equal<A>(_: A, _: A) -> bool {
     unimplemented!();
 }
 
+pub fn assert_by(_: bool, _: ()) {
+    unimplemented!();
+}
+
 #[allow(non_camel_case_types)]
 pub struct int;
 

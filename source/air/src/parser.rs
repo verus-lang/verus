@@ -278,6 +278,10 @@ pub(crate) fn node_to_stmt(node: &Node) -> Result<Stmt, String> {
                 let expr = node_to_expr(&e)?;
                 Ok(Arc::new(StmtX::Assert(Arc::new(Some(span)), expr)))
             }
+            [Node::Atom(s), e] if s.to_string() == "deadend" => {
+                let stmt = node_to_stmt(&e)?;
+                Ok(Arc::new(StmtX::DeadEnd(stmt)))
+            }
             _ => match &nodes[0] {
                 Node::Atom(s) if s.to_string() == "block" => {
                     Ok(Arc::new(StmtX::Block(nodes_to_stmts(&nodes[1..])?)))

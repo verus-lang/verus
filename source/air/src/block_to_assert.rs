@@ -1,7 +1,6 @@
-use crate::ast::{
-    BinaryOp, Constant, Decl, DeclX, Expr, ExprX, MultiOp, Query, QueryX, Stmt, StmtX, UnaryOp,
-};
+use crate::ast::{Decl, DeclX, Expr, ExprX, Query, QueryX, Stmt, StmtX, UnaryOp};
 use crate::ast_util::bool_typ;
+use crate::ast_util::{mk_and, mk_implies, mk_or, mk_true};
 use crate::def::SWITCH_LABEL;
 use std::sync::Arc;
 
@@ -9,16 +8,21 @@ fn stmt_to_expr(label_n: &mut u64, locals: &mut Vec<Decl>, stmt: &Stmt, pred: Ex
     match &**stmt {
         StmtX::Assume(expr) => {
             // wp((assume Q), P) = Q ==> P
-            Arc::new(ExprX::Binary(BinaryOp::Implies, expr.clone(), pred))
+            mk_implies(&expr, &pred)
         }
         StmtX::Assert(span, expr) => {
             // wp((assert Q), P) = Q /\ P
             let assertion = Arc::new(ExprX::LabeledAssertion(span.clone(), expr.clone()));
-            Arc::new(ExprX::Multi(MultiOp::And, Arc::new(vec![assertion, pred])))
+            mk_and(&vec![assertion, pred])
         }
         StmtX::Havoc(_) => panic!("internal error: Havoc in block_to_assert"),
         StmtX::Assign(_, _) => panic!("internal error: Assign in block_to_assert"),
         StmtX::Snapshot(_) => panic!("internal error: Snapshot in block_to_assert"),
+        StmtX::DeadEnd(stmt) => {
+            // wp(deadend(s), P) = wp(s, true) /\ P
+            let wps = stmt_to_expr(label_n, locals, stmt, mk_true());
+            mk_and(&vec![wps, pred])
+        }
         StmtX::Block(stmts) => {
             // wp((s1; s2), P) = wp(s1, wp(s2, P))
             let mut p = pred;
@@ -41,9 +45,9 @@ fn stmt_to_expr(label_n: &mut u64, locals: &mut Vec<Decl>, stmt: &Stmt, pred: Ex
                 exprs.push(stmt_to_expr(label_n, locals, stmt, exp_label.clone()));
             }
             let neg_label = Arc::new(ExprX::Unary(UnaryOp::Not, exp_label));
-            let and1 = Arc::new(ExprX::Multi(MultiOp::And, Arc::new(exprs)));
-            let and2 = Arc::new(ExprX::Multi(MultiOp::And, Arc::new(vec![neg_label, pred])));
-            Arc::new(ExprX::Multi(MultiOp::Or, Arc::new(vec![and1, and2])))
+            let and1 = mk_and(&exprs);
+            let and2 = mk_and(&vec![neg_label, pred]);
+            mk_or(&vec![and1, and2])
         }
     }
 }
@@ -51,8 +55,7 @@ fn stmt_to_expr(label_n: &mut u64, locals: &mut Vec<Decl>, stmt: &Stmt, pred: Ex
 pub(crate) fn lower_query(query: &Query) -> Query {
     let mut locals: Vec<Decl> = (*query.local).clone();
     let mut switch_label: u64 = 0;
-    let tru = Arc::new(ExprX::Const(Constant::Bool(true)));
-    let expr = stmt_to_expr(&mut switch_label, &mut locals, &query.assertion, tru);
+    let expr = stmt_to_expr(&mut switch_label, &mut locals, &query.assertion, mk_true());
     let assertion = Arc::new(StmtX::Assert(Arc::new(None), expr));
     Arc::new(QueryX { local: Arc::new(locals), assertion })
 }

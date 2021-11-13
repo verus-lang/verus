@@ -203,6 +203,16 @@ fn check_expr(typing: &mut Typing, outer_mode: Mode, expr: &Expr) -> Result<Mode
         ExprX::Fuel(_, _) => Ok(outer_mode),
         ExprX::Header(_) => panic!("internal error: Header shouldn't exist here"),
         ExprX::Admit => Ok(outer_mode),
+        ExprX::Forall { vars, ensure, proof } => {
+            typing.vars.push_scope(true);
+            for var in vars.iter() {
+                typing.insert(&expr.span, &var.name, Mode::Spec);
+            }
+            check_expr_has_mode(typing, Mode::Spec, ensure, Mode::Spec)?;
+            check_expr_has_mode(typing, Mode::Proof, proof, Mode::Proof)?;
+            typing.vars.pop_scope();
+            Ok(Mode::Proof)
+        }
         ExprX::If(e1, e2, e3) => {
             let mode1 = check_expr(typing, outer_mode, e1)?;
             typing.erasure_modes.condition_modes.push((expr.span.clone(), mode1));

@@ -130,6 +130,11 @@ where
         StmX::Assume(_) => f(stm),
         StmX::Assign { .. } => f(stm),
         StmX::Fuel(..) => f(stm),
+        StmX::DeadEnd(s) => {
+            let s = map_stm_visitor(s, f)?;
+            let stm = Spanned::new(stm.span.clone(), StmX::DeadEnd(s));
+            f(&stm)
+        }
         StmX::If(cond, lhs, rhs) => {
             let lhs = map_stm_visitor(lhs, f)?;
             let rhs = rhs.as_ref().map(|rhs| map_stm_visitor(rhs, f)).transpose()?;
@@ -179,6 +184,7 @@ where
                 Spanned::new(span, StmX::Assign { lhs: lhs.clone(), rhs, is_init: *is_init })
             }
             StmX::Fuel(..) => stm.clone(),
+            StmX::DeadEnd(..) => stm.clone(),
             StmX::If(exp, s1, s2) => {
                 let exp = f(exp);
                 Spanned::new(span, StmX::If(exp, s1.clone(), s2.clone()))

@@ -71,6 +71,10 @@ fn lower_stmt(
             all_snapshots.insert(snap.clone(), versions.clone());
             Arc::new(StmtX::Block(Arc::new(vec![])))
         }
+        StmtX::DeadEnd(s) => {
+            let s = lower_stmt(decls, versions, version_decls, snapshots, all_snapshots, types, s);
+            Arc::new(StmtX::DeadEnd(s))
+        }
         StmtX::Block(ss) => {
             let mut stmts: Vec<Stmt> = Vec::new();
             for s in ss.iter() {

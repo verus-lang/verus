@@ -329,6 +329,10 @@ fn assume_var(span: &Span, x: &UniqueIdent, exp: &Exp) -> Stm {
     Spanned::new(span.clone(), StmX::Assume(eq))
 }
 
+fn one_stmt(stmts: Vec<Stmt>) -> Stmt {
+    if stmts.len() == 1 { stmts[0].clone() } else { Arc::new(StmtX::Block(Arc::new(stmts))) }
+}
+
 fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
     match &stm.x {
         StmX::Call(x, typs, args, dest) => {
@@ -446,6 +450,9 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
             }
             stmts
         }
+        StmX::DeadEnd(s) => {
+            vec![Arc::new(StmtX::DeadEnd(one_stmt(stm_to_stmts(ctx, state, s))))]
+        }
         StmX::If(cond, lhs, rhs) => {
             let pos_cond = exp_to_expr(ctx, &cond);
             let neg_cond = Arc::new(ExprX::Unary(air::ast::UnaryOp::Not, pos_cond.clone()));
@@ -532,11 +539,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
                 let inv_stmt = StmtX::Assert(option_span, inv.clone());
                 air_body.push(Arc::new(inv_stmt));
             }
-            let assertion = if air_body.len() == 1 {
-                air_body[0].clone()
-            } else {
-                Arc::new(StmtX::Block(Arc::new(air_body)))
-            };
+            let assertion = one_stmt(air_body);
 
             let assertion = if !ctx.debug {
                 assertion
@@ -721,8 +724,7 @@ pub fn body_stm_to_air(
         let ens_stmt = StmtX::Assert(option_span, exp_to_expr(ctx, ens));
         stmts.push(Arc::new(ens_stmt));
     }
-    let assertion =
-        if stmts.len() == 1 { stmts[0].clone() } else { Arc::new(StmtX::Block(Arc::new(stmts))) };
+    let assertion = one_stmt(stmts);
 
     for param in params.iter() {
         let typ_inv =

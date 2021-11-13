@@ -31,6 +31,10 @@ pub(crate) fn stm_assign(
             }
             stm.clone()
         }
+        StmX::DeadEnd(s) => {
+            let s = stm_assign(declared, assigned, modified, s);
+            Spanned::new(stm.span.clone(), StmX::DeadEnd(s))
+        }
         StmX::If(cond, lhs, rhs) => {
             let mut pre_assigned = assigned.clone();
 

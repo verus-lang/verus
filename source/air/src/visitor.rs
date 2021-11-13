@@ -90,6 +90,7 @@ pub(crate) fn map_stmt_expr_visitor<F: FnMut(&Expr) -> Expr>(stmt: &Stmt, f: &mu
             Arc::new(StmtX::Assign(x.clone(), f(&expr)))
         }
         StmtX::Snapshot(_) => stmt.clone(),
+        StmtX::DeadEnd(_) => stmt.clone(),
         StmtX::Block(_) => stmt.clone(),
         StmtX::Switch(_) => stmt.clone(),
     }
