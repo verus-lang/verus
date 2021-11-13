@@ -57,6 +57,12 @@ pub fn assert_by(_: bool, _: ()) {
     unimplemented!();
 }
 
+// Used internally by erase.rs
+#[spec]
+pub fn internal_arbitrary<A>(_: u64) -> A {
+    unimplemented!()
+}
+
 #[allow(non_camel_case_types)]
 pub struct int;
 

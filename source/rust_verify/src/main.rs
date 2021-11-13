@@ -38,6 +38,7 @@ pub fn main() {
     let mut args = std::env::args();
     let program = args.next().unwrap();
     let (our_args, rustc_args) = config::parse_args(&program, args);
+    let lifetime = our_args.lifetime;
     let compile = our_args.compile;
 
     // Run verifier callback to build VIR tree and run verifier
@@ -57,10 +58,23 @@ pub fn main() {
         }
     }
 
-    // Run borrow checker and compiler (if enabled)
+    // Run borrow checker with both #[code] and #[proof]
+    if lifetime {
+        let erasure_hints = verifier.erasure_hints.clone().expect("erasure_hints");
+        let mut callbacks = CompilerCallbacks { erasure_hints, lifetimes_only: true };
+        let status = rustc_driver::RunCompiler::new(&rustc_args, &mut callbacks).run();
+        match status {
+            Ok(_) => {}
+            Err(_) => {
+                std::process::exit(1);
+            }
+        }
+    }
+
+    // Run borrow checker and compiler on #[code] (if enabled)
     if compile {
-        let erasure_hints = verifier.erasure_hints.expect("erasure_hints").clone();
-        let mut callbacks = CompilerCallbacks { erasure_hints };
+        let erasure_hints = verifier.erasure_hints.clone().expect("erasure_hints");
+        let mut callbacks = CompilerCallbacks { erasure_hints, lifetimes_only: false };
         rustc_driver::RunCompiler::new(&rustc_args, &mut callbacks)
             .run()
             .expect("RunCompiler.run() failed");
