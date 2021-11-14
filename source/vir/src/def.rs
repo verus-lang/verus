@@ -55,6 +55,11 @@ const PATH_SEPARATOR: &str = ".";
 const VARIANT_SEPARATOR: &str = "/";
 const VARIANT_FIELD_SEPARATOR: &str = "/";
 
+pub const SUFFIX_SNAP_MUT: &str = "_mutation";
+pub const SUFFIX_SNAP_JOIN: &str = "_join";
+pub const SUFFIX_SNAP_WHILE_BEGIN: &str = "_while_begin";
+pub const SUFFIX_SNAP_WHILE_END: &str = "_while_end";
+
 // List of constant strings that can appear in generated AIR code
 pub const FUEL_ID: &str = "FuelId";
 pub const FUEL_TYPE: &str = "Fuel";

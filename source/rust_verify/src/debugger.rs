@@ -31,6 +31,16 @@ impl Debugger {
     ) -> Debugger {
         let mut line_map = HashMap::new();
 
+        // let mut line_to_assigned = HashMap<usize, HashSet<Arc<String>>>::new();
+
+        // for (air_span, vars) in assign_map {
+        //     let span: &Span = &from_raw_span(&air_span.raw_span);
+        //     let (span_start, span_end) =
+        //         source_map.is_valid_span(*span).expect("internal error: invalid Span");
+
+        //     println!("{:?} {:?}", span_end.line, vars);
+        // }
+
         if snap_map.len() > 0 {
             let (air_span, snap_pos) = &snap_map[0];
             let span: &Span = &from_raw_span(&air_span.raw_span);
@@ -56,8 +66,11 @@ impl Debugger {
                     SnapPos::End(span_id) => (span_end.line, span_end.line + 1, span_id),
                 };
 
-                println!("Apply {} to lines {}..{}", cur_snap, start, end);
+                // println!("Apply {} to lines {}..{}", cur_snap, start, end);
                 for line in start..end {
+                    if line_map.contains_key(&line) && line_map.get(&line) != Some(cur_snap) {
+                        panic!("mapping a ");
+                    }
                     line_map.insert(line, cur_snap.clone());
                 }
 
@@ -72,10 +85,13 @@ impl Debugger {
             let mut cur_snap = min_snap;
             for line in min_line..max_line {
                 match line_map.get(&line) {
-                    Some(snap) => cur_snap = snap.clone(),
+                    Some(snap) => {
+                        println!("{} assigned to {:?}", line, snap);
+                        cur_snap = snap.clone();
+                    }
                     None => {
+                        println!("{} (missing) assigned to {:?}", line, cur_snap);
                         let _ = line_map.insert(line, cur_snap.clone());
-                        ()
                     }
                 }
             }
@@ -89,12 +105,12 @@ impl Debugger {
         //     println!("lines {}..{}, has {:?}", start.line, end.line, vars);
         // }
         // Debugging sanity checks
-        for (air_span, snap_pos) in snap_map {
-            let span: &Span = &from_raw_span(&air_span.raw_span);
-            let (start, end) =
-                source_map.is_valid_span(*span).expect("internal error: invalid Span");
-            println!("Span from {} to {} => {:?}", start.line, end.line, snap_pos);
-        }
+        // for (air_span, snap_pos) in snap_map {
+        //     let span: &Span = &from_raw_span(&air_span.raw_span);
+        //     let (start, end) =
+        //         source_map.is_valid_span(*span).expect("internal error: invalid Span");
+        //     println!("Span from {} to {} => {:?}", start.line, end.line, snap_pos);
+        // }
         Debugger { air_model, line_map, line: 0 }
     }
 

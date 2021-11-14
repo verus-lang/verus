@@ -20,17 +20,26 @@ fn test_mutation(i: int, n: nat, u: u8) {
 */
 
 fn test_if_else(b:bool, z:int) {
-    let mut x : int = 0;
-    let mut y : int = z;
+    let mut x : int;
+    let mut y : int = z; // 0_entry
+    let mut f : int;
     x = x + y;      // 1_mutation
     if b {
         x = 2*x;    // 2_mutation
         y = x + 1;  // 3_mutation
     } else {
-        x = y + 1;  // 4_mutation
-        y = 7;      // 5_mutation
-    }
-    assert(x + y > 5); // 6_join
+        let mut dd : int;
+        if b {
+            let mut ddd : int;
+            assert(true);
+            x = 2*x;    // 4_mutation
+            y = x + 1;  // 5_mutation
+        } // 6_join
+        x = y + 1;  // 7_mutation
+        y = 7;      // 8_mutation
+        f = 34;    // 9_mutation
+    } // 10_join
+    assert(x + y > 5); 
 }
 
 /*
