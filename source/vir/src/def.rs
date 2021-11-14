@@ -50,6 +50,10 @@ const PREFIX_TYPE_ID: &str = "TYPE%";
 const PREFIX_TUPLE_TYPE: &str = "tuple%";
 const PREFIX_TUPLE_PARAM: &str = "T%";
 const PREFIX_TUPLE_FIELD: &str = "field%";
+const PREFIX_FNSPEC_TYPE: &str = "fnspec%";
+const PREFIX_FNSPEC_APPLY: &str = "applyspec%";
+const PREFIX_FNSPEC_TPARAM: &str = "T%";
+const PREFIX_FNSPEC_PARAM: &str = "x%";
 const PATH_SEPARATOR: &str = ".";
 const VARIANT_SEPARATOR: &str = "/";
 const VARIANT_FIELD_SEPARATOR: &str = "/";
@@ -177,6 +181,24 @@ pub fn prefix_tuple_param(i: usize) -> Ident {
 
 pub fn prefix_tuple_field(i: usize) -> Ident {
     Arc::new(format!("{}{}", PREFIX_TUPLE_FIELD, i))
+}
+
+pub fn prefix_fnspec_type() -> Path {
+    let ident = Arc::new(PREFIX_FNSPEC_TYPE.to_string());
+    Arc::new(PathX { krate: None, segments: Arc::new(vec![ident]) })
+}
+
+pub fn prefix_fnspec_apply_name(i: usize) -> Path {
+    let ident = Arc::new(format!("{}{}", PREFIX_FNSPEC_APPLY, i));
+    Arc::new(PathX { krate: None, segments: Arc::new(vec![ident]) })
+}
+
+pub fn prefix_fnspec_tparam(i: usize) -> Ident {
+    Arc::new(format!("{}{}", PREFIX_FNSPEC_TPARAM, i))
+}
+
+pub fn prefix_fnspec_param(i: usize) -> Ident {
+    Arc::new(format!("{}{}", PREFIX_FNSPEC_PARAM, i))
 }
 
 pub fn prefix_box(ident: &Path) -> Ident {

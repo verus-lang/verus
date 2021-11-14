@@ -1,6 +1,7 @@
 use crate::ast::{
-    Arm, ArmX, Datatype, DatatypeX, Expr, ExprX, Field, Function, FunctionX, Param, ParamX,
-    Pattern, PatternX, SpannedTyped, Stmt, StmtX, Typ, TypX, UnaryOpr, Variant, VirErr,
+    Arm, ArmX, CallTarget, Datatype, DatatypeX, Expr, ExprX, Field, Function, FunctionX,
+    GenericBound, GenericBoundX, Ident, Param, ParamX, Pattern, PatternX, SpannedTyped, Stmt,
+    StmtX, Typ, TypX, UnaryOpr, Variant, VirErr,
 };
 use crate::ast_util::err_str;
 use crate::def::Spanned;
@@ -70,13 +71,22 @@ where
     let exprx = match &expr.x {
         ExprX::Const(c) => ExprX::Const(c.clone()),
         ExprX::Var(x) => ExprX::Var(x.clone()),
-        ExprX::Call(x, typs, es) => {
-            let typs = vec_map_result(&**typs, |t| (map_typ_visitor_env(t, env, ft)))?;
+        ExprX::Call(target, es) => {
+            let target = match target {
+                CallTarget::Path(x, typs) => {
+                    let typs = vec_map_result(&**typs, |t| (map_typ_visitor_env(t, env, ft)))?;
+                    CallTarget::Path(x.clone(), Arc::new(typs))
+                }
+                CallTarget::FnSpec { typ_param, fun } => {
+                    let fun = map_expr_visitor_env(fun, env, fe, fs, ft)?;
+                    CallTarget::FnSpec { typ_param: typ_param.clone(), fun }
+                }
+            };
             let mut exprs: Vec<Expr> = Vec::new();
             for e in es.iter() {
                 exprs.push(map_expr_visitor_env(e, env, fe, fs, ft)?);
             }
-            ExprX::Call(x.clone(), Arc::new(typs), Arc::new(exprs))
+            ExprX::Call(target, Arc::new(exprs))
         }
         ExprX::Tuple(es) => {
             let mut exprs: Vec<Expr> = Vec::new();
@@ -216,6 +226,24 @@ where
     Ok(Spanned::new(param.span.clone(), paramx))
 }
 
+pub(crate) fn map_generic_bound_visitor<E, FT>(
+    bound: &GenericBound,
+    env: &mut E,
+    ft: &FT,
+) -> Result<GenericBound, VirErr>
+where
+    FT: Fn(&mut E, &Typ) -> Result<Typ, VirErr>,
+{
+    match &**bound {
+        GenericBoundX::None => Ok(bound.clone()),
+        GenericBoundX::FnSpec(typs, typ) => {
+            let typs = Arc::new(vec_map_result(&**typs, |t| (map_typ_visitor_env(t, env, ft)))?);
+            let typ = map_typ_visitor_env(typ, env, ft)?;
+            Ok(Arc::new(GenericBoundX::FnSpec(typs, typ)))
+        }
+    }
+}
+
 pub(crate) fn map_function_visitor_env<E, FE, FS, FT>(
     function: &Function,
     env: &mut E,
@@ -233,7 +261,7 @@ where
         visibility,
         mode,
         fuel,
-        typ_params,
+        typ_bounds,
         params,
         ret,
         require,
@@ -248,7 +276,10 @@ where
     let visibility = visibility.clone();
     let mode = *mode;
     let fuel = *fuel;
-    let typ_params = typ_params.clone();
+    let mut type_bounds: Vec<(Ident, GenericBound)> = Vec::new();
+    for (x, bound) in typ_bounds.iter() {
+        type_bounds.push((x.clone(), map_generic_bound_visitor(bound, env, ft)?));
+    }
     let params = Arc::new(vec_map_result(params, |p| map_param_visitor(p, env, ft))?);
     let ret = map_param_visitor(ret, env, ft)?;
     let require = Arc::new(vec_map_result(require, |e| map_expr_visitor_env(e, env, fe, fs, ft))?);
@@ -264,7 +295,7 @@ where
         visibility,
         mode,
         fuel,
-        typ_params,
+        typ_bounds: Arc::new(type_bounds),
         params,
         ret,
         require,

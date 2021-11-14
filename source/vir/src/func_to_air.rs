@@ -119,7 +119,7 @@ fn func_body_to_air(
     } else {
         let rec_f = suffix_global_id(&path_to_air_ident(&prefix_recursive(&function.x.path)));
         let fuel_nat_f = prefix_fuel_nat(&path_to_air_ident(&function.x.path));
-        let args = func_def_args(&function.x.typ_params, &function.x.params);
+        let args = func_def_args(&function.x.typ_params(), &function.x.params);
         let mut args_zero = args.clone();
         let mut args_fuel = args.clone();
         let mut args_succ = args.clone();
@@ -135,9 +135,9 @@ fn func_body_to_air(
         let eq_zero = mk_eq(&rec_f_fuel, &rec_f_zero);
         let eq_body = mk_eq(&rec_f_succ, &body_expr);
         let bind_zero =
-            func_bind(ctx, &function.x.typ_params, &function.x.params, &rec_f_fuel, true);
+            func_bind(ctx, &function.x.typ_params(), &function.x.params, &rec_f_fuel, true);
         let bind_body =
-            func_bind(ctx, &function.x.typ_params, &function.x.params, &rec_f_succ, true);
+            func_bind(ctx, &function.x.typ_params(), &function.x.params, &rec_f_succ, true);
         let forall_zero = mk_bind_expr(&bind_zero, &eq_zero);
         let forall_body = mk_bind_expr(&bind_body, &eq_body);
         let fuel_nat_decl = Arc::new(DeclX::Const(fuel_nat_f, str_typ(FUEL_TYPE)));
@@ -151,7 +151,7 @@ fn func_body_to_air(
     let e_forall = func_def_quant(
         ctx,
         &suffix_global_id(&path_to_air_ident(&function.x.path)),
-        &function.x.typ_params,
+        &function.x.typ_params(),
         &function.x.params,
         def_body,
     )?;
@@ -211,7 +211,7 @@ pub fn req_ens_to_air(
 /// if the function is a spec function.
 pub fn func_name_to_air(ctx: &Ctx, function: &Function) -> Result<Commands, VirErr> {
     let mut all_typs = vec_map(&function.x.params, |param| typ_to_air(ctx, &param.x.typ));
-    for _ in function.x.typ_params.iter() {
+    for _ in function.x.typ_bounds.iter() {
         all_typs.insert(0, str_typ(crate::def::TYPE));
     }
     let mut commands: Vec<Command> = Vec::new();
@@ -230,7 +230,7 @@ pub fn func_name_to_air(ctx: &Ctx, function: &Function) -> Result<Commands, VirE
                     suffix_global_id(&path_to_air_ident(&prefix_recursive(&function.x.path)));
                 let mut rec_typs =
                     vec_map(&*function.x.params, |param| typ_to_air(ctx, &param.x.typ));
-                for _ in function.x.typ_params.iter() {
+                for _ in function.x.typ_bounds.iter() {
                     rec_typs.insert(0, str_typ(crate::def::TYPE));
                 }
                 rec_typs.push(str_typ(FUEL_TYPE));
@@ -248,7 +248,7 @@ pub fn func_decl_to_air(
 ) -> Result<(Commands, Commands), VirErr> {
     let mut all_typs = vec_map(&function.x.params, |param| typ_to_air(ctx, &param.x.typ));
     let param_typs = Arc::new(all_typs.clone());
-    for _ in function.x.typ_params.iter() {
+    for _ in function.x.typ_bounds.iter() {
         all_typs.insert(0, str_typ(crate::def::TYPE));
     }
     let mut decl_commands: Vec<Command> = Vec::new();
@@ -265,7 +265,7 @@ pub fn func_decl_to_air(
             // Return typing invariant
             let mut f_args: Vec<Expr> = Vec::new();
             let mut f_pre: Vec<Expr> = Vec::new();
-            for typ_param in function.x.typ_params.iter() {
+            for typ_param in function.x.typ_params().iter() {
                 f_args.push(ident_var(&suffix_typ_param_id(&typ_param.clone())));
             }
             for param in function.x.params.iter() {
@@ -279,7 +279,7 @@ pub fn func_decl_to_air(
             if let Some(post) = typ_invariant(ctx, &function.x.ret.x.typ, &f_app) {
                 // (axiom (forall (...) (=> pre post)))
                 let e_forall = mk_bind_expr(
-                    &func_bind(ctx, &function.x.typ_params, &function.x.params, &f_app, false),
+                    &func_bind(ctx, &function.x.typ_params(), &function.x.params, &f_app, false),
                     &mk_implies(&mk_and(&f_pre), &post),
                 );
                 let inv_axiom = Arc::new(DeclX::Axiom(e_forall));
@@ -299,7 +299,7 @@ pub fn func_decl_to_air(
                 &function.x.params,
                 &vec![],
                 &function.x.require,
-                &function.x.typ_params,
+                &function.x.typ_params(),
                 &param_typs,
                 &prefix_requires(&path_to_air_ident(&function.x.path)),
                 &msg,
@@ -323,7 +323,7 @@ pub fn func_decl_to_air(
                 &Arc::new(ens_params),
                 &ens_typing_invs,
                 &function.x.ensure,
-                &function.x.typ_params,
+                &function.x.typ_params(),
                 &Arc::new(ens_typs),
                 &prefix_ensures(&path_to_air_ident(&function.x.path)),
                 &None,
@@ -371,7 +371,7 @@ pub fn func_def_to_air(
             }
             let (commands, snap_map) = crate::sst_to_air::body_stm_to_air(
                 ctx,
-                &function.x.typ_params,
+                &function.x.typ_params(),
                 &function.x.params,
                 &state.local_decls,
                 &function.x.hidden,

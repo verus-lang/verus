@@ -1,6 +1,6 @@
 use crate::ast::{
-    BinaryOp, Constant, Function, Ident, IntRange, Params, Path, Typ, TypX, UnaryOp, UnaryOpr,
-    VirErr,
+    BinaryOp, CallTarget, Constant, Function, Ident, IntRange, Params, Path, Typ, TypX, UnaryOp,
+    UnaryOpr, VirErr,
 };
 use crate::ast_util::err_str;
 use crate::ast_visitor::map_expr_visitor;
@@ -274,7 +274,7 @@ pub(crate) fn check_termination_exp(
     local_decls.push(decl);
     let (commands, _snap_map) = crate::sst_to_air::body_stm_to_air(
         ctx,
-        &function.x.typ_params,
+        &function.x.typ_params(),
         &function.x.params,
         &Arc::new(local_decls),
         &Arc::new(vec![]),
@@ -358,7 +358,9 @@ fn add_call_graph_edges(
     use crate::ast::ExprX;
 
     match &expr.x {
-        ExprX::Call(x, _, _) | ExprX::Fuel(x, _) => call_graph.add_edge(src.clone(), x.clone()),
+        ExprX::Call(CallTarget::Path(x, _), _) | ExprX::Fuel(x, _) => {
+            call_graph.add_edge(src.clone(), x.clone())
+        }
         _ => {}
     }
     Ok(expr.clone())

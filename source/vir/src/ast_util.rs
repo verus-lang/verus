@@ -1,5 +1,8 @@
-use crate::ast::{FunctionX, Mode, Path, SpannedTyped, Typ, TypX, VirErr, VirErrX, Visibility};
+use crate::ast::{
+    FunctionX, Idents, Mode, Path, SpannedTyped, Typ, TypX, VirErr, VirErrX, Visibility,
+};
 use crate::def::Spanned;
+use crate::util::vec_map;
 use air::ast::Span;
 pub use air::ast_util::{ident_binder, str_ident};
 use std::fmt;
@@ -95,5 +98,9 @@ impl FunctionX {
             TypX::Datatype(path, _) if path == &crate::def::prefix_tuple_type(0) => false,
             _ => true,
         }
+    }
+
+    pub fn typ_params(&self) -> Idents {
+        Arc::new(vec_map(&self.typ_bounds, |(x, _)| x.clone()))
     }
 }

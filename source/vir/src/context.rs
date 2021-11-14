@@ -1,8 +1,11 @@
-use crate::ast::{Datatype, Function, IntRange, Krate, Mode, Path, TypX, Variants, VirErr};
+use crate::ast::{
+    Datatype, Function, GenericBound, IntRange, Krate, Mode, Path, TypX, Variants, VirErr,
+};
 use crate::datatype_to_air::is_datatype_transparent;
 use crate::def::FUEL_ID;
 use crate::scc::Graph;
 use crate::sst_to_air::path_to_air_ident;
+use crate::util::vec_map;
 use air::ast::{Command, CommandX, Commands, DeclX, MultiOp, Span};
 use air::ast_util::str_typ;
 use std::collections::{HashMap, HashSet};
@@ -12,6 +15,7 @@ use std::sync::Arc;
 pub struct GlobalCtx {
     pub(crate) chosen_triggers: std::cell::RefCell<Vec<(Span, Vec<Vec<String>>)>>, // diagnostics
     pub(crate) datatypes: HashMap<Path, Variants>,
+    pub(crate) fun_bounds: HashMap<Path, Vec<GenericBound>>,
     // Used for synthesized AST nodes that have no relation to any location in the original code:
     pub(crate) no_span: Span,
 }
@@ -83,7 +87,12 @@ impl GlobalCtx {
             std::cell::RefCell::new(Vec::new());
         let datatypes: HashMap<Path, Variants> =
             krate.datatypes.iter().map(|d| (d.x.path.clone(), d.x.variants.clone())).collect();
-        GlobalCtx { chosen_triggers, datatypes, no_span }
+        let mut fun_bounds: HashMap<Path, Vec<GenericBound>> = HashMap::new();
+        for f in &krate.functions {
+            let bounds = vec_map(&f.x.typ_bounds, |(_, bound)| bound.clone());
+            fun_bounds.insert(f.x.path.clone(), bounds);
+        }
+        GlobalCtx { chosen_triggers, datatypes, fun_bounds, no_span }
     }
 
     // Report chosen triggers as strings for printing diagnostics

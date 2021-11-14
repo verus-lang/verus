@@ -1,6 +1,6 @@
 use crate::context::Context;
 use crate::rust_to_vir_base::{
-    check_generics, def_id_to_vir_path, def_to_path_ident, get_fuel, get_mode, get_var_mode,
+    check_generics_bounds, def_id_to_vir_path, def_to_path_ident, get_fuel, get_mode, get_var_mode,
     get_verifier_attrs, ident_to_var, ty_to_vir, BodyCtxt,
 };
 use crate::rust_to_vir_expr::{expr_to_vir, pat_to_var};
@@ -78,7 +78,7 @@ pub(crate) fn check_item_fn<'tcx>(
             check_fn_decl(ctxt.tcx, decl, mode)?
         }
     };
-    let typ_params = check_generics(generics)?;
+    let typ_bounds = check_generics_bounds(ctxt.tcx, generics)?;
     let fuel = get_fuel(attrs);
     let vattrs = get_verifier_attrs(attrs)?;
     if vattrs.external {
@@ -108,7 +108,7 @@ pub(crate) fn check_item_fn<'tcx>(
                 _ => Ok(false),
             }
         }
-        let typ_args = vec_map(&typ_params, |t| Arc::new(TypX::TypParam(t.clone())));
+        let typ_args = vec_map(&typ_bounds, |(t, _)| Arc::new(TypX::TypParam(t.clone())));
         let typ = if is_self_or_self_ref(*span, &input)? {
             Arc::new(TypX::Datatype(
                 self_path.as_ref().expect("a param is Self, so this must be an impl").clone(),
@@ -169,7 +169,7 @@ pub(crate) fn check_item_fn<'tcx>(
         visibility,
         mode,
         fuel,
-        typ_params,
+        typ_bounds,
         params,
         ret,
         require: header.require,
@@ -198,7 +198,7 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
 ) -> Result<(), VirErr> {
     let mode = get_mode(Mode::Exec, attrs);
     let ret_typ_mode = check_fn_decl(ctxt.tcx, decl, mode)?;
-    let typ_params = check_generics(generics)?;
+    let typ_bounds = check_generics_bounds(ctxt.tcx, generics)?;
     let fuel = get_fuel(attrs);
     let mut vir_params: Vec<vir::ast::Param> = Vec::new();
     for (param, input) in idents.iter().zip(decl.inputs.iter()) {
@@ -222,7 +222,7 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
         visibility,
         fuel,
         mode,
-        typ_params,
+        typ_bounds,
         params,
         ret,
         require: Arc::new(vec![]),

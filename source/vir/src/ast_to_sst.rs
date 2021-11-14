@@ -1,6 +1,6 @@
 use crate::ast::{
-    BinaryOp, Constant, Expr, ExprX, Function, Ident, Mode, Params, Path, PatternX, SpannedTyped,
-    Stmt, StmtX, Typ, TypX, Typs, UnaryOp, UnaryOpr, VirErr,
+    BinaryOp, CallTarget, Constant, Expr, ExprX, Function, Ident, Mode, Params, Path, PatternX,
+    SpannedTyped, Stmt, StmtX, Typ, TypX, Typs, UnaryOp, UnaryOpr, VirErr,
 };
 use crate::ast_util::{err_str, err_string};
 use crate::context::Ctx;
@@ -153,7 +153,10 @@ fn expr_get_call(
     expr: &Expr,
 ) -> Result<Option<(Vec<Stm>, Path, Typs, bool, Args)>, VirErr> {
     match &expr.x {
-        ExprX::Call(x, typs, args) => {
+        ExprX::Call(CallTarget::FnSpec { .. }, _) => {
+            panic!("internal error: FnSpec should have been replaced in ast_simplify")
+        }
+        ExprX::Call(CallTarget::Path(x, typs), args) => {
             let mut stms: Vec<Stm> = Vec::new();
             let mut exps: Vec<Arg> = Vec::new();
             for arg in args.iter() {
@@ -175,7 +178,7 @@ fn expr_must_be_call_stm(
     expr: &Expr,
 ) -> Result<Option<(Vec<Stm>, Path, Typs, bool, Args)>, VirErr> {
     match &expr.x {
-        ExprX::Call(x, _, _) if !function_can_be_exp(ctx, expr, x)? => {
+        ExprX::Call(CallTarget::Path(x, _), _) if !function_can_be_exp(ctx, expr, x)? => {
             expr_get_call(ctx, state, expr)
         }
         _ => Ok(None),
@@ -360,7 +363,7 @@ pub(crate) fn expr_to_stm_opt(
                 }
             }
         }
-        ExprX::Call(_, _, _) => {
+        ExprX::Call(..) => {
             let (mut stms, x, typs, ret, args) = expr_get_call(ctx, state, expr)?.expect("Call");
             if function_can_be_exp(ctx, expr, &x)? {
                 // ExpX::Call

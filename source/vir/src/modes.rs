@@ -1,6 +1,6 @@
 use crate::ast::{
-    BinaryOp, Datatype, Expr, ExprX, Function, Ident, Krate, Mode, Path, Pattern, PatternX, Stmt,
-    StmtX, TypX, UnaryOpr, VirErr,
+    BinaryOp, CallTarget, Datatype, Expr, ExprX, Function, Ident, Krate, Mode, Path, Pattern,
+    PatternX, Stmt, StmtX, TypX, UnaryOpr, VirErr,
 };
 use crate::ast_util::{err_str, err_string};
 use crate::util::vec_map_result;
@@ -108,7 +108,7 @@ fn check_expr(typing: &mut Typing, outer_mode: Mode, expr: &Expr) -> Result<Mode
             typing.erasure_modes.var_modes.push((expr.span.clone(), mode));
             Ok(mode)
         }
-        ExprX::Call(x, _, es) => {
+        ExprX::Call(CallTarget::Path(x, _), es) => {
             let function = match typing.funs.get(x) {
                 None => {
                     let name = crate::ast_util::path_as_rust_name(x);
@@ -131,6 +131,13 @@ fn check_expr(typing: &mut Typing, outer_mode: Mode, expr: &Expr) -> Result<Mode
                 )?;
             }
             Ok(function.x.ret.x.mode)
+        }
+        ExprX::Call(CallTarget::FnSpec { typ_param: _, fun: e0 }, es) => {
+            check_expr_has_mode(typing, Mode::Spec, e0, Mode::Spec)?;
+            for arg in es.iter() {
+                check_expr_has_mode(typing, Mode::Spec, arg, Mode::Spec)?;
+            }
+            Ok(Mode::Spec)
         }
         ExprX::Tuple(es) => {
             let modes = vec_map_result(es, |e| check_expr(typing, outer_mode, e))?;

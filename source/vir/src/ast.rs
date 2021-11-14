@@ -222,6 +222,16 @@ pub struct ArmX {
     pub body: Expr,
 }
 
+#[derive(Clone, Debug)]
+pub enum CallTarget {
+    /// Call a statically known function, passing some type arguments
+    Path(Path, Typs),
+    /// Call a dynamically computed FnSpec (no type arguments allowed),
+    /// where the function type is specified by the GenericBound of typ_param.
+    /// Note: this is replaced by Path in ast_simplify.
+    FnSpec { typ_param: Ident, fun: Expr },
+}
+
 /// Expression, similar to rustc_hir::Expr
 pub type Expr = Arc<SpannedTyped<ExprX>>;
 pub type Exprs = Arc<Vec<Expr>>;
@@ -231,9 +241,8 @@ pub enum ExprX {
     Const(Constant),
     /// Local variable
     Var(Ident),
-    /// Call to function with given name, passing some type arguments and some expression arguments
-    /// Note: higher-order functions aren't yet supported
-    Call(Path, Typs, Exprs),
+    /// Call to a function passing some expression arguments
+    Call(CallTarget, Exprs),
     /// Note: ast_simplify replaces this with Ctor
     Tuple(Exprs),
     /// Construct datatype value of type Path and variant Ident, with field initializers Binders<Expr>
@@ -291,6 +300,17 @@ pub struct ParamX {
     pub mode: Mode,
 }
 
+pub type GenericBound = Arc<GenericBoundX>;
+#[derive(Debug)]
+pub enum GenericBoundX {
+    None,
+    /// Spec function type (t1, ..., tn) -> t0.
+    /// Note: ast_simplify removes FnSpec type parameters, using a Datatype to represent FnSpec.
+    FnSpec(Typs, Typ),
+}
+
+pub type TypBounds = Arc<Vec<(Ident, GenericBound)>>;
+
 /// Function, including signature and body
 pub type Function = Arc<Spanned<FunctionX>>;
 #[derive(Debug, Clone)]
@@ -305,7 +325,7 @@ pub struct FunctionX {
     /// For recursive functions, fuel determines the number of unfoldings that the SMT solver sees
     pub fuel: u32,
     /// Type parameters to generic functions
-    pub typ_params: Idents,
+    pub typ_bounds: TypBounds,
     /// Function parameters
     pub params: Params,
     /// Return value (unit return type is treated specially; see FunctionX::has_return in ast_util)
@@ -345,6 +365,9 @@ pub struct DatatypeX {
     pub path: Path,
     pub visibility: Visibility,
     pub transparency: DatatypeTransparency,
+    // Note: currently typ_params doesn't contain GenericBound, which means that datatype fields
+    // cannot have FnSpec function types.  If we ever allow datatype fields with function types,
+    // we will need to check that recursive types only appear in positive positions for soundness.
     pub typ_params: Idents,
     pub variants: Variants,
 }

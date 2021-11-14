@@ -1,4 +1,6 @@
-use crate::ast::{Datatype, Expr, ExprX, Function, Krate, Mode, Path, UnaryOpr, VirErr};
+use crate::ast::{
+    CallTarget, Datatype, Expr, ExprX, Function, Krate, Mode, Path, UnaryOpr, VirErr,
+};
 use crate::ast_util::err_string;
 use crate::ast_visitor::map_expr_visitor;
 use crate::datatype_to_air::is_datatype_transparent;
@@ -13,7 +15,7 @@ fn check_function(ctxt: &Ctxt, function: &Function) -> Result<(), VirErr> {
     if let Some(body) = &function.x.body {
         map_expr_visitor(body, &mut |expr: &Expr| {
             match &expr.x {
-                ExprX::Call(x, _, _) => {
+                ExprX::Call(CallTarget::Path(x, _), _) => {
                     // Check that public, non-abstract spec function bodies don't refer to private items
                     if !function.x.is_abstract
                         && !function.x.visibility.is_private

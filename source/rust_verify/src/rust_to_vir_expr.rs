@@ -6,7 +6,7 @@ use crate::rust_to_vir_base::{
 };
 use crate::util::{
     err_span_str, slice_vec_map_result, spanned_new, spanned_typed_new, unsupported_err_span,
-    vec_map_result,
+    vec_map, vec_map_result,
 };
 use crate::{unsupported, unsupported_err, unsupported_err_unless, unsupported_unless};
 use air::ast::{Binder, BinderX, Quant};
@@ -23,8 +23,8 @@ use rustc_span::def_id::DefId;
 use rustc_span::Span;
 use std::sync::Arc;
 use vir::ast::{
-    ArmX, BinaryOp, Constant, ExprX, HeaderExpr, HeaderExprX, Ident, IntRange, Mode, PatternX,
-    SpannedTyped, StmtX, Stmts, Typ, TypX, UnaryOp, UnaryOpr, VirErr,
+    ArmX, BinaryOp, CallTarget, Constant, ExprX, HeaderExpr, HeaderExprX, Ident, IntRange, Mode,
+    PatternX, SpannedTyped, StmtX, Stmts, Typ, TypX, UnaryOp, UnaryOpr, VirErr,
 };
 use vir::ast_util::{ident_binder, path_as_rust_name};
 use vir::def::positional_field_ident;
@@ -324,7 +324,7 @@ fn fn_call_to_vir<'tcx>(
         return Ok(mk_expr(ExprX::Forall { vars, ensure, proof }));
     }
 
-    let mut vir_args = vec_map_result(&args, |arg| expr_to_vir(bctx, arg))?;
+    let vir_args = vec_map_result(&args, |arg| expr_to_vir(bctx, arg))?;
 
     let is_smt_binary = if is_equal {
         true
@@ -395,20 +395,6 @@ fn fn_call_to_vir<'tcx>(
                 unsupported_err!(expr.span, format!("call to non-FnDef function"), expr)
             }
         };
-        // box arguments where necessary
-        assert_eq!(vir_args.len(), param_typs.len());
-        for i in 0..vir_args.len() {
-            let arg = &vir_args[i].clone();
-            match (&*param_typs[i], &*arg.typ) {
-                (TypX::TypParam(_), TypX::TypParam(_)) => {} // already boxed
-                (TypX::TypParam(_), _) => {
-                    let arg_typ = Arc::new(TypX::Boxed(arg.typ.clone()));
-                    let arg_x = ExprX::UnaryOpr(UnaryOpr::Box(arg.typ.clone()), arg.clone());
-                    vir_args[i] = SpannedTyped::new(&arg.span, &arg_typ, arg_x);
-                }
-                _ => {}
-            }
-        }
         // type arguments
         let mut typ_args: Vec<Typ> = Vec::new();
         for typ_arg in node_substs {
@@ -419,34 +405,66 @@ fn fn_call_to_vir<'tcx>(
                 _ => unsupported_err!(expr.span, format!("lifetime/const type arguments"), expr),
             }
         }
-        // return type
-        let possibly_boxed_ret_typ = match &ret_typ {
-            None => Arc::new(TypX::Tuple(Arc::new(vec![]))),
-            Some(ret_typ) => match (&**ret_typ, &*expr_typ) {
-                (TypX::TypParam(_), TypX::TypParam(_)) => expr_typ.clone(), // already boxed
-                (TypX::TypParam(_), _) => Arc::new(TypX::Boxed(expr_typ.clone())),
-                _ => expr_typ.clone(),
-            },
-        };
-        // make call
-        let mut call = spanned_typed_new(
+        let target = CallTarget::Path(path, Arc::new(typ_args));
+        let param_typs_is_tparam = vec_map(&param_typs, |t| matches!(**t, TypX::TypParam(..)));
+        let ret_typ_is_tparam = ret_typ.map(|t| matches!(*t, TypX::TypParam(..)));
+        fn_exp_call_to_vir(
             expr.span,
-            &possibly_boxed_ret_typ,
-            ExprX::Call(path, Arc::new(typ_args), Arc::new(vir_args)),
-        );
-        // unbox result if necessary
-        if let Some(ret_typ) = ret_typ {
-            match (&*ret_typ, &*expr_typ) {
-                (TypX::TypParam(_), TypX::TypParam(_)) => {} // already boxed
-                (TypX::TypParam(_), _) => {
-                    let call_x = ExprX::UnaryOpr(UnaryOpr::Unbox(expr_typ.clone()), call);
-                    call = mk_expr(call_x);
-                }
-                _ => {}
-            }
-        }
-        Ok(call)
+            param_typs_is_tparam,
+            ret_typ_is_tparam,
+            vir_args,
+            expr_typ,
+            target,
+        )
     }
+}
+
+fn fn_exp_call_to_vir<'tcx>(
+    span: Span,
+    param_typs_is_tparam: Vec<bool>,
+    ret_typ_is_tparam: Option<bool>,
+    mut vir_args: Vec<vir::ast::Expr>,
+    expr_typ: Typ,
+    target: CallTarget,
+) -> Result<vir::ast::Expr, VirErr> {
+    // box arguments where necessary
+    assert_eq!(vir_args.len(), param_typs_is_tparam.len());
+    for i in 0..vir_args.len() {
+        let arg = &vir_args[i].clone();
+        match (param_typs_is_tparam[i], &*arg.typ) {
+            (true, TypX::TypParam(_)) => {} // already boxed
+            (true, _) => {
+                let arg_typ = Arc::new(TypX::Boxed(arg.typ.clone()));
+                let arg_x = ExprX::UnaryOpr(UnaryOpr::Box(arg.typ.clone()), arg.clone());
+                vir_args[i] = SpannedTyped::new(&arg.span, &arg_typ, arg_x);
+            }
+            _ => {}
+        }
+    }
+    // return type
+    let possibly_boxed_ret_typ = match &ret_typ_is_tparam {
+        None => Arc::new(TypX::Tuple(Arc::new(vec![]))),
+        Some(ret_typ) => match (ret_typ, &*expr_typ) {
+            (true, TypX::TypParam(_)) => expr_typ.clone(), // already boxed
+            (true, _) => Arc::new(TypX::Boxed(expr_typ.clone())),
+            _ => expr_typ.clone(),
+        },
+    };
+    // make call
+    let mut call =
+        spanned_typed_new(span, &possibly_boxed_ret_typ, ExprX::Call(target, Arc::new(vir_args)));
+    // unbox result if necessary
+    if let Some(ret_typ) = ret_typ_is_tparam {
+        match (ret_typ, &*expr_typ) {
+            (true, TypX::TypParam(_)) => {} // already boxed
+            (true, _) => {
+                let call_x = ExprX::UnaryOpr(UnaryOpr::Unbox(expr_typ.clone()), call);
+                call = spanned_typed_new(span, &expr_typ, call_x);
+            }
+            _ => {}
+        }
+    }
+    Ok(call)
 }
 
 fn datatype_of_path(mut path: vir::ast::Path) -> vir::ast::Path {
@@ -617,7 +635,7 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                     None,
                     rustc_hir::Path { res: res @ Res::Def(DefKind::Ctor(_, _), _), .. },
                 )) => expr_tuple_datatype_ctor_to_vir(bctx, expr, res, *args_slice),
-                // a function
+                // a statically resolved function
                 ExprKind::Path(QPath::Resolved(
                     None,
                     rustc_hir::Path { res: Res::Def(DefKind::Fn, _), .. },
@@ -631,7 +649,23 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                     fun.span,
                     args_slice,
                 ),
-                _ => unsupported!("fun_kind_not_ctor_or_fn", expr.span),
+                // a dynamically computed function
+                _ => {
+                    let vir_fun = expr_to_vir(bctx, fun)?;
+                    let typ_param = match &*vir_fun.typ {
+                        TypX::TypParam(x) => x.clone(),
+                        _ => {
+                            unsupported!("unexpected function type", expr.span)
+                        }
+                    };
+                    let args: Vec<&'tcx Expr<'tcx>> = args_slice.iter().collect();
+                    let vir_args = vec_map_result(&args, |arg| expr_to_vir(bctx, arg))?;
+                    let expr_typ = typ_of_node(bctx, &expr.hir_id);
+                    let target = CallTarget::FnSpec { typ_param, fun: vir_fun };
+                    let params: Vec<bool> = vec_map(&args, |_| true);
+                    let ret = Some(true);
+                    fn_exp_call_to_vir(expr.span, params, ret, vir_args, expr_typ, target)
+                }
             }
         }
         ExprKind::Tup(exprs) => {
