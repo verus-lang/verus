@@ -44,7 +44,6 @@ impl Model {
     }
 
     pub fn translate_variable(&self, sid: &Ident, name: &Ident) -> Option<String> {
-        // println!("??? {:?} {:?}", sid, name);
         let id_snapshot = &self.id_snapshots.get(sid)?;
         let var_label = id_snapshot.get(name)?;
         Some(crate::var_to_const::rename_var(name, *var_label))

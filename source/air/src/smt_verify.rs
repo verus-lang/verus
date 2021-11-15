@@ -93,7 +93,7 @@ fn smt_check_assertion<'ctx>(
     context: &mut Context,
     infos: &Vec<AssertionInfo>,
     snapshots: Snapshots,
-    local_vars: Vec<Decl>, // Expected to be entirely DeclX::Const
+    _local_vars: Vec<Decl>, // Expected to be entirely DeclX::Const
     expr: &Expr,
 ) -> ValidityResult {
     let mut discovered_span = Arc::new(None);

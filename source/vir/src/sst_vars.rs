@@ -1,7 +1,6 @@
 use crate::ast::Typ;
 use crate::def::Spanned;
 use crate::sst::{Stm, StmX, UniqueIdent};
-use air::ast::Span;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
@@ -44,7 +43,7 @@ pub(crate) fn stm_assign(
             stm.clone()
         }
         StmX::DeadEnd(s) => {
-            let s = stm_assign(declared, assigned, modified, s);
+            let s = stm_assign(assign_map, declared, assigned, modified, s);
             Spanned::new(stm.span.clone(), StmX::DeadEnd(s))
         }
         StmX::If(cond, lhs, rhs) => {

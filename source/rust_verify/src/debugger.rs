@@ -25,7 +25,7 @@ pub struct Debugger {
 impl Debugger {
     pub fn new(
         air_model: AModel,
-        assign_map: &HashMap<*const ASpan, HashSet<Arc<String>>>,
+        _assign_map: &HashMap<*const ASpan, HashSet<Arc<String>>>,
         snap_map: &Vec<(ASpan, SnapPos)>,
         source_map: &SourceMap,
     ) -> Debugger {

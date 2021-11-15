@@ -6,7 +6,6 @@ use crate::def::{
     FUEL_BOOL_DEFAULT, FUEL_LOCAL, FUEL_TYPE, SUCC, ZERO,
 };
 use crate::sst_to_air::{exp_to_expr, path_to_air_ident, typ_invariant, typ_to_air};
-use crate::sst_vars::AssingMap;
 use crate::util::{vec_map, vec_map_result};
 use air::ast::{
     BinaryOp, Bind, BindX, Command, CommandX, Commands, DeclX, Expr, ExprX, MultiOp, Quant, Span,
@@ -16,7 +15,6 @@ use air::ast_util::{
     bool_typ, ident_apply, ident_binder, ident_var, mk_and, mk_bind_expr, mk_eq, mk_implies,
     str_apply, str_ident, str_typ, str_var, string_apply,
 };
-use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 // binder for forall (typ_params params)
@@ -341,7 +339,7 @@ pub fn func_decl_to_air(
 pub fn func_def_to_air(
     ctx: &Ctx,
     function: &Function,
-) -> Result<(Commands, AssingMap, Vec<(Span, SnapPos)>), VirErr> {
+) -> Result<(Commands, Vec<(Span, SnapPos)>), VirErr> {
     match (function.x.mode, function.x.ret.as_ref(), function.x.body.as_ref()) {
         (Mode::Exec, _, Some(body)) | (Mode::Proof, _, Some(body)) => {
             let mut state = crate::ast_to_sst::State::new();
@@ -371,7 +369,7 @@ pub fn func_def_to_air(
                 state.new_statement_var(&decl.ident.0);
                 state.local_decls.push(decl.clone());
             }
-            let (commands, assign_map, snap_map) = crate::sst_to_air::body_stm_to_air(
+            let (commands, snap_map) = crate::sst_to_air::body_stm_to_air(
                 ctx,
                 &function.x.typ_params,
                 &function.x.params,
@@ -382,8 +380,8 @@ pub fn func_def_to_air(
                 &stm,
             );
             state.finalize();
-            Ok((commands, assign_map, snap_map))
+            Ok((commands, snap_map))
         }
-        _ => Ok((Arc::new(vec![]), HashMap::new(), vec![])),
+        _ => Ok((Arc::new(vec![]), vec![])),
     }
 }

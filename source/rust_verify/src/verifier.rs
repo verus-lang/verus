@@ -285,8 +285,7 @@ impl Verifier {
             if Some(module.clone()) != function.x.visibility.owning_module {
                 continue;
             }
-            let (commands, assign_map, snap_map) =
-                vir::func_to_air::func_def_to_air(ctx, &function)?;
+            let (commands, snap_map) = vir::func_to_air::func_def_to_air(ctx, &function)?;
             self.run_commands_queries(
                 compiler,
                 air_context,
