@@ -1,13 +1,13 @@
 use crate::ast::{
-    BinaryOp, Ident, Idents, IntRange, Mode, Params, Path, Typ, TypX, UnaryOp, UnaryOpr,
+    BinaryOp, Ident, Idents, IntRange, Mode, Params, Path, Typ, TypX, Typs, UnaryOp, UnaryOpr,
 };
 use crate::context::Ctx;
 use crate::def::{
-    path_to_string, prefix_ensures, prefix_fuel_id, prefix_requires, prefix_type_id,
-    suffix_global_id, suffix_local_expr_id, suffix_local_stmt_id, suffix_local_unique_id,
-    suffix_typ_param_id, variant_field_ident, variant_ident, SnapPos, Spanned, FUEL_BOOL,
-    FUEL_BOOL_DEFAULT, FUEL_DEFAULTS, FUEL_ID, FUEL_PARAM, FUEL_TYPE, POLY, SNAPSHOT_CALL, SUCC,
-    SUFFIX_SNAP_JOIN, SUFFIX_SNAP_MUT, SUFFIX_SNAP_WHILE_BEGIN, SUFFIX_SNAP_WHILE_END,
+    path_to_string, prefix_box, prefix_ensures, prefix_fuel_id, prefix_requires, suffix_global_id,
+    suffix_local_expr_id, suffix_local_stmt_id, suffix_local_unique_id, suffix_typ_param_id,
+    variant_field_ident, variant_ident, SnapPos, Spanned, FUEL_BOOL, FUEL_BOOL_DEFAULT,
+    FUEL_DEFAULTS, FUEL_ID, FUEL_PARAM, FUEL_TYPE, POLY, SNAPSHOT_CALL, SUCC, SUFFIX_SNAP_JOIN,
+    SUFFIX_SNAP_MUT, SUFFIX_SNAP_WHILE_BEGIN, SUFFIX_SNAP_WHILE_END,
 };
 use crate::sst::{BndX, Dest, Exp, ExpX, LocalDecl, Stm, StmX, UniqueIdent};
 use crate::sst_vars::AssingMap;
@@ -73,10 +73,19 @@ pub fn typ_to_id(typ: &Typ) -> Expr {
         },
         TypX::Bool => str_var(crate::def::TYPE_ID_BOOL),
         TypX::Tuple(_) => panic!("internal error: Tuple should have been removed by ast_simplify"),
-        TypX::Datatype(path, _) => string_var(&prefix_type_id(&Arc::new(path_to_string(&path)))),
+        TypX::Datatype(path, typs) => datatype_id(path, typs),
         TypX::Boxed(_) => panic!("internal error: type arguments should be unboxed"),
         TypX::TypParam(x) => ident_var(&suffix_typ_param_id(x)),
     }
+}
+
+pub(crate) fn datatype_id(path: &Path, typs: &Typs) -> Expr {
+    let f_name = crate::def::prefix_type_id(path);
+    air::ast_util::ident_apply_or_var(&f_name, &Arc::new(vec_map(&**typs, typ_to_id)))
+}
+
+pub(crate) fn datatype_has_type(path: &Path, typs: &Typs, expr: &Expr) -> Expr {
+    str_apply(crate::def::HAS_TYPE, &vec![expr.clone(), datatype_id(path, typs)])
 }
 
 // If expr has type typ, what can we assume to be true about expr?
@@ -102,10 +111,8 @@ pub(crate) fn typ_invariant(ctx: &Ctx, typ: &Typ, expr: &Expr) -> Option<Expr> {
             Some(apply_range_fun(&f_name, &range, vec![expr.clone()]))
         }
         TypX::Datatype(path, typs) if ctx.datatypes_with_invariant.contains(path) => {
-            let f_name = crate::def::prefix_datatype_inv(path);
-            let mut args = vec_map(typs, typ_to_id);
-            args.push(expr.clone());
-            Some(str_apply(&f_name, &args))
+            let box_expr = ident_apply(&prefix_box(&path), &vec![expr.clone()]);
+            Some(datatype_has_type(path, typs, &box_expr))
         }
         TypX::TypParam(x) => Some(str_apply(
             crate::def::HAS_TYPE,
@@ -186,9 +193,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp) -> Expr {
                 let f_name = match &**typ {
                     TypX::Bool => str_ident(crate::def::BOX_BOOL),
                     TypX::Int(_) => str_ident(crate::def::BOX_INT),
-                    TypX::Datatype(path, _) => {
-                        crate::def::prefix_box(&Arc::new(path_to_string(&path)))
-                    }
+                    TypX::Datatype(path, _) => prefix_box(&path),
                     TypX::Tuple(_) => panic!("internal error: Box(Tuple)"),
                     TypX::Boxed(_) => panic!("internal error: Box(Boxed)"),
                     TypX::TypParam(_) => panic!("internal error: Box(TypParam)"),
@@ -200,9 +205,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp) -> Expr {
                 let f_name = match &**typ {
                     TypX::Bool => str_ident(crate::def::UNBOX_BOOL),
                     TypX::Int(_) => str_ident(crate::def::UNBOX_INT),
-                    TypX::Datatype(path, _) => {
-                        crate::def::prefix_unbox(&Arc::new(path_to_string(&path)))
-                    }
+                    TypX::Datatype(path, _) => crate::def::prefix_unbox(&path),
                     TypX::Tuple(_) => panic!("internal error: Box(Tuple)"),
                     TypX::Boxed(_) => panic!("internal error: Unbox(Boxed)"),
                     TypX::TypParam(_) => panic!("internal error: Unbox(TypParam)"),
@@ -376,6 +379,10 @@ fn assume_var(span: &Span, x: &UniqueIdent, exp: &Exp) -> Stm {
     Spanned::new(span.clone(), StmX::Assume(eq))
 }
 
+fn one_stmt(stmts: Vec<Stmt>) -> Stmt {
+    if stmts.len() == 1 { stmts[0].clone() } else { Arc::new(StmtX::Block(Arc::new(stmts))) }
+}
+
 fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
     let ptr = Arc::as_ptr(stm);
 
@@ -486,6 +493,9 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
             }
             stmts
         }
+        StmX::DeadEnd(s) => {
+            vec![Arc::new(StmtX::DeadEnd(one_stmt(stm_to_stmts(ctx, state, s))))]
+        }
         StmX::If(cond, lhs, rhs) => {
             let pos_cond = exp_to_expr(ctx, &cond);
             let neg_cond = Arc::new(ExprX::Unary(air::ast::UnaryOp::Not, pos_cond.clone()));
@@ -563,11 +573,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
                 let inv_stmt = StmtX::Assert(option_span, inv.clone());
                 air_body.push(Arc::new(inv_stmt));
             }
-            let assertion = if air_body.len() == 1 {
-                air_body[0].clone()
-            } else {
-                Arc::new(StmtX::Block(Arc::new(air_body)))
-            };
+            let assertion = one_stmt(air_body);
 
             let assertion = if !ctx.debug {
                 assertion
@@ -698,7 +704,7 @@ pub fn body_stm_to_air(
     reqs: &Vec<Exp>,
     enss: &Vec<Exp>,
     stm: &Stm,
-) -> (Commands, AssingMap, Vec<(Span, SnapPos)>) {
+) -> (Commands, Vec<(Span, SnapPos)>) {
     // Verifying a single function can generate multiple SMT queries.
     // Some declarations (local_shared) are shared among the queries.
     // Others are private to each query.
@@ -766,8 +772,7 @@ pub fn body_stm_to_air(
         let ens_stmt = StmtX::Assert(option_span, exp_to_expr(ctx, ens));
         stmts.push(Arc::new(ens_stmt));
     }
-    let assertion =
-        if stmts.len() == 1 { stmts[0].clone() } else { Arc::new(StmtX::Block(Arc::new(stmts))) };
+    let assertion = one_stmt(stmts);
 
     for param in params.iter() {
         let typ_inv =
@@ -783,5 +788,5 @@ pub fn body_stm_to_air(
 
     let query = Arc::new(QueryX { local: Arc::new(local), assertion });
     state.commands.push(Arc::new(CommandX::CheckValid(query)));
-    (Arc::new(state.commands), state.assign_map, state.snap_map)
+    (Arc::new(state.commands), state.snap_map)
 }

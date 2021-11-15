@@ -1034,3 +1034,57 @@ fn yes_datatype2() {
         )
     )
 }
+
+#[test]
+fn yes_deadend() {
+    yes!(
+        (declare-const b Bool)
+        (check-valid
+            (block
+                (assume b)
+                (deadend
+                    (block
+                        (assert b)
+                    )
+                )
+                (assert b)
+            )
+        )
+    )
+}
+
+#[test]
+fn no_deadend1() {
+    no!(
+        (declare-const b Bool)
+        (check-valid
+            (block
+                (deadend
+                    (block
+                        (assume b)
+                        (assert b)
+                    )
+                )
+                (assert b)
+            )
+        )
+    )
+}
+
+#[test]
+fn no_deadend2() {
+    no!(
+        (declare-const b Bool)
+        (check-valid
+            (block
+                (deadend
+                    (block
+                        (assume b)
+                        (assert false)
+                    )
+                )
+                (assert b)
+            )
+        )
+    )
+}

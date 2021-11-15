@@ -1,3 +1,4 @@
+use crate::ast::Path;
 use crate::def::*;
 use crate::sst_to_air::path_to_air_ident;
 use air::ast::Ident;
@@ -245,10 +246,10 @@ pub(crate) fn prelude_nodes() -> Vec<Node> {
     )
 }
 
-pub(crate) fn datatype_height_axiom(typ_name1: &Ident, typ_name2: &Ident, field: &Ident) -> Node {
+pub(crate) fn datatype_height_axiom(typ_name1: &Path, typ_name2: &Path, field: &Ident) -> Node {
     let height = str_to_node(&suffix_global_id(&path_to_air_ident(&height())));
     let field = str_to_node(field.as_str());
-    let typ1 = str_to_node(typ_name1.as_str());
+    let typ1 = str_to_node(path_to_air_ident(typ_name1).as_str());
     let box_t1 = str_to_node(prefix_box(typ_name1).as_str());
     let box_t2 = str_to_node(prefix_box(typ_name2).as_str());
     node!(
@@ -260,38 +261,4 @@ pub(crate) fn datatype_height_axiom(typ_name1: &Ident, typ_name2: &Ident, field:
             :pattern (([height] ([box_t2] ([field] x))))
         )))
     )
-}
-
-pub(crate) fn datatype_box_axioms(typ_name: &Ident, always_has_type: bool) -> Vec<Node> {
-    let typ = str_to_node(typ_name.as_str());
-    let type_id = str_to_node(prefix_type_id(typ_name).as_str());
-    let box_t = str_to_node(prefix_box(typ_name).as_str());
-    let unbox_t = str_to_node(prefix_unbox(typ_name).as_str());
-    #[allow(non_snake_case)]
-    let Poly = str_to_node(POLY);
-    let has_type = str_to_node(HAS_TYPE);
-    let mut axioms: Vec<Node> = nodes_vec!(
-        (axiom (forall ((x [typ])) (!
-            (= x ([unbox_t] ([box_t] x)))
-            :pattern (([box_t] x))
-        )))
-        (axiom (forall ((x [Poly])) (!
-            (=>
-                ([has_type] x [type_id])
-                (= x ([box_t] ([unbox_t] x)))
-            )
-            :pattern (([has_type] x [type_id]))
-        )))
-    );
-    // If there are no visible refinement types (e.g. no refinement type fields,
-    // or type is completely abstract to us), then has_type always holds:
-    if always_has_type {
-        axioms.push(node!(
-            (axiom (forall ((x [typ])) (!
-                ([has_type] ([box_t] x) [type_id])
-                :pattern (([has_type] ([box_t] x) [type_id]))
-            )))
-        ));
-    }
-    axioms
 }

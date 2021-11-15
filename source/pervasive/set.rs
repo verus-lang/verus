@@ -1,6 +1,5 @@
-extern crate builtin;
 use builtin::*;
-use crate::pervasive::*;  // TODO(utaal): this is cursed
+use crate::pervasive::*;
 
 /// set type for specifications
 #[verifier(no_verify)]
@@ -59,6 +58,12 @@ pub fn difference<A>(s1: Set<A>, s2: Set<A>) -> Set<A> {
     arbitrary()
 }
 
+#[spec]
+#[verifier(pub_abstract)]
+pub fn cardinality<A>(s: Set<A>) -> nat {
+    arbitrary()
+}
+
 #[verifier(no_verify)]
 #[proof]
 pub fn set_axioms<A>() {
@@ -75,5 +80,10 @@ pub fn set_axioms<A>() {
             contains(difference(s1, s2), a) == (contains(s1, a) && !contains(s2, a))),
         forall(|s1: Set<A>, s2: Set<A>|
             ext_equal(s1, s2) == equal(s1, s2)),
+        cardinality::<A>(empty()) == 0,
+        forall(|s: Set<A>, a: A|
+            imply(!contains(s, a),
+                //#[trigger]    // TODO(utaal): test framework needs to have #![feature(stmt_expr_attributes)]
+                cardinality(insert(s, a)) == cardinality(s) + 1)),
     ]);
 }

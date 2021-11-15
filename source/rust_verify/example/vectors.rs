@@ -1,10 +1,7 @@
-extern crate builtin;
 use builtin::*;
 mod pervasive;
-mod pervasive_vec;
 #[allow(unused_imports)]
-use pervasive::*;
-use pervasive_vec::*;
+use crate::pervasive::{*, vec::*};
 
 fn binary_search(v: &Vec<u64>, k: u64) -> usize {
     requires([

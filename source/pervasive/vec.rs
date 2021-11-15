@@ -1,6 +1,5 @@
-extern crate builtin;
 use builtin::*;
-use pervasive::*;
+use crate::pervasive::*;
 
 #[verifier(no_verify)]
 pub struct Vec<A> {

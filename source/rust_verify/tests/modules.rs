@@ -3,7 +3,7 @@
 mod common;
 use common::*;
 
-test_verify_with_pervasive! {
+test_verify_one_file! {
     #[test] test_mod_adt_0 code! {
         mod M1 {
             #[derive(PartialEq, Eq)]
@@ -29,7 +29,7 @@ test_verify_with_pervasive! {
     } => Ok(())
 }
 
-test_verify_with_pervasive! {
+test_verify_one_file! {
     #[test] test_mod_adt_no_verify code! {
         #[verifier(no_verify)]
         #[derive(PartialEq, Eq)]

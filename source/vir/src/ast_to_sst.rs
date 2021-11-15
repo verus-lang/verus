@@ -1,6 +1,6 @@
 use crate::ast::{
-    BinaryOp, Constant, Expr, ExprX, Function, Ident, Mode, Params, Path, PatternX, Stmt, StmtX,
-    Typ, Typs, UnaryOp, UnaryOpr, VirErr,
+    BinaryOp, Constant, Expr, ExprX, Function, Ident, Mode, Params, Path, PatternX, SpannedTyped,
+    Stmt, StmtX, Typ, TypX, Typs, UnaryOp, UnaryOpr, VirErr,
 };
 use crate::ast_util::{err_str, err_string};
 use crate::context::Ctx;
@@ -8,7 +8,7 @@ use crate::def::Spanned;
 use crate::sst::{Bnd, BndX, Dest, Exp, ExpX, LocalDecl, LocalDeclX, Stm, StmX, UniqueIdent};
 use crate::sst_visitor::{map_exp_visitor, map_stm_exp_visitor};
 use crate::util::{vec_map, vec_map_result};
-use air::ast::{Binder, BinderX, Binders, Span};
+use air::ast::{Binder, BinderX, Binders, Quant, Span};
 use air::scope_map::ScopeMap;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -381,6 +381,9 @@ pub(crate) fn expr_to_stm_opt(
                 Ok((stms, None))
             }
         }
+        ExprX::Tuple(_) => {
+            panic!("internal error: Tuple should have been simplified by ast_simplify")
+        }
         ExprX::Ctor(p, i, binders) => {
             let mut stms: Vec<Stm> = Vec::new();
             let mut args: Vec<Binder<Exp>> = Vec::new();
@@ -446,6 +449,51 @@ pub(crate) fn expr_to_stm_opt(
             let trigs = crate::triggers::build_triggers(ctx, &expr.span, &vars, &exp)?;
             let bnd = Spanned::new(body.span.clone(), BndX::Quant(*quant, binders.clone(), trigs));
             Ok((vec![], Some(Spanned::new(expr.span.clone(), ExpX::Bind(bnd, exp)))))
+        }
+        ExprX::Fuel(x, fuel) => {
+            let stm = Spanned::new(expr.span.clone(), StmX::Fuel(x.clone(), *fuel));
+            Ok((vec![stm], None))
+        }
+        ExprX::Header(_) => {
+            return err_str(&expr.span, "header expression not allowed here");
+        }
+        ExprX::Admit => {
+            let exp = Spanned::new(expr.span.clone(), ExpX::Const(Constant::Bool(false)));
+            let stm = Spanned::new(expr.span.clone(), StmX::Assume(exp));
+            Ok((vec![stm], None))
+        }
+        ExprX::Forall { vars, ensure, proof } => {
+            // deadend {
+            //   proof
+            //   assert(ensure);
+            // }
+            // assume(forall vars. ensure)
+            let mut stms: Vec<Stm> = Vec::new();
+
+            // Translate proof into a dead-end ending with an assert
+            state.push_scope();
+            for var in vars.iter() {
+                state.declare_new_var(&var.name, &var.a, false);
+            }
+            let (mut body, e) = expr_to_stm_opt(ctx, state, proof)?;
+            if let Some(_) = e {
+                return err_str(&expr.span, "forall/assert-by cannot end with an expression");
+            }
+            let ensure_exp = expr_to_exp_state(ctx, state, &ensure)?;
+            let assert = Spanned::new(ensure.span.clone(), StmX::Assert(ensure_exp));
+            body.push(assert);
+            let block = Spanned::new(expr.span.clone(), StmX::Block(Arc::new(body)));
+            let deadend = Spanned::new(expr.span.clone(), StmX::DeadEnd(block));
+            stms.push(deadend);
+            state.pop_scope();
+
+            // Translate ensure into an assume
+            let forallx = ExprX::Quant(Quant::Forall, vars.clone(), ensure.clone());
+            let forall = SpannedTyped::new(&ensure.span, &Arc::new(TypX::Bool), forallx);
+            let forall_exp = expr_to_exp_state(ctx, state, &forall)?;
+            let assume = Spanned::new(ensure.span.clone(), StmX::Assume(forall_exp));
+            stms.push(assume);
+            Ok((stms, None))
         }
         ExprX::If(e0, e1, None) => {
             let (mut stms0, e0) = expr_to_stm(ctx, state, e0)?;
@@ -562,18 +610,6 @@ pub(crate) fn expr_to_stm_opt(
                     Ok((vec![block], exp))
                 }
             }
-        }
-        ExprX::Fuel(x, fuel) => {
-            let stm = Spanned::new(expr.span.clone(), StmX::Fuel(x.clone(), *fuel));
-            Ok((vec![stm], None))
-        }
-        ExprX::Admit => {
-            let exp = Spanned::new(expr.span.clone(), ExpX::Const(Constant::Bool(false)));
-            let stm = Spanned::new(expr.span.clone(), StmX::Assume(exp));
-            Ok((vec![stm], None))
-        }
-        _ => {
-            todo!("{}", expr.span.as_string)
         }
     }
 }

@@ -17,7 +17,7 @@ const STRUCTS: &str = code_str! {
     }
 };
 
-test_verify_with_pervasive! {
+test_verify_one_file! {
     #[test] test_structural_eq STRUCTS.to_string() + code_str! {
         fn test_structural_eq(passengers: int) {
             let c1 = Car { passengers, four_doors: true };
@@ -36,7 +36,7 @@ test_verify_with_pervasive! {
     } => Err(err) => assert_one_fails(err)
 }
 
-test_verify_with_pervasive! {
+test_verify_one_file! {
     #[test] test_not_structural_eq code! {
         #[derive(PartialEq, Eq)]
         struct Thing {
@@ -51,7 +51,7 @@ test_verify_with_pervasive! {
     } => Err(err) => assert_eq!(err.len(), 0)
 }
 
-test_verify_with_pervasive! {
+test_verify_one_file! {
     #[test] test_not_structural_generic code! {
         #[derive(PartialEq, Eq, Structural)]
         struct Thing<V> {
@@ -73,7 +73,7 @@ test_verify_with_pervasive! {
     } => Err(err) => assert_eq!(err.len(), 0)
 }
 
-test_verify_with_pervasive! {
+test_verify_one_file! {
     #[test] test_not_structural_fields code! {
         #[derive(PartialEq, Eq)]
         struct Other { }

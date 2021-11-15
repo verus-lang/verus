@@ -67,7 +67,7 @@ pub struct BinderX<A: Clone> {
     pub a: A,
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum Quant {
     Forall,
     Exists,
@@ -89,7 +89,8 @@ pub type Exprs = Arc<Vec<Expr>>;
 pub enum ExprX {
     Const(Constant),
     Var(Ident),
-    Old(Ident, Ident), // Old(snap, x) reads x from snapshot snap
+    // Old(snap, x) reads x from snapshot snap
+    Old(Ident, Ident),
     Apply(Ident, Exprs),
     Unary(UnaryOp, Expr),
     Binary(BinaryOp, Expr, Expr),
@@ -107,7 +108,10 @@ pub enum StmtX {
     Assert(SpanOption, Expr),
     Havoc(Ident),
     Assign(Ident, Expr),
-    Snapshot(Ident), // create a named snapshot of the state of the variables
+    // create a named snapshot of the state of the variables
+    Snapshot(Ident),
+    // verify Stmt, but block assumptions in Stmt from persisting after Stmt
+    DeadEnd(Stmt),
     Block(Stmts),
     Switch(Stmts),
 }

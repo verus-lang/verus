@@ -1,5 +1,4 @@
 #![feature(stmt_expr_attributes)]
-extern crate builtin;
 use builtin::*;
 mod pervasive;
 use pervasive::*;

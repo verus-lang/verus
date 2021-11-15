@@ -1,5 +1,5 @@
 use crate::ast::{BinaryOp, Constant, Ident, Path, UnaryOp, UnaryOpr, VirErr};
-use crate::ast_util::err_str;
+use crate::ast_util::{err_str, path_as_rust_name};
 use crate::context::Ctx;
 use crate::sst::{Exp, ExpX, Trig, Trigs, UniqueIdent};
 use crate::util::vec_map;
@@ -47,14 +47,14 @@ enum TermX {
 impl std::fmt::Debug for TermX {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
         match self {
-            TermX::Var(x) => write!(f, "{:?}", x),
+            TermX::Var((x, _)) => write!(f, "{}", x),
             TermX::App(App::Const(c), _) => write!(f, "{:?}", c),
             TermX::App(App::Field(_, x, y), es) => write!(f, "{:?}.{}/{}", es[0], x, y),
             TermX::App(c @ (App::Call(_) | App::Ctor(_, _)), es) => {
                 match c {
-                    App::Call(x) => write!(f, "{:?}(", x)?,
+                    App::Call(x) => write!(f, "{}(", path_as_rust_name(x))?,
                     App::Ctor(path, variant) => {
-                        write!(f, "{}(", crate::def::variant_ident(path, variant))?
+                        write!(f, "{}::{}(", path_as_rust_name(path), variant)?
                     }
                     _ => unreachable!(),
                 }

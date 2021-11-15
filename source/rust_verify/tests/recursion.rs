@@ -3,7 +3,7 @@
 mod common;
 use common::*;
 
-test_verify_with_pervasive! {
+test_verify_one_file! {
     #[test] basic_correctness_expr code! {
         #[spec]
         fn arith_sum_nat(i: nat) -> nat {
@@ -14,7 +14,7 @@ test_verify_with_pervasive! {
     } => Ok(())
 }
 
-test_verify_with_pervasive! {
+test_verify_one_file! {
     #[test] basic_correctness_stmt code! {
         #[proof]
         fn count_down_stmt(i:nat) {
@@ -27,7 +27,7 @@ test_verify_with_pervasive! {
     } => Ok(())
 }
 
-test_verify_with_pervasive! {
+test_verify_one_file! {
     // Basic test of mutually recursive expressions
     #[test] mutually_recursive_expressions code! {
         #[spec]
@@ -52,7 +52,7 @@ test_verify_with_pervasive! {
     } => Ok(())
 }
 
-test_verify_with_pervasive! {
+test_verify_one_file! {
     // Test that fuel only provides one definition unfolding
     #[test] mutually_recursive_expressions_insufficient_fuel code! {
         #[spec]
@@ -76,7 +76,7 @@ test_verify_with_pervasive! {
     } => Err(err) => assert_one_fails(err)
 }
 
-test_verify_with_pervasive! {
+test_verify_one_file! {
     // Basic test of mutually recursive statements
     #[test] mutually_recursive_statements code! {
         #[proof]
@@ -99,7 +99,7 @@ test_verify_with_pervasive! {
     } => Ok(())
 }
 
-test_verify_with_pervasive! {
+test_verify_one_file! {
     // Expression that fails to decrease
     #[test] expr_decrease_fail_1 code! {
         #[spec]
@@ -111,7 +111,7 @@ test_verify_with_pervasive! {
     } => Err(err) => assert_one_fails(err)
 }
 
-test_verify_with_pervasive! {
+test_verify_one_file! {
     // Statement that fails to decrease
     #[test] stmt_decrease_fail code! {
         #[proof]
@@ -125,7 +125,7 @@ test_verify_with_pervasive! {
     } => Err(err) => assert_one_fails(err)
 }
 
-test_verify_with_pervasive! {
+test_verify_one_file! {
     // Expression that decreases, but not based on the decreases clause provided
     #[test] expr_wrong_decreases code! {
         #[spec]
@@ -137,7 +137,7 @@ test_verify_with_pervasive! {
     } => Err(err) => assert_one_fails(err)
 }
 
-test_verify_with_pervasive! {
+test_verify_one_file! {
     // Expression that decreases, but not based on the decreases clause provided
     #[test] expr_wrong_decreases_2 code! {
         #[spec]
@@ -149,7 +149,7 @@ test_verify_with_pervasive! {
     } => Err(err) => assert_one_fails(err)
 }
 
-test_verify_with_pervasive! {
+test_verify_one_file! {
     // Expression that decreases, but not based on the decreases clause provided
     #[test] expr_wrong_decreases_3 code! {
         #[spec]
@@ -161,7 +161,7 @@ test_verify_with_pervasive! {
     } => Err(err) => assert_one_fails(err)
 }
 
-test_verify_with_pervasive! {
+test_verify_one_file! {
     // Expression that doesn't decrease due to extra clause
     #[test] expr_decrease_fail_2 code! {
         #[spec]
@@ -173,7 +173,7 @@ test_verify_with_pervasive! {
     } => Err(err) => assert_one_fails(err)
 }
 
-test_verify_with_pervasive! {
+test_verify_one_file! {
     // Expression that fails to decrease
     #[test] expr_decrease_fail_3 code! {
         #[spec]
@@ -185,7 +185,7 @@ test_verify_with_pervasive! {
     } => Err(err) => assert_one_fails(err)
 }
 
-test_verify_with_pervasive! {
+test_verify_one_file! {
     // Mutually recursive expressions fail to decrease
     #[test] mutual_expr_decrease_fail code! {
         #[spec]
@@ -204,7 +204,7 @@ test_verify_with_pervasive! {
     } => Err(err) => assert_fails(err, 2)
 }
 
-test_verify_with_pervasive! {
+test_verify_one_file! {
     // Mutually recursive statements fail to decrease
     #[test] mutual_stmt_decrease_fail code! {
         #[proof]
@@ -227,7 +227,7 @@ test_verify_with_pervasive! {
     } => Err(err) => assert_fails(err, 2)
 }
 
-test_verify_with_pervasive! {
+test_verify_one_file! {
     #[test] unit_expr_decrease_fail code! {
         #[spec]
         fn count_down_tricky(i: nat) {

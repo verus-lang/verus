@@ -3,7 +3,7 @@
 mod common;
 use common::*;
 
-test_verify_with_pervasive! {
+test_verify_one_file! {
     #[test] #[ignore] nlarith1 code! {
         // TODO: support non-linear arithmetic?
         fn test(x: nat, y: nat, z: nat) {

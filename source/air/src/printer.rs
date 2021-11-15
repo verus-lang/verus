@@ -258,6 +258,7 @@ pub fn stmt_to_node(stmt: &Stmt) -> Node {
         StmtX::Havoc(x) => nodes!(havoc {str_to_node(x)}),
         StmtX::Assign(x, expr) => nodes!(assign {str_to_node(x)} {expr_to_node(expr)}),
         StmtX::Snapshot(snap) => nodes!(snapshot {str_to_node(snap)}),
+        StmtX::DeadEnd(s) => nodes!(deadend {stmt_to_node(s)}),
         StmtX::Block(stmts) | StmtX::Switch(stmts) => {
             let mut nodes = Vec::new();
             let s = match &**stmt {

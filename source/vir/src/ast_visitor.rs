@@ -2,6 +2,7 @@ use crate::ast::{
     Arm, ArmX, Datatype, DatatypeX, Expr, ExprX, Field, Function, FunctionX, Param, ParamX,
     Pattern, PatternX, SpannedTyped, Stmt, StmtX, Typ, TypX, UnaryOpr, Variant, VirErr,
 };
+use crate::ast_util::err_str;
 use crate::def::Spanned;
 use crate::util::vec_map_result;
 use std::sync::Arc;
@@ -121,8 +122,17 @@ where
             ExprX::Assign(expr1, expr2)
         }
         ExprX::Fuel(path, fuel) => ExprX::Fuel(path.clone(), *fuel),
-        ExprX::Header(_) => panic!("internal error: Header shouldn't exist here"),
+        ExprX::Header(_) => {
+            return err_str(&expr.span, "header expression not allowed here");
+        }
         ExprX::Admit => ExprX::Admit,
+        ExprX::Forall { vars, ensure, proof } => {
+            let vars =
+                vec_map_result(&**vars, |x| x.map_result(|t| map_typ_visitor_env(t, env, ft)))?;
+            let ensure = map_expr_visitor_env(ensure, env, fe, fs, ft)?;
+            let proof = map_expr_visitor_env(proof, env, fe, fs, ft)?;
+            ExprX::Forall { vars: Arc::new(vars), ensure, proof }
+        }
         ExprX::If(e1, e2, e3) => {
             let expr1 = map_expr_visitor_env(e1, env, fe, fs, ft)?;
             let expr2 = map_expr_visitor_env(e2, env, fe, fs, ft)?;

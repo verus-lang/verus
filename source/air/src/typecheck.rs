@@ -326,6 +326,7 @@ pub(crate) fn check_stmt(typing: &mut Typing, stmt: &Stmt) -> Result<(), TypeErr
             typing.snapshots.insert(snap.clone());
             Ok(())
         }
+        StmtX::DeadEnd(s) => check_stmt(typing, s),
         StmtX::Block(stmts) => {
             for s in stmts.iter() {
                 check_stmt(typing, s)?;
