@@ -16,8 +16,10 @@ fn to_ident_set(input: &HashSet<UniqueIdent>) -> HashSet<Arc<String>> {
 // Compute:
 // - which variables have definitely been assigned to up to each statement
 // - which variables have been modified within each statement
+pub type AssingMap = HashMap<*const Spanned<StmX>, HashSet<Arc<String>>>;
+
 pub(crate) fn stm_assign(
-    queryable: &mut Vec<(Span, HashSet<Arc<String>>)>,
+    assign_map: &mut AssingMap,
     declared: &HashMap<UniqueIdent, Typ>,
     assigned: &mut HashSet<UniqueIdent>,
     modified: &mut HashSet<UniqueIdent>,
@@ -44,11 +46,11 @@ pub(crate) fn stm_assign(
         StmX::If(cond, lhs, rhs) => {
             let mut pre_assigned = assigned.clone();
 
-            let lhs = stm_assign(queryable, declared, assigned, modified, lhs);
+            let lhs = stm_assign(assign_map, declared, assigned, modified, lhs);
             let lhs_assigned = assigned.clone();
             *assigned = pre_assigned.clone();
 
-            let rhs = rhs.as_ref().map(|s| stm_assign(queryable, declared, assigned, modified, s));
+            let rhs = rhs.as_ref().map(|s| stm_assign(assign_map, declared, assigned, modified, s));
             let rhs_assigned = &assigned;
 
             for x in declared.keys() {
@@ -65,7 +67,7 @@ pub(crate) fn stm_assign(
             let pre_assigned = assigned.clone();
             let mut pre_modified = modified.clone();
             *modified = HashSet::new();
-            let body = stm_assign(queryable, declared, assigned, modified, body);
+            let body = stm_assign(assign_map, declared, assigned, modified, body);
             *assigned = pre_assigned;
 
             assert!(modified_vars.len() == 0);
@@ -96,7 +98,7 @@ pub(crate) fn stm_assign(
             let mut pre_assigned = assigned.clone();
             let stms: Vec<Stm> = stms
                 .iter()
-                .map(|s| stm_assign(queryable, declared, assigned, modified, s))
+                .map(|s| stm_assign(assign_map, declared, assigned, modified, s))
                 .collect();
             for x in declared.keys() {
                 if assigned.contains(x) && !pre_assigned.contains(x) {
@@ -107,8 +109,6 @@ pub(crate) fn stm_assign(
         }
     };
 
-    let a = (stm.span.clone(), to_ident_set(assigned));
-    queryable.push(a);
-
+    assign_map.insert(Arc::as_ptr(&result), to_ident_set(assigned));
     result
 }

@@ -9,7 +9,7 @@ use rustc_interface::interface::Compiler;
 use rustc_middle::ty::TyCtxt;
 use rustc_span::source_map::SourceMap;
 use rustc_span::{CharPos, FileName, MultiSpan, Span};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::io::Write;
 use std::sync::Arc;
@@ -136,7 +136,7 @@ impl Verifier {
         &mut self,
         compiler: &Compiler,
         air_context: &mut air::context::Context,
-        assign_map: &Vec<(air::ast::Span, HashSet<Arc<String>>)>,
+        assign_map: &HashMap<*const air::ast::Span, HashSet<Arc<std::string::String>>>,
         snap_map: &Vec<(air::ast::Span, SnapPos)>,
         command: &Command,
     ) {
@@ -198,7 +198,7 @@ impl Verifier {
         compiler: &Compiler,
         air_context: &mut air::context::Context,
         commands: &Vec<Command>,
-        assign_map: &Vec<(air::ast::Span, HashSet<Arc<String>>)>,
+        assign_map: &HashMap<*const air::ast::Span, HashSet<Arc<String>>>,
         snap_map: &Vec<(air::ast::Span, SnapPos)>,
         comment: &str,
     ) {
@@ -274,7 +274,7 @@ impl Verifier {
                 compiler,
                 air_context,
                 &check_commands,
-                &vec![],
+                &HashMap::new(),
                 &vec![],
                 &("Function-Termination ".to_string() + &path_as_rust_name(&function.x.path)),
             );
@@ -291,7 +291,7 @@ impl Verifier {
                 compiler,
                 air_context,
                 &commands,
-                &assign_map,
+                &HashMap::new(),
                 &snap_map,
                 &("Function-Def ".to_string() + &path_as_rust_name(&function.x.path)),
             );
