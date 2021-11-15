@@ -41,6 +41,7 @@ fn check_item<'tcx>(
                 visibility,
                 ctxt.tcx.hir().attrs(item.hir_id()),
                 sig,
+                None,
                 generics,
                 body_id,
             )?;
@@ -160,7 +161,8 @@ fn check_item<'tcx>(
                                                 impl_item_visibility,
                                                 ctxt.tcx.hir().attrs(impl_item.hir_id()),
                                                 sig,
-                                                &impll.generics,
+                                                Some(&impll.generics),
+                                                &impl_item.generics,
                                                 body_id,
                                             )?;
                                         }

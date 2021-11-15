@@ -57,6 +57,7 @@ pub(crate) fn check_item_fn<'tcx>(
     visibility: vir::ast::Visibility,
     attrs: &[Attribute],
     sig: &'tcx FnSig<'tcx>,
+    self_generics: Option<&'tcx Generics>,
     generics: &'tcx Generics,
     body_id: &BodyId,
 ) -> Result<(), VirErr> {
@@ -78,7 +79,9 @@ pub(crate) fn check_item_fn<'tcx>(
             check_fn_decl(ctxt.tcx, decl, mode)?
         }
     };
-    let typ_params = check_generics(generics)?;
+    let self_typ_params =
+        if let Some(cg) = self_generics { Some(check_generics(cg)?) } else { None };
+    let sig_typ_params = check_generics(generics)?;
     let fuel = get_fuel(attrs);
     let vattrs = get_verifier_attrs(attrs)?;
     if vattrs.external {
@@ -108,8 +111,11 @@ pub(crate) fn check_item_fn<'tcx>(
                 _ => Ok(false),
             }
         }
-        let typ_args = vec_map(&typ_params, |t| Arc::new(TypX::TypParam(t.clone())));
         let typ = if is_self_or_self_ref(*span, &input)? {
+            let typ_args =
+                vec_map(self_typ_params.as_ref().expect("expected Self type parameters"), |t| {
+                    Arc::new(TypX::TypParam(t.clone()))
+                });
             Arc::new(TypX::Datatype(
                 self_path.as_ref().expect("a param is Self, so this must be an impl").clone(),
                 Arc::new(typ_args),
@@ -164,6 +170,12 @@ pub(crate) fn check_item_fn<'tcx>(
         _ => panic!("internal error: ret_typ"),
     };
     let ret = spanned_new(sig.span, ParamX { name: ret_name, typ: ret_typ, mode: ret_mode });
+    let typ_params = {
+        let mut typ_params: Vec<_> =
+            self_typ_params.as_ref().map(|x| (**x).clone()).unwrap_or(Vec::new());
+        typ_params.extend_from_slice(&sig_typ_params[..]);
+        Arc::new(typ_params)
+    };
     let func = FunctionX {
         path,
         visibility,
