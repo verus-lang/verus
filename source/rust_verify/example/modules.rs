@@ -1,7 +1,6 @@
-extern crate builtin;
-use builtin::*;
+#[allow(unused_imports)] use builtin::*;
 mod pervasive;
-use pervasive::*;
+#[allow(unused_imports)] use pervasive::*;
 
 fn main() {}
 
@@ -21,9 +20,9 @@ mod M1 {
 }
 
 mod M2 {
-    use M1::f2;
-    use builtin::*;
-    use pervasive::*;
+    use crate::M1::f2;
+    #[allow(unused_imports)] use builtin::*;
+    #[allow(unused_imports)] use crate::pervasive::*;
 
     #[proof]
     fn P() {

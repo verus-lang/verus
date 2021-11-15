@@ -1,6 +1,7 @@
-extern crate builtin;
-#[macro_use] extern crate builtin_macros;
+// rust_verify/tests/example.rs expect-errors
+
 use builtin::*;
+use builtin_macros::*;
 mod pervasive;
 use pervasive::*;
 
