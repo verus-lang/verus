@@ -1,8 +1,9 @@
+// rust_verify/tests/example.rs expect-failures
 #![feature(stmt_expr_attributes)]
-extern crate builtin;
+
 #[allow(unused_imports)] use builtin::*;
+#[allow(unused_imports)] use builtin_macros::*;
 mod pervasive; #[allow(unused_imports)] use pervasive::*;
-#[macro_use] extern crate builtin_macros;
 
 fn main() {
     let x = 3;

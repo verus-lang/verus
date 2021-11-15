@@ -1,4 +1,5 @@
-extern crate builtin;
+// rust_verify/tests/example.rs expect-errors
+
 use builtin::*;
 mod pervasive;
 use pervasive::*;
