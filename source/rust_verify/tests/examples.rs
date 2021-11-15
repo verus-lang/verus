@@ -60,7 +60,7 @@ fn run_examples() {
 
         #[cfg(target_os = "windows")]
         let script = format!(
-            "../rust/install/bin/rust_verify --pervasive-path pervasive --extern builtin=../rust/install/bin/libbuiltin.rlib --extern builtin_macros=../rust/install/bin/libbuiltin_macros.dll --edition=2018 {}",
+            "..\\rust\\install\\bin\\rust_verify --pervasive-path pervasive --extern builtin=../rust/install/bin/libbuiltin.rlib --extern builtin_macros=../rust/install/bin/builtin_macros.dll --edition=2018 {}",
             &path
         );
 
