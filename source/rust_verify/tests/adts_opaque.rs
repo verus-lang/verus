@@ -26,7 +26,7 @@ const M1: &str = code_str! {
     }
 };
 
-test_verify_with_pervasive! {
+test_verify_one_file! {
     #[test] test_transparent_struct_1 M1.to_string() + code_str! {
         mod M2 {
             use crate::M1::{Car, Bike};
@@ -40,7 +40,7 @@ test_verify_with_pervasive! {
     } => Ok(())
 }
 
-test_verify_with_pervasive! {
+test_verify_one_file! {
     #[test] test_opaque_struct_1 M1.to_string() + code_str! {
         mod M2 {
             use crate::M1::{Car, get_passengers, Bike};

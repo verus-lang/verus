@@ -4,7 +4,7 @@
 mod common;
 use common::*;
 
-test_verify_with_pervasive! {
+test_verify_one_file! {
     #[test] test1 code! {
         #[spec]
         fn tr(i: int) -> bool {
@@ -19,7 +19,7 @@ test_verify_with_pervasive! {
     } => Ok(())
 }
 
-test_verify_with_pervasive! {
+test_verify_one_file! {
     #[test] test1_fails code! {
         #[spec]
         fn tr(i: int) -> bool {
@@ -33,7 +33,7 @@ test_verify_with_pervasive! {
     } => Err(err) => assert_one_fails(err)
 }
 
-test_verify_with_pervasive! {
+test_verify_one_file! {
     #[test] test2 code! {
         #[spec]
         fn tr1(i: int) -> bool {
@@ -53,7 +53,7 @@ test_verify_with_pervasive! {
     } => Ok(())
 }
 
-test_verify_with_pervasive! {
+test_verify_one_file! {
     #[test] test3 code! {
         #[spec]
         fn tr1(i: int) -> bool {
@@ -75,7 +75,7 @@ test_verify_with_pervasive! {
 
 ////
 
-test_verify_with_pervasive! {
+test_verify_one_file! {
     #[test] test1g code! {
         #[spec]
         fn tr<A>(a: A) -> bool {
@@ -90,7 +90,7 @@ test_verify_with_pervasive! {
     } => Ok(())
 }
 
-test_verify_with_pervasive! {
+test_verify_one_file! {
     #[test] test1g_fails code! {
         #[spec]
         fn tr<A>(a: A) -> bool {
@@ -104,7 +104,7 @@ test_verify_with_pervasive! {
     } => Err(err) => assert_one_fails(err)
 }
 
-test_verify_with_pervasive! {
+test_verify_one_file! {
     #[test] test2g code! {
         #[spec]
         fn tr1<A>(a: A) -> bool {
@@ -124,7 +124,7 @@ test_verify_with_pervasive! {
     } => Ok(())
 }
 
-test_verify_with_pervasive! {
+test_verify_one_file! {
     #[test] test3g code! {
         #[spec]
         fn tr1<A>(a: A) -> bool {
@@ -147,7 +147,7 @@ test_verify_with_pervasive! {
 ////
 
 /* REVIEW: these tests need #![feature(stmt_expr_attributes)], which doesn't seem to work here
-test_verify_with_pervasive! {
+test_verify_one_file! {
     #[test] test4 code! {
         #[spec]
         fn tr1(i: int) -> bool {
@@ -167,7 +167,7 @@ test_verify_with_pervasive! {
     } => Ok(())
 }
 
-test_verify_with_pervasive! {
+test_verify_one_file! {
     #[test] test4_fails code! {
         #[spec]
         fn tr1(i: int) -> bool {

@@ -3,7 +3,7 @@
 mod common;
 use common::*;
 
-test_verify_with_pervasive! {
+test_verify_one_file! {
     #[test] test1 code! {
         fn test1() {
             assert(true);
@@ -15,7 +15,7 @@ test_verify_with_pervasive! {
     } => Ok(())
 }
 
-test_verify_with_pervasive! {
+test_verify_one_file! {
     #[test] test1_fails code! {
         fn test1() {
             assert(true);
@@ -26,7 +26,7 @@ test_verify_with_pervasive! {
     } => Err(err) => assert_one_fails(err)
 }
 
-test_verify_with_pervasive! {
+test_verify_one_file! {
     #[test] test2 code! {
         extern {
             #[spec]
@@ -49,7 +49,7 @@ test_verify_with_pervasive! {
     } => Ok(())
 }
 
-test_verify_with_pervasive! {
+test_verify_one_file! {
     #[test] test2_fails code! {
         fn test2(b: bool, x: int, y: int, z: int) {
             assume(x <= y && y <= z);
@@ -58,7 +58,7 @@ test_verify_with_pervasive! {
     } => Err(err) => assert_one_fails(err)
 }
 
-test_verify_with_pervasive! {
+test_verify_one_file! {
     #[test] test_assign code! {
         fn test_assign(a: int, b: int) {
             let c = a + b;
@@ -72,7 +72,7 @@ test_verify_with_pervasive! {
     } => Err(err) => assert_one_fails(err)
 }
 
-test_verify_with_pervasive! {
+test_verify_one_file! {
     #[test] test_assign_mut code! {
         fn test_assign_mut(a: int, b: int) {
             let mut c = a;
@@ -83,7 +83,7 @@ test_verify_with_pervasive! {
     } => Err(err) => assert_one_fails(err)
 }
 
-test_verify_with_pervasive! {
+test_verify_one_file! {
     #[test] test_spec_fn code! {
         #[spec]
         fn f1(i: int, j: int) -> bool {
@@ -125,7 +125,7 @@ const TEST_REQUIRES1: &str = code_str! {
     }
 };
 
-test_verify_with_pervasive! {
+test_verify_one_file! {
     #[test] test_requires2 TEST_REQUIRES1.to_string() + code_str! {
         fn test_requires2(a: int, b: int, c: int) {
             assume(a <= b);
@@ -136,7 +136,7 @@ test_verify_with_pervasive! {
     } => Err(err) => assert_one_fails(err)
 }
 
-test_verify_with_pervasive! {
+test_verify_one_file! {
     #[test] test_requires3 TEST_REQUIRES1.to_string() + code_str! {
         fn test_requires3(a: int, b: int, c: int) {
             assume(a <= b);
@@ -160,11 +160,11 @@ const TEST_RET: &str = code_str! {
     }
 };
 
-test_verify_with_pervasive! {
+test_verify_one_file! {
     #[test] test_ret TEST_RET.to_string() => Err(err) => assert_one_fails(err)
 }
 
-test_verify_with_pervasive! {
+test_verify_one_file! {
     #[test] test_ret2 TEST_RET.to_string() + code_str! {
         fn test_ret2(a: int, b: int) -> int {
             requires(a <= b);
@@ -189,7 +189,7 @@ test_verify_with_pervasive! {
     } => Err(err) => assert_one_fails(err)
 }
 
-test_verify_with_pervasive! {
+test_verify_one_file! {
     #[test] test_exec_fun1 code! {
         fn f(x: u64) -> u64 {
           5
@@ -201,7 +201,7 @@ test_verify_with_pervasive! {
     } => Ok(())
 }
 
-test_verify_with_pervasive! {
+test_verify_one_file! {
     #[test] test_short_circuit code! {
         fn f1(a: bool, b: bool) {
             let mut x: u64 = 0;
@@ -232,7 +232,7 @@ test_verify_with_pervasive! {
     } => Ok(())
 }
 
-test_verify_with_pervasive! {
+test_verify_one_file! {
     #[test] test_short_circuit2 code! {
         fn f1(a: bool, b: bool) {
             let mut x: u64 = 0;
@@ -244,7 +244,7 @@ test_verify_with_pervasive! {
     } => Err(err) => assert_one_fails(err)
 }
 
-test_verify_with_pervasive! {
+test_verify_one_file! {
     #[test] test_short_circuit3 code! {
         fn f1(a: bool, b: bool) {
             let mut x: u64 = 0;

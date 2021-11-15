@@ -68,8 +68,6 @@ pub fn verify_files(
         "builtin_macros=../../rust/install/bin/libbuiltin_macros.dylib".to_string(),
     ]);
 
-    // TODO: I've guessed the library types for the other OSes, they are likely wrong
-
     #[cfg(target_os = "linux")]
     rustc_args.append(&mut vec![
         "--extern".to_string(),
@@ -144,19 +142,17 @@ pub const USE_PRELUDE: &str = crate::common::code_str! {
     mod pervasive; #[allow(unused_imports)] use pervasive::*;
 };
 
-pub fn verify_with_pervasive(
-    code: String,
-) -> Result<(), Vec<(Option<ErrorSpan>, Option<ErrorSpan>)>> {
+pub fn verify_one_file(code: String) -> Result<(), Vec<(Option<ErrorSpan>, Option<ErrorSpan>)>> {
     let files = vec![("test.rs".to_string(), format!("{}\n\n{}", USE_PRELUDE, code.as_str()))];
     verify_files(files, "test.rs".to_string())
 }
 
 #[macro_export]
-macro_rules! test_verify_with_pervasive {
+macro_rules! test_verify_one_file {
     ($(#[$attrs:meta])* $name:ident $body:expr => $result:pat => $assertions:expr ) => {
         $(#[$attrs])*
         fn $name() {
-            let result = verify_with_pervasive($body);
+            let result = verify_one_file($body);
             #[allow(irrefutable_let_patterns)]
             if let $result = result {
                 $assertions
@@ -168,7 +164,7 @@ macro_rules! test_verify_with_pervasive {
     ($(#[$attrs:meta])* $name:ident $body:expr => $result:pat) => {
         $(#[$attrs])*
         fn $name() {
-            let result = verify_with_pervasive($body);
+            let result = verify_one_file($body);
             #[allow(irrefutable_let_patterns)]
             if let $result = result {
             } else {

@@ -10,7 +10,7 @@ const STRUCT: &str = code_str! {
     }
 };
 
-test_verify_with_pervasive! {
+test_verify_one_file! {
     #[test] test_impl_1 STRUCT.to_string() + code_str! {
         impl Bike {
             #[spec]
@@ -32,7 +32,7 @@ test_verify_with_pervasive! {
     } => Ok(())
 }
 
-test_verify_with_pervasive! {
+test_verify_one_file! {
     #[test] test_impl_mod_1 code! {
         mod M1 {
             #[derive(PartialEq, Eq)]
@@ -61,7 +61,7 @@ test_verify_with_pervasive! {
     } => Ok(())
 }
 
-test_verify_with_pervasive! {
+test_verify_one_file! {
     #[test] test_impl_mod_priv_field code! {
         mod M1 {
             #[derive(PartialEq, Eq)]

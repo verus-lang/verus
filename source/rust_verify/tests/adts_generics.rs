@@ -3,7 +3,7 @@
 mod common;
 use common::*;
 
-test_verify_with_pervasive! {
+test_verify_one_file! {
     #[test] test_box_unbox_struct code! {
         #[derive(Eq, PartialEq)]
         struct Thing<A> {
@@ -22,7 +22,7 @@ test_verify_with_pervasive! {
     } => Ok(())
 }
 
-test_verify_with_pervasive! {
+test_verify_one_file! {
     #[test] test_box_enum code! {
         #[derive(Eq, PartialEq)]
         enum Thing<A> {
@@ -35,7 +35,7 @@ test_verify_with_pervasive! {
     } => Ok(())
 }
 
-test_verify_with_pervasive! {
+test_verify_one_file! {
     #[test] test_generic_adt_eq code! {
         #[derive(Eq, PartialEq)]
         struct Thing<A> {
@@ -53,7 +53,7 @@ test_verify_with_pervasive! {
     } => Err(err) => assert_one_fails(err)
 }
 
-test_verify_with_pervasive! {
+test_verify_one_file! {
     #[test] test_generic_adt_u8 code! {
         #[derive(Eq, PartialEq)]
         struct Thing<A> {
@@ -66,7 +66,7 @@ test_verify_with_pervasive! {
     } => Err(err) => assert_one_fails(err)
 }
 
-test_verify_with_pervasive! {
+test_verify_one_file! {
     #[test] test_refinements1 code! {
         struct X {
             u: u64,
@@ -92,7 +92,7 @@ test_verify_with_pervasive! {
     } => Ok(())
 }
 
-test_verify_with_pervasive! {
+test_verify_one_file! {
     #[test] test_refinements1_fail code! {
         struct X {
             u: u64,
@@ -118,7 +118,7 @@ test_verify_with_pervasive! {
     } => Err(err) => assert_one_fails(err)
 }
 
-test_verify_with_pervasive! {
+test_verify_one_file! {
     #[test] test_refinements2 code! {
         struct P<A> {
             a: A,
@@ -139,7 +139,7 @@ test_verify_with_pervasive! {
     } => Ok(())
 }
 
-test_verify_with_pervasive! {
+test_verify_one_file! {
     #[test] test_refinements2_fails code! {
         struct P<A> {
             a: A,
@@ -160,7 +160,7 @@ test_verify_with_pervasive! {
     } => Err(err) => assert_one_fails(err)
 }
 
-test_verify_with_pervasive! {
+test_verify_one_file! {
     #[test] test_out_of_order code! {
         struct XY {
             tz: TZ,

@@ -3,7 +3,7 @@
 mod common;
 use common::*;
 
-test_verify_with_pervasive! {
+test_verify_one_file! {
     #[test] test_ref_0 code! {
         fn test_ref_0(p: int) {
             requires(p == 12);

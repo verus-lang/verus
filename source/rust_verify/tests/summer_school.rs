@@ -8,7 +8,7 @@ use common::*;
 
 // -- e01 --
 
-test_verify_with_pervasive! {
+test_verify_one_file! {
     #[test] e01_pass code! {
         fn e01() {
             assert(5 > 3);
@@ -16,7 +16,7 @@ test_verify_with_pervasive! {
     } => Ok(())
 }
 
-test_verify_with_pervasive! {
+test_verify_one_file! {
     #[test] e01_fail code! {
         fn e01() {
             assert(5 < 3); // FAILS
@@ -26,7 +26,7 @@ test_verify_with_pervasive! {
 
 // -- e02 --
 
-test_verify_with_pervasive! {
+test_verify_one_file! {
     #[test] e02_pass code! {
         fn e02(p: int) {
             assert(imply(true, true));
@@ -34,7 +34,7 @@ test_verify_with_pervasive! {
     } => Ok(())
 }
 
-test_verify_with_pervasive! {
+test_verify_one_file! {
     #[test] e02_fail code! {
         fn e02(p: int) {
             assert(imply(true, false)); // FAILS
@@ -51,7 +51,7 @@ const E03_SHARED: &str = code_str! {
     }
 };
 
-test_verify_with_pervasive! {
+test_verify_one_file! {
     #[test] e03_pass E03_SHARED.to_string() + code_str! {
         #[proof]
         fn double_is_like_plus(p: int) {
@@ -66,7 +66,7 @@ test_verify_with_pervasive! {
     } => Ok(())
 }
 
-test_verify_with_pervasive! {
+test_verify_one_file! {
     #[test] e03_fail E03_SHARED.to_string() + code_str! {
         #[proof]
         fn double_is_like_plus(p: int) {
@@ -101,7 +101,7 @@ const E04_SHARED: &str = code_str! {
     }
 };
 
-test_verify_with_pervasive! {
+test_verify_one_file! {
     #[test] e04_pass E04_SHARED.to_string() + code_str! {
         #[proof]
         fn these_two_predicates_are_equivalent(x: int, y: int)
@@ -118,7 +118,7 @@ test_verify_with_pervasive! {
     } => Ok(())
 }
 
-test_verify_with_pervasive! {
+test_verify_one_file! {
     #[test] e04_fail E04_SHARED.to_string() + code_str! {
         #[proof]
         fn four_times_is_pretty_big(x: int)
@@ -140,7 +140,7 @@ const E05_SHARED: &str = code_str! {
     }
 };
 
-test_verify_with_pervasive! {
+test_verify_one_file! {
     #[test] e05_pass E05_SHARED.to_string() + code_str! {
         use set::*;
 
@@ -174,7 +174,7 @@ test_verify_with_pervasive! {
     } => Ok(())
 }
 
-test_verify_with_pervasive! {
+test_verify_one_file! {
     #[test] #[ignore] e05_fail E05_SHARED.to_string() + code_str! {
         #[proof]
         fn try_out_some_set_literals(x: int, y: int)
@@ -199,7 +199,7 @@ const E06_SHARED: &str = code_str! {
     }
 };
 
-test_verify_with_pervasive! {
+test_verify_one_file! {
     #[test] #[ignore] e06_pass E06_SHARED.to_string() + code_str! {
         #[proof]
         fn some_assertions_about_sets()
@@ -220,7 +220,7 @@ test_verify_with_pervasive! {
     } => Ok(())
 }
 
-test_verify_with_pervasive! {
+test_verify_one_file! {
     #[test] #[ignore] e06_fail E06_SHARED.to_string() + code_str! {
         #[proof]
         fn some_assertions_about_sets()
@@ -234,7 +234,7 @@ test_verify_with_pervasive! {
 
 // -- e07 --
 
-test_verify_with_pervasive! {
+test_verify_one_file! {
     #[test] #[ignore] e07_pass code! {
         #[proof]
         fn experiments_with_sequences()
@@ -273,7 +273,7 @@ test_verify_with_pervasive! {
     } => Ok(())
 }
 
-test_verify_with_pervasive! {
+test_verify_one_file! {
     #[test] #[ignore] e07_fail code! {
         #[proof]
         fn some_assertions_about_sets()
@@ -295,7 +295,7 @@ test_verify_with_pervasive! {
 
 // TODO factor out type alias
 
-test_verify_with_pervasive! {
+test_verify_one_file! {
     #[test] #[ignore] e08_pass code! {
         // TODO: do we want to support type renaming
         type SeqOfSets = &[Set::<int>];
@@ -310,7 +310,7 @@ test_verify_with_pervasive! {
     } => Ok(())
 }
 
-test_verify_with_pervasive! {
+test_verify_one_file! {
     #[test] #[ignore] e08_fail code! {
         // TODO: do we want to support type renaming
         type SeqOfSets = &[Set::<int>];
@@ -335,7 +335,7 @@ const E09_SHARED: &str = code_str! {
     }
 };
 
-test_verify_with_pervasive! {
+test_verify_one_file! {
     #[test] e09_pass E09_SHARED.to_string() + code_str! {
         #[spec]
         fn subtract_points(tip: Point, tail: Point) -> Point
@@ -354,7 +354,7 @@ test_verify_with_pervasive! {
     } => Ok(())
 }
 
-test_verify_with_pervasive! {
+test_verify_one_file! {
     #[test] e09_fail E09_SHARED.to_string() + code_str! {
         #[spec]
         fn subtract_points(tip: Point, tail: Point) -> Point
@@ -447,7 +447,7 @@ fn e10_pass() {
 
 // -- e11 --
 
-test_verify_with_pervasive! {
+test_verify_one_file! {
     #[test] e11_pass code! {
         use set::*;
 

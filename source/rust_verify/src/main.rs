@@ -32,36 +32,17 @@ fn os_setup() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-// TODO: factor out
-struct PervasiveFileLoader {
-    pervasive_path: Option<String>,
-    real_file_loader: rustc_span::source_map::RealFileLoader,
-}
-
-impl PervasiveFileLoader {
-    fn remap_pervasive_path(&self, path: &std::path::Path) -> std::path::PathBuf {
-        if let Some(pervasive_path) = &self.pervasive_path {
-            if path.parent().and_then(|x| x.file_name()) == Some(std::ffi::OsStr::new("pervasive"))
-            {
-                if let Some(file_name) = path.file_name() {
-                    return std::path::Path::new(pervasive_path).join(file_name).into();
-                }
-            }
-        }
-        return path.into();
-    }
-}
-
-impl rustc_span::source_map::FileLoader for PervasiveFileLoader {
-    fn file_exists(&self, path: &std::path::Path) -> bool {
-        let path = self.remap_pervasive_path(path);
-        self.real_file_loader.file_exists(&path)
-    }
-
-    fn read_file(&self, path: &std::path::Path) -> Result<String, std::io::Error> {
-        let path = self.remap_pervasive_path(path);
-        self.real_file_loader.read_file(&path)
-    }
+fn mk_compiler<'a, 'b>(
+    rustc_args: &'a [String],
+    verifier: &'b mut (dyn rustc_driver::Callbacks + Send),
+    pervasive_path: &Option<String>,
+) -> rustc_driver::RunCompiler<'a, 'b> {
+    let mut compiler = rustc_driver::RunCompiler::new(rustc_args, verifier);
+    rust_verify::file_loader::PervasiveFileLoader::set_for_compiler(
+        &mut compiler,
+        pervasive_path.clone(),
+    );
+    compiler
 }
 
 pub fn main() {
@@ -77,13 +58,8 @@ pub fn main() {
     // Run verifier callback to build VIR tree and run verifier
 
     let mut verifier = Verifier::new(our_args);
-    let file_loader = PervasiveFileLoader {
-        pervasive_path: pervasive_path.clone(),
-        real_file_loader: rustc_span::source_map::RealFileLoader,
-    };
-    let mut compiler = rustc_driver::RunCompiler::new(&rustc_args, &mut verifier);
-    compiler.set_file_loader(Some(Box::new(file_loader)));
-    let status = compiler.run();
+
+    let status = mk_compiler(&rustc_args, &mut verifier, &pervasive_path).run();
     if !verifier.encountered_vir_error {
         println!(
             "Verification results:: verified: {} errors: {}",
@@ -114,13 +90,9 @@ pub fn main() {
     // Run borrow checker and compiler on #[code] (if enabled)
     if compile {
         let erasure_hints = verifier.erasure_hints.clone().expect("erasure_hints").clone();
-        let mut callbacks = CompilerCallbacks { erasure_hints };
-        let file_loader = PervasiveFileLoader {
-            pervasive_path: pervasive_path.clone(),
-            real_file_loader: rustc_span::source_map::RealFileLoader,
-        };
-        let mut compiler = rustc_driver::RunCompiler::new(&rustc_args, &mut callbacks);
-        compiler.set_file_loader(Some(Box::new(file_loader)));
-        compiler.run().expect("RunCompiler.run() failed");
+        let mut callbacks = CompilerCallbacks { erasure_hints, lifetimes_only: false };
+        mk_compiler(&rustc_args, &mut callbacks, &pervasive_path)
+            .run()
+            .expect("RunCompiler.run() failed");
     }
 }

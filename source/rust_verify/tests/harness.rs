@@ -10,14 +10,14 @@ fn harness_invalid_rust() {
             invalid(true);
         }
     };
-    let err = verify_with_pervasive(code).unwrap_err();
+    let err = verify_one_file(code).unwrap_err();
     assert_eq!(err.len(), 0);
 }
 
 #[test]
 fn harness_true() {
     assert!(
-        verify_with_pervasive(code! {
+        verify_one_file(code! {
             fn harness1() {
                 assert(true);
             }
@@ -28,7 +28,7 @@ fn harness_true() {
 
 #[test]
 fn harness_false() {
-    let err = verify_with_pervasive(code! {
+    let err = verify_one_file(code! {
         fn harness2() {
             assert(false); // FAILS
         }
@@ -38,7 +38,7 @@ fn harness_false() {
     assert!(err[0].0.as_ref().expect("span").test_span_line.contains("FAILS"));
 }
 
-test_verify_with_pervasive! {
+test_verify_one_file! {
     #[test] harness_macro_true code! {
         fn empty() { }
 
@@ -48,7 +48,7 @@ test_verify_with_pervasive! {
     } => Ok(())
 }
 
-test_verify_with_pervasive! {
+test_verify_one_file! {
     #[test] harness_macro_false code! {
         fn empty() { }
 

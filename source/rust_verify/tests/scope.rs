@@ -3,7 +3,7 @@
 mod common;
 use common::*;
 
-test_verify_with_pervasive! {
+test_verify_one_file! {
     #[test] test1 code! {
         fn test1() {
             {
@@ -18,7 +18,7 @@ test_verify_with_pervasive! {
     } => Ok(())
 }
 
-test_verify_with_pervasive! {
+test_verify_one_file! {
     #[test] test1_fails code! {
         fn test1() {
             {
@@ -33,7 +33,7 @@ test_verify_with_pervasive! {
     } => Err(err) => assert_one_fails(err)
 }
 
-test_verify_with_pervasive! {
+test_verify_one_file! {
     #[test] test2 code! {
         fn test1() {
             let mut x = 6;
@@ -48,7 +48,7 @@ test_verify_with_pervasive! {
     } => Ok(())
 }
 
-test_verify_with_pervasive! {
+test_verify_one_file! {
     #[test] test2_fails code! {
         fn test1() {
             let mut x = 6;
@@ -64,7 +64,7 @@ test_verify_with_pervasive! {
     } => Err(err) => assert_one_fails(err)
 }
 
-test_verify_with_pervasive! {
+test_verify_one_file! {
     #[test] test3 code! {
         fn test1() {
             let mut x = 6;
@@ -81,7 +81,7 @@ test_verify_with_pervasive! {
     } => Ok(())
 }
 
-test_verify_with_pervasive! {
+test_verify_one_file! {
     #[test] test3_fails code! {
         fn test1() {
             let mut x = 6;
@@ -99,7 +99,7 @@ test_verify_with_pervasive! {
     } => Err(err) => assert_one_fails(err)
 }
 
-test_verify_with_pervasive! {
+test_verify_one_file! {
     #[test] test4 code! {
         fn test1() {
             let mut x = 6;
@@ -116,7 +116,7 @@ test_verify_with_pervasive! {
     } => Ok(())
 }
 
-test_verify_with_pervasive! {
+test_verify_one_file! {
     #[test] test4_fails code! {
         fn test1() {
             let mut x = 6;
@@ -134,7 +134,7 @@ test_verify_with_pervasive! {
     } => Err(err) => assert_one_fails(err)
 }
 
-test_verify_with_pervasive! {
+test_verify_one_file! {
     #[test] test5 code! {
         fn test1() {
             let mut x = 6;
@@ -150,7 +150,7 @@ test_verify_with_pervasive! {
     } => Ok(())
 }
 
-test_verify_with_pervasive! {
+test_verify_one_file! {
     #[test] test5_fails code! {
         fn test1() {
             let mut x = 6;
