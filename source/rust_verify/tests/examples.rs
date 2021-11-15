@@ -56,7 +56,7 @@ fn run_examples() {
         }
 
         let script = if cfg!(target_os = "windows") {
-            format!("../rust/install/bin/rust_verify --pervasive-path pervasive --extern builtin=../rust/install/bin/libbuiltin.rlib --extern builtin_macros=../rust/install/bin/libbuiltin_macros.$DYN_LIB_EXT --edition=2018 {}", &path)
+            format!("../rust/install/bin/rust_verify --pervasive-path pervasive --extern builtin=../rust/install/bin/libbuiltin.rlib --extern builtin_macros=../rust/install/bin/libbuiltin_macros.dll --edition=2018 {}", &path)
         } else {
             format!("DYLD_LIBRARY_PATH=../rust/install/lib/rustlib/{}/lib LD_LIBRARY_PATH=../rust/install/lib ../rust/install/bin/rust_verify --pervasive-path pervasive --extern builtin=../rust/install/bin/libbuiltin.rlib --extern builtin_macros=../rust/install/bin/libbuiltin_macros.{} --edition=2018 {}", RUST_LIB_TARGET, DYN_LIB_EXT, &path)
         };
