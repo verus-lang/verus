@@ -3,7 +3,7 @@
 mod common;
 use common::*;
 
-test_verify_with_pervasive! {
+test_verify_one_file! {
     #[test] basic_while code! {
         fn test1() {
             let mut i = 0;
@@ -18,7 +18,7 @@ test_verify_with_pervasive! {
     } => Ok(())
 }
 
-test_verify_with_pervasive! {
+test_verify_one_file! {
     // TODO: support break in loops?
     #[test] #[ignore] break_test code! {
         fn test1(a: int, b: int) {

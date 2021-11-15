@@ -1,6 +1,5 @@
-extern crate builtin;
 use builtin::*;
-use crate::pervasive::*;  // TODO(utaal): this is cursed
+use crate::pervasive::*;
 
 /// set type for specifications
 #[verifier(no_verify)]

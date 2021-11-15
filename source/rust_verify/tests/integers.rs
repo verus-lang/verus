@@ -3,7 +3,7 @@
 mod common;
 use common::*;
 
-test_verify_with_pervasive! {
+test_verify_one_file! {
     #[test] test1 code! {
         #[spec]
         fn add1_int(i: int) -> int {
@@ -53,7 +53,7 @@ test_verify_with_pervasive! {
     } => Ok(())
 }
 
-test_verify_with_pervasive! {
+test_verify_one_file! {
     #[test] test1_fails code! {
         #[spec]
         fn add1_int(i: int) -> int {
@@ -67,7 +67,7 @@ test_verify_with_pervasive! {
     } => Err(err) => assert_one_fails(err)
 }
 
-test_verify_with_pervasive! {
+test_verify_one_file! {
     #[test] test2_fails code! {
         #[proof]
         fn test1(i: int, n: nat, u: u8) {
@@ -76,7 +76,7 @@ test_verify_with_pervasive! {
     } => Err(err) => assert_one_fails(err)
 }
 
-test_verify_with_pervasive! {
+test_verify_one_file! {
     #[test] test3_fails code! {
         #[proof]
         fn test1(i: int, n: nat, u: u8) {
@@ -85,7 +85,7 @@ test_verify_with_pervasive! {
     } => Err(err) => assert_one_fails(err)
 }
 
-test_verify_with_pervasive! {
+test_verify_one_file! {
     #[test] test4 code! {
         #[proof]
         fn typing(u: u64, i: int, n: nat) -> int {
@@ -110,7 +110,7 @@ test_verify_with_pervasive! {
     } => Ok(())
 }
 
-test_verify_with_pervasive! {
+test_verify_one_file! {
     #[test] test4_fails code! {
         #[proof]
         fn typing(u: u64, i: int, n: nat) {
@@ -120,7 +120,7 @@ test_verify_with_pervasive! {
     } => Err(err) => assert_one_fails(err)
 }
 
-test_verify_with_pervasive! {
+test_verify_one_file! {
     #[test] test5_fails code! {
         #[proof]
         fn typing(u: u64, i: int, n: nat) {
@@ -129,7 +129,7 @@ test_verify_with_pervasive! {
     } => Err(_)
 }
 
-test_verify_with_pervasive! {
+test_verify_one_file! {
     #[test] test6_fails code! {
         #[proof]
         fn typing(u: u64, i: int, n: nat) {
@@ -138,7 +138,7 @@ test_verify_with_pervasive! {
     } => Err(_)
 }
 
-test_verify_with_pervasive! {
+test_verify_one_file! {
     #[test] test7_fails code! {
         #[proof]
         fn typing(u: u64, i: int, n: nat) {
@@ -147,7 +147,7 @@ test_verify_with_pervasive! {
     } => Err(_)
 }
 
-test_verify_with_pervasive! {
+test_verify_one_file! {
     #[test] test8_fails code! {
         #[proof]
         fn typing(u: u64, i: int, n: nat) {
@@ -156,7 +156,7 @@ test_verify_with_pervasive! {
     } => Err(_)
 }
 
-test_verify_with_pervasive! {
+test_verify_one_file! {
     #[test] test9_fails code! {
         #[proof]
         fn typing(u: u64, i: int, n: nat) {

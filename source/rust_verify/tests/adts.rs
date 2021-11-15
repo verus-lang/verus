@@ -29,7 +29,7 @@ const STRUCTS: &str = code_str! {
     }
 };
 
-test_verify_with_pervasive! {
+test_verify_one_file! {
     #[test] test_struct_1 STRUCTS.to_string() + code_str! {
         fn test_struct_1(p: int) {
             assert((Car { four_doors: true, passengers: p }).passengers == p);
@@ -39,7 +39,7 @@ test_verify_with_pervasive! {
     } => Err(err) => assert_one_fails(err)
 }
 
-test_verify_with_pervasive! {
+test_verify_one_file! {
     #[test] test_struct_2 STRUCTS.to_string() + code_str! {
         fn test_struct_2(c: Car, p: int) {
             assume(c.passengers == p);
@@ -49,7 +49,7 @@ test_verify_with_pervasive! {
     } => Err(err) => assert_one_fails(err)
 }
 
-test_verify_with_pervasive! {
+test_verify_one_file! {
     #[test] test_struct_3 STRUCTS.to_string() + code_str! {
         fn test_struct_3(p: int) {
             let c = Car { passengers: p, four_doors: true };
@@ -59,7 +59,7 @@ test_verify_with_pervasive! {
     } => Err(err) => assert_one_fails(err)
 }
 
-test_verify_with_pervasive! {
+test_verify_one_file! {
     #[test] test_struct_4 STRUCTS.to_string() + code_str! {
         fn test_struct_4(passengers: int) {
             assert((Car { passengers, four_doors: true }).passengers == passengers);
@@ -67,7 +67,7 @@ test_verify_with_pervasive! {
     } => Ok(())
 }
 
-test_verify_with_pervasive! {
+test_verify_one_file! {
     #[test] test_enum_1 STRUCTS.to_string() + code_str! {
         fn test_enum_1(passengers: int) {
             let t = Vehicle::Train(true);
@@ -77,7 +77,7 @@ test_verify_with_pervasive! {
     } => Ok(())
 }
 
-test_verify_with_pervasive! {
+test_verify_one_file! {
     #[test] test_enum_struct code! {
         #[derive(PartialEq, Eq)]
         enum Thing {
@@ -91,7 +91,7 @@ test_verify_with_pervasive! {
     } => Ok(())
 }
 
-test_verify_with_pervasive! {
+test_verify_one_file! {
     #[test] test_enum_unit code! {
         #[derive(PartialEq, Eq, Structural)]
         enum AB {
@@ -106,7 +106,7 @@ test_verify_with_pervasive! {
     } => Ok(())
 }
 
-test_verify_with_pervasive! {
+test_verify_one_file! {
     #[test] test_struct_u8 STRUCTS.to_string() + code_str! {
         fn test_struct_u8(car: CompactCar) {
             assert(car.passengers >= 0);
@@ -114,7 +114,7 @@ test_verify_with_pervasive! {
     } => Ok(())
 }
 
-test_verify_with_pervasive! {
+test_verify_one_file! {
     #[test] test_struct_u8n STRUCTS.to_string() + code_str! {
         fn test_struct_u8(car: CompactCar) {
             assert(car.passengers >= 1); // FAILS
@@ -122,7 +122,7 @@ test_verify_with_pervasive! {
     } => Err(err) => assert_one_fails(err)
 }
 
-test_verify_with_pervasive! {
+test_verify_one_file! {
     #[test] test_struct_int STRUCTS.to_string() + code_str! {
         fn test_struct_u8(car: Car) {
             assert(car.passengers >= 0); // FAILS

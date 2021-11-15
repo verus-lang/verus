@@ -28,5 +28,6 @@ fi
     fi
 
     git pull --ff-only origin verification
+    ./x.py install
 )
 

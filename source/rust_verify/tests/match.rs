@@ -3,7 +3,7 @@
 mod common;
 use common::*;
 
-test_verify_with_pervasive! {
+test_verify_one_file! {
     #[test] test1 code! {
         enum Maybe<A> {
             None,
@@ -36,7 +36,7 @@ test_verify_with_pervasive! {
     } => Ok(())
 }
 
-test_verify_with_pervasive! {
+test_verify_one_file! {
     #[test] test1_fails code! {
         enum Maybe<A> {
             None,
@@ -69,7 +69,7 @@ test_verify_with_pervasive! {
     } => Err(err) => assert_one_fails(err)
 }
 
-test_verify_with_pervasive! {
+test_verify_one_file! {
     #[test] test2 code! {
         enum List<A> {
             Nil,
@@ -114,7 +114,7 @@ test_verify_with_pervasive! {
     } => Ok(())
 }
 
-test_verify_with_pervasive! {
+test_verify_one_file! {
     #[test] test2_fails code! {
         enum List<A> {
             Nil,
@@ -160,7 +160,7 @@ test_verify_with_pervasive! {
 
 /////////
 
-test_verify_with_pervasive! {
+test_verify_one_file! {
     #[test] test3 code! {
         enum Pair<A, B> {
             Pair(A, B),
@@ -176,7 +176,7 @@ test_verify_with_pervasive! {
     } => Ok(())
 }
 
-test_verify_with_pervasive! {
+test_verify_one_file! {
     #[test] test3b code! {
         enum Pair<A, B> {
             Pair(A, B),
@@ -193,7 +193,7 @@ test_verify_with_pervasive! {
     } => Ok(())
 }
 
-test_verify_with_pervasive! {
+test_verify_one_file! {
     #[test] test3_fails code! {
         enum Pair<A, B> {
             Pair(A, B),
@@ -209,7 +209,7 @@ test_verify_with_pervasive! {
     } => Err(err) => assert_one_fails(err)
 }
 
-test_verify_with_pervasive! {
+test_verify_one_file! {
     #[test] test3_fails2 code! {
         enum Pair<A, B> {
             Pair(A, B),
@@ -225,7 +225,7 @@ test_verify_with_pervasive! {
     } => Err(err) => assert_one_fails(err)
 }
 
-test_verify_with_pervasive! {
+test_verify_one_file! {
     #[test] test3_fails3 code! {
         enum Pair<A, B> {
             Pair(A, B),
@@ -244,7 +244,7 @@ test_verify_with_pervasive! {
 
 /////////
 
-test_verify_with_pervasive! {
+test_verify_one_file! {
     #[test] test4 code! {
         fn test() {
             let (mut y, z) = (true, false);
@@ -256,7 +256,7 @@ test_verify_with_pervasive! {
     } => Ok(())
 }
 
-test_verify_with_pervasive! {
+test_verify_one_file! {
     #[test] test4b code! {
         fn test() {
             let x = (true, false);
@@ -269,7 +269,7 @@ test_verify_with_pervasive! {
     } => Ok(())
 }
 
-test_verify_with_pervasive! {
+test_verify_one_file! {
     #[test] test4_fails code! {
         fn test() {
             let (mut y, z) = (true, false);
@@ -281,7 +281,7 @@ test_verify_with_pervasive! {
     } => Err(err) => assert_one_fails(err)
 }
 
-test_verify_with_pervasive! {
+test_verify_one_file! {
     #[test] test4_fails2 code! {
         fn test() {
             let (mut y, z) = (true, false);
@@ -293,7 +293,7 @@ test_verify_with_pervasive! {
     } => Err(err) => assert_one_fails(err)
 }
 
-test_verify_with_pervasive! {
+test_verify_one_file! {
     #[test] test4_fails3 code! {
         fn test() {
             let x = (true, false);
@@ -306,7 +306,7 @@ test_verify_with_pervasive! {
     } => Err(err) => assert_one_fails(err)
 }
 
-test_verify_with_pervasive! {
+test_verify_one_file! {
     #[test] test5 code! {
         fn test<A>(t: (bool, u8, A)) {
             let (x, y, z) = t;
@@ -318,7 +318,7 @@ test_verify_with_pervasive! {
     } => Ok(())
 }
 
-test_verify_with_pervasive! {
+test_verify_one_file! {
     #[test] test5_fails code! {
         fn test<A>(t: (bool, u8, A)) {
             let (x, y, z) = t;

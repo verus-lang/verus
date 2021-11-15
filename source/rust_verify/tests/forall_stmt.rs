@@ -3,7 +3,7 @@
 mod common;
 use common::*;
 
-test_verify_with_pervasive! {
+test_verify_one_file! {
     #[test] test_assertby1 code! {
         #[spec]
         #[opaque]
@@ -18,7 +18,7 @@ test_verify_with_pervasive! {
     } => Ok(())
 }
 
-test_verify_with_pervasive! {
+test_verify_one_file! {
     #[test] test_assertby1_fail1 code! {
         #[spec]
         #[opaque]
@@ -32,7 +32,7 @@ test_verify_with_pervasive! {
     } => Err(err) => assert_one_fails(err)
 }
 
-test_verify_with_pervasive! {
+test_verify_one_file! {
     #[test] test_assertby1_fail2 code! {
         #[spec]
         #[opaque]
@@ -47,7 +47,7 @@ test_verify_with_pervasive! {
     } => Err(err) => assert_one_fails(err)
 }
 
-test_verify_with_pervasive! {
+test_verify_one_file! {
     #[test] test_forallstmt1 code! {
         #[spec]
         #[opaque]
@@ -65,7 +65,7 @@ test_verify_with_pervasive! {
     } => Ok(())
 }
 
-test_verify_with_pervasive! {
+test_verify_one_file! {
     #[test] test_forallstmt1_fail1 code! {
         #[spec]
         #[opaque]
@@ -82,7 +82,7 @@ test_verify_with_pervasive! {
     } => Err(err) => assert_one_fails(err)
 }
 
-test_verify_with_pervasive! {
+test_verify_one_file! {
     #[test] test_forallstmt1_fail2 code! {
         #[spec]
         #[opaque]
