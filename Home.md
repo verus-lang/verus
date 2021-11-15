@@ -2,4 +2,4 @@
 
 ## Status
 
-[[Status:-currently-supported-Rust-features]]
+[[Status: currently supported Rust features]]
