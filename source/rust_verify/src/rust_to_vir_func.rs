@@ -1,6 +1,6 @@
 use crate::context::Context;
 use crate::rust_to_vir_base::{
-    check_generics_bounds, def_id_to_vir_path, def_to_path_ident, get_fuel, get_mode, get_var_mode,
+    check_generics, check_generics_bounds, def_id_to_vir_path, def_to_path_ident, get_fuel, get_mode, get_var_mode,
     get_verifier_attrs, ident_to_var, ty_to_vir, BodyCtxt,
 };
 use crate::rust_to_vir_expr::{expr_to_vir, pat_to_var};
@@ -57,6 +57,7 @@ pub(crate) fn check_item_fn<'tcx>(
     visibility: vir::ast::Visibility,
     attrs: &[Attribute],
     sig: &'tcx FnSig<'tcx>,
+    self_generics: Option<&'tcx Generics>,
     generics: &'tcx Generics,
     body_id: &BodyId,
 ) -> Result<(), VirErr> {
@@ -78,7 +79,9 @@ pub(crate) fn check_item_fn<'tcx>(
             check_fn_decl(ctxt.tcx, decl, mode)?
         }
     };
-    let typ_bounds = check_generics_bounds(ctxt.tcx, generics)?;
+    let self_typ_params =
+        if let Some(cg) = self_generics { Some(check_generics(ctxt.tcx, cg)?) } else { None };
+    let sig_typ_bounds = check_generics_bounds(ctxt.tcx, generics)?;
     let fuel = get_fuel(attrs);
     let vattrs = get_verifier_attrs(attrs)?;
     if vattrs.external {
@@ -108,8 +111,11 @@ pub(crate) fn check_item_fn<'tcx>(
                 _ => Ok(false),
             }
         }
-        let typ_args = vec_map(&typ_bounds, |(t, _)| Arc::new(TypX::TypParam(t.clone())));
         let typ = if is_self_or_self_ref(*span, &input)? {
+            let typ_args =
+                vec_map(self_typ_params.as_ref().expect("expected Self type parameters"), |t| {
+                    Arc::new(TypX::TypParam(t.clone()))
+                });
             Arc::new(TypX::Datatype(
                 self_path.as_ref().expect("a param is Self, so this must be an impl").clone(),
                 Arc::new(typ_args),
@@ -164,6 +170,16 @@ pub(crate) fn check_item_fn<'tcx>(
         _ => panic!("internal error: ret_typ"),
     };
     let ret = spanned_new(sig.span, ParamX { name: ret_name, typ: ret_typ, mode: ret_mode });
+    let typ_bounds = {
+        let mut typ_bounds: Vec<(vir::ast::Ident, vir::ast::GenericBound)> = Vec::new();
+        if let Some(self_typ_params) = self_typ_params {
+            for x in self_typ_params.iter() {
+                typ_bounds.push((x.clone(), Arc::new(vir::ast::GenericBoundX::None)));
+            }
+        }
+        typ_bounds.extend_from_slice(&sig_typ_bounds[..]);
+        Arc::new(typ_bounds)
+    };
     let func = FunctionX {
         path,
         visibility,

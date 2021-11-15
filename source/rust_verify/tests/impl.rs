@@ -90,3 +90,65 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+const IMPL_GENERIC_SHARED: &str = code_str! {
+    #[derive(PartialEq, Eq)]
+    struct Wrapper<A> {
+        v: A,
+    }
+
+    impl<A> Wrapper<A> {
+        #[spec]
+        pub fn take(self) -> A {
+            self.v
+        }
+    }
+};
+
+test_verify_one_file! {
+    #[test] test_impl_generic_pass IMPL_GENERIC_SHARED.to_string() + code_str! {
+        #[proof]
+        fn test_impl_1(a: int) {
+            let w = Wrapper { v: a };
+            assert(w.take() == a);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_impl_generic_fail IMPL_GENERIC_SHARED.to_string() + code_str! {
+        #[proof]
+        fn test_impl_1(a: int) {
+            let w = Wrapper { v: a };
+            assert(w.take() != a); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] test_impl_generic_param code! {
+        #[derive(PartialEq, Eq, Structural)]
+        struct Two<A, B> {
+            a: A,
+            b: B,
+        }
+
+        #[derive(PartialEq, Eq)]
+        struct Wrapper<A> {
+            v: A,
+        }
+
+        impl<A> Wrapper<A> {
+            #[spec]
+            pub fn take<B>(self, b: B) -> Two<A, B> {
+                Two { a: self.v, b: b }
+            }
+        }
+
+        #[proof]
+        fn test_impl_1(a: int) {
+            let w = Wrapper { v: a };
+            assert(w.take(12) == Two { a: a, b: 12 });
+        }
+    } => Ok(())
+}

@@ -108,7 +108,7 @@ From the `source` directory, run:
 on **Windows**:
 
 ```
-../rust/install/bin/rust_verify rust_verify/example/recursion.rs -L ../rust/install/bin/
+../rust/install/bin/rust_verify --pervasive-path pervasive --extern builtin=../rust/install/bin/libbuiltin.rlib --extern builtin_macros=../rust/install/bin/libbuiltin_macros.dll --edition=2018 rust_verify/example/recursion.rs
 ```
 
 You can also use the helper script on **Linux and macOS**:

@@ -41,6 +41,7 @@ fn check_item<'tcx>(
                 visibility,
                 ctxt.tcx.hir().attrs(item.hir_id()),
                 sig,
+                None,
                 generics,
                 body_id,
             )?;
@@ -137,12 +138,6 @@ fn check_item<'tcx>(
                     "unsupported impl of trait",
                     item
                 );
-                unsupported_err_unless!(
-                    impll.generics.params.len() == 0,
-                    item.span,
-                    "unsupported impl of non-trait with generics",
-                    item
-                );
                 match impll.self_ty.kind {
                     TyKind::Path(QPath::Resolved(
                         None,
@@ -166,8 +161,8 @@ fn check_item<'tcx>(
                                                 impl_item_visibility,
                                                 ctxt.tcx.hir().attrs(impl_item.hir_id()),
                                                 sig,
-                                                // TODO: make sure this is correct once supported
-                                                &impll.generics,
+                                                Some(&impll.generics),
+                                                &impl_item.generics,
                                                 body_id,
                                             )?;
                                         }

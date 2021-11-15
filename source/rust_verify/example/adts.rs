@@ -1,5 +1,4 @@
-#[macro_use] extern crate builtin_macros;
-extern crate builtin;
+use builtin_macros::*;
 use builtin::*;
 mod pervasive;
 use pervasive::*;
