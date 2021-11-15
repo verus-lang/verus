@@ -52,7 +52,7 @@ fn run_examples() {
         let script = if cfg!(target_os = "windows") {
             format!("../rust/install/bin/rust_verify --pervasive-path pervasive --extern builtin=../rust/install/bin/libbuiltin.rlib --extern builtin_macros=../rust/install/bin/libbuiltin_macros.$DYN_LIB_EXT --edition=2018 {}", &path)
         } else {
-            format!("VERUS_Z3_PATH=\"$(pwd)/z3\" DYLD_LIBRARY_PATH=../rust/install/lib/rustlib/x86_64-apple-darwin/lib LD_LIBRARY_PATH=../rust/install/lib ../rust/install/bin/rust_verify --pervasive-path pervasive --extern builtin=../rust/install/bin/libbuiltin.rlib --extern builtin_macros=../rust/install/bin/libbuiltin_macros.{} --edition=2018 {}", DYN_LIB_EXT, &path)
+            format!("DYLD_LIBRARY_PATH=../rust/install/lib/rustlib/x86_64-apple-darwin/lib LD_LIBRARY_PATH=../rust/install/lib ../rust/install/bin/rust_verify --pervasive-path pervasive --extern builtin=../rust/install/bin/libbuiltin.rlib --extern builtin_macros=../rust/install/bin/libbuiltin_macros.{} --edition=2018 {}", DYN_LIB_EXT, &path)
         };
         
         let output = if cfg!(target_os = "windows") {
