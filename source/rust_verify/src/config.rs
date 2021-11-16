@@ -19,6 +19,13 @@ pub struct Args {
     pub compile: bool,
 }
 
+pub fn enable_default_features(rustc_args: &mut Vec<String>) {
+    for feature in &["stmt_expr_attributes", "box_syntax", "box_patterns"] {
+        rustc_args.push("-Z".to_string());
+        rustc_args.push(format!("enable_feature={}", feature));
+    }
+}
+
 pub fn parse_args(program: &String, args: impl Iterator<Item = String>) -> (Args, Vec<String>) {
     const OPT_PERVASIVE_PATH: &str = "pervasive-path";
     const OPT_VERIFY_ROOT: &str = "verify-root";
@@ -62,7 +69,7 @@ pub fn parse_args(program: &String, args: impl Iterator<Item = String>) -> (Args
         eprint!("{}", opts.usage(&brief));
     };
 
-    let (matches, unmatched) = match opts.parse_partial(args) {
+    let (matches, mut unmatched) = match opts.parse_partial(args) {
         Ok((m, mut unmatched)) => {
             if m.opt_present("h") {
                 print_usage();
@@ -101,6 +108,8 @@ pub fn parse_args(program: &String, args: impl Iterator<Item = String>) -> (Args
         debug: matches.opt_present(OPT_DEBUG),
         compile: matches.opt_present(OPT_COMPILE),
     };
+
+    enable_default_features(&mut unmatched);
 
     (args, unmatched)
 }

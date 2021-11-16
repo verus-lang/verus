@@ -1,6 +1,4 @@
 // rust_verify/tests/example.rs expect-failures
-#![feature(stmt_expr_attributes)]
-
 #[allow(unused_imports)] use builtin::*;
 #[allow(unused_imports)] use builtin_macros::*;
 mod pervasive; #[allow(unused_imports)] use pervasive::*;

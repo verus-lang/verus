@@ -82,8 +82,6 @@ pub fn set_axioms<A>() {
             ext_equal(s1, s2) == equal(s1, s2)),
         cardinality::<A>(empty()) == 0,
         forall(|s: Set<A>, a: A|
-            imply(!contains(s, a),
-                //#[trigger]    // TODO(utaal): test framework needs to have #![feature(stmt_expr_attributes)]
-                cardinality(insert(s, a)) == cardinality(s) + 1)),
+            imply(!contains(s, a), #[trigger] cardinality(insert(s, a)) == cardinality(s) + 1)),
     ]);
 }

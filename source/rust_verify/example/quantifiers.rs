@@ -1,4 +1,3 @@
-#![feature(stmt_expr_attributes)]
 use builtin::*;
 mod pervasive;
 use pervasive::*;

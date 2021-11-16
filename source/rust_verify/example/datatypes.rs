@@ -1,4 +1,3 @@
-#![feature(box_syntax)]
 extern crate builtin;
 #[allow(unused_imports)]
 use builtin::*;

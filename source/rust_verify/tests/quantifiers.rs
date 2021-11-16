@@ -1,5 +1,4 @@
 #![feature(rustc_private)]
-#![feature(stmt_expr_attributes)]
 #[macro_use]
 mod common;
 use common::*;
@@ -146,7 +145,6 @@ test_verify_one_file! {
 
 ////
 
-/* REVIEW: these tests need #![feature(stmt_expr_attributes)], which doesn't seem to work here
 test_verify_one_file! {
     #[test] test4 code! {
         #[spec]
@@ -186,4 +184,3 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_one_fails(err)
 }
-*/

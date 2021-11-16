@@ -5,7 +5,7 @@ extern crate rustc_span;
 pub use rust_verify::verifier::ErrorSpan;
 pub use rust_verify_test_macros::{code, code_str};
 
-use rust_verify::config::Args;
+use rust_verify::config::{Args, enable_default_features};
 use rust_verify::verifier::Verifier;
 
 use rustc_span::source_map::FileLoader;
@@ -83,6 +83,8 @@ pub fn verify_files(
         "--extern".to_string(),
         "builtin_macros=../../rust/install/bin/builtin_macros.dll".to_string(),
     ]);
+
+    enable_default_features(&mut rustc_args);
 
     rustc_args.push(entry_file);
     let our_args = {
