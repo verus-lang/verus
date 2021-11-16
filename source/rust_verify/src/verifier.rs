@@ -142,9 +142,14 @@ impl Verifier {
     ) {
         let result = air_context.command(&command);
 
+        let mut is_check_valid = false;
+        if let CommandX::CheckValid(_) = **command {
+            is_check_valid = true;
+        }
+
         match result {
             ValidityResult::Valid => {
-                if let CommandX::CheckValid(_) = **command {
+                if is_check_valid {
                     self.count_verified += 1;
                 }
             }
@@ -174,7 +179,8 @@ impl Verifier {
                 }
             }
         }
-        if let CommandX::CheckValid(_) = **command {
+
+        if is_check_valid && self.args.debug {
             air_context.cleanup_check_valid();
         }
     }

@@ -93,7 +93,6 @@ fn smt_check_assertion<'ctx>(
     context: &mut Context,
     infos: &Vec<AssertionInfo>,
     snapshots: Snapshots,
-    _local_vars: Vec<Decl>, // Expected to be entirely DeclX::Const
     expr: &Expr,
 ) -> ValidityResult {
     let mut discovered_span = Arc::new(None);
@@ -169,7 +168,6 @@ pub(crate) fn smt_check_query<'ctx>(
     context: &mut Context,
     query: &Query,
     snapshots: Snapshots,
-    local_vars: Vec<Decl>,
 ) -> ValidityResult {
     context.smt_log.log_push();
     context.push_name_scope();
@@ -203,7 +201,11 @@ pub(crate) fn smt_check_query<'ctx>(
     }
 
     // check assertion
-    let result = smt_check_assertion(context, &infos, snapshots, local_vars, &labeled_assertion);
+    let result = smt_check_assertion(context, &infos, snapshots, &labeled_assertion);
+
+    if !context.debug {
+        context.cleanup_check_valid();
+    }
 
     result
 }

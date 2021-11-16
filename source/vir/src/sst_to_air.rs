@@ -10,7 +10,7 @@ use crate::def::{
     SUFFIX_SNAP_MUT, SUFFIX_SNAP_WHILE_BEGIN, SUFFIX_SNAP_WHILE_END,
 };
 use crate::sst::{BndX, Dest, Exp, ExpX, LocalDecl, Stm, StmX, UniqueIdent};
-use crate::sst_vars::AssingMap;
+use crate::sst_vars::AssignMap;
 use crate::util::vec_map;
 use air::ast::{
     BindX, BinderX, Binders, Command, CommandX, Commands, Constant, Decl, DeclX, Expr, ExprX,
@@ -323,7 +323,7 @@ struct State {
     snapshot_count: u32, // Used to ensure unique Idents for each snapshot
     sids: Vec<Ident>, // a stack of snapshot ids, the top one should dominate the current position in the AST
     snap_map: Vec<(Span, SnapPos)>, // Maps each statement's span to the closest dominating snapshot's ID
-    assign_map: AssingMap, // Maps Maps each statement's span to the assigned variables (that can potentially be queried)
+    assign_map: AssignMap, // Maps Maps each statement's span to the assigned variables (that can potentially be queried)
 }
 
 impl State {
@@ -357,19 +357,32 @@ impl State {
         return sid;
     }
 
-    fn map_start_span(&mut self, span: &Span) {
+    fn get_assigned_set(&self, stm: &Stm) -> HashSet<Arc<String>> {
+        if let Some(s) = self.assign_map.get(&Arc::as_ptr(stm)) {
+            return s.clone();
+        }
+        return HashSet::new();
+    }
+
+    fn map_start_span(&mut self, stm: &Stm) {
         let spos = SnapPos::Start(self.get_current_sid());
-        self.snap_map.push((span.clone(), spos));
+        let aset = self.get_assigned_set(stm);
+        println!("{:?} {:?}", stm.span, aset);
+        self.snap_map.push((stm.span.clone(), spos));
     }
 
-    fn map_full_span(&mut self, span: &Span) {
+    fn map_full_span(&mut self, stm: &Stm) {
         let spos = SnapPos::Full(self.get_current_sid());
-        self.snap_map.push((span.clone(), spos));
+        let aset = self.get_assigned_set(stm);
+        println!("{:?} {:?}", stm.span, aset);
+        self.snap_map.push((stm.span.clone(), spos));
     }
 
-    fn map_end_span(&mut self, span: &Span) {
+    fn map_end_span(&mut self, stm: &Stm) {
         let spos = SnapPos::End(self.get_current_sid());
-        self.snap_map.push((span.clone(), spos));
+        let aset = self.get_assigned_set(stm);
+        println!("{:?} {:?}", stm.span, aset);
+        self.snap_map.push((stm.span.clone(), spos));
     }
 }
 
@@ -384,13 +397,6 @@ fn one_stmt(stmts: Vec<Stmt>) -> Stmt {
 }
 
 fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
-    let ptr = Arc::as_ptr(stm);
-
-    if state.assign_map.contains_key(&ptr) {
-        let assigned_set = state.assign_map.get(&ptr);
-        println!("hi {:?}", assigned_set);
-    }
-
     match &stm.x {
         StmX::Call(x, typs, args, dest) => {
             let mut stmts: Vec<Stmt> = Vec::new();
@@ -416,7 +422,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
                         ens_args.push(exp_to_expr(ctx, arg));
                     }
                     if ctx.debug {
-                        state.map_full_span(&stm.span);
+                        state.map_full_span(&stm);
                     }
                 }
                 Some(Dest { var, is_init }) => {
@@ -448,7 +454,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
                         let sid = state.update_current_sid(SUFFIX_SNAP_MUT);
                         // Update the snap_map so that it reflects the state _after_ the
                         // statement takes effect.
-                        state.map_full_span(&stm.span);
+                        state.map_full_span(&stm);
                         let snapshot = Arc::new(StmtX::Snapshot(sid.clone()));
                         stmts.push(snapshot);
                     }
@@ -465,13 +471,13 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
             let air_expr = exp_to_expr(ctx, &expr);
             let option_span = Arc::new(Some(stm.span.clone()));
             if ctx.debug {
-                state.map_full_span(&stm.span);
+                state.map_full_span(&stm);
             }
             vec![Arc::new(StmtX::Assert(option_span, air_expr))]
         }
         StmX::Assume(expr) => {
             if ctx.debug {
-                state.map_full_span(&stm.span);
+                state.map_full_span(&stm);
             }
             vec![Arc::new(StmtX::Assume(exp_to_expr(ctx, &expr)))]
         }
@@ -489,7 +495,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
                 stmts.push(snapshot);
                 // Update the snap_map so that it reflects the state _after_ the
                 // statement takes effect.
-                state.map_full_span(&stm.span);
+                state.map_full_span(&stm);
             }
             stmts
         }
@@ -516,7 +522,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
                 let sid = state.update_current_sid(SUFFIX_SNAP_JOIN);
                 let snapshot = Arc::new(StmtX::Snapshot(sid.clone()));
                 stmts.push(snapshot);
-                state.map_end_span(&stm.span);
+                state.map_end_span(&stm);
             }
             stmts
         }
@@ -581,7 +587,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
                 // Update the snap_map to associate the start of the while loop with the new snapshot
                 let entry_snap_id = entry_snap_id.unwrap(); // Always Some if ctx.debug
                 let snapshot: Stmt = Arc::new(StmtX::Snapshot(entry_snap_id.clone()));
-                state.map_start_span(&body.span);
+                state.map_start_span(&body);
                 let block_contents: Vec<Stmt> = vec![snapshot, assertion];
                 Arc::new(StmtX::Block(Arc::new(block_contents)))
             };
@@ -618,7 +624,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
                 let sid = state.update_current_sid(SUFFIX_SNAP_WHILE_END);
                 // Update the snap_map so that it reflects the state _after_ the
                 // statement takes effect.
-                state.map_end_span(&stm.span);
+                state.map_end_span(&stm);
                 let snapshot = Arc::new(StmtX::Snapshot(sid));
                 stmts.push(snapshot);
             }
@@ -646,14 +652,14 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
                 stmts.push(Arc::new(StmtX::Assume(mk_exists(&vec![binder], &vec![], &eq))));
             }
             if ctx.debug {
-                state.map_full_span(&stm.span);
+                state.map_full_span(&stm);
             }
             stmts
         }
         StmX::Block(stms) => {
             if ctx.debug {
                 state.push_scope();
-                state.map_start_span(&stm.span);
+                state.map_start_span(&stm);
             }
             let stmts = stms.iter().map(|s| stm_to_stmts(ctx, state, s)).flatten().collect();
             if ctx.debug {
@@ -753,9 +759,7 @@ pub fn body_stm_to_air(
         &mut HashSet::new(),
         stm,
     );
-    // println!("assign map {:?}", stm);
     let mut stmts = stm_to_stmts(ctx, &mut state, &stm);
-    // println!("assign map {:?}", state.snap_map);
 
     if ctx.debug {
         let snapshot = Arc::new(StmtX::Snapshot(initial_sid));

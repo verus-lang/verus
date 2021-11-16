@@ -15,10 +15,10 @@ fn to_ident_set(input: &HashSet<UniqueIdent>) -> HashSet<Arc<String>> {
 // Compute:
 // - which variables have definitely been assigned to up to each statement
 // - which variables have been modified within each statement
-pub type AssingMap = HashMap<*const Spanned<StmX>, HashSet<Arc<String>>>;
+pub type AssignMap = HashMap<*const Spanned<StmX>, HashSet<Arc<String>>>;
 
 pub(crate) fn stm_assign(
-    assign_map: &mut AssingMap,
+    assign_map: &mut AssignMap,
     declared: &HashMap<UniqueIdent, Typ>,
     assigned: &mut HashSet<UniqueIdent>,
     modified: &mut HashSet<UniqueIdent>,
