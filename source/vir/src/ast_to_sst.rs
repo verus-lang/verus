@@ -21,6 +21,10 @@ pub(crate) struct State {
     next_var: u64,
     // Collect all local variable declarations
     pub(crate) local_decls: Vec<LocalDecl>,
+    // Collected closure bodies, which need to be checked for recursion
+    pub(crate) closure_bodies: Vec<Exp>,
+    // Generated axioms about closure bodies
+    pub(crate) closure_axioms: Vec<Exp>,
     // Rename local variables when needed, using unique integers, to avoid collisions.
     // This is only needed for statement-level declarations (Some(unique_int)),
     // not for expression-level bindings (None).
@@ -39,6 +43,8 @@ impl State {
         State {
             next_var: 0,
             local_decls: Vec::new(),
+            closure_bodies: Vec::new(),
+            closure_axioms: Vec::new(),
             rename_map,
             rename_counters: HashMap::new(),
             dont_rename: HashSet::new(),
@@ -198,7 +204,7 @@ pub(crate) fn expr_to_decls_exp(
     ctx: &Ctx,
     params: &Params,
     expr: &Expr,
-) -> Result<(Vec<LocalDecl>, Exp), VirErr> {
+) -> Result<(Vec<LocalDecl>, Vec<Exp>, Vec<Exp>, Exp), VirErr> {
     let mut state = State::new();
     for param in params.iter() {
         state.declare_new_var(&param.x.name, &param.x.typ, false);
@@ -206,11 +212,11 @@ pub(crate) fn expr_to_decls_exp(
     let exp = expr_to_exp_state(ctx, &mut state, expr)?;
     let exp = state.finalize_exp(&exp);
     state.finalize();
-    Ok((state.local_decls, exp))
+    Ok((state.local_decls, state.closure_bodies, state.closure_axioms, exp))
 }
 
 pub(crate) fn expr_to_exp(ctx: &Ctx, params: &Params, expr: &Expr) -> Result<Exp, VirErr> {
-    Ok(expr_to_decls_exp(ctx, params, expr)?.1)
+    Ok(expr_to_decls_exp(ctx, params, expr)?.3)
 }
 
 pub(crate) fn expr_to_stm(
@@ -452,6 +458,22 @@ pub(crate) fn expr_to_stm_opt(
             let trigs = crate::triggers::build_triggers(ctx, &expr.span, &vars, &exp)?;
             let bnd = Spanned::new(body.span.clone(), BndX::Quant(*quant, binders.clone(), trigs));
             Ok((vec![], Some(Spanned::new(expr.span.clone(), ExpX::Bind(bnd, exp)))))
+        }
+        ExprX::Closure { params, body, call, axiom } => {
+            // Replace closure with call to function that creates closure
+            let call = call.as_ref().expect("call should be set to Some by ast_simplify");
+            let axiom = axiom.as_ref().expect("axiom should be set to Some by ast_simplify");
+
+            state.push_scope();
+            state.declare_binders(params);
+            let body = expr_to_exp_state(ctx, state, body)?;
+            state.pop_scope();
+
+            let call = expr_to_exp_state(ctx, state, call)?;
+            let axiom = expr_to_exp_state(ctx, state, axiom)?;
+            state.closure_bodies.push(body.clone());
+            state.closure_axioms.push(axiom);
+            Ok((vec![], Some(call)))
         }
         ExprX::Fuel(x, fuel) => {
             let stm = Spanned::new(expr.span.clone(), StmX::Fuel(x.clone(), *fuel));

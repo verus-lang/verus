@@ -1,7 +1,7 @@
 use crate::context::Context;
 use crate::rust_to_vir_base::{
-    check_generics, check_generics_bounds, def_id_to_vir_path, def_to_path_ident, get_fuel, get_mode, get_var_mode,
-    get_verifier_attrs, ident_to_var, ty_to_vir, BodyCtxt,
+    check_generics, check_generics_bounds, def_id_to_vir_path, def_to_path_ident, get_fuel,
+    get_mode, get_var_mode, get_verifier_attrs, ident_to_var, ty_to_vir, BodyCtxt,
 };
 use crate::rust_to_vir_expr::{expr_to_vir, pat_to_var};
 use crate::util::{err_span_str, err_span_string, spanned_new, unsupported_err_span, vec_map};

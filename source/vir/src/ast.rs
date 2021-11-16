@@ -255,6 +255,11 @@ pub enum ExprX {
     Binary(BinaryOp, Expr, Expr),
     /// Quantifier (forall/exists), binding the variables in Binders, with body Expr
     Quant(Quant, Binders<Typ>, Expr),
+    /// Specification closure
+    /// NOTE: call and axiom are computed by ast_simplify;
+    /// the Closure is ultimately replaced with call, which is a call to a generated function
+    /// that produces the value that represents the closure
+    Closure { params: Binders<Typ>, body: Expr, call: Option<Expr>, axiom: Option<Expr> },
     /// Assign to local variable
     Assign(Expr, Expr),
     /// Reveal definition of an opaque function with some integer fuel amount

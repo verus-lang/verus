@@ -54,6 +54,7 @@ const PREFIX_FNSPEC_TYPE: &str = "fnspec%";
 const PREFIX_FNSPEC_APPLY: &str = "applyspec%";
 const PREFIX_FNSPEC_TPARAM: &str = "T%";
 const PREFIX_FNSPEC_PARAM: &str = "x%";
+const PREFIX_CLOSURE: &str = "closure%";
 const PATH_SEPARATOR: &str = ".";
 const VARIANT_SEPARATOR: &str = "/";
 const VARIANT_FIELD_SEPARATOR: &str = "/";
@@ -248,6 +249,11 @@ pub fn is_temp_var(x: &Ident) -> bool {
 // ast_simplify introduces its own temporary variables; we don't want these to conflict with prefix_temp_var
 pub fn prefix_simplify_temp_var(n: u64) -> Ident {
     Arc::new(PREFIX_SIMPLIFY_TEMP_VAR.to_string() + &n.to_string())
+}
+
+pub fn prefix_closure(n: u64) -> Path {
+    let ident = Arc::new(PREFIX_CLOSURE.to_string() + &n.to_string());
+    Arc::new(PathX { krate: None, segments: Arc::new(vec![ident]) })
 }
 
 pub fn variant_ident(datatype: &Path, variant: &str) -> Ident {

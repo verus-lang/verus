@@ -366,6 +366,7 @@ pub(crate) fn mid_ty_to_vir<'tcx>(tcx: TyCtxt<'tcx>, ty: rustc_middle::ty::Ty<'t
                 def_id_to_datatype(tcx, *did, Arc::new(typ_args))
             }
         }),
+        TyKind::Closure(..) => vir::ast_util::fnspec_type(),
         _ => {
             unsupported!(format!("type {:?}", ty))
         }

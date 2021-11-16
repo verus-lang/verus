@@ -198,6 +198,17 @@ fn check_expr(typing: &mut Typing, outer_mode: Mode, expr: &Expr) -> Result<Mode
             typing.vars.pop_scope();
             Ok(Mode::Spec)
         }
+        ExprX::Closure { params, body, call: _, axiom: _ } => {
+            // Note: captures and call are not filled in at this point (ast_simplify sets them),
+            // so there's no need to check them here.
+            typing.vars.push_scope(true);
+            for binder in params.iter() {
+                typing.insert(&expr.span, &binder.name, Mode::Spec);
+            }
+            check_expr_has_mode(typing, Mode::Spec, body, Mode::Spec)?;
+            typing.vars.pop_scope();
+            Ok(Mode::Spec)
+        }
         ExprX::Assign(lhs, rhs) => match &lhs.x {
             ExprX::Var(x) => {
                 let x_mode = typing.get(x);

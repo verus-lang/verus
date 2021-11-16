@@ -126,6 +126,20 @@ where
             let expr1 = map_expr_visitor_env(e1, env, fe, fs, ft)?;
             ExprX::Quant(*quant, Arc::new(binders), expr1)
         }
+        ExprX::Closure { params, body, call, axiom } => {
+            let params =
+                vec_map_result(&**params, |b| b.map_result(|t| map_typ_visitor_env(t, env, ft)))?;
+            let body = map_expr_visitor_env(body, env, fe, fs, ft)?;
+            let call = match call {
+                None => None,
+                Some(call) => Some(map_expr_visitor_env(call, env, fe, fs, ft)?),
+            };
+            let axiom = match axiom {
+                None => None,
+                Some(axiom) => Some(map_expr_visitor_env(axiom, env, fe, fs, ft)?),
+            };
+            ExprX::Closure { params: Arc::new(params), body, call, axiom }
+        }
         ExprX::Assign(e1, e2) => {
             let expr1 = map_expr_visitor_env(e1, env, fe, fs, ft)?;
             let expr2 = map_expr_visitor_env(e2, env, fe, fs, ft)?;

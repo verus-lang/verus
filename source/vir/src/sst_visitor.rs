@@ -103,6 +103,14 @@ where
     }
 }
 
+pub(crate) fn map_exp_visitor_result<F>(exp: &Exp, f: &mut F) -> Result<Exp, VirErr>
+where
+    F: FnMut(&Exp) -> Result<Exp, VirErr>,
+{
+    let mut map: ScopeMap<Ident, bool> = ScopeMap::new();
+    map_exp_visitor_bind(exp, &mut map, &mut |e, _| f(e))
+}
+
 pub(crate) fn map_exp_visitor<F>(exp: &Exp, f: &mut F) -> Exp
 where
     F: FnMut(&Exp) -> Exp,

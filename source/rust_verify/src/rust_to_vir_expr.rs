@@ -432,7 +432,7 @@ fn fn_exp_call_to_vir<'tcx>(
     for i in 0..vir_args.len() {
         let arg = &vir_args[i].clone();
         match (param_typs_is_tparam[i], &*arg.typ) {
-            (true, TypX::TypParam(_)) => {} // already boxed
+            (true, TypX::TypParam(_) | TypX::Boxed(_)) => {} // already boxed
             (true, _) => {
                 let arg_typ = Arc::new(TypX::Boxed(arg.typ.clone()));
                 let arg_x = ExprX::UnaryOpr(UnaryOpr::Box(arg.typ.clone()), arg.clone());
@@ -445,7 +445,7 @@ fn fn_exp_call_to_vir<'tcx>(
     let possibly_boxed_ret_typ = match &ret_typ_is_tparam {
         None => Arc::new(TypX::Tuple(Arc::new(vec![]))),
         Some(ret_typ) => match (ret_typ, &*expr_typ) {
-            (true, TypX::TypParam(_)) => expr_typ.clone(), // already boxed
+            (true, TypX::TypParam(_) | TypX::Boxed(_)) => expr_typ.clone(), // already boxed
             (true, _) => Arc::new(TypX::Boxed(expr_typ.clone())),
             _ => expr_typ.clone(),
         },
@@ -456,7 +456,7 @@ fn fn_exp_call_to_vir<'tcx>(
     // unbox result if necessary
     if let Some(ret_typ) = ret_typ_is_tparam {
         match (ret_typ, &*expr_typ) {
-            (true, TypX::TypParam(_)) => {} // already boxed
+            (true, TypX::TypParam(_) | TypX::Boxed(_)) => {} // already boxed
             (true, _) => {
                 let call_x = ExprX::UnaryOpr(UnaryOpr::Unbox(expr_typ.clone()), call);
                 call = spanned_typed_new(span, &expr_typ, call_x);
@@ -654,6 +654,7 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                     let vir_fun = expr_to_vir(bctx, fun)?;
                     let typ_param = match &*vir_fun.typ {
                         TypX::TypParam(x) => x.clone(),
+                        // TODO: also handle TyKind::Closure types for closures stored in local vars
                         _ => {
                             unsupported!("unexpected function type", expr.span)
                         }
@@ -1026,6 +1027,19 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                 sig.span,
                 all_args,
             )
+        }
+        ExprKind::Closure(_, fn_decl, body_id, _, _) => {
+            let body = tcx.hir().body(*body_id);
+            let params: Vec<Binder<Typ>> = body
+                .params
+                .iter()
+                .zip(fn_decl.inputs)
+                .map(|(x, t)| {
+                    Arc::new(BinderX { name: Arc::new(pat_to_var(x.pat)), a: ty_to_vir(tcx, t) })
+                })
+                .collect();
+            let body = expr_to_vir(bctx, &body.value)?;
+            Ok(mk_expr(ExprX::Closure { params: Arc::new(params), body, call: None, axiom: None }))
         }
         _ => {
             unsupported_err!(expr.span, format!("expression"), expr)

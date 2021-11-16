@@ -1,19 +1,19 @@
 //! VIR-AST -> VIR-AST transformation to simplify away some complicated features
 
 use crate::ast::{
-    BinaryOp, Binder, CallTarget, Constant, Datatype, DatatypeTransparency, DatatypeX, Expr, ExprX,
-    Field, Function, FunctionX, GenericBound, GenericBoundX, Ident, Idents, Krate, KrateX, Mode,
-    Param, ParamX, Params, Path, Pattern, PatternX, SpannedTyped, Stmt, StmtX, Typ, TypX, UnaryOp,
-    UnaryOpr, VirErr, Visibility,
+    BinaryOp, Binder, Binders, CallTarget, Constant, Datatype, DatatypeTransparency, DatatypeX,
+    Expr, ExprX, Field, Function, FunctionX, GenericBound, GenericBoundX, Ident, Idents, Krate,
+    KrateX, Mode, Param, ParamX, Params, Path, Pattern, PatternX, SpannedTyped, Stmt, StmtX, Typ,
+    TypX, UnaryOp, UnaryOpr, VirErr, Visibility,
 };
-use crate::ast_util::{err_str, err_string};
+use crate::ast_util::{err_str, err_string, fnspec_type};
 use crate::context::GlobalCtx;
 use crate::def::{
     prefix_fnspec_param, prefix_fnspec_tparam, prefix_tuple_field, prefix_tuple_param,
     prefix_tuple_variant, Spanned,
 };
 use crate::util::{vec_map, vec_map_result};
-use air::ast::Span;
+use air::ast::{Quant, Span};
 use air::ast_util::ident_binder;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -21,15 +21,25 @@ use std::sync::Arc;
 struct State {
     // Counter to generate temporary variables
     next_var: u64,
+    // Counter to generate closure names
+    next_closure: u64,
     // Name of a datatype to represent each tuple arity
-    pub(crate) tuple_typs: HashMap<usize, Path>,
+    tuple_typs: HashMap<usize, Path>,
     // Name of an apply function for each function arity
-    pub(crate) fnspec_applies: HashMap<usize, Path>,
+    fnspec_applies: HashMap<usize, Path>,
+    // Each closure's generated name and captured variables
+    closures: Vec<(Path, Binders<Typ>)>,
 }
 
 impl State {
     fn new() -> Self {
-        State { next_var: 0, tuple_typs: HashMap::new(), fnspec_applies: HashMap::new() }
+        State {
+            next_var: 0,
+            next_closure: 0,
+            tuple_typs: HashMap::new(),
+            fnspec_applies: HashMap::new(),
+            closures: Vec::new(),
+        }
     }
 
     fn reset_for_function(&mut self) {
@@ -39,6 +49,11 @@ impl State {
     fn next_temp(&mut self) -> Ident {
         self.next_var += 1;
         crate::def::prefix_simplify_temp_var(self.next_var)
+    }
+
+    fn next_closure(&mut self) -> Path {
+        self.next_closure += 1;
+        crate::def::prefix_closure(self.next_closure)
     }
 
     fn tuple_type_name(&mut self, arity: usize) -> Path {
@@ -265,6 +280,69 @@ fn simplify_one_expr(
             };
             Ok(exp)
         }
+        ExprX::Closure { params, body, call, axiom } => {
+            assert!(call.is_none());
+            assert!(axiom.is_none());
+            let path = state.next_closure();
+            let tbool = Arc::new(TypX::Bool);
+            let captures: Vec<Binder<Typ>> = Vec::new();
+            let mut binders: Vec<Binder<Typ>> = Vec::new();
+            for binder in captures.iter() {
+                binders.push(binder.clone());
+            }
+            for binder in params.iter() {
+                binders.push(binder.clone());
+            }
+            // TODO: compute captures
+
+            // call: f(captures)
+            let target = CallTarget::Path(path.clone(), Arc::new(vec![]));
+            let args = vec_map(&captures, |p| {
+                SpannedTyped::new(&expr.span, &p.a, ExprX::Var(p.name.clone()))
+            });
+            let callx = ExprX::Call(target, Arc::new(args));
+            let call = SpannedTyped::new(&expr.span, &fnspec_type(), callx);
+
+            // axiom: forall captures, params. apply(call, params) == body
+            let apply = state.fnspec_apply_name(params.len());
+            let mut targs: Vec<Typ> = Vec::new();
+            let mut args: Vec<Expr> = Vec::new();
+            targs.push(body.typ.clone());
+            args.push(call.clone());
+            for p in params.iter() {
+                targs.push(p.a.clone());
+                let arg = SpannedTyped::new(&expr.span, &p.a, ExprX::Var(p.name.clone()));
+                let arg = match &*p.a {
+                    TypX::TypParam(_) | TypX::Boxed(_) => arg,
+                    _ => {
+                        let argx = ExprX::UnaryOpr(UnaryOpr::Box(p.a.clone()), arg);
+                        let typ = Arc::new(TypX::Boxed(p.a.clone()));
+                        SpannedTyped::new(&expr.span, &typ, argx)
+                    }
+                };
+                args.push(arg);
+            }
+            let target = CallTarget::Path(apply, Arc::new(targs));
+            let appx = ExprX::Call(target, Arc::new(args));
+            let appx = match &*body.typ {
+                TypX::TypParam(_) | TypX::Boxed(_) => appx,
+                _ => {
+                    let typ = Arc::new(TypX::Boxed(body.typ.clone()));
+                    let app = SpannedTyped::new(&expr.span, &typ, appx);
+                    ExprX::UnaryOpr(UnaryOpr::Unbox(body.typ.clone()), app)
+                }
+            };
+            let app = SpannedTyped::new(&expr.span, &body.typ, appx);
+            let eqx = ExprX::Binary(BinaryOp::Eq(Mode::Spec), app, body.clone());
+            let eq = SpannedTyped::new(&expr.span, &tbool, eqx);
+            let axiomx = ExprX::Quant(Quant::Forall, Arc::new(binders), eq);
+            let axiom = Some(SpannedTyped::new(&expr.span, &tbool, axiomx));
+
+            state.closures.push((path, Arc::new(captures)));
+            let call = Some(call);
+            let exprx = ExprX::Closure { params: params.clone(), body: body.clone(), call, axiom };
+            Ok(SpannedTyped::new(&expr.span, &expr.typ, exprx))
+        }
         ExprX::Match(expr0, arms1) => {
             let (temp_decl, expr0) = small_or_temp(state, &expr0);
             // Translate into If expression
@@ -348,7 +426,7 @@ fn simplify_one_typ(local: &LocalCtxt, state: &mut State, typ: &Typ) -> Result<T
                 GenericBoundX::None => Ok(typ.clone()),
                 GenericBoundX::FnSpec(ts, _) => {
                     state.fnspec_apply_name(ts.len());
-                    Ok(Arc::new(TypX::Datatype(crate::def::prefix_fnspec_type(), Arc::new(vec![]))))
+                    Ok(fnspec_type())
                 }
             }
         }
@@ -470,8 +548,7 @@ pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirEr
         for i in 0..arity + 1 {
             param_typs.push(Arc::new(TypX::TypParam(prefix_fnspec_tparam(i))));
         }
-        param_typs
-            .push(Arc::new(TypX::Datatype(crate::def::prefix_fnspec_type(), Arc::new(vec![]))));
+        param_typs.push(fnspec_type());
         let mut params: Vec<Param> = param_typs
             .iter()
             .enumerate()
@@ -485,6 +562,21 @@ pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirEr
         let f_param = params.remove(arity);
         params.insert(0, f_param);
         let typ_params = Arc::new((0..arity + 1).map(|i| prefix_fnspec_tparam(i)).collect());
+        functions.push(mk_fun_decl(&ctx.no_span, &path, &typ_params, &Arc::new(params), &ret));
+    }
+
+    // Add a closure function declaration for each closure
+    for (path, captures) in state.closures {
+        let params: Vec<Param> = captures
+            .iter()
+            .map(|b| {
+                let param = ParamX { name: b.name.clone(), mode: Mode::Spec, typ: b.a.clone() };
+                Spanned::new(ctx.no_span.clone(), param)
+            })
+            .collect();
+        let typ_params = Arc::new(vec![]);
+        let retx = ParamX { name: prefix_fnspec_param(0), mode: Mode::Spec, typ: fnspec_type() };
+        let ret = Spanned::new(ctx.no_span.clone(), retx);
         functions.push(mk_fun_decl(&ctx.no_span, &path, &typ_params, &Arc::new(params), &ret));
     }
 

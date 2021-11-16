@@ -80,6 +80,13 @@ pub fn is_visible_to(target_visibility: &Visibility, source_module: &Path) -> bo
     !is_private || is_visible_to_of_owner(owning_module, source_module)
 }
 
+pub fn fnspec_type() -> Typ {
+    let typ = Arc::new(TypX::Datatype(crate::def::prefix_fnspec_type(), Arc::new(vec![])));
+    // REVIEW: we currently box function type values just because in Rust, function types are
+    // type parameters, and we always box type parameters.  But we don't have to do this.
+    Arc::new(TypX::Boxed(typ))
+}
+
 impl<X> SpannedTyped<X> {
     pub fn new(span: &Span, typ: &Typ, x: X) -> Arc<Self> {
         Arc::new(SpannedTyped { span: span.clone(), typ: typ.clone(), x })

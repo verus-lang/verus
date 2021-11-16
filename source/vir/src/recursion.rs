@@ -11,7 +11,9 @@ use crate::def::{
 };
 use crate::scc::Graph;
 use crate::sst::{BndX, Exp, ExpX, Exps, LocalDecl, LocalDeclX, Stm, StmX, UniqueIdent};
-use crate::sst_visitor::{exp_rename_vars, map_exp_visitor, map_stm_visitor};
+use crate::sst_visitor::{
+    exp_rename_vars, map_exp_visitor, map_exp_visitor_result, map_stm_visitor,
+};
 use air::ast::{Binder, Commands, Quant, Span};
 use air::ast_util::{ident_binder, str_ident};
 use std::collections::HashMap;
@@ -229,6 +231,28 @@ fn mk_decreases_at_entry(ctxt: &Ctxt, span: &Span) -> (LocalDecl, Stm) {
         },
     );
     (decl, stm_assign)
+}
+
+// REVIEW: for simplicity, we completely disallow recursive calls from inside closures.
+// It's possible that we could be allow some recursion.
+pub(crate) fn disallow_recursion_exp(
+    ctx: &Ctx,
+    function: &Function,
+    exp: &Exp,
+) -> Result<(), VirErr> {
+    let scc_rep = ctx.func_call_graph.get_scc_rep(&function.x.path);
+    let _ = map_exp_visitor_result(exp, &mut |exp| {
+        match &exp.x {
+            ExpX::Call(x, _, _) => {
+                if *x == function.x.path || ctx.func_call_graph.get_scc_rep(x) == scc_rep {
+                    return err_str(&exp.span, "recursion not allowed here");
+                }
+            }
+            _ => {}
+        }
+        Ok(exp.clone())
+    })?;
+    Ok(())
 }
 
 pub(crate) fn check_termination_exp(
