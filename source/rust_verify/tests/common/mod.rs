@@ -5,7 +5,7 @@ extern crate rustc_span;
 pub use rust_verify::verifier::ErrorSpan;
 pub use rust_verify_test_macros::{code, code_str};
 
-use rust_verify::config::{Args, enable_default_features};
+use rust_verify::config::{enable_default_features, Args};
 use rust_verify::verifier::Verifier;
 
 use rustc_span::source_map::FileLoader;
