@@ -6,84 +6,83 @@ use crate::pervasive::*;
 /// set type for specifications
 #[verifier(no_verify)]
 pub struct Set<A> {
-    dummy: Vec<A>,
+    dummy: std::marker::PhantomData<A>,
 }
 
-//TODO:
-//impl<A> Set<A> {
-//  ...
-//}
-
+// TODO(andrea) move into impl once associated functions supported
 #[spec]
 #[verifier(pub_abstract)]
 pub fn empty<A>() -> Set<A> {
     arbitrary()
 }
 
-#[spec]
-#[verifier(pub_abstract)]
-pub fn contains<A>(s: Set<A>, a: A) -> bool {
-    arbitrary()
-}
-
-#[spec]
-pub fn subset_of<A>(s1: Set<A>, s2: Set<A>) -> bool {
-    forall(|a: A| imply(contains(s1, a), contains(s2, a)))
-}
-
-#[spec]
-pub fn ext_equal<A>(s1: Set<A>, s2: Set<A>) -> bool {
-    forall(|a: A| contains(s1, a) == contains(s2, a))
-}
-
-#[spec]
-#[verifier(pub_abstract)]
-pub fn insert<A>(s: Set<A>, a: A) -> Set<A> {
-    arbitrary()
-}
-
-#[spec]
-#[verifier(pub_abstract)]
-pub fn union<A>(s1: Set<A>, s2: Set<A>) -> Set<A> {
-    arbitrary()
-}
-
-#[spec]
-#[verifier(pub_abstract)]
-pub fn intersect<A>(s1: Set<A>, s2: Set<A>) -> Set<A> {
-    arbitrary()
-}
-
-#[spec]
-#[verifier(pub_abstract)]
-pub fn difference<A>(s1: Set<A>, s2: Set<A>) -> Set<A> {
-    arbitrary()
-}
-
-#[spec]
-#[verifier(pub_abstract)]
-pub fn cardinality<A>(s: Set<A>) -> nat {
-    arbitrary()
-}
-
 #[verifier(no_verify)]
 #[proof]
-pub fn set_axioms<A>() {
+pub fn axioms<A>() {
     ensures([
-        forall(|a: A| !contains(empty(), a)),
-        forall(|s: Set<A>, a: A| contains(insert(s, a), a)),
+        forall(|a: A| !empty().contains(a)),
+        forall(|s: Set<A>, a: A| s.insert(a).contains(a)),
         forall(|s: Set<A>, a1: A, a2: A|
-            equal(a1, a2) || contains(insert(s, a1), a2) == contains(s, a2)),
+            equal(a1, a2) || s.insert(a1).contains(a2) == s.contains(a2)),
         forall(|s1: Set<A>, s2: Set<A>, a: A|
-            contains(union(s1, s2), a) == (contains(s1, a) || contains(s2, a))),
+            s1.union(s2).contains(a) == (s1.contains(a) || s2.contains(a))),
         forall(|s1: Set<A>, s2: Set<A>, a: A|
-            contains(intersect(s1, s2), a) == (contains(s1, a) && contains(s2, a))),
+            s1.intersect(s2).contains(a) == s1.contains(a) && s2.contains(a)),
         forall(|s1: Set<A>, s2: Set<A>, a: A|
-            contains(difference(s1, s2), a) == (contains(s1, a) && !contains(s2, a))),
+            s1.difference(s2).contains(a) == s1.contains(a) && !s2.contains(a)),
         forall(|s1: Set<A>, s2: Set<A>|
-            ext_equal(s1, s2) == equal(s1, s2)),
-        cardinality::<A>(empty()) == 0,
+            set_ext_equal(s1, s2) == equal(s1, s2)),
+        empty::<A>().cardinality() == 0,
         forall(|s: Set<A>, a: A|
-            imply(!contains(s, a), #[trigger] cardinality(insert(s, a)) == cardinality(s) + 1)),
+            imply(!s.contains(a), #[trigger] s.insert(a).cardinality() == s.cardinality() + 1)),
     ]);
+}
+
+#[spec]
+pub fn set_ext_equal<A>(s1: Set<A>, s2: Set<A>) -> bool {
+    forall(|a: A| s1.contains(a) == s2.contains(a))
+}
+
+impl<A> Set<A> {
+    #[spec]
+    #[verifier(pub_abstract)]
+    pub fn contains(self, a: A) -> bool {
+        arbitrary()
+    }
+
+    #[spec]
+    pub fn subset_of(self, s2: Set<A>) -> bool {
+        forall(|a: A| imply(self.contains(a), s2.contains(a)))
+    }
+
+    #[spec]
+    #[verifier(pub_abstract)]
+    pub fn insert(self, a: A) -> Self {
+        arbitrary()
+    }
+
+    #[spec]
+    #[verifier(pub_abstract)]
+    pub fn union(self, s2: Set<A>) -> Set<A> {
+        arbitrary()
+    }
+
+    #[spec]
+    #[verifier(pub_abstract)]
+    pub fn intersect(self, s2: Set<A>) -> Set<A> {
+        arbitrary()
+    }
+
+    #[spec]
+    #[verifier(pub_abstract)]
+    pub fn difference(self, s2: Set<A>) -> Set<A> {
+        arbitrary()
+    }
+
+    #[spec]
+    #[verifier(pub_abstract)]
+    pub fn cardinality(self) -> nat {
+        arbitrary()
+    }
+
 }

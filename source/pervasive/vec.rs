@@ -8,59 +8,62 @@ pub struct Vec<A> {
     pub vec: std::vec::Vec<A>,
 }
 
+// TODO(andrea) move into impl once associated functions supported
 #[verifier(external)]
-fn get_external<A>(v: &Vec<A>, i: usize) -> &A {
-    &v.vec[i]
+fn set_external<A>(mut v: Vec<A>, i: usize, a: A) -> Vec<A> {
+    v.vec[i] = a;
+    v
 }
 
-#[verifier(external)]
-fn set_external<A>(mut v1: Vec<A>, i: usize, a: A) -> Vec<A> {
-    v1.vec[i] = a;
-    v1
-}
+impl<A> Vec<A> {
+    #[verifier(external)]
+    fn get_external(&self, i: usize) -> &A {
+        &self.vec[i]
+    }
 
-#[verifier(external)]
-fn length_external<A>(v: &Vec<A>) -> usize {
-    v.vec.len()
-}
+    #[verifier(external)]
+    fn length_external(&self) -> usize {
+        self.vec.len()
+    }
 
-#[verifier(no_verify)]
-#[verifier(pub_abstract)]
-#[spec]
-pub fn len<A>(v: &Vec<A>) -> nat {
-    arbitrary()
-}
+    #[verifier(no_verify)]
+    #[verifier(pub_abstract)]
+    #[spec]
+    pub fn len(&self) -> nat {
+        arbitrary()
+    }
 
-#[verifier(no_verify)]
-#[verifier(pub_abstract)]
-#[spec]
-pub fn index<A>(v: &Vec<A>, i: int) -> A {
-    arbitrary()
-}
+    #[verifier(no_verify)]
+    #[verifier(pub_abstract)]
+    #[spec]
+    pub fn index(&self, i: int) -> A {
+        arbitrary()
+    }
 
-#[verifier(no_verify)]
-pub fn get<A>(v: &Vec<A>, i: usize) -> &A {
-    requires(i < len(v));
-    ensures(|r: A| equal(r, index(v, i)));
+    #[verifier(no_verify)]
+    pub fn get(&self, i: usize) -> &A {
+        requires(i < self.len());
+        ensures(|r: A| equal(r, self.index(i)));
 
-    get_external(v, i)
-}
+        self.get_external(i)
+    }
 
-#[verifier(no_verify)]
-pub fn set<A>(v1: Vec<A>, i: usize, a: A) -> Vec<A> {
-    requires(i < len(&v1));
-    ensures(|v2: Vec<A>| [
-        len(&v2) == len(&v1),
-        equal(a, index(&v2, i)),
-        forall(|j: int| imply(0 <= j && j < len(&v1) && j != i, equal(index(&v1, j), index(&v2, j)))),
-    ]);
+    #[verifier(no_verify)]
+    pub fn set(self, i: usize, a: A) -> Vec<A> {
+        requires(i < self.len());
+        ensures(|v2: Vec<A>| [
+            v2.len() == self.len(),
+            equal(a, v2.index(i)),
+            forall(|j: int| imply(0 <= j && j < self.len() && j != i, equal(self.index(j), self.index(j)))),
+        ]);
 
-    set_external(v1, i, a)
-}
+        set_external(self, i, a)
+    }
 
-#[verifier(no_verify)]
-pub fn length<A>(v: &Vec<A>) -> usize {
-    ensures(|l: usize| l == len(v));
+    #[verifier(no_verify)]
+    pub fn length(&self) -> usize {
+        ensures(|l: usize| l == self.len());
 
-    length_external(v)
+        self.length_external()
+    }
 }
