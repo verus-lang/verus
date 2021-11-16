@@ -15,6 +15,7 @@ use crate::def::{
 use crate::util::{vec_map, vec_map_result};
 use air::ast::{Quant, Span};
 use air::ast_util::ident_binder;
+use air::scope_map::ScopeMap;
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -203,9 +204,51 @@ fn pattern_to_exprs(
     }
 }
 
+fn captured_var(
+    outer_scopes: usize,
+    map: &mut ScopeMap<Ident, Typ>,
+    expr: &Expr,
+    captured: &mut HashMap<Ident, Typ>,
+) -> Expr {
+    match &expr.x {
+        ExprX::Var(x) => {
+            let scope = map.scope_of_key(x).unwrap();
+            if scope < outer_scopes {
+                // x was declared in the outer scope
+                let typ = map.get(x).unwrap();
+                captured.insert(x.clone(), typ.clone());
+            }
+        }
+        _ => {}
+    }
+    expr.clone()
+}
+
+fn captured_vars(
+    outer_scopes: usize,
+    map: &mut ScopeMap<Ident, Typ>,
+    expr: &Expr,
+) -> Vec<Binder<Typ>> {
+    let mut captured: HashMap<Ident, Typ> = HashMap::new();
+    let _ = crate::ast_visitor::map_expr_visitor_env(
+        expr,
+        map,
+        &mut captured,
+        &|captured, map, expr| Ok(captured_var(outer_scopes, map, expr, captured)),
+        &|_, _, stmt| Ok(vec![stmt.clone()]),
+        &|_, typ| Ok(typ.clone()),
+    );
+    let mut binders: Vec<Binder<Typ>> = Vec::new();
+    for (x, typ) in captured.iter() {
+        binders.push(ident_binder(x, typ));
+    }
+    binders
+}
+
 fn simplify_one_expr(
     ctx: &GlobalCtx,
     local: &LocalCtxt,
+    map: &mut ScopeMap<Ident, Typ>,
     state: &mut State,
     expr: &Expr,
 ) -> Result<Expr, VirErr> {
@@ -285,7 +328,17 @@ fn simplify_one_expr(
             assert!(axiom.is_none());
             let path = state.next_closure();
             let tbool = Arc::new(TypX::Bool);
-            let captures: Vec<Binder<Typ>> = Vec::new();
+
+            // compute captures
+            let outer_scopes = map.num_scopes();
+            map.push_scope(true);
+            for binder in params.iter() {
+                let _ = map.insert(binder.name.clone(), binder.a.clone());
+            }
+            let captures = captured_vars(outer_scopes, map, body);
+            map.pop_scope();
+
+            // combine binders
             let mut binders: Vec<Binder<Typ>> = Vec::new();
             for binder in captures.iter() {
                 binders.push(binder.clone());
@@ -293,7 +346,6 @@ fn simplify_one_expr(
             for binder in params.iter() {
                 binders.push(binder.clone());
             }
-            // TODO: compute captures
 
             // call: f(captures)
             let target = CallTarget::Path(path.clone(), Arc::new(vec![]));
@@ -461,11 +513,13 @@ fn simplify_function(
     );
 
     let function = Spanned::new(function.span.clone(), functionx);
+    let mut map: ScopeMap<Ident, Typ> = ScopeMap::new();
     crate::ast_visitor::map_function_visitor_env(
         &function,
+        &mut map,
         state,
-        &|state, expr| simplify_one_expr(ctx, &local, state, expr),
-        &|state, stmt| simplify_one_stmt(ctx, state, stmt),
+        &|state, map, expr| simplify_one_expr(ctx, &local, map, state, expr),
+        &|state, _, stmt| simplify_one_stmt(ctx, state, stmt),
         &|state, typ| simplify_one_typ(&local, state, typ),
     )
 }

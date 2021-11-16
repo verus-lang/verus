@@ -44,6 +44,15 @@ impl<K: Eq + Hash + Clone, V> ScopeMap<K, V> {
         self.map.contains_key(key)
     }
 
+    pub fn scope_of_key(&self, key: &K) -> Option<usize> {
+        for i in (0..self.scopes.len()).rev() {
+            if self.scopes[i].undo_map.contains_key(key) {
+                return Some(i);
+            }
+        }
+        None
+    }
+
     pub fn get(&self, key: &K) -> Option<&V> {
         self.map.get(key)
     }
