@@ -71,7 +71,7 @@ Either add the Z3 `bin` folder to your path or copy the Z3 executable file to on
 
 #### On Unix/macOS: get a local Z3
 
-Use the script `./tools/get-z3.sh` to download Z3.
+From `source`, use the script `./tools/get-z3.sh` to download Z3.
 The `./tools/cargo.sh` script will correctly set the `VERUS_Z3_PATH` environment variable for the verifier to find Z3.
 If you run the verifier manually, set `VERUS_Z3_PATH` to `path_to/verify/z3`.
 
