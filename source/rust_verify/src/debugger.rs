@@ -9,7 +9,7 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::fmt;
 use std::sync::Arc;
-use vir::def::{suffix_local_stmt_id, SnapPos};
+use vir::def::{suffix_local_stmt_id, SnapPos, SpanKind};
 
 #[derive(Debug)]
 /// Rust-level model of a concrete counterexample
@@ -47,11 +47,8 @@ impl Debugger {
             let (start, end) =
                 source_map.is_valid_span(*span).expect("internal error: invalid Span");
 
-            let mut min_snap: Ident = match snap_pos {
-                SnapPos::Start(span_id) => span_id.clone(),
-                SnapPos::Full(span_id) => span_id.clone(),
-                SnapPos::End(span_id) => span_id.clone(),
-            };
+            let mut min_snap: Ident = snap_pos.snapshot_id.clone();
+
             let mut min_line = start.line;
             let mut max_line = end.line;
 
@@ -60,15 +57,17 @@ impl Debugger {
                 let (span_start, span_end) =
                     source_map.is_valid_span(*span).expect("internal error: invalid Span");
 
-                let (start, end, cur_snap) = match snap_pos {
-                    SnapPos::Start(span_id) => (span_start.line, span_start.line + 1, span_id),
-                    SnapPos::Full(span_id) => (span_start.line, span_end.line + 1, span_id),
-                    SnapPos::End(span_id) => (span_end.line, span_end.line + 1, span_id),
+                let cur_snap = snap_pos.snapshot_id.clone();
+                let (start, end) = match snap_pos.kind {
+                    SpanKind::Start => (span_start.line, span_start.line + 1),
+                    SpanKind::Full => (span_start.line, span_end.line + 1),
+                    SpanKind::End => (span_end.line, span_end.line + 1),
                 };
 
                 // println!("Apply {} to lines {}..{}", cur_snap, start, end);
                 for line in start..end {
-                    if line_map.contains_key(&line) && line_map.get(&line) != Some(cur_snap) {
+                    if line_map.contains_key(&line) && *(line_map.get(&line).unwrap()) != cur_snap {
+                        println!("{:?} {:?}", *(line_map.get(&line).unwrap()), cur_snap);
                         panic!("unexpectedly mapping the same line to a different snapshot");
                     }
                     line_map.insert(line, cur_snap.clone());

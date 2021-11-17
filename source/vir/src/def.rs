@@ -255,10 +255,16 @@ pub fn positional_field_ident(idx: usize) -> Ident {
 /// For a given snapshot, does it represent the state
 /// at the start of the corresponding span, the end, or the full span?
 #[derive(Debug)]
-pub enum SnapPos {
-    Start(Ident),
-    Full(Ident),
-    End(Ident),
+pub enum SpanKind {
+    Start,
+    Full,
+    End,
+}
+
+#[derive(Debug)]
+pub struct SnapPos {
+    pub snapshot_id: Ident,
+    pub kind: SpanKind,
 }
 
 pub struct Spanned<X> {
