@@ -36,13 +36,13 @@ impl Model {
     /// * `model` - The model that Z3 returns
     /// * `snapshots` - Internal mapping of snapshot IDs to snapshots that map AIR variables to usage counts.
     pub fn new(snapshots: Snapshots, params: Vec<Decl>) -> Model {
-        println!("Creating a new model with {} snapshots", snapshots.len());
-        for (sid, snapshot) in &snapshots {
-            println!("{:?}", sid);
-            for (name, num) in snapshot {
-                println!("{:?} {}", name, num);
-            }
-        }
+        // println!("Creating a new model with {} snapshots", snapshots.len());
+        // for (sid, snapshot) in &snapshots {
+        //     println!("{:?}", sid);
+        //     for (name, num) in snapshot {
+        //         println!("{:?} {}", name, num);
+        //     }
+        // }
 
         let mut parameters = HashSet::new();
         for param in params {
