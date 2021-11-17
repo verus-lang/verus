@@ -163,6 +163,8 @@ pub(crate) fn lower_query(query: &Query) -> (Query, Snapshots, Vec<Decl>) {
             local_vars.push(decl.clone());
         }
     }
+    println!("local vars {:?}", local);
+    println!("local vars {:?}", local_vars);
     let assertion = lower_stmt(
         &mut decls,
         &mut versions,

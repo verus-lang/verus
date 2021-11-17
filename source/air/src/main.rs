@@ -122,7 +122,7 @@ pub fn main() {
             ValidityResult::TypeError(err) => {
                 panic!("Type error: {}", err);
             }
-            ValidityResult::Invalid(m, span1, span2) => {
+            ValidityResult::Invalid(_m, span1, span2) => {
                 count_errors += 1;
                 match &*span1 {
                     None => {
@@ -139,9 +139,6 @@ pub fn main() {
                     Some(Span { as_string, .. }) => {
                         println!("Additional error detail at {}", as_string);
                     }
-                }
-                if debug {
-                    println!("Model: {}", m);
                 }
             }
         }

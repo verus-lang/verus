@@ -1,6 +1,6 @@
 use crate::config::Args;
 use crate::context::{Context, ErasureInfo};
-use crate::model::Model;
+use crate::debugger::Debugger;
 use crate::unsupported;
 use crate::util::from_raw_span;
 use air::ast::{Command, CommandX, SpanOption};
@@ -9,12 +9,13 @@ use rustc_interface::interface::Compiler;
 use rustc_middle::ty::TyCtxt;
 use rustc_span::source_map::SourceMap;
 use rustc_span::{CharPos, FileName, MultiSpan, Span};
+use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::io::Write;
+use std::sync::Arc;
 use vir::ast::{Krate, VirErr, VirErrX, Visibility};
 use vir::ast_util::{is_visible_to, path_as_rust_name};
 use vir::def::SnapPos;
-use vir::model::Model as VModel;
 
 pub struct Verifier {
     pub encountered_vir_error: bool,
@@ -134,13 +135,21 @@ impl Verifier {
     fn check_result_validity(
         &mut self,
         compiler: &Compiler,
+        air_context: &mut air::context::Context,
+        assign_map: &HashMap<*const air::ast::Span, HashSet<Arc<std::string::String>>>,
         snap_map: &Vec<(air::ast::Span, SnapPos)>,
         command: &Command,
-        result: ValidityResult,
     ) {
+        let result = air_context.command(&command);
+
+        let mut is_check_valid = false;
+        if let CommandX::CheckValid(_) = **command {
+            is_check_valid = true;
+        }
+
         match result {
             ValidityResult::Valid => {
-                if let CommandX::CheckValid(_) = **command {
+                if is_check_valid {
                     self.count_verified += 1;
                 }
             }
@@ -160,12 +169,19 @@ impl Verifier {
                         .map(|x| ErrorSpan::new_from_air_span(compiler.session().source_map(), x)),
                 ));
                 if self.args.debug {
-                    println!("Received AIR model: {}", air_model);
-                    let vir_model = VModel::new(air_model);
-                    let model = Model::new(vir_model, snap_map, compiler.session().source_map());
-                    println!("Build Rust model: {}", model);
+                    let mut debugger = Debugger::new(
+                        air_model,
+                        assign_map,
+                        snap_map,
+                        compiler.session().source_map(),
+                    );
+                    debugger.start_shell(air_context);
                 }
             }
+        }
+
+        if is_check_valid && self.args.debug {
+            air_context.cleanup_check_valid();
         }
     }
 
@@ -188,6 +204,7 @@ impl Verifier {
         compiler: &Compiler,
         air_context: &mut air::context::Context,
         commands: &Vec<Command>,
+        assign_map: &HashMap<*const air::ast::Span, HashSet<Arc<String>>>,
         snap_map: &Vec<(air::ast::Span, SnapPos)>,
         comment: &str,
     ) {
@@ -196,7 +213,7 @@ impl Verifier {
             air_context.comment(comment);
         }
         for command in commands.iter() {
-            self.check_result_validity(compiler, snap_map, &command, air_context.command(&command));
+            self.check_result_validity(compiler, air_context, assign_map, snap_map, &command);
         }
     }
 
@@ -263,6 +280,7 @@ impl Verifier {
                 compiler,
                 air_context,
                 &check_commands,
+                &HashMap::new(),
                 &vec![],
                 &("Function-Termination ".to_string() + &path_as_rust_name(&function.x.path)),
             );
@@ -278,6 +296,7 @@ impl Verifier {
                 compiler,
                 air_context,
                 &commands,
+                &HashMap::new(),
                 &snap_map,
                 &("Function-Def ".to_string() + &path_as_rust_name(&function.x.path)),
             );

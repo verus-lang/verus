@@ -59,6 +59,11 @@ const PATH_SEPARATOR: &str = ".";
 const VARIANT_SEPARATOR: &str = "/";
 const VARIANT_FIELD_SEPARATOR: &str = "/";
 
+pub const SUFFIX_SNAP_MUT: &str = "_mutation";
+pub const SUFFIX_SNAP_JOIN: &str = "_join";
+pub const SUFFIX_SNAP_WHILE_BEGIN: &str = "_while_begin";
+pub const SUFFIX_SNAP_WHILE_END: &str = "_while_end";
+
 // List of constant strings that can appear in generated AIR code
 pub const FUEL_ID: &str = "FuelId";
 pub const FUEL_TYPE: &str = "Fuel";
@@ -278,10 +283,16 @@ pub fn positional_field_ident(idx: usize) -> Ident {
 /// For a given snapshot, does it represent the state
 /// at the start of the corresponding span, the end, or the full span?
 #[derive(Debug)]
-pub enum SnapPos {
-    Start(Ident),
-    Full(Ident),
-    End(Ident),
+pub enum SpanKind {
+    Start,
+    Full,
+    End,
+}
+
+#[derive(Debug)]
+pub struct SnapPos {
+    pub snapshot_id: Ident,
+    pub kind: SpanKind,
 }
 
 pub struct Spanned<X> {

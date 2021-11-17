@@ -19,10 +19,10 @@ extern crate rustc_typeck;
 
 pub mod config;
 pub mod context;
+pub mod debugger;
 pub mod erase;
 pub mod file_loader;
 mod lifetime;
-pub mod model;
 pub mod rust_to_vir;
 pub mod rust_to_vir_adts;
 pub mod rust_to_vir_base;
