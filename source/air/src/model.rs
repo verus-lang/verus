@@ -26,7 +26,7 @@ pub struct Model {
     /// Internal mapping of snapshot IDs to snapshots that map AIR variables to usage counts.
     /// Generated when converting mutable variables to Z3-level constants.
     id_snapshots: Snapshots,
-    /// The
+    /// The list of paramters of the function
     parameters: HashSet<Ident>,
 }
 
@@ -55,11 +55,12 @@ impl Model {
     }
 
     pub fn translate_variable(&self, sid: &Ident, name: &Ident) -> Option<String> {
+        // look for variable in the snapshot first
         let id_snapshot = &self.id_snapshots.get(sid)?;
         if let Some(var_label) = id_snapshot.get(name) {
             return Some(crate::var_to_const::rename_var(name, *var_label));
         }
-
+        // then look in the parameter list
         if self.parameters.contains(name) {
             return Some((**name).clone());
         }
