@@ -1,6 +1,6 @@
 use crate::ast::{
-    BinaryOp, BindX, Decl, DeclX, Expr, ExprX, Ident, MultiOp, Quant, Query, Snapshots, Span,
-    StmtX, TypX, UnaryOp,
+    BinaryOp, BindX, Decl, DeclX, Expr, ExprX, Ident, MultiOp, Quant, Query, Span, StmtX, TypX,
+    UnaryOp,
 };
 use crate::context::{AssertionInfo, Context, ValidityResult};
 use crate::def::{GLOBAL_PREFIX_LABEL, PREFIX_LABEL};
@@ -92,8 +92,8 @@ pub(crate) fn smt_add_decl<'ctx>(context: &mut Context, decl: &Decl) {
 fn smt_check_assertion<'ctx>(
     context: &mut Context,
     infos: &Vec<AssertionInfo>,
-    snapshots: Snapshots,
     expr: &Expr,
+    air_model: Model,
 ) -> ValidityResult {
     let mut discovered_span = Arc::new(None);
     let mut discovered_global_span = Arc::new(None);
@@ -159,7 +159,7 @@ fn smt_check_assertion<'ctx>(
             if context.debug {
                 println!("Z3 model: {:?}", &model);
             }
-            ValidityResult::Invalid(Model::new(snapshots), discovered_span, discovered_global_span)
+            ValidityResult::Invalid(air_model, discovered_span, discovered_global_span)
         }
     }
 }
@@ -167,7 +167,7 @@ fn smt_check_assertion<'ctx>(
 pub(crate) fn smt_check_query<'ctx>(
     context: &mut Context,
     query: &Query,
-    snapshots: Snapshots,
+    air_model: Model,
 ) -> ValidityResult {
     context.smt_log.log_push();
     context.push_name_scope();
@@ -201,7 +201,7 @@ pub(crate) fn smt_check_query<'ctx>(
     }
 
     // check assertion
-    let result = smt_check_assertion(context, &infos, snapshots, &labeled_assertion);
+    let result = smt_check_assertion(context, &infos, &labeled_assertion, air_model);
 
     if !context.debug {
         context.cleanup_check_valid();

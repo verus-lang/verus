@@ -20,28 +20,38 @@ fn test_mutation(i: int, n: nat, u: u8) {
 }
 */
 
-fn test_if_else(b:bool, z:int) {
-    let mut x : int;
-    let mut y : int = z; // 0_entry
-    let mut f : int;
-    x = x + y;      // 1_mutation
-    if b {
-        x = 2*x;    // 2_mutation
-        y = x + 1;  // 3_mutation
-    } else {
-        let mut dd : int;
-        if b {
-            let mut ddd : int;
-            assert(true);
-            x = 2*x;    // 4_mutation
-            y = x + 1;  // 5_mutation
-        } // 6_join
-        x = y + 1;  // 7_mutation
-        y = 7;      // 8_mutation
-        f = 34;    // 9_mutation
-    } // 10_join
-    assert(x + y > 5); 
+#[spec]
+fn add_one(i: int) -> int {
+    i + 1
 }
+
+fn very_simple(z:int) {
+    let mut x = z;      // 1_mutation
+    assert (add_one(x) < 3);
+}
+
+// fn test_if_else(b:bool, z:int) {
+//     let mut x : int;
+//     let mut y : int = z; // 0_entry
+//     let mut f : int;
+//     x = x + y;      // 1_mutation
+//     if b {
+//         x = 2*x;    // 2_mutation
+//         y = x + 1;  // 3_mutation
+//     } else {
+//         let mut dd : int;
+//         if b {
+//             let mut ddd : int;
+//             assert(true);
+//             x = 2*x;    // 4_mutation
+//             y = x + 1;  // 5_mutation
+//         } // 6_join
+//         x = y + 1;  // 7_mutation
+//         y = 7;      // 8_mutation
+//         f = 34;    // 9_mutation
+//     } // 10_join
+//     assert(x + y > 5); 
+// }
 
 /*
 fn test_loop() {
