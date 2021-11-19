@@ -10,7 +10,7 @@ use rust_verify::verifier::Verifier;
 
 use rustc_span::source_map::FileLoader;
 
-#[derive(Default)]
+#[derive(Clone, Default)]
 struct TestFileLoader {
     files: std::collections::HashMap<std::path::PathBuf, String>,
 }
@@ -114,10 +114,8 @@ pub fn verify_files(
     let result = std::panic::catch_unwind(move || {
         let mut verifier = Verifier::new(our_args);
         verifier.test_capture_output = Some(captured_output_1);
-        let mut compiler = rustc_driver::RunCompiler::new(&rustc_args, &mut verifier);
         let file_loader: TestFileLoader = TestFileLoader { files };
-        compiler.set_file_loader(Some(Box::new(file_loader)));
-        let status = compiler.run();
+        let status = rust_verify::driver::run(&mut verifier, &rustc_args, &file_loader);
         status.map_err(|_| verifier.errors)
     });
     eprintln!(

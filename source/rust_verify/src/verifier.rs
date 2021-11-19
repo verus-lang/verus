@@ -22,7 +22,7 @@ pub struct Verifier {
     pub count_verified: u64,
     // Two error slots that can be filled in if needed.  TODO: Convert to list/vec
     pub errors: Vec<(Option<ErrorSpan>, Option<ErrorSpan>)>,
-    args: Args,
+    pub args: Args,
     pub test_capture_output: Option<std::sync::Arc<std::sync::Mutex<Vec<u8>>>>,
     pub erasure_hints: Option<crate::erase::ErasureHints>,
 }
