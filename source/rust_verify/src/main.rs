@@ -53,6 +53,8 @@ pub fn main() {
     let (our_args, rustc_args) = config::parse_args(&program, args);
     let lifetime = our_args.lifetime;
     let compile = our_args.compile;
+    let print_erased_spec = our_args.print_erased_spec;
+    let print_erased = our_args.print_erased;
     let pervasive_path = our_args.pervasive_path.clone();
 
     // Run verifier callback to build VIR tree and run verifier
@@ -77,8 +79,9 @@ pub fn main() {
     // Run borrow checker with both #[code] and #[proof]
     if lifetime {
         let erasure_hints = verifier.erasure_hints.clone().expect("erasure_hints");
-        let mut callbacks = CompilerCallbacks { erasure_hints, lifetimes_only: true };
-        let status = rustc_driver::RunCompiler::new(&rustc_args, &mut callbacks).run();
+        let mut callbacks =
+            CompilerCallbacks { erasure_hints, lifetimes_only: true, print: print_erased_spec };
+        let status = mk_compiler(&rustc_args, &mut callbacks, &pervasive_path).run();
         match status {
             Ok(_) => {}
             Err(_) => {
@@ -90,7 +93,8 @@ pub fn main() {
     // Run borrow checker and compiler on #[code] (if enabled)
     if compile {
         let erasure_hints = verifier.erasure_hints.clone().expect("erasure_hints").clone();
-        let mut callbacks = CompilerCallbacks { erasure_hints, lifetimes_only: false };
+        let mut callbacks =
+            CompilerCallbacks { erasure_hints, lifetimes_only: false, print: print_erased };
         mk_compiler(&rustc_args, &mut callbacks, &pervasive_path)
             .run()
             .expect("RunCompiler.run() failed");

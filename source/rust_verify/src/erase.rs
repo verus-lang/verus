@@ -511,6 +511,26 @@ fn mk_ctxt(erasure_hints: &ErasureHints, keep_proofs: bool) -> Ctxt {
 pub struct CompilerCallbacks {
     pub erasure_hints: ErasureHints,
     pub lifetimes_only: bool,
+    pub print: bool,
+}
+
+impl CompilerCallbacks {
+    fn maybe_print<'tcx>(
+        &self,
+        compiler: &Compiler,
+        queries: &'tcx rustc_interface::Queries<'tcx>,
+    ) {
+        if self.print {
+            let krate = &queries.expansion().expect("expansion").peek().0;
+            rustc_driver::pretty::print_after_parsing(
+                &compiler.session(),
+                &compiler.input(),
+                krate,
+                rustc_session::config::PpMode::Source(rustc_session::config::PpSourceMode::Normal),
+                None,
+            );
+        }
+    }
 }
 
 /// Implement the callback from Rust that rewrites the AST
@@ -530,7 +550,7 @@ impl rustc_lint::FormalVerifierRewrite for CompilerCallbacks {
 impl rustc_driver::Callbacks for CompilerCallbacks {
     fn after_parsing<'tcx>(
         &mut self,
-        _compiler: &Compiler,
+        compiler: &Compiler,
         queries: &'tcx rustc_interface::Queries<'tcx>,
     ) -> rustc_driver::Compilation {
         let _ = {
@@ -542,9 +562,19 @@ impl rustc_driver::Callbacks for CompilerCallbacks {
         };
         if self.lifetimes_only {
             crate::lifetime::check(queries);
+            self.maybe_print(compiler, queries);
             rustc_driver::Compilation::Stop
         } else {
             rustc_driver::Compilation::Continue
         }
+    }
+
+    fn after_expansion<'tcx>(
+        &mut self,
+        compiler: &Compiler,
+        queries: &'tcx rustc_interface::Queries<'tcx>,
+    ) -> rustc_driver::Compilation {
+        self.maybe_print(compiler, queries);
+        rustc_driver::Compilation::Continue
     }
 }

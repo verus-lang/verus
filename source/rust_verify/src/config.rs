@@ -15,6 +15,8 @@ pub struct Args {
     pub log_smt: Option<String>,
     pub log_triggers: Option<String>,
     pub show_triggers: bool,
+    pub print_erased: bool,
+    pub print_erased_spec: bool,
     pub debug: bool,
     pub compile: bool,
 }
@@ -39,6 +41,8 @@ pub fn parse_args(program: &String, args: impl Iterator<Item = String>) -> (Args
     const OPT_LOG_SMT: &str = "log-smt";
     const OPT_LOG_TRIGGERS: &str = "log-triggers";
     const OPT_TRIGGERS: &str = "triggers";
+    const OPT_PRINT_ERASED: &str = "print-erased";
+    const OPT_PRINT_ERASED_SPEC: &str = "print-erased-spec";
     const OPT_DEBUG: &str = "debug";
     const OPT_COMPILE: &str = "compile";
 
@@ -60,6 +64,8 @@ pub fn parse_args(program: &String, args: impl Iterator<Item = String>) -> (Args
     opts.optopt("", OPT_LOG_SMT, "Log SMT queries", "FILENAME");
     opts.optopt("", OPT_LOG_TRIGGERS, "Log automatically chosen triggers", "FILENAME");
     opts.optflag("", OPT_TRIGGERS, "Show automatically chosen triggers");
+    opts.optflag("", OPT_PRINT_ERASED, "Print code after erasing spec/proof (requires --compile)");
+    opts.optflag("", OPT_PRINT_ERASED_SPEC, "Print code after erasing spec");
     opts.optflag("", OPT_DEBUG, "Enable debugging of proof failures");
     opts.optflag("", OPT_COMPILE, "Run Rustc compiler after verification");
     opts.optflag("h", "help", "print this help menu");
@@ -105,6 +111,8 @@ pub fn parse_args(program: &String, args: impl Iterator<Item = String>) -> (Args
         log_smt: matches.opt_str(OPT_LOG_SMT),
         log_triggers: matches.opt_str(OPT_LOG_TRIGGERS),
         show_triggers: matches.opt_present(OPT_TRIGGERS),
+        print_erased: matches.opt_present(OPT_PRINT_ERASED),
+        print_erased_spec: matches.opt_present(OPT_PRINT_ERASED_SPEC),
         debug: matches.opt_present(OPT_DEBUG),
         compile: matches.opt_present(OPT_COMPILE),
     };
