@@ -3,7 +3,6 @@ use crate::ast::{
     PatternX, Stmt, StmtX, TypX, UnaryOpr, VirErr,
 };
 use crate::ast_util::{err_str, err_string};
-use crate::util::vec_map_result;
 use air::ast::Span;
 use air::scope_map::ScopeMap;
 use std::collections::HashMap;
@@ -140,15 +139,39 @@ fn check_expr(typing: &mut Typing, outer_mode: Mode, expr: &Expr) -> Result<Mode
             Ok(Mode::Spec)
         }
         ExprX::Tuple(es) => {
-            let modes = vec_map_result(es, |e| check_expr(typing, outer_mode, e))?;
-            Ok(modes.into_iter().fold(outer_mode, mode_join))
+            match &*expr.typ {
+                TypX::Tuple(ts) => {
+                    let mut mode = outer_mode;
+                    for ((_, field_mode), arg) in ts.iter().zip(es.iter()) {
+                        let mode_arg = check_expr(typing, mode_join(outer_mode, *field_mode), arg)?;
+                        if !mode_le(mode_arg, *field_mode) {
+                            // allow this arg by weakening whole tuple's mode
+                            mode = mode_join(mode, mode_arg);
+                        }
+                    }
+                    Ok(mode)
+                }
+                _ => panic!("internal error: expected Tuple type"),
+            }
         }
-        ExprX::Ctor(_path, _ident, binders) => {
-            let binder_modes = binders
-                .iter()
-                .map(|b| check_expr(typing, outer_mode, &b.a))
-                .collect::<Result<Vec<_>, _>>()?;
-            Ok(binder_modes.into_iter().fold(outer_mode, mode_join))
+        ExprX::Ctor(path, variant, binders) => {
+            let datatype = &typing.datatypes[path].clone();
+            match datatype.x.variants.iter().find(|v| v.name == *variant) {
+                None => panic!("internal error: missing variant {}", &variant),
+                Some(variant) => {
+                    let mut mode = outer_mode;
+                    for (field, arg) in variant.a.iter().zip(binders.iter()) {
+                        let (_, field_mode) = field.a;
+                        let mode_arg =
+                            check_expr(typing, mode_join(outer_mode, field_mode), &arg.a)?;
+                        if !mode_le(mode_arg, field_mode) {
+                            // allow this arg by weakening whole struct's mode
+                            mode = mode_join(mode, mode_arg);
+                        }
+                    }
+                    Ok(mode)
+                }
+            }
         }
         ExprX::Unary(_, e1) => check_expr(typing, outer_mode, e1),
         ExprX::UnaryOpr(UnaryOpr::Box(_), e1) => check_expr(typing, outer_mode, e1),
@@ -166,7 +189,7 @@ fn check_expr(typing: &mut Typing, outer_mode: Mode, expr: &Expr) -> Result<Mode
         }
         ExprX::UnaryOpr(UnaryOpr::Field { datatype, variant: _, field }, e1) => {
             let e1_mode = check_expr(typing, outer_mode, e1)?;
-            let datatype = &typing.datatypes[datatype].clone();
+            let datatype = &typing.datatypes[datatype];
             let variants = &datatype.x.variants;
             assert_eq!(variants.len(), 1);
             let fields = &variants[0].a;
