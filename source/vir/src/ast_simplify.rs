@@ -464,8 +464,7 @@ fn simplify_one_typ(local: &LocalCtxt, state: &mut State, typ: &Typ) -> Result<T
     match &**typ {
         TypX::Tuple(typs) => {
             let path = state.tuple_type_name(typs.len());
-            let typs = vec_map(typs, |(t, _)| t.clone());
-            Ok(Arc::new(TypX::Datatype(path, Arc::new(typs))))
+            Ok(Arc::new(TypX::Datatype(path, typs.clone())))
         }
         TypX::TypParam(x) => {
             if !local.bounds.contains_key(x) {

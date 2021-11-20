@@ -16,13 +16,11 @@ where
     match &**typ {
         TypX::Bool | TypX::Int(_) | TypX::TypParam(_) => ft(env, typ),
         TypX::Tuple(ts) => {
-            let ts = vec_map_result::<_, _, VirErr, _>(&**ts, |(t, m)| {
-                Ok((map_typ_visitor_env(t, env, ft)?, *m))
-            })?;
+            let ts = vec_map_result(&**ts, |t| map_typ_visitor_env(t, env, ft))?;
             ft(env, &Arc::new(TypX::Tuple(Arc::new(ts))))
         }
         TypX::Datatype(path, ts) => {
-            let ts = vec_map_result(&**ts, |t| (map_typ_visitor_env(t, env, ft)))?;
+            let ts = vec_map_result(&**ts, |t| map_typ_visitor_env(t, env, ft))?;
             ft(env, &Arc::new(TypX::Datatype(path.clone(), Arc::new(ts))))
         }
         TypX::Boxed(t) => {

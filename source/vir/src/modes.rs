@@ -1,8 +1,9 @@
 use crate::ast::{
     BinaryOp, CallTarget, Datatype, Expr, ExprX, Function, Ident, Krate, Mode, Path, Pattern,
-    PatternX, Stmt, StmtX, TypX, UnaryOpr, VirErr,
+    PatternX, Stmt, StmtX, UnaryOpr, VirErr,
 };
 use crate::ast_util::{err_str, err_string};
+use crate::util::vec_map_result;
 use air::ast::Span;
 use air::scope_map::ScopeMap;
 use std::collections::HashMap;
@@ -76,13 +77,8 @@ fn add_pattern(typing: &mut Typing, mode: Mode, pattern: &Pattern) -> Result<(),
             Ok(())
         }
         PatternX::Tuple(patterns) => {
-            match &*pattern.typ {
-                TypX::Tuple(typs) => {
-                    for (p, (_, field_mode)) in patterns.iter().zip(typs.iter()) {
-                        add_pattern(typing, mode_join(*field_mode, mode), p)?;
-                    }
-                }
-                _ => panic!("internal error: expected tuple type"),
+            for p in patterns.iter() {
+                add_pattern(typing, mode, p)?;
             }
             Ok(())
         }
@@ -139,20 +135,8 @@ fn check_expr(typing: &mut Typing, outer_mode: Mode, expr: &Expr) -> Result<Mode
             Ok(Mode::Spec)
         }
         ExprX::Tuple(es) => {
-            match &*expr.typ {
-                TypX::Tuple(ts) => {
-                    let mut mode = outer_mode;
-                    for ((_, field_mode), arg) in ts.iter().zip(es.iter()) {
-                        let mode_arg = check_expr(typing, mode_join(outer_mode, *field_mode), arg)?;
-                        if !mode_le(mode_arg, *field_mode) {
-                            // allow this arg by weakening whole tuple's mode
-                            mode = mode_join(mode, mode_arg);
-                        }
-                    }
-                    Ok(mode)
-                }
-                _ => panic!("internal error: expected Tuple type"),
-            }
+            let modes = vec_map_result(es, |e| check_expr(typing, outer_mode, e))?;
+            Ok(modes.into_iter().fold(outer_mode, mode_join))
         }
         ExprX::Ctor(path, variant, binders) => {
             let datatype = &typing.datatypes[path].clone();
@@ -182,16 +166,7 @@ fn check_expr(typing: &mut Typing, outer_mode: Mode, expr: &Expr) -> Result<Mode
         ExprX::UnaryOpr(UnaryOpr::Box(_), e1) => check_expr(typing, outer_mode, e1),
         ExprX::UnaryOpr(UnaryOpr::Unbox(_), e1) => check_expr(typing, outer_mode, e1),
         ExprX::UnaryOpr(UnaryOpr::IsVariant { .. }, e1) => check_expr(typing, outer_mode, e1),
-        ExprX::UnaryOpr(UnaryOpr::TupleField { field, .. }, e1) => {
-            let e1_mode = check_expr(typing, outer_mode, e1)?;
-            match &*e1.typ {
-                TypX::Tuple(typs) => {
-                    let (_, mode) = typs[*field];
-                    Ok(mode_join(e1_mode, mode))
-                }
-                _ => panic!("internal error: expected tuple type"),
-            }
-        }
+        ExprX::UnaryOpr(UnaryOpr::TupleField { .. }, e1) => check_expr(typing, outer_mode, e1),
         ExprX::UnaryOpr(UnaryOpr::Field { datatype, variant: _, field }, e1) => {
             let e1_mode = check_expr(typing, outer_mode, e1)?;
             let datatype = &typing.datatypes[datatype];

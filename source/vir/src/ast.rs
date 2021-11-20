@@ -78,7 +78,7 @@ pub enum TypX {
     Bool,
     Int(IntRange),
     /// Tuple type (t1, ..., tn).  Note: ast_simplify replaces Tuple with Datatype.
-    Tuple(Arc<Vec<(Typ, Mode)>>),
+    Tuple(Typs),
     /// Datatype (concrete or abstract) applied to type arguments
     Datatype(Path, Typs),
     /// Boxed for SMT encoding (unrelated to Rust Box type), can be unboxed:

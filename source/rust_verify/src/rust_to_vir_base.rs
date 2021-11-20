@@ -344,8 +344,7 @@ pub(crate) fn mid_ty_to_vir<'tcx>(tcx: TyCtxt<'tcx>, ty: rustc_middle::ty::Ty<'t
         TyKind::Ref(_, tys, rustc_ast::Mutability::Not) => mid_ty_to_vir(tcx, tys),
         TyKind::Param(param) => Arc::new(TypX::TypParam(Arc::new(param.name.to_string()))),
         TyKind::Tuple(_) => {
-            let typs: Vec<(Typ, Mode)> =
-                ty.tuple_fields().map(|t| (mid_ty_to_vir(tcx, t), Mode::Exec)).collect();
+            let typs: Vec<Typ> = ty.tuple_fields().map(|t| mid_ty_to_vir(tcx, t)).collect();
             Arc::new(TypX::Tuple(Arc::new(typs)))
         }
         TyKind::Adt(AdtDef { did, .. }, args) => Arc::new({
@@ -401,9 +400,9 @@ pub(crate) fn _ty_resolved_path_to_debug_path(_tcx: TyCtxt<'_>, ty: &Ty) -> Stri
 pub(crate) fn ty_to_vir<'tcx>(tcx: TyCtxt<'tcx>, ty: &Ty) -> Typ {
     let Ty { hir_id: _, kind, span } = ty;
     match kind {
-        rustc_hir::TyKind::Tup(tys) => Arc::new(TypX::Tuple(Arc::new(
-            tys.iter().map(|t| (ty_to_vir(tcx, t), Mode::Exec)).collect(),
-        ))),
+        rustc_hir::TyKind::Tup(tys) => {
+            Arc::new(TypX::Tuple(Arc::new(tys.iter().map(|t| ty_to_vir(tcx, t)).collect())))
+        }
         rustc_hir::TyKind::Rptr(
             _,
             rustc_hir::MutTy { ty: tys, mutbl: rustc_ast::Mutability::Not },
@@ -547,11 +546,11 @@ pub(crate) fn check_generic_bound<'tcx>(
                     rustc_hir::TypeBindingKind::Equality { ty } => ty_to_vir(tcx, ty),
                     _ => panic!("unexpected arg to Fn"),
                 };
-                let args: Vec<Typ> = match &*t_args {
-                    TypX::Tuple(args) => args.iter().map(|(t, _)| t.clone()).collect(),
+                let args = match &*t_args {
+                    TypX::Tuple(args) => args.clone(),
                     _ => panic!("unexpected arg to Fn"),
                 };
-                Ok(Arc::new(GenericBoundX::FnSpec(Arc::new(args), t_ret)))
+                Ok(Arc::new(GenericBoundX::FnSpec(args, t_ret)))
             } else {
                 unsupported_err!(span, "generic bounds")
             }

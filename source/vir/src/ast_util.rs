@@ -32,10 +32,7 @@ pub fn types_equal(typ1: &Typ, typ2: &Typ) -> bool {
         (TypX::Int(range1), TypX::Int(range2)) => range1 == range2,
         (TypX::Tuple(typs1), TypX::Tuple(typs2)) => {
             typs1.len() == typs2.len()
-                && typs1
-                    .iter()
-                    .zip(typs2.iter())
-                    .all(|((t1, m1), (t2, m2))| m1 == m2 && types_equal(t1, t2))
+                && typs1.iter().zip(typs2.iter()).all(|(t1, t2)| types_equal(t1, t2))
         }
         (TypX::Datatype(p1, typs1), TypX::Datatype(p2, typs2)) => {
             p1 == p2
