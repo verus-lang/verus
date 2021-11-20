@@ -35,6 +35,18 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] struct_fails1b code! {
+        struct S {
+            #[spec] i: bool,
+            j: bool,
+        }
+        fn test(i: bool, #[spec] j: bool) {
+            let s = S { j, i };
+        }
+    } => Err(_) => ()
+}
+
+test_verify_one_file! {
     #[test] struct_fails2 code! {
         struct S {
             #[spec] i: bool,

@@ -158,15 +158,20 @@ fn check_expr(typing: &mut Typing, outer_mode: Mode, expr: &Expr) -> Result<Mode
             let datatype = &typing.datatypes[path].clone();
             match datatype.x.variants.iter().find(|v| v.name == *variant) {
                 None => panic!("internal error: missing variant {}", &variant),
-                Some(variant) => {
+                Some(fields) => {
                     let mut mode = outer_mode;
-                    for (field, arg) in variant.a.iter().zip(binders.iter()) {
-                        let (_, field_mode) = field.a;
-                        let mode_arg =
-                            check_expr(typing, mode_join(outer_mode, field_mode), &arg.a)?;
-                        if !mode_le(mode_arg, field_mode) {
-                            // allow this arg by weakening whole struct's mode
-                            mode = mode_join(mode, mode_arg);
+                    for arg in binders.iter() {
+                        match fields.a.iter().find(|f| f.name == arg.name) {
+                            Some(field) => {
+                                let (_, field_mode) = field.a;
+                                let mode_arg =
+                                    check_expr(typing, mode_join(outer_mode, field_mode), &arg.a)?;
+                                if !mode_le(mode_arg, field_mode) {
+                                    // allow this arg by weakening whole struct's mode
+                                    mode = mode_join(mode, mode_arg);
+                                }
+                            }
+                            None => panic!("internal error: missing field {}", &arg.name),
                         }
                     }
                     Ok(mode)
