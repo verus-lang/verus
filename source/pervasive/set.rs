@@ -1,4 +1,6 @@
+#[allow(unused_imports)]
 use builtin::*;
+#[allow(unused_imports)]
 use crate::pervasive::*;
 
 /// set type for specifications

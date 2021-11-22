@@ -1,6 +1,7 @@
 pub mod vec;
 pub mod set;
 
+#[allow(unused_imports)]
 use builtin::*;
 
 #[proof]

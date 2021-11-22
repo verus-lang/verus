@@ -1,9 +1,10 @@
 use crate::ast::{
-    FunctionX, Idents, Mode, Path, SpannedTyped, Typ, TypX, VirErr, VirErrX, Visibility,
+    DatatypeX, FunctionX, Ident, Idents, Mode, Path, SpannedTyped, Typ, TypX, Variant, Variants,
+    VirErr, VirErrX, Visibility,
 };
 use crate::def::Spanned;
 use crate::util::vec_map;
-use air::ast::Span;
+use air::ast::{Binder, Binders, Span};
 pub use air::ast_util::{ident_binder, str_ident};
 use std::fmt;
 use std::sync::Arc;
@@ -106,5 +107,30 @@ impl FunctionX {
 
     pub fn typ_params(&self) -> Idents {
         Arc::new(vec_map(&self.typ_bounds, |(x, _)| x.clone()))
+    }
+}
+
+pub fn get_variant<'a>(variants: &'a Variants, variant: &Ident) -> &'a Variant {
+    match variants.iter().find(|v| v.name == *variant) {
+        Some(variant) => variant,
+        None => panic!("internal error: missing variant {}", &variant),
+    }
+}
+
+pub fn get_field<'a, A: Clone>(variant: &'a Binders<A>, field: &Ident) -> &'a Binder<A> {
+    match variant.iter().find(|f| f.name == *field) {
+        Some(field) => field,
+        None => panic!("internal error: missing field {}", &field),
+    }
+}
+
+impl DatatypeX {
+    pub fn get_only_variant(&self) -> &Variant {
+        assert_eq!(self.variants.len(), 1);
+        &self.variants[0]
+    }
+
+    pub fn get_variant(&self, variant: &Ident) -> &Variant {
+        get_variant(&self.variants, variant)
     }
 }

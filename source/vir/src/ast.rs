@@ -206,6 +206,8 @@ pub enum PatternX {
     /// Note: ast_simplify replaces this with Constructor
     Tuple(Patterns),
     /// Match constructor of datatype Path, variant Ident
+    /// For tuple-style variants, the patterns appear in order and are named "0", "1", etc.
+    /// For struct-style variants, the patterns may appear in any order.
     Constructor(Path, Ident, Binders<Pattern>),
 }
 
@@ -246,6 +248,8 @@ pub enum ExprX {
     /// Note: ast_simplify replaces this with Ctor
     Tuple(Exprs),
     /// Construct datatype value of type Path and variant Ident, with field initializers Binders<Expr>
+    /// For tuple-style variants, the field initializers appear in order and are named "0", "1", etc.
+    /// For struct-style variants, the field initializers may appear in any order.
     Ctor(Path, Ident, Binders<Expr>),
     /// Primitive unary operation
     Unary(UnaryOp, Expr),
@@ -352,7 +356,11 @@ pub struct FunctionX {
     pub body: Option<Expr>,
 }
 
+/// Single field in a variant
 pub type Field = Binder<(Typ, Mode)>;
+/// List of fields in a variant
+/// For tuple-style variants, the fields appear in order and are named "0", "1", etc.
+/// For struct-style variants, the fields may appear in any order
 pub type Fields = Binders<(Typ, Mode)>;
 pub type Variant = Binder<Fields>;
 pub type Variants = Binders<Fields>;

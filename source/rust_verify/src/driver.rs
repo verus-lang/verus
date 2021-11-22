@@ -28,7 +28,7 @@ where
     }
 
     // Run borrow checker with both #[code] and #[proof]
-    if verifier.args.lifetime {
+    if !verifier.args.no_lifetime {
         let erasure_hints = verifier.erasure_hints.clone().expect("erasure_hints");
         let mut callbacks = CompilerCallbacks {
             erasure_hints,

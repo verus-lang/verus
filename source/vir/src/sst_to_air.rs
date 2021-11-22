@@ -1,6 +1,7 @@
 use crate::ast::{
     BinaryOp, Ident, Idents, IntRange, Mode, Params, Path, Typ, TypX, Typs, UnaryOp, UnaryOpr,
 };
+use crate::ast_util::{get_field, get_variant};
 use crate::context::Ctx;
 use crate::def::{
     path_to_string, prefix_box, prefix_ensures, prefix_fuel_id, prefix_requires, suffix_global_id,
@@ -128,20 +129,8 @@ pub(crate) fn ctor_to_apply<'a>(
     variant: &Ident,
     binders: &'a Binders<Exp>,
 ) -> (Ident, impl Iterator<Item = &'a Arc<BinderX<Exp>>>) {
-    let fields = &ctx.global.datatypes[path]
-        .iter()
-        .find(|v| &v.name == variant)
-        .expect(format!("couldn't find datatype variant {} in ctor", variant).as_str())
-        .a;
-    (
-        variant_ident(path, &variant),
-        fields.iter().map(move |f| {
-            binders
-                .iter()
-                .find(|binder| binder.name == f.name)
-                .expect(format!("couldn't find datatype binder {} in ctor", f.name).as_str())
-        }),
-    )
+    let fields = &get_variant(&ctx.global.datatypes[path], variant).a;
+    (variant_ident(path, &variant), fields.iter().map(move |f| get_field(binders, &f.name)))
 }
 
 pub(crate) fn constant_to_expr(_ctx: &Ctx, constant: &crate::ast::Constant) -> Expr {

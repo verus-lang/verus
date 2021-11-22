@@ -10,6 +10,7 @@ test_verify_one_file! {
             a: A,
         }
 
+        #[proof]
         fn one(v: int) {
             let t1 = Thing { a: v };
             let t2 = Thing { a: v };

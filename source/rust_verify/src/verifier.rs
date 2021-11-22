@@ -405,6 +405,8 @@ impl Verifier {
         let hir = tcx.hir();
         let erasure_info = ErasureInfo {
             resolved_calls: vec![],
+            resolved_exprs: vec![],
+            resolved_pats: vec![],
             condition_modes: vec![],
             external_functions: vec![],
         };
@@ -456,10 +458,14 @@ impl Verifier {
         }
         let erasure_info = ctxt.erasure_info.borrow();
         let resolved_calls = erasure_info.resolved_calls.clone();
+        let resolved_exprs = erasure_info.resolved_exprs.clone();
+        let resolved_pats = erasure_info.resolved_pats.clone();
         let external_functions = erasure_info.external_functions.clone();
         let erasure_hints = crate::erase::ErasureHints {
             vir_crate,
             resolved_calls,
+            resolved_exprs,
+            resolved_pats,
             erasure_modes,
             external_functions,
         };

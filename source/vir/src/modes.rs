@@ -2,7 +2,7 @@ use crate::ast::{
     BinaryOp, CallTarget, Datatype, Expr, ExprX, Function, Ident, Krate, Mode, Path, Pattern,
     PatternX, Stmt, StmtX, UnaryOpr, VirErr,
 };
-use crate::ast_util::{err_str, err_string};
+use crate::ast_util::{err_str, err_string, get_field};
 use crate::util::vec_map_result;
 use air::ast::Span;
 use air::scope_map::ScopeMap;
@@ -42,6 +42,7 @@ struct Typing {
     pub(crate) datatypes: HashMap<Path, Datatype>,
     pub(crate) vars: ScopeMap<Ident, Mode>,
     pub(crate) erasure_modes: ErasureModes,
+    pub(crate) in_forall_stmt: bool,
 }
 
 impl Typing {
@@ -69,10 +70,10 @@ fn check_expr_has_mode(
 }
 
 fn add_pattern(typing: &mut Typing, mode: Mode, pattern: &Pattern) -> Result<(), VirErr> {
+    typing.erasure_modes.var_modes.push((pattern.span.clone(), mode));
     match &pattern.x {
         PatternX::Wildcard => Ok(()),
         PatternX::Var { name: x, mutable: _ } => {
-            typing.erasure_modes.var_modes.push((pattern.span.clone(), mode));
             typing.insert(&pattern.span, x, mode);
             Ok(())
         }
@@ -100,6 +101,15 @@ fn check_expr(typing: &mut Typing, outer_mode: Mode, expr: &Expr) -> Result<Mode
         ExprX::Const(_) => Ok(outer_mode),
         ExprX::Var(x) => {
             let mode = mode_join(outer_mode, typing.get(x));
+            if typing.in_forall_stmt && mode == Mode::Proof {
+                // Proof variables may be used as spec, but not as proof inside forall statements.
+                // This protects against effectively consuming a linear proof variable
+                // multiple times for different instantiations of the forall variables.
+                return err_str(
+                    &expr.span,
+                    "cannot use proof variable inside forall/assert_by statements",
+                );
+            }
             typing.erasure_modes.var_modes.push((expr.span.clone(), mode));
             Ok(mode)
         }
@@ -140,27 +150,17 @@ fn check_expr(typing: &mut Typing, outer_mode: Mode, expr: &Expr) -> Result<Mode
         }
         ExprX::Ctor(path, variant, binders) => {
             let datatype = &typing.datatypes[path].clone();
-            match datatype.x.variants.iter().find(|v| v.name == *variant) {
-                None => panic!("internal error: missing variant {}", &variant),
-                Some(fields) => {
-                    let mut mode = outer_mode;
-                    for arg in binders.iter() {
-                        match fields.a.iter().find(|f| f.name == arg.name) {
-                            Some(field) => {
-                                let (_, field_mode) = field.a;
-                                let mode_arg =
-                                    check_expr(typing, mode_join(outer_mode, field_mode), &arg.a)?;
-                                if !mode_le(mode_arg, field_mode) {
-                                    // allow this arg by weakening whole struct's mode
-                                    mode = mode_join(mode, mode_arg);
-                                }
-                            }
-                            None => panic!("internal error: missing field {}", &arg.name),
-                        }
-                    }
-                    Ok(mode)
+            let variant = datatype.x.get_variant(variant);
+            let mut mode = outer_mode;
+            for arg in binders.iter() {
+                let (_, field_mode) = get_field(&variant.a, &arg.name).a;
+                let mode_arg = check_expr(typing, mode_join(outer_mode, field_mode), &arg.a)?;
+                if !mode_le(mode_arg, field_mode) {
+                    // allow this arg by weakening whole struct's mode
+                    mode = mode_join(mode, mode_arg);
                 }
             }
+            Ok(mode)
         }
         ExprX::Unary(_, e1) => check_expr(typing, outer_mode, e1),
         ExprX::UnaryOpr(UnaryOpr::Box(_), e1) => check_expr(typing, outer_mode, e1),
@@ -170,13 +170,8 @@ fn check_expr(typing: &mut Typing, outer_mode: Mode, expr: &Expr) -> Result<Mode
         ExprX::UnaryOpr(UnaryOpr::Field { datatype, variant: _, field }, e1) => {
             let e1_mode = check_expr(typing, outer_mode, e1)?;
             let datatype = &typing.datatypes[datatype];
-            let variants = &datatype.x.variants;
-            assert_eq!(variants.len(), 1);
-            let fields = &variants[0].a;
-            match fields.iter().find(|f| f.name == *field) {
-                Some(field) => Ok(mode_join(e1_mode, field.a.1)),
-                None => panic!("internal error: missing field {}", &field),
-            }
+            let field = get_field(&datatype.x.get_only_variant().a, field);
+            Ok(mode_join(e1_mode, field.a.1))
         }
         ExprX::Binary(op, e1, e2) => {
             let op_mode = match op {
@@ -225,6 +220,10 @@ fn check_expr(typing: &mut Typing, outer_mode: Mode, expr: &Expr) -> Result<Mode
         ExprX::Header(_) => panic!("internal error: Header shouldn't exist here"),
         ExprX::Admit => Ok(outer_mode),
         ExprX::Forall { vars, ensure, proof } => {
+            let in_forall_stmt = typing.in_forall_stmt;
+            // REVIEW: we could allow proof vars when vars.len() == 0,
+            // but we'd have to implement the proper lifetime checking in erase.rs
+            typing.in_forall_stmt = true;
             typing.vars.push_scope(true);
             for var in vars.iter() {
                 typing.insert(&expr.span, &var.name, Mode::Spec);
@@ -232,6 +231,7 @@ fn check_expr(typing: &mut Typing, outer_mode: Mode, expr: &Expr) -> Result<Mode
             check_expr_has_mode(typing, Mode::Spec, ensure, Mode::Spec)?;
             check_expr_has_mode(typing, Mode::Proof, proof, Mode::Proof)?;
             typing.vars.pop_scope();
+            typing.in_forall_stmt = in_forall_stmt;
             Ok(Mode::Proof)
         }
         ExprX::If(e1, e2, e3) => {
@@ -252,6 +252,7 @@ fn check_expr(typing: &mut Typing, outer_mode: Mode, expr: &Expr) -> Result<Mode
         }
         ExprX::Match(e1, arms) => {
             let mode1 = check_expr(typing, outer_mode, e1)?;
+            typing.erasure_modes.condition_modes.push((expr.span.clone(), mode1));
             match (mode1, arms.len()) {
                 (Mode::Spec, 0) => {
                     // We treat spec types as inhabited,
@@ -365,7 +366,8 @@ pub fn check_crate(krate: &Krate) -> Result<ErasureModes, VirErr> {
         datatypes.insert(datatype.x.path.clone(), datatype.clone());
     }
     let erasure_modes = ErasureModes { condition_modes: vec![], var_modes: vec![] };
-    let mut typing = Typing { funs, datatypes, vars: ScopeMap::new(), erasure_modes };
+    let mut typing =
+        Typing { funs, datatypes, vars: ScopeMap::new(), erasure_modes, in_forall_stmt: false };
     for function in krate.functions.iter() {
         check_function(&mut typing, function)?;
     }

@@ -45,13 +45,15 @@
 //! #[verifier(external)] functions are kept verbatim.
 //! #[verifier(no_verify)] functions, on the other hand, need erasure to remove requires/ensures.
 
-use crate::rust_to_vir_base::get_verifier_attrs;
+use crate::rust_to_vir_base::{get_mode, get_verifier_attrs};
 use crate::util::{from_raw_span, vec_map};
 use crate::{unsupported, unsupported_unless};
 
 use rustc_ast::ast::{
-    Block, Crate, Expr, ExprKind, FnDecl, FnKind, FnSig, Item, ItemKind, Lit, LitIntType, LitKind,
-    Local, ModKind, NodeId, Param, PathSegment, Stmt, StmtKind,
+    Arm, AssocItem, AssocItemKind, Block, Crate, EnumDef, Expr, ExprKind, Field, FieldPat, FnDecl,
+    FnKind, FnRetTy, FnSig, GenericParam, Generics, ImplKind, Item, ItemKind, Lit, LitIntType,
+    LitKind, Local, ModKind, NodeId, Param, Pat, PatKind, PathSegment, Stmt, StmtKind, StructField,
+    StructRest, TraitRef, Variant, VariantData,
 };
 use rustc_ast::ptr::P;
 use rustc_data_structures::thin_vec::ThinVec;
@@ -61,10 +63,13 @@ use rustc_span::{Span, SpanData};
 
 use std::cell::Cell;
 use std::collections::HashMap;
+use std::sync::Arc;
 
-use vir::ast::Path;
-use vir::ast::{Function, Krate, Mode};
-use vir::modes::ErasureModes;
+use vir::ast::{
+    Datatype, ExprX, Function, GenericBoundX, Krate, Mode, Path, Pattern, PatternX, UnaryOpr,
+};
+use vir::ast_util::get_field;
+use vir::modes::{mode_join, ErasureModes};
 
 /// Information about each call in the AST (each ExprKind::Call).
 #[derive(Clone, Debug)]
@@ -75,6 +80,8 @@ pub enum ResolvedCall {
     CompilableOperator,
     /// The call is to a function, and we record the resolved name of the function here.
     Call(Path),
+    /// Path and variant of datatype constructor
+    Ctor(Path, vir::ast::Ident),
 }
 
 #[derive(Clone)]
@@ -83,6 +90,10 @@ pub struct ErasureHints {
     pub vir_crate: Krate,
     /// Details of each call in the first run's HIR
     pub resolved_calls: Vec<(SpanData, ResolvedCall)>,
+    /// Details of some expressions in first run's HIR
+    pub resolved_exprs: Vec<(SpanData, vir::ast::Expr)>,
+    /// Details of some patterns in first run's HIR
+    pub resolved_pats: Vec<(SpanData, Pattern)>,
     /// Results of mode (spec/proof/exec) inference from first run's VIR
     pub erasure_modes: ErasureModes,
     /// List of #[verifier(external)] functions.  (These don't appear in vir_crate,
@@ -97,10 +108,16 @@ pub struct Ctxt {
     /// Map each function path to its VIR Function, or to None if it is a #[verifier(external)]
     /// function
     functions: HashMap<Path, Option<Function>>,
+    /// Map each datatype path to its VIR Datatype
+    datatypes: HashMap<Path, Datatype>,
     /// Map each function span to its VIR Function, excluding #[verifier(external)] functions
     functions_by_span: HashMap<Span, Function>,
     /// Details of each call in the first run's HIR
     calls: HashMap<Span, ResolvedCall>,
+    /// Details of some expressions in first run's HIR
+    resolved_exprs: HashMap<Span, vir::ast::Expr>,
+    /// Details of some patterns in first run's HIR
+    resolved_pats: HashMap<Span, Pattern>,
     /// Mode of each if/else or match condition, used to decide how to erase if/else and match
     /// condition.  For example, in "if x < 10 { x + 1 } else { x + 2 }", this will record the span
     /// and mode of the expression "x < 10"
@@ -167,21 +184,19 @@ fn keep_mode(ctxt: &Ctxt, mode: Mode) -> bool {
     }
 }
 
-fn expr_to_call(ctxt: &Ctxt, expr: &Expr) -> ResolvedCall {
-    match &expr.kind {
-        ExprKind::Path(_, path) if path.segments.len() == 1 => ctxt.calls[&expr.span].clone(),
-        _ => {
-            unsupported!("complex function call", expr)
-        }
-    }
-}
-
-fn erase_expr(ctxt: &Ctxt, mctxt: &mut MCtxt, expect: Mode, expr: &Expr) -> Expr {
-    erase_expr_opt(ctxt, mctxt, expect, expr).expect("erase_expr")
+fn update_item<K>(item: &Item<K>, kind: K) -> Item<K> {
+    let Item { id, span, ident, .. } = *item; // for asymptotic efficiency, don't call item.clone()
+    let Item { vis, attrs, tokens, .. } = item;
+    Item { id, span, ident, kind, vis: vis.clone(), attrs: attrs.clone(), tokens: tokens.clone() }
 }
 
 /// Replace expr with e1; e2; ...; en, simplifying if possible
-fn replace_with_exprs(mctxt: &mut MCtxt, expr: &Expr, exprs: Vec<Option<Expr>>) -> Option<Expr> {
+fn replace_with_exprs_span(
+    mctxt: &mut MCtxt,
+    span: Span,
+    expr: Option<&Expr>,
+    exprs: Vec<Option<Expr>>,
+) -> Option<Expr> {
     let mut exprs: Vec<Expr> = exprs.into_iter().filter_map(|e| e).collect();
     if exprs.len() == 0 {
         None
@@ -200,13 +215,129 @@ fn replace_with_exprs(mctxt: &mut MCtxt, expr: &Expr, exprs: Vec<Option<Expr>>) 
                 Stmt { id, kind, span }
             })
             .collect();
-        let Expr { id, span, .. } = *expr; // for efficiency, don't call expr.clone()
         let rules = rustc_ast::BlockCheckMode::Default;
+        let id = mctxt.next_node_id();
         let block = Block { stmts, id, rules, span, tokens: None };
         let kind = ExprKind::Block(P(block), None);
-        let id = mctxt.next_node_id();
-        Some(Expr { id, kind, span, attrs: expr.attrs.clone(), tokens: expr.tokens.clone() })
+        match expr {
+            None => {
+                let id = mctxt.next_node_id();
+                Some(Expr { id, kind, span, attrs: ThinVec::new(), tokens: None })
+            }
+            Some(expr) => Some(Expr {
+                id: expr.id,
+                kind,
+                span,
+                attrs: expr.attrs.clone(),
+                tokens: expr.tokens.clone(),
+            }),
+        }
     }
+}
+
+fn replace_with_exprs(mctxt: &mut MCtxt, expr: &Expr, exprs: Vec<Option<Expr>>) -> Option<Expr> {
+    replace_with_exprs_span(mctxt, expr.span, Some(expr), exprs)
+}
+
+fn erase_field_pat(ctxt: &Ctxt, mctxt: &mut MCtxt, fpat: &FieldPat) -> FieldPat {
+    let FieldPat { ident, is_shorthand, id, span, is_placeholder, .. } = *fpat;
+    let pat = P(erase_pat(ctxt, mctxt, &fpat.pat));
+    FieldPat { ident, pat, is_shorthand, attrs: fpat.attrs.clone(), id, span, is_placeholder }
+}
+
+fn erase_pat(ctxt: &Ctxt, mctxt: &mut MCtxt, pat: &Pat) -> Pat {
+    let kind = match &pat.kind {
+        PatKind::Wild => return pat.clone(),
+        PatKind::Ident(_, _, None) => return pat.clone(),
+        PatKind::Struct(path, fields, recovered) => match &ctxt.resolved_pats[&pat.span].x {
+            PatternX::Constructor(vir_path, variant, _) => {
+                let datatype = &ctxt.datatypes[vir_path];
+                let variant = &datatype.x.get_variant(variant).a;
+                let mut fpats: Vec<FieldPat> = Vec::new();
+                for fpat in fields {
+                    let name = Arc::new(fpat.ident.as_str().to_string());
+                    let (_, mode) = get_field(variant, &name).a;
+                    if keep_mode(ctxt, mode) {
+                        fpats.push(erase_field_pat(ctxt, mctxt, fpat));
+                    }
+                }
+                PatKind::Struct(path.clone(), fpats, *recovered)
+            }
+            _ => panic!("internal error: expected PatternX::Constructor"),
+        },
+        PatKind::TupleStruct(path, pats0) => match &ctxt.resolved_pats[&pat.span].x {
+            PatternX::Constructor(vir_path, variant, _) => {
+                let datatype = &ctxt.datatypes[vir_path];
+                let variant = &datatype.x.get_variant(variant).a;
+                let mut pats: Vec<P<Pat>> = Vec::new();
+                for (field, pat) in variant.iter().zip(pats0.iter()) {
+                    let (_, mode) = field.a;
+                    if keep_mode(ctxt, mode) {
+                        pats.push(P(erase_pat(ctxt, mctxt, pat)));
+                    }
+                }
+                PatKind::TupleStruct(path.clone(), pats)
+            }
+            _ => panic!("internal error: expected PatternX::Constructor"),
+        },
+        PatKind::Path(..) => return pat.clone(),
+        PatKind::Tuple(pats) => {
+            let pats = vec_map(pats, |p| P(erase_pat(ctxt, mctxt, p)));
+            PatKind::Tuple(pats)
+        }
+        PatKind::Paren(pat) => PatKind::Paren(P(erase_pat(ctxt, mctxt, pat))),
+        _ => panic!("internal error: unsupported pattern"),
+    };
+    let Pat { id, span, .. } = *pat; // for asymptotic efficiency, don't call pat.clone()
+    Pat { id, kind, span, tokens: pat.tokens.clone() }
+}
+
+fn erase_arm(ctxt: &Ctxt, mctxt: &mut MCtxt, expect: Mode, arm: &Arm) -> Arm {
+    let pat = P(erase_pat(ctxt, mctxt, &*arm.pat));
+    let guard = arm.guard.as_ref().map(|e| P(erase_expr(ctxt, mctxt, expect, e)));
+    let body = P(erase_expr(ctxt, mctxt, expect, &*arm.body));
+    // for asymptotic efficiency, don't call arm.clone()
+    let Arm { span, id, is_placeholder, .. } = *arm;
+    let Arm { attrs, .. } = arm;
+    Arm { attrs: attrs.clone(), pat, guard, body, span, id, is_placeholder }
+}
+
+fn erase_call(
+    ctxt: &Ctxt,
+    mctxt: &mut MCtxt,
+    segment: &PathSegment,
+    f_path: &Path,
+    args: &Vec<P<Expr>>,
+) -> Option<Option<Vec<P<Expr>>>> {
+    let f = &ctxt.functions[f_path];
+    if let Some(f) = f {
+        for (_, bounds) in f.x.typ_bounds.iter() {
+            match (&**bounds, &segment.args) {
+                (GenericBoundX::FnSpec(..), Some(_)) => {
+                    // TODO: erase this type arg from the segment
+                    unsupported!("explicit type args to function with Fn bounds");
+                }
+                _ => {}
+            }
+        }
+        if keep_mode(ctxt, f.x.mode) {
+            let mut new_args: Vec<P<Expr>> = Vec::new();
+            for (arg, param) in args.iter().zip(f.x.params.iter()) {
+                if keep_mode(ctxt, param.x.mode) {
+                    new_args.push(P(erase_expr(ctxt, mctxt, param.x.mode, arg)));
+                }
+            }
+            Some(Some(new_args))
+        } else {
+            Some(None)
+        }
+    } else {
+        None
+    }
+}
+
+fn erase_expr(ctxt: &Ctxt, mctxt: &mut MCtxt, expect: Mode, expr: &Expr) -> Expr {
+    erase_expr_opt(ctxt, mctxt, expect, expr).expect("erase_expr")
 }
 
 /// Erase ghost code from expr, and return Some resulting expression.
@@ -221,7 +352,10 @@ fn erase_expr_opt(ctxt: &Ctxt, mctxt: &mut MCtxt, expect: Mode, expr: &Expr) -> 
             }
         }
         ExprKind::Path(_, _) => {
-            if keep_mode(ctxt, ctxt.var_modes[&expr.span]) && keep_mode(ctxt, expect) {
+            if ctxt.calls.contains_key(&expr.span) {
+                // 0-argument datatype constructor
+                expr.kind.clone()
+            } else if keep_mode(ctxt, ctxt.var_modes[&expr.span]) && keep_mode(ctxt, expect) {
                 expr.kind.clone()
             } else {
                 return None;
@@ -231,10 +365,28 @@ fn erase_expr_opt(ctxt: &Ctxt, mctxt: &mut MCtxt, expect: Mode, expr: &Expr) -> 
             None => return None,
             Some(e) => ExprKind::Paren(P(e)),
         },
+        ExprKind::Cast(e1, ty) => {
+            if keep_mode(ctxt, expect) {
+                let e1 = erase_expr(ctxt, mctxt, expect, e1);
+                ExprKind::Cast(P(e1), ty.clone())
+            } else {
+                let e1 = erase_expr_opt(ctxt, mctxt, expect, e1);
+                return replace_with_exprs(mctxt, expr, vec![e1]);
+            }
+        }
         ExprKind::AddrOf(borrow, mutability, e1) => {
             if keep_mode(ctxt, expect) {
                 let e1 = erase_expr(ctxt, mctxt, expect, e1);
                 ExprKind::AddrOf(*borrow, *mutability, P(e1))
+            } else {
+                let e1 = erase_expr_opt(ctxt, mctxt, expect, e1);
+                return replace_with_exprs(mctxt, expr, vec![e1]);
+            }
+        }
+        ExprKind::Box(e1) => {
+            if keep_mode(ctxt, expect) {
+                let e1 = erase_expr(ctxt, mctxt, expect, e1);
+                ExprKind::Box(P(e1))
             } else {
                 let e1 = erase_expr_opt(ctxt, mctxt, expect, e1);
                 return replace_with_exprs(mctxt, expr, vec![e1]);
@@ -273,33 +425,133 @@ fn erase_expr_opt(ctxt: &Ctxt, mctxt: &mut MCtxt, expect: Mode, expr: &Expr) -> 
             }
         }
         ExprKind::Call(f_expr, args) => {
-            let call = expr_to_call(ctxt, &**f_expr);
+            let (path, call) = match &f_expr.kind {
+                ExprKind::Path(_, path) if ctxt.calls.contains_key(&f_expr.span) => {
+                    (path, ctxt.calls[&f_expr.span].clone())
+                }
+                ExprKind::Path(..) => panic!("internal error: missing function: {:?}", f_expr.span),
+                _ => {
+                    unsupported!("complex function call", f_expr)
+                }
+            };
             match &call {
                 ResolvedCall::Spec => return None,
-                ResolvedCall::CompilableOperator => ExprKind::Call(
-                    f_expr.clone(),
-                    vec_map(args, |e| P(erase_expr(ctxt, mctxt, expect, e))),
-                ),
-                ResolvedCall::Call(f_path) => {
-                    let f = &ctxt.functions[f_path];
-                    if let Some(f) = f {
-                        if keep_mode(ctxt, f.x.mode) {
-                            let mut new_args: Vec<P<Expr>> = Vec::new();
-                            for (arg, param) in args.iter().zip(f.x.params.iter()) {
-                                if keep_mode(ctxt, param.x.mode) {
-                                    new_args.push(P(erase_expr(ctxt, mctxt, param.x.mode, arg)));
-                                }
-                            }
-                            ExprKind::Call(f_expr.clone(), new_args)
-                        } else {
-                            return None;
-                        }
+                ResolvedCall::CompilableOperator => {
+                    if keep_mode(ctxt, expect) {
+                        ExprKind::Call(
+                            f_expr.clone(),
+                            vec_map(args, |e| P(erase_expr(ctxt, mctxt, expect, e))),
+                        )
                     } else {
-                        return Some(expr.clone());
+                        return None;
+                    }
+                }
+                ResolvedCall::Call(f_path) => {
+                    let segment = path.segments.last().expect("path with segments");
+                    match erase_call(ctxt, mctxt, segment, f_path, args) {
+                        None => return Some(expr.clone()),
+                        Some(None) => return None,
+                        Some(Some(args)) => ExprKind::Call(f_expr.clone(), args),
+                    }
+                }
+                ResolvedCall::Ctor(path, variant) => {
+                    if keep_mode(ctxt, expect) {
+                        let datatype = &ctxt.datatypes[path];
+                        let mut new_args: Vec<P<Expr>> = Vec::new();
+                        let variant = datatype.x.get_variant(variant);
+                        for (field, arg) in variant.a.iter().zip(args.iter()) {
+                            let (_, field_mode) = field.a;
+                            if keep_mode(ctxt, field_mode) {
+                                new_args.push(P(erase_expr(
+                                    ctxt,
+                                    mctxt,
+                                    mode_join(expect, field_mode),
+                                    &arg,
+                                )));
+                            }
+                        }
+                        // TODO: instantiate any type parameters left unused after erasure
+                        ExprKind::Call(f_expr.clone(), new_args)
+                    } else {
+                        return None;
                     }
                 }
             }
         }
+        ExprKind::MethodCall(m_path, args, span) => {
+            let call = ctxt.calls[span].clone();
+            match &call {
+                ResolvedCall::Call(f_path) => match erase_call(ctxt, mctxt, m_path, f_path, args) {
+                    None => return Some(expr.clone()),
+                    Some(None) => return None,
+                    Some(Some(args)) => ExprKind::MethodCall(m_path.clone(), args, *span),
+                },
+                _ => panic!("internal error: MethodCall ResolvedCall"),
+            }
+        }
+        ExprKind::Tup(exprs) => {
+            if keep_mode(ctxt, expect) {
+                ExprKind::Tup(vec_map(exprs, |e| P(erase_expr(ctxt, mctxt, expect, e))))
+            } else {
+                let exprs = vec_map(exprs, |e| erase_expr_opt(ctxt, mctxt, expect, e));
+                return replace_with_exprs(mctxt, expr, exprs);
+            }
+        }
+        ExprKind::Struct(path, fields, StructRest::None) => {
+            if keep_mode(ctxt, expect) {
+                let (vir_path, variant) = match &ctxt.calls[&path.span] {
+                    ResolvedCall::Ctor(path, variant) => (path, variant),
+                    _ => panic!("internal error: expected Ctor"),
+                };
+                let datatype = &ctxt.datatypes[vir_path];
+                let mut new_fields: Vec<Field> = Vec::new();
+                let variant = datatype.x.get_variant(variant);
+                for field in fields {
+                    let name = Arc::new(field.ident.as_str().to_string());
+                    let (_, field_mode) = get_field(&variant.a, &name).a;
+                    if keep_mode(ctxt, field_mode) {
+                        let e = erase_expr(ctxt, mctxt, mode_join(expect, field_mode), &field.expr);
+                        // for asymptotic efficiency, don't call field.clone():
+                        let Field { attrs, .. } = field;
+                        let Field { id, span, ident, is_shorthand, is_placeholder, .. } = *field;
+                        let field = Field {
+                            attrs: attrs.clone(),
+                            id,
+                            span,
+                            ident,
+                            expr: P(e),
+                            is_shorthand,
+                            is_placeholder,
+                        };
+                        new_fields.push(field);
+                    }
+                }
+                // TODO: instantiate any type parameters left unused after erasure
+                ExprKind::Struct(path.clone(), new_fields, StructRest::None)
+            } else {
+                let exprs = vec_map(fields, |f| erase_expr_opt(ctxt, mctxt, expect, &f.expr));
+                return replace_with_exprs(mctxt, expr, exprs);
+            }
+        }
+        ExprKind::Field(e1, field) => {
+            let field_mode = match &ctxt.resolved_exprs[&expr.span].x {
+                ExprX::UnaryOpr(UnaryOpr::Field { datatype, variant, field }, _) => {
+                    let datatype = &ctxt.datatypes[datatype];
+                    let variant = datatype.x.get_variant(variant);
+                    get_field(&variant.a, field).a.1
+                }
+                ExprX::UnaryOpr(UnaryOpr::TupleField { .. }, _) => Mode::Exec,
+                _ => panic!("internal error: expected Field"),
+            };
+            if keep_mode(ctxt, field_mode) && keep_mode(ctxt, expect) {
+                let e1 = erase_expr(ctxt, mctxt, expect, e1);
+                ExprKind::Field(P(e1), field.clone())
+            } else {
+                let e1 = erase_expr_opt(ctxt, mctxt, expect, e1);
+                return replace_with_exprs(mctxt, expr, vec![e1]);
+            }
+        }
+        ExprKind::Closure(..) => return None,
         ExprKind::If(eb, e1, e2_opt) => {
             let modeb = ctxt.condition_modes[&expr.span];
             let keep = |mctxt: &mut MCtxt, eb| {
@@ -320,11 +572,67 @@ fn erase_expr_opt(ctxt: &Ctxt, mctxt: &mut MCtxt, expect: Mode, expr: &Expr) -> 
                     // We erase eb, so we have no bool for the If.
                     // Create a nondeterministic boolean to take eb's place.
                     let e_nondet = call_arbitrary(ctxt, mctxt, expr.span);
-                    let eb = replace_with_exprs(mctxt, eb, vec![eb_erase, Some(e_nondet)]);
+                    let eb = replace_with_exprs_span(
+                        mctxt,
+                        expr.span,
+                        None,
+                        vec![eb_erase, Some(e_nondet)],
+                    );
                     keep(mctxt, eb.expect("e_nondet"))
                 } else {
                     let eb = erase_expr(ctxt, mctxt, modeb, eb);
                     keep(mctxt, eb)
+                }
+            }
+        }
+        ExprKind::Match(e0, arms0) => {
+            let mode0 = ctxt.condition_modes[&expr.span];
+            let keep = |mctxt: &mut MCtxt, e0| {
+                let arms = vec_map(&arms0, |arm| erase_arm(ctxt, mctxt, expect, arm));
+                ExprKind::Match(P(e0), arms)
+            };
+            if mode0 == Mode::Exec {
+                let e0 = erase_expr(ctxt, mctxt, mode0, e0);
+                keep(mctxt, e0)
+            } else {
+                assert!(expect != Mode::Exec);
+                if !ctxt.keep_proofs {
+                    let e0 = erase_expr(ctxt, mctxt, mode0, e0);
+                    return Some(e0);
+                } else if mode0 == Mode::Spec && expect == Mode::Proof {
+                    let e0_erase = erase_expr_opt(ctxt, mctxt, mode0, e0);
+                    // We erase e0, so we have no value to match on.
+                    // Create nondeterministic booleans to take e0's place
+                    // and a series of if/else to replace the match.
+                    // if non_det1 e1 else if non_det2 e2 else ... else en
+                    let mut if_else: Option<Expr> = None;
+                    assert!(arms0.len() > 0); // already enforced by mode checker
+                    for i in (0..arms0.len()).rev() {
+                        // Turn arms0[i].body into block
+                        let arm = &arms0[i];
+                        let span = expr.span;
+                        let body = erase_expr(ctxt, mctxt, expect, &arm.body);
+                        let kind = StmtKind::Expr(P(body));
+                        let id = mctxt.next_node_id();
+                        let stmt = Stmt { id, kind, span };
+                        let id = mctxt.next_node_id();
+                        let rules = rustc_ast::BlockCheckMode::Default;
+                        let block = Block { stmts: vec![stmt], id, rules, span, tokens: None };
+                        // Create if/else
+                        let kind = if i == arms0.len() - 1 {
+                            ExprKind::Block(P(block), None)
+                        } else {
+                            let e_nondet = call_arbitrary(ctxt, mctxt, expr.span);
+                            ExprKind::If(P(e_nondet), P(block), Some(P(if_else.unwrap())))
+                        };
+                        let id = mctxt.next_node_id();
+                        let e = Expr { id, kind, span, attrs: ThinVec::new(), tokens: None };
+                        if_else = Some(e);
+                    }
+                    return replace_with_exprs(mctxt, expr, vec![e0_erase, if_else]);
+                } else {
+                    let e0 = erase_expr(ctxt, mctxt, mode0, e0);
+                    keep(mctxt, e0)
                 }
             }
         }
@@ -341,7 +649,7 @@ fn erase_expr_opt(ctxt: &Ctxt, mctxt: &mut MCtxt, expect: Mode, expr: &Expr) -> 
             unsupported!("unsupported expr", expr)
         }
     };
-    let Expr { id, span, .. } = *expr; // for efficiency, don't call expr.clone()
+    let Expr { id, span, .. } = *expr; // for asymptotic efficiency, don't call expr.clone()
     Some(Expr { id, kind, span, attrs: expr.attrs.clone(), tokens: expr.tokens.clone() })
 }
 
@@ -353,16 +661,13 @@ fn erase_stmt(ctxt: &Ctxt, mctxt: &mut MCtxt, expect: Mode, stmt: &Stmt) -> Opti
             let mode1 = ctxt.var_modes[&local.pat.span];
             if keep_mode(ctxt, mode1) {
                 let init = local.init.as_ref().map(|expr| P(erase_expr(ctxt, mctxt, mode1, expr)));
-                let Local { id, span, .. } = **local; // for efficiency, don't call local.clone()
-                let local = Local {
-                    id,
-                    pat: local.pat.clone(),
-                    ty: local.ty.clone(),
-                    init,
-                    span,
-                    attrs: local.attrs.clone(),
-                    tokens: local.tokens.clone(),
-                };
+                let Local { id, span, .. } = **local; // for asymptotic efficiency, don't call local.clone()
+                let Local { ty, attrs, tokens, .. } = &**local;
+                let pat = P(erase_pat(ctxt, mctxt, &local.pat));
+                let ty = ty.clone();
+                let attrs = attrs.clone();
+                let tokens = tokens.clone();
+                let local = Local { id, pat, ty, init, span, attrs, tokens };
                 Some(StmtKind::Local(P(local)))
             } else {
                 local.init.as_ref().and_then(|expr| {
@@ -381,14 +686,14 @@ fn erase_stmt(ctxt: &Ctxt, mctxt: &mut MCtxt, expect: Mode, stmt: &Stmt) -> Opti
             unsupported!("unsupported stmt", stmt)
         }
     };
-    let Stmt { id, span, .. } = *stmt; // for efficiency, don't call stmt.clone()
+    let Stmt { id, span, .. } = *stmt; // for asymptotic efficiency, don't call stmt.clone()
     kind.map(|kind| Stmt { id, kind, span })
 }
 
 fn erase_block(ctxt: &Ctxt, mctxt: &mut MCtxt, expect: Mode, block: &Block) -> Block {
     let stmts: Vec<Stmt> =
         block.stmts.iter().filter_map(|stmt| erase_stmt(ctxt, mctxt, expect, stmt)).collect();
-    let Block { id, rules, span, .. } = *block; // for efficiency, don't call block.clone()
+    let Block { id, rules, span, .. } = *block; // for asymptotic efficiency, don't call block.clone()
     Block { stmts, id, rules, span, tokens: block.tokens.clone() }
 }
 
@@ -398,6 +703,18 @@ fn erase_fn(ctxt: &Ctxt, mctxt: &mut MCtxt, f: &FnKind) -> Option<FnKind> {
     if !keep_mode(ctxt, f_vir.x.mode) {
         return None;
     }
+    let Generics { params, where_clause, span: generics_span } = generics;
+    let mut new_params: Vec<GenericParam> = Vec::new();
+    for ((_, bound), param) in f_vir.x.typ_bounds.iter().zip(params.iter()) {
+        // erase Fn trait bounds, since the type checker won't be able to infer them
+        // TODO: also erase other type parameters left unused after erasure
+        match &**bound {
+            GenericBoundX::None => new_params.push(param.clone()),
+            GenericBoundX::FnSpec(..) => {}
+        }
+    }
+    let generics =
+        Generics { params: new_params, where_clause: where_clause.clone(), span: *generics_span };
     let FnSig { header: _, decl, span: _ } = sig;
     let FnDecl { inputs, output } = &**decl;
     let mut new_inputs: Vec<Param> = Vec::new();
@@ -406,10 +723,23 @@ fn erase_fn(ctxt: &Ctxt, mctxt: &mut MCtxt, f: &FnKind) -> Option<FnKind> {
             new_inputs.push(input.clone());
         }
     }
-    let decl = FnDecl { inputs: new_inputs, output: output.clone() };
+    let ret_mode = f_vir.x.ret.x.mode;
+    let output =
+        if keep_mode(ctxt, ret_mode) { output.clone() } else { FnRetTy::Default(sig.span) };
+    let decl = FnDecl { inputs: new_inputs, output };
     let sig = FnSig { decl: P(decl), ..sig.clone() };
-    let body_opt = body_opt.as_ref().map(|body| P(erase_block(ctxt, mctxt, f_vir.x.mode, &**body)));
-    Some(FnKind(*defaultness, sig, generics.clone(), body_opt))
+    let body_opt = body_opt.as_ref().map(|body| P(erase_block(ctxt, mctxt, ret_mode, &**body)));
+    Some(FnKind(*defaultness, sig, generics, body_opt))
+}
+
+fn erase_assoc_item(ctxt: &Ctxt, mctxt: &mut MCtxt, item: &AssocItem) -> Option<AssocItem> {
+    match &item.kind {
+        AssocItemKind::Fn(f) => match erase_fn(ctxt, mctxt, f) {
+            None => None,
+            Some(f) => Some(update_item(item, AssocItemKind::Fn(Box::new(f)))),
+        },
+        _ => panic!("unsupported AssocItemKind"),
+    }
 }
 
 fn erase_mod(ctxt: &Ctxt, mctxt: &mut MCtxt, module: &ModKind) -> ModKind {
@@ -425,17 +755,49 @@ fn erase_mod(ctxt: &Ctxt, mctxt: &mut MCtxt, module: &ModKind) -> ModKind {
     }
 }
 
+fn erase_fields(ctxt: &Ctxt, old_fields: &Vec<StructField>) -> Vec<StructField> {
+    let mut fields: Vec<StructField> = Vec::new();
+    for field in old_fields {
+        let mode = get_mode(Mode::Exec, &field.attrs[..]);
+        if keep_mode(ctxt, mode) {
+            fields.push(field.clone())
+        }
+    }
+    fields
+}
+
+fn erase_variant_data(ctxt: &Ctxt, variant: &VariantData) -> VariantData {
+    match variant {
+        VariantData::Struct(fields, recovered) => {
+            VariantData::Struct(erase_fields(ctxt, fields), *recovered)
+        }
+        VariantData::Tuple(fields, id) => VariantData::Tuple(erase_fields(ctxt, fields), *id),
+        VariantData::Unit(_) => variant.clone(),
+    }
+}
+
+fn erase_variant(ctxt: &Ctxt, variant: &Variant) -> Variant {
+    let Variant { id, span, ident, is_placeholder, .. } = *variant;
+    let Variant { attrs, vis, data, disr_expr, .. } = variant;
+    let attrs = attrs.clone();
+    let vis = vis.clone();
+    let data = erase_variant_data(ctxt, data);
+    let disr_expr = disr_expr.clone();
+    Variant { attrs, id, span, vis, ident, data, disr_expr, is_placeholder }
+}
+
 fn erase_item(ctxt: &Ctxt, mctxt: &mut MCtxt, item: &Item) -> Vec<P<Item>> {
     let kind = match &item.kind {
         ItemKind::ExternCrate(_) => item.kind.clone(),
         ItemKind::Use(_) => item.kind.clone(),
         ItemKind::Mod(unsafety, kind) => ItemKind::Mod(*unsafety, erase_mod(ctxt, mctxt, kind)),
         ItemKind::ForeignMod { .. } => item.kind.clone(),
-        ItemKind::Struct(_, _) => {
-            // TODO:
-            // We don't yet have ghost structs or ghost fields.
-            // When we do, we will need to erase them here.
-            item.kind.clone()
+        ItemKind::Struct(variant, generics) => {
+            ItemKind::Struct(erase_variant_data(ctxt, variant), generics.clone())
+        }
+        ItemKind::Enum(EnumDef { variants }, generics) => {
+            let variants = vec_map(&variants, |v| erase_variant(ctxt, v));
+            ItemKind::Enum(EnumDef { variants }, generics.clone())
         }
         ItemKind::Fn(kind) => {
             let vattrs = get_verifier_attrs(&item.attrs).expect("get_verifier_attrs");
@@ -447,20 +809,37 @@ fn erase_item(ctxt: &Ctxt, mctxt: &mut MCtxt, item: &Item) -> Vec<P<Item>> {
                 Some(kind) => ItemKind::Fn(Box::new(kind)),
             }
         }
+        ItemKind::Impl(kind) => {
+            if let Some(TraitRef { .. }) = kind.of_trait {
+                return vec![P(item.clone())];
+            }
+            let mut items: Vec<P<AssocItem>> = Vec::new();
+            for item in &kind.items {
+                if let Some(item) = erase_assoc_item(ctxt, mctxt, &item) {
+                    items.push(P(item));
+                }
+            }
+            // for asymptotic efficiency, don't call kind.clone():
+            let ImplKind { unsafety, polarity, defaultness, constness, .. } = **kind;
+            let ImplKind { generics, of_trait, self_ty, .. } = &**kind;
+            let kind = ImplKind {
+                unsafety,
+                polarity,
+                defaultness,
+                constness,
+                generics: generics.clone(),
+                of_trait: of_trait.clone(),
+                self_ty: self_ty.clone(),
+                items,
+            };
+            ItemKind::Impl(Box::new(kind))
+        }
+        ItemKind::Const(..) => item.kind.clone(),
         _ => {
             unsupported!("unsupported item", item)
         }
     };
-    let Item { id, span, ident, .. } = *item; // for efficiency, don't call item.clone()
-    vec![P(Item {
-        id,
-        span,
-        ident,
-        kind,
-        vis: item.vis.clone(),
-        attrs: item.attrs.clone(),
-        tokens: item.tokens.clone(),
-    })]
+    vec![P(update_item(item, kind))]
 }
 
 fn erase_crate(ctxt: &Ctxt, mctxt: &mut MCtxt, krate: &Crate) -> Crate {
@@ -476,7 +855,10 @@ fn erase_crate(ctxt: &Ctxt, mctxt: &mut MCtxt, krate: &Crate) -> Crate {
 fn mk_ctxt(erasure_hints: &ErasureHints, keep_proofs: bool) -> Ctxt {
     let mut functions = HashMap::new();
     let mut functions_by_span = HashMap::new();
+    let mut datatypes = HashMap::new();
     let mut calls: HashMap<Span, ResolvedCall> = HashMap::new();
+    let mut resolved_exprs: HashMap<Span, vir::ast::Expr> = HashMap::new();
+    let mut resolved_pats: HashMap<Span, Pattern> = HashMap::new();
     for f in &erasure_hints.vir_crate.functions {
         functions.insert(f.x.path.clone(), Some(f.clone()));
         functions_by_span.insert(from_raw_span(&f.span.raw_span), f.clone());
@@ -484,8 +866,17 @@ fn mk_ctxt(erasure_hints: &ErasureHints, keep_proofs: bool) -> Ctxt {
     for name in &erasure_hints.external_functions {
         functions.insert(name.clone(), None);
     }
+    for d in &erasure_hints.vir_crate.datatypes {
+        datatypes.insert(d.x.path.clone(), d.clone());
+    }
     for (span, call) in &erasure_hints.resolved_calls {
         calls.insert(span.span(), call.clone());
+    }
+    for (span, expr) in &erasure_hints.resolved_exprs {
+        resolved_exprs.insert(span.span(), expr.clone());
+    }
+    for (span, expr) in &erasure_hints.resolved_pats {
+        resolved_pats.insert(span.span(), expr.clone());
     }
     let mut condition_modes: HashMap<Span, Mode> = HashMap::new();
     let mut var_modes: HashMap<Span, Mode> = HashMap::new();
@@ -499,7 +890,10 @@ fn mk_ctxt(erasure_hints: &ErasureHints, keep_proofs: bool) -> Ctxt {
         vir_crate: erasure_hints.vir_crate.clone(),
         functions,
         functions_by_span,
+        datatypes,
         calls,
+        resolved_exprs,
+        resolved_pats,
         condition_modes,
         var_modes,
         keep_proofs,

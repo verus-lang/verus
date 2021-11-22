@@ -48,6 +48,18 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_assertby1_fail3 code! {
+        #[proof]
+        fn consume(#[proof] x: bool) {
+        }
+
+        fn assertby_proof_var_disallowed(#[proof] x: bool) {
+            assert_by(true, consume(x));
+        }
+    } => Err(_)
+}
+
+test_verify_one_file! {
     #[test] test_forallstmt1 code! {
         #[spec]
         #[opaque]
@@ -56,11 +68,22 @@ test_verify_one_file! {
         }
 
         fn forallstmt_test() {
-            forall(|x:int| {
+            forall(|x: int| {
                 ensures(f1(x) > x);
                 reveal(f1);
             });
             assert(f1(3) > 3);
+        }
+
+        #[proof]
+        fn no_consume(x: bool) {
+        }
+
+        fn forallstmt_proof_var_allowed_as_spec(#[proof] x: bool) {
+            forall(|i: int| {
+                ensures(f1(i) == f1(i));
+                no_consume(x);
+            });
         }
     } => Ok(())
 }
@@ -74,7 +97,7 @@ test_verify_one_file! {
         }
 
         fn forallstmt_test() {
-            forall(|x:int| {
+            forall(|x: int| {
                 ensures(f1(x) < x); // FAILS
                 reveal(f1);
             });
@@ -91,11 +114,32 @@ test_verify_one_file! {
         }
 
         fn forallstmt_test() {
-            forall(|x:int| {
+            forall(|x: int| {
                 ensures(f1(x) > x);
                 reveal(f1);
             });
             assert(f1(3) == 4); // FAILS
         }
     } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] test_forallstmt1_fail3 code! {
+        #[spec]
+        #[opaque]
+        fn f1(i: int) -> int {
+            i + 1
+        }
+
+        #[proof]
+        fn consume(#[proof] x: bool) {
+        }
+
+        fn forallstmt_proof_var_disallowed(#[proof] x: bool) {
+            forall(|i: int| {
+                ensures(f1(i) == f1(i));
+                consume(x);
+            });
+        }
+    } => Err(_)
 }

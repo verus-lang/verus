@@ -45,7 +45,7 @@ fn check_fn_decl<'tcx>(
         // REVIEW: there's no attribute syntax on return types,
         // so we always return the default mode.
         // The current workaround is to return a struct if the default doesn't work.
-        rustc_hir::FnRetTy::Return(ty) => Ok(Some((ty_to_vir(tcx, ty), mode))),
+        rustc_hir::FnRetTy::Return(ty) => Ok(Some((ty_to_vir(tcx, ty), get_var_mode(mode, &[])))),
     }
 }
 

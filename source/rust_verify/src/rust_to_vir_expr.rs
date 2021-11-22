@@ -184,7 +184,7 @@ pub(crate) fn expr_to_vir<'tcx>(
 fn record_fun(
     ctxt: &crate::context::Context,
     span: Span,
-    id: DefId,
+    path: &vir::ast::Path,
     is_spec: bool,
     is_compilable_operator: bool,
 ) {
@@ -194,7 +194,7 @@ fn record_fun(
     } else if is_compilable_operator {
         ResolvedCall::CompilableOperator
     } else {
-        ResolvedCall::Call(def_id_to_vir_path(ctxt.tcx, id))
+        ResolvedCall::Call(path.clone())
     };
     erasure_info.resolved_calls.push((span.data(), resolved_call));
 }
@@ -261,7 +261,13 @@ fn fn_call_to_vir<'tcx>(
     let is_directive = is_hide || is_reveal || is_reveal_fuel;
     let is_cmp = is_equal || is_eq || is_ne || is_le || is_ge || is_lt || is_gt;
     let is_arith_binary = is_add || is_sub || is_mul;
-    record_fun(&bctx.ctxt, fn_span, f, is_spec || is_quant || is_directive, is_implies);
+    record_fun(
+        &bctx.ctxt,
+        fn_span,
+        &path,
+        is_spec || is_quant || is_directive || is_assert_by,
+        is_implies,
+    );
 
     let len = args.len();
     if is_requires {
@@ -487,6 +493,7 @@ pub(crate) fn expr_tuple_datatype_ctor_to_vir<'tcx>(
     expr: &Expr<'tcx>,
     res: &Res,
     args_slice: &[Expr<'tcx>],
+    path_span: Span,
 ) -> Result<vir::ast::Expr, VirErr> {
     let tcx = bctx.ctxt.tcx;
     let expr_typ = typ_of_node(bctx, &expr.hir_id);
@@ -530,6 +537,9 @@ pub(crate) fn expr_tuple_datatype_ctor_to_vir<'tcx>(
             })
             .collect::<Result<Vec<_>, _>>()?,
     );
+    let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
+    let resolved_call = ResolvedCall::Ctor(vir_path.clone(), variant_name.clone());
+    erasure_info.resolved_calls.push((path_span.data(), resolved_call));
     Ok(spanned_typed_new(expr.span, &expr_typ, ExprX::Ctor(vir_path, variant_name, vir_fields)))
 }
 
@@ -605,7 +615,10 @@ pub(crate) fn pattern_to_vir<'tcx>(
         _ => return unsupported_err!(pat.span, "complex pattern", pat),
     };
     let pat_typ = typ_of_node(bctx, &pat.hir_id);
-    Ok(spanned_typed_new(pat.span, &pat_typ, pattern))
+    let pattern = spanned_typed_new(pat.span, &pat_typ, pattern);
+    let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
+    erasure_info.resolved_pats.push((pat.span.data(), pattern.clone()));
+    Ok(pattern)
 }
 
 pub(crate) fn expr_to_vir_inner<'tcx>(
@@ -633,8 +646,12 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                 // a tuple-style datatype constructor
                 ExprKind::Path(QPath::Resolved(
                     None,
-                    rustc_hir::Path { res: res @ Res::Def(DefKind::Ctor(_, _), _), .. },
-                )) => expr_tuple_datatype_ctor_to_vir(bctx, expr, res, *args_slice),
+                    rustc_hir::Path {
+                        res: res @ Res::Def(DefKind::Ctor(_, _), _),
+                        span: path_span,
+                        ..
+                    },
+                )) => expr_tuple_datatype_ctor_to_vir(bctx, expr, res, *args_slice, *path_span),
                 // a statically resolved function
                 ExprKind::Path(QPath::Resolved(
                     None,
@@ -665,6 +682,9 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                     let target = CallTarget::FnSpec { typ_param, fun: vir_fun };
                     let params: Vec<bool> = vec_map(&args, |_| true);
                     let ret = Some(true);
+                    let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
+                    // Only spec closures are currently supported:
+                    erasure_info.resolved_calls.push((fun.span.data(), ResolvedCall::Spec));
                     fn_exp_call_to_vir(expr.span, params, ret, vir_args, expr_typ, target)
                 }
             }
@@ -793,7 +813,7 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                         Ok(mk_expr(ExprX::Var(Arc::new(name))))
                     }
                     DefKind::Ctor(_, _ctor_kind) => {
-                        expr_tuple_datatype_ctor_to_vir(bctx, expr, &path.res, &[])
+                        expr_tuple_datatype_ctor_to_vir(bctx, expr, &path.res, &[], path.span)
                     }
                     _ => {
                         unsupported_err!(expr.span, format!("Path {:?} kind {:?}", id, def_kind))
@@ -842,7 +862,10 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                     let field: usize =
                         str::parse(&name.as_str()).expect("integer index into tuple");
                     let field_opr = UnaryOpr::TupleField { tuple_arity: ts.len(), field };
-                    return Ok(mk_expr(ExprX::UnaryOpr(field_opr, vir_lhs)));
+                    let vir = mk_expr(ExprX::UnaryOpr(field_opr, vir_lhs));
+                    let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
+                    erasure_info.resolved_exprs.push((expr.span.data(), vir.clone()));
+                    return Ok(vir);
                 }
                 unsupported_err!(expr.span, "field_of_non_adt", expr)
             };
@@ -858,6 +881,8 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                     vir_lhs,
                 ),
             );
+            let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
+            erasure_info.resolved_exprs.push((expr.span.data(), vir.clone()));
             if let Some(target_typ) = unbox {
                 vir = SpannedTyped::new(
                     &vir.span,
@@ -947,7 +972,7 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
         }
         ExprKind::Struct(qpath, fields, spread) => {
             unsupported_unless!(spread.is_none(), "spread_in_struct_ctor");
-            let (path, variant, variant_name) = match qpath {
+            let (path, path_span, variant, variant_name) = match qpath {
                 QPath::Resolved(slf, path) => {
                     unsupported_unless!(
                         matches!(path.res, Res::Def(DefKind::Struct | DefKind::Variant, _)),
@@ -964,7 +989,7 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                             .expect(format!("variant name in Struct ctor for {:?}", path).as_str());
                     }
                     let variant_name = str_ident(&variant.ident.as_str());
-                    (vir_path, variant, variant_name)
+                    (vir_path, path.span, variant, variant_name)
                 }
                 _ => panic!("unexpected qpath {:?}", qpath),
             };
@@ -996,9 +1021,12 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                     })
                     .collect::<Result<Vec<_>, _>>()?,
             );
+            let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
+            let resolved_call = ResolvedCall::Ctor(path.clone(), variant_name.clone());
+            erasure_info.resolved_calls.push((path_span.data(), resolved_call));
             Ok(mk_expr(ExprX::Ctor(path, variant_name, vir_fields)))
         }
-        ExprKind::MethodCall(_name_and_generics, _call_span_0, all_args, _call_span_1) => {
+        ExprKind::MethodCall(_name_and_generics, _call_span_0, all_args, call_span_1) => {
             let receiver = all_args.first().expect("receiver in method call");
             let self_path = match &(*typ_of_node(bctx, &receiver.hir_id)) {
                 TypX::Datatype(path, _) => path.clone(),
@@ -1008,15 +1036,13 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                 .types
                 .type_dependent_def_id(expr.hir_id)
                 .expect("def id of the method definition");
-            let sig = if let rustc_hir::Node::ImplItem(rustc_hir::ImplItem {
-                kind: rustc_hir::ImplItemKind::Fn(sig, _body_id),
-                ..
-            }) = tcx.hir().get_if_local(fn_def_id).expect("fn def for method in hir")
-            {
-                sig
-            } else {
-                panic!("unexpected hir for method impl item");
-            };
+            match tcx.hir().get_if_local(fn_def_id).expect("fn def for method in hir") {
+                rustc_hir::Node::ImplItem(rustc_hir::ImplItem {
+                    kind: rustc_hir::ImplItemKind::Fn(..),
+                    ..
+                }) => {}
+                _ => panic!("unexpected hir for method impl item"),
+            }
             fn_call_to_vir(
                 bctx,
                 expr,
@@ -1024,7 +1050,7 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                 fn_def_id,
                 tcx.type_of(fn_def_id),
                 bctx.types.node_substs(expr.hir_id),
-                sig.span,
+                *call_span_1,
                 all_args,
             )
         }

@@ -5,12 +5,12 @@ use pervasive::*;
 #[derive(PartialEq, Eq)]
 struct Car {
     four_doors: bool,
-    passengers: int,
+    passengers: u64,
 }
 
 impl Car {
-    fn get_passengers(&self) -> int {
-        ensures(|result: int| result == self.passengers);
+    fn get_passengers(&self) -> u64 {
+        ensures(|result: u64| result == self.passengers);
         self.passengers
     }
 }

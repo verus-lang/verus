@@ -69,6 +69,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_enum_1 STRUCTS.to_string() + code_str! {
+        #[proof]
         fn test_enum_1(passengers: int) {
             let t = Vehicle::Train(true);
             let c1 = Vehicle::Car(Car { passengers, four_doors: true });
