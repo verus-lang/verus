@@ -57,7 +57,7 @@ impl<A> Set<A> {
 
     #[spec]
     #[verifier(pub_abstract)]
-    pub fn insert(self, a: A) -> Self {
+    pub fn insert(self, a: A) -> Set<A> {
         arbitrary()
     }
 

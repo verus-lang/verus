@@ -152,3 +152,19 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] #[ignore] test_impl_with_self code! {
+        #[derive(PartialEq, Eq, Structural)]
+        struct Bike {
+            hard_tail: bool,
+        }
+
+        impl Bike {
+            #[spec]
+            fn id(self) -> Self {
+                self
+            }
+        }
+    } => Ok(())
+}
