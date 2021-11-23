@@ -154,7 +154,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] #[ignore] test_impl_with_self code! {
+    #[test] test_impl_with_self code! {
         #[derive(PartialEq, Eq, Structural)]
         struct Bike {
             hard_tail: bool,

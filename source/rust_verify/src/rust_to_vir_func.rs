@@ -27,9 +27,29 @@ pub(crate) fn body_to_vir<'tcx>(
     expr_to_vir(&bctx, &body.value)
 }
 
+fn is_self_or_self_ref(span: Span, ty: &rustc_hir::Ty) -> Result<bool, VirErr> {
+    match ty.kind {
+        rustc_hir::TyKind::Rptr(
+            _,
+            rustc_hir::MutTy { ty: rty, mutbl: rustc_hir::Mutability::Not, .. },
+        ) => is_self_or_self_ref(span, rty),
+        rustc_hir::TyKind::Path(rustc_hir::QPath::Resolved(None, path)) => match path.res {
+            rustc_hir::def::Res::SelfTy(Some(_), _impl_def_id) => {
+                unsupported_err!(span, "trait self", ty)
+            }
+            rustc_hir::def::Res::SelfTy(None, _) => Ok(true),
+            _ => Ok(false),
+        },
+        _ => Ok(false),
+    }
+}
+
 fn check_fn_decl<'tcx>(
     tcx: TyCtxt<'tcx>,
+    sig_span: &Span,
     decl: &'tcx FnDecl<'tcx>,
+    self_path: Option<vir::ast::Path>,
+    self_typ_params: Option<vir::ast::Idents>,
     mode: Mode,
 ) -> Result<Option<(Typ, Mode)>, VirErr> {
     let FnDecl { inputs: _, output, c_variadic, implicit_self } = decl;
@@ -45,7 +65,21 @@ fn check_fn_decl<'tcx>(
         // REVIEW: there's no attribute syntax on return types,
         // so we always return the default mode.
         // The current workaround is to return a struct if the default doesn't work.
-        rustc_hir::FnRetTy::Return(ty) => Ok(Some((ty_to_vir(tcx, ty), get_var_mode(mode, &[])))),
+        rustc_hir::FnRetTy::Return(ty) => {
+            let typ = if is_self_or_self_ref(*sig_span, &ty)? {
+                let typ_args = vec_map(
+                    self_typ_params.as_ref().expect("expected Self type parameters"),
+                    |t| Arc::new(TypX::TypParam(t.clone())),
+                );
+                Arc::new(TypX::Datatype(
+                    self_path.as_ref().expect("a param is Self, so this must be an impl").clone(),
+                    Arc::new(typ_args),
+                ))
+            } else {
+                ty_to_vir(tcx, ty)
+            };
+            Ok(Some((typ, get_var_mode(mode, &[]))))
+        }
     }
 }
 
@@ -69,6 +103,8 @@ pub(crate) fn check_item_fn<'tcx>(
         def_id_to_vir_path(ctxt.tcx, id)
     };
     let mode = get_mode(Mode::Exec, attrs);
+    let self_typ_params =
+        if let Some(cg) = self_generics { Some(check_generics(ctxt.tcx, cg)?) } else { None };
     let ret_typ_mode = match sig {
         FnSig {
             header: FnHeader { unsafety, constness: _, asyncness: _, abi: _ },
@@ -76,11 +112,16 @@ pub(crate) fn check_item_fn<'tcx>(
             span: _,
         } => {
             unsupported_err_unless!(*unsafety == Unsafety::Normal, sig.span, "unsafe");
-            check_fn_decl(ctxt.tcx, decl, mode)?
+            check_fn_decl(
+                ctxt.tcx,
+                &sig.span,
+                decl,
+                self_path.clone(),
+                self_typ_params.clone(),
+                mode,
+            )?
         }
     };
-    let self_typ_params =
-        if let Some(cg) = self_generics { Some(check_generics(ctxt.tcx, cg)?) } else { None };
     let sig_typ_bounds = check_generics_bounds(ctxt.tcx, generics)?;
     let fuel = get_fuel(attrs);
     let vattrs = get_verifier_attrs(attrs)?;
@@ -95,22 +136,6 @@ pub(crate) fn check_item_fn<'tcx>(
     for (param, input) in params.iter().zip(sig.decl.inputs.iter()) {
         let Param { hir_id, pat, ty_span: _, span } = param;
         let name = Arc::new(pat_to_var(pat));
-        fn is_self_or_self_ref(span: Span, ty: &rustc_hir::Ty) -> Result<bool, VirErr> {
-            match ty.kind {
-                rustc_hir::TyKind::Rptr(
-                    _,
-                    rustc_hir::MutTy { ty: rty, mutbl: rustc_hir::Mutability::Not, .. },
-                ) => is_self_or_self_ref(span, rty),
-                rustc_hir::TyKind::Path(rustc_hir::QPath::Resolved(None, path)) => match path.res {
-                    rustc_hir::def::Res::SelfTy(Some(_), _impl_def_id) => {
-                        unsupported_err!(span, "trait self", ty)
-                    }
-                    rustc_hir::def::Res::SelfTy(None, _) => Ok(true),
-                    _ => Ok(false),
-                },
-                _ => Ok(false),
-            }
-        }
         let typ = if is_self_or_self_ref(*span, &input)? {
             let typ_args =
                 vec_map(self_typ_params.as_ref().expect("expected Self type parameters"), |t| {
@@ -213,7 +238,7 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
     generics: &'tcx Generics,
 ) -> Result<(), VirErr> {
     let mode = get_mode(Mode::Exec, attrs);
-    let ret_typ_mode = check_fn_decl(ctxt.tcx, decl, mode)?;
+    let ret_typ_mode = check_fn_decl(ctxt.tcx, &span, decl, None, None, mode)?;
     let typ_bounds = check_generics_bounds(ctxt.tcx, generics)?;
     let fuel = get_fuel(attrs);
     let mut vir_params: Vec<vir::ast::Param> = Vec::new();
