@@ -112,5 +112,6 @@ pub fn check_crate(krate: &Krate) -> Result<(), VirErr> {
     for function in krate.functions.iter() {
         check_function(&ctxt, function)?;
     }
+    crate::recursive_types::check_recursive_types(krate)?;
     Ok(())
 }

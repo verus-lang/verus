@@ -41,6 +41,7 @@ pub mod headers;
 pub mod modes;
 mod prelude;
 mod recursion;
+mod recursive_types;
 mod scc;
 mod sst;
 mod sst_to_air;
