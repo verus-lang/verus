@@ -54,7 +54,7 @@ impl<A> Vec<A> {
         ensures(|v2: Vec<A>| [
             v2.len() == self.len(),
             equal(a, v2.index(i)),
-            forall(|j: int| imply(0 <= j && j < self.len() && j != i, equal(self.index(j), self.index(j)))),
+            forall(|j: int| imply(0 <= j && j < self.len() && j != i, equal(self.index(j), v2.index(j)))),
         ]);
 
         set_external(self, i, a)
