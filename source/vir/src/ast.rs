@@ -85,6 +85,8 @@ pub enum TypX {
     Boxed(Typ),
     /// Type parameter (inherently SMT-boxed, and cannot be unboxed)
     TypParam(Ident),
+    /// Type of type identifiers
+    TypeId,
 }
 
 /// Primitive unary operations
@@ -320,11 +322,24 @@ pub enum GenericBoundX {
 
 pub type TypBounds = Arc<Vec<(Ident, GenericBound)>>;
 
+pub type FunctionAttrs = Arc<FunctionAttrsX>;
+#[derive(Debug, Default, Clone)]
+pub struct FunctionAttrsX {
+    /// List of functions that this function wants to view as opaque
+    pub hidden: Arc<Vec<Path>>,
+    /// Create a global axiom saying forall params, require ==> ensure
+    pub export_as_global_forall: bool,
+    /// Custom error message to display when a pre-condition fails
+    pub custom_req_err: Option<String>,
+}
+
 /// Function, including signature and body
 pub type Function = Arc<Spanned<FunctionX>>;
 #[derive(Debug, Clone)]
 pub struct FunctionX {
+    /// Name of function
     pub path: Path,
+    /// Access control (public/private)
     pub visibility: Visibility,
     /// exec functions are compiled, proof/spec are erased
     /// exec/proof functions can have requires/ensures, spec cannot
@@ -345,13 +360,11 @@ pub struct FunctionX {
     pub ensure: Exprs,
     /// Decreases clause to ensure recursive function termination
     pub decrease: Option<Expr>,
-    /// Custom error message to display when a pre-condition fails
-    pub custom_req_err: Option<String>,
-    /// List of functions that this function wants to view as opaque
-    pub hidden: Arc<Vec<Path>>,
     /// For public spec functions, is_abstract == true means that the body is private
     /// even though the function is public
     pub is_abstract: bool,
+    /// Various attributes
+    pub attrs: FunctionAttrs,
     /// Body of the function (may be None for foreign functions or for no_verify functions)
     pub body: Option<Expr>,
 }

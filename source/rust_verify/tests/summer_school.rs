@@ -145,9 +145,6 @@ test_verify_one_file! {
         #[proof]
         fn try_out_some_set_literals(x: int, y: int)
         {
-            // TODO(chris): make these axioms ambient when you include set library
-            set_axioms::<int>();
-
             // TODO: What should be the literal for mathematical Sets, and the encoding?
             // TODO: This is probably what it would look like for rust HashSet
             // TODO(utaal): not even THIS works
@@ -473,7 +470,6 @@ test_verify_one_file! {
         #[proof]
         fn num_page_elements()
         {
-            set_axioms::<int>();    // TODO(chris): magic to not have to call this
             /*
             ensures([
                 exists(|eltSet:Set<HAlign>| cardinality(eltSet) == 3), // bound is tight
@@ -489,12 +485,10 @@ test_verify_one_file! {
             assert(!set_empty::<int>().contains(1) && set_empty::<int>().insert(1).cardinality() == set_empty::<int>().cardinality() + 1);
             assert(set_empty::<int>().insert(1).cardinality() == set_empty::<int>().cardinality() + 1);
 
-            set_axioms::<HAlign>();
             // TODO remove: more manual triggering of undesirable trigger
             assert(!set_empty().contains(HAlign::Left));
             assert(!set_empty().insert(HAlign::Left).contains(HAlign::Center));
             assert(!set_empty().insert(HAlign::Left).insert(HAlign::Center).contains(HAlign::Right));
-            // TODO(chris): some missing axioms about has_type
             assert(maxSet.cardinality() == 3);
 
             // TODO(jonh): Complete rest of forall proof.

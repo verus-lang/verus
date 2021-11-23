@@ -1,4 +1,4 @@
-use crate::ast::{BinaryOp, Ident, UnaryOp, UnaryOpr, VirErr};
+use crate::ast::{BinaryOp, Ident, Typ, TypX, UnaryOp, UnaryOpr, VirErr};
 use crate::ast_util::{err_str, err_string};
 use crate::context::Ctx;
 use crate::sst::{BndX, Exp, ExpX, Trig, Trigs};
@@ -34,7 +34,20 @@ fn check_trigger_expr(exp: &Exp, free_vars: &mut HashSet<Ident>) -> Result<(), V
         }
     }
     let mut f = |exp: &Exp, _: &mut _| match &exp.x {
-        ExpX::Const(_) | ExpX::Call(..) | ExpX::Ctor(..) => Ok(exp.clone()),
+        ExpX::Const(_) | ExpX::Ctor(..) => Ok(exp.clone()),
+        ExpX::Call(_, typs, _) => {
+            for typ in typs.iter() {
+                let ft = |free_vars: &mut HashSet<Ident>, t: &Typ| match &**t {
+                    TypX::TypParam(x) => {
+                        free_vars.insert(crate::def::suffix_typ_param_id(x));
+                        Ok(t.clone())
+                    }
+                    _ => Ok(t.clone()),
+                };
+                crate::ast_visitor::map_typ_visitor_env(typ, free_vars, &ft).unwrap();
+            }
+            Ok(exp.clone())
+        }
         ExpX::Var((x, None)) => {
             free_vars.insert(x.clone());
             Ok(exp.clone())

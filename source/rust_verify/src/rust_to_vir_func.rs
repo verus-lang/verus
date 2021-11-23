@@ -12,7 +12,7 @@ use rustc_middle::ty::TyCtxt;
 use rustc_span::symbol::Ident;
 use rustc_span::Span;
 use std::sync::Arc;
-use vir::ast::{FunctionX, KrateX, Mode, ParamX, Typ, TypX, VirErr};
+use vir::ast::{FunctionAttrsX, FunctionX, KrateX, Mode, ParamX, Typ, TypX, VirErr};
 use vir::def::RETURN_VALUE;
 
 pub(crate) fn body_to_vir<'tcx>(
@@ -205,6 +205,11 @@ pub(crate) fn check_item_fn<'tcx>(
         typ_bounds.extend_from_slice(&sig_typ_bounds[..]);
         Arc::new(typ_bounds)
     };
+    let fattrs = FunctionAttrsX {
+        hidden: Arc::new(header.hidden),
+        custom_req_err: vattrs.custom_req_err,
+        export_as_global_forall: vattrs.export_as_global_forall,
+    };
     let func = FunctionX {
         path,
         visibility,
@@ -216,9 +221,8 @@ pub(crate) fn check_item_fn<'tcx>(
         require: header.require,
         ensure: header.ensure,
         decrease: header.decrease,
-        custom_req_err: vattrs.custom_req_err,
-        hidden: Arc::new(header.hidden),
         is_abstract: vattrs.is_abstract,
+        attrs: Arc::new(fattrs),
         body: if vattrs.do_verify { Some(vir_body) } else { None },
     };
     let function = spanned_new(sig.span, func);
@@ -269,9 +273,8 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
         require: Arc::new(vec![]),
         ensure: Arc::new(vec![]),
         decrease: None,
-        custom_req_err: None,
-        hidden: Arc::new(vec![]),
         is_abstract: false,
+        attrs: Default::default(),
         body: None,
     };
     let function = spanned_new(span, func);

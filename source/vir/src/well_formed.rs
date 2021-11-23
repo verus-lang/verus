@@ -1,7 +1,7 @@
 use crate::ast::{
     CallTarget, Datatype, Expr, ExprX, Function, Krate, Mode, Path, UnaryOpr, VirErr,
 };
-use crate::ast_util::err_string;
+use crate::ast_util::{err_str, err_string};
 use crate::ast_visitor::map_expr_visitor;
 use crate::datatype_to_air::is_datatype_transparent;
 use std::collections::HashMap;
@@ -12,6 +12,34 @@ struct Ctxt {
 }
 
 fn check_function(ctxt: &Ctxt, function: &Function) -> Result<(), VirErr> {
+    if function.x.attrs.export_as_global_forall {
+        if function.x.mode != Mode::Proof {
+            return err_str(
+                &function.span,
+                "export_as_global_forall function must be declared as proof",
+            );
+        }
+        if function.x.has_return() {
+            return err_str(
+                &function.span,
+                "export_as_global_forall function cannot have return type",
+            );
+        }
+        for param in function.x.params.iter() {
+            if param.x.mode != Mode::Spec {
+                return err_str(
+                    &function.span,
+                    "export_as_global_forall function must have spec parameters",
+                );
+            }
+        }
+        if function.x.body.is_some() {
+            return err_str(
+                &function.span,
+                "export_as_global_forall function must be declared as no_verify",
+            );
+        }
+    }
     if let Some(body) = &function.x.body {
         map_expr_visitor(body, &mut |expr: &Expr| {
             match &expr.x {

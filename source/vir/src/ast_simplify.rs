@@ -555,9 +555,8 @@ fn mk_fun_decl(
             require: Arc::new(vec![]),
             ensure: Arc::new(vec![]),
             decrease: None,
-            custom_req_err: None,
-            hidden: Arc::new(vec![]),
             is_abstract: false,
+            attrs: Default::default(),
             body: None,
         },
     )

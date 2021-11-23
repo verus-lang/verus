@@ -14,7 +14,7 @@ where
     FT: Fn(&mut E, &Typ) -> Result<Typ, VirErr>,
 {
     match &**typ {
-        TypX::Bool | TypX::Int(_) | TypX::TypParam(_) => ft(env, typ),
+        TypX::Bool | TypX::Int(_) | TypX::TypParam(_) | TypX::TypeId => ft(env, typ),
         TypX::Tuple(ts) => {
             let ts = vec_map_result(&**ts, |t| map_typ_visitor_env(t, env, ft))?;
             ft(env, &Arc::new(TypX::Tuple(Arc::new(ts))))
@@ -339,9 +339,8 @@ where
         require,
         ensure,
         decrease,
-        custom_req_err,
-        hidden,
         is_abstract,
+        attrs,
         body,
     } = &function.x;
     let path = path.clone();
@@ -364,8 +363,7 @@ where
         Arc::new(vec_map_result(ensure, |e| map_expr_visitor_env(e, map, env, fe, fs, ft))?);
     let decrease =
         decrease.as_ref().map(|e| map_expr_visitor_env(e, map, env, fe, fs, ft)).transpose()?;
-    let custom_req_err = custom_req_err.clone();
-    let hidden = hidden.clone();
+    let attrs = attrs.clone();
     let is_abstract = *is_abstract;
     let body = body.as_ref().map(|e| map_expr_visitor_env(e, map, env, fe, fs, ft)).transpose()?;
     map.pop_scope();
@@ -380,9 +378,8 @@ where
         require,
         ensure,
         decrease,
-        custom_req_err,
-        hidden,
         is_abstract,
+        attrs,
         body,
     };
     Ok(Spanned::new(function.span.clone(), functionx))

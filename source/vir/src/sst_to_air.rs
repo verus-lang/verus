@@ -53,6 +53,7 @@ pub(crate) fn typ_to_air(_ctx: &Ctx, typ: &Typ) -> air::ast::Typ {
         TypX::Datatype(path, _) => ident_typ(&path_to_air_ident(path)),
         TypX::Boxed(_) => str_typ(POLY),
         TypX::TypParam(_) => str_typ(POLY),
+        TypX::TypeId => str_typ(crate::def::TYPE),
     }
 }
 
@@ -77,6 +78,7 @@ pub fn typ_to_id(typ: &Typ) -> Expr {
         TypX::Datatype(path, typs) => datatype_id(path, typs),
         TypX::Boxed(_) => panic!("internal error: type arguments should be unboxed"),
         TypX::TypParam(x) => ident_var(&suffix_typ_param_id(x)),
+        TypX::TypeId => panic!("internal error: typ_to_id of TypeId"),
     }
 }
 
@@ -186,6 +188,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp) -> Expr {
                     TypX::Tuple(_) => panic!("internal error: Box(Tuple)"),
                     TypX::Boxed(_) => panic!("internal error: Box(Boxed)"),
                     TypX::TypParam(_) => panic!("internal error: Box(TypParam)"),
+                    TypX::TypeId => panic!("internal error: Box(TypeId)"),
                 };
                 ident_apply(&f_name, &vec![expr])
             }
@@ -198,6 +201,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp) -> Expr {
                     TypX::Tuple(_) => panic!("internal error: Box(Tuple)"),
                     TypX::Boxed(_) => panic!("internal error: Unbox(Boxed)"),
                     TypX::TypParam(_) => panic!("internal error: Unbox(TypParam)"),
+                    TypX::TypeId => panic!("internal error: Unbox(TypeId)"),
                 };
                 ident_apply(&f_name, &vec![expr])
             }
@@ -293,10 +297,12 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp) -> Expr {
                     Quant::Exists => mk_and(&vec![inv, expr]),
                 };
                 let binders = vec_map(&*binders, |b| {
-                    Arc::new(BinderX {
-                        name: suffix_local_expr_id(&b.name),
-                        a: typ_to_air(ctx, &b.a),
-                    })
+                    let name = match &*b.a {
+                        // allow quantifiers over type parameters, generated for export_as_global_forall
+                        TypX::TypeId => suffix_typ_param_id(&b.name),
+                        _ => suffix_local_expr_id(&b.name),
+                    };
+                    Arc::new(BinderX { name, a: typ_to_air(ctx, &b.a) })
                 });
                 let triggers =
                     vec_map(&*trigs, |trig| Arc::new(vec_map(trig, |x| exp_to_expr(ctx, x))));
@@ -397,7 +403,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
                     req_args.push(exp_to_expr(ctx, arg));
                 }
                 let e_req = Arc::new(ExprX::Apply(f_req, Arc::new(req_args)));
-                let description = match &func.x.custom_req_err {
+                let description = match &func.x.attrs.custom_req_err {
                     None => Some("precondition not satisfied".to_string()),
                     Some(s) => Some(s.clone()),
                 };

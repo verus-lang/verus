@@ -215,6 +215,22 @@ pub(crate) fn expr_to_decls_exp(
     Ok((state.local_decls, state.closure_bodies, state.closure_axioms, exp))
 }
 
+pub(crate) fn expr_to_bind_decls_exp(
+    ctx: &Ctx,
+    params: &Params,
+    expr: &Expr,
+) -> Result<Exp, VirErr> {
+    let mut state = State::new();
+    for param in params.iter() {
+        let id = state.declare_new_var(&param.x.name, &param.x.typ, false);
+        state.dont_rename.insert(id);
+    }
+    let exp = expr_to_exp_state(ctx, &mut state, expr)?;
+    let exp = state.finalize_exp(&exp);
+    state.finalize();
+    Ok(exp)
+}
+
 pub(crate) fn expr_to_exp(ctx: &Ctx, params: &Params, expr: &Expr) -> Result<Exp, VirErr> {
     Ok(expr_to_decls_exp(ctx, params, expr)?.3)
 }

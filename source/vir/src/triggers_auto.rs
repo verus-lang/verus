@@ -1,4 +1,4 @@
-use crate::ast::{BinaryOp, Constant, Ident, Path, UnaryOp, UnaryOpr, VirErr};
+use crate::ast::{BinaryOp, Constant, Ident, Path, Typ, TypX, UnaryOp, UnaryOpr, VirErr};
 use crate::ast_util::{err_str, path_as_rust_name};
 use crate::context::Ctx;
 use crate::sst::{Exp, ExpX, Trig, Trigs, UniqueIdent};
@@ -181,11 +181,24 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
             return (true, Arc::new(TermX::Var(x.clone())));
         }
         ExpX::Old(_, _) => panic!("internal error: Old"),
-        ExpX::Call(x, _, args) => {
+        ExpX::Call(x, typs, args) => {
             let (is_pures, terms): (Vec<bool>, Vec<Term>) =
                 args.iter().map(|e| gather_terms(ctxt, ctx, e, depth + 1)).unzip();
             let is_pure = is_pures.into_iter().all(|b| b);
-            (is_pure, Arc::new(TermX::App(App::Call(x.clone()), Arc::new(terms))))
+            let mut all_terms: Vec<Term> = Vec::new();
+            for typ in typs.iter() {
+                let ft = |all_terms: &mut Vec<Term>, t: &Typ| match &**t {
+                    TypX::TypParam(x) => {
+                        let x = (crate::def::suffix_typ_param_id(x), None);
+                        all_terms.push(Arc::new(TermX::Var(x)));
+                        Ok(t.clone())
+                    }
+                    _ => Ok(t.clone()),
+                };
+                crate::ast_visitor::map_typ_visitor_env(typ, &mut all_terms, &ft).unwrap();
+            }
+            all_terms.extend(terms);
+            (is_pure, Arc::new(TermX::App(App::Call(x.clone()), Arc::new(all_terms))))
         }
         ExpX::Ctor(path, variant, fields) => {
             let (variant, args) = crate::sst_to_air::ctor_to_apply(ctx, path, variant, fields);

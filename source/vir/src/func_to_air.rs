@@ -1,15 +1,16 @@
-use crate::ast::{Function, Ident, Idents, Mode, ParamX, Params, VirErr};
+use crate::ast::{Function, GenericBoundX, Ident, Idents, Mode, ParamX, Params, Typ, TypX, VirErr};
 use crate::context::Ctx;
 use crate::def::{
     prefix_ensures, prefix_fuel_id, prefix_fuel_nat, prefix_recursive, prefix_requires,
-    suffix_global_id, suffix_local_stmt_id, suffix_typ_param_id, SnapPos, FUEL_BOOL,
+    suffix_global_id, suffix_local_stmt_id, suffix_typ_param_id, SnapPos, Spanned, FUEL_BOOL,
     FUEL_BOOL_DEFAULT, FUEL_LOCAL, FUEL_TYPE, SUCC, ZERO,
 };
+use crate::sst::{BndX, ExpX};
 use crate::sst_to_air::{exp_to_expr, path_to_air_ident, typ_invariant, typ_to_air};
 use crate::util::{vec_map, vec_map_result};
 use air::ast::{
-    BinaryOp, Bind, BindX, Command, CommandX, Commands, DeclX, Expr, ExprX, MultiOp, Quant, Span,
-    Trigger, Triggers,
+    BinaryOp, Bind, BindX, Binder, BinderX, Command, CommandX, Commands, DeclX, Expr, ExprX,
+    MultiOp, Quant, Span, Trigger, Triggers,
 };
 use air::ast_util::{
     bool_typ, ident_apply, ident_binder, ident_var, mk_and, mk_bind_expr, mk_eq, mk_implies,
@@ -297,7 +298,7 @@ pub fn func_decl_to_air(
             }
         }
         Mode::Exec | Mode::Proof => {
-            let msg = match &function.x.custom_req_err {
+            let msg = match &function.x.attrs.custom_req_err {
                 // Standard message
                 None => Some("failed precondition".to_string()),
                 // We don't highlight the failed precondition if the programmer supplied their own msg
@@ -340,6 +341,38 @@ pub fn func_decl_to_air(
             )?;
             if has_ens_pred {
                 ctx.funcs_with_ensure_predicate.insert(function.x.path.clone());
+            }
+            if function.x.attrs.export_as_global_forall {
+                let span = &function.span;
+                let req = crate::ast_util::conjoin(span, &*function.x.require);
+                let ens = crate::ast_util::conjoin(span, &*function.x.ensure);
+                let req_ens = crate::ast_util::mk_implies(span, &req, &ens);
+                let exp =
+                    crate::ast_to_sst::expr_to_bind_decls_exp(ctx, &function.x.params, &req_ens)?;
+                let mut vars: Vec<Ident> = Vec::new();
+                let mut binders: Vec<Binder<Typ>> = Vec::new();
+                for (name, bound) in function.x.typ_bounds.iter() {
+                    match &**bound {
+                        GenericBoundX::None => {
+                            vars.push(crate::def::suffix_typ_param_id(&name));
+                            let typ = Arc::new(TypX::TypeId);
+                            let bind = BinderX { name: name.clone(), a: typ };
+                            binders.push(Arc::new(bind));
+                        }
+                        GenericBoundX::FnSpec(..) => {}
+                    }
+                }
+                for param in function.x.params.iter() {
+                    vars.push(param.x.name.clone());
+                    binders.push(crate::ast_util::param_to_binder(&param));
+                }
+                let triggers = crate::triggers::build_triggers(ctx, span, &vars, &exp)?;
+                let bndx = BndX::Quant(Quant::Forall, Arc::new(binders), triggers);
+                let forallx = ExpX::Bind(Spanned::new(span.clone(), bndx), exp);
+                let forall = Spanned::new(span.clone(), forallx);
+                let expr = exp_to_expr(ctx, &forall);
+                let axiom = Arc::new(DeclX::Axiom(expr));
+                decl_commands.push(Arc::new(CommandX::Global(axiom)));
             }
         }
     }
@@ -396,7 +429,7 @@ pub fn func_def_to_air(
                 &function.x.typ_params(),
                 &function.x.params,
                 &state.local_decls,
-                &function.x.hidden,
+                &function.x.attrs.hidden,
                 &reqs,
                 &enss,
                 &stm,

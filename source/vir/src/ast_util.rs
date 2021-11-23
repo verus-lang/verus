@@ -1,10 +1,10 @@
 use crate::ast::{
-    DatatypeX, FunctionX, Ident, Idents, Mode, Path, SpannedTyped, Typ, TypX, Variant, Variants,
-    VirErr, VirErrX, Visibility,
+    BinaryOp, Constant, DatatypeX, Expr, ExprX, FunctionX, Ident, Idents, Mode, Param, Params,
+    Path, SpannedTyped, Typ, TypX, Variant, Variants, VirErr, VirErrX, Visibility,
 };
 use crate::def::Spanned;
 use crate::util::vec_map;
-use air::ast::{Binder, Binders, Span};
+use air::ast::{Binder, BinderX, Binders, Span};
 pub use air::ast_util::{ident_binder, str_ident};
 use std::fmt;
 use std::sync::Arc;
@@ -93,6 +93,38 @@ impl<X> SpannedTyped<X> {
     pub fn new_x(&self, x: X) -> Arc<Self> {
         Arc::new(SpannedTyped { span: self.span.clone(), typ: self.typ.clone(), x })
     }
+}
+
+pub fn mk_bool(span: &Span, b: bool) -> Expr {
+    SpannedTyped::new(span, &Arc::new(TypX::Bool), ExprX::Const(Constant::Bool(b)))
+}
+
+pub fn mk_implies(span: &Span, e1: &Expr, e2: &Expr) -> Expr {
+    SpannedTyped::new(
+        span,
+        &Arc::new(TypX::Bool),
+        ExprX::Binary(BinaryOp::Implies, e1.clone(), e2.clone()),
+    )
+}
+
+pub fn chain_binary(span: &Span, op: BinaryOp, init: &Expr, exprs: &Vec<Expr>) -> Expr {
+    let mut expr = init.clone();
+    for e in exprs.iter() {
+        expr = SpannedTyped::new(span, &init.typ, ExprX::Binary(op, expr, e.clone()));
+    }
+    expr
+}
+
+pub fn conjoin(span: &Span, exprs: &Vec<Expr>) -> Expr {
+    chain_binary(span, BinaryOp::And, &mk_bool(span, true), exprs)
+}
+
+pub fn param_to_binder(param: &Param) -> Binder<Typ> {
+    Arc::new(BinderX { name: param.x.name.clone(), a: param.x.typ.clone() })
+}
+
+pub fn params_to_binders(params: &Params) -> Binders<Typ> {
+    Arc::new(vec_map(&**params, param_to_binder))
 }
 
 impl FunctionX {

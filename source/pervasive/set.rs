@@ -16,28 +16,6 @@ pub fn set_empty<A>() -> Set<A> {
     arbitrary()
 }
 
-#[verifier(no_verify)]
-#[proof]
-pub fn set_axioms<A>() {
-    ensures([
-        forall(|a: A| !set_empty().contains(a)),
-        forall(|s: Set<A>, a: A| s.insert(a).contains(a)),
-        forall(|s: Set<A>, a1: A, a2: A|
-            equal(a1, a2) || s.insert(a1).contains(a2) == s.contains(a2)),
-        forall(|s1: Set<A>, s2: Set<A>, a: A|
-            s1.union(s2).contains(a) == (s1.contains(a) || s2.contains(a))),
-        forall(|s1: Set<A>, s2: Set<A>, a: A|
-            s1.intersect(s2).contains(a) == s1.contains(a) && s2.contains(a)),
-        forall(|s1: Set<A>, s2: Set<A>, a: A|
-            s1.difference(s2).contains(a) == s1.contains(a) && !s2.contains(a)),
-        forall(|s1: Set<A>, s2: Set<A>|
-            set_ext_equal(s1, s2) == equal(s1, s2)),
-        set_empty::<A>().cardinality() == 0,
-        forall(|s: Set<A>, a: A|
-            imply(!s.contains(a), #[trigger] s.insert(a).cardinality() == s.cardinality() + 1)),
-    ]);
-}
-
 #[spec]
 pub fn set_ext_equal<A>(s1: Set<A>, s2: Set<A>) -> bool {
     forall(|a: A| s1.contains(a) == s2.contains(a))
@@ -84,5 +62,71 @@ impl<A> Set<A> {
     pub fn cardinality(self) -> nat {
         arbitrary()
     }
+}
 
+// Trusted axioms
+
+#[proof]
+#[verifier(no_verify)]
+#[verifier(export_as_global_forall)]
+pub fn axiom_set_empty<A>(a: A) {
+    ensures(!set_empty().contains(a));
+}
+
+#[proof]
+#[verifier(no_verify)]
+#[verifier(export_as_global_forall)]
+pub fn axiom_set_insert_same<A>(s: Set<A>, a: A) {
+    ensures(s.insert(a).contains(a));
+}
+
+#[proof]
+#[verifier(no_verify)]
+#[verifier(export_as_global_forall)]
+pub fn axiom_set_insert_different<A>(s: Set<A>, a1: A, a2: A) {
+    requires(!equal(a1, a2));
+    ensures(s.insert(a1).contains(a2) == s.contains(a2));
+}
+
+#[proof]
+#[verifier(no_verify)]
+#[verifier(export_as_global_forall)]
+pub fn axiom_set_union<A>(s1: Set<A>, s2: Set<A>, a: A) {
+    ensures(s1.union(s2).contains(a) == (s1.contains(a) || s2.contains(a)));
+}
+
+#[proof]
+#[verifier(no_verify)]
+#[verifier(export_as_global_forall)]
+pub fn axiom_set_intersect<A>(s1: Set<A>, s2: Set<A>, a: A) {
+    ensures(s1.intersect(s2).contains(a) == (s1.contains(a) && s2.contains(a)));
+}
+
+#[proof]
+#[verifier(no_verify)]
+#[verifier(export_as_global_forall)]
+pub fn axiom_set_difference<A>(s1: Set<A>, s2: Set<A>, a: A) {
+    ensures(s1.difference(s2).contains(a) == (s1.contains(a) && !s2.contains(a)));
+}
+
+#[proof]
+#[verifier(no_verify)]
+#[verifier(export_as_global_forall)]
+pub fn axiom_set_ext_equal<A>(s1: Set<A>, s2: Set<A>) {
+    ensures(set_ext_equal(s1, s2) == equal(s1, s2));
+}
+
+#[proof]
+#[verifier(no_verify)]
+#[verifier(export_as_global_forall)]
+pub fn axiom_set_empty_cardinality<A>() {
+    ensures(set_empty::<A>().cardinality() == 0);
+}
+
+#[proof]
+#[verifier(no_verify)]
+#[verifier(export_as_global_forall)]
+pub fn axiom_set_insert_cardinality<A>(s: Set<A>, a: A) {
+    requires(!s.contains(a));
+    ensures(#[trigger] s.insert(a).cardinality() == s.cardinality() + 1);
 }

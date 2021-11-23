@@ -170,6 +170,8 @@ pub(crate) enum Attr {
     Abstract,
     // hide body (from all modules) until revealed
     Opaque,
+    // export function's require/ensure as global forall
+    ExportAsGlobalForall,
     // add manual trigger to expression inside quantifier
     Trigger(Option<Vec<u64>>),
     // custom error string to report for precondition failures
@@ -221,6 +223,9 @@ pub(crate) fn parse_attrs(attrs: &[Attribute]) -> Result<Vec<Attr>, VirErr> {
                 }
                 Some(box [AttrTree::Fun(_, arg, None)]) if arg == "pub_abstract" => {
                     v.push(Attr::Abstract)
+                }
+                Some(box [AttrTree::Fun(_, arg, None)]) if arg == "export_as_global_forall" => {
+                    v.push(Attr::ExportAsGlobalForall)
                 }
                 Some(box [AttrTree::Fun(_, arg, None), AttrTree::Fun(_, msg, None)])
                     if arg == "custom_req_err" =>
@@ -287,6 +292,7 @@ pub(crate) struct VerifierAttrs {
     pub(crate) do_verify: bool,
     pub(crate) external: bool,
     pub(crate) is_abstract: bool,
+    pub(crate) export_as_global_forall: bool,
     pub(crate) custom_req_err: Option<String>,
 }
 
@@ -295,6 +301,7 @@ pub(crate) fn get_verifier_attrs(attrs: &[Attribute]) -> Result<VerifierAttrs, V
         do_verify: true,
         external: false,
         is_abstract: false,
+        export_as_global_forall: false,
         custom_req_err: None,
     };
     for attr in parse_attrs(attrs)? {
@@ -302,6 +309,7 @@ pub(crate) fn get_verifier_attrs(attrs: &[Attribute]) -> Result<VerifierAttrs, V
             Attr::NoVerify => vs.do_verify = false,
             Attr::External => vs.external = true,
             Attr::Abstract => vs.is_abstract = true,
+            Attr::ExportAsGlobalForall => vs.export_as_global_forall = true,
             Attr::CustomReqErr(s) => vs.custom_req_err = Some(s.clone()),
             _ => {}
         }
