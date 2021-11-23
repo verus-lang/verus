@@ -1,3 +1,4 @@
+#[allow(unused_imports)]
 use builtin::*;
 mod pervasive;
 #[allow(unused_imports)]
@@ -5,25 +6,25 @@ use crate::pervasive::{*, vec::*};
 
 fn binary_search(v: &Vec<u64>, k: u64) -> usize {
     requires([
-        forall(|i:int, j:int| imply(0 <= i && i <= j && j < len(v), index(v, i) <= index(v, j))),
-        exists(|i:int| 0 <= i && i < len(v) && k == index(v, i)),
+        forall(|i:int, j:int| imply(0 <= i && i <= j && j < v.len(), v.index(i) <= v.index(j))),
+        exists(|i:int| 0 <= i && i < v.len() && k == v.index(i)),
     ]);
-    ensures(|r: usize| r < len(v) && k == index(v, r));
+    ensures(|r: usize| r < v.len() && k == v.index(r));
 
-    let length = length(&v);
+    let length = v.length();
     let mut i1: usize = 0;
     let mut i2: usize = length - 1;
     while i1 != i2 {
         invariant([
-            length == len(v),
+            length == v.len(),
             i2 < length,
-            exists(|i:int| i1 <= i && i <= i2 && k == index(v, i)),
-            forall(|i:int, j:int| imply(0 <= i && i <= j && j < length, index(v, i) <= index(v, j))),
+            exists(|i:int| i1 <= i && i <= i2 && k == v.index(i)),
+            forall(|i:int, j:int| imply(0 <= i && i <= j && j < length, v.index(i) <= v.index(j))),
         ]);
         #[spec] let d = i2 - i1;
 
         let ix = i1 + (i2 - i1) / 2;
-        if *get(v, ix) < k {
+        if *v.get(ix) < k {
             i1 = ix + 1;
         } else {
             i2 = ix;
@@ -36,25 +37,25 @@ fn binary_search(v: &Vec<u64>, k: u64) -> usize {
 
 fn reverse(v1: Vec<u64>) -> Vec<u64> {
     ensures(|r: Vec<u64>| [
-        len(&r) == len(&v1),
-        forall(|i: int| imply(0 <= i && i < len(&v1), index(&r, i) == index(&v1, len(&v1) - i - 1))),
+        r.len() == v1.len(),
+        forall(|i: int| imply(0 <= i && i < v1.len(), r.index(i) == v1.index(v1.len() - i - 1))),
     ]);
 
-    let length = length(&v1);
+    let length = v1.length();
     let mut v2 = v1;
     let mut n: usize = 0;
     while n < length / 2 {
         invariant([
-            length == len(&v2),
-            forall(|i: int| imply(n <= i && i + n < length, index(&v2, i) == index(&v1, i))),
-            forall(|i: int| imply(0 <= i && i < n, index(&v2, i) == index(&v1, length - i - 1))),
-            forall(|i: int| imply(0 <= i && i < n, index(&v1, i) == index(&v2, length - i - 1))),
+            length == v2.len(),
+            forall(|i: int| imply(n <= i && i + n < length, v2.index(i) == v1.index(i))),
+            forall(|i: int| imply(0 <= i && i < n, v2.index(i) == v1.index(length - i - 1))),
+            forall(|i: int| imply(0 <= i && i < n, v1.index(i) == v2.index(length - i - 1))),
         ]);
 
-        let x = *get(&v2, n);
-        let y = *get(&v2, length - 1 - n);
-        v2 = set(v2, n, y);
-        v2 = set(v2, length - 1 - n, x);
+        let x = *v2.get(n);
+        let y = *v2.get(length - 1 - n);
+        v2 = v2.set(n, y);
+        v2 = v2.set(length - 1 - n, x);
 
         n = n + 1;
     }

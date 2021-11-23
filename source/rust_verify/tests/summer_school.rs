@@ -134,9 +134,7 @@ const E05_SHARED: &str = code_str! {
     // TODO: Set<> does not exist yet
     #[spec]
     fn has_seven_and_not_nine(intset: Set::<int>) -> bool {
-        // TODO(utaal): implement generic arguments to struct methods
-        // WANT: intset.contains(7) && (!intset.contains(9))
-        contains(intset, 7) && (!contains(intset, 9))
+        intset.contains(7) && (!intset.contains(9))
     }
 };
 
@@ -154,19 +152,19 @@ test_verify_one_file! {
             // TODO: This is probably what it would look like for rust HashSet
             // TODO(utaal): not even THIS works
             // assert(Set::<int>::from([1, 3, 8]) == Set::<int>::from([8, 1, 3]));
-            let set138 = insert(insert(insert::<int>(empty(), 1), 3), 8);
-            let set813 = insert(insert(insert(empty(), 8), 1), 3);
+            let set138: Set<int> = set_empty().insert(1).insert(3).insert(8);
+            let set813: Set<int> = set_empty().insert(8).insert(1).insert(3);
             // TODO(utaal): fix sets to allow == syntax for equality
             //assert(set138 == set813);
-            assert(ext_equal(set138, set813));
+            assert(set_ext_equal(set138, set813));
 
             // NOTE(Chris): The way you encode set literals influences what you can prove about it
             // - axiom for conversion from slice (has quantifiers)
             // - set![8, 1, 3] to sequence of insertions
             // - construct an axiom about that particular literal (most efficient encoding)
 
-            let set7 = insert(empty(), 7);
-            let set765 = insert(insert(insert(empty(), 7), 6), 5);
+            let set7 = set_empty().insert(7);
+            let set765 = set_empty().insert(7).insert(6).insert(5);
             assert(has_seven_and_not_nine(set7));
 
             assert(has_seven_and_not_nine(set765));
@@ -483,21 +481,21 @@ test_verify_one_file! {
             ]);
             */
 
-            let maxSet = insert(insert(insert(empty(), HAlign::Left), HAlign::Center), HAlign::Right);
+            let maxSet = set_empty().insert(HAlign::Left).insert(HAlign::Center).insert(HAlign::Right);
 
-            let intSet = insert(insert(empty(), 8), 4);
-            assert(cardinality::<int>(empty()) == 0);
+            let intSet = set_empty().insert(8).insert(4);
+            assert(set_empty::<int>().cardinality() == 0);
             // TODO remove: trigger the wrong trigger while waiting for the right trigger
-            assert(!contains::<int>(empty(), 1) && cardinality::<int>(insert(empty(), 1)) == cardinality::<int>(empty()) + 1);
-            assert(cardinality::<int>(insert(empty(), 1)) == cardinality::<int>(empty()) + 1);
+            assert(!set_empty::<int>().contains(1) && set_empty::<int>().insert(1).cardinality() == set_empty::<int>().cardinality() + 1);
+            assert(set_empty::<int>().insert(1).cardinality() == set_empty::<int>().cardinality() + 1);
 
             set_axioms::<HAlign>();
             // TODO remove: more manual triggering of undesirable trigger
-            assert(!contains(empty(), HAlign::Left));
-            assert(!contains(insert(empty(), HAlign::Left), HAlign::Center));
-            assert(!contains(insert(insert(empty(), HAlign::Left), HAlign::Center), HAlign::Right));
+            assert(!set_empty().contains(HAlign::Left));
+            assert(!set_empty().insert(HAlign::Left).contains(HAlign::Center));
+            assert(!set_empty().insert(HAlign::Left).insert(HAlign::Center).contains(HAlign::Right));
             // TODO(chris): some missing axioms about has_type
-            //assert(cardinality(maxSet) == 3);
+            assert(maxSet.cardinality() == 3);
 
             // TODO(jonh): Complete rest of forall proof.
         }

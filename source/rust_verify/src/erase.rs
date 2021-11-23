@@ -734,10 +734,16 @@ fn erase_fn(ctxt: &Ctxt, mctxt: &mut MCtxt, f: &FnKind) -> Option<FnKind> {
 
 fn erase_assoc_item(ctxt: &Ctxt, mctxt: &mut MCtxt, item: &AssocItem) -> Option<AssocItem> {
     match &item.kind {
-        AssocItemKind::Fn(f) => match erase_fn(ctxt, mctxt, f) {
-            None => None,
-            Some(f) => Some(update_item(item, AssocItemKind::Fn(Box::new(f)))),
-        },
+        AssocItemKind::Fn(f) => {
+            let vattrs = get_verifier_attrs(&item.attrs).expect("get_verifier_attrs");
+            if vattrs.external {
+                return Some(item.clone());
+            }
+            match erase_fn(ctxt, mctxt, f) {
+                None => None,
+                Some(f) => Some(update_item(item, AssocItemKind::Fn(Box::new(f)))),
+            }
+        }
         _ => panic!("unsupported AssocItemKind"),
     }
 }
