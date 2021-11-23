@@ -12,15 +12,15 @@ pub struct Set<A> {
 // TODO(andrea) move into impl once associated functions supported
 #[spec]
 #[verifier(pub_abstract)]
-pub fn empty<A>() -> Set<A> {
+pub fn set_empty<A>() -> Set<A> {
     arbitrary()
 }
 
 #[verifier(no_verify)]
 #[proof]
-pub fn axioms<A>() {
+pub fn set_axioms<A>() {
     ensures([
-        forall(|a: A| !empty().contains(a)),
+        forall(|a: A| !set_empty().contains(a)),
         forall(|s: Set<A>, a: A| s.insert(a).contains(a)),
         forall(|s: Set<A>, a1: A, a2: A|
             equal(a1, a2) || s.insert(a1).contains(a2) == s.contains(a2)),
@@ -32,7 +32,7 @@ pub fn axioms<A>() {
             s1.difference(s2).contains(a) == s1.contains(a) && !s2.contains(a)),
         forall(|s1: Set<A>, s2: Set<A>|
             set_ext_equal(s1, s2) == equal(s1, s2)),
-        empty::<A>().cardinality() == 0,
+        set_empty::<A>().cardinality() == 0,
         forall(|s: Set<A>, a: A|
             imply(!s.contains(a), #[trigger] s.insert(a).cardinality() == s.cardinality() + 1)),
     ]);
