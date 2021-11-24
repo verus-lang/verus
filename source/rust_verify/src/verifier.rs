@@ -359,6 +359,11 @@ impl Verifier {
                 if !verify_entire_crate && self.args.verify_module != Some(module_name.clone()) {
                     continue;
                 }
+                let is_pervasive =
+                    module_name.starts_with("pervasive::") || module_name == "pervasive";
+                if !self.args.verify_pervasive && is_pervasive {
+                    continue;
+                }
                 println!("Verifying module {}", &module_name);
             }
             air_context.blank_line();

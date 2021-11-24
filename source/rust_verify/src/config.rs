@@ -5,6 +5,7 @@ pub struct Args {
     pub pervasive_path: Option<String>,
     pub verify_root: bool,
     pub verify_module: Option<String>,
+    pub verify_pervasive: bool,
     pub no_verify: bool,
     pub no_lifetime: bool,
     pub rlimit: u32,
@@ -31,6 +32,7 @@ pub fn parse_args(program: &String, args: impl Iterator<Item = String>) -> (Args
     const OPT_PERVASIVE_PATH: &str = "pervasive-path";
     const OPT_VERIFY_ROOT: &str = "verify-root";
     const OPT_VERIFY_MODULE: &str = "verify-module";
+    const OPT_VERIFY_PERVASIVE: &str = "verify-pervasive";
     const OPT_NO_VERIFY: &str = "no-verify";
     const OPT_NO_LIFETIME: &str = "no-lifetime";
     const OPT_RLIMIT: &str = "rlimit";
@@ -54,6 +56,7 @@ pub fn parse_args(program: &String, args: impl Iterator<Item = String>) -> (Args
         "Verify just one submodule within crate (e.g. 'foo' or 'foo::bar')",
         "MODULE",
     );
+    opts.optflag("", OPT_VERIFY_PERVASIVE, "Verify trusted pervasive modules");
     opts.optflag("", OPT_NO_VERIFY, "Do not run verification");
     opts.optflag("", OPT_NO_LIFETIME, "Do not run lifetime checking on proofs");
     opts.optopt("", OPT_RLIMIT, "Set SMT resource limit (roughly in seconds)", "INTEGER");
@@ -98,6 +101,7 @@ pub fn parse_args(program: &String, args: impl Iterator<Item = String>) -> (Args
         pervasive_path: matches.opt_str(OPT_PERVASIVE_PATH),
         verify_root: matches.opt_present(OPT_VERIFY_ROOT),
         verify_module: matches.opt_str(OPT_VERIFY_MODULE),
+        verify_pervasive: matches.opt_present(OPT_VERIFY_PERVASIVE),
         no_verify: matches.opt_present(OPT_NO_VERIFY),
         no_lifetime: matches.opt_present(OPT_NO_LIFETIME),
         rlimit: matches
