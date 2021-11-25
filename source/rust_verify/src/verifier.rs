@@ -369,9 +369,10 @@ impl Verifier {
             air_context.blank_line();
             air_context.comment(&("MODULE '".to_string() + &module_name + "'"));
             air_context.push();
+            let pruned_krate = vir::prune::prune_krate_for_module(&krate, &module);
             let mut ctx =
-                vir::context::Ctx::new(&krate, global_ctx, module.clone(), self.args.debug)?;
-            self.verify_module(compiler, &krate, &mut air_context, &mut ctx)?;
+                vir::context::Ctx::new(&pruned_krate, global_ctx, module.clone(), self.args.debug)?;
+            self.verify_module(compiler, &pruned_krate, &mut air_context, &mut ctx)?;
             global_ctx = ctx.free();
             air_context.pop();
         }

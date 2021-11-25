@@ -40,6 +40,7 @@ pub mod func_to_air;
 pub mod headers;
 pub mod modes;
 mod prelude;
+pub mod prune;
 mod recursion;
 mod recursive_types;
 mod scc;

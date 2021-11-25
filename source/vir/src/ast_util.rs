@@ -1,6 +1,6 @@
 use crate::ast::{
     BinaryOp, Constant, DatatypeX, Expr, ExprX, FunctionX, Ident, Idents, Mode, Param, Params,
-    Path, SpannedTyped, Typ, TypX, Variant, Variants, VirErr, VirErrX, Visibility,
+    Path, PathX, SpannedTyped, Typ, TypX, Variant, Variants, VirErr, VirErrX, Visibility,
 };
 use crate::def::Spanned;
 use crate::util::vec_map;
@@ -15,6 +15,14 @@ pub fn err_str<A>(span: &Span, msg: &str) -> Result<A, VirErr> {
 
 pub fn err_string<A>(span: &Span, msg: String) -> Result<A, VirErr> {
     Err(Spanned::new(span.clone(), VirErrX::Str(msg)))
+}
+
+impl PathX {
+    pub fn pop_segment(&self) -> Path {
+        let mut segments = (*self.segments).clone();
+        segments.pop();
+        Arc::new(PathX { krate: self.krate.clone(), segments: Arc::new(segments) })
+    }
 }
 
 impl fmt::Display for Mode {
