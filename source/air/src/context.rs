@@ -6,6 +6,7 @@ use crate::smt_manager::SmtManager;
 use crate::typecheck::Typing;
 use std::collections::HashSet;
 use std::sync::Arc;
+use std::time::Duration;
 
 #[derive(Clone, Debug)]
 pub(crate) struct AssertionInfo {
@@ -32,6 +33,8 @@ pub struct Context {
     pub(crate) air_middle_log: Emitter,
     pub(crate) air_final_log: Emitter,
     pub(crate) smt_log: Emitter,
+    pub(crate) time_smt_init: Duration,
+    pub(crate) time_smt_run: Duration,
 }
 
 impl Context {
@@ -47,6 +50,8 @@ impl Context {
             air_middle_log: Emitter::new(false, None),
             air_final_log: Emitter::new(false, None),
             smt_log: Emitter::new(true, None),
+            time_smt_init: Duration::new(0, 0),
+            time_smt_run: Duration::new(0, 0),
         };
         context.assert_infos.push_scope(false);
         context.typing.decls.push_scope(false);
@@ -75,6 +80,10 @@ impl Context {
 
     pub fn get_debug(&self) -> bool {
         self.debug
+    }
+
+    pub fn get_time(&self) -> (Duration, Duration) {
+        (self.time_smt_init, self.time_smt_run)
     }
 
     pub fn set_rlimit(&mut self, rlimit: u32) {

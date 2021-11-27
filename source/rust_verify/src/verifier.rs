@@ -13,6 +13,7 @@ use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::io::Write;
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 use vir::ast::{Krate, VirErr, VirErrX, Visibility};
 use vir::ast_util::{is_visible_to, path_as_rust_name};
 use vir::def::SnapPos;
@@ -25,6 +26,12 @@ pub struct Verifier {
     pub args: Args,
     pub test_capture_output: Option<std::sync::Arc<std::sync::Mutex<Vec<u8>>>>,
     pub erasure_hints: Option<crate::erase::ErasureHints>,
+    pub time_vir: Duration,
+    pub time_vir_rust_to_vir: Duration,
+    pub time_vir_verify: Duration,
+    pub time_air: Duration,
+    pub time_smt_init: Duration,
+    pub time_smt_run: Duration,
 }
 
 #[derive(Debug)]
@@ -114,6 +121,12 @@ impl Verifier {
             args: args,
             test_capture_output: None,
             erasure_hints: None,
+            time_vir: Duration::new(0, 0),
+            time_vir_rust_to_vir: Duration::new(0, 0),
+            time_vir_verify: Duration::new(0, 0),
+            time_air: Duration::new(0, 0),
+            time_smt_init: Duration::new(0, 0),
+            time_smt_run: Duration::new(0, 0),
         }
     }
 
@@ -186,6 +199,7 @@ impl Verifier {
     }
 
     fn run_commands(
+        &mut self,
         air_context: &mut air::context::Context,
         commands: &Vec<Command>,
         comment: &str,
@@ -195,7 +209,10 @@ impl Verifier {
             air_context.comment(comment);
         }
         for command in commands.iter() {
+            let time0 = Instant::now();
             Self::check_internal_result(air_context.command(&command));
+            let time1 = Instant::now();
+            self.time_air += time1 - time0;
         }
     }
 
@@ -213,7 +230,10 @@ impl Verifier {
             air_context.comment(comment);
         }
         for command in commands.iter() {
+            let time0 = Instant::now();
             self.check_result_validity(compiler, air_context, assign_map, snap_map, &command);
+            let time1 = Instant::now();
+            self.time_air += time1 - time0;
         }
     }
 
@@ -241,7 +261,7 @@ impl Verifier {
                 .filter(|d| is_visible_to(&d.x.visibility, module))
                 .collect(),
         );
-        Self::run_commands(air_context, &datatype_commands, &("Datatypes".to_string()));
+        self.run_commands(air_context, &datatype_commands, &("Datatypes".to_string()));
 
         // Declare the function symbols
         for function in &krate.functions {
@@ -249,7 +269,7 @@ impl Verifier {
                 continue;
             }
             let commands = vir::func_to_air::func_name_to_air(ctx, &function)?;
-            Self::run_commands(
+            self.run_commands(
                 air_context,
                 &commands,
                 &("Function-Decl ".to_string() + &path_as_rust_name(&function.x.path)),
@@ -266,7 +286,7 @@ impl Verifier {
             }
             let (decl_commands, check_commands) =
                 vir::func_to_air::func_decl_to_air(ctx, &function)?;
-            Self::run_commands(
+            self.run_commands(
                 air_context,
                 &decl_commands,
                 &("Function-Axioms ".to_string() + &path_as_rust_name(&function.x.path)),
@@ -393,6 +413,9 @@ impl Verifier {
             }
         }
 
+        let (time_smt_init, time_smt_run) = air_context.get_time();
+        self.time_smt_init = time_smt_init;
+        self.time_smt_run = time_smt_run;
         Ok(())
     }
 
@@ -408,6 +431,8 @@ impl Verifier {
             }
         }
 
+        let time0 = Instant::now();
+
         let hir = tcx.hir();
         let erasure_info = ErasureInfo {
             resolved_calls: vec![],
@@ -418,7 +443,12 @@ impl Verifier {
         };
         let erasure_info = std::rc::Rc::new(std::cell::RefCell::new(erasure_info));
         let ctxt = Context { tcx, krate: hir.krate(), erasure_info };
+
+        // Convert HIR -> VIR
+        let time1 = Instant::now();
         let vir_crate = crate::rust_to_vir::crate_to_vir(&ctxt)?;
+        let time2 = Instant::now();
+
         if let Some(filename) = &self.args.log_vir {
             let mut file =
                 File::create(filename).expect(&format!("could not open file {}", filename));
@@ -459,9 +489,14 @@ impl Verifier {
         }
         vir::well_formed::check_crate(&vir_crate)?;
         let erasure_modes = vir::modes::check_crate(&vir_crate)?;
+
+        // Verify crate
+        let time3 = Instant::now();
         if !self.args.no_verify {
             self.verify_crate(&compiler, &vir_crate, hir.krate().item.span)?;
         }
+        let time4 = Instant::now();
+
         let erasure_info = ctxt.erasure_info.borrow();
         let resolved_calls = erasure_info.resolved_calls.clone();
         let resolved_exprs = erasure_info.resolved_exprs.clone();
@@ -476,6 +511,11 @@ impl Verifier {
             external_functions,
         };
         self.erasure_hints = Some(erasure_hints);
+
+        let time5 = Instant::now();
+        self.time_vir = time5 - time0;
+        self.time_vir_rust_to_vir = time2 - time1;
+        self.time_vir_verify = time4 - time3;
         Ok(true)
     }
 }

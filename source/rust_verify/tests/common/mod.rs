@@ -116,7 +116,7 @@ pub fn verify_files(
         verifier.test_capture_output = Some(captured_output_1);
         let file_loader: TestFileLoader = TestFileLoader { files };
         let status = rust_verify::driver::run(&mut verifier, &rustc_args, &file_loader);
-        status.map_err(|_| verifier.errors)
+        status.map(|_| ()).map_err(|_| verifier.errors)
     });
     eprintln!(
         "{}",

@@ -63,7 +63,8 @@ use rustc_span::{Span, SpanData};
 
 use std::cell::Cell;
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
 use vir::ast::{
     Datatype, ExprX, Function, GenericBoundX, Krate, Mode, Path, Pattern, PatternX, UnaryOpr,
@@ -912,6 +913,7 @@ pub struct CompilerCallbacks {
     pub erasure_hints: ErasureHints,
     pub lifetimes_only: bool,
     pub print: bool,
+    pub time_erasure: Arc<Mutex<Duration>>,
 }
 
 impl CompilerCallbacks {
@@ -943,7 +945,11 @@ impl rustc_lint::FormalVerifierRewrite for CompilerCallbacks {
     ) -> rustc_ast::ast::Crate {
         let ctxt = mk_ctxt(&self.erasure_hints, self.lifetimes_only);
         let mut mctxt = MCtxt { f_next_node_id: next_node_id };
-        crate::erase::erase_crate(&ctxt, &mut mctxt, krate)
+        let time0 = Instant::now();
+        let krate = crate::erase::erase_crate(&ctxt, &mut mctxt, krate);
+        let time1 = Instant::now();
+        (*self.time_erasure.lock().unwrap()) += time1 - time0;
+        krate
     }
 }
 

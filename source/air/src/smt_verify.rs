@@ -105,8 +105,16 @@ fn smt_check_assertion<'ctx>(
 
     context.smt_log.log_word("check-sat");
 
-    let smt_output =
-        context.smt_manager.get_smt_process().send_commands(context.smt_log.take_pipe_data());
+    // Run SMT solver
+    let time0 = std::time::Instant::now();
+    let smt_proc = context.smt_manager.get_smt_process();
+    let time1 = std::time::Instant::now();
+    let smt_output = smt_proc.send_commands(context.smt_log.take_pipe_data());
+    let time2 = std::time::Instant::now();
+    context.time_smt_init += time1 - time0;
+    context.time_smt_run += time2 - time1;
+
+    // Process SMT results
     let mut unsat = None;
     for line in smt_output {
         if line == "unsat" {
