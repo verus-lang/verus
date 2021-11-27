@@ -113,13 +113,27 @@ impl Score {
 }
 
 struct Ctxt {
-    trigger_vars: HashSet<Ident>,   // variables the triggers must cover
-    all_terms: HashMap<Term, Span>, // terms with App
-    pure_terms: HashMap<Term, Exp>, // terms with App and without Other
-    all_terms_by_app: HashMap<App, HashMap<Term, Span>>, // all_terms, indexed by head App
-    pure_terms_by_var: HashMap<Ident, HashMap<Term, Span>>, // pure_terms, indexed by trigger_vars
-    pure_best_scores: HashMap<Term, Score>, // best score for this term
-    next_id: u64,                   // used for Other
+    // variables the triggers must cover
+    trigger_vars: HashSet<Ident>,
+    // terms with App
+    all_terms: HashMap<Term, Span>,
+    // terms with App and without Other
+    pure_terms: HashMap<Term, Exp>,
+    // all_terms, indexed by head App
+    all_terms_by_app: HashMap<App, HashMap<Term, Span>>,
+    // pure_terms, indexed by trigger_vars
+    pure_terms_by_var: HashMap<Ident, HashMap<Term, Span>>,
+    // best score for this term
+    pure_best_scores: HashMap<Term, Score>,
+    // used for Other
+    next_id: u64,
+}
+
+impl Ctxt {
+    fn other(&mut self) -> App {
+        self.next_id += 1;
+        App::Other(self.next_id)
+    }
 }
 
 struct Timer {
@@ -198,7 +212,12 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
                 crate::ast_visitor::map_typ_visitor_env(typ, &mut all_terms, &ft).unwrap();
             }
             all_terms.extend(terms);
-            (is_pure, Arc::new(TermX::App(App::Call(x.clone()), Arc::new(all_terms))))
+            match ctx.func_map.get(x) {
+                Some(f) if f.x.attrs.no_auto_trigger => {
+                    (false, Arc::new(TermX::App(ctxt.other(), Arc::new(all_terms))))
+                }
+                _ => (is_pure, Arc::new(TermX::App(App::Call(x.clone()), Arc::new(all_terms)))),
+            }
         }
         ExpX::Ctor(path, variant, fields) => {
             let (variant, args) = crate::sst_to_air::ctor_to_apply(ctx, path, variant, fields);
@@ -214,8 +233,7 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
                 UnaryOp::Trigger(_) | UnaryOp::Clip(_) => 1,
             };
             let (_, term1) = gather_terms(ctxt, ctx, e1, depth);
-            ctxt.next_id += 1;
-            (false, Arc::new(TermX::App(App::Other(ctxt.next_id), Arc::new(vec![term1]))))
+            (false, Arc::new(TermX::App(ctxt.other(), Arc::new(vec![term1]))))
         }
         ExpX::UnaryOpr(UnaryOpr::Box(_), e1) => gather_terms(ctxt, ctx, e1, depth),
         ExpX::UnaryOpr(UnaryOpr::Unbox(_), e1) => gather_terms(ctxt, ctx, e1, depth),
@@ -223,8 +241,7 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
             // We currently don't auto-trigger on IsVariant
             // Even if we did, it might be best not to trigger on IsVariants generated from Match
             let (_, term1) = gather_terms(ctxt, ctx, e1, 1);
-            ctxt.next_id += 1;
-            (false, Arc::new(TermX::App(App::Other(ctxt.next_id), Arc::new(vec![term1]))))
+            (false, Arc::new(TermX::App(ctxt.other(), Arc::new(vec![term1]))))
         }
         ExpX::UnaryOpr(UnaryOpr::TupleField { .. }, _) => {
             panic!("internal error: TupleField should have been removed before here")
@@ -247,24 +264,18 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
             };
             let (_, term1) = gather_terms(ctxt, ctx, e1, depth);
             let (_, term2) = gather_terms(ctxt, ctx, e2, depth);
-            ctxt.next_id += 1;
-            (false, Arc::new(TermX::App(App::Other(ctxt.next_id), Arc::new(vec![term1, term2]))))
+            (false, Arc::new(TermX::App(ctxt.other(), Arc::new(vec![term1, term2]))))
         }
         ExpX::If(e1, e2, e3) => {
             let depth = 1;
             let (_, term1) = gather_terms(ctxt, ctx, e1, depth);
             let (_, term2) = gather_terms(ctxt, ctx, e2, depth);
             let (_, term3) = gather_terms(ctxt, ctx, e3, depth);
-            ctxt.next_id += 1;
-            (
-                false,
-                Arc::new(TermX::App(App::Other(ctxt.next_id), Arc::new(vec![term1, term2, term3]))),
-            )
+            (false, Arc::new(TermX::App(ctxt.other(), Arc::new(vec![term1, term2, term3]))))
         }
         ExpX::Bind(_, _) => {
             // REVIEW: we could at least look for matching loops here
-            ctxt.next_id += 1;
-            (false, Arc::new(TermX::App(App::Other(ctxt.next_id), Arc::new(vec![]))))
+            (false, Arc::new(TermX::App(ctxt.other(), Arc::new(vec![]))))
         }
     };
     if !ctxt.all_terms.contains_key(&term) {

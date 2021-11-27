@@ -153,7 +153,7 @@ test_verify_one_file! {
             let set813: Set<int> = set_empty().insert(8).insert(1).insert(3);
             // TODO(utaal): fix sets to allow == syntax for equality
             //assert(set138 == set813);
-            assert(set_ext_equal(set138, set813));
+            assert(set138.ext_equal(set813));
 
             // NOTE(Chris): The way you encode set literals influences what you can prove about it
             // - axiom for conversion from slice (has quantifiers)

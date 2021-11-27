@@ -103,7 +103,7 @@ fn func_body_to_air(
     check_commands.extend(termination_commands.iter().cloned());
 
     // Closure axioms
-    for closure_exp in closure_axioms {
+    for (_, closure_exp) in closure_axioms {
         let closure_expr = exp_to_expr(&ctx, &closure_exp);
         let closure_axiom = Arc::new(DeclX::Axiom(closure_expr));
         decl_commands.push(Arc::new(CommandX::Global(closure_axiom)))
@@ -409,7 +409,7 @@ pub fn func_def_to_air(
             // AST --> SST
             let stm = crate::ast_to_sst::expr_to_one_stm_dest(&ctx, &mut state, &body, &dest)?;
             let stm = state.finalize_stm(&stm);
-            for closure_exp in &state.closure_axioms {
+            for (closure_exp, _) in &state.closure_axioms {
                 reqs.push(closure_exp.clone());
             }
 

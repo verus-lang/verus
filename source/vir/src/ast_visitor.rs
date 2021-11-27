@@ -1,7 +1,7 @@
 use crate::ast::{
-    Arm, ArmX, CallTarget, Datatype, DatatypeX, Expr, ExprX, Field, Function, FunctionX,
-    GenericBound, GenericBoundX, Ident, Param, ParamX, Pattern, PatternX, SpannedTyped, Stmt,
-    StmtX, Typ, TypX, UnaryOpr, Variant, VirErr,
+    Arm, ArmX, CallTarget, ClosureImpl, Datatype, DatatypeX, Expr, ExprX, Field, Function,
+    FunctionX, GenericBound, GenericBoundX, Ident, Param, ParamX, Pattern, PatternX, SpannedTyped,
+    Stmt, StmtX, Typ, TypX, UnaryOpr, Variant, VirErr,
 };
 use crate::ast_util::err_str;
 use crate::def::Spanned;
@@ -150,7 +150,7 @@ where
             map.pop_scope();
             ExprX::Quant(*quant, Arc::new(binders), expr1)
         }
-        ExprX::Closure { params, body, call, axiom } => {
+        ExprX::Closure { params, body, closure_impl } => {
             let params =
                 vec_map_result(&**params, |b| b.map_result(|t| map_typ_visitor_env(t, env, ft)))?;
             map.push_scope(true);
@@ -158,16 +158,17 @@ where
                 let _ = map.insert(binder.name.clone(), binder.a.clone());
             }
             let body = map_expr_visitor_env(body, map, env, fe, fs, ft)?;
-            let call = match call {
+            let closure_impl = match closure_impl {
                 None => None,
-                Some(call) => Some(map_expr_visitor_env(call, map, env, fe, fs, ft)?),
-            };
-            let axiom = match axiom {
-                None => None,
-                Some(axiom) => Some(map_expr_visitor_env(axiom, map, env, fe, fs, ft)?),
+                Some(c) => {
+                    let call = map_expr_visitor_env(&c.call, map, env, fe, fs, ft)?;
+                    let local_axiom = map_expr_visitor_env(&c.local_axiom, map, env, fe, fs, ft)?;
+                    let global_axiom = map_expr_visitor_env(&c.global_axiom, map, env, fe, fs, ft)?;
+                    Some(ClosureImpl { call, local_axiom, global_axiom })
+                }
             };
             map.pop_scope();
-            ExprX::Closure { params: Arc::new(params), body, call, axiom }
+            ExprX::Closure { params: Arc::new(params), body, closure_impl }
         }
         ExprX::Assign(e1, e2) => {
             let expr1 = map_expr_visitor_env(e1, map, env, fe, fs, ft)?;
@@ -352,10 +353,10 @@ where
         type_bounds.push((x.clone(), map_generic_bound_visitor(bound, env, ft)?));
     }
     map.push_scope(true);
+    let params = Arc::new(vec_map_result(params, |p| map_param_visitor(p, env, ft))?);
     for p in params.iter() {
         let _ = map.insert(p.x.name.clone(), p.x.typ.clone());
     }
-    let params = Arc::new(vec_map_result(params, |p| map_param_visitor(p, env, ft))?);
     let ret = map_param_visitor(ret, env, ft)?;
     let require =
         Arc::new(vec_map_result(require, |e| map_expr_visitor_env(e, map, env, fe, fs, ft))?);

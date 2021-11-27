@@ -17,8 +17,9 @@ pub fn set_empty<A>() -> Set<A> {
 }
 
 #[spec]
-pub fn set_ext_equal<A>(s1: Set<A>, s2: Set<A>) -> bool {
-    forall(|a: A| s1.contains(a) == s2.contains(a))
+#[verifier(pub_abstract)]
+pub fn set_new<A, F: Fn(A) -> bool>(f: F) -> Set<A> {
+    arbitrary()
 }
 
 impl<A> Set<A> {
@@ -26,6 +27,11 @@ impl<A> Set<A> {
     #[verifier(pub_abstract)]
     pub fn contains(self, a: A) -> bool {
         arbitrary()
+    }
+
+    #[spec]
+    pub fn ext_equal(self, s2: Set<A>) -> bool {
+        forall(|a: A| self.contains(a) == s2.contains(a))
     }
 
     #[spec]
@@ -58,6 +64,17 @@ impl<A> Set<A> {
     }
 
     #[spec]
+    pub fn filter<F: Fn(A) -> bool>(self, f: F) -> Set<A> {
+        self.intersect(set_new(f))
+    }
+
+    #[spec]
+    #[verifier(pub_abstract)]
+    pub fn finite(self) -> bool {
+        arbitrary()
+    }
+
+    #[spec]
     #[verifier(pub_abstract)]
     pub fn cardinality(self) -> nat {
         arbitrary()
@@ -71,6 +88,13 @@ impl<A> Set<A> {
 #[verifier(export_as_global_forall)]
 pub fn axiom_set_empty<A>(a: A) {
     ensures(!set_empty().contains(a));
+}
+
+#[proof]
+#[verifier(no_verify)]
+#[verifier(export_as_global_forall)]
+pub fn axiom_set_new<A, F: Fn(A) -> bool>(f: F, a: A) {
+    ensures(set_new(f).contains(a) == f(a));
 }
 
 #[proof]
@@ -113,20 +137,32 @@ pub fn axiom_set_difference<A>(s1: Set<A>, s2: Set<A>, a: A) {
 #[verifier(no_verify)]
 #[verifier(export_as_global_forall)]
 pub fn axiom_set_ext_equal<A>(s1: Set<A>, s2: Set<A>) {
-    ensures(set_ext_equal(s1, s2) == equal(s1, s2));
+    ensures(s1.ext_equal(s2) == equal(s1, s2));
 }
 
+// Note: we could add more axioms about finite and cardinality, but they would be incomplete.
+// axiom_set_empty_cardinality, axiom_set_insert_cardinality, and axiom_set_ext_equal are enough
+// to build libraries about finite and cardinality.
 #[proof]
 #[verifier(no_verify)]
 #[verifier(export_as_global_forall)]
 pub fn axiom_set_empty_cardinality<A>() {
-    ensures(set_empty::<A>().cardinality() == 0);
+    ensures([
+        #[trigger(0)] set_empty::<A>().finite(),
+        #[trigger(1)] set_empty::<A>().cardinality() == 0,
+    ]);
 }
 
 #[proof]
 #[verifier(no_verify)]
 #[verifier(export_as_global_forall)]
 pub fn axiom_set_insert_cardinality<A>(s: Set<A>, a: A) {
-    requires(!s.contains(a));
-    ensures(#[trigger] s.insert(a).cardinality() == s.cardinality() + 1);
+    requires([
+        s.finite(),
+        !s.contains(a),
+    ]);
+    ensures([
+        #[trigger(0)] s.insert(a).finite(),
+        #[trigger(1)] s.insert(a).cardinality() == s.cardinality() + 1
+    ]);
 }

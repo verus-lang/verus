@@ -23,8 +23,8 @@ pub(crate) struct State {
     pub(crate) local_decls: Vec<LocalDecl>,
     // Collected closure bodies, which need to be checked for recursion
     pub(crate) closure_bodies: Vec<Exp>,
-    // Generated axioms about closure bodies
-    pub(crate) closure_axioms: Vec<Exp>,
+    // Generated axioms (local, global) about closure bodies
+    pub(crate) closure_axioms: Vec<(Exp, Exp)>,
     // Rename local variables when needed, using unique integers, to avoid collisions.
     // This is only needed for statement-level declarations (Some(unique_int)),
     // not for expression-level bindings (None).
@@ -204,7 +204,7 @@ pub(crate) fn expr_to_decls_exp(
     ctx: &Ctx,
     params: &Params,
     expr: &Expr,
-) -> Result<(Vec<LocalDecl>, Vec<Exp>, Vec<Exp>, Exp), VirErr> {
+) -> Result<(Vec<LocalDecl>, Vec<Exp>, Vec<(Exp, Exp)>, Exp), VirErr> {
     let mut state = State::new();
     for param in params.iter() {
         state.declare_new_var(&param.x.name, &param.x.typ, false);
@@ -470,25 +470,32 @@ pub(crate) fn expr_to_stm_opt(
             state.declare_binders(binders);
             let exp = expr_to_exp_state(ctx, state, body)?;
             state.pop_scope();
-            let vars: Vec<Ident> = binders.iter().map(|b| b.name.clone()).collect();
+            let mut vars: Vec<Ident> = Vec::new();
+            for b in binders.iter() {
+                match &*b.a {
+                    TypX::TypeId => vars.push(crate::def::suffix_typ_param_id(&b.name)),
+                    _ => vars.push(b.name.clone()),
+                }
+            }
             let trigs = crate::triggers::build_triggers(ctx, &expr.span, &vars, &exp)?;
             let bnd = Spanned::new(body.span.clone(), BndX::Quant(*quant, binders.clone(), trigs));
             Ok((vec![], Some(Spanned::new(expr.span.clone(), ExpX::Bind(bnd, exp)))))
         }
-        ExprX::Closure { params, body, call, axiom } => {
+        ExprX::Closure { params, body, closure_impl } => {
             // Replace closure with call to function that creates closure
-            let call = call.as_ref().expect("call should be set to Some by ast_simplify");
-            let axiom = axiom.as_ref().expect("axiom should be set to Some by ast_simplify");
+            let closure_impl =
+                closure_impl.as_ref().expect("closure_impl should be set to Some by ast_simplify");
 
             state.push_scope();
             state.declare_binders(params);
             let body = expr_to_exp_state(ctx, state, body)?;
             state.pop_scope();
 
-            let call = expr_to_exp_state(ctx, state, call)?;
-            let axiom = expr_to_exp_state(ctx, state, axiom)?;
+            let call = expr_to_exp_state(ctx, state, &closure_impl.call)?;
+            let local_axiom = expr_to_exp_state(ctx, state, &closure_impl.local_axiom)?;
+            let global_axiom = expr_to_exp_state(ctx, state, &closure_impl.global_axiom)?;
             state.closure_bodies.push(body.clone());
-            state.closure_axioms.push(axiom);
+            state.closure_axioms.push((local_axiom, global_axiom));
             Ok((vec![], Some(call)))
         }
         ExprX::Fuel(x, fuel) => {

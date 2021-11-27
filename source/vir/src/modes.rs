@@ -196,7 +196,7 @@ fn check_expr(typing: &mut Typing, outer_mode: Mode, expr: &Expr) -> Result<Mode
             typing.vars.pop_scope();
             Ok(Mode::Spec)
         }
-        ExprX::Closure { params, body, call: _, axiom: _ } => {
+        ExprX::Closure { params, body, closure_impl: _ } => {
             // Note: captures and call are not filled in at this point (ast_simplify sets them),
             // so there's no need to check them here.
             typing.vars.push_scope(true);

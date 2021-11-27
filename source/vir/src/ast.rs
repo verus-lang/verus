@@ -236,6 +236,16 @@ pub enum CallTarget {
     FnSpec { typ_param: Ident, fun: Expr },
 }
 
+#[derive(Debug)]
+pub struct ClosureImpl {
+    /// Call to generated function that represents the closure
+    pub call: Expr,
+    /// Axiom about generated closure function, quantified over local variables
+    pub local_axiom: Expr,
+    /// Axiom about generated closure function, quantified over local variables and typ_params
+    pub global_axiom: Expr,
+}
+
 /// Expression, similar to rustc_hir::Expr
 pub type Expr = Arc<SpannedTyped<ExprX>>;
 pub type Exprs = Arc<Vec<Expr>>;
@@ -262,10 +272,8 @@ pub enum ExprX {
     /// Quantifier (forall/exists), binding the variables in Binders, with body Expr
     Quant(Quant, Binders<Typ>, Expr),
     /// Specification closure
-    /// NOTE: call and axiom are computed by ast_simplify;
-    /// the Closure is ultimately replaced with call, which is a call to a generated function
-    /// that produces the value that represents the closure
-    Closure { params: Binders<Typ>, body: Expr, call: Option<Expr>, axiom: Option<Expr> },
+    /// Note: ClosureImpl is computed by ast_simplify
+    Closure { params: Binders<Typ>, body: Expr, closure_impl: Option<ClosureImpl> },
     /// Assign to local variable
     Assign(Expr, Expr),
     /// Reveal definition of an opaque function with some integer fuel amount
@@ -329,6 +337,8 @@ pub struct FunctionAttrsX {
     pub hidden: Arc<Vec<Path>>,
     /// Create a global axiom saying forall params, require ==> ensure
     pub export_as_global_forall: bool,
+    /// In triggers_auto, don't use this function as a trigger
+    pub no_auto_trigger: bool,
     /// Custom error message to display when a pre-condition fails
     pub custom_req_err: Option<String>,
 }

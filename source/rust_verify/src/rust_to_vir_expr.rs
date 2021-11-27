@@ -1065,7 +1065,7 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                 })
                 .collect();
             let body = expr_to_vir(bctx, &body.value)?;
-            Ok(mk_expr(ExprX::Closure { params: Arc::new(params), body, call: None, axiom: None }))
+            Ok(mk_expr(ExprX::Closure { params: Arc::new(params), body, closure_impl: None }))
         }
         _ => {
             unsupported_err!(expr.span, format!("expression"), expr)

@@ -208,6 +208,7 @@ pub(crate) fn check_item_fn<'tcx>(
     let fattrs = FunctionAttrsX {
         hidden: Arc::new(header.hidden),
         custom_req_err: vattrs.custom_req_err,
+        no_auto_trigger: false,
         export_as_global_forall: vattrs.export_as_global_forall,
     };
     let func = FunctionX {
