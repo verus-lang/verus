@@ -473,17 +473,23 @@ fn fn_exp_call_to_vir<'tcx>(
     Ok(call)
 }
 
-fn datatype_of_path(mut path: vir::ast::Path) -> vir::ast::Path {
+fn datatype_of_path(mut path: vir::ast::Path, pop_constructor: bool) -> vir::ast::Path {
     // TODO is there a safer way to do this?
     let segments = Arc::get_mut(&mut Arc::get_mut(&mut path).unwrap().segments).unwrap();
-    segments.pop(); // remove constructor
+    if pop_constructor {
+        segments.pop(); // remove constructor
+    }
     segments.pop(); // remove variant
     path
 }
 
-fn datatype_variant_of_res<'tcx>(tcx: TyCtxt<'tcx>, res: &Res) -> (vir::ast::Path, Ident) {
+fn datatype_variant_of_res<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    res: &Res,
+    pop_constructor: bool,
+) -> (vir::ast::Path, Ident) {
     let variant = tcx.expect_variant_res(*res);
-    let vir_path = datatype_of_path(def_id_to_vir_path(tcx, res.def_id()));
+    let vir_path = datatype_of_path(def_id_to_vir_path(tcx, res.def_id()), pop_constructor);
     let variant_name = str_ident(&variant.ident.as_str());
     (vir_path, variant_name)
 }
@@ -511,7 +517,7 @@ pub(crate) fn expr_tuple_datatype_ctor_to_vir<'tcx>(
             expr
         );
     }
-    let (vir_path, variant_name) = datatype_variant_of_res(tcx, res);
+    let (vir_path, variant_name) = datatype_variant_of_res(tcx, res, true);
     let vir_fields = Arc::new(
         args_slice
             .iter()
@@ -573,7 +579,7 @@ pub(crate) fn pattern_to_vir<'tcx>(
                 ..
             },
         )) => {
-            let (vir_path, variant_name) = datatype_variant_of_res(tcx, res);
+            let (vir_path, variant_name) = datatype_variant_of_res(tcx, res, true);
             PatternX::Constructor(vir_path, variant_name, Arc::new(vec![]))
         }
         PatKind::Tuple(pats, None) => {
@@ -603,11 +609,40 @@ pub(crate) fn pattern_to_vir<'tcx>(
             pats,
             None,
         ) => {
-            let (vir_path, variant_name) = datatype_variant_of_res(tcx, res);
+            let (vir_path, variant_name) = datatype_variant_of_res(tcx, res, true);
             let mut binders: Vec<Binder<vir::ast::Pattern>> = Vec::new();
             for (i, pat) in pats.iter().enumerate() {
                 let pattern = pattern_to_vir(bctx, pat)?;
                 let binder = ident_binder(&positional_field_ident(i), &pattern);
+                binders.push(binder);
+            }
+            PatternX::Constructor(vir_path, variant_name, Arc::new(binders))
+        }
+        PatKind::Struct(
+            QPath::Resolved(None, rustc_hir::Path { res: res @ Res::Def(DefKind::Variant, _), .. }),
+            pats,
+            _,
+        ) => {
+            let (vir_path, variant_name) = datatype_variant_of_res(tcx, res, false);
+            let mut binders: Vec<Binder<vir::ast::Pattern>> = Vec::new();
+            for fpat in pats.iter() {
+                let pattern = pattern_to_vir(bctx, &fpat.pat)?;
+                let binder = ident_binder(&str_ident(&fpat.ident.as_str()), &pattern);
+                binders.push(binder);
+            }
+            PatternX::Constructor(vir_path, variant_name, Arc::new(binders))
+        }
+        PatKind::Struct(
+            QPath::Resolved(None, rustc_hir::Path { res: res @ Res::Def(DefKind::Struct, _), .. }),
+            pats,
+            _,
+        ) => {
+            let vir_path = def_id_to_vir_path(tcx, res.def_id());
+            let variant_name = vir_path.segments.last().expect("empty vir_path").clone();
+            let mut binders: Vec<Binder<vir::ast::Pattern>> = Vec::new();
+            for fpat in pats.iter() {
+                let pattern = pattern_to_vir(bctx, &fpat.pat)?;
+                let binder = ident_binder(&str_ident(&fpat.ident.as_str()), &pattern);
                 binders.push(binder);
             }
             PatternX::Constructor(vir_path, variant_name, Arc::new(binders))

@@ -115,6 +115,51 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test2_struct code! {
+        enum List<A> {
+            Nil,
+            Cons { hd: A, tl: Box<List<A>> },
+        }
+
+        #[spec]
+        fn len<A>(list: &List<A>) -> nat {
+            decreases(list);
+            match list {
+                List::Nil => 0,
+                List::Cons { hd: _, tl } => 1 + len(tl),
+            }
+        }
+
+        fn get_len<A>(list: &List<A>) -> u64 {
+            requires(len(list) <= 0xffffffffffffffff);
+            ensures(|r: u64| r == len(list));
+
+            let mut n: u64 = 0;
+            let mut done = false;
+            let mut iter = list;
+            while !done {
+                invariant([
+                    len(list) <= 0xffffffffffffffff,
+                    n + len(iter) == len(list),
+                    imply(done, len(iter) == 0),
+                ]);
+
+                match iter {
+                    List::Nil => {
+                        done = true;
+                    }
+                    List::Cons { hd: _, tl } => {
+                        iter = tl;
+                        n = n + 1;
+                    }
+                }
+            }
+            n
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] test2_fails code! {
         enum List<A> {
             Nil,
@@ -174,6 +219,58 @@ test_verify_one_file! {
             assert(!z);
         }
     } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test3_enum_struct code! {
+        enum Pair<A, B> {
+            Pair { a: A, b: B },
+        }
+
+        fn test() {
+            let Pair::Pair { a: mut y, b: z } = Pair::Pair { a: true, b: false };
+            assert(y);
+            y = false;
+            assert(!y);
+            assert(!z);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test3_struct code! {
+        struct Pair<A, B> { a: A, b: B }
+
+        fn test() {
+            let Pair { a: mut y, b: z } = Pair { a: true, b: false };
+            assert(y);
+            y = false;
+            assert(!y);
+            assert(!z);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test3_struct_dots code! {
+        struct Pair<A, B> { a: A, b: B }
+
+        fn test() {
+            let Pair { b: z, .. } = Pair { a: true, b: false };
+            assert(!z);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test3_struct_dots_fail code! {
+        struct Pair<A, B> { a: A, b: B }
+
+        fn test() {
+            let Pair { b: z, .. } = Pair { a: true, b: false };
+            assert(z); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
 }
 
 test_verify_one_file! {
