@@ -555,21 +555,35 @@ fn erase_expr_opt(ctxt: &Ctxt, mctxt: &mut MCtxt, expect: Mode, expr: &Expr) -> 
         ExprKind::Closure(..) => return None,
         ExprKind::If(eb, e1, e2_opt) => {
             let modeb = ctxt.condition_modes[&expr.span];
+            let eb_erase = match &eb.kind {
+                ExprKind::Let(pat, eb1) => {
+                    let eb1 = erase_expr_opt(ctxt, mctxt, modeb, eb1);
+                    if let Some(eb1) = eb1 {
+                        let pat = erase_pat(ctxt, mctxt, pat);
+                        let Expr { id, span, .. } = **eb; // for asymptotic efficiency, don't call eb.clone()
+                        let kind = ExprKind::Let(P(pat), P(eb1));
+                        let attrs = eb.attrs.clone();
+                        Some(Expr { id, kind, span, attrs, tokens: eb.tokens.clone() })
+                    } else {
+                        None
+                    }
+                }
+                _ => erase_expr_opt(ctxt, mctxt, modeb, eb),
+            };
             let keep = |mctxt: &mut MCtxt, eb| {
                 let e1 = erase_block(ctxt, mctxt, expect, e1);
                 let e2_opt = e2_opt.as_ref().map(|e2| P(erase_expr(ctxt, mctxt, expect, e2)));
                 ExprKind::If(P(eb), P(e1), e2_opt)
             };
             if modeb == Mode::Exec {
-                let eb = erase_expr(ctxt, mctxt, modeb, eb);
+                let eb = eb_erase.expect("erase_expr");
                 keep(mctxt, eb)
             } else {
                 assert!(expect != Mode::Exec);
                 if !ctxt.keep_proofs {
-                    let eb = erase_expr(ctxt, mctxt, modeb, eb);
+                    let eb = eb_erase.expect("erase_expr");
                     return Some(eb);
                 } else if modeb == Mode::Spec && expect == Mode::Proof {
-                    let eb_erase = erase_expr_opt(ctxt, mctxt, modeb, eb);
                     // We erase eb, so we have no bool for the If.
                     // Create a nondeterministic boolean to take eb's place.
                     let e_nondet = call_arbitrary(ctxt, mctxt, expr.span);
@@ -581,7 +595,7 @@ fn erase_expr_opt(ctxt: &Ctxt, mctxt: &mut MCtxt, expect: Mode, expr: &Expr) -> 
                     );
                     keep(mctxt, eb.expect("e_nondet"))
                 } else {
-                    let eb = erase_expr(ctxt, mctxt, modeb, eb);
+                    let eb = eb_erase.expect("erase_expr");
                     keep(mctxt, eb)
                 }
             }
