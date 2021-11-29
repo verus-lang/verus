@@ -373,7 +373,7 @@ test_verify_one_file! {
 const DIRECTIONS_SHARED_CODE: &str = code_str! {
     #[allow(unused_imports)] use builtin::*;
     #[allow(unused_imports)] use builtin_macros::*;
-    mod pervasive; use pervasive::*;
+    use crate::pervasive::*;
 
     #[derive(PartialEq, Eq, Structural)]
     pub enum Direction {
@@ -501,8 +501,6 @@ test_verify_one_file! {
 const LUNCH_SHARED_CODE: &str = code_str! {
     #[allow(unused_imports)] use builtin::*;
     #[allow(unused_imports)] use builtin_macros::*;
-
-    mod pervasive; use pervasive::*;
 
     #[derive(PartialEq, Eq, Structural)]
     pub enum Meat { Salami, Ham }

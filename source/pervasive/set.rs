@@ -2,6 +2,8 @@
 use builtin::*;
 #[allow(unused_imports)]
 use crate::pervasive::*;
+#[allow(unused_imports)]
+use crate::pervasive::map::*;
 
 /// set type for specifications
 #[verifier(no_verify)]
@@ -14,6 +16,11 @@ pub struct Set<A> {
 #[verifier(pub_abstract)]
 pub fn set_empty<A>() -> Set<A> {
     arbitrary()
+}
+
+#[spec]
+pub fn set_full<A>() -> Set<A> {
+    set_empty().complement()
 }
 
 #[spec]
@@ -64,6 +71,12 @@ impl<A> Set<A> {
     }
 
     #[spec]
+    #[verifier(pub_abstract)]
+    pub fn complement(self) -> Set<A> {
+        arbitrary()
+    }
+
+    #[spec]
     pub fn filter<F: Fn(A) -> bool>(self, f: F) -> Set<A> {
         self.intersect(set_new(f))
     }
@@ -77,6 +90,12 @@ impl<A> Set<A> {
     #[spec]
     #[verifier(pub_abstract)]
     pub fn cardinality(self) -> nat {
+        arbitrary()
+    }
+
+    #[spec]
+    #[verifier(pub_abstract)]
+    pub fn mk_map<V, F: Fn(A) -> V>(self, f: F) -> Map<A, V> {
         arbitrary()
     }
 }
@@ -101,7 +120,7 @@ pub fn axiom_set_new<A, F: Fn(A) -> bool>(f: F, a: A) {
 #[verifier(no_verify)]
 #[verifier(export_as_global_forall)]
 pub fn axiom_set_insert_same<A>(s: Set<A>, a: A) {
-    ensures(s.insert(a).contains(a));
+    ensures(#[trigger] s.insert(a).contains(a));
 }
 
 #[proof]
@@ -109,7 +128,7 @@ pub fn axiom_set_insert_same<A>(s: Set<A>, a: A) {
 #[verifier(export_as_global_forall)]
 pub fn axiom_set_insert_different<A>(s: Set<A>, a1: A, a2: A) {
     requires(!equal(a1, a2));
-    ensures(s.insert(a1).contains(a2) == s.contains(a2));
+    ensures(s.insert(a2).contains(a1) == s.contains(a1));
 }
 
 #[proof]
@@ -136,6 +155,13 @@ pub fn axiom_set_difference<A>(s1: Set<A>, s2: Set<A>, a: A) {
 #[proof]
 #[verifier(no_verify)]
 #[verifier(export_as_global_forall)]
+pub fn axiom_set_complement<A>(s: Set<A>, a: A) {
+    ensures(s.complement().contains(a) == !s.contains(a));
+}
+
+#[proof]
+#[verifier(no_verify)]
+#[verifier(export_as_global_forall)]
 pub fn axiom_set_ext_equal<A>(s1: Set<A>, s2: Set<A>) {
     ensures(s1.ext_equal(s2) == equal(s1, s2));
 }
@@ -146,10 +172,30 @@ pub fn axiom_set_ext_equal<A>(s1: Set<A>, s2: Set<A>) {
 #[proof]
 #[verifier(no_verify)]
 #[verifier(export_as_global_forall)]
+pub fn axiom_set_empty_finite<A>() {
+    ensures([
+        #[trigger] set_empty::<A>().finite(),
+    ]);
+}
+
+#[proof]
+#[verifier(no_verify)]
+#[verifier(export_as_global_forall)]
 pub fn axiom_set_empty_cardinality<A>() {
     ensures([
-        #[trigger(0)] set_empty::<A>().finite(),
-        #[trigger(1)] set_empty::<A>().cardinality() == 0,
+        #[trigger] set_empty::<A>().cardinality() == 0,
+    ]);
+}
+
+#[proof]
+#[verifier(no_verify)]
+#[verifier(export_as_global_forall)]
+pub fn axiom_set_insert_finite<A>(s: Set<A>, a: A) {
+    requires([
+        s.finite(),
+    ]);
+    ensures([
+        #[trigger] s.insert(a).finite(),
     ]);
 }
 
@@ -162,7 +208,21 @@ pub fn axiom_set_insert_cardinality<A>(s: Set<A>, a: A) {
         !s.contains(a),
     ]);
     ensures([
-        #[trigger(0)] s.insert(a).finite(),
-        #[trigger(1)] s.insert(a).cardinality() == s.cardinality() + 1
+        #[trigger] s.insert(a).cardinality() == s.cardinality() + 1
     ]);
+}
+
+#[proof]
+#[verifier(no_verify)]
+#[verifier(export_as_global_forall)]
+pub fn axiom_mk_map_domain<K, V, F: Fn(K) -> V>(s: Set<K>, f: F) {
+    ensures(equal(#[trigger] s.mk_map(f).dom(), s));
+}
+
+#[proof]
+#[verifier(no_verify)]
+#[verifier(export_as_global_forall)]
+pub fn axiom_mk_map_index<K, V, F: Fn(K) -> V>(s: Set<K>, f: F, key: K) {
+    requires(s.contains(key));
+    ensures(equal(s.mk_map(f).index(key), f(key)));
 }

@@ -1,4 +1,7 @@
+pub mod map;
+pub mod option;
 pub mod vec;
+pub mod seq;
 pub mod set;
 
 #[allow(unused_imports)]
