@@ -136,7 +136,9 @@ The following statements are not yet supported:
 - method-call expressions
     - supported (for non-trait methods)
 - field access expressions: supported
-- closure expressions: low priority
+- closure expressions:
+    - spec closures (not proof/exec) are supported, at least as function arguments
+    - other closure expressions: low priority
 - loop expressions
     - loop: medium priority
     - while: supported
@@ -162,7 +164,7 @@ The following statements are not yet supported:
 - rest pattern: low priority
 - range patterns: low priority
 - reference patterns: low priority
-- struct patterns: high priority
+- struct patterns: supported
 - tuple struct patterns:
     - for enums: supported
     - for structs: medium priority
@@ -187,10 +189,9 @@ The following statements are not yet supported:
 - struct types: supported
     - except for tuple struct types: medium priority
 - enum types: supported
-    - except for struct patterns: high priority
 - union types: unsupported
 - function item types: low priority
-- closure types: low priority
+- closure types: low priority for exec/proof; for specs, you can use the Map type, which can be initialized with a closure
 - pointer types:
     - shared references: supported
     - mutable references: high priority
