@@ -130,3 +130,49 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_one_fails(err)
 }
+
+test_verify_one_file! {
+    #[test] test_update1 code! {
+        struct S2 { u: u64, v: u64 }
+
+        fn test_update() {
+            let s2 = S2 { u: 10, v: 20 };
+            let s3 = S2 { v: 23, .. s2 };
+            assert(s3.u == 10);
+            assert(s3.v == 23);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_update2 code! {
+        struct S2 { u: u64, v: u64 }
+
+        fn g() -> S2 {
+            ensures(|s: S2| s.u == 100);
+            S2 { u: 100, v: 200 }
+        }
+
+        fn test_update() {
+            let s3 = S2 { v: 1 + 22, .. g() };
+            assert(s3.u == 100);
+            assert(s3.v == 23);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_update2_fails code! {
+        struct S2 { u: u64, v: u64 }
+
+        fn g() -> S2 {
+            S2 { u: 100, v: 200 }
+        }
+
+        fn test_update() {
+            let s3 = S2 { v: 1 + 22, .. g() };
+            assert(s3.u == 100); // FAILS
+            assert(s3.v == 23);
+        }
+    } => Err(err) => assert_one_fails(err)
+}

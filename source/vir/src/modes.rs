@@ -148,10 +148,13 @@ fn check_expr(typing: &mut Typing, outer_mode: Mode, expr: &Expr) -> Result<Mode
             let modes = vec_map_result(es, |e| check_expr(typing, outer_mode, e))?;
             Ok(modes.into_iter().fold(outer_mode, mode_join))
         }
-        ExprX::Ctor(path, variant, binders) => {
+        ExprX::Ctor(path, variant, binders, update) => {
             let datatype = &typing.datatypes[path].clone();
             let variant = datatype.x.get_variant(variant);
             let mut mode = outer_mode;
+            if let Some(update) = update {
+                mode = mode_join(mode, check_expr(typing, outer_mode, update)?);
+            }
             for arg in binders.iter() {
                 let (_, field_mode) = get_field(&variant.a, &arg.name).a;
                 let mode_arg = check_expr(typing, mode_join(outer_mode, field_mode), &arg.a)?;

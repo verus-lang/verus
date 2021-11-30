@@ -546,7 +546,8 @@ pub(crate) fn expr_tuple_datatype_ctor_to_vir<'tcx>(
     let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
     let resolved_call = ResolvedCall::Ctor(vir_path.clone(), variant_name.clone());
     erasure_info.resolved_calls.push((path_span.data(), resolved_call));
-    Ok(spanned_typed_new(expr.span, &expr_typ, ExprX::Ctor(vir_path, variant_name, vir_fields)))
+    let exprx = ExprX::Ctor(vir_path, variant_name, vir_fields, None);
+    Ok(spanned_typed_new(expr.span, &expr_typ, exprx))
 }
 
 pub(crate) fn pattern_to_vir<'tcx>(
@@ -1006,7 +1007,10 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
             Ok(mk_expr(ExprX::While { cond, body, invs }))
         }
         ExprKind::Struct(qpath, fields, spread) => {
-            unsupported_unless!(spread.is_none(), "spread_in_struct_ctor");
+            let update = match spread {
+                None => None,
+                Some(update) => Some(expr_to_vir(bctx, update)?),
+            };
             let (path, path_span, variant, variant_name) = match qpath {
                 QPath::Resolved(slf, path) => {
                     unsupported_unless!(
@@ -1059,7 +1063,7 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
             let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
             let resolved_call = ResolvedCall::Ctor(path.clone(), variant_name.clone());
             erasure_info.resolved_calls.push((path_span.data(), resolved_call));
-            Ok(mk_expr(ExprX::Ctor(path, variant_name, vir_fields)))
+            Ok(mk_expr(ExprX::Ctor(path, variant_name, vir_fields, update)))
         }
         ExprKind::MethodCall(_name_and_generics, _call_span_0, all_args, call_span_1) => {
             let receiver = all_args.first().expect("receiver in method call");

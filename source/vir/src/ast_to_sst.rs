@@ -409,7 +409,8 @@ pub(crate) fn expr_to_stm_opt(
         ExprX::Tuple(_) => {
             panic!("internal error: Tuple should have been simplified by ast_simplify")
         }
-        ExprX::Ctor(p, i, binders) => {
+        ExprX::Ctor(p, i, binders, update) => {
+            assert!(update.is_none()); // should be simplified by ast_simplify
             let mut stms: Vec<Stm> = Vec::new();
             let mut args: Vec<Binder<Exp>> = Vec::new();
             for binder in binders.iter() {

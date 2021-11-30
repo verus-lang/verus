@@ -67,7 +67,7 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
             let fe = |state: &mut State, _: &mut ScopeMap<Ident, Typ>, e: &Expr| {
                 match &e.x {
                     ExprX::Call(CallTarget::Path(path, _), _) => reach_function(ctxt, state, path),
-                    ExprX::Ctor(path, _, _) => reach_datatype(ctxt, state, path),
+                    ExprX::Ctor(path, _, _, _) => reach_datatype(ctxt, state, path),
                     _ => {}
                 }
                 Ok(e.clone())

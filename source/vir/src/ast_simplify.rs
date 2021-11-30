@@ -304,7 +304,61 @@ fn simplify_one_expr(
                 binders.push(ident_binder(&field, &exp));
             }
             let binders = Arc::new(binders);
-            Ok(SpannedTyped::new(&expr.span, &expr.typ, ExprX::Ctor(datatype, variant, binders)))
+            let exprx = ExprX::Ctor(datatype, variant, binders, None);
+            Ok(SpannedTyped::new(&expr.span, &expr.typ, exprx))
+        }
+        ExprX::Ctor(path, variant, partial_binders, Some(update)) => {
+            let (temp_decl, update) = small_or_temp(state, update);
+            let mut decls: Vec<Stmt> = Vec::new();
+            let mut binders: Vec<Binder<Expr>> = Vec::new();
+            match temp_decl {
+                None => {
+                    for binder in partial_binders.iter() {
+                        binders.push(binder.clone());
+                    }
+                }
+                Some(temp) => {
+                    // Because of Rust's order of evaluation here,
+                    // we have to put binders in temp vars, too.
+                    for binder in partial_binders.iter() {
+                        let (temp_decl, e) = small_or_temp(state, &binder.a);
+                        let binder = match temp_decl {
+                            None => binder.clone(),
+                            Some(temp) => {
+                                decls.push(temp);
+                                Arc::new(binder.map_a(|_| e))
+                            }
+                        };
+                        binders.push(binder);
+                    }
+                    decls.push(temp);
+                }
+            }
+            let datatype = &ctx.datatypes[path];
+            assert_eq!(datatype.len(), 1);
+            let fields = &datatype[0].a;
+            // replace ..update
+            // with f1: update.f1, f2: update.f2, ...
+            for field in fields.iter() {
+                if binders.iter().find(|b| b.name == field.name).is_none() {
+                    let op = UnaryOpr::Field {
+                        datatype: path.clone(),
+                        variant: variant.clone(),
+                        field: field.name.clone(),
+                    };
+                    let exprx = ExprX::UnaryOpr(op, update.clone());
+                    let field_exp = SpannedTyped::new(&expr.span, &field.a.0, exprx);
+                    binders.push(ident_binder(&field.name, &field_exp));
+                }
+            }
+            let ctorx = ExprX::Ctor(path.clone(), variant.clone(), Arc::new(binders), None);
+            let ctor = SpannedTyped::new(&expr.span, &expr.typ, ctorx);
+            if decls.len() == 0 {
+                Ok(ctor)
+            } else {
+                let block = ExprX::Block(Arc::new(decls), Some(ctor));
+                Ok(SpannedTyped::new(&expr.span, &expr.typ, block))
+            }
         }
         ExprX::UnaryOpr(UnaryOpr::TupleField { tuple_arity, field }, expr0) => {
             let datatype = state.tuple_type_name(*tuple_arity);

@@ -114,12 +114,16 @@ where
             }
             ExprX::Tuple(Arc::new(exprs))
         }
-        ExprX::Ctor(path, ident, binders) => {
+        ExprX::Ctor(path, ident, binders, update) => {
+            let update = match update {
+                None => None,
+                Some(update) => Some(map_expr_visitor_env(update, map, env, fe, fs, ft)?),
+            };
             let mapped_binders = binders
                 .iter()
                 .map(|b| b.map_result(|a| map_expr_visitor_env(a, map, env, fe, fs, ft)))
                 .collect::<Result<Vec<_>, _>>()?;
-            ExprX::Ctor(path.clone(), ident.clone(), Arc::new(mapped_binders))
+            ExprX::Ctor(path.clone(), ident.clone(), Arc::new(mapped_binders), update)
         }
         ExprX::Unary(op, e1) => {
             let expr1 = map_expr_visitor_env(e1, map, env, fe, fs, ft)?;

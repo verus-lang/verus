@@ -498,8 +498,12 @@ fn erase_expr_opt(ctxt: &Ctxt, mctxt: &mut MCtxt, expect: Mode, expr: &Expr) -> 
                 return replace_with_exprs(mctxt, expr, exprs);
             }
         }
-        ExprKind::Struct(path, fields, StructRest::None) => {
+        ExprKind::Struct(path, fields, rest) => {
             if keep_mode(ctxt, expect) {
+                let rest = match rest {
+                    StructRest::None | StructRest::Rest(_) => rest.clone(),
+                    StructRest::Base(e) => StructRest::Base(P(erase_expr(ctxt, mctxt, expect, e))),
+                };
                 let (vir_path, variant) = match &ctxt.calls[&path.span] {
                     ResolvedCall::Ctor(path, variant) => (path, variant),
                     _ => panic!("internal error: expected Ctor"),
@@ -528,9 +532,13 @@ fn erase_expr_opt(ctxt: &Ctxt, mctxt: &mut MCtxt, expect: Mode, expr: &Expr) -> 
                     }
                 }
                 // TODO: instantiate any type parameters left unused after erasure
-                ExprKind::Struct(path.clone(), new_fields, StructRest::None)
+                ExprKind::Struct(path.clone(), new_fields, rest)
             } else {
-                let exprs = vec_map(fields, |f| erase_expr_opt(ctxt, mctxt, expect, &f.expr));
+                let mut exprs = vec_map(fields, |f| erase_expr_opt(ctxt, mctxt, expect, &f.expr));
+                match rest {
+                    StructRest::None | StructRest::Rest(_) => {}
+                    StructRest::Base(e) => exprs.push(erase_expr_opt(ctxt, mctxt, expect, e)),
+                }
                 return replace_with_exprs(mctxt, expr, exprs);
             }
         }

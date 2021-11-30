@@ -60,7 +60,7 @@ fn check_function(ctxt: &Ctxt, function: &Function) -> Result<(), VirErr> {
                         }
                     }
                 }
-                ExprX::Ctor(path, _variant, _fields) => {
+                ExprX::Ctor(path, _variant, _fields, _update) => {
                     if let Some(dt) = ctxt.dts.get(path) {
                         if let Some(module) = &function.x.visibility.owning_module {
                             if !is_datatype_transparent(&module, dt) {
