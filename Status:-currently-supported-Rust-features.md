@@ -126,7 +126,7 @@ The following statements are not yet supported:
 - tuple expressions: supported
 - struct expressions:
     - field struct expression: supported
-    - functional update syntax: medium priority
+    - functional update syntax: supported
     - struct field init shorthand: supported
     - tuple struct expression: medium priority
     - unit struct expression: low priority (use `S {}`, which is supported)
