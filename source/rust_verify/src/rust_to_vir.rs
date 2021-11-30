@@ -265,7 +265,7 @@ fn check_attr<'tcx>(
 pub fn crate_to_vir<'tcx>(ctxt: &Context<'tcx>) -> Result<Krate, VirErr> {
     let Crate {
         item: _,
-        exported_macros,
+        exported_macros: _,
         non_exported_macro_attrs,
         items,
         trait_items,
@@ -280,11 +280,6 @@ pub fn crate_to_vir<'tcx>(ctxt: &Context<'tcx>) -> Result<Krate, VirErr> {
         attrs,
     } = ctxt.krate;
     let mut vir: KrateX = Default::default();
-    unsupported_unless!(
-        exported_macros.len() == 0,
-        "exported macros from a crate",
-        exported_macros
-    );
     unsupported_unless!(
         non_exported_macro_attrs.len() == 0,
         "non-exported macro attributes",
