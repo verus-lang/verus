@@ -89,7 +89,7 @@ impl<A> Set<A> {
 
     #[spec]
     #[verifier(pub_abstract)]
-    pub fn cardinality(self) -> nat {
+    pub fn cardinality(self) -> nat { // TODO(utaal): switch to len
         arbitrary()
     }
 
@@ -225,4 +225,24 @@ pub fn axiom_mk_map_domain<K, V, F: Fn(K) -> V>(s: Set<K>, f: F) {
 pub fn axiom_mk_map_index<K, V, F: Fn(K) -> V>(s: Set<K>, f: F, key: K) {
     requires(s.contains(key));
     ensures(equal(s.mk_map(f).index(key), f(key)));
+}
+
+#[macro_export]
+macro_rules! set_insert_rec {
+    [$val:expr;] => {
+        $val
+    };
+    [$val:expr;$elem:expr] => {
+        set_insert_rec![$val.insert($elem);]
+    };
+    [$val:expr;$elem:expr,$($tail:tt)*] => {
+        set_insert_rec![$val.insert($elem);$($tail)*]
+    }
+}
+
+#[macro_export]
+macro_rules! set {
+    [$($tail:tt)*] => {
+        set_insert_rec![$crate::pervasive::set::set_empty();$($tail)*]
+    }
 }

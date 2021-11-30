@@ -898,6 +898,7 @@ fn erase_item(ctxt: &Ctxt, mctxt: &mut MCtxt, item: &Item) -> Vec<P<Item>> {
             ItemKind::Impl(Box::new(kind))
         }
         ItemKind::Const(..) => item.kind.clone(),
+        ItemKind::MacroDef(..) => item.kind.clone(),
         _ => {
             unsupported!("unsupported item", item)
         }
