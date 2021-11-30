@@ -512,7 +512,9 @@ fn simplify_one_stmt(ctx: &GlobalCtx, state: &mut State, stmt: &Stmt) -> Result<
             PatternX::Var { .. } => Ok(vec![stmt.clone()]),
             _ => err_str(&stmt.span, "let-pattern declaration must have an initializer"),
         },
-        StmtX::Decl { pattern, mode: _, init: Some(init) } => {
+        StmtX::Decl { pattern, mode: _, init: Some(init) }
+            if !matches!(pattern.x, PatternX::Var { .. }) =>
+        {
             let mut decls: Vec<Stmt> = Vec::new();
             let (temp_decl, init) = small_or_temp(state, init);
             if let Some(temp_decl) = temp_decl {
