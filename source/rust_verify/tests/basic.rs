@@ -255,3 +255,12 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_one_fails(err)
 }
+
+test_verify_one_file! {
+    #[test] test_paren code! {
+        fn test_paren() {
+            {{{{if true {} else {}}}}}
+            ((((if true {} else {}))))
+        }
+    } => Ok(())
+}

@@ -134,12 +134,39 @@ pub struct Ctxt {
 }
 
 struct MCtxt<'a> {
+    // Allocate a fresh NodeId
     f_next_node_id: &'a mut dyn FnMut() -> NodeId,
+    // Unfortunately for us, Rust likes to include surrounding parentheses in an
+    // expression's span in HIR, but not in Rust AST.
+    // For an expression "((5))", the span in like "((5))" in HIR and like "5" in AST.
+    // Keep a mapping from "5" to "(5)" to "((5))" so we can correct for this.
+    remap_parens: HashMap<Span, Span>,
 }
 
 impl<'a> MCtxt<'a> {
     fn next_node_id(&mut self) -> NodeId {
         (self.f_next_node_id)()
+    }
+
+    fn find_span_opt<'m, A>(&self, map: &'m HashMap<Span, A>, mut span: Span) -> Option<&'m A> {
+        loop {
+            if let Some(a) = map.get(&span) {
+                return Some(a);
+            }
+            if let Some(s) = self.remap_parens.get(&span) {
+                span = *s;
+            } else {
+                return None;
+            }
+        }
+    }
+
+    fn find_span<'m, A>(&self, map: &'m HashMap<Span, A>, span: Span) -> &'m A {
+        if let Some(a) = self.find_span_opt(map, span) {
+            a
+        } else {
+            panic!("internal error: could not find span {:#?}", span);
+        }
     }
 }
 
@@ -353,19 +380,24 @@ fn erase_expr_opt(ctxt: &Ctxt, mctxt: &mut MCtxt, expect: Mode, expr: &Expr) -> 
             }
         }
         ExprKind::Path(_, _) => {
-            if ctxt.calls.contains_key(&expr.span) {
+            if mctxt.find_span_opt(&ctxt.calls, expr.span).is_some() {
                 // 0-argument datatype constructor
                 expr.kind.clone()
-            } else if keep_mode(ctxt, ctxt.var_modes[&expr.span]) && keep_mode(ctxt, expect) {
+            } else if keep_mode(ctxt, *mctxt.find_span(&ctxt.var_modes, expr.span))
+                && keep_mode(ctxt, expect)
+            {
                 expr.kind.clone()
             } else {
                 return None;
             }
         }
-        ExprKind::Paren(e) => match erase_expr_opt(ctxt, mctxt, expect, e) {
-            None => return None,
-            Some(e) => ExprKind::Paren(P(e)),
-        },
+        ExprKind::Paren(e) => {
+            mctxt.remap_parens.insert(e.span, expr.span);
+            match erase_expr_opt(ctxt, mctxt, expect, e) {
+                None => return None,
+                Some(e) => ExprKind::Paren(P(e)),
+            }
+        }
         ExprKind::Cast(e1, ty) => {
             if keep_mode(ctxt, expect) {
                 let e1 = erase_expr(ctxt, mctxt, expect, e1);
@@ -414,7 +446,7 @@ fn erase_expr_opt(ctxt: &Ctxt, mctxt: &mut MCtxt, expect: Mode, expr: &Expr) -> 
             }
         }
         ExprKind::Assign(e1, e2, span) => {
-            let mode1 = ctxt.var_modes[&e1.span];
+            let mode1 = *mctxt.find_span(&ctxt.var_modes, e1.span);
             if keep_mode(ctxt, mode1) {
                 let e1 = erase_expr(ctxt, mctxt, mode1, e1);
                 let e2 = erase_expr(ctxt, mctxt, mode1, e2);
@@ -427,8 +459,10 @@ fn erase_expr_opt(ctxt: &Ctxt, mctxt: &mut MCtxt, expect: Mode, expr: &Expr) -> 
         }
         ExprKind::Call(f_expr, args) => {
             let (path, call) = match &f_expr.kind {
-                ExprKind::Path(_, path) if ctxt.calls.contains_key(&f_expr.span) => {
-                    (path, ctxt.calls[&f_expr.span].clone())
+                ExprKind::Path(_, path)
+                    if mctxt.find_span_opt(&ctxt.calls, f_expr.span).is_some() =>
+                {
+                    (path, mctxt.find_span(&ctxt.calls, f_expr.span).clone())
                 }
                 ExprKind::Path(..) => panic!("internal error: missing function: {:?}", f_expr.span),
                 _ => {
@@ -480,7 +514,7 @@ fn erase_expr_opt(ctxt: &Ctxt, mctxt: &mut MCtxt, expect: Mode, expr: &Expr) -> 
             }
         }
         ExprKind::MethodCall(m_path, args, span) => {
-            let call = ctxt.calls[span].clone();
+            let call = mctxt.find_span(&ctxt.calls, *span).clone();
             match &call {
                 ResolvedCall::Call(f_path) => match erase_call(ctxt, mctxt, m_path, f_path, args) {
                     None => return Some(expr.clone()),
@@ -504,7 +538,7 @@ fn erase_expr_opt(ctxt: &Ctxt, mctxt: &mut MCtxt, expect: Mode, expr: &Expr) -> 
                     StructRest::None | StructRest::Rest(_) => rest.clone(),
                     StructRest::Base(e) => StructRest::Base(P(erase_expr(ctxt, mctxt, expect, e))),
                 };
-                let (vir_path, variant) = match &ctxt.calls[&path.span] {
+                let (vir_path, variant) = match mctxt.find_span(&ctxt.calls, path.span) {
                     ResolvedCall::Ctor(path, variant) => (path, variant),
                     _ => panic!("internal error: expected Ctor"),
                 };
@@ -543,7 +577,7 @@ fn erase_expr_opt(ctxt: &Ctxt, mctxt: &mut MCtxt, expect: Mode, expr: &Expr) -> 
             }
         }
         ExprKind::Field(e1, field) => {
-            let field_mode = match &ctxt.resolved_exprs[&expr.span].x {
+            let field_mode = match &mctxt.find_span(&ctxt.resolved_exprs, expr.span).x {
                 ExprX::UnaryOpr(UnaryOpr::Field { datatype, variant, field }, _) => {
                     let datatype = &ctxt.datatypes[datatype];
                     let variant = datatype.x.get_variant(variant);
@@ -562,7 +596,7 @@ fn erase_expr_opt(ctxt: &Ctxt, mctxt: &mut MCtxt, expect: Mode, expr: &Expr) -> 
         }
         ExprKind::Closure(..) => return None,
         ExprKind::If(eb, e1, e2_opt) => {
-            let modeb = ctxt.condition_modes[&expr.span];
+            let modeb = *mctxt.find_span(&ctxt.condition_modes, expr.span);
             let eb_erase = match &eb.kind {
                 ExprKind::Let(pat, eb1) => {
                     let eb1 = erase_expr_opt(ctxt, mctxt, modeb, eb1);
@@ -609,7 +643,7 @@ fn erase_expr_opt(ctxt: &Ctxt, mctxt: &mut MCtxt, expect: Mode, expr: &Expr) -> 
             }
         }
         ExprKind::Match(e0, arms0) => {
-            let mode0 = ctxt.condition_modes[&expr.span];
+            let mode0 = *mctxt.find_span(&ctxt.condition_modes, expr.span);
             let keep = |mctxt: &mut MCtxt, e0| {
                 let arms = vec_map(&arms0, |arm| erase_arm(ctxt, mctxt, expect, arm));
                 ExprKind::Match(P(e0), arms)
@@ -681,7 +715,7 @@ fn erase_expr_opt(ctxt: &Ctxt, mctxt: &mut MCtxt, expect: Mode, expr: &Expr) -> 
 fn erase_stmt(ctxt: &Ctxt, mctxt: &mut MCtxt, expect: Mode, stmt: &Stmt) -> Option<Stmt> {
     let kind = match &stmt.kind {
         StmtKind::Local(local) => {
-            let mode1 = ctxt.var_modes[&local.pat.span];
+            let mode1 = *mctxt.find_span(&ctxt.var_modes, local.pat.span);
             if keep_mode(ctxt, mode1) {
                 let init = local.init.as_ref().map(|expr| P(erase_expr(ctxt, mctxt, mode1, expr)));
                 let Local { id, span, .. } = **local; // for asymptotic efficiency, don't call local.clone()
@@ -966,7 +1000,7 @@ impl rustc_lint::FormalVerifierRewrite for CompilerCallbacks {
         next_node_id: &mut dyn FnMut() -> NodeId,
     ) -> rustc_ast::ast::Crate {
         let ctxt = mk_ctxt(&self.erasure_hints, self.lifetimes_only);
-        let mut mctxt = MCtxt { f_next_node_id: next_node_id };
+        let mut mctxt = MCtxt { f_next_node_id: next_node_id, remap_parens: HashMap::new() };
         let time0 = Instant::now();
         let krate = crate::erase::erase_crate(&ctxt, &mut mctxt, krate);
         let time1 = Instant::now();
