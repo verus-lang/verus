@@ -44,9 +44,19 @@ impl FileLoader for TestFileLoader {
     }
 }
 
+#[allow(dead_code)]
 pub fn verify_files(
     files: impl IntoIterator<Item = (String, String)>,
     entry_file: String,
+) -> Result<(), Vec<(Option<ErrorSpan>, Option<ErrorSpan>)>> {
+    verify_files_and_pervasive(files, entry_file, false)
+}
+
+#[allow(dead_code)]
+pub fn verify_files_and_pervasive(
+    files: impl IntoIterator<Item = (String, String)>,
+    entry_file: String,
+    verify_pervasive: bool,
 ) -> Result<(), Vec<(Option<ErrorSpan>, Option<ErrorSpan>)>> {
     let mut rustc_args = vec![
         "../../rust/install/bin/rust_verify".to_string(),
@@ -106,6 +116,7 @@ pub fn verify_files(
             }
             _ => (),
         }
+        our_args.verify_pervasive = verify_pervasive;
         our_args
     };
     let files = files.into_iter().map(|(p, f)| (p.into(), f)).collect();
@@ -135,6 +146,7 @@ pub fn verify_files(
     }
 }
 
+#[allow(dead_code)]
 pub const USE_PRELUDE: &str = crate::common::code_str! {
     #[allow(unused_imports)] use builtin::*;
     #[allow(unused_imports)] use builtin_macros::*;
@@ -142,6 +154,7 @@ pub const USE_PRELUDE: &str = crate::common::code_str! {
     mod pervasive; #[allow(unused_imports)] use pervasive::*;
 };
 
+#[allow(dead_code)]
 pub fn verify_one_file(code: String) -> Result<(), Vec<(Option<ErrorSpan>, Option<ErrorSpan>)>> {
     let files = vec![("test.rs".to_string(), format!("{}\n\n{}", USE_PRELUDE, code.as_str()))];
     verify_files(files, "test.rs".to_string())
