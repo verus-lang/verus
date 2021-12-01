@@ -13,7 +13,7 @@ impl<A> Set<A> {
 }
 
 #[proof]
-fn lemma_len0_is_empty<A>(s: Set<A>) {
+pub fn lemma_len0_is_empty<A>(s: Set<A>) {
     requires(s.finite() && s.len() == 0);
     ensures(equal(s, set_empty()));
 
@@ -25,7 +25,7 @@ fn lemma_len0_is_empty<A>(s: Set<A>) {
 }
 
 #[proof]
-fn lemma_len_union<A>(s1: Set<A>, s2: Set<A>) {
+pub fn lemma_len_union<A>(s1: Set<A>, s2: Set<A>) {
     requires([
         s1.finite(),
         s2.finite(),
@@ -48,7 +48,7 @@ fn lemma_len_union<A>(s1: Set<A>, s2: Set<A>) {
 }
 
 #[proof]
-fn lemma_len_intersect<A>(s1: Set<A>, s2: Set<A>) {
+pub fn lemma_len_intersect<A>(s1: Set<A>, s2: Set<A>) {
     requires(s1.finite());
     ensures(s1.intersect(s2).len() <= s1.len());
     decreases(s1.len());
@@ -64,7 +64,19 @@ fn lemma_len_intersect<A>(s1: Set<A>, s2: Set<A>) {
 }
 
 #[proof]
-fn lemma_len_difference<A>(s1: Set<A>, s2: Set<A>) {
+pub fn lemma_len_subset<A>(s1: Set<A>, s2: Set<A>) {
+    requires([
+        s2.finite(),
+        s1.subset_of(s2)
+    ]);
+    ensures(s1.len() <= s2.len());
+
+    lemma_len_intersect::<A>(s2, s1);
+    assert(s2.intersect(s1).ext_equal(s1));
+}
+
+#[proof]
+pub fn lemma_len_difference<A>(s1: Set<A>, s2: Set<A>) {
     requires(s1.finite());
     ensures(s1.difference(s2).len() <= s1.len());
     decreases(s1.len());
@@ -80,7 +92,7 @@ fn lemma_len_difference<A>(s1: Set<A>, s2: Set<A>) {
 }
 
 #[proof]
-fn lemma_len_filter<A, F: Fn(A) -> bool>(s: Set<A>, f: F) {
+pub fn lemma_len_filter<A, F: Fn(A) -> bool>(s: Set<A>, f: F) {
     requires(s.finite());
     ensures([
         s.filter(f).finite(),
@@ -92,12 +104,12 @@ fn lemma_len_filter<A, F: Fn(A) -> bool>(s: Set<A>, f: F) {
 }
 
 #[spec]
-fn set_int_range(lo: int, hi: int) -> Set<int> {
+pub fn set_int_range(lo: int, hi: int) -> Set<int> {
     set_new(|i: int| lo <= i && i < hi)
 }
 
 #[proof]
-fn lemma_int_range(lo: int, hi: int) {
+pub fn lemma_int_range(lo: int, hi: int) {
     requires(lo <= hi);
     ensures([
         set_int_range(lo, hi).finite(),
