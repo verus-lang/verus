@@ -213,3 +213,23 @@ pub fn axiom_seq_add_index2<A>(s1: Seq<A>, s2: Seq<A>, i: int) {
     ]);
     ensures(equal(s1.add(s2).index(i), s2.index(i - s1.len())));
 }
+
+#[macro_export]
+macro_rules! seq_insert_rec {
+    [$val:expr;] => {
+        $val
+    };
+    [$val:expr;$elem:expr] => {
+        seq_insert_rec![$val.push($elem);]
+    };
+    [$val:expr;$elem:expr,$($tail:tt)*] => {
+        seq_insert_rec![$val.push($elem);$($tail)*]
+    }
+}
+
+#[macro_export]
+macro_rules! seq {
+    [$($tail:tt)*] => {
+        seq_insert_rec![$crate::pervasive::seq::seq_empty();$($tail)*]
+    }
+}

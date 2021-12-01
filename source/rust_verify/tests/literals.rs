@@ -44,3 +44,16 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] seq_literals code! {
+        #[allow(unused)]
+        use seq::*;
+
+        #[proof]
+        fn sl() {
+            let s1 = seq![2, 4, 6, 8, 10];
+            assert(s1.index(2) == 6);
+        }
+    } => Ok(())
+}
