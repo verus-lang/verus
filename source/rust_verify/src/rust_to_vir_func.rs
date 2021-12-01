@@ -136,7 +136,19 @@ pub(crate) fn check_item_fn<'tcx>(
     for (param, input) in params.iter().zip(sig.decl.inputs.iter()) {
         let Param { hir_id, pat, ty_span: _, span } = param;
         let name = Arc::new(pat_to_var(pat));
+        let param_mode = get_var_mode(mode, ctxt.tcx.hir().attrs(*hir_id));
         let typ = if is_self_or_self_ref(*span, &input)? {
+            if mode != param_mode {
+                // It's hard for erase.rs to support mode != param_mode (we'd have to erase self),
+                // so we currently disallow it:
+                return err_span_string(
+                    sig.span,
+                    format!(
+                        "self has mode {}, function has mode {} -- these cannot be different",
+                        param_mode, mode
+                    ),
+                );
+            }
             let typ_args =
                 vec_map(self_typ_params.as_ref().expect("expected Self type parameters"), |t| {
                     Arc::new(TypX::TypParam(t.clone()))
@@ -148,8 +160,7 @@ pub(crate) fn check_item_fn<'tcx>(
         } else {
             ty_to_vir(ctxt.tcx, input)
         };
-        let mode = get_var_mode(mode, ctxt.tcx.hir().attrs(*hir_id));
-        let vir_param = spanned_new(*span, ParamX { name, typ, mode });
+        let vir_param = spanned_new(*span, ParamX { name, typ, mode: param_mode });
         vir_params.push(vir_param);
     }
     match generator_kind {

@@ -50,10 +50,11 @@ use crate::util::{from_raw_span, vec_map};
 use crate::{unsupported, unsupported_unless};
 
 use rustc_ast::ast::{
-    Arm, AssocItem, AssocItemKind, Block, Crate, EnumDef, Expr, ExprKind, Field, FieldPat, FnDecl,
-    FnKind, FnRetTy, FnSig, GenericParam, Generics, ImplKind, Item, ItemKind, Lit, LitIntType,
-    LitKind, Local, ModKind, NodeId, Param, Pat, PatKind, PathSegment, Stmt, StmtKind, StructField,
-    StructRest, TraitRef, Variant, VariantData,
+    AngleBracketedArg, AngleBracketedArgs, Arm, AssocItem, AssocItemKind, Block, Crate, EnumDef,
+    Expr, ExprKind, Field, FieldPat, FnDecl, FnKind, FnRetTy, FnSig, GenericArgs, GenericParam,
+    Generics, ImplKind, Item, ItemKind, Lit, LitIntType, LitKind, Local, ModKind, NodeId, Param,
+    Pat, PatKind, PathSegment, Stmt, StmtKind, StructField, StructRest, TraitRef, Variant,
+    VariantData,
 };
 use rustc_ast::ptr::P;
 use rustc_data_structures::thin_vec::ThinVec;
@@ -336,16 +337,26 @@ fn erase_call(
     segment: &PathSegment,
     f_path: &Path,
     args: &Vec<P<Expr>>,
-) -> Option<Option<Vec<P<Expr>>>> {
+) -> Option<Option<(PathSegment, Vec<P<Expr>>)>> {
     let f = &ctxt.functions[f_path];
     if let Some(f) = f {
-        for (_, bounds) in f.x.typ_bounds.iter() {
-            match (&**bounds, &segment.args) {
-                (GenericBoundX::FnSpec(..), Some(_)) => {
-                    // TODO: erase this type arg from the segment
-                    unsupported!("explicit type args to function with Fn bounds");
+        let mut segment = segment.clone();
+        if let Some(args) = &segment.args {
+            match &**args {
+                GenericArgs::AngleBracketed(args) => {
+                    let mut new_args: Vec<AngleBracketedArg> = Vec::new();
+                    for (arg, (_, bounds)) in args.args.iter().zip(f.x.typ_bounds.iter()) {
+                        match &**bounds {
+                            GenericBoundX::None => new_args.push(arg.clone()),
+                            GenericBoundX::FnSpec(..) => {}
+                        }
+                    }
+                    let args = AngleBracketedArgs { span: args.span, args: new_args };
+                    segment.args = Some(P(GenericArgs::AngleBracketed(args)));
                 }
-                _ => {}
+                GenericArgs::Parenthesized(_) => {
+                    unsupported!("parenthesized generic arguments");
+                }
             }
         }
         if keep_mode(ctxt, f.x.mode) {
@@ -355,7 +366,7 @@ fn erase_call(
                     new_args.push(P(erase_expr(ctxt, mctxt, param.x.mode, arg)));
                 }
             }
-            Some(Some(new_args))
+            Some(Some((segment, new_args)))
         } else {
             Some(None)
         }
@@ -458,11 +469,11 @@ fn erase_expr_opt(ctxt: &Ctxt, mctxt: &mut MCtxt, expect: Mode, expr: &Expr) -> 
             }
         }
         ExprKind::Call(f_expr, args) => {
-            let (path, call) = match &f_expr.kind {
-                ExprKind::Path(_, path)
+            let (qself, path, call) = match &f_expr.kind {
+                ExprKind::Path(qself, path)
                     if mctxt.find_span_opt(&ctxt.calls, f_expr.span).is_some() =>
                 {
-                    (path, mctxt.find_span(&ctxt.calls, f_expr.span).clone())
+                    (qself, path, mctxt.find_span(&ctxt.calls, f_expr.span).clone())
                 }
                 ExprKind::Path(..) => panic!("internal error: missing function: {:?}", f_expr.span),
                 _ => {
@@ -486,7 +497,13 @@ fn erase_expr_opt(ctxt: &Ctxt, mctxt: &mut MCtxt, expect: Mode, expr: &Expr) -> 
                     match erase_call(ctxt, mctxt, segment, f_path, args) {
                         None => return Some(expr.clone()),
                         Some(None) => return None,
-                        Some(Some(args)) => ExprKind::Call(f_expr.clone(), args),
+                        Some(Some((segment, args))) => {
+                            let mut path = path.clone();
+                            *path.segments.last_mut().unwrap() = segment;
+                            let kind = ExprKind::Path(qself.clone(), path);
+                            let f_expr = P(Expr { kind, ..(**f_expr).clone() });
+                            ExprKind::Call(f_expr, args)
+                        }
                     }
                 }
                 ResolvedCall::Ctor(path, variant) => {
@@ -519,7 +536,7 @@ fn erase_expr_opt(ctxt: &Ctxt, mctxt: &mut MCtxt, expect: Mode, expr: &Expr) -> 
                 ResolvedCall::Call(f_path) => match erase_call(ctxt, mctxt, m_path, f_path, args) {
                     None => return Some(expr.clone()),
                     Some(None) => return None,
-                    Some(Some(args)) => ExprKind::MethodCall(m_path.clone(), args, *span),
+                    Some(Some((segment, args))) => ExprKind::MethodCall(segment, args, *span),
                 },
                 _ => panic!("internal error: MethodCall ResolvedCall"),
             }
