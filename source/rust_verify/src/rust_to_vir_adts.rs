@@ -89,7 +89,8 @@ pub fn check_item_struct<'tcx>(
         DatatypeTransparency::Always
     };
     let variants = Arc::new(vec![variant]);
-    let datatype = DatatypeX { path, visibility, transparency, typ_params, variants };
+    let mode = get_mode(Mode::Exec, attrs);
+    let datatype = DatatypeX { path, visibility, transparency, typ_params, variants, mode };
     vir.datatypes.push(spanned_new(span, datatype));
     Ok(())
 }
@@ -123,9 +124,17 @@ pub fn check_item_enum<'tcx>(
     } else {
         DatatypeTransparency::Always
     };
+    let mode = get_mode(Mode::Exec, attrs);
     vir.datatypes.push(spanned_new(
         span,
-        DatatypeX { path, visibility, transparency, typ_params, variants: Arc::new(variants) },
+        DatatypeX {
+            path,
+            visibility,
+            transparency,
+            typ_params,
+            variants: Arc::new(variants),
+            mode,
+        },
     ));
     Ok(())
 }

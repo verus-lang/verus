@@ -110,3 +110,17 @@ test_verify_one_file! {
         }
     } => Err(_) => ()
 }
+
+test_verify_one_file! {
+    #[test] #[ignore] spec_struct_not_exec code! {
+        #[spec]
+        struct Set<A> {
+            pub dummy: A,
+        }
+
+        fn set_exec() {
+            // TODO (Chris) reject the spec adt constructor in exec mode
+            let a: Set<u64> = Set { dummy: 3 }; // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
