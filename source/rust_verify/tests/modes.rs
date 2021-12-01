@@ -112,15 +112,28 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] #[ignore] spec_struct_not_exec code! {
+    #[test] spec_struct_not_exec code! {
         #[spec]
         struct Set<A> {
             pub dummy: A,
         }
 
         fn set_exec() {
-            // TODO (Chris) reject the spec adt constructor in exec mode
             let a: Set<u64> = Set { dummy: 3 }; // FAILS
         }
-    } => Err(err) => assert_one_fails(err)
+    } => Err(_)
+}
+
+test_verify_one_file! {
+    #[test] spec_enum_not_exec code! {
+        #[spec]
+        struct E {
+            A,
+            B,
+        }
+
+        fn set_exec() {
+            let e: E = E::A; // FAILS
+        }
+    } => Err(_)
 }
