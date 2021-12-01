@@ -131,7 +131,8 @@ test_verify_one_file! {
 // -- e05 --
 
 const E05_SHARED: &str = code_str! {
-    // TODO: Set<> does not exist yet
+    use set::*;
+
     #[spec]
     fn has_seven_and_not_nine(intset: Set::<int>) -> bool {
         intset.contains(7) && (!intset.contains(9))
@@ -140,28 +141,16 @@ const E05_SHARED: &str = code_str! {
 
 test_verify_one_file! {
     #[test] e05_pass E05_SHARED.to_string() + code_str! {
-        use set::*;
 
         #[proof]
         fn try_out_some_set_literals(x: int, y: int)
         {
-            // TODO: What should be the literal for mathematical Sets, and the encoding?
-            // TODO: This is probably what it would look like for rust HashSet
-            // TODO(utaal): not even THIS works
-            // assert(Set::<int>::from([1, 3, 8]) == Set::<int>::from([8, 1, 3]));
-            let set138: Set<int> = set_empty().insert(1).insert(3).insert(8);
-            let set813: Set<int> = set_empty().insert(8).insert(1).insert(3);
-            // TODO(utaal): fix sets to allow == syntax for equality
-            //assert(set138 == set813);
+            let set138: Set<int> = set![1, 3, 8];
+            let set813: Set<int> = set![8, 1, 3];
             assert(set138.ext_equal(set813));
 
-            // NOTE(Chris): The way you encode set literals influences what you can prove about it
-            // - axiom for conversion from slice (has quantifiers)
-            // - set![8, 1, 3] to sequence of insertions
-            // - construct an axiom about that particular literal (most efficient encoding)
-
-            let set7 = set_empty().insert(7);
-            let set765 = set_empty().insert(7).insert(6).insert(5);
+            let set7 = set![7];
+            let set765 = set![7, 6, 5];
             assert(has_seven_and_not_nine(set7));
 
             assert(has_seven_and_not_nine(set765));
@@ -170,45 +159,54 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] #[ignore] e05_fail E05_SHARED.to_string() + code_str! {
+    #[test] e05_fail E05_SHARED.to_string() + code_str! {
         #[proof]
-        fn try_out_some_set_literals(x: int, y: int)
+        fn try_out_some_set_literals_1(x: int, y: int)
         {
-            // TODO literals
-            assert(has_seven_and_not_nine(Set::<int>::from([])));
-
-            assert(has_seven_and_not_nine(Set::<int>::from([7, 9])));
-
-            assert(has_seven_and_not_nine(Set::<int>::from([1, 3, 5, 7, 8, 9, 10])));
+            assert(has_seven_and_not_nine(set![])); // FAILS
         }
-    } => Err(err) => assert_one_fails(err)
+
+        fn try_out_some_set_literals_2(x: int, y: int) {
+            assert(has_seven_and_not_nine(set![7, 9])); // FAILS
+        }
+
+        fn try_out_some_set_literals_3(x: int, y: int) {
+            assert(has_seven_and_not_nine(set![1, 3, 5, 7, 8, 9, 10])); // FAILS
+        }
+    } => Err(err) => assert_fails(err, 3)
 }
 
 // -- e06 --
 
 const E06_SHARED: &str = code_str! {
-    // TODO: Set<> does not exist yet
+    use set::*;
+
     #[spec]
-    fn has_four_five_six(intset: Set::<int>) -> bool {
-        Set::<int>::from([6, 5, 4]).is_subset(intset)
+    fn has_four_five_six(intset: Set<int>) -> bool {
+        let s = set![4, 5, 6];
+        s.subset_of(intset)
     }
 };
 
 test_verify_one_file! {
-    #[test] #[ignore] e06_pass E06_SHARED.to_string() + code_str! {
+    #[test] e06_pass E06_SHARED.to_string() + code_str! {
         #[proof]
         fn some_assertions_about_sets()
         {
-            // TODO literals?
-            assert(!has_four_five_six(Set::<int>::from([1, 2, 4, 6, 7])));
+            let sadSet: Set<int> = set![1, 2, 4, 6, 7];
+            assert_by(!has_four_five_six(sadSet),
+                // NOTE it's interesting that Dafny can get this without the witness
+                // maybe dafny is more aggressive in introducing contains when there are set
+                // literals around
+                assert(!sadSet.contains(5)));
 
-            let happySet = Set::<int>::from([1, 2, 4, 6, 7, 5]);
+            let happySet: Set<int> = set![1, 2, 4, 6, 7, 5];
 
             assert(has_four_five_six(happySet));
 
-            assert(happySet.difference(Set::<int>::from([4, 5, 6])) == Set::<int>::from([7, 2, 1]));
+            assert(happySet.difference(set![4, 5, 6]).ext_equal(set![1, 2, 7]));
 
-            assert(has_four_five_six(Set::<int>::from([4, 6]).union(Set::<int>::from([5]))));
+            assert(has_four_five_six(set![4, 6].union(set![5])));
 
             assert(happySet.len() == 6);
         }
@@ -216,13 +214,13 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] #[ignore] e06_fail E06_SHARED.to_string() + code_str! {
+    #[test] e06_fail E06_SHARED.to_string() + code_str! {
         #[proof]
         fn some_assertions_about_sets()
         {
-            let happySet = Set::<int>::from([1, 2, 4, 6, 7, 5]);
+            let happySet: Set<int> = set![1, 2, 4, 6, 7, 5];
 
-            assert(happySet.len() == 7);
+            assert(happySet.len() == 7); // FAILS
         }
     } => Err(err) => assert_one_fails(err)
 }
@@ -230,58 +228,79 @@ test_verify_one_file! {
 // -- e07 --
 
 test_verify_one_file! {
-    #[test] #[ignore] e07_pass code! {
+    #[test] e07_pass code! {
+        #[allow(unused_imports)]
+        use seq::*;
+        #[allow(unused_imports)]
+        use set::*;
+
         #[proof]
         fn experiments_with_sequences()
         {
             // TODO: what is the mathematical sequence type?
-            let fibo: &[int] = &[1, 1, 2, 3, 5, 8, 13, 21, 34];
+            let fibo: Seq<int> = seq![1, 1, 2, 3, 5, 8, 13, 21, 34];
 
-            assert(fibo[4] == 5);
+            // TODO(utaal) index trait impl Index<nat> for Seq
+            // TODO(utaal) index trait impl Index<Range<nat>> for Seq
+            assert(fibo.index(4) == 5);
 
             assert(fibo.len() == 9);
 
-            assert(fibo[0] == 1);
+            assert(fibo.index(0) == 1);
 
-            assert(fibo[8] == 34);
+            assert(fibo.index(8) == 34);
 
-            assert(fibo[7] == 21);
+            assert(fibo.index(7) == 21);
 
-            assert(&fibo[2..4] == &[2, 3]);
+            assert(fibo.subrange(2, 4).ext_equal(seq![2, 3]));
 
-            assert(&fibo[..3] == &[1, 1, 2]);
+            assert(fibo.subrange(0, 3).ext_equal(seq![1, 1, 2]));
 
-            assert(&fibo[7..] == &[21, 34]);
+            assert(fibo.subrange(7, fibo.len()).ext_equal(seq![21, 34]));
 
-            assert(fibo[2..5].len() == 3);
+            assert(fibo.subrange(2, 5).len() == 3);
 
-            assert(&fibo[5..6] == &[8]);
+            assert(fibo.subrange(5, 6).ext_equal(seq![8]));
 
-            let copy: &[int] = fibo;
+            let copy: Seq<int> = fibo;
 
-            let seq_of_sets: &[Set::<int>] = &[Set::<int>::from([0]), Set::<int>::from([0, 1]), Set::<int>::from([0, 1, 2])];
+            let seq_of_sets: Seq<Set::<int>> = seq![set![0], set![0, 1], set![0, 1, 2]];
 
             assert(seq_of_sets.len() == 3);
 
-            assert(seq_of_sets[1].len() == 2);
+            assert(seq_of_sets.index(1).len() == 2);
         }
     } => Ok(())
 }
 
 test_verify_one_file! {
-    #[test] #[ignore] e07_fail code! {
+    #[test] e07_fail code! {
+        #[allow(unused_imports)]
+        use seq::*;
+        #[allow(unused_imports)]
+        use set::*;
+
         #[proof]
-        fn some_assertions_about_sets()
+        fn experiments_with_sequences_1()
         {
-            let fibo: &[int] = &[1, 1, 2, 3, 5, 8, 13, 21, 34];
+            let fibo: Seq<int> = seq![1, 1, 2, 3, 5, 8, 13, 21, 34];
 
-            assert(fibo[9] == 55); // FAILS
+            // TODO should this cause a diagnostics warning?
+            assert(fibo.index(9) == 55); // FAILS
+        }
 
-            assert(fibo[2..5].len() == 4); // FAILS
+        #[proof]
+        fn experiments_with_sequences_2() {
+            let fibo: Seq<int> = seq![1, 1, 2, 3, 5, 8, 13, 21, 34];
 
-            let seq_of_sets: &[Set::<int>] = &[Set::<int>::from([0]), Set::<int>::from([0, 1]), Set::<int>::from([0, 1, 2])];
+            assert(fibo.subrange(2, 5).len() == 4); // FAILS
+        }
 
-            assert(seq_of_sets[1].len() == 3); // FAILS
+        #[proof]
+        fn experiments_with_sequences_3() {
+            let seq_of_sets: Seq<Set<int>> = seq![set![0], set![0, 1], set![0, 1, 2]];
+
+            assert(seq_of_sets.index(1).len() == 3); // FAILS
         }
     } => Err(err) => assert_fails(err, 3)
 }
@@ -292,15 +311,20 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] #[ignore] e08_pass code! {
-        // TODO: do we want to support type renaming
-        type SeqOfSets = &[Set::<int>];
+        #[allow(unused_imports)]
+        use seq::*;
+        #[allow(unused_imports)]
+        use set::*;
+
+        // TODO: do we want to support type alias
+        type SeqOfSets = Seq<Set<int>>;
 
         #[proof]
         fn try_a_type_synonym()
         {
-            let seq_of_sets: SeqOfSets = &[set![0], set![0, 1], set![0, 1, 2]];
+            let seq_of_sets: SeqOfSets = seq![set![0], set![0, 1], set![0, 1, 2]];
 
-            assert(seq_of_sets[1].contains(1));
+            assert(seq_of_sets.index(1).contains(1));
         }
     } => Ok(())
 }
@@ -567,3 +591,25 @@ fn e13_pass() {
     let result = verify_files(files, "test.rs".to_string());
     assert!(result.is_ok());
 }
+
+// test_verify_one_file! {
+//     #[test] e14_pass str! {
+//         #[spec]
+//         fn is_even(x: int) -> bool
+//         {
+//             x / 2 * 2 == x
+//         }
+//
+//         #[proof]
+//         fn point_arithmetic()
+//         {
+//             let a = Point { x: 1, y: 13 };
+//             let b = Point { x: 2, y: 7 };
+//
+//             assert(subtract_points(a, b) == Point { x: -1, y: 6 }); // FAILS
+//         }
+//     } => Err(err) => assert_fails(err, 1)
+// }
+//
+// TODO(utaal): fix sets to allow == syntax for equals(set138, set813), but not
+// extensional equality?
