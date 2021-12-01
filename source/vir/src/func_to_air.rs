@@ -256,6 +256,7 @@ pub fn func_name_to_air(ctx: &Ctx, function: &Function) -> Result<Commands, VirE
 pub fn func_decl_to_air(
     ctx: &mut Ctx,
     function: &Function,
+    public_body: bool,
 ) -> Result<(Commands, Commands), VirErr> {
     let mut all_typs = vec_map(&function.x.params, |param| typ_to_air(ctx, &param.x.typ));
     let param_typs = Arc::new(all_typs.clone());
@@ -269,8 +270,10 @@ pub fn func_decl_to_air(
             let name = suffix_global_id(&path_to_air_ident(&function.x.path));
 
             // Body
-            if let Some(body) = &function.x.body {
-                func_body_to_air(ctx, &mut decl_commands, &mut check_commands, function, body)?;
+            if public_body {
+                if let Some(body) = &function.x.body {
+                    func_body_to_air(ctx, &mut decl_commands, &mut check_commands, function, body)?;
+                }
             }
 
             // Return typing invariant

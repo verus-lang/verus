@@ -280,12 +280,16 @@ impl Verifier {
         // Also check termination
         for function in &krate.functions {
             let vis = function.x.visibility.clone();
-            let vis = Visibility { is_private: vis.is_private || function.x.is_abstract, ..vis };
+            let vis = Visibility { is_private: vis.is_private, ..vis };
             if !is_visible_to(&vis, module) {
                 continue;
             }
-            let (decl_commands, check_commands) =
-                vir::func_to_air::func_decl_to_air(ctx, &function)?;
+            let vis_abs = Visibility { is_private: function.x.is_abstract, ..vis };
+            let (decl_commands, check_commands) = vir::func_to_air::func_decl_to_air(
+                ctx,
+                &function,
+                is_visible_to(&vis_abs, module),
+            )?;
             self.run_commands(
                 air_context,
                 &decl_commands,

@@ -4,6 +4,28 @@ mod common;
 use common::*;
 
 test_verify_one_file! {
+    #[test] test_len code! {
+        use crate::pervasive::set::*;
+
+        #[proof]
+        fn test_len<A>(s: Set<A>) {
+            assert(s.cardinality() as int >= 0);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_len_fails code! {
+        use crate::pervasive::set::*;
+
+        #[proof]
+        fn test_len<A>(s1: Set<A>, s2: Set<A>) {
+            assert(s1.cardinality() == s2.cardinality()); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
     #[test] test1 code! {
         use crate::pervasive::set::*;
 
