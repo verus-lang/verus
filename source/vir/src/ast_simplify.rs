@@ -657,7 +657,8 @@ pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirEr
         }
         let variant = ident_binder(&prefix_tuple_variant(arity), &Arc::new(fields));
         let variants = Arc::new(vec![variant]);
-        let datatypex = DatatypeX { path, visibility, transparency, typ_params, variants };
+        let datatypex =
+            DatatypeX { path, visibility, transparency, typ_params, variants, mode: Mode::Exec };
         datatypes.push(Spanned::new(ctx.no_span.clone(), datatypex));
     }
 
@@ -667,7 +668,8 @@ pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirEr
     let transparency = DatatypeTransparency::Never;
     let typ_params = Arc::new(vec![]);
     let variants = Arc::new(vec![]);
-    let datatypex = DatatypeX { path, visibility, transparency, typ_params, variants };
+    let datatypex =
+        DatatypeX { path, visibility, transparency, typ_params, variants, mode: Mode::Exec };
     datatypes.push(Spanned::new(ctx.no_span.clone(), datatypex));
 
     // Add a generic apply function for each function arity

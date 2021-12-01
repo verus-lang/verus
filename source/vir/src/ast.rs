@@ -407,6 +407,7 @@ pub struct DatatypeX {
     // we will need to check that recursive types only appear in positive positions for soundness.
     pub typ_params: Idents,
     pub variants: Variants,
+    pub mode: Mode,
 }
 pub type Datatype = Arc<Spanned<DatatypeX>>;
 pub type Datatypes = Vec<Datatype>;
