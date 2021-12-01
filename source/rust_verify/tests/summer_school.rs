@@ -472,24 +472,24 @@ test_verify_one_file! {
         {
             /*
             ensures([
-                exists(|eltSet:Set<HAlign>| cardinality(eltSet) == 3), // bound is tight
-                forall(|eltSet:Set<HAlign>| cardinality(eltSet) <= 3), // bound is upper
+                exists(|eltSet:Set<HAlign>| eltSet.len() == 3), // bound is tight
+                forall(|eltSet:Set<HAlign>| eltSet.len() <= 3), // bound is upper
             ]);
             */
 
             let maxSet = set_empty().insert(HAlign::Left).insert(HAlign::Center).insert(HAlign::Right);
 
             let intSet = set_empty().insert(8).insert(4);
-            assert(set_empty::<int>().cardinality() == 0);
+            assert(set_empty::<int>().len() == 0);
             // TODO remove: trigger the wrong trigger while waiting for the right trigger
-            assert(!set_empty::<int>().contains(1) && set_empty::<int>().insert(1).cardinality() == set_empty::<int>().cardinality() + 1);
-            assert(set_empty::<int>().insert(1).cardinality() == set_empty::<int>().cardinality() + 1);
+            assert(!set_empty::<int>().contains(1) && set_empty::<int>().insert(1).len() == set_empty::<int>().len() + 1);
+            assert(set_empty::<int>().insert(1).len() == set_empty::<int>().len() + 1);
 
             // TODO remove: more manual triggering of undesirable trigger
             assert(!set_empty().contains(HAlign::Left));
             assert(!set_empty().insert(HAlign::Left).contains(HAlign::Center));
             assert(!set_empty().insert(HAlign::Left).insert(HAlign::Center).contains(HAlign::Right));
-            assert(maxSet.cardinality() == 3);
+            assert(maxSet.len() == 3);
 
             // TODO(jonh): Complete rest of forall proof.
         }

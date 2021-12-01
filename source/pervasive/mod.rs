@@ -2,7 +2,9 @@ pub mod map;
 pub mod option;
 pub mod vec;
 pub mod seq;
+pub mod seq_lib;
 pub mod set;
+pub mod set_lib;
 
 #[allow(unused_imports)]
 use builtin::*;

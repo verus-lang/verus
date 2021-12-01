@@ -9,7 +9,7 @@ test_verify_one_file! {
 
         #[proof]
         fn test_len<A>(s: Set<A>) {
-            assert(s.cardinality() as int >= 0);
+            assert(s.len() as int >= 0);
         }
     } => Ok(())
 }
@@ -20,7 +20,7 @@ test_verify_one_file! {
 
         #[proof]
         fn test_len<A>(s1: Set<A>, s2: Set<A>) {
-            assert(s1.cardinality() == s2.cardinality()); // FAILS
+            assert(s1.len() == s2.len()); // FAILS
         }
     } => Err(err) => assert_one_fails(err)
 }
@@ -28,11 +28,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test1 code! {
         use crate::pervasive::set::*;
-
-        #[spec]
-        pub fn set_map<A, F: Fn(A) -> A>(s: Set<A>, f: F) -> Set<A> {
-            set_new(|a: A| exists(|x: A| s.contains(x) && equal(a, f(x))))
-        }
+        use crate::pervasive::set_lib::*;
 
         #[proof]
         fn test_set() {
@@ -40,7 +36,7 @@ test_verify_one_file! {
             assert(forall(|i: int| nonneg.contains(i) == (i >= 0)));
             let pos1 = nonneg.filter(|i: int| i > 0);
             assert(forall(|i: int| pos1.contains(i) == (i > 0)));
-            let pos2 = set_map(nonneg, |i: int| i + 1);
+            let pos2 = nonneg.map(|i: int| i + 1);
             forall(|i: int| {
                 ensures(pos2.contains(i) == (i > 0));
                 assert(pos2.contains(i) == nonneg.contains(i - 1));

@@ -6,6 +6,7 @@ use common::*;
 test_verify_one_file! {
     #[test] test1 code! {
         use crate::pervasive::seq::*;
+        use crate::pervasive::seq_lib::*;
 
         #[proof]
         fn test_seq() {
@@ -23,6 +24,9 @@ test_verify_one_file! {
             assert(s5.len() == 8);
             assert(s5.index(1) == 20);
             assert(s5.index(6) == 30);
+            let s6 = s4.map(|i: int, a: int| 2 * i + a);
+            assert(s6.len() == s4.len());
+            assert(s6.index(2) == 34);
         }
     } => Ok(())
 }

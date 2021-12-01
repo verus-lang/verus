@@ -54,6 +54,12 @@ impl<A> Set<A> {
 
     #[spec]
     #[verifier(pub_abstract)]
+    pub fn remove(self, a: A) -> Set<A> {
+        arbitrary()
+    }
+
+    #[spec]
+    #[verifier(pub_abstract)]
     pub fn union(self, s2: Set<A>) -> Set<A> {
         arbitrary()
     }
@@ -89,7 +95,13 @@ impl<A> Set<A> {
 
     #[spec]
     #[verifier(pub_abstract)]
-    pub fn cardinality(self) -> nat { // TODO(utaal): switch to len
+    pub fn len(self) -> nat {
+        arbitrary()
+    }
+
+    #[spec]
+    #[verifier(pub_abstract)]
+    pub fn choose(self) -> A {
         arbitrary()
     }
 
@@ -98,6 +110,7 @@ impl<A> Set<A> {
     pub fn mk_map<V, F: Fn(A) -> V>(self, f: F) -> Map<A, V> {
         arbitrary()
     }
+
 }
 
 // Trusted axioms
@@ -129,6 +142,21 @@ pub fn axiom_set_insert_same<A>(s: Set<A>, a: A) {
 pub fn axiom_set_insert_different<A>(s: Set<A>, a1: A, a2: A) {
     requires(!equal(a1, a2));
     ensures(s.insert(a2).contains(a1) == s.contains(a1));
+}
+
+#[proof]
+#[verifier(no_verify)]
+#[verifier(export_as_global_forall)]
+pub fn axiom_set_remove_same<A>(s: Set<A>, a: A) {
+    ensures(!(#[trigger] s.remove(a).contains(a)));
+}
+
+#[proof]
+#[verifier(no_verify)]
+#[verifier(export_as_global_forall)]
+pub fn axiom_set_remove_different<A>(s: Set<A>, a1: A, a2: A) {
+    requires(!equal(a1, a2));
+    ensures(s.remove(a2).contains(a1) == s.contains(a1));
 }
 
 #[proof]
@@ -166,50 +194,12 @@ pub fn axiom_set_ext_equal<A>(s1: Set<A>, s2: Set<A>) {
     ensures(s1.ext_equal(s2) == equal(s1, s2));
 }
 
-// Note: we could add more axioms about finite and cardinality, but they would be incomplete.
-// axiom_set_empty_cardinality, axiom_set_insert_cardinality, and axiom_set_ext_equal are enough
-// to build libraries about finite and cardinality.
 #[proof]
 #[verifier(no_verify)]
 #[verifier(export_as_global_forall)]
-pub fn axiom_set_empty_finite<A>() {
-    ensures([
-        #[trigger] set_empty::<A>().finite(),
-    ]);
-}
-
-#[proof]
-#[verifier(no_verify)]
-#[verifier(export_as_global_forall)]
-pub fn axiom_set_empty_cardinality<A>() {
-    ensures([
-        #[trigger] set_empty::<A>().cardinality() == 0,
-    ]);
-}
-
-#[proof]
-#[verifier(no_verify)]
-#[verifier(export_as_global_forall)]
-pub fn axiom_set_insert_finite<A>(s: Set<A>, a: A) {
-    requires([
-        s.finite(),
-    ]);
-    ensures([
-        #[trigger] s.insert(a).finite(),
-    ]);
-}
-
-#[proof]
-#[verifier(no_verify)]
-#[verifier(export_as_global_forall)]
-pub fn axiom_set_insert_cardinality<A>(s: Set<A>, a: A) {
-    requires([
-        s.finite(),
-        !s.contains(a),
-    ]);
-    ensures([
-        #[trigger] s.insert(a).cardinality() == s.cardinality() + 1
-    ]);
+pub fn axiom_set_choose_contains<A>(s: Set<A>) {
+    requires(exists(|a: A| s.contains(a)));
+    ensures(#[trigger] s.contains(s.choose()));
 }
 
 #[proof]
@@ -226,6 +216,115 @@ pub fn axiom_mk_map_index<K, V, F: Fn(K) -> V>(s: Set<K>, f: F, key: K) {
     requires(s.contains(key));
     ensures(equal(s.mk_map(f).index(key), f(key)));
 }
+
+// Trusted axioms about finite
+
+#[proof]
+#[verifier(no_verify)]
+#[verifier(export_as_global_forall)]
+pub fn axiom_set_empty_finite<A>() {
+    ensures(#[trigger] set_empty::<A>().finite());
+}
+
+#[proof]
+#[verifier(no_verify)]
+#[verifier(export_as_global_forall)]
+pub fn axiom_set_insert_finite<A>(s: Set<A>, a: A) {
+    requires(s.finite());
+    ensures(#[trigger] s.insert(a).finite());
+}
+
+#[proof]
+#[verifier(no_verify)]
+#[verifier(export_as_global_forall)]
+pub fn axiom_set_remove_finite<A>(s: Set<A>, a: A) {
+    requires(s.finite());
+    ensures(#[trigger] s.remove(a).finite());
+}
+
+#[proof]
+#[verifier(no_verify)]
+#[verifier(export_as_global_forall)]
+pub fn axiom_set_union_finite<A>(s1: Set<A>, s2: Set<A>) {
+    requires([
+        s1.finite(),
+        s2.finite(),
+    ]);
+    ensures(#[trigger] s1.union(s2).finite());
+}
+
+#[proof]
+#[verifier(no_verify)]
+#[verifier(export_as_global_forall)]
+pub fn axiom_set_intersect_finite<A>(s1: Set<A>, s2: Set<A>) {
+    requires(s1.finite() || s2.finite());
+    ensures(#[trigger] s1.intersect(s2).finite());
+}
+
+#[proof]
+#[verifier(no_verify)]
+#[verifier(export_as_global_forall)]
+pub fn axiom_set_difference_finite<A>(s1: Set<A>, s2: Set<A>) {
+    requires(s1.finite());
+    ensures(#[trigger] s1.difference(s2).finite());
+}
+
+#[proof]
+#[verifier(no_verify)]
+#[verifier(export_as_global_forall)]
+pub fn axiom_set_choose_finite<A>(s: Set<A>) {
+    requires(!s.finite());
+    ensures(#[trigger] s.contains(s.choose()));
+}
+
+// Trusted axioms about len
+
+// Note: we could add more axioms about len, but they would be incomplete.
+// The following, with axiom_set_ext_equal, are enough to build libraries about len.
+
+#[proof]
+#[verifier(no_verify)]
+#[verifier(export_as_global_forall)]
+pub fn axiom_set_empty_len<A>() {
+    ensures([
+        #[trigger] set_empty::<A>().len() == 0,
+    ]);
+}
+
+#[proof]
+#[verifier(no_verify)]
+#[verifier(export_as_global_forall)]
+pub fn axiom_set_insert_len<A>(s: Set<A>, a: A) {
+    requires([
+        s.finite(),
+    ]);
+    ensures(#[trigger] s.insert(a).len() ==
+        s.len() + (if s.contains(a) { 0 } else { 1 })
+    );
+}
+
+#[proof]
+#[verifier(no_verify)]
+#[verifier(export_as_global_forall)]
+pub fn axiom_set_remove_len<A>(s: Set<A>, a: A) {
+    requires(s.finite());
+    ensures(s.len() ==
+        #[trigger] s.remove(a).len() + (if s.contains(a) { 1 } else { 0 })
+    );
+}
+
+#[proof]
+#[verifier(no_verify)]
+#[verifier(export_as_global_forall)]
+pub fn axiom_set_choose_len<A>(s: Set<A>) {
+    requires([
+        s.finite(),
+        #[trigger] s.len() != 0,
+    ]);
+    ensures(#[trigger] s.contains(s.choose()));
+}
+
+// Macros
 
 #[macro_export]
 macro_rules! set_insert_rec {
