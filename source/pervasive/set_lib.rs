@@ -90,3 +90,25 @@ fn lemma_len_filter<A, F: Fn(A) -> bool>(s: Set<A>, f: F) {
 
     lemma_len_intersect::<A>(s, set_new(f));
 }
+
+#[spec]
+fn set_int_range(lo: int, hi: int) -> Set<int> {
+    set_new(|i: int| lo <= i && i < hi)
+}
+
+#[proof]
+fn lemma_int_range(lo: int, hi: int) {
+    requires(lo <= hi);
+    ensures([
+        set_int_range(lo, hi).finite(),
+        set_int_range(lo, hi).len() == hi - lo,
+    ]);
+    decreases(hi - lo);
+
+    if lo == hi {
+        assert(set_int_range(lo, hi).ext_equal(set_empty()));
+    } else {
+        lemma_int_range(lo, hi - 1);
+        assert(set_int_range(lo, hi - 1).insert(hi - 1).ext_equal(set_int_range(lo, hi)));
+    }
+}
