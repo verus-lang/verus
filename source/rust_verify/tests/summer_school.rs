@@ -237,7 +237,6 @@ test_verify_one_file! {
         #[proof]
         fn experiments_with_sequences()
         {
-            // TODO: what is the mathematical sequence type?
             let fibo: Seq<int> = seq![1, 1, 2, 3, 5, 8, 13, 21, 34];
 
             // TODO(utaal) index trait impl Index<nat> for Seq
@@ -316,7 +315,7 @@ test_verify_one_file! {
         #[allow(unused_imports)]
         use set::*;
 
-        // TODO: do we want to support type alias
+        // TODO type aliases
         type SeqOfSets = Seq<Set<int>>;
 
         #[proof]
@@ -331,7 +330,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] #[ignore] e08_fail code! {
-        // TODO: do we want to support type renaming
+        // TODO type aliases
         type SeqOfSets = &[Set::<int>];
 
         #[proof]
@@ -494,28 +493,28 @@ test_verify_one_file! {
         #[proof]
         fn num_page_elements()
         {
-            /*
             ensures([
                 exists(|eltSet:Set<HAlign>| eltSet.len() == 3), // bound is tight
                 forall(|eltSet:Set<HAlign>| eltSet.len() <= 3), // bound is upper
             ]);
-            */
 
-            let maxSet = set_empty().insert(HAlign::Left).insert(HAlign::Center).insert(HAlign::Right);
+            let maxSet =  set![HAlign::Left, HAlign::Center, HAlign::Right];
 
-            let intSet = set_empty().insert(8).insert(4);
-            assert(set_empty::<int>().len() == 0);
-            // TODO remove: trigger the wrong trigger while waiting for the right trigger
-            assert(!set_empty::<int>().contains(1) && set_empty::<int>().insert(1).len() == set_empty::<int>().len() + 1);
-            assert(set_empty::<int>().insert(1).len() == set_empty::<int>().len() + 1);
-
-            // TODO remove: more manual triggering of undesirable trigger
-            assert(!set_empty().contains(HAlign::Left));
-            assert(!set_empty().insert(HAlign::Left).contains(HAlign::Center));
-            assert(!set_empty().insert(HAlign::Left).insert(HAlign::Center).contains(HAlign::Right));
             assert(maxSet.len() == 3);
 
-            // TODO(jonh): Complete rest of forall proof.
+            forall(|eltSet: Set<HAlign>| {
+                ensures(eltSet.len() <= 3);
+
+                // Prove eltSet <= maxSet
+                forall(|elt: HAlign| {
+                    requires(eltSet.contains(elt));
+                    ensures(maxSet.contains(elt));
+
+                    if let HAlign::Left = elt { }  // hint at a case analysis
+                });
+
+                crate::pervasive::set_lib::lemma_len_subset(eltSet, maxSet);
+            });
         }
     } => Ok(())
 }
@@ -583,7 +582,7 @@ fn e13_pass() {
 
                 #[proof]
                 fn cheese_take_two() {
-                    // TODO(chris) Forall statements!
+                    // TODO(jonh) fill in
                 }
             },
         ),
@@ -592,24 +591,5 @@ fn e13_pass() {
     assert!(result.is_ok());
 }
 
-// test_verify_one_file! {
-//     #[test] e14_pass str! {
-//         #[spec]
-//         fn is_even(x: int) -> bool
-//         {
-//             x / 2 * 2 == x
-//         }
-//
-//         #[proof]
-//         fn point_arithmetic()
-//         {
-//             let a = Point { x: 1, y: 13 };
-//             let b = Point { x: 2, y: 7 };
-//
-//             assert(subtract_points(a, b) == Point { x: -1, y: 6 }); // FAILS
-//         }
-//     } => Err(err) => assert_fails(err, 1)
-// }
-//
 // TODO(utaal): fix sets to allow == syntax for equals(set138, set813), but not
 // extensional equality?
