@@ -151,7 +151,7 @@ fn check_expr(typing: &mut Typing, outer_mode: Mode, expr: &Expr) -> Result<Mode
         ExprX::Ctor(path, variant, binders, update) => {
             let datatype = &typing.datatypes[path].clone();
             let variant = datatype.x.get_variant(variant);
-            let mut mode = outer_mode;
+            let mut mode = mode_join(outer_mode, datatype.x.mode);
             if let Some(update) = update {
                 mode = mode_join(mode, check_expr(typing, outer_mode, update)?);
             }
