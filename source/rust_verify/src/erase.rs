@@ -71,7 +71,7 @@ use vir::ast::{
     Datatype, ExprX, Function, GenericBoundX, Krate, Mode, Path, Pattern, PatternX, UnaryOpr,
 };
 use vir::ast_util::get_field;
-use vir::modes::{mode_join, ErasureModes};
+use vir::modes::{mode_join, mode_le, ErasureModes};
 
 /// Information about each call in the AST (each ExprKind::Call).
 #[derive(Clone, Debug)]
@@ -638,11 +638,7 @@ fn erase_expr_opt(ctxt: &Ctxt, mctxt: &mut MCtxt, expect: Mode, expr: &Expr) -> 
                 let eb = eb_erase.expect("erase_expr");
                 keep(mctxt, eb)
             } else {
-                assert!(expect != Mode::Exec);
-                if !ctxt.keep_proofs {
-                    let eb = eb_erase.expect("erase_expr");
-                    return Some(eb);
-                } else if modeb == Mode::Spec && expect == Mode::Proof {
+                if ctxt.keep_proofs && modeb == Mode::Spec && mode_le(expect, Mode::Proof) {
                     // We erase eb, so we have no bool for the If.
                     // Create a nondeterministic boolean to take eb's place.
                     let e_nondet = call_arbitrary(ctxt, mctxt, expr.span);
@@ -654,8 +650,11 @@ fn erase_expr_opt(ctxt: &Ctxt, mctxt: &mut MCtxt, expect: Mode, expr: &Expr) -> 
                     );
                     keep(mctxt, eb.expect("e_nondet"))
                 } else {
-                    let eb = eb_erase.expect("erase_expr");
-                    keep(mctxt, eb)
+                    if let Some(eb) = eb_erase {
+                        keep(mctxt, eb)
+                    } else {
+                        return None;
+                    }
                 }
             }
         }

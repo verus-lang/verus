@@ -137,3 +137,24 @@ test_verify_one_file! {
         }
     } => Err(_)
 }
+
+test_verify_one_file! {
+    #[test] eq_mode code! {
+        fn eq_mode(#[spec] i: int) {
+            #[spec] let b: bool = i == 13;
+        }
+    } => Ok(_)
+}
+
+test_verify_one_file! {
+    #[test] if_spec_cond code! {
+        fn if_spec_cond(#[spec] i: int) -> u64 {
+            let mut a: u64 = 2;
+            if i == 3 {
+                a = a + 1; // ERROR
+            }
+            a
+        }
+    } => Err(_)
+}
+
