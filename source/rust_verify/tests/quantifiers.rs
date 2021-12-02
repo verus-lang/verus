@@ -83,7 +83,7 @@ test_verify_one_file! {
 
         #[proof]
         fn test1() {
-            assert(tr(300));
+            assert(tr::<nat>(300));
             assert(exists(|i: nat| i >= 0 && tr(i)));
         }
     } => Ok(())
@@ -117,7 +117,7 @@ test_verify_one_file! {
 
         #[proof]
         fn test1() {
-            assert(tr1(300));
+            assert(tr1::<nat>(300));
             assert(exists(|i: nat| i >= 0 && tr1(i) && tr2(i)));
         }
     } => Ok(())
@@ -137,7 +137,7 @@ test_verify_one_file! {
 
         #[proof]
         fn test1() {
-            assert(tr2(300));
+            assert(tr2::<nat>(300));
             assert(exists(|i: nat| i >= 0 && tr1(i) && tr2(i)));
         }
     } => Ok(())

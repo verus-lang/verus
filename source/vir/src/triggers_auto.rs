@@ -191,9 +191,7 @@ fn make_score(term: &Term, depth: u64) -> Score {
 fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Term) {
     let (is_pure, term) = match &exp.x {
         ExpX::Const(c) => (true, Arc::new(TermX::App(App::Const(c.clone()), Arc::new(vec![])))),
-        ExpX::Var(x) => {
-            return (true, Arc::new(TermX::Var(x.clone())));
-        }
+        ExpX::Var(x) => (true, Arc::new(TermX::Var(x.clone()))),
         ExpX::Old(_, _) => panic!("internal error: Old"),
         ExpX::Call(x, typs, args) => {
             let (is_pures, terms): (Vec<bool>, Vec<Term>) =
@@ -278,6 +276,9 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
             (false, Arc::new(TermX::App(ctxt.other(), Arc::new(vec![]))))
         }
     };
+    if let TermX::Var(..) = *term {
+        return (is_pure, term);
+    }
     if !ctxt.all_terms.contains_key(&term) {
         ctxt.all_terms.insert(term.clone(), exp.span.clone());
         if let TermX::App(app, _) = &*term {

@@ -73,3 +73,46 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_one_fails(err)
 }
+
+test_verify_one_file! {
+    #[test] test_choose_assert_witness code! {
+        use crate::pervasive::set::*;
+
+        #[opaque]
+        #[spec]
+        fn f(x: int) -> bool {
+            true
+        }
+
+        #[proof]
+        fn test_witness() {
+            assume(exists(|x: int| f(x)));
+
+            let s = set_new(|x: int| f(x));
+            assert(exists(|x: int| f(x) && s.contains(x)));
+
+            assert(s.contains(s.choose()));
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_choose_fails_witness code! {
+        use crate::pervasive::set::*;
+
+        #[opaque]
+        #[spec]
+        fn f(x: int) -> bool {
+            true
+        }
+
+        #[proof]
+        fn test_witness() {
+            assume(exists(|x: int| f(x)));
+
+            let s = set_new(|x: int| f(x));
+
+            assert(s.contains(s.choose())); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
