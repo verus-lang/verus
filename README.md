@@ -194,6 +194,12 @@ You should only run a single test, as only the latest logged IR is preserved.
 For example, the following will emit the vir/air/smt logs to `rust_verify/logs`:
 
 ```
-VERIFY_LOG_IR_PATH="logs" RUSTC=../rust/install/bin/rustc ../rust/install/bin/cargo test -p rust_verify --test refs_basic test_struct_ref
+VERIFY_LOG_IR_PATH="logs" RUSTC=../rust/install/bin/rustc ../rust/install/bin/cargo test -p rust_verify --test refs -- test_ref_0
 ```
 
+If you need to pass additional command-line arguments to the verifier in tests, for example to print the
+erased rust ast, you can use the `VERIFY_EXTRA_ARGS` environment variable, like this:
+
+```
+VERIFY_EXTRA_ARGS="--print-erased-spec" RUSTC=../rust/install/bin/rustc ../rust/install/bin/cargo test -p rust_verify --test refs -- --nocapture test_ref_0
+```

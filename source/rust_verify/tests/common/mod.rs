@@ -5,7 +5,7 @@ extern crate rustc_span;
 pub use rust_verify::verifier::ErrorSpan;
 pub use rust_verify_test_macros::{code, code_str};
 
-use rust_verify::config::{enable_default_features, Args};
+use rust_verify::config::{enable_default_features, parse_args, Args};
 use rust_verify::verifier::Verifier;
 
 use rustc_span::source_map::FileLoader;
@@ -98,25 +98,32 @@ pub fn verify_files_and_pervasive(
 
     rustc_args.push(entry_file);
     let our_args = {
-        let mut our_args: Args = Default::default();
-        match std::env::var("VERIFY_LOG_IR_PATH") {
-            Ok(path) => {
-                let path = std::path::Path::new(&path);
-                if !path.is_dir() {
-                    panic!(
-                        "VERIFY_LOG_IR_PATH is not a directory, std::env::current_dir() is {:?}",
-                        std::env::current_dir()
-                    );
-                }
-                our_args.log_vir = Some(path.join("log.vir").to_string_lossy().to_string());
-                our_args.log_air_initial = Some(path.join("log.air").to_string_lossy().to_string());
-                our_args.log_air_final =
-                    Some(path.join("log.air-final").to_string_lossy().to_string());
-                our_args.log_smt = Some(path.join("log.smt").to_string_lossy().to_string());
+        let mut our_args: Args = if let Ok(extra_args) = std::env::var("VERIFY_EXTRA_ARGS") {
+            let (args, rest) = parse_args(
+                &"test".to_string(),
+                extra_args.split(" ").map(|x| x.to_string()).chain(Some("test".to_string())),
+            );
+            if rest.len() != 2 {
+                eprintln!("warning: unparsed extra arguments from VERIFY_EXTRA_ARGS");
             }
-            _ => (),
+            args
+        } else {
+            Default::default()
+        };
+        if let Ok(path) = std::env::var("VERIFY_LOG_IR_PATH") {
+            let path = std::path::Path::new(&path);
+            if !path.is_dir() {
+                panic!(
+                    "VERIFY_LOG_IR_PATH is not a directory, std::env::current_dir() is {:?}",
+                    std::env::current_dir()
+                );
+            }
+            our_args.log_vir = Some(path.join("log.vir").to_string_lossy().to_string());
+            our_args.log_air_initial = Some(path.join("log.air").to_string_lossy().to_string());
+            our_args.log_air_final = Some(path.join("log.air-final").to_string_lossy().to_string());
+            our_args.log_smt = Some(path.join("log.smt").to_string_lossy().to_string());
         }
-        our_args.verify_pervasive = verify_pervasive;
+        our_args.verify_pervasive |= verify_pervasive;
         our_args
     };
     let files = files.into_iter().map(|(p, f)| (p.into(), f)).collect();

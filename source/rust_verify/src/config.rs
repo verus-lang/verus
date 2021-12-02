@@ -80,7 +80,7 @@ pub fn parse_args(program: &String, args: impl Iterator<Item = String>) -> (Args
         eprint!("{}", opts.usage(&brief));
     };
 
-    let (matches, mut unmatched) = match opts.parse_partial(args) {
+    let (matches, unmatched) = match opts.parse_partial(args) {
         Ok((m, mut unmatched)) => {
             if m.opt_present("h") {
                 print_usage();
@@ -123,8 +123,6 @@ pub fn parse_args(program: &String, args: impl Iterator<Item = String>) -> (Args
         debug: matches.opt_present(OPT_DEBUG),
         compile: matches.opt_present(OPT_COMPILE),
     };
-
-    enable_default_features(&mut unmatched);
 
     (args, unmatched)
 }
