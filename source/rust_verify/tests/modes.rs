@@ -137,3 +137,58 @@ test_verify_one_file! {
         }
     } => Err(_)
 }
+
+test_verify_one_file! {
+    #[test] eq_mode code! {
+        fn eq_mode(#[spec] i: int) {
+            #[spec] let b: bool = i == 13;
+        }
+    } => Ok(_)
+}
+
+test_verify_one_file! {
+    #[test] if_spec_cond code! {
+        fn if_spec_cond(#[spec] i: int) -> u64 {
+            let mut a: u64 = 2;
+            if i == 3 {
+                a = a + 1; // ERROR
+            }
+            a
+        }
+    } => Err(_)
+}
+
+test_verify_one_file! {
+    #[test] if_spec_cond_proof code! {
+        #[proof]
+        fn if_spec_cond_proof(i: int) -> u64 {
+            let mut a: u64 = 2;
+            if i == 3 {
+                a = a + 1;
+            }
+            a
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] regression_int_if code! {
+        fn int_if() {
+            #[spec] let a: int = 3;
+            if a == 4 {
+                assert(false);
+            }; // TODO not require the semicolon here?
+        }
+
+        #[spec]
+        fn int_if_2(a: int) -> int {
+            if a == 2 {
+                3
+            } else if a == 3 {
+                4
+            } else {
+                arbitrary()
+            }
+        }
+    } => Ok(())
+}
