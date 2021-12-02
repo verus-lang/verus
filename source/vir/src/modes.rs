@@ -352,7 +352,7 @@ fn check_function(typing: &mut Typing, function: &Function) -> Result<(), VirErr
         }
     }
     if let Some(body) = &function.x.body {
-        check_expr(typing, function.x.mode, body)?;
+        check_expr_has_mode(typing, function.x.mode, body, function.x.ret.x.mode)?;
     }
     typing.vars.pop_scope();
     assert_eq!(typing.vars.num_scopes(), 0);

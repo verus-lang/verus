@@ -1,5 +1,3 @@
-// rust_verify/tests/example.rs expect-failures
-
 use builtin::*;
 mod pervasive;
 use pervasive::*;
@@ -34,9 +32,9 @@ fn id_u64(i: u64) -> u64 {
 }
 
 fn id_u64_exec(i: u64) -> u64 {
-    ensures(|r: u64| r == id_u64(i));
+    ensures(|r: u64| f(r, id_u64(i)));
 
-    id(i, true, 10)
+    id_exec(i, true, 10)
 }
 
 struct S<A> {
@@ -77,5 +75,5 @@ fn test_g1(u: u8) {
 
 #[proof]
 fn test_g2(u: u8) {
-    assert(g(u) < 256);
+    assert(g(u) < 256 as int);
 }

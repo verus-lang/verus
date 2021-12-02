@@ -640,9 +640,8 @@ fn erase_expr_opt(ctxt: &Ctxt, mctxt: &mut MCtxt, expect: Mode, expr: &Expr) -> 
             } else {
                 assert!(expect != Mode::Exec);
                 if !ctxt.keep_proofs {
-                    let eb = eb_erase.expect("erase_expr");
-                    return Some(eb);
-                } else if modeb == Mode::Spec && expect == Mode::Proof {
+                    return eb_erase;
+                } else if ctxt.keep_proofs && modeb == Mode::Spec {
                     // We erase eb, so we have no bool for the If.
                     // Create a nondeterministic boolean to take eb's place.
                     let e_nondet = call_arbitrary(ctxt, mctxt, expr.span);
@@ -671,9 +670,8 @@ fn erase_expr_opt(ctxt: &Ctxt, mctxt: &mut MCtxt, expect: Mode, expr: &Expr) -> 
             } else {
                 assert!(expect != Mode::Exec);
                 if !ctxt.keep_proofs {
-                    let e0 = erase_expr(ctxt, mctxt, mode0, e0);
-                    return Some(e0);
-                } else if mode0 == Mode::Spec && expect == Mode::Proof {
+                    return erase_expr_opt(ctxt, mctxt, mode0, e0);
+                } else if ctxt.keep_proofs && mode0 == Mode::Spec {
                     let e0_erase = erase_expr_opt(ctxt, mctxt, mode0, e0);
                     // We erase e0, so we have no value to match on.
                     // Create nondeterministic booleans to take e0's place
@@ -729,7 +727,13 @@ fn erase_expr_opt(ctxt: &Ctxt, mctxt: &mut MCtxt, expect: Mode, expr: &Expr) -> 
 
 /// Erase ghost code from stmt, and return Some resulting statement.
 /// If the entire statment is ghost, return None.
-fn erase_stmt(ctxt: &Ctxt, mctxt: &mut MCtxt, expect: Mode, stmt: &Stmt) -> Option<Stmt> {
+fn erase_stmt(
+    ctxt: &Ctxt,
+    mctxt: &mut MCtxt,
+    expect: Mode,
+    stmt: &Stmt,
+    is_last: bool,
+) -> Option<Stmt> {
     let kind = match &stmt.kind {
         StmtKind::Local(local) => {
             let mode1 = *mctxt.find_span(&ctxt.var_modes, local.pat.span);
@@ -749,8 +753,11 @@ fn erase_stmt(ctxt: &Ctxt, mctxt: &mut MCtxt, expect: Mode, stmt: &Stmt) -> Opti
                 })
             }
         }
-        StmtKind::Expr(expr) => {
+        StmtKind::Expr(expr) if is_last => {
             erase_expr_opt(ctxt, mctxt, expect, expr).map(|e| StmtKind::Expr(P(e)))
+        }
+        StmtKind::Expr(expr) => {
+            erase_expr_opt(ctxt, mctxt, Mode::Spec, expr).map(|e| StmtKind::Expr(P(e)))
         }
         StmtKind::Semi(expr) => {
             erase_expr_opt(ctxt, mctxt, Mode::Spec, expr).map(|e| StmtKind::Semi(P(e)))
@@ -765,8 +772,12 @@ fn erase_stmt(ctxt: &Ctxt, mctxt: &mut MCtxt, expect: Mode, stmt: &Stmt) -> Opti
 }
 
 fn erase_block(ctxt: &Ctxt, mctxt: &mut MCtxt, expect: Mode, block: &Block) -> Block {
-    let stmts: Vec<Stmt> =
-        block.stmts.iter().filter_map(|stmt| erase_stmt(ctxt, mctxt, expect, stmt)).collect();
+    let stmts: Vec<Stmt> = block
+        .stmts
+        .iter()
+        .enumerate()
+        .filter_map(|(i, stmt)| erase_stmt(ctxt, mctxt, expect, stmt, i == block.stmts.len() - 1))
+        .collect();
     let Block { id, rules, span, .. } = *block; // for asymptotic efficiency, don't call block.clone()
     Block { stmts, id, rules, span, tokens: block.tokens.clone() }
 }
