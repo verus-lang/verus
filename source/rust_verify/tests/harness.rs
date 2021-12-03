@@ -4,6 +4,17 @@ mod common;
 use common::*;
 
 #[test]
+fn harness_zero() {
+    assert!(
+        verify_one_file(code! {
+            fn harness1() {
+            }
+        })
+        .is_ok()
+    );
+}
+
+#[test]
 fn harness_invalid_rust() {
     let code = code! {
         fn harness1() {
