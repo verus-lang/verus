@@ -704,3 +704,118 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_fails(err, 3)
 }
+
+test_verify_one_file! {
+    #[test] e15_pass code! {
+        use set::*;
+        use set_lib::*;
+
+        #[spec]
+        fn is_modest(x:int) -> bool {
+            0 <= x && x < 10
+        }
+
+        #[spec]
+        fn is_even(x:int) -> bool {
+            x/2*2==x
+        }
+
+        #[proof]
+        fn is_this_set_finite()
+        {
+            let modest_evens = set_new(|x:int| is_modest(x) && is_even(x));
+            // In verus, unlike Dafny, it's fine to have infinite sets, but you may want a finite
+            // one (say because you're using it as a decreases to well-found an induction).
+            let modest_numbers = set_int_range(0, 10);
+            // TODO(chris): we need ambient automation for lemmes. lemma_int_range shoud be in a
+            // low-risk kit.
+            lemma_int_range(0, 10);
+            // TODO(chris): don't want to have type annotation on this lemma, but there's an
+            // erasure bug.
+            lemma_len_subset::<int>(modest_evens, modest_numbers);
+            assert(modest_evens.finite());
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] e15_fail code! {
+        use set::*;
+
+        #[spec]
+        fn is_modest(x:int) -> bool {
+            0 <= x && x < 10
+        }
+
+        #[spec]
+        fn is_even(x:int) -> bool {
+            x/2*2==x
+        }
+
+        #[proof]
+        fn is_this_set_finite()
+        {
+            let modest_evens = set_new(|x:int| is_modest(x) && is_even(x));
+            // Need additional proof to show that this construction is finite.
+            assert(modest_evens.finite());  // FAILS
+        }
+    } => Err(err) => assert_fails(err, 1)
+}
+
+test_verify_one_file! {
+    #[test] e16_pass code! {
+        #[spec]
+        fn is_even(x:int) -> bool {
+            x/2*2==x
+        }
+
+        #[proof]
+        fn explain_even_numbers(x: int) -> int
+        {
+            requires(is_even(x));
+            ensures(|twocount:int| twocount*2 == x);
+            x/2
+        }
+
+        #[spec]
+        fn double(x:int) -> int
+        {
+            x * 2
+        }
+
+        #[spec]
+        fn alternate_even(x:int) -> bool
+        {
+            // TODO(chris): Change no-trigger error message from "Use #[trigger] annotations to
+            // manually mark trigger terms instead." to "Consider using a named function for some
+            // subexpression to provide a trigger."
+            // In Verus, we need a trgger for the exists, so we pull the x*2 expression out into a
+            // named fn.
+            exists(|twocount:int| double(twocount) == x)
+        }
+
+        #[proof]
+        fn even_definitions_are_equivalent(x: int)
+        {
+            ensures(is_even(x) == alternate_even(x));
+            assert(double(x/2) == x/2*2);   // trigger double.
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] e16_fail code! {
+        #[spec]
+        fn is_even(x:int) -> bool {
+            x/2*2==x
+        }
+
+        #[proof]
+        fn explain_even_numbers(x: int) -> int
+        {
+            requires(is_even(x));
+            ensures(|twocount:int| twocount*2 == x);    // FAILS
+            x/3
+        }
+    } => Err(err) => assert_fails(err, 1)
+}

@@ -67,9 +67,12 @@ pub fn lemma_len_intersect<A>(s1: Set<A>, s2: Set<A>) {
 pub fn lemma_len_subset<A>(s1: Set<A>, s2: Set<A>) {
     requires([
         s2.finite(),
-        s1.subset_of(s2)
+        s1.subset_of(s2),
     ]);
-    ensures(s1.len() <= s2.len());
+    ensures([
+        s1.len() <= s2.len(),
+        s1.finite(),
+    ]);
 
     lemma_len_intersect::<A>(s2, s1);
     assert(s2.intersect(s1).ext_equal(s1));
