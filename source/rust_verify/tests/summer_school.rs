@@ -625,7 +625,7 @@ test_verify_one_file! {
 
             // TODO(utaal): square-bracket syntax for indexing
             assert(double_map.index(3) == 6);
-            
+
             let replace_map = double_map.insert(3, 7);
             assert(replace_map.index(1) == 2);
             assert(replace_map.index(2) == 4);
@@ -680,7 +680,7 @@ test_verify_one_file! {
 
             // TODO(utaal): square-bracket syntax for indexing
             assert(double_map.index(3) == 6);
-            
+
             let replace_map = double_map.insert(3, 7);
             assert(replace_map.index(1) == 2);
             assert(replace_map.index(2) == 4);
@@ -821,7 +821,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] #[ignore] e18_pass code! {
+    #[test] e18_pass code! {
         #[spec]
         fn fibo(val:nat) -> nat
         {
@@ -832,12 +832,58 @@ test_verify_one_file! {
             else { fibo(val - 2) + fibo(val - 1) }
         }
 
+        #[spec]
+        fn max_u64_fibo_arg() -> nat
+        {
+            20
+        }
+
+        #[proof]
+        fn fibo_monotonic(i:nat, j:nat) {
+            requires(i<=j);
+            ensures(fibo(i) <= fibo(j));
+            decreases(j-i);
+
+            if i<2 && j<2 {
+            } else if i==j {
+            } else if i==j-1 {
+                reveal_with_fuel(fibo, 2);
+                fibo_monotonic(i, j-1);
+            } else {
+                fibo_monotonic(i, j-1);
+                fibo_monotonic(i, j-2);
+            }
+        }
+
+        fn max_u64_fibo_arg_bound() {
+            ensures(forall(|i:nat| imply(i < max_u64_fibo_arg(), fibo(i) < 7000)));
+
+            assert_by(fibo(20) == 6765, reveal_with_fuel(fibo, 11));
+
+            // TODO(chris): "Could not automatically infer triggers for this quantifer." but there's fibo
+            // RIGHT THERE! Error should say "matching loop" instead.
+            // assume(forall(|i:nat| fibo(i) < fibo(i+1)));
+
+            forall(|i:nat, j:nat| {
+                // requires(i<j);
+                // TODO(chris): requires of lambda isn't making it in here.
+                ensures(imply(i<=j, fibo(i) <= fibo(j)));
+
+                if i <= j {
+                    fibo_monotonic(i, j);
+                }
+            });
+        }
+
         fn fibo_recursive_impl(val:u64) -> u64
         {
+            requires(val < max_u64_fibo_arg());
             decreases(val);
             ensures(|f:u64| fibo(val) == f);
-            // thread 'rustc' panicked at 'internal error: generated ill-typed AIR code: error 'cannot assign to const variable x@' in statement '(assign x@ (uClip 64 (+ x@ 1)))'', rust_verify/src/verifier.rs:170:17
-            assume(val as nat == 0);
+            assume(val as nat > 1);
+
+            max_u64_fibo_arg_bound();
+
             if val == 0 { 0 }
             else if val == 1 { 1 }
             else { fibo_recursive_impl(val - 2) + fibo_recursive_impl(val - 1) }
@@ -857,10 +903,10 @@ test_verify_one_file! {
 
         fn main()
         {
-            let x:u64 = 0;
-            while x<50 {
+            let mut x:u64 = 0;
+            while x<20 {
                 let f = fibo_recursive_impl(x);
-                
+
                 x = x + 1;
             }
         }
