@@ -819,3 +819,50 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_fails(err, 1)
 }
+
+test_verify_one_file! {
+    #[test] #[ignore] e17_pass code! {
+        #[spec]
+        fn fibo(val:nat) -> nat
+        {
+            // TODO I think Dafny is pretty successful at inferring decreases.
+            decreases(val);
+            if val == 0 { 0 }
+            else if val == 1 { 1 }
+            else { fibo(val - 2) + fibo(val - 1) }
+        }
+
+        fn fibo_recursive_impl(val:u64) -> u64
+        {
+            decreases(val);
+            ensures(|f:u64| fibo(val) == f);
+            // thread 'rustc' panicked at 'internal error: generated ill-typed AIR code: error 'cannot assign to const variable x@' in statement '(assign x@ (uClip 64 (+ x@ 1)))'', rust_verify/src/verifier.rs:170:17
+            assume(val as nat == 0);
+            if val == 0 { 0 }
+            else if val == 1 { 1 }
+            else { fibo_recursive_impl(val - 2) + fibo_recursive_impl(val - 1) }
+        }
+
+        #[proof]
+        fn check()
+        {
+            ensures([
+                fibo(0) == 0,
+                fibo(20) == 6765,
+            ]);
+            // Dafny gives lots of fuel for application on literals, which makes examples
+            // like this go through like magic. Verus needs you to goose the throttle manually.
+            reveal_with_fuel(fibo, 11); // Apparently we get 2 recursions for each drop of fuel.
+        }
+
+        fn main()
+        {
+            let x:u64 = 0;
+            while x<50 {
+                let f = fibo_recursive_impl(x);
+                
+                x = x + 1;
+            }
+        }
+    } => Ok(())
+}
