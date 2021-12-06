@@ -821,7 +821,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] #[ignore] e17_pass code! {
+    #[test] #[ignore] e18_pass code! {
         #[spec]
         fn fibo(val:nat) -> nat
         {
