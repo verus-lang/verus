@@ -702,7 +702,7 @@ test_verify_one_file! {
             assert(evens_in_order.index(2) == 4);
             assert(evens_in_order.ext_equal(seq![8,6,4,2,0]));  // FAILS
         }
-    } => Err(err) => assert_fails(err, 3)
+    } => Err(err) => assert_fails(err, 4)
 }
 
 test_verify_one_file! {
