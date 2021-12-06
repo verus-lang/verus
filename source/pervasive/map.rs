@@ -12,6 +12,12 @@ pub struct Map<K, V> {
 }
 
 #[spec]
+#[verifier(pub_abstract)]
+pub fn map_empty<K, V>() -> Map<K, V> {
+    arbitrary()
+}
+
+#[spec]
 pub fn map_total<K, V, F: Fn(K) -> V>(f: F) -> Map<K, V> {
     set_full().mk_map(f)
 }
@@ -47,6 +53,13 @@ impl<K, V> Map<K, V> {
 #[proof]
 #[verifier(no_verify)]
 #[verifier(export_as_global_forall)]
+pub fn axiom_map_empty<K, V>() {
+    ensures(equal(map_empty::<K, V>().dom(), set_empty()));
+}
+
+#[proof]
+#[verifier(no_verify)]
+#[verifier(export_as_global_forall)]
 pub fn axiom_map_insert_domain<K, V>(m: Map<K, V>, key: K, value: V) {
     ensures(equal(#[trigger] m.insert(key, value).dom(), m.dom().insert(key)));
 }
@@ -75,3 +88,25 @@ pub fn axiom_map_insert_different<K, V>(m: Map<K, V>, key1: K, key2: K, value: V
 pub fn axiom_map_ext_equal<K, V>(m1: Map<K, V>, m2: Map<K, V>) {
     ensures(m1.ext_equal(m2) == equal(m1, m2));
 }
+
+// Macros
+
+#[macro_export]
+macro_rules! map_insert_rec {
+    [$val:expr;] => {
+        $val
+    };
+    [$val:expr;$key:expr => $value:expr] => {
+        map_insert_rec![$val.insert($key, $value);]
+    };
+    [$val:expr;$key:expr => $value:expr,$($tail:tt)*] => {
+        map_insert_rec![$val.insert($key, $value);$($tail)*]
+    }
+}
+
+#[macro_export]
+macro_rules! map {
+    [$($tail:tt)*] => {
+        map_insert_rec![$crate::pervasive::map::map_empty();$($tail)*]
+    }
+} 

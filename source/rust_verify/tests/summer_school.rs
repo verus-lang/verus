@@ -593,3 +593,114 @@ fn e13_pass() {
 
 // TODO(utaal): fix sets to allow == syntax for equals(set138, set813), but not
 // extensional equality?
+
+test_verify_one_file! {
+    #[test] e14_pass code! {
+        use set::*;
+        use set_lib::*;
+        use map::*;
+        use seq::*;
+
+        #[spec]
+        fn is_even(x: int) -> bool
+        {
+            x/2*2 == x
+        }
+
+        #[proof]
+        fn set_comprehension()
+        {
+            let modest_evens = set_new(|x:int| 0 <= x && x < 10 && is_even(x));
+            assert(modest_evens.ext_equal(set![0,2,4,6,8]));
+
+            /* This is beyond summer school, but shows a verus-preferred style */
+            let equivalent_evens = set_int_range(0, 10).filter(|x:int| is_even(x));
+            assert(modest_evens.ext_equal(equivalent_evens));
+        }
+
+        #[proof]
+        fn maps()
+        {
+            let double_map = map![1=>2, 2=>4, 3=>6, 4=>8];
+
+            // TODO(utaal): square-bracket syntax for indexing
+            assert(double_map.index(3) == 6);
+            
+            let replace_map = double_map.insert(3, 7);
+            assert(replace_map.index(1) == 2);
+            assert(replace_map.index(2) == 4);
+            assert(replace_map.index(3) == 7);
+
+            /* This is beyond summer school, but shows a verus-preferred style */
+            let equivalent_double_map = set_int_range(1,5).mk_map(|x:int| x*2);
+            assert(equivalent_double_map.ext_equal(double_map));
+        }
+
+        #[proof]
+        fn map_comprehension()
+        {
+            let doubly_map = set_int_range(0,5).mk_map(|x:int| 2*x);
+            assert(doubly_map.index(1) == 2);
+            assert(doubly_map.index(4) == 8);
+        }
+
+        #[proof]
+        fn seq_comprehension()
+        {
+            let evens_in_order = seq_new(5, |i:int| i*2);
+            assert(evens_in_order.index(2) == 4);
+            assert(evens_in_order.ext_equal(seq![0,2,4,6,8]));
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] e14_fail code! {
+        use set::*;
+        use set_lib::*;
+        use seq::*;
+
+        #[spec]
+        fn is_even(x: int) -> bool
+        {
+            x/2*2 == x
+        }
+
+        #[proof]
+        fn set_comprehension()
+        {
+            let modest_evens = set_new(|x:int| 0 <= x && x < 10 && is_even(x));
+            assert(modest_evens.ext_equal(set![0,2,4,8]));   // FAILS
+        }
+
+        #[proof]
+        fn maps()
+        {
+            let double_map = map![1=>2, 2=>4, 3=>6, 4=>8];
+
+            // TODO(utaal): square-bracket syntax for indexing
+            assert(double_map.index(3) == 6);
+            
+            let replace_map = double_map.insert(3, 7);
+            assert(replace_map.index(1) == 2);
+            assert(replace_map.index(2) == 4);
+            assert(replace_map.index(3) == 6);  // FAILS
+        }
+
+        #[proof]
+        fn map_comprehension()
+        {
+            let doubly_map = set_int_range(0,5).mk_map(|x:int| 2*x);
+            assert(doubly_map.index(1) == 2);
+            assert(doubly_map.index(4) == 4);   // FAILS
+        }
+
+        #[proof]
+        fn seq_comprehension()
+        {
+            let evens_in_order = seq_new(5, |i:int| i*2);
+            assert(evens_in_order.index(2) == 4);
+            assert(evens_in_order.ext_equal(seq![8,6,4,2,0]));  // FAILS
+        }
+    } => Err(err) => assert_fails(err, 3)
+}
