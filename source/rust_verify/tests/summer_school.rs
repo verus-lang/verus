@@ -866,3 +866,45 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    // TODO(chris): We need to run borrow checking before running verification. With 'mut' removed:
+    // Ignored because "thread 'rustc' panicked at 'internal error: generated ill-typed AIR code: error 'cannot assign to const variable max_index$1@' in statement '(assign max_index$1@ count@)'', rust_verify/src/verifier.rs:170:17"
+    #[test] e19_pass code! {
+        use vec::*; // TODO(chris): Want pervasive::Vec & std::vec::Vec to not be different types to make interop with ordinary rust code not clunky.
+
+        // The summer school uses executable methods that work with nats & ints (here and above in
+        // ex17). We dislike that feature of Dafny, because nobody actually wants it.
+
+        fn find_max(int_seq: &Vec<u64>) -> usize
+        {
+            requires(int_seq.len() > 0);
+            ensures(|max_index_rc:usize| [
+                max_index_rc < int_seq.len(),
+                forall(|idx:nat| imply(idx<int_seq.len(), int_seq.index(idx) <= int_seq.index(max_index_rc))),
+            ]);
+
+            let mut count:usize = 0;
+            let mut max_index:usize = 0;
+            // TODO(chris) .length()->usize should be named .len(); .view().len() should give you
+            // the nat.
+            let int_seq_length:usize = int_seq.length();
+            // TODO(chris): not yet implemented: complex while loop conditions
+            while count < int_seq_length
+            {
+                invariant([
+                    max_index < int_seq_length,
+                    int_seq_length == int_seq.len(),
+                    forall(|prioridx:nat| imply(prioridx < count,
+                            int_seq.index(prioridx) <= int_seq.index(max_index))),
+                ]);
+
+                if int_seq.get(max_index) < int_seq.get(count) {
+                    max_index = count;
+                }
+                count = count + 1;
+            }
+            max_index
+        }
+    } => Ok(())
+}
