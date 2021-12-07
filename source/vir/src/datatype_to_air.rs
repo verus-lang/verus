@@ -203,7 +203,8 @@ pub fn datatypes_to_air(ctx: &Ctx, datatypes: &crate::ast::Datatypes) -> Command
                                 &path,
                                 &variant_field_ident(&dpath, &variant.name, &field.name),
                             );
-                            let axiom = air::parser::node_to_command(&node)
+                            let axiom = air::parser::Parser::new()
+                                .node_to_command(&node)
                                 .expect("internal error: malformed datatype axiom");
                             commands.push(axiom);
                         }

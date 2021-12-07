@@ -137,7 +137,9 @@ impl Ctx {
 
     pub fn prelude() -> Commands {
         let nodes = crate::prelude::prelude_nodes();
-        air::parser::nodes_to_commands(&nodes).expect("internal error: malformed prelude")
+        air::parser::Parser::new()
+            .nodes_to_commands(&nodes)
+            .expect("internal error: malformed prelude")
     }
 
     pub fn module(&self) -> Path {

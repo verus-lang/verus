@@ -6,7 +6,7 @@ use crate::ast::{
     Query, Stmt, StmtX, Typ, TypX, TypeError, Typs, UnaryOp,
 };
 use crate::context::Context;
-use crate::printer::{decl_to_node, expr_to_node, node_to_string, stmt_to_node};
+use crate::printer::{node_to_string, Printer};
 use crate::scope_map::ScopeMap;
 use crate::util::vec_map;
 use std::collections::HashSet;
@@ -274,7 +274,7 @@ pub(crate) fn check_expr(typing: &mut Typing, expr: &Expr) -> Result<Typ, TypeEr
     match result {
         Ok(t) => Ok(t),
         Err(err) => {
-            let node_str = node_to_string(&expr_to_node(expr));
+            let node_str = node_to_string(&Printer::new().expr_to_node(expr));
             Err(format!("error '{}' in expression '{}'", err, node_str))
         }
     }
@@ -345,7 +345,7 @@ pub(crate) fn check_stmt(typing: &mut Typing, stmt: &Stmt) -> Result<(), TypeErr
     match result {
         Ok(()) => Ok(()),
         Err(err) => {
-            let node_str = node_to_string(&stmt_to_node(stmt));
+            let node_str = node_to_string(&Printer::new().stmt_to_node(stmt));
             Err(format!("error '{}' in statement '{}'", err, node_str))
         }
     }
@@ -369,7 +369,7 @@ pub(crate) fn check_decl(typing: &mut Typing, decl: &Decl) -> Result<(), TypeErr
     match result {
         Ok(()) => Ok(()),
         Err(err) => {
-            let node_str = node_to_string(&decl_to_node(decl));
+            let node_str = node_to_string(&Printer::new().decl_to_node(decl));
             Err(format!("error '{}' in declaration '{}'", err, node_str))
         }
     }

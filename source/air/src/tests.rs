@@ -1,7 +1,7 @@
 use crate::ast::CommandX;
 use crate::context::ValidityResult;
 #[allow(unused_imports)]
-use crate::parser::nodes_to_commands;
+use crate::parser::Parser;
 #[allow(unused_imports)]
 use crate::printer::macro_push_node;
 use crate::smt_manager::SmtManager;
@@ -12,7 +12,7 @@ use sise::Node;
 fn run_nodes_as_test(should_typecheck: bool, should_be_valid: bool, nodes: &[Node]) {
     let mut air_context = crate::context::Context::new(SmtManager::new());
     air_context.set_z3_param("air_recommended_options", "true");
-    match nodes_to_commands(&nodes) {
+    match Parser::new().nodes_to_commands(&nodes) {
         Ok(commands) => {
             for command in commands.iter() {
                 let result = air_context.command(&command);

@@ -1,12 +1,14 @@
 use crate::ast::{Decl, Expr, Query};
-use crate::printer::{
-    decl_to_node, expr_to_node, macro_push_node, node_to_string_indent, query_to_node,
-};
+use crate::printer::{macro_push_node, NodeWriter, Printer};
 use crate::{node, nodes};
 use sise::Node;
 use std::io::Write;
 
 pub(crate) struct Emitter {
+    /// AIR/SMT -> Node printer
+    printer: Printer,
+    /// Node -> string writer
+    node_writer: NodeWriter,
     /// buffer for data to be sent across pipe to Z3 process
     pipe_buffer: Option<Vec<u8>>,
     /// log file
@@ -18,7 +20,13 @@ pub(crate) struct Emitter {
 impl Emitter {
     pub fn new(use_pipe: bool, writer: Option<Box<dyn std::io::Write>>) -> Self {
         let pipe_buffer = if use_pipe { Some(Vec::new()) } else { None };
-        Emitter { pipe_buffer, log: writer, current_indent: "".to_string() }
+        Emitter {
+            printer: Printer::new(),
+            node_writer: NodeWriter::new(),
+            pipe_buffer,
+            log: writer,
+            current_indent: "".to_string(),
+        }
     }
 
     pub fn set_log(&mut self, writer: Option<Box<dyn std::io::Write>>) {
@@ -64,7 +72,8 @@ impl Emitter {
 
     pub fn log_node(&mut self, node: &Node) {
         if let Some(w) = &mut self.pipe_buffer {
-            writeln!(w, "{}", node_to_string_indent(&self.current_indent, &node)).unwrap();
+            writeln!(w, "{}", self.node_writer.node_to_string_indent(&self.current_indent, &node))
+                .unwrap();
             w.flush().unwrap();
         }
         if let Some(w) = &mut self.log {
@@ -72,7 +81,7 @@ impl Emitter {
                 w,
                 "{}{}",
                 self.current_indent,
-                node_to_string_indent(&self.current_indent, &node)
+                self.node_writer.node_to_string_indent(&self.current_indent, &node)
             )
             .unwrap();
             w.flush().unwrap();
@@ -111,13 +120,13 @@ impl Emitter {
 
     pub fn log_decl(&mut self, decl: &Decl) {
         if !self.is_none() {
-            self.log_node(&decl_to_node(decl));
+            self.log_node(&self.printer.decl_to_node(decl));
         }
     }
 
     pub fn log_assert(&mut self, expr: &Expr) {
         if !self.is_none() {
-            self.log_node(&nodes!(assert {expr_to_node(expr)}));
+            self.log_node(&nodes!(assert {self.printer.expr_to_node(expr)}));
         }
     }
 
@@ -129,7 +138,7 @@ impl Emitter {
 
     pub fn log_query(&mut self, query: &Query) {
         if !self.is_none() {
-            self.log_node(&query_to_node(query));
+            self.log_node(&self.printer.query_to_node(query));
         }
     }
 
