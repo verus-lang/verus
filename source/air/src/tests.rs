@@ -1095,7 +1095,7 @@ fn yes_lambda1() {
         (check-valid
             (assert (=
                 10
-                (apply
+                (apply Int
                     (lambda ((x Int) (y Int)) (+ x y 5))
                     2
                     3
@@ -1111,25 +1111,9 @@ fn untyped_lambda1() {
         (check-valid
             (assert (=
                 10
-                (apply
+                (apply Int
                     (lambda ((x Int) (y Int)) (+ x y 5))
                     3
-                )
-            ))
-        )
-    )
-}
-
-#[test]
-fn untyped_lambda2() {
-    untyped!(
-        (check-valid
-            (assert (=
-                10
-                (apply
-                    (lambda ((x Int) (y Int)) (+ x y 5))
-                    3
-                    true
                 )
             ))
         )
@@ -1142,7 +1126,7 @@ fn no_lambda1() {
         (check-valid
             (assert (=
                 10
-                (apply
+                (apply Int
                     (lambda ((x Int) (y Int)) (+ x y 4))
                     2
                     3
@@ -1158,8 +1142,8 @@ fn yes_lambda2() {
         (check-valid
             (assert (=
                 10
-                (apply
-                    (apply
+                (apply Int
+                    (apply Fun
                         (lambda ((x Int) (y Int))
                             (lambda ((z Int)) (+ x y z 1))
                         )
@@ -1179,8 +1163,8 @@ fn no_lambda2() {
         (check-valid
             (assert (=
                 10
-                (apply
-                    (apply
+                (apply Int
+                    (apply Fun
                         (lambda ((x Int) (y Int))
                             (lambda ((z Int)) (+ x y z 1))
                         )
@@ -1207,7 +1191,7 @@ fn yes_lambda3() {
                         )
                     ))
                     (=
-                        (apply g 3)
+                        (apply Int g 3)
                         4
                     )
                 )
@@ -1229,7 +1213,7 @@ fn no_lambda3() {
                         )
                     ))
                     (=
-                        (apply g 3)
+                        (apply Int g 3)
                         5
                     )
                 )
@@ -1327,9 +1311,9 @@ fn no_lambda5() {
 #[test]
 fn yes_lambda6() {
     yes!(
-        (declare-const a (Fun (Int) Int))
+        (declare-const a Fun)
         (axiom (= a (lambda ((x Int)) (+ x 1))))
-        (declare-const b (Fun (Int) Int))
+        (declare-const b Fun)
         (axiom (= b (lambda ((x Int)) (+ x 1))))
         (check-valid
             (assert (= a b))
@@ -1340,9 +1324,9 @@ fn yes_lambda6() {
 #[test]
 fn no_lambda6() {
     no!(
-        (declare-const a (Fun (Int) Int))
+        (declare-const a Fun)
         (axiom (= a (lambda ((x Int)) (+ x 1))))
-        (declare-const b (Fun (Int) Int))
+        (declare-const b Fun)
         (axiom (= b (lambda ((x Int)) (+ x 2))))
         (check-valid
             (assert (= a b))
@@ -1492,8 +1476,8 @@ fn yes_choose5() {
                         )
                     ))
                     (=
-                        (apply g 4)
-                        (apply g (+ 2 2))
+                        (apply Int g 4)
+                        (apply Int g (+ 2 2))
                     )
                 )
             )
@@ -1513,8 +1497,8 @@ fn no_choose5() {
                         )
                     ))
                     (=
-                        (apply g 5)
-                        (apply g (+ 2 2))
+                        (apply Int g 5)
+                        (apply Int g (+ 2 2))
                     )
                 )
             )

@@ -23,7 +23,8 @@ pub type Typs = Arc<Vec<Typ>>;
 pub enum TypX {
     Bool,
     Int,
-    Lambda(Typs, Typ),
+    // Lambda deliberately omits argument, return types to make box/unbox for generics easier
+    Lambda,
     Named(Ident),
 }
 
@@ -95,7 +96,8 @@ pub enum ExprX {
     // Old(snap, x) reads x from snapshot snap
     Old(Ident, Ident),
     Apply(Ident, Exprs),
-    ApplyLambda(Expr, Exprs),
+    // ApplyLambda applies function Expr to arguments Exprs, returning a value of type Typ
+    ApplyLambda(Typ, Expr, Exprs),
     Unary(UnaryOp, Expr),
     Binary(BinaryOp, Expr, Expr),
     Multi(MultiOp, Exprs),

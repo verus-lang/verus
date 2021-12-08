@@ -51,9 +51,7 @@ fn typ_name(typ: &Typ) -> String {
     match &**typ {
         TypX::Bool => "Bool".to_string(),
         TypX::Int => "Int".to_string(),
-        TypX::Lambda(ts, tr) => {
-            format!("(Fun ({}) {})", vec_map(&**ts, typ_name).join(" "), typ_name(tr))
-        }
+        TypX::Lambda => "Fun".to_string(),
         TypX::Named(x) => x.to_string(),
     }
 }
@@ -70,12 +68,7 @@ fn check_typ(typing: &Typing, typ: &Typ) -> Result<(), TypeError> {
     match &**typ {
         TypX::Bool => Ok(()),
         TypX::Int => Ok(()),
-        TypX::Lambda(ts, tr) => {
-            for t in ts.iter() {
-                check_typ(typing, t)?;
-            }
-            check_typ(typing, tr)
-        }
+        TypX::Lambda => Ok(()),
         TypX::Named(x) => match typing.get(x) {
             Some(DeclaredX::Type) => Ok(()),
             _ => Err(format!("use of undeclared type {}", x)),
@@ -140,10 +133,15 @@ fn check_expr(typing: &mut Typing, expr: &Expr) -> Result<Typ, TypeError> {
             Some(DeclaredX::Fun(f_typs, f_typ)) => check_exprs(typing, x, &f_typs, &f_typ, es),
             _ => Err(format!("use of undeclared function {}", x)),
         },
-        ExprX::ApplyLambda(e0, es) => {
+        ExprX::ApplyLambda(t, e0, es) => {
             let t0 = check_expr(typing, e0)?;
             match &*t0 {
-                TypX::Lambda(ts, tret) => check_exprs(typing, "function", ts, tret, es),
+                TypX::Lambda => {
+                    for e in es.iter() {
+                        check_expr(typing, e)?;
+                    }
+                    Ok(t.clone())
+                }
                 _ => Err("expected function type".to_string()),
             }
         }
@@ -266,10 +264,7 @@ fn check_expr(typing: &mut Typing, expr: &Expr) -> Result<Typ, TypeError> {
                     expect_typ(&t1, &bt(), "forall/exists body must have type bool")?;
                     t1
                 }
-                BindX::Lambda(bs) => {
-                    let ts = vec_map(bs, |b| b.a.clone());
-                    Arc::new(TypX::Lambda(Arc::new(ts), t1))
-                }
+                BindX::Lambda(_) => Arc::new(TypX::Lambda),
                 BindX::Choose(b, _) => {
                     expect_typ(&t1, &bt(), "choose body must have type bool")?;
                     b.a.clone()

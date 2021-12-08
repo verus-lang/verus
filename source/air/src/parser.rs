@@ -53,16 +53,8 @@ impl Parser {
         match node {
             Node::Atom(s) if s.to_string() == "Bool" => Ok(Arc::new(TypX::Bool)),
             Node::Atom(s) if s.to_string() == "Int" => Ok(Arc::new(TypX::Int)),
+            Node::Atom(s) if s.to_string() == "Fun" => Ok(Arc::new(TypX::Lambda)),
             Node::Atom(s) if is_symbol(s) => Ok(Arc::new(TypX::Named(Arc::new(s.clone())))),
-            Node::List(nodes) => match &nodes[..] {
-                [Node::Atom(s), Node::List(ts), t] if s.to_string() == "Fun" => {
-                    Ok(Arc::new(TypX::Lambda(
-                        map_nodes_to_vec(ts, &|n| self.node_to_typ(n))?,
-                        self.node_to_typ(t)?,
-                    )))
-                }
-                _ => Err(format!("expected type, found: {}", node_to_string(node))),
-            },
             _ => Err(format!("expected type, found: {}", node_to_string(node))),
         }
     }
@@ -120,10 +112,11 @@ impl Parser {
                     _ => {}
                 }
                 match &nodes[0] {
-                    Node::Atom(s) if s.to_string() == "apply" => {
-                        let f = self.node_to_expr(&nodes[1])?;
-                        let args = self.nodes_to_exprs(&nodes[2..])?;
-                        return Ok(Arc::new(ExprX::ApplyLambda(f, args)));
+                    Node::Atom(s) if s.to_string() == "apply" && nodes.len() >= 3 => {
+                        let typ = self.node_to_typ(&nodes[1])?;
+                        let f = self.node_to_expr(&nodes[2])?;
+                        let args = self.nodes_to_exprs(&nodes[3..])?;
+                        return Ok(Arc::new(ExprX::ApplyLambda(typ, f, args)));
                     }
                     _ => {}
                 }

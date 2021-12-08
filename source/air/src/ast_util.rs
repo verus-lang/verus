@@ -155,6 +155,10 @@ pub fn mk_exists(binders: &Vec<Binder<Typ>>, triggers: &Vec<Trigger>, body: &Exp
     mk_quantifier(Quant::Exists, binders, triggers, body)
 }
 
+pub fn mk_lambda(binders: &Vec<Binder<Typ>>, body: &Expr) -> Expr {
+    Arc::new(ExprX::Bind(Arc::new(BindX::Lambda(Arc::new(binders.clone()))), body.clone()))
+}
+
 pub fn mk_true() -> Expr {
     Arc::new(ExprX::Const(Constant::Bool(true)))
 }

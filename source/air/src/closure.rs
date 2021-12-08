@@ -84,20 +84,21 @@ fn insert_fun_typing(ctxt: &mut Context, x: &Ident, typs: &Typs, typ: &Typ) {
     ctxt.typing.decls.insert_at(scope_index, x.clone(), Arc::new(fun)).expect("insert_fun_typing");
 }
 
-fn mk_apply(ctxt: &mut Context, state: &mut State, param_typs: &Typs, ret_typ: &Typ) -> Ident {
-    let typ = Arc::new(TypX::Lambda(param_typs.clone(), ret_typ.clone()));
-    if let Some(name) = ctxt.apply_map.get(&typ) {
+fn mk_apply(ctxt: &mut Context, state: &mut State, param_typs: Typs, ret_typ: Typ) -> Ident {
+    if let Some(name) = ctxt.apply_map.get(&(param_typs.clone(), ret_typ.clone())) {
         name.clone()
     } else {
         let name = Arc::new(format!("{}{}", crate::def::APPLY, ctxt.apply_count));
         ctxt.apply_count += 1;
-        ctxt.apply_map.insert(typ.clone(), name.clone()).expect("mk_apply insert");
+        ctxt.apply_map
+            .insert((param_typs.clone(), ret_typ.clone()), name.clone())
+            .expect("mk_apply insert");
         let mut typs: Vec<Typ> =
             vec![Arc::new(TypX::Named(Arc::new(crate::def::FUNCTION.to_string())))];
-        typs.extend((**param_typs).clone());
+        typs.extend((*param_typs).clone());
         let decl = Arc::new(DeclX::Fun(name.clone(), Arc::new(typs), ret_typ.clone()));
         state.generated_decls.push(decl);
-        insert_fun_typing(ctxt, &name, param_typs, ret_typ);
+        insert_fun_typing(ctxt, &name, &param_typs, &ret_typ);
         name
     }
 }
@@ -188,7 +189,7 @@ fn simplify_lambda(
     ctxt.typing.decls.pop_scope();
     let (e1, t1) = enclose_force_hole(&mut closure_state, typ1.clone(), e1, t1);
     let param_typs = Arc::new(vec_map(&**binders, |b| b.a.clone()));
-    let typ = Arc::new(TypX::Lambda(param_typs.clone(), typ1.clone()));
+    let typ = Arc::new(TypX::Lambda);
     let holes = Arc::new(vec_map(&closure_state.holes, |(_, typ, _)| typ.clone()));
     let closure =
         ClosureTermX { terms: vec![t1], params: param_typs.clone(), holes: holes.clone() };
@@ -218,7 +219,7 @@ fn simplify_lambda(
                 bs.push(binder.clone());
                 eparams.push(Arc::new(ExprX::Var(binder.name.clone())));
             }
-            let apply_fun = mk_apply(ctxt, state, &param_typs, &typ1);
+            let apply_fun = mk_apply(ctxt, state, param_typs, typ1);
             let apply = Arc::new(ExprX::Apply(apply_fun, Arc::new(eparams)));
             let eq = Arc::new(ExprX::Binary(BinaryOp::Eq, apply.clone(), e1));
             let trig = Arc::new(vec![apply]);
@@ -392,19 +393,17 @@ fn simplify_expr(ctxt: &mut Context, state: &mut State, expr: &Expr) -> (Typ, Ex
             let (es, t) = enclose(state, App::Apply(x.clone()), es, ts);
             (typ, Arc::new(ExprX::Apply(x.clone(), Arc::new(es))), t)
         }
-        ExprX::ApplyLambda(e0, args) => {
+        ExprX::ApplyLambda(typ, e0, args) => {
             let mut es: Vec<&Expr> = vec![e0];
             for e in args.iter() {
                 es.push(e);
             }
             let (es, ts) = simplify_exprs_ref(ctxt, state, &es);
-            let (typs, typ) = match &*ts[0].0 {
-                TypX::Lambda(typs, typ) => (typs.clone(), typ.clone()),
-                _ => panic!("internal error: expected lambda type"),
-            };
+            let mut typs = vec_map(&ts, |(typ, _)| typ.clone());
+            typs.remove(0);
             let (es, t) = enclose(state, App::ApplyLambda, es, ts);
-            let apply_fun = mk_apply(ctxt, state, &typs, &typ);
-            (typ, Arc::new(ExprX::Apply(apply_fun, Arc::new(es))), t)
+            let apply_fun = mk_apply(ctxt, state, Arc::new(typs), typ.clone());
+            (typ.clone(), Arc::new(ExprX::Apply(apply_fun, Arc::new(es))), t)
         }
         ExprX::Unary(op, e1) => {
             let typ = match op {

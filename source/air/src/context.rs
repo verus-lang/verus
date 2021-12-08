@@ -1,4 +1,4 @@
-use crate::ast::{Command, CommandX, Decl, Ident, Query, SpanOption, Typ, TypeError};
+use crate::ast::{Command, CommandX, Decl, Ident, Query, SpanOption, Typ, TypeError, Typs};
 use crate::closure::ClosureTerm;
 use crate::emitter::Emitter;
 use crate::model::Model;
@@ -34,7 +34,7 @@ pub struct Context {
     pub(crate) lambda_count: u64,
     pub(crate) choose_map: ScopeMap<ClosureTerm, Ident>,
     pub(crate) choose_count: u64,
-    pub(crate) apply_map: ScopeMap<Typ, Ident>,
+    pub(crate) apply_map: ScopeMap<(Typs, Typ), Ident>,
     pub(crate) apply_count: u64,
     pub(crate) typing: Typing,
     pub(crate) debug: bool,

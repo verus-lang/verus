@@ -14,13 +14,13 @@ pub(crate) fn map_expr_visitor<F: FnMut(&Expr) -> Expr>(expr: &Expr, f: &mut F) 
             let expr = Arc::new(ExprX::Apply(x.clone(), Arc::new(exprs)));
             f(&expr)
         }
-        ExprX::ApplyLambda(e0, es) => {
+        ExprX::ApplyLambda(t, e0, es) => {
             let expr0 = map_expr_visitor(e0, f);
             let mut exprs: Vec<Expr> = Vec::new();
             for e in es.iter() {
                 exprs.push(map_expr_visitor(e, f));
             }
-            let expr = Arc::new(ExprX::ApplyLambda(expr0, Arc::new(exprs)));
+            let expr = Arc::new(ExprX::ApplyLambda(t.clone(), expr0, Arc::new(exprs)));
             f(&expr)
         }
         ExprX::Unary(op, e1) => {
