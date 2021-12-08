@@ -18,10 +18,14 @@ pub(crate) struct Emitter {
 }
 
 impl Emitter {
-    pub fn new(use_pipe: bool, writer: Option<Box<dyn std::io::Write>>) -> Self {
+    pub fn new(
+        use_pipe: bool,
+        print_as_smt: bool,
+        writer: Option<Box<dyn std::io::Write>>,
+    ) -> Self {
         let pipe_buffer = if use_pipe { Some(Vec::new()) } else { None };
         Emitter {
-            printer: Printer::new(),
+            printer: Printer::new(print_as_smt),
             node_writer: NodeWriter::new(),
             pipe_buffer,
             log: writer,

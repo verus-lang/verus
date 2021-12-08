@@ -1,6 +1,6 @@
 use crate::ast::{
     BinaryOp, BindX, Binder, Binders, Constant, Datatypes, Decl, DeclX, Expr, ExprX, Exprs, Ident,
-    MultiOp, Quant, Query, QueryX, Stmt, StmtX, Typ, TypX, Typs, UnaryOp,
+    MultiOp, Quant, Query, QueryX, Stmt, StmtX, Triggers, Typ, TypX, Typs, UnaryOp,
 };
 use crate::util::vec_map;
 use sise::{Node, Writer};
@@ -72,17 +72,24 @@ macro_rules! nodes_vec {
    };
 }
 
-pub struct Printer {}
+pub struct Printer {
+    // print as SMT, not as AIR
+    print_as_smt: bool,
+}
 
 impl Printer {
-    pub fn new() -> Self {
-        Printer {}
+    pub fn new(print_as_smt: bool) -> Self {
+        Printer { print_as_smt }
     }
 
     pub(crate) fn typ_to_node(&self, typ: &Typ) -> Node {
         match &**typ {
             TypX::Bool => str_to_node("Bool"),
             TypX::Int => str_to_node("Int"),
+            TypX::Lambda(_, _) if self.print_as_smt => str_to_node(crate::def::FUNCTION),
+            TypX::Lambda(ts, tr) => {
+                Node::List(vec![str_to_node("Fun"), self.typs_to_node(ts), self.typ_to_node(tr)])
+            }
             TypX::Named(name) => str_to_node(&name.clone()),
         }
     }
@@ -102,6 +109,15 @@ impl Printer {
             ExprX::Apply(x, exprs) => {
                 let mut nodes: Vec<Node> = Vec::new();
                 nodes.push(str_to_node(x));
+                for expr in exprs.iter() {
+                    nodes.push(self.expr_to_node(expr));
+                }
+                Node::List(nodes)
+            }
+            ExprX::ApplyLambda(expr0, exprs) => {
+                let mut nodes: Vec<Node> = Vec::new();
+                nodes.push(str_to_node("apply"));
+                nodes.push(self.expr_to_node(expr0));
                 for expr in exprs.iter() {
                     nodes.push(self.expr_to_node(expr));
                 }
@@ -152,17 +168,9 @@ impl Printer {
             ExprX::IfElse(expr1, expr2, expr3) => {
                 nodes!(ite {self.expr_to_node(expr1)} {self.expr_to_node(expr2)} {self.expr_to_node(expr3)})
             }
-            ExprX::Bind(bind, expr) => match &**bind {
-                BindX::Let(binders) => {
-                    nodes!(let {self.binders_to_node(binders, &|e| self.expr_to_node(e))} {self.expr_to_node(expr)})
-                }
-                BindX::Quant(quant, binders, triggers) => {
-                    let s_quant = match quant {
-                        Quant::Forall => "forall",
-                        Quant::Exists => "exists",
-                    };
-                    let s_binders = self.binders_to_node(binders, &|t| self.typ_to_node(t));
-                    let body = if triggers.len() == 0 {
+            ExprX::Bind(bind, expr) => {
+                let body_with_triggers = |triggers: &Triggers| {
+                    if triggers.len() == 0 {
                         self.expr_to_node(expr)
                     } else {
                         let mut nodes: Vec<Node> = Vec::new();
@@ -173,10 +181,31 @@ impl Printer {
                             nodes.push(self.exprs_to_node(trigger));
                         }
                         Node::List(nodes)
-                    };
-                    nodes!({str_to_node(s_quant)} {s_binders} {body})
+                    }
+                };
+                match &**bind {
+                    BindX::Let(binders) => {
+                        nodes!(let {self.binders_to_node(binders, &|e| self.expr_to_node(e))} {self.expr_to_node(expr)})
+                    }
+                    BindX::Quant(quant, binders, triggers) => {
+                        let s_quant = match quant {
+                            Quant::Forall => "forall",
+                            Quant::Exists => "exists",
+                        };
+                        let s_binders = self.binders_to_node(binders, &|t| self.typ_to_node(t));
+                        let body = body_with_triggers(triggers);
+                        nodes!({str_to_node(s_quant)} {s_binders} {body})
+                    }
+                    BindX::Lambda(binders) => {
+                        nodes!(lambda {self.binders_to_node(binders, &|t| self.typ_to_node(t))} {self.expr_to_node(expr)})
+                    }
+                    BindX::Choose(binder, triggers) => {
+                        let s_binder = self.binder_to_node(binder, &|t| self.typ_to_node(t));
+                        let body = body_with_triggers(triggers);
+                        nodes!(choose {s_binder} {body})
+                    }
                 }
-            },
+            }
             ExprX::LabeledAssertion(span, expr) => match &**span {
                 None => self.expr_to_node(expr),
                 Some(s) => {

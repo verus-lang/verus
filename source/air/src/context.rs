@@ -1,9 +1,13 @@
-use crate::ast::{Command, CommandX, Decl, Ident, Query, SpanOption, TypeError};
+use crate::ast::{Command, CommandX, Decl, Ident, Query, SpanOption, Typ, TypeError};
+use crate::closure::ClosureTerm;
 use crate::emitter::Emitter;
 use crate::model::Model;
+use crate::node;
+use crate::printer::{macro_push_node, str_to_node};
 use crate::scope_map::ScopeMap;
 use crate::smt_manager::SmtManager;
 use crate::typecheck::Typing;
+use sise::Node;
 use std::collections::HashSet;
 use std::sync::Arc;
 use std::time::Duration;
@@ -26,6 +30,12 @@ pub struct Context {
     pub(crate) smt_manager: SmtManager,
     pub(crate) assert_infos: ScopeMap<Ident, Arc<AssertionInfo>>,
     pub(crate) assert_infos_count: u64,
+    pub(crate) lambda_map: ScopeMap<ClosureTerm, Ident>,
+    pub(crate) lambda_count: u64,
+    pub(crate) choose_map: ScopeMap<ClosureTerm, Ident>,
+    pub(crate) choose_count: u64,
+    pub(crate) apply_map: ScopeMap<Typ, Ident>,
+    pub(crate) apply_count: u64,
     pub(crate) typing: Typing,
     pub(crate) debug: bool,
     pub(crate) rlimit: u32,
@@ -35,6 +45,7 @@ pub struct Context {
     pub(crate) smt_log: Emitter,
     pub(crate) time_smt_init: Duration,
     pub(crate) time_smt_run: Duration,
+    pub(crate) started: bool,
 }
 
 impl Context {
@@ -43,17 +54,27 @@ impl Context {
             smt_manager,
             assert_infos: ScopeMap::new(),
             assert_infos_count: 0,
+            lambda_map: ScopeMap::new(),
+            lambda_count: 0,
+            choose_map: ScopeMap::new(),
+            choose_count: 0,
+            apply_map: ScopeMap::new(),
+            apply_count: 0,
             typing: Typing { decls: crate::scope_map::ScopeMap::new(), snapshots: HashSet::new() },
             debug: false,
             rlimit: 0,
-            air_initial_log: Emitter::new(false, None),
-            air_middle_log: Emitter::new(false, None),
-            air_final_log: Emitter::new(false, None),
-            smt_log: Emitter::new(true, None),
+            air_initial_log: Emitter::new(false, false, None),
+            air_middle_log: Emitter::new(false, false, None),
+            air_final_log: Emitter::new(false, false, None),
+            smt_log: Emitter::new(true, true, None),
             time_smt_init: Duration::new(0, 0),
             time_smt_run: Duration::new(0, 0),
+            started: false,
         };
         context.assert_infos.push_scope(false);
+        context.lambda_map.push_scope(false);
+        context.choose_map.push_scope(false);
+        context.apply_map.push_scope(false);
         context.typing.decls.push_scope(false);
         context
     }
@@ -168,15 +189,32 @@ impl Context {
 
     pub(crate) fn push_name_scope(&mut self) {
         self.assert_infos.push_scope(false);
+        self.lambda_map.push_scope(false);
+        self.choose_map.push_scope(false);
+        self.apply_map.push_scope(false);
         self.typing.decls.push_scope(false);
     }
 
     pub(crate) fn pop_name_scope(&mut self) {
         self.assert_infos.pop_scope();
+        self.lambda_map.pop_scope();
+        self.choose_map.pop_scope();
+        self.apply_map.pop_scope();
         self.typing.decls.pop_scope();
     }
 
+    fn ensure_started(&mut self) {
+        if !self.started {
+            self.blank_line();
+            self.comment("AIR prelude");
+            self.smt_log.log_node(&node!((declare-sort {str_to_node(crate::def::FUNCTION)})));
+            self.blank_line();
+            self.started = true;
+        }
+    }
+
     pub fn push(&mut self) {
+        self.ensure_started();
         self.air_initial_log.log_push();
         self.air_middle_log.log_push();
         self.air_final_log.log_push();
@@ -193,21 +231,27 @@ impl Context {
     }
 
     pub fn global(&mut self, decl: &Decl) -> Result<(), TypeError> {
+        self.ensure_started();
         self.air_initial_log.log_decl(decl);
         self.air_middle_log.log_decl(decl);
         self.air_final_log.log_decl(decl);
-        crate::typecheck::check_decl(&mut self.typing, decl)?;
-        crate::typecheck::add_decl(self, decl, true)?;
-        crate::smt_verify::smt_add_decl(self, decl);
+        let (gen_decls, decl) = crate::typecheck::check_decl(self, decl)?;
+        for gen_decl in gen_decls.iter() {
+            crate::smt_verify::smt_add_decl(self, gen_decl);
+        }
+        crate::typecheck::add_decl(self, &decl, true)?;
+        crate::smt_verify::smt_add_decl(self, &decl);
         Ok(())
     }
 
     pub fn check_valid(&mut self, query: &Query) -> ValidityResult {
+        self.ensure_started();
         self.air_initial_log.log_query(query);
-        if let Err(err) = crate::typecheck::check_query(self, query) {
-            return ValidityResult::TypeError(err);
-        }
-        let (query, snapshots, local_vars) = crate::var_to_const::lower_query(query);
+        let query = match crate::typecheck::check_query(self, query) {
+            Ok(query) => query,
+            Err(err) => return ValidityResult::TypeError(err),
+        };
+        let (query, snapshots, local_vars) = crate::var_to_const::lower_query(&query);
         self.air_middle_log.log_query(&query);
         let query = crate::block_to_assert::lower_query(&query);
         self.air_final_log.log_query(&query);

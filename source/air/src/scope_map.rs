@@ -3,8 +3,9 @@ use std::hash::Hash;
 use std::ops::Index;
 
 struct Scope<K, V> {
-    undo_map: HashMap<K, Option<V>>,
+    undo_map: HashMap<K, (Option<V>, usize)>,
     allow_shadowing: bool,
+    count: usize,
 }
 
 pub struct ScopeMap<K, V> {
@@ -19,13 +20,13 @@ impl<K: Eq + Hash + Clone, V> ScopeMap<K, V> {
     }
 
     pub fn push_scope(&mut self, allow_shadowing: bool) {
-        let scope = Scope { undo_map: HashMap::new(), allow_shadowing };
+        let scope = Scope { undo_map: HashMap::new(), allow_shadowing, count: 0 };
         self.scopes.push(scope);
     }
 
     pub fn pop_scope(&mut self) {
         let scope = self.scopes.pop().expect("internal error: popped empty stack from ScopeMap");
-        for (key, value) in scope.undo_map {
+        for (key, (value, _)) in scope.undo_map {
             self.map.remove(&key);
             if !scope.allow_shadowing {
                 self.cannot_shadow.remove(&key);
@@ -44,10 +45,11 @@ impl<K: Eq + Hash + Clone, V> ScopeMap<K, V> {
         self.map.contains_key(key)
     }
 
-    pub fn scope_of_key(&self, key: &K) -> Option<usize> {
+    // Which scope, and which index within the scope
+    pub fn scope_and_index_of_key(&self, key: &K) -> Option<(usize, usize)> {
         for i in (0..self.scopes.len()).rev() {
-            if self.scopes[i].undo_map.contains_key(key) {
-                return Some(i);
+            if let Some((_, k)) = self.scopes[i].undo_map.get(key) {
+                return Some((i, *k));
             }
         }
         None
@@ -57,20 +59,26 @@ impl<K: Eq + Hash + Clone, V> ScopeMap<K, V> {
         self.map.get(key)
     }
 
-    pub fn insert(&mut self, key: K, value: V) -> Result<(), ()> {
+    pub fn insert_at(&mut self, scope_index: usize, key: K, value: V) -> Result<(), ()> {
         if self.cannot_shadow.contains(&key) {
             return Err(());
         }
-        let scope = self
-            .scopes
-            .last_mut()
-            .expect("internal error: must push at least one scope in ScopeMap");
+        let scope = &mut self.scopes[scope_index];
         let prev = self.map.insert(key.clone(), value);
         if !scope.allow_shadowing {
             self.cannot_shadow.insert(key.clone());
         }
-        let undo_prev = scope.undo_map.insert(key, prev);
+        let undo_prev = scope.undo_map.insert(key, (prev, scope.count));
+        scope.count += 1;
         if undo_prev.is_none() { Ok(()) } else { Err(()) }
+    }
+
+    pub fn insert(&mut self, key: K, value: V) -> Result<(), ()> {
+        if self.scopes.len() == 0 {
+            panic!("internal error: must push at least one scope in ScopeMap")
+        } else {
+            self.insert_at(self.scopes.len() - 1, key, value)
+        }
     }
 
     pub fn map(&self) -> &HashMap<K, V> {

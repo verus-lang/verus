@@ -14,6 +14,15 @@ pub(crate) fn map_expr_visitor<F: FnMut(&Expr) -> Expr>(expr: &Expr, f: &mut F) 
             let expr = Arc::new(ExprX::Apply(x.clone(), Arc::new(exprs)));
             f(&expr)
         }
+        ExprX::ApplyLambda(e0, es) => {
+            let expr0 = map_expr_visitor(e0, f);
+            let mut exprs: Vec<Expr> = Vec::new();
+            for e in es.iter() {
+                exprs.push(map_expr_visitor(e, f));
+            }
+            let expr = Arc::new(ExprX::ApplyLambda(expr0, Arc::new(exprs)));
+            f(&expr)
+        }
         ExprX::Unary(op, e1) => {
             let expr1 = map_expr_visitor(e1, f);
             let expr = Arc::new(ExprX::Unary(*op, expr1));
@@ -60,6 +69,18 @@ pub(crate) fn map_expr_visitor<F: FnMut(&Expr) -> Expr>(expr: &Expr, f: &mut F) 
                         triggers.push(Arc::new(exprs));
                     }
                     BindX::Quant(*quant, binders.clone(), Arc::new(triggers))
+                }
+                BindX::Lambda(binders) => BindX::Lambda(binders.clone()),
+                BindX::Choose(binder, ts) => {
+                    let mut triggers: Vec<Trigger> = Vec::new();
+                    for t in ts.iter() {
+                        let mut exprs: Vec<Expr> = Vec::new();
+                        for expr in t.iter() {
+                            exprs.push(map_expr_visitor(expr, f));
+                        }
+                        triggers.push(Arc::new(exprs));
+                    }
+                    BindX::Choose(binder.clone(), Arc::new(triggers))
                 }
             };
             let e1 = map_expr_visitor(e1, f);

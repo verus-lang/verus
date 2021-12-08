@@ -213,7 +213,7 @@ fn captured_var(
 ) -> Expr {
     match &expr.x {
         ExprX::Var(x) => {
-            let scope = map.scope_of_key(x).unwrap();
+            let (scope, _) = map.scope_and_index_of_key(x).unwrap();
             if scope < outer_scopes {
                 // x was declared in the outer scope
                 let typ = map.get(x).unwrap();

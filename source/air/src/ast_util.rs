@@ -118,6 +118,7 @@ pub fn mk_bind_expr(bind: &Bind, body: &Expr) -> Expr {
     let n = match &**bind {
         BindX::Let(bs) => bs.len(),
         BindX::Quant(_, bs, _) => bs.len(),
+        BindX::Lambda(..) | BindX::Choose(..) => 1,
     };
     if n == 0 { body.clone() } else { Arc::new(ExprX::Bind(bind.clone(), body.clone())) }
 }

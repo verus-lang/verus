@@ -1088,3 +1088,436 @@ fn no_deadend2() {
         )
     )
 }
+
+#[test]
+fn yes_lambda1() {
+    yes!(
+        (check-valid
+            (assert (=
+                10
+                (apply
+                    (lambda ((x Int) (y Int)) (+ x y 5))
+                    2
+                    3
+                )
+            ))
+        )
+    )
+}
+
+#[test]
+fn untyped_lambda1() {
+    untyped!(
+        (check-valid
+            (assert (=
+                10
+                (apply
+                    (lambda ((x Int) (y Int)) (+ x y 5))
+                    3
+                )
+            ))
+        )
+    )
+}
+
+#[test]
+fn untyped_lambda2() {
+    untyped!(
+        (check-valid
+            (assert (=
+                10
+                (apply
+                    (lambda ((x Int) (y Int)) (+ x y 5))
+                    3
+                    true
+                )
+            ))
+        )
+    )
+}
+
+#[test]
+fn no_lambda1() {
+    no!(
+        (check-valid
+            (assert (=
+                10
+                (apply
+                    (lambda ((x Int) (y Int)) (+ x y 4))
+                    2
+                    3
+                )
+            ))
+        )
+    )
+}
+
+#[test]
+fn yes_lambda2() {
+    yes!(
+        (check-valid
+            (assert (=
+                10
+                (apply
+                    (apply
+                        (lambda ((x Int) (y Int))
+                            (lambda ((z Int)) (+ x y z 1))
+                        )
+                        2
+                        3
+                    )
+                    4
+                )
+            ))
+        )
+    )
+}
+
+#[test]
+fn no_lambda2() {
+    no!(
+        (check-valid
+            (assert (=
+                10
+                (apply
+                    (apply
+                        (lambda ((x Int) (y Int))
+                            (lambda ((z Int)) (+ x y z 1))
+                        )
+                        2
+                        3
+                    )
+                    5
+                )
+            ))
+        )
+    )
+}
+
+#[test]
+fn yes_lambda3() {
+    yes!(
+        (check-valid
+            (assert
+                (let ((g
+                        (let (
+                                (f (lambda ((x Int)) (+ x 1)))
+                            )
+                            f
+                        )
+                    ))
+                    (=
+                        (apply g 3)
+                        4
+                    )
+                )
+            )
+        )
+    )
+}
+
+#[test]
+fn no_lambda3() {
+    no!(
+        (check-valid
+            (assert
+                (let ((g
+                        (let (
+                                (f (lambda ((x Int)) (+ x 1)))
+                            )
+                            f
+                        )
+                    ))
+                    (=
+                        (apply g 3)
+                        5
+                    )
+                )
+            )
+        )
+    )
+}
+
+#[test]
+fn yes_lambda4() {
+    yes!(
+        (check-valid
+            (assert
+                (=
+                    (lambda ((x Int) (y Int)) (+ (- x (+ 2 2)) y))
+                    (lambda ((xx Int) (yy Int)) (+ (- xx 4) yy))
+                )
+            )
+        )
+    )
+}
+
+#[test]
+fn no_lambda4a() {
+    no!(
+        (check-valid
+            (assert
+                (=
+                    (lambda ((x Int) (y Int)) (+ (- x (+ 2 2)) y))
+                    (lambda ((y Int) (x Int)) (+ (- x 4) y))
+                )
+            )
+        )
+    )
+}
+
+#[test]
+fn no_lambda4b() {
+    no!(
+        (check-valid
+            (assert
+                (=
+                    (lambda ((x Int) (y Int)) (+ (- x 5) y))
+                    (lambda ((x Int) (y Int)) (+ (- x 4) y))
+                )
+            )
+        )
+    )
+}
+
+#[test]
+fn yes_lambda5() {
+    yes!(
+        (check-valid
+            (assert
+                (=
+                    (lambda ((x Int) (y Int)) (+ (- x (+ 2 2)) y))
+                    (lambda ((xx Int) (yy Int)) (+ (- xx 4) yy))
+                )
+            )
+        )
+        (check-valid
+            (assert
+                (=
+                    (lambda ((x Int) (y Int)) (+ (- x (+ 2 2)) y))
+                    (lambda ((xx Int) (yy Int)) (+ (- xx 4) yy))
+                )
+            )
+        )
+    )
+}
+
+#[test]
+fn no_lambda5() {
+    no!(
+        (check-valid
+            (assert
+                (=
+                    (lambda ((x Int) (y Int)) (+ (- x (+ 2 2)) y))
+                    (lambda ((xx Int) (yy Int)) (+ (- xx 5) yy))
+                )
+            )
+        )
+        (check-valid
+            (assert
+                (=
+                    (lambda ((x Int) (y Int)) (+ (- x (+ 2 2)) y))
+                    (lambda ((xx Int) (yy Int)) (+ (- xx 5) yy))
+                )
+            )
+        )
+    )
+}
+
+#[test]
+fn yes_lambda6() {
+    yes!(
+        (declare-const a (Fun (Int) Int))
+        (axiom (= a (lambda ((x Int)) (+ x 1))))
+        (declare-const b (Fun (Int) Int))
+        (axiom (= b (lambda ((x Int)) (+ x 1))))
+        (check-valid
+            (assert (= a b))
+        )
+    )
+}
+
+#[test]
+fn no_lambda6() {
+    no!(
+        (declare-const a (Fun (Int) Int))
+        (axiom (= a (lambda ((x Int)) (+ x 1))))
+        (declare-const b (Fun (Int) Int))
+        (axiom (= b (lambda ((x Int)) (+ x 2))))
+        (check-valid
+            (assert (= a b))
+        )
+    )
+}
+
+#[test]
+fn yes_choose1() {
+    yes!(
+        (declare-fun f (Int Int) Bool)
+        (axiom (f 3 3))
+        (check-valid
+            (assert
+                (let (( a (choose (x Int) (f x x)) ))
+                    (f a a)
+                )
+            )
+        )
+    )
+}
+
+#[test]
+fn no_choose1() {
+    no!(
+        (declare-fun f (Int Int) Bool)
+        (axiom (f 3 4))
+        (check-valid
+            (assert
+                (let (( a (choose (x Int) (f x x)) ))
+                    (f a a)
+                )
+            )
+        )
+    )
+}
+
+#[test]
+fn yes_choose2() {
+    yes!(
+        (declare-fun f (Int Int) Bool)
+        (axiom (f 3 3))
+        (check-valid
+            (assert
+                (let (( a
+                        (choose (x Int)
+                            (!
+                                (f x x)
+                                :pattern ((f x x))
+                            )
+                        )
+                    ))
+                    (f a a)
+                )
+            )
+        )
+    )
+}
+
+#[test]
+fn no_choose2() {
+    no!(
+        (declare-fun f (Int Int) Bool)
+        (axiom (f 3 4))
+        (check-valid
+            (assert
+                (let (( a
+                        (choose (x Int)
+                            (!
+                                (f x x)
+                                :pattern ((f x x))
+                            )
+                        )
+                    ))
+                    (f a a)
+                )
+            )
+        )
+    )
+}
+
+#[test]
+fn yes_choose3() {
+    yes!(
+        (declare-fun f (Int Int) Bool)
+        (axiom (f 3 4))
+        (check-valid
+            (assert
+                (let (( a (choose (x Int) (f x 4)) ))
+                    (f a 4)
+                )
+            )
+        )
+    )
+}
+
+#[test]
+fn no_choose3() {
+    no!(
+        (declare-fun f (Int Int) Bool)
+        (axiom (f 3 4))
+        (check-valid
+            (assert
+                (let (( a (choose (x Int) (f x 3)) ))
+                    (f a 3)
+                )
+            )
+        )
+    )
+}
+
+#[test]
+fn yes_choose4() {
+    yes!(
+        (declare-fun f (Int Int) Bool)
+        (check-valid
+            (assert (=
+                (choose (x Int) (f x 4))
+                (choose (x Int) (f x (+ 2 2)))
+            ))
+        )
+    )
+}
+
+#[test]
+fn no_choose4() {
+    no!(
+        (declare-fun f (Int Int) Bool)
+        (check-valid
+            (assert (=
+                (choose (x Int) (f x 5))
+                (choose (x Int) (f x (+ 2 2)))
+            ))
+        )
+    )
+}
+
+#[test]
+fn yes_choose5() {
+    yes!(
+        (declare-fun f (Int Int) Bool)
+        (check-valid
+            (assert
+                (let (( g
+                        (lambda ((m Int))
+                            (choose (x Int) (f x (+ m 1)))
+                        )
+                    ))
+                    (=
+                        (apply g 4)
+                        (apply g (+ 2 2))
+                    )
+                )
+            )
+        )
+    )
+}
+
+#[test]
+fn no_choose5() {
+    no!(
+        (declare-fun f (Int Int) Bool)
+        (check-valid
+            (assert
+                (let (( g
+                        (lambda ((m Int))
+                            (choose (x Int) (f x (+ m 1)))
+                        )
+                    ))
+                    (=
+                        (apply g 5)
+                        (apply g (+ 2 2))
+                    )
+                )
+            )
+        )
+    )
+}

@@ -54,6 +54,15 @@ impl Parser {
             Node::Atom(s) if s.to_string() == "Bool" => Ok(Arc::new(TypX::Bool)),
             Node::Atom(s) if s.to_string() == "Int" => Ok(Arc::new(TypX::Int)),
             Node::Atom(s) if is_symbol(s) => Ok(Arc::new(TypX::Named(Arc::new(s.clone())))),
+            Node::List(nodes) => match &nodes[..] {
+                [Node::Atom(s), Node::List(ts), t] if s.to_string() == "Fun" => {
+                    Ok(Arc::new(TypX::Lambda(
+                        map_nodes_to_vec(ts, &|n| self.node_to_typ(n))?,
+                        self.node_to_typ(t)?,
+                    )))
+                }
+                _ => Err(format!("expected type, found: {}", node_to_string(node))),
+            },
             _ => Err(format!("expected type, found: {}", node_to_string(node))),
         }
     }
@@ -95,14 +104,30 @@ impl Parser {
                         return self.node_to_let_expr(binders, e);
                     }
                     [Node::Atom(s), Node::List(binders), e] if s.to_string() == "forall" => {
-                        return self.node_to_quant_expr(Quant::Forall, binders, e);
+                        return self.node_to_quant_expr(Some(Quant::Forall), binders, e);
                     }
                     [Node::Atom(s), Node::List(binders), e] if s.to_string() == "exists" => {
-                        return self.node_to_quant_expr(Quant::Exists, binders, e);
+                        return self.node_to_quant_expr(Some(Quant::Exists), binders, e);
+                    }
+                    [Node::Atom(s), Node::List(binders), e] if s.to_string() == "lambda" => {
+                        let binders = self.nodes_to_binders(binders, &|n| self.node_to_typ(n))?;
+                        let bind = Arc::new(BindX::Lambda(binders));
+                        return Ok(Arc::new(ExprX::Bind(bind, self.node_to_expr(e)?)));
+                    }
+                    [Node::Atom(s), binder, e] if s.to_string() == "choose" => {
+                        return self.node_to_quant_expr(None, &[binder.clone()], e);
                     }
                     _ => {}
                 }
-                let args = self.nodes_to_expr(&nodes[1..])?;
+                match &nodes[0] {
+                    Node::Atom(s) if s.to_string() == "apply" => {
+                        let f = self.node_to_expr(&nodes[1])?;
+                        let args = self.nodes_to_exprs(&nodes[2..])?;
+                        return Ok(Arc::new(ExprX::ApplyLambda(f, args)));
+                    }
+                    _ => {}
+                }
+                let args = self.nodes_to_exprs(&nodes[1..])?;
                 let uop = match &nodes[0] {
                     Node::Atom(s) if s.to_string() == "not" => Some(UnaryOp::Not),
                     _ => None,
@@ -156,7 +181,7 @@ impl Parser {
         }
     }
 
-    fn nodes_to_expr(&self, nodes: &[Node]) -> Result<Exprs, String> {
+    fn nodes_to_exprs(&self, nodes: &[Node]) -> Result<Exprs, String> {
         map_nodes_to_vec(nodes, &|n| self.node_to_expr(n))
     }
 
@@ -231,9 +256,8 @@ impl Parser {
     }
 
     fn node_to_let_expr(&self, binder_nodes: &[Node], expr: &Node) -> Result<Expr, String> {
-        let binders = self.nodes_to_binders(binder_nodes, &|e| self.node_to_expr(e))?;
-        let bind = Arc::new(BindX::Let(binders));
-        Ok(Arc::new(ExprX::Bind(bind, self.node_to_expr(expr)?)))
+        let binders = self.nodes_to_binders(binder_nodes, &|n| self.node_to_expr(n))?;
+        Ok(crate::ast_util::mk_let(&binders, &self.node_to_expr(expr)?))
     }
 
     fn nodes_to_triggers(&self, nodes: &[Node]) -> Result<Triggers, String> {
@@ -243,7 +267,7 @@ impl Parser {
             match node {
                 Node::Atom(s) if s.to_string() == ":pattern" && expect_pattern => {}
                 Node::List(trigger_nodes) if !expect_pattern => {
-                    triggers.push(self.nodes_to_expr(trigger_nodes)?);
+                    triggers.push(self.nodes_to_exprs(trigger_nodes)?);
                 }
                 _ => {
                     return Err(format!(
@@ -257,13 +281,15 @@ impl Parser {
         Ok(Arc::new(triggers))
     }
 
+    // quant = None: Choose
+    // quant = Some(Quant): forall/exists
     fn node_to_quant_expr(
         &self,
-        quant: Quant,
+        quant: Option<Quant>,
         binder_nodes: &[Node],
         expr: &Node,
     ) -> Result<Expr, String> {
-        let binders = self.nodes_to_binders(binder_nodes, &|t| self.node_to_typ(t))?;
+        let binders = self.nodes_to_binders(binder_nodes, &|n| self.node_to_typ(n))?;
         let (body, triggers) = match &expr {
             Node::List(nodes) if nodes.len() >= 2 => match &nodes[0] {
                 Node::Atom(s) if s.to_string() == "!" => {
@@ -273,7 +299,13 @@ impl Parser {
             },
             _ => (expr, Arc::new(vec![])),
         };
-        let bind = Arc::new(BindX::Quant(quant, binders, triggers));
+        let bind = match quant {
+            None => {
+                assert_eq!(binders.len(), 1);
+                Arc::new(BindX::Choose(binders[0].clone(), triggers))
+            }
+            Some(quant) => Arc::new(BindX::Quant(quant, binders, triggers)),
+        };
         Ok(Arc::new(ExprX::Bind(bind, self.node_to_expr(body)?)))
     }
 

@@ -19,10 +19,11 @@ pub(crate) type Snapshots = HashMap<Ident, Snapshot>;
 
 pub type Typ = Arc<TypX>;
 pub type Typs = Arc<Vec<Typ>>;
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq, Hash)]
 pub enum TypX {
     Bool,
     Int,
+    Lambda(Typs, Typ),
     Named(Ident),
 }
 
@@ -32,12 +33,12 @@ pub enum Constant {
     Nat(Arc<String>),
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum UnaryOp {
     Not,
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum BinaryOp {
     Implies,
     Eq,
@@ -49,7 +50,7 @@ pub enum BinaryOp {
     EuclideanMod,
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum MultiOp {
     And,
     Or,
@@ -67,7 +68,7 @@ pub struct BinderX<A: Clone> {
     pub a: A,
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Quant {
     Forall,
     Exists,
@@ -81,6 +82,8 @@ pub type Bind = Arc<BindX>;
 pub enum BindX {
     Let(Binders<Expr>),
     Quant(Quant, Binders<Typ>, Triggers),
+    Lambda(Binders<Typ>),
+    Choose(Binder<Typ>, Triggers),
 }
 
 pub type Expr = Arc<ExprX>;
@@ -92,6 +95,7 @@ pub enum ExprX {
     // Old(snap, x) reads x from snapshot snap
     Old(Ident, Ident),
     Apply(Ident, Exprs),
+    ApplyLambda(Expr, Exprs),
     Unary(UnaryOp, Expr),
     Binary(BinaryOp, Expr, Expr),
     Multi(MultiOp, Exprs),

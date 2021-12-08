@@ -3,7 +3,7 @@
 
 use crate::ast::{
     BinaryOp, BindX, Binder, BinderX, Binders, Constant, Decl, DeclX, Expr, ExprX, Ident, MultiOp,
-    Query, Stmt, StmtX, Typ, TypX, TypeError, Typs, UnaryOp,
+    Query, QueryX, Stmt, StmtX, Typ, TypX, TypeError, Typs, UnaryOp,
 };
 use crate::context::Context;
 use crate::printer::{node_to_string, Printer};
@@ -12,24 +12,12 @@ use crate::util::vec_map;
 use std::collections::HashSet;
 use std::sync::Arc;
 
+pub(crate) type Declared = Arc<DeclaredX>;
 #[derive(Clone)]
 pub(crate) enum DeclaredX {
     Type,
     Var { typ: Typ, mutable: bool },
     Fun(Typs, Typ),
-}
-pub(crate) type Declared = Arc<DeclaredX>;
-
-#[derive(Clone)]
-pub(crate) struct Var {
-    pub(crate) typ: Typ,
-    pub(crate) mutable: bool,
-}
-
-#[derive(Clone)]
-pub(crate) struct Fun {
-    pub(crate) typs: Typs,
-    pub(crate) typ: Typ,
 }
 
 pub struct Typing {
@@ -63,27 +51,31 @@ fn typ_name(typ: &Typ) -> String {
     match &**typ {
         TypX::Bool => "Bool".to_string(),
         TypX::Int => "Int".to_string(),
+        TypX::Lambda(ts, tr) => {
+            format!("(Fun ({}) {})", vec_map(&**ts, typ_name).join(" "), typ_name(tr))
+        }
         TypX::Named(x) => x.to_string(),
     }
 }
 
 fn typ_eq(typ1: &Typ, typ2: &Typ) -> bool {
-    match (&**typ1, &**typ2) {
-        (TypX::Bool, TypX::Bool) => true,
-        (TypX::Int, TypX::Int) => true,
-        (TypX::Named(x1), TypX::Named(x2)) => x1 == x2,
-        _ => false,
-    }
+    typ1 == typ2
 }
 
 fn expect_typ(typ1: &Typ, typ2: &Typ, msg: &str) -> Result<(), TypeError> {
     if typ_eq(typ1, typ2) { Ok(()) } else { Err(msg.to_string()) }
 }
 
-pub(crate) fn check_typ(typing: &Typing, typ: &Typ) -> Result<(), TypeError> {
+fn check_typ(typing: &Typing, typ: &Typ) -> Result<(), TypeError> {
     match &**typ {
         TypX::Bool => Ok(()),
         TypX::Int => Ok(()),
+        TypX::Lambda(ts, tr) => {
+            for t in ts.iter() {
+                check_typ(typing, t)?;
+            }
+            check_typ(typing, tr)
+        }
         TypX::Named(x) => match typing.get(x) {
             Some(DeclaredX::Type) => Ok(()),
             _ => Err(format!("use of undeclared type {}", x)),
@@ -131,7 +123,7 @@ fn check_exprs(
     Ok(f_typ.clone())
 }
 
-pub(crate) fn check_expr(typing: &mut Typing, expr: &Expr) -> Result<Typ, TypeError> {
+fn check_expr(typing: &mut Typing, expr: &Expr) -> Result<Typ, TypeError> {
     let result = match &**expr {
         ExprX::Const(Constant::Bool(_)) => Ok(Arc::new(TypX::Bool)),
         ExprX::Const(Constant::Nat(_)) => Ok(Arc::new(TypX::Int)),
@@ -148,6 +140,13 @@ pub(crate) fn check_expr(typing: &mut Typing, expr: &Expr) -> Result<Typ, TypeEr
             Some(DeclaredX::Fun(f_typs, f_typ)) => check_exprs(typing, x, &f_typs, &f_typ, es),
             _ => Err(format!("use of undeclared function {}", x)),
         },
+        ExprX::ApplyLambda(e0, es) => {
+            let t0 = check_expr(typing, e0)?;
+            match &*t0 {
+                TypX::Lambda(ts, tret) => check_exprs(typing, "function", ts, tret, es),
+                _ => Err("expected function type".to_string()),
+            }
+        }
         ExprX::Unary(UnaryOp::Not, e1) => check_exprs(typing, "not", &[bt()], &bt(), &[e1.clone()]),
         ExprX::Binary(BinaryOp::Implies, e1, e2) => {
             check_exprs(typing, "=>", &[bt(), bt()], &bt(), &[e1.clone(), e2.clone()])
@@ -238,6 +237,8 @@ pub(crate) fn check_expr(typing: &mut Typing, expr: &Expr) -> Result<Typ, TypeEr
                     Arc::new(binders)
                 }
                 BindX::Quant(_, binders, _) => binders.clone(),
+                BindX::Lambda(binders) => binders.clone(),
+                BindX::Choose(binder, _) => Arc::new(vec![binder.clone()]),
             };
             // Collect all binder names, make sure they are unique
             typing.decls.push_scope(true);
@@ -248,8 +249,8 @@ pub(crate) fn check_expr(typing: &mut Typing, expr: &Expr) -> Result<Typ, TypeEr
             }
             // Type-check triggers
             match &**bind {
-                BindX::Let(_) => {}
-                BindX::Quant(_, _, triggers) => {
+                BindX::Let(_) | BindX::Lambda(_) => {}
+                BindX::Quant(_, _, triggers) | BindX::Choose(_, triggers) => {
                     for trigger in triggers.iter() {
                         for expr in trigger.iter() {
                             check_expr(typing, expr)?;
@@ -259,28 +260,37 @@ pub(crate) fn check_expr(typing: &mut Typing, expr: &Expr) -> Result<Typ, TypeEr
             }
             // Type-check expr
             let t1 = check_expr(typing, e1)?;
-            match &**bind {
-                BindX::Let(_) => {}
+            let tb = match &**bind {
+                BindX::Let(_) => t1,
                 BindX::Quant(_, _, _) => {
                     expect_typ(&t1, &bt(), "forall/exists body must have type bool")?;
+                    t1
                 }
-            }
+                BindX::Lambda(bs) => {
+                    let ts = vec_map(bs, |b| b.a.clone());
+                    Arc::new(TypX::Lambda(Arc::new(ts), t1))
+                }
+                BindX::Choose(b, _) => {
+                    expect_typ(&t1, &bt(), "choose body must have type bool")?;
+                    b.a.clone()
+                }
+            };
             // Done
             typing.decls.pop_scope();
-            Ok(t1)
+            Ok(tb)
         }
         ExprX::LabeledAssertion(_, expr) => check_expr(typing, expr),
     };
     match result {
         Ok(t) => Ok(t),
         Err(err) => {
-            let node_str = node_to_string(&Printer::new().expr_to_node(expr));
+            let node_str = node_to_string(&Printer::new(false).expr_to_node(expr));
             Err(format!("error '{}' in expression '{}'", err, node_str))
         }
     }
 }
 
-pub(crate) fn check_stmt(typing: &mut Typing, stmt: &Stmt) -> Result<(), TypeError> {
+fn check_stmt(typing: &mut Typing, stmt: &Stmt) -> Result<(), TypeError> {
     let result = match &**stmt {
         StmtX::Assume(expr) => expect_typ(
             &check_expr(typing, expr)?,
@@ -345,13 +355,17 @@ pub(crate) fn check_stmt(typing: &mut Typing, stmt: &Stmt) -> Result<(), TypeErr
     match result {
         Ok(()) => Ok(()),
         Err(err) => {
-            let node_str = node_to_string(&Printer::new().stmt_to_node(stmt));
+            let node_str = node_to_string(&Printer::new(false).stmt_to_node(stmt));
             Err(format!("error '{}' in statement '{}'", err, node_str))
         }
     }
 }
 
-pub(crate) fn check_decl(typing: &mut Typing, decl: &Decl) -> Result<(), TypeError> {
+pub(crate) fn check_decl(
+    context: &mut Context,
+    decl: &Decl,
+) -> Result<(Vec<Decl>, Decl), TypeError> {
+    let typing = &mut context.typing;
     let result = match &**decl {
         DeclX::Sort(_) => Ok(()),
         DeclX::Datatypes(_) => Ok(()), // it's easier to do the checking in add_decl
@@ -367,9 +381,9 @@ pub(crate) fn check_decl(typing: &mut Typing, decl: &Decl) -> Result<(), TypeErr
         }
     };
     match result {
-        Ok(()) => Ok(()),
+        Ok(()) => Ok(crate::closure::simplify_decl(context, decl)),
         Err(err) => {
-            let node_str = node_to_string(&Printer::new().decl_to_node(decl));
+            let node_str = node_to_string(&Printer::new(false).decl_to_node(decl));
             Err(format!("error '{}' in declaration '{}'", err, node_str))
         }
     }
@@ -428,15 +442,26 @@ pub(crate) fn add_decl<'ctx>(
     Ok(())
 }
 
-pub(crate) fn check_query(context: &mut Context, query: &Query) -> Result<(), TypeError> {
+pub(crate) fn check_query(context: &mut Context, query: &Query) -> Result<Query, TypeError> {
     let num_scopes = context.typing.decls.num_scopes();
     context.push_name_scope();
+    let mut locals: Vec<Decl> = Vec::new();
     for decl in query.local.iter() {
-        check_decl(&mut context.typing, decl)?;
-        add_decl(context, decl, false)?;
+        let (mut gen_decls, decl) = check_decl(context, decl)?;
+        add_decl(context, &decl, false)?;
+        locals.append(&mut gen_decls);
+        locals.push(decl);
     }
     check_stmt(&mut context.typing, &query.assertion)?;
+
+    // Call crate::closure to rewrite query
+    assert_eq!(context.apply_map.num_scopes(), context.typing.decls.num_scopes());
+    let (mut gen_decls, assertion) = crate::closure::simplify_stmt(context, &query.assertion);
+    assert_eq!(context.apply_map.num_scopes(), context.typing.decls.num_scopes());
+    locals.append(&mut gen_decls);
+    let query = Arc::new(QueryX { local: Arc::new(locals), assertion });
+
     context.pop_name_scope();
     assert_eq!(context.typing.decls.num_scopes(), num_scopes);
-    Ok(())
+    Ok(query)
 }

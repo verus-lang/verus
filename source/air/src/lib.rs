@@ -11,6 +11,7 @@ pub mod smt_manager;
 pub mod printer;
 
 mod block_to_assert;
+mod closure;
 mod def;
 mod smt_process;
 mod smt_verify;
