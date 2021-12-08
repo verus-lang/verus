@@ -134,13 +134,25 @@ fn extract_quant<'tcx>(
             let expr = &body.value;
             let mut vir_expr = expr_to_vir(bctx, expr)?;
             let header = vir::headers::read_header(&mut vir_expr)?;
-            if header.ensure.len() == 1 && header.ensure_id_typ.is_none() && quant == Quant::Forall
+            if header.require.len() <= 1
+                && header.ensure.len() == 1
+                && header.ensure_id_typ.is_none()
+                && quant == Quant::Forall
             {
                 // forall statement
                 let typ = Arc::new(TypX::Tuple(Arc::new(vec![])));
                 let vars = Arc::new(binders);
+                let require = if header.require.len() == 1 {
+                    header.require[0].clone()
+                } else {
+                    spanned_typed_new(
+                        span,
+                        &Arc::new(TypX::Bool),
+                        ExprX::Const(Constant::Bool(true)),
+                    )
+                };
                 let ensure = header.ensure[0].clone();
-                let forallx = ExprX::Forall { vars, ensure, proof: vir_expr };
+                let forallx = ExprX::Forall { vars, require, ensure, proof: vir_expr };
                 Ok(spanned_typed_new(span, &typ, forallx))
             } else {
                 // forall/exists expression
@@ -325,9 +337,11 @@ fn fn_call_to_vir<'tcx>(
     if is_assert_by {
         unsupported_err_unless!(len == 2, expr.span, "expected assert_by", &args);
         let vars = Arc::new(vec![]);
+        let require =
+            spanned_typed_new(expr.span, &Arc::new(TypX::Bool), ExprX::Const(Constant::Bool(true)));
         let ensure = expr_to_vir(bctx, &args[0])?;
         let proof = expr_to_vir(bctx, &args[1])?;
-        return Ok(mk_expr(ExprX::Forall { vars, ensure, proof }));
+        return Ok(mk_expr(ExprX::Forall { vars, require, ensure, proof }));
     }
 
     let vir_args = vec_map_result(&args, |arg| expr_to_vir(bctx, arg))?;

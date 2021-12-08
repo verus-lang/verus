@@ -143,3 +143,59 @@ test_verify_one_file! {
         }
     } => Err(_)
 }
+
+test_verify_one_file! {
+    #[test] test_forallstmt2 code! {
+        #[spec]
+        #[opaque]
+        fn f1(i: int) -> int {
+            i + 1
+        }
+
+        fn forallstmt_test() {
+            forall(|x: int| {
+                requires(0 <= x);
+                ensures(1 <= f1(x));
+                reveal(f1);
+            });
+            assert(f1(3) > 0);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_forallstmt2_fails1 code! {
+        #[spec]
+        #[opaque]
+        fn f1(i: int) -> int {
+            i + 1
+        }
+
+        fn forallstmt_test() {
+            forall(|x: int| {
+                requires(0 <= x);
+                ensures(1 <= f1(x));
+                reveal(f1);
+            });
+            assert(f1(-3) > 0); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] test_forallstmt2_fails2 code! {
+        #[spec]
+        #[opaque]
+        fn f1(i: int) -> int {
+            i + 1
+        }
+
+        fn forallstmt_test() {
+            forall(|x: int| {
+                ensures(1 <= f1(x)); // FAILS
+                reveal(f1);
+            });
+            assert(f1(3) > 0);
+        }
+    } => Err(err) => assert_one_fails(err)
+}

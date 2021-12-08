@@ -511,12 +511,13 @@ pub(crate) fn expr_to_stm_opt(
             let stm = Spanned::new(expr.span.clone(), StmX::Assume(exp));
             Ok((vec![stm], None))
         }
-        ExprX::Forall { vars, ensure, proof } => {
+        ExprX::Forall { vars, require, ensure, proof } => {
             // deadend {
+            //   assume(require)
             //   proof
             //   assert(ensure);
             // }
-            // assume(forall vars. ensure)
+            // assume(forall vars. require ==> ensure)
             let mut stms: Vec<Stm> = Vec::new();
 
             // Translate proof into a dead-end ending with an assert
@@ -528,6 +529,9 @@ pub(crate) fn expr_to_stm_opt(
             if let Some(_) = e {
                 return err_str(&expr.span, "forall/assert-by cannot end with an expression");
             }
+            let require_exp = expr_to_exp_state(ctx, state, &require)?;
+            let assume = Spanned::new(require.span.clone(), StmX::Assume(require_exp));
+            body.insert(0, assume);
             let ensure_exp = expr_to_exp_state(ctx, state, &ensure)?;
             let assert = Spanned::new(ensure.span.clone(), StmX::Assert(ensure_exp));
             body.push(assert);
@@ -537,7 +541,9 @@ pub(crate) fn expr_to_stm_opt(
             state.pop_scope();
 
             // Translate ensure into an assume
-            let forallx = ExprX::Quant(Quant::Forall, vars.clone(), ensure.clone());
+            let implyx = ExprX::Binary(BinaryOp::Implies, require.clone(), ensure.clone());
+            let imply = SpannedTyped::new(&ensure.span, &Arc::new(TypX::Bool), implyx);
+            let forallx = ExprX::Quant(Quant::Forall, vars.clone(), imply);
             let forall = SpannedTyped::new(&ensure.span, &Arc::new(TypX::Bool), forallx);
             let forall_exp = expr_to_exp_state(ctx, state, &forall)?;
             let assume = Spanned::new(ensure.span.clone(), StmX::Assume(forall_exp));

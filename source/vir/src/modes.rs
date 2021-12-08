@@ -222,7 +222,7 @@ fn check_expr(typing: &mut Typing, outer_mode: Mode, expr: &Expr) -> Result<Mode
         ExprX::Fuel(_, _) => Ok(outer_mode),
         ExprX::Header(_) => panic!("internal error: Header shouldn't exist here"),
         ExprX::Admit => Ok(outer_mode),
-        ExprX::Forall { vars, ensure, proof } => {
+        ExprX::Forall { vars, require, ensure, proof } => {
             let in_forall_stmt = typing.in_forall_stmt;
             // REVIEW: we could allow proof vars when vars.len() == 0,
             // but we'd have to implement the proper lifetime checking in erase.rs
@@ -231,6 +231,7 @@ fn check_expr(typing: &mut Typing, outer_mode: Mode, expr: &Expr) -> Result<Mode
             for var in vars.iter() {
                 typing.insert(&expr.span, &var.name, Mode::Spec);
             }
+            check_expr_has_mode(typing, Mode::Spec, require, Mode::Spec)?;
             check_expr_has_mode(typing, Mode::Spec, ensure, Mode::Spec)?;
             check_expr_has_mode(typing, Mode::Proof, proof, Mode::Proof)?;
             typing.vars.pop_scope();
