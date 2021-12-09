@@ -542,7 +542,8 @@ const LUNCH_SHARED_CODE: &str = code_str! {
     }
 };
 
-#[test] #[ignore]
+#[test]
+#[ignore]
 fn e13_pass() {
     let files = vec![
         ("directions.rs".to_string(), DIRECTIONS_SHARED_CODE.to_string()),
@@ -595,7 +596,7 @@ fn e13_pass() {
                     #[spec]
                     fn get_cheese(self) -> Cheese {
                         // TODO() use Order::*;
-                        match self { 
+                        match self {
                             Order::Sandwich { cheese: cheese, .. } => cheese,
                             Order::Appetizer { cheese: cheese, .. } => cheese,
                             Order::Pizza { .. }  => arbitrary(),
