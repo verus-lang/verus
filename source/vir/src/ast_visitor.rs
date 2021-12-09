@@ -180,17 +180,18 @@ where
             return err_str(&expr.span, "header expression not allowed here");
         }
         ExprX::Admit => ExprX::Admit,
-        ExprX::Forall { vars, ensure, proof } => {
+        ExprX::Forall { vars, require, ensure, proof } => {
             let vars =
                 vec_map_result(&**vars, |x| x.map_result(|t| map_typ_visitor_env(t, env, ft)))?;
             map.push_scope(true);
             for binder in vars.iter() {
                 let _ = map.insert(binder.name.clone(), binder.a.clone());
             }
+            let require = map_expr_visitor_env(require, map, env, fe, fs, ft)?;
             let ensure = map_expr_visitor_env(ensure, map, env, fe, fs, ft)?;
             let proof = map_expr_visitor_env(proof, map, env, fe, fs, ft)?;
             map.pop_scope();
-            ExprX::Forall { vars: Arc::new(vars), ensure, proof }
+            ExprX::Forall { vars: Arc::new(vars), require, ensure, proof }
         }
         ExprX::If(e1, e2, e3) => {
             let expr1 = map_expr_visitor_env(e1, map, env, fe, fs, ft)?;

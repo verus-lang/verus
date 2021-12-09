@@ -542,7 +542,7 @@ const LUNCH_SHARED_CODE: &str = code_str! {
     }
 };
 
-#[test]
+#[test] #[ignore]
 fn e13_pass() {
     let files = vec![
         ("directions.rs".to_string(), DIRECTIONS_SHARED_CODE.to_string()),
@@ -554,7 +554,7 @@ fn e13_pass() {
                 #[allow(unused_imports)] use builtin_macros::*;
                 mod pervasive; use pervasive::*;
                 mod directions; use directions::{Direction, turn_left, turn_right};
-                mod lunch;
+                mod lunch; use lunch::*;
 
                 #[spec]
                 fn add(x: int, y:int) -> int {
@@ -580,9 +580,37 @@ fn e13_pass() {
                                     == turn_right(turn_right(dir))));
                 }
 
+                // TODO(chris): auto-generate these predicates
+                impl Order {
+                    #[spec]
+                    fn is_appetizer(self) -> bool {
+                        match self { Order::Appetizer { .. } => true, _ => false }
+                    }
+
+                    #[spec]
+                    fn is_sandwich(self) -> bool {
+                        match self { Order::Sandwich { .. } => true, _ => false }
+                    }
+
+                    #[spec]
+                    fn get_cheese(self) -> Cheese {
+                        // TODO() use Order::*;
+                        match self { 
+                            Order::Sandwich { cheese: cheese, .. } => cheese,
+                            Order::Appetizer { cheese: cheese, .. } => cheese,
+                            Order::Pizza { .. }  => arbitrary(),
+                        }
+                    }
+                }
+
                 #[proof]
                 fn cheese_take_two() {
-                    // TODO(jonh) fill in
+                    forall(|o1:Order| {
+                        requires(o1.is_appetizer());
+                        ensures(exists(|o2:Order| o2.is_sandwich() && o1.get_cheese() == o2.get_cheese()));
+                        // TODO(utaal): `error: constructor of datatype with unencoded fields here`
+                        let o3 = Order::Sandwich { meat: Meat::Ham, cheese: o1.get_cheese() };
+                    });
                 }
             },
         ),
