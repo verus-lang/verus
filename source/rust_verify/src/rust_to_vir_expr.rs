@@ -18,7 +18,7 @@ use rustc_hir::{
     LoopSource, MatchSource, Node, Pat, PatKind, QPath, Stmt, StmtKind, UnOp,
 };
 use rustc_middle::ty::subst::GenericArgKind;
-use rustc_middle::ty::{TyCtxt, TyKind};
+use rustc_middle::ty::{PredicateKind, TyCtxt, TyKind};
 use rustc_span::def_id::DefId;
 use rustc_span::Span;
 use std::sync::Arc;
@@ -401,6 +401,22 @@ fn fn_call_to_vir<'tcx>(
                 unsupported_err!(expr.span, format!("call to non-FnDef function"), expr)
             }
         };
+        // filter out the Fn type parameters
+        let mut fn_params: Vec<Ident> = Vec::new();
+        for (x, _) in tcx.predicates_of(f).predicates {
+            if let PredicateKind::Trait(t, _) = x.kind().skip_binder() {
+                let name = path_as_rust_name(&def_id_to_vir_path(tcx, t.trait_ref.def_id));
+                if name == "core::ops::function::Fn" {
+                    for s in t.trait_ref.substs {
+                        if let GenericArgKind::Type(ty) = s.unpack() {
+                            if let TypX::TypParam(x) = &*mid_ty_to_vir(tcx, ty) {
+                                fn_params.push(x.clone());
+                            }
+                        }
+                    }
+                }
+            }
+        }
         // type arguments
         let mut typ_args: Vec<Typ> = Vec::new();
         for typ_arg in node_substs {
@@ -412,8 +428,10 @@ fn fn_call_to_vir<'tcx>(
             }
         }
         let target = CallTarget::Path(path, Arc::new(typ_args));
-        let param_typs_is_tparam = vec_map(&param_typs, |t| matches!(**t, TypX::TypParam(..)));
-        let ret_typ_is_tparam = ret_typ.map(|t| matches!(*t, TypX::TypParam(..)));
+        let param_typs_is_tparam =
+            vec_map(&param_typs, |t| matches!(&**t, TypX::TypParam(x) if !fn_params.contains(x)));
+        let ret_typ_is_tparam =
+            ret_typ.map(|t| matches!(&*t, TypX::TypParam(x) if !fn_params.contains(x)));
         fn_exp_call_to_vir(
             expr.span,
             param_typs_is_tparam,
@@ -705,19 +723,16 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                 // a dynamically computed function
                 _ => {
                     let vir_fun = expr_to_vir(bctx, fun)?;
-                    let typ_param = match &*vir_fun.typ {
-                        TypX::TypParam(x) => x.clone(),
-                        // TODO: also handle TyKind::Closure types for closures stored in local vars
-                        _ => {
-                            unsupported!("unexpected function type", expr.span)
-                        }
-                    };
                     let args: Vec<&'tcx Expr<'tcx>> = args_slice.iter().collect();
                     let vir_args = vec_map_result(&args, |arg| expr_to_vir(bctx, arg))?;
                     let expr_typ = typ_of_node(bctx, &expr.hir_id);
-                    let target = CallTarget::FnSpec { typ_param, fun: vir_fun };
+                    let target = CallTarget::FnSpec(vir_fun);
+
+                    // We box all closure params/rets; otherwise, we'd have to
+                    // perform boxing coercions on entire functions (e.g. (int) -> int to (A) -> A).
                     let params: Vec<bool> = vec_map(&args, |_| true);
                     let ret = Some(true);
+
                     let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
                     // Only spec closures are currently supported:
                     erasure_info.resolved_calls.push((fun.span.data(), ResolvedCall::Spec));
@@ -1104,7 +1119,7 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                 })
                 .collect();
             let body = expr_to_vir(bctx, &body.value)?;
-            Ok(mk_expr(ExprX::Closure { params: Arc::new(params), body, closure_impl: None }))
+            Ok(mk_expr(ExprX::Closure(Arc::new(params), body)))
         }
         _ => {
             unsupported_err!(expr.span, format!("expression"), expr)

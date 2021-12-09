@@ -373,7 +373,13 @@ pub(crate) fn mid_ty_to_vir<'tcx>(tcx: TyCtxt<'tcx>, ty: rustc_middle::ty::Ty<'t
                 def_id_to_datatype(tcx, *did, Arc::new(typ_args))
             }
         }),
-        TyKind::Closure(..) => vir::ast_util::fnspec_type(),
+        TyKind::Closure(_def, substs) => {
+            let sig = substs.as_closure().sig();
+            let args: Vec<Typ> =
+                sig.inputs().skip_binder().iter().map(|t| mid_ty_to_vir(tcx, t)).collect();
+            let ret = mid_ty_to_vir(tcx, sig.output().skip_binder());
+            Arc::new(TypX::Lambda(Arc::new(args), ret))
+        }
         _ => {
             unsupported!(format!("type {:?}", ty))
         }

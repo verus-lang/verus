@@ -6,6 +6,13 @@ use common::*;
 test_verify_one_file! {
     #[test] test1 code! {
         #[proof]
+        fn testfun1() {
+            let f = |x: int| x + 1;
+            assert(f(10) == 11);
+            assert(f(20) == 21);
+        }
+
+        #[proof]
         fn takefun<F: Fn(u32, u64) -> bool>(f: F) -> bool {
             ensures(|b: bool| b == f(10, 20));
 
@@ -89,6 +96,17 @@ test_verify_one_file! {
         fn test_specf(p: u32) {
             let q: u32 = 3;
             assert(specf(10, |z: u32| z + 1 + p + q) == 18 + 2 * p); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] test1_fails4 code! {
+        #[proof]
+        fn testfun1() {
+            let f = |x: int| x + 1;
+            assert(f(10) == 11);
+            assert(f(20) == 22); // FAILS
         }
     } => Err(err) => assert_one_fails(err)
 }

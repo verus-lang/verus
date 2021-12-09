@@ -32,10 +32,13 @@ pub(crate) fn prelude_nodes() -> Vec<Node> {
     let Poly = str_to_node(POLY);
     let box_int = str_to_node(BOX_INT);
     let box_bool = str_to_node(BOX_BOOL);
+    let box_fun = str_to_node(BOX_FUN);
     let unbox_int = str_to_node(UNBOX_INT);
     let unbox_bool = str_to_node(UNBOX_BOOL);
+    let unbox_fun = str_to_node(UNBOX_FUN);
     let typ = str_to_node(TYPE);
     let type_id_bool = str_to_node(TYPE_ID_BOOL);
+    let type_id_fun = str_to_node(TYPE_ID_FUN);
     let type_id_int = str_to_node(TYPE_ID_INT);
     let type_id_nat = str_to_node(TYPE_ID_NAT);
     let type_id_uint = str_to_node(TYPE_ID_UINT);
@@ -62,10 +65,13 @@ pub(crate) fn prelude_nodes() -> Vec<Node> {
         (declare-sort [Poly])
         (declare-fun [box_int] (Int) [Poly])
         (declare-fun [box_bool] (Bool) [Poly])
+        (declare-fun [box_fun] (Fun) [Poly])
         (declare-fun [unbox_int] ([Poly]) Int)
         (declare-fun [unbox_bool] ([Poly]) Bool)
+        (declare-fun [unbox_fun] ([Poly]) Fun)
         (declare-sort [typ])
         (declare-const [type_id_bool] [typ])
+        (declare-const [type_id_fun] [typ])
         (declare-const [type_id_int] [typ])
         (declare-const [type_id_nat] [typ])
         (declare-fun [type_id_uint] (Int) [typ])
@@ -74,6 +80,10 @@ pub(crate) fn prelude_nodes() -> Vec<Node> {
         (axiom (forall ((x Bool)) (!
             (= x ([unbox_bool] ([box_bool] x)))
             :pattern (([box_bool] x))
+        )))
+        (axiom (forall ((x Fun)) (!
+            (= x ([unbox_fun] ([box_fun] x)))
+            :pattern (([box_fun] x))
         )))
         (axiom (forall ((x Int)) (!
             (= x ([unbox_int] ([box_int] x)))
@@ -85,6 +95,13 @@ pub(crate) fn prelude_nodes() -> Vec<Node> {
                 (= x ([box_bool] ([unbox_bool] x)))
             )
             :pattern (([has_type] x [type_id_bool]))
+        )))
+        (axiom (forall ((x [Poly])) (!
+            (=>
+                ([has_type] x [type_id_fun])
+                (= x ([box_fun] ([unbox_fun] x)))
+            )
+            :pattern (([has_type] x [type_id_fun]))
         )))
         (axiom (forall ((x [Poly])) (!
             (=>

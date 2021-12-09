@@ -91,23 +91,13 @@ fn func_body_to_air(
     let id_fuel = prefix_fuel_id(&path_to_air_ident(&function.x.path));
 
     // ast --> sst
-    let (local_decls, closure_bodies, closure_axioms, body_exp) =
+    let (local_decls, body_exp) =
         crate::ast_to_sst::expr_to_decls_exp(&ctx, &function.x.params, &body)?;
 
     // Check termination
-    for closure_body in &closure_bodies {
-        crate::recursion::disallow_recursion_exp(ctx, function, closure_body)?;
-    }
     let (is_recursive, termination_commands, body_exp) =
         crate::recursion::check_termination_exp(ctx, function, local_decls, &body_exp)?;
     check_commands.extend(termination_commands.iter().cloned());
-
-    // Closure axioms
-    for (_, closure_exp) in closure_axioms {
-        let closure_expr = exp_to_expr(&ctx, &closure_exp);
-        let closure_axiom = Arc::new(DeclX::Axiom(closure_expr));
-        decl_commands.push(Arc::new(CommandX::Global(closure_axiom)))
-    }
 
     // non-recursive:
     //   (axiom (fuel_bool_default fuel%f))
@@ -399,7 +389,7 @@ pub fn func_def_to_air(
                 None
             };
             let ens_params = Arc::new(ens_params);
-            let mut reqs = vec_map_result(&*function.x.require, |e| {
+            let reqs = vec_map_result(&*function.x.require, |e| {
                 crate::ast_to_sst::expr_to_exp(ctx, &function.x.params, e)
             })?;
             let enss = vec_map_result(&*function.x.ensure, |e| {
@@ -412,14 +402,8 @@ pub fn func_def_to_air(
             // AST --> SST
             let stm = crate::ast_to_sst::expr_to_one_stm_dest(&ctx, &mut state, &body, &dest)?;
             let stm = state.finalize_stm(&stm);
-            for (closure_exp, _) in &state.closure_axioms {
-                reqs.push(closure_exp.clone());
-            }
 
             // Check termination
-            for closure_body in &state.closure_bodies {
-                crate::recursion::disallow_recursion_exp(ctx, function, closure_body)?;
-            }
             let (decls, stm) = crate::recursion::check_termination_stm(ctx, function, &stm)?;
 
             // SST --> AIR

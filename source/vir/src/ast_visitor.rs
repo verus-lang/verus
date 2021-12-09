@@ -1,7 +1,7 @@
 use crate::ast::{
-    Arm, ArmX, CallTarget, ClosureImpl, Datatype, DatatypeX, Expr, ExprX, Field, Function,
-    FunctionX, GenericBound, GenericBoundX, Ident, Param, ParamX, Pattern, PatternX, SpannedTyped,
-    Stmt, StmtX, Typ, TypX, UnaryOpr, Variant, VirErr,
+    Arm, ArmX, CallTarget, Datatype, DatatypeX, Expr, ExprX, Field, Function, FunctionX,
+    GenericBound, GenericBoundX, Ident, Param, ParamX, Pattern, PatternX, SpannedTyped, Stmt,
+    StmtX, Typ, TypX, UnaryOpr, Variant, VirErr,
 };
 use crate::ast_util::err_str;
 use crate::def::Spanned;
@@ -18,6 +18,11 @@ where
         TypX::Tuple(ts) => {
             let ts = vec_map_result(&**ts, |t| map_typ_visitor_env(t, env, ft))?;
             ft(env, &Arc::new(TypX::Tuple(Arc::new(ts))))
+        }
+        TypX::Lambda(ts, tr) => {
+            let ts = vec_map_result(&**ts, |t| map_typ_visitor_env(t, env, ft))?;
+            let tr = map_typ_visitor_env(tr, env, ft)?;
+            ft(env, &Arc::new(TypX::Lambda(Arc::new(ts), tr)))
         }
         TypX::Datatype(path, ts) => {
             let ts = vec_map_result(&**ts, |t| map_typ_visitor_env(t, env, ft))?;
@@ -96,9 +101,9 @@ where
                     let typs = vec_map_result(&**typs, |t| (map_typ_visitor_env(t, env, ft)))?;
                     CallTarget::Path(x.clone(), Arc::new(typs))
                 }
-                CallTarget::FnSpec { typ_param, fun } => {
+                CallTarget::FnSpec(fun) => {
                     let fun = map_expr_visitor_env(fun, map, env, fe, fs, ft)?;
-                    CallTarget::FnSpec { typ_param: typ_param.clone(), fun }
+                    CallTarget::FnSpec(fun)
                 }
             };
             let mut exprs: Vec<Expr> = Vec::new();
@@ -154,7 +159,7 @@ where
             map.pop_scope();
             ExprX::Quant(*quant, Arc::new(binders), expr1)
         }
-        ExprX::Closure { params, body, closure_impl } => {
+        ExprX::Closure(params, body) => {
             let params =
                 vec_map_result(&**params, |b| b.map_result(|t| map_typ_visitor_env(t, env, ft)))?;
             map.push_scope(true);
@@ -162,17 +167,8 @@ where
                 let _ = map.insert(binder.name.clone(), binder.a.clone());
             }
             let body = map_expr_visitor_env(body, map, env, fe, fs, ft)?;
-            let closure_impl = match closure_impl {
-                None => None,
-                Some(c) => {
-                    let call = map_expr_visitor_env(&c.call, map, env, fe, fs, ft)?;
-                    let local_axiom = map_expr_visitor_env(&c.local_axiom, map, env, fe, fs, ft)?;
-                    let global_axiom = map_expr_visitor_env(&c.global_axiom, map, env, fe, fs, ft)?;
-                    Some(ClosureImpl { call, local_axiom, global_axiom })
-                }
-            };
             map.pop_scope();
-            ExprX::Closure { params: Arc::new(params), body, closure_impl }
+            ExprX::Closure(Arc::new(params), body)
         }
         ExprX::Assign(e1, e2) => {
             let expr1 = map_expr_visitor_env(e1, map, env, fe, fs, ft)?;

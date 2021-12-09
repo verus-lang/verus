@@ -217,6 +217,15 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
                 _ => (is_pure, Arc::new(TermX::App(App::Call(x.clone()), Arc::new(all_terms)))),
             }
         }
+        ExpX::CallLambda(_, e0, es) => {
+            // REVIEW: maybe we should include CallLambdas in the auto-triggers
+            let depth = 1;
+            let (_, term0) = gather_terms(ctxt, ctx, e0, depth);
+            let mut terms: Vec<Term> =
+                es.iter().map(|e| gather_terms(ctxt, ctx, e, depth).1).collect();
+            terms.insert(0, term0);
+            (false, Arc::new(TermX::App(ctxt.other(), Arc::new(terms))))
+        }
         ExpX::Ctor(path, variant, fields) => {
             let (variant, args) = crate::sst_to_air::ctor_to_apply(ctx, path, variant, fields);
             let (is_pures, terms): (Vec<bool>, Vec<Term>) =

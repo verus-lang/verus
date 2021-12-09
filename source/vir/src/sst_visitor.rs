@@ -28,6 +28,16 @@ where
                 Spanned::new(exp.span.clone(), ExpX::Call(x.clone(), typs.clone(), Arc::new(exps)));
             f(&exp, map)
         }
+        ExpX::CallLambda(typ, e0, es) => {
+            let e0 = map_exp_visitor_bind(e0, map, f)?;
+            let mut exps: Vec<Exp> = Vec::new();
+            for e in es.iter() {
+                exps.push(map_exp_visitor_bind(e, map, f)?);
+            }
+            let exp =
+                Spanned::new(exp.span.clone(), ExpX::CallLambda(typ.clone(), e0, Arc::new(exps)));
+            f(&exp, map)
+        }
         ExpX::Ctor(path, ident, binders) => {
             let mapped_binders = binders
                 .iter()
@@ -88,6 +98,7 @@ where
                     }
                     BndX::Quant(*quant, binders.clone(), Arc::new(triggers))
                 }
+                BndX::Lambda(_) => bnd.x.clone(),
             };
             let bnd = Spanned::new(bnd.span.clone(), bndx);
             map.push_scope(true);

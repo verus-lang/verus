@@ -50,6 +50,7 @@ pub(crate) fn typ_to_air(_ctx: &Ctx, typ: &Typ) -> air::ast::Typ {
         TypX::Int(_) => int_typ(),
         TypX::Bool => bool_typ(),
         TypX::Tuple(_) => panic!("internal error: Tuple should have been removed by ast_simplify"),
+        TypX::Lambda(..) => Arc::new(air::ast::TypX::Lambda),
         TypX::Datatype(path, _) => ident_typ(&path_to_air_ident(path)),
         TypX::Boxed(_) => str_typ(POLY),
         TypX::TypParam(_) => str_typ(POLY),
@@ -75,6 +76,7 @@ pub fn typ_to_id(typ: &Typ) -> Expr {
         },
         TypX::Bool => str_var(crate::def::TYPE_ID_BOOL),
         TypX::Tuple(_) => panic!("internal error: Tuple should have been removed by ast_simplify"),
+        TypX::Lambda(..) => str_var(crate::def::TYPE_ID_FUN),
         TypX::Datatype(path, typs) => datatype_id(path, typs),
         TypX::Boxed(_) => panic!("internal error: type arguments should be unboxed"),
         TypX::TypParam(x) => ident_var(&suffix_typ_param_id(x)),
@@ -158,6 +160,11 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp) -> Expr {
             }
             ident_apply(&name, &exprs)
         }
+        ExpX::CallLambda(typ, e0, args) => {
+            let e0 = exp_to_expr(ctx, e0);
+            let args = vec_map(args, |e| exp_to_expr(ctx, e));
+            Arc::new(ExprX::ApplyLambda(typ_to_air(ctx, typ), e0, Arc::new(args)))
+        }
         ExpX::Ctor(path, variant, binders) => {
             let (variant, args) = ctor_to_apply(ctx, path, variant, binders);
             let args = args.map(|b| exp_to_expr(ctx, &b.a)).collect::<Vec<_>>();
@@ -186,6 +193,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp) -> Expr {
                     TypX::Int(_) => str_ident(crate::def::BOX_INT),
                     TypX::Datatype(path, _) => prefix_box(&path),
                     TypX::Tuple(_) => panic!("internal error: Box(Tuple)"),
+                    TypX::Lambda(..) => str_ident(crate::def::BOX_FUN),
                     TypX::Boxed(_) => panic!("internal error: Box(Boxed)"),
                     TypX::TypParam(_) => panic!("internal error: Box(TypParam)"),
                     TypX::TypeId => panic!("internal error: Box(TypeId)"),
@@ -199,6 +207,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp) -> Expr {
                     TypX::Int(_) => str_ident(crate::def::UNBOX_INT),
                     TypX::Datatype(path, _) => crate::def::prefix_unbox(&path),
                     TypX::Tuple(_) => panic!("internal error: Box(Tuple)"),
+                    TypX::Lambda(..) => str_ident(crate::def::UNBOX_FUN),
                     TypX::Boxed(_) => panic!("internal error: Unbox(Boxed)"),
                     TypX::TypParam(_) => panic!("internal error: Unbox(TypParam)"),
                     TypX::TypeId => panic!("internal error: Unbox(TypeId)"),
@@ -307,6 +316,14 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp) -> Expr {
                 let triggers =
                     vec_map(&*trigs, |trig| Arc::new(vec_map(trig, |x| exp_to_expr(ctx, x))));
                 air::ast_util::mk_quantifier(*quant, &binders, &triggers, &expr)
+            }
+            BndX::Lambda(binders) => {
+                let expr = exp_to_expr(ctx, exp);
+                let binders = vec_map(&*binders, |b| {
+                    let name = suffix_local_expr_id(&b.name);
+                    Arc::new(BinderX { name, a: typ_to_air(ctx, &b.a) })
+                });
+                air::ast_util::mk_lambda(&binders, &expr)
             }
         },
     }

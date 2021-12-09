@@ -3,20 +3,31 @@ use crate::ast_util::{err_string, path_as_rust_name};
 use crate::scc::Graph;
 use air::ast::Span;
 
-// position = Some(true) for positive, Some(false) for negative, None for neither
+// polarity = Some(true) for positive, Some(false) for negative, None for neither
 fn check_positive_uses(
     span: &Span,
     type_graph: &Graph<Path>,
     my_datatype: &Path,
-    position: Option<bool>,
+    polarity: Option<bool>,
     typ: &Typ,
 ) -> Result<(), VirErr> {
     match &**typ {
         TypX::Bool => Ok(()),
         TypX::Int(..) => Ok(()),
+        TypX::Lambda(ts, tr) => {
+            let flip_polarity = match polarity {
+                None => None,
+                Some(b) => Some(!b),
+            };
+            for t in ts.iter() {
+                check_positive_uses(span, type_graph, my_datatype, flip_polarity, t)?;
+            }
+            check_positive_uses(span, type_graph, my_datatype, polarity, tr)?;
+            Ok(())
+        }
         TypX::Tuple(ts) => {
             for t in ts.iter() {
-                check_positive_uses(span, type_graph, my_datatype, position, t)?;
+                check_positive_uses(span, type_graph, my_datatype, polarity, t)?;
             }
             Ok(())
         }
@@ -25,13 +36,13 @@ fn check_positive_uses(
             if path == my_datatype
                 || type_graph.get_scc_rep(&path) == type_graph.get_scc_rep(&my_datatype)
             {
-                match position {
+                match polarity {
                     Some(true) => {}
                     _ => {
                         return err_string(
                             span,
                             format!(
-                                "Type {} recursively uses type {} in a non-positive position",
+                                "Type {} recursively uses type {} in a non-positive polarity",
                                 path_as_rust_name(my_datatype),
                                 path_as_rust_name(path)
                             ),
@@ -46,7 +57,7 @@ fn check_positive_uses(
             }
             Ok(())
         }
-        TypX::Boxed(t) => check_positive_uses(span, type_graph, my_datatype, position, t),
+        TypX::Boxed(t) => check_positive_uses(span, type_graph, my_datatype, polarity, t),
         TypX::TypParam(..) => Ok(()),
         TypX::TypeId => Ok(()),
     }

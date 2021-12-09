@@ -108,6 +108,14 @@ fn terminates(ctxt: &Ctxt, exp: &Exp) -> Result<Exp, VirErr> {
             }
             Ok(e)
         }
+        ExpX::CallLambda(_, f, args) => {
+            let mut e = terminates(ctxt, f)?;
+            for arg in args.iter().rev() {
+                let e_arg = terminates(ctxt, arg)?;
+                e = Spanned::new(exp.span.clone(), ExpX::Binary(BinaryOp::And, e_arg, e));
+            }
+            Ok(e)
+        }
         ExpX::Ctor(_path, _ident, binders) => {
             let mut e = Spanned::new(exp.span.clone(), ExpX::Const(Constant::Bool(true)));
             for binder in binders.iter().rev() {
@@ -174,6 +182,10 @@ fn terminates(ctxt: &Ctxt, exp: &Exp) -> Result<Exp, VirErr> {
                         t_e1,
                     ),
                 )),
+                BndX::Lambda(_) => {
+                    disallow_recursion_exp(ctxt, e1)?;
+                    Ok(Spanned::new(exp.span.clone(), ExpX::Const(Constant::Bool(true))))
+                }
             }
         }
     }
@@ -235,16 +247,14 @@ fn mk_decreases_at_entry(ctxt: &Ctxt, span: &Span) -> (LocalDecl, Stm) {
 
 // REVIEW: for simplicity, we completely disallow recursive calls from inside closures.
 // It's possible that we could be allow some recursion.
-pub(crate) fn disallow_recursion_exp(
-    ctx: &Ctx,
-    function: &Function,
-    exp: &Exp,
-) -> Result<(), VirErr> {
-    let scc_rep = ctx.func_call_graph.get_scc_rep(&function.x.path);
+fn disallow_recursion_exp(ctxt: &Ctxt, exp: &Exp) -> Result<(), VirErr> {
+    let scc_rep = ctxt.ctx.func_call_graph.get_scc_rep(&ctxt.recursive_function_path);
     let _ = map_exp_visitor_result(exp, &mut |exp| {
         match &exp.x {
             ExpX::Call(x, _, _) => {
-                if *x == function.x.path || ctx.func_call_graph.get_scc_rep(x) == scc_rep {
+                if *x == ctxt.recursive_function_path
+                    || ctxt.ctx.func_call_graph.get_scc_rep(x) == scc_rep
+                {
                     return err_str(&exp.span, "recursion not allowed here");
                 }
             }

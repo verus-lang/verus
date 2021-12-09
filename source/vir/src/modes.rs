@@ -137,7 +137,7 @@ fn check_expr(typing: &mut Typing, outer_mode: Mode, expr: &Expr) -> Result<Mode
             }
             Ok(function.x.ret.x.mode)
         }
-        ExprX::Call(CallTarget::FnSpec { typ_param: _, fun: e0 }, es) => {
+        ExprX::Call(CallTarget::FnSpec(e0), es) => {
             check_expr_has_mode(typing, Mode::Spec, e0, Mode::Spec)?;
             for arg in es.iter() {
                 check_expr_has_mode(typing, Mode::Spec, arg, Mode::Spec)?;
@@ -199,7 +199,7 @@ fn check_expr(typing: &mut Typing, outer_mode: Mode, expr: &Expr) -> Result<Mode
             typing.vars.pop_scope();
             Ok(Mode::Spec)
         }
-        ExprX::Closure { params, body, closure_impl: _ } => {
+        ExprX::Closure(params, body) => {
             // Note: captures and call are not filled in at this point (ast_simplify sets them),
             // so there's no need to check them here.
             typing.vars.push_scope(true);

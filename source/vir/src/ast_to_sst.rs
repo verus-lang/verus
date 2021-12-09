@@ -21,10 +21,6 @@ pub(crate) struct State {
     next_var: u64,
     // Collect all local variable declarations
     pub(crate) local_decls: Vec<LocalDecl>,
-    // Collected closure bodies, which need to be checked for recursion
-    pub(crate) closure_bodies: Vec<Exp>,
-    // Generated axioms (local, global) about closure bodies
-    pub(crate) closure_axioms: Vec<(Exp, Exp)>,
     // Rename local variables when needed, using unique integers, to avoid collisions.
     // This is only needed for statement-level declarations (Some(unique_int)),
     // not for expression-level bindings (None).
@@ -43,8 +39,6 @@ impl State {
         State {
             next_var: 0,
             local_decls: Vec::new(),
-            closure_bodies: Vec::new(),
-            closure_axioms: Vec::new(),
             rename_map,
             rename_counters: HashMap::new(),
             dont_rename: HashSet::new(),
@@ -159,8 +153,8 @@ fn expr_get_call(
     expr: &Expr,
 ) -> Result<Option<(Vec<Stm>, Path, Typs, bool, Args)>, VirErr> {
     match &expr.x {
-        ExprX::Call(CallTarget::FnSpec { .. }, _) => {
-            panic!("internal error: FnSpec should have been replaced in ast_simplify")
+        ExprX::Call(CallTarget::FnSpec(..), _) => {
+            panic!("internal error: CallTarget::FnSpec")
         }
         ExprX::Call(CallTarget::Path(x, typs), args) => {
             let mut stms: Vec<Stm> = Vec::new();
@@ -204,7 +198,7 @@ pub(crate) fn expr_to_decls_exp(
     ctx: &Ctx,
     params: &Params,
     expr: &Expr,
-) -> Result<(Vec<LocalDecl>, Vec<Exp>, Vec<(Exp, Exp)>, Exp), VirErr> {
+) -> Result<(Vec<LocalDecl>, Exp), VirErr> {
     let mut state = State::new();
     for param in params.iter() {
         state.declare_new_var(&param.x.name, &param.x.typ, false);
@@ -212,7 +206,7 @@ pub(crate) fn expr_to_decls_exp(
     let exp = expr_to_exp_state(ctx, &mut state, expr)?;
     let exp = state.finalize_exp(&exp);
     state.finalize();
-    Ok((state.local_decls, state.closure_bodies, state.closure_axioms, exp))
+    Ok((state.local_decls, exp))
 }
 
 pub(crate) fn expr_to_bind_decls_exp(
@@ -232,7 +226,7 @@ pub(crate) fn expr_to_bind_decls_exp(
 }
 
 pub(crate) fn expr_to_exp(ctx: &Ctx, params: &Params, expr: &Expr) -> Result<Exp, VirErr> {
-    Ok(expr_to_decls_exp(ctx, params, expr)?.3)
+    Ok(expr_to_decls_exp(ctx, params, expr)?.1)
 }
 
 pub(crate) fn expr_to_stm(
@@ -385,7 +379,13 @@ pub(crate) fn expr_to_stm_opt(
                 }
             }
         }
-        ExprX::Call(..) => {
+        ExprX::Call(CallTarget::FnSpec(e0), args) => {
+            let e0 = expr_to_exp_state(ctx, state, e0)?;
+            let args = Arc::new(vec_map_result(args, |e| expr_to_exp_state(ctx, state, e))?);
+            let call = ExpX::CallLambda(expr.typ.clone(), e0, args);
+            Ok((vec![], Some(Spanned::new(expr.span.clone(), call))))
+        }
+        ExprX::Call(CallTarget::Path(..), _) => {
             let (mut stms, x, typs, ret, args) = expr_get_call(ctx, state, expr)?.expect("Call");
             if function_can_be_exp(ctx, expr, &x)? {
                 // ExpX::Call
@@ -482,22 +482,45 @@ pub(crate) fn expr_to_stm_opt(
             let bnd = Spanned::new(body.span.clone(), BndX::Quant(*quant, binders.clone(), trigs));
             Ok((vec![], Some(Spanned::new(expr.span.clone(), ExpX::Bind(bnd, exp)))))
         }
-        ExprX::Closure { params, body, closure_impl } => {
-            // Replace closure with call to function that creates closure
-            let closure_impl =
-                closure_impl.as_ref().expect("closure_impl should be set to Some by ast_simplify");
-
+        ExprX::Closure(params, body) => {
             state.push_scope();
             state.declare_binders(params);
-            let body = expr_to_exp_state(ctx, state, body)?;
+            let mut exp = expr_to_exp_state(ctx, state, body)?;
             state.pop_scope();
 
-            let call = expr_to_exp_state(ctx, state, &closure_impl.call)?;
-            let local_axiom = expr_to_exp_state(ctx, state, &closure_impl.local_axiom)?;
-            let global_axiom = expr_to_exp_state(ctx, state, &closure_impl.global_axiom)?;
-            state.closure_bodies.push(body.clone());
-            state.closure_axioms.push((local_axiom, global_axiom));
-            Ok((vec![], Some(call)))
+            // Parameters and return types must be boxed, so insert necessary box/unboxing
+            match &*body.typ {
+                TypX::TypParam(_) | TypX::Boxed(_) => {}
+                _ => {
+                    let boxx = ExpX::UnaryOpr(UnaryOpr::Box(body.typ.clone()), exp);
+                    exp = Spanned::new(body.span.clone(), boxx);
+                }
+            }
+            let mut let_box_binds: Vec<Binder<Exp>> = Vec::new();
+            let mut boxed_params: Vec<Binder<Typ>> = Vec::new();
+            for p in params.iter() {
+                match &*p.a {
+                    TypX::TypParam(_) | TypX::Boxed(_) => {
+                        boxed_params.push(p.clone());
+                    }
+                    _ => {
+                        let boxed_typ = Arc::new(TypX::Boxed(p.a.clone()));
+                        boxed_params.push(p.new_a(boxed_typ.clone()));
+                        let var =
+                            Spanned::new(expr.span.clone(), ExpX::Var((p.name.clone(), None)));
+                        let unboxx = ExpX::UnaryOpr(UnaryOpr::Unbox(p.a.clone()), var);
+                        let unbox = Spanned::new(expr.span.clone(), unboxx);
+                        let_box_binds.push(p.new_a(unbox));
+                    }
+                };
+            }
+            if let_box_binds.len() != 0 {
+                let bnd = Spanned::new(body.span.clone(), BndX::Let(Arc::new(let_box_binds)));
+                exp = Spanned::new(body.span.clone(), ExpX::Bind(bnd, exp));
+            }
+
+            let bnd = Spanned::new(body.span.clone(), BndX::Lambda(Arc::new(boxed_params)));
+            Ok((vec![], Some(Spanned::new(expr.span.clone(), ExpX::Bind(bnd, exp)))))
         }
         ExprX::Fuel(x, fuel) => {
             let stm = Spanned::new(expr.span.clone(), StmX::Fuel(x.clone(), *fuel));

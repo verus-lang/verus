@@ -19,6 +19,7 @@ pub type Bnd = Arc<Spanned<BndX>>;
 pub enum BndX {
     Let(Binders<Exp>),
     Quant(Quant, Binders<Typ>, Trigs),
+    Lambda(Binders<Typ>),
 }
 
 // variable name with optional unique id for renaming (equal to unique_id in LocalDeclX)
@@ -34,6 +35,7 @@ pub enum ExpX {
     Old(Ident, Ident),
     // call to spec function
     Call(Path, Typs, Exps),
+    CallLambda(Typ, Exp, Exps),
     Ctor(Path, Ident, Binders<Exp>),
     Unary(UnaryOp, Exp),
     UnaryOpr(UnaryOpr, Exp),

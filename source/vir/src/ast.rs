@@ -79,6 +79,8 @@ pub enum TypX {
     Int(IntRange),
     /// Tuple type (t1, ..., tn).  Note: ast_simplify replaces Tuple with Datatype.
     Tuple(Typs),
+    /// Spec closure type (t1, ..., tn) -> t0.
+    Lambda(Typs, Typ),
     /// Datatype (concrete or abstract) applied to type arguments
     Datatype(Path, Typs),
     /// Boxed for SMT encoding (unrelated to Rust Box type), can be unboxed:
@@ -232,18 +234,7 @@ pub enum CallTarget {
     Path(Path, Typs),
     /// Call a dynamically computed FnSpec (no type arguments allowed),
     /// where the function type is specified by the GenericBound of typ_param.
-    /// Note: this is replaced by Path in ast_simplify.
-    FnSpec { typ_param: Ident, fun: Expr },
-}
-
-#[derive(Debug)]
-pub struct ClosureImpl {
-    /// Call to generated function that represents the closure
-    pub call: Expr,
-    /// Axiom about generated closure function, quantified over local variables
-    pub local_axiom: Expr,
-    /// Axiom about generated closure function, quantified over local variables and typ_params
-    pub global_axiom: Expr,
+    FnSpec(Expr),
 }
 
 /// Expression, similar to rustc_hir::Expr
@@ -273,8 +264,7 @@ pub enum ExprX {
     /// Quantifier (forall/exists), binding the variables in Binders, with body Expr
     Quant(Quant, Binders<Typ>, Expr),
     /// Specification closure
-    /// Note: ClosureImpl is computed by ast_simplify
-    Closure { params: Binders<Typ>, body: Expr, closure_impl: Option<ClosureImpl> },
+    Closure(Binders<Typ>, Expr),
     /// Assign to local variable
     Assign(Expr, Expr),
     /// Reveal definition of an opaque function with some integer fuel amount

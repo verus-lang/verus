@@ -50,11 +50,6 @@ const PREFIX_TYPE_ID: &str = "TYPE%";
 const PREFIX_TUPLE_TYPE: &str = "tuple%";
 const PREFIX_TUPLE_PARAM: &str = "T%";
 const PREFIX_TUPLE_FIELD: &str = "field%";
-const PREFIX_FNSPEC_TYPE: &str = "fnspec%";
-const PREFIX_FNSPEC_APPLY: &str = "applyspec%";
-const PREFIX_FNSPEC_TPARAM: &str = "T%";
-const PREFIX_FNSPEC_PARAM: &str = "x%";
-const PREFIX_CLOSURE: &str = "closure%";
 const PATH_SEPARATOR: &str = ".";
 const VARIANT_SEPARATOR: &str = "/";
 const VARIANT_FIELD_SEPARATOR: &str = "/";
@@ -89,11 +84,14 @@ pub const SNAPSHOT_CALL: &str = "CALL";
 pub const POLY: &str = "Poly";
 pub const BOX_INT: &str = "I";
 pub const BOX_BOOL: &str = "B";
+pub const BOX_FUN: &str = "F";
 pub const UNBOX_INT: &str = "%I";
 pub const UNBOX_BOOL: &str = "%B";
+pub const UNBOX_FUN: &str = "%F";
 pub const TYPE: &str = "Type";
 pub const TYPE_ID_BOOL: &str = "BOOL";
 pub const TYPE_ID_INT: &str = "INT";
+pub const TYPE_ID_FUN: &str = "FUN";
 pub const TYPE_ID_NAT: &str = "NAT";
 pub const TYPE_ID_UINT: &str = "UINT";
 pub const TYPE_ID_SINT: &str = "SINT";
@@ -189,24 +187,6 @@ pub fn prefix_tuple_field(i: usize) -> Ident {
     Arc::new(format!("{}{}", PREFIX_TUPLE_FIELD, i))
 }
 
-pub fn prefix_fnspec_type() -> Path {
-    let ident = Arc::new(PREFIX_FNSPEC_TYPE.to_string());
-    Arc::new(PathX { krate: None, segments: Arc::new(vec![ident]) })
-}
-
-pub fn prefix_fnspec_apply_name(i: usize) -> Path {
-    let ident = Arc::new(format!("{}{}", PREFIX_FNSPEC_APPLY, i));
-    Arc::new(PathX { krate: None, segments: Arc::new(vec![ident]) })
-}
-
-pub fn prefix_fnspec_tparam(i: usize) -> Ident {
-    Arc::new(format!("{}{}", PREFIX_FNSPEC_TPARAM, i))
-}
-
-pub fn prefix_fnspec_param(i: usize) -> Ident {
-    Arc::new(format!("{}{}", PREFIX_FNSPEC_PARAM, i))
-}
-
 pub fn prefix_box(ident: &Path) -> Ident {
     Arc::new(PREFIX_BOX.to_string() + &path_to_string(ident))
 }
@@ -254,11 +234,6 @@ pub fn is_temp_var(x: &Ident) -> bool {
 // ast_simplify introduces its own temporary variables; we don't want these to conflict with prefix_temp_var
 pub fn prefix_simplify_temp_var(n: u64) -> Ident {
     Arc::new(PREFIX_SIMPLIFY_TEMP_VAR.to_string() + &n.to_string())
-}
-
-pub fn prefix_closure(n: u64) -> Path {
-    let ident = Arc::new(PREFIX_CLOSURE.to_string() + &n.to_string());
-    Arc::new(PathX { krate: None, segments: Arc::new(vec![ident]) })
 }
 
 pub fn variant_ident(datatype: &Path, variant: &str) -> Ident {

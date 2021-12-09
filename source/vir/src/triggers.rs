@@ -34,7 +34,7 @@ fn check_trigger_expr(exp: &Exp, free_vars: &mut HashSet<Ident>) -> Result<(), V
         }
     }
     let mut f = |exp: &Exp, _: &mut _| match &exp.x {
-        ExpX::Const(_) | ExpX::Ctor(..) => Ok(exp.clone()),
+        ExpX::Const(_) | ExpX::CallLambda(..) | ExpX::Ctor(..) => Ok(exp.clone()),
         ExpX::Call(_, typs, _) => {
             for typ in typs.iter() {
                 let ft = |free_vars: &mut HashSet<Ident>, t: &Typ| match &**t {
@@ -116,7 +116,9 @@ fn get_manual_triggers(state: &mut State, exp: &Exp) -> Result<(), VirErr> {
         ExpX::Bind(bnd, _) => {
             let bvars: Vec<Ident> = match &bnd.x {
                 BndX::Let(binders) => binders.iter().map(|b| b.name.clone()).collect(),
-                BndX::Quant(_, binders, _) => binders.iter().map(|b| b.name.clone()).collect(),
+                BndX::Quant(_, binders, _) | BndX::Lambda(binders) => {
+                    binders.iter().map(|b| b.name.clone()).collect()
+                }
             };
             for x in bvars {
                 if map.contains_key(&x) {

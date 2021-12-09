@@ -1,19 +1,15 @@
 //! VIR-AST -> VIR-AST transformation to simplify away some complicated features
 
 use crate::ast::{
-    BinaryOp, Binder, Binders, CallTarget, ClosureImpl, Constant, Datatype, DatatypeTransparency,
-    DatatypeX, Expr, ExprX, Field, Function, FunctionX, GenericBound, GenericBoundX, Ident, Idents,
-    Krate, KrateX, Mode, Param, ParamX, Params, Path, Pattern, PatternX, SpannedTyped, Stmt, StmtX,
-    Typ, TypX, UnaryOp, UnaryOpr, VirErr, Visibility,
+    BinaryOp, Binder, CallTarget, Constant, Datatype, DatatypeTransparency, DatatypeX, Expr, ExprX,
+    Field, Function, GenericBound, GenericBoundX, Ident, Krate, KrateX, Mode, Path, Pattern,
+    PatternX, SpannedTyped, Stmt, StmtX, Typ, TypX, UnaryOp, UnaryOpr, VirErr, Visibility,
 };
-use crate::ast_util::{err_str, err_string, fnspec_type};
+use crate::ast_util::{err_str, err_string};
 use crate::context::GlobalCtx;
-use crate::def::{
-    prefix_fnspec_param, prefix_fnspec_tparam, prefix_tuple_field, prefix_tuple_param,
-    prefix_tuple_variant, Spanned,
-};
-use crate::util::{vec_map, vec_map_result};
-use air::ast::{Quant, Span};
+use crate::def::{prefix_tuple_field, prefix_tuple_param, prefix_tuple_variant, Spanned};
+use crate::util::vec_map_result;
+use air::ast::Span;
 use air::ast_util::ident_binder;
 use air::scope_map::ScopeMap;
 use std::collections::HashMap;
@@ -22,25 +18,13 @@ use std::sync::Arc;
 struct State {
     // Counter to generate temporary variables
     next_var: u64,
-    // Counter to generate closure names
-    next_closure: u64,
     // Name of a datatype to represent each tuple arity
     tuple_typs: HashMap<usize, Path>,
-    // Name of an apply function for each function arity
-    fnspec_applies: HashMap<usize, Path>,
-    // Each closure's generated name, captured type parameters, and captured variables
-    closures: Vec<(Path, Idents, Binders<Typ>)>,
 }
 
 impl State {
     fn new() -> Self {
-        State {
-            next_var: 0,
-            next_closure: 0,
-            tuple_typs: HashMap::new(),
-            fnspec_applies: HashMap::new(),
-            closures: Vec::new(),
-        }
+        State { next_var: 0, tuple_typs: HashMap::new() }
     }
 
     fn reset_for_function(&mut self) {
@@ -52,23 +36,11 @@ impl State {
         crate::def::prefix_simplify_temp_var(self.next_var)
     }
 
-    fn next_closure(&mut self) -> Path {
-        self.next_closure += 1;
-        crate::def::prefix_closure(self.next_closure)
-    }
-
     fn tuple_type_name(&mut self, arity: usize) -> Path {
         if !self.tuple_typs.contains_key(&arity) {
             self.tuple_typs.insert(arity, crate::def::prefix_tuple_type(arity));
         }
         self.tuple_typs[&arity].clone()
-    }
-
-    fn fnspec_apply_name(&mut self, arity: usize) -> Path {
-        if !self.fnspec_applies.contains_key(&arity) {
-            self.fnspec_applies.insert(arity, crate::def::prefix_fnspec_apply_name(arity));
-        }
-        self.fnspec_applies[&arity].clone()
     }
 }
 
@@ -205,74 +177,8 @@ fn pattern_to_exprs(
     }
 }
 
-fn captured_var(
-    outer_scopes: usize,
-    map: &mut ScopeMap<Ident, Typ>,
-    expr: &Expr,
-    captured: &mut HashMap<Ident, Typ>,
-) -> Expr {
+fn simplify_one_expr(ctx: &GlobalCtx, state: &mut State, expr: &Expr) -> Result<Expr, VirErr> {
     match &expr.x {
-        ExprX::Var(x) => {
-            let (scope, _) = map.scope_and_index_of_key(x).unwrap();
-            if scope < outer_scopes {
-                // x was declared in the outer scope
-                let typ = map.get(x).unwrap();
-                captured.insert(x.clone(), typ.clone());
-            }
-        }
-        _ => {}
-    }
-    expr.clone()
-}
-
-fn captured_vars(
-    outer_scopes: usize,
-    map: &mut ScopeMap<Ident, Typ>,
-    expr: &Expr,
-) -> Vec<Binder<Typ>> {
-    let mut captured: HashMap<Ident, Typ> = HashMap::new();
-    let _ = crate::ast_visitor::map_expr_visitor_env(
-        expr,
-        map,
-        &mut captured,
-        &|captured, map, expr| Ok(captured_var(outer_scopes, map, expr, captured)),
-        &|_, _, stmt| Ok(vec![stmt.clone()]),
-        &|_, typ| Ok(typ.clone()),
-    );
-    let mut binders: Vec<Binder<Typ>> = Vec::new();
-    for (x, typ) in captured.iter() {
-        binders.push(ident_binder(x, typ));
-    }
-    binders
-}
-
-fn simplify_one_expr(
-    ctx: &GlobalCtx,
-    local: &LocalCtxt,
-    map: &mut ScopeMap<Ident, Typ>,
-    state: &mut State,
-    expr: &Expr,
-) -> Result<Expr, VirErr> {
-    match &expr.x {
-        ExprX::Call(CallTarget::FnSpec { typ_param, fun }, args) => {
-            // target(args) --> apply(target, args)
-            let path = state.fnspec_apply_name(args.len());
-            let mut typ_args: Vec<Typ> = Vec::new();
-            let (tparams, tret) = match &*local.bounds[typ_param] {
-                GenericBoundX::FnSpec(tparams, tret) => (tparams.clone(), tret.clone()),
-                _ => panic!("expected function type"),
-            };
-            typ_args.push(tret);
-            for t in tparams.iter() {
-                typ_args.push(t.clone());
-            }
-            let mut expr_args = vec![fun.clone()];
-            for arg in args.iter() {
-                expr_args.push(arg.clone());
-            }
-            let call = ExprX::Call(CallTarget::Path(path, Arc::new(typ_args)), Arc::new(expr_args));
-            Ok(SpannedTyped::new(&expr.span, &expr.typ, call))
-        }
         ExprX::Call(CallTarget::Path(path, typs), args) => {
             // Remove FnSpec type arguments
             let bounds = &ctx.fun_bounds[path];
@@ -378,88 +284,6 @@ fn simplify_one_expr(
             };
             Ok(exp)
         }
-        ExprX::Closure { params, body, closure_impl } => {
-            assert!(closure_impl.is_none());
-            let path = state.next_closure();
-            let tbool = Arc::new(TypX::Bool);
-
-            // compute captures
-            let outer_scopes = map.num_scopes();
-            map.push_scope(true);
-            for binder in params.iter() {
-                let _ = map.insert(binder.name.clone(), binder.a.clone());
-            }
-            let captures = captured_vars(outer_scopes, map, body);
-            map.pop_scope();
-
-            // combine binders
-            let mut local_binders: Vec<Binder<Typ>> = Vec::new();
-            let mut global_binders: Vec<Binder<Typ>> = Vec::new();
-            for x in &local.typ_params {
-                global_binders.push(ident_binder(x, &Arc::new(TypX::TypeId)));
-            }
-            for binder in captures.iter() {
-                local_binders.push(binder.clone());
-                global_binders.push(binder.clone());
-            }
-            for binder in params.iter() {
-                local_binders.push(binder.clone());
-                global_binders.push(binder.clone());
-            }
-
-            // call: f(captures)
-            let typ_args = vec_map(&local.typ_params, |x| Arc::new(TypX::TypParam(x.clone())));
-            let target = CallTarget::Path(path.clone(), Arc::new(typ_args));
-            let args = vec_map(&captures, |p| {
-                SpannedTyped::new(&expr.span, &p.a, ExprX::Var(p.name.clone()))
-            });
-            let callx = ExprX::Call(target, Arc::new(args));
-            let call = SpannedTyped::new(&expr.span, &fnspec_type(), callx);
-
-            // axiom: forall captures, params. apply(call, params) == body
-            let apply = state.fnspec_apply_name(params.len());
-            let mut targs: Vec<Typ> = Vec::new();
-            let mut args: Vec<Expr> = Vec::new();
-            targs.push(body.typ.clone());
-            args.push(call.clone());
-            for p in params.iter() {
-                targs.push(p.a.clone());
-                let arg = SpannedTyped::new(&expr.span, &p.a, ExprX::Var(p.name.clone()));
-                let arg = match &*p.a {
-                    TypX::TypParam(_) | TypX::Boxed(_) => arg,
-                    _ => {
-                        let argx = ExprX::UnaryOpr(UnaryOpr::Box(p.a.clone()), arg);
-                        let typ = Arc::new(TypX::Boxed(p.a.clone()));
-                        SpannedTyped::new(&expr.span, &typ, argx)
-                    }
-                };
-                args.push(arg);
-            }
-            let target = CallTarget::Path(apply, Arc::new(targs));
-            let appx = ExprX::Call(target, Arc::new(args));
-            let appx = match &*body.typ {
-                TypX::TypParam(_) | TypX::Boxed(_) => appx,
-                _ => {
-                    let typ = Arc::new(TypX::Boxed(body.typ.clone()));
-                    let app = SpannedTyped::new(&expr.span, &typ, appx);
-                    ExprX::UnaryOpr(UnaryOpr::Unbox(body.typ.clone()), app)
-                }
-            };
-            let app = SpannedTyped::new(&expr.span, &body.typ, appx);
-            let op = UnaryOp::Trigger(None);
-            let trig = SpannedTyped::new(&expr.span, &tbool, ExprX::Unary(op, app));
-            let eqx = ExprX::Binary(BinaryOp::Eq(Mode::Spec), trig, body.clone());
-            let eq = SpannedTyped::new(&expr.span, &tbool, eqx);
-            let local_axiomx = ExprX::Quant(Quant::Forall, Arc::new(local_binders), eq.clone());
-            let global_axiomx = ExprX::Quant(Quant::Forall, Arc::new(global_binders), eq.clone());
-            let local_axiom = SpannedTyped::new(&expr.span, &tbool, local_axiomx);
-            let global_axiom = SpannedTyped::new(&expr.span, &tbool, global_axiomx);
-
-            state.closures.push((path, Arc::new(local.typ_params.clone()), Arc::new(captures)));
-            let closure_impl = Some(ClosureImpl { call, local_axiom, global_axiom });
-            let exprx = ExprX::Closure { params: params.clone(), body: body.clone(), closure_impl };
-            Ok(SpannedTyped::new(&expr.span, &expr.typ, exprx))
-        }
         ExprX::Match(expr0, arms1) => {
             let (temp_decl, expr0) = small_or_temp(state, &expr0);
             // Translate into If expression
@@ -542,10 +366,7 @@ fn simplify_one_typ(local: &LocalCtxt, state: &mut State, typ: &Typ) -> Result<T
             }
             match &*local.bounds[x] {
                 GenericBoundX::None => Ok(typ.clone()),
-                GenericBoundX::FnSpec(ts, _) => {
-                    state.fnspec_apply_name(ts.len());
-                    Ok(fnspec_type())
-                }
+                GenericBoundX::FnSpec(ts, tr) => Ok(Arc::new(TypX::Lambda(ts.clone(), tr.clone()))),
             }
         }
         _ => Ok(typ.clone()),
@@ -589,7 +410,7 @@ fn simplify_function(
         &function,
         &mut map,
         state,
-        &|state, map, expr| simplify_one_expr(ctx, &local, map, state, expr),
+        &|state, _, expr| simplify_one_expr(ctx, state, expr),
         &|state, _, stmt| simplify_one_stmt(ctx, state, stmt),
         &|state, typ| simplify_one_typ(&local, state, typ),
     )
@@ -607,6 +428,7 @@ fn simplify_datatype(state: &mut State, datatype: &Datatype) -> Result<Datatype,
     })
 }
 
+/*
 fn mk_fun_decl(
     span: &Span,
     path: &Path,
@@ -637,11 +459,12 @@ fn mk_fun_decl(
         },
     )
 }
+*/
 
 pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirErr> {
     let KrateX { functions, datatypes, module_ids } = &**krate;
     let mut state = State::new();
-    let mut functions = vec_map_result(functions, |f| simplify_function(ctx, &mut state, f))?;
+    let functions = vec_map_result(functions, |f| simplify_function(ctx, &mut state, f))?;
     let mut datatypes = vec_map_result(&datatypes, |d| simplify_datatype(&mut state, d))?;
 
     // Add a generic datatype to represent each tuple arity
@@ -660,53 +483,6 @@ pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirEr
         let datatypex =
             DatatypeX { path, visibility, transparency, typ_params, variants, mode: Mode::Exec };
         datatypes.push(Spanned::new(ctx.no_span.clone(), datatypex));
-    }
-
-    // Add a single nongeneric, abstract datatype for all FnSpec types
-    let path = crate::def::prefix_fnspec_type();
-    let visibility = Visibility { owning_module: None, is_private: false };
-    let transparency = DatatypeTransparency::Never;
-    let typ_params = Arc::new(vec![]);
-    let variants = Arc::new(vec![]);
-    let datatypex =
-        DatatypeX { path, visibility, transparency, typ_params, variants, mode: Mode::Exec };
-    datatypes.push(Spanned::new(ctx.no_span.clone(), datatypex));
-
-    // Add a generic apply function for each function arity
-    for (arity, path) in state.fnspec_applies {
-        let mut param_typs: Vec<Typ> = Vec::new();
-        for i in 0..arity + 1 {
-            param_typs.push(Arc::new(TypX::TypParam(prefix_fnspec_tparam(i))));
-        }
-        param_typs.push(fnspec_type());
-        let mut params: Vec<Param> = param_typs
-            .iter()
-            .enumerate()
-            .map(|(i, typ)| {
-                let param =
-                    ParamX { name: prefix_fnspec_param(i), mode: Mode::Spec, typ: typ.clone() };
-                Spanned::new(ctx.no_span.clone(), param)
-            })
-            .collect();
-        let ret = params.remove(0);
-        let f_param = params.remove(arity);
-        params.insert(0, f_param);
-        let typ_params = Arc::new((0..arity + 1).map(|i| prefix_fnspec_tparam(i)).collect());
-        functions.push(mk_fun_decl(&ctx.no_span, &path, &typ_params, &Arc::new(params), &ret));
-    }
-
-    // Add a closure function declaration for each closure
-    for (path, typ_params, captures) in state.closures {
-        let params: Vec<Param> = captures
-            .iter()
-            .map(|b| {
-                let param = ParamX { name: b.name.clone(), mode: Mode::Spec, typ: b.a.clone() };
-                Spanned::new(ctx.no_span.clone(), param)
-            })
-            .collect();
-        let retx = ParamX { name: prefix_fnspec_param(0), mode: Mode::Spec, typ: fnspec_type() };
-        let ret = Spanned::new(ctx.no_span.clone(), retx);
-        functions.push(mk_fun_decl(&ctx.no_span, &path, &typ_params, &Arc::new(params), &ret));
     }
 
     let module_ids = module_ids.clone();
