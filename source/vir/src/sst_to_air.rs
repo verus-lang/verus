@@ -325,6 +325,15 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp) -> Expr {
                 });
                 air::ast_util::mk_lambda(&binders, &expr)
             }
+            BndX::Choose(binder, trigs) => {
+                let expr = exp_to_expr(ctx, exp);
+                let name = suffix_local_expr_id(&binder.name);
+                let binder = Arc::new(BinderX { name, a: typ_to_air(ctx, &binder.a) });
+                let triggers =
+                    vec_map(&*trigs, |trig| Arc::new(vec_map(trig, |x| exp_to_expr(ctx, x))));
+                let bind = Arc::new(BindX::Choose(binder, Arc::new(triggers)));
+                Arc::new(ExprX::Bind(bind, expr))
+            }
         },
     }
 }

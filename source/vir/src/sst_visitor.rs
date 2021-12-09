@@ -99,6 +99,18 @@ where
                     BndX::Quant(*quant, binders.clone(), Arc::new(triggers))
                 }
                 BndX::Lambda(_) => bnd.x.clone(),
+                BndX::Choose(binder, ts) => {
+                    let mut triggers: Vec<Trig> = Vec::new();
+                    bvars.push((binder.name.clone(), true));
+                    for t in ts.iter() {
+                        let mut exprs: Vec<Exp> = Vec::new();
+                        for exp in t.iter() {
+                            exprs.push(map_exp_visitor_bind(exp, map, f)?);
+                        }
+                        triggers.push(Arc::new(exprs));
+                    }
+                    BndX::Choose(binder.clone(), Arc::new(triggers))
+                }
             };
             let bnd = Spanned::new(bnd.span.clone(), bndx);
             map.push_scope(true);

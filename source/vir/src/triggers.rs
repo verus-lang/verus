@@ -76,7 +76,9 @@ fn check_trigger_expr(exp: &Exp, free_vars: &mut HashSet<Ident>) -> Result<(), V
             }
         }
         ExpX::If(_, _, _) => err_str(&exp.span, "triggers cannot contain if/else"),
-        ExpX::Bind(_, _) => err_str(&exp.span, "triggers cannot contain let/forall/exists"),
+        ExpX::Bind(_, _) => {
+            err_str(&exp.span, "triggers cannot contain let/forall/exists/lambda/choose")
+        }
     };
     let mut map: ScopeMap<Ident, bool> = ScopeMap::new();
     let _ = crate::sst_visitor::map_exp_visitor_bind(exp, &mut map, &mut f)?;
@@ -118,6 +120,9 @@ fn get_manual_triggers(state: &mut State, exp: &Exp) -> Result<(), VirErr> {
                 BndX::Let(binders) => binders.iter().map(|b| b.name.clone()).collect(),
                 BndX::Quant(_, binders, _) | BndX::Lambda(binders) => {
                     binders.iter().map(|b| b.name.clone()).collect()
+                }
+                BndX::Choose(binder, _) => {
+                    vec![binder.name.clone()]
                 }
             };
             for x in bvars {

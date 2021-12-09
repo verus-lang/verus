@@ -8,7 +8,7 @@
 
 use crate::ast::{BinaryOp, Constant, Path, Typ, Typs, UnaryOp, UnaryOpr};
 use crate::def::Spanned;
-use air::ast::{Binders, Ident, Quant};
+use air::ast::{Binder, Binders, Ident, Quant};
 use std::sync::Arc;
 
 pub type Trig = Exps;
@@ -20,6 +20,7 @@ pub enum BndX {
     Let(Binders<Exp>),
     Quant(Quant, Binders<Typ>, Trigs),
     Lambda(Binders<Typ>),
+    Choose(Binder<Typ>, Trigs),
 }
 
 // variable name with optional unique id for renaming (equal to unique_id in LocalDeclX)

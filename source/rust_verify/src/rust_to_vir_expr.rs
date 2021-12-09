@@ -167,6 +167,26 @@ fn extract_quant<'tcx>(
     }
 }
 
+fn extract_choose<'tcx>(
+    bctx: &BodyCtxt<'tcx>,
+    span: Span,
+    expr: &'tcx Expr<'tcx>,
+) -> Result<vir::ast::Expr, VirErr> {
+    let tcx = bctx.ctxt.tcx;
+    match &expr.kind {
+        ExprKind::Closure(_, fn_decl, body_id, _, _) => {
+            let body = tcx.hir().body(*body_id);
+            let typ = ty_to_vir(tcx, &fn_decl.inputs[0]);
+            let name = Arc::new(pat_to_var(body.params[0].pat));
+            let binder = Arc::new(BinderX { name, a: typ.clone() });
+            let expr = &body.value;
+            let vir_expr = expr_to_vir(bctx, expr)?;
+            Ok(spanned_typed_new(span, &typ, ExprX::Choose(binder, vir_expr)))
+        }
+        _ => err_span_str(expr.span, "argument to forall/exists must be a closure"),
+    }
+}
+
 fn mk_clip<'tcx>(range: &IntRange, expr: &vir::ast::Expr) -> vir::ast::Expr {
     match range {
         IntRange::Int => expr.clone(),
@@ -253,6 +273,7 @@ fn fn_call_to_vir<'tcx>(
     let is_decreases = f_name == "builtin::decreases";
     let is_forall = f_name == "builtin::forall";
     let is_exists = f_name == "builtin::exists";
+    let is_choose = f_name == "builtin::choose";
     let is_equal = f_name == "builtin::equal";
     let is_hide = f_name == "builtin::hide";
     let is_reveal = f_name == "builtin::reveal";
@@ -277,7 +298,7 @@ fn fn_call_to_vir<'tcx>(
         &bctx.ctxt,
         fn_span,
         &path,
-        is_spec || is_quant || is_directive || is_assert_by,
+        is_spec || is_quant || is_directive || is_assert_by || is_choose,
         is_implies,
     );
 
@@ -311,6 +332,10 @@ fn fn_call_to_vir<'tcx>(
         unsupported_err_unless!(len == 1, expr.span, "expected forall/exists", &args);
         let quant = if is_forall { Quant::Forall } else { Quant::Exists };
         return extract_quant(bctx, expr.span, quant, args[0]);
+    }
+    if is_choose {
+        unsupported_err_unless!(len == 1, expr.span, "expected choose", &args);
+        return extract_choose(bctx, expr.span, args[0]);
     }
 
     if is_hide || is_reveal {

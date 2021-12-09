@@ -100,9 +100,8 @@ impl<A> Set<A> {
     }
 
     #[spec]
-    #[verifier(pub_abstract)]
     pub fn choose(self) -> A {
-        arbitrary()
+        choose(|a: A| self.contains(a))
     }
 
     #[spec]
@@ -192,14 +191,6 @@ pub fn axiom_set_complement<A>(s: Set<A>, a: A) {
 #[verifier(export_as_global_forall)]
 pub fn axiom_set_ext_equal<A>(s1: Set<A>, s2: Set<A>) {
     ensures(s1.ext_equal(s2) == equal(s1, s2));
-}
-
-#[proof]
-#[verifier(no_verify)]
-#[verifier(export_as_global_forall)]
-pub fn axiom_set_choose_contains<A>(s: Set<A>) {
-    requires(exists(|a: A| s.contains(a)));
-    ensures(#[trigger] s.contains(s.choose()));
 }
 
 #[proof]

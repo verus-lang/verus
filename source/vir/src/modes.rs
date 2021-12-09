@@ -210,6 +210,13 @@ fn check_expr(typing: &mut Typing, outer_mode: Mode, expr: &Expr) -> Result<Mode
             typing.vars.pop_scope();
             Ok(Mode::Spec)
         }
+        ExprX::Choose(binder, e1) => {
+            typing.vars.push_scope(true);
+            typing.insert(&expr.span, &binder.name, Mode::Spec);
+            check_expr_has_mode(typing, Mode::Spec, e1, Mode::Spec)?;
+            typing.vars.pop_scope();
+            Ok(Mode::Spec)
+        }
         ExprX::Assign(lhs, rhs) => match &lhs.x {
             ExprX::Var(x) => {
                 let x_mode = typing.get(x);

@@ -170,6 +170,14 @@ where
             map.pop_scope();
             ExprX::Closure(Arc::new(params), body)
         }
+        ExprX::Choose(binder, e1) => {
+            let binder = binder.map_result(|t| map_typ_visitor_env(t, env, ft))?;
+            map.push_scope(true);
+            let _ = map.insert(binder.name.clone(), binder.a.clone());
+            let expr1 = map_expr_visitor_env(e1, map, env, fe, fs, ft)?;
+            map.pop_scope();
+            ExprX::Choose(binder, expr1)
+        }
         ExprX::Assign(e1, e2) => {
             let expr1 = map_expr_visitor_env(e1, map, env, fe, fs, ft)?;
             let expr2 = map_expr_visitor_env(e2, map, env, fe, fs, ft)?;

@@ -186,6 +186,10 @@ fn terminates(ctxt: &Ctxt, exp: &Exp) -> Result<Exp, VirErr> {
                     disallow_recursion_exp(ctxt, e1)?;
                     Ok(Spanned::new(exp.span.clone(), ExpX::Const(Constant::Bool(true))))
                 }
+                BndX::Choose(..) => {
+                    disallow_recursion_exp(ctxt, e1)?;
+                    Ok(Spanned::new(exp.span.clone(), ExpX::Const(Constant::Bool(true))))
+                }
             }
         }
     }

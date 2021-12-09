@@ -265,6 +265,8 @@ pub enum ExprX {
     Quant(Quant, Binders<Typ>, Expr),
     /// Specification closure
     Closure(Binders<Typ>, Expr),
+    /// Choose a specification value satisfying a predicate
+    Choose(Binder<Typ>, Expr),
     /// Assign to local variable
     Assign(Expr, Expr),
     /// Reveal definition of an opaque function with some integer fuel amount
