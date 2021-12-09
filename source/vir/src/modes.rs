@@ -1,5 +1,5 @@
 use crate::ast::{
-    BinaryOp, CallTarget, Datatype, Expr, ExprX, Function, Ident, Krate, Mode, Path, Pattern,
+    BinaryOp, CallTarget, Datatype, Expr, ExprX, Fun, Function, Ident, Krate, Mode, Path, Pattern,
     PatternX, Stmt, StmtX, UnaryOpr, VirErr,
 };
 use crate::ast_util::{err_str, err_string, get_field};
@@ -38,7 +38,7 @@ pub struct ErasureModes {
 }
 
 struct Typing {
-    pub(crate) funs: HashMap<Path, Function>,
+    pub(crate) funs: HashMap<Fun, Function>,
     pub(crate) datatypes: HashMap<Path, Datatype>,
     pub(crate) vars: ScopeMap<Ident, Mode>,
     pub(crate) erasure_modes: ErasureModes,
@@ -113,10 +113,10 @@ fn check_expr(typing: &mut Typing, outer_mode: Mode, expr: &Expr) -> Result<Mode
             typing.erasure_modes.var_modes.push((expr.span.clone(), mode));
             Ok(mode)
         }
-        ExprX::Call(CallTarget::Path(x, _), es) => {
+        ExprX::Call(CallTarget::Static(x, _), es) => {
             let function = match typing.funs.get(x) {
                 None => {
-                    let name = crate::ast_util::path_as_rust_name(x);
+                    let name = crate::ast_util::path_as_rust_name(&x.path);
                     return err_string(&expr.span, format!("cannot find function {}", name));
                 }
                 Some(f) => f.clone(),
@@ -361,10 +361,10 @@ fn check_function(typing: &mut Typing, function: &Function) -> Result<(), VirErr
 }
 
 pub fn check_crate(krate: &Krate) -> Result<ErasureModes, VirErr> {
-    let mut funs: HashMap<Path, Function> = HashMap::new();
+    let mut funs: HashMap<Fun, Function> = HashMap::new();
     let mut datatypes: HashMap<Path, Datatype> = HashMap::new();
     for function in krate.functions.iter() {
-        funs.insert(function.x.path.clone(), function.clone());
+        funs.insert(function.x.name.clone(), function.clone());
     }
     for datatype in krate.datatypes.iter() {
         datatypes.insert(datatype.x.path.clone(), datatype.clone());

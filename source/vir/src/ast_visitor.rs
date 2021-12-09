@@ -92,9 +92,9 @@ where
         ExprX::Var(x) => ExprX::Var(x.clone()),
         ExprX::Call(target, es) => {
             let target = match target {
-                CallTarget::Path(x, typs) => {
+                CallTarget::Static(x, typs) => {
                     let typs = vec_map_result(&**typs, |t| (map_typ_visitor_env(t, env, ft)))?;
-                    CallTarget::Path(x.clone(), Arc::new(typs))
+                    CallTarget::Static(x.clone(), Arc::new(typs))
                 }
                 CallTarget::FnSpec { typ_param, fun } => {
                     let fun = map_expr_visitor_env(fun, map, env, fe, fs, ft)?;
@@ -335,7 +335,7 @@ where
     FT: Fn(&mut E, &Typ) -> Result<Typ, VirErr>,
 {
     let FunctionX {
-        path,
+        name,
         visibility,
         mode,
         fuel,
@@ -349,7 +349,7 @@ where
         attrs,
         body,
     } = &function.x;
-    let path = path.clone();
+    let name = name.clone();
     let visibility = visibility.clone();
     let mode = *mode;
     let fuel = *fuel;
@@ -374,7 +374,7 @@ where
     let body = body.as_ref().map(|e| map_expr_visitor_env(e, map, env, fe, fs, ft)).transpose()?;
     map.pop_scope();
     let functionx = FunctionX {
-        path,
+        name,
         visibility,
         mode,
         fuel,

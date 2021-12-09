@@ -1,6 +1,6 @@
 use crate::ast::Path;
 use crate::def::*;
-use crate::sst_to_air::path_to_air_ident;
+use crate::sst_to_air::{fun_to_air_ident, path_to_air_ident};
 use air::ast::Ident;
 use air::printer::{macro_push_node, str_to_node};
 use air::{node, nodes_vec};
@@ -26,8 +26,8 @@ pub(crate) fn prelude_nodes() -> Vec<Node> {
     let i_inv = str_to_node(I_INV);
     let arch_size = str_to_node(ARCH_SIZE);
     let check_decrease_int =
-        str_to_node(&suffix_global_id(&path_to_air_ident(&check_decrease_int())));
-    let height = str_to_node(&suffix_global_id(&path_to_air_ident(&height())));
+        str_to_node(&suffix_global_id(&fun_to_air_ident(&check_decrease_int())));
+    let height = str_to_node(&suffix_global_id(&fun_to_air_ident(&height())));
     #[allow(non_snake_case)]
     let Poly = str_to_node(POLY);
     let box_int = str_to_node(BOX_INT);
@@ -247,7 +247,7 @@ pub(crate) fn prelude_nodes() -> Vec<Node> {
 }
 
 pub(crate) fn datatype_height_axiom(typ_name1: &Path, typ_name2: &Path, field: &Ident) -> Node {
-    let height = str_to_node(&suffix_global_id(&path_to_air_ident(&height())));
+    let height = str_to_node(&suffix_global_id(&fun_to_air_ident(&height())));
     let field = str_to_node(field.as_str());
     let typ1 = str_to_node(path_to_air_ident(typ_name1).as_str());
     let box_t1 = str_to_node(prefix_box(typ_name1).as_str());

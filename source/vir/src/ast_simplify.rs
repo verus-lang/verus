@@ -2,9 +2,9 @@
 
 use crate::ast::{
     BinaryOp, Binder, Binders, CallTarget, ClosureImpl, Constant, Datatype, DatatypeTransparency,
-    DatatypeX, Expr, ExprX, Field, Function, FunctionX, GenericBound, GenericBoundX, Ident, Idents,
-    Krate, KrateX, Mode, Param, ParamX, Params, Path, Pattern, PatternX, SpannedTyped, Stmt, StmtX,
-    Typ, TypX, UnaryOp, UnaryOpr, VirErr, Visibility,
+    DatatypeX, Expr, ExprX, Field, FunX, Function, FunctionX, GenericBound, GenericBoundX, Ident,
+    Idents, Krate, KrateX, Mode, Param, ParamX, Params, Path, Pattern, PatternX, SpannedTyped,
+    Stmt, StmtX, Typ, TypX, UnaryOp, UnaryOpr, VirErr, Visibility,
 };
 use crate::ast_util::{err_str, err_string, fnspec_type};
 use crate::context::GlobalCtx;
@@ -270,19 +270,22 @@ fn simplify_one_expr(
             for arg in args.iter() {
                 expr_args.push(arg.clone());
             }
-            let call = ExprX::Call(CallTarget::Path(path, Arc::new(typ_args)), Arc::new(expr_args));
+            let call = ExprX::Call(
+                CallTarget::Static(Arc::new(FunX { path, trait_path: None }), Arc::new(typ_args)),
+                Arc::new(expr_args),
+            );
             Ok(SpannedTyped::new(&expr.span, &expr.typ, call))
         }
-        ExprX::Call(CallTarget::Path(path, typs), args) => {
+        ExprX::Call(CallTarget::Static(tgt, typs), args) => {
             // Remove FnSpec type arguments
-            let bounds = &ctx.fun_bounds[path];
+            let bounds = &ctx.fun_bounds[tgt];
             let typs: Vec<Typ> = typs
                 .iter()
                 .zip(bounds.iter())
                 .filter(|(_, bound)| is_removed(bound))
                 .map(|(t, _)| t.clone())
                 .collect();
-            let call = ExprX::Call(CallTarget::Path(path.clone(), Arc::new(typs)), args.clone());
+            let call = ExprX::Call(CallTarget::Static(tgt.clone(), Arc::new(typs)), args.clone());
             Ok(SpannedTyped::new(&expr.span, &expr.typ, call))
         }
         ExprX::Tuple(args) => {
@@ -409,7 +412,10 @@ fn simplify_one_expr(
 
             // call: f(captures)
             let typ_args = vec_map(&local.typ_params, |x| Arc::new(TypX::TypParam(x.clone())));
-            let target = CallTarget::Path(path.clone(), Arc::new(typ_args));
+            let target = CallTarget::Static(
+                Arc::new(FunX { path: path.clone(), trait_path: None }),
+                Arc::new(typ_args),
+            );
             let args = vec_map(&captures, |p| {
                 SpannedTyped::new(&expr.span, &p.a, ExprX::Var(p.name.clone()))
             });
@@ -435,7 +441,10 @@ fn simplify_one_expr(
                 };
                 args.push(arg);
             }
-            let target = CallTarget::Path(apply, Arc::new(targs));
+            let target = CallTarget::Static(
+                Arc::new(FunX { path: apply, trait_path: None }),
+                Arc::new(targs),
+            );
             let appx = ExprX::Call(target, Arc::new(args));
             let appx = match &*body.typ {
                 TypX::TypParam(_) | TypX::Boxed(_) => appx,
@@ -619,7 +628,7 @@ fn mk_fun_decl(
     Spanned::new(
         span.clone(),
         FunctionX {
-            path: path.clone(),
+            name: Arc::new(FunX { path: path.clone(), trait_path: None }),
             visibility: Visibility { owning_module: None, is_private: false },
             mode: Mode::Spec,
             fuel: 0,

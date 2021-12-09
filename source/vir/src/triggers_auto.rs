@@ -1,4 +1,4 @@
-use crate::ast::{BinaryOp, Constant, Ident, Path, Typ, TypX, UnaryOp, UnaryOpr, VirErr};
+use crate::ast::{BinaryOp, Constant, Fun, Ident, Path, Typ, TypX, UnaryOp, UnaryOpr, VirErr};
 use crate::ast_util::{err_str, path_as_rust_name};
 use crate::context::Ctx;
 use crate::sst::{Exp, ExpX, Trig, Trigs, UniqueIdent};
@@ -31,7 +31,7 @@ and programmers having to use manual triggers to eliminate the timeouts.
 enum App {
     Const(Constant),
     Field(Path, Ident, Ident),
-    Call(Path),
+    Call(Fun),
     Ctor(Path, Ident), // datatype constructor: (Path, Variant)
     Other(u64),        // u64 is an id, assigned via a simple counter
 }
@@ -52,7 +52,7 @@ impl std::fmt::Debug for TermX {
             TermX::App(App::Field(_, x, y), es) => write!(f, "{:?}.{}/{}", es[0], x, y),
             TermX::App(c @ (App::Call(_) | App::Ctor(_, _)), es) => {
                 match c {
-                    App::Call(x) => write!(f, "{}(", path_as_rust_name(x))?,
+                    App::Call(x) => write!(f, "{}(", path_as_rust_name(&x.path))?,
                     App::Ctor(path, variant) => {
                         write!(f, "{}::{}(", path_as_rust_name(path), variant)?
                     }

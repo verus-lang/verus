@@ -1,5 +1,5 @@
 use crate::ast::{
-    CallTarget, Datatype, Expr, ExprX, Function, Krate, Mode, Path, UnaryOpr, VirErr,
+    CallTarget, Datatype, Expr, ExprX, Fun, Function, Krate, Mode, Path, UnaryOpr, VirErr,
 };
 use crate::ast_util::{err_str, err_string};
 use crate::ast_visitor::map_expr_visitor;
@@ -7,7 +7,7 @@ use crate::datatype_to_air::is_datatype_transparent;
 use std::collections::HashMap;
 
 struct Ctxt {
-    pub(crate) funs: HashMap<Path, Function>,
+    pub(crate) funs: HashMap<Fun, Function>,
     pub(crate) dts: HashMap<Path, Datatype>,
 }
 
@@ -43,7 +43,7 @@ fn check_function(ctxt: &Ctxt, function: &Function) -> Result<(), VirErr> {
     if let Some(body) = &function.x.body {
         map_expr_visitor(body, &mut |expr: &Expr| {
             match &expr.x {
-                ExprX::Call(CallTarget::Path(x, _), _) => {
+                ExprX::Call(CallTarget::Static(x, _), _) => {
                     // Check that public, non-abstract spec function bodies don't refer to private items
                     if !function.x.is_abstract
                         && !function.x.visibility.is_private
@@ -101,7 +101,7 @@ pub fn check_crate(krate: &Krate) -> Result<(), VirErr> {
     let funs = krate
         .functions
         .iter()
-        .map(|function| (function.x.path.clone(), function.clone()))
+        .map(|function| (function.x.name.clone(), function.clone()))
         .collect();
     let dts = krate
         .datatypes

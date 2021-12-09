@@ -53,8 +53,7 @@ use rustc_ast::ast::{
     AngleBracketedArg, AngleBracketedArgs, Arm, AssocItem, AssocItemKind, Block, Crate, EnumDef,
     Expr, ExprKind, Field, FieldPat, FnDecl, FnKind, FnRetTy, FnSig, GenericArgs, GenericParam,
     Generics, ImplKind, Item, ItemKind, Lit, LitIntType, LitKind, Local, ModKind, NodeId, Param,
-    Pat, PatKind, PathSegment, Stmt, StmtKind, StructField, StructRest, TraitRef, Variant,
-    VariantData,
+    Pat, PatKind, PathSegment, Stmt, StmtKind, StructField, StructRest, Variant, VariantData,
 };
 use rustc_ast::ptr::P;
 use rustc_data_structures::thin_vec::ThinVec;
@@ -68,7 +67,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use vir::ast::{
-    Datatype, ExprX, Function, GenericBoundX, Krate, Mode, Path, Pattern, PatternX, UnaryOpr,
+    Datatype, ExprX, Fun, Function, GenericBoundX, Krate, Mode, Path, Pattern, PatternX, UnaryOpr,
 };
 use vir::ast_util::get_field;
 use vir::modes::{mode_join, ErasureModes};
@@ -81,7 +80,7 @@ pub enum ResolvedCall {
     /// The call is to an operator like == or + that should be compiled.
     CompilableOperator,
     /// The call is to a function, and we record the resolved name of the function here.
-    Call(Path),
+    Call(Fun),
     /// Path and variant of datatype constructor
     Ctor(Path, vir::ast::Ident),
 }
@@ -100,7 +99,7 @@ pub struct ErasureHints {
     pub erasure_modes: ErasureModes,
     /// List of #[verifier(external)] functions.  (These don't appear in vir_crate,
     /// so we need to record them separately here.)
-    pub external_functions: Vec<Path>,
+    pub external_functions: Vec<Fun>,
 }
 
 #[derive(Clone)]
@@ -109,7 +108,7 @@ pub struct Ctxt {
     vir_crate: Krate,
     /// Map each function path to its VIR Function, or to None if it is a #[verifier(external)]
     /// function
-    functions: HashMap<Path, Option<Function>>,
+    functions: HashMap<Fun, Option<Function>>,
     /// Map each datatype path to its VIR Datatype
     datatypes: HashMap<Path, Datatype>,
     /// Map each function span to its VIR Function, excluding #[verifier(external)] functions
@@ -335,10 +334,10 @@ fn erase_call(
     ctxt: &Ctxt,
     mctxt: &mut MCtxt,
     segment: &PathSegment,
-    f_path: &Path,
+    f_name: &Fun,
     args: &Vec<P<Expr>>,
 ) -> Option<Option<(PathSegment, Vec<P<Expr>>)>> {
-    let f = &ctxt.functions[f_path];
+    let f = &ctxt.functions[f_name];
     if let Some(f) = f {
         let mut segment = segment.clone();
         if let Some(args) = &segment.args {
@@ -492,9 +491,9 @@ fn erase_expr_opt(ctxt: &Ctxt, mctxt: &mut MCtxt, expect: Mode, expr: &Expr) -> 
                         return None;
                     }
                 }
-                ResolvedCall::Call(f_path) => {
+                ResolvedCall::Call(f_name) => {
                     let segment = path.segments.last().expect("path with segments");
-                    match erase_call(ctxt, mctxt, segment, f_path, args) {
+                    match erase_call(ctxt, mctxt, segment, f_name, args) {
                         None => return Some(expr.clone()),
                         Some(None) => return None,
                         Some(Some((segment, args))) => {
@@ -824,11 +823,18 @@ fn erase_assoc_item(ctxt: &Ctxt, mctxt: &mut MCtxt, item: &AssocItem) -> Option<
             if vattrs.external {
                 return Some(item.clone());
             }
-            match erase_fn(ctxt, mctxt, f) {
-                None => None,
-                Some(f) => Some(update_item(item, AssocItemKind::Fn(Box::new(f)))),
+            let FnKind(_, sig, _, _) = &**f;
+            // we ignore (not erase) functions for which we do not have a span, this currently
+            // includes impls of builtin traits that are not encoded in vir
+            match ctxt.functions_by_span.get(&sig.span) {
+                Some(_) => {
+                    let erased = erase_fn(ctxt, mctxt, f);
+                    erased.map(|f| update_item(item, AssocItemKind::Fn(Box::new(f))))
+                }
+                None => Some(item.clone()),
             }
         }
+        AssocItemKind::TyAlias(_) => Some(item.clone()),
         _ => panic!("unsupported AssocItemKind"),
     }
 }
@@ -901,9 +907,6 @@ fn erase_item(ctxt: &Ctxt, mctxt: &mut MCtxt, item: &Item) -> Vec<P<Item>> {
             }
         }
         ItemKind::Impl(kind) => {
-            if let Some(TraitRef { .. }) = kind.of_trait {
-                return vec![P(item.clone())];
-            }
             let mut items: Vec<P<AssocItem>> = Vec::new();
             for item in &kind.items {
                 if let Some(item) = erase_assoc_item(ctxt, mctxt, &item) {
@@ -952,7 +955,7 @@ fn mk_ctxt(erasure_hints: &ErasureHints, keep_proofs: bool) -> Ctxt {
     let mut resolved_exprs: HashMap<Span, vir::ast::Expr> = HashMap::new();
     let mut resolved_pats: HashMap<Span, Pattern> = HashMap::new();
     for f in &erasure_hints.vir_crate.functions {
-        functions.insert(f.x.path.clone(), Some(f.clone()));
+        functions.insert(f.x.name.clone(), Some(f.clone()));
         functions_by_span.insert(from_raw_span(&f.span.raw_span), f.clone());
     }
     for name in &erasure_hints.external_functions {

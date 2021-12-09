@@ -10,7 +10,7 @@ pub struct ErasureInfo {
     pub(crate) resolved_exprs: Vec<(SpanData, Expr)>,
     pub(crate) resolved_pats: Vec<(SpanData, Pattern)>,
     pub(crate) condition_modes: Vec<(SpanData, Mode)>,
-    pub(crate) external_functions: Vec<vir::ast::Path>,
+    pub(crate) external_functions: Vec<vir::ast::Fun>,
 }
 
 type ErasureInfoRef = std::rc::Rc<std::cell::RefCell<ErasureInfo>>;

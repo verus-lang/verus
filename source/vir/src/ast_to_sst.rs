@@ -1,5 +1,5 @@
 use crate::ast::{
-    BinaryOp, CallTarget, Constant, Expr, ExprX, Function, Ident, Mode, Params, Path, PatternX,
+    BinaryOp, CallTarget, Constant, Expr, ExprX, Fun, Function, Ident, Mode, Params, PatternX,
     SpannedTyped, Stmt, StmtX, Typ, TypX, Typs, UnaryOp, UnaryOpr, VirErr,
 };
 use crate::ast_util::{err_str, err_string};
@@ -139,14 +139,14 @@ fn init_var(span: &Span, x: &UniqueIdent, exp: &Exp) -> Stm {
     Spanned::new(span.clone(), StmX::Assign { lhs, rhs: exp.clone(), is_init: true })
 }
 
-fn get_function(ctx: &Ctx, expr: &Expr, name: &Path) -> Result<Function, VirErr> {
+fn get_function(ctx: &Ctx, expr: &Expr, name: &Fun) -> Result<Function, VirErr> {
     match ctx.func_map.get(name) {
         None => err_string(&expr.span, format!("could not find function {:?}", &name)),
         Some(func) => Ok(func.clone()),
     }
 }
 
-fn function_can_be_exp(ctx: &Ctx, expr: &Expr, path: &Path) -> Result<bool, VirErr> {
+fn function_can_be_exp(ctx: &Ctx, expr: &Expr, path: &Fun) -> Result<bool, VirErr> {
     match get_function(ctx, expr, path)?.x.mode {
         Mode::Spec => Ok(true),
         Mode::Proof | Mode::Exec => Ok(false),
@@ -157,12 +157,12 @@ fn expr_get_call(
     ctx: &Ctx,
     state: &mut State,
     expr: &Expr,
-) -> Result<Option<(Vec<Stm>, Path, Typs, bool, Args)>, VirErr> {
+) -> Result<Option<(Vec<Stm>, Fun, Typs, bool, Args)>, VirErr> {
     match &expr.x {
         ExprX::Call(CallTarget::FnSpec { .. }, _) => {
             panic!("internal error: FnSpec should have been replaced in ast_simplify")
         }
-        ExprX::Call(CallTarget::Path(x, typs), args) => {
+        ExprX::Call(CallTarget::Static(x, typs), args) => {
             let mut stms: Vec<Stm> = Vec::new();
             let mut exps: Vec<Arg> = Vec::new();
             for arg in args.iter() {
@@ -182,9 +182,9 @@ fn expr_must_be_call_stm(
     ctx: &Ctx,
     state: &mut State,
     expr: &Expr,
-) -> Result<Option<(Vec<Stm>, Path, Typs, bool, Args)>, VirErr> {
+) -> Result<Option<(Vec<Stm>, Fun, Typs, bool, Args)>, VirErr> {
     match &expr.x {
-        ExprX::Call(CallTarget::Path(x, _), _) if !function_can_be_exp(ctx, expr, x)? => {
+        ExprX::Call(CallTarget::Static(x, _), _) if !function_can_be_exp(ctx, expr, x)? => {
             expr_get_call(ctx, state, expr)
         }
         _ => Ok(None),
@@ -303,7 +303,7 @@ fn is_small_exp(exp: &Exp) -> bool {
 fn stm_call(
     state: &mut State,
     span: &Span,
-    path: Path,
+    name: Fun,
     typs: Typs,
     args: Args,
     dest: Option<Dest>,
@@ -322,7 +322,7 @@ fn stm_call(
             stms.push(init_var(&arg.0.span, &temp_id, &arg.0));
         }
     }
-    let call = StmX::Call(path, typs, Arc::new(small_args), dest);
+    let call = StmX::Call(name, typs, Arc::new(small_args), dest);
     stms.push(Spanned::new(span.clone(), call));
     stms_to_one_stm(span, stms)
 }

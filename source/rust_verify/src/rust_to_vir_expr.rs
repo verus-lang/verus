@@ -23,8 +23,8 @@ use rustc_span::def_id::DefId;
 use rustc_span::Span;
 use std::sync::Arc;
 use vir::ast::{
-    ArmX, BinaryOp, CallTarget, Constant, ExprX, HeaderExpr, HeaderExprX, Ident, IntRange, Mode,
-    PatternX, SpannedTyped, StmtX, Stmts, Typ, TypX, UnaryOp, UnaryOpr, VirErr,
+    ArmX, BinaryOp, CallTarget, Constant, ExprX, FunX, HeaderExpr, HeaderExprX, Ident, IntRange,
+    Mode, PatternX, SpannedTyped, StmtX, Stmts, Typ, TypX, UnaryOp, UnaryOpr, VirErr,
 };
 use vir::ast_util::{ident_binder, path_as_rust_name};
 use vir::def::positional_field_ident;
@@ -196,7 +196,7 @@ pub(crate) fn expr_to_vir<'tcx>(
 fn record_fun(
     ctxt: &crate::context::Context,
     span: Span,
-    path: &vir::ast::Path,
+    name: &vir::ast::Fun,
     is_spec: bool,
     is_compilable_operator: bool,
 ) {
@@ -206,15 +206,21 @@ fn record_fun(
     } else if is_compilable_operator {
         ResolvedCall::CompilableOperator
     } else {
-        ResolvedCall::Call(path.clone())
+        ResolvedCall::Call(name.clone())
     };
     erasure_info.resolved_calls.push((span.data(), resolved_call));
 }
 
-fn get_fn_path<'tcx>(tcx: TyCtxt<'tcx>, expr: &Expr<'tcx>) -> Result<vir::ast::Path, VirErr> {
+fn get_fn_path<'tcx>(tcx: TyCtxt<'tcx>, expr: &Expr<'tcx>) -> Result<vir::ast::Fun, VirErr> {
     match &expr.kind {
         ExprKind::Path(QPath::Resolved(None, path)) => match path.res {
-            Res::Def(DefKind::Fn, id) => Ok(def_id_to_vir_path(tcx, id)),
+            Res::Def(DefKind::Fn, id) => {
+                if let Some(_) = tcx.impl_of_method(id).and_then(|ii| tcx.trait_id_of_impl(ii)) {
+                    unsupported_err!(expr.span, format!("Fn {:?}", id))
+                } else {
+                    Ok(Arc::new(FunX { path: def_id_to_vir_path(tcx, id), trait_path: None }))
+                }
+            }
             res => unsupported_err!(expr.span, format!("Path {:?}", res)),
         },
         _ => unsupported_err!(expr.span, format!("{:?}", expr)),
@@ -273,10 +279,22 @@ fn fn_call_to_vir<'tcx>(
     let is_directive = is_hide || is_reveal || is_reveal_fuel;
     let is_cmp = is_equal || is_eq || is_ne || is_le || is_ge || is_lt || is_gt;
     let is_arith_binary = is_add || is_sub || is_mul;
+
+    unsupported_err_unless!(
+        bctx.ctxt
+            .tcx
+            .impl_of_method(f)
+            .and_then(|method_def_id| bctx.ctxt.tcx.trait_id_of_impl(method_def_id))
+            .is_none(),
+        expr.span,
+        "call of trait impl"
+    );
+    let name = Arc::new(FunX { path, trait_path: None });
+
     record_fun(
         &bctx.ctxt,
         fn_span,
-        &path,
+        &name,
         is_spec || is_quant || is_directive || is_assert_by,
         is_implies,
     );
@@ -425,7 +443,7 @@ fn fn_call_to_vir<'tcx>(
                 _ => unsupported_err!(expr.span, format!("lifetime/const type arguments"), expr),
             }
         }
-        let target = CallTarget::Path(path, Arc::new(typ_args));
+        let target = CallTarget::Static(name, Arc::new(typ_args));
         let param_typs_is_tparam = vec_map(&param_typs, |t| matches!(**t, TypX::TypParam(..)));
         let ret_typ_is_tparam = ret_typ.map(|t| matches!(*t, TypX::TypParam(..)));
         fn_exp_call_to_vir(
@@ -1119,6 +1137,31 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                 .collect();
             let body = expr_to_vir(bctx, &body.value)?;
             Ok(mk_expr(ExprX::Closure { params: Arc::new(params), body, closure_impl: None }))
+        }
+        ExprKind::Index(tgt_expr, idx_expr) => {
+            let tgt_vir = expr_to_vir(bctx, tgt_expr)?;
+            if let TypX::Datatype(path, _dt_typs) = &*tgt_vir.typ {
+                let tgt_index_path = {
+                    let mut tp = path.clone();
+                    Arc::make_mut(&mut Arc::make_mut(&mut tp).segments).push(str_ident("index"));
+                    tp
+                };
+                let trait_def_id = bctx
+                    .ctxt
+                    .tcx
+                    .lang_items()
+                    .index_trait()
+                    .expect("Index trait lang item should be defined");
+                let trait_path = def_id_to_vir_path(bctx.ctxt.tcx, trait_def_id);
+                let idx_vir = expr_to_vir(bctx, idx_expr)?;
+                let target = CallTarget::Static(
+                    Arc::new(FunX { path: tgt_index_path, trait_path: Some(trait_path) }),
+                    Arc::new(vec![]),
+                );
+                Ok(mk_expr(ExprX::Call(target, Arc::new(vec![tgt_vir, idx_vir]))))
+            } else {
+                unsupported_err!(expr.span, format!("Index on non-datatype"), expr)
+            }
         }
         _ => {
             unsupported_err!(expr.span, format!("expression"), expr)
