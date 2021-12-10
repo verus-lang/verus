@@ -543,7 +543,6 @@ const LUNCH_SHARED_CODE: &str = code_str! {
 };
 
 #[test]
-#[ignore]
 fn e13_pass() {
     let files = vec![
         ("directions.rs".to_string(), DIRECTIONS_SHARED_CODE.to_string()),
@@ -614,7 +613,7 @@ fn e13_pass() {
                         // ensures(exists(|o2:Order| o2.is_sandwich() && o1.get_cheese() == o2.get_sandwich().cheese));
                         ensures(exists(|o2:Order| o2.is_sandwich() && o1.get_cheese() == o2.get_cheese()));
                         let o3 = Order::Sandwich { meat: Meat::Ham, cheese: o1.get_cheese() };
-                        // TODO(jonh) fill in
+                        assert(o3.is_sandwich() /*&& o1.get_cheese() == o3.get_cheese()*/); // witness to ensures.
                     });
                 }
             },
