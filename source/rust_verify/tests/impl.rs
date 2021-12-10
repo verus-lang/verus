@@ -228,3 +228,15 @@ test_verify_one_file! {
         }
     } => Err(_)
 }
+
+test_verify_one_file! {
+    #[test] test_illegal_trait_impl_2 code! {
+        struct V {
+        }
+
+        impl std::ops::Index<usize> for V {
+            type Output = bool;
+            fn index(&self, #[spec]idx: usize) -> &bool { &true }
+        }
+    } => Err(_)
+}

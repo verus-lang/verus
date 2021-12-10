@@ -103,7 +103,9 @@ pub(crate) fn check_item_fn<'tcx>(
     };
     let name = Arc::new(FunX { path, trait_path });
     let mode = get_mode(Mode::Exec, attrs);
-    if let (Some(_), Some((self_path, adt_mode))) = (&name.trait_path, &self_path_mode) {
+    let adt_mode_trait_impl: Option<(_, Mode)> = if let (Some(_), Some((self_path, adt_mode))) =
+        (&name.trait_path, &self_path_mode)
+    {
         if !vir::modes::mode_le(mode, *adt_mode) {
             return err_span_string(
                 sig.span,
@@ -115,7 +117,10 @@ pub(crate) fn check_item_fn<'tcx>(
                 ),
             );
         }
-    }
+        Some((self_path, *adt_mode))
+    } else {
+        None
+    };
     let self_typ_params =
         if let Some(cg) = self_generics { Some(check_generics(ctxt.tcx, cg)?) } else { None };
     let ret_typ_mode = match sig {
@@ -150,6 +155,19 @@ pub(crate) fn check_item_fn<'tcx>(
         let Param { hir_id, pat, ty_span: _, span } = param;
         let name = Arc::new(pat_to_var(pat));
         let param_mode = get_var_mode(mode, ctxt.tcx.hir().attrs(*hir_id));
+        if let Some((self_path, adt_mode)) = &adt_mode_trait_impl {
+            if !vir::modes::mode_le(param_mode, *adt_mode) {
+                return err_span_string(
+                    sig.span,
+                    format!(
+                        "{} has mode {}, which must not be lower than the paramater's mode {} for trait impls",
+                        vir::ast_util::path_as_rust_name(&self_path),
+                        adt_mode,
+                        param_mode
+                    ),
+                );
+            }
+        }
         let typ = if is_self_or_self_ref(*span, &input)? {
             if mode != param_mode {
                 // It's hard for erase.rs to support mode != param_mode (we'd have to erase self),
