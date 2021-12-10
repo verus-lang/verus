@@ -18,6 +18,7 @@ fn check_variant_data<'tcx>(
     ctxt: &Context<'tcx>,
     name: &Ident,
     variant_data: &'tcx VariantData<'tcx>,
+    in_enum: bool,
 ) -> (Variant, bool) {
     // TODO handle field visibility; does rustc_middle::ty::Visibility have better visibility
     // information than hir?
@@ -35,7 +36,7 @@ fn check_variant_data<'tcx>(
                                 get_mode(Mode::Exec, ctxt.tcx.hir().attrs(field.hir_id)),
                             ),
                         ),
-                        is_visibility_private(&field.vis.node),
+                        is_visibility_private(&field.vis.node, !in_enum),
                     )
                 })
                 .unzip();
@@ -54,7 +55,7 @@ fn check_variant_data<'tcx>(
                                 get_mode(Mode::Exec, ctxt.tcx.hir().attrs(field.hir_id)),
                             ),
                         ),
-                        is_visibility_private(&field.vis.node),
+                        is_visibility_private(&field.vis.node, !in_enum),
                     )
                 })
                 .unzip();
@@ -79,7 +80,7 @@ pub fn check_item_struct<'tcx>(
     let name = hack_get_def_name(ctxt.tcx, id.def_id.to_def_id());
     let path = def_id_to_vir_path(ctxt.tcx, id.def_id.to_def_id());
     let variant_name = Arc::new(name.clone());
-    let (variant, one_field_private) = check_variant_data(ctxt, &variant_name, variant_data);
+    let (variant, one_field_private) = check_variant_data(ctxt, &variant_name, variant_data, false);
     let vattrs = get_verifier_attrs(attrs)?;
     let transparency = if !vattrs.do_verify {
         DatatypeTransparency::Never
@@ -112,7 +113,7 @@ pub fn check_item_enum<'tcx>(
         .iter()
         .map(|variant| {
             let variant_name = str_ident(&variant.ident.as_str());
-            check_variant_data(ctxt, &variant_name, &variant.data)
+            check_variant_data(ctxt, &variant_name, &variant.data, true)
         })
         .unzip();
     let one_field_private = one_field_private.into_iter().any(|x| x);

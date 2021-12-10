@@ -188,3 +188,24 @@ test_verify_one_file! {
         }
     } => Err(_)
 }
+
+test_verify_one_file! {
+    #[test] test_enum_adt_mod code! {
+        mod A {
+            use builtin::*;
+            pub enum E {
+                A { a: u64 },
+                B(u64)
+            }
+        }
+
+        mod B {
+            use crate::pervasive::*;
+            use crate::A::*;
+            fn test() {
+                let e = E::A { a: 12 };
+                assert(match e { E::A { a } => a == 12, _ => false });
+            }
+        }
+    } => Ok(())
+}

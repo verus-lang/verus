@@ -609,8 +609,8 @@ fn e13_pass() {
                     forall(|o1:Order| {
                         requires(o1.is_appetizer());
                         ensures(exists(|o2:Order| o2.is_sandwich() && o1.get_cheese() == o2.get_cheese()));
-                        // TODO(utaal): `error: constructor of datatype with unencoded fields here`
                         let o3 = Order::Sandwich { meat: Meat::Ham, cheese: o1.get_cheese() };
+                        // TODO(jonh) fill in
                     });
                 }
             },

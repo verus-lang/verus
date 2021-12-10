@@ -82,9 +82,9 @@ pub(crate) fn ident_to_var<'tcx>(ident: &Ident) -> String {
     ident.to_string()
 }
 
-pub(crate) fn is_visibility_private(vis_kind: &VisibilityKind) -> bool {
+pub(crate) fn is_visibility_private(vis_kind: &VisibilityKind, inherited_is_private: bool) -> bool {
     match vis_kind {
-        VisibilityKind::Inherited => true,
+        VisibilityKind::Inherited => inherited_is_private,
         VisibilityKind::Public => false,
         VisibilityKind::Crate(_) => false,
         VisibilityKind::Restricted { .. } => unsupported!("restricted visibility"),
@@ -97,7 +97,7 @@ pub(crate) fn mk_visibility<'tcx>(
 ) -> vir::ast::Visibility {
     vir::ast::Visibility {
         owning_module: owning_module.clone(),
-        is_private: is_visibility_private(&vis.node),
+        is_private: is_visibility_private(&vis.node, true),
     }
 }
 
