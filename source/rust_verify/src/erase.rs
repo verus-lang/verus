@@ -100,6 +100,8 @@ pub struct ErasureHints {
     /// List of #[verifier(external)] functions.  (These don't appear in vir_crate,
     /// so we need to record them separately here.)
     pub external_functions: Vec<Fun>,
+    /// List of function spans ignored by the verifier. These should not be erased
+    pub ignored_functions: Vec<SpanData>,
 }
 
 #[derive(Clone)]
@@ -111,8 +113,9 @@ pub struct Ctxt {
     functions: HashMap<Fun, Option<Function>>,
     /// Map each datatype path to its VIR Datatype
     datatypes: HashMap<Path, Datatype>,
-    /// Map each function span to its VIR Function, excluding #[verifier(external)] functions
-    functions_by_span: HashMap<Span, Function>,
+    /// Map each function span to its VIR Function, excluding #[verifier(external)] functions.
+    /// Spans of functions ignored by the verifier map to None.
+    functions_by_span: HashMap<Span, Option<Function>>,
     /// Details of each call in the first run's HIR
     calls: HashMap<Span, ResolvedCall>,
     /// Details of some expressions in first run's HIR
@@ -783,7 +786,11 @@ fn erase_block(ctxt: &Ctxt, mctxt: &mut MCtxt, expect: Mode, block: &Block) -> B
 
 fn erase_fn(ctxt: &Ctxt, mctxt: &mut MCtxt, f: &FnKind) -> Option<FnKind> {
     let FnKind(defaultness, sig, generics, body_opt) = f;
-    let f_vir = &ctxt.functions_by_span[&sig.span];
+    let f_vir = if let Some(f_vir) = &ctxt.functions_by_span[&sig.span] {
+        f_vir
+    } else {
+        return Some(f.clone());
+    };
     if !keep_mode(ctxt, f_vir.x.mode) {
         return None;
     }
@@ -823,16 +830,8 @@ fn erase_assoc_item(ctxt: &Ctxt, mctxt: &mut MCtxt, item: &AssocItem) -> Option<
             if vattrs.external {
                 return Some(item.clone());
             }
-            let FnKind(_, sig, _, _) = &**f;
-            // we ignore (not erase) functions for which we do not have a span, this currently
-            // includes impls of builtin traits that are not encoded in vir
-            match ctxt.functions_by_span.get(&sig.span) {
-                Some(_) => {
-                    let erased = erase_fn(ctxt, mctxt, f);
-                    erased.map(|f| update_item(item, AssocItemKind::Fn(Box::new(f))))
-                }
-                None => Some(item.clone()),
-            }
+            let erased = erase_fn(ctxt, mctxt, f);
+            erased.map(|f| update_item(item, AssocItemKind::Fn(Box::new(f))))
         }
         AssocItemKind::TyAlias(_) => Some(item.clone()),
         _ => panic!("unsupported AssocItemKind"),
@@ -956,10 +955,13 @@ fn mk_ctxt(erasure_hints: &ErasureHints, keep_proofs: bool) -> Ctxt {
     let mut resolved_pats: HashMap<Span, Pattern> = HashMap::new();
     for f in &erasure_hints.vir_crate.functions {
         functions.insert(f.x.name.clone(), Some(f.clone()));
-        functions_by_span.insert(from_raw_span(&f.span.raw_span), f.clone());
+        functions_by_span.insert(from_raw_span(&f.span.raw_span), Some(f.clone()));
     }
     for name in &erasure_hints.external_functions {
         functions.insert(name.clone(), None);
+    }
+    for span in &erasure_hints.ignored_functions {
+        functions_by_span.insert(span.span(), None);
     }
     for d in &erasure_hints.vir_crate.datatypes {
         datatypes.insert(d.x.path.clone(), d.clone());

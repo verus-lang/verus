@@ -444,6 +444,7 @@ impl Verifier {
             resolved_pats: vec![],
             condition_modes: vec![],
             external_functions: vec![],
+            ignored_functions: vec![],
         };
         let erasure_info = std::rc::Rc::new(std::cell::RefCell::new(erasure_info));
         let ctxt = Context { tcx, krate: hir.krate(), erasure_info };
@@ -506,6 +507,7 @@ impl Verifier {
         let resolved_exprs = erasure_info.resolved_exprs.clone();
         let resolved_pats = erasure_info.resolved_pats.clone();
         let external_functions = erasure_info.external_functions.clone();
+        let ignored_functions = erasure_info.ignored_functions.clone();
         let erasure_hints = crate::erase::ErasureHints {
             vir_crate,
             resolved_calls,
@@ -513,6 +515,7 @@ impl Verifier {
             resolved_pats,
             erasure_modes,
             external_functions,
+            ignored_functions,
         };
         self.erasure_hints = Some(erasure_hints);
 

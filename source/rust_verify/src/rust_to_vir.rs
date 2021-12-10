@@ -82,7 +82,7 @@ fn check_item<'tcx>(
         ItemKind::Impl(impll) => {
             if let Some(TraitRef { path, hir_ref_id: _ }) = impll.of_trait {
                 let path_name = path_as_rust_name(&def_id_to_vir_path(ctxt.tcx, path.res.def_id()));
-                if path_name == "builtin::Structural" {
+                let ignore = if path_name == "builtin::Structural" {
                     let ty = {
                         // TODO extract to rust_to_vir_base, or use
                         // https://doc.rust-lang.org/nightly/nightly-rustc/rustc_typeck/fn.hir_ty_to_ty.html
@@ -121,7 +121,7 @@ fn check_item<'tcx>(
                         format!("Structural impl for non-structural type {:?}", ty),
                         ty
                     );
-                    return Ok(());
+                    true
                 } else if path_name == "core::marker::StructuralEq"
                     || path_name == "core::cmp::Eq"
                     || path_name == "core::marker::StructuralPartialEq"
@@ -129,6 +129,29 @@ fn check_item<'tcx>(
                     || path_name == "builtin::Structural"
                 {
                     // TODO SOUNDNESS additional checks of the implementation
+                    true
+                } else {
+                    false
+                };
+
+                if ignore {
+                    for impl_item_ref in impll.items {
+                        match impl_item_ref.kind {
+                            AssocItemKind::Fn { has_self } if has_self => {
+                                if let ImplItemKind::Fn(sig, _) =
+                                    &ctxt.tcx.hir().impl_item(impl_item_ref.id).kind
+                                {
+                                    ctxt.erasure_info
+                                        .borrow_mut()
+                                        .ignored_functions
+                                        .push(sig.span.data());
+                                } else {
+                                    panic!("Fn impl item expected");
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
                     return Ok(());
                 }
             }
