@@ -1,4 +1,4 @@
-use crate::ast::{Path, PathX};
+use crate::ast::{Fun, FunX, Path, PathX};
 use crate::sst::UniqueIdent;
 use air::ast::{Ident, Span};
 use air::ast_util::str_ident;
@@ -53,6 +53,8 @@ const PREFIX_TUPLE_FIELD: &str = "field%";
 const PATH_SEPARATOR: &str = ".";
 const VARIANT_SEPARATOR: &str = "/";
 const VARIANT_FIELD_SEPARATOR: &str = "/";
+const FUN_TRAIT_DEF_BEGIN: &str = "<";
+const FUN_TRAIT_DEF_END: &str = ">";
 
 pub const SUFFIX_SNAP_MUT: &str = "_mutation";
 pub const SUFFIX_SNAP_JOIN: &str = "_join";
@@ -113,12 +115,31 @@ pub fn path_to_string(path: &Path) -> String {
     strings.join(crate::def::PATH_SEPARATOR) + crate::def::SUFFIX_PATH
 }
 
-pub fn check_decrease_int() -> Path {
-    Arc::new(PathX { krate: None, segments: Arc::new(vec![str_ident(CHECK_DECREASE_INT)]) })
+pub fn fun_to_string(fun: &Fun) -> String {
+    let FunX { path, trait_path } = &(**fun);
+    let s = path_to_string(path);
+    if let Some(trait_path) = trait_path {
+        s + FUN_TRAIT_DEF_BEGIN + &path_to_string(trait_path) + FUN_TRAIT_DEF_END
+    } else {
+        s
+    }
 }
 
-pub fn height() -> Path {
-    Arc::new(PathX { krate: None, segments: Arc::new(vec![str_ident(HEIGHT)]) })
+pub fn check_decrease_int() -> Fun {
+    Arc::new(FunX {
+        path: Arc::new(PathX {
+            krate: None,
+            segments: Arc::new(vec![str_ident(CHECK_DECREASE_INT)]),
+        }),
+        trait_path: None,
+    })
+}
+
+pub fn height() -> Fun {
+    Arc::new(FunX {
+        path: Arc::new(PathX { krate: None, segments: Arc::new(vec![str_ident(HEIGHT)]) }),
+        trait_path: None,
+    })
 }
 
 pub fn suffix_global_id(ident: &Ident) -> Ident {
@@ -219,8 +240,14 @@ fn prefix_path(prefix: String, path: &Path) -> Path {
     Arc::new(pathx)
 }
 
-pub fn prefix_recursive(path: &Path) -> Path {
+fn prefix_recursive(path: &Path) -> Path {
     prefix_path(PREFIX_RECURSIVE.to_string(), path)
+}
+
+pub fn prefix_recursive_fun(fun: &Fun) -> Fun {
+    let FunX { path, trait_path } = &(**fun);
+    let path = prefix_recursive(path);
+    Arc::new(FunX { path, trait_path: trait_path.clone() })
 }
 
 pub fn prefix_temp_var(n: u64) -> Ident {

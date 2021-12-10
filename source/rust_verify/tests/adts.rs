@@ -176,3 +176,15 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_one_fails(err)
 }
+
+test_verify_one_file! {
+    #[test] test_spec_adt_ctor code! {
+        #[spec]
+        struct SpecStruct { a: nat }
+
+        fn test() {
+            let s = SpecStruct { a: 12 }; // FAILS
+            assert(s.a == 12);
+        }
+    } => Err(_)
+}

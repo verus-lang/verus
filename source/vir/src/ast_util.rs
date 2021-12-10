@@ -1,6 +1,6 @@
 use crate::ast::{
-    BinaryOp, Constant, DatatypeX, Expr, ExprX, FunctionX, Ident, Idents, Mode, Param, Params,
-    Path, PathX, SpannedTyped, Typ, TypX, Variant, Variants, VirErr, VirErrX, Visibility,
+    BinaryOp, Constant, DatatypeX, Expr, ExprX, Fun, FunX, FunctionX, Ident, Idents, Mode, Param,
+    Params, Path, PathX, SpannedTyped, Typ, TypX, Variant, Variants, VirErr, VirErrX, Visibility,
 };
 use crate::def::Spanned;
 use crate::util::vec_map;
@@ -64,6 +64,17 @@ pub fn path_as_rust_name(path: &Path) -> String {
         strings.push(segment.to_string());
     }
     strings.join("::")
+}
+
+pub fn fun_as_rust_dbg(fun: &Fun) -> String {
+    let FunX { path, trait_path } = &**fun;
+    let path_str = path_as_rust_name(path);
+    if let Some(trait_path) = trait_path {
+        let trait_path_str = path_as_rust_name(trait_path);
+        format!("{}<{}>", path_str, trait_path_str)
+    } else {
+        path_str
+    }
 }
 
 // Can source_module see an item owned by owning_module?

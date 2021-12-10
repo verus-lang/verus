@@ -12,7 +12,7 @@ use rustc_middle::ty::TyCtxt;
 use rustc_span::symbol::Ident;
 use rustc_span::Span;
 use std::sync::Arc;
-use vir::ast::{FunctionAttrsX, FunctionX, KrateX, Mode, ParamX, Typ, TypX, VirErr};
+use vir::ast::{FunX, FunctionAttrsX, FunctionX, KrateX, Mode, ParamX, Typ, TypX, VirErr};
 use vir::def::RETURN_VALUE;
 
 pub(crate) fn body_to_vir<'tcx>(
@@ -34,9 +34,7 @@ fn is_self_or_self_ref(span: Span, ty: &rustc_hir::Ty) -> Result<bool, VirErr> {
             rustc_hir::MutTy { ty: rty, mutbl: rustc_hir::Mutability::Not, .. },
         ) => is_self_or_self_ref(span, rty),
         rustc_hir::TyKind::Path(rustc_hir::QPath::Resolved(None, path)) => match path.res {
-            rustc_hir::def::Res::SelfTy(Some(_), _impl_def_id) => {
-                unsupported_err!(span, "trait self", ty)
-            }
+            rustc_hir::def::Res::SelfTy(Some(_), _impl_def_id) => Ok(true),
             rustc_hir::def::Res::SelfTy(None, _) => Ok(true),
             _ => Ok(false),
         },
@@ -86,23 +84,43 @@ fn check_fn_decl<'tcx>(
 pub(crate) fn check_item_fn<'tcx>(
     ctxt: &Context<'tcx>,
     vir: &mut KrateX,
-    self_path: Option<vir::ast::Path>,
+    self_path_mode: Option<(vir::ast::Path, Mode)>,
     id: rustc_span::def_id::DefId,
     visibility: vir::ast::Visibility,
     attrs: &[Attribute],
     sig: &'tcx FnSig<'tcx>,
+    trait_path: Option<vir::ast::Path>,
     self_generics: Option<&'tcx Generics>,
     generics: &'tcx Generics,
     body_id: &BodyId,
 ) -> Result<(), VirErr> {
-    let path = if let Some(self_path) = &self_path {
+    let path = if let Some((self_path, _)) = &self_path_mode {
         let mut full_path = (**self_path).clone();
         Arc::make_mut(&mut full_path.segments).push(def_to_path_ident(ctxt.tcx, id));
         Arc::new(full_path)
     } else {
         def_id_to_vir_path(ctxt.tcx, id)
     };
+    let name = Arc::new(FunX { path, trait_path });
     let mode = get_mode(Mode::Exec, attrs);
+    let adt_mode_trait_impl: Option<(_, Mode)> = if let (Some(_), Some((self_path, adt_mode))) =
+        (&name.trait_path, &self_path_mode)
+    {
+        if !vir::modes::mode_le(mode, *adt_mode) {
+            return err_span_string(
+                sig.span,
+                format!(
+                    "{} has mode {}, which must not be lower than the function's mode {} for trait impls",
+                    vir::ast_util::path_as_rust_name(&self_path),
+                    adt_mode,
+                    mode
+                ),
+            );
+        }
+        Some((self_path, *adt_mode))
+    } else {
+        None
+    };
     let self_typ_params =
         if let Some(cg) = self_generics { Some(check_generics(ctxt.tcx, cg)?) } else { None };
     let ret_typ_mode = match sig {
@@ -116,7 +134,7 @@ pub(crate) fn check_item_fn<'tcx>(
                 ctxt.tcx,
                 &sig.span,
                 decl,
-                self_path.clone(),
+                self_path_mode.as_ref().map(|(self_path, _)| self_path.clone()),
                 self_typ_params.clone(),
                 mode,
             )?
@@ -127,7 +145,7 @@ pub(crate) fn check_item_fn<'tcx>(
     let vattrs = get_verifier_attrs(attrs)?;
     if vattrs.external {
         let mut erasure_info = ctxt.erasure_info.borrow_mut();
-        erasure_info.external_functions.push(path);
+        erasure_info.external_functions.push(name);
         return Ok(());
     }
     let body = &ctxt.krate.bodies[body_id];
@@ -137,6 +155,19 @@ pub(crate) fn check_item_fn<'tcx>(
         let Param { hir_id, pat, ty_span: _, span } = param;
         let name = Arc::new(pat_to_var(pat));
         let param_mode = get_var_mode(mode, ctxt.tcx.hir().attrs(*hir_id));
+        if let Some((self_path, adt_mode)) = &adt_mode_trait_impl {
+            if !vir::modes::mode_le(param_mode, *adt_mode) {
+                return err_span_string(
+                    sig.span,
+                    format!(
+                        "{} has mode {}, which must not be lower than the paramater's mode {} for trait impls",
+                        vir::ast_util::path_as_rust_name(&self_path),
+                        adt_mode,
+                        param_mode
+                    ),
+                );
+            }
+        }
         let typ = if is_self_or_self_ref(*span, &input)? {
             if mode != param_mode {
                 // It's hard for erase.rs to support mode != param_mode (we'd have to erase self),
@@ -154,7 +185,11 @@ pub(crate) fn check_item_fn<'tcx>(
                     Arc::new(TypX::TypParam(t.clone()))
                 });
             Arc::new(TypX::Datatype(
-                self_path.as_ref().expect("a param is Self, so this must be an impl").clone(),
+                self_path_mode
+                    .as_ref()
+                    .map(|(self_path, _)| self_path)
+                    .expect("a param is Self, so this must be an impl")
+                    .clone(),
                 Arc::new(typ_args),
             ))
         } else {
@@ -223,7 +258,7 @@ pub(crate) fn check_item_fn<'tcx>(
         export_as_global_forall: vattrs.export_as_global_forall,
     };
     let func = FunctionX {
-        path,
+        name,
         visibility,
         mode,
         fuel,
@@ -266,6 +301,7 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
         vir_params.push(vir_param);
     }
     let path = def_id_to_vir_path(ctxt.tcx, id);
+    let name = Arc::new(FunX { path, trait_path: None });
     let params = Arc::new(vir_params);
     let (ret_typ, ret_mode) = match ret_typ_mode {
         None => (Arc::new(TypX::Tuple(Arc::new(vec![]))), mode),
@@ -275,7 +311,7 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
         ParamX { name: Arc::new(RETURN_VALUE.to_string()), typ: ret_typ, mode: ret_mode };
     let ret = spanned_new(span, ret_param);
     let func = FunctionX {
-        path,
+        name,
         visibility,
         fuel,
         mode,

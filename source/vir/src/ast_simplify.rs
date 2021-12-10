@@ -179,16 +179,16 @@ fn pattern_to_exprs(
 
 fn simplify_one_expr(ctx: &GlobalCtx, state: &mut State, expr: &Expr) -> Result<Expr, VirErr> {
     match &expr.x {
-        ExprX::Call(CallTarget::Path(path, typs), args) => {
+        ExprX::Call(CallTarget::Static(tgt, typs), args) => {
             // Remove FnSpec type arguments
-            let bounds = &ctx.fun_bounds[path];
+            let bounds = &ctx.fun_bounds[tgt];
             let typs: Vec<Typ> = typs
                 .iter()
                 .zip(bounds.iter())
                 .filter(|(_, bound)| is_removed(bound))
                 .map(|(t, _)| t.clone())
                 .collect();
-            let call = ExprX::Call(CallTarget::Path(path.clone(), Arc::new(typs)), args.clone());
+            let call = ExprX::Call(CallTarget::Static(tgt.clone(), Arc::new(typs)), args.clone());
             Ok(SpannedTyped::new(&expr.span, &expr.typ, call))
         }
         ExprX::Tuple(args) => {
@@ -441,7 +441,7 @@ fn mk_fun_decl(
     Spanned::new(
         span.clone(),
         FunctionX {
-            path: path.clone(),
+            name: Arc::new(FunX { path: path.clone(), trait_path: None }),
             visibility: Visibility { owning_module: None, is_private: false },
             mode: Mode::Spec,
             fuel: 0,

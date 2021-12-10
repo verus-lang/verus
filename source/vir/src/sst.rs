@@ -6,7 +6,7 @@
 //! SST expressions cannot contain statments.
 //! SST is designed to make the translation to AIR as straightforward as possible.
 
-use crate::ast::{BinaryOp, Constant, Path, Typ, Typs, UnaryOp, UnaryOpr};
+use crate::ast::{BinaryOp, Constant, Fun, Path, Typ, Typs, UnaryOp, UnaryOpr};
 use crate::def::Spanned;
 use air::ast::{Binder, Binders, Ident, Quant};
 use std::sync::Arc;
@@ -35,7 +35,7 @@ pub enum ExpX {
     // used only during sst_to_air to generate AIR Old
     Old(Ident, Ident),
     // call to spec function
-    Call(Path, Typs, Exps),
+    Call(Fun, Typs, Exps),
     CallLambda(Typ, Exp, Exps),
     Ctor(Path, Ident, Binders<Exp>),
     Unary(UnaryOp, Exp),
@@ -55,7 +55,7 @@ pub type Stm = Arc<Spanned<StmX>>;
 pub type Stms = Arc<Vec<Stm>>;
 #[derive(Debug)]
 pub enum StmX {
-    Call(Path, Typs, Exps, Option<Dest>), // call to exec/proof function
+    Call(Fun, Typs, Exps, Option<Dest>), // call to exec/proof function
     Assert(Exp),
     Assume(Exp),
     Assign {
@@ -63,7 +63,7 @@ pub enum StmX {
         rhs: Exp,
         is_init: bool,
     },
-    Fuel(Path, u32),
+    Fuel(Fun, u32),
     DeadEnd(Stm),
     If(Exp, Stm, Option<Stm>),
     While {

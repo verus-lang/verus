@@ -1,10 +1,10 @@
 use crate::ast::{
-    Datatype, Function, GenericBound, IntRange, Krate, Mode, Path, TypX, Variants, VirErr,
+    Datatype, Fun, Function, GenericBound, IntRange, Krate, Mode, Path, TypX, Variants, VirErr,
 };
 use crate::datatype_to_air::is_datatype_transparent;
 use crate::def::FUEL_ID;
 use crate::scc::Graph;
-use crate::sst_to_air::path_to_air_ident;
+use crate::sst_to_air::fun_to_air_ident;
 use crate::util::vec_map;
 use air::ast::{Command, CommandX, Commands, DeclX, MultiOp, Span};
 use air::ast_util::str_typ;
@@ -15,7 +15,7 @@ use std::sync::Arc;
 pub struct GlobalCtx {
     pub(crate) chosen_triggers: std::cell::RefCell<Vec<(Span, Vec<Vec<String>>)>>, // diagnostics
     pub(crate) datatypes: HashMap<Path, Variants>,
-    pub(crate) fun_bounds: HashMap<Path, Vec<GenericBound>>,
+    pub(crate) fun_bounds: HashMap<Fun, Vec<GenericBound>>,
     // Used for synthesized AST nodes that have no relation to any location in the original code:
     pub(crate) no_span: Span,
 }
@@ -25,9 +25,9 @@ pub struct Ctx {
     pub(crate) module: Path,
     pub(crate) datatypes_with_invariant: HashSet<Path>,
     pub(crate) functions: Vec<Function>,
-    pub(crate) func_map: HashMap<Path, Function>,
-    pub(crate) func_call_graph: Graph<Path>,
-    pub(crate) funcs_with_ensure_predicate: HashSet<Path>,
+    pub(crate) func_map: HashMap<Fun, Function>,
+    pub(crate) func_call_graph: Graph<Fun>,
+    pub(crate) funcs_with_ensure_predicate: HashSet<Fun>,
     pub(crate) debug: bool,
     pub(crate) global: GlobalCtx,
 }
@@ -87,10 +87,10 @@ impl GlobalCtx {
             std::cell::RefCell::new(Vec::new());
         let datatypes: HashMap<Path, Variants> =
             krate.datatypes.iter().map(|d| (d.x.path.clone(), d.x.variants.clone())).collect();
-        let mut fun_bounds: HashMap<Path, Vec<GenericBound>> = HashMap::new();
+        let mut fun_bounds: HashMap<Fun, Vec<GenericBound>> = HashMap::new();
         for f in &krate.functions {
             let bounds = vec_map(&f.x.typ_bounds, |(_, bound)| bound.clone());
-            fun_bounds.insert(f.x.path.clone(), bounds);
+            fun_bounds.insert(f.x.name.clone(), bounds);
         }
         GlobalCtx { chosen_triggers, datatypes, fun_bounds, no_span }
     }
@@ -110,11 +110,11 @@ impl Ctx {
     ) -> Result<Self, VirErr> {
         let datatypes_with_invariant = datatypes_invs(&module, &krate.datatypes);
         let mut functions: Vec<Function> = Vec::new();
-        let mut func_map: HashMap<Path, Function> = HashMap::new();
-        let mut func_call_graph: Graph<Path> = Graph::new();
-        let funcs_with_ensure_predicate: HashSet<Path> = HashSet::new();
+        let mut func_map: HashMap<Fun, Function> = HashMap::new();
+        let mut func_call_graph: Graph<Fun> = Graph::new();
+        let funcs_with_ensure_predicate: HashSet<Fun> = HashSet::new();
         for function in krate.functions.iter() {
-            func_map.insert(function.x.path.clone(), function.clone());
+            func_map.insert(function.x.name.clone(), function.clone());
             crate::recursion::expand_call_graph(&mut func_call_graph, function)?;
             functions.push(function.clone());
         }
@@ -152,7 +152,7 @@ impl Ctx {
         for function in &self.functions {
             match (function.x.mode, function.x.body.as_ref()) {
                 (Mode::Spec, Some(_)) => {
-                    let id = crate::def::prefix_fuel_id(&path_to_air_ident(&function.x.path));
+                    let id = crate::def::prefix_fuel_id(&fun_to_air_ident(&function.x.name));
                     ids.push(air::ast_util::ident_var(&id));
                     let typ_fuel_id = str_typ(&FUEL_ID);
                     let decl = Arc::new(DeclX::Const(id, typ_fuel_id));

@@ -1,12 +1,12 @@
 use crate::ast::{Function, GenericBoundX, Ident, Idents, Mode, ParamX, Params, Typ, TypX, VirErr};
 use crate::context::Ctx;
 use crate::def::{
-    prefix_ensures, prefix_fuel_id, prefix_fuel_nat, prefix_recursive, prefix_requires,
+    prefix_ensures, prefix_fuel_id, prefix_fuel_nat, prefix_recursive_fun, prefix_requires,
     suffix_global_id, suffix_local_stmt_id, suffix_typ_param_id, SnapPos, Spanned, FUEL_BOOL,
     FUEL_BOOL_DEFAULT, FUEL_LOCAL, FUEL_TYPE, SUCC, ZERO,
 };
 use crate::sst::{BndX, ExpX};
-use crate::sst_to_air::{exp_to_expr, path_to_air_ident, typ_invariant, typ_to_air};
+use crate::sst_to_air::{exp_to_expr, fun_to_air_ident, typ_invariant, typ_to_air};
 use crate::util::{vec_map, vec_map_result};
 use air::ast::{
     BinaryOp, Bind, BindX, Binder, BinderX, Command, CommandX, Commands, DeclX, Expr, ExprX,
@@ -88,7 +88,7 @@ fn func_body_to_air(
     function: &Function,
     body: &crate::ast::Expr,
 ) -> Result<(), VirErr> {
-    let id_fuel = prefix_fuel_id(&path_to_air_ident(&function.x.path));
+    let id_fuel = prefix_fuel_id(&fun_to_air_ident(&function.x.name));
 
     // ast --> sst
     let (local_decls, body_exp) =
@@ -118,8 +118,8 @@ fn func_body_to_air(
     let def_body = if !is_recursive {
         body_expr
     } else {
-        let rec_f = suffix_global_id(&path_to_air_ident(&prefix_recursive(&function.x.path)));
-        let fuel_nat_f = prefix_fuel_nat(&path_to_air_ident(&function.x.path));
+        let rec_f = suffix_global_id(&fun_to_air_ident(&prefix_recursive_fun(&function.x.name)));
+        let fuel_nat_f = prefix_fuel_nat(&fun_to_air_ident(&function.x.name));
         let args = func_def_args(&function.x.typ_params(), &function.x.params);
         let mut args_zero = args.clone();
         let mut args_fuel = args.clone();
@@ -151,7 +151,7 @@ fn func_body_to_air(
     };
     let e_forall = func_def_quant(
         ctx,
-        &suffix_global_id(&path_to_air_ident(&function.x.path)),
+        &suffix_global_id(&fun_to_air_ident(&function.x.name)),
         &function.x.typ_params(),
         &function.x.params,
         def_body,
@@ -219,16 +219,16 @@ pub fn func_name_to_air(ctx: &Ctx, function: &Function) -> Result<Commands, VirE
     if function.x.mode == Mode::Spec {
         // Declare the function symbol itself
         let typ = typ_to_air(ctx, &function.x.ret.x.typ);
-        let name = suffix_global_id(&path_to_air_ident(&function.x.path));
+        let name = suffix_global_id(&fun_to_air_ident(&function.x.name));
         let decl = Arc::new(DeclX::Fun(name, Arc::new(all_typs), typ.clone()));
         commands.push(Arc::new(CommandX::Global(decl)));
 
         // Check whether we need to declare the recursive version too
         if let Some(body) = &function.x.body {
             let body_exp = crate::ast_to_sst::expr_to_exp(&ctx, &function.x.params, &body)?;
-            if crate::recursion::is_recursive_exp(ctx, &function.x.path, &body_exp) {
+            if crate::recursion::is_recursive_exp(ctx, &function.x.name, &body_exp) {
                 let rec_f =
-                    suffix_global_id(&path_to_air_ident(&prefix_recursive(&function.x.path)));
+                    suffix_global_id(&fun_to_air_ident(&prefix_recursive_fun(&function.x.name)));
                 let mut rec_typs =
                     vec_map(&*function.x.params, |param| typ_to_air(ctx, &param.x.typ));
                 for _ in function.x.typ_bounds.iter() {
@@ -257,7 +257,7 @@ pub fn func_decl_to_air(
     let mut check_commands: Vec<Command> = Vec::new();
     match function.x.mode {
         Mode::Spec => {
-            let name = suffix_global_id(&path_to_air_ident(&function.x.path));
+            let name = suffix_global_id(&fun_to_air_ident(&function.x.name));
 
             // Body
             if public_body {
@@ -305,7 +305,7 @@ pub fn func_decl_to_air(
                 &function.x.require,
                 &function.x.typ_params(),
                 &param_typs,
-                &prefix_requires(&path_to_air_ident(&function.x.path)),
+                &prefix_requires(&fun_to_air_ident(&function.x.name)),
                 &msg,
             )?;
             let mut ens_typs = (*param_typs).clone();
@@ -329,11 +329,11 @@ pub fn func_decl_to_air(
                 &function.x.ensure,
                 &function.x.typ_params(),
                 &Arc::new(ens_typs),
-                &prefix_ensures(&path_to_air_ident(&function.x.path)),
+                &prefix_ensures(&fun_to_air_ident(&function.x.name)),
                 &None,
             )?;
             if has_ens_pred {
-                ctx.funcs_with_ensure_predicate.insert(function.x.path.clone());
+                ctx.funcs_with_ensure_predicate.insert(function.x.name.clone());
             }
             if function.x.attrs.export_as_global_forall {
                 let span = &function.span;

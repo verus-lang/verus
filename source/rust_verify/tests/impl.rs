@@ -168,3 +168,75 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] test_ops_trait_impl code! {
+        #[derive(PartialEq, Eq)] #[spec]
+        struct V {
+            one: nat,
+            two: nat,
+        }
+
+        impl V {
+            #[spec]
+            fn get_one(self) -> nat {
+                self.one
+            }
+        }
+
+        impl std::ops::Index<int> for V {
+            type Output = nat;
+
+            #[spec]
+            fn index(&self, idx: int) -> &nat {
+                if idx == 0 {
+                    &self.one
+                } else if idx == 1 {
+                    &self.two
+                } else {
+                    arbitrary()
+                }
+            }
+        }
+
+        fn test(v: V) {
+            requires(v[0] == 3);
+
+            assert(v[0] + 1 == 4);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_illegal_trait_impl code! {
+        #[derive(PartialEq, Eq)]
+        struct V {
+            one: nat,
+        }
+
+        impl std::ops::Index<int> for V {
+            type Output = nat;
+
+            #[spec]
+            fn index(&self, idx: int) -> &nat {
+                if idx == 0 {
+                    &self.one
+                } else {
+                    arbitrary()
+                }
+            }
+        }
+    } => Err(_)
+}
+
+test_verify_one_file! {
+    #[test] test_illegal_trait_impl_2 code! {
+        struct V {
+        }
+
+        impl std::ops::Index<usize> for V {
+            type Output = bool;
+            fn index(&self, #[spec]idx: usize) -> &bool { &true }
+        }
+    } => Err(_)
+}

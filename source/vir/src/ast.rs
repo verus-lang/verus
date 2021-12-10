@@ -179,7 +179,7 @@ pub enum HeaderExprX {
     Decreases(Expr),
     /// Make a function f opaque (definition hidden) within the current function body.
     /// (The current function body can later reveal f in specific parts of the current function body if desired.)
-    Hide(Path),
+    Hide(Fun),
 }
 
 /// Primitive constant values
@@ -231,7 +231,7 @@ pub struct ArmX {
 #[derive(Clone, Debug)]
 pub enum CallTarget {
     /// Call a statically known function, passing some type arguments
-    Path(Path, Typs),
+    Static(Fun, Typs),
     /// Call a dynamically computed FnSpec (no type arguments allowed),
     /// where the function type is specified by the GenericBound of typ_param.
     FnSpec(Expr),
@@ -270,7 +270,7 @@ pub enum ExprX {
     /// Assign to local variable
     Assign(Expr, Expr),
     /// Reveal definition of an opaque function with some integer fuel amount
-    Fuel(Path, u32),
+    Fuel(Fun, u32),
     /// Header, which must appear at the beginning of a function or while loop.
     /// Note: this only appears temporarily during rust_to_vir construction, and should not
     /// appear in the final Expr produced by rust_to_vir (see vir::headers::read_header).
@@ -327,7 +327,7 @@ pub type FunctionAttrs = Arc<FunctionAttrsX>;
 #[derive(Debug, Default, Clone)]
 pub struct FunctionAttrsX {
     /// List of functions that this function wants to view as opaque
-    pub hidden: Arc<Vec<Path>>,
+    pub hidden: Arc<Vec<Fun>>,
     /// Create a global axiom saying forall params, require ==> ensure
     pub export_as_global_forall: bool,
     /// In triggers_auto, don't use this function as a trigger
@@ -336,12 +336,24 @@ pub struct FunctionAttrsX {
     pub custom_req_err: Option<String>,
 }
 
+/// Static function identifier
+pub type Fun = Arc<FunX>;
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct FunX {
+    /// Path of function
+    pub path: Path,
+    /// Path of the trait that defines the function, if any.
+    /// This disambiguates between impls for the same type of multiple traits that define functions
+    /// with the same name.
+    pub trait_path: Option<Path>,
+}
+
 /// Function, including signature and body
 pub type Function = Arc<Spanned<FunctionX>>;
 #[derive(Debug, Clone)]
 pub struct FunctionX {
     /// Name of function
-    pub path: Path,
+    pub name: Fun,
     /// Access control (public/private)
     pub visibility: Visibility,
     /// exec functions are compiled, proof/spec are erased
