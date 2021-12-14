@@ -40,19 +40,20 @@ pub struct ErasureModes {
 struct Typing {
     pub(crate) funs: HashMap<Fun, Function>,
     pub(crate) datatypes: HashMap<Path, Datatype>,
-    pub(crate) vars: ScopeMap<Ident, Mode>,
+    // for each variable: (is_mutable, mode)
+    pub(crate) vars: ScopeMap<Ident, (bool, Mode)>,
     pub(crate) erasure_modes: ErasureModes,
     pub(crate) in_forall_stmt: bool,
     pub(crate) ret_mode: Option<Mode>,
 }
 
 impl Typing {
-    fn get(&self, x: &Ident) -> Mode {
+    fn get(&self, x: &Ident) -> (bool, Mode) {
         *self.vars.get(x).expect("internal error: missing mode")
     }
 
-    fn insert(&mut self, _span: &Span, x: &Ident, mode: Mode) {
-        self.vars.insert(x.clone(), mode).expect("internal error: Typing insert");
+    fn insert(&mut self, _span: &Span, x: &Ident, mutable: bool, mode: Mode) {
+        self.vars.insert(x.clone(), (mutable, mode)).expect("internal error: Typing insert");
     }
 }
 
@@ -74,8 +75,8 @@ fn add_pattern(typing: &mut Typing, mode: Mode, pattern: &Pattern) -> Result<(),
     typing.erasure_modes.var_modes.push((pattern.span.clone(), mode));
     match &pattern.x {
         PatternX::Wildcard => Ok(()),
-        PatternX::Var { name: x, mutable: _ } => {
-            typing.insert(&pattern.span, x, mode);
+        PatternX::Var { name: x, mutable } => {
+            typing.insert(&pattern.span, x, *mutable, mode);
             Ok(())
         }
         PatternX::Tuple(patterns) => {
@@ -101,7 +102,7 @@ fn check_expr(typing: &mut Typing, outer_mode: Mode, expr: &Expr) -> Result<Mode
     match &expr.x {
         ExprX::Const(_) => Ok(outer_mode),
         ExprX::Var(x) => {
-            let mode = mode_join(outer_mode, typing.get(x));
+            let mode = mode_join(outer_mode, typing.get(x).1);
             if typing.in_forall_stmt && mode == Mode::Proof {
                 // Proof variables may be used as spec, but not as proof inside forall statements.
                 // This protects against effectively consuming a linear proof variable
@@ -194,7 +195,7 @@ fn check_expr(typing: &mut Typing, outer_mode: Mode, expr: &Expr) -> Result<Mode
         ExprX::Quant(_, binders, e1) => {
             typing.vars.push_scope(true);
             for binder in binders.iter() {
-                typing.insert(&expr.span, &binder.name, Mode::Spec);
+                typing.insert(&expr.span, &binder.name, false, Mode::Spec);
             }
             check_expr_has_mode(typing, Mode::Spec, e1, Mode::Spec)?;
             typing.vars.pop_scope();
@@ -205,7 +206,7 @@ fn check_expr(typing: &mut Typing, outer_mode: Mode, expr: &Expr) -> Result<Mode
             // so there's no need to check them here.
             typing.vars.push_scope(true);
             for binder in params.iter() {
-                typing.insert(&expr.span, &binder.name, Mode::Spec);
+                typing.insert(&expr.span, &binder.name, false, Mode::Spec);
             }
             check_expr_has_mode(typing, Mode::Spec, body, Mode::Spec)?;
             typing.vars.pop_scope();
@@ -213,14 +214,20 @@ fn check_expr(typing: &mut Typing, outer_mode: Mode, expr: &Expr) -> Result<Mode
         }
         ExprX::Choose(binder, e1) => {
             typing.vars.push_scope(true);
-            typing.insert(&expr.span, &binder.name, Mode::Spec);
+            typing.insert(&expr.span, &binder.name, false, Mode::Spec);
             check_expr_has_mode(typing, Mode::Spec, e1, Mode::Spec)?;
             typing.vars.pop_scope();
             Ok(Mode::Spec)
         }
         ExprX::Assign(lhs, rhs) => match &lhs.x {
             ExprX::Var(x) => {
-                let x_mode = typing.get(x);
+                let (x_mut, x_mode) = typing.get(x);
+                if !x_mut {
+                    return err_str(
+                        &expr.span,
+                        "variable must be declared 'mut' to allow assignment",
+                    );
+                }
                 typing.erasure_modes.var_modes.push((lhs.span.clone(), x_mode));
                 check_expr_has_mode(typing, outer_mode, rhs, x_mode)?;
                 Ok(x_mode)
@@ -237,7 +244,7 @@ fn check_expr(typing: &mut Typing, outer_mode: Mode, expr: &Expr) -> Result<Mode
             typing.in_forall_stmt = true;
             typing.vars.push_scope(true);
             for var in vars.iter() {
-                typing.insert(&expr.span, &var.name, Mode::Spec);
+                typing.insert(&expr.span, &var.name, false, Mode::Spec);
             }
             check_expr_has_mode(typing, Mode::Spec, require, Mode::Spec)?;
             check_expr_has_mode(typing, Mode::Spec, ensure, Mode::Spec)?;
@@ -359,7 +366,7 @@ fn check_function(typing: &mut Typing, function: &Function) -> Result<(), VirErr
                 format!("parameter {} cannot have mode {}", param.x.name, param.x.mode),
             );
         }
-        typing.insert(&function.span, &param.x.name, param.x.mode);
+        typing.insert(&function.span, &param.x.name, false, param.x.mode);
     }
     if function.x.has_return() {
         let ret_mode = function.x.ret.x.mode;

@@ -264,3 +264,12 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] test_fail_assign_non_mut code! {
+        fn test1() {
+            let x: u64 = 10;
+            x = 20;
+        }
+    } => Err(_)
+}
