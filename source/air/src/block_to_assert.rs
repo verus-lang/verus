@@ -56,6 +56,6 @@ pub(crate) fn lower_query(query: &Query) -> Query {
     let mut locals: Vec<Decl> = (*query.local).clone();
     let mut switch_label: u64 = 0;
     let expr = stmt_to_expr(&mut switch_label, &mut locals, &query.assertion, mk_true());
-    let assertion = Arc::new(StmtX::Assert(Arc::new(None), expr));
+    let assertion = Arc::new(StmtX::Assert(Arc::new(vec![]), expr));
     Arc::new(QueryX { local: Arc::new(locals), assertion })
 }

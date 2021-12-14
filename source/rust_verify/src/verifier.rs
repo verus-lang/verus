@@ -2,8 +2,8 @@ use crate::config::Args;
 use crate::context::{Context, ErasureInfo};
 use crate::debugger::Debugger;
 use crate::unsupported;
-use crate::util::from_raw_span;
-use air::ast::{Command, CommandX, SpanOption};
+use crate::util::{from_raw_span, vec_map};
+use air::ast::{Command, CommandX, Spans};
 use air::context::ValidityResult;
 use rustc_interface::interface::Compiler;
 use rustc_middle::ty::TyCtxt;
@@ -21,8 +21,7 @@ use vir::def::SnapPos;
 pub struct Verifier {
     pub encountered_vir_error: bool,
     pub count_verified: u64,
-    // Two error slots that can be filled in if needed.  TODO: Convert to list/vec
-    pub errors: Vec<(Option<ErrorSpan>, Option<ErrorSpan>)>,
+    pub errors: Vec<Vec<ErrorSpan>>,
     pub args: Args,
     pub test_capture_output: Option<std::sync::Arc<std::sync::Mutex<Vec<u8>>>>,
     pub erasure_hints: Option<crate::erase::ErasureHints>,
@@ -79,27 +78,20 @@ fn report_vir_error(compiler: &Compiler, vir_err: VirErr) {
     }
 }
 
-fn report_verify_error(compiler: &Compiler, span1: &SpanOption, span2: &SpanOption) {
-    match &**span1 {
-        None => {
-            panic!("internal error: found Error with no span")
-        }
-        Some(air::ast::Span { description, raw_span, .. }) => {
-            let msg = description.as_ref().unwrap_or(&"assertion failed".to_string()).clone();
-            let span: Span = from_raw_span(raw_span);
-            let mut multispan = MultiSpan::from_span(span);
-            match &**span2 {
-                None => {}
-                Some(air::ast::Span { description, raw_span, .. }) => {
-                    let msg =
-                        description.as_ref().unwrap_or(&"related location".to_string()).clone();
-                    let span: Span = from_raw_span(raw_span);
-                    multispan.push_span_label(span, msg);
-                }
-            }
-            compiler.session().parse_sess.span_diagnostic.span_err(multispan, &msg);
-        }
+fn report_verify_error(compiler: &Compiler, spans: &Spans) {
+    if spans.len() == 0 {
+        panic!("internal error: found Error with no span")
     }
+    let air::ast::Span { description, raw_span, .. } = &spans[0];
+    let msg = description.as_ref().unwrap_or(&"assertion failed".to_string()).clone();
+    let span: Span = from_raw_span(raw_span);
+    let mut multispan = MultiSpan::from_span(span);
+    for air::ast::Span { description, raw_span, .. } in spans[1..].iter() {
+        let msg = description.as_ref().unwrap_or(&"related location".to_string()).clone();
+        let span: Span = from_raw_span(raw_span);
+        multispan.push_span_label(span, msg);
+    }
+    compiler.session().parse_sess.span_diagnostic.span_err(multispan, &msg);
 }
 
 fn report_chosen_triggers(
@@ -169,18 +161,12 @@ impl Verifier {
             ValidityResult::TypeError(err) => {
                 panic!("internal error: generated ill-typed AIR code: {}", err);
             }
-            ValidityResult::Invalid(air_model, span1, span2) => {
-                report_verify_error(compiler, &span1, &span2);
-                self.errors.push((
-                    span1
-                        .as_ref()
-                        .as_ref()
-                        .map(|x| ErrorSpan::new_from_air_span(compiler.session().source_map(), x)),
-                    span2
-                        .as_ref()
-                        .as_ref()
-                        .map(|x| ErrorSpan::new_from_air_span(compiler.session().source_map(), x)),
-                ));
+            ValidityResult::Invalid(air_model, spans) => {
+                report_verify_error(compiler, &spans);
+                let errors = vec_map(&*spans, |x| {
+                    ErrorSpan::new_from_air_span(compiler.session().source_map(), x)
+                });
+                self.errors.push(errors);
                 if self.args.debug {
                     let mut debugger = Debugger::new(
                         air_model,

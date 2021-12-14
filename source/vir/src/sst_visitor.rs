@@ -157,7 +157,7 @@ where
 {
     match &stm.x {
         StmX::Call(..) => f(stm),
-        StmX::Assert(_) => f(stm),
+        StmX::Assert(_, _) => f(stm),
         StmX::Assume(_) => f(stm),
         StmX::Assign { .. } => f(stm),
         StmX::Fuel(..) => f(stm),
@@ -208,7 +208,7 @@ where
                 let exps = Arc::new(vec_map(exps, f));
                 Spanned::new(span, StmX::Call(path.clone(), typs.clone(), exps, (*dest).clone()))
             }
-            StmX::Assert(exp) => Spanned::new(span, StmX::Assert(f(exp))),
+            StmX::Assert(span2, exp) => Spanned::new(span, StmX::Assert(span2.clone(), f(exp))),
             StmX::Assume(exp) => Spanned::new(span, StmX::Assume(f(exp))),
             StmX::Assign { lhs, rhs, is_init } => {
                 let rhs = f(rhs);

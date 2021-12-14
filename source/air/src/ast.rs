@@ -8,7 +8,7 @@ pub struct Span {
     pub raw_span: RawSpan,
     pub as_string: String, // if we can't print (description, raw_span), print as_string instead
 }
-pub type SpanOption = Arc<Option<Span>>;
+pub type Spans = Arc<Vec<Span>>;
 
 pub type TypeError = String;
 
@@ -103,7 +103,7 @@ pub enum ExprX {
     Multi(MultiOp, Exprs),
     IfElse(Expr, Expr, Expr),
     Bind(Bind, Expr),
-    LabeledAssertion(SpanOption, Expr),
+    LabeledAssertion(Spans, Expr),
 }
 
 pub type Stmt = Arc<StmtX>;
@@ -111,7 +111,7 @@ pub type Stmts = Arc<Vec<Stmt>>;
 #[derive(Debug)]
 pub enum StmtX {
     Assume(Expr),
-    Assert(SpanOption, Expr),
+    Assert(Spans, Expr),
     Havoc(Ident),
     Assign(Ident, Expr),
     // create a named snapshot of the state of the variables

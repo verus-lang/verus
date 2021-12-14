@@ -46,7 +46,7 @@ fn harness_false() {
     })
     .unwrap_err();
     assert_eq!(err.len(), 1);
-    assert!(err[0].0.as_ref().expect("span").test_span_line.contains("FAILS"));
+    assert!(err[0].first().expect("span").test_span_line.contains("FAILS"));
 }
 
 test_verify_one_file! {

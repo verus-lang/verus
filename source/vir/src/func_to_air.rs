@@ -191,8 +191,8 @@ pub fn req_ens_to_air(
                 None => expr,
                 Some(msg) => {
                     let description = Some(msg.clone());
-                    let option_span = Arc::new(Some(Span { description, ..e.span.clone() }));
-                    Arc::new(ExprX::LabeledAssertion(option_span, expr))
+                    let spans = Arc::new(vec![Span { description, ..e.span.clone() }]);
+                    Arc::new(ExprX::LabeledAssertion(spans, expr))
                 }
             };
             exprs.push(loc_expr);
@@ -395,6 +395,7 @@ pub fn func_def_to_air(
             let enss = vec_map_result(&*function.x.ensure, |e| {
                 crate::ast_to_sst::expr_to_exp(ctx, &ens_params, e)
             })?;
+            let enss = Arc::new(enss);
             for param in function.x.params.iter() {
                 state.declare_new_var(&param.x.name, &param.x.typ, false);
             }
@@ -418,7 +419,7 @@ pub fn func_def_to_air(
                 &state.local_decls,
                 &function.x.attrs.hidden,
                 &reqs,
-                &enss,
+                &*enss,
                 &stm,
             );
             state.finalize();

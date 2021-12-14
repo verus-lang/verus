@@ -438,8 +438,8 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
                     None => Some("precondition not satisfied".to_string()),
                     Some(s) => Some(s.clone()),
                 };
-                let option_span = Arc::new(Some(Span { description, ..stm.span.clone() }));
-                stmts.push(Arc::new(StmtX::Assert(option_span, e_req)));
+                let spans = Arc::new(vec![Span { description, ..stm.span.clone() }]);
+                stmts.push(Arc::new(StmtX::Assert(spans, e_req)));
             }
             let mut ens_args: Vec<Expr> = vec_map(typs, typ_to_id);
             match dest {
@@ -493,13 +493,16 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
             }
             vec![Arc::new(StmtX::Block(Arc::new(stmts)))] // wrap in block for readability
         }
-        StmX::Assert(expr) => {
+        StmX::Assert(span2, expr) => {
             let air_expr = exp_to_expr(ctx, &expr);
-            let option_span = Arc::new(Some(stm.span.clone()));
+            let mut spans: Vec<Span> = vec![stm.span.clone()];
+            if let Some(span2) = span2 {
+                spans.push(span2.clone());
+            }
             if ctx.debug {
                 state.map_span(&stm, SpanKind::Full);
             }
-            vec![Arc::new(StmtX::Assert(option_span, air_expr))]
+            vec![Arc::new(StmtX::Assert(Arc::new(spans), air_expr))]
         }
         StmX::Assume(expr) => {
             if ctx.debug {
@@ -601,8 +604,8 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
             local.push(pos_assume);
             for (span, inv) in invs.iter() {
                 let description = Some("invariant not satisfied at end of loop body".to_string());
-                let option_span = Arc::new(Some(Span { description, ..span.clone() }));
-                let inv_stmt = StmtX::Assert(option_span, inv.clone());
+                let spans = Arc::new(vec![Span { description, ..span.clone() }]);
+                let inv_stmt = StmtX::Assert(spans, inv.clone());
                 air_body.push(Arc::new(inv_stmt));
             }
             let assertion = one_stmt(air_body);
@@ -625,8 +628,8 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
             let mut stmts: Vec<Stmt> = Vec::new();
             for (span, inv) in invs.iter() {
                 let description = Some("invariant not satisfied before loop".to_string());
-                let option_span = Arc::new(Some(Span { description, ..span.clone() }));
-                let inv_stmt = StmtX::Assert(option_span, inv.clone());
+                let spans = Arc::new(vec![Span { description, ..span.clone() }]);
+                let inv_stmt = StmtX::Assert(spans, inv.clone());
                 stmts.push(Arc::new(inv_stmt));
             }
             for x in modified_vars.iter() {
@@ -798,8 +801,8 @@ pub fn body_stm_to_air(
 
     for ens in enss {
         let description = Some("postcondition not satisfied".to_string());
-        let option_span = Arc::new(Some(Span { description, ..ens.span.clone() }));
-        let ens_stmt = StmtX::Assert(option_span, exp_to_expr(ctx, ens));
+        let spans = Arc::new(vec![Span { description, ..ens.span.clone() }]);
+        let ens_stmt = StmtX::Assert(spans, exp_to_expr(ctx, ens));
         stmts.push(Arc::new(ens_stmt));
     }
     let assertion = one_stmt(stmts);

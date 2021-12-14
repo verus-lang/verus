@@ -303,7 +303,7 @@ pub(crate) fn check_termination_exp(
     let (decl, stm_assign) = mk_decreases_at_entry(&ctxt, &body.span);
     let span =
         Span { description: Some("could not prove termination".to_string()), ..body.span.clone() };
-    let stm_assert = Spanned::new(span, StmX::Assert(check));
+    let stm_assert = Spanned::new(span, StmX::Assert(None, check));
     let stm_block =
         Spanned::new(body.span.clone(), StmX::Block(Arc::new(vec![stm_assign, stm_assert])));
 
@@ -375,7 +375,7 @@ pub(crate) fn check_termination_stm(
                 description: Some("could not prove termination".to_string()),
                 ..s.span.clone()
             };
-            let stm_assert = Spanned::new(span, StmX::Assert(check));
+            let stm_assert = Spanned::new(span, StmX::Assert(None, check));
             let stm_block =
                 Spanned::new(s.span.clone(), StmX::Block(Arc::new(vec![stm_assert, s.clone()])));
             Ok(stm_block)

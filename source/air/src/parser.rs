@@ -1,7 +1,7 @@
 use crate::ast::{
     BinaryOp, BindX, Binder, BinderX, Binders, Command, CommandX, Commands, Constant, Decl, DeclX,
-    Decls, Expr, ExprX, Exprs, MultiOp, Quant, QueryX, Span, Stmt, StmtX, Stmts, Trigger, Triggers,
-    Typ, TypX, UnaryOp,
+    Decls, Expr, ExprX, Exprs, MultiOp, Quant, QueryX, Span, Spans, Stmt, StmtX, Stmts, Trigger,
+    Triggers, Typ, TypX, UnaryOp,
 };
 use crate::model::{ModelDef, ModelDefX, ModelDefs};
 use crate::printer::node_to_string;
@@ -59,6 +59,26 @@ impl Parser {
         }
     }
 
+    fn nodes_to_spans(&self, labels: &Vec<Node>) -> Result<Spans, String> {
+        let mut spans: Vec<Span> = Vec::new();
+        for label in labels {
+            match label {
+                Node::Atom(label) if label.starts_with("\"") && label.ends_with("\"") => {
+                    let raw_span = Arc::new(());
+                    let as_string = label[1..label.len() - 1].to_string();
+                    spans.push(Span { description: None, raw_span, as_string });
+                }
+                _ => {
+                    return Err(format!(
+                        "expected quoted string, found: {}",
+                        node_to_string(label)
+                    ));
+                }
+            }
+        }
+        Ok(Arc::new(spans))
+    }
+
     pub(crate) fn node_to_expr(&self, node: &Node) -> Result<Expr, String> {
         match node {
             Node::Atom(s) if s.to_string() == "true" => {
@@ -73,16 +93,10 @@ impl Parser {
             Node::Atom(s) if is_symbol(s) => Ok(Arc::new(ExprX::Var(Arc::new(s.clone())))),
             Node::List(nodes) if nodes.len() > 0 => {
                 match &nodes[..] {
-                    [Node::Atom(s), Node::Atom(label), e]
-                        if s.to_string() == "location"
-                            && label.starts_with("\"")
-                            && label.ends_with("\"") =>
-                    {
-                        let raw_span = Arc::new(());
-                        let as_string = label[1..label.len() - 1].to_string();
-                        let span = Arc::new(Some(Span { description: None, raw_span, as_string }));
+                    [Node::Atom(s), Node::List(labels), e] if s.to_string() == "location" => {
+                        let spans = self.nodes_to_spans(labels)?;
                         let expr = self.node_to_expr(e)?;
-                        return Ok(Arc::new(ExprX::LabeledAssertion(span, expr)));
+                        return Ok(Arc::new(ExprX::LabeledAssertion(spans, expr)));
                     }
                     [Node::Atom(s), Node::Atom(snap), Node::Atom(x)]
                         if s.to_string() == "old" && is_symbol(snap) && is_symbol(x) =>
@@ -311,7 +325,7 @@ impl Parser {
                 }
                 [Node::Atom(s), e] if s.to_string() == "assert" => {
                     let expr = self.node_to_expr(&e)?;
-                    Ok(Arc::new(StmtX::Assert(Arc::new(None), expr)))
+                    Ok(Arc::new(StmtX::Assert(Arc::new(vec![]), expr)))
                 }
                 [Node::Atom(s), Node::Atom(x)] if s.to_string() == "havoc" && is_symbol(x) => {
                     Ok(Arc::new(StmtX::Havoc(Arc::new(x.clone()))))
@@ -325,16 +339,10 @@ impl Parser {
                 {
                     Ok(Arc::new(StmtX::Snapshot(Arc::new(snap.clone()))))
                 }
-                [Node::Atom(s), Node::Atom(label), e]
-                    if s.to_string() == "assert"
-                        && label.starts_with("\"")
-                        && label.ends_with("\"") =>
-                {
-                    let raw_span = Arc::new(());
-                    let as_string = label[1..label.len() - 1].to_string();
-                    let span = Span { description: None, raw_span, as_string };
+                [Node::Atom(s), Node::List(labels), e] if s.to_string() == "assert" => {
+                    let spans = self.nodes_to_spans(labels)?;
                     let expr = self.node_to_expr(&e)?;
-                    Ok(Arc::new(StmtX::Assert(Arc::new(Some(span)), expr)))
+                    Ok(Arc::new(StmtX::Assert(spans, expr)))
                 }
                 [Node::Atom(s), e] if s.to_string() == "deadend" => {
                     let stmt = self.node_to_stmt(&e)?;

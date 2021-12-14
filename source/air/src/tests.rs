@@ -22,7 +22,7 @@ fn run_nodes_as_test(should_typecheck: bool, should_be_valid: bool, nodes: &[Nod
                         panic!("type error: {}", s);
                     }
                     (_, _, true, ValidityResult::Valid) => {}
-                    (_, _, false, ValidityResult::Invalid(_, _, _)) => {}
+                    (_, _, false, ValidityResult::Invalid(..)) => {}
                     (CommandX::CheckValid(_), _, _, _) => {
                         panic!("unexpected result");
                     }

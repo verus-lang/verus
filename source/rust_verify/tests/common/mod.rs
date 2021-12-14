@@ -48,7 +48,7 @@ impl FileLoader for TestFileLoader {
 pub fn verify_files(
     files: impl IntoIterator<Item = (String, String)>,
     entry_file: String,
-) -> Result<(), Vec<(Option<ErrorSpan>, Option<ErrorSpan>)>> {
+) -> Result<(), Vec<Vec<ErrorSpan>>> {
     verify_files_and_pervasive(files, entry_file, false)
 }
 
@@ -57,7 +57,7 @@ pub fn verify_files_and_pervasive(
     files: impl IntoIterator<Item = (String, String)>,
     entry_file: String,
     verify_pervasive: bool,
-) -> Result<(), Vec<(Option<ErrorSpan>, Option<ErrorSpan>)>> {
+) -> Result<(), Vec<Vec<ErrorSpan>>> {
     let mut rustc_args = vec![
         "../../rust/install/bin/rust_verify".to_string(),
         "--edition".to_string(),
@@ -162,7 +162,7 @@ pub const USE_PRELUDE: &str = crate::common::code_str! {
 };
 
 #[allow(dead_code)]
-pub fn verify_one_file(code: String) -> Result<(), Vec<(Option<ErrorSpan>, Option<ErrorSpan>)>> {
+pub fn verify_one_file(code: String) -> Result<(), Vec<Vec<ErrorSpan>>> {
     let files = vec![("test.rs".to_string(), format!("{}\n\n{}", USE_PRELUDE, code.as_str()))];
     verify_files(files, "test.rs".to_string())
 }
@@ -196,16 +196,16 @@ macro_rules! test_verify_one_file {
 
 /// Assert that one verification failure happened on source lines containin the string "FAILS".
 #[allow(dead_code)]
-pub fn assert_one_fails(err: Vec<(Option<ErrorSpan>, Option<ErrorSpan>)>) {
+pub fn assert_one_fails(err: Vec<Vec<ErrorSpan>>) {
     assert_eq!(err.len(), 1);
-    assert!(err[0].0.as_ref().expect("span").test_span_line.contains("FAILS"));
+    assert!(err[0].first().expect("span").test_span_line.contains("FAILS"));
 }
 
 /// Assert that `count` verification failures happened on source lines containin the string "FAILS".
 #[allow(dead_code)]
-pub fn assert_fails(err: Vec<(Option<ErrorSpan>, Option<ErrorSpan>)>, count: usize) {
+pub fn assert_fails(err: Vec<Vec<ErrorSpan>>, count: usize) {
     assert_eq!(err.len(), count);
     for c in 0..count {
-        assert!(err[c].0.as_ref().expect("span").test_span_line.contains("FAILS"));
+        assert!(err[c].first().expect("span").test_span_line.contains("FAILS"));
     }
 }

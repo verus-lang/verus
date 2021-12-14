@@ -95,8 +95,8 @@ fn smt_check_assertion<'ctx>(
     expr: &Expr,
     air_model: Model,
 ) -> ValidityResult {
-    let mut discovered_span = Arc::new(None);
-    let mut discovered_global_span = Arc::new(None);
+    let mut discovered_span: Vec<Span> = Vec::new();
+    let mut discovered_global_span: Vec<Span> = Vec::new();
     let not_expr = Arc::new(ExprX::Unary(UnaryOp::Not, expr.clone()));
     context.smt_log.log_assert(&not_expr);
 
@@ -150,7 +150,7 @@ fn smt_check_assertion<'ctx>(
             for info in infos.iter() {
                 if let Some(def) = model_defs.get(&info.label) {
                     if *def.body == "true" {
-                        discovered_span = info.span.clone();
+                        discovered_span.append(&mut (*info.span).clone());
                         break;
                     }
                 }
@@ -158,7 +158,7 @@ fn smt_check_assertion<'ctx>(
             for (_, info) in context.assert_infos.map().iter() {
                 if let Some(def) = model_defs.get(&info.label) {
                     if *def.body == "true" {
-                        discovered_global_span = info.span.clone();
+                        discovered_global_span.append(&mut (*info.span).clone());
                         break;
                     }
                 }
@@ -167,7 +167,8 @@ fn smt_check_assertion<'ctx>(
             if context.debug {
                 println!("Z3 model: {:?}", &model);
             }
-            ValidityResult::Invalid(air_model, discovered_span, discovered_global_span)
+            discovered_span.append(&mut discovered_global_span);
+            ValidityResult::Invalid(air_model, Arc::new(discovered_span))
         }
     }
 }
@@ -199,7 +200,7 @@ pub(crate) fn smt_check_query<'ctx>(
     let mut infos: Vec<AssertionInfo> = Vec::new();
     let labeled_assertion = label_asserts(context, &mut infos, &assertion, false);
     for info in &infos {
-        if let Some(Span { as_string, .. }) = &*info.span {
+        if let Some(Span { as_string, .. }) = info.span.first() {
             context.smt_log.comment(as_string);
         }
         if let Err(err) = crate::typecheck::add_decl(context, &info.decl, false) {

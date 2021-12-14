@@ -8,7 +8,7 @@
 
 use crate::ast::{BinaryOp, Constant, Fun, Path, Typ, Typs, UnaryOp, UnaryOpr};
 use crate::def::Spanned;
-use air::ast::{Binder, Binders, Ident, Quant};
+use air::ast::{Binder, Binders, Ident, Quant, Span};
 use std::sync::Arc;
 
 pub type Trig = Exps;
@@ -55,8 +55,10 @@ pub type Stm = Arc<Spanned<StmX>>;
 pub type Stms = Arc<Vec<Stm>>;
 #[derive(Debug)]
 pub enum StmX {
-    Call(Fun, Typs, Exps, Option<Dest>), // call to exec/proof function
-    Assert(Exp),
+    // call to exec/proof function
+    Call(Fun, Typs, Exps, Option<Dest>),
+    // note: failed assertion reports Stm's span, plus an optional additional span
+    Assert(Option<Span>, Exp),
     Assume(Exp),
     Assign {
         lhs: UniqueIdent,

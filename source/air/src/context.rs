@@ -1,4 +1,4 @@
-use crate::ast::{Command, CommandX, Decl, Ident, Query, SpanOption, Typ, TypeError, Typs};
+use crate::ast::{Command, CommandX, Decl, Ident, Query, Spans, Typ, TypeError, Typs};
 use crate::closure::ClosureTerm;
 use crate::emitter::Emitter;
 use crate::model::Model;
@@ -14,7 +14,7 @@ use std::time::Duration;
 
 #[derive(Clone, Debug)]
 pub(crate) struct AssertionInfo {
-    pub(crate) span: SpanOption,
+    pub(crate) span: Spans,
     pub(crate) label: Ident,
     pub(crate) decl: Decl,
 }
@@ -22,7 +22,7 @@ pub(crate) struct AssertionInfo {
 #[derive(Debug)]
 pub enum ValidityResult {
     Valid,
-    Invalid(Model, SpanOption, SpanOption),
+    Invalid(Model, Spans),
     TypeError(TypeError),
 }
 

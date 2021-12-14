@@ -205,13 +205,14 @@ impl Printer {
                     }
                 }
             }
-            ExprX::LabeledAssertion(span, expr) => match &**span {
-                None => self.expr_to_node(expr),
-                Some(s) => {
-                    let quoted = format!("\"{}\"", s.as_string);
-                    nodes!(location {Node::Atom(quoted)} {self.expr_to_node(expr)})
+            ExprX::LabeledAssertion(spans, expr) => {
+                let spans = vec_map(spans, |s| Node::Atom(format!("\"{}\"", s.as_string)));
+                if spans.len() == 0 {
+                    self.expr_to_node(expr)
+                } else {
+                    nodes!(location {Node::List(spans)} {self.expr_to_node(expr)})
                 }
-            },
+            }
         }
     }
 
@@ -295,13 +296,14 @@ impl Printer {
     pub fn stmt_to_node(&self, stmt: &Stmt) -> Node {
         match &**stmt {
             StmtX::Assume(expr) => nodes!(assume {self.expr_to_node(expr)}),
-            StmtX::Assert(span, expr) => match &**span {
-                None => nodes!(assert {self.expr_to_node(expr)}),
-                Some(s) => {
-                    let quoted = format!("\"{}\"", s.as_string);
-                    nodes!(assert {Node::Atom(quoted)} {self.expr_to_node(expr)})
+            StmtX::Assert(spans, expr) => {
+                let spans = vec_map(spans, |s| Node::Atom(format!("\"{}\"", s.as_string)));
+                if spans.len() == 0 {
+                    nodes!(assert {self.expr_to_node(expr)})
+                } else {
+                    nodes!(assert {Node::List(spans)} {self.expr_to_node(expr)})
                 }
-            },
+            }
             StmtX::Havoc(x) => nodes!(havoc {str_to_node(x)}),
             StmtX::Assign(x, expr) => nodes!(assign {str_to_node(x)} {self.expr_to_node(expr)}),
             StmtX::Snapshot(snap) => nodes!(snapshot {str_to_node(snap)}),

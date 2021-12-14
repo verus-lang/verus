@@ -273,9 +273,7 @@ pub(crate) fn expr_to_one_stm_dest(
     let (mut stms, exp) = expr_to_stm_opt(ctx, state, expr)?;
     match (dest, exp) {
         (None, _) => {}
-        (Some(_), None) => {
-            panic!("internal error: missing return value")
-        }
+        (Some(_), None) => return err_str(&expr.span, "expression must produce a value"),
         (Some(dest), Some(exp)) => {
             stms.push(init_var(&expr.span, &dest, &exp));
         }
@@ -566,7 +564,7 @@ pub(crate) fn expr_to_stm_opt(
             let assume = Spanned::new(require.span.clone(), StmX::Assume(require_exp));
             body.insert(0, assume);
             let ensure_exp = expr_to_exp_state(ctx, state, &ensure)?;
-            let assert = Spanned::new(ensure.span.clone(), StmX::Assert(ensure_exp));
+            let assert = Spanned::new(ensure.span.clone(), StmX::Assert(None, ensure_exp));
             body.push(assert);
             let block = Spanned::new(expr.span.clone(), StmX::Block(Arc::new(body)));
             let deadend = Spanned::new(expr.span.clone(), StmX::DeadEnd(block));
@@ -603,13 +601,17 @@ pub(crate) fn expr_to_stm_opt(
                     let temp_var = if_to_stm(state, expr, &mut stms0, e0, stms1, &e1, stms2, &e2);
                     Ok((stms0, Some(temp_var)))
                 }
-                _ => {
+                (None, None) => {
                     // If statement, let expression be None
                     let stm1 = stms_to_one_stm(&expr1.span, stms1);
                     let stm2 = stms_to_one_stm(&expr2.span, stms2);
                     stms0.push(Spanned::new(expr.span.clone(), StmX::If(e0, stm1, Some(stm2))));
                     Ok((stms0, None))
                 }
+                _ => err_str(
+                    &expr.span,
+                    "if any if/match arm returns a value, all arms must return a value",
+                ),
             }
         }
         ExprX::Match(..) => {

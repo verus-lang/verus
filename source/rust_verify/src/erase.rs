@@ -141,7 +141,7 @@ struct MCtxt<'a> {
     f_next_node_id: &'a mut dyn FnMut() -> NodeId,
     // Unfortunately for us, Rust likes to include surrounding parentheses in an
     // expression's span in HIR, but not in Rust AST.
-    // For an expression "((5))", the span in like "((5))" in HIR and like "5" in AST.
+    // For an expression "((5))", the span is like "((5))" in HIR and like "5" in AST.
     // Keep a mapping from "5" to "(5)" to "((5))" so we can correct for this.
     remap_parens: HashMap<Span, Span>,
 }
