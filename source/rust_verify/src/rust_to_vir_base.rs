@@ -351,6 +351,10 @@ pub(crate) fn mid_ty_to_vir<'tcx>(tcx: TyCtxt<'tcx>, ty: rustc_middle::ty::Ty<'t
         TyKind::Uint(_) | TyKind::Int(_) => Arc::new(TypX::Int(mk_range(ty))),
         TyKind::Ref(_, tys, rustc_ast::Mutability::Not) => mid_ty_to_vir(tcx, tys),
         TyKind::Param(param) => Arc::new(TypX::TypParam(Arc::new(param.name.to_string()))),
+        TyKind::Never => {
+            // All types are inhabited in SMT; we pick an arbitrary inhabited type for Never
+            Arc::new(TypX::Tuple(Arc::new(vec![])))
+        }
         TyKind::Tuple(_) => {
             let typs: Vec<Typ> = ty.tuple_fields().map(|t| mid_ty_to_vir(tcx, t)).collect();
             Arc::new(TypX::Tuple(Arc::new(typs)))

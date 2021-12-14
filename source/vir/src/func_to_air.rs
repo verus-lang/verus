@@ -401,8 +401,10 @@ pub fn func_def_to_air(
             }
 
             // AST --> SST
+            state.ret_post = Some((dest.clone(), enss.clone()));
             let stm = crate::ast_to_sst::expr_to_one_stm_dest(&ctx, &mut state, &body, &dest)?;
             let stm = state.finalize_stm(&stm);
+            state.ret_post = None;
 
             // Check termination
             let (decls, stm) = crate::recursion::check_termination_stm(ctx, function, &stm)?;

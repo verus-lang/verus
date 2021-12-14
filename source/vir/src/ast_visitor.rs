@@ -228,6 +228,13 @@ where
                 Arc::new(vec_map_result(invs, |e| map_expr_visitor_env(e, map, env, fe, fs, ft))?);
             ExprX::While { cond, body, invs }
         }
+        ExprX::Return(e1) => {
+            let e1 = match e1 {
+                None => None,
+                Some(e) => Some(map_expr_visitor_env(e, map, env, fe, fs, ft)?),
+            };
+            ExprX::Return(e1)
+        }
         ExprX::Block(ss, e1) => {
             let mut stmts: Vec<Stmt> = Vec::new();
             for s in ss.iter() {

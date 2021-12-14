@@ -43,6 +43,7 @@ struct Typing {
     pub(crate) vars: ScopeMap<Ident, Mode>,
     pub(crate) erasure_modes: ErasureModes,
     pub(crate) in_forall_stmt: bool,
+    pub(crate) ret_mode: Option<Mode>,
 }
 
 impl Typing {
@@ -300,6 +301,16 @@ fn check_expr(typing: &mut Typing, outer_mode: Mode, expr: &Expr) -> Result<Mode
             }
             Ok(Mode::Exec)
         }
+        ExprX::Return(e1) => {
+            match (e1, typing.ret_mode) {
+                (None, _) => {}
+                (_, None) => panic!("internal error: missing return type"),
+                (Some(e1), Some(ret_mode)) => {
+                    check_expr_has_mode(typing, outer_mode, e1, ret_mode)?;
+                }
+            }
+            Ok(Mode::Exec)
+        }
         ExprX::Block(ss, e1) => {
             for stmt in ss.iter() {
                 typing.vars.push_scope(true);
@@ -358,10 +369,12 @@ fn check_function(typing: &mut Typing, function: &Function) -> Result<(), VirErr
                 format!("return type cannot have mode {}", ret_mode),
             );
         }
+        typing.ret_mode = Some(ret_mode);
     }
     if let Some(body) = &function.x.body {
         check_expr_has_mode(typing, function.x.mode, body, function.x.ret.x.mode)?;
     }
+    typing.ret_mode = None;
     typing.vars.pop_scope();
     assert_eq!(typing.vars.num_scopes(), 0);
     Ok(())
@@ -377,8 +390,14 @@ pub fn check_crate(krate: &Krate) -> Result<ErasureModes, VirErr> {
         datatypes.insert(datatype.x.path.clone(), datatype.clone());
     }
     let erasure_modes = ErasureModes { condition_modes: vec![], var_modes: vec![] };
-    let mut typing =
-        Typing { funs, datatypes, vars: ScopeMap::new(), erasure_modes, in_forall_stmt: false };
+    let mut typing = Typing {
+        funs,
+        datatypes,
+        vars: ScopeMap::new(),
+        erasure_modes,
+        in_forall_stmt: false,
+        ret_mode: None,
+    };
     for function in krate.functions.iter() {
         check_function(&mut typing, function)?;
     }

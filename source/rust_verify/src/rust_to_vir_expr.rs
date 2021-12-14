@@ -1078,6 +1078,13 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
             let invs = header.invariant;
             Ok(mk_expr(ExprX::While { cond, body, invs }))
         }
+        ExprKind::Ret(expr) => {
+            let expr = match expr {
+                None => None,
+                Some(expr) => Some(expr_to_vir(bctx, expr)?),
+            };
+            Ok(mk_expr(ExprX::Return(expr)))
+        }
         ExprKind::Struct(qpath, fields, spread) => {
             let update = match spread {
                 None => None,

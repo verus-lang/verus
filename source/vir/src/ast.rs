@@ -285,6 +285,8 @@ pub enum ExprX {
     Match(Expr, Arms),
     /// While loop, with invariants
     While { cond: Expr, body: Expr, invs: Exprs },
+    /// Return from function
+    Return(Option<Expr>),
     /// Sequence of statements, optionally including an expression at the end
     Block(Stmts, Option<Expr>),
 }

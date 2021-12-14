@@ -5,7 +5,7 @@ use crate::ast::{
 use crate::ast_util::{err_str, err_string};
 use crate::context::Ctx;
 use crate::def::Spanned;
-use crate::sst::{Bnd, BndX, Dest, Exp, ExpX, LocalDecl, LocalDeclX, Stm, StmX, UniqueIdent};
+use crate::sst::{Bnd, BndX, Dest, Exp, ExpX, Exps, LocalDecl, LocalDeclX, Stm, StmX, UniqueIdent};
 use crate::sst_visitor::{map_exp_visitor, map_stm_exp_visitor};
 use crate::util::{vec_map, vec_map_result};
 use air::ast::{Binder, BinderX, Binders, Quant, Span};
@@ -30,6 +30,8 @@ pub(crate) struct State {
     // Variables that we considered renaming, but ended up being Bind variables
     // rather than LocalDecls
     dont_rename: HashSet<UniqueIdent>,
+    // If we allow return expressions, this is the return variable and ensures clauses:
+    pub(crate) ret_post: Option<(Option<UniqueIdent>, Exps)>,
 }
 
 impl State {
@@ -42,6 +44,7 @@ impl State {
             rename_map,
             rename_counters: HashMap::new(),
             dont_rename: HashSet::new(),
+            ret_post: None,
         }
     }
 
@@ -637,6 +640,33 @@ pub(crate) fn expr_to_stm_opt(
                 },
             );
             Ok((vec![while_stm], None))
+        }
+        ExprX::Return(e1) => {
+            if let Some((ret_dest, enss)) = state.ret_post.clone() {
+                let mut stms: Vec<Stm> = Vec::new();
+                match (ret_dest, e1) {
+                    (None, None) => {}
+                    (None, Some(e)) => return err_str(&e.span, "return value not allowed here"),
+                    (_, None) => panic!("internal error: return value expected"),
+                    (Some(dest), Some(e1)) => {
+                        let (mut ret_stms, exp) = expr_to_stm(ctx, state, e1)?;
+                        stms.append(&mut ret_stms);
+                        stms.push(init_var(&expr.span, &dest, &exp));
+                    }
+                }
+                for ens in enss.iter() {
+                    let description = Some("postcondition not satisfied".to_string());
+                    let span = Span { description, ..expr.span.clone() };
+                    let description = Some("failed postcondition".to_string());
+                    let span2 = Span { description, ..ens.span.clone() };
+                    stms.push(Spanned::new(span, StmX::Assert(Some(span2), ens.clone())));
+                }
+                let exp = Spanned::new(expr.span.clone(), ExpX::Const(Constant::Bool(false)));
+                stms.push(Spanned::new(expr.span.clone(), StmX::Assume(exp)));
+                Ok((stms, None))
+            } else {
+                err_str(&expr.span, "return expression not allowed here")
+            }
         }
         ExprX::Block(stmts, body_opt) => {
             let mut stms: Vec<Stm> = Vec::new();

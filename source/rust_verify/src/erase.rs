@@ -144,6 +144,8 @@ struct MCtxt<'a> {
     // For an expression "((5))", the span is like "((5))" in HIR and like "5" in AST.
     // Keep a mapping from "5" to "(5)" to "((5))" so we can correct for this.
     remap_parens: HashMap<Span, Span>,
+    // Mode of current function's return value
+    ret_mode: Option<Mode>,
 }
 
 impl<'a> MCtxt<'a> {
@@ -716,6 +718,11 @@ fn erase_expr_opt(ctxt: &Ctxt, mctxt: &mut MCtxt, expect: Mode, expr: &Expr) -> 
             let block = erase_block(ctxt, mctxt, Mode::Exec, block);
             ExprKind::While(P(eb), P(block), None)
         }
+        ExprKind::Ret(None) => ExprKind::Ret(None),
+        ExprKind::Ret(Some(e1)) => {
+            let e1 = erase_expr(ctxt, mctxt, mctxt.ret_mode.expect("erase: ret_mode"), e1);
+            ExprKind::Ret(Some(P(e1)))
+        }
         ExprKind::Block(block, None) => {
             ExprKind::Block(P(erase_block(ctxt, mctxt, expect, block)), None)
         }
@@ -819,7 +826,9 @@ fn erase_fn(ctxt: &Ctxt, mctxt: &mut MCtxt, f: &FnKind) -> Option<FnKind> {
         if keep_mode(ctxt, ret_mode) { output.clone() } else { FnRetTy::Default(sig.span) };
     let decl = FnDecl { inputs: new_inputs, output };
     let sig = FnSig { decl: P(decl), ..sig.clone() };
+    mctxt.ret_mode = Some(ret_mode);
     let body_opt = body_opt.as_ref().map(|body| P(erase_block(ctxt, mctxt, ret_mode, &**body)));
+    mctxt.ret_mode = None;
     Some(FnKind(*defaultness, sig, generics, body_opt))
 }
 
@@ -1034,7 +1043,8 @@ impl rustc_lint::FormalVerifierRewrite for CompilerCallbacks {
         next_node_id: &mut dyn FnMut() -> NodeId,
     ) -> rustc_ast::ast::Crate {
         let ctxt = mk_ctxt(&self.erasure_hints, self.lifetimes_only);
-        let mut mctxt = MCtxt { f_next_node_id: next_node_id, remap_parens: HashMap::new() };
+        let mut mctxt =
+            MCtxt { f_next_node_id: next_node_id, remap_parens: HashMap::new(), ret_mode: None };
         let time0 = Instant::now();
         let krate = crate::erase::erase_crate(&ctxt, &mut mctxt, krate);
         let time1 = Instant::now();
