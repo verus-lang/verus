@@ -948,22 +948,20 @@ test_verify_one_file! {
 
         fn find_max(int_seq: &Vec<u64>) -> usize
         {
-            requires(int_seq.len() > 0);
+            requires(int_seq.view().len() > 0);
             ensures(|max_index_rc:usize| [
-                max_index_rc < int_seq.len(),
-                forall(|idx:nat| imply(idx<int_seq.len(), int_seq.index(idx) <= int_seq.index(max_index_rc))),
+                max_index_rc < int_seq.view().len(),
+                forall(|idx:nat| imply(idx<int_seq.view().len(), int_seq.idx(idx) <= int_seq.idx(max_index_rc))),
             ]);
 
             let mut count:usize = 0;
             let mut max_index:usize = 0;
-            // TODO(chris) .length()->usize should be named .len(); .view().len() should give you
-            // the nat.
-            while count < int_seq.length()
+            while count < int_seq.len()
             {
                 invariant([
-                    max_index < int_seq.len(),
+                    max_index < int_seq.view().len(),
                     forall(|prioridx:nat| imply(prioridx < count,
-                            int_seq.index(prioridx) <= int_seq.index(max_index))),
+                            int_seq.idx(prioridx) <= int_seq.idx(max_index))),
                 ]);
 
                 if int_seq.get(max_index) < int_seq.get(count) {
