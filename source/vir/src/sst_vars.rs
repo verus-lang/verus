@@ -1,6 +1,6 @@
 use crate::ast::Typ;
 use crate::def::Spanned;
-use crate::sst::{Stm, StmX, UniqueIdent};
+use crate::sst::{Stm, StmX, Stms, UniqueIdent};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
@@ -64,10 +64,12 @@ pub(crate) fn stm_assign(
             *assigned = pre_assigned;
             Spanned::new(stm.span.clone(), StmX::If(cond.clone(), lhs, rhs))
         }
-        StmX::While { cond, body, invs, typ_inv_vars, modified_vars } => {
-            let pre_assigned = assigned.clone();
+        StmX::While { cond_stms, cond_exp, body, invs, typ_inv_vars, modified_vars } => {
             let mut pre_modified = modified.clone();
             *modified = HashSet::new();
+            let cond_stms = stms_assign(assign_map, declared, assigned, modified, cond_stms);
+
+            let pre_assigned = assigned.clone();
             let body = stm_assign(assign_map, declared, assigned, modified, body);
             *assigned = pre_assigned;
 
@@ -87,7 +89,8 @@ pub(crate) fn stm_assign(
                 typ_inv_vars.push((x.clone(), declared[x].clone()));
             }
             let while_x = StmX::While {
-                cond: cond.clone(),
+                cond_stms,
+                cond_exp: cond_exp.clone(),
                 body,
                 invs: invs.clone(),
                 typ_inv_vars: Arc::new(typ_inv_vars),
@@ -97,19 +100,28 @@ pub(crate) fn stm_assign(
         }
         StmX::Block(stms) => {
             let mut pre_assigned = assigned.clone();
-            let stms: Vec<Stm> = stms
-                .iter()
-                .map(|s| stm_assign(assign_map, declared, assigned, modified, s))
-                .collect();
+            let stms = stms_assign(assign_map, declared, assigned, modified, stms);
             for x in declared.keys() {
                 if assigned.contains(x) && !pre_assigned.contains(x) {
                     pre_assigned.insert(x.clone());
                 }
             }
-            Spanned::new(stm.span.clone(), StmX::Block(Arc::new(stms)))
+            Spanned::new(stm.span.clone(), StmX::Block(stms))
         }
     };
 
     assign_map.insert(Arc::as_ptr(&result), to_ident_set(assigned));
     result
+}
+
+pub(crate) fn stms_assign(
+    assign_map: &mut AssignMap,
+    declared: &HashMap<UniqueIdent, Typ>,
+    assigned: &mut HashSet<UniqueIdent>,
+    modified: &mut HashSet<UniqueIdent>,
+    stms: &Stms,
+) -> Stms {
+    let stms: Vec<Stm> =
+        stms.iter().map(|s| stm_assign(assign_map, declared, assigned, modified, s)).collect();
+    Arc::new(stms)
 }

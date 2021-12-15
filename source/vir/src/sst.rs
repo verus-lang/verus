@@ -69,7 +69,8 @@ pub enum StmX {
     DeadEnd(Stm),
     If(Exp, Stm, Option<Stm>),
     While {
-        cond: Exp,
+        cond_stms: Stms,
+        cond_exp: Exp,
         body: Stm,
         invs: Exps,
         typ_inv_vars: Arc<Vec<(UniqueIdent, Typ)>>,

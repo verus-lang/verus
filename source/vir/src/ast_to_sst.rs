@@ -622,17 +622,14 @@ pub(crate) fn expr_to_stm_opt(
         }
         ExprX::While { cond, body, invs } => {
             let (stms0, e0) = expr_to_stm(ctx, state, cond)?;
-            if stms0.len() != 0 {
-                // TODO:
-                return err_str(&cond.span, "not yet implemented: complex while loop conditions");
-            }
             let (stms1, e1) = expr_to_stm_opt(ctx, state, body)?;
             check_no_exp(&e1)?;
             let invs = Arc::new(vec_map_result(invs, |e| expr_to_exp_state(ctx, state, e))?);
             let while_stm = Spanned::new(
                 expr.span.clone(),
                 StmX::While {
-                    cond: e0,
+                    cond_stms: Arc::new(stms0),
+                    cond_exp: e0,
                     body: stms_to_one_stm(&body.span, stms1),
                     invs,
                     typ_inv_vars: Arc::new(vec![]),

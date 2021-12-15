@@ -172,12 +172,17 @@ where
             let stm = Spanned::new(stm.span.clone(), StmX::If(cond.clone(), lhs, rhs));
             f(&stm)
         }
-        StmX::While { cond, body, invs, typ_inv_vars, modified_vars } => {
+        StmX::While { cond_stms, cond_exp, body, invs, typ_inv_vars, modified_vars } => {
+            let mut cs: Vec<Stm> = Vec::new();
+            for s in cond_stms.iter() {
+                cs.push(map_stm_visitor(s, f)?);
+            }
             let body = map_stm_visitor(body, f)?;
             let stm = Spanned::new(
                 stm.span.clone(),
                 StmX::While {
-                    cond: cond.clone(),
+                    cond_stms: Arc::new(cs),
+                    cond_exp: cond_exp.clone(),
                     body,
                     invs: invs.clone(),
                     typ_inv_vars: typ_inv_vars.clone(),
@@ -220,13 +225,14 @@ where
                 let exp = f(exp);
                 Spanned::new(span, StmX::If(exp, s1.clone(), s2.clone()))
             }
-            StmX::While { cond, body, invs, typ_inv_vars, modified_vars } => {
-                let cond = f(cond);
+            StmX::While { cond_stms, cond_exp, body, invs, typ_inv_vars, modified_vars } => {
+                let cond_exp = f(cond_exp);
                 let invs = Arc::new(vec_map(invs, f));
                 Spanned::new(
                     span,
                     StmX::While {
-                        cond,
+                        cond_stms: cond_stms.clone(),
+                        cond_exp,
                         body: body.clone(),
                         invs,
                         typ_inv_vars: typ_inv_vars.clone(),

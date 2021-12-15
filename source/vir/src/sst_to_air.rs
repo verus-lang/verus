@@ -555,10 +555,10 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
             }
             stmts
         }
-        StmX::While { cond, body, invs, typ_inv_vars, modified_vars } => {
-            let pos_cond = exp_to_expr(ctx, &cond);
+        StmX::While { cond_stms, cond_exp, body, invs, typ_inv_vars, modified_vars } => {
+            let pos_cond = exp_to_expr(ctx, &cond_exp);
             let neg_cond = Arc::new(ExprX::Unary(air::ast::UnaryOp::Not, pos_cond.clone()));
-            let pos_assume = Arc::new(DeclX::Axiom(pos_cond));
+            let pos_assume = Arc::new(StmtX::Assume(pos_cond));
             let neg_assume = Arc::new(StmtX::Assume(neg_cond));
             let invs: Vec<(Span, Expr)> =
                 invs.iter().map(|e| (e.span.clone(), exp_to_expr(ctx, e))).collect();
@@ -572,7 +572,12 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
                 None
             };
 
-            let mut air_body = stm_to_stmts(ctx, state, body);
+            let cond_stmts: Vec<Stmt> =
+                cond_stms.iter().map(|s| stm_to_stmts(ctx, state, s)).flatten().collect();
+            let mut air_body: Vec<Stmt> = Vec::new();
+            air_body.append(&mut cond_stmts.clone());
+            air_body.push(pos_assume);
+            air_body.append(&mut stm_to_stmts(ctx, state, body));
 
             /*
             Generate a separate SMT query for the loop body.
@@ -601,7 +606,6 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
             for (_, inv) in invs.iter() {
                 local.push(Arc::new(DeclX::Axiom(inv.clone())));
             }
-            local.push(pos_assume);
             for (span, inv) in invs.iter() {
                 let description = Some("invariant not satisfied at end of loop body".to_string());
                 let spans = Arc::new(vec![Span { description, ..span.clone() }]);
@@ -647,6 +651,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
                 let inv_stmt = StmtX::Assume(inv.clone());
                 stmts.push(Arc::new(inv_stmt));
             }
+            stmts.append(&mut cond_stmts.clone());
             stmts.push(neg_assume);
             if ctx.debug {
                 // Add a snapshot for the state after we emerge from the while loop
