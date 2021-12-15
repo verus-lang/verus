@@ -50,10 +50,11 @@ use crate::util::{from_raw_span, vec_map};
 use crate::{unsupported, unsupported_unless};
 
 use rustc_ast::ast::{
-    AngleBracketedArg, AngleBracketedArgs, Arm, AssocItem, AssocItemKind, Block, Crate, EnumDef,
-    Expr, ExprKind, Field, FieldPat, FnDecl, FnKind, FnRetTy, FnSig, GenericArgs, GenericParam,
-    Generics, ImplKind, Item, ItemKind, Lit, LitIntType, LitKind, Local, ModKind, NodeId, Param,
-    Pat, PatKind, PathSegment, Stmt, StmtKind, StructField, StructRest, Variant, VariantData,
+    AngleBracketedArg, AngleBracketedArgs, Arm, AssocItem, AssocItemKind, BinOpKind, Block, Crate,
+    EnumDef, Expr, ExprKind, Field, FieldPat, FnDecl, FnKind, FnRetTy, FnSig, GenericArgs,
+    GenericParam, Generics, ImplKind, Item, ItemKind, Lit, LitIntType, LitKind, Local, ModKind,
+    NodeId, Param, Pat, PatKind, PathSegment, Stmt, StmtKind, StructField, StructRest, Variant,
+    VariantData,
 };
 use rustc_ast::ptr::P;
 use rustc_data_structures::thin_vec::ThinVec;
@@ -454,6 +455,21 @@ fn erase_expr_opt(ctxt: &Ctxt, mctxt: &mut MCtxt, expect: Mode, expr: &Expr) -> 
                 let e1 = erase_expr(ctxt, mctxt, expect, e1);
                 let e2 = erase_expr(ctxt, mctxt, expect, e2);
                 ExprKind::Binary(*op, P(e1), P(e2))
+            } else {
+                let e1 = erase_expr_opt(ctxt, mctxt, expect, e1);
+                let e2 = erase_expr_opt(ctxt, mctxt, expect, e2);
+                return replace_with_exprs(mctxt, expr, vec![e1, e2]);
+            }
+        }
+        ExprKind::AssignOp(
+            op @ rustc_span::source_map::Spanned { node: BinOpKind::Shr, .. },
+            e1,
+            e2,
+        ) => {
+            if keep_mode(ctxt, expect) {
+                let e1 = erase_expr(ctxt, mctxt, expect, e1);
+                let e2 = erase_expr(ctxt, mctxt, expect, e2);
+                ExprKind::AssignOp(*op, P(e1), P(e2))
             } else {
                 let e1 = erase_expr_opt(ctxt, mctxt, expect, e1);
                 let e2 = erase_expr_opt(ctxt, mctxt, expect, e2);

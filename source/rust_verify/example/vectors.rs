@@ -6,7 +6,7 @@ use crate::pervasive::{*, vec::*};
 
 fn binary_search(v: &Vec<u64>, k: u64) -> usize {
     requires([
-        forall(|i:int, j:int| imply(0 <= i && i <= j && j < v.view().len(), v.idx(i) <= v.idx(j))),
+        forall(|i:int, j:int| 0 <= i && i <= j && j < v.view().len() >>= v.idx(i) <= v.idx(j)),
         exists(|i:int| 0 <= i && i < v.view().len() && k == v.idx(i)),
     ]);
     ensures(|r: usize| r < v.view().len() && k == v.idx(r));
@@ -19,7 +19,7 @@ fn binary_search(v: &Vec<u64>, k: u64) -> usize {
             length == v.view().len(),
             i2 < length,
             exists(|i:int| i1 <= i && i <= i2 && k == v.idx(i)),
-            forall(|i:int, j:int| imply(0 <= i && i <= j && j < length, v.idx(i) <= v.idx(j))),
+            forall(|i:int, j:int| 0 <= i && i <= j && j < length >>= v.idx(i) <= v.idx(j)),
         ]);
         #[spec] let d = i2 - i1;
 
@@ -38,7 +38,7 @@ fn binary_search(v: &Vec<u64>, k: u64) -> usize {
 fn reverse(v1: Vec<u64>) -> Vec<u64> {
     ensures(|r: Vec<u64>| [
         r.view().len() == v1.view().len(),
-        forall(|i: int| imply(0 <= i && i < v1.view().len(), r.idx(i) == v1.idx(v1.view().len() - i - 1))),
+        forall(|i: int| 0 <= i && i < v1.view().len() >>= r.idx(i) == v1.idx(v1.view().len() - i - 1)),
     ]);
 
     let length = v1.len();
@@ -47,9 +47,9 @@ fn reverse(v1: Vec<u64>) -> Vec<u64> {
     while n < length / 2 {
         invariant([
             length == v2.view().len(),
-            forall(|i: int| imply(n <= i && i + n < length, v2.idx(i) == v1.idx(i))),
-            forall(|i: int| imply(0 <= i && i < n, v2.idx(i) == v1.idx(length - i - 1))),
-            forall(|i: int| imply(0 <= i && i < n, v1.idx(i) == v2.idx(length - i - 1))),
+            forall(|i: int| n <= i && i + n < length >>= v2.idx(i) == v1.idx(i)),
+            forall(|i: int| 0 <= i && i < n >>= v2.idx(i) == v1.idx(length - i - 1)),
+            forall(|i: int| 0 <= i && i < n >>= v1.idx(i) == v2.idx(length - i - 1)),
         ]);
 
         let x = *v2.get(n);

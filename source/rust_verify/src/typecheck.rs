@@ -81,11 +81,21 @@ impl FormalVerifierTyping for Typecheck {
         &mut self,
         tcx: TyCtxt<'tcx>,
         op: BinOp,
+        is_assign: bool,
         lhs_expr: &'tcx Expr<'tcx>,
         rhs_expr: &'tcx Expr<'tcx>,
         lhs_ty: Ty<'tcx>,
         rhs_ty: Ty<'tcx>,
-    ) -> Option<(bool, Ty<'tcx>)> {
+    ) -> Option<(bool, Ty<'tcx>, bool)> {
+        if is_assign {
+            match (op.node, &lhs_ty.kind(), &rhs_ty.kind()) {
+                (BinOpKind::Shr, TyKind::Bool, TyKind::Bool | TyKind::Infer(..)) => {
+                    return Some((true, lhs_ty, true));
+                }
+                _ => return None,
+            }
+        }
+
         // For convenience, allow implicit coercions from integral types to int in some situations.
         // This is strictly opportunistic; in many situations you still need "as int".
 
@@ -116,7 +126,7 @@ impl FormalVerifierTyping for Typecheck {
         match (widen_left, allow_widen(lhs_expr), allow_widen(rhs_expr)) {
             (false, _, false) => None,
             (true, false, _) => None,
-            _ => Some((widen_left, t)),
+            _ => Some((widen_left, t, false)),
         }
     }
 

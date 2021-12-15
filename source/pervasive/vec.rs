@@ -55,7 +55,7 @@ impl<A> Vec<A> {
         ensures(|v2: Vec<A>| [
             v2.view().len() == self.view().len(),
             equal(a, v2.idx(i)),
-            forall(|j: int| imply(0 <= j && j < self.view().len() && j != i, equal(self.idx(j), v2.idx(j)))),
+            forall(|j: int| 0 <= j && j < self.view().len() && j != i >>= equal(self.idx(j), v2.idx(j))),
         ]);
         // TODO (once idx is inline): ensures(|v2: Vec<A>| equal(v2.view(), self.view().update(i, a)));
 

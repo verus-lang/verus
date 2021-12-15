@@ -909,6 +909,20 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                 _ => Ok(e),
             }
         }
+        ExprKind::AssignOp(
+            rustc_span::source_map::Spanned { node: BinOpKind::Shr, .. },
+            lhs,
+            rhs,
+        ) => {
+            let vlhs = expr_to_vir(bctx, lhs)?;
+            let vrhs = expr_to_vir(bctx, rhs)?;
+            if matches!(*vlhs.typ, TypX::Bool) {
+                let e = mk_expr(ExprX::Binary(BinaryOp::Implies, vlhs, vrhs));
+                Ok(e)
+            } else {
+                unsupported_err!(expr.span, "assignment operators")
+            }
+        }
         ExprKind::Path(QPath::Resolved(None, path)) => match path.res {
             Res::Local(id) => match tcx.hir().get(id) {
                 Node::Binding(pat) => Ok(mk_expr(ExprX::Var(Arc::new(pat_to_var(pat))))),

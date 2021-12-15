@@ -32,11 +32,11 @@ fn test1(i: int, n: nat, u: u8) {
     assert(u >= 0);
     assert(n + n >= 0);
     assert(((u + u) as int) < 256);
-    assert(imply(u < 100, ((u + u) as int) < 250));
+    assert(u < 100 >>= ((u + u) as int) < 250);
     assert(add1_int(u) == u as int + 1);
     // assert(add1_int(u) == (u + 1) as int); // FAILS
     assert(add1_nat(u) == u as nat + 1);
-    // assert(imply((u as int) < 256, u < 256)); // FAILS, because 256 is a u8 in u < 256
+    // assert((u as int) < 256 >>= u < 256); // FAILS, because 256 is a u8 in u < 256
     let n0 = test0();
     assert(n0 >= 0);
     assert(add1_nat_opaque(5) >= 0);

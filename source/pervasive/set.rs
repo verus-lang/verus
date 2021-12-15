@@ -43,7 +43,7 @@ impl<A> Set<A> {
 
     #[spec]
     pub fn subset_of(self, s2: Set<A>) -> bool {
-        forall(|a: A| imply(self.contains(a), s2.contains(a)))
+        forall(|a: A| self.contains(a) >>= s2.contains(a))
     }
 
     #[spec]

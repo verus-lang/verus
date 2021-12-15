@@ -29,7 +29,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] e02_pass code! {
         fn e02(p: int) {
-            assert(imply(true, true));
+            assert(true >>= true);
         }
     } => Ok(())
 }
@@ -37,7 +37,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] e02_fail code! {
         fn e02(p: int) {
-            assert(imply(true, false)); // FAILS
+            assert(true >>= false); // FAILS
         }
     } => Err(err) => assert_one_fails(err)
 }
@@ -885,7 +885,7 @@ test_verify_one_file! {
         }
 
         fn max_u64_fibo_arg_bound() {
-            ensures(forall(|i:nat| imply(i < max_u64_fibo_arg(), fibo(i) < 7000)));
+            ensures(forall(|i:nat| i < max_u64_fibo_arg() >>= fibo(i) < 7000));
 
             assert_by(fibo(20) == 6765, reveal_with_fuel(fibo, 11));
 
@@ -894,8 +894,8 @@ test_verify_one_file! {
             // assume(forall(|i:nat| fibo(i) < fibo(i+1)));
 
             forall(|i:nat, j:nat| {
-                requires(i < j);
-                ensures(imply(i<=j, fibo(i) <= fibo(j)));
+                requires(i <= j);
+                ensures(fibo(i) <= fibo(j));
 
                 fibo_monotonic(i, j);
             });
@@ -951,7 +951,7 @@ test_verify_one_file! {
             requires(int_seq.view().len() > 0);
             ensures(|max_index_rc:usize| [
                 max_index_rc < int_seq.view().len(),
-                forall(|idx:nat| imply(idx<int_seq.view().len(), int_seq.idx(idx) <= int_seq.idx(max_index_rc))),
+                forall(|idx:nat| idx < int_seq.view().len() >>= int_seq.idx(idx) <= int_seq.idx(max_index_rc)),
             ]);
 
             let mut count:usize = 0;
@@ -960,8 +960,8 @@ test_verify_one_file! {
             {
                 invariant([
                     max_index < int_seq.view().len(),
-                    forall(|prioridx:nat| imply(prioridx < count,
-                            int_seq.idx(prioridx) <= int_seq.idx(max_index))),
+                    forall(|prioridx:nat| prioridx < count >>=
+                            int_seq.idx(prioridx) <= int_seq.idx(max_index)),
                 ]);
 
                 if int_seq.get(max_index) < int_seq.get(count) {

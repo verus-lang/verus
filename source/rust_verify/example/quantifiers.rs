@@ -32,18 +32,18 @@ fn g3(i: int) -> int {
 // Automatically chosen triggers
 fn test_auto() {
     // :pattern ((f1. i@ j@))
-    assert(forall(|i: int, j: int| imply(i == j, f1(i, j))));
+    assert(forall(|i: int, j: int| i == j >>= f1(i, j)));
 
     // :pattern ((f1. i@ j@))
-    assert(forall(|i: int, j: int| imply(i == j, f1(i, j) && f1(i, j))));
+    assert(forall(|i: int, j: int| i == j >>= f1(i, j) && f1(i, j)));
 
     // :pattern ((f1. j@ i@))
     // :pattern ((f1. i@ j@))
-    assert(forall(|i: int, j: int| imply(i == j, f1(i, j) || f1(j, i))));
+    assert(forall(|i: int, j: int| i == j >>= f1(i, j) || f1(j, i)));
 
     // :pattern ((f1. i@ j@))
     // note: f1(i, j) is preferred over splitting i, j among g1(i), g2(j)
-    assert(forall(|i: int, j: int| imply(f1(i, j), g1(i) <= g2(j))));
+    assert(forall(|i: int, j: int| f1(i, j) >>= g1(i) <= g2(j)));
 
     // :pattern ((g1. i@))
     // note: g1(i) is preferred over the more deeply nested g3(i)
@@ -51,18 +51,18 @@ fn test_auto() {
 
     // :pattern ((f1. i@ j@))
     // note: f1(i, j) is preferred over the larger f2(j, g1(i))
-    assert(forall(|i: int, j: int| imply(i == j, f1(i, j) || f2(j, g1(i)))));
+    assert(forall(|i: int, j: int| i == j >>= f1(i, j) || f2(j, g1(i))));
 
     // :pattern ((f1. j@ (g1. i@)))
     // note: f1(i, j) is excluded due to a potential matching loop
-    assert(forall(|i: int, j: int| imply(i == j, f1(i, j) || f1(j, g1(i)))));
+    assert(forall(|i: int, j: int| i == j >>= f1(i, j) || f1(j, g1(i))));
 
     // matching loop, no trigger
-    // assert(forall(|i: int, j: int| imply(i == j, f1(i, j) || f1(j, i + 1))));
+    // assert(forall(|i: int, j: int| i == j >>= f1(i, j) || f1(j, i + 1)));
 
     // :pattern ((f2. j@ i@))
     // :pattern ((f1. i@ j@))
-    assert(forall(|i: int, j: int| imply(f2(j, i), f1(i, j))));
+    assert(forall(|i: int, j: int| f2(j, i) >>= f1(i, j)));
 
     // :pattern ((g1. j@) (g1. i@))
     assert(forall(|i: int, j: int| g1(i) >= i && g1(j) >= j));
@@ -79,10 +79,10 @@ fn test_manual() {
     //
 
     // :pattern ((f1. i@ j@))
-    assert(forall(|i: int, j: int| imply(f2(j, i), #[trigger] f1(i, j))));
+    assert(forall(|i: int, j: int| f2(j, i) >>= #[trigger] f1(i, j)));
 
     // :pattern ((g1. i@) (g2. j@))
-    assert(forall(|i: int, j: int| imply(f1(i, j), f1(#[trigger] g1(i), #[trigger] g2(j)))));
+    assert(forall(|i: int, j: int| f1(i, j) >>= f1(#[trigger] g1(i), #[trigger] g2(j))));
 
     //
     // For multiple triggers, use #[trigger(...)], where the triggers are numbered 1, 2, ...
@@ -91,18 +91,16 @@ fn test_manual() {
     // :pattern ((g1. i@) (g2. j@))
     // :pattern ((f1. i@ j@))
     assert(forall(|i: int, j: int|
-        imply(
-            #[trigger(1)] f1(i, j),
-            f1(#[trigger(2)] g1(i), #[trigger(2)] g2(j))
-        )));
+        #[trigger(1)] f1(i, j) >>=
+        f1(#[trigger(2)] g1(i), #[trigger(2)] g2(j))
+    ));
 
     // :pattern ((g1. i@) (g2. j@))
     // :pattern ((f1. i@ j@) (g1. i@))
     assert(forall(|i: int, j: int|
-        imply(
-            #[trigger(1)] f1(i, j),
-            f1(#[trigger(1, 2)] g1(i), #[trigger(2)] g2(j))
-        )));
+        #[trigger(1)] f1(i, j) >>=
+        f1(#[trigger(1, 2)] g1(i), #[trigger(2)] g2(j))
+    ));
 }
 
 #[spec]
