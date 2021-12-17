@@ -101,7 +101,7 @@ fn add_pattern(typing: &mut Typing, mode: Mode, pattern: &Pattern) -> Result<(),
 fn check_expr(typing: &mut Typing, outer_mode: Mode, expr: &Expr) -> Result<Mode, VirErr> {
     match &expr.x {
         ExprX::Const(_) => Ok(outer_mode),
-        ExprX::Var(x) => {
+        ExprX::Var(x) | ExprX::VarAt(x, _) => {
             let mode = mode_join(outer_mode, typing.get(x).1);
             if typing.in_forall_stmt && mode == Mode::Proof {
                 // Proof variables may be used as spec, but not as proof inside forall statements.
@@ -374,7 +374,7 @@ fn check_function(typing: &mut Typing, function: &Function) -> Result<(), VirErr
                 format!("parameter {} cannot have mode {}", param.x.name, param.x.mode),
             );
         }
-        typing.insert(&function.span, &param.x.name, false, param.x.mode);
+        typing.insert(&function.span, &param.x.name, param.x.is_mut, param.x.mode);
     }
     if function.x.has_return() {
         let ret_mode = function.x.ret.x.mode;

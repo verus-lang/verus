@@ -95,6 +95,7 @@ where
     let exprx = match &expr.x {
         ExprX::Const(c) => ExprX::Const(c.clone()),
         ExprX::Var(x) => ExprX::Var(x.clone()),
+        ExprX::VarAt(x, at) => ExprX::VarAt(x.clone(), at.clone()),
         ExprX::Call(target, es) => {
             let target = match target {
                 CallTarget::Static(x, typs) => {
@@ -313,7 +314,8 @@ where
     FT: Fn(&mut E, &Typ) -> Result<Typ, VirErr>,
 {
     let typ = map_typ_visitor_env(&param.x.typ, env, ft)?;
-    let paramx = ParamX { name: param.x.name.clone(), typ, mode: param.x.mode };
+    let paramx =
+        ParamX { name: param.x.name.clone(), typ, mode: param.x.mode, is_mut: param.x.is_mut };
     Ok(Spanned::new(param.span.clone(), paramx))
 }
 
