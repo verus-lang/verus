@@ -102,10 +102,17 @@ impl State {
         ident: &Ident,
         typ: &Typ,
         mutable: bool,
+        may_need_rename: bool,
     ) -> UniqueIdent {
-        let unique_ident = (ident.clone(), Some(0));
+        let unique_ident = if may_need_rename {
+            let id = self.alloc_unique_var(ident);
+            self.insert_unique_var(&id);
+            id
+        } else {
+            self.new_statement_var(&ident);
+            (ident.clone(), Some(0))
+        };
         let decl = LocalDeclX { ident: unique_ident.clone(), typ: typ.clone(), mutable };
-        self.new_statement_var(&ident);
         self.local_decls.push(Arc::new(decl));
         unique_ident
     }
@@ -204,7 +211,7 @@ pub(crate) fn expr_to_decls_exp(
 ) -> Result<(Vec<LocalDecl>, Exp), VirErr> {
     let mut state = State::new();
     for param in params.iter() {
-        state.declare_new_var(&param.x.name, &param.x.typ, false);
+        state.declare_new_var(&param.x.name, &param.x.typ, false, false);
     }
     let exp = expr_to_exp_state(ctx, &mut state, expr)?;
     let exp = state.finalize_exp(&exp);
@@ -219,7 +226,7 @@ pub(crate) fn expr_to_bind_decls_exp(
 ) -> Result<Exp, VirErr> {
     let mut state = State::new();
     for param in params.iter() {
-        let id = state.declare_new_var(&param.x.name, &param.x.typ, false);
+        let id = state.declare_new_var(&param.x.name, &param.x.typ, false, false);
         state.dont_rename.insert(id);
     }
     let exp = expr_to_exp_state(ctx, &mut state, expr)?;
@@ -313,7 +320,7 @@ fn stm_call(
             // put arg into a temporary variable
             let (temp, temp_var) = state.next_temp(&arg.0.span);
             small_args.push(temp_var);
-            let temp_id = state.declare_new_var(&temp, &arg.1, false);
+            let temp_id = state.declare_new_var(&temp, &arg.1, false, false);
             stms.push(init_var(&arg.0.span, &temp_id, &arg.0));
         }
     }
@@ -334,7 +341,7 @@ fn if_to_stm(
 ) -> Exp {
     // If statement, put results from e1/e2 in a temp variable, return temp variable
     let (temp, temp_var) = state.next_temp(&expr.span);
-    let temp_id = state.declare_new_var(&temp, &expr.typ, false);
+    let temp_id = state.declare_new_var(&temp, &expr.typ, false, false);
     // if e0 { stms1; temp = e1; } else { stms2; temp = e2; }
     stms1.push(init_var(&expr.span, &temp_id, &e1));
     stms2.push(init_var(&expr.span, &temp_id, &e2));
@@ -395,7 +402,7 @@ pub(crate) fn expr_to_stm_opt(
                 Ok((stms, Some(Spanned::new(expr.span.clone(), call))))
             } else if ret {
                 let (temp, temp_var) = state.next_temp(&expr.span);
-                state.declare_new_var(&temp, &expr.typ, false);
+                state.declare_new_var(&temp, &expr.typ, false, false);
                 // tmp = StmX::Call;
                 let dest = Dest { var: (temp.clone(), Some(0)), is_init: true };
                 stms.push(stm_call(state, &expr.span, x.clone(), typs.clone(), args, Some(dest)));
@@ -557,7 +564,7 @@ pub(crate) fn expr_to_stm_opt(
             // Translate proof into a dead-end ending with an assert
             state.push_scope();
             for var in vars.iter() {
-                state.declare_new_var(&var.name, &var.a, false);
+                state.declare_new_var(&var.name, &var.a, false, true);
             }
             let (mut body, e) = expr_to_stm_opt(ctx, state, proof)?;
             if let Some(_) = e {
@@ -747,7 +754,7 @@ pub(crate) fn stmt_to_stm(
                 _ => panic!("internal error: Decl should have been simplified by ast_simplify"),
             };
 
-            let ident = state.alloc_unique_var(&name.clone());
+            let ident = state.alloc_unique_var(&name);
             let typ = pattern.typ.clone();
             let decl = Arc::new(LocalDeclX { ident, typ, mutable: *mutable });
 

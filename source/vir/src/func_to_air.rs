@@ -383,7 +383,7 @@ pub fn func_def_to_air(
             let dest = if function.x.has_return() {
                 let ParamX { name, typ, .. } = &function.x.ret.x;
                 ens_params.push(function.x.ret.clone());
-                state.declare_new_var(name, typ, false);
+                state.declare_new_var(name, typ, false, false);
                 Some((name.clone(), Some(0)))
             } else {
                 None
@@ -397,7 +397,7 @@ pub fn func_def_to_air(
             })?;
             let enss = Arc::new(enss);
             for param in function.x.params.iter() {
-                state.declare_new_var(&param.x.name, &param.x.typ, false);
+                state.declare_new_var(&param.x.name, &param.x.typ, false, false);
             }
 
             // AST --> SST

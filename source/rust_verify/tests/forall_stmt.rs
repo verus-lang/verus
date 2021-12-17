@@ -199,3 +199,22 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_one_fails(err)
 }
+
+test_verify_one_file! {
+    #[test] test_scope code! {
+        #[spec]
+        fn f(j: int) -> bool { true }
+
+        fn scope(b: bool, i: u64) {
+            if b {
+                let i = 5;
+                forall(|i: int| {ensures(f(i));});
+                forall(|j: int| {ensures(f(j));});
+            } else {
+                let i = 6;
+                forall(|i: int| {ensures(f(i));});
+                forall(|j: int| {ensures(f(j));});
+            }
+        }
+    } => Ok(())
+}
