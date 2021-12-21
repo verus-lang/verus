@@ -181,19 +181,19 @@ fn check_expr(typing: &mut Typing, expr: &Expr) -> Result<Typ, TypeError> {
             check_exprs(typing, "mod", &[it(), it()], &it(), &[e1.clone(), e2.clone()])
         }
         ExprX::Binary(BinaryOp::BitXor, e1, e2) => {
-            check_exprs(typing, "div", &[it(), it()], &it(), &[e1.clone(), e2.clone()])
+            check_exprs(typing, "^", &[it(), it()], &it(), &[e1.clone(), e2.clone()])
         }
         ExprX::Binary(BinaryOp::BitAnd, e1, e2) => {
-            check_exprs(typing, "mod", &[it(), it()], &it(), &[e1.clone(), e2.clone()])
+            check_exprs(typing, "&", &[it(), it()], &it(), &[e1.clone(), e2.clone()])
         }
         ExprX::Binary(BinaryOp::BitOr, e1, e2) => {
-            check_exprs(typing, "div", &[it(), it()], &it(), &[e1.clone(), e2.clone()])
+            check_exprs(typing, "|", &[it(), it()], &it(), &[e1.clone(), e2.clone()])
         }
         ExprX::Binary(BinaryOp::Shr, e1, e2) => {
-            check_exprs(typing, "mod", &[it(), it()], &it(), &[e1.clone(), e2.clone()])
+            check_exprs(typing, ">>", &[it(), it()], &it(), &[e1.clone(), e2.clone()])
         }
         ExprX::Binary(BinaryOp::Shl, e1, e2) => {
-            check_exprs(typing, "mod", &[it(), it()], &it(), &[e1.clone(), e2.clone()])
+            check_exprs(typing, "<<", &[it(), it()], &it(), &[e1.clone(), e2.clone()])
         }
         ExprX::Multi(op, exprs) => {
             let (x, t) = match op {
