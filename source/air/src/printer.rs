@@ -141,8 +141,8 @@ impl Printer {
                     BinaryOp::BitXor => "^",
                     BinaryOp::BitAnd => "&",
                     BinaryOp::BitOr => "|",
-                    BinaryOp::Shr => ">",
-                    BinaryOp::Shl => "<",
+                    BinaryOp::Shr => ">>",
+                    BinaryOp::Shl => "<<",
                 };
                 Node::List(vec![str_to_node(sop), self.expr_to_node(lhs), self.expr_to_node(rhs)])
             }
