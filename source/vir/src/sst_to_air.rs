@@ -272,6 +272,11 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp) -> Expr {
                         BinaryOp::Mul => panic!("internal error"),
                         BinaryOp::EuclideanDiv => air::ast::BinaryOp::EuclideanDiv,
                         BinaryOp::EuclideanMod => air::ast::BinaryOp::EuclideanMod,
+                        BinaryOp::BitXor => air::ast::BinaryOp::BitXor,
+                        BinaryOp::BitAnd => air::ast::BinaryOp::BitAnd,
+                        BinaryOp::BitOr => air::ast::BinaryOp::BitOr,
+                        BinaryOp::Shr => air::ast::BinaryOp::Shr,
+                        BinaryOp::Shl => air::ast::BinaryOp::Shl,
                     };
                     ExprX::Binary(aop, lh, rh)
                 }

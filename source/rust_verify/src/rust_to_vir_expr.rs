@@ -888,6 +888,11 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                 BinOpKind::Mul => BinaryOp::Mul,
                 BinOpKind::Div => BinaryOp::EuclideanDiv,
                 BinOpKind::Rem => BinaryOp::EuclideanMod,
+                BinOpKind::BitXor => BinaryOp::BitXor,
+                BinOpKind::BitAnd => BinaryOp::BitAnd,
+                BinOpKind::BitOr => BinaryOp::BitOr,
+                BinOpKind::Shr => BinaryOp::Shr,
+                BinOpKind::Shl => BinaryOp::Shl,
                 _ => unsupported_err!(expr.span, format!("binary operator {:?}", op)),
             };
             let e = mk_expr(ExprX::Binary(vop, vlhs, vrhs));

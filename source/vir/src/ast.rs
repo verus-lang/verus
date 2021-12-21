@@ -162,6 +162,12 @@ pub enum BinaryOp {
     EuclideanDiv,
     /// IntRange::Int % defined as Euclidean (returns non-negative result even for negative divisor)
     EuclideanMod,
+    // bit vector Ops
+    BitXor,
+    BitAnd,
+    BitOr,
+    Shr,
+    Shl,
 }
 
 /// Ghost annotations on functions and while loops; must appear at the beginning of function body

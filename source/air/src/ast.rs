@@ -49,6 +49,11 @@ pub enum BinaryOp {
     Gt,
     EuclideanDiv,
     EuclideanMod,
+    BitXor,
+    BitAnd,
+    BitOr,
+    Shr,
+    Shl,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
