@@ -172,6 +172,8 @@ pub(crate) enum Attr {
     Opaque,
     // export function's require/ensure as global forall
     ExportAsGlobalForall,
+    // when used in a spec context, promote to spec by inserting .view()
+    Autoview,
     // add manual trigger to expression inside quantifier
     Trigger(Option<Vec<u64>>),
     // custom error string to report for precondition failures
@@ -226,6 +228,9 @@ pub(crate) fn parse_attrs(attrs: &[Attribute]) -> Result<Vec<Attr>, VirErr> {
                 }
                 Some(box [AttrTree::Fun(_, arg, None)]) if arg == "export_as_global_forall" => {
                     v.push(Attr::ExportAsGlobalForall)
+                }
+                Some(box [AttrTree::Fun(_, arg, None)]) if arg == "autoview" => {
+                    v.push(Attr::Autoview)
                 }
                 Some(box [AttrTree::Fun(_, arg, None), AttrTree::Fun(_, msg, None)])
                     if arg == "custom_req_err" =>
@@ -293,6 +298,7 @@ pub(crate) struct VerifierAttrs {
     pub(crate) external: bool,
     pub(crate) is_abstract: bool,
     pub(crate) export_as_global_forall: bool,
+    pub(crate) autoview: bool,
     pub(crate) custom_req_err: Option<String>,
 }
 
@@ -302,6 +308,7 @@ pub(crate) fn get_verifier_attrs(attrs: &[Attribute]) -> Result<VerifierAttrs, V
         external: false,
         is_abstract: false,
         export_as_global_forall: false,
+        autoview: false,
         custom_req_err: None,
     };
     for attr in parse_attrs(attrs)? {
@@ -310,6 +317,7 @@ pub(crate) fn get_verifier_attrs(attrs: &[Attribute]) -> Result<VerifierAttrs, V
             Attr::External => vs.external = true,
             Attr::Abstract => vs.is_abstract = true,
             Attr::ExportAsGlobalForall => vs.export_as_global_forall = true,
+            Attr::Autoview => vs.autoview = true,
             Attr::CustomReqErr(s) => vs.custom_req_err = Some(s.clone()),
             _ => {}
         }

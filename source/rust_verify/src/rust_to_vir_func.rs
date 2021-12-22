@@ -256,6 +256,7 @@ pub(crate) fn check_item_fn<'tcx>(
         custom_req_err: vattrs.custom_req_err,
         no_auto_trigger: false,
         export_as_global_forall: vattrs.export_as_global_forall,
+        autoview: vattrs.autoview,
     };
     let func = FunctionX {
         name,

@@ -19,7 +19,7 @@ fn set_external<A>(mut v: Vec<A>, i: usize, a: A) -> Vec<A> {
 
 impl<A> Vec<A> {
     #[verifier(external)]
-    fn get_external(&self, i: usize) -> &A {
+    fn index_external(&self, i: usize) -> &A {
         &self.vec[i]
     }
 
@@ -35,34 +35,25 @@ impl<A> Vec<A> {
         arbitrary()
     }
 
-    // TODO: make this inline
-    #[spec]
-    pub fn idx(&self, i: int) -> A {
-        self.view().index(i)
-    }
-
     #[verifier(no_verify)]
-    pub fn get(&self, i: usize) -> &A {
+    #[verifier(autoview)]
+    pub fn index(&self, i: usize) -> &A {
         requires(i < self.view().len());
-        ensures(|r: A| equal(r, self.idx(i)));
+        ensures(|r: A| equal(r, self.view().index(i)));
 
-        self.get_external(i)
+        self.index_external(i)
     }
 
     #[verifier(no_verify)]
     pub fn set(self, i: usize, a: A) -> Vec<A> {
         requires(i < self.view().len());
-        ensures(|v2: Vec<A>| [
-            v2.view().len() == self.view().len(),
-            equal(a, v2.idx(i)),
-            forall(|j: int| 0 <= j && j < self.view().len() && j != i >>= equal(self.idx(j), v2.idx(j))),
-        ]);
-        // TODO (once idx is inline): ensures(|v2: Vec<A>| equal(v2.view(), self.view().update(i, a)));
+        ensures(|v2: Vec<A>| equal(v2.view(), self.view().update(i, a)));
 
         set_external(self, i, a)
     }
 
     #[verifier(no_verify)]
+    #[verifier(autoview)]
     pub fn len(&self) -> usize {
         ensures(|l: usize| l == self.view().len());
 

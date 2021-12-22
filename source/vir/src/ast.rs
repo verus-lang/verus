@@ -336,6 +336,8 @@ pub struct FunctionAttrsX {
     pub no_auto_trigger: bool,
     /// Custom error message to display when a pre-condition fails
     pub custom_req_err: Option<String>,
+    /// coerce f(e, ...) to f(e.view(), ...)
+    pub autoview: bool,
 }
 
 /// Static function identifier

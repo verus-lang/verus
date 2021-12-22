@@ -948,10 +948,10 @@ test_verify_one_file! {
 
         fn find_max(int_seq: &Vec<u64>) -> usize
         {
-            requires(int_seq.view().len() > 0);
+            requires(int_seq.len() > 0);
             ensures(|max_index_rc:usize| [
-                max_index_rc < int_seq.view().len(),
-                forall(|idx:nat| idx < int_seq.view().len() >>= int_seq.idx(idx) <= int_seq.idx(max_index_rc)),
+                max_index_rc < int_seq.len(),
+                forall(|idx:nat| idx < int_seq.len() >>= int_seq.index(idx) <= int_seq.index(max_index_rc)),
             ]);
 
             let mut count:usize = 0;
@@ -959,12 +959,12 @@ test_verify_one_file! {
             while count < int_seq.len()
             {
                 invariant([
-                    max_index < int_seq.view().len(),
+                    max_index < int_seq.len(),
                     forall(|prioridx:nat| prioridx < count >>=
-                            int_seq.idx(prioridx) <= int_seq.idx(max_index)),
+                            int_seq.index(prioridx) <= int_seq.index(max_index)),
                 ]);
 
-                if int_seq.get(max_index) < int_seq.get(count) {
+                if int_seq.index(max_index) < int_seq.index(count) {
                     max_index = count;
                 }
                 count = count + 1;
