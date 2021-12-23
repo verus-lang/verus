@@ -367,6 +367,9 @@ pub fn func_decl_to_air(
                 let axiom = Arc::new(DeclX::Axiom(expr));
                 decl_commands.push(Arc::new(CommandX::Global(axiom)));
             }
+            if function.x.attrs.bit_vector {
+                //print!("hello bit vector attribute\n");
+            }
         }
     }
     Ok((Arc::new(decl_commands), Arc::new(check_commands)))

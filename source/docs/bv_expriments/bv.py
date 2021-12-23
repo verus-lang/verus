@@ -49,6 +49,15 @@ def logical_right_shift_is_division():
     return LShR(x, shift) == (UDiv(x, (2 ** shift)));
 
 
+def and7_is_mod8():
+    x = BitVec("x", 32)
+    return (x & 7) == x % 8
+
+
+def left_shift_2_is_mul_4():
+    x = BitVec("x", 32)
+    return x << 2 == (x * 4)
+
 # def index_highest_one(x):
 #     y = extract(31, 30, x);
     
@@ -63,9 +72,11 @@ def logical_right_shift_is_division():
 # query = and_preserves_bound()
 # query = or_preserves_bound()
 # query = mask_with_ffff()
-query = left_shift_is_muliplication()
+# query = left_shift_is_muliplication()
 # query = left_shift_is_mul_if_no_overflow()
 # query = logical_right_shift_is_division()
+# query = and7_is_mod8()
+query = left_shift_2_is_mul_4()
 
 s = Solver()
 s.push()

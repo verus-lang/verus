@@ -162,7 +162,7 @@ pub enum BinaryOp {
     EuclideanDiv,
     /// IntRange::Int % defined as Euclidean (returns non-negative result even for negative divisor)
     EuclideanMod,
-    // bit vector Ops
+    /// Bit Vector Operators
     BitXor,
     BitAnd,
     BitOr,
@@ -342,6 +342,8 @@ pub struct FunctionAttrsX {
     pub no_auto_trigger: bool,
     /// Custom error message to display when a pre-condition fails
     pub custom_req_err: Option<String>,
+    /// Verify using bit vector theory, not converting back and forth with integer
+    pub bit_vector: bool,
 }
 
 /// Static function identifier

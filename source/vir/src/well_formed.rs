@@ -40,6 +40,9 @@ fn check_function(ctxt: &Ctxt, function: &Function) -> Result<(), VirErr> {
             );
         }
     }
+    if function.x.attrs.bit_vector {
+        // return error if function has a non-integer type, or function call (for our simple version)
+    }
     if let Some(body) = &function.x.body {
         map_expr_visitor(body, &mut |expr: &Expr| {
             match &expr.x {
