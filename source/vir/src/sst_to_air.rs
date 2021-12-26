@@ -1,5 +1,6 @@
 use crate::ast::{
-    BinaryOp, Fun, Ident, Idents, IntRange, Mode, Params, Path, Typ, TypX, Typs, UnaryOp, UnaryOpr,
+    BinaryOp, Fun, Ident, Idents, IntRange, Mode, Params, Path, SpannedTyped, Typ, TypX, Typs,
+    UnaryOp, UnaryOpr,
 };
 use crate::ast_util::{get_field, get_variant};
 use crate::context::Ctx;
@@ -60,6 +61,7 @@ pub(crate) fn typ_to_air(_ctx: &Ctx, typ: &Typ) -> air::ast::Typ {
         TypX::Boxed(_) => str_typ(POLY),
         TypX::TypParam(_) => str_typ(POLY),
         TypX::TypeId => str_typ(crate::def::TYPE),
+        TypX::Air(t) => t.clone(),
     }
 }
 
@@ -86,6 +88,7 @@ pub fn typ_to_id(typ: &Typ) -> Expr {
         TypX::Boxed(_) => panic!("internal error: type arguments should be unboxed"),
         TypX::TypParam(x) => ident_var(&suffix_typ_param_id(x)),
         TypX::TypeId => panic!("internal error: typ_to_id of TypeId"),
+        TypX::Air(_) => panic!("internal error: typ_to_id of Air"),
     }
 }
 
@@ -202,6 +205,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp) -> Expr {
                     TypX::Boxed(_) => panic!("internal error: Box(Boxed)"),
                     TypX::TypParam(_) => panic!("internal error: Box(TypParam)"),
                     TypX::TypeId => panic!("internal error: Box(TypeId)"),
+                    TypX::Air(_) => panic!("internal error: Box(Air)"),
                 };
                 ident_apply(&f_name, &vec![expr])
             }
@@ -216,6 +220,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp) -> Expr {
                     TypX::Boxed(_) => panic!("internal error: Unbox(Boxed)"),
                     TypX::TypParam(_) => panic!("internal error: Unbox(TypParam)"),
                     TypX::TypeId => panic!("internal error: Unbox(TypeId)"),
+                    TypX::Air(_) => panic!("internal error: Unbox(Air)"),
                 };
                 ident_apply(&f_name, &vec![expr])
             }
@@ -413,8 +418,9 @@ impl State {
 }
 
 fn assume_var(span: &Span, x: &UniqueIdent, exp: &Exp) -> Stm {
-    let x_var = Spanned::new(span.clone(), ExpX::Var(x.clone()));
-    let eq = Spanned::new(span.clone(), ExpX::Binary(BinaryOp::Eq(Mode::Spec), x_var, exp.clone()));
+    let x_var = SpannedTyped::new(&span, &exp.typ, ExpX::Var(x.clone()));
+    let eqx = ExpX::Binary(BinaryOp::Eq(Mode::Spec), x_var, exp.clone());
+    let eq = SpannedTyped::new(&span, &Arc::new(TypX::Bool), eqx);
     Spanned::new(span.clone(), StmX::Assume(eq))
 }
 
@@ -458,8 +464,9 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
                         let arg_x = crate::sst_visitor::map_exp_visitor(arg, &mut |e| match &e.x {
                             ExpX::Var(x) if x == var => {
                                 overwrite = true;
-                                Spanned::new(
-                                    arg.span.clone(),
+                                SpannedTyped::new(
+                                    &e.span,
+                                    &e.typ,
                                     ExpX::Old(str_ident(SNAPSHOT_CALL), x.0.clone()),
                                 )
                             }

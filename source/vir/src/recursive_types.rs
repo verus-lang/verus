@@ -60,6 +60,7 @@ fn check_positive_uses(
         TypX::Boxed(t) => check_positive_uses(span, type_graph, my_datatype, polarity, t),
         TypX::TypParam(..) => Ok(()),
         TypX::TypeId => Ok(()),
+        TypX::Air(_) => Ok(()),
     }
 }
 

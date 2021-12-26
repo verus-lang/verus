@@ -89,6 +89,8 @@ pub enum TypX {
     TypParam(Ident),
     /// Type of type identifiers
     TypeId,
+    /// AIR type, used internally during translation
+    Air(air::ast::Typ),
 }
 
 /// Primitive unary operations

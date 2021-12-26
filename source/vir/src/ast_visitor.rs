@@ -14,7 +14,7 @@ where
     FT: Fn(&mut E, &Typ) -> Result<Typ, VirErr>,
 {
     match &**typ {
-        TypX::Bool | TypX::Int(_) | TypX::TypParam(_) | TypX::TypeId => ft(env, typ),
+        TypX::Bool | TypX::Int(_) | TypX::TypParam(_) | TypX::TypeId | TypX::Air(_) => ft(env, typ),
         TypX::Tuple(ts) => {
             let ts = vec_map_result(&**ts, |t| map_typ_visitor_env(t, env, ft))?;
             ft(env, &Arc::new(TypX::Tuple(Arc::new(ts))))
