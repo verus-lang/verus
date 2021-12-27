@@ -248,12 +248,15 @@ pub(crate) fn prelude_nodes() -> Vec<Node> {
         )))
 
         // Decreases
-        (declare-fun [check_decrease_int] (Int Int) Bool)
-        (axiom (forall ((cur Int) (prev Int)) (!
-            (= ([check_decrease_int] cur prev)
-                (and (<= 0 cur) (< cur prev))
+        (declare-fun [check_decrease_int] (Int Int Bool) Bool)
+        (axiom (forall ((cur Int) (prev Int) (otherwise Bool)) (!
+            (= ([check_decrease_int] cur prev otherwise)
+                (or
+                    (and (<= 0 cur) (< cur prev))
+                    (and (= cur prev) otherwise)
+                )
             )
-            :pattern (([check_decrease_int] cur prev))
+            :pattern (([check_decrease_int] cur prev otherwise))
         )))
         (declare-fun [height] (Poly) Int)
         (axiom (forall ((x Poly)) (!

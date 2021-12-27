@@ -321,7 +321,7 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
         ret,
         require: Arc::new(vec![]),
         ensure: Arc::new(vec![]),
-        decrease: None,
+        decrease: Arc::new(vec![]),
         is_abstract: false,
         attrs: Default::default(),
         body: None,

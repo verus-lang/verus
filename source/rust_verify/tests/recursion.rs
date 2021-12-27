@@ -15,6 +15,15 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] basic_correctness_expr_fail code! {
+        #[spec]
+        fn arith_sum_nat(i: nat) -> nat {
+            if i == 0 { 0 } else { i + arith_sum_nat(i - 1) }
+        }
+    } => Err(_)
+}
+
+test_verify_one_file! {
     #[test] basic_correctness_stmt code! {
         #[proof]
         fn count_down_stmt(i: nat) {
@@ -25,6 +34,17 @@ test_verify_one_file! {
             }
         }
     } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] basic_correctness_stmt_fail code! {
+        #[proof]
+        fn count_down_stmt(i: nat) {
+            if i != 0 {
+                count_down_stmt(i - 1);
+            }
+        }
+    } => Err(_)
 }
 
 test_verify_one_file! {
@@ -346,6 +366,149 @@ test_verify_one_file! {
                 count_down_tricky(i + 1) // FAILS
             } else {
                 ()
+            }
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] multidecrease1 code! {
+        #[proof]
+        fn dec1(i: nat) {
+            decreases(i);
+            if 0 < i {
+                dec1(i - 1);
+                dec2(i, 100 * i);
+            }
+        }
+
+        #[proof]
+        fn dec2(j: nat, k: nat) {
+            decreases((j, k));
+            if 0 < k {
+                dec2(j, k - 1);
+            }
+            if 0 < j {
+                dec2(j - 1, 100 * j + k);
+                dec1(j - 1);
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] multidecrease1_fail1 code! {
+        #[proof]
+        fn dec1(i: nat) {
+            decreases(i);
+            if 0 < i {
+                dec1(i); // FAILS
+                dec2(i, 100 * i);
+            }
+        }
+
+        #[proof]
+        fn dec2(j: nat, k: nat) {
+            decreases((j, k));
+            if 0 < k {
+                dec2(j, k); // FAILS
+            }
+            if 0 < j {
+                dec2(j - 1, 100 * j + k);
+                dec1(j - 1);
+            }
+        }
+    } => Err(err) => assert_fails(err, 2)
+}
+
+test_verify_one_file! {
+    #[test] multidecrease1_fail2 code! {
+        #[proof]
+        fn dec1(i: nat) {
+            decreases(i);
+            if 0 < i {
+                dec1(i - 1);
+                dec2(i + 1, 100 * i); // FAILS
+            }
+        }
+
+        #[proof]
+        fn dec2(j: nat, k: nat) {
+            decreases((j, k));
+            if 0 < k {
+                dec2(j, k - 1);
+            }
+            if 0 < j {
+                dec2(j, 100 * j + k); // FAILS
+                dec1(j - 1);
+            }
+        }
+    } => Err(err) => assert_fails(err, 2)
+}
+
+test_verify_one_file! {
+    #[test] multidecrease1_fail3 code! {
+        #[proof]
+        fn dec1(i: nat) {
+            decreases(i);
+            if 0 < i {
+                dec1(i - 1);
+                dec2(i, 100 * i);
+            }
+        }
+
+        #[proof]
+        fn dec2(j: nat, k: nat) {
+            decreases((j, k));
+            if 0 < k {
+                dec2(j, k - 1);
+            }
+            if 0 < j {
+                dec2(j - 1, 100 * j + k);
+                dec1(j); // FAILS
+            }
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] multidecrease1_fail4 code! {
+        #[proof]
+        fn dec1(i: nat) {
+            if 0 < i {
+                dec2(i, 100 * i); // FAILS
+            }
+        }
+
+        #[proof]
+        fn dec2(j: nat, k: nat) {
+            decreases((j, k));
+            if 0 < k {
+                dec2(j, k - 1);
+            }
+            if 0 < j {
+                dec2(j - 1, 100 * j + k);
+                dec1(j - 1);
+            }
+        }
+    } => Err(_)
+}
+
+test_verify_one_file! {
+    #[test] multidecrease1_fail5 code! {
+        #[proof]
+        fn dec1(i: nat) {
+            decreases(i);
+            if 0 < i {
+                dec1(i - 1);
+                dec2(i, 100 * i); // FAILS
+            }
+        }
+
+        #[proof]
+        fn dec2(j: nat, k: nat) {
+            if 0 < j {
+                dec1(j - 1);
             }
         }
     } => Err(err) => assert_one_fails(err)

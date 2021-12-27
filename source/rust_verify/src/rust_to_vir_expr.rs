@@ -76,6 +76,13 @@ fn extract_array<'tcx>(expr: &'tcx Expr<'tcx>) -> Vec<&'tcx Expr<'tcx>> {
     }
 }
 
+fn extract_tuple<'tcx>(expr: &'tcx Expr<'tcx>) -> Vec<&'tcx Expr<'tcx>> {
+    match &expr.kind {
+        ExprKind::Tup(exprs) => exprs.iter().collect(),
+        _ => vec![expr],
+    }
+}
+
 fn get_ensures_arg<'tcx>(
     bctx: &BodyCtxt<'tcx>,
     expr: &Expr<'tcx>,
@@ -358,6 +365,10 @@ fn fn_call_to_vir<'tcx>(
             }
         }
     }
+    if is_decreases {
+        unsupported_err_unless!(len == 1, expr.span, "expected decreases", &args);
+        args = extract_tuple(args[0]);
+    }
     if is_forall || is_exists {
         unsupported_err_unless!(len == 1, expr.span, "expected forall/exists", &args);
         let quant = if is_forall { Quant::Forall } else { Quant::Exists };
@@ -432,8 +443,7 @@ fn fn_call_to_vir<'tcx>(
         let header = Arc::new(HeaderExprX::Invariant(Arc::new(vir_args)));
         Ok(mk_expr(ExprX::Header(header)))
     } else if is_decreases {
-        unsupported_err_unless!(len == 1, expr.span, "expected decreases", &args);
-        let header = Arc::new(HeaderExprX::Decreases(vir_args[0].clone()));
+        let header = Arc::new(HeaderExprX::Decreases(Arc::new(vir_args)));
         Ok(mk_expr(ExprX::Header(header)))
     } else if is_admit {
         unsupported_err_unless!(len == 0, expr.span, "expected admit", args);

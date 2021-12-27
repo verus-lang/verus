@@ -1,12 +1,13 @@
 use crate::ast::{
-    BinaryOp, CallTarget, Constant, Fun, Function, Ident, IntRange, SpannedTyped, TypX, UnaryOp,
-    UnaryOpr, VirErr,
+    BinaryOp, CallTarget, Constant, Fun, Function, IntRange, SpannedTyped, TypX, UnaryOp, UnaryOpr,
+    VirErr,
 };
+use crate::ast_to_sst::expr_to_exp;
 use crate::ast_util::err_str;
 use crate::ast_visitor::map_expr_visitor;
 use crate::context::Ctx;
 use crate::def::{
-    check_decrease_int, height, prefix_recursive_fun, suffix_rename, Spanned, DECREASE_AT_ENTRY,
+    check_decrease_int, decrease_at_entry, height, prefix_recursive_fun, suffix_rename, Spanned,
     FUEL_PARAM, FUEL_TYPE,
 };
 use crate::scc::Graph;
@@ -14,6 +15,7 @@ use crate::sst::{BndX, Exp, ExpX, Exps, LocalDecl, LocalDeclX, Stm, StmX, Unique
 use crate::sst_visitor::{
     exp_rename_vars, map_exp_visitor, map_exp_visitor_result, map_stm_visitor,
 };
+use crate::util::vec_map_result;
 use air::ast::{Binder, Commands, Quant, Span};
 use air::ast_util::{ident_binder, str_ident, str_typ};
 use std::collections::HashMap;
@@ -22,7 +24,7 @@ use std::sync::Arc;
 #[derive(Clone)]
 struct Ctxt<'a> {
     recursive_function_name: Fun,
-    decreases_at_entry: Ident,
+    num_decreases: usize,
     scc_rep: Fun,
     ctx: &'a Ctx,
 }
@@ -42,26 +44,29 @@ fn height_of_exp(_ctxt: &Ctxt, exp: &Exp) -> Exp {
     }
 }
 
-fn check_decrease(ctxt: &Ctxt, exp: &Exp) -> Exp {
-    let decreases_at_entryx = ExpX::Var((ctxt.decreases_at_entry.clone(), Some(0)));
-    let decreases_at_entry =
-        SpannedTyped::new(&exp.span, &Arc::new(TypX::Int(IntRange::Int)), decreases_at_entryx);
-    // 0 <= decreases_exp < decreases_at_entry
-    let args = vec![height_of_exp(ctxt, exp), decreases_at_entry];
-    let call = ExpX::Call(check_decrease_int(), Arc::new(vec![]), Arc::new(args));
-    SpannedTyped::new(&exp.span, &Arc::new(TypX::Bool), call)
+fn check_decrease(ctxt: &Ctxt, span: &Span, exps: &Vec<Exp>) -> Exp {
+    // When calling a function with more decreases clauses,
+    // it's good enough to be equal on the shared decreases clauses
+    // and to ignore the extra decreases clauses.
+    let tbool = Arc::new(TypX::Bool);
+    let when_equalx = ExpX::Const(Constant::Bool(ctxt.num_decreases < exps.len()));
+    let when_equal = SpannedTyped::new(span, &tbool, when_equalx);
+
+    let mut dec_exp: Exp = when_equal;
+    for (i, exp) in (0..ctxt.num_decreases).zip(exps.iter()).rev() {
+        let decreases_at_entryx = ExpX::Var((decrease_at_entry(i), Some(0)));
+        let decreases_at_entry =
+            SpannedTyped::new(&exp.span, &Arc::new(TypX::Int(IntRange::Int)), decreases_at_entryx);
+        // 0 <= decreases_exp < decreases_at_entry
+        let args = vec![height_of_exp(ctxt, exp), decreases_at_entry, dec_exp];
+        let call = ExpX::Call(check_decrease_int(), Arc::new(vec![]), Arc::new(args));
+        dec_exp = SpannedTyped::new(&exp.span, &Arc::new(TypX::Bool), call);
+    }
+    dec_exp
 }
 
 fn check_decrease_call(ctxt: &Ctxt, span: &Span, name: &Fun, args: &Exps) -> Result<Exp, VirErr> {
     let function = ctxt.ctx.func_map.get(name).expect("func_map should hold all functions");
-    let decreases_expr = function
-        .x
-        .decrease
-        .as_ref()
-        .expect("shouldn't call check_decrease_call on a function without a decreases clause")
-        .clone();
-    let decreases_exp =
-        crate::ast_to_sst::expr_to_exp(ctxt.ctx, &function.x.params, &decreases_expr)?;
     // check_decrease(let params = args in decreases_exp, decreases_at_entry)
     let params = &function.x.params;
     assert!(params.len() == args.len());
@@ -74,11 +79,17 @@ fn check_decrease_call(ctxt: &Ctxt, span: &Span, name: &Fun, args: &Exps) -> Res
         .iter()
         .map(|param| ((param.x.name.clone(), Some(0)), (suffix_rename(&param.x.name), None)))
         .collect();
-    let dec_exp = exp_rename_vars(&decreases_exp, &renames);
-    let e_decx =
-        ExpX::Bind(Spanned::new(span.clone(), BndX::Let(Arc::new(binders))), dec_exp.clone());
-    let e_dec = SpannedTyped::new(&span, &dec_exp.typ, e_decx);
-    Ok(check_decrease(ctxt, &e_dec))
+    let mut decreases_exps: Vec<Exp> = Vec::new();
+    for expr in function.x.decrease.iter() {
+        let decreases_exp = expr_to_exp(ctxt.ctx, &function.x.params, expr)?;
+        let dec_exp = exp_rename_vars(&decreases_exp, &renames);
+        let e_decx = ExpX::Bind(
+            Spanned::new(span.clone(), BndX::Let(Arc::new(binders.clone()))),
+            dec_exp.clone(),
+        );
+        decreases_exps.push(SpannedTyped::new(&span, &dec_exp.typ, e_decx));
+    }
+    Ok(check_decrease(ctxt, span, &decreases_exps))
 }
 
 // Check that exp terminates
@@ -216,21 +227,27 @@ pub(crate) fn is_recursive_stm(ctx: &Ctx, name: &Fun, body: &Stm) -> bool {
     }
 }
 
-fn mk_decreases_at_entry(ctxt: &Ctxt, span: &Span, exp: &Exp) -> (LocalDecl, Stm) {
-    let decl = Arc::new(LocalDeclX {
-        ident: (ctxt.decreases_at_entry.clone(), Some(0)),
-        typ: Arc::new(TypX::Int(IntRange::Int)),
-        mutable: false,
-    });
-    let stm_assign = Spanned::new(
-        span.clone(),
-        StmX::Assign {
-            lhs: (ctxt.decreases_at_entry.clone(), Some(0)),
-            rhs: height_of_exp(ctxt, exp),
-            is_init: true,
-        },
-    );
-    (decl, stm_assign)
+fn mk_decreases_at_entry(ctxt: &Ctxt, span: &Span, exps: &Vec<Exp>) -> (Vec<LocalDecl>, Vec<Stm>) {
+    let mut decls: Vec<LocalDecl> = Vec::new();
+    let mut stm_assigns: Vec<Stm> = Vec::new();
+    for (i, exp) in exps.iter().enumerate() {
+        let decl = Arc::new(LocalDeclX {
+            ident: (decrease_at_entry(i), Some(0)),
+            typ: Arc::new(TypX::Int(IntRange::Int)),
+            mutable: false,
+        });
+        let stm_assign = Spanned::new(
+            span.clone(),
+            StmX::Assign {
+                lhs: (decrease_at_entry(i), Some(0)),
+                rhs: height_of_exp(ctxt, exp),
+                is_init: true,
+            },
+        );
+        decls.push(decl);
+        stm_assigns.push(stm_assign);
+    }
+    (decls, stm_assigns)
 }
 
 // REVIEW: for simplicity, we completely disallow recursive calls from inside closures.
@@ -262,30 +279,28 @@ pub(crate) fn check_termination_exp(
     if !is_recursive_exp(ctx, &function.x.name, body) {
         return Ok((false, Arc::new(vec![]), body.clone()));
     }
+    let num_decreases = function.x.decrease.len();
+    if num_decreases == 0 {
+        return err_str(&function.span, "recursive function must call decreases(...)");
+    }
 
-    let decreases_expr = match &function.x.decrease {
-        None => {
-            return err_str(&function.span, "recursive function must call decreases(...)");
-        }
-        Some(dec) => dec.clone(),
-    };
-    let decreases_exp = crate::ast_to_sst::expr_to_exp(ctx, &function.x.params, &decreases_expr)?;
-    let decreases_at_entry = str_ident(DECREASE_AT_ENTRY);
+    let decreases_exps =
+        vec_map_result(&function.x.decrease, |e| expr_to_exp(ctx, &function.x.params, e))?;
     let scc_rep = ctx.func_call_graph.get_scc_rep(&function.x.name);
     let scc_rep_clone = scc_rep.clone();
     let ctxt =
-        Ctxt { recursive_function_name: function.x.name.clone(), decreases_at_entry, scc_rep, ctx };
+        Ctxt { recursive_function_name: function.x.name.clone(), num_decreases, scc_rep, ctx };
     let check = terminates(&ctxt, &body)?;
-    let (decl, stm_assign) = mk_decreases_at_entry(&ctxt, &body.span, &decreases_exp);
+    let (mut decls, mut stm_assigns) = mk_decreases_at_entry(&ctxt, &body.span, &decreases_exps);
     let span =
         Span { description: Some("could not prove termination".to_string()), ..body.span.clone() };
     let stm_assert = Spanned::new(span, StmX::Assert(None, check));
-    let stm_block =
-        Spanned::new(body.span.clone(), StmX::Block(Arc::new(vec![stm_assign, stm_assert])));
+    stm_assigns.push(stm_assert);
+    let stm_block = Spanned::new(body.span.clone(), StmX::Block(Arc::new(stm_assigns)));
 
     // TODO: If we decide to support debugging decreases failures, we should plumb _snap_map
     // up to the VIR model
-    local_decls.push(decl);
+    local_decls.append(&mut decls);
     let (commands, _snap_map) = crate::sst_to_air::body_stm_to_air(
         ctx,
         &function.x.typ_params(),
@@ -324,18 +339,16 @@ pub(crate) fn check_termination_stm(
     if !is_recursive_stm(ctx, &function.x.name, body) {
         return Ok((vec![], body.clone()));
     }
+    let num_decreases = function.x.decrease.len();
+    if num_decreases == 0 {
+        return err_str(&function.span, "recursive function must call decreases(...)");
+    }
 
-    let decreases_expr = match &function.x.decrease {
-        None => {
-            return err_str(&function.span, "recursive function must call decreases(...)");
-        }
-        Some(dec) => dec.clone(),
-    };
-    let decreases_exp = crate::ast_to_sst::expr_to_exp(ctx, &function.x.params, &decreases_expr)?;
-    let decreases_at_entry = str_ident(DECREASE_AT_ENTRY);
+    let decreases_exps =
+        vec_map_result(&function.x.decrease, |e| expr_to_exp(ctx, &function.x.params, e))?;
     let scc_rep = ctx.func_call_graph.get_scc_rep(&function.x.name);
     let ctxt =
-        Ctxt { recursive_function_name: function.x.name.clone(), decreases_at_entry, scc_rep, ctx };
+        Ctxt { recursive_function_name: function.x.name.clone(), num_decreases, scc_rep, ctx };
     let stm = map_stm_visitor(body, &mut |s| match &s.x {
         StmX::Call(x, _, args, _)
             if *x == function.x.name || ctx.func_call_graph.get_scc_rep(x) == ctxt.scc_rep =>
@@ -352,10 +365,10 @@ pub(crate) fn check_termination_stm(
         }
         _ => Ok(s.clone()),
     })?;
-    let (decl, stm_assign) = mk_decreases_at_entry(&ctxt, &stm.span, &decreases_exp);
-    let stm_block =
-        Spanned::new(stm.span.clone(), StmX::Block(Arc::new(vec![stm_assign, stm.clone()])));
-    Ok((vec![decl], stm_block))
+    let (decls, mut stm_assigns) = mk_decreases_at_entry(&ctxt, &stm.span, &decreases_exps);
+    stm_assigns.push(stm.clone());
+    let stm_block = Spanned::new(stm.span.clone(), StmX::Block(Arc::new(stm_assigns)));
+    Ok((decls, stm_block))
 }
 
 fn add_call_graph_edges(

@@ -178,7 +178,7 @@ pub enum HeaderExprX {
     /// Invariants on while loops
     Invariant(Exprs),
     /// Decreases clauses for functions (possibly also for while loops, but this isn't implemented yet)
-    Decreases(Expr),
+    Decreases(Exprs),
     /// Make a function f opaque (definition hidden) within the current function body.
     /// (The current function body can later reveal f in specific parts of the current function body if desired.)
     Hide(Fun),
@@ -380,7 +380,9 @@ pub struct FunctionX {
     /// Postconditions
     pub ensure: Exprs,
     /// Decreases clause to ensure recursive function termination
-    pub decrease: Option<Expr>,
+    /// decrease.len() == 0 means no decreases clause
+    /// decrease.len() >= 1 means list of expressions, interpreted in lexicographic order
+    pub decrease: Exprs,
     /// For public spec functions, is_abstract == true means that the body is private
     /// even though the function is public
     pub is_abstract: bool,
