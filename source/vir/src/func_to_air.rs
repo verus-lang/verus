@@ -1,4 +1,6 @@
-use crate::ast::{Function, GenericBoundX, Ident, Idents, Mode, ParamX, Params, Typ, TypX, VirErr};
+use crate::ast::{
+    Function, GenericBoundX, Ident, Idents, Mode, ParamX, Params, SpannedTyped, Typ, TypX, VirErr,
+};
 use crate::context::Ctx;
 use crate::def::{
     prefix_ensures, prefix_fuel_id, prefix_fuel_nat, prefix_recursive_fun, prefix_requires,
@@ -362,7 +364,7 @@ pub fn func_decl_to_air(
                 let triggers = crate::triggers::build_triggers(ctx, span, &vars, &exp)?;
                 let bndx = BndX::Quant(Quant::Forall, Arc::new(binders), triggers);
                 let forallx = ExpX::Bind(Spanned::new(span.clone(), bndx), exp);
-                let forall = Spanned::new(span.clone(), forallx);
+                let forall = SpannedTyped::new(&span, &Arc::new(TypX::Bool), forallx);
                 let expr = exp_to_expr(ctx, &forall);
                 let axiom = Arc::new(DeclX::Axiom(expr));
                 decl_commands.push(Arc::new(CommandX::Global(axiom)));
@@ -386,7 +388,7 @@ pub fn func_def_to_air(
             let dest = if function.x.has_return() {
                 let ParamX { name, typ, .. } = &function.x.ret.x;
                 ens_params.push(function.x.ret.clone());
-                state.declare_new_var(name, typ, false);
+                state.declare_new_var(name, typ, false, false);
                 Some((name.clone(), Some(0)))
             } else {
                 None
@@ -400,7 +402,7 @@ pub fn func_def_to_air(
             })?;
             let enss = Arc::new(enss);
             for param in function.x.params.iter() {
-                state.declare_new_var(&param.x.name, &param.x.typ, false);
+                state.declare_new_var(&param.x.name, &param.x.typ, false, false);
             }
 
             // AST --> SST

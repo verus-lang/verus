@@ -96,7 +96,7 @@ test_verify_one_file! {
                 invariant([
                     len(list) <= 0xffffffffffffffff,
                     n + len(iter) == len(list),
-                    imply(done, len(iter) == 0),
+                    done >>= len(iter) == 0,
                 ]);
 
                 match iter {
@@ -141,7 +141,7 @@ test_verify_one_file! {
                 invariant([
                     len(list) <= 0xffffffffffffffff,
                     n + len(iter) == len(list),
-                    imply(done, len(iter) == 0),
+                    done >>= len(iter) == 0,
                 ]);
 
                 match iter {
@@ -185,7 +185,7 @@ test_verify_one_file! {
             while !done {
                 invariant([
                     n + len(iter) == len(list), // FAILS
-                    imply(done, len(iter) == 0),
+                    done >>= len(iter) == 0,
                 ]);
 
                 match iter {

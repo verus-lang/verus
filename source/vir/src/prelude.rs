@@ -44,6 +44,7 @@ pub(crate) fn prelude_nodes() -> Vec<Node> {
     let type_id_uint = str_to_node(TYPE_ID_UINT);
     let type_id_sint = str_to_node(TYPE_ID_SINT);
     let has_type = str_to_node(HAS_TYPE);
+    let as_type = str_to_node(AS_TYPE);
 
     nodes_vec!(
         // Fuel
@@ -77,6 +78,17 @@ pub(crate) fn prelude_nodes() -> Vec<Node> {
         (declare-fun [type_id_uint] (Int) [typ])
         (declare-fun [type_id_sint] (Int) [typ])
         (declare-fun [has_type] ([Poly] [typ]) Bool)
+        (declare-fun [as_type] ([Poly] [typ]) Poly)
+        (axiom (forall ((x [Poly]) (t [typ])) (!
+            (and
+                ([has_type] ([as_type] x t) t)
+                (=>
+                    ([has_type] x t)
+                    (= x ([as_type] x t))
+                )
+            )
+            :pattern (([as_type] x t))
+        )))
         (axiom (forall ((x Bool)) (!
             (= x ([unbox_bool] ([box_bool] x)))
             :pattern (([box_bool] x))
@@ -248,12 +260,15 @@ pub(crate) fn prelude_nodes() -> Vec<Node> {
         )))
 
         // Decreases
-        (declare-fun [check_decrease_int] (Int Int) Bool)
-        (axiom (forall ((cur Int) (prev Int)) (!
-            (= ([check_decrease_int] cur prev)
-                (and (<= 0 cur) (< cur prev))
+        (declare-fun [check_decrease_int] (Int Int Bool) Bool)
+        (axiom (forall ((cur Int) (prev Int) (otherwise Bool)) (!
+            (= ([check_decrease_int] cur prev otherwise)
+                (or
+                    (and (<= 0 cur) (< cur prev))
+                    (and (= cur prev) otherwise)
+                )
             )
-            :pattern (([check_decrease_int] cur prev))
+            :pattern (([check_decrease_int] cur prev otherwise))
         )))
         (declare-fun [height] (Poly) Int)
         (axiom (forall ((x Poly)) (!

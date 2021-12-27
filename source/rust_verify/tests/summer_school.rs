@@ -29,7 +29,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] e02_pass code! {
         fn e02(p: int) {
-            assert(imply(true, true));
+            assert(true >>= true);
         }
     } => Ok(())
 }
@@ -37,7 +37,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] e02_fail code! {
         fn e02(p: int) {
-            assert(imply(true, false)); // FAILS
+            assert(true >>= false); // FAILS
         }
     } => Err(err) => assert_one_fails(err)
 }
@@ -885,7 +885,7 @@ test_verify_one_file! {
         }
 
         fn max_u64_fibo_arg_bound() {
-            ensures(forall(|i:nat| imply(i < max_u64_fibo_arg(), fibo(i) < 7000)));
+            ensures(forall(|i:nat| i < max_u64_fibo_arg() >>= fibo(i) < 7000));
 
             assert_by(fibo(20) == 6765, reveal_with_fuel(fibo, 11));
 
@@ -894,13 +894,10 @@ test_verify_one_file! {
             // assume(forall(|i:nat| fibo(i) < fibo(i+1)));
 
             forall(|i:nat, j:nat| {
-                // requires(i<j);
-                // TODO(chris): requires of lambda isn't making it in here.
-                ensures(imply(i<=j, fibo(i) <= fibo(j)));
+                requires(i <= j);
+                ensures(fibo(i) <= fibo(j));
 
-                if i <= j {
-                    fibo_monotonic(i, j);
-                }
+                fibo_monotonic(i, j);
             });
         }
 
@@ -943,8 +940,6 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    // TODO(chris): We need to run borrow checking before running verification. With 'mut' removed:
-    // Ignored because "thread 'rustc' panicked at 'internal error: generated ill-typed AIR code: error 'cannot assign to const variable max_index$1@' in statement '(assign max_index$1@ count@)'', rust_verify/src/verifier.rs:170:17"
     #[test] e19_pass code! {
         use vec::*; // TODO(chris): Want pervasive::Vec & std::vec::Vec to not be different types to make interop with ordinary rust code not clunky.
 
@@ -956,25 +951,20 @@ test_verify_one_file! {
             requires(int_seq.len() > 0);
             ensures(|max_index_rc:usize| [
                 max_index_rc < int_seq.len(),
-                forall(|idx:nat| imply(idx<int_seq.len(), int_seq.index(idx) <= int_seq.index(max_index_rc))),
+                forall(|idx:nat| idx < int_seq.len() >>= int_seq.index(idx) <= int_seq.index(max_index_rc)),
             ]);
 
             let mut count:usize = 0;
             let mut max_index:usize = 0;
-            // TODO(chris) .length()->usize should be named .len(); .view().len() should give you
-            // the nat.
-            let int_seq_length:usize = int_seq.length();
-            // TODO(chris): not yet implemented: complex while loop conditions
-            while count < int_seq_length
+            while count < int_seq.len()
             {
                 invariant([
-                    max_index < int_seq_length,
-                    int_seq_length == int_seq.len(),
-                    forall(|prioridx:nat| imply(prioridx < count,
-                            int_seq.index(prioridx) <= int_seq.index(max_index))),
+                    max_index < int_seq.len(),
+                    forall(|prioridx:nat| prioridx < count >>=
+                            int_seq.index(prioridx) <= int_seq.index(max_index)),
                 ]);
 
-                if int_seq.get(max_index) < int_seq.get(count) {
+                if int_seq.index(max_index) < int_seq.index(count) {
                     max_index = count;
                 }
                 count = count + 1;

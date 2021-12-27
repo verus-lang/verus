@@ -76,6 +76,13 @@ fn extract_array<'tcx>(expr: &'tcx Expr<'tcx>) -> Vec<&'tcx Expr<'tcx>> {
     }
 }
 
+fn extract_tuple<'tcx>(expr: &'tcx Expr<'tcx>) -> Vec<&'tcx Expr<'tcx>> {
+    match &expr.kind {
+        ExprKind::Tup(exprs) => exprs.iter().collect(),
+        _ => vec![expr],
+    }
+}
+
 fn get_ensures_arg<'tcx>(
     bctx: &BodyCtxt<'tcx>,
     expr: &Expr<'tcx>,
@@ -256,6 +263,7 @@ fn fn_call_to_vir<'tcx>(
     node_substs: &[rustc_middle::ty::subst::GenericArg<'tcx>],
     fn_span: Span,
     args_slice: &'tcx [Expr<'tcx>],
+    autoview_typ: Option<&Typ>,
 ) -> Result<vir::ast::Expr, VirErr> {
     let mut args: Vec<&'tcx Expr<'tcx>> = args_slice.iter().collect();
 
@@ -263,10 +271,21 @@ fn fn_call_to_vir<'tcx>(
     let expr_typ = typ_of_node(bctx, &expr.hir_id);
     let mk_expr = |x: ExprX| spanned_typed_new(expr.span, &expr_typ, x);
     let mk_expr_span = |span: Span, x: ExprX| spanned_typed_new(span, &expr_typ, x);
-    let path = if let Some(self_path) = &self_path {
+    let with_self_path = |self_path: &vir::ast::Path, ident: Ident| {
         let mut full_path = (**self_path).clone();
-        Arc::make_mut(&mut full_path.segments).push(def_to_path_ident(tcx, f));
+        Arc::make_mut(&mut full_path.segments).push(ident);
         Arc::new(full_path)
+    };
+    let path = if let Some(self_path) = &self_path {
+        if let Some(autoview_typ) = autoview_typ {
+            if let TypX::Datatype(path, _) = &**autoview_typ {
+                with_self_path(path, def_to_path_ident(tcx, f))
+            } else {
+                panic!("autoview_typ must be Datatype")
+            }
+        } else {
+            with_self_path(self_path, def_to_path_ident(tcx, f))
+        }
     } else {
         def_id_to_vir_path(tcx, f)
     };
@@ -346,6 +365,10 @@ fn fn_call_to_vir<'tcx>(
             }
         }
     }
+    if is_decreases {
+        unsupported_err_unless!(len == 1, expr.span, "expected decreases", &args);
+        args = extract_tuple(args[0]);
+    }
     if is_forall || is_exists {
         unsupported_err_unless!(len == 1, expr.span, "expected forall/exists", &args);
         let quant = if is_forall { Quant::Forall } else { Quant::Exists };
@@ -387,7 +410,21 @@ fn fn_call_to_vir<'tcx>(
         return Ok(mk_expr(ExprX::Forall { vars, require, ensure, proof }));
     }
 
-    let vir_args = vec_map_result(&args, |arg| expr_to_vir(bctx, arg))?;
+    let mut vir_args = vec_map_result(&args, |arg| expr_to_vir(bctx, arg))?;
+    if let Some(autoview_typ) = autoview_typ {
+        // replace f(arg0, arg1, ..., argn) with f(arg0.view(), arg1, ..., argn)
+        let typ_args = if let TypX::Datatype(_, args) = &**autoview_typ {
+            args.clone()
+        } else {
+            panic!("autoview_typ must be Datatype")
+        };
+        let self_path = self_path.expect("autoview self");
+        let path = with_self_path(&self_path, Arc::new("view".to_string()));
+        let fun = Arc::new(FunX { path, trait_path: None });
+        let target = CallTarget::Static(fun, typ_args);
+        let viewx = ExprX::Call(target, Arc::new(vec![vir_args[0].clone()]));
+        vir_args[0] = spanned_typed_new(expr.span, autoview_typ, viewx);
+    }
 
     let is_smt_binary = if is_equal {
         true
@@ -406,8 +443,7 @@ fn fn_call_to_vir<'tcx>(
         let header = Arc::new(HeaderExprX::Invariant(Arc::new(vir_args)));
         Ok(mk_expr(ExprX::Header(header)))
     } else if is_decreases {
-        unsupported_err_unless!(len == 1, expr.span, "expected decreases", &args);
-        let header = Arc::new(HeaderExprX::Decreases(vir_args[0].clone()));
+        let header = Arc::new(HeaderExprX::Decreases(Arc::new(vir_args)));
         Ok(mk_expr(ExprX::Header(header)))
     } else if is_admit {
         unsupported_err_unless!(len == 0, expr.span, "expected admit", args);
@@ -776,6 +812,7 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                     bctx.types.node_substs(fun.hir_id),
                     fun.span,
                     args_slice,
+                    None,
                 ),
                 // a dynamically computed function
                 _ => {
@@ -912,6 +949,20 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                     }
                 }
                 _ => Ok(e),
+            }
+        }
+        ExprKind::AssignOp(
+            rustc_span::source_map::Spanned { node: BinOpKind::Shr, .. },
+            lhs,
+            rhs,
+        ) => {
+            let vlhs = expr_to_vir(bctx, lhs)?;
+            let vrhs = expr_to_vir(bctx, rhs)?;
+            if matches!(*vlhs.typ, TypX::Bool) {
+                let e = mk_expr(ExprX::Binary(BinaryOp::Implies, vlhs, vrhs));
+                Ok(e)
+            } else {
+                unsupported_err!(expr.span, "assignment operators")
             }
         }
         ExprKind::Path(QPath::Resolved(None, path)) => match path.res {
@@ -1166,6 +1217,7 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                 }) => {}
                 _ => panic!("unexpected hir for method impl item"),
             }
+            let autoview_typ = bctx.ctxt.autoviewed_call_typs.get(&expr.hir_id);
             fn_call_to_vir(
                 bctx,
                 expr,
@@ -1175,6 +1227,7 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                 bctx.types.node_substs(expr.hir_id),
                 *call_span_1,
                 all_args,
+                autoview_typ,
             )
         }
         ExprKind::Closure(_, fn_decl, body_id, _, _) => {

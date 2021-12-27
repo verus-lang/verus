@@ -14,7 +14,7 @@ where
     FT: Fn(&mut E, &Typ) -> Result<Typ, VirErr>,
 {
     match &**typ {
-        TypX::Bool | TypX::Int(_) | TypX::TypParam(_) | TypX::TypeId => ft(env, typ),
+        TypX::Bool | TypX::Int(_) | TypX::TypParam(_) | TypX::TypeId | TypX::Air(_) => ft(env, typ),
         TypX::Tuple(ts) => {
             let ts = vec_map_result(&**ts, |t| map_typ_visitor_env(t, env, ft))?;
             ft(env, &Arc::new(TypX::Tuple(Arc::new(ts))))
@@ -379,7 +379,7 @@ where
     let ensure =
         Arc::new(vec_map_result(ensure, |e| map_expr_visitor_env(e, map, env, fe, fs, ft))?);
     let decrease =
-        decrease.as_ref().map(|e| map_expr_visitor_env(e, map, env, fe, fs, ft)).transpose()?;
+        Arc::new(vec_map_result(decrease, |e| map_expr_visitor_env(e, map, env, fe, fs, ft))?);
     let attrs = attrs.clone();
     let is_abstract = *is_abstract;
     let body = body.as_ref().map(|e| map_expr_visitor_env(e, map, env, fe, fs, ft)).transpose()?;

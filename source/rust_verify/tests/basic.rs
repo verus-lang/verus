@@ -39,7 +39,7 @@ test_verify_one_file! {
             assume(b);
             assert(b);
 
-            assert(imply(x == y, f(x, y) == f(y, x)));
+            assert(x == y >>= f(x, y) == f(y, x));
 
             assert(x + y == y + x);
 
@@ -223,9 +223,9 @@ test_verify_one_file! {
             #[spec]
             let mut x: u64 = 0;
             #[spec]
-            let y = imply(a, b);
+            let y = a >>= b;
             #[spec]
-            let z = imply(a, { x = x + 1; b });
+            let z = a >>= { x = x + 1; b };
             assert(y == z);
             assert((x == 1) == a);
         }

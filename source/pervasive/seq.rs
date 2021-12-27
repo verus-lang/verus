@@ -49,7 +49,7 @@ impl<A> Seq<A> {
     #[spec]
     pub fn ext_equal(self, s2: Seq<A>) -> bool {
         self.len() == s2.len() &&
-        forall(|i: int| imply(0 <= i && i < self.len(), equal(self.index(i), s2.index(i))))
+        forall(|i: int| 0 <= i && i < self.len() >>= equal(self.index(i), s2.index(i)))
     }
 
     #[spec]

@@ -410,9 +410,13 @@ impl Verifier {
     }
 
     fn run<'tcx>(&mut self, compiler: &Compiler, tcx: TyCtxt<'tcx>) -> Result<bool, VirErr> {
+        let autoviewed_call_typs = Arc::new(std::sync::Mutex::new(HashMap::new()));
         let _ = tcx.formal_verifier_callback.replace(Some(Box::new(crate::typecheck::Typecheck {
             int_ty_id: None,
             nat_ty_id: None,
+            exprs_in_spec: Arc::new(std::sync::Mutex::new(HashSet::new())),
+            autoviewed_calls: HashSet::new(),
+            autoviewed_call_typs: autoviewed_call_typs.clone(),
         })));
         match rustc_typeck::check_crate(tcx) {
             Ok(()) => {}
@@ -420,6 +424,8 @@ impl Verifier {
                 return Ok(false);
             }
         }
+        let autoviewed_call_typs =
+            autoviewed_call_typs.lock().expect("get autoviewed_call_typs").clone();
 
         let time0 = Instant::now();
 
@@ -433,7 +439,7 @@ impl Verifier {
             ignored_functions: vec![],
         };
         let erasure_info = std::rc::Rc::new(std::cell::RefCell::new(erasure_info));
-        let ctxt = Context { tcx, krate: hir.krate(), erasure_info };
+        let ctxt = Context { tcx, krate: hir.krate(), erasure_info, autoviewed_call_typs };
 
         // Convert HIR -> VIR
         let time1 = Instant::now();

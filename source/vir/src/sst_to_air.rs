@@ -1,5 +1,6 @@
 use crate::ast::{
-    BinaryOp, Fun, Ident, Idents, IntRange, Mode, Params, Path, Typ, TypX, Typs, UnaryOp, UnaryOpr,
+    BinaryOp, Fun, Ident, Idents, IntRange, Mode, Params, Path, SpannedTyped, Typ, TypX, Typs,
+    UnaryOp, UnaryOpr,
 };
 use crate::ast_util::{get_field, get_variant};
 use crate::context::Ctx;
@@ -60,6 +61,7 @@ pub(crate) fn typ_to_air(_ctx: &Ctx, typ: &Typ) -> air::ast::Typ {
         TypX::Boxed(_) => str_typ(POLY),
         TypX::TypParam(_) => str_typ(POLY),
         TypX::TypeId => str_typ(crate::def::TYPE),
+        TypX::Air(t) => t.clone(),
     }
 }
 
@@ -86,6 +88,7 @@ pub fn typ_to_id(typ: &Typ) -> Expr {
         TypX::Boxed(_) => panic!("internal error: type arguments should be unboxed"),
         TypX::TypParam(x) => ident_var(&suffix_typ_param_id(x)),
         TypX::TypeId => panic!("internal error: typ_to_id of TypeId"),
+        TypX::Air(_) => panic!("internal error: typ_to_id of Air"),
     }
 }
 
@@ -130,6 +133,36 @@ pub(crate) fn typ_invariant(ctx: &Ctx, typ: &Typ, expr: &Expr) -> Option<Expr> {
         )),
         _ => None,
     }
+}
+
+fn try_box(expr: Expr, typ: &Typ) -> Option<Expr> {
+    let f_name = match &**typ {
+        TypX::Bool => Some(str_ident(crate::def::BOX_BOOL)),
+        TypX::Int(_) => Some(str_ident(crate::def::BOX_INT)),
+        TypX::Datatype(path, _) => Some(prefix_box(&path)),
+        TypX::Tuple(_) => None,
+        TypX::Lambda(..) => Some(str_ident(crate::def::BOX_FUN)),
+        TypX::Boxed(_) => None,
+        TypX::TypParam(_) => None,
+        TypX::TypeId => None,
+        TypX::Air(_) => None,
+    };
+    f_name.map(|f_name| ident_apply(&f_name, &vec![expr]))
+}
+
+fn try_unbox(expr: Expr, typ: &Typ) -> Option<Expr> {
+    let f_name = match &**typ {
+        TypX::Bool => Some(str_ident(crate::def::UNBOX_BOOL)),
+        TypX::Int(_) => Some(str_ident(crate::def::UNBOX_INT)),
+        TypX::Datatype(path, _) => Some(crate::def::prefix_unbox(&path)),
+        TypX::Tuple(_) => None,
+        TypX::Lambda(..) => Some(str_ident(crate::def::UNBOX_FUN)),
+        TypX::Boxed(_) => None,
+        TypX::TypParam(_) => None,
+        TypX::TypeId => None,
+        TypX::Air(_) => None,
+    };
+    f_name.map(|f_name| ident_apply(&f_name, &vec![expr]))
 }
 
 pub(crate) fn ctor_to_apply<'a>(
@@ -193,31 +226,11 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp) -> Expr {
         ExpX::UnaryOpr(op, exp) => match op {
             UnaryOpr::Box(typ) => {
                 let expr = exp_to_expr(ctx, exp);
-                let f_name = match &**typ {
-                    TypX::Bool => str_ident(crate::def::BOX_BOOL),
-                    TypX::Int(_) => str_ident(crate::def::BOX_INT),
-                    TypX::Datatype(path, _) => prefix_box(&path),
-                    TypX::Tuple(_) => panic!("internal error: Box(Tuple)"),
-                    TypX::Lambda(..) => str_ident(crate::def::BOX_FUN),
-                    TypX::Boxed(_) => panic!("internal error: Box(Boxed)"),
-                    TypX::TypParam(_) => panic!("internal error: Box(TypParam)"),
-                    TypX::TypeId => panic!("internal error: Box(TypeId)"),
-                };
-                ident_apply(&f_name, &vec![expr])
+                try_box(expr, typ).expect("Box")
             }
             UnaryOpr::Unbox(typ) => {
                 let expr = exp_to_expr(ctx, exp);
-                let f_name = match &**typ {
-                    TypX::Bool => str_ident(crate::def::UNBOX_BOOL),
-                    TypX::Int(_) => str_ident(crate::def::UNBOX_INT),
-                    TypX::Datatype(path, _) => crate::def::prefix_unbox(&path),
-                    TypX::Tuple(_) => panic!("internal error: Box(Tuple)"),
-                    TypX::Lambda(..) => str_ident(crate::def::UNBOX_FUN),
-                    TypX::Boxed(_) => panic!("internal error: Unbox(Boxed)"),
-                    TypX::TypParam(_) => panic!("internal error: Unbox(TypParam)"),
-                    TypX::TypeId => panic!("internal error: Unbox(TypeId)"),
-                };
-                ident_apply(&f_name, &vec![expr])
+                try_unbox(expr, typ).expect("Unbox")
             }
             UnaryOpr::IsVariant { datatype, variant } => {
                 let expr = exp_to_expr(ctx, exp);
@@ -336,13 +349,29 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp) -> Expr {
                 air::ast_util::mk_lambda(&binders, &expr)
             }
             BndX::Choose(binder, trigs) => {
-                let expr = exp_to_expr(ctx, exp);
+                let mut expr = exp_to_expr(ctx, exp);
                 let name = suffix_local_expr_id(&binder.name);
-                let binder = Arc::new(BinderX { name, a: typ_to_air(ctx, &binder.a) });
+                let typ = &binder.a;
+                let typ_inv = typ_invariant(ctx, typ, &ident_var(&name));
+                if let Some(inv) = &typ_inv {
+                    expr = mk_and(&vec![inv.clone(), expr]);
+                }
+                let binder = Arc::new(BinderX { name, a: typ_to_air(ctx, typ) });
                 let triggers =
                     vec_map(&*trigs, |trig| Arc::new(vec_map(trig, |x| exp_to_expr(ctx, x))));
                 let bind = Arc::new(BindX::Choose(binder, Arc::new(triggers)));
-                Arc::new(ExprX::Bind(bind, expr))
+                let mut choose_expr = Arc::new(ExprX::Bind(bind, expr));
+                match (typ_inv, try_box(choose_expr.clone(), typ)) {
+                    (Some(_), Some(boxed)) => {
+                        // use as_type to coerce expression to some value of the requested type,
+                        // even if the choose expression is unsatisfiable
+                        let id = typ_to_id(typ);
+                        let as_typed = str_apply(crate::def::AS_TYPE, &vec![boxed, id]);
+                        choose_expr = try_unbox(as_typed, typ).expect("Choose: unbox");
+                    }
+                    _ => {}
+                }
+                choose_expr
             }
         },
     }
@@ -418,8 +447,9 @@ impl State {
 }
 
 fn assume_var(span: &Span, x: &UniqueIdent, exp: &Exp) -> Stm {
-    let x_var = Spanned::new(span.clone(), ExpX::Var(x.clone()));
-    let eq = Spanned::new(span.clone(), ExpX::Binary(BinaryOp::Eq(Mode::Spec), x_var, exp.clone()));
+    let x_var = SpannedTyped::new(&span, &exp.typ, ExpX::Var(x.clone()));
+    let eqx = ExpX::Binary(BinaryOp::Eq(Mode::Spec), x_var, exp.clone());
+    let eq = SpannedTyped::new(&span, &Arc::new(TypX::Bool), eqx);
     Spanned::new(span.clone(), StmX::Assume(eq))
 }
 
@@ -463,8 +493,9 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
                         let arg_x = crate::sst_visitor::map_exp_visitor(arg, &mut |e| match &e.x {
                             ExpX::Var(x) if x == var => {
                                 overwrite = true;
-                                Spanned::new(
-                                    arg.span.clone(),
+                                SpannedTyped::new(
+                                    &e.span,
+                                    &e.typ,
                                     ExpX::Old(str_ident(SNAPSHOT_CALL), x.0.clone()),
                                 )
                             }
@@ -560,10 +591,10 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
             }
             stmts
         }
-        StmX::While { cond, body, invs, typ_inv_vars, modified_vars } => {
-            let pos_cond = exp_to_expr(ctx, &cond);
+        StmX::While { cond_stms, cond_exp, body, invs, typ_inv_vars, modified_vars } => {
+            let pos_cond = exp_to_expr(ctx, &cond_exp);
             let neg_cond = Arc::new(ExprX::Unary(air::ast::UnaryOp::Not, pos_cond.clone()));
-            let pos_assume = Arc::new(DeclX::Axiom(pos_cond));
+            let pos_assume = Arc::new(StmtX::Assume(pos_cond));
             let neg_assume = Arc::new(StmtX::Assume(neg_cond));
             let invs: Vec<(Span, Expr)> =
                 invs.iter().map(|e| (e.span.clone(), exp_to_expr(ctx, e))).collect();
@@ -577,7 +608,12 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
                 None
             };
 
-            let mut air_body = stm_to_stmts(ctx, state, body);
+            let cond_stmts: Vec<Stmt> =
+                cond_stms.iter().map(|s| stm_to_stmts(ctx, state, s)).flatten().collect();
+            let mut air_body: Vec<Stmt> = Vec::new();
+            air_body.append(&mut cond_stmts.clone());
+            air_body.push(pos_assume);
+            air_body.append(&mut stm_to_stmts(ctx, state, body));
 
             /*
             Generate a separate SMT query for the loop body.
@@ -606,7 +642,6 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
             for (_, inv) in invs.iter() {
                 local.push(Arc::new(DeclX::Axiom(inv.clone())));
             }
-            local.push(pos_assume);
             for (span, inv) in invs.iter() {
                 let description = Some("invariant not satisfied at end of loop body".to_string());
                 let spans = Arc::new(vec![Span { description, ..span.clone() }]);
@@ -652,6 +687,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
                 let inv_stmt = StmtX::Assume(inv.clone());
                 stmts.push(Arc::new(inv_stmt));
             }
+            stmts.append(&mut cond_stmts.clone());
             stmts.push(neg_assume);
             if ctx.debug {
                 // Add a snapshot for the state after we emerge from the while loop

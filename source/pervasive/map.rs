@@ -44,7 +44,7 @@ impl<K, V> Map<K, V> {
     #[spec]
     pub fn ext_equal(self, m2: Map<K, V>) -> bool {
         self.dom().ext_equal(m2.dom()) &&
-        forall(|k: K| imply(self.dom().contains(k), equal(self.index(k), m2.index(k))))
+        forall(|k: K| self.dom().contains(k) >>= equal(self.index(k), m2.index(k)))
     }
 }
 

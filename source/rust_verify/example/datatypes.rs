@@ -30,7 +30,7 @@ fn get_len<A>(list: &List<A>) -> u64 {
         invariant([
             len(list) <= 0xffffffffffffffff,
             n + len(iter) == len(list),
-            imply(done, len(iter) == 0),
+            done >>= len(iter) == 0,
         ]);
 
         match iter {

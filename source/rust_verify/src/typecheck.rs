@@ -1,6 +1,14 @@
-use rustc_hir::{BinOp, BinOpKind, Expr, ExprKind};
+use crate::rust_to_vir_base::{
+    def_id_to_vir_path, get_mode, get_var_mode, get_verifier_attrs, mid_ty_to_vir,
+};
+use rustc_hir::intravisit::Visitor;
+use rustc_hir::{BinOp, BinOpKind, Expr, ExprKind, HirId, PathSegment};
 use rustc_middle::ty::{FormalVerifierTyping, Ty, TyCtxt, TyKind};
 use rustc_span::def_id::DefId;
+use rustc_span::symbol::Ident;
+use std::collections::{HashMap, HashSet};
+use std::sync::{Arc, Mutex};
+use vir::ast::{Mode, Typ};
 
 pub(crate) const BUILTIN_INT: &str = "builtin::int";
 pub(crate) const BUILTIN_NAT: &str = "builtin::nat";
@@ -8,6 +16,40 @@ pub(crate) const BUILTIN_NAT: &str = "builtin::nat";
 pub(crate) struct Typecheck {
     pub int_ty_id: Option<DefId>,
     pub nat_ty_id: Option<DefId>,
+    pub exprs_in_spec: Arc<Mutex<HashSet<HirId>>>,
+    pub autoviewed_calls: HashSet<HirId>,
+    pub autoviewed_call_typs: Arc<Mutex<HashMap<HirId, Typ>>>,
+}
+
+struct VisitSpec<'tcx> {
+    tcx: TyCtxt<'tcx>,
+    exprs_in_spec: Arc<Mutex<HashSet<HirId>>>,
+}
+
+impl<'tcx> rustc_hir::intravisit::Visitor<'tcx> for VisitSpec<'tcx> {
+    type Map = rustc_hir::intravisit::ErasedMap<'tcx>;
+
+    fn nested_visit_map(&mut self) -> rustc_hir::intravisit::NestedVisitorMap<Self::Map> {
+        rustc_hir::intravisit::NestedVisitorMap::None
+    }
+
+    fn visit_expr(&mut self, expr: &'tcx Expr<'tcx>) {
+        {
+            let mut exprs_in_spec = self.exprs_in_spec.lock().expect("visit_expr lock");
+            if exprs_in_spec.contains(&expr.hir_id) {
+                return;
+            }
+            exprs_in_spec.insert(expr.hir_id);
+        }
+        match &expr.kind {
+            ExprKind::Closure(_, _fn_decl, body_id, _, _) => {
+                let body = self.tcx.hir().body(*body_id);
+                self.visit_expr(&body.value);
+            }
+            _ => {}
+        }
+        rustc_hir::intravisit::walk_expr(self, expr);
+    }
 }
 
 fn is_t<'tcx>(ty: Ty<'tcx>, name: &str, def: &mut Option<DefId>) -> bool {
@@ -81,11 +123,21 @@ impl FormalVerifierTyping for Typecheck {
         &mut self,
         tcx: TyCtxt<'tcx>,
         op: BinOp,
+        is_assign: bool,
         lhs_expr: &'tcx Expr<'tcx>,
         rhs_expr: &'tcx Expr<'tcx>,
         lhs_ty: Ty<'tcx>,
         rhs_ty: Ty<'tcx>,
-    ) -> Option<(bool, Ty<'tcx>)> {
+    ) -> Option<(bool, Ty<'tcx>, bool)> {
+        if is_assign {
+            match (op.node, &lhs_ty.kind(), &rhs_ty.kind()) {
+                (BinOpKind::Shr, TyKind::Bool, TyKind::Bool | TyKind::Infer(..)) => {
+                    return Some((true, lhs_ty, true));
+                }
+                _ => return None,
+            }
+        }
+
         // For convenience, allow implicit coercions from integral types to int in some situations.
         // This is strictly opportunistic; in many situations you still need "as int".
 
@@ -116,7 +168,7 @@ impl FormalVerifierTyping for Typecheck {
         match (widen_left, allow_widen(lhs_expr), allow_widen(rhs_expr)) {
             (false, _, false) => None,
             (true, false, _) => None,
-            _ => Some((widen_left, t)),
+            _ => Some((widen_left, t, false)),
         }
     }
 
@@ -152,5 +204,100 @@ impl FormalVerifierTyping for Typecheck {
                 Some(int_id) => tcx.type_of(int_id),
             }
         }
+    }
+
+    fn interpose_call<'tcx>(
+        &mut self,
+        tcx: TyCtxt<'tcx>,
+        expr: &'tcx Expr<'tcx>,
+        def_id: DefId,
+        args: &'tcx [Expr<'tcx>],
+    ) -> Option<(PathSegment<'tcx>, &'tcx [Expr<'tcx>])> {
+        let spec_walk_arg = |arg: &'tcx Expr<'tcx>| {
+            let mut visitor = VisitSpec { tcx: tcx, exprs_in_spec: self.exprs_in_spec.clone() };
+            visitor.visit_expr(arg);
+        };
+
+        match tcx.hir().get_if_local(def_id) {
+            Some(rustc_hir::Node::ImplItem(rustc_hir::ImplItem {
+                kind: rustc_hir::ImplItemKind::Fn(_fn_sig, body_id),
+                ..
+            }))
+            | Some(rustc_hir::Node::Item(rustc_hir::Item {
+                kind: rustc_hir::ItemKind::Fn(_fn_sig, _, body_id),
+                ..
+            })) => {
+                let local_id = def_id.as_local();
+                if local_id.is_none() {
+                    return None;
+                }
+                let hir_id = tcx.hir().local_def_id_to_hir_id(local_id.unwrap());
+                if self.exprs_in_spec.lock().expect("interpose_call").contains(&expr.hir_id) {
+                    // This call appears in a spec context.
+                    let attrs = get_verifier_attrs(tcx.hir().attrs(hir_id));
+                    if attrs.is_ok()
+                        && attrs.unwrap().autoview
+                        && !self.autoviewed_calls.contains(&expr.hir_id)
+                    {
+                        // This call is marked autoview.
+                        // Replace e.f(args) it with e.view().f(args)
+                        self.autoviewed_calls.insert(expr.hir_id);
+                        let segment = PathSegment::from_ident(Ident::from_str("view"));
+                        let args = &args[..1];
+                        return Some((segment, args));
+                    }
+                    // No reason to do any more work; we're already registered in exprs_in_spec
+                    return None;
+                }
+
+                let mode = get_mode(Mode::Exec, tcx.hir().attrs(hir_id));
+                let params = tcx.hir().body(*body_id).params;
+                if params.len() == args.len() {
+                    for (param, arg) in params.iter().zip(args) {
+                        let param_mode = get_var_mode(mode, tcx.hir().attrs(param.hir_id));
+                        if param_mode == Mode::Spec {
+                            // This is a spec argument, so register the argument's whole AST
+                            // as appearing in a spec context.
+                            spec_walk_arg(arg);
+                        }
+                    }
+                }
+                None
+            }
+            None => {
+                if self.exprs_in_spec.lock().expect("interpose_call").contains(&expr.hir_id) {
+                    return None;
+                }
+                let path = def_id_to_vir_path(tcx, def_id);
+                if let Some(krate) = &path.krate {
+                    if **krate == "builtin" {
+                        let mode = get_mode(Mode::Exec, tcx.item_attrs(def_id));
+                        if mode != Mode::Exec {
+                            for arg in args {
+                                // HACK: since we don't have the parameter attributes,
+                                // assume builtin uses the defaults
+                                // TODO: when we support multiple crates,
+                                // we should be able to get the modes directly
+                                spec_walk_arg(arg);
+                            }
+                        }
+                    }
+                }
+                None
+            }
+            _ => None,
+        }
+    }
+
+    fn interposed_ty<'tcx>(&mut self, tcx: TyCtxt<'tcx>, expr: &'tcx Expr<'tcx>, ty: Ty<'tcx>) {
+        let typ = mid_ty_to_vir(tcx, ty);
+        self.autoviewed_call_typs
+            .lock()
+            .expect("lock autoviewed_call_typs")
+            .insert(expr.hir_id, typ);
+    }
+
+    fn no_adjust<'tcx>(&mut self, _tcx: TyCtxt<'tcx>, expr: &'tcx Expr<'tcx>) -> bool {
+        self.autoviewed_calls.contains(&expr.hir_id)
     }
 }

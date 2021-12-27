@@ -6,7 +6,7 @@
 //! SST expressions cannot contain statments.
 //! SST is designed to make the translation to AIR as straightforward as possible.
 
-use crate::ast::{BinaryOp, Constant, Fun, Path, Typ, Typs, UnaryOp, UnaryOpr};
+use crate::ast::{BinaryOp, Constant, Fun, Path, SpannedTyped, Typ, Typs, UnaryOp, UnaryOpr};
 use crate::def::Spanned;
 use air::ast::{Binder, Binders, Ident, Quant, Span};
 use std::sync::Arc;
@@ -26,7 +26,7 @@ pub enum BndX {
 // variable name with optional unique id for renaming (equal to unique_id in LocalDeclX)
 pub type UniqueIdent = (Ident, Option<u64>);
 
-pub type Exp = Arc<Spanned<ExpX>>;
+pub type Exp = Arc<SpannedTyped<ExpX>>;
 pub type Exps = Arc<Vec<Exp>>;
 #[derive(Debug)]
 pub enum ExpX {
@@ -69,7 +69,8 @@ pub enum StmX {
     DeadEnd(Stm),
     If(Exp, Stm, Option<Stm>),
     While {
-        cond: Exp,
+        cond_stms: Stms,
+        cond_exp: Exp,
         body: Stm,
         invs: Exps,
         typ_inv_vars: Arc<Vec<(UniqueIdent, Typ)>>,

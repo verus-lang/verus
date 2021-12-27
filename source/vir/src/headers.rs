@@ -9,7 +9,7 @@ pub struct Header {
     pub ensure_id_typ: Option<(Ident, Typ)>,
     pub ensure: Exprs,
     pub invariant: Exprs,
-    pub decrease: Option<Expr>,
+    pub decrease: Exprs,
 }
 
 fn read_header_block(block: &mut Vec<Stmt>) -> Result<Header, VirErr> {
@@ -17,7 +17,7 @@ fn read_header_block(block: &mut Vec<Stmt>) -> Result<Header, VirErr> {
     let mut require: Option<Exprs> = None;
     let mut ensure: Option<(Option<(Ident, Typ)>, Exprs)> = None;
     let mut invariant: Option<Exprs> = None;
-    let mut decrease: Option<Expr> = None;
+    let mut decrease: Option<Exprs> = None;
     let mut n = 0;
     for stmt in block.iter() {
         match &stmt.x {
@@ -50,14 +50,14 @@ fn read_header_block(block: &mut Vec<Stmt>) -> Result<Header, VirErr> {
                         }
                         invariant = Some(es.clone());
                     }
-                    HeaderExprX::Decreases(e) => {
+                    HeaderExprX::Decreases(es) => {
                         if decrease.is_some() {
                             return err_str(
                                 &stmt.span,
                                 "only one decreases expression currently supported",
                             );
                         }
-                        decrease = Some(e.clone());
+                        decrease = Some(es.clone());
                     }
                     HeaderExprX::Hide(x) => {
                         hidden.push(x.clone());
@@ -76,6 +76,7 @@ fn read_header_block(block: &mut Vec<Stmt>) -> Result<Header, VirErr> {
         Some((id_typ, es)) => (id_typ, es),
     };
     let invariant = invariant.unwrap_or(Arc::new(vec![]));
+    let decrease = decrease.unwrap_or(Arc::new(vec![]));
     Ok(Header { hidden, require, ensure_id_typ, ensure, invariant, decrease })
 }
 

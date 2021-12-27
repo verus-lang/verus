@@ -1,10 +1,12 @@
 use crate::ast::{
-    CallTarget, Datatype, Expr, ExprX, Fun, Function, Krate, Mode, Path, UnaryOpr, VirErr,
+    CallTarget, Datatype, Expr, ExprX, Fun, FunX, Function, Krate, Mode, Path, PathX, TypX,
+    UnaryOpr, VirErr,
 };
 use crate::ast_util::{err_str, err_string};
 use crate::ast_visitor::map_expr_visitor;
 use crate::datatype_to_air::is_datatype_transparent;
 use std::collections::HashMap;
+use std::sync::Arc;
 
 struct Ctxt {
     pub(crate) funs: HashMap<Fun, Function>,
@@ -40,8 +42,51 @@ fn check_function(ctxt: &Ctxt, function: &Function) -> Result<(), VirErr> {
             );
         }
     }
+
     if function.x.attrs.bit_vector {
-        // return error if function has a non-integer type, or function call (for our simple version)
+        // TODO: return error if function has a non-integer type, or function call (for our simple version)
+    }
+
+    if function.x.attrs.autoview {
+        if function.x.mode == Mode::Spec {
+            return err_str(&function.span, "autoview function cannot be declared spec");
+        }
+        let mut segments = (*function.x.name.path.segments).clone();
+        *segments.last_mut().expect("autoview segments") = Arc::new("view".to_string());
+        let segments = Arc::new(segments);
+        let path = Arc::new(PathX { segments, ..(*function.x.name.path).clone() });
+        let fun = Arc::new(FunX { path, ..(*function.x.name).clone() });
+        if let Some(f) = ctxt.funs.get(&fun) {
+            if f.x.params.len() != 1 {
+                return err_str(
+                    &f.span,
+                    "because of autoview, view() function must have 0 paramters",
+                );
+            }
+            let typ_args = if let TypX::Datatype(_, args) = &*f.x.params[0].x.typ {
+                args.clone()
+            } else {
+                panic!("autoview_typ must be Datatype")
+            };
+            assert!(typ_args.len() <= f.x.typ_bounds.len());
+            if f.x.typ_bounds.len() != typ_args.len() {
+                return err_str(
+                    &f.span,
+                    "because of autoview, view() function must have 0 type paramters",
+                );
+            }
+            if f.x.mode != Mode::Spec {
+                return err_str(
+                    &f.span,
+                    "because of autoview, view() function must be declared spec",
+                );
+            }
+        } else {
+            return err_str(
+                &function.span,
+                "autoview function must have corresponding view() function",
+            );
+        }
     }
     if let Some(body) = &function.x.body {
         map_expr_visitor(body, &mut |expr: &Expr| {

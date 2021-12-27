@@ -1,62 +1,76 @@
 #![feature(rustc_attrs)]
 
+#[proof]
 pub fn admit() {
     unimplemented!();
 }
 
 // Can only appear at beginning of function body
+#[proof]
 pub fn requires<A>(_a: A) {
     unimplemented!();
 }
 
 // Can only appear at beginning of function body
+#[proof]
 pub fn ensures<A>(_a: A) {
     unimplemented!();
 }
 
 // Can only appear at beginning of loop body
+#[proof]
 pub fn invariant<A>(_a: A) {
     unimplemented!();
 }
 
 // Can only appear at beginning of function body
+#[proof]
 pub fn decreases<A>(_a: A) {
     unimplemented!();
 }
 
 // Can only appear at beginning of function body
+#[proof]
 pub fn hide<F>(_f: F) {
     unimplemented!();
 }
 
+#[proof]
 pub fn reveal<F>(_f: F) {
     unimplemented!();
 }
 
+#[proof]
 pub fn reveal_with_fuel<F>(_f: F, _n: u32) {
     unimplemented!();
 }
 
+#[spec]
 pub fn imply(_b1: bool, _b2: bool) -> bool {
     unimplemented!();
 }
 
+#[spec]
 pub fn forall<A>(_a: A) -> bool {
     unimplemented!();
 }
 
+#[spec]
 pub fn exists<A>(_a: A) -> bool {
     unimplemented!();
 }
 
+#[spec]
 pub fn choose<A, F: Fn(A) -> bool>(_f: F) -> A {
     unimplemented!()
 }
 
+#[spec]
 pub fn equal<A>(_: A, _: A) -> bool {
     unimplemented!();
 }
 
+#[proof]
 pub fn assert_by(_: bool, _: ()) {
     unimplemented!();
 }

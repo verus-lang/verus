@@ -192,3 +192,35 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] ret_mode code! {
+        #[verifier(returns(spec))]
+        fn ret_spec() -> int {
+            ensures(|i: int| i == 3);
+            #[spec] let a: int = 3;
+            a
+        }
+
+        fn test_ret() {
+            #[spec] let x = ret_spec();
+            assert(x == 3);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] ret_mode_fail2 code! {
+        #[verifier(returns(spec))]
+        fn ret_spec() -> int {
+            ensures(|i: int| i == 3);
+            #[spec] let a: int = 3;
+            a
+        }
+
+        fn test_ret() {
+            let x = ret_spec();
+            assert(x == 3);
+        }
+    } => Err(_)
+}

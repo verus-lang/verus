@@ -55,6 +55,7 @@ const VARIANT_SEPARATOR: &str = "/";
 const VARIANT_FIELD_SEPARATOR: &str = "/";
 const FUN_TRAIT_DEF_BEGIN: &str = "<";
 const FUN_TRAIT_DEF_END: &str = ">";
+const DECREASE_AT_ENTRY: &str = "decrease%init";
 
 pub const SUFFIX_SNAP_MUT: &str = "_mutation";
 pub const SUFFIX_SNAP_JOIN: &str = "_join";
@@ -81,7 +82,6 @@ pub const NAT_CLIP: &str = "nClip";
 pub const U_INV: &str = "uInv";
 pub const I_INV: &str = "iInv";
 pub const ARCH_SIZE: &str = "SZ";
-pub const DECREASE_AT_ENTRY: &str = "decrease%init";
 pub const SNAPSHOT_CALL: &str = "CALL";
 pub const POLY: &str = "Poly";
 pub const BOX_INT: &str = "I";
@@ -98,6 +98,7 @@ pub const TYPE_ID_NAT: &str = "NAT";
 pub const TYPE_ID_UINT: &str = "UINT";
 pub const TYPE_ID_SINT: &str = "SINT";
 pub const HAS_TYPE: &str = "has_type";
+pub const AS_TYPE: &str = "as_type";
 const CHECK_DECREASE_INT: &str = "check_decrease_int";
 const HEIGHT: &str = "height";
 
@@ -133,6 +134,10 @@ pub fn check_decrease_int() -> Fun {
         }),
         trait_path: None,
     })
+}
+
+pub fn decrease_at_entry(n: usize) -> Ident {
+    Arc::new(format!("{}{}", DECREASE_AT_ENTRY, n))
 }
 
 pub fn height() -> Fun {

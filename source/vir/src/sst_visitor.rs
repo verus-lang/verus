@@ -1,4 +1,4 @@
-use crate::ast::{Ident, VirErr};
+use crate::ast::{Ident, SpannedTyped, VirErr};
 use crate::def::Spanned;
 use crate::sst::{BndX, Exp, ExpX, Stm, StmX, Trig, UniqueIdent};
 use crate::util::vec_map;
@@ -15,6 +15,7 @@ pub(crate) fn map_exp_visitor_bind<F>(
 where
     F: FnMut(&Exp, &mut ScopeMap<Ident, bool>) -> Result<Exp, VirErr>,
 {
+    let exp_new = |e: ExpX| SpannedTyped::new(&exp.span, &exp.typ, e);
     match &exp.x {
         ExpX::Const(_) => f(exp, map),
         ExpX::Var(..) => f(exp, map),
@@ -24,8 +25,7 @@ where
             for e in es.iter() {
                 exps.push(map_exp_visitor_bind(e, map, f)?);
             }
-            let exp =
-                Spanned::new(exp.span.clone(), ExpX::Call(x.clone(), typs.clone(), Arc::new(exps)));
+            let exp = exp_new(ExpX::Call(x.clone(), typs.clone(), Arc::new(exps)));
             f(&exp, map)
         }
         ExpX::CallLambda(typ, e0, es) => {
@@ -34,8 +34,7 @@ where
             for e in es.iter() {
                 exps.push(map_exp_visitor_bind(e, map, f)?);
             }
-            let exp =
-                Spanned::new(exp.span.clone(), ExpX::CallLambda(typ.clone(), e0, Arc::new(exps)));
+            let exp = exp_new(ExpX::CallLambda(typ.clone(), e0, Arc::new(exps)));
             f(&exp, map)
         }
         ExpX::Ctor(path, ident, binders) => {
@@ -43,33 +42,30 @@ where
                 .iter()
                 .map(|b| b.map_result(|a| map_exp_visitor_bind(a, map, f)))
                 .collect::<Result<Vec<_>, _>>()?;
-            let exp = Spanned::new(
-                exp.span.clone(),
-                ExpX::Ctor(path.clone(), ident.clone(), Arc::new(mapped_binders)),
-            );
+            let exp = exp_new(ExpX::Ctor(path.clone(), ident.clone(), Arc::new(mapped_binders)));
             f(&exp, map)
         }
         ExpX::Unary(op, e1) => {
             let expr1 = map_exp_visitor_bind(e1, map, f)?;
-            let exp = Spanned::new(exp.span.clone(), ExpX::Unary(*op, expr1));
+            let exp = exp_new(ExpX::Unary(*op, expr1));
             f(&exp, map)
         }
         ExpX::UnaryOpr(op, e1) => {
             let expr1 = map_exp_visitor_bind(e1, map, f)?;
-            let exp = Spanned::new(exp.span.clone(), ExpX::UnaryOpr(op.clone(), expr1));
+            let exp = exp_new(ExpX::UnaryOpr(op.clone(), expr1));
             f(&exp, map)
         }
         ExpX::Binary(op, e1, e2) => {
             let expr1 = map_exp_visitor_bind(e1, map, f)?;
             let expr2 = map_exp_visitor_bind(e2, map, f)?;
-            let exp = Spanned::new(exp.span.clone(), ExpX::Binary(*op, expr1, expr2));
+            let exp = exp_new(ExpX::Binary(*op, expr1, expr2));
             f(&exp, map)
         }
         ExpX::If(e1, e2, e3) => {
             let expr1 = map_exp_visitor_bind(e1, map, f)?;
             let expr2 = map_exp_visitor_bind(e2, map, f)?;
             let expr3 = map_exp_visitor_bind(e3, map, f)?;
-            let exp = Spanned::new(exp.span.clone(), ExpX::If(expr1, expr2, expr3));
+            let exp = exp_new(ExpX::If(expr1, expr2, expr3));
             f(&exp, map)
         }
         ExpX::Bind(bnd, e1) => {
@@ -120,7 +116,7 @@ where
             let e1 = map_exp_visitor_bind(e1, map, f)?;
             map.pop_scope();
             let expx = ExpX::Bind(bnd, e1);
-            let exp = Spanned::new(exp.span.clone(), expx);
+            let exp = exp_new(expx);
             f(&exp, map)
         }
     }
@@ -145,7 +141,7 @@ where
 pub(crate) fn exp_rename_vars(exp: &Exp, map: &HashMap<UniqueIdent, UniqueIdent>) -> Exp {
     map_exp_visitor(exp, &mut |exp| match &exp.x {
         ExpX::Var(x) if map.contains_key(x) => {
-            Spanned::new(exp.span.clone(), ExpX::Var(map[x].clone()))
+            SpannedTyped::new(&exp.span, &exp.typ, ExpX::Var(map[x].clone()))
         }
         _ => exp.clone(),
     })
@@ -172,12 +168,17 @@ where
             let stm = Spanned::new(stm.span.clone(), StmX::If(cond.clone(), lhs, rhs));
             f(&stm)
         }
-        StmX::While { cond, body, invs, typ_inv_vars, modified_vars } => {
+        StmX::While { cond_stms, cond_exp, body, invs, typ_inv_vars, modified_vars } => {
+            let mut cs: Vec<Stm> = Vec::new();
+            for s in cond_stms.iter() {
+                cs.push(map_stm_visitor(s, f)?);
+            }
             let body = map_stm_visitor(body, f)?;
             let stm = Spanned::new(
                 stm.span.clone(),
                 StmX::While {
-                    cond: cond.clone(),
+                    cond_stms: Arc::new(cs),
+                    cond_exp: cond_exp.clone(),
                     body,
                     invs: invs.clone(),
                     typ_inv_vars: typ_inv_vars.clone(),
@@ -220,13 +221,14 @@ where
                 let exp = f(exp);
                 Spanned::new(span, StmX::If(exp, s1.clone(), s2.clone()))
             }
-            StmX::While { cond, body, invs, typ_inv_vars, modified_vars } => {
-                let cond = f(cond);
+            StmX::While { cond_stms, cond_exp, body, invs, typ_inv_vars, modified_vars } => {
+                let cond_exp = f(cond_exp);
                 let invs = Arc::new(vec_map(invs, f));
                 Spanned::new(
                     span,
                     StmX::While {
-                        cond,
+                        cond_stms: cond_stms.clone(),
+                        cond_exp,
                         body: body.clone(),
                         invs,
                         typ_inv_vars: typ_inv_vars.clone(),
