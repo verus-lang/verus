@@ -73,3 +73,53 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_one_fails(err)
 }
+
+test_verify_one_file! {
+    #[test] test_refine code! {
+        #[spec]
+        fn cnatf(n: nat) -> bool {
+            true
+        }
+
+        #[spec]
+        fn cintf(n: int) -> bool {
+            true
+        }
+
+        #[proof]
+        fn cnat() {
+            assert(choose(|n: nat| cnatf(n)) >= 0);
+            assert(choose(|n: nat| cintf(n) && n < 0) >= 0);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_refine_fail1 code! {
+        #[spec]
+        fn cintf(n: int) -> bool {
+            true
+        }
+
+        #[proof]
+        fn cnat() {
+            assert(cintf(-10));
+            assert(choose(|n: nat| cintf(n) && n < 0) < 0); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] test_refine2 code! {
+        #[spec]
+        fn cnatf(n: nat) -> bool {
+            true
+        }
+
+        #[proof]
+        fn cnat() {
+            assert(cnatf(10));
+            assert(choose(|n: nat| cnatf(n) && n >= 10) >= 10);
+        }
+    } => Ok(())
+}

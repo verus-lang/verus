@@ -135,6 +135,36 @@ pub(crate) fn typ_invariant(ctx: &Ctx, typ: &Typ, expr: &Expr) -> Option<Expr> {
     }
 }
 
+fn try_box(expr: Expr, typ: &Typ) -> Option<Expr> {
+    let f_name = match &**typ {
+        TypX::Bool => Some(str_ident(crate::def::BOX_BOOL)),
+        TypX::Int(_) => Some(str_ident(crate::def::BOX_INT)),
+        TypX::Datatype(path, _) => Some(prefix_box(&path)),
+        TypX::Tuple(_) => None,
+        TypX::Lambda(..) => Some(str_ident(crate::def::BOX_FUN)),
+        TypX::Boxed(_) => None,
+        TypX::TypParam(_) => None,
+        TypX::TypeId => None,
+        TypX::Air(_) => None,
+    };
+    f_name.map(|f_name| ident_apply(&f_name, &vec![expr]))
+}
+
+fn try_unbox(expr: Expr, typ: &Typ) -> Option<Expr> {
+    let f_name = match &**typ {
+        TypX::Bool => Some(str_ident(crate::def::UNBOX_BOOL)),
+        TypX::Int(_) => Some(str_ident(crate::def::UNBOX_INT)),
+        TypX::Datatype(path, _) => Some(crate::def::prefix_unbox(&path)),
+        TypX::Tuple(_) => None,
+        TypX::Lambda(..) => Some(str_ident(crate::def::UNBOX_FUN)),
+        TypX::Boxed(_) => None,
+        TypX::TypParam(_) => None,
+        TypX::TypeId => None,
+        TypX::Air(_) => None,
+    };
+    f_name.map(|f_name| ident_apply(&f_name, &vec![expr]))
+}
+
 pub(crate) fn ctor_to_apply<'a>(
     ctx: &'a Ctx,
     path: &Path,
@@ -196,33 +226,11 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp) -> Expr {
         ExpX::UnaryOpr(op, exp) => match op {
             UnaryOpr::Box(typ) => {
                 let expr = exp_to_expr(ctx, exp);
-                let f_name = match &**typ {
-                    TypX::Bool => str_ident(crate::def::BOX_BOOL),
-                    TypX::Int(_) => str_ident(crate::def::BOX_INT),
-                    TypX::Datatype(path, _) => prefix_box(&path),
-                    TypX::Tuple(_) => panic!("internal error: Box(Tuple)"),
-                    TypX::Lambda(..) => str_ident(crate::def::BOX_FUN),
-                    TypX::Boxed(_) => panic!("internal error: Box(Boxed)"),
-                    TypX::TypParam(_) => panic!("internal error: Box(TypParam)"),
-                    TypX::TypeId => panic!("internal error: Box(TypeId)"),
-                    TypX::Air(_) => panic!("internal error: Box(Air)"),
-                };
-                ident_apply(&f_name, &vec![expr])
+                try_box(expr, typ).expect("Box")
             }
             UnaryOpr::Unbox(typ) => {
                 let expr = exp_to_expr(ctx, exp);
-                let f_name = match &**typ {
-                    TypX::Bool => str_ident(crate::def::UNBOX_BOOL),
-                    TypX::Int(_) => str_ident(crate::def::UNBOX_INT),
-                    TypX::Datatype(path, _) => crate::def::prefix_unbox(&path),
-                    TypX::Tuple(_) => panic!("internal error: Box(Tuple)"),
-                    TypX::Lambda(..) => str_ident(crate::def::UNBOX_FUN),
-                    TypX::Boxed(_) => panic!("internal error: Unbox(Boxed)"),
-                    TypX::TypParam(_) => panic!("internal error: Unbox(TypParam)"),
-                    TypX::TypeId => panic!("internal error: Unbox(TypeId)"),
-                    TypX::Air(_) => panic!("internal error: Unbox(Air)"),
-                };
-                ident_apply(&f_name, &vec![expr])
+                try_unbox(expr, typ).expect("Unbox")
             }
             UnaryOpr::IsVariant { datatype, variant } => {
                 let expr = exp_to_expr(ctx, exp);
@@ -336,13 +344,29 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp) -> Expr {
                 air::ast_util::mk_lambda(&binders, &expr)
             }
             BndX::Choose(binder, trigs) => {
-                let expr = exp_to_expr(ctx, exp);
+                let mut expr = exp_to_expr(ctx, exp);
                 let name = suffix_local_expr_id(&binder.name);
-                let binder = Arc::new(BinderX { name, a: typ_to_air(ctx, &binder.a) });
+                let typ = &binder.a;
+                let typ_inv = typ_invariant(ctx, typ, &ident_var(&name));
+                if let Some(inv) = &typ_inv {
+                    expr = mk_and(&vec![inv.clone(), expr]);
+                }
+                let binder = Arc::new(BinderX { name, a: typ_to_air(ctx, typ) });
                 let triggers =
                     vec_map(&*trigs, |trig| Arc::new(vec_map(trig, |x| exp_to_expr(ctx, x))));
                 let bind = Arc::new(BindX::Choose(binder, Arc::new(triggers)));
-                Arc::new(ExprX::Bind(bind, expr))
+                let mut choose_expr = Arc::new(ExprX::Bind(bind, expr));
+                match (typ_inv, try_box(choose_expr.clone(), typ)) {
+                    (Some(_), Some(boxed)) => {
+                        // use as_type to coerce expression to some value of the requested type,
+                        // even if the choose expression is unsatisfiable
+                        let id = typ_to_id(typ);
+                        let as_typed = str_apply(crate::def::AS_TYPE, &vec![boxed, id]);
+                        choose_expr = try_unbox(as_typed, typ).expect("Choose: unbox");
+                    }
+                    _ => {}
+                }
+                choose_expr
             }
         },
     }

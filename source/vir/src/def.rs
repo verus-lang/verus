@@ -98,6 +98,7 @@ pub const TYPE_ID_NAT: &str = "NAT";
 pub const TYPE_ID_UINT: &str = "UINT";
 pub const TYPE_ID_SINT: &str = "SINT";
 pub const HAS_TYPE: &str = "has_type";
+pub const AS_TYPE: &str = "as_type";
 const CHECK_DECREASE_INT: &str = "check_decrease_int";
 const HEIGHT: &str = "height";
 
