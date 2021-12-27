@@ -1,7 +1,7 @@
 use crate::context::Context;
 use crate::rust_to_vir_base::{
     check_generics, check_generics_bounds, def_id_to_vir_path, def_to_path_ident, get_fuel,
-    get_mode, get_var_mode, get_verifier_attrs, ident_to_var, ty_to_vir, BodyCtxt,
+    get_mode, get_ret_mode, get_var_mode, get_verifier_attrs, ident_to_var, ty_to_vir, BodyCtxt,
 };
 use crate::rust_to_vir_expr::{expr_to_vir, pat_to_var};
 use crate::util::{err_span_str, err_span_string, spanned_new, unsupported_err_span, vec_map};
@@ -48,6 +48,7 @@ fn check_fn_decl<'tcx>(
     decl: &'tcx FnDecl<'tcx>,
     self_path: Option<vir::ast::Path>,
     self_typ_params: Option<vir::ast::Idents>,
+    attrs: &[Attribute],
     mode: Mode,
 ) -> Result<Option<(Typ, Mode)>, VirErr> {
     let FnDecl { inputs: _, output, c_variadic, implicit_self } = decl;
@@ -76,7 +77,7 @@ fn check_fn_decl<'tcx>(
             } else {
                 ty_to_vir(tcx, ty)
             };
-            Ok(Some((typ, get_var_mode(mode, &[]))))
+            Ok(Some((typ, get_ret_mode(mode, attrs))))
         }
     }
 }
@@ -136,6 +137,7 @@ pub(crate) fn check_item_fn<'tcx>(
                 decl,
                 self_path_mode.as_ref().map(|(self_path, _)| self_path.clone()),
                 self_typ_params.clone(),
+                attrs,
                 mode,
             )?
         }
@@ -290,7 +292,7 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
     generics: &'tcx Generics,
 ) -> Result<(), VirErr> {
     let mode = get_mode(Mode::Exec, attrs);
-    let ret_typ_mode = check_fn_decl(ctxt.tcx, &span, decl, None, None, mode)?;
+    let ret_typ_mode = check_fn_decl(ctxt.tcx, &span, decl, None, None, attrs, mode)?;
     let typ_bounds = check_generics_bounds(ctxt.tcx, generics)?;
     let fuel = get_fuel(attrs);
     let mut vir_params: Vec<vir::ast::Param> = Vec::new();

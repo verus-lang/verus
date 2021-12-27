@@ -2,7 +2,7 @@ use crate::context::Context;
 use crate::util::{err_span_str, err_span_string, unsupported_err_span};
 use crate::{unsupported, unsupported_err, unsupported_err_unless};
 use rustc_ast::token::{Token, TokenKind};
-use rustc_ast::tokenstream::TokenTree;
+use rustc_ast::tokenstream::{TokenStream, TokenTree};
 use rustc_ast::{AttrKind, Attribute, IntTy, MacArgs, UintTy};
 use rustc_hir::def::{DefKind, Res};
 use rustc_hir::definitions::DefPath;
@@ -107,32 +107,59 @@ pub(crate) enum AttrTree {
     Eq(Span, String, String),
 }
 
-pub(crate) fn token_to_string(token: &Token) -> Result<String, ()> {
+pub(crate) fn token_to_string(token: &Token) -> Result<Option<String>, ()> {
     match token.kind {
-        TokenKind::Literal(lit) => Ok(lit.symbol.as_str().to_string()),
-        TokenKind::Ident(symbol, _) => Ok(symbol.as_str().to_string()),
+        TokenKind::Literal(lit) => Ok(Some(lit.symbol.as_str().to_string())),
+        TokenKind::Ident(symbol, _) => Ok(Some(symbol.as_str().to_string())),
+        TokenKind::Comma => Ok(None),
         _ => Err(()),
     }
 }
 
-pub(crate) fn token_tree_to_tree(token_tree: TokenTree) -> Result<AttrTree, ()> {
-    match &token_tree {
-        TokenTree::Token(token) => Ok(AttrTree::Fun(token.span, token_to_string(token)?, None)),
-        _ => Err(()),
+pub(crate) fn token_stream_to_trees(
+    span: Span,
+    stream: &TokenStream,
+) -> Result<Box<[AttrTree]>, ()> {
+    let mut token_trees: Vec<TokenTree> = Vec::new();
+    for x in stream.trees() {
+        token_trees.push(x);
     }
+    let mut i = 0;
+    let mut trees: Vec<AttrTree> = Vec::new();
+    while i < token_trees.len() {
+        match &token_trees[i] {
+            TokenTree::Token(token) => {
+                if let Some(name) = token_to_string(token)? {
+                    let fargs = if i + 1 < token_trees.len() {
+                        if let TokenTree::Delimited(_, _, token_stream) = &token_trees[i + 1] {
+                            i += 1;
+                            Some(token_stream_to_trees(span, token_stream)?)
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    };
+                    trees.push(AttrTree::Fun(span, name, fargs));
+                }
+                i += 1;
+            }
+            _ => return Err(()),
+        }
+    }
+    Ok(trees.into_boxed_slice())
 }
 
 pub(crate) fn mac_args_to_tree(span: Span, name: String, args: &MacArgs) -> Result<AttrTree, ()> {
     match args {
         MacArgs::Empty => Ok(AttrTree::Fun(span, name, None)),
         MacArgs::Delimited(_, _, token_stream) => {
-            let mut fargs: Vec<AttrTree> = Vec::new();
-            for arg in token_stream.trees().step_by(2) {
-                fargs.push(token_tree_to_tree(arg)?);
-            }
-            Ok(AttrTree::Fun(span, name, Some(fargs.into_boxed_slice())))
+            Ok(AttrTree::Fun(span, name, Some(token_stream_to_trees(span, token_stream)?)))
         }
-        MacArgs::Eq(_, token) => Ok(AttrTree::Eq(span, name, token_to_string(token)?)),
+        MacArgs::Eq(_, token) => match token_to_string(token)? {
+            None => Err(()),
+            Some(token) => Ok(AttrTree::Eq(span, name, token)),
+        },
     }
 }
 
@@ -162,6 +189,8 @@ pub(crate) fn attrs_to_trees(attrs: &[Attribute]) -> Vec<AttrTree> {
 pub(crate) enum Attr {
     // specify mode (spec, proof, exec)
     Mode(Mode),
+    // function return mode (spec, proof, exec)
+    ReturnMode(Mode),
     // parse function to get header, but don't verify body
     NoVerify,
     // don't parse function; function can't be called directly from verified code
@@ -232,10 +261,25 @@ pub(crate) fn parse_attrs(attrs: &[Attribute]) -> Result<Vec<Attr>, VirErr> {
                 Some(box [AttrTree::Fun(_, arg, None)]) if arg == "autoview" => {
                     v.push(Attr::Autoview)
                 }
-                Some(box [AttrTree::Fun(_, arg, None), AttrTree::Fun(_, msg, None)])
+                Some(box [AttrTree::Fun(_, arg, Some(box [AttrTree::Fun(_, msg, None)]))])
                     if arg == "custom_req_err" =>
                 {
                     v.push(Attr::CustomReqErr(msg.clone()))
+                }
+                Some(box [AttrTree::Fun(_, arg, Some(box [AttrTree::Fun(_, name, None)]))])
+                    if arg == "returns" && name == "spec" =>
+                {
+                    v.push(Attr::ReturnMode(Mode::Spec))
+                }
+                Some(box [AttrTree::Fun(_, arg, None), AttrTree::Fun(_, name, None)])
+                    if arg == "returns" && name == "proof" =>
+                {
+                    v.push(Attr::ReturnMode(Mode::Proof))
+                }
+                Some(box [AttrTree::Fun(_, arg, None), AttrTree::Fun(_, name, None)])
+                    if arg == "returns" && name == "exec" =>
+                {
+                    v.push(Attr::ReturnMode(Mode::Exec))
                 }
                 _ => return err_span_str(span, "unrecognized verifier attribute"),
             },
@@ -266,6 +310,17 @@ pub(crate) fn get_mode(default_mode: Mode, attrs: &[Attribute]) -> Mode {
 pub(crate) fn get_var_mode(function_mode: Mode, attrs: &[Attribute]) -> Mode {
     let default_mode = if function_mode == Mode::Proof { Mode::Spec } else { function_mode };
     get_mode(default_mode, attrs)
+}
+
+pub(crate) fn get_ret_mode(function_mode: Mode, attrs: &[Attribute]) -> Mode {
+    let mut mode = get_var_mode(function_mode, &[]);
+    for attr in parse_attrs_opt(attrs) {
+        match attr {
+            Attr::ReturnMode(m) => mode = m,
+            _ => {}
+        }
+    }
+    mode
 }
 
 pub(crate) fn get_trigger(attrs: &[Attribute]) -> Result<Vec<Option<u64>>, VirErr> {

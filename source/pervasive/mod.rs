@@ -17,7 +17,7 @@ pub fn assume(b: bool) {
 }
 
 #[proof]
-#[verifier(custom_req_err, "assertion failure")]
+#[verifier(custom_req_err("assertion failure"))]
 pub fn assert(b: bool) {
     requires(b);
     ensures(b);
