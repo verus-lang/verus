@@ -203,6 +203,42 @@ test_verify_one_file! {
     } => Err(err) => assert_one_fails(err)
 }
 
+test_verify_one_file! {
+    #[test] test2_unreached code! {
+        enum Hand {
+            Left,
+            Right,
+        }
+
+        fn test() -> u64 {
+            ensures(|ret: u64| ret == 10);
+
+            match Hand::Left {
+                Hand::Left => 10,
+                Hand::Right => unreached(),
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test2_unreached_fail code! {
+        enum Hand {
+            Left,
+            Right,
+        }
+
+        fn test() -> u64 {
+            ensures(|ret: u64| ret == 10);
+
+            match Hand::Right {
+                Hand::Left => 10,
+                Hand::Right => unreached(), // FAILS
+            }
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
 /////////
 
 test_verify_one_file! {

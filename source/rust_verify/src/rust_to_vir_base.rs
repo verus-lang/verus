@@ -271,12 +271,12 @@ pub(crate) fn parse_attrs(attrs: &[Attribute]) -> Result<Vec<Attr>, VirErr> {
                 {
                     v.push(Attr::ReturnMode(Mode::Spec))
                 }
-                Some(box [AttrTree::Fun(_, arg, None), AttrTree::Fun(_, name, None)])
+                Some(box [AttrTree::Fun(_, arg, Some(box [AttrTree::Fun(_, name, None)]))])
                     if arg == "returns" && name == "proof" =>
                 {
                     v.push(Attr::ReturnMode(Mode::Proof))
                 }
-                Some(box [AttrTree::Fun(_, arg, None), AttrTree::Fun(_, name, None)])
+                Some(box [AttrTree::Fun(_, arg, Some(box [AttrTree::Fun(_, name, None)]))])
                     if arg == "returns" && name == "exec" =>
                 {
                     v.push(Attr::ReturnMode(Mode::Exec))

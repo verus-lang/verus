@@ -32,7 +32,7 @@ pub fn affirm(b: bool) {
 #[spec]
 #[verifier(external)]
 #[allow(dead_code)]
-pub fn arbitrary_external<A>() -> A {
+fn arbitrary_external<A>() -> A {
     unimplemented!()
 }
 
@@ -41,6 +41,38 @@ pub fn arbitrary_external<A>() -> A {
 #[allow(dead_code)]
 pub fn arbitrary<A>() -> A {
     arbitrary_external()
+}
+
+#[proof]
+#[verifier(returns(proof))]
+#[verifier(external)]
+#[allow(dead_code)]
+fn proof_from_false_external<A>() -> A {
+    unimplemented!()
+}
+
+#[proof]
+#[verifier(returns(proof))]
+#[verifier(no_verify)]
+#[allow(dead_code)]
+pub fn proof_from_false<A>() -> A {
+    requires(false);
+
+    proof_from_false_external()
+}
+
+#[verifier(external)]
+#[allow(dead_code)]
+pub fn unreached_external<A>() -> A {
+    panic!("unreached_external")
+}
+
+#[verifier(no_verify)]
+#[allow(dead_code)]
+pub fn unreached<A>() -> A {
+    requires(false);
+
+    unreached_external()
 }
 
 #[verifier(external)]
