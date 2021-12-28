@@ -269,9 +269,6 @@ fn fn_call_to_vir<'tcx>(
     let mut args: Vec<&'tcx Expr<'tcx>> = args_slice.iter().collect();
 
     let tcx = bctx.ctxt.tcx;
-    let expr_typ = typ_of_node(bctx, &expr.hir_id);
-    let mk_expr = |x: ExprX| spanned_typed_new(expr.span, &expr_typ, x);
-    let mk_expr_span = |span: Span, x: ExprX| spanned_typed_new(span, &expr_typ, x);
     let with_self_path = |self_path: &vir::ast::Path, ident: Ident| {
         let mut full_path = (**self_path).clone();
         Arc::make_mut(&mut full_path.segments).push(ident);
@@ -321,6 +318,14 @@ fn fn_call_to_vir<'tcx>(
     let is_cmp = is_equal || is_eq || is_ne || is_le || is_ge || is_lt || is_gt;
     let is_arith_binary = is_add || is_sub || is_mul;
 
+    if bctx.external_body && !is_requires && !is_ensures {
+        return Ok(spanned_typed_new(
+            expr.span,
+            &Arc::new(TypX::Bool),
+            ExprX::Block(Arc::new(vec![]), None),
+        ));
+    }
+
     unsupported_err_unless!(
         bctx.ctxt
             .tcx
@@ -341,18 +346,27 @@ fn fn_call_to_vir<'tcx>(
     );
 
     let len = args.len();
+    let expr_typ = typ_of_node(bctx, &expr.hir_id);
+    let mk_expr = |x: ExprX| spanned_typed_new(expr.span, &expr_typ, x);
+    let mk_expr_span = |span: Span, x: ExprX| spanned_typed_new(span, &expr_typ, x);
+
     if is_requires {
         unsupported_err_unless!(len == 1, expr.span, "expected requires", &args);
+        let bctx = &BodyCtxt { external_body: false, ..bctx.clone() };
         args = extract_array(args[0]);
         for arg in &args {
             if !matches!(bctx.types.node_type(arg.hir_id).kind(), TyKind::Bool) {
                 return err_span_str(arg.span, "requires needs a bool expression");
             }
         }
+        let vir_args = vec_map_result(&args, |arg| expr_to_vir(&bctx, arg))?;
+        let header = Arc::new(HeaderExprX::Requires(Arc::new(vir_args)));
+        return Ok(mk_expr(ExprX::Header(header)));
     }
     if is_ensures {
         unsupported_err_unless!(len == 1, expr.span, "expected ensures", &args);
-        let header = extract_ensures(bctx, args[0])?;
+        let bctx = &BodyCtxt { external_body: false, ..bctx.clone() };
+        let header = extract_ensures(&bctx, args[0])?;
         let expr = mk_expr_span(args[0].span, ExprX::Header(header));
         // extract_ensures does most of the necessary work, so we can return at this point
         return Ok(expr);
@@ -437,10 +451,7 @@ fn fn_call_to_vir<'tcx>(
         false
     };
 
-    if is_requires {
-        let header = Arc::new(HeaderExprX::Requires(Arc::new(vir_args)));
-        Ok(mk_expr(ExprX::Header(header)))
-    } else if is_invariant {
+    if is_invariant {
         let header = Arc::new(HeaderExprX::Invariant(Arc::new(vir_args)));
         Ok(mk_expr(ExprX::Header(header)))
     } else if is_decreases {
@@ -773,10 +784,24 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
     bctx: &BodyCtxt<'tcx>,
     expr: &Expr<'tcx>,
 ) -> Result<vir::ast::Expr, VirErr> {
+    if bctx.external_body {
+        // we want just requires/ensures, not the whole body
+        match &expr.kind {
+            ExprKind::Block(..) | ExprKind::Call(..) => {}
+            _ => {
+                return Ok(spanned_typed_new(
+                    expr.span,
+                    &Arc::new(TypX::Bool),
+                    ExprX::Block(Arc::new(vec![]), None),
+                ));
+            }
+        }
+    }
+
     let tcx = bctx.ctxt.tcx;
     let tc = bctx.types;
-    let expr_typ = typ_of_node(bctx, &expr.hir_id);
-    let mk_expr = |x: ExprX| spanned_typed_new(expr.span, &expr_typ, x);
+    let expr_typ = || typ_of_node(bctx, &expr.hir_id);
+    let mk_expr = |x: ExprX| spanned_typed_new(expr.span, &expr_typ(), x);
 
     match &expr.kind {
         ExprKind::Block(body, _) => {
@@ -817,6 +842,9 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                 ),
                 // a dynamically computed function
                 _ => {
+                    if bctx.external_body {
+                        return Ok(mk_expr(ExprX::Block(Arc::new(vec![]), None)));
+                    }
                     let vir_fun = expr_to_vir(bctx, fun)?;
                     let args: Vec<&'tcx Expr<'tcx>> = args_slice.iter().collect();
                     let vir_args = vec_map_result(&args, |arg| expr_to_vir(bctx, arg))?;
@@ -871,7 +899,7 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                 panic!("unexpected constant: {:?}", lit)
             }
         },
-        ExprKind::Cast(source, _) => Ok(mk_ty_clip(&expr_typ, &expr_to_vir(bctx, source)?)),
+        ExprKind::Cast(source, _) => Ok(mk_ty_clip(&expr_typ(), &expr_to_vir(bctx, source)?)),
         ExprKind::AddrOf(BorrowKind::Ref, Mutability::Not, e) => expr_to_vir_inner(bctx, e),
         ExprKind::Box(e) => expr_to_vir_inner(bctx, e),
         ExprKind::Unary(op, arg) => match op {
@@ -930,7 +958,7 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
             };
             let e = mk_expr(ExprX::Binary(vop, vlhs, vrhs));
             match op.node {
-                BinOpKind::Add | BinOpKind::Sub | BinOpKind::Mul => Ok(mk_ty_clip(&expr_typ, &e)),
+                BinOpKind::Add | BinOpKind::Sub | BinOpKind::Mul => Ok(mk_ty_clip(&expr_typ(), &e)),
                 BinOpKind::Div | BinOpKind::Rem => {
                     // TODO: disallow divide-by-zero in executable code?
                     match mk_range(tc.node_type(expr.hir_id)) {
@@ -1010,9 +1038,9 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                     format!("cannot find field {:?} in struct {:?}", name, datatype_path).as_str(),
                 );
                 let field_typ = mid_ty_to_vir(tcx, tcx.type_of(fielddef.did));
-                let unbox = match (&*expr_typ, &*field_typ) {
+                let unbox = match (&*expr_typ(), &*field_typ) {
                     (TypX::TypParam(_), TypX::TypParam(_)) => None,
-                    (_, TypX::TypParam(_)) => Some(expr_typ.clone()),
+                    (_, TypX::TypParam(_)) => Some(expr_typ().clone()),
                     _ => None,
                 };
                 (datatype_path, variant_name, str_ident(&name.as_str()), unbox)
@@ -1030,8 +1058,8 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                 unsupported_err!(expr.span, "field_of_non_adt", expr)
             };
             let field_type = match &unbox {
-                None => expr_typ.clone(),
-                Some(_) => Arc::new(TypX::Boxed(expr_typ.clone())),
+                None => expr_typ().clone(),
+                Some(_) => Arc::new(TypX::Boxed(expr_typ().clone())),
             };
             let mut vir = spanned_typed_new(
                 expr.span,
@@ -1046,7 +1074,7 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
             if let Some(target_typ) = unbox {
                 vir = SpannedTyped::new(
                     &vir.span,
-                    &expr_typ,
+                    &expr_typ(),
                     ExprX::UnaryOpr(UnaryOpr::Unbox(target_typ), vir.clone()),
                 );
             }
@@ -1286,6 +1314,14 @@ pub(crate) fn stmt_to_vir<'tcx>(
     bctx: &BodyCtxt<'tcx>,
     stmt: &Stmt<'tcx>,
 ) -> Result<Vec<vir::ast::Stmt>, VirErr> {
+    if bctx.external_body {
+        // we want just requires/ensures, not the whole body
+        match &stmt.kind {
+            StmtKind::Expr(..) | StmtKind::Semi(..) => {}
+            _ => return Ok(vec![]),
+        }
+    }
+
     match &stmt.kind {
         StmtKind::Expr(expr) | StmtKind::Semi(expr) => {
             let vir_expr = expr_to_vir(bctx, expr)?;

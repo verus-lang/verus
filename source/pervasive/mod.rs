@@ -30,24 +30,9 @@ pub fn affirm(b: bool) {
 
 /// In spec, all types are inhabited
 #[spec]
-#[verifier(external)]
-#[allow(dead_code)]
-fn arbitrary_external<A>() -> A {
-    unimplemented!()
-}
-
-#[spec]
 #[verifier(external_body)]
 #[allow(dead_code)]
 pub fn arbitrary<A>() -> A {
-    arbitrary_external()
-}
-
-#[proof]
-#[verifier(returns(proof))]
-#[verifier(external)]
-#[allow(dead_code)]
-fn proof_from_false_external<A>() -> A {
     unimplemented!()
 }
 
@@ -58,13 +43,7 @@ fn proof_from_false_external<A>() -> A {
 pub fn proof_from_false<A>() -> A {
     requires(false);
 
-    proof_from_false_external()
-}
-
-#[verifier(external)]
-#[allow(dead_code)]
-pub fn unreached_external<A>() -> A {
-    panic!("unreached_external")
+    unimplemented!()
 }
 
 #[verifier(external_body)]
@@ -72,15 +51,10 @@ pub fn unreached_external<A>() -> A {
 pub fn unreached<A>() -> A {
     requires(false);
 
-    unreached_external()
-}
-
-#[verifier(external)]
-pub fn print_u64_external(i: u64) {
-    println!("{}", i);
+    panic!("unreached_external")
 }
 
 #[verifier(external_body)]
 pub fn print_u64(i: u64) {
-    print_u64_external(i);
+    println!("{}", i);
 }

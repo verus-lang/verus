@@ -147,6 +147,7 @@ struct MCtxt<'a> {
     remap_parens: HashMap<Span, Span>,
     // Mode of current function's return value
     ret_mode: Option<Mode>,
+    external_body: bool,
 }
 
 impl<'a> MCtxt<'a> {
@@ -387,6 +388,17 @@ fn erase_expr(ctxt: &Ctxt, mctxt: &mut MCtxt, expect: Mode, expr: &Expr) -> Expr
 /// Erase ghost code from expr, and return Some resulting expression.
 /// If the entire expression is ghost, return None.
 fn erase_expr_opt(ctxt: &Ctxt, mctxt: &mut MCtxt, expect: Mode, expr: &Expr) -> Option<Expr> {
+    if mctxt.external_body {
+        match &expr.kind {
+            ExprKind::Block(..) => {}
+            ExprKind::Call(f_expr, _) => match mctxt.find_span_opt(&ctxt.calls, f_expr.span) {
+                Some(ResolvedCall::Spec) => return None,
+                _ => return Some(expr.clone()),
+            },
+            _ => return Some(expr.clone()),
+        }
+    }
+
     let kind = match &expr.kind {
         ExprKind::Lit(_) => {
             if keep_mode(ctxt, expect) {
@@ -759,6 +771,13 @@ fn erase_stmt(
     stmt: &Stmt,
     is_last: bool,
 ) -> Option<Stmt> {
+    if mctxt.external_body {
+        match &stmt.kind {
+            StmtKind::Expr(..) | StmtKind::Semi(..) => {}
+            _ => return Some(stmt.clone()),
+        }
+    }
+
     let kind = match &stmt.kind {
         StmtKind::Local(local) => {
             let mode1 = *mctxt.find_span(&ctxt.var_modes, local.pat.span);
@@ -807,7 +826,7 @@ fn erase_block(ctxt: &Ctxt, mctxt: &mut MCtxt, expect: Mode, block: &Block) -> B
     Block { stmts, id, rules, span, tokens: block.tokens.clone() }
 }
 
-fn erase_fn(ctxt: &Ctxt, mctxt: &mut MCtxt, f: &FnKind) -> Option<FnKind> {
+fn erase_fn(ctxt: &Ctxt, mctxt: &mut MCtxt, f: &FnKind, external_body: bool) -> Option<FnKind> {
     let FnKind(defaultness, sig, generics, body_opt) = f;
     let f_vir = if let Some(f_vir) = &ctxt.functions_by_span[&sig.span] {
         f_vir
@@ -843,8 +862,10 @@ fn erase_fn(ctxt: &Ctxt, mctxt: &mut MCtxt, f: &FnKind) -> Option<FnKind> {
     let decl = FnDecl { inputs: new_inputs, output };
     let sig = FnSig { decl: P(decl), ..sig.clone() };
     mctxt.ret_mode = Some(ret_mode);
+    mctxt.external_body = external_body;
     let body_opt = body_opt.as_ref().map(|body| P(erase_block(ctxt, mctxt, ret_mode, &**body)));
     mctxt.ret_mode = None;
+    mctxt.external_body = false;
     Some(FnKind(*defaultness, sig, generics, body_opt))
 }
 
@@ -855,7 +876,7 @@ fn erase_assoc_item(ctxt: &Ctxt, mctxt: &mut MCtxt, item: &AssocItem) -> Option<
             if vattrs.external {
                 return Some(item.clone());
             }
-            let erased = erase_fn(ctxt, mctxt, f);
+            let erased = erase_fn(ctxt, mctxt, f, vattrs.external_body);
             erased.map(|f| update_item(item, AssocItemKind::Fn(Box::new(f))))
         }
         AssocItemKind::TyAlias(_) => Some(item.clone()),
@@ -925,7 +946,7 @@ fn erase_item(ctxt: &Ctxt, mctxt: &mut MCtxt, item: &Item) -> Vec<P<Item>> {
             if vattrs.external {
                 return vec![P(item.clone())];
             }
-            match erase_fn(ctxt, mctxt, kind) {
+            match erase_fn(ctxt, mctxt, kind, vattrs.external_body) {
                 None => return vec![],
                 Some(kind) => ItemKind::Fn(Box::new(kind)),
             }
@@ -1059,8 +1080,12 @@ impl rustc_lint::FormalVerifierRewrite for CompilerCallbacks {
         next_node_id: &mut dyn FnMut() -> NodeId,
     ) -> rustc_ast::ast::Crate {
         let ctxt = mk_ctxt(&self.erasure_hints, self.lifetimes_only);
-        let mut mctxt =
-            MCtxt { f_next_node_id: next_node_id, remap_parens: HashMap::new(), ret_mode: None };
+        let mut mctxt = MCtxt {
+            f_next_node_id: next_node_id,
+            remap_parens: HashMap::new(),
+            ret_mode: None,
+            external_body: false,
+        };
         let time0 = Instant::now();
         let krate = crate::erase::erase_crate(&ctxt, &mut mctxt, krate);
         let time1 = Instant::now();

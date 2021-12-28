@@ -20,10 +20,11 @@ pub(crate) fn body_to_vir<'tcx>(
     id: &BodyId,
     body: &Body<'tcx>,
     mode: Mode,
+    external_body: bool,
 ) -> Result<vir::ast::Expr, VirErr> {
     let def = rustc_middle::ty::WithOptConstParam::unknown(id.hir_id.owner);
     let types = ctxt.tcx.typeck_opt_const_arg(def);
-    let bctx = BodyCtxt { ctxt: ctxt.clone(), types, mode };
+    let bctx = BodyCtxt { ctxt: ctxt.clone(), types, mode, external_body };
     expr_to_vir(&bctx, &body.value)
 }
 
@@ -206,7 +207,7 @@ pub(crate) fn check_item_fn<'tcx>(
             unsupported_err!(sig.span, "generator_kind", generator_kind);
         }
     }
-    let mut vir_body = body_to_vir(ctxt, body_id, body, mode)?;
+    let mut vir_body = body_to_vir(ctxt, body_id, body, mode, vattrs.external_body)?;
     let header = vir::headers::read_header(&mut vir_body)?;
     if mode == Mode::Spec && (header.require.len() + header.ensure.len()) > 0 {
         return err_span_str(sig.span, "spec functions cannot have requires/ensures");

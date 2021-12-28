@@ -6,12 +6,10 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use vir::ast::{Expr, Mode, Pattern, Typ};
 
-#[derive(Clone)]
 pub struct ErasureInfo {
     pub(crate) resolved_calls: Vec<(SpanData, ResolvedCall)>,
     pub(crate) resolved_exprs: Vec<(SpanData, Expr)>,
     pub(crate) resolved_pats: Vec<(SpanData, Pattern)>,
-    pub(crate) condition_modes: Vec<(SpanData, Mode)>,
     pub(crate) external_functions: Vec<vir::ast::Fun>,
     pub(crate) ignored_functions: Vec<SpanData>,
 }
@@ -26,8 +24,10 @@ pub struct ContextX<'tcx> {
     pub(crate) autoviewed_call_typs: HashMap<HirId, Typ>,
 }
 
+#[derive(Clone)]
 pub(crate) struct BodyCtxt<'tcx> {
     pub(crate) ctxt: Context<'tcx>,
     pub(crate) types: &'tcx TypeckResults<'tcx>,
     pub(crate) mode: Mode,
+    pub(crate) external_body: bool,
 }

@@ -376,6 +376,15 @@ fn check_function(typing: &mut Typing, function: &Function) -> Result<(), VirErr
                 format!("return type cannot have mode {}", ret_mode),
             );
         }
+        if function.x.body.is_none() {
+            // can't erase return values in external_body functions, so:
+            if function.x.mode != ret_mode {
+                return err_string(
+                    &function.span,
+                    format!("because of external_body, return type cannot have mode {}", ret_mode),
+                );
+            }
+        }
         typing.ret_mode = Some(ret_mode);
     }
     if let Some(body) = &function.x.body {

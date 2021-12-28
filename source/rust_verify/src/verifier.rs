@@ -434,7 +434,6 @@ impl Verifier {
             resolved_calls: vec![],
             resolved_exprs: vec![],
             resolved_pats: vec![],
-            condition_modes: vec![],
             external_functions: vec![],
             ignored_functions: vec![],
         };

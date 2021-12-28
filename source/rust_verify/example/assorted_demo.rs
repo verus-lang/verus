@@ -1,4 +1,3 @@
-// rust_verify/tests/example.rs expect-failures
 #[allow(unused_imports)] use builtin::*;
 #[allow(unused_imports)] use builtin_macros::*;
 mod pervasive; #[allow(unused_imports)] use pervasive::*;
@@ -9,6 +8,7 @@ fn main() {
     assert(x != y);
 }
 
+/*
 #[derive(Eq, PartialEq, Structural)]
 struct Train {
     cars: int,
@@ -59,3 +59,4 @@ fn main3() {
     assert(divides(y, z));
     assert(x % z == 0);
 }
+*/
