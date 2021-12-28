@@ -41,7 +41,7 @@ fn gcd_external(a: int, b: int) -> int {
     i
 }
 
-#[verifier(no_verify)]
+#[verifier(external_body)]
 fn gcd(a: int, b: int) -> int {
     requires([a >= 0, b >= 0]);
     ensures(|result: int| [divides(a, result), divides(b, result)]);

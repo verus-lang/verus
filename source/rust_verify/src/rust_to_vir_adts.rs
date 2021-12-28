@@ -82,7 +82,7 @@ pub fn check_item_struct<'tcx>(
     let variant_name = Arc::new(name.clone());
     let (variant, one_field_private) = check_variant_data(ctxt, &variant_name, variant_data, false);
     let vattrs = get_verifier_attrs(attrs)?;
-    let transparency = if !vattrs.do_verify {
+    let transparency = if vattrs.external_body {
         DatatypeTransparency::Never
     } else if one_field_private {
         DatatypeTransparency::WithinModule
@@ -118,7 +118,7 @@ pub fn check_item_enum<'tcx>(
         .unzip();
     let one_field_private = one_field_private.into_iter().any(|x| x);
     let vattrs = get_verifier_attrs(attrs)?;
-    let transparency = if !vattrs.do_verify {
+    let transparency = if vattrs.external_body {
         DatatypeTransparency::Never
     } else if one_field_private {
         DatatypeTransparency::WithinModule

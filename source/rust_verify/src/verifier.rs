@@ -490,7 +490,7 @@ impl Verifier {
 
         // Verify crate
         let time3 = Instant::now();
-        if !self.args.no_verify {
+        if !self.args.external_body {
             self.verify_crate(&compiler, &vir_crate, hir.krate().item.span)?;
         }
         let time4 = Instant::now();

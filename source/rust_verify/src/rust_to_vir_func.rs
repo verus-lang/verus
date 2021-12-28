@@ -273,7 +273,7 @@ pub(crate) fn check_item_fn<'tcx>(
         decrease: header.decrease,
         is_abstract: vattrs.is_abstract,
         attrs: Arc::new(fattrs),
-        body: if vattrs.do_verify { Some(vir_body) } else { None },
+        body: if vattrs.external_body { None } else { Some(vir_body) },
     };
     let function = spanned_new(sig.span, func);
     vir.functions.push(function);

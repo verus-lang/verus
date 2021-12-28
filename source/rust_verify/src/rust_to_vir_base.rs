@@ -192,7 +192,7 @@ pub(crate) enum Attr {
     // function return mode (spec, proof, exec)
     ReturnMode(Mode),
     // parse function to get header, but don't verify body
-    NoVerify,
+    ExternalBody,
     // don't parse function; function can't be called directly from verified code
     External,
     // hide body from other modules
@@ -246,8 +246,8 @@ pub(crate) fn parse_attrs(attrs: &[Attribute]) -> Result<Vec<Attr>, VirErr> {
                 v.push(Attr::Trigger(Some(groups)));
             }
             AttrTree::Fun(span, name, args) if name == "verifier" => match &args {
-                Some(box [AttrTree::Fun(_, arg, None)]) if arg == "no_verify" => {
-                    v.push(Attr::NoVerify)
+                Some(box [AttrTree::Fun(_, arg, None)]) if arg == "external_body" => {
+                    v.push(Attr::ExternalBody)
                 }
                 Some(box [AttrTree::Fun(_, arg, None)]) if arg == "external" => {
                     v.push(Attr::External)
@@ -349,7 +349,7 @@ pub(crate) fn get_fuel(attrs: &[Attribute]) -> u32 {
 }
 
 pub(crate) struct VerifierAttrs {
-    pub(crate) do_verify: bool,
+    pub(crate) external_body: bool,
     pub(crate) external: bool,
     pub(crate) is_abstract: bool,
     pub(crate) export_as_global_forall: bool,
@@ -359,7 +359,7 @@ pub(crate) struct VerifierAttrs {
 
 pub(crate) fn get_verifier_attrs(attrs: &[Attribute]) -> Result<VerifierAttrs, VirErr> {
     let mut vs = VerifierAttrs {
-        do_verify: true,
+        external_body: false,
         external: false,
         is_abstract: false,
         export_as_global_forall: false,
@@ -368,7 +368,7 @@ pub(crate) fn get_verifier_attrs(attrs: &[Attribute]) -> Result<VerifierAttrs, V
     };
     for attr in parse_attrs(attrs)? {
         match attr {
-            Attr::NoVerify => vs.do_verify = false,
+            Attr::ExternalBody => vs.external_body = true,
             Attr::External => vs.external = true,
             Attr::Abstract => vs.is_abstract = true,
             Attr::ExportAsGlobalForall => vs.export_as_global_forall = true,

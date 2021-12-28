@@ -388,7 +388,7 @@ pub struct FunctionX {
     pub is_abstract: bool,
     /// Various attributes
     pub attrs: FunctionAttrs,
-    /// Body of the function (may be None for foreign functions or for no_verify functions)
+    /// Body of the function (may be None for foreign functions or for external_body functions)
     pub body: Option<Expr>,
 }
 

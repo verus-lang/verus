@@ -6,7 +6,7 @@ use crate::pervasive::*;
 use crate::pervasive::set::*;
 
 /// map type for specifications
-#[verifier(no_verify)]
+#[verifier(external_body)]
 pub struct Map<K, V> {
     dummy: std::marker::PhantomData<(K, V)>,
 }
@@ -51,28 +51,28 @@ impl<K, V> Map<K, V> {
 // Trusted axioms
 
 #[proof]
-#[verifier(no_verify)]
+#[verifier(external_body)]
 #[verifier(export_as_global_forall)]
 pub fn axiom_map_empty<K, V>() {
     ensures(equal(map_empty::<K, V>().dom(), set_empty()));
 }
 
 #[proof]
-#[verifier(no_verify)]
+#[verifier(external_body)]
 #[verifier(export_as_global_forall)]
 pub fn axiom_map_insert_domain<K, V>(m: Map<K, V>, key: K, value: V) {
     ensures(equal(#[trigger] m.insert(key, value).dom(), m.dom().insert(key)));
 }
 
 #[proof]
-#[verifier(no_verify)]
+#[verifier(external_body)]
 #[verifier(export_as_global_forall)]
 pub fn axiom_map_insert_same<K, V>(m: Map<K, V>, key: K, value: V) {
     ensures(equal(#[trigger] m.insert(key, value).index(key), value));
 }
 
 #[proof]
-#[verifier(no_verify)]
+#[verifier(external_body)]
 #[verifier(export_as_global_forall)]
 pub fn axiom_map_insert_different<K, V>(m: Map<K, V>, key1: K, key2: K, value: V) {
     requires([
@@ -83,7 +83,7 @@ pub fn axiom_map_insert_different<K, V>(m: Map<K, V>, key1: K, key2: K, value: V
 }
 
 #[proof]
-#[verifier(no_verify)]
+#[verifier(external_body)]
 #[verifier(export_as_global_forall)]
 pub fn axiom_map_ext_equal<K, V>(m1: Map<K, V>, m2: Map<K, V>) {
     ensures(m1.ext_equal(m2) == equal(m1, m2));

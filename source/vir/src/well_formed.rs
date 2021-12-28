@@ -38,7 +38,7 @@ fn check_function(ctxt: &Ctxt, function: &Function) -> Result<(), VirErr> {
         if function.x.body.is_some() {
             return err_str(
                 &function.span,
-                "export_as_global_forall function must be declared as no_verify",
+                "export_as_global_forall function must be declared as external_body",
             );
         }
     }

@@ -5,7 +5,7 @@ use crate::pervasive::*;
 #[allow(unused_imports)]
 use crate::pervasive::seq::*;
 
-#[verifier(no_verify)]
+#[verifier(external_body)]
 pub struct Vec<A> {
     pub vec: std::vec::Vec<A>,
 }
@@ -28,14 +28,14 @@ impl<A> Vec<A> {
         self.vec.len()
     }
 
-    #[verifier(no_verify)]
+    #[verifier(external_body)]
     #[verifier(pub_abstract)]
     #[spec]
     pub fn view(&self) -> Seq<A> {
         arbitrary()
     }
 
-    #[verifier(no_verify)]
+    #[verifier(external_body)]
     #[verifier(autoview)]
     pub fn index(&self, i: usize) -> &A {
         requires(i < self.view().len());
@@ -44,7 +44,7 @@ impl<A> Vec<A> {
         self.index_external(i)
     }
 
-    #[verifier(no_verify)]
+    #[verifier(external_body)]
     pub fn set(self, i: usize, a: A) -> Vec<A> {
         requires(i < self.view().len());
         ensures(|v2: Vec<A>| equal(v2.view(), self.view().update(i, a)));
@@ -52,7 +52,7 @@ impl<A> Vec<A> {
         set_external(self, i, a)
     }
 
-    #[verifier(no_verify)]
+    #[verifier(external_body)]
     #[verifier(autoview)]
     pub fn len(&self) -> usize {
         ensures(|l: usize| l == self.view().len());
