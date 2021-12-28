@@ -1,8 +1,9 @@
 use crate::erase::ResolvedCall;
 use rustc_hir::{Crate, HirId};
-use rustc_middle::ty::TyCtxt;
+use rustc_middle::ty::{TyCtxt, TypeckResults};
 use rustc_span::SpanData;
 use std::collections::HashMap;
+use std::sync::Arc;
 use vir::ast::{Expr, Mode, Pattern, Typ};
 
 #[derive(Clone)]
@@ -17,10 +18,16 @@ pub struct ErasureInfo {
 
 type ErasureInfoRef = std::rc::Rc<std::cell::RefCell<ErasureInfo>>;
 
-#[derive(Clone)]
-pub struct Context<'tcx> {
+pub type Context<'tcx> = Arc<ContextX<'tcx>>;
+pub struct ContextX<'tcx> {
     pub(crate) tcx: TyCtxt<'tcx>,
     pub(crate) krate: &'tcx Crate<'tcx>,
     pub(crate) erasure_info: ErasureInfoRef,
     pub(crate) autoviewed_call_typs: HashMap<HirId, Typ>,
+}
+
+pub(crate) struct BodyCtxt<'tcx> {
+    pub(crate) ctxt: Context<'tcx>,
+    pub(crate) types: &'tcx TypeckResults<'tcx>,
+    pub(crate) mode: Mode,
 }

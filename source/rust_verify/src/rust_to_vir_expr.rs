@@ -1,8 +1,9 @@
+use crate::context::BodyCtxt;
 use crate::erase::ResolvedCall;
 use crate::rust_to_vir_base::{
     def_id_to_vir_path, def_to_path_ident, get_range, get_trigger, get_var_mode, hack_get_def_name,
     ident_to_var, is_smt_arith, is_smt_equality, mid_ty_to_vir, mid_ty_to_vir_opt, mk_range,
-    ty_to_vir, typ_of_node, BodyCtxt,
+    ty_to_vir, typ_of_node,
 };
 use crate::util::{
     err_span_str, slice_vec_map_result, spanned_new, spanned_typed_new, unsupported_err_span,

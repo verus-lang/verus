@@ -1,4 +1,4 @@
-use crate::context::Context;
+use crate::context::BodyCtxt;
 use crate::util::{err_span_str, err_span_string, unsupported_err_span};
 use crate::{unsupported, unsupported_err, unsupported_err_unless};
 use rustc_ast::token::{Token, TokenKind};
@@ -10,7 +10,7 @@ use rustc_hir::{
     GenericBound, GenericParam, GenericParamKind, Generics, HirId, ParamName, PathSegment,
     PolyTraitRef, PrimTy, QPath, TraitBoundModifier, Ty, Visibility, VisibilityKind,
 };
-use rustc_middle::ty::{AdtDef, TyCtxt, TyKind, TypeckResults};
+use rustc_middle::ty::{AdtDef, TyCtxt, TyKind};
 use rustc_span::def_id::{DefId, LOCAL_CRATE};
 use rustc_span::symbol::Ident;
 use rustc_span::Span;
@@ -536,12 +536,6 @@ pub(crate) fn ty_to_vir<'tcx>(tcx: TyCtxt<'tcx>, ty: &Ty) -> Typ {
             unsupported!(format!("type {:#?} {:?}", kind, span))
         }
     }
-}
-
-pub(crate) struct BodyCtxt<'tcx> {
-    pub(crate) ctxt: Context<'tcx>,
-    pub(crate) types: &'tcx TypeckResults<'tcx>,
-    pub(crate) mode: Mode,
 }
 
 pub(crate) fn typ_of_node<'tcx>(bctx: &BodyCtxt<'tcx>, id: &HirId) -> Typ {

@@ -1,5 +1,5 @@
 use crate::config::Args;
-use crate::context::{Context, ErasureInfo};
+use crate::context::{ContextX, ErasureInfo};
 use crate::debugger::Debugger;
 use crate::unsupported;
 use crate::util::{from_raw_span, vec_map};
@@ -439,7 +439,8 @@ impl Verifier {
             ignored_functions: vec![],
         };
         let erasure_info = std::rc::Rc::new(std::cell::RefCell::new(erasure_info));
-        let ctxt = Context { tcx, krate: hir.krate(), erasure_info, autoviewed_call_typs };
+        let ctxt =
+            Arc::new(ContextX { tcx, krate: hir.krate(), erasure_info, autoviewed_call_typs });
 
         // Convert HIR -> VIR
         let time1 = Instant::now();
