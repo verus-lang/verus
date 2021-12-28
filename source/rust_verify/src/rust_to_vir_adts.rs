@@ -80,8 +80,12 @@ pub fn check_item_struct<'tcx>(
     let name = hack_get_def_name(ctxt.tcx, id.def_id.to_def_id());
     let path = def_id_to_vir_path(ctxt.tcx, id.def_id.to_def_id());
     let variant_name = Arc::new(name.clone());
-    let (variant, one_field_private) = check_variant_data(ctxt, &variant_name, variant_data, false);
     let vattrs = get_verifier_attrs(attrs)?;
+    let (variant, one_field_private) = if vattrs.external_body {
+        (ident_binder(&variant_name, &Arc::new(vec![])), false)
+    } else {
+        check_variant_data(ctxt, &variant_name, variant_data, false)
+    };
     let transparency = if vattrs.external_body {
         DatatypeTransparency::Never
     } else if one_field_private {
