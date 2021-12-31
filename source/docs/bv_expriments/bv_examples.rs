@@ -14,11 +14,12 @@ use pervasive::*;
 #[exec]
 // #[verifier(bit_vector)]
 fn and_7(b: u32) -> u32 {
+   requires(b > 0);
 	// ensures(|ret: u32| ret == b + 1);
-   assert_bit_vector(true);
+   assert_bit_vector(b == b);
 	// let mut c: u32 = b + 1;
    // c = c * 1;
-   b
+   b + 1
 }
 
 // #[exec]

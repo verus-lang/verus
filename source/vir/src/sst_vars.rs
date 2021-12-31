@@ -32,7 +32,7 @@ pub(crate) fn stm_assign(
             }
             stm.clone()
         }
-        StmX::Call(..) | StmX::Assert(..) | StmX::Assume(_) | StmX::Fuel(..) => stm.clone(),
+        StmX::Call(..) | StmX::Assert(..) | StmX::BVAssert(..) | StmX::Assume(_) | StmX::Fuel(..) => stm.clone(),
         StmX::Assign { lhs, rhs: _, is_init } => {
             assigned.insert(lhs.clone());
             if !is_init {

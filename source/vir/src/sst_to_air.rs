@@ -430,20 +430,6 @@ impl State {
         println!("{:?} {:?}", stm.span, aset);
         self.snap_map.push((stm.span.clone(), spos));
     }
-
-    // fn map_full_span(&mut self, stm: &Stm) {
-    //     let spos = SnapPos::Full(self.get_current_sid());
-    //     let aset = self.get_assigned_set(stm);
-    //     println!("{:?} {:?}", stm.span, aset);
-    //     self.snap_map.push((stm.span.clone(), spos));
-    // }
-
-    // fn map_end_span(&mut self, stm: &Stm) {
-    //     let spos = SnapPos::End(self.get_current_sid());
-    //     let aset = self.get_assigned_set(stm);
-    //     println!("{:?} {:?}", stm.span, aset);
-    //     self.snap_map.push((stm.span.clone(), spos));
-    // }
 }
 
 fn assume_var(span: &Span, x: &UniqueIdent, exp: &Exp) -> Stm {
@@ -539,6 +525,16 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
                 state.map_span(&stm, SpanKind::Full);
             }
             vec![Arc::new(StmtX::Assert(Arc::new(spans), air_expr))]
+        }
+        StmX::BVAssert(expr) => {
+            let spans: Vec<Span> = vec![stm.span.clone()];
+            let local = state.local_shared.clone();
+            let air_expr = exp_to_expr(ctx, &expr);
+            let assertion = Arc::new(StmtX::Assert(Arc::new(spans), air_expr));
+            let query = Arc::new(QueryX { local: Arc::new(local), assertion });
+            state.commands.push(Arc::new(CommandX::CheckValid(query)));
+            // vec![Arc::new(StmtX::Assert(Arc::new(spans), air_expr))]
+            vec![]
         }
         StmX::Assume(expr) => {
             if ctx.debug {

@@ -336,7 +336,7 @@ fn fn_call_to_vir<'tcx>(
         &bctx.ctxt,
         fn_span,
         &name,
-        is_spec || is_quant || is_directive || is_assert_by || is_choose,
+        is_spec || is_quant || is_directive || is_assert_by || is_choose || is_assert_bit_vector,
         is_implies,
     );
 
