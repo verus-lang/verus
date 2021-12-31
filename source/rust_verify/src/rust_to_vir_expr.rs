@@ -305,6 +305,7 @@ fn fn_call_to_vir<'tcx>(
     let is_reveal_fuel = f_name == "builtin::reveal_with_fuel";
     let is_implies = f_name == "builtin::imply";
     let is_assert_by = f_name == "builtin::assert_by";
+    let is_assert_bit_vector = f_name == "builtin::assert_bit_vector";
     let is_eq = f_name == "core::cmp::PartialEq::eq";
     let is_ne = f_name == "core::cmp::PartialEq::ne";
     let is_le = f_name == "core::cmp::PartialOrd::le";
@@ -408,6 +409,11 @@ fn fn_call_to_vir<'tcx>(
         let ensure = expr_to_vir(bctx, &args[0])?;
         let proof = expr_to_vir(bctx, &args[1])?;
         return Ok(mk_expr(ExprX::Forall { vars, require, ensure, proof }));
+    }
+
+    if is_assert_bit_vector {
+        let expr = expr_to_vir(bctx, &args[0])?;
+        return Ok(mk_expr(ExprX::AssertBV(expr)));
     }
 
     let mut vir_args = vec_map_result(&args, |arg| expr_to_vir(bctx, arg))?;

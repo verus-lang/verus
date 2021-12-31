@@ -287,6 +287,8 @@ pub enum ExprX {
     Admit,
     /// Forall or assert-by statement; proves "forall vars. ensure" via proof.
     Forall { vars: Binders<Typ>, require: Expr, ensure: Expr, proof: Expr },
+    /// bit vector assertions
+    AssertBV(Expr),
     /// If-else
     If(Expr, Expr, Option<Expr>),
     /// Match (Note: ast_simplify replaces Match with other expressions)

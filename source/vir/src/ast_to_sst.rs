@@ -592,6 +592,9 @@ pub(crate) fn expr_to_stm_opt(
             stms.push(assume);
             Ok((stms, None))
         }
+        ExprX::AssertBV(e) => {
+            panic!("NYI")
+        }
         ExprX::If(e0, e1, None) => {
             let (mut stms0, e0) = expr_to_stm(ctx, state, e0)?;
             let stms1 = expr_to_one_stm(ctx, state, e1)?;

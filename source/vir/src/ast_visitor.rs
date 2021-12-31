@@ -201,6 +201,10 @@ where
             map.pop_scope();
             ExprX::Forall { vars: Arc::new(vars), require, ensure, proof }
         }
+        ExprX::AssertBV(e) => {
+            let expr1 = map_expr_visitor_env(e, map, env, fe, fs, ft)?;
+            ExprX::AssertBV(expr1)
+        }
         ExprX::If(e1, e2, e3) => {
             let expr1 = map_expr_visitor_env(e1, map, env, fe, fs, ft)?;
             let expr2 = map_expr_visitor_env(e2, map, env, fe, fs, ft)?;
