@@ -89,6 +89,8 @@ impl Printer {
             TypX::Lambda if self.print_as_smt => str_to_node(crate::def::FUNCTION),
             TypX::Lambda => str_to_node("Fun"),
             TypX::Named(name) => str_to_node(&name.clone()),
+            TypX::BitVec(size) if self.print_as_smt => str_to_node(format!("(_ BitVec {})", size).as_str()),
+            TypX::BitVec(size) => str_to_node(format!("BitVec{}", size).as_str()),
         }
     }
 

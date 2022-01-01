@@ -19,7 +19,7 @@ use air::ast::{
     MultiOp, Quant, QueryX, Span, Stmt, StmtX, Trigger, Triggers,
 };
 use air::ast_util::{
-    bool_typ, ident_apply, ident_binder, ident_typ, ident_var, int_typ, mk_and, mk_bind_expr,
+    bool_typ, ident_apply, ident_binder, ident_typ, ident_var, int_typ, bv_typ, mk_and, mk_bind_expr,
     mk_eq, mk_exists, mk_implies, mk_ite, mk_not, mk_or, str_apply, str_ident, str_typ, str_var,
     string_var,
 };
@@ -62,6 +62,16 @@ pub(crate) fn typ_to_air(_ctx: &Ctx, typ: &Typ) -> air::ast::Typ {
         TypX::TypParam(_) => str_typ(POLY),
         TypX::TypeId => str_typ(crate::def::TYPE),
         TypX::Air(t) => t.clone(),
+    }
+}
+
+pub fn type_to_air_bv_type(typ: &Typ) -> Option<air::ast::Typ> {
+    match &**typ {
+        TypX::Int(range) => match range {
+                IntRange::U(size) => Some(bv_typ(*size)),
+                _ => panic!("unhandled IntRange"),
+            }
+        _ => None,
     }
 }
 
@@ -379,6 +389,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp) -> Expr {
 
 struct State {
     local_shared: Vec<Decl>, // shared between all queries for a single function
+    local_bv_shared: Vec<Decl>, // used in bv mode, fixed width uint is converted into bv 
     commands: Vec<Command>,
     snapshot_count: u32, // Used to ensure unique Idents for each snapshot
     sids: Vec<Ident>, // a stack of snapshot ids, the top one should dominate the current position in the AST
@@ -417,17 +428,17 @@ impl State {
         return sid;
     }
 
-    fn get_assigned_set(&self, stm: &Stm) -> HashSet<Arc<String>> {
-        if let Some(s) = self.assign_map.get(&Arc::as_ptr(stm)) {
-            return s.clone();
-        }
-        return HashSet::new();
-    }
+    // fn get_assigned_set(&self, stm: &Stm) -> HashSet<Arc<String>> {
+    //     if let Some(s) = self.assign_map.get(&Arc::as_ptr(stm)) {
+    //         return s.clone();
+    //     }
+    //     return HashSet::new();
+    // }
 
     fn map_span(&mut self, stm: &Stm, kind: SpanKind) {
         let spos = SnapPos { snapshot_id: self.get_current_sid(), kind: kind };
-        let aset = self.get_assigned_set(stm);
-        println!("{:?} {:?}", stm.span, aset);
+        // let aset = self.get_assigned_set(stm);
+        // println!("{:?} {:?}", stm.span, aset);
         self.snap_map.push((stm.span.clone(), spos));
     }
 }
@@ -441,6 +452,17 @@ fn assume_var(span: &Span, x: &UniqueIdent, exp: &Exp) -> Stm {
 
 fn one_stmt(stmts: Vec<Stmt>) -> Stmt {
     if stmts.len() == 1 { stmts[0].clone() } else { Arc::new(StmtX::Block(Arc::new(stmts))) }
+}
+
+pub fn exp_to_bv_expr(ctx: &Ctx, exp: &Exp) -> Expr {
+    match &exp.x {
+        ExpX::Const(c) => {
+            let expr = constant_to_expr(ctx, c);
+            expr
+        }
+        ExpX::Var(x) => string_var(&suffix_local_unique_id(x)),
+        _ => panic!("unhandled bv expr conversion"),
+    }
 }
 
 fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
@@ -528,8 +550,8 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
         }
         StmX::BVAssert(expr) => {
             let spans: Vec<Span> = vec![stm.span.clone()];
-            let local = state.local_shared.clone();
-            let air_expr = exp_to_expr(ctx, &expr);
+            let local = state.local_bv_shared.clone();
+            let air_expr = exp_to_bv_expr(ctx, &expr);
             let assertion = Arc::new(StmtX::Assert(Arc::new(spans), air_expr));
             let query = Arc::new(QueryX { local: Arc::new(local), assertion });
             state.commands.push(Arc::new(CommandX::CheckValid(query)));
@@ -781,6 +803,8 @@ pub fn body_stm_to_air(
     // Some declarations (local_shared) are shared among the queries.
     // Others are private to each query.
     let mut local_shared: Vec<Decl> = Vec::new();
+    let mut local_bv_shared: Vec<Decl> = Vec::new();
+
     for x in typ_params.iter() {
         local_shared
             .push(Arc::new(DeclX::Const(suffix_typ_param_id(&x), str_typ(crate::def::TYPE))));
@@ -791,6 +815,10 @@ pub fn body_stm_to_air(
         } else {
             Arc::new(DeclX::Const(suffix_local_unique_id(&decl.ident), typ_to_air(ctx, &decl.typ)))
         });
+        if let Some(typ) = type_to_air_bv_type(&decl.typ) {
+            local_bv_shared.
+            push(Arc::new(DeclX::Var(suffix_local_unique_id(&decl.ident), typ)));
+        }
     }
 
     set_fuel(&mut local_shared, hidden);
@@ -809,14 +837,13 @@ pub fn body_stm_to_air(
 
     let mut state = State {
         local_shared,
+        local_bv_shared,
         commands: Vec::new(),
         snapshot_count: 0,
         sids: vec![initial_sid.clone()],
         snap_map: Vec::new(),
         assign_map: HashMap::new(),
     };
-
-    // println!("assign map {:?}", stm);
 
     let stm = crate::sst_vars::stm_assign(
         &mut state.assign_map,

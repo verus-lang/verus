@@ -110,6 +110,10 @@ pub fn str_typ(x: &str) -> Typ {
     Arc::new(TypX::Named(Arc::new(x.to_string())))
 }
 
+pub fn bv_typ(size: u32) -> Typ {
+    Arc::new(TypX::BitVec(size))
+}
+
 pub fn ident_binder<A: Clone>(x: &Ident, a: &A) -> Binder<A> {
     Arc::new(BinderX { name: x.clone(), a: a.clone() })
 }

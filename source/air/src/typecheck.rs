@@ -53,6 +53,7 @@ fn typ_name(typ: &Typ) -> String {
         TypX::Int => "Int".to_string(),
         TypX::Lambda => "Fun".to_string(),
         TypX::Named(x) => x.to_string(),
+        TypX::BitVec(n) => format!("BitVec{}", n),
     }
 }
 
@@ -73,6 +74,7 @@ fn check_typ(typing: &Typing, typ: &Typ) -> Result<(), TypeError> {
             Some(DeclaredX::Type) => Ok(()),
             _ => Err(format!("use of undeclared type {}", x)),
         },
+        TypX::BitVec(_) => Ok(()),
     }
 }
 
