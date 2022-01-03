@@ -829,8 +829,6 @@ pub fn body_stm_to_air(
         assign_map: HashMap::new(),
     };
 
-    // println!("assign map {:?}", stm);
-
     let stm = crate::sst_vars::stm_assign(
         &mut state.assign_map,
         &declared,
