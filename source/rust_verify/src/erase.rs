@@ -51,10 +51,10 @@ use crate::{unsupported, unsupported_unless};
 
 use rustc_ast::ast::{
     AngleBracketedArg, AngleBracketedArgs, Arm, AssocItem, AssocItemKind, BinOpKind, Block, Crate,
-    EnumDef, Expr, ExprKind, Field, FieldPat, FnDecl, FnKind, FnRetTy, FnSig, GenericArgs,
-    GenericParam, Generics, ImplKind, Item, ItemKind, Lit, LitIntType, LitKind, Local, ModKind,
-    NodeId, Param, Pat, PatKind, PathSegment, Stmt, StmtKind, StructField, StructRest, Variant,
-    VariantData,
+    EnumDef, Expr, ExprKind, Field, FieldPat, FnDecl, FnKind, FnRetTy, FnSig, GenericArg,
+    GenericArgs, GenericParam, GenericParamKind, Generics, ImplKind, Item, ItemKind, Lit,
+    LitIntType, LitKind, Local, ModKind, NodeId, Param, Pat, PatKind, PathSegment, Stmt, StmtKind,
+    StructField, StructRest, Variant, VariantData,
 };
 use rustc_ast::ptr::P;
 use rustc_data_structures::thin_vec::ThinVec;
@@ -351,10 +351,21 @@ fn erase_call(
             match &**args {
                 GenericArgs::AngleBracketed(args) => {
                     let mut new_args: Vec<AngleBracketedArg> = Vec::new();
-                    for (arg, (_, bounds)) in args.args.iter().zip(f.x.typ_bounds.iter()) {
-                        match &**bounds {
-                            GenericBoundX::None => new_args.push(arg.clone()),
-                            GenericBoundX::FnSpec(..) => {}
+                    let mut typ_bounds_iter = f.x.typ_bounds.iter();
+                    for arg in args.args.iter() {
+                        match arg {
+                            AngleBracketedArg::Arg(GenericArg::Type(_)) => {
+                                let (_, bounds) =
+                                    typ_bounds_iter.next().expect("missing typ_bound");
+                                match &**bounds {
+                                    GenericBoundX::None => new_args.push(arg.clone()),
+                                    GenericBoundX::FnSpec(..) => {}
+                                }
+                            }
+                            AngleBracketedArg::Arg(GenericArg::Lifetime(_)) => {
+                                new_args.push(arg.clone());
+                            }
+                            _ => {}
                         }
                     }
                     let args = AngleBracketedArgs { span: args.span, args: new_args };
@@ -838,12 +849,22 @@ fn erase_fn(ctxt: &Ctxt, mctxt: &mut MCtxt, f: &FnKind, external_body: bool) -> 
     }
     let Generics { params, where_clause, span: generics_span } = generics;
     let mut new_params: Vec<GenericParam> = Vec::new();
-    for ((_, bound), param) in f_vir.x.typ_bounds.iter().zip(params.iter()) {
-        // erase Fn trait bounds, since the type checker won't be able to infer them
-        // TODO: also erase other type parameters left unused after erasure
-        match &**bound {
-            GenericBoundX::None => new_params.push(param.clone()),
-            GenericBoundX::FnSpec(..) => {}
+    let mut typ_bounds_iter = f_vir.x.typ_bounds.iter();
+    for param in params.iter() {
+        match param.kind {
+            GenericParamKind::Lifetime => {
+                new_params.push(param.clone());
+            }
+            GenericParamKind::Type { .. } => {
+                let (_, bound) = typ_bounds_iter.next().expect("missing typ_bound");
+                // erase Fn trait bounds, since the type checker won't be able to infer them
+                // TODO: also erase other type parameters left unused after erasure
+                match &**bound {
+                    GenericBoundX::None => new_params.push(param.clone()),
+                    GenericBoundX::FnSpec(..) => {}
+                }
+            }
+            _ => {}
         }
     }
     let generics =

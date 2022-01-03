@@ -123,8 +123,11 @@ pub(crate) fn check_item_fn<'tcx>(
     } else {
         None
     };
-    let self_typ_params =
-        if let Some(cg) = self_generics { Some(check_generics(ctxt.tcx, cg)?) } else { None };
+    let self_typ_params = if let Some(cg) = self_generics {
+        Some(check_generics(ctxt.tcx, cg, false)?)
+    } else {
+        None
+    };
     let ret_typ_mode = match sig {
         FnSig {
             header: FnHeader { unsafety, constness: _, asyncness: _, abi: _ },
@@ -143,7 +146,7 @@ pub(crate) fn check_item_fn<'tcx>(
             )?
         }
     };
-    let sig_typ_bounds = check_generics_bounds(ctxt.tcx, generics)?;
+    let sig_typ_bounds = check_generics_bounds(ctxt.tcx, generics, true)?;
     let fuel = get_fuel(attrs);
     let vattrs = get_verifier_attrs(attrs)?;
     if vattrs.external {
@@ -294,7 +297,7 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
 ) -> Result<(), VirErr> {
     let mode = get_mode(Mode::Exec, attrs);
     let ret_typ_mode = check_fn_decl(ctxt.tcx, &span, decl, None, None, attrs, mode)?;
-    let typ_bounds = check_generics_bounds(ctxt.tcx, generics)?;
+    let typ_bounds = check_generics_bounds(ctxt.tcx, generics, true)?;
     let fuel = get_fuel(attrs);
     let mut vir_params: Vec<vir::ast::Param> = Vec::new();
     for (param, input) in idents.iter().zip(decl.inputs.iter()) {

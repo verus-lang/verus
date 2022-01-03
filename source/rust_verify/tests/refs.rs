@@ -39,8 +39,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    // TODO(utaal) support named lifetimes for immutable references
-    #[ignore] #[test] test_return_ref_named_lifetime code! {
+    #[test] test_return_ref_named_lifetime code! {
         fn return_ref<'a>(p: &'a u64) -> &'a u64 {
             ensures(|r: &u64| r == p);
             p
