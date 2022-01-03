@@ -3,3 +3,5 @@
 ## Status
 
 [[Status: currently supported Rust features]]
+
+[[Status: feature requests]]
