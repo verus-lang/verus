@@ -65,12 +65,12 @@ pub(crate) fn typ_to_air(_ctx: &Ctx, typ: &Typ) -> air::ast::Typ {
     }
 }
 
-pub fn type_to_air_bv_type(typ: &Typ) -> Option<air::ast::Typ> {
+pub fn bitwidth_from_type(typ: &Typ) -> Option<u32> {
     match &**typ {
         TypX::Int(range) => match range {
-                IntRange::U(size) => Some(bv_typ(*size)),
-                _ => panic!("unhandled IntRange"),
-            }
+            IntRange::U(width) => Some(*width),
+            _ => panic!("unhandled IntRange in bv type conversion"),
+        }
         _ => None,
     }
 }
@@ -389,7 +389,8 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp) -> Expr {
 
 struct State {
     local_shared: Vec<Decl>, // shared between all queries for a single function
-    local_bv_shared: Vec<Decl>, // used in bv mode, fixed width uint is converted into bv 
+    local_bv_shared: Vec<Decl>, // used in bv mode, fixed width uint variables have corresponding bv types
+    local_bv_width: HashMap<Ident, u32>, // used in bv mode
     commands: Vec<Command>,
     snapshot_count: u32, // Used to ensure unique Idents for each snapshot
     sids: Vec<Ident>, // a stack of snapshot ids, the top one should dominate the current position in the AST
@@ -441,6 +442,20 @@ impl State {
         // println!("{:?} {:?}", stm.span, aset);
         self.snap_map.push((stm.span.clone(), spos));
     }
+
+    // fn lookup_bv_ident_width(&self, id: &Ident) -> Option<u32> {
+    //     for decl in &self.local_bv_shared {
+    //         if let DeclX::Var(ident, typ) = decl {
+    //             if ident != id {
+    //                 continue;
+    //             }
+    //             if let TypX::BitVec(size) = typ {
+    //                 return Some(size)
+    //             }
+    //         }
+    //     }
+    //     return None;
+    // }
 }
 
 fn assume_var(span: &Span, x: &UniqueIdent, exp: &Exp) -> Stm {
@@ -454,14 +469,51 @@ fn one_stmt(stmts: Vec<Stmt>) -> Stmt {
     if stmts.len() == 1 { stmts[0].clone() } else { Arc::new(StmtX::Block(Arc::new(stmts))) }
 }
 
-pub fn exp_to_bv_expr(ctx: &Ctx, exp: &Exp) -> Expr {
+// convert the sst expression into bv air expression
+fn exp_to_bv_expr(state: &State, exp: &Exp, parent_width: u32) -> (Expr, u32) {
+    let mut parent_width = parent_width;
+
     match &exp.x {
-        ExpX::Const(c) => {
-            let expr = constant_to_expr(ctx, c);
-            expr
+        ExpX::Const(crate::ast::Constant::Nat(s)) => {
+            assert!(parent_width != 0);
+            return (Arc::new(ExprX::Const(Constant::Nat(s.clone()))), parent_width);
         }
-        ExpX::Var(x) => string_var(&suffix_local_unique_id(x)),
-        _ => panic!("unhandled bv expr conversion"),
+        ExpX::Var(x) => {
+            let id = suffix_local_unique_id(x);
+            let width = state.local_bv_width.get(&id).unwrap();
+            assert!(parent_width == 0 || parent_width == *width);
+            return (string_var(&suffix_local_unique_id(x)), *width);
+        }
+        ExpX::Binary(op, lhs, rhs) => {
+            let mut bop;
+
+            match op {
+                BinaryOp::Eq(_) => {
+                    parent_width = 0;
+                    bop = air::ast::BinaryOp::Eq;
+                }
+                BinaryOp::Add => bop = air::ast::BinaryOp::BitAdd,
+                // BinaryOp::BitXor => air::ast::BinaryOp::BitXor,
+                _ => panic!("unhandled bv binary operation {:?}", op),
+            };
+            
+            let (lh, lwidth) = exp_to_bv_expr(state, lhs, parent_width);
+            if parent_width == 0 {
+                parent_width = lwidth;
+            }
+            let (rh, rwidth) = exp_to_bv_expr(state, rhs, parent_width);
+            assert!(lwidth == rwidth);
+
+            return (Arc::new(ExprX::Binary(bop, lh, rh)), lwidth);
+        }
+        ExpX::Unary(op, exp) => {
+            if let UnaryOp::Clip(IntRange::U(width)) = op {
+                return exp_to_bv_expr(state, exp, *width);
+            } else {
+                panic!("unhandled bv unary operation {:?}", op);
+            }
+        }
+        _ => panic!("unhandled bv expr conversion {:?}", exp.x),
     }
 }
 
@@ -551,11 +603,12 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
         StmX::BVAssert(expr) => {
             let spans: Vec<Span> = vec![stm.span.clone()];
             let local = state.local_bv_shared.clone();
-            let air_expr = exp_to_bv_expr(ctx, &expr);
+            let (air_expr, _) = exp_to_bv_expr(&state, &expr, 0);
             let assertion = Arc::new(StmtX::Assert(Arc::new(spans), air_expr));
+            // this creates a separate query for the bv assertion
             let query = Arc::new(QueryX { local: Arc::new(local), assertion });
             state.commands.push(Arc::new(CommandX::CheckValid(query)));
-            // vec![Arc::new(StmtX::Assert(Arc::new(spans), air_expr))]
+            // TODO: put in an assume in the original assert location?
             vec![]
         }
         StmX::Assume(expr) => {
@@ -804,6 +857,7 @@ pub fn body_stm_to_air(
     // Others are private to each query.
     let mut local_shared: Vec<Decl> = Vec::new();
     let mut local_bv_shared: Vec<Decl> = Vec::new();
+    let mut local_bv_width: HashMap<Ident, u32> = HashMap::new();
 
     for x in typ_params.iter() {
         local_shared
@@ -815,11 +869,15 @@ pub fn body_stm_to_air(
         } else {
             Arc::new(DeclX::Const(suffix_local_unique_id(&decl.ident), typ_to_air(ctx, &decl.typ)))
         });
-        if let Some(typ) = type_to_air_bv_type(&decl.typ) {
+
+        if let Some(width) = bitwidth_from_type(&decl.typ) {
+            let typ = bv_typ(width);
             local_bv_shared.
             push(Arc::new(DeclX::Var(suffix_local_unique_id(&decl.ident), typ)));
+            local_bv_width.insert(suffix_local_unique_id(&decl.ident), width);
         }
     }
+    println!("{:?}", local_bv_width);
 
     set_fuel(&mut local_shared, hidden);
 
@@ -838,6 +896,7 @@ pub fn body_stm_to_air(
     let mut state = State {
         local_shared,
         local_bv_shared,
+        local_bv_width,
         commands: Vec::new(),
         snapshot_count: 0,
         sids: vec![initial_sid.clone()],

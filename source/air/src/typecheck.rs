@@ -118,10 +118,40 @@ fn check_exprs(
     Ok(f_typ.clone())
 }
 
+fn get_bv_width(et: &Typ) -> Result<u32, TypeError> {
+    if let TypX::BitVec(size) = &**et {
+        return Ok(*size);
+    }
+    return Err("not a bit vector type".to_string());
+}
+
+fn check_bv_exprs(
+    typing: &mut Typing,
+    f_name: &str,
+    exprs: &[Expr],
+    ) -> Result<Typ, TypeError> {
+
+    let t0 = check_expr(typing, &exprs[0])?;
+    let t1 = check_expr(typing, &exprs[1])?;
+
+    let w0 = get_bv_width(&t0)?;
+    let w1 = get_bv_width(&t1)?;
+
+    if w0 != w1 && w0 != 0 && w1 != 0 {
+        return Err(format!(
+                "in call to {}, argument should have the same width", 
+                f_name));
+    }
+
+    return Ok(t0.clone());
+}
+
 fn check_expr(typing: &mut Typing, expr: &Expr) -> Result<Typ, TypeError> {
     let result = match &**expr {
         ExprX::Const(Constant::Bool(_)) => Ok(Arc::new(TypX::Bool)),
         ExprX::Const(Constant::Nat(_)) => Ok(Arc::new(TypX::Int)),
+        // we don't know the bit width just yet
+        // ExprX::Const(Constant::BitVec(_)) => Ok(Arc::new(TypX::BitVec(0))),
         ExprX::Var(x) => match typing.get(x) {
             Some(DeclaredX::Var { typ, .. }) => Ok(typ.clone()),
             _ => Err(format!("use of undeclared variable {}", x)),
@@ -157,11 +187,8 @@ fn check_expr(typing: &mut Typing, expr: &Expr) -> Result<Typ, TypeError> {
             if typ_eq(&t1, &t2) {
                 Ok(bt())
             } else {
-                Err(format!(
-                    "in equality, left expression has type {} and right expression has different type {}",
-                    typ_name(&t1),
-                    typ_name(&t2)
-                ))
+                let _ = check_bv_exprs(typing, "=", &[e1.clone(), e2.clone()])?;
+                Ok(bt())
             }
         }
         ExprX::Binary(BinaryOp::Le, e1, e2) => {
@@ -183,19 +210,22 @@ fn check_expr(typing: &mut Typing, expr: &Expr) -> Result<Typ, TypeError> {
             check_exprs(typing, "mod", &[it(), it()], &it(), &[e1.clone(), e2.clone()])
         }
         ExprX::Binary(BinaryOp::BitXor, e1, e2) => {
-            check_exprs(typing, "^", &[it(), it()], &it(), &[e1.clone(), e2.clone()])
+            check_bv_exprs(typing, "^", &[e1.clone(), e2.clone()])
         }
         ExprX::Binary(BinaryOp::BitAnd, e1, e2) => {
-            check_exprs(typing, "&", &[it(), it()], &it(), &[e1.clone(), e2.clone()])
+            check_bv_exprs(typing, "&", &[e1.clone(), e2.clone()])
         }
         ExprX::Binary(BinaryOp::BitOr, e1, e2) => {
-            check_exprs(typing, "|", &[it(), it()], &it(), &[e1.clone(), e2.clone()])
+            check_bv_exprs(typing, "|", &[e1.clone(), e2.clone()])
+        }
+        ExprX::Binary(BinaryOp::BitAdd, e1, e2) => {
+            check_bv_exprs(typing, "bvadd", &[e1.clone(), e2.clone()])
         }
         ExprX::Binary(BinaryOp::Shr, e1, e2) => {
-            check_exprs(typing, ">>", &[it(), it()], &it(), &[e1.clone(), e2.clone()])
+            check_bv_exprs(typing, ">>",&[e1.clone(), e2.clone()])
         }
         ExprX::Binary(BinaryOp::Shl, e1, e2) => {
-            check_exprs(typing, "<<", &[it(), it()], &it(), &[e1.clone(), e2.clone()])
+            check_bv_exprs(typing, "<<", &[e1.clone(), e2.clone()])
         }
         ExprX::Multi(op, exprs) => {
             let (x, t) = match op {

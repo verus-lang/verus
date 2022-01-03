@@ -58,14 +58,16 @@ def left_shift_2_is_mul_4():
     x = BitVec("x", 32)
     return x << 2 == (x * 4)
 
+def xor_clear():
+    x = BitVec("x", 32)
+    return x ^ x == 0
+
 # def index_highest_one(x):
 #     y = extract(31, 30, x);
     
 
 # def make_bound_with_highest_one():
 #     x = BitVec("x", full_bits)
-
-
 
 
 # query = bvadd()
@@ -76,7 +78,8 @@ def left_shift_2_is_mul_4():
 # query = left_shift_is_mul_if_no_overflow()
 # query = logical_right_shift_is_division()
 # query = and7_is_mod8()
-query = left_shift_2_is_mul_4()
+# query = left_shift_2_is_mul_4()
+query = xor_clear()
 
 s = Solver()
 s.push()

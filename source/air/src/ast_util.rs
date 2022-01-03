@@ -16,6 +16,7 @@ impl Debug for Constant {
         match self {
             Constant::Bool(b) => write!(f, "{}", b),
             Constant::Nat(n) => write!(f, "{}", n),
+            // Constant::BitVec(n) => write!(f, "{}", n),
         }
     }
 }
@@ -110,8 +111,8 @@ pub fn str_typ(x: &str) -> Typ {
     Arc::new(TypX::Named(Arc::new(x.to_string())))
 }
 
-pub fn bv_typ(size: u32) -> Typ {
-    Arc::new(TypX::BitVec(size))
+pub fn bv_typ(width: u32) -> Typ {
+    Arc::new(TypX::BitVec(width))
 }
 
 pub fn ident_binder<A: Clone>(x: &Ident, a: &A) -> Binder<A> {
