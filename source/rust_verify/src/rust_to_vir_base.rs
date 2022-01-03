@@ -7,8 +7,8 @@ use rustc_ast::{AttrKind, Attribute, IntTy, MacArgs, UintTy};
 use rustc_hir::def::{DefKind, Res};
 use rustc_hir::definitions::DefPath;
 use rustc_hir::{
-    GenericBound, GenericParam, GenericParamKind, Generics, HirId, ParamName, PathSegment,
-    PolyTraitRef, PrimTy, QPath, TraitBoundModifier, Ty, Visibility, VisibilityKind,
+    GenericBound, GenericParam, GenericParamKind, Generics, HirId, LifetimeParamKind, ParamName,
+    PathSegment, PolyTraitRef, PrimTy, QPath, TraitBoundModifier, Ty, Visibility, VisibilityKind,
 };
 use rustc_middle::ty::{AdtDef, TyCtxt, TyKind};
 use rustc_span::def_id::{DefId, LOCAL_CRATE};
@@ -639,6 +639,7 @@ pub(crate) fn check_generic_bound<'tcx>(
 pub(crate) fn check_generics_bounds<'tcx>(
     tcx: TyCtxt<'tcx>,
     generics: &'tcx Generics<'tcx>,
+    function_decl: bool,
 ) -> Result<TypBounds, VirErr> {
     let Generics { params, where_clause, span: _ } = generics;
     let mut typ_params: Vec<(vir::ast::Ident, vir::ast::GenericBound)> = Vec::new();
@@ -656,7 +657,15 @@ pub(crate) fn check_generics_bounds<'tcx>(
                 };
                 typ_params.push((ident, bound));
             }
-            _ => unsupported_err!(generics.span, "complex generics"),
+            (
+                ParamName::Plain(_id),
+                GenericParamKind::Lifetime { kind: LifetimeParamKind::Explicit },
+            ) => {
+                if !function_decl {
+                    unsupported_err!(generics.span, "explicit lifetimes on non-function", generics)
+                }
+            }
+            _ => unsupported_err!(generics.span, "complex generics", generics),
         }
     }
     unsupported_err_unless!(where_clause.predicates.len() == 0, generics.span, "where clause");
@@ -666,8 +675,9 @@ pub(crate) fn check_generics_bounds<'tcx>(
 pub(crate) fn check_generics<'tcx>(
     tcx: TyCtxt<'tcx>,
     generics: &'tcx Generics<'tcx>,
+    function_decl: bool,
 ) -> Result<Idents, VirErr> {
-    let typ_bounds = check_generics_bounds(tcx, generics)?;
+    let typ_bounds = check_generics_bounds(tcx, generics, function_decl)?;
     let mut typ_params: Vec<vir::ast::Ident> = Vec::new();
     for (x, bound) in typ_bounds.iter() {
         // REVIEW:
