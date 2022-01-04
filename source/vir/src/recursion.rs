@@ -1,6 +1,6 @@
 use crate::ast::{
-    BinaryOp, CallTarget, Constant, Fun, Function, IntRange, SpannedTyped, TypX, UnaryOp, UnaryOpr,
-    VirErr,
+    BinaryOp, CallTarget, Constant, Fun, Function, IntRange, MaskSpec, SpannedTyped, TypX, UnaryOp,
+    UnaryOpr, VirErr,
 };
 use crate::ast_to_sst::expr_to_exp;
 use crate::ast_util::err_str;
@@ -309,6 +309,8 @@ pub(crate) fn check_termination_exp(
         &Arc::new(vec![]),
         &Arc::new(vec![]),
         &Arc::new(vec![]),
+        &MaskSpec::NoSpec,
+        function.x.mode,
         &stm_block,
     );
 

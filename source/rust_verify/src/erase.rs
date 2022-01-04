@@ -46,6 +46,7 @@
 //! #[verifier(external_body)] functions, on the other hand, need erasure to remove requires/ensures.
 
 use crate::rust_to_vir_base::{get_mode, get_verifier_attrs};
+use crate::rust_to_vir_expr::attrs_is_invariant_block;
 use crate::util::{from_raw_span, vec_map};
 use crate::{unsupported, unsupported_unless};
 
@@ -763,7 +764,12 @@ fn erase_expr_opt(ctxt: &Ctxt, mctxt: &mut MCtxt, expect: Mode, expr: &Expr) -> 
             ExprKind::Ret(Some(P(e1)))
         }
         ExprKind::Block(block, None) => {
-            ExprKind::Block(P(erase_block(ctxt, mctxt, expect, block)), None)
+            let is_inv_block = attrs_is_invariant_block(&expr.attrs).expect("attrs fail");
+            if is_inv_block {
+                ExprKind::Block(P(erase_inv_block(ctxt, mctxt, expect, block)), None)
+            } else {
+                ExprKind::Block(P(erase_block(ctxt, mctxt, expect, block)), None)
+            }
         }
         _ => {
             unsupported!("unsupported expr", expr)
@@ -824,6 +830,96 @@ fn erase_stmt(
     };
     let Stmt { id, span, .. } = *stmt; // for asymptotic efficiency, don't call stmt.clone()
     kind.map(|kind| Stmt { id, kind, span })
+}
+
+fn erase_inv_block(ctxt: &Ctxt, mctxt: &mut MCtxt, expect: Mode, block: &Block) -> Block {
+    if block.stmts.len() != 3 {
+        panic!(
+            "erase_inv_block: the checks in invariant_block_to_vir should ensure the block has exactly 3 statements"
+        );
+    }
+
+    let mut result_stmts = Vec::new();
+
+    // First statement:
+    // let (guard, mut ident) = open_invariant_begin(arg);
+
+    // first, pattern match to get at the arg
+
+    let open_stmt = &block.stmts[0];
+    match &open_stmt.kind {
+        StmtKind::Local(local) => {
+            match &**local.init.as_ref().expect("erase_inv_block") {
+                Expr { kind: ExprKind::Call(callfn, args), span, id, attrs, tokens } => {
+                    let arg = &args[0];
+                    let expr_opt = erase_expr_opt(ctxt, mctxt, Mode::Proof, arg);
+                    if ctxt.keep_proofs {
+                        let expr = expr_opt.expect("erase_inv_block: arg shouldn't be erased");
+                        // Reconstruct the call statement with the new expression
+                        let kind = StmtKind::Local(P(Local {
+                            pat: local.pat.clone(),
+                            attrs: local.attrs.clone(),
+                            id: local.id,
+                            span: local.span.clone(),
+                            tokens: local.tokens.clone(),
+                            ty: local.ty.clone(),
+                            init: Some(P(Expr {
+                                kind: ExprKind::Call(callfn.clone(), vec![P(expr)]),
+                                span: span.clone(),
+                                id: *id,
+                                attrs: attrs.clone(),
+                                tokens: tokens.clone(),
+                            })),
+                        }));
+                        let id = open_stmt.id;
+                        let span = open_stmt.span.clone();
+                        result_stmts.push(Stmt { id, kind, span });
+                    } else {
+                        match expr_opt {
+                            None => {
+                                // expr was erased; just erase the whole statement
+                            }
+                            Some(expr) => {
+                                // Erase the open_invariant_begin call, but keep whatever is left of arg
+                                let id = open_stmt.id;
+                                let span = open_stmt.span.clone();
+                                let kind = StmtKind::Semi(P(expr));
+                                result_stmts.push(Stmt { id, kind, span });
+                            }
+                        }
+                    }
+                }
+                _ => {
+                    panic!(
+                        "erase_inv_block: the checks in invariant_block_to_vir should ensure this match statement succeeds"
+                    );
+                }
+            }
+        }
+        _ => {
+            panic!(
+                "erase_inv_block: the checks in invariant_block_to_vir should ensure this match statement succeeds"
+            );
+        }
+    }
+
+    // Middle statement: the user-supplied block
+    match erase_stmt(ctxt, mctxt, expect, &block.stmts[1], false) {
+        None => {}
+        Some(stmt) => {
+            result_stmts.push(stmt);
+        }
+    }
+
+    // Final statement:
+    // open_invariant_end(guard, ident);
+    // This is purely proof code. Keep it iff we keep proof-code.
+    if ctxt.keep_proofs {
+        result_stmts.push(block.stmts[2].clone());
+    }
+
+    let Block { id, rules, span, .. } = *block;
+    Block { stmts: result_stmts, id, rules, span, tokens: block.tokens.clone() }
 }
 
 fn erase_block(ctxt: &Ctxt, mctxt: &mut MCtxt, expect: Mode, block: &Block) -> Block {

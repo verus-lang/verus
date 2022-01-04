@@ -3,6 +3,7 @@ use crate::ast::{
     PatternX, Stmt, StmtX, UnaryOpr, VirErr,
 };
 use crate::ast_util::{err_str, err_string, get_field};
+use crate::early_exit_cf::assert_no_early_exit_in_inv_block;
 use crate::util::vec_map_result;
 use air::ast::Span;
 use air::scope_map::ScopeMap;
@@ -339,6 +340,25 @@ fn check_expr(typing: &mut Typing, outer_mode: Mode, expr: &Expr) -> Result<Mode
                 typing.vars.pop_scope();
             }
             Ok(mode)
+        }
+        ExprX::OpenInvariant(inv, binder, body) => {
+            assert_no_early_exit_in_inv_block(&expr.span, body)?;
+
+            if outer_mode == Mode::Spec {
+                return err_string(&expr.span, format!("Cannot open invariant in Spec mode."));
+            }
+            let mode1 = check_expr(typing, outer_mode, inv)?;
+            if mode1 != Mode::Proof {
+                return err_string(&inv.span, format!("Invariant must be Proof mode."));
+            }
+            typing.vars.push_scope(true);
+            typing.insert(&expr.span, &binder.name, /* mutable */ true, Mode::Proof);
+
+            // TODO all a single atomic #[exec] action inside
+            let _ = check_expr(typing, Mode::Proof, body)?;
+
+            typing.vars.pop_scope();
+            Ok(Mode::Exec)
         }
     }
 }

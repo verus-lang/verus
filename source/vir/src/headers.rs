@@ -1,4 +1,4 @@
-use crate::ast::{Expr, ExprX, Exprs, Fun, HeaderExprX, Ident, Stmt, StmtX, Typ, VirErr};
+use crate::ast::{Expr, ExprX, Exprs, Fun, HeaderExprX, Ident, MaskSpec, Stmt, StmtX, Typ, VirErr};
 use crate::ast_util::err_str;
 use std::sync::Arc;
 
@@ -10,6 +10,7 @@ pub struct Header {
     pub ensure: Exprs,
     pub invariant: Exprs,
     pub decrease: Exprs,
+    pub invariant_mask: MaskSpec,
 }
 
 fn read_header_block(block: &mut Vec<Stmt>) -> Result<Header, VirErr> {
@@ -18,6 +19,7 @@ fn read_header_block(block: &mut Vec<Stmt>) -> Result<Header, VirErr> {
     let mut ensure: Option<(Option<(Ident, Typ)>, Exprs)> = None;
     let mut invariant: Option<Exprs> = None;
     let mut decrease: Option<Exprs> = None;
+    let mut invariant_mask = MaskSpec::NoSpec;
     let mut n = 0;
     for stmt in block.iter() {
         match &stmt.x {
@@ -62,6 +64,24 @@ fn read_header_block(block: &mut Vec<Stmt>) -> Result<Header, VirErr> {
                     HeaderExprX::Hide(x) => {
                         hidden.push(x.clone());
                     }
+                    HeaderExprX::InvariantOpens(es) => {
+                        match invariant_mask {
+                            MaskSpec::NoSpec => {}
+                            _ => {
+                                return err_str(&stmt.span, "only one invariant mask spec allowed");
+                            }
+                        }
+                        invariant_mask = MaskSpec::InvariantOpens(es.clone());
+                    }
+                    HeaderExprX::InvariantOpensExcept(es) => {
+                        match invariant_mask {
+                            MaskSpec::NoSpec => {}
+                            _ => {
+                                return err_str(&stmt.span, "only one invariant mask spec allowed");
+                            }
+                        }
+                        invariant_mask = MaskSpec::InvariantOpensExcept(es.clone());
+                    }
                 },
                 _ => break,
             },
@@ -77,7 +97,7 @@ fn read_header_block(block: &mut Vec<Stmt>) -> Result<Header, VirErr> {
     };
     let invariant = invariant.unwrap_or(Arc::new(vec![]));
     let decrease = decrease.unwrap_or(Arc::new(vec![]));
-    Ok(Header { hidden, require, ensure_id_typ, ensure, invariant, decrease })
+    Ok(Header { hidden, require, ensure_id_typ, ensure, invariant, decrease, invariant_mask })
 }
 
 pub fn read_header(body: &mut Expr) -> Result<Header, VirErr> {

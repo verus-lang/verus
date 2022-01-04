@@ -425,6 +425,8 @@ pub fn func_def_to_air(
                 &function.x.attrs.hidden,
                 &reqs,
                 &*enss,
+                &function.x.mask_spec,
+                function.x.mode,
                 &stm,
             );
             state.finalize();

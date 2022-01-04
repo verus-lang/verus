@@ -1,7 +1,7 @@
 use crate::ast::{
     Arm, ArmX, CallTarget, Datatype, DatatypeX, Expr, ExprX, Field, Function, FunctionX,
-    GenericBound, GenericBoundX, Ident, Param, ParamX, Pattern, PatternX, SpannedTyped, Stmt,
-    StmtX, Typ, TypX, UnaryOpr, Variant, VirErr,
+    GenericBound, GenericBoundX, Ident, MaskSpec, Param, ParamX, Pattern, PatternX, SpannedTyped,
+    Stmt, StmtX, Typ, TypX, UnaryOpr, Variant, VirErr,
 };
 use crate::ast_util::err_str;
 use crate::def::Spanned;
@@ -259,6 +259,15 @@ where
             }
             ExprX::Block(Arc::new(stmts), expr1)
         }
+        ExprX::OpenInvariant(e1, binder, e2) => {
+            let expr1 = map_expr_visitor_env(e1, map, env, fe, fs, ft)?;
+            let binder = binder.map_result(|t| map_typ_visitor_env(t, env, ft))?;
+            map.push_scope(true);
+            let _ = map.insert(binder.name.clone(), binder.a.clone());
+            let expr2 = map_expr_visitor_env(e2, map, env, fe, fs, ft)?;
+            map.pop_scope();
+            ExprX::OpenInvariant(expr1, binder, expr2)
+        }
     };
     let expr = SpannedTyped::new(&expr.span, &map_typ_visitor_env(&expr.typ, env, ft)?, exprx);
     fe(env, map, &expr)
@@ -359,6 +368,7 @@ where
         require,
         ensure,
         decrease,
+        mask_spec,
         is_abstract,
         attrs,
         body,
@@ -383,6 +393,19 @@ where
         Arc::new(vec_map_result(ensure, |e| map_expr_visitor_env(e, map, env, fe, fs, ft))?);
     let decrease =
         Arc::new(vec_map_result(decrease, |e| map_expr_visitor_env(e, map, env, fe, fs, ft))?);
+    let mask_spec = match mask_spec {
+        MaskSpec::NoSpec => MaskSpec::NoSpec,
+        MaskSpec::InvariantOpens(es) => {
+            MaskSpec::InvariantOpens(Arc::new(vec_map_result(es, |e| {
+                map_expr_visitor_env(e, map, env, fe, fs, ft)
+            })?))
+        }
+        MaskSpec::InvariantOpensExcept(es) => {
+            MaskSpec::InvariantOpensExcept(Arc::new(vec_map_result(es, |e| {
+                map_expr_visitor_env(e, map, env, fe, fs, ft)
+            })?))
+        }
+    };
     let attrs = attrs.clone();
     let is_abstract = *is_abstract;
     let body = body.as_ref().map(|e| map_expr_visitor_env(e, map, env, fe, fs, ft)).transpose()?;
@@ -398,6 +421,7 @@ where
         require,
         ensure,
         decrease,
+        mask_spec,
         is_abstract,
         attrs,
         body,

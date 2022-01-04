@@ -1,6 +1,6 @@
 use crate::ast::{
-    CallTarget, Datatype, Expr, ExprX, Fun, FunX, Function, Krate, Mode, Path, PathX, TypX,
-    UnaryOpr, VirErr,
+    CallTarget, Datatype, Expr, ExprX, Fun, FunX, Function, Krate, MaskSpec, Mode, Path, PathX,
+    TypX, UnaryOpr, VirErr,
 };
 use crate::ast_util::{err_str, err_string};
 use crate::ast_visitor::map_expr_visitor;
@@ -14,6 +14,14 @@ struct Ctxt {
 }
 
 fn check_function(ctxt: &Ctxt, function: &Function) -> Result<(), VirErr> {
+    match &function.x.mask_spec {
+        MaskSpec::NoSpec => {}
+        _ => {
+            if function.x.mode == Mode::Spec {
+                return err_str(&function.span, "invariants cannot be opened in spec functions");
+            }
+        }
+    }
     if function.x.attrs.export_as_global_forall {
         if function.x.mode != Mode::Proof {
             return err_str(
