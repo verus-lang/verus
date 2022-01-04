@@ -23,6 +23,7 @@ use air::ast_util::{
     mk_eq, mk_exists, mk_implies, mk_ite, mk_not, mk_or, str_apply, str_ident, str_typ, str_var,
     string_var,
 };
+use sise::ListReadUtil;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
@@ -296,7 +297,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp) -> Expr {
                         BinaryOp::EuclideanDiv => air::ast::BinaryOp::EuclideanDiv,
                         BinaryOp::EuclideanMod => air::ast::BinaryOp::EuclideanMod,
                         BinaryOp::BitXor => air::ast::BinaryOp::UintXor,
-                        BinaryOp::BitAnd => air::ast::BinaryOp::BitAnd,
+                        BinaryOp::BitAnd => air::ast::BinaryOp::UintAnd,
                         BinaryOp::BitOr => air::ast::BinaryOp::BitOr,
                         BinaryOp::Shr => air::ast::BinaryOp::Shr,
                         BinaryOp::Shl => air::ast::BinaryOp::Shl,
@@ -494,17 +495,41 @@ fn exp_to_bv_expr(state: &State, exp: &Exp, parent_width: u32) -> (Expr, u32) {
                 }
                 BinaryOp::Add => air::ast::BinaryOp::BitAdd,
                 BinaryOp::BitXor => air::ast::BinaryOp::BitXor,
+                BinaryOp::BitAnd => air::ast::BinaryOp::BitAnd,
+                BinaryOp::EuclideanMod => air::ast::BinaryOp::BitMod,
+                BinaryOp::Lt => air::ast::BinaryOp::BitLt,
+                BinaryOp::Gt => air::ast::BinaryOp::BitGt,
+                BinaryOp::Shl => air::ast::BinaryOp::Shl,
+                BinaryOp::Shr => air::ast::BinaryOp::Shr,
                 _ => panic!("unhandled bv binary operation {:?}", op),
             };
-            
-            let (lh, lwidth) = exp_to_bv_expr(state, lhs, parent_width);
-            if parent_width == 0 {
-                parent_width = lwidth;
-            }
-            let (rh, rwidth) = exp_to_bv_expr(state, rhs, parent_width);
-            assert!(lwidth == rwidth);
 
-            return (Arc::new(ExprX::Binary(bop, lh, rh)), lwidth);
+
+
+            // TODO: change below codes. Current version would fail to infer bit-width sometimes 
+            if parent_width != 0{
+                let (lh, lwidth) = exp_to_bv_expr(state, lhs, parent_width);
+                let (rh, rwidth) = exp_to_bv_expr(state, rhs, parent_width);            
+                assert!(lwidth == rwidth);
+                return (Arc::new(ExprX::Binary(bop, lh, rh)), lwidth);
+            }  
+            else{
+                if let ExpX::Const(_) = lhs.x{
+                    let (rh, rwidth) = exp_to_bv_expr(state, rhs, parent_width);
+                    parent_width = rwidth;
+                    let (lh, lwidth) = exp_to_bv_expr(state, lhs, parent_width);
+                    assert!(lwidth == rwidth);
+                    return (Arc::new(ExprX::Binary(bop, lh, rh)), lwidth);
+                }
+                else{
+                    let (lh, lwidth) = exp_to_bv_expr(state, lhs, parent_width);
+                    parent_width = lwidth;
+                    let (rh, rwidth) = exp_to_bv_expr(state, rhs, parent_width);
+                    assert!(lwidth == rwidth);
+                    return (Arc::new(ExprX::Binary(bop, lh, rh)), lwidth);
+                }
+            }
+            
         }
         ExpX::Unary(op, exp) => {
             // remove Clip and use the underlying bv operation

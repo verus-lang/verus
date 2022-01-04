@@ -144,6 +144,11 @@ fn check_bv_exprs(
                 f_name));
     }
 
+    // return bool type if it is comparision op
+    if f_name.eq("<") || f_name.eq(">") {
+        return Ok(bt());
+    }
+
     return Ok(t0.clone());
 }
 
@@ -213,8 +218,20 @@ fn check_expr(typing: &mut Typing, expr: &Expr) -> Result<Typ, TypeError> {
         ExprX::Binary(BinaryOp::UintXor, e1, e2) => {
             check_exprs(typing, "^", &[it(), it()], &it(), &[e1.clone(), e2.clone()])
         }
+        ExprX::Binary(BinaryOp::UintAnd, e1, e2) => {
+            check_exprs(typing, "&", &[it(), it()], &it(), &[e1.clone(), e2.clone()])
+        }
+        ExprX::Binary(BinaryOp::BitLt, e1, e2) => {
+            check_bv_exprs(typing, "<", &[e1.clone(), e2.clone()])
+        }
+        ExprX::Binary(BinaryOp::BitGt, e1, e2) => {
+            check_bv_exprs(typing, ">", &[e1.clone(), e2.clone()])
+        }
         ExprX::Binary(BinaryOp::BitXor, e1, e2) => {
             check_bv_exprs(typing, "bvxor", &[e1.clone(), e2.clone()])
+        }
+        ExprX::Binary(BinaryOp::BitMod, e1, e2) => {
+            check_bv_exprs(typing, "bvmod", &[e1.clone(), e2.clone()])
         }
         ExprX::Binary(BinaryOp::BitAnd, e1, e2) => {
             check_bv_exprs(typing, "&", &[e1.clone(), e2.clone()])
@@ -342,12 +359,12 @@ fn check_stmt(typing: &mut Typing, stmt: &Stmt) -> Result<(), TypeError> {
         StmtX::Assume(expr) => expect_typ(
             &check_expr(typing, expr)?,
             &bt(),
-            "assert statement expects expression of type bool",
+            "assume statement expects expression of type bool",
         ),
         StmtX::Assert(_, expr) => expect_typ(
             &check_expr(typing, expr)?,
             &bt(),
-            "assume statement expects expression of type bool",
+            "assert statement expects expression of type bool",
         ),
         StmtX::Havoc(x) => match typing.get(x).cloned() {
             Some(DeclaredX::Var { mutable, .. }) => {

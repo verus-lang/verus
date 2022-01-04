@@ -47,6 +47,7 @@ pub(crate) fn prelude_nodes() -> Vec<Node> {
     let as_type = str_to_node(AS_TYPE);
 
     let uint_xor = str_to_node(UINT_XOR);
+    let uint_and = str_to_node(UINT_AND);
 
     nodes_vec!(
         // Fuel
@@ -280,6 +281,7 @@ pub(crate) fn prelude_nodes() -> Vec<Node> {
 
         // Bit Vector
         (declare-fun [uint_xor] (Int Int) Int)
+        (declare-fun [uint_and] (Int Int) Int)
     )
 }
 

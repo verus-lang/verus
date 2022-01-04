@@ -79,7 +79,7 @@ def xor_clear():
 # query = logical_right_shift_is_division()
 # query = and7_is_mod8()
 # query = left_shift_2_is_mul_4()
-query = xor_clear()
+# query = xor_clear()
 
 s = Solver()
 s.push()
