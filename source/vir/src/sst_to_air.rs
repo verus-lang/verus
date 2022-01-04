@@ -295,7 +295,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp) -> Expr {
                         BinaryOp::Mul => panic!("internal error"),
                         BinaryOp::EuclideanDiv => air::ast::BinaryOp::EuclideanDiv,
                         BinaryOp::EuclideanMod => air::ast::BinaryOp::EuclideanMod,
-                        BinaryOp::BitXor => air::ast::BinaryOp::BitXor,
+                        BinaryOp::BitXor => air::ast::BinaryOp::UintXor,
                         BinaryOp::BitAnd => air::ast::BinaryOp::BitAnd,
                         BinaryOp::BitOr => air::ast::BinaryOp::BitOr,
                         BinaryOp::Shr => air::ast::BinaryOp::Shr,
@@ -609,8 +609,8 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
             // this creates a separate query for the bv assertion
             let query = Arc::new(QueryX { local: Arc::new(local), assertion });
             state.commands.push(Arc::new(CommandX::CheckValid(query)));
-            // TODO: put in an assume in the original assert location?
-            vec![]
+
+            vec![Arc::new(StmtX::Assume(exp_to_expr(ctx, &expr)))]
         }
         StmX::Assume(expr) => {
             if ctx.debug {
@@ -878,7 +878,6 @@ pub fn body_stm_to_air(
             local_bv_width.insert(suffix_local_unique_id(&decl.ident), width);
         }
     }
-    println!("{:?}", local_bv_width);
 
     set_fuel(&mut local_shared, hidden);
 

@@ -122,6 +122,7 @@ fn get_bv_width(et: &Typ) -> Result<u32, TypeError> {
     if let TypX::BitVec(size) = &**et {
         return Ok(*size);
     }
+    panic!("???{:?}", et);
     return Err("not a bit vector type".to_string());
 }
 
@@ -186,6 +187,7 @@ fn check_expr(typing: &mut Typing, expr: &Expr) -> Result<Typ, TypeError> {
             if typ_eq(&t1, &t2) {
                 Ok(bt())
             } else {
+                println!("{:?}, {:?}", t1, t2);
                 let _ = check_bv_exprs(typing, "=", &[e1.clone(), e2.clone()])?;
                 Ok(bt())
             }
@@ -208,8 +210,11 @@ fn check_expr(typing: &mut Typing, expr: &Expr) -> Result<Typ, TypeError> {
         ExprX::Binary(BinaryOp::EuclideanMod, e1, e2) => {
             check_exprs(typing, "mod", &[it(), it()], &it(), &[e1.clone(), e2.clone()])
         }
+        ExprX::Binary(BinaryOp::UintXor, e1, e2) => {
+            check_exprs(typing, "^", &[it(), it()], &it(), &[e1.clone(), e2.clone()])
+        }
         ExprX::Binary(BinaryOp::BitXor, e1, e2) => {
-            check_bv_exprs(typing, "^", &[e1.clone(), e2.clone()])
+            check_bv_exprs(typing, "bvxor", &[e1.clone(), e2.clone()])
         }
         ExprX::Binary(BinaryOp::BitAnd, e1, e2) => {
             check_bv_exprs(typing, "&", &[e1.clone(), e2.clone()])
@@ -226,6 +231,7 @@ fn check_expr(typing: &mut Typing, expr: &Expr) -> Result<Typ, TypeError> {
         ExprX::Binary(BinaryOp::Shl, e1, e2) => {
             check_bv_exprs(typing, "<<", &[e1.clone(), e2.clone()])
         }
+
         ExprX::Multi(op, exprs) => {
             let (x, t) = match op {
                 MultiOp::And => ("and", bt()),

@@ -102,6 +102,8 @@ pub const AS_TYPE: &str = "as_type";
 const CHECK_DECREASE_INT: &str = "check_decrease_int";
 const HEIGHT: &str = "height";
 
+pub const UINT_XOR: &str = "uintxor";
+
 // We assume that usize is at least ARCH_SIZE_MIN_BITS wide
 pub const ARCH_SIZE_MIN_BITS: u32 = 32;
 

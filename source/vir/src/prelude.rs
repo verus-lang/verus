@@ -46,6 +46,8 @@ pub(crate) fn prelude_nodes() -> Vec<Node> {
     let has_type = str_to_node(HAS_TYPE);
     let as_type = str_to_node(AS_TYPE);
 
+    let uint_xor = str_to_node(UINT_XOR);
+
     nodes_vec!(
         // Fuel
         (declare-sort [FuelId])
@@ -275,6 +277,9 @@ pub(crate) fn prelude_nodes() -> Vec<Node> {
             (<= 0 ([height] x))
             :pattern (([height] x))
         )))
+
+        // Bit Vector
+        (declare-fun [uint_xor] (Int Int) Int)
     )
 }
 
