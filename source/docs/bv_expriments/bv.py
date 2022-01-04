@@ -50,7 +50,7 @@ def logical_right_shift_is_division():
 
 
 def and7_is_mod8():
-    x = BitVec("x", 32)
+    x = BitVec("x", 5)
     return (x & 7) == x % 8
 
 
@@ -77,9 +77,9 @@ def xor_clear():
 # query = left_shift_is_muliplication()
 # query = left_shift_is_mul_if_no_overflow()
 # query = logical_right_shift_is_division()
-# query = and7_is_mod8()
+query = and7_is_mod8()
 # query = left_shift_2_is_mul_4()
-query = xor_clear()
+# query = xor_clear()
 
 s = Solver()
 s.push()

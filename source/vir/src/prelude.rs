@@ -278,7 +278,8 @@ pub(crate) fn prelude_nodes() -> Vec<Node> {
             :pattern (([height] x))
         )))
 
-        // Bit Vector
+        // BitVector
+        // these are the uninterpreted integer versions
         (declare-fun [uint_xor] (Int Int) Int)
     )
 }

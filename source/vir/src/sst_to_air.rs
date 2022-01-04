@@ -69,9 +69,10 @@ pub fn bitwidth_from_type(typ: &Typ) -> Option<u32> {
     match &**typ {
         TypX::Int(range) => match range {
             IntRange::U(width) => Some(*width),
-            _ => panic!("unhandled IntRange in bv type conversion"),
-        }
-        _ => None,
+            _ => None,
+            // panic!("unhandled IntRange in bv type conversion"),
+       }
+       _ => None,
     }
 }
 
@@ -295,11 +296,9 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp) -> Expr {
                         BinaryOp::Mul => panic!("internal error"),
                         BinaryOp::EuclideanDiv => air::ast::BinaryOp::EuclideanDiv,
                         BinaryOp::EuclideanMod => air::ast::BinaryOp::EuclideanMod,
+                        // here the bv operation is translated to the integer versions
                         BinaryOp::BitXor => air::ast::BinaryOp::UintXor,
-                        BinaryOp::BitAnd => air::ast::BinaryOp::BitAnd,
-                        BinaryOp::BitOr => air::ast::BinaryOp::BitOr,
-                        BinaryOp::Shr => air::ast::BinaryOp::Shr,
-                        BinaryOp::Shl => air::ast::BinaryOp::Shl,
+                        _ => panic!("unhandled bv operation translation {:?}", op),
                     };
                     ExprX::Binary(aop, lh, rh)
                 }
@@ -442,20 +441,6 @@ impl State {
         // println!("{:?} {:?}", stm.span, aset);
         self.snap_map.push((stm.span.clone(), spos));
     }
-
-    // fn lookup_bv_ident_width(&self, id: &Ident) -> Option<u32> {
-    //     for decl in &self.local_bv_shared {
-    //         if let DeclX::Var(ident, typ) = decl {
-    //             if ident != id {
-    //                 continue;
-    //             }
-    //             if let TypX::BitVec(size) = typ {
-    //                 return Some(size)
-    //             }
-    //         }
-    //     }
-    //     return None;
-    // }
 }
 
 fn assume_var(span: &Span, x: &UniqueIdent, exp: &Exp) -> Stm {
@@ -477,6 +462,7 @@ fn exp_to_bv_expr(state: &State, exp: &Exp, parent_width: u32) -> (Expr, u32) {
         ExpX::Const(crate::ast::Constant::Nat(s)) => {
             assert!(parent_width != 0);
             // Nat constant will get an inferred bitwidth from the parent
+            // the width is needed when printing bv constants
             return (Arc::new(ExprX::Const(Constant::BitVec(s.clone(), parent_width))), parent_width);
         }
         ExpX::Var(x) => {
@@ -493,6 +479,7 @@ fn exp_to_bv_expr(state: &State, exp: &Exp, parent_width: u32) -> (Expr, u32) {
                     air::ast::BinaryOp::Eq
                 }
                 BinaryOp::Add => air::ast::BinaryOp::BitAdd,
+                // here the bv operation is translated as it is
                 BinaryOp::BitXor => air::ast::BinaryOp::BitXor,
                 _ => panic!("unhandled bv binary operation {:?}", op),
             };

@@ -122,7 +122,6 @@ fn get_bv_width(et: &Typ) -> Result<u32, TypeError> {
     if let TypX::BitVec(size) = &**et {
         return Ok(*size);
     }
-    panic!("???{:?}", et);
     return Err("not a bit vector type".to_string());
 }
 
@@ -138,7 +137,7 @@ fn check_bv_exprs(
     let w0 = get_bv_width(&t0)?;
     let w1 = get_bv_width(&t1)?;
 
-    if w0 != w1 && w0 != 0 && w1 != 0 {
+    if w0 != w1 {
         return Err(format!(
                 "in call to {}, argument should have the same width", 
                 f_name));
