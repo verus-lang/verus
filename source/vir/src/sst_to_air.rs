@@ -19,9 +19,9 @@ use air::ast::{
     MultiOp, Quant, QueryX, Span, Stmt, StmtX, Trigger, Triggers,
 };
 use air::ast_util::{
-    bool_typ, ident_apply, ident_binder, ident_typ, ident_var, int_typ, bv_typ, mk_and, mk_bind_expr,
-    mk_eq, mk_exists, mk_implies, mk_ite, mk_not, mk_or, str_apply, str_ident, str_typ, str_var,
-    string_var,
+    bool_typ, bv_typ, ident_apply, ident_binder, ident_typ, ident_var, int_typ, mk_and,
+    mk_bind_expr, mk_eq, mk_exists, mk_implies, mk_ite, mk_not, mk_or, str_apply, str_ident,
+    str_typ, str_var, string_var,
 };
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -71,8 +71,8 @@ pub fn bitwidth_from_type(typ: &Typ) -> Option<u32> {
             IntRange::U(width) => Some(*width),
             _ => None,
             // panic!("unhandled IntRange in bv type conversion"),
-       }
-       _ => None,
+        },
+        _ => None,
     }
 }
 
@@ -463,7 +463,10 @@ fn exp_to_bv_expr(state: &State, exp: &Exp, parent_width: u32) -> (Expr, u32) {
             assert!(parent_width != 0);
             // Nat constant will get an inferred bitwidth from the parent
             // the width is needed when printing bv constants
-            return (Arc::new(ExprX::Const(Constant::BitVec(s.clone(), parent_width))), parent_width);
+            return (
+                Arc::new(ExprX::Const(Constant::BitVec(s.clone(), parent_width))),
+                parent_width,
+            );
         }
         ExpX::Var(x) => {
             // look up the bitwidth of a variable
@@ -483,7 +486,7 @@ fn exp_to_bv_expr(state: &State, exp: &Exp, parent_width: u32) -> (Expr, u32) {
                 BinaryOp::BitXor => air::ast::BinaryOp::BitXor,
                 _ => panic!("unhandled bv binary operation {:?}", op),
             };
-            
+
             let (lh, lwidth) = exp_to_bv_expr(state, lhs, parent_width);
             if parent_width == 0 {
                 parent_width = lwidth;
@@ -860,8 +863,7 @@ pub fn body_stm_to_air(
 
         if let Some(width) = bitwidth_from_type(&decl.typ) {
             let typ = bv_typ(width);
-            local_bv_shared.
-            push(Arc::new(DeclX::Var(suffix_local_unique_id(&decl.ident), typ)));
+            local_bv_shared.push(Arc::new(DeclX::Var(suffix_local_unique_id(&decl.ident), typ)));
             local_bv_width.insert(suffix_local_unique_id(&decl.ident), width);
         }
     }

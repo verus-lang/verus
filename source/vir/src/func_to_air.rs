@@ -370,7 +370,7 @@ pub fn func_decl_to_air(
                 decl_commands.push(Arc::new(CommandX::Global(axiom)));
             }
             if function.x.attrs.bit_vector {
-                // TODO: function level bitvector mode 
+                // TODO: function level bitvector mode
             }
         }
     }

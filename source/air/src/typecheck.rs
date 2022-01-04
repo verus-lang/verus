@@ -125,12 +125,7 @@ fn get_bv_width(et: &Typ) -> Result<u32, TypeError> {
     return Err("not a bit vector type".to_string());
 }
 
-fn check_bv_exprs(
-    typing: &mut Typing,
-    f_name: &str,
-    exprs: &[Expr],
-    ) -> Result<Typ, TypeError> {
-
+fn check_bv_exprs(typing: &mut Typing, f_name: &str, exprs: &[Expr]) -> Result<Typ, TypeError> {
     let t0 = check_expr(typing, &exprs[0])?;
     let t1 = check_expr(typing, &exprs[1])?;
 
@@ -138,9 +133,7 @@ fn check_bv_exprs(
     let w1 = get_bv_width(&t1)?;
 
     if w0 != w1 {
-        return Err(format!(
-                "in call to {}, argument should have the same width", 
-                f_name));
+        return Err(format!("in call to {}, argument should have the same width", f_name));
     }
 
     return Ok(t0.clone());
@@ -225,7 +218,7 @@ fn check_expr(typing: &mut Typing, expr: &Expr) -> Result<Typ, TypeError> {
             check_bv_exprs(typing, "bvadd", &[e1.clone(), e2.clone()])
         }
         ExprX::Binary(BinaryOp::Shr, e1, e2) => {
-            check_bv_exprs(typing, ">>",&[e1.clone(), e2.clone()])
+            check_bv_exprs(typing, ">>", &[e1.clone(), e2.clone()])
         }
         ExprX::Binary(BinaryOp::Shl, e1, e2) => {
             check_bv_exprs(typing, "<<", &[e1.clone(), e2.clone()])
