@@ -4,14 +4,20 @@ use std::mem::MaybeUninit;
 #[allow(unused_imports)] use builtin::*;
 #[allow(unused_imports)] use crate::pervasive::*;
 
+// TODO Identifier should be some opaque type, not necessarily an int
+
+// TODO find a way to consolidate Permission and PermissionToken; having 2 types is cumbersome
+
+// TODO implement: borrow, borrow_mut, take, swap, read_copy
+
+// TODO figure out how Drop should work
+
 //type Identifier = int;
 
 #[verifier(external_body)]
 pub struct PCell<V> {
   ucell: UnsafeCell<MaybeUninit<V>>,
 }
-
-// TODO find a way to consolidate Permission and PermissionToken
 
 #[spec]
 pub struct Permission<V> {
@@ -38,7 +44,7 @@ impl<V> PermissionToken<V> {
   }
 }
 
-// TODO put these in impl:
+// TODO put these in impl once methods without 'self' are supported
 
 //// new_empty
 #[inline(always)]
