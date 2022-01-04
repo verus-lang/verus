@@ -150,8 +150,7 @@ fn check_expr(typing: &mut Typing, expr: &Expr) -> Result<Typ, TypeError> {
     let result = match &**expr {
         ExprX::Const(Constant::Bool(_)) => Ok(Arc::new(TypX::Bool)),
         ExprX::Const(Constant::Nat(_)) => Ok(Arc::new(TypX::Int)),
-        // we don't know the bit width just yet
-        // ExprX::Const(Constant::BitVec(_)) => Ok(Arc::new(TypX::BitVec(0))),
+        ExprX::Const(Constant::BitVec(_, width)) => Ok(Arc::new(TypX::BitVec(*width))),
         ExprX::Var(x) => match typing.get(x) {
             Some(DeclaredX::Var { typ, .. }) => Ok(typ.clone()),
             _ => Err(format!("use of undeclared variable {}", x)),

@@ -99,10 +99,20 @@ impl Printer {
         Node::List(vec_map(typs, |t| self.typ_to_node(t)))
     }
 
+    pub(crate) fn bv_const_expr_to_node(&self, n: &Arc<String>, width: &u32) -> Node {
+        let value = n.parse::<u32>().unwrap();
+        if *width == 32 {
+            Node::Atom(format!("#x{:08x}", value))
+        } else {
+            panic!("unhandled bitwidth")
+        }
+    }
+
     pub(crate) fn expr_to_node(&self, expr: &Expr) -> Node {
         match &**expr {
             ExprX::Const(Constant::Bool(b)) => Node::Atom(b.to_string()),
             ExprX::Const(Constant::Nat(n)) => Node::Atom((**n).clone()),
+            ExprX::Const(Constant::BitVec(n, width)) => self.bv_const_expr_to_node(n, width),
             ExprX::Var(x) => Node::Atom(x.to_string()),
             ExprX::Old(snap, x) => {
                 nodes!(old {str_to_node(&snap.to_string())} {str_to_node(&x.to_string())})

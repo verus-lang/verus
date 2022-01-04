@@ -372,6 +372,7 @@ fn simplify_expr(ctxt: &mut Context, state: &mut State, expr: &Expr) -> (Typ, Ex
             let typ = match c {
                 Constant::Bool(_) => Arc::new(TypX::Bool),
                 Constant::Nat(_) => Arc::new(TypX::Int),
+                Constant::BitVec(_, width) => Arc::new(TypX::BitVec(*width)),
             };
             (typ, expr.clone(), None)
         }

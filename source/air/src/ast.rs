@@ -33,7 +33,7 @@ pub enum TypX {
 pub enum Constant {
     Bool(bool),
     Nat(Arc<String>),
-    // BitVec(Arc<String>, u32),
+    BitVec(Arc<String>, u32),
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]

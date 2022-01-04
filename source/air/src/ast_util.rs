@@ -16,7 +16,7 @@ impl Debug for Constant {
         match self {
             Constant::Bool(b) => write!(f, "{}", b),
             Constant::Nat(n) => write!(f, "{}", n),
-            // Constant::BitVec(n) => write!(f, "{}", n),
+            Constant::BitVec(n, width) => write!(f, "{}(bv{})", n, width),
         }
     }
 }

@@ -476,24 +476,24 @@ fn exp_to_bv_expr(state: &State, exp: &Exp, parent_width: u32) -> (Expr, u32) {
     match &exp.x {
         ExpX::Const(crate::ast::Constant::Nat(s)) => {
             assert!(parent_width != 0);
-            return (Arc::new(ExprX::Const(Constant::Nat(s.clone()))), parent_width);
+            // Nat constant will get an inferred bitwidth from the parent
+            return (Arc::new(ExprX::Const(Constant::BitVec(s.clone(), parent_width))), parent_width);
         }
         ExpX::Var(x) => {
+            // look up the bitwidth of a variable
             let id = suffix_local_unique_id(x);
             let width = state.local_bv_width.get(&id).unwrap();
             assert!(parent_width == 0 || parent_width == *width);
             return (string_var(&suffix_local_unique_id(x)), *width);
         }
         ExpX::Binary(op, lhs, rhs) => {
-            let mut bop;
-
-            match op {
+            let bop = match op {
                 BinaryOp::Eq(_) => {
                     parent_width = 0;
-                    bop = air::ast::BinaryOp::Eq;
+                    air::ast::BinaryOp::Eq
                 }
-                BinaryOp::Add => bop = air::ast::BinaryOp::BitAdd,
-                // BinaryOp::BitXor => air::ast::BinaryOp::BitXor,
+                BinaryOp::Add => air::ast::BinaryOp::BitAdd,
+                BinaryOp::BitXor => air::ast::BinaryOp::BitXor,
                 _ => panic!("unhandled bv binary operation {:?}", op),
             };
             
@@ -507,6 +507,7 @@ fn exp_to_bv_expr(state: &State, exp: &Exp, parent_width: u32) -> (Expr, u32) {
             return (Arc::new(ExprX::Binary(bop, lh, rh)), lwidth);
         }
         ExpX::Unary(op, exp) => {
+            // remove Clip and use the underlying bv operation
             if let UnaryOp::Clip(IntRange::U(width)) = op {
                 return exp_to_bv_expr(state, exp, *width);
             } else {
