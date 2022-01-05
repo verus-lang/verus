@@ -277,6 +277,16 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp) -> Expr {
                 BinaryOp::BitAnd => {
                     ExprX::Apply(Arc::new(crate::def::UINT_AND.to_string()), Arc::new(vec![lh, rh]))
                 }
+                BinaryOp::BitOr => {
+                    ExprX::Apply(Arc::new(crate::def::UINT_OR.to_string()), Arc::new(vec![lh, rh]))
+                }
+                BinaryOp::Shl => {
+                    ExprX::Apply(Arc::new(crate::def::UINT_SHL.to_string()), Arc::new(vec![lh, rh]))
+                }
+                BinaryOp::Shr => {
+                    ExprX::Apply(Arc::new(crate::def::UINT_SHR.to_string()), Arc::new(vec![lh, rh]))
+                }
+
                 _ => {
                     let aop = match op {
                         BinaryOp::And => panic!("internal error"),
@@ -293,10 +303,11 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp) -> Expr {
                         BinaryOp::Mul => panic!("internal error"),
                         BinaryOp::EuclideanDiv => air::ast::BinaryOp::EuclideanDiv,
                         BinaryOp::EuclideanMod => air::ast::BinaryOp::EuclideanMod,
-                        BinaryOp::BitOr => air::ast::BinaryOp::BitOr,
-                        BinaryOp::Shr => air::ast::BinaryOp::Shr,
-                        BinaryOp::Shl => air::ast::BinaryOp::Shl,
-                        BinaryOp::BitAnd | BinaryOp::BitXor => panic!("internal error"),
+                        BinaryOp::BitOr => panic!("internal error"),
+                        BinaryOp::Shr => panic!("internal error"),
+                        BinaryOp::Shl => panic!("internal error"),
+                        BinaryOp::BitAnd => panic!("internal error"),
+                        BinaryOp::BitXor => panic!("internal error"),
                         _ => panic!("unhandled bv operation translation {:?}", op),
                     };
                     ExprX::Binary(aop, lh, rh)
@@ -480,12 +491,18 @@ fn exp_to_bv_expr(state: &State, exp: &Exp, parent_width: u32) -> (Expr, u32) {
                     air::ast::BinaryOp::Eq
                 }
                 BinaryOp::Add => air::ast::BinaryOp::BitAdd,
-                // here the bv operation is translated as it is
-                BinaryOp::BitXor => air::ast::BinaryOp::BitXor,
-                BinaryOp::BitAnd => air::ast::BinaryOp::BitAnd,
+                BinaryOp::Sub => air::ast::BinaryOp::BitSub,
+                BinaryOp::Mul => air::ast::BinaryOp::BitMul,
+                BinaryOp::EuclideanDiv => air::ast::BinaryOp::BitDiv,
                 BinaryOp::EuclideanMod => air::ast::BinaryOp::BitMod,
                 BinaryOp::Lt => air::ast::BinaryOp::BitLt,
                 BinaryOp::Gt => air::ast::BinaryOp::BitGt,
+                BinaryOp::Le => air::ast::BinaryOp::BitLe,
+                BinaryOp::Ge => air::ast::BinaryOp::BitGe,
+                // here the bv operation is translated as it is
+                BinaryOp::BitXor => air::ast::BinaryOp::BitXor,
+                BinaryOp::BitAnd => air::ast::BinaryOp::BitAnd,
+                BinaryOp::BitOr => air::ast::BinaryOp::BitOr,
                 BinaryOp::Shl => air::ast::BinaryOp::Shl,
                 BinaryOp::Shr => air::ast::BinaryOp::Shr,
                 _ => panic!("unhandled bv binary operation {:?}", op),
@@ -515,8 +532,14 @@ fn exp_to_bv_expr(state: &State, exp: &Exp, parent_width: u32) -> (Expr, u32) {
         }
         ExpX::Unary(op, exp) => {
             // remove Clip and use the underlying bv operation
-            if let UnaryOp::Clip(IntRange::U(width)) = op {
-                return exp_to_bv_expr(state, exp, *width);
+            // implicitly convert signed to unsigned
+            if let UnaryOp::Clip(range) = op {
+                let _ = match range {
+                    IntRange::I(width) | IntRange::U(width) => {
+                        return exp_to_bv_expr(state, exp, *width);
+                    }
+                    _ => panic!("unhandled bv clip {:?}", op),
+                };
             } else {
                 panic!("unhandled bv unary operation {:?}", op);
             }

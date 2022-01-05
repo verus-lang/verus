@@ -2,60 +2,22 @@ use builtin::*;
 mod pervasive;
 use pervasive::*;
 
-// pub fn concat64() ->  {
-//     unimplemented!();
-// }
 
-// #[spec]
-// fn modulo_8(i: int) -> int {
-// 	i % 8
-// }
-
+// TODO: fix parser.rs#node_to_typ when assert_bit_vector() fails
+// TODO: bit-width inference
+// TODO: concat and bit select
+// TODO: bitvector function mode 
 #[exec]
-fn bit_assert_example1(b: u32) -> u32 {
-   assert_bit_vector(b & 7 == b % 8);
-   assert_bit_vector(b ^ b == 0);
-   assert_bit_vector(b & 0xff < 0x100);
+fn bit_assert_example2(b: u32) -> u32 {
+   assert_bit_vector(b+1 == b);     
    // assert_bit_vector(0xff & b < 0x100);
    // assert_bit_vector(0x100 > b & 0xff);
-   // assert_bit_vector(b<<2 == b*4);
    // assert_bit_vector(0x90 + 0x10 > 0xff & b);
-
-   assert(b & 7 == b % 8);
-   assert(b ^ b == 0);
-   assert(b & 0xff < 0x100);
    // assert(0x100 > b & 0xff);
-   // assert(b<<2 == b*4);
    
    b + 1
 }
 
-
-
-
-
-
-// #[exec]
-// // #[verifier(bit_vector)]
-// fn bit_assert_example2(b: u32, c: u32) -> u32 {
-//    // requires(b > 0);
-// 	// ensures(|ret: u32| ret == b + 1);
-
-//    assert_bit_vector(b & 7 == b % 8);
-//    assert(b & 7 == b % 8);
-
-//    assert_bit_vector(b ^ b == 0);
-//    assert(b ^ b == 0);
-
-//    // assert(b + 1 == 1 + b);
-// 	// let mut c: u32 = b + 1;
-//    // c = c * 1;
-//    // assert_bit_vector(b + c == c + b);
-
-//    assert_bit_vector(b & 0xff < 0x100);
-//    assert(b & 0xff < 0x100);
-//    b + 1
-// }
 
 // #[exec]
 // fn bv128_to_u64(b: bv128) -> (u64, u64){

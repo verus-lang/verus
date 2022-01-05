@@ -137,7 +137,7 @@ fn check_bv_exprs(typing: &mut Typing, f_name: &str, exprs: &[Expr]) -> Result<T
     }
 
     // return bool type if it is comparision op
-    if f_name.eq("<") || f_name.eq(">") {
+    if f_name.eq("<") || f_name.eq(">") || f_name.eq(">=") || f_name.eq("<=") {
         return Ok(bt());
     }
 
@@ -215,6 +215,12 @@ fn check_expr(typing: &mut Typing, expr: &Expr) -> Result<Typ, TypeError> {
         ExprX::Binary(BinaryOp::BitGt, e1, e2) => {
             check_bv_exprs(typing, ">", &[e1.clone(), e2.clone()])
         }
+        ExprX::Binary(BinaryOp::BitLe, e1, e2) => {
+            check_bv_exprs(typing, "<=", &[e1.clone(), e2.clone()])
+        }
+        ExprX::Binary(BinaryOp::BitGe, e1, e2) => {
+            check_bv_exprs(typing, ">=", &[e1.clone(), e2.clone()])
+        }
         ExprX::Binary(BinaryOp::BitXor, e1, e2) => {
             check_bv_exprs(typing, "bvxor", &[e1.clone(), e2.clone()])
         }
@@ -229,6 +235,15 @@ fn check_expr(typing: &mut Typing, expr: &Expr) -> Result<Typ, TypeError> {
         }
         ExprX::Binary(BinaryOp::BitAdd, e1, e2) => {
             check_bv_exprs(typing, "bvadd", &[e1.clone(), e2.clone()])
+        }
+        ExprX::Binary(BinaryOp::BitSub, e1, e2) => {
+            check_bv_exprs(typing, "bvsub", &[e1.clone(), e2.clone()])
+        }
+        ExprX::Binary(BinaryOp::BitMul, e1, e2) => {
+            check_bv_exprs(typing, "bvmul", &[e1.clone(), e2.clone()])
+        }
+        ExprX::Binary(BinaryOp::BitDiv, e1, e2) => {
+            check_bv_exprs(typing, "bvudiv", &[e1.clone(), e2.clone()])
         }
         ExprX::Binary(BinaryOp::Shr, e1, e2) => {
             check_bv_exprs(typing, ">>", &[e1.clone(), e2.clone()])

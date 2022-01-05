@@ -48,6 +48,9 @@ pub(crate) fn prelude_nodes() -> Vec<Node> {
 
     let uint_xor = str_to_node(UINT_XOR);
     let uint_and = str_to_node(UINT_AND);
+    let uint_or = str_to_node(UINT_OR);
+    let uint_shr = str_to_node(UINT_SHR);
+    let uint_shl = str_to_node(UINT_SHL);
 
     nodes_vec!(
         // Fuel
@@ -283,6 +286,9 @@ pub(crate) fn prelude_nodes() -> Vec<Node> {
         // these are the uninterpreted integer versions
         (declare-fun [uint_xor] (Int Int) Int)
         (declare-fun [uint_and] (Int Int) Int)
+        (declare-fun [uint_or] (Int Int) Int)
+        (declare-fun [uint_shr] (Int Int) Int)
+        (declare-fun [uint_shl] (Int Int) Int)
     )
 }
 

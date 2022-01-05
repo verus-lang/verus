@@ -158,11 +158,15 @@ impl Printer {
                     BinaryOp::BitAnd => "bvand",
                     BinaryOp::BitOr => "bvor",
                     BinaryOp::BitAdd => "bvadd",
-                    BinaryOp::BitMod => "bvurem",
-                    BinaryOp::BitLt => "bvult",
-                    BinaryOp::BitGt => "bvugt",
-
-                    BinaryOp::Shr => "bvshr",
+                    BinaryOp::BitSub => "bvsub",
+                    BinaryOp::BitMul => "bvmul",
+                    BinaryOp::BitDiv => "bvudiv", // unsigned
+                    BinaryOp::BitMod => "bvurem", // unsigned
+                    BinaryOp::BitLt => "bvult",   // unsigned
+                    BinaryOp::BitGt => "bvugt",   // unsigned
+                    BinaryOp::BitLe => "bvule",   // unsigned
+                    BinaryOp::BitGe => "bvuge",   // unsigned
+                    BinaryOp::Shr => "bvlshr",    // logical shift for unsigned bv
                     BinaryOp::Shl => "bvshl",
                 };
                 Node::List(vec![str_to_node(sop), self.expr_to_node(lhs), self.expr_to_node(rhs)])

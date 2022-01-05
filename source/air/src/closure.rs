@@ -420,11 +420,16 @@ fn simplify_expr(ctxt: &mut Context, state: &mut State, expr: &Expr) -> (Typ, Ex
                 BinaryOp::Implies | BinaryOp::Eq => Arc::new(TypX::Bool),
                 BinaryOp::Le | BinaryOp::Ge | BinaryOp::Lt | BinaryOp::Gt => Arc::new(TypX::Bool),
                 BinaryOp::EuclideanDiv | BinaryOp::EuclideanMod => Arc::new(TypX::Int),
-                BinaryOp::BitGt | BinaryOp::BitLt => Arc::new(TypX::Bool),
+                BinaryOp::BitGt | BinaryOp::BitLt | BinaryOp::BitGe | BinaryOp::BitLe => {
+                    Arc::new(TypX::Bool)
+                }
                 BinaryOp::BitXor
                 | BinaryOp::BitAnd
                 | BinaryOp::BitOr
                 | BinaryOp::BitAdd
+                | BinaryOp::BitSub
+                | BinaryOp::BitMul
+                | BinaryOp::BitDiv
                 | BinaryOp::Shr
                 | BinaryOp::Shl
                 | BinaryOp::BitMod => {
