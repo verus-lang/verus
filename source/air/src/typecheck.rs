@@ -57,7 +57,7 @@ fn typ_name(typ: &Typ) -> String {
     }
 }
 
-fn typ_eq(typ1: &Typ, typ2: &Typ) -> bool {
+pub fn typ_eq(typ1: &Typ, typ2: &Typ) -> bool {
     typ1 == typ2
 }
 
