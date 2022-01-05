@@ -1,6 +1,7 @@
 use crate::ast::{
     BinaryOp, Constant, DatatypeX, Expr, ExprX, Fun, FunX, FunctionX, Ident, Idents, Mode, Param,
     Params, Path, PathX, SpannedTyped, Typ, TypX, Variant, Variants, VirErr, VirErrX, Visibility,
+    IntRange,
 };
 use crate::def::Spanned;
 use crate::util::vec_map;
@@ -52,6 +53,13 @@ pub fn types_equal(typ1: &Typ, typ2: &Typ) -> bool {
         (TypX::TypParam(x1), TypX::TypParam(x2)) => x1 == x2,
         _ => false,
     }
+}
+
+pub fn bitwidth_from_type(et: &Typ) -> Option<u32> {
+    if let TypX::Int(IntRange::U(size)) = &**et {
+        return Some(*size);
+    }
+    return None;
 }
 
 pub fn path_as_rust_name(path: &Path) -> String {

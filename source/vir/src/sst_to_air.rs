@@ -2,7 +2,7 @@ use crate::ast::{
     BinaryOp, Fun, Ident, Idents, IntRange, Mode, Params, Path, SpannedTyped, Typ, TypX, Typs,
     UnaryOp, UnaryOpr,
 };
-use crate::ast_util::{get_field, get_variant};
+use crate::ast_util::{get_field, get_variant, bitwidth_from_type};
 use crate::context::Ctx;
 use crate::def::{
     fun_to_string, path_to_string, prefix_box, prefix_ensures, prefix_fuel_id, prefix_requires,
@@ -62,17 +62,6 @@ pub(crate) fn typ_to_air(_ctx: &Ctx, typ: &Typ) -> air::ast::Typ {
         TypX::TypParam(_) => str_typ(POLY),
         TypX::TypeId => str_typ(crate::def::TYPE),
         TypX::Air(t) => t.clone(),
-    }
-}
-
-pub fn bitwidth_from_type(typ: &Typ) -> Option<u32> {
-    match &**typ {
-        TypX::Int(range) => match range {
-            IntRange::U(width) => Some(*width),
-            _ => None,
-            // panic!("unhandled IntRange in bv type conversion"),
-        },
-        _ => None,
     }
 }
 
@@ -390,7 +379,6 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp) -> Expr {
 struct State {
     local_shared: Vec<Decl>, // shared between all queries for a single function
     local_bv_shared: Vec<Decl>, // used in bv mode, fixed width uint variables have corresponding bv types
-    local_bv_width: HashMap<Ident, u32>, // used in bv mode
     commands: Vec<Command>,
     snapshot_count: u32, // Used to ensure unique Idents for each snapshot
     sids: Vec<Ident>, // a stack of snapshot ids, the top one should dominate the current position in the AST
@@ -470,11 +458,11 @@ fn exp_to_bv_expr(state: &State, exp: &Exp, parent_width: u32) -> (Expr, u32) {
             );
         }
         ExpX::Var(x) => {
-            // look up the bitwidth of a variable
-            let id = suffix_local_unique_id(x);
-            let width = state.local_bv_width.get(&id).unwrap();
-            assert!(parent_width == 0 || parent_width == *width);
-            return (string_var(&suffix_local_unique_id(x)), *width);
+            if let Some(width) = bitwidth_from_type(&exp.typ) {
+                return (string_var(&suffix_local_unique_id(x)), width);
+            } else {
+                panic!("internal error: unhandled var type in bv translation {:?}", exp.typ);
+            }
         }
         ExpX::Binary(op, lhs, rhs) => {
             let bop = match op {
@@ -849,7 +837,6 @@ pub fn body_stm_to_air(
     // Others are private to each query.
     let mut local_shared: Vec<Decl> = Vec::new();
     let mut local_bv_shared: Vec<Decl> = Vec::new();
-    let mut local_bv_width: HashMap<Ident, u32> = HashMap::new();
 
     for x in typ_params.iter() {
         local_shared
@@ -865,7 +852,6 @@ pub fn body_stm_to_air(
         if let Some(width) = bitwidth_from_type(&decl.typ) {
             let typ = bv_typ(width);
             local_bv_shared.push(Arc::new(DeclX::Var(suffix_local_unique_id(&decl.ident), typ)));
-            local_bv_width.insert(suffix_local_unique_id(&decl.ident), width);
         }
     }
 
@@ -886,7 +872,6 @@ pub fn body_stm_to_air(
     let mut state = State {
         local_shared,
         local_bv_shared,
-        local_bv_width,
         commands: Vec::new(),
         snapshot_count: 0,
         sids: vec![initial_sid.clone()],
