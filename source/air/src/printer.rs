@@ -89,9 +89,11 @@ impl Printer {
             TypX::Lambda if self.print_as_smt => str_to_node(crate::def::FUNCTION),
             TypX::Lambda => str_to_node("Fun"),
             TypX::Named(name) => str_to_node(&name.clone()),
-            TypX::BitVec(size) if self.print_as_smt => Node::List(
-                vec![str_to_node("_"), str_to_node("BitVec"), str_to_node(&size.to_string())]),
-            TypX::BitVec(size) => str_to_node(format!("BitVec{}", size).as_str()),
+            TypX::BitVec(size) => Node::List(vec![
+                str_to_node("_"),
+                str_to_node("BitVec"),
+                str_to_node(&size.to_string()),
+            ]),
         }
     }
 
@@ -156,6 +158,7 @@ impl Printer {
                     BinaryOp::UintAnd => "uintand",
 
                     BinaryOp::BitXor => "bvxor",
+
                     BinaryOp::BitAnd => "bvand",
                     BinaryOp::BitOr => "bvor",
                     BinaryOp::BitAdd => "bvadd",

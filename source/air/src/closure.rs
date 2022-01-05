@@ -4,7 +4,7 @@ use crate::ast::{
 };
 use crate::ast_util::{ident_binder, mk_forall};
 use crate::context::Context;
-use crate::typecheck::DeclaredX;
+use crate::typecheck::{typ_eq, DeclaredX};
 use crate::util::vec_map;
 use std::sync::Arc;
 
@@ -415,14 +415,21 @@ fn simplify_expr(ctxt: &mut Context, state: &mut State, expr: &Expr) -> (Typ, Ex
             (typ, Arc::new(ExprX::Unary(*op, es[0].clone())), t)
         }
         ExprX::Binary(op, e1, e2) => {
+            let (es, ts) = simplify_exprs_ref(ctxt, state, &vec![e1, e2]);
             let typ = match op {
                 BinaryOp::Implies | BinaryOp::Eq => Arc::new(TypX::Bool),
                 BinaryOp::Le | BinaryOp::Ge | BinaryOp::Lt | BinaryOp::Gt => Arc::new(TypX::Bool),
                 BinaryOp::EuclideanDiv | BinaryOp::EuclideanMod => Arc::new(TypX::Int),
-                // TODO: is this actually reasonable for bit vector operations?
-                BinaryOp::UintXor | BinaryOp::UintAnd |BinaryOp::BitXor | BinaryOp::BitAnd | BinaryOp::BitOr | BinaryOp::BitAdd | BinaryOp::BitMod | BinaryOp::BitLt | BinaryOp::BitGt |BinaryOp::Shr | BinaryOp::Shl => Arc::new(TypX::Int),
+                BinaryOp::BitXor
+                | BinaryOp::BitAnd
+                | BinaryOp::BitOr
+                | BinaryOp::BitAdd
+                | BinaryOp::Shr
+                | BinaryOp::Shl => {
+                    assert!(typ_eq(&(ts[0].0), &(ts[1].0)));
+                    ts[0].0.clone()
+                }
             };
-            let (es, ts) = simplify_exprs_ref(ctxt, state, &vec![e1, e2]);
             let (es, t) = enclose(state, App::Binary(*op), es, ts);
             (typ, Arc::new(ExprX::Binary(*op, es[0].clone(), es[1].clone())), t)
         }

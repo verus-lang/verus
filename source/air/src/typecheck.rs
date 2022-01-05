@@ -57,7 +57,7 @@ fn typ_name(typ: &Typ) -> String {
     }
 }
 
-fn typ_eq(typ1: &Typ, typ2: &Typ) -> bool {
+pub fn typ_eq(typ1: &Typ, typ2: &Typ) -> bool {
     typ1 == typ2
 }
 
@@ -122,26 +122,18 @@ fn get_bv_width(et: &Typ) -> Result<u32, TypeError> {
     if let TypX::BitVec(size) = &**et {
         return Ok(*size);
     }
-    panic!("???{:?}", et);
     return Err("not a bit vector type".to_string());
 }
 
-fn check_bv_exprs(
-    typing: &mut Typing,
-    f_name: &str,
-    exprs: &[Expr],
-    ) -> Result<Typ, TypeError> {
-
+fn check_bv_exprs(typing: &mut Typing, f_name: &str, exprs: &[Expr]) -> Result<Typ, TypeError> {
     let t0 = check_expr(typing, &exprs[0])?;
     let t1 = check_expr(typing, &exprs[1])?;
 
     let w0 = get_bv_width(&t0)?;
     let w1 = get_bv_width(&t1)?;
 
-    if w0 != w1 && w0 != 0 && w1 != 0 {
-        return Err(format!(
-                "in call to {}, argument should have the same width", 
-                f_name));
+    if w0 != w1 {
+        return Err(format!("in call to {}, argument should have the same width", f_name));
     }
 
     // return bool type if it is comparision op
@@ -192,9 +184,11 @@ fn check_expr(typing: &mut Typing, expr: &Expr) -> Result<Typ, TypeError> {
             if typ_eq(&t1, &t2) {
                 Ok(bt())
             } else {
-                println!("{:?}, {:?}", t1, t2);
-                let _ = check_bv_exprs(typing, "=", &[e1.clone(), e2.clone()])?;
-                Ok(bt())
+                Err(format!(
+                    "in equality, left expression has type {} and right expression has different type {}",
+                    typ_name(&t1),
+                    typ_name(&t2)
+                ))
             }
         }
         ExprX::Binary(BinaryOp::Le, e1, e2) => {
@@ -243,7 +237,7 @@ fn check_expr(typing: &mut Typing, expr: &Expr) -> Result<Typ, TypeError> {
             check_bv_exprs(typing, "bvadd", &[e1.clone(), e2.clone()])
         }
         ExprX::Binary(BinaryOp::Shr, e1, e2) => {
-            check_bv_exprs(typing, ">>",&[e1.clone(), e2.clone()])
+            check_bv_exprs(typing, ">>", &[e1.clone(), e2.clone()])
         }
         ExprX::Binary(BinaryOp::Shl, e1, e2) => {
             check_bv_exprs(typing, "<<", &[e1.clone(), e2.clone()])

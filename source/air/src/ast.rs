@@ -56,6 +56,7 @@ pub enum BinaryOp {
     UintAnd,
 
     BitXor,
+
     BitAnd,
     BitOr,
     BitAdd,

@@ -254,7 +254,7 @@ fn check_expr(typing: &mut Typing, outer_mode: Mode, expr: &Expr) -> Result<Mode
             Ok(Mode::Proof)
         }
         ExprX::AssertBV(e) => {
-            check_expr_has_mode(typing, Mode::Proof, e, Mode::Proof)?;
+            check_expr_has_mode(typing, Mode::Spec, e, Mode::Spec)?;
             Ok(Mode::Proof)
         }
         ExprX::If(e1, e2, e3) => {

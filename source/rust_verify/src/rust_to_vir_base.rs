@@ -372,7 +372,6 @@ pub(crate) fn get_verifier_attrs(attrs: &[Attribute]) -> Result<VerifierAttrs, V
         autoview: false,
         custom_req_err: None,
         bit_vector: false,
-
     };
     for attr in parse_attrs(attrs)? {
         match attr {

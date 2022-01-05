@@ -2,7 +2,7 @@ use crate::ast::{
     BinaryOp, Fun, Ident, Idents, IntRange, Mode, Params, Path, SpannedTyped, Typ, TypX, Typs,
     UnaryOp, UnaryOpr,
 };
-use crate::ast_util::{get_field, get_variant};
+use crate::ast_util::{bitwidth_from_type, get_field, get_variant};
 use crate::context::Ctx;
 use crate::def::{
     fun_to_string, path_to_string, prefix_box, prefix_ensures, prefix_fuel_id, prefix_requires,
@@ -19,9 +19,9 @@ use air::ast::{
     MultiOp, Quant, QueryX, Span, Stmt, StmtX, Trigger, Triggers,
 };
 use air::ast_util::{
-    bool_typ, ident_apply, ident_binder, ident_typ, ident_var, int_typ, bv_typ, mk_and, mk_bind_expr,
-    mk_eq, mk_exists, mk_implies, mk_ite, mk_not, mk_or, str_apply, str_ident, str_typ, str_var,
-    string_var,
+    bool_typ, bv_typ, ident_apply, ident_binder, ident_typ, ident_var, int_typ, mk_and,
+    mk_bind_expr, mk_eq, mk_exists, mk_implies, mk_ite, mk_not, mk_or, str_apply, str_ident,
+    str_typ, str_var, string_var,
 };
 use sise::ListReadUtil;
 use std::collections::{HashMap, HashSet};
@@ -63,16 +63,6 @@ pub(crate) fn typ_to_air(_ctx: &Ctx, typ: &Typ) -> air::ast::Typ {
         TypX::TypParam(_) => str_typ(POLY),
         TypX::TypeId => str_typ(crate::def::TYPE),
         TypX::Air(t) => t.clone(),
-    }
-}
-
-pub fn bitwidth_from_type(typ: &Typ) -> Option<u32> {
-    match &**typ {
-        TypX::Int(range) => match range {
-            IntRange::U(width) => Some(*width),
-            _ => panic!("unhandled IntRange in bv type conversion"),
-        }
-        _ => None,
     }
 }
 
@@ -280,6 +270,10 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp) -> Expr {
                     let eq = ExprX::Binary(air::ast::BinaryOp::Eq, lh, rh);
                     ExprX::Unary(air::ast::UnaryOp::Not, Arc::new(eq))
                 }
+                // here the bv operation is translated to the integer versions
+                BinaryOp::BitXor => {
+                    ExprX::Apply(Arc::new(crate::def::UINT_XOR.to_string()), Arc::new(vec![lh, rh]))
+                }
                 _ => {
                     let aop = match op {
                         BinaryOp::And => panic!("internal error"),
@@ -296,11 +290,13 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp) -> Expr {
                         BinaryOp::Mul => panic!("internal error"),
                         BinaryOp::EuclideanDiv => air::ast::BinaryOp::EuclideanDiv,
                         BinaryOp::EuclideanMod => air::ast::BinaryOp::EuclideanMod,
-                        BinaryOp::BitXor => air::ast::BinaryOp::UintXor,
+                        // BinaryOp::BitXor => air::ast::BinaryOp::UintXor,
                         BinaryOp::BitAnd => air::ast::BinaryOp::UintAnd,
                         BinaryOp::BitOr => air::ast::BinaryOp::BitOr,
                         BinaryOp::Shr => air::ast::BinaryOp::Shr,
                         BinaryOp::Shl => air::ast::BinaryOp::Shl,
+                        BinaryOp::BitXor => panic!("internal error"),
+                        _ => panic!("unhandled bv operation translation {:?}", op),
                     };
                     ExprX::Binary(aop, lh, rh)
                 }
@@ -391,7 +387,6 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp) -> Expr {
 struct State {
     local_shared: Vec<Decl>, // shared between all queries for a single function
     local_bv_shared: Vec<Decl>, // used in bv mode, fixed width uint variables have corresponding bv types
-    local_bv_width: HashMap<Ident, u32>, // used in bv mode
     commands: Vec<Command>,
     snapshot_count: u32, // Used to ensure unique Idents for each snapshot
     sids: Vec<Ident>, // a stack of snapshot ids, the top one should dominate the current position in the AST
@@ -443,20 +438,6 @@ impl State {
         // println!("{:?} {:?}", stm.span, aset);
         self.snap_map.push((stm.span.clone(), spos));
     }
-
-    // fn lookup_bv_ident_width(&self, id: &Ident) -> Option<u32> {
-    //     for decl in &self.local_bv_shared {
-    //         if let DeclX::Var(ident, typ) = decl {
-    //             if ident != id {
-    //                 continue;
-    //             }
-    //             if let TypX::BitVec(size) = typ {
-    //                 return Some(size)
-    //             }
-    //         }
-    //     }
-    //     return None;
-    // }
 }
 
 fn assume_var(span: &Span, x: &UniqueIdent, exp: &Exp) -> Stm {
@@ -478,14 +459,18 @@ fn exp_to_bv_expr(state: &State, exp: &Exp, parent_width: u32) -> (Expr, u32) {
         ExpX::Const(crate::ast::Constant::Nat(s)) => {
             assert!(parent_width != 0);
             // Nat constant will get an inferred bitwidth from the parent
-            return (Arc::new(ExprX::Const(Constant::BitVec(s.clone(), parent_width))), parent_width);
+            // the width is needed when printing bv constants
+            return (
+                Arc::new(ExprX::Const(Constant::BitVec(s.clone(), parent_width))),
+                parent_width,
+            );
         }
         ExpX::Var(x) => {
-            // look up the bitwidth of a variable
-            let id = suffix_local_unique_id(x);
-            let width = state.local_bv_width.get(&id).unwrap();
-            assert!(parent_width == 0 || parent_width == *width);
-            return (string_var(&suffix_local_unique_id(x)), *width);
+            if let Some(width) = bitwidth_from_type(&exp.typ) {
+                return (string_var(&suffix_local_unique_id(x)), width);
+            } else {
+                panic!("internal error: unhandled var type in bv translation {:?}", exp.typ);
+            }
         }
         ExpX::Binary(op, lhs, rhs) => {
             let bop = match op {
@@ -494,6 +479,7 @@ fn exp_to_bv_expr(state: &State, exp: &Exp, parent_width: u32) -> (Expr, u32) {
                     air::ast::BinaryOp::Eq
                 }
                 BinaryOp::Add => air::ast::BinaryOp::BitAdd,
+                // here the bv operation is translated as it is
                 BinaryOp::BitXor => air::ast::BinaryOp::BitXor,
                 BinaryOp::BitAnd => air::ast::BinaryOp::BitAnd,
                 BinaryOp::EuclideanMod => air::ast::BinaryOp::BitMod,
@@ -626,7 +612,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
             }
             vec![Arc::new(StmtX::Assert(Arc::new(spans), air_expr))]
         }
-        StmX::BVAssert(expr) => {
+        StmX::AssertBV(expr) => {
             let spans: Vec<Span> = vec![stm.span.clone()];
             let local = state.local_bv_shared.clone();
             let (air_expr, _) = exp_to_bv_expr(&state, &expr, 0);
@@ -883,7 +869,6 @@ pub fn body_stm_to_air(
     // Others are private to each query.
     let mut local_shared: Vec<Decl> = Vec::new();
     let mut local_bv_shared: Vec<Decl> = Vec::new();
-    let mut local_bv_width: HashMap<Ident, u32> = HashMap::new();
 
     for x in typ_params.iter() {
         local_shared
@@ -898,9 +883,7 @@ pub fn body_stm_to_air(
 
         if let Some(width) = bitwidth_from_type(&decl.typ) {
             let typ = bv_typ(width);
-            local_bv_shared.
-            push(Arc::new(DeclX::Var(suffix_local_unique_id(&decl.ident), typ)));
-            local_bv_width.insert(suffix_local_unique_id(&decl.ident), width);
+            local_bv_shared.push(Arc::new(DeclX::Var(suffix_local_unique_id(&decl.ident), typ)));
         }
     }
 
@@ -921,7 +904,6 @@ pub fn body_stm_to_air(
     let mut state = State {
         local_shared,
         local_bv_shared,
-        local_bv_width,
         commands: Vec::new(),
         snapshot_count: 0,
         sids: vec![initial_sid.clone()],
