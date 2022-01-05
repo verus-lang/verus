@@ -4,7 +4,7 @@ use crate::ast::{
 };
 use crate::ast_util::{ident_binder, mk_forall};
 use crate::context::Context;
-use crate::typecheck::{DeclaredX, typ_eq};
+use crate::typecheck::{typ_eq, DeclaredX};
 use crate::util::vec_map;
 use std::sync::Arc;
 
@@ -420,8 +420,12 @@ fn simplify_expr(ctxt: &mut Context, state: &mut State, expr: &Expr) -> (Typ, Ex
                 BinaryOp::Implies | BinaryOp::Eq => Arc::new(TypX::Bool),
                 BinaryOp::Le | BinaryOp::Ge | BinaryOp::Lt | BinaryOp::Gt => Arc::new(TypX::Bool),
                 BinaryOp::EuclideanDiv | BinaryOp::EuclideanMod => Arc::new(TypX::Int),
-                BinaryOp::BitXor | BinaryOp::BitAnd | BinaryOp::BitOr | BinaryOp::BitAdd | BinaryOp::Shr | BinaryOp::Shl => 
-                {
+                BinaryOp::BitXor
+                | BinaryOp::BitAnd
+                | BinaryOp::BitOr
+                | BinaryOp::BitAdd
+                | BinaryOp::Shr
+                | BinaryOp::Shl => {
                     assert!(typ_eq(&(ts[0].0), &(ts[1].0)));
                     ts[0].0.clone()
                 }

@@ -180,10 +180,10 @@ fn check_expr(typing: &mut Typing, expr: &Expr) -> Result<Typ, TypeError> {
                 Ok(bt())
             } else {
                 Err(format!(
-                        "in equality, left expression has type {} and right expression has different type {}",
-                        typ_name(&t1),
-                        typ_name(&t2)
-                    ))
+                    "in equality, left expression has type {} and right expression has different type {}",
+                    typ_name(&t1),
+                    typ_name(&t2)
+                ))
             }
         }
         ExprX::Binary(BinaryOp::Le, e1, e2) => {

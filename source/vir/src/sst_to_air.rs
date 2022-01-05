@@ -2,7 +2,7 @@ use crate::ast::{
     BinaryOp, Fun, Ident, Idents, IntRange, Mode, Params, Path, SpannedTyped, Typ, TypX, Typs,
     UnaryOp, UnaryOpr,
 };
-use crate::ast_util::{get_field, get_variant, bitwidth_from_type};
+use crate::ast_util::{bitwidth_from_type, get_field, get_variant};
 use crate::context::Ctx;
 use crate::def::{
     fun_to_string, path_to_string, prefix_box, prefix_ensures, prefix_fuel_id, prefix_requires,
@@ -270,7 +270,9 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp) -> Expr {
                     ExprX::Unary(air::ast::UnaryOp::Not, Arc::new(eq))
                 }
                 // here the bv operation is translated to the integer versions
-                BinaryOp::BitXor => ExprX::Apply(Arc::new(crate::def::UINT_XOR.to_string()), Arc::new(vec![lh, rh])),
+                BinaryOp::BitXor => {
+                    ExprX::Apply(Arc::new(crate::def::UINT_XOR.to_string()), Arc::new(vec![lh, rh]))
+                }
                 _ => {
                     let aop = match op {
                         BinaryOp::And => panic!("internal error"),
