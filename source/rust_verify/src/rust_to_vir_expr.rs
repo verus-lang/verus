@@ -685,7 +685,9 @@ pub(crate) fn pattern_to_vir<'tcx>(
             None,
             rustc_hir::Path {
                 res:
-                    res @ Res::Def(
+                    res
+                    @
+                    Res::Def(
                         DefKind::Ctor(
                             rustc_hir::def::CtorOf::Variant,
                             rustc_hir::def::CtorKind::Const,
@@ -710,7 +712,9 @@ pub(crate) fn pattern_to_vir<'tcx>(
                 None,
                 rustc_hir::Path {
                     res:
-                        res @ Res::Def(
+                        res
+                        @
+                        Res::Def(
                             DefKind::Ctor(
                                 rustc_hir::def::CtorOf::Variant,
                                 rustc_hir::def::CtorKind::Fn,
@@ -1088,42 +1092,34 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                         kind:
                             ExprKind::Match(
                                 cond,
-                                [
-                                    Arm {
-                                        pat:
-                                            Pat {
-                                                kind:
-                                                    PatKind::Lit(Expr {
-                                                        kind:
-                                                            ExprKind::Lit(
-                                                                rustc_span::source_map::Spanned {
-                                                                    node: LitKind::Bool(true),
-                                                                    ..
-                                                                },
-                                                            ),
-                                                        ..
-                                                    }),
-                                                ..
-                                            },
-                                        guard: None,
-                                        body,
-                                        ..
-                                    },
-                                    Arm {
-                                        pat: Pat { kind: PatKind::Wild, .. },
-                                        guard: None,
-                                        body:
-                                            Expr {
-                                                kind:
-                                                    ExprKind::Break(
-                                                        Destination { label: None, .. },
-                                                        None,
-                                                    ),
-                                                ..
-                                            },
-                                        ..
-                                    },
-                                ],
+                                [Arm {
+                                    pat:
+                                        Pat {
+                                            kind:
+                                                PatKind::Lit(Expr {
+                                                    kind:
+                                                        ExprKind::Lit(rustc_span::source_map::Spanned {
+                                                            node: LitKind::Bool(true),
+                                                            ..
+                                                        }),
+                                                    ..
+                                                }),
+                                            ..
+                                        },
+                                    guard: None,
+                                    body,
+                                    ..
+                                }, Arm {
+                                    pat: Pat { kind: PatKind::Wild, .. },
+                                    guard: None,
+                                    body:
+                                        Expr {
+                                            kind:
+                                                ExprKind::Break(Destination { label: None, .. }, None),
+                                            ..
+                                        },
+                                    ..
+                                }],
                                 MatchSource::WhileDesugar,
                             ),
                         ..
