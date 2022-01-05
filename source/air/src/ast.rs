@@ -52,11 +52,7 @@ pub enum BinaryOp {
     EuclideanDiv,
     EuclideanMod,
 
-    UintXor,
-    UintAnd,
-
     BitXor,
-
     BitAnd,
     BitOr,
     BitAdd,

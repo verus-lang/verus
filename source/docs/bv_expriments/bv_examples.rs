@@ -13,16 +13,16 @@ use pervasive::*;
 
 #[exec]
 fn bit_assert_example1(b: u32) -> u32 {
-   // assert_bit_vector(b & 7 == b % 8);
-   // assert_bit_vector(b ^ b == 0);
-   // assert_bit_vector(b & 0xff < 0x100);
-   assert_bit_vector(0xff & b < 0x100);
+   assert_bit_vector(b & 7 == b % 8);
+   assert_bit_vector(b ^ b == 0);
+   assert_bit_vector(b & 0xff < 0x100);
+   // assert_bit_vector(0xff & b < 0x100);
    // assert_bit_vector(0x100 > b & 0xff);
    // assert_bit_vector(b<<2 == b*4);
    // assert_bit_vector(0x90 + 0x10 > 0xff & b);
 
-   // assert(b & 7 == b % 8);
-   // assert(b ^ b == 0);
+   assert(b & 7 == b % 8);
+   assert(b ^ b == 0);
    assert(b & 0xff < 0x100);
    // assert(0x100 > b & 0xff);
    // assert(b<<2 == b*4);

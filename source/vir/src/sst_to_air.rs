@@ -274,6 +274,9 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp) -> Expr {
                 BinaryOp::BitXor => {
                     ExprX::Apply(Arc::new(crate::def::UINT_XOR.to_string()), Arc::new(vec![lh, rh]))
                 }
+                BinaryOp::BitAnd => {
+                    ExprX::Apply(Arc::new(crate::def::UINT_AND.to_string()), Arc::new(vec![lh, rh]))
+                }
                 _ => {
                     let aop = match op {
                         BinaryOp::And => panic!("internal error"),
@@ -290,12 +293,10 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp) -> Expr {
                         BinaryOp::Mul => panic!("internal error"),
                         BinaryOp::EuclideanDiv => air::ast::BinaryOp::EuclideanDiv,
                         BinaryOp::EuclideanMod => air::ast::BinaryOp::EuclideanMod,
-                        // BinaryOp::BitXor => air::ast::BinaryOp::UintXor,
-                        BinaryOp::BitAnd => air::ast::BinaryOp::UintAnd,
                         BinaryOp::BitOr => air::ast::BinaryOp::BitOr,
                         BinaryOp::Shr => air::ast::BinaryOp::Shr,
                         BinaryOp::Shl => air::ast::BinaryOp::Shl,
-                        BinaryOp::BitXor => panic!("internal error"),
+                        BinaryOp::BitAnd | BinaryOp::BitXor => panic!("internal error"),
                         _ => panic!("unhandled bv operation translation {:?}", op),
                     };
                     ExprX::Binary(aop, lh, rh)
