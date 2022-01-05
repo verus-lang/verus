@@ -594,7 +594,7 @@ pub(crate) fn expr_to_stm_opt(
         }
         ExprX::AssertBV(e) => {
             let expr = expr_to_exp_state(ctx, state, &e)?;
-            let assert = Spanned::new(e.span.clone(), StmX::BVAssert(expr));
+            let assert = Spanned::new(e.span.clone(), StmX::AssertBV(expr));
             Ok((vec![assert], None))
         }
         ExprX::If(e0, e1, None) => {

@@ -34,7 +34,7 @@ pub(crate) fn stm_assign(
         }
         StmX::Call(..)
         | StmX::Assert(..)
-        | StmX::BVAssert(..)
+        | StmX::AssertBV(..)
         | StmX::Assume(_)
         | StmX::Fuel(..) => stm.clone(),
         StmX::Assign { lhs, rhs: _, is_init } => {

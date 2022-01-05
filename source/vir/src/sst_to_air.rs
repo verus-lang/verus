@@ -580,7 +580,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
             }
             vec![Arc::new(StmtX::Assert(Arc::new(spans), air_expr))]
         }
-        StmX::BVAssert(expr) => {
+        StmX::AssertBV(expr) => {
             let spans: Vec<Span> = vec![stm.span.clone()];
             let local = state.local_bv_shared.clone();
             let (air_expr, _) = exp_to_bv_expr(&state, &expr, 0);
