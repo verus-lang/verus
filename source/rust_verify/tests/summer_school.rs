@@ -1086,7 +1086,7 @@ test_verify_one_file! {
                 /* TODO(chris): The verifier does not yet support the following Rust feature: pattern Wild (_index as _)*/
         }
 
-        fn binary_search(haystack: Vec<u64>, needle:u64) -> usize
+        fn binary_search(haystack: &Vec<u64>, needle:u64) -> usize
         {
             requires(is_sorted(view_u64(haystack.view())));
             ensures(|index:usize| [
@@ -1118,16 +1118,121 @@ test_verify_one_file! {
                 } else {
                     #[spec] let old_high = high;
                     high = mid;
-                    // TODO(chris): i2 is a workaround for name collision with prior forall
-                    forall(|i2:int| {
-                        requires(high < i2 && i2 < haystack.len());
-                        ensures(needle <= haystack.index(i2));
-                        assert(view_u64(haystack.view()).index(mid) <= view_u64(haystack.view()).index(i2));
+                    forall(|i:int| {
+                        requires(high < i && i < haystack.len());
+                        ensures(needle <= haystack.index(i));
+                        assert(view_u64(haystack.view()).index(mid) <= view_u64(haystack.view()).index(i));
                     });
                 }
                 assert(high - low < decreases); // Termination check
             }
             low
         }
+
+        // TODO construct vector
+        fn test(sq: Vec<u64>) {
+            requires(equal(sq.view(), seq![3, 6, 7, 7, 10]));
+            let ret = binary_search(&sq, 7);
+            assert(sq.index(1) < 7 && 7 <= sq.index(2));
+            assert(ret == 2);
+            let ret_2 = binary_search(&sq, 8);
+            assert(sq.index(3) < 8 && 8 <= sq.index(4));
+            assert(ret_2 == 4);
+        }
     } => Ok(())
+}
+
+const LIBRARY_SRC: &str = code_str! {
+    #[allow(unused_imports)]
+    use seq::*;
+    // #[allow(unused_imports)]
+    // use vec::*;
+    #[allow(unused_imports)]
+    use set::*;
+
+    #[spec]
+    fn drop_last<T>(the_seq: Seq<T>) -> Seq<T> {
+        // The original code had: requires(0 < the_seq.len())
+        // Now if the_seq.len() == 0, the result is arbitrary()
+        // TODO(Chris) maybe this will: recommends(0 < the_seq.len())
+        the_seq.subrange(0, the_seq.len() as int - 1)
+    }
+
+    #[spec]
+    fn last<T>(the_seq: Seq<T>) -> T {
+        // The original code had a requires
+        // Now if the_seq.len() == 0, the result is arbitrary()
+        the_seq.index(the_seq.len() as int - 1)
+    }
+
+    #[spec]
+    fn union_seq_of_sets<T>(the_sets: Seq<Set<T>>) -> Set<T>
+    {
+        decreases(the_sets.len());
+        if the_sets.len() == 0 {
+            set![]
+        } else {
+            union_seq_of_sets(drop_last(the_sets)).union(last(the_sets))
+        }
+    }
+
+    // TODO better name
+    #[proof]
+    fn lemma_drop_last<T>(elems: Seq<T>) {
+        ensures(forall(|idx: nat| idx < elems.len() - 1 >>= equal(elems.index(idx), drop_last(elems).index(idx))));
+
+        // TODO
+        assume(false);
+    }
+
+    // TODO this maybe could become an ensures on `union_seq_of_sets`
+    #[proof]
+    fn sets_are_subsets_of_union<T>(the_sets: Seq<Set<T>>) {
+        ensures(
+            forall(|idx: nat| idx < the_sets.len() >>= the_sets.index(idx).subset_of(union_seq_of_sets(the_sets))));
+        decreases(the_sets.len());
+
+        lemma_drop_last::<T>(the_sets);
+
+        if the_sets.len() != 0 {
+            sets_are_subsets_of_union::<T>(drop_last(the_sets));
+            // Chris believes this should be unnecessary
+            forall(|idx: nat| {
+                requires(
+                    idx >= 0 && // TODO: this should be unnecessary, as it should come from the typing invariant for nat
+                    idx < the_sets.len()
+                );
+                ensures(the_sets.index(idx).subset_of(union_seq_of_sets(the_sets))); // != 0
+
+                if idx < the_sets.len() - 1 {
+
+                    assert(equal(the_sets.index(idx), drop_last(the_sets).index(idx)));
+                }
+            });
+        }
+    }
+
+    #[proof]
+    fn each_union_member_belongs_to_a_set<T>(the_sets: Seq<Set<T>>) {
+        ensures(forall(|member: T| union_seq_of_sets(the_sets).contains(member) >>=
+            exists(|idx: nat| idx < the_sets.len() && the_sets.index(idx).contains(member))));
+        decreases(the_sets.len());
+
+        lemma_drop_last(the_sets);
+
+        if the_sets.len() != 0 {
+            each_union_member_belongs_to_a_set::<T>(drop_last(the_sets));
+
+            forall(|member: T| {
+                requires(union_seq_of_sets(the_sets).contains(member));
+                ensures(exists(|idx: nat| idx < the_sets.len() && the_sets.index(idx).contains(member)));
+                assume(false);
+            });
+        }
+    }
+
+};
+
+test_verify_one_file! {
+    #[test] library LIBRARY_SRC.to_string() => Ok(())
 }

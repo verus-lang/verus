@@ -25,6 +25,11 @@ pub fn lemma_len0_is_empty<A>(s: Set<A>) {
 }
 
 #[proof]
+pub fn lemma_set_union_commutative<A>(s1: Set<A>, s2: Set<A>) {
+    ensures(equal(s1.union(s2), s2.union(s1)));
+}
+
+#[proof]
 pub fn lemma_len_union<A>(s1: Set<A>, s2: Set<A>) {
     requires([
         s1.finite(),
