@@ -140,6 +140,33 @@ fn check_function(ctxt: &Ctxt, function: &Function) -> Result<(), VirErr> {
     Ok(())
 }
 
+fn check_datatype(dt: &Datatype) -> Result<(), VirErr> {
+    let unforgeable = dt.x.unforgeable;
+    let dt_mode = dt.x.mode;
+
+    if unforgeable && dt_mode != Mode::Proof {
+        return err_string(&dt.span, format!("An unforgeable datatype must be in #[proof] mode."));
+    }
+
+    // For an 'unforgeable' datatype, all fields must be #[spec]
+
+    if unforgeable {
+        for variant in dt.x.variants.iter() {
+            for binder in variant.a.iter() {
+                let (_typ, field_mode) = &binder.a;
+                if *field_mode != Mode::Spec {
+                    return err_string(
+                        &dt.span,
+                        format!("All fields of a unforgeable datatype must be marked #[spec]"),
+                    );
+                }
+            }
+        }
+    }
+
+    return Ok(());
+}
+
 pub fn check_crate(krate: &Krate) -> Result<(), VirErr> {
     let funs = krate
         .functions
@@ -154,6 +181,9 @@ pub fn check_crate(krate: &Krate) -> Result<(), VirErr> {
     let ctxt = Ctxt { funs, dts };
     for function in krate.functions.iter() {
         check_function(&ctxt, function)?;
+    }
+    for dt in krate.datatypes.iter() {
+        check_datatype(dt)?;
     }
     crate::recursive_types::check_recursive_types(krate)?;
     Ok(())

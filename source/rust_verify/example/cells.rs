@@ -7,7 +7,6 @@ use crate::cell::new_empty;
 #[allow(unused_imports)]
 use crate::cell::*;
 
-
 struct X {
   pub i: u64,
 }
@@ -19,7 +18,7 @@ fn main() {
     PCellWithToken{pcell, token} => {
       #[proof] let t1 = pcell.put(x, token);
 
-      assert(equal(t1.view().value, option::Option::Some(X { i : 5 })));
+      assert(equal(t1.value, option::Option::Some(X { i : 5 })));
     }
   }
 }

@@ -44,11 +44,17 @@ impl FileLoader for TestFileLoader {
     }
 }
 
+#[derive(Debug)]
+pub struct TestErr {
+    pub errors: Vec<Vec<ErrorSpan>>,
+    pub has_vir_error: bool,
+}
+
 #[allow(dead_code)]
 pub fn verify_files(
     files: impl IntoIterator<Item = (String, String)>,
     entry_file: String,
-) -> Result<(), Vec<Vec<ErrorSpan>>> {
+) -> Result<(), TestErr> {
     verify_files_and_pervasive(files, entry_file, false)
 }
 
@@ -57,7 +63,7 @@ pub fn verify_files_and_pervasive(
     files: impl IntoIterator<Item = (String, String)>,
     entry_file: String,
     verify_pervasive: bool,
-) -> Result<(), Vec<Vec<ErrorSpan>>> {
+) -> Result<(), TestErr> {
     let mut rustc_args = vec![
         "../../rust/install/bin/rust_verify".to_string(),
         "--edition".to_string(),
@@ -134,7 +140,10 @@ pub fn verify_files_and_pervasive(
         verifier.test_capture_output = Some(captured_output_1);
         let file_loader: TestFileLoader = TestFileLoader { files };
         let status = rust_verify::driver::run(&mut verifier, &rustc_args, &file_loader);
-        status.map(|_| ()).map_err(|_| verifier.errors)
+        status.map(|_| ()).map_err(|_| TestErr {
+            errors: verifier.errors,
+            has_vir_error: verifier.encountered_vir_error,
+        })
     });
     eprintln!(
         "{}",
@@ -162,7 +171,7 @@ pub const USE_PRELUDE: &str = crate::common::code_str! {
 };
 
 #[allow(dead_code)]
-pub fn verify_one_file(code: String) -> Result<(), Vec<Vec<ErrorSpan>>> {
+pub fn verify_one_file(code: String) -> Result<(), TestErr> {
     let files = vec![("test.rs".to_string(), format!("{}\n\n{}", USE_PRELUDE, code.as_str()))];
     verify_files(files, "test.rs".to_string())
 }
@@ -196,16 +205,21 @@ macro_rules! test_verify_one_file {
 
 /// Assert that one verification failure happened on source lines containin the string "FAILS".
 #[allow(dead_code)]
-pub fn assert_one_fails(err: Vec<Vec<ErrorSpan>>) {
-    assert_eq!(err.len(), 1);
-    assert!(err[0].first().expect("span").test_span_line.contains("FAILS"));
+pub fn assert_one_fails(err: TestErr) {
+    assert_eq!(err.errors.len(), 1);
+    assert!(err.errors[0].first().expect("span").test_span_line.contains("FAILS"));
 }
 
 /// Assert that `count` verification failures happened on source lines containin the string "FAILS".
 #[allow(dead_code)]
-pub fn assert_fails(err: Vec<Vec<ErrorSpan>>, count: usize) {
-    assert_eq!(err.len(), count);
+pub fn assert_fails(err: TestErr, count: usize) {
+    assert_eq!(err.errors.len(), count);
     for c in 0..count {
-        assert!(err[c].first().expect("span").test_span_line.contains("FAILS"));
+        assert!(err.errors[c].first().expect("span").test_span_line.contains("FAILS"));
     }
+}
+
+#[allow(dead_code)]
+pub fn assert_vir_error(err: TestErr) {
+    assert!(err.has_vir_error);
 }

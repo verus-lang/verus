@@ -95,7 +95,9 @@ pub fn check_item_struct<'tcx>(
     };
     let variants = Arc::new(vec![variant]);
     let mode = get_mode(Mode::Exec, attrs);
-    let datatype = DatatypeX { path, visibility, transparency, typ_params, variants, mode };
+    let unforgeable = vattrs.unforgeable;
+    let datatype =
+        DatatypeX { path, visibility, transparency, typ_params, variants, mode, unforgeable };
     vir.datatypes.push(spanned_new(span, datatype));
     Ok(())
 }
@@ -130,6 +132,7 @@ pub fn check_item_enum<'tcx>(
         DatatypeTransparency::Always
     };
     let mode = get_mode(Mode::Exec, attrs);
+    let unforgeable = vattrs.unforgeable;
     vir.datatypes.push(spanned_new(
         span,
         DatatypeX {
@@ -139,6 +142,7 @@ pub fn check_item_enum<'tcx>(
             typ_params,
             variants: Arc::new(variants),
             mode,
+            unforgeable,
         },
     ));
     Ok(())
