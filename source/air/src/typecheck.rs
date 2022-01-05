@@ -179,9 +179,11 @@ fn check_expr(typing: &mut Typing, expr: &Expr) -> Result<Typ, TypeError> {
             if typ_eq(&t1, &t2) {
                 Ok(bt())
             } else {
-                println!("{:?}, {:?}", t1, t2);
-                let _ = check_bv_exprs(typing, "=", &[e1.clone(), e2.clone()])?;
-                Ok(bt())
+                Err(format!(
+                        "in equality, left expression has type {} and right expression has different type {}",
+                        typ_name(&t1),
+                        typ_name(&t2)
+                    ))
             }
         }
         ExprX::Binary(BinaryOp::Le, e1, e2) => {
