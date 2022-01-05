@@ -154,7 +154,6 @@ impl Printer {
                     BinaryOp::EuclideanDiv => "div",
                     BinaryOp::EuclideanMod => "mod",
 
-                    BinaryOp::UintXor => "uintxor",
                     BinaryOp::BitXor => "bvxor",
 
                     BinaryOp::BitAnd => "bvand",

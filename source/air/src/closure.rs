@@ -420,7 +420,6 @@ fn simplify_expr(ctxt: &mut Context, state: &mut State, expr: &Expr) -> (Typ, Ex
                 BinaryOp::Le | BinaryOp::Ge | BinaryOp::Lt | BinaryOp::Gt => Arc::new(TypX::Bool),
                 BinaryOp::EuclideanDiv | BinaryOp::EuclideanMod => Arc::new(TypX::Int),
                 // TODO: is this actually reasonable for bit vector operations?
-                BinaryOp::UintXor
                 | BinaryOp::BitXor
                 | BinaryOp::BitAnd
                 | BinaryOp::BitOr

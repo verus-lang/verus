@@ -280,6 +280,8 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp) -> Expr {
                     let eq = ExprX::Binary(air::ast::BinaryOp::Eq, lh, rh);
                     ExprX::Unary(air::ast::UnaryOp::Not, Arc::new(eq))
                 }
+                // here the bv operation is translated to the integer versions
+                BinaryOp::BitXor => ExprX::Apply(Arc::new(crate::def::UINT_XOR.to_string()), Arc::new(vec![lh, rh])),
                 _ => {
                     let aop = match op {
                         BinaryOp::And => panic!("internal error"),
@@ -296,8 +298,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp) -> Expr {
                         BinaryOp::Mul => panic!("internal error"),
                         BinaryOp::EuclideanDiv => air::ast::BinaryOp::EuclideanDiv,
                         BinaryOp::EuclideanMod => air::ast::BinaryOp::EuclideanMod,
-                        // here the bv operation is translated to the integer versions
-                        BinaryOp::BitXor => air::ast::BinaryOp::UintXor,
+                        BinaryOp::BitXor => panic!("internal error"),
                         _ => panic!("unhandled bv operation translation {:?}", op),
                     };
                     ExprX::Binary(aop, lh, rh)

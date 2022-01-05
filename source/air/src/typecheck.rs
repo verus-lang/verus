@@ -204,9 +204,6 @@ fn check_expr(typing: &mut Typing, expr: &Expr) -> Result<Typ, TypeError> {
         ExprX::Binary(BinaryOp::EuclideanMod, e1, e2) => {
             check_exprs(typing, "mod", &[it(), it()], &it(), &[e1.clone(), e2.clone()])
         }
-        ExprX::Binary(BinaryOp::UintXor, e1, e2) => {
-            check_exprs(typing, "^", &[it(), it()], &it(), &[e1.clone(), e2.clone()])
-        }
         ExprX::Binary(BinaryOp::BitXor, e1, e2) => {
             check_bv_exprs(typing, "bvxor", &[e1.clone(), e2.clone()])
         }
