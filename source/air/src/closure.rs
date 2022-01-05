@@ -420,15 +420,14 @@ fn simplify_expr(ctxt: &mut Context, state: &mut State, expr: &Expr) -> (Typ, Ex
                 BinaryOp::Implies | BinaryOp::Eq => Arc::new(TypX::Bool),
                 BinaryOp::Le | BinaryOp::Ge | BinaryOp::Lt | BinaryOp::Gt => Arc::new(TypX::Bool),
                 BinaryOp::EuclideanDiv | BinaryOp::EuclideanMod => Arc::new(TypX::Int),
-                BinaryOp::BitGt | BinaryOp::BitLt  => Arc::new(TypX::Bool),
+                BinaryOp::BitGt | BinaryOp::BitLt => Arc::new(TypX::Bool),
                 BinaryOp::BitXor
                 | BinaryOp::BitAnd
                 | BinaryOp::BitOr
                 | BinaryOp::BitAdd
                 | BinaryOp::Shr
                 | BinaryOp::Shl
-                | BinaryOp::BitMod
-                 => {
+                | BinaryOp::BitMod => {
                     assert!(typ_eq(&(ts[0].0), &(ts[1].0)));
                     ts[0].0.clone()
                 }

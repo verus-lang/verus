@@ -491,24 +491,20 @@ fn exp_to_bv_expr(state: &State, exp: &Exp, parent_width: u32) -> (Expr, u32) {
                 _ => panic!("unhandled bv binary operation {:?}", op),
             };
 
-
-
-            // TODO: change below codes. Current version would fail to infer bit-width sometimes 
-            if parent_width != 0{
+            // TODO: change below codes. Current version would fail to infer bit-width sometimes
+            if parent_width != 0 {
                 let (lh, lwidth) = exp_to_bv_expr(state, lhs, parent_width);
-                let (rh, rwidth) = exp_to_bv_expr(state, rhs, parent_width);            
+                let (rh, rwidth) = exp_to_bv_expr(state, rhs, parent_width);
                 assert!(lwidth == rwidth);
                 return (Arc::new(ExprX::Binary(bop, lh, rh)), lwidth);
-            }  
-            else{
-                if let ExpX::Const(_) = lhs.x{
+            } else {
+                if let ExpX::Const(_) = lhs.x {
                     let (rh, rwidth) = exp_to_bv_expr(state, rhs, parent_width);
                     parent_width = rwidth;
                     let (lh, lwidth) = exp_to_bv_expr(state, lhs, parent_width);
                     assert!(lwidth == rwidth);
                     return (Arc::new(ExprX::Binary(bop, lh, rh)), lwidth);
-                }
-                else{
+                } else {
                     let (lh, lwidth) = exp_to_bv_expr(state, lhs, parent_width);
                     parent_width = lwidth;
                     let (rh, rwidth) = exp_to_bv_expr(state, rhs, parent_width);
@@ -516,7 +512,6 @@ fn exp_to_bv_expr(state: &State, exp: &Exp, parent_width: u32) -> (Expr, u32) {
                     return (Arc::new(ExprX::Binary(bop, lh, rh)), lwidth);
                 }
             }
-            
         }
         ExpX::Unary(op, exp) => {
             // remove Clip and use the underlying bv operation

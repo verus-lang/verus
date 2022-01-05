@@ -57,9 +57,9 @@ pub enum BinaryOp {
     BitOr,
     BitAdd,
 
-    BitLt,   // unsigned lt (for now)
-    BitGt,   // unsigned lt (for now)
-    BitMod,  // unsigned mod
+    BitLt,  // unsigned lt (for now)
+    BitGt,  // unsigned lt (for now)
+    BitMod, // unsigned mod
 
     Shr,
     Shl,
