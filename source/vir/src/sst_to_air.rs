@@ -464,32 +464,21 @@ fn one_stmt(stmts: Vec<Stmt>) -> Stmt {
 }
 
 // convert the sst expression into bv air expression
-fn exp_to_bv_expr(state: &State, exp: &Exp, parent_width: u32) -> (Expr, u32) {
-    let mut parent_width = parent_width;
-
+fn exp_to_bv_expr(state: &State, exp: &Exp) -> Expr {
     match &exp.x {
         ExpX::Const(crate::ast::Constant::Nat(s)) => {
-            assert!(parent_width != 0);
-            // Nat constant will get an inferred bitwidth from the parent
-            // the width is needed when printing bv constants
-            return (
-                Arc::new(ExprX::Const(Constant::BitVec(s.clone(), parent_width))),
-                parent_width,
-            );
+            if let Some(width) = bitwidth_from_type(&exp.typ) {
+                // The width is needed when printing bv constants.
+                return Arc::new(ExprX::Const(Constant::BitVec(s.clone(), width)));
+            }
+            panic!("internal error: unable to get width from constant of type {:?}", exp.typ);
         }
         ExpX::Var(x) => {
-            if let Some(width) = bitwidth_from_type(&exp.typ) {
-                return (string_var(&suffix_local_unique_id(x)), width);
-            } else {
-                panic!("internal error: unhandled var type in bv translation {:?}", exp.typ);
-            }
+            return string_var(&suffix_local_unique_id(x));
         }
         ExpX::Binary(op, lhs, rhs) => {
             let bop = match op {
-                BinaryOp::Eq(_) => {
-                    parent_width = 0;
-                    air::ast::BinaryOp::Eq
-                }
+                BinaryOp::Eq(_) => air::ast::BinaryOp::Eq,
                 BinaryOp::Add => air::ast::BinaryOp::BitAdd,
                 BinaryOp::Sub => air::ast::BinaryOp::BitSub,
                 BinaryOp::Mul => air::ast::BinaryOp::BitMul,
@@ -508,38 +497,14 @@ fn exp_to_bv_expr(state: &State, exp: &Exp, parent_width: u32) -> (Expr, u32) {
                 _ => panic!("unhandled bv binary operation {:?}", op),
             };
 
-            // TODO: change below codes. Current version would fail to infer bit-width sometimes
-            if parent_width != 0 {
-                let (lh, lwidth) = exp_to_bv_expr(state, lhs, parent_width);
-                let (rh, rwidth) = exp_to_bv_expr(state, rhs, parent_width);
-                assert!(lwidth == rwidth);
-                return (Arc::new(ExprX::Binary(bop, lh, rh)), lwidth);
-            } else {
-                if let ExpX::Const(_) = lhs.x {
-                    let (rh, rwidth) = exp_to_bv_expr(state, rhs, parent_width);
-                    parent_width = rwidth;
-                    let (lh, lwidth) = exp_to_bv_expr(state, lhs, parent_width);
-                    assert!(lwidth == rwidth);
-                    return (Arc::new(ExprX::Binary(bop, lh, rh)), lwidth);
-                } else {
-                    let (lh, lwidth) = exp_to_bv_expr(state, lhs, parent_width);
-                    parent_width = lwidth;
-                    let (rh, rwidth) = exp_to_bv_expr(state, rhs, parent_width);
-                    assert!(lwidth == rwidth);
-                    return (Arc::new(ExprX::Binary(bop, lh, rh)), lwidth);
-                }
-            }
+            let lh = exp_to_bv_expr(state, lhs);
+            let rh = exp_to_bv_expr(state, rhs);
+            return Arc::new(ExprX::Binary(bop, lh, rh));
         }
         ExpX::Unary(op, exp) => {
             // remove Clip and use the underlying bv operation
-            // implicitly convert signed to unsigned
-            if let UnaryOp::Clip(range) = op {
-                let _ = match range {
-                    IntRange::I(width) | IntRange::U(width) => {
-                        return exp_to_bv_expr(state, exp, *width);
-                    }
-                    _ => panic!("unhandled bv clip {:?}", op),
-                };
+            if let UnaryOp::Clip(_) = op {
+                return exp_to_bv_expr(state, exp);
             } else {
                 panic!("unhandled bv unary operation {:?}", op);
             }
@@ -634,7 +599,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
         StmX::AssertBV(expr) => {
             let spans: Vec<Span> = vec![stm.span.clone()];
             let local = state.local_bv_shared.clone();
-            let (air_expr, _) = exp_to_bv_expr(&state, &expr, 0);
+            let air_expr = exp_to_bv_expr(&state, &expr);
             let assertion = Arc::new(StmtX::Assert(Arc::new(spans), air_expr));
             // this creates a separate query for the bv assertion
             let query = Arc::new(QueryX { local: Arc::new(local), assertion });
