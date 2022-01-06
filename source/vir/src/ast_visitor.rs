@@ -138,7 +138,10 @@ where
             let op = match op {
                 UnaryOpr::Box(t) => UnaryOpr::Box(map_typ_visitor_env(t, env, ft)?),
                 UnaryOpr::Unbox(t) => UnaryOpr::Unbox(map_typ_visitor_env(t, env, ft)?),
-                _ => op.clone(),
+                UnaryOpr::HasType(t) => UnaryOpr::HasType(map_typ_visitor_env(t, env, ft)?),
+                UnaryOpr::IsVariant { .. } => op.clone(),
+                UnaryOpr::TupleField { .. } => op.clone(),
+                UnaryOpr::Field { .. } => op.clone(),
             };
             let expr1 = map_expr_visitor_env(e1, map, env, fe, fs, ft)?;
             ExprX::UnaryOpr(op.clone(), expr1)
