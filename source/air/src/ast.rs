@@ -35,7 +35,7 @@ pub type Labels = Arc<Vec<Label>>;
 #[derive(Clone)] // for Debug, see ast_util
 pub struct ErrorX {
     pub msg: String,
-    pub spans: Vec<Span>, // "primary" spans
+    pub spans: Vec<Span>,   // "primary" spans
     pub labels: Vec<Label>, // additional spans, with string annotations
 }
 pub type Error = Arc<ErrorX>;

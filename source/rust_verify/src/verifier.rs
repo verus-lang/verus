@@ -14,7 +14,7 @@ use std::fs::File;
 use std::io::Write;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use vir::ast::{Krate, VirErr, VirErrX, Visibility};
+use vir::ast::{Krate, VirErr, Visibility};
 use vir::ast_util::{fun_as_rust_dbg, is_visible_to};
 use vir::def::SnapPos;
 
@@ -68,17 +68,7 @@ impl ErrorSpan {
     }
 }
 
-fn report_vir_error(compiler: &Compiler, vir_err: VirErr) {
-    let span: Span = from_raw_span(&vir_err.span.raw_span);
-    let multispan = MultiSpan::from_span(span);
-    match &vir_err.x {
-        VirErrX::Str(msg) => {
-            compiler.session().parse_sess.span_diagnostic.span_err(multispan, &msg);
-        }
-    }
-}
-
-fn report_verify_error(compiler: &Compiler, error: &Error) {
+fn report_error(compiler: &Compiler, error: &Error) {
     if error.spans.len() == 0 {
         panic!("internal error: found Error with no span")
     }
@@ -167,7 +157,7 @@ impl Verifier {
                 panic!("internal error: generated ill-typed AIR code: {}", err);
             }
             ValidityResult::Invalid(air_model, error) => {
-                report_verify_error(compiler, &error);
+                report_error(compiler, &error);
 
                 let mut errors = vec![ErrorSpan::new_from_air_span(
                     compiler.session().source_map(),
@@ -568,7 +558,7 @@ impl rustc_driver::Callbacks for Verifier {
                 Ok(true) => {}
                 Ok(false) => {}
                 Err(err) => {
-                    report_vir_error(compiler, err);
+                    report_error(compiler, &err);
                     self.encountered_vir_error = true;
                 }
             }

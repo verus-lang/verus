@@ -1,20 +1,20 @@
 use crate::ast::{
     BinaryOp, Constant, DatatypeX, Expr, ExprX, Fun, FunX, FunctionX, Ident, Idents, Mode, Param,
-    Params, Path, PathX, SpannedTyped, Typ, TypX, Variant, Variants, VirErr, VirErrX, Visibility,
+    Params, Path, PathX, SpannedTyped, Typ, TypX, Variant, Variants, VirErr, Visibility,
 };
-use crate::def::Spanned;
 use crate::util::vec_map;
 use air::ast::{Binder, BinderX, Binders, Span};
 pub use air::ast_util::{ident_binder, str_ident};
+use air::errors::{error_str, error_string};
 use std::fmt;
 use std::sync::Arc;
 
 pub fn err_str<A>(span: &Span, msg: &str) -> Result<A, VirErr> {
-    Err(Spanned::new(span.clone(), VirErrX::Str(msg.to_string())))
+    Err(error_str(span, msg))
 }
 
 pub fn err_string<A>(span: &Span, msg: String) -> Result<A, VirErr> {
-    Err(Spanned::new(span.clone(), VirErrX::Str(msg)))
+    Err(error_string(span, msg))
 }
 
 impl PathX {

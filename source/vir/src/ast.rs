@@ -6,18 +6,13 @@
 //! for verification.
 
 use crate::def::Spanned;
-use air::ast::{Quant, Span};
+use air::ast::{Error, Quant, Span};
 use std::sync::Arc;
 
 pub use air::ast::{Binder, Binders};
 
 /// Result<T, VirErr> is used when an error might need to be reported to the user
-pub type VirErr = Arc<Spanned<VirErrX>>;
-#[derive(Clone, Debug)]
-pub enum VirErrX {
-    /// Currently, the only variant is a String, but we may add more cases later
-    Str(String),
-}
+pub type VirErr = Error;
 
 /// A non-qualified name, such as a local variable name or type parameter name
 pub type Ident = Arc<String>;
