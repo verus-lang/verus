@@ -1,6 +1,6 @@
 use crate::ast::{
-    BinaryOp, Bind, BindX, Binder, BinderX, Constant, DeclX, Expr, ExprX, Exprs, Ident, MultiOp,
-    Quant, Span, Trigger, Typ, TypX, Typs, UnaryOp,
+    BinaryOp, Bind, BindX, Binder, BinderX, Constant, DeclX, ErrorX, Expr, ExprX, Exprs, Ident,
+    MultiOp, Quant, Span, Trigger, Typ, TypX, Typs, UnaryOp,
 };
 use std::fmt::Debug;
 use std::sync::Arc;
@@ -8,6 +8,12 @@ use std::sync::Arc;
 impl Debug for Span {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
         f.debug_tuple("Span").field(&self.as_string).finish()
+    }
+}
+
+impl Debug for ErrorX {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
+        write!(f, "{}", self.msg)
     }
 }
 

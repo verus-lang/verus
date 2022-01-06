@@ -1,4 +1,4 @@
-use air::ast::{CommandX, Span};
+use air::ast::{CommandX, Label};
 use air::context::{Context, ValidityResult};
 use getopts::Options;
 use sise::Node;
@@ -122,18 +122,11 @@ pub fn main() {
             ValidityResult::TypeError(err) => {
                 panic!("Type error: {}", err);
             }
-            ValidityResult::Invalid(_m, spans) => {
+            ValidityResult::Invalid(_m, err) => {
                 count_errors += 1;
-                if spans.len() == 0 {
-                    println!(
-                        "Error at unlabeled assert (use 'assert \"...label...\" e') for better errors"
-                    );
-                } else {
-                    let Span { as_string, .. } = &spans[0];
-                    println!("Error at {}", as_string);
-                    for Span { as_string, .. } in spans[1..].iter() {
-                        println!("Additional error detail at {}", as_string);
-                    }
+                println!("Error at {}", err.msg);
+                for Label { msg, .. } in &err.labels {
+                    println!("Additional error detail at {}", msg);
                 }
             }
         }

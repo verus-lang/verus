@@ -4,11 +4,30 @@ use std::sync::Arc;
 pub type RawSpan = Arc<dyn std::any::Any + std::marker::Sync + std::marker::Send>;
 #[derive(Clone)] // for Debug, see ast_util
 pub struct Span {
-    pub description: Option<String>,
     pub raw_span: RawSpan,
     pub as_string: String, // if we can't print (description, raw_span), print as_string instead
 }
-pub type Spans = Arc<Vec<Span>>;
+
+#[derive(Debug, Clone)]
+pub struct Label {
+    pub span: Span,
+    pub msg: String,
+}
+pub type Labels = Arc<Vec<Label>>;
+
+/// Our error type is designed to resemble Rust's MultiSpan,
+/// with an additional 'msg' String to serve as an error message.
+/// An Error should always have at least one 'span' which represents
+/// the primary point where the error is. It is possible to have more
+/// than one span, and it is possible to have additional label information.
+
+#[derive(Clone)] // for Debug, see ast_util
+pub struct ErrorX {
+    pub msg: String,
+    pub spans: Vec<Span>, // "primary" spans
+    pub labels: Vec<Label>,
+}
+pub type Error = Arc<ErrorX>;
 
 pub type TypeError = String;
 
@@ -103,7 +122,8 @@ pub enum ExprX {
     Multi(MultiOp, Exprs),
     IfElse(Expr, Expr, Expr),
     Bind(Bind, Expr),
-    LabeledAssertion(Spans, Expr),
+    LabeledAxiom(Labels, Expr),
+    LabeledAssertion(Error, Expr),
 }
 
 pub type Stmt = Arc<StmtX>;
@@ -111,7 +131,7 @@ pub type Stmts = Arc<Vec<Stmt>>;
 #[derive(Debug)]
 pub enum StmtX {
     Assume(Expr),
-    Assert(Spans, Expr),
+    Assert(Error, Expr),
     Havoc(Ident),
     Assign(Ident, Expr),
     // create a named snapshot of the state of the variables

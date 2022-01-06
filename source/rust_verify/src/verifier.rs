@@ -2,8 +2,8 @@ use crate::config::Args;
 use crate::context::{ContextX, ErasureInfo};
 use crate::debugger::Debugger;
 use crate::unsupported;
-use crate::util::{from_raw_span, vec_map};
-use air::ast::{Command, CommandX, Spans};
+use crate::util::from_raw_span;
+use air::ast::{Command, CommandX, Error, Label};
 use air::context::ValidityResult;
 use rustc_interface::interface::Compiler;
 use rustc_middle::ty::TyCtxt;
@@ -44,7 +44,7 @@ pub struct ErrorSpan {
 }
 
 impl ErrorSpan {
-    fn new_from_air_span(source_map: &SourceMap, air_span: &air::ast::Span) -> Self {
+    fn new_from_air_span(source_map: &SourceMap, msg: &String, air_span: &air::ast::Span) -> Self {
         let span: Span = from_raw_span(&air_span.raw_span);
         let filename: String = match source_map.span_to_filename(span) {
             FileName::Real(rfn) => rfn
@@ -61,7 +61,7 @@ impl ErrorSpan {
             source_map.span_to_snippet(span).expect("internal error: cannot extract Span line")
         };
         Self {
-            description: air_span.description.clone(),
+            description: Some(msg.clone()),
             span_data: (filename, (start.line, start.col), (end.line, end.col)),
             test_span_line: test_span_line,
         }
@@ -78,20 +78,25 @@ fn report_vir_error(compiler: &Compiler, vir_err: VirErr) {
     }
 }
 
-fn report_verify_error(compiler: &Compiler, spans: &Spans) {
-    if spans.len() == 0 {
+fn report_verify_error(compiler: &Compiler, error: &Error) {
+    if error.spans.len() == 0 {
         panic!("internal error: found Error with no span")
     }
-    let air::ast::Span { description, raw_span, .. } = &spans[0];
-    let msg = description.as_ref().unwrap_or(&"assertion failed".to_string()).clone();
-    let span: Span = from_raw_span(raw_span);
-    let mut multispan = MultiSpan::from_span(span);
-    for air::ast::Span { description, raw_span, .. } in spans[1..].iter() {
-        let msg = description.as_ref().unwrap_or(&"related location".to_string()).clone();
-        let span: Span = from_raw_span(raw_span);
-        multispan.push_span_label(span, msg);
+
+    let mut v = Vec::new();
+    for sp in &error.spans {
+        let span: Span = from_raw_span(&sp.raw_span);
+        v.push(span);
     }
-    compiler.session().parse_sess.span_diagnostic.span_err(multispan, &msg);
+
+    let mut multispan = MultiSpan::from_spans(v);
+
+    for Label { msg, span: sp } in &error.labels {
+        let span: Span = from_raw_span(&sp.raw_span);
+        multispan.push_span_label(span, msg.clone());
+    }
+
+    compiler.session().parse_sess.span_diagnostic.span_err(multispan, &error.msg);
 }
 
 fn report_chosen_triggers(
@@ -161,11 +166,22 @@ impl Verifier {
             ValidityResult::TypeError(err) => {
                 panic!("internal error: generated ill-typed AIR code: {}", err);
             }
-            ValidityResult::Invalid(air_model, spans) => {
-                report_verify_error(compiler, &spans);
-                let errors = vec_map(&*spans, |x| {
-                    ErrorSpan::new_from_air_span(compiler.session().source_map(), x)
-                });
+            ValidityResult::Invalid(air_model, error) => {
+                report_verify_error(compiler, &error);
+
+                let mut errors = vec![ErrorSpan::new_from_air_span(
+                    compiler.session().source_map(),
+                    &error.msg,
+                    &error.spans[0],
+                )];
+                for Label { msg, span } in &error.labels {
+                    errors.push(ErrorSpan::new_from_air_span(
+                        compiler.session().source_map(),
+                        msg,
+                        span,
+                    ));
+                }
+
                 self.errors.push(errors);
                 if self.args.debug {
                     let mut debugger = Debugger::new(
@@ -343,7 +359,6 @@ impl Verifier {
         air_context.set_rlimit(self.args.rlimit * 1000000);
 
         let air_no_span = air::ast::Span {
-            description: None,
             raw_span: crate::util::to_raw_span(no_span),
             as_string: "no location".to_string(),
         };

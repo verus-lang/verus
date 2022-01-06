@@ -2,6 +2,7 @@ use crate::ast::{Decl, DeclX, Expr, ExprX, Query, QueryX, Stmt, StmtX, UnaryOp};
 use crate::ast_util::bool_typ;
 use crate::ast_util::{mk_and, mk_implies, mk_or, mk_true};
 use crate::def::SWITCH_LABEL;
+use crate::errors::error_from_spans;
 use std::sync::Arc;
 
 fn stmt_to_expr(label_n: &mut u64, locals: &mut Vec<Decl>, stmt: &Stmt, pred: Expr) -> Expr {
@@ -56,6 +57,6 @@ pub(crate) fn lower_query(query: &Query) -> Query {
     let mut locals: Vec<Decl> = (*query.local).clone();
     let mut switch_label: u64 = 0;
     let expr = stmt_to_expr(&mut switch_label, &mut locals, &query.assertion, mk_true());
-    let assertion = Arc::new(StmtX::Assert(Arc::new(vec![]), expr));
+    let assertion = Arc::new(StmtX::Assert(error_from_spans(vec![]), expr));
     Arc::new(QueryX { local: Arc::new(locals), assertion })
 }

@@ -9,6 +9,7 @@ use crate::sst::{Bnd, BndX, Dest, Exp, ExpX, Exps, LocalDecl, LocalDeclX, Stm, S
 use crate::sst_visitor::{map_exp_visitor, map_stm_exp_visitor};
 use crate::util::{vec_map, vec_map_result};
 use air::ast::{Binder, BinderX, Binders, Quant, Span};
+use air::errors::error_string_with_label;
 use air::scope_map::ScopeMap;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -660,11 +661,16 @@ pub(crate) fn expr_to_stm_opt(
                     }
                 }
                 for ens in enss.iter() {
-                    let description = Some("postcondition not satisfied".to_string());
-                    let span = Span { description, ..expr.span.clone() };
-                    let description = Some("failed postcondition".to_string());
-                    let span2 = Span { description, ..ens.span.clone() };
-                    stms.push(Spanned::new(span, StmX::Assert(Some(span2), ens.clone())));
+                    let error = error_string_with_label(
+                        &expr.span,
+                        "postcondition not satisfied".to_string(),
+                        &ens.span,
+                        "failed postcondition".to_string(),
+                    );
+                    stms.push(Spanned::new(
+                        expr.span.clone(),
+                        StmX::Assert(Some(error), ens.clone()),
+                    ));
                 }
                 let expx = ExpX::Const(Constant::Bool(false));
                 let exp = SpannedTyped::new(&expr.span, &Arc::new(TypX::Bool), expx);
