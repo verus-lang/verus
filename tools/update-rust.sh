@@ -14,7 +14,7 @@ fi
 
 (
     cd rust
-    current_branch=`git name-rev --name-only HEAD`
+    current_branch=`git branch --show-current`
     if [ "$current_branch" != "verification" ]; then
         echo "ERROR: The verification branch is not checked out in the rust repository."
         echo "To continue, commit you changes and switch back to the verification branch in the rust repository."
