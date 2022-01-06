@@ -13,7 +13,6 @@ fn label_asserts<'ctx>(
     infos: &mut Vec<AssertionInfo>,
     axiom_infos: &mut Vec<AxiomInfo>,
     expr: &Expr,
-    is_global: bool,
 ) -> Expr {
     match &**expr {
         ExprX::Binary(op @ BinaryOp::Implies, lhs, rhs)
@@ -23,24 +22,24 @@ fn label_asserts<'ctx>(
             Arc::new(ExprX::Binary(
                 *op,
                 lhs.clone(),
-                label_asserts(context, infos, axiom_infos, rhs, is_global),
+                label_asserts(context, infos, axiom_infos, rhs),
             ))
         }
         ExprX::Multi(op @ MultiOp::And, exprs) | ExprX::Multi(op @ MultiOp::Or, exprs) => {
             let mut exprs_vec: Vec<Expr> = Vec::new();
             for expr in exprs.iter() {
-                exprs_vec.push(label_asserts(context, infos, axiom_infos, expr, is_global));
+                exprs_vec.push(label_asserts(context, infos, axiom_infos, expr));
             }
             Arc::new(ExprX::Multi(*op, Arc::new(exprs_vec)))
         }
         ExprX::Bind(bind, body) => match &**bind {
             BindX::Quant(Quant::Forall, _, _) => Arc::new(ExprX::Bind(
                 bind.clone(),
-                label_asserts(context, infos, axiom_infos, body, is_global),
+                label_asserts(context, infos, axiom_infos, body),
             )),
             _ => expr.clone(),
         },
-        ExprX::LabeledAssertion(error, expr) if !is_global => {
+        ExprX::LabeledAssertion(error, expr) => {
             let label = Arc::new(PREFIX_LABEL.to_string() + &infos.len().to_string());
 
             let decl = Arc::new(DeclX::Const(label.clone(), Arc::new(TypX::Bool)));
@@ -51,10 +50,10 @@ fn label_asserts<'ctx>(
             Arc::new(ExprX::Binary(
                 BinaryOp::Implies,
                 lhs,
-                label_asserts(context, infos, axiom_infos, expr, is_global),
+                label_asserts(context, infos, axiom_infos, expr),
             ))
         }
-        ExprX::LabeledAxiom(labels, expr) if is_global => {
+        ExprX::LabeledAxiom(labels, expr) => {
             let count = context.axiom_infos_count;
             context.axiom_infos_count += 1;
             let label = Arc::new(GLOBAL_PREFIX_LABEL.to_string() + &count.to_string());
@@ -67,7 +66,7 @@ fn label_asserts<'ctx>(
             Arc::new(ExprX::Binary(
                 BinaryOp::Implies,
                 lhs,
-                label_asserts(context, infos, axiom_infos, expr, is_global),
+                label_asserts(context, infos, axiom_infos, expr),
             ))
         }
         _ => expr.clone(),
@@ -93,7 +92,7 @@ pub(crate) fn smt_add_decl<'ctx>(context: &mut Context, decl: &Decl) {
             let expr = elim_zero_args_expr(expr);
             let mut infos: Vec<AssertionInfo> = Vec::new();
             let mut axiom_infos: Vec<AxiomInfo> = Vec::new();
-            let labeled_expr = label_asserts(context, &mut infos, &mut axiom_infos, &expr, true);
+            let labeled_expr = label_asserts(context, &mut infos, &mut axiom_infos, &expr);
             for info in axiom_infos {
                 crate::typecheck::add_decl(context, &info.decl, true).unwrap();
                 context
@@ -226,7 +225,7 @@ pub(crate) fn smt_check_query<'ctx>(
     // add labels to assertions for error reporting
     let mut infos: Vec<AssertionInfo> = Vec::new();
     let mut axiom_infos: Vec<AxiomInfo> = Vec::new();
-    let labeled_assertion = label_asserts(context, &mut infos, &mut axiom_infos, &assertion, false);
+    let labeled_assertion = label_asserts(context, &mut infos, &mut axiom_infos, &assertion);
     for info in &infos {
         context.smt_log.comment(&info.error.msg);
         if let Err(err) = crate::typecheck::add_decl(context, &info.decl, false) {
