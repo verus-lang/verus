@@ -452,8 +452,8 @@ fn exp_to_bv_expr(state: &State, exp: &Exp, parent_width: u32) -> (Expr, u32) {
     match &exp.x {
         ExpX::Const(crate::ast::Constant::Nat(s)) => {
             assert!(parent_width != 0);
-            // Nat constant will get an inferred bitwidth from the parent
-            // the width is needed when printing bv constants
+            // Nat constant will get an inferred bitwidth from the parent.
+            // The width is needed when printing bv constants.
             return (
                 Arc::new(ExprX::Const(Constant::BitVec(s.clone(), parent_width))),
                 parent_width,

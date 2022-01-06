@@ -207,7 +207,7 @@ pub(crate) enum Attr {
     Trigger(Option<Vec<u64>>),
     // custom error string to report for precondition failures
     CustomReqErr(String),
-    // verify using bitvector theory, not converting back and forth with integer
+    // verify using bitvector theory
     BitVector,
 }
 

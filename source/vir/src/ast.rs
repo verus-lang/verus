@@ -348,7 +348,7 @@ pub struct FunctionAttrsX {
     pub custom_req_err: Option<String>,
     /// coerce f(e, ...) to f(e.view(), ...)
     pub autoview: bool,
-    /// Verify using bit vector theory, not converting back and forth with integer
+    /// Verify using bitvector theory
     pub bit_vector: bool,
 }
 

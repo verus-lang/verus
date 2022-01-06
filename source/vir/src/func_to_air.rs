@@ -371,6 +371,7 @@ pub fn func_decl_to_air(
             }
             if function.x.attrs.bit_vector {
                 // TODO: function level bitvector mode
+                unimplemented!("function level bitvector mode");
             }
         }
     }
