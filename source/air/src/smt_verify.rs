@@ -187,7 +187,7 @@ fn smt_check_assertion<'ctx>(
             }
 
             // Attach the additional info to the error
-            // For example, the error might be something like "could not show precondition"
+            // For example, the error might be something like "precondition not satisfied"
             // (an error which comes from the air assert statement)
             // and the additional info might tell you _which_ precondition failed
             // (a label that comes from one of the axioms associated

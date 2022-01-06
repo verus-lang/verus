@@ -20,12 +20,23 @@ pub type Labels = Arc<Vec<Label>>;
 /// An Error should always have at least one 'span' which represents
 /// the primary point where the error is. It is possible to have more
 /// than one span, and it is possible to have additional label information.
+///
+/// Here's an example error:
+///
+/// error: precondition not satisfied                 // msg (String)
+///   --> filename.rs:18:5
+///    |
+/// 14 |     requires(b);
+///    |              - failed precondition           // label (Span, String)
+/// ...
+/// 18 |     has_expectations(false);
+///    |     ^^^^^^^^^^^^^^^^^^^^^^^                  // primary span (Span)
 
 #[derive(Clone)] // for Debug, see ast_util
 pub struct ErrorX {
     pub msg: String,
     pub spans: Vec<Span>, // "primary" spans
-    pub labels: Vec<Label>,
+    pub labels: Vec<Label>, // additional spans, with string annotations
 }
 pub type Error = Arc<ErrorX>;
 
