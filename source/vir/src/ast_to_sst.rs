@@ -564,16 +564,26 @@ pub(crate) fn expr_to_stm_opt(
 
             // Translate proof into a dead-end ending with an assert
             state.push_scope();
+            let mut body: Vec<Stm> = Vec::new();
             for var in vars.iter() {
-                state.declare_new_var(&var.name, &var.a, false, true);
+                let x = state.declare_new_var(&var.name, &var.a, false, true);
+                if crate::sst_to_air::typ_has_invariant(ctx, &var.a) {
+                    let xvarx = ExpX::Var(x);
+                    let xvar = SpannedTyped::new(&expr.span, &Arc::new(TypX::Bool), xvarx);
+                    let has_typx = ExpX::UnaryOpr(UnaryOpr::HasType(var.a.clone()), xvar);
+                    let has_typ = SpannedTyped::new(&expr.span, &Arc::new(TypX::Bool), has_typx);
+                    let assume = Spanned::new(require.span.clone(), StmX::Assume(has_typ));
+                    body.push(assume);
+                }
             }
-            let (mut body, e) = expr_to_stm_opt(ctx, state, proof)?;
+            let (mut proof_stms, e) = expr_to_stm_opt(ctx, state, proof)?;
             if let Some(_) = e {
                 return err_str(&expr.span, "forall/assert-by cannot end with an expression");
             }
             let require_exp = expr_to_exp_state(ctx, state, &require)?;
             let assume = Spanned::new(require.span.clone(), StmX::Assume(require_exp));
-            body.insert(0, assume);
+            body.push(assume);
+            body.append(&mut proof_stms);
             let ensure_exp = expr_to_exp_state(ctx, state, &ensure)?;
             let assert = Spanned::new(ensure.span.clone(), StmX::Assert(None, ensure_exp));
             body.push(assert);

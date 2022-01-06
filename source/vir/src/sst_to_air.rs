@@ -101,13 +101,23 @@ pub(crate) fn datatype_has_type(path: &Path, typs: &Typs, expr: &Expr) -> Expr {
     str_apply(crate::def::HAS_TYPE, &vec![expr.clone(), datatype_id(path, typs)])
 }
 
+pub(crate) fn typ_has_invariant(ctx: &Ctx, typ: &Typ) -> bool {
+    match &**typ {
+        TypX::Int(IntRange::Int) => false,
+        TypX::Int(_) => true,
+        TypX::Datatype(path, _) => ctx.datatypes_with_invariant.contains(path),
+        TypX::TypParam(_) => true,
+        _ => false,
+    }
+}
+
 // If expr has type typ, what can we assume to be true about expr?
 // For refinement types, transparent datatypes potentially containing refinement types,
 // and type variables potentially instantiated with refinement types, return Some invariant.
 // For non-refinement types and abstract types, return None,
 // since the SMT sorts for these types can express the types precisely with no need for refinement.
 pub(crate) fn typ_invariant(ctx: &Ctx, typ: &Typ, expr: &Expr) -> Option<Expr> {
-    // Should be kept in sync with vir::context::datatypes_invs
+    // Should be kept in sync with vir::context::datatypes_invs and typ_has_invariant
     match &**typ {
         TypX::Int(IntRange::Int) => None,
         TypX::Int(IntRange::Nat) => {
@@ -231,6 +241,10 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp) -> Expr {
             UnaryOpr::Unbox(typ) => {
                 let expr = exp_to_expr(ctx, exp);
                 try_unbox(expr, typ).expect("Unbox")
+            }
+            UnaryOpr::HasType(typ) => {
+                let expr = exp_to_expr(ctx, exp);
+                typ_invariant(ctx, typ, &expr).expect("HasType")
             }
             UnaryOpr::IsVariant { datatype, variant } => {
                 let expr = exp_to_expr(ctx, exp);

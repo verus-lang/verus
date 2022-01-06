@@ -170,6 +170,7 @@ fn check_expr(typing: &mut Typing, outer_mode: Mode, expr: &Expr) -> Result<Mode
         ExprX::Unary(_, e1) => check_expr(typing, outer_mode, e1),
         ExprX::UnaryOpr(UnaryOpr::Box(_), e1) => check_expr(typing, outer_mode, e1),
         ExprX::UnaryOpr(UnaryOpr::Unbox(_), e1) => check_expr(typing, outer_mode, e1),
+        ExprX::UnaryOpr(UnaryOpr::HasType(_), _) => panic!("internal error: HasType in modes.rs"),
         ExprX::UnaryOpr(UnaryOpr::IsVariant { .. }, e1) => check_expr(typing, outer_mode, e1),
         ExprX::UnaryOpr(UnaryOpr::TupleField { .. }, e1) => check_expr(typing, outer_mode, e1),
         ExprX::UnaryOpr(UnaryOpr::Field { datatype, variant: _, field }, e1) => {

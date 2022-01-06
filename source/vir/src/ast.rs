@@ -119,6 +119,9 @@ pub enum UnaryOpr {
     Box(Typ),
     /// coerce Boxed(Typ) --> Typ
     Unbox(Typ),
+    /// satisfies type invariant for Typ
+    /// (should only be used when sst_to_air::typ_has_invariant returns true)
+    HasType(Typ),
     /// Test whether expression is a particular variant of a datatype
     IsVariant { datatype: Path, variant: Ident },
     /// Read .0, .1, etc. from tuple (Note: ast_simplify replaces this with Field)

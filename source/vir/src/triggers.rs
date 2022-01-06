@@ -64,6 +64,7 @@ fn check_trigger_expr(exp: &Exp, free_vars: &mut HashSet<Ident>) -> Result<(), V
             | UnaryOpr::IsVariant { .. }
             | UnaryOpr::TupleField { .. }
             | UnaryOpr::Field { .. } => Ok(exp.clone()),
+            UnaryOpr::HasType(_) => panic!("internal error: trigger on HasType"),
         },
         ExpX::Binary(op, _, _) => {
             use BinaryOp::*;

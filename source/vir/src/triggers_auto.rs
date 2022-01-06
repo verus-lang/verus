@@ -244,6 +244,9 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
         }
         ExpX::UnaryOpr(UnaryOpr::Box(_), e1) => gather_terms(ctxt, ctx, e1, depth),
         ExpX::UnaryOpr(UnaryOpr::Unbox(_), e1) => gather_terms(ctxt, ctx, e1, depth),
+        ExpX::UnaryOpr(UnaryOpr::HasType(_), _) => {
+            (false, Arc::new(TermX::App(ctxt.other(), Arc::new(vec![]))))
+        }
         ExpX::UnaryOpr(UnaryOpr::IsVariant { .. }, e1) => {
             // We currently don't auto-trigger on IsVariant
             // Even if we did, it might be best not to trigger on IsVariants generated from Match
