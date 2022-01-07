@@ -275,6 +275,7 @@ fn check_expr(typing: &mut Typing, expr: &Expr) -> Result<Typ, TypeError> {
             Ok(tb)
         }
         ExprX::LabeledAssertion(_, expr) => check_expr(typing, expr),
+        ExprX::LabeledAxiom(_, expr) => check_expr(typing, expr),
     };
     match result {
         Ok(t) => Ok(t),

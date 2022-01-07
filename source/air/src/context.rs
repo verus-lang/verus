@@ -1,6 +1,7 @@
-use crate::ast::{Command, CommandX, Decl, Ident, Query, Spans, Typ, TypeError, Typs};
+use crate::ast::{Command, CommandX, Decl, Ident, Query, Typ, TypeError, Typs};
 use crate::closure::ClosureTerm;
 use crate::emitter::Emitter;
+use crate::errors::{Error, ErrorLabels};
 use crate::model::Model;
 use crate::node;
 use crate::printer::{macro_push_node, str_to_node};
@@ -14,7 +15,14 @@ use std::time::Duration;
 
 #[derive(Clone, Debug)]
 pub(crate) struct AssertionInfo {
-    pub(crate) span: Spans,
+    pub(crate) error: Error,
+    pub(crate) label: Ident,
+    pub(crate) decl: Decl,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct AxiomInfo {
+    pub(crate) labels: ErrorLabels,
     pub(crate) label: Ident,
     pub(crate) decl: Decl,
 }
@@ -22,14 +30,14 @@ pub(crate) struct AssertionInfo {
 #[derive(Debug)]
 pub enum ValidityResult {
     Valid,
-    Invalid(Model, Spans),
+    Invalid(Model, Error),
     TypeError(TypeError),
 }
 
 pub struct Context {
     pub(crate) smt_manager: SmtManager,
-    pub(crate) assert_infos: ScopeMap<Ident, Arc<AssertionInfo>>,
-    pub(crate) assert_infos_count: u64,
+    pub(crate) axiom_infos: ScopeMap<Ident, Arc<AxiomInfo>>,
+    pub(crate) axiom_infos_count: u64,
     pub(crate) lambda_map: ScopeMap<ClosureTerm, Ident>,
     pub(crate) lambda_count: u64,
     pub(crate) choose_map: ScopeMap<ClosureTerm, Ident>,
@@ -52,8 +60,8 @@ impl Context {
     pub fn new(smt_manager: SmtManager) -> Context {
         let mut context = Context {
             smt_manager,
-            assert_infos: ScopeMap::new(),
-            assert_infos_count: 0,
+            axiom_infos: ScopeMap::new(),
+            axiom_infos_count: 0,
             lambda_map: ScopeMap::new(),
             lambda_count: 0,
             choose_map: ScopeMap::new(),
@@ -71,7 +79,7 @@ impl Context {
             time_smt_run: Duration::new(0, 0),
             started: false,
         };
-        context.assert_infos.push_scope(false);
+        context.axiom_infos.push_scope(false);
         context.lambda_map.push_scope(false);
         context.choose_map.push_scope(false);
         context.apply_map.push_scope(false);
@@ -188,7 +196,7 @@ impl Context {
     }
 
     pub(crate) fn push_name_scope(&mut self) {
-        self.assert_infos.push_scope(false);
+        self.axiom_infos.push_scope(false);
         self.lambda_map.push_scope(false);
         self.choose_map.push_scope(false);
         self.apply_map.push_scope(false);
@@ -196,7 +204,7 @@ impl Context {
     }
 
     pub(crate) fn pop_name_scope(&mut self) {
-        self.assert_infos.pop_scope();
+        self.axiom_infos.pop_scope();
         self.lambda_map.pop_scope();
         self.choose_map.pop_scope();
         self.apply_map.pop_scope();
