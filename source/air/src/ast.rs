@@ -31,6 +31,11 @@ pub type ErrorLabels = Arc<Vec<ErrorLabel>>;
 /// ...
 /// 18 |     has_expectations(false);
 ///    |     ^^^^^^^^^^^^^^^^^^^^^^^                  // primary span (Span)
+///
+/// Note that if you want to get an error that is rendered with ^^^^ AND has a label
+/// it needs to BOTH be in the primary spans list AND in the labels.
+///
+/// See the helpers in errors.rs
 
 #[derive(Clone)] // for Debug, see ast_util
 pub struct ErrorX {

@@ -23,7 +23,7 @@ use air::ast_util::{
     mk_eq, mk_exists, mk_implies, mk_ite, mk_not, mk_or, str_apply, str_ident, str_typ, str_var,
     string_var,
 };
-use air::errors::{error_str, error_string};
+use air::errors::{error_str, error_string, error_with_label};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
@@ -529,7 +529,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
             let air_expr = exp_to_expr(ctx, &expr);
             let error = match error {
                 Some(error) => error.clone(),
-                None => error_str(&stm.span, "assertion failed"),
+                None => error_with_label("assertion failed".to_string(), &stm.span, "assertion failed".to_string()),
             };
             if ctx.debug {
                 state.map_span(&stm, SpanKind::Full);
