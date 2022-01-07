@@ -756,16 +756,22 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, mask: &MaskSet, stm: &Stm) -> Vec<
             stmts
         }
         StmX::OpenInvariant(inv_exp, uid, typ, body_stm) => {
-            // add an 'assume' that inv holds
-            let x_var = SpannedTyped::new(&stm.span, typ, ExpX::Var(uid.clone()));
-            let inv_expr = exp_to_expr(ctx, inv_exp);
-            let sat_inv = call_inv(inv_expr.clone(), exp_to_expr(ctx, &x_var), typ);
+            let mut stmts = vec![];
 
-            let mut stmts = vec![Arc::new(StmtX::Assume(sat_inv.clone()))];
+            // Build the inv_expr. Note: In the SST, this should have been assigned
+            // to a tmp variable
+            // to ensure that its value is constant across the entire invariant block.
+            // We will be referencing it later.
+            let inv_expr = exp_to_expr(ctx, inv_exp);
 
             // Assert that the namespace of the inv we are opening is in the mask set
-            let namespace_expr = call_namespace(inv_expr, typ);
+            let namespace_expr = call_namespace(inv_expr.clone(), typ);
             mask.assert_contains(&inv_exp.span, &namespace_expr, &mut stmts);
+
+            // add an 'assume' that inv holds
+            let x_var = SpannedTyped::new(&stm.span, typ, ExpX::Var(uid.clone()));
+            let sat_inv = call_inv(inv_expr, exp_to_expr(ctx, &x_var), typ);
+            stmts.push(Arc::new(StmtX::Assume(sat_inv.clone())));
 
             // process the body
             // first remove the namespace from the mask set so that we cannot re-open
