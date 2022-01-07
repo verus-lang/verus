@@ -10,7 +10,7 @@ use crate::ast_util::is_visible_to;
 use crate::ast_visitor::map_expr_visitor;
 use crate::datatype_to_air::is_datatype_transparent;
 use crate::def::Spanned;
-use crate::def::{fn_inv_name, fn_namespace_name};
+use crate::def::{datatype_invariant_path, fn_inv_name, fn_namespace_name};
 use air::scope_map::ScopeMap;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -209,6 +209,7 @@ pub fn prune_krate_for_module(krate: &Krate, module: &Path) -> Krate {
     // (references to these might be generated in SST -> AIR)
     state.reached_functions.insert(fn_inv_name());
     state.reached_functions.insert(fn_namespace_name());
+    state.reached_datatypes.insert(datatype_invariant_path());
 
     let kratex = KrateX {
         functions: functions

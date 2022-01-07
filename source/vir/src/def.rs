@@ -319,6 +319,17 @@ impl<X: Debug> Debug for Spanned<X> {
     }
 }
 
+pub fn datatype_invariant_path() -> Path {
+    Arc::new(PathX {
+        krate: None,
+        segments: Arc::new(vec![
+            Arc::new("pervasive".to_string()),
+            Arc::new("invariants".to_string()),
+            Arc::new("Invariant".to_string()),
+        ]),
+    })
+}
+
 pub fn fn_inv_name() -> Fun {
     Arc::new(FunX {
         path: Arc::new(PathX {
