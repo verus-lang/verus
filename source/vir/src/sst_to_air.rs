@@ -780,6 +780,9 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, mask: &MaskSet, stm: &Stm) -> Vec<
             stmts.append(&mut stm_to_stmts(ctx, state, &inner_mask, body_stm));
 
             // assert the invariant still holds
+            // Note that we re-use sat_inv here; but sat_inv references the variable
+            // given by `uid` which may have been assigned to since the start of the block.
+            // so this may evaluate differently in the SMT.
             let error = error_str(&body_stm.span, "Cannot show invariant holds at end of block");
             stmts.push(Arc::new(StmtX::Assert(error, sat_inv)));
 
