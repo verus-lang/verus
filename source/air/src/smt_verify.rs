@@ -1,6 +1,6 @@
 use crate::ast::{
-    BinaryOp, BindX, Decl, DeclX, Error, Expr, ExprX, Ident, Label, MultiOp, Quant, Query, StmtX,
-    TypX, UnaryOp,
+    BinaryOp, BindX, Decl, DeclX, Error, ErrorLabel, Expr, ExprX, Ident, MultiOp, Quant, Query,
+    StmtX, TypX, UnaryOp,
 };
 use crate::context::{AssertionInfo, AxiomInfo, Context, ValidityResult};
 use crate::def::{GLOBAL_PREFIX_LABEL, PREFIX_LABEL};
@@ -113,7 +113,7 @@ fn smt_check_assertion<'ctx>(
     air_model: Model,
 ) -> ValidityResult {
     let mut discovered_error: Option<Error> = None;
-    let mut discovered_additional_info: Vec<Label> = Vec::new();
+    let mut discovered_additional_info: Vec<ErrorLabel> = Vec::new();
     let not_expr = Arc::new(ExprX::Unary(UnaryOp::Not, expr.clone()));
     context.smt_log.log_assert(&not_expr);
 

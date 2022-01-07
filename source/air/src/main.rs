@@ -1,4 +1,4 @@
-use air::ast::{CommandX, Label};
+use air::ast::{CommandX, ErrorLabel};
 use air::context::{Context, ValidityResult};
 use getopts::Options;
 use sise::Node;
@@ -125,7 +125,7 @@ pub fn main() {
             ValidityResult::Invalid(_m, err) => {
                 count_errors += 1;
                 println!("Error at {}", err.msg);
-                for Label { msg, .. } in &err.labels {
+                for ErrorLabel { msg, .. } in &err.labels {
                     println!("Additional error detail at {}", msg);
                 }
             }

@@ -9,11 +9,11 @@ pub struct Span {
 }
 
 #[derive(Debug, Clone)]
-pub struct Label {
+pub struct ErrorLabel {
     pub span: Span,
     pub msg: String,
 }
-pub type Labels = Arc<Vec<Label>>;
+pub type ErrorLabels = Arc<Vec<ErrorLabel>>;
 
 /// Our error type is designed to resemble Rust's MultiSpan,
 /// with an additional 'msg' String to serve as an error message.
@@ -35,8 +35,8 @@ pub type Labels = Arc<Vec<Label>>;
 #[derive(Clone)] // for Debug, see ast_util
 pub struct ErrorX {
     pub msg: String,
-    pub spans: Vec<Span>,   // "primary" spans
-    pub labels: Vec<Label>, // additional spans, with string annotations
+    pub spans: Vec<Span>,        // "primary" spans
+    pub labels: Vec<ErrorLabel>, // additional spans, with string annotations
 }
 pub type Error = Arc<ErrorX>;
 
@@ -133,7 +133,9 @@ pub enum ExprX {
     Multi(MultiOp, Exprs),
     IfElse(Expr, Expr, Expr),
     Bind(Bind, Expr),
-    LabeledAxiom(Labels, Expr),
+    // Sometimes an axiom will have additional error messages. If an assert fails
+    // and this axiom was relevant, then we append the error labels to the Error.
+    LabeledAxiom(ErrorLabels, Expr),
     LabeledAssertion(Error, Expr),
 }
 

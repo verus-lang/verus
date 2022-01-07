@@ -3,7 +3,7 @@ use crate::context::{ContextX, ErasureInfo};
 use crate::debugger::Debugger;
 use crate::unsupported;
 use crate::util::from_raw_span;
-use air::ast::{Command, CommandX, Error, Label};
+use air::ast::{Command, CommandX, Error, ErrorLabel};
 use air::context::ValidityResult;
 use rustc_interface::interface::Compiler;
 use rustc_middle::ty::TyCtxt;
@@ -81,7 +81,7 @@ fn report_error(compiler: &Compiler, error: &Error) {
 
     let mut multispan = MultiSpan::from_spans(v);
 
-    for Label { msg, span: sp } in &error.labels {
+    for ErrorLabel { msg, span: sp } in &error.labels {
         let span: Span = from_raw_span(&sp.raw_span);
         multispan.push_span_label(span, msg.clone());
     }
@@ -164,7 +164,7 @@ impl Verifier {
                     &error.msg,
                     &error.spans[0],
                 )];
-                for Label { msg, span } in &error.labels {
+                for ErrorLabel { msg, span } in &error.labels {
                     errors.push(ErrorSpan::new_from_air_span(
                         compiler.session().source_map(),
                         msg,

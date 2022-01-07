@@ -1,7 +1,7 @@
 use crate::ast::{
     BinaryOp, BindX, Binder, BinderX, Binders, Command, CommandX, Commands, Constant, Decl, DeclX,
-    Decls, Expr, ExprX, Exprs, Label, Labels, MultiOp, Quant, QueryX, Span, Stmt, StmtX, Stmts,
-    Trigger, Triggers, Typ, TypX, UnaryOp,
+    Decls, ErrorLabel, ErrorLabels, Expr, ExprX, Exprs, MultiOp, Quant, QueryX, Span, Stmt, StmtX,
+    Stmts, Trigger, Triggers, Typ, TypX, UnaryOp,
 };
 use crate::errors::{error_from_labels, error_from_spans};
 use crate::model::{ModelDef, ModelDefX, ModelDefs};
@@ -60,15 +60,15 @@ impl Parser {
         }
     }
 
-    fn nodes_to_labels(&self, nodes: &Vec<Node>) -> Result<Labels, String> {
-        let mut labels: Vec<Label> = Vec::new();
+    fn nodes_to_labels(&self, nodes: &Vec<Node>) -> Result<ErrorLabels, String> {
+        let mut labels: Vec<ErrorLabel> = Vec::new();
         for node in nodes {
             match node {
                 Node::Atom(label) if label.starts_with("\"") && label.ends_with("\"") => {
                     let raw_span = Arc::new(());
                     let as_string = label[1..label.len() - 1].to_string();
                     let span = Span { raw_span, as_string: as_string.clone() };
-                    let label = Label { span, msg: as_string };
+                    let label = ErrorLabel { span, msg: as_string };
                     labels.push(label);
                 }
                 _ => {

@@ -1,4 +1,4 @@
-use crate::ast::{Command, CommandX, Decl, Error, Ident, Labels, Query, Typ, TypeError, Typs};
+use crate::ast::{Command, CommandX, Decl, Error, ErrorLabels, Ident, Query, Typ, TypeError, Typs};
 use crate::closure::ClosureTerm;
 use crate::emitter::Emitter;
 use crate::model::Model;
@@ -21,7 +21,7 @@ pub(crate) struct AssertionInfo {
 
 #[derive(Clone, Debug)]
 pub(crate) struct AxiomInfo {
-    pub(crate) labels: Labels,
+    pub(crate) labels: ErrorLabels,
     pub(crate) label: Ident,
     pub(crate) decl: Decl,
 }

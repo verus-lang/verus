@@ -11,8 +11,8 @@ use crate::sst::{BndX, ExpX};
 use crate::sst_to_air::{exp_to_expr, fun_to_air_ident, typ_invariant, typ_to_air};
 use crate::util::{vec_map, vec_map_result};
 use air::ast::{
-    BinaryOp, Bind, BindX, Binder, BinderX, Command, CommandX, Commands, DeclX, Expr, ExprX, Label,
-    MultiOp, Quant, Span, Trigger, Triggers,
+    BinaryOp, Bind, BindX, Binder, BinderX, Command, CommandX, Commands, DeclX, ErrorLabel, Expr,
+    ExprX, MultiOp, Quant, Span, Trigger, Triggers,
 };
 use air::ast_util::{
     bool_typ, ident_apply, ident_binder, ident_var, mk_and, mk_bind_expr, mk_eq, mk_implies,
@@ -192,7 +192,7 @@ pub fn req_ens_to_air(
             let loc_expr = match msg {
                 None => expr,
                 Some(msg) => {
-                    let l = Label { span: e.span.clone(), msg: msg.clone() };
+                    let l = ErrorLabel { span: e.span.clone(), msg: msg.clone() };
                     let ls = Arc::new(vec![l]);
                     Arc::new(ExprX::LabeledAxiom(ls, expr))
                 }
