@@ -211,7 +211,7 @@ impl Printer {
                 if spans.len() == 0 {
                     self.expr_to_node(expr)
                 } else {
-                    nodes!(location {Node::List(spans)} {self.expr_to_node(expr)})
+                    nodes!(axiom_location {Node::List(spans)} {self.expr_to_node(expr)})
                 }
             }
             ExprX::LabeledAssertion(error, expr) => {

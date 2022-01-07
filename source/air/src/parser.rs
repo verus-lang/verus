@@ -93,10 +93,15 @@ impl Parser {
             Node::Atom(s) if is_symbol(s) => Ok(Arc::new(ExprX::Var(Arc::new(s.clone())))),
             Node::List(nodes) if nodes.len() > 0 => {
                 match &nodes[..] {
-                    [Node::Atom(s), Node::List(labels), e] if s.to_string() == "location" => {
-                        let spans = self.nodes_to_labels(labels)?;
+                    [Node::Atom(s), Node::List(nodes), e] if s.to_string() == "location" => {
+                        let error = error_from_labels(self.nodes_to_labels(nodes)?);
                         let expr = self.node_to_expr(e)?;
-                        return Ok(Arc::new(ExprX::LabeledAxiom(spans, expr)));
+                        return Ok(Arc::new(ExprX::LabeledAssertion(error, expr)));
+                    }
+                    [Node::Atom(s), Node::List(nodes), e] if s.to_string() == "axiom_location" => {
+                        let labels = self.nodes_to_labels(nodes)?;
+                        let expr = self.node_to_expr(e)?;
+                        return Ok(Arc::new(ExprX::LabeledAxiom(labels, expr)));
                     }
                     [Node::Atom(s), Node::Atom(snap), Node::Atom(x)]
                         if s.to_string() == "old" && is_symbol(snap) && is_symbol(x) =>
@@ -339,9 +344,9 @@ impl Parser {
                 {
                     Ok(Arc::new(StmtX::Snapshot(Arc::new(snap.clone()))))
                 }
-                [Node::Atom(s), Node::List(labels), e] if s.to_string() == "assert" => {
-                    let spans = self.nodes_to_labels(labels)?;
-                    let error = error_from_labels(spans);
+                [Node::Atom(s), Node::List(nodes), e] if s.to_string() == "assert" => {
+                    let labels = self.nodes_to_labels(nodes)?;
+                    let error = error_from_labels(labels);
                     let expr = self.node_to_expr(&e)?;
                     Ok(Arc::new(StmtX::Assert(error, expr)))
                 }
