@@ -250,3 +250,136 @@ test_verify_one_file! {
         }
     } => Err(_) => ()
 }
+
+test_verify_one_file! {
+    #[test] return_early code! {
+        use crate::pervasive::invariants::*;
+
+        // TODO this is a workaround for a bug where inv and namespace wouldn't
+        // otherwise get generated in AIR
+        pub fn Y(#[proof] i: Invariant<u8>) { requires([i.inv(0), i.namespace() == 0]); }
+
+        pub fn blah(#[proof] i: Invariant<u8>) {
+          open_invariant!(&i => inner => {
+            return;
+          });
+        }
+    } => Err(err) => assert_vir_error(err)
+}
+
+test_verify_one_file! {
+    #[test] return_early_nested code! {
+        use crate::pervasive::invariants::*;
+
+        // TODO this is a workaround for a bug where inv and namespace wouldn't
+        // otherwise get generated in AIR
+        pub fn Y(#[proof] i: Invariant<u8>) { requires([i.inv(0), i.namespace() == 0]); }
+
+        pub fn blah(#[proof] i: Invariant<u8>, #[proof] j: Invariant<u8>) {
+          open_invariant!(&i => inner => {
+            open_invariant!(&j => inner => {
+              return;
+            });
+          });
+        }
+    } => Err(err) => assert_vir_error(err)
+}
+
+test_verify_one_file! {
+    #[test] break_early code! {
+        use crate::pervasive::invariants::*;
+
+        // TODO this is a workaround for a bug where inv and namespace wouldn't
+        // otherwise get generated in AIR
+        pub fn Y(#[proof] i: Invariant<u8>) { requires([i.inv(0), i.namespace() == 0]); }
+
+        pub fn blah(#[proof] i: Invariant<u8>) {
+          let mut idx = 0;
+          while idx < 5 {
+            open_invariant!(&i => inner => {
+              break;
+            });
+          }
+        }
+
+    } => Err(err) => assert_vir_error(err)
+}
+
+test_verify_one_file! {
+    #[test] continue_early code! {
+        use crate::pervasive::invariants::*;
+
+        // TODO this is a workaround for a bug where inv and namespace wouldn't
+        // otherwise get generated in AIR
+        pub fn Y(#[proof] i: Invariant<u8>) { requires([i.inv(0), i.namespace() == 0]); }
+
+        pub fn blah(#[proof] i: Invariant<u8>) {
+          let mut idx = 0;
+          while idx < 5 {
+            open_invariant!(&i => inner => {
+              break;
+            });
+          }
+        }
+
+    } => Err(err) => assert_vir_error(err)
+}
+
+test_verify_one_file! {
+    #[test] return_early_proof code! {
+        use crate::pervasive::invariants::*;
+
+        // TODO this is a workaround for a bug where inv and namespace wouldn't
+        // otherwise get generated in AIR
+        pub fn Y(#[proof] i: Invariant<u8>) { requires([i.inv(0), i.namespace() == 0]); }
+
+        #[proof]
+        pub fn blah(#[proof] i: Invariant<u8>) {
+          open_invariant!(&i => inner => {
+            return;
+          });
+        }
+    } => Err(err) => assert_vir_error(err)
+}
+
+test_verify_one_file! {
+    #[test] break_early_proof code! {
+        use crate::pervasive::invariants::*;
+
+        // TODO this is a workaround for a bug where inv and namespace wouldn't
+        // otherwise get generated in AIR
+        pub fn Y(#[proof] i: Invariant<u8>) { requires([i.inv(0), i.namespace() == 0]); }
+
+        #[proof]
+        pub fn blah(#[proof] i: Invariant<u8>) {
+          let mut idx = 0;
+          while idx < 5 {
+            open_invariant!(&i => inner => {
+              break;
+            });
+          }
+        }
+
+    } => Err(err) => assert_vir_error(err)
+}
+
+test_verify_one_file! {
+    #[test] continue_early_proof code! {
+        use crate::pervasive::invariants::*;
+
+        // TODO this is a workaround for a bug where inv and namespace wouldn't
+        // otherwise get generated in AIR
+        pub fn Y(#[proof] i: Invariant<u8>) { requires([i.inv(0), i.namespace() == 0]); }
+
+        #[proof]
+        pub fn blah(#[proof] i: Invariant<u8>) {
+          let mut idx = 0;
+          while idx < 5 {
+            open_invariant!(&i => inner => {
+              break;
+            });
+          }
+        }
+
+    } => Err(err) => assert_vir_error(err)
+}

@@ -342,7 +342,7 @@ fn check_expr(typing: &mut Typing, outer_mode: Mode, expr: &Expr) -> Result<Mode
             Ok(mode)
         }
         ExprX::OpenInvariant(inv, binder, body) => {
-            assert_no_early_exit_in_inv_block(&expr.span, body)?;
+            assert_no_early_exit_in_inv_block(&body.span, body)?;
 
             if outer_mode == Mode::Spec {
                 return err_string(&expr.span, format!("Cannot open invariant in Spec mode."));

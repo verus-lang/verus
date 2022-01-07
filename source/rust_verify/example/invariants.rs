@@ -136,5 +136,34 @@ pub fn blah(#[proof] i: Invariant<u8>) {
 }
 */
 
+/*
+pub fn blah(#[proof] i: Invariant<u8>) {
+  open_invariant!(&i => inner => {
+    return;
+  });
+}
+*/
+
+/*
+pub fn blah(#[proof] i: Invariant<u8>, #[proof] j: Invariant<u8>) {
+  open_invariant!(&i => inner => {
+    open_invariant!(&j => inner => {
+      return;
+    });
+  });
+}
+*/
+
+/*
+pub fn blah(#[proof] i: Invariant<u8>) {
+  let mut idx = 0;
+  while idx < 5 {
+    open_invariant!(&i => inner => {
+      break;
+    });
+  }
+}
+*/
+
 pub fn main() {
 }
