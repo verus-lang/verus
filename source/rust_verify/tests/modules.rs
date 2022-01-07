@@ -40,5 +40,5 @@ test_verify_one_file! {
         fn mod_adt_no_verify() {
             assert(!Car { four_doors: false }.four_doors);
         }
-    } => Err(err) => assert_eq!(err.len(), 0)
+    } => Err(err) => assert_vir_error(err)
 }

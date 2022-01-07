@@ -6,8 +6,6 @@ use std::mem::MaybeUninit;
 
 // TODO Identifier should be some opaque type, not necessarily an int
 
-// TODO find a way to consolidate Permission and PermissionToken; having 2 types is cumbersome
-
 // TODO implement: borrow, borrow_mut, take, swap, read_copy
 
 // TODO figure out how Drop should work
@@ -19,29 +17,16 @@ pub struct PCell<V> {
   ucell: UnsafeCell<MaybeUninit<V>>,
 }
 
-#[spec]
-pub struct Permission<V> {
-  pub pcell: int,
-  pub value: option::Option<V>,
-}
-
-#[verifier(external_body)]
 #[proof]
-pub struct PermissionToken<V> {
-  dummy: std::marker::PhantomData<V>,
+#[verifier(unforgeable)]
+pub struct Permission<V> {
+  #[spec] pub pcell: int,
+  #[spec] pub value: option::Option<V>,
 }
 
 pub struct PCellWithToken<V> {
   pub pcell: PCell<V>,
-  #[proof] pub token: PermissionToken<V>,
-}
-
-impl<V> PermissionToken<V> {
-  #[verifier(pub_abstract)]
-  #[spec]
-  pub fn view(&self) -> Permission<V> {
-    arbitrary()
-  }
+  #[proof] pub token: Permission<V>,
 }
 
 // TODO put these in impl once methods without 'self' are supported
@@ -57,7 +42,7 @@ fn new_empty_external<V>() -> PCell<V> {
 #[inline(always)]
 pub fn new_empty<V>() -> PCellWithToken<V> {
   ensures(|pt : PCellWithToken<V>|
-    equal(pt.token.view(), Permission{ pcell: pt.pcell.view(), value: option::Option::None })
+    equal(pt.token, Permission{ pcell: pt.pcell.view(), value: option::Option::None })
   );
 
   let p = new_empty_external();
@@ -85,13 +70,13 @@ impl<V> PCell<V> {
 
   #[inline(always)]
   #[verifier(returns(proof))]
-  pub fn put(&self, v: V, #[proof] perm: PermissionToken<V>) -> PermissionToken<V> {
+  pub fn put(&self, v: V, #[proof] perm: Permission<V>) -> Permission<V> {
     requires([
-        equal(self.view(), perm.view().pcell),
-        equal(perm.view().value, option::Option::None),
+        equal(self.view(), perm.pcell),
+        equal(perm.value, option::Option::None),
     ]);
-    ensures(|p: PermissionToken<V>|
-        equal(p.view().value, option::Option::Some(v))
+    ensures(|p: Permission<V>|
+        equal(p.value, option::Option::Some(v))
     );
 
     self.put_external(v);
@@ -102,12 +87,12 @@ impl<V> PCell<V> {
   /*
   #[inline(always)]
   #[verifier(no_verify)]
-  pub fn borrow(&self, perm: &'a PermissionToken<V>) -> &'a V {
+  pub fn borrow(&self, perm: &'a Permission<V>) -> &'a V {
     requires([
         equal(self.view(), perm.view().pcell),
         !equal(perm.view().value, None),
     ]);
-    ensures(|p: PermissionToken<V>|
+    ensures(|p: Permission<V>|
         equal(p.view().value, Some(v))
     );
     

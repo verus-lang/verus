@@ -419,6 +419,8 @@ pub struct DatatypeX {
     pub typ_params: Idents,
     pub variants: Variants,
     pub mode: Mode,
+    // For token types that need to be 'unforgeable'. Only makes sense for 'Proof' types.
+    pub unforgeable: bool,
 }
 pub type Datatype = Arc<Spanned<DatatypeX>>;
 pub type Datatypes = Vec<Datatype>;

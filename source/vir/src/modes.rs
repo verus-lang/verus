@@ -165,6 +165,11 @@ fn check_expr(typing: &mut Typing, outer_mode: Mode, expr: &Expr) -> Result<Mode
                     mode = mode_join(mode, mode_arg);
                 }
             }
+
+            if datatype.x.unforgeable && mode == Mode::Proof {
+                return err_str(&expr.span, "cannot construct an unforgeable proof object");
+            }
+
             Ok(mode)
         }
         ExprX::Unary(_, e1) => check_expr(typing, outer_mode, e1),
@@ -221,6 +226,8 @@ fn check_expr(typing: &mut Typing, outer_mode: Mode, expr: &Expr) -> Result<Mode
             Ok(Mode::Spec)
         }
         ExprX::Assign(lhs, rhs) => match &lhs.x {
+            // TODO when we support field updates, make sure we handle 'unforgeable' types
+            // correctly.
             ExprX::Var(x) => {
                 let (x_mut, x_mode) = typing.get(x);
                 if !x_mut {
