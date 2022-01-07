@@ -1,6 +1,6 @@
 use crate::ast::{ArmX, CallTarget, Expr, ExprX, Stmt, StmtX, VirErr};
 use air::ast::Span;
-use air::errors::{error_string};
+use air::errors::error_string;
 
 #[derive(Copy, Clone, Debug)]
 enum StatementType {
