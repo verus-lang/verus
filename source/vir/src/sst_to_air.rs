@@ -1,9 +1,10 @@
 use crate::ast::{
-    BinaryOp, Fun, FunX, Ident, Idents, IntRange, MaskSpec, Mode, Params, Path, PathX,
-    SpannedTyped, Typ, TypX, Typs, UnaryOp, UnaryOpr,
+    BinaryOp, Fun, Ident, Idents, IntRange, MaskSpec, Mode, Params, Path, SpannedTyped, Typ, TypX,
+    Typs, UnaryOp, UnaryOpr,
 };
 use crate::ast_util::{get_field, get_variant};
 use crate::context::Ctx;
+use crate::def::{fn_inv_name, fn_namespace_name};
 use crate::def::{
     fun_to_string, path_to_string, prefix_box, prefix_ensures, prefix_fuel_id, prefix_requires,
     suffix_global_id, suffix_local_expr_id, suffix_local_stmt_id, suffix_local_unique_id,
@@ -782,17 +783,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, mask: &MaskSet, stm: &Stm) -> Vec<
 }
 
 fn call_inv(outer: Expr, inner: Expr, typ: &Typ) -> Expr {
-    let inv_fn_ident = suffix_global_id(&fun_to_air_ident(&Arc::new(FunX {
-        path: Arc::new(PathX {
-            krate: Some(Arc::new("pervasive".to_string())),
-            segments: Arc::new(vec![
-                Arc::new("invariants".to_string()),
-                Arc::new("Invariant".to_string()),
-                Arc::new("inv".to_string()),
-            ]),
-        }),
-        trait_path: None,
-    })));
+    let inv_fn_ident = suffix_global_id(&fun_to_air_ident(&fn_inv_name()));
     let typ_expr = typ_to_id(typ);
     let boxed_inner = try_box(inner.clone(), typ).unwrap_or(inner);
     let args = vec![typ_expr, outer, boxed_inner];
@@ -800,17 +791,7 @@ fn call_inv(outer: Expr, inner: Expr, typ: &Typ) -> Expr {
 }
 
 fn call_namespace(arg: Expr, typ: &Typ) -> Expr {
-    let inv_fn_ident = suffix_global_id(&fun_to_air_ident(&Arc::new(FunX {
-        path: Arc::new(PathX {
-            krate: Some(Arc::new("pervasive".to_string())),
-            segments: Arc::new(vec![
-                Arc::new("invariants".to_string()),
-                Arc::new("Invariant".to_string()),
-                Arc::new("namespace".to_string()),
-            ]),
-        }),
-        trait_path: None,
-    })));
+    let inv_fn_ident = suffix_global_id(&fun_to_air_ident(&fn_namespace_name()));
     let typ_expr = typ_to_id(typ);
     let args = vec![typ_expr, arg];
     return ident_apply(&inv_fn_ident, &args);

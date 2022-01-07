@@ -24,10 +24,6 @@ test_verify_one_file! {
     #[test] basic_usage2 code! {
         use crate::pervasive::invariants::*;
 
-        // TODO this is a workaround for a bug where inv and namespace wouldn't
-        // otherwise get generated in AIR
-        pub fn Y(#[proof] i: Invariant<u8>) { requires([i.inv(0), i.namespace() == 0]); }
-
         pub fn X(#[proof] i: Invariant<u8>) {
             open_invariant!(&i => inner => {
             });
@@ -38,7 +34,6 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] inv_fail code! {
         use crate::pervasive::invariants::*;
-        pub fn Y(#[proof] i: Invariant<u8>) { requires([i.inv(0), i.namespace() == 0]); }
         pub fn X(#[proof] i: Invariant<u8>) {
             open_invariant!(&i => inner => {
                 #[proof] let x = 5;
@@ -52,7 +47,6 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] nested_failure code! {
         use crate::pervasive::invariants::*;
-        pub fn Y(#[proof] i: Invariant<u8>) { requires([i.inv(0), i.namespace() == 0]); }
         pub fn nested(#[proof] i: Invariant<u8>) {
             requires([
                 i.inv(0)
@@ -70,7 +64,6 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] nested_good code! {
         use crate::pervasive::invariants::*;
-        pub fn Y(#[proof] i: Invariant<u8>) { requires([i.inv(0), i.namespace() == 0]); }
         pub fn nested_good(#[proof] i: Invariant<u8>, #[proof] j: Invariant<u8>) {
             requires([
                 i.inv(0),
@@ -91,7 +84,6 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] full_call_empty code! {
         use crate::pervasive::invariants::*;
-        pub fn Y(#[proof] i: Invariant<u8>) { requires([i.inv(0), i.namespace() == 0]); }
         #[proof]
         pub fn callee_mask_empty() {
           opens_invariants_none(); // will not open any invariant
@@ -107,7 +99,6 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] open_call_full code! {
         use crate::pervasive::invariants::*;
-        pub fn Y(#[proof] i: Invariant<u8>) { requires([i.inv(0), i.namespace() == 0]); }
         #[proof]
         pub fn callee_mask_full() {
           opens_invariants_any(); // can open any invariant
@@ -123,7 +114,6 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] empty_open code! {
         use crate::pervasive::invariants::*;
-        pub fn Y(#[proof] i: Invariant<u8>) { requires([i.inv(0), i.namespace() == 0]); }
         #[proof]
         pub fn callee_mask_empty() {
           opens_invariants_none(); // will not open any invariant
@@ -141,7 +131,6 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] open_inv_in_spec code! {
         use crate::pervasive::invariants::*;
-        pub fn Y(#[proof] i: Invariant<u8>) { requires([i.inv(0), i.namespace() == 0]); }
 
         #[spec]
         pub fn open_inv_in_spec(i: Invariant<u8>) {
@@ -154,7 +143,6 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] inv_header_in_spec code! {
         use crate::pervasive::invariants::*;
-        pub fn Y(#[proof] i: Invariant<u8>) { requires([i.inv(0), i.namespace() == 0]); }
 
         #[spec]
         pub fn inv_header_in_spec(i: Invariant<u8>) {
@@ -166,7 +154,6 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] open_inv_in_proof code! {
         use crate::pervasive::invariants::*;
-        pub fn Y(#[proof] i: Invariant<u8>) { requires([i.inv(0), i.namespace() == 0]); }
 
         #[proof]
         pub fn open_inv_in_proof(#[proof] i: Invariant<u8>) {
@@ -181,10 +168,6 @@ test_verify_one_file! {
     #[test] inv_cannot_be_exec code! {
         use crate::pervasive::invariants::*;
 
-        // TODO this is a workaround for a bug where inv and namespace wouldn't
-        // otherwise get generated in AIR
-        pub fn Y(#[proof] i: Invariant<u8>) { requires([i.inv(0), i.namespace() == 0]); }
-
         pub fn X(#[exec] i: Invariant<u8>) {
             open_invariant!(&i => inner => {
             });
@@ -197,10 +180,6 @@ test_verify_one_file! {
     #[test] inv_cannot_be_spec code! {
         use crate::pervasive::invariants::*;
 
-        // TODO this is a workaround for a bug where inv and namespace wouldn't
-        // otherwise get generated in AIR
-        pub fn Y(#[proof] i: Invariant<u8>) { requires([i.inv(0), i.namespace() == 0]); }
-
         pub fn X(#[spec] i: Invariant<u8>) {
             open_invariant!(&i => inner => {
             });
@@ -212,10 +191,6 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] exec_code_in_inv_block code! {
         use crate::pervasive::invariants::*;
-
-        // TODO this is a workaround for a bug where inv and namespace wouldn't
-        // otherwise get generated in AIR
-        pub fn Y(#[proof] i: Invariant<u8>) { requires([i.inv(0), i.namespace() == 0]); }
 
         pub fn exec_fn() { }
 
@@ -231,10 +206,6 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] inv_lifetime code! {
         use crate::pervasive::invariants::*;
-
-        // TODO this is a workaround for a bug where inv and namespace wouldn't
-        // otherwise get generated in AIR
-        pub fn Y(#[proof] i: Invariant<u8>) { requires([i.inv(0), i.namespace() == 0]); }
 
         #[proof]
         fn throw_away(#[proof] i: Invariant<u8>) {
@@ -255,10 +226,6 @@ test_verify_one_file! {
     #[test] return_early code! {
         use crate::pervasive::invariants::*;
 
-        // TODO this is a workaround for a bug where inv and namespace wouldn't
-        // otherwise get generated in AIR
-        pub fn Y(#[proof] i: Invariant<u8>) { requires([i.inv(0), i.namespace() == 0]); }
-
         pub fn blah(#[proof] i: Invariant<u8>) {
           open_invariant!(&i => inner => {
             return;
@@ -270,10 +237,6 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] return_early_nested code! {
         use crate::pervasive::invariants::*;
-
-        // TODO this is a workaround for a bug where inv and namespace wouldn't
-        // otherwise get generated in AIR
-        pub fn Y(#[proof] i: Invariant<u8>) { requires([i.inv(0), i.namespace() == 0]); }
 
         pub fn blah(#[proof] i: Invariant<u8>, #[proof] j: Invariant<u8>) {
           open_invariant!(&i => inner => {
@@ -288,10 +251,6 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] break_early code! {
         use crate::pervasive::invariants::*;
-
-        // TODO this is a workaround for a bug where inv and namespace wouldn't
-        // otherwise get generated in AIR
-        pub fn Y(#[proof] i: Invariant<u8>) { requires([i.inv(0), i.namespace() == 0]); }
 
         pub fn blah(#[proof] i: Invariant<u8>) {
           let mut idx = 0;
@@ -309,10 +268,6 @@ test_verify_one_file! {
     #[test] continue_early code! {
         use crate::pervasive::invariants::*;
 
-        // TODO this is a workaround for a bug where inv and namespace wouldn't
-        // otherwise get generated in AIR
-        pub fn Y(#[proof] i: Invariant<u8>) { requires([i.inv(0), i.namespace() == 0]); }
-
         pub fn blah(#[proof] i: Invariant<u8>) {
           let mut idx = 0;
           while idx < 5 {
@@ -329,10 +284,6 @@ test_verify_one_file! {
     #[test] return_early_proof code! {
         use crate::pervasive::invariants::*;
 
-        // TODO this is a workaround for a bug where inv and namespace wouldn't
-        // otherwise get generated in AIR
-        pub fn Y(#[proof] i: Invariant<u8>) { requires([i.inv(0), i.namespace() == 0]); }
-
         #[proof]
         pub fn blah(#[proof] i: Invariant<u8>) {
           open_invariant!(&i => inner => {
@@ -345,10 +296,6 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] break_early_proof code! {
         use crate::pervasive::invariants::*;
-
-        // TODO this is a workaround for a bug where inv and namespace wouldn't
-        // otherwise get generated in AIR
-        pub fn Y(#[proof] i: Invariant<u8>) { requires([i.inv(0), i.namespace() == 0]); }
 
         #[proof]
         pub fn blah(#[proof] i: Invariant<u8>) {
@@ -366,10 +313,6 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] continue_early_proof code! {
         use crate::pervasive::invariants::*;
-
-        // TODO this is a workaround for a bug where inv and namespace wouldn't
-        // otherwise get generated in AIR
-        pub fn Y(#[proof] i: Invariant<u8>) { requires([i.inv(0), i.namespace() == 0]); }
 
         #[proof]
         pub fn blah(#[proof] i: Invariant<u8>) {
