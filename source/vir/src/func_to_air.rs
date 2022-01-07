@@ -11,13 +11,14 @@ use crate::sst::{BndX, ExpX};
 use crate::sst_to_air::{exp_to_expr, fun_to_air_ident, typ_invariant, typ_to_air};
 use crate::util::{vec_map, vec_map_result};
 use air::ast::{
-    BinaryOp, Bind, BindX, Binder, BinderX, Command, CommandX, Commands, DeclX, ErrorLabel, Expr,
-    ExprX, MultiOp, Quant, Span, Trigger, Triggers,
+    BinaryOp, Bind, BindX, Binder, BinderX, Command, CommandX, Commands, DeclX, Expr, ExprX,
+    MultiOp, Quant, Span, Trigger, Triggers,
 };
 use air::ast_util::{
     bool_typ, ident_apply, ident_binder, ident_var, mk_and, mk_bind_expr, mk_eq, mk_implies,
     str_apply, str_ident, str_typ, str_var, string_apply,
 };
+use air::errors::ErrorLabel;
 use std::sync::Arc;
 
 // binder for forall (typ_params params)

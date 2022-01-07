@@ -1,9 +1,10 @@
 use crate::ast::{
     BinaryOp, BindX, Binder, BinderX, Binders, Command, CommandX, Commands, Constant, Decl, DeclX,
-    Decls, ErrorLabel, ErrorLabels, Expr, ExprX, Exprs, MultiOp, Quant, QueryX, Span, Stmt, StmtX,
-    Stmts, Trigger, Triggers, Typ, TypX, UnaryOp,
+    Decls, Expr, ExprX, Exprs, MultiOp, Quant, QueryX, Span, Stmt, StmtX, Stmts, Trigger, Triggers,
+    Typ, TypX, UnaryOp,
 };
 use crate::errors::{error_from_labels, error_from_spans};
+use crate::errors::{ErrorLabel, ErrorLabels};
 use crate::model::{ModelDef, ModelDefX, ModelDefs};
 use crate::printer::node_to_string;
 use sise::Node;

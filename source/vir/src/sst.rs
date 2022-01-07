@@ -8,7 +8,8 @@
 
 use crate::ast::{BinaryOp, Constant, Fun, Path, SpannedTyped, Typ, Typs, UnaryOp, UnaryOpr};
 use crate::def::Spanned;
-use air::ast::{Binder, Binders, Error, Ident, Quant};
+use air::ast::{Binder, Binders, Ident, Quant};
+use air::errors::Error;
 use std::sync::Arc;
 
 pub type Trig = Exps;

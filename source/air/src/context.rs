@@ -1,6 +1,7 @@
-use crate::ast::{Command, CommandX, Decl, Error, ErrorLabels, Ident, Query, Typ, TypeError, Typs};
+use crate::ast::{Command, CommandX, Decl, Ident, Query, Typ, TypeError, Typs};
 use crate::closure::ClosureTerm;
 use crate::emitter::Emitter;
+use crate::errors::{Error, ErrorLabels};
 use crate::model::Model;
 use crate::node;
 use crate::printer::{macro_push_node, str_to_node};

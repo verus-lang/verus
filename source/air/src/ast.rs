@@ -1,3 +1,4 @@
+use crate::errors::{Error, ErrorLabels};
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -7,43 +8,6 @@ pub struct Span {
     pub raw_span: RawSpan,
     pub as_string: String, // if we can't print (description, raw_span), print as_string instead
 }
-
-#[derive(Debug, Clone)]
-pub struct ErrorLabel {
-    pub span: Span,
-    pub msg: String,
-}
-pub type ErrorLabels = Arc<Vec<ErrorLabel>>;
-
-/// Our error type is designed to resemble Rust's MultiSpan,
-/// with an additional 'msg' String to serve as an error message.
-/// An Error should always have at least one 'span' which represents
-/// the primary point where the error is. It is possible to have more
-/// than one span, and it is possible to have additional label information.
-///
-/// Here's an example error:
-///
-/// error: precondition not satisfied                 // msg (String)
-///   --> filename.rs:18:5
-///    |
-/// 14 |     requires(b);
-///    |              - failed precondition           // label (Span, String)
-/// ...
-/// 18 |     has_expectations(false);
-///    |     ^^^^^^^^^^^^^^^^^^^^^^^                  // primary span (Span)
-///
-/// Note that if you want to get an error that is rendered with ^^^^ AND has a label
-/// it needs to BOTH be in the primary spans list AND in the labels.
-///
-/// See the helpers in errors.rs
-
-#[derive(Clone)] // for Debug, see ast_util
-pub struct ErrorX {
-    pub msg: String,
-    pub spans: Vec<Span>,        // "primary" spans
-    pub labels: Vec<ErrorLabel>, // additional spans, with string annotations
-}
-pub type Error = Arc<ErrorX>;
 
 pub type TypeError = String;
 

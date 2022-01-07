@@ -1,9 +1,9 @@
 use crate::ast::{
-    BinaryOp, BindX, Decl, DeclX, Error, ErrorLabel, Expr, ExprX, Ident, MultiOp, Quant, Query,
-    StmtX, TypX, UnaryOp,
+    BinaryOp, BindX, Decl, DeclX, Expr, ExprX, Ident, MultiOp, Quant, Query, StmtX, TypX, UnaryOp,
 };
 use crate::context::{AssertionInfo, AxiomInfo, Context, ValidityResult};
 use crate::def::{GLOBAL_PREFIX_LABEL, PREFIX_LABEL};
+use crate::errors::{Error, ErrorLabel};
 pub use crate::model::{Model, ModelDef};
 use std::collections::HashMap;
 use std::sync::Arc;

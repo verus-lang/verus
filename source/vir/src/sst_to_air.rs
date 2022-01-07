@@ -529,7 +529,11 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
             let air_expr = exp_to_expr(ctx, &expr);
             let error = match error {
                 Some(error) => error.clone(),
-                None => error_with_label("assertion failed".to_string(), &stm.span, "assertion failed".to_string()),
+                None => error_with_label(
+                    "assertion failed".to_string(),
+                    &stm.span,
+                    "assertion failed".to_string(),
+                ),
             };
             if ctx.debug {
                 state.map_span(&stm, SpanKind::Full);

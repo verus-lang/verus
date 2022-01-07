@@ -1,5 +1,6 @@
-use air::ast::{CommandX, ErrorLabel};
+use air::ast::CommandX;
 use air::context::{Context, ValidityResult};
+use air::errors::ErrorLabel;
 use getopts::Options;
 use sise::Node;
 use std::fs::File;

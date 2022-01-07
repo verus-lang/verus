@@ -1,7 +1,8 @@
 use crate::ast::{
-    BinaryOp, Bind, BindX, Binder, BinderX, Constant, DeclX, ErrorX, Expr, ExprX, Exprs, Ident,
-    MultiOp, Quant, Span, Trigger, Typ, TypX, Typs, UnaryOp,
+    BinaryOp, Bind, BindX, Binder, BinderX, Constant, DeclX, Expr, ExprX, Exprs, Ident, MultiOp,
+    Quant, Span, Trigger, Typ, TypX, Typs, UnaryOp,
 };
+use crate::errors::ErrorX;
 use std::fmt::Debug;
 use std::sync::Arc;
 

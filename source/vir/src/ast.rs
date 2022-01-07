@@ -6,7 +6,8 @@
 //! for verification.
 
 use crate::def::Spanned;
-use air::ast::{Error, Quant, Span};
+use air::ast::{Quant, Span};
+use air::errors::Error;
 use std::sync::Arc;
 
 pub use air::ast::{Binder, Binders};
