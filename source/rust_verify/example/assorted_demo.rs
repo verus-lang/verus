@@ -8,43 +8,43 @@ fn main() {
     assert(x != y);
 }
 
-/*
 #[derive(Eq, PartialEq, Structural)]
 struct Train {
-    cars: int,
+    cars: u64,
 }
 
 fn main2() {
     let t = Train { cars: 10 };
-    let q = Train { cars: 12 };
-    assert(t != q);
+    let q = Train { cars: 10 };
+    assert(t == q);
 }
 
 #[spec]
-fn mul(a: int, b: int)  -> int {
+fn mul(a: u64, b: u64)  -> u64 {
     a * b
 }
 
 #[spec]
-fn divides(v: int, d: int) -> bool {
-    exists(|k: int| mul(d, k) == 0)
+fn divides(v: u64, d: u64) -> bool {
+    exists(|k: u64| mul(d, k) == v)
 }
 
 #[verifier(external)]
-fn gcd_external(a: int, b: int) -> int {
+fn gcd_external(a: u64, b: u64) -> u64 {
     let mut i = a;
     while i >= 1 {
         if a % i == 0 && b % i == 0 {
             break;
         }
+        i -= 1;
     }
     i
 }
 
 #[verifier(external_body)]
-fn gcd(a: int, b: int) -> int {
+fn gcd(a: u64, b: u64) -> u64 {
     requires([a >= 0, b >= 0]);
-    ensures(|result: int| [divides(a, result), divides(b, result)]);
+    ensures(|result: u64| [divides(a, result), divides(b, result)]);
 
     gcd_external(a, b)
 }
@@ -57,6 +57,5 @@ fn main3() {
 
     assert(divides(x, z));
     assert(divides(y, z));
-    assert(x % z == 0);
+    // TOOD assert(x % z == 0);
 }
-*/
