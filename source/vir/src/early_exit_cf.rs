@@ -1,6 +1,6 @@
 use crate::ast::{ArmX, CallTarget, Expr, ExprX, Stmt, StmtX, VirErr};
 use air::ast::Span;
-use air::errors::error_string;
+use air::errors::error;
 
 #[derive(Copy, Clone, Debug)]
 enum StatementType {
@@ -21,8 +21,8 @@ pub fn assert_no_early_exit_in_inv_block(inv_span: &Span, expr: &Expr) -> Result
         return Ok(());
     } else {
         // TODO improve err msg by adding span for the break/return/continue statement
-        return Err(error_string(inv_span, "invariant block might return early".to_string())
-            .primary_label(&v[0].span, "would exit here".to_string()));
+        return Err(error("invariant block might return early", inv_span)
+            .primary_label(&v[0].span, "would exit here"));
     }
 }
 

@@ -1,6 +1,6 @@
 use air::ast::{Expr, Span, Stmt, StmtX};
 use air::ast_util::{mk_eq, mk_false, mk_not, mk_or};
-use air::errors::{error_str, error_with_label};
+use air::errors::{error, error_with_label};
 use std::sync::Arc;
 
 /// This is where we handle VCs to ensure that the same invariant is not opened
@@ -104,8 +104,7 @@ impl MaskSet {
             SetBase::Full => match other.base {
                 SetBase::Empty => {
                     let fa = mk_false();
-                    let error =
-                        error_str(call_span, "callee may open invariants that caller cannot");
+                    let error = error("callee may open invariants that caller cannot", call_span);
                     results.push(Arc::new(StmtX::Assert(error, fa)));
                 }
                 SetBase::Full => {
