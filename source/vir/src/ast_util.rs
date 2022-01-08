@@ -5,7 +5,7 @@ use crate::ast::{
 use crate::util::vec_map;
 use air::ast::{Binder, BinderX, Binders, Span};
 pub use air::ast_util::{ident_binder, str_ident};
-use air::errors::error_basic;
+use air::errors::error;
 use std::fmt;
 use std::sync::Arc;
 
@@ -13,11 +13,11 @@ use std::sync::Arc;
 /// For more complex Error objects, use the builder functions in air::errors
 
 pub fn err_str<A>(span: &Span, msg: &str) -> Result<A, VirErr> {
-    Err(error_basic(msg, span))
+    Err(error(msg, span))
 }
 
 pub fn err_string<A>(span: &Span, msg: String) -> Result<A, VirErr> {
-    Err(error_basic(msg, span))
+    Err(error(msg, span))
 }
 
 impl PathX {

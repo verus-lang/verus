@@ -41,7 +41,7 @@ pub type Error = Arc<ErrorX>;
 // To build an error, use one of the constructors below:
 
 /// Basic error, with a message and a single span to be highlighted with ^^^^^^
-pub fn error_basic<S: Into<String>>(msg: S, span: &Span) -> Error {
+pub fn error<S: Into<String>>(msg: S, span: &Span) -> Error {
     return Arc::new(ErrorX { msg: msg.into(), spans: vec![span.clone()], labels: Vec::new() });
 }
 
