@@ -25,7 +25,7 @@ use air::ast_util::{
     mk_eq, mk_exists, mk_implies, mk_ite, mk_not, mk_or, str_apply, str_ident, str_typ, str_var,
     string_var,
 };
-use air::errors::{error_str, error_string, error_with_label};
+use air::errors::{error, error_with_label};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
@@ -485,7 +485,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, mask: &MaskSet, stm: &Stm) -> Vec<
                     None => "precondition not satisfied".to_string(),
                     Some(s) => s.clone(),
                 };
-                let error = error_string(&stm.span, description);
+                let error = error(description, &stm.span);
                 stmts.push(Arc::new(StmtX::Assert(error, e_req)));
             }
 
@@ -663,7 +663,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, mask: &MaskSet, stm: &Stm) -> Vec<
                 local.push(Arc::new(DeclX::Axiom(inv.clone())));
             }
             for (span, inv) in invs.iter() {
-                let error = error_str(span, "invariant not satisfied at end of loop body");
+                let error = error("invariant not satisfied at end of loop body", span);
                 let inv_stmt = StmtX::Assert(error, inv.clone());
                 air_body.push(Arc::new(inv_stmt));
             }
@@ -686,7 +686,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, mask: &MaskSet, stm: &Stm) -> Vec<
             // At original site of while loop, assert invariant, havoc, assume invariant + neg_cond
             let mut stmts: Vec<Stmt> = Vec::new();
             for (span, inv) in invs.iter() {
-                let error = error_str(span, "invariant not satisfied before loop");
+                let error = error("invariant not satisfied before loop", span);
                 let inv_stmt = StmtX::Assert(error, inv.clone());
                 stmts.push(Arc::new(inv_stmt));
             }
@@ -923,7 +923,7 @@ pub fn body_stm_to_air(
     let mut local = state.local_shared.clone();
 
     for ens in enss {
-        let error = error_str(&ens.span, "postcondition not satisfied");
+        let error = error("postcondition not satisfied", &ens.span);
         let ens_stmt = StmtX::Assert(error, exp_to_expr(ctx, ens));
         stmts.push(Arc::new(ens_stmt));
     }

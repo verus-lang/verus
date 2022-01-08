@@ -40,54 +40,49 @@ pub type Error = Arc<ErrorX>;
 
 // To build an error, use one of the constructors below:
 
-/// Basic error, with a message and a single span to be highlighted.
-pub fn error_str(span: &Span, msg: &str) -> Error {
-    return error_string(span, msg.to_string());
+/// Basic error, with a message and a single span to be highlighted with ^^^^^^
+pub fn error<S: Into<String>>(msg: S, span: &Span) -> Error {
+    return Arc::new(ErrorX { msg: msg.into(), spans: vec![span.clone()], labels: Vec::new() });
 }
 
-/// Basic error, with a message and a single span to be highlighted.
-pub fn error_string(span: &Span, msg: String) -> Error {
-    return Arc::new(ErrorX { msg: msg, spans: vec![span.clone()], labels: Vec::new() });
-}
-
-/// Error with a message, a span to be highlighted, and a label for that span
-pub fn error_with_label(msg: String, span: &Span, label: String) -> Error {
+/// Error with a message, a span to be highlighted with ^^^^^^, and a label for that span
+pub fn error_with_label<S: Into<String>, T: Into<String>>(msg: S, span: &Span, label: T) -> Error {
     return Arc::new(ErrorX {
-        msg: msg,
+        msg: msg.into(),
         spans: vec![span.clone()],
-        labels: vec![ErrorLabel { span: span.clone(), msg: label }],
+        labels: vec![ErrorLabel { span: span.clone(), msg: label.into() }],
     });
 }
 
 // Add additional stuff with the "builders" below.
 
 impl ErrorX {
-    /// Add a new primary span
+    /// Add a new primary span (rendered with ^^^^^^)
     pub fn primary_span(&self, span: &Span) -> Error {
         let mut e = self.clone();
         e.spans.push(span.clone());
         Arc::new(e)
     }
 
-    /// Add a new primary span with a label
-    pub fn primary_label(&self, span: &Span, label: String) -> Error {
+    /// Add a new primary span with a label (rendered with ^^^^^^)
+    pub fn primary_label<S: Into<String>>(&self, span: &Span, label: S) -> Error {
         let mut e = self.clone();
         e.spans.push(span.clone());
-        e.labels.push(ErrorLabel { span: span.clone(), msg: label });
+        e.labels.push(ErrorLabel { span: span.clone(), msg: label.into() });
         Arc::new(e)
     }
 
-    /// Add a secondary_span to be highlighted, with no label
+    /// Add a secondary_span to be highlighted, with no label (rendered with ------)
     pub fn secondary_span(&self, span: &Span) -> Error {
         let mut e = self.clone();
         e.labels.push(ErrorLabel { span: span.clone(), msg: "".to_string() });
         Arc::new(e)
     }
 
-    /// Add a secondary_span to be highlighted, with a label
-    pub fn secondary_label(&self, span: &Span, label: String) -> Error {
+    /// Add a secondary_span to be highlighted, with a label (rendered with ------)
+    pub fn secondary_label<S: Into<String>>(&self, span: &Span, label: S) -> Error {
         let mut e = self.clone();
-        e.labels.push(ErrorLabel { span: span.clone(), msg: label });
+        e.labels.push(ErrorLabel { span: span.clone(), msg: label.into() });
         Arc::new(e)
     }
 
