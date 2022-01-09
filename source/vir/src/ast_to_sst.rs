@@ -363,6 +363,7 @@ pub(crate) fn expr_to_stm_opt(
     match &expr.x {
         ExprX::Const(c) => Ok((vec![], Some(mk_exp(ExpX::Const(c.clone()))))),
         ExprX::Var(x) => {
+            dbg!(x);
             let unique_id = state.get_var_unique_id(&x);
             Ok((vec![], Some(mk_exp(ExpX::Var(unique_id)))))
         }

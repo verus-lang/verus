@@ -83,6 +83,16 @@ fn check_function(ctxt: &Ctxt, function: &Function) -> Result<(), VirErr> {
             );
         }
     }
+    for req in function.x.require.iter() {
+        let mut scope_map = air::scope_map::ScopeMap::new();
+        crate::ast_visitor::expr_visitor_dfs::<(), _>(req, &mut scope_map, &mut |map, expr| {
+            match &expr.x {
+                ExprX::Var(x) => { dbg!(x); },
+                _ => (),
+            }
+            crate::ast_visitor::VisitorControlFlow::Continue
+        });
+    }
     if let Some(body) = &function.x.body {
         map_expr_visitor(body, &mut |expr: &Expr| {
             match &expr.x {

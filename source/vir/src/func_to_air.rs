@@ -188,6 +188,7 @@ pub fn req_ens_to_air(
             exprs.push(e.clone());
         }
         for e in specs.iter() {
+            dbg!(e);
             let exp = crate::ast_to_sst::expr_to_exp(ctx, &params, e)?;
             let expr = exp_to_expr(ctx, &exp, ExprCtxt::Spec);
             let loc_expr = match msg {

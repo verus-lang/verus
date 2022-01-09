@@ -64,6 +64,31 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_mut_ref_arg_proof code! {
+        fn add1(#[proof] a: &mut u64) {
+            requires(*old(a) < 10);
+            ensures(*a == *old(a) + 1);
+            *a = *a + 1;
+        }
+
+        fn caller() {
+            let mut a = 2;
+            add1(&mut a);
+            assert(a == 3);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_mut_ref_arg_invalid_spec code! {
+        fn add1(a: &mut u64) {
+            requires(*a < 10);
+            *a = *a + 1;
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] test_mut_ref_arg_spec code! {
         #[spec]
         fn add1(a: &mut u64) {
