@@ -85,7 +85,7 @@ test_verify_one_file! {
             requires(*a < 10);
             *a = *a + 1;
         }
-    } => Err(e) => assert_vir_error(e)
+    } => Err(e) => assert_vir_error(e) // error: in requires, use `old(a)` to refer to the pre-state of an &mut variable
 }
 
 test_verify_one_file! {
@@ -94,10 +94,11 @@ test_verify_one_file! {
         fn add1(a: &mut u64) {
             *a = *a + 1;
         }
-    } => Err(e) => assert_vir_error(e)
+    } => Err(e) => assert_vir_error(e) // error: &mut argument not allowed for #[spec] functions
 }
 
 test_verify_one_file! {
+    // TODO(utaal) better/safer error check for this
     #[ignore] #[test] test_mut_ref_unsupported_1 code! {
         fn test0() {
             let a = 3;
@@ -105,20 +106,3 @@ test_verify_one_file! {
         }
     } => Err(e) => assert_vir_error(e)
 }
-
-// fn do_thing(a: &'a mut A) -> &'a mut B {
-//     ensures(|res| a ==
-// }
-
-// fn index(a: &mut Vec<A>, i: usize) -> &'a A {
-// }
-
-// fn caller() {
-//     let a = A { }
-//     // let a: &mut A
-//     *do_thing(&mut a) = something;
-//          // a is borrowed
-//     std::mem::drop(b); // borrow ends here
-//     // what is the value of a here?
-
-// }

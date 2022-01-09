@@ -253,13 +253,12 @@ fn params_to_pre_post_params(params: &Params, pre: bool) -> Params {
             .flat_map(|param| {
                 let mut res = Vec::new();
                 if param.x.is_mut {
-                    res.push(
-                        param.map_x(|p| ParamX {
-                            name: prefix_pre_var(&p.name),
-                            typ: p.typ.clone(),
-                            mode: p.mode,
-                            is_mut: false,
-                        }));
+                    res.push(param.map_x(|p| ParamX {
+                        name: prefix_pre_var(&p.name),
+                        typ: p.typ.clone(),
+                        mode: p.mode,
+                        is_mut: false,
+                    }));
                 }
                 if !(param.x.is_mut && pre) {
                     res.push(param.clone());
@@ -276,13 +275,17 @@ pub fn func_decl_to_air(
     public_body: bool,
 ) -> Result<(Commands, Commands), VirErr> {
     // let typ_params: Vec<_> = funxtion.x.typ_bounds.iter().map(|_| str_typ(crate::def::TYPE)).collect();
-    let req_typs: Arc<Vec<_>> = Arc::new(function.x.params.iter().map(|param| typ_to_air(ctx, &param.x.typ)).collect());
-    let mut ens_typs: Vec<_> = function.x.params
+    let req_typs: Arc<Vec<_>> =
+        Arc::new(function.x.params.iter().map(|param| typ_to_air(ctx, &param.x.typ)).collect());
+    let mut ens_typs: Vec<_> = function
+        .x
+        .params
         .iter()
         .flat_map(|param| {
             let air_typ = typ_to_air(ctx, &param.x.typ);
             if !param.x.is_mut { vec![air_typ] } else { vec![air_typ.clone(), air_typ] }
-        }).collect();
+        })
+        .collect();
 
     let mut decl_commands: Vec<Command> = Vec::new();
     let mut check_commands: Vec<Command> = Vec::new();
@@ -382,7 +385,6 @@ pub fn func_decl_to_air(
                 let req = crate::ast_util::conjoin(span, &*function.x.require);
                 let ens = crate::ast_util::conjoin(span, &*function.x.ensure);
                 let req_ens = crate::ast_util::mk_implies(span, &req, &ens);
-                // TODO check usage of params
                 let exp = crate::ast_to_sst::expr_to_bind_decls_exp(ctx, &params, &req_ens)?;
                 let mut vars: Vec<Ident> = Vec::new();
                 let mut binders: Vec<Binder<Typ>> = Vec::new();
@@ -397,7 +399,6 @@ pub fn func_decl_to_air(
                         GenericBoundX::FnSpec(..) => {}
                     }
                 }
-                // TODO check usage of params
                 for param in params.iter() {
                     vars.push(param.x.name.clone());
                     binders.push(crate::ast_util::param_to_binder(&param));

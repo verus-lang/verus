@@ -408,7 +408,7 @@ fn fn_call_to_vir<'tcx>(
                 ));
             }
         }
-        unsupported_err!(expr.span, "only a variable binding is allowed as the argument to old");
+        return err_span_str(expr.span, "only a variable binding is allowed as the argument to old");
     }
 
     if is_hide || is_reveal {
@@ -524,9 +524,6 @@ fn fn_call_to_vir<'tcx>(
                     .inputs()
                     .iter()
                     .map(|t| {
-                        // /* TODO remove */ if f_name.contains("add1") {
-                        // /* TODO remove */     dbg!(&t);
-                        // /* TODO remove */ }
                         if let TyKind::Ref(_, tys, rustc_ast::Mutability::Mut) = t.kind() {
                             mid_ty_to_vir(bctx.ctxt.tcx, tys)
                         } else {

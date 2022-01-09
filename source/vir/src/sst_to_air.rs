@@ -2,14 +2,14 @@ use crate::ast::{
     BinaryOp, Fun, Ident, Idents, IntRange, Mode, Params, Path, SpannedTyped, Typ, TypX, Typs,
     UnaryOp, UnaryOpr, VarAt,
 };
-use crate::ast_util::{get_field, get_variant, err_str};
+use crate::ast_util::{get_field, get_variant};
 use crate::context::Ctx;
 use crate::def::{
     fun_to_string, path_to_string, prefix_box, prefix_ensures, prefix_fuel_id, prefix_pre_var,
-    prefix_requires, snapshot_ident, suffix_global_id, suffix_local_expr_id,
-    suffix_local_stmt_id, suffix_local_unique_id, suffix_typ_param_id, variant_field_ident,
-    variant_ident, SnapPos, SpanKind, Spanned, FUEL_BOOL, FUEL_BOOL_DEFAULT, FUEL_DEFAULTS,
-    FUEL_ID, FUEL_PARAM, FUEL_TYPE, POLY, SNAPSHOT_CALL, SNAPSHOT_PRE, SUCC, SUFFIX_SNAP_JOIN, SUFFIX_SNAP_MUT,
+    prefix_requires, snapshot_ident, suffix_global_id, suffix_local_expr_id, suffix_local_stmt_id,
+    suffix_local_unique_id, suffix_typ_param_id, variant_field_ident, variant_ident, SnapPos,
+    SpanKind, Spanned, FUEL_BOOL, FUEL_BOOL_DEFAULT, FUEL_DEFAULTS, FUEL_ID, FUEL_PARAM, FUEL_TYPE,
+    POLY, SNAPSHOT_CALL, SNAPSHOT_PRE, SUCC, SUFFIX_SNAP_JOIN, SUFFIX_SNAP_MUT,
     SUFFIX_SNAP_WHILE_BEGIN, SUFFIX_SNAP_WHILE_END,
 };
 use crate::sst::{BndX, Dest, Exp, ExpX, LocalDecl, Stm, StmX, UniqueIdent};
@@ -210,7 +210,9 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: ExprCtxt) -> Expr {
         ExpX::Var(x) => string_var(&suffix_local_unique_id(x)),
         ExpX::VarAt(x, VarAt::Pre) => match expr_ctxt {
             ExprCtxt::Spec => string_var(&prefix_pre_var(&suffix_local_stmt_id(x))),
-            ExprCtxt::Body => Arc::new(ExprX::Old(snapshot_ident(SNAPSHOT_PRE), suffix_local_stmt_id(x))),
+            ExprCtxt::Body => {
+                Arc::new(ExprX::Old(snapshot_ident(SNAPSHOT_PRE), suffix_local_stmt_id(x)))
+            }
             ExprCtxt::BodyPre => string_var(&suffix_local_stmt_id(x)),
         },
         ExpX::Old(span, x) => Arc::new(ExprX::Old(span.clone(), suffix_local_stmt_id(x))),
@@ -514,19 +516,20 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm, pre_snap: bool) -> Vec<
             for (param, arg) in func.x.params.iter().zip(args.iter()) {
                 if param.x.is_mut {
                     call_snapshot = true;
-                    let arg_x = match &arg.x {
-                        ExpX::Var(x) => {
-                            {
-                                let havoc = StmtX::Havoc(suffix_local_unique_id(&x));
-                                havocs.push(Arc::new(havoc));
-                            }
-                            Ok(SpannedTyped::new(
-                                &arg.span,
-                                &arg.typ,
-                                ExpX::Old(snapshot_ident(SNAPSHOT_CALL), x.0.clone())))
-                        },
-                        _ => err_str(&arg.span, "complex assignments not yet supported"),
-                    }.expect("TODO");
+                    let arg_x = if let ExpX::Var(x) = &arg.x {
+                        {
+                            let havoc = StmtX::Havoc(suffix_local_unique_id(&x));
+                            havocs.push(Arc::new(havoc));
+                        }
+                        SpannedTyped::new(
+                            &arg.span,
+                            &arg.typ,
+                            ExpX::Old(snapshot_ident(SNAPSHOT_CALL), x.0.clone()),
+                        )
+                    } else {
+                        // TODO(utaal) complex assignment support
+                        panic!("complex assignments not yet supported, {:?}", &arg.span);
+                    };
                     ens_args_wo_typ.push(exp_to_expr(ctx, &arg_x, expr_ctxt));
                     ens_args_wo_typ.push(exp_to_expr(ctx, &arg, expr_ctxt));
                 } else {
@@ -557,7 +560,8 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm, pre_snap: bool) -> Vec<
                     state.map_span(&stm, SpanKind::Full);
                 }
             }
-            let mut ens_args: Vec<_> = typ_args.into_iter().chain(ens_args_wo_typ.into_iter()).collect();
+            let mut ens_args: Vec<_> =
+                typ_args.into_iter().chain(ens_args_wo_typ.into_iter()).collect();
             if let Some(Dest { var, is_init }) = dest {
                 let x = suffix_local_unique_id(&var);
                 ens_args.push(Arc::new(ExprX::Var(x.clone())));
@@ -786,8 +790,11 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm, pre_snap: bool) -> Vec<
                 state.push_scope();
                 state.map_span(&stm, SpanKind::Start);
             }
-            let pre_snap: Option<Stmt> =
-                if pre_snap { Some(Arc::new(StmtX::Snapshot(snapshot_ident(SNAPSHOT_PRE)))) } else { None };
+            let pre_snap: Option<Stmt> = if pre_snap {
+                Some(Arc::new(StmtX::Snapshot(snapshot_ident(SNAPSHOT_PRE))))
+            } else {
+                None
+            };
             let stmts: Vec<Stmt> = pre_snap
                 .into_iter()
                 .chain(stms.iter().map(|s| stm_to_stmts(ctx, state, s, false)).flatten())
