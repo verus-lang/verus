@@ -85,7 +85,7 @@ test_verify_one_file! {
             requires(*a < 10);
             *a = *a + 1;
         }
-    } => Ok(())
+    } => Err(e) => assert_vir_error(e)
 }
 
 test_verify_one_file! {
@@ -98,7 +98,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_mut_ref_unsupported_1 code! {
+    #[ignore] #[test] test_mut_ref_unsupported_1 code! {
         fn test0() {
             let a = 3;
             let b = &mut a;
