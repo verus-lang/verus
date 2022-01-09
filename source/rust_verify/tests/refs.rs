@@ -64,14 +64,12 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[ignore] #[test] test_mut_ref_arg_spec code! {
-        // TODO: what to do for spec functions
+    #[test] test_mut_ref_arg_spec code! {
         #[spec]
         fn add1(a: &mut u64) {
-            // ensures(*a == *(old(a)) + 1);
             *a = *a + 1;
         }
-    } => Ok(())
+    } => Err(e) => assert_vir_error(e)
 }
 
 test_verify_one_file! {
@@ -80,7 +78,7 @@ test_verify_one_file! {
             let a = 3;
             let b = &mut a;
         }
-    } => Ok(())
+    } => Err(e) => assert_vir_error(e)
 }
 
 // fn do_thing(a: &'a mut A) -> &'a mut B {

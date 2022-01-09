@@ -174,6 +174,9 @@ pub(crate) fn check_item_fn<'tcx>(
             }
         }
         let is_mut = is_mut_ty(&input);
+        if is_mut.is_some() && mode == Mode::Spec {
+            return err_span_string(*span, format!("&mut argument not allowed for #[spec] functions"));
+        }
         let (typ, is_mut) = if is_self_or_self_ref(*span, &input)? {
             if mode != param_mode {
                 // It's hard for erase.rs to support mode != param_mode (we'd have to erase self),
