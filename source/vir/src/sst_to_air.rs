@@ -514,6 +514,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm, pre_snap: bool) -> Vec<
             let mut ens_args_wo_typ = Vec::new();
             let mut havocs = Vec::new();
             for (param, arg) in func.x.params.iter().zip(args.iter()) {
+                eprintln!("{:?} {:?}", param, arg);
                 if param.x.is_mut {
                     call_snapshot = true;
                     let arg_x = if let ExpX::Var(x) = &arg.x {

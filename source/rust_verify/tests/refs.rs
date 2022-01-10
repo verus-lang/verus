@@ -106,3 +106,78 @@ test_verify_one_file! {
         }
     } => Err(e) => assert_vir_error(e)
 }
+
+const MUT_REF_ARG_SELF_COMMON: &str = code_str! {
+    pub struct Value {
+        pub v: u64,
+    }
+
+    impl Value {
+        pub fn add1(&mut self) {
+            requires(old(self).v < 10);
+            ensures(self.v == old(self).v + 1);
+            let Value { v } = *self;
+            *self = Value { v: v + 1 };
+        }
+    }
+};
+
+test_verify_one_file! {
+    #[test] test_mut_ref_arg_self_pass_1 MUT_REF_ARG_SELF_COMMON.to_string() + code_str! {
+        fn caller() {
+            let mut v = Value { v: 2 };
+            v.add1();
+            assert(v.v == 3);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_mut_ref_arg_self_fail MUT_REF_ARG_SELF_COMMON.to_string() + code_str! {
+        fn caller1() {
+            let mut v = Value { v: 2 };
+            v.add1();
+            assert(v.v == 4); // FAILS
+        }
+
+        fn caller2() {
+            let mut v = Value { v: 12 };
+            v.add1(); // FAILS
+        }
+    } => Err(e) => assert_fails(e, 2)
+}
+
+test_verify_one_file! {
+    #[test] test_mut_ref_arg_self_pass_2 MUT_REF_ARG_SELF_COMMON.to_string() + code_str! {
+        pub struct Wrap {
+            pub w: Value,
+        }
+
+        impl Wrap {
+            fn outer(&mut self) {
+                requires(old(self).w.v < 10);
+                // TODO disallow this
+                self.w.add1();
+                assert(self.w.v == 3);
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_mut_ref_arg_self_spec code! {
+        #[spec]
+        pub struct Value {
+            pub v: u64,
+        }
+
+        impl Value {
+            #[spec]
+            pub fn add1(&mut self) {
+                let Value { v } = *self;
+                *self = Value { v: v + 1 };
+            }
+        }
+    } => Err(e) => assert_vir_error(e)
+}
+

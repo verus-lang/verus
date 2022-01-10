@@ -57,6 +57,7 @@ fn check_fn_decl<'tcx>(
         rustc_hir::ImplicitSelfKind::None => {}
         rustc_hir::ImplicitSelfKind::Imm => {}
         rustc_hir::ImplicitSelfKind::ImmRef => {}
+        rustc_hir::ImplicitSelfKind::MutRef => {}
         _ => unsupported!("implicit_self"),
     }
     match output {
