@@ -904,11 +904,8 @@ fn erase_inv_block(ctxt: &Ctxt, mctxt: &mut MCtxt, expect: Mode, block: &Block) 
     }
 
     // Middle statement: the user-supplied block
-    match erase_stmt(ctxt, mctxt, expect, &block.stmts[1], false) {
-        None => {}
-        Some(stmt) => {
-            result_stmts.push(stmt);
-        }
+    if let Some(stmt) = erase_stmt(ctxt, mctxt, expect, &block.stmts[1], false) {
+        result_stmts.push(stmt);
     }
 
     // Final statement:

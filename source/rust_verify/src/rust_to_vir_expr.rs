@@ -334,6 +334,11 @@ fn fn_call_to_vir<'tcx>(
     let is_arith_binary = is_add || is_sub || is_mul;
 
     if f_name == BUILTIN_INV_BEGIN || f_name == BUILTIN_INV_END {
+        // `open_invariant_begin` and `open_invariant_end` calls should only appear
+        // through use of the `open_invariant!` macro, which creates an invariant block.
+        // Thus, they should end up being processed by `invariant_block_to_vir` before
+        // we get here. Thus, for any well-formed use of an invariant block, we should
+        // not reach this point.
         return err_span_string(
             expr.span,
             format!("{} should never be used except through open_invariant macro", f_name),
