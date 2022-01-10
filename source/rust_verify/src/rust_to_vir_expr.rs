@@ -395,25 +395,6 @@ fn fn_call_to_vir<'tcx>(
             expr.span,
             "'is_opens_invariants' and 'is_opens_invariants_except' are not yet implemented",
         );
-
-        /*
-        unsupported_err_unless!(len == 1, expr.span, "expected list", &args);
-        let bctx = &BodyCtxt { external_body: false, ..bctx.clone() };
-        args = extract_array(args[0]);
-        for arg in &args {
-            if bctx.types.node_type(arg.hir_id).to_string() != crate::typecheck::BUILTIN_INT {
-                return err_span_str(arg.span, "invariant needs an int expression");
-            }
-        }
-        let vir_args = vec_map_result(&args, |arg| expr_to_vir(&bctx, arg))?;
-        let header = if is_opens_invariants {
-            Arc::new(HeaderExprX::InvariantOpens(Arc::new(vir_args)))
-        } else {
-            Arc::new(HeaderExprX::InvariantOpensExcept(Arc::new(vir_args)))
-        };
-
-        return Ok(mk_expr(ExprX::Header(header)));
-        */
     }
     if is_opens_invariants_none {
         let header = Arc::new(HeaderExprX::InvariantOpens(Arc::new(Vec::new())));
