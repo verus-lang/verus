@@ -885,9 +885,7 @@ fn invariant_block_to_vir<'tcx>(
 
     let body = match &expr.kind {
         ExprKind::Block(body, _) => body,
-        _ => {
-            panic!("invariant_block_to_vir called with non-Body expression");
-        }
+        _ => panic!("invariant_block_to_vir called with non-Body expression"),
     };
 
     if body.stmts.len() != 3 || body.expr.is_some() {
