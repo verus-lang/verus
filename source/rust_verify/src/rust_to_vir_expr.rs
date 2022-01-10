@@ -1011,6 +1011,9 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
             res => unsupported_err!(expr.span, format!("Path {:?}", res)),
         },
         ExprKind::Assign(lhs, rhs, _) => {
+            if let ExprKind::Field(_, _) = lhs.kind {
+                unsupported_err!(expr.span, format!("field updates"), lhs);
+            }
             Ok(mk_expr(ExprX::Assign(expr_to_vir(bctx, lhs)?, expr_to_vir(bctx, rhs)?)))
         }
         ExprKind::Field(lhs, name) => {
