@@ -97,9 +97,9 @@ pub fn open_invariant_end<V>(_guard: &InvariantBlockGuard, _v: V) {
 macro_rules! open_invariant {
     ($eexpr:expr => $iident:ident => $bblock:block) => {
         #[verifier(invariant_block)] {
-            #[allow(unused_mut)] let (guard, mut $iident) = crate::open_invariant_begin($eexpr);
+            #[allow(unused_mut)] let (guard, mut $iident) = $crate::pervasive::invariants::open_invariant_begin($eexpr);
             $bblock
-            crate::open_invariant_end(guard, $iident);
+            $crate::pervasive::invariants::open_invariant_end(guard, $iident);
         }
     }
 }
