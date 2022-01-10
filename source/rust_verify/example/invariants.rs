@@ -166,4 +166,16 @@ pub fn blah(#[proof] i: Invariant<u8>) {
 */
 
 pub fn main() {
+  #[proof] let u: u32 = 5;
+
+  #[proof] let i = invariant_new(u, |u: u32| u % 2 == 1, 0);
+
+  open_invariant!(&i => inner => {
+    if inner == 1 {
+      inner = 3;
+    }
+  });
+
+  #[proof] let j = i.destruct();
+  assert(j % 2 == 1);
 }

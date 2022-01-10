@@ -16,6 +16,22 @@ pub struct Invariant<V> {
 // TODO right now they are only translated if the user refers to them in their code
 // which can cause a crash otherwise
 
+// TODO move this to be inside the `impl`:
+#[proof]
+#[verifier(external_body)]
+#[verifier(returns(proof))]
+pub fn invariant_new<V, F: Fn(V) -> bool>(#[proof] v: V, #[spec] inv: F, #[spec] ns: int) -> Invariant<V> {
+  requires([
+    inv(v),
+  ]);
+  ensures(|i: Invariant<V>|
+    forall(|v: V| i.inv(v) == inv(v)) // TODO replace this with function equality
+    && equal(i.namespace(), ns)
+  );
+
+  unimplemented!();
+}
+
 #[proof]
 impl<V> Invariant<V> {
     #[verifier(pub_abstract)]
@@ -32,6 +48,15 @@ impl<V> Invariant<V> {
     #[spec]
     pub fn namespace(&self) -> int {
         arbitrary()
+    }
+
+    #[proof]
+    #[verifier(external_body)]
+    #[verifier(returns(proof))]
+    pub fn destruct(#[proof] self) -> V {
+        ensures(|v: V| self.inv(v));
+
+        unimplemented!();
     }
 }
 
