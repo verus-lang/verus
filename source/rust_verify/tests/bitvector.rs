@@ -41,7 +41,6 @@ test_verify_one_file! {
             assert_bit_vector(b & b & b == b | b | (b ^ b));
             assert(b & b & b == b | b | (b ^ b));
         }
-
     } => Ok(())
 }
 
@@ -67,7 +66,7 @@ test_verify_one_file! {
     #[test] test3_fails code! {
         #[proof]
         fn test3(b: u32) {
-            assert_bit_vector(b > b); // FAILS
+            assert_bit_vector(b & 0 > 0); // FAILS
         }
     } => Err(err) => assert_one_fails(err)
 }

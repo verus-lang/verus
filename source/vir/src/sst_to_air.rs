@@ -289,26 +289,25 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp) -> Expr {
 
                 _ => {
                     let aop = match op {
-                        BinaryOp::And => panic!("internal error"),
-                        BinaryOp::Or => panic!("internal error"),
-                        BinaryOp::Implies => panic!("internal error"),
+                        BinaryOp::And => unreachable!(),
+                        BinaryOp::Or => unreachable!(),
+                        BinaryOp::Implies => unreachable!(),
                         BinaryOp::Eq(_) => air::ast::BinaryOp::Eq,
-                        BinaryOp::Ne => panic!("internal error"),
+                        BinaryOp::Ne => unreachable!(),
                         BinaryOp::Le => air::ast::BinaryOp::Le,
                         BinaryOp::Ge => air::ast::BinaryOp::Ge,
                         BinaryOp::Lt => air::ast::BinaryOp::Lt,
                         BinaryOp::Gt => air::ast::BinaryOp::Gt,
-                        BinaryOp::Add => panic!("internal error"),
-                        BinaryOp::Sub => panic!("internal error"),
-                        BinaryOp::Mul => panic!("internal error"),
+                        BinaryOp::Add => unreachable!(),
+                        BinaryOp::Sub => unreachable!(),
+                        BinaryOp::Mul => unreachable!(),
                         BinaryOp::EuclideanDiv => air::ast::BinaryOp::EuclideanDiv,
                         BinaryOp::EuclideanMod => air::ast::BinaryOp::EuclideanMod,
-                        BinaryOp::BitOr => panic!("internal error"),
-                        BinaryOp::Shr => panic!("internal error"),
-                        BinaryOp::Shl => panic!("internal error"),
-                        BinaryOp::BitAnd => panic!("internal error"),
-                        BinaryOp::BitXor => panic!("internal error"),
-                        _ => panic!("unhandled bv operation translation {:?}", op),
+                        BinaryOp::BitOr => unreachable!(),
+                        BinaryOp::Shr => unreachable!(),
+                        BinaryOp::Shl => unreachable!(),
+                        BinaryOp::BitAnd => unreachable!(),
+                        BinaryOp::BitXor => unreachable!(),
                     };
                     ExprX::Binary(aop, lh, rh)
                 }

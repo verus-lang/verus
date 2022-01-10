@@ -166,7 +166,7 @@ impl Printer {
                     BinaryOp::BitGt => "bvugt",   // unsigned
                     BinaryOp::BitLe => "bvule",   // unsigned
                     BinaryOp::BitGe => "bvuge",   // unsigned
-                    BinaryOp::Shr => "bvlshr",    // logical shift for unsigned bv
+                    BinaryOp::Shr => "bvlshr",    // logical shift
                     BinaryOp::Shl => "bvshl",
                 };
                 Node::List(vec![str_to_node(sop), self.expr_to_node(lhs), self.expr_to_node(rhs)])
