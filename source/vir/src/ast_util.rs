@@ -1,6 +1,7 @@
 use crate::ast::{
-    BinaryOp, Constant, DatatypeX, Expr, ExprX, Fun, FunX, FunctionX, Ident, Idents, Mode, Param,
-    Params, Path, PathX, SpannedTyped, Typ, TypX, Variant, Variants, VirErr, Visibility,
+    BinaryOp, Constant, DatatypeX, Expr, ExprX, Fun, FunX, FunctionX, Ident, Idents, IntRange,
+    Mode, Param, Params, Path, PathX, SpannedTyped, Typ, TypX, Variant, Variants, VirErr,
+    Visibility,
 };
 use crate::util::vec_map;
 use air::ast::{Binder, BinderX, Binders, Span};

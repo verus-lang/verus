@@ -614,10 +614,14 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
             vec![Arc::new(StmtX::Assert(error, air_expr))]
         }
         StmX::AssertBV(expr) => {
-            let spans: Vec<Span> = vec![stm.span.clone()];
+            let error = error_with_label(
+                "assertion failed".to_string(),
+                &stm.span,
+                "assertion failed".to_string(),
+            );
             let local = state.local_bv_shared.clone();
             let air_expr = exp_to_bv_expr(&state, &expr);
-            let assertion = Arc::new(StmtX::Assert(Arc::new(spans), air_expr));
+            let assertion = Arc::new(StmtX::Assert(error, air_expr));
             // this creates a separate query for the bv assertion
             let query = Arc::new(QueryX { local: Arc::new(local), assertion });
             state.commands.push(Arc::new(CommandX::CheckValid(query)));
