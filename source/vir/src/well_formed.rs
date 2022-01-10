@@ -2,6 +2,7 @@ use crate::ast::{
     CallTarget, Datatype, Expr, ExprX, Fun, FunX, Function, Krate, MaskSpec, Mode, Path, PathX,
     TypX, UnaryOpr, VirErr,
 };
+use crate::early_exit_cf::assert_no_early_exit_in_inv_block;
 use crate::ast_util::{err_str, err_string};
 use crate::ast_visitor::map_expr_visitor;
 use crate::datatype_to_air::is_datatype_transparent;
@@ -139,6 +140,9 @@ fn check_function(ctxt: &Ctxt, function: &Function) -> Result<(), VirErr> {
                     } else {
                         panic!("field access of undefined datatype");
                     }
+                }
+                ExprX::OpenInvariant(_inv, _binder, body) => {
+                  assert_no_early_exit_in_inv_block(&body.span, body)?;
                 }
                 _ => {}
             }

@@ -3,7 +3,6 @@ use crate::ast::{
     PatternX, Stmt, StmtX, UnaryOpr, VirErr,
 };
 use crate::ast_util::{err_str, err_string, get_field};
-use crate::early_exit_cf::assert_no_early_exit_in_inv_block;
 use crate::util::vec_map_result;
 use air::ast::Span;
 use air::scope_map::ScopeMap;
@@ -342,8 +341,6 @@ fn check_expr(typing: &mut Typing, outer_mode: Mode, expr: &Expr) -> Result<Mode
             Ok(mode)
         }
         ExprX::OpenInvariant(inv, binder, body) => {
-            assert_no_early_exit_in_inv_block(&body.span, body)?;
-
             if outer_mode == Mode::Spec {
                 return err_string(&expr.span, format!("Cannot open invariant in Spec mode."));
             }
