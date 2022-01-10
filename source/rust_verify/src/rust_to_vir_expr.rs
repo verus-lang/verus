@@ -345,7 +345,14 @@ fn fn_call_to_vir<'tcx>(
         );
     }
 
-    if bctx.external_body && !is_requires && !is_ensures {
+    if bctx.external_body
+        && !is_requires
+        && !is_ensures
+        && !is_opens_invariants_none
+        && !is_opens_invariants_any
+        && !is_opens_invariants
+        && !is_opens_invariants_except
+    {
         return Ok(spanned_typed_new(
             expr.span,
             &Arc::new(TypX::Bool),
