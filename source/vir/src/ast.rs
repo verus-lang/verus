@@ -320,6 +320,7 @@ pub struct ParamX {
     pub name: Ident,
     pub typ: Typ,
     pub mode: Mode,
+    /// An &mut parameter
     pub is_mut: bool,
 }
 

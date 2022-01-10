@@ -112,7 +112,17 @@ fn check_function(ctxt: &Ctxt, function: &Function) -> Result<(), VirErr> {
     if let Some(body) = &function.x.body {
         map_expr_visitor(body, &mut |expr: &Expr| {
             match &expr.x {
-                ExprX::Call(CallTarget::Static(x, _), _) => {
+                ExprX::Call(CallTarget::Static(x, _), args) => {
+                    let f = &ctxt.funs[x];
+                    for (_param, arg) in f.x.params.iter().zip(args.iter()).filter(|(p, _)| p.x.is_mut) {
+                        match &arg.x {
+                            ExprX::Var(_) => (),
+                            _ => return err_str(
+                                &arg.span,
+                                "complex arguments to &mut parameters are currently unsupported"
+                            ),
+                        }
+                    }
                     // Check that public, non-abstract spec function bodies don't refer to private items
                     if !function.x.is_abstract
                         && !function.x.visibility.is_private

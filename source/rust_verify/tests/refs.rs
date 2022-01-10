@@ -148,7 +148,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_mut_ref_arg_self_pass_2 MUT_REF_ARG_SELF_COMMON.to_string() + code_str! {
+    #[test] test_mut_ref_arg_self_fail_complex MUT_REF_ARG_SELF_COMMON.to_string() + code_str! {
         pub struct Wrap {
             pub w: Value,
         }
@@ -156,12 +156,12 @@ test_verify_one_file! {
         impl Wrap {
             fn outer(&mut self) {
                 requires(old(self).w.v < 10);
-                // TODO disallow this
+                // currently disallowing this
                 self.w.add1();
                 assert(self.w.v == 3);
             }
         }
-    } => Ok(())
+    } => Err(e) => assert_vir_error(e)
 }
 
 test_verify_one_file! {

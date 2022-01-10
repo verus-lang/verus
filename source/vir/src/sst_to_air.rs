@@ -528,8 +528,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm, pre_snap: bool) -> Vec<
                             ExpX::Old(snapshot_ident(SNAPSHOT_CALL), x.0.clone()),
                         )
                     } else {
-                        // TODO(utaal) complex assignment support
-                        panic!("complex assignments not yet supported, {:?}", &arg.span);
+                        panic!("unexpected location for &mut argument (must be an ExpX::Var), {:?}", &arg.span);
                     };
                     ens_args_wo_typ.push(exp_to_expr(ctx, &arg_x, expr_ctxt));
                     ens_args_wo_typ.push(exp_to_expr(ctx, &arg, expr_ctxt));
