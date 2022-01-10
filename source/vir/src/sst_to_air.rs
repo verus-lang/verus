@@ -514,7 +514,6 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm, pre_snap: bool) -> Vec<
             let mut ens_args_wo_typ = Vec::new();
             let mut havocs = Vec::new();
             for (param, arg) in func.x.params.iter().zip(args.iter()) {
-                eprintln!("{:?} {:?}", param, arg);
                 if param.x.is_mut {
                     call_snapshot = true;
                     let arg_x = if let ExpX::Var(x) = &arg.x {
@@ -528,7 +527,10 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm, pre_snap: bool) -> Vec<
                             ExpX::Old(snapshot_ident(SNAPSHOT_CALL), x.0.clone()),
                         )
                     } else {
-                        panic!("unexpected location for &mut argument (must be an ExpX::Var), {:?}", &arg.span);
+                        panic!(
+                            "unexpected location for &mut argument (must be an ExpX::Var), {:?}",
+                            &arg.span
+                        );
                     };
                     ens_args_wo_typ.push(exp_to_expr(ctx, &arg_x, expr_ctxt));
                     ens_args_wo_typ.push(exp_to_expr(ctx, &arg, expr_ctxt));

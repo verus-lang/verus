@@ -180,4 +180,3 @@ test_verify_one_file! {
         }
     } => Err(e) => assert_vir_error(e)
 }
-
