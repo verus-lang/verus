@@ -849,7 +849,7 @@ fn erase_inv_block(ctxt: &Ctxt, mctxt: &mut MCtxt, expect: Mode, block: &Block) 
     let open_stmt = &block.stmts[0];
     match &open_stmt.kind {
         StmtKind::Local(local) => {
-            match &**local.init.as_ref().expect("erase_inv_block") {
+            match &**local.init.as_ref().expect("erase_inv_block: the checks in invariant_block_to_vir should ensure the first statement is an initializer") {
                 Expr { kind: ExprKind::Call(callfn, args), span, id, attrs, tokens } => {
                     let arg = &args[0];
                     let expr_opt = erase_expr_opt(ctxt, mctxt, Mode::Proof, arg);

@@ -841,7 +841,6 @@ pub(crate) fn pattern_to_vir<'tcx>(
 }
 
 /// Check for the #[verifier(invariant_block)] attribute
-
 pub fn attrs_is_invariant_block(attrs: &[Attribute]) -> Result<bool, VirErr> {
     let attrs_vec = parse_attrs(attrs)?;
     for attr in &attrs_vec {
@@ -856,7 +855,6 @@ pub fn attrs_is_invariant_block(attrs: &[Attribute]) -> Result<bool, VirErr> {
 }
 
 /// Check for the #[verifier(invariant_block)] attribute on a block
-
 fn is_invariant_block(bctx: &BodyCtxt, expr: &Expr) -> Result<bool, VirErr> {
     let attrs = bctx.ctxt.tcx.hir().attrs(expr.hir_id);
     return attrs_is_invariant_block(attrs);
