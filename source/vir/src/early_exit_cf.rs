@@ -4,9 +4,7 @@ use air::errors::error;
 
 #[derive(Copy, Clone, Debug)]
 enum StatementType {
-    Return,
-    //Break,
-    //Continue,
+    Return, // TODO add Break and Continue when they are supported
 }
 
 #[derive(Clone, Debug)]
@@ -20,9 +18,8 @@ pub fn assert_no_early_exit_in_inv_block(inv_span: &Span, expr: &Expr) -> Result
     if v.len() == 0 {
         return Ok(());
     } else {
-        // TODO improve err msg by adding span for the break/return/continue statement
-        return Err(error("invariant block might return early", inv_span)
-            .primary_label(&v[0].span, "would exit here"));
+        return Err(error("invariant block might exit early", inv_span)
+            .primary_label(&v[0].span, "would exit from here"));
     }
 }
 
