@@ -180,3 +180,19 @@ test_verify_one_file! {
         }
     } => Err(e) => assert_vir_error(e)
 }
+
+test_verify_one_file! {
+    // TODO(utaal) this is currently rejected by the same check that disallows complex arguments
+    // for &mut parameters; consider fixing this when adding support for those
+    #[ignore] #[test] test_mut_ref_generic_1 code! {
+        fn add1<A>(a: &mut A) {
+            ensures(equal(*old(a), *a));
+        }
+
+        fn caller() {
+            let mut a = 2;
+            add1(&mut a);
+            assert(a == 2);
+        }
+    } => Ok(())
+}
