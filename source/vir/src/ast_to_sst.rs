@@ -9,6 +9,7 @@ use crate::sst::{Bnd, BndX, Dest, Exp, ExpX, Exps, LocalDecl, LocalDeclX, Stm, S
 use crate::sst_visitor::{map_exp_visitor, map_stm_exp_visitor};
 use crate::util::{vec_map, vec_map_result};
 use air::ast::{Binder, BinderX, Binders, Quant, Span};
+use air::errors::error_with_label;
 use air::scope_map::ScopeMap;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -564,16 +565,26 @@ pub(crate) fn expr_to_stm_opt(
 
             // Translate proof into a dead-end ending with an assert
             state.push_scope();
+            let mut body: Vec<Stm> = Vec::new();
             for var in vars.iter() {
-                state.declare_new_var(&var.name, &var.a, false, true);
+                let x = state.declare_new_var(&var.name, &var.a, false, true);
+                if crate::sst_to_air::typ_has_invariant(ctx, &var.a) {
+                    let xvarx = ExpX::Var(x);
+                    let xvar = SpannedTyped::new(&expr.span, &Arc::new(TypX::Bool), xvarx);
+                    let has_typx = ExpX::UnaryOpr(UnaryOpr::HasType(var.a.clone()), xvar);
+                    let has_typ = SpannedTyped::new(&expr.span, &Arc::new(TypX::Bool), has_typx);
+                    let assume = Spanned::new(require.span.clone(), StmX::Assume(has_typ));
+                    body.push(assume);
+                }
             }
-            let (mut body, e) = expr_to_stm_opt(ctx, state, proof)?;
+            let (mut proof_stms, e) = expr_to_stm_opt(ctx, state, proof)?;
             if let Some(_) = e {
                 return err_str(&expr.span, "forall/assert-by cannot end with an expression");
             }
             let require_exp = expr_to_exp_state(ctx, state, &require)?;
             let assume = Spanned::new(require.span.clone(), StmX::Assume(require_exp));
-            body.insert(0, assume);
+            body.push(assume);
+            body.append(&mut proof_stms);
             let ensure_exp = expr_to_exp_state(ctx, state, &ensure)?;
             let assert = Spanned::new(ensure.span.clone(), StmX::Assert(None, ensure_exp));
             body.push(assert);
@@ -665,11 +676,16 @@ pub(crate) fn expr_to_stm_opt(
                     }
                 }
                 for ens in enss.iter() {
-                    let description = Some("postcondition not satisfied".to_string());
-                    let span = Span { description, ..expr.span.clone() };
-                    let description = Some("failed postcondition".to_string());
-                    let span2 = Span { description, ..ens.span.clone() };
-                    stms.push(Spanned::new(span, StmX::Assert(Some(span2), ens.clone())));
+                    let error = error_with_label(
+                        "postcondition not satisfied".to_string(),
+                        &expr.span,
+                        "at this exit".to_string(),
+                    )
+                    .secondary_label(&ens.span, "failed this postcondition".to_string());
+                    stms.push(Spanned::new(
+                        expr.span.clone(),
+                        StmX::Assert(Some(error), ens.clone()),
+                    ));
                 }
                 let expx = ExpX::Const(Constant::Bool(false));
                 let exp = SpannedTyped::new(&expr.span, &Arc::new(TypX::Bool), expx);

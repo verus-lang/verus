@@ -48,7 +48,7 @@ test_verify_one_file! {
             let v2 = Thing { v: true };
             assert(v1 == v2);
         }
-    } => Err(err) => assert_eq!(err.len(), 0)
+    } => Err(err) => assert_vir_error(err)
 }
 
 test_verify_one_file! {
@@ -70,7 +70,7 @@ test_verify_one_file! {
             let v2 = Thing { v: true };
             assert(v1 == v2);
         }
-    } => Err(err) => assert_eq!(err.len(), 0)
+    } => Err(err) => assert_vir_error(err)
 }
 
 test_verify_one_file! {
@@ -82,5 +82,5 @@ test_verify_one_file! {
         struct Thing {
             o: Other,
         }
-    } => Err(err) => assert_eq!(err.len(), 0)
+    } => Err(err) => assert_eq!(err.errors.len(), 0)
 }

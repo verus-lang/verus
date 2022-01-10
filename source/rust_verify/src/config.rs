@@ -6,7 +6,7 @@ pub struct Args {
     pub verify_root: bool,
     pub verify_module: Option<String>,
     pub verify_pervasive: bool,
-    pub no_verify: bool,
+    pub external_body: bool,
     pub no_lifetime: bool,
     pub time: bool,
     pub rlimit: u32,
@@ -105,7 +105,7 @@ pub fn parse_args(program: &String, args: impl Iterator<Item = String>) -> (Args
         verify_root: matches.opt_present(OPT_VERIFY_ROOT),
         verify_module: matches.opt_str(OPT_VERIFY_MODULE),
         verify_pervasive: matches.opt_present(OPT_VERIFY_PERVASIVE),
-        no_verify: matches.opt_present(OPT_NO_VERIFY),
+        external_body: matches.opt_present(OPT_NO_VERIFY),
         no_lifetime: matches.opt_present(OPT_NO_LIFETIME),
         time: matches.opt_present(OPT_TIME),
         rlimit: matches

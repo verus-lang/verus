@@ -8,7 +8,8 @@
 
 use crate::ast::{BinaryOp, Constant, Fun, Path, SpannedTyped, Typ, Typs, UnaryOp, UnaryOpr};
 use crate::def::Spanned;
-use air::ast::{Binder, Binders, Ident, Quant, Span};
+use air::ast::{Binder, Binders, Ident, Quant};
+use air::errors::Error;
 use std::sync::Arc;
 
 pub type Trig = Exps;
@@ -58,7 +59,7 @@ pub enum StmX {
     // call to exec/proof function
     Call(Fun, Typs, Exps, Option<Dest>),
     // note: failed assertion reports Stm's span, plus an optional additional span
-    Assert(Option<Span>, Exp),
+    Assert(Option<Error>, Exp),
     AssertBV(Exp),
     Assume(Exp),
     Assign {

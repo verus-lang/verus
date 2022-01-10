@@ -49,18 +49,18 @@ pub fn datatypes_to_air(ctx: &Ctx, datatypes: &crate::ast::Datatypes) -> Command
     let (transparent, opaque): (Vec<_>, Vec<_>) =
         datatypes.iter().partition(|datatype| is_datatype_transparent(source_module, *datatype));
 
+    // Encode opaque types as air sorts
+    for datatype in opaque.iter() {
+        let decl_opaq_sort = Arc::new(air::ast::DeclX::Sort(path_to_air_ident(&datatype.x.path)));
+        commands.push(Arc::new(CommandX::Global(decl_opaq_sort)));
+    }
+
     // Encode transparent types as air datatypes
     let transparent_air_datatypes: Vec<_> =
         transparent.iter().map(|datatype| datatype_to_air(ctx, datatype)).collect();
     commands.push(Arc::new(CommandX::Global(Arc::new(DeclX::Datatypes(Arc::new(
         transparent_air_datatypes,
     ))))));
-
-    // Encode opaque types as air sorts
-    for datatype in opaque.iter() {
-        let decl_opaq_sort = Arc::new(air::ast::DeclX::Sort(path_to_air_ident(&datatype.x.path)));
-        commands.push(Arc::new(CommandX::Global(decl_opaq_sort)));
-    }
 
     // datatype TYPE tokens
     for datatype in datatypes.iter() {

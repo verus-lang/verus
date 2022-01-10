@@ -110,6 +110,7 @@ pub(crate) fn stm_assign(
                     pre_assigned.insert(x.clone());
                 }
             }
+            *assigned = pre_assigned;
             Spanned::new(stm.span.clone(), StmX::Block(stms))
         }
     };

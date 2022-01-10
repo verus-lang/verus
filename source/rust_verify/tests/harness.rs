@@ -22,7 +22,7 @@ fn harness_invalid_rust() {
         }
     };
     let err = verify_one_file(code).unwrap_err();
-    assert_eq!(err.len(), 0);
+    assert_eq!(err.errors.len(), 0);
 }
 
 #[test]
@@ -45,8 +45,8 @@ fn harness_false() {
         }
     })
     .unwrap_err();
-    assert_eq!(err.len(), 1);
-    assert!(err[0].first().expect("span").test_span_line.contains("FAILS"));
+    assert_eq!(err.errors.len(), 1);
+    assert!(err.errors[0].first().expect("span").test_span_line.contains("FAILS"));
 }
 
 test_verify_one_file! {

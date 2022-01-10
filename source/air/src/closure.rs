@@ -525,11 +525,17 @@ fn simplify_expr(ctxt: &mut Context, state: &mut State, expr: &Expr) -> (Typ, Ex
             BindX::Lambda(binders) => simplify_lambda(ctxt, state, binders, e1),
             BindX::Choose(binder, triggers) => simplify_choose(ctxt, state, binder, triggers, e1),
         },
-        ExprX::LabeledAssertion(span, e1) => {
+        ExprX::LabeledAssertion(l, e1) => {
             let (es, ts) = simplify_exprs_ref(ctxt, state, &vec![e1]);
             let (typ, _) = ts[0].clone();
             let (es, t) = enclose(state, App::LabeledAssertion, es, ts);
-            (typ, Arc::new(ExprX::LabeledAssertion(span.clone(), es[0].clone())), t)
+            (typ, Arc::new(ExprX::LabeledAssertion(l.clone(), es[0].clone())), t)
+        }
+        ExprX::LabeledAxiom(l, e1) => {
+            let (es, ts) = simplify_exprs_ref(ctxt, state, &vec![e1]);
+            let (typ, _) = ts[0].clone();
+            let (es, t) = enclose(state, App::LabeledAssertion, es, ts);
+            (typ, Arc::new(ExprX::LabeledAxiom(l.clone(), es[0].clone())), t)
         }
     }
 }

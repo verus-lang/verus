@@ -1,14 +1,13 @@
+use crate::errors::{Error, ErrorLabels};
 use std::collections::HashMap;
 use std::sync::Arc;
 
 pub type RawSpan = Arc<dyn std::any::Any + std::marker::Sync + std::marker::Send>;
 #[derive(Clone)] // for Debug, see ast_util
 pub struct Span {
-    pub description: Option<String>,
     pub raw_span: RawSpan,
     pub as_string: String, // if we can't print (description, raw_span), print as_string instead
 }
-pub type Spans = Arc<Vec<Span>>;
 
 pub type TypeError = String;
 
@@ -120,7 +119,10 @@ pub enum ExprX {
     Multi(MultiOp, Exprs),
     IfElse(Expr, Expr, Expr),
     Bind(Bind, Expr),
-    LabeledAssertion(Spans, Expr),
+    // Sometimes an axiom will have additional error messages. If an assert fails
+    // and this axiom was relevant, then we append the error labels to the Error.
+    LabeledAxiom(ErrorLabels, Expr),
+    LabeledAssertion(Error, Expr),
 }
 
 pub type Stmt = Arc<StmtX>;
@@ -128,7 +130,7 @@ pub type Stmts = Arc<Vec<Stmt>>;
 #[derive(Debug)]
 pub enum StmtX {
     Assume(Expr),
-    Assert(Spans, Expr),
+    Assert(Error, Expr),
     Havoc(Ident),
     Assign(Ident, Expr),
     // create a named snapshot of the state of the variables

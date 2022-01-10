@@ -87,9 +87,14 @@ pub(crate) fn map_expr_visitor<F: FnMut(&Expr) -> Expr>(expr: &Expr, f: &mut F) 
             let expr = Arc::new(ExprX::Bind(Arc::new(bind), e1));
             f(&expr)
         }
-        ExprX::LabeledAssertion(span, e1) => {
+        ExprX::LabeledAssertion(l, e1) => {
             let expr1 = map_expr_visitor(e1, f);
-            let expr = Arc::new(ExprX::LabeledAssertion(span.clone(), expr1));
+            let expr = Arc::new(ExprX::LabeledAssertion(l.clone(), expr1));
+            f(&expr)
+        }
+        ExprX::LabeledAxiom(l, e1) => {
+            let expr1 = map_expr_visitor(e1, f);
+            let expr = Arc::new(ExprX::LabeledAxiom(l.clone(), expr1));
             f(&expr)
         }
     }

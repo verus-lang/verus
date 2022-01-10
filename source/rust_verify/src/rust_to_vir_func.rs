@@ -1,7 +1,7 @@
-use crate::context::Context;
+use crate::context::{BodyCtxt, Context};
 use crate::rust_to_vir_base::{
     check_generics, check_generics_bounds, def_id_to_vir_path, def_to_path_ident, get_fuel,
-    get_mode, get_ret_mode, get_var_mode, get_verifier_attrs, ident_to_var, ty_to_vir, BodyCtxt,
+    get_mode, get_ret_mode, get_var_mode, get_verifier_attrs, ident_to_var, ty_to_vir,
 };
 use crate::rust_to_vir_expr::{expr_to_vir, pat_to_var};
 use crate::util::{err_span_str, err_span_string, spanned_new, unsupported_err_span, vec_map};
@@ -20,10 +20,11 @@ pub(crate) fn body_to_vir<'tcx>(
     id: &BodyId,
     body: &Body<'tcx>,
     mode: Mode,
+    external_body: bool,
 ) -> Result<vir::ast::Expr, VirErr> {
     let def = rustc_middle::ty::WithOptConstParam::unknown(id.hir_id.owner);
     let types = ctxt.tcx.typeck_opt_const_arg(def);
-    let bctx = BodyCtxt { ctxt: ctxt.clone(), types, mode };
+    let bctx = BodyCtxt { ctxt: ctxt.clone(), types, mode, external_body };
     expr_to_vir(&bctx, &body.value)
 }
 
@@ -122,8 +123,11 @@ pub(crate) fn check_item_fn<'tcx>(
     } else {
         None
     };
-    let self_typ_params =
-        if let Some(cg) = self_generics { Some(check_generics(ctxt.tcx, cg)?) } else { None };
+    let self_typ_params = if let Some(cg) = self_generics {
+        Some(check_generics(ctxt.tcx, cg, false)?)
+    } else {
+        None
+    };
     let ret_typ_mode = match sig {
         FnSig {
             header: FnHeader { unsafety, constness: _, asyncness: _, abi: _ },
@@ -142,7 +146,7 @@ pub(crate) fn check_item_fn<'tcx>(
             )?
         }
     };
-    let sig_typ_bounds = check_generics_bounds(ctxt.tcx, generics)?;
+    let sig_typ_bounds = check_generics_bounds(ctxt.tcx, generics, true)?;
     let fuel = get_fuel(attrs);
     let vattrs = get_verifier_attrs(attrs)?;
     if vattrs.external {
@@ -206,7 +210,7 @@ pub(crate) fn check_item_fn<'tcx>(
             unsupported_err!(sig.span, "generator_kind", generator_kind);
         }
     }
-    let mut vir_body = body_to_vir(ctxt, body_id, body, mode)?;
+    let mut vir_body = body_to_vir(ctxt, body_id, body, mode, vattrs.external_body)?;
     let header = vir::headers::read_header(&mut vir_body)?;
     if mode == Mode::Spec && (header.require.len() + header.ensure.len()) > 0 {
         return err_span_str(sig.span, "spec functions cannot have requires/ensures");
@@ -274,7 +278,7 @@ pub(crate) fn check_item_fn<'tcx>(
         decrease: header.decrease,
         is_abstract: vattrs.is_abstract,
         attrs: Arc::new(fattrs),
-        body: if vattrs.do_verify { Some(vir_body) } else { None },
+        body: if vattrs.external_body { None } else { Some(vir_body) },
     };
     let function = spanned_new(sig.span, func);
     vir.functions.push(function);
@@ -294,7 +298,7 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
 ) -> Result<(), VirErr> {
     let mode = get_mode(Mode::Exec, attrs);
     let ret_typ_mode = check_fn_decl(ctxt.tcx, &span, decl, None, None, attrs, mode)?;
-    let typ_bounds = check_generics_bounds(ctxt.tcx, generics)?;
+    let typ_bounds = check_generics_bounds(ctxt.tcx, generics, true)?;
     let fuel = get_fuel(attrs);
     let mut vir_params: Vec<vir::ast::Param> = Vec::new();
     for (param, input) in idents.iter().zip(decl.inputs.iter()) {

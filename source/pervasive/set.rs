@@ -6,7 +6,7 @@ use crate::pervasive::*;
 use crate::pervasive::map::*;
 
 /// set type for specifications
-#[verifier(no_verify)]
+#[verifier(external_body)]
 pub struct Set<A> {
     dummy: std::marker::PhantomData<A>,
 }
@@ -115,28 +115,28 @@ impl<A> Set<A> {
 // Trusted axioms
 
 #[proof]
-#[verifier(no_verify)]
+#[verifier(external_body)]
 #[verifier(export_as_global_forall)]
 pub fn axiom_set_empty<A>(a: A) {
     ensures(!set_empty().contains(a));
 }
 
 #[proof]
-#[verifier(no_verify)]
+#[verifier(external_body)]
 #[verifier(export_as_global_forall)]
 pub fn axiom_set_new<A, F: Fn(A) -> bool>(f: F, a: A) {
     ensures(set_new(f).contains(a) == f(a));
 }
 
 #[proof]
-#[verifier(no_verify)]
+#[verifier(external_body)]
 #[verifier(export_as_global_forall)]
 pub fn axiom_set_insert_same<A>(s: Set<A>, a: A) {
     ensures(#[trigger] s.insert(a).contains(a));
 }
 
 #[proof]
-#[verifier(no_verify)]
+#[verifier(external_body)]
 #[verifier(export_as_global_forall)]
 pub fn axiom_set_insert_different<A>(s: Set<A>, a1: A, a2: A) {
     requires(!equal(a1, a2));
@@ -144,14 +144,14 @@ pub fn axiom_set_insert_different<A>(s: Set<A>, a1: A, a2: A) {
 }
 
 #[proof]
-#[verifier(no_verify)]
+#[verifier(external_body)]
 #[verifier(export_as_global_forall)]
 pub fn axiom_set_remove_same<A>(s: Set<A>, a: A) {
     ensures(!(#[trigger] s.remove(a).contains(a)));
 }
 
 #[proof]
-#[verifier(no_verify)]
+#[verifier(external_body)]
 #[verifier(export_as_global_forall)]
 pub fn axiom_set_remove_different<A>(s: Set<A>, a1: A, a2: A) {
     requires(!equal(a1, a2));
@@ -159,49 +159,49 @@ pub fn axiom_set_remove_different<A>(s: Set<A>, a1: A, a2: A) {
 }
 
 #[proof]
-#[verifier(no_verify)]
+#[verifier(external_body)]
 #[verifier(export_as_global_forall)]
 pub fn axiom_set_union<A>(s1: Set<A>, s2: Set<A>, a: A) {
     ensures(s1.union(s2).contains(a) == (s1.contains(a) || s2.contains(a)));
 }
 
 #[proof]
-#[verifier(no_verify)]
+#[verifier(external_body)]
 #[verifier(export_as_global_forall)]
 pub fn axiom_set_intersect<A>(s1: Set<A>, s2: Set<A>, a: A) {
     ensures(s1.intersect(s2).contains(a) == (s1.contains(a) && s2.contains(a)));
 }
 
 #[proof]
-#[verifier(no_verify)]
+#[verifier(external_body)]
 #[verifier(export_as_global_forall)]
 pub fn axiom_set_difference<A>(s1: Set<A>, s2: Set<A>, a: A) {
     ensures(s1.difference(s2).contains(a) == (s1.contains(a) && !s2.contains(a)));
 }
 
 #[proof]
-#[verifier(no_verify)]
+#[verifier(external_body)]
 #[verifier(export_as_global_forall)]
 pub fn axiom_set_complement<A>(s: Set<A>, a: A) {
     ensures(s.complement().contains(a) == !s.contains(a));
 }
 
 #[proof]
-#[verifier(no_verify)]
+#[verifier(external_body)]
 #[verifier(export_as_global_forall)]
 pub fn axiom_set_ext_equal<A>(s1: Set<A>, s2: Set<A>) {
     ensures(s1.ext_equal(s2) == equal(s1, s2));
 }
 
 #[proof]
-#[verifier(no_verify)]
+#[verifier(external_body)]
 #[verifier(export_as_global_forall)]
 pub fn axiom_mk_map_domain<K, V, F: Fn(K) -> V>(s: Set<K>, f: F) {
     ensures(equal(#[trigger] s.mk_map(f).dom(), s));
 }
 
 #[proof]
-#[verifier(no_verify)]
+#[verifier(external_body)]
 #[verifier(export_as_global_forall)]
 pub fn axiom_mk_map_index<K, V, F: Fn(K) -> V>(s: Set<K>, f: F, key: K) {
     requires(s.contains(key));
@@ -211,14 +211,14 @@ pub fn axiom_mk_map_index<K, V, F: Fn(K) -> V>(s: Set<K>, f: F, key: K) {
 // Trusted axioms about finite
 
 #[proof]
-#[verifier(no_verify)]
+#[verifier(external_body)]
 #[verifier(export_as_global_forall)]
 pub fn axiom_set_empty_finite<A>() {
     ensures(#[trigger] set_empty::<A>().finite());
 }
 
 #[proof]
-#[verifier(no_verify)]
+#[verifier(external_body)]
 #[verifier(export_as_global_forall)]
 pub fn axiom_set_insert_finite<A>(s: Set<A>, a: A) {
     requires(s.finite());
@@ -226,7 +226,7 @@ pub fn axiom_set_insert_finite<A>(s: Set<A>, a: A) {
 }
 
 #[proof]
-#[verifier(no_verify)]
+#[verifier(external_body)]
 #[verifier(export_as_global_forall)]
 pub fn axiom_set_remove_finite<A>(s: Set<A>, a: A) {
     requires(s.finite());
@@ -234,7 +234,7 @@ pub fn axiom_set_remove_finite<A>(s: Set<A>, a: A) {
 }
 
 #[proof]
-#[verifier(no_verify)]
+#[verifier(external_body)]
 #[verifier(export_as_global_forall)]
 pub fn axiom_set_union_finite<A>(s1: Set<A>, s2: Set<A>) {
     requires([
@@ -245,7 +245,7 @@ pub fn axiom_set_union_finite<A>(s1: Set<A>, s2: Set<A>) {
 }
 
 #[proof]
-#[verifier(no_verify)]
+#[verifier(external_body)]
 #[verifier(export_as_global_forall)]
 pub fn axiom_set_intersect_finite<A>(s1: Set<A>, s2: Set<A>) {
     requires(s1.finite() || s2.finite());
@@ -253,7 +253,7 @@ pub fn axiom_set_intersect_finite<A>(s1: Set<A>, s2: Set<A>) {
 }
 
 #[proof]
-#[verifier(no_verify)]
+#[verifier(external_body)]
 #[verifier(export_as_global_forall)]
 pub fn axiom_set_difference_finite<A>(s1: Set<A>, s2: Set<A>) {
     requires(s1.finite());
@@ -261,7 +261,7 @@ pub fn axiom_set_difference_finite<A>(s1: Set<A>, s2: Set<A>) {
 }
 
 #[proof]
-#[verifier(no_verify)]
+#[verifier(external_body)]
 #[verifier(export_as_global_forall)]
 pub fn axiom_set_choose_finite<A>(s: Set<A>) {
     requires(!s.finite());
@@ -274,7 +274,7 @@ pub fn axiom_set_choose_finite<A>(s: Set<A>) {
 // The following, with axiom_set_ext_equal, are enough to build libraries about len.
 
 #[proof]
-#[verifier(no_verify)]
+#[verifier(external_body)]
 #[verifier(export_as_global_forall)]
 pub fn axiom_set_empty_len<A>() {
     ensures([
@@ -283,7 +283,7 @@ pub fn axiom_set_empty_len<A>() {
 }
 
 #[proof]
-#[verifier(no_verify)]
+#[verifier(external_body)]
 #[verifier(export_as_global_forall)]
 pub fn axiom_set_insert_len<A>(s: Set<A>, a: A) {
     requires([
@@ -295,7 +295,7 @@ pub fn axiom_set_insert_len<A>(s: Set<A>, a: A) {
 }
 
 #[proof]
-#[verifier(no_verify)]
+#[verifier(external_body)]
 #[verifier(export_as_global_forall)]
 pub fn axiom_set_remove_len<A>(s: Set<A>, a: A) {
     requires(s.finite());
@@ -305,7 +305,7 @@ pub fn axiom_set_remove_len<A>(s: Set<A>, a: A) {
 }
 
 #[proof]
-#[verifier(no_verify)]
+#[verifier(external_body)]
 #[verifier(export_as_global_forall)]
 pub fn axiom_set_choose_len<A>(s: Set<A>) {
     requires([

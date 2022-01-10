@@ -5,6 +5,7 @@ pub mod seq;
 pub mod seq_lib;
 pub mod set;
 pub mod set_lib;
+pub mod cell;
 
 #[allow(unused_imports)]
 use builtin::*;
@@ -30,25 +31,31 @@ pub fn affirm(b: bool) {
 
 /// In spec, all types are inhabited
 #[spec]
-#[verifier(external)]
+#[verifier(external_body)]
 #[allow(dead_code)]
-pub fn arbitrary_external<A>() -> A {
+pub fn arbitrary<A>() -> A {
     unimplemented!()
 }
 
-#[spec]
-#[verifier(no_verify)]
+#[proof]
+#[verifier(returns(proof))]
+#[verifier(external_body)]
 #[allow(dead_code)]
-pub fn arbitrary<A>() -> A {
-    arbitrary_external()
+pub fn proof_from_false<A>() -> A {
+    requires(false);
+
+    unimplemented!()
 }
 
-#[verifier(external)]
-pub fn print_u64_external(i: u64) {
-    println!("{}", i);
+#[verifier(external_body)]
+#[allow(dead_code)]
+pub fn unreached<A>() -> A {
+    requires(false);
+
+    panic!("unreached_external")
 }
 
-#[verifier(no_verify)]
+#[verifier(external_body)]
 pub fn print_u64(i: u64) {
-    print_u64_external(i);
+    println!("{}", i);
 }

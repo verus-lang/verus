@@ -7,17 +7,13 @@
 
 use crate::def::Spanned;
 use air::ast::{Quant, Span};
+use air::errors::Error;
 use std::sync::Arc;
 
 pub use air::ast::{Binder, Binders};
 
 /// Result<T, VirErr> is used when an error might need to be reported to the user
-pub type VirErr = Arc<Spanned<VirErrX>>;
-#[derive(Clone, Debug)]
-pub enum VirErrX {
-    /// Currently, the only variant is a String, but we may add more cases later
-    Str(String),
-}
+pub type VirErr = Error;
 
 /// A non-qualified name, such as a local variable name or type parameter name
 pub type Ident = Arc<String>;
@@ -119,6 +115,9 @@ pub enum UnaryOpr {
     Box(Typ),
     /// coerce Boxed(Typ) --> Typ
     Unbox(Typ),
+    /// satisfies type invariant for Typ
+    /// (should only be used when sst_to_air::typ_has_invariant returns true)
+    HasType(Typ),
     /// Test whether expression is a particular variant of a datatype
     IsVariant { datatype: Path, variant: Ident },
     /// Read .0, .1, etc. from tuple (Note: ast_simplify replaces this with Field)
@@ -398,7 +397,7 @@ pub struct FunctionX {
     pub is_abstract: bool,
     /// Various attributes
     pub attrs: FunctionAttrs,
-    /// Body of the function (may be None for foreign functions or for no_verify functions)
+    /// Body of the function (may be None for foreign functions or for external_body functions)
     pub body: Option<Expr>,
 }
 
@@ -430,6 +429,8 @@ pub struct DatatypeX {
     pub typ_params: Idents,
     pub variants: Variants,
     pub mode: Mode,
+    // For token types that need to be 'unforgeable'. Only makes sense for 'Proof' types.
+    pub unforgeable: bool,
 }
 pub type Datatype = Arc<Spanned<DatatypeX>>;
 pub type Datatypes = Vec<Datatype>;

@@ -2,6 +2,7 @@ use crate::ast::{
     BinaryOp, BindX, Binder, Binders, Constant, Datatypes, Decl, DeclX, Expr, ExprX, Exprs, Ident,
     MultiOp, Quant, Query, QueryX, Stmt, StmtX, Triggers, Typ, TypX, Typs, UnaryOp,
 };
+use crate::errors::all_msgs_from_error;
 use crate::util::vec_map;
 use sise::{Node, Writer};
 use std::sync::Arc;
@@ -235,8 +236,17 @@ impl Printer {
                     }
                 }
             }
-            ExprX::LabeledAssertion(spans, expr) => {
-                let spans = vec_map(spans, |s| Node::Atom(format!("\"{}\"", s.as_string)));
+            ExprX::LabeledAxiom(labels, expr) => {
+                let spans = vec_map(labels, |s| Node::Atom(format!("\"{}\"", s.msg)));
+                if spans.len() == 0 {
+                    self.expr_to_node(expr)
+                } else {
+                    nodes!(axiom_location {Node::List(spans)} {self.expr_to_node(expr)})
+                }
+            }
+            ExprX::LabeledAssertion(error, expr) => {
+                let spans =
+                    vec_map(&all_msgs_from_error(error), |s| Node::Atom(format!("\"{}\"", s)));
                 if spans.len() == 0 {
                     self.expr_to_node(expr)
                 } else {
@@ -326,8 +336,9 @@ impl Printer {
     pub fn stmt_to_node(&self, stmt: &Stmt) -> Node {
         match &**stmt {
             StmtX::Assume(expr) => nodes!(assume {self.expr_to_node(expr)}),
-            StmtX::Assert(spans, expr) => {
-                let spans = vec_map(spans, |s| Node::Atom(format!("\"{}\"", s.as_string)));
+            StmtX::Assert(labels, expr) => {
+                let spans =
+                    vec_map(&all_msgs_from_error(labels), |s| Node::Atom(format!("\"{}\"", s)));
                 if spans.len() == 0 {
                     nodes!(assert {self.expr_to_node(expr)})
                 } else {

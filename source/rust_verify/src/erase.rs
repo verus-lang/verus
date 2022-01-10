@@ -43,7 +43,7 @@
 //! Notes:
 //!
 //! #[verifier(external)] functions are kept verbatim.
-//! #[verifier(no_verify)] functions, on the other hand, need erasure to remove requires/ensures.
+//! #[verifier(external_body)] functions, on the other hand, need erasure to remove requires/ensures.
 
 use crate::rust_to_vir_base::{get_mode, get_verifier_attrs};
 use crate::util::{from_raw_span, vec_map};
@@ -51,10 +51,10 @@ use crate::{unsupported, unsupported_unless};
 
 use rustc_ast::ast::{
     AngleBracketedArg, AngleBracketedArgs, Arm, AssocItem, AssocItemKind, BinOpKind, Block, Crate,
-    EnumDef, Expr, ExprKind, Field, FieldPat, FnDecl, FnKind, FnRetTy, FnSig, GenericArgs,
-    GenericParam, Generics, ImplKind, Item, ItemKind, Lit, LitIntType, LitKind, Local, ModKind,
-    NodeId, Param, Pat, PatKind, PathSegment, Stmt, StmtKind, StructField, StructRest, Variant,
-    VariantData,
+    EnumDef, Expr, ExprKind, Field, FieldPat, FnDecl, FnKind, FnRetTy, FnSig, GenericArg,
+    GenericArgs, GenericParam, GenericParamKind, Generics, ImplKind, Item, ItemKind, Lit,
+    LitIntType, LitKind, Local, ModKind, NodeId, Param, Pat, PatKind, PathSegment, Stmt, StmtKind,
+    StructField, StructRest, Variant, VariantData,
 };
 use rustc_ast::ptr::P;
 use rustc_data_structures::thin_vec::ThinVec;
@@ -147,6 +147,7 @@ struct MCtxt<'a> {
     remap_parens: HashMap<Span, Span>,
     // Mode of current function's return value
     ret_mode: Option<Mode>,
+    external_body: bool,
 }
 
 impl<'a> MCtxt<'a> {
@@ -350,10 +351,21 @@ fn erase_call(
             match &**args {
                 GenericArgs::AngleBracketed(args) => {
                     let mut new_args: Vec<AngleBracketedArg> = Vec::new();
-                    for (arg, (_, bounds)) in args.args.iter().zip(f.x.typ_bounds.iter()) {
-                        match &**bounds {
-                            GenericBoundX::None => new_args.push(arg.clone()),
-                            GenericBoundX::FnSpec(..) => {}
+                    let mut typ_bounds_iter = f.x.typ_bounds.iter();
+                    for arg in args.args.iter() {
+                        match arg {
+                            AngleBracketedArg::Arg(GenericArg::Type(_)) => {
+                                let (_, bounds) =
+                                    typ_bounds_iter.next().expect("missing typ_bound");
+                                match &**bounds {
+                                    GenericBoundX::None => new_args.push(arg.clone()),
+                                    GenericBoundX::FnSpec(..) => {}
+                                }
+                            }
+                            AngleBracketedArg::Arg(GenericArg::Lifetime(_)) => {
+                                new_args.push(arg.clone());
+                            }
+                            _ => {}
                         }
                     }
                     let args = AngleBracketedArgs { span: args.span, args: new_args };
@@ -387,6 +399,17 @@ fn erase_expr(ctxt: &Ctxt, mctxt: &mut MCtxt, expect: Mode, expr: &Expr) -> Expr
 /// Erase ghost code from expr, and return Some resulting expression.
 /// If the entire expression is ghost, return None.
 fn erase_expr_opt(ctxt: &Ctxt, mctxt: &mut MCtxt, expect: Mode, expr: &Expr) -> Option<Expr> {
+    if mctxt.external_body {
+        match &expr.kind {
+            ExprKind::Block(..) => {}
+            ExprKind::Call(f_expr, _) => match mctxt.find_span_opt(&ctxt.calls, f_expr.span) {
+                Some(ResolvedCall::Spec) => return None,
+                _ => return Some(expr.clone()),
+            },
+            _ => return Some(expr.clone()),
+        }
+    }
+
     let kind = match &expr.kind {
         ExprKind::Lit(_) => {
             if keep_mode(ctxt, expect) {
@@ -759,6 +782,13 @@ fn erase_stmt(
     stmt: &Stmt,
     is_last: bool,
 ) -> Option<Stmt> {
+    if mctxt.external_body {
+        match &stmt.kind {
+            StmtKind::Expr(..) | StmtKind::Semi(..) => {}
+            _ => return Some(stmt.clone()),
+        }
+    }
+
     let kind = match &stmt.kind {
         StmtKind::Local(local) => {
             let mode1 = *mctxt.find_span(&ctxt.var_modes, local.pat.span);
@@ -807,7 +837,7 @@ fn erase_block(ctxt: &Ctxt, mctxt: &mut MCtxt, expect: Mode, block: &Block) -> B
     Block { stmts, id, rules, span, tokens: block.tokens.clone() }
 }
 
-fn erase_fn(ctxt: &Ctxt, mctxt: &mut MCtxt, f: &FnKind) -> Option<FnKind> {
+fn erase_fn(ctxt: &Ctxt, mctxt: &mut MCtxt, f: &FnKind, external_body: bool) -> Option<FnKind> {
     let FnKind(defaultness, sig, generics, body_opt) = f;
     let f_vir = if let Some(f_vir) = &ctxt.functions_by_span[&sig.span] {
         f_vir
@@ -819,12 +849,22 @@ fn erase_fn(ctxt: &Ctxt, mctxt: &mut MCtxt, f: &FnKind) -> Option<FnKind> {
     }
     let Generics { params, where_clause, span: generics_span } = generics;
     let mut new_params: Vec<GenericParam> = Vec::new();
-    for ((_, bound), param) in f_vir.x.typ_bounds.iter().zip(params.iter()) {
-        // erase Fn trait bounds, since the type checker won't be able to infer them
-        // TODO: also erase other type parameters left unused after erasure
-        match &**bound {
-            GenericBoundX::None => new_params.push(param.clone()),
-            GenericBoundX::FnSpec(..) => {}
+    let mut typ_bounds_iter = f_vir.x.typ_bounds.iter();
+    for param in params.iter() {
+        match param.kind {
+            GenericParamKind::Lifetime => {
+                new_params.push(param.clone());
+            }
+            GenericParamKind::Type { .. } => {
+                let (_, bound) = typ_bounds_iter.next().expect("missing typ_bound");
+                // erase Fn trait bounds, since the type checker won't be able to infer them
+                // TODO: also erase other type parameters left unused after erasure
+                match &**bound {
+                    GenericBoundX::None => new_params.push(param.clone()),
+                    GenericBoundX::FnSpec(..) => {}
+                }
+            }
+            _ => {}
         }
     }
     let generics =
@@ -843,8 +883,10 @@ fn erase_fn(ctxt: &Ctxt, mctxt: &mut MCtxt, f: &FnKind) -> Option<FnKind> {
     let decl = FnDecl { inputs: new_inputs, output };
     let sig = FnSig { decl: P(decl), ..sig.clone() };
     mctxt.ret_mode = Some(ret_mode);
+    mctxt.external_body = external_body;
     let body_opt = body_opt.as_ref().map(|body| P(erase_block(ctxt, mctxt, ret_mode, &**body)));
     mctxt.ret_mode = None;
+    mctxt.external_body = false;
     Some(FnKind(*defaultness, sig, generics, body_opt))
 }
 
@@ -855,7 +897,7 @@ fn erase_assoc_item(ctxt: &Ctxt, mctxt: &mut MCtxt, item: &AssocItem) -> Option<
             if vattrs.external {
                 return Some(item.clone());
             }
-            let erased = erase_fn(ctxt, mctxt, f);
+            let erased = erase_fn(ctxt, mctxt, f, vattrs.external_body);
             erased.map(|f| update_item(item, AssocItemKind::Fn(Box::new(f))))
         }
         AssocItemKind::TyAlias(_) => Some(item.clone()),
@@ -925,7 +967,7 @@ fn erase_item(ctxt: &Ctxt, mctxt: &mut MCtxt, item: &Item) -> Vec<P<Item>> {
             if vattrs.external {
                 return vec![P(item.clone())];
             }
-            match erase_fn(ctxt, mctxt, kind) {
+            match erase_fn(ctxt, mctxt, kind, vattrs.external_body) {
                 None => return vec![],
                 Some(kind) => ItemKind::Fn(Box::new(kind)),
             }
@@ -1059,8 +1101,12 @@ impl rustc_lint::FormalVerifierRewrite for CompilerCallbacks {
         next_node_id: &mut dyn FnMut() -> NodeId,
     ) -> rustc_ast::ast::Crate {
         let ctxt = mk_ctxt(&self.erasure_hints, self.lifetimes_only);
-        let mut mctxt =
-            MCtxt { f_next_node_id: next_node_id, remap_parens: HashMap::new(), ret_mode: None };
+        let mut mctxt = MCtxt {
+            f_next_node_id: next_node_id,
+            remap_parens: HashMap::new(),
+            ret_mode: None,
+            external_body: false,
+        };
         let time0 = Instant::now();
         let krate = crate::erase::erase_crate(&ctxt, &mut mctxt, krate);
         let time1 = Instant::now();

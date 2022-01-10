@@ -23,7 +23,7 @@ use air::ast_util::{
     mk_bind_expr, mk_eq, mk_exists, mk_implies, mk_ite, mk_not, mk_or, str_apply, str_ident,
     str_typ, str_var, string_var,
 };
-use sise::ListReadUtil;
+use air::errors::{error, error_with_label};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
@@ -102,13 +102,23 @@ pub(crate) fn datatype_has_type(path: &Path, typs: &Typs, expr: &Expr) -> Expr {
     str_apply(crate::def::HAS_TYPE, &vec![expr.clone(), datatype_id(path, typs)])
 }
 
+pub(crate) fn typ_has_invariant(ctx: &Ctx, typ: &Typ) -> bool {
+    match &**typ {
+        TypX::Int(IntRange::Int) => false,
+        TypX::Int(_) => true,
+        TypX::Datatype(path, _) => ctx.datatypes_with_invariant.contains(path),
+        TypX::TypParam(_) => true,
+        _ => false,
+    }
+}
+
 // If expr has type typ, what can we assume to be true about expr?
 // For refinement types, transparent datatypes potentially containing refinement types,
 // and type variables potentially instantiated with refinement types, return Some invariant.
 // For non-refinement types and abstract types, return None,
 // since the SMT sorts for these types can express the types precisely with no need for refinement.
 pub(crate) fn typ_invariant(ctx: &Ctx, typ: &Typ, expr: &Expr) -> Option<Expr> {
-    // Should be kept in sync with vir::context::datatypes_invs
+    // Should be kept in sync with vir::context::datatypes_invs and typ_has_invariant
     match &**typ {
         TypX::Int(IntRange::Int) => None,
         TypX::Int(IntRange::Nat) => {
@@ -232,6 +242,10 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp) -> Expr {
             UnaryOpr::Unbox(typ) => {
                 let expr = exp_to_expr(ctx, exp);
                 try_unbox(expr, typ).expect("Unbox")
+            }
+            UnaryOpr::HasType(typ) => {
+                let expr = exp_to_expr(ctx, exp);
+                typ_invariant(ctx, typ, &expr).expect("HasType")
             }
             UnaryOpr::IsVariant { datatype, variant } => {
                 let expr = exp_to_expr(ctx, exp);
@@ -525,11 +539,11 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
                 }
                 let e_req = Arc::new(ExprX::Apply(f_req, Arc::new(req_args)));
                 let description = match &func.x.attrs.custom_req_err {
-                    None => Some("precondition not satisfied".to_string()),
-                    Some(s) => Some(s.clone()),
+                    None => "precondition not satisfied".to_string(),
+                    Some(s) => s.clone(),
                 };
-                let spans = Arc::new(vec![Span { description, ..stm.span.clone() }]);
-                stmts.push(Arc::new(StmtX::Assert(spans, e_req)));
+                let error = error(description, &stm.span);
+                stmts.push(Arc::new(StmtX::Assert(error, e_req)));
             }
             let mut ens_args: Vec<Expr> = vec_map(typs, typ_to_id);
             match dest {
@@ -584,16 +598,20 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
             }
             vec![Arc::new(StmtX::Block(Arc::new(stmts)))] // wrap in block for readability
         }
-        StmX::Assert(span2, expr) => {
+        StmX::Assert(error, expr) => {
             let air_expr = exp_to_expr(ctx, &expr);
-            let mut spans: Vec<Span> = vec![stm.span.clone()];
-            if let Some(span2) = span2 {
-                spans.push(span2.clone());
-            }
+            let error = match error {
+                Some(error) => error.clone(),
+                None => error_with_label(
+                    "assertion failed".to_string(),
+                    &stm.span,
+                    "assertion failed".to_string(),
+                ),
+            };
             if ctx.debug {
                 state.map_span(&stm, SpanKind::Full);
             }
-            vec![Arc::new(StmtX::Assert(Arc::new(spans), air_expr))]
+            vec![Arc::new(StmtX::Assert(error, air_expr))]
         }
         StmX::AssertBV(expr) => {
             let spans: Vec<Span> = vec![stm.span.clone()];
@@ -709,9 +727,8 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
                 local.push(Arc::new(DeclX::Axiom(inv.clone())));
             }
             for (span, inv) in invs.iter() {
-                let description = Some("invariant not satisfied at end of loop body".to_string());
-                let spans = Arc::new(vec![Span { description, ..span.clone() }]);
-                let inv_stmt = StmtX::Assert(spans, inv.clone());
+                let error = error("invariant not satisfied at end of loop body", span);
+                let inv_stmt = StmtX::Assert(error, inv.clone());
                 air_body.push(Arc::new(inv_stmt));
             }
             let assertion = one_stmt(air_body);
@@ -733,9 +750,8 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
             // At original site of while loop, assert invariant, havoc, assume invariant + neg_cond
             let mut stmts: Vec<Stmt> = Vec::new();
             for (span, inv) in invs.iter() {
-                let description = Some("invariant not satisfied before loop".to_string());
-                let spans = Arc::new(vec![Span { description, ..span.clone() }]);
-                let inv_stmt = StmtX::Assert(spans, inv.clone());
+                let error = error("invariant not satisfied before loop", span);
+                let inv_stmt = StmtX::Assert(error, inv.clone());
                 stmts.push(Arc::new(inv_stmt));
             }
             for x in modified_vars.iter() {
@@ -913,9 +929,8 @@ pub fn body_stm_to_air(
     let mut local = state.local_shared.clone();
 
     for ens in enss {
-        let description = Some("postcondition not satisfied".to_string());
-        let spans = Arc::new(vec![Span { description, ..ens.span.clone() }]);
-        let ens_stmt = StmtX::Assert(spans, exp_to_expr(ctx, ens));
+        let error = error("postcondition not satisfied", &ens.span);
+        let ens_stmt = StmtX::Assert(error, exp_to_expr(ctx, ens));
         stmts.push(Arc::new(ens_stmt));
     }
     let assertion = one_stmt(stmts);

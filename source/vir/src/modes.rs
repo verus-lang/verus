@@ -165,11 +165,17 @@ fn check_expr(typing: &mut Typing, outer_mode: Mode, expr: &Expr) -> Result<Mode
                     mode = mode_join(mode, mode_arg);
                 }
             }
+
+            if datatype.x.unforgeable && mode == Mode::Proof {
+                return err_str(&expr.span, "cannot construct an unforgeable proof object");
+            }
+
             Ok(mode)
         }
         ExprX::Unary(_, e1) => check_expr(typing, outer_mode, e1),
         ExprX::UnaryOpr(UnaryOpr::Box(_), e1) => check_expr(typing, outer_mode, e1),
         ExprX::UnaryOpr(UnaryOpr::Unbox(_), e1) => check_expr(typing, outer_mode, e1),
+        ExprX::UnaryOpr(UnaryOpr::HasType(_), _) => panic!("internal error: HasType in modes.rs"),
         ExprX::UnaryOpr(UnaryOpr::IsVariant { .. }, e1) => check_expr(typing, outer_mode, e1),
         ExprX::UnaryOpr(UnaryOpr::TupleField { .. }, e1) => check_expr(typing, outer_mode, e1),
         ExprX::UnaryOpr(UnaryOpr::Field { datatype, variant: _, field }, e1) => {
@@ -220,6 +226,8 @@ fn check_expr(typing: &mut Typing, outer_mode: Mode, expr: &Expr) -> Result<Mode
             Ok(Mode::Spec)
         }
         ExprX::Assign(lhs, rhs) => match &lhs.x {
+            // TODO when we support field updates, make sure we handle 'unforgeable' types
+            // correctly.
             ExprX::Var(x) => {
                 let (x_mut, x_mode) = typing.get(x);
                 if !x_mut {
@@ -379,6 +387,15 @@ fn check_function(typing: &mut Typing, function: &Function) -> Result<(), VirErr
                 &function.span,
                 format!("return type cannot have mode {}", ret_mode),
             );
+        }
+        if function.x.body.is_none() {
+            // can't erase return values in external_body functions, so:
+            if function.x.mode != ret_mode {
+                return err_string(
+                    &function.span,
+                    format!("because of external_body, return type cannot have mode {}", ret_mode),
+                );
+            }
         }
         typing.ret_mode = Some(ret_mode);
     }

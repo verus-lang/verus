@@ -76,13 +76,17 @@ pub fn check_item_struct<'tcx>(
     variant_data: &'tcx VariantData<'tcx>,
     generics: &'tcx Generics<'tcx>,
 ) -> Result<(), VirErr> {
-    let typ_params = check_generics(ctxt.tcx, generics)?;
+    let typ_params = check_generics(ctxt.tcx, generics, false)?;
     let name = hack_get_def_name(ctxt.tcx, id.def_id.to_def_id());
     let path = def_id_to_vir_path(ctxt.tcx, id.def_id.to_def_id());
     let variant_name = Arc::new(name.clone());
-    let (variant, one_field_private) = check_variant_data(ctxt, &variant_name, variant_data, false);
     let vattrs = get_verifier_attrs(attrs)?;
-    let transparency = if !vattrs.do_verify {
+    let (variant, one_field_private) = if vattrs.external_body {
+        (ident_binder(&variant_name, &Arc::new(vec![])), false)
+    } else {
+        check_variant_data(ctxt, &variant_name, variant_data, false)
+    };
+    let transparency = if vattrs.external_body {
         DatatypeTransparency::Never
     } else if one_field_private {
         DatatypeTransparency::WithinModule
@@ -91,7 +95,9 @@ pub fn check_item_struct<'tcx>(
     };
     let variants = Arc::new(vec![variant]);
     let mode = get_mode(Mode::Exec, attrs);
-    let datatype = DatatypeX { path, visibility, transparency, typ_params, variants, mode };
+    let unforgeable = vattrs.unforgeable;
+    let datatype =
+        DatatypeX { path, visibility, transparency, typ_params, variants, mode, unforgeable };
     vir.datatypes.push(spanned_new(span, datatype));
     Ok(())
 }
@@ -106,7 +112,7 @@ pub fn check_item_enum<'tcx>(
     enum_def: &'tcx EnumDef<'tcx>,
     generics: &'tcx Generics<'tcx>,
 ) -> Result<(), VirErr> {
-    let typ_params = check_generics(ctxt.tcx, generics)?;
+    let typ_params = check_generics(ctxt.tcx, generics, false)?;
     let path = def_id_to_vir_path(ctxt.tcx, id.def_id.to_def_id());
     let (variants, one_field_private): (Vec<_>, Vec<_>) = enum_def
         .variants
@@ -118,7 +124,7 @@ pub fn check_item_enum<'tcx>(
         .unzip();
     let one_field_private = one_field_private.into_iter().any(|x| x);
     let vattrs = get_verifier_attrs(attrs)?;
-    let transparency = if !vattrs.do_verify {
+    let transparency = if vattrs.external_body {
         DatatypeTransparency::Never
     } else if one_field_private {
         DatatypeTransparency::WithinModule
@@ -126,6 +132,7 @@ pub fn check_item_enum<'tcx>(
         DatatypeTransparency::Always
     };
     let mode = get_mode(Mode::Exec, attrs);
+    let unforgeable = vattrs.unforgeable;
     vir.datatypes.push(spanned_new(
         span,
         DatatypeX {
@@ -135,6 +142,7 @@ pub fn check_item_enum<'tcx>(
             typ_params,
             variants: Arc::new(variants),
             mode,
+            unforgeable,
         },
     ));
     Ok(())

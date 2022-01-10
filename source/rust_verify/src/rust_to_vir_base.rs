@@ -1,4 +1,4 @@
-use crate::context::Context;
+use crate::context::BodyCtxt;
 use crate::util::{err_span_str, err_span_string, unsupported_err_span};
 use crate::{unsupported, unsupported_err, unsupported_err_unless};
 use rustc_ast::token::{Token, TokenKind};
@@ -7,10 +7,10 @@ use rustc_ast::{AttrKind, Attribute, IntTy, MacArgs, UintTy};
 use rustc_hir::def::{DefKind, Res};
 use rustc_hir::definitions::DefPath;
 use rustc_hir::{
-    GenericBound, GenericParam, GenericParamKind, Generics, HirId, ParamName, PathSegment,
-    PolyTraitRef, PrimTy, QPath, TraitBoundModifier, Ty, Visibility, VisibilityKind,
+    GenericBound, GenericParam, GenericParamKind, Generics, HirId, LifetimeParamKind, ParamName,
+    PathSegment, PolyTraitRef, PrimTy, QPath, TraitBoundModifier, Ty, Visibility, VisibilityKind,
 };
-use rustc_middle::ty::{AdtDef, TyCtxt, TyKind, TypeckResults};
+use rustc_middle::ty::{AdtDef, TyCtxt, TyKind};
 use rustc_span::def_id::{DefId, LOCAL_CRATE};
 use rustc_span::symbol::Ident;
 use rustc_span::Span;
@@ -192,7 +192,7 @@ pub(crate) enum Attr {
     // function return mode (spec, proof, exec)
     ReturnMode(Mode),
     // parse function to get header, but don't verify body
-    NoVerify,
+    ExternalBody,
     // don't parse function; function can't be called directly from verified code
     External,
     // hide body from other modules
@@ -209,6 +209,8 @@ pub(crate) enum Attr {
     CustomReqErr(String),
     // verify using bitvector theory
     BitVector,
+    // for unforgeable token types
+    Unforgeable,
 }
 
 fn get_trigger_arg(span: Span, attr_tree: &AttrTree) -> Result<u64, VirErr> {
@@ -248,8 +250,8 @@ pub(crate) fn parse_attrs(attrs: &[Attribute]) -> Result<Vec<Attr>, VirErr> {
                 v.push(Attr::Trigger(Some(groups)));
             }
             AttrTree::Fun(span, name, args) if name == "verifier" => match &args {
-                Some(box [AttrTree::Fun(_, arg, None)]) if arg == "no_verify" => {
-                    v.push(Attr::NoVerify)
+                Some(box [AttrTree::Fun(_, arg, None)]) if arg == "external_body" => {
+                    v.push(Attr::ExternalBody)
                 }
                 Some(box [AttrTree::Fun(_, arg, None)]) if arg == "external" => {
                     v.push(Attr::External)
@@ -262,6 +264,9 @@ pub(crate) fn parse_attrs(attrs: &[Attribute]) -> Result<Vec<Attr>, VirErr> {
                 }
                 Some(box [AttrTree::Fun(_, arg, None)]) if arg == "autoview" => {
                     v.push(Attr::Autoview)
+                }
+                Some(box [AttrTree::Fun(_, arg, None)]) if arg == "unforgeable" => {
+                    v.push(Attr::Unforgeable)
                 }
                 Some(box [AttrTree::Fun(_, arg, Some(box [AttrTree::Fun(_, msg, None)]))])
                     if arg == "custom_req_err" =>
@@ -276,12 +281,12 @@ pub(crate) fn parse_attrs(attrs: &[Attribute]) -> Result<Vec<Attr>, VirErr> {
                 {
                     v.push(Attr::ReturnMode(Mode::Spec))
                 }
-                Some(box [AttrTree::Fun(_, arg, None), AttrTree::Fun(_, name, None)])
+                Some(box [AttrTree::Fun(_, arg, Some(box [AttrTree::Fun(_, name, None)]))])
                     if arg == "returns" && name == "proof" =>
                 {
                     v.push(Attr::ReturnMode(Mode::Proof))
                 }
-                Some(box [AttrTree::Fun(_, arg, None), AttrTree::Fun(_, name, None)])
+                Some(box [AttrTree::Fun(_, arg, Some(box [AttrTree::Fun(_, name, None)]))])
                     if arg == "returns" && name == "exec" =>
                 {
                     v.push(Attr::ReturnMode(Mode::Exec))
@@ -354,34 +359,37 @@ pub(crate) fn get_fuel(attrs: &[Attribute]) -> u32 {
 }
 
 pub(crate) struct VerifierAttrs {
-    pub(crate) do_verify: bool,
+    pub(crate) external_body: bool,
     pub(crate) external: bool,
     pub(crate) is_abstract: bool,
     pub(crate) export_as_global_forall: bool,
     pub(crate) autoview: bool,
     pub(crate) custom_req_err: Option<String>,
     pub(crate) bit_vector: bool,
+    pub(crate) unforgeable: bool,
 }
 
 pub(crate) fn get_verifier_attrs(attrs: &[Attribute]) -> Result<VerifierAttrs, VirErr> {
     let mut vs = VerifierAttrs {
-        do_verify: true,
+        external_body: false,
         external: false,
         is_abstract: false,
         export_as_global_forall: false,
         autoview: false,
         custom_req_err: None,
         bit_vector: false,
+        unforgeable: false,
     };
     for attr in parse_attrs(attrs)? {
         match attr {
-            Attr::NoVerify => vs.do_verify = false,
+            Attr::ExternalBody => vs.external_body = true,
             Attr::External => vs.external = true,
             Attr::Abstract => vs.is_abstract = true,
             Attr::ExportAsGlobalForall => vs.export_as_global_forall = true,
             Attr::Autoview => vs.autoview = true,
             Attr::CustomReqErr(s) => vs.custom_req_err = Some(s.clone()),
             Attr::BitVector => vs.bit_vector = true,
+            Attr::Unforgeable => vs.unforgeable = true,
             _ => {}
         }
     }
@@ -546,12 +554,6 @@ pub(crate) fn ty_to_vir<'tcx>(tcx: TyCtxt<'tcx>, ty: &Ty) -> Typ {
     }
 }
 
-pub(crate) struct BodyCtxt<'tcx> {
-    pub(crate) ctxt: Context<'tcx>,
-    pub(crate) types: &'tcx TypeckResults<'tcx>,
-    pub(crate) mode: Mode,
-}
-
 pub(crate) fn typ_of_node<'tcx>(bctx: &BodyCtxt<'tcx>, id: &HirId) -> Typ {
     mid_ty_to_vir(bctx.ctxt.tcx, bctx.types.node_type(*id))
 }
@@ -653,6 +655,7 @@ pub(crate) fn check_generic_bound<'tcx>(
 pub(crate) fn check_generics_bounds<'tcx>(
     tcx: TyCtxt<'tcx>,
     generics: &'tcx Generics<'tcx>,
+    function_decl: bool,
 ) -> Result<TypBounds, VirErr> {
     let Generics { params, where_clause, span: _ } = generics;
     let mut typ_params: Vec<(vir::ast::Ident, vir::ast::GenericBound)> = Vec::new();
@@ -670,7 +673,15 @@ pub(crate) fn check_generics_bounds<'tcx>(
                 };
                 typ_params.push((ident, bound));
             }
-            _ => unsupported_err!(generics.span, "complex generics"),
+            (
+                ParamName::Plain(_id),
+                GenericParamKind::Lifetime { kind: LifetimeParamKind::Explicit },
+            ) => {
+                if !function_decl {
+                    unsupported_err!(generics.span, "explicit lifetimes on non-function", generics)
+                }
+            }
+            _ => unsupported_err!(generics.span, "complex generics", generics),
         }
     }
     unsupported_err_unless!(where_clause.predicates.len() == 0, generics.span, "where clause");
@@ -680,8 +691,9 @@ pub(crate) fn check_generics_bounds<'tcx>(
 pub(crate) fn check_generics<'tcx>(
     tcx: TyCtxt<'tcx>,
     generics: &'tcx Generics<'tcx>,
+    function_decl: bool,
 ) -> Result<Idents, VirErr> {
-    let typ_bounds = check_generics_bounds(tcx, generics)?;
+    let typ_bounds = check_generics_bounds(tcx, generics, function_decl)?;
     let mut typ_params: Vec<vir::ast::Ident> = Vec::new();
     for (x, bound) in typ_bounds.iter() {
         // REVIEW:

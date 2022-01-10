@@ -946,30 +946,188 @@ test_verify_one_file! {
         // The summer school uses executable methods that work with nats & ints (here and above in
         // ex17). We dislike that feature of Dafny, because nobody actually wants it.
 
-        fn find_max(int_seq: &Vec<u64>) -> usize
+        fn find_max(int_vec: &Vec<u64>) -> usize
         {
-            requires(int_seq.len() > 0);
+            requires(int_vec.len() > 0);
             ensures(|max_index_rc:usize| [
-                max_index_rc < int_seq.len(),
-                forall(|idx:nat| idx < int_seq.len() >>= int_seq.index(idx) <= int_seq.index(max_index_rc)),
+                max_index_rc < int_vec.len(),
+                forall(|idx:nat| idx < int_vec.len() >>= int_vec.index(idx) <= int_vec.index(max_index_rc)),
             ]);
 
             let mut count:usize = 0;
             let mut max_index:usize = 0;
-            while count < int_seq.len()
+            while count < int_vec.len()
             {
                 invariant([
-                    max_index < int_seq.len(),
+                    max_index < int_vec.len(),
                     forall(|prioridx:nat| prioridx < count >>=
-                            int_seq.index(prioridx) <= int_seq.index(max_index)),
+                            int_vec.index(prioridx) <= int_vec.index(max_index)),
                 ]);
 
-                if int_seq.index(max_index) < int_seq.index(count) {
+                if int_vec.index(max_index) < int_vec.index(count) {
                     max_index = count;
                 }
                 count = count + 1;
             }
             max_index
+        }
+    } => Ok(())
+}
+
+// TODO(utaal) consider running the verifier multiple times to emit warnings
+// about potential under/over-flow
+
+// TODO prevent panics for underflow/overflow in debug mode
+
+test_verify_one_file! {
+    #[test] e20_pass code! {
+        #[allow(unused_imports)]
+        use seq::*;
+        #[allow(unused_imports)]
+        use vec::*;
+
+        #[spec]
+        fn is_sorted(seq: Seq<u64>) -> bool {
+            forall(|i: nat, j: nat| i < j && j < seq.len() >>= seq.index(i) <= seq.index(j))
+        }
+
+        fn is_seq_sorted(vec: Vec<u64>) -> bool {
+            ensures(|ret: bool| ret == is_sorted(vec.view()));
+
+            if vec.len() < 2 {
+                return true;
+            }
+
+            let mut idx: usize = 0;
+            while idx < vec.len() - 1
+            {
+                invariant([
+                    idx < vec.len(),
+                    // dafny had: idx <= vec.len() - 1,
+                    // which needs an additional invariant: vec.len() != 0,
+                    // because vec.len() == 0 then idx <= arbitrary()
+                    forall(|i: nat, j: nat| i < j && j < idx as nat + 1 >>= vec.index(i) <= vec.index(j)),
+                ]);
+                if vec.index(idx) > vec.index(idx + 1) { // vec[idx]
+                    return false;
+                }
+                idx = idx + 1;
+            }
+            true
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] e20_pass_with_ints code! {
+        // This version of e20 uses `Seq<int>` in `is_sorted`, which requires a manual conversion
+
+        #[allow(unused_imports)]
+        use seq::*;
+        #[allow(unused_imports)]
+        use vec::*;
+
+        #[spec]
+        fn is_sorted(intseq: Seq<int>) -> bool {
+            forall(|i:nat,j:nat| i<j && j<intseq.len() >>= intseq.index(i) <= intseq.index(j))
+        }
+
+        #[spec]
+        fn view_u64(u64seq: Seq<u64>) -> Seq<int> {
+            u64seq.map(|_index:int, u:u64| u as int)
+                /* TODO(chris): The verifier does not yet support the following Rust feature: pattern Wild (_index as _)*/
+        }
+
+        fn is_seq_sorted(intvec: Vec<u64>) -> bool
+        {
+            ensures(|out:bool| out == is_sorted(view_u64(intvec.view())));
+            if intvec.len() < 2 {
+                true
+            } else {
+                let mut idx:usize = 0;
+                while idx < intvec.len()-1
+                {
+                    invariant([
+                        idx < intvec.len(),
+                        forall(|i:nat,j:nat| imply(i<j && j<idx as nat +1, intvec.index(i) <= intvec.index(j)))
+                    ]);
+
+                    if intvec.index(idx) > intvec.index(idx+1) {
+                        // TODO(chris): Maybe there's a way to not need this manual trigger.
+                        // Pull this knowledge through the view/view_u64 so it'll trigger the
+                        // exists (!forall) of !is_sorted.
+                        assert(view_u64(intvec.view()).index(idx) > view_u64(intvec.view()).index(idx as int+1));
+                        return false;
+                    }
+                    idx = idx + 1;
+                }
+                true
+            }
+        }
+
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] e21_pass code! {
+        #[allow(unused_imports)]
+        use seq::*;
+        #[allow(unused_imports)]
+        use vec::*;
+
+        #[spec]
+        fn is_sorted(intseq: Seq<int>) -> bool {
+            forall(|i:nat,j:nat| imply(i<j && j<intseq.len(), intseq.index(i) <= intseq.index(j)))
+        }
+
+        #[spec]
+        fn view_u64(u64seq: Seq<u64>) -> Seq<int> {
+            u64seq.map(|_index:int, u:u64| u as int)
+                /* TODO(chris): The verifier does not yet support the following Rust feature: pattern Wild (_index as _)*/
+        }
+
+        fn binary_search(haystack: Vec<u64>, needle:u64) -> usize
+        {
+            requires(is_sorted(view_u64(haystack.view())));
+            ensures(|index:usize| [
+                    index <= haystack.len(),
+                    forall(|i:int| 0 <= i && i<index >>= haystack.index(i) < needle),
+                    forall(|i:int| index<=i && i<haystack.len() >>= needle <= haystack.index(i)),
+            ]);
+
+            let mut low:usize = 0;
+            let mut high:usize = haystack.len();
+            while low < high {
+                invariant([
+                    is_sorted(view_u64(haystack.view())),   // siiiiiiiigh
+                    low <= high,
+                    high <= haystack.len(),
+                    forall(|i:int| 0 <= i && i < low as int >>= haystack.index(i) < needle),
+                    forall(|i:int| high as int <= i && i < haystack.len() >>= needle <= haystack.index(i)),
+                ]);
+                #[spec] let decreases = high - low;
+                let mid = low + (high - low) / 2;
+                if *haystack.index(mid) < needle {
+                    #[spec] let old_low = low;
+                    low = mid + 1;
+                    forall(|i:int| {
+                        requires(0 <= i && i < low);
+                        ensures(haystack.index(i) < needle);
+                        assert(view_u64(haystack.view()).index(i) <= view_u64(haystack.view()).index(mid));
+                    });
+                } else {
+                    #[spec] let old_high = high;
+                    high = mid;
+                    // TODO(chris): i2 is a workaround for name collision with prior forall
+                    forall(|i2:int| {
+                        requires(high < i2 && i2 < haystack.len());
+                        ensures(needle <= haystack.index(i2));
+                        assert(view_u64(haystack.view()).index(mid) <= view_u64(haystack.view()).index(i2));
+                    });
+                }
+                assert(high - low < decreases); // Termination check
+            }
+            low
         }
     } => Ok(())
 }

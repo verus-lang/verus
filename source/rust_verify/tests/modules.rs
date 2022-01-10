@@ -31,7 +31,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_mod_adt_no_verify code! {
-        #[verifier(no_verify)]
+        #[verifier(external_body)]
         #[derive(PartialEq, Eq)]
         pub struct Car {
             pub four_doors: bool,
@@ -40,5 +40,5 @@ test_verify_one_file! {
         fn mod_adt_no_verify() {
             assert(!Car { four_doors: false }.four_doors);
         }
-    } => Err(err) => assert_eq!(err.len(), 0)
+    } => Err(err) => assert_vir_error(err)
 }

@@ -218,3 +218,38 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] test_forallstmt_typ code! {
+        #[spec]
+        #[opaque]
+        fn f1(i: int) -> int {
+            i + 1
+        }
+
+        fn forallstmt_test() {
+            forall(|x: nat| {
+                ensures(1 <= f1(x));
+                reveal(f1);
+            });
+            assert(f1(3) > 0);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_forallstmt_typ_fails code! {
+        #[spec]
+        #[opaque]
+        fn f1(i: int) -> int {
+            i + 1
+        }
+
+        fn forallstmt_test() {
+            forall(|x: nat| {
+                ensures(1 <= f1(x)); // FAILS
+            });
+            assert(f1(3) > 0);
+        }
+    } => Err(err) => assert_one_fails(err)
+}

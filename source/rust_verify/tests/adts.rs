@@ -209,3 +209,23 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] test_mut_complex_arg code! {
+        pub struct Value {
+            pub v: u64,
+        }
+
+        pub fn add1(a: u64) -> u64 {
+            requires(a < 10);
+            ensures(|res: u64| res == a + 1);
+            a + 1
+        }
+
+        fn test0() {
+            let mut v = Value { v: 2 };
+            v.v = add1(v.v);
+            assert(v.v == 3);
+        }
+    } => Err(e) => assert_vir_error(e)
+}

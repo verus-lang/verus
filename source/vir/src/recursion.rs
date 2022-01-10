@@ -18,6 +18,7 @@ use crate::sst_visitor::{
 use crate::util::vec_map_result;
 use air::ast::{Binder, Commands, Quant, Span};
 use air::ast_util::{ident_binder, str_ident, str_typ};
+use air::errors::error;
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -292,9 +293,8 @@ pub(crate) fn check_termination_exp(
         Ctxt { recursive_function_name: function.x.name.clone(), num_decreases, scc_rep, ctx };
     let check = terminates(&ctxt, &body)?;
     let (mut decls, mut stm_assigns) = mk_decreases_at_entry(&ctxt, &body.span, &decreases_exps);
-    let span =
-        Span { description: Some("could not prove termination".to_string()), ..body.span.clone() };
-    let stm_assert = Spanned::new(span, StmX::Assert(None, check));
+    let error = error("could not prove termination", &body.span);
+    let stm_assert = Spanned::new(body.span.clone(), StmX::Assert(Some(error), check));
     stm_assigns.push(stm_assert);
     let stm_block = Spanned::new(body.span.clone(), StmX::Block(Arc::new(stm_assigns)));
 
@@ -354,11 +354,8 @@ pub(crate) fn check_termination_stm(
             if *x == function.x.name || ctx.func_call_graph.get_scc_rep(x) == ctxt.scc_rep =>
         {
             let check = check_decrease_call(&ctxt, &s.span, x, args)?;
-            let span = Span {
-                description: Some("could not prove termination".to_string()),
-                ..s.span.clone()
-            };
-            let stm_assert = Spanned::new(span, StmX::Assert(None, check));
+            let error = error("could not prove termination", &s.span);
+            let stm_assert = Spanned::new(s.span.clone(), StmX::Assert(Some(error), check));
             let stm_block =
                 Spanned::new(s.span.clone(), StmX::Block(Arc::new(vec![stm_assert, s.clone()])));
             Ok(stm_block)
