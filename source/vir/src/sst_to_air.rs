@@ -769,9 +769,14 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, mask: &MaskSet, stm: &Stm) -> Vec<
             mask.assert_contains(&inv_exp.span, &namespace_expr, &mut stmts);
 
             // add an 'assume' that inv holds
-            let x_var = SpannedTyped::new(&stm.span, typ, ExpX::Var(uid.clone()));
-            let sat_inv = call_inv(inv_expr, exp_to_expr(ctx, &x_var), typ);
-            stmts.push(Arc::new(StmtX::Assume(sat_inv.clone())));
+            let inner_var = SpannedTyped::new(&stm.span, typ, ExpX::Var(uid.clone()));
+            let inner_expr = exp_to_expr(ctx, &inner_var);
+            let ty_inv_opt = typ_invariant(ctx, typ, &inner_expr);
+            if let Some(ty_inv) = ty_inv_opt {
+                stmts.push(Arc::new(StmtX::Assume(ty_inv)));
+            }
+            let main_inv = call_inv(inv_expr, inner_expr, typ);
+            stmts.push(Arc::new(StmtX::Assume(main_inv.clone())));
 
             // process the body
             // first remove the namespace from the mask set so that we cannot re-open
@@ -780,11 +785,11 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, mask: &MaskSet, stm: &Stm) -> Vec<
             stmts.append(&mut stm_to_stmts(ctx, state, &inner_mask, body_stm));
 
             // assert the invariant still holds
-            // Note that we re-use sat_inv here; but sat_inv references the variable
+            // Note that we re-use main_inv here; but main_inv references the variable
             // given by `uid` which may have been assigned to since the start of the block.
             // so this may evaluate differently in the SMT.
             let error = error("Cannot show invariant holds at end of block", &body_stm.span);
-            stmts.push(Arc::new(StmtX::Assert(error, sat_inv)));
+            stmts.push(Arc::new(StmtX::Assert(error, main_inv)));
 
             stmts
         }
