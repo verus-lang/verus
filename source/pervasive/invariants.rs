@@ -25,7 +25,7 @@ pub fn invariant_new<V, F: Fn(V) -> bool>(#[proof] v: V, #[spec] inv: F, #[spec]
     inv(v),
   ]);
   ensures(|i: Invariant<V>|
-    forall(|v: V| i.inv(v) == inv(v)) // TODO replace this with function equality
+    forall(|v: V| i.inv(v) == inv(v)) // TODO replace this with function equality?
     && equal(i.namespace(), ns)
   );
 

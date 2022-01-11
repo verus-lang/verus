@@ -6,165 +6,18 @@ mod pervasive;
 use pervasive::*;
 use crate::pervasive::{invariants::*};
 
-/*
-#[proof]
-fn throw_away(#[proof] i: Invariant<u8>) {
-}
+pub fn main() {
+  #[proof] let u: u32 = 5;
 
-pub fn do_nothing(#[proof] i: Invariant<u8>) {
-  requires([
-    i.inv(0)
-  ]);
+  #[proof] let i = invariant_new(u, |u: u32| u % 2 == 1, 0);
+
   open_invariant!(&i => inner => {
-    throw_away(i);
-  });
-}
-*/
-
-pub fn X(#[proof] i: Invariant<u8>) {
-  requires([
-    i.inv(0)
-  ]);
-  open_invariant!(&i => inner => {
-    #[proof] let x = 5;
-    #[proof] let x = 6;
-    inner = 0;
-  });
-}
-
-pub fn nested(#[proof] i: Invariant<u8>) {
-  requires([
-    i.inv(0)
-  ]);
-  open_invariant!(&i => inner => {
-    open_invariant!(&i => inner2 => {
-      inner2 = 0;
-    });
-    inner = 0;
-  });
-}
-
-pub fn do_nothing(#[proof] i: Invariant<u8>) {
-  requires([
-    i.inv(0)
-  ]);
-  open_invariant!(&i => inner => {
-  });
-}
-
-pub fn inv_doesnt_hold(#[proof] i: Invariant<u8>) {
-  requires([
-    i.inv(0)
-  ]);
-  open_invariant!(&i => inner => {
-    inner = 1;
-  });
-}
-
-pub fn nested_good(#[proof] i: Invariant<u8>, #[proof] j: Invariant<u8>) {
-  requires([
-    i.inv(0),
-    j.inv(1),
-    i.namespace() == 0,
-    j.namespace() == 1,
-  ]);
-  open_invariant!(&i => inner => {
-    inner = 0;
-    open_invariant!(&j => inner => {
-      inner = 1;
-    });
-  });
-}
-
-#[proof]
-pub fn callee_mask_empty() {
-  opens_invariants_none(); // will not open any invariant
-}
-
-#[proof]
-pub fn callee_mask_full() {
-  opens_invariants_any(); // can open any invariant
-}
-
-pub fn t1(#[proof] i: Invariant<u8>) {
-  open_invariant!(&i => inner => {
-    callee_mask_empty();
-  });
-}
-
-pub fn t2(#[proof] i: Invariant<u8>) {
-  open_invariant!(&i => inner => {
-    callee_mask_full(); // ERROR
-  });
-}
-pub fn t3(#[proof] i: Invariant<u8>) {
-  opens_invariants_none();
-  open_invariant!(&i => inner => { // ERROR
+    assert(i.inv(inner));
+    assert(inner % 2 == 1); // TODO this fails
   });
 }
 
 /*
-#[spec]
-pub fn open_inv_in_spec(i: Invariant<u8>) {
-  open_invariant!(&i => inner => {
-  });
-}
-*/
-
-/*
-#[spec]
-pub fn inv_header_in_spec(i: Invariant<u8>) {
-    opens_invariants_any();
-}
-*/
-
-/*
-pub fn blah(#[exec] i: Invariant<u8>) {
-    open_invariant!(&i => inner => {
-    });
-}
-*/
-
-/*
-pub fn exec_fn() { }
-
-pub fn blah(#[proof] i: Invariant<u8>) {
-    let mut exec_var = 0; 
-    open_invariant!(&i => inner => {
-        exec_fn();
-    });
-}
-*/
-
-/*
-pub fn blah(#[proof] i: Invariant<u8>) {
-  open_invariant!(&i => inner => {
-    return;
-  });
-}
-*/
-
-/*
-pub fn blah(#[proof] i: Invariant<u8>, #[proof] j: Invariant<u8>) {
-  open_invariant!(&i => inner => {
-    open_invariant!(&j => inner => {
-      return;
-    });
-  });
-}
-*/
-
-/*
-pub fn blah(#[proof] i: Invariant<u8>) {
-  let mut idx = 0;
-  while idx < 5 {
-    open_invariant!(&i => inner => {
-      break;
-    });
-  }
-}
-*/
-
 pub fn main() {
   #[proof] let u: u32 = 5;
 
@@ -176,6 +29,22 @@ pub fn main() {
     }
   });
 
+  #[proof] let j = invariant_new(7, |u: u32| u % 2 == 1, 1);
+
+  open_invariant!(&i => inner_i => {
+    assert(i.inv(inner_i));
+    assert(inner_i % 2 == 1);
+    open_invariant!(&j => inner_j => {
+      assert(inner_i % 2 == 1);
+      #[proof] let tmp = inner_i;
+      assert(tmp % 2 == 1);
+      inner_i = inner_j;
+      inner_j = tmp;
+      assert(inner_j % 2 == 1);
+    });
+  });
+
   #[proof] let j = i.destruct();
   assert(j % 2 == 1);
 }
+*/
