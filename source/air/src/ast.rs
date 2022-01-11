@@ -57,13 +57,13 @@ pub enum BinaryOp {
     BitAdd,
     BitSub,
     BitMul,
-    BitDiv, // unsigned
-    BitLt,  // unsigned
-    BitGt,  // unsigned
-    BitLe,  // unsigned
-    BitGe,  // unsigned
-    BitMod, // unsigned
-    Shr,    // logical
+    BitUDiv,
+    BitULt,
+    BitUGt,
+    BitULe,
+    BitUGe,
+    BitUMod,
+    LShr,
     Shl,
 }
 

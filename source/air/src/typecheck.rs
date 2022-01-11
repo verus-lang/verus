@@ -209,22 +209,22 @@ fn check_expr(typing: &mut Typing, expr: &Expr) -> Result<Typ, TypeError> {
         ExprX::Binary(BinaryOp::EuclideanMod, e1, e2) => {
             check_exprs(typing, "mod", &[it(), it()], &it(), &[e1.clone(), e2.clone()])
         }
-        ExprX::Binary(BinaryOp::BitLt, e1, e2) => {
+        ExprX::Binary(BinaryOp::BitULt, e1, e2) => {
             check_bv_exprs(typing, "bvlt", &[e1.clone(), e2.clone()])
         }
-        ExprX::Binary(BinaryOp::BitGt, e1, e2) => {
+        ExprX::Binary(BinaryOp::BitUGt, e1, e2) => {
             check_bv_exprs(typing, "bvgt", &[e1.clone(), e2.clone()])
         }
-        ExprX::Binary(BinaryOp::BitLe, e1, e2) => {
+        ExprX::Binary(BinaryOp::BitULe, e1, e2) => {
             check_bv_exprs(typing, "bvle", &[e1.clone(), e2.clone()])
         }
-        ExprX::Binary(BinaryOp::BitGe, e1, e2) => {
+        ExprX::Binary(BinaryOp::BitUGe, e1, e2) => {
             check_bv_exprs(typing, "bvge", &[e1.clone(), e2.clone()])
         }
         ExprX::Binary(BinaryOp::BitXor, e1, e2) => {
             check_bv_exprs(typing, "^", &[e1.clone(), e2.clone()])
         }
-        ExprX::Binary(BinaryOp::BitMod, e1, e2) => {
+        ExprX::Binary(BinaryOp::BitUMod, e1, e2) => {
             check_bv_exprs(typing, "bvmod", &[e1.clone(), e2.clone()])
         }
         ExprX::Binary(BinaryOp::BitAnd, e1, e2) => {
@@ -242,10 +242,10 @@ fn check_expr(typing: &mut Typing, expr: &Expr) -> Result<Typ, TypeError> {
         ExprX::Binary(BinaryOp::BitMul, e1, e2) => {
             check_bv_exprs(typing, "bvmul", &[e1.clone(), e2.clone()])
         }
-        ExprX::Binary(BinaryOp::BitDiv, e1, e2) => {
+        ExprX::Binary(BinaryOp::BitUDiv, e1, e2) => {
             check_bv_exprs(typing, "bvdiv", &[e1.clone(), e2.clone()])
         }
-        ExprX::Binary(BinaryOp::Shr, e1, e2) => {
+        ExprX::Binary(BinaryOp::LShr, e1, e2) => {
             check_bv_exprs(typing, ">>", &[e1.clone(), e2.clone()])
         }
         ExprX::Binary(BinaryOp::Shl, e1, e2) => {
