@@ -2,6 +2,7 @@ use crate::ast::{
     BinaryOp, Fun, Ident, Idents, IntRange, MaskSpec, Mode, Params, Path, SpannedTyped, Typ, TypX,
     Typs, UnaryOp, UnaryOpr,
 };
+use std::mem::swap;
 use crate::ast_util::{get_field, get_variant};
 use crate::context::Ctx;
 use crate::def::{fn_inv_name, fn_namespace_name};
@@ -396,6 +397,7 @@ struct State {
     sids: Vec<Ident>, // a stack of snapshot ids, the top one should dominate the current position in the AST
     snap_map: Vec<(Span, SnapPos)>, // Maps each statement's span to the closest dominating snapshot's ID
     assign_map: AssignMap, // Maps Maps each statement's span to the assigned variables (that can potentially be queried)
+    mask: MaskSet, // set of invariants that are allowed to be opened
 }
 
 impl State {
@@ -469,7 +471,7 @@ fn one_stmt(stmts: Vec<Stmt>) -> Stmt {
     if stmts.len() == 1 { stmts[0].clone() } else { Arc::new(StmtX::Block(Arc::new(stmts))) }
 }
 
-fn stm_to_stmts(ctx: &Ctx, state: &mut State, mask: &MaskSet, stm: &Stm) -> Vec<Stmt> {
+fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
     match &stm.x {
         StmX::Call(x, typs, args, dest) => {
             let mut stmts: Vec<Stmt> = Vec::new();
@@ -490,7 +492,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, mask: &MaskSet, stm: &Stm) -> Vec<
             }
 
             let callee_mask_set = mask_set_from_spec(&func.x.mask_spec, func.x.mode);
-            callee_mask_set.assert_is_contained_in(mask, &stm.span, &mut stmts);
+            callee_mask_set.assert_is_contained_in(&state.mask, &stm.span, &mut stmts);
 
             let mut ens_args: Vec<Expr> = vec_map(typs, typ_to_id);
             match dest {
@@ -567,7 +569,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, mask: &MaskSet, stm: &Stm) -> Vec<
             vec![Arc::new(StmtX::Assume(exp_to_expr(ctx, &expr)))]
         }
         StmX::Assign { lhs, rhs, is_init: true } => {
-            stm_to_stmts(ctx, state, mask, &assume_var(&stm.span, lhs, rhs))
+            stm_to_stmts(ctx, state, &assume_var(&stm.span, lhs, rhs))
         }
         StmX::Assign { lhs, rhs, is_init: false } => {
             let mut stmts: Vec<Stmt> = Vec::new();
@@ -585,17 +587,17 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, mask: &MaskSet, stm: &Stm) -> Vec<
             stmts
         }
         StmX::DeadEnd(s) => {
-            vec![Arc::new(StmtX::DeadEnd(one_stmt(stm_to_stmts(ctx, state, mask, s))))]
+            vec![Arc::new(StmtX::DeadEnd(one_stmt(stm_to_stmts(ctx, state, s))))]
         }
         StmX::If(cond, lhs, rhs) => {
             let pos_cond = exp_to_expr(ctx, &cond);
             let neg_cond = Arc::new(ExprX::Unary(air::ast::UnaryOp::Not, pos_cond.clone()));
             let pos_assume = Arc::new(StmtX::Assume(pos_cond));
             let neg_assume = Arc::new(StmtX::Assume(neg_cond));
-            let mut lhss = stm_to_stmts(ctx, state, mask, lhs);
+            let mut lhss = stm_to_stmts(ctx, state, lhs);
             let mut rhss = match rhs {
                 None => vec![],
-                Some(rhs) => stm_to_stmts(ctx, state, mask, rhs),
+                Some(rhs) => stm_to_stmts(ctx, state, rhs),
             };
             lhss.insert(0, pos_assume);
             rhss.insert(0, neg_assume);
@@ -629,11 +631,11 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, mask: &MaskSet, stm: &Stm) -> Vec<
             };
 
             let cond_stmts: Vec<Stmt> =
-                cond_stms.iter().map(|s| stm_to_stmts(ctx, state, mask, s)).flatten().collect();
+                cond_stms.iter().map(|s| stm_to_stmts(ctx, state, s)).flatten().collect();
             let mut air_body: Vec<Stmt> = Vec::new();
             air_body.append(&mut cond_stmts.clone());
             air_body.push(pos_assume);
-            air_body.append(&mut stm_to_stmts(ctx, state, mask, body));
+            air_body.append(&mut stm_to_stmts(ctx, state, body));
 
             /*
             Generate a separate SMT query for the loop body.
@@ -749,7 +751,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, mask: &MaskSet, stm: &Stm) -> Vec<
                 state.push_scope();
                 state.map_span(&stm, SpanKind::Start);
             }
-            let stmts = stms.iter().map(|s| stm_to_stmts(ctx, state, mask, s)).flatten().collect();
+            let stmts = stms.iter().map(|s| stm_to_stmts(ctx, state, s)).flatten().collect();
             if ctx.debug {
                 state.pop_scope();
             }
@@ -766,7 +768,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, mask: &MaskSet, stm: &Stm) -> Vec<
 
             // Assert that the namespace of the inv we are opening is in the mask set
             let namespace_expr = call_namespace(inv_expr.clone(), typ);
-            mask.assert_contains(&inv_exp.span, &namespace_expr, &mut stmts);
+            state.mask.assert_contains(&inv_exp.span, &namespace_expr, &mut stmts);
 
             // add an 'assume' that inv holds
             let inner_var = SpannedTyped::new(&stm.span, typ, ExpX::Var(uid.clone()));
@@ -781,8 +783,10 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, mask: &MaskSet, stm: &Stm) -> Vec<
             // process the body
             // first remove the namespace from the mask set so that we cannot re-open
             // the same invariant inside
-            let inner_mask = mask.remove_element(inv_exp.span.clone(), namespace_expr);
-            stmts.append(&mut stm_to_stmts(ctx, state, &inner_mask, body_stm));
+            let mut inner_mask = state.mask.remove_element(inv_exp.span.clone(), namespace_expr);
+            swap(&mut state.mask, &mut inner_mask);
+            stmts.append(&mut stm_to_stmts(ctx, state, body_stm));
+            swap(&mut state.mask, &mut inner_mask);
 
             // assert the invariant still holds
             // Note that we re-use main_inv here; but main_inv references the variable
@@ -899,6 +903,8 @@ pub fn body_stm_to_air(
 
     let initial_sid = Arc::new("0_entry".to_string());
 
+    let mask = mask_set_from_spec(mask_spec, mode);
+
     let mut state = State {
         local_shared,
         commands: Vec::new(),
@@ -906,6 +912,7 @@ pub fn body_stm_to_air(
         sids: vec![initial_sid.clone()],
         snap_map: Vec::new(),
         assign_map: HashMap::new(),
+        mask,
     };
 
     let stm = crate::sst_vars::stm_assign(
@@ -915,8 +922,7 @@ pub fn body_stm_to_air(
         &mut HashSet::new(),
         stm,
     );
-    let masks = mask_set_from_spec(mask_spec, mode);
-    let mut stmts = stm_to_stmts(ctx, &mut state, &masks, &stm);
+    let mut stmts = stm_to_stmts(ctx, &mut state, &stm);
 
     if ctx.debug {
         let snapshot = Arc::new(StmtX::Snapshot(initial_sid));
