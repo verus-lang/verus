@@ -226,3 +226,14 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    // TODO(utaal) support old(v).call()
+    #[ignore] #[test] test_mut_ref_old_trigger code! {
+        use crate::pervasive::vec::*;
+
+        fn add1(v: &mut Vec<u64>) {
+            requires(forall(|i: nat| i < v.len() >>= old(v).index(i) < 10));
+        }
+    } => Ok(())
+}
