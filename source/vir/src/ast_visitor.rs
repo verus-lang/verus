@@ -79,6 +79,173 @@ fn insert_pattern_vars(map: &mut ScopeMap<Ident, Typ>, pattern: &Pattern) {
     }
 }
 
+pub(crate) enum VisitorControlFlow<T> {
+    Continue,
+    Stop(T),
+}
+
+macro_rules! expr_visitor_control_flow {
+    ($cf:expr) => {
+        match $cf {
+            crate::ast_visitor::VisitorControlFlow::Continue => (),
+            crate::ast_visitor::VisitorControlFlow::Stop(val) => {
+                return crate::ast_visitor::VisitorControlFlow::Stop(val);
+            }
+        }
+    };
+}
+
+pub(crate) fn expr_visitor_dfs<T, MF>(
+    expr: &Expr,
+    map: &mut ScopeMap<Ident, Typ>,
+    mf: &mut MF,
+) -> VisitorControlFlow<T>
+where
+    MF: FnMut(&mut ScopeMap<Ident, Typ>, &Expr) -> VisitorControlFlow<T>,
+{
+    match mf(map, expr) {
+        VisitorControlFlow::Stop(val) => VisitorControlFlow::Stop(val),
+        VisitorControlFlow::Continue => {
+            match &expr.x {
+                ExprX::Const(_) | ExprX::Var(_) | ExprX::VarAt(_, _) => (),
+                ExprX::Call(target, es) => {
+                    match target {
+                        CallTarget::Static(_, _) => (),
+                        CallTarget::FnSpec(fun) => {
+                            expr_visitor_control_flow!(expr_visitor_dfs(fun, map, mf));
+                        }
+                    }
+                    for e in es.iter() {
+                        expr_visitor_control_flow!(expr_visitor_dfs(e, map, mf));
+                    }
+                }
+                ExprX::Tuple(es) => {
+                    for e in es.iter() {
+                        expr_visitor_control_flow!(expr_visitor_dfs(e, map, mf));
+                    }
+                }
+                ExprX::Ctor(_path, _ident, binders, update) => {
+                    match update {
+                        None => (),
+                        Some(update) => {
+                            expr_visitor_control_flow!(expr_visitor_dfs(update, map, mf))
+                        }
+                    }
+                    for binder in binders.iter() {
+                        expr_visitor_control_flow!(expr_visitor_dfs(&binder.a, map, mf));
+                    }
+                }
+                ExprX::Unary(_op, e1) => {
+                    expr_visitor_control_flow!(expr_visitor_dfs(e1, map, mf));
+                }
+                ExprX::UnaryOpr(_op, e1) => {
+                    expr_visitor_control_flow!(expr_visitor_dfs(e1, map, mf));
+                }
+                ExprX::Binary(_op, e1, e2) => {
+                    expr_visitor_control_flow!(expr_visitor_dfs(e1, map, mf));
+                    expr_visitor_control_flow!(expr_visitor_dfs(e2, map, mf));
+                }
+                ExprX::Quant(_quant, binders, e1) => {
+                    map.push_scope(true);
+                    for binder in binders.iter() {
+                        let _ = map.insert(binder.name.clone(), binder.a.clone());
+                    }
+                    expr_visitor_control_flow!(expr_visitor_dfs(e1, map, mf));
+                    map.pop_scope();
+                }
+                ExprX::Closure(params, body) => {
+                    map.push_scope(true);
+                    for binder in params.iter() {
+                        let _ = map.insert(binder.name.clone(), binder.a.clone());
+                    }
+                    expr_visitor_control_flow!(expr_visitor_dfs(body, map, mf));
+                    map.pop_scope();
+                }
+                ExprX::Choose(binder, e1) => {
+                    map.push_scope(true);
+                    let _ = map.insert(binder.name.clone(), binder.a.clone());
+                    expr_visitor_control_flow!(expr_visitor_dfs(e1, map, mf));
+                    map.pop_scope();
+                }
+                ExprX::Assign(e1, e2) => {
+                    expr_visitor_control_flow!(expr_visitor_dfs(e1, map, mf));
+                    expr_visitor_control_flow!(expr_visitor_dfs(e2, map, mf));
+                }
+                ExprX::Fuel(_, _) => (),
+                ExprX::Header(_) => {
+                    panic!("header expression not allowed here: {:?}", &expr.span);
+                }
+                ExprX::Admit => (),
+                ExprX::Forall { vars, require, ensure, proof } => {
+                    map.push_scope(true);
+                    for binder in vars.iter() {
+                        let _ = map.insert(binder.name.clone(), binder.a.clone());
+                    }
+                    expr_visitor_control_flow!(expr_visitor_dfs(require, map, mf));
+                    expr_visitor_control_flow!(expr_visitor_dfs(ensure, map, mf));
+                    expr_visitor_control_flow!(expr_visitor_dfs(proof, map, mf));
+                    map.pop_scope();
+                }
+                ExprX::If(e1, e2, e3) => {
+                    expr_visitor_control_flow!(expr_visitor_dfs(e1, map, mf));
+                    expr_visitor_control_flow!(expr_visitor_dfs(e2, map, mf));
+                    if let Some(e3) = &e3 {
+                        expr_visitor_control_flow!(expr_visitor_dfs(e3, map, mf));
+                    }
+                }
+                ExprX::Match(e1, arms) => {
+                    expr_visitor_control_flow!(expr_visitor_dfs(e1, map, mf));
+                    for arm in arms.iter() {
+                        map.push_scope(true);
+                        insert_pattern_vars(map, &arm.x.pattern);
+                        expr_visitor_control_flow!(expr_visitor_dfs(&arm.x.guard, map, mf));
+                        expr_visitor_control_flow!(expr_visitor_dfs(&arm.x.body, map, mf));
+                        map.pop_scope();
+                    }
+                }
+                ExprX::While { cond, body, invs } => {
+                    expr_visitor_control_flow!(expr_visitor_dfs(cond, map, mf));
+                    expr_visitor_control_flow!(expr_visitor_dfs(body, map, mf));
+                    for inv in invs.iter() {
+                        expr_visitor_control_flow!(expr_visitor_dfs(inv, map, mf));
+                    }
+                }
+                ExprX::Return(e1) => match e1 {
+                    None => (),
+                    Some(e) => expr_visitor_control_flow!(expr_visitor_dfs(e, map, mf)),
+                },
+                ExprX::Block(ss, e1) => {
+                    for stmt in ss.iter() {
+                        match &stmt.x {
+                            StmtX::Expr(e) => {
+                                expr_visitor_control_flow!(expr_visitor_dfs(e, map, mf));
+                            }
+                            StmtX::Decl { pattern, mode: _, init } => {
+                                map.push_scope(true);
+                                if let Some(init) = init {
+                                    expr_visitor_control_flow!(expr_visitor_dfs(init, map, mf));
+                                }
+                                insert_pattern_vars(map, &pattern);
+                            }
+                        }
+                    }
+                    match e1 {
+                        None => (),
+                        Some(e) => expr_visitor_control_flow!(expr_visitor_dfs(e, map, mf)),
+                    };
+                    for stmt in ss.iter() {
+                        match &stmt.x {
+                            StmtX::Expr(_) => {}
+                            StmtX::Decl { .. } => map.pop_scope(),
+                        }
+                    }
+                }
+            }
+            VisitorControlFlow::Continue
+        }
+    }
+}
+
 pub(crate) fn map_expr_visitor_env<E, FE, FS, FT>(
     expr: &Expr,
     map: &mut ScopeMap<Ident, Typ>,
@@ -95,6 +262,7 @@ where
     let exprx = match &expr.x {
         ExprX::Const(c) => ExprX::Const(c.clone()),
         ExprX::Var(x) => ExprX::Var(x.clone()),
+        ExprX::VarAt(x, at) => ExprX::VarAt(x.clone(), at.clone()),
         ExprX::Call(target, es) => {
             let target = match target {
                 CallTarget::Static(x, typs) => {
@@ -322,7 +490,8 @@ where
     FT: Fn(&mut E, &Typ) -> Result<Typ, VirErr>,
 {
     let typ = map_typ_visitor_env(&param.x.typ, env, ft)?;
-    let paramx = ParamX { name: param.x.name.clone(), typ, mode: param.x.mode };
+    let paramx =
+        ParamX { name: param.x.name.clone(), typ, mode: param.x.mode, is_mut: param.x.is_mut };
     Ok(Spanned::new(param.span.clone(), paramx))
 }
 

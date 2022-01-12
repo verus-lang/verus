@@ -1,4 +1,4 @@
-use crate::ast::{BinaryOp, Ident, Typ, TypX, UnaryOp, UnaryOpr, VirErr};
+use crate::ast::{BinaryOp, Ident, Typ, TypX, UnaryOp, UnaryOpr, VarAt, VirErr};
 use crate::ast_util::{err_str, err_string};
 use crate::context::Ctx;
 use crate::sst::{BndX, Exp, ExpX, Trig, Trigs};
@@ -53,6 +53,7 @@ fn check_trigger_expr(exp: &Exp, free_vars: &mut HashSet<Ident>) -> Result<(), V
             Ok(exp.clone())
         }
         ExpX::Var((_, Some(_))) => Ok(exp.clone()),
+        ExpX::VarAt(_, VarAt::Pre) => Ok(exp.clone()),
         ExpX::Old(_, _) => panic!("internal error: Old"),
         ExpX::Unary(op, _) => match op {
             UnaryOp::Trigger(_) | UnaryOp::Clip(_) => Ok(exp.clone()),

@@ -94,6 +94,11 @@ pub fn equal<A>(_: A, _: A) -> bool {
     unimplemented!();
 }
 
+#[spec]
+pub fn old<A>(_: A) -> A {
+    unimplemented!();
+}
+
 #[proof]
 pub fn assert_by(_: bool, _: ()) {
     unimplemented!();

@@ -1,6 +1,6 @@
 use crate::ast::{
     BinaryOp, CallTarget, Constant, Expr, ExprX, Fun, Function, Ident, Mode, Params, PatternX,
-    SpannedTyped, Stmt, StmtX, Typ, TypX, Typs, UnaryOp, UnaryOpr, VirErr,
+    SpannedTyped, Stmt, StmtX, Typ, TypX, Typs, UnaryOp, UnaryOpr, VarAt, VirErr,
 };
 use crate::ast_util::{err_str, err_string};
 use crate::context::Ctx;
@@ -365,6 +365,14 @@ pub(crate) fn expr_to_stm_opt(
         ExprX::Var(x) => {
             let unique_id = state.get_var_unique_id(&x);
             Ok((vec![], Some(mk_exp(ExpX::Var(unique_id)))))
+        }
+        ExprX::VarAt(x, VarAt::Pre) => {
+            if let Some((scope, _)) = state.rename_map.scope_and_index_of_key(x) {
+                if scope != 0 {
+                    err_str(&expr.span, "the parameter is shadowed here")?;
+                }
+            }
+            Ok((vec![], Some(mk_exp(ExpX::VarAt(x.clone(), VarAt::Pre)))))
         }
         ExprX::Assign(expr1, expr2) => {
             let dest_x = match &expr1.x {

@@ -44,12 +44,14 @@ const PREFIX_ENSURES: &str = "ens%";
 const PREFIX_RECURSIVE: &str = "rec%";
 const PREFIX_SIMPLIFY_TEMP_VAR: &str = "tmp%%";
 const PREFIX_TEMP_VAR: &str = "tmp%";
+const PREFIX_PRE_VAR: &str = "pre%";
 const PREFIX_BOX: &str = "Poly%";
 const PREFIX_UNBOX: &str = "%Poly%";
 const PREFIX_TYPE_ID: &str = "TYPE%";
 const PREFIX_TUPLE_TYPE: &str = "tuple%";
 const PREFIX_TUPLE_PARAM: &str = "T%";
 const PREFIX_TUPLE_FIELD: &str = "field%";
+const PREFIX_SNAPSHOT: &str = "snap%";
 const PATH_SEPARATOR: &str = ".";
 const VARIANT_SEPARATOR: &str = "/";
 const VARIANT_FIELD_SEPARATOR: &str = "/";
@@ -83,6 +85,7 @@ pub const U_INV: &str = "uInv";
 pub const I_INV: &str = "iInv";
 pub const ARCH_SIZE: &str = "SZ";
 pub const SNAPSHOT_CALL: &str = "CALL";
+pub const SNAPSHOT_PRE: &str = "PRE";
 pub const POLY: &str = "Poly";
 pub const BOX_INT: &str = "I";
 pub const BOX_BOOL: &str = "B";
@@ -268,6 +271,10 @@ pub fn prefix_simplify_temp_var(n: u64) -> Ident {
     Arc::new(PREFIX_SIMPLIFY_TEMP_VAR.to_string() + &n.to_string())
 }
 
+pub fn prefix_pre_var(name: &Ident) -> Ident {
+    Arc::new(PREFIX_PRE_VAR.to_string() + name)
+}
+
 pub fn variant_ident(datatype: &Path, variant: &str) -> Ident {
     Arc::new(format!("{}{}{}", path_to_string(datatype), VARIANT_SEPARATOR, variant))
 }
@@ -285,6 +292,10 @@ pub fn variant_field_ident(datatype: &Path, variant: &Ident, field: &Ident) -> I
 
 pub fn positional_field_ident(idx: usize) -> Ident {
     Arc::new(format!("_{}", idx))
+}
+
+pub fn snapshot_ident(name: &str) -> Ident {
+    Arc::new(format!("{}{}", PREFIX_SNAPSHOT, name))
 }
 
 /// For a given snapshot, does it represent the state
@@ -310,6 +321,10 @@ pub struct Spanned<X> {
 impl<X> Spanned<X> {
     pub fn new(span: Span, x: X) -> Arc<Spanned<X>> {
         Arc::new(Spanned { span: span, x: x })
+    }
+
+    pub fn map_x(&self, f: impl FnOnce(&X) -> X) -> Arc<Self> {
+        Arc::new(Spanned { span: self.span.clone(), x: f(&self.x) })
     }
 }
 
