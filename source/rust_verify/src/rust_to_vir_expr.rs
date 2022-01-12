@@ -3,7 +3,7 @@ use crate::erase::ResolvedCall;
 use crate::rust_to_vir_base::{
     def_id_to_vir_path, def_to_path_ident, get_range, get_trigger, get_var_mode, hack_get_def_name,
     ident_to_var, is_smt_arith, is_smt_equality, mid_ty_to_vir, mk_range, parse_attrs, ty_to_vir,
-    typ_of_node, typ_of_node_expect_mut_ref, Attr,
+    typ_of_node, typ_of_node_expect_mut_ref, Attr, typ_path_and_ident_to_vir_path,
 };
 use crate::util::{
     err_span_str, err_span_string, slice_vec_map_result, spanned_new, spanned_typed_new,
@@ -248,7 +248,6 @@ const BUILTIN_INV_END: &str = "crate::pervasive::invariants::open_invariant_end"
 fn fn_call_to_vir<'tcx>(
     bctx: &BodyCtxt<'tcx>,
     expr: &Expr<'tcx>,
-    self_path: Option<vir::ast::Path>,
     f: DefId,
     node_substs: &[rustc_middle::ty::subst::GenericArg<'tcx>],
     fn_span: Span,
@@ -258,20 +257,13 @@ fn fn_call_to_vir<'tcx>(
     let mut args: Vec<&'tcx Expr<'tcx>> = args_slice.iter().collect();
 
     let tcx = bctx.ctxt.tcx;
-    let with_self_path = |self_path: &vir::ast::Path, ident: Ident| {
-        let mut full_path = (**self_path).clone();
-        Arc::make_mut(&mut full_path.segments).push(ident);
-        Arc::new(full_path)
-    };
-    let path = if let Some(self_path) = &self_path {
-        if let Some(autoview_typ) = autoview_typ {
-            if let TypX::Datatype(path, _) = &**autoview_typ {
-                with_self_path(path, def_to_path_ident(tcx, f))
-            } else {
-                panic!("autoview_typ must be Datatype")
-            }
+    let path = if let Some(autoview_typ) = autoview_typ {
+        if let TypX::Datatype(type_path, _) = &**autoview_typ {
+            // If the function call was originally Foo::X with autoview type Bar,
+            // then use the function Bar::X instead.
+            typ_path_and_ident_to_vir_path(type_path, def_to_path_ident(tcx, f))
         } else {
-            with_self_path(self_path, def_to_path_ident(tcx, f))
+            panic!("autoview_typ must be Datatype");
         }
     } else {
         def_id_to_vir_path(tcx, f)
@@ -357,7 +349,7 @@ fn fn_call_to_vir<'tcx>(
         expr.span,
         "call of trait impl"
     );
-    let name = Arc::new(FunX { path, trait_path: None });
+    let name = Arc::new(FunX { path: path, trait_path: None });
 
     record_fun(
         &bctx.ctxt,
@@ -503,9 +495,15 @@ fn fn_call_to_vir<'tcx>(
         } else {
             panic!("autoview_typ must be Datatype")
         };
-        let self_path = self_path.expect("autoview self");
-        let path = with_self_path(&self_path, Arc::new("view".to_string()));
-        let fun = Arc::new(FunX { path, trait_path: None });
+
+        let receiver = args.first().expect("receiver in method call");
+        let self_path = match &(*typ_of_node(bctx, &receiver.hir_id)) {
+            TypX::Datatype(path, _) => path.clone(),
+            _ => panic!("unexpected receiver type"),
+        };
+        let view_path = typ_path_and_ident_to_vir_path(&self_path, Arc::new("view".to_string()));
+
+        let fun = Arc::new(FunX { path: view_path, trait_path: None });
         let target = CallTarget::Static(fun, typ_args);
         let viewx = ExprX::Call(target, Arc::new(vec![vir_args[0].clone()]));
         vir_args[0] = spanned_typed_new(expr.span, autoview_typ, viewx);
@@ -1034,39 +1032,16 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                     let def = bctx.types.qpath_res(&qpath, fun.hir_id);
                     match def {
                         // a statically resolved function
-                        rustc_hir::def::Res::Def(_, def_id) => {
-                            let self_path = match qpath {
-                                QPath::Resolved(_, _) => None,
-                                QPath::LangItem(_, _) => None,
-                                QPath::TypeRelative(ty, _) => match &ty.kind {
-                                    rustc_hir::TyKind::Path(qpath) => {
-                                        match bctx.types.qpath_res(&qpath, ty.hir_id) {
-                                            rustc_hir::def::Res::Def(_, def_id) => {
-                                                Some(def_id_to_vir_path(bctx.ctxt.tcx, def_id))
-                                            }
-                                            _ => {
-                                                panic!("failed to look up def_id for impl");
-                                            }
-                                        }
-                                    }
-                                    _ => {
-                                        panic!("failed to look up def_id for impl");
-                                    }
-                                },
-                            };
-
-                            Some(fn_call_to_vir(
-                                bctx,
-                                expr,
-                                self_path,
-                                def_id,
-                                bctx.types.node_type(fun.hir_id),
-                                bctx.types.node_substs(fun.hir_id),
-                                fun.span,
-                                args_slice,
-                                None,
-                            ))
-                        }
+                        rustc_hir::def::Res::Def(_, def_id) => Some(fn_call_to_vir(
+                            bctx,
+                            expr,
+                            def_id,
+                            bctx.types.node_type(fun.hir_id),
+                            bctx.types.node_substs(fun.hir_id),
+                            fun.span,
+                            args_slice,
+                            None,
+                        )),
                         rustc_hir::def::Res::Local(_) => {
                             None // dynamically computed function, see below
                         }
@@ -1444,11 +1419,6 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
             Ok(mk_expr(ExprX::Ctor(path, variant_name, vir_fields, update)))
         }
         ExprKind::MethodCall(_name_and_generics, _call_span_0, all_args, call_span_1) => {
-            let receiver = all_args.first().expect("receiver in method call");
-            let self_path = match &(*typ_of_node(bctx, &receiver.hir_id)) {
-                TypX::Datatype(path, _) => path.clone(),
-                _ => panic!("unexpected receiver type"),
-            };
             let fn_def_id = bctx
                 .types
                 .type_dependent_def_id(expr.hir_id)
@@ -1464,7 +1434,6 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
             fn_call_to_vir(
                 bctx,
                 expr,
-                Some(self_path),
                 fn_def_id,
                 bctx.types.node_substs(expr.hir_id),
                 *call_span_1,

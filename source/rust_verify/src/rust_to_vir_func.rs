@@ -1,7 +1,7 @@
 use crate::context::{BodyCtxt, Context};
 use crate::rust_to_vir_base::{
-    check_generics, check_generics_bounds, def_id_to_vir_path, def_to_path_ident, get_fuel,
-    get_mode, get_ret_mode, get_var_mode, get_verifier_attrs, ident_to_var, ty_to_vir,
+    check_generics, check_generics_bounds, def_id_to_vir_path, get_fuel, get_mode, get_ret_mode,
+    get_var_mode, get_verifier_attrs, ident_to_var, ty_to_vir,
 };
 use crate::rust_to_vir_expr::{expr_to_vir, pat_to_var, ExprModifier};
 use crate::util::{err_span_str, err_span_string, spanned_new, unsupported_err_span, vec_map};
@@ -98,13 +98,7 @@ pub(crate) fn check_item_fn<'tcx>(
     generics: &'tcx Generics,
     body_id: &BodyId,
 ) -> Result<(), VirErr> {
-    let path = if let Some((self_path, _)) = &self_path_mode {
-        let mut full_path = (**self_path).clone();
-        Arc::make_mut(&mut full_path.segments).push(def_to_path_ident(ctxt.tcx, id));
-        Arc::new(full_path)
-    } else {
-        def_id_to_vir_path(ctxt.tcx, id)
-    };
+    let path = def_id_to_vir_path(ctxt.tcx, id);
     let name = Arc::new(FunX { path, trait_path });
     let mode = get_mode(Mode::Exec, attrs);
     let adt_mode_trait_impl: Option<(_, Mode)> = if let (Some(_), Some((self_path, adt_mode))) =
