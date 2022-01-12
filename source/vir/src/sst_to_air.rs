@@ -919,12 +919,10 @@ pub fn body_stm_to_air(
     let assertion = one_stmt(stmts);
 
     for param in params.iter() {
-        if !param.x.is_mut {
-            let typ_inv =
-                typ_invariant(ctx, &param.x.typ, &ident_var(&suffix_local_stmt_id(&param.x.name)));
-            if let Some(expr) = typ_inv {
-                local.push(Arc::new(DeclX::Axiom(expr)));
-            }
+        let typ_inv =
+            typ_invariant(ctx, &param.x.typ, &ident_var(&suffix_local_stmt_id(&param.x.name)));
+        if let Some(expr) = typ_inv {
+            local.push(Arc::new(DeclX::Axiom(expr)));
         }
     }
 

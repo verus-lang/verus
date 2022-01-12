@@ -206,3 +206,11 @@ test_verify_one_file! {
         }
     } => Err(e) => assert_vir_error(e)
 }
+
+test_verify_one_file! {
+    #[test] test_mut_ref_typing_invariant code! {
+        fn add1(a: &mut u64) {
+            assert(*a >= 0);
+        }
+    } => Ok(())
+}
