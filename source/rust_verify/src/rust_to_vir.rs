@@ -178,7 +178,7 @@ fn check_item<'tcx>(
                     };
                     for impl_item_ref in impll.items {
                         match impl_item_ref.kind {
-                            AssocItemKind::Fn { has_self } if has_self => {
+                            AssocItemKind::Fn { has_self: _ } => {
                                 let impl_item = ctxt.tcx.hir().impl_item(impl_item_ref.id);
                                 let impl_item_visibility =
                                     mk_visibility(&Some(module_path.clone()), &impl_item.vis);

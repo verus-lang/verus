@@ -56,20 +56,6 @@ pub(crate) fn pat_to_var<'tcx>(pat: &Pat) -> String {
     }
 }
 
-fn expr_to_function<'hir>(expr: &Expr<'hir>) -> DefId {
-    let v = match &expr.kind {
-        ExprKind::Path(rustc_hir::QPath::Resolved(_, path)) => match path.res {
-            rustc_hir::def::Res::Def(_, def_id) => Some(def_id),
-            _ => None,
-        },
-        _ => None,
-    };
-    match v {
-        Some(def_id) => def_id,
-        None => unsupported!(format!("complex function call {:?} {:?}", expr, expr.span)),
-    }
-}
-
 fn extract_array<'tcx>(expr: &'tcx Expr<'tcx>) -> Vec<&'tcx Expr<'tcx>> {
     match &expr.kind {
         ExprKind::Array(fields) => fields.iter().collect(),
@@ -815,7 +801,7 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
             Ok(mk_expr(ExprX::Block(vir_stmts, vir_expr)))
         }
         ExprKind::Call(fun, args_slice) => {
-            match fun.kind {
+            let res = match &fun.kind {
                 // a tuple-style datatype constructor
                 ExprKind::Path(QPath::Resolved(
                     None,
@@ -824,24 +810,65 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                         span: path_span,
                         ..
                     },
-                )) => expr_tuple_datatype_ctor_to_vir(bctx, expr, res, *args_slice, *path_span),
-                // a statically resolved function
-                ExprKind::Path(QPath::Resolved(
-                    None,
-                    rustc_hir::Path { res: Res::Def(DefKind::Fn, _), .. },
-                )) => fn_call_to_vir(
-                    bctx,
-                    expr,
-                    None,
-                    expr_to_function(fun),
-                    bctx.types.node_type(fun.hir_id),
-                    bctx.types.node_substs(fun.hir_id),
-                    fun.span,
-                    args_slice,
-                    None,
-                ),
-                // a dynamically computed function
+                )) => {
+                    Some(expr_tuple_datatype_ctor_to_vir(bctx, expr, res, *args_slice, *path_span))
+                }
+                ExprKind::Path(qpath) => {
+                    let def = bctx.types.qpath_res(&qpath, fun.hir_id);
+                    match def {
+                        // a statically resolved function
+                        rustc_hir::def::Res::Def(_, def_id) => {
+                            let self_path = match qpath {
+                                QPath::Resolved(_, _) => None,
+                                QPath::LangItem(_, _) => None,
+                                QPath::TypeRelative(ty, _) => match &ty.kind {
+                                    rustc_hir::TyKind::Path(qpath) => {
+                                        match bctx.types.qpath_res(&qpath, ty.hir_id) {
+                                            rustc_hir::def::Res::Def(_, def_id) => {
+                                                Some(def_id_to_vir_path(bctx.ctxt.tcx, def_id))
+                                            }
+                                            _ => {
+                                                panic!("failed to look up def_id for impl");
+                                            }
+                                        }
+                                    }
+                                    _ => {
+                                        panic!("failed to look up def_id for impl");
+                                    }
+                                },
+                            };
+
+                            Some(fn_call_to_vir(
+                                bctx,
+                                expr,
+                                self_path,
+                                def_id,
+                                bctx.types.node_type(fun.hir_id),
+                                bctx.types.node_substs(fun.hir_id),
+                                fun.span,
+                                args_slice,
+                                None,
+                            ))
+                        }
+                        rustc_hir::def::Res::Local(_) => {
+                            None // dynamically computed function, see below
+                        }
+                        _ => {
+                            unsupported!(format!(
+                                "function call {:?} {:?} {:?}",
+                                def, expr, expr.span
+                            ))
+                        }
+                    }
+                }
                 _ => {
+                    None // dynamically computed function, see below
+                }
+            };
+            match res {
+                Some(res) => res,
+                None => {
+                    // a dynamically computed function
                     if bctx.external_body {
                         return Ok(mk_expr(ExprX::Block(Arc::new(vec![]), None)));
                     }
