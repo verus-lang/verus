@@ -63,16 +63,28 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file! {
-    #[test] test_mut_ref_arg_proof code! {
-        fn add1(#[proof] a: &mut u64) {
-            requires(*old(a) < 10);
-            ensures(*a == *old(a) + 1);
-            *a = *a + 1;
-        }
+const MUT_REF_PROOF_COMMON: &str = code_str! {
+    fn add1(#[proof] a: &mut u64) {
+        requires(*old(a) < 10);
+        ensures(*a == *old(a) + 1);
+        *a = *a + 1;
+    }
+};
 
+test_verify_one_file! {
+    #[test] test_mut_ref_arg_proof_fail MUT_REF_PROOF_COMMON.to_string() + code_str! {
         fn caller() {
             let mut a = 2;
+            add1(&mut a);
+            assert(a == 3);
+        }
+    } => Err(e) => assert_vir_error(e)
+}
+
+test_verify_one_file! {
+    #[test] test_mut_ref_arg_proof_pass MUT_REF_PROOF_COMMON.to_string() + code_str! {
+        fn caller() {
+            #[proof] let mut a = 2;
             add1(&mut a);
             assert(a == 3);
         }
