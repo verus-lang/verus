@@ -53,7 +53,7 @@ fn check_trigger_expr(exp: &Exp, free_vars: &mut HashSet<Ident>) -> Result<(), V
             Ok(exp.clone())
         }
         ExpX::Var((_, Some(_))) => Ok(exp.clone()),
-        ExpX::VarAt(_x, VarAt::Pre) => err_str(&exp.span, "triggers cannot contain old"),
+        ExpX::VarAt(_, VarAt::Pre) => Ok(exp.clone()),
         ExpX::Old(_, _) => panic!("internal error: Old"),
         ExpX::Unary(op, _) => match op {
             UnaryOp::Trigger(_) | UnaryOp::Clip(_) => Ok(exp.clone()),

@@ -196,3 +196,13 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] test_mut_ref_old_shadow code! {
+        fn add1(a: &mut u64) {
+            ensures(equal(*old(a), *a));
+            let a = true;
+            assert(old(a) == true);
+        }
+    } => Err(e) => assert_vir_error(e)
+}
