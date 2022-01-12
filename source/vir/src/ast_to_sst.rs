@@ -367,6 +367,11 @@ pub(crate) fn expr_to_stm_opt(
             Ok((vec![], Some(mk_exp(ExpX::Var(unique_id)))))
         }
         ExprX::VarAt(x, VarAt::Pre) => {
+            if let Some((scope, _)) = state.rename_map.scope_and_index_of_key(x) {
+                if scope != 0 {
+                    err_str(&expr.span, "the parameter is shadowed here")?;
+                }
+            }
             Ok((vec![], Some(mk_exp(ExpX::VarAt(x.clone(), VarAt::Pre)))))
         }
         ExprX::Assign(expr1, expr2) => {

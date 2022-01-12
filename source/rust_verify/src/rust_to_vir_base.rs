@@ -550,12 +550,16 @@ pub(crate) fn typ_of_node<'tcx>(bctx: &BodyCtxt<'tcx>, id: &HirId) -> Typ {
     mid_ty_to_vir(bctx.ctxt.tcx, bctx.types.node_type(*id))
 }
 
-pub(crate) fn typ_of_node_expect_mut_ref<'tcx>(bctx: &BodyCtxt<'tcx>, id: &HirId) -> Typ {
+pub(crate) fn typ_of_node_expect_mut_ref<'tcx>(
+    bctx: &BodyCtxt<'tcx>,
+    id: &HirId,
+    span: Span,
+) -> Result<Typ, VirErr> {
     let ty = bctx.types.node_type(*id);
     if let TyKind::Ref(_, tys, rustc_ast::Mutability::Mut) = ty.kind() {
-        mid_ty_to_vir(bctx.ctxt.tcx, tys)
+        Ok(mid_ty_to_vir(bctx.ctxt.tcx, tys))
     } else {
-        panic!("unexpected Mut Ref type for node");
+        err_span_str(span, "a mutable reference is expected here")
     }
 }
 

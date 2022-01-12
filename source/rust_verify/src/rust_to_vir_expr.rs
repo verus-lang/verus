@@ -400,7 +400,7 @@ fn fn_call_to_vir<'tcx>(
             &args[0].kind
         {
             if let Node::Binding(pat) = tcx.hir().get(*id) {
-                let typ = typ_of_node_expect_mut_ref(bctx, &expr.hir_id);
+                let typ = typ_of_node_expect_mut_ref(bctx, &expr.hir_id, args[0].span)?;
                 return Ok(spanned_typed_new(
                     expr.span,
                     &typ,
@@ -859,7 +859,9 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
     let tc = bctx.types;
     let expr_typ = || match modifier {
         ExprModifier::Regular => typ_of_node(bctx, &expr.hir_id),
-        ExprModifier::MutRef => typ_of_node_expect_mut_ref(bctx, &expr.hir_id),
+        // TODO(utaal): propagate this error, instead of crashing
+        ExprModifier::MutRef => typ_of_node_expect_mut_ref(bctx, &expr.hir_id, expr.span)
+            .expect("unexpected non-mut-ref type here"),
     };
     let mk_expr = move |x: ExprX| spanned_typed_new(expr.span, &expr_typ(), x);
 
