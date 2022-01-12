@@ -1,6 +1,4 @@
-use crate::ast::{
-    BinaryOp, Constant, Fun, Ident, Path, Typ, TypX, UnaryOp, UnaryOpr, VarAt, VirErr,
-};
+use crate::ast::{BinaryOp, Constant, Fun, Ident, Path, Typ, TypX, UnaryOp, UnaryOpr, VirErr};
 use crate::ast_util::{err_str, path_as_rust_name};
 use crate::context::Ctx;
 use crate::sst::{Exp, ExpX, Trig, Trigs, UniqueIdent};
@@ -43,7 +41,6 @@ type Terms = Arc<Vec<Term>>;
 #[derive(PartialEq, Eq, Hash)]
 enum TermX {
     Var(UniqueIdent),
-    VarAt(Ident, VarAt),
     App(App, Terms),
 }
 
@@ -51,7 +48,6 @@ impl std::fmt::Debug for TermX {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
         match self {
             TermX::Var((x, _)) => write!(f, "{}", x),
-            TermX::VarAt(x, VarAt::Pre) => write!(f, "{}", x), // TODO(utaal) proper handling
             TermX::App(App::Const(c), _) => write!(f, "{:?}", c),
             TermX::App(App::Field(_, x, y), es) => write!(f, "{:?}.{}/{}", es[0], x, y),
             TermX::App(c @ (App::Call(_) | App::Ctor(_, _)), es) => {
@@ -163,10 +159,6 @@ fn trigger_vars_in_term(ctxt: &Ctxt, vars: &mut HashSet<Ident>, term: &Term) {
             vars.insert(x.clone());
         }
         TermX::Var(..) => {}
-        TermX::VarAt(x, VarAt::Pre) if ctxt.trigger_vars.contains(x) => {
-            vars.insert(x.clone());
-        }
-        TermX::VarAt(_, VarAt::Pre) => {}
         TermX::App(_, args) => {
             for arg in args.iter() {
                 trigger_vars_in_term(ctxt, vars, arg);
@@ -178,7 +170,6 @@ fn trigger_vars_in_term(ctxt: &Ctxt, vars: &mut HashSet<Ident>, term: &Term) {
 fn term_size(term: &Term) -> u64 {
     match &**term {
         TermX::Var(..) => 1,
-        TermX::VarAt(..) => 1,
         TermX::App(_, args) => 1 + args.iter().map(term_size).sum::<u64>(),
     }
 }
@@ -187,8 +178,6 @@ fn trigger_var_depth(ctxt: &Ctxt, term: &Term, depth: u64) -> Option<u64> {
     match &**term {
         TermX::Var((x, None)) if ctxt.trigger_vars.contains(x) => Some(depth),
         TermX::Var(..) => None,
-        TermX::VarAt(x, VarAt::Pre) if ctxt.trigger_vars.contains(x) => Some(depth),
-        TermX::VarAt(_, VarAt::Pre) => None,
         TermX::App(_, args) => {
             args.iter().filter_map(|t| trigger_var_depth(ctxt, t, depth + 1)).max()
         }
@@ -203,7 +192,7 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
     let (is_pure, term) = match &exp.x {
         ExpX::Const(c) => (true, Arc::new(TermX::App(App::Const(c.clone()), Arc::new(vec![])))),
         ExpX::Var(x) => (true, Arc::new(TermX::Var(x.clone()))),
-        ExpX::VarAt(x, _) => (true, Arc::new(TermX::VarAt(x.clone(), VarAt::Pre))),
+        ExpX::VarAt(x, _) => (true, Arc::new(TermX::Var((x.clone(), None)))), // TODO: is this correct?
         ExpX::Old(_, _) => panic!("internal error: Old"),
         ExpX::Call(x, typs, args) => {
             let (is_pures, terms): (Vec<bool>, Vec<Term>) =

@@ -238,7 +238,7 @@ pub enum CallTarget {
     FnSpec(Expr),
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum VarAt {
     Pre,
 }
