@@ -445,6 +445,9 @@ pub(crate) fn mid_ty_to_vir<'tcx>(tcx: TyCtxt<'tcx>, ty: rustc_middle::ty::Ty<'t
                         _ => panic!("unexpected type argument"),
                     })
                     .collect();
+                if s.starts_with("std::boxed::Box<") && typ_args.len() == 2 {
+                    return typ_args[0].clone();
+                }
                 def_id_to_datatype(tcx, *did, Arc::new(typ_args))
             }
         }),
@@ -458,17 +461,6 @@ pub(crate) fn mid_ty_to_vir<'tcx>(tcx: TyCtxt<'tcx>, ty: rustc_middle::ty::Ty<'t
         _ => {
             unsupported!(format!("type {:?}", ty))
         }
-    }
-}
-
-pub(crate) fn mid_ty_to_vir_opt<'tcx>(
-    tcx: TyCtxt<'tcx>,
-    ty: rustc_middle::ty::Ty<'tcx>,
-) -> Option<Typ> {
-    match ty.kind() {
-        TyKind::Never => None,
-        TyKind::Tuple(_) if ty.tuple_fields().count() == 0 => None,
-        _ => Some(mid_ty_to_vir(tcx, ty)),
     }
 }
 

@@ -27,6 +27,23 @@ test_verify_one_file! {
         }
 
         #[spec]
+        #[opaque]
+        fn apply_to_1<F: Fn(u8) -> u8>(f: F) -> u8 {
+            f(1)
+        }
+
+        #[proof]
+        fn refine_takefun<F: Fn(bool, bool) -> nat>(f: F) {
+            assert(f(true, false) >= 0);
+        }
+
+        #[proof]
+        fn test_refine<F: Fn(bool, bool) -> nat>(f: F) {
+            refine_takefun(|x: bool, y: bool| 10);
+            assert(apply_to_1(|u: u8| 10) >= 0);
+        }
+
+        #[spec]
         fn polytestfun<A, F: Fn(A, A) -> A>(a: A, f: F) -> A{
             f(a, a)
         }
@@ -107,6 +124,15 @@ test_verify_one_file! {
             let f = |x: int| x + 1;
             assert(f(10) == 11);
             assert(f(20) == 22); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] test1_fails5 code! {
+        #[proof]
+        fn refine_takefun<F: Fn(nat) -> int>(f: F) {
+            assert(f(10) >= 0); // FAILS
         }
     } => Err(err) => assert_one_fails(err)
 }

@@ -32,8 +32,8 @@ impl<A: Clone> BinderX<A> {
         Arc::new(BinderX { name: self.name.clone(), a })
     }
 
-    pub fn map_a<B: Clone>(&self, f: impl FnOnce(&A) -> B) -> BinderX<B> {
-        BinderX { name: self.name.clone(), a: f(&self.a) }
+    pub fn map_a<B: Clone>(&self, f: impl FnOnce(&A) -> B) -> Binder<B> {
+        Arc::new(BinderX { name: self.name.clone(), a: f(&self.a) })
     }
 
     pub fn map_result<B: Clone, E>(

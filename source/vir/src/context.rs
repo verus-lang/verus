@@ -3,6 +3,7 @@ use crate::ast::{
 };
 use crate::datatype_to_air::is_datatype_transparent;
 use crate::def::FUEL_ID;
+use crate::poly::MonoTyp;
 use crate::scc::Graph;
 use crate::sst_to_air::fun_to_air_ident;
 use crate::util::vec_map;
@@ -23,11 +24,15 @@ pub struct GlobalCtx {
 // Context for verifying one module
 pub struct Ctx {
     pub(crate) module: Path,
+    pub(crate) datatype_is_transparent: HashMap<Path, bool>,
     pub(crate) datatypes_with_invariant: HashSet<Path>,
+    pub(crate) mono_abstract_datatypes: Vec<MonoTyp>,
+    pub(crate) lambda_types: Vec<usize>,
     pub(crate) functions: Vec<Function>,
     pub(crate) func_map: HashMap<Fun, Function>,
     pub(crate) func_call_graph: Graph<Fun>,
     pub(crate) funcs_with_ensure_predicate: HashSet<Fun>,
+    pub(crate) datatype_map: HashMap<Path, Datatype>,
     pub(crate) debug: bool,
     pub(crate) global: GlobalCtx,
 }
@@ -47,7 +52,11 @@ fn datatypes_inv_visit(
 }
 
 // If a datatype's fields have invariants, the datatype need an invariant
-fn datatypes_invs(module: &Path, datatypes: &Vec<Datatype>) -> HashSet<Path> {
+fn datatypes_invs(
+    module: &Path,
+    datatype_is_transparent: &HashMap<Path, bool>,
+    datatypes: &Vec<Datatype>,
+) -> HashSet<Path> {
     let mut back_pointers: HashMap<Path, HashSet<Path>> =
         datatypes.iter().map(|d| (d.x.path.clone(), HashSet::new())).collect();
     let mut has_inv: HashSet<Path> = HashSet::new();
@@ -63,11 +72,22 @@ fn datatypes_invs(module: &Path, datatypes: &Vec<Datatype>) -> HashSet<Path> {
                         TypX::Int(_) | TypX::TypParam(_) => {
                             roots.insert(container_path.clone());
                         }
+                        TypX::Lambda(..) => {
+                            panic!(
+                                "not supported: function types in datatype fields (use Map instead)"
+                            )
+                        }
                         TypX::Datatype(field_path, _) => {
-                            back_pointers
-                                .get_mut(field_path)
-                                .expect("datatypes_invs")
-                                .insert(container_path.clone());
+                            if datatype_is_transparent[field_path] {
+                                back_pointers
+                                    .get_mut(field_path)
+                                    .expect("datatypes_invs")
+                                    .insert(container_path.clone());
+                            } else {
+                                if crate::poly::typ_as_mono(&field.a.0).is_none() {
+                                    roots.insert(container_path.clone());
+                                }
+                            }
                         }
                         _ => {}
                     }
@@ -106,9 +126,17 @@ impl Ctx {
         krate: &Krate,
         global: GlobalCtx,
         module: Path,
+        mono_abstract_datatypes: Vec<MonoTyp>,
+        lambda_types: Vec<usize>,
         debug: bool,
     ) -> Result<Self, VirErr> {
-        let datatypes_with_invariant = datatypes_invs(&module, &krate.datatypes);
+        let mut datatype_is_transparent: HashMap<Path, bool> = HashMap::new();
+        for datatype in krate.datatypes.iter() {
+            datatype_is_transparent
+                .insert(datatype.x.path.clone(), is_datatype_transparent(&module, datatype));
+        }
+        let datatypes_with_invariant =
+            datatypes_invs(&module, &datatype_is_transparent, &krate.datatypes);
         let mut functions: Vec<Function> = Vec::new();
         let mut func_map: HashMap<Fun, Function> = HashMap::new();
         let mut func_call_graph: Graph<Fun> = Graph::new();
@@ -119,13 +147,21 @@ impl Ctx {
             functions.push(function.clone());
         }
         func_call_graph.compute_sccs();
+        let mut datatype_map: HashMap<Path, Datatype> = HashMap::new();
+        for datatype in krate.datatypes.iter() {
+            datatype_map.insert(datatype.x.path.clone(), datatype.clone());
+        }
         Ok(Ctx {
             module,
+            datatype_is_transparent,
             datatypes_with_invariant,
+            mono_abstract_datatypes,
+            lambda_types,
             functions,
             func_map,
             func_call_graph,
             funcs_with_ensure_predicate,
+            datatype_map,
             debug,
             global,
         })

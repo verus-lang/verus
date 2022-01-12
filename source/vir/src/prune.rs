@@ -2,6 +2,8 @@
 ///    This is strictly an optimization; it should not affect the SMT validity.
 /// 2) Also remove any export_as_global_forall from any modules that are unreachable
 ///    from this module.  This could, in principle, result in incompleteness.
+/// 3) Also compute names for abstract datatype sorts for the module,
+///    since we're traversing the module-visible datatypes anyway.
 use crate::ast::{
     CallTarget, Datatype, Expr, ExprX, Fun, Function, Ident, Krate, KrateX, Mode, Path, Stmt, Typ,
     TypX, Visibility,
@@ -10,11 +12,13 @@ use crate::ast_util::is_visible_to;
 use crate::ast_visitor::map_expr_visitor;
 use crate::datatype_to_air::is_datatype_transparent;
 use crate::def::Spanned;
+use crate::poly::MonoTyp;
 use air::scope_map::ScopeMap;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 struct Ctxt {
+    module: Path,
     function_map: HashMap<Fun, Function>,
     datatype_map: HashMap<Path, Datatype>,
     all_functions_in_each_module: HashMap<Path, Vec<Fun>>,
@@ -28,6 +32,20 @@ struct State {
     worklist_functions: Vec<Fun>,
     worklist_datatypes: Vec<Path>,
     worklist_modules: Vec<Path>,
+    mono_abstract_datatypes: HashSet<MonoTyp>,
+    lambda_types: HashSet<usize>,
+}
+
+fn record_datatype(ctxt: &Ctxt, state: &mut State, typ: &Typ, path: &Path) {
+    if let Some(d) = ctxt.datatype_map.get(path) {
+        let is_vis = is_visible_to(&d.x.visibility, &ctxt.module);
+        let is_transparent = is_datatype_transparent(&ctxt.module, &d);
+        if is_vis && !is_transparent {
+            if let Some(monotyp) = crate::poly::typ_as_mono(typ) {
+                state.mono_abstract_datatypes.insert(monotyp);
+            }
+        }
+    }
 }
 
 fn reach<A: std::hash::Hash + std::cmp::Eq + Clone>(
@@ -61,7 +79,13 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
     loop {
         let ft = |state: &mut State, t: &Typ| {
             match &**t {
-                TypX::Datatype(path, _) => reach_datatype(ctxt, state, path),
+                TypX::Datatype(path, _) => {
+                    record_datatype(ctxt, state, t, path);
+                    reach_datatype(ctxt, state, path);
+                }
+                TypX::Lambda(typs, _) => {
+                    state.lambda_types.insert(typs.len());
+                }
                 _ => {}
             }
             Ok(t.clone())
@@ -105,7 +129,7 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
     }
 }
 
-pub fn prune_krate_for_module(krate: &Krate, module: &Path) -> Krate {
+pub fn prune_krate_for_module(krate: &Krate, module: &Path) -> (Krate, Vec<MonoTyp>, Vec<usize>) {
     let mut state: State = Default::default();
     state.reached_modules.insert(module.clone());
     state.worklist_modules.push(module.clone());
@@ -201,7 +225,8 @@ pub fn prune_krate_for_module(krate: &Krate, module: &Path) -> Krate {
     for d in &datatypes {
         datatype_map.insert(d.x.path.clone(), d.clone());
     }
-    let ctxt = Ctxt { function_map, datatype_map, all_functions_in_each_module };
+    let ctxt =
+        Ctxt { module: module.clone(), function_map, datatype_map, all_functions_in_each_module };
     traverse_reachable(&ctxt, &mut state);
 
     let kratex = KrateX {
@@ -215,5 +240,10 @@ pub fn prune_krate_for_module(krate: &Krate, module: &Path) -> Krate {
             .collect(),
         module_ids: krate.module_ids.clone(),
     };
-    Arc::new(kratex)
+    let mut lambda_types: Vec<usize> = state.lambda_types.into_iter().collect();
+    lambda_types.sort();
+    let mut mono_abstract_datatypes: Vec<MonoTyp> =
+        state.mono_abstract_datatypes.into_iter().collect();
+    mono_abstract_datatypes.sort();
+    (Arc::new(kratex), mono_abstract_datatypes, lambda_types)
 }

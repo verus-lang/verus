@@ -39,6 +39,7 @@ pub mod def;
 pub mod func_to_air;
 pub mod headers;
 pub mod modes;
+pub mod poly;
 mod prelude;
 pub mod prune;
 mod recursion;

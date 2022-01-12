@@ -21,7 +21,7 @@ pub type Idents = Arc<Vec<Ident>>;
 
 /// A fully-qualified name, such as a module name, function name, or datatype name
 pub type Path = Arc<PathX>;
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct PathX {
     pub krate: Option<Ident>, // None for local crate
     pub segments: Idents,
@@ -48,7 +48,7 @@ pub enum Mode {
 }
 
 /// Describes integer types
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum IntRange {
     /// The set of all mathematical integers Z (..., -2, -1, 0, 1, 2, ...)
     Int,
@@ -202,7 +202,7 @@ pub struct SpannedTyped<X> {
 /// Patterns for match expressions
 pub type Pattern = Arc<SpannedTyped<PatternX>>;
 pub type Patterns = Arc<Vec<Pattern>>;
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum PatternX {
     /// _
     Wildcard,
@@ -308,7 +308,7 @@ pub enum StmtX {
 /// Function parameter
 pub type Param = Arc<Spanned<ParamX>>;
 pub type Params = Arc<Vec<Param>>;
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ParamX {
     pub name: Ident,
     pub typ: Typ,
@@ -413,9 +413,6 @@ pub struct DatatypeX {
     pub path: Path,
     pub visibility: Visibility,
     pub transparency: DatatypeTransparency,
-    // Note: currently typ_params doesn't contain GenericBound, which means that datatype fields
-    // cannot have FnSpec function types.  If we ever allow datatype fields with function types,
-    // we will need to check that recursive types only appear in positive positions for soundness.
     pub typ_params: Idents,
     pub variants: Variants,
     pub mode: Mode,

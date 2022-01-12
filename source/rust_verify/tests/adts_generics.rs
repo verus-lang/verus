@@ -171,3 +171,33 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] test_triggers code! {
+        struct S {
+            i: int,
+        }
+
+        #[opaque]
+        #[spec]
+        fn fi(i: int) -> bool {
+            true
+        }
+
+        #[opaque]
+        #[spec]
+        fn fs(s: S) -> bool {
+            true
+        }
+
+        fn test_struct_field_trigger(s: S) {
+            requires(forall(|s: S| fi(s.i)));
+            assert(fi(s.i));
+        }
+
+        fn test_struct_constructor_arg_trigger() {
+            requires(forall(|i: int| fs(S {i: i})));
+            assert(fs(S {i: 5}));
+        }
+    } => Ok(())
+}
