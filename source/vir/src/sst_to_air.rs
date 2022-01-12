@@ -486,7 +486,7 @@ fn one_stmt(stmts: Vec<Stmt>) -> Stmt {
     if stmts.len() == 1 { stmts[0].clone() } else { Arc::new(StmtX::Block(Arc::new(stmts))) }
 }
 
-fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm, pre_snap: bool) -> Vec<Stmt> {
+fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
     let expr_ctxt = ExprCtxt::Body;
     match &stm.x {
         StmX::Call(x, typs, args, dest) => {
@@ -610,7 +610,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm, pre_snap: bool) -> Vec<
             vec![Arc::new(StmtX::Assume(exp_to_expr(ctx, &expr, expr_ctxt)))]
         }
         StmX::Assign { lhs, rhs, is_init: true } => {
-            stm_to_stmts(ctx, state, &assume_var(&stm.span, lhs, rhs), false)
+            stm_to_stmts(ctx, state, &assume_var(&stm.span, lhs, rhs))
         }
         StmX::Assign { lhs, rhs, is_init: false } => {
             let mut stmts: Vec<Stmt> = Vec::new();
@@ -628,17 +628,17 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm, pre_snap: bool) -> Vec<
             stmts
         }
         StmX::DeadEnd(s) => {
-            vec![Arc::new(StmtX::DeadEnd(one_stmt(stm_to_stmts(ctx, state, s, false))))]
+            vec![Arc::new(StmtX::DeadEnd(one_stmt(stm_to_stmts(ctx, state, s))))]
         }
         StmX::If(cond, lhs, rhs) => {
             let pos_cond = exp_to_expr(ctx, &cond, expr_ctxt);
             let neg_cond = Arc::new(ExprX::Unary(air::ast::UnaryOp::Not, pos_cond.clone()));
             let pos_assume = Arc::new(StmtX::Assume(pos_cond));
             let neg_assume = Arc::new(StmtX::Assume(neg_cond));
-            let mut lhss = stm_to_stmts(ctx, state, lhs, false);
+            let mut lhss = stm_to_stmts(ctx, state, lhs);
             let mut rhss = match rhs {
                 None => vec![],
-                Some(rhs) => stm_to_stmts(ctx, state, rhs, false),
+                Some(rhs) => stm_to_stmts(ctx, state, rhs),
             };
             lhss.insert(0, pos_assume);
             rhss.insert(0, neg_assume);
@@ -672,11 +672,11 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm, pre_snap: bool) -> Vec<
             };
 
             let cond_stmts: Vec<Stmt> =
-                cond_stms.iter().map(|s| stm_to_stmts(ctx, state, s, false)).flatten().collect();
+                cond_stms.iter().map(|s| stm_to_stmts(ctx, state, s)).flatten().collect();
             let mut air_body: Vec<Stmt> = Vec::new();
             air_body.append(&mut cond_stmts.clone());
             air_body.push(pos_assume);
-            air_body.append(&mut stm_to_stmts(ctx, state, body, false));
+            air_body.append(&mut stm_to_stmts(ctx, state, body));
 
             /*
             Generate a separate SMT query for the loop body.
@@ -792,15 +792,8 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm, pre_snap: bool) -> Vec<
                 state.push_scope();
                 state.map_span(&stm, SpanKind::Start);
             }
-            let pre_snap: Option<Stmt> = if pre_snap {
-                Some(Arc::new(StmtX::Snapshot(snapshot_ident(SNAPSHOT_PRE))))
-            } else {
-                None
-            };
-            let stmts: Vec<Stmt> = pre_snap
-                .into_iter()
-                .chain(stms.iter().map(|s| stm_to_stmts(ctx, state, s, false)).flatten())
-                .collect();
+            let stmts: Vec<Stmt> =
+                stms.iter().map(|s| stm_to_stmts(ctx, state, s)).flatten().collect();
             if ctx.debug {
                 state.pop_scope();
             }
@@ -900,7 +893,10 @@ pub fn body_stm_to_air(
         &mut HashSet::new(),
         stm,
     );
-    let mut stmts = stm_to_stmts(ctx, &mut state, &stm, has_mut_params);
+    let mut stmts = stm_to_stmts(ctx, &mut state, &stm);
+    if has_mut_params {
+        stmts.insert(0, Arc::new(StmtX::Snapshot(snapshot_ident(SNAPSHOT_PRE))));
+    }
 
     if ctx.debug {
         let snapshot = Arc::new(StmtX::Snapshot(initial_sid));
