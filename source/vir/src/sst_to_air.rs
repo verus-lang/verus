@@ -1,15 +1,16 @@
 use crate::ast::{
     BinaryOp, Fun, Ident, Idents, IntRange, Mode, Params, Path, SpannedTyped, Typ, TypX, Typs,
-    UnaryOp, UnaryOpr,
+    UnaryOp, UnaryOpr, VarAt,
 };
 use crate::ast_util::{get_field, get_variant};
 use crate::context::Ctx;
 use crate::def::{
-    fun_to_string, path_to_string, prefix_box, prefix_ensures, prefix_fuel_id, prefix_requires,
-    suffix_global_id, suffix_local_expr_id, suffix_local_stmt_id, suffix_local_unique_id,
-    suffix_typ_param_id, variant_field_ident, variant_ident, SnapPos, SpanKind, Spanned, FUEL_BOOL,
-    FUEL_BOOL_DEFAULT, FUEL_DEFAULTS, FUEL_ID, FUEL_PARAM, FUEL_TYPE, POLY, SNAPSHOT_CALL, SUCC,
-    SUFFIX_SNAP_JOIN, SUFFIX_SNAP_MUT, SUFFIX_SNAP_WHILE_BEGIN, SUFFIX_SNAP_WHILE_END,
+    fun_to_string, path_to_string, prefix_box, prefix_ensures, prefix_fuel_id, prefix_pre_var,
+    prefix_requires, snapshot_ident, suffix_global_id, suffix_local_expr_id, suffix_local_stmt_id,
+    suffix_local_unique_id, suffix_typ_param_id, variant_field_ident, variant_ident, SnapPos,
+    SpanKind, Spanned, FUEL_BOOL, FUEL_BOOL_DEFAULT, FUEL_DEFAULTS, FUEL_ID, FUEL_PARAM, FUEL_TYPE,
+    POLY, SNAPSHOT_CALL, SNAPSHOT_PRE, SUCC, SUFFIX_SNAP_JOIN, SUFFIX_SNAP_MUT,
+    SUFFIX_SNAP_WHILE_BEGIN, SUFFIX_SNAP_WHILE_END,
 };
 use crate::sst::{BndX, Dest, Exp, ExpX, LocalDecl, Stm, StmX, UniqueIdent};
 use crate::sst_vars::AssignMap;
@@ -193,38 +194,52 @@ pub(crate) fn constant_to_expr(_ctx: &Ctx, constant: &crate::ast::Constant) -> E
     }
 }
 
-pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp) -> Expr {
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub(crate) enum ExprCtxt {
+    Spec,
+    Body,
+    BodyPre,
+}
+
+pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: ExprCtxt) -> Expr {
     match &exp.x {
         ExpX::Const(c) => {
             let expr = constant_to_expr(ctx, c);
             expr
         }
         ExpX::Var(x) => string_var(&suffix_local_unique_id(x)),
+        ExpX::VarAt(x, VarAt::Pre) => match expr_ctxt {
+            ExprCtxt::Spec => string_var(&prefix_pre_var(&suffix_local_stmt_id(x))),
+            ExprCtxt::Body => {
+                Arc::new(ExprX::Old(snapshot_ident(SNAPSHOT_PRE), suffix_local_stmt_id(x)))
+            }
+            ExprCtxt::BodyPre => string_var(&suffix_local_stmt_id(x)),
+        },
         ExpX::Old(span, x) => Arc::new(ExprX::Old(span.clone(), suffix_local_stmt_id(x))),
         ExpX::Call(x, typs, args) => {
             let name = suffix_global_id(&fun_to_air_ident(&x));
             let mut exprs: Vec<Expr> = vec_map(typs, typ_to_id);
             for arg in args.iter() {
-                exprs.push(exp_to_expr(ctx, arg));
+                exprs.push(exp_to_expr(ctx, arg, expr_ctxt));
             }
             ident_apply(&name, &exprs)
         }
         ExpX::CallLambda(typ, e0, args) => {
-            let e0 = exp_to_expr(ctx, e0);
-            let args = vec_map(args, |e| exp_to_expr(ctx, e));
+            let e0 = exp_to_expr(ctx, e0, expr_ctxt);
+            let args = vec_map(args, |e| exp_to_expr(ctx, e, expr_ctxt));
             Arc::new(ExprX::ApplyLambda(typ_to_air(ctx, typ), e0, Arc::new(args)))
         }
         ExpX::Ctor(path, variant, binders) => {
             let (variant, args) = ctor_to_apply(ctx, path, variant, binders);
-            let args = args.map(|b| exp_to_expr(ctx, &b.a)).collect::<Vec<_>>();
+            let args = args.map(|b| exp_to_expr(ctx, &b.a, expr_ctxt)).collect::<Vec<_>>();
             Arc::new(ExprX::Apply(variant, Arc::new(args)))
         }
         ExpX::Unary(op, exp) => match op {
-            UnaryOp::Not => mk_not(&exp_to_expr(ctx, exp)),
-            UnaryOp::Trigger(_) => exp_to_expr(ctx, exp),
-            UnaryOp::Clip(IntRange::Int) => exp_to_expr(ctx, exp),
+            UnaryOp::Not => mk_not(&exp_to_expr(ctx, exp, expr_ctxt)),
+            UnaryOp::Trigger(_) => exp_to_expr(ctx, exp, expr_ctxt),
+            UnaryOp::Clip(IntRange::Int) => exp_to_expr(ctx, exp, expr_ctxt),
             UnaryOp::Clip(range) => {
-                let expr = exp_to_expr(ctx, exp);
+                let expr = exp_to_expr(ctx, exp, expr_ctxt);
                 let f_name = match range {
                     IntRange::Int => panic!("internal error: Int"),
                     IntRange::Nat => crate::def::NAT_CLIP,
@@ -236,19 +251,19 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp) -> Expr {
         },
         ExpX::UnaryOpr(op, exp) => match op {
             UnaryOpr::Box(typ) => {
-                let expr = exp_to_expr(ctx, exp);
+                let expr = exp_to_expr(ctx, exp, expr_ctxt);
                 try_box(expr, typ).expect("Box")
             }
             UnaryOpr::Unbox(typ) => {
-                let expr = exp_to_expr(ctx, exp);
+                let expr = exp_to_expr(ctx, exp, expr_ctxt);
                 try_unbox(expr, typ).expect("Unbox")
             }
             UnaryOpr::HasType(typ) => {
-                let expr = exp_to_expr(ctx, exp);
+                let expr = exp_to_expr(ctx, exp, expr_ctxt);
                 typ_invariant(ctx, typ, &expr).expect("HasType")
             }
             UnaryOpr::IsVariant { datatype, variant } => {
-                let expr = exp_to_expr(ctx, exp);
+                let expr = exp_to_expr(ctx, exp, expr_ctxt);
                 let name = Arc::new(format!("is-{}", variant_ident(datatype, variant)));
                 Arc::new(ExprX::Apply(name, Arc::new(vec![expr])))
             }
@@ -257,7 +272,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp) -> Expr {
             }
             UnaryOpr::Field { datatype, variant, field } => {
                 // TODO: this should include datatype, variant in the function name
-                let expr = exp_to_expr(ctx, exp);
+                let expr = exp_to_expr(ctx, exp, expr_ctxt);
                 Arc::new(ExprX::Apply(
                     variant_field_ident(datatype, variant, field),
                     Arc::new(vec![expr]),
@@ -265,8 +280,8 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp) -> Expr {
             }
         },
         ExpX::Binary(op, lhs, rhs) => {
-            let lh = exp_to_expr(ctx, lhs);
-            let rh = exp_to_expr(ctx, rhs);
+            let lh = exp_to_expr(ctx, lhs, expr_ctxt);
+            let rh = exp_to_expr(ctx, rhs, expr_ctxt);
             let expx = match op {
                 BinaryOp::And => {
                     return mk_and(&vec![lh, rh]);
@@ -306,22 +321,24 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp) -> Expr {
             };
             Arc::new(expx)
         }
-        ExpX::If(e1, e2, e3) => {
-            mk_ite(&exp_to_expr(ctx, e1), &exp_to_expr(ctx, e2), &exp_to_expr(ctx, e3))
-        }
+        ExpX::If(e1, e2, e3) => mk_ite(
+            &exp_to_expr(ctx, e1, expr_ctxt),
+            &exp_to_expr(ctx, e2, expr_ctxt),
+            &exp_to_expr(ctx, e3, expr_ctxt),
+        ),
         ExpX::Bind(bnd, exp) => match &bnd.x {
             BndX::Let(binders) => {
-                let expr = exp_to_expr(ctx, exp);
+                let expr = exp_to_expr(ctx, exp, expr_ctxt);
                 let binders = vec_map(&*binders, |b| {
                     Arc::new(BinderX {
                         name: suffix_local_expr_id(&b.name),
-                        a: exp_to_expr(ctx, &b.a),
+                        a: exp_to_expr(ctx, &b.a, expr_ctxt),
                     })
                 });
                 air::ast_util::mk_let(&binders, &expr)
             }
             BndX::Quant(quant, binders, trigs) => {
-                let expr = exp_to_expr(ctx, exp);
+                let expr = exp_to_expr(ctx, exp, expr_ctxt);
                 let mut invs: Vec<Expr> = Vec::new();
                 for binder in binders.iter() {
                     let typ_inv = typ_invariant(
@@ -346,12 +363,13 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp) -> Expr {
                     };
                     Arc::new(BinderX { name, a: typ_to_air(ctx, &b.a) })
                 });
-                let triggers =
-                    vec_map(&*trigs, |trig| Arc::new(vec_map(trig, |x| exp_to_expr(ctx, x))));
+                let triggers = vec_map(&*trigs, |trig| {
+                    Arc::new(vec_map(trig, |x| exp_to_expr(ctx, x, expr_ctxt)))
+                });
                 air::ast_util::mk_quantifier(*quant, &binders, &triggers, &expr)
             }
             BndX::Lambda(binders) => {
-                let expr = exp_to_expr(ctx, exp);
+                let expr = exp_to_expr(ctx, exp, expr_ctxt);
                 let binders = vec_map(&*binders, |b| {
                     let name = suffix_local_expr_id(&b.name);
                     Arc::new(BinderX { name, a: typ_to_air(ctx, &b.a) })
@@ -359,7 +377,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp) -> Expr {
                 air::ast_util::mk_lambda(&binders, &expr)
             }
             BndX::Choose(binder, trigs) => {
-                let mut expr = exp_to_expr(ctx, exp);
+                let mut expr = exp_to_expr(ctx, exp, expr_ctxt);
                 let name = suffix_local_expr_id(&binder.name);
                 let typ = &binder.a;
                 let typ_inv = typ_invariant(ctx, typ, &ident_var(&name));
@@ -367,8 +385,9 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp) -> Expr {
                     expr = mk_and(&vec![inv.clone(), expr]);
                 }
                 let binder = Arc::new(BinderX { name, a: typ_to_air(ctx, typ) });
-                let triggers =
-                    vec_map(&*trigs, |trig| Arc::new(vec_map(trig, |x| exp_to_expr(ctx, x))));
+                let triggers = vec_map(&*trigs, |trig| {
+                    Arc::new(vec_map(trig, |x| exp_to_expr(ctx, x, expr_ctxt)))
+                });
                 let bind = Arc::new(BindX::Choose(binder, Arc::new(triggers)));
                 let mut choose_expr = Arc::new(ExprX::Bind(bind, expr));
                 match (typ_inv, try_box(choose_expr.clone(), typ)) {
@@ -468,6 +487,7 @@ fn one_stmt(stmts: Vec<Stmt>) -> Stmt {
 }
 
 fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
+    let expr_ctxt = ExprCtxt::Body;
     match &stm.x {
         StmX::Call(x, typs, args, dest) => {
             let mut stmts: Vec<Stmt> = Vec::new();
@@ -476,7 +496,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
                 let f_req = prefix_requires(&fun_to_air_ident(&func.x.name));
                 let mut req_args = vec_map(typs, typ_to_id);
                 for arg in args.iter() {
-                    req_args.push(exp_to_expr(ctx, arg));
+                    req_args.push(exp_to_expr(ctx, arg, expr_ctxt));
                 }
                 let e_req = Arc::new(ExprX::Apply(f_req, Arc::new(req_args)));
                 let description = match &func.x.attrs.custom_req_err {
@@ -486,50 +506,79 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
                 let error = error(description, &stm.span);
                 stmts.push(Arc::new(StmtX::Assert(error, e_req)));
             }
-            let mut ens_args: Vec<Expr> = vec_map(typs, typ_to_id);
-            match dest {
-                None => {
-                    for arg in args.iter() {
-                        ens_args.push(exp_to_expr(ctx, arg));
-                    }
-                    if ctx.debug {
-                        state.map_span(&stm, SpanKind::Full);
-                    }
-                }
-                Some(Dest { var, is_init }) => {
-                    let x = suffix_local_unique_id(&var);
-                    let mut overwrite = false;
-                    for arg in args.iter() {
-                        let arg_x = crate::sst_visitor::map_exp_visitor(arg, &mut |e| match &e.x {
+            let typ_args: Vec<Expr> = vec_map(typs, typ_to_id);
+            if func.x.params.iter().any(|p| p.x.is_mut) && ctx.debug {
+                unimplemented!("&mut args are unsupported in debugger mode");
+            }
+            let mut call_snapshot = false;
+            let mut ens_args_wo_typ = Vec::new();
+            let mut havocs = Vec::new();
+            for (param, arg) in func.x.params.iter().zip(args.iter()) {
+                if param.x.is_mut {
+                    call_snapshot = true;
+                    let arg_x = if let ExpX::Var(x) = &arg.x {
+                        {
+                            let havoc = StmtX::Havoc(suffix_local_unique_id(&x));
+                            havocs.push(Arc::new(havoc));
+                        }
+                        SpannedTyped::new(
+                            &arg.span,
+                            &arg.typ,
+                            ExpX::Old(snapshot_ident(SNAPSHOT_CALL), x.0.clone()),
+                        )
+                    } else {
+                        panic!(
+                            "unexpected location for &mut argument (must be an ExpX::Var), {:?}",
+                            &arg.span
+                        );
+                    };
+                    ens_args_wo_typ.push(exp_to_expr(ctx, &arg_x, expr_ctxt));
+                    ens_args_wo_typ.push(exp_to_expr(ctx, &arg, expr_ctxt));
+                } else {
+                    let arg_x = if let Some(Dest { var, .. }) = dest {
+                        crate::sst_visitor::map_exp_visitor(arg, &mut |e| match &e.x {
                             ExpX::Var(x) if x == var => {
-                                overwrite = true;
+                                call_snapshot = true;
                                 SpannedTyped::new(
                                     &e.span,
                                     &e.typ,
-                                    ExpX::Old(str_ident(SNAPSHOT_CALL), x.0.clone()),
+                                    ExpX::Old(snapshot_ident(SNAPSHOT_CALL), x.0.clone()),
                                 )
                             }
                             _ => e.clone(),
-                        });
-                        ens_args.push(exp_to_expr(ctx, &arg_x));
-                    }
-                    if overwrite {
-                        stmts.push(Arc::new(StmtX::Snapshot(str_ident(SNAPSHOT_CALL))));
-                    }
-                    ens_args.push(Arc::new(ExprX::Var(x.clone())));
-                    if !*is_init {
-                        let havoc = StmtX::Havoc(x.clone());
-                        stmts.push(Arc::new(havoc));
-                    }
-                    if ctx.debug {
-                        // Add a snapshot after we modify the destination
-                        let sid = state.update_current_sid(SUFFIX_SNAP_MUT);
-                        // Update the snap_map so that it reflects the state _after_ the
-                        // statement takes effect.
-                        state.map_span(&stm, SpanKind::Full);
-                        let snapshot = Arc::new(StmtX::Snapshot(sid.clone()));
-                        stmts.push(snapshot);
-                    }
+                        })
+                    } else {
+                        arg.clone()
+                    };
+                    ens_args_wo_typ.push(exp_to_expr(ctx, &arg_x, expr_ctxt))
+                };
+            }
+            if call_snapshot {
+                stmts.push(Arc::new(StmtX::Snapshot(snapshot_ident(SNAPSHOT_CALL))));
+                stmts.extend(havocs.into_iter());
+            } else {
+                assert_eq!(havocs.len(), 0);
+                if ctx.debug {
+                    state.map_span(&stm, SpanKind::Full);
+                }
+            }
+            let mut ens_args: Vec<_> =
+                typ_args.into_iter().chain(ens_args_wo_typ.into_iter()).collect();
+            if let Some(Dest { var, is_init }) = dest {
+                let x = suffix_local_unique_id(&var);
+                ens_args.push(Arc::new(ExprX::Var(x.clone())));
+                if !*is_init {
+                    let havoc = StmtX::Havoc(x.clone());
+                    stmts.push(Arc::new(havoc));
+                }
+                if ctx.debug {
+                    // Add a snapshot after we modify the destination
+                    let sid = state.update_current_sid(SUFFIX_SNAP_MUT);
+                    // Update the snap_map so that it reflects the state _after_ the
+                    // statement takes effect.
+                    state.map_span(&stm, SpanKind::Full);
+                    let snapshot = Arc::new(StmtX::Snapshot(sid.clone()));
+                    stmts.push(snapshot);
                 }
             }
             if ctx.funcs_with_ensure_predicate.contains(&func.x.name) {
@@ -540,7 +589,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
             vec![Arc::new(StmtX::Block(Arc::new(stmts)))] // wrap in block for readability
         }
         StmX::Assert(error, expr) => {
-            let air_expr = exp_to_expr(ctx, &expr);
+            let air_expr = exp_to_expr(ctx, &expr, expr_ctxt);
             let error = match error {
                 Some(error) => error.clone(),
                 None => error_with_label(
@@ -558,7 +607,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
             if ctx.debug {
                 state.map_span(&stm, SpanKind::Full);
             }
-            vec![Arc::new(StmtX::Assume(exp_to_expr(ctx, &expr)))]
+            vec![Arc::new(StmtX::Assume(exp_to_expr(ctx, &expr, expr_ctxt)))]
         }
         StmX::Assign { lhs, rhs, is_init: true } => {
             stm_to_stmts(ctx, state, &assume_var(&stm.span, lhs, rhs))
@@ -566,7 +615,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
         StmX::Assign { lhs, rhs, is_init: false } => {
             let mut stmts: Vec<Stmt> = Vec::new();
             let name = suffix_local_unique_id(lhs);
-            stmts.push(Arc::new(StmtX::Assign(name, exp_to_expr(ctx, rhs))));
+            stmts.push(Arc::new(StmtX::Assign(name, exp_to_expr(ctx, rhs, expr_ctxt))));
             if ctx.debug {
                 // Add a snapshot after we modify the destination
                 let sid = state.update_current_sid(SUFFIX_SNAP_MUT);
@@ -582,7 +631,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
             vec![Arc::new(StmtX::DeadEnd(one_stmt(stm_to_stmts(ctx, state, s))))]
         }
         StmX::If(cond, lhs, rhs) => {
-            let pos_cond = exp_to_expr(ctx, &cond);
+            let pos_cond = exp_to_expr(ctx, &cond, expr_ctxt);
             let neg_cond = Arc::new(ExprX::Unary(air::ast::UnaryOp::Not, pos_cond.clone()));
             let pos_assume = Arc::new(StmtX::Assume(pos_cond));
             let neg_assume = Arc::new(StmtX::Assume(neg_cond));
@@ -606,12 +655,12 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
             stmts
         }
         StmX::While { cond_stms, cond_exp, body, invs, typ_inv_vars, modified_vars } => {
-            let pos_cond = exp_to_expr(ctx, &cond_exp);
+            let pos_cond = exp_to_expr(ctx, &cond_exp, expr_ctxt);
             let neg_cond = Arc::new(ExprX::Unary(air::ast::UnaryOp::Not, pos_cond.clone()));
             let pos_assume = Arc::new(StmtX::Assume(pos_cond));
             let neg_assume = Arc::new(StmtX::Assume(neg_cond));
             let invs: Vec<(Span, Expr)> =
-                invs.iter().map(|e| (e.span.clone(), exp_to_expr(ctx, e))).collect();
+                invs.iter().map(|e| (e.span.clone(), exp_to_expr(ctx, e, expr_ctxt))).collect();
 
             let entry_snap_id = if ctx.debug {
                 // Add a snapshot to capture the start of the while loop
@@ -743,7 +792,8 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
                 state.push_scope();
                 state.map_span(&stm, SpanKind::Start);
             }
-            let stmts = stms.iter().map(|s| stm_to_stmts(ctx, state, s)).flatten().collect();
+            let stmts: Vec<Stmt> =
+                stms.iter().map(|s| stm_to_stmts(ctx, state, s)).flatten().collect();
             if ctx.debug {
                 state.pop_scope();
             }
@@ -813,9 +863,13 @@ pub fn body_stm_to_air(
 
     let mut declared: HashMap<UniqueIdent, Typ> = HashMap::new();
     let mut assigned: HashSet<UniqueIdent> = HashSet::new();
+    let mut has_mut_params = false;
     for param in params.iter() {
         declared.insert((param.x.name.clone(), Some(0)), param.x.typ.clone());
         assigned.insert((param.x.name.clone(), Some(0)));
+        if param.x.is_mut {
+            has_mut_params = true;
+        }
     }
     for decl in local_decls {
         declared.insert(decl.ident.clone(), decl.typ.clone());
@@ -840,6 +894,9 @@ pub fn body_stm_to_air(
         stm,
     );
     let mut stmts = stm_to_stmts(ctx, &mut state, &stm);
+    if has_mut_params {
+        stmts.insert(0, Arc::new(StmtX::Snapshot(snapshot_ident(SNAPSHOT_PRE))));
+    }
 
     if ctx.debug {
         let snapshot = Arc::new(StmtX::Snapshot(initial_sid));
@@ -852,7 +909,7 @@ pub fn body_stm_to_air(
 
     for ens in enss {
         let error = error("postcondition not satisfied", &ens.span);
-        let ens_stmt = StmtX::Assert(error, exp_to_expr(ctx, ens));
+        let ens_stmt = StmtX::Assert(error, exp_to_expr(ctx, ens, ExprCtxt::Body));
         stmts.push(Arc::new(ens_stmt));
     }
     let assertion = one_stmt(stmts);
@@ -866,7 +923,7 @@ pub fn body_stm_to_air(
     }
 
     for req in reqs {
-        local.push(Arc::new(DeclX::Axiom(exp_to_expr(ctx, req))));
+        local.push(Arc::new(DeclX::Axiom(exp_to_expr(ctx, req, ExprCtxt::BodyPre))));
     }
 
     let query = Arc::new(QueryX { local: Arc::new(local), assertion });

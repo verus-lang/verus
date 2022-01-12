@@ -238,6 +238,11 @@ pub enum CallTarget {
     FnSpec(Expr),
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum VarAt {
+    Pre,
+}
+
 /// Expression, similar to rustc_hir::Expr
 pub type Expr = Arc<SpannedTyped<ExprX>>;
 pub type Exprs = Arc<Vec<Expr>>;
@@ -247,6 +252,8 @@ pub enum ExprX {
     Const(Constant),
     /// Local variable
     Var(Ident),
+    /// Local variable, at a different stage (e.g. a mutable reference in the post-state)
+    VarAt(Ident, VarAt),
     /// Call to a function passing some expression arguments
     Call(CallTarget, Exprs),
     /// Note: ast_simplify replaces this with Ctor
@@ -313,6 +320,8 @@ pub struct ParamX {
     pub name: Ident,
     pub typ: Typ,
     pub mode: Mode,
+    /// An &mut parameter
+    pub is_mut: bool,
 }
 
 pub type GenericBound = Arc<GenericBoundX>;

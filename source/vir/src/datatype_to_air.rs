@@ -40,7 +40,10 @@ pub fn is_datatype_transparent(source_module: &Path, datatype: &crate::ast::Data
 }
 
 fn field_to_param(span: &Span, f: &Field) -> Param {
-    Spanned::new(span.clone(), ParamX { name: f.name.clone(), typ: f.a.0.clone(), mode: f.a.1 })
+    Spanned::new(
+        span.clone(),
+        ParamX { name: f.name.clone(), typ: f.a.0.clone(), mode: f.a.1, is_mut: false },
+    )
 }
 
 pub fn datatypes_to_air(ctx: &Ctx, datatypes: &crate::ast::Datatypes) -> Commands {
@@ -103,7 +106,7 @@ pub fn datatypes_to_air(ctx: &Ctx, datatypes: &crate::ast::Datatypes) -> Command
         let x_param = |typ: &Typ| {
             Spanned::new(
                 datatype.span.clone(),
-                ParamX { name: x.clone(), typ: typ.clone(), mode: Mode::Exec },
+                ParamX { name: x.clone(), typ: typ.clone(), mode: Mode::Exec, is_mut: false },
             )
         };
         let x_params = |typ: &Typ| Arc::new(vec![x_param(typ)]);
