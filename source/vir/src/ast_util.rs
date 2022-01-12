@@ -62,9 +62,6 @@ pub fn bitwidth_from_type(et: &Typ) -> Option<u32> {
     if let TypX::Int(IntRange::U(size)) = &**et {
         return Some(*size);
     }
-    if let TypX::Int(IntRange::I(size)) = &**et {
-        return Some(*size);
-    }
     return None;
 }
 

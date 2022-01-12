@@ -476,10 +476,22 @@ fn one_stmt(stmts: Vec<Stmt>) -> Stmt {
     if stmts.len() == 1 { stmts[0].clone() } else { Arc::new(StmtX::Block(Arc::new(stmts))) }
 }
 
+fn assert_unsigned(exp: &Exp) {
+    if let TypX::Int(range) = &*exp.typ {
+        match range {
+            IntRange::I(_) | IntRange::ISize => {
+                panic!("error: signed integer is not supported for bit-vector reasoning")
+            }
+            _ => (),
+        }
+    };
+}
+
 // convert the sst expression into bv air expression
 fn exp_to_bv_expr(state: &State, exp: &Exp) -> Expr {
     match &exp.x {
         ExpX::Const(crate::ast::Constant::Nat(s)) => {
+            assert_unsigned(exp);
             if let Some(width) = bitwidth_from_type(&exp.typ) {
                 // The width is needed when printing bv constants.
                 return Arc::new(ExprX::Const(Constant::BitVec(s.clone(), width)));
@@ -487,6 +499,7 @@ fn exp_to_bv_expr(state: &State, exp: &Exp) -> Expr {
             panic!("internal error: unable to get width from constant of type {:?}", exp.typ);
         }
         ExpX::Var(x) => {
+            assert_unsigned(exp);
             return string_var(&suffix_local_unique_id(x));
         }
         ExpX::Binary(op, lhs, rhs) => {
