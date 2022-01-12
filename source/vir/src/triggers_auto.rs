@@ -73,7 +73,7 @@ impl std::fmt::Debug for TermX {
                 write!(f, "_")
             }
             TermX::App(App::VarAt(x, VarAt::Pre), _) => {
-                write!(f, "{}", x) // TODO(utaal): proper handling
+                write!(f, "old({})", x)
             }
         }
     }
