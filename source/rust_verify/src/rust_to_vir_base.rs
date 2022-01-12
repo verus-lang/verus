@@ -31,7 +31,60 @@ pub(crate) fn def_path_to_vir_path<'tcx>(tcx: TyCtxt<'tcx>, def_path: DefPath) -
     Arc::new(PathX { krate, segments })
 }
 
+fn is_function_def_impl_item_node(node: rustc_hir::Node) -> bool {
+    match node {
+        rustc_hir::Node::ImplItem(item) => match &item.kind {
+            rustc_hir::ImplItemKind::Fn(..) => true,
+            _ => false,
+        },
+        _ => false,
+    }
+}
+
+pub(crate) fn typ_path_and_ident_to_vir_path<'tcx>(path: &Path, ident: vir::ast::Ident) -> Path {
+    let mut path = (**path).clone();
+    Arc::make_mut(&mut path.segments).push(ident);
+    return Arc::new(path);
+}
+
 pub(crate) fn def_id_to_vir_path<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> Path {
+    // The path that rustc gives a DefId might be given in terms of an 'impl' path
+    // However, it makes for a better path name to use the path to the *type*.
+    // So first, we check if the given DefId is the definition of a fn inside an impl.
+    // If so, we construct a VIR path based on the VIR path for the type.
+    if let Some(local_id) = def_id.as_local() {
+        let hir = tcx.hir().local_def_id_to_hir_id(local_id);
+        if is_function_def_impl_item_node(tcx.hir().get(hir)) {
+            let parent_id = tcx.hir().get_parent_node(hir);
+            let parent_node = tcx.hir().get(parent_id);
+            match parent_node {
+                rustc_hir::Node::Item(item) => match &item.kind {
+                    rustc_hir::ItemKind::Impl(impll) => {
+                        let ty_path = match &impll.self_ty.kind {
+                            rustc_hir::TyKind::Path(QPath::Resolved(
+                                None,
+                                rustc_hir::Path {
+                                    res: rustc_hir::def::Res::Def(_, self_def_id),
+                                    ..
+                                },
+                            )) => def_path_to_vir_path(tcx, tcx.def_path(*self_def_id)),
+                            _ => {
+                                panic!("impl type is not given by a path");
+                            }
+                        };
+                        return typ_path_and_ident_to_vir_path(
+                            &ty_path,
+                            def_to_path_ident(tcx, def_id),
+                        );
+                    }
+                    _ => {}
+                },
+                _ => {}
+            }
+        }
+    }
+    // Otherwise build a path based on the segments rustc gives us
+    // without doing anything fancy.
     def_path_to_vir_path(tcx, tcx.def_path(def_id))
 }
 
