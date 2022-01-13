@@ -1,9 +1,10 @@
 use crate::ast::{
-    BinaryOp, Fun, Ident, Idents, IntRange, Mode, Params, Path, SpannedTyped, Typ, TypX, Typs,
-    UnaryOp, UnaryOpr, VarAt,
+    BinaryOp, Fun, Ident, Idents, IntRange, MaskSpec, Mode, Params, Path, SpannedTyped, Typ, TypX,
+    Typs, UnaryOp, UnaryOpr, VarAt,
 };
 use crate::ast_util::{get_field, get_variant};
 use crate::context::Ctx;
+use crate::def::{fn_inv_name, fn_namespace_name};
 use crate::def::{
     fun_to_string, path_to_string, prefix_box, prefix_ensures, prefix_fuel_id, prefix_pre_var,
     prefix_requires, snapshot_ident, suffix_global_id, suffix_local_expr_id, suffix_local_stmt_id,
@@ -12,6 +13,7 @@ use crate::def::{
     POLY, SNAPSHOT_CALL, SNAPSHOT_PRE, SUCC, SUFFIX_SNAP_JOIN, SUFFIX_SNAP_MUT,
     SUFFIX_SNAP_WHILE_BEGIN, SUFFIX_SNAP_WHILE_END,
 };
+use crate::inv_masks::MaskSet;
 use crate::sst::{BndX, Dest, Exp, ExpX, LocalDecl, Stm, StmX, UniqueIdent};
 use crate::sst_vars::AssignMap;
 use crate::util::vec_map;
@@ -26,6 +28,7 @@ use air::ast_util::{
 };
 use air::errors::{error, error_with_label};
 use std::collections::{HashMap, HashSet};
+use std::mem::swap;
 use std::sync::Arc;
 
 #[inline(always)]
@@ -413,6 +416,7 @@ struct State {
     sids: Vec<Ident>, // a stack of snapshot ids, the top one should dominate the current position in the AST
     snap_map: Vec<(Span, SnapPos)>, // Maps each statement's span to the closest dominating snapshot's ID
     assign_map: AssignMap, // Maps Maps each statement's span to the assigned variables (that can potentially be queried)
+    mask: MaskSet,         // set of invariants that are allowed to be opened
 }
 
 impl State {
@@ -506,6 +510,10 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
                 let error = error(description, &stm.span);
                 stmts.push(Arc::new(StmtX::Assert(error, e_req)));
             }
+
+            let callee_mask_set = mask_set_from_spec(&func.x.mask_spec, func.x.mode);
+            callee_mask_set.assert_is_contained_in(&state.mask, &stm.span, &mut stmts);
+
             let typ_args: Vec<Expr> = vec_map(typs, typ_to_id);
             if func.x.params.iter().any(|p| p.x.is_mut) && ctx.debug {
                 unimplemented!("&mut args are unsupported in debugger mode");
@@ -799,7 +807,62 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
             }
             stmts
         }
+        StmX::OpenInvariant(inv_exp, uid, typ, body_stm) => {
+            let mut stmts = vec![];
+
+            // Build the inv_expr. Note: In the SST, this should have been assigned
+            // to a tmp variable
+            // to ensure that its value is constant across the entire invariant block.
+            // We will be referencing it later.
+            let inv_expr = exp_to_expr(ctx, inv_exp, ExprCtxt::Body);
+
+            // Assert that the namespace of the inv we are opening is in the mask set
+            let namespace_expr = call_namespace(inv_expr.clone(), typ);
+            state.mask.assert_contains(&inv_exp.span, &namespace_expr, &mut stmts);
+
+            // add an 'assume' that inv holds
+            let inner_var = SpannedTyped::new(&stm.span, typ, ExpX::Var(uid.clone()));
+            let inner_expr = exp_to_expr(ctx, &inner_var, ExprCtxt::Body);
+            let ty_inv_opt = typ_invariant(ctx, typ, &inner_expr);
+            if let Some(ty_inv) = ty_inv_opt {
+                stmts.push(Arc::new(StmtX::Assume(ty_inv)));
+            }
+            let main_inv = call_inv(inv_expr, inner_expr, typ);
+            stmts.push(Arc::new(StmtX::Assume(main_inv.clone())));
+
+            // process the body
+            // first remove the namespace from the mask set so that we cannot re-open
+            // the same invariant inside
+            let mut inner_mask = state.mask.remove_element(inv_exp.span.clone(), namespace_expr);
+            swap(&mut state.mask, &mut inner_mask);
+            stmts.append(&mut stm_to_stmts(ctx, state, body_stm));
+            swap(&mut state.mask, &mut inner_mask);
+
+            // assert the invariant still holds
+            // Note that we re-use main_inv here; but main_inv references the variable
+            // given by `uid` which may have been assigned to since the start of the block.
+            // so this may evaluate differently in the SMT.
+            let error = error("Cannot show invariant holds at end of block", &body_stm.span);
+            stmts.push(Arc::new(StmtX::Assert(error, main_inv)));
+
+            stmts
+        }
     }
+}
+
+fn call_inv(outer: Expr, inner: Expr, typ: &Typ) -> Expr {
+    let inv_fn_ident = suffix_global_id(&fun_to_air_ident(&fn_inv_name()));
+    let typ_expr = typ_to_id(typ);
+    let boxed_inner = try_box(inner.clone(), typ).unwrap_or(inner);
+    let args = vec![typ_expr, outer, boxed_inner];
+    return ident_apply(&inv_fn_ident, &args);
+}
+
+fn call_namespace(arg: Expr, typ: &Typ) -> Expr {
+    let inv_fn_ident = suffix_global_id(&fun_to_air_ident(&fn_namespace_name()));
+    let typ_expr = typ_to_id(typ);
+    let args = vec![typ_expr, arg];
+    return ident_apply(&inv_fn_ident, &args);
 }
 
 fn set_fuel(local: &mut Vec<Decl>, hidden: &Vec<Fun>) {
@@ -833,6 +896,21 @@ fn set_fuel(local: &mut Vec<Decl>, hidden: &Vec<Fun>) {
     local.push(Arc::new(DeclX::Axiom(fuel_expr)));
 }
 
+pub fn mask_set_from_spec(spec: &MaskSpec, mode: Mode) -> MaskSet {
+    match spec {
+        MaskSpec::NoSpec => {
+            // By default, we assume an #[exec] fn can open any invariant, and that
+            // a #[proof] fn can open no invariants.
+            if mode == Mode::Exec { MaskSet::full() } else { MaskSet::empty() }
+        }
+        MaskSpec::InvariantOpens(exprs) if exprs.len() == 0 => MaskSet::empty(),
+        MaskSpec::InvariantOpensExcept(exprs) if exprs.len() == 0 => MaskSet::full(),
+        MaskSpec::InvariantOpens(_exprs) | MaskSpec::InvariantOpensExcept(_exprs) => {
+            panic!("custom mask specs are not yet implemented");
+        }
+    }
+}
+
 pub fn body_stm_to_air(
     ctx: &Ctx,
     typ_params: &Idents,
@@ -841,6 +919,8 @@ pub fn body_stm_to_air(
     hidden: &Vec<Fun>,
     reqs: &Vec<Exp>,
     enss: &Vec<Exp>,
+    mask_spec: &MaskSpec,
+    mode: Mode,
     stm: &Stm,
 ) -> (Commands, Vec<(Span, SnapPos)>) {
     // Verifying a single function can generate multiple SMT queries.
@@ -877,6 +957,8 @@ pub fn body_stm_to_air(
 
     let initial_sid = Arc::new("0_entry".to_string());
 
+    let mask = mask_set_from_spec(mask_spec, mode);
+
     let mut state = State {
         local_shared,
         commands: Vec::new(),
@@ -884,6 +966,7 @@ pub fn body_stm_to_air(
         sids: vec![initial_sid.clone()],
         snap_map: Vec::new(),
         assign_map: HashMap::new(),
+        mask,
     };
 
     let stm = crate::sst_vars::stm_assign(

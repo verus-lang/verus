@@ -765,6 +765,35 @@ pub(crate) fn expr_to_stm_opt(
                 }
             }
         }
+        ExprX::OpenInvariant(inv, binder, body) => {
+            // Evaluate `inv`
+            let (mut stms0, big_inv_exp) = expr_to_stm(ctx, state, inv)?;
+
+            // Assign it to a constant temp variable to ensure it is constant
+            // across the entire block.
+            let (temp, temp_var) = state.next_temp(&big_inv_exp.span, &inv.typ);
+            let temp_id = state.declare_new_var(&temp, &inv.typ, false, false);
+            stms0.push(init_var(&big_inv_exp.span, &temp_id, &big_inv_exp));
+
+            // Process the body
+
+            state.push_scope();
+            let ident = state.declare_new_var(
+                &binder.name,
+                &binder.a,
+                /* mutable */ true,
+                /* maybe_need_rename */ true,
+            );
+            let body_stm = expr_to_one_stm(ctx, state, body)?;
+            state.pop_scope();
+
+            stms0.push(Spanned::new(
+                expr.span.clone(),
+                StmX::OpenInvariant(temp_var, ident, binder.a.clone(), body_stm),
+            ));
+
+            return Ok((stms0, None));
+        }
     }
 }
 

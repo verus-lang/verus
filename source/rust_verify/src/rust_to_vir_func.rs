@@ -12,7 +12,9 @@ use rustc_middle::ty::TyCtxt;
 use rustc_span::symbol::Ident;
 use rustc_span::Span;
 use std::sync::Arc;
-use vir::ast::{FunX, FunctionAttrsX, FunctionX, KrateX, Mode, ParamX, Typ, TypX, VirErr};
+use vir::ast::{
+    FunX, FunctionAttrsX, FunctionX, KrateX, MaskSpec, Mode, ParamX, Typ, TypX, VirErr,
+};
 use vir::def::RETURN_VALUE;
 
 pub(crate) fn body_to_vir<'tcx>(
@@ -288,6 +290,7 @@ pub(crate) fn check_item_fn<'tcx>(
         require: header.require,
         ensure: header.ensure,
         decrease: header.decrease,
+        mask_spec: header.invariant_mask,
         is_abstract: vattrs.is_abstract,
         attrs: Arc::new(fattrs),
         body: if vattrs.external_body { None } else { Some(vir_body) },
@@ -358,6 +361,7 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
         require: Arc::new(vec![]),
         ensure: Arc::new(vec![]),
         decrease: Arc::new(vec![]),
+        mask_spec: MaskSpec::NoSpec,
         is_abstract: false,
         attrs: Default::default(),
         body: None,

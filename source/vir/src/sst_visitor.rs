@@ -196,6 +196,14 @@ where
             let stm = Spanned::new(stm.span.clone(), StmX::Block(Arc::new(stms)));
             f(&stm)
         }
+        StmX::OpenInvariant(inv, ident, ty, body) => {
+            let body = map_stm_visitor(body, f)?;
+            let stm = Spanned::new(
+                stm.span.clone(),
+                StmX::OpenInvariant(inv.clone(), ident.clone(), ty.clone(), body),
+            );
+            f(&stm)
+        }
     }
 }
 
@@ -238,6 +246,13 @@ where
                 )
             }
             StmX::Block(_) => stm.clone(),
+            StmX::OpenInvariant(inv, ident, ty, body) => {
+                let inv = f(inv);
+                Spanned::new(
+                    span,
+                    StmX::OpenInvariant(inv, ident.clone(), ty.clone(), body.clone()),
+                )
+            }
         };
         Ok(stm)
     })

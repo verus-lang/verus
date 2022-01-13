@@ -362,6 +362,23 @@ fn check_expr(typing: &mut Typing, outer_mode: Mode, expr: &Expr) -> Result<Mode
             }
             Ok(mode)
         }
+        ExprX::OpenInvariant(inv, binder, body) => {
+            if outer_mode == Mode::Spec {
+                return err_string(&expr.span, format!("Cannot open invariant in Spec mode."));
+            }
+            let mode1 = check_expr(typing, outer_mode, inv)?;
+            if mode1 != Mode::Proof {
+                return err_string(&inv.span, format!("Invariant must be Proof mode."));
+            }
+            typing.vars.push_scope(true);
+            typing.insert(&expr.span, &binder.name, /* mutable */ true, Mode::Proof);
+
+            // TODO all a single atomic #[exec] action inside
+            let _ = check_expr(typing, Mode::Proof, body)?;
+
+            typing.vars.pop_scope();
+            Ok(Mode::Exec)
+        }
     }
 }
 

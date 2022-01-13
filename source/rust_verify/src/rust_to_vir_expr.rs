@@ -3,11 +3,11 @@ use crate::erase::ResolvedCall;
 use crate::rust_to_vir_base::{
     def_id_to_vir_path, def_to_path_ident, get_range, get_trigger, get_var_mode, hack_get_def_name,
     ident_to_var, is_smt_arith, is_smt_equality, mid_ty_to_vir, mid_ty_to_vir_opt, mk_range,
-    ty_to_vir, typ_of_node, typ_of_node_expect_mut_ref,
+    parse_attrs, ty_to_vir, typ_of_node, typ_of_node_expect_mut_ref, Attr,
 };
 use crate::util::{
-    err_span_str, slice_vec_map_result, spanned_new, spanned_typed_new, unsupported_err_span,
-    vec_map, vec_map_result,
+    err_span_str, err_span_string, slice_vec_map_result, spanned_new, spanned_typed_new,
+    unsupported_err_span, vec_map, vec_map_result,
 };
 use crate::{unsupported, unsupported_err, unsupported_err_unless, unsupported_unless};
 use air::ast::{Binder, BinderX, Quant};
@@ -256,6 +256,9 @@ fn get_fn_path<'tcx>(tcx: TyCtxt<'tcx>, expr: &Expr<'tcx>) -> Result<vir::ast::F
     }
 }
 
+const BUILTIN_INV_BEGIN: &str = "crate::pervasive::invariants::open_invariant_begin";
+const BUILTIN_INV_END: &str = "crate::pervasive::invariants::open_invariant_end";
+
 fn fn_call_to_vir<'tcx>(
     bctx: &BodyCtxt<'tcx>,
     expr: &Expr<'tcx>,
@@ -295,6 +298,10 @@ fn fn_call_to_vir<'tcx>(
     let is_ensures = f_name == "builtin::ensures";
     let is_invariant = f_name == "builtin::invariant";
     let is_decreases = f_name == "builtin::decreases";
+    let is_opens_invariants_none = f_name == "builtin::opens_invariants_none";
+    let is_opens_invariants_any = f_name == "builtin::opens_invariants_any";
+    let is_opens_invariants = f_name == "builtin::opens_invariants";
+    let is_opens_invariants_except = f_name == "builtin::opens_invariants_except";
     let is_forall = f_name == "builtin::forall";
     let is_exists = f_name == "builtin::exists";
     let is_choose = f_name == "builtin::choose";
@@ -314,13 +321,40 @@ fn fn_call_to_vir<'tcx>(
     let is_add = f_name == "core::ops::arith::Add::add";
     let is_sub = f_name == "core::ops::arith::Sub::sub";
     let is_mul = f_name == "core::ops::arith::Mul::mul";
-    let is_spec = is_admit || is_requires || is_ensures || is_invariant || is_decreases;
+    let is_spec = is_admit
+        || is_requires
+        || is_ensures
+        || is_invariant
+        || is_decreases
+        || is_opens_invariants_none
+        || is_opens_invariants_any
+        || is_opens_invariants
+        || is_opens_invariants_except;
     let is_quant = is_forall || is_exists;
     let is_directive = is_hide || is_reveal || is_reveal_fuel;
     let is_cmp = is_equal || is_eq || is_ne || is_le || is_ge || is_lt || is_gt;
     let is_arith_binary = is_add || is_sub || is_mul;
 
-    if bctx.external_body && !is_requires && !is_ensures {
+    if f_name == BUILTIN_INV_BEGIN || f_name == BUILTIN_INV_END {
+        // `open_invariant_begin` and `open_invariant_end` calls should only appear
+        // through use of the `open_invariant!` macro, which creates an invariant block.
+        // Thus, they should end up being processed by `invariant_block_to_vir` before
+        // we get here. Thus, for any well-formed use of an invariant block, we should
+        // not reach this point.
+        return err_span_string(
+            expr.span,
+            format!("{} should never be used except through open_invariant macro", f_name),
+        );
+    }
+
+    if bctx.external_body
+        && !is_requires
+        && !is_ensures
+        && !is_opens_invariants_none
+        && !is_opens_invariants_any
+        && !is_opens_invariants
+        && !is_opens_invariants_except
+    {
         return Ok(spanned_typed_new(
             expr.span,
             &Arc::new(TypX::Bool),
@@ -363,6 +397,20 @@ fn fn_call_to_vir<'tcx>(
         }
         let vir_args = vec_map_result(&args, |arg| expr_to_vir(&bctx, arg, ExprModifier::Regular))?;
         let header = Arc::new(HeaderExprX::Requires(Arc::new(vir_args)));
+        return Ok(mk_expr(ExprX::Header(header)));
+    }
+    if is_opens_invariants || is_opens_invariants_except {
+        return err_span_str(
+            expr.span,
+            "'is_opens_invariants' and 'is_opens_invariants_except' are not yet implemented",
+        );
+    }
+    if is_opens_invariants_none {
+        let header = Arc::new(HeaderExprX::InvariantOpens(Arc::new(Vec::new())));
+        return Ok(mk_expr(ExprX::Header(header)));
+    }
+    if is_opens_invariants_any {
+        let header = Arc::new(HeaderExprX::InvariantOpensExcept(Arc::new(Vec::new())));
         return Ok(mk_expr(ExprX::Header(header)));
     }
     if is_ensures {
@@ -816,6 +864,196 @@ pub(crate) fn pattern_to_vir<'tcx>(
     Ok(pattern)
 }
 
+/// Check for the #[verifier(invariant_block)] attribute
+pub fn attrs_is_invariant_block(attrs: &[Attribute]) -> Result<bool, VirErr> {
+    let attrs_vec = parse_attrs(attrs)?;
+    for attr in &attrs_vec {
+        match attr {
+            Attr::InvariantBlock => {
+                return Ok(true);
+            }
+            _ => {}
+        }
+    }
+    return Ok(false);
+}
+
+/// Check for the #[verifier(invariant_block)] attribute on a block
+fn is_invariant_block(bctx: &BodyCtxt, expr: &Expr) -> Result<bool, VirErr> {
+    let attrs = bctx.ctxt.tcx.hir().attrs(expr.hir_id);
+    return attrs_is_invariant_block(attrs);
+}
+
+fn malformed_inv_block_err<'tcx>(expr: &Expr<'tcx>) -> Result<vir::ast::Expr, VirErr> {
+    err_span_str(expr.span, "malformed invariant block; use 'open_invariant' macro instead")
+}
+
+fn invariant_block_to_vir<'tcx>(
+    bctx: &BodyCtxt<'tcx>,
+    expr: &Expr<'tcx>,
+    modifier: ExprModifier,
+) -> Result<vir::ast::Expr, VirErr> {
+    // The open_invariant! macro produces code that looks like this
+    //
+    // #[verifier(invariant_block)] {
+    //      let (guard, mut $inner) = open_invariant_begin($eexpr);
+    //      $bblock
+    //      open_invariant_end(guard, $inner);
+    //  }
+    //
+    // We need to check that it really does have this form, including
+    // that the identifiers `guard` and `inner` used in the last statement
+    // are the same as in the first statement. This is what the giant
+    // `match` statements below are for.
+    //
+    // We also need to "recover" the $inner, $eexpr, and $bblock for converstion to VIR.
+    //
+    // If the AST doesn't look exactly like we expect, print an error asking the user
+    // to use the open_invariant! macro.
+
+    let body = match &expr.kind {
+        ExprKind::Block(body, _) => body,
+        _ => panic!("invariant_block_to_vir called with non-Body expression"),
+    };
+
+    if body.stmts.len() != 3 || body.expr.is_some() {
+        return malformed_inv_block_err(expr);
+    }
+
+    let open_stmt = &body.stmts[0];
+    let mid_stmt = &body.stmts[1];
+    let close_stmt = &body.stmts[body.stmts.len() - 1];
+
+    let (guard_hir, inner_hir, inner_pat, inv_arg) = match open_stmt.kind {
+        StmtKind::Local(Local {
+            pat:
+                Pat {
+                    kind:
+                        PatKind::Tuple(
+                            [Pat {
+                                kind:
+                                    PatKind::Binding(BindingAnnotation::Unannotated, guard_hir, _, None),
+                                default_binding_modes: true,
+                                ..
+                            }, inner_pat
+                            @
+                            Pat {
+                                kind:
+                                    PatKind::Binding(BindingAnnotation::Mutable, inner_hir, _, None),
+                                default_binding_modes: true,
+                                ..
+                            }],
+                            None,
+                        ),
+                    ..
+                },
+            init:
+                Some(Expr {
+                    kind:
+                        ExprKind::Call(
+                            Expr {
+                                kind:
+                                    ExprKind::Path(QPath::Resolved(
+                                        None,
+                                        rustc_hir::Path {
+                                            res: Res::Def(DefKind::Fn, fun_id), ..
+                                        },
+                                    )),
+                                ..
+                            },
+                            [arg],
+                        ),
+                    ..
+                }),
+            ..
+        }) => {
+            let f_name = path_as_rust_name(&def_id_to_vir_path(bctx.ctxt.tcx, *fun_id));
+            if f_name != BUILTIN_INV_BEGIN {
+                return malformed_inv_block_err(expr);
+            }
+            (guard_hir, inner_hir, inner_pat, arg)
+        }
+        _ => {
+            return malformed_inv_block_err(expr);
+        }
+    };
+
+    match close_stmt.kind {
+        StmtKind::Semi(Expr {
+            kind:
+                ExprKind::Call(
+                    Expr {
+                        kind:
+                            ExprKind::Path(QPath::Resolved(
+                                None,
+                                rustc_hir::Path { res: Res::Def(_, fun_id), .. },
+                            )),
+                        ..
+                    },
+                    [Expr {
+                        kind:
+                            ExprKind::Path(QPath::Resolved(
+                                None,
+                                rustc_hir::Path { res: Res::Local(hir_id1), .. },
+                            )),
+                        ..
+                    }, Expr {
+                        kind:
+                            ExprKind::Path(QPath::Resolved(
+                                None,
+                                rustc_hir::Path { res: Res::Local(hir_id2), .. },
+                            )),
+                        ..
+                    }],
+                ),
+            ..
+        }) => {
+            let f_name = path_as_rust_name(&def_id_to_vir_path(bctx.ctxt.tcx, *fun_id));
+            if f_name != BUILTIN_INV_END {
+                return malformed_inv_block_err(expr);
+            }
+
+            if hir_id1 != guard_hir || hir_id2 != inner_hir {
+                return malformed_inv_block_err(expr);
+            }
+        }
+        _ => {
+            return malformed_inv_block_err(expr);
+        }
+    }
+
+    let vir_body = match mid_stmt.kind {
+        StmtKind::Expr(e @ Expr { kind: ExprKind::Block(body, _), .. }) => {
+            assert!(!is_invariant_block(bctx, e)?);
+            let vir_stmts: Stmts = Arc::new(
+                slice_vec_map_result(body.stmts, |stmt| stmt_to_vir(bctx, stmt))?
+                    .into_iter()
+                    .flatten()
+                    .collect(),
+            );
+            let vir_expr = body.expr.map(|expr| expr_to_vir(bctx, &expr, modifier)).transpose()?;
+            let ty = typ_of_node(bctx, &e.hir_id);
+            // NOTE: we use body.span here instead of e.span
+            // body.span leads to better error messages
+            // (e.g., the "Cannot show invariant holds at end of block" error)
+            // (e.span or mid_stmt.span would expose macro internals)
+            spanned_typed_new(body.span, &ty, ExprX::Block(vir_stmts, vir_expr))
+        }
+        _ => {
+            return malformed_inv_block_err(expr);
+        }
+    };
+
+    let vir_arg = expr_to_vir(bctx, &inv_arg, modifier)?;
+
+    let name = Arc::new(pat_to_var(inner_pat));
+    let inner_ty = typ_of_node(bctx, &inner_hir);
+    let vir_binder = Arc::new(BinderX { name, a: inner_ty });
+
+    let e = ExprX::OpenInvariant(vir_arg, vir_binder, vir_body);
+    return Ok(spanned_typed_new(expr.span, &typ_of_node(bctx, &expr.hir_id), e));
+}
+
 #[derive(PartialEq, Eq, Debug, Clone, Copy)]
 pub enum ExprModifier {
     Regular,
@@ -867,14 +1105,19 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
 
     match &expr.kind {
         ExprKind::Block(body, _) => {
-            let vir_stmts: Stmts = Arc::new(
-                slice_vec_map_result(body.stmts, |stmt| stmt_to_vir(bctx, stmt))?
-                    .into_iter()
-                    .flatten()
-                    .collect(),
-            );
-            let vir_expr = body.expr.map(|expr| expr_to_vir(bctx, &expr, modifier)).transpose()?;
-            Ok(mk_expr(ExprX::Block(vir_stmts, vir_expr)))
+            if is_invariant_block(bctx, expr)? {
+                invariant_block_to_vir(bctx, expr, modifier)
+            } else {
+                let vir_stmts: Stmts = Arc::new(
+                    slice_vec_map_result(body.stmts, |stmt| stmt_to_vir(bctx, stmt))?
+                        .into_iter()
+                        .flatten()
+                        .collect(),
+                );
+                let vir_expr =
+                    body.expr.map(|expr| expr_to_vir(bctx, &expr, modifier)).transpose()?;
+                Ok(mk_expr(ExprX::Block(vir_stmts, vir_expr)))
+            }
         }
         ExprKind::Call(fun, args_slice) => {
             match fun.kind {

@@ -209,6 +209,8 @@ pub(crate) enum Attr {
     CustomReqErr(String),
     // for unforgeable token types
     Unforgeable,
+    // specifies an invariant block
+    InvariantBlock,
 }
 
 fn get_trigger_arg(span: Span, attr_tree: &AttrTree) -> Result<u64, VirErr> {
@@ -265,6 +267,9 @@ pub(crate) fn parse_attrs(attrs: &[Attribute]) -> Result<Vec<Attr>, VirErr> {
                 }
                 Some(box [AttrTree::Fun(_, arg, None)]) if arg == "unforgeable" => {
                     v.push(Attr::Unforgeable)
+                }
+                Some(box [AttrTree::Fun(_, arg, None)]) if arg == "invariant_block" => {
+                    v.push(Attr::InvariantBlock)
                 }
                 Some(box [AttrTree::Fun(_, arg, Some(box [AttrTree::Fun(_, msg, None)]))])
                     if arg == "custom_req_err" =>

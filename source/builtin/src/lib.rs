@@ -35,6 +35,30 @@ pub fn hide<F>(_f: F) {
     unimplemented!();
 }
 
+// Can only appear at beginning of function body
+#[proof]
+pub fn opens_invariants_none() {
+    unimplemented!();
+}
+
+// Can only appear at beginning of function body
+#[proof]
+pub fn opens_invariants_any() {
+    unimplemented!();
+}
+
+// Can only appear at beginning of function body
+#[proof]
+pub fn opens_invariants<A>(_a: A) {
+    unimplemented!();
+}
+
+// Can only appear at beginning of function body
+#[proof]
+pub fn opens_invariants_except<A>(_a: A) {
+    unimplemented!();
+}
+
 #[proof]
 pub fn reveal<F>(_f: F) {
     unimplemented!();
