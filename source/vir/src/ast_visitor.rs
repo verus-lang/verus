@@ -240,9 +240,12 @@ where
                         }
                     }
                 }
-                ExprX::OpenInvariant(inv, _binder, body) => {
+                ExprX::OpenInvariant(inv, binder, body) => {
                     expr_visitor_control_flow!(expr_visitor_dfs(inv, map, mf));
+                    map.push_scope(true);
+                    let _ = map.insert(binder.name.clone(), binder.a.clone());
                     expr_visitor_control_flow!(expr_visitor_dfs(body, map, mf));
+                    map.pop_scope();
                 }
             }
             VisitorControlFlow::Continue
