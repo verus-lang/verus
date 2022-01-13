@@ -6,4 +6,5 @@ members = [
   "vir",
   "rust_verify",
   "rust_verify_test_macros",
+  "state_machines",
 ]
