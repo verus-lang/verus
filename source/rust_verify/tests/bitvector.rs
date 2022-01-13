@@ -59,6 +59,26 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test4 code! {
+        #[proof]
+        fn test4(u1: u32, u2:u32) {
+            assert_bit_vector( (u1 as u64) << (32 as u64) | (u2 as u64)  == (u1 as u64) * 0x100000000 + (u2 as u64));
+            assert( (u1 as u64) << (32 as u64) | (u2 as u64)  == (u1 as u64) * 0x100000000 + (u2 as u64));
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test5 code! {
+        #[proof]
+        fn test5(u:u64) {
+            assert_bit_vector( (u >> (32 as u64)) as u32  ==  (u / (0x100000000 as u64)) as u32);
+            assert( (u >> (32 as u64)) as u32  ==  (u / (0x100000000 as u64)) as u32);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] test1_fails code! {
         #[proof]
         fn test1(b: u32) {

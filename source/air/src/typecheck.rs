@@ -126,14 +126,28 @@ fn get_bv_width(et: &Typ) -> Result<u32, TypeError> {
 }
 
 fn check_bv_exprs(typing: &mut Typing, f_name: &str, exprs: &[Expr]) -> Result<Typ, TypeError> {
+    if f_name.eq("extract") {
+        if let ExprX::Const(Constant::Nat(n)) = &*exprs[0] {
+            let w = n.parse::<u32>().expect(&format!("could not parse option value {}", n));
+            return Ok(Arc::new(TypX::BitVec(w + 1)));
+        }
+        return Err(format!("Internal Error: extract"));
+    }
+
     let t0 = check_expr(typing, &exprs[0])?;
     let t1 = check_expr(typing, &exprs[1])?;
-
     let w0 = get_bv_width(&t0)?;
     let w1 = get_bv_width(&t1)?;
 
+    if f_name.eq("concat") {
+        return Ok(Arc::new(TypX::BitVec(w0 + w1)));
+    }
+
     if w0 != w1 {
-        return Err(format!("in call to {}, argument should have the same width", f_name));
+        return Err(format!(
+            "in call to {}, arguments should have the same width, but got {} and {}",
+            f_name, w0, w1
+        ));
     }
 
     // return bool type if it is comparision op
@@ -251,6 +265,9 @@ fn check_expr(typing: &mut Typing, expr: &Expr) -> Result<Typ, TypeError> {
         ExprX::Binary(BinaryOp::Shl, e1, e2) => {
             check_bv_exprs(typing, "<<", &[e1.clone(), e2.clone()])
         }
+        ExprX::Binary(BinaryOp::Concat, e1, e2) => {
+            check_bv_exprs(typing, "concat", &[e1.clone(), e2.clone()])
+        }
 
         ExprX::Multi(op, exprs) => {
             let (x, t) = match op {
@@ -260,6 +277,7 @@ fn check_expr(typing: &mut Typing, expr: &Expr) -> Result<Typ, TypeError> {
                 MultiOp::Sub => ("-", it()),
                 MultiOp::Mul => ("*", it()),
                 MultiOp::Distinct => ("distinct", it()),
+                MultiOp::Extract => ("extract", Arc::new(TypX::BitVec(0))),
             };
             let f_typs = vec_map(exprs, |_| t.clone());
             match op {
@@ -273,6 +291,7 @@ fn check_expr(typing: &mut Typing, expr: &Expr) -> Result<Typ, TypeError> {
                     }
                     Ok(bt())
                 }
+                MultiOp::Extract => check_bv_exprs(typing, "extract", exprs),
                 _ => check_exprs(typing, x, &f_typs, &t, exprs),
             }
         }

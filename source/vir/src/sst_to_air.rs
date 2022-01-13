@@ -488,10 +488,12 @@ fn assert_unsigned(exp: &Exp) {
 }
 
 // convert the sst expression into bv air expression
-fn exp_to_bv_expr(state: &State, exp: &Exp) -> Expr {
+fn exp_to_bv_expr(state: &State, exp: &Exp, unsigned: bool) -> Expr {
     match &exp.x {
         ExpX::Const(crate::ast::Constant::Nat(s)) => {
-            assert_unsigned(exp);
+            if !unsigned {
+                assert_unsigned(exp);
+            }
             if let Some(width) = bitwidth_from_type(&exp.typ) {
                 // The width is needed when printing bv constants.
                 return Arc::new(ExprX::Const(Constant::BitVec(s.clone(), width)));
@@ -499,7 +501,9 @@ fn exp_to_bv_expr(state: &State, exp: &Exp) -> Expr {
             panic!("internal error: unable to get width from constant of type {:?}", exp.typ);
         }
         ExpX::Var(x) => {
-            assert_unsigned(exp);
+            if !unsigned {
+                assert_unsigned(exp);
+            }
             return string_var(&suffix_local_unique_id(x));
         }
         ExpX::Binary(op, lhs, rhs) => {
@@ -523,16 +527,71 @@ fn exp_to_bv_expr(state: &State, exp: &Exp) -> Expr {
                 _ => panic!("unhandled bv binary operation {:?}", op),
             };
 
-            let lh = exp_to_bv_expr(state, lhs);
-            let rh = exp_to_bv_expr(state, rhs);
+            let lh = exp_to_bv_expr(state, lhs, false);
+            let rh = exp_to_bv_expr(state, rhs, false);
             return Arc::new(ExprX::Binary(bop, lh, rh));
         }
         ExpX::Unary(op, exp) => {
-            // remove Clip and use the underlying bv operation
-            if let UnaryOp::Clip(_) = op {
-                return exp_to_bv_expr(state, exp);
+            // bv type casting by 'as' keyword
+            // convert Clip into concat/extract
+            if let TypX::Int(old_range) = &*exp.typ {
+                if let UnaryOp::Clip(new_range) = op {
+                    if *old_range == *new_range {
+                        return exp_to_bv_expr(state, exp, false);
+                    } else {
+                        match new_range {
+                            // IntRange::I(n) => ,
+                            IntRange::U(new_n) => match old_range {
+                                IntRange::U(old_n) => {
+                                    // expand with zero using concat
+                                    if new_n > old_n {
+                                        let bop = air::ast::BinaryOp::Concat;
+                                        let lh = Arc::new(ExprX::Const(Constant::BitVec(
+                                            Arc::new("0".to_string()),
+                                            new_n - old_n,
+                                        )));
+                                        let rh = exp_to_bv_expr(state, exp, false);
+                                        return Arc::new(ExprX::Binary(bop, lh, rh));
+                                    }
+                                    // extract lower old_n bits
+                                    else if new_n < old_n {
+                                        let op = air::ast::MultiOp::Extract;
+                                        let pos1_u32 = new_n - 1;
+                                        let pos1 = Arc::new(ExprX::Const(Constant::Nat(Arc::new(
+                                            pos1_u32.to_string(),
+                                        ))));
+                                        let pos2 = Arc::new(ExprX::Const(Constant::Nat(Arc::new(
+                                            "0".to_string(),
+                                        ))));
+                                        let rh = exp_to_bv_expr(state, exp, false);
+                                        return Arc::new(ExprX::Multi(
+                                            op,
+                                            Arc::new(vec![pos1, pos2, rh]),
+                                        ));
+                                    } else {
+                                        panic!(
+                                            "Internal error: above *old_range == *new_range does not work"
+                                        )
+                                    }
+                                }
+
+                                // IntRange::I(n) => ,
+                                _ => panic!(
+                                    "error: IntRange should be U(_) or I(_) for a bitvector {:?}",
+                                    exp.typ
+                                ),
+                            },
+                            _ => panic!(
+                                "error: IntRange should be U(_) or I(_) for a bitvector {:?}",
+                                exp.typ
+                            ),
+                        }
+                    }
+                } else {
+                    panic!("unhandled bv unary operation {:?}", op);
+                }
             } else {
-                panic!("unhandled bv unary operation {:?}", op);
+                panic!("internal error: not an int type for a bitvector {:?}", exp.typ);
             }
         }
         _ => panic!("unhandled bv expr conversion {:?}", exp.x),
@@ -633,7 +692,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
                 "assertion failed".to_string(),
             );
             let local = state.local_bv_shared.clone();
-            let air_expr = exp_to_bv_expr(&state, &expr);
+            let air_expr = exp_to_bv_expr(&state, &expr, false);
             let assertion = Arc::new(StmtX::Assert(error, air_expr));
             // this creates a separate query for the bv assertion
             let query = Arc::new(QueryX { local: Arc::new(local), assertion });

@@ -1001,7 +1001,7 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                         if width > 0 {
                             if let ExprKind::Lit(lit) = &rhs.kind {
                                 if let rustc_ast::LitKind::Int(i, _) = lit.node {
-                                    if i < 32 {
+                                    if i < (width * 8) as u128 {
                                         let c = vir::ast::ExprX::Const(vir::ast::Constant::Nat(
                                             Arc::new(i.to_string()),
                                         ));

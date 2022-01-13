@@ -436,6 +436,17 @@ fn simplify_expr(ctxt: &mut Context, state: &mut State, expr: &Expr) -> (Typ, Ex
                     assert!(typ_eq(&(ts[0].0), &(ts[1].0)));
                     ts[0].0.clone()
                 }
+                BinaryOp::Concat => {
+                    if let TypX::BitVec(n1) = &*ts[0].0 {
+                        if let TypX::BitVec(n2) = &*ts[1].0 {
+                            Arc::new(TypX::BitVec(n1 + n2))
+                        } else {
+                            panic!("internal error during processing concat")
+                        }
+                    } else {
+                        panic!("internal error during processing concat")
+                    }
+                }
             };
             let (es, t) = enclose(state, App::Binary(*op), es, ts);
             (typ, Arc::new(ExprX::Binary(*op, es[0].clone(), es[1].clone())), t)
@@ -445,6 +456,15 @@ fn simplify_expr(ctxt: &mut Context, state: &mut State, expr: &Expr) -> (Typ, Ex
                 MultiOp::And | MultiOp::Or => Arc::new(TypX::Bool),
                 MultiOp::Add | MultiOp::Sub | MultiOp::Mul => Arc::new(TypX::Int),
                 MultiOp::Distinct => Arc::new(TypX::Bool),
+                MultiOp::Extract => {
+                    if let ExprX::Const(Constant::Nat(n)) = &*es[0] {
+                        let w =
+                            n.parse::<u32>().expect(&format!("could not parse option value {}", n));
+                        Arc::new(TypX::BitVec(w + 1))
+                    } else {
+                        panic!("internal error: extract")
+                    }
+                }
             };
             let (es, ts) = simplify_exprs(ctxt, state, &es);
             let (es, t) = enclose(state, App::Multi(*op), es, ts);

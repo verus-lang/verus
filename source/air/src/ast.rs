@@ -65,6 +65,7 @@ pub enum BinaryOp {
     BitUMod,
     LShr,
     Shl,
+    Concat,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
@@ -75,6 +76,7 @@ pub enum MultiOp {
     Sub,
     Mul,
     Distinct,
+    Extract,
 }
 
 pub type Binder<A> = Arc<BinderX<A>>;
