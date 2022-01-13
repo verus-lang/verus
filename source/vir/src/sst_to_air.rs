@@ -1,8 +1,7 @@
 use crate::ast::{
     BinaryOp, Fun, Ident, Idents, IntRange, MaskSpec, Mode, Params, Path, SpannedTyped, Typ, TypX,
-    Typs, UnaryOp, UnaryOpr, VarAt
+    Typs, UnaryOp, UnaryOpr, VarAt,
 };
-use std::mem::swap;
 use crate::ast_util::{get_field, get_variant};
 use crate::context::Ctx;
 use crate::def::{fn_inv_name, fn_namespace_name};
@@ -29,6 +28,7 @@ use air::ast_util::{
 };
 use air::errors::{error, error_with_label};
 use std::collections::{HashMap, HashSet};
+use std::mem::swap;
 use std::sync::Arc;
 
 #[inline(always)]
@@ -416,7 +416,7 @@ struct State {
     sids: Vec<Ident>, // a stack of snapshot ids, the top one should dominate the current position in the AST
     snap_map: Vec<(Span, SnapPos)>, // Maps each statement's span to the closest dominating snapshot's ID
     assign_map: AssignMap, // Maps Maps each statement's span to the assigned variables (that can potentially be queried)
-    mask: MaskSet, // set of invariants that are allowed to be opened
+    mask: MaskSet,         // set of invariants that are allowed to be opened
 }
 
 impl State {
@@ -814,7 +814,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
             // to a tmp variable
             // to ensure that its value is constant across the entire invariant block.
             // We will be referencing it later.
-            let inv_expr = exp_to_expr(ctx, inv_exp);
+            let inv_expr = exp_to_expr(ctx, inv_exp, ExprCtxt::Body);
 
             // Assert that the namespace of the inv we are opening is in the mask set
             let namespace_expr = call_namespace(inv_expr.clone(), typ);
@@ -822,7 +822,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
 
             // add an 'assume' that inv holds
             let inner_var = SpannedTyped::new(&stm.span, typ, ExpX::Var(uid.clone()));
-            let inner_expr = exp_to_expr(ctx, &inner_var);
+            let inner_expr = exp_to_expr(ctx, &inner_var, ExprCtxt::Body);
             let ty_inv_opt = typ_invariant(ctx, typ, &inner_expr);
             if let Some(ty_inv) = ty_inv_opt {
                 stmts.push(Arc::new(StmtX::Assume(ty_inv)));

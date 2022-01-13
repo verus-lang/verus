@@ -3,7 +3,7 @@ use crate::erase::ResolvedCall;
 use crate::rust_to_vir_base::{
     def_id_to_vir_path, def_to_path_ident, get_range, get_trigger, get_var_mode, hack_get_def_name,
     ident_to_var, is_smt_arith, is_smt_equality, mid_ty_to_vir, mid_ty_to_vir_opt, mk_range,
-    parse_attrs, ty_to_vir, typ_of_node, Attr, typ_of_node_expect_mut_ref,
+    parse_attrs, ty_to_vir, typ_of_node, typ_of_node_expect_mut_ref, Attr,
 };
 use crate::util::{
     err_span_str, err_span_string, slice_vec_map_result, spanned_new, spanned_typed_new,
@@ -891,6 +891,7 @@ fn malformed_inv_block_err<'tcx>(expr: &Expr<'tcx>) -> Result<vir::ast::Expr, Vi
 fn invariant_block_to_vir<'tcx>(
     bctx: &BodyCtxt<'tcx>,
     expr: &Expr<'tcx>,
+    modifier: ExprModifier,
 ) -> Result<vir::ast::Expr, VirErr> {
     // The open_invariant! macro produces code that looks like this
     //
@@ -1030,7 +1031,7 @@ fn invariant_block_to_vir<'tcx>(
                     .flatten()
                     .collect(),
             );
-            let vir_expr = body.expr.map(|expr| expr_to_vir(bctx, &expr)).transpose()?;
+            let vir_expr = body.expr.map(|expr| expr_to_vir(bctx, &expr, modifier)).transpose()?;
             let ty = typ_of_node(bctx, &e.hir_id);
             // NOTE: we use body.span here instead of e.span
             // body.span leads to better error messages
@@ -1043,7 +1044,7 @@ fn invariant_block_to_vir<'tcx>(
         }
     };
 
-    let vir_arg = expr_to_vir(bctx, &inv_arg)?;
+    let vir_arg = expr_to_vir(bctx, &inv_arg, modifier)?;
 
     let name = Arc::new(pat_to_var(inner_pat));
     let inner_ty = typ_of_node(bctx, &inner_hir);
@@ -1105,7 +1106,7 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
     match &expr.kind {
         ExprKind::Block(body, _) => {
             if is_invariant_block(bctx, expr)? {
-                invariant_block_to_vir(bctx, expr)
+                invariant_block_to_vir(bctx, expr, modifier)
             } else {
                 let vir_stmts: Stmts = Arc::new(
                     slice_vec_map_result(body.stmts, |stmt| stmt_to_vir(bctx, stmt))?
@@ -1113,7 +1114,8 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                         .flatten()
                         .collect(),
                 );
-                let vir_expr = body.expr.map(|expr| expr_to_vir(bctx, &expr, modifier)).transpose()?;
+                let vir_expr =
+                    body.expr.map(|expr| expr_to_vir(bctx, &expr, modifier)).transpose()?;
                 Ok(mk_expr(ExprX::Block(vir_stmts, vir_expr)))
             }
         }

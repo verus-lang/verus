@@ -41,6 +41,7 @@ fn expr_get_early_exits_rec(expr: &Expr, in_loop: bool, results: &mut Vec<EarlyE
     match &expr.x {
         ExprX::Const(_) => {}
         ExprX::Var(_) => {}
+        ExprX::VarAt(_, _) => {}
         ExprX::Call(CallTarget::Static(_, _), es) => {
             for e in es.iter() {
                 expr_get_early_exits_rec(e, in_loop, results);

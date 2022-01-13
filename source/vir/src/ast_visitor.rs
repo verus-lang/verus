@@ -240,6 +240,10 @@ where
                         }
                     }
                 }
+                ExprX::OpenInvariant(inv, _binder, body) => {
+                    expr_visitor_control_flow!(expr_visitor_dfs(inv, map, mf));
+                    expr_visitor_control_flow!(expr_visitor_dfs(body, map, mf));
+                }
             }
             VisitorControlFlow::Continue
         }
