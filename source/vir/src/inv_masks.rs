@@ -10,7 +10,7 @@ use std::sync::Arc;
 ///
 /// In general, the mask set takes the form
 ///
-///    base ∪ {x_1,...,x_n} \ {y_1,...,y_n}
+///    base U {x_1,...,x_n} \ {y_1,...,y_n}
 ///
 /// The MaskSet struct, below, represents these three components as `base`, `plus`, and `minus`
 /// respectively.
@@ -19,14 +19,14 @@ use std::sync::Arc;
 /// point and generate the approriate VCs. (See sst_to_air.rs). For example:
 ///
 ///   // MASK SET: T
-///   open_invariant!(&i => inner => {      // VC:    i.namespace() ∉ T
+///   open_invariant!(&i => inner => {      // VC:    i.namespace() !in T
 ///     // MASK SET: T \ { i.namespace() }
-///     open_invariant!(&j => inner2 => {   // VC:    j.namespace() ∉ T \ { i.namespace() }
+///     open_invariant!(&j => inner2 => {   // VC:    j.namespace() !in T \ { i.namespace() }
 ///       // MASK SET: T \ { i.namespace(), j.namespace() }
 ///     }
 ///   }
 ///
-/// When generating a VC, like `j.namespace() ∉ T \ { i.namespace() }`
+/// When generating a VC, like `j.namespace() !in T \ { i.namespace() }`
 /// we do so by generating individual assertions like
 ///   j.namespace() != i.namespace()
 /// This lets us generate an error message that points to the two open_invariant statements.
@@ -54,7 +54,7 @@ pub struct MaskSet {
 }
 
 impl MaskSet {
-    // assert that e ∈ self
+    // assert that e in self
     pub fn assert_contains(&self, span: &Span, e: &Expr, results: &mut Vec<Stmt>) {
         match self.base {
             SetBase::Empty => {
@@ -84,7 +84,7 @@ impl MaskSet {
         }
     }
 
-    // assert that self ⊆ other
+    // assert that self \subseteq other
     pub fn assert_is_contained_in(
         &self,
         other: &MaskSet,
