@@ -125,21 +125,49 @@ fn get_bv_width(et: &Typ) -> Result<u32, TypeError> {
     return Err("not a bit vector type".to_string());
 }
 
-fn check_bv_exprs(typing: &mut Typing, f_name: &str, exprs: &[Expr]) -> Result<Typ, TypeError> {
-    if f_name.eq("extract") {
+fn check_bv_multi_exprs(
+    typing: &mut Typing,
+    mop: MultiOp,
+    f_name: &str,
+    exprs: &[Expr],
+) -> Result<Typ, TypeError> {
+    if MultiOp::Extract == mop {
+        let t0 = check_expr(typing, &exprs[0])?;
+        let t1 = check_expr(typing, &exprs[1])?;
+        let t2 = check_expr(typing, &exprs[2])?;
+        let _ = match &*t0 {
+            TypX::Int => (),
+            _ => return Err("expected Int type".to_string()),
+        };
+        let _ = match &*t1 {
+            TypX::Int => (),
+            _ => return Err("expected Int type".to_string()),
+        };
+        let w_old = get_bv_width(&t2)?;
         if let ExprX::Const(Constant::Nat(n)) = &*exprs[0] {
-            let w = n.parse::<u32>().expect(&format!("could not parse option value {}", n));
-            return Ok(Arc::new(TypX::BitVec(w + 1)));
+            let w_new = n.parse::<u32>().expect(&format!("could not parse option value {}", n));
+            if w_old < w_new {
+                panic!("Interner Error: extract to longer size");
+            }
+            return Ok(Arc::new(TypX::BitVec(w_new + 1)));
         }
-        return Err(format!("Internal Error: extract"));
+        return Err(format!("Internal Error: {}", f_name));
     }
+    return Err(format!("Internal Error: bv multiop"));
+}
 
+fn check_bv_exprs(
+    typing: &mut Typing,
+    bop: BinaryOp,
+    f_name: &str,
+    exprs: &[Expr],
+) -> Result<Typ, TypeError> {
     let t0 = check_expr(typing, &exprs[0])?;
     let t1 = check_expr(typing, &exprs[1])?;
     let w0 = get_bv_width(&t0)?;
     let w1 = get_bv_width(&t1)?;
 
-    if f_name.eq("concat") {
+    if BinaryOp::Concat == bop {
         return Ok(Arc::new(TypX::BitVec(w0 + w1)));
     }
 
@@ -151,11 +179,10 @@ fn check_bv_exprs(typing: &mut Typing, f_name: &str, exprs: &[Expr]) -> Result<T
     }
 
     // return bool type if it is comparision op
-    if f_name.eq("bvlt") || f_name.eq("bvgt") || f_name.eq("bvle") || f_name.eq("bvge") {
-        return Ok(bt());
+    match bop {
+        BinaryOp::BitUGe | BinaryOp::BitULe | BinaryOp::BitUGt | BinaryOp::BitULt => Ok(bt()),
+        _ => Ok(t0.clone()),
     }
-
-    return Ok(t0.clone());
 }
 
 fn check_expr(typing: &mut Typing, expr: &Expr) -> Result<Typ, TypeError> {
@@ -224,49 +251,49 @@ fn check_expr(typing: &mut Typing, expr: &Expr) -> Result<Typ, TypeError> {
             check_exprs(typing, "mod", &[it(), it()], &it(), &[e1.clone(), e2.clone()])
         }
         ExprX::Binary(BinaryOp::BitULt, e1, e2) => {
-            check_bv_exprs(typing, "bvlt", &[e1.clone(), e2.clone()])
+            check_bv_exprs(typing, BinaryOp::BitULt, "bvlt", &[e1.clone(), e2.clone()])
         }
         ExprX::Binary(BinaryOp::BitUGt, e1, e2) => {
-            check_bv_exprs(typing, "bvgt", &[e1.clone(), e2.clone()])
+            check_bv_exprs(typing, BinaryOp::BitUGt, "bvgt", &[e1.clone(), e2.clone()])
         }
         ExprX::Binary(BinaryOp::BitULe, e1, e2) => {
-            check_bv_exprs(typing, "bvle", &[e1.clone(), e2.clone()])
+            check_bv_exprs(typing, BinaryOp::BitULe, "bvle", &[e1.clone(), e2.clone()])
         }
         ExprX::Binary(BinaryOp::BitUGe, e1, e2) => {
-            check_bv_exprs(typing, "bvge", &[e1.clone(), e2.clone()])
+            check_bv_exprs(typing, BinaryOp::BitUGe, "bvge", &[e1.clone(), e2.clone()])
         }
         ExprX::Binary(BinaryOp::BitXor, e1, e2) => {
-            check_bv_exprs(typing, "^", &[e1.clone(), e2.clone()])
+            check_bv_exprs(typing, BinaryOp::BitXor, "^", &[e1.clone(), e2.clone()])
         }
         ExprX::Binary(BinaryOp::BitUMod, e1, e2) => {
-            check_bv_exprs(typing, "bvmod", &[e1.clone(), e2.clone()])
+            check_bv_exprs(typing, BinaryOp::BitUMod, "bvmod", &[e1.clone(), e2.clone()])
         }
         ExprX::Binary(BinaryOp::BitAnd, e1, e2) => {
-            check_bv_exprs(typing, "&", &[e1.clone(), e2.clone()])
+            check_bv_exprs(typing, BinaryOp::BitAnd, "&", &[e1.clone(), e2.clone()])
         }
         ExprX::Binary(BinaryOp::BitOr, e1, e2) => {
-            check_bv_exprs(typing, "|", &[e1.clone(), e2.clone()])
+            check_bv_exprs(typing, BinaryOp::BitOr, "|", &[e1.clone(), e2.clone()])
         }
         ExprX::Binary(BinaryOp::BitAdd, e1, e2) => {
-            check_bv_exprs(typing, "bvadd", &[e1.clone(), e2.clone()])
+            check_bv_exprs(typing, BinaryOp::BitAdd, "bvadd", &[e1.clone(), e2.clone()])
         }
         ExprX::Binary(BinaryOp::BitSub, e1, e2) => {
-            check_bv_exprs(typing, "bvsub", &[e1.clone(), e2.clone()])
+            check_bv_exprs(typing, BinaryOp::BitSub, "bvsub", &[e1.clone(), e2.clone()])
         }
         ExprX::Binary(BinaryOp::BitMul, e1, e2) => {
-            check_bv_exprs(typing, "bvmul", &[e1.clone(), e2.clone()])
+            check_bv_exprs(typing, BinaryOp::BitMul, "bvmul", &[e1.clone(), e2.clone()])
         }
         ExprX::Binary(BinaryOp::BitUDiv, e1, e2) => {
-            check_bv_exprs(typing, "bvdiv", &[e1.clone(), e2.clone()])
+            check_bv_exprs(typing, BinaryOp::BitUDiv, "bvdiv", &[e1.clone(), e2.clone()])
         }
         ExprX::Binary(BinaryOp::LShr, e1, e2) => {
-            check_bv_exprs(typing, ">>", &[e1.clone(), e2.clone()])
+            check_bv_exprs(typing, BinaryOp::LShr, ">>", &[e1.clone(), e2.clone()])
         }
         ExprX::Binary(BinaryOp::Shl, e1, e2) => {
-            check_bv_exprs(typing, "<<", &[e1.clone(), e2.clone()])
+            check_bv_exprs(typing, BinaryOp::Shl, "<<", &[e1.clone(), e2.clone()])
         }
         ExprX::Binary(BinaryOp::Concat, e1, e2) => {
-            check_bv_exprs(typing, "concat", &[e1.clone(), e2.clone()])
+            check_bv_exprs(typing, BinaryOp::Concat, "concat", &[e1.clone(), e2.clone()])
         }
 
         ExprX::Multi(op, exprs) => {
@@ -291,7 +318,9 @@ fn check_expr(typing: &mut Typing, expr: &Expr) -> Result<Typ, TypeError> {
                     }
                     Ok(bt())
                 }
-                MultiOp::Extract => check_bv_exprs(typing, "extract", exprs),
+                MultiOp::Extract => {
+                    check_bv_multi_exprs(typing, MultiOp::Extract, "extract", exprs)
+                }
                 _ => check_exprs(typing, x, &f_typs, &t, exprs),
             }
         }
