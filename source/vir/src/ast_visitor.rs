@@ -171,6 +171,9 @@ where
                     expr_visitor_control_flow!(expr_visitor_dfs(e1, map, mf));
                     expr_visitor_control_flow!(expr_visitor_dfs(e2, map, mf));
                 }
+                ExprX::AssertBV(e) => {
+                    expr_visitor_control_flow!(expr_visitor_dfs(e, map, mf));
+                }
                 ExprX::Fuel(_, _) => (),
                 ExprX::Header(_) => {
                     panic!("header expression not allowed here: {:?}", &expr.span);

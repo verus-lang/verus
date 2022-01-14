@@ -748,7 +748,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
             let query = Arc::new(QueryX { local: Arc::new(local), assertion });
             state.commands.push(Arc::new(CommandX::CheckValid(query)));
 
-            vec![Arc::new(StmtX::Assume(exp_to_expr(ctx, &expr)))]
+            vec![Arc::new(StmtX::Assume(exp_to_expr(ctx, &expr, expr_ctxt)))]
         }
         StmX::Assume(expr) => {
             if ctx.debug {

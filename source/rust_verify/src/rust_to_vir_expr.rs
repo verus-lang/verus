@@ -378,7 +378,13 @@ fn fn_call_to_vir<'tcx>(
         &bctx.ctxt,
         fn_span,
         &name,
-        is_spec || is_quant || is_directive || is_assert_by || is_choose || is_assert_bit_vector, is_old,
+        is_spec
+            || is_quant
+            || is_directive
+            || is_assert_by
+            || is_choose
+            || is_assert_bit_vector
+            || is_old,
         is_implies,
     );
 
@@ -495,11 +501,10 @@ fn fn_call_to_vir<'tcx>(
     }
 
     if is_assert_bit_vector {
-        let expr = expr_to_vir(bctx, &args[0])?;
+        let expr = expr_to_vir(bctx, &args[0], ExprModifier::Regular)?;
         return Ok(mk_expr(ExprX::AssertBV(expr)));
     }
 
-    let mut vir_args = vec_map_result(&args, |arg| expr_to_vir(bctx, arg))?;
     let mut vir_args = vec_map_result(&args, |arg| match arg.kind {
         ExprKind::AddrOf(BorrowKind::Ref, Mutability::Mut, e) => {
             expr_to_vir(bctx, e, ExprModifier::Regular)
