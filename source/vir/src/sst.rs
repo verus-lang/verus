@@ -6,7 +6,9 @@
 //! SST expressions cannot contain statments.
 //! SST is designed to make the translation to AIR as straightforward as possible.
 
-use crate::ast::{BinaryOp, Constant, Fun, Path, SpannedTyped, Typ, Typs, UnaryOp, UnaryOpr};
+use crate::ast::{
+    BinaryOp, Constant, Fun, Path, SpannedTyped, Typ, Typs, UnaryOp, UnaryOpr, VarAt,
+};
 use crate::def::Spanned;
 use air::ast::{Binder, Binders, Ident, Quant};
 use air::errors::Error;
@@ -33,6 +35,7 @@ pub type Exps = Arc<Vec<Exp>>;
 pub enum ExpX {
     Const(Constant),
     Var(UniqueIdent),
+    VarAt(Ident, VarAt),
     // used only during sst_to_air to generate AIR Old
     Old(Ident, Ident),
     // call to spec function
@@ -79,6 +82,7 @@ pub enum StmX {
         modified_vars: Arc<Vec<UniqueIdent>>,
     },
     Block(Stms),
+    OpenInvariant(Exp, UniqueIdent, Typ, Stm),
 }
 
 pub type LocalDecl = Arc<LocalDeclX>;

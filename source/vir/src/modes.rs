@@ -101,7 +101,7 @@ fn add_pattern(typing: &mut Typing, mode: Mode, pattern: &Pattern) -> Result<(),
 fn check_expr(typing: &mut Typing, outer_mode: Mode, expr: &Expr) -> Result<Mode, VirErr> {
     match &expr.x {
         ExprX::Const(_) => Ok(outer_mode),
-        ExprX::Var(x) => {
+        ExprX::Var(x) | ExprX::VarAt(x, _) => {
             let mode = mode_join(outer_mode, typing.get(x).1);
             if typing.in_forall_stmt && mode == Mode::Proof {
                 // Proof variables may be used as spec, but not as proof inside forall statements.
@@ -130,12 +130,26 @@ fn check_expr(typing: &mut Typing, outer_mode: Mode, expr: &Expr) -> Result<Mode
                 );
             }
             for (param, arg) in function.x.params.iter().zip(es.iter()) {
-                check_expr_has_mode(
-                    typing,
-                    mode_join(outer_mode, param.x.mode),
-                    arg,
-                    param.x.mode,
-                )?;
+                let param_mode = mode_join(outer_mode, param.x.mode);
+                if param.x.is_mut {
+                    if typing.in_forall_stmt {
+                        return err_str(
+                            &arg.span,
+                            "cannot call function with &mut parameter inside forall/assert_by statements",
+                        );
+                    }
+                    let arg_mode = check_expr(typing, outer_mode, arg)?;
+                    if arg_mode != param_mode {
+                        return err_string(
+                            &param.span,
+                            format!(
+                                "expected mode {}, &mut argument has mode {}",
+                                param_mode, arg_mode
+                            ),
+                        );
+                    }
+                }
+                check_expr_has_mode(typing, param_mode, arg, param.x.mode)?;
             }
             Ok(function.x.ret.x.mode)
         }
@@ -225,23 +239,28 @@ fn check_expr(typing: &mut Typing, outer_mode: Mode, expr: &Expr) -> Result<Mode
             typing.vars.pop_scope();
             Ok(Mode::Spec)
         }
-        ExprX::Assign(lhs, rhs) => match &lhs.x {
-            // TODO when we support field updates, make sure we handle 'unforgeable' types
-            // correctly.
-            ExprX::Var(x) => {
-                let (x_mut, x_mode) = typing.get(x);
-                if !x_mut {
-                    return err_str(
-                        &expr.span,
-                        "variable must be declared 'mut' to allow assignment",
-                    );
-                }
-                typing.erasure_modes.var_modes.push((lhs.span.clone(), x_mode));
-                check_expr_has_mode(typing, outer_mode, rhs, x_mode)?;
-                Ok(x_mode)
+        ExprX::Assign(lhs, rhs) => {
+            if typing.in_forall_stmt {
+                return err_str(&expr.span, "assignment is not allowed in forall statements");
             }
-            _ => panic!("expected var, found {:?}", &lhs),
-        },
+            match &lhs.x {
+                // TODO when we support field updates, make sure we handle 'unforgeable' types
+                // correctly.
+                ExprX::Var(x) => {
+                    let (x_mut, x_mode) = typing.get(x);
+                    if !x_mut {
+                        return err_str(
+                            &expr.span,
+                            "variable must be declared 'mut' to allow assignment",
+                        );
+                    }
+                    typing.erasure_modes.var_modes.push((lhs.span.clone(), x_mode));
+                    check_expr_has_mode(typing, outer_mode, rhs, x_mode)?;
+                    Ok(x_mode)
+                }
+                _ => panic!("expected var, found {:?}", &lhs),
+            }
+        }
         ExprX::Fuel(_, _) => Ok(outer_mode),
         ExprX::Header(_) => panic!("internal error: Header shouldn't exist here"),
         ExprX::Admit => Ok(outer_mode),
@@ -321,6 +340,9 @@ fn check_expr(typing: &mut Typing, outer_mode: Mode, expr: &Expr) -> Result<Mode
             Ok(Mode::Exec)
         }
         ExprX::Return(e1) => {
+            if typing.in_forall_stmt {
+                return err_str(&expr.span, "return is not allowed in forall statements");
+            }
             match (e1, typing.ret_mode) {
                 (None, _) => {}
                 (_, None) => panic!("internal error: missing return type"),
@@ -343,6 +365,23 @@ fn check_expr(typing: &mut Typing, outer_mode: Mode, expr: &Expr) -> Result<Mode
                 typing.vars.pop_scope();
             }
             Ok(mode)
+        }
+        ExprX::OpenInvariant(inv, binder, body) => {
+            if outer_mode == Mode::Spec {
+                return err_string(&expr.span, format!("Cannot open invariant in Spec mode."));
+            }
+            let mode1 = check_expr(typing, outer_mode, inv)?;
+            if mode1 != Mode::Proof {
+                return err_string(&inv.span, format!("Invariant must be Proof mode."));
+            }
+            typing.vars.push_scope(true);
+            typing.insert(&expr.span, &binder.name, /* mutable */ true, Mode::Proof);
+
+            // TODO all a single atomic #[exec] action inside
+            let _ = check_expr(typing, Mode::Proof, body)?;
+
+            typing.vars.pop_scope();
+            Ok(Mode::Exec)
         }
     }
 }
@@ -378,7 +417,7 @@ fn check_function(typing: &mut Typing, function: &Function) -> Result<(), VirErr
                 format!("parameter {} cannot have mode {}", param.x.name, param.x.mode),
             );
         }
-        typing.insert(&function.span, &param.x.name, false, param.x.mode);
+        typing.insert(&function.span, &param.x.name, param.x.is_mut, param.x.mode);
     }
     if function.x.has_return() {
         let ret_mode = function.x.ret.x.mode;

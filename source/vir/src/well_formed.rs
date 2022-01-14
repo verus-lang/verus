@@ -1,10 +1,11 @@
 use crate::ast::{
-    CallTarget, Datatype, Expr, ExprX, Fun, FunX, Function, Krate, Mode, Path, PathX, TypX,
-    UnaryOpr, VirErr,
+    CallTarget, Datatype, Expr, ExprX, Fun, FunX, Function, Krate, MaskSpec, Mode, Path, PathX,
+    TypX, UnaryOpr, VirErr,
 };
 use crate::ast_util::{err_str, err_string};
 use crate::ast_visitor::map_expr_visitor;
 use crate::datatype_to_air::is_datatype_transparent;
+use crate::early_exit_cf::assert_no_early_exit_in_inv_block;
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -14,6 +15,14 @@ struct Ctxt {
 }
 
 fn check_function(ctxt: &Ctxt, function: &Function) -> Result<(), VirErr> {
+    match &function.x.mask_spec {
+        MaskSpec::NoSpec => {}
+        _ => {
+            if function.x.mode == Mode::Spec {
+                return err_str(&function.span, "invariants cannot be opened in spec functions");
+            }
+        }
+    }
     if function.x.attrs.export_as_global_forall {
         if function.x.mode != Mode::Proof {
             return err_str(
@@ -89,10 +98,50 @@ fn check_function(ctxt: &Ctxt, function: &Function) -> Result<(), VirErr> {
             );
         }
     }
+    for req in function.x.require.iter() {
+        let mut scope_map = air::scope_map::ScopeMap::new();
+        if let crate::ast_visitor::VisitorControlFlow::Stop((span, name)) =
+            crate::ast_visitor::expr_visitor_dfs(req, &mut scope_map, &mut |_map, expr| {
+                if let ExprX::Var(x) = &expr.x {
+                    for param in function.x.params.iter().filter(|p| p.x.is_mut) {
+                        if *x == param.x.name {
+                            return crate::ast_visitor::VisitorControlFlow::Stop((
+                                expr.span.clone(),
+                                param.x.name.clone(),
+                            ));
+                        }
+                    }
+                }
+                crate::ast_visitor::VisitorControlFlow::Continue
+            })
+        {
+            return err_string(
+                &span,
+                format!(
+                    "in requires, use `old({})` to refer to the pre-state of an &mut variable",
+                    name
+                ),
+            );
+        }
+    }
     if let Some(body) = &function.x.body {
         map_expr_visitor(body, &mut |expr: &Expr| {
             match &expr.x {
-                ExprX::Call(CallTarget::Static(x, _), _) => {
+                ExprX::Call(CallTarget::Static(x, _), args) => {
+                    let f = &ctxt.funs[x];
+                    for (_param, arg) in
+                        f.x.params.iter().zip(args.iter()).filter(|(p, _)| p.x.is_mut)
+                    {
+                        match &arg.x {
+                            ExprX::Var(_) => (),
+                            _ => {
+                                return err_str(
+                                    &arg.span,
+                                    "complex arguments to &mut parameters are currently unsupported",
+                                );
+                            }
+                        }
+                    }
                     // Check that public, non-abstract spec function bodies don't refer to private items
                     if !function.x.is_abstract
                         && !function.x.visibility.is_private
@@ -137,6 +186,9 @@ fn check_function(ctxt: &Ctxt, function: &Function) -> Result<(), VirErr> {
                     } else {
                         panic!("field access of undefined datatype");
                     }
+                }
+                ExprX::OpenInvariant(_inv, _binder, body) => {
+                    assert_no_early_exit_in_inv_block(&body.span, body)?;
                 }
                 _ => {}
             }

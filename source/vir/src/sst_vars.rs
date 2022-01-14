@@ -113,6 +113,15 @@ pub(crate) fn stm_assign(
             *assigned = pre_assigned;
             Spanned::new(stm.span.clone(), StmX::Block(stms))
         }
+        StmX::OpenInvariant(inv, ident, ty, body_stm) => {
+            assigned.insert(ident.clone());
+            modified.insert(ident.clone());
+            let body_stm = stm_assign(assign_map, declared, assigned, modified, body_stm);
+            Spanned::new(
+                stm.span.clone(),
+                StmX::OpenInvariant(inv.clone(), ident.clone(), ty.clone(), body_stm),
+            )
+        }
     };
 
     assign_map.insert(Arc::as_ptr(&result), to_ident_set(assigned));

@@ -1,4 +1,6 @@
-use crate::ast::{BinaryOp, Constant, Fun, Ident, Path, Typ, TypX, UnaryOp, UnaryOpr, VirErr};
+use crate::ast::{
+    BinaryOp, Constant, Fun, Ident, Path, Typ, TypX, UnaryOp, UnaryOpr, VarAt, VirErr,
+};
 use crate::ast_util::{err_str, path_as_rust_name};
 use crate::context::Ctx;
 use crate::sst::{Exp, ExpX, Trig, Trigs, UniqueIdent};
@@ -34,6 +36,7 @@ enum App {
     Call(Fun),
     Ctor(Path, Ident), // datatype constructor: (Path, Variant)
     Other(u64),        // u64 is an id, assigned via a simple counter
+    VarAt(Ident, VarAt),
 }
 
 type Term = Arc<TermX>;
@@ -68,6 +71,9 @@ impl std::fmt::Debug for TermX {
             }
             TermX::App(App::Other(_), _) => {
                 write!(f, "_")
+            }
+            TermX::App(App::VarAt(x, VarAt::Pre), _) => {
+                write!(f, "old({})", x)
             }
         }
     }
@@ -192,6 +198,9 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
     let (is_pure, term) = match &exp.x {
         ExpX::Const(c) => (true, Arc::new(TermX::App(App::Const(c.clone()), Arc::new(vec![])))),
         ExpX::Var(x) => (true, Arc::new(TermX::Var(x.clone()))),
+        ExpX::VarAt(x, _) => {
+            (true, Arc::new(TermX::App(App::VarAt(x.clone(), VarAt::Pre), Arc::new(vec![]))))
+        }
         ExpX::Old(_, _) => panic!("internal error: Old"),
         ExpX::Call(x, typs, args) => {
             let (is_pures, terms): (Vec<bool>, Vec<Term>) =

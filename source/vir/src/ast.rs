@@ -184,6 +184,10 @@ pub enum HeaderExprX {
     Invariant(Exprs),
     /// Decreases clauses for functions (possibly also for while loops, but this isn't implemented yet)
     Decreases(Exprs),
+    /// The function might open the following invariants
+    InvariantOpens(Exprs),
+    /// The function might open any BUT the following invariants
+    InvariantOpensExcept(Exprs),
     /// Make a function f opaque (definition hidden) within the current function body.
     /// (The current function body can later reveal f in specific parts of the current function body if desired.)
     Hide(Fun),
@@ -244,6 +248,11 @@ pub enum CallTarget {
     FnSpec(Expr),
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum VarAt {
+    Pre,
+}
+
 /// Expression, similar to rustc_hir::Expr
 pub type Expr = Arc<SpannedTyped<ExprX>>;
 pub type Exprs = Arc<Vec<Expr>>;
@@ -253,6 +262,8 @@ pub enum ExprX {
     Const(Constant),
     /// Local variable
     Var(Ident),
+    /// Local variable, at a different stage (e.g. a mutable reference in the post-state)
+    VarAt(Ident, VarAt),
     /// Call to a function passing some expression arguments
     Call(CallTarget, Exprs),
     /// Note: ast_simplify replaces this with Ctor
@@ -298,6 +309,8 @@ pub enum ExprX {
     Return(Option<Expr>),
     /// Sequence of statements, optionally including an expression at the end
     Block(Stmts, Option<Expr>),
+    /// Open invariant
+    OpenInvariant(Expr, Binder<Typ>, Expr),
 }
 
 /// Statement, similar to rustc_hir::Stmt
@@ -321,6 +334,8 @@ pub struct ParamX {
     pub name: Ident,
     pub typ: Typ,
     pub mode: Mode,
+    /// An &mut parameter
+    pub is_mut: bool,
 }
 
 pub type GenericBound = Arc<GenericBoundX>;
@@ -363,6 +378,14 @@ pub struct FunX {
     pub trait_path: Option<Path>,
 }
 
+/// Function specification of its invariant mask
+#[derive(Clone, Debug)]
+pub enum MaskSpec {
+    InvariantOpens(Exprs),
+    InvariantOpensExcept(Exprs),
+    NoSpec,
+}
+
 /// Function, including signature and body
 pub type Function = Arc<Spanned<FunctionX>>;
 #[derive(Debug, Clone)]
@@ -392,6 +415,8 @@ pub struct FunctionX {
     /// decrease.len() == 0 means no decreases clause
     /// decrease.len() >= 1 means list of expressions, interpreted in lexicographic order
     pub decrease: Exprs,
+    /// MaskSpec that specifies what invariants the function is allowed to open
+    pub mask_spec: MaskSpec,
     /// For public spec functions, is_abstract == true means that the body is private
     /// even though the function is public
     pub is_abstract: bool,
