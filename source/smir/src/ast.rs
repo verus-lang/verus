@@ -4,14 +4,14 @@ pub struct SM<Func, Expr, Ty> {
     // TODO generic args
     pub fields: Vec<Field<Ty>>,
     pub transitions: Vec<Transition<Expr, Ty>>,
-    pub invariants: Vec<Invariant<Expr, Ty>>,
+    pub invariants: Vec<Invariant<Func>>,
     pub lemmas: Vec<Lemma<Func>>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Extras<Func, Expr, Ty> {
+pub struct Extras<Func> {
     pub name: String,
-    pub invariants: Vec<Invariant<Expr, Ty>>,
+    pub invariants: Vec<Invariant<Func>>,
     pub lemmas: Vec<Lemma<Func>>,
 }
 
@@ -40,7 +40,7 @@ pub enum TransitionKind {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Transition<Expr, Ty> {
-    pub kind: TransitionKind
+    pub kind: TransitionKind,
     pub args: Vec<Arg<Ty>>,
     pub body: TransitionStmt<Expr>,
 }
@@ -56,14 +56,13 @@ pub enum TransitionStmt<Expr> {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Invariant<Expr, Ty> {
-    pub args: Vec<Arg<Ty>>,
-    pub body: Expr,
+pub struct Invariant<Func> {
+    pub func: Func,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct LemmaPurpose {
-    transition: String,
+    pub transition: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
