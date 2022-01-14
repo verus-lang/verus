@@ -985,43 +985,6 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                         }
                     }
                 }
-                // disallow signed integers from bit shifting
-                // convert the signed constant on rhs to unsigned if it is 0 ~ 31.
-                BinOpKind::Shr | BinOpKind::Shl => match mk_range(tc.node_type(lhs.hir_id)) {
-                    IntRange::I(_) | IntRange::ISize => {
-                        unsupported_err!(expr.span, "bit shifting on a signed integer")
-                    }
-                    _ => {
-                        let width: u32;
-                        match mk_range(tc.node_type(rhs.hir_id)) {
-                            IntRange::ISize => width = (std::mem::size_of::<isize>() as u32) * 8,
-                            IntRange::I(n) => width = n,
-                            _ => return Ok(mk_expr(ExprX::Binary(vop, vlhs, vrhs))),
-                        };
-                        if width > 0 {
-                            if let ExprKind::Lit(lit) = &rhs.kind {
-                                if let rustc_ast::LitKind::Int(i, _) = lit.node {
-                                    if i < (width * 8) as u128 {
-                                        let c = vir::ast::ExprX::Const(vir::ast::Constant::Nat(
-                                            Arc::new(i.to_string()),
-                                        ));
-                                        let vrhs = spanned_typed_new(
-                                            expr.span,
-                                            &Arc::new(TypX::Int(IntRange::U(width))),
-                                            c,
-                                        );
-                                        let e = mk_expr(ExprX::Binary(vop, vlhs, vrhs));
-                                        return Ok(e);
-                                    }
-                                }
-                            }
-                        };
-                        unsupported_err!(
-                            expr.span,
-                            "bit shifting with the amount of signed integer"
-                        )
-                    }
-                },
                 _ => Ok(mk_expr(ExprX::Binary(vop, vlhs, vrhs))),
             }
         }

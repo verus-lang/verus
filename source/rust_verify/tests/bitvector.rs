@@ -113,3 +113,22 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_one_fails(err)
 }
+
+test_verify_one_file! {
+    #[test] test5_fails code! {
+        #[proof]
+        fn test5(b: u32) {
+            assert_bit_vector((b << 1) == b*2);
+            assert((b << 1) == b*4); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+// test_verify_one_file! {
+//     #[test] test6_fails code! {
+//         #[proof]
+//         fn test6(b: i32) {
+//             assert_bit_vector(b < b); // FAILS, signed int
+//         }
+//     } => Err(err) => assert_one_fails(err)
+// }

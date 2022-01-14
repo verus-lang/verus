@@ -476,6 +476,7 @@ fn one_stmt(stmts: Vec<Stmt>) -> Stmt {
     if stmts.len() == 1 { stmts[0].clone() } else { Arc::new(StmtX::Block(Arc::new(stmts))) }
 }
 
+//TODO: find better error - other than panic
 fn assert_unsigned(exp: &Exp) {
     if let TypX::Int(range) = &*exp.typ {
         match range {
@@ -488,22 +489,15 @@ fn assert_unsigned(exp: &Exp) {
 }
 
 // convert the sst expression into bv air expression
-fn exp_to_bv_expr(state: &State, exp: &Exp, unsigned: bool) -> Expr {
+fn exp_to_bv_expr(state: &State, exp: &Exp) -> Expr {
     match &exp.x {
         ExpX::Const(crate::ast::Constant::Nat(s)) => {
-            if !unsigned {
-                assert_unsigned(exp);
-            }
             if let Some(width) = bitwidth_from_type(&exp.typ) {
-                // The width is needed when printing bv constants.
                 return Arc::new(ExprX::Const(Constant::BitVec(s.clone(), width)));
             }
             panic!("internal error: unable to get width from constant of type {:?}", exp.typ);
         }
         ExpX::Var(x) => {
-            if !unsigned {
-                assert_unsigned(exp);
-            }
             return string_var(&suffix_local_unique_id(x));
         }
         ExpX::Binary(op, lhs, rhs) => {
@@ -526,9 +520,17 @@ fn exp_to_bv_expr(state: &State, exp: &Exp, unsigned: bool) -> Expr {
                 BinaryOp::Shr => air::ast::BinaryOp::LShr,
                 _ => panic!("unhandled bv binary operation {:?}", op),
             };
-
-            let lh = exp_to_bv_expr(state, lhs, false);
-            let rh = exp_to_bv_expr(state, rhs, false);
+            // disallow signed integer from bitvec reasoning. However, allow that for shift
+            // TODO: sanity check for shift
+            let _ = match op {
+                BinaryOp::Shl | BinaryOp::Shr => (),
+                _ => {
+                    assert_unsigned(&lhs);
+                    assert_unsigned(&rhs);
+                }
+            };
+            let lh = exp_to_bv_expr(state, lhs);
+            let rh = exp_to_bv_expr(state, rhs);
             return Arc::new(ExprX::Binary(bop, lh, rh));
         }
         ExpX::Unary(op, exp) => {
@@ -536,56 +538,47 @@ fn exp_to_bv_expr(state: &State, exp: &Exp, unsigned: bool) -> Expr {
             // convert Clip into concat/extract
             if let TypX::Int(old_range) = &*exp.typ {
                 if let UnaryOp::Clip(new_range) = op {
-                    if *old_range == *new_range {
-                        return exp_to_bv_expr(state, exp, false);
-                    } else {
-                        match new_range {
-                            // IntRange::I(n) => ,
-                            IntRange::U(new_n) => match old_range {
-                                IntRange::U(old_n) => {
-                                    // expand with zero using concat
-                                    if new_n > old_n {
-                                        let bop = air::ast::BinaryOp::Concat;
-                                        let lh = Arc::new(ExprX::Const(Constant::BitVec(
-                                            Arc::new("0".to_string()),
-                                            new_n - old_n,
-                                        )));
-                                        let rh = exp_to_bv_expr(state, exp, false);
-                                        return Arc::new(ExprX::Binary(bop, lh, rh));
-                                    }
-                                    // extract lower old_n bits
-                                    else if new_n < old_n {
-                                        let op = air::ast::MultiOp::Extract;
-                                        let pos1_u32 = new_n - 1;
-                                        let pos1 = Arc::new(ExprX::Const(Constant::Nat(Arc::new(
-                                            pos1_u32.to_string(),
-                                        ))));
-                                        let pos2 = Arc::new(ExprX::Const(Constant::Nat(Arc::new(
-                                            "0".to_string(),
-                                        ))));
-                                        let rh = exp_to_bv_expr(state, exp, false);
-                                        return Arc::new(ExprX::Multi(
-                                            op,
-                                            Arc::new(vec![pos1, pos2, rh]),
-                                        ));
-                                    } else {
-                                        panic!(
-                                            "Internal error: above *old_range == *new_range does not work"
-                                        )
-                                    }
+                    match new_range {
+                        IntRange::U(new_n) | IntRange::I(new_n) => match old_range {
+                            IntRange::U(old_n) | IntRange::I(old_n) => {
+                                // expand with zero using concat
+                                if new_n > old_n {
+                                    let bop = air::ast::BinaryOp::Concat;
+                                    let lh = Arc::new(ExprX::Const(Constant::BitVec(
+                                        Arc::new("0".to_string()),
+                                        new_n - old_n,
+                                    )));
+                                    let rh = exp_to_bv_expr(state, exp);
+                                    return Arc::new(ExprX::Binary(bop, lh, rh));
                                 }
-
-                                // IntRange::I(n) => ,
-                                _ => panic!(
-                                    "error: IntRange should be U(_) or I(_) for a bitvector {:?}",
-                                    exp.typ
-                                ),
-                            },
+                                // extract lower new_n bits,
+                                else if new_n < old_n {
+                                    let op = air::ast::MultiOp::Extract;
+                                    let high_u32 = new_n - 1;
+                                    let high = Arc::new(ExprX::Const(Constant::Nat(Arc::new(
+                                        high_u32.to_string(),
+                                    ))));
+                                    let low = Arc::new(ExprX::Const(Constant::Nat(Arc::new(
+                                        "0".to_string(),
+                                    ))));
+                                    let rh = exp_to_bv_expr(state, exp);
+                                    return Arc::new(ExprX::Multi(
+                                        op,
+                                        Arc::new(vec![high, low, rh]),
+                                    ));
+                                } else {
+                                    return exp_to_bv_expr(state, exp);
+                                }
+                            }
                             _ => panic!(
                                 "error: IntRange should be U(_) or I(_) for a bitvector {:?}",
                                 exp.typ
                             ),
-                        }
+                        },
+                        _ => panic!(
+                            "error: IntRange should be U(_) or I(_) for a bitvector {:?}",
+                            exp.typ
+                        ),
                     }
                 } else {
                     panic!("unhandled bv unary operation {:?}", op);
@@ -692,7 +685,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
                 "assertion failed".to_string(),
             );
             let local = state.local_bv_shared.clone();
-            let air_expr = exp_to_bv_expr(&state, &expr, false);
+            let air_expr = exp_to_bv_expr(&state, &expr);
             let assertion = Arc::new(StmtX::Assert(error, air_expr));
             // this creates a separate query for the bv assertion
             let query = Arc::new(QueryX { local: Arc::new(local), assertion });
