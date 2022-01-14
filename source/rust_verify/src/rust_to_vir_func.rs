@@ -3,7 +3,7 @@ use crate::rust_to_vir_base::{
     check_generics, check_generics_bounds, def_id_to_vir_path, def_to_path_ident, get_fuel,
     get_mode, get_ret_mode, get_var_mode, get_verifier_attrs, ident_to_var, ty_to_vir,
 };
-use crate::rust_to_vir_expr::{expr_to_vir, pat_to_var};
+use crate::rust_to_vir_expr::{expr_to_vir, pat_to_var, ExprModifier};
 use crate::util::{err_span_str, err_span_string, spanned_new, unsupported_err_span, vec_map};
 use crate::{unsupported, unsupported_err, unsupported_err_unless, unsupported_unless};
 use rustc_ast::Attribute;
@@ -12,7 +12,9 @@ use rustc_middle::ty::TyCtxt;
 use rustc_span::symbol::Ident;
 use rustc_span::Span;
 use std::sync::Arc;
-use vir::ast::{FunX, FunctionAttrsX, FunctionX, KrateX, Mode, ParamX, Typ, TypX, VirErr};
+use vir::ast::{
+    FunX, FunctionAttrsX, FunctionX, KrateX, MaskSpec, Mode, ParamX, Typ, TypX, VirErr,
+};
 use vir::def::RETURN_VALUE;
 
 pub(crate) fn body_to_vir<'tcx>(
@@ -25,15 +27,14 @@ pub(crate) fn body_to_vir<'tcx>(
     let def = rustc_middle::ty::WithOptConstParam::unknown(id.hir_id.owner);
     let types = ctxt.tcx.typeck_opt_const_arg(def);
     let bctx = BodyCtxt { ctxt: ctxt.clone(), types, mode, external_body };
-    expr_to_vir(&bctx, &body.value)
+    expr_to_vir(&bctx, &body.value, ExprModifier::Regular)
 }
 
 fn is_self_or_self_ref(span: Span, ty: &rustc_hir::Ty) -> Result<bool, VirErr> {
     match ty.kind {
-        rustc_hir::TyKind::Rptr(
-            _,
-            rustc_hir::MutTy { ty: rty, mutbl: rustc_hir::Mutability::Not, .. },
-        ) => is_self_or_self_ref(span, rty),
+        rustc_hir::TyKind::Rptr(_, rustc_hir::MutTy { ty: rty, mutbl: _, .. }) => {
+            is_self_or_self_ref(span, rty)
+        }
         rustc_hir::TyKind::Path(rustc_hir::QPath::Resolved(None, path)) => match path.res {
             rustc_hir::def::Res::SelfTy(Some(_), _impl_def_id) => Ok(true),
             rustc_hir::def::Res::SelfTy(None, _) => Ok(true),
@@ -58,6 +59,7 @@ fn check_fn_decl<'tcx>(
         rustc_hir::ImplicitSelfKind::None => {}
         rustc_hir::ImplicitSelfKind::Imm => {}
         rustc_hir::ImplicitSelfKind::ImmRef => {}
+        rustc_hir::ImplicitSelfKind::MutRef => {}
         _ => unsupported!("implicit_self"),
     }
     match output {
@@ -174,7 +176,14 @@ pub(crate) fn check_item_fn<'tcx>(
                 );
             }
         }
-        let typ = if is_self_or_self_ref(*span, &input)? {
+        let is_mut = is_mut_ty(&input);
+        if is_mut.is_some() && mode == Mode::Spec {
+            return err_span_string(
+                *span,
+                format!("&mut argument not allowed for #[spec] functions"),
+            );
+        }
+        let (typ, is_mut) = if is_self_or_self_ref(*span, &input)? {
             if mode != param_mode {
                 // It's hard for erase.rs to support mode != param_mode (we'd have to erase self),
                 // so we currently disallow it:
@@ -190,18 +199,21 @@ pub(crate) fn check_item_fn<'tcx>(
                 vec_map(self_typ_params.as_ref().expect("expected Self type parameters"), |t| {
                     Arc::new(TypX::TypParam(t.clone()))
                 });
-            Arc::new(TypX::Datatype(
-                self_path_mode
-                    .as_ref()
-                    .map(|(self_path, _)| self_path)
-                    .expect("a param is Self, so this must be an impl")
-                    .clone(),
-                Arc::new(typ_args),
-            ))
+            (
+                Arc::new(TypX::Datatype(
+                    self_path_mode
+                        .as_ref()
+                        .map(|(self_path, _)| self_path)
+                        .expect("a param is Self, so this must be an impl")
+                        .clone(),
+                    Arc::new(typ_args),
+                )),
+                is_mut.is_some(),
+            )
         } else {
-            ty_to_vir(ctxt.tcx, input)
+            (ty_to_vir(ctxt.tcx, is_mut.unwrap_or(&input)), is_mut.is_some())
         };
-        let vir_param = spanned_new(*span, ParamX { name, typ, mode: param_mode });
+        let vir_param = spanned_new(*span, ParamX { name, typ, mode: param_mode, is_mut });
         vir_params.push(vir_param);
     }
     match generator_kind {
@@ -246,7 +258,10 @@ pub(crate) fn check_item_fn<'tcx>(
         (Some((x, _)), Some((typ, mode))) => (x, typ, mode),
         _ => panic!("internal error: ret_typ"),
     };
-    let ret = spanned_new(sig.span, ParamX { name: ret_name, typ: ret_typ, mode: ret_mode });
+    let ret = spanned_new(
+        sig.span,
+        ParamX { name: ret_name, typ: ret_typ, mode: ret_mode, is_mut: false },
+    );
     let typ_bounds = {
         let mut typ_bounds: Vec<(vir::ast::Ident, vir::ast::GenericBound)> = Vec::new();
         if let Some(self_typ_params) = self_typ_params {
@@ -275,6 +290,7 @@ pub(crate) fn check_item_fn<'tcx>(
         require: header.require,
         ensure: header.ensure,
         decrease: header.decrease,
+        mask_spec: header.invariant_mask,
         is_abstract: vattrs.is_abstract,
         attrs: Arc::new(fattrs),
         body: if vattrs.external_body { None } else { Some(vir_body) },
@@ -282,6 +298,17 @@ pub(crate) fn check_item_fn<'tcx>(
     let function = spanned_new(sig.span, func);
     vir.functions.push(function);
     Ok(())
+}
+
+fn is_mut_ty<'tcx>(ty: &'tcx rustc_hir::Ty<'tcx>) -> Option<&'tcx rustc_hir::Ty<'tcx>> {
+    let rustc_hir::Ty { kind, .. } = ty;
+    match kind {
+        rustc_hir::TyKind::Rptr(
+            _,
+            rustc_hir::MutTy { ty: tys, mutbl: rustc_ast::Mutability::Mut },
+        ) => Some(tys),
+        _ => None,
+    }
 }
 
 pub(crate) fn check_foreign_item_fn<'tcx>(
@@ -302,9 +329,11 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
     let mut vir_params: Vec<vir::ast::Param> = Vec::new();
     for (param, input) in idents.iter().zip(decl.inputs.iter()) {
         let name = Arc::new(ident_to_var(param));
-        let typ = ty_to_vir(ctxt.tcx, input);
+        let is_mut = is_mut_ty(input);
+        let typ = ty_to_vir(ctxt.tcx, is_mut.unwrap_or(input));
         // REVIEW: the parameters don't have attributes, so we use the overall mode
-        let vir_param = spanned_new(param.span, ParamX { name, typ, mode });
+        let vir_param =
+            spanned_new(param.span, ParamX { name, typ, mode, is_mut: is_mut.is_some() });
         vir_params.push(vir_param);
     }
     let path = def_id_to_vir_path(ctxt.tcx, id);
@@ -314,8 +343,12 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
         None => (Arc::new(TypX::Tuple(Arc::new(vec![]))), mode),
         Some((typ, mode)) => (typ, mode),
     };
-    let ret_param =
-        ParamX { name: Arc::new(RETURN_VALUE.to_string()), typ: ret_typ, mode: ret_mode };
+    let ret_param = ParamX {
+        name: Arc::new(RETURN_VALUE.to_string()),
+        typ: ret_typ,
+        mode: ret_mode,
+        is_mut: false,
+    };
     let ret = spanned_new(span, ret_param);
     let func = FunctionX {
         name,
@@ -328,6 +361,7 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
         require: Arc::new(vec![]),
         ensure: Arc::new(vec![]),
         decrease: Arc::new(vec![]),
+        mask_spec: MaskSpec::NoSpec,
         is_abstract: false,
         attrs: Default::default(),
         body: None,

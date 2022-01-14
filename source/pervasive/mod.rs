@@ -6,6 +6,7 @@ pub mod seq_lib;
 pub mod set;
 pub mod set_lib;
 pub mod cell;
+pub mod invariants;
 
 #[allow(unused_imports)]
 use builtin::*;

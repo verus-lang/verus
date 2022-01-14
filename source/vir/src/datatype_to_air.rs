@@ -44,7 +44,10 @@ pub fn is_datatype_transparent(source_module: &Path, datatype: &crate::ast::Data
 }
 
 fn field_to_param(span: &Span, f: &Field) -> Param {
-    Spanned::new(span.clone(), ParamX { name: f.name.clone(), typ: f.a.0.clone(), mode: f.a.1 })
+    Spanned::new(
+        span.clone(),
+        ParamX { name: f.name.clone(), typ: f.a.0.clone(), mode: f.a.1, is_mut: false },
+    )
 }
 
 fn datatype_or_fun_to_air_commands(
@@ -96,9 +99,11 @@ fn datatype_or_fun_to_air_commands(
     }
 
     // datatype axioms
-
     let x_param = |typ: &Typ| {
-        Spanned::new(span.clone(), ParamX { name: x.clone(), typ: typ.clone(), mode: Mode::Exec })
+        Spanned::new(
+            span.clone(),
+            ParamX { name: x.clone(), typ: typ.clone(), mode: Mode::Exec, is_mut: false },
+        )
     };
     let x_params = |typ: &Typ| Arc::new(vec![x_param(typ)]);
     let typ_args = Arc::new(vec_map(&tparams, |t| Arc::new(TypX::TypParam(t.clone()))));
@@ -144,7 +149,7 @@ fn datatype_or_fun_to_air_commands(
                 pre.push(inv);
             }
             args.push(arg);
-            let paramx = ParamX { name, typ: vpolytyp.clone(), mode: Mode::Exec };
+            let paramx = ParamX { name, typ: vpolytyp.clone(), mode: Mode::Exec, is_mut: false };
             params.push(Spanned::new(span.clone(), paramx));
         }
         let tparamret = typ_args.last().expect("return type").clone();

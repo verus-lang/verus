@@ -209,6 +209,8 @@ pub(crate) enum Attr {
     CustomReqErr(String),
     // for unforgeable token types
     Unforgeable,
+    // specifies an invariant block
+    InvariantBlock,
 }
 
 fn get_trigger_arg(span: Span, attr_tree: &AttrTree) -> Result<u64, VirErr> {
@@ -265,6 +267,9 @@ pub(crate) fn parse_attrs(attrs: &[Attribute]) -> Result<Vec<Attr>, VirErr> {
                 }
                 Some(box [AttrTree::Fun(_, arg, None)]) if arg == "unforgeable" => {
                     v.push(Attr::Unforgeable)
+                }
+                Some(box [AttrTree::Fun(_, arg, None)]) if arg == "invariant_block" => {
+                    v.push(Attr::InvariantBlock)
                 }
                 Some(box [AttrTree::Fun(_, arg, Some(box [AttrTree::Fun(_, msg, None)]))])
                     if arg == "custom_req_err" =>
@@ -540,6 +545,19 @@ pub(crate) fn ty_to_vir<'tcx>(tcx: TyCtxt<'tcx>, ty: &Ty) -> Typ {
 
 pub(crate) fn typ_of_node<'tcx>(bctx: &BodyCtxt<'tcx>, id: &HirId) -> Typ {
     mid_ty_to_vir(bctx.ctxt.tcx, bctx.types.node_type(*id))
+}
+
+pub(crate) fn typ_of_node_expect_mut_ref<'tcx>(
+    bctx: &BodyCtxt<'tcx>,
+    id: &HirId,
+    span: Span,
+) -> Result<Typ, VirErr> {
+    let ty = bctx.types.node_type(*id);
+    if let TyKind::Ref(_, tys, rustc_ast::Mutability::Mut) = ty.kind() {
+        Ok(mid_ty_to_vir(bctx.ctxt.tcx, tys))
+    } else {
+        err_span_str(span, "a mutable reference is expected here")
+    }
 }
 
 pub(crate) fn implements_structural<'tcx>(

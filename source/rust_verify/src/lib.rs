@@ -2,6 +2,7 @@
 #![feature(internal_output_capture)]
 #![feature(or_patterns)]
 #![feature(box_patterns)]
+#![feature(bindings_after_at)]
 
 extern crate rustc_ast;
 extern crate rustc_data_structures;

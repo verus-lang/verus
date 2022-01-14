@@ -33,6 +33,7 @@ fn binary_search(v: &Vec<u64>, k: u64) -> usize {
     i1
 }
 
+// TODO(utaal) use &mut support
 fn reverse(v1: Vec<u64>) -> Vec<u64> {
     ensures(|r: Vec<u64>| [
         r.len() == v1.len(),

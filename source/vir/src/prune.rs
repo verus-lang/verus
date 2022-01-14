@@ -11,7 +11,7 @@ use crate::ast::{
 use crate::ast_util::is_visible_to;
 use crate::ast_visitor::map_expr_visitor;
 use crate::datatype_to_air::is_datatype_transparent;
-use crate::def::Spanned;
+use crate::def::{datatype_invariant_path, fn_inv_name, fn_namespace_name, Spanned};
 use crate::poly::MonoTyp;
 use air::scope_map::ScopeMap;
 use std::collections::{HashMap, HashSet};
@@ -228,6 +228,12 @@ pub fn prune_krate_for_module(krate: &Krate, module: &Path) -> (Krate, Vec<MonoT
     let ctxt =
         Ctxt { module: module.clone(), function_map, datatype_map, all_functions_in_each_module };
     traverse_reachable(&ctxt, &mut state);
+
+    // Add function decls that should always exist
+    // (references to these might be generated in SST -> AIR)
+    state.reached_functions.insert(fn_inv_name());
+    state.reached_functions.insert(fn_namespace_name());
+    state.reached_datatypes.insert(datatype_invariant_path());
 
     let kratex = KrateX {
         functions: functions

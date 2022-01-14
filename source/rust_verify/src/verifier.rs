@@ -529,6 +529,7 @@ impl Verifier {
         self.time_vir = time5 - time0;
         self.time_vir_rust_to_vir = time2 - time1;
         self.time_vir_verify = time4 - time3;
+
         Ok(true)
     }
 }

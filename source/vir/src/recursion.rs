@@ -1,6 +1,6 @@
 use crate::ast::{
-    BinaryOp, CallTarget, Constant, Fun, Function, IntRange, SpannedTyped, TypX, UnaryOp, UnaryOpr,
-    VirErr,
+    BinaryOp, CallTarget, Constant, Fun, Function, IntRange, MaskSpec, SpannedTyped, TypX, UnaryOp,
+    UnaryOpr, VirErr,
 };
 use crate::ast_to_sst::expr_to_exp;
 use crate::ast_util::err_str;
@@ -101,7 +101,7 @@ fn check_decrease_call(ctxt: &Ctxt, span: &Span, name: &Fun, args: &Exps) -> Res
 fn terminates(ctxt: &Ctxt, exp: &Exp) -> Result<Exp, VirErr> {
     let bool_exp = |expx: ExpX| SpannedTyped::new(&exp.span, &Arc::new(TypX::Bool), expx);
     match &exp.x {
-        ExpX::Const(_) | ExpX::Var(..) | ExpX::Old(..) => {
+        ExpX::Const(_) | ExpX::Var(..) | ExpX::VarAt(..) | ExpX::Old(..) => {
             Ok(bool_exp(ExpX::Const(Constant::Bool(true))))
         }
         ExpX::Call(x, _, args) => {
@@ -313,6 +313,8 @@ pub(crate) fn check_termination_exp(
         &Arc::new(vec![]),
         &Arc::new(vec![]),
         &Arc::new(vec![]),
+        &MaskSpec::NoSpec,
+        function.x.mode,
         &stm_block,
     );
 

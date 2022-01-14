@@ -69,8 +69,8 @@ Therefore, the expression Unbox(Box(1)) explicitly introduces a superfluous Unbo
 
 use crate::ast::{
     BinaryOp, CallTarget, Datatype, DatatypeX, Expr, ExprX, Exprs, Function, FunctionX, Ident,
-    IntRange, Krate, KrateX, Mode, Param, ParamX, Path, PatternX, SpannedTyped, Stmt, StmtX, Typ,
-    TypX, UnaryOp, UnaryOpr,
+    IntRange, Krate, KrateX, MaskSpec, Mode, Param, ParamX, Path, PatternX, SpannedTyped, Stmt,
+    StmtX, Typ, TypX, UnaryOp, UnaryOpr,
 };
 use crate::context::Ctx;
 use crate::def::Spanned;
@@ -226,6 +226,9 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
     match &expr.x {
         ExprX::Const(_) => expr.clone(),
         ExprX::Var(x) => SpannedTyped::new(&expr.span, &state.types[x], ExprX::Var(x.clone())),
+        ExprX::VarAt(x, at) => {
+            SpannedTyped::new(&expr.span, &state.types[x], ExprX::VarAt(x.clone(), *at))
+        }
         ExprX::Call(target, exprs) => match target {
             CallTarget::Static(name, _) => {
                 let function = &ctx.func_map[name].x;
@@ -412,6 +415,16 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
             let invs = Arc::new(invs.collect());
             mk_expr(ExprX::While { cond, body, invs })
         }
+        ExprX::OpenInvariant(inv, binder, body) => {
+            let inv = coerce_expr_to_poly(ctx, &poly_expr(ctx, state, inv));
+            state.types.push_scope(true);
+            let typ = coerce_typ_to_native(ctx, &binder.a);
+            let _ = state.types.insert(binder.name.clone(), typ.clone());
+            let body = poly_expr(ctx, state, body);
+            state.types.pop_scope();
+            let binder = binder.new_a(typ.clone());
+            mk_expr(ExprX::OpenInvariant(inv, binder, body))
+        }
         ExprX::Return(None) => expr.clone(),
         ExprX::Return(Some(e1)) => {
             let e1 = coerce_expr_to_native(ctx, &poly_expr(ctx, state, e1));
@@ -481,6 +494,7 @@ fn poly_function(ctx: &Ctx, function: &Function) -> Function {
         require,
         ensure,
         decrease,
+        mask_spec,
         is_abstract,
         attrs,
         body,
@@ -497,14 +511,14 @@ fn poly_function(ctx: &Ctx, function: &Function) -> Function {
     // Parameter types are made Poly for spec functions
     let mut new_params: Vec<Param> = Vec::new();
     for param in params.iter() {
-        let ParamX { name, typ, mode } = &param.x;
+        let ParamX { name, typ, mode, is_mut } = &param.x;
         let typ = if function.x.mode == Mode::Spec {
             coerce_typ_to_poly(ctx, typ)
         } else {
             coerce_typ_to_native(ctx, typ)
         };
         let _ = types.insert(name.clone(), typ.clone());
-        let paramx = ParamX { name: name.clone(), typ, mode: *mode };
+        let paramx = ParamX { name: name.clone(), typ, mode: *mode, is_mut: *is_mut };
         new_params.push(Spanned::new(param.span.clone(), paramx));
     }
     let params = Arc::new(new_params);
@@ -528,6 +542,15 @@ fn poly_function(ctx: &Ctx, function: &Function) -> Function {
     state.types.pop_scope();
 
     let decrease = native_exprs(&mut state, decrease);
+
+    let mask_spec = match mask_spec {
+        MaskSpec::InvariantOpens(es) => MaskSpec::InvariantOpens(native_exprs(&mut state, es)),
+        MaskSpec::InvariantOpensExcept(es) => {
+            MaskSpec::InvariantOpensExcept(native_exprs(&mut state, es))
+        }
+        MaskSpec::NoSpec => MaskSpec::NoSpec,
+    };
+
     let body = if let Some(body) = body {
         Some(coerce_expr_to_native(ctx, &poly_expr(ctx, &mut state, body)))
     } else {
@@ -548,6 +571,7 @@ fn poly_function(ctx: &Ctx, function: &Function) -> Function {
         require,
         ensure,
         decrease,
+        mask_spec,
         is_abstract: *is_abstract,
         attrs: attrs.clone(),
         body,

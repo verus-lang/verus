@@ -1,6 +1,6 @@
 use crate::ast::{
     BinaryOp, CallTarget, Constant, Expr, ExprX, Fun, Function, Ident, Mode, Params, PatternX,
-    SpannedTyped, Stmt, StmtX, Typ, TypX, Typs, UnaryOp, UnaryOpr, VirErr,
+    SpannedTyped, Stmt, StmtX, Typ, TypX, Typs, UnaryOp, UnaryOpr, VarAt, VirErr,
 };
 use crate::ast_util::{err_str, err_string};
 use crate::context::Ctx;
@@ -366,6 +366,14 @@ pub(crate) fn expr_to_stm_opt(
             let unique_id = state.get_var_unique_id(&x);
             Ok((vec![], Some(mk_exp(ExpX::Var(unique_id)))))
         }
+        ExprX::VarAt(x, VarAt::Pre) => {
+            if let Some((scope, _)) = state.rename_map.scope_and_index_of_key(x) {
+                if scope != 0 {
+                    err_str(&expr.span, "the parameter is shadowed here")?;
+                }
+            }
+            Ok((vec![], Some(mk_exp(ExpX::VarAt(x.clone(), VarAt::Pre)))))
+        }
         ExprX::Assign(expr1, expr2) => {
             let dest_x = match &expr1.x {
                 ExprX::Var(x) => Ok(state.get_var_unique_id(&x)),
@@ -654,6 +662,35 @@ pub(crate) fn expr_to_stm_opt(
                 },
             );
             Ok((vec![while_stm], None))
+        }
+        ExprX::OpenInvariant(inv, binder, body) => {
+            // Evaluate `inv`
+            let (mut stms0, big_inv_exp) = expr_to_stm(ctx, state, inv)?;
+
+            // Assign it to a constant temp variable to ensure it is constant
+            // across the entire block.
+            let (temp, temp_var) = state.next_temp(&big_inv_exp.span, &inv.typ);
+            let temp_id = state.declare_new_var(&temp, &inv.typ, false, false);
+            stms0.push(init_var(&big_inv_exp.span, &temp_id, &big_inv_exp));
+
+            // Process the body
+
+            state.push_scope();
+            let ident = state.declare_new_var(
+                &binder.name,
+                &binder.a,
+                /* mutable */ true,
+                /* maybe_need_rename */ true,
+            );
+            let body_stm = expr_to_one_stm(ctx, state, body)?;
+            state.pop_scope();
+
+            stms0.push(Spanned::new(
+                expr.span.clone(),
+                StmX::OpenInvariant(temp_var, ident, binder.a.clone(), body_stm),
+            ));
+
+            return Ok((stms0, None));
         }
         ExprX::Return(e1) => {
             if let Some((ret_dest, enss)) = state.ret_post.clone() {
