@@ -310,6 +310,7 @@ fn fn_call_to_vir<'tcx>(
     let is_reveal_fuel = f_name == "builtin::reveal_with_fuel";
     let is_implies = f_name == "builtin::imply";
     let is_assert_by = f_name == "builtin::assert_by";
+    let is_assert_bit_vector = f_name == "builtin::assert_bit_vector";
     let is_old = f_name == "builtin::old";
     let is_eq = f_name == "core::cmp::PartialEq::eq";
     let is_ne = f_name == "core::cmp::PartialEq::ne";
@@ -376,7 +377,13 @@ fn fn_call_to_vir<'tcx>(
         &bctx.ctxt,
         fn_span,
         &name,
-        is_spec || is_quant || is_directive || is_assert_by || is_choose || is_old,
+        is_spec
+            || is_quant
+            || is_directive
+            || is_assert_by
+            || is_choose
+            || is_assert_bit_vector
+            || is_old,
         is_implies,
     );
 
@@ -490,6 +497,11 @@ fn fn_call_to_vir<'tcx>(
         let ensure = expr_to_vir(bctx, &args[0], ExprModifier::Regular)?;
         let proof = expr_to_vir(bctx, &args[1], ExprModifier::Regular)?;
         return Ok(mk_expr(ExprX::Forall { vars, require, ensure, proof }));
+    }
+
+    if is_assert_bit_vector {
+        let expr = expr_to_vir(bctx, &args[0], ExprModifier::Regular)?;
+        return Ok(mk_expr(ExprX::AssertBV(expr)));
     }
 
     let mut vir_args = vec_map_result(&args, |arg| match arg.kind {
@@ -1164,17 +1176,24 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                 BinOpKind::Mul => BinaryOp::Mul,
                 BinOpKind::Div => BinaryOp::EuclideanDiv,
                 BinOpKind::Rem => BinaryOp::EuclideanMod,
+                BinOpKind::BitXor => BinaryOp::BitXor,
+                BinOpKind::BitAnd => BinaryOp::BitAnd,
+                BinOpKind::BitOr => BinaryOp::BitOr,
+                BinOpKind::Shr => BinaryOp::Shr,
+                BinOpKind::Shl => BinaryOp::Shl,
                 _ => unsupported_err!(expr.span, format!("binary operator {:?}", op)),
             };
-            let e = mk_expr(ExprX::Binary(vop, vlhs, vrhs));
             match op.node {
-                BinOpKind::Add | BinOpKind::Sub | BinOpKind::Mul => Ok(mk_ty_clip(&expr_typ(), &e)),
+                BinOpKind::Add | BinOpKind::Sub | BinOpKind::Mul => {
+                    let e = mk_expr(ExprX::Binary(vop, vlhs, vrhs));
+                    Ok(mk_ty_clip(&expr_typ(), &e))
+                }
                 BinOpKind::Div | BinOpKind::Rem => {
                     // TODO: disallow divide-by-zero in executable code?
                     match mk_range(tc.node_type(expr.hir_id)) {
                         IntRange::Int | IntRange::Nat | IntRange::U(_) | IntRange::USize => {
                             // Euclidean division
-                            Ok(e)
+                            Ok(mk_expr(ExprX::Binary(vop, vlhs, vrhs)))
                         }
                         IntRange::I(_) | IntRange::ISize => {
                             // Non-Euclidean division, which will need more encoding
@@ -1182,7 +1201,7 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                         }
                     }
                 }
-                _ => Ok(e),
+                _ => Ok(mk_expr(ExprX::Binary(vop, vlhs, vrhs))),
             }
         }
         ExprKind::AssignOp(

@@ -51,6 +51,12 @@ fn check_function(ctxt: &Ctxt, function: &Function) -> Result<(), VirErr> {
             );
         }
     }
+
+    if function.x.attrs.bit_vector {
+        // TODO: return error if function has a non-integer type, or function call
+        unimplemented!("function level bitvector mode");
+    }
+
     if function.x.attrs.autoview {
         if function.x.mode == Mode::Spec {
             return err_str(&function.span, "autoview function cannot be declared spec");

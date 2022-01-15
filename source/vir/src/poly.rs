@@ -330,6 +330,7 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
                 And | Or | Implies | Le | Ge | Lt | Gt => true,
                 Add | Sub | Mul | EuclideanDiv | EuclideanMod => true,
                 Eq(_) | Ne => false,
+                BitXor | BitAnd | BitOr | Shr | Shl => true,
             };
             if native {
                 let e1 = coerce_expr_to_native(ctx, &e1);
@@ -377,6 +378,7 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
             let e2 = coerce_expr_to_native(ctx, &poly_expr(ctx, state, e2));
             mk_expr(ExprX::Assign(e1, e2))
         }
+        ExprX::AssertBV(_) => expr.clone(),
         ExprX::Fuel(..) => expr.clone(),
         ExprX::Header(..) => panic!("Header should already be removed"),
         ExprX::Admit => expr.clone(),

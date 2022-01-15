@@ -280,6 +280,10 @@ fn check_expr(typing: &mut Typing, outer_mode: Mode, expr: &Expr) -> Result<Mode
             typing.in_forall_stmt = in_forall_stmt;
             Ok(Mode::Proof)
         }
+        ExprX::AssertBV(e) => {
+            check_expr_has_mode(typing, Mode::Spec, e, Mode::Spec)?;
+            Ok(Mode::Proof)
+        }
         ExprX::If(e1, e2, e3) => {
             let mode1 = check_expr(typing, outer_mode, e1)?;
             typing.erasure_modes.condition_modes.push((expr.span.clone(), mode1));

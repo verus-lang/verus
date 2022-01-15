@@ -20,6 +20,21 @@ fn is_symbol(s: &String) -> bool {
     s.len() > 0 && s.chars().all(is_symbol_char)
 }
 
+fn is_bitvec(nodes: &Vec<Node>) -> Option<u32> {
+    if nodes[0] == Node::Atom("_".to_string())
+        && nodes[1] == Node::Atom("BitVec".to_string())
+        && nodes.len() == 3
+    {
+        if let Node::Atom(s) = &nodes[2] {
+            match s.parse::<u32>() {
+                Ok(n) => return Some(n),
+                Err(_) => return None,
+            }
+        }
+    }
+    return None;
+}
+
 fn map_nodes_to_vec<A, F>(nodes: &[Node], f: &F) -> Result<Arc<Vec<A>>, String>
 where
     F: Fn(&Node) -> Result<A, String>,
@@ -57,6 +72,9 @@ impl Parser {
             Node::Atom(s) if s.to_string() == "Int" => Ok(Arc::new(TypX::Int)),
             Node::Atom(s) if s.to_string() == "Fun" => Ok(Arc::new(TypX::Lambda)),
             Node::Atom(s) if is_symbol(s) => Ok(Arc::new(TypX::Named(Arc::new(s.clone())))),
+            Node::List(nodes) if is_bitvec(nodes).is_some() => {
+                Ok(Arc::new(TypX::BitVec(is_bitvec(nodes).unwrap())))
+            }
             _ => Err(format!("expected type, found: {}", node_to_string(node))),
         }
     }

@@ -2,7 +2,7 @@ use crate::ast::{
     BinaryOp, Fun, Ident, Idents, IntRange, MaskSpec, Mode, Params, Path, PathX, SpannedTyped, Typ,
     TypX, Typs, UnaryOp, UnaryOpr, VarAt,
 };
-use crate::ast_util::{get_field, get_variant};
+use crate::ast_util::{bitwidth_from_type, get_field, get_variant};
 use crate::context::Ctx;
 use crate::def::{fn_inv_name, fn_namespace_name};
 use crate::def::{
@@ -23,9 +23,9 @@ use air::ast::{
     MultiOp, Quant, QueryX, Span, Stmt, StmtX, Trigger, Triggers,
 };
 use air::ast_util::{
-    bool_typ, ident_apply, ident_binder, ident_typ, ident_var, int_typ, mk_and, mk_bind_expr,
-    mk_eq, mk_exists, mk_implies, mk_ite, mk_not, mk_or, str_apply, str_ident, str_typ, str_var,
-    string_var,
+    bool_typ, bv_typ, ident_apply, ident_binder, ident_typ, ident_var, int_typ, mk_and,
+    mk_bind_expr, mk_eq, mk_exists, mk_implies, mk_ite, mk_not, mk_or, str_apply, str_ident,
+    str_typ, str_var, string_var,
 };
 use air::errors::{error, error_with_label};
 use std::collections::{HashMap, HashSet};
@@ -415,22 +415,44 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: ExprCtxt) -> Expr {
                     let eq = ExprX::Binary(air::ast::BinaryOp::Eq, lh, rh);
                     ExprX::Unary(air::ast::UnaryOp::Not, Arc::new(eq))
                 }
+                // here the bv operation is translated to the integer versions
+                BinaryOp::BitXor => {
+                    ExprX::Apply(Arc::new(crate::def::UINT_XOR.to_string()), Arc::new(vec![lh, rh]))
+                }
+                BinaryOp::BitAnd => {
+                    ExprX::Apply(Arc::new(crate::def::UINT_AND.to_string()), Arc::new(vec![lh, rh]))
+                }
+                BinaryOp::BitOr => {
+                    ExprX::Apply(Arc::new(crate::def::UINT_OR.to_string()), Arc::new(vec![lh, rh]))
+                }
+                BinaryOp::Shl => {
+                    ExprX::Apply(Arc::new(crate::def::UINT_SHL.to_string()), Arc::new(vec![lh, rh]))
+                }
+                BinaryOp::Shr => {
+                    ExprX::Apply(Arc::new(crate::def::UINT_SHR.to_string()), Arc::new(vec![lh, rh]))
+                }
+
                 _ => {
                     let aop = match op {
-                        BinaryOp::And => panic!("internal error"),
-                        BinaryOp::Or => panic!("internal error"),
-                        BinaryOp::Implies => panic!("internal error"),
+                        BinaryOp::And => unreachable!(),
+                        BinaryOp::Or => unreachable!(),
+                        BinaryOp::Implies => unreachable!(),
                         BinaryOp::Eq(_) => air::ast::BinaryOp::Eq,
-                        BinaryOp::Ne => panic!("internal error"),
+                        BinaryOp::Ne => unreachable!(),
                         BinaryOp::Le => air::ast::BinaryOp::Le,
                         BinaryOp::Ge => air::ast::BinaryOp::Ge,
                         BinaryOp::Lt => air::ast::BinaryOp::Lt,
                         BinaryOp::Gt => air::ast::BinaryOp::Gt,
-                        BinaryOp::Add => panic!("internal error"),
-                        BinaryOp::Sub => panic!("internal error"),
-                        BinaryOp::Mul => panic!("internal error"),
+                        BinaryOp::Add => unreachable!(),
+                        BinaryOp::Sub => unreachable!(),
+                        BinaryOp::Mul => unreachable!(),
                         BinaryOp::EuclideanDiv => air::ast::BinaryOp::EuclideanDiv,
                         BinaryOp::EuclideanMod => air::ast::BinaryOp::EuclideanMod,
+                        BinaryOp::BitOr => unreachable!(),
+                        BinaryOp::Shr => unreachable!(),
+                        BinaryOp::Shl => unreachable!(),
+                        BinaryOp::BitAnd => unreachable!(),
+                        BinaryOp::BitXor => unreachable!(),
                     };
                     ExprX::Binary(aop, lh, rh)
                 }
@@ -524,6 +546,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: ExprCtxt) -> Expr {
 
 struct State {
     local_shared: Vec<Decl>, // shared between all queries for a single function
+    local_bv_shared: Vec<Decl>, // used in bv mode, fixed width uint variables have corresponding bv types
     commands: Vec<Command>,
     snapshot_count: u32, // Used to ensure unique Idents for each snapshot
     sids: Vec<Ident>, // a stack of snapshot ids, the top one should dominate the current position in the AST
@@ -563,33 +586,19 @@ impl State {
         return sid;
     }
 
-    fn get_assigned_set(&self, stm: &Stm) -> HashSet<Arc<String>> {
-        if let Some(s) = self.assign_map.get(&Arc::as_ptr(stm)) {
-            return s.clone();
-        }
-        return HashSet::new();
-    }
+    // fn get_assigned_set(&self, stm: &Stm) -> HashSet<Arc<String>> {
+    //     if let Some(s) = self.assign_map.get(&Arc::as_ptr(stm)) {
+    //         return s.clone();
+    //     }
+    //     return HashSet::new();
+    // }
 
     fn map_span(&mut self, stm: &Stm, kind: SpanKind) {
         let spos = SnapPos { snapshot_id: self.get_current_sid(), kind: kind };
-        let aset = self.get_assigned_set(stm);
-        println!("{:?} {:?}", stm.span, aset);
+        // let aset = self.get_assigned_set(stm);
+        // println!("{:?} {:?}", stm.span, aset);
         self.snap_map.push((stm.span.clone(), spos));
     }
-
-    // fn map_full_span(&mut self, stm: &Stm) {
-    //     let spos = SnapPos::Full(self.get_current_sid());
-    //     let aset = self.get_assigned_set(stm);
-    //     println!("{:?} {:?}", stm.span, aset);
-    //     self.snap_map.push((stm.span.clone(), spos));
-    // }
-
-    // fn map_end_span(&mut self, stm: &Stm) {
-    //     let spos = SnapPos::End(self.get_current_sid());
-    //     let aset = self.get_assigned_set(stm);
-    //     println!("{:?} {:?}", stm.span, aset);
-    //     self.snap_map.push((stm.span.clone(), spos));
-    // }
 }
 
 fn assume_var(span: &Span, x: &UniqueIdent, exp: &Exp) -> Stm {
@@ -601,6 +610,102 @@ fn assume_var(span: &Span, x: &UniqueIdent, exp: &Exp) -> Stm {
 
 fn one_stmt(stmts: Vec<Stmt>) -> Stmt {
     if stmts.len() == 1 { stmts[0].clone() } else { Arc::new(StmtX::Block(Arc::new(stmts))) }
+}
+
+//TODO: find better error - other than panic
+fn assert_unsigned(exp: &Exp) {
+    if let TypX::Int(range) = &*exp.typ {
+        match range {
+            IntRange::I(_) | IntRange::ISize => {
+                panic!("error: signed integer is not supported for bit-vector reasoning")
+            }
+            _ => (),
+        }
+    };
+}
+
+// convert the sst expression into bv air expression
+fn exp_to_bv_expr(state: &State, exp: &Exp) -> Expr {
+    match &exp.x {
+        ExpX::Const(crate::ast::Constant::Nat(s)) => {
+            if let Some(width) = bitwidth_from_type(&exp.typ) {
+                return Arc::new(ExprX::Const(Constant::BitVec(s.clone(), width)));
+            }
+            panic!("internal error: unable to get width from constant of type {:?}", exp.typ);
+        }
+        ExpX::Var(x) => {
+            return string_var(&suffix_local_unique_id(x));
+        }
+        ExpX::Binary(op, lhs, rhs) => {
+            let bop = match op {
+                BinaryOp::Eq(_) => air::ast::BinaryOp::Eq,
+                BinaryOp::Add => air::ast::BinaryOp::BitAdd,
+                BinaryOp::Sub => air::ast::BinaryOp::BitSub,
+                BinaryOp::Mul => air::ast::BinaryOp::BitMul,
+                BinaryOp::EuclideanDiv => air::ast::BinaryOp::BitUDiv,
+                BinaryOp::EuclideanMod => air::ast::BinaryOp::BitUMod,
+                BinaryOp::Lt => air::ast::BinaryOp::BitULt,
+                BinaryOp::Gt => air::ast::BinaryOp::BitUGt,
+                BinaryOp::Le => air::ast::BinaryOp::BitULe,
+                BinaryOp::Ge => air::ast::BinaryOp::BitUGe,
+                // here the bv operation is translated as it is
+                BinaryOp::BitXor => air::ast::BinaryOp::BitXor,
+                BinaryOp::BitAnd => air::ast::BinaryOp::BitAnd,
+                BinaryOp::BitOr => air::ast::BinaryOp::BitOr,
+                BinaryOp::Shl => air::ast::BinaryOp::Shl,
+                BinaryOp::Shr => air::ast::BinaryOp::LShr,
+                _ => panic!("unhandled bv binary operation {:?}", op),
+            };
+            // disallow signed integer from bitvec reasoning. However, allow that for shift
+            // TODO: sanity check for shift
+            let _ = match op {
+                BinaryOp::Shl | BinaryOp::Shr => (),
+                _ => {
+                    assert_unsigned(&lhs);
+                    assert_unsigned(&rhs);
+                }
+            };
+            let lh = exp_to_bv_expr(state, lhs);
+            let rh = exp_to_bv_expr(state, rhs);
+            return Arc::new(ExprX::Binary(bop, lh, rh));
+        }
+        ExpX::Unary(op, exp) => {
+            // bv type casting by 'as' keyword
+            // convert Clip into concat/extract
+            match (&*exp.typ, op) {
+                (
+                    TypX::Int(IntRange::U(old_n) | IntRange::I(old_n)),
+                    UnaryOp::Clip(IntRange::U(new_n) | IntRange::I(new_n)),
+                ) => {
+                    // expand with zero using concat
+                    if new_n > old_n {
+                        let bop = air::ast::BinaryOp::BitConcat;
+                        let lh = Arc::new(ExprX::Const(Constant::BitVec(
+                            Arc::new("0".to_string()),
+                            new_n - old_n,
+                        )));
+                        let rh = exp_to_bv_expr(state, exp);
+                        return Arc::new(ExprX::Binary(bop, lh, rh));
+                    }
+                    // extract lower new_n bits
+                    else if new_n < old_n {
+                        let op = air::ast::UnaryOp::BitExtract(new_n - 1, 0);
+                        let bv_e = exp_to_bv_expr(state, exp);
+                        return Arc::new(ExprX::Unary(op, bv_e));
+                    } else {
+                        return exp_to_bv_expr(state, exp);
+                    }
+                }
+                _ => {
+                    panic!(
+                        "unhandled bv unary operation {:?} or IntRange error: should be I(_) or U(_) but {:?}",
+                        op, exp.typ
+                    )
+                }
+            }
+        }
+        _ => panic!("unhandled bv expr conversion {:?}", exp.x),
+    }
 }
 
 fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
@@ -723,6 +828,21 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
                 state.map_span(&stm, SpanKind::Full);
             }
             vec![Arc::new(StmtX::Assert(error, air_expr))]
+        }
+        StmX::AssertBV(expr) => {
+            let error = error_with_label(
+                "assertion failed".to_string(),
+                &stm.span,
+                "assertion failed".to_string(),
+            );
+            let local = state.local_bv_shared.clone();
+            let air_expr = exp_to_bv_expr(&state, &expr);
+            let assertion = Arc::new(StmtX::Assert(error, air_expr));
+            // this creates a separate query for the bv assertion
+            let query = Arc::new(QueryX { local: Arc::new(local), assertion });
+            state.commands.push(Arc::new(CommandX::CheckValid(query)));
+
+            vec![Arc::new(StmtX::Assume(exp_to_expr(ctx, &expr, expr_ctxt)))]
         }
         StmX::Assume(expr) => {
             if ctx.debug {
@@ -1010,6 +1130,8 @@ pub fn body_stm_to_air(
     // Some declarations (local_shared) are shared among the queries.
     // Others are private to each query.
     let mut local_shared: Vec<Decl> = Vec::new();
+    let mut local_bv_shared: Vec<Decl> = Vec::new();
+
     for x in typ_params.iter() {
         local_shared
             .push(Arc::new(DeclX::Const(suffix_typ_param_id(&x), str_typ(crate::def::TYPE))));
@@ -1020,6 +1142,11 @@ pub fn body_stm_to_air(
         } else {
             Arc::new(DeclX::Const(suffix_local_unique_id(&decl.ident), typ_to_air(ctx, &decl.typ)))
         });
+
+        if let Some(width) = bitwidth_from_type(&decl.typ) {
+            let typ = bv_typ(width);
+            local_bv_shared.push(Arc::new(DeclX::Var(suffix_local_unique_id(&decl.ident), typ)));
+        }
     }
 
     set_fuel(&mut local_shared, hidden);
@@ -1044,6 +1171,7 @@ pub fn body_stm_to_air(
 
     let mut state = State {
         local_shared,
+        local_bv_shared,
         commands: Vec::new(),
         snapshot_count: 0,
         sids: vec![initial_sid.clone()],

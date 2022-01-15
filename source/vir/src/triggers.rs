@@ -75,6 +75,7 @@ fn check_trigger_expr(exp: &Exp, free_vars: &mut HashSet<Ident>) -> Result<(), V
                 }
                 Le | Ge | Lt | Gt => Ok(exp.clone()),
                 Add | Sub | Mul | EuclideanDiv | EuclideanMod => Ok(exp.clone()),
+                BitXor | BitAnd | BitOr | Shr | Shl => Ok(exp.clone()),
             }
         }
         ExpX::If(_, _, _) => err_str(&exp.span, "triggers cannot contain if/else"),

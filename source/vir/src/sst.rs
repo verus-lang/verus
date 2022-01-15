@@ -63,6 +63,7 @@ pub enum StmX {
     Call(Fun, Typs, Exps, Option<Dest>),
     // note: failed assertion reports Stm's span, plus an optional additional span
     Assert(Option<Error>, Exp),
+    AssertBV(Exp),
     Assume(Exp),
     Assign {
         lhs: UniqueIdent,

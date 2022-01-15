@@ -104,6 +104,11 @@ pub fn assert_by(_: bool, _: ()) {
     unimplemented!();
 }
 
+#[proof]
+pub fn assert_bit_vector(_: bool) {
+    unimplemented!();
+}
+
 // Used internally by erase.rs
 #[spec]
 pub fn internal_arbitrary<A>(_: u64) -> A {

@@ -171,6 +171,9 @@ where
                     expr_visitor_control_flow!(expr_visitor_dfs(e1, map, mf));
                     expr_visitor_control_flow!(expr_visitor_dfs(e2, map, mf));
                 }
+                ExprX::AssertBV(e) => {
+                    expr_visitor_control_flow!(expr_visitor_dfs(e, map, mf));
+                }
                 ExprX::Fuel(_, _) => (),
                 ExprX::Header(_) => {
                     panic!("header expression not allowed here: {:?}", &expr.span);
@@ -378,6 +381,10 @@ where
             let proof = map_expr_visitor_env(proof, map, env, fe, fs, ft)?;
             map.pop_scope();
             ExprX::Forall { vars: Arc::new(vars), require, ensure, proof }
+        }
+        ExprX::AssertBV(e) => {
+            let expr1 = map_expr_visitor_env(e, map, env, fe, fs, ft)?;
+            ExprX::AssertBV(expr1)
         }
         ExprX::If(e1, e2, e3) => {
             let expr1 = map_expr_visitor_env(e1, map, env, fe, fs, ft)?;

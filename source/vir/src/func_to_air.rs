@@ -411,6 +411,10 @@ pub fn func_decl_to_air(
                 let axiom = Arc::new(DeclX::Axiom(expr));
                 decl_commands.push(Arc::new(CommandX::Global(axiom)));
             }
+            if function.x.attrs.bit_vector {
+                // TODO: function level bitvector mode
+                unimplemented!("function level bitvector mode");
+            }
         }
     }
     Ok((Arc::new(decl_commands), Arc::new(check_commands)))

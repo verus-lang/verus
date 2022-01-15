@@ -157,6 +157,7 @@ where
         StmX::Assert(_, _) => f(stm),
         StmX::Assume(_) => f(stm),
         StmX::Assign { .. } => f(stm),
+        StmX::AssertBV { .. } => f(stm),
         StmX::Fuel(..) => f(stm),
         StmX::DeadEnd(s) => {
             let s = map_stm_visitor(s, f)?;
@@ -219,6 +220,7 @@ where
                 Spanned::new(span, StmX::Call(path.clone(), typs.clone(), exps, (*dest).clone()))
             }
             StmX::Assert(span2, exp) => Spanned::new(span, StmX::Assert(span2.clone(), f(exp))),
+            StmX::AssertBV(exp) => Spanned::new(span, StmX::AssertBV(f(exp))),
             StmX::Assume(exp) => Spanned::new(span, StmX::Assume(f(exp))),
             StmX::Assign { lhs, rhs, is_init } => {
                 let rhs = f(rhs);

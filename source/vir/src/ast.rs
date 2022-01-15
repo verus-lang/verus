@@ -163,6 +163,12 @@ pub enum BinaryOp {
     EuclideanDiv,
     /// IntRange::Int % defined as Euclidean (returns non-negative result even for negative divisor)
     EuclideanMod,
+    /// Bit Vector Operators
+    BitXor,
+    BitAnd,
+    BitOr,
+    Shr,
+    Shl,
 }
 
 /// Ghost annotations on functions and while loops; must appear at the beginning of function body
@@ -291,6 +297,8 @@ pub enum ExprX {
     Admit,
     /// Forall or assert-by statement; proves "forall vars. ensure" via proof.
     Forall { vars: Binders<Typ>, require: Expr, ensure: Expr, proof: Expr },
+    /// bit vector assertions
+    AssertBV(Expr),
     /// If-else
     If(Expr, Expr, Option<Expr>),
     /// Match (Note: ast_simplify replaces Match with other expressions)
@@ -354,6 +362,8 @@ pub struct FunctionAttrsX {
     pub custom_req_err: Option<String>,
     /// coerce f(e, ...) to f(e.view(), ...)
     pub autoview: bool,
+    /// Verify using bitvector theory
+    pub bit_vector: bool,
 }
 
 /// Static function identifier

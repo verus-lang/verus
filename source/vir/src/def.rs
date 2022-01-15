@@ -108,6 +108,12 @@ pub const MK_FUN: &str = "mk_fun";
 const CHECK_DECREASE_INT: &str = "check_decrease_int";
 const HEIGHT: &str = "height";
 
+pub const UINT_XOR: &str = "uintxor";
+pub const UINT_AND: &str = "uintand";
+pub const UINT_OR: &str = "uintor";
+pub const UINT_SHR: &str = "uintshr";
+pub const UINT_SHL: &str = "uintshl";
+
 // We assume that usize is at least ARCH_SIZE_MIN_BITS wide
 pub const ARCH_SIZE_MIN_BITS: u32 = 32;
 

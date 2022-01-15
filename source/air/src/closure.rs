@@ -4,7 +4,7 @@ use crate::ast::{
 };
 use crate::ast_util::{ident_binder, mk_forall};
 use crate::context::Context;
-use crate::typecheck::DeclaredX;
+use crate::typecheck::{typ_eq, DeclaredX};
 use crate::util::vec_map;
 use std::sync::Arc;
 
@@ -372,6 +372,7 @@ fn simplify_expr(ctxt: &mut Context, state: &mut State, expr: &Expr) -> (Typ, Ex
             let typ = match c {
                 Constant::Bool(_) => Arc::new(TypX::Bool),
                 Constant::Nat(_) => Arc::new(TypX::Int),
+                Constant::BitVec(_, width) => Arc::new(TypX::BitVec(*width)),
             };
             (typ, expr.clone(), None)
         }
@@ -408,18 +409,39 @@ fn simplify_expr(ctxt: &mut Context, state: &mut State, expr: &Expr) -> (Typ, Ex
         ExprX::Unary(op, e1) => {
             let typ = match op {
                 UnaryOp::Not => Arc::new(TypX::Bool),
+                UnaryOp::BitExtract(high, _) => Arc::new(TypX::BitVec(high + 1)),
             };
             let (es, ts) = simplify_exprs_ref(ctxt, state, &vec![e1]);
             let (es, t) = enclose(state, App::Unary(*op), es, ts);
             (typ, Arc::new(ExprX::Unary(*op, es[0].clone())), t)
         }
         ExprX::Binary(op, e1, e2) => {
+            let (es, ts) = simplify_exprs_ref(ctxt, state, &vec![e1, e2]);
             let typ = match op {
                 BinaryOp::Implies | BinaryOp::Eq => Arc::new(TypX::Bool),
                 BinaryOp::Le | BinaryOp::Ge | BinaryOp::Lt | BinaryOp::Gt => Arc::new(TypX::Bool),
                 BinaryOp::EuclideanDiv | BinaryOp::EuclideanMod => Arc::new(TypX::Int),
+                BinaryOp::BitUGt | BinaryOp::BitULt | BinaryOp::BitUGe | BinaryOp::BitULe => {
+                    Arc::new(TypX::Bool)
+                }
+                BinaryOp::BitXor
+                | BinaryOp::BitAnd
+                | BinaryOp::BitOr
+                | BinaryOp::BitAdd
+                | BinaryOp::BitSub
+                | BinaryOp::BitMul
+                | BinaryOp::BitUDiv
+                | BinaryOp::LShr
+                | BinaryOp::Shl
+                | BinaryOp::BitUMod => {
+                    assert!(typ_eq(&(ts[0].0), &(ts[1].0)));
+                    ts[0].0.clone()
+                }
+                BinaryOp::BitConcat => match (&*ts[0].0, &*ts[1].0) {
+                    (TypX::BitVec(n1), TypX::BitVec(n2)) => Arc::new(TypX::BitVec(n1 + n2)),
+                    _ => panic!("internal error during processing concat"),
+                },
             };
-            let (es, ts) = simplify_exprs_ref(ctxt, state, &vec![e1, e2]);
             let (es, t) = enclose(state, App::Binary(*op), es, ts);
             (typ, Arc::new(ExprX::Binary(*op, es[0].clone(), es[1].clone())), t)
         }

@@ -90,6 +90,11 @@ impl Printer {
             TypX::Lambda if self.print_as_smt => str_to_node(crate::def::FUNCTION),
             TypX::Lambda => str_to_node("Fun"),
             TypX::Named(name) => str_to_node(&name.clone()),
+            TypX::BitVec(size) => Node::List(vec![
+                str_to_node("_"),
+                str_to_node("BitVec"),
+                str_to_node(&size.to_string()),
+            ]),
         }
     }
 
@@ -97,10 +102,24 @@ impl Printer {
         Node::List(vec_map(typs, |t| self.typ_to_node(t)))
     }
 
+    pub(crate) fn bv_const_expr_to_node(&self, n: &Arc<String>, width: &u32) -> Node {
+        let value = n.parse::<u128>().expect(&format!("could not parse option value {}", n));
+        if *width == 32 {
+            Node::Atom(format!("#x{:08x}", value))
+        } else if *width == 64 {
+            Node::Atom(format!("#x{:016x}", value))
+        } else if *width == 128 {
+            Node::Atom(format!("#x{:032x}", value))
+        } else {
+            panic!("unhandled bitwidth")
+        }
+    }
+
     pub(crate) fn expr_to_node(&self, expr: &Expr) -> Node {
         match &**expr {
             ExprX::Const(Constant::Bool(b)) => Node::Atom(b.to_string()),
             ExprX::Const(Constant::Nat(n)) => Node::Atom((**n).clone()),
+            ExprX::Const(Constant::BitVec(n, width)) => self.bv_const_expr_to_node(n, width),
             ExprX::Var(x) => Node::Atom(x.to_string()),
             ExprX::Old(snap, x) => {
                 nodes!(old {str_to_node(&snap.to_string())} {str_to_node(&x.to_string())})
@@ -126,8 +145,23 @@ impl Printer {
             ExprX::Unary(op, expr) => {
                 let sop = match op {
                     UnaryOp::Not => "not",
+                    UnaryOp::BitExtract(_, _) => "extract",
                 };
-                Node::List(vec![str_to_node(sop), self.expr_to_node(expr)])
+                // ( (_extract numeral numeral) BitVec )
+                match op {
+                    UnaryOp::Not => Node::List(vec![str_to_node(sop), self.expr_to_node(expr)]),
+                    UnaryOp::BitExtract(high, low) => {
+                        let mut nodes: Vec<Node> = Vec::new();
+                        let mut nodes_in: Vec<Node> = Vec::new();
+                        nodes_in.push(str_to_node("_"));
+                        nodes_in.push(str_to_node(sop));
+                        nodes_in.push(str_to_node(&high.to_string()));
+                        nodes_in.push(str_to_node(&low.to_string()));
+                        nodes.push(Node::List(nodes_in));
+                        nodes.push(self.expr_to_node(expr));
+                        Node::List(nodes)
+                    }
+                }
             }
             ExprX::Binary(op, lhs, rhs) => {
                 let sop = match op {
@@ -139,6 +173,22 @@ impl Printer {
                     BinaryOp::Gt => ">",
                     BinaryOp::EuclideanDiv => "div",
                     BinaryOp::EuclideanMod => "mod",
+
+                    BinaryOp::BitXor => "bvxor",
+                    BinaryOp::BitAnd => "bvand",
+                    BinaryOp::BitOr => "bvor",
+                    BinaryOp::BitAdd => "bvadd",
+                    BinaryOp::BitSub => "bvsub",
+                    BinaryOp::BitMul => "bvmul",
+                    BinaryOp::BitUDiv => "bvudiv",
+                    BinaryOp::BitUMod => "bvurem",
+                    BinaryOp::BitULt => "bvult",
+                    BinaryOp::BitUGt => "bvugt",
+                    BinaryOp::BitULe => "bvule",
+                    BinaryOp::BitUGe => "bvuge",
+                    BinaryOp::LShr => "bvlshr",
+                    BinaryOp::Shl => "bvshl",
+                    BinaryOp::BitConcat => "concat",
                 };
                 Node::List(vec![str_to_node(sop), self.expr_to_node(lhs), self.expr_to_node(rhs)])
             }

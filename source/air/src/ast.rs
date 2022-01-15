@@ -25,17 +25,20 @@ pub enum TypX {
     // Lambda deliberately omits argument, return types to make box/unbox for generics easier
     Lambda,
     Named(Ident),
+    BitVec(u32),
 }
 
 #[derive(Clone, PartialEq, Eq, Hash)] // for Debug, see ast_util
 pub enum Constant {
     Bool(bool),
     Nat(Arc<String>),
+    BitVec(Arc<String>, u32),
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum UnaryOp {
     Not,
+    BitExtract(u32, u32),
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
@@ -48,6 +51,22 @@ pub enum BinaryOp {
     Gt,
     EuclideanDiv,
     EuclideanMod,
+
+    BitXor,
+    BitAnd,
+    BitOr,
+    BitAdd,
+    BitSub,
+    BitMul,
+    BitUDiv,
+    BitULt,
+    BitUGt,
+    BitULe,
+    BitUGe,
+    BitUMod,
+    LShr,
+    Shl,
+    BitConcat,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]

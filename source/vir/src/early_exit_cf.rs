@@ -86,6 +86,7 @@ fn expr_get_early_exits_rec(expr: &Expr, in_loop: bool, results: &mut Vec<EarlyE
             expr_get_early_exits_rec(lhs, in_loop, results);
             expr_get_early_exits_rec(rhs, in_loop, results);
         }
+        ExprX::AssertBV(_) => {}
         ExprX::Fuel(_, _) => {}
         ExprX::Header(_) => {}
         ExprX::Admit => {}

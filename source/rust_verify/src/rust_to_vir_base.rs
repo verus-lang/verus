@@ -207,6 +207,8 @@ pub(crate) enum Attr {
     Trigger(Option<Vec<u64>>),
     // custom error string to report for precondition failures
     CustomReqErr(String),
+    // verify using bitvector theory
+    BitVector,
     // for unforgeable token types
     Unforgeable,
     // specifies an invariant block
@@ -275,6 +277,9 @@ pub(crate) fn parse_attrs(attrs: &[Attribute]) -> Result<Vec<Attr>, VirErr> {
                     if arg == "custom_req_err" =>
                 {
                     v.push(Attr::CustomReqErr(msg.clone()))
+                }
+                Some(box [AttrTree::Fun(_, arg, None)]) if arg == "bit_vector" => {
+                    v.push(Attr::BitVector)
                 }
                 Some(box [AttrTree::Fun(_, arg, Some(box [AttrTree::Fun(_, name, None)]))])
                     if arg == "returns" && name == "spec" =>
@@ -365,6 +370,7 @@ pub(crate) struct VerifierAttrs {
     pub(crate) export_as_global_forall: bool,
     pub(crate) autoview: bool,
     pub(crate) custom_req_err: Option<String>,
+    pub(crate) bit_vector: bool,
     pub(crate) unforgeable: bool,
 }
 
@@ -376,6 +382,7 @@ pub(crate) fn get_verifier_attrs(attrs: &[Attribute]) -> Result<VerifierAttrs, V
         export_as_global_forall: false,
         autoview: false,
         custom_req_err: None,
+        bit_vector: false,
         unforgeable: false,
     };
     for attr in parse_attrs(attrs)? {
@@ -386,6 +393,7 @@ pub(crate) fn get_verifier_attrs(attrs: &[Attribute]) -> Result<VerifierAttrs, V
             Attr::ExportAsGlobalForall => vs.export_as_global_forall = true,
             Attr::Autoview => vs.autoview = true,
             Attr::CustomReqErr(s) => vs.custom_req_err = Some(s.clone()),
+            Attr::BitVector => vs.bit_vector = true,
             Attr::Unforgeable => vs.unforgeable = true,
             _ => {}
         }
