@@ -213,6 +213,13 @@ where
                         expr_visitor_control_flow!(expr_visitor_dfs(inv, map, mf));
                     }
                 }
+                ExprX::OpenInvariant(inv, binder, body) => {
+                    expr_visitor_control_flow!(expr_visitor_dfs(inv, map, mf));
+                    map.push_scope(true);
+                    let _ = map.insert(binder.name.clone(), binder.a.clone());
+                    expr_visitor_control_flow!(expr_visitor_dfs(body, map, mf));
+                    map.pop_scope();
+                }
                 ExprX::Return(e1) => match e1 {
                     None => (),
                     Some(e) => expr_visitor_control_flow!(expr_visitor_dfs(e, map, mf)),
@@ -242,13 +249,6 @@ where
                             StmtX::Decl { .. } => map.pop_scope(),
                         }
                     }
-                }
-                ExprX::OpenInvariant(inv, binder, body) => {
-                    expr_visitor_control_flow!(expr_visitor_dfs(inv, map, mf));
-                    map.push_scope(true);
-                    let _ = map.insert(binder.name.clone(), binder.a.clone());
-                    expr_visitor_control_flow!(expr_visitor_dfs(body, map, mf));
-                    map.pop_scope();
                 }
             }
             VisitorControlFlow::Continue

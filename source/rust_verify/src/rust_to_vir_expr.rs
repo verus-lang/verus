@@ -2,12 +2,12 @@ use crate::context::BodyCtxt;
 use crate::erase::ResolvedCall;
 use crate::rust_to_vir_base::{
     def_id_to_vir_path, def_to_path_ident, get_range, get_trigger, get_var_mode, hack_get_def_name,
-    ident_to_var, is_smt_arith, is_smt_equality, mid_ty_to_vir, mid_ty_to_vir_opt, mk_range,
-    parse_attrs, ty_to_vir, typ_of_node, typ_of_node_expect_mut_ref, Attr,
+    ident_to_var, is_smt_arith, is_smt_equality, mid_ty_to_vir, mk_range, parse_attrs, ty_to_vir,
+    typ_of_node, typ_of_node_expect_mut_ref, Attr,
 };
 use crate::util::{
     err_span_str, err_span_string, slice_vec_map_result, spanned_new, spanned_typed_new,
-    unsupported_err_span, vec_map, vec_map_result,
+    unsupported_err_span, vec_map_result,
 };
 use crate::{unsupported, unsupported_err, unsupported_err_unless, unsupported_unless};
 use air::ast::{Binder, BinderX, Quant};
@@ -264,7 +264,6 @@ fn fn_call_to_vir<'tcx>(
     expr: &Expr<'tcx>,
     self_path: Option<vir::ast::Path>,
     f: DefId,
-    fun_ty: &'tcx rustc_middle::ty::TyS<'tcx>,
     node_substs: &[rustc_middle::ty::subst::GenericArg<'tcx>],
     fn_span: Span,
     args_slice: &'tcx [Expr<'tcx>],
@@ -577,30 +576,6 @@ fn fn_call_to_vir<'tcx>(
         let e = mk_expr(ExprX::Binary(vop, lhs, rhs));
         if is_arith_binary { Ok(mk_ty_clip(&expr_typ(), &e)) } else { Ok(e) }
     } else {
-        let (param_typs, ret_typ) = match fun_ty.kind() {
-            TyKind::FnDef(def_id, _substs) => {
-                let fn_sig = tcx.fn_sig(*def_id);
-                // TODO(utaal): I believe this remains safe in this context until we implement mutable
-                // references, at least
-                let f = fn_sig.skip_binder();
-                let params: Vec<Typ> = f
-                    .inputs()
-                    .iter()
-                    .map(|t| {
-                        if let TyKind::Ref(_, tys, rustc_ast::Mutability::Mut) = t.kind() {
-                            mid_ty_to_vir(bctx.ctxt.tcx, tys)
-                        } else {
-                            mid_ty_to_vir(tcx, *t)
-                        }
-                    })
-                    .collect();
-                let ret = mid_ty_to_vir_opt(tcx, f.output());
-                (params, ret)
-            }
-            _ => {
-                unsupported_err!(expr.span, format!("call to non-FnDef function"), expr)
-            }
-        };
         // filter out the Fn type parameters
         let mut fn_params: Vec<Ident> = Vec::new();
         for (x, _) in tcx.predicates_of(f).predicates {
@@ -628,67 +603,8 @@ fn fn_call_to_vir<'tcx>(
             }
         }
         let target = CallTarget::Static(name, Arc::new(typ_args));
-        let param_typs_is_tparam =
-            vec_map(&param_typs, |t| matches!(&**t, TypX::TypParam(x) if !fn_params.contains(x)));
-        let ret_typ_is_tparam =
-            ret_typ.map(|t| matches!(&*t, TypX::TypParam(x) if !fn_params.contains(x)));
-        fn_exp_call_to_vir(
-            expr.span,
-            param_typs_is_tparam,
-            ret_typ_is_tparam,
-            vir_args,
-            expr_typ(),
-            target,
-        )
+        Ok(spanned_typed_new(expr.span, &expr_typ(), ExprX::Call(target, Arc::new(vir_args))))
     }
-}
-
-fn fn_exp_call_to_vir<'tcx>(
-    span: Span,
-    param_typs_is_tparam: Vec<bool>,
-    ret_typ_is_tparam: Option<bool>,
-    mut vir_args: Vec<vir::ast::Expr>,
-    expr_typ: Typ,
-    target: CallTarget,
-) -> Result<vir::ast::Expr, VirErr> {
-    // box arguments where necessary
-    assert_eq!(vir_args.len(), param_typs_is_tparam.len());
-    for i in 0..vir_args.len() {
-        let arg = &vir_args[i].clone();
-        match (param_typs_is_tparam[i], &*arg.typ) {
-            (true, TypX::TypParam(_) | TypX::Boxed(_)) => {} // already boxed
-            (true, _) => {
-                let arg_typ = Arc::new(TypX::Boxed(arg.typ.clone()));
-                let arg_x = ExprX::UnaryOpr(UnaryOpr::Box(arg.typ.clone()), arg.clone());
-                vir_args[i] = SpannedTyped::new(&arg.span, &arg_typ, arg_x);
-            }
-            _ => {}
-        }
-    }
-    // return type
-    let possibly_boxed_ret_typ = match &ret_typ_is_tparam {
-        None => Arc::new(TypX::Tuple(Arc::new(vec![]))),
-        Some(ret_typ) => match (ret_typ, &*expr_typ) {
-            (true, TypX::TypParam(_) | TypX::Boxed(_)) => expr_typ.clone(), // already boxed
-            (true, _) => Arc::new(TypX::Boxed(expr_typ.clone())),
-            _ => expr_typ.clone(),
-        },
-    };
-    // make call
-    let mut call =
-        spanned_typed_new(span, &possibly_boxed_ret_typ, ExprX::Call(target, Arc::new(vir_args)));
-    // unbox result if necessary
-    if let Some(ret_typ) = ret_typ_is_tparam {
-        match (ret_typ, &*expr_typ) {
-            (true, TypX::TypParam(_) | TypX::Boxed(_)) => {} // already boxed
-            (true, _) => {
-                let call_x = ExprX::UnaryOpr(UnaryOpr::Unbox(expr_typ.clone()), call);
-                call = spanned_typed_new(span, &expr_typ, call_x);
-            }
-            _ => {}
-        }
-    }
-    Ok(call)
 }
 
 fn datatype_of_path(mut path: vir::ast::Path, pop_constructor: bool) -> vir::ast::Path {
@@ -722,7 +638,6 @@ pub(crate) fn expr_tuple_datatype_ctor_to_vir<'tcx>(
 ) -> Result<vir::ast::Expr, VirErr> {
     let tcx = bctx.ctxt.tcx;
     let expr_typ = typ_of_node(bctx, &expr.hir_id);
-    let variant = tcx.expect_variant_res(*res);
     if let Res::Def(DefKind::Ctor(ctor_of, ctor_kind), _def_id) = res {
         unsupported_unless!(
             ctor_of == &rustc_hir::def::CtorOf::Variant,
@@ -742,22 +657,7 @@ pub(crate) fn expr_tuple_datatype_ctor_to_vir<'tcx>(
             .iter()
             .enumerate()
             .map(|(i, e)| -> Result<_, VirErr> {
-                // TODO: deduplicate with Struct?
-                let fielddef = &variant.fields[i];
-                let field_typ = mid_ty_to_vir(tcx, tcx.type_of(fielddef.did));
-                let f_expr_typ = typ_of_node(bctx, &e.hir_id);
-                let mut vir = expr_to_vir(bctx, e, modifier)?;
-                match (&*field_typ, &*f_expr_typ) {
-                    (TypX::TypParam(_), TypX::TypParam(_)) => {} // already boxed
-                    (TypX::TypParam(_), _) => {
-                        vir = SpannedTyped::new(
-                            &vir.span,
-                            &Arc::new(TypX::Boxed(f_expr_typ.clone())),
-                            ExprX::UnaryOpr(UnaryOpr::Box(f_expr_typ), vir.clone()),
-                        );
-                    }
-                    _ => {}
-                }
+                let vir = expr_to_vir(bctx, e, modifier)?;
                 Ok(ident_binder(&positional_field_ident(i), &vir))
             })
             .collect::<Result<Vec<_>, _>>()?,
@@ -1158,7 +1058,6 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                     expr,
                     None,
                     expr_to_function(fun),
-                    bctx.types.node_type(fun.hir_id),
                     bctx.types.node_substs(fun.hir_id),
                     fun.span,
                     args_slice,
@@ -1174,16 +1073,14 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                     let vir_args = vec_map_result(&args, |arg| expr_to_vir(bctx, arg, modifier))?;
                     let expr_typ = typ_of_node(bctx, &expr.hir_id);
                     let target = CallTarget::FnSpec(vir_fun);
-
-                    // We box all closure params/rets; otherwise, we'd have to
-                    // perform boxing coercions on entire functions (e.g. (int) -> int to (A) -> A).
-                    let params: Vec<bool> = vec_map(&args, |_| true);
-                    let ret = Some(true);
-
                     let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
                     // Only spec closures are currently supported:
                     erasure_info.resolved_calls.push((fun.span.data(), ResolvedCall::Spec));
-                    fn_exp_call_to_vir(expr.span, params, ret, vir_args, expr_typ, target)
+                    Ok(spanned_typed_new(
+                        expr.span,
+                        &expr_typ,
+                        ExprX::Call(target, Arc::new(vir_args)),
+                    ))
                 }
             }
         }
@@ -1364,9 +1261,7 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                 TyKind::Ref(_, lt, Mutability::Not | Mutability::Mut) => lt,
                 _ => lhs_ty,
             };
-            let (datatype, variant_name, field_name, unbox) = if let Some(adt_def) =
-                lhs_ty.ty_adt_def()
-            {
+            let (datatype, variant_name, field_name) = if let Some(adt_def) = lhs_ty.ty_adt_def() {
                 unsupported_err_unless!(
                     adt_def.variants.len() == 1,
                     expr.span,
@@ -1376,18 +1271,7 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                 let datatype_path = def_id_to_vir_path(tcx, adt_def.did);
                 let variant = adt_def.variants.iter().next().unwrap();
                 let variant_name = str_ident(&variant.ident.as_str());
-                // TODO: deduplicate with Ctor?
-                // TODO: is there a compiler function to do this instead?
-                let fielddef = variant.fields.iter().find(|x| &x.ident == name).expect(
-                    format!("cannot find field {:?} in struct {:?}", name, datatype_path).as_str(),
-                );
-                let field_typ = mid_ty_to_vir(tcx, tcx.type_of(fielddef.did));
-                let unbox = match (&*expr_typ(), &*field_typ) {
-                    (TypX::TypParam(_), TypX::TypParam(_)) => None,
-                    (_, TypX::TypParam(_)) => Some(expr_typ().clone()),
-                    _ => None,
-                };
-                (datatype_path, variant_name, str_ident(&name.as_str()), unbox)
+                (datatype_path, variant_name, str_ident(&name.as_str()))
             } else {
                 let lhs_typ = typ_of_node(bctx, &lhs.hir_id);
                 if let TypX::Tuple(ts) = &*lhs_typ {
@@ -1401,11 +1285,8 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                 }
                 unsupported_err!(expr.span, "field_of_non_adt", expr)
             };
-            let field_type = match &unbox {
-                None => expr_typ().clone(),
-                Some(_) => Arc::new(TypX::Boxed(expr_typ().clone())),
-            };
-            let mut vir = spanned_typed_new(
+            let field_type = expr_typ().clone();
+            let vir = spanned_typed_new(
                 expr.span,
                 &field_type,
                 ExprX::UnaryOpr(
@@ -1415,13 +1296,6 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
             );
             let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
             erasure_info.resolved_exprs.push((expr.span.data(), vir.clone()));
-            if let Some(target_typ) = unbox {
-                vir = SpannedTyped::new(
-                    &vir.span,
-                    &expr_typ(),
-                    ExprX::UnaryOpr(UnaryOpr::Unbox(target_typ), vir.clone()),
-                );
-            }
             Ok(vir)
         }
         ExprKind::If(cond, lhs, rhs) => {
@@ -1514,7 +1388,7 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                 None => None,
                 Some(update) => Some(expr_to_vir(bctx, update, modifier)?),
             };
-            let (path, path_span, variant, variant_name) = match qpath {
+            let (path, path_span, variant_name) = match qpath {
                 QPath::Resolved(slf, path) => {
                     unsupported_unless!(
                         matches!(path.res, Res::Def(DefKind::Struct | DefKind::Variant, _)),
@@ -1531,7 +1405,7 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                             .expect(format!("variant name in Struct ctor for {:?}", path).as_str());
                     }
                     let variant_name = str_ident(&variant.ident.as_str());
-                    (vir_path, path.span, variant, variant_name)
+                    (vir_path, path.span, variant_name)
                 }
                 _ => panic!("unexpected qpath {:?}", qpath),
             };
@@ -1539,26 +1413,7 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                 fields
                     .iter()
                     .map(|f| -> Result<_, VirErr> {
-                        // TODO: is there a compiler function to do this instead?
-                        let fielddef = variant.fields.iter().find(|x| x.ident == f.ident).expect(
-                            format!("cannot find field {:?} in struct {:?}", f.ident, path)
-                                .as_str(),
-                        );
-                        let field_typ = mid_ty_to_vir(tcx, tcx.type_of(fielddef.did));
-                        let f_expr_typ = typ_of_node(bctx, &f.expr.hir_id);
-                        let mut vir = expr_to_vir(bctx, f.expr, modifier)?;
-                        // TODO: deduplicate with Call?
-                        match (&*field_typ, &*f_expr_typ) {
-                            (TypX::TypParam(_), TypX::TypParam(_)) => {} // already boxed
-                            (TypX::TypParam(_), _) => {
-                                vir = SpannedTyped::new(
-                                    &vir.span,
-                                    &Arc::new(TypX::Boxed(f_expr_typ.clone())),
-                                    ExprX::UnaryOpr(UnaryOpr::Box(f_expr_typ.clone()), vir.clone()),
-                                );
-                            }
-                            _ => {}
-                        }
+                        let vir = expr_to_vir(bctx, f.expr, modifier)?;
                         Ok(ident_binder(&str_ident(&f.ident.as_str()), &vir))
                     })
                     .collect::<Result<Vec<_>, _>>()?,
@@ -1591,7 +1446,6 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                 expr,
                 Some(self_path),
                 fn_def_id,
-                tcx.type_of(fn_def_id),
                 bctx.types.node_substs(expr.hir_id),
                 *call_span_1,
                 all_args,
@@ -1609,7 +1463,11 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                 })
                 .collect();
             let body = expr_to_vir(bctx, &body.value, modifier)?;
-            Ok(mk_expr(ExprX::Closure(Arc::new(params), body)))
+            // Rust seems to report the type (A, B) -> C as ((A, B)) -> C,
+            // so recompute the type ourselves:
+            let typs = params.iter().map(|b| b.a.clone()).collect();
+            let typ = Arc::new(TypX::Lambda(Arc::new(typs), body.typ.clone()));
+            Ok(spanned_typed_new(expr.span, &typ, ExprX::Closure(Arc::new(params), body)))
         }
         ExprKind::Index(tgt_expr, idx_expr) => {
             let tgt_vir = expr_to_vir(bctx, tgt_expr, modifier)?;

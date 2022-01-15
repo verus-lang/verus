@@ -1,19 +1,20 @@
 use crate::ast::{
-    BinaryOp, Fun, Ident, Idents, IntRange, MaskSpec, Mode, Params, Path, SpannedTyped, Typ, TypX,
-    Typs, UnaryOp, UnaryOpr, VarAt,
+    BinaryOp, Fun, Ident, Idents, IntRange, MaskSpec, Mode, Params, Path, PathX, SpannedTyped, Typ,
+    TypX, Typs, UnaryOp, UnaryOpr, VarAt,
 };
 use crate::ast_util::{bitwidth_from_type, get_field, get_variant};
 use crate::context::Ctx;
 use crate::def::{fn_inv_name, fn_namespace_name};
 use crate::def::{
-    fun_to_string, path_to_string, prefix_box, prefix_ensures, prefix_fuel_id, prefix_pre_var,
-    prefix_requires, snapshot_ident, suffix_global_id, suffix_local_expr_id, suffix_local_stmt_id,
-    suffix_local_unique_id, suffix_typ_param_id, variant_field_ident, variant_ident, SnapPos,
-    SpanKind, Spanned, FUEL_BOOL, FUEL_BOOL_DEFAULT, FUEL_DEFAULTS, FUEL_ID, FUEL_PARAM, FUEL_TYPE,
-    POLY, SNAPSHOT_CALL, SNAPSHOT_PRE, SUCC, SUFFIX_SNAP_JOIN, SUFFIX_SNAP_MUT,
-    SUFFIX_SNAP_WHILE_BEGIN, SUFFIX_SNAP_WHILE_END,
+    fun_to_string, path_to_string, prefix_box, prefix_ensures, prefix_fuel_id, prefix_lambda_type,
+    prefix_pre_var, prefix_requires, prefix_unbox, snapshot_ident, suffix_global_id,
+    suffix_local_expr_id, suffix_local_stmt_id, suffix_local_unique_id, suffix_typ_param_id,
+    variant_field_ident, variant_ident, SnapPos, SpanKind, Spanned, FUEL_BOOL, FUEL_BOOL_DEFAULT,
+    FUEL_DEFAULTS, FUEL_ID, FUEL_PARAM, FUEL_TYPE, POLY, SNAPSHOT_CALL, SNAPSHOT_PRE, SUCC,
+    SUFFIX_SNAP_JOIN, SUFFIX_SNAP_MUT, SUFFIX_SNAP_WHILE_BEGIN, SUFFIX_SNAP_WHILE_END,
 };
 use crate::inv_masks::MaskSet;
+use crate::poly::{typ_as_mono, MonoTyp, MonoTypX};
 use crate::sst::{BndX, Dest, Exp, ExpX, LocalDecl, Stm, StmX, UniqueIdent};
 use crate::sst_vars::AssignMap;
 use crate::util::vec_map;
@@ -56,17 +57,68 @@ pub(crate) fn apply_range_fun(name: &str, range: &IntRange, exprs: Vec<Expr>) ->
     str_apply(name, &args)
 }
 
-pub(crate) fn typ_to_air(_ctx: &Ctx, typ: &Typ) -> air::ast::Typ {
+pub(crate) fn monotyp_to_path(typ: &MonoTyp) -> Path {
+    let id = match &**typ {
+        MonoTypX::Bool => str_ident("bool"),
+        MonoTypX::Int(range) => match range {
+            IntRange::Int => str_ident("int"),
+            IntRange::Nat => str_ident("nat"),
+            IntRange::U(n) => Arc::new(format!("u{}", n)),
+            IntRange::I(n) => Arc::new(format!("i{}", n)),
+            IntRange::USize => str_ident("usize"),
+            IntRange::ISize => str_ident("isize"),
+        },
+        MonoTypX::Datatype(path, typs) => {
+            return crate::def::monotyp_apply(path, &typs.iter().map(monotyp_to_path).collect());
+        }
+    };
+    Arc::new(PathX { krate: None, segments: Arc::new(vec![id]) })
+}
+
+pub(crate) fn typ_to_air(ctx: &Ctx, typ: &Typ) -> air::ast::Typ {
     match &**typ {
         TypX::Int(_) => int_typ(),
         TypX::Bool => bool_typ(),
         TypX::Tuple(_) => panic!("internal error: Tuple should have been removed by ast_simplify"),
         TypX::Lambda(..) => Arc::new(air::ast::TypX::Lambda),
-        TypX::Datatype(path, _) => ident_typ(&path_to_air_ident(path)),
+        TypX::Datatype(path, _) => {
+            if ctx.datatype_is_transparent[path] {
+                ident_typ(&path_to_air_ident(path))
+            } else {
+                match typ_as_mono(typ) {
+                    None => panic!("abstract datatype should be boxed"),
+                    Some(monotyp) => ident_typ(&path_to_air_ident(&monotyp_to_path(&monotyp))),
+                }
+            }
+        }
         TypX::Boxed(_) => str_typ(POLY),
         TypX::TypParam(_) => str_typ(POLY),
         TypX::TypeId => str_typ(crate::def::TYPE),
         TypX::Air(t) => t.clone(),
+    }
+}
+
+pub fn range_to_id(range: &IntRange) -> Expr {
+    match range {
+        IntRange::Int => str_var(crate::def::TYPE_ID_INT),
+        IntRange::Nat => str_var(crate::def::TYPE_ID_NAT),
+        IntRange::U(_) | IntRange::USize => {
+            apply_range_fun(crate::def::TYPE_ID_UINT, range, vec![])
+        }
+        IntRange::I(_) | IntRange::ISize => {
+            apply_range_fun(crate::def::TYPE_ID_SINT, range, vec![])
+        }
+    }
+}
+
+pub fn monotyp_to_id(typ: &MonoTyp) -> Expr {
+    match &**typ {
+        MonoTypX::Int(range) => range_to_id(range),
+        MonoTypX::Bool => str_var(crate::def::TYPE_ID_BOOL),
+        MonoTypX::Datatype(path, typs) => {
+            let f_name = crate::def::prefix_type_id(path);
+            air::ast_util::ident_apply_or_var(&f_name, &Arc::new(vec_map(&**typs, monotyp_to_id)))
+        }
     }
 }
 
@@ -76,25 +128,23 @@ pub(crate) fn typ_to_air(_ctx: &Ctx, typ: &Typ) -> air::ast::Typ {
 // 2) The box(unbox(x)) == x axiom
 pub fn typ_to_id(typ: &Typ) -> Expr {
     match &**typ {
-        TypX::Int(range) => match range {
-            IntRange::Int => str_var(crate::def::TYPE_ID_INT),
-            IntRange::Nat => str_var(crate::def::TYPE_ID_NAT),
-            IntRange::U(_) | IntRange::USize => {
-                apply_range_fun(crate::def::TYPE_ID_UINT, range, vec![])
-            }
-            IntRange::I(_) | IntRange::ISize => {
-                apply_range_fun(crate::def::TYPE_ID_SINT, range, vec![])
-            }
-        },
+        TypX::Int(range) => range_to_id(range),
         TypX::Bool => str_var(crate::def::TYPE_ID_BOOL),
         TypX::Tuple(_) => panic!("internal error: Tuple should have been removed by ast_simplify"),
-        TypX::Lambda(..) => str_var(crate::def::TYPE_ID_FUN),
+        TypX::Lambda(typs, typ) => fun_id(typs, typ),
         TypX::Datatype(path, typs) => datatype_id(path, typs),
-        TypX::Boxed(_) => panic!("internal error: type arguments should be unboxed"),
+        TypX::Boxed(typ) => typ_to_id(typ),
         TypX::TypParam(x) => ident_var(&suffix_typ_param_id(x)),
         TypX::TypeId => panic!("internal error: typ_to_id of TypeId"),
         TypX::Air(_) => panic!("internal error: typ_to_id of Air"),
     }
+}
+
+pub(crate) fn fun_id(typs: &Typs, typ: &Typ) -> Expr {
+    let f_name = crate::def::prefix_type_id_fun(typs.len());
+    let mut typids: Vec<Expr> = vec_map(&**typs, typ_to_id);
+    typids.push(typ_to_id(typ));
+    air::ast_util::ident_apply_or_var(&f_name, &Arc::new(typids))
 }
 
 pub(crate) fn datatype_id(path: &Path, typs: &Typs) -> Expr {
@@ -106,20 +156,15 @@ pub(crate) fn datatype_has_type(path: &Path, typs: &Typs, expr: &Expr) -> Expr {
     str_apply(crate::def::HAS_TYPE, &vec![expr.clone(), datatype_id(path, typs)])
 }
 
-pub(crate) fn typ_has_invariant(ctx: &Ctx, typ: &Typ) -> bool {
-    match &**typ {
-        TypX::Int(IntRange::Int) => false,
-        TypX::Int(_) => true,
-        TypX::Datatype(path, _) => ctx.datatypes_with_invariant.contains(path),
-        TypX::TypParam(_) => true,
-        _ => false,
-    }
+pub(crate) fn expr_has_type(id: &Expr, expr: &Expr) -> Expr {
+    str_apply(crate::def::HAS_TYPE, &vec![expr.clone(), id.clone()])
 }
 
 // If expr has type typ, what can we assume to be true about expr?
 // For refinement types, transparent datatypes potentially containing refinement types,
+// abstract types applied to type variables,
 // and type variables potentially instantiated with refinement types, return Some invariant.
-// For non-refinement types and abstract types, return None,
+// For non-refinement types and abstract monotypes, return None,
 // since the SMT sorts for these types can express the types precisely with no need for refinement.
 pub(crate) fn typ_invariant(ctx: &Ctx, typ: &Typ, expr: &Expr) -> Option<Expr> {
     // Should be kept in sync with vir::context::datatypes_invs and typ_has_invariant
@@ -138,10 +183,27 @@ pub(crate) fn typ_invariant(ctx: &Ctx, typ: &Typ, expr: &Expr) -> Option<Expr> {
             };
             Some(apply_range_fun(&f_name, &range, vec![expr.clone()]))
         }
-        TypX::Datatype(path, typs) if ctx.datatypes_with_invariant.contains(path) => {
-            let box_expr = ident_apply(&prefix_box(&path), &vec![expr.clone()]);
-            Some(datatype_has_type(path, typs, &box_expr))
+        TypX::Lambda(..) => Some(str_apply(
+            crate::def::HAS_TYPE,
+            &vec![try_box(ctx, expr.clone(), typ).expect("try_box lambda"), typ_to_id(typ)],
+        )),
+        TypX::Datatype(path, typs) => {
+            if ctx.datatype_is_transparent[path] {
+                if ctx.datatypes_with_invariant.contains(path) {
+                    let box_expr = ident_apply(&prefix_box(&path), &vec![expr.clone()]);
+                    Some(datatype_has_type(path, typs, &box_expr))
+                } else {
+                    None
+                }
+            } else {
+                if typ_as_mono(typ).is_none() {
+                    panic!("abstract datatype should be boxed")
+                } else {
+                    None
+                }
+            }
         }
+        TypX::Boxed(t) => Some(str_apply(crate::def::HAS_TYPE, &vec![expr.clone(), typ_to_id(t)])),
         TypX::TypParam(x) => Some(str_apply(
             crate::def::HAS_TYPE,
             &vec![expr.clone(), ident_var(&suffix_typ_param_id(&x))],
@@ -150,13 +212,24 @@ pub(crate) fn typ_invariant(ctx: &Ctx, typ: &Typ, expr: &Expr) -> Option<Expr> {
     }
 }
 
-fn try_box(expr: Expr, typ: &Typ) -> Option<Expr> {
+fn try_box(ctx: &Ctx, expr: Expr, typ: &Typ) -> Option<Expr> {
     let f_name = match &**typ {
         TypX::Bool => Some(str_ident(crate::def::BOX_BOOL)),
         TypX::Int(_) => Some(str_ident(crate::def::BOX_INT)),
-        TypX::Datatype(path, _) => Some(prefix_box(&path)),
         TypX::Tuple(_) => None,
-        TypX::Lambda(..) => Some(str_ident(crate::def::BOX_FUN)),
+        TypX::Lambda(typs, _) => Some(prefix_box(&prefix_lambda_type(typs.len()))),
+        TypX::Datatype(path, _) => {
+            if ctx.datatype_is_transparent[path] {
+                Some(prefix_box(&path))
+            } else {
+                if let Some(monotyp) = typ_as_mono(typ) {
+                    let dpath = crate::sst_to_air::monotyp_to_path(&monotyp);
+                    Some(prefix_box(&dpath))
+                } else {
+                    panic!("abstract datatype should be boxed")
+                }
+            }
+        }
         TypX::Boxed(_) => None,
         TypX::TypParam(_) => None,
         TypX::TypeId => None,
@@ -165,19 +238,60 @@ fn try_box(expr: Expr, typ: &Typ) -> Option<Expr> {
     f_name.map(|f_name| ident_apply(&f_name, &vec![expr]))
 }
 
-fn try_unbox(expr: Expr, typ: &Typ) -> Option<Expr> {
+fn try_unbox(ctx: &Ctx, expr: Expr, typ: &Typ) -> Option<Expr> {
     let f_name = match &**typ {
         TypX::Bool => Some(str_ident(crate::def::UNBOX_BOOL)),
         TypX::Int(_) => Some(str_ident(crate::def::UNBOX_INT)),
-        TypX::Datatype(path, _) => Some(crate::def::prefix_unbox(&path)),
+        TypX::Datatype(path, _) => {
+            if ctx.datatype_is_transparent[path] {
+                Some(prefix_unbox(&path))
+            } else {
+                if let Some(monotyp) = typ_as_mono(typ) {
+                    let dpath = crate::sst_to_air::monotyp_to_path(&monotyp);
+                    Some(prefix_unbox(&dpath))
+                } else {
+                    panic!("abstract datatype should stay boxed")
+                }
+            }
+        }
         TypX::Tuple(_) => None,
-        TypX::Lambda(..) => Some(str_ident(crate::def::UNBOX_FUN)),
+        TypX::Lambda(typs, _) => Some(prefix_unbox(&prefix_lambda_type(typs.len()))),
         TypX::Boxed(_) => None,
         TypX::TypParam(_) => None,
         TypX::TypeId => None,
         TypX::Air(_) => None,
     };
     f_name.map(|f_name| ident_apply(&f_name, &vec![expr]))
+}
+
+fn call_inv(ctx: &Ctx, outer: Expr, inner: Expr, typ: &Typ) -> Expr {
+    let inv_fn_ident = suffix_global_id(&fun_to_air_ident(&fn_inv_name()));
+    let typ_expr = typ_to_id(typ);
+    let boxed_inner = try_box(ctx, inner.clone(), typ).unwrap_or(inner);
+    let args = vec![typ_expr, outer, boxed_inner];
+    return ident_apply(&inv_fn_ident, &args);
+}
+
+fn call_namespace(arg: Expr, typ: &Typ) -> Expr {
+    let inv_fn_ident = suffix_global_id(&fun_to_air_ident(&fn_namespace_name()));
+    let typ_expr = typ_to_id(typ);
+    let args = vec![typ_expr, arg];
+    return ident_apply(&inv_fn_ident, &args);
+}
+
+pub fn mask_set_from_spec(spec: &MaskSpec, mode: Mode) -> MaskSet {
+    match spec {
+        MaskSpec::NoSpec => {
+            // By default, we assume an #[exec] fn can open any invariant, and that
+            // a #[proof] fn can open no invariants.
+            if mode == Mode::Exec { MaskSet::full() } else { MaskSet::empty() }
+        }
+        MaskSpec::InvariantOpens(exprs) if exprs.len() == 0 => MaskSet::empty(),
+        MaskSpec::InvariantOpensExcept(exprs) if exprs.len() == 0 => MaskSet::full(),
+        MaskSpec::InvariantOpens(_exprs) | MaskSpec::InvariantOpensExcept(_exprs) => {
+            panic!("custom mask specs are not yet implemented");
+        }
+    }
 }
 
 pub(crate) fn ctor_to_apply<'a>(
@@ -255,11 +369,11 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: ExprCtxt) -> Expr {
         ExpX::UnaryOpr(op, exp) => match op {
             UnaryOpr::Box(typ) => {
                 let expr = exp_to_expr(ctx, exp, expr_ctxt);
-                try_box(expr, typ).expect("Box")
+                try_box(ctx, expr, typ).expect("Box")
             }
             UnaryOpr::Unbox(typ) => {
                 let expr = exp_to_expr(ctx, exp, expr_ctxt);
-                try_unbox(expr, typ).expect("Unbox")
+                try_unbox(ctx, expr, typ).expect("Unbox")
             }
             UnaryOpr::HasType(typ) => {
                 let expr = exp_to_expr(ctx, exp, expr_ctxt);
@@ -274,7 +388,6 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: ExprCtxt) -> Expr {
                 panic!("internal error: TupleField should have been removed before here")
             }
             UnaryOpr::Field { datatype, variant, field } => {
-                // TODO: this should include datatype, variant in the function name
                 let expr = exp_to_expr(ctx, exp, expr_ctxt);
                 Arc::new(ExprX::Apply(
                     variant_field_ident(datatype, variant, field),
@@ -399,7 +512,8 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: ExprCtxt) -> Expr {
                     let name = suffix_local_expr_id(&b.name);
                     Arc::new(BinderX { name, a: typ_to_air(ctx, &b.a) })
                 });
-                air::ast_util::mk_lambda(&binders, &expr)
+                let lambda = air::ast_util::mk_lambda(&binders, &expr);
+                str_apply(crate::def::MK_FUN, &vec![lambda])
             }
             BndX::Choose(binder, trigs) => {
                 let mut expr = exp_to_expr(ctx, exp, expr_ctxt);
@@ -415,13 +529,12 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: ExprCtxt) -> Expr {
                 });
                 let bind = Arc::new(BindX::Choose(binder, Arc::new(triggers)));
                 let mut choose_expr = Arc::new(ExprX::Bind(bind, expr));
-                match (typ_inv, try_box(choose_expr.clone(), typ)) {
-                    (Some(_), Some(boxed)) => {
+                match typ_inv {
+                    Some(_) => {
                         // use as_type to coerce expression to some value of the requested type,
                         // even if the choose expression is unsatisfiable
                         let id = typ_to_id(typ);
-                        let as_typed = str_apply(crate::def::AS_TYPE, &vec![boxed, id]);
-                        choose_expr = try_unbox(as_typed, typ).expect("Choose: unbox");
+                        choose_expr = str_apply(crate::def::AS_TYPE, &vec![choose_expr, id]);
                     }
                     _ => {}
                 }
@@ -584,7 +697,10 @@ fn exp_to_bv_expr(state: &State, exp: &Exp) -> Expr {
                     }
                 }
                 _ => {
-                    panic!("unhandled bv unary operation {:?} or IntRange error: should be I(_) or U(_) but {:?}", op, exp.typ)
+                    panic!(
+                        "unhandled bv unary operation {:?} or IntRange error: should be I(_) or U(_) but {:?}",
+                        op, exp.typ
+                    )
                 }
             }
         }
@@ -886,6 +1002,46 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
             }
             stmts
         }
+        StmX::OpenInvariant(inv_exp, uid, typ, body_stm) => {
+            let mut stmts = vec![];
+
+            // Build the inv_expr. Note: In the SST, this should have been assigned
+            // to a tmp variable
+            // to ensure that its value is constant across the entire invariant block.
+            // We will be referencing it later.
+            let inv_expr = exp_to_expr(ctx, inv_exp, ExprCtxt::Body);
+
+            // Assert that the namespace of the inv we are opening is in the mask set
+            let namespace_expr = call_namespace(inv_expr.clone(), typ);
+            state.mask.assert_contains(&inv_exp.span, &namespace_expr, &mut stmts);
+
+            // add an 'assume' that inv holds
+            let inner_var = SpannedTyped::new(&stm.span, typ, ExpX::Var(uid.clone()));
+            let inner_expr = exp_to_expr(ctx, &inner_var, ExprCtxt::Body);
+            let ty_inv_opt = typ_invariant(ctx, typ, &inner_expr);
+            if let Some(ty_inv) = ty_inv_opt {
+                stmts.push(Arc::new(StmtX::Assume(ty_inv)));
+            }
+            let main_inv = call_inv(ctx, inv_expr, inner_expr, typ);
+            stmts.push(Arc::new(StmtX::Assume(main_inv.clone())));
+
+            // process the body
+            // first remove the namespace from the mask set so that we cannot re-open
+            // the same invariant inside
+            let mut inner_mask = state.mask.remove_element(inv_exp.span.clone(), namespace_expr);
+            swap(&mut state.mask, &mut inner_mask);
+            stmts.append(&mut stm_to_stmts(ctx, state, body_stm));
+            swap(&mut state.mask, &mut inner_mask);
+
+            // assert the invariant still holds
+            // Note that we re-use main_inv here; but main_inv references the variable
+            // given by `uid` which may have been assigned to since the start of the block.
+            // so this may evaluate differently in the SMT.
+            let error = error("Cannot show invariant holds at end of block", &body_stm.span);
+            stmts.push(Arc::new(StmtX::Assert(error, main_inv)));
+
+            stmts
+        }
         StmX::Fuel(x, fuel) => {
             let mut stmts: Vec<Stmt> = Vec::new();
             if *fuel >= 1 {
@@ -924,62 +1080,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
             }
             stmts
         }
-        StmX::OpenInvariant(inv_exp, uid, typ, body_stm) => {
-            let mut stmts = vec![];
-
-            // Build the inv_expr. Note: In the SST, this should have been assigned
-            // to a tmp variable
-            // to ensure that its value is constant across the entire invariant block.
-            // We will be referencing it later.
-            let inv_expr = exp_to_expr(ctx, inv_exp, ExprCtxt::Body);
-
-            // Assert that the namespace of the inv we are opening is in the mask set
-            let namespace_expr = call_namespace(inv_expr.clone(), typ);
-            state.mask.assert_contains(&inv_exp.span, &namespace_expr, &mut stmts);
-
-            // add an 'assume' that inv holds
-            let inner_var = SpannedTyped::new(&stm.span, typ, ExpX::Var(uid.clone()));
-            let inner_expr = exp_to_expr(ctx, &inner_var, ExprCtxt::Body);
-            let ty_inv_opt = typ_invariant(ctx, typ, &inner_expr);
-            if let Some(ty_inv) = ty_inv_opt {
-                stmts.push(Arc::new(StmtX::Assume(ty_inv)));
-            }
-            let main_inv = call_inv(inv_expr, inner_expr, typ);
-            stmts.push(Arc::new(StmtX::Assume(main_inv.clone())));
-
-            // process the body
-            // first remove the namespace from the mask set so that we cannot re-open
-            // the same invariant inside
-            let mut inner_mask = state.mask.remove_element(inv_exp.span.clone(), namespace_expr);
-            swap(&mut state.mask, &mut inner_mask);
-            stmts.append(&mut stm_to_stmts(ctx, state, body_stm));
-            swap(&mut state.mask, &mut inner_mask);
-
-            // assert the invariant still holds
-            // Note that we re-use main_inv here; but main_inv references the variable
-            // given by `uid` which may have been assigned to since the start of the block.
-            // so this may evaluate differently in the SMT.
-            let error = error("Cannot show invariant holds at end of block", &body_stm.span);
-            stmts.push(Arc::new(StmtX::Assert(error, main_inv)));
-
-            stmts
-        }
     }
-}
-
-fn call_inv(outer: Expr, inner: Expr, typ: &Typ) -> Expr {
-    let inv_fn_ident = suffix_global_id(&fun_to_air_ident(&fn_inv_name()));
-    let typ_expr = typ_to_id(typ);
-    let boxed_inner = try_box(inner.clone(), typ).unwrap_or(inner);
-    let args = vec![typ_expr, outer, boxed_inner];
-    return ident_apply(&inv_fn_ident, &args);
-}
-
-fn call_namespace(arg: Expr, typ: &Typ) -> Expr {
-    let inv_fn_ident = suffix_global_id(&fun_to_air_ident(&fn_namespace_name()));
-    let typ_expr = typ_to_id(typ);
-    let args = vec![typ_expr, arg];
-    return ident_apply(&inv_fn_ident, &args);
 }
 
 fn set_fuel(local: &mut Vec<Decl>, hidden: &Vec<Fun>) {
@@ -1011,21 +1112,6 @@ fn set_fuel(local: &mut Vec<Decl>, hidden: &Vec<Fun>) {
         mk_bind_expr(&bind, &or)
     };
     local.push(Arc::new(DeclX::Axiom(fuel_expr)));
-}
-
-pub fn mask_set_from_spec(spec: &MaskSpec, mode: Mode) -> MaskSet {
-    match spec {
-        MaskSpec::NoSpec => {
-            // By default, we assume an #[exec] fn can open any invariant, and that
-            // a #[proof] fn can open no invariants.
-            if mode == Mode::Exec { MaskSet::full() } else { MaskSet::empty() }
-        }
-        MaskSpec::InvariantOpens(exprs) if exprs.len() == 0 => MaskSet::empty(),
-        MaskSpec::InvariantOpensExcept(exprs) if exprs.len() == 0 => MaskSet::full(),
-        MaskSpec::InvariantOpens(_exprs) | MaskSpec::InvariantOpensExcept(_exprs) => {
-            panic!("custom mask specs are not yet implemented");
-        }
-    }
 }
 
 pub fn body_stm_to_air(

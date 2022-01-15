@@ -41,6 +41,7 @@ pub mod func_to_air;
 pub mod headers;
 mod inv_masks;
 pub mod modes;
+pub mod poly;
 mod prelude;
 pub mod prune;
 mod recursion;

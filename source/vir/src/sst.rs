@@ -81,8 +81,8 @@ pub enum StmX {
         typ_inv_vars: Arc<Vec<(UniqueIdent, Typ)>>,
         modified_vars: Arc<Vec<UniqueIdent>>,
     },
-    Block(Stms),
     OpenInvariant(Exp, UniqueIdent, Typ, Stm),
+    Block(Stms),
 }
 
 pub type LocalDecl = Arc<LocalDeclX>;

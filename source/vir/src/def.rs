@@ -1,5 +1,6 @@
 use crate::ast::{Fun, FunX, Path, PathX};
 use crate::sst::UniqueIdent;
+use crate::util::vec_map;
 use air::ast::{Ident, Span};
 use air::ast_util::str_ident;
 use std::fmt::Debug;
@@ -51,12 +52,16 @@ const PREFIX_TYPE_ID: &str = "TYPE%";
 const PREFIX_TUPLE_TYPE: &str = "tuple%";
 const PREFIX_TUPLE_PARAM: &str = "T%";
 const PREFIX_TUPLE_FIELD: &str = "field%";
+const PREFIX_LAMBDA_TYPE: &str = "fun%";
 const PREFIX_SNAPSHOT: &str = "snap%";
 const PATH_SEPARATOR: &str = ".";
+const PATHS_SEPARATOR: &str = "/";
 const VARIANT_SEPARATOR: &str = "/";
 const VARIANT_FIELD_SEPARATOR: &str = "/";
 const FUN_TRAIT_DEF_BEGIN: &str = "<";
 const FUN_TRAIT_DEF_END: &str = ">";
+const MONOTYPE_APP_BEGIN: &str = "<";
+const MONOTYPE_APP_END: &str = ">";
 const DECREASE_AT_ENTRY: &str = "decrease%init";
 
 pub const SUFFIX_SNAP_MUT: &str = "_mutation";
@@ -89,19 +94,17 @@ pub const SNAPSHOT_PRE: &str = "PRE";
 pub const POLY: &str = "Poly";
 pub const BOX_INT: &str = "I";
 pub const BOX_BOOL: &str = "B";
-pub const BOX_FUN: &str = "F";
 pub const UNBOX_INT: &str = "%I";
 pub const UNBOX_BOOL: &str = "%B";
-pub const UNBOX_FUN: &str = "%F";
 pub const TYPE: &str = "Type";
 pub const TYPE_ID_BOOL: &str = "BOOL";
 pub const TYPE_ID_INT: &str = "INT";
-pub const TYPE_ID_FUN: &str = "FUN";
 pub const TYPE_ID_NAT: &str = "NAT";
 pub const TYPE_ID_UINT: &str = "UINT";
 pub const TYPE_ID_SINT: &str = "SINT";
 pub const HAS_TYPE: &str = "has_type";
 pub const AS_TYPE: &str = "as_type";
+pub const MK_FUN: &str = "mk_fun";
 const CHECK_DECREASE_INT: &str = "check_decrease_int";
 const HEIGHT: &str = "height";
 
@@ -222,6 +225,15 @@ pub fn prefix_tuple_field(i: usize) -> Ident {
     Arc::new(format!("{}{}", PREFIX_TUPLE_FIELD, i))
 }
 
+pub fn prefix_lambda_type(i: usize) -> Path {
+    let ident = Arc::new(format!("{}{}", PREFIX_LAMBDA_TYPE, i));
+    Arc::new(PathX { krate: None, segments: Arc::new(vec![ident]) })
+}
+
+pub fn prefix_type_id_fun(i: usize) -> Ident {
+    prefix_type_id(&prefix_lambda_type(i))
+}
+
 pub fn prefix_box(ident: &Path) -> Ident {
     Arc::new(PREFIX_BOX.to_string() + &path_to_string(ident))
 }
@@ -298,6 +310,24 @@ pub fn variant_field_ident(datatype: &Path, variant: &Ident, field: &Ident) -> I
 
 pub fn positional_field_ident(idx: usize) -> Ident {
     Arc::new(format!("_{}", idx))
+}
+
+pub fn monotyp_apply(datatype: &Path, args: &Vec<Path>) -> Path {
+    if args.len() == 0 {
+        datatype.clone()
+    } else {
+        let mut segments = (*datatype.segments).clone();
+        let last = segments.last_mut().expect("last path segment");
+        let ident = Arc::new(format!(
+            "{}{}{}{}",
+            last,
+            MONOTYPE_APP_BEGIN,
+            vec_map(args, |x| path_to_string(x)).join(PATHS_SEPARATOR),
+            MONOTYPE_APP_END,
+        ));
+        *last = ident;
+        Arc::new(PathX { krate: datatype.krate.clone(), segments: Arc::new(segments) })
+    }
 }
 
 pub fn snapshot_ident(name: &str) -> Ident {

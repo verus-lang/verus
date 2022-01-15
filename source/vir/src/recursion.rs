@@ -30,13 +30,17 @@ struct Ctxt<'a> {
     ctx: &'a Ctx,
 }
 
-fn height_of_exp(_ctxt: &Ctxt, exp: &Exp) -> Exp {
+fn height_of_exp(ctxt: &Ctxt, exp: &Exp) -> Exp {
     match &*exp.typ {
         TypX::Int(_) => exp.clone(),
         TypX::Datatype(..) => {
-            let op = UnaryOpr::Box(exp.typ.clone());
-            let argx = ExpX::UnaryOpr(op, exp.clone());
-            let arg = SpannedTyped::new(&exp.span, &exp.typ, argx);
+            let arg = if crate::poly::typ_is_poly(ctxt.ctx, &exp.typ) {
+                exp.clone()
+            } else {
+                let op = UnaryOpr::Box(exp.typ.clone());
+                let argx = ExpX::UnaryOpr(op, exp.clone());
+                SpannedTyped::new(&exp.span, &exp.typ, argx)
+            };
             let call = ExpX::Call(height(), Arc::new(vec![]), Arc::new(vec![arg]));
             SpannedTyped::new(&exp.span, &Arc::new(TypX::Int(IntRange::Int)), call)
         }

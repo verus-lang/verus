@@ -83,32 +83,9 @@ fn is_removed(bound: &GenericBound) -> bool {
     }
 }
 
-fn datatype_field_typ(ctx: &GlobalCtx, path: &Path, variant: &Ident, field: &Ident) -> Typ {
-    let fields =
-        &ctx.datatypes[path].iter().find(|v| v.name == *variant).expect("couldn't find variant").a;
-    let (typ, _) = &fields.iter().find(|f| f.name == *field).expect("couldn't find field").a;
-    typ.clone()
-}
-
-fn pattern_field_expr(
-    span: &Span,
-    expr: &Expr,
-    field_typ: Typ,
-    pat_typ: &Typ,
-    field_op: UnaryOpr,
-) -> Expr {
+fn pattern_field_expr(span: &Span, expr: &Expr, pat_typ: &Typ, field_op: UnaryOpr) -> Expr {
     let field = ExprX::UnaryOpr(field_op, expr.clone());
-    let field_exp = SpannedTyped::new(span, &field_typ, field);
-    match (&*field_typ, &**pat_typ) {
-        (TypX::TypParam(_), TypX::TypParam(_)) => field_exp,
-        (TypX::TypParam(_), TypX::Boxed(_)) => field_exp,
-        (TypX::TypParam(_), _) => {
-            let op = UnaryOpr::Unbox(pat_typ.clone());
-            let unbox = ExprX::UnaryOpr(op, field_exp);
-            SpannedTyped::new(span, &pat_typ, unbox)
-        }
-        _ => field_exp,
-    }
+    SpannedTyped::new(span, pat_typ, field)
 }
 
 // Compute:
@@ -145,9 +122,7 @@ fn pattern_to_exprs(
                     variant: variant.clone(),
                     field: prefix_tuple_field(i),
                 };
-                let field_typ = Arc::new(TypX::TypParam(prefix_tuple_param(i)));
-                let field_exp =
-                    pattern_field_expr(&pattern.span, expr, field_typ, &pat.typ, field_op);
+                let field_exp = pattern_field_expr(&pattern.span, expr, &pat.typ, field_op);
                 let pattern_test = pattern_to_exprs(ctx, state, &field_exp, pat, decls)?;
                 let and = ExprX::Binary(BinaryOp::And, test, pattern_test);
                 test = SpannedTyped::new(&pattern.span, &t_bool, and);
@@ -165,9 +140,7 @@ fn pattern_to_exprs(
                     variant: variant.clone(),
                     field: binder.name.clone(),
                 };
-                let field_typ = datatype_field_typ(ctx, path, variant, &binder.name);
-                let field_exp =
-                    pattern_field_expr(&pattern.span, expr, field_typ, &binder.a.typ, field_op);
+                let field_exp = pattern_field_expr(&pattern.span, expr, &binder.a.typ, field_op);
                 let pattern_test = pattern_to_exprs(ctx, state, &field_exp, &binder.a, decls)?;
                 let and = ExprX::Binary(BinaryOp::And, test, pattern_test);
                 test = SpannedTyped::new(&pattern.span, &t_bool, and);
@@ -197,17 +170,8 @@ fn simplify_one_expr(ctx: &GlobalCtx, state: &mut State, expr: &Expr) -> Result<
             let variant = prefix_tuple_variant(arity);
             let mut binders: Vec<Binder<Expr>> = Vec::new();
             for (i, arg) in args.iter().enumerate() {
-                let exp = match &*arg.typ {
-                    TypX::TypParam(_) => arg.clone(),
-                    TypX::Boxed(_) => arg.clone(),
-                    _ => {
-                        let op = UnaryOpr::Box(arg.typ.clone());
-                        let box_arg = ExprX::UnaryOpr(op, arg.clone());
-                        SpannedTyped::new(&arg.span, &arg.typ, box_arg)
-                    }
-                };
                 let field = prefix_tuple_field(i);
-                binders.push(ident_binder(&field, &exp));
+                binders.push(ident_binder(&field, &arg));
             }
             let binders = Arc::new(binders);
             let exprx = ExprX::Ctor(datatype, variant, binders, None);
@@ -232,7 +196,7 @@ fn simplify_one_expr(ctx: &GlobalCtx, state: &mut State, expr: &Expr) -> Result<
                             None => binder.clone(),
                             Some(temp) => {
                                 decls.push(temp);
-                                Arc::new(binder.map_a(|_| e))
+                                binder.map_a(|_| e)
                             }
                         };
                         binders.push(binder);
@@ -273,16 +237,7 @@ fn simplify_one_expr(ctx: &GlobalCtx, state: &mut State, expr: &Expr) -> Result<
             let op = UnaryOpr::Field { datatype, variant, field };
             let field_exp =
                 SpannedTyped::new(&expr.span, &expr.typ, ExprX::UnaryOpr(op, expr0.clone()));
-            let exp = match &*expr.typ {
-                TypX::TypParam(_) => field_exp,
-                TypX::Boxed(_) => field_exp,
-                _ => {
-                    let op = UnaryOpr::Unbox(expr.typ.clone());
-                    let unbox = ExprX::UnaryOpr(op, field_exp);
-                    SpannedTyped::new(&expr.span, &expr.typ, unbox)
-                }
-            };
-            Ok(exp)
+            Ok(field_exp)
         }
         ExprX::Match(expr0, arms1) => {
             let (temp_decl, expr0) = small_or_temp(state, &expr0);

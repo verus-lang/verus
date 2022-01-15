@@ -189,20 +189,20 @@ where
             );
             f(&stm)
         }
-        StmX::Block(ss) => {
-            let mut stms: Vec<Stm> = Vec::new();
-            for s in ss.iter() {
-                stms.push(map_stm_visitor(s, f)?);
-            }
-            let stm = Spanned::new(stm.span.clone(), StmX::Block(Arc::new(stms)));
-            f(&stm)
-        }
         StmX::OpenInvariant(inv, ident, ty, body) => {
             let body = map_stm_visitor(body, f)?;
             let stm = Spanned::new(
                 stm.span.clone(),
                 StmX::OpenInvariant(inv.clone(), ident.clone(), ty.clone(), body),
             );
+            f(&stm)
+        }
+        StmX::Block(ss) => {
+            let mut stms: Vec<Stm> = Vec::new();
+            for s in ss.iter() {
+                stms.push(map_stm_visitor(s, f)?);
+            }
+            let stm = Spanned::new(stm.span.clone(), StmX::Block(Arc::new(stms)));
             f(&stm)
         }
     }
@@ -247,7 +247,6 @@ where
                     },
                 )
             }
-            StmX::Block(_) => stm.clone(),
             StmX::OpenInvariant(inv, ident, ty, body) => {
                 let inv = f(inv);
                 Spanned::new(
@@ -255,6 +254,7 @@ where
                     StmX::OpenInvariant(inv, ident.clone(), ty.clone(), body.clone()),
                 )
             }
+            StmX::Block(_) => stm.clone(),
         };
         Ok(stm)
     })

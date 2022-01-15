@@ -576,14 +576,12 @@ pub(crate) fn expr_to_stm_opt(
             let mut body: Vec<Stm> = Vec::new();
             for var in vars.iter() {
                 let x = state.declare_new_var(&var.name, &var.a, false, true);
-                if crate::sst_to_air::typ_has_invariant(ctx, &var.a) {
-                    let xvarx = ExpX::Var(x);
-                    let xvar = SpannedTyped::new(&expr.span, &Arc::new(TypX::Bool), xvarx);
-                    let has_typx = ExpX::UnaryOpr(UnaryOpr::HasType(var.a.clone()), xvar);
-                    let has_typ = SpannedTyped::new(&expr.span, &Arc::new(TypX::Bool), has_typx);
-                    let assume = Spanned::new(require.span.clone(), StmX::Assume(has_typ));
-                    body.push(assume);
-                }
+                let xvarx = ExpX::Var(x);
+                let xvar = SpannedTyped::new(&expr.span, &Arc::new(TypX::Bool), xvarx);
+                let has_typx = ExpX::UnaryOpr(UnaryOpr::HasType(var.a.clone()), xvar);
+                let has_typ = SpannedTyped::new(&expr.span, &Arc::new(TypX::Bool), has_typx);
+                let assume = Spanned::new(require.span.clone(), StmX::Assume(has_typ));
+                body.push(assume);
             }
             let (mut proof_stms, e) = expr_to_stm_opt(ctx, state, proof)?;
             if let Some(_) = e {
@@ -669,6 +667,35 @@ pub(crate) fn expr_to_stm_opt(
                 },
             );
             Ok((vec![while_stm], None))
+        }
+        ExprX::OpenInvariant(inv, binder, body) => {
+            // Evaluate `inv`
+            let (mut stms0, big_inv_exp) = expr_to_stm(ctx, state, inv)?;
+
+            // Assign it to a constant temp variable to ensure it is constant
+            // across the entire block.
+            let (temp, temp_var) = state.next_temp(&big_inv_exp.span, &inv.typ);
+            let temp_id = state.declare_new_var(&temp, &inv.typ, false, false);
+            stms0.push(init_var(&big_inv_exp.span, &temp_id, &big_inv_exp));
+
+            // Process the body
+
+            state.push_scope();
+            let ident = state.declare_new_var(
+                &binder.name,
+                &binder.a,
+                /* mutable */ true,
+                /* maybe_need_rename */ true,
+            );
+            let body_stm = expr_to_one_stm(ctx, state, body)?;
+            state.pop_scope();
+
+            stms0.push(Spanned::new(
+                expr.span.clone(),
+                StmX::OpenInvariant(temp_var, ident, binder.a.clone(), body_stm),
+            ));
+
+            return Ok((stms0, None));
         }
         ExprX::Return(e1) => {
             if let Some((ret_dest, enss)) = state.ret_post.clone() {
@@ -769,35 +796,6 @@ pub(crate) fn expr_to_stm_opt(
                     Ok((vec![block], exp))
                 }
             }
-        }
-        ExprX::OpenInvariant(inv, binder, body) => {
-            // Evaluate `inv`
-            let (mut stms0, big_inv_exp) = expr_to_stm(ctx, state, inv)?;
-
-            // Assign it to a constant temp variable to ensure it is constant
-            // across the entire block.
-            let (temp, temp_var) = state.next_temp(&big_inv_exp.span, &inv.typ);
-            let temp_id = state.declare_new_var(&temp, &inv.typ, false, false);
-            stms0.push(init_var(&big_inv_exp.span, &temp_id, &big_inv_exp));
-
-            // Process the body
-
-            state.push_scope();
-            let ident = state.declare_new_var(
-                &binder.name,
-                &binder.a,
-                /* mutable */ true,
-                /* maybe_need_rename */ true,
-            );
-            let body_stm = expr_to_one_stm(ctx, state, body)?;
-            state.pop_scope();
-
-            stms0.push(Spanned::new(
-                expr.span.clone(),
-                StmX::OpenInvariant(temp_var, ident, binder.a.clone(), body_stm),
-            ));
-
-            return Ok((stms0, None));
         }
     }
 }
