@@ -145,8 +145,23 @@ impl Printer {
             ExprX::Unary(op, expr) => {
                 let sop = match op {
                     UnaryOp::Not => "not",
+                    UnaryOp::BitExtract(_, _) => "extract",
                 };
-                Node::List(vec![str_to_node(sop), self.expr_to_node(expr)])
+                // ( (_extract numeral numeral) BitVec )
+                match op {
+                    UnaryOp::Not => Node::List(vec![str_to_node(sop), self.expr_to_node(expr)]),
+                    UnaryOp::BitExtract(high, low) => {
+                        let mut nodes: Vec<Node> = Vec::new();
+                        let mut nodes_in: Vec<Node> = Vec::new();
+                        nodes_in.push(str_to_node("_"));
+                        nodes_in.push(str_to_node(sop));
+                        nodes_in.push(str_to_node(&high.to_string()));
+                        nodes_in.push(str_to_node(&low.to_string()));
+                        nodes.push(Node::List(nodes_in));
+                        nodes.push(self.expr_to_node(expr));
+                        Node::List(nodes)
+                    }
+                }
             }
             ExprX::Binary(op, lhs, rhs) => {
                 let sop = match op {
@@ -173,7 +188,7 @@ impl Printer {
                     BinaryOp::BitUGe => "bvuge",
                     BinaryOp::LShr => "bvlshr",
                     BinaryOp::Shl => "bvshl",
-                    BinaryOp::Concat => "concat",
+                    BinaryOp::BitConcat => "concat",
                 };
                 Node::List(vec![str_to_node(sop), self.expr_to_node(lhs), self.expr_to_node(rhs)])
             }
@@ -185,28 +200,11 @@ impl Printer {
                     MultiOp::Sub => "-",
                     MultiOp::Mul => "*",
                     MultiOp::Distinct => "distinct",
-                    MultiOp::Extract => "extract",
                 };
                 let mut nodes: Vec<Node> = Vec::new();
-
-                // ( (_extract numeral numeral) BitVec )
-                if sop.eq("extract") {
-                    let mut nodes_in: Vec<Node> = Vec::new();
-                    nodes_in.push(str_to_node("_"));
-                    nodes_in.push(str_to_node(sop));
-                    nodes_in.push(self.expr_to_node(&exprs[0]));
-                    nodes_in.push(self.expr_to_node(&exprs[1]));
-                    nodes.push(Node::List(nodes_in));
-                    for (idx, expr) in exprs.iter().enumerate() {
-                        if idx >= 2 {
-                            nodes.push(self.expr_to_node(expr));
-                        }
-                    }
-                } else {
-                    nodes.push(str_to_node(sop));
-                    for expr in exprs.iter() {
-                        nodes.push(self.expr_to_node(expr));
-                    }
+                nodes.push(str_to_node(sop));
+                for expr in exprs.iter() {
+                    nodes.push(self.expr_to_node(expr));
                 }
                 match op {
                     MultiOp::Distinct if exprs.len() == 0 => {

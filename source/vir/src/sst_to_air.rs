@@ -559,60 +559,46 @@ fn exp_to_bv_expr(state: &State, exp: &Exp) -> Expr {
         ExpX::Unary(op, exp) => {
             // bv type casting by 'as' keyword
             // convert Clip into concat/extract
-            if let TypX::Int(old_range) = &*exp.typ {
-                if let UnaryOp::Clip(new_range) = op {
-                    match new_range {
-                        IntRange::U(new_n) | IntRange::I(new_n) => match old_range {
-                            IntRange::U(old_n) | IntRange::I(old_n) => {
-                                // expand with zero using concat
-                                if new_n > old_n {
-                                    let bop = air::ast::BinaryOp::Concat;
-                                    let lh = Arc::new(ExprX::Const(Constant::BitVec(
-                                        Arc::new("0".to_string()),
-                                        new_n - old_n,
-                                    )));
-                                    let rh = exp_to_bv_expr(state, exp);
-                                    return Arc::new(ExprX::Binary(bop, lh, rh));
-                                }
-                                // extract lower new_n bits,
-                                else if new_n < old_n {
-                                    let op = air::ast::MultiOp::Extract;
-                                    let high_u32 = new_n - 1;
-                                    let high = Arc::new(ExprX::Const(Constant::Nat(Arc::new(
-                                        high_u32.to_string(),
-                                    ))));
-                                    let low = Arc::new(ExprX::Const(Constant::Nat(Arc::new(
-                                        "0".to_string(),
-                                    ))));
-                                    let rh = exp_to_bv_expr(state, exp);
-                                    return Arc::new(ExprX::Multi(
-                                        op,
-                                        Arc::new(vec![high, low, rh]),
-                                    ));
-                                } else {
-                                    return exp_to_bv_expr(state, exp);
-                                }
-                            }
-                            _ => panic!(
-                                "error: IntRange should be U(_) or I(_) for a bitvector {:?}",
-                                exp.typ
-                            ),
-                        },
-                        _ => panic!(
-                            "error: IntRange should be U(_) or I(_) for a bitvector {:?}",
-                            exp.typ
-                        ),
+            match (&*exp.typ, op) {
+                (
+                    TypX::Int(IntRange::U(old_n) | IntRange::I(old_n)),
+                    UnaryOp::Clip(IntRange::U(new_n) | IntRange::I(new_n)),
+                ) => {
+                    // expand with zero using concat
+                    if new_n > old_n {
+                        let bop = air::ast::BinaryOp::BitConcat;
+                        let lh = Arc::new(ExprX::Const(Constant::BitVec(
+                            Arc::new("0".to_string()),
+                            new_n - old_n,
+                        )));
+                        let rh = exp_to_bv_expr(state, exp);
+                        return Arc::new(ExprX::Binary(bop, lh, rh));
                     }
-                } else {
-                    panic!("unhandled bv unary operation {:?}", op);
+                    // extract lower new_n bits
+                    else if new_n < old_n {
+                        let op = air::ast::UnaryOp::BitExtract(new_n - 1, 0);
+                        let bv_e = exp_to_bv_expr(state, exp);
+                        return Arc::new(ExprX::Unary(op, bv_e));
+                    } else {
+                        return exp_to_bv_expr(state, exp);
+                    }
                 }
-            } else {
-                panic!("internal error: not an int type for a bitvector {:?}", exp.typ);
+                _ => {
+                    panic!("unhandled bv unary operation {:?} or IntRange error: {:?}", op, exp.typ)
+                }
             }
         }
         _ => panic!("unhandled bv expr conversion {:?}", exp.x),
     }
 }
+// pub fn mk_not(e1: &Expr) -> Expr {
+//     match &**e1 {
+//         ExprX::Const(Constant::Bool(false)) => mk_true(),
+//         ExprX::Const(Constant::Bool(true)) => mk_false(),
+//         ExprX::Unary(UnaryOp::Not, e) => e.clone(),
+//         _ => Arc::new(ExprX::Unary(UnaryOp::Not, e1.clone())),
+//     }
+// }
 
 fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
     let expr_ctxt = ExprCtxt::Body;

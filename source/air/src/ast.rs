@@ -38,6 +38,7 @@ pub enum Constant {
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum UnaryOp {
     Not,
+    BitExtract(u32, u32),
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
@@ -65,7 +66,7 @@ pub enum BinaryOp {
     BitUMod,
     LShr,
     Shl,
-    Concat,
+    BitConcat,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
@@ -76,7 +77,6 @@ pub enum MultiOp {
     Sub,
     Mul,
     Distinct,
-    Extract,
 }
 
 pub type Binder<A> = Arc<BinderX<A>>;

@@ -125,35 +125,24 @@ fn get_bv_width(et: &Typ) -> Result<u32, TypeError> {
     return Err("not a bit vector type".to_string());
 }
 
-fn check_bv_multi_exprs(
+fn check_bv_unary_exprs(
     typing: &mut Typing,
-    mop: MultiOp,
+    op: UnaryOp,
     f_name: &str,
     exprs: &[Expr],
 ) -> Result<Typ, TypeError> {
-    if MultiOp::Extract == mop {
-        let t0 = check_expr(typing, &exprs[0])?;
-        let t1 = check_expr(typing, &exprs[1])?;
-        let t2 = check_expr(typing, &exprs[2])?;
-        let _ = match &*t0 {
-            TypX::Int => (),
-            _ => return Err("expected Int type".to_string()),
-        };
-        let _ = match &*t1 {
-            TypX::Int => (),
-            _ => return Err("expected Int type".to_string()),
-        };
-        let w_old = get_bv_width(&t2)?;
-        if let ExprX::Const(Constant::Nat(n)) = &*exprs[0] {
-            let w_new = n.parse::<u32>().expect(&format!("could not parse option value {}", n));
+    match op {
+        UnaryOp::BitExtract(high, _) => {
+            let t0 = check_expr(typing, &exprs[0])?;
+            let w_old = get_bv_width(&t0)?;
+            let w_new = high + 1;
             if w_old < w_new {
-                panic!("Interner Error: extract to longer size");
+                panic!("Interner Error: bit-vec extract to a longer size");
             }
-            return Ok(Arc::new(TypX::BitVec(w_new + 1)));
+            Ok(Arc::new(TypX::BitVec(w_new)))
         }
-        return Err(format!("Internal Error: {}", f_name));
+        _ => panic!("Interner Error: not a bv unary op, got {}", f_name),
     }
-    return Err(format!("Internal Error: bv multiop"));
 }
 
 fn check_bv_exprs(
@@ -167,7 +156,7 @@ fn check_bv_exprs(
     let w0 = get_bv_width(&t0)?;
     let w1 = get_bv_width(&t1)?;
 
-    if BinaryOp::Concat == bop {
+    if BinaryOp::BitConcat == bop {
         return Ok(Arc::new(TypX::BitVec(w0 + w1)));
     }
 
@@ -216,6 +205,9 @@ fn check_expr(typing: &mut Typing, expr: &Expr) -> Result<Typ, TypeError> {
             }
         }
         ExprX::Unary(UnaryOp::Not, e1) => check_exprs(typing, "not", &[bt()], &bt(), &[e1.clone()]),
+        ExprX::Unary(UnaryOp::BitExtract(high, low), e1) => {
+            check_bv_unary_exprs(typing, UnaryOp::BitExtract(*high, *low), "extract", &[e1.clone()])
+        }
         ExprX::Binary(BinaryOp::Implies, e1, e2) => {
             check_exprs(typing, "=>", &[bt(), bt()], &bt(), &[e1.clone(), e2.clone()])
         }
@@ -292,8 +284,8 @@ fn check_expr(typing: &mut Typing, expr: &Expr) -> Result<Typ, TypeError> {
         ExprX::Binary(BinaryOp::Shl, e1, e2) => {
             check_bv_exprs(typing, BinaryOp::Shl, "<<", &[e1.clone(), e2.clone()])
         }
-        ExprX::Binary(BinaryOp::Concat, e1, e2) => {
-            check_bv_exprs(typing, BinaryOp::Concat, "concat", &[e1.clone(), e2.clone()])
+        ExprX::Binary(BinaryOp::BitConcat, e1, e2) => {
+            check_bv_exprs(typing, BinaryOp::BitConcat, "concat", &[e1.clone(), e2.clone()])
         }
 
         ExprX::Multi(op, exprs) => {
@@ -304,7 +296,6 @@ fn check_expr(typing: &mut Typing, expr: &Expr) -> Result<Typ, TypeError> {
                 MultiOp::Sub => ("-", it()),
                 MultiOp::Mul => ("*", it()),
                 MultiOp::Distinct => ("distinct", it()),
-                MultiOp::Extract => ("extract", Arc::new(TypX::BitVec(0))),
             };
             let f_typs = vec_map(exprs, |_| t.clone());
             match op {
@@ -317,9 +308,6 @@ fn check_expr(typing: &mut Typing, expr: &Expr) -> Result<Typ, TypeError> {
                         }
                     }
                     Ok(bt())
-                }
-                MultiOp::Extract => {
-                    check_bv_multi_exprs(typing, MultiOp::Extract, "extract", exprs)
                 }
                 _ => check_exprs(typing, x, &f_typs, &t, exprs),
             }
