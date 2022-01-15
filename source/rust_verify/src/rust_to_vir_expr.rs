@@ -1181,7 +1181,6 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                 BinOpKind::BitOr => BinaryOp::BitOr,
                 BinOpKind::Shr => BinaryOp::Shr,
                 BinOpKind::Shl => BinaryOp::Shl,
-                _ => unsupported_err!(expr.span, format!("binary operator {:?}", op)),
             };
             match op.node {
                 BinOpKind::Add | BinOpKind::Sub | BinOpKind::Mul => {
