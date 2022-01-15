@@ -584,21 +584,13 @@ fn exp_to_bv_expr(state: &State, exp: &Exp) -> Expr {
                     }
                 }
                 _ => {
-                    panic!("unhandled bv unary operation {:?} or IntRange error: {:?}", op, exp.typ)
+                    panic!("unhandled bv unary operation {:?} or IntRange error: should be I(_) or U(_) but {:?}", op, exp.typ)
                 }
             }
         }
         _ => panic!("unhandled bv expr conversion {:?}", exp.x),
     }
 }
-// pub fn mk_not(e1: &Expr) -> Expr {
-//     match &**e1 {
-//         ExprX::Const(Constant::Bool(false)) => mk_true(),
-//         ExprX::Const(Constant::Bool(true)) => mk_false(),
-//         ExprX::Unary(UnaryOp::Not, e) => e.clone(),
-//         _ => Arc::new(ExprX::Unary(UnaryOp::Not, e1.clone())),
-//     }
-// }
 
 fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
     let expr_ctxt = ExprCtxt::Body;
