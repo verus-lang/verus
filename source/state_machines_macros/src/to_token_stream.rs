@@ -17,8 +17,8 @@ pub fn output_token_stream(sm_and_funcs: SMAndFuncs) -> TokenStream {
     let mut impl_token_stream = TokenStream::new();
 
     match &maybe_sm {
-        MaybeSM::SM(sm) => {
-            output_primary_stuff(&mut token_stream, &mut impl_token_stream, &sm);
+        MaybeSM::SM(sm, fields_named) => {
+            output_primary_stuff(&mut token_stream, &mut impl_token_stream, &sm, &fields_named);
             output_other_fns(&mut impl_token_stream, &sm.invariants, &sm.lemmas, normal_fns);
         }
         MaybeSM::Extras(ex) => {
@@ -27,7 +27,7 @@ pub fn output_token_stream(sm_and_funcs: SMAndFuncs) -> TokenStream {
     }
 
     let name = match maybe_sm {
-        MaybeSM::SM(sm) => { sm.name }
+        MaybeSM::SM(sm, _) => { sm.name }
         MaybeSM::Extras(ex) => { ex.name }
     };
 
@@ -45,15 +45,16 @@ pub fn output_token_stream(sm_and_funcs: SMAndFuncs) -> TokenStream {
 pub fn output_primary_stuff(
     token_stream: &mut TokenStream,
     impl_token_stream: &mut TokenStream,
-    sm: &SM<ImplItemMethod, Expr, Type>,
+    sm: &SM<Ident, ImplItemMethod, Expr, Type>,
+    fields_named: &FieldsNamed,
 ) {
     let name = &sm.name;
-    let fields: Vec<TokenStream> = sm.fields.iter().map(field_to_tokens).collect();
+    //let fields: Vec<TokenStream> = sm.fields.iter().map(field_to_tokens).collect();
 
+    // Note: #fields_named will include the braces.
     let code: TokenStream = quote! {
-        pub struct #name {
-            #( #fields ),*
-        }
+        #[verifier(fancy_state_machine)]
+        pub struct #name #fields_named
     };
     token_stream.extend(code);
 
@@ -80,17 +81,19 @@ fn shardable_type_to_type(stype: &ShardableType<Type>) -> Type {
     }
 }
 
-fn field_to_tokens(field: &Field<Type>) -> TokenStream {
+/*
+fn field_to_tokens(field: &Field<Ident, Type>) -> TokenStream {
     let name = &field.ident;
     let ty = shardable_type_to_type(&field.stype);
     return quote! {
         #[spec] pub #name: #ty
     };
 }
+*/
 
 fn output_other_fns(impl_token_stream: &mut TokenStream,
     invariants: &Vec<Invariant<ImplItemMethod>>,
-    lemmas: &Vec<Lemma<ImplItemMethod>>,
+    lemmas: &Vec<Lemma<Ident, ImplItemMethod>>,
     normal_fns: Vec<ImplItemMethod>,
 ) {
     for inv in invariants {

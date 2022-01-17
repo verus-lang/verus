@@ -5,12 +5,12 @@ use syn::{ImplItemMethod, braced, Ident, Error, FieldsNamed, Expr, Type, Meta, N
 use syn::buffer::Cursor;
 use proc_macro2::Span;
 use syn::spanned::Spanned;
-use smir::ast::{SM, Invariant, Lemma, LemmaPurpose, Transition, TransitionKind, TransitionStmt, Extras};
+use smir::ast::{SM, Invariant, Lemma, LemmaPurpose, Transition, TransitionKind, TransitionStmt, Extras, ShardableType};
 
 ///////// TokenStream -> ParseResult
 
 pub struct ParseResult {
-    pub name: String,
+    pub name: Ident,
     pub fns: Vec<ImplItemMethod>,
     pub fields: Option<FieldsNamed>,
 }
@@ -54,7 +54,7 @@ impl Parse for ParseResult {
         }
 
         return Ok(ParseResult {
-            name: name.to_string(),
+            name: name,
             fns: fns,
             fields: fields_opt,
         });
@@ -88,7 +88,7 @@ enum FnAttrInfo {
     Static,
     Init,
     Invariant,
-    Lemma(LemmaPurpose),
+    Lemma(LemmaPurpose<Ident>),
 }
 
 fn err_on_dupe(info: &FnAttrInfo, span: Span) -> syn::parse::Result<()> {
@@ -136,7 +136,7 @@ fn parse_fn_attr_info(attrs: &Vec<Attribute>) -> syn::parse::Result<FnAttrInfo> 
                     let transition_name = match nested.iter().next() {
                         Some(NestedMeta::Meta(Meta::Path(path))) => {
                             match path.get_ident() {
-                                Some(ident) => ident.to_string(),
+                                Some(ident) => ident.clone(),
                                 None => {
                                     return Err(Error::new(attr.span(), "expected transition name: #[inductive(name)]"));
                                 },
@@ -156,8 +156,8 @@ fn parse_fn_attr_info(attrs: &Vec<Attribute>) -> syn::parse::Result<FnAttrInfo> 
 }
 
 pub enum MaybeSM {
-    SM(SM<ImplItemMethod, Expr, Type>),
-    Extras(Extras<ImplItemMethod>),
+    SM(SM<Ident, ImplItemMethod, Expr, Type>, FieldsNamed),
+    Extras(Extras<Ident, ImplItemMethod>),
 }
 
 pub struct SMAndFuncs {
@@ -199,7 +199,7 @@ fn ensure_no_mode(impl_item_method: &ImplItemMethod, msg: &str) -> syn::parse::R
     return Ok(());
 }
 
-fn to_transition(impl_item_method: ImplItemMethod, kind: TransitionKind) -> syn::parse::Result<Transition<Expr, Type>> {
+fn to_transition(impl_item_method: ImplItemMethod, kind: TransitionKind) -> syn::parse::Result<Transition<Ident, Expr, Type>> {
     panic!("not impl: to_transition");
 }
 
@@ -224,22 +224,32 @@ fn to_invariant(impl_item_method: ImplItemMethod) -> syn::parse::Result<Invarian
     return Ok(Invariant { func: impl_item_method });
 }
 
-fn to_lemma(impl_item_method: ImplItemMethod, purpose: LemmaPurpose) -> syn::parse::Result<Lemma<ImplItemMethod>> {
+fn to_lemma(impl_item_method: ImplItemMethod, purpose: LemmaPurpose<Ident>) -> syn::parse::Result<Lemma<Ident, ImplItemMethod>> {
     ensure_mode(&impl_item_method, "an inductivity lemma must be labelled 'proof'", "proof")?;
     Ok(Lemma { purpose, func: impl_item_method })
 }
 
-fn to_fields(fields_named: FieldsNamed) -> syn::parse::Result<Vec<smir::ast::Field<Type>>> {
-    panic!("not impl: to_fields");
+fn to_fields(fields_named: &FieldsNamed) -> syn::parse::Result<Vec<smir::ast::Field<Ident, Type>>> {
+    let mut v: Vec<smir::ast::Field<Ident, Type>> = Vec::new();
+    for field in fields_named.named.iter() {
+        let ident = match &field.ident {
+            None => { return Err(Error::new(field.span(), "state machine field must have a name")); }
+            Some(ident) => ident.clone(),
+        };
+
+        let stype = ShardableType::Variable(field.ty.clone());
+        v.push(smir::ast::Field { ident, stype });
+    }
+    return Ok(v);
 }
 
 pub fn parse_result_to_smir(pr: ParseResult) -> syn::parse::Result<SMAndFuncs> {
     let ParseResult { name, fns, fields } = pr;
 
     let mut normal_fns = Vec::new();
-    let mut transitions: Vec<Transition<Expr, Type>> = Vec::new();
+    let mut transitions: Vec<Transition<Ident, Expr, Type>> = Vec::new();
     let mut invariants: Vec<Invariant<ImplItemMethod>> = Vec::new();
-    let mut lemmas: Vec<Lemma<ImplItemMethod>> = Vec::new();
+    let mut lemmas: Vec<Lemma<Ident, ImplItemMethod>> = Vec::new();
 
     let err_if_not_primary = |impl_item_method: &ImplItemMethod| {
         match fields {
@@ -281,11 +291,11 @@ pub fn parse_result_to_smir(pr: ParseResult) -> syn::parse::Result<SMAndFuncs> {
         Some(fields) => {
             MaybeSM::SM(SM {
                 name,
-                fields: to_fields(fields)?,
+                fields: to_fields(&fields)?,
                 transitions,
                 invariants,
                 lemmas,
-            })
+            }, fields)
         }
     };
     Ok(SMAndFuncs { normal_fns, sm: maybe_sm })
