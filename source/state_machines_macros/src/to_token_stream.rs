@@ -107,7 +107,9 @@ pub fn output_primary_stuff(
     // We will fill in the 'inv' body later
     let inv_sig = quote! {
         #[spec]
-        pub fn inv(&self) -> bool { panic!("to be determined"); }
+        pub fn inv(&self) -> bool {
+            ::builtin::state_machine_ops::to_be_determined()
+        }
     };
     impl_token_stream.extend(inv_sig);
 

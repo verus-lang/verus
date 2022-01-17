@@ -200,8 +200,8 @@ fn ensure_no_mode(impl_item_method: &ImplItemMethod, msg: &str) -> syn::parse::R
     return Ok(());
 }
 
-fn to_transition(impl_item_method: &mut ImplItemMethod, fields: &Vec<smir::ast::Field<Ident, Type>>, kind: TransitionKind) -> syn::parse::Result<Transition<Ident, Expr, Type>> {
-    let ctxt = crate::parse_transition::Ctxt { fields, kind };
+fn to_transition(impl_item_method: &mut ImplItemMethod, kind: TransitionKind) -> syn::parse::Result<Transition<Ident, Expr, Type>> {
+    let ctxt = crate::parse_transition::Ctxt { kind };
     return parse_impl_item_method(impl_item_method, &ctxt);
 }
 
@@ -266,22 +266,19 @@ pub fn parse_result_to_smir(pr: ParseResult) -> syn::parse::Result<SMAndFuncs> {
         let attr_info = parse_fn_attr_info(&impl_item_method.attrs)?;
         match attr_info {
             FnAttrInfo::NoneFound => { normal_fns.push(impl_item_method); }
-            FnAttrInfo::Transition => {
-                err_if_not_primary(&impl_item_method)?;
-                let mut iim = impl_item_method;
-                transitions.push(to_transition(&mut iim, fields, TransitionKind::Transition)?);
-                trans_fns.push(iim);
-            }
-            FnAttrInfo::Static => {
-                err_if_not_primary(&impl_item_method)?;
-                let mut iim = impl_item_method;
-                transitions.push(to_transition(&mut iim, fields, TransitionKind::Static)?);
-                trans_fns.push(iim);
-            }
+            FnAttrInfo::Transition |
+            FnAttrInfo::Static |
             FnAttrInfo::Init => {
+                let kind = match attr_info {
+                    FnAttrInfo::Transition => TransitionKind::Transition,
+                    FnAttrInfo::Static => TransitionKind::Static,
+                    FnAttrInfo::Init => TransitionKind::Init,
+                    _ => { panic!("can't get here"); }
+                };
+
                 err_if_not_primary(&impl_item_method)?;
                 let mut iim = impl_item_method;
-                transitions.push(to_transition(&mut iim, fields, TransitionKind::Init)?);
+                transitions.push(to_transition(&mut iim, kind)?);
                 trans_fns.push(iim);
             }
             FnAttrInfo::Invariant => { invariants.push(to_invariant(impl_item_method)?); }

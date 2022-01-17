@@ -9,6 +9,11 @@ pub fn assert(_b1: bool) {
 }
 
 #[spec]
-pub fn update<T>(field: &str, t: T) {
+pub fn update<T>(s: T, t: T) {
+    unimplemented!();
+}
+
+#[spec]
+pub fn to_be_determined<T>() -> bool {
     unimplemented!();
 }

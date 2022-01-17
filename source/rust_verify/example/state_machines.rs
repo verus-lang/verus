@@ -24,8 +24,15 @@ construct_state_machine!(
             self.counter == (if self.inc_a { 1 } else { 0 }) + (if self.inc_b { 1 } else { 0 })
         }
 
+        #[init]
+        fn initialize(&self) {
+            update(counter, 0);
+            update(inc_a, false);
+            update(inc_b, false);
+        }
+
         #[transition]
-        fn tr_inc_a(&self, post: &X) {
+        fn tr_inc_a(&self) {
             require(!self.inc_a);
             update(counter, self.counter + 1);
             update(inc_a, true);
