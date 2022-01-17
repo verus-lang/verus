@@ -3,6 +3,7 @@
 extern crate proc_macro;
 
 mod parse_token_stream;
+mod parse_transition;
 mod to_token_stream;
 
 use proc_macro::TokenStream;

@@ -6,6 +6,7 @@ use syn::buffer::Cursor;
 use proc_macro2::Span;
 use syn::spanned::Spanned;
 use smir::ast::{SM, Invariant, Lemma, LemmaPurpose, Transition, TransitionKind, TransitionStmt, Extras, ShardableType};
+use crate::parse_transition::parse_impl_item_method;
 
 ///////// TokenStream -> ParseResult
 
@@ -156,7 +157,7 @@ fn parse_fn_attr_info(attrs: &Vec<Attribute>) -> syn::parse::Result<FnAttrInfo> 
 }
 
 pub enum MaybeSM {
-    SM(SM<Ident, ImplItemMethod, Expr, Type>, FieldsNamed),
+    SM(SM<Ident, ImplItemMethod, Expr, Type>, FieldsNamed, Vec<ImplItemMethod>),
     Extras(Extras<Ident, ImplItemMethod>),
 }
 
@@ -199,8 +200,9 @@ fn ensure_no_mode(impl_item_method: &ImplItemMethod, msg: &str) -> syn::parse::R
     return Ok(());
 }
 
-fn to_transition(impl_item_method: ImplItemMethod, kind: TransitionKind) -> syn::parse::Result<Transition<Ident, Expr, Type>> {
-    panic!("not impl: to_transition");
+fn to_transition(impl_item_method: &mut ImplItemMethod, fields: &Vec<smir::ast::Field<Ident, Type>>, kind: TransitionKind) -> syn::parse::Result<Transition<Ident, Expr, Type>> {
+    let ctxt = crate::parse_transition::Ctxt { fields, kind };
+    return parse_impl_item_method(impl_item_method, &ctxt);
 }
 
 fn to_invariant(impl_item_method: ImplItemMethod) -> syn::parse::Result<Invariant<ImplItemMethod>> {
@@ -258,21 +260,29 @@ pub fn parse_result_to_smir(pr: ParseResult) -> syn::parse::Result<SMAndFuncs> {
         }
     };
 
+    let mut trans_fns = Vec::new();
+
     for impl_item_method in fns {
         let attr_info = parse_fn_attr_info(&impl_item_method.attrs)?;
         match attr_info {
             FnAttrInfo::NoneFound => { normal_fns.push(impl_item_method); }
             FnAttrInfo::Transition => {
                 err_if_not_primary(&impl_item_method)?;
-                transitions.push(to_transition(impl_item_method, TransitionKind::Transition)?);
+                let mut iim = impl_item_method;
+                transitions.push(to_transition(&mut iim, fields, TransitionKind::Transition)?);
+                trans_fns.push(iim);
             }
             FnAttrInfo::Static => {
                 err_if_not_primary(&impl_item_method)?;
-                transitions.push(to_transition(impl_item_method, TransitionKind::Static)?);
+                let mut iim = impl_item_method;
+                transitions.push(to_transition(&mut iim, fields, TransitionKind::Static)?);
+                trans_fns.push(iim);
             }
             FnAttrInfo::Init => {
                 err_if_not_primary(&impl_item_method)?;
-                transitions.push(to_transition(impl_item_method, TransitionKind::Init)?);
+                let mut iim = impl_item_method;
+                transitions.push(to_transition(&mut iim, fields, TransitionKind::Init)?);
+                trans_fns.push(iim);
             }
             FnAttrInfo::Invariant => { invariants.push(to_invariant(impl_item_method)?); }
             FnAttrInfo::Lemma(purpose) => { lemmas.push(to_lemma(impl_item_method, purpose)?) }
@@ -296,7 +306,7 @@ pub fn parse_result_to_smir(pr: ParseResult) -> syn::parse::Result<SMAndFuncs> {
                 transitions,
                 invariants,
                 lemmas,
-            }, fields_named)
+            }, fields_named, trans_fns)
         }
     };
     Ok(SMAndFuncs { normal_fns, sm: maybe_sm })

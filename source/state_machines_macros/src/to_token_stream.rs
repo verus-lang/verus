@@ -19,8 +19,8 @@ pub fn output_token_stream(sm_and_funcs: SMAndFuncs) -> TokenStream {
     let mut impl_token_stream = TokenStream::new();
 
     match &maybe_sm {
-        MaybeSM::SM(sm, fields_named) => {
-            output_primary_stuff(&mut token_stream, &mut impl_token_stream, &sm, &fields_named);
+        MaybeSM::SM(sm, fields_named, trans_fns) => {
+            output_primary_stuff(&mut token_stream, &mut impl_token_stream, &sm, &fields_named, trans_fns);
             output_other_fns(&mut impl_token_stream, &sm.invariants, &sm.lemmas, normal_fns);
         }
         MaybeSM::Extras(ex) => {
@@ -29,7 +29,7 @@ pub fn output_token_stream(sm_and_funcs: SMAndFuncs) -> TokenStream {
     }
 
     let name = match maybe_sm {
-        MaybeSM::SM(sm, _) => { sm.name }
+        MaybeSM::SM(sm, _, _) => { sm.name }
         MaybeSM::Extras(ex) => { ex.name }
     };
 
@@ -89,6 +89,7 @@ pub fn output_primary_stuff(
     impl_token_stream: &mut TokenStream,
     sm: &SM<Ident, ImplItemMethod, Expr, Type>,
     fields_named: &FieldsNamed,
+    trans_fns: &Vec<ImplItemMethod>,
 ) {
     let name = &sm.name;
     //let fields: Vec<TokenStream> = sm.fields.iter().map(field_to_tokens).collect();
@@ -110,11 +111,10 @@ pub fn output_primary_stuff(
     };
     impl_token_stream.extend(inv_sig);
 
-    for tr in &sm.transitions {
-        unimplemented!();
-        //let tr_sig = quote! {
-        //};
-        //impl_token_stream.extend(tr_sig);
+    for trans_fn in trans_fns {
+        let mut f = trans_fn.clone();
+        fix_attrs(&mut f.attrs);
+        f.to_tokens(impl_token_stream);
     }
 }
 

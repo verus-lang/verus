@@ -48,7 +48,7 @@ pub struct Transition<Ident, Expr, Ty> {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum TransitionStmt<Ident, Expr> {
     Block(Vec<TransitionStmt<Ident, Expr>>),
-    Let(Ident, Expr, Box<TransitionStmt<Ident, Expr>>),
+    Let(Ident, Expr),
     If(Expr, Box<TransitionStmt<Ident, Expr>>, Box<TransitionStmt<Ident, Expr>>),
     Require(Expr),
     Assert(Expr),
