@@ -1,7 +1,9 @@
+#![allow(unused_imports)]
+
 use syn::parse::{Parse, ParseStream};
-use syn::{ImplItemMethod, braced, Ident, Error, FieldsNamed, Expr, Type, Meta, NestedMeta, Attribute, AttrStyle, MetaList, FnArg};
+use syn::{ImplItemMethod, braced, Ident, Error, FieldsNamed, Expr, Type, Meta, NestedMeta, Attribute, AttrStyle, MetaList, FnArg, Receiver};
 use syn::buffer::Cursor;
-use syn::export::Span;
+use proc_macro2::Span;
 use syn::spanned::Spanned;
 use smir::ast::{SM, Invariant, Lemma, LemmaPurpose, Transition, TransitionKind, TransitionStmt, Extras};
 
@@ -39,7 +41,7 @@ impl Parse for ParseResult {
             if peek_keyword(items_stream.cursor(), "fields") {
                 let kw_span = keyword(&items_stream, "fields")?;
                 if fields_opt.is_some() {
-                    return Err(Error::new(kw_span, "Excepted only one declaration of `fields` block"));
+                    return Err(Error::new(kw_span, "Expected only one declaration of `fields` block"));
                 }
 
                 let fields_named: FieldsNamed = items_stream.parse()?;
@@ -105,36 +107,42 @@ fn parse_fn_attr_info(attrs: &Vec<Attribute>) -> syn::parse::Result<FnAttrInfo> 
             AttrStyle::Outer => { }
         }
 
-        match attr.interpret_meta() {
-            None => { continue; }
-            Some(Meta::Word(ident)) => {
-                if ident.to_string() == "invariant" {
+        match attr.parse_meta()? {
+            Meta::Path(path) => {
+                if path.is_ident("invariant") {
                     err_on_dupe(&fn_attr_info, attr.span())?;
                     fn_attr_info = FnAttrInfo::Invariant;
                 }
-                else if ident.to_string() == "transition" {
+                else if path.is_ident("transition") {
                     err_on_dupe(&fn_attr_info, attr.span())?;
                     fn_attr_info = FnAttrInfo::Transition;
                 }
-                else if ident.to_string() == "static" {
+                else if path.is_ident("static") {
                     err_on_dupe(&fn_attr_info, attr.span())?;
                     fn_attr_info = FnAttrInfo::Static;
                 }
-                else if ident.to_string() == "init" {
+                else if path.is_ident("init") {
                     err_on_dupe(&fn_attr_info, attr.span())?;
                     fn_attr_info = FnAttrInfo::Init;
                 }
             }
-            Some(Meta::List(MetaList { ident, nested, .. })) => {
-                if ident.to_string() == "inductive" {
+            Meta::List(MetaList { path, nested, .. }) => {
+                if path.is_ident("inductive") {
                     if nested.len() != 1 {
-                        return Err(Error::new(attr.span(), "expected transition name: #[indutive(name)]"));
+                        return Err(Error::new(attr.span(), "expected transition name: #[inductive(name)]"));
                     }
                     err_on_dupe(&fn_attr_info, attr.span())?;
 
                     let transition_name = match nested.iter().next() {
-                        Some(NestedMeta::Meta(Meta::Word(ident))) => ident.to_string(),
-                        _ => { return Err(Error::new(attr.span(), "expected transition name: #[indutive(name)]")); }
+                        Some(NestedMeta::Meta(Meta::Path(path))) => {
+                            match path.get_ident() {
+                                Some(ident) => ident.to_string(),
+                                None => {
+                                    return Err(Error::new(attr.span(), "expected transition name: #[inductive(name)]"));
+                                },
+                            }
+                        }
+                        _ => { return Err(Error::new(attr.span(), "expected transition name: #[inductive(name)]")); }
                     };
 
                     fn_attr_info = FnAttrInfo::Lemma(LemmaPurpose { transition: transition_name });
@@ -148,40 +156,76 @@ fn parse_fn_attr_info(attrs: &Vec<Attribute>) -> syn::parse::Result<FnAttrInfo> 
 }
 
 pub enum MaybeSM {
-  SM(SM<ImplItemMethod, Expr, Type>),
-  Extras(Extras<ImplItemMethod>),
+    SM(SM<ImplItemMethod, Expr, Type>),
+    Extras(Extras<ImplItemMethod>),
 }
 
 pub struct SMAndFuncs {
-    sm: MaybeSM,
-    normal_fns: Vec<ImplItemMethod>,
+    pub sm: MaybeSM,
+    pub normal_fns: Vec<ImplItemMethod>,
+}
+
+fn attr_is_mode(attr: &Attribute, mode: &str) -> bool {
+    match attr.parse_meta() {
+        Ok(Meta::Path(path)) if path.is_ident(mode) => true,
+        _ => false,
+    }
+}
+
+fn attr_is_any_mode(attr: &Attribute) -> bool {
+    match attr.parse_meta() {
+        Ok(Meta::Path(path)) if path.is_ident("spec") || path.is_ident("proof") || path.is_ident("exec") => true,
+        _ => false,
+    }
+}
+
+fn ensure_mode(impl_item_method: &ImplItemMethod, msg: &str, mode: &str) -> syn::parse::Result<()> {
+    for attr in &impl_item_method.attrs {
+        if attr_is_mode(attr, mode) {
+            return Ok(());
+        }
+    }
+
+    return Err(Error::new(impl_item_method.span(), msg));
+}
+
+fn ensure_no_mode(impl_item_method: &ImplItemMethod, msg: &str) -> syn::parse::Result<()> {
+    for attr in &impl_item_method.attrs {
+        if attr_is_any_mode(attr) {
+            return Err(Error::new(attr.span(), msg));
+        }
+    }
+
+    return Ok(());
 }
 
 fn to_transition(impl_item_method: ImplItemMethod, kind: TransitionKind) -> syn::parse::Result<Transition<Expr, Type>> {
-  panic!("not impl: to_transition");
+    panic!("not impl: to_transition");
 }
 
 fn to_invariant(impl_item_method: ImplItemMethod) -> syn::parse::Result<Invariant<ImplItemMethod>> {
-    if impl_item_method.sig.decl.inputs.len() != 1 {
-        return Err(Error::new(impl_item_method.sig.decl.inputs.span(), "an invariant function must take exactly 1 argument (self)"));
+    ensure_mode(&impl_item_method, "an invariant fn must be labelled 'spec'", "spec")?;
+    if impl_item_method.sig.inputs.len() != 1 {
+        return Err(Error::new(impl_item_method.sig.inputs.span(), "an invariant function must take exactly 1 argument (self)"));
     }
 
-    let one_arg = impl_item_method.sig.decl.inputs.iter().next().expect("one_arg");
+    let one_arg = impl_item_method.sig.inputs.iter().next().expect("one_arg");
     match one_arg {
-        FnArg::SelfRef(_) | FnArg::SelfValue(_) => { }
+        FnArg::Receiver(Receiver { mutability: None, .. }) => { }
         _ => {
             return Err(Error::new(one_arg.span(), "an invariant function must take 1 argument (self)"));
         }
     }
 
-    if impl_item_method.sig.decl.generics.params.len() > 0 {
-        return Err(Error::new(impl_item_method.sig.decl.generics.span(), "an invariant function must take 0 type arguments"));
+    if impl_item_method.sig.generics.params.len() > 0 {
+        return Err(Error::new(impl_item_method.sig.generics.span(), "an invariant function must take 0 type arguments"));
     }
 
     return Ok(Invariant { func: impl_item_method });
 }
 
 fn to_lemma(impl_item_method: ImplItemMethod, purpose: LemmaPurpose) -> syn::parse::Result<Lemma<ImplItemMethod>> {
+    ensure_mode(&impl_item_method, "an inductivity lemma must be labelled 'proof'", "proof")?;
     Ok(Lemma { purpose, func: impl_item_method })
 }
 
