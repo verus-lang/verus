@@ -288,14 +288,15 @@ pub fn parse_result_to_smir(pr: ParseResult) -> syn::parse::Result<SMAndFuncs> {
                 lemmas,
             })
         }
-        Some(fields) => {
+        Some(fields_named) => {
+            let fields = to_fields(&fields_named)?;
             MaybeSM::SM(SM {
                 name,
-                fields: to_fields(&fields)?,
+                fields,
                 transitions,
                 invariants,
                 lemmas,
-            }, fields)
+            }, fields_named)
         }
     };
     Ok(SMAndFuncs { normal_fns, sm: maybe_sm })
