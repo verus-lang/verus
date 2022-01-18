@@ -9,6 +9,7 @@ use air::errors::{error, error_with_label};
 use air::scope_map::ScopeMap;
 use std::cmp::min;
 use std::collections::HashMap;
+use std::mem::swap;
 
 // Exec <= Proof <= Spec
 pub fn mode_le(m1: Mode, m2: Mode) -> bool {
@@ -47,6 +48,7 @@ struct Typing {
     pub(crate) erasure_modes: ErasureModes,
     pub(crate) in_forall_stmt: bool,
     pub(crate) ret_mode: Option<Mode>,
+    pub(crate) atomic_insts: Option<AtomicInstCollector>,
 }
 
 impl Typing {
@@ -137,12 +139,11 @@ impl AtomicInstCollector {
 
 fn check_expr_has_mode(
     typing: &mut Typing,
-    atomic_insts: &mut Option<AtomicInstCollector>,
     outer_mode: Mode,
     expr: &Expr,
     expected: Mode,
 ) -> Result<(), VirErr> {
-    let mode = check_expr(typing, atomic_insts, outer_mode, expr)?;
+    let mode = check_expr(typing, outer_mode, expr)?;
     if !mode_le(mode, expected) {
         err_string(&expr.span, format!("expression has mode {}, expected mode {}", mode, expected))
     } else {
@@ -177,12 +178,7 @@ fn add_pattern(typing: &mut Typing, mode: Mode, pattern: &Pattern) -> Result<(),
     }
 }
 
-fn check_expr(
-    typing: &mut Typing,
-    atomic_insts: &mut Option<AtomicInstCollector>,
-    outer_mode: Mode,
-    expr: &Expr,
-) -> Result<Mode, VirErr> {
+fn check_expr(typing: &mut Typing, outer_mode: Mode, expr: &Expr) -> Result<Mode, VirErr> {
     match &expr.x {
         ExprX::Const(_) => Ok(outer_mode),
         ExprX::Var(x) | ExprX::VarAt(x, _) => {
@@ -208,7 +204,7 @@ fn check_expr(
                 Some(f) => f.clone(),
             };
             if function.x.mode == Mode::Exec {
-                match atomic_insts {
+                match &mut typing.atomic_insts {
                     None => {}
                     Some(ai) => {
                         if function.x.attrs.atomic {
@@ -234,7 +230,7 @@ fn check_expr(
                             "cannot call function with &mut parameter inside forall/assert_by statements",
                         );
                     }
-                    let arg_mode = check_expr(typing, atomic_insts, outer_mode, arg)?;
+                    let arg_mode = check_expr(typing, outer_mode, arg)?;
                     if arg_mode != param_mode {
                         return err_string(
                             &param.span,
@@ -245,20 +241,20 @@ fn check_expr(
                         );
                     }
                 }
-                check_expr_has_mode(typing, atomic_insts, param_mode, arg, param.x.mode)?;
+                check_expr_has_mode(typing, param_mode, arg, param.x.mode)?;
             }
             Ok(function.x.ret.x.mode)
         }
         ExprX::Call(CallTarget::FnSpec(e0), es) => {
             // TODO call `add_non_atomic` if this is ever supported for exec-mode functions
-            check_expr_has_mode(typing, atomic_insts, Mode::Spec, e0, Mode::Spec)?;
+            check_expr_has_mode(typing, Mode::Spec, e0, Mode::Spec)?;
             for arg in es.iter() {
-                check_expr_has_mode(typing, atomic_insts, Mode::Spec, arg, Mode::Spec)?;
+                check_expr_has_mode(typing, Mode::Spec, arg, Mode::Spec)?;
             }
             Ok(Mode::Spec)
         }
         ExprX::Tuple(es) => {
-            let modes = vec_map_result(es, |e| check_expr(typing, atomic_insts, outer_mode, e))?;
+            let modes = vec_map_result(es, |e| check_expr(typing, outer_mode, e))?;
             Ok(modes.into_iter().fold(outer_mode, mode_join))
         }
         ExprX::Ctor(path, variant, binders, update) => {
@@ -266,12 +262,11 @@ fn check_expr(
             let variant = datatype.x.get_variant(variant);
             let mut mode = mode_join(outer_mode, datatype.x.mode);
             if let Some(update) = update {
-                mode = mode_join(mode, check_expr(typing, atomic_insts, outer_mode, update)?);
+                mode = mode_join(mode, check_expr(typing, outer_mode, update)?);
             }
             for arg in binders.iter() {
                 let (_, field_mode) = get_field(&variant.a, &arg.name).a;
-                let mode_arg =
-                    check_expr(typing, atomic_insts, mode_join(outer_mode, field_mode), &arg.a)?;
+                let mode_arg = check_expr(typing, mode_join(outer_mode, field_mode), &arg.a)?;
                 if !mode_le(mode_arg, field_mode) {
                     // allow this arg by weakening whole struct's mode
                     mode = mode_join(mode, mode_arg);
@@ -284,18 +279,14 @@ fn check_expr(
 
             Ok(mode)
         }
-        ExprX::Unary(_, e1) => check_expr(typing, atomic_insts, outer_mode, e1),
-        ExprX::UnaryOpr(UnaryOpr::Box(_), e1) => check_expr(typing, atomic_insts, outer_mode, e1),
-        ExprX::UnaryOpr(UnaryOpr::Unbox(_), e1) => check_expr(typing, atomic_insts, outer_mode, e1),
+        ExprX::Unary(_, e1) => check_expr(typing, outer_mode, e1),
+        ExprX::UnaryOpr(UnaryOpr::Box(_), e1) => check_expr(typing, outer_mode, e1),
+        ExprX::UnaryOpr(UnaryOpr::Unbox(_), e1) => check_expr(typing, outer_mode, e1),
         ExprX::UnaryOpr(UnaryOpr::HasType(_), _) => panic!("internal error: HasType in modes.rs"),
-        ExprX::UnaryOpr(UnaryOpr::IsVariant { .. }, e1) => {
-            check_expr(typing, atomic_insts, outer_mode, e1)
-        }
-        ExprX::UnaryOpr(UnaryOpr::TupleField { .. }, e1) => {
-            check_expr(typing, atomic_insts, outer_mode, e1)
-        }
+        ExprX::UnaryOpr(UnaryOpr::IsVariant { .. }, e1) => check_expr(typing, outer_mode, e1),
+        ExprX::UnaryOpr(UnaryOpr::TupleField { .. }, e1) => check_expr(typing, outer_mode, e1),
         ExprX::UnaryOpr(UnaryOpr::Field { datatype, variant: _, field }, e1) => {
-            let e1_mode = check_expr(typing, atomic_insts, outer_mode, e1)?;
+            let e1_mode = check_expr(typing, outer_mode, e1)?;
             let datatype = &typing.datatypes[datatype];
             let field = get_field(&datatype.x.get_only_variant().a, field);
             Ok(mode_join(e1_mode, field.a.1))
@@ -310,8 +301,8 @@ fn check_expr(
                 BinaryOp::Implies => mode_join(outer_mode, Mode::Spec),
                 _ => outer_mode,
             };
-            let mode1 = check_expr(typing, atomic_insts, outer_mode, e1)?;
-            let mode2 = check_expr(typing, atomic_insts, outer_mode, e2)?;
+            let mode1 = check_expr(typing, outer_mode, e1)?;
+            let mode2 = check_expr(typing, outer_mode, e2)?;
             Ok(mode_join(op_mode, mode_join(mode1, mode2)))
         }
         ExprX::Quant(_, binders, e1) => {
@@ -319,7 +310,7 @@ fn check_expr(
             for binder in binders.iter() {
                 typing.insert(&expr.span, &binder.name, false, Mode::Spec);
             }
-            check_expr_has_mode(typing, atomic_insts, Mode::Spec, e1, Mode::Spec)?;
+            check_expr_has_mode(typing, Mode::Spec, e1, Mode::Spec)?;
             typing.vars.pop_scope();
             Ok(Mode::Spec)
         }
@@ -330,15 +321,21 @@ fn check_expr(
             for binder in params.iter() {
                 typing.insert(&expr.span, &binder.name, false, Mode::Spec);
             }
-            let mut atomic_insts = None;
-            check_expr_has_mode(typing, &mut atomic_insts, Mode::Spec, body, Mode::Spec)?;
+
+            let mut inner_atomic_insts = None;
+            swap(&mut inner_atomic_insts, &mut typing.atomic_insts);
+
+            check_expr_has_mode(typing, Mode::Spec, body, Mode::Spec)?;
+
+            swap(&mut inner_atomic_insts, &mut typing.atomic_insts);
+
             typing.vars.pop_scope();
             Ok(Mode::Spec)
         }
         ExprX::Choose(binder, e1) => {
             typing.vars.push_scope(true);
             typing.insert(&expr.span, &binder.name, false, Mode::Spec);
-            check_expr_has_mode(typing, atomic_insts, Mode::Spec, e1, Mode::Spec)?;
+            check_expr_has_mode(typing, Mode::Spec, e1, Mode::Spec)?;
             typing.vars.pop_scope();
             Ok(Mode::Spec)
         }
@@ -358,7 +355,8 @@ fn check_expr(
                         );
                     }
                     typing.erasure_modes.var_modes.push((lhs.span.clone(), x_mode));
-                    check_expr_has_mode(typing, atomic_insts, outer_mode, rhs, x_mode)?;
+
+                    check_expr_has_mode(typing, outer_mode, rhs, x_mode)?;
                     Ok(x_mode)
                 }
                 _ => panic!("expected var, found {:?}", &lhs),
@@ -376,9 +374,9 @@ fn check_expr(
             for var in vars.iter() {
                 typing.insert(&expr.span, &var.name, false, Mode::Spec);
             }
-            check_expr_has_mode(typing, atomic_insts, Mode::Spec, require, Mode::Spec)?;
-            check_expr_has_mode(typing, atomic_insts, Mode::Spec, ensure, Mode::Spec)?;
-            check_expr_has_mode(typing, atomic_insts, Mode::Proof, proof, Mode::Proof)?;
+            check_expr_has_mode(typing, Mode::Spec, require, Mode::Spec)?;
+            check_expr_has_mode(typing, Mode::Spec, ensure, Mode::Spec)?;
+            check_expr_has_mode(typing, Mode::Proof, proof, Mode::Proof)?;
             typing.vars.pop_scope();
             typing.in_forall_stmt = in_forall_stmt;
             Ok(Mode::Proof)
@@ -388,23 +386,23 @@ fn check_expr(
             Ok(Mode::Proof)
         }
         ExprX::If(e1, e2, e3) => {
-            let mode1 = check_expr(typing, atomic_insts, outer_mode, e1)?;
+            let mode1 = check_expr(typing, outer_mode, e1)?;
             typing.erasure_modes.condition_modes.push((expr.span.clone(), mode1));
             let mode_branch = match (outer_mode, mode1) {
                 (Mode::Exec, Mode::Spec) => Mode::Proof,
                 _ => outer_mode,
             };
-            let mode2 = check_expr(typing, atomic_insts, mode_branch, e2)?;
+            let mode2 = check_expr(typing, mode_branch, e2)?;
             match e3 {
                 None => Ok(mode2),
                 Some(e3) => {
-                    let mode3 = check_expr(typing, atomic_insts, mode_branch, e3)?;
+                    let mode3 = check_expr(typing, mode_branch, e3)?;
                     Ok(mode_join(mode2, mode3))
                 }
             }
         }
         ExprX::Match(e1, arms) => {
-            let mode1 = check_expr(typing, atomic_insts, outer_mode, e1)?;
+            let mode1 = check_expr(typing, outer_mode, e1)?;
             typing.erasure_modes.condition_modes.push((expr.span.clone(), mode1));
             match (mode1, arms.len()) {
                 (Mode::Spec, 0) => {
@@ -422,12 +420,12 @@ fn check_expr(
                     (Mode::Exec, Mode::Spec | Mode::Proof) => Mode::Proof,
                     (m, _) => m,
                 };
-                let guard_mode = check_expr(typing, atomic_insts, arm_outer_mode, &arm.x.guard)?;
+                let guard_mode = check_expr(typing, arm_outer_mode, &arm.x.guard)?;
                 let arm_outer_mode = match (arm_outer_mode, guard_mode) {
                     (Mode::Exec, Mode::Spec | Mode::Proof) => Mode::Proof,
                     (m, _) => m,
                 };
-                let arm_mode = check_expr(typing, atomic_insts, arm_outer_mode, &arm.x.body)?;
+                let arm_mode = check_expr(typing, arm_outer_mode, &arm.x.body)?;
                 final_mode = mode_join(final_mode, arm_mode);
                 typing.vars.pop_scope();
             }
@@ -435,14 +433,14 @@ fn check_expr(
         }
         ExprX::While { cond, body, invs } => {
             // We could also allow this for proof, if we check it for termination
-            match atomic_insts {
+            match &mut typing.atomic_insts {
                 None => {}
                 Some(ai) => ai.add_loop(&expr.span),
             }
-            check_expr_has_mode(typing, atomic_insts, outer_mode, cond, Mode::Exec)?;
-            check_expr_has_mode(typing, atomic_insts, outer_mode, body, Mode::Exec)?;
+            check_expr_has_mode(typing, outer_mode, cond, Mode::Exec)?;
+            check_expr_has_mode(typing, outer_mode, body, Mode::Exec)?;
             for inv in invs.iter() {
-                check_expr_has_mode(typing, atomic_insts, Mode::Spec, inv, Mode::Spec)?;
+                check_expr_has_mode(typing, Mode::Spec, inv, Mode::Spec)?;
             }
             Ok(Mode::Exec)
         }
@@ -454,7 +452,7 @@ fn check_expr(
                 (None, _) => {}
                 (_, None) => panic!("internal error: missing return type"),
                 (Some(e1), Some(ret_mode)) => {
-                    check_expr_has_mode(typing, atomic_insts, outer_mode, e1, ret_mode)?;
+                    check_expr_has_mode(typing, outer_mode, e1, ret_mode)?;
                 }
             }
             Ok(Mode::Exec)
@@ -462,11 +460,11 @@ fn check_expr(
         ExprX::Block(ss, e1) => {
             for stmt in ss.iter() {
                 typing.vars.push_scope(true);
-                check_stmt(typing, atomic_insts, outer_mode, stmt)?;
+                check_stmt(typing, outer_mode, stmt)?;
             }
             let mode = match e1 {
                 None => outer_mode,
-                Some(expr) => check_expr(typing, atomic_insts, outer_mode, expr)?,
+                Some(expr) => check_expr(typing, outer_mode, expr)?,
             };
             for _ in ss.iter() {
                 typing.vars.pop_scope();
@@ -477,22 +475,24 @@ fn check_expr(
             if outer_mode == Mode::Spec {
                 return err_string(&expr.span, format!("Cannot open invariant in Spec mode."));
             }
-            let mode1 = check_expr(typing, atomic_insts, outer_mode, inv)?;
+            let mode1 = check_expr(typing, outer_mode, inv)?;
             if mode1 != Mode::Proof {
                 return err_string(&inv.span, format!("Invariant must be Proof mode."));
             }
             typing.vars.push_scope(true);
             typing.insert(&expr.span, &binder.name, /* mutable */ true, Mode::Proof);
 
-            if atomic_insts.is_some() || outer_mode != Mode::Exec {
+            if typing.atomic_insts.is_some() || outer_mode != Mode::Exec {
                 // If we're a nested atomic block, we don't need to create a new
                 // AtomicInstCollector. We just rely on the outer one.
                 // Also, if we're already in Proof mode, then we just recurse in Proof
                 // mode, and we don't need to do the atomicity check at all.
-                let _ = check_expr(typing, atomic_insts, outer_mode, body)?;
+                let _ = check_expr(typing, outer_mode, body)?;
             } else {
                 let mut my_atomic_insts = Some(AtomicInstCollector::new());
-                let _ = check_expr(typing, &mut my_atomic_insts, outer_mode, body)?;
+                swap(&mut my_atomic_insts, &mut typing.atomic_insts);
+                let _ = check_expr(typing, outer_mode, body)?;
+                swap(&mut my_atomic_insts, &mut typing.atomic_insts);
                 my_atomic_insts.expect("my_atomic_insts").validate(&body.span)?;
             }
 
@@ -502,15 +502,10 @@ fn check_expr(
     }
 }
 
-fn check_stmt(
-    typing: &mut Typing,
-    atomic_insts: &mut Option<AtomicInstCollector>,
-    outer_mode: Mode,
-    stmt: &Stmt,
-) -> Result<(), VirErr> {
+fn check_stmt(typing: &mut Typing, outer_mode: Mode, stmt: &Stmt) -> Result<(), VirErr> {
     match &stmt.x {
         StmtX::Expr(e) => {
-            let _ = check_expr(typing, atomic_insts, outer_mode, e)?;
+            let _ = check_expr(typing, outer_mode, e)?;
             Ok(())
         }
         StmtX::Decl { pattern, mode, init } => {
@@ -521,7 +516,7 @@ fn check_stmt(
             match init.as_ref() {
                 None => {}
                 Some(expr) => {
-                    check_expr_has_mode(typing, atomic_insts, outer_mode, expr, *mode)?;
+                    check_expr_has_mode(typing, outer_mode, expr, *mode)?;
                 }
             }
             Ok(())
@@ -560,7 +555,7 @@ fn check_function(typing: &mut Typing, function: &Function) -> Result<(), VirErr
         typing.ret_mode = Some(ret_mode);
     }
     if let Some(body) = &function.x.body {
-        check_expr_has_mode(typing, &mut None, function.x.mode, body, function.x.ret.x.mode)?;
+        check_expr_has_mode(typing, function.x.mode, body, function.x.ret.x.mode)?;
     }
     typing.ret_mode = None;
     typing.vars.pop_scope();
@@ -585,6 +580,7 @@ pub fn check_crate(krate: &Krate) -> Result<ErasureModes, VirErr> {
         erasure_modes,
         in_forall_stmt: false,
         ret_mode: None,
+        atomic_insts: None,
     };
     for function in krate.functions.iter() {
         check_function(&mut typing, function)?;
