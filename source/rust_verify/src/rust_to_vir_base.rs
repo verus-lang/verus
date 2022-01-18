@@ -1,6 +1,7 @@
 use crate::context::BodyCtxt;
 use crate::util::{err_span_str, err_span_string, unsupported_err_span};
 use crate::{unsupported, unsupported_err, unsupported_err_unless};
+use crate::sm_to_vir::StateMachineFnAttr;
 use rustc_ast::token::{Token, TokenKind};
 use rustc_ast::tokenstream::{TokenStream, TokenTree};
 use rustc_ast::{AttrKind, Attribute, IntTy, MacArgs, UintTy};
@@ -267,6 +268,9 @@ pub(crate) enum Attr {
     Atomic,
     // specifies an invariant block
     InvariantBlock,
+    // for state machines
+    StateMachineStruct,
+    StateMachineFn(StateMachineFnAttr),
 }
 
 fn get_trigger_arg(span: Span, attr_tree: &AttrTree) -> Result<u64, VirErr> {
@@ -327,6 +331,9 @@ pub(crate) fn parse_attrs(attrs: &[Attribute]) -> Result<Vec<Attr>, VirErr> {
                 Some(box [AttrTree::Fun(_, arg, None)]) if arg == "atomic" => v.push(Attr::Atomic),
                 Some(box [AttrTree::Fun(_, arg, None)]) if arg == "invariant_block" => {
                     v.push(Attr::InvariantBlock)
+                }
+                Some(box [AttrTree::Fun(_, arg, None)]) if arg == "state_machine_struct" => {
+                    v.push(Attr::StateMachineStruct)
                 }
                 Some(box [AttrTree::Fun(_, arg, Some(box [AttrTree::Fun(_, msg, None)]))])
                     if arg == "custom_req_err" =>

@@ -1,5 +1,5 @@
 [package]
-name = "rust_verify"
+name = "smir_vir"
 version = "0.1.0"
 authors = ["Chris Hawblitzel <Chris.Hawblitzel@microsoft.com>"]
 edition = "2018"
@@ -10,13 +10,5 @@ edition = "2018"
 air = { path = "../air" }
 vir = { path = "../vir" }
 smir = { path = "../smir" }
-smir_vir = { path = "../smir_vir" }
 sise = "0.6.0"
 getopts = { git = "https://github.com/utaal/getopts.git", branch = "parse-partial" }
-
-[target.'cfg(windows)'.dependencies]
-win32job = "1"
-
-[dev-dependencies]
-rust_verify_test_macros = { path = "../rust_verify_test_macros" }
-regex = "1"

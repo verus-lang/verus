@@ -30,6 +30,7 @@ pub mod rust_to_vir_adts;
 pub mod rust_to_vir_base;
 pub mod rust_to_vir_expr;
 pub mod rust_to_vir_func;
+mod sm_to_vir;
 pub mod typecheck;
 pub mod util;
 pub mod verifier;
