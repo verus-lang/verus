@@ -15,6 +15,17 @@ struct Ctxt {
 }
 
 fn check_function(ctxt: &Ctxt, function: &Function) -> Result<(), VirErr> {
+    if function.x.attrs.atomic {
+        if function.x.mode != Mode::Exec {
+            return err_str(&function.span, "'atomic' only makes sense on an 'exec' function");
+        }
+        if function.x.body.is_some() {
+            return err_str(
+                &function.span,
+                "'atomic' is a trusted annotation: it may not be used on a verified function",
+            );
+        }
+    }
     match &function.x.mask_spec {
         MaskSpec::NoSpec => {}
         _ => {

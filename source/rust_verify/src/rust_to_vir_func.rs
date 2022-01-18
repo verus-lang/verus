@@ -279,6 +279,7 @@ pub(crate) fn check_item_fn<'tcx>(
         export_as_global_forall: vattrs.export_as_global_forall,
         bit_vector: vattrs.bit_vector,
         autoview: vattrs.autoview,
+        atomic: vattrs.atomic,
     };
     let func = FunctionX {
         name,

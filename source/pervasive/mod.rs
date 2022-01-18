@@ -7,6 +7,8 @@ pub mod set;
 pub mod set_lib;
 pub mod cell;
 pub mod invariants;
+pub mod atomics;
+pub mod modes;
 
 #[allow(unused_imports)]
 use builtin::*;

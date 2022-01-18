@@ -364,6 +364,8 @@ pub struct FunctionAttrsX {
     pub autoview: bool,
     /// Verify using bitvector theory
     pub bit_vector: bool,
+    /// Is atomic (i.e., can be inside an invariant block)
+    pub atomic: bool,
 }
 
 /// Static function identifier
