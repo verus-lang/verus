@@ -440,6 +440,8 @@ pub(crate) struct VerifierAttrs {
     pub(crate) bit_vector: bool,
     pub(crate) unforgeable: bool,
     pub(crate) atomic: bool,
+    pub(crate) state_machine_struct: bool,
+    pub(crate) state_machine_fn: Option<StateMachineFnAttr>,
 }
 
 pub(crate) fn get_verifier_attrs(attrs: &[Attribute]) -> Result<VerifierAttrs, VirErr> {
@@ -453,6 +455,8 @@ pub(crate) fn get_verifier_attrs(attrs: &[Attribute]) -> Result<VerifierAttrs, V
         bit_vector: false,
         unforgeable: false,
         atomic: false,
+        state_machine_struct: false,
+        state_machine_fn: None,
     };
     for attr in parse_attrs(attrs)? {
         match attr {
@@ -465,6 +469,8 @@ pub(crate) fn get_verifier_attrs(attrs: &[Attribute]) -> Result<VerifierAttrs, V
             Attr::BitVector => vs.bit_vector = true,
             Attr::Unforgeable => vs.unforgeable = true,
             Attr::Atomic => vs.atomic = true,
+            Attr::StateMachineStruct => vs.state_machine_struct = true,
+            Attr::StateMachineFn(a) => vs.state_machine_fn = Some(a.clone()),
             _ => {}
         }
     }

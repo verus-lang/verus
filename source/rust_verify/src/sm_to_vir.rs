@@ -5,13 +5,12 @@ use smir::ast::{
     Field, LemmaPurpose, TransitionKind, Invariant, Lemma, Transition, ShardableType,
 };
 use crate::util::{err_span_str};
-use rustc_hir::{VariantData, Generics};
-use rustc_ast::Attribute;
+use rustc_hir::{VariantData};
 use air::ast_util::str_ident;
 use air::errors::{error};
 use std::collections::HashMap;
 use smir_vir::reinterpret::reinterpret_func_as_transition;
-use crate::rust_to_vir_base::{Attr, AttrTree};
+use crate::rust_to_vir_base::{AttrTree, VerifierAttrs};
 use std::sync::Arc;
 
 pub struct SMCtxt {
@@ -31,7 +30,7 @@ pub enum StateMachineFnAttr {
     Lemma(LemmaPurpose<Ident>),
 }
 
-pub fn parse_state_machine_fn_attr(t: &AttrTree) -> Result<StateMachineFnAttr, VirErr> {
+pub(crate) fn parse_state_machine_fn_attr(t: &AttrTree) -> Result<StateMachineFnAttr, VirErr> {
     match t {
         AttrTree::Fun(_, arg, None) if arg == "transition" => {
             Ok(StateMachineFnAttr::Transition)
@@ -67,8 +66,7 @@ impl SMCtxt {
 
     pub(crate) fn check_datatype<'tcx>(
         &mut self,
-        self_path: Path,
-        attrs: &Vec<Attr>,
+        attrs: &VerifierAttrs,
         variant_data: &'tcx VariantData<'tcx>,
         datatype: &Datatype
     ) -> Result<(), VirErr> {
@@ -76,7 +74,7 @@ impl SMCtxt {
             return Err(error("unsupported: state machine generics", &datatype.span));
         }
 
-        if has_state_machine_struct_attr(attrs) {
+        if attrs.state_machine_struct {
             match variant_data {
                 VariantData::Struct(fields, _) => {
                     let mut sm_fields: Vec<Field<Ident, Typ>> = Vec::new();
@@ -92,7 +90,7 @@ impl SMCtxt {
                         };
                         sm_fields.push(sm_field);
                     }
-                    self.sm_types.insert(self_path, sm_fields);
+                    self.sm_types.insert(datatype.x.path.clone(), sm_fields);
                 }
                 _ => {
                     // Shouldn't get here from macro output
@@ -107,56 +105,35 @@ impl SMCtxt {
     fn check_impl_item_transition(
         &mut self,
         func_path: Path,
-        func: Function,
+        func: &Function,
         kind: TransitionKind) -> Result<(), VirErr>
     {
-        let tr = reinterpret_func_as_transition(func, kind)?;
+        let tr = reinterpret_func_as_transition(func.clone(), kind)?;
         self.transitions.insert(func_path, tr);
         Ok(())
     }
 
     pub(crate) fn check_impl_item(
         &mut self,
-        func_path: Path,
-        attrs: &Vec<Attr>,
-        func: Function,
+        state_machine_fn_attr: &Option<StateMachineFnAttr>,
+        func: &Function,
     ) -> Result<(), VirErr> {
-        let name = func_path.segments.last().expect("last");
-        match get_state_machine_fn_attr(attrs) {
-            Some(StateMachineFnAttr::Init) => self.check_impl_item_transition(func_path, func, TransitionKind::Init),
-            Some(StateMachineFnAttr::Transition) => self.check_impl_item_transition(func_path, func, TransitionKind::Transition),
-            Some(StateMachineFnAttr::Static) => self.check_impl_item_transition(func_path, func, TransitionKind::Static),
+        let name = func.x.name.path.segments.last().expect("last");
+        match state_machine_fn_attr {
+            Some(StateMachineFnAttr::Init) => self.check_impl_item_transition(func.x.name.path.clone(), func, TransitionKind::Init),
+            Some(StateMachineFnAttr::Transition) => self.check_impl_item_transition(func.x.name.path.clone(), func, TransitionKind::Transition),
+            Some(StateMachineFnAttr::Static) => self.check_impl_item_transition(func.x.name.path.clone(), func, TransitionKind::Static),
             Some(StateMachineFnAttr::Invariant) => {
                 let inv = Invariant { func: name.clone() };
-                self.invariants.insert(func_path, inv);
+                self.invariants.insert(func.x.name.path.clone(), inv);
                 Ok(())
             }
             Some(StateMachineFnAttr::Lemma(purpose)) => {
-                let lem = Lemma { func: name.clone(), purpose };
-                self.lemmas.insert(func_path, lem);
+                let lem = Lemma { func: name.clone(), purpose: purpose.clone() };
+                self.lemmas.insert(func.x.name.path.clone(), lem);
                 Ok(())
             }
             None => { Ok(()) }
         }
     }
-}
-
-fn has_state_machine_struct_attr(attrs: &Vec<Attr>) -> bool {
-    for attr in attrs {
-        match attr {
-            Attr::StateMachineStruct => { return true; }
-            _ => { }
-        }
-    }
-    return false;
-}
-
-fn get_state_machine_fn_attr(attrs: &Vec<Attr>) -> Option<StateMachineFnAttr> {
-    for attr in attrs {
-        match attr {
-            Attr::StateMachineFn(a) => { return Some(a.clone()); }
-            _ => { }
-        }
-    }
-    return None;
 }

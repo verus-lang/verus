@@ -69,6 +69,7 @@ fn check_variant_data<'tcx>(
 pub fn check_item_struct<'tcx>(
     ctxt: &Context<'tcx>,
     vir: &mut KrateX,
+    sm_ctxt: &mut crate::sm_to_vir::SMCtxt,
     span: Span,
     id: &ItemId,
     visibility: vir::ast::Visibility,
@@ -96,9 +97,11 @@ pub fn check_item_struct<'tcx>(
     let variants = Arc::new(vec![variant]);
     let mode = get_mode(Mode::Exec, attrs);
     let unforgeable = vattrs.unforgeable;
-    let datatype =
+    let datatypex =
         DatatypeX { path, visibility, transparency, typ_params, variants, mode, unforgeable };
-    vir.datatypes.push(spanned_new(span, datatype));
+    let datatype = spanned_new(span, datatypex);
+    sm_ctxt.check_datatype(&vattrs, variant_data, &datatype)?;
+    vir.datatypes.push(datatype);
     Ok(())
 }
 
