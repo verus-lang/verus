@@ -59,7 +59,7 @@ fn get_body_from_expr(e: &Expr) -> Result<TransitionStmt<Ident, Expr>, VirErr> {
                 }
                 "update" => {
                     assert!(args.len() == 2);
-                    let ident = get_update_ident(&args[1])?;
+                    let ident = get_update_ident(&args[0])?;
                     return Ok(TransitionStmt::Update(ident, args[1].clone()));
                 }
                 _ => {

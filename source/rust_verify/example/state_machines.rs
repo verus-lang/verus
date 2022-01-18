@@ -25,6 +25,7 @@ construct_state_machine!(
         }
 
         #[init]
+        #[spec]
         fn initialize(&self) {
             update(counter, 0);
             update(inc_a, false);
@@ -32,6 +33,7 @@ construct_state_machine!(
         }
 
         #[transition]
+        #[spec]
         fn tr_inc_a(&self) {
             require(!self.inc_a);
             update(counter, self.counter + 1);

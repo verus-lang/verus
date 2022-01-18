@@ -61,7 +61,7 @@ pub fn fix_attr(attr: &mut Attribute) {
         let mut old_toks = attr.path.to_token_stream();
         old_toks.extend(attr.tokens.clone());
         let toks = quote_spanned!{span =>
-            (state_machine_tag(#old_toks))
+            (state_machine_fn(#old_toks))
         };
         let mut segs = Punctuated::<PathSegment, Colon2>::new();
         segs.push(PathSegment { ident: Ident::new("verifier", span), arguments: PathArguments::None });
@@ -99,7 +99,7 @@ pub fn output_primary_stuff(
 
     // Note: #fields_named will include the braces.
     let code: TokenStream = quote! {
-        #[verifier(fancy_state_machine)]
+        #[verifier(state_machine_struct)]
         pub struct #name #fields_named
     };
     token_stream.extend(code);

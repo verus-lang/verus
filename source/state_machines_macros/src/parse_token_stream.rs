@@ -173,12 +173,14 @@ fn attr_is_mode(attr: &Attribute, mode: &str) -> bool {
     }
 }
 
+/*
 fn attr_is_any_mode(attr: &Attribute) -> bool {
     match attr.parse_meta() {
         Ok(Meta::Path(path)) if path.is_ident("spec") || path.is_ident("proof") || path.is_ident("exec") => true,
         _ => false,
     }
 }
+*/
 
 fn ensure_mode(impl_item_method: &ImplItemMethod, msg: &str, mode: &str) -> syn::parse::Result<()> {
     for attr in &impl_item_method.attrs {
@@ -190,6 +192,7 @@ fn ensure_mode(impl_item_method: &ImplItemMethod, msg: &str, mode: &str) -> syn:
     return Err(Error::new(impl_item_method.span(), msg));
 }
 
+/*
 fn ensure_no_mode(impl_item_method: &ImplItemMethod, msg: &str) -> syn::parse::Result<()> {
     for attr in &impl_item_method.attrs {
         if attr_is_any_mode(attr) {
@@ -199,8 +202,10 @@ fn ensure_no_mode(impl_item_method: &ImplItemMethod, msg: &str) -> syn::parse::R
 
     return Ok(());
 }
+*/
 
 fn to_transition(impl_item_method: &mut ImplItemMethod, kind: TransitionKind) -> syn::parse::Result<Transition<Ident, Expr, Type>> {
+    ensure_mode(&impl_item_method, "a transition fn must be labelled 'spec'", "spec")?;
     let ctxt = crate::parse_transition::Ctxt { kind };
     return parse_impl_item_method(impl_item_method, &ctxt);
 }

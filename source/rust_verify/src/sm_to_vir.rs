@@ -70,11 +70,11 @@ impl SMCtxt {
         variant_data: &'tcx VariantData<'tcx>,
         datatype: &Datatype
     ) -> Result<(), VirErr> {
-        if datatype.x.typ_params.len() > 0 {
-            return Err(error("unsupported: state machine generics", &datatype.span));
-        }
-
         if attrs.state_machine_struct {
+            if datatype.x.typ_params.len() > 0 {
+                return Err(error("unsupported: state machine generics", &datatype.span));
+            }
+
             match variant_data {
                 VariantData::Struct(fields, _) => {
                     let mut sm_fields: Vec<Field<Ident, Typ>> = Vec::new();
