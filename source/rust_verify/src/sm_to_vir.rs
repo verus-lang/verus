@@ -4,11 +4,15 @@ use vir::ast::{
 use smir::ast::{
     Field, LemmaPurpose, TransitionKind, Invariant, Lemma, Transition, ShardableType,
 };
+use crate::util::{err_span_str};
 use rustc_hir::{VariantData, Generics};
 use rustc_ast::Attribute;
 use air::ast_util::str_ident;
+use air::errors::{error};
 use std::collections::HashMap;
 use smir_vir::reinterpret::reinterpret_func_as_transition;
+use crate::rust_to_vir_base::{Attr, AttrTree};
+use std::sync::Arc;
 
 pub struct SMCtxt {
     sm_types: HashMap<Path, Vec<Field<Ident, Typ>>>,
@@ -18,6 +22,7 @@ pub struct SMCtxt {
     transitions: HashMap<Path, Transition<Ident, Expr, Typ>>,
 }
 
+#[derive(Clone)]
 pub enum StateMachineFnAttr {
     Init,
     Transition,
@@ -26,23 +31,51 @@ pub enum StateMachineFnAttr {
     Lemma(LemmaPurpose<Ident>),
 }
 
-fn has_state_machine_struct_attr(attrs: &[Attribute]) -> bool {
-    panic!("unimpl: has_state_machine_struct_attr");
-}
-
-fn get_state_machine_fn_attr(attrs: &[Attribute]) -> Option<StateMachineFnAttr> {
-    panic!("unimpl: has_state_machine_struct_attr");
+pub fn parse_state_machine_fn_attr(t: &AttrTree) -> Result<StateMachineFnAttr, VirErr> {
+    match t {
+        AttrTree::Fun(_, arg, None) if arg == "transition" => {
+            Ok(StateMachineFnAttr::Transition)
+        }
+        AttrTree::Fun(_, arg, None) if arg == "init" => {
+            Ok(StateMachineFnAttr::Init)
+        }
+        AttrTree::Fun(_, arg, None) if arg == "static" => {
+            Ok(StateMachineFnAttr::Static)
+        }
+        AttrTree::Fun(_, arg, None) if arg == "invariant" => {
+            Ok(StateMachineFnAttr::Invariant)
+        }
+        AttrTree::Fun(_, arg, Some(box [AttrTree::Fun(_, id, None)])) if arg == "lemma" => {
+            let lp = LemmaPurpose { transition: Arc::new(id.clone()) };
+            Ok(StateMachineFnAttr::Lemma(lp))
+        }
+        AttrTree::Fun(span, _, _) | AttrTree::Eq(span, _, _) => {
+            return err_span_str(*span, "unrecognized state_machine_fn attribute");
+        }
+    }
 }
 
 impl SMCtxt {
-    fn check_datatype<'tcx>(
+    pub fn new() -> SMCtxt {
+        SMCtxt {
+            sm_types: HashMap::new(),
+            invariants: HashMap::new(),
+            lemmas: HashMap::new(),
+            transitions: HashMap::new(),
+        }
+    }
+
+    pub(crate) fn check_datatype<'tcx>(
         &mut self,
         self_path: Path,
-        attrs: &[Attribute],
+        attrs: &Vec<Attr>,
         variant_data: &'tcx VariantData<'tcx>,
-        generics: &'tcx Generics<'tcx>,
         datatype: &Datatype
-    ) {
+    ) -> Result<(), VirErr> {
+        if datatype.x.typ_params.len() > 0 {
+            return Err(error("unsupported: state machine generics", &datatype.span));
+        }
+
         if has_state_machine_struct_attr(attrs) {
             match variant_data {
                 VariantData::Struct(fields, _) => {
@@ -67,6 +100,8 @@ impl SMCtxt {
                 }
             }
         }
+
+        return Ok(());
     }
 
     fn check_impl_item_transition(
@@ -80,10 +115,10 @@ impl SMCtxt {
         Ok(())
     }
 
-    fn check_impl_item(
+    pub(crate) fn check_impl_item(
         &mut self,
         func_path: Path,
-        attrs: &[Attribute],
+        attrs: &Vec<Attr>,
         func: Function,
     ) -> Result<(), VirErr> {
         let name = func_path.segments.last().expect("last");
@@ -104,4 +139,24 @@ impl SMCtxt {
             None => { Ok(()) }
         }
     }
+}
+
+fn has_state_machine_struct_attr(attrs: &Vec<Attr>) -> bool {
+    for attr in attrs {
+        match attr {
+            Attr::StateMachineStruct => { return true; }
+            _ => { }
+        }
+    }
+    return false;
+}
+
+fn get_state_machine_fn_attr(attrs: &Vec<Attr>) -> Option<StateMachineFnAttr> {
+    for attr in attrs {
+        match attr {
+            Attr::StateMachineFn(a) => { return Some(a.clone()); }
+            _ => { }
+        }
+    }
+    return None;
 }
