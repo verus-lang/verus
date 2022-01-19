@@ -2,9 +2,11 @@
 
 This concerns functions that return mutable references (e.g. `fn index_mut(&mut self, idx: usize) -> &mut u64`); it does not yet consider support for borrows without a function call (e.g. `let a = &mut adt.field`).
 
-### Verification conditions for the callers
+### Function spec, from the perspective of the callers
 
-Similarly to calling functions with an `&mut` parameter, we can treat (a) returning a mutable reference and (b) the borrow expiring as two "moves" of the borrowed value: once (a) out of and once (b) back to the lender (the lender is the `&mut` parameter with the same lifetime as the returned reference). The intuition is to treat the caller's code from the call site to the end of the borrow roughly as if it was a function that takes the mutable reference as an `&mut` parameter. The specification of this ficticious function is provided in an `after<'lifetime>` block in the header of the borrowing function. In other words,
+Similarly to calling functions with an `&mut` parameter, we can treat (a) returning a mutable reference and (b) the borrow expiring as two "moves" of the borrowed value: once (a) out of and once (b) back to the lender (the lender is the `&mut` parameter with the same lifetime as the returned reference). This is justified because with mutable borrows an exclusive permission to the borrowed value is transferred for the duration of the borrow.
+
+The intuition is to treat the caller's code from the call site to the end of the borrow roughly as if it was a function that takes the mutable reference as an `&mut` parameter. The specification of this ficticious function is provided in an `after<'lifetime>` block in the header of the borrowing function. In other words,
 
 * regular `requires` and `ensures` apply to the function call site, and have the same semantics as for functions that don't return a mutable reference;
 * an `after<'lifetime>` block is used to introduce a second pair of `requires`/`ensures` that refer to the point at which the borrow expires: `requires` expresses constraints on the borrowed value before the borrow ends (i.e. before it's returned to its lender), `ensures` is what's true after the end of the borrow. `before(ref)` where `ref` is the reference can be used to refer to the value of the borrowed references just after the call (at the very start of the borrow), whereas `old` has the same meaning as regular `requires`/`ensures`
@@ -177,6 +179,75 @@ fn increment(ht: &mut HashTable<u64, i64>, key: u64) {
   }
 }
 ```
+
+#### Prusti[^1]'s pledges
+
+The `ensures` clause in `after` is similar to Prusti's pledges, as it addresses the same issue, how to specify what happens due to the modification of the part of the lender that was returned by the function as a mutable borrow. The `requires` clause in `after` seems however to not have a direct equivalent in Prusti's pledges (it could however be encoded as an implication that would result in a weak postcondition if the antecedent encoding the required final value of the borrow is false).
+
+Example. From the Prusti paper, adapted to Verus' syntax.
+
+```rust
+struct Point {
+  x: i32,
+  y: i32
+}
+
+struct Route {
+  current: Point,
+  rest: Option<Box<Route>>,
+}
+
+impl Route {
+  fn view() -> Seq<Point> { .. }
+}
+
+fn length(r: &Route) -> u64 {
+  ensures(|res: u64| res == r.view().len());
+  1 + match r.rest {
+    Some(box ref q) => length(q),
+    None => 0,
+  }
+}
+
+fn nth_x(r: &Route, n: usize) -> i32 {
+  requires(n < r.view().len());
+  ensures(|res: i32| res == r.view().index(n).x);
+  if n == 0 { r.current.x } else {
+    match r.rest {
+      Some(box ref q) => nth_x(q, n - 1),
+      None => unreached()
+    }
+  }
+}
+
+// following the Prusti example:
+
+fn nth_point<'a>(r: &'a mut Route, n: usize) -> &'a mut Point {
+  requires(n < r.view().len());
+  ensures(|res: &mut Point| res.x == nth_x(old(r), n));
+  after<'a>(|res: &mut Point| {
+    ensures(r.view().len() == old(r).view().len());
+    ensures(nth_x(r, n) == res.x)
+    ensures(forall(|i: nat| i < r.view().len() && i != n >>= nth_x(r, i) == nth_x(old(r), i)))
+  })
+  
+  // ...
+}
+
+// or, using the `.view()`:
+
+fn nth_point<'a>(r: &'a mut Route, n: usize) -> &'a mut Point {
+  requires(n < r.view().len());
+  ensures(|res: &mut Point| res.x == nth_x(old(r), n));
+  after<'a>(|res: &mut Point| {
+    ensures(r.view() == old(r).view().update(n, *res));
+  })
+  
+  // ...
+}
+```
+
+[^1]: Leveraging Rust Types  for Modular Specification and Verification -- http://pm.inf.ethz.ch/publications/getpdf.php?bibname=Own&id=AstrauskasMuellerPoliSummers19b.pdf
 
 ### Verification conditions for the function body
 
