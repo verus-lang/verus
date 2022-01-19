@@ -44,9 +44,11 @@ impl<V> Vec<V> {
 }
 ```
 
-The mutably borrowed value (the lender) is treated as "moved" for the duration of the borrow (the borrow-checker would prevent access to it): referencing its value in spec code results in the value before the move (i.e. the call). It is havoc-ed when the borrow ends.
+#### Caller code
 
-One language design issue is the fact that generally speaking there's no code that directly corresponds to the end of a borrow, as show in Example 3 and Example 4. To start (and in order to avoid having to extract information from the borrow checker), we can require the user to explicitly expire the borrow (with an `expire`/`drop` function), like in Example 4.
+In the caller code, the mutably borrowed value (the lender) is treated as "moved" for the duration of the borrow (the borrow-checker would prevent access to it): referencing its value in spec code results in the value before the move (i.e. the call). It is havoc-ed when the borrow ends.
+
+One language design issue is the fact that generally speaking there's no code that directly corresponds to the end of a borrow, as shown in Example 3 and Example 4. To start (and in order to avoid having to extract information from the borrow checker), we can require the user to explicitly expire the borrow (with an `expire`/`drop` function), like in Example 4.
 
 Example 1. Correct usage:
 
