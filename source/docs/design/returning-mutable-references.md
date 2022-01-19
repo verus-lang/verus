@@ -110,6 +110,8 @@ fn caller(v: Vec<u64>, v2: Vec<u64>) {
 
 This discussed the general case of a borrow extending for potentially multiple statements. The special case of a single direct assignment to the mutable reference in the same statement as the function call can be handled using the same semantics as described above (but without the need for an explicit `expire`).
 
+Example 5.
+
 ```rust
 fn caller(v: Vec<u64>, v2: Vec<u64>) {
   requires([sum(v) >= 20, v.len() > 10, v2.len() == v1.len()]);
@@ -119,6 +121,60 @@ fn caller(v: Vec<u64>, v2: Vec<u64>) {
   assert(sum(v) > 20);
   sort(&'b mut v);
   assert(exists(|i: nat| i < v.len() && v.index(i) == v_prev.index(i) + v2.index(4)));
+}
+```
+
+Example 6. `Option<&mut>` brought up by @tjhance. A function on a hashtable to optionally obtain a mutable reference to a value, if the key is present:
+
+```rust
+impl HashTable<K, V> {
+  pub fn borrow_mut<'a>(&'a mut self, key: K) -> Option<&'a mut V> {
+    ensures(|ref: &mut V| if self.contains(key) {
+      ref.is_some() && ref.value() == old(self).get(key)
+    } else {
+      equal(*ref, None)
+    }));
+    after<'a>(|ref: &mut V| {
+      ensures([
+        // forall(|k: K| equal(self.contains(k), old(self).contains(k)) && (self.contains(k) >>= (
+        // 	 self.get(k) == (if k == key { ref.value() } else { old(self).get(k) })
+        // ))),
+        self.view() == old(self).view().set(key, *ref.value()),
+      ])
+    })
+    
+    // ...
+  }
+}
+```
+
+This example depends on implementing `enum` `.is_variant()` and `.field()` , similar to Dafny's `.Variant?` (e.g. `.Some?`) and Dafny's field accessors (for `enum`s).
+
+Example 6b. Caller, without reborrows, but with helper functions on `Option`:
+
+```rust
+fn increment(ht: &mut HashTable<u64, i64>, key: u64) {
+  requires(ht.contains(key));
+  ensures(ht.view() == old(ht).view().set(key, old(ht).view().get(key) + 1),
+  let val = ht.borrow_mut(key);
+  if val.is_some() {
+    val.put(val.value() + 1);
+  }
+  expire(val);
+}
+```
+
+Example 6c. Caller, with reborrows
+
+* [ ] do we want to support re-borrows right away? It's more complex, due to the relationship between the returned mutable reference and `val` bound in the match pattern:
+
+```rust
+fn increment(ht: &mut HashTable<u64, i64>, key: u64) {
+  requires(ht.contains(key));
+  ensures(ht.view() == old(ht).view().set(key, old(ht).view().get(key) + 1),
+  if let Some(ref mut val) = ht.borrow_mut(key) {
+    *val = *val + 1;
+  }
 }
 ```
 
@@ -158,8 +214,8 @@ impl A {
 }
 ```
 
-
+* [ ] only allow directly returning a borrow to avoid the issue of handling pointer variables?
 
 ### Open questions
 
-* [ ] allow re-assigning the borrowing variable? What to do then? Phrophecy variables a-la RustHorn?
+* [ ] allow re-assigning the pointer variable? What to do then? Phrophecy variables a-la RustHorn?
