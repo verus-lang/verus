@@ -35,9 +35,10 @@ test_verify_one_file! {
 
             assert_bit_vector(b<<2 == b*4);
             assert(b<<2 == b*4);
+            assert(b < 256 >>= ((b<<2) as int) == (b as int) *4);
 
             assert_bit_vector(b>>1 == b/2);
-            assert(b>>1 == b/2);
+            assert(b>>1 == b/2);    
         }
     } => Ok(())
 }
@@ -74,6 +75,16 @@ test_verify_one_file! {
         fn test5(u:u64) {
             assert_bit_vector( (u >> (32 as u64)) as u32  ==  (u / (0x100000000 as u64)) as u32);
             assert( (u >> (32 as u64)) as u32  ==  (u / (0x100000000 as u64)) as u32);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test6 code! {
+        #[proof]
+        fn test6(u:u64) {
+            assert_bit_vector((a ^ b == a ^ c) >>= (b == c));
+            assert((a ^ b == a ^ c) >>= (b == c));
         }
     } => Ok(())
 }
@@ -120,6 +131,15 @@ test_verify_one_file! {
         fn test5(b: u32) {
             assert_bit_vector((b << 1) == b*2);
             assert((b << 1) == b*4); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] test6_fails code! {
+        #[proof]
+        fn test6(b: u32) {
+            assert(((b<<2) as int) == (b as int) *4);  // FAILS
         }
     } => Err(err) => assert_one_fails(err)
 }

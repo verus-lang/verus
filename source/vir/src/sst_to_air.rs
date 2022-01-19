@@ -654,6 +654,7 @@ fn exp_to_bv_expr(state: &State, exp: &Exp) -> Expr {
                 BinaryOp::BitOr => air::ast::BinaryOp::BitOr,
                 BinaryOp::Shl => air::ast::BinaryOp::Shl,
                 BinaryOp::Shr => air::ast::BinaryOp::LShr,
+                BinaryOp::Implies => air::ast::BinaryOp::Implies,
                 _ => panic!("unhandled bv binary operation {:?}", op),
             };
             // disallow signed integer from bitvec reasoning. However, allow that for shift
