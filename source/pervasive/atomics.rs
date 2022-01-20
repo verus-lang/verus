@@ -8,8 +8,6 @@ use std::sync::atomic::{
 #[allow(unused_imports)] use crate::pervasive::*;
 #[allow(unused_imports)] use crate::pervasive::modes::*;
 
-// TODO support all the different integer types
-
 macro_rules! make_integer_atomic {
     ($at_ident:ident, $p_ident:ident, $rust_ty: ty, $value_ty: ty, $wrap_add:ident, $wrap_sub:ident, $int_min:expr, $int_max: expr) => {
         #[spec]
