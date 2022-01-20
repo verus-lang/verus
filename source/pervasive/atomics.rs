@@ -121,10 +121,10 @@ macro_rules! atomic_common_methods {
         }
 
         // TODO uncomment these once Verus supports `Result`
+        /*
         #[inline(always)]
         #[verifier(external_body)]
         #[verifier(atomic)]
-        /*
         pub fn compare_exchange(&self, #[proof] perm: &mut $p_ident, current: $value_ty, new: $value_ty) -> Result<$value_ty, $value_ty> {
             requires([
                 equal(self.view(), old(perm).patomic),
