@@ -22,8 +22,9 @@ This document tracks paper-cuts and other usability issues that are not critical
 @tjhance reports:
 
 I find "new as default, explicitly use old(...) even in requires clause" to be a little confusing. To be specific, as I write the atomics library, some methods takes a &mut argument and some don't, and I constantly have to switch my way of thinking as I work on the specs. In particular, there is no type-level error if I screw up and forget to use old in a postcondition.
+
+To put a finer point on it: referencing an argument x in a postcondition means something different depending on whether x is passed as &mut or not.
+
 I think my ideal would be something like:
 * in requires, doesn't matter - could omit old, or use old to be explicit
 * in ensures, MUST either use old or new to be explicit
-
-To put a finer point on it: referencing an argument x in a postcondition means something different depending on whether x is passed as &mut or not.
