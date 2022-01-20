@@ -125,7 +125,7 @@ fn main() {
 
   // Initialize the counter
 
-  let (at, perm_token) = PAtomicU32::new(0);
+  let (at, proof(perm_token)) = PAtomicU32::new(0);
 
   #[proof] let at_inv: Invariant<G> = invariant_new(
       G { counter: counter_token, perm: perm_token },
@@ -139,7 +139,7 @@ fn main() {
   open_invariant!(&at_inv => g => {
     #[proof] let G { counter: mut c, perm: mut p } = g;
 
-    at.fetch_add(&mut p, 1);
+    at.fetch_add_wrapping(&mut p, 1);
     do_inc_a(&mut c, &mut inc_a_token); // atomic increment
 
     g = G { counter: c, perm: p };
@@ -150,7 +150,7 @@ fn main() {
   open_invariant!(&at_inv => g => {
     #[proof] let G { counter: mut c, perm: mut p } = g;
 
-    at.fetch_add(&mut p, 1);
+    at.fetch_add_wrapping(&mut p, 1);
     do_inc_b(&mut c, &mut inc_b_token); // atomic increment
 
     g = G { counter: c, perm: p };
