@@ -48,5 +48,15 @@ fn test_is_variant_1(v: Vehicle2<u64>) {
     };
 }
 
+fn test_is_variant_2(v: Vehicle2<u64>) {
+    requires(v.is_Train() && v.get_Train().0);
+}
+
+#[is_variant]
+pub enum Maybe<T> {
+    Some(T),
+    None,
+}
+
 fn main() {
 }

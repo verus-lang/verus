@@ -269,3 +269,28 @@ test_verify_one_file! {
         }
     } => Err(_)
 }
+
+test_verify_one_file! {
+    #[test] test_is_variant_get code! {
+        #[is_variant]
+        pub enum Maybe<T> {
+            Some(T),
+            None,
+        }
+
+        pub fn test1(m: Maybe<u64>) {
+            requires(m.is_Some() && m.get_Some().0 > 10);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_is_variant_no_get code! {
+        #[is_variant]
+        pub enum Maybe<T> {
+            // #[is_variant] won't generate a get_Some for this, but should not panic
+            Some { t: T },
+            None,
+        }
+    } => Ok(())
+}
