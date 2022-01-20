@@ -360,7 +360,7 @@ pub fn crate_to_vir<'tcx>(ctxt: &Context<'tcx>) -> Result<Krate, VirErr> {
         }
     }
 
-    sm_ctxt.finalize(&mut vir);
+    sm_ctxt.finalize(&mut vir)?;
 
     // for (id, _trait_impl) in trait_impls {
     //

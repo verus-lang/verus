@@ -107,7 +107,7 @@ pub fn output_primary_stuff(
     // We will fill in the 'inv' body later
     let inv_sig = quote! {
         #[spec]
-        pub fn inv(&self) -> bool {
+        pub fn invariant(&self) -> bool {
             ::builtin::state_machine_ops::to_be_determined()
         }
     };

@@ -144,6 +144,10 @@ pub fn conjoin(span: &Span, exprs: &Vec<Expr>) -> Expr {
     chain_binary(span, BinaryOp::And, &mk_bool(span, true), exprs)
 }
 
+pub fn mk_call(span: &Span, call_target: CallTarget, args: &Vec<Expr>) {
+
+}
+
 pub fn param_to_binder(param: &Param) -> Binder<Typ> {
     Arc::new(BinderX { name: param.x.name.clone(), a: param.x.typ.clone() })
 }

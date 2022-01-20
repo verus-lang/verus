@@ -4,6 +4,7 @@ use vir::ast::{
 use smir::ast::{
     Field, LemmaPurpose, TransitionKind, Invariant, Lemma, Transition, ShardableType, SM,
 };
+use smir_vir::update_krate::update_krate;
 use crate::util::{err_span_str};
 use rustc_hir::{VariantData};
 use air::ast_util::str_ident;
@@ -153,7 +154,7 @@ impl SMCtxt {
         }
     }
 
-    pub fn finalize(&self, vir: &mut KrateX) {
+    pub fn finalize(&self, vir: &mut KrateX) -> Result<(), VirErr> {
         for (path, fields) in self.sm_types.iter() {
             let name = path.segments.last().expect("path should be nonempty").clone();
 
@@ -175,8 +176,9 @@ impl SMCtxt {
                 lemmas,
             };
 
-            //update_krate(&sm, vir);
+            update_krate(path, &sm, vir)?; // updates vir
         }
+        Ok(())
     }
 }
 

@@ -80,7 +80,7 @@ fn parse_stmt(stmt: &mut Stmt, ctxt: &Ctxt) -> syn::parse::Result<TransitionStmt
     }
 }
 
-fn parse_local(local: &mut Local, ctxt: &Ctxt) -> syn::parse::Result<TransitionStmt<Ident, Expr>> {
+fn parse_local(_local: &mut Local, _ctxt: &Ctxt) -> syn::parse::Result<TransitionStmt<Ident, Expr>> {
     panic!("parse_local unimplemented");
 }
 
@@ -159,7 +159,7 @@ fn parse_call(call: &mut ExprCall, ctxt: &Ctxt) -> syn::parse::Result<Transition
     }
 }
 
-fn parse_call_type(callf: &Expr, ctxt: &Ctxt) -> syn::parse::Result<CallType> {
+fn parse_call_type(callf: &Expr, _ctxt: &Ctxt) -> syn::parse::Result<CallType> {
     match callf {
         Expr::Path(path) => {
             match &path.qself {
