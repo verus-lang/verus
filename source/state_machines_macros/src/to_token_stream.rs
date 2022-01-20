@@ -88,7 +88,7 @@ pub fn fields_named_fix_attrs(fields_named: &mut FieldsNamed) {
 pub fn output_primary_stuff(
     token_stream: &mut TokenStream,
     impl_token_stream: &mut TokenStream,
-    sm: &SM<Ident, ImplItemMethod, Expr, Type>,
+    sm: &SM<Span, Ident, ImplItemMethod, Expr, Type>,
     fields_named: &FieldsNamed,
     trans_fns: &Vec<ImplItemMethod>,
 ) {

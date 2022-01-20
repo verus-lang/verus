@@ -6,11 +6,12 @@ use smir::ast::{
 use vir::ast::{
     VirErr, KrateX, Ident, Expr, Typ, Path, Function,
 };
+use air::ast::{Span};
 use crate::check_wf::{check_wf_user_invariant, setup_inv, get_member_path};
 use crate::lemmas::{check_lemmas_cover_all_cases};
 use std::collections::HashMap;
 
-pub fn update_krate(type_path: &Path, sm: &SM<Ident, Ident, Expr, Typ>, krate: &mut KrateX) -> Result<(), VirErr> {
+pub fn update_krate(type_path: &Path, sm: &SM<Span, Ident, Ident, Expr, Typ>, krate: &mut KrateX) -> Result<(), VirErr> {
     let mut fun_map: HashMap<Ident, Function> = HashMap::new();
     for function in krate.functions.iter() {
         let member_name = function.x.name.path.segments.last().expect("path has last");

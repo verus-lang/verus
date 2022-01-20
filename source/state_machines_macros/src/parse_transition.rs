@@ -17,7 +17,7 @@ pub struct Ctxt {
 }
 
 pub fn parse_impl_item_method(iim: &mut ImplItemMethod, ctxt: &Ctxt) ->
-    syn::parse::Result<Transition<Ident, Expr, Type>>
+    syn::parse::Result<Transition<Span, Ident, Expr, Type>>
 {
     let args = parse_sig(&iim.sig)?;
     let body = parse_block(&mut iim.block, ctxt)?;
@@ -60,16 +60,16 @@ fn parse_sig(sig: &Signature) -> syn::parse::Result<Vec<Arg<Ident, Type>>> {
     return Ok(v);
 }
 
-fn parse_block(block: &mut Block, ctxt: &Ctxt) -> syn::parse::Result<TransitionStmt<Ident, Expr>> {
+fn parse_block(block: &mut Block, ctxt: &Ctxt) -> syn::parse::Result<TransitionStmt<Span, Ident, Expr>> {
     let mut tstmts = Vec::new();
     for mut stmt in block.stmts.iter_mut() {
         let tstmt = parse_stmt(&mut stmt, ctxt)?;
         tstmts.push(tstmt);
     }
-    return Ok(TransitionStmt::Block(tstmts));
+    return Ok(TransitionStmt::Block(block.span(), tstmts));
 }
 
-fn parse_stmt(stmt: &mut Stmt, ctxt: &Ctxt) -> syn::parse::Result<TransitionStmt<Ident, Expr>> {
+fn parse_stmt(stmt: &mut Stmt, ctxt: &Ctxt) -> syn::parse::Result<TransitionStmt<Span, Ident, Expr>> {
     match stmt {
         Stmt::Local(local) => parse_local(local, ctxt),
         Stmt::Expr(expr) => parse_expr(expr, ctxt),
@@ -81,11 +81,11 @@ fn parse_stmt(stmt: &mut Stmt, ctxt: &Ctxt) -> syn::parse::Result<TransitionStmt
     }
 }
 
-fn parse_local(_local: &mut Local, _ctxt: &Ctxt) -> syn::parse::Result<TransitionStmt<Ident, Expr>> {
+fn parse_local(_local: &mut Local, _ctxt: &Ctxt) -> syn::parse::Result<TransitionStmt<Span, Ident, Expr>> {
     panic!("parse_local unimplemented");
 }
 
-fn parse_expr(expr: &mut Expr, ctxt: &Ctxt) -> syn::parse::Result<TransitionStmt<Ident, Expr>> {
+fn parse_expr(expr: &mut Expr, ctxt: &Ctxt) -> syn::parse::Result<TransitionStmt<Span, Ident, Expr>> {
     match expr {
         Expr::If(expr_if) => parse_expr_if(expr_if, ctxt),
         Expr::Block(block) => parse_block(&mut block.block, ctxt),
@@ -96,18 +96,18 @@ fn parse_expr(expr: &mut Expr, ctxt: &Ctxt) -> syn::parse::Result<TransitionStmt
     }
 }
 
-fn parse_expr_if(expr_if: &mut ExprIf, ctxt: &Ctxt) -> syn::parse::Result<TransitionStmt<Ident, Expr>> {
+fn parse_expr_if(expr_if: &mut ExprIf, ctxt: &Ctxt) -> syn::parse::Result<TransitionStmt<Span, Ident, Expr>> {
     let thn = parse_block(&mut expr_if.then_branch, ctxt)?;
     let els = match &mut expr_if.else_branch {
         Some((_, el)) => parse_expr(&mut *el, ctxt)?,
-        None => TransitionStmt::Block(Vec::new()),
+        None => TransitionStmt::Block(expr_if.span(), Vec::new()),
     };
-    return Ok(TransitionStmt::If((*expr_if.cond).clone(), Box::new(thn), Box::new(els)));
+    return Ok(TransitionStmt::If(expr_if.span(), (*expr_if.cond).clone(), Box::new(thn), Box::new(els)));
 }
 
 enum CallType { Assert, Require, Update }
 
-fn parse_call(call: &mut ExprCall, ctxt: &Ctxt) -> syn::parse::Result<TransitionStmt<Ident, Expr>> {
+fn parse_call(call: &mut ExprCall, ctxt: &Ctxt) -> syn::parse::Result<TransitionStmt<Span, Ident, Expr>> {
     let ct = parse_call_type(&call.func, ctxt)?;
     match ct {
         CallType::Assert => {
@@ -116,7 +116,7 @@ fn parse_call(call: &mut ExprCall, ctxt: &Ctxt) -> syn::parse::Result<Transition
             }
             call.func = Box::new(mk_builtin_path("assert", call.func.span()));
             let e = call.args[0].clone();
-            return Ok(TransitionStmt::Assert(e));
+            return Ok(TransitionStmt::Assert(call.span(), e));
         }
         CallType::Require => {
             if call.args.len() != 1 {
@@ -124,7 +124,7 @@ fn parse_call(call: &mut ExprCall, ctxt: &Ctxt) -> syn::parse::Result<Transition
             }
             let e = call.args[0].clone();
             call.func = Box::new(mk_builtin_path("require", call.func.span()));
-            return Ok(TransitionStmt::Assert(e));
+            return Ok(TransitionStmt::Assert(call.span(), e));
         }
         CallType::Update => {
             if call.args.len() != 2 {
@@ -155,7 +155,7 @@ fn parse_call(call: &mut ExprCall, ctxt: &Ctxt) -> syn::parse::Result<Transition
             call.func = Box::new(mk_builtin_path("update", call.func.span()));
             call.args[0] = mk_self_field(ident.clone(), call.args[0].span());
             let e = call.args[1].clone();
-            return Ok(TransitionStmt::Update(ident.clone(), e));
+            return Ok(TransitionStmt::Update(call.span(), ident.clone(), e));
         }
     }
 }

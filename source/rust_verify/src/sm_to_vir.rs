@@ -10,6 +10,7 @@ use crate::util::{err_span_str};
 use rustc_hir::{VariantData};
 use air::ast_util::str_ident;
 use air::errors::{error};
+use air::ast::Span;
 use std::collections::HashMap;
 use smir_vir::reinterpret::reinterpret_func_as_transition;
 use crate::rust_to_vir_base::{AttrTree, VerifierAttrs};
@@ -18,7 +19,7 @@ use std::sync::Arc;
 pub struct SMFuns {
     pub invariants: Vec<Invariant<Ident>>,
     pub lemmas: Vec<Lemma<Ident, Ident>>,
-    pub transitions: Vec<Transition<Ident, Expr, Typ>>,
+    pub transitions: Vec<Transition<Span, Ident, Expr, Typ>>,
 }
 
 pub struct SMCtxt {

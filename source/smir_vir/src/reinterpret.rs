@@ -3,7 +3,7 @@ use air::errors::{error};
 use air::ast::{Span};
 use smir::ast::{TransitionKind, Transition, TransitionStmt, Arg};
 
-pub fn reinterpret_func_as_transition(f: Function, kind: TransitionKind) -> Result<Transition<Ident, Expr, Typ>, VirErr> {
+pub fn reinterpret_func_as_transition(f: Function, kind: TransitionKind) -> Result<Transition<Span, Ident, Expr, Typ>, VirErr> {
     let vir_body = match &f.x.body {
         None => { return Err(error("unsupported: opaque transition", &f.span)); }
         Some(body) /* once told me */ => body,
@@ -26,18 +26,18 @@ pub fn reinterpret_func_as_transition(f: Function, kind: TransitionKind) -> Resu
     })
 }
 
-fn get_body_from_expr(e: &Expr) -> Result<TransitionStmt<Ident, Expr>, VirErr> {
+fn get_body_from_expr(e: &Expr) -> Result<TransitionStmt<Span, Ident, Expr>, VirErr> {
     match &e.x {
         ExprX::If(cond, thn_body, els_body) => {
             let thn = get_body_from_expr(thn_body)?;
             let els = match els_body {
                 Some(els_body) => get_body_from_expr(els_body)?,
-                None => TransitionStmt::Block(Vec::new()),
+                None => TransitionStmt::Block(e.span.clone(), Vec::new()),
             };
-            return Ok(TransitionStmt::If(cond.clone(), Box::new(thn), Box::new(els)));
+            return Ok(TransitionStmt::If(e.span.clone(), cond.clone(), Box::new(thn), Box::new(els)));
         },
-        ExprX::Block(stmts, e) => {
-            match e {
+        ExprX::Block(stmts, end_e) => {
+            match end_e {
                 Some(e) => {
                   return Err(error("unsupported expression return in transition", &e.span));
                 }
@@ -47,23 +47,23 @@ fn get_body_from_expr(e: &Expr) -> Result<TransitionStmt<Ident, Expr>, VirErr> {
             for stmt in stmts.iter() {
                 v.push(get_body_from_stmt(stmt)?);
             }
-            Ok(TransitionStmt::Block(v))
+            Ok(TransitionStmt::Block(e.span.clone(), v))
         },
         ExprX::Call(target, args) => {
             let op_name = target_to_op_name(target, &e.span)?;
             match op_name.as_str() {
                 "assert" => {
                     assert!(args.len() == 1);
-                    return Ok(TransitionStmt::Assert(args[0].clone()));
+                    return Ok(TransitionStmt::Assert(e.span.clone(), args[0].clone()));
                 }
                 "require" => {
                     assert!(args.len() == 1);
-                    return Ok(TransitionStmt::Assert(args[0].clone()));
+                    return Ok(TransitionStmt::Assert(e.span.clone(), args[0].clone()));
                 }
                 "update" => {
                     assert!(args.len() == 2);
                     let ident = get_update_ident(&args[0])?;
-                    return Ok(TransitionStmt::Update(ident, args[1].clone()));
+                    return Ok(TransitionStmt::Update(e.span.clone(), ident, args[1].clone()));
                 }
                 _ => {
                     return Err(error("unsupported call", &e.span));
@@ -76,7 +76,7 @@ fn get_body_from_expr(e: &Expr) -> Result<TransitionStmt<Ident, Expr>, VirErr> {
     }
 }
 
-fn get_body_from_stmt(s: &Stmt) -> Result<TransitionStmt<Ident, Expr>, VirErr> {
+fn get_body_from_stmt(s: &Stmt) -> Result<TransitionStmt<Span, Ident, Expr>, VirErr> {
     match &s.x {
         StmtX::Expr(e) => get_body_from_expr(e),
         StmtX::Decl { pattern, mode, init: Some(init) } => {
@@ -85,7 +85,7 @@ fn get_body_from_stmt(s: &Stmt) -> Result<TransitionStmt<Ident, Expr>, VirErr> {
             }
             match &pattern.x {
                 PatternX::Var { name, mutable: false } => {
-                    return Ok(TransitionStmt::Let(name.clone(), init.clone()));
+                    return Ok(TransitionStmt::Let(s.span.clone(), name.clone(), init.clone()));
                 }
                 _ => {
                     return Err(error("unsupported statement type in transition", &s.span));

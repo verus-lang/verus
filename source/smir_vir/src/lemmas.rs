@@ -10,12 +10,13 @@ use vir::ast::{
     PathX, TypX, CallTarget, ExprX, Expr, KrateX,
 };
 use air::errors::{error};
+use air::ast::Span;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::ops::Index;
 use std::sync::Arc;
 
-pub fn check_lemmas_cover_all_cases(sm: &SM<Ident, Ident, Expr, Typ>, fun_map: &HashMap<Ident, Function>) -> Result<(), VirErr> {
+pub fn check_lemmas_cover_all_cases(sm: &SM<Span, Ident, Ident, Expr, Typ>, fun_map: &HashMap<Ident, Function>) -> Result<(), VirErr> {
     let mut need_inv_check = HashSet::new();
     let mut need_assert_check = HashSet::new();
 
@@ -76,9 +77,9 @@ pub fn check_lemmas_cover_all_cases(sm: &SM<Ident, Ident, Expr, Typ>, fun_map: &
     Ok(())
 }
 
-pub fn has_assertion(ts: &TransitionStmt<Ident, Expr>) -> bool {
+pub fn has_assertion(ts: &TransitionStmt<Span, Ident, Expr>) -> bool {
     match ts {
-        TransitionStmt::Block(v) => {
+        TransitionStmt::Block(_, v) => {
             for t in v.iter() {
                 if has_assertion(t) {
                     return true;
@@ -86,10 +87,10 @@ pub fn has_assertion(ts: &TransitionStmt<Ident, Expr>) -> bool {
             }
             return false;
         }
-        TransitionStmt::Let(_, _) => false,
-        TransitionStmt::If(_, thn, els) => has_assertion(thn) || has_assertion(els),
-        TransitionStmt::Require(_) => false,
-        TransitionStmt::Assert(_) => true,
-        TransitionStmt::Update(_, _) => false,
+        TransitionStmt::Let(_, _, _) => false,
+        TransitionStmt::If(_, _, thn, els) => has_assertion(thn) || has_assertion(els),
+        TransitionStmt::Require(_, _) => false,
+        TransitionStmt::Assert(_, _) => true,
+        TransitionStmt::Update(_, _, _) => false,
     }
 }

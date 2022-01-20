@@ -160,7 +160,7 @@ fn parse_fn_attr_info(attrs: &Vec<Attribute>) -> syn::parse::Result<FnAttrInfo> 
 }
 
 pub enum MaybeSM {
-    SM(SM<Ident, ImplItemMethod, Expr, Type>, FieldsNamed, Vec<ImplItemMethod>),
+    SM(SM<Span, Ident, ImplItemMethod, Expr, Type>, FieldsNamed, Vec<ImplItemMethod>),
     Extras(Extras<Ident, ImplItemMethod>),
 }
 
@@ -207,7 +207,7 @@ fn ensure_no_mode(impl_item_method: &ImplItemMethod, msg: &str) -> syn::parse::R
 }
 */
 
-fn to_transition(impl_item_method: &mut ImplItemMethod, kind: TransitionKind) -> syn::parse::Result<Transition<Ident, Expr, Type>> {
+fn to_transition(impl_item_method: &mut ImplItemMethod, kind: TransitionKind) -> syn::parse::Result<Transition<Span, Ident, Expr, Type>> {
     ensure_mode(&impl_item_method, "a transition fn must be labelled 'spec'", "spec")?;
     let ctxt = crate::parse_transition::Ctxt { kind };
     return parse_impl_item_method(impl_item_method, &ctxt);
@@ -257,7 +257,7 @@ pub fn parse_result_to_smir(pr: ParseResult) -> syn::parse::Result<SMAndFuncs> {
     let ParseResult { name, fns, fields } = pr;
 
     let mut normal_fns = Vec::new();
-    let mut transitions: Vec<Transition<Ident, Expr, Type>> = Vec::new();
+    let mut transitions: Vec<Transition<Span, Ident, Expr, Type>> = Vec::new();
     let mut invariants: Vec<Invariant<ImplItemMethod>> = Vec::new();
     let mut lemmas: Vec<Lemma<Ident, ImplItemMethod>> = Vec::new();
 

@@ -1,9 +1,9 @@
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct SM<Ident, Func, Expr, Ty> {
+pub struct SM<Span, Ident, Func, Expr, Ty> {
     pub name: Ident,
     // TODO generic args
     pub fields: Vec<Field<Ident, Ty>>,
-    pub transitions: Vec<Transition<Ident, Expr, Ty>>,
+    pub transitions: Vec<Transition<Span, Ident, Expr, Ty>>,
     pub invariants: Vec<Invariant<Func>>,
     pub lemmas: Vec<Lemma<Ident, Func>>,
 }
@@ -39,21 +39,21 @@ pub enum TransitionKind {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Transition<Ident, Expr, Ty> {
+pub struct Transition<Span, Ident, Expr, Ty> {
     pub name: Ident,
     pub kind: TransitionKind,
     pub args: Vec<Arg<Ident, Ty>>,
-    pub body: TransitionStmt<Ident, Expr>,
+    pub body: TransitionStmt<Span, Ident, Expr>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum TransitionStmt<Ident, Expr> {
-    Block(Vec<TransitionStmt<Ident, Expr>>),
-    Let(Ident, Expr),
-    If(Expr, Box<TransitionStmt<Ident, Expr>>, Box<TransitionStmt<Ident, Expr>>),
-    Require(Expr),
-    Assert(Expr),
-    Update(Ident, Expr),
+pub enum TransitionStmt<Span, Ident, Expr> {
+    Block(Span, Vec<TransitionStmt<Span, Ident, Expr>>),
+    Let(Span, Ident, Expr),
+    If(Span, Expr, Box<TransitionStmt<Span, Ident, Expr>>, Box<TransitionStmt<Span, Ident, Expr>>),
+    Require(Span, Expr),
+    Assert(Span, Expr),
+    Update(Span, Ident, Expr),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
