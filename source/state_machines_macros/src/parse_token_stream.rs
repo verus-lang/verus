@@ -129,7 +129,7 @@ fn parse_fn_attr_info(attrs: &Vec<Attribute>) -> syn::parse::Result<FnAttrInfo> 
             }
             Meta::List(MetaList { path, nested, .. }) => {
                 if path.is_ident("inductive") || path.is_ident("safety") {
-                    let is_safety = (path.is_ident("safety"));
+                    let is_safety = path.is_ident("safety");
                     let attrname = if is_safety { "safety" } else { "inductive" };
                     let lp_kind = if is_safety { LemmaPurposeKind::SatisfiesAsserts } else { LemmaPurposeKind::PreservesInvariant };
                     if nested.len() != 1 {

@@ -42,9 +42,8 @@ pub fn set_body(f: &Function, body: Expr) -> Function {
     unimplemented!();
 }
 
-pub fn check_wf_user_invariant(type_path: &Path, inv: &Ident, funs: &HashMap<Path, Function>) -> Result<(), VirErr> {
-    let p = get_member_path(type_path, &inv);
-    let f: &Function = funs.index(&p);
+pub fn check_wf_user_invariant(type_path: &Path, inv: &Ident, funs: &HashMap<Ident, Function>) -> Result<(), VirErr> {
+    let f: &Function = funs.index(inv);
 
     match &f.x {
         FunctionX {
@@ -83,12 +82,11 @@ pub fn check_wf_user_invariant(type_path: &Path, inv: &Ident, funs: &HashMap<Pat
     Ok(())
 }
 
-pub fn setup_inv(type_path: &Path, sm: &SM<Ident, Ident, Expr, Typ>, krate: &KrateX, funs: &HashMap<Path, Function>, new_funs: &mut Vec<(Path, Function)>) -> Result<(), VirErr> {
+pub fn setup_inv(type_path: &Path, sm: &SM<Ident, Ident, Expr, Typ>, krate: &KrateX, funs: &HashMap<Ident, Function>, new_funs: &mut Vec<(Ident, Function)>) -> Result<(), VirErr> {
     let mut exprs = Vec::new();
 
     for inv in &sm.invariants {
-        let p = get_member_path(type_path, &inv.func);
-        let f: &Function = funs.index(&p);
+        let f: &Function = funs.index(&inv.func);
         exprs.push(mk_call(
             &f.span,
             &CallTarget::Static(f.x.name.clone(), Arc::new(Vec::new())),
@@ -98,8 +96,8 @@ pub fn setup_inv(type_path: &Path, sm: &SM<Ident, Ident, Expr, Typ>, krate: &Kra
         ));
     }
 
-    let inv_path = get_member_path(type_path, &Arc::new("invariant".to_string()));
-    let f: &Function = funs.index(&inv_path);
+    let invariant_ident = Arc::new("invariant".to_string());
+    let f: &Function = funs.index(&invariant_ident);
 
     match &f.x {
         FunctionX {
@@ -138,7 +136,7 @@ pub fn setup_inv(type_path: &Path, sm: &SM<Ident, Ident, Expr, Typ>, krate: &Kra
     let inv_body = conjoin(&f.span, &exprs);
     let new_f = set_body(f, inv_body);
 
-    new_funs.push((inv_path, new_f));
+    new_funs.push((invariant_ident, new_f));
 
     Ok(())
 }
