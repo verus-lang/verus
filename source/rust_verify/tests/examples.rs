@@ -6,10 +6,10 @@ const DYN_LIB_EXT: &str = "dylib";
 #[cfg(target_os = "linux")]
 const DYN_LIB_EXT: &str = "so";
 
-#[cfg(target_os = "macos")]
+#[cfg(target_os = "linux")]
 const RUST_LIB_TARGET: &str = "x86_64-unknown-linux";
 
-#[cfg(target_os = "linux")]
+#[cfg(target_os = "macos")]
 const RUST_LIB_TARGET: &str = "x86_64-apple-darwin";
 
 #[derive(Debug)]
