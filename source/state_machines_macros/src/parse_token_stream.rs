@@ -5,7 +5,7 @@ use syn::{ImplItemMethod, braced, Ident, Error, FieldsNamed, Expr, Type, Meta, N
 use syn::buffer::Cursor;
 use proc_macro2::Span;
 use syn::spanned::Spanned;
-use smir::ast::{SM, Invariant, Lemma, LemmaPurpose, Transition, TransitionKind, TransitionStmt, Extras, ShardableType};
+use smir::ast::{SM, Invariant, Lemma, LemmaPurpose, Transition, TransitionKind, TransitionStmt, Extras, ShardableType, LemmaPurposeKind};
 use crate::parse_transition::parse_impl_item_method;
 
 ///////// TokenStream -> ParseResult
@@ -128,9 +128,12 @@ fn parse_fn_attr_info(attrs: &Vec<Attribute>) -> syn::parse::Result<FnAttrInfo> 
                 }
             }
             Meta::List(MetaList { path, nested, .. }) => {
-                if path.is_ident("inductive") {
+                if path.is_ident("inductive") || path.is_ident("safety") {
+                    let is_safety = (path.is_ident("safety"));
+                    let attrname = if is_safety { "safety" } else { "inductive" };
+                    let lp_kind = if is_safety { LemmaPurposeKind::SatisfiesAsserts } else { LemmaPurposeKind::PreservesInvariant };
                     if nested.len() != 1 {
-                        return Err(Error::new(attr.span(), "expected transition name: #[inductive(name)]"));
+                        return Err(Error::new(attr.span(), "expected transition name: #[".to_string() + attrname + "(name)]"));
                     }
                     err_on_dupe(&fn_attr_info, attr.span())?;
 
@@ -139,14 +142,14 @@ fn parse_fn_attr_info(attrs: &Vec<Attribute>) -> syn::parse::Result<FnAttrInfo> 
                             match path.get_ident() {
                                 Some(ident) => ident.clone(),
                                 None => {
-                                    return Err(Error::new(attr.span(), "expected transition name: #[inductive(name)]"));
+                                    return Err(Error::new(attr.span(), "expected transition name: #[".to_string() + attrname + "(name)]"));
                                 },
                             }
                         }
-                        _ => { return Err(Error::new(attr.span(), "expected transition name: #[inductive(name)]")); }
+                        _ => { return Err(Error::new(attr.span(), "expected transition name: #[".to_string() + attrname + "(name)]")); }
                     };
 
-                    fn_attr_info = FnAttrInfo::Lemma(LemmaPurpose { transition: transition_name });
+                    fn_attr_info = FnAttrInfo::Lemma(LemmaPurpose { transition: transition_name, kind: lp_kind });
                 }
             }
             _ => { }

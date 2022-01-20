@@ -40,6 +40,7 @@ pub enum TransitionKind {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Transition<Ident, Expr, Ty> {
+    pub name: Ident,
     pub kind: TransitionKind,
     pub args: Vec<Arg<Ident, Ty>>,
     pub body: TransitionStmt<Ident, Expr>,
@@ -60,9 +61,16 @@ pub struct Invariant<Func> {
     pub func: Func,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub enum LemmaPurposeKind {
+    PreservesInvariant,
+    SatisfiesAsserts,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct LemmaPurpose<Ident> {
     pub transition: Ident,
+    pub kind: LemmaPurposeKind,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

@@ -21,7 +21,8 @@ pub fn parse_impl_item_method(iim: &mut ImplItemMethod, ctxt: &Ctxt) ->
 {
     let args = parse_sig(&iim.sig)?;
     let body = parse_block(&mut iim.block, ctxt)?;
-    return Ok(Transition { kind: ctxt.kind, args, body });
+    let name = iim.sig.ident.clone();
+    return Ok(Transition { kind: ctxt.kind, args, body, name });
 }
 
 fn parse_sig(sig: &Signature) -> syn::parse::Result<Vec<Arg<Ident, Type>>> {

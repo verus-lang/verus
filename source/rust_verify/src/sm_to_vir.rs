@@ -3,6 +3,7 @@ use vir::ast::{
 };
 use smir::ast::{
     Field, LemmaPurpose, TransitionKind, Invariant, Lemma, Transition, ShardableType, SM,
+    LemmaPurposeKind,
 };
 use smir_vir::update_krate::update_krate;
 use crate::util::{err_span_str};
@@ -49,8 +50,12 @@ pub(crate) fn parse_state_machine_fn_attr(t: &AttrTree) -> Result<StateMachineFn
         AttrTree::Fun(_, arg, None) if arg == "invariant" => {
             Ok(StateMachineFnAttr::Invariant)
         }
-        AttrTree::Fun(_, arg, Some(box [AttrTree::Fun(_, id, None)])) if arg == "lemma" => {
-            let lp = LemmaPurpose { transition: Arc::new(id.clone()) };
+        AttrTree::Fun(_, arg, Some(box [AttrTree::Fun(_, id, None)])) if arg == "inductive" => {
+            let lp = LemmaPurpose { transition: Arc::new(id.clone()), kind: LemmaPurposeKind::PreservesInvariant };
+            Ok(StateMachineFnAttr::Lemma(lp))
+        }
+        AttrTree::Fun(_, arg, Some(box [AttrTree::Fun(_, id, None)])) if arg == "safety" => {
+            let lp = LemmaPurpose { transition: Arc::new(id.clone()), kind: LemmaPurposeKind::SatisfiesAsserts };
             Ok(StateMachineFnAttr::Lemma(lp))
         }
         AttrTree::Fun(span, _, _) | AttrTree::Eq(span, _, _) => {

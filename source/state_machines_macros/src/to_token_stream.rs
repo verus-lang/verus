@@ -49,6 +49,7 @@ pub fn fix_attr(attr: &mut Attribute) {
         Ok(Meta::Path(path)) | Ok(Meta::List(MetaList { path, .. })) =>
             path.is_ident("invariant")
                 || path.is_ident("inductive")
+                || path.is_ident("safety")
                 || path.is_ident("transition")
                 || path.is_ident("static")
                 || path.is_ident("init")

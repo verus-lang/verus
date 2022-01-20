@@ -16,10 +16,13 @@ pub fn reinterpret_func_as_transition(f: Function, kind: TransitionKind) -> Resu
 
     let body = get_body_from_expr(&vir_body)?;
 
+    let name = f.x.name.path.segments.last().expect("last segment").clone();
+
     Ok(Transition {
         kind,
         args,
         body,
+        name,
     })
 }
 
