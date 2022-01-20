@@ -994,6 +994,9 @@ fn erase_assoc_item(ctxt: &Ctxt, mctxt: &mut MCtxt, item: &AssocItem) -> Option<
             if vattrs.external {
                 return Some(item.clone());
             }
+            if vattrs.is_variant {
+                return None;
+            }
             let erased = erase_fn(ctxt, mctxt, f, vattrs.external_body);
             erased.map(|f| update_item(item, AssocItemKind::Fn(Box::new(f))))
         }

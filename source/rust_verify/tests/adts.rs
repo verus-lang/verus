@@ -229,3 +229,43 @@ test_verify_one_file! {
         }
     } => Err(e) => assert_vir_error(e)
 }
+
+test_verify_one_file! {
+    #[test] test_is_variant_pass code! {
+        #[is_variant]
+        pub enum Maybe<T> {
+            Some(T),
+            None,
+        }
+
+        pub fn test1(m: Maybe<u64>) {
+            match m {
+                Maybe::Some(_) => assert(m.is_Some()),
+                Maybe::None => assert(m.is_None()),
+            };
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_is_variant_illegal code! {
+        pub enum Maybe<T> {
+            Some(T),
+            None,
+        }
+
+        impl <T> Maybe<T> {
+            #[doc(hidden)] #[spec] #[verifier(is_variant)] #[allow(non_snake_case)]
+            fn is_Thing(&self) -> bool { ::core::panicking::panic("not implemented") }
+        }
+    } => Err(e) => assert_vir_error(e)
+}
+
+test_verify_one_file! {
+    #[test] test_is_variant_not_enum code! {
+        #[is_variant]
+        pub struct Maybe<T> {
+            t: T,
+        }
+    } => Err(_)
+}
