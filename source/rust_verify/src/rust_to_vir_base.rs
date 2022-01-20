@@ -33,10 +33,10 @@ pub(crate) fn def_path_to_vir_path<'tcx>(tcx: TyCtxt<'tcx>, def_path: DefPath) -
 
 fn is_function_def_impl_item_node(node: rustc_hir::Node) -> bool {
     match node {
-        rustc_hir::Node::ImplItem(item) => match &item.kind {
-            rustc_hir::ImplItemKind::Fn(..) => true,
-            _ => false,
-        },
+        rustc_hir::Node::ImplItem(rustc_hir::ImplItem {
+            kind: rustc_hir::ImplItemKind::Fn(..),
+            ..
+        }) => true,
         _ => false,
     }
 }
@@ -58,27 +58,26 @@ pub(crate) fn def_id_to_vir_path<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> Path
             let parent_id = tcx.hir().get_parent_node(hir);
             let parent_node = tcx.hir().get(parent_id);
             match parent_node {
-                rustc_hir::Node::Item(item) => match &item.kind {
-                    rustc_hir::ItemKind::Impl(impll) => {
-                        let ty_path = match &impll.self_ty.kind {
-                            rustc_hir::TyKind::Path(QPath::Resolved(
-                                None,
-                                rustc_hir::Path {
-                                    res: rustc_hir::def::Res::Def(_, self_def_id),
-                                    ..
-                                },
-                            )) => def_path_to_vir_path(tcx, tcx.def_path(*self_def_id)),
-                            _ => {
-                                panic!("impl type is not given by a path");
-                            }
-                        };
-                        return typ_path_and_ident_to_vir_path(
-                            &ty_path,
-                            def_to_path_ident(tcx, def_id),
-                        );
-                    }
-                    _ => {}
-                },
+                rustc_hir::Node::Item(rustc_hir::Item {
+                    kind: rustc_hir::ItemKind::Impl(impll),
+                    ..
+                }) => {
+                    let ty_path = match &impll.self_ty.kind {
+                        rustc_hir::TyKind::Path(QPath::Resolved(
+                            None,
+                            rustc_hir::Path {
+                                res: rustc_hir::def::Res::Def(_, self_def_id), ..
+                            },
+                        )) => def_path_to_vir_path(tcx, tcx.def_path(*self_def_id)),
+                        _ => {
+                            panic!("impl type is not given by a path");
+                        }
+                    };
+                    return typ_path_and_ident_to_vir_path(
+                        &ty_path,
+                        def_to_path_ident(tcx, def_id),
+                    );
+                }
                 _ => {}
             }
         }
