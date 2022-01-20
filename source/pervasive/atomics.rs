@@ -18,17 +18,7 @@ pub struct PermissionU32 {
     #[spec] pub value: u32,
 }
 
-#[inline(always)]
-#[verifier(external_body)]
-pub fn new_atomic_u32(i: u32) -> (PAtomicU32, Proof<PermissionU32>) {
-    ensures(|res : (PAtomicU32, Proof<PermissionU32>)|
-        equal(res.1, proof(PermissionU32{ patomic: res.0.view(), value: i }))
-    );
 
-    let p = PAtomicU32 { ato: AtomicU32::new(i) };
-    #[proof] let t = proof_from_false();
-    (p, proof(t))
-}
 
 #[spec]
 pub fn wrapping_add_u32(a: int, b: int) -> int {
@@ -56,6 +46,18 @@ impl PAtomicU32 {
   #[spec]
   pub fn view(&self) -> int {
     arbitrary()
+  }
+
+  #[inline(always)]
+  #[verifier(external_body)]
+  pub fn new(i: u32) -> (PAtomicU32, Proof<PermissionU32>) {
+    ensures(|res : (PAtomicU32, Proof<PermissionU32>)|
+        equal(res.1, proof(PermissionU32{ patomic: res.0.view(), value: i }))
+    );
+
+    let p = PAtomicU32 { ato: AtomicU32::new(i) };
+    #[proof] let t = proof_from_false();
+    (p, proof(t))
   }
 
   #[inline(always)]

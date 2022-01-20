@@ -125,14 +125,7 @@ fn main() {
 
   // Initialize the counter
 
-  let mut at;
-  #[proof] let mut perm_token;
-  match new_atomic_u32(0) {
-    (patomic, proof(token)) => {
-      at = patomic;
-      perm_token = token;
-    }
-  }
+  let (at, perm_token) = PAtomicU32::new(0);
 
   #[proof] let at_inv: Invariant<G> = invariant_new(
       G { counter: counter_token, perm: perm_token },
