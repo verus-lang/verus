@@ -4,9 +4,9 @@ use smir::ast::{
     Field, LemmaPurpose, TransitionKind, Invariant, Lemma, Transition, ShardableType, SM,
 };
 use vir::ast::{
-    VirErr, KrateX, Ident, Expr, Typ, Path,
+    VirErr, KrateX, Ident, Expr, Typ, Path, Function,
 };
-use crate::check_wf::{check_wf_invariant};
+use crate::check_wf::{check_wf_user_invariant, setup_inv};
 use std::collections::HashMap;
 
 pub fn update_krate(type_path: &Path, sm: &SM<Ident, Ident, Expr, Typ>, krate: &mut KrateX) -> Result<(), VirErr> {
@@ -20,7 +20,9 @@ pub fn update_krate(type_path: &Path, sm: &SM<Ident, Ident, Expr, Typ>, krate: &
         check_wf_user_invariant(type_path, &inv.func, &fun_map)?;
     }
 
-    setup_inv(type_path, sm, krate);
+    let mut new_funs: Vec<(Path, Function)> = Vec::new();
+
+    setup_inv(type_path, sm, krate, &fun_map, &mut new_funs)?;
 
     Ok(())
 }

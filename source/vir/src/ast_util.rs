@@ -1,7 +1,7 @@
 use crate::ast::{
     BinaryOp, Constant, DatatypeX, Expr, ExprX, Fun, FunX, FunctionX, Ident, Idents, IntRange,
     Mode, Param, Params, Path, PathX, SpannedTyped, Typ, TypX, Typs, Variant, Variants, VirErr,
-    Visibility,
+    Visibility, CallTarget,
 };
 use crate::util::vec_map;
 use air::ast::{Binder, BinderX, Binders, Span};
@@ -144,8 +144,12 @@ pub fn conjoin(span: &Span, exprs: &Vec<Expr>) -> Expr {
     chain_binary(span, BinaryOp::And, &mk_bool(span, true), exprs)
 }
 
-pub fn mk_call(span: &Span, call_target: CallTarget, args: &Vec<Expr>) {
+pub fn mk_call(span: &Span, call_target: &CallTarget, args: &Vec<Expr>) -> Expr {
+    unimplemented!();
+}
 
+pub fn mk_var(span: &Span, s: String) -> Expr {
+    unimplemented!();
 }
 
 pub fn param_to_binder(param: &Param) -> Binder<Typ> {
