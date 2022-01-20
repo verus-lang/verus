@@ -1041,7 +1041,6 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                             bctx,
                             expr,
                             def_id,
-                            bctx.types.node_type(fun.hir_id),
                             bctx.types.node_substs(fun.hir_id),
                             fun.span,
                             args_slice,
