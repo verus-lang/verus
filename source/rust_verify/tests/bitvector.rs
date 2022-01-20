@@ -16,8 +16,8 @@ test_verify_one_file! {
             assert_bit_vector(b & b == b);
             assert(b & b == b);
 
-            assert_bit_vector(b & 0 == 0);
-            assert(b & 0 == 0);
+            assert_bit_vector(b + (!b) + 1 == 0);
+            assert(b + (!b) + 1 == 0);
 
             assert_bit_vector(b | b == b);
             assert(b | b == b);
@@ -38,7 +38,7 @@ test_verify_one_file! {
             assert(b < 256 >>= ((b<<2) as int) == (b as int) *4);
 
             assert_bit_vector(b>>1 == b/2);
-            assert(b>>1 == b/2);    
+            assert(b>>1 == b/2);
         }
     } => Ok(())
 }
@@ -82,7 +82,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test6 code! {
         #[proof]
-        fn test6(u:u64) {
+        fn test6(a:u64, b:u64, c:u64) {
             assert_bit_vector((a ^ b == a ^ c) >>= (b == c));
             assert((a ^ b == a ^ c) >>= (b == c));
         }
@@ -139,6 +139,7 @@ test_verify_one_file! {
     #[test] test6_fails code! {
         #[proof]
         fn test6(b: u32) {
+            assert_bit_vector(b<<2 == b*4);
             assert(((b<<2) as int) == (b as int) *4);  // FAILS
         }
     } => Err(err) => assert_one_fails(err)

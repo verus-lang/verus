@@ -56,7 +56,7 @@ fn check_trigger_expr(exp: &Exp, free_vars: &mut HashSet<Ident>) -> Result<(), V
         ExpX::VarAt(_, VarAt::Pre) => Ok(exp.clone()),
         ExpX::Old(_, _) => panic!("internal error: Old"),
         ExpX::Unary(op, _) => match op {
-            UnaryOp::Trigger(_) | UnaryOp::Clip(_) => Ok(exp.clone()),
+            UnaryOp::Trigger(_) | UnaryOp::Clip(_) | UnaryOp::BitNot => Ok(exp.clone()),
             UnaryOp::Not => err_str(&exp.span, "triggers cannot contain boolean operators"),
         },
         ExpX::UnaryOpr(op, _) => match op {

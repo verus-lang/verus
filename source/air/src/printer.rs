@@ -145,11 +145,11 @@ impl Printer {
             ExprX::Unary(op, expr) => {
                 let sop = match op {
                     UnaryOp::Not => "not",
+                    UnaryOp::BitNot => "bvnot",
                     UnaryOp::BitExtract(_, _) => "extract",
                 };
                 // ( (_extract numeral numeral) BitVec )
                 match op {
-                    UnaryOp::Not => Node::List(vec![str_to_node(sop), self.expr_to_node(expr)]),
                     UnaryOp::BitExtract(high, low) => {
                         let mut nodes: Vec<Node> = Vec::new();
                         let mut nodes_in: Vec<Node> = Vec::new();
@@ -161,6 +161,7 @@ impl Printer {
                         nodes.push(self.expr_to_node(expr));
                         Node::List(nodes)
                     }
+                    _ => Node::List(vec![str_to_node(sop), self.expr_to_node(expr)]),
                 }
             }
             ExprX::Binary(op, lhs, rhs) => {

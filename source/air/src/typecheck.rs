@@ -141,6 +141,13 @@ fn check_bv_unary_exprs(
             }
             Ok(Arc::new(TypX::BitVec(w_new)))
         }
+        UnaryOp::BitNot => {
+            let t0 = check_expr(typing, &exprs[0])?;
+            match get_bv_width(&t0) {
+                Ok(_) => Ok(t0.clone()),
+                Err(..) => panic!("Interner Error: not a bv type inside a bvnot"),
+            }
+        }
         _ => panic!("Interner Error: not a bv unary op, got {}", f_name),
     }
 }
@@ -205,6 +212,9 @@ fn check_expr(typing: &mut Typing, expr: &Expr) -> Result<Typ, TypeError> {
             }
         }
         ExprX::Unary(UnaryOp::Not, e1) => check_exprs(typing, "not", &[bt()], &bt(), &[e1.clone()]),
+        ExprX::Unary(UnaryOp::BitNot, e1) => {
+            check_bv_unary_exprs(typing, UnaryOp::BitNot, "bvnot", &[e1.clone()])
+        }
         ExprX::Unary(UnaryOp::BitExtract(high, low), e1) => {
             check_bv_unary_exprs(typing, UnaryOp::BitExtract(*high, *low), "extract", &[e1.clone()])
         }

@@ -284,7 +284,7 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
         ExprX::Unary(op, e1) => {
             let e1 = poly_expr(ctx, state, e1);
             match op {
-                UnaryOp::Not | UnaryOp::Clip(_) => {
+                UnaryOp::Not | UnaryOp::Clip(_) | UnaryOp::BitNot => {
                     let e1 = coerce_expr_to_native(ctx, &e1);
                     mk_expr(ExprX::Unary(*op, e1))
                 }

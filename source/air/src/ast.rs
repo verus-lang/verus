@@ -38,6 +38,7 @@ pub enum Constant {
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum UnaryOp {
     Not,
+    BitNot,
     BitExtract(u32, u32),
 }
 
