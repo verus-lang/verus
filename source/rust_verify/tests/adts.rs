@@ -230,14 +230,16 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error(e)
 }
 
-test_verify_one_file! {
-    #[test] test_is_variant_pass code! {
-        #[is_variant]
-        pub enum Maybe<T> {
-            Some(T),
-            None,
-        }
+const IS_VARIANT_MAYBE: &str = code_str! {
+    #[is_variant]
+    pub enum Maybe<T> {
+        Some(T),
+        None,
+    }
+};
 
+test_verify_one_file! {
+    #[test] test_is_variant_pass IS_VARIANT_MAYBE.to_string() + code_str! {
         pub fn test1(m: Maybe<u64>) {
             match m {
                 Maybe::Some(_) => assert(m.is_Some()),
@@ -271,15 +273,30 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_is_variant_get code! {
-        #[is_variant]
-        pub enum Maybe<T> {
-            Some(T),
-            None,
-        }
-
+    #[test] test_is_variant_get_1 IS_VARIANT_MAYBE.to_string() + code_str! {
         pub fn test1(m: Maybe<u64>) {
             requires(m.is_Some() && m.get_Some().0 > 10);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_is_variant_get_2 IS_VARIANT_MAYBE.to_string() + code_str! {
+        pub fn test1(m: Maybe<u64>) -> bool {
+            ensures(|res: bool|
+                (m.is_Some() >>= res == (m.get_Some().0 == 3)) &&
+                (m.is_None() >>= !res)
+            );
+            match m {
+                Maybe::Some(v) => v == 3,
+                Maybe::None => false,
+            }
+        }
+
+        pub fn test2() {
+            let m = Maybe::Some(3);
+            let res = test1(m);
+            assert(res);
         }
     } => Ok(())
 }
