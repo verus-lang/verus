@@ -75,8 +75,6 @@ construct_state_machine!(
         #[safety(finalize)]
         fn finalize_correct(pre: X) {
         }
-
-
     }
 );
 
