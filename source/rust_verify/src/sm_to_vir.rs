@@ -32,7 +32,7 @@ pub struct SMCtxt {
 pub enum StateMachineFnAttr {
     Init,
     Transition,
-    Static,
+    Readonly,
     Invariant,
     Lemma(LemmaPurpose<Ident>),
 }
@@ -45,8 +45,8 @@ pub(crate) fn parse_state_machine_fn_attr(t: &AttrTree) -> Result<StateMachineFn
         AttrTree::Fun(_, arg, None) if arg == "init" => {
             Ok(StateMachineFnAttr::Init)
         }
-        AttrTree::Fun(_, arg, None) if arg == "static" => {
-            Ok(StateMachineFnAttr::Static)
+        AttrTree::Fun(_, arg, None) if arg == "readonly" => {
+            Ok(StateMachineFnAttr::Readonly)
         }
         AttrTree::Fun(_, arg, None) if arg == "invariant" => {
             Ok(StateMachineFnAttr::Invariant)
@@ -133,7 +133,7 @@ impl SMCtxt {
         match state_machine_fn_attr {
             Some(StateMachineFnAttr::Init) => self.check_impl_item_transition(type_path, func, TransitionKind::Init),
             Some(StateMachineFnAttr::Transition) => self.check_impl_item_transition(type_path, func, TransitionKind::Transition),
-            Some(StateMachineFnAttr::Static) => self.check_impl_item_transition(type_path, func, TransitionKind::Static),
+            Some(StateMachineFnAttr::Readonly) => self.check_impl_item_transition(type_path, func, TransitionKind::Readonly),
             Some(StateMachineFnAttr::Invariant) => {
                 let inv = Invariant { func: name.clone() };
                 self.insert_if_necessary(&type_path);

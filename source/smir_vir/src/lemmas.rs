@@ -56,7 +56,7 @@ pub fn check_lemmas_cover_all_cases(sm: &SM<Span, Ident, Ident, Expr, Typ>, fun_
         match &t.kind {
             TransitionKind::Init => { need_inv_check.insert(t.name.clone()); }
             TransitionKind::Transition => { need_inv_check.insert(t.name.clone()); }
-            TransitionKind::Static => { }
+            TransitionKind::Readonly => { }
         }
 
         if has_assertion(&t.body) {
@@ -82,7 +82,7 @@ pub fn check_lemmas_cover_all_cases(sm: &SM<Span, Ident, Ident, Expr, Typ>, fun_
             LemmaPurpose { transition, kind: LemmaPurposeKind::PreservesInvariant } => {
                 if !need_inv_check.remove(transition) {
                     let span = &fun_map.index(transition).span;
-                    return Err(error("this lemma is unnecessary transition '".to_string() + transition + "' is declared static and does not need an inductiveness check", &span));
+                    return Err(error("this lemma is unnecessary transition '".to_string() + transition + "' is declared readonly and thus does not need an inductiveness check", &span));
                 }
             }
             LemmaPurpose { transition, kind: LemmaPurposeKind::SatisfiesAsserts } => {

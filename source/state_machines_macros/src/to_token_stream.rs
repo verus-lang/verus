@@ -51,7 +51,7 @@ pub fn fix_attr(attr: &mut Attribute) {
                 || path.is_ident("inductive")
                 || path.is_ident("safety")
                 || path.is_ident("transition")
-                || path.is_ident("static")
+                || path.is_ident("readonly")
                 || path.is_ident("init")
                 || path.is_ident("sharding"),
         _ => false,

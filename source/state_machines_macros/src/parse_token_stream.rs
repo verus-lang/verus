@@ -86,7 +86,7 @@ fn peek_keyword(cursor: Cursor, token: &str) -> bool {
 enum FnAttrInfo {
     NoneFound,
     Transition,
-    Static,
+    Readonly,
     Init,
     Invariant,
     Lemma(LemmaPurpose<Ident>),
@@ -118,9 +118,9 @@ fn parse_fn_attr_info(attrs: &Vec<Attribute>) -> syn::parse::Result<FnAttrInfo> 
                     err_on_dupe(&fn_attr_info, attr.span())?;
                     fn_attr_info = FnAttrInfo::Transition;
                 }
-                else if path.is_ident("static") {
+                else if path.is_ident("readonly") {
                     err_on_dupe(&fn_attr_info, attr.span())?;
-                    fn_attr_info = FnAttrInfo::Static;
+                    fn_attr_info = FnAttrInfo::Readonly;
                 }
                 else if path.is_ident("init") {
                     err_on_dupe(&fn_attr_info, attr.span())?;
@@ -275,11 +275,11 @@ pub fn parse_result_to_smir(pr: ParseResult) -> syn::parse::Result<SMAndFuncs> {
         match attr_info {
             FnAttrInfo::NoneFound => { normal_fns.push(impl_item_method); }
             FnAttrInfo::Transition |
-            FnAttrInfo::Static |
+            FnAttrInfo::Readonly |
             FnAttrInfo::Init => {
                 let kind = match attr_info {
                     FnAttrInfo::Transition => TransitionKind::Transition,
-                    FnAttrInfo::Static => TransitionKind::Static,
+                    FnAttrInfo::Readonly => TransitionKind::Readonly,
                     FnAttrInfo::Init => TransitionKind::Init,
                     _ => { panic!("can't get here"); }
                 };

@@ -48,9 +48,9 @@ construct_state_machine!(
             update(inc_b, true);
         }
 
-        #[static]
+        #[readonly]
         #[spec]
-        fn tr_inc_b(&self) {
+        fn finalize(&self) {
             require(self.inc_a);
             require(self.inc_b);
             assert(self.counter == 2);
@@ -69,6 +69,11 @@ construct_state_machine!(
         #[proof]
         #[inductive(initialize)]
         fn initialize_inv(pre: X) {
+        }
+
+        #[proof]
+        #[safety(finalize)]
+        fn finalize_correct(pre: X) {
         }
 
 
