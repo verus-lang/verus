@@ -90,6 +90,19 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test7 code! {
+        #[proof]
+        fn test8(b1:u64, b2:u64, b3:u64) {
+            assert_bit_vector( !b1 != !b2 >>= !(b1==b2));
+            assert_bit_vector(((b1 == (1 as u64)) && (b2 == b3)) >>= (b1 + b2 == b3 + 1));
+            assert_bit_vector((b1 == b2)  >>= (!b1 == !b2));
+            assert_bit_vector( b1 + (!b1) + 1 == 0);
+            assert_bit_vector( b1 == (!(!b1)));
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] test1_fails code! {
         #[proof]
         fn test1(b: u32) {
