@@ -1,6 +1,6 @@
-pub mod reinterpret;
-pub mod update_krate;
 mod check_wf;
 mod lemmas;
+pub mod reinterpret;
 mod transitions;
+pub mod update_krate;
 mod util;

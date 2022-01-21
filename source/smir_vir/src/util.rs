@@ -1,20 +1,20 @@
 #![allow(unused_imports)]
 
-use smir::ast::{
-    Field, LemmaPurpose, TransitionKind, Invariant, Lemma, Transition, ShardableType, SM,
-    LemmaPurposeKind, TransitionStmt,
-};
-use vir::ast_util::{conjoin, mk_call, mk_var};
-use vir::ast::{
-    VirErr, Mode, Path, Function, FunctionX, Ident, Typ,
-    PathX, TypX, CallTarget, ExprX, Expr, KrateX,
-};
-use air::errors::{error};
 use air::ast::Span;
+use air::errors::error;
+use smir::ast::{
+    Field, Invariant, Lemma, LemmaPurpose, LemmaPurposeKind, ShardableType, Transition,
+    TransitionKind, TransitionStmt, SM,
+};
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::ops::Index;
 use std::sync::Arc;
+use vir::ast::{
+    CallTarget, Expr, ExprX, Function, FunctionX, Ident, KrateX, Mode, Path, PathX, Typ, TypX,
+    VirErr,
+};
+use vir::ast_util::{conjoin, mk_call, mk_var};
 
 pub fn fields_contain(fields: &Vec<Field<Ident, Typ>>, ident: &Ident) -> bool {
     for f in fields {

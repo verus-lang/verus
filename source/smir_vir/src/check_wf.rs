@@ -1,29 +1,26 @@
 #![allow(unused_imports)]
 
-use smir::ast::{
-    Field, LemmaPurpose, TransitionKind, Invariant, Lemma, Transition, ShardableType, SM,
-};
-use vir::ast_util::{conjoin, mk_call, mk_var};
-use vir::def::{Spanned};
-use vir::ast::{
-    VirErr, Mode, Path, Function, FunctionX, Ident, Typ,
-    PathX, TypX, CallTarget, ExprX, Expr, KrateX,
-};
-use air::errors::{error};
 use air::ast::Span;
+use air::errors::error;
+use smir::ast::{
+    Field, Invariant, Lemma, LemmaPurpose, ShardableType, Transition, TransitionKind, SM,
+};
 use std::collections::HashMap;
 use std::ops::Index;
 use std::sync::Arc;
+use vir::ast::{
+    CallTarget, Expr, ExprX, Function, FunctionX, Ident, KrateX, Mode, Path, PathX, Typ, TypX,
+    VirErr,
+};
+use vir::ast_util::{conjoin, mk_call, mk_var};
+use vir::def::Spanned;
 
 // TODO put these in a util file or something
 
 pub fn get_member_path(type_path: &Path, ident: &Ident) -> Path {
     let mut seg = (*type_path.segments).clone();
     seg.push(ident.clone());
-    Arc::new(PathX {
-        krate: type_path.krate.clone(),
-        segments: Arc::new(seg),
-    })
+    Arc::new(PathX { krate: type_path.krate.clone(), segments: Arc::new(seg) })
 }
 
 pub fn is_self_type(typ: &Typ, self_path: &Path) -> bool {
@@ -46,7 +43,11 @@ pub fn set_body(f: &Function, body: Expr) -> Function {
     Spanned::new(f.span.clone(), fx)
 }
 
-pub fn check_wf_user_invariant(type_path: &Path, inv: &Ident, funs: &HashMap<Ident, Function>) -> Result<(), VirErr> {
+pub fn check_wf_user_invariant(
+    type_path: &Path,
+    inv: &Ident,
+    funs: &HashMap<Ident, Function>,
+) -> Result<(), VirErr> {
     let f: &Function = funs.index(inv);
 
     match &f.x {
@@ -74,7 +75,10 @@ pub fn check_wf_user_invariant(type_path: &Path, inv: &Ident, funs: &HashMap<Ide
             }
 
             if params.len() != 1 || !is_self_type(&params[0].x.typ, type_path) {
-                return Err(error("user-defined invariant should have exactly one param: self", &f.span));
+                return Err(error(
+                    "user-defined invariant should have exactly one param: self",
+                    &f.span,
+                ));
             }
 
             if !is_bool_type(&ret.x.typ) {
@@ -86,7 +90,12 @@ pub fn check_wf_user_invariant(type_path: &Path, inv: &Ident, funs: &HashMap<Ide
     Ok(())
 }
 
-pub fn setup_inv(type_path: &Path, sm: &SM<Span, Ident, Ident, Expr, Typ>, funs: &HashMap<Ident, Function>, new_funs: &mut Vec<(Ident, Function)>) -> Result<(), VirErr> {
+pub fn setup_inv(
+    type_path: &Path,
+    sm: &SM<Span, Ident, Ident, Expr, Typ>,
+    funs: &HashMap<Ident, Function>,
+    new_funs: &mut Vec<(Ident, Function)>,
+) -> Result<(), VirErr> {
     let mut exprs = Vec::new();
 
     for inv in &sm.invariants {
@@ -96,9 +105,7 @@ pub fn setup_inv(type_path: &Path, sm: &SM<Span, Ident, Ident, Expr, Typ>, funs:
             &f.span,
             &Arc::new(TypX::Bool),
             &CallTarget::Static(f.x.name.clone(), Arc::new(Vec::new())),
-            &Arc::new(vec![
-                mk_var(&f.span, &self_type, "self".to_string()),
-            ]),
+            &Arc::new(vec![mk_var(&f.span, &self_type, "self".to_string())]),
         ));
     }
 
@@ -130,7 +137,10 @@ pub fn setup_inv(type_path: &Path, sm: &SM<Span, Ident, Ident, Expr, Typ>, funs:
             }
 
             if params.len() != 1 || !is_self_type(&params[0].x.typ, type_path) {
-                return Err(error("macro-generated invariant should have exactly one param: self", &f.span));
+                return Err(error(
+                    "macro-generated invariant should have exactly one param: self",
+                    &f.span,
+                ));
             }
 
             if !is_bool_type(&ret.x.typ) {

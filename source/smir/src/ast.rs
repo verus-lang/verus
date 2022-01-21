@@ -35,7 +35,9 @@ pub enum ShardableType<Ty> {
 
 #[derive(Clone, Debug, PartialEq, Eq, Copy)]
 pub enum TransitionKind {
-    Init, Transition, Readonly,
+    Init,
+    Transition,
+    Readonly,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

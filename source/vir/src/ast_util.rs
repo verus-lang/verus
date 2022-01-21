@@ -1,9 +1,9 @@
 use crate::ast::{
-    BinaryOp, Constant, DatatypeX, Expr, ExprX, Fun, FunX, FunctionX, Ident, Idents, IntRange,
-    Mode, Param, Params, Path, PathX, SpannedTyped, Typ, TypX, Typs, Variant, Variants, VirErr,
-    Visibility, CallTarget, StmtX, PatternX,
+    BinaryOp, CallTarget, Constant, DatatypeX, Expr, ExprX, Fun, FunX, FunctionX, Ident, Idents,
+    IntRange, Mode, Param, Params, Path, PathX, PatternX, SpannedTyped, StmtX, Typ, TypX, Typs,
+    Variant, Variants, VirErr, Visibility,
 };
-use crate::def::{Spanned};
+use crate::def::Spanned;
 use crate::util::vec_map;
 use air::ast::{Binder, BinderX, Binders, Span};
 pub use air::ast_util::{ident_binder, str_ident};
@@ -150,11 +150,19 @@ pub fn mk_call(span: &Span, ty: &Typ, call_target: &CallTarget, args: &Vec<Expr>
 }
 
 pub fn mk_and(span: &Span, e1: Expr, e2: &Expr) -> Expr {
-    SpannedTyped::new(span, &Arc::new(TypX::Bool), ExprX::Binary(BinaryOp::And, e1.clone(), e2.clone()))
+    SpannedTyped::new(
+        span,
+        &Arc::new(TypX::Bool),
+        ExprX::Binary(BinaryOp::And, e1.clone(), e2.clone()),
+    )
 }
 
 pub fn mk_or(span: &Span, e1: &Expr, e2: &Expr) -> Expr {
-    SpannedTyped::new(span, &Arc::new(TypX::Bool), ExprX::Binary(BinaryOp::Or, e1.clone(), e2.clone()))
+    SpannedTyped::new(
+        span,
+        &Arc::new(TypX::Bool),
+        ExprX::Binary(BinaryOp::Or, e1.clone(), e2.clone()),
+    )
 }
 
 pub fn mk_ife(span: &Span, e1: &Expr, e2: &Expr, e3: &Expr) -> Expr {
@@ -162,22 +170,33 @@ pub fn mk_ife(span: &Span, e1: &Expr, e2: &Expr, e3: &Expr) -> Expr {
     SpannedTyped::new(span, &e2.typ, ExprX::If(e1.clone(), e2.clone(), Some(e3.clone())))
 }
 
-pub fn mk_let_in(span: &Span, mode: Mode, mutable: bool, ident: &Ident, e1: &Expr, e2: &Expr) -> Expr {
-    SpannedTyped::new(span, &e2.typ, ExprX::Block(
-        Arc::new(vec![
-            Spanned::new(span.clone(), StmtX::Decl {
-                pattern: SpannedTyped::new(span, &e1.typ,
-                    PatternX::Var {
-                        name: ident.clone(),
-                        mutable,
-                    },
-                ),
-                mode,
-                init: Some(e1.clone()),
-            }),
-        ]),
-        Some(e2.clone())
-    ))
+pub fn mk_let_in(
+    span: &Span,
+    mode: Mode,
+    mutable: bool,
+    ident: &Ident,
+    e1: &Expr,
+    e2: &Expr,
+) -> Expr {
+    SpannedTyped::new(
+        span,
+        &e2.typ,
+        ExprX::Block(
+            Arc::new(vec![Spanned::new(
+                span.clone(),
+                StmtX::Decl {
+                    pattern: SpannedTyped::new(
+                        span,
+                        &e1.typ,
+                        PatternX::Var { name: ident.clone(), mutable },
+                    ),
+                    mode,
+                    init: Some(e1.clone()),
+                },
+            )]),
+            Some(e2.clone()),
+        ),
+    )
 }
 
 pub fn mk_var(span: &Span, ty: &Typ, s: String) -> Expr {

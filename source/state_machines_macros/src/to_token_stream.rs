@@ -1,16 +1,22 @@
 #![allow(unused_imports)]
 
-use proc_macro2::TokenStream;
-use crate::parse_token_stream::{SMAndFuncs, MaybeSM};
-use syn::parse::{Parse, ParseStream};
-use syn::{ImplItemMethod, braced, Ident, Error, FieldsNamed, Expr, Type, Meta, NestedMeta, Attribute, AttrStyle, MetaList, FnArg, PathArguments, Path, PathSegment};
-use syn::punctuated::Punctuated;
-use syn::token::Colon2;
-use syn::buffer::Cursor;
+use crate::parse_token_stream::{MaybeSM, SMAndFuncs};
 use proc_macro2::Span;
+use proc_macro2::TokenStream;
+use quote::{quote, quote_spanned, ToTokens};
+use smir::ast::{
+    Extras, Field, Invariant, Lemma, LemmaPurpose, ShardableType, Transition, TransitionKind,
+    TransitionStmt, SM,
+};
+use syn::buffer::Cursor;
+use syn::parse::{Parse, ParseStream};
+use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
-use smir::ast::{SM, Invariant, Lemma, LemmaPurpose, Transition, TransitionKind, TransitionStmt, Extras, Field, ShardableType};
-use quote::{ToTokens, quote, quote_spanned};
+use syn::token::Colon2;
+use syn::{
+    braced, AttrStyle, Attribute, Error, Expr, FieldsNamed, FnArg, Ident, ImplItemMethod, Meta,
+    MetaList, NestedMeta, Path, PathArguments, PathSegment, Type,
+};
 
 pub fn output_token_stream(sm_and_funcs: SMAndFuncs) -> TokenStream {
     let SMAndFuncs { normal_fns, sm: maybe_sm } = sm_and_funcs;
@@ -20,7 +26,13 @@ pub fn output_token_stream(sm_and_funcs: SMAndFuncs) -> TokenStream {
 
     match &maybe_sm {
         MaybeSM::SM(sm, fields_named, trans_fns) => {
-            output_primary_stuff(&mut token_stream, &mut impl_token_stream, &sm, &fields_named, trans_fns);
+            output_primary_stuff(
+                &mut token_stream,
+                &mut impl_token_stream,
+                &sm,
+                &fields_named,
+                trans_fns,
+            );
             output_other_fns(&mut impl_token_stream, &sm.invariants, &sm.lemmas, normal_fns);
         }
         MaybeSM::Extras(ex) => {
@@ -29,8 +41,8 @@ pub fn output_token_stream(sm_and_funcs: SMAndFuncs) -> TokenStream {
     }
 
     let name = match maybe_sm {
-        MaybeSM::SM(sm, _, _) => { sm.name }
-        MaybeSM::Extras(ex) => { ex.name }
+        MaybeSM::SM(sm, _, _) => sm.name,
+        MaybeSM::Extras(ex) => ex.name,
     };
 
     let final_code = quote! {
@@ -46,14 +58,15 @@ pub fn output_token_stream(sm_and_funcs: SMAndFuncs) -> TokenStream {
 
 pub fn fix_attr(attr: &mut Attribute) {
     let should_wrap_in_verified = match attr.parse_meta() {
-        Ok(Meta::Path(path)) | Ok(Meta::List(MetaList { path, .. })) =>
+        Ok(Meta::Path(path)) | Ok(Meta::List(MetaList { path, .. })) => {
             path.is_ident("invariant")
                 || path.is_ident("inductive")
                 || path.is_ident("safety")
                 || path.is_ident("transition")
                 || path.is_ident("readonly")
                 || path.is_ident("init")
-                || path.is_ident("sharding"),
+                || path.is_ident("sharding")
+        }
         _ => false,
     };
 
@@ -61,11 +74,14 @@ pub fn fix_attr(attr: &mut Attribute) {
         let span = attr.span();
         let mut old_toks = attr.path.to_token_stream();
         old_toks.extend(attr.tokens.clone());
-        let toks = quote_spanned!{span =>
+        let toks = quote_spanned! {span =>
             (state_machine_fn(#old_toks))
         };
         let mut segs = Punctuated::<PathSegment, Colon2>::new();
-        segs.push(PathSegment { ident: Ident::new("verifier", span), arguments: PathArguments::None });
+        segs.push(PathSegment {
+            ident: Ident::new("verifier", span),
+            arguments: PathArguments::None,
+        });
         let p = Path { leading_colon: None, segments: segs };
 
         attr.tokens = toks;
@@ -123,9 +139,7 @@ pub fn output_primary_stuff(
 
 fn shardable_type_to_type(stype: &ShardableType<Type>) -> Type {
     match stype {
-        ShardableType::Variable(ty) => {
-            ty.clone()
-        }
+        ShardableType::Variable(ty) => ty.clone(),
     }
 }
 
@@ -139,7 +153,8 @@ fn field_to_tokens(field: &Field<Ident, Type>) -> TokenStream {
 }
 */
 
-fn output_other_fns(impl_token_stream: &mut TokenStream,
+fn output_other_fns(
+    impl_token_stream: &mut TokenStream,
     invariants: &Vec<Invariant<ImplItemMethod>>,
     lemmas: &Vec<Lemma<Ident, ImplItemMethod>>,
     normal_fns: Vec<ImplItemMethod>,

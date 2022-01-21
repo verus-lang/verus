@@ -10,8 +10,8 @@ use crate::context::Context;
 use crate::rust_to_vir_adts::{check_item_enum, check_item_struct};
 use crate::rust_to_vir_base::{def_id_to_vir_path, get_mode, hack_get_def_name, mk_visibility};
 use crate::rust_to_vir_func::{check_foreign_item_fn, check_item_fn};
+use crate::sm_to_vir::SMCtxt;
 use crate::util::unsupported_err_span;
-use crate::sm_to_vir::{SMCtxt};
 use crate::{err_unless, unsupported_err, unsupported_err_unless, unsupported_unless};
 use rustc_ast::Attribute;
 use rustc_hir::{

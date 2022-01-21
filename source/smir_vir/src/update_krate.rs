@@ -1,18 +1,20 @@
 #![allow(unused_imports)]
 
-use smir::ast::{
-    Field, LemmaPurpose, TransitionKind, Invariant, Lemma, Transition, ShardableType, SM,
-};
-use vir::ast::{
-    VirErr, KrateX, Ident, Expr, Typ, Path, Function,
-};
-use air::ast::{Span};
-use crate::check_wf::{check_wf_user_invariant, setup_inv, get_member_path};
+use crate::check_wf::{check_wf_user_invariant, get_member_path, setup_inv};
 use crate::lemmas::{check_lemmas_cover_all_cases, check_wf_lemmas};
-use crate::transitions::{check_transitions};
+use crate::transitions::check_transitions;
+use air::ast::Span;
+use smir::ast::{
+    Field, Invariant, Lemma, LemmaPurpose, ShardableType, Transition, TransitionKind, SM,
+};
 use std::collections::HashMap;
+use vir::ast::{Expr, Function, Ident, KrateX, Path, Typ, VirErr};
 
-pub fn update_krate(type_path: &Path, sm: &SM<Span, Ident, Ident, Expr, Typ>, krate: &mut KrateX) -> Result<(), VirErr> {
+pub fn update_krate(
+    type_path: &Path,
+    sm: &SM<Span, Ident, Ident, Expr, Typ>,
+    krate: &mut KrateX,
+) -> Result<(), VirErr> {
     let mut fun_map: HashMap<Ident, Function> = HashMap::new();
     for function in krate.functions.iter() {
         let member_name = function.x.name.path.segments.last().expect("path has last");
@@ -35,5 +37,3 @@ pub fn update_krate(type_path: &Path, sm: &SM<Span, Ident, Ident, Expr, Typ>, kr
 
     Ok(())
 }
-
-

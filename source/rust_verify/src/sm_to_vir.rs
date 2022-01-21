@@ -1,20 +1,18 @@
-use vir::ast::{
-    Path, Ident, Expr, Typ, Datatype, Function, VirErr, KrateX, PathX,
-};
-use smir::ast::{
-    Field, LemmaPurpose, TransitionKind, Invariant, Lemma, Transition, ShardableType, SM,
-    LemmaPurposeKind,
-};
-use smir_vir::update_krate::update_krate;
-use crate::util::{err_span_str};
-use rustc_hir::{VariantData};
-use air::ast_util::str_ident;
-use air::errors::{error};
-use air::ast::Span;
-use std::collections::HashMap;
-use smir_vir::reinterpret::reinterpret_func_as_transition;
 use crate::rust_to_vir_base::{AttrTree, VerifierAttrs};
+use crate::util::err_span_str;
+use air::ast::Span;
+use air::ast_util::str_ident;
+use air::errors::error;
+use rustc_hir::VariantData;
+use smir::ast::{
+    Field, Invariant, Lemma, LemmaPurpose, LemmaPurposeKind, ShardableType, Transition,
+    TransitionKind, SM,
+};
+use smir_vir::reinterpret::reinterpret_func_as_transition;
+use smir_vir::update_krate::update_krate;
+use std::collections::HashMap;
 use std::sync::Arc;
+use vir::ast::{Datatype, Expr, Function, Ident, KrateX, Path, PathX, Typ, VirErr};
 
 pub struct SMFuns {
     pub invariants: Vec<Invariant<Ident>>,
@@ -39,24 +37,22 @@ pub enum StateMachineFnAttr {
 
 pub(crate) fn parse_state_machine_fn_attr(t: &AttrTree) -> Result<StateMachineFnAttr, VirErr> {
     match t {
-        AttrTree::Fun(_, arg, None) if arg == "transition" => {
-            Ok(StateMachineFnAttr::Transition)
-        }
-        AttrTree::Fun(_, arg, None) if arg == "init" => {
-            Ok(StateMachineFnAttr::Init)
-        }
-        AttrTree::Fun(_, arg, None) if arg == "readonly" => {
-            Ok(StateMachineFnAttr::Readonly)
-        }
-        AttrTree::Fun(_, arg, None) if arg == "invariant" => {
-            Ok(StateMachineFnAttr::Invariant)
-        }
+        AttrTree::Fun(_, arg, None) if arg == "transition" => Ok(StateMachineFnAttr::Transition),
+        AttrTree::Fun(_, arg, None) if arg == "init" => Ok(StateMachineFnAttr::Init),
+        AttrTree::Fun(_, arg, None) if arg == "readonly" => Ok(StateMachineFnAttr::Readonly),
+        AttrTree::Fun(_, arg, None) if arg == "invariant" => Ok(StateMachineFnAttr::Invariant),
         AttrTree::Fun(_, arg, Some(box [AttrTree::Fun(_, id, None)])) if arg == "inductive" => {
-            let lp = LemmaPurpose { transition: Arc::new(id.clone()), kind: LemmaPurposeKind::PreservesInvariant };
+            let lp = LemmaPurpose {
+                transition: Arc::new(id.clone()),
+                kind: LemmaPurposeKind::PreservesInvariant,
+            };
             Ok(StateMachineFnAttr::Lemma(lp))
         }
         AttrTree::Fun(_, arg, Some(box [AttrTree::Fun(_, id, None)])) if arg == "safety" => {
-            let lp = LemmaPurpose { transition: Arc::new(id.clone()), kind: LemmaPurposeKind::SatisfiesAsserts };
+            let lp = LemmaPurpose {
+                transition: Arc::new(id.clone()),
+                kind: LemmaPurposeKind::SatisfiesAsserts,
+            };
             Ok(StateMachineFnAttr::Lemma(lp))
         }
         AttrTree::Fun(span, _, _) | AttrTree::Eq(span, _, _) => {
@@ -67,17 +63,14 @@ pub(crate) fn parse_state_machine_fn_attr(t: &AttrTree) -> Result<StateMachineFn
 
 impl SMCtxt {
     pub fn new() -> SMCtxt {
-        SMCtxt {
-            sm_types: HashMap::new(),
-            others: HashMap::new(),
-        }
+        SMCtxt { sm_types: HashMap::new(), others: HashMap::new() }
     }
 
     pub(crate) fn check_datatype<'tcx>(
         &mut self,
         attrs: &VerifierAttrs,
         variant_data: &'tcx VariantData<'tcx>,
-        datatype: &Datatype
+        datatype: &Datatype,
     ) -> Result<(), VirErr> {
         if attrs.state_machine_struct {
             if datatype.x.typ_params.len() > 0 {
@@ -91,7 +84,9 @@ impl SMCtxt {
                         // TODO check for the attribute on the field
                         let field_ident = str_ident(&field.ident.as_str());
                         let vir_field = vir::ast_util::get_field(
-                            &datatype.x.get_only_variant().a, &field_ident);
+                            &datatype.x.get_only_variant().a,
+                            &field_ident,
+                        );
                         let vir_ty = vir_field.a.0.clone();
                         let sm_field = Field {
                             ident: field_ident,
@@ -115,8 +110,8 @@ impl SMCtxt {
         &mut self,
         type_path: Path,
         func: &Function,
-        kind: TransitionKind) -> Result<(), VirErr>
-    {
+        kind: TransitionKind,
+    ) -> Result<(), VirErr> {
         let tr = reinterpret_func_as_transition(func.clone(), kind)?;
         self.insert_if_necessary(&type_path);
         self.others.get_mut(&type_path).expect("get_mut").transitions.push(tr);
@@ -131,9 +126,15 @@ impl SMCtxt {
         let name = func.x.name.path.segments.last().expect("last");
         let type_path = remove_last_segment(&func.x.name.path);
         match state_machine_fn_attr {
-            Some(StateMachineFnAttr::Init) => self.check_impl_item_transition(type_path, func, TransitionKind::Init),
-            Some(StateMachineFnAttr::Transition) => self.check_impl_item_transition(type_path, func, TransitionKind::Transition),
-            Some(StateMachineFnAttr::Readonly) => self.check_impl_item_transition(type_path, func, TransitionKind::Readonly),
+            Some(StateMachineFnAttr::Init) => {
+                self.check_impl_item_transition(type_path, func, TransitionKind::Init)
+            }
+            Some(StateMachineFnAttr::Transition) => {
+                self.check_impl_item_transition(type_path, func, TransitionKind::Transition)
+            }
+            Some(StateMachineFnAttr::Readonly) => {
+                self.check_impl_item_transition(type_path, func, TransitionKind::Readonly)
+            }
             Some(StateMachineFnAttr::Invariant) => {
                 let inv = Invariant { func: name.clone() };
                 self.insert_if_necessary(&type_path);
@@ -146,17 +147,16 @@ impl SMCtxt {
                 self.others.get_mut(&type_path).expect("get_mut").lemmas.push(lem);
                 Ok(())
             }
-            None => { Ok(()) }
+            None => Ok(()),
         }
     }
 
     fn insert_if_necessary(&mut self, type_path: &Path) {
         if !self.others.contains_key(type_path) {
-            self.others.insert(type_path.clone(), SMFuns {
-                invariants: Vec::new(),
-                lemmas: Vec::new(),
-                transitions: Vec::new(),
-            });
+            self.others.insert(
+                type_path.clone(),
+                SMFuns { invariants: Vec::new(), lemmas: Vec::new(), transitions: Vec::new() },
+            );
         }
     }
 
@@ -174,13 +174,7 @@ impl SMCtxt {
                 }
             };
 
-            let sm = SM {
-                name,
-                fields: fields.clone(),
-                transitions,
-                invariants,
-                lemmas,
-            };
+            let sm = SM { name, fields: fields.clone(), transitions, invariants, lemmas };
 
             update_krate(path, &sm, vir)?; // updates vir
         }
@@ -191,8 +185,5 @@ impl SMCtxt {
 fn remove_last_segment(p: &Path) -> Path {
     let mut seg = (*p.segments).clone();
     seg.pop();
-    Arc::new(PathX {
-        krate: p.krate.clone(),
-        segments: Arc::new(seg),
-    })
+    Arc::new(PathX { krate: p.krate.clone(), segments: Arc::new(seg) })
 }

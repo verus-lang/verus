@@ -1,9 +1,15 @@
-use vir::ast::{Function, Ident, Expr, Stmt, Typ, ExprX, StmtX, Mode, UnaryOpr, VirErr, PatternX, CallTarget, PathX};
-use air::errors::{error};
-use air::ast::{Span};
-use smir::ast::{TransitionKind, Transition, TransitionStmt, Arg};
+use air::ast::Span;
+use air::errors::error;
+use smir::ast::{Arg, Transition, TransitionKind, TransitionStmt};
+use vir::ast::{
+    CallTarget, Expr, ExprX, Function, Ident, Mode, PathX, PatternX, Stmt, StmtX, Typ, UnaryOpr,
+    VirErr,
+};
 
-pub fn reinterpret_func_as_transition(f: Function, kind: TransitionKind) -> Result<Transition<Span, Ident, Expr, Typ>, VirErr> {
+pub fn reinterpret_func_as_transition(
+    f: Function,
+    kind: TransitionKind,
+) -> Result<Transition<Span, Ident, Expr, Typ>, VirErr> {
     let vir_body = match &f.x.body {
         None => { return Err(error("unsupported: opaque transition", &f.span)); }
         Some(body) /* once told me */ => body,
@@ -18,12 +24,7 @@ pub fn reinterpret_func_as_transition(f: Function, kind: TransitionKind) -> Resu
 
     let name = f.x.name.path.segments.last().expect("last segment").clone();
 
-    Ok(Transition {
-        kind,
-        args,
-        body,
-        name,
-    })
+    Ok(Transition { kind, args, body, name })
 }
 
 fn get_body_from_expr(e: &Expr) -> Result<TransitionStmt<Span, Ident, Expr>, VirErr> {
@@ -34,21 +35,26 @@ fn get_body_from_expr(e: &Expr) -> Result<TransitionStmt<Span, Ident, Expr>, Vir
                 Some(els_body) => get_body_from_expr(els_body)?,
                 None => TransitionStmt::Block(e.span.clone(), Vec::new()),
             };
-            return Ok(TransitionStmt::If(e.span.clone(), cond.clone(), Box::new(thn), Box::new(els)));
-        },
+            return Ok(TransitionStmt::If(
+                e.span.clone(),
+                cond.clone(),
+                Box::new(thn),
+                Box::new(els),
+            ));
+        }
         ExprX::Block(stmts, end_e) => {
             match end_e {
                 Some(e) => {
-                  return Err(error("unsupported expression return in transition", &e.span));
+                    return Err(error("unsupported expression return in transition", &e.span));
                 }
-                None => { }
+                None => {}
             }
             let mut v = Vec::new();
             for stmt in stmts.iter() {
                 v.push(get_body_from_stmt(stmt)?);
             }
             Ok(TransitionStmt::Block(e.span.clone(), v))
-        },
+        }
         ExprX::Call(target, args) => {
             let op_name = target_to_op_name(target, &e.span)?;
             match op_name.as_str() {
@@ -69,7 +75,7 @@ fn get_body_from_expr(e: &Expr) -> Result<TransitionStmt<Span, Ident, Expr>, Vir
                     return Err(error("unsupported call", &e.span));
                 }
             }
-        },
+        }
         _ => {
             return Err(error("unsupported expression type in transition", &e.span));
         }
@@ -100,27 +106,23 @@ fn get_body_from_stmt(s: &Stmt) -> Result<TransitionStmt<Span, Ident, Expr>, Vir
 
 fn target_to_op_name(target: &CallTarget, span: &Span) -> Result<String, VirErr> {
     match target {
-        CallTarget::Static(fun, _) => {
-            match &*fun.path {
-                PathX {
-                    krate: Some(builtin_ident),
-                    segments,
-                } if **builtin_ident == "builtin" => {
-                    match &segments[..] {
-                        [ state_machine_ops_ident, s_ident ]
-                        if **state_machine_ops_ident == "state_machine_ops" => {
-                            Ok((**s_ident).clone())
-                        }
-                        _ => {
-                            return Err(error("unsupported call", span));
-                        }
+        CallTarget::Static(fun, _) => match &*fun.path {
+            PathX { krate: Some(builtin_ident), segments } if **builtin_ident == "builtin" => {
+                match &segments[..] {
+                    [state_machine_ops_ident, s_ident]
+                        if **state_machine_ops_ident == "state_machine_ops" =>
+                    {
+                        Ok((**s_ident).clone())
+                    }
+                    _ => {
+                        return Err(error("unsupported call", span));
                     }
                 }
-                _ => {
-                    return Err(error("unsupported call", span));
-                }
             }
-        }
+            _ => {
+                return Err(error("unsupported call", span));
+            }
+        },
         _ => {
             return Err(error("unsupported call", span));
         }
@@ -129,9 +131,7 @@ fn target_to_op_name(target: &CallTarget, span: &Span) -> Result<String, VirErr>
 
 fn get_update_ident(e: &Expr) -> Result<Ident, VirErr> {
     match &e.x {
-        ExprX::UnaryOpr(UnaryOpr::Field { field: f, .. }, _) => {
-            Ok(f.clone())
-        }
+        ExprX::UnaryOpr(UnaryOpr::Field { field: f, .. }, _) => Ok(f.clone()),
         _ => {
             return Err(error("unsupported arg", &e.span));
         }

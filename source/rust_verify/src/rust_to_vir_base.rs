@@ -1,7 +1,7 @@
 use crate::context::BodyCtxt;
+use crate::sm_to_vir::{parse_state_machine_fn_attr, StateMachineFnAttr};
 use crate::util::{err_span_str, err_span_string, unsupported_err_span};
 use crate::{unsupported, unsupported_err, unsupported_err_unless};
-use crate::sm_to_vir::{StateMachineFnAttr, parse_state_machine_fn_attr};
 use rustc_ast::token::{Token, TokenKind};
 use rustc_ast::tokenstream::{TokenStream, TokenTree};
 use rustc_ast::{AttrKind, Attribute, IntTy, MacArgs, UintTy};
@@ -358,9 +358,7 @@ pub(crate) fn parse_attrs(attrs: &[Attribute]) -> Result<Vec<Attr>, VirErr> {
                 {
                     v.push(Attr::ReturnMode(Mode::Exec))
                 }
-                Some(box [AttrTree::Fun(_, arg, Some(box [t]))])
-                    if arg == "state_machine_fn" =>
-                {
+                Some(box [AttrTree::Fun(_, arg, Some(box [t]))]) if arg == "state_machine_fn" => {
                     v.push(Attr::StateMachineFn(parse_state_machine_fn_attr(t)?));
                 }
                 _ => return err_span_str(span, "unrecognized verifier attribute"),
