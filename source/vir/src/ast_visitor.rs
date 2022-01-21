@@ -82,16 +82,16 @@ fn insert_pattern_vars(map: &mut VisitorScopeMap, pattern: &Pattern) {
 }
 
 pub(crate) enum VisitorControlFlow<T> {
-    Continue,
-    Skip,
+    Recurse,
+    Return,
     Stop(T),
 }
 
 macro_rules! expr_visitor_control_flow {
     ($cf:expr) => {
         match $cf {
-            crate::ast_visitor::VisitorControlFlow::Continue => (),
-            crate::ast_visitor::VisitorControlFlow::Skip => (),
+            crate::ast_visitor::VisitorControlFlow::Recurse => (),
+            crate::ast_visitor::VisitorControlFlow::Return => (),
             crate::ast_visitor::VisitorControlFlow::Stop(val) => {
                 return crate::ast_visitor::VisitorControlFlow::Stop(val);
             }
@@ -105,11 +105,11 @@ where
 {
     let mut scope_map: VisitorScopeMap = ScopeMap::new();
     match expr_visitor_dfs(expr, &mut scope_map, &mut |_scope_map, expr| match mf(expr) {
-        Ok(()) => VisitorControlFlow::Continue,
+        Ok(()) => VisitorControlFlow::Recurse,
         Err(e) => VisitorControlFlow::Stop(e),
     }) {
-        VisitorControlFlow::Continue => Ok(()),
-        VisitorControlFlow::Skip => unreachable!(),
+        VisitorControlFlow::Recurse => Ok(()),
+        VisitorControlFlow::Return => unreachable!(),
         VisitorControlFlow::Stop(e) => Err(e),
     }
 }
@@ -124,8 +124,8 @@ where
 {
     match mf(map, expr) {
         VisitorControlFlow::Stop(val) => VisitorControlFlow::Stop(val),
-        VisitorControlFlow::Skip => VisitorControlFlow::Continue,
-        VisitorControlFlow::Continue => {
+        VisitorControlFlow::Return => VisitorControlFlow::Recurse,
+        VisitorControlFlow::Recurse => {
             match &expr.x {
                 ExprX::Const(_) | ExprX::Var(_) | ExprX::VarAt(_, _) => (),
                 ExprX::Call(target, es) => {
@@ -271,7 +271,7 @@ where
                     }
                 }
             }
-            VisitorControlFlow::Continue
+            VisitorControlFlow::Recurse
         }
     }
 }
