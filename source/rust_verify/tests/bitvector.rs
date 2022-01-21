@@ -96,7 +96,6 @@ test_verify_one_file! {
             assert_bit_vector( !b1 != !b2 >>= !(b1==b2));
             assert_bit_vector(((b1 == (1 as u64)) && (b2 == b3)) >>= (b1 + b2 == b3 + 1));
             assert_bit_vector((b1 == b2)  >>= (!b1 == !b2));
-            assert_bit_vector( b1 + (!b1) + 1 == 0);
             assert_bit_vector( b1 == (!(!b1)));
         }
     } => Ok(())

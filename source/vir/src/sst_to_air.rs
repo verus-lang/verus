@@ -697,7 +697,6 @@ fn exp_to_bv_expr(state: &State, exp: &Exp) -> Expr {
                     let bop = air::ast::UnaryOp::Not;
                     return Arc::new(ExprX::Unary(bop, bv_e));
                 }
-                // translate Not into boolean not and bitwise not according to operand type
                 UnaryOp::BitNot => {
                     let bop = air::ast::UnaryOp::BitNot;
                     return Arc::new(ExprX::Unary(bop, bv_e));
@@ -710,11 +709,11 @@ fn exp_to_bv_expr(state: &State, exp: &Exp) -> Expr {
                             // expand with zero using concat
                             if new_n > old_n {
                                 let bop = air::ast::BinaryOp::BitConcat;
-                                let lh = Arc::new(ExprX::Const(Constant::BitVec(
+                                let zero_pad = Arc::new(ExprX::Const(Constant::BitVec(
                                     Arc::new("0".to_string()),
                                     new_n - old_n,
                                 )));
-                                return Arc::new(ExprX::Binary(bop, lh, bv_e));
+                                return Arc::new(ExprX::Binary(bop, zero_pad, bv_e));
                             }
                             // extract lower new_n bits
                             else if new_n < old_n {
@@ -734,7 +733,7 @@ fn exp_to_bv_expr(state: &State, exp: &Exp) -> Expr {
                     "IntRange error: should be I(_) or U(_) for bit-vector, got {:?}",
                     exp.typ
                 ),
-                UnaryOp::Trigger(_) => panic!("Trigger is not allowed in bit-vector"),
+                UnaryOp::Trigger(_) => panic!("Trigger is not supported in bit-vector"),
             }
         }
         _ => panic!("unhandled bv expr conversion {:?}", exp.x),
