@@ -65,12 +65,12 @@ pub fn check_lemmas_cover_all_cases(sm: &SM<Span, Ident, Ident, Expr, Typ>, fun_
     // If there are any left over, error.
 
     for t in need_inv_check {
-        return Err(error(format!("no lemma found to show that {} preserve invariant: declare a lemma with attribute #[inductive({})]", *t, *t), 
+        return Err(error(format!("no lemma found to show that {} preserves invariants: declare a lemma with attribute #[inductive({})]", *t, *t), 
             &fun_map.index(&t).span));
     }
 
     for t in need_assert_check {
-        return Err(error(format!("no lemma found to show that {} meets it assertions: declare a lemma with attribute #[safety({})]", *t, *t), 
+        return Err(error(format!("no lemma found to show that {} meets its assertions: declare a lemma with attribute #[safety({})]", *t, *t), 
             &fun_map.index(&t).span));
     }
 

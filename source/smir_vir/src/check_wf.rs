@@ -4,6 +4,7 @@ use smir::ast::{
     Field, LemmaPurpose, TransitionKind, Invariant, Lemma, Transition, ShardableType, SM,
 };
 use vir::ast_util::{conjoin, mk_call, mk_var};
+use vir::def::{Spanned};
 use vir::ast::{
     VirErr, Mode, Path, Function, FunctionX, Ident, Typ,
     PathX, TypX, CallTarget, ExprX, Expr, KrateX,
@@ -40,7 +41,9 @@ pub fn is_bool_type(typ: &Typ) -> bool {
 }
 
 pub fn set_body(f: &Function, body: Expr) -> Function {
-    unimplemented!();
+    let mut fx = f.x.clone();
+    fx.body = Some(body);
+    Spanned::new(f.span.clone(), fx)
 }
 
 pub fn check_wf_user_invariant(type_path: &Path, inv: &Ident, funs: &HashMap<Ident, Function>) -> Result<(), VirErr> {
@@ -88,11 +91,13 @@ pub fn setup_inv(type_path: &Path, sm: &SM<Span, Ident, Ident, Expr, Typ>, krate
 
     for inv in &sm.invariants {
         let f: &Function = funs.index(&inv.func);
+        let self_type = Arc::new(TypX::Datatype(type_path.clone(), Arc::new(Vec::new())));
         exprs.push(mk_call(
             &f.span,
+            &Arc::new(TypX::Bool),
             &CallTarget::Static(f.x.name.clone(), Arc::new(Vec::new())),
             &Arc::new(vec![
-                mk_var(&f.span, "self".to_string()),
+                mk_var(&f.span, &self_type, "self".to_string()),
             ]),
         ));
     }

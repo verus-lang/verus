@@ -144,12 +144,12 @@ pub fn conjoin(span: &Span, exprs: &Vec<Expr>) -> Expr {
     chain_binary(span, BinaryOp::And, &mk_bool(span, true), exprs)
 }
 
-pub fn mk_call(span: &Span, call_target: &CallTarget, args: &Vec<Expr>) -> Expr {
-    unimplemented!();
+pub fn mk_call(span: &Span, ty: &Typ, call_target: &CallTarget, args: &Vec<Expr>) -> Expr {
+    SpannedTyped::new(span, ty, ExprX::Call(call_target.clone(), Arc::new(args.clone())))
 }
 
-pub fn mk_var(span: &Span, s: String) -> Expr {
-    unimplemented!();
+pub fn mk_var(span: &Span, ty: &Typ, s: String) -> Expr {
+    SpannedTyped::new(span, ty, ExprX::Var(Arc::new(s)))
 }
 
 pub fn param_to_binder(param: &Param) -> Binder<Typ> {

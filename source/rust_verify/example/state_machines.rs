@@ -39,6 +39,12 @@ construct_state_machine!(
             update(counter, self.counter + 1);
             update(inc_a, true);
         }
+
+        #[proof]
+        #[inductive(tr_inc_a)]
+        fn tr_inc_a_preserves(pre: X) {
+        }
+
     }
 );
 
