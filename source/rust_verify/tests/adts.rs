@@ -311,6 +311,25 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_is_variant_get_fail IS_VARIANT_MAYBE.to_string() + code_str! {
+        pub fn test1(m: Maybe<u64>) -> u64 {
+            requires(m.get_Some_0() == 4);
+            if let Maybe::Some(v) = m {
+                v
+            } else {
+                unreached() // FAILS
+            }
+        }
+
+        pub fn test2() {
+            let m = Maybe::None;
+            assume(m.get_Some_0() == 4);
+            test1(m);
+        }
+    } => Err(e) => assert_one_fails(e)
+}
+
+test_verify_one_file! {
     #[test] test_is_variant_no_get code! {
         #[is_variant]
         pub enum Maybe<T> {
