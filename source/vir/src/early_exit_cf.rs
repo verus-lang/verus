@@ -61,7 +61,7 @@ fn expr_get_early_exits_rec(
             | ExprX::Assign(..)
             | ExprX::If(..)
             | ExprX::Match(..)
-            | ExprX::Block(..) => VisitorControlFlow::Continue,
+            | ExprX::Block(..) => VisitorControlFlow::Recurse,
             ExprX::Quant(..)
             | ExprX::Closure(..)
             | ExprX::Choose(..)
@@ -69,23 +69,23 @@ fn expr_get_early_exits_rec(
             | ExprX::Fuel(..)
             | ExprX::Header(..)
             | ExprX::Admit
-            | ExprX::Forall { .. } => VisitorControlFlow::Skip,
+            | ExprX::Forall { .. } => VisitorControlFlow::Return,
             ExprX::While { cond, body, invs: _ } => {
                 expr_get_early_exits_rec(cond, in_loop, scope_map, results);
                 expr_get_early_exits_rec(body, true, scope_map, results);
-                VisitorControlFlow::Skip
+                VisitorControlFlow::Return
             }
             ExprX::Return(_) => {
                 results.push(EarlyExitInst {
                     span: expr.span.clone(),
                     statement: StatementType::Return,
                 });
-                VisitorControlFlow::Continue
+                VisitorControlFlow::Recurse
             }
             ExprX::OpenInvariant(inv, _binder, _body) => {
                 expr_get_early_exits_rec(inv, in_loop, scope_map, results);
                 // Skip checking nested loops to avoid quadratic behavior:
-                VisitorControlFlow::Skip
+                VisitorControlFlow::Return
             }
         }
     });
