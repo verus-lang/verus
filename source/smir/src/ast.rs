@@ -58,6 +58,19 @@ pub enum TransitionStmt<Span, Ident, Expr> {
     Update(Span, Ident, Expr),
 }
 
+impl<Span, Ident, Expr> TransitionStmt<Span, Ident, Expr> {
+    pub fn get_span<'a>(&'a self) -> &'a Span {
+        match self {
+            TransitionStmt::Block(span, _) => span,
+            TransitionStmt::Let(span, _, _) => span,
+            TransitionStmt::If(span, _, _, _) => span,
+            TransitionStmt::Require(span, _) => span,
+            TransitionStmt::Assert(span, _) => span,
+            TransitionStmt::Update(span, _, _) => span,
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Invariant<Func> {
     pub func: Func,

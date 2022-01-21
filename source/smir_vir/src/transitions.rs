@@ -15,7 +15,9 @@ use vir::ast::{
     CallTarget, Expr, ExprX, Function, FunctionX, Ident, KrateX, Mode, Path, PathX, Typ, TypX,
     VirErr,
 };
-use vir::ast_util::{conjoin, mk_and, mk_call, mk_ife, mk_implies, mk_let_in, mk_or, mk_var};
+use vir::ast_util::{
+    conjoin, mk_and, mk_bool, mk_call, mk_ife, mk_implies, mk_let_in, mk_or, mk_var,
+};
 
 fn check_updates_refer_to_valid_fields(
     fields: &Vec<Field<Ident, Typ>>,
@@ -228,6 +230,64 @@ pub fn check_normal(ts: &TransitionStmt<Span, Ident, Expr>) -> Result<Vec<(Ident
     }
 }
 
+pub fn add_noop_updates_rec(
+    ts: &TransitionStmt<Span, Ident, Expr>,
+) -> (TransitionStmt<Span, Ident, Expr>, Vec<Ident>) {
+    match ts {
+        TransitionStmt::Block(span, v) => {
+            let mut h = Vec::new();
+            let mut v1 = Vec::new();
+            for t in v.iter() {
+                let (t1, q) = check_normal(t)?;
+                v1.push(t1);
+                h.extend(q)
+            }
+            Ok((TransitionStmt::Block(span.clone(), v1), h))
+        }
+        TransitionStmt::Let(_, _, _)
+        | TransitionStmt::Require(_, _)
+        | TransitionStmt::Assert(_, _) => {
+            return Ok((ts.clone(), Vec::new()));
+        }
+        TransitionStmt::If(span, cond, thn, els) => {
+            let (mut s1, h1) = check_normal(thn)?;
+            let (mut s2, h2) = check_normal(els)?;
+
+            for ident in &h1 {
+                if !h2.contains(ident) {
+                    s1 = append_stmt(
+                        s1,
+                        TransitionStmt::Update(
+                            span.clone(),
+                            ident.clone(),
+                            self_dot_ident(ident.clone()),
+                        ),
+                    );
+                }
+            }
+            let mut union = h1.clone();
+            for ident in &h2 {
+                if !h1.contains(ident) {
+                    s2 = append_stmt(
+                        s2,
+                        TransitionStmt::Update(
+                            span.clone(),
+                            ident.clone(),
+                            self_dot_ident(ident.clone()),
+                        ),
+                    );
+                    union.push(ident.clone());
+                }
+            }
+
+            return Ok((TransitionStmt::If(span, cond, s1, s2), union));
+        }
+        TransitionStmt::Update(sp, ident, _) => {
+            return Ok((ts.clone(), vec![ident]));
+        }
+    }
+}
+
 pub fn check_transitions(
     sm: &SM<Span, Ident, Ident, Expr, Typ>,
     fun_map: &HashMap<Ident, Function>,
@@ -257,58 +317,45 @@ pub fn expr_is_enabled(
     ts: &TransitionStmt<Span, Ident, Expr>,
     include_asserts: bool,
     include_requires: bool,
-) -> Option<Expr> {
+) -> Expr {
+    match expr_is_enabled_opt(ts, include_asserts, include_requires) {
+        Some(e) => e,
+        None => mk_bool(ts.get_span(), true),
+    }
+}
+
+pub fn transition_to_vir_stmt(
+    ts: &TransitionStmt<Span, Ident, Expr>,
+    post_ident: Option<Ident>,
+) -> Stmt {
     match ts {
         TransitionStmt::Block(span, v) => {
-            let mut e: Option<Expr> = None;
-            for t in v.iter().rev() {
-                match t {
-                    TransitionStmt::Let(let_span, let_bind, let_e) => match e {
-                        None => {}
-                        Some(e2) => {
-                            e = Some(mk_let_in(let_span, Mode::Spec, false, let_bind, let_e, &e2));
-                        }
-                    },
-                    _ => {
-                        let e1 = expr_is_enabled(t, include_asserts, include_requires);
-                        e = match (e1, e) {
-                            (None, None) => None,
-                            (None, Some(e)) => Some(e),
-                            (Some(e), None) => Some(e),
-                            (Some(e1), Some(e2)) => Some(mk_and(span, e1, &e2)),
-                        };
-                    }
-                }
+            let mut res: Vec<Stmt> = Vec::new();
+            for t in v {
+                res.push(transition_to_vir_stmt(t, assume_asserts, post_ident));
             }
-            e
+            mk_expr_stmt(span, mk_block(span, res, None))
         }
-        TransitionStmt::Let(_, _, _) => {
-            None /* see previous case */
-        }
+        TransitionStmt::Let(let_span, let_bind, let_e) => match e {
+            None => None,
+            Some(e) => mk_decl_statement(let_span, Mode::Spec, false, let_bind, let_e),
+        },
         TransitionStmt::If(span, cond, thn, els) => {
-            let e1 = expr_is_enabled(thn, include_asserts, include_requires);
-            let e2 = expr_is_enabled(els, include_asserts, include_requires);
-            match (e1, e2) {
-                (None, None) => None,
-                (Some(e), None) => Some(mk_implies(span, &cond, &e)),
-                (None, Some(e)) => Some(mk_or(span, &cond, &e)),
-                (Some(e1), Some(e2)) => Some(mk_ife(span, &cond, &e1, &e2)),
-            }
+            let e1 = transition_to_vir_stmt(thn, assume_asserts, post_ident);
+            let e2 = transition_to_vir_stmt(els, assume_asserts, post_ident);
+            mk_expr_stmt(span, mk_ife(span, &cond, &e1, &e2))
         }
-        TransitionStmt::Require(_, e) => {
-            if include_requires {
-                Some(e.clone())
-            } else {
-                None
-            }
-        }
+        TransitionStmt::Require(span, e) => mk_assume(span, e),
         TransitionStmt::Assert(_, e) => {
-            if include_asserts {
-                Some(e.clone())
+            if assume_asserts {
+                mk_assume(span, e)
             } else {
-                None
+                mk_assert(span, e)
             }
         }
-        TransitionStmt::Update(sp, f, _) => None,
+        TransitionStmt::Update(span, f, expr) => match post_ident {
+            None => mk_bool(span, true),
+            Some(post_ident) => mk_assume(span, mk_eq(span, mk_var(span, typ, *f), expr)),
+        },
     }
 }
