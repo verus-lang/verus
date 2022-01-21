@@ -95,6 +95,20 @@ macro_rules! expr_visitor_control_flow {
     };
 }
 
+pub(crate) fn expr_visitor_check<E, MF>(expr: &Expr, mf: &mut MF) -> Result<(), E>
+where
+    MF: FnMut(&Expr) -> Result<(), E>,
+{
+    let mut scope_map: ScopeMap<Ident, Typ> = ScopeMap::new();
+    match expr_visitor_dfs(expr, &mut scope_map, &mut |_scope_map, expr| match mf(expr) {
+        Ok(()) => VisitorControlFlow::Continue,
+        Err(e) => VisitorControlFlow::Stop(e),
+    }) {
+        VisitorControlFlow::Continue => Ok(()),
+        VisitorControlFlow::Stop(e) => Err(e),
+    }
+}
+
 pub(crate) fn expr_visitor_dfs<T, MF>(
     expr: &Expr,
     map: &mut ScopeMap<Ident, Typ>,
@@ -482,21 +496,6 @@ where
             fs(env, map, &Spanned::new(stmt.span.clone(), decl))
         }
     }
-}
-
-pub(crate) fn map_expr_visitor<F>(expr: &Expr, f: &mut F) -> Result<Expr, VirErr>
-where
-    F: FnMut(&Expr) -> Result<Expr, VirErr>,
-{
-    let mut map: ScopeMap<Ident, Typ> = ScopeMap::new();
-    map_expr_visitor_env(
-        expr,
-        &mut map,
-        f,
-        &|f, _, e| f(e),
-        &|_, _, s| Ok(vec![s.clone()]),
-        &|_, t| Ok(t.clone()),
-    )
 }
 
 pub(crate) fn map_param_visitor<E, FT>(param: &Param, env: &mut E, ft: &FT) -> Result<Param, VirErr>

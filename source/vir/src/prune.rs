@@ -9,7 +9,6 @@ use crate::ast::{
     TypX, Visibility,
 };
 use crate::ast_util::is_visible_to;
-use crate::ast_visitor::map_expr_visitor;
 use crate::datatype_to_air::is_datatype_transparent;
 use crate::def::{datatype_invariant_path, fn_inv_name, fn_namespace_name, Spanned};
 use crate::poly::MonoTyp;
@@ -139,16 +138,16 @@ pub fn prune_krate_for_module(krate: &Krate, module: &Path) -> (Krate, Vec<MonoT
     for f in &krate.functions {
         match (&f.x.visibility.owning_module, &f.x.body) {
             (Some(path), Some(body)) if path == module => {
-                map_expr_visitor(body, &mut |e: &Expr| {
+                crate::ast_visitor::expr_visitor_check::<(), _>(body, &mut |e: &Expr| {
                     match &e.x {
                         ExprX::Fuel(path, fuel) if *fuel > 0 => {
                             revealed_functions.insert(path.clone());
                         }
                         _ => {}
                     }
-                    Ok(e.clone())
+                    Ok(())
                 })
-                .unwrap();
+                .expect("expr_visitor_check failed unexpectedly");
             }
             _ => {}
         }
