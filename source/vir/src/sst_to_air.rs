@@ -644,8 +644,32 @@ fn exp_to_bv_expr(state: &State, exp: &Exp) -> Expr {
             return string_var(&suffix_local_unique_id(x));
         }
         ExpX::Binary(op, lhs, rhs) => {
+            // disallow signed integer from bitvec reasoning. However, allow that for shift
+            // TODO: sanity check for shift
+            let _ = match op {
+                BinaryOp::Shl | BinaryOp::Shr => (),
+                _ => {
+                    assert_unsigned(&lhs);
+                    assert_unsigned(&rhs);
+                }
+            };
+            let lh = exp_to_bv_expr(state, lhs);
+            let rh = exp_to_bv_expr(state, rhs);
+            let _ = match op {
+                BinaryOp::And => {
+                    return Arc::new(ExprX::Multi(MultiOp::And, Arc::new(vec![lh, rh])));
+                }
+                BinaryOp::Or => return Arc::new(ExprX::Multi(MultiOp::Or, Arc::new(vec![lh, rh]))),
+                BinaryOp::Ne => {
+                    let eq = ExprX::Binary(air::ast::BinaryOp::Eq, lh, rh);
+                    return Arc::new(ExprX::Unary(air::ast::UnaryOp::Not, Arc::new(eq)));
+                }
+                _ => (),
+            };
+
             let bop = match op {
                 BinaryOp::Eq(_) => air::ast::BinaryOp::Eq,
+                BinaryOp::Ne => unreachable!(),
                 BinaryOp::Add => air::ast::BinaryOp::BitAdd,
                 BinaryOp::Sub => air::ast::BinaryOp::BitSub,
                 BinaryOp::Mul => air::ast::BinaryOp::BitMul,
@@ -661,27 +685,20 @@ fn exp_to_bv_expr(state: &State, exp: &Exp) -> Expr {
                 BinaryOp::Shl => air::ast::BinaryOp::Shl,
                 BinaryOp::Shr => air::ast::BinaryOp::LShr,
                 BinaryOp::Implies => air::ast::BinaryOp::Implies,
-                _ => panic!("unhandled bv binary operation {:?}", op),
+                BinaryOp::And => unreachable!(),
+                BinaryOp::Or => unreachable!(),
             };
-            // disallow signed integer from bitvec reasoning. However, allow that for shift
-            // TODO: sanity check for shift
-            let _ = match op {
-                BinaryOp::Shl | BinaryOp::Shr => (),
-                _ => {
-                    assert_unsigned(&lhs);
-                    assert_unsigned(&rhs);
-                }
-            };
-            let lh = exp_to_bv_expr(state, lhs);
-            let rh = exp_to_bv_expr(state, rhs);
             return Arc::new(ExprX::Binary(bop, lh, rh));
         }
         ExpX::Unary(op, exp) => {
+            let bv_e = exp_to_bv_expr(state, exp);
             match op {
-                UnaryOp::Not => panic!("TODO"),
+                UnaryOp::Not => {
+                    let bop = air::ast::UnaryOp::Not;
+                    return Arc::new(ExprX::Unary(bop, bv_e));
+                }
                 // translate Not into boolean not and bitwise not according to operand type
                 UnaryOp::BitNot => {
-                    let bv_e = exp_to_bv_expr(state, exp);
                     let bop = air::ast::UnaryOp::BitNot;
                     return Arc::new(ExprX::Unary(bop, bv_e));
                 }
@@ -697,16 +714,14 @@ fn exp_to_bv_expr(state: &State, exp: &Exp) -> Expr {
                                     Arc::new("0".to_string()),
                                     new_n - old_n,
                                 )));
-                                let rh = exp_to_bv_expr(state, exp);
-                                return Arc::new(ExprX::Binary(bop, lh, rh));
+                                return Arc::new(ExprX::Binary(bop, lh, bv_e));
                             }
                             // extract lower new_n bits
                             else if new_n < old_n {
                                 let op = air::ast::UnaryOp::BitExtract(new_n - 1, 0);
-                                let bv_e = exp_to_bv_expr(state, exp);
                                 return Arc::new(ExprX::Unary(op, bv_e));
                             } else {
-                                return exp_to_bv_expr(state, exp);
+                                return bv_e;
                             }
                         }
                         _ => panic!(
