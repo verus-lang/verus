@@ -9,6 +9,8 @@ use crate::util::vec_map_result;
 use air::scope_map::ScopeMap;
 use std::sync::Arc;
 
+pub type VisitorScopeMap = ScopeMap<Ident, Typ>;
+
 pub(crate) fn map_typ_visitor_env<E, FT>(typ: &Typ, env: &mut E, ft: &FT) -> Result<Typ, VirErr>
 where
     FT: Fn(&mut E, &Typ) -> Result<Typ, VirErr>,
@@ -60,7 +62,7 @@ where
     Ok(SpannedTyped::new(&pattern.span, &map_typ_visitor_env(&pattern.typ, env, ft)?, patternx))
 }
 
-fn insert_pattern_vars(map: &mut ScopeMap<Ident, Typ>, pattern: &Pattern) {
+fn insert_pattern_vars(map: &mut VisitorScopeMap, pattern: &Pattern) {
     match &pattern.x {
         PatternX::Wildcard => {}
         PatternX::Var { name, mutable: _ } => {
@@ -81,6 +83,7 @@ fn insert_pattern_vars(map: &mut ScopeMap<Ident, Typ>, pattern: &Pattern) {
 
 pub(crate) enum VisitorControlFlow<T> {
     Continue,
+    Skip,
     Stop(T),
 }
 
@@ -88,6 +91,7 @@ macro_rules! expr_visitor_control_flow {
     ($cf:expr) => {
         match $cf {
             crate::ast_visitor::VisitorControlFlow::Continue => (),
+            crate::ast_visitor::VisitorControlFlow::Skip => (),
             crate::ast_visitor::VisitorControlFlow::Stop(val) => {
                 return crate::ast_visitor::VisitorControlFlow::Stop(val);
             }
@@ -99,26 +103,28 @@ pub(crate) fn expr_visitor_check<E, MF>(expr: &Expr, mf: &mut MF) -> Result<(), 
 where
     MF: FnMut(&Expr) -> Result<(), E>,
 {
-    let mut scope_map: ScopeMap<Ident, Typ> = ScopeMap::new();
+    let mut scope_map: VisitorScopeMap = ScopeMap::new();
     match expr_visitor_dfs(expr, &mut scope_map, &mut |_scope_map, expr| match mf(expr) {
         Ok(()) => VisitorControlFlow::Continue,
         Err(e) => VisitorControlFlow::Stop(e),
     }) {
         VisitorControlFlow::Continue => Ok(()),
+        VisitorControlFlow::Skip => unreachable!(),
         VisitorControlFlow::Stop(e) => Err(e),
     }
 }
 
 pub(crate) fn expr_visitor_dfs<T, MF>(
     expr: &Expr,
-    map: &mut ScopeMap<Ident, Typ>,
+    map: &mut VisitorScopeMap,
     mf: &mut MF,
 ) -> VisitorControlFlow<T>
 where
-    MF: FnMut(&mut ScopeMap<Ident, Typ>, &Expr) -> VisitorControlFlow<T>,
+    MF: FnMut(&mut VisitorScopeMap, &Expr) -> VisitorControlFlow<T>,
 {
     match mf(map, expr) {
         VisitorControlFlow::Stop(val) => VisitorControlFlow::Stop(val),
+        VisitorControlFlow::Skip => VisitorControlFlow::Continue,
         VisitorControlFlow::Continue => {
             match &expr.x {
                 ExprX::Const(_) | ExprX::Var(_) | ExprX::VarAt(_, _) => (),
@@ -272,15 +278,15 @@ where
 
 pub(crate) fn map_expr_visitor_env<E, FE, FS, FT>(
     expr: &Expr,
-    map: &mut ScopeMap<Ident, Typ>,
+    map: &mut VisitorScopeMap,
     env: &mut E,
     fe: &FE,
     fs: &FS,
     ft: &FT,
 ) -> Result<Expr, VirErr>
 where
-    FE: Fn(&mut E, &mut ScopeMap<Ident, Typ>, &Expr) -> Result<Expr, VirErr>,
-    FS: Fn(&mut E, &mut ScopeMap<Ident, Typ>, &Stmt) -> Result<Vec<Stmt>, VirErr>,
+    FE: Fn(&mut E, &mut VisitorScopeMap, &Expr) -> Result<Expr, VirErr>,
+    FS: Fn(&mut E, &mut VisitorScopeMap, &Stmt) -> Result<Vec<Stmt>, VirErr>,
     FT: Fn(&mut E, &Typ) -> Result<Typ, VirErr>,
 {
     let exprx = match &expr.x {
