@@ -16,6 +16,38 @@ use std::collections::HashSet;
 use std::ops::Index;
 use std::sync::Arc;
 
+pub fn get_transition<'a>(
+    sm: &'a SM<Span, Ident, Ident, Expr, Typ>,
+    ident: &Ident
+) -> Option<&'a Transition<Span, Ident, Expr, Typ>> {
+    for transition in &sm.transitions {
+        if *transition.name == **ident {
+            return Some(transition);
+        }
+    }
+    return None;
+}
+
+pub fn check_wf_lemmas(
+    sm: &SM<Span, Ident, Ident, Expr, Typ>,
+    //transition_map: map<Ident, Transition<Span, Ident, Expr, Ty>>,
+    fun_map: &HashMap<Ident, Function>
+) -> Result<(), VirErr> {
+    for l in sm.lemmas.iter() {
+        let transition_ident = &l.purpose.transition;
+        match get_transition(sm, transition_ident) {
+            None => {
+                let span = &fun_map.index(&l.func).span;
+                return Err(error(format!("no transition named {}", *transition_ident), span));
+            }
+            Some(l) => {
+                // TODO
+            }
+        }
+    }
+    Ok(())
+}
+
 pub fn check_lemmas_cover_all_cases(sm: &SM<Span, Ident, Ident, Expr, Typ>, fun_map: &HashMap<Ident, Function>) -> Result<(), VirErr> {
     let mut need_inv_check = HashSet::new();
     let mut need_assert_check = HashSet::new();

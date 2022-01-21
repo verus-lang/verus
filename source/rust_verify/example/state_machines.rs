@@ -40,10 +40,37 @@ construct_state_machine!(
             update(inc_a, true);
         }
 
+        #[transition]
+        #[spec]
+        fn tr_inc_b(&self) {
+            require(!self.inc_b);
+            update(counter, self.counter + 1);
+            update(inc_b, true);
+        }
+
+        #[static]
+        #[spec]
+        fn tr_inc_b(&self) {
+            require(self.inc_a);
+            require(self.inc_b);
+            assert(self.counter == 2);
+        }
+
         #[proof]
         #[inductive(tr_inc_a)]
         fn tr_inc_a_preserves(pre: X) {
         }
+
+        #[proof]
+        #[inductive(tr_inc_b)]
+        fn tr_inc_b_preserves(pre: X) {
+        }
+
+        #[proof]
+        #[inductive(initialize)]
+        fn initialize_inv(pre: X) {
+        }
+
 
     }
 );

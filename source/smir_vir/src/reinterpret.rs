@@ -58,7 +58,7 @@ fn get_body_from_expr(e: &Expr) -> Result<TransitionStmt<Span, Ident, Expr>, Vir
                 }
                 "require" => {
                     assert!(args.len() == 1);
-                    return Ok(TransitionStmt::Assert(e.span.clone(), args[0].clone()));
+                    return Ok(TransitionStmt::Require(e.span.clone(), args[0].clone()));
                 }
                 "update" => {
                     assert!(args.len() == 2);

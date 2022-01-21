@@ -86,7 +86,7 @@ pub fn check_wf_user_invariant(type_path: &Path, inv: &Ident, funs: &HashMap<Ide
     Ok(())
 }
 
-pub fn setup_inv(type_path: &Path, sm: &SM<Span, Ident, Ident, Expr, Typ>, krate: &KrateX, funs: &HashMap<Ident, Function>, new_funs: &mut Vec<(Ident, Function)>) -> Result<(), VirErr> {
+pub fn setup_inv(type_path: &Path, sm: &SM<Span, Ident, Ident, Expr, Typ>, funs: &HashMap<Ident, Function>, new_funs: &mut Vec<(Ident, Function)>) -> Result<(), VirErr> {
     let mut exprs = Vec::new();
 
     for inv in &sm.invariants {

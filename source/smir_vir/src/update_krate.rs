@@ -8,7 +8,7 @@ use vir::ast::{
 };
 use air::ast::{Span};
 use crate::check_wf::{check_wf_user_invariant, setup_inv, get_member_path};
-use crate::lemmas::{check_lemmas_cover_all_cases};
+use crate::lemmas::{check_lemmas_cover_all_cases, check_wf_lemmas};
 use crate::transitions::{check_transitions};
 use std::collections::HashMap;
 
@@ -27,9 +27,9 @@ pub fn update_krate(type_path: &Path, sm: &SM<Span, Ident, Ident, Expr, Typ>, kr
 
     let mut new_funs: Vec<(Ident, Function)> = Vec::new();
 
-    setup_inv(type_path, sm, krate, &fun_map, &mut new_funs)?;
+    setup_inv(type_path, sm, &fun_map, &mut new_funs)?;
 
-    //check_wf_lemmas(sm, &fun_map)?;
+    check_wf_lemmas(sm, &fun_map)?;
     check_transitions(sm, &fun_map)?;
     check_lemmas_cover_all_cases(sm, &fun_map)?;
 
