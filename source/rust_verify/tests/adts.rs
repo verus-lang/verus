@@ -275,7 +275,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test_is_variant_get_1 IS_VARIANT_MAYBE.to_string() + code_str! {
         pub fn test1(m: Maybe<u64>) {
-            requires(m.is_Some() && m.get_Some().0 > 10);
+            requires(m.is_Some() && m.get_Some_0() > 10);
         }
     } => Ok(())
 }
@@ -284,7 +284,7 @@ test_verify_one_file! {
     #[test] test_is_variant_get_2 IS_VARIANT_MAYBE.to_string() + code_str! {
         pub fn test1(m: Maybe<u64>) -> bool {
             ensures(|res: bool|
-                (m.is_Some() >>= res == (m.get_Some().0 == 3)) &&
+                (m.is_Some() >>= res == (m.get_Some_0() == 3)) &&
                 (m.is_None() >>= !res)
             );
             match m {
@@ -298,6 +298,15 @@ test_verify_one_file! {
             let res = test1(m);
             assert(res);
         }
+
+        pub fn test3(v: Maybe<u64>) {
+            requires(v.is_Some() && v.get_Some_0() == 5);
+            if let Maybe::Some(a) = v {
+                assert(a == 5);
+            } else {
+                unreached::<()>();
+            }
+        }
     } => Ok(())
 }
 
@@ -310,4 +319,12 @@ test_verify_one_file! {
             None,
         }
     } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_is_variant_no_field IS_VARIANT_MAYBE.to_string() + code_str! {
+        fn test1(v: Maybe<u64>) {
+            assert(v.get_Some_1() == 3);
+        }
+    } => Err(_) // type-checking error
 }

@@ -7,6 +7,7 @@ For soundness's sake, be as defensive as possible:
 */
 
 use crate::context::Context;
+use crate::def::is_get_variant_fn_name;
 use crate::rust_to_vir_adts::{check_item_enum, check_item_struct};
 use crate::rust_to_vir_base::{
     def_id_to_vir_path, fn_item_hir_id_to_self_def_id, get_mode, get_verifier_attrs,
@@ -196,15 +197,23 @@ fn check_item<'tcx>(
                                             )
                                             .map(|self_def_id| ctxt.tcx.adt_def(self_def_id))
                                             .and_then(|adt| {
-                                                impl_item
-                                                    .ident
-                                                    .as_str()
-                                                    .strip_prefix(crate::def::IS_VARIANT_PREFIX)
-                                                    .and_then(|variant_name| {
-                                                        adt.variants.iter().find(|v| {
-                                                            v.ident.as_str() == variant_name
-                                                        })
-                                                    })
+                                                is_get_variant_fn_name(&impl_item.ident).and_then(
+                                                    |(variant_name, variant_field)| {
+                                                        adt.variants
+                                                            .iter()
+                                                            .find(|v| {
+                                                                v.ident.as_str() == variant_name
+                                                            })
+                                                            .and_then(|variant| {
+                                                                if let Some(field) = variant_field {
+                                                                    (field < variant.fields.len())
+                                                                        .then(|| ())
+                                                                } else {
+                                                                    Some(())
+                                                                }
+                                                            })
+                                                    },
+                                                )
                                             })
                                             .is_some();
                                             if !valid

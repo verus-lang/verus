@@ -18,34 +18,39 @@ pub fn attribute_is_variant(
             let variant_ident_str = variant_ident.to_string();
             let fun_ident =
                 syn::Ident::new(&format!("is_{}", &variant_ident_str), v.ast().ident.span());
-            let get_ident =
-                syn::Ident::new(&format!("get_{}", &variant_ident_str), v.ast().ident.span());
-            let get_fn = match v.ast().fields {
-                &syn::Fields::Named(_) | &syn::Fields::Unit => { quote! { } }
-                &syn::Fields::Unnamed(syn::FieldsUnnamed { unnamed: ref fields, .. }) => {
-                    let field_tys = fields.iter().map(|f| &f.ty).collect::<Vec<_>>();
-                    let field_idents = fields.iter().zip(0..).map(|(_, i)| syn::Ident::new(&format!("e{}", i), v.ast().ident.span())).collect::<Vec<_>>();
-                    quote! {
-                        #[allow(non_snake_case)]
-                        #[spec]
-                        pub fn #get_ident(self) -> (#(#field_tys),*,) {
-                            match self {
-                                #struct_name::#variant_ident(#(#field_idents),*) => (#(#field_idents),*,),
-                                _ => arbitrary(),
+            let get_fns = match v.ast().fields {
+                &syn::Fields::Named(_) | &syn::Fields::Unit => {
+                    quote! {}
+                }
+                &syn::Fields::Unnamed(syn::FieldsUnnamed { unnamed: ref fields, .. }) => fields
+                    .iter()
+                    .zip(0..)
+                    .map(|(f, i)| {
+                        let field_ty = &f.ty;
+                        let get_ident = syn::Ident::new(
+                            &format!("get_{}_{}", variant_ident_str, i),
+                            v.ast().ident.span(),
+                        );
+
+                        quote! {
+                            #[spec]
+                            #[allow(non_snake_case)]
+                            #[verifier(is_variant)]
+                            pub fn #get_ident(self) -> #field_ty {
+                                unimplemented!()
                             }
                         }
-                    }
-                },
+                    })
+                    .collect::<proc_macro2::TokenStream>(),
             };
 
             quote! {
-                #[doc(hidden)]
                 #[spec]
                 #[verifier(is_variant)]
                 #[allow(non_snake_case)]
                 pub fn #fun_ident(&self) -> bool { unimplemented!() }
 
-                #get_fn
+                #get_fns
             }
         })
         .collect::<proc_macro2::TokenStream>();

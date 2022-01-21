@@ -1,4 +1,5 @@
 use crate::context::BodyCtxt;
+use crate::def::is_get_variant_fn_name;
 use crate::erase::ResolvedCall;
 use crate::rust_to_vir_base::{
     def_id_to_vir_path, def_to_path_ident, get_range, get_trigger, get_var_mode,
@@ -270,7 +271,7 @@ fn fn_call_to_vir<'tcx>(
         def_id_to_vir_path(tcx, f)
     };
 
-    let is_variant = {
+    let is_get_variant = {
         match tcx.hir().get_if_local(f) {
             Some(rustc_hir::Node::ImplItem(
                 impl_item
@@ -284,12 +285,7 @@ fn fn_call_to_vir<'tcx>(
                 let fn_attrs = bctx.ctxt.tcx.hir().attrs(impl_item.hir_id());
                 let fn_vattrs = get_verifier_attrs(fn_attrs)?;
                 if fn_vattrs.is_variant {
-                    let variant_name = fn_ident
-                        .as_str()
-                        .strip_prefix(crate::def::IS_VARIANT_PREFIX)
-                        .expect("invalid is_variant function")
-                        .to_string();
-                    Some(variant_name)
+                    Some(is_get_variant_fn_name(fn_ident).expect("invalid is_variant function"))
                 } else {
                     None
                 }
@@ -391,7 +387,7 @@ fn fn_call_to_vir<'tcx>(
             || is_choose
             || is_assert_bit_vector
             || is_old
-            || is_variant.is_some(),
+            || is_get_variant.is_some(),
         is_implies,
     );
 
@@ -545,11 +541,24 @@ fn fn_call_to_vir<'tcx>(
         self_path
     };
 
-    if let Some(variant_name) = is_variant {
-        return Ok(mk_expr(ExprX::UnaryOpr(
-            UnaryOpr::IsVariant { datatype: self_path, variant: str_ident(&variant_name) },
-            vir_args.into_iter().next().expect("missing arg for is_variant"),
-        )));
+    match is_get_variant {
+        Some((variant_name, None)) => {
+            return Ok(mk_expr(ExprX::UnaryOpr(
+                UnaryOpr::IsVariant { datatype: self_path, variant: str_ident(&variant_name) },
+                vir_args.into_iter().next().expect("missing arg for is_variant"),
+            )));
+        }
+        Some((variant_name, Some(variant_field))) => {
+            return Ok(mk_expr(ExprX::UnaryOpr(
+                UnaryOpr::Field {
+                    datatype: self_path,
+                    variant: str_ident(&variant_name),
+                    field: positional_field_ident(variant_field),
+                },
+                vir_args.into_iter().next().expect("missing arg for is_variant"),
+            )));
+        }
+        None => {}
     }
 
     let is_smt_binary = if is_equal {
