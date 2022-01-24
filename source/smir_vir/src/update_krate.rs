@@ -1,7 +1,7 @@
 #![allow(unused_imports)]
 
 use crate::check_wf::{check_wf_user_invariant, get_member_path, setup_inv};
-use crate::lemmas::{check_lemmas_cover_all_cases, check_wf_lemmas};
+use crate::lemmas::{check_lemmas_cover_all_cases, check_wf_lemmas, setup_lemmas};
 use crate::transitions::check_transitions;
 use air::ast::Span;
 use smir::ast::{
@@ -35,5 +35,22 @@ pub fn update_krate(
     check_transitions(sm, &fun_map)?;
     check_lemmas_cover_all_cases(sm, &fun_map)?;
 
+    setup_lemmas(sm, &type_path, &fun_map, &mut new_funs);
+
+    for (ident, function) in new_funs {
+        let path = get_member_path(type_path, &ident);
+        update_function(&mut krate.functions, path, function);
+    }
+
     Ok(())
+}
+
+fn update_function(v: &mut Vec<Function>, path: Path, function: Function) {
+    for i in 0..v.len() {
+        if v[i].x.name.path == path {
+            v[i] = function;
+            return;
+        }
+    }
+    panic!("update_function: path not found");
 }

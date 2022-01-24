@@ -12,11 +12,12 @@ use std::collections::HashSet;
 use std::ops::Index;
 use std::sync::Arc;
 use vir::ast::{
-    CallTarget, Expr, ExprX, Function, FunctionX, Ident, KrateX, Mode, Path, PathX, Typ, TypX,
-    VirErr,
+    CallTarget, Expr, ExprX, Function, FunctionX, Ident, KrateX, Mode, Path, PathX, Stmt, Typ,
+    TypX, VirErr,
 };
 use vir::ast_util::{
-    conjoin, mk_and, mk_bool, mk_call, mk_ife, mk_implies, mk_let_in, mk_or, mk_var,
+    conjoin, mk_and, mk_assert, mk_assume, mk_block, mk_bool, mk_call, mk_decl_stmt, mk_eq,
+    mk_expr_stmt, mk_ife, mk_implies, mk_or, mk_var,
 };
 
 fn check_updates_refer_to_valid_fields(
@@ -230,7 +231,41 @@ pub fn check_normal(ts: &TransitionStmt<Span, Ident, Expr>) -> Result<Vec<(Ident
     }
 }
 
-pub fn add_noop_updates_rec(
+fn append_stmt(
+    t1: TransitionStmt<Span, Ident, Expr>,
+    t2: TransitionStmt<Span, Ident, Expr>,
+) -> TransitionStmt<Span, Ident, Expr> {
+    match t1 {
+        TransitionStmt::Block(span, mut v) => {
+            v.push(t2);
+            TransitionStmt::Block(span, v)
+        }
+        _ => TransitionStmt::Block(t1.get_span().clone(), vec![t1, t2]),
+    }
+}
+
+fn self_dot_ident(ident: Ident) -> Expr {
+    unimplemented!();
+}
+
+fn add_noop_updates(
+    sm: &SM<Span, Ident, Ident, Expr, Typ>,
+    ts: &TransitionStmt<Span, Ident, Expr>,
+) -> TransitionStmt<Span, Ident, Expr> {
+    let (mut ts, idents) = add_noop_updates_rec(ts);
+    for f in &sm.fields {
+        if !idents.contains(&f.ident) {
+            let span = ts.get_span().clone();
+            ts = append_stmt(
+                ts,
+                TransitionStmt::Update(span, f.ident.clone(), self_dot_ident(f.ident.clone())),
+            );
+        }
+    }
+    return ts;
+}
+
+fn add_noop_updates_rec(
     ts: &TransitionStmt<Span, Ident, Expr>,
 ) -> (TransitionStmt<Span, Ident, Expr>, Vec<Ident>) {
     match ts {
@@ -238,20 +273,20 @@ pub fn add_noop_updates_rec(
             let mut h = Vec::new();
             let mut v1 = Vec::new();
             for t in v.iter() {
-                let (t1, q) = check_normal(t)?;
+                let (t1, q) = add_noop_updates_rec(t);
                 v1.push(t1);
                 h.extend(q)
             }
-            Ok((TransitionStmt::Block(span.clone(), v1), h))
+            (TransitionStmt::Block(span.clone(), v1), h)
         }
         TransitionStmt::Let(_, _, _)
         | TransitionStmt::Require(_, _)
         | TransitionStmt::Assert(_, _) => {
-            return Ok((ts.clone(), Vec::new()));
+            return (ts.clone(), Vec::new());
         }
         TransitionStmt::If(span, cond, thn, els) => {
-            let (mut s1, h1) = check_normal(thn)?;
-            let (mut s2, h2) = check_normal(els)?;
+            let (mut s1, h1) = add_noop_updates_rec(thn);
+            let (mut s2, h2) = add_noop_updates_rec(els);
 
             for ident in &h1 {
                 if !h2.contains(ident) {
@@ -280,10 +315,13 @@ pub fn add_noop_updates_rec(
                 }
             }
 
-            return Ok((TransitionStmt::If(span, cond, s1, s2), union));
+            return (
+                TransitionStmt::If(span.clone(), cond.clone(), Box::new(s1), Box::new(s2)),
+                union,
+            );
         }
         TransitionStmt::Update(sp, ident, _) => {
-            return Ok((ts.clone(), vec![ident]));
+            return (ts.clone(), vec![ident.clone()]);
         }
     }
 }
@@ -313,20 +351,10 @@ pub fn check_transitions(
     Ok(())
 }
 
-pub fn expr_is_enabled(
+fn transition_to_vir_stmt(
     ts: &TransitionStmt<Span, Ident, Expr>,
-    include_asserts: bool,
-    include_requires: bool,
-) -> Expr {
-    match expr_is_enabled_opt(ts, include_asserts, include_requires) {
-        Some(e) => e,
-        None => mk_bool(ts.get_span(), true),
-    }
-}
-
-pub fn transition_to_vir_stmt(
-    ts: &TransitionStmt<Span, Ident, Expr>,
-    post_ident: Option<Ident>,
+    assume_asserts: bool,
+    post_ident: Option<&Ident>,
 ) -> Stmt {
     match ts {
         TransitionStmt::Block(span, v) => {
@@ -334,28 +362,47 @@ pub fn transition_to_vir_stmt(
             for t in v {
                 res.push(transition_to_vir_stmt(t, assume_asserts, post_ident));
             }
-            mk_expr_stmt(span, mk_block(span, res, None))
+            mk_expr_stmt(span, &mk_block(span, res, &None))
         }
-        TransitionStmt::Let(let_span, let_bind, let_e) => match e {
-            None => None,
-            Some(e) => mk_decl_statement(let_span, Mode::Spec, false, let_bind, let_e),
-        },
+        TransitionStmt::Let(let_span, let_bind, let_e) => {
+            mk_decl_stmt(let_span, Mode::Spec, false, let_bind, let_e)
+        }
         TransitionStmt::If(span, cond, thn, els) => {
             let e1 = transition_to_vir_stmt(thn, assume_asserts, post_ident);
             let e2 = transition_to_vir_stmt(els, assume_asserts, post_ident);
-            mk_expr_stmt(span, mk_ife(span, &cond, &e1, &e2))
+            let s1 = mk_block(&e1.span, vec![e1.clone()], &None);
+            let s2 = mk_block(&e2.span, vec![e2.clone()], &None);
+            mk_expr_stmt(span, &mk_ife(span, &cond, &s1, &s2))
         }
-        TransitionStmt::Require(span, e) => mk_assume(span, e),
-        TransitionStmt::Assert(_, e) => {
+        TransitionStmt::Require(span, e) => mk_expr_stmt(span, &mk_assume(span, e)),
+        TransitionStmt::Assert(span, e) => {
             if assume_asserts {
-                mk_assume(span, e)
+                mk_expr_stmt(span, &mk_assume(span, e))
             } else {
-                mk_assert(span, e)
+                mk_expr_stmt(span, &mk_assert(span, e))
             }
         }
-        TransitionStmt::Update(span, f, expr) => match post_ident {
-            None => mk_bool(span, true),
-            Some(post_ident) => mk_assume(span, mk_eq(span, mk_var(span, typ, *f), expr)),
-        },
+        TransitionStmt::Update(span, f, expr) => {
+            let e = match post_ident {
+                None => mk_bool(span, true),
+                Some(post_ident) => {
+                    let typ = &expr.typ;
+                    mk_assume(
+                        span,
+                        &mk_eq(span, Mode::Spec, &mk_var(span, typ, (**f).clone()), expr),
+                    )
+                }
+            };
+            mk_expr_stmt(span, &e)
+        }
     }
+}
+
+pub fn assume_transition_holds(
+    sm: &SM<Span, Ident, Ident, Expr, Typ>,
+    ts: &TransitionStmt<Span, Ident, Expr>,
+    post_ident: &Ident,
+) -> Stmt {
+    let ts = add_noop_updates(sm, ts);
+    return transition_to_vir_stmt(&ts, true, Some(post_ident));
 }

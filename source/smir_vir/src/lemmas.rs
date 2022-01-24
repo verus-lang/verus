@@ -1,5 +1,8 @@
 #![allow(unused_imports)]
 
+use crate::check_wf::set_body;
+use crate::check_wf::{check_wf_user_invariant, get_member_path, setup_inv};
+use crate::transitions::assume_transition_holds;
 use air::ast::Span;
 use air::errors::error;
 use smir::ast::{
@@ -11,10 +14,13 @@ use std::collections::HashSet;
 use std::ops::Index;
 use std::sync::Arc;
 use vir::ast::{
-    CallTarget, Expr, ExprX, Function, FunctionX, Ident, KrateX, Mode, Path, PathX, Typ, TypX,
-    VirErr,
+    CallTarget, DatatypeX, Expr, ExprX, FunX, Function, FunctionX, Ident, KrateX, Mode, Path,
+    PathX, SpannedTyped, Typ, TypX, VirErr,
 };
-use vir::ast_util::{conjoin, mk_call, mk_var};
+use vir::ast_util::{
+    conjoin, mk_and, mk_assert, mk_assume, mk_block, mk_bool, mk_call, mk_decl_stmt, mk_eq,
+    mk_expr_stmt, mk_ife, mk_implies, mk_or, mk_var,
+};
 
 pub fn get_transition<'a>(
     sm: &'a SM<Span, Ident, Ident, Expr, Typ>,
@@ -152,5 +158,50 @@ pub fn has_assertion(ts: &TransitionStmt<Span, Ident, Expr>) -> bool {
         TransitionStmt::Require(_, _) => false,
         TransitionStmt::Assert(_, _) => true,
         TransitionStmt::Update(_, _, _) => false,
+    }
+}
+
+pub fn inv_call(span: &Span, type_path: &Path, ident: &Ident) -> Expr {
+    let inv_path = get_member_path(type_path, &Arc::new("invariant".to_string()));
+    let fun = Arc::new(FunX { path: inv_path, trait_path: None });
+    let call_target = CallTarget::Static(fun, Arc::new(Vec::new()));
+    let var_ty = Arc::new(TypX::Datatype(type_path.clone(), Arc::new(Vec::new())));
+    let var_for_ident = SpannedTyped::new(span, &var_ty, ExprX::Var(ident.clone()));
+    return mk_call(span, &Arc::new(TypX::Bool), &call_target, &vec![var_for_ident]);
+}
+
+pub fn setup_lemmas(
+    sm: &SM<Span, Ident, Ident, Expr, Typ>,
+    type_path: &Path,
+    funs: &HashMap<Ident, Function>,
+    new_funs: &mut Vec<(Ident, Function)>,
+) {
+    for l in sm.lemmas.iter() {
+        match &l.purpose {
+            LemmaPurpose { transition, kind: LemmaPurposeKind::PreservesInvariant } => {
+                let function = funs.index(&l.func);
+                let body = function.x.body.clone().expect("body");
+                let span = function.span.clone();
+                let post_ident = Arc::new("post".to_string());
+                let self_ident = Arc::new("self".to_string());
+                let assume_inv = mk_assume(&span, &inv_call(&span, &type_path, &self_ident));
+                let ts = get_transition(sm, transition).expect("get_transition");
+                let assume_transition = assume_transition_holds(sm, &ts.body, &post_ident);
+                let assert_inv = mk_assume(&span, &inv_call(&span, &type_path, &post_ident));
+                let stmts = vec![
+                    mk_expr_stmt(&span, &assume_inv),
+                    assume_transition,
+                    mk_expr_stmt(&span, &body),
+                    mk_expr_stmt(&span, &assert_inv),
+                ];
+                let new_body = mk_block(&span, stmts, &None);
+
+                let new_f = set_body(function, new_body);
+                new_funs.push((l.func.clone(), new_f));
+            }
+            LemmaPurpose { transition, kind: LemmaPurposeKind::SatisfiesAsserts } => {
+                // TODO
+            }
+        }
     }
 }
