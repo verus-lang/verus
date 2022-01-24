@@ -315,8 +315,6 @@ fn check_expr(typing: &mut Typing, outer_mode: Mode, expr: &Expr) -> Result<Mode
             Ok(Mode::Spec)
         }
         ExprX::Closure(params, body) => {
-            // Note: captures and call are not filled in at this point (ast_simplify sets them),
-            // so there's no need to check them here.
             typing.vars.push_scope(true);
             for binder in params.iter() {
                 typing.insert(&expr.span, &binder.name, false, Mode::Spec);
