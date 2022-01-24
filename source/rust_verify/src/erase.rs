@@ -32,13 +32,13 @@
 //! HIR/VIR with the corresponding expressions and statements in the AST.
 //!
 //! In fact, we actually make three runs, because we want to run Rust's lifetime checking
-//! on #[proof] variables.  In this run, we erase #[spec] but not #[proof] and #[code],
+//! on #[proof] variables.  In this run, we erase #[spec] but not #[proof] and #[exec],
 //! then we run mir_borrowck, then we stop and throw away the results.
 //!
 //! Summary of three runs:
-//! 1) AST -> HIR -> VIR for verification on #[code], #[proof], #[spec]
-//! 2) AST -> HIR -> VIR -> MIR for mir_borrowck on #[code], #[proof]
-//! 3) AST -> HIR -> VIR -> MIR -> ... for compilation of #[code]
+//! 1) AST -> HIR -> VIR for verification on #[exec], #[proof], #[spec]
+//! 2) AST -> HIR -> VIR -> MIR for mir_borrowck on #[exec], #[proof]
+//! 3) AST -> HIR -> VIR -> MIR -> ... for compilation of #[exec]
 //!
 //! Notes:
 //!
