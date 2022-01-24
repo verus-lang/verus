@@ -13,34 +13,35 @@ enum Color {
     Undefined, // 11
 }
 
-#[proof]
-fn interpret(bucket: u32, index: u32) -> Seq<Color> {
-    requires([
-        index < 16,
-    ]);
-    decreases(16-index);
+#[spec]
+fn bucket_view(bucket: u32, index: u32) -> Seq<Color> {
+    decreases(index);
 
     let mask:u32 = 3;
-    let color_bit = mask & (bucket >> index*2);
+    let shift:u32 = (15 - index) * 2;
+    let color_bit = mask & (bucket >> shift);
     let c:Color = 
        if color_bit == 0 {Color::White}
        else if color_bit == 1 {Color::Gray}
        else if color_bit == 2 {Color::Black}
        else {Color::Undefined};
 
-    if index == 15 {seq![c]}
-    else {let rest = interpret(bucket, index+1); rest.push(c)}
+    if index == 0 {
+        seq![c]
+    } else {
+        seq![c].add(bucket_view(bucket, index-1))
+    }
 }
 
 #[exec]
 fn set_color(bucket:u32, c:Color, index:u32, #[proof] ghost_bucket:Seq<Color>) -> u32 {
     requires([
         index < 16,
-        interpret(bucket, 0).ext_equal(ghost_bucket)
+        bucket_view(bucket, 0).ext_equal(ghost_bucket)
         // interpret(bucket, 0) == ghost_bucket,
     ]);
     ensures(|new_bucket: u32| [
-        interpret(new_bucket, 0).ext_equal(ghost_bucket.update(index, c)),
+        bucket_view(new_bucket, 0).ext_equal(ghost_bucket.update(index, c)),
         // interpret(new_bucket, 0) == ghost_bucket.update(index, c),
     ]);
 
