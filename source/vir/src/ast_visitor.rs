@@ -630,9 +630,9 @@ where
     for variant in datatypex.variants.iter() {
         let mut fields: Vec<Field> = Vec::new();
         for field in variant.a.iter() {
-            let (typ, mode) = &field.a;
+            let (typ, mode, vis) = &field.a;
             let typ = map_typ_visitor_env(typ, env, ft)?;
-            fields.push(field.new_a((typ, *mode)));
+            fields.push(field.new_a((typ, *mode, vis.clone())));
         }
         variants.push(variant.new_a(Arc::new(fields)));
     }

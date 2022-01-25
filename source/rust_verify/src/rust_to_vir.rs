@@ -58,6 +58,7 @@ fn check_item<'tcx>(
             check_item_struct(
                 ctxt,
                 vir,
+                module_path,
                 item.span,
                 id,
                 visibility,
@@ -71,6 +72,7 @@ fn check_item<'tcx>(
             check_item_enum(
                 ctxt,
                 vir,
+                module_path,
                 item.span,
                 id,
                 visibility,

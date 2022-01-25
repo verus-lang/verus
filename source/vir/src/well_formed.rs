@@ -127,6 +127,11 @@ fn check_function(ctxt: &Ctxt, function: &Function) -> Result<(), VirErr> {
         })?;
     }
     if let Some(body) = &function.x.body {
+        // Check that public, non-abstract spec function bodies don't refer to private items:
+        let disallow_private_access = !function.x.is_abstract
+            && !function.x.visibility.is_private
+            && function.x.mode == Mode::Spec;
+
         crate::ast_visitor::expr_visitor_check(body, &mut |expr| {
             match &expr.x {
                 ExprX::Call(CallTarget::Static(x, _), args) => {
@@ -144,11 +149,7 @@ fn check_function(ctxt: &Ctxt, function: &Function) -> Result<(), VirErr> {
                             }
                         }
                     }
-                    // Check that public, non-abstract spec function bodies don't refer to private items
-                    if !function.x.is_abstract
-                        && !function.x.visibility.is_private
-                        && function.x.mode == Mode::Spec
-                    {
+                    if disallow_private_access {
                         let callee = &ctxt.funs[x];
                         if callee.x.visibility.is_private {
                             return err_string(
@@ -174,14 +175,25 @@ fn check_function(ctxt: &Ctxt, function: &Function) -> Result<(), VirErr> {
                         panic!("constructor of undefined datatype");
                     }
                 }
-                // TODO: disallow private fields, unless function is marked #[verifier(pub_abstract)]
-                ExprX::UnaryOpr(UnaryOpr::Field { datatype: path, .. }, _) => {
+                ExprX::UnaryOpr(UnaryOpr::Field { datatype: path, variant, field }, _) => {
                     if let Some(dt) = ctxt.dts.get(path) {
                         if let Some(module) = &function.x.visibility.owning_module {
                             if !is_datatype_transparent(&module, dt) {
                                 return err_string(
                                     &expr.span,
                                     format!("field access of datatype with unencoded fields here"),
+                                );
+                            }
+                        }
+                        if disallow_private_access {
+                            let variant = dt.x.get_variant(variant);
+                            let (_, _, vis) = &crate::ast_util::get_field(&variant.a, &field).a;
+                            if vis.is_private {
+                                return err_string(
+                                    &expr.span,
+                                    format!(
+                                        "public spec function cannot refer to private items, unless function is marked #[verifier(pub_abstract)]"
+                                    ),
                                 );
                             }
                         }
@@ -213,7 +225,7 @@ fn check_datatype(dt: &Datatype) -> Result<(), VirErr> {
     if unforgeable {
         for variant in dt.x.variants.iter() {
             for binder in variant.a.iter() {
-                let (_typ, field_mode) = &binder.a;
+                let (_typ, field_mode, _vis) = &binder.a;
                 if *field_mode != Mode::Spec {
                     return err_string(
                         &dt.span,

@@ -170,7 +170,7 @@ fn add_pattern(typing: &mut Typing, mode: Mode, pattern: &Pattern) -> Result<(),
             let variant =
                 datatype.x.variants.iter().find(|v| v.name == *variant).expect("missing variant");
             for (binder, field) in patterns.iter().zip(variant.a.iter()) {
-                let (_, field_mode) = field.a;
+                let (_, field_mode, _) = field.a;
                 add_pattern(typing, mode_join(field_mode, mode), &binder.a)?;
             }
             Ok(())
@@ -265,7 +265,7 @@ fn check_expr(typing: &mut Typing, outer_mode: Mode, expr: &Expr) -> Result<Mode
                 mode = mode_join(mode, check_expr(typing, outer_mode, update)?);
             }
             for arg in binders.iter() {
-                let (_, field_mode) = get_field(&variant.a, &arg.name).a;
+                let (_, field_mode, _) = get_field(&variant.a, &arg.name).a;
                 let mode_arg = check_expr(typing, mode_join(outer_mode, field_mode), &arg.a)?;
                 if !mode_le(mode_arg, field_mode) {
                     // allow this arg by weakening whole struct's mode

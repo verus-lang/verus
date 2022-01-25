@@ -292,7 +292,7 @@ fn erase_pat(ctxt: &Ctxt, mctxt: &mut MCtxt, pat: &Pat) -> Pat {
                 let mut fpats: Vec<FieldPat> = Vec::new();
                 for fpat in fields {
                     let name = Arc::new(fpat.ident.as_str().to_string());
-                    let (_, mode) = get_field(variant, &name).a;
+                    let (_, mode, _) = get_field(variant, &name).a;
                     if keep_mode(ctxt, mode) {
                         fpats.push(erase_field_pat(ctxt, mctxt, fpat));
                     }
@@ -307,7 +307,7 @@ fn erase_pat(ctxt: &Ctxt, mctxt: &mut MCtxt, pat: &Pat) -> Pat {
                 let variant = &datatype.x.get_variant(variant).a;
                 let mut pats: Vec<P<Pat>> = Vec::new();
                 for (field, pat) in variant.iter().zip(pats0.iter()) {
-                    let (_, mode) = field.a;
+                    let (_, mode, _) = field.a;
                     if keep_mode(ctxt, mode) {
                         pats.push(P(erase_pat(ctxt, mctxt, pat)));
                     }
@@ -560,7 +560,7 @@ fn erase_expr_opt(ctxt: &Ctxt, mctxt: &mut MCtxt, expect: Mode, expr: &Expr) -> 
                         let mut new_args: Vec<P<Expr>> = Vec::new();
                         let variant = datatype.x.get_variant(variant);
                         for (field, arg) in variant.a.iter().zip(args.iter()) {
-                            let (_, field_mode) = field.a;
+                            let (_, field_mode, _) = field.a;
                             if keep_mode(ctxt, field_mode) {
                                 new_args.push(P(erase_expr(
                                     ctxt,
@@ -612,7 +612,7 @@ fn erase_expr_opt(ctxt: &Ctxt, mctxt: &mut MCtxt, expect: Mode, expr: &Expr) -> 
                 let variant = datatype.x.get_variant(variant);
                 for field in fields {
                     let name = Arc::new(field.ident.as_str().to_string());
-                    let (_, field_mode) = get_field(&variant.a, &name).a;
+                    let (_, field_mode, _) = get_field(&variant.a, &name).a;
                     if keep_mode(ctxt, field_mode) {
                         let e = erase_expr(ctxt, mctxt, mode_join(expect, field_mode), &field.expr);
                         // for asymptotic efficiency, don't call field.clone():

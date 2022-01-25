@@ -38,6 +38,7 @@ pub struct Init {
 
 impl Init {
   #[spec]
+  #[verifier(pub_abstract)]
   pub fn valid(self) -> bool {
       equal(self.counter.counter, 0)
       && !self.incA.done
@@ -110,6 +111,7 @@ pub struct G {
 
 impl G {
   #[spec]
+  #[verifier(pub_abstract)]
   pub fn wf(self, patomic: PAtomicU32) -> bool {
     equal(self.perm.patomic, patomic.view()) && equal(self.perm.value as int, self.counter.counter)
   }

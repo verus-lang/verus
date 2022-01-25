@@ -71,7 +71,7 @@ pub(crate) fn check_recursive_types(krate: &Krate) -> Result<(), VirErr> {
     for datatype in &krate.datatypes {
         for variant in datatype.x.variants.iter() {
             for field in variant.a.iter() {
-                let (typ, _) = &field.a;
+                let (typ, _, _) = &field.a;
                 let ft = |type_graph: &mut Graph<Path>, t: &Typ| match &**t {
                     TypX::Datatype(path, _) => {
                         type_graph.add_edge(datatype.x.path.clone(), path.clone());
@@ -89,7 +89,7 @@ pub(crate) fn check_recursive_types(krate: &Krate) -> Result<(), VirErr> {
         for variant in datatype.x.variants.iter() {
             for field in variant.a.iter() {
                 // Check that field type only uses SCC siblings in positive positions
-                let (typ, _) = &field.a;
+                let (typ, _, _) = &field.a;
                 check_positive_uses(
                     &datatype.span,
                     &type_graph,
