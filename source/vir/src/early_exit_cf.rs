@@ -52,6 +52,7 @@ fn expr_get_early_exits_rec(
             | ExprX::Var(..)
             | ExprX::VarAt(..)
             | ExprX::ConstVar(..)
+            | ExprX::Loc(..)
             | ExprX::Call(CallTarget::Static(..), _)
             | ExprX::Call(CallTarget::FnSpec(..), _)
             | ExprX::Tuple(..)

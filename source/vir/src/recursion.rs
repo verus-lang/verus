@@ -105,6 +105,7 @@ fn terminates(ctxt: &Ctxt, exp: &Exp) -> Result<Exp, VirErr> {
         ExpX::Const(_) | ExpX::Var(..) | ExpX::VarAt(..) | ExpX::Old(..) => {
             Ok(bool_exp(ExpX::Const(Constant::Bool(true))))
         }
+        ExpX::Loc(e) => terminates(ctxt, e),
         ExpX::Call(x, _, args) => {
             let mut e = if *x == ctxt.recursive_function_name
                 || ctxt.ctx.func_call_graph.get_scc_rep(x) == ctxt.scc_rep

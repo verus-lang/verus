@@ -303,6 +303,7 @@ fn check_expr(typing: &mut Typing, outer_mode: Mode, expr: &Expr) -> Result<Mode
             let field = get_field(&datatype.x.get_variant(variant).a, field);
             Ok(mode_join(e1_mode, field.a.1))
         }
+        ExprX::Loc(e) => check_expr(typing, outer_mode, e),
         ExprX::Binary(op, e1, e2) => {
             let op_mode = match op {
                 BinaryOp::Eq(mode) => *mode,

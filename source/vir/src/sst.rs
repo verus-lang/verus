@@ -36,6 +36,7 @@ pub enum ExpX {
     Const(Constant),
     Var(UniqueIdent),
     VarAt(Ident, VarAt),
+    Loc(Exp),
     // used only during sst_to_air to generate AIR Old
     Old(Ident, Ident),
     // call to spec function

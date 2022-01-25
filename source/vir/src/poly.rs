@@ -323,6 +323,10 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
                 }
             }
         }
+        ExprX::Loc(e) => {
+            // TODO(utaal) do the right thing here
+            mk_expr(ExprX::Loc(poly_expr(ctx, state, e)))
+        }
         ExprX::Binary(op, e1, e2) => {
             let e1 = poly_expr(ctx, state, e1);
             let e2 = poly_expr(ctx, state, e2);

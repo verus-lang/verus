@@ -510,7 +510,7 @@ fn fn_call_to_vir<'tcx>(
 
     let mut vir_args = vec_map_result(&args, |arg| match arg.kind {
         ExprKind::AddrOf(BorrowKind::Ref, Mutability::Mut, e) => {
-            expr_to_vir(bctx, e, ExprModifier::Regular)
+            Ok(mk_expr(ExprX::Loc(expr_to_vir(bctx, e, ExprModifier::Regular)?)))
         }
         _ => expr_to_vir(bctx, arg, ExprModifier::Regular),
     })?;

@@ -38,7 +38,7 @@ fn check_trigger_expr(exp: &Exp, free_vars: &mut HashSet<Ident>) -> Result<(), V
         exp,
         &mut scope_map,
         &mut |exp, _scope_map| match &exp.x {
-            ExpX::Const(_) | ExpX::CallLambda(..) | ExpX::Ctor(..) => Ok(()),
+            ExpX::Const(_) | ExpX::CallLambda(..) | ExpX::Ctor(..) | ExpX::Loc(..) => Ok(()),
             ExpX::Call(_, typs, _) => {
                 for typ in typs.iter() {
                     let ft = |free_vars: &mut HashSet<Ident>, t: &Typ| match &**t {

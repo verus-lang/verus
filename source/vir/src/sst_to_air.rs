@@ -332,6 +332,10 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: ExprCtxt) -> Expr {
             }
             ExprCtxt::BodyPre => string_var(&suffix_local_stmt_id(x)),
         },
+        ExpX::Loc(e0) => {
+            dbg!(&e0);
+            todo!()
+        }
         ExpX::Old(span, x) => Arc::new(ExprX::Old(span.clone(), suffix_local_stmt_id(x))),
         ExpX::Call(x, typs, args) => {
             let name = suffix_global_id(&fun_to_air_ident(&x));

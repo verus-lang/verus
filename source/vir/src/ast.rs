@@ -280,6 +280,8 @@ pub enum ExprX {
     VarAt(Ident, VarAt),
     /// Use of a const variable.  Note: ast_simplify replaces this with Call.
     ConstVar(Fun),
+    /// Mutable reference (location)
+    Loc(Expr),
     /// Call to a function passing some expression arguments
     Call(CallTarget, Exprs),
     /// Note: ast_simplify replaces this with Ctor

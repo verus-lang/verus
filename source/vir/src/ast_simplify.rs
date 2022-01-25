@@ -52,26 +52,270 @@ struct LocalCtxt {
 
 fn is_small_expr(expr: &Expr) -> bool {
     match &expr.x {
-        ExprX::Const(_) => true,
-        ExprX::Var(_) => true,
+        ExprX::Const(_) | ExprX::Var(_) | ExprX::VarAt(..) => true,
         ExprX::Unary(UnaryOp::Not | UnaryOp::Clip(_), e) => is_small_expr(e),
         ExprX::UnaryOpr(UnaryOpr::Box(_) | UnaryOpr::Unbox(_), e) => is_small_expr(e),
+        ExprX::Loc(_) => panic!("expr contains a location"),
         _ => false,
     }
 }
 
-fn small_or_temp(state: &mut State, expr: &Expr) -> (Option<Stmt>, Expr) {
-    if is_small_expr(&expr) {
-        (None, expr.clone())
+fn temp_expr(state: &mut State, expr: &Expr) -> (Stmt, Expr) {
+    // put expr into a temp variable to avoid duplicating it
+    let temp = state.next_temp();
+    let name = temp.clone();
+    let patternx = PatternX::Var { name, mutable: false };
+    let pattern = SpannedTyped::new(&expr.span, &expr.typ, patternx);
+    let decl = StmtX::Decl { pattern, mode: Mode::Exec, init: Some(expr.clone()) };
+    let temp_decl = Spanned::new(expr.span.clone(), decl);
+    (temp_decl, SpannedTyped::new(&expr.span, &expr.typ, ExprX::Var(temp)))
+}
+
+struct SmallLocOrTemp(Vec<Stmt>, Expr, bool);
+
+fn small_loc_or_temp_exprs(
+    state: &mut State,
+    es: &[Expr],
+    in_loc: bool,
+) -> (Vec<Stmt>, Vec<Expr>, bool) {
+    let mut stmts: Vec<Stmt> = Vec::new();
+    let mut exprs: Vec<Expr> = Vec::new();
+    let mut contains_loc = false;
+    for e in es.iter() {
+        let SmallLocOrTemp(ss, ee, cl) = small_loc_or_temp(state, e, in_loc);
+        stmts.extend(ss.into_iter());
+        exprs.push(ee);
+        contains_loc |= cl;
+    }
+    (stmts, exprs, contains_loc)
+}
+
+impl SmallLocOrTemp {
+    fn map_expr(self, f: impl Fn(Expr) -> Expr) -> SmallLocOrTemp {
+        let SmallLocOrTemp(ss, ee, cl) = self;
+        SmallLocOrTemp(ss, f(ee), cl)
+    }
+}
+
+fn small_or_temp(state: &mut State, expr: &Expr) -> (Vec<Stmt>, Expr) {
+    let SmallLocOrTemp(stmts, expr, _) = small_loc_or_temp(state, expr, false);
+    (stmts, expr)
+}
+
+/// Returns (statements for temp expressions, simplified expr, contains location)
+fn small_loc_or_temp(state: &mut State, expr: &Expr, in_loc: bool) -> SmallLocOrTemp {
+    let SmallLocOrTemp(mut stmts, simplified_expr, contains_loc) = match &expr.x {
+        ExprX::Const(c) => SmallLocOrTemp(vec![], expr.clone(), false),
+        ExprX::ConstVar(c) => todo!(), // SmallLocOrTemp(vec![], expr.clone(), false),
+        ExprX::Var(x) => SmallLocOrTemp(vec![], expr.clone(), in_loc),
+        ExprX::VarAt(x, at) => {
+            if in_loc {
+                panic!("unexpected mutable reference of old(x)");
+            }
+            SmallLocOrTemp(vec![], expr.clone(), false)
+        }
+        ExprX::Loc(e) => {
+            let SmallLocOrTemp(stmts, ee, contains_loc) = small_loc_or_temp(state, e, true);
+            SmallLocOrTemp(stmts, expr.new_x(ExprX::Loc(ee)), true)
+        }
+        ExprX::Call(target, es) => {
+            let (stmts, exprs, contains_loc) = small_loc_or_temp_exprs(state, es, in_loc);
+            SmallLocOrTemp(
+                stmts,
+                expr.new_x(ExprX::Call(target.clone(), Arc::new(exprs))),
+                contains_loc,
+            )
+        }
+        ExprX::Tuple(es) => {
+            let (stmts, exprs, contains_loc) = small_loc_or_temp_exprs(state, es, in_loc);
+            SmallLocOrTemp(stmts, expr.new_x(ExprX::Tuple(Arc::new(exprs))), contains_loc)
+        }
+        ExprX::Ctor(path, ident, binders, update) => {
+            let (mut stmts, update, mut contains_loc) = match update {
+                None => (vec![], None, false),
+                Some(update) => {
+                    let SmallLocOrTemp(s, u, c) = small_loc_or_temp(state, update, in_loc);
+                    (s, Some(u), c)
+                }
+            };
+            let mut mapped_binders = Vec::new();
+            for b in binders.iter() {
+                let SmallLocOrTemp(ss, ee, cl) = small_loc_or_temp(state, &b.a, in_loc);
+                stmts.extend(ss.into_iter());
+                mapped_binders.push(b.new_a(ee));
+                contains_loc |= cl;
+            }
+            SmallLocOrTemp(
+                stmts,
+                expr.new_x(ExprX::Ctor(
+                    path.clone(),
+                    ident.clone(),
+                    Arc::new(mapped_binders),
+                    update,
+                )),
+                contains_loc,
+            )
+        }
+        ExprX::Unary(op, e1) => {
+            small_loc_or_temp(state, e1, in_loc).map_expr(|e| expr.new_x(ExprX::Unary(*op, e)))
+        }
+        ExprX::UnaryOpr(op, e1) => small_loc_or_temp(state, e1, in_loc)
+            .map_expr(|e| expr.new_x(ExprX::UnaryOpr(op.clone(), e))),
+        ExprX::Binary(op, e1, e2) => {
+            let (stmts, exprs, contains_loc) =
+                small_loc_or_temp_exprs(state, &[e1.clone(), e2.clone()], in_loc);
+            let mut exprs = exprs.into_iter();
+            let expr1 = exprs.next().unwrap();
+            let expr2 = exprs.next().unwrap();
+            SmallLocOrTemp(stmts, expr.new_x(ExprX::Binary(*op, expr1, expr2)), contains_loc)
+        }
+        ExprX::Quant(quant, binders, e1) => {
+            // map.push_scope(true);
+            // for binder in binders.iter() {
+            //     let _ = map.insert(binder.name.clone(), binder.a.clone());
+            // }
+            small_loc_or_temp(state, e1, in_loc)
+                .map_expr(|expr1| expr.new_x(ExprX::Quant(*quant, binders.clone(), expr1)))
+            // map.pop_scope();
+        }
+        ExprX::Closure(params, body) => {
+            // map.push_scope(true);
+            // for binder in params.iter() {
+            //     let _ = map.insert(binder.name.clone(), binder.a.clone());
+            // }
+            small_loc_or_temp(state, body, in_loc)
+                .map_expr(|b| expr.new_x(ExprX::Closure(params.clone(), b)))
+            // map.pop_scope();
+        }
+        ExprX::Choose(binder, e1) => {
+            // let binder = binder.map_result(|t| map_typ_visitor_env(t, env, ft))?;
+            // map.push_scope(true);
+            // let _ = map.insert(binder.name.clone(), binder.a.clone());
+            small_loc_or_temp(state, e1, in_loc)
+                .map_expr(|expr1| expr.new_x(ExprX::Choose(binder.clone(), expr1)))
+            // map.pop_scope();
+        }
+        ExprX::Assign(e1, e2) => {
+            let (stmts, exprs, contains_loc) =
+                small_loc_or_temp_exprs(state, &[e1.clone(), e2.clone()], in_loc);
+            let mut exprs = exprs.into_iter();
+            let expr1 = exprs.next().unwrap();
+            let expr2 = exprs.next().unwrap();
+            SmallLocOrTemp(stmts, expr.new_x(ExprX::Assign(expr1, expr2)), contains_loc)
+        }
+        ExprX::Fuel(path, fuel) => {
+            SmallLocOrTemp(vec![], expr.new_x(ExprX::Fuel(path.clone(), *fuel)), false)
+        }
+        ExprX::Header(_) => {
+            // TODO ???
+            panic!("Header expression not expected here")
+        }
+        ExprX::Admit => SmallLocOrTemp(vec![], expr.new_x(ExprX::Admit), false),
+        ExprX::Forall { .. } => {
+            // TODO ???
+            panic!("Forall expression not expected here")
+            // map.push_scope(true);
+            // for binder in vars.iter() {
+            //     let _ = map.insert(binder.name.clone(), binder.a.clone());
+            // }
+            // let require = map_expr_visitor_env(require, map, env, fe, fs, ft)?;
+            // let ensure = map_expr_visitor_env(ensure, map, env, fe, fs, ft)?;
+            // let proof = map_expr_visitor_env(proof, map, env, fe, fs, ft)?;
+
+            // map.pop_scope();
+            // ExprX::Forall { vars: Arc::new(vars), require, ensure, proof }
+        }
+        ExprX::AssertBV(e) => {
+            panic!("AssertBV expression not expected here")
+            // let expr1 = map_expr_visitor_env(e, map, env, fe, fs, ft)?;
+            // ExprX::AssertBV(expr1)
+        }
+        ExprX::If(e1, e2, e3) => {
+            let mut es = vec![e1.clone(), e2.clone()];
+            if let Some(e3) = e3.as_ref() {
+                es.push(e3.clone());
+            }
+            let (stmts, exprs, contains_loc) =
+                small_loc_or_temp_exprs(state, &es, in_loc);
+            let mut exprs = exprs.into_iter();
+            let expr1 = exprs.next().unwrap();
+            let expr2 = exprs.next().unwrap();
+            let expr3 = exprs.next();
+            SmallLocOrTemp(stmts, expr.new_x(ExprX::If(expr1, expr2, expr3)), contains_loc)
+        }
+        ExprX::Match(e1, arms) => {
+            panic!("Match should have been already simplified")
+            // let expr1 = map_expr_visitor_env(e1, map, env, fe, fs, ft)?;
+            // let arms: Result<Vec<Arm>, VirErr> = vec_map_result(arms, |arm| {
+            //     map.push_scope(true);
+            //     let pattern = map_pattern_visitor_env(&arm.x.pattern, env, ft)?;
+            //     insert_pattern_vars(map, &pattern);
+            //     let guard = map_expr_visitor_env(&arm.x.guard, map, env, fe, fs, ft)?;
+            //     let body = map_expr_visitor_env(&arm.x.body, map, env, fe, fs, ft)?;
+            //     map.pop_scope();
+            //     Ok(Spanned::new(arm.span.clone(), ArmX { pattern, guard, body }))
+            // });
+            // ExprX::Match(expr1, Arc::new(arms?))
+        }
+        ExprX::While { cond, body, invs } => {
+            panic!("While expression not expected here")
+            // let cond = map_expr_visitor_env(cond, map, env, fe, fs, ft)?;
+            // let body = map_expr_visitor_env(body, map, env, fe, fs, ft)?;
+            // let invs =
+            //     Arc::new(vec_map_result(invs, |e| map_expr_visitor_env(e, map, env, fe, fs, ft))?);
+            // ExprX::While { cond, body, invs }
+        }
+        ExprX::Return(e1) => {
+            panic!("Return expression not expected here")
+            // let e1 = match e1 {
+            //     None => None,
+            //     Some(e) => Some(map_expr_visitor_env(e, map, env, fe, fs, ft)?),
+            // };
+            // ExprX::Return(e1)
+        }
+        ExprX::Block(ss, e1) => {
+            todo!()
+            // let mut stmts: Vec<Stmt> = Vec::new();
+            // for s in ss.iter() {
+            //     match &s.x {
+            //         StmtX::Expr(_) => {}
+            //         StmtX::Decl { .. } => map.push_scope(true),
+            //     }
+            //     stmts.append(&mut map_stmt_visitor_env(s, map, env, fe, fs, ft)?);
+            // }
+            // let expr1 = match e1 {
+            //     None => None,
+            //     Some(e) => Some(map_expr_visitor_env(e, map, env, fe, fs, ft)?),
+            // };
+            // for s in ss.iter() {
+            //     match &s.x {
+            //         StmtX::Expr(_) => {}
+            //         StmtX::Decl { .. } => map.pop_scope(),
+            //     }
+            // }
+            // ExprX::Block(Arc::new(stmts), expr1)
+        }
+        ExprX::OpenInvariant(e1, binder, e2) => {
+            panic!("OpenInvariant expression not expected here")
+            // let expr1 = map_expr_visitor_env(e1, map, env, fe, fs, ft)?;
+            // let binder = binder.map_result(|t| map_typ_visitor_env(t, env, ft))?;
+            // map.push_scope(true);
+            // let _ = map.insert(binder.name.clone(), binder.a.clone());
+            // let expr2 = map_expr_visitor_env(e2, map, env, fe, fs, ft)?;
+            // map.pop_scope();
+            // ExprX::OpenInvariant(expr1, binder, expr2)
+        }
+    };
+    if !contains_loc {
+        if is_small_expr(&expr) {
+            SmallLocOrTemp(vec![], expr.clone(), false)
+        } else {
+            let (ts, te) = temp_expr(state, expr);
+            stmts.push(ts);
+            SmallLocOrTemp(stmts, te, false)
+        }
     } else {
-        // put expr into a temp variable to avoid duplicating it
-        let temp = state.next_temp();
-        let name = temp.clone();
-        let patternx = PatternX::Var { name, mutable: false };
-        let pattern = SpannedTyped::new(&expr.span, &expr.typ, patternx);
-        let decl = StmtX::Decl { pattern, mode: Mode::Exec, init: Some(expr.clone()) };
-        let temp_decl = Some(Spanned::new(expr.span.clone(), decl));
-        (temp_decl, SpannedTyped::new(&expr.span, &expr.typ, ExprX::Var(temp)))
+        SmallLocOrTemp(stmts, simplified_expr, true)
     }
 }
 
@@ -186,28 +430,19 @@ fn simplify_one_expr(ctx: &GlobalCtx, state: &mut State, expr: &Expr) -> Result<
             let (temp_decl, update) = small_or_temp(state, update);
             let mut decls: Vec<Stmt> = Vec::new();
             let mut binders: Vec<Binder<Expr>> = Vec::new();
-            match temp_decl {
-                None => {
-                    for binder in partial_binders.iter() {
-                        binders.push(binder.clone());
-                    }
+            if temp_decl.len() == 0 {
+                for binder in partial_binders.iter() {
+                    binders.push(binder.clone());
                 }
-                Some(temp) => {
-                    // Because of Rust's order of evaluation here,
-                    // we have to put binders in temp vars, too.
-                    for binder in partial_binders.iter() {
-                        let (temp_decl, e) = small_or_temp(state, &binder.a);
-                        let binder = match temp_decl {
-                            None => binder.clone(),
-                            Some(temp) => {
-                                decls.push(temp);
-                                binder.map_a(|_| e)
-                            }
-                        };
-                        binders.push(binder);
-                    }
-                    decls.push(temp);
+            } else {
+                // Because of Rust's order of evaluation here,
+                // we have to put binders in temp vars, too.
+                for binder in partial_binders.iter() {
+                    let (temp_decl_inner, e) = small_or_temp(state, &binder.a);
+                    decls.extend(temp_decl_inner.into_iter());
+                    binders.push(binder.map_a(|_| e));
                 }
+                decls.extend(temp_decl.into_iter());
             }
             let datatype = &ctx.datatypes[path];
             assert_eq!(datatype.len(), 1);
@@ -275,8 +510,8 @@ fn simplify_one_expr(ctx: &GlobalCtx, state: &mut State, expr: &Expr) -> Result<
                 }
             }
             if let Some(if_expr) = if_expr {
-                let if_expr = if let Some(decl) = temp_decl {
-                    let block = ExprX::Block(Arc::new(vec![decl]), Some(if_expr));
+                let if_expr = if temp_decl.len() != 0 {
+                    let block = ExprX::Block(Arc::new(temp_decl), Some(if_expr));
                     SpannedTyped::new(&expr.span, &expr.typ, block)
                 } else {
                     if_expr
@@ -301,9 +536,7 @@ fn simplify_one_stmt(ctx: &GlobalCtx, state: &mut State, stmt: &Stmt) -> Result<
         {
             let mut decls: Vec<Stmt> = Vec::new();
             let (temp_decl, init) = small_or_temp(state, init);
-            if let Some(temp_decl) = temp_decl {
-                decls.push(temp_decl);
-            }
+            decls.extend(temp_decl.into_iter());
             let _ = pattern_to_exprs(ctx, state, &init, &pattern, &mut decls)?;
             Ok(decls)
         }

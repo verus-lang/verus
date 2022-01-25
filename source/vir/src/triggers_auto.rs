@@ -201,6 +201,7 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
         ExpX::VarAt(x, _) => {
             (true, Arc::new(TermX::App(App::VarAt(x.clone(), VarAt::Pre), Arc::new(vec![]))))
         }
+        ExpX::Loc(e0) => gather_terms(ctxt, ctx, e0, depth), // TODO ???
         ExpX::Old(_, _) => panic!("internal error: Old"),
         ExpX::Call(x, typs, args) => {
             let (is_pures, terms): (Vec<bool>, Vec<Term>) =
