@@ -295,6 +295,9 @@ pub enum ExprX {
     Header(HeaderExpr),
     /// Assume false
     Admit,
+    /// Assert & assume
+    Assert(Option<Error>, Expr),
+    Assume(Expr),
     /// Forall or assert-by statement; proves "forall vars. ensure" via proof.
     Forall { vars: Binders<Typ>, require: Expr, ensure: Expr, proof: Expr },
     /// bit vector assertions

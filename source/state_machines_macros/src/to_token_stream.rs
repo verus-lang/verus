@@ -6,7 +6,7 @@ use proc_macro2::TokenStream;
 use quote::{quote, quote_spanned, ToTokens};
 use smir::ast::{
     Extras, Field, Invariant, Lemma, LemmaPurpose, ShardableType, Transition, TransitionKind,
-    TransitionStmt, SM,
+    TransitionStmt, SM, Arg,
 };
 use syn::buffer::Cursor;
 use syn::parse::{Parse, ParseStream};
@@ -17,6 +17,7 @@ use syn::{
     braced, AttrStyle, Attribute, Error, Expr, FieldsNamed, FnArg, Ident, ImplItemMethod, Meta,
     MetaList, NestedMeta, Path, PathArguments, PathSegment, Type,
 };
+use crate::weakest::to_weakest;
 
 pub fn output_token_stream(sm_and_funcs: SMAndFuncs) -> TokenStream {
     let SMAndFuncs { normal_fns, sm: maybe_sm } = sm_and_funcs;
@@ -130,11 +131,39 @@ pub fn output_primary_stuff(
     };
     impl_token_stream.extend(inv_sig);
 
+    /*
     for trans_fn in trans_fns {
         let mut f = trans_fn.clone();
         fix_attrs(&mut f.attrs);
         f.to_tokens(impl_token_stream);
     }
+    */
+
+    for trans in &sm.transitions {
+        if trans.kind != TransitionKind::Readonly {
+            let f = to_weakest(sm, trans);
+            let args = self_post_args(&trans.args);
+            let name = &trans.name;
+            let rel_fn = quote!{
+                #[spec]
+                pub fn #name (#args) -> bool {
+                    #f
+                }
+            };
+            impl_token_stream.extend(rel_fn);
+        }
+    }
+}
+
+fn self_post_args(args: &Vec<Arg<Ident, Type>>) -> TokenStream {
+    let args: Vec<TokenStream> = args.iter().map(|arg| quote!{
+        #(arg.ident): #(arg.ty)
+    }).collect();
+    return quote! {
+        self: Self,
+        post: Self,
+        #(#args),*
+    };
 }
 
 fn shardable_type_to_type(stype: &ShardableType<Type>) -> Type {

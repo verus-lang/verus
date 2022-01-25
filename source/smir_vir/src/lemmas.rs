@@ -186,7 +186,7 @@ pub fn setup_lemmas(
                 let self_ident = Arc::new("self".to_string());
                 let assume_inv = mk_assume(&span, &inv_call(&span, &type_path, &self_ident));
                 let ts = get_transition(sm, transition).expect("get_transition");
-                let assume_transition = assume_transition_holds(sm, &ts.body, &post_ident);
+                let assume_transition = assume_transition_holds(sm, &ts.body, type_path, &post_ident);
                 let assert_inv = mk_assume(&span, &inv_call(&span, &type_path, &post_ident));
                 let stmts = vec![
                     mk_expr_stmt(&span, &assume_inv),

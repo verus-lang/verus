@@ -1,29 +1,38 @@
 #![allow(unused_imports)]
 
-use crate::util::fields_contain;
-use air::ast::Span;
-use air::errors::{error, error_with_label};
+use crate::parse_token_stream::{MaybeSM, SMAndFuncs};
+use proc_macro2::Span;
+use proc_macro2::TokenStream;
+use quote::{quote, quote_spanned, ToTokens};
 use smir::ast::{
-    Field, Invariant, Lemma, LemmaPurpose, LemmaPurposeKind, ShardableType, Transition,
-    TransitionKind, TransitionStmt, SM,
+    Extras, Field, Invariant, Lemma, LemmaPurpose, ShardableType, Transition, TransitionKind,
+    TransitionStmt, SM,
+};
+use syn::buffer::Cursor;
+use syn::parse::{Parse, ParseStream};
+use syn::punctuated::Punctuated;
+use syn::spanned::Spanned;
+use syn::token::{Dot, Colon2, Paren};
+use syn::{
+    braced, AttrStyle, Attribute, Error, Expr, FieldsNamed, FnArg, Ident, ImplItemMethod, Meta,
+    MetaList, NestedMeta, Path, PathArguments, PathSegment, Type, ExprPath, ExprField, Member,
+    ExprCall,
 };
 use std::collections::HashMap;
-use std::collections::HashSet;
-use std::ops::Index;
-use std::sync::Arc;
-use vir::ast::{
-    CallTarget, Expr, ExprX, Function, FunctionX, Ident, KrateX, Mode, Path, PathX, Stmt, Typ,
-    TypX, VirErr, SpannedTyped,
-};
-use vir::ast_util::{
-    conjoin, mk_and, mk_assert, mk_assume, mk_block, mk_bool, mk_call, mk_decl_stmt, mk_eq,
-    mk_expr_stmt, mk_ife, mk_implies, mk_or, mk_var, mk_field,
-};
+
+pub fn fields_contain(fields: &Vec<Field<Ident, Type>>, ident: &Ident) -> bool {
+    for f in fields {
+        if f.ident.to_string() == ident.to_string() {
+            return true;
+        }
+    }
+    return false;
+}
 
 fn check_updates_refer_to_valid_fields(
-    fields: &Vec<Field<Ident, Typ>>,
+    fields: &Vec<Field<Ident, Type>>,
     ts: &TransitionStmt<Span, Ident, Expr>,
-) -> Result<(), VirErr> {
+) -> syn::parse::Result<()> {
     match ts {
         TransitionStmt::Block(_, v) => {
             for t in v.iter() {
@@ -41,14 +50,14 @@ fn check_updates_refer_to_valid_fields(
         TransitionStmt::Assert(_, _) => Ok(()),
         TransitionStmt::Update(sp, f, _) => {
             if !fields_contain(fields, f) {
-                return Err(error(format!("field '{}' not found", *f), &sp));
+                return Err(Error::new(sp.span(), format!("field '{}' not found", f.to_string())));
             }
             Ok(())
         }
     }
 }
 
-fn check_readonly(ts: &TransitionStmt<Span, Ident, Expr>) -> Result<(), VirErr> {
+fn check_readonly(ts: &TransitionStmt<Span, Ident, Expr>) -> syn::parse::Result<()> {
     match ts {
         TransitionStmt::Block(_, v) => {
             for t in v.iter() {
@@ -65,7 +74,7 @@ fn check_readonly(ts: &TransitionStmt<Span, Ident, Expr>) -> Result<(), VirErr> 
         TransitionStmt::Require(_, _) => Ok(()),
         TransitionStmt::Assert(_, _) => Ok(()),
         TransitionStmt::Update(sp, _, _) => {
-            return Err(error("'update' statement not allowed in readonly transitions", &sp));
+            return Err(Error::new(*sp, "'update' statement not allowed in readonly transitions"));
         }
     }
 }
@@ -73,21 +82,17 @@ fn check_readonly(ts: &TransitionStmt<Span, Ident, Expr>) -> Result<(), VirErr> 
 fn disjoint_union(
     h1: &Vec<(Ident, Span)>,
     h2: &Vec<(Ident, Span)>,
-) -> Result<Vec<(Ident, Span)>, VirErr> {
+) -> syn::parse::Result<Vec<(Ident, Span)>> {
     let mut h1_map: HashMap<Ident, Span> = HashMap::new();
     for (ident, span) in h1 {
         h1_map.insert(ident.clone(), span.clone());
     }
-    for (ident, span2) in h2 {
+    for (ident, _span2) in h2 {
         match h1_map.get(ident) {
             None => {}
             Some(span1) => {
-                return Err(error_with_label(
-                    format!("field '{}' might be updated multiple times", *ident),
-                    &span1,
-                    "updated here",
-                )
-                .primary_label(&span2, "updated here"));
+                return Err(Error::new(*span1,
+                    format!("field '{}' might be updated multiple times", ident.to_string())));
             }
         }
     }
@@ -128,22 +133,20 @@ fn simple_union(h1: Vec<(Ident, Span)>, h2: Vec<(Ident, Span)>) -> Vec<(Ident, S
 }
 
 fn check_has_all_fields(
-    sp: &Span,
+    sp: Span,
     h: &Vec<(Ident, Span)>,
-    fields: &Vec<Field<Ident, Typ>>,
-) -> Result<(), VirErr> {
+    fields: &Vec<Field<Ident, Type>>,
+) -> syn::parse::Result<()> {
     for field in fields {
         if !update_set_contains(h, &field.ident) {
-            return Err(error(
-                format!("onitialization does not initialize field {}", *field.ident),
-                &sp,
-            ));
+            return Err(Error::new(sp,
+                format!("onitialization does not initialize field {}", field.ident.to_string())));
         }
     }
     Ok(())
 }
 
-fn check_init(ts: &TransitionStmt<Span, Ident, Expr>) -> Result<Vec<(Ident, Span)>, VirErr> {
+fn check_init(ts: &TransitionStmt<Span, Ident, Expr>) -> syn::parse::Result<Vec<(Ident, Span)>> {
     match ts {
         TransitionStmt::Block(_, v) => {
             let mut h = Vec::new();
@@ -160,28 +163,8 @@ fn check_init(ts: &TransitionStmt<Span, Ident, Expr>) -> Result<Vec<(Ident, Span
             let h1 = check_init(thn)?;
             let h2 = check_init(els)?;
             if !update_sets_eq(&h1, &h2) {
-                let mut e = error(
-                    "for initialization, both branches of if-statement must update the same fields",
-                    &sp,
-                );
-                for (ident, sp) in &h1 {
-                    if !update_set_contains(&h2, ident) {
-                        e = e.primary_label(
-                            &sp,
-                            format!("only the first branch updates {}", *ident),
-                        );
-                    }
-                }
-                for (ident, sp) in &h2 {
-                    if !update_set_contains(&h1, ident) {
-                        e = e.primary_label(
-                            &sp,
-                            format!("only the second branch updates {}", *ident),
-                        );
-                    }
-                }
-
-                return Err(e);
+                return Err(Error::new(*sp,
+                    "for initialization, both branches of if-statement must update the same fields"));
             }
             return Ok(h1);
         }
@@ -189,7 +172,7 @@ fn check_init(ts: &TransitionStmt<Span, Ident, Expr>) -> Result<Vec<(Ident, Span
             return Ok(Vec::new());
         }
         TransitionStmt::Assert(sp, _) => {
-            return Err(error("'assert' statement not allowed in initialization", &sp));
+            return Err(Error::new(*sp, "'assert' statement not allowed in initialization"));
         }
         TransitionStmt::Update(sp, ident, _) => {
             let mut v = Vec::new();
@@ -199,7 +182,7 @@ fn check_init(ts: &TransitionStmt<Span, Ident, Expr>) -> Result<Vec<(Ident, Span
     }
 }
 
-pub fn check_normal(ts: &TransitionStmt<Span, Ident, Expr>) -> Result<Vec<(Ident, Span)>, VirErr> {
+pub fn check_normal(ts: &TransitionStmt<Span, Ident, Expr>) -> syn::parse::Result<Vec<(Ident, Span)>> {
     match ts {
         TransitionStmt::Block(_, v) => {
             let mut h = Vec::new();
@@ -231,32 +214,104 @@ pub fn check_normal(ts: &TransitionStmt<Span, Ident, Expr>) -> Result<Vec<(Ident
     }
 }
 
-fn append_stmt(
+fn append_stmt_front(
     t1: TransitionStmt<Span, Ident, Expr>,
     t2: TransitionStmt<Span, Ident, Expr>,
 ) -> TransitionStmt<Span, Ident, Expr> {
     match t1 {
         TransitionStmt::Block(span, mut v) => {
-            v.push(t2);
-            TransitionStmt::Block(span, v)
+            let mut w: Vec<TransitionStmt<Span, Ident, Expr>> = vec![t2];
+            w.append(&mut v);
+            TransitionStmt::Block(span, w)
         }
-        _ => TransitionStmt::Block(t1.get_span().clone(), vec![t1, t2]),
+        _ => TransitionStmt::Block(t1.get_span().clone(), vec![t2, t1]),
     }
 }
 
-fn self_dot_ident(ident: Ident) -> Expr {
-    unimplemented!();
+fn single_identifier_path(ident: Ident) -> Expr {
+    let mut post_segs = Punctuated::new();
+    post_segs.push(PathSegment {
+        ident,
+        arguments: PathArguments::None,
+    });
+    Expr::Path(ExprPath {
+        attrs: Vec::new(),
+        qself: None,
+        path: Path {
+            leading_colon: None,
+            segments: post_segs,
+        },
+    })
 }
 
-fn add_noop_updates(
-    sm: &SM<Span, Ident, Ident, Expr, Typ>,
+fn double_colon_path(span: Span, idents: Vec<Ident>) -> Expr {
+    let mut post_segs = Punctuated::new();
+    for ident in idents {
+      post_segs.push(PathSegment {
+          ident,
+          arguments: PathArguments::None,
+      });
+    }
+    Expr::Path(ExprPath {
+        attrs: Vec::new(),
+        qself: None,
+        path: Path {
+            leading_colon: Some(Colon2 { spans: [span, span] }),
+            segments: post_segs,
+        },
+    })
+}
+
+
+fn self_dot_ident(ident: Ident) -> Expr {
+    Expr::Field(ExprField {
+        attrs: Vec::new(),
+        base: Box::new(single_identifier_path(
+            Ident::new("self", ident.span())
+        )),
+        dot_token: Dot { spans: [ident.span()] },
+        member: Member::Named(ident),
+    })
+}
+
+fn post_dot_ident(ident: Ident) -> Expr {
+    Expr::Field(ExprField {
+        attrs: Vec::new(),
+        base: Box::new(single_identifier_path(
+            Ident::new("post", ident.span())
+        )),
+        dot_token: Dot { spans: [ident.span()] },
+        member: Member::Named(ident),
+    })
+}
+
+fn builtin_equal_call(span: Span, e1: Expr, e2: Expr) -> Expr {
+    let mut args = Punctuated::new();
+    args.push(e1);
+    args.push(e2);
+
+    let builtin_equal = double_colon_path(span, vec![
+        Ident::new("builtin", span),
+        Ident::new("equal", span)
+    ]);
+
+    Expr::Call(ExprCall {
+        attrs: Vec::new(),
+        func: Box::new(builtin_equal),
+        paren_token: Paren { span: span },
+        args,
+    })
+}
+
+pub fn add_noop_updates(
+    sm: &SM<Span, Ident, ImplItemMethod, Expr, Type>,
     ts: &TransitionStmt<Span, Ident, Expr>,
 ) -> TransitionStmt<Span, Ident, Expr> {
     let (mut ts, idents) = add_noop_updates_rec(ts);
     for f in &sm.fields {
         if !idents.contains(&f.ident) {
             let span = ts.get_span().clone();
-            ts = append_stmt(
+            ts = append_stmt_front(
                 ts,
                 TransitionStmt::Update(span, f.ident.clone(), self_dot_ident(f.ident.clone())),
             );
@@ -290,7 +345,7 @@ fn add_noop_updates_rec(
 
             for ident in &h1 {
                 if !h2.contains(ident) {
-                    s1 = append_stmt(
+                    s1 = append_stmt_front(
                         s1,
                         TransitionStmt::Update(
                             span.clone(),
@@ -303,7 +358,7 @@ fn add_noop_updates_rec(
             let mut union = h1.clone();
             for ident in &h2 {
                 if !h1.contains(ident) {
-                    s2 = append_stmt(
+                    s2 = append_stmt_front(
                         s2,
                         TransitionStmt::Update(
                             span.clone(),
@@ -320,16 +375,15 @@ fn add_noop_updates_rec(
                 union,
             );
         }
-        TransitionStmt::Update(sp, ident, _) => {
+        TransitionStmt::Update(_, ident, _) => {
             return (ts.clone(), vec![ident.clone()]);
         }
     }
 }
 
 pub fn check_transitions(
-    sm: &SM<Span, Ident, Ident, Expr, Typ>,
-    fun_map: &HashMap<Ident, Function>,
-) -> Result<(), VirErr> {
+    sm: &SM<Span, Ident, Ident, Expr, Type>,
+) -> syn::parse::Result<()> {
     for tr in &sm.transitions {
         check_updates_refer_to_valid_fields(&sm.fields, &tr.body)?;
 
@@ -342,8 +396,8 @@ pub fn check_transitions(
             }
             TransitionKind::Init => {
                 let h = check_init(&tr.body)?;
-                let span = &fun_map.index(&tr.name).span;
-                check_has_all_fields(span, &h, &sm.fields)?;
+                let span = tr.body.get_span();
+                check_has_all_fields(*span, &h, &sm.fields)?;
             }
         }
     }
@@ -351,63 +405,33 @@ pub fn check_transitions(
     Ok(())
 }
 
-fn transition_to_vir_stmt(
-    ts: &TransitionStmt<Span, Ident, Expr>,
-    assume_asserts: bool,
-    post_expr: Option<&Expr>,
-) -> Stmt {
+pub fn replace_updates(ts: &TransitionStmt<Span, Ident, Expr>) -> TransitionStmt<Span, Ident, Expr> {
     match ts {
         TransitionStmt::Block(span, v) => {
-            let mut res: Vec<Stmt> = Vec::new();
-            for t in v {
-                res.push(transition_to_vir_stmt(t, assume_asserts, post_expr));
+            let mut h = Vec::new();
+            for t in v.iter() {
+                let q = replace_updates(t);
+                h.push(q);
             }
-            mk_expr_stmt(span, &mk_block(span, res, &None))
+            TransitionStmt::Block(*span, h)
         }
-        TransitionStmt::Let(let_span, let_bind, let_e) => {
-            mk_decl_stmt(let_span, Mode::Spec, false, let_bind, let_e)
+        TransitionStmt::Let(_, _, _) => {
+            ts.clone()
         }
         TransitionStmt::If(span, cond, thn, els) => {
-            let e1 = transition_to_vir_stmt(thn, assume_asserts, post_expr);
-            let e2 = transition_to_vir_stmt(els, assume_asserts, post_expr);
-            let s1 = mk_block(&e1.span, vec![e1.clone()], &None);
-            let s2 = mk_block(&e2.span, vec![e2.clone()], &None);
-            mk_expr_stmt(span, &mk_ife(span, &cond, &s1, &s2))
+            let t1 = replace_updates(thn);
+            let t2 = replace_updates(els);
+            TransitionStmt::If(*span, cond.clone(), Box::new(t1), Box::new(t2))
         }
-        TransitionStmt::Require(span, e) => mk_expr_stmt(span, &mk_assume(span, e)),
-        TransitionStmt::Assert(span, e) => {
-            if assume_asserts {
-                mk_expr_stmt(span, &mk_assume(span, e))
-            } else {
-                mk_expr_stmt(span, &mk_assert(span, e))
-            }
+        TransitionStmt::Require(_, _) => {
+            ts.clone()
         }
-        TransitionStmt::Update(span, f, expr) => {
-            let e = match post_expr {
-                None => mk_bool(span, true),
-                Some(post_expr) => {
-                    let typ = &expr.typ;
-                    let field_access = mk_field(span, post_expr, f, typ);
-                    mk_assume(
-                        span,
-                        &mk_eq(span, Mode::Spec, &field_access, expr),
-                    )
-                }
-            };
-            mk_expr_stmt(span, &e)
+        TransitionStmt::Assert(_, _) => {
+            ts.clone()
+        }
+        TransitionStmt::Update(span, ident, e) => {
+            TransitionStmt::Require(*span,
+                builtin_equal_call(*span, post_dot_ident(ident.clone()), e.clone()))
         }
     }
-}
-
-pub fn assume_transition_holds(
-    sm: &SM<Span, Ident, Ident, Expr, Typ>,
-    ts: &TransitionStmt<Span, Ident, Expr>,
-    type_path: &Path,
-    post_ident: &Ident,
-) -> Stmt {
-    let var_ty = Arc::new(TypX::Datatype(type_path.clone(), Arc::new(Vec::new())));
-    let var_for_ident = SpannedTyped::new(ts.get_span(), &var_ty, ExprX::Var(post_ident.clone()));
-
-    let ts = add_noop_updates(sm, ts);
-    return transition_to_vir_stmt(&ts, true, Some(&var_for_ident));
 }

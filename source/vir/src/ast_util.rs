@@ -187,11 +187,13 @@ pub fn mk_ife(span: &Span, e1: &Expr, e2: &Expr, e3: &Expr) -> Expr {
 }
 
 pub fn mk_assume(span: &Span, e: &Expr) -> Expr {
-    unimplemented!();
+    let unit_ty = Arc::new(TypX::Tuple(Arc::new(Vec::new())));
+    SpannedTyped::new(span, &unit_ty, ExprX::Assume(e.clone()))
 }
 
 pub fn mk_assert(span: &Span, e: &Expr) -> Expr {
-    unimplemented!();
+    let unit_ty = Arc::new(TypX::Tuple(Arc::new(Vec::new())));
+    SpannedTyped::new(span, &unit_ty, ExprX::Assert(None, e.clone()))
 }
 
 pub fn mk_decl_stmt(span: &Span, mode: Mode, mutable: bool, ident: &Ident, e: &Expr) -> Stmt {
@@ -211,6 +213,10 @@ pub fn mk_decl_stmt(span: &Span, mode: Mode, mutable: bool, ident: &Ident, e: &E
 
 pub fn mk_var(span: &Span, ty: &Typ, s: String) -> Expr {
     SpannedTyped::new(span, ty, ExprX::Var(Arc::new(s)))
+}
+
+pub fn mk_field(span: &Span, e: &Expr, field: &Ident, typ: &Typ) -> Expr {
+    unimplemented!();
 }
 
 pub fn param_to_binder(param: &Param) -> Binder<Typ> {

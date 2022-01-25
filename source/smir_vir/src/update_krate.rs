@@ -31,11 +31,13 @@ pub fn update_krate(
 
     setup_inv(type_path, sm, &fun_map, &mut new_funs)?;
 
+/*
     check_wf_lemmas(sm, &fun_map)?;
     check_transitions(sm, &fun_map)?;
     check_lemmas_cover_all_cases(sm, &fun_map)?;
 
     setup_lemmas(sm, &type_path, &fun_map, &mut new_funs);
+*/
 
     for (ident, function) in new_funs {
         let path = get_member_path(type_path, &ident);

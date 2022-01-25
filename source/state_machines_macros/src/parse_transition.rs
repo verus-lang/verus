@@ -160,7 +160,7 @@ fn parse_call(
             }
             let e = call.args[0].clone();
             call.func = Box::new(mk_builtin_path("require", call.func.span()));
-            return Ok(TransitionStmt::Assert(call.span(), e));
+            return Ok(TransitionStmt::Require(call.span(), e));
         }
         CallType::Update => {
             if call.args.len() != 2 {

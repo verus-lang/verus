@@ -381,7 +381,9 @@ fn check_expr(typing: &mut Typing, outer_mode: Mode, expr: &Expr) -> Result<Mode
             typing.in_forall_stmt = in_forall_stmt;
             Ok(Mode::Proof)
         }
-        ExprX::AssertBV(e) => {
+        ExprX::AssertBV(e) |
+        ExprX::Assert(_, e) |
+        ExprX::Assume(e) => {
             check_expr_has_mode(typing, Mode::Spec, e, Mode::Spec)?;
             Ok(Mode::Proof)
         }
