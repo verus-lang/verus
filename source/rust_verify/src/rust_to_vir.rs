@@ -120,7 +120,7 @@ fn check_item<'tcx>(
                     err_unless!(
                         ty_applied_never.is_structural_eq_shallow(ctxt.tcx),
                         item.span,
-                        format!("Structural impl for non-structural type {:?}", ty),
+                        format!("structural impl for non-structural type {:?}", ty),
                         ty
                     );
                     true

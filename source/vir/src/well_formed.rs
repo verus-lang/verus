@@ -222,7 +222,7 @@ fn check_datatype(dt: &Datatype) -> Result<(), VirErr> {
     let dt_mode = dt.x.mode;
 
     if unforgeable && dt_mode != Mode::Proof {
-        return err_string(&dt.span, format!("An unforgeable datatype must be in #[proof] mode."));
+        return err_string(&dt.span, format!("an unforgeable datatype must be in #[proof] mode"));
     }
 
     // For an 'unforgeable' datatype, all fields must be #[spec]
@@ -234,7 +234,7 @@ fn check_datatype(dt: &Datatype) -> Result<(), VirErr> {
                 if *field_mode != Mode::Spec {
                     return err_string(
                         &dt.span,
-                        format!("All fields of a unforgeable datatype must be marked #[spec]"),
+                        format!("all fields of a unforgeable datatype must be marked #[spec]"),
                     );
                 }
             }
