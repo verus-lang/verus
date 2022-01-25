@@ -140,7 +140,7 @@ fn check_has_all_fields(
     for field in fields {
         if !update_set_contains(h, &field.ident) {
             return Err(Error::new(sp,
-                format!("onitialization does not initialize field {}", field.ident.to_string())));
+                format!("itialization procedure does not initialize field {}", field.ident.to_string())));
         }
     }
     Ok(())
@@ -382,7 +382,7 @@ fn add_noop_updates_rec(
 }
 
 pub fn check_transitions(
-    sm: &SM<Span, Ident, Ident, Expr, Type>,
+    sm: &SM<Span, Ident, ImplItemMethod, Expr, Type>,
 ) -> syn::parse::Result<()> {
     for tr in &sm.transitions {
         check_updates_refer_to_valid_fields(&sm.fields, &tr.body)?;

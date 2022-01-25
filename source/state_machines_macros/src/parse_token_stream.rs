@@ -1,6 +1,7 @@
 #![allow(unused_imports)]
 
 use crate::parse_transition::parse_impl_item_method;
+use crate::transitions::check_transitions;
 use proc_macro2::Span;
 use smir::ast::{
     Extras, Invariant, Lemma, LemmaPurpose, LemmaPurposeKind, ShardableType, Transition,
@@ -341,8 +342,10 @@ pub fn parse_result_to_smir(pr: ParseResult) -> syn::parse::Result<SMAndFuncs> {
         }
         Some(fields_named) => {
             let fields = to_fields(&fields_named)?;
+            let sm = SM { name, fields, transitions, invariants, lemmas };
+            check_transitions(&sm)?;
             MaybeSM::SM(
-                SM { name, fields, transitions, invariants, lemmas },
+                sm,
                 fields_named,
                 trans_fns,
             )

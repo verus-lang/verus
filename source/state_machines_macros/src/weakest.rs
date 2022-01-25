@@ -82,3 +82,38 @@ fn to_weakest_rec(trans: &TransitionStmt<Span, Ident, Expr>, p: Option<TokenStre
         }
     }
 }
+
+pub fn get_safety_conditions(
+        ts: &TransitionStmt<Span, Ident, Expr>,
+        p: Vec<TokenStream>)
+) -> Vec<TokenStream> {
+    match trans {
+        TransitionStmt::Block(span, v) => {
+            let mut p = p;
+            for t in v.iter().rev() {
+                p = get_safety_conditions(t, p);
+            }
+        }
+        TransitionStmt::Let(span, id, e) => {
+            return p.iter().map(|r|
+                quote! { let #id = #e; #r }
+            ).collect();
+        }
+        TransitionStmt::If(span, cond, e1, e2) => {
+        }
+        TransitionStmt::Require(span, e) => {
+            return p.iter().map(|r|
+                quote! { let ((#e) >>= #r) }
+            ).collect();
+        }
+        TransitionStmt::Assert(span, e) => {
+            let q = vec![ quote!{ (e) } ];
+            q.append(p.iter().map(|r|
+                quote! { let ((#e) >>= #r) }
+            ).collect()
+        }
+        TransitionStmt::Update(span, id, e) => {
+            return p;
+        }
+    }
+}
