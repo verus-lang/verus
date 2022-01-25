@@ -533,6 +533,24 @@ fn check_function(typing: &mut Typing, function: &Function) -> Result<(), VirErr
         }
         typing.insert(&function.span, &param.x.name, param.x.is_mut, param.x.mode);
     }
+
+    for expr in function.x.require.iter() {
+        check_expr_has_mode(typing, Mode::Spec, expr, Mode::Spec)?;
+    }
+
+    typing.vars.push_scope(true);
+    if function.x.has_return() {
+        typing.insert(&function.span, &function.x.ret.x.name, false, function.x.ret.x.mode);
+    }
+    for expr in function.x.ensure.iter() {
+        check_expr_has_mode(typing, Mode::Spec, expr, Mode::Spec)?;
+    }
+    typing.vars.pop_scope();
+
+    for expr in function.x.decrease.iter() {
+        check_expr_has_mode(typing, Mode::Spec, expr, Mode::Spec)?;
+    }
+
     if function.x.has_return() {
         let ret_mode = function.x.ret.x.mode;
         if !mode_le(function.x.mode, ret_mode) {
