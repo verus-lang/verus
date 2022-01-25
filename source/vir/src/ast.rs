@@ -355,7 +355,7 @@ pub struct FunctionAttrsX {
     /// List of functions that this function wants to view as opaque
     pub hidden: Arc<Vec<Fun>>,
     /// Create a global axiom saying forall params, require ==> ensure
-    pub export_as_global_forall: bool,
+    pub broadcast_forall: bool,
     /// In triggers_auto, don't use this function as a trigger
     pub no_auto_trigger: bool,
     /// Custom error message to display when a pre-condition fails

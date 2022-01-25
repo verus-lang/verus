@@ -380,7 +380,7 @@ pub fn func_decl_to_air(
             if has_ens_pred {
                 ctx.funcs_with_ensure_predicate.insert(function.x.name.clone());
             }
-            if function.x.attrs.export_as_global_forall {
+            if function.x.attrs.broadcast_forall {
                 let span = &function.span;
                 let req = crate::ast_util::conjoin(span, &*function.x.require);
                 let ens = crate::ast_util::conjoin(span, &*function.x.ensure);

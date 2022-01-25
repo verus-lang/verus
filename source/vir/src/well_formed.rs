@@ -39,31 +39,25 @@ fn check_function(ctxt: &Ctxt, function: &Function) -> Result<(), VirErr> {
             }
         }
     }
-    if function.x.attrs.export_as_global_forall {
+    if function.x.attrs.broadcast_forall {
         if function.x.mode != Mode::Proof {
-            return err_str(
-                &function.span,
-                "export_as_global_forall function must be declared as proof",
-            );
+            return err_str(&function.span, "broadcast_forall function must be declared as proof");
         }
         if function.x.has_return() {
-            return err_str(
-                &function.span,
-                "export_as_global_forall function cannot have return type",
-            );
+            return err_str(&function.span, "broadcast_forall function cannot have return type");
         }
         for param in function.x.params.iter() {
             if param.x.mode != Mode::Spec {
                 return err_str(
                     &function.span,
-                    "export_as_global_forall function must have spec parameters",
+                    "broadcast_forall function must have spec parameters",
                 );
             }
         }
         if function.x.body.is_some() {
             return err_str(
                 &function.span,
-                "export_as_global_forall function must be declared as external_body",
+                "broadcast_forall function must be declared as external_body",
             );
         }
     }

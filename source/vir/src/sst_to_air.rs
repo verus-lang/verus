@@ -495,7 +495,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: ExprCtxt) -> Expr {
                 };
                 let binders = vec_map(&*binders, |b| {
                     let name = match &*b.a {
-                        // allow quantifiers over type parameters, generated for export_as_global_forall
+                        // allow quantifiers over type parameters, generated for broadcast_forall
                         TypX::TypeId => suffix_typ_param_id(&b.name),
                         _ => suffix_local_expr_id(&b.name),
                     };
