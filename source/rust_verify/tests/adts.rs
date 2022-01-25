@@ -330,12 +330,32 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_is_variant_no_get code! {
+    #[test] test_is_variant_get_named_field code! {
         #[is_variant]
-        pub enum Maybe<T> {
-            // #[is_variant] won't generate a get_Some for this, but should not panic
-            Some { t: T },
-            None,
+        pub enum Res<T> {
+            Ok { t: T },
+            Err { v: u64 },
+        }
+
+        fn test1(m: Res<bool>) {
+            requires(m.is_Err() && m.get_Err_v() == 42);
+            match m {
+                Res::Ok { .. } => assert(false),
+                Res::Err { v } => assert(v == 42),
+            };
+        }
+
+        fn test2(m: &Res<bool>) -> bool {
+            ensures(|res: bool| equal(res, m.is_Ok() && m.get_Ok_t()));
+            match m {
+                Res::Ok { t } if *t => true,
+                _ => false,
+            }
+        }
+
+        fn caller() {
+            let r = test2(&Res::Ok { t: false });
+            assert(!r);
         }
     } => Ok(())
 }

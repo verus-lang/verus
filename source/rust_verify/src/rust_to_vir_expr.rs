@@ -549,11 +549,16 @@ fn fn_call_to_vir<'tcx>(
             )));
         }
         Some((variant_name, Some(variant_field))) => {
+            use crate::def::FieldName;
+            let variant_name_ident = str_ident(&variant_name);
             return Ok(mk_expr(ExprX::UnaryOpr(
                 UnaryOpr::Field {
-                    datatype: self_path,
-                    variant: str_ident(&variant_name),
-                    field: positional_field_ident(variant_field),
+                    datatype: self_path.clone(),
+                    variant: variant_name_ident.clone(),
+                    field: match variant_field {
+                        FieldName::Unnamed(i) => positional_field_ident(i),
+                        FieldName::Named(f) => str_ident(&f),
+                    },
                 },
                 vir_args.into_iter().next().expect("missing arg for is_variant"),
             )));

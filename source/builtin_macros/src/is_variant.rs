@@ -19,9 +19,29 @@ pub fn attribute_is_variant(
             let fun_ident =
                 syn::Ident::new(&format!("is_{}", &variant_ident_str), v.ast().ident.span());
             let get_fns = match v.ast().fields {
-                &syn::Fields::Named(_) | &syn::Fields::Unit => {
-                    quote! {}
-                }
+                &syn::Fields::Named(syn::FieldsNamed { named: ref fields, .. }) => fields
+                    .iter()
+                    .map(|f| {
+                        let field_ty = &f.ty;
+                        let get_ident = syn::Ident::new(
+                            &format!(
+                                "get_{}_{}",
+                                variant_ident_str,
+                                f.ident.as_ref().expect("missing field ident").to_string()
+                            ),
+                            v.ast().ident.span(),
+                        );
+
+                        quote! {
+                            #[spec]
+                            #[allow(non_snake_case)]
+                            #[verifier(is_variant)]
+                            pub fn #get_ident(self) -> #field_ty {
+                                unimplemented!()
+                            }
+                        }
+                    })
+                    .collect::<proc_macro2::TokenStream>(),
                 &syn::Fields::Unnamed(syn::FieldsUnnamed { unnamed: ref fields, .. }) => fields
                     .iter()
                     .zip(0..)
@@ -42,6 +62,7 @@ pub fn attribute_is_variant(
                         }
                     })
                     .collect::<proc_macro2::TokenStream>(),
+                &syn::Fields::Unit => quote! {},
             };
 
             quote! {

@@ -205,11 +205,24 @@ fn check_item<'tcx>(
                                                                 v.ident.as_str() == variant_name
                                                             })
                                                             .and_then(|variant| {
-                                                                if let Some(field) = variant_field {
-                                                                    (field < variant.fields.len())
-                                                                        .then(|| ())
-                                                                } else {
-                                                                    Some(())
+                                                                use crate::def::FieldName;
+                                                                match variant_field {
+                                                                    Some(FieldName::Named(
+                                                                        f_name,
+                                                                    )) => variant
+                                                                        .fields
+                                                                        .iter()
+                                                                        .find(|f| {
+                                                                            f.ident.as_str()
+                                                                                == f_name
+                                                                        })
+                                                                        .map(|_| ()),
+                                                                    Some(FieldName::Unnamed(
+                                                                        f_num,
+                                                                    )) => (f_num
+                                                                        < variant.fields.len())
+                                                                    .then(|| ()),
+                                                                    None => Some(()),
                                                                 }
                                                             })
                                                     },
