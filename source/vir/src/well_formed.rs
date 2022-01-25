@@ -213,6 +213,11 @@ fn check_function(ctxt: &Ctxt, function: &Function) -> Result<(), VirErr> {
 }
 
 fn check_datatype(dt: &Datatype) -> Result<(), VirErr> {
+    if dt.x.variants.len() == 0 {
+        // We could support this, but it's probably better to use a dedicated "never" type anyway
+        return err_str(&dt.span, "an enum must have at least one variant");
+    }
+
     let unforgeable = dt.x.unforgeable;
     let dt_mode = dt.x.mode;
 

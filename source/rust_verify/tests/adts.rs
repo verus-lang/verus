@@ -229,3 +229,10 @@ test_verify_one_file! {
         }
     } => Err(e) => assert_vir_error(e)
 }
+
+test_verify_one_file! {
+    #[test] test_no_empty_enums code! {
+        enum Empty {
+        }
+    } => Err(TestErr { has_vir_error: true, .. })
+}
