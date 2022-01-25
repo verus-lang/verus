@@ -14,6 +14,12 @@ struct Ctxt {
 }
 
 fn check_function(ctxt: &Ctxt, function: &Function) -> Result<(), VirErr> {
+    for p in function.x.params.iter() {
+        if p.x.name == function.x.ret.x.name {
+            return err_str(&p.span, "parameter name cannot be same as return value name");
+        }
+    }
+
     if function.x.attrs.atomic {
         if function.x.mode != Mode::Exec {
             return err_str(&function.span, "'atomic' only makes sense on an 'exec' function");
