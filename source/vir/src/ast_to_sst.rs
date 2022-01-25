@@ -246,7 +246,11 @@ pub(crate) fn expr_to_stm(
     expr: &Expr,
 ) -> Result<(Vec<Stm>, Exp), VirErr> {
     let (stms, exp_opt) = expr_to_stm_opt(ctx, state, expr)?;
-    Ok((stms, exp_opt.expect("expr_to_stm")))
+    if let Some(exp) = exp_opt {
+        Ok((stms, exp))
+    } else {
+        err_str(&expr.span, "expression must produce a value")
+    }
 }
 
 pub(crate) fn stms_to_one_stm(span: &Span, stms: Vec<Stm>) -> Stm {
