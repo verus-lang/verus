@@ -11,8 +11,8 @@ use crate::sst::{BndX, ExpX};
 use crate::sst_to_air::{exp_to_expr, fun_to_air_ident, typ_invariant, typ_to_air, ExprCtxt};
 use crate::util::{vec_map, vec_map_result};
 use air::ast::{
-    BinaryOp, Bind, BindX, Binder, BinderX, Command, CommandX, Commands, DeclX, Expr, ExprX,
-    MultiOp, Quant, Span, Trigger, Triggers,
+    BinaryOp, Bind, BindX, Binder, BinderX, Command, CommandX, Commands, DeclX, Expr, ExprX, Quant,
+    Span, Trigger, Triggers,
 };
 use air::ast_util::{
     bool_typ, ident_apply, ident_binder, ident_var, mk_and, mk_bind_expr, mk_eq, mk_implies,
@@ -200,7 +200,7 @@ pub fn req_ens_to_air(
             };
             exprs.push(loc_expr);
         }
-        let body = Arc::new(ExprX::Multi(MultiOp::And, Arc::new(exprs)));
+        let body = mk_and(&exprs);
         let e_forall = func_def_quant(ctx, &name, &typ_params, &params, body)?;
         let req_ens_axiom = Arc::new(DeclX::Axiom(e_forall));
         commands.push(Arc::new(CommandX::Global(req_ens_axiom)));
