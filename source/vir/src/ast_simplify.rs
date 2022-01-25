@@ -109,6 +109,10 @@ fn small_loc_or_temp(state: &mut State, expr: &Expr, in_loc: bool) -> SmallLocOr
         ExprX::ConstVar(c) => todo!(), // SmallLocOrTemp(vec![], expr.clone(), false),
         ExprX::Var(x) => SmallLocOrTemp(vec![], expr.clone(), in_loc),
         ExprX::VarAt(x, at) => {
+        ExprX::Const(..) => SmallLocOrTemp(vec![], expr.clone(), false),
+        ExprX::ConstVar(c) => todo!(), // SmallLocOrTemp(vec![], expr.clone(), false),
+        ExprX::Var(..) => SmallLocOrTemp(vec![], expr.clone(), in_loc),
+        ExprX::VarAt(..) => {
             if in_loc {
                 panic!("unexpected mutable reference of old(x)");
             }
@@ -170,30 +174,16 @@ fn small_loc_or_temp(state: &mut State, expr: &Expr, in_loc: bool) -> SmallLocOr
             SmallLocOrTemp(stmts, expr.new_x(ExprX::Binary(*op, expr1, expr2)), contains_loc)
         }
         ExprX::Quant(quant, binders, e1) => {
-            // map.push_scope(true);
-            // for binder in binders.iter() {
-            //     let _ = map.insert(binder.name.clone(), binder.a.clone());
-            // }
             small_loc_or_temp(state, e1, in_loc)
                 .map_expr(|expr1| expr.new_x(ExprX::Quant(*quant, binders.clone(), expr1)))
-            // map.pop_scope();
         }
         ExprX::Closure(params, body) => {
-            // map.push_scope(true);
-            // for binder in params.iter() {
-            //     let _ = map.insert(binder.name.clone(), binder.a.clone());
-            // }
             small_loc_or_temp(state, body, in_loc)
                 .map_expr(|b| expr.new_x(ExprX::Closure(params.clone(), b)))
-            // map.pop_scope();
         }
         ExprX::Choose(binder, e1) => {
-            // let binder = binder.map_result(|t| map_typ_visitor_env(t, env, ft))?;
-            // map.push_scope(true);
-            // let _ = map.insert(binder.name.clone(), binder.a.clone());
             small_loc_or_temp(state, e1, in_loc)
                 .map_expr(|expr1| expr.new_x(ExprX::Choose(binder.clone(), expr1)))
-            // map.pop_scope();
         }
         ExprX::Assign(e1, e2) => {
             let (stmts, exprs, contains_loc) =
@@ -207,28 +197,14 @@ fn small_loc_or_temp(state: &mut State, expr: &Expr, in_loc: bool) -> SmallLocOr
             SmallLocOrTemp(vec![], expr.new_x(ExprX::Fuel(path.clone(), *fuel)), false)
         }
         ExprX::Header(_) => {
-            // TODO ???
             panic!("Header expression not expected here")
         }
         ExprX::Admit => SmallLocOrTemp(vec![], expr.new_x(ExprX::Admit), false),
         ExprX::Forall { .. } => {
-            // TODO ???
-            panic!("Forall expression not expected here")
-            // map.push_scope(true);
-            // for binder in vars.iter() {
-            //     let _ = map.insert(binder.name.clone(), binder.a.clone());
-            // }
-            // let require = map_expr_visitor_env(require, map, env, fe, fs, ft)?;
-            // let ensure = map_expr_visitor_env(ensure, map, env, fe, fs, ft)?;
-            // let proof = map_expr_visitor_env(proof, map, env, fe, fs, ft)?;
-
-            // map.pop_scope();
-            // ExprX::Forall { vars: Arc::new(vars), require, ensure, proof }
+            panic!("Forall statement not expected here")
         }
-        ExprX::AssertBV(e) => {
+        ExprX::AssertBV(..) => {
             panic!("AssertBV expression not expected here")
-            // let expr1 = map_expr_visitor_env(e, map, env, fe, fs, ft)?;
-            // ExprX::AssertBV(expr1)
         }
         ExprX::If(e1, e2, e3) => {
             let mut es = vec![e1.clone(), e2.clone()];
@@ -243,67 +219,20 @@ fn small_loc_or_temp(state: &mut State, expr: &Expr, in_loc: bool) -> SmallLocOr
             let expr3 = exprs.next();
             SmallLocOrTemp(stmts, expr.new_x(ExprX::If(expr1, expr2, expr3)), contains_loc)
         }
-        ExprX::Match(e1, arms) => {
+        ExprX::Match(..) => {
             panic!("Match should have been already simplified")
-            // let expr1 = map_expr_visitor_env(e1, map, env, fe, fs, ft)?;
-            // let arms: Result<Vec<Arm>, VirErr> = vec_map_result(arms, |arm| {
-            //     map.push_scope(true);
-            //     let pattern = map_pattern_visitor_env(&arm.x.pattern, env, ft)?;
-            //     insert_pattern_vars(map, &pattern);
-            //     let guard = map_expr_visitor_env(&arm.x.guard, map, env, fe, fs, ft)?;
-            //     let body = map_expr_visitor_env(&arm.x.body, map, env, fe, fs, ft)?;
-            //     map.pop_scope();
-            //     Ok(Spanned::new(arm.span.clone(), ArmX { pattern, guard, body }))
-            // });
-            // ExprX::Match(expr1, Arc::new(arms?))
         }
-        ExprX::While { cond, body, invs } => {
+        ExprX::While { .. } => {
             panic!("While expression not expected here")
-            // let cond = map_expr_visitor_env(cond, map, env, fe, fs, ft)?;
-            // let body = map_expr_visitor_env(body, map, env, fe, fs, ft)?;
-            // let invs =
-            //     Arc::new(vec_map_result(invs, |e| map_expr_visitor_env(e, map, env, fe, fs, ft))?);
-            // ExprX::While { cond, body, invs }
         }
-        ExprX::Return(e1) => {
+        ExprX::Return(..) => {
             panic!("Return expression not expected here")
-            // let e1 = match e1 {
-            //     None => None,
-            //     Some(e) => Some(map_expr_visitor_env(e, map, env, fe, fs, ft)?),
-            // };
-            // ExprX::Return(e1)
         }
-        ExprX::Block(ss, e1) => {
-            todo!()
-            // let mut stmts: Vec<Stmt> = Vec::new();
-            // for s in ss.iter() {
-            //     match &s.x {
-            //         StmtX::Expr(_) => {}
-            //         StmtX::Decl { .. } => map.push_scope(true),
-            //     }
-            //     stmts.append(&mut map_stmt_visitor_env(s, map, env, fe, fs, ft)?);
-            // }
-            // let expr1 = match e1 {
-            //     None => None,
-            //     Some(e) => Some(map_expr_visitor_env(e, map, env, fe, fs, ft)?),
-            // };
-            // for s in ss.iter() {
-            //     match &s.x {
-            //         StmtX::Expr(_) => {}
-            //         StmtX::Decl { .. } => map.pop_scope(),
-            //     }
-            // }
-            // ExprX::Block(Arc::new(stmts), expr1)
+        ExprX::Block(..) => {
+            todo!() // TODO ???
         }
-        ExprX::OpenInvariant(e1, binder, e2) => {
+        ExprX::OpenInvariant(..) => {
             panic!("OpenInvariant expression not expected here")
-            // let expr1 = map_expr_visitor_env(e1, map, env, fe, fs, ft)?;
-            // let binder = binder.map_result(|t| map_typ_visitor_env(t, env, ft))?;
-            // map.push_scope(true);
-            // let _ = map.insert(binder.name.clone(), binder.a.clone());
-            // let expr2 = map_expr_visitor_env(e2, map, env, fe, fs, ft)?;
-            // map.pop_scope();
-            // ExprX::OpenInvariant(expr1, binder, expr2)
         }
     };
     if !contains_loc {
