@@ -44,7 +44,7 @@ fn is_function_def_impl_item_node(node: rustc_hir::Node) -> bool {
 pub(crate) fn typ_path_and_ident_to_vir_path<'tcx>(path: &Path, ident: vir::ast::Ident) -> Path {
     let mut path = (**path).clone();
     Arc::make_mut(&mut path.segments).push(ident);
-    return Arc::new(path);
+    Arc::new(path)
 }
 
 pub(crate) fn def_id_to_vir_path<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> Path {

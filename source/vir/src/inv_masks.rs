@@ -131,7 +131,7 @@ impl MaskSet {
     pub fn remove_element(&self, span: Span, r: Expr) -> MaskSet {
         let mut n = self.clone();
         n.minus.push(MaskSingleton { expr: r, span: span });
-        return n;
+        n
     }
 
     pub fn full() -> MaskSet {

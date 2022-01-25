@@ -133,7 +133,7 @@ impl AtomicInstCollector {
             }
             return Err(e);
         }
-        return Ok(());
+        Ok(())
     }
 }
 

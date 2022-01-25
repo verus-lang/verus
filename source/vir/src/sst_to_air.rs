@@ -269,14 +269,14 @@ fn call_inv(ctx: &Ctx, outer: Expr, inner: Expr, typ: &Typ) -> Expr {
     let typ_expr = typ_to_id(typ);
     let boxed_inner = try_box(ctx, inner.clone(), typ).unwrap_or(inner);
     let args = vec![typ_expr, outer, boxed_inner];
-    return ident_apply(&inv_fn_ident, &args);
+    ident_apply(&inv_fn_ident, &args)
 }
 
 fn call_namespace(arg: Expr, typ: &Typ) -> Expr {
     let inv_fn_ident = suffix_global_id(&fun_to_air_ident(&fn_namespace_name()));
     let typ_expr = typ_to_id(typ);
     let args = vec![typ_expr, arg];
-    return ident_apply(&inv_fn_ident, &args);
+    ident_apply(&inv_fn_ident, &args)
 }
 
 pub fn mask_set_from_spec(spec: &MaskSpec, mode: Mode) -> MaskSet {
@@ -559,7 +559,7 @@ impl State {
     /// get the current sid (top of the scope stack)
     fn get_current_sid(&self) -> Ident {
         let last = self.sids.last().unwrap();
-        return last.clone();
+        last.clone()
     }
 
     /// copy the current sid into a new scope (when entering a block)
@@ -575,7 +575,7 @@ impl State {
 
     fn get_new_sid(&mut self, suffix: &str) -> Ident {
         self.snapshot_count += 1;
-        return Arc::new(format!("{}{}", self.snapshot_count, suffix));
+        Arc::new(format!("{}{}", self.snapshot_count, suffix))
     }
 
     /// replace the current sid (without changing scope depth)
@@ -583,7 +583,7 @@ impl State {
         let sid = self.get_new_sid(suffix);
         self.sids.pop();
         self.sids.push(sid.clone());
-        return sid;
+        sid
     }
 
     // fn get_assigned_set(&self, stm: &Stm) -> HashSet<Arc<String>> {

@@ -236,7 +236,7 @@ fn check_datatype(dt: &Datatype) -> Result<(), VirErr> {
         }
     }
 
-    return Ok(());
+    Ok(())
 }
 
 pub fn check_crate(krate: &Krate) -> Result<(), VirErr> {

@@ -22,7 +22,7 @@ impl TestFileLoader {
                 return std::path::Path::new("../pervasive").join(file_name).into();
             }
         }
-        return path.into();
+        path.into()
     }
 }
 

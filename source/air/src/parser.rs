@@ -32,7 +32,7 @@ fn is_bitvec(nodes: &Vec<Node>) -> Option<u32> {
             }
         }
     }
-    return None;
+    None
 }
 
 fn map_nodes_to_vec<A, F>(nodes: &[Node], f: &F) -> Result<Arc<Vec<A>>, String>

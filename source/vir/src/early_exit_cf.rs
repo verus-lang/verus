@@ -18,10 +18,10 @@ struct EarlyExitInst {
 pub fn assert_no_early_exit_in_inv_block(inv_span: &Span, expr: &Expr) -> Result<(), VirErr> {
     let v = expr_get_early_exits(expr);
     if v.len() == 0 {
-        return Ok(());
+        Ok(())
     } else {
-        return Err(error("invariant block might exit early", inv_span)
-            .primary_label(&v[0].span, "would exit from here"));
+        Err(error("invariant block might exit early", inv_span)
+            .primary_label(&v[0].span, "would exit from here"))
     }
 }
 
@@ -33,7 +33,7 @@ fn expr_get_early_exits(expr: &Expr) -> Vec<EarlyExitInst> {
     let mut v = Vec::new();
     let mut scope_map = ScopeMap::new();
     expr_get_early_exits_rec(expr, false, &mut scope_map, &mut v);
-    return v;
+    v
 }
 
 /// While recursing, we keep track of whether we entered a loop or not; then we can know
