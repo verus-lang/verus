@@ -184,6 +184,9 @@ impl Verifier {
                     debugger.start_shell(air_context);
                 }
             }
+            ValidityResult::UnexpectedSmtOutput(err) => {
+                panic!("unexpected SMT output: {}", err);
+            }
         }
 
         if is_check_valid && self.args.debug {
@@ -330,6 +333,7 @@ impl Verifier {
         no_span: Span,
     ) -> Result<(), VirErr> {
         let mut air_context = air::context::Context::new(air::smt_manager::SmtManager::new());
+        air_context.set_ignore_unexpected_smt(self.args.ignore_unexpected_smt);
         air_context.set_debug(self.args.debug);
 
         if let Some(filename) = &self.args.log_air_initial {
