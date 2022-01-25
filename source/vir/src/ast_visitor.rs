@@ -577,8 +577,15 @@ where
     let ret = map_param_visitor(ret, env, ft)?;
     let require =
         Arc::new(vec_map_result(require, |e| map_expr_visitor_env(e, map, env, fe, fs, ft))?);
+
+    map.push_scope(true);
+    if function.x.has_return() {
+        let _ = map.insert(ret.x.name.clone(), ret.x.typ.clone());
+    }
     let ensure =
         Arc::new(vec_map_result(ensure, |e| map_expr_visitor_env(e, map, env, fe, fs, ft))?);
+    map.pop_scope();
+
     let decrease =
         Arc::new(vec_map_result(decrease, |e| map_expr_visitor_env(e, map, env, fe, fs, ft))?);
     let mask_spec = match mask_spec {
