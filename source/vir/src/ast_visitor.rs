@@ -11,6 +11,73 @@ use std::sync::Arc;
 
 pub type VisitorScopeMap = ScopeMap<Ident, Typ>;
 
+pub(crate) enum VisitorControlFlow<T> {
+    Recurse,
+    Return,
+    Stop(T),
+}
+
+macro_rules! expr_visitor_control_flow {
+    ($cf:expr) => {
+        match $cf {
+            crate::ast_visitor::VisitorControlFlow::Recurse => (),
+            crate::ast_visitor::VisitorControlFlow::Return => (),
+            crate::ast_visitor::VisitorControlFlow::Stop(val) => {
+                return crate::ast_visitor::VisitorControlFlow::Stop(val);
+            }
+        }
+    };
+}
+
+pub(crate) fn typ_visitor_check<E, MF>(typ: &Typ, mf: &mut MF) -> Result<(), E>
+where
+    MF: FnMut(&Typ) -> Result<(), E>,
+{
+    match typ_visitor_dfs(typ, &mut |typ| match mf(typ) {
+        Ok(()) => VisitorControlFlow::Recurse,
+        Err(e) => VisitorControlFlow::Stop(e),
+    }) {
+        VisitorControlFlow::Recurse => Ok(()),
+        VisitorControlFlow::Return => unreachable!(),
+        VisitorControlFlow::Stop(e) => Err(e),
+    }
+}
+
+pub(crate) fn typ_visitor_dfs<T, FT>(typ: &Typ, ft: &mut FT) -> VisitorControlFlow<T>
+where
+    FT: FnMut(&Typ) -> VisitorControlFlow<T>,
+{
+    match ft(typ) {
+        VisitorControlFlow::Stop(val) => VisitorControlFlow::Stop(val),
+        VisitorControlFlow::Return => VisitorControlFlow::Recurse,
+        VisitorControlFlow::Recurse => {
+            match &**typ {
+                TypX::Bool | TypX::Int(_) | TypX::TypParam(_) | TypX::TypeId | TypX::Air(_) => (),
+                TypX::Tuple(ts) => {
+                    for t in ts.iter() {
+                        expr_visitor_control_flow!(typ_visitor_dfs(t, ft));
+                    }
+                }
+                TypX::Lambda(ts, tr) => {
+                    for t in ts.iter() {
+                        expr_visitor_control_flow!(typ_visitor_dfs(t, ft));
+                    }
+                    expr_visitor_control_flow!(typ_visitor_dfs(tr, ft));
+                }
+                TypX::Datatype(_path, ts) => {
+                    for t in ts.iter() {
+                        expr_visitor_control_flow!(typ_visitor_dfs(t, ft));
+                    }
+                }
+                TypX::Boxed(t) => {
+                    expr_visitor_control_flow!(typ_visitor_dfs(t, ft));
+                }
+            }
+            VisitorControlFlow::Recurse
+        }
+    }
+}
+
 pub(crate) fn map_typ_visitor_env<E, FT>(typ: &Typ, env: &mut E, ft: &FT) -> Result<Typ, VirErr>
 where
     FT: Fn(&mut E, &Typ) -> Result<Typ, VirErr>,
@@ -79,24 +146,6 @@ fn insert_pattern_vars(map: &mut VisitorScopeMap, pattern: &Pattern) {
             }
         }
     }
-}
-
-pub(crate) enum VisitorControlFlow<T> {
-    Recurse,
-    Return,
-    Stop(T),
-}
-
-macro_rules! expr_visitor_control_flow {
-    ($cf:expr) => {
-        match $cf {
-            crate::ast_visitor::VisitorControlFlow::Recurse => (),
-            crate::ast_visitor::VisitorControlFlow::Return => (),
-            crate::ast_visitor::VisitorControlFlow::Stop(val) => {
-                return crate::ast_visitor::VisitorControlFlow::Stop(val);
-            }
-        }
-    };
 }
 
 pub(crate) fn expr_visitor_check<E, MF>(expr: &Expr, mf: &mut MF) -> Result<(), E>
