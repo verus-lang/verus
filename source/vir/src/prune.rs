@@ -1,6 +1,6 @@
 /// 1) Optimize generated SMT by pruning unreachable declarations and definitions.
 ///    This is strictly an optimization; it should not affect the SMT validity.
-/// 2) Also remove any export_as_global_forall from any modules that are unreachable
+/// 2) Also remove any broadcast_forall from any modules that are unreachable
 ///    from this module.  This could, in principle, result in incompleteness.
 /// 3) Also compute names for abstract datatype sorts for the module,
 ///    since we're traversing the module-visible datatypes anyway.
@@ -9,7 +9,6 @@ use crate::ast::{
     TypX, Visibility,
 };
 use crate::ast_util::is_visible_to;
-use crate::ast_visitor::map_expr_visitor;
 use crate::datatype_to_air::is_datatype_transparent;
 use crate::def::{datatype_invariant_path, fn_inv_name, fn_namespace_name, Spanned};
 use crate::poly::MonoTyp;
@@ -117,8 +116,8 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
             if let Some(fs) = ctxt.all_functions_in_each_module.get(&m) {
                 for f in fs {
                     let function = &ctxt.function_map[f];
-                    if function.x.attrs.export_as_global_forall {
-                        // If we reach m, we reach all export_as_global_forall functions in m
+                    if function.x.attrs.broadcast_forall {
+                        // If we reach m, we reach all broadcast_forall functions in m
                         reach_function(ctxt, state, f);
                     }
                 }
@@ -139,16 +138,16 @@ pub fn prune_krate_for_module(krate: &Krate, module: &Path) -> (Krate, Vec<MonoT
     for f in &krate.functions {
         match (&f.x.visibility.owning_module, &f.x.body) {
             (Some(path), Some(body)) if path == module => {
-                map_expr_visitor(body, &mut |e: &Expr| {
+                crate::ast_visitor::expr_visitor_check::<(), _>(body, &mut |e: &Expr| {
                     match &e.x {
                         ExprX::Fuel(path, fuel) if *fuel > 0 => {
                             revealed_functions.insert(path.clone());
                         }
                         _ => {}
                     }
-                    Ok(e.clone())
+                    Ok(())
                 })
-                .unwrap();
+                .expect("expr_visitor_check failed unexpectedly");
             }
             _ => {}
         }

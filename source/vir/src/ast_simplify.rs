@@ -430,8 +430,9 @@ pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirEr
         let mut fields: Vec<Field> = Vec::new();
         for i in 0..arity {
             let typ = Arc::new(TypX::TypParam(prefix_tuple_param(i)));
+            let vis = Visibility { owning_module: None, is_private: false };
             // Note: the mode is irrelevant at this stage, so we arbitrarily use Mode::Exec
-            fields.push(ident_binder(&prefix_tuple_field(i), &(typ, Mode::Exec)));
+            fields.push(ident_binder(&prefix_tuple_field(i), &(typ, Mode::Exec, vis)));
         }
         let variant = ident_binder(&prefix_tuple_variant(arity), &Arc::new(fields));
         let variants = Arc::new(vec![variant]);

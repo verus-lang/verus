@@ -68,7 +68,7 @@ impl PAtomicU32 {
     ensures(|ret: u32| equal(perm.value, ret));
     opens_invariants_none();
 
-    return self.ato.load(Ordering::SeqCst);
+    self.ato.load(Ordering::SeqCst)
   }
 
   #[inline(always)]
@@ -84,6 +84,6 @@ impl PAtomicU32 {
     );
     opens_invariants_none();
 
-    return self.ato.fetch_add(n, Ordering::SeqCst);
+    self.ato.fetch_add(n, Ordering::SeqCst)
   }
 }

@@ -44,7 +44,7 @@ fn is_function_def_impl_item_node(node: rustc_hir::Node) -> bool {
 pub(crate) fn typ_path_and_ident_to_vir_path<'tcx>(path: &Path, ident: vir::ast::Ident) -> Path {
     let mut path = (**path).clone();
     Arc::make_mut(&mut path.segments).push(ident);
-    return Arc::new(path);
+    Arc::new(path)
 }
 
 pub(crate) fn fn_item_hir_id_to_self_def_id<'tcx>(
@@ -253,7 +253,7 @@ pub(crate) enum Attr {
     // hide body (from all modules) until revealed
     Opaque,
     // export function's require/ensure as global forall
-    ExportAsGlobalForall,
+    BroadcastForall,
     // when used in a spec context, promote to spec by inserting .view()
     Autoview,
     // add manual trigger to expression inside quantifier
@@ -318,8 +318,8 @@ pub(crate) fn parse_attrs(attrs: &[Attribute]) -> Result<Vec<Attr>, VirErr> {
                 Some(box [AttrTree::Fun(_, arg, None)]) if arg == "pub_abstract" => {
                     v.push(Attr::Abstract)
                 }
-                Some(box [AttrTree::Fun(_, arg, None)]) if arg == "export_as_global_forall" => {
-                    v.push(Attr::ExportAsGlobalForall)
+                Some(box [AttrTree::Fun(_, arg, None)]) if arg == "broadcast_forall" => {
+                    v.push(Attr::BroadcastForall)
                 }
                 Some(box [AttrTree::Fun(_, arg, None)]) if arg == "autoview" => {
                     v.push(Attr::Autoview)
@@ -428,7 +428,7 @@ pub(crate) struct VerifierAttrs {
     pub(crate) external_body: bool,
     pub(crate) external: bool,
     pub(crate) is_abstract: bool,
-    pub(crate) export_as_global_forall: bool,
+    pub(crate) broadcast_forall: bool,
     pub(crate) autoview: bool,
     pub(crate) custom_req_err: Option<String>,
     pub(crate) bit_vector: bool,
@@ -442,7 +442,7 @@ pub(crate) fn get_verifier_attrs(attrs: &[Attribute]) -> Result<VerifierAttrs, V
         external_body: false,
         external: false,
         is_abstract: false,
-        export_as_global_forall: false,
+        broadcast_forall: false,
         autoview: false,
         custom_req_err: None,
         bit_vector: false,
@@ -455,7 +455,7 @@ pub(crate) fn get_verifier_attrs(attrs: &[Attribute]) -> Result<VerifierAttrs, V
             Attr::ExternalBody => vs.external_body = true,
             Attr::External => vs.external = true,
             Attr::Abstract => vs.is_abstract = true,
-            Attr::ExportAsGlobalForall => vs.export_as_global_forall = true,
+            Attr::BroadcastForall => vs.broadcast_forall = true,
             Attr::Autoview => vs.autoview = true,
             Attr::CustomReqErr(s) => vs.custom_req_err = Some(s.clone()),
             Attr::BitVector => vs.bit_vector = true,

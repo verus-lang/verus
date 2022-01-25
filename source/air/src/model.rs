@@ -64,6 +64,6 @@ impl Model {
         if self.parameters.contains(name) {
             return Some((**name).clone());
         }
-        return None;
+        None
     }
 }

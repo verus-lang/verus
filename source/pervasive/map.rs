@@ -52,28 +52,28 @@ impl<K, V> Map<K, V> {
 
 #[proof]
 #[verifier(external_body)]
-#[verifier(export_as_global_forall)]
+#[verifier(broadcast_forall)]
 pub fn axiom_map_empty<K, V>() {
     ensures(equal(map_empty::<K, V>().dom(), set_empty()));
 }
 
 #[proof]
 #[verifier(external_body)]
-#[verifier(export_as_global_forall)]
+#[verifier(broadcast_forall)]
 pub fn axiom_map_insert_domain<K, V>(m: Map<K, V>, key: K, value: V) {
     ensures(equal(#[trigger] m.insert(key, value).dom(), m.dom().insert(key)));
 }
 
 #[proof]
 #[verifier(external_body)]
-#[verifier(export_as_global_forall)]
+#[verifier(broadcast_forall)]
 pub fn axiom_map_insert_same<K, V>(m: Map<K, V>, key: K, value: V) {
     ensures(equal(#[trigger] m.insert(key, value).index(key), value));
 }
 
 #[proof]
 #[verifier(external_body)]
-#[verifier(export_as_global_forall)]
+#[verifier(broadcast_forall)]
 pub fn axiom_map_insert_different<K, V>(m: Map<K, V>, key1: K, key2: K, value: V) {
     requires([
         m.dom().contains(key1),
@@ -84,7 +84,7 @@ pub fn axiom_map_insert_different<K, V>(m: Map<K, V>, key1: K, key2: K, value: V
 
 #[proof]
 #[verifier(external_body)]
-#[verifier(export_as_global_forall)]
+#[verifier(broadcast_forall)]
 pub fn axiom_map_ext_equal<K, V>(m1: Map<K, V>, m2: Map<K, V>) {
     ensures(m1.ext_equal(m2) == equal(m1, m2));
 }

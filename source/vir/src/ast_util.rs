@@ -64,7 +64,7 @@ pub fn bitwidth_from_type(et: &Typ) -> Option<u32> {
     if let TypX::Int(IntRange::I(size)) = &**et {
         return Some(*size);
     }
-    return None;
+    None
 }
 
 pub fn path_as_rust_name(path: &Path) -> String {

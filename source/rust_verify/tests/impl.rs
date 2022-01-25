@@ -14,6 +14,7 @@ test_verify_one_file! {
     #[test] test_impl_1 STRUCT.to_string() + code_str! {
         impl Bike {
             #[spec]
+            #[verifier(pub_abstract)]
             pub fn is_hard_tail(&self) -> bool {
                 self.hard_tail
             }
@@ -122,6 +123,7 @@ const IMPL_GENERIC_SHARED: &str = code_str! {
 
     impl<A> Wrapper<A> {
         #[spec]
+        #[verifier(pub_abstract)]
         pub fn take(self) -> A {
             self.v
         }
@@ -163,6 +165,7 @@ test_verify_one_file! {
 
         impl<A> Wrapper<A> {
             #[spec]
+            #[verifier(pub_abstract)]
             pub fn take<B>(self, b: B) -> Two<A, B> {
                 Two { a: self.v, b: b }
             }

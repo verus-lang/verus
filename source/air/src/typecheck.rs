@@ -122,7 +122,7 @@ fn get_bv_width(et: &Typ) -> Result<u32, TypeError> {
     if let TypX::BitVec(size) = &**et {
         return Ok(*size);
     }
-    return Err("not a bit vector type".to_string());
+    Err("not a bit vector type".to_string())
 }
 
 fn check_bv_unary_exprs(

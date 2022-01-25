@@ -18,6 +18,7 @@ pub struct Args {
     pub show_triggers: bool,
     pub print_erased: bool,
     pub print_erased_spec: bool,
+    pub ignore_unexpected_smt: bool,
     pub debug: bool,
     pub compile: bool,
 }
@@ -46,6 +47,7 @@ pub fn parse_args(program: &String, args: impl Iterator<Item = String>) -> (Args
     const OPT_TRIGGERS: &str = "triggers";
     const OPT_PRINT_ERASED: &str = "print-erased";
     const OPT_PRINT_ERASED_SPEC: &str = "print-erased-spec";
+    const OPT_IGNORE_UNEXPECTED_SMT: &str = "ignore-unexpected-smt";
     const OPT_DEBUG: &str = "debug";
     const OPT_COMPILE: &str = "compile";
 
@@ -71,6 +73,7 @@ pub fn parse_args(program: &String, args: impl Iterator<Item = String>) -> (Args
     opts.optflag("", OPT_TRIGGERS, "Show automatically chosen triggers");
     opts.optflag("", OPT_PRINT_ERASED, "Print code after erasing spec/proof (requires --compile)");
     opts.optflag("", OPT_PRINT_ERASED_SPEC, "Print code after erasing spec");
+    opts.optflag("", OPT_IGNORE_UNEXPECTED_SMT, "Ignore unexpected SMT output");
     opts.optflag("", OPT_DEBUG, "Enable debugging of proof failures");
     opts.optflag("", OPT_COMPILE, "Run Rustc compiler after verification");
     opts.optflag("h", "help", "print this help menu");
@@ -120,6 +123,7 @@ pub fn parse_args(program: &String, args: impl Iterator<Item = String>) -> (Args
         show_triggers: matches.opt_present(OPT_TRIGGERS),
         print_erased: matches.opt_present(OPT_PRINT_ERASED),
         print_erased_spec: matches.opt_present(OPT_PRINT_ERASED_SPEC),
+        ignore_unexpected_smt: matches.opt_present(OPT_IGNORE_UNEXPECTED_SMT),
         debug: matches.opt_present(OPT_DEBUG),
         compile: matches.opt_present(OPT_COMPILE),
     };

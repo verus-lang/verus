@@ -828,13 +828,13 @@ pub fn attrs_is_invariant_block(attrs: &[Attribute]) -> Result<bool, VirErr> {
             _ => {}
         }
     }
-    return Ok(false);
+    Ok(false)
 }
 
 /// Check for the #[verifier(invariant_block)] attribute on a block
 fn is_invariant_block(bctx: &BodyCtxt, expr: &Expr) -> Result<bool, VirErr> {
     let attrs = bctx.ctxt.tcx.hir().attrs(expr.hir_id);
-    return attrs_is_invariant_block(attrs);
+    attrs_is_invariant_block(attrs)
 }
 
 fn malformed_inv_block_err<'tcx>(expr: &Expr<'tcx>) -> Result<vir::ast::Expr, VirErr> {
@@ -1004,7 +1004,7 @@ fn invariant_block_to_vir<'tcx>(
     let vir_binder = Arc::new(BinderX { name, a: inner_ty });
 
     let e = ExprX::OpenInvariant(vir_arg, vir_binder, vir_body);
-    return Ok(spanned_typed_new(expr.span, &typ_of_node(bctx, &expr.hir_id), e));
+    Ok(spanned_typed_new(expr.span, &typ_of_node(bctx, &expr.hir_id), e))
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Copy)]

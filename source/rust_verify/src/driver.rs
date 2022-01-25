@@ -46,7 +46,7 @@ where
 
     let time1 = Instant::now();
 
-    // Run borrow checker with both #[code] and #[proof]
+    // Run borrow checker with both #[exec] and #[proof]
     if !verifier.args.no_lifetime {
         let erasure_hints = verifier.erasure_hints.clone().expect("erasure_hints");
         let mut callbacks = CompilerCallbacks {
@@ -67,7 +67,7 @@ where
 
     let time2 = Instant::now();
 
-    // Run borrow checker and compiler on #[code] (if enabled)
+    // Run borrow checker and compiler on #[exec] (if enabled)
     if verifier.args.compile {
         let erasure_hints = verifier.erasure_hints.clone().expect("erasure_hints").clone();
         let mut callbacks = CompilerCallbacks {

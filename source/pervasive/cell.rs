@@ -98,7 +98,7 @@ impl<V> PCell<V> {
     
     self.write_external(v);
 
-    return perm;
+    perm
   }
   */
 }

@@ -140,8 +140,10 @@ fn smt_check_assertion<'ctx>(
         } else if line == "sat" || line == "unknown" {
             assert!(unsat == None);
             unsat = Some(false);
-        } else {
+        } else if context.ignore_unexpected_smt {
             println!("warning: unexpected SMT output: {}", line);
+        } else {
+            return ValidityResult::UnexpectedSmtOutput(line);
         }
     }
 

@@ -206,7 +206,7 @@ fn datatype_or_fun_to_air_commands(
             let has_ctor = datatype_has_type(dpath, &typ_args, &box_ctor);
             let mut pre: Vec<Expr> = Vec::new();
             for field in variant.a.iter() {
-                let (typ, _) = &field.a;
+                let (typ, _, _) = &field.a;
                 let name = suffix_local_stmt_id(&field.name);
                 if let Some(inv) = typ_invariant(ctx, typ, &ident_var(&name)) {
                     pre.push(inv);
@@ -220,7 +220,7 @@ fn datatype_or_fun_to_air_commands(
         }
         for variant in variants.iter() {
             for field in variant.a.iter() {
-                let (typ, _) = &field.a;
+                let (typ, _, _) = &field.a;
                 let xfield = ident_apply(
                     &variant_field_ident(&dpath, &variant.name, &field.name),
                     &vec![unbox_x.clone()],
