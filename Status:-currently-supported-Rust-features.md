@@ -85,9 +85,9 @@ The following statements are not yet supported:
 - unsafe blocks: unsupported
 - operators
     - `*`, `&`
-        - supported for `&` types (not yet for `&mut` types)
+        - supported for `&` types and in some cases `&mut`, work-in-progress
     - `&mut`
-        - high priority
+        - partially supported, work-in-progress, high priority
     - `?`
         - low priority
     - `!`
