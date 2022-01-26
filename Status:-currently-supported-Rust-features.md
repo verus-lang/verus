@@ -218,7 +218,7 @@ The following statements are not yet supported:
 - operator traits: high priority
 - Deref and DerefMut:
     - `*` is supported for `&` types
-    - `*` for `&mut` types: high priority
+    - `*` for `&mut` types: partially supported, work-in-progress, high priority
     - other uses of Deref and DerefMut: low priority, unless it's needed for higher-priority features
 - Drop: low priority
 - Copy, Clone: high priority
