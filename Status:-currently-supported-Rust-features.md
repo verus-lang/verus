@@ -56,7 +56,7 @@ The following items are fully or partially supported:
 The following items are not yet supported:
 - type aliases: high priority
 - trait definitions: high priority
-- constant items: medium priority
+- constant items: high priority
 - static items: low priority
 - union definitions: unsafe, and therefore unsupported
 
@@ -194,7 +194,7 @@ The following statements are not yet supported:
 - closure types: low priority for exec/proof; for specs, you can use the Map type, which can be initialized with a closure
 - pointer types:
     - shared references: supported
-    - mutable references: high priority
+    - mutable references: partially supported, work-in-progress, high priority
     - raw pointers: unsupported
 - function pointer types: unsupported
 - trait object types: low priority
