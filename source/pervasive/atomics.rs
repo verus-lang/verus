@@ -7,6 +7,7 @@ use std::sync::atomic::{
 #[allow(unused_imports)] use builtin::*;
 #[allow(unused_imports)] use crate::pervasive::*;
 #[allow(unused_imports)] use crate::pervasive::modes::*;
+#[allow(unused_imports)] use crate::pervasive::result::*;
 
 macro_rules! make_integer_atomic {
     ($at_ident:ident, $p_ident:ident, $rust_ty: ty, $value_ty: ty, $wrap_add:ident, $wrap_sub:ident, $int_min:expr, $int_max: expr) => {
@@ -120,8 +121,6 @@ macro_rules! atomic_common_methods {
             self.ato.store(v, Ordering::SeqCst);
         }
 
-        // TODO uncomment these once Verus supports `Result`
-        /*
         #[inline(always)]
         #[verifier(external_body)]
         #[verifier(atomic)]
@@ -132,11 +131,11 @@ macro_rules! atomic_common_methods {
             ensures(|ret: Result<$value_ty, $value_ty>|
                 equal(self.view(), perm.patomic)
                 && match ret {
-                    Ok(r) =>
+                    Result::Ok(r) =>
                            current == old(perm).value
                         && equal(perm.value, new)
                         && equal(r, old(perm).value),
-                    Err(r) =>
+                    Result::Err(r) =>
                            current != old(perm).value
                         && equal(perm.value, old(perm).value)
                         && equal(r, old(perm).value),
@@ -144,7 +143,10 @@ macro_rules! atomic_common_methods {
             );
             opens_invariants_none();
 
-            return self.ato.compare_exchange(current, new, Ordering::SeqCst, Ordering::SeqCst);
+            match self.ato.compare_exchange(current, new, Ordering::SeqCst, Ordering::SeqCst) {
+                Ok(x) => Result::Ok(x),
+                Err(x) => Result::Err(x),
+            }
         }
 
         #[inline(always)]
@@ -157,20 +159,22 @@ macro_rules! atomic_common_methods {
             ensures(|ret: Result<$value_ty, $value_ty>|
                 equal(self.view(), perm.patomic)
                 && match ret {
-                    Ok(r) =>
+                    Result::Ok(r) =>
                            current == old(perm).value
                         && equal(perm.value, new)
                         && equal(r, old(perm).value),
-                    Err(r) =>
+                    Result::Err(r) =>
                            equal(perm.value, old(perm).value)
                         && equal(r, old(perm).value),
                 }
             );
             opens_invariants_none();
 
-            return self.ato.compare_exchange_weak(current, new, Ordering::SeqCst, Ordering::SeqCst);
+            match self.ato.compare_exchange_weak(current, new, Ordering::SeqCst, Ordering::SeqCst) {
+                Ok(x) => Result::Ok(x),
+                Err(x) => Result::Err(x),
+            }
         }
-        */
 
         #[inline(always)]
         #[verifier(external_body)]
@@ -205,6 +209,9 @@ macro_rules! atomic_common_methods {
 
 macro_rules! atomic_integer_methods {
     ($at_ident:ident, $p_ident:ident, $rust_ty: ty, $value_ty: ty, $wrap_add:ident, $wrap_sub:ident, $int_min:expr, $int_max:expr) => {
+        // Note that wrapping-on-overflow is the defined behavior for fetch_add and fetch_sub
+        // for Rust's atomics (in contrast to ordinary arithmetic)
+
         #[inline(always)]
         #[verifier(external_body)]
         #[verifier(atomic)]
@@ -238,7 +245,7 @@ macro_rules! atomic_integer_methods {
         }
 
         // fetch_add and fetch_sub are more natural in the common case that you
-        // don't want to wrapping.
+        // don't expect wrapping
         //
         // TODO fetch_add and fetch_sub could be verified, untrusted, in terms of
         // fetch_add_wrapping and fetch_sub_wrapping; however, right now we do not
@@ -328,8 +335,6 @@ macro_rules! atomic_integer_methods {
             return self.ato.fetch_or(n, Ordering::SeqCst);
         }
 
-        // TODO uncomment this once Verus supports bitwise negation
-        /*
         #[inline(always)]
         #[verifier(external_body)]
         #[verifier(atomic)]
@@ -345,7 +350,6 @@ macro_rules! atomic_integer_methods {
 
             return self.ato.fetch_nand(n, Ordering::SeqCst);
         }
-        */
 
         #[inline(always)]
         #[verifier(external_body)]

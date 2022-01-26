@@ -7,6 +7,7 @@ test_verify_one_file! {
     #[test] test_atomic_u64 code! {
         use crate::pervasive::{atomics::*};
         use crate::pervasive::{modes::*};
+        use crate::pervasive::result::*;
 
         pub fn foo() {
             let (at, proof(mut perm)) = PAtomicU64::new(5);
@@ -62,18 +63,38 @@ test_verify_one_file! {
             assert(l == 4);
             assert(perm.value == 4);
 
-            let l = at.into_inner(perm);
-            assert(l == 4);
+            let l = at.compare_exchange_weak(&mut perm, 5, 6);
+            assert(equal(l, Result::Err(4)));
+            assert(perm.value == 4);
 
-            assert(false); // FAILS
+            let l = at.compare_exchange_weak(&mut perm, 4, 6);
+            assert(
+                (equal(l, Result::Err(4)) && perm.value == 4) ||
+                (equal(l, Result::Ok(4)) && perm.value == 6)
+            );
+
+            at.store(&mut perm, 4);
+            assert(perm.value == 4);
+
+            let l = at.compare_exchange(&mut perm, 5, 6);
+            assert(equal(l, Result::Err(4)));
+            assert(perm.value == 4);
+
+            let l = at.compare_exchange(&mut perm, 4, 6);
+            assert(equal(l, Result::Ok(4)));
+            assert(perm.value == 6);
+
+            let l = at.into_inner(perm);
+            assert(l == 6);
         }
-    } => Err(err) => assert_one_fails(err)
+    } => Ok(())
 }
 
 test_verify_one_file! {
     #[test] test_atomic_u32 code! {
         use crate::pervasive::{atomics::*};
         use crate::pervasive::{modes::*};
+        use crate::pervasive::result::*;
 
         pub fn foo() {
             let (at, proof(mut perm)) = PAtomicU32::new(5);
@@ -129,18 +150,39 @@ test_verify_one_file! {
             assert(l == 4);
             assert(perm.value == 4);
 
-            let l = at.into_inner(perm);
-            assert(l == 4);
+            let l = at.compare_exchange_weak(&mut perm, 5, 6);
+            assert(equal(l, Result::Err(4)));
+            assert(perm.value == 4);
 
-            assert(false); // FAILS
+            let l = at.compare_exchange_weak(&mut perm, 4, 6);
+            assert(
+                (equal(l, Result::Err(4)) && perm.value == 4) ||
+                (equal(l, Result::Ok(4)) && perm.value == 6)
+            );
+
+            at.store(&mut perm, 4);
+            assert(perm.value == 4);
+
+            let l = at.compare_exchange(&mut perm, 5, 6);
+            assert(equal(l, Result::Err(4)));
+            assert(perm.value == 4);
+
+            let l = at.compare_exchange(&mut perm, 4, 6);
+            assert(equal(l, Result::Ok(4)));
+            assert(perm.value == 6);
+
+
+            let l = at.into_inner(perm);
+            assert(l == 6);
         }
-    } => Err(err) => assert_one_fails(err)
+    } => Ok(())
 }
 
 test_verify_one_file! {
     #[test] test_atomic_u16 code! {
         use crate::pervasive::{atomics::*};
         use crate::pervasive::{modes::*};
+        use crate::pervasive::result::*;
 
         pub fn foo() {
             let (at, proof(mut perm)) = PAtomicU16::new(5);
@@ -196,18 +238,38 @@ test_verify_one_file! {
             assert(l == 4);
             assert(perm.value == 4);
 
-            let l = at.into_inner(perm);
-            assert(l == 4);
+            let l = at.compare_exchange_weak(&mut perm, 5, 6);
+            assert(equal(l, Result::Err(4)));
+            assert(perm.value == 4);
 
-            assert(false); // FAILS
+            let l = at.compare_exchange_weak(&mut perm, 4, 6);
+            assert(
+                (equal(l, Result::Err(4)) && perm.value == 4) ||
+                (equal(l, Result::Ok(4)) && perm.value == 6)
+            );
+
+            at.store(&mut perm, 4);
+            assert(perm.value == 4);
+
+            let l = at.compare_exchange(&mut perm, 5, 6);
+            assert(equal(l, Result::Err(4)));
+            assert(perm.value == 4);
+
+            let l = at.compare_exchange(&mut perm, 4, 6);
+            assert(equal(l, Result::Ok(4)));
+            assert(perm.value == 6);
+
+            let l = at.into_inner(perm);
+            assert(l == 6);
         }
-    } => Err(err) => assert_one_fails(err)
+    } => Ok(())
 }
 
 test_verify_one_file! {
     #[test] test_atomic_u8 code! {
         use crate::pervasive::{atomics::*};
         use crate::pervasive::{modes::*};
+        use crate::pervasive::result::*;
 
         pub fn foo() {
             let (at, proof(mut perm)) = PAtomicU8::new(5);
@@ -263,18 +325,38 @@ test_verify_one_file! {
             assert(l == 4);
             assert(perm.value == 4);
 
-            let l = at.into_inner(perm);
-            assert(l == 4);
+            let l = at.compare_exchange_weak(&mut perm, 5, 6);
+            assert(equal(l, Result::Err(4)));
+            assert(perm.value == 4);
 
-            assert(false); // FAILS
+            let l = at.compare_exchange_weak(&mut perm, 4, 6);
+            assert(
+                (equal(l, Result::Err(4)) && perm.value == 4) ||
+                (equal(l, Result::Ok(4)) && perm.value == 6)
+            );
+
+            at.store(&mut perm, 4);
+            assert(perm.value == 4);
+
+            let l = at.compare_exchange(&mut perm, 5, 6);
+            assert(equal(l, Result::Err(4)));
+            assert(perm.value == 4);
+
+            let l = at.compare_exchange(&mut perm, 4, 6);
+            assert(equal(l, Result::Ok(4)));
+            assert(perm.value == 6);
+
+            let l = at.into_inner(perm);
+            assert(l == 6);
         }
-    } => Err(err) => assert_one_fails(err)
+    } => Ok(())
 }
 
 test_verify_one_file! {
     #[test] test_atomic_i64 code! {
         use crate::pervasive::{atomics::*};
         use crate::pervasive::{modes::*};
+        use crate::pervasive::result::*;
 
         pub fn foo() {
             let (at, proof(mut perm)) = PAtomicI64::new(5);
@@ -330,18 +412,38 @@ test_verify_one_file! {
             assert(l == 4);
             assert(perm.value == 4);
 
-            let l = at.into_inner(perm);
-            assert(l == 4);
+            let l = at.compare_exchange_weak(&mut perm, 5, 6);
+            assert(equal(l, Result::Err(4)));
+            assert(perm.value == 4);
 
-            assert(false); // FAILS
+            let l = at.compare_exchange_weak(&mut perm, 4, 6);
+            assert(
+                (equal(l, Result::Err(4)) && perm.value == 4) ||
+                (equal(l, Result::Ok(4)) && perm.value == 6)
+            );
+
+            at.store(&mut perm, 4);
+            assert(perm.value == 4);
+
+            let l = at.compare_exchange(&mut perm, 5, 6);
+            assert(equal(l, Result::Err(4)));
+            assert(perm.value == 4);
+
+            let l = at.compare_exchange(&mut perm, 4, 6);
+            assert(equal(l, Result::Ok(4)));
+            assert(perm.value == 6);
+
+            let l = at.into_inner(perm);
+            assert(l == 6);
         }
-    } => Err(err) => assert_one_fails(err)
+    } => Ok(())
 }
 
 test_verify_one_file! {
     #[test] test_atomic_i32 code! {
         use crate::pervasive::{atomics::*};
         use crate::pervasive::{modes::*};
+        use crate::pervasive::result::*;
 
         pub fn foo() {
             let (at, proof(mut perm)) = PAtomicI32::new(5);
@@ -397,18 +499,38 @@ test_verify_one_file! {
             assert(l == 4);
             assert(perm.value == 4);
 
-            let l = at.into_inner(perm);
-            assert(l == 4);
+            let l = at.compare_exchange_weak(&mut perm, 5, 6);
+            assert(equal(l, Result::Err(4)));
+            assert(perm.value == 4);
 
-            assert(false); // FAILS
+            let l = at.compare_exchange_weak(&mut perm, 4, 6);
+            assert(
+                (equal(l, Result::Err(4)) && perm.value == 4) ||
+                (equal(l, Result::Ok(4)) && perm.value == 6)
+            );
+
+            at.store(&mut perm, 4);
+            assert(perm.value == 4);
+
+            let l = at.compare_exchange(&mut perm, 5, 6);
+            assert(equal(l, Result::Err(4)));
+            assert(perm.value == 4);
+
+            let l = at.compare_exchange(&mut perm, 4, 6);
+            assert(equal(l, Result::Ok(4)));
+            assert(perm.value == 6);
+
+            let l = at.into_inner(perm);
+            assert(l == 6);
         }
-    } => Err(err) => assert_one_fails(err)
+    } => Ok(())
 }
 
 test_verify_one_file! {
     #[test] test_atomic_i16 code! {
         use crate::pervasive::{atomics::*};
         use crate::pervasive::{modes::*};
+        use crate::pervasive::result::*;
 
         pub fn foo() {
             let (at, proof(mut perm)) = PAtomicI16::new(5);
@@ -464,18 +586,38 @@ test_verify_one_file! {
             assert(l == 4);
             assert(perm.value == 4);
 
-            let l = at.into_inner(perm);
-            assert(l == 4);
+            let l = at.compare_exchange_weak(&mut perm, 5, 6);
+            assert(equal(l, Result::Err(4)));
+            assert(perm.value == 4);
 
-            assert(false); // FAILS
+            let l = at.compare_exchange_weak(&mut perm, 4, 6);
+            assert(
+                (equal(l, Result::Err(4)) && perm.value == 4) ||
+                (equal(l, Result::Ok(4)) && perm.value == 6)
+            );
+
+            at.store(&mut perm, 4);
+            assert(perm.value == 4);
+
+            let l = at.compare_exchange(&mut perm, 5, 6);
+            assert(equal(l, Result::Err(4)));
+            assert(perm.value == 4);
+
+            let l = at.compare_exchange(&mut perm, 4, 6);
+            assert(equal(l, Result::Ok(4)));
+            assert(perm.value == 6);
+
+            let l = at.into_inner(perm);
+            assert(l == 6);
         }
-    } => Err(err) => assert_one_fails(err)
+    } => Ok(())
 }
 
 test_verify_one_file! {
     #[test] test_atomic_i8 code! {
         use crate::pervasive::{atomics::*};
         use crate::pervasive::{modes::*};
+        use crate::pervasive::result::*;
 
         pub fn foo() {
             let (at, proof(mut perm)) = PAtomicI8::new(5);
@@ -531,18 +673,38 @@ test_verify_one_file! {
             assert(l == 4);
             assert(perm.value == 4);
 
-            let l = at.into_inner(perm);
-            assert(l == 4);
+            let l = at.compare_exchange_weak(&mut perm, 5, 6);
+            assert(equal(l, Result::Err(4)));
+            assert(perm.value == 4);
 
-            assert(false); // FAILS
+            let l = at.compare_exchange_weak(&mut perm, 4, 6);
+            assert(
+                (equal(l, Result::Err(4)) && perm.value == 4) ||
+                (equal(l, Result::Ok(4)) && perm.value == 6)
+            );
+
+            at.store(&mut perm, 4);
+            assert(perm.value == 4);
+
+            let l = at.compare_exchange(&mut perm, 5, 6);
+            assert(equal(l, Result::Err(4)));
+            assert(perm.value == 4);
+
+            let l = at.compare_exchange(&mut perm, 4, 6);
+            assert(equal(l, Result::Ok(4)));
+            assert(perm.value == 6);
+
+            let l = at.into_inner(perm);
+            assert(l == 6);
         }
-    } => Err(err) => assert_one_fails(err)
+    } => Ok(())
 }
 
 test_verify_one_file! {
     #[test] test_atomic_bool code! {
         use crate::pervasive::{atomics::*};
         use crate::pervasive::{modes::*};
+        use crate::pervasive::result::*;
 
         pub fn foo() {
             let (at, proof(mut perm)) = PAtomicBool::new(false);
@@ -631,7 +793,31 @@ test_verify_one_file! {
             assert(l == false);
             assert(perm.value == true);
 
-            assert(false); // FAILS
+            // compare_exchange
+
+            let l = at.compare_exchange_weak(&mut perm, false, false);
+            assert(equal(l, Result::Err(true)));
+            assert(perm.value == true);
+
+            let l = at.compare_exchange_weak(&mut perm, true, false);
+            assert(
+                (equal(l, Result::Err(true)) && perm.value == true) ||
+                (equal(l, Result::Ok(true)) && perm.value == false)
+            );
+
+            at.store(&mut perm, false);
+            assert(perm.value == false);
+
+            let l = at.compare_exchange(&mut perm, true, false);
+            assert(equal(l, Result::Err(false)));
+            assert(perm.value == false);
+
+            let l = at.compare_exchange(&mut perm, false, true);
+            assert(equal(l, Result::Ok(false)));
+            assert(perm.value == true);
+
+            let l = at.into_inner(perm);
+            assert(l == true);
         }
-    } => Err(err) => assert_one_fails(err)
+    } => Ok(())
 }
