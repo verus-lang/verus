@@ -32,6 +32,7 @@ pub enum ValidityResult {
     Valid,
     Invalid(Model, Error),
     TypeError(TypeError),
+    UnexpectedSmtOutput(String),
 }
 
 pub struct Context {
@@ -46,6 +47,7 @@ pub struct Context {
     pub(crate) apply_count: u64,
     pub(crate) typing: Typing,
     pub(crate) debug: bool,
+    pub(crate) ignore_unexpected_smt: bool,
     pub(crate) rlimit: u32,
     pub(crate) air_initial_log: Emitter,
     pub(crate) air_middle_log: Emitter,
@@ -70,6 +72,7 @@ impl Context {
             apply_count: 0,
             typing: Typing { decls: crate::scope_map::ScopeMap::new(), snapshots: HashSet::new() },
             debug: false,
+            ignore_unexpected_smt: false,
             rlimit: 0,
             air_initial_log: Emitter::new(false, false, None),
             air_middle_log: Emitter::new(false, false, None),
@@ -109,6 +112,10 @@ impl Context {
 
     pub fn get_debug(&self) -> bool {
         self.debug
+    }
+
+    pub fn set_ignore_unexpected_smt(&mut self, ignore_unexpected_smt: bool) {
+        self.ignore_unexpected_smt = ignore_unexpected_smt;
     }
 
     pub fn get_time(&self) -> (Duration, Duration) {

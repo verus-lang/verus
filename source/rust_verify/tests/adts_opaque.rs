@@ -3,6 +3,26 @@
 mod common;
 use common::*;
 
+test_verify_one_file! {
+    #[test] test_needs_pub_abstract code! {
+        mod M1 {
+            use builtin::*;
+
+            #[derive(PartialEq, Eq)]
+            pub struct Car {
+                passengers: nat,
+                pub four_doors: bool,
+            }
+
+            #[spec]
+            //must have this: #[verifier(pub_abstract)]
+            pub fn get_passengers(c: Car) -> nat {
+                c.passengers
+            }
+        }
+    } => Err(TestErr { has_vir_error: true, .. })
+}
+
 const M1: &str = code_str! {
     mod M1 {
         use builtin::*;

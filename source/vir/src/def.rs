@@ -54,10 +54,12 @@ const PREFIX_TUPLE_PARAM: &str = "T%";
 const PREFIX_TUPLE_FIELD: &str = "field%";
 const PREFIX_LAMBDA_TYPE: &str = "fun%";
 const PREFIX_SNAPSHOT: &str = "snap%";
+const KRATE_SEPARATOR: &str = "!";
 const PATH_SEPARATOR: &str = ".";
 const PATHS_SEPARATOR: &str = "/";
 const VARIANT_SEPARATOR: &str = "/";
 const VARIANT_FIELD_SEPARATOR: &str = "/";
+const VARIANT_FIELD_INTERNAL_SEPARATOR: &str = "/?";
 const FUN_TRAIT_DEF_BEGIN: &str = "<";
 const FUN_TRAIT_DEF_END: &str = ">";
 const MONOTYPE_APP_BEGIN: &str = "<";
@@ -119,14 +121,8 @@ pub const UINT_NOT: &str = "uintnot";
 pub const ARCH_SIZE_MIN_BITS: u32 = 32;
 
 pub fn path_to_string(path: &Path) -> String {
-    let mut strings: Vec<String> = match &path.krate {
-        None => vec![],
-        Some(krate) => vec![krate.to_string()],
-    };
-    for segment in path.segments.iter() {
-        strings.push(segment.to_string());
-    }
-    strings.join(crate::def::PATH_SEPARATOR) + crate::def::SUFFIX_PATH
+    let s = vec_map(&path.segments, |s| s.to_string()).join(PATH_SEPARATOR) + SUFFIX_PATH;
+    if let Some(krate) = &path.krate { krate.to_string() + KRATE_SEPARATOR + &s } else { s }
 }
 
 pub fn fun_to_string(fun: &Fun) -> String {
@@ -298,15 +294,24 @@ pub fn variant_ident(datatype: &Path, variant: &str) -> Ident {
     Arc::new(format!("{}{}{}", path_to_string(datatype), VARIANT_SEPARATOR, variant))
 }
 
-pub fn variant_field_ident(datatype: &Path, variant: &Ident, field: &Ident) -> Ident {
+pub fn variant_field_ident_internal(
+    datatype: &Path,
+    variant: &Ident,
+    field: &Ident,
+    internal: bool,
+) -> Ident {
     Arc::new(format!(
         "{}{}{}{}{}",
         path_to_string(datatype),
         VARIANT_SEPARATOR,
         variant.as_str(),
-        VARIANT_FIELD_SEPARATOR,
+        if internal { VARIANT_FIELD_INTERNAL_SEPARATOR } else { VARIANT_FIELD_SEPARATOR },
         field.as_str()
     ))
+}
+
+pub fn variant_field_ident(datatype: &Path, variant: &Ident, field: &Ident) -> Ident {
+    variant_field_ident_internal(datatype, variant, field, false)
 }
 
 pub fn positional_field_ident(idx: usize) -> Ident {

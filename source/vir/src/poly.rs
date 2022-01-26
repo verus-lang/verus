@@ -584,7 +584,9 @@ fn poly_function(ctx: &Ctx, function: &Function) -> Function {
 fn poly_datatype(ctx: &Ctx, datatype: &Datatype) -> Datatype {
     let variants = vec_map(&*datatype.x.variants, |v| {
         v.map_a(|fields| {
-            Arc::new(vec_map(fields, |f| f.map_a(|(t, m)| (coerce_typ_to_native(ctx, t), *m))))
+            Arc::new(vec_map(fields, |f| {
+                f.map_a(|(t, m, v)| (coerce_typ_to_native(ctx, t), *m, v.clone()))
+            }))
         })
     });
     let variants = Arc::new(variants);

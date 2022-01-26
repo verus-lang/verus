@@ -64,7 +64,7 @@ impl MaskSet {
                 }
                 let equals_one = mk_or(&disjuncts);
                 let error = error_with_label(
-                    "Cannot show invariant namespace is in the mask given by the function signature".to_string(),
+                    "cannot show invariant namespace is in the mask given by the function signature".to_string(),
                     span,
                     "invariant opened here".to_string());
                 results.push(Arc::new(StmtX::Assert(error, equals_one)));
@@ -131,7 +131,7 @@ impl MaskSet {
     pub fn remove_element(&self, span: Span, r: Expr) -> MaskSet {
         let mut n = self.clone();
         n.minus.push(MaskSingleton { expr: r, span: span });
-        return n;
+        n
     }
 
     pub fn full() -> MaskSet {

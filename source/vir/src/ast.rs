@@ -357,7 +357,7 @@ pub struct FunctionAttrsX {
     /// List of functions that this function wants to view as opaque
     pub hidden: Arc<Vec<Fun>>,
     /// Create a global axiom saying forall params, require ==> ensure
-    pub export_as_global_forall: bool,
+    pub broadcast_forall: bool,
     /// In triggers_auto, don't use this function as a trigger
     pub no_auto_trigger: bool,
     /// Custom error message to display when a pre-condition fails
@@ -366,6 +366,8 @@ pub struct FunctionAttrsX {
     pub autoview: bool,
     /// Verify using bitvector theory
     pub bit_vector: bool,
+    /// Is atomic (i.e., can be inside an invariant block)
+    pub atomic: bool,
 }
 
 /// Static function identifier
@@ -429,11 +431,11 @@ pub struct FunctionX {
 }
 
 /// Single field in a variant
-pub type Field = Binder<(Typ, Mode)>;
+pub type Field = Binder<(Typ, Mode, Visibility)>;
 /// List of fields in a variant
 /// For tuple-style variants, the fields appear in order and are named "0", "1", etc.
 /// For struct-style variants, the fields may appear in any order
-pub type Fields = Binders<(Typ, Mode)>;
+pub type Fields = Binders<(Typ, Mode, Visibility)>;
 pub type Variant = Binder<Fields>;
 pub type Variants = Binders<Fields>;
 

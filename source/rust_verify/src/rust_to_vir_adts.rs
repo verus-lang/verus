@@ -1,7 +1,7 @@
 use crate::context::Context;
 use crate::rust_to_vir_base::{
     check_generics, def_id_to_vir_path, get_mode, get_verifier_attrs, hack_get_def_name,
-    is_visibility_private, ty_to_vir,
+    is_visibility_private, mk_visibility, ty_to_vir,
 };
 use crate::unsupported_unless;
 use crate::util::spanned_new;
@@ -10,12 +10,13 @@ use rustc_ast::Attribute;
 use rustc_hir::{EnumDef, Generics, ItemId, VariantData};
 use rustc_span::Span;
 use std::sync::Arc;
-use vir::ast::{DatatypeTransparency, DatatypeX, Ident, KrateX, Mode, Variant, VirErr};
+use vir::ast::{DatatypeTransparency, DatatypeX, Ident, KrateX, Mode, Path, Variant, VirErr};
 use vir::ast_util::ident_binder;
 use vir::def::positional_field_ident;
 
 fn check_variant_data<'tcx>(
     ctxt: &Context<'tcx>,
+    module_path: &Path,
     name: &Ident,
     variant_data: &'tcx VariantData<'tcx>,
     in_enum: bool,
@@ -34,6 +35,7 @@ fn check_variant_data<'tcx>(
                             &(
                                 ty_to_vir(ctxt.tcx, field.ty),
                                 get_mode(Mode::Exec, ctxt.tcx.hir().attrs(field.hir_id)),
+                                mk_visibility(&Some(module_path.clone()), &field.vis),
                             ),
                         ),
                         is_visibility_private(&field.vis.node, !in_enum),
@@ -53,6 +55,7 @@ fn check_variant_data<'tcx>(
                             &(
                                 ty_to_vir(ctxt.tcx, field.ty),
                                 get_mode(Mode::Exec, ctxt.tcx.hir().attrs(field.hir_id)),
+                                mk_visibility(&Some(module_path.clone()), &field.vis),
                             ),
                         ),
                         is_visibility_private(&field.vis.node, !in_enum),
@@ -69,6 +72,7 @@ fn check_variant_data<'tcx>(
 pub fn check_item_struct<'tcx>(
     ctxt: &Context<'tcx>,
     vir: &mut KrateX,
+    module_path: &Path,
     span: Span,
     id: &ItemId,
     visibility: vir::ast::Visibility,
@@ -84,7 +88,7 @@ pub fn check_item_struct<'tcx>(
     let (variant, one_field_private) = if vattrs.external_body {
         (ident_binder(&variant_name, &Arc::new(vec![])), false)
     } else {
-        check_variant_data(ctxt, &variant_name, variant_data, false)
+        check_variant_data(ctxt, module_path, &variant_name, variant_data, false)
     };
     let transparency = if vattrs.external_body {
         DatatypeTransparency::Never
@@ -105,6 +109,7 @@ pub fn check_item_struct<'tcx>(
 pub fn check_item_enum<'tcx>(
     ctxt: &Context<'tcx>,
     vir: &mut KrateX,
+    module_path: &Path,
     span: Span,
     id: &ItemId,
     visibility: vir::ast::Visibility,
@@ -119,7 +124,7 @@ pub fn check_item_enum<'tcx>(
         .iter()
         .map(|variant| {
             let variant_name = str_ident(&variant.ident.as_str());
-            check_variant_data(ctxt, &variant_name, &variant.data, true)
+            check_variant_data(ctxt, module_path, &variant_name, &variant.data, true)
         })
         .unzip();
     let one_field_private = one_field_private.into_iter().any(|x| x);

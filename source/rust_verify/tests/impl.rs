@@ -14,6 +14,7 @@ test_verify_one_file! {
     #[test] test_impl_1 STRUCT.to_string() + code_str! {
         impl Bike {
             #[spec]
+            #[verifier(pub_abstract)]
             pub fn is_hard_tail(&self) -> bool {
                 self.hard_tail
             }
@@ -33,8 +34,21 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_impl_no_self STRUCT.to_string() + code_str! {
+        impl Bike {
+            pub fn new() -> Bike {
+                ensures(|result: Bike| result.hard_tail);
+                Bike { hard_tail: true }
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] test_impl_mod_1 code! {
         mod M1 {
+            use builtin::*;
+
             #[derive(PartialEq, Eq)]
             pub struct Bike {
                 pub hard_tail: bool,
@@ -44,6 +58,11 @@ test_verify_one_file! {
                 #[spec]
                 pub fn is_hard_tail(&self) -> bool {
                     self.hard_tail
+                }
+
+                pub fn new() -> Bike {
+                    ensures(|result: Bike| result.hard_tail);
+                    Bike { hard_tail: true }
                 }
             }
         }
@@ -55,6 +74,11 @@ test_verify_one_file! {
 
             fn test_impl_1(b: Bike) {
                 requires(b.is_hard_tail());
+                assert(b.is_hard_tail());
+            }
+
+            fn test_impl_2() {
+                let b = Bike::new();
                 assert(b.is_hard_tail());
             }
         }
@@ -99,6 +123,7 @@ const IMPL_GENERIC_SHARED: &str = code_str! {
 
     impl<A> Wrapper<A> {
         #[spec]
+        #[verifier(pub_abstract)]
         pub fn take(self) -> A {
             self.v
         }
@@ -140,6 +165,7 @@ test_verify_one_file! {
 
         impl<A> Wrapper<A> {
             #[spec]
+            #[verifier(pub_abstract)]
             pub fn take<B>(self, b: B) -> Two<A, B> {
                 Two { a: self.v, b: b }
             }
@@ -239,4 +265,42 @@ test_verify_one_file! {
             fn index(&self, #[spec]idx: usize) -> &bool { &true }
         }
     } => Err(_)
+}
+
+test_verify_one_file! {
+    #[test] test_generic_struct code! {
+        #[derive(PartialEq, Eq)]
+        struct TemplateCar<V> {
+            four_doors: bool,
+            passengers: u64,
+            the_v: V,
+        }
+
+        impl<V> TemplateCar<V> {
+            fn template_new(v: V) -> TemplateCar<V> {
+                ensures(|result: TemplateCar<V>|
+                  equal(result.passengers, 205) && equal(result.the_v, v)
+                );
+                TemplateCar::<V> { four_doors: false, passengers: 205, the_v: v }
+            }
+
+            fn template_get_passengers(&self) -> u64 {
+                ensures(|result: u64| result == self.passengers);
+                self.passengers
+            }
+
+            fn template_get_v(self) -> V {
+                ensures(|result: V| equal(result, self.the_v));
+                self.the_v
+            }
+        }
+
+        fn test1() {
+            let c3 = TemplateCar::<u64>::template_new(5);
+            let p3 = c3.template_get_passengers();
+            assert(p3 == 205);
+            let v = c3.template_get_v();
+            assert(v == 5);
+        }
+    } => Ok(())
 }

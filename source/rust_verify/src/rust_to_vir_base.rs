@@ -31,7 +31,60 @@ pub(crate) fn def_path_to_vir_path<'tcx>(tcx: TyCtxt<'tcx>, def_path: DefPath) -
     Arc::new(PathX { krate, segments })
 }
 
+fn is_function_def_impl_item_node(node: rustc_hir::Node) -> bool {
+    match node {
+        rustc_hir::Node::ImplItem(rustc_hir::ImplItem {
+            kind: rustc_hir::ImplItemKind::Fn(..),
+            ..
+        }) => true,
+        _ => false,
+    }
+}
+
+pub(crate) fn typ_path_and_ident_to_vir_path<'tcx>(path: &Path, ident: vir::ast::Ident) -> Path {
+    let mut path = (**path).clone();
+    Arc::make_mut(&mut path.segments).push(ident);
+    Arc::new(path)
+}
+
+pub(crate) fn fn_item_hir_id_to_self_def_id<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    hir_id: HirId,
+) -> Option<DefId> {
+    let parent_id = tcx.hir().get_parent_node(hir_id);
+    let parent_node = tcx.hir().get(parent_id);
+    match parent_node {
+        rustc_hir::Node::Item(rustc_hir::Item {
+            kind: rustc_hir::ItemKind::Impl(impll), ..
+        }) => match &impll.self_ty.kind {
+            rustc_hir::TyKind::Path(QPath::Resolved(
+                None,
+                rustc_hir::Path { res: rustc_hir::def::Res::Def(_, self_def_id), .. },
+            )) => Some(*self_def_id),
+            _ => {
+                panic!("impl type is not given by a path");
+            }
+        },
+        _ => None,
+    }
+}
+
 pub(crate) fn def_id_to_vir_path<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> Path {
+    // The path that rustc gives a DefId might be given in terms of an 'impl' path
+    // However, it makes for a better path name to use the path to the *type*.
+    // So first, we check if the given DefId is the definition of a fn inside an impl.
+    // If so, we construct a VIR path based on the VIR path for the type.
+    if let Some(local_id) = def_id.as_local() {
+        let hir = tcx.hir().local_def_id_to_hir_id(local_id);
+        if is_function_def_impl_item_node(tcx.hir().get(hir)) {
+            if let Some(self_def_id) = fn_item_hir_id_to_self_def_id(tcx, hir) {
+                let ty_path = def_path_to_vir_path(tcx, tcx.def_path(self_def_id));
+                return typ_path_and_ident_to_vir_path(&ty_path, def_to_path_ident(tcx, def_id));
+            }
+        }
+    }
+    // Otherwise build a path based on the segments rustc gives us
+    // without doing anything fancy.
     def_path_to_vir_path(tcx, tcx.def_path(def_id))
 }
 
@@ -200,7 +253,7 @@ pub(crate) enum Attr {
     // hide body (from all modules) until revealed
     Opaque,
     // export function's require/ensure as global forall
-    ExportAsGlobalForall,
+    BroadcastForall,
     // when used in a spec context, promote to spec by inserting .view()
     Autoview,
     // add manual trigger to expression inside quantifier
@@ -211,8 +264,12 @@ pub(crate) enum Attr {
     BitVector,
     // for unforgeable token types
     Unforgeable,
+    // for 'atomic' operations (e.g., CAS)
+    Atomic,
     // specifies an invariant block
     InvariantBlock,
+    // an enum variant is_Variant
+    IsVariant,
 }
 
 fn get_trigger_arg(span: Span, attr_tree: &AttrTree) -> Result<u64, VirErr> {
@@ -261,8 +318,8 @@ pub(crate) fn parse_attrs(attrs: &[Attribute]) -> Result<Vec<Attr>, VirErr> {
                 Some(box [AttrTree::Fun(_, arg, None)]) if arg == "pub_abstract" => {
                     v.push(Attr::Abstract)
                 }
-                Some(box [AttrTree::Fun(_, arg, None)]) if arg == "export_as_global_forall" => {
-                    v.push(Attr::ExportAsGlobalForall)
+                Some(box [AttrTree::Fun(_, arg, None)]) if arg == "broadcast_forall" => {
+                    v.push(Attr::BroadcastForall)
                 }
                 Some(box [AttrTree::Fun(_, arg, None)]) if arg == "autoview" => {
                     v.push(Attr::Autoview)
@@ -270,8 +327,12 @@ pub(crate) fn parse_attrs(attrs: &[Attribute]) -> Result<Vec<Attr>, VirErr> {
                 Some(box [AttrTree::Fun(_, arg, None)]) if arg == "unforgeable" => {
                     v.push(Attr::Unforgeable)
                 }
+                Some(box [AttrTree::Fun(_, arg, None)]) if arg == "atomic" => v.push(Attr::Atomic),
                 Some(box [AttrTree::Fun(_, arg, None)]) if arg == "invariant_block" => {
                     v.push(Attr::InvariantBlock)
+                }
+                Some(box [AttrTree::Fun(_, arg, None)]) if arg == "is_variant" => {
+                    v.push(Attr::IsVariant)
                 }
                 Some(box [AttrTree::Fun(_, arg, Some(box [AttrTree::Fun(_, msg, None)]))])
                     if arg == "custom_req_err" =>
@@ -367,11 +428,13 @@ pub(crate) struct VerifierAttrs {
     pub(crate) external_body: bool,
     pub(crate) external: bool,
     pub(crate) is_abstract: bool,
-    pub(crate) export_as_global_forall: bool,
+    pub(crate) broadcast_forall: bool,
     pub(crate) autoview: bool,
     pub(crate) custom_req_err: Option<String>,
     pub(crate) bit_vector: bool,
     pub(crate) unforgeable: bool,
+    pub(crate) atomic: bool,
+    pub(crate) is_variant: bool,
 }
 
 pub(crate) fn get_verifier_attrs(attrs: &[Attribute]) -> Result<VerifierAttrs, VirErr> {
@@ -379,22 +442,26 @@ pub(crate) fn get_verifier_attrs(attrs: &[Attribute]) -> Result<VerifierAttrs, V
         external_body: false,
         external: false,
         is_abstract: false,
-        export_as_global_forall: false,
+        broadcast_forall: false,
         autoview: false,
         custom_req_err: None,
         bit_vector: false,
         unforgeable: false,
+        atomic: false,
+        is_variant: false,
     };
     for attr in parse_attrs(attrs)? {
         match attr {
             Attr::ExternalBody => vs.external_body = true,
             Attr::External => vs.external = true,
             Attr::Abstract => vs.is_abstract = true,
-            Attr::ExportAsGlobalForall => vs.export_as_global_forall = true,
+            Attr::BroadcastForall => vs.broadcast_forall = true,
             Attr::Autoview => vs.autoview = true,
             Attr::CustomReqErr(s) => vs.custom_req_err = Some(s.clone()),
             Attr::BitVector => vs.bit_vector = true,
             Attr::Unforgeable => vs.unforgeable = true,
+            Attr::Atomic => vs.atomic = true,
+            Attr::IsVariant => vs.is_variant = true,
             _ => {}
         }
     }
