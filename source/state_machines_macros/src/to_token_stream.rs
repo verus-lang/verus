@@ -17,7 +17,7 @@ use syn::{
     braced, AttrStyle, Attribute, Error, Expr, FieldsNamed, FnArg, Ident, ImplItemMethod, Meta,
     MetaList, NestedMeta, Path, PathArguments, PathSegment, Type,
 };
-use crate::weakest::to_weakest;
+use crate::weakest::{to_weakest, get_safety_conditions};
 
 pub fn output_token_stream(sm_and_funcs: SMAndFuncs) -> TokenStream {
     let SMAndFuncs { normal_fns, sm: maybe_sm } = sm_and_funcs;
@@ -152,6 +152,19 @@ pub fn output_primary_stuff(
             };
             impl_token_stream.extend(rel_fn);
         }
+
+        for safety_cond in get_safety_conditions(&trans.body) {
+            let args = self_args(&trans.args);
+            let name = Ident::new(&(trans.name.to_string() + "_safety"),
+                trans.name.span());
+            let rel_fn = quote!{
+                #[spec]
+                pub fn #name (#args) -> bool {
+                    #safety_cond
+                }
+            };
+            impl_token_stream.extend(rel_fn);
+        }
     }
 }
 
@@ -165,6 +178,17 @@ fn self_post_args(args: &Vec<Arg<Ident, Type>>) -> TokenStream {
         #(#args),*
     };
 }
+
+fn self_args(args: &Vec<Arg<Ident, Type>>) -> TokenStream {
+    let args: Vec<TokenStream> = args.iter().map(|arg| quote!{
+        #(arg.ident): #(arg.ty)
+    }).collect();
+    return quote! {
+        self: Self,
+        #(#args),*
+    };
+}
+
 
 fn shardable_type_to_type(stype: &ShardableType<Type>) -> Type {
     match stype {

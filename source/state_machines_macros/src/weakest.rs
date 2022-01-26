@@ -83,37 +83,78 @@ fn to_weakest_rec(trans: &TransitionStmt<Span, Ident, Expr>, p: Option<TokenStre
     }
 }
 
-pub fn get_safety_conditions(
-        ts: &TransitionStmt<Span, Ident, Expr>,
-        p: Vec<TokenStream>)
-) -> Vec<TokenStream> {
-    match trans {
-        TransitionStmt::Block(span, v) => {
-            let mut p = p;
-            for t in v.iter().rev() {
-                p = get_safety_conditions(t, p);
-            }
+pub fn get_safety_conditions(ts: &TransitionStmt<Span, Ident, Expr>) -> Vec<TokenStream> {
+    let v = get_safety_conditions_ts(ts);
+    v.iter().map(|ts| {
+        match to_weakest_rec(&ts, None) {
+            Some(e) => e,
+            None => quote! { true },
         }
-        TransitionStmt::Let(span, id, e) => {
-            return p.iter().map(|r|
-                quote! { let #id = #e; #r }
-            ).collect();
+    }).collect()
+}
+
+fn get_safety_conditions_ts(ts: &TransitionStmt<Span, Ident, Expr>
+) -> Vec<TransitionStmt<Span, Ident, Expr>> {
+    match ts {
+        TransitionStmt::Block(span, v) => {
+            let mut res: Vec<TransitionStmt<Span, Ident, Expr>> = Vec::new();
+            let mut prefix: Vec<TransitionStmt<Span, Ident, Expr>> = Vec::new();
+            for t in v {
+                let suffs = get_safety_conditions_ts(t);
+                res.append(&mut suffs.iter().map(|suff| {
+                    let mut x = prefix.clone();
+                    x.push(suff.clone());
+                    TransitionStmt::Block(*span, x)
+                }).collect());
+                prefix.push(to_asserts(t));
+            }
+            res
+        }
+        TransitionStmt::Let(_span, _id, _e) => {
+            Vec::new()
         }
         TransitionStmt::If(span, cond, e1, e2) => {
-        }
-        TransitionStmt::Require(span, e) => {
-            return p.iter().map(|r|
-                quote! { let ((#e) >>= #r) }
+            let v1 = get_safety_conditions_ts(e1);
+            let v2 = get_safety_conditions_ts(e2);
+            let mut m: Vec<TransitionStmt<Span, Ident, Expr>> = v1.iter().map(|t|
+                TransitionStmt::If(*span, cond.clone(), Box::new(t.clone()), Box::new(TransitionStmt::Block(*span, Vec::new())))
             ).collect();
+            m.append(&mut v2.iter().map(|t|
+                TransitionStmt::If(*span, cond.clone(), Box::new(TransitionStmt::Block(*span, Vec::new())), Box::new(t.clone()))
+            ).collect());
+            m
+        }
+        TransitionStmt::Require(_span, _e) => {
+            Vec::new()
         }
         TransitionStmt::Assert(span, e) => {
-            let q = vec![ quote!{ (e) } ];
-            q.append(p.iter().map(|r|
-                quote! { let ((#e) >>= #r) }
-            ).collect()
+            vec![ TransitionStmt::Require(*span, e.clone()) ]
         }
-        TransitionStmt::Update(span, id, e) => {
-            return p;
+        TransitionStmt::Update(span, _id, _e) => {
+            Vec::new()
+        }
+    }
+}
+
+fn to_asserts(ts: &TransitionStmt<Span, Ident, Expr>) -> TransitionStmt<Span, Ident, Expr> {
+    match ts {
+        TransitionStmt::Block(span, v) => {
+            TransitionStmt::Block(*span, v.iter().map(|t| to_asserts(t)).collect())
+        }
+        TransitionStmt::Let(_span, _id, _e) => {
+            ts.clone()
+        }
+        TransitionStmt::If(span, cond, e1, e2) => {
+            TransitionStmt::If(*span, cond.clone(), Box::new(to_asserts(e1)), Box::new(to_asserts(e2)))
+        }
+        TransitionStmt::Require(span, e) => {
+            TransitionStmt::Assert(*span, e.clone())
+        }
+        TransitionStmt::Assert(_span, _e) => {
+            ts.clone()
+        }
+        TransitionStmt::Update(span, _id, _e) => {
+            TransitionStmt::Block(*span, Vec::new())
         }
     }
 }
