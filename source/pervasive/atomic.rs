@@ -465,4 +465,4 @@ make_integer_atomic!(PAtomicI16, PermissionI16, AtomicI16, i16, wrapping_add_i16
 make_integer_atomic!(PAtomicI32, PermissionI32, AtomicI32, i32, wrapping_add_i32, wrapping_sub_i32, -0x8000_0000, 0x7fff_ffff);
 make_integer_atomic!(PAtomicI64, PermissionI64, AtomicI64, i64, wrapping_add_i64, wrapping_sub_i64, -0x8000_0000_0000_0000, 0x7fff_ffff_ffff_ffff);
 
-// TODO usize and isize
+// TODO usize and isize (for this, we need to be able to use constants like usize::MAX)
