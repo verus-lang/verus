@@ -1,9 +1,11 @@
 use crate::context::BodyCtxt;
+use crate::def::is_get_variant_fn_name;
 use crate::erase::ResolvedCall;
 use crate::rust_to_vir_base::{
-    def_id_to_vir_path, def_to_path_ident, get_range, get_trigger, get_var_mode, hack_get_def_name,
-    ident_to_var, is_smt_arith, is_smt_equality, mid_ty_to_vir, mk_range, parse_attrs, ty_to_vir,
-    typ_of_node, typ_of_node_expect_mut_ref, typ_path_and_ident_to_vir_path, Attr,
+    def_id_to_vir_path, def_to_path_ident, get_range, get_trigger, get_var_mode,
+    get_verifier_attrs, hack_get_def_name, ident_to_var, is_smt_arith, is_smt_equality,
+    mid_ty_to_vir, mk_range, parse_attrs, ty_to_vir, typ_of_node, typ_of_node_expect_mut_ref,
+    typ_path_and_ident_to_vir_path, Attr,
 };
 use crate::util::{
     err_span_str, err_span_string, slice_vec_map_result, spanned_new, spanned_typed_new,
@@ -269,6 +271,29 @@ fn fn_call_to_vir<'tcx>(
         def_id_to_vir_path(tcx, f)
     };
 
+    let is_get_variant = {
+        match tcx.hir().get_if_local(f) {
+            Some(rustc_hir::Node::ImplItem(
+                impl_item
+                @
+                rustc_hir::ImplItem {
+                    kind: rustc_hir::ImplItemKind::Fn(..),
+                    ident: fn_ident,
+                    ..
+                },
+            )) => {
+                let fn_attrs = bctx.ctxt.tcx.hir().attrs(impl_item.hir_id());
+                let fn_vattrs = get_verifier_attrs(fn_attrs)?;
+                if fn_vattrs.is_variant {
+                    Some(is_get_variant_fn_name(fn_ident).expect("invalid is_variant function"))
+                } else {
+                    None
+                }
+            }
+            _ => None,
+        }
+    };
+
     let f_name = path_as_rust_name(&def_id_to_vir_path(tcx, f));
     let is_admit = f_name == "builtin::admit";
     let is_requires = f_name == "builtin::requires";
@@ -349,7 +374,7 @@ fn fn_call_to_vir<'tcx>(
         expr.span,
         "call of trait impl"
     );
-    let name = Arc::new(FunX { path: path, trait_path: None });
+    let name = Arc::new(FunX { path: path.clone(), trait_path: None });
 
     record_fun(
         &bctx.ctxt,
@@ -361,7 +386,8 @@ fn fn_call_to_vir<'tcx>(
             || is_assert_by
             || is_choose
             || is_assert_bit_vector
-            || is_old,
+            || is_old
+            || is_get_variant.is_some(),
         is_implies,
     );
 
@@ -488,7 +514,7 @@ fn fn_call_to_vir<'tcx>(
         }
         _ => expr_to_vir(bctx, arg, ExprModifier::Regular),
     })?;
-    if let Some(autoview_typ) = autoview_typ {
+    let self_path = if let Some(autoview_typ) = autoview_typ {
         // replace f(arg0, arg1, ..., argn) with f(arg0.view(), arg1, ..., argn)
         let typ_args = if let TypX::Datatype(_, args) = &**autoview_typ {
             args.clone()
@@ -507,6 +533,37 @@ fn fn_call_to_vir<'tcx>(
         let target = CallTarget::Static(fun, typ_args);
         let viewx = ExprX::Call(target, Arc::new(vec![vir_args[0].clone()]));
         vir_args[0] = spanned_typed_new(expr.span, autoview_typ, viewx);
+        self_path
+    } else {
+        let mut self_path = path.clone();
+        let self_path_mut = Arc::make_mut(&mut self_path);
+        Arc::make_mut(&mut self_path_mut.segments).pop();
+        self_path
+    };
+
+    match is_get_variant {
+        Some((variant_name, None)) => {
+            return Ok(mk_expr(ExprX::UnaryOpr(
+                UnaryOpr::IsVariant { datatype: self_path, variant: str_ident(&variant_name) },
+                vir_args.into_iter().next().expect("missing arg for is_variant"),
+            )));
+        }
+        Some((variant_name, Some(variant_field))) => {
+            use crate::def::FieldName;
+            let variant_name_ident = str_ident(&variant_name);
+            return Ok(mk_expr(ExprX::UnaryOpr(
+                UnaryOpr::Field {
+                    datatype: self_path.clone(),
+                    variant: variant_name_ident.clone(),
+                    field: match variant_field {
+                        FieldName::Unnamed(i) => positional_field_ident(i),
+                        FieldName::Named(f) => str_ident(&f),
+                    },
+                },
+                vir_args.into_iter().next().expect("missing arg for is_variant"),
+            )));
+        }
+        None => {}
     }
 
     let is_smt_binary = if is_equal {
