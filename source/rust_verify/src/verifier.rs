@@ -360,8 +360,8 @@ impl Verifier {
         let mut global_ctx = vir::context::GlobalCtx::new(&krate, air_no_span);
         let krate = vir::ast_simplify::simplify_krate(&mut global_ctx, &krate)?;
 
-        #[cfg(build = "debug")]
-        vir::ast_util::check_krate_simplified(&krate);
+        #[cfg(debug_assertions)]
+        vir::check_ast_flavor::check_krate_simplified(&krate);
 
         air_context.blank_line();
         air_context.comment("Prelude");
