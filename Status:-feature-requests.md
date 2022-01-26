@@ -2,20 +2,20 @@ This document tracks paper-cuts and other usability issues that are not critical
 
 ## Modes
 
-* Default a variable's mode to the least upper bound of a datatype's constructor mode and the current mode:
+Default a variable's mode to the least upper bound of a datatype's constructor mode and the current mode:
 
-  ```
-  #[proof] struct A { … }
-  
-  // exec
-  fn a() {
-    let a: A = A { … } 
-  }
-  ```
+```
+#[proof] struct A { … }
 
-  Variable `a` should be `proof` by default.
+// exec
+fn a() {
+  let a: A = A { … } 
+}
+```
 
-  Suggested by @tjhance.
+Variable `a` should be `proof` by default.
+
+Suggested by @tjhance.
 
 ## Functions taking mutable arguments
 
@@ -28,3 +28,13 @@ To put a finer point on it: referencing an argument x in a postcondition means s
 I think my ideal would be something like:
 * in requires, doesn't matter - could omit old, or use old to be explicit
 * in ensures, MUST either use old or new to be explicit
+
+## Report the first assertion in the source code that fails
+
+Verus currently reports the first error reported by Z3, which isn't guaranteed to be the first failing assertion in the source code.
+
+@Chris-Hawblitzel suggests
+
+> So we could have Verus automatically double-check that the earlier assertions all succeed.
+> [...] it would require one additional Z3 query to double-check the earlier assertions, potentially doubling the total Z3 time whenever there's an error.  So if we do this, I would prefer for Verus to print the first error message immediately, and then start the additional Z3 query.
+
