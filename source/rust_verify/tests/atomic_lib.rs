@@ -5,7 +5,7 @@ use common::*;
 
 test_verify_one_file! {
     #[test] test_atomic_u64 code! {
-        use crate::pervasive::{atomics::*};
+        use crate::pervasive::{atomic::*};
         use crate::pervasive::{modes::*};
         use crate::pervasive::result::*;
 
@@ -98,7 +98,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_atomic_u32 code! {
-        use crate::pervasive::{atomics::*};
+        use crate::pervasive::{atomic::*};
         use crate::pervasive::{modes::*};
         use crate::pervasive::result::*;
 
@@ -191,7 +191,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_atomic_u16 code! {
-        use crate::pervasive::{atomics::*};
+        use crate::pervasive::{atomic::*};
         use crate::pervasive::{modes::*};
         use crate::pervasive::result::*;
 
@@ -284,7 +284,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_atomic_u8 code! {
-        use crate::pervasive::{atomics::*};
+        use crate::pervasive::{atomic::*};
         use crate::pervasive::{modes::*};
         use crate::pervasive::result::*;
 
@@ -377,7 +377,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_atomic_i64 code! {
-        use crate::pervasive::{atomics::*};
+        use crate::pervasive::{atomic::*};
         use crate::pervasive::{modes::*};
         use crate::pervasive::result::*;
 
@@ -470,7 +470,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_atomic_i32 code! {
-        use crate::pervasive::{atomics::*};
+        use crate::pervasive::{atomic::*};
         use crate::pervasive::{modes::*};
         use crate::pervasive::result::*;
 
@@ -563,7 +563,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_atomic_i16 code! {
-        use crate::pervasive::{atomics::*};
+        use crate::pervasive::{atomic::*};
         use crate::pervasive::{modes::*};
         use crate::pervasive::result::*;
 
@@ -656,7 +656,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_atomic_i8 code! {
-        use crate::pervasive::{atomics::*};
+        use crate::pervasive::{atomic::*};
         use crate::pervasive::{modes::*};
         use crate::pervasive::result::*;
 
@@ -749,7 +749,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_atomic_bool code! {
-        use crate::pervasive::{atomics::*};
+        use crate::pervasive::{atomic::*};
         use crate::pervasive::{modes::*};
         use crate::pervasive::result::*;
 

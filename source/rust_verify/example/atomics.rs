@@ -3,7 +3,7 @@ use builtin::*;
 mod pervasive;
 use pervasive::*;
 use crate::pervasive::{invariants::*};
-use crate::pervasive::{atomics::*};
+use crate::pervasive::{atomic::*};
 use crate::pervasive::{modes::*};
 
 #[verifier(atomic)]
