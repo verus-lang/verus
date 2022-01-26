@@ -1,7 +1,7 @@
 use builtin_macros::*;
 use builtin::*;
 mod pervasive;
-use pervasive::*;
+use pervasive::{*, option::Option, result::Result};
 
 #[derive(Structural, PartialEq, Eq)]
 struct Car<P> {
@@ -52,10 +52,20 @@ fn test_is_variant_2(v: Vehicle2<u64>) {
     requires(v.is_Train() && v.get_Train_0());
 }
 
-#[is_variant]
-pub enum Maybe<T> {
-    Some(T),
-    None,
+fn test_option(o: Option<u64>) -> u64 {
+    ensures(|res: u64| res == if o.is_Some() { o.get_Some_0() } else { 0 });
+    match o {
+        Option::Some(v) => v,
+        Option::None => 0,
+    }
+}
+
+fn test_result<E>(r: Result<u64, E>) -> u64 {
+    ensures(|res: u64| res == if r.is_Ok() { r.get_Ok_0() } else { 0 });
+    match r {
+        Result::Ok(v) => v,
+        Result::Err(_) => 0,
+    }
 }
 
 fn main() {

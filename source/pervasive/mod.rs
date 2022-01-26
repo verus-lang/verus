@@ -1,5 +1,6 @@
 pub mod map;
 pub mod option;
+pub mod result;
 pub mod vec;
 pub mod seq;
 pub mod seq_lib;
