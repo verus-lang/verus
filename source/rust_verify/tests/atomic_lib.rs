@@ -84,6 +84,12 @@ test_verify_one_file! {
             assert(equal(l, Result::Ok(4)));
             assert(perm.value == 6);
 
+            let l = at.fetch_nand(&mut perm, 3);
+            assert(l == 6);
+            assert_bit_vector(!(6 as u64 & 3 as u64) == 0xffff_ffff_ffff_fffd);
+            assert(perm.value == 0xffff_ffff_ffff_fffd);
+
+            at.store(&mut perm, 6);
             let l = at.into_inner(perm);
             assert(l == 6);
         }
@@ -171,7 +177,12 @@ test_verify_one_file! {
             assert(equal(l, Result::Ok(4)));
             assert(perm.value == 6);
 
+            let l = at.fetch_nand(&mut perm, 3);
+            assert(l == 6);
+            assert_bit_vector(!(6 as u32 & 3 as u32) == 0xffff_fffd);
+            assert(perm.value == 0xffff_fffd);
 
+            at.store(&mut perm, 6);
             let l = at.into_inner(perm);
             assert(l == 6);
         }
@@ -259,6 +270,12 @@ test_verify_one_file! {
             assert(equal(l, Result::Ok(4)));
             assert(perm.value == 6);
 
+            let l = at.fetch_nand(&mut perm, 3);
+            assert(l == 6);
+            assume(!(6 as u16 & 3 as u16) == 0xfffd);
+            assert(perm.value == 0xfffd);
+
+            at.store(&mut perm, 6);
             let l = at.into_inner(perm);
             assert(l == 6);
         }
@@ -346,6 +363,12 @@ test_verify_one_file! {
             assert(equal(l, Result::Ok(4)));
             assert(perm.value == 6);
 
+            let l = at.fetch_nand(&mut perm, 3);
+            assert(l == 6);
+            assume(!(6 as u8 & 3 as u8) == 0xfd);
+            assert(perm.value == 0xfd);
+
+            at.store(&mut perm, 6);
             let l = at.into_inner(perm);
             assert(l == 6);
         }
@@ -433,6 +456,12 @@ test_verify_one_file! {
             assert(equal(l, Result::Ok(4)));
             assert(perm.value == 6);
 
+            let l = at.fetch_nand(&mut perm, 3);
+            assert(l == 6);
+            assume(!(6 as i64 & 3 as i64) == -3);
+            assert(perm.value == -3);
+
+            at.store(&mut perm, 6);
             let l = at.into_inner(perm);
             assert(l == 6);
         }
@@ -520,6 +549,12 @@ test_verify_one_file! {
             assert(equal(l, Result::Ok(4)));
             assert(perm.value == 6);
 
+            let l = at.fetch_nand(&mut perm, 3);
+            assert(l == 6);
+            assume(!(6 as i32 & 3 as i32) == -3);
+            assert(perm.value == -3);
+
+            at.store(&mut perm, 6);
             let l = at.into_inner(perm);
             assert(l == 6);
         }
@@ -607,6 +642,12 @@ test_verify_one_file! {
             assert(equal(l, Result::Ok(4)));
             assert(perm.value == 6);
 
+            let l = at.fetch_nand(&mut perm, 3);
+            assert(l == 6);
+            assume(!(6 as i16 & 3 as i16) == -3);
+            assert(perm.value == -3);
+
+            at.store(&mut perm, 6);
             let l = at.into_inner(perm);
             assert(l == 6);
         }
@@ -694,6 +735,12 @@ test_verify_one_file! {
             assert(equal(l, Result::Ok(4)));
             assert(perm.value == 6);
 
+            let l = at.fetch_nand(&mut perm, 3);
+            assert(l == 6);
+            assume(!(6 as i8 & 3 as i8) == -3);
+            assert(perm.value == -3);
+
+            at.store(&mut perm, 6);
             let l = at.into_inner(perm);
             assert(l == 6);
         }
