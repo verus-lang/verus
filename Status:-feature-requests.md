@@ -31,7 +31,7 @@ I think my ideal would be something like:
 
 ## Report the first assertion in the source code that fails
 
-Verus currently reports the first error reported by Z3, which isn't guaranteed to be the first failing assertion in the source code.
+Verus currently reports the first error reported by Z3, which isn't guaranteed to be the first failing assertion in the source code. This is surprising when coming from Dafny, it can be problematic for certain tests, but it's also why Verus is often much faster at reporting errors (as Dafny has to start a separate query for each error).
 
 @Chris-Hawblitzel suggests
 
