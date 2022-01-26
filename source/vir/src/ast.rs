@@ -274,8 +274,10 @@ pub type Exprs = Arc<Vec<Expr>>;
 pub enum ExprX {
     /// Constant
     Const(Constant),
-    /// Local variable
+    /// Local variable as a right-hand side
     Var(Ident),
+    /// Local variable as a left-hand side
+    VarLoc(Ident),
     /// Local variable, at a different stage (e.g. a mutable reference in the post-state)
     VarAt(Ident, VarAt),
     /// Use of a const variable.  Note: ast_simplify replaces this with Call.

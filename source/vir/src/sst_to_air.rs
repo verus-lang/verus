@@ -325,6 +325,10 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: ExprCtxt) -> Expr {
             expr
         }
         ExpX::Var(x) => string_var(&suffix_local_unique_id(x)),
+        ExpX::VarLoc(x) => {
+            dbg!(&x);
+            todo!()
+        }
         ExpX::VarAt(x, VarAt::Pre) => match expr_ctxt {
             ExprCtxt::Spec => string_var(&prefix_pre_var(&suffix_local_stmt_id(x))),
             ExprCtxt::Body => {

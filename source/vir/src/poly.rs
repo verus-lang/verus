@@ -226,6 +226,9 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
     match &expr.x {
         ExprX::Const(_) => expr.clone(),
         ExprX::Var(x) => SpannedTyped::new(&expr.span, &state.types[x], ExprX::Var(x.clone())),
+        ExprX::VarLoc(x) => {
+            SpannedTyped::new(&expr.span, &state.types[x], ExprX::VarLoc(x.clone()))
+        }
         ExprX::VarAt(x, at) => {
             SpannedTyped::new(&expr.span, &state.types[x], ExprX::VarAt(x.clone(), *at))
         }

@@ -102,7 +102,7 @@ fn check_decrease_call(ctxt: &Ctxt, span: &Span, name: &Fun, args: &Exps) -> Res
 fn terminates(ctxt: &Ctxt, exp: &Exp) -> Result<Exp, VirErr> {
     let bool_exp = |expx: ExpX| SpannedTyped::new(&exp.span, &Arc::new(TypX::Bool), expx);
     match &exp.x {
-        ExpX::Const(_) | ExpX::Var(..) | ExpX::VarAt(..) | ExpX::Old(..) => {
+        ExpX::Const(_) | ExpX::Var(..) | ExpX::VarAt(..) | ExpX::VarLoc(..) | ExpX::Old(..) => {
             Ok(bool_exp(ExpX::Const(Constant::Bool(true))))
         }
         ExpX::Loc(e) => terminates(ctxt, e),

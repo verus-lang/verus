@@ -103,15 +103,16 @@ fn small_or_temp(state: &mut State, expr: &Expr) -> (Vec<Stmt>, Expr) {
 }
 
 /// Returns (statements for temp expressions, simplified expr, contains location)
-fn small_loc_or_temp(state: &mut State, expr: &Expr, in_loc: bool) -> SmallLocOrTemp {
+fn small_loc_or_temp(
+    state: &mut State,
+    expr: &Expr,
+    in_loc: bool, /* TODO in_loc may be unnecessary */
+) -> SmallLocOrTemp {
     let SmallLocOrTemp(mut stmts, simplified_expr, contains_loc) = match &expr.x {
-        ExprX::Const(c) => SmallLocOrTemp(vec![], expr.clone(), false),
-        ExprX::ConstVar(c) => todo!(), // SmallLocOrTemp(vec![], expr.clone(), false),
-        ExprX::Var(x) => SmallLocOrTemp(vec![], expr.clone(), in_loc),
-        ExprX::VarAt(x, at) => {
         ExprX::Const(..) => SmallLocOrTemp(vec![], expr.clone(), false),
-        ExprX::ConstVar(c) => todo!(), // SmallLocOrTemp(vec![], expr.clone(), false),
+        ExprX::ConstVar(..) => todo!(), // SmallLocOrTemp(vec![], expr.clone(), false),
         ExprX::Var(..) => SmallLocOrTemp(vec![], expr.clone(), in_loc),
+        ExprX::VarLoc(..) => SmallLocOrTemp(vec![], expr.clone(), true),
         ExprX::VarAt(..) => {
             if in_loc {
                 panic!("unexpected mutable reference of old(x)");
@@ -119,7 +120,7 @@ fn small_loc_or_temp(state: &mut State, expr: &Expr, in_loc: bool) -> SmallLocOr
             SmallLocOrTemp(vec![], expr.clone(), false)
         }
         ExprX::Loc(e) => {
-            let SmallLocOrTemp(stmts, ee, contains_loc) = small_loc_or_temp(state, e, true);
+            let SmallLocOrTemp(stmts, ee, _contains_loc) = small_loc_or_temp(state, e, true);
             SmallLocOrTemp(stmts, expr.new_x(ExprX::Loc(ee)), true)
         }
         ExprX::Call(target, es) => {
@@ -173,18 +174,12 @@ fn small_loc_or_temp(state: &mut State, expr: &Expr, in_loc: bool) -> SmallLocOr
             let expr2 = exprs.next().unwrap();
             SmallLocOrTemp(stmts, expr.new_x(ExprX::Binary(*op, expr1, expr2)), contains_loc)
         }
-        ExprX::Quant(quant, binders, e1) => {
-            small_loc_or_temp(state, e1, in_loc)
-                .map_expr(|expr1| expr.new_x(ExprX::Quant(*quant, binders.clone(), expr1)))
-        }
-        ExprX::Closure(params, body) => {
-            small_loc_or_temp(state, body, in_loc)
-                .map_expr(|b| expr.new_x(ExprX::Closure(params.clone(), b)))
-        }
-        ExprX::Choose(binder, e1) => {
-            small_loc_or_temp(state, e1, in_loc)
-                .map_expr(|expr1| expr.new_x(ExprX::Choose(binder.clone(), expr1)))
-        }
+        ExprX::Quant(quant, binders, e1) => small_loc_or_temp(state, e1, in_loc)
+            .map_expr(|expr1| expr.new_x(ExprX::Quant(*quant, binders.clone(), expr1))),
+        ExprX::Closure(params, body) => small_loc_or_temp(state, body, in_loc)
+            .map_expr(|b| expr.new_x(ExprX::Closure(params.clone(), b))),
+        ExprX::Choose(binder, e1) => small_loc_or_temp(state, e1, in_loc)
+            .map_expr(|expr1| expr.new_x(ExprX::Choose(binder.clone(), expr1))),
         ExprX::Assign(e1, e2) => {
             let (stmts, exprs, contains_loc) =
                 small_loc_or_temp_exprs(state, &[e1.clone(), e2.clone()], in_loc);
@@ -211,8 +206,7 @@ fn small_loc_or_temp(state: &mut State, expr: &Expr, in_loc: bool) -> SmallLocOr
             if let Some(e3) = e3.as_ref() {
                 es.push(e3.clone());
             }
-            let (stmts, exprs, contains_loc) =
-                small_loc_or_temp_exprs(state, &es, in_loc);
+            let (stmts, exprs, contains_loc) = small_loc_or_temp_exprs(state, &es, in_loc);
             let mut exprs = exprs.into_iter();
             let expr1 = exprs.next().unwrap();
             let expr2 = exprs.next().unwrap();

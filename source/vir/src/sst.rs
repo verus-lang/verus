@@ -35,6 +35,7 @@ pub type Exps = Arc<Vec<Exp>>;
 pub enum ExpX {
     Const(Constant),
     Var(UniqueIdent),
+    VarLoc(UniqueIdent),
     VarAt(Ident, VarAt),
     Loc(Exp),
     // used only during sst_to_air to generate AIR Old

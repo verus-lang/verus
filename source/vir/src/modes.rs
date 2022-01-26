@@ -181,7 +181,8 @@ fn add_pattern(typing: &mut Typing, mode: Mode, pattern: &Pattern) -> Result<(),
 fn check_expr(typing: &mut Typing, outer_mode: Mode, expr: &Expr) -> Result<Mode, VirErr> {
     match &expr.x {
         ExprX::Const(_) => Ok(Mode::Exec),
-        ExprX::Var(x) | ExprX::VarAt(x, _) => {
+        ExprX::Var(x) | ExprX::VarLoc(x) | ExprX::VarAt(x, _) => {
+            // TODO VarLoc mode ???
             let mode = mode_join(outer_mode, typing.get(x).1);
             if typing.in_forall_stmt && mode == Mode::Proof {
                 // Proof variables may be used as spec, but not as proof inside forall statements.

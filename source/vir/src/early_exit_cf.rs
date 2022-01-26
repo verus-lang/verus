@@ -50,6 +50,7 @@ fn expr_get_early_exits_rec(
         match &expr.x {
             ExprX::Const(..)
             | ExprX::Var(..)
+            | ExprX::VarLoc(..)
             | ExprX::VarAt(..)
             | ExprX::ConstVar(..)
             | ExprX::Loc(..)

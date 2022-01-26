@@ -160,7 +160,7 @@ where
         VisitorControlFlow::Return => VisitorControlFlow::Recurse,
         VisitorControlFlow::Recurse => {
             match &expr.x {
-                ExprX::Const(_) | ExprX::Var(_) | ExprX::VarAt(..) | ExprX::ConstVar(..) => (),
+                ExprX::Const(_) | ExprX::Var(_) | ExprX::VarLoc(_) | ExprX::VarAt(_, _) | ExprX::ConstVar(..) => (),
                 ExprX::Loc(e) => {
                     expr_visitor_control_flow!(expr_visitor_dfs(e, map, mf));
                 }
@@ -328,6 +328,7 @@ where
     let exprx = match &expr.x {
         ExprX::Const(c) => ExprX::Const(c.clone()),
         ExprX::Var(x) => ExprX::Var(x.clone()),
+        ExprX::VarLoc(x) => ExprX::VarLoc(x.clone()),
         ExprX::VarAt(x, at) => ExprX::VarAt(x.clone(), at.clone()),
         ExprX::ConstVar(x) => ExprX::ConstVar(x.clone()),
         ExprX::Loc(e) => ExprX::Loc(map_expr_visitor_env(e, map, env, fe, fs, ft)?),
