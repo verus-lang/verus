@@ -129,19 +129,30 @@ fn check_bv_unary_exprs(
     typing: &mut Typing,
     op: UnaryOp,
     f_name: &str,
-    exprs: &[Expr],
+    expr: &Expr,
 ) -> Result<Typ, TypeError> {
     match op {
         UnaryOp::BitExtract(high, _) => {
-            let t0 = check_expr(typing, &exprs[0])?;
+            let t0 = check_expr(typing, expr)?;
             let w_old = get_bv_width(&t0)?;
             let w_new = high + 1;
             if w_old < w_new {
-                panic!("Interner Error: bit-vec extract to a longer size");
+                Err(format!(
+                    "Interner Error: bit-vec extract to a longer size. {} to {} ",
+                    w_old, w_new
+                ))
+            } else {
+                Ok(Arc::new(TypX::BitVec(w_new)))
             }
-            Ok(Arc::new(TypX::BitVec(w_new)))
         }
-        _ => panic!("Interner Error: not a bv unary op, got {}", f_name),
+        UnaryOp::BitNot => {
+            let t0 = check_expr(typing, expr)?;
+            match get_bv_width(&t0) {
+                Ok(_) => Ok(t0.clone()),
+                Err(..) => Err("Interner Error: not a bv type inside a bvnot".to_string()),
+            }
+        }
+        _ => Err(format!("Interner Error: not a bv unary op, got {}", f_name)),
     }
 }
 
@@ -205,8 +216,11 @@ fn check_expr(typing: &mut Typing, expr: &Expr) -> Result<Typ, TypeError> {
             }
         }
         ExprX::Unary(UnaryOp::Not, e1) => check_exprs(typing, "not", &[bt()], &bt(), &[e1.clone()]),
+        ExprX::Unary(UnaryOp::BitNot, e1) => {
+            check_bv_unary_exprs(typing, UnaryOp::BitNot, "bvnot", &e1.clone())
+        }
         ExprX::Unary(UnaryOp::BitExtract(high, low), e1) => {
-            check_bv_unary_exprs(typing, UnaryOp::BitExtract(*high, *low), "extract", &[e1.clone()])
+            check_bv_unary_exprs(typing, UnaryOp::BitExtract(*high, *low), "extract", &e1.clone())
         }
         ExprX::Binary(BinaryOp::Implies, e1, e2) => {
             check_exprs(typing, "=>", &[bt(), bt()], &bt(), &[e1.clone(), e2.clone()])

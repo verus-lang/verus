@@ -1186,8 +1186,13 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
         ExprKind::Box(e) => expr_to_vir_inner(bctx, e, ExprModifier::Regular),
         ExprKind::Unary(op, arg) => match op {
             UnOp::Not => {
+                let not_op = match (tc.node_type(expr.hir_id)).kind() {
+                    TyKind::Adt(_, _) | TyKind::Uint(_) | TyKind::Int(_) => UnaryOp::BitNot,
+                    TyKind::Bool => UnaryOp::Not,
+                    _ => panic!("Internal error on UnOp::Not translation"),
+                };
                 let varg = expr_to_vir(bctx, arg, modifier)?;
-                Ok(mk_expr(ExprX::Unary(UnaryOp::Not, varg)))
+                Ok(mk_expr(ExprX::Unary(not_op, varg)))
             }
             UnOp::Neg => {
                 let zero_const = vir::ast::Constant::Nat(Arc::new("0".to_string()));

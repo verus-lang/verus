@@ -95,6 +95,8 @@ pub enum TypX {
 pub enum UnaryOp {
     /// boolean not
     Not,
+    /// bitwise not
+    BitNot,
     /// Mark an expression as a member of an SMT quantifier trigger group.
     /// Each trigger group becomes one SMT trigger containing all the expressions in the trigger group.
     /// Each group is named by either Some integer, or the unnamed group None.
