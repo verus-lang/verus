@@ -224,3 +224,11 @@ test_verify_one_file! {
         }
     } => Err(_)
 }
+
+test_verify_one_file! {
+    #[test] ret_mode_fail_requires code! {
+        fn f() {
+            requires({while false {}; true});
+        }
+    } => Err(TestErr { has_vir_error: true, .. })
+}

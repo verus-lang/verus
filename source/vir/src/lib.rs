@@ -33,6 +33,7 @@ pub mod ast_simplify;
 mod ast_to_sst;
 pub mod ast_util;
 mod ast_visitor;
+pub mod check_ast_flavor;
 pub mod context;
 pub mod datatype_to_air;
 pub mod def;

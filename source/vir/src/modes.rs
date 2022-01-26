@@ -133,7 +133,7 @@ impl AtomicInstCollector {
             }
             return Err(e);
         }
-        return Ok(());
+        Ok(())
     }
 }
 
@@ -170,7 +170,7 @@ fn add_pattern(typing: &mut Typing, mode: Mode, pattern: &Pattern) -> Result<(),
             let variant =
                 datatype.x.variants.iter().find(|v| v.name == *variant).expect("missing variant");
             for (binder, field) in patterns.iter().zip(variant.a.iter()) {
-                let (_, field_mode) = field.a;
+                let (_, field_mode, _) = field.a;
                 add_pattern(typing, mode_join(field_mode, mode), &binder.a)?;
             }
             Ok(())
@@ -265,7 +265,7 @@ fn check_expr(typing: &mut Typing, outer_mode: Mode, expr: &Expr) -> Result<Mode
                 mode = mode_join(mode, check_expr(typing, outer_mode, update)?);
             }
             for arg in binders.iter() {
-                let (_, field_mode) = get_field(&variant.a, &arg.name).a;
+                let (_, field_mode, _) = get_field(&variant.a, &arg.name).a;
                 let mode_arg = check_expr(typing, mode_join(outer_mode, field_mode), &arg.a)?;
                 if !mode_le(mode_arg, field_mode) {
                     // allow this arg by weakening whole struct's mode
@@ -285,10 +285,10 @@ fn check_expr(typing: &mut Typing, outer_mode: Mode, expr: &Expr) -> Result<Mode
         ExprX::UnaryOpr(UnaryOpr::HasType(_), _) => panic!("internal error: HasType in modes.rs"),
         ExprX::UnaryOpr(UnaryOpr::IsVariant { .. }, e1) => check_expr(typing, outer_mode, e1),
         ExprX::UnaryOpr(UnaryOpr::TupleField { .. }, e1) => check_expr(typing, outer_mode, e1),
-        ExprX::UnaryOpr(UnaryOpr::Field { datatype, variant: _, field }, e1) => {
+        ExprX::UnaryOpr(UnaryOpr::Field { datatype, variant, field }, e1) => {
             let e1_mode = check_expr(typing, outer_mode, e1)?;
             let datatype = &typing.datatypes[datatype];
-            let field = get_field(&datatype.x.get_only_variant().a, field);
+            let field = get_field(&datatype.x.get_variant(variant).a, field);
             Ok(mode_join(e1_mode, field.a.1))
         }
         ExprX::Binary(op, e1, e2) => {
@@ -315,8 +315,6 @@ fn check_expr(typing: &mut Typing, outer_mode: Mode, expr: &Expr) -> Result<Mode
             Ok(Mode::Spec)
         }
         ExprX::Closure(params, body) => {
-            // Note: captures and call are not filled in at this point (ast_simplify sets them),
-            // so there's no need to check them here.
             typing.vars.push_scope(true);
             for binder in params.iter() {
                 typing.insert(&expr.span, &binder.name, false, Mode::Spec);
@@ -535,6 +533,24 @@ fn check_function(typing: &mut Typing, function: &Function) -> Result<(), VirErr
         }
         typing.insert(&function.span, &param.x.name, param.x.is_mut, param.x.mode);
     }
+
+    for expr in function.x.require.iter() {
+        check_expr_has_mode(typing, Mode::Spec, expr, Mode::Spec)?;
+    }
+
+    typing.vars.push_scope(true);
+    if function.x.has_return() {
+        typing.insert(&function.span, &function.x.ret.x.name, false, function.x.ret.x.mode);
+    }
+    for expr in function.x.ensure.iter() {
+        check_expr_has_mode(typing, Mode::Spec, expr, Mode::Spec)?;
+    }
+    typing.vars.pop_scope();
+
+    for expr in function.x.decrease.iter() {
+        check_expr_has_mode(typing, Mode::Spec, expr, Mode::Spec)?;
+    }
+
     if function.x.has_return() {
         let ret_mode = function.x.ret.x.mode;
         if !mode_le(function.x.mode, ret_mode) {

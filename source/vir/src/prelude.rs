@@ -49,6 +49,7 @@ pub(crate) fn prelude_nodes() -> Vec<Node> {
     let uint_or = str_to_node(UINT_OR);
     let uint_shr = str_to_node(UINT_SHR);
     let uint_shl = str_to_node(UINT_SHL);
+    let uint_not = str_to_node(UINT_NOT);
 
     nodes_vec!(
         // Fuel
@@ -280,6 +281,7 @@ pub(crate) fn prelude_nodes() -> Vec<Node> {
         (declare-fun [uint_or] (Int Int) Int)
         (declare-fun [uint_shr] (Int Int) Int)
         (declare-fun [uint_shl] (Int Int) Int)
+        (declare-fun [uint_not] (Int) Int)
     )
 }
 

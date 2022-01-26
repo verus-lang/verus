@@ -95,6 +95,8 @@ pub enum TypX {
 pub enum UnaryOp {
     /// boolean not
     Not,
+    /// bitwise not
+    BitNot,
     /// Mark an expression as a member of an SMT quantifier trigger group.
     /// Each trigger group becomes one SMT trigger containing all the expressions in the trigger group.
     /// Each group is named by either Some integer, or the unnamed group None.
@@ -355,7 +357,7 @@ pub struct FunctionAttrsX {
     /// List of functions that this function wants to view as opaque
     pub hidden: Arc<Vec<Fun>>,
     /// Create a global axiom saying forall params, require ==> ensure
-    pub export_as_global_forall: bool,
+    pub broadcast_forall: bool,
     /// In triggers_auto, don't use this function as a trigger
     pub no_auto_trigger: bool,
     /// Custom error message to display when a pre-condition fails
@@ -429,11 +431,11 @@ pub struct FunctionX {
 }
 
 /// Single field in a variant
-pub type Field = Binder<(Typ, Mode)>;
+pub type Field = Binder<(Typ, Mode, Visibility)>;
 /// List of fields in a variant
 /// For tuple-style variants, the fields appear in order and are named "0", "1", etc.
 /// For struct-style variants, the fields may appear in any order
-pub type Fields = Binders<(Typ, Mode)>;
+pub type Fields = Binders<(Typ, Mode, Visibility)>;
 pub type Variant = Binder<Fields>;
 pub type Variants = Binders<Fields>;
 

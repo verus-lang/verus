@@ -407,11 +407,12 @@ fn simplify_expr(ctxt: &mut Context, state: &mut State, expr: &Expr) -> (Typ, Ex
             (typ.clone(), Arc::new(ExprX::Apply(apply_fun, Arc::new(es))), t)
         }
         ExprX::Unary(op, e1) => {
+            let (es, ts) = simplify_exprs_ref(ctxt, state, &vec![e1]);
             let typ = match op {
                 UnaryOp::Not => Arc::new(TypX::Bool),
                 UnaryOp::BitExtract(high, _) => Arc::new(TypX::BitVec(high + 1)),
+                UnaryOp::BitNot => ts[0].0.clone(),
             };
-            let (es, ts) = simplify_exprs_ref(ctxt, state, &vec![e1]);
             let (es, t) = enclose(state, App::Unary(*op), es, ts);
             (typ, Arc::new(ExprX::Unary(*op, es[0].clone())), t)
         }

@@ -4,7 +4,6 @@ use crate::ast::{
 };
 use crate::ast_to_sst::expr_to_exp;
 use crate::ast_util::err_str;
-use crate::ast_visitor::map_expr_visitor;
 use crate::context::Ctx;
 use crate::def::{
     check_decrease_int, decrease_at_entry, height, prefix_recursive_fun, suffix_rename, Spanned,
@@ -374,31 +373,19 @@ pub(crate) fn check_termination_stm(
     Ok((decls, stm_block))
 }
 
-fn add_call_graph_edges(
-    call_graph: &mut Graph<Fun>,
-    src: &Fun,
-    expr: &crate::ast::Expr,
-) -> Result<crate::ast::Expr, VirErr> {
-    use crate::ast::ExprX;
-
-    match &expr.x {
-        ExprX::Call(CallTarget::Static(x, _), _) | ExprX::Fuel(x, _) => {
-            call_graph.add_edge(src.clone(), x.clone())
-        }
-        _ => {}
-    }
-    Ok(expr.clone())
-}
-
-pub(crate) fn expand_call_graph(
-    call_graph: &mut Graph<Fun>,
-    function: &Function,
-) -> Result<(), VirErr> {
+pub(crate) fn expand_call_graph(call_graph: &mut Graph<Fun>, function: &Function) {
     // We only traverse expressions (not statements), since calls only appear in the former (see ast.rs)
     if let Some(body) = &function.x.body {
-        map_expr_visitor(body, &mut |expr| {
-            add_call_graph_edges(call_graph, &function.x.name, expr)
-        })?;
+        crate::ast_visitor::expr_visitor_check::<VirErr, _>(body, &mut |expr| {
+            use crate::ast::ExprX;
+            match &expr.x {
+                ExprX::Call(CallTarget::Static(x, _), _) | ExprX::Fuel(x, _) => {
+                    call_graph.add_edge(function.x.name.clone(), x.clone())
+                }
+                _ => {}
+            }
+            Ok(())
+        })
+        .expect("expr_visitor_check failed unexpectedly");
     }
-    Ok(())
 }

@@ -21,6 +21,7 @@ extern crate rustc_typeck;
 pub mod config;
 pub mod context;
 pub mod debugger;
+pub mod def;
 pub mod driver;
 pub mod erase;
 pub mod file_loader;

@@ -11,8 +11,8 @@ use crate::sst::{BndX, ExpX};
 use crate::sst_to_air::{exp_to_expr, fun_to_air_ident, typ_invariant, typ_to_air, ExprCtxt};
 use crate::util::{vec_map, vec_map_result};
 use air::ast::{
-    BinaryOp, Bind, BindX, Binder, BinderX, Command, CommandX, Commands, DeclX, Expr, ExprX,
-    MultiOp, Quant, Span, Trigger, Triggers,
+    BinaryOp, Bind, BindX, Binder, BinderX, Command, CommandX, Commands, DeclX, Expr, ExprX, Quant,
+    Span, Trigger, Triggers,
 };
 use air::ast_util::{
     bool_typ, ident_apply, ident_binder, ident_var, mk_and, mk_bind_expr, mk_eq, mk_implies,
@@ -200,7 +200,7 @@ pub fn req_ens_to_air(
             };
             exprs.push(loc_expr);
         }
-        let body = Arc::new(ExprX::Multi(MultiOp::And, Arc::new(exprs)));
+        let body = mk_and(&exprs);
         let e_forall = func_def_quant(ctx, &name, &typ_params, &params, body)?;
         let req_ens_axiom = Arc::new(DeclX::Axiom(e_forall));
         commands.push(Arc::new(CommandX::Global(req_ens_axiom)));
@@ -380,7 +380,7 @@ pub fn func_decl_to_air(
             if has_ens_pred {
                 ctx.funcs_with_ensure_predicate.insert(function.x.name.clone());
             }
-            if function.x.attrs.export_as_global_forall {
+            if function.x.attrs.broadcast_forall {
                 let span = &function.span;
                 let req = crate::ast_util::conjoin(span, &*function.x.require);
                 let ens = crate::ast_util::conjoin(span, &*function.x.ensure);

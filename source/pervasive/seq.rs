@@ -69,21 +69,21 @@ impl<A> Seq<A> {
 
 #[proof]
 #[verifier(external_body)]
-#[verifier(export_as_global_forall)]
+#[verifier(broadcast_forall)]
 pub fn axiom_seq_empty<A>() {
     ensures(#[trigger] seq_empty::<A>().len() == 0);
 }
 
 #[proof]
 #[verifier(external_body)]
-#[verifier(export_as_global_forall)]
+#[verifier(broadcast_forall)]
 pub fn axiom_seq_new_len<A, F: Fn(int) -> A>(len: nat, f: F) {
     ensures(#[trigger] seq_new(len, f).len() == len);
 }
 
 #[proof]
 #[verifier(external_body)]
-#[verifier(export_as_global_forall)]
+#[verifier(broadcast_forall)]
 pub fn axiom_seq_new_index<A, F: Fn(int) -> A>(len: nat, f: F, i: int) {
     requires([
         0 <= i,
@@ -94,21 +94,21 @@ pub fn axiom_seq_new_index<A, F: Fn(int) -> A>(len: nat, f: F, i: int) {
 
 #[proof]
 #[verifier(external_body)]
-#[verifier(export_as_global_forall)]
+#[verifier(broadcast_forall)]
 pub fn axiom_seq_push_len<A>(s: Seq<A>, a: A) {
     ensures(#[trigger] s.push(a).len() == s.len() + 1);
 }
 
 #[proof]
 #[verifier(external_body)]
-#[verifier(export_as_global_forall)]
+#[verifier(broadcast_forall)]
 pub fn axiom_seq_push_index_same<A>(s: Seq<A>, a: A) {
     ensures(equal(#[trigger] s.push(a).index(s.len()), a));
 }
 
 #[proof]
 #[verifier(external_body)]
-#[verifier(export_as_global_forall)]
+#[verifier(broadcast_forall)]
 pub fn axiom_seq_push_index_different<A>(s: Seq<A>, a: A, i: int) {
     requires([
         0 <= i,
@@ -119,7 +119,7 @@ pub fn axiom_seq_push_index_different<A>(s: Seq<A>, a: A, i: int) {
 
 #[proof]
 #[verifier(external_body)]
-#[verifier(export_as_global_forall)]
+#[verifier(broadcast_forall)]
 pub fn axiom_seq_update_len<A>(s: Seq<A>, i: int, a: A) {
     requires([
         0 <= i,
@@ -130,7 +130,7 @@ pub fn axiom_seq_update_len<A>(s: Seq<A>, i: int, a: A) {
 
 #[proof]
 #[verifier(external_body)]
-#[verifier(export_as_global_forall)]
+#[verifier(broadcast_forall)]
 pub fn axiom_seq_update_same<A>(s: Seq<A>, i: int, a: A) {
     requires([
         0 <= i,
@@ -141,7 +141,7 @@ pub fn axiom_seq_update_same<A>(s: Seq<A>, i: int, a: A) {
 
 #[proof]
 #[verifier(external_body)]
-#[verifier(export_as_global_forall)]
+#[verifier(broadcast_forall)]
 pub fn axiom_seq_update_different<A>(s: Seq<A>, i1: int, i2: int, a: A) {
     requires([
         0 <= i1,
@@ -154,14 +154,14 @@ pub fn axiom_seq_update_different<A>(s: Seq<A>, i1: int, i2: int, a: A) {
 
 #[proof]
 #[verifier(external_body)]
-#[verifier(export_as_global_forall)]
+#[verifier(broadcast_forall)]
 pub fn axiom_seq_ext_equal<A>(s1: Seq<A>, s2: Seq<A>) {
     ensures(s1.ext_equal(s2) == equal(s1, s2));
 }
 
 #[proof]
 #[verifier(external_body)]
-#[verifier(export_as_global_forall)]
+#[verifier(broadcast_forall)]
 pub fn axiom_seq_subrange_len<A>(s: Seq<A>, j: int, k: int) {
     requires([
         0 <= j,
@@ -173,7 +173,7 @@ pub fn axiom_seq_subrange_len<A>(s: Seq<A>, j: int, k: int) {
 
 #[proof]
 #[verifier(external_body)]
-#[verifier(export_as_global_forall)]
+#[verifier(broadcast_forall)]
 pub fn axiom_seq_subrange_index<A>(s: Seq<A>, j: int, k: int, i: int) {
     requires([
         0 <= j,
@@ -187,14 +187,14 @@ pub fn axiom_seq_subrange_index<A>(s: Seq<A>, j: int, k: int, i: int) {
 
 #[proof]
 #[verifier(external_body)]
-#[verifier(export_as_global_forall)]
+#[verifier(broadcast_forall)]
 pub fn axiom_seq_add_len<A>(s1: Seq<A>, s2: Seq<A>) {
     ensures(#[trigger] s1.add(s2).len() == s1.len() + s2.len());
 }
 
 #[proof]
 #[verifier(external_body)]
-#[verifier(export_as_global_forall)]
+#[verifier(broadcast_forall)]
 pub fn axiom_seq_add_index1<A>(s1: Seq<A>, s2: Seq<A>, i: int) {
     requires([
         0 <= i,
@@ -205,7 +205,7 @@ pub fn axiom_seq_add_index1<A>(s1: Seq<A>, s2: Seq<A>, i: int) {
 
 #[proof]
 #[verifier(external_body)]
-#[verifier(export_as_global_forall)]
+#[verifier(broadcast_forall)]
 pub fn axiom_seq_add_index2<A>(s1: Seq<A>, s2: Seq<A>, i: int) {
     requires([
         0 <= s1.len(),

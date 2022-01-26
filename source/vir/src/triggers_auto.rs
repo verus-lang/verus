@@ -246,7 +246,7 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
         ExpX::Unary(op, e1) => {
             let depth = match op {
                 UnaryOp::Not => 0,
-                UnaryOp::Trigger(_) | UnaryOp::Clip(_) => 1,
+                UnaryOp::Trigger(_) | UnaryOp::Clip(_) | UnaryOp::BitNot => 1,
             };
             let (_, term1) = gather_terms(ctxt, ctx, e1, depth);
             (false, Arc::new(TermX::App(ctxt.other(), Arc::new(vec![term1]))))

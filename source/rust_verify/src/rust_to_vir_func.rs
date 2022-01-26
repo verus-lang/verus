@@ -270,7 +270,7 @@ pub(crate) fn check_item_fn<'tcx>(
         hidden: Arc::new(header.hidden),
         custom_req_err: vattrs.custom_req_err,
         no_auto_trigger: false,
-        export_as_global_forall: vattrs.export_as_global_forall,
+        broadcast_forall: vattrs.broadcast_forall,
         bit_vector: vattrs.bit_vector,
         autoview: vattrs.autoview,
         atomic: vattrs.atomic,
