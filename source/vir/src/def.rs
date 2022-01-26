@@ -59,6 +59,7 @@ const PATH_SEPARATOR: &str = ".";
 const PATHS_SEPARATOR: &str = "/";
 const VARIANT_SEPARATOR: &str = "/";
 const VARIANT_FIELD_SEPARATOR: &str = "/";
+const VARIANT_FIELD_INTERNAL_SEPARATOR: &str = "/?";
 const FUN_TRAIT_DEF_BEGIN: &str = "<";
 const FUN_TRAIT_DEF_END: &str = ">";
 const MONOTYPE_APP_BEGIN: &str = "<";
@@ -292,15 +293,24 @@ pub fn variant_ident(datatype: &Path, variant: &str) -> Ident {
     Arc::new(format!("{}{}{}", path_to_string(datatype), VARIANT_SEPARATOR, variant))
 }
 
-pub fn variant_field_ident(datatype: &Path, variant: &Ident, field: &Ident) -> Ident {
+pub fn variant_field_ident_internal(
+    datatype: &Path,
+    variant: &Ident,
+    field: &Ident,
+    internal: bool,
+) -> Ident {
     Arc::new(format!(
         "{}{}{}{}{}",
         path_to_string(datatype),
         VARIANT_SEPARATOR,
         variant.as_str(),
-        VARIANT_FIELD_SEPARATOR,
+        if internal { VARIANT_FIELD_INTERNAL_SEPARATOR } else { VARIANT_FIELD_SEPARATOR },
         field.as_str()
     ))
+}
+
+pub fn variant_field_ident(datatype: &Path, variant: &Ident, field: &Ident) -> Ident {
+    variant_field_ident_internal(datatype, variant, field, false)
 }
 
 pub fn positional_field_ident(idx: usize) -> Ident {
