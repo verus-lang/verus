@@ -2,7 +2,7 @@ This document tracks paper-cuts and other usability issues that are not critical
 
 ## Modes
 
-Default a variable's mode to the least upper bound of a datatype's constructor mode and the current mode:
+Consider defaulting a variable's mode to the least upper bound of a datatype's constructor mode and the current mode:
 
 ```
 #[proof] struct A { … }
@@ -15,7 +15,7 @@ fn a() {
 
 Variable `a` should be `proof` by default.
 
-Suggested by @tjhance.
+Suggested by @tjhance. There is no consensus yet that this is desirable in general.
 
 ## Functions taking mutable arguments
 
