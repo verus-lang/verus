@@ -14,6 +14,8 @@ use syn::{
     braced, AttrStyle, Attribute, Error, Expr, FieldsNamed, FnArg, Ident, ImplItemMethod, Meta,
     MetaList, NestedMeta, Receiver, Type,
 };
+use crate::ident_visitor::IdentVisitor;
+use syn::visit::Visit;
 
 ///////// TokenStream -> ParseResult
 
@@ -289,6 +291,12 @@ fn to_fields(fields_named: &FieldsNamed) -> syn::parse::Result<Vec<smir::ast::Fi
     return Ok(v);
 }
 
+pub fn check_idents(iim: &ImplItemMethod) -> syn::parse::Result<()> {
+    let mut idv = IdentVisitor::new();
+    idv.visit_impl_item_method(iim);
+    idv.error
+}
+
 pub fn parse_result_to_smir(pr: ParseResult) -> syn::parse::Result<SMAndFuncs> {
     let ParseResult { name, fns, fields } = pr;
 
@@ -314,6 +322,8 @@ pub fn parse_result_to_smir(pr: ParseResult) -> syn::parse::Result<SMAndFuncs> {
                 normal_fns.push(impl_item_method);
             }
             FnAttrInfo::Transition | FnAttrInfo::Readonly | FnAttrInfo::Init => {
+                check_idents(&impl_item_method)?;
+
                 let kind = match attr_info {
                     FnAttrInfo::Transition => TransitionKind::Transition,
                     FnAttrInfo::Readonly => TransitionKind::Readonly,

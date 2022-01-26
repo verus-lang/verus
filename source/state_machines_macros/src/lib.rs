@@ -7,6 +7,7 @@ mod parse_transition;
 mod to_token_stream;
 mod transitions;
 mod weakest;
+mod ident_visitor;
 
 use parse_token_stream::{parse_result_to_smir, ParseResult};
 use proc_macro::TokenStream;

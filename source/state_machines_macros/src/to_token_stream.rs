@@ -140,9 +140,11 @@ pub fn output_primary_stuff(
     */
 
     for trans in &sm.transitions {
+        let mut strong_rel_idents: Vec<String> = Vec::new();
+
         if trans.kind != TransitionKind::Readonly {
             let f = to_weakest(sm, trans);
-            let args = self_post_args(&trans.args);
+            let args = self_post_params(&trans.args);
             let name = &trans.name;
             let rel_fn = quote!{
                 #[spec]
@@ -153,9 +155,9 @@ pub fn output_primary_stuff(
             impl_token_stream.extend(rel_fn);
         }
 
-        for safety_cond in get_safety_conditions(&trans.body) {
-            let args = self_args(&trans.args);
-            let name = Ident::new(&(trans.name.to_string() + "_safety"),
+        for (i, safety_cond) in get_safety_conditions(&trans.body).iter().enumerate() {
+            let args = self_params(&trans.args);
+            let name = Ident::new(&(trans.name.to_string() + "_safety_" + &(i + 1).to_string()),
                 trans.name.span());
             let rel_fn = quote!{
                 #[spec]
@@ -164,31 +166,86 @@ pub fn output_primary_stuff(
                 }
             };
             impl_token_stream.extend(rel_fn);
+            strong_rel_idents.push(name.to_string());
+        }
+
+        if trans.kind == TransitionKind::Transition {
+            let params = self_post_params(&trans.args);
+            let name = Ident::new(&(trans.name.to_string() + "_strong"), trans.name.span());
+
+            let base_name = &trans.name;
+            let args = lone_args(&trans.args);
+            let p_args = post_args(&trans.args);
+
+            let mut conjuncts = vec![
+                quote!{
+                    self.#base_name(#p_args)
+                }
+            ];
+            for ident in strong_rel_idents {
+                conjuncts.push(
+                    quote!{
+                        self.#ident(#args)
+                    }
+                );
+            }
+
+            let rel_fn = quote!{
+                #[spec]
+                pub fn #name (#params) -> bool {
+                    #(#conjuncts)&&*
+                }
+            };
+            impl_token_stream.extend(rel_fn);
         }
     }
 }
 
-fn self_post_args(args: &Vec<Arg<Ident, Type>>) -> TokenStream {
-    let args: Vec<TokenStream> = args.iter().map(|arg| quote!{
-        #(arg.ident): #(arg.ty)
+fn self_post_params(args: &Vec<Arg<Ident, Type>>) -> TokenStream {
+    let args: Vec<TokenStream> = args.iter().map(|arg| {
+      let ident = &arg.ident;
+      let ty = &arg.ty;
+      quote!{ #ident: #ty }
     }).collect();
     return quote! {
-        self: Self,
+        self,
         post: Self,
         #(#args),*
     };
 }
 
-fn self_args(args: &Vec<Arg<Ident, Type>>) -> TokenStream {
-    let args: Vec<TokenStream> = args.iter().map(|arg| quote!{
-        #(arg.ident): #(arg.ty)
+fn self_params(args: &Vec<Arg<Ident, Type>>) -> TokenStream {
+    let args: Vec<TokenStream> = args.iter().map(|arg| {
+        let ident = &arg.ident;
+        let ty = &arg.ty;
+        quote!{ #ident: #ty }
     }).collect();
     return quote! {
-        self: Self,
+        self,
         #(#args),*
     };
 }
 
+fn post_args(args: &Vec<Arg<Ident, Type>>) -> TokenStream {
+    let args: Vec<TokenStream> = args.iter().map(|arg| {
+      let ident = &arg.ident;
+      quote!{ #ident }
+    }).collect();
+    return quote! {
+        post,
+        #(#args),*
+    };
+}
+
+fn lone_args(args: &Vec<Arg<Ident, Type>>) -> TokenStream {
+    let args: Vec<TokenStream> = args.iter().map(|arg| {
+        let ident = &arg.ident;
+        quote!{ #ident }
+    }).collect();
+    return quote! {
+        #(#args),*
+    };
+}
 
 fn shardable_type_to_type(stype: &ShardableType<Type>) -> Type {
     match stype {
