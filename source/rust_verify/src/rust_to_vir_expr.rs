@@ -1056,6 +1056,35 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
     };
     let mk_expr = move |x: ExprX| spanned_typed_new(expr.span, &expr_typ(), x);
 
+    let mk_lit_int = |in_negative_literal: bool, i: u128, typ: Typ| {
+        let c = vir::ast::Constant::Nat(Arc::new(i.to_string()));
+        let i_bump = if in_negative_literal { 1 } else { 0 };
+        if let TypX::Int(range) = *typ {
+            match range {
+                IntRange::Int | IntRange::Nat => Ok(mk_expr(ExprX::Const(c))),
+                IntRange::U(n) if n == 128 || (n < 128 && i < (1u128 << n)) => {
+                    Ok(mk_expr(ExprX::Const(c)))
+                }
+                IntRange::I(n) if n - 1 < 128 && i < (1u128 << (n - 1)) + i_bump => {
+                    Ok(mk_expr(ExprX::Const(c)))
+                }
+                IntRange::USize if i < (1u128 << vir::def::ARCH_SIZE_MIN_BITS) => {
+                    Ok(mk_expr(ExprX::Const(c)))
+                }
+                IntRange::ISize if i < (1u128 << (vir::def::ARCH_SIZE_MIN_BITS - 1)) + i_bump => {
+                    Ok(mk_expr(ExprX::Const(c)))
+                }
+                _ => {
+                    // If we're not sure the constant fits in the range,
+                    // be cautious and clip it
+                    Ok(mk_clip(&range, &mk_expr(ExprX::Const(c))))
+                }
+            }
+        } else {
+            panic!("unexpected constant: {:?} {:?}", i, typ)
+        }
+    };
+
     match &expr.kind {
         ExprKind::Block(body, _) => {
             if is_invariant_block(bctx, expr)? {
@@ -1151,28 +1180,7 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                 let c = vir::ast::Constant::Bool(b);
                 Ok(mk_expr(ExprX::Const(c)))
             }
-            rustc_ast::LitKind::Int(i, _) => {
-                let typ = typ_of_node(bctx, &expr.hir_id);
-                let c = vir::ast::Constant::Nat(Arc::new(i.to_string()));
-                if let TypX::Int(range) = *typ {
-                    match range {
-                        IntRange::Int | IntRange::Nat => Ok(mk_expr(ExprX::Const(c))),
-                        IntRange::U(n) if n < 128 && i < (1u128 << n) => {
-                            Ok(mk_expr(ExprX::Const(c)))
-                        }
-                        IntRange::USize if i < (1u128 << vir::def::ARCH_SIZE_MIN_BITS) => {
-                            Ok(mk_expr(ExprX::Const(c)))
-                        }
-                        _ => {
-                            // If we're not sure the constant fits in the range,
-                            // be cautious and clip it
-                            Ok(mk_clip(&range, &mk_expr(ExprX::Const(c))))
-                        }
-                    }
-                } else {
-                    panic!("unexpected constant: {:?} {:?}", lit, typ)
-                }
-            }
+            rustc_ast::LitKind::Int(i, _) => mk_lit_int(false, i, typ_of_node(bctx, &expr.hir_id)),
             _ => {
                 panic!("unexpected constant: {:?}", lit)
             }
@@ -1197,7 +1205,15 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
             UnOp::Neg => {
                 let zero_const = vir::ast::Constant::Nat(Arc::new("0".to_string()));
                 let zero = mk_expr(ExprX::Const(zero_const));
-                let varg = expr_to_vir(bctx, arg, modifier)?;
+                let varg = if let ExprKind::Lit(rustc_span::source_map::Spanned {
+                    node: rustc_ast::LitKind::Int(i, _),
+                    ..
+                }) = &arg.kind
+                {
+                    mk_lit_int(true, *i, typ_of_node(bctx, &expr.hir_id))?
+                } else {
+                    expr_to_vir(bctx, arg, modifier)?
+                };
                 Ok(mk_expr(ExprX::Binary(BinaryOp::Sub, zero, varg)))
             }
             UnOp::Deref => expr_to_vir_inner(bctx, arg, is_expr_typ_mut_ref(bctx, arg, modifier)?),
