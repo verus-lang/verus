@@ -9,10 +9,13 @@ use std::sync::atomic::{
 #[allow(unused_imports)] use crate::pervasive::modes::*;
 #[allow(unused_imports)] use crate::pervasive::result::*;
 
-macro_rules! make_integer_atomic {
+macro_rules! make_unsigned_integer_atomic {
     ($at_ident:ident, $p_ident:ident, $rust_ty: ty, $value_ty: ty, $wrap_add:ident, $wrap_sub:ident, $int_min:expr, $int_max: expr) => {
+        // TODO when we support `std::intrinsics::wrapping_add`,
+        // use that instead.
+
         #[spec]
-        pub fn $wrap_add (a: int, b: int) -> int {
+        pub fn $wrap_add(a: int, b: int) -> int {
             if a + b > $int_max {
                 a + b - ($int_max - $int_min + 1)
             } else {
@@ -36,6 +39,39 @@ macro_rules! make_integer_atomic {
         }
     }
 }
+
+macro_rules! make_signed_integer_atomic {
+    ($at_ident:ident, $p_ident:ident, $rust_ty: ty, $value_ty: ty, $wrap_add:ident, $wrap_sub:ident, $int_min:expr, $int_max: expr) => {
+        #[spec]
+        pub fn $wrap_add(a: int, b: int) -> int {
+            if a + b > $int_max {
+                a + b - ($int_max - $int_min + 1)
+            } else if a + b < $int_min {
+                a + b + ($int_max - $int_min + 1)
+            } else {
+                a + b
+            }
+        }
+
+        #[spec]
+        pub fn $wrap_sub(a: int, b: int) -> int {
+            if a - b > $int_max {
+                a - b - ($int_max - $int_min + 1)
+            } else if a - b < $int_min {
+                a - b + ($int_max - $int_min + 1)
+            } else {
+                a - b
+            }
+        }
+
+        atomic_types!($at_ident, $p_ident, $rust_ty, $value_ty);
+        impl $at_ident {
+            atomic_common_methods!($at_ident, $p_ident, $rust_ty, $value_ty);
+            atomic_integer_methods!($at_ident, $p_ident, $rust_ty, $value_ty, $wrap_add, $wrap_sub, $int_min, $int_max);
+        }
+    }
+}
+
 
 macro_rules! make_bool_atomic {
     ($at_ident:ident, $p_ident:ident, $rust_ty: ty, $value_ty: ty) => {
@@ -455,14 +491,14 @@ macro_rules! atomic_bool_methods {
 
 make_bool_atomic!(PAtomicBool, PermissionBool, AtomicBool, bool);
 
-make_integer_atomic!(PAtomicU8, PermissionU8, AtomicU8, u8, wrapping_add_u8, wrapping_sub_u8, 0, 0xff);
-make_integer_atomic!(PAtomicU16, PermissionU16, AtomicU16, u16, wrapping_add_u16, wrapping_sub_u16, 0, 0xffff);
-make_integer_atomic!(PAtomicU32, PermissionU32, AtomicU32, u32, wrapping_add_u32, wrapping_sub_u32, 0, 0xffff_ffff);
-make_integer_atomic!(PAtomicU64, PermissionU64, AtomicU64, u64, wrapping_add_u64, wrapping_sub_u64, 0, 0xffff_ffff_ffff_ffff);
+make_unsigned_integer_atomic!(PAtomicU8, PermissionU8, AtomicU8, u8, wrapping_add_u8, wrapping_sub_u8, 0, 0xff);
+make_unsigned_integer_atomic!(PAtomicU16, PermissionU16, AtomicU16, u16, wrapping_add_u16, wrapping_sub_u16, 0, 0xffff);
+make_unsigned_integer_atomic!(PAtomicU32, PermissionU32, AtomicU32, u32, wrapping_add_u32, wrapping_sub_u32, 0, 0xffff_ffff);
+make_unsigned_integer_atomic!(PAtomicU64, PermissionU64, AtomicU64, u64, wrapping_add_u64, wrapping_sub_u64, 0, 0xffff_ffff_ffff_ffff);
 
-make_integer_atomic!(PAtomicI8, PermissionI8, AtomicI8, i8, wrapping_add_i8, wrapping_sub_i8, -0x80, 0x7f);
-make_integer_atomic!(PAtomicI16, PermissionI16, AtomicI16, i16, wrapping_add_i16, wrapping_sub_i16, -0x8000, 0x7fff);
-make_integer_atomic!(PAtomicI32, PermissionI32, AtomicI32, i32, wrapping_add_i32, wrapping_sub_i32, -0x8000_0000, 0x7fff_ffff);
-make_integer_atomic!(PAtomicI64, PermissionI64, AtomicI64, i64, wrapping_add_i64, wrapping_sub_i64, -0x8000_0000_0000_0000, 0x7fff_ffff_ffff_ffff);
+make_signed_integer_atomic!(PAtomicI8, PermissionI8, AtomicI8, i8, wrapping_add_i8, wrapping_sub_i8, -0x80, 0x7f);
+make_signed_integer_atomic!(PAtomicI16, PermissionI16, AtomicI16, i16, wrapping_add_i16, wrapping_sub_i16, -0x8000, 0x7fff);
+make_signed_integer_atomic!(PAtomicI32, PermissionI32, AtomicI32, i32, wrapping_add_i32, wrapping_sub_i32, -0x8000_0000, 0x7fff_ffff);
+make_signed_integer_atomic!(PAtomicI64, PermissionI64, AtomicI64, i64, wrapping_add_i64, wrapping_sub_i64, -0x8000_0000_0000_0000, 0x7fff_ffff_ffff_ffff);
 
 // TODO usize and isize (for this, we need to be able to use constants like usize::MAX)
