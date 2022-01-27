@@ -352,6 +352,9 @@ impl Verifier {
         // air_recommended_options causes AIR to apply a preset collection of Z3 options
         air_context.set_z3_param("air_recommended_options", "true");
         air_context.set_rlimit(self.args.rlimit * 1000000);
+        for (option, value) in self.args.smt_options.iter() {
+            air_context.set_z3_param(&option, &value);
+        }
 
         let air_no_span = air::ast::Span {
             raw_span: crate::util::to_raw_span(no_span),
