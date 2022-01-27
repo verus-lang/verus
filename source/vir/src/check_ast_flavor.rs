@@ -4,9 +4,10 @@ pub use air::ast_util::{ident_binder, str_ident};
 
 fn check_expr_simplified(expr: &Expr) -> Result<(), ()> {
     match expr.x {
-        ExprX::UnaryOpr(UnaryOpr::TupleField { .. }, _) | ExprX::Tuple(_) | ExprX::Match(..) => {
-            Err(())
-        }
+        ExprX::ConstVar(_)
+        | ExprX::UnaryOpr(UnaryOpr::TupleField { .. }, _)
+        | ExprX::Tuple(_)
+        | ExprX::Match(..) => Err(()),
         _ => Ok(()),
     }
 }

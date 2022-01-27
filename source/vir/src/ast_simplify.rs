@@ -152,6 +152,11 @@ fn pattern_to_exprs(
 
 fn simplify_one_expr(ctx: &GlobalCtx, state: &mut State, expr: &Expr) -> Result<Expr, VirErr> {
     match &expr.x {
+        ExprX::ConstVar(x) => {
+            let call =
+                ExprX::Call(CallTarget::Static(x.clone(), Arc::new(vec![])), Arc::new(vec![]));
+            Ok(SpannedTyped::new(&expr.span, &expr.typ, call))
+        }
         ExprX::Call(CallTarget::Static(tgt, typs), args) => {
             // Remove FnSpec type arguments
             let bounds = &ctx.fun_bounds[tgt];
@@ -408,6 +413,7 @@ fn mk_fun_decl(
             require: Arc::new(vec![]),
             ensure: Arc::new(vec![]),
             decrease: None,
+            is_const: false,
             is_abstract: false,
             attrs: Arc::new(attrs),
             body: None,

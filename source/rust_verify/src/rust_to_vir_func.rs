@@ -287,6 +287,7 @@ pub(crate) fn check_item_fn<'tcx>(
         ensure: header.ensure,
         decrease: header.decrease,
         mask_spec: header.invariant_mask,
+        is_const: false,
         is_abstract: vattrs.is_abstract,
         attrs: Arc::new(fattrs),
         body: if vattrs.external_body { None } else { Some(vir_body) },
@@ -305,6 +306,53 @@ fn is_mut_ty<'tcx>(ty: &'tcx rustc_hir::Ty<'tcx>) -> Option<&'tcx rustc_hir::Ty<
         ) => Some(tys),
         _ => None,
     }
+}
+
+pub(crate) fn check_item_const<'tcx>(
+    ctxt: &Context<'tcx>,
+    vir: &mut KrateX,
+    span: Span,
+    id: rustc_span::def_id::DefId,
+    visibility: vir::ast::Visibility,
+    attrs: &[Attribute],
+    typ: &Typ,
+    body_id: &BodyId,
+) -> Result<(), VirErr> {
+    let path = def_id_to_vir_path(ctxt.tcx, id);
+    let name = Arc::new(FunX { path, trait_path: None });
+    let mode = get_mode(Mode::Exec, attrs);
+    let fuel = get_fuel(attrs);
+    let vattrs = get_verifier_attrs(attrs)?;
+    if vattrs.external {
+        let mut erasure_info = ctxt.erasure_info.borrow_mut();
+        erasure_info.external_functions.push(name);
+        return Ok(());
+    }
+    let body = &ctxt.krate.bodies[body_id];
+    let vir_body = body_to_vir(ctxt, body_id, body, mode, vattrs.external_body)?;
+    let ret_name = Arc::new(RETURN_VALUE.to_string());
+    let ret =
+        spanned_new(span, ParamX { name: ret_name, typ: typ.clone(), mode: mode, is_mut: false });
+    let func = FunctionX {
+        name,
+        visibility,
+        mode: Mode::Spec, // the function has mode spec; the mode attribute goes into ret.x.mode
+        fuel,
+        typ_bounds: Arc::new(vec![]),
+        params: Arc::new(vec![]),
+        ret,
+        require: Arc::new(vec![]),
+        ensure: Arc::new(vec![]),
+        decrease: Arc::new(vec![]),
+        mask_spec: MaskSpec::NoSpec,
+        is_const: true,
+        is_abstract: vattrs.is_abstract,
+        attrs: Default::default(),
+        body: if vattrs.external_body { None } else { Some(vir_body) },
+    };
+    let function = spanned_new(span, func);
+    vir.functions.push(function);
+    Ok(())
 }
 
 pub(crate) fn check_foreign_item_fn<'tcx>(
@@ -358,6 +406,7 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
         ensure: Arc::new(vec![]),
         decrease: Arc::new(vec![]),
         mask_spec: MaskSpec::NoSpec,
+        is_const: false,
         is_abstract: false,
         attrs: Default::default(),
         body: None,

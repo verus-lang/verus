@@ -241,6 +241,18 @@ pub struct ArmX {
     pub body: Expr,
 }
 
+/// Static function identifier
+pub type Fun = Arc<FunX>;
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct FunX {
+    /// Path of function
+    pub path: Path,
+    /// Path of the trait that defines the function, if any.
+    /// This disambiguates between impls for the same type of multiple traits that define functions
+    /// with the same name.
+    pub trait_path: Option<Path>,
+}
+
 #[derive(Clone, Debug)]
 pub enum CallTarget {
     /// Call a statically known function, passing some type arguments
@@ -266,6 +278,8 @@ pub enum ExprX {
     Var(Ident),
     /// Local variable, at a different stage (e.g. a mutable reference in the post-state)
     VarAt(Ident, VarAt),
+    /// Use of a const variable.  Note: ast_simplify replaces this with Call.
+    ConstVar(Fun),
     /// Call to a function passing some expression arguments
     Call(CallTarget, Exprs),
     /// Note: ast_simplify replaces this with Ctor
@@ -370,18 +384,6 @@ pub struct FunctionAttrsX {
     pub atomic: bool,
 }
 
-/// Static function identifier
-pub type Fun = Arc<FunX>;
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct FunX {
-    /// Path of function
-    pub path: Path,
-    /// Path of the trait that defines the function, if any.
-    /// This disambiguates between impls for the same type of multiple traits that define functions
-    /// with the same name.
-    pub trait_path: Option<Path>,
-}
-
 /// Function specification of its invariant mask
 #[derive(Clone, Debug)]
 pub enum MaskSpec {
@@ -421,6 +423,11 @@ pub struct FunctionX {
     pub decrease: Exprs,
     /// MaskSpec that specifies what invariants the function is allowed to open
     pub mask_spec: MaskSpec,
+    /// is_const == true means that this function is actually a const declaration;
+    /// we treat const declarations as functions with 0 arguments, having mode == Spec.
+    /// However, if ret.x.mode != Spec, there are some differences: the const can dually be used as spec,
+    /// and the body is restricted to a subset of expressions that are spec-safe.
+    pub is_const: bool,
     /// For public spec functions, is_abstract == true means that the body is private
     /// even though the function is public
     pub is_abstract: bool,

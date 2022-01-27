@@ -11,11 +11,11 @@ use crate::def::is_get_variant_fn_name;
 use crate::rust_to_vir_adts::{check_item_enum, check_item_struct};
 use crate::rust_to_vir_base::{
     def_id_to_vir_path, fn_item_hir_id_to_self_def_id, get_mode, get_verifier_attrs,
-    hack_get_def_name, mk_visibility,
+    hack_get_def_name, mk_visibility, ty_to_vir,
 };
 use crate::rust_to_vir_func::{check_foreign_item_fn, check_item_fn};
 use crate::util::{err_span_str, unsupported_err_span};
-use crate::{err_unless, unsupported_err, unsupported_err_unless, unsupported_unless};
+use crate::{err_unless, unsupported_err, unsupported_unless};
 use rustc_ast::Attribute;
 use rustc_hir::{
     AssocItemKind, Crate, ForeignItem, ForeignItemId, ForeignItemKind, HirId, ImplItemKind, Item,
@@ -279,14 +279,22 @@ fn check_item<'tcx>(
                 }
             }
         }
-        ItemKind::Const(_ty, _body_id) => {
-            unsupported_err_unless!(
-                hack_get_def_name(ctxt.tcx, _body_id.hir_id.owner.to_def_id())
-                    .starts_with("_DERIVE_builtin_Structural_FOR_"),
+        ItemKind::Const(ty, body_id) => {
+            if hack_get_def_name(ctxt.tcx, body_id.hir_id.owner.to_def_id())
+                .starts_with("_DERIVE_builtin_Structural_FOR_")
+            {
+                return Ok(());
+            }
+            crate::rust_to_vir_func::check_item_const(
+                ctxt,
+                vir,
                 item.span,
-                "unsupported const",
-                item
-            );
+                item.def_id.to_def_id(),
+                visibility,
+                ctxt.tcx.hir().attrs(item.hir_id()),
+                &ty_to_vir(ctxt.tcx, ty),
+                body_id,
+            )?;
         }
         _ => {
             unsupported_err!(item.span, "unsupported item", item);

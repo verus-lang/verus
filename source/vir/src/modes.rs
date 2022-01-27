@@ -180,7 +180,7 @@ fn add_pattern(typing: &mut Typing, mode: Mode, pattern: &Pattern) -> Result<(),
 
 fn check_expr(typing: &mut Typing, outer_mode: Mode, expr: &Expr) -> Result<Mode, VirErr> {
     match &expr.x {
-        ExprX::Const(_) => Ok(outer_mode),
+        ExprX::Const(_) => Ok(Mode::Exec),
         ExprX::Var(x) | ExprX::VarAt(x, _) => {
             let mode = mode_join(outer_mode, typing.get(x).1);
             if typing.in_forall_stmt && mode == Mode::Proof {
@@ -192,6 +192,18 @@ fn check_expr(typing: &mut Typing, outer_mode: Mode, expr: &Expr) -> Result<Mode
                     "cannot use proof variable inside forall/assert_by statements",
                 );
             }
+            typing.erasure_modes.var_modes.push((expr.span.clone(), mode));
+            Ok(mode)
+        }
+        ExprX::ConstVar(x) => {
+            let function = match typing.funs.get(x) {
+                None => {
+                    let name = crate::ast_util::path_as_rust_name(&x.path);
+                    return err_string(&expr.span, format!("cannot find constant {}", name));
+                }
+                Some(f) => f.clone(),
+            };
+            let mode = function.x.ret.x.mode;
             typing.erasure_modes.var_modes.push((expr.span.clone(), mode));
             Ok(mode)
         }
@@ -553,7 +565,7 @@ fn check_function(typing: &mut Typing, function: &Function) -> Result<(), VirErr
 
     if function.x.has_return() {
         let ret_mode = function.x.ret.x.mode;
-        if !mode_le(function.x.mode, ret_mode) {
+        if !function.x.is_const && !mode_le(function.x.mode, ret_mode) {
             return err_string(
                 &function.span,
                 format!("return type cannot have mode {}", ret_mode),

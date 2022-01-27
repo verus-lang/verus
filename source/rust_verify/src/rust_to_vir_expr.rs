@@ -1286,6 +1286,11 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
             },
             Res::Def(def_kind, id) => {
                 match def_kind {
+                    DefKind::Const => {
+                        let path = def_id_to_vir_path(tcx, id);
+                        let fun = FunX { path, trait_path: None };
+                        Ok(mk_expr(ExprX::ConstVar(Arc::new(fun))))
+                    }
                     DefKind::Fn => {
                         let name = hack_get_def_name(tcx, id); // TODO: proper handling of paths
                         Ok(mk_expr(ExprX::Var(Arc::new(name))))

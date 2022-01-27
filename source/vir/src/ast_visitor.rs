@@ -176,7 +176,7 @@ where
         VisitorControlFlow::Return => VisitorControlFlow::Recurse,
         VisitorControlFlow::Recurse => {
             match &expr.x {
-                ExprX::Const(_) | ExprX::Var(_) | ExprX::VarAt(_, _) => (),
+                ExprX::Const(_) | ExprX::Var(_) | ExprX::VarAt(..) | ExprX::ConstVar(..) => (),
                 ExprX::Call(target, es) => {
                     match target {
                         CallTarget::Static(_, _) => (),
@@ -342,6 +342,7 @@ where
         ExprX::Const(c) => ExprX::Const(c.clone()),
         ExprX::Var(x) => ExprX::Var(x.clone()),
         ExprX::VarAt(x, at) => ExprX::VarAt(x.clone(), at.clone()),
+        ExprX::ConstVar(x) => ExprX::ConstVar(x.clone()),
         ExprX::Call(target, es) => {
             let target = match target {
                 CallTarget::Static(x, typs) => {
@@ -606,6 +607,7 @@ where
         ensure,
         decrease,
         mask_spec,
+        is_const,
         is_abstract,
         attrs,
         body,
@@ -651,6 +653,7 @@ where
         }
     };
     let attrs = attrs.clone();
+    let is_const = *is_const;
     let is_abstract = *is_abstract;
     let body = body.as_ref().map(|e| map_expr_visitor_env(e, map, env, fe, fs, ft)).transpose()?;
     map.pop_scope();
@@ -666,6 +669,7 @@ where
         ensure,
         decrease,
         mask_spec,
+        is_const,
         is_abstract,
         attrs,
         body,

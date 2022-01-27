@@ -378,6 +378,7 @@ pub(crate) fn expr_to_stm_opt(
             }
             Ok((vec![], Some(mk_exp(ExpX::VarAt(x.clone(), VarAt::Pre)))))
         }
+        ExprX::ConstVar(..) => panic!("ConstVar should already be removed"),
         ExprX::Assign(expr1, expr2) => {
             let dest_x = match &expr1.x {
                 ExprX::Var(x) => Ok(state.get_var_unique_id(&x)),
