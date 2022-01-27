@@ -414,6 +414,14 @@ const ATOMIC_I64: &str = code_str! {
     assert(l == -(9223372036854775800 as i64));
     assert(perm.value == 9);
 
+    let l = at.fetch_sub_wrapping(&mut perm, -0x7fff_ffff_ffff_ffff);
+    assert(l == 9);
+    assert(perm.value == -(9223372036854775800 as i64));
+
+    let l = at.fetch_add_wrapping(&mut perm, -0x7fff_ffff_ffff_ffff);
+    assert(l == -(9223372036854775800 as i64));
+    assert(perm.value == 9);
+
     let l = at.fetch_or(&mut perm, 2);
     assert(l == 9);
     assert_bit_vector((9 as u64 | 2 as u64) == 11 as u64);
@@ -504,6 +512,14 @@ const ATOMIC_I32: &str = code_str! {
     assert(perm.value == -2147483640);
 
     let l = at.fetch_sub_wrapping(&mut perm, 0x7fff_ffff);
+    assert(l == -2147483640);
+    assert(perm.value == 9);
+
+    let l = at.fetch_sub_wrapping(&mut perm, -0x7fff_ffff);
+    assert(l == 9);
+    assert(perm.value == -2147483640);
+
+    let l = at.fetch_add_wrapping(&mut perm, -0x7fff_ffff);
     assert(l == -2147483640);
     assert(perm.value == 9);
 
@@ -600,6 +616,14 @@ const ATOMIC_I16: &str = code_str! {
     assert(l == -32760);
     assert(perm.value == 9);
 
+    let l = at.fetch_sub_wrapping(&mut perm, -0x7fff);
+    assert(l == 9);
+    assert(perm.value == -32760);
+
+    let l = at.fetch_add_wrapping(&mut perm, -0x7fff);
+    assert(l == -32760);
+    assert(perm.value == 9);
+
     let l = at.fetch_or(&mut perm, 2);
     assert(l == 9);
     assert_bit_vector((9 as u64 | 2 as u64) == 11 as u64);
@@ -690,6 +714,14 @@ const ATOMIC_I8: &str = code_str! {
     assert(perm.value == -120);
 
     let l = at.fetch_sub_wrapping(&mut perm, 0x7f);
+    assert(l == -120);
+    assert(perm.value == 9);
+
+    let l = at.fetch_sub_wrapping(&mut perm, -0x7f);
+    assert(l == 9);
+    assert(perm.value == -120);
+
+    let l = at.fetch_add_wrapping(&mut perm, -0x7f);
     assert(l == -120);
     assert(perm.value == 9);
 
