@@ -237,6 +237,42 @@ test_verify_one_file! {
     } => Err(TestErr { has_vir_error: true, .. })
 }
 
+test_verify_one_file! {
+    #[test] test_well_founded1 code! {
+        enum List {
+            Cons(int, Box<List>)
+        }
+    } => Err(TestErr { has_vir_error: true, .. })
+}
+
+test_verify_one_file! {
+    #[test] test_well_founded2 code! {
+        enum List {
+            Cons1(int, Box<List>),
+            Cons2(int, Box<List>),
+        }
+    } => Err(TestErr { has_vir_error: true, .. })
+}
+
+test_verify_one_file! {
+    #[test] test_well_founded3 code! {
+        enum List1 {
+            Cons(int, Box<List2>)
+        }
+        enum List2 {
+            Cons(int, Box<List1>)
+        }
+    } => Err(TestErr { has_vir_error: true, .. })
+}
+
+test_verify_one_file! {
+    #[test] test_well_founded4 code! {
+        enum List {
+            Cons(int, (Box<List>, bool))
+        }
+    } => Err(TestErr { has_vir_error: true, .. })
+}
+
 const IS_VARIANT_MAYBE: &str = code_str! {
     #[is_variant]
     pub enum Maybe<T> {

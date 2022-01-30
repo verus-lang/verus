@@ -273,6 +273,7 @@ fn datatype_or_fun_to_air_commands(
     }
 
     // height axiom
+    // (make sure that this stays in sync with recursive_types::check_well_founded)
     if add_height {
         for variant in variants.iter() {
             for field in variant.a.iter() {
