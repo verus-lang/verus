@@ -160,6 +160,13 @@ impl std::ops::Neg for int {
     }
 }
 
+impl std::ops::BitAnd for int {
+    type Output = Self;
+    fn bitand(self, _other: Self) -> Self::Output {
+        unimplemented!()
+    }
+}
+
 impl PartialEq for int {
     fn eq(&self, _other: &Self) -> bool {
         unimplemented!()
