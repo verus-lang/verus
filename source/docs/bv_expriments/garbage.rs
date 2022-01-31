@@ -29,7 +29,8 @@ fn bucket_view(bucket: u32, index: u32) -> Seq<Color> {
     if index == 0 {
         seq![c]
     } else {
-        seq![c].add(bucket_view(bucket, index-1))
+        bucket_view(bucket, index-1).push(c)
+        // seq![c].add(bucket_view(bucket, index-1))
     }
 }
 
@@ -37,11 +38,11 @@ fn bucket_view(bucket: u32, index: u32) -> Seq<Color> {
 fn set_color(bucket:u32, c:Color, index:u32, #[proof] ghost_bucket:Seq<Color>) -> u32 {
     requires([
         index < 16,
-        bucket_view(bucket, 0).ext_equal(ghost_bucket)
+        bucket_view(bucket, 15).ext_equal(ghost_bucket)
         // interpret(bucket, 0) == ghost_bucket,
     ]);
     ensures(|new_bucket: u32| [
-        bucket_view(new_bucket, 0).ext_equal(ghost_bucket.update(index, c)),
+        bucket_view(new_bucket, 15).ext_equal(ghost_bucket.update(index, c)),
         // interpret(new_bucket, 0) == ghost_bucket.update(index, c),
     ]);
 
