@@ -382,6 +382,12 @@ impl Verifier {
         let mut global_ctx = vir::context::GlobalCtx::new(&krate, air_no_span);
         let krate = vir::ast_simplify::simplify_krate(&mut global_ctx, &krate)?;
 
+        if let Some(filename) = &self.args.log_vir_simple {
+            let mut file =
+                File::create(filename).expect(&format!("could not open file {}", filename));
+            vir::ast_util::debug_write(&mut file, &krate);
+        }
+
         #[cfg(debug_assertions)]
         vir::check_ast_flavor::check_krate_simplified(&krate);
 
@@ -425,6 +431,16 @@ impl Verifier {
                 self.args.debug,
             )?;
             let poly_krate = vir::poly::poly_krate_for_module(&mut ctx, &pruned_krate);
+            if let Some(filename) = &self.args.log_vir_poly {
+                let module_name_os = if module.segments.len() > 0 {
+                    module.segments.iter().map(|s| s.to_string()).collect::<Vec<_>>().join("__")
+                } else {
+                    "root".to_string()
+                };
+                let mut file = File::create(filename.to_string() + "-" + &module_name_os)
+                    .expect(&format!("could not open file {}", filename));
+                vir::ast_util::debug_write(&mut file, &poly_krate);
+            }
             self.verify_module(compiler, &poly_krate, &mut air_context, &mut ctx)?;
             global_ctx = ctx.free();
             air_context.pop();
@@ -492,40 +508,7 @@ impl Verifier {
         if let Some(filename) = &self.args.log_vir {
             let mut file =
                 File::create(filename).expect(&format!("could not open file {}", filename));
-            for datatype in vir_crate.datatypes.iter() {
-                writeln!(&mut file, "datatype {:?} @ {:?}", datatype.x.path, datatype.span)
-                    .expect("cannot write to vir file");
-                writeln!(&mut file, "{:?}", datatype.x.variants).expect("cannot write to vir file");
-                writeln!(&mut file).expect("cannot write to vir file");
-            }
-            for func in vir_crate.functions.iter() {
-                writeln!(&mut file, "fn {} @ {:?}", fun_as_rust_dbg(&func.x.name), func.span)
-                    .expect("cannot write to vir file");
-                writeln!(
-                    &mut file,
-                    "visibility {:?} mode {:?} fuel {} is_abstract {}",
-                    func.x.visibility, func.x.mode, func.x.fuel, func.x.is_abstract
-                )
-                .expect("cannot write to vir file");
-                for require in func.x.require.iter() {
-                    writeln!(&mut file, "requires {:#?}", require)
-                        .expect("cannot write to vir file");
-                }
-                for ensure in func.x.ensure.iter() {
-                    writeln!(&mut file, "ensures {:#?}", ensure).expect("cannot write to vir file");
-                }
-                for param in func.x.params.iter() {
-                    writeln!(
-                        &mut file,
-                        "parameter {}: {:?} @ {:?}",
-                        param.x.name, param.x.typ, param.span
-                    )
-                    .expect("cannot write to vir file");
-                }
-                writeln!(&mut file, "returns {:?}", func.x.ret).expect("cannot write to vir file");
-                writeln!(&mut file, "body {:#?}", func.x.body).expect("cannot write to vir file");
-                writeln!(&mut file).expect("cannot write to vir file");
-            }
+            vir::ast_util::debug_write(&mut file, &vir_crate);
         }
         vir::well_formed::check_crate(&vir_crate)?;
         let erasure_modes = vir::modes::check_crate(&vir_crate)?;

@@ -125,6 +125,9 @@ pub fn verify_files_and_pervasive(
                 );
             }
             our_args.log_vir = Some(path.join("log.vir").to_string_lossy().to_string());
+            our_args.log_vir_simple =
+                Some(path.join("log.vir-simple").to_string_lossy().to_string());
+            our_args.log_vir_poly = Some(path.join("log.vir-poly").to_string_lossy().to_string());
             our_args.log_air_initial = Some(path.join("log.air").to_string_lossy().to_string());
             our_args.log_air_final = Some(path.join("log.air-final").to_string_lossy().to_string());
             our_args.log_smt = Some(path.join("log.smt").to_string_lossy().to_string());
