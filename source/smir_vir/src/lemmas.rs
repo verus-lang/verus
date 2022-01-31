@@ -16,7 +16,7 @@ use std::ops::Index;
 use std::sync::Arc;
 use vir::ast::{
     CallTarget, DatatypeX, Expr, ExprX, FunX, Function, FunctionX, Ident, KrateX, Mode, Path,
-    PathX, SpannedTyped, Typ, TypX, VirErr,
+    PathX, SpannedTyped, Typ, TypX, VirErr, Params,
 };
 use vir::ast_util::{
     conjoin, mk_and, mk_assert, mk_assume, mk_block, mk_bool, mk_call, mk_decl_stmt, mk_eq,
@@ -26,12 +26,17 @@ use vir::ast_util::{
 pub fn get_transition_func_name(
     predicates: &Vec<(String, Predicate)>,
     ident: &Ident,
-) -> Option<Ident> {
+) -> Option<(Ident, bool)> {
     for (func_name, p) in predicates {
         match p {
             Predicate::Transition(n) => {
                 if n.to_string() == ident.to_string() {
-                    return Some(Arc::new(func_name.clone()));
+                    return Some((Arc::new(func_name.clone()), false));
+                }
+            }
+            Predicate::Init(n) => {
+                if n.to_string() == ident.to_string() {
+                    return Some((Arc::new(func_name.clone()), true));
                 }
             }
             _ => {}
@@ -58,7 +63,7 @@ pub fn check_wf_lemmas(
                             span,
                         ));
                     }
-                    Some(_id) => {
+                    Some((_id, _)) => {
                         // TODO check other wf-ness
                     }
                 }
@@ -187,6 +192,14 @@ pub fn inv_call(span: &Span, type_path: &Path, ident: &Ident) -> Expr {
     return mk_call(span, &Arc::new(TypX::Bool), &call_target, &vec![var_for_ident]);
 }
 
+pub fn get_transition_params(is_init: bool, func: &Function) -> Params {
+    if is_init {
+        Arc::new(func.x.params[1 ..].to_vec())
+    } else {
+        Arc::new(func.x.params[2 ..].to_vec())
+    }
+}
+
 pub fn setup_lemmas(
     sm: &SM<Span, Ident, Ident, Expr, Typ>,
     predicates: &Vec<(String, Predicate)>,
@@ -197,7 +210,7 @@ pub fn setup_lemmas(
     for l in sm.lemmas.iter() {
         match &l.purpose {
             LemmaPurpose { transition, kind: LemmaPurposeKind::PreservesInvariant } => {
-                let trans_func_name = get_transition_func_name(predicates, transition)
+                let (trans_func_name, is_init) = get_transition_func_name(predicates, transition)
                     .expect("get_transition_func_name");
                 let trans_function = funs.index(&trans_func_name);
                 let lemma_function = funs.index(&l.func);
@@ -217,14 +230,28 @@ pub fn setup_lemmas(
                     SpannedTyped::new(&span, &var_ty, ExprX::Var(self_ident.clone()));
                 let var_for_post_ident =
                     SpannedTyped::new(&span, &var_ty, ExprX::Var(post_ident.clone()));
+                let mut call_args = vec![];
+                if !is_init {
+                    call_args.push(var_for_self_ident);
+                }
+                call_args.push(var_for_post_ident);
+                for param in get_transition_params(is_init, trans_function).iter() {
+                    call_args.push(
+                        SpannedTyped::new(&span, &param.x.typ, ExprX::Var(param.x.name.clone()))
+                    );
+                }
                 let trans_holds_for_self_post = mk_call(
                     &span,
                     &Arc::new(TypX::Bool),
                     &call_target,
-                    &vec![var_for_self_ident, var_for_post_ident],
+                    &call_args,
                 );
 
-                let reqs = vec![inv_holds_for_self, trans_holds_for_self_post];
+                let reqs = if is_init {
+                    vec![trans_holds_for_self_post]
+                } else {
+                    vec![inv_holds_for_self, trans_holds_for_self_post]
+                };
 
                 let enss = vec![inv_holds_for_post];
 

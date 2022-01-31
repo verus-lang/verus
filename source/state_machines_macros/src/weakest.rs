@@ -45,7 +45,7 @@ fn to_weakest_rec(
         }
         TransitionStmt::Let(span, id, e) => match p {
             None => None,
-            Some(r) => Some(quote! { let #id = #e; #r }),
+            Some(r) => Some(quote! { { let #id = #e; #r } }),
         },
         TransitionStmt::If(span, cond, e1, e2) => match p {
             None => {

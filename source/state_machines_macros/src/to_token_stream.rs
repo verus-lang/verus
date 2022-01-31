@@ -144,15 +144,27 @@ pub fn output_primary_stuff(
 
         if trans.kind != TransitionKind::Readonly {
             let f = to_weakest(sm, trans);
-            let args = self_post_params(&trans.args);
             let name = &trans.name;
-            let rel_fn = quote! {
-                #[spec]
-                #[verifier(state_machine_fn(transition(#name)))]
-                pub fn #name (#args) -> bool {
-                    #f
-                }
-            };
+            let rel_fn;
+            if trans.kind == TransitionKind::Init {
+                let args = post_params(&trans.args);
+                rel_fn = quote! {
+                    #[spec]
+                    #[verifier(state_machine_fn(init(#name)))]
+                    pub fn #name (#args) -> bool {
+                        #f
+                    }
+                };
+            } else {
+                let args = self_post_params(&trans.args);
+                rel_fn = quote! {
+                    #[spec]
+                    #[verifier(state_machine_fn(transition(#name)))]
+                    pub fn #name (#args) -> bool {
+                        #f
+                    }
+                };
+            }
             impl_token_stream.extend(rel_fn);
         }
 
@@ -230,6 +242,21 @@ fn self_params(args: &Vec<Arg<Ident, Type>>) -> TokenStream {
         .collect();
     return quote! {
         self,
+        #(#args),*
+    };
+}
+
+fn post_params(args: &Vec<Arg<Ident, Type>>) -> TokenStream {
+    let args: Vec<TokenStream> = args
+        .iter()
+        .map(|arg| {
+            let ident = &arg.ident;
+            let ty = &arg.ty;
+            quote! { #ident: #ty }
+        })
+        .collect();
+    return quote! {
+        post: Self,
         #(#args),*
     };
 }

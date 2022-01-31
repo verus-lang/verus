@@ -15,7 +15,7 @@ use syn::token::{Colon2, Dot};
 use syn::{
     braced, AttrStyle, Attribute, Block, Error, Expr, ExprCall, ExprField, ExprIf, ExprPath,
     FieldsNamed, FnArg, Ident, ImplItemMethod, Local, Member, Meta, MetaList, NestedMeta, Pat,
-    Path, PathArguments, PathSegment, Receiver, Signature, Stmt, Type,
+    Path, PathArguments, PathSegment, Receiver, Signature, Stmt, Type, PatIdent,
 };
 
 pub struct Ctxt {
@@ -90,17 +90,34 @@ fn parse_stmt(
         Stmt::Expr(expr) => parse_expr(expr, ctxt),
         Stmt::Semi(expr, _) => parse_expr(expr, ctxt),
         _ => {
-            println!("stmt: {:#?}", stmt);
             return Err(Error::new(stmt.span(), "unsupported statement type"));
         }
     }
 }
 
 fn parse_local(
-    _local: &mut Local,
-    _ctxt: &Ctxt,
+    local: &mut Local,
+    ctxt: &Ctxt,
 ) -> syn::parse::Result<TransitionStmt<Span, Ident, Expr>> {
-    panic!("parse_local unimplemented");
+    let ident = match &local.pat {
+        Pat::Ident(PatIdent {
+            attrs: _,
+            by_ref: None,
+            mutability: None,
+            ident,
+            subpat: None,
+        }) => ident.clone(),
+        _ => {
+            return Err(Error::new(local.span(), "unsupported Local statement type"));
+        }
+    };
+    let e = match &local.init {
+        Some((_eq, e)) => (**e).clone(),
+        None => {
+            return Err(Error::new(local.span(), "'let' statement must have initializer"));
+        }
+    };
+    Ok(TransitionStmt::Let(local.span(), ident, e))
 }
 
 fn parse_expr(
