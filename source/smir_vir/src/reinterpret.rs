@@ -20,7 +20,8 @@ pub fn reinterpret_func_as_transition(
         args.push(Arg { ident: p.x.name.clone(), ty: p.x.typ.clone() });
     }
 
-    let body = get_body_from_expr(&vir_body)?;
+    //let body = get_body_from_expr(&vir_body)?;
+    let body = TransitionStmt::Block(vir_body.span.clone(), Vec::new());
 
     let name = f.x.name.path.segments.last().expect("last segment").clone();
 

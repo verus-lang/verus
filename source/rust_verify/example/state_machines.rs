@@ -20,7 +20,7 @@ construct_state_machine!(
 
         #[invariant]
         #[spec]
-        fn main_inv(&self) -> bool {
+        pub fn main_inv(&self) -> bool {
             self.counter == (if self.inc_a { 1 } else { 0 }) + (if self.inc_b { 1 } else { 0 })
         }
 
@@ -48,33 +48,33 @@ construct_state_machine!(
             update(inc_b, true);
         }
 
-        #[readonly]
+        /*#[readonly]
         #[spec]
         fn finalize(&self) {
             require(self.inc_a);
             require(self.inc_b);
             assert(self.counter == 2);
-        }
+        }*/
 
         #[proof]
         #[inductive(tr_inc_a)]
-        fn tr_inc_a_preserves(pre: X) {
+        fn tr_inc_a_preserves(self: X, post: X) {
         }
 
         #[proof]
         #[inductive(tr_inc_b)]
-        fn tr_inc_b_preserves(pre: X) {
+        fn tr_inc_b_preserves(self: X, post: X) {
         }
 
         #[proof]
         #[inductive(initialize)]
-        fn initialize_inv(pre: X) {
+        fn initialize_inv(self: X, post: X) {
         }
 
-        #[proof]
+        /*#[proof]
         #[safety(finalize)]
         fn finalize_correct(pre: X) {
-        }
+        }*/
     }
 );
 

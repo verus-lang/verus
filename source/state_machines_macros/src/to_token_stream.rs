@@ -148,6 +148,7 @@ pub fn output_primary_stuff(
             let name = &trans.name;
             let rel_fn = quote!{
                 #[spec]
+                #[verifier(state_machine_fn(transition(#name)))]
                 pub fn #name (#args) -> bool {
                     #f
                 }
@@ -157,10 +158,13 @@ pub fn output_primary_stuff(
 
         for (i, safety_cond) in get_safety_conditions(&trans.body).iter().enumerate() {
             let args = self_params(&trans.args);
-            let name = Ident::new(&(trans.name.to_string() + "_safety_" + &(i + 1).to_string()),
+            let idx = i + 1;
+            let name = Ident::new(&(trans.name.to_string() + "_safety_" + &idx.to_string()),
                 trans.name.span());
+            let idx_lit = syn::LitInt::new(&idx.to_string(), trans.name.span());
             let rel_fn = quote!{
                 #[spec]
+                #[verifier(state_machine_fn(safety_condition(#name, #idx_lit)))]
                 pub fn #name (#args) -> bool {
                     #safety_cond
                 }

@@ -9,7 +9,7 @@ use smir::ast::{
     TransitionKind, SM,
 };
 use smir_vir::reinterpret::reinterpret_func_as_transition;
-use smir_vir::update_krate::update_krate;
+use smir_vir::update_krate::{Predicate, update_krate};
 use std::collections::HashMap;
 use std::sync::Arc;
 use vir::ast::{Datatype, Expr, Function, Ident, KrateX, Path, PathX, Typ, VirErr};
@@ -17,7 +17,7 @@ use vir::ast::{Datatype, Expr, Function, Ident, KrateX, Path, PathX, Typ, VirErr
 pub struct SMFuns {
     pub invariants: Vec<Invariant<Ident>>,
     pub lemmas: Vec<Lemma<Ident, Ident>>,
-    pub transitions: Vec<Transition<Span, Ident, Expr, Typ>>,
+    pub predicates: Vec<(String, Predicate)>
 }
 
 pub struct SMCtxt {
@@ -28,18 +28,27 @@ pub struct SMCtxt {
 
 #[derive(Clone)]
 pub enum StateMachineFnAttr {
-    Init,
-    Transition,
-    Readonly,
+    Init(String),
+    Transition(String),
+    Safety(String, u64),
     Invariant,
     Lemma(LemmaPurpose<Ident>),
 }
 
 pub(crate) fn parse_state_machine_fn_attr(t: &AttrTree) -> Result<StateMachineFnAttr, VirErr> {
     match t {
-        AttrTree::Fun(_, arg, None) if arg == "transition" => Ok(StateMachineFnAttr::Transition),
-        AttrTree::Fun(_, arg, None) if arg == "init" => Ok(StateMachineFnAttr::Init),
-        AttrTree::Fun(_, arg, None) if arg == "readonly" => Ok(StateMachineFnAttr::Readonly),
+        AttrTree::Fun(_, arg, Some(box [AttrTree::Fun(_, id, None)])) if arg == "transition" => {
+            Ok(StateMachineFnAttr::Transition(id.clone()))
+        }
+        AttrTree::Fun(_, arg, Some(box [AttrTree::Fun(_, id, None)])) if arg == "init" => {
+            Ok(StateMachineFnAttr::Init(id.clone()))
+        }
+
+        AttrTree::Fun(_, arg, Some(box [AttrTree::Fun(_, id, None), AttrTree::Fun(_, num, None)])) if arg == "safety_condition" => {
+            let n = num.parse().unwrap();
+            Ok(StateMachineFnAttr::Safety(id.clone(), n))
+        }
+
         AttrTree::Fun(_, arg, None) if arg == "invariant" => Ok(StateMachineFnAttr::Invariant),
         AttrTree::Fun(_, arg, Some(box [AttrTree::Fun(_, id, None)])) if arg == "inductive" => {
             let lp = LemmaPurpose {
@@ -106,17 +115,20 @@ impl SMCtxt {
         return Ok(());
     }
 
-    fn check_impl_item_transition(
+    /*fn check_impl_item_transition(
         &mut self,
+        name: String,
         type_path: Path,
         func: &Function,
         kind: TransitionKind,
     ) -> Result<(), VirErr> {
-        let tr = reinterpret_func_as_transition(func.clone(), kind)?;
+        //let tr = reinterpret_func_as_transition(func.clone(), kind)?;
+        let func_name = func.x.name.path.segments.last().expect("last segment").clone();
+        let p = Predicate::Transition(func_name);
         self.insert_if_necessary(&type_path);
-        self.others.get_mut(&type_path).expect("get_mut").transitions.push(tr);
+        self.others.get_mut(&type_path).expect("get_mut").predicates.push((name, p));
         Ok(())
-    }
+    }*/
 
     pub(crate) fn check_impl_item(
         &mut self,
@@ -126,14 +138,26 @@ impl SMCtxt {
         let name = func.x.name.path.segments.last().expect("last");
         let type_path = remove_last_segment(&func.x.name.path);
         match state_machine_fn_attr {
-            Some(StateMachineFnAttr::Init) => {
-                self.check_impl_item_transition(type_path, func, TransitionKind::Init)
+            Some(StateMachineFnAttr::Transition(name)) => {
+                let func_name = func.x.name.path.segments.last().expect("last segment").clone();
+                let p = Predicate::Transition(func_name);
+                self.insert_if_necessary(&type_path);
+                self.others.get_mut(&type_path).expect("get_mut").predicates.push((name.clone(), p));
+                Ok(())
             }
-            Some(StateMachineFnAttr::Transition) => {
-                self.check_impl_item_transition(type_path, func, TransitionKind::Transition)
+            Some(StateMachineFnAttr::Safety(name, num)) => {
+                let func_name = func.x.name.path.segments.last().expect("last segment").clone();
+                let p = Predicate::Safety(func_name, *num);
+                self.insert_if_necessary(&type_path);
+                self.others.get_mut(&type_path).expect("get_mut").predicates.push((name.clone(), p));
+                Ok(())
             }
-            Some(StateMachineFnAttr::Readonly) => {
-                self.check_impl_item_transition(type_path, func, TransitionKind::Readonly)
+            Some(StateMachineFnAttr::Init(name)) => {
+                let func_name = func.x.name.path.segments.last().expect("last segment").clone();
+                let p = Predicate::Init(func_name);
+                self.insert_if_necessary(&type_path);
+                self.others.get_mut(&type_path).expect("get_mut").predicates.push((name.clone(), p));
+                Ok(())
             }
             Some(StateMachineFnAttr::Invariant) => {
                 let inv = Invariant { func: name.clone() };
@@ -155,7 +179,7 @@ impl SMCtxt {
         if !self.others.contains_key(type_path) {
             self.others.insert(
                 type_path.clone(),
-                SMFuns { invariants: Vec::new(), lemmas: Vec::new(), transitions: Vec::new() },
+                SMFuns { invariants: Vec::new(), lemmas: Vec::new(), predicates: Vec::new() },
             );
         }
     }
@@ -164,19 +188,20 @@ impl SMCtxt {
         for (path, fields) in self.sm_types.iter() {
             let name = path.segments.last().expect("path should be nonempty").clone();
 
-            let (transitions, invariants, lemmas) = match self.others.get(path) {
+            let (predicates, invariants, lemmas) = match self.others.get(path) {
                 None => {
-                    // It's unlikely, but I guess this is techincally well-formed
+                    // It's unlikely, but I guess this is technically well-formed
                     (Vec::new(), Vec::new(), Vec::new())
                 }
-                Some(SMFuns { transitions, invariants, lemmas }) => {
-                    (transitions.clone(), invariants.clone(), lemmas.clone())
+                Some(SMFuns { predicates, invariants, lemmas }) => {
+                    (predicates.clone(), invariants.clone(), lemmas.clone())
                 }
             };
+            let transitions = Vec::new();
 
             let sm = SM { name, fields: fields.clone(), transitions, invariants, lemmas };
 
-            update_krate(path, &sm, vir)?; // updates vir
+            update_krate(path, &sm, &predicates, vir)?; // updates vir
         }
         Ok(())
     }

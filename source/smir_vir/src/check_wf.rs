@@ -43,6 +43,13 @@ pub fn set_body(f: &Function, body: Expr) -> Function {
     Spanned::new(f.span.clone(), fx)
 }
 
+pub fn set_req_ens(f: &Function, reqs: Vec<Expr>, enss: Vec<Expr>) -> Function {
+    let mut fx = f.x.clone();
+    fx.require = Arc::new(reqs);
+    fx.ensure = Arc::new(enss);
+    Spanned::new(f.span.clone(), fx)
+}
+
 pub fn check_wf_user_invariant(
     type_path: &Path,
     inv: &Ident,
