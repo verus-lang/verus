@@ -273,6 +273,18 @@ test_verify_one_file! {
     } => Err(TestErr { has_vir_error: true, .. })
 }
 
+test_verify_one_file! {
+    #[test] test_well_field_unbox code! {
+        struct B { b: bool }
+        fn foo(s1: Box<B>, s2: &Box<B>, s3: Box<&B>, s4: Box<(bool, bool)>) {
+            let z1 = s1.b;
+            let z2 = s2.b;
+            let z3 = s3.b;
+            let z4 = s4.0;
+        }
+    } => Ok(())
+}
+
 const IS_VARIANT_MAYBE: &str = code_str! {
     #[is_variant]
     pub enum Maybe<T> {

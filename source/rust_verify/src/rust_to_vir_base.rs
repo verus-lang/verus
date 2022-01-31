@@ -3,7 +3,7 @@ use crate::util::{err_span_str, err_span_string, unsupported_err_span};
 use crate::{unsupported, unsupported_err, unsupported_err_unless};
 use rustc_ast::token::{Token, TokenKind};
 use rustc_ast::tokenstream::{TokenStream, TokenTree};
-use rustc_ast::{AttrKind, Attribute, IntTy, MacArgs, UintTy};
+use rustc_ast::{AttrKind, Attribute, IntTy, MacArgs, Mutability, UintTy};
 use rustc_hir::def::{DefKind, Res};
 use rustc_hir::definitions::DefPath;
 use rustc_hir::{
@@ -495,6 +495,29 @@ pub(crate) fn mk_range<'tcx>(ty: rustc_middle::ty::Ty<'tcx>) -> IntRange {
     }
 }
 
+pub(crate) fn mid_ty_simplify<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    ty: rustc_middle::ty::Ty<'tcx>,
+    allow_mut_ref: bool,
+) -> rustc_middle::ty::Ty<'tcx> {
+    match ty.kind() {
+        TyKind::Ref(_, t, Mutability::Not) => mid_ty_simplify(tcx, t, false),
+        TyKind::Ref(_, t, Mutability::Mut) if allow_mut_ref => mid_ty_simplify(tcx, t, false),
+        TyKind::Adt(AdtDef { did, .. }, args) => {
+            if Some(*did) == tcx.lang_items().owned_box() && args.len() == 2 {
+                if let rustc_middle::ty::subst::GenericArgKind::Type(t) = args[0].unpack() {
+                    mid_ty_simplify(tcx, t, false)
+                } else {
+                    panic!("unexpected type argument")
+                }
+            } else {
+                ty
+            }
+        }
+        _ => ty,
+    }
+}
+
 // TODO review and cosolidate type translation, e.g. with `ty_to_vir`, if possible
 pub(crate) fn mid_ty_to_vir<'tcx>(tcx: TyCtxt<'tcx>, ty: rustc_middle::ty::Ty<'tcx>) -> Typ {
     match ty.kind() {
@@ -525,7 +548,7 @@ pub(crate) fn mid_ty_to_vir<'tcx>(tcx: TyCtxt<'tcx>, ty: rustc_middle::ty::Ty<'t
                         _ => panic!("unexpected type argument"),
                     })
                     .collect();
-                if s.starts_with("std::boxed::Box<") && typ_args.len() == 2 {
+                if Some(*did) == tcx.lang_items().owned_box() && typ_args.len() == 2 {
                     return typ_args[0].clone();
                 }
                 def_id_to_datatype(tcx, *did, Arc::new(typ_args))
@@ -593,7 +616,7 @@ pub(crate) fn ty_to_vir<'tcx>(tcx: TyCtxt<'tcx>, ty: &Ty) -> Typ {
                     TypX::Int(IntRange::Int)
                 } else if def_name == "builtin::nat" {
                     TypX::Int(IntRange::Nat)
-                } else if def_name == "alloc::boxed::Box" {
+                } else if Some(def_id) == tcx.lang_items().owned_box() {
                     match &path.segments[0].args.expect("Box arg").args[0] {
                         rustc_hir::GenericArg::Type(t) => return ty_to_vir(tcx, t),
                         _ => panic!("unexpected arg to Box"),

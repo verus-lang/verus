@@ -4,8 +4,8 @@ use crate::erase::ResolvedCall;
 use crate::rust_to_vir_base::{
     def_id_to_vir_path, def_to_path_ident, get_range, get_trigger, get_var_mode,
     get_verifier_attrs, hack_get_def_name, ident_to_var, is_smt_arith, is_smt_equality,
-    mid_ty_to_vir, mk_range, parse_attrs, ty_to_vir, typ_of_node, typ_of_node_expect_mut_ref,
-    typ_path_and_ident_to_vir_path, Attr,
+    mid_ty_simplify, mid_ty_to_vir, mk_range, parse_attrs, ty_to_vir, typ_of_node,
+    typ_of_node_expect_mut_ref, typ_path_and_ident_to_vir_path, Attr,
 };
 use crate::util::{
     err_span_str, err_span_string, slice_vec_map_result, spanned_new, spanned_typed_new,
@@ -1339,10 +1339,7 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
             let lhs_modifier = is_expr_typ_mut_ref(bctx, lhs, modifier)?;
             let vir_lhs = expr_to_vir(bctx, lhs, lhs_modifier)?;
             let lhs_ty = tc.node_type(lhs.hir_id);
-            let lhs_ty = match lhs_ty.kind() {
-                TyKind::Ref(_, lt, Mutability::Not | Mutability::Mut) => lt,
-                _ => lhs_ty,
-            };
+            let lhs_ty = mid_ty_simplify(tcx, lhs_ty, true);
             let (datatype, variant_name, field_name) = if let Some(adt_def) = lhs_ty.ty_adt_def() {
                 unsupported_err_unless!(
                     adt_def.variants.len() == 1,
