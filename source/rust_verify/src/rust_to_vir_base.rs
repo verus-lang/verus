@@ -9,6 +9,7 @@ use rustc_hir::definitions::DefPath;
 use rustc_hir::{
     GenericBound, GenericParam, GenericParamKind, Generics, HirId, LifetimeParamKind, ParamName,
     PathSegment, PolyTraitRef, PrimTy, QPath, TraitBoundModifier, Ty, Visibility, VisibilityKind,
+    ItemKind,
 };
 use rustc_middle::ty::{AdtDef, TyCtxt, TyKind};
 use rustc_span::def_id::{DefId, LOCAL_CRATE};
@@ -31,14 +32,27 @@ pub(crate) fn def_path_to_vir_path<'tcx>(tcx: TyCtxt<'tcx>, def_path: DefPath) -
     Arc::new(PathX { krate, segments })
 }
 
-fn is_function_def_impl_item_node(node: rustc_hir::Node) -> bool {
+fn get_function_def_impl_item_node<'tcx>(tcx: TyCtxt<'tcx>, hir_id: rustc_hir::HirId) -> Option<(&'tcx rustc_hir::FnSig<'tcx>, &'tcx rustc_hir::BodyId)> {
+    let node = tcx.hir().get(hir_id);
     match node {
         rustc_hir::Node::ImplItem(rustc_hir::ImplItem {
-            kind: rustc_hir::ImplItemKind::Fn(..),
+            kind: rustc_hir::ImplItemKind::Fn(fn_sig, body_id),
             ..
-        }) => true,
-        _ => false,
+        }) => Some((fn_sig, body_id)),
+        _ => None,
     }
+}
+
+pub(crate) fn get_function_def<'tcx>(tcx: TyCtxt<'tcx>, hir_id: rustc_hir::HirId) -> (&'tcx rustc_hir::FnSig<'tcx>, &'tcx rustc_hir::BodyId) {
+    get_function_def_impl_item_node(tcx, hir_id)
+        .or_else(|| {
+            let item = tcx.hir().expect_item(hir_id);
+            match &item.kind {
+                ItemKind::Fn(fn_sig, _, body_id) => Some((fn_sig, body_id)),
+                _ => None,
+            }
+        })
+        .expect("function expected")
 }
 
 pub(crate) fn typ_path_and_ident_to_vir_path<'tcx>(path: &Path, ident: vir::ast::Ident) -> Path {
@@ -76,7 +90,7 @@ pub(crate) fn def_id_to_vir_path<'tcx>(tcx: TyCtxt<'tcx>, def_id: DefId) -> Path
     // If so, we construct a VIR path based on the VIR path for the type.
     if let Some(local_id) = def_id.as_local() {
         let hir = tcx.hir().local_def_id_to_hir_id(local_id);
-        if is_function_def_impl_item_node(tcx.hir().get(hir)) {
+        if get_function_def_impl_item_node(tcx, hir).is_some() {
             if let Some(self_def_id) = fn_item_hir_id_to_self_def_id(tcx, hir) {
                 let ty_path = def_path_to_vir_path(tcx, tcx.def_path(self_def_id));
                 return typ_path_and_ident_to_vir_path(&ty_path, def_to_path_ident(tcx, def_id));

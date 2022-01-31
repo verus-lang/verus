@@ -296,13 +296,14 @@ pub(crate) fn expr_to_one_stm_dest(
     Ok(stms_to_one_stm(&expr.span, stms))
 }
 
-fn is_small_exp(exp: &Exp) -> bool {
+fn is_small_exp_or_loc(exp: &Exp) -> bool {
     match &exp.x {
         ExpX::Const(_) => true,
         ExpX::Var(..) => true,
         ExpX::Old(..) => true,
-        ExpX::Unary(UnaryOp::Not | UnaryOp::Clip(_), e) => is_small_exp(e),
-        ExpX::UnaryOpr(UnaryOpr::Box(_) | UnaryOpr::Unbox(_), e) => is_small_exp(e),
+        ExpX::Loc(..) => true,
+        ExpX::Unary(UnaryOp::Not | UnaryOp::Clip(_), e) => is_small_exp_or_loc(e),
+        ExpX::UnaryOpr(UnaryOpr::Box(_) | UnaryOpr::Unbox(_), e) => is_small_exp_or_loc(e),
         _ => false,
     }
 }
@@ -318,7 +319,7 @@ fn stm_call(
     let mut small_args: Vec<Exp> = Vec::new();
     let mut stms: Vec<Stm> = Vec::new();
     for arg in args.iter() {
-        if is_small_exp(&arg.0) {
+        if is_small_exp_or_loc(&arg.0) {
             small_args.push(arg.0.clone());
         } else {
             // To avoid copying arg in preconditions and postconditions,

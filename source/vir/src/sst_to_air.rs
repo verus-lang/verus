@@ -326,8 +326,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: ExprCtxt) -> Expr {
         }
         ExpX::Var(x) => string_var(&suffix_local_unique_id(x)),
         ExpX::VarLoc(x) => {
-            dbg!(&x);
-            todo!()
+            string_var(&suffix_local_unique_id(x))
         }
         ExpX::VarAt(x, VarAt::Pre) => match expr_ctxt {
             ExprCtxt::Spec => string_var(&prefix_pre_var(&suffix_local_stmt_id(x))),
@@ -337,8 +336,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: ExprCtxt) -> Expr {
             ExprCtxt::BodyPre => string_var(&suffix_local_stmt_id(x)),
         },
         ExpX::Loc(e0) => {
-            dbg!(&e0);
-            todo!()
+            exp_to_expr(ctx, e0, expr_ctxt)
         }
         ExpX::Old(span, x) => Arc::new(ExprX::Old(span.clone(), suffix_local_stmt_id(x))),
         ExpX::Call(x, typs, args) => {
@@ -778,42 +776,38 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
             let mut ens_args_wo_typ = Vec::new();
             let mut havocs = Vec::new();
             for (param, arg) in func.x.params.iter().zip(args.iter()) {
+                let arg_x = if let Some(Dest { var, .. }) = dest {
+                    crate::sst_visitor::map_exp_visitor(arg, &mut |e| match &e.x {
+                        ExpX::Var(x) if x == var => {
+                            call_snapshot = true;
+                            SpannedTyped::new(
+                                &e.span,
+                                &e.typ,
+                                ExpX::Old(snapshot_ident(SNAPSHOT_CALL), x.0.clone()),
+                            )
+                        }
+                        _ => e.clone(),
+                    })
+                } else {
+                    arg.clone()
+                };
                 if param.x.is_mut {
                     call_snapshot = true;
-                    let arg_x = if let ExpX::Var(x) = &arg.x {
-                        {
+                    let arg_old = crate::sst_visitor::map_exp_visitor(arg, &mut |e| match &e.x {
+                        ExpX::VarLoc(x) => {
                             let havoc = StmtX::Havoc(suffix_local_unique_id(&x));
                             havocs.push(Arc::new(havoc));
-                        }
-                        SpannedTyped::new(
-                            &arg.span,
-                            &arg.typ,
-                            ExpX::Old(snapshot_ident(SNAPSHOT_CALL), x.0.clone()),
-                        )
-                    } else {
-                        panic!(
-                            "unexpected location for &mut argument (must be an ExpX::Var), {:?}",
-                            &arg.span
-                        );
-                    };
+                            SpannedTyped::new(
+                                &e.span,
+                                &e.typ,
+                                ExpX::Old(snapshot_ident(SNAPSHOT_CALL), x.0.clone()),
+                            )
+                        },
+                        _ => e.clone(),
+                    });
+                    ens_args_wo_typ.push(exp_to_expr(ctx, &arg_old, expr_ctxt));
                     ens_args_wo_typ.push(exp_to_expr(ctx, &arg_x, expr_ctxt));
-                    ens_args_wo_typ.push(exp_to_expr(ctx, &arg, expr_ctxt));
                 } else {
-                    let arg_x = if let Some(Dest { var, .. }) = dest {
-                        crate::sst_visitor::map_exp_visitor(arg, &mut |e| match &e.x {
-                            ExpX::Var(x) if x == var => {
-                                call_snapshot = true;
-                                SpannedTyped::new(
-                                    &e.span,
-                                    &e.typ,
-                                    ExpX::Old(snapshot_ident(SNAPSHOT_CALL), x.0.clone()),
-                                )
-                            }
-                            _ => e.clone(),
-                        })
-                    } else {
-                        arg.clone()
-                    };
                     ens_args_wo_typ.push(exp_to_expr(ctx, &arg_x, expr_ctxt))
                 };
             }

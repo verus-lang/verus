@@ -5,7 +5,7 @@ use crate::rust_to_vir_base::{
     def_id_to_vir_path, def_to_path_ident, get_range, get_trigger, get_var_mode,
     get_verifier_attrs, hack_get_def_name, ident_to_var, is_smt_arith, is_smt_equality,
     mid_ty_simplify, mid_ty_to_vir, mk_range, parse_attrs, ty_to_vir, typ_of_node,
-    typ_of_node_expect_mut_ref, typ_path_and_ident_to_vir_path, Attr,
+    typ_of_node_expect_mut_ref, typ_path_and_ident_to_vir_path, Attr, get_function_def
 };
 use crate::util::{
     err_span_str, err_span_string, slice_vec_map_result, spanned_new, spanned_typed_new,
@@ -508,12 +508,31 @@ fn fn_call_to_vir<'tcx>(
         return Ok(mk_expr(ExprX::AssertBV(expr)));
     }
 
-    let mut vir_args = vec_map_result(&args, |arg| match arg.kind {
-        ExprKind::AddrOf(BorrowKind::Ref, Mutability::Mut, e) => {
-            Ok(mk_expr(ExprX::Loc(expr_to_vir(bctx, e, ExprModifier::Regular)?)))
+    let inputs: Box<dyn Iterator<Item=Option<_>>> = if let Some(f_local) = f.as_local() {
+        let f_hir_id = bctx.ctxt.tcx.hir().local_def_id_to_hir_id(f_local);
+        let inputs = get_function_def(bctx.ctxt.tcx, f_hir_id).0.decl.inputs;
+        Box::new(inputs.iter().map(Some).into_iter())
+    } else {
+        Box::new(std::iter::repeat(None))
+    };
+    let mut vir_args = args.iter().zip(inputs).map(|(arg, param)| {
+        let is_mut_ref_param = match param {
+            Some(rustc_hir::Ty { kind: rustc_hir::TyKind::Rptr(_, rustc_hir::MutTy { mutbl: rustc_hir::Mutability::Mut, .. }), .. }) => {
+                true
+            },
+            _ => false,
+        };
+        if is_mut_ref_param {
+            let arg_x = match &arg.kind {
+                ExprKind::AddrOf(BorrowKind::Ref, Mutability::Mut, e) => e,
+                _ => arg,
+            };
+            let expr = expr_to_vir(bctx, arg_x, ExprModifier::AddrOf)?;
+            Ok(spanned_typed_new(arg.span, &expr.typ.clone(), ExprX::Loc(expr)))
+        } else {
+            expr_to_vir(bctx, arg, ExprModifier::Regular)
         }
-        _ => expr_to_vir(bctx, arg, ExprModifier::Regular),
-    })?;
+    }).collect::<Result<Vec<_>, _>>()?;
     let self_path = if let Some(autoview_typ) = autoview_typ {
         // replace f(arg0, arg1, ..., argn) with f(arg0.view(), arg1, ..., argn)
         let typ_args = if let TypX::Datatype(_, args) = &**autoview_typ {
@@ -1019,7 +1038,10 @@ fn invariant_block_to_vir<'tcx>(
 #[derive(PartialEq, Eq, Debug, Clone, Copy)]
 pub enum ExprModifier {
     Regular,
-    MutRef,
+    /// dereferencing a mutable reference
+    DerefMut,
+    /// taking a mutable reference
+    AddrOf,
 }
 
 fn is_expr_typ_mut_ref<'tcx>(
@@ -1029,7 +1051,7 @@ fn is_expr_typ_mut_ref<'tcx>(
 ) -> Result<ExprModifier, VirErr> {
     match bctx.types.node_type(expr.hir_id).kind() {
         TyKind::Ref(_, _tys, rustc_ast::Mutability::Not) => Ok(ExprModifier::Regular),
-        TyKind::Ref(_, _tys, rustc_ast::Mutability::Mut) => Ok(ExprModifier::MutRef),
+        TyKind::Ref(_, _tys, rustc_ast::Mutability::Mut) => Ok(ExprModifier::DerefMut),
         TyKind::Adt(_, _) => Ok(ExprModifier::Regular),
         TyKind::Tuple(_) => Ok(ExprModifier::Regular),
         _ => unsupported_err!(expr.span, "dereferencing this type is unsupported", expr),
@@ -1058,9 +1080,9 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
     let tcx = bctx.ctxt.tcx;
     let tc = bctx.types;
     let expr_typ = || match modifier {
-        ExprModifier::Regular => typ_of_node(bctx, &expr.hir_id),
+        ExprModifier::Regular | ExprModifier::AddrOf => typ_of_node(bctx, &expr.hir_id),
         // TODO(utaal): propagate this error, instead of crashing
-        ExprModifier::MutRef => typ_of_node_expect_mut_ref(bctx, &expr.hir_id, expr.span)
+        ExprModifier::DerefMut => typ_of_node_expect_mut_ref(bctx, &expr.hir_id, expr.span)
             .expect("unexpected non-mut-ref type here"),
     };
     let mk_expr = move |x: ExprX| spanned_typed_new(expr.span, &expr_typ(), x);
@@ -1306,7 +1328,10 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
         }
         ExprKind::Path(QPath::Resolved(None, path)) => match path.res {
             Res::Local(id) => match tcx.hir().get(id) {
-                Node::Binding(pat) => Ok(mk_expr(ExprX::Var(Arc::new(pat_to_var(pat))))),
+                Node::Binding(pat) => Ok(mk_expr(match modifier {
+                    ExprModifier::Regular | ExprModifier::DerefMut => ExprX::Var(Arc::new(pat_to_var(pat))),
+                    ExprModifier::AddrOf => ExprX::VarLoc(Arc::new(pat_to_var(pat)))
+                })),
                 node => unsupported_err!(expr.span, format!("Path {:?}", node)),
             },
             Res::Def(def_kind, id) => {
