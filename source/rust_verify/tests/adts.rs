@@ -422,3 +422,13 @@ test_verify_one_file! {
         }
     } => Err(_) // type-checking error
 }
+
+test_verify_one_file! {
+    #[test] test_regression_tuple_1 code! {
+        struct B(bool);
+
+        fn test1(b: B) {
+            let z = b.0;
+        }
+    } => Ok(())
+}

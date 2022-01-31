@@ -1348,9 +1348,23 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                     expr
                 );
                 let datatype_path = def_id_to_vir_path(tcx, adt_def.did);
-                let variant = adt_def.variants.iter().next().unwrap();
+                let hir_def = bctx.ctxt.tcx.adt_def(adt_def.did);
+                let variant = hir_def.variants.iter().next().unwrap();
                 let variant_name = str_ident(&variant.ident.as_str());
-                (datatype_path, variant_name, str_ident(&name.as_str()))
+                let field_name = match variant.ctor_kind {
+                    rustc_hir::def::CtorKind::Fn => {
+                        let field_idx = variant
+                            .fields
+                            .iter()
+                            .enumerate()
+                            .find_map(|(i, f)| (f.ident == *name).then(|| i))
+                            .expect("positional field not found");
+                        positional_field_ident(field_idx)
+                    }
+                    rustc_hir::def::CtorKind::Fictive => str_ident(&name.as_str()),
+                    rustc_hir::def::CtorKind::Const => panic!("unexpected tuple constructor"),
+                };
+                (datatype_path, variant_name, field_name)
             } else {
                 let lhs_typ = typ_of_node(bctx, &lhs.hir_id);
                 if let TypX::Tuple(ts) = &*lhs_typ {
