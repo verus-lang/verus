@@ -286,7 +286,7 @@ pub enum ExprX {
     Tuple(Exprs),
     /// Construct datatype value of type Path and variant Ident,
     /// with field initializers Binders<Expr> and an optional ".." update expression.
-    /// For tuple-style variants, the field initializers appear in order and are named "0", "1", etc.
+    /// For tuple-style variants, the field initializers appear in order and are named "_0", "_1", etc.
     /// For struct-style variants, the field initializers may appear in any order.
     Ctor(Path, Ident, Binders<Expr>, Option<Expr>),
     /// Primitive unary operation

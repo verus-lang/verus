@@ -679,9 +679,10 @@ pub(crate) fn expr_tuple_datatype_ctor_to_vir<'tcx>(
 ) -> Result<vir::ast::Expr, VirErr> {
     let tcx = bctx.ctxt.tcx;
     let expr_typ = typ_of_node(bctx, &expr.hir_id);
-    if let Res::Def(DefKind::Ctor(ctor_of, ctor_kind), _def_id) = res {
+    let ctor_of = if let Res::Def(DefKind::Ctor(ctor_of, ctor_kind), _def_id) = res {
         unsupported_unless!(
-            ctor_of == &rustc_hir::def::CtorOf::Variant,
+            ctor_of == &rustc_hir::def::CtorOf::Variant
+                || ctor_of == &rustc_hir::def::CtorOf::Struct,
             "non_variant_ctor_in_call_expr",
             expr
         );
@@ -691,8 +692,12 @@ pub(crate) fn expr_tuple_datatype_ctor_to_vir<'tcx>(
             "non_fn_ctor_in_call_expr",
             expr
         );
-    }
-    let (vir_path, variant_name) = datatype_variant_of_res(tcx, res, true);
+        ctor_of
+    } else {
+        panic!("unexpected constructor in expr_tuple_datatype_ctor_to_vir")
+    };
+    let (vir_path, variant_name) =
+        datatype_variant_of_res(tcx, res, ctor_of == &rustc_hir::def::CtorOf::Variant);
     let vir_fields = Arc::new(
         args_slice
             .iter()
@@ -759,7 +764,10 @@ pub(crate) fn pattern_to_vir<'tcx>(
                         @
                         Res::Def(
                             DefKind::Ctor(
-                                rustc_hir::def::CtorOf::Variant,
+                                ctor_of
+                                @
+                                (rustc_hir::def::CtorOf::Variant
+                                | rustc_hir::def::CtorOf::Struct),
                                 rustc_hir::def::CtorKind::Fn,
                             ),
                             _,
@@ -770,7 +778,8 @@ pub(crate) fn pattern_to_vir<'tcx>(
             pats,
             None,
         ) => {
-            let (vir_path, variant_name) = datatype_variant_of_res(tcx, res, true);
+            let (vir_path, variant_name) =
+                datatype_variant_of_res(tcx, res, *ctor_of == rustc_hir::def::CtorOf::Variant);
             let mut binders: Vec<Binder<vir::ast::Pattern>> = Vec::new();
             for (i, pat) in pats.iter().enumerate() {
                 let pattern = pattern_to_vir(bctx, pat)?;
