@@ -12,12 +12,12 @@ use std::collections::HashSet;
 use std::ops::Index;
 use std::sync::Arc;
 use vir::ast::{
-    CallTarget, Expr, ExprX, Function, FunctionX, Ident, KrateX, Mode, Path, PathX, Stmt, Typ,
-    TypX, VirErr, SpannedTyped,
+    CallTarget, Expr, ExprX, Function, FunctionX, Ident, KrateX, Mode, Path, PathX, SpannedTyped,
+    Stmt, Typ, TypX, VirErr,
 };
 use vir::ast_util::{
     conjoin, mk_and, mk_assert, mk_assume, mk_block, mk_bool, mk_call, mk_decl_stmt, mk_eq,
-    mk_expr_stmt, mk_ife, mk_implies, mk_or, mk_var, mk_field,
+    mk_expr_stmt, mk_field, mk_ife, mk_implies, mk_or, mk_var,
 };
 
 fn check_updates_refer_to_valid_fields(
@@ -388,10 +388,7 @@ fn transition_to_vir_stmt(
                 Some(post_expr) => {
                     let typ = &expr.typ;
                     let field_access = mk_field(span, post_expr, f, typ);
-                    mk_assume(
-                        span,
-                        &mk_eq(span, Mode::Spec, &field_access, expr),
-                    )
+                    mk_assume(span, &mk_eq(span, Mode::Spec, &field_access, expr))
                 }
             };
             mk_expr_stmt(span, &e)

@@ -10,14 +10,14 @@ use smir::ast::{
 use syn::buffer::Cursor;
 use syn::parse::{Parse, ParseStream};
 use syn::spanned::Spanned;
+use syn::visit::Visit;
 use syn::{
     braced, AttrStyle, Attribute, Error, Expr, FieldsNamed, FnArg, Ident, ImplItemMethod, Meta,
     MetaList, NestedMeta, Receiver, Type,
 };
-use syn::visit::Visit;
 
 pub struct IdentVisitor {
-    pub error: syn::parse::Result<()>
+    pub error: syn::parse::Result<()>,
 }
 
 impl IdentVisitor {

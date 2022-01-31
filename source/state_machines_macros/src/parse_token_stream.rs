@@ -1,5 +1,6 @@
 #![allow(unused_imports)]
 
+use crate::ident_visitor::IdentVisitor;
 use crate::parse_transition::parse_impl_item_method;
 use crate::transitions::check_transitions;
 use proc_macro2::Span;
@@ -10,12 +11,11 @@ use smir::ast::{
 use syn::buffer::Cursor;
 use syn::parse::{Parse, ParseStream};
 use syn::spanned::Spanned;
+use syn::visit::Visit;
 use syn::{
     braced, AttrStyle, Attribute, Error, Expr, FieldsNamed, FnArg, Ident, ImplItemMethod, Meta,
     MetaList, NestedMeta, Receiver, Type,
 };
-use crate::ident_visitor::IdentVisitor;
-use syn::visit::Visit;
 
 ///////// TokenStream -> ParseResult
 
@@ -354,11 +354,7 @@ pub fn parse_result_to_smir(pr: ParseResult) -> syn::parse::Result<SMAndFuncs> {
             let fields = to_fields(&fields_named)?;
             let sm = SM { name, fields, transitions, invariants, lemmas };
             check_transitions(&sm)?;
-            MaybeSM::SM(
-                sm,
-                fields_named,
-                trans_fns,
-            )
+            MaybeSM::SM(sm, fields_named, trans_fns)
         }
     };
     Ok(SMAndFuncs { normal_fns, sm: maybe_sm })

@@ -185,8 +185,7 @@ where
                     panic!("header expression not allowed here: {:?}", &expr.span);
                 }
                 ExprX::Admit => (),
-                ExprX::Assert(_, e) => {
-                }
+                ExprX::Assert(_, e) => {}
                 ExprX::Forall { vars, require, ensure, proof } => {
                     map.push_scope(true);
                     for binder in vars.iter() {

@@ -1,12 +1,13 @@
 #![allow(unused_imports)]
 
 use crate::parse_token_stream::{MaybeSM, SMAndFuncs};
+use crate::weakest::{get_safety_conditions, to_weakest};
 use proc_macro2::Span;
 use proc_macro2::TokenStream;
 use quote::{quote, quote_spanned, ToTokens};
 use smir::ast::{
-    Extras, Field, Invariant, Lemma, LemmaPurpose, ShardableType, Transition, TransitionKind,
-    TransitionStmt, SM, Arg,
+    Arg, Extras, Field, Invariant, Lemma, LemmaPurpose, ShardableType, Transition, TransitionKind,
+    TransitionStmt, SM,
 };
 use syn::buffer::Cursor;
 use syn::parse::{Parse, ParseStream};
@@ -17,7 +18,6 @@ use syn::{
     braced, AttrStyle, Attribute, Error, Expr, FieldsNamed, FnArg, Ident, ImplItemMethod, Meta,
     MetaList, NestedMeta, Path, PathArguments, PathSegment, Type,
 };
-use crate::weakest::{to_weakest, get_safety_conditions};
 
 pub fn output_token_stream(sm_and_funcs: SMAndFuncs) -> TokenStream {
     let SMAndFuncs { normal_fns, sm: maybe_sm } = sm_and_funcs;
@@ -146,7 +146,7 @@ pub fn output_primary_stuff(
             let f = to_weakest(sm, trans);
             let args = self_post_params(&trans.args);
             let name = &trans.name;
-            let rel_fn = quote!{
+            let rel_fn = quote! {
                 #[spec]
                 #[verifier(state_machine_fn(transition(#name)))]
                 pub fn #name (#args) -> bool {
@@ -159,10 +159,12 @@ pub fn output_primary_stuff(
         for (i, safety_cond) in get_safety_conditions(&trans.body).iter().enumerate() {
             let args = self_params(&trans.args);
             let idx = i + 1;
-            let name = Ident::new(&(trans.name.to_string() + "_safety_" + &idx.to_string()),
-                trans.name.span());
+            let name = Ident::new(
+                &(trans.name.to_string() + "_safety_" + &idx.to_string()),
+                trans.name.span(),
+            );
             let idx_lit = syn::LitInt::new(&idx.to_string(), trans.name.span());
-            let rel_fn = quote!{
+            let rel_fn = quote! {
                 #[spec]
                 #[verifier(state_machine_fn(safety_condition(#name, #idx_lit)))]
                 pub fn #name (#args) -> bool {
@@ -181,20 +183,16 @@ pub fn output_primary_stuff(
             let args = lone_args(&trans.args);
             let p_args = post_args(&trans.args);
 
-            let mut conjuncts = vec![
-                quote!{
-                    self.#base_name(#p_args)
-                }
-            ];
+            let mut conjuncts = vec![quote! {
+                self.#base_name(#p_args)
+            }];
             for ident in strong_rel_idents {
-                conjuncts.push(
-                    quote!{
-                        self.#ident(#args)
-                    }
-                );
+                conjuncts.push(quote! {
+                    self.#ident(#args)
+                });
             }
 
-            let rel_fn = quote!{
+            let rel_fn = quote! {
                 #[spec]
                 pub fn #name (#params) -> bool {
                     #(#conjuncts)&&*
@@ -206,11 +204,14 @@ pub fn output_primary_stuff(
 }
 
 fn self_post_params(args: &Vec<Arg<Ident, Type>>) -> TokenStream {
-    let args: Vec<TokenStream> = args.iter().map(|arg| {
-      let ident = &arg.ident;
-      let ty = &arg.ty;
-      quote!{ #ident: #ty }
-    }).collect();
+    let args: Vec<TokenStream> = args
+        .iter()
+        .map(|arg| {
+            let ident = &arg.ident;
+            let ty = &arg.ty;
+            quote! { #ident: #ty }
+        })
+        .collect();
     return quote! {
         self,
         post: Self,
@@ -219,11 +220,14 @@ fn self_post_params(args: &Vec<Arg<Ident, Type>>) -> TokenStream {
 }
 
 fn self_params(args: &Vec<Arg<Ident, Type>>) -> TokenStream {
-    let args: Vec<TokenStream> = args.iter().map(|arg| {
-        let ident = &arg.ident;
-        let ty = &arg.ty;
-        quote!{ #ident: #ty }
-    }).collect();
+    let args: Vec<TokenStream> = args
+        .iter()
+        .map(|arg| {
+            let ident = &arg.ident;
+            let ty = &arg.ty;
+            quote! { #ident: #ty }
+        })
+        .collect();
     return quote! {
         self,
         #(#args),*
@@ -231,10 +235,13 @@ fn self_params(args: &Vec<Arg<Ident, Type>>) -> TokenStream {
 }
 
 fn post_args(args: &Vec<Arg<Ident, Type>>) -> TokenStream {
-    let args: Vec<TokenStream> = args.iter().map(|arg| {
-      let ident = &arg.ident;
-      quote!{ #ident }
-    }).collect();
+    let args: Vec<TokenStream> = args
+        .iter()
+        .map(|arg| {
+            let ident = &arg.ident;
+            quote! { #ident }
+        })
+        .collect();
     return quote! {
         post,
         #(#args),*
@@ -242,10 +249,13 @@ fn post_args(args: &Vec<Arg<Ident, Type>>) -> TokenStream {
 }
 
 fn lone_args(args: &Vec<Arg<Ident, Type>>) -> TokenStream {
-    let args: Vec<TokenStream> = args.iter().map(|arg| {
-        let ident = &arg.ident;
-        quote!{ #ident }
-    }).collect();
+    let args: Vec<TokenStream> = args
+        .iter()
+        .map(|arg| {
+            let ident = &arg.ident;
+            quote! { #ident }
+        })
+        .collect();
     return quote! {
         #(#args),*
     };

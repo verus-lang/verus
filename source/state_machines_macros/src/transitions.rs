@@ -8,17 +8,17 @@ use smir::ast::{
     Extras, Field, Invariant, Lemma, LemmaPurpose, ShardableType, Transition, TransitionKind,
     TransitionStmt, SM,
 };
+use std::collections::HashMap;
 use syn::buffer::Cursor;
 use syn::parse::{Parse, ParseStream};
 use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
-use syn::token::{Dot, Colon2, Paren};
+use syn::token::{Colon2, Dot, Paren};
 use syn::{
-    braced, AttrStyle, Attribute, Error, Expr, FieldsNamed, FnArg, Ident, ImplItemMethod, Meta,
-    MetaList, NestedMeta, Path, PathArguments, PathSegment, Type, ExprPath, ExprField, Member,
-    ExprCall,
+    braced, AttrStyle, Attribute, Error, Expr, ExprCall, ExprField, ExprPath, FieldsNamed, FnArg,
+    Ident, ImplItemMethod, Member, Meta, MetaList, NestedMeta, Path, PathArguments, PathSegment,
+    Type,
 };
-use std::collections::HashMap;
 
 pub fn fields_contain(fields: &Vec<Field<Ident, Type>>, ident: &Ident) -> bool {
     for f in fields {
@@ -91,8 +91,10 @@ fn disjoint_union(
         match h1_map.get(ident) {
             None => {}
             Some(span1) => {
-                return Err(Error::new(*span1,
-                    format!("field '{}' might be updated multiple times", ident.to_string())));
+                return Err(Error::new(
+                    *span1,
+                    format!("field '{}' might be updated multiple times", ident.to_string()),
+                ));
             }
         }
     }
@@ -139,8 +141,13 @@ fn check_has_all_fields(
 ) -> syn::parse::Result<()> {
     for field in fields {
         if !update_set_contains(h, &field.ident) {
-            return Err(Error::new(sp,
-                format!("itialization procedure does not initialize field {}", field.ident.to_string())));
+            return Err(Error::new(
+                sp,
+                format!(
+                    "itialization procedure does not initialize field {}",
+                    field.ident.to_string()
+                ),
+            ));
         }
     }
     Ok(())
@@ -163,8 +170,10 @@ fn check_init(ts: &TransitionStmt<Span, Ident, Expr>) -> syn::parse::Result<Vec<
             let h1 = check_init(thn)?;
             let h2 = check_init(els)?;
             if !update_sets_eq(&h1, &h2) {
-                return Err(Error::new(*sp,
-                    "for initialization, both branches of if-statement must update the same fields"));
+                return Err(Error::new(
+                    *sp,
+                    "for initialization, both branches of if-statement must update the same fields",
+                ));
             }
             return Ok(h1);
         }
@@ -182,7 +191,9 @@ fn check_init(ts: &TransitionStmt<Span, Ident, Expr>) -> syn::parse::Result<Vec<
     }
 }
 
-pub fn check_normal(ts: &TransitionStmt<Span, Ident, Expr>) -> syn::parse::Result<Vec<(Ident, Span)>> {
+pub fn check_normal(
+    ts: &TransitionStmt<Span, Ident, Expr>,
+) -> syn::parse::Result<Vec<(Ident, Span)>> {
     match ts {
         TransitionStmt::Block(_, v) => {
             let mut h = Vec::new();
@@ -230,45 +241,30 @@ fn append_stmt_front(
 
 fn single_identifier_path(ident: Ident) -> Expr {
     let mut post_segs = Punctuated::new();
-    post_segs.push(PathSegment {
-        ident,
-        arguments: PathArguments::None,
-    });
+    post_segs.push(PathSegment { ident, arguments: PathArguments::None });
     Expr::Path(ExprPath {
         attrs: Vec::new(),
         qself: None,
-        path: Path {
-            leading_colon: None,
-            segments: post_segs,
-        },
+        path: Path { leading_colon: None, segments: post_segs },
     })
 }
 
 fn double_colon_path(span: Span, idents: Vec<Ident>) -> Expr {
     let mut post_segs = Punctuated::new();
     for ident in idents {
-      post_segs.push(PathSegment {
-          ident,
-          arguments: PathArguments::None,
-      });
+        post_segs.push(PathSegment { ident, arguments: PathArguments::None });
     }
     Expr::Path(ExprPath {
         attrs: Vec::new(),
         qself: None,
-        path: Path {
-            leading_colon: Some(Colon2 { spans: [span, span] }),
-            segments: post_segs,
-        },
+        path: Path { leading_colon: Some(Colon2 { spans: [span, span] }), segments: post_segs },
     })
 }
-
 
 fn self_dot_ident(ident: Ident) -> Expr {
     Expr::Field(ExprField {
         attrs: Vec::new(),
-        base: Box::new(single_identifier_path(
-            Ident::new("self", ident.span())
-        )),
+        base: Box::new(single_identifier_path(Ident::new("self", ident.span()))),
         dot_token: Dot { spans: [ident.span()] },
         member: Member::Named(ident),
     })
@@ -277,9 +273,7 @@ fn self_dot_ident(ident: Ident) -> Expr {
 fn post_dot_ident(ident: Ident) -> Expr {
     Expr::Field(ExprField {
         attrs: Vec::new(),
-        base: Box::new(single_identifier_path(
-            Ident::new("post", ident.span())
-        )),
+        base: Box::new(single_identifier_path(Ident::new("post", ident.span()))),
         dot_token: Dot { spans: [ident.span()] },
         member: Member::Named(ident),
     })
@@ -290,10 +284,8 @@ fn builtin_equal_call(span: Span, e1: Expr, e2: Expr) -> Expr {
     args.push(e1);
     args.push(e2);
 
-    let builtin_equal = double_colon_path(span, vec![
-        Ident::new("builtin", span),
-        Ident::new("equal", span)
-    ]);
+    let builtin_equal =
+        double_colon_path(span, vec![Ident::new("builtin", span), Ident::new("equal", span)]);
 
     Expr::Call(ExprCall {
         attrs: Vec::new(),
@@ -405,7 +397,9 @@ pub fn check_transitions(
     Ok(())
 }
 
-pub fn replace_updates(ts: &TransitionStmt<Span, Ident, Expr>) -> TransitionStmt<Span, Ident, Expr> {
+pub fn replace_updates(
+    ts: &TransitionStmt<Span, Ident, Expr>,
+) -> TransitionStmt<Span, Ident, Expr> {
     match ts {
         TransitionStmt::Block(span, v) => {
             let mut h = Vec::new();
@@ -415,23 +409,17 @@ pub fn replace_updates(ts: &TransitionStmt<Span, Ident, Expr>) -> TransitionStmt
             }
             TransitionStmt::Block(*span, h)
         }
-        TransitionStmt::Let(_, _, _) => {
-            ts.clone()
-        }
+        TransitionStmt::Let(_, _, _) => ts.clone(),
         TransitionStmt::If(span, cond, thn, els) => {
             let t1 = replace_updates(thn);
             let t2 = replace_updates(els);
             TransitionStmt::If(*span, cond.clone(), Box::new(t1), Box::new(t2))
         }
-        TransitionStmt::Require(_, _) => {
-            ts.clone()
-        }
-        TransitionStmt::Assert(_, _) => {
-            ts.clone()
-        }
-        TransitionStmt::Update(span, ident, e) => {
-            TransitionStmt::Require(*span,
-                builtin_equal_call(*span, post_dot_ident(ident.clone()), e.clone()))
-        }
+        TransitionStmt::Require(_, _) => ts.clone(),
+        TransitionStmt::Assert(_, _) => ts.clone(),
+        TransitionStmt::Update(span, ident, e) => TransitionStmt::Require(
+            *span,
+            builtin_equal_call(*span, post_dot_ident(ident.clone()), e.clone()),
+        ),
     }
 }

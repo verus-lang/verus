@@ -1,8 +1,9 @@
 #![allow(unused_imports)]
 
-use crate::check_wf::{set_body, set_req_ens};
 use crate::check_wf::{check_wf_user_invariant, get_member_path, setup_inv};
+use crate::check_wf::{set_body, set_req_ens};
 use crate::transitions::assume_transition_holds;
+use crate::update_krate::Predicate;
 use air::ast::Span;
 use air::errors::error;
 use smir::ast::{
@@ -21,7 +22,6 @@ use vir::ast_util::{
     conjoin, mk_and, mk_assert, mk_assume, mk_block, mk_bool, mk_call, mk_decl_stmt, mk_eq,
     mk_expr_stmt, mk_ife, mk_implies, mk_or, mk_var,
 };
-use crate::update_krate::Predicate;
 
 pub fn get_transition_func_name(
     predicates: &Vec<(String, Predicate)>,
@@ -34,7 +34,7 @@ pub fn get_transition_func_name(
                     return Some(Arc::new(func_name.clone()));
                 }
             }
-            _ => { }
+            _ => {}
         }
     }
     return None;
@@ -53,7 +53,10 @@ pub fn check_wf_lemmas(
                 match get_transition_func_name(predicates, transition_ident) {
                     None => {
                         let span = &fun_map.index(&l.func).span;
-                        return Err(error(format!("no transition named {}", *transition_ident), span));
+                        return Err(error(
+                            format!("no transition named {}", *transition_ident),
+                            span,
+                        ));
                     }
                     Some(_id) => {
                         // TODO check other wf-ness
@@ -118,7 +121,8 @@ pub fn check_lemmas_cover_all_cases(
                 }
             }
             LemmaPurpose { transition, kind: LemmaPurposeKind::SatisfiesAsserts } => {
-                if !need_assert_check.remove(&(transition.clone(), 1)) { // TODO the numbers
+                if !need_assert_check.remove(&(transition.clone(), 1)) {
+                    // TODO the numbers
                     let span = &fun_map.index(transition).span;
                     return Err(error(
                         "this lemma is unnecessary because transition '".to_string()
@@ -193,7 +197,8 @@ pub fn setup_lemmas(
     for l in sm.lemmas.iter() {
         match &l.purpose {
             LemmaPurpose { transition, kind: LemmaPurposeKind::PreservesInvariant } => {
-                let trans_func_name = get_transition_func_name(predicates, transition).expect("get_transition_func_name");
+                let trans_func_name = get_transition_func_name(predicates, transition)
+                    .expect("get_transition_func_name");
                 let trans_function = funs.index(&trans_func_name);
                 let lemma_function = funs.index(&l.func);
                 let span = lemma_function.span.clone();
@@ -208,19 +213,20 @@ pub fn setup_lemmas(
                 let trans_fun = Arc::new(FunX { path: trans_path, trait_path: None });
                 let call_target = CallTarget::Static(trans_fun, Arc::new(Vec::new()));
                 let var_ty = Arc::new(TypX::Datatype(type_path.clone(), Arc::new(Vec::new())));
-                let var_for_self_ident = SpannedTyped::new(&span, &var_ty, ExprX::Var(self_ident.clone()));
-                let var_for_post_ident = SpannedTyped::new(&span, &var_ty, ExprX::Var(post_ident.clone()));
-                let trans_holds_for_self_post = 
-                    mk_call(&span, &Arc::new(TypX::Bool), &call_target, &vec![var_for_self_ident, var_for_post_ident]);
+                let var_for_self_ident =
+                    SpannedTyped::new(&span, &var_ty, ExprX::Var(self_ident.clone()));
+                let var_for_post_ident =
+                    SpannedTyped::new(&span, &var_ty, ExprX::Var(post_ident.clone()));
+                let trans_holds_for_self_post = mk_call(
+                    &span,
+                    &Arc::new(TypX::Bool),
+                    &call_target,
+                    &vec![var_for_self_ident, var_for_post_ident],
+                );
 
-                let reqs = vec![
-                    inv_holds_for_self,
-                    trans_holds_for_self_post,
-                ];
+                let reqs = vec![inv_holds_for_self, trans_holds_for_self_post];
 
-                let enss = vec![
-                    inv_holds_for_post,
-                ];
+                let enss = vec![inv_holds_for_post];
 
                 let new_f = set_req_ens(lemma_function, reqs, enss);
 

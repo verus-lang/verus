@@ -9,7 +9,7 @@ use smir::ast::{
     TransitionKind, SM,
 };
 use smir_vir::reinterpret::reinterpret_func_as_transition;
-use smir_vir::update_krate::{Predicate, update_krate};
+use smir_vir::update_krate::{update_krate, Predicate};
 use std::collections::HashMap;
 use std::sync::Arc;
 use vir::ast::{Datatype, Expr, Function, Ident, KrateX, Path, PathX, Typ, VirErr};
@@ -17,7 +17,7 @@ use vir::ast::{Datatype, Expr, Function, Ident, KrateX, Path, PathX, Typ, VirErr
 pub struct SMFuns {
     pub invariants: Vec<Invariant<Ident>>,
     pub lemmas: Vec<Lemma<Ident, Ident>>,
-    pub predicates: Vec<(String, Predicate)>
+    pub predicates: Vec<(String, Predicate)>,
 }
 
 pub struct SMCtxt {
@@ -44,7 +44,11 @@ pub(crate) fn parse_state_machine_fn_attr(t: &AttrTree) -> Result<StateMachineFn
             Ok(StateMachineFnAttr::Init(id.clone()))
         }
 
-        AttrTree::Fun(_, arg, Some(box [AttrTree::Fun(_, id, None), AttrTree::Fun(_, num, None)])) if arg == "safety_condition" => {
+        AttrTree::Fun(
+            _,
+            arg,
+            Some(box [AttrTree::Fun(_, id, None), AttrTree::Fun(_, num, None)]),
+        ) if arg == "safety_condition" => {
             let n = num.parse().unwrap();
             Ok(StateMachineFnAttr::Safety(id.clone(), n))
         }
@@ -142,21 +146,33 @@ impl SMCtxt {
                 let func_name = func.x.name.path.segments.last().expect("last segment").clone();
                 let p = Predicate::Transition(func_name);
                 self.insert_if_necessary(&type_path);
-                self.others.get_mut(&type_path).expect("get_mut").predicates.push((name.clone(), p));
+                self.others
+                    .get_mut(&type_path)
+                    .expect("get_mut")
+                    .predicates
+                    .push((name.clone(), p));
                 Ok(())
             }
             Some(StateMachineFnAttr::Safety(name, num)) => {
                 let func_name = func.x.name.path.segments.last().expect("last segment").clone();
                 let p = Predicate::Safety(func_name, *num);
                 self.insert_if_necessary(&type_path);
-                self.others.get_mut(&type_path).expect("get_mut").predicates.push((name.clone(), p));
+                self.others
+                    .get_mut(&type_path)
+                    .expect("get_mut")
+                    .predicates
+                    .push((name.clone(), p));
                 Ok(())
             }
             Some(StateMachineFnAttr::Init(name)) => {
                 let func_name = func.x.name.path.segments.last().expect("last segment").clone();
                 let p = Predicate::Init(func_name);
                 self.insert_if_necessary(&type_path);
-                self.others.get_mut(&type_path).expect("get_mut").predicates.push((name.clone(), p));
+                self.others
+                    .get_mut(&type_path)
+                    .expect("get_mut")
+                    .predicates
+                    .push((name.clone(), p));
                 Ok(())
             }
             Some(StateMachineFnAttr::Invariant) => {

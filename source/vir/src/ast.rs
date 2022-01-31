@@ -299,7 +299,12 @@ pub enum ExprX {
     Assert(Option<Error>, Expr),
     Assume(Expr),
     /// Forall or assert-by statement; proves "forall vars. ensure" via proof.
-    Forall { vars: Binders<Typ>, require: Expr, ensure: Expr, proof: Expr },
+    Forall {
+        vars: Binders<Typ>,
+        require: Expr,
+        ensure: Expr,
+        proof: Expr,
+    },
     /// bit vector assertions
     AssertBV(Expr),
     /// If-else
@@ -307,7 +312,11 @@ pub enum ExprX {
     /// Match (Note: ast_simplify replaces Match with other expressions)
     Match(Expr, Arms),
     /// While loop, with invariants
-    While { cond: Expr, body: Expr, invs: Exprs },
+    While {
+        cond: Expr,
+        body: Expr,
+        invs: Exprs,
+    },
     /// Open invariant
     OpenInvariant(Expr, Binder<Typ>, Expr),
     /// Return from function
