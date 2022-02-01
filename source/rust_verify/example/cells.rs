@@ -3,7 +3,6 @@ use builtin::*;
 mod pervasive;
 #[allow(unused_imports)]
 use crate::pervasive::{*, cell::*};
-use crate::cell::new_empty;
 #[allow(unused_imports)]
 use crate::cell::*;
 
@@ -14,7 +13,7 @@ struct X {
 fn main() {
   let x = X { i: 5 };
 
-  match new_empty() {
+  match PCell::empty() {
     PCellWithToken{pcell, token} => {
       #[proof] let t1 = pcell.put(x, token);
 

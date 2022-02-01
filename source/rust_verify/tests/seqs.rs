@@ -10,15 +10,15 @@ test_verify_one_file! {
 
         #[proof]
         fn test_seq() {
-            let s1 = seq_new(5, |i: int| 10 * i);
+            let s1 = Seq::new(5, |i: int| 10 * i);
             assert(s1.len() == 5);
             assert(s1.index(3) == 30);
-            let s2 = seq_empty::<int>().push(0).push(10).push(20).push(30).push(40);
+            let s2 = Seq::<int>::empty().push(0).push(10).push(20).push(30).push(40);
             assert(s1.ext_equal(s2));
             assert(equal(s1, s2));
             let s3 = s2.subrange(1, 4);
             assert(s3.len() == 3);
-            let s4 = seq_empty::<int>().push(10).push(20).push(30);
+            let s4 = Seq::<int>::empty().push(10).push(20).push(30);
             assert(s3.ext_equal(s4));
             let s5 = s3.add(s1);
             assert(s5.len() == 8);
@@ -37,7 +37,7 @@ test_verify_one_file! {
 
         #[proof]
         fn test_seq() {
-            let s1 = seq_new(5, |i: int| 10 * i);
+            let s1 = Seq::new(5, |i: int| 10 * i);
             assert(s1.len() == 5);
             assert(s1.index(3) == 30);
             assert(s1.index(5) == 50); // FAILS
@@ -51,15 +51,15 @@ test_verify_one_file! {
 
         #[proof]
         fn test_seq() {
-            let s1 = seq_new(5, |i: int| 10 * i);
+            let s1 = Seq::new(5, |i: int| 10 * i);
             assert(s1.len() == 5);
             assert(s1.index(3) == 30);
-            let s2 = seq_empty::<int>().push(0).push(10).push(20).push(30).push(40);
+            let s2 = Seq::<int>::empty().push(0).push(10).push(20).push(30).push(40);
             assert(s1.ext_equal(s2));
             assert(equal(s1, s2));
             let s3 = s2.subrange(1, 4);
             assert(s3.len() == 3);
-            let s4 = seq_empty::<int>().push(10).push(20).push(30);
+            let s4 = Seq::<int>::empty().push(10).push(20).push(30);
             assert(s3.ext_equal(s4));
             let s5 = s3.add(s1);
             assert(s5.len() == 8);

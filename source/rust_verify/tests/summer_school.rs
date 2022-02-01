@@ -676,7 +676,7 @@ test_verify_one_file! {
         #[proof]
         fn seq_comprehension()
         {
-            let evens_in_order = seq_new(5, |i:int| i*2);
+            let evens_in_order = Seq::new(5, |i:int| i*2);
             assert(evens_in_order.index(2) == 4);
             assert(evens_in_order.ext_equal(seq![0,2,4,6,8]));
         }
@@ -727,7 +727,7 @@ test_verify_one_file! {
         #[proof]
         fn seq_comprehension()
         {
-            let evens_in_order = seq_new(5, |i:int| i*2);
+            let evens_in_order = Seq::new(5, |i:int| i*2);
             assert(evens_in_order.index(2) == 4);
             assert(evens_in_order.ext_equal(seq![8,6,4,2,0]));  // FAILS
         }

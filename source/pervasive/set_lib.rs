@@ -15,13 +15,13 @@ impl<A> Set<A> {
 #[proof]
 pub fn lemma_len0_is_empty<A>(s: Set<A>) {
     requires(s.finite() && s.len() == 0);
-    ensures(equal(s, set_empty()));
+    ensures(equal(s, Set::empty()));
 
     if exists(|a: A| s.contains(a)) {
         // derive contradiction:
         assert(s.remove(s.choose()).len() + 1 == 0);
     }
-    assert(s.ext_equal(set_empty()));
+    assert(s.ext_equal(Set::empty()));
 }
 
 #[proof]
@@ -121,7 +121,7 @@ pub fn lemma_int_range(lo: int, hi: int) {
     decreases(hi - lo);
 
     if lo == hi {
-        assert(set_int_range(lo, hi).ext_equal(set_empty()));
+        assert(set_int_range(lo, hi).ext_equal(Set::empty()));
     } else {
         lemma_int_range(lo, hi - 1);
         assert(set_int_range(lo, hi - 1).insert(hi - 1).ext_equal(set_int_range(lo, hi)));

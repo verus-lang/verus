@@ -11,18 +11,6 @@ pub struct Set<A> {
     dummy: std::marker::PhantomData<A>,
 }
 
-// TODO(andrea) move into impl once associated functions supported
-#[spec]
-#[verifier(pub_abstract)]
-pub fn set_empty<A>() -> Set<A> {
-    arbitrary()
-}
-
-#[spec]
-pub fn set_full<A>() -> Set<A> {
-    set_empty().complement()
-}
-
 #[spec]
 #[verifier(pub_abstract)]
 pub fn set_new<A, F: Fn(A) -> bool>(f: F) -> Set<A> {
@@ -30,6 +18,17 @@ pub fn set_new<A, F: Fn(A) -> bool>(f: F) -> Set<A> {
 }
 
 impl<A> Set<A> {
+    #[spec]
+    #[verifier(pub_abstract)]
+    pub fn empty() -> Set<A> {
+        arbitrary()
+    }
+
+    #[spec]
+    pub fn full() -> Set<A> {
+        Set::empty().complement()
+    }
+
     #[spec]
     #[verifier(pub_abstract)]
     pub fn contains(self, a: A) -> bool {
@@ -118,7 +117,7 @@ impl<A> Set<A> {
 #[verifier(external_body)]
 #[verifier(broadcast_forall)]
 pub fn axiom_set_empty<A>(a: A) {
-    ensures(!set_empty().contains(a));
+    ensures(!Set::empty().contains(a));
 }
 
 #[proof]
@@ -214,7 +213,7 @@ pub fn axiom_mk_map_index<K, V, F: Fn(K) -> V>(s: Set<K>, f: F, key: K) {
 #[verifier(external_body)]
 #[verifier(broadcast_forall)]
 pub fn axiom_set_empty_finite<A>() {
-    ensures(#[trigger] set_empty::<A>().finite());
+    ensures(#[trigger] Set::<A>::empty().finite());
 }
 
 #[proof]
@@ -278,7 +277,7 @@ pub fn axiom_set_choose_finite<A>(s: Set<A>) {
 #[verifier(broadcast_forall)]
 pub fn axiom_set_empty_len<A>() {
     ensures([
-        #[trigger] set_empty::<A>().len() == 0,
+        #[trigger] Set::<A>::empty().len() == 0,
     ]);
 }
 
@@ -333,6 +332,6 @@ macro_rules! set_insert_rec {
 #[macro_export]
 macro_rules! set {
     [$($tail:tt)*] => {
-        set_insert_rec![$crate::pervasive::set::set_empty();$($tail)*]
+        set_insert_rec![$crate::pervasive::set::Set::empty();$($tail)*]
     }
 }
