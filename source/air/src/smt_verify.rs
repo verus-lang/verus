@@ -1,8 +1,9 @@
 use crate::ast::{
     BinaryOp, BindX, Decl, DeclX, Expr, ExprX, Ident, MultiOp, Quant, Query, StmtX, TypX, UnaryOp,
 };
-use crate::context::{AssertionInfo, AxiomInfo, Context, ValidityResult};
-use crate::def::{GLOBAL_PREFIX_LABEL, PREFIX_LABEL};
+use crate::ast_util::{ident_var, mk_and, mk_implies, mk_not, str_ident, str_var};
+use crate::context::{AssertionInfo, AxiomInfo, Context, ContextState, ValidityResult};
+use crate::def::{GLOBAL_PREFIX_LABEL, PREFIX_LABEL, QUERY};
 use crate::errors::{Error, ErrorLabel};
 pub use crate::model::{Model, ModelDef};
 use std::collections::HashMap;
@@ -43,10 +44,10 @@ fn label_asserts<'ctx>(
             let label = Arc::new(PREFIX_LABEL.to_string() + &infos.len().to_string());
 
             let decl = Arc::new(DeclX::Const(label.clone(), Arc::new(TypX::Bool)));
-            let assertion_info = AssertionInfo { error: error.clone(), label: label.clone(), decl };
+            let assertion_info =
+                AssertionInfo { error: error.clone(), label: label.clone(), decl, disabled: false };
             infos.push(assertion_info);
             let lhs = Arc::new(ExprX::Var(label));
-            // See comments about Z3_model_eval below for why do we use => instead of or.
             Arc::new(ExprX::Binary(
                 BinaryOp::Implies,
                 lhs,
@@ -62,7 +63,6 @@ fn label_asserts<'ctx>(
             let axiom_info = AxiomInfo { labels: labels.clone(), label: label.clone(), decl };
             axiom_infos.push(axiom_info);
             let lhs = Arc::new(ExprX::Var(label));
-            // See comments about Z3_model_eval below for why do we use => instead of or.
             Arc::new(ExprX::Binary(
                 BinaryOp::Implies,
                 lhs,
@@ -106,16 +106,38 @@ pub(crate) fn smt_add_decl<'ctx>(context: &mut Context, decl: &Decl) {
     }
 }
 
-fn smt_check_assertion<'ctx>(
+pub(crate) fn smt_check_assertion<'ctx>(
     context: &mut Context,
-    infos: &Vec<AssertionInfo>,
-    expr: &Expr,
+    mut infos: Vec<AssertionInfo>,
     air_model: Model,
+    only_check_earlier: bool,
 ) -> ValidityResult {
+    if only_check_earlier {
+        // disable all labels that come after the first known error
+        let mut disabled: Vec<Expr> = Vec::new();
+        let mut found_disabled = false;
+        let mut found_enabled = false;
+        for info in infos.iter_mut() {
+            if found_disabled && !info.disabled {
+                info.disabled = true;
+                disabled.push(mk_not(&ident_var(&info.label)));
+            }
+            if info.disabled {
+                found_disabled = true;
+            } else {
+                found_enabled = true;
+            }
+        }
+        if only_check_earlier && !found_enabled {
+            // no earlier assertions to check
+            return ValidityResult::Valid;
+        }
+        context.smt_log.log_assert(&mk_and(&disabled));
+    }
+
     let mut discovered_error: Option<Error> = None;
     let mut discovered_additional_info: Vec<ErrorLabel> = Vec::new();
-    let not_expr = Arc::new(ExprX::Unary(UnaryOp::Not, expr.clone()));
-    context.smt_log.log_assert(&not_expr);
+    context.smt_log.log_assert(&str_var(QUERY));
 
     context.smt_log.log_set_option("rlimit", &context.rlimit.to_string());
     context.set_z3_param_u32("rlimit", context.rlimit, false);
@@ -154,7 +176,10 @@ fn smt_check_assertion<'ctx>(
         None => {
             panic!("expected sat/unsat/unknown from SMT solver");
         }
-        Some(true) => ValidityResult::Valid,
+        Some(true) => {
+            context.state = ContextState::FoundResult;
+            ValidityResult::Valid
+        }
         Some(false) => {
             context.smt_log.log_word("get-model");
             let smt_output = context
@@ -166,10 +191,16 @@ fn smt_check_assertion<'ctx>(
             for def in model.iter() {
                 model_defs.insert(def.name.clone(), def.clone());
             }
-            for info in infos.iter() {
+            for info in infos.iter_mut() {
                 if let Some(def) = model_defs.get(&info.label) {
                     if *def.body == "true" {
                         discovered_error = Some(info.error.clone());
+
+                        // Disable this label in subsequent check-sat calls to get additional errors
+                        info.disabled = true;
+                        let disable_label = mk_not(&ident_var(&info.label));
+                        context.smt_log.log_assert(&disable_label);
+
                         break;
                     }
                 }
@@ -196,6 +227,7 @@ fn smt_check_assertion<'ctx>(
 
             let error = discovered_error.expect("discovered_error");
             let e = error.append_labels(&discovered_additional_info);
+            context.state = ContextState::FoundInvalid(infos, air_model.clone());
             ValidityResult::Invalid(air_model, e)
         }
     }
@@ -237,11 +269,10 @@ pub(crate) fn smt_check_query<'ctx>(
     }
 
     // check assertion
-    let result = smt_check_assertion(context, &infos, &labeled_assertion, air_model);
-
-    if !context.debug {
-        context.cleanup_check_valid();
-    }
+    let not_expr = Arc::new(ExprX::Unary(UnaryOp::Not, labeled_assertion));
+    context.smt_log.log_decl(&Arc::new(DeclX::Const(str_ident(QUERY), Arc::new(TypX::Bool))));
+    context.smt_log.log_assert(&mk_implies(&str_var(QUERY), &not_expr));
+    let result = smt_check_assertion(context, infos, air_model, false);
 
     result
 }

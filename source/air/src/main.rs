@@ -137,6 +137,9 @@ pub fn main() {
                 panic!("Unexpected SMT output: {}", err);
             }
         }
+        if matches!(**command, CommandX::CheckValid(..)) {
+            air_context.finish_query();
+        }
     }
     println!("Verification results:: verified: {} errors: {}", count_verified, count_errors);
 }

@@ -22,6 +22,7 @@ use vir::def::SnapPos;
 pub struct Verifier {
     pub encountered_vir_error: bool,
     pub count_verified: u64,
+    pub count_errors: u64,
     pub errors: Vec<Vec<ErrorSpan>>,
     pub args: Args,
     pub test_capture_output: Option<std::sync::Arc<std::sync::Mutex<Vec<u8>>>>,
@@ -105,6 +106,7 @@ impl Verifier {
         Verifier {
             encountered_vir_error: false,
             count_verified: 0,
+            count_errors: 0,
             errors: Vec::new(),
             args: args,
             test_capture_output: None,
@@ -141,56 +143,73 @@ impl Verifier {
         snap_map: &Vec<(air::ast::Span, SnapPos)>,
         command: &Command,
     ) {
-        let result = air_context.command(&command);
+        let is_check_valid = matches!(**command, CommandX::CheckValid(_));
+        let mut result = air_context.command(&command);
+        let mut is_first_check = true;
+        let mut checks_remaining = self.args.multiple_errors;
+        let mut only_check_earlier = false;
+        loop {
+            match result {
+                ValidityResult::Valid => {
+                    if is_check_valid && is_first_check {
+                        self.count_verified += 1;
+                    }
+                    break;
+                }
+                ValidityResult::TypeError(err) => {
+                    panic!("internal error: generated ill-typed AIR code: {}", err);
+                }
+                ValidityResult::Invalid(air_model, error) => {
+                    if is_first_check {
+                        self.count_errors += 1;
+                    }
+                    report_error(compiler, &error);
 
-        let mut is_check_valid = false;
-        if let CommandX::CheckValid(_) = **command {
-            is_check_valid = true;
+                    let mut errors = vec![ErrorSpan::new_from_air_span(
+                        compiler.session().source_map(),
+                        &error.msg,
+                        &error.spans[0],
+                    )];
+                    for ErrorLabel { msg, span } in &error.labels {
+                        errors.push(ErrorSpan::new_from_air_span(
+                            compiler.session().source_map(),
+                            msg,
+                            span,
+                        ));
+                    }
+
+                    self.errors.push(errors);
+                    if self.args.debug {
+                        let mut debugger = Debugger::new(
+                            air_model,
+                            assign_map,
+                            snap_map,
+                            compiler.session().source_map(),
+                        );
+                        debugger.start_shell(air_context);
+                    }
+
+                    if self.args.multiple_errors == 0 {
+                        break;
+                    }
+                    is_first_check = false;
+                    if !only_check_earlier {
+                        checks_remaining -= 1;
+                        if checks_remaining == 0 {
+                            only_check_earlier = true;
+                        }
+                    }
+
+                    result = air_context.check_valid_again(only_check_earlier);
+                }
+                ValidityResult::UnexpectedSmtOutput(err) => {
+                    panic!("unexpected SMT output: {}", err);
+                }
+            }
         }
 
-        match result {
-            ValidityResult::Valid => {
-                if is_check_valid {
-                    self.count_verified += 1;
-                }
-            }
-            ValidityResult::TypeError(err) => {
-                panic!("internal error: generated ill-typed AIR code: {}", err);
-            }
-            ValidityResult::Invalid(air_model, error) => {
-                report_error(compiler, &error);
-
-                let mut errors = vec![ErrorSpan::new_from_air_span(
-                    compiler.session().source_map(),
-                    &error.msg,
-                    &error.spans[0],
-                )];
-                for ErrorLabel { msg, span } in &error.labels {
-                    errors.push(ErrorSpan::new_from_air_span(
-                        compiler.session().source_map(),
-                        msg,
-                        span,
-                    ));
-                }
-
-                self.errors.push(errors);
-                if self.args.debug {
-                    let mut debugger = Debugger::new(
-                        air_model,
-                        assign_map,
-                        snap_map,
-                        compiler.session().source_map(),
-                    );
-                    debugger.start_shell(air_context);
-                }
-            }
-            ValidityResult::UnexpectedSmtOutput(err) => {
-                panic!("unexpected SMT output: {}", err);
-            }
-        }
-
-        if is_check_valid && self.args.debug {
-            air_context.cleanup_check_valid();
+        if is_check_valid {
+            air_context.finish_query();
         }
     }
 

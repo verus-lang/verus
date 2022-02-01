@@ -11,6 +11,7 @@ pub struct Args {
     pub time: bool,
     pub rlimit: u32,
     pub smt_options: Vec<(String, String)>,
+    pub multiple_errors: u32,
     pub log_vir: Option<String>,
     pub log_air_initial: Option<String>,
     pub log_air_final: Option<String>,
@@ -41,6 +42,7 @@ pub fn parse_args(program: &String, args: impl Iterator<Item = String>) -> (Args
     const OPT_TIME: &str = "time";
     const OPT_RLIMIT: &str = "rlimit";
     const OPT_SMT_OPTION: &str = "smt-option";
+    const OPT_MULTIPLE_ERRORS: &str = "multiple-errors";
     const OPT_LOG_VIR: &str = "log-vir";
     const OPT_LOG_AIR_INITIAL: &str = "log-air";
     const OPT_LOG_AIR_FINAL: &str = "log-air-final";
@@ -68,6 +70,7 @@ pub fn parse_args(program: &String, args: impl Iterator<Item = String>) -> (Args
     opts.optflag("", OPT_TIME, "Measure and report time taken");
     opts.optopt("", OPT_RLIMIT, "Set SMT resource limit (roughly in seconds)", "INTEGER");
     opts.optmulti("", OPT_SMT_OPTION, "Set an SMT option (e.g. smt.random_seed=7)", "OPTION=VALUE");
+    opts.optopt("", OPT_MULTIPLE_ERRORS, "If 0, look for at most one error per function; if > 0, always find first error in function and make extra queries to find more errors (default: 2)", "INTEGER");
     opts.optopt("", OPT_LOG_VIR, "Log VIR", "FILENAME");
     opts.optopt("", OPT_LOG_AIR_INITIAL, "Log AIR queries in initial form", "FILENAME");
     opts.optopt("", OPT_LOG_AIR_FINAL, "Log AIR queries in final form", "FILENAME");
@@ -132,6 +135,10 @@ pub fn parse_args(program: &String, args: impl Iterator<Item = String>) -> (Args
                 }
             })
             .collect(),
+        multiple_errors: matches
+            .opt_get::<u32>(OPT_MULTIPLE_ERRORS)
+            .unwrap_or_else(|_| error("expected integer after multiple-errors".to_string()))
+            .unwrap_or(2),
         log_vir: matches.opt_str(OPT_LOG_VIR),
         log_air_initial: matches.opt_str(OPT_LOG_AIR_INITIAL),
         log_air_final: matches.opt_str(OPT_LOG_AIR_FINAL),
