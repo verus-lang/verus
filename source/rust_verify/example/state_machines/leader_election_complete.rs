@@ -29,10 +29,7 @@ pub fn max(a: int, b: int) -> int {
 construct_state_machine!(
     state machine X {
         fields {
-            #[sharding(variable)]
             pub ids: Seq<nat>, // constant
-
-            #[sharding(variable)]
             pub highest_heard: Seq<int>,
         }
 
