@@ -37,7 +37,6 @@ construct_state_machine!(
         }
 
         #[init]
-        #[spec]
         pub fn init(self, ids: Seq<nat>) {
             require(ids_distinct(ids));
             update(ids, ids);
@@ -45,7 +44,6 @@ construct_state_machine!(
         }
 
         #[transition]
-        #[spec]
         pub fn transmission(self, srcidx: nat) {
             require(0 <= srcidx && srcidx < self.ids.len());
 
@@ -57,13 +55,11 @@ construct_state_machine!(
         }
 
         #[invariant]
-        #[spec]
         pub fn inv_lengths_match(self) -> bool {
             self.ids.len() == self.highest_heard.len()
         }
 
         #[invariant]
-        #[spec]
         pub fn inv_ids_distinct(self) -> bool {
             ids_distinct(self.ids)
         }
@@ -75,7 +71,6 @@ construct_state_machine!(
         }
 
         #[invariant]
-        #[spec]
         pub fn safety_condition(self) -> bool {
             forall(|i: int, j: int|
                 self.is_leader(i) && self.is_leader(j) >>= i == j)
@@ -100,14 +95,12 @@ construct_state_machine!(
         }
 
         #[invariant]
-        #[spec]
         pub fn on_chord_heard_dominates_id_inv(self) -> bool {
             forall(|start: int, end: int|
                 self.is_chord(start, end) >>= self.OnChordHeardDominatesId(start, end))
         }
 
         #[inductive(transmission)]
-        #[proof]
         pub fn preserves_ind(self: X, post: X, srcidx: int) {
             // XXX(travis): this sort of copy-paste is extremely common, we could have
             // a language feature to let us skip it
@@ -159,7 +152,6 @@ construct_state_machine!(
         }
 
         #[inductive(init)]
-        #[proof]
         pub fn ind_on_init(post: X, ids: Seq<nat>) {
             assert(post.on_chord_heard_dominates_id_inv());
         }
