@@ -11,18 +11,18 @@ pub struct Map<K, V> {
     dummy: std::marker::PhantomData<(K, V)>,
 }
 
-#[spec]
-#[verifier(pub_abstract)]
-pub fn map_empty<K, V>() -> Map<K, V> {
-    arbitrary()
-}
-
-#[spec]
-pub fn map_total<K, V, F: Fn(K) -> V>(f: F) -> Map<K, V> {
-    set_full().mk_map(f)
-}
-
 impl<K, V> Map<K, V> {
+    #[spec]
+    #[verifier(pub_abstract)]
+    pub fn empty() -> Map<K, V> {
+        arbitrary()
+    }
+
+    #[spec]
+    pub fn total<F: Fn(K) -> V>(f: F) -> Map<K, V> {
+        Set::full().mk_map(f)
+    }
+
     #[spec]
     #[verifier(pub_abstract)]
     pub fn dom(self) -> Set<K> {
@@ -54,7 +54,7 @@ impl<K, V> Map<K, V> {
 #[verifier(external_body)]
 #[verifier(broadcast_forall)]
 pub fn axiom_map_empty<K, V>() {
-    ensures(equal(map_empty::<K, V>().dom(), set_empty()));
+    ensures(equal(Map::<K, V>::empty().dom(), Set::empty()));
 }
 
 #[proof]
@@ -107,6 +107,6 @@ macro_rules! map_insert_rec {
 #[macro_export]
 macro_rules! map {
     [$($tail:tt)*] => {
-        map_insert_rec![$crate::pervasive::map::map_empty();$($tail)*]
+        map_insert_rec![$crate::pervasive::map::Map::empty();$($tail)*]
     }
 } 

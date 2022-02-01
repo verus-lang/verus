@@ -29,28 +29,19 @@ pub struct PCellWithToken<V> {
   #[proof] pub token: Permission<V>,
 }
 
-// TODO put these in impl once methods without 'self' are supported
-
-//// new_empty
-#[inline(always)]
-#[verifier(external_body)]
-fn new_empty_external<V>() -> PCell<V> {
-  ensures(|p: PCell<V>| false);
-  return PCell { ucell: UnsafeCell::new(MaybeUninit::uninit()) };
-}
-
-#[inline(always)]
-pub fn new_empty<V>() -> PCellWithToken<V> {
-  ensures(|pt : PCellWithToken<V>|
-    equal(pt.token, Permission{ pcell: pt.pcell.view(), value: option::Option::None })
-  );
-
-  let p = new_empty_external();
-  #[proof] let t = proof_from_false();
-  PCellWithToken {pcell: p, token: t}
-}
-
 impl<V> PCell<V> {
+  #[inline(always)]
+  #[verifier(external_body)]
+  pub fn empty() -> PCellWithToken<V> {
+    ensures(|pt : PCellWithToken<V>|
+      equal(pt.token, Permission{ pcell: pt.pcell.view(), value: option::Option::None })
+    );
+
+    let p = PCell { ucell: UnsafeCell::new(MaybeUninit::uninit()) };
+    #[proof] let t = proof_from_false();
+    PCellWithToken {pcell: p, token: t}
+  }
+
   #[verifier(pub_abstract)]
   #[spec]
   pub fn view(&self) -> int {
