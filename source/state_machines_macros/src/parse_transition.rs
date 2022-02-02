@@ -15,7 +15,7 @@ use syn::token::{Colon2, Dot};
 use syn::{
     braced, AttrStyle, Attribute, Block, Error, Expr, ExprCall, ExprField, ExprIf, ExprPath,
     FieldsNamed, FnArg, Ident, ImplItemMethod, Local, Member, Meta, MetaList, NestedMeta, Pat,
-    Path, PathArguments, PathSegment, Receiver, Signature, Stmt, Type, PatIdent,
+    PatIdent, Path, PathArguments, PathSegment, Receiver, Signature, Stmt, Type,
 };
 
 pub struct Ctxt {
@@ -100,13 +100,9 @@ fn parse_local(
     ctxt: &Ctxt,
 ) -> syn::parse::Result<TransitionStmt<Span, Ident, Expr>> {
     let ident = match &local.pat {
-        Pat::Ident(PatIdent {
-            attrs: _,
-            by_ref: None,
-            mutability: None,
-            ident,
-            subpat: None,
-        }) => ident.clone(),
+        Pat::Ident(PatIdent { attrs: _, by_ref: None, mutability: None, ident, subpat: None }) => {
+            ident.clone()
+        }
         _ => {
             return Err(Error::new(local.span(), "unsupported Local statement type"));
         }

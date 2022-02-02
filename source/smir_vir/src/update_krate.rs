@@ -41,7 +41,7 @@ pub fn update_krate(
 
     check_wf_lemmas(sm, predicates, &fun_map)?;
     check_lemmas_cover_all_cases(sm, predicates, &fun_map)?;
-    setup_lemmas(sm, predicates, &type_path, &fun_map, &mut new_funs);
+    setup_lemmas(sm, predicates, &type_path, &fun_map, &mut new_funs)?;
 
     //check_transitions(sm, &fun_map)?;
 

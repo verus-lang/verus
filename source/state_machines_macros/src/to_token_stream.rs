@@ -311,13 +311,13 @@ fn output_other_fns(
     normal_fns: Vec<ImplItemMethod>,
 ) {
     for inv in invariants {
-        impl_token_stream.extend(quote!{ #[spec] });
+        impl_token_stream.extend(quote! { #[spec] });
         let mut f = inv.func.clone();
         fix_attrs(&mut f.attrs);
         f.to_tokens(impl_token_stream);
     }
     for lemma in lemmas {
-        impl_token_stream.extend(quote!{ #[proof] });
+        impl_token_stream.extend(quote! { #[proof] });
         let mut f = lemma.func.clone();
         fix_attrs(&mut f.attrs);
         f.to_tokens(impl_token_stream);

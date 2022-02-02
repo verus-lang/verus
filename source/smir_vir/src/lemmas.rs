@@ -15,12 +15,12 @@ use std::collections::HashSet;
 use std::ops::Index;
 use std::sync::Arc;
 use vir::ast::{
-    CallTarget, DatatypeX, Expr, ExprX, FunX, Function, FunctionX, Ident, KrateX, Mode, Path,
-    PathX, SpannedTyped, Typ, TypX, VirErr, Params,
+    CallTarget, DatatypeX, Expr, ExprX, FunX, Function, FunctionX, Ident, KrateX, Mode, Param,
+    ParamX, Params, Path, PathX, SpannedTyped, Typ, TypX, VirErr,
 };
 use vir::ast_util::{
     conjoin, mk_and, mk_assert, mk_assume, mk_block, mk_bool, mk_call, mk_decl_stmt, mk_eq,
-    mk_expr_stmt, mk_ife, mk_implies, mk_or, mk_var,
+    mk_expr_stmt, mk_ife, mk_implies, mk_or, mk_var, types_equal,
 };
 
 pub fn get_transition_func_name(
@@ -194,10 +194,107 @@ pub fn inv_call(span: &Span, type_path: &Path, ident: &Ident) -> Expr {
 
 pub fn get_transition_params(is_init: bool, func: &Function) -> Params {
     if is_init {
-        Arc::new(func.x.params[1 ..].to_vec())
+        Arc::new(func.x.params[1..].to_vec())
     } else {
-        Arc::new(func.x.params[2 ..].to_vec())
+        Arc::new(func.x.params[2..].to_vec())
     }
+}
+
+pub fn is_param_okay(param: &Param, expected_name: &String, expected_typ: &Typ) -> bool {
+    let ParamX { name, typ, mode: _, is_mut } = &param.x;
+    !is_mut && **name == *expected_name && types_equal(typ, expected_typ)
+}
+
+pub fn is_param_self(param: &Param, self_ty: &Typ) -> bool {
+    is_param_okay(param, &"self".to_string(), self_ty)
+}
+
+pub fn is_param_post(param: &Param, self_ty: &Typ) -> bool {
+    is_param_okay(param, &"post".to_string(), self_ty)
+}
+
+pub fn check_inductiveness_lemma_typ_sig(
+    is_init: bool,
+    trans_params: Params,
+    self_ty: &Typ,
+    lemma: &Function,
+) -> Result<(), VirErr> {
+    if lemma.x.typ_bounds.len() != 0 {
+        return Err(error(
+            "invariant lemma should not have additional type parameters",
+            &lemma.span,
+        ));
+    }
+
+    if lemma.x.mode != Mode::Proof {
+        return Err(error("invariant lemma should be in 'proof' mode", &lemma.span));
+    }
+
+    if lemma.x.has_return() {
+        return Err(error("invariant lemma should not have a return value", &lemma.x.ret.span));
+    }
+
+    if is_init {
+        if lemma.x.params.len() < 1 || !is_param_post(&lemma.x.params[0], self_ty) {
+            return Err(error(
+                "first param for initialization lemma should be 'post: Self'",
+                if lemma.x.params.len() < 1 { &lemma.span } else { &lemma.x.params[0].span },
+            ));
+        }
+    } else {
+        if lemma.x.params.len() < 1 || !is_param_self(&lemma.x.params[0], self_ty) {
+            return Err(error(
+                "first param for inductiveness lemma should be 'self: Self'",
+                if lemma.x.params.len() < 1 { &lemma.span } else { &lemma.x.params[0].span },
+            ));
+        }
+
+        if lemma.x.params.len() < 2 || !is_param_post(&lemma.x.params[1], self_ty) {
+            return Err(error(
+                "second param for inductiveness lemma should be 'post: Self'",
+                if lemma.x.params.len() < 2 { &lemma.span } else { &lemma.x.params[1].span },
+            ));
+        }
+    }
+
+    let offset = if is_init { 1 } else { 2 };
+    for i in 0..trans_params.len() {
+        if offset + i >= lemma.x.params.len() {
+            return Err(error(
+                "not enough parameters: parameters should match the parameters of the transition",
+                &lemma.span,
+            ));
+        }
+
+        if !is_param_okay(
+            &lemma.x.params[offset + i],
+            &*trans_params[i].x.name,
+            &trans_params[i].x.typ,
+        ) {
+            return Err(error(
+                format!(
+                    "parameter should match the name and type of '{}'",
+                    *trans_params[i].x.name
+                ),
+                &lemma.x.params[offset + i].span,
+            ));
+        }
+    }
+
+    if offset + trans_params.len() < lemma.x.params.len() {
+        return Err(error(
+            "lemma has extra parameters",
+            &lemma.x.params[offset + trans_params.len()].span,
+        ));
+    }
+
+    for p in lemma.x.params.iter() {
+        if p.x.mode != Mode::Spec {
+            return Err(error("invariant lemma should only take 'spec' parameters", &p.span));
+        }
+    }
+
+    Ok(())
 }
 
 pub fn setup_lemmas(
@@ -206,7 +303,7 @@ pub fn setup_lemmas(
     type_path: &Path,
     funs: &HashMap<Ident, Function>,
     new_funs: &mut Vec<(Ident, Function)>,
-) {
+) -> Result<(), VirErr> {
     for l in sm.lemmas.iter() {
         match &l.purpose {
             LemmaPurpose { transition, kind: LemmaPurposeKind::PreservesInvariant } => {
@@ -235,17 +332,18 @@ pub fn setup_lemmas(
                     call_args.push(var_for_self_ident);
                 }
                 call_args.push(var_for_post_ident);
-                for param in get_transition_params(is_init, trans_function).iter() {
-                    call_args.push(
-                        SpannedTyped::new(&span, &param.x.typ, ExprX::Var(param.x.name.clone()))
-                    );
+                let trans_params = get_transition_params(is_init, trans_function);
+                for param in trans_params.iter() {
+                    call_args.push(SpannedTyped::new(
+                        &span,
+                        &param.x.typ,
+                        ExprX::Var(param.x.name.clone()),
+                    ));
                 }
-                let trans_holds_for_self_post = mk_call(
-                    &span,
-                    &Arc::new(TypX::Bool),
-                    &call_target,
-                    &call_args,
-                );
+                let trans_holds_for_self_post =
+                    mk_call(&span, &Arc::new(TypX::Bool), &call_target, &call_args);
+
+                check_inductiveness_lemma_typ_sig(is_init, trans_params, &var_ty, lemma_function)?;
 
                 let reqs = if is_init {
                     vec![trans_holds_for_self_post]
@@ -278,4 +376,6 @@ pub fn setup_lemmas(
             }
         }
     }
+
+    Ok(())
 }

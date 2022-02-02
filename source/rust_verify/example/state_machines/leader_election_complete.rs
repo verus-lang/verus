@@ -98,7 +98,7 @@ construct_state_machine!(
         }
 
         #[inductive(transmission)]
-        pub fn preserves_ind(self: X, post: X, srcidx: int) {
+        pub fn preserves_ind(self: X, post: X, srcidx: nat) {
             // XXX(travis): this sort of copy-paste is extremely common, we could have
             // a language feature to let us skip it
             let dstidx = if srcidx + 1 == self.ids.len() { 0 } else { srcidx + 1 };
@@ -121,7 +121,7 @@ construct_state_machine!(
                       assert(equal(self, post));
                       assert(post.highest_heard.index(node) > post.ids.index(node));
                     } else if post.highest_heard.index(end) == self.ids.index(srcidx) {
-                      assert(false); // proof by contridiction
+                      assert(false); // proof by contradiction
                       assert(post.highest_heard.index(node) > post.ids.index(node));
                     } else if post.highest_heard.index(end) == self.highest_heard.index(srcidx) {
                       assert(self.is_chord(start, srcidx));  // trigger
@@ -149,8 +149,9 @@ construct_state_machine!(
         }
 
         #[inductive(init)]
-        pub fn ind_on_init(post: X, ids: Seq<nat>) {
+        pub fn ind_on_init(post: X, ids: Seq<nat>) -> bool {
             assert(post.on_chord_heard_dominates_id_inv());
+            true
         }
     }
 );

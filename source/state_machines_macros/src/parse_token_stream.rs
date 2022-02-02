@@ -201,7 +201,11 @@ fn attr_is_mode(attr: &Attribute, mode: &str) -> bool {
 
 fn attr_is_any_mode(attr: &Attribute) -> bool {
     match attr.parse_meta() {
-        Ok(Meta::Path(path)) if path.is_ident("spec") || path.is_ident("proof") || path.is_ident("exec") => true,
+        Ok(Meta::Path(path))
+            if path.is_ident("spec") || path.is_ident("proof") || path.is_ident("exec") =>
+        {
+            true
+        }
         _ => false,
     }
 }
@@ -232,13 +236,19 @@ fn to_transition(
     impl_item_method: &mut ImplItemMethod,
     kind: TransitionKind,
 ) -> syn::parse::Result<Transition<Span, Ident, Expr, Type>> {
-    ensure_no_mode(&impl_item_method, "a transition fn is implied to be 'spec'; it should not be explicitly labelled")?;
+    ensure_no_mode(
+        &impl_item_method,
+        "a transition fn is implied to be 'spec'; it should not be explicitly labelled",
+    )?;
     let ctxt = crate::parse_transition::Ctxt { kind };
     return parse_impl_item_method(impl_item_method, &ctxt);
 }
 
 fn to_invariant(impl_item_method: ImplItemMethod) -> syn::parse::Result<Invariant<ImplItemMethod>> {
-    ensure_no_mode(&impl_item_method, "an invariant fn is implied to be 'spec'; it should not be explicitly labelled")?;
+    ensure_no_mode(
+        &impl_item_method,
+        "an invariant fn is implied to be 'spec'; it should not be explicitly labelled",
+    )?;
     if impl_item_method.sig.inputs.len() != 1 {
         return Err(Error::new(
             impl_item_method.sig.inputs.span(),
@@ -271,7 +281,10 @@ fn to_lemma(
     impl_item_method: ImplItemMethod,
     purpose: LemmaPurpose<Ident>,
 ) -> syn::parse::Result<Lemma<Ident, ImplItemMethod>> {
-    ensure_no_mode(&impl_item_method, "an inductivity lemma is implied to be 'proof'; it should not be explicitly labelled")?;
+    ensure_no_mode(
+        &impl_item_method,
+        "an inductivity lemma is implied to be 'proof'; it should not be explicitly labelled",
+    )?;
     Ok(Lemma { purpose, func: impl_item_method })
 }
 
