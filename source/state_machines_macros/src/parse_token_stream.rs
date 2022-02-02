@@ -32,8 +32,6 @@ impl Parse for ParseResult {
         // state machine IDENT {
         //    ... a bunch of items
         // }
-        keyword(input, "state")?;
-        keyword(input, "machine")?;
         let name: Ident = input.parse()?;
 
         let items_stream;

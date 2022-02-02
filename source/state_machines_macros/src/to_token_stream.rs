@@ -18,8 +18,9 @@ use syn::{
     braced, AttrStyle, Attribute, Error, Expr, FieldsNamed, FnArg, Ident, ImplItemMethod, Meta,
     MetaList, NestedMeta, Path, PathArguments, PathSegment, Type,
 };
+use crate::concurrency_tokens::output_token_types_and_fns;
 
-pub fn output_token_stream(sm_and_funcs: SMAndFuncs) -> TokenStream {
+pub fn output_token_stream(sm_and_funcs: SMAndFuncs, concurrent: bool) -> TokenStream {
     let SMAndFuncs { normal_fns, sm: maybe_sm } = sm_and_funcs;
 
     let mut token_stream = TokenStream::new();
@@ -35,6 +36,10 @@ pub fn output_token_stream(sm_and_funcs: SMAndFuncs) -> TokenStream {
                 trans_fns,
             );
             output_other_fns(&mut impl_token_stream, &sm.invariants, &sm.lemmas, normal_fns);
+
+            if concurrent {
+                output_token_types_and_fns(&mut token_stream, sm);
+            }
         }
         MaybeSM::Extras(ex) => {
             output_other_fns(&mut impl_token_stream, &ex.invariants, &ex.lemmas, normal_fns);

@@ -3,10 +3,10 @@ use builtin::*;
 mod pervasive;
 use pervasive::*;
 
-use state_machines_macros::construct_state_machine;
+use state_machines_macros::concurrent_state_machine;
 
-construct_state_machine!(
-    state machine X {
+concurrent_state_machine!(
+    X {
         fields {
             #[sharding(variable)]
             counter: int,
@@ -60,7 +60,7 @@ construct_state_machine!(
         }
 
         #[inductive(initialize)]
-        fn initialize_inv(self: X, post: X) {
+        fn initialize_inv(post: X) {
         }
 
         /*

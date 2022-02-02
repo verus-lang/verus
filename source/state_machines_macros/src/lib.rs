@@ -8,14 +8,14 @@ mod parse_transition;
 mod to_token_stream;
 mod transitions;
 mod weakest;
+mod concurrency_tokens;
 
 use parse_token_stream::{parse_result_to_smir, ParseResult};
 use proc_macro::TokenStream;
 use syn::{braced, parse_macro_input, Error, Expr, Field, FieldsNamed, Ident, ItemFn, Token, Type};
 use to_token_stream::output_token_stream;
 
-#[proc_macro]
-pub fn construct_state_machine(input: TokenStream) -> TokenStream {
+fn construct_state_machine(input: TokenStream, concurrent: bool) -> TokenStream {
     let pr: ParseResult = parse_macro_input!(input as ParseResult);
 
     let smir_res = parse_result_to_smir(pr);
@@ -26,7 +26,17 @@ pub fn construct_state_machine(input: TokenStream) -> TokenStream {
         }
     };
 
-    let token_stream = output_token_stream(smir);
+    let token_stream = output_token_stream(smir, concurrent);
 
     token_stream.into()
+}
+
+#[proc_macro]
+pub fn state_machine(input: TokenStream) -> TokenStream {
+    construct_state_machine(input, false)
+}
+
+#[proc_macro]
+pub fn concurrent_state_machine(input: TokenStream) -> TokenStream {
+    construct_state_machine(input, true)
 }
