@@ -139,12 +139,22 @@ pub fn exchange_stream(
     exchange_collect(&mut ctxt, &tr.body, Vec::new(), Vec::new())?;
 
     let mut in_args: Vec<TokenStream> = Vec::new();
+    let mut out_args: Vec<(TokenStream, TokenStream)> = Vec::new();
 
     for field in &sm.fields {
-        let is_output = ctxt.fields_written.contains(&field.ident);
-        let is_input = is_output || ctxt.fields_read.contains(&field.ident);
+        let is_output;
+        let is_input;
+        if tr.kind == TransitionKind::Init {
+            assert!(ctxt.fields_written.contains(&field.ident));
+            assert!(!ctxt.fields_read.contains(&field.ident));
+            is_output = true;
+            is_input = false;
+        } else {
+            is_output = ctxt.fields_written.contains(&field.ident);
+            is_input = is_output || ctxt.fields_read.contains(&field.ident);
+        }
 
-        if !is_input {
+        if !is_input && !is_output {
             continue;
         }
 
@@ -158,7 +168,11 @@ pub fn exchange_stream(
             let eq_e = Expr::Verbatim(quote! { ::builtin::equal(#lhs, #e) });
             ctxt.ensures.push(eq_e);
 
-            in_args.push(quote! { #[proof] #arg_name: &mut #arg_type });
+            if is_input {
+                in_args.push(quote! { #[proof] #arg_name: &mut #arg_type });
+            } else {
+                out_args.push((quote!{#arg_name}, quote!{#arg_type}));
+            }
         } else {
             in_args.push(quote! { #[proof] #arg_name: &#arg_type });
         }
@@ -178,22 +192,77 @@ pub fn exchange_stream(
         TokenStream::new()
     };
 
-    let ens_stream = if enss.len() > 0 {
-        quote!{
-            ::builtin::ensures([
-                #(#enss),*
-            ]);
-        }
+    let (out_args_ret, ens_stream) = if out_args.len() == 0 {
+        let ens_stream = if enss.len() > 0 {
+            quote!{
+                ::builtin::ensures([
+                    #(#enss),*
+                ]);
+            }
+        } else {
+            TokenStream::new()
+        };
+
+        (TokenStream::new(), ens_stream)
+    } else if out_args.len() == 1 {
+        let arg_name = &out_args[0].0;
+        let arg_ty = &out_args[0].1;
+
+        let ens_stream = if enss.len() > 0 {
+            quote!{
+                ::builtin::ensures(
+                    |#arg_name: #arg_ty| [
+                        #(#enss),*
+                    ]
+                );
+            }
+        } else {
+            TokenStream::new()
+        };
+
+        (
+          quote!{ -> #arg_ty },
+          ens_stream,
+        )
     } else {
+        let arg_tys: Vec<TokenStream> = out_args.iter().map(|oa| oa.1.clone()).collect();
+        let arg_names: Vec<TokenStream> = out_args.iter().map(|oa| oa.0.clone()).collect();
+        let tup_typ = quote!{ (#(#arg_tys),*) };
+        let tup_names = quote!{ (#(#arg_names),*) };
+
+        let ens_stream = if enss.len() > 0 {
+            quote!{
+                ::builtin::ensures(
+                    |tmp_tuple: #tup_typ| [{
+                        let #tup_names = tmp_tuple;
+                        #((#enss))&&*
+                    }]
+                );
+            }
+        } else {
+            TokenStream::new()
+        };
+
+        (
+          quote!{ -> #tup_typ },
+          ens_stream,
+        )
+    };
+
+    let return_value_mode = if out_args.len() == 0 {
         TokenStream::new()
+    } else {
+        quote!{ #[verifier(returns(proof))] }
     };
 
     return Ok(quote! {
         #[proof]
+        #return_value_mode
         #[verifier(external_body)]
-        pub fn #exch_name(#(#in_args),*) {
+        pub fn #exch_name(#(#in_args),*) #out_args_ret {
             #req_stream
             #ens_stream
+            unimplemented!();
         }
     });
 }
