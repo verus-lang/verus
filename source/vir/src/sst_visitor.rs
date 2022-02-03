@@ -11,6 +11,24 @@ use std::sync::Arc;
 
 pub type VisitorScopeMap = ScopeMap<Ident, bool>;
 
+pub(crate) fn exp_visitor_check<E, MF>(
+    expr: &Exp,
+    map: &mut VisitorScopeMap,
+    mf: &mut MF,
+) -> Result<(), E>
+where
+    MF: FnMut(&Exp, &mut VisitorScopeMap) -> Result<(), E>,
+{
+    match exp_visitor_dfs(expr, map, &mut |expr, map| match mf(expr, map) {
+        Ok(()) => VisitorControlFlow::Recurse,
+        Err(e) => VisitorControlFlow::Stop(e),
+    }) {
+        VisitorControlFlow::Recurse => Ok(()),
+        VisitorControlFlow::Return => unreachable!(),
+        VisitorControlFlow::Stop(e) => Err(e),
+    }
+}
+
 pub(crate) fn exp_visitor_dfs<T, F>(
     exp: &Exp,
     map: &mut VisitorScopeMap,
@@ -150,6 +168,7 @@ where
     }
 }
 
+#[allow(dead_code)]
 pub(crate) fn stm_exp_visitor_dfs<T, F>(stm: &Stm, f: &mut F) -> VisitorControlFlow<T>
 where
     F: FnMut(&Exp, &mut VisitorScopeMap) -> VisitorControlFlow<T>,
@@ -313,14 +332,6 @@ where
             f(&exp, map)
         }
     }
-}
-
-pub(crate) fn map_exp_visitor_result<F>(exp: &Exp, f: &mut F) -> Result<Exp, VirErr>
-where
-    F: FnMut(&Exp) -> Result<Exp, VirErr>,
-{
-    let mut map: VisitorScopeMap = ScopeMap::new();
-    map_exp_visitor_bind(exp, &mut map, &mut |e, _| f(e))
 }
 
 pub(crate) fn map_exp_visitor<F>(exp: &Exp, f: &mut F) -> Exp
