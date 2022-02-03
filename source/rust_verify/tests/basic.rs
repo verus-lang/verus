@@ -28,10 +28,8 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test2 code! {
-        extern {
-            #[spec]
-            fn f(i: int, j: int) -> bool;
-        }
+        #[spec] #[verifier(external_body)]
+        fn f(i: int, j: int) -> bool { unimplemented!() }
 
         fn test2(b: bool, x: int, y: int, z: int) {
             assert(b || !b);

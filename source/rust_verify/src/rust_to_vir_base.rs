@@ -52,7 +52,10 @@ pub(crate) fn get_function_def<'tcx>(
 ) -> (&'tcx rustc_hir::FnSig<'tcx>, &'tcx rustc_hir::BodyId) {
     get_function_def_impl_item_node(tcx, hir_id)
         .or_else(|| {
-            let item = tcx.hir().expect_item(hir_id);
+            let item = match tcx.hir().get(hir_id) {
+                rustc_hir::Node::Item(item) => item,
+                node => unsupported!("extern functions, or other function Node", node),
+            };
             match &item.kind {
                 ItemKind::Fn(fn_sig, _, body_id) => Some((fn_sig, body_id)),
                 _ => None,
