@@ -45,7 +45,7 @@
 //! #[verifier(external)] functions are kept verbatim.
 //! #[verifier(external_body)] functions, on the other hand, need erasure to remove requires/ensures.
 
-use crate::rust_to_vir_base::{get_mode, get_verifier_attrs};
+use crate::attributes::{get_mode, get_verifier_attrs};
 use crate::rust_to_vir_expr::attrs_is_invariant_block;
 use crate::util::{from_raw_span, vec_map};
 use crate::{unsupported, unsupported_unless};

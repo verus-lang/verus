@@ -1,7 +1,8 @@
+use crate::attributes::{get_mode, get_verifier_attrs};
 use crate::context::Context;
 use crate::rust_to_vir_base::{
-    check_generics, def_id_to_vir_path, get_mode, get_verifier_attrs, hack_get_def_name,
-    is_visibility_private, mk_visibility, ty_to_vir,
+    check_generics, def_id_to_vir_path, hack_get_def_name, is_visibility_private, mk_visibility,
+    ty_to_vir,
 };
 use crate::unsupported_unless;
 use crate::util::spanned_new;

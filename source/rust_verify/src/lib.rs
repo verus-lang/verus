@@ -18,6 +18,7 @@ extern crate rustc_session;
 extern crate rustc_span;
 extern crate rustc_typeck;
 
+mod attributes;
 pub mod config;
 pub mod context;
 pub mod debugger;
