@@ -168,16 +168,32 @@ pub fn exchange_stream(
     let enss = ctxt.ensures;
     let exch_name = exchange_name(&sm.name, &tr);
 
+    let req_stream = if reqs.len() > 0 {
+        quote!{
+            ::builtin::requires([
+                #(#reqs),*
+            ]);
+        }
+    } else {
+        TokenStream::new()
+    };
+
+    let ens_stream = if enss.len() > 0 {
+        quote!{
+            ::builtin::ensures([
+                #(#enss),*
+            ]);
+        }
+    } else {
+        TokenStream::new()
+    };
+
     return Ok(quote! {
         #[proof]
         #[verifier(external_body)]
         pub fn #exch_name(#(#in_args),*) {
-            ::builtin::requires([
-                #(#reqs),*
-            ]);
-            ::builtin::ensures([
-                #(#enss),*
-            ]);
+            #req_stream
+            #ens_stream
         }
     });
 }
@@ -283,7 +299,7 @@ impl<'a> VisitMut for TranslatorVisitor<'a> {
 fn get_old_field_value(field: &Field<Ident, Type>) -> Expr {
     let arg = transition_arg_name(&field);
     let field = field_token_field_name(&field);
-    Expr::Verbatim(quote! { ::builtin::old(#arg.#field) })
+    Expr::Verbatim(quote! { ::builtin::old(#arg).#field })
 }
 
 fn get_new_field_value(field: &Field<Ident, Type>) -> Expr {
