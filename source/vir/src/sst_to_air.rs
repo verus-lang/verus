@@ -325,9 +325,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: ExprCtxt) -> Expr {
             expr
         }
         ExpX::Var(x) => string_var(&suffix_local_unique_id(x)),
-        ExpX::VarLoc(x) => {
-            string_var(&suffix_local_unique_id(x))
-        }
+        ExpX::VarLoc(x) => string_var(&suffix_local_unique_id(x)),
         ExpX::VarAt(x, VarAt::Pre) => match expr_ctxt {
             ExprCtxt::Spec => string_var(&prefix_pre_var(&suffix_local_stmt_id(x))),
             ExprCtxt::Body => {
@@ -335,9 +333,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: ExprCtxt) -> Expr {
             }
             ExprCtxt::BodyPre => string_var(&suffix_local_stmt_id(x)),
         },
-        ExpX::Loc(e0) => {
-            exp_to_expr(ctx, e0, expr_ctxt)
-        }
+        ExpX::Loc(e0) => exp_to_expr(ctx, e0, expr_ctxt),
         ExpX::Old(span, x) => Arc::new(ExprX::Old(span.clone(), suffix_local_stmt_id(x))),
         ExpX::Call(x, typs, args) => {
             let name = suffix_global_id(&fun_to_air_ident(&x));
@@ -802,7 +798,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
                                 &e.typ,
                                 ExpX::Old(snapshot_ident(SNAPSHOT_CALL), x.0.clone()),
                             )
-                        },
+                        }
                         _ => e.clone(),
                     });
                     ens_args_wo_typ.push(exp_to_expr(ctx, &arg_old, expr_ctxt));

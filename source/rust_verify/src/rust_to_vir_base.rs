@@ -7,9 +7,9 @@ use rustc_ast::{AttrKind, Attribute, IntTy, MacArgs, Mutability, UintTy};
 use rustc_hir::def::{DefKind, Res};
 use rustc_hir::definitions::DefPath;
 use rustc_hir::{
-    GenericBound, GenericParam, GenericParamKind, Generics, HirId, LifetimeParamKind, ParamName,
-    PathSegment, PolyTraitRef, PrimTy, QPath, TraitBoundModifier, Ty, Visibility, VisibilityKind,
-    ItemKind,
+    GenericBound, GenericParam, GenericParamKind, Generics, HirId, ItemKind, LifetimeParamKind,
+    ParamName, PathSegment, PolyTraitRef, PrimTy, QPath, TraitBoundModifier, Ty, Visibility,
+    VisibilityKind,
 };
 use rustc_middle::ty::{AdtDef, TyCtxt, TyKind};
 use rustc_span::def_id::{DefId, LOCAL_CRATE};
@@ -32,7 +32,10 @@ pub(crate) fn def_path_to_vir_path<'tcx>(tcx: TyCtxt<'tcx>, def_path: DefPath) -
     Arc::new(PathX { krate, segments })
 }
 
-fn get_function_def_impl_item_node<'tcx>(tcx: TyCtxt<'tcx>, hir_id: rustc_hir::HirId) -> Option<(&'tcx rustc_hir::FnSig<'tcx>, &'tcx rustc_hir::BodyId)> {
+fn get_function_def_impl_item_node<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    hir_id: rustc_hir::HirId,
+) -> Option<(&'tcx rustc_hir::FnSig<'tcx>, &'tcx rustc_hir::BodyId)> {
     let node = tcx.hir().get(hir_id);
     match node {
         rustc_hir::Node::ImplItem(rustc_hir::ImplItem {
@@ -43,7 +46,10 @@ fn get_function_def_impl_item_node<'tcx>(tcx: TyCtxt<'tcx>, hir_id: rustc_hir::H
     }
 }
 
-pub(crate) fn get_function_def<'tcx>(tcx: TyCtxt<'tcx>, hir_id: rustc_hir::HirId) -> (&'tcx rustc_hir::FnSig<'tcx>, &'tcx rustc_hir::BodyId) {
+pub(crate) fn get_function_def<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    hir_id: rustc_hir::HirId,
+) -> (&'tcx rustc_hir::FnSig<'tcx>, &'tcx rustc_hir::BodyId) {
     get_function_def_impl_item_node(tcx, hir_id)
         .or_else(|| {
             let item = tcx.hir().expect_item(hir_id);

@@ -2,10 +2,10 @@ use crate::context::BodyCtxt;
 use crate::def::is_get_variant_fn_name;
 use crate::erase::ResolvedCall;
 use crate::rust_to_vir_base::{
-    def_id_to_vir_path, def_to_path_ident, get_range, get_trigger, get_var_mode,
+    def_id_to_vir_path, def_to_path_ident, get_function_def, get_range, get_trigger, get_var_mode,
     get_verifier_attrs, hack_get_def_name, ident_to_var, is_smt_arith, is_smt_equality,
     mid_ty_simplify, mid_ty_to_vir, mk_range, parse_attrs, ty_to_vir, typ_of_node,
-    typ_of_node_expect_mut_ref, typ_path_and_ident_to_vir_path, Attr, get_function_def
+    typ_of_node_expect_mut_ref, typ_path_and_ident_to_vir_path, Attr,
 };
 use crate::util::{
     err_span_str, err_span_string, slice_vec_map_result, spanned_new, spanned_typed_new,
@@ -508,31 +508,40 @@ fn fn_call_to_vir<'tcx>(
         return Ok(mk_expr(ExprX::AssertBV(expr)));
     }
 
-    let inputs: Box<dyn Iterator<Item=Option<_>>> = if let Some(f_local) = f.as_local() {
+    let inputs: Box<dyn Iterator<Item = Option<_>>> = if let Some(f_local) = f.as_local() {
         let f_hir_id = bctx.ctxt.tcx.hir().local_def_id_to_hir_id(f_local);
         let inputs = get_function_def(bctx.ctxt.tcx, f_hir_id).0.decl.inputs;
         Box::new(inputs.iter().map(Some).into_iter())
     } else {
         Box::new(std::iter::repeat(None))
     };
-    let mut vir_args = args.iter().zip(inputs).map(|(arg, param)| {
-        let is_mut_ref_param = match param {
-            Some(rustc_hir::Ty { kind: rustc_hir::TyKind::Rptr(_, rustc_hir::MutTy { mutbl: rustc_hir::Mutability::Mut, .. }), .. }) => {
-                true
-            },
-            _ => false,
-        };
-        if is_mut_ref_param {
-            let arg_x = match &arg.kind {
-                ExprKind::AddrOf(BorrowKind::Ref, Mutability::Mut, e) => e,
-                _ => arg,
+    let mut vir_args = args
+        .iter()
+        .zip(inputs)
+        .map(|(arg, param)| {
+            let is_mut_ref_param = match param {
+                Some(rustc_hir::Ty {
+                    kind:
+                        rustc_hir::TyKind::Rptr(
+                            _,
+                            rustc_hir::MutTy { mutbl: rustc_hir::Mutability::Mut, .. },
+                        ),
+                    ..
+                }) => true,
+                _ => false,
             };
-            let expr = expr_to_vir(bctx, arg_x, ExprModifier::AddrOf)?;
-            Ok(spanned_typed_new(arg.span, &expr.typ.clone(), ExprX::Loc(expr)))
-        } else {
-            expr_to_vir(bctx, arg, ExprModifier::Regular)
-        }
-    }).collect::<Result<Vec<_>, _>>()?;
+            if is_mut_ref_param {
+                let arg_x = match &arg.kind {
+                    ExprKind::AddrOf(BorrowKind::Ref, Mutability::Mut, e) => e,
+                    _ => arg,
+                };
+                let expr = expr_to_vir(bctx, arg_x, ExprModifier::AddrOf)?;
+                Ok(spanned_typed_new(arg.span, &expr.typ.clone(), ExprX::Loc(expr)))
+            } else {
+                expr_to_vir(bctx, arg, ExprModifier::Regular)
+            }
+        })
+        .collect::<Result<Vec<_>, _>>()?;
     let self_path = if let Some(autoview_typ) = autoview_typ {
         // replace f(arg0, arg1, ..., argn) with f(arg0.view(), arg1, ..., argn)
         let typ_args = if let TypX::Datatype(_, args) = &**autoview_typ {
@@ -1329,8 +1338,10 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
         ExprKind::Path(QPath::Resolved(None, path)) => match path.res {
             Res::Local(id) => match tcx.hir().get(id) {
                 Node::Binding(pat) => Ok(mk_expr(match modifier {
-                    ExprModifier::Regular | ExprModifier::DerefMut => ExprX::Var(Arc::new(pat_to_var(pat))),
-                    ExprModifier::AddrOf => ExprX::VarLoc(Arc::new(pat_to_var(pat)))
+                    ExprModifier::Regular | ExprModifier::DerefMut => {
+                        ExprX::Var(Arc::new(pat_to_var(pat)))
+                    }
+                    ExprModifier::AddrOf => ExprX::VarLoc(Arc::new(pat_to_var(pat))),
                 })),
                 node => unsupported_err!(expr.span, format!("Path {:?}", node)),
             },

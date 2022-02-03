@@ -160,7 +160,11 @@ where
         VisitorControlFlow::Return => VisitorControlFlow::Recurse,
         VisitorControlFlow::Recurse => {
             match &expr.x {
-                ExprX::Const(_) | ExprX::Var(_) | ExprX::VarLoc(_) | ExprX::VarAt(_, _) | ExprX::ConstVar(..) => (),
+                ExprX::Const(_)
+                | ExprX::Var(_)
+                | ExprX::VarLoc(_)
+                | ExprX::VarAt(_, _)
+                | ExprX::ConstVar(..) => (),
                 ExprX::Loc(e) => {
                     expr_visitor_control_flow!(expr_visitor_dfs(e, map, mf));
                 }

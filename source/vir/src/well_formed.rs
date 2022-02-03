@@ -143,7 +143,7 @@ fn check_function(ctxt: &Ctxt, function: &Function) -> Result<(), VirErr> {
                             ExprX::Loc(l) => match l.x {
                                 ExprX::VarLoc(_) => true,
                                 _ => false,
-                            }
+                            },
                             _ => false,
                         };
                         if !ok {
