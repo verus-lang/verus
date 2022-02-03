@@ -1,5 +1,6 @@
 #![allow(unused_imports)]
 
+use crate::concurrency_tokens::output_token_types_and_fns;
 use crate::parse_token_stream::{MaybeSM, SMAndFuncs};
 use crate::weakest::{get_safety_conditions, to_weakest};
 use proc_macro2::Span;
@@ -18,9 +19,8 @@ use syn::{
     braced, AttrStyle, Attribute, Error, Expr, FieldsNamed, FnArg, Ident, ImplItemMethod, Meta,
     MetaList, NestedMeta, Path, PathArguments, PathSegment, Type,
 };
-use crate::concurrency_tokens::output_token_types_and_fns;
 
-pub fn output_token_stream(sm_and_funcs: SMAndFuncs, concurrent: bool) -> TokenStream {
+pub fn output_token_stream(sm_and_funcs: SMAndFuncs, concurrent: bool) -> syn::parse::Result<TokenStream> {
     let SMAndFuncs { normal_fns, sm: maybe_sm } = sm_and_funcs;
 
     let mut token_stream = TokenStream::new();
@@ -38,7 +38,7 @@ pub fn output_token_stream(sm_and_funcs: SMAndFuncs, concurrent: bool) -> TokenS
             output_other_fns(&mut impl_token_stream, &sm.invariants, &sm.lemmas, normal_fns);
 
             if concurrent {
-                output_token_types_and_fns(&mut token_stream, sm);
+                output_token_types_and_fns(&mut token_stream, sm)?;
             }
         }
         MaybeSM::Extras(ex) => {
@@ -59,7 +59,7 @@ pub fn output_token_stream(sm_and_funcs: SMAndFuncs, concurrent: bool) -> TokenS
         }
     };
 
-    return final_code;
+    return Ok(final_code);
 }
 
 pub fn fix_attr(attr: &mut Attribute) {

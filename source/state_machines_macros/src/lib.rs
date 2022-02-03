@@ -1,14 +1,15 @@
 #![allow(unused_imports)]
+#![feature(box_patterns)]
 
 extern crate proc_macro;
 
+mod concurrency_tokens;
 mod ident_visitor;
 mod parse_token_stream;
 mod parse_transition;
 mod to_token_stream;
 mod transitions;
 mod weakest;
-mod concurrency_tokens;
 
 use parse_token_stream::{parse_result_to_smir, ParseResult};
 use proc_macro::TokenStream;
@@ -26,7 +27,12 @@ fn construct_state_machine(input: TokenStream, concurrent: bool) -> TokenStream 
         }
     };
 
-    let token_stream = output_token_stream(smir, concurrent);
+    let token_stream = match output_token_stream(smir, concurrent) {
+        Ok(ts) => ts,
+        Err(err) => {
+            return TokenStream::from(err.to_compile_error());
+        }
+    };
 
     token_stream.into()
 }
