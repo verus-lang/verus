@@ -55,4 +55,5 @@ mod sst_visitor;
 mod triggers;
 mod triggers_auto;
 mod util;
+mod visitor;
 pub mod well_formed;

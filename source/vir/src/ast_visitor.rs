@@ -6,28 +6,12 @@ use crate::ast::{
 use crate::ast_util::err_str;
 use crate::def::Spanned;
 use crate::util::vec_map_result;
+use crate::visitor::expr_visitor_control_flow;
+pub(crate) use crate::visitor::VisitorControlFlow;
 use air::scope_map::ScopeMap;
 use std::sync::Arc;
 
 pub type VisitorScopeMap = ScopeMap<Ident, Typ>;
-
-pub(crate) enum VisitorControlFlow<T> {
-    Recurse,
-    Return,
-    Stop(T),
-}
-
-macro_rules! expr_visitor_control_flow {
-    ($cf:expr) => {
-        match $cf {
-            crate::ast_visitor::VisitorControlFlow::Recurse => (),
-            crate::ast_visitor::VisitorControlFlow::Return => (),
-            crate::ast_visitor::VisitorControlFlow::Stop(val) => {
-                return crate::ast_visitor::VisitorControlFlow::Stop(val);
-            }
-        }
-    };
-}
 
 pub(crate) fn typ_visitor_check<E, MF>(typ: &Typ, mf: &mut MF) -> Result<(), E>
 where
