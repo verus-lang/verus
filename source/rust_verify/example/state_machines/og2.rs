@@ -44,12 +44,12 @@ concurrent_state_machine!(
             update(inc_b, true);
         }
 
-        /*#[readonly]
+        #[readonly]
         fn finalize(&self) {
             require(self.inc_a);
             require(self.inc_b);
             assert(self.counter == 2);
-        }*/
+        }
 
         #[inductive(tr_inc_a)]
         fn tr_inc_a_preserves(self: X, post: X) {
@@ -63,10 +63,10 @@ concurrent_state_machine!(
         fn initialize_inv(post: X) {
         }
 
-        /*
-        #[safety(finalize)]
+        #[safety(finalize_safety_1)]
         fn finalize_correct(pre: X) {
-        }*/
+            // XXX TODO verus currently doesn't generate the right conditions here
+        }
     }
 );
 

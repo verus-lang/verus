@@ -136,6 +136,7 @@ pub fn exchange_stream(
     };
 
     let mut tr = tr.clone();
+    determine_outputs(&mut ctxt, &tr.body)?;
     walk_translate_expressions(&mut ctxt, &mut tr.body)?;
     exchange_collect(&mut ctxt, &tr.body, Vec::new(), Vec::new())?;
 
@@ -182,7 +183,7 @@ pub fn exchange_stream(
         let arg_type = field_token_type_name(&sm.name, field);
 
         if is_output {
-            let e_opt = get_output_value_for_variable(&tr.body, field);
+            let e_opt = get_output_value_for_variable(&ctxt, &tr.body, field);
             let e = e_opt.expect("get_output_value_for_variable");
             let lhs = get_new_field_value(field);
             let eq_e = Expr::Verbatim(quote! { ::builtin::equal(#lhs, #e) });
@@ -204,7 +205,7 @@ pub fn exchange_stream(
             }));
         }
         if is_input {
-            let lhs = get_old_field_inst(field);
+            let lhs = get_old_field_inst(&ctxt, field);
             inst_eq_reqs.push(Expr::Verbatim(quote!{
                 ::builtin::equal(#lhs, #inst)
             }));
@@ -304,6 +305,34 @@ pub fn exchange_stream(
     });
 }
 
+// Find things that updated
+
+fn determine_outputs(
+    ctxt: &mut Ctxt,
+    ts: &TransitionStmt<Span, Ident, Expr>,
+) -> syn::parse::Result<()> {
+    match ts {
+        TransitionStmt::Block(_span, v) => {
+            for child in v.iter() {
+                determine_outputs(ctxt, child)?;
+            }
+            Ok(())
+        }
+        TransitionStmt::Let(_span, id, init_e) => { Ok(()) }
+        TransitionStmt::If(_span, _cond_e, e1, e2) => {
+            determine_outputs(ctxt, e1)?;
+            determine_outputs(ctxt, e2)?;
+            Ok(())
+        }
+        TransitionStmt::Require(_span, _req_e) => { Ok(()) }
+        TransitionStmt::Assert(_span, _assert_e) => { Ok(()) }
+        TransitionStmt::Update(_span, id, _e) => {
+            ctxt.fields_written.insert(id.clone());
+            Ok(())
+        }
+    }
+}
+
 // Translate expressions
 
 fn walk_translate_expressions(
@@ -388,7 +417,7 @@ impl<'a> VisitMut for TranslatorVisitor<'a> {
                         self.ctxt.mark_field_as_read(&field);
                         match &field.stype {
                             ShardableType::Variable(_ty) => {
-                                *node = get_old_field_value(&field);
+                                *node = get_old_field_value(&self.ctxt, &field);
                             }
                         }
                     }
@@ -402,10 +431,14 @@ impl<'a> VisitMut for TranslatorVisitor<'a> {
     }
 }
 
-fn get_old_field_value(field: &Field<Ident, Type>) -> Expr {
+fn get_old_field_value(ctxt: &Ctxt, field: &Field<Ident, Type>) -> Expr {
     let arg = transition_arg_name(&field);
-    let field = field_token_field_name(&field);
-    Expr::Verbatim(quote! { ::builtin::old(#arg).#field })
+    let field_name = field_token_field_name(&field);
+    if ctxt.fields_written.contains(&field.ident) {
+        Expr::Verbatim(quote! { ::builtin::old(#arg).#field_name })
+    } else {
+        Expr::Verbatim(quote! { #arg.#field_name })
+    }
 }
 
 fn get_new_field_value(field: &Field<Ident, Type>) -> Expr {
@@ -414,16 +447,19 @@ fn get_new_field_value(field: &Field<Ident, Type>) -> Expr {
     Expr::Verbatim(quote! { #arg.#field })
 }
 
-fn get_old_field_inst(field: &Field<Ident, Type>) -> Expr {
+fn get_old_field_inst(ctxt: &Ctxt, field: &Field<Ident, Type>) -> Expr {
     let arg = transition_arg_name(&field);
-    Expr::Verbatim(quote! { ::builtin::old(#arg).instance })
+    if ctxt.fields_written.contains(&field.ident) {
+        Expr::Verbatim(quote! { ::builtin::old(#arg).instance })
+    } else {
+        Expr::Verbatim(quote! { #arg.instance })
+    }
 }
 
 fn get_new_field_inst(field: &Field<Ident, Type>) -> Expr {
     let arg = transition_arg_name(&field);
     Expr::Verbatim(quote! { #arg.instance })
 }
-
 
 // Collect requires and ensures
 
@@ -496,7 +532,6 @@ fn exchange_collect(
             Ok((prequel, pa))
         }
         TransitionStmt::Update(_span, id, _e) => {
-            ctxt.fields_written.insert(id.clone());
             Ok((prequel, prequel_with_asserts))
         }
     }
@@ -588,6 +623,7 @@ fn prequel_vec_to_expr(v: &Vec<PrequelElement>) -> Option<Expr> {
 }
 
 fn get_output_value_for_variable(
+    ctxt: &Ctxt,
     ts: &TransitionStmt<Span, Ident, Expr>,
     field: &Field<Ident, Type>,
 ) -> Option<Expr> {
@@ -595,7 +631,7 @@ fn get_output_value_for_variable(
         TransitionStmt::Block(_span, v) => {
             let mut opt = None;
             for child in v.iter() {
-                let o = get_output_value_for_variable(child, field);
+                let o = get_output_value_for_variable(ctxt, child, field);
                 if o.is_some() {
                     assert!(!opt.is_some());
                     opt = o;
@@ -607,17 +643,17 @@ fn get_output_value_for_variable(
         | TransitionStmt::Require(_, _)
         | TransitionStmt::Assert(_, _) => None,
         TransitionStmt::If(_span, cond_e, e1, e2) => {
-            let o1 = get_output_value_for_variable(e1, field);
-            let o2 = get_output_value_for_variable(e2, field);
+            let o1 = get_output_value_for_variable(ctxt, e1, field);
+            let o2 = get_output_value_for_variable(ctxt, e2, field);
             if o1.is_none() && o2.is_none() {
                 None
             } else {
                 let e1 = match o1 {
-                    None => get_old_field_value(&field),
+                    None => get_old_field_value(ctxt, &field),
                     Some(e) => e,
                 };
                 let e2 = match o2 {
-                    None => get_old_field_value(&field),
+                    None => get_old_field_value(ctxt, &field),
                     Some(e) => e,
                 };
                 Some(Expr::Verbatim(quote! { if #cond_e { #e1 } else { #e2 } }))
