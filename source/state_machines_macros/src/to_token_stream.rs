@@ -145,7 +145,7 @@ pub fn output_primary_stuff(
     */
 
     for trans in &sm.transitions {
-        let mut strong_rel_idents: Vec<String> = Vec::new();
+        let mut strong_rel_idents: Vec<Ident> = Vec::new();
 
         if trans.kind != TransitionKind::Readonly {
             let f = to_weakest(sm, trans);
@@ -189,7 +189,7 @@ pub fn output_primary_stuff(
                 }
             };
             impl_token_stream.extend(rel_fn);
-            strong_rel_idents.push(name.to_string());
+            strong_rel_idents.push(name);
         }
 
         if trans.kind == TransitionKind::Transition {

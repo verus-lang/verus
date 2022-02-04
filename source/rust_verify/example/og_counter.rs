@@ -37,6 +37,7 @@ concurrent_state_machine!(
         #[transition]
         fn tr_inc_a(&self) {
             require(!self.inc_a);
+            assert(self.counter <= 2);
             update(counter, self.counter + 1);
             update(inc_a, true);
         }
@@ -44,6 +45,7 @@ concurrent_state_machine!(
         #[transition]
         fn tr_inc_b(&self) {
             require(!self.inc_b);
+            assert(self.counter <= 2);
             update(counter, self.counter + 1);
             update(inc_b, true);
         }
@@ -69,6 +71,16 @@ concurrent_state_machine!(
 
         #[safety(finalize_safety_1)]
         fn finalize_correct(pre: X) {
+            // XXX TODO need to generate VCs here
+        }
+
+        #[safety(tr_inc_a_safety_1)]
+        fn s1_correct(pre: X) {
+            // XXX TODO need to generate VCs here
+        }
+
+        #[safety(tr_inc_b_safety_1)]
+        fn s2_correct(pre: X) {
             // XXX TODO need to generate VCs here
         }
     }
@@ -117,12 +129,10 @@ fn main() {
   // Thread 1 (gets access to inc_a_token)
 
   open_invariant!(&at_inv => g => {
-    assume(g.perm.value as int <= 2 as int); // TODO
-
     #[proof] let G { counter: mut c, perm: mut p } = g;
 
-    at.fetch_add(&mut p, 1);
     X_tr_inc_a(inst, &mut c, &mut inc_a_token); // atomic increment
+    at.fetch_add(&mut p, 1);
 
     g = G { counter: c, perm: p };
   });
@@ -130,12 +140,10 @@ fn main() {
   // Thread 2 (gets access to inc_b_token)
 
   open_invariant!(&at_inv => g => {
-    assume(g.perm.value as int <= 2 as int); // TODO
-
     #[proof] let G { counter: mut c2, perm: mut p2 } = g;
 
-    at.fetch_add(&mut p2, 1);
     X_tr_inc_b(inst, &mut c2, &mut inc_b_token); // atomic increment
+    at.fetch_add(&mut p2, 1);
 
     g = G { counter: c2, perm: p2 };
   });
