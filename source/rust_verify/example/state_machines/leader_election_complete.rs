@@ -4,7 +4,7 @@ mod pervasive;
 use pervasive::*;
 use pervasive::seq::*;
 
-use state_machines_macros::construct_state_machine;
+use state_machines_macros::state_machine;
 
 #[spec]
 pub fn ids_distinct(ids: Seq<nat>) -> bool {
@@ -26,8 +26,8 @@ pub fn max(a: int, b: int) -> int {
 }
 
 
-construct_state_machine!(
-    state machine X {
+state_machine!(
+    X {
         fields {
             pub ids: Seq<nat>, // constant
             pub highest_heard: Seq<int>,
@@ -37,7 +37,7 @@ construct_state_machine!(
         pub fn init(self, ids: Seq<nat>) {
             require(ids_distinct(ids));
             update(ids, ids);
-            update(highest_heard, seq_new(ids.len(), |i: int| -1))
+            update(highest_heard, Seq::new(ids.len(), |i: int| -1))
         }
 
         #[transition]
@@ -149,9 +149,8 @@ construct_state_machine!(
         }
 
         #[inductive(init)]
-        pub fn ind_on_init(post: X, ids: Seq<nat>) -> bool {
+        pub fn ind_on_init(post: X, ids: Seq<nat>) {
             assert(post.on_chord_heard_dominates_id_inv());
-            true
         }
     }
 );

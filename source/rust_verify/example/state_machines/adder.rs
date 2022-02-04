@@ -3,12 +3,12 @@ use builtin::*;
 mod pervasive;
 use pervasive::*;
 
-use state_machines_macros::construct_state_machine;
+use state_machines_macros::state_machine;
 
-construct_state_machine!(
-    state machine X {
+state_machine!(
+    X {
         fields {
-            number: int,
+            pub number: int,
         }
 
         #[init]
@@ -27,7 +27,7 @@ construct_state_machine!(
         }
 
         #[inductive(initialize)]
-        fn init_preserves(self: X, post: X) {
+        fn init_preserves(post: X) {
         }
 
         #[inductive(add)]
