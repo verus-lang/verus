@@ -1,7 +1,7 @@
 use crate::attributes::{get_fuel, get_mode, get_ret_mode, get_var_mode, get_verifier_attrs};
 use crate::context::{BodyCtxt, Context};
 use crate::rust_to_vir_base::{
-    check_generics, check_generics_bounds, def_id_to_vir_path, ident_to_var, ty_to_vir,
+    check_generics_bounds_fun, check_generics_idents, def_id_to_vir_path, ident_to_var, ty_to_vir,
 };
 use crate::rust_to_vir_expr::{expr_to_vir, pat_to_var, ExprModifier};
 use crate::util::{err_span_str, err_span_string, spanned_new, unsupported_err_span, vec_map};
@@ -120,7 +120,7 @@ pub(crate) fn check_item_fn<'tcx>(
         None
     };
     let self_typ_params = if let Some(cg) = self_generics {
-        Some(check_generics(ctxt.tcx, cg, false)?)
+        Some(check_generics_idents(ctxt.tcx, cg, false)?)
     } else {
         None
     };
@@ -142,7 +142,7 @@ pub(crate) fn check_item_fn<'tcx>(
             )?
         }
     };
-    let sig_typ_bounds = check_generics_bounds(ctxt.tcx, generics, true)?;
+    let sig_typ_bounds = check_generics_bounds_fun(ctxt.tcx, generics)?;
     let fuel = get_fuel(attrs);
     let vattrs = get_verifier_attrs(attrs)?;
     if vattrs.external {
@@ -368,7 +368,7 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
 ) -> Result<(), VirErr> {
     let mode = get_mode(Mode::Exec, attrs);
     let ret_typ_mode = check_fn_decl(ctxt.tcx, &span, decl, None, None, attrs, mode)?;
-    let typ_bounds = check_generics_bounds(ctxt.tcx, generics, true)?;
+    let typ_bounds = check_generics_bounds_fun(ctxt.tcx, generics)?;
     let fuel = get_fuel(attrs);
     let mut vir_params: Vec<vir::ast::Param> = Vec::new();
     for (param, input) in idents.iter().zip(decl.inputs.iter()) {

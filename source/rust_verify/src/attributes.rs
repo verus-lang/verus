@@ -104,6 +104,10 @@ pub(crate) enum Attr {
     Abstract,
     // hide body (from all modules) until revealed
     Opaque,
+    // type parameter is not necessarily used in strictly positive positions
+    MaybeNegative,
+    // type parameter is used in strictly positive positions
+    StrictlyPositive,
     // export function's require/ensure as global forall
     BroadcastForall,
     // when used in a spec context, promote to spec by inserting .view()
@@ -169,6 +173,12 @@ pub(crate) fn parse_attrs(attrs: &[Attribute]) -> Result<Vec<Attr>, VirErr> {
                 }
                 Some(box [AttrTree::Fun(_, arg, None)]) if arg == "pub_abstract" => {
                     v.push(Attr::Abstract)
+                }
+                Some(box [AttrTree::Fun(_, arg, None)]) if arg == "maybe_negative" => {
+                    v.push(Attr::MaybeNegative)
+                }
+                Some(box [AttrTree::Fun(_, arg, None)]) if arg == "strictly_positive" => {
+                    v.push(Attr::StrictlyPositive)
                 }
                 Some(box [AttrTree::Fun(_, arg, None)]) if arg == "broadcast_forall" => {
                     v.push(Attr::BroadcastForall)
@@ -280,6 +290,8 @@ pub(crate) struct VerifierAttrs {
     pub(crate) external_body: bool,
     pub(crate) external: bool,
     pub(crate) is_abstract: bool,
+    pub(crate) strictly_positive: bool,
+    pub(crate) maybe_negative: bool,
     pub(crate) broadcast_forall: bool,
     pub(crate) autoview: bool,
     pub(crate) custom_req_err: Option<String>,
@@ -294,6 +306,8 @@ pub(crate) fn get_verifier_attrs(attrs: &[Attribute]) -> Result<VerifierAttrs, V
         external_body: false,
         external: false,
         is_abstract: false,
+        maybe_negative: false,
+        strictly_positive: false,
         broadcast_forall: false,
         autoview: false,
         custom_req_err: None,
@@ -307,6 +321,8 @@ pub(crate) fn get_verifier_attrs(attrs: &[Attribute]) -> Result<VerifierAttrs, V
             Attr::ExternalBody => vs.external_body = true,
             Attr::External => vs.external = true,
             Attr::Abstract => vs.is_abstract = true,
+            Attr::MaybeNegative => vs.maybe_negative = true,
+            Attr::StrictlyPositive => vs.strictly_positive = true,
             Attr::BroadcastForall => vs.broadcast_forall = true,
             Attr::Autoview => vs.autoview = true,
             Attr::CustomReqErr(s) => vs.custom_req_err = Some(s.clone()),

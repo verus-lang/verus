@@ -379,7 +379,7 @@ fn simplify_function(
 fn simplify_datatype(state: &mut State, datatype: &Datatype) -> Result<Datatype, VirErr> {
     let mut local =
         LocalCtxt { span: datatype.span.clone(), typ_params: Vec::new(), bounds: HashMap::new() };
-    for x in datatype.x.typ_params.iter() {
+    for (x, _strict_pos) in datatype.x.typ_params.iter() {
         local.typ_params.push(x.clone());
         local.bounds.insert(x.clone(), Arc::new(GenericBoundX::None));
     }
@@ -432,7 +432,7 @@ pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirEr
     for (arity, path) in state.tuple_typs {
         let visibility = Visibility { owning_module: None, is_private: false };
         let transparency = DatatypeTransparency::Always;
-        let typ_params = Arc::new((0..arity).map(|i| prefix_tuple_param(i)).collect());
+        let typ_params = Arc::new((0..arity).map(|i| (prefix_tuple_param(i), true)).collect());
         let mut fields: Vec<Field> = Vec::new();
         for i in 0..arity {
             let typ = Arc::new(TypX::TypParam(prefix_tuple_param(i)));

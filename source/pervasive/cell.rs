@@ -13,7 +13,7 @@ use std::mem::MaybeUninit;
 //type Identifier = int;
 
 #[verifier(external_body)]
-pub struct PCell<V> {
+pub struct PCell<#[verifier(strictly_positive)] V> {
   ucell: UnsafeCell<MaybeUninit<V>>,
 }
 

@@ -7,7 +7,7 @@ use crate::pervasive::map::*;
 
 /// set type for specifications
 #[verifier(external_body)]
-pub struct Set<A> {
+pub struct Set<#[verifier(maybe_negative)] A> {
     dummy: std::marker::PhantomData<A>,
 }
 

@@ -5,7 +5,7 @@ use crate::pervasive::*;
 
 /// sequence type for specifications
 #[verifier(external_body)]
-pub struct Seq<A> {
+pub struct Seq<#[verifier(strictly_positive)] A> {
     dummy: std::marker::PhantomData<A>,
 }
 

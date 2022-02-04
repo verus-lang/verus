@@ -1,3 +1,4 @@
+use crate::attributes::get_verifier_attrs;
 use crate::context::BodyCtxt;
 use crate::util::{err_span_str, unsupported_err_span};
 use crate::{unsupported, unsupported_err, unsupported_err_unless};
@@ -438,10 +439,27 @@ pub(crate) fn check_generics_bounds<'tcx>(
     tcx: TyCtxt<'tcx>,
     generics: &'tcx Generics<'tcx>,
     function_decl: bool,
-) -> Result<TypBounds, VirErr> {
+    check_that_external_body_datatype_declares_positivity: bool,
+) -> Result<Vec<(vir::ast::Ident, vir::ast::GenericBound, bool)>, VirErr> {
     let Generics { params, where_clause, span: _ } = generics;
-    let mut typ_params: Vec<(vir::ast::Ident, vir::ast::GenericBound)> = Vec::new();
+    let mut typ_params: Vec<(vir::ast::Ident, vir::ast::GenericBound, bool)> = Vec::new();
     for param in params.iter() {
+        let vattrs = get_verifier_attrs(tcx.hir().attrs(param.hir_id))?;
+        let neg = vattrs.maybe_negative;
+        let pos = vattrs.strictly_positive;
+        if neg && pos {
+            return err_span_str(
+                param.span,
+                "type parameter cannot be both maybe_negative and strictly_positive",
+            );
+        }
+        if check_that_external_body_datatype_declares_positivity && !neg && !pos {
+            return err_span_str(
+                param.span,
+                "in external_body datatype, each type parameter must be either #[verifier(maybe_negative)] or #[verifier(strictly_positive)] (maybe_negative is always safe to use)",
+            );
+        }
+        let strictly_positive = !neg; // strictly_positive is the default
         let GenericParam { hir_id: _, name, bounds, span: _, pure_wrt_drop, kind } = param;
         unsupported_err_unless!(bounds.len() <= 1, generics.span, "generic bounds");
         unsupported_err_unless!(!pure_wrt_drop, generics.span, "generic pure_wrt_drop");
@@ -453,7 +471,7 @@ pub(crate) fn check_generics_bounds<'tcx>(
                 } else {
                     Arc::new(GenericBoundX::None)
                 };
-                typ_params.push((ident, bound));
+                typ_params.push((ident, bound, strictly_positive));
             }
             (
                 ParamName::Plain(_id),
@@ -467,28 +485,55 @@ pub(crate) fn check_generics_bounds<'tcx>(
         }
     }
     unsupported_err_unless!(where_clause.predicates.len() == 0, generics.span, "where clause");
-    Ok(Arc::new(typ_params))
+    Ok(typ_params)
+}
+
+pub(crate) fn check_generics_bounds_fun<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    generics: &'tcx Generics<'tcx>,
+) -> Result<TypBounds, VirErr> {
+    Ok(Arc::new(
+        check_generics_bounds(tcx, generics, true, false)?
+            .into_iter()
+            .map(|(a, b, _)| (a, b))
+            .collect(),
+    ))
 }
 
 pub(crate) fn check_generics<'tcx>(
     tcx: TyCtxt<'tcx>,
     generics: &'tcx Generics<'tcx>,
     function_decl: bool,
-) -> Result<Idents, VirErr> {
-    let typ_bounds = check_generics_bounds(tcx, generics, function_decl)?;
-    let mut typ_params: Vec<vir::ast::Ident> = Vec::new();
-    for (x, bound) in typ_bounds.iter() {
+    check_that_external_body_datatype_declares_positivity: bool,
+) -> Result<Vec<(vir::ast::Ident, bool)>, VirErr> {
+    let typ_bounds = check_generics_bounds(
+        tcx,
+        generics,
+        function_decl,
+        check_that_external_body_datatype_declares_positivity,
+    )?;
+    let mut typ_params: Vec<(vir::ast::Ident, bool)> = Vec::new();
+    for (x, bound, strictly_positive) in typ_bounds.iter() {
         // REVIEW:
         // We currently only allow bounds for functions, not for datatypes,
         // so that datatypes cannot refer to function types.
-        // If we allow function types in fields of datatypes, we will need to have VIR perform
-        // a positivity check (recursive types only allowed in positive positions) for soundness.
+        // At some point, we may also want to allow bounds for datatypes.
         match &**bound {
-            GenericBoundX::None => typ_params.push(x.clone()),
+            GenericBoundX::None => typ_params.push((x.clone(), *strictly_positive)),
             _ => {
                 unsupported_err!(generics.span, "generic bounds");
             }
         }
     }
-    Ok(Arc::new(typ_params))
+    Ok(typ_params)
+}
+
+pub(crate) fn check_generics_idents<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    generics: &'tcx Generics<'tcx>,
+    function_decl: bool,
+) -> Result<Idents, VirErr> {
+    Ok(Arc::new(
+        check_generics(tcx, generics, function_decl, false)?.into_iter().map(|(a, _)| a).collect(),
+    ))
 }

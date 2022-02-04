@@ -459,7 +459,8 @@ pub struct DatatypeX {
     pub path: Path,
     pub visibility: Visibility,
     pub transparency: DatatypeTransparency,
-    pub typ_params: Idents,
+    /// Each type parameter is (name: Ident, strictly_positive: bool)
+    pub typ_params: Arc<Vec<(Ident, bool)>>,
     pub variants: Variants,
     pub mode: Mode,
     // For token types that need to be 'unforgeable'. Only makes sense for 'Proof' types.
