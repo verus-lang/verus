@@ -1,7 +1,7 @@
 use crate::ast::{
     BinaryOp, CallTarget, Constant, DatatypeX, Expr, ExprX, Fun, FunX, FunctionX, Ident, Idents,
-    IntRange, Mode, Param, Params, Path, PathX, PatternX, SpannedTyped, Stmt, StmtX, Typ, TypX,
-    Typs, Variant, Variants, VirErr, Visibility,
+    IntRange, Krate, Mode, Param, Params, Path, PathX, PatternX, SpannedTyped, Stmt, StmtX, Typ,
+    TypX, Typs, Variant, Variants, VirErr, Visibility,
 };
 use crate::def::Spanned;
 use crate::util::vec_map;
@@ -65,7 +65,7 @@ pub fn bitwidth_from_type(et: &Typ) -> Option<u32> {
     if let TypX::Int(IntRange::I(size)) = &**et {
         return Some(*size);
     }
-    return None;
+    None
 }
 
 pub fn path_as_rust_name(path: &Path) -> String {
@@ -264,5 +264,41 @@ impl DatatypeX {
 
     pub fn get_variant(&self, variant: &Ident) -> &Variant {
         get_variant(&self.variants, variant)
+    }
+}
+
+pub fn debug_write(mut write: impl std::io::Write, vir_crate: &Krate) {
+    for datatype in vir_crate.datatypes.iter() {
+        writeln!(&mut write, "datatype {:?} @ {:?}", datatype.x.path, datatype.span)
+            .expect("cannot write to vir write");
+        writeln!(&mut write, "{:?}", datatype.x.variants).expect("cannot write to vir write");
+        writeln!(&mut write).expect("cannot write to vir write");
+    }
+    for func in vir_crate.functions.iter() {
+        writeln!(&mut write, "fn {} @ {:?}", fun_as_rust_dbg(&func.x.name), func.span)
+            .expect("cannot write to vir write");
+        writeln!(
+            &mut write,
+            "visibility {:?} mode {:?} fuel {} is_abstract {}",
+            func.x.visibility, func.x.mode, func.x.fuel, func.x.is_abstract
+        )
+        .expect("cannot write to vir write");
+        for require in func.x.require.iter() {
+            writeln!(&mut write, "requires {:#?}", require).expect("cannot write to vir write");
+        }
+        for ensure in func.x.ensure.iter() {
+            writeln!(&mut write, "ensures {:#?}", ensure).expect("cannot write to vir write");
+        }
+        for param in func.x.params.iter() {
+            writeln!(
+                &mut write,
+                "parameter {}: {:?} @ {:?}",
+                param.x.name, param.x.typ, param.span
+            )
+            .expect("cannot write to vir write");
+        }
+        writeln!(&mut write, "returns {:?}", func.x.ret).expect("cannot write to vir write");
+        writeln!(&mut write, "body {:#?}", func.x.body).expect("cannot write to vir write");
+        writeln!(&mut write).expect("cannot write to vir write");
     }
 }

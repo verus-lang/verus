@@ -5,7 +5,7 @@ use builtin::*;
 mod pervasive;
 use pervasive::*;
 use crate::pervasive::{invariants::*};
-use crate::pervasive::{atomics::*};
+use crate::pervasive::{atomic::*};
 use crate::pervasive::{modes::*};
 use state_machines_macros::concurrent_state_machine;
 
@@ -94,6 +94,7 @@ pub struct G {
 
 impl G {
   #[spec]
+  #[verifier(pub_abstract)]
   pub fn wf(self, inst: X_Instance, patomic: PAtomicU32) -> bool {
     equal(self.perm.patomic, patomic.view()) && equal(self.perm.value as int, self.counter.counter)
     && equal(self.counter.instance, inst)
@@ -110,14 +111,7 @@ fn main() {
 
   // Initialize the counter
 
-  let mut at;
-  #[proof] let mut perm_token;
-  match new_atomic_u32(0) {
-    (patomic, proof(token)) => {
-      at = patomic;
-      perm_token = token;
-    }
-  }
+  let (at, proof(perm_token)) = PAtomicU32::new(0);
 
   #[proof] let at_inv: Invariant<G> = invariant_new(
       G { counter: counter_token, perm: perm_token },

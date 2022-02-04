@@ -152,6 +152,11 @@ fn pattern_to_exprs(
 
 fn simplify_one_expr(ctx: &GlobalCtx, state: &mut State, expr: &Expr) -> Result<Expr, VirErr> {
     match &expr.x {
+        ExprX::ConstVar(x) => {
+            let call =
+                ExprX::Call(CallTarget::Static(x.clone(), Arc::new(vec![])), Arc::new(vec![]));
+            Ok(SpannedTyped::new(&expr.span, &expr.typ, call))
+        }
         ExprX::Call(CallTarget::Static(tgt, typs), args) => {
             // Remove FnSpec type arguments
             let bounds = &ctx.fun_bounds[tgt];
@@ -374,7 +379,7 @@ fn simplify_function(
 fn simplify_datatype(state: &mut State, datatype: &Datatype) -> Result<Datatype, VirErr> {
     let mut local =
         LocalCtxt { span: datatype.span.clone(), typ_params: Vec::new(), bounds: HashMap::new() };
-    for x in datatype.x.typ_params.iter() {
+    for (x, _strict_pos) in datatype.x.typ_params.iter() {
         local.typ_params.push(x.clone());
         local.bounds.insert(x.clone(), Arc::new(GenericBoundX::None));
     }
@@ -408,6 +413,7 @@ fn mk_fun_decl(
             require: Arc::new(vec![]),
             ensure: Arc::new(vec![]),
             decrease: None,
+            is_const: false,
             is_abstract: false,
             attrs: Arc::new(attrs),
             body: None,
@@ -426,12 +432,13 @@ pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirEr
     for (arity, path) in state.tuple_typs {
         let visibility = Visibility { owning_module: None, is_private: false };
         let transparency = DatatypeTransparency::Always;
-        let typ_params = Arc::new((0..arity).map(|i| prefix_tuple_param(i)).collect());
+        let typ_params = Arc::new((0..arity).map(|i| (prefix_tuple_param(i), true)).collect());
         let mut fields: Vec<Field> = Vec::new();
         for i in 0..arity {
             let typ = Arc::new(TypX::TypParam(prefix_tuple_param(i)));
+            let vis = Visibility { owning_module: None, is_private: false };
             // Note: the mode is irrelevant at this stage, so we arbitrarily use Mode::Exec
-            fields.push(ident_binder(&prefix_tuple_field(i), &(typ, Mode::Exec)));
+            fields.push(ident_binder(&prefix_tuple_field(i), &(typ, Mode::Exec, vis)));
         }
         let variant = ident_binder(&prefix_tuple_variant(arity), &Arc::new(fields));
         let variants = Arc::new(vec![variant]);

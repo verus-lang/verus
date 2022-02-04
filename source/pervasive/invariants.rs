@@ -8,7 +8,7 @@
 
 #[proof]
 #[verifier(external_body)]
-pub struct Invariant<V> {
+pub struct Invariant<#[verifier(maybe_negative)] V> {
     dummy: std::marker::PhantomData<V>,
 }
 

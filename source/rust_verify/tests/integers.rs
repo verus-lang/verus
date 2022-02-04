@@ -164,3 +164,71 @@ test_verify_one_file! {
         }
     } => Err(_)
 }
+
+test_verify_one_file! {
+    #[test] test_literals code! {
+        #[proof]
+        fn f() {
+            assert(255u8 == 254u8 + 1);
+            assert(-128i8 == -127i8 - 1);
+            assert(127i8 == 126i8 + 1);
+            assert(0xffff_ffff_ffff_ffff_ffff_ffff_ffff_ffffu128 == 0xffff_ffff_ffff_ffff_ffff_ffff_ffff_fffeu128 + 1);
+            assert(-0x8000_0000_0000_0000_0000_0000_0000_0000i128 == -0x7fff_ffff_ffff_ffff_ffff_ffff_ffff_ffffi128 - 1);
+            assert(0x7fff_ffff_ffff_ffff_ffff_ffff_ffff_ffffi128 == 0x7fff_ffff_ffff_ffff_ffff_ffff_ffff_fffei128 + 1);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_literals_fails1 code! {
+        #[proof]
+        fn f() {
+            assert(0u8 == 0u8 - 1 + 1); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] test_literals_fails2 code! {
+        #[proof]
+        fn f() {
+            assert(255u8 == 256u8 - 1); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] test_literals_fails3 code! {
+        #[proof]
+        fn f() {
+            assert(-128i8 == -129i8 + 1); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] test_literals_fails4 code! {
+        #[proof]
+        fn f() {
+            assert(127i8 == 128i8 - 1); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] test_literals_fails5 code! {
+        #[proof]
+        fn f() {
+            assert(-0x8000_0000_0000_0000_0000_0000_0000_0000i128 == -0x8000_0000_0000_0000_0000_0000_0000_0001i128 + 1); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] test_literals_fails6 code! {
+        #[proof]
+        fn f() {
+            assert(0x7fff_ffff_ffff_ffff_ffff_ffff_ffff_ffffi128 == 0x8000_0000_0000_0000_0000_0000_0000_0000i128 - 1); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}

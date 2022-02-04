@@ -269,14 +269,14 @@ fn call_inv(ctx: &Ctx, outer: Expr, inner: Expr, typ: &Typ) -> Expr {
     let typ_expr = typ_to_id(typ);
     let boxed_inner = try_box(ctx, inner.clone(), typ).unwrap_or(inner);
     let args = vec![typ_expr, outer, boxed_inner];
-    return ident_apply(&inv_fn_ident, &args);
+    ident_apply(&inv_fn_ident, &args)
 }
 
 fn call_namespace(arg: Expr, typ: &Typ) -> Expr {
     let inv_fn_ident = suffix_global_id(&fun_to_air_ident(&fn_namespace_name()));
     let typ_expr = typ_to_id(typ);
     let args = vec![typ_expr, arg];
-    return ident_apply(&inv_fn_ident, &args);
+    ident_apply(&inv_fn_ident, &args)
 }
 
 pub fn mask_set_from_spec(spec: &MaskSpec, mode: Mode) -> MaskSet {
@@ -353,6 +353,13 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: ExprCtxt) -> Expr {
         }
         ExpX::Unary(op, exp) => match op {
             UnaryOp::Not => mk_not(&exp_to_expr(ctx, exp, expr_ctxt)),
+            UnaryOp::BitNot => {
+                let expr = exp_to_expr(ctx, exp, expr_ctxt);
+                Arc::new(ExprX::Apply(
+                    Arc::new(crate::def::UINT_NOT.to_string()),
+                    Arc::new(vec![expr]),
+                ))
+            }
             UnaryOp::Trigger(_) => exp_to_expr(ctx, exp, expr_ctxt),
             UnaryOp::Clip(IntRange::Int) => exp_to_expr(ctx, exp, expr_ctxt),
             UnaryOp::Clip(range) => {
@@ -495,7 +502,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: ExprCtxt) -> Expr {
                 };
                 let binders = vec_map(&*binders, |b| {
                     let name = match &*b.a {
-                        // allow quantifiers over type parameters, generated for export_as_global_forall
+                        // allow quantifiers over type parameters, generated for broadcast_forall
                         TypX::TypeId => suffix_typ_param_id(&b.name),
                         _ => suffix_local_expr_id(&b.name),
                     };
@@ -559,7 +566,7 @@ impl State {
     /// get the current sid (top of the scope stack)
     fn get_current_sid(&self) -> Ident {
         let last = self.sids.last().unwrap();
-        return last.clone();
+        last.clone()
     }
 
     /// copy the current sid into a new scope (when entering a block)
@@ -575,7 +582,7 @@ impl State {
 
     fn get_new_sid(&mut self, suffix: &str) -> Ident {
         self.snapshot_count += 1;
-        return Arc::new(format!("{}{}", self.snapshot_count, suffix));
+        Arc::new(format!("{}{}", self.snapshot_count, suffix))
     }
 
     /// replace the current sid (without changing scope depth)
@@ -583,7 +590,7 @@ impl State {
         let sid = self.get_new_sid(suffix);
         self.sids.pop();
         self.sids.push(sid.clone());
-        return sid;
+        sid
     }
 
     // fn get_assigned_set(&self, stm: &Stm) -> HashSet<Arc<String>> {
@@ -637,25 +644,6 @@ fn exp_to_bv_expr(state: &State, exp: &Exp) -> Expr {
             return string_var(&suffix_local_unique_id(x));
         }
         ExpX::Binary(op, lhs, rhs) => {
-            let bop = match op {
-                BinaryOp::Eq(_) => air::ast::BinaryOp::Eq,
-                BinaryOp::Add => air::ast::BinaryOp::BitAdd,
-                BinaryOp::Sub => air::ast::BinaryOp::BitSub,
-                BinaryOp::Mul => air::ast::BinaryOp::BitMul,
-                BinaryOp::EuclideanDiv => air::ast::BinaryOp::BitUDiv,
-                BinaryOp::EuclideanMod => air::ast::BinaryOp::BitUMod,
-                BinaryOp::Lt => air::ast::BinaryOp::BitULt,
-                BinaryOp::Gt => air::ast::BinaryOp::BitUGt,
-                BinaryOp::Le => air::ast::BinaryOp::BitULe,
-                BinaryOp::Ge => air::ast::BinaryOp::BitUGe,
-                // here the bv operation is translated as it is
-                BinaryOp::BitXor => air::ast::BinaryOp::BitXor,
-                BinaryOp::BitAnd => air::ast::BinaryOp::BitAnd,
-                BinaryOp::BitOr => air::ast::BinaryOp::BitOr,
-                BinaryOp::Shl => air::ast::BinaryOp::Shl,
-                BinaryOp::Shr => air::ast::BinaryOp::LShr,
-                _ => panic!("unhandled bv binary operation {:?}", op),
-            };
             // disallow signed integer from bitvec reasoning. However, allow that for shift
             // TODO: sanity check for shift
             let _ = match op {
@@ -667,41 +655,83 @@ fn exp_to_bv_expr(state: &State, exp: &Exp) -> Expr {
             };
             let lh = exp_to_bv_expr(state, lhs);
             let rh = exp_to_bv_expr(state, rhs);
+            let _ = match op {
+                BinaryOp::And => return mk_and(&vec![lh, rh]),
+                BinaryOp::Or => return mk_or(&vec![lh, rh]),
+                BinaryOp::Ne => {
+                    let eq = ExprX::Binary(air::ast::BinaryOp::Eq, lh, rh);
+                    return Arc::new(ExprX::Unary(air::ast::UnaryOp::Not, Arc::new(eq)));
+                }
+                _ => (),
+            };
+
+            let bop = match op {
+                BinaryOp::Eq(_) => air::ast::BinaryOp::Eq,
+                BinaryOp::Ne => unreachable!(),
+                BinaryOp::Add => air::ast::BinaryOp::BitAdd,
+                BinaryOp::Sub => air::ast::BinaryOp::BitSub,
+                BinaryOp::Mul => air::ast::BinaryOp::BitMul,
+                BinaryOp::EuclideanDiv => air::ast::BinaryOp::BitUDiv,
+                BinaryOp::EuclideanMod => air::ast::BinaryOp::BitUMod,
+                BinaryOp::Lt => air::ast::BinaryOp::BitULt,
+                BinaryOp::Gt => air::ast::BinaryOp::BitUGt,
+                BinaryOp::Le => air::ast::BinaryOp::BitULe,
+                BinaryOp::Ge => air::ast::BinaryOp::BitUGe,
+                BinaryOp::BitXor => air::ast::BinaryOp::BitXor,
+                BinaryOp::BitAnd => air::ast::BinaryOp::BitAnd,
+                BinaryOp::BitOr => air::ast::BinaryOp::BitOr,
+                BinaryOp::Shl => air::ast::BinaryOp::Shl,
+                BinaryOp::Shr => air::ast::BinaryOp::LShr,
+                BinaryOp::Implies => air::ast::BinaryOp::Implies,
+                BinaryOp::And => unreachable!(),
+                BinaryOp::Or => unreachable!(),
+            };
             return Arc::new(ExprX::Binary(bop, lh, rh));
         }
         ExpX::Unary(op, exp) => {
-            // bv type casting by 'as' keyword
-            // convert Clip into concat/extract
-            match (&*exp.typ, op) {
-                (
-                    TypX::Int(IntRange::U(old_n) | IntRange::I(old_n)),
-                    UnaryOp::Clip(IntRange::U(new_n) | IntRange::I(new_n)),
-                ) => {
-                    // expand with zero using concat
-                    if new_n > old_n {
-                        let bop = air::ast::BinaryOp::BitConcat;
-                        let lh = Arc::new(ExprX::Const(Constant::BitVec(
-                            Arc::new("0".to_string()),
-                            new_n - old_n,
-                        )));
-                        let rh = exp_to_bv_expr(state, exp);
-                        return Arc::new(ExprX::Binary(bop, lh, rh));
-                    }
-                    // extract lower new_n bits
-                    else if new_n < old_n {
-                        let op = air::ast::UnaryOp::BitExtract(new_n - 1, 0);
-                        let bv_e = exp_to_bv_expr(state, exp);
-                        return Arc::new(ExprX::Unary(op, bv_e));
-                    } else {
-                        return exp_to_bv_expr(state, exp);
+            let bv_e = exp_to_bv_expr(state, exp);
+            match op {
+                UnaryOp::Not => {
+                    let bop = air::ast::UnaryOp::Not;
+                    return Arc::new(ExprX::Unary(bop, bv_e));
+                }
+                UnaryOp::BitNot => {
+                    let bop = air::ast::UnaryOp::BitNot;
+                    return Arc::new(ExprX::Unary(bop, bv_e));
+                }
+                // bv type casting by 'as' keyword
+                // convert Clip into concat/extract
+                UnaryOp::Clip(IntRange::U(new_n) | IntRange::I(new_n)) => {
+                    match &*exp.typ {
+                        TypX::Int(IntRange::U(old_n) | IntRange::I(old_n)) => {
+                            // expand with zero using concat
+                            if new_n > old_n {
+                                let bop = air::ast::BinaryOp::BitConcat;
+                                let zero_pad = Arc::new(ExprX::Const(Constant::BitVec(
+                                    Arc::new("0".to_string()),
+                                    new_n - old_n,
+                                )));
+                                return Arc::new(ExprX::Binary(bop, zero_pad, bv_e));
+                            }
+                            // extract lower new_n bits
+                            else if new_n < old_n {
+                                let op = air::ast::UnaryOp::BitExtract(new_n - 1, 0);
+                                return Arc::new(ExprX::Unary(op, bv_e));
+                            } else {
+                                return bv_e;
+                            }
+                        }
+                        _ => panic!(
+                            "IntRange error: should be I(_) or U(_) for bit-vector, got {:?}",
+                            exp.typ
+                        ),
                     }
                 }
-                _ => {
-                    panic!(
-                        "unhandled bv unary operation {:?} or IntRange error: should be I(_) or U(_) but {:?}",
-                        op, exp.typ
-                    )
-                }
+                UnaryOp::Clip(_) => panic!(
+                    "IntRange error: should be I(_) or U(_) for bit-vector, got {:?}",
+                    exp.typ
+                ),
+                UnaryOp::Trigger(_) => panic!("Trigger is not supported in bit-vector"),
             }
         }
         _ => panic!("unhandled bv expr conversion {:?}", exp.x),

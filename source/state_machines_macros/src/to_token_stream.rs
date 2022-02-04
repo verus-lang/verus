@@ -20,7 +20,10 @@ use syn::{
     MetaList, NestedMeta, Path, PathArguments, PathSegment, Type,
 };
 
-pub fn output_token_stream(sm_and_funcs: SMAndFuncs, concurrent: bool) -> syn::parse::Result<TokenStream> {
+pub fn output_token_stream(
+    sm_and_funcs: SMAndFuncs,
+    concurrent: bool,
+) -> syn::parse::Result<TokenStream> {
     let SMAndFuncs { normal_fns, sm: maybe_sm } = sm_and_funcs;
 
     let mut token_stream = TokenStream::new();

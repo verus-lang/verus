@@ -4,7 +4,6 @@ use crate::ast::{
 };
 use crate::ast_to_sst::expr_to_exp;
 use crate::ast_util::err_str;
-use crate::ast_visitor::map_expr_visitor;
 use crate::context::Ctx;
 use crate::def::{
     check_decrease_int, decrease_at_entry, height, prefix_recursive_fun, suffix_rename, Spanned,
@@ -13,12 +12,14 @@ use crate::def::{
 use crate::scc::Graph;
 use crate::sst::{BndX, Exp, ExpX, Exps, LocalDecl, LocalDeclX, Stm, StmX, UniqueIdent};
 use crate::sst_visitor::{
-    exp_rename_vars, map_exp_visitor, map_exp_visitor_result, map_stm_visitor,
+    exp_rename_vars, exp_visitor_check, exp_visitor_dfs, map_exp_visitor, map_stm_visitor,
+    stm_visitor_dfs, VisitorControlFlow,
 };
 use crate::util::vec_map_result;
 use air::ast::{Binder, Commands, Quant, Span};
 use air::ast_util::{ident_binder, str_ident, str_typ};
 use air::errors::error;
+use air::scope_map::ScopeMap;
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -200,16 +201,15 @@ pub(crate) fn is_recursive_exp(ctx: &Ctx, name: &Fun, body: &Exp) -> bool {
         // This function is part of a mutually recursive component
         true
     } else {
+        let mut scope_map = ScopeMap::new();
         // Check for self-recursion, which SCC computation does not account for
-        let mut recurse = false;
-        map_exp_visitor(body, &mut |exp| match &exp.x {
-            ExpX::Call(x, _, _) if x == name => {
-                recurse = true;
-                exp.clone()
-            }
-            _ => exp.clone(),
-        });
-        recurse
+        match exp_visitor_dfs(body, &mut scope_map, &mut |exp, _scope_map| match &exp.x {
+            ExpX::Call(x, _, _) if x == name => VisitorControlFlow::Stop(()),
+            _ => VisitorControlFlow::Recurse,
+        }) {
+            VisitorControlFlow::Stop(()) => true,
+            _ => false,
+        }
     }
 }
 
@@ -219,16 +219,13 @@ pub(crate) fn is_recursive_stm(ctx: &Ctx, name: &Fun, body: &Stm) -> bool {
         true
     } else {
         // Check for self-recursion, which SCC computation does not account for
-        let mut recurse = false;
-        map_stm_visitor(body, &mut |stm| match &stm.x {
-            StmX::Call(x, _, _, _) if x == name => {
-                recurse = true;
-                Ok(stm.clone())
-            }
-            _ => Ok(stm.clone()),
-        })
-        .unwrap();
-        recurse
+        match stm_visitor_dfs(body, &mut |stm| match &stm.x {
+            StmX::Call(x, _, _, _) if x == name => VisitorControlFlow::Stop(()),
+            _ => VisitorControlFlow::Recurse,
+        }) {
+            VisitorControlFlow::Stop(()) => true,
+            _ => false,
+        }
     }
 }
 
@@ -259,20 +256,16 @@ fn mk_decreases_at_entry(ctxt: &Ctxt, span: &Span, exps: &Vec<Exp>) -> (Vec<Loca
 // It's possible that we could be allow some recursion.
 fn disallow_recursion_exp(ctxt: &Ctxt, exp: &Exp) -> Result<(), VirErr> {
     let scc_rep = ctxt.ctx.func_call_graph.get_scc_rep(&ctxt.recursive_function_name);
-    let _ = map_exp_visitor_result(exp, &mut |exp| {
-        match &exp.x {
-            ExpX::Call(x, _, _) => {
-                if *x == ctxt.recursive_function_name
-                    || ctxt.ctx.func_call_graph.get_scc_rep(x) == scc_rep
-                {
-                    return err_str(&exp.span, "recursion not allowed here");
-                }
-            }
-            _ => {}
+    let mut scope_map = ScopeMap::new();
+    exp_visitor_check(exp, &mut scope_map, &mut |exp, _scope_map| match &exp.x {
+        ExpX::Call(x, _, _)
+            if *x == ctxt.recursive_function_name
+                || ctxt.ctx.func_call_graph.get_scc_rep(x) == scc_rep =>
+        {
+            err_str(&exp.span, "recursion not allowed here")
         }
-        Ok(exp.clone())
-    })?;
-    Ok(())
+        _ => Ok(()),
+    })
 }
 
 pub(crate) fn check_termination_exp(
@@ -374,31 +367,19 @@ pub(crate) fn check_termination_stm(
     Ok((decls, stm_block))
 }
 
-fn add_call_graph_edges(
-    call_graph: &mut Graph<Fun>,
-    src: &Fun,
-    expr: &crate::ast::Expr,
-) -> Result<crate::ast::Expr, VirErr> {
-    use crate::ast::ExprX;
-
-    match &expr.x {
-        ExprX::Call(CallTarget::Static(x, _), _) | ExprX::Fuel(x, _) => {
-            call_graph.add_edge(src.clone(), x.clone())
-        }
-        _ => {}
-    }
-    Ok(expr.clone())
-}
-
-pub(crate) fn expand_call_graph(
-    call_graph: &mut Graph<Fun>,
-    function: &Function,
-) -> Result<(), VirErr> {
+pub(crate) fn expand_call_graph(call_graph: &mut Graph<Fun>, function: &Function) {
     // We only traverse expressions (not statements), since calls only appear in the former (see ast.rs)
     if let Some(body) = &function.x.body {
-        map_expr_visitor(body, &mut |expr| {
-            add_call_graph_edges(call_graph, &function.x.name, expr)
-        })?;
+        crate::ast_visitor::expr_visitor_check::<VirErr, _>(body, &mut |expr| {
+            use crate::ast::ExprX;
+            match &expr.x {
+                ExprX::Call(CallTarget::Static(x, _), _) | ExprX::Fuel(x, _) => {
+                    call_graph.add_edge(function.x.name.clone(), x.clone())
+                }
+                _ => {}
+            }
+            Ok(())
+        })
+        .expect("expr_visitor_check failed unexpectedly");
     }
-    Ok(())
 }

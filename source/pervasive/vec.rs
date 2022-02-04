@@ -6,7 +6,7 @@ use crate::pervasive::*;
 use crate::pervasive::seq::*;
 
 #[verifier(external_body)]
-pub struct Vec<A> {
+pub struct Vec<#[verifier(strictly_positive)] A> {
     pub vec: std::vec::Vec<A>,
 }
 

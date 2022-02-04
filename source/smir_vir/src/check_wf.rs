@@ -73,7 +73,14 @@ pub fn check_wf_user_invariant(
             is_abstract: _,
             attrs: _,
             body: _,
+            is_const,
         } => {
+            if *is_const {
+                return Err(error(
+                    "user-defined invariant is not expected to be a 'const'",
+                    &f.span,
+                ));
+            }
             if *mode != Mode::Spec {
                 return Err(error("user-defined invariant must be 'spec'", &f.span));
             }
@@ -135,7 +142,14 @@ pub fn setup_inv(
             is_abstract: _,
             attrs: _,
             body: _,
+            is_const,
         } => {
+            if *is_const {
+                return Err(error(
+                    "macro-generated invariant is not expected to be a 'const'",
+                    &f.span,
+                ));
+            }
             if *mode != Mode::Spec {
                 return Err(error("macro-generated invariant must be 'spec'", &f.span));
             }

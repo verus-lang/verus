@@ -20,7 +20,7 @@ pub struct ModelDefX {
     pub body: ModelExpr,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 /// AIR-level model of a concrete counterexample
 pub struct Model {
     /// Internal mapping of snapshot IDs to snapshots that map AIR variables to usage counts.
@@ -64,6 +64,6 @@ impl Model {
         if self.parameters.contains(name) {
             return Some((**name).clone());
         }
-        return None;
+        None
     }
 }

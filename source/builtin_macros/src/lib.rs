@@ -1,28 +1,7 @@
-use quote::quote;
-use synstructure::decl_derive;
+use synstructure::{decl_attribute, decl_derive};
+mod is_variant;
+mod structural;
 
-decl_derive!([Structural] => derive_structural);
+decl_derive!([Structural] => structural::derive_structural);
 
-fn derive_structural(s: synstructure::Structure) -> proc_macro2::TokenStream {
-    let assert_receiver_is_structural_body = s
-        .variants()
-        .iter()
-        .flat_map(|v| v.ast().fields)
-        .map(|f| {
-            let ty = &f.ty;
-            quote! {
-                let _: ::builtin::AssertParamIsStructural<#ty>;
-            }
-        })
-        .collect::<proc_macro2::TokenStream>();
-    s.gen_impl(quote! {
-        #[automatically_derived]
-        gen impl ::builtin::Structural for @Self {
-            #[inline]
-            #[doc(hidden)]
-            fn assert_receiver_is_structural(&self) -> () {
-                #assert_receiver_is_structural_body
-            }
-        }
-    })
-}
+decl_attribute!([is_variant] => is_variant::attribute_is_variant);

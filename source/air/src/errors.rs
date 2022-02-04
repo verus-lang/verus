@@ -42,16 +42,16 @@ pub type Error = Arc<ErrorX>;
 
 /// Basic error, with a message and a single span to be highlighted with ^^^^^^
 pub fn error<S: Into<String>>(msg: S, span: &Span) -> Error {
-    return Arc::new(ErrorX { msg: msg.into(), spans: vec![span.clone()], labels: Vec::new() });
+    Arc::new(ErrorX { msg: msg.into(), spans: vec![span.clone()], labels: Vec::new() })
 }
 
 /// Error with a message, a span to be highlighted with ^^^^^^, and a label for that span
 pub fn error_with_label<S: Into<String>, T: Into<String>>(msg: S, span: &Span, label: T) -> Error {
-    return Arc::new(ErrorX {
+    Arc::new(ErrorX {
         msg: msg.into(),
         spans: vec![span.clone()],
         labels: vec![ErrorLabel { span: span.clone(), msg: label.into() }],
-    });
+    })
 }
 
 // Add additional stuff with the "builders" below.
@@ -99,16 +99,16 @@ impl ErrorX {
 /// (Lossy) conversions between the complicated Error format and the simpler format used by air
 
 pub fn error_from_spans(spans: Vec<Span>) -> Error {
-    return Arc::new(ErrorX { msg: "".to_string(), spans: spans, labels: Vec::new() });
+    Arc::new(ErrorX { msg: "".to_string(), spans: spans, labels: Vec::new() })
 }
 
 pub fn error_from_labels(labels: ErrorLabels) -> Error {
     if labels.len() == 0 {
-        return Arc::new(ErrorX { msg: "".to_string(), spans: Vec::new(), labels: Vec::new() });
+        Arc::new(ErrorX { msg: "".to_string(), spans: Vec::new(), labels: Vec::new() })
     } else {
         // Choose the first label to make the "primary" span.
         let ErrorLabel { msg, span } = labels[0].clone();
-        return Arc::new(ErrorX { msg: msg, spans: vec![span], labels: labels[1..].to_vec() });
+        Arc::new(ErrorX { msg: msg, spans: vec![span], labels: labels[1..].to_vec() })
     }
 }
 
@@ -117,5 +117,5 @@ pub fn all_msgs_from_error(error: &Error) -> Vec<String> {
     for l in &error.labels {
         v.push(l.msg.clone());
     }
-    return v;
+    v
 }

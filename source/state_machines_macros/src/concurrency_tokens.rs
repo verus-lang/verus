@@ -9,8 +9,9 @@ use smir::ast::{
     Arg, Extras, Field, Invariant, Lemma, LemmaPurpose, ShardableType, Transition, TransitionKind,
     TransitionStmt, SM,
 };
-use std::collections::HashSet;
 use std::collections::HashMap;
+use std::collections::HashSet;
+use std::ops::Index;
 use syn::buffer::Cursor;
 use syn::parse::Error;
 use syn::parse::{Parse, ParseStream};
@@ -22,7 +23,6 @@ use syn::{
     braced, AttrStyle, Attribute, Expr, ExprField, ExprPath, FieldsNamed, FnArg, Ident,
     ImplItemMethod, Member, Meta, MetaList, NestedMeta, Path, PathArguments, PathSegment, Type,
 };
-use std::ops::Index;
 
 fn inst_type_name(sm_name: &Ident) -> Ident {
     let name = sm_name.to_string() + "_Instance";
@@ -106,10 +106,17 @@ struct Ctxt {
 }
 
 impl Ctxt {
-    pub fn get_field_by_ident(&self, span: Span, ident: &Ident) -> syn::parse::Result<Field<Ident, Type>> {
+    pub fn get_field_by_ident(
+        &self,
+        span: Span,
+        ident: &Ident,
+    ) -> syn::parse::Result<Field<Ident, Type>> {
         match self.ident_to_field.get(ident) {
             Some(f) => Ok(f.clone()),
-            None => Err(Error::new(span, "in a concurrent transition, any field access but be a state field")),
+            None => Err(Error::new(
+                span,
+                "in a concurrent transition, any field access but be a state field",
+            )),
         }
     }
 
@@ -146,17 +153,12 @@ pub fn exchange_stream(
     let inst;
     if tr.kind == TransitionKind::Init {
         let itn = inst_type_name(&sm.name);
-        out_args.push((
-            (
-                quote!{ instance },
-                quote!{ crate::pervasive::modes::Spec<#itn> },
-            )
-        ));
-        inst = quote!{ instance.value() };
+        out_args.push(((quote! { instance }, quote! { crate::pervasive::modes::Spec<#itn> })));
+        inst = quote! { instance.value() };
     } else {
         let itn = inst_type_name(&sm.name);
-        in_args.push(quote!{ #[spec] instance: #itn });
-        inst = quote!{ instance };
+        in_args.push(quote! { #[spec] instance: #itn });
+        inst = quote! { instance };
     }
 
     let mut inst_eq_reqs = Vec::new();
@@ -192,7 +194,7 @@ pub fn exchange_stream(
             if is_input {
                 in_args.push(quote! { #[proof] #arg_name: &mut #arg_type });
             } else {
-                out_args.push((quote!{#arg_name}, quote!{#arg_type}));
+                out_args.push((quote! {#arg_name}, quote! {#arg_type}));
             }
         } else {
             in_args.push(quote! { #[proof] #arg_name: &#arg_type });
@@ -200,13 +202,13 @@ pub fn exchange_stream(
 
         if is_output {
             let lhs = get_new_field_inst(field);
-            inst_eq_enss.push(Expr::Verbatim(quote!{
+            inst_eq_enss.push(Expr::Verbatim(quote! {
                 ::builtin::equal(#lhs, #inst)
             }));
         }
         if is_input {
             let lhs = get_old_field_inst(&ctxt, field);
-            inst_eq_reqs.push(Expr::Verbatim(quote!{
+            inst_eq_reqs.push(Expr::Verbatim(quote! {
                 ::builtin::equal(#lhs, #inst)
             }));
         }
@@ -221,7 +223,7 @@ pub fn exchange_stream(
     let exch_name = exchange_name(&sm.name, &tr);
 
     let req_stream = if reqs.len() > 0 {
-        quote!{
+        quote! {
             ::builtin::requires([
                 #(#reqs),*
             ]);
@@ -232,7 +234,7 @@ pub fn exchange_stream(
 
     let (out_args_ret, ens_stream) = if out_args.len() == 0 {
         let ens_stream = if enss.len() > 0 {
-            quote!{
+            quote! {
                 ::builtin::ensures([
                     #(#enss),*
                 ]);
@@ -247,7 +249,7 @@ pub fn exchange_stream(
         let arg_ty = &out_args[0].1;
 
         let ens_stream = if enss.len() > 0 {
-            quote!{
+            quote! {
                 ::builtin::ensures(
                     |#arg_name: #arg_ty| [
                         #(#enss),*
@@ -258,18 +260,15 @@ pub fn exchange_stream(
             TokenStream::new()
         };
 
-        (
-          quote!{ -> #arg_ty },
-          ens_stream,
-        )
+        (quote! { -> #arg_ty }, ens_stream)
     } else {
         let arg_tys: Vec<TokenStream> = out_args.iter().map(|oa| oa.1.clone()).collect();
         let arg_names: Vec<TokenStream> = out_args.iter().map(|oa| oa.0.clone()).collect();
-        let tup_typ = quote!{ (#(#arg_tys),*) };
-        let tup_names = quote!{ (#(#arg_names),*) };
+        let tup_typ = quote! { (#(#arg_tys),*) };
+        let tup_names = quote! { (#(#arg_names),*) };
 
         let ens_stream = if enss.len() > 0 {
-            quote!{
+            quote! {
                 ::builtin::ensures(
                     |tmp_tuple: #tup_typ| [{
                         let #tup_names = tmp_tuple;
@@ -281,16 +280,13 @@ pub fn exchange_stream(
             TokenStream::new()
         };
 
-        (
-          quote!{ -> #tup_typ },
-          ens_stream,
-        )
+        (quote! { -> #tup_typ }, ens_stream)
     };
 
     let return_value_mode = if out_args.len() == 0 {
         TokenStream::new()
     } else {
-        quote!{ #[verifier(returns(proof))] }
+        quote! { #[verifier(returns(proof))] }
     };
 
     return Ok(quote! {
@@ -318,14 +314,14 @@ fn determine_outputs(
             }
             Ok(())
         }
-        TransitionStmt::Let(_span, id, init_e) => { Ok(()) }
+        TransitionStmt::Let(_span, id, init_e) => Ok(()),
         TransitionStmt::If(_span, _cond_e, e1, e2) => {
             determine_outputs(ctxt, e1)?;
             determine_outputs(ctxt, e2)?;
             Ok(())
         }
-        TransitionStmt::Require(_span, _req_e) => { Ok(()) }
-        TransitionStmt::Assert(_span, _assert_e) => { Ok(()) }
+        TransitionStmt::Require(_span, _req_e) => Ok(()),
+        TransitionStmt::Assert(_span, _assert_e) => Ok(()),
         TransitionStmt::Update(_span, id, _e) => {
             ctxt.fields_written.insert(id.clone());
             Ok(())
@@ -531,9 +527,7 @@ fn exchange_collect(
             pa.push(PrequelElement::Condition(assert_e.clone()));
             Ok((prequel, pa))
         }
-        TransitionStmt::Update(_span, id, _e) => {
-            Ok((prequel, prequel_with_asserts))
-        }
+        TransitionStmt::Update(_span, id, _e) => Ok((prequel, prequel_with_asserts)),
     }
 }
 
@@ -584,7 +578,9 @@ fn prequel_element_to_expr(p: &PrequelElement) -> Option<Expr> {
                 (None, None) => None,
                 (Some(e1), None) => Some(Expr::Verbatim(quote! { ((#b) >>= (#e1)) })),
                 (None, Some(e2)) => Some(Expr::Verbatim(quote! { (!(#b) >>= (#e2)) })),
-                (Some(e1), Some(e2)) => Some(Expr::Verbatim(quote! { (if #b { #e1 } else { #e2 }) })),
+                (Some(e1), Some(e2)) => {
+                    Some(Expr::Verbatim(quote! { (if #b { #e1 } else { #e2 }) }))
+                }
             }
         }
     }

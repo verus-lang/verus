@@ -18,7 +18,7 @@ impl PervasiveFileLoader {
                 }
             }
         }
-        return path.into();
+        path.into()
     }
 }
 

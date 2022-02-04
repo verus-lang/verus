@@ -18,6 +18,7 @@ pub(crate) struct AssertionInfo {
     pub(crate) error: Error,
     pub(crate) label: Ident,
     pub(crate) decl: Decl,
+    pub(crate) disabled: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -32,6 +33,15 @@ pub enum ValidityResult {
     Valid,
     Invalid(Model, Error),
     TypeError(TypeError),
+    UnexpectedSmtOutput(String),
+}
+
+#[derive(Clone, Debug)]
+pub(crate) enum ContextState {
+    NotStarted,
+    ReadyForQuery,
+    FoundResult,
+    FoundInvalid(Vec<AssertionInfo>, Model),
 }
 
 pub struct Context {
@@ -46,6 +56,7 @@ pub struct Context {
     pub(crate) apply_count: u64,
     pub(crate) typing: Typing,
     pub(crate) debug: bool,
+    pub(crate) ignore_unexpected_smt: bool,
     pub(crate) rlimit: u32,
     pub(crate) air_initial_log: Emitter,
     pub(crate) air_middle_log: Emitter,
@@ -53,7 +64,7 @@ pub struct Context {
     pub(crate) smt_log: Emitter,
     pub(crate) time_smt_init: Duration,
     pub(crate) time_smt_run: Duration,
-    pub(crate) started: bool,
+    pub(crate) state: ContextState,
 }
 
 impl Context {
@@ -70,6 +81,7 @@ impl Context {
             apply_count: 0,
             typing: Typing { decls: crate::scope_map::ScopeMap::new(), snapshots: HashSet::new() },
             debug: false,
+            ignore_unexpected_smt: false,
             rlimit: 0,
             air_initial_log: Emitter::new(false, false, None),
             air_middle_log: Emitter::new(false, false, None),
@@ -77,7 +89,7 @@ impl Context {
             smt_log: Emitter::new(true, true, None),
             time_smt_init: Duration::new(0, 0),
             time_smt_run: Duration::new(0, 0),
-            started: false,
+            state: ContextState::NotStarted,
         };
         context.axiom_infos.push_scope(false);
         context.lambda_map.push_scope(false);
@@ -109,6 +121,10 @@ impl Context {
 
     pub fn get_debug(&self) -> bool {
         self.debug
+    }
+
+    pub fn set_ignore_unexpected_smt(&mut self, ignore_unexpected_smt: bool) {
+        self.ignore_unexpected_smt = ignore_unexpected_smt;
     }
 
     pub fn get_time(&self) -> (Duration, Duration) {
@@ -212,12 +228,18 @@ impl Context {
     }
 
     fn ensure_started(&mut self) {
-        if !self.started {
-            self.blank_line();
-            self.comment("AIR prelude");
-            self.smt_log.log_node(&node!((declare-sort {str_to_node(crate::def::FUNCTION)})));
-            self.blank_line();
-            self.started = true;
+        match self.state {
+            ContextState::NotStarted => {
+                self.blank_line();
+                self.comment("AIR prelude");
+                self.smt_log.log_node(&node!((declare-sort {str_to_node(crate::def::FUNCTION)})));
+                self.blank_line();
+                self.state = ContextState::ReadyForQuery;
+            }
+            ContextState::ReadyForQuery => {}
+            _ => {
+                panic!("expected call to finish_query before next command");
+            }
         }
     }
 
@@ -270,10 +292,22 @@ impl Context {
         validity
     }
 
-    pub fn cleanup_check_valid(&mut self) {
-        // clean up
+    /// After receiving ValidityResult::Invalid, try to find another error.
+    /// only_check_earlier == true means to only look for errors preceding all the previous
+    /// errors, with the goal of making sure that the earliest error gets reported.
+    /// Once only_check_earlier is set, it remains set until finish_query is called.
+    pub fn check_valid_again(&mut self, only_check_earlier: bool) -> ValidityResult {
+        if let ContextState::FoundInvalid(infos, air_model) = self.state.clone() {
+            crate::smt_verify::smt_check_assertion(self, infos, air_model, only_check_earlier)
+        } else {
+            panic!("check_valid_again expected query to be ValidityResult::Invalid");
+        }
+    }
+
+    pub fn finish_query(&mut self) {
         self.pop_name_scope();
         self.smt_log.log_pop();
+        self.state = ContextState::ReadyForQuery;
     }
 
     pub fn eval_expr(&mut self, expr: sise::Node) -> String {

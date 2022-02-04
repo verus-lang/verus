@@ -1,4 +1,4 @@
-use crate::rust_to_vir_base::{AttrTree, VerifierAttrs};
+use crate::attributes::{AttrTree, VerifierAttrs};
 use crate::util::err_span_str;
 use air::ast::Span;
 use air::ast_util::str_ident;

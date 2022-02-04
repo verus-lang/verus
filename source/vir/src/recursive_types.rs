@@ -1,13 +1,85 @@
-use crate::ast::{Krate, Path, Typ, TypX, VirErr};
-use crate::ast_util::{err_string, path_as_rust_name};
+use crate::ast::{Datatype, Ident, Krate, Path, Typ, TypX, VirErr};
+use crate::ast_util::{err_str, err_string, path_as_rust_name};
 use crate::scc::Graph;
 use air::ast::Span;
+use std::collections::HashMap;
+
+// To enable decreases clauses on datatypes while treating the datatypes as inhabited in specs,
+// we need to make sure that the datatypes have base cases, not just inductive cases.
+// This also checks that there is at least one variant, so that spec matches are safe.
+fn check_well_founded(
+    datatypes: &HashMap<Path, Datatype>,
+    datatypes_well_founded: &mut HashMap<Path, bool>,
+    path: &Path,
+) -> Result<bool, VirErr> {
+    if let Some(well_founded) = datatypes_well_founded.get(path) {
+        // return true ==> definitely well founded
+        // return false ==> not yet known to be well founded; still in process
+        return Ok(*well_founded);
+    }
+    datatypes_well_founded.insert(path.clone(), false);
+    let datatype = &datatypes[path];
+    'variants: for variant in datatype.x.variants.iter() {
+        for field in variant.a.iter() {
+            let (typ, _, _) = &field.a;
+            if !check_well_founded_typ(datatypes, datatypes_well_founded, typ)? {
+                // inductive case
+                continue 'variants;
+            }
+        }
+        // Found a base case variant
+        datatypes_well_founded.insert(path.clone(), true);
+        return Ok(true);
+    }
+    // No base cases found, only inductive cases
+    err_str(&datatype.span, "datatype must have at least one non-recursive variant")
+}
+
+fn check_well_founded_typ(
+    datatypes: &HashMap<Path, Datatype>,
+    datatypes_well_founded: &mut HashMap<Path, bool>,
+    typ: &Typ,
+) -> Result<bool, VirErr> {
+    match &**typ {
+        TypX::Bool | TypX::Int(_) | TypX::TypParam(_) | TypX::Lambda(..) => Ok(true),
+        TypX::Boxed(_) | TypX::TypeId | TypX::Air(_) => {
+            panic!("internal error: unexpected type in check_well_founded_typ")
+        }
+        TypX::Tuple(typs) => {
+            // tuples are just datatypes and therefore have a height in decreases clauses,
+            // so we need to include them in the well foundedness checks
+            for typ in typs.iter() {
+                if !check_well_founded_typ(datatypes, datatypes_well_founded, typ)? {
+                    return Ok(false);
+                }
+            }
+            Ok(true)
+        }
+        TypX::Datatype(path, _) => {
+            // note: we don't care about the type arguments here,
+            // because datatype heights in decreases clauses are oblivious to the type arguments.
+            // (e.g. in enum List { Cons(Foo<List>) }, Cons is considered a base case because
+            // the height of Foo<List> is unrelated to the height of List)
+            check_well_founded(datatypes, datatypes_well_founded, path)
+        }
+    }
+}
+
+struct CheckPositiveGlobal {
+    datatypes: HashMap<Path, Datatype>,
+    type_graph: Graph<Path>,
+}
+
+struct CheckPositiveLocal {
+    span: Span,
+    my_datatype: Path,
+    tparams: HashMap<Ident, bool>,
+}
 
 // polarity = Some(true) for positive, Some(false) for negative, None for neither
 fn check_positive_uses(
-    span: &Span,
-    type_graph: &Graph<Path>,
-    my_datatype: &Path,
+    global: &CheckPositiveGlobal,
+    local: &CheckPositiveLocal,
     polarity: Option<bool>,
     typ: &Typ,
 ) -> Result<(), VirErr> {
@@ -15,50 +87,68 @@ fn check_positive_uses(
         TypX::Bool => Ok(()),
         TypX::Int(..) => Ok(()),
         TypX::Lambda(ts, tr) => {
+            /* REVIEW: we could track both positive and negative polarity,
+               but strict positivity is more conservative
             let flip_polarity = match polarity {
                 None => None,
                 Some(b) => Some(!b),
             };
+            */
+            let flip_polarity = None; // strict positivity
             for t in ts.iter() {
-                check_positive_uses(span, type_graph, my_datatype, flip_polarity, t)?;
+                check_positive_uses(global, local, flip_polarity, t)?;
             }
-            check_positive_uses(span, type_graph, my_datatype, polarity, tr)?;
+            check_positive_uses(global, local, polarity, tr)?;
             Ok(())
         }
         TypX::Tuple(ts) => {
             for t in ts.iter() {
-                check_positive_uses(span, type_graph, my_datatype, polarity, t)?;
+                check_positive_uses(global, local, polarity, t)?;
             }
             Ok(())
         }
         TypX::Datatype(path, ts) => {
             // Check path
-            if path == my_datatype
-                || type_graph.get_scc_rep(&path) == type_graph.get_scc_rep(&my_datatype)
+            if path == &local.my_datatype
+                || global.type_graph.get_scc_rep(&path)
+                    == global.type_graph.get_scc_rep(&local.my_datatype)
             {
                 match polarity {
                     Some(true) => {}
                     _ => {
                         return err_string(
-                            span,
+                            &local.span,
                             format!(
                                 "Type {} recursively uses type {} in a non-positive polarity",
-                                path_as_rust_name(my_datatype),
+                                path_as_rust_name(&local.my_datatype),
                                 path_as_rust_name(path)
                             ),
                         );
                     }
                 }
             }
-            // Check ts, assuming that they must be invariant (neither positive nor negative):
-            // TODO: this is overly conservative; we should track positive and negative more precisely:
-            for t in ts.iter() {
-                check_positive_uses(span, type_graph, my_datatype, None, t)?;
+            let typ_params = &global.datatypes[path].x.typ_params;
+            for ((_, strictly_positive), t) in typ_params.iter().zip(ts.iter()) {
+                let t_polarity = if *strictly_positive { Some(true) } else { None };
+                check_positive_uses(global, local, t_polarity, t)?;
             }
             Ok(())
         }
-        TypX::Boxed(t) => check_positive_uses(span, type_graph, my_datatype, polarity, t),
-        TypX::TypParam(..) => Ok(()),
+        TypX::Boxed(t) => check_positive_uses(global, local, polarity, t),
+        TypX::TypParam(x) => {
+            let strictly_positive = local.tparams[x];
+            match (strictly_positive, polarity) {
+                (false, _) => Ok(()),
+                (true, Some(true)) => Ok(()),
+                (true, _) => err_string(
+                    &local.span,
+                    format!(
+                        "Type parameter {} must be declared #[verifier(maybe_negative)] to be used in a non-positive position",
+                        x
+                    ),
+                ),
+            }
+        }
         TypX::TypeId => Ok(()),
         TypX::Air(_) => Ok(()),
     }
@@ -66,12 +156,15 @@ fn check_positive_uses(
 
 pub(crate) fn check_recursive_types(krate: &Krate) -> Result<(), VirErr> {
     let mut type_graph: Graph<Path> = Graph::new();
+    let mut datatypes: HashMap<Path, Datatype> = HashMap::new();
+    let mut datatypes_well_founded: HashMap<Path, bool> = HashMap::new();
 
     // If datatype D1 has a field whose type mentions datatype D2, create a graph edge D1 --> D2
     for datatype in &krate.datatypes {
+        datatypes.insert(datatype.x.path.clone(), datatype.clone());
         for variant in datatype.x.variants.iter() {
             for field in variant.a.iter() {
-                let (typ, _) = &field.a;
+                let (typ, _, _) = &field.a;
                 let ft = |type_graph: &mut Graph<Path>, t: &Typ| match &**t {
                     TypX::Datatype(path, _) => {
                         type_graph.add_edge(datatype.x.path.clone(), path.clone());
@@ -83,20 +176,24 @@ pub(crate) fn check_recursive_types(krate: &Krate) -> Result<(), VirErr> {
             }
         }
     }
+
     type_graph.compute_sccs();
+    let global = CheckPositiveGlobal { datatypes, type_graph };
 
     for datatype in &krate.datatypes {
+        let tparams: HashMap<Ident, bool> = (*datatype.x.typ_params).clone().into_iter().collect();
+        let local = CheckPositiveLocal {
+            span: datatype.span.clone(),
+            my_datatype: datatype.x.path.clone(),
+            tparams,
+        };
+        let _ =
+            check_well_founded(&global.datatypes, &mut datatypes_well_founded, &datatype.x.path)?;
         for variant in datatype.x.variants.iter() {
             for field in variant.a.iter() {
                 // Check that field type only uses SCC siblings in positive positions
-                let (typ, _) = &field.a;
-                check_positive_uses(
-                    &datatype.span,
-                    &type_graph,
-                    &datatype.x.path,
-                    Some(true),
-                    typ,
-                )?;
+                let (typ, _, _) = &field.a;
+                check_positive_uses(&global, &local, Some(true), typ)?;
             }
         }
     }

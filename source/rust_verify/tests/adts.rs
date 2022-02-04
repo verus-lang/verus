@@ -229,3 +229,206 @@ test_verify_one_file! {
         }
     } => Err(e) => assert_vir_error(e)
 }
+
+test_verify_one_file! {
+    #[test] test_no_empty_enums code! {
+        enum Empty {
+        }
+    } => Err(TestErr { has_vir_error: true, .. })
+}
+
+test_verify_one_file! {
+    #[test] test_well_founded1 code! {
+        enum List {
+            Cons(int, Box<List>)
+        }
+    } => Err(TestErr { has_vir_error: true, .. })
+}
+
+test_verify_one_file! {
+    #[test] test_well_founded2 code! {
+        enum List {
+            Cons1(int, Box<List>),
+            Cons2(int, Box<List>),
+        }
+    } => Err(TestErr { has_vir_error: true, .. })
+}
+
+test_verify_one_file! {
+    #[test] test_well_founded3 code! {
+        enum List1 {
+            Cons(int, Box<List2>)
+        }
+        enum List2 {
+            Cons(int, Box<List1>)
+        }
+    } => Err(TestErr { has_vir_error: true, .. })
+}
+
+test_verify_one_file! {
+    #[test] test_well_founded4 code! {
+        enum List {
+            Cons(int, (Box<List>, bool))
+        }
+    } => Err(TestErr { has_vir_error: true, .. })
+}
+
+test_verify_one_file! {
+    #[test] test_well_field_unbox code! {
+        struct B { b: bool }
+        fn foo(s1: Box<B>, s2: &Box<B>, s3: Box<&B>, s4: Box<(bool, bool)>) {
+            let z1 = s1.b;
+            let z2 = s2.b;
+            let z3 = s3.b;
+            let z4 = s4.0;
+        }
+    } => Ok(())
+}
+
+const IS_VARIANT_MAYBE: &str = code_str! {
+    #[is_variant]
+    pub enum Maybe<T> {
+        Some(T),
+        None,
+    }
+};
+
+test_verify_one_file! {
+    #[test] test_is_variant_pass IS_VARIANT_MAYBE.to_string() + code_str! {
+        pub fn test1(m: Maybe<u64>) {
+            match m {
+                Maybe::Some(_) => assert(m.is_Some()),
+                Maybe::None => assert(m.is_None()),
+            };
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_is_variant_illegal code! {
+        pub enum Maybe<T> {
+            Some(T),
+            None,
+        }
+
+        impl <T> Maybe<T> {
+            #[doc(hidden)] #[spec] #[verifier(is_variant)] #[allow(non_snake_case)]
+            fn is_Thing(&self) -> bool { ::core::panicking::panic("not implemented") }
+        }
+    } => Err(e) => assert_vir_error(e)
+}
+
+test_verify_one_file! {
+    #[test] test_is_variant_not_enum code! {
+        #[is_variant]
+        pub struct Maybe<T> {
+            t: T,
+        }
+    } => Err(_)
+}
+
+test_verify_one_file! {
+    #[test] test_is_variant_get_1 IS_VARIANT_MAYBE.to_string() + code_str! {
+        pub fn test1(m: Maybe<u64>) {
+            requires(m.is_Some() && m.get_Some_0() > 10);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_is_variant_get_2 IS_VARIANT_MAYBE.to_string() + code_str! {
+        pub fn test1(m: Maybe<u64>) -> bool {
+            ensures(|res: bool|
+                (m.is_Some() >>= res == (m.get_Some_0() == 3)) &&
+                (m.is_None() >>= !res)
+            );
+            match m {
+                Maybe::Some(v) => v == 3,
+                Maybe::None => false,
+            }
+        }
+
+        pub fn test2() {
+            let m = Maybe::Some(3);
+            let res = test1(m);
+            assert(res);
+        }
+
+        pub fn test3(v: Maybe<u64>) {
+            requires(v.is_Some() && v.get_Some_0() == 5);
+            if let Maybe::Some(a) = v {
+                assert(a == 5);
+            } else {
+                unreached::<()>();
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_is_variant_get_fail IS_VARIANT_MAYBE.to_string() + code_str! {
+        pub fn test1(m: Maybe<u64>) -> u64 {
+            requires(m.get_Some_0() == 4);
+            if let Maybe::Some(v) = m {
+                v
+            } else {
+                unreached() // FAILS
+            }
+        }
+
+        pub fn test2() {
+            let m = Maybe::None;
+            assume(m.get_Some_0() == 4);
+            test1(m);
+        }
+    } => Err(e) => assert_one_fails(e)
+}
+
+test_verify_one_file! {
+    #[test] test_is_variant_get_named_field code! {
+        #[is_variant]
+        pub enum Res<T> {
+            Ok { t: T },
+            Err { v: u64 },
+        }
+
+        fn test1(m: Res<bool>) {
+            requires(m.is_Err() && m.get_Err_v() == 42);
+            match m {
+                Res::Ok { .. } => assert(false),
+                Res::Err { v } => assert(v == 42),
+            };
+        }
+
+        fn test2(m: &Res<bool>) -> bool {
+            ensures(|res: bool| equal(res, m.is_Ok() && m.get_Ok_t()));
+            match m {
+                Res::Ok { t } if *t => true,
+                _ => false,
+            }
+        }
+
+        fn caller() {
+            let r = test2(&Res::Ok { t: false });
+            assert(!r);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_is_variant_no_field IS_VARIANT_MAYBE.to_string() + code_str! {
+        fn test1(v: Maybe<u64>) {
+            assert(v.get_Some_1() == 3);
+        }
+    } => Err(_) // type-checking error
+}
+
+test_verify_one_file! {
+    #[test] test_regression_tuple_1 code! {
+        struct B(bool);
+
+        fn test1(b: B) {
+            let z = b.0;
+        }
+    } => Ok(())
+}

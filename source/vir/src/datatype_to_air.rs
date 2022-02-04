@@ -5,7 +5,8 @@ use crate::ast_util::is_visible_to_of_owner;
 use crate::context::Ctx;
 use crate::def::{
     prefix_box, prefix_lambda_type, prefix_tuple_param, prefix_type_id, prefix_unbox,
-    suffix_local_stmt_id, variant_field_ident, variant_ident, Spanned,
+    suffix_local_stmt_id, variant_field_ident, variant_field_ident_internal, variant_ident,
+    Spanned,
 };
 use crate::func_to_air::{func_bind, func_bind_trig, func_def_args};
 use crate::sst_to_air::{
@@ -24,7 +25,8 @@ fn datatype_to_air(ctx: &Ctx, datatype: &crate::ast::Datatype) -> air::ast::Data
     for variant in datatype.x.variants.iter() {
         let mut fields: Vec<air::ast::Field> = Vec::new();
         for field in variant.a.iter() {
-            let id = variant_field_ident(&datatype.x.path, &variant.name, &field.name);
+            let id =
+                variant_field_ident_internal(&datatype.x.path, &variant.name, &field.name, true);
             fields.push(ident_binder(&id, &typ_to_air(ctx, &field.a.0)));
         }
         let id = variant_ident(&datatype.x.path, &variant.name);
@@ -52,6 +54,7 @@ fn field_to_param(span: &Span, f: &Field) -> Param {
 
 fn datatype_or_fun_to_air_commands(
     ctx: &Ctx,
+    field_commands: &mut Vec<Command>,
     token_commands: &mut Vec<Command>,
     box_commands: &mut Vec<Command>,
     axiom_commands: &mut Vec<Command>,
@@ -192,8 +195,8 @@ fn datatype_or_fun_to_air_commands(
     }
 
     // constructor and field axioms
-    if ctx.datatypes_with_invariant.contains(dpath) {
-        for variant in variants.iter() {
+    for variant in variants.iter() {
+        if ctx.datatypes_with_invariant.contains(dpath) {
             // constructor invariant axiom:
             //   forall typs, arg1 ... argn.
             //     inv1 && ... && invn => has_type(box(ctor(arg1 ... argn)), T(typs))
@@ -206,7 +209,7 @@ fn datatype_or_fun_to_air_commands(
             let has_ctor = datatype_has_type(dpath, &typ_args, &box_ctor);
             let mut pre: Vec<Expr> = Vec::new();
             for field in variant.a.iter() {
-                let (typ, _) = &field.a;
+                let (typ, _, _) = &field.a;
                 let name = suffix_local_stmt_id(&field.name);
                 if let Some(inv) = typ_invariant(ctx, typ, &ident_var(&name)) {
                     pre.push(inv);
@@ -218,18 +221,37 @@ fn datatype_or_fun_to_air_commands(
             let axiom = Arc::new(DeclX::Axiom(forall));
             axiom_commands.push(Arc::new(CommandX::Global(axiom)));
         }
-        for variant in variants.iter() {
-            for field in variant.a.iter() {
-                let (typ, _) = &field.a;
-                let xfield = ident_apply(
-                    &variant_field_ident(&dpath, &variant.name, &field.name),
-                    &vec![unbox_x.clone()],
-                );
-                if let Some(inv_f) = typ_invariant(ctx, typ, &xfield) {
+        for field in variant.a.iter() {
+            let id = variant_field_ident(&dpath, &variant.name, &field.name);
+            let internal_id =
+                variant_field_ident_internal(&dpath, &variant.name, &field.name, true);
+            let (typ, _, _) = &field.a;
+            let xfield = ident_apply(&id, &vec![x_var.clone()]);
+            let xfield_internal = ident_apply(&internal_id, &vec![x_var.clone()]);
+            let xfield_unbox = ident_apply(&id, &vec![unbox_x.clone()]);
+
+            // Create a wrapper function to access the field,
+            // because it seems to be dangerous to trigger directly on e.f,
+            // because Z3 seems to introduce e.f internally,
+            // which can unexpectedly trigger matching loops creating e.f.f.f.f...
+            //   function f(x:datatyp):typ
+            //   axiom forall x. f(x) = x.f
+            let decl_field =
+                Arc::new(DeclX::Fun(id, Arc::new(vec![dtyp.clone()]), typ_to_air(ctx, typ)));
+            field_commands.push(Arc::new(CommandX::Global(decl_field)));
+            let trigs = vec![xfield.clone()];
+            let bind = func_bind_trig(ctx, &Arc::new(vec![]), &x_params(&datatyp), &trigs, false);
+            let eq = mk_eq(&xfield, &xfield_internal);
+            let forall = mk_bind_expr(&bind, &eq);
+            let axiom = Arc::new(DeclX::Axiom(forall));
+            axiom_commands.push(Arc::new(CommandX::Global(axiom)));
+
+            if ctx.datatypes_with_invariant.contains(dpath) {
+                if let Some(inv_f) = typ_invariant(ctx, typ, &xfield_unbox) {
                     // field invariant axiom:
                     //   forall typs, x. has_type(x, T(typs)) => inv_f(unbox(x).f)
                     // trigger on unbox(x).f, has_type(x, T(typs))
-                    let trigs = vec![xfield.clone(), has.clone()];
+                    let trigs = vec![xfield_unbox.clone(), has.clone()];
                     let bind = func_bind_trig(ctx, tparams, &x_params(&vpolytyp), &trigs, false);
                     let imply = mk_implies(&has, &inv_f);
                     let forall = mk_bind_expr(&bind, &imply);
@@ -238,7 +260,9 @@ fn datatype_or_fun_to_air_commands(
                 }
             }
         }
-    } else if declare_box && !is_fun {
+    }
+
+    if !ctx.datatypes_with_invariant.contains(dpath) && declare_box && !is_fun {
         // If there are no visible refinement types (e.g. no refinement type fields,
         // or type is completely abstract to us), then has_type always holds:
         //   forall typs, x. has_type(box(x), T(typs))
@@ -249,6 +273,7 @@ fn datatype_or_fun_to_air_commands(
     }
 
     // height axiom
+    // (make sure that this stays in sync with recursive_types::check_well_founded)
     if add_height {
         for variant in variants.iter() {
             for field in variant.a.iter() {
@@ -278,6 +303,7 @@ pub fn datatypes_to_air(ctx: &Ctx, datatypes: &crate::ast::Datatypes) -> Command
     let mut opaque_sort_commands: Vec<Command> = Vec::new();
     let mut token_commands: Vec<Command> = Vec::new();
     let mut box_commands: Vec<Command> = Vec::new();
+    let mut field_commands: Vec<Command> = Vec::new();
     let mut axiom_commands: Vec<Command> = Vec::new();
 
     for lambda_n_params in &ctx.lambda_types {
@@ -285,6 +311,7 @@ pub fn datatypes_to_air(ctx: &Ctx, datatypes: &crate::ast::Datatypes) -> Command
             (0..*lambda_n_params + 1).into_iter().map(prefix_tuple_param).collect();
         datatype_or_fun_to_air_commands(
             ctx,
+            &mut field_commands,
             &mut token_commands,
             &mut box_commands,
             &mut axiom_commands,
@@ -309,6 +336,7 @@ pub fn datatypes_to_air(ctx: &Ctx, datatypes: &crate::ast::Datatypes) -> Command
 
         datatype_or_fun_to_air_commands(
             ctx,
+            &mut field_commands,
             &mut token_commands,
             &mut box_commands,
             &mut axiom_commands,
@@ -336,6 +364,7 @@ pub fn datatypes_to_air(ctx: &Ctx, datatypes: &crate::ast::Datatypes) -> Command
 
         datatype_or_fun_to_air_commands(
             ctx,
+            &mut field_commands,
             &mut token_commands,
             &mut box_commands,
             &mut axiom_commands,
@@ -344,7 +373,7 @@ pub fn datatypes_to_air(ctx: &Ctx, datatypes: &crate::ast::Datatypes) -> Command
             &str_typ(&path_to_air_ident(dpath)),
             None,
             None,
-            &datatype.x.typ_params,
+            &Arc::new(vec_map(&datatype.x.typ_params, |(x, _strict_pos)| x.clone())),
             &datatype.x.variants,
             false,
             is_transparent,
@@ -356,6 +385,7 @@ pub fn datatypes_to_air(ctx: &Ctx, datatypes: &crate::ast::Datatypes) -> Command
     commands.push(Arc::new(CommandX::Global(Arc::new(DeclX::Datatypes(Arc::new(
         transparent_air_datatypes,
     ))))));
+    commands.append(&mut field_commands);
     commands.append(&mut token_commands);
     commands.append(&mut box_commands);
     commands.append(&mut axiom_commands);

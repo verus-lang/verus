@@ -143,7 +143,7 @@ impl Ctx {
         let funcs_with_ensure_predicate: HashSet<Fun> = HashSet::new();
         for function in krate.functions.iter() {
             func_map.insert(function.x.name.clone(), function.clone());
-            crate::recursion::expand_call_graph(&mut func_call_graph, function)?;
+            crate::recursion::expand_call_graph(&mut func_call_graph, function);
             functions.push(function.clone());
         }
         func_call_graph.compute_sccs();

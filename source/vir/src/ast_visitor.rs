@@ -6,8 +6,61 @@ use crate::ast::{
 use crate::ast_util::err_str;
 use crate::def::Spanned;
 use crate::util::vec_map_result;
+use crate::visitor::expr_visitor_control_flow;
+pub(crate) use crate::visitor::VisitorControlFlow;
 use air::scope_map::ScopeMap;
 use std::sync::Arc;
+
+pub type VisitorScopeMap = ScopeMap<Ident, Typ>;
+
+pub(crate) fn typ_visitor_check<E, MF>(typ: &Typ, mf: &mut MF) -> Result<(), E>
+where
+    MF: FnMut(&Typ) -> Result<(), E>,
+{
+    match typ_visitor_dfs(typ, &mut |typ| match mf(typ) {
+        Ok(()) => VisitorControlFlow::Recurse,
+        Err(e) => VisitorControlFlow::Stop(e),
+    }) {
+        VisitorControlFlow::Recurse => Ok(()),
+        VisitorControlFlow::Return => unreachable!(),
+        VisitorControlFlow::Stop(e) => Err(e),
+    }
+}
+
+pub(crate) fn typ_visitor_dfs<T, FT>(typ: &Typ, ft: &mut FT) -> VisitorControlFlow<T>
+where
+    FT: FnMut(&Typ) -> VisitorControlFlow<T>,
+{
+    match ft(typ) {
+        VisitorControlFlow::Stop(val) => VisitorControlFlow::Stop(val),
+        VisitorControlFlow::Return => VisitorControlFlow::Recurse,
+        VisitorControlFlow::Recurse => {
+            match &**typ {
+                TypX::Bool | TypX::Int(_) | TypX::TypParam(_) | TypX::TypeId | TypX::Air(_) => (),
+                TypX::Tuple(ts) => {
+                    for t in ts.iter() {
+                        expr_visitor_control_flow!(typ_visitor_dfs(t, ft));
+                    }
+                }
+                TypX::Lambda(ts, tr) => {
+                    for t in ts.iter() {
+                        expr_visitor_control_flow!(typ_visitor_dfs(t, ft));
+                    }
+                    expr_visitor_control_flow!(typ_visitor_dfs(tr, ft));
+                }
+                TypX::Datatype(_path, ts) => {
+                    for t in ts.iter() {
+                        expr_visitor_control_flow!(typ_visitor_dfs(t, ft));
+                    }
+                }
+                TypX::Boxed(t) => {
+                    expr_visitor_control_flow!(typ_visitor_dfs(t, ft));
+                }
+            }
+            VisitorControlFlow::Recurse
+        }
+    }
+}
 
 pub(crate) fn map_typ_visitor_env<E, FT>(typ: &Typ, env: &mut E, ft: &FT) -> Result<Typ, VirErr>
 where
@@ -60,7 +113,7 @@ where
     Ok(SpannedTyped::new(&pattern.span, &map_typ_visitor_env(&pattern.typ, env, ft)?, patternx))
 }
 
-fn insert_pattern_vars(map: &mut ScopeMap<Ident, Typ>, pattern: &Pattern) {
+fn insert_pattern_vars(map: &mut VisitorScopeMap, pattern: &Pattern) {
     match &pattern.x {
         PatternX::Wildcard => {}
         PatternX::Var { name, mutable: _ } => {
@@ -79,35 +132,35 @@ fn insert_pattern_vars(map: &mut ScopeMap<Ident, Typ>, pattern: &Pattern) {
     }
 }
 
-pub(crate) enum VisitorControlFlow<T> {
-    Continue,
-    Stop(T),
-}
-
-macro_rules! expr_visitor_control_flow {
-    ($cf:expr) => {
-        match $cf {
-            crate::ast_visitor::VisitorControlFlow::Continue => (),
-            crate::ast_visitor::VisitorControlFlow::Stop(val) => {
-                return crate::ast_visitor::VisitorControlFlow::Stop(val);
-            }
-        }
-    };
+pub(crate) fn expr_visitor_check<E, MF>(expr: &Expr, mf: &mut MF) -> Result<(), E>
+where
+    MF: FnMut(&Expr) -> Result<(), E>,
+{
+    let mut scope_map: VisitorScopeMap = ScopeMap::new();
+    match expr_visitor_dfs(expr, &mut scope_map, &mut |_scope_map, expr| match mf(expr) {
+        Ok(()) => VisitorControlFlow::Recurse,
+        Err(e) => VisitorControlFlow::Stop(e),
+    }) {
+        VisitorControlFlow::Recurse => Ok(()),
+        VisitorControlFlow::Return => unreachable!(),
+        VisitorControlFlow::Stop(e) => Err(e),
+    }
 }
 
 pub(crate) fn expr_visitor_dfs<T, MF>(
     expr: &Expr,
-    map: &mut ScopeMap<Ident, Typ>,
+    map: &mut VisitorScopeMap,
     mf: &mut MF,
 ) -> VisitorControlFlow<T>
 where
-    MF: FnMut(&mut ScopeMap<Ident, Typ>, &Expr) -> VisitorControlFlow<T>,
+    MF: FnMut(&mut VisitorScopeMap, &Expr) -> VisitorControlFlow<T>,
 {
     match mf(map, expr) {
         VisitorControlFlow::Stop(val) => VisitorControlFlow::Stop(val),
-        VisitorControlFlow::Continue => {
+        VisitorControlFlow::Return => VisitorControlFlow::Recurse,
+        VisitorControlFlow::Recurse => {
             match &expr.x {
-                ExprX::Const(_) | ExprX::Var(_) | ExprX::VarAt(_, _) => (),
+                ExprX::Const(_) | ExprX::Var(_) | ExprX::VarAt(..) | ExprX::ConstVar(..) => (),
                 ExprX::Call(target, es) => {
                     match target {
                         CallTarget::Static(_, _) => (),
@@ -258,28 +311,29 @@ where
                     }
                 }
             }
-            VisitorControlFlow::Continue
+            VisitorControlFlow::Recurse
         }
     }
 }
 
 pub(crate) fn map_expr_visitor_env<E, FE, FS, FT>(
     expr: &Expr,
-    map: &mut ScopeMap<Ident, Typ>,
+    map: &mut VisitorScopeMap,
     env: &mut E,
     fe: &FE,
     fs: &FS,
     ft: &FT,
 ) -> Result<Expr, VirErr>
 where
-    FE: Fn(&mut E, &mut ScopeMap<Ident, Typ>, &Expr) -> Result<Expr, VirErr>,
-    FS: Fn(&mut E, &mut ScopeMap<Ident, Typ>, &Stmt) -> Result<Vec<Stmt>, VirErr>,
+    FE: Fn(&mut E, &mut VisitorScopeMap, &Expr) -> Result<Expr, VirErr>,
+    FS: Fn(&mut E, &mut VisitorScopeMap, &Stmt) -> Result<Vec<Stmt>, VirErr>,
     FT: Fn(&mut E, &Typ) -> Result<Typ, VirErr>,
 {
     let exprx = match &expr.x {
         ExprX::Const(c) => ExprX::Const(c.clone()),
         ExprX::Var(x) => ExprX::Var(x.clone()),
         ExprX::VarAt(x, at) => ExprX::VarAt(x.clone(), at.clone()),
+        ExprX::ConstVar(x) => ExprX::ConstVar(x.clone()),
         ExprX::Call(target, es) => {
             let target = match target {
                 CallTarget::Static(x, typs) => {
@@ -499,21 +553,6 @@ where
     }
 }
 
-pub(crate) fn map_expr_visitor<F>(expr: &Expr, f: &mut F) -> Result<Expr, VirErr>
-where
-    F: FnMut(&Expr) -> Result<Expr, VirErr>,
-{
-    let mut map: ScopeMap<Ident, Typ> = ScopeMap::new();
-    map_expr_visitor_env(
-        expr,
-        &mut map,
-        f,
-        &|f, _, e| f(e),
-        &|_, _, s| Ok(vec![s.clone()]),
-        &|_, t| Ok(t.clone()),
-    )
-}
-
 pub(crate) fn map_param_visitor<E, FT>(param: &Param, env: &mut E, ft: &FT) -> Result<Param, VirErr>
 where
     FT: Fn(&mut E, &Typ) -> Result<Typ, VirErr>,
@@ -567,6 +606,7 @@ where
         ensure,
         decrease,
         mask_spec,
+        is_const,
         is_abstract,
         attrs,
         body,
@@ -587,8 +627,15 @@ where
     let ret = map_param_visitor(ret, env, ft)?;
     let require =
         Arc::new(vec_map_result(require, |e| map_expr_visitor_env(e, map, env, fe, fs, ft))?);
+
+    map.push_scope(true);
+    if function.x.has_return() {
+        let _ = map.insert(ret.x.name.clone(), ret.x.typ.clone());
+    }
     let ensure =
         Arc::new(vec_map_result(ensure, |e| map_expr_visitor_env(e, map, env, fe, fs, ft))?);
+    map.pop_scope();
+
     let decrease =
         Arc::new(vec_map_result(decrease, |e| map_expr_visitor_env(e, map, env, fe, fs, ft))?);
     let mask_spec = match mask_spec {
@@ -605,6 +652,7 @@ where
         }
     };
     let attrs = attrs.clone();
+    let is_const = *is_const;
     let is_abstract = *is_abstract;
     let body = body.as_ref().map(|e| map_expr_visitor_env(e, map, env, fe, fs, ft)).transpose()?;
     map.pop_scope();
@@ -620,6 +668,7 @@ where
         ensure,
         decrease,
         mask_spec,
+        is_const,
         is_abstract,
         attrs,
         body,
@@ -640,9 +689,9 @@ where
     for variant in datatypex.variants.iter() {
         let mut fields: Vec<Field> = Vec::new();
         for field in variant.a.iter() {
-            let (typ, mode) = &field.a;
+            let (typ, mode, vis) = &field.a;
             let typ = map_typ_visitor_env(typ, env, ft)?;
-            fields.push(field.new_a((typ, *mode)));
+            fields.push(field.new_a((typ, *mode, vis.clone())));
         }
         variants.push(variant.new_a(Arc::new(fields)));
     }

@@ -35,6 +35,7 @@ pub fn main() {
     opts.optopt("", "log-air-middle", "Log AIR queries in middle form", "FILENAME");
     opts.optopt("", "log-air-final", "Log AIR queries in final form", "FILENAME");
     opts.optopt("", "log-smt", "Log SMT queries", "FILENAME");
+    opts.optflag("", "ignore-unexpected-smt", "Ignore unexpected SMT output");
     opts.optflag("d", "debug", "Debug verification failures");
     opts.optflag("h", "help", "print this help menu");
 
@@ -94,6 +95,8 @@ pub fn main() {
     let mut air_context = Context::new(air::smt_manager::SmtManager::new());
     let debug = matches.opt_present("debug");
     air_context.set_debug(debug);
+    let ignore_unexpected_smt = matches.opt_present("ignore-unexpected-smt");
+    air_context.set_ignore_unexpected_smt(ignore_unexpected_smt);
 
     // Start logging
     if let Some(filename) = matches.opt_str("log-air-middle") {
@@ -130,6 +133,12 @@ pub fn main() {
                     println!("Additional error detail at {}", msg);
                 }
             }
+            ValidityResult::UnexpectedSmtOutput(err) => {
+                panic!("Unexpected SMT output: {}", err);
+            }
+        }
+        if matches!(**command, CommandX::CheckValid(..)) {
+            air_context.finish_query();
         }
     }
     println!("Verification results:: verified: {} errors: {}", count_verified, count_errors);

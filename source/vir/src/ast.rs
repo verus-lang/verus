@@ -95,6 +95,8 @@ pub enum TypX {
 pub enum UnaryOp {
     /// boolean not
     Not,
+    /// bitwise not
+    BitNot,
     /// Mark an expression as a member of an SMT quantifier trigger group.
     /// Each trigger group becomes one SMT trigger containing all the expressions in the trigger group.
     /// Each group is named by either Some integer, or the unnamed group None.
@@ -239,6 +241,18 @@ pub struct ArmX {
     pub body: Expr,
 }
 
+/// Static function identifier
+pub type Fun = Arc<FunX>;
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct FunX {
+    /// Path of function
+    pub path: Path,
+    /// Path of the trait that defines the function, if any.
+    /// This disambiguates between impls for the same type of multiple traits that define functions
+    /// with the same name.
+    pub trait_path: Option<Path>,
+}
+
 #[derive(Clone, Debug)]
 pub enum CallTarget {
     /// Call a statically known function, passing some type arguments
@@ -264,13 +278,15 @@ pub enum ExprX {
     Var(Ident),
     /// Local variable, at a different stage (e.g. a mutable reference in the post-state)
     VarAt(Ident, VarAt),
+    /// Use of a const variable.  Note: ast_simplify replaces this with Call.
+    ConstVar(Fun),
     /// Call to a function passing some expression arguments
     Call(CallTarget, Exprs),
     /// Note: ast_simplify replaces this with Ctor
     Tuple(Exprs),
     /// Construct datatype value of type Path and variant Ident,
     /// with field initializers Binders<Expr> and an optional ".." update expression.
-    /// For tuple-style variants, the field initializers appear in order and are named "0", "1", etc.
+    /// For tuple-style variants, the field initializers appear in order and are named "_0", "_1", etc.
     /// For struct-style variants, the field initializers may appear in any order.
     Ctor(Path, Ident, Binders<Expr>, Option<Expr>),
     /// Primitive unary operation
@@ -367,7 +383,7 @@ pub struct FunctionAttrsX {
     /// List of functions that this function wants to view as opaque
     pub hidden: Arc<Vec<Fun>>,
     /// Create a global axiom saying forall params, require ==> ensure
-    pub export_as_global_forall: bool,
+    pub broadcast_forall: bool,
     /// In triggers_auto, don't use this function as a trigger
     pub no_auto_trigger: bool,
     /// Custom error message to display when a pre-condition fails
@@ -378,18 +394,6 @@ pub struct FunctionAttrsX {
     pub bit_vector: bool,
     /// Is atomic (i.e., can be inside an invariant block)
     pub atomic: bool,
-}
-
-/// Static function identifier
-pub type Fun = Arc<FunX>;
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct FunX {
-    /// Path of function
-    pub path: Path,
-    /// Path of the trait that defines the function, if any.
-    /// This disambiguates between impls for the same type of multiple traits that define functions
-    /// with the same name.
-    pub trait_path: Option<Path>,
 }
 
 /// Function specification of its invariant mask
@@ -431,6 +435,11 @@ pub struct FunctionX {
     pub decrease: Exprs,
     /// MaskSpec that specifies what invariants the function is allowed to open
     pub mask_spec: MaskSpec,
+    /// is_const == true means that this function is actually a const declaration;
+    /// we treat const declarations as functions with 0 arguments, having mode == Spec.
+    /// However, if ret.x.mode != Spec, there are some differences: the const can dually be used as spec,
+    /// and the body is restricted to a subset of expressions that are spec-safe.
+    pub is_const: bool,
     /// For public spec functions, is_abstract == true means that the body is private
     /// even though the function is public
     pub is_abstract: bool,
@@ -441,11 +450,11 @@ pub struct FunctionX {
 }
 
 /// Single field in a variant
-pub type Field = Binder<(Typ, Mode)>;
+pub type Field = Binder<(Typ, Mode, Visibility)>;
 /// List of fields in a variant
 /// For tuple-style variants, the fields appear in order and are named "0", "1", etc.
 /// For struct-style variants, the fields may appear in any order
-pub type Fields = Binders<(Typ, Mode)>;
+pub type Fields = Binders<(Typ, Mode, Visibility)>;
 pub type Variant = Binder<Fields>;
 pub type Variants = Binders<Fields>;
 
@@ -462,7 +471,8 @@ pub struct DatatypeX {
     pub path: Path,
     pub visibility: Visibility,
     pub transparency: DatatypeTransparency,
-    pub typ_params: Idents,
+    /// Each type parameter is (name: Ident, strictly_positive: bool)
+    pub typ_params: Arc<Vec<(Ident, bool)>>,
     pub variants: Variants,
     pub mode: Mode,
     // For token types that need to be 'unforgeable'. Only makes sense for 'Proof' types.

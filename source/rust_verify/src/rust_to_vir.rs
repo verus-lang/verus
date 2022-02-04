@@ -6,13 +6,17 @@ For soundness's sake, be as defensive as possible:
 - explicitly match all fields of the Rust AST so we catch any features added in the future
 */
 
+use crate::attributes::{get_mode, get_verifier_attrs};
 use crate::context::Context;
+use crate::def::is_get_variant_fn_name;
 use crate::rust_to_vir_adts::{check_item_enum, check_item_struct};
-use crate::rust_to_vir_base::{def_id_to_vir_path, get_mode, hack_get_def_name, mk_visibility};
+use crate::rust_to_vir_base::{
+    def_id_to_vir_path, fn_item_hir_id_to_self_def_id, hack_get_def_name, mk_visibility, ty_to_vir,
+};
 use crate::rust_to_vir_func::{check_foreign_item_fn, check_item_fn};
 use crate::sm_to_vir::SMCtxt;
-use crate::util::unsupported_err_span;
-use crate::{err_unless, unsupported_err, unsupported_err_unless, unsupported_unless};
+use crate::util::{err_span_str, unsupported_err_span};
+use crate::{err_unless, unsupported_err, unsupported_unless};
 use rustc_ast::Attribute;
 use rustc_hir::{
     AssocItemKind, Crate, ForeignItem, ForeignItemId, ForeignItemKind, HirId, ImplItemKind, Item,
@@ -62,6 +66,7 @@ fn check_item<'tcx>(
                 ctxt,
                 vir,
                 sm_ctxt,
+                module_path,
                 item.span,
                 id,
                 visibility,
@@ -75,6 +80,7 @@ fn check_item<'tcx>(
             check_item_enum(
                 ctxt,
                 vir,
+                module_path,
                 item.span,
                 id,
                 visibility,
@@ -122,7 +128,7 @@ fn check_item<'tcx>(
                     err_unless!(
                         ty_applied_never.is_structural_eq_shallow(ctxt.tcx),
                         item.span,
-                        format!("Structural impl for non-structural type {:?}", ty),
+                        format!("structural impl for non-structural type {:?}", ty),
                         ty
                     );
                     true
@@ -188,20 +194,71 @@ fn check_item<'tcx>(
                                     mk_visibility(&Some(module_path.clone()), &impl_item.vis);
                                 match &impl_item.kind {
                                     ImplItemKind::Fn(sig, body_id) => {
-                                        check_item_fn(
-                                            ctxt,
-                                            vir,
-                                            Some(sm_ctxt),
-                                            Some((self_path.clone(), adt_mode)),
-                                            impl_item.def_id.to_def_id(),
-                                            impl_item_visibility,
-                                            ctxt.tcx.hir().attrs(impl_item.hir_id()),
-                                            sig,
-                                            trait_path.clone(),
-                                            Some(&impll.generics),
-                                            &impl_item.generics,
-                                            body_id,
-                                        )?;
+                                        let fn_attrs = ctxt.tcx.hir().attrs(impl_item.hir_id());
+                                        let fn_vattrs = get_verifier_attrs(fn_attrs)?;
+                                        if fn_vattrs.is_variant {
+                                            let valid = fn_item_hir_id_to_self_def_id(
+                                                ctxt.tcx,
+                                                impl_item.hir_id(),
+                                            )
+                                            .map(|self_def_id| ctxt.tcx.adt_def(self_def_id))
+                                            .and_then(|adt| {
+                                                is_get_variant_fn_name(&impl_item.ident).and_then(
+                                                    |(variant_name, variant_field)| {
+                                                        adt.variants
+                                                            .iter()
+                                                            .find(|v| {
+                                                                v.ident.as_str() == variant_name
+                                                            })
+                                                            .and_then(|variant| {
+                                                                use crate::def::FieldName;
+                                                                match variant_field {
+                                                                    Some(FieldName::Named(
+                                                                        f_name,
+                                                                    )) => variant
+                                                                        .fields
+                                                                        .iter()
+                                                                        .find(|f| {
+                                                                            f.ident.as_str()
+                                                                                == f_name
+                                                                        })
+                                                                        .map(|_| ()),
+                                                                    Some(FieldName::Unnamed(
+                                                                        f_num,
+                                                                    )) => (f_num
+                                                                        < variant.fields.len())
+                                                                    .then(|| ()),
+                                                                    None => Some(()),
+                                                                }
+                                                            })
+                                                    },
+                                                )
+                                            })
+                                            .is_some();
+                                            if !valid
+                                                || get_mode(Mode::Exec, fn_attrs) != Mode::Spec
+                                            {
+                                                return err_span_str(
+                                                    sig.span,
+                                                    "invalid is_variant function, do not use #[verifier(is_variant)] directly, use the #[is_variant] macro instead",
+                                                );
+                                            }
+                                        } else {
+                                            check_item_fn(
+                                                ctxt,
+                                                vir,
+                                                Some(sm_ctxt),
+                                                Some((self_path.clone(), adt_mode)),
+                                                impl_item.def_id.to_def_id(),
+                                                impl_item_visibility,
+                                                fn_attrs,
+                                                sig,
+                                                trait_path.clone(),
+                                                Some(&impll.generics),
+                                                &impl_item.generics,
+                                                body_id,
+                                            )?;
+                                        }
                                     }
                                     _ => unsupported_err!(
                                         item.span,
@@ -227,14 +284,22 @@ fn check_item<'tcx>(
                 }
             }
         }
-        ItemKind::Const(_ty, _body_id) => {
-            unsupported_err_unless!(
-                hack_get_def_name(ctxt.tcx, _body_id.hir_id.owner.to_def_id())
-                    .starts_with("_DERIVE_builtin_Structural_FOR_"),
+        ItemKind::Const(ty, body_id) => {
+            if hack_get_def_name(ctxt.tcx, body_id.hir_id.owner.to_def_id())
+                .starts_with("_DERIVE_builtin_Structural_FOR_")
+            {
+                return Ok(());
+            }
+            crate::rust_to_vir_func::check_item_const(
+                ctxt,
+                vir,
                 item.span,
-                "unsupported const",
-                item
-            );
+                item.def_id.to_def_id(),
+                visibility,
+                ctxt.tcx.hir().attrs(item.hir_id()),
+                &ty_to_vir(ctxt.tcx, ty),
+                body_id,
+            )?;
         }
         _ => {
             unsupported_err!(item.span, "unsupported item", item);

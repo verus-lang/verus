@@ -32,20 +32,20 @@
 //! HIR/VIR with the corresponding expressions and statements in the AST.
 //!
 //! In fact, we actually make three runs, because we want to run Rust's lifetime checking
-//! on #[proof] variables.  In this run, we erase #[spec] but not #[proof] and #[code],
+//! on #[proof] variables.  In this run, we erase #[spec] but not #[proof] and #[exec],
 //! then we run mir_borrowck, then we stop and throw away the results.
 //!
 //! Summary of three runs:
-//! 1) AST -> HIR -> VIR for verification on #[code], #[proof], #[spec]
-//! 2) AST -> HIR -> VIR -> MIR for mir_borrowck on #[code], #[proof]
-//! 3) AST -> HIR -> VIR -> MIR -> ... for compilation of #[code]
+//! 1) AST -> HIR -> VIR for verification on #[exec], #[proof], #[spec]
+//! 2) AST -> HIR -> VIR -> MIR for mir_borrowck on #[exec], #[proof]
+//! 3) AST -> HIR -> VIR -> MIR -> ... for compilation of #[exec]
 //!
 //! Notes:
 //!
 //! #[verifier(external)] functions are kept verbatim.
 //! #[verifier(external_body)] functions, on the other hand, need erasure to remove requires/ensures.
 
-use crate::rust_to_vir_base::{get_mode, get_verifier_attrs};
+use crate::attributes::{get_mode, get_verifier_attrs};
 use crate::rust_to_vir_expr::attrs_is_invariant_block;
 use crate::util::{from_raw_span, vec_map};
 use crate::{unsupported, unsupported_unless};
@@ -292,7 +292,7 @@ fn erase_pat(ctxt: &Ctxt, mctxt: &mut MCtxt, pat: &Pat) -> Pat {
                 let mut fpats: Vec<FieldPat> = Vec::new();
                 for fpat in fields {
                     let name = Arc::new(fpat.ident.as_str().to_string());
-                    let (_, mode) = get_field(variant, &name).a;
+                    let (_, mode, _) = get_field(variant, &name).a;
                     if keep_mode(ctxt, mode) {
                         fpats.push(erase_field_pat(ctxt, mctxt, fpat));
                     }
@@ -307,7 +307,7 @@ fn erase_pat(ctxt: &Ctxt, mctxt: &mut MCtxt, pat: &Pat) -> Pat {
                 let variant = &datatype.x.get_variant(variant).a;
                 let mut pats: Vec<P<Pat>> = Vec::new();
                 for (field, pat) in variant.iter().zip(pats0.iter()) {
-                    let (_, mode) = field.a;
+                    let (_, mode, _) = field.a;
                     if keep_mode(ctxt, mode) {
                         pats.push(P(erase_pat(ctxt, mctxt, pat)));
                     }
@@ -560,7 +560,7 @@ fn erase_expr_opt(ctxt: &Ctxt, mctxt: &mut MCtxt, expect: Mode, expr: &Expr) -> 
                         let mut new_args: Vec<P<Expr>> = Vec::new();
                         let variant = datatype.x.get_variant(variant);
                         for (field, arg) in variant.a.iter().zip(args.iter()) {
-                            let (_, field_mode) = field.a;
+                            let (_, field_mode, _) = field.a;
                             if keep_mode(ctxt, field_mode) {
                                 new_args.push(P(erase_expr(
                                     ctxt,
@@ -612,7 +612,7 @@ fn erase_expr_opt(ctxt: &Ctxt, mctxt: &mut MCtxt, expect: Mode, expr: &Expr) -> 
                 let variant = datatype.x.get_variant(variant);
                 for field in fields {
                     let name = Arc::new(field.ident.as_str().to_string());
-                    let (_, field_mode) = get_field(&variant.a, &name).a;
+                    let (_, field_mode, _) = get_field(&variant.a, &name).a;
                     if keep_mode(ctxt, field_mode) {
                         let e = erase_expr(ctxt, mctxt, mode_join(expect, field_mode), &field.expr);
                         // for asymptotic efficiency, don't call field.clone():
@@ -994,6 +994,9 @@ fn erase_assoc_item(ctxt: &Ctxt, mctxt: &mut MCtxt, item: &AssocItem) -> Option<
             if vattrs.external {
                 return Some(item.clone());
             }
+            if vattrs.is_variant {
+                return None;
+            }
             let erased = erase_fn(ctxt, mctxt, f, vattrs.external_body);
             erased.map(|f| update_item(item, AssocItemKind::Fn(Box::new(f))))
         }
@@ -1091,7 +1094,17 @@ fn erase_item(ctxt: &Ctxt, mctxt: &mut MCtxt, item: &Item) -> Vec<P<Item>> {
             };
             ItemKind::Impl(Box::new(kind))
         }
-        ItemKind::Const(..) => item.kind.clone(),
+        ItemKind::Const(..) => {
+            if let Some(f_vir) = &ctxt.functions_by_span[&item.span] {
+                if keep_mode(ctxt, f_vir.x.ret.x.mode) {
+                    item.kind.clone()
+                } else {
+                    return vec![];
+                }
+            } else {
+                item.kind.clone()
+            }
+        }
         ItemKind::MacroDef(..) => item.kind.clone(),
         _ => {
             unsupported!("unsupported item", item)

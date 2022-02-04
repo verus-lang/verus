@@ -1,6 +1,5 @@
-use crate::rust_to_vir_base::{
-    def_id_to_vir_path, get_mode, get_var_mode, get_verifier_attrs, mid_ty_to_vir,
-};
+use crate::attributes::{get_mode, get_var_mode, get_verifier_attrs};
+use crate::rust_to_vir_base::{def_id_to_vir_path, mid_ty_to_vir};
 use rustc_hir::intravisit::Visitor;
 use rustc_hir::{BinOp, BinOpKind, Expr, ExprKind, HirId, PathSegment};
 use rustc_middle::ty::{FormalVerifierTyping, Ty, TyCtxt, TyKind};

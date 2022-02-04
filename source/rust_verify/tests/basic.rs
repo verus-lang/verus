@@ -273,3 +273,12 @@ test_verify_one_file! {
         }
     } => Err(_)
 }
+
+test_verify_one_file! {
+    #[test] test_fail_return_value_parameter_same_name code! {
+        fn foo(x: u64) -> bool {
+            ensures(|x: bool| x || !x);
+            x > 10
+        }
+    } => Err(TestErr { has_vir_error: true, .. })
+}

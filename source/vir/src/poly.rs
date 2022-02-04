@@ -229,6 +229,7 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
         ExprX::VarAt(x, at) => {
             SpannedTyped::new(&expr.span, &state.types[x], ExprX::VarAt(x.clone(), *at))
         }
+        ExprX::ConstVar(..) => panic!("ConstVar should already be removed"),
         ExprX::Call(target, exprs) => match target {
             CallTarget::Static(name, _) => {
                 let function = &ctx.func_map[name].x;
@@ -284,7 +285,7 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
         ExprX::Unary(op, e1) => {
             let e1 = poly_expr(ctx, state, e1);
             match op {
-                UnaryOp::Not | UnaryOp::Clip(_) => {
+                UnaryOp::Not | UnaryOp::Clip(_) | UnaryOp::BitNot => {
                     let e1 = coerce_expr_to_native(ctx, &e1);
                     mk_expr(ExprX::Unary(*op, e1))
                 }
@@ -499,6 +500,7 @@ fn poly_function(ctx: &Ctx, function: &Function) -> Function {
         ensure,
         decrease,
         mask_spec,
+        is_const,
         is_abstract,
         attrs,
         body,
@@ -576,6 +578,7 @@ fn poly_function(ctx: &Ctx, function: &Function) -> Function {
         ensure,
         decrease,
         mask_spec,
+        is_const: *is_const,
         is_abstract: *is_abstract,
         attrs: attrs.clone(),
         body,
@@ -586,7 +589,9 @@ fn poly_function(ctx: &Ctx, function: &Function) -> Function {
 fn poly_datatype(ctx: &Ctx, datatype: &Datatype) -> Datatype {
     let variants = vec_map(&*datatype.x.variants, |v| {
         v.map_a(|fields| {
-            Arc::new(vec_map(fields, |f| f.map_a(|(t, m)| (coerce_typ_to_native(ctx, t), *m))))
+            Arc::new(vec_map(fields, |f| {
+                f.map_a(|(t, m, v)| (coerce_typ_to_native(ctx, t), *m, v.clone()))
+            }))
         })
     });
     let variants = Arc::new(variants);

@@ -1,9 +1,8 @@
 use crate::ast::{
-    CallTarget, Datatype, Expr, ExprX, Fun, FunX, Function, Krate, MaskSpec, Mode, Path, PathX,
-    TypX, UnaryOpr, VirErr,
+    CallTarget, Datatype, ExprX, Fun, FunX, Function, Krate, MaskSpec, Mode, Path, PathX, TypX,
+    UnaryOpr, VirErr,
 };
 use crate::ast_util::{err_str, err_string};
-use crate::ast_visitor::map_expr_visitor;
 use crate::datatype_to_air::is_datatype_transparent;
 use crate::early_exit_cf::assert_no_early_exit_in_inv_block;
 use std::collections::HashMap;
@@ -15,6 +14,12 @@ struct Ctxt {
 }
 
 fn check_function(ctxt: &Ctxt, function: &Function) -> Result<(), VirErr> {
+    for p in function.x.params.iter() {
+        if p.x.name == function.x.ret.x.name {
+            return err_str(&p.span, "parameter name cannot be same as return value name");
+        }
+    }
+
     if function.x.attrs.atomic {
         if function.x.mode != Mode::Exec {
             return err_str(&function.span, "'atomic' only makes sense on an 'exec' function");
@@ -34,31 +39,25 @@ fn check_function(ctxt: &Ctxt, function: &Function) -> Result<(), VirErr> {
             }
         }
     }
-    if function.x.attrs.export_as_global_forall {
+    if function.x.attrs.broadcast_forall {
         if function.x.mode != Mode::Proof {
-            return err_str(
-                &function.span,
-                "export_as_global_forall function must be declared as proof",
-            );
+            return err_str(&function.span, "broadcast_forall function must be declared as proof");
         }
         if function.x.has_return() {
-            return err_str(
-                &function.span,
-                "export_as_global_forall function cannot have return type",
-            );
+            return err_str(&function.span, "broadcast_forall function cannot have return type");
         }
         for param in function.x.params.iter() {
             if param.x.mode != Mode::Spec {
                 return err_str(
                     &function.span,
-                    "export_as_global_forall function must have spec parameters",
+                    "broadcast_forall function must have spec parameters",
                 );
             }
         }
         if function.x.body.is_some() {
             return err_str(
                 &function.span,
-                "export_as_global_forall function must be declared as external_body",
+                "broadcast_forall function must be declared as external_body",
             );
         }
     }
@@ -110,33 +109,30 @@ fn check_function(ctxt: &Ctxt, function: &Function) -> Result<(), VirErr> {
         }
     }
     for req in function.x.require.iter() {
-        let mut scope_map = air::scope_map::ScopeMap::new();
-        if let crate::ast_visitor::VisitorControlFlow::Stop((span, name)) =
-            crate::ast_visitor::expr_visitor_dfs(req, &mut scope_map, &mut |_map, expr| {
-                if let ExprX::Var(x) = &expr.x {
-                    for param in function.x.params.iter().filter(|p| p.x.is_mut) {
-                        if *x == param.x.name {
-                            return crate::ast_visitor::VisitorControlFlow::Stop((
-                                expr.span.clone(),
-                                param.x.name.clone(),
-                            ));
-                        }
+        crate::ast_visitor::expr_visitor_check(req, &mut |expr| {
+            if let ExprX::Var(x) = &expr.x {
+                for param in function.x.params.iter().filter(|p| p.x.is_mut) {
+                    if *x == param.x.name {
+                        return err_string(
+                            &expr.span,
+                            format!(
+                                "in requires, use `old({})` to refer to the pre-state of an &mut variable",
+                                param.x.name
+                            ),
+                        );
                     }
                 }
-                crate::ast_visitor::VisitorControlFlow::Continue
-            })
-        {
-            return err_string(
-                &span,
-                format!(
-                    "in requires, use `old({})` to refer to the pre-state of an &mut variable",
-                    name
-                ),
-            );
-        }
+            }
+            Ok(())
+        })?;
     }
     if let Some(body) = &function.x.body {
-        map_expr_visitor(body, &mut |expr: &Expr| {
+        // Check that public, non-abstract spec function bodies don't refer to private items:
+        let disallow_private_access = !function.x.is_abstract
+            && !function.x.visibility.is_private
+            && function.x.mode == Mode::Spec;
+
+        crate::ast_visitor::expr_visitor_check(body, &mut |expr| {
             match &expr.x {
                 ExprX::Call(CallTarget::Static(x, _), args) => {
                     let f = &ctxt.funs[x];
@@ -153,11 +149,7 @@ fn check_function(ctxt: &Ctxt, function: &Function) -> Result<(), VirErr> {
                             }
                         }
                     }
-                    // Check that public, non-abstract spec function bodies don't refer to private items
-                    if !function.x.is_abstract
-                        && !function.x.visibility.is_private
-                        && function.x.mode == Mode::Spec
-                    {
+                    if disallow_private_access {
                         let callee = &ctxt.funs[x];
                         if callee.x.visibility.is_private {
                             return err_string(
@@ -183,14 +175,25 @@ fn check_function(ctxt: &Ctxt, function: &Function) -> Result<(), VirErr> {
                         panic!("constructor of undefined datatype");
                     }
                 }
-                // TODO: disallow private fields, unless function is marked #[verifier(pub_abstract)]
-                ExprX::UnaryOpr(UnaryOpr::Field { datatype: path, .. }, _) => {
+                ExprX::UnaryOpr(UnaryOpr::Field { datatype: path, variant, field }, _) => {
                     if let Some(dt) = ctxt.dts.get(path) {
                         if let Some(module) = &function.x.visibility.owning_module {
                             if !is_datatype_transparent(&module, dt) {
                                 return err_string(
                                     &expr.span,
                                     format!("field access of datatype with unencoded fields here"),
+                                );
+                            }
+                        }
+                        if disallow_private_access {
+                            let variant = dt.x.get_variant(variant);
+                            let (_, _, vis) = &crate::ast_util::get_field(&variant.a, &field).a;
+                            if vis.is_private {
+                                return err_string(
+                                    &expr.span,
+                                    format!(
+                                        "public spec function cannot refer to private items, unless function is marked #[verifier(pub_abstract)]"
+                                    ),
                                 );
                             }
                         }
@@ -203,7 +206,7 @@ fn check_function(ctxt: &Ctxt, function: &Function) -> Result<(), VirErr> {
                 }
                 _ => {}
             }
-            Ok(expr.clone())
+            Ok(())
         })?;
     }
     Ok(())
@@ -214,7 +217,7 @@ fn check_datatype(dt: &Datatype) -> Result<(), VirErr> {
     let dt_mode = dt.x.mode;
 
     if unforgeable && dt_mode != Mode::Proof {
-        return err_string(&dt.span, format!("An unforgeable datatype must be in #[proof] mode."));
+        return err_string(&dt.span, format!("an unforgeable datatype must be in #[proof] mode"));
     }
 
     // For an 'unforgeable' datatype, all fields must be #[spec]
@@ -222,18 +225,18 @@ fn check_datatype(dt: &Datatype) -> Result<(), VirErr> {
     if unforgeable {
         for variant in dt.x.variants.iter() {
             for binder in variant.a.iter() {
-                let (_typ, field_mode) = &binder.a;
+                let (_typ, field_mode, _vis) = &binder.a;
                 if *field_mode != Mode::Spec {
                     return err_string(
                         &dt.span,
-                        format!("All fields of a unforgeable datatype must be marked #[spec]"),
+                        format!("all fields of a unforgeable datatype must be marked #[spec]"),
                     );
                 }
             }
         }
     }
 
-    return Ok(());
+    Ok(())
 }
 
 pub fn check_crate(krate: &Krate) -> Result<(), VirErr> {

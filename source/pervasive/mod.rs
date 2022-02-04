@@ -1,5 +1,6 @@
 pub mod map;
 pub mod option;
+pub mod result;
 pub mod vec;
 pub mod seq;
 pub mod seq_lib;
@@ -7,7 +8,7 @@ pub mod set;
 pub mod set_lib;
 pub mod cell;
 pub mod invariants;
-pub mod atomics;
+pub mod atomic;
 pub mod modes;
 
 #[allow(unused_imports)]
