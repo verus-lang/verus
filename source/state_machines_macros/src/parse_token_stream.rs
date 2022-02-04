@@ -14,7 +14,7 @@ use syn::spanned::Spanned;
 use syn::visit::Visit;
 use syn::{
     braced, AttrStyle, Attribute, Error, Expr, FieldsNamed, FnArg, Ident, ImplItemMethod, Meta,
-    MetaList, NestedMeta, Receiver, Type,
+    MetaList, NestedMeta, Receiver, Type, Visibility,
 };
 
 ///////// TokenStream -> ParseResult
@@ -295,6 +295,12 @@ fn to_fields(fields_named: &FieldsNamed) -> syn::parse::Result<Vec<smir::ast::Fi
             }
             Some(ident) => ident.clone(),
         };
+        match &field.vis {
+            Visibility::Public(..) => { }
+            _ => {
+                return Err(Error::new(field.span(), "state machine field must be marked public"));
+            }
+        }
 
         let stype = ShardableType::Variable(field.ty.clone());
         v.push(smir::ast::Field { ident, stype });
