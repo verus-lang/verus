@@ -1,18 +1,15 @@
 use crate::attributes::{AttrTree, VerifierAttrs};
 use crate::util::err_span_str;
-use air::ast::Span;
 use air::ast_util::str_ident;
 use air::errors::error;
 use rustc_hir::VariantData;
 use smir::ast::{
-    Field, Invariant, Lemma, LemmaPurpose, LemmaPurposeKind, ShardableType, Transition,
-    TransitionKind, SM,
+    Field, Invariant, Lemma, LemmaPurpose, LemmaPurposeKind, ShardableType, SM,
 };
-use smir_vir::reinterpret::reinterpret_func_as_transition;
 use smir_vir::update_krate::{update_krate, Predicate};
 use std::collections::HashMap;
 use std::sync::Arc;
-use vir::ast::{Datatype, Expr, Function, Ident, KrateX, Path, PathX, Typ, VirErr};
+use vir::ast::{Datatype, Function, Ident, KrateX, Path, PathX, Typ, VirErr};
 
 pub struct SMFuns {
     pub invariants: Vec<Invariant<Ident>>,

@@ -2,7 +2,6 @@
 
 use crate::check_wf::{check_wf_user_invariant, get_member_path, setup_inv};
 use crate::check_wf::{set_body, set_req_ens};
-use crate::transitions::assume_transition_holds;
 use crate::update_krate::Predicate;
 use air::ast::Span;
 use air::errors::error;
@@ -19,8 +18,8 @@ use vir::ast::{
     ParamX, Params, Path, PathX, SpannedTyped, Typ, TypX, VirErr,
 };
 use vir::ast_util::{
-    conjoin, mk_and, mk_assert, mk_assume, mk_block, mk_bool, mk_call, mk_decl_stmt, mk_eq,
-    mk_expr_stmt, mk_ife, mk_implies, mk_or, mk_var, types_equal,
+    conjoin, mk_and, mk_assert, mk_assume, mk_bool, mk_call, mk_decl_stmt, mk_eq,
+    mk_ife, mk_implies, mk_or, mk_var, types_equal,
 };
 
 pub fn get_transition_func_name(
@@ -165,6 +164,7 @@ pub fn check_lemmas_cover_all_cases(
     Ok(())
 }
 
+/*
 pub fn has_assertion(ts: &TransitionStmt<Span, Ident, Expr>) -> bool {
     match ts {
         TransitionStmt::Block(_, v) => {
@@ -182,6 +182,7 @@ pub fn has_assertion(ts: &TransitionStmt<Span, Ident, Expr>) -> bool {
         TransitionStmt::Update(_, _, _) => false,
     }
 }
+*/
 
 pub fn inv_call(span: &Span, type_path: &Path, ident: &Ident) -> Expr {
     let inv_path = get_member_path(type_path, &Arc::new("invariant".to_string()));
@@ -371,7 +372,7 @@ pub fn setup_lemmas(
 
                 new_funs.push((l.func.clone(), new_f));
             }
-            LemmaPurpose { transition, kind: LemmaPurposeKind::SatisfiesAsserts } => {
+            LemmaPurpose { transition: _, kind: LemmaPurposeKind::SatisfiesAsserts } => {
                 // TODO
             }
         }

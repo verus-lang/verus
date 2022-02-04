@@ -30,13 +30,12 @@ pub fn output_token_stream(
     let mut impl_token_stream = TokenStream::new();
 
     match &maybe_sm {
-        MaybeSM::SM(sm, fields_named, trans_fns) => {
+        MaybeSM::SM(sm, fields_named, _trans_fns) => {
             output_primary_stuff(
                 &mut token_stream,
                 &mut impl_token_stream,
                 &sm,
                 &fields_named,
-                trans_fns,
             );
             output_other_fns(&mut impl_token_stream, &sm.invariants, &sm.lemmas, normal_fns);
 
@@ -115,7 +114,7 @@ pub fn output_primary_stuff(
     impl_token_stream: &mut TokenStream,
     sm: &SM<Span, Ident, ImplItemMethod, Expr, Type>,
     fields_named: &FieldsNamed,
-    trans_fns: &Vec<ImplItemMethod>,
+    //trans_fns: &Vec<ImplItemMethod>,
 ) {
     let name = &sm.name;
     //let fields: Vec<TokenStream> = sm.fields.iter().map(field_to_tokens).collect();
@@ -296,7 +295,7 @@ fn lone_args(args: &Vec<Arg<Ident, Type>>) -> TokenStream {
     };
 }
 
-fn shardable_type_to_type(stype: &ShardableType<Type>) -> Type {
+pub fn shardable_type_to_type(stype: &ShardableType<Type>) -> Type {
     match stype {
         ShardableType::Variable(ty) => ty.clone(),
     }

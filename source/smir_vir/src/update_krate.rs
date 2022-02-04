@@ -2,7 +2,6 @@
 
 use crate::check_wf::{check_wf_user_invariant, get_member_path, setup_inv};
 use crate::lemmas::{check_lemmas_cover_all_cases, check_wf_lemmas, setup_lemmas};
-use crate::transitions::check_transitions;
 use air::ast::Span;
 use smir::ast::{
     Field, Invariant, Lemma, LemmaPurpose, ShardableType, Transition, TransitionKind, SM,

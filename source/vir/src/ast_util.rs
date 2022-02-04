@@ -149,14 +149,6 @@ pub fn mk_call(span: &Span, ty: &Typ, call_target: &CallTarget, args: &Vec<Expr>
     SpannedTyped::new(span, ty, ExprX::Call(call_target.clone(), Arc::new(args.clone())))
 }
 
-pub fn mk_expr_stmt(span: &Span, expr: &Expr) -> Stmt {
-    unimplemented!();
-}
-
-pub fn mk_block(span: &Span, stmts: Vec<Stmt>, expr: &Option<Expr>) -> Expr {
-    unimplemented!();
-}
-
 pub fn mk_and(span: &Span, e1: Expr, e2: &Expr) -> Expr {
     SpannedTyped::new(
         span,
@@ -213,10 +205,6 @@ pub fn mk_decl_stmt(span: &Span, mode: Mode, mutable: bool, ident: &Ident, e: &E
 
 pub fn mk_var(span: &Span, ty: &Typ, s: String) -> Expr {
     SpannedTyped::new(span, ty, ExprX::Var(Arc::new(s)))
-}
-
-pub fn mk_field(span: &Span, e: &Expr, field: &Ident, typ: &Typ) -> Expr {
-    unimplemented!();
 }
 
 pub fn param_to_binder(param: &Param) -> Binder<Typ> {

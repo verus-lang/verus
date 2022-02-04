@@ -1,3 +1,4 @@
+/*
 use air::ast::Span;
 use air::errors::error;
 use smir::ast::{Arg, Transition, TransitionKind, TransitionStmt};
@@ -138,3 +139,4 @@ fn get_update_ident(e: &Expr) -> Result<Ident, VirErr> {
         }
     }
 }
+*/

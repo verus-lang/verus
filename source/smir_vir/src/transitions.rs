@@ -1,5 +1,6 @@
 #![allow(unused_imports)]
 
+/*
 use crate::util::fields_contain;
 use air::ast::Span;
 use air::errors::{error, error_with_label};
@@ -408,3 +409,4 @@ pub fn assume_transition_holds(
     let ts = add_noop_updates(sm, ts);
     return transition_to_vir_stmt(&ts, true, Some(&var_for_ident));
 }
+*/

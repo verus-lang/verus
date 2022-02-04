@@ -97,7 +97,7 @@ fn parse_stmt(
 
 fn parse_local(
     local: &mut Local,
-    ctxt: &Ctxt,
+    _ctxt: &Ctxt,
 ) -> syn::parse::Result<TransitionStmt<Span, Ident, Expr>> {
     let ident = match &local.pat {
         Pat::Ident(PatIdent { attrs: _, by_ref: None, mutability: None, ident, subpat: None }) => {

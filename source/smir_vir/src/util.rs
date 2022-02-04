@@ -16,6 +16,7 @@ use vir::ast::{
 };
 use vir::ast_util::{conjoin, mk_call, mk_var};
 
+/*
 pub fn fields_contain(fields: &Vec<Field<Ident, Typ>>, ident: &Ident) -> bool {
     for f in fields {
         if *f.ident == **ident {
@@ -24,3 +25,4 @@ pub fn fields_contain(fields: &Vec<Field<Ident, Typ>>, ident: &Ident) -> bool {
     }
     return false;
 }
+*/

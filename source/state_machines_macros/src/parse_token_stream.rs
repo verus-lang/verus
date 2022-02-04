@@ -3,6 +3,7 @@
 use crate::ident_visitor::IdentVisitor;
 use crate::parse_transition::parse_impl_item_method;
 use crate::transitions::check_transitions;
+use crate::to_token_stream::shardable_type_to_type;
 use proc_macro2::Span;
 use smir::ast::{
     Extras, Invariant, Lemma, LemmaPurpose, LemmaPurposeKind, ShardableType, Transition,
@@ -286,9 +287,9 @@ fn to_lemma(
     Ok(Lemma { purpose, func: impl_item_method })
 }
 
-fn to_fields(fields_named: &FieldsNamed) -> syn::parse::Result<Vec<smir::ast::Field<Ident, Type>>> {
+fn to_fields(fields_named: &mut FieldsNamed) -> syn::parse::Result<Vec<smir::ast::Field<Ident, Type>>> {
     let mut v: Vec<smir::ast::Field<Ident, Type>> = Vec::new();
-    for field in fields_named.named.iter() {
+    for field in fields_named.named.iter_mut() {
         let ident = match &field.ident {
             None => {
                 return Err(Error::new(field.span(), "state machine field must have a name"));
@@ -303,6 +304,9 @@ fn to_fields(fields_named: &FieldsNamed) -> syn::parse::Result<Vec<smir::ast::Fi
         }
 
         let stype = ShardableType::Variable(field.ty.clone());
+
+        field.ty = shardable_type_to_type(&stype);
+
         v.push(smir::ast::Field { ident, stype });
     }
     return Ok(v);
@@ -368,10 +372,11 @@ pub fn parse_result_to_smir(pr: ParseResult) -> syn::parse::Result<SMAndFuncs> {
             MaybeSM::Extras(Extras { name, invariants, lemmas })
         }
         Some(fields_named) => {
-            let fields = to_fields(&fields_named)?;
+            let mut fnamed = fields_named;
+            let fields = to_fields(&mut fnamed)?;
             let sm = SM { name, fields, transitions, invariants, lemmas };
             check_transitions(&sm)?;
-            MaybeSM::SM(sm, fields_named, trans_fns)
+            MaybeSM::SM(sm, fnamed, trans_fns)
         }
     };
     Ok(SMAndFuncs { normal_fns, sm: maybe_sm })

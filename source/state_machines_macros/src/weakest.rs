@@ -36,41 +36,41 @@ fn to_weakest_rec(
     p: Option<TokenStream>,
 ) -> Option<TokenStream> {
     match trans {
-        TransitionStmt::Block(span, v) => {
+        TransitionStmt::Block(_span, v) => {
             let mut p = p;
             for e in v.iter().rev() {
                 p = to_weakest_rec(e, p);
             }
             p
         }
-        TransitionStmt::Let(span, id, e) => match p {
+        TransitionStmt::Let(_span, id, e) => match p {
             None => None,
             Some(r) => Some(quote! { { let #id = #e; #r } }),
         },
-        TransitionStmt::If(span, cond, e1, e2) => match p {
+        TransitionStmt::If(_span, cond, e1, e2) => match p {
             None => {
                 let x1 = to_weakest_rec(e1, None);
                 let x2 = to_weakest_rec(e2, None);
                 match (x1, x2) {
                     (None, None) => None,
-                    (Some(e1), None) => Some(quote! { ((#cond) >>= e1) }),
-                    (None, Some(e2)) => Some(quote! { (!(#cond) >>= e2) }),
+                    (Some(e1), None) => Some(quote! { ((#cond) >>= #e1) }),
+                    (None, Some(e2)) => Some(quote! { (!(#cond) >>= #e2) }),
                     (Some(e1), Some(e2)) => Some(quote! { if #cond { #e1 } else { #e2 } }),
                 }
             }
-            Some(e) => {
+            Some(_e) => {
                 panic!("not implemented");
             }
         },
-        TransitionStmt::Require(span, e) => match p {
+        TransitionStmt::Require(_span, e) => match p {
             None => Some(quote! { (#e) }),
             Some(r) => Some(quote! { ((#e) && #r) }),
         },
-        TransitionStmt::Assert(span, e) => match p {
+        TransitionStmt::Assert(_span, e) => match p {
             None => None,
             Some(r) => Some(quote! { ((#e) >>= #r) }),
         },
-        TransitionStmt::Update(span, id, e) => {
+        TransitionStmt::Update(_span, _id, _e) => {
             panic!("should have been removed in pre-processing step");
         }
     }
@@ -143,7 +143,7 @@ fn get_safety_conditions_ts(
         TransitionStmt::Assert(span, e) => {
             vec![TransitionStmt::Require(*span, e.clone())]
         }
-        TransitionStmt::Update(span, _id, _e) => Vec::new(),
+        TransitionStmt::Update(_span, _id, _e) => Vec::new(),
     }
 }
 

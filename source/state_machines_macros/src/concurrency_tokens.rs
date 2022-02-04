@@ -90,7 +90,6 @@ pub fn output_token_types_and_fns(
     for field in &sm.fields {
         token_stream.extend(token_struct_stream(&sm.name, field));
     }
-    let inst_impl_stream = TokenStream::new();
     for tr in &sm.transitions {
         token_stream.extend(exchange_stream(&sm, tr)?);
     }
@@ -153,7 +152,7 @@ pub fn exchange_stream(
     let inst;
     if tr.kind == TransitionKind::Init {
         let itn = inst_type_name(&sm.name);
-        out_args.push(((quote! { instance }, quote! { crate::pervasive::modes::Spec<#itn> })));
+        out_args.push((quote! { instance }, quote! { crate::pervasive::modes::Spec<#itn> }));
         inst = quote! { instance.value() };
     } else {
         let itn = inst_type_name(&sm.name);
@@ -314,7 +313,7 @@ fn determine_outputs(
             }
             Ok(())
         }
-        TransitionStmt::Let(_span, id, init_e) => Ok(()),
+        TransitionStmt::Let(_span, _id, _init_e) => Ok(()),
         TransitionStmt::If(_span, _cond_e, e1, e2) => {
             determine_outputs(ctxt, e1)?;
             determine_outputs(ctxt, e2)?;
@@ -527,7 +526,7 @@ fn exchange_collect(
             pa.push(PrequelElement::Condition(assert_e.clone()));
             Ok((prequel, pa))
         }
-        TransitionStmt::Update(_span, id, _e) => Ok((prequel, prequel_with_asserts)),
+        TransitionStmt::Update(_span, _id, _e) => Ok((prequel, prequel_with_asserts)),
     }
 }
 
