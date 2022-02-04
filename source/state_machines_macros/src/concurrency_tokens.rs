@@ -50,7 +50,7 @@ fn exchange_name(sm_name: &Ident, tr: &Transition<Span, Ident, Expr, Type>) -> I
 }
 
 fn transition_arg_name(field: &Field<Ident, Type>) -> Ident {
-    let name = "t_input_".to_string() + &field.ident.to_string();
+    let name = "token_".to_string() + &field.ident.to_string();
     Ident::new(&name, field.ident.span())
 }
 
@@ -90,6 +90,7 @@ pub fn output_token_types_and_fns(
     for field in &sm.fields {
         token_stream.extend(token_struct_stream(&sm.name, field));
     }
+    let inst_impl_stream = TokenStream::new();
     for tr in &sm.transitions {
         token_stream.extend(exchange_stream(&sm, tr)?);
     }
@@ -141,6 +142,25 @@ pub fn exchange_stream(
     let mut in_args: Vec<TokenStream> = Vec::new();
     let mut out_args: Vec<(TokenStream, TokenStream)> = Vec::new();
 
+    let inst;
+    if tr.kind == TransitionKind::Init {
+        let itn = inst_type_name(&sm.name);
+        out_args.push((
+            (
+                quote!{ instance },
+                quote!{ crate::pervasive::modes::Spec<#itn> },
+            )
+        ));
+        inst = quote!{ instance.value() };
+    } else {
+        let itn = inst_type_name(&sm.name);
+        in_args.push(quote!{ #[spec] instance: #itn });
+        inst = quote!{ instance };
+    }
+
+    let mut inst_eq_reqs = Vec::new();
+    let mut inst_eq_enss = Vec::new();
+
     for field in &sm.fields {
         let is_output;
         let is_input;
@@ -176,10 +196,27 @@ pub fn exchange_stream(
         } else {
             in_args.push(quote! { #[proof] #arg_name: &#arg_type });
         }
+
+        if is_output {
+            let lhs = get_new_field_inst(field);
+            inst_eq_enss.push(Expr::Verbatim(quote!{
+                ::builtin::equal(#lhs, #inst)
+            }));
+        }
+        if is_input {
+            let lhs = get_old_field_inst(field);
+            inst_eq_reqs.push(Expr::Verbatim(quote!{
+                ::builtin::equal(#lhs, #inst)
+            }));
+        }
     }
 
-    let reqs = ctxt.requires;
-    let enss = ctxt.ensures;
+    let mut reqs = inst_eq_reqs;
+    reqs.extend(ctxt.requires);
+
+    let mut enss = inst_eq_enss;
+    enss.extend(ctxt.ensures);
+
     let exch_name = exchange_name(&sm.name, &tr);
 
     let req_stream = if reqs.len() > 0 {
@@ -376,6 +413,17 @@ fn get_new_field_value(field: &Field<Ident, Type>) -> Expr {
     let field = field_token_field_name(&field);
     Expr::Verbatim(quote! { #arg.#field })
 }
+
+fn get_old_field_inst(field: &Field<Ident, Type>) -> Expr {
+    let arg = transition_arg_name(&field);
+    Expr::Verbatim(quote! { ::builtin::old(#arg).instance })
+}
+
+fn get_new_field_inst(field: &Field<Ident, Type>) -> Expr {
+    let arg = transition_arg_name(&field);
+    Expr::Verbatim(quote! { #arg.instance })
+}
+
 
 // Collect requires and ensures
 

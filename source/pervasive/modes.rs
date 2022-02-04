@@ -15,3 +15,12 @@ pub enum Spec<V> {
     spec(#[spec] V)
 }
 pub use Spec::spec;
+
+impl<V> Spec<V> {
+    #[spec]
+    pub fn value(self) -> V {
+        match self {
+            spec(v) => v
+        }
+    }
+}
