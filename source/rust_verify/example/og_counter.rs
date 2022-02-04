@@ -69,7 +69,7 @@ concurrent_state_machine!(
 
         #[safety(finalize_safety_1)]
         fn finalize_correct(pre: X) {
-            // XXX TODO verus currently doesn't generate the right conditions here
+            // XXX TODO need to generate VCs here
         }
     }
 );
@@ -117,26 +117,27 @@ fn main() {
   // Thread 1 (gets access to inc_a_token)
 
   open_invariant!(&at_inv => g => {
-    assume(g.perm.value as int <= 2 as int);
+    assume(g.perm.value as int <= 2 as int); // TODO
 
-    #[proof] let G { counter: mut c, perm: mut pho } = g;
+    #[proof] let G { counter: mut c, perm: mut p } = g;
 
-    at.fetch_add(&mut pho, 1);
+    at.fetch_add(&mut p, 1);
     X_tr_inc_a(inst, &mut c, &mut inc_a_token); // atomic increment
 
-    g = G { counter: c, perm: pho };
+    g = G { counter: c, perm: p };
   });
 
   // Thread 2 (gets access to inc_b_token)
 
-  open_invariant!(&at_inv => gxxxx => {
-    //assert(gxxxx.perm.value as int <= 1234 as int);
-    #[proof] let G { counter: mut c, perm: mut pho } = gxxxx;
+  open_invariant!(&at_inv => g => {
+    assume(g.perm.value as int <= 2 as int); // TODO
 
-    at.fetch_add(&mut pho, 1);
-    X_tr_inc_b(inst, &mut c, &mut inc_b_token); // atomic increment
+    #[proof] let G { counter: mut c2, perm: mut p2 } = g;
 
-    gxxxx = G { counter: c, perm: pho };
+    at.fetch_add(&mut p2, 1);
+    X_tr_inc_b(inst, &mut c2, &mut inc_b_token); // atomic increment
+
+    g = G { counter: c2, perm: p2 };
   });
 
   // Join threads, load the atomic again
@@ -146,17 +147,13 @@ fn main() {
 
   let mut x;
   open_invariant!(&at_inv => g => {
-    #[proof] let G { counter: mut c, perm: mut p } = g;
+    #[proof] let G { counter: mut c3, perm: mut p3 } = g;
 
-    x = at.load(&p);
-    X_finalize(inst, &c, &inc_a_token, &inc_b_token);
+    x = at.load(&p3);
+    X_finalize(inst, &c3, &inc_a_token, &inc_b_token);
 
-    g = G { counter: c, perm: p };
+    g = G { counter: c3, perm: p3 };
   });
 
   assert(equal(x, 2));
-}
-
-fn X() {
-  assert(false);
 }
