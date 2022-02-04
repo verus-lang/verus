@@ -60,6 +60,7 @@ fn instance_struct_stream(sm: &SM<Span, Ident, ImplItemMethod, Expr, Type>) -> T
     return quote! {
         #[spec]
         #[allow(non_camel_case_types)]
+        #[verifier(external_body)]
         pub struct #insttype {
             #[spec] pub id: ::builtin::int,
         }
@@ -83,14 +84,46 @@ fn token_struct_stream(sm_name: &Ident, field: &Field<Ident, Type>) -> TokenStre
     };
 }
 
+fn const_fn_stream(field: &Field<Ident, Type>) -> TokenStream {
+    let fieldname = field_token_field_name(field);
+    let fieldtype = field_token_field_type(field);
+
+    return quote! {
+        #[spec]
+        #[verifier(pub_abstract)]
+        #[verifier(external_body)]
+        pub fn #fieldname(&self) -> #fieldtype {
+            unimplemented!()
+        }
+    };
+}
+
 pub fn output_token_types_and_fns(
     token_stream: &mut TokenStream,
     sm: &SM<Span, Ident, ImplItemMethod, Expr, Type>,
 ) -> syn::parse::Result<()> {
+    let mut inst_impl_token_stream = TokenStream::new();
+
     token_stream.extend(instance_struct_stream(sm));
+
     for field in &sm.fields {
-        token_stream.extend(token_struct_stream(&sm.name, field));
+        match field.stype {
+            ShardableType::Constant(_) => {
+                inst_impl_token_stream.extend(const_fn_stream(field));
+            }
+            ShardableType::Variable(_) => {
+                token_stream.extend(token_struct_stream(&sm.name, field));
+            }
+        }
     }
+
+    let insttype = inst_type_name(&sm.name);
+    token_stream.extend(quote!{
+        impl #insttype {
+            #inst_impl_token_stream
+        }
+    });
+
     for tr in &sm.transitions {
         token_stream.extend(exchange_stream(&sm, tr)?);
     }
@@ -196,43 +229,56 @@ pub fn exchange_stream(
         let arg_name = transition_arg_name(field);
         let arg_type = field_token_type_name(&sm.name, field);
 
+        let is_const = match field.stype {
+              ShardableType::Constant(_) => true,
+              _ => false,
+        };
+
         if is_output {
-            let e = match field.stype {
+            assert!(!is_const || ctxt.is_init);
+
+            let (e, lhs) = match field.stype {
                 ShardableType::Variable(_) => {
                     let e_opt = get_output_value_for_variable(&ctxt, &tr.body, field);
-                    e_opt.expect("get_output_value_for_variable")
+                    let e = e_opt.expect("get_output_value_for_variable");
+                    let lhs = get_new_field_value(field);
+                    (e, lhs)
                 }
                 ShardableType::Constant(_) => {
-                    assert!(ctxt.is_init);
                     let e_opt = get_output_value_for_variable(&ctxt, &tr.body, field);
-                    e_opt.expect("get_output_value_for_variable")
+                    let e = e_opt.expect("get_output_value_for_variable");
+                    let lhs = get_const_field_value(&ctxt, field);
+                    (e, lhs)
                 }
             };
-            let lhs = get_new_field_value(field);
             let eq_e = Expr::Verbatim(quote! { ::builtin::equal(#lhs, #e) });
             ctxt.ensures.push(eq_e);
 
             if is_input {
                 in_args.push(quote! { #[proof] #arg_name: &mut #arg_type });
-            } else {
+            } else if !is_const {
                 out_args.push((quote! {#arg_name}, quote! {#arg_type}));
             }
         } else {
-            in_args.push(quote! { #[proof] #arg_name: &#arg_type });
+            if !is_const {
+                in_args.push(quote! { #[proof] #arg_name: &#arg_type });
+            }
         }
 
-        let inst = get_inst_value(&ctxt);
-        if is_output {
-            let lhs = get_new_field_inst(field);
-            inst_eq_enss.push(Expr::Verbatim(quote! {
-                ::builtin::equal(#lhs, #inst)
-            }));
-        }
-        if is_input {
-            let lhs = get_old_field_inst(&ctxt, field);
-            inst_eq_reqs.push(Expr::Verbatim(quote! {
-                ::builtin::equal(#lhs, #inst)
-            }));
+        if !is_const {
+            let inst = get_inst_value(&ctxt);
+            if is_output {
+                let lhs = get_new_field_inst(field);
+                inst_eq_enss.push(Expr::Verbatim(quote! {
+                    ::builtin::equal(#lhs, #inst)
+                }));
+            }
+            if is_input {
+                let lhs = get_old_field_inst(&ctxt, field);
+                inst_eq_reqs.push(Expr::Verbatim(quote! {
+                    ::builtin::equal(#lhs, #inst)
+                }));
+            }
         }
     }
 
