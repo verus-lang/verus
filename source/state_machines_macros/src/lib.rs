@@ -19,7 +19,7 @@ use to_token_stream::output_token_stream;
 fn construct_state_machine(input: TokenStream, concurrent: bool) -> TokenStream {
     let pr: ParseResult = parse_macro_input!(input as ParseResult);
 
-    let smir_res = parse_result_to_smir(pr);
+    let smir_res = parse_result_to_smir(pr, concurrent);
     let smir = match smir_res {
         Ok(smir) => smir,
         Err(err) => {

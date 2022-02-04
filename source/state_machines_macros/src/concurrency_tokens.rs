@@ -41,6 +41,7 @@ fn field_token_field_name(field: &Field<Ident, Type>) -> Ident {
 fn field_token_field_type(field: &Field<Ident, Type>) -> Type {
     match &field.stype {
         ShardableType::Variable(ty) => ty.clone(),
+        ShardableType::Constant(ty) => ty.clone(),
     }
 }
 
@@ -102,6 +103,7 @@ struct Ctxt {
     requires: Vec<Expr>,
     ensures: Vec<Expr>,
     ident_to_field: HashMap<Ident, Field<Ident, Type>>,
+    is_init: bool,
 }
 
 impl Ctxt {
@@ -116,6 +118,13 @@ impl Ctxt {
                 span,
                 "in a concurrent transition, any field access but be a state field",
             )),
+        }
+    }
+
+    pub fn get_field_or_panic(&self, ident: &Ident) -> Field<Ident, Type> {
+        match self.ident_to_field.get(ident) {
+            Some(f) => f.clone(),
+            None => panic!("should have already checked field updates are valid"),
         }
     }
 
@@ -139,6 +148,7 @@ pub fn exchange_stream(
         requires: Vec::new(),
         ensures: Vec::new(),
         ident_to_field,
+        is_init: tr.kind == TransitionKind::Init,
     };
 
     let mut tr = tr.clone();
@@ -149,15 +159,18 @@ pub fn exchange_stream(
     let mut in_args: Vec<TokenStream> = Vec::new();
     let mut out_args: Vec<(TokenStream, TokenStream)> = Vec::new();
 
-    let inst;
-    if tr.kind == TransitionKind::Init {
+    if ctxt.is_init {
         let itn = inst_type_name(&sm.name);
         out_args.push((quote! { instance }, quote! { crate::pervasive::modes::Spec<#itn> }));
-        inst = quote! { instance.value() };
     } else {
         let itn = inst_type_name(&sm.name);
         in_args.push(quote! { #[spec] instance: #itn });
-        inst = quote! { instance };
+    }
+
+    for param in &tr.args {
+        let id = &param.ident;
+        let ty = &param.ty;
+        in_args.push(quote! { #[spec] #id: #ty });
     }
 
     let mut inst_eq_reqs = Vec::new();
@@ -184,8 +197,17 @@ pub fn exchange_stream(
         let arg_type = field_token_type_name(&sm.name, field);
 
         if is_output {
-            let e_opt = get_output_value_for_variable(&ctxt, &tr.body, field);
-            let e = e_opt.expect("get_output_value_for_variable");
+            let e = match field.stype {
+                ShardableType::Variable(_) => {
+                    let e_opt = get_output_value_for_variable(&ctxt, &tr.body, field);
+                    e_opt.expect("get_output_value_for_variable")
+                }
+                ShardableType::Constant(_) => {
+                    assert!(ctxt.is_init);
+                    let e_opt = get_output_value_for_variable(&ctxt, &tr.body, field);
+                    e_opt.expect("get_output_value_for_variable")
+                }
+            };
             let lhs = get_new_field_value(field);
             let eq_e = Expr::Verbatim(quote! { ::builtin::equal(#lhs, #e) });
             ctxt.ensures.push(eq_e);
@@ -199,6 +221,7 @@ pub fn exchange_stream(
             in_args.push(quote! { #[proof] #arg_name: &#arg_type });
         }
 
+        let inst = get_inst_value(&ctxt);
         if is_output {
             let lhs = get_new_field_inst(field);
             inst_eq_enss.push(Expr::Verbatim(quote! {
@@ -321,7 +344,18 @@ fn determine_outputs(
         }
         TransitionStmt::Require(_span, _req_e) => Ok(()),
         TransitionStmt::Assert(_span, _assert_e) => Ok(()),
-        TransitionStmt::Update(_span, id, _e) => {
+        TransitionStmt::Update(span, id, _e) => {
+            let f = ctxt.get_field_or_panic(id);
+            if !ctxt.is_init {
+                match f.stype {
+                    ShardableType::Constant(_) => {
+                        return Err(Error::new(*span,
+                            "cannot update a field marked constant outside of initialization"));
+                    }
+                    _ => { }
+                }
+            }
+
             ctxt.fields_written.insert(id.clone());
             Ok(())
         }
@@ -414,6 +448,9 @@ impl<'a> VisitMut for TranslatorVisitor<'a> {
                             ShardableType::Variable(_ty) => {
                                 *node = get_old_field_value(&self.ctxt, &field);
                             }
+                            ShardableType::Constant(_ty) => {
+                                *node = get_const_field_value(&self.ctxt, &field);
+                            }
                         }
                     }
                 },
@@ -424,6 +461,20 @@ impl<'a> VisitMut for TranslatorVisitor<'a> {
             _ => syn::visit_mut::visit_expr_mut(self, node),
         }
     }
+}
+
+fn get_inst_value(ctxt: &Ctxt) -> Expr {
+    if ctxt.is_init {
+        Expr::Verbatim(quote! { instance.value() })
+    } else {
+        Expr::Verbatim(quote! { instance })
+    }
+}
+
+fn get_const_field_value(ctxt: &Ctxt, field: &Field<Ident, Type>) -> Expr {
+    let inst = get_inst_value(ctxt);
+    let field_name = field_token_field_name(&field);
+    Expr::Verbatim(quote! { #inst.#field_name() })
 }
 
 fn get_old_field_value(ctxt: &Ctxt, field: &Field<Ident, Type>) -> Expr {

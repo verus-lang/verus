@@ -30,6 +30,7 @@ pub struct Arg<Ident, Ty> {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ShardableType<Ty> {
     Variable(Ty),
+    Constant(Ty),
     // TODO more here
 }
 

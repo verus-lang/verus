@@ -287,7 +287,73 @@ fn to_lemma(
     Ok(Lemma { purpose, func: impl_item_method })
 }
 
-fn to_fields(fields_named: &mut FieldsNamed) -> syn::parse::Result<Vec<smir::ast::Field<Ident, Type>>> {
+enum ShardingType {
+    Variable,
+    Constant,
+}
+
+fn get_sharding_type(field_span: Span, attrs: &[Attribute], concurrent: bool) ->
+      syn::parse::Result<ShardingType>
+{
+    let mut res = None;
+
+    for attr in attrs {
+        match attr.parse_meta() {
+            Ok(Meta::Path(path)) if path.is_ident("sharding") => {
+                return Err(Error::new(attr.span(), "expected 1 argument as the sharding strategy, e.g., #[sharding(variable)]"));
+            }
+            Ok(Meta::List(MetaList { path, paren_token: _, nested })) if path.is_ident("sharding") => {
+                if nested.len() != 1 {
+                    return Err(Error::new(attr.span(), "expected 1 argument as the sharding strategy, e.g., #[sharding(variable)]"));
+                }
+                let arg = &nested[0];
+                match arg {
+                    NestedMeta::Meta(Meta::Path(p)) => {
+                        match p.get_ident() {
+                            Some(ident) => {
+                                let t = match ident.to_string().as_str() {
+                                    "variable" => ShardingType::Variable,
+                                    "constant" => ShardingType::Constant,
+                                    name => {
+                                        return Err(Error::new(attr.span(), format!("unrecognized sharding strategy: '{}'", name)));
+                                    }
+                                };
+                                if !concurrent {
+                                    return Err(Error::new(attr.span(), "sharding strategy only makes sense for concurrent state machines; did you mean to use the concurrent_state_machine! macro?"));
+                                }
+                                match res {
+                                    Some(_) => {
+                                        return Err(Error::new(attr.span(), "duplicate sharding attribute"));
+                                    }
+                                    None => { }
+                                }
+                                res = Some(t);
+                            }
+                            None => {
+                                return Err(Error::new(attr.span(), "expected a single identifier as the sharding strategy, e.g., #[sharding(variable)]"));
+                            }
+                        }
+                    }
+                    _ => {
+                        return Err(Error::new(attr.span(), "expected a single identifier as the sharding strategy, e.g., #[sharding(variable)]"));
+                    }
+                }
+            }
+            _ => { }
+        }
+    }
+
+    if concurrent {
+        match res {
+            None => Err(Error::new(field_span, "concurrent state machine requires a sharding strategy, e.g., #[sharding(variable)]")),
+            Some(r) => Ok(r)
+        }
+    } else {
+        Ok(ShardingType::Variable)
+    }
+}
+
+fn to_fields(fields_named: &mut FieldsNamed, concurrent: bool) -> syn::parse::Result<Vec<smir::ast::Field<Ident, Type>>> {
     let mut v: Vec<smir::ast::Field<Ident, Type>> = Vec::new();
     for field in fields_named.named.iter_mut() {
         let ident = match &field.ident {
@@ -303,7 +369,11 @@ fn to_fields(fields_named: &mut FieldsNamed) -> syn::parse::Result<Vec<smir::ast
             }
         }
 
-        let stype = ShardableType::Variable(field.ty.clone());
+        let sharding_type = get_sharding_type(field.span(), &field.attrs, concurrent)?;
+        let stype = match sharding_type {
+            ShardingType::Variable => ShardableType::Variable(field.ty.clone()),
+            ShardingType::Constant => ShardableType::Constant(field.ty.clone()),
+        };
 
         field.ty = shardable_type_to_type(&stype);
 
@@ -318,7 +388,7 @@ pub fn check_idents(iim: &ImplItemMethod) -> syn::parse::Result<()> {
     idv.error
 }
 
-pub fn parse_result_to_smir(pr: ParseResult) -> syn::parse::Result<SMAndFuncs> {
+pub fn parse_result_to_smir(pr: ParseResult, concurrent: bool) -> syn::parse::Result<SMAndFuncs> {
     let ParseResult { name, fns, fields } = pr;
 
     let mut normal_fns = Vec::new();
@@ -373,7 +443,7 @@ pub fn parse_result_to_smir(pr: ParseResult) -> syn::parse::Result<SMAndFuncs> {
         }
         Some(fields_named) => {
             let mut fnamed = fields_named;
-            let fields = to_fields(&mut fnamed)?;
+            let fields = to_fields(&mut fnamed, concurrent)?;
             let sm = SM { name, fields, transitions, invariants, lemmas };
             check_transitions(&sm)?;
             MaybeSM::SM(sm, fnamed, trans_fns)
