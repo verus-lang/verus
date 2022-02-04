@@ -13,13 +13,13 @@ concurrent_state_machine!(
     X {
         fields {
             #[sharding(variable)]
-            counter: int,
+            pub counter: int,
 
             #[sharding(variable)]
-            inc_a: bool,
+            pub inc_a: bool,
 
             #[sharding(variable)]
-            inc_b: bool,
+            pub inc_b: bool,
         }
 
         #[invariant]

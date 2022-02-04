@@ -344,6 +344,8 @@ pub(crate) fn get_verifier_attrs(attrs: &[Attribute]) -> Result<VerifierAttrs, V
             Attr::Unforgeable => vs.unforgeable = true,
             Attr::Atomic => vs.atomic = true,
             Attr::IsVariant => vs.is_variant = true,
+            Attr::StateMachineStruct => vs.state_machine_struct = true,
+            Attr::StateMachineFn(a) => vs.state_machine_fn = Some(a.clone()),
             _ => {}
         }
     }
