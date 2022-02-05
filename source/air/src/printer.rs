@@ -220,7 +220,7 @@ impl Printer {
                 nodes!(ite {self.expr_to_node(expr1)} {self.expr_to_node(expr2)} {self.expr_to_node(expr3)})
             }
             ExprX::Bind(bind, expr) => {
-                let body_with_triggers = |triggers: &Triggers| {
+                let with_triggers = |expr: &Expr, triggers: &Triggers| {
                     if triggers.len() == 0 {
                         self.expr_to_node(expr)
                     } else {
@@ -236,7 +236,8 @@ impl Printer {
                 };
                 match &**bind {
                     BindX::Let(binders) => {
-                        nodes!(let {self.binders_to_node(binders, &|e| self.expr_to_node(e))} {self.expr_to_node(expr)})
+                        let s_binders = self.binders_to_node(binders, &|e| self.expr_to_node(e));
+                        nodes!(let {s_binders} {self.expr_to_node(expr)})
                     }
                     BindX::Quant(quant, binders, triggers) => {
                         let s_quant = match quant {
@@ -244,16 +245,17 @@ impl Printer {
                             Quant::Exists => "exists",
                         };
                         let s_binders = self.binders_to_node(binders, &|t| self.typ_to_node(t));
-                        let body = body_with_triggers(triggers);
+                        let body = with_triggers(expr, triggers);
                         nodes!({str_to_node(s_quant)} {s_binders} {body})
                     }
                     BindX::Lambda(binders) => {
                         nodes!(lambda {self.binders_to_node(binders, &|t| self.typ_to_node(t))} {self.expr_to_node(expr)})
                     }
-                    BindX::Choose(binder, triggers) => {
-                        let s_binder = self.binder_to_node(binder, &|t| self.typ_to_node(t));
-                        let body = body_with_triggers(triggers);
-                        nodes!(choose {s_binder} {body})
+                    BindX::Choose(binders, triggers, expr_cond) => {
+                        let s_binders = self.binders_to_node(binders, &|t| self.typ_to_node(t));
+                        let cond = with_triggers(expr_cond, triggers);
+                        let body = self.expr_to_node(expr);
+                        nodes!(choose {s_binders} {cond} {body})
                     }
                 }
             }

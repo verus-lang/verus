@@ -9,7 +9,7 @@ use crate::rust_to_vir_base::{
 };
 use crate::util::{
     err_span_str, err_span_string, slice_vec_map_result, spanned_new, spanned_typed_new,
-    unsupported_err_span, vec_map_result,
+    unsupported_err_span, vec_map, vec_map_result,
 };
 use crate::{unsupported, unsupported_err, unsupported_err_unless, unsupported_unless};
 use air::ast::{Binder, BinderX, Quant};
@@ -167,19 +167,51 @@ fn extract_choose<'tcx>(
     bctx: &BodyCtxt<'tcx>,
     span: Span,
     expr: &'tcx Expr<'tcx>,
+    tuple: bool,
+    expr_typ: Typ,
 ) -> Result<vir::ast::Expr, VirErr> {
     let tcx = bctx.ctxt.tcx;
     match &expr.kind {
         ExprKind::Closure(_, fn_decl, body_id, _, _) => {
-            let body = tcx.hir().body(*body_id);
-            let typ = ty_to_vir(tcx, &fn_decl.inputs[0]);
-            let name = Arc::new(pat_to_var(body.params[0].pat));
-            let binder = Arc::new(BinderX { name, a: typ.clone() });
-            let expr = &body.value;
-            let vir_expr = expr_to_vir(bctx, expr, ExprModifier::Regular)?;
-            Ok(spanned_typed_new(span, &typ, ExprX::Choose(binder, vir_expr)))
+            let closure_body = tcx.hir().body(*body_id);
+            let params: Vec<Binder<Typ>> = closure_body
+                .params
+                .iter()
+                .zip(fn_decl.inputs)
+                .map(|(x, t)| {
+                    Arc::new(BinderX { name: Arc::new(pat_to_var(x.pat)), a: ty_to_vir(tcx, t) })
+                })
+                .collect();
+            let vars =
+                vec_map(&params, |p| spanned_typed_new(span, &p.a, ExprX::Var(p.name.clone())));
+            let typs = vec_map(&params, |p| p.a.clone());
+            let cond_expr = &closure_body.value;
+            let cond = expr_to_vir(bctx, cond_expr, ExprModifier::Regular)?;
+            let body = if tuple {
+                let typ = Arc::new(TypX::Tuple(Arc::new(typs)));
+                if !vir::ast_util::types_equal(&typ, &expr_typ) {
+                    return err_span_string(
+                        expr.span,
+                        format!(
+                            "expected choose_tuple to have type {:?}, found type {:?}",
+                            typ, expr_typ
+                        ),
+                    );
+                }
+                spanned_typed_new(span, &typ, ExprX::Tuple(Arc::new(vars)))
+            } else {
+                if params.len() != 1 {
+                    return err_span_str(
+                        expr.span,
+                        "choose expects exactly one parameter (use choose_tuple for multiple parameters)",
+                    );
+                }
+                vars[0].clone()
+            };
+            let params = Arc::new(params);
+            Ok(spanned_typed_new(span, &body.clone().typ, ExprX::Choose { params, cond, body }))
         }
-        _ => err_span_str(expr.span, "argument to forall/exists must be a closure"),
+        _ => err_span_str(expr.span, "argument to choose must be a closure"),
     }
 }
 
@@ -307,6 +339,7 @@ fn fn_call_to_vir<'tcx>(
     let is_forall = f_name == "builtin::forall";
     let is_exists = f_name == "builtin::exists";
     let is_choose = f_name == "builtin::choose";
+    let is_choose_tuple = f_name == "builtin::choose_tuple";
     let is_equal = f_name == "builtin::equal";
     let is_hide = f_name == "builtin::hide";
     let is_reveal = f_name == "builtin::reveal";
@@ -385,6 +418,7 @@ fn fn_call_to_vir<'tcx>(
             || is_directive
             || is_assert_by
             || is_choose
+            || is_choose_tuple
             || is_assert_bit_vector
             || is_old
             || is_get_variant.is_some(),
@@ -451,7 +485,11 @@ fn fn_call_to_vir<'tcx>(
     }
     if is_choose {
         unsupported_err_unless!(len == 1, expr.span, "expected choose", &args);
-        return extract_choose(bctx, expr.span, args[0]);
+        return extract_choose(bctx, expr.span, args[0], false, expr_typ());
+    }
+    if is_choose_tuple {
+        unsupported_err_unless!(len == 1, expr.span, "expected choose", &args);
+        return extract_choose(bctx, expr.span, args[0], true, expr_typ());
     }
     if is_old {
         if let ExprKind::Path(QPath::Resolved(None, rustc_hir::Path { res: Res::Local(id), .. })) =

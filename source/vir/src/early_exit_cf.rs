@@ -65,7 +65,7 @@ fn expr_get_early_exits_rec(
             | ExprX::Block(..) => VisitorControlFlow::Recurse,
             ExprX::Quant(..)
             | ExprX::Closure(..)
-            | ExprX::Choose(..)
+            | ExprX::Choose { .. }
             | ExprX::AssertBV(..)
             | ExprX::Fuel(..)
             | ExprX::Header(..)

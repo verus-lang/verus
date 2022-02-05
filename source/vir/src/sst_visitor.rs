@@ -1,6 +1,6 @@
 use crate::ast::{Ident, SpannedTyped, VirErr};
 use crate::def::Spanned;
-use crate::sst::{BndX, Exp, ExpX, Stm, StmX, Trig, UniqueIdent};
+use crate::sst::{BndX, Exp, ExpX, Stm, StmX, Trig, Trigs, UniqueIdent};
 use crate::util::vec_map;
 use crate::visitor::expr_visitor_control_flow;
 pub(crate) use crate::visitor::VisitorControlFlow;
@@ -76,6 +76,7 @@ where
                 }
                 ExpX::Bind(bnd, e1) => {
                     let mut bvars: Vec<(Ident, bool)> = Vec::new();
+                    let mut trigs: Trigs = Arc::new(vec![]);
                     match &bnd.x {
                         BndX::Let(bs) => {
                             for b in bs.iter() {
@@ -84,29 +85,34 @@ where
                             }
                         }
                         BndX::Quant(_quant, binders, ts) => {
-                            let _triggers: Vec<Trig> = Vec::new();
                             for b in binders.iter() {
                                 bvars.push((b.name.clone(), true));
                             }
-                            for t in ts.iter() {
-                                for exp in t.iter() {
-                                    expr_visitor_control_flow!(exp_visitor_dfs(exp, map, f));
-                                }
+                            trigs = ts.clone();
+                        }
+                        BndX::Lambda(params) => {
+                            for b in params.iter() {
+                                bvars.push((b.name.clone(), false));
                             }
                         }
-                        BndX::Lambda(_) => (),
-                        BndX::Choose(binder, ts) => {
-                            bvars.push((binder.name.clone(), true));
-                            for t in ts.iter() {
-                                for exp in t.iter() {
-                                    expr_visitor_control_flow!(exp_visitor_dfs(exp, map, f));
-                                }
+                        BndX::Choose(params, ts, _) => {
+                            for b in params.iter() {
+                                bvars.push((b.name.clone(), true));
                             }
+                            trigs = ts.clone();
                         }
-                    };
+                    }
                     map.push_scope(true);
-                    for (x, is_quant) in bvars {
-                        let _ = map.insert(x, is_quant);
+                    for (x, is_triggered) in bvars {
+                        let _ = map.insert(x, is_triggered);
+                    }
+                    for t in trigs.iter() {
+                        for exp in t.iter() {
+                            expr_visitor_control_flow!(exp_visitor_dfs(exp, map, f));
+                        }
+                    }
+                    if let BndX::Choose(_, _, cond) = &bnd.x {
+                        expr_visitor_control_flow!(exp_visitor_dfs(cond, map, f));
                     }
                     expr_visitor_control_flow!(exp_visitor_dfs(e1, map, f));
                     map.pop_scope();
@@ -281,22 +287,25 @@ where
             f(&exp, map)
         }
         ExpX::Bind(bnd, e1) => {
-            let mut bvars: Vec<(Ident, bool)> = Vec::new();
             let bndx = match &bnd.x {
                 BndX::Let(bs) => {
                     let mut binders: Vec<Binder<Exp>> = Vec::new();
                     for b in bs.iter() {
                         let a = map_exp_visitor_bind(&b.a, map, f)?;
                         binders.push(Arc::new(BinderX { name: b.name.clone(), a }));
-                        bvars.push((b.name.clone(), false));
+                    }
+                    map.push_scope(true);
+                    for b in binders.iter() {
+                        let _ = map.insert(b.name.clone(), false);
                     }
                     BndX::Let(Arc::new(binders))
                 }
                 BndX::Quant(quant, binders, ts) => {
-                    let mut triggers: Vec<Trig> = Vec::new();
+                    map.push_scope(true);
                     for b in binders.iter() {
-                        bvars.push((b.name.clone(), true));
+                        let _ = map.insert(b.name.clone(), true);
                     }
+                    let mut triggers: Vec<Trig> = Vec::new();
                     for t in ts.iter() {
                         let mut exprs: Vec<Exp> = Vec::new();
                         for exp in t.iter() {
@@ -306,10 +315,19 @@ where
                     }
                     BndX::Quant(*quant, binders.clone(), Arc::new(triggers))
                 }
-                BndX::Lambda(_) => bnd.x.clone(),
-                BndX::Choose(binder, ts) => {
+                BndX::Lambda(binders) => {
+                    map.push_scope(true);
+                    for b in binders.iter() {
+                        let _ = map.insert(b.name.clone(), false);
+                    }
+                    bnd.x.clone()
+                }
+                BndX::Choose(binders, ts, cond) => {
+                    map.push_scope(true);
+                    for b in binders.iter() {
+                        let _ = map.insert(b.name.clone(), true);
+                    }
                     let mut triggers: Vec<Trig> = Vec::new();
-                    bvars.push((binder.name.clone(), true));
                     for t in ts.iter() {
                         let mut exprs: Vec<Exp> = Vec::new();
                         for exp in t.iter() {
@@ -317,14 +335,11 @@ where
                         }
                         triggers.push(Arc::new(exprs));
                     }
-                    BndX::Choose(binder.clone(), Arc::new(triggers))
+                    let cond = map_exp_visitor_bind(cond, map, f)?;
+                    BndX::Choose(binders.clone(), Arc::new(triggers), cond)
                 }
             };
             let bnd = Spanned::new(bnd.span.clone(), bndx);
-            map.push_scope(true);
-            for (x, is_quant) in bvars {
-                let _ = map.insert(x, is_quant);
-            }
             let e1 = map_exp_visitor_bind(e1, map, f)?;
             map.pop_scope();
             let expx = ExpX::Bind(bnd, e1);

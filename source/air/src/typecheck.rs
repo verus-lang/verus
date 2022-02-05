@@ -358,7 +358,7 @@ fn check_expr(typing: &mut Typing, expr: &Expr) -> Result<Typ, TypeError> {
                 }
                 BindX::Quant(_, binders, _) => binders.clone(),
                 BindX::Lambda(binders) => binders.clone(),
-                BindX::Choose(binder, _) => Arc::new(vec![binder.clone()]),
+                BindX::Choose(binders, _, _) => binders.clone(),
             };
             // Collect all binder names, make sure they are unique
             typing.decls.push_scope(true);
@@ -370,12 +370,22 @@ fn check_expr(typing: &mut Typing, expr: &Expr) -> Result<Typ, TypeError> {
             // Type-check triggers
             match &**bind {
                 BindX::Let(_) | BindX::Lambda(_) => {}
-                BindX::Quant(_, _, triggers) | BindX::Choose(_, triggers) => {
+                BindX::Quant(_, _, triggers) | BindX::Choose(_, triggers, _) => {
                     for trigger in triggers.iter() {
                         for expr in trigger.iter() {
                             check_expr(typing, expr)?;
                         }
                     }
+                }
+            }
+            // Type-check inner expressions
+            if let BindX::Choose(_, _, e2) = &**bind {
+                let t2 = check_expr(typing, e2)?;
+                if !typ_eq(&t2, &bt()) {
+                    return Err(format!(
+                        "in choose, condition has type {} instead of Bool",
+                        typ_name(&t2)
+                    ));
                 }
             }
             // Type-check expr
@@ -387,10 +397,7 @@ fn check_expr(typing: &mut Typing, expr: &Expr) -> Result<Typ, TypeError> {
                     t1
                 }
                 BindX::Lambda(_) => Arc::new(TypX::Lambda),
-                BindX::Choose(b, _) => {
-                    expect_typ(&t1, &bt(), "choose body must have type bool")?;
-                    b.a.clone()
-                }
+                BindX::Choose(..) => t1,
             };
             // Done
             typing.decls.pop_scope();

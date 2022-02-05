@@ -2,7 +2,7 @@ use crate::ast::{
     BinaryOp, BindX, Binder, Binders, Constant, Decl, DeclX, Expr, ExprX, Ident, MultiOp, Quant,
     Stmt, StmtX, Stmts, Trigger, Triggers, Typ, TypX, Typs, UnaryOp,
 };
-use crate::ast_util::{ident_binder, mk_forall};
+use crate::ast_util::{ident_binder, mk_and, mk_eq, mk_forall};
 use crate::context::Context;
 use crate::typecheck::{typ_eq, DeclaredX};
 use crate::util::vec_map;
@@ -248,9 +248,10 @@ fn simplify_lambda(
 fn simplify_choose(
     ctxt: &mut Context,
     state: &mut State,
-    binder: &Binder<Typ>,
+    binders: &Binders<Typ>,
     triggers: &Triggers,
-    e1: &Expr,
+    cond: &Expr,
+    body: &Expr,
 ) -> (Typ, Expr, Option<Term>) {
     let closure_state =
         ClosureState { typing_depth: ctxt.typing.decls.num_scopes(), holes: Vec::new() };
@@ -258,19 +259,32 @@ fn simplify_choose(
     let mut new_triggers: Vec<Trigger> = Vec::new();
 
     ctxt.typing.decls.push_scope(true);
-    let var = DeclaredX::Var { typ: binder.a.clone(), mutable: false };
-    let _ = ctxt.typing.insert(&binder.name, Arc::new(var));
+    for binder in binders.iter() {
+        let var = DeclaredX::Var { typ: binder.a.clone(), mutable: false };
+        let _ = ctxt.typing.insert(&binder.name, Arc::new(var));
+    }
     state.closure_states.push(closure_state);
-    let (typ1, e1, t1) = simplify_expr(ctxt, state, e1);
-    let (e1, t1) =
-        enclose_force_hole(state.closure_states.last_mut().unwrap(), typ1.clone(), e1, t1);
-    terms.push(t1);
+    let (typ_cond, cond, t_cond) = simplify_expr(ctxt, state, cond);
+    let (typ_body, body, t_body) = simplify_expr(ctxt, state, body);
+    let (cond, t_cond) = enclose_force_hole(
+        state.closure_states.last_mut().unwrap(),
+        typ_cond.clone(),
+        cond,
+        t_cond,
+    );
+    let (body, t_body) = enclose_force_hole(
+        state.closure_states.last_mut().unwrap(),
+        typ_body.clone(),
+        body,
+        t_body,
+    );
+    terms.push(t_cond);
+    terms.push(t_body);
     for trigger in triggers.iter() {
         let mut new_trigger: Vec<Expr> = Vec::new();
         for e in trigger.iter() {
-            let (_, e, t) = simplify_expr(ctxt, state, e);
-            let (e, t) =
-                enclose_force_hole(state.closure_states.last_mut().unwrap(), typ1.clone(), e, t);
+            let (typ, e, t) = simplify_expr(ctxt, state, e);
+            let (e, t) = enclose_force_hole(state.closure_states.last_mut().unwrap(), typ, e, t);
             terms.push(t);
             new_trigger.push(e);
         }
@@ -279,7 +293,7 @@ fn simplify_choose(
     let closure_state = state.closure_states.pop().unwrap();
     ctxt.typing.decls.pop_scope();
 
-    let param_typs = Arc::new(vec![binder.a.clone()]);
+    let param_typs = Arc::new(vec_map(&**binders, |b| b.a.clone()));
     let holes = Arc::new(vec_map(&closure_state.holes, |(_, typ, _)| typ.clone()));
     let closure = ClosureTermX { terms, params: param_typs.clone(), holes: holes.clone() };
     let closure = Arc::new(closure);
@@ -292,12 +306,14 @@ fn simplify_choose(
             ctxt.choose_count += 1;
             let _ = ctxt.choose_map.insert(closure, closure_fun.clone());
 
-            // f(holes): typ_x
-            let decl = Arc::new(DeclX::Fun(closure_fun.clone(), holes.clone(), binder.a.clone()));
+            // f(holes): typ_body
+            let decl = Arc::new(DeclX::Fun(closure_fun.clone(), holes.clone(), typ_body.clone()));
             state.generated_decls.push(decl);
-            insert_fun_typing(ctxt, &closure_fun, &holes, &binder.a);
+            insert_fun_typing(ctxt, &closure_fun, &holes, &typ_body);
 
-            // forall captures. (exists {triggers} x. body) ==> let x = #[trigger] f(captures) in body
+            // forall captures {trigger on f(captures)}.
+            //   (exists {triggers} binders. cond) ==>
+            //   (exists {triggers} binders. cond && f(captures) == body)
             let mut xholes: Vec<Expr> = Vec::new();
             let mut bs: Vec<Binder<Typ>> = Vec::new();
             for (x, typ, _) in closure_state.holes.iter() {
@@ -305,13 +321,12 @@ fn simplify_choose(
                 bs.push(ident_binder(x, typ));
             }
             let call = Arc::new(ExprX::Apply(closure_fun.clone(), Arc::new(xholes)));
-            let existsbs = Arc::new(vec![binder.clone()]);
+            let and = mk_and(&vec![cond.clone(), mk_eq(&call, &body)]);
             let existsbind =
-                Arc::new(BindX::Quant(Quant::Exists, existsbs, Arc::new(new_triggers)));
-            let exists = Arc::new(ExprX::Bind(existsbind, e1.clone()));
-            let bindlet = Arc::new(BindX::Let(Arc::new(vec![binder.new_a(call.clone())])));
-            let elet = Arc::new(ExprX::Bind(bindlet, e1));
-            let imply = Arc::new(ExprX::Binary(BinaryOp::Implies, exists.clone(), elet));
+                Arc::new(BindX::Quant(Quant::Exists, binders.clone(), Arc::new(new_triggers)));
+            let exists1 = Arc::new(ExprX::Bind(existsbind.clone(), cond));
+            let exists2 = Arc::new(ExprX::Bind(existsbind, and));
+            let imply = Arc::new(ExprX::Binary(BinaryOp::Implies, exists1, exists2));
             let trig = Arc::new(vec![call]);
             let trigs = Arc::new(vec![trig]);
             let forall = mk_forall(&bs, &trigs, &imply);
@@ -326,7 +341,7 @@ fn simplify_choose(
     let exprs = vec_map(&closure_state.holes, |(_, _, e)| e.clone());
     let app = Arc::new(ExprX::Apply(closure_fun, Arc::new(exprs)));
     if state.closure_states.len() == 0 {
-        (binder.a.clone(), app, None)
+        (typ_body, app, None)
     } else {
         // REVIEW: when we're nested in a closure, it's easiest to just rerun
         // the simplifier on the simplified inner closure, so we can generate the
@@ -529,7 +544,9 @@ fn simplify_expr(ctxt: &mut Context, state: &mut State, expr: &Expr) -> (Typ, Ex
                 (typ, Arc::new(ExprX::Bind(Arc::new(bind), e1)), t)
             }
             BindX::Lambda(binders) => simplify_lambda(ctxt, state, binders, e1),
-            BindX::Choose(binder, triggers) => simplify_choose(ctxt, state, binder, triggers, e1),
+            BindX::Choose(binders, triggers, cond) => {
+                simplify_choose(ctxt, state, binders, triggers, cond, e1)
+            }
         },
         ExprX::LabeledAssertion(l, e1) => {
             let (es, ts) = simplify_exprs_ref(ctxt, state, &vec![e1]);

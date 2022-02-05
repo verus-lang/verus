@@ -10,7 +10,7 @@ use crate::ast::{
     BinaryOp, Constant, Fun, Path, SpannedTyped, Typ, Typs, UnaryOp, UnaryOpr, VarAt,
 };
 use crate::def::Spanned;
-use air::ast::{Binder, Binders, Ident, Quant};
+use air::ast::{Binders, Ident, Quant};
 use air::errors::Error;
 use std::sync::Arc;
 
@@ -23,7 +23,7 @@ pub enum BndX {
     Let(Binders<Exp>),
     Quant(Quant, Binders<Typ>, Trigs),
     Lambda(Binders<Typ>),
-    Choose(Binder<Typ>, Trigs),
+    Choose(Binders<Typ>, Trigs, Exp),
 }
 
 // variable name with optional unique id for renaming (equal to unique_id in LocalDeclX)
