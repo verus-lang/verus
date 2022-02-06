@@ -34,20 +34,20 @@ pub fn invariant_new<V, F: Fn(V) -> bool>(#[proof] v: V, #[spec] inv: F, #[spec]
 
 #[proof]
 impl<V> Invariant<V> {
-    #[verifier(pub_abstract)]
+    #[verifier(external_body)]
     #[spec]
     pub fn inv(&self, _v: V) -> bool {
-        arbitrary()
+        unimplemented!()
     }
 
     // If you want to open two invariants I and J at the same time,
     // you need to show that I.namespace() != J.namespace()
     // The namespace can be declared upon allocation of the invariant.
 
-    #[verifier(pub_abstract)]
+    #[verifier(external_body)]
     #[spec]
     pub fn namespace(&self) -> int {
-        arbitrary()
+        unimplemented!()
     }
 
     #[proof]

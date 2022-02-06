@@ -12,16 +12,16 @@ pub struct Set<#[verifier(maybe_negative)] A> {
 }
 
 #[spec]
-#[verifier(pub_abstract)]
+#[verifier(external_body)]
 pub fn set_new<A, F: Fn(A) -> bool>(f: F) -> Set<A> {
-    arbitrary()
+    unimplemented!()
 }
 
 impl<A> Set<A> {
     #[spec]
-    #[verifier(pub_abstract)]
+    #[verifier(external_body)]
     pub fn empty() -> Set<A> {
-        arbitrary()
+        unimplemented!()
     }
 
     #[spec]
@@ -30,9 +30,9 @@ impl<A> Set<A> {
     }
 
     #[spec]
-    #[verifier(pub_abstract)]
+    #[verifier(external_body)]
     pub fn contains(self, a: A) -> bool {
-        arbitrary()
+        unimplemented!()
     }
 
     #[spec]
@@ -46,39 +46,39 @@ impl<A> Set<A> {
     }
 
     #[spec]
-    #[verifier(pub_abstract)]
+    #[verifier(external_body)]
     pub fn insert(self, a: A) -> Set<A> {
-        arbitrary()
+        unimplemented!()
     }
 
     #[spec]
-    #[verifier(pub_abstract)]
+    #[verifier(external_body)]
     pub fn remove(self, a: A) -> Set<A> {
-        arbitrary()
+        unimplemented!()
     }
 
     #[spec]
-    #[verifier(pub_abstract)]
+    #[verifier(external_body)]
     pub fn union(self, s2: Set<A>) -> Set<A> {
-        arbitrary()
+        unimplemented!()
     }
 
     #[spec]
-    #[verifier(pub_abstract)]
+    #[verifier(external_body)]
     pub fn intersect(self, s2: Set<A>) -> Set<A> {
-        arbitrary()
+        unimplemented!()
     }
 
     #[spec]
-    #[verifier(pub_abstract)]
+    #[verifier(external_body)]
     pub fn difference(self, s2: Set<A>) -> Set<A> {
-        arbitrary()
+        unimplemented!()
     }
 
     #[spec]
-    #[verifier(pub_abstract)]
+    #[verifier(external_body)]
     pub fn complement(self) -> Set<A> {
-        arbitrary()
+        unimplemented!()
     }
 
     #[spec]
@@ -87,15 +87,15 @@ impl<A> Set<A> {
     }
 
     #[spec]
-    #[verifier(pub_abstract)]
+    #[verifier(external_body)]
     pub fn finite(self) -> bool {
-        arbitrary()
+        unimplemented!()
     }
 
     #[spec]
-    #[verifier(pub_abstract)]
+    #[verifier(external_body)]
     pub fn len(self) -> nat {
-        arbitrary()
+        unimplemented!()
     }
 
     #[spec]
@@ -104,9 +104,9 @@ impl<A> Set<A> {
     }
 
     #[spec]
-    #[verifier(pub_abstract)]
+    #[verifier(external_body)]
     pub fn mk_map<V, F: Fn(A) -> V>(self, f: F) -> Map<A, V> {
-        arbitrary()
+        unimplemented!()
     }
 
 }

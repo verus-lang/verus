@@ -12,10 +12,9 @@ pub struct Vec<#[verifier(strictly_positive)] A> {
 
 impl<A> Vec<A> {
     #[verifier(external_body)]
-    #[verifier(pub_abstract)]
     #[spec]
     pub fn view(&self) -> Seq<A> {
-        arbitrary()
+        unimplemented!()
     }
 
     #[verifier(external_body)]
