@@ -1,35 +1,15 @@
 #[allow(unused_imports)] use builtin::*;
 #[allow(unused_imports)] use crate::pervasive::*;
 
-// TODO right now this file contains the minimal type definitions needed for rust_verify
-// but we need to make a library to make the Invariant type actually usable
-//  * constructors, destructors
-//  * utility for creating unique namespaces
+// TODO:
+//  * utility for conveniently creating unique namespaces
+
+// note the names of `inv` and `namespace` are harcoded into the VIR crate.
 
 #[proof]
 #[verifier(external_body)]
 pub struct Invariant<#[verifier(maybe_negative)] V> {
     dummy: std::marker::PhantomData<V>,
-}
-
-// note the names of `inv` and `namespace` are harcoded.
-// TODO right now they are only translated if the user refers to them in their code
-// which can cause a crash otherwise
-
-// TODO move this to be inside the `impl`:
-#[proof]
-#[verifier(external_body)]
-#[verifier(returns(proof))]
-pub fn invariant_new<V, F: Fn(V) -> bool>(#[proof] v: V, #[spec] inv: F, #[spec] ns: int) -> Invariant<V> {
-  requires([
-    inv(v),
-  ]);
-  ensures(|i: Invariant<V>|
-    forall(|v: V| i.inv(v) == inv(v)) // TODO replace this with function equality?
-    && equal(i.namespace(), ns)
-  );
-
-  unimplemented!();
 }
 
 #[proof]
@@ -38,6 +18,21 @@ impl<V> Invariant<V> {
     #[spec]
     pub fn inv(&self, _v: V) -> bool {
         arbitrary()
+    }
+
+    #[proof]
+    #[verifier(external_body)]
+    #[verifier(returns(proof))]
+    pub fn new<F: Fn(V) -> bool>(#[proof] v: V, #[spec] inv: F, #[spec] ns: int) -> Invariant<V> {
+        requires([
+            inv(v),
+        ]);
+        ensures(|i: Invariant<V>|
+            forall(|v: V| i.inv(v) == inv(v)) // TODO replace this with function equality?
+            && equal(i.namespace(), ns)
+        );
+
+        unimplemented!();
     }
 
     // If you want to open two invariants I and J at the same time,
@@ -53,7 +48,7 @@ impl<V> Invariant<V> {
     #[proof]
     #[verifier(external_body)]
     #[verifier(returns(proof))]
-    pub fn destruct(#[proof] self) -> V {
+    pub fn into_inner(#[proof] self) -> V {
         ensures(|v: V| self.inv(v));
 
         unimplemented!();
