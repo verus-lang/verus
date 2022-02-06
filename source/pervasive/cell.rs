@@ -42,10 +42,10 @@ impl<V> PCell<V> {
     PCellWithToken {pcell: p, token: t}
   }
 
-  #[verifier(pub_abstract)]
+  #[verifier(external_body)]
   #[spec]
   pub fn view(&self) -> int {
-    arbitrary()
+    unimplemented!()
   }
 
   //// Put
