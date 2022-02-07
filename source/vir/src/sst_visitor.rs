@@ -167,7 +167,7 @@ where
                     }
                     expr_visitor_control_flow!(stm_visitor_dfs(body, f));
                 }
-                StmX::OpenInvariant(_inv, _ident, _ty, body) => {
+                StmX::OpenInvariant(_inv, _ident, _ty, body, _atomicity) => {
                     expr_visitor_control_flow!(stm_visitor_dfs(body, f));
                 }
                 StmX::Block(ss) => {
@@ -222,7 +222,7 @@ where
                     expr_visitor_control_flow!(exp_visitor_dfs(inv, &mut ScopeMap::new(), f));
                 }
             }
-            StmX::OpenInvariant(inv, _ident, _ty, _body) => {
+            StmX::OpenInvariant(inv, _ident, _ty, _body, _atomicity) => {
                 expr_visitor_control_flow!(exp_visitor_dfs(inv, &mut ScopeMap::new(), f))
             }
             StmX::Block(_) => (),
@@ -420,11 +420,11 @@ where
             );
             f(&stm)
         }
-        StmX::OpenInvariant(inv, ident, ty, body) => {
+        StmX::OpenInvariant(inv, ident, ty, body, atomicity) => {
             let body = map_stm_visitor(body, f)?;
             let stm = Spanned::new(
                 stm.span.clone(),
-                StmX::OpenInvariant(inv.clone(), ident.clone(), ty.clone(), body),
+                StmX::OpenInvariant(inv.clone(), ident.clone(), ty.clone(), body, *atomicity),
             );
             f(&stm)
         }
@@ -478,11 +478,11 @@ where
                     },
                 )
             }
-            StmX::OpenInvariant(inv, ident, ty, body) => {
+            StmX::OpenInvariant(inv, ident, ty, body, atomicity) => {
                 let inv = f(inv);
                 Spanned::new(
                     span,
-                    StmX::OpenInvariant(inv, ident.clone(), ty.clone(), body.clone()),
+                    StmX::OpenInvariant(inv, ident.clone(), ty.clone(), body.clone(), *atomicity),
                 )
             }
             StmX::Block(_) => stm.clone(),

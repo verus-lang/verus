@@ -685,7 +685,7 @@ pub(crate) fn expr_to_stm_opt(
             );
             Ok((vec![while_stm], None))
         }
-        ExprX::OpenInvariant(inv, binder, body) => {
+        ExprX::OpenInvariant(inv, binder, body, atomicity) => {
             // Evaluate `inv`
             let (mut stms0, big_inv_exp) = expr_to_stm(ctx, state, inv)?;
 
@@ -709,7 +709,7 @@ pub(crate) fn expr_to_stm_opt(
 
             stms0.push(Spanned::new(
                 expr.span.clone(),
-                StmX::OpenInvariant(temp_var, ident, binder.a.clone(), body_stm),
+                StmX::OpenInvariant(temp_var, ident, binder.a.clone(), body_stm, *atomicity),
             ));
 
             return Ok((stms0, None));

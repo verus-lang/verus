@@ -27,7 +27,8 @@ use rustc_span::Span;
 use std::sync::Arc;
 use vir::ast::{
     ArmX, BinaryOp, CallTarget, Constant, ExprX, FunX, HeaderExpr, HeaderExprX, Ident, IntRange,
-    Mode, PatternX, SpannedTyped, StmtX, Stmts, Typ, TypX, UnaryOp, UnaryOpr, VarAt, VirErr,
+    InvAtomicity, Mode, PatternX, SpannedTyped, StmtX, Stmts, Typ, TypX, UnaryOp, UnaryOpr, VarAt,
+    VirErr,
 };
 use vir::ast_util::{ident_binder, path_as_rust_name};
 use vir::def::positional_field_ident;
@@ -298,6 +299,7 @@ fn get_fn_path<'tcx>(bctx: &BodyCtxt<'tcx>, expr: &Expr<'tcx>) -> Result<vir::as
     }
 }
 
+const BUILTIN_INV_LOCAL_BEGIN: &str = "crate::pervasive::invariants::open_local_invariant_begin";
 const BUILTIN_INV_BEGIN: &str = "crate::pervasive::invariants::open_invariant_begin";
 const BUILTIN_INV_END: &str = "crate::pervasive::invariants::open_invariant_end";
 
@@ -393,7 +395,8 @@ fn fn_call_to_vir<'tcx>(
     let is_cmp = is_equal || is_eq || is_ne || is_le || is_ge || is_lt || is_gt;
     let is_arith_binary = is_add || is_sub || is_mul;
 
-    if f_name == BUILTIN_INV_BEGIN || f_name == BUILTIN_INV_END {
+    if f_name == BUILTIN_INV_BEGIN || f_name == BUILTIN_INV_LOCAL_BEGIN || f_name == BUILTIN_INV_END
+    {
         // `open_invariant_begin` and `open_invariant_end` calls should only appear
         // through use of the `open_invariant!` macro, which creates an invariant block.
         // Thus, they should end up being processed by `invariant_block_to_vir` before
@@ -977,7 +980,7 @@ fn invariant_block_to_vir<'tcx>(
     let mid_stmt = &body.stmts[1];
     let close_stmt = &body.stmts[body.stmts.len() - 1];
 
-    let (guard_hir, inner_hir, inner_pat, inv_arg) = match open_stmt.kind {
+    let (guard_hir, inner_hir, inner_pat, inv_arg, atomicity) = match open_stmt.kind {
         StmtKind::Local(Local {
             pat:
                 Pat {
@@ -1027,10 +1030,15 @@ fn invariant_block_to_vir<'tcx>(
             ..
         }) => {
             let f_name = path_as_rust_name(&def_id_to_vir_path(bctx.ctxt.tcx, *fun_id));
-            if f_name != BUILTIN_INV_BEGIN {
+            if f_name != BUILTIN_INV_BEGIN && f_name != BUILTIN_INV_LOCAL_BEGIN {
                 return malformed_inv_block_err(expr);
             }
-            (guard_hir, inner_hir, inner_pat, arg)
+            let atomicity = if f_name == BUILTIN_INV_BEGIN {
+                InvAtomicity::Atomic
+            } else {
+                InvAtomicity::NonAtomic
+            };
+            (guard_hir, inner_hir, inner_pat, arg, atomicity)
         }
         _ => {
             return malformed_inv_block_err(expr);
@@ -1112,7 +1120,7 @@ fn invariant_block_to_vir<'tcx>(
     let inner_ty = typ_of_node(bctx, &inner_hir, false);
     let vir_binder = Arc::new(BinderX { name, a: inner_ty });
 
-    let e = ExprX::OpenInvariant(vir_arg, vir_binder, vir_body);
+    let e = ExprX::OpenInvariant(vir_arg, vir_binder, vir_body, atomicity);
     Ok(spanned_typed_new(expr.span, &typ_of_node(bctx, &expr.hir_id, false), e))
 }
 

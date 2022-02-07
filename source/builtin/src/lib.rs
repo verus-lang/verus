@@ -1,4 +1,5 @@
 #![feature(rustc_attrs)]
+#![feature(negative_impls)]
 
 #[proof]
 pub fn admit() {
@@ -283,3 +284,10 @@ impl_structural! {
     // TODO: support f32 f64 ?
     bool char
 }
+
+// XXX the reason this is here is because a negative-impl needs the crate feature
+// #![feature(negative_impls)]
+// However, due to the way the 'pervasive' pseudo-crate is set up, there is no way to add this
+// as a crate feature to 'pervasive'. So we have it here instead.
+pub struct PhantomNoSync {}
+impl !Sync for PhantomNoSync {}

@@ -5,8 +5,8 @@
 /// 3) Also compute names for abstract datatype sorts for the module,
 ///    since we're traversing the module-visible datatypes anyway.
 use crate::ast::{
-    CallTarget, Datatype, Expr, ExprX, Fun, Function, Ident, Krate, KrateX, Mode, Path, Stmt, Typ,
-    TypX,
+    CallTarget, Datatype, Expr, ExprX, Fun, Function, Ident, InvAtomicity, Krate, KrateX, Mode,
+    Path, Stmt, Typ, TypX,
 };
 use crate::ast_util::{is_visible_to, is_visible_to_of_owner};
 use crate::datatype_to_air::is_datatype_transparent;
@@ -238,9 +238,11 @@ pub fn prune_krate_for_module(krate: &Krate, module: &Path) -> (Krate, Vec<MonoT
 
     // Add function decls that should always exist
     // (references to these might be generated in SST -> AIR)
-    state.reached_functions.insert(fn_inv_name());
-    state.reached_functions.insert(fn_namespace_name());
-    state.reached_datatypes.insert(datatype_invariant_path());
+    for atomicity in vec![InvAtomicity::Atomic, InvAtomicity::NonAtomic] {
+        state.reached_functions.insert(fn_inv_name(atomicity));
+        state.reached_functions.insert(fn_namespace_name(atomicity));
+        state.reached_datatypes.insert(datatype_invariant_path(atomicity));
+    }
 
     let kratex = KrateX {
         functions: functions
