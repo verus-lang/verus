@@ -88,7 +88,8 @@ fn check_decrease_call(ctxt: &Ctxt, span: &Span, name: &Fun, args: &Exps) -> Res
         .collect();
     let mut decreases_exps: Vec<Exp> = Vec::new();
     for expr in function.x.decrease.iter() {
-        let decreases_exp = expr_to_exp(ctxt.ctx, &params_to_pars(&function.x.params), expr)?;
+        let decreases_exp =
+            expr_to_exp(ctxt.ctx, &params_to_pars(&function.x.params, false), expr)?;
         let dec_exp = exp_rename_vars(&decreases_exp, &renames);
         let e_decx = ExpX::Bind(
             Spanned::new(span.clone(), BndX::Let(Arc::new(binders.clone()))),
@@ -285,7 +286,7 @@ pub(crate) fn check_termination_exp(
     }
 
     let decreases_exps = vec_map_result(&function.x.decrease, |e| {
-        expr_to_exp(ctx, &params_to_pars(&function.x.params), e)
+        expr_to_exp(ctx, &params_to_pars(&function.x.params, false), e)
     })?;
     let scc_rep = ctx.func_call_graph.get_scc_rep(&function.x.name);
     let scc_rep_clone = scc_rep.clone();
@@ -347,7 +348,7 @@ pub(crate) fn check_termination_stm(
     }
 
     let decreases_exps = vec_map_result(&function.x.decrease, |e| {
-        expr_to_exp(ctx, &params_to_pars(&function.x.params), e)
+        expr_to_exp(ctx, &params_to_pars(&function.x.params, false), e)
     })?;
     let scc_rep = ctx.func_call_graph.get_scc_rep(&function.x.name);
     let ctxt =

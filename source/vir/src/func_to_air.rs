@@ -101,7 +101,7 @@ fn func_body_to_air(
 ) -> Result<(), VirErr> {
     let id_fuel = prefix_fuel_id(&fun_to_air_ident(&function.x.name));
 
-    let pars = params_to_pars(&function.x.params);
+    let pars = params_to_pars(&function.x.params, false);
 
     // ast --> sst
     let (local_decls, body_exp) = crate::ast_to_sst::expr_to_decls_exp(&ctx, &pars, &body)?;
@@ -235,8 +235,11 @@ pub fn func_name_to_air(ctx: &Ctx, function: &Function) -> Result<Commands, VirE
 
         // Check whether we need to declare the recursive version too
         if let Some(body) = &function.x.body {
-            let body_exp =
-                crate::ast_to_sst::expr_to_exp(&ctx, &params_to_pars(&function.x.params), &body)?;
+            let body_exp = crate::ast_to_sst::expr_to_exp(
+                &ctx,
+                &params_to_pars(&function.x.params, false),
+                &body,
+            )?;
             if crate::recursion::is_recursive_exp(ctx, &function.x.name, &body_exp) {
                 let rec_f =
                     suffix_global_id(&fun_to_air_ident(&prefix_recursive_fun(&function.x.name)));
@@ -254,12 +257,7 @@ pub fn func_name_to_air(ctx: &Ctx, function: &Function) -> Result<Commands, VirE
     Ok(Arc::new(commands))
 }
 
-#[inline(always)]
-pub(crate) fn param_to_par(param: &Param) -> Par {
-    param_is_mut_to_par(param, false)
-}
-
-pub(crate) fn param_is_mut_to_par(param: &Param, allow_is_mut: bool) -> Par {
+pub(crate) fn param_to_par(param: &Param, allow_is_mut: bool) -> Par {
     param.map_x(|p| {
         let ParamX { name, typ, mode, is_mut } = p;
         if *is_mut && !allow_is_mut {
@@ -269,12 +267,8 @@ pub(crate) fn param_is_mut_to_par(param: &Param, allow_is_mut: bool) -> Par {
     })
 }
 
-pub(crate) fn params_to_pars(params: &Params) -> Pars {
-    Arc::new(vec_map(params, param_to_par))
-}
-
-pub(crate) fn params_is_mut_to_pars(params: &Params, allow_is_mut: bool) -> Pars {
-    Arc::new(vec_map(params, |p| param_is_mut_to_par(p, allow_is_mut)))
+pub(crate) fn params_to_pars(params: &Params, allow_is_mut: bool) -> Pars {
+    Arc::new(vec_map(params, |p| param_to_par(p, allow_is_mut)))
 }
 
 fn params_to_pre_post_pars(params: &Params, pre: bool) -> Pars {
@@ -360,7 +354,7 @@ pub fn func_decl_to_air(
                     &func_bind(
                         ctx,
                         &function.x.typ_params(),
-                        &params_to_pars(&function.x.params),
+                        &params_to_pars(&function.x.params, false),
                         &f_app,
                         false,
                     ),
@@ -395,7 +389,7 @@ pub fn func_decl_to_air(
             if function.x.has_return() {
                 let ParamX { name, typ, .. } = &function.x.ret.x;
                 ens_typs.push(typ_to_air(ctx, &typ));
-                ens_params.push(param_to_par(&function.x.ret));
+                ens_params.push(param_to_par(&function.x.ret, false));
                 if let Some(expr) =
                     typ_invariant(ctx, &typ, &ident_var(&suffix_local_stmt_id(&name)))
                 {
@@ -484,14 +478,10 @@ pub fn func_def_to_air(
             };
             let ens_params = Arc::new(ens_params);
             let reqs = vec_map_result(&*function.x.require, |e| {
-                crate::ast_to_sst::expr_to_exp(
-                    ctx,
-                    &params_is_mut_to_pars(&function.x.params, true),
-                    e,
-                )
+                crate::ast_to_sst::expr_to_exp(ctx, &params_to_pars(&function.x.params, true), e)
             })?;
             let enss = vec_map_result(&*function.x.ensure, |e| {
-                crate::ast_to_sst::expr_to_exp(ctx, &params_is_mut_to_pars(&ens_params, true), e)
+                crate::ast_to_sst::expr_to_exp(ctx, &params_to_pars(&ens_params, true), e)
             })?;
             let enss = Arc::new(enss);
             for param in function.x.params.iter() {
