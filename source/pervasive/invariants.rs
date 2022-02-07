@@ -1,4 +1,5 @@
 #[allow(unused_imports)] use builtin::*;
+#[allow(unused_imports)] use builtin_macros::*;
 #[allow(unused_imports)] use crate::pervasive::*;
 
 // TODO:
@@ -14,11 +15,7 @@ pub struct Invariant<#[verifier(maybe_negative)] V> {
 
 #[proof]
 impl<V> Invariant<V> {
-    #[verifier(external_body)]
-    #[spec]
-    pub fn inv(&self, _v: V) -> bool {
-        unimplemented!()
-    }
+    fndef!(pub fn inv(&self, _v: V) -> bool);
 
     #[proof]
     #[verifier(external_body)]
@@ -39,11 +36,7 @@ impl<V> Invariant<V> {
     // you need to show that I.namespace() != J.namespace()
     // The namespace can be declared upon allocation of the invariant.
 
-    #[verifier(external_body)]
-    #[spec]
-    pub fn namespace(&self) -> int {
-        unimplemented!()
-    }
+    fndef!(pub fn namespace(&self) -> int);
 
     #[proof]
     #[verifier(external_body)]
