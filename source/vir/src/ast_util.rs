@@ -3,6 +3,7 @@ use crate::ast::{
     Krate, Mode, Param, Params, Path, PathX, SpannedTyped, Typ, TypX, Typs, Variant, Variants,
     VirErr, Visibility,
 };
+use crate::sst::{Par, Pars};
 use crate::util::vec_map;
 use air::ast::{Binder, BinderX, Binders, Span};
 pub use air::ast_util::{ident_binder, str_ident};
@@ -148,8 +149,16 @@ pub fn param_to_binder(param: &Param) -> Binder<Typ> {
     Arc::new(BinderX { name: param.x.name.clone(), a: param.x.typ.clone() })
 }
 
+pub fn par_to_binder(param: &Par) -> Binder<Typ> {
+    Arc::new(BinderX { name: param.x.name.clone(), a: param.x.typ.clone() })
+}
+
 pub fn params_to_binders(params: &Params) -> Binders<Typ> {
     Arc::new(vec_map(&**params, param_to_binder))
+}
+
+pub fn pars_to_binders(pars: &Pars) -> Binders<Typ> {
+    Arc::new(vec_map(&**pars, par_to_binder))
 }
 
 impl FunctionX {

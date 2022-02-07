@@ -36,7 +36,7 @@ enum App {
     Call(Fun),
     Ctor(Path, Ident), // datatype constructor: (Path, Variant)
     Other(u64),        // u64 is an id, assigned via a simple counter
-    VarAt(Ident, VarAt),
+    VarAt(UniqueIdent, VarAt),
 }
 
 type Term = Arc<TermX>;
@@ -72,7 +72,7 @@ impl std::fmt::Debug for TermX {
             TermX::App(App::Other(_), _) => {
                 write!(f, "_")
             }
-            TermX::App(App::VarAt(x, VarAt::Pre), _) => {
+            TermX::App(App::VarAt((x, _), VarAt::Pre), _) => {
                 write!(f, "old({})", x)
             }
         }

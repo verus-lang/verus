@@ -327,14 +327,14 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: ExprCtxt) -> Expr {
         ExpX::Var(x) => string_var(&suffix_local_unique_id(x)),
         ExpX::VarLoc(x) => string_var(&suffix_local_unique_id(x)),
         ExpX::VarAt(x, VarAt::Pre) => match expr_ctxt {
-            ExprCtxt::Spec => string_var(&prefix_pre_var(&suffix_local_stmt_id(x))),
+            ExprCtxt::Spec => string_var(&prefix_pre_var(&suffix_local_unique_id(x))),
             ExprCtxt::Body => {
-                Arc::new(ExprX::Old(snapshot_ident(SNAPSHOT_PRE), suffix_local_stmt_id(x)))
+                Arc::new(ExprX::Old(snapshot_ident(SNAPSHOT_PRE), suffix_local_unique_id(x)))
             }
-            ExprCtxt::BodyPre => string_var(&suffix_local_stmt_id(x)),
+            ExprCtxt::BodyPre => string_var(&suffix_local_unique_id(x)),
         },
         ExpX::Loc(e0) => exp_to_expr(ctx, e0, expr_ctxt),
-        ExpX::Old(span, x) => Arc::new(ExprX::Old(span.clone(), suffix_local_stmt_id(x))),
+        ExpX::Old(span, x) => Arc::new(ExprX::Old(span.clone(), suffix_local_unique_id(x))),
         ExpX::Call(x, typs, args) => {
             let name = suffix_global_id(&fun_to_air_ident(&x));
             let mut exprs: Vec<Expr> = vec_map(typs, typ_to_id);
@@ -779,7 +779,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
                             SpannedTyped::new(
                                 &e.span,
                                 &e.typ,
-                                ExpX::Old(snapshot_ident(SNAPSHOT_CALL), x.0.clone()),
+                                ExpX::Old(snapshot_ident(SNAPSHOT_CALL), x.clone()),
                             )
                         }
                         _ => e.clone(),
@@ -796,7 +796,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
                             SpannedTyped::new(
                                 &e.span,
                                 &e.typ,
-                                ExpX::Old(snapshot_ident(SNAPSHOT_CALL), x.0.clone()),
+                                ExpX::Old(snapshot_ident(SNAPSHOT_CALL), x.clone()),
                             )
                         }
                         _ => e.clone(),

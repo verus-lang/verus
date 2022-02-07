@@ -194,9 +194,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    // TODO(utaal) this is currently rejected by the same check that disallows complex arguments
-    // for &mut parameters; consider fixing this when adding support for those
-    #[ignore] #[test] test_mut_ref_generic_1 code! {
+    #[test] test_mut_ref_generic_1 code! {
         fn add1<A>(a: &mut A) {
             ensures(equal(*old(a), *a));
         }
@@ -249,12 +247,28 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    // TODO(utaal) support old(v).call()
     #[test] test_mut_ref_old_trigger code! {
         use crate::pervasive::vec::*;
 
         fn add1(v: &mut Vec<u64>) {
             requires(forall(|i: nat| i < old(v).len() >>= old(v).index(i) < 10));
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_mut_ref_shadow code! {
+        fn foo(x: &mut u32) {
+            ensures(equal(*x, *old(x)));
+        }
+
+        fn main() {
+            let h = 5;
+
+            let mut h = 6;
+            foo(&mut h);
+
+            assert(h == 6);
         }
     } => Ok(())
 }

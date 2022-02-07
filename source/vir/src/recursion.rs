@@ -9,6 +9,7 @@ use crate::def::{
     check_decrease_int, decrease_at_entry, height, prefix_recursive_fun, suffix_rename, Spanned,
     FUEL_PARAM, FUEL_TYPE,
 };
+use crate::func_to_air::params_to_pars;
 use crate::scc::Graph;
 use crate::sst::{BndX, Exp, ExpX, Exps, LocalDecl, LocalDeclX, Stm, StmX, UniqueIdent};
 use crate::sst_visitor::{
@@ -87,7 +88,7 @@ fn check_decrease_call(ctxt: &Ctxt, span: &Span, name: &Fun, args: &Exps) -> Res
         .collect();
     let mut decreases_exps: Vec<Exp> = Vec::new();
     for expr in function.x.decrease.iter() {
-        let decreases_exp = expr_to_exp(ctxt.ctx, &function.x.params, expr)?;
+        let decreases_exp = expr_to_exp(ctxt.ctx, &params_to_pars(&function.x.params), expr)?;
         let dec_exp = exp_rename_vars(&decreases_exp, &renames);
         let e_decx = ExpX::Bind(
             Spanned::new(span.clone(), BndX::Let(Arc::new(binders.clone()))),
@@ -283,8 +284,9 @@ pub(crate) fn check_termination_exp(
         return err_str(&function.span, "recursive function must call decreases(...)");
     }
 
-    let decreases_exps =
-        vec_map_result(&function.x.decrease, |e| expr_to_exp(ctx, &function.x.params, e))?;
+    let decreases_exps = vec_map_result(&function.x.decrease, |e| {
+        expr_to_exp(ctx, &params_to_pars(&function.x.params), e)
+    })?;
     let scc_rep = ctx.func_call_graph.get_scc_rep(&function.x.name);
     let scc_rep_clone = scc_rep.clone();
     let ctxt =
@@ -344,8 +346,9 @@ pub(crate) fn check_termination_stm(
         return err_str(&function.span, "recursive function must call decreases(...)");
     }
 
-    let decreases_exps =
-        vec_map_result(&function.x.decrease, |e| expr_to_exp(ctx, &function.x.params, e))?;
+    let decreases_exps = vec_map_result(&function.x.decrease, |e| {
+        expr_to_exp(ctx, &params_to_pars(&function.x.params), e)
+    })?;
     let scc_rep = ctx.func_call_graph.get_scc_rep(&function.x.name);
     let ctxt =
         Ctxt { recursive_function_name: function.x.name.clone(), num_decreases, scc_rep, ctx };
