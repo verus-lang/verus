@@ -15,7 +15,7 @@ pub struct Invariant<#[verifier(maybe_negative)] V> {
 
 #[proof]
 impl<V> Invariant<V> {
-    fndef!(pub fn inv(&self, _v: V) -> bool);
+    fndecl!(pub fn inv(&self, _v: V) -> bool);
 
     #[proof]
     #[verifier(external_body)]
@@ -36,7 +36,7 @@ impl<V> Invariant<V> {
     // you need to show that I.namespace() != J.namespace()
     // The namespace can be declared upon allocation of the invariant.
 
-    fndef!(pub fn namespace(&self) -> int);
+    fndecl!(pub fn namespace(&self) -> int);
 
     #[proof]
     #[verifier(external_body)]

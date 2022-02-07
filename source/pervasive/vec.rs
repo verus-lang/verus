@@ -13,7 +13,7 @@ pub struct Vec<#[verifier(strictly_positive)] A> {
 }
 
 impl<A> Vec<A> {
-    fndef!(pub fn view(&self) -> Seq<A>);
+    fndecl!(pub fn view(&self) -> Seq<A>);
 
     #[verifier(external_body)]
     #[verifier(autoview)]
