@@ -43,7 +43,7 @@ impl<V> PCell<V> {
     PCellWithToken {pcell: p, token: t}
   }
 
-  fndef!(pub fn view(&self) -> int);
+  fndecl!(pub fn view(&self) -> int);
 
   //// Put
 

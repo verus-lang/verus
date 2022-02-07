@@ -20,14 +20,14 @@ pub fn set_new<A, F: Fn(A) -> bool>(f: F) -> Set<A> {
 }
 
 impl<A> Set<A> {
-    fndef!(pub fn empty() -> Set<A>);
+    fndecl!(pub fn empty() -> Set<A>);
 
     #[spec]
     pub fn full() -> Set<A> {
         Set::empty().complement()
     }
 
-    fndef!(pub fn contains(self, a: A) -> bool);
+    fndecl!(pub fn contains(self, a: A) -> bool);
 
     #[spec]
     pub fn ext_equal(self, s2: Set<A>) -> bool {
@@ -39,33 +39,33 @@ impl<A> Set<A> {
         forall(|a: A| self.contains(a) >>= s2.contains(a))
     }
 
-    fndef!(pub fn insert(self, a: A) -> Set<A>);
+    fndecl!(pub fn insert(self, a: A) -> Set<A>);
 
-    fndef!(pub fn remove(self, a: A) -> Set<A>);
+    fndecl!(pub fn remove(self, a: A) -> Set<A>);
 
-    fndef!(pub fn union(self, s2: Set<A>) -> Set<A>);
+    fndecl!(pub fn union(self, s2: Set<A>) -> Set<A>);
 
-    fndef!(pub fn intersect(self, s2: Set<A>) -> Set<A>);
+    fndecl!(pub fn intersect(self, s2: Set<A>) -> Set<A>);
 
-    fndef!(pub fn difference(self, s2: Set<A>) -> Set<A>);
+    fndecl!(pub fn difference(self, s2: Set<A>) -> Set<A>);
 
-    fndef!(pub fn complement(self) -> Set<A>);
+    fndecl!(pub fn complement(self) -> Set<A>);
 
     #[spec]
     pub fn filter<F: Fn(A) -> bool>(self, f: F) -> Set<A> {
         self.intersect(set_new(f))
     }
 
-    fndef!(pub fn finite(self) -> bool);
+    fndecl!(pub fn finite(self) -> bool);
 
-    fndef!(pub fn len(self) -> nat);
+    fndecl!(pub fn len(self) -> nat);
 
     #[spec]
     pub fn choose(self) -> A {
         choose(|a: A| self.contains(a))
     }
 
-    fndef!(pub fn mk_map<V, F: Fn(A) -> V>(self, f: F) -> Map<A, V>);
+    fndecl!(pub fn mk_map<V, F: Fn(A) -> V>(self, f: F) -> Map<A, V>);
 
 }
 

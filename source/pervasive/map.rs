@@ -14,18 +14,18 @@ pub struct Map<#[verifier(maybe_negative)] K, #[verifier(strictly_positive)] V> 
 }
 
 impl<K, V> Map<K, V> {
-    fndef!(pub fn empty() -> Map<K, V>);
+    fndecl!(pub fn empty() -> Map<K, V>);
 
     #[spec]
     pub fn total<F: Fn(K) -> V>(f: F) -> Map<K, V> {
         Set::full().mk_map(f)
     }
 
-    fndef!(pub fn dom(self) -> Set<K>);
+    fndecl!(pub fn dom(self) -> Set<K>);
 
-    fndef!(pub fn index(self, key: K) -> V);
+    fndecl!(pub fn index(self, key: K) -> V);
 
-    fndef!(pub fn insert(self, key: K, value: V) -> Map<K, V>);
+    fndecl!(pub fn insert(self, key: K, value: V) -> Map<K, V>);
 
     #[spec]
     pub fn ext_equal(self, m2: Map<K, V>) -> bool {

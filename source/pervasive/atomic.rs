@@ -114,7 +114,7 @@ macro_rules! atomic_types {
 
 macro_rules! atomic_common_methods {
     ($at_ident:ident, $p_ident:ident, $rust_ty: ty, $value_ty: ty) => {
-        fndef!(pub fn view(&self) -> int);
+        fndecl!(pub fn view(&self) -> int);
 
         #[inline(always)]
         #[verifier(external_body)]

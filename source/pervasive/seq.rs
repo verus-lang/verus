@@ -12,17 +12,17 @@ pub struct Seq<#[verifier(strictly_positive)] A> {
 }
 
 impl<A> Seq<A> {
-    fndef!(pub fn empty() -> Seq<A>);
+    fndecl!(pub fn empty() -> Seq<A>);
 
-    fndef!(pub fn new<F: Fn(int) -> A>(len: nat, f: F) -> Seq<A>);
+    fndecl!(pub fn new<F: Fn(int) -> A>(len: nat, f: F) -> Seq<A>);
 
-    fndef!(pub fn len(self) -> nat);
+    fndecl!(pub fn len(self) -> nat);
 
-    fndef!(pub fn index(self, i: int) -> A);
+    fndecl!(pub fn index(self, i: int) -> A);
 
-    fndef!(pub fn push(self, a: A) -> Seq<A>);
+    fndecl!(pub fn push(self, a: A) -> Seq<A>);
 
-    fndef!(pub fn update(self, i: int, a: A) -> Seq<A>);
+    fndecl!(pub fn update(self, i: int, a: A) -> Seq<A>);
 
     #[spec]
     pub fn ext_equal(self, s2: Seq<A>) -> bool {
@@ -30,9 +30,9 @@ impl<A> Seq<A> {
         forall(|i: int| 0 <= i && i < self.len() >>= equal(self.index(i), s2.index(i)))
     }
 
-    fndef!(pub fn subrange(self, start_inclusive: int, end_exclusive: int) -> Seq<A>);
+    fndecl!(pub fn subrange(self, start_inclusive: int, end_exclusive: int) -> Seq<A>);
 
-    fndef!(pub fn add(self, rhs: Seq<A>) -> Seq<A>);
+    fndecl!(pub fn add(self, rhs: Seq<A>) -> Seq<A>);
 }
 
 // Trusted axioms
