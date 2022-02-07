@@ -81,6 +81,7 @@ pub fn do_inc_b(#[proof] counter: &mut Counter, #[proof] inc_b: &mut IncB) {
   ensures([
     inc_b.done,
     equal(counter.counter, old(counter).counter + 1),
+    counter.counter <= 2,
   ]);
 
   unimplemented!();
