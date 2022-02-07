@@ -524,8 +524,10 @@ pub(crate) fn mid_ty_simplify<'tcx>(
     allow_mut_ref: bool,
 ) -> rustc_middle::ty::Ty<'tcx> {
     match ty.kind() {
-        TyKind::Ref(_, t, Mutability::Not) => mid_ty_simplify(tcx, t, false),
-        TyKind::Ref(_, t, Mutability::Mut) if allow_mut_ref => mid_ty_simplify(tcx, t, false),
+        TyKind::Ref(_, t, Mutability::Not) => mid_ty_simplify(tcx, t, allow_mut_ref),
+        TyKind::Ref(_, t, Mutability::Mut) if allow_mut_ref => {
+            mid_ty_simplify(tcx, t, allow_mut_ref)
+        }
         TyKind::Adt(AdtDef { did, .. }, args) => {
             if Some(*did) == tcx.lang_items().owned_box() && args.len() == 2 {
                 if let rustc_middle::ty::subst::GenericArgKind::Type(t) = args[0].unpack() {
@@ -542,18 +544,26 @@ pub(crate) fn mid_ty_simplify<'tcx>(
 }
 
 // TODO review and cosolidate type translation, e.g. with `ty_to_vir`, if possible
-pub(crate) fn mid_ty_to_vir<'tcx>(tcx: TyCtxt<'tcx>, ty: rustc_middle::ty::Ty<'tcx>) -> Typ {
+pub(crate) fn mid_ty_to_vir<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    ty: rustc_middle::ty::Ty<'tcx>,
+    allow_mut_ref: bool,
+) -> Typ {
     match ty.kind() {
         TyKind::Bool => Arc::new(TypX::Bool),
         TyKind::Uint(_) | TyKind::Int(_) => Arc::new(TypX::Int(mk_range(ty))),
-        TyKind::Ref(_, tys, rustc_ast::Mutability::Not) => mid_ty_to_vir(tcx, tys),
+        TyKind::Ref(_, tys, rustc_ast::Mutability::Not) => mid_ty_to_vir(tcx, tys, allow_mut_ref),
+        TyKind::Ref(_, tys, rustc_ast::Mutability::Mut) if allow_mut_ref => {
+            mid_ty_to_vir(tcx, tys, allow_mut_ref)
+        }
         TyKind::Param(param) => Arc::new(TypX::TypParam(Arc::new(param.name.to_string()))),
         TyKind::Never => {
             // All types are inhabited in SMT; we pick an arbitrary inhabited type for Never
             Arc::new(TypX::Tuple(Arc::new(vec![])))
         }
         TyKind::Tuple(_) => {
-            let typs: Vec<Typ> = ty.tuple_fields().map(|t| mid_ty_to_vir(tcx, t)).collect();
+            let typs: Vec<Typ> =
+                ty.tuple_fields().map(|t| mid_ty_to_vir(tcx, t, allow_mut_ref)).collect();
             Arc::new(TypX::Tuple(Arc::new(typs)))
         }
         TyKind::Adt(AdtDef { did, .. }, args) => Arc::new({
@@ -567,7 +577,9 @@ pub(crate) fn mid_ty_to_vir<'tcx>(tcx: TyCtxt<'tcx>, ty: rustc_middle::ty::Ty<'t
                 let typ_args: Vec<Typ> = args
                     .iter()
                     .map(|arg| match arg.unpack() {
-                        rustc_middle::ty::subst::GenericArgKind::Type(t) => mid_ty_to_vir(tcx, t),
+                        rustc_middle::ty::subst::GenericArgKind::Type(t) => {
+                            mid_ty_to_vir(tcx, t, allow_mut_ref)
+                        }
                         _ => panic!("unexpected type argument"),
                     })
                     .collect();
@@ -579,9 +591,13 @@ pub(crate) fn mid_ty_to_vir<'tcx>(tcx: TyCtxt<'tcx>, ty: rustc_middle::ty::Ty<'t
         }),
         TyKind::Closure(_def, substs) => {
             let sig = substs.as_closure().sig();
-            let args: Vec<Typ> =
-                sig.inputs().skip_binder().iter().map(|t| mid_ty_to_vir(tcx, t)).collect();
-            let ret = mid_ty_to_vir(tcx, sig.output().skip_binder());
+            let args: Vec<Typ> = sig
+                .inputs()
+                .skip_binder()
+                .iter()
+                .map(|t| mid_ty_to_vir(tcx, t, allow_mut_ref))
+                .collect();
+            let ret = mid_ty_to_vir(tcx, sig.output().skip_binder(), allow_mut_ref);
             Arc::new(TypX::Lambda(Arc::new(args), ret))
         }
         _ => {
@@ -664,8 +680,8 @@ pub(crate) fn ty_to_vir<'tcx>(tcx: TyCtxt<'tcx>, ty: &Ty) -> Typ {
     }
 }
 
-pub(crate) fn typ_of_node<'tcx>(bctx: &BodyCtxt<'tcx>, id: &HirId) -> Typ {
-    mid_ty_to_vir(bctx.ctxt.tcx, bctx.types.node_type(*id))
+pub(crate) fn typ_of_node<'tcx>(bctx: &BodyCtxt<'tcx>, id: &HirId, allow_mut_ref: bool) -> Typ {
+    mid_ty_to_vir(bctx.ctxt.tcx, bctx.types.node_type(*id), allow_mut_ref)
 }
 
 pub(crate) fn typ_of_node_expect_mut_ref<'tcx>(
@@ -674,8 +690,8 @@ pub(crate) fn typ_of_node_expect_mut_ref<'tcx>(
     span: Span,
 ) -> Result<Typ, VirErr> {
     let ty = bctx.types.node_type(*id);
-    if let TyKind::Ref(_, tys, rustc_ast::Mutability::Mut) = ty.kind() {
-        Ok(mid_ty_to_vir(bctx.ctxt.tcx, tys))
+    if let TyKind::Ref(_, _tys, rustc_ast::Mutability::Mut) = ty.kind() {
+        Ok(mid_ty_to_vir(bctx.ctxt.tcx, ty, true))
     } else {
         err_span_str(span, "a mutable reference is expected here")
     }
@@ -705,7 +721,7 @@ pub(crate) fn is_smt_equality<'tcx>(
     id1: &HirId,
     id2: &HirId,
 ) -> bool {
-    let (t1, t2) = (typ_of_node(bctx, id1), typ_of_node(bctx, id2));
+    let (t1, t2) = (typ_of_node(bctx, id1, false), typ_of_node(bctx, id2, false));
     match (&*t1, &*t2) {
         (TypX::Bool, TypX::Bool) => true,
         (TypX::Int(_), TypX::Int(_)) => true,
@@ -720,7 +736,7 @@ pub(crate) fn is_smt_equality<'tcx>(
 // Do arithmetic operations on these operands translate into the SMT solver's <=, +, =>, etc.?
 // (possibly with clipping/wrapping for finite-size integers?)
 pub(crate) fn is_smt_arith<'tcx>(bctx: &BodyCtxt<'tcx>, id1: &HirId, id2: &HirId) -> bool {
-    match (&*typ_of_node(bctx, id1), &*typ_of_node(bctx, id2)) {
+    match (&*typ_of_node(bctx, id1, false), &*typ_of_node(bctx, id2, false)) {
         (TypX::Bool, TypX::Bool) => true,
         (TypX::Int(_), TypX::Int(_)) => true,
         _ => false,

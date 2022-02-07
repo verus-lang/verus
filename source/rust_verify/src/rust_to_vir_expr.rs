@@ -392,7 +392,7 @@ fn fn_call_to_vir<'tcx>(
     );
 
     let len = args.len();
-    let expr_typ = || typ_of_node(bctx, &expr.hir_id);
+    let expr_typ = || typ_of_node(bctx, &expr.hir_id, false);
     let mk_expr = |x: ExprX| spanned_typed_new(expr.span, &expr_typ(), x);
     let mk_expr_span = |span: Span, x: ExprX| spanned_typed_new(span, &expr_typ(), x);
 
@@ -538,7 +538,7 @@ fn fn_call_to_vir<'tcx>(
                 let expr = expr_to_vir(bctx, arg_x, ExprModifier::AddrOf)?;
                 Ok(spanned_typed_new(arg.span, &expr.typ.clone(), ExprX::Loc(expr)))
             } else {
-                expr_to_vir(bctx, arg, ExprModifier::Regular)
+                expr_to_vir(bctx, arg, is_expr_typ_mut_ref(bctx, arg, ExprModifier::Regular)?)
             }
         })
         .collect::<Result<Vec<_>, _>>()?;
@@ -551,7 +551,7 @@ fn fn_call_to_vir<'tcx>(
         };
 
         let receiver = args.first().expect("receiver in method call");
-        let self_path = match &(*typ_of_node(bctx, &receiver.hir_id)) {
+        let self_path = match &(*typ_of_node(bctx, &receiver.hir_id, true)) {
             TypX::Datatype(path, _) => path.clone(),
             _ => panic!("unexpected receiver type"),
         };
@@ -653,7 +653,7 @@ fn fn_call_to_vir<'tcx>(
                 if name == "core::ops::function::Fn" {
                     for s in t.trait_ref.substs {
                         if let GenericArgKind::Type(ty) = s.unpack() {
-                            if let TypX::TypParam(x) = &*mid_ty_to_vir(tcx, ty) {
+                            if let TypX::TypParam(x) = &*mid_ty_to_vir(tcx, ty, false) {
                                 fn_params.push(x.clone());
                             }
                         }
@@ -666,7 +666,7 @@ fn fn_call_to_vir<'tcx>(
         for typ_arg in node_substs {
             match typ_arg.unpack() {
                 GenericArgKind::Type(ty) => {
-                    typ_args.push(mid_ty_to_vir(tcx, ty));
+                    typ_args.push(mid_ty_to_vir(tcx, ty, false));
                 }
                 _ => unsupported_err!(expr.span, format!("lifetime/const type arguments"), expr),
             }
@@ -706,7 +706,7 @@ pub(crate) fn expr_tuple_datatype_ctor_to_vir<'tcx>(
     modifier: ExprModifier,
 ) -> Result<vir::ast::Expr, VirErr> {
     let tcx = bctx.ctxt.tcx;
-    let expr_typ = typ_of_node(bctx, &expr.hir_id);
+    let expr_typ = typ_of_node(bctx, &expr.hir_id, false);
     let ctor_of = if let Res::Def(DefKind::Ctor(ctor_of, ctor_kind), _def_id) = res {
         unsupported_unless!(
             ctor_of == &rustc_hir::def::CtorOf::Variant
@@ -847,7 +847,7 @@ pub(crate) fn pattern_to_vir<'tcx>(
         }
         _ => return unsupported_err!(pat.span, "complex pattern", pat),
     };
-    let pat_typ = typ_of_node(bctx, &pat.hir_id);
+    let pat_typ = typ_of_node(bctx, &pat.hir_id, false);
     let pattern = spanned_typed_new(pat.span, &pat_typ, pattern);
     let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
     erasure_info.resolved_pats.push((pat.span.data(), pattern.clone()));
@@ -1022,7 +1022,7 @@ fn invariant_block_to_vir<'tcx>(
                     .collect(),
             );
             let vir_expr = body.expr.map(|expr| expr_to_vir(bctx, &expr, modifier)).transpose()?;
-            let ty = typ_of_node(bctx, &e.hir_id);
+            let ty = typ_of_node(bctx, &e.hir_id, false);
             // NOTE: we use body.span here instead of e.span
             // body.span leads to better error messages
             // (e.g., the "Cannot show invariant holds at end of block" error)
@@ -1037,11 +1037,11 @@ fn invariant_block_to_vir<'tcx>(
     let vir_arg = expr_to_vir(bctx, &inv_arg, modifier)?;
 
     let name = Arc::new(pat_to_var(inner_pat));
-    let inner_ty = typ_of_node(bctx, &inner_hir);
+    let inner_ty = typ_of_node(bctx, &inner_hir, false);
     let vir_binder = Arc::new(BinderX { name, a: inner_ty });
 
     let e = ExprX::OpenInvariant(vir_arg, vir_binder, vir_body);
-    Ok(spanned_typed_new(expr.span, &typ_of_node(bctx, &expr.hir_id), e))
+    Ok(spanned_typed_new(expr.span, &typ_of_node(bctx, &expr.hir_id, false), e))
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Copy)]
@@ -1061,9 +1061,7 @@ fn is_expr_typ_mut_ref<'tcx>(
     match bctx.types.node_type(expr.hir_id).kind() {
         TyKind::Ref(_, _tys, rustc_ast::Mutability::Not) => Ok(ExprModifier::Regular),
         TyKind::Ref(_, _tys, rustc_ast::Mutability::Mut) => Ok(ExprModifier::DerefMut),
-        TyKind::Adt(_, _) => Ok(ExprModifier::Regular),
-        TyKind::Tuple(_) => Ok(ExprModifier::Regular),
-        _ => unsupported_err!(expr.span, "dereferencing this type is unsupported", expr),
+        _ => Ok(ExprModifier::Regular),
     }
 }
 
@@ -1089,7 +1087,7 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
     let tcx = bctx.ctxt.tcx;
     let tc = bctx.types;
     let expr_typ = || match modifier {
-        ExprModifier::Regular | ExprModifier::AddrOf => typ_of_node(bctx, &expr.hir_id),
+        ExprModifier::Regular | ExprModifier::AddrOf => typ_of_node(bctx, &expr.hir_id, false),
         // TODO(utaal): propagate this error, instead of crashing
         ExprModifier::DerefMut => typ_of_node_expect_mut_ref(bctx, &expr.hir_id, expr.span)
             .expect("unexpected non-mut-ref type here"),
@@ -1197,7 +1195,7 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                     let vir_fun = expr_to_vir(bctx, fun, modifier)?;
                     let args: Vec<&'tcx Expr<'tcx>> = args_slice.iter().collect();
                     let vir_args = vec_map_result(&args, |arg| expr_to_vir(bctx, arg, modifier))?;
-                    let expr_typ = typ_of_node(bctx, &expr.hir_id);
+                    let expr_typ = typ_of_node(bctx, &expr.hir_id, false);
                     let target = CallTarget::FnSpec(vir_fun);
                     let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
                     // Only spec closures are currently supported:
@@ -1220,7 +1218,9 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                 let c = vir::ast::Constant::Bool(b);
                 Ok(mk_expr(ExprX::Const(c)))
             }
-            rustc_ast::LitKind::Int(i, _) => mk_lit_int(false, i, typ_of_node(bctx, &expr.hir_id)),
+            rustc_ast::LitKind::Int(i, _) => {
+                mk_lit_int(false, i, typ_of_node(bctx, &expr.hir_id, false))
+            }
             _ => {
                 panic!("unexpected constant: {:?}", lit)
             }
@@ -1250,7 +1250,7 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                     ..
                 }) = &arg.kind
                 {
-                    mk_lit_int(true, *i, typ_of_node(bctx, &expr.hir_id))?
+                    mk_lit_int(true, *i, typ_of_node(bctx, &expr.hir_id, false))?
                 } else {
                     expr_to_vir(bctx, arg, modifier)?
                 };
@@ -1410,7 +1410,7 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                 };
                 (datatype_path, variant_name, field_name)
             } else {
-                let lhs_typ = typ_of_node(bctx, &lhs.hir_id);
+                let lhs_typ = typ_of_node(bctx, &lhs.hir_id, false);
                 if let TypX::Tuple(ts) = &*lhs_typ {
                     let field: usize =
                         str::parse(&name.as_str()).expect("integer index into tuple");

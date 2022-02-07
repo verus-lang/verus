@@ -198,11 +198,10 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
     let (is_pure, term) = match &exp.x {
         ExpX::Const(c) => (true, Arc::new(TermX::App(App::Const(c.clone()), Arc::new(vec![])))),
         ExpX::Var(x) => (true, Arc::new(TermX::Var(x.clone()))),
-        ExpX::VarLoc(x) => (true, Arc::new(TermX::Var(x.clone()))), // TODO ???
+        ExpX::VarLoc(..) | ExpX::Loc(..) => panic!("unexpected Loc/VarLoc in quantifier"),
         ExpX::VarAt(x, _) => {
             (true, Arc::new(TermX::App(App::VarAt(x.clone(), VarAt::Pre), Arc::new(vec![]))))
         }
-        ExpX::Loc(e0) => gather_terms(ctxt, ctx, e0, depth), // TODO ???
         ExpX::Old(_, _) => panic!("internal error: Old"),
         ExpX::Call(x, typs, args) => {
             let (is_pures, terms): (Vec<bool>, Vec<Term>) =

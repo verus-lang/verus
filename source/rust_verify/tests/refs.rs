@@ -228,12 +228,33 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_mut_ref_trigger_0 code! {
+        #[verifier(external_body)]
+        struct A {
+            _p: std::marker::PhantomData<()>,
+        }
+
+        impl A {
+            #[spec]
+            #[verifier(external_body)]
+            fn index(&self, i: nat) -> nat { unimplemented!() }
+        }
+
+        #[exec]
+        fn add1(a: &mut A, i: usize) {
+            ensures(forall(|j: nat| a.index(j) == old(a).index(j) + 1));
+            assume(false);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     // TODO(utaal) support old(v).call()
-    #[ignore] #[test] test_mut_ref_old_trigger code! {
+    #[test] test_mut_ref_old_trigger code! {
         use crate::pervasive::vec::*;
 
         fn add1(v: &mut Vec<u64>) {
-            requires(forall(|i: nat| i < v.len() >>= old(v).index(i) < 10));
+            requires(forall(|i: nat| i < old(v).len() >>= old(v).index(i) < 10));
         }
     } => Ok(())
 }

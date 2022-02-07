@@ -1,5 +1,7 @@
 use crate::ast::{Expr, ExprX, FunctionX, GenericBoundX, Krate, KrateX, Typ, TypX, UnaryOpr};
-use crate::ast_visitor::{expr_visitor_check, typ_visitor_check};
+use crate::ast_visitor::{
+    expr_visitor_check, expr_visitor_dfs, typ_visitor_check, VisitorControlFlow, VisitorScopeMap,
+};
 pub use air::ast_util::{ident_binder, str_ident};
 
 fn check_expr_simplified(expr: &Expr) -> Result<(), ()> {
@@ -21,6 +23,8 @@ fn check_typ_simplified(typ: &Typ) -> Result<(), ()> {
 
 /// Panics if the ast uses nodes that should have been removed by ast_simplify
 pub fn check_krate_simplified(krate: &Krate) {
+    check_krate(krate);
+
     let KrateX { functions, datatypes, module_ids: _ } = &**krate;
 
     for function in functions {
@@ -61,6 +65,52 @@ pub fn check_krate_simplified(krate: &Krate) {
                 typ_visitor_check(typ, &mut check_typ_simplified)
                     .expect("datatype field typ uses node that should have been simplified");
             }
+        }
+    }
+}
+
+fn expr_no_loc_in_quant(
+    expr: &Expr,
+    scope_map: &mut VisitorScopeMap,
+    in_quant: bool,
+) -> VisitorControlFlow<()> {
+    match &expr.x {
+        ExprX::Quant(_q, _b, qexpr) => match expr_visitor_dfs(
+            qexpr,
+            scope_map,
+            &mut |scope_map: &mut VisitorScopeMap, expr: &Expr| {
+                expr_no_loc_in_quant(expr, scope_map, true)
+            },
+        ) {
+            VisitorControlFlow::Recurse | VisitorControlFlow::Return => VisitorControlFlow::Return,
+            VisitorControlFlow::Stop(()) => VisitorControlFlow::Stop(()),
+        },
+        ExprX::VarLoc(_) | ExprX::Loc(_) if in_quant => VisitorControlFlow::Stop(()),
+        _ => VisitorControlFlow::Recurse,
+    }
+}
+
+/// Panics if the ast uses nodes that should have been removed by ast_simplify
+pub fn check_krate(krate: &Krate) {
+    let KrateX { functions, datatypes: _, module_ids: _ } = &**krate;
+
+    for function in functions {
+        let FunctionX { require, ensure, decrease, body, .. } = &function.x;
+
+        let all_exprs =
+            require.iter().chain(ensure.iter()).chain(decrease.iter()).chain(body.iter());
+        for expr in all_exprs {
+            match expr_visitor_dfs(
+                expr,
+                &mut air::scope_map::ScopeMap::new(),
+                &mut |scope_map: &mut VisitorScopeMap, expr: &Expr| {
+                    expr_no_loc_in_quant(expr, scope_map, false)
+                },
+            ) {
+                VisitorControlFlow::Recurse | VisitorControlFlow::Return => Ok(()),
+                VisitorControlFlow::Stop(()) => Err(()),
+            }
+            .expect("function AST expression uses node that should have been simplified");
         }
     }
 }
