@@ -303,8 +303,8 @@ pub enum ExprX {
     Quant(Quant, Binders<Typ>, Expr),
     /// Specification closure
     Closure(Binders<Typ>, Expr),
-    /// Choose a specification value satisfying a predicate
-    Choose(Binder<Typ>, Expr),
+    /// Choose specification values satisfying a condition, compute body
+    Choose { params: Binders<Typ>, cond: Expr, body: Expr },
     /// Assign to local variable
     Assign(Expr, Expr),
     /// Reveal definition of an opaque function with some integer fuel amount
@@ -463,7 +463,8 @@ pub struct DatatypeX {
     pub path: Path,
     pub visibility: Visibility,
     pub transparency: DatatypeTransparency,
-    pub typ_params: Idents,
+    /// Each type parameter is (name: Ident, strictly_positive: bool)
+    pub typ_params: Arc<Vec<(Ident, bool)>>,
     pub variants: Variants,
     pub mode: Mode,
     // For token types that need to be 'unforgeable'. Only makes sense for 'Proof' types.

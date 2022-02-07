@@ -370,13 +370,18 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
             state.types.pop_scope();
             mk_expr(ExprX::Closure(Arc::new(bs), e1))
         }
-        ExprX::Choose(binder, e1) => {
+        ExprX::Choose { params, cond, body } => {
+            let mut bs: Vec<Binder<Typ>> = Vec::new();
             state.types.push_scope(true);
-            let typ = coerce_typ_to_poly(ctx, &binder.a);
-            let _ = state.types.insert(binder.name.clone(), typ.clone());
-            let e1 = poly_expr(ctx, state, e1);
+            for binder in params.iter() {
+                let typ = coerce_typ_to_poly(ctx, &binder.a);
+                let _ = state.types.insert(binder.name.clone(), typ.clone());
+                bs.push(binder.new_a(typ));
+            }
+            let cond = coerce_expr_to_native(ctx, &poly_expr(ctx, state, cond));
+            let body = coerce_expr_to_poly(ctx, &poly_expr(ctx, state, body));
             state.types.pop_scope();
-            mk_expr_typ(&typ, ExprX::Choose(binder.new_a(typ.clone()), e1))
+            mk_expr_typ(&body.clone().typ, ExprX::Choose { params: Arc::new(bs), cond, body })
         }
         ExprX::Assign(e1, e2) => {
             let e1 = poly_expr(ctx, state, e1);

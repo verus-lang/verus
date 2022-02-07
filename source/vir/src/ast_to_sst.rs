@@ -554,15 +554,17 @@ pub(crate) fn expr_to_stm_opt(
             let bnd = Spanned::new(body.span.clone(), BndX::Lambda(Arc::new(boxed_params)));
             Ok((vec![], Some(mk_exp(ExpX::Bind(bnd, exp)))))
         }
-        ExprX::Choose(binder, body) => {
+        ExprX::Choose { params, cond, body } => {
             state.push_scope();
-            state.declare_binders(&Arc::new(vec![binder.clone()]));
-            let exp = expr_to_exp_state(ctx, state, body)?;
+            state.declare_binders(&params);
+            let cond_exp = expr_to_exp_state(ctx, state, cond)?;
+            let body_exp = expr_to_exp_state(ctx, state, body)?;
             state.pop_scope();
-            let vars = vec![binder.name.clone()];
-            let trigs = crate::triggers::build_triggers(ctx, &expr.span, &vars, &exp)?;
-            let bnd = Spanned::new(body.span.clone(), BndX::Choose(binder.clone(), trigs));
-            Ok((vec![], Some(mk_exp(ExpX::Bind(bnd, exp)))))
+            let vars = vec_map(params, |p| p.name.clone());
+            let trigs = crate::triggers::build_triggers(ctx, &expr.span, &vars, &cond_exp)?;
+            let bnd =
+                Spanned::new(body.span.clone(), BndX::Choose(params.clone(), trigs, cond_exp));
+            Ok((vec![], Some(mk_exp(ExpX::Bind(bnd, body_exp)))))
         }
         ExprX::Fuel(x, fuel) => {
             let stm = Spanned::new(expr.span.clone(), StmX::Fuel(x.clone(), *fuel));

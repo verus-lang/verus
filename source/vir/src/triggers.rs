@@ -129,11 +129,10 @@ fn get_manual_triggers(state: &mut State, exp: &Exp) -> Result<(), VirErr> {
             ExpX::Bind(bnd, _) => {
                 let bvars: Vec<Ident> = match &bnd.x {
                     BndX::Let(binders) => binders.iter().map(|b| b.name.clone()).collect(),
-                    BndX::Quant(_, binders, _) | BndX::Lambda(binders) => {
+                    BndX::Quant(_, binders, _)
+                    | BndX::Lambda(binders)
+                    | BndX::Choose(binders, _, _) => {
                         binders.iter().map(|b| b.name.clone()).collect()
-                    }
-                    BndX::Choose(binder, _) => {
-                        vec![binder.name.clone()]
                     }
                 };
                 for x in bvars {

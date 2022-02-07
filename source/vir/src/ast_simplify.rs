@@ -166,8 +166,18 @@ fn small_loc_or_temp(state: &mut State, expr: &Expr) -> SmallLocOrTemp {
             .map_expr(|expr1| expr.new_x(ExprX::Quant(*quant, binders.clone(), expr1))),
         ExprX::Closure(params, body) => small_loc_or_temp(state, body)
             .map_expr(|b| expr.new_x(ExprX::Closure(params.clone(), b))),
-        ExprX::Choose(binder, e1) => small_loc_or_temp(state, e1)
-            .map_expr(|expr1| expr.new_x(ExprX::Choose(binder.clone(), expr1))),
+        ExprX::Choose { params, cond, body } => {
+            let (stmts, exprs, contains_loc) =
+                small_loc_or_temp_exprs(state, &[cond.clone(), body.clone()]);
+            let mut exprs = exprs.into_iter();
+            let conds = exprs.next().unwrap();
+            let bodys = exprs.next().unwrap();
+            SmallLocOrTemp(
+                stmts,
+                expr.new_x(ExprX::Choose { params: params.clone(), cond: conds, body: bodys }),
+                contains_loc,
+            )
+        }
         ExprX::Assign(e1, e2) => {
             let (stmts, exprs, contains_loc) =
                 small_loc_or_temp_exprs(state, &[e1.clone(), e2.clone()]);
@@ -523,7 +533,7 @@ fn simplify_function(
 fn simplify_datatype(state: &mut State, datatype: &Datatype) -> Result<Datatype, VirErr> {
     let mut local =
         LocalCtxt { span: datatype.span.clone(), typ_params: Vec::new(), bounds: HashMap::new() };
-    for x in datatype.x.typ_params.iter() {
+    for (x, _strict_pos) in datatype.x.typ_params.iter() {
         local.typ_params.push(x.clone());
         local.bounds.insert(x.clone(), Arc::new(GenericBoundX::None));
     }
@@ -576,7 +586,7 @@ pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirEr
     for (arity, path) in state.tuple_typs {
         let visibility = Visibility { owning_module: None, is_private: false };
         let transparency = DatatypeTransparency::Always;
-        let typ_params = Arc::new((0..arity).map(|i| prefix_tuple_param(i)).collect());
+        let typ_params = Arc::new((0..arity).map(|i| (prefix_tuple_param(i), true)).collect());
         let mut fields: Vec<Field> = Vec::new();
         for i in 0..arity {
             let typ = Arc::new(TypX::TypParam(prefix_tuple_param(i)));

@@ -59,6 +59,11 @@ where
     Ok(Arc::new(v))
 }
 
+enum QuantOrChoose {
+    Quant(Quant),
+    Choose(Expr),
+}
+
 pub struct Parser {}
 
 impl Parser {
@@ -134,18 +139,21 @@ impl Parser {
                         return self.node_to_let_expr(binders, e);
                     }
                     [Node::Atom(s), Node::List(binders), e] if s.to_string() == "forall" => {
-                        return self.node_to_quant_expr(Some(Quant::Forall), binders, e);
+                        let quant_or_choose = QuantOrChoose::Quant(Quant::Forall);
+                        return self.node_to_quant_expr(quant_or_choose, binders, e);
                     }
                     [Node::Atom(s), Node::List(binders), e] if s.to_string() == "exists" => {
-                        return self.node_to_quant_expr(Some(Quant::Exists), binders, e);
+                        let quant_or_choose = QuantOrChoose::Quant(Quant::Exists);
+                        return self.node_to_quant_expr(quant_or_choose, binders, e);
                     }
                     [Node::Atom(s), Node::List(binders), e] if s.to_string() == "lambda" => {
                         let binders = self.nodes_to_binders(binders, &|n| self.node_to_typ(n))?;
                         let bind = Arc::new(BindX::Lambda(binders));
                         return Ok(Arc::new(ExprX::Bind(bind, self.node_to_expr(e)?)));
                     }
-                    [Node::Atom(s), binder, e] if s.to_string() == "choose" => {
-                        return self.node_to_quant_expr(None, &[binder.clone()], e);
+                    [Node::Atom(s), Node::List(binders), e1, e2] if s.to_string() == "choose" => {
+                        let quant_or_choose = QuantOrChoose::Choose(self.node_to_expr(e2)?);
+                        return self.node_to_quant_expr(quant_or_choose, binders, e1);
                     }
                     _ => {}
                 }
@@ -312,16 +320,14 @@ impl Parser {
         Ok(Arc::new(triggers))
     }
 
-    // quant = None: Choose
-    // quant = Some(Quant): forall/exists
     fn node_to_quant_expr(
         &self,
-        quant: Option<Quant>,
+        quant_or_choose: QuantOrChoose,
         binder_nodes: &[Node],
         expr: &Node,
     ) -> Result<Expr, String> {
         let binders = self.nodes_to_binders(binder_nodes, &|n| self.node_to_typ(n))?;
-        let (body, triggers) = match &expr {
+        let (expr, triggers) = match &expr {
             Node::List(nodes) if nodes.len() >= 2 => match &nodes[0] {
                 Node::Atom(s) if s.to_string() == "!" => {
                     (&nodes[1], self.nodes_to_triggers(&nodes[2..])?)
@@ -330,14 +336,12 @@ impl Parser {
             },
             _ => (expr, Arc::new(vec![])),
         };
-        let bind = match quant {
-            None => {
-                assert_eq!(binders.len(), 1);
-                Arc::new(BindX::Choose(binders[0].clone(), triggers))
-            }
-            Some(quant) => Arc::new(BindX::Quant(quant, binders, triggers)),
+        let expr = self.node_to_expr(expr)?;
+        let (body, bind) = match quant_or_choose {
+            QuantOrChoose::Quant(quant) => (expr, BindX::Quant(quant, binders, triggers)),
+            QuantOrChoose::Choose(body) => (body, BindX::Choose(binders, triggers, expr)),
         };
-        Ok(Arc::new(ExprX::Bind(bind, self.node_to_expr(body)?)))
+        Ok(Arc::new(ExprX::Bind(Arc::new(bind), body)))
     }
 
     pub(crate) fn node_to_stmt(&self, node: &Node) -> Result<Stmt, String> {

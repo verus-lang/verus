@@ -7,15 +7,15 @@ use crate::pervasive::set::*;
 
 /// map type for specifications
 #[verifier(external_body)]
-pub struct Map<K, V> {
+pub struct Map<#[verifier(maybe_negative)] K, #[verifier(strictly_positive)] V> {
     dummy: std::marker::PhantomData<(K, V)>,
 }
 
 impl<K, V> Map<K, V> {
     #[spec]
-    #[verifier(pub_abstract)]
+    #[verifier(external_body)]
     pub fn empty() -> Map<K, V> {
-        arbitrary()
+        unimplemented!()
     }
 
     #[spec]
@@ -24,21 +24,21 @@ impl<K, V> Map<K, V> {
     }
 
     #[spec]
-    #[verifier(pub_abstract)]
+    #[verifier(external_body)]
     pub fn dom(self) -> Set<K> {
-        arbitrary()
+        unimplemented!()
     }
 
     #[spec]
-    #[verifier(pub_abstract)]
+    #[verifier(external_body)]
     pub fn index(self, key: K) -> V {
-        arbitrary()
+        unimplemented!()
     }
 
     #[spec]
-    #[verifier(pub_abstract)]
+    #[verifier(external_body)]
     pub fn insert(self, key: K, value: V) -> Map<K, V> {
-        arbitrary()
+        unimplemented!()
     }
 
     #[spec]

@@ -113,10 +113,10 @@ macro_rules! atomic_types {
 
 macro_rules! atomic_common_methods {
     ($at_ident:ident, $p_ident:ident, $rust_ty: ty, $value_ty: ty) => {
-        #[verifier(pub_abstract)]
+        #[verifier(external_body)]
         #[spec]
         pub fn view(&self) -> int {
-            arbitrary()
+            unimplemented!()
         }
 
         #[inline(always)]

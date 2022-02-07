@@ -45,7 +45,7 @@
 //! #[verifier(external)] functions are kept verbatim.
 //! #[verifier(external_body)] functions, on the other hand, need erasure to remove requires/ensures.
 
-use crate::rust_to_vir_base::{get_mode, get_verifier_attrs};
+use crate::attributes::{get_mode, get_verifier_attrs};
 use crate::rust_to_vir_expr::attrs_is_invariant_block;
 use crate::util::{from_raw_span, vec_map};
 use crate::{unsupported, unsupported_unless};
@@ -946,7 +946,20 @@ fn erase_fn(ctxt: &Ctxt, mctxt: &mut MCtxt, f: &FnKind, external_body: bool) -> 
     }
     let Generics { params, where_clause, span: generics_span } = generics;
     let mut new_params: Vec<GenericParam> = Vec::new();
-    let mut typ_bounds_iter = f_vir.x.typ_bounds.iter();
+
+    // Skip over type params in impl<...>
+    let mut num_typ_params = 0;
+    for param in params.iter() {
+        match &param.kind {
+            GenericParamKind::Type { .. } => {
+                num_typ_params += 1;
+            }
+            _ => {}
+        }
+    }
+    let n_skip = f_vir.x.typ_bounds.len() - num_typ_params;
+    let mut typ_bounds_iter = f_vir.x.typ_bounds.iter().skip(n_skip);
+
     for param in params.iter() {
         match param.kind {
             GenericParamKind::Lifetime => {
@@ -1079,6 +1092,7 @@ fn erase_item(ctxt: &Ctxt, mctxt: &mut MCtxt, item: &Item) -> Vec<P<Item>> {
                     items.push(P(item));
                 }
             }
+            // TODO we may need to erase some generic params
             // for asymptotic efficiency, don't call kind.clone():
             let ImplKind { unsafety, polarity, defaultness, constness, .. } = **kind;
             let ImplKind { generics, of_trait, self_ty, .. } = &**kind;

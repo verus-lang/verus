@@ -221,10 +221,13 @@ where
                     expr_visitor_control_flow!(expr_visitor_dfs(body, map, mf));
                     map.pop_scope();
                 }
-                ExprX::Choose(binder, e1) => {
+                ExprX::Choose { params, cond, body } => {
                     map.push_scope(true);
-                    let _ = map.insert(binder.name.clone(), binder.a.clone());
-                    expr_visitor_control_flow!(expr_visitor_dfs(e1, map, mf));
+                    for binder in params.iter() {
+                        let _ = map.insert(binder.name.clone(), binder.a.clone());
+                    }
+                    expr_visitor_control_flow!(expr_visitor_dfs(cond, map, mf));
+                    expr_visitor_control_flow!(expr_visitor_dfs(body, map, mf));
                     map.pop_scope();
                 }
                 ExprX::Assign(e1, e2) => {
@@ -414,13 +417,17 @@ where
             map.pop_scope();
             ExprX::Closure(Arc::new(params), body)
         }
-        ExprX::Choose(binder, e1) => {
-            let binder = binder.map_result(|t| map_typ_visitor_env(t, env, ft))?;
+        ExprX::Choose { params, cond, body } => {
+            let params =
+                vec_map_result(&**params, |b| b.map_result(|t| map_typ_visitor_env(t, env, ft)))?;
             map.push_scope(true);
-            let _ = map.insert(binder.name.clone(), binder.a.clone());
-            let expr1 = map_expr_visitor_env(e1, map, env, fe, fs, ft)?;
+            for binder in params.iter() {
+                let _ = map.insert(binder.name.clone(), binder.a.clone());
+            }
+            let cond = map_expr_visitor_env(cond, map, env, fe, fs, ft)?;
+            let body = map_expr_visitor_env(body, map, env, fe, fs, ft)?;
             map.pop_scope();
-            ExprX::Choose(binder, expr1)
+            ExprX::Choose { params: Arc::new(params), cond, body }
         }
         ExprX::Assign(e1, e2) => {
             let expr1 = map_expr_visitor_env(e1, map, env, fe, fs, ft)?;

@@ -1,9 +1,8 @@
+use crate::attributes::get_verifier_attrs;
 use crate::context::BodyCtxt;
-use crate::util::{err_span_str, err_span_string, unsupported_err_span};
+use crate::util::{err_span_str, unsupported_err_span};
 use crate::{unsupported, unsupported_err, unsupported_err_unless};
-use rustc_ast::token::{Token, TokenKind};
-use rustc_ast::tokenstream::{TokenStream, TokenTree};
-use rustc_ast::{AttrKind, Attribute, IntTy, MacArgs, Mutability, UintTy};
+use rustc_ast::{IntTy, Mutability, UintTy};
 use rustc_hir::def::{DefKind, Res};
 use rustc_hir::definitions::DefPath;
 use rustc_hir::{
@@ -16,9 +15,7 @@ use rustc_span::def_id::{DefId, LOCAL_CRATE};
 use rustc_span::symbol::Ident;
 use rustc_span::Span;
 use std::sync::Arc;
-use vir::ast::{
-    GenericBoundX, Idents, IntRange, Mode, Path, PathX, Typ, TypBounds, TypX, Typs, VirErr,
-};
+use vir::ast::{GenericBoundX, Idents, IntRange, Path, PathX, Typ, TypBounds, TypX, Typs, VirErr};
 use vir::ast_util::{path_as_rust_name, types_equal};
 
 pub(crate) fn def_path_to_vir_path<'tcx>(tcx: TyCtxt<'tcx>, def_path: DefPath) -> Path {
@@ -175,320 +172,6 @@ pub(crate) fn mk_visibility<'tcx>(
         owning_module: owning_module.clone(),
         is_private: is_visibility_private(&vis.node, true),
     }
-}
-
-#[derive(Debug)]
-pub(crate) enum AttrTree {
-    Fun(Span, String, Option<Box<[AttrTree]>>),
-    Eq(Span, String, String),
-}
-
-pub(crate) fn token_to_string(token: &Token) -> Result<Option<String>, ()> {
-    match token.kind {
-        TokenKind::Literal(lit) => Ok(Some(lit.symbol.as_str().to_string())),
-        TokenKind::Ident(symbol, _) => Ok(Some(symbol.as_str().to_string())),
-        TokenKind::Comma => Ok(None),
-        _ => Err(()),
-    }
-}
-
-pub(crate) fn token_stream_to_trees(
-    span: Span,
-    stream: &TokenStream,
-) -> Result<Box<[AttrTree]>, ()> {
-    let mut token_trees: Vec<TokenTree> = Vec::new();
-    for x in stream.trees() {
-        token_trees.push(x);
-    }
-    let mut i = 0;
-    let mut trees: Vec<AttrTree> = Vec::new();
-    while i < token_trees.len() {
-        match &token_trees[i] {
-            TokenTree::Token(token) => {
-                if let Some(name) = token_to_string(token)? {
-                    let fargs = if i + 1 < token_trees.len() {
-                        if let TokenTree::Delimited(_, _, token_stream) = &token_trees[i + 1] {
-                            i += 1;
-                            Some(token_stream_to_trees(span, token_stream)?)
-                        } else {
-                            None
-                        }
-                    } else {
-                        None
-                    };
-                    trees.push(AttrTree::Fun(span, name, fargs));
-                }
-                i += 1;
-            }
-            _ => return Err(()),
-        }
-    }
-    Ok(trees.into_boxed_slice())
-}
-
-pub(crate) fn mac_args_to_tree(span: Span, name: String, args: &MacArgs) -> Result<AttrTree, ()> {
-    match args {
-        MacArgs::Empty => Ok(AttrTree::Fun(span, name, None)),
-        MacArgs::Delimited(_, _, token_stream) => {
-            Ok(AttrTree::Fun(span, name, Some(token_stream_to_trees(span, token_stream)?)))
-        }
-        MacArgs::Eq(_, token) => match token_to_string(token)? {
-            None => Err(()),
-            Some(token) => Ok(AttrTree::Eq(span, name, token)),
-        },
-    }
-}
-
-pub(crate) fn attr_to_tree(attr: &Attribute) -> Result<AttrTree, ()> {
-    match &attr.kind {
-        AttrKind::Normal(item, _) => match &item.path.segments[..] {
-            [segment] => {
-                let name = ident_to_var(&segment.ident).as_str().to_string();
-                mac_args_to_tree(attr.span, name, &item.args)
-            }
-            _ => Err(()),
-        },
-        _ => Err(()),
-    }
-}
-
-pub(crate) fn attrs_to_trees(attrs: &[Attribute]) -> Vec<AttrTree> {
-    let mut attr_trees: Vec<AttrTree> = Vec::new();
-    for attr in attrs {
-        if let Ok(tree) = attr_to_tree(attr) {
-            attr_trees.push(tree);
-        }
-    }
-    attr_trees
-}
-
-pub(crate) enum Attr {
-    // specify mode (spec, proof, exec)
-    Mode(Mode),
-    // function return mode (spec, proof, exec)
-    ReturnMode(Mode),
-    // parse function to get header, but don't verify body
-    ExternalBody,
-    // don't parse function; function can't be called directly from verified code
-    External,
-    // hide body from other modules
-    Abstract,
-    // hide body (from all modules) until revealed
-    Opaque,
-    // export function's require/ensure as global forall
-    BroadcastForall,
-    // when used in a spec context, promote to spec by inserting .view()
-    Autoview,
-    // add manual trigger to expression inside quantifier
-    Trigger(Option<Vec<u64>>),
-    // custom error string to report for precondition failures
-    CustomReqErr(String),
-    // verify using bitvector theory
-    BitVector,
-    // for unforgeable token types
-    Unforgeable,
-    // for 'atomic' operations (e.g., CAS)
-    Atomic,
-    // specifies an invariant block
-    InvariantBlock,
-    // an enum variant is_Variant
-    IsVariant,
-}
-
-fn get_trigger_arg(span: Span, attr_tree: &AttrTree) -> Result<u64, VirErr> {
-    let i = match attr_tree {
-        AttrTree::Fun(_, name, None) => match name.parse::<u64>() {
-            Ok(i) => Some(i),
-            _ => None,
-        },
-        _ => None,
-    };
-    match i {
-        Some(i) => Ok(i),
-        None => err_span_string(span, format!("expected integer constant, found {:?}", &attr_tree)),
-    }
-}
-
-pub(crate) fn parse_attrs(attrs: &[Attribute]) -> Result<Vec<Attr>, VirErr> {
-    let mut v: Vec<Attr> = Vec::new();
-    for attr in attrs_to_trees(attrs) {
-        match attr {
-            AttrTree::Fun(_, name, None) if name == "spec" => v.push(Attr::Mode(Mode::Spec)),
-            AttrTree::Fun(_, name, None) if name == "proof" => v.push(Attr::Mode(Mode::Proof)),
-            AttrTree::Fun(_, name, None) if name == "exec" => v.push(Attr::Mode(Mode::Exec)),
-            AttrTree::Fun(_, name, None) if name == "opaque" => v.push(Attr::Opaque),
-            AttrTree::Fun(_, name, None) if name == "trigger" => v.push(Attr::Trigger(None)),
-            AttrTree::Fun(span, name, Some(args)) if name == "trigger" => {
-                let mut groups: Vec<u64> = Vec::new();
-                for arg in args.iter() {
-                    groups.push(get_trigger_arg(span, arg)?);
-                }
-                if groups.len() == 0 {
-                    return err_span_str(
-                        span,
-                        "expected either #[trigger] or non-empty #[trigger(...)]",
-                    );
-                }
-                v.push(Attr::Trigger(Some(groups)));
-            }
-            AttrTree::Fun(span, name, args) if name == "verifier" => match &args {
-                Some(box [AttrTree::Fun(_, arg, None)]) if arg == "external_body" => {
-                    v.push(Attr::ExternalBody)
-                }
-                Some(box [AttrTree::Fun(_, arg, None)]) if arg == "external" => {
-                    v.push(Attr::External)
-                }
-                Some(box [AttrTree::Fun(_, arg, None)]) if arg == "pub_abstract" => {
-                    v.push(Attr::Abstract)
-                }
-                Some(box [AttrTree::Fun(_, arg, None)]) if arg == "broadcast_forall" => {
-                    v.push(Attr::BroadcastForall)
-                }
-                Some(box [AttrTree::Fun(_, arg, None)]) if arg == "autoview" => {
-                    v.push(Attr::Autoview)
-                }
-                Some(box [AttrTree::Fun(_, arg, None)]) if arg == "unforgeable" => {
-                    v.push(Attr::Unforgeable)
-                }
-                Some(box [AttrTree::Fun(_, arg, None)]) if arg == "atomic" => v.push(Attr::Atomic),
-                Some(box [AttrTree::Fun(_, arg, None)]) if arg == "invariant_block" => {
-                    v.push(Attr::InvariantBlock)
-                }
-                Some(box [AttrTree::Fun(_, arg, None)]) if arg == "is_variant" => {
-                    v.push(Attr::IsVariant)
-                }
-                Some(box [AttrTree::Fun(_, arg, Some(box [AttrTree::Fun(_, msg, None)]))])
-                    if arg == "custom_req_err" =>
-                {
-                    v.push(Attr::CustomReqErr(msg.clone()))
-                }
-                Some(box [AttrTree::Fun(_, arg, None)]) if arg == "bit_vector" => {
-                    v.push(Attr::BitVector)
-                }
-                Some(box [AttrTree::Fun(_, arg, Some(box [AttrTree::Fun(_, name, None)]))])
-                    if arg == "returns" && name == "spec" =>
-                {
-                    v.push(Attr::ReturnMode(Mode::Spec))
-                }
-                Some(box [AttrTree::Fun(_, arg, Some(box [AttrTree::Fun(_, name, None)]))])
-                    if arg == "returns" && name == "proof" =>
-                {
-                    v.push(Attr::ReturnMode(Mode::Proof))
-                }
-                Some(box [AttrTree::Fun(_, arg, Some(box [AttrTree::Fun(_, name, None)]))])
-                    if arg == "returns" && name == "exec" =>
-                {
-                    v.push(Attr::ReturnMode(Mode::Exec))
-                }
-                _ => return err_span_str(span, "unrecognized verifier attribute"),
-            },
-            _ => {}
-        }
-    }
-    Ok(v)
-}
-
-pub(crate) fn parse_attrs_opt(attrs: &[Attribute]) -> Vec<Attr> {
-    match parse_attrs(attrs) {
-        Ok(attrs) => attrs,
-        Err(_) => vec![],
-    }
-}
-
-pub(crate) fn get_mode(default_mode: Mode, attrs: &[Attribute]) -> Mode {
-    let mut mode = default_mode;
-    for attr in parse_attrs_opt(attrs) {
-        match attr {
-            Attr::Mode(m) => mode = m,
-            _ => {}
-        }
-    }
-    mode
-}
-
-pub(crate) fn get_var_mode(function_mode: Mode, attrs: &[Attribute]) -> Mode {
-    let default_mode = if function_mode == Mode::Proof { Mode::Spec } else { function_mode };
-    get_mode(default_mode, attrs)
-}
-
-pub(crate) fn get_ret_mode(function_mode: Mode, attrs: &[Attribute]) -> Mode {
-    let mut mode = get_var_mode(function_mode, &[]);
-    for attr in parse_attrs_opt(attrs) {
-        match attr {
-            Attr::ReturnMode(m) => mode = m,
-            _ => {}
-        }
-    }
-    mode
-}
-
-pub(crate) fn get_trigger(attrs: &[Attribute]) -> Result<Vec<Option<u64>>, VirErr> {
-    let mut groups: Vec<Option<u64>> = Vec::new();
-    for attr in parse_attrs(attrs)? {
-        match attr {
-            Attr::Trigger(None) => groups.push(None),
-            Attr::Trigger(Some(group_ids)) => {
-                groups.extend(group_ids.into_iter().map(|id| Some(id)));
-            }
-            _ => {}
-        }
-    }
-    Ok(groups)
-}
-
-pub(crate) fn get_fuel(attrs: &[Attribute]) -> u32 {
-    let mut fuel: u32 = 1;
-    for attr in parse_attrs_opt(attrs) {
-        match attr {
-            Attr::Opaque => fuel = 0,
-            _ => {}
-        }
-    }
-    fuel
-}
-
-pub(crate) struct VerifierAttrs {
-    pub(crate) external_body: bool,
-    pub(crate) external: bool,
-    pub(crate) is_abstract: bool,
-    pub(crate) broadcast_forall: bool,
-    pub(crate) autoview: bool,
-    pub(crate) custom_req_err: Option<String>,
-    pub(crate) bit_vector: bool,
-    pub(crate) unforgeable: bool,
-    pub(crate) atomic: bool,
-    pub(crate) is_variant: bool,
-}
-
-pub(crate) fn get_verifier_attrs(attrs: &[Attribute]) -> Result<VerifierAttrs, VirErr> {
-    let mut vs = VerifierAttrs {
-        external_body: false,
-        external: false,
-        is_abstract: false,
-        broadcast_forall: false,
-        autoview: false,
-        custom_req_err: None,
-        bit_vector: false,
-        unforgeable: false,
-        atomic: false,
-        is_variant: false,
-    };
-    for attr in parse_attrs(attrs)? {
-        match attr {
-            Attr::ExternalBody => vs.external_body = true,
-            Attr::External => vs.external = true,
-            Attr::Abstract => vs.is_abstract = true,
-            Attr::BroadcastForall => vs.broadcast_forall = true,
-            Attr::Autoview => vs.autoview = true,
-            Attr::CustomReqErr(s) => vs.custom_req_err = Some(s.clone()),
-            Attr::BitVector => vs.bit_vector = true,
-            Attr::Unforgeable => vs.unforgeable = true,
-            Attr::Atomic => vs.atomic = true,
-            Attr::IsVariant => vs.is_variant = true,
-            _ => {}
-        }
-    }
-    Ok(vs)
 }
 
 pub(crate) fn get_range(typ: &Typ) -> IntRange {
@@ -795,10 +478,27 @@ pub(crate) fn check_generics_bounds<'tcx>(
     tcx: TyCtxt<'tcx>,
     generics: &'tcx Generics<'tcx>,
     function_decl: bool,
-) -> Result<TypBounds, VirErr> {
+    check_that_external_body_datatype_declares_positivity: bool,
+) -> Result<Vec<(vir::ast::Ident, vir::ast::GenericBound, bool)>, VirErr> {
     let Generics { params, where_clause, span: _ } = generics;
-    let mut typ_params: Vec<(vir::ast::Ident, vir::ast::GenericBound)> = Vec::new();
+    let mut typ_params: Vec<(vir::ast::Ident, vir::ast::GenericBound, bool)> = Vec::new();
     for param in params.iter() {
+        let vattrs = get_verifier_attrs(tcx.hir().attrs(param.hir_id))?;
+        let neg = vattrs.maybe_negative;
+        let pos = vattrs.strictly_positive;
+        if neg && pos {
+            return err_span_str(
+                param.span,
+                "type parameter cannot be both maybe_negative and strictly_positive",
+            );
+        }
+        if check_that_external_body_datatype_declares_positivity && !neg && !pos {
+            return err_span_str(
+                param.span,
+                "in external_body datatype, each type parameter must be either #[verifier(maybe_negative)] or #[verifier(strictly_positive)] (maybe_negative is always safe to use)",
+            );
+        }
+        let strictly_positive = !neg; // strictly_positive is the default
         let GenericParam { hir_id: _, name, bounds, span: _, pure_wrt_drop, kind } = param;
         unsupported_err_unless!(bounds.len() <= 1, generics.span, "generic bounds");
         unsupported_err_unless!(!pure_wrt_drop, generics.span, "generic pure_wrt_drop");
@@ -810,7 +510,7 @@ pub(crate) fn check_generics_bounds<'tcx>(
                 } else {
                     Arc::new(GenericBoundX::None)
                 };
-                typ_params.push((ident, bound));
+                typ_params.push((ident, bound, strictly_positive));
             }
             (
                 ParamName::Plain(_id),
@@ -824,28 +524,55 @@ pub(crate) fn check_generics_bounds<'tcx>(
         }
     }
     unsupported_err_unless!(where_clause.predicates.len() == 0, generics.span, "where clause");
-    Ok(Arc::new(typ_params))
+    Ok(typ_params)
+}
+
+pub(crate) fn check_generics_bounds_fun<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    generics: &'tcx Generics<'tcx>,
+) -> Result<TypBounds, VirErr> {
+    Ok(Arc::new(
+        check_generics_bounds(tcx, generics, true, false)?
+            .into_iter()
+            .map(|(a, b, _)| (a, b))
+            .collect(),
+    ))
 }
 
 pub(crate) fn check_generics<'tcx>(
     tcx: TyCtxt<'tcx>,
     generics: &'tcx Generics<'tcx>,
     function_decl: bool,
-) -> Result<Idents, VirErr> {
-    let typ_bounds = check_generics_bounds(tcx, generics, function_decl)?;
-    let mut typ_params: Vec<vir::ast::Ident> = Vec::new();
-    for (x, bound) in typ_bounds.iter() {
+    check_that_external_body_datatype_declares_positivity: bool,
+) -> Result<Vec<(vir::ast::Ident, bool)>, VirErr> {
+    let typ_bounds = check_generics_bounds(
+        tcx,
+        generics,
+        function_decl,
+        check_that_external_body_datatype_declares_positivity,
+    )?;
+    let mut typ_params: Vec<(vir::ast::Ident, bool)> = Vec::new();
+    for (x, bound, strictly_positive) in typ_bounds.iter() {
         // REVIEW:
         // We currently only allow bounds for functions, not for datatypes,
         // so that datatypes cannot refer to function types.
-        // If we allow function types in fields of datatypes, we will need to have VIR perform
-        // a positivity check (recursive types only allowed in positive positions) for soundness.
+        // At some point, we may also want to allow bounds for datatypes.
         match &**bound {
-            GenericBoundX::None => typ_params.push(x.clone()),
+            GenericBoundX::None => typ_params.push((x.clone(), *strictly_positive)),
             _ => {
                 unsupported_err!(generics.span, "generic bounds");
             }
         }
     }
-    Ok(Arc::new(typ_params))
+    Ok(typ_params)
+}
+
+pub(crate) fn check_generics_idents<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    generics: &'tcx Generics<'tcx>,
+    function_decl: bool,
+) -> Result<Idents, VirErr> {
+    Ok(Arc::new(
+        check_generics(tcx, generics, function_decl, false)?.into_iter().map(|(a, _)| a).collect(),
+    ))
 }

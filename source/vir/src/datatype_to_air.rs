@@ -387,7 +387,7 @@ pub fn datatypes_to_air(ctx: &Ctx, datatypes: &crate::ast::Datatypes) -> Command
             &str_typ(&path_to_air_ident(dpath)),
             None,
             None,
-            &datatype.x.typ_params,
+            &Arc::new(vec_map(&datatype.x.typ_params, |(x, _strict_pos)| x.clone())),
             &datatype.x.variants,
             false,
             is_transparent,

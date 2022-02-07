@@ -6,12 +6,12 @@ For soundness's sake, be as defensive as possible:
 - explicitly match all fields of the Rust AST so we catch any features added in the future
 */
 
+use crate::attributes::{get_mode, get_verifier_attrs};
 use crate::context::Context;
 use crate::def::is_get_variant_fn_name;
 use crate::rust_to_vir_adts::{check_item_enum, check_item_struct};
 use crate::rust_to_vir_base::{
-    def_id_to_vir_path, fn_item_hir_id_to_self_def_id, get_mode, get_verifier_attrs,
-    hack_get_def_name, mk_visibility, ty_to_vir,
+    def_id_to_vir_path, fn_item_hir_id_to_self_def_id, hack_get_def_name, mk_visibility, ty_to_vir,
 };
 use crate::rust_to_vir_func::{check_foreign_item_fn, check_item_fn};
 use crate::util::{err_span_str, unsupported_err_span};

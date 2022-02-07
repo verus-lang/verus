@@ -19,8 +19,8 @@ use crate::sst::{BndX, Dest, Exp, ExpX, LocalDecl, Stm, StmX, UniqueIdent};
 use crate::sst_vars::AssignMap;
 use crate::util::vec_map;
 use air::ast::{
-    BindX, BinderX, Binders, Command, CommandX, Commands, Constant, Decl, DeclX, Expr, ExprX,
-    MultiOp, Quant, QueryX, Span, Stmt, StmtX, Trigger, Triggers,
+    BindX, Binder, BinderX, Binders, Command, CommandX, Commands, Constant, Decl, DeclX, Expr,
+    ExprX, MultiOp, Quant, QueryX, Span, Stmt, StmtX, Trigger, Triggers,
 };
 use air::ast_util::{
     bool_typ, bv_typ, ident_apply, ident_binder, ident_typ, ident_var, int_typ, mk_and,
@@ -524,20 +524,29 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: ExprCtxt) -> Expr {
                 let lambda = air::ast_util::mk_lambda(&binders, &expr);
                 str_apply(crate::def::MK_FUN, &vec![lambda])
             }
-            BndX::Choose(binder, trigs) => {
-                let mut expr = exp_to_expr(ctx, exp, expr_ctxt);
-                let name = suffix_local_expr_id(&binder.name);
-                let typ = &binder.a;
-                let typ_inv = typ_invariant(ctx, typ, &ident_var(&name));
-                if let Some(inv) = &typ_inv {
-                    expr = mk_and(&vec![inv.clone(), expr]);
+            BndX::Choose(binders, trigs, cond) => {
+                let mut bs: Vec<Binder<air::ast::Typ>> = Vec::new();
+                let mut invs: Vec<Expr> = Vec::new();
+                for b in binders.iter() {
+                    let name = suffix_local_expr_id(&b.name);
+                    let typ_inv = typ_invariant(ctx, &b.a, &ident_var(&name));
+                    if let Some(inv) = &typ_inv {
+                        invs.push(inv.clone());
+                    }
+                    bs.push(Arc::new(BinderX { name, a: typ_to_air(ctx, &b.a) }));
                 }
-                let binder = Arc::new(BinderX { name, a: typ_to_air(ctx, typ) });
+                let cond_expr = exp_to_expr(ctx, cond, expr_ctxt);
+                let body_expr = exp_to_expr(ctx, exp, expr_ctxt);
+                invs.push(cond_expr.clone());
+                let cond_expr = mk_and(&invs);
+                let typ = &exp.typ;
+                let typ_inv = typ_invariant(ctx, typ, &body_expr);
                 let triggers = vec_map(&*trigs, |trig| {
                     Arc::new(vec_map(trig, |x| exp_to_expr(ctx, x, expr_ctxt)))
                 });
-                let bind = Arc::new(BindX::Choose(binder, Arc::new(triggers)));
-                let mut choose_expr = Arc::new(ExprX::Bind(bind, expr));
+                let binders = Arc::new(bs);
+                let bind = Arc::new(BindX::Choose(binders, Arc::new(triggers), cond_expr));
+                let mut choose_expr = Arc::new(ExprX::Bind(bind, body_expr));
                 match typ_inv {
                     Some(_) => {
                         // use as_type to coerce expression to some value of the requested type,
