@@ -1,6 +1,8 @@
 #[allow(unused_imports)]
 use builtin::*;
 #[allow(unused_imports)]
+use builtin_macros::*;
+#[allow(unused_imports)]
 use crate::pervasive::*;
 #[allow(unused_imports)]
 use crate::pervasive::map::*;
@@ -18,22 +20,14 @@ pub fn set_new<A, F: Fn(A) -> bool>(f: F) -> Set<A> {
 }
 
 impl<A> Set<A> {
-    #[spec]
-    #[verifier(external_body)]
-    pub fn empty() -> Set<A> {
-        unimplemented!()
-    }
+    fndef!(pub fn empty() -> Set<A>);
 
     #[spec]
     pub fn full() -> Set<A> {
         Set::empty().complement()
     }
 
-    #[spec]
-    #[verifier(external_body)]
-    pub fn contains(self, a: A) -> bool {
-        unimplemented!()
-    }
+    fndef!(pub fn contains(self, a: A) -> bool);
 
     #[spec]
     pub fn ext_equal(self, s2: Set<A>) -> bool {
@@ -45,69 +39,33 @@ impl<A> Set<A> {
         forall(|a: A| self.contains(a) >>= s2.contains(a))
     }
 
-    #[spec]
-    #[verifier(external_body)]
-    pub fn insert(self, a: A) -> Set<A> {
-        unimplemented!()
-    }
+    fndef!(pub fn insert(self, a: A) -> Set<A>);
 
-    #[spec]
-    #[verifier(external_body)]
-    pub fn remove(self, a: A) -> Set<A> {
-        unimplemented!()
-    }
+    fndef!(pub fn remove(self, a: A) -> Set<A>);
 
-    #[spec]
-    #[verifier(external_body)]
-    pub fn union(self, s2: Set<A>) -> Set<A> {
-        unimplemented!()
-    }
+    fndef!(pub fn union(self, s2: Set<A>) -> Set<A>);
 
-    #[spec]
-    #[verifier(external_body)]
-    pub fn intersect(self, s2: Set<A>) -> Set<A> {
-        unimplemented!()
-    }
+    fndef!(pub fn intersect(self, s2: Set<A>) -> Set<A>);
 
-    #[spec]
-    #[verifier(external_body)]
-    pub fn difference(self, s2: Set<A>) -> Set<A> {
-        unimplemented!()
-    }
+    fndef!(pub fn difference(self, s2: Set<A>) -> Set<A>);
 
-    #[spec]
-    #[verifier(external_body)]
-    pub fn complement(self) -> Set<A> {
-        unimplemented!()
-    }
+    fndef!(pub fn complement(self) -> Set<A>);
 
     #[spec]
     pub fn filter<F: Fn(A) -> bool>(self, f: F) -> Set<A> {
         self.intersect(set_new(f))
     }
 
-    #[spec]
-    #[verifier(external_body)]
-    pub fn finite(self) -> bool {
-        unimplemented!()
-    }
+    fndef!(pub fn finite(self) -> bool);
 
-    #[spec]
-    #[verifier(external_body)]
-    pub fn len(self) -> nat {
-        unimplemented!()
-    }
+    fndef!(pub fn len(self) -> nat);
 
     #[spec]
     pub fn choose(self) -> A {
         choose(|a: A| self.contains(a))
     }
 
-    #[spec]
-    #[verifier(external_body)]
-    pub fn mk_map<V, F: Fn(A) -> V>(self, f: F) -> Map<A, V> {
-        unimplemented!()
-    }
+    fndef!(pub fn mk_map<V, F: Fn(A) -> V>(self, f: F) -> Map<A, V>);
 
 }
 

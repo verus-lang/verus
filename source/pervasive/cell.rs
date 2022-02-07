@@ -2,6 +2,7 @@ use std::cell::UnsafeCell;
 use std::mem::MaybeUninit;
 
 #[allow(unused_imports)] use builtin::*;
+#[allow(unused_imports)] use builtin_macros::*;
 #[allow(unused_imports)] use crate::pervasive::*;
 
 // TODO Identifier should be some opaque type, not necessarily an int
@@ -42,11 +43,7 @@ impl<V> PCell<V> {
     PCellWithToken {pcell: p, token: t}
   }
 
-  #[verifier(external_body)]
-  #[spec]
-  pub fn view(&self) -> int {
-    unimplemented!()
-  }
+  fndef!(pub fn view(&self) -> int);
 
   //// Put
 
