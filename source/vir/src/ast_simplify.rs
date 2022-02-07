@@ -100,7 +100,7 @@ fn small_or_temp(state: &mut State, expr: &Expr) -> (Vec<Stmt>, Expr) {
 
 /// Returns (statements for temp expressions, simplified expr, contains location)
 fn small_loc_or_temp(state: &mut State, expr: &Expr) -> SmallLocOrTemp {
-    let SmallLocOrTemp(mut stmts, simplified_expr, contains_loc) = match &expr.x {
+    let SmallLocOrTemp(stmts, simplified_expr, contains_loc) = match &expr.x {
         ExprX::Const(..) => SmallLocOrTemp(vec![], expr.clone(), false),
         ExprX::ConstVar(..) => todo!(), // SmallLocOrTemp(vec![], expr.clone(), false),
         ExprX::Var(..) => SmallLocOrTemp(vec![], expr.clone(), false),
@@ -232,8 +232,7 @@ fn small_loc_or_temp(state: &mut State, expr: &Expr) -> SmallLocOrTemp {
             SmallLocOrTemp(vec![], expr.clone(), false)
         } else {
             let (ts, te) = temp_expr(state, expr);
-            stmts.push(ts);
-            SmallLocOrTemp(stmts, te, false)
+            SmallLocOrTemp(vec![ts], te, false)
         }
     } else {
         SmallLocOrTemp(stmts, simplified_expr, true)
