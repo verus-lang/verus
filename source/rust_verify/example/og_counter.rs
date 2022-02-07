@@ -113,7 +113,7 @@ fn main() {
 
   let (at, proof(perm_token)) = PAtomicU32::new(0);
 
-  #[proof] let at_inv: Invariant<G> = invariant_new(
+  #[proof] let at_inv: Invariant<G> = Invariant::new(
       G { counter: counter_token, perm: perm_token },
       |g: G| g.wf(inst, at),
       0);

@@ -1,6 +1,8 @@
 #[allow(unused_imports)]
 use builtin::*;
 #[allow(unused_imports)]
+use builtin_macros::*;
+#[allow(unused_imports)]
 use crate::pervasive::*;
 
 /// sequence type for specifications
@@ -10,41 +12,17 @@ pub struct Seq<#[verifier(strictly_positive)] A> {
 }
 
 impl<A> Seq<A> {
-    #[spec]
-    #[verifier(pub_abstract)]
-    pub fn empty() -> Seq<A> {
-        arbitrary()
-    }
+    fndecl!(pub fn empty() -> Seq<A>);
 
-    #[spec]
-    #[verifier(pub_abstract)]
-    pub fn new<F: Fn(int) -> A>(len: nat, f: F) -> Seq<A> {
-        arbitrary()
-    }
+    fndecl!(pub fn new<F: Fn(int) -> A>(len: nat, f: F) -> Seq<A>);
 
-    #[spec]
-    #[verifier(pub_abstract)]
-    pub fn len(self) -> nat {
-        arbitrary()
-    }
+    fndecl!(pub fn len(self) -> nat);
 
-    #[spec]
-    #[verifier(pub_abstract)]
-    pub fn index(self, i: int) -> A {
-        arbitrary()
-    }
+    fndecl!(pub fn index(self, i: int) -> A);
 
-    #[spec]
-    #[verifier(pub_abstract)]
-    pub fn push(self, a: A) -> Seq<A> {
-        arbitrary()
-    }
+    fndecl!(pub fn push(self, a: A) -> Seq<A>);
 
-    #[spec]
-    #[verifier(pub_abstract)]
-    pub fn update(self, i: int, a: A) -> Seq<A> {
-        arbitrary()
-    }
+    fndecl!(pub fn update(self, i: int, a: A) -> Seq<A>);
 
     #[spec]
     pub fn ext_equal(self, s2: Seq<A>) -> bool {
@@ -52,17 +30,9 @@ impl<A> Seq<A> {
         forall(|i: int| 0 <= i && i < self.len() >>= equal(self.index(i), s2.index(i)))
     }
 
-    #[spec]
-    #[verifier(pub_abstract)]
-    pub fn subrange(self, start_inclusive: int, end_exclusive: int) -> Seq<A> {
-        arbitrary()
-    }
+    fndecl!(pub fn subrange(self, start_inclusive: int, end_exclusive: int) -> Seq<A>);
 
-    #[spec]
-    #[verifier(pub_abstract)]
-    pub fn add(self, rhs: Seq<A>) -> Seq<A> {
-        arbitrary()
-    }
+    fndecl!(pub fn add(self, rhs: Seq<A>) -> Seq<A>);
 }
 
 // Trusted axioms

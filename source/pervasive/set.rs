@@ -1,6 +1,8 @@
 #[allow(unused_imports)]
 use builtin::*;
 #[allow(unused_imports)]
+use builtin_macros::*;
+#[allow(unused_imports)]
 use crate::pervasive::*;
 #[allow(unused_imports)]
 use crate::pervasive::map::*;
@@ -12,28 +14,20 @@ pub struct Set<#[verifier(maybe_negative)] A> {
 }
 
 #[spec]
-#[verifier(pub_abstract)]
+#[verifier(external_body)]
 pub fn set_new<A, F: Fn(A) -> bool>(f: F) -> Set<A> {
-    arbitrary()
+    unimplemented!()
 }
 
 impl<A> Set<A> {
-    #[spec]
-    #[verifier(pub_abstract)]
-    pub fn empty() -> Set<A> {
-        arbitrary()
-    }
+    fndecl!(pub fn empty() -> Set<A>);
 
     #[spec]
     pub fn full() -> Set<A> {
         Set::empty().complement()
     }
 
-    #[spec]
-    #[verifier(pub_abstract)]
-    pub fn contains(self, a: A) -> bool {
-        arbitrary()
-    }
+    fndecl!(pub fn contains(self, a: A) -> bool);
 
     #[spec]
     pub fn ext_equal(self, s2: Set<A>) -> bool {
@@ -45,69 +39,33 @@ impl<A> Set<A> {
         forall(|a: A| self.contains(a) >>= s2.contains(a))
     }
 
-    #[spec]
-    #[verifier(pub_abstract)]
-    pub fn insert(self, a: A) -> Set<A> {
-        arbitrary()
-    }
+    fndecl!(pub fn insert(self, a: A) -> Set<A>);
 
-    #[spec]
-    #[verifier(pub_abstract)]
-    pub fn remove(self, a: A) -> Set<A> {
-        arbitrary()
-    }
+    fndecl!(pub fn remove(self, a: A) -> Set<A>);
 
-    #[spec]
-    #[verifier(pub_abstract)]
-    pub fn union(self, s2: Set<A>) -> Set<A> {
-        arbitrary()
-    }
+    fndecl!(pub fn union(self, s2: Set<A>) -> Set<A>);
 
-    #[spec]
-    #[verifier(pub_abstract)]
-    pub fn intersect(self, s2: Set<A>) -> Set<A> {
-        arbitrary()
-    }
+    fndecl!(pub fn intersect(self, s2: Set<A>) -> Set<A>);
 
-    #[spec]
-    #[verifier(pub_abstract)]
-    pub fn difference(self, s2: Set<A>) -> Set<A> {
-        arbitrary()
-    }
+    fndecl!(pub fn difference(self, s2: Set<A>) -> Set<A>);
 
-    #[spec]
-    #[verifier(pub_abstract)]
-    pub fn complement(self) -> Set<A> {
-        arbitrary()
-    }
+    fndecl!(pub fn complement(self) -> Set<A>);
 
     #[spec]
     pub fn filter<F: Fn(A) -> bool>(self, f: F) -> Set<A> {
         self.intersect(set_new(f))
     }
 
-    #[spec]
-    #[verifier(pub_abstract)]
-    pub fn finite(self) -> bool {
-        arbitrary()
-    }
+    fndecl!(pub fn finite(self) -> bool);
 
-    #[spec]
-    #[verifier(pub_abstract)]
-    pub fn len(self) -> nat {
-        arbitrary()
-    }
+    fndecl!(pub fn len(self) -> nat);
 
     #[spec]
     pub fn choose(self) -> A {
         choose(|a: A| self.contains(a))
     }
 
-    #[spec]
-    #[verifier(pub_abstract)]
-    pub fn mk_map<V, F: Fn(A) -> V>(self, f: F) -> Map<A, V> {
-        arbitrary()
-    }
+    fndecl!(pub fn mk_map<V, F: Fn(A) -> V>(self, f: F) -> Map<A, V>);
 
 }
 

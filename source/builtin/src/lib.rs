@@ -86,8 +86,15 @@ pub fn exists<A>(_a: A) -> bool {
     unimplemented!();
 }
 
+// choose(|x: t| P(x))
 #[spec]
 pub fn choose<A, F: Fn(A) -> bool>(_f: F) -> A {
+    unimplemented!()
+}
+
+// let (x1, ..., xn): (t1, ..., tn) = choose_tuple(|x1: t1, ..., xn: tn| P(x1, ..., xn));
+#[spec]
+pub fn choose_tuple<A, F>(_f: F) -> A {
     unimplemented!()
 }
 

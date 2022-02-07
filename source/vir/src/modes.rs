@@ -342,10 +342,13 @@ fn check_expr(typing: &mut Typing, outer_mode: Mode, expr: &Expr) -> Result<Mode
             typing.vars.pop_scope();
             Ok(Mode::Spec)
         }
-        ExprX::Choose(binder, e1) => {
+        ExprX::Choose { params, cond, body } => {
             typing.vars.push_scope(true);
-            typing.insert(&expr.span, &binder.name, false, Mode::Spec);
-            check_expr_has_mode(typing, Mode::Spec, e1, Mode::Spec)?;
+            for binder in params.iter() {
+                typing.insert(&expr.span, &binder.name, false, Mode::Spec);
+            }
+            check_expr_has_mode(typing, Mode::Spec, cond, Mode::Spec)?;
+            check_expr_has_mode(typing, Mode::Spec, body, Mode::Spec)?;
             typing.vars.pop_scope();
             Ok(Mode::Spec)
         }

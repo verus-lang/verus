@@ -5,6 +5,7 @@ use std::sync::atomic::{
     Ordering};
 
 #[allow(unused_imports)] use builtin::*;
+#[allow(unused_imports)] use builtin_macros::*;
 #[allow(unused_imports)] use crate::pervasive::*;
 #[allow(unused_imports)] use crate::pervasive::modes::*;
 #[allow(unused_imports)] use crate::pervasive::result::*;
@@ -113,11 +114,7 @@ macro_rules! atomic_types {
 
 macro_rules! atomic_common_methods {
     ($at_ident:ident, $p_ident:ident, $rust_ty: ty, $value_ty: ty) => {
-        #[verifier(pub_abstract)]
-        #[spec]
-        pub fn view(&self) -> int {
-            arbitrary()
-        }
+        fndecl!(pub fn view(&self) -> int);
 
         #[inline(always)]
         #[verifier(external_body)]
