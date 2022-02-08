@@ -351,6 +351,9 @@ impl Verifier {
         krate: &Krate,
         no_span: Span,
     ) -> Result<(), VirErr> {
+        #[cfg(debug_assertions)]
+        vir::check_ast_flavor::check_krate(&krate);
+
         let mut air_context = air::context::Context::new(air::smt_manager::SmtManager::new());
         air_context.set_ignore_unexpected_smt(self.args.ignore_unexpected_smt);
         air_context.set_debug(self.args.debug);

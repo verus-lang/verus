@@ -69,24 +69,35 @@ pub fn check_krate_simplified(krate: &Krate) {
     }
 }
 
-fn expr_no_loc_in_quant(
+fn expr_no_loc_in_spec(
     expr: &Expr,
     scope_map: &mut VisitorScopeMap,
-    in_quant: bool,
+    in_spec: bool,
 ) -> VisitorControlFlow<()> {
-    match &expr.x {
-        ExprX::Quant(_q, _b, qexpr) => match expr_visitor_dfs(
-            qexpr,
-            scope_map,
-            &mut |scope_map: &mut VisitorScopeMap, expr: &Expr| {
-                expr_no_loc_in_quant(expr, scope_map, true)
-            },
-        ) {
-            VisitorControlFlow::Recurse | VisitorControlFlow::Return => VisitorControlFlow::Return,
-            VisitorControlFlow::Stop(()) => VisitorControlFlow::Stop(()),
+    let mut recurse_in_spec = |e| match expr_visitor_dfs(
+        e,
+        scope_map,
+        &mut |scope_map: &mut VisitorScopeMap, expr: &Expr| {
+            expr_no_loc_in_spec(expr, scope_map, true)
         },
-        ExprX::VarLoc(_) | ExprX::Loc(_) if in_quant => VisitorControlFlow::Stop(()),
-        _ => VisitorControlFlow::Recurse,
+    ) {
+        VisitorControlFlow::Recurse | VisitorControlFlow::Return => Ok(false),
+        VisitorControlFlow::Stop(()) => Err(()),
+    };
+    match match &expr.x {
+        ExprX::Quant(_q, _b, qexpr) => recurse_in_spec(qexpr),
+        ExprX::Choose { params: _, cond, body } => {
+            recurse_in_spec(cond).and_then(|_| recurse_in_spec(body))
+        }
+        ExprX::Forall { vars: _, require, ensure, proof: _ } => {
+            recurse_in_spec(require).and_then(|_| recurse_in_spec(ensure))
+        }
+        ExprX::VarLoc(_) | ExprX::Loc(_) if in_spec => Err(()),
+        _ => Ok(true),
+    } {
+        Ok(true) => VisitorControlFlow::Recurse,
+        Ok(false) => VisitorControlFlow::Return,
+        Err(()) => VisitorControlFlow::Stop(()),
     }
 }
 
@@ -104,7 +115,7 @@ pub fn check_krate(krate: &Krate) {
                 expr,
                 &mut air::scope_map::ScopeMap::new(),
                 &mut |scope_map: &mut VisitorScopeMap, expr: &Expr| {
-                    expr_no_loc_in_quant(expr, scope_map, false)
+                    expr_no_loc_in_spec(expr, scope_map, false)
                 },
             ) {
                 VisitorControlFlow::Recurse | VisitorControlFlow::Return => Ok(()),
