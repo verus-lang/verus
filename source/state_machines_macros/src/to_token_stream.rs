@@ -19,6 +19,7 @@ use syn::{
     braced, AttrStyle, Attribute, Error, Expr, FieldsNamed, FnArg, Ident, ImplItemMethod, Meta,
     MetaList, NestedMeta, Path, PathArguments, PathSegment, Type,
 };
+use crate::transitions::{has_any_assert, safety_condition_body};
 
 pub fn output_token_stream(
     sm_and_funcs: SMAndFuncs,
@@ -219,6 +220,23 @@ pub fn output_primary_stuff(
             };
             impl_token_stream.extend(rel_fn);
         }
+
+        if has_any_assert(&trans.body) {
+            let b = safety_condition_body(&trans.body);
+            let name = Ident::new(&(trans.name.to_string() + "_asserts"), trans.name.span());
+            let params = self_assoc_params(&sm.name, &trans.args);
+            let b = match b {
+                Some(b) => quote! { #b },
+                None => TokenStream::new(),
+            };
+            impl_token_stream.extend(quote! {
+                #[proof]
+                pub fn #name(#params) {
+                    crate::pervasive::assume(self.invariant());
+                    #b
+                }
+            });
+        }
     }
 }
 
@@ -234,6 +252,21 @@ fn self_post_params(args: &Vec<Arg<Ident, Type>>) -> TokenStream {
     return quote! {
         self,
         post: Self,
+        #(#args),*
+    };
+}
+
+fn self_assoc_params(ty_name: &Ident, args: &Vec<Arg<Ident, Type>>) -> TokenStream {
+    let args: Vec<TokenStream> = args
+        .iter()
+        .map(|arg| {
+            let ident = &arg.ident;
+            let ty = &arg.ty;
+            quote! { #ident: #ty }
+        })
+        .collect();
+    return quote! {
+        self: #ty_name,
         #(#args),*
     };
 }

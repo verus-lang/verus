@@ -423,3 +423,84 @@ pub fn replace_updates(
         ),
     }
 }
+
+pub fn safety_condition_body(ts: &TransitionStmt<Span, Ident, Expr>) -> Option<Expr> {
+    match ts {
+        TransitionStmt::Block(span, v) => {
+            let mut h = Vec::new();
+            for t in v.iter() {
+                if let Some(q) = safety_condition_body(t) {
+                    h.push(q);
+                }
+            }
+            if h.len() > 0 {
+                Some(Expr::Verbatim(quote_spanned!{ *span => #(#h)* }))
+            } else {
+                None
+            }
+        }
+        TransitionStmt::Let(span, id, v) => {
+            Some(Expr::Verbatim(quote_spanned!{*span =>
+                let #id = #v;
+            }))
+        }
+        TransitionStmt::If(span, cond, thn, els) => {
+            let t1 = safety_condition_body(thn);
+            let t2 = safety_condition_body(els);
+            match (t1, t2) {
+                (None, None) => None,
+                (Some(e), None) => 
+                    Some(Expr::Verbatim(quote_spanned!{*span =>
+                        if #cond {
+                            #e
+                        }
+                    })),
+                (None, Some(e)) => 
+                    Some(Expr::Verbatim(quote_spanned!{*span =>
+                        if !(#cond) {
+                            #e
+                        }
+                    })),
+                (Some(e1), Some(e2)) =>
+                    Some(Expr::Verbatim(quote_spanned!{*span =>
+                        if #cond {
+                            #e1
+                        } else {
+                            #e2
+                        }
+                    })),
+            }
+        }
+        TransitionStmt::Require(span, e) => {
+            Some(Expr::Verbatim(quote_spanned!{*span =>
+                crate::pervasive::assume(#e);
+            }))
+        }
+        TransitionStmt::Assert(span, e) => {
+            Some(Expr::Verbatim(quote_spanned!{*span =>
+                crate::pervasive::assert(#e);
+            }))
+        }
+        TransitionStmt::Update(_span, _ident, _e) => None,
+    }
+}
+
+pub fn has_any_assert(ts: &TransitionStmt<Span, Ident, Expr>) -> bool {
+    match ts {
+        TransitionStmt::Block(_span, v) => {
+            for t in v.iter() {
+                if has_any_assert(t) {
+                    return true;
+                }
+            }
+            false
+        }
+        TransitionStmt::Let(_, _, _) => false,
+        TransitionStmt::If(_span, _cond, thn, els) => {
+            has_any_assert(thn) || has_any_assert(els)
+        }
+        TransitionStmt::Require(_, _) => false,
+        TransitionStmt::Assert(_, _) => true,
+        TransitionStmt::Update(_, _, _) => false,
+    }
+}

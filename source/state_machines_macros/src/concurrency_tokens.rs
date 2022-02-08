@@ -89,12 +89,9 @@ fn const_fn_stream(field: &Field<Ident, Type>) -> TokenStream {
     let fieldtype = field_token_field_type(field);
 
     return quote! {
-        #[spec]
-        #[verifier(pub_abstract)]
-        #[verifier(external_body)]
-        pub fn #fieldname(&self) -> #fieldtype {
-            unimplemented!()
-        }
+        ::builtin_macros::fndecl!(
+            pub fn #fieldname(&self) -> #fieldtype
+        )
     };
 }
 
