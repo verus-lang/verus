@@ -402,11 +402,11 @@ impl Printer {
 pub struct NodeWriter {}
 
 impl NodeWriter {
-    pub(crate) fn new() -> Self {
+    pub fn new() -> Self {
         NodeWriter {}
     }
 
-    pub(crate) fn write_node(
+    pub fn write_node(
         &mut self,
         writer: &mut sise::SpacedStringWriter,
         node: &Node,
@@ -454,7 +454,7 @@ impl NodeWriter {
         }
     }
 
-    pub(crate) fn node_to_string_indent(&mut self, indent: &String, node: &Node) -> String {
+    pub fn node_to_string_indent(&mut self, indent: &String, node: &Node) -> String {
         let indentation = " ";
         let style = sise::SpacedStringWriterStyle {
             line_break: &("\n".to_string() + &indent),

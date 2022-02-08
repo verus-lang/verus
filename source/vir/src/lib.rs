@@ -44,6 +44,7 @@ mod inv_masks;
 pub mod modes;
 pub mod poly;
 mod prelude;
+pub mod printer;
 pub mod prune;
 mod recursion;
 mod recursive_types;
