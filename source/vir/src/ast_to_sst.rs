@@ -391,7 +391,7 @@ pub(crate) fn expr_to_stm_opt(
         }
         ExprX::Assign(expr1, expr2) => {
             let dest_x = match &expr1.x {
-                ExprX::Var(x) => Ok(state.get_var_unique_id(&x)),
+                ExprX::VarLoc(x) => Ok(state.get_var_unique_id(&x)),
                 _ => err_str(&expr1.span, "complex assignments not yet supported"),
             };
             match expr_must_be_call_stm(ctx, state, expr2)? {

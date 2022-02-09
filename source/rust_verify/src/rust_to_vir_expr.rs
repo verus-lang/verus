@@ -1414,7 +1414,7 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                 unsupported_err!(expr.span, format!("field updates"), lhs);
             }
             Ok(mk_expr(ExprX::Assign(
-                expr_to_vir(bctx, lhs, modifier)?,
+                expr_to_vir(bctx, lhs, ExprModifier::AddrOf)?,
                 expr_to_vir(bctx, rhs, modifier)?,
             )))
         }

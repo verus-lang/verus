@@ -360,7 +360,7 @@ fn check_expr(typing: &mut Typing, outer_mode: Mode, expr: &Expr) -> Result<Mode
             match &lhs.x {
                 // TODO when we support field updates, make sure we handle 'unforgeable' types
                 // correctly.
-                ExprX::Var(x) => {
+                ExprX::VarLoc(x) => {
                     let (x_mut, x_mode) = typing.get(x);
                     if !x_mut {
                         return err_str(
