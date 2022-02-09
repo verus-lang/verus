@@ -1,6 +1,8 @@
 #[allow(unused_imports)]
 use builtin::*;
 #[allow(unused_imports)]
+use builtin_macros::*;
+#[allow(unused_imports)]
 use crate::pervasive::*;
 #[allow(unused_imports)]
 use crate::pervasive::set::*;
@@ -12,34 +14,18 @@ pub struct Map<#[verifier(maybe_negative)] K, #[verifier(strictly_positive)] V> 
 }
 
 impl<K, V> Map<K, V> {
-    #[spec]
-    #[verifier(external_body)]
-    pub fn empty() -> Map<K, V> {
-        unimplemented!()
-    }
+    fndecl!(pub fn empty() -> Map<K, V>);
 
     #[spec]
     pub fn total<F: Fn(K) -> V>(f: F) -> Map<K, V> {
         Set::full().mk_map(f)
     }
 
-    #[spec]
-    #[verifier(external_body)]
-    pub fn dom(self) -> Set<K> {
-        unimplemented!()
-    }
+    fndecl!(pub fn dom(self) -> Set<K>);
 
-    #[spec]
-    #[verifier(external_body)]
-    pub fn index(self, key: K) -> V {
-        unimplemented!()
-    }
+    fndecl!(pub fn index(self, key: K) -> V);
 
-    #[spec]
-    #[verifier(external_body)]
-    pub fn insert(self, key: K, value: V) -> Map<K, V> {
-        unimplemented!()
-    }
+    fndecl!(pub fn insert(self, key: K, value: V) -> Map<K, V>);
 
     #[spec]
     pub fn ext_equal(self, m2: Map<K, V>) -> bool {

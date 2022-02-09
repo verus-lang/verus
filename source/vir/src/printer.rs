@@ -9,15 +9,15 @@ fn str_node(s: &str) -> Node {
     Node::Atom(format!("\"{}\"", s))
 }
 
-pub(crate) fn spanned_node(node: Node, span: &Span) -> Node {
+fn spanned_node(node: Node, span: &Span) -> Node {
     Node::List(vec![str_to_node("span"), str_node(&span.as_string), node])
 }
 
-pub(crate) fn path_to_node(path: &Path) -> Node {
+fn path_to_node(path: &Path) -> Node {
     Node::Atom(crate::def::path_to_string(path))
 }
 
-pub(crate) fn visibility_to_node(visibility: &Visibility) -> Node {
+fn visibility_to_node(visibility: &Visibility) -> Node {
     let Visibility { owning_module, is_private } = visibility;
     let mut nodes = vec![str_to_node("visiblity")];
     if let Some(om) = owning_module {
@@ -30,19 +30,19 @@ pub(crate) fn visibility_to_node(visibility: &Visibility) -> Node {
     Node::List(nodes)
 }
 
-pub(crate) fn binder_node<A: Clone>(binder: &Binder<A>, f: &impl Fn(&A) -> Node) -> Node {
+fn binder_node<A: Clone>(binder: &Binder<A>, f: &impl Fn(&A) -> Node) -> Node {
     Node::List(vec![str_to_node(&binder.name), f(&binder.a)])
 }
 
-pub(crate) fn binders_node<A: Clone>(binders: &Binders<A>, f: &impl Fn(&A) -> Node) -> Node {
+fn binders_node<A: Clone>(binders: &Binders<A>, f: &impl Fn(&A) -> Node) -> Node {
     Node::List(binders.iter().map(|binder| binder_node(binder, &f)).collect())
 }
 
-pub(crate) fn typs_to_node(typs: &Typs) -> Node {
+fn typs_to_node(typs: &Typs) -> Node {
     Node::List(typs.iter().map(typ_to_node).collect())
 }
 
-pub(crate) fn int_range_to_node(int_range: &IntRange) -> Node {
+fn int_range_to_node(int_range: &IntRange) -> Node {
     match int_range {
         IntRange::Int => node!(Int),
         IntRange::Nat => node!(Nat),
@@ -53,7 +53,7 @@ pub(crate) fn int_range_to_node(int_range: &IntRange) -> Node {
     }
 }
 
-pub(crate) fn typ_to_node(typ: &Typ) -> Node {
+fn typ_to_node(typ: &Typ) -> Node {
     match &**typ {
         TypX::Bool => node!(Bool),
         TypX::Int(range) => nodes!(Int {int_range_to_node(range)}),
@@ -67,7 +67,7 @@ pub(crate) fn typ_to_node(typ: &Typ) -> Node {
     }
 }
 
-pub(crate) fn datatype_to_node(datatype: &DatatypeX) -> Node {
+fn datatype_to_node(datatype: &DatatypeX) -> Node {
     let DatatypeX { path, visibility, transparency, typ_params, variants, mode, unforgeable } =
         datatype;
     let typ_params_node = Node::List(
@@ -110,7 +110,7 @@ pub(crate) fn datatype_to_node(datatype: &DatatypeX) -> Node {
     Node::List(nodes)
 }
 
-pub(crate) fn fun_to_node(fun: &FunX) -> Node {
+fn fun_to_node(fun: &FunX) -> Node {
     let FunX { path, trait_path } = fun;
     let mut nodes = vec![str_to_node("fun"), path_to_node(path)];
     if let Some(tp) = trait_path {
@@ -120,7 +120,7 @@ pub(crate) fn fun_to_node(fun: &FunX) -> Node {
     Node::List(nodes)
 }
 
-pub(crate) fn header_expr_to_node(header_expr: &HeaderExprX) -> Node {
+fn header_expr_to_node(header_expr: &HeaderExprX) -> Node {
     match header_expr {
         HeaderExprX::Requires(exprs) => nodes!(requires {exprs_to_node(exprs)}),
         HeaderExprX::Ensures(retval, exprs) => {
@@ -141,7 +141,7 @@ pub(crate) fn header_expr_to_node(header_expr: &HeaderExprX) -> Node {
     }
 }
 
-pub(crate) fn pattern_to_node(pattern: &Pattern) -> Node {
+fn pattern_to_node(pattern: &Pattern) -> Node {
     let node = match &pattern.x {
         PatternX::Wildcard => node!(wildcard),
         PatternX::Var { name, mutable } => {
@@ -163,11 +163,11 @@ pub(crate) fn pattern_to_node(pattern: &Pattern) -> Node {
     spanned_node(node, &pattern.span)
 }
 
-pub(crate) fn exprs_to_node(exprs: &Exprs) -> Node {
+fn exprs_to_node(exprs: &Exprs) -> Node {
     Node::List(exprs.iter().map(expr_to_node).collect())
 }
 
-pub(crate) fn expr_to_node(expr: &Expr) -> Node {
+fn expr_to_node(expr: &Expr) -> Node {
     let node = match &expr.x {
         ExprX::Const(cnst) => nodes!(
             const {
@@ -312,7 +312,7 @@ pub(crate) fn expr_to_node(expr: &Expr) -> Node {
     spanned_node(node, &expr.span)
 }
 
-pub(crate) fn function_to_node(function: &FunctionX) -> Node {
+fn function_to_node(function: &FunctionX) -> Node {
     let FunctionX {
         name,
         visibility,
