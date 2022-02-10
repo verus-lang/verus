@@ -277,7 +277,7 @@ pub(crate) fn prelude_nodes() -> Vec<Node> {
         // BitVector
         // these are the uninterpreted integer versions
         (declare-fun [uint_xor] (Int Int) Int)
-        (declare-fun [uint_and] (Int Int) Int)
+        (declare-fun [uint_and] (Poly Poly) Int)
         (declare-fun [uint_or] (Int Int) Int)
         (declare-fun [uint_shr] (Int Int) Int)
         (declare-fun [uint_shl] (Int Int) Int)

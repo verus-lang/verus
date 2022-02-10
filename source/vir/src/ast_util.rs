@@ -58,13 +58,11 @@ pub fn n_types_equal(typs1: &Typs, typs2: &Typs) -> bool {
 }
 
 pub fn bitwidth_from_type(et: &Typ) -> Option<u32> {
-    if let TypX::Int(IntRange::U(size)) = &**et {
-        return Some(*size);
+    match &**et {
+        TypX::Int(IntRange::U(size)) | TypX::Int(IntRange::I(size)) => Some(*size),
+        TypX::Boxed(in_et) => bitwidth_from_type(&*in_et),
+        _ => None,
     }
-    if let TypX::Int(IntRange::I(size)) = &**et {
-        return Some(*size);
-    }
-    None
 }
 
 pub fn path_as_rust_name(path: &Path) -> String {

@@ -427,7 +427,27 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: ExprCtxt) -> Expr {
                     ExprX::Apply(Arc::new(crate::def::UINT_XOR.to_string()), Arc::new(vec![lh, rh]))
                 }
                 BinaryOp::BitAnd => {
-                    ExprX::Apply(Arc::new(crate::def::UINT_AND.to_string()), Arc::new(vec![lh, rh]))
+                    let box_lh = try_box(ctx, lh, &lhs.typ).expect("Box");
+                    let box_rh = try_box(ctx, rh, &rhs.typ).expect("Box");
+                    if let TypX::Int(range) = &*lhs.typ {
+                        match range {
+                            IntRange::I(_) | IntRange::U(_) => {
+                                let expr = Arc::new(ExprX::Apply(
+                                    Arc::new(crate::def::UINT_AND.to_string()),
+                                    Arc::new(vec![box_lh, box_rh]),
+                                ));
+                                let f_name = crate::def::U_CLIP;
+                                return apply_range_fun(&f_name, &range, vec![expr]);
+                            }
+                            _ => {
+                                return Arc::new(ExprX::Apply(
+                                    Arc::new(crate::def::UINT_AND.to_string()),
+                                    Arc::new(vec![box_lh, box_rh]),
+                                ));
+                            }
+                        };
+                    };
+                    panic!("BitAnd")
                 }
                 BinaryOp::BitOr => {
                     ExprX::Apply(Arc::new(crate::def::UINT_OR.to_string()), Arc::new(vec![lh, rh]))
@@ -734,6 +754,12 @@ fn exp_to_bv_expr(state: &State, exp: &Exp) -> Expr {
                 UnaryOp::Trigger(_) => panic!("Trigger is not supported in bit-vector"),
             }
         }
+        ExpX::UnaryOpr(op, exp) => match op {
+            UnaryOpr::Box(_) | UnaryOpr::Unbox(_) => {
+                return exp_to_bv_expr(state, exp);
+            }
+            _ => panic!("unhandled bv UnaryOpr {:?}", op),
+        },
         _ => panic!("unhandled bv expr conversion {:?}", exp.x),
     }
 }

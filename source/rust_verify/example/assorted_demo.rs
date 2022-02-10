@@ -57,5 +57,5 @@ fn main3() {
 
     assert(divides(x, z));
     assert(divides(y, z));
-    // TOOD assert(x % z == 0);
+    // TODO assert(x % z == 0);
 }

@@ -28,6 +28,7 @@ fn check_trigger_expr(exp: &Exp, free_vars: &mut HashSet<Ident>) -> Result<(), V
         ExpX::Call(..)
         | ExpX::UnaryOpr(UnaryOpr::Field { .. }, _)
         | ExpX::Unary(UnaryOp::Trigger(_), _) => {}
+        ExpX::Binary(BinaryOp::BitAnd, _, _) => {}
         // REVIEW: Z3 allows some arithmetic, but it's not clear we want to allow it
         _ => {
             return err_str(&exp.span, "trigger must be a function call or a field access");
