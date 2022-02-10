@@ -52,26 +52,165 @@ struct LocalCtxt {
 
 fn is_small_expr(expr: &Expr) -> bool {
     match &expr.x {
-        ExprX::Const(_) => true,
-        ExprX::Var(_) => true,
+        ExprX::Const(_) | ExprX::Var(_) | ExprX::VarAt(..) => true,
         ExprX::Unary(UnaryOp::Not | UnaryOp::Clip(_), e) => is_small_expr(e),
         ExprX::UnaryOpr(UnaryOpr::Box(_) | UnaryOpr::Unbox(_), e) => is_small_expr(e),
+        ExprX::Loc(_) => panic!("expr contains a location"),
         _ => false,
     }
 }
 
-fn small_or_temp(state: &mut State, expr: &Expr) -> (Option<Stmt>, Expr) {
-    if is_small_expr(&expr) {
-        (None, expr.clone())
+fn temp_expr(state: &mut State, expr: &Expr) -> (Stmt, Expr) {
+    // put expr into a temp variable to avoid duplicating it
+    let temp = state.next_temp();
+    let name = temp.clone();
+    let patternx = PatternX::Var { name, mutable: false };
+    let pattern = SpannedTyped::new(&expr.span, &expr.typ, patternx);
+    let decl = StmtX::Decl { pattern, mode: Mode::Exec, init: Some(expr.clone()) };
+    let temp_decl = Spanned::new(expr.span.clone(), decl);
+    (temp_decl, SpannedTyped::new(&expr.span, &expr.typ, ExprX::Var(temp)))
+}
+
+struct SmallLocOrTemp(Vec<Stmt>, Expr, bool);
+
+fn small_loc_or_temp_exprs(state: &mut State, es: &[Expr]) -> (Vec<Stmt>, Vec<Expr>, bool) {
+    let mut stmts: Vec<Stmt> = Vec::new();
+    let mut exprs: Vec<Expr> = Vec::new();
+    let mut contains_loc = false;
+    for e in es.iter() {
+        let SmallLocOrTemp(ss, ee, cl) = small_loc_or_temp(state, e);
+        stmts.extend(ss.into_iter());
+        exprs.push(ee);
+        contains_loc |= cl;
+    }
+    (stmts, exprs, contains_loc)
+}
+
+impl SmallLocOrTemp {
+    fn map_expr(self, f: impl Fn(Expr) -> Expr) -> SmallLocOrTemp {
+        let SmallLocOrTemp(ss, ee, cl) = self;
+        SmallLocOrTemp(ss, f(ee), cl)
+    }
+
+    fn to_opt(self) -> Option<(Vec<Stmt>, Expr)> {
+        let SmallLocOrTemp(ss, ee, cl) = self;
+        cl.then(|| (ss, ee))
+    }
+}
+
+fn small_or_temp(state: &mut State, expr: &Expr) -> (Vec<Stmt>, Expr) {
+    let SmallLocOrTemp(stmts, expr, _) = small_loc_or_temp(state, expr);
+    (stmts, expr)
+}
+
+/// Returns (statements for temp expressions, simplified expr, contains location)
+fn small_loc_or_temp(state: &mut State, expr: &Expr) -> SmallLocOrTemp {
+    let contains_loc = match &expr.x {
+        ExprX::Const(..) => None,
+        ExprX::ConstVar(..) => None,
+        ExprX::Var(..) => None,
+        ExprX::VarLoc(..) => Some((vec![], expr.clone())),
+        ExprX::VarAt(..) => None,
+        ExprX::Loc(e) => {
+            let SmallLocOrTemp(stmts, ee, _contains_loc) = small_loc_or_temp(state, e);
+            Some((stmts, expr.new_x(ExprX::Loc(ee))))
+        }
+        ExprX::Call(target, es) => {
+            let (stmts, exprs, contains_loc) = small_loc_or_temp_exprs(state, es);
+            contains_loc.then(|| (stmts, expr.new_x(ExprX::Call(target.clone(), Arc::new(exprs)))))
+        }
+        ExprX::Tuple(es) => {
+            let (stmts, exprs, contains_loc) = small_loc_or_temp_exprs(state, es);
+            contains_loc.then(|| (stmts, expr.new_x(ExprX::Tuple(Arc::new(exprs)))))
+        }
+        ExprX::Ctor(path, ident, binders, update) => {
+            let (mut stmts, update, mut contains_loc) = match update {
+                None => (vec![], None, false),
+                Some(update) => {
+                    let SmallLocOrTemp(s, u, c) = small_loc_or_temp(state, update);
+                    (s, Some(u), c)
+                }
+            };
+            let mut mapped_binders = Vec::new();
+            for b in binders.iter() {
+                let SmallLocOrTemp(ss, ee, cl) = small_loc_or_temp(state, &b.a);
+                stmts.extend(ss.into_iter());
+                mapped_binders.push(b.new_a(ee));
+                contains_loc |= cl;
+            }
+            contains_loc.then(|| {
+                (
+                    stmts,
+                    expr.new_x(ExprX::Ctor(
+                        path.clone(),
+                        ident.clone(),
+                        Arc::new(mapped_binders),
+                        update,
+                    )),
+                )
+            })
+        }
+        ExprX::Unary(op, e1) => {
+            small_loc_or_temp(state, e1).map_expr(|e| expr.new_x(ExprX::Unary(*op, e))).to_opt()
+        }
+        ExprX::UnaryOpr(op, e1) => small_loc_or_temp(state, e1)
+            .map_expr(|e| expr.new_x(ExprX::UnaryOpr(op.clone(), e)))
+            .to_opt(),
+        ExprX::Binary(op, e1, e2) => {
+            let (stmts, exprs, contains_loc) =
+                small_loc_or_temp_exprs(state, &[e1.clone(), e2.clone()]);
+            let mut exprs = exprs.into_iter();
+            let expr1 = exprs.next().unwrap();
+            let expr2 = exprs.next().unwrap();
+            contains_loc.then(|| (stmts, expr.new_x(ExprX::Binary(*op, expr1, expr2))))
+        }
+        ExprX::Quant(..) => None,
+        ExprX::Closure(params, body) => small_loc_or_temp(state, body)
+            .map_expr(|b| expr.new_x(ExprX::Closure(params.clone(), b)))
+            .to_opt(),
+        ExprX::Choose { .. } => None,
+        ExprX::Assign(e1, e2) => {
+            let (stmts, exprs, contains_loc) =
+                small_loc_or_temp_exprs(state, &[e1.clone(), e2.clone()]);
+            let mut exprs = exprs.into_iter();
+            let expr1 = exprs.next().unwrap();
+            let expr2 = exprs.next().unwrap();
+            contains_loc.then(|| (stmts, expr.new_x(ExprX::Assign(expr1, expr2))))
+        }
+        ExprX::Fuel(..) => None,
+        ExprX::Admit => None,
+        ExprX::If(e1, e2, e3) => {
+            let mut es = vec![e1.clone(), e2.clone()];
+            if let Some(e3) = e3.as_ref() {
+                es.push(e3.clone());
+            }
+            let (stmts, exprs, contains_loc) = small_loc_or_temp_exprs(state, &es);
+            let mut exprs = exprs.into_iter();
+            let expr1 = exprs.next().unwrap();
+            let expr2 = exprs.next().unwrap();
+            let expr3 = exprs.next();
+            contains_loc.then(|| (stmts, expr.new_x(ExprX::If(expr1, expr2, expr3))))
+        }
+        ExprX::Forall { .. }
+        | ExprX::AssertBV(..)
+        | ExprX::Header(_)
+        | ExprX::Match(..)
+        | ExprX::While { .. }
+        | ExprX::Return(..)
+        | ExprX::Block(..)
+        | ExprX::OpenInvariant(..) => {
+            panic!("{:?} expression not expected here", &expr.x);
+        }
+    };
+    if let Some((stmts, simplified_expr)) = contains_loc {
+        SmallLocOrTemp(stmts, simplified_expr, true)
     } else {
-        // put expr into a temp variable to avoid duplicating it
-        let temp = state.next_temp();
-        let name = temp.clone();
-        let patternx = PatternX::Var { name, mutable: false };
-        let pattern = SpannedTyped::new(&expr.span, &expr.typ, patternx);
-        let decl = StmtX::Decl { pattern, mode: Mode::Exec, init: Some(expr.clone()) };
-        let temp_decl = Some(Spanned::new(expr.span.clone(), decl));
-        (temp_decl, SpannedTyped::new(&expr.span, &expr.typ, ExprX::Var(temp)))
+        if is_small_expr(&expr) {
+            SmallLocOrTemp(vec![], expr.clone(), false)
+        } else {
+            let (ts, te) = temp_expr(state, expr);
+            SmallLocOrTemp(vec![ts], te, false)
+        }
     }
 }
 
@@ -186,28 +325,19 @@ fn simplify_one_expr(ctx: &GlobalCtx, state: &mut State, expr: &Expr) -> Result<
             let (temp_decl, update) = small_or_temp(state, update);
             let mut decls: Vec<Stmt> = Vec::new();
             let mut binders: Vec<Binder<Expr>> = Vec::new();
-            match temp_decl {
-                None => {
-                    for binder in partial_binders.iter() {
-                        binders.push(binder.clone());
-                    }
+            if temp_decl.len() == 0 {
+                for binder in partial_binders.iter() {
+                    binders.push(binder.clone());
                 }
-                Some(temp) => {
-                    // Because of Rust's order of evaluation here,
-                    // we have to put binders in temp vars, too.
-                    for binder in partial_binders.iter() {
-                        let (temp_decl, e) = small_or_temp(state, &binder.a);
-                        let binder = match temp_decl {
-                            None => binder.clone(),
-                            Some(temp) => {
-                                decls.push(temp);
-                                binder.map_a(|_| e)
-                            }
-                        };
-                        binders.push(binder);
-                    }
-                    decls.push(temp);
+            } else {
+                // Because of Rust's order of evaluation here,
+                // we have to put binders in temp vars, too.
+                for binder in partial_binders.iter() {
+                    let (temp_decl_inner, e) = small_or_temp(state, &binder.a);
+                    decls.extend(temp_decl_inner.into_iter());
+                    binders.push(binder.map_a(|_| e));
                 }
+                decls.extend(temp_decl.into_iter());
             }
             let datatype = &ctx.datatypes[path];
             assert_eq!(datatype.len(), 1);
@@ -275,8 +405,8 @@ fn simplify_one_expr(ctx: &GlobalCtx, state: &mut State, expr: &Expr) -> Result<
                 }
             }
             if let Some(if_expr) = if_expr {
-                let if_expr = if let Some(decl) = temp_decl {
-                    let block = ExprX::Block(Arc::new(vec![decl]), Some(if_expr));
+                let if_expr = if temp_decl.len() != 0 {
+                    let block = ExprX::Block(Arc::new(temp_decl), Some(if_expr));
                     SpannedTyped::new(&expr.span, &expr.typ, block)
                 } else {
                     if_expr
@@ -301,9 +431,7 @@ fn simplify_one_stmt(ctx: &GlobalCtx, state: &mut State, stmt: &Stmt) -> Result<
         {
             let mut decls: Vec<Stmt> = Vec::new();
             let (temp_decl, init) = small_or_temp(state, init);
-            if let Some(temp_decl) = temp_decl {
-                decls.push(temp_decl);
-            }
+            decls.extend(temp_decl.into_iter());
             let _ = pattern_to_exprs(ctx, state, &init, &pattern, &mut decls)?;
             Ok(decls)
         }

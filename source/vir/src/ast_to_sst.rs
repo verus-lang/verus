@@ -1,11 +1,14 @@
 use crate::ast::{
-    BinaryOp, CallTarget, Constant, Expr, ExprX, Fun, Function, Ident, Mode, Params, PatternX,
+    BinaryOp, CallTarget, Constant, Expr, ExprX, Fun, Function, Ident, Mode, PatternX,
     SpannedTyped, Stmt, StmtX, Typ, TypX, Typs, UnaryOp, UnaryOpr, VarAt, VirErr,
 };
 use crate::ast_util::{err_str, err_string};
 use crate::context::Ctx;
 use crate::def::Spanned;
-use crate::sst::{Bnd, BndX, Dest, Exp, ExpX, Exps, LocalDecl, LocalDeclX, Stm, StmX, UniqueIdent};
+use crate::sst::{
+    Bnd, BndX, Dest, Exp, ExpX, Exps, LocalDecl, LocalDeclX, ParPurpose, Pars, Stm, StmX,
+    UniqueIdent,
+};
 use crate::sst_visitor::{map_exp_visitor, map_stm_exp_visitor};
 use crate::util::{vec_map, vec_map_result};
 use air::ast::{Binder, BinderX, Binders, Quant, Span};
@@ -207,12 +210,14 @@ pub(crate) fn expr_to_exp_state(ctx: &Ctx, state: &mut State, expr: &Expr) -> Re
 
 pub(crate) fn expr_to_decls_exp(
     ctx: &Ctx,
-    params: &Params,
+    params: &Pars,
     expr: &Expr,
 ) -> Result<(Vec<LocalDecl>, Exp), VirErr> {
     let mut state = State::new();
     for param in params.iter() {
-        state.declare_new_var(&param.x.name, &param.x.typ, false, false);
+        if !matches!(param.x.purpose, ParPurpose::MutPost) {
+            state.declare_new_var(&param.x.name, &param.x.typ, false, false);
+        }
     }
     let exp = expr_to_exp_state(ctx, &mut state, expr)?;
     let exp = state.finalize_exp(&exp);
@@ -220,11 +225,7 @@ pub(crate) fn expr_to_decls_exp(
     Ok((state.local_decls, exp))
 }
 
-pub(crate) fn expr_to_bind_decls_exp(
-    ctx: &Ctx,
-    params: &Params,
-    expr: &Expr,
-) -> Result<Exp, VirErr> {
+pub(crate) fn expr_to_bind_decls_exp(ctx: &Ctx, params: &Pars, expr: &Expr) -> Result<Exp, VirErr> {
     let mut state = State::new();
     for param in params.iter() {
         let id = state.declare_new_var(&param.x.name, &param.x.typ, false, false);
@@ -236,7 +237,7 @@ pub(crate) fn expr_to_bind_decls_exp(
     Ok(exp)
 }
 
-pub(crate) fn expr_to_exp(ctx: &Ctx, params: &Params, expr: &Expr) -> Result<Exp, VirErr> {
+pub(crate) fn expr_to_exp(ctx: &Ctx, params: &Pars, expr: &Expr) -> Result<Exp, VirErr> {
     Ok(expr_to_decls_exp(ctx, params, expr)?.1)
 }
 
@@ -296,13 +297,14 @@ pub(crate) fn expr_to_one_stm_dest(
     Ok(stms_to_one_stm(&expr.span, stms))
 }
 
-fn is_small_exp(exp: &Exp) -> bool {
+fn is_small_exp_or_loc(exp: &Exp) -> bool {
     match &exp.x {
         ExpX::Const(_) => true,
         ExpX::Var(..) => true,
         ExpX::Old(..) => true,
-        ExpX::Unary(UnaryOp::Not | UnaryOp::Clip(_), e) => is_small_exp(e),
-        ExpX::UnaryOpr(UnaryOpr::Box(_) | UnaryOpr::Unbox(_), e) => is_small_exp(e),
+        ExpX::Loc(..) => true,
+        ExpX::Unary(UnaryOp::Not | UnaryOp::Clip(_), e) => is_small_exp_or_loc(e),
+        ExpX::UnaryOpr(UnaryOpr::Box(_) | UnaryOpr::Unbox(_), e) => is_small_exp_or_loc(e),
         _ => false,
     }
 }
@@ -318,7 +320,7 @@ fn stm_call(
     let mut small_args: Vec<Exp> = Vec::new();
     let mut stms: Vec<Stm> = Vec::new();
     for arg in args.iter() {
-        if is_small_exp(&arg.0) {
+        if is_small_exp_or_loc(&arg.0) {
             small_args.push(arg.0.clone());
         } else {
             // To avoid copying arg in preconditions and postconditions,
@@ -370,18 +372,26 @@ pub(crate) fn expr_to_stm_opt(
             let unique_id = state.get_var_unique_id(&x);
             Ok((vec![], Some(mk_exp(ExpX::Var(unique_id)))))
         }
+        ExprX::VarLoc(x) => {
+            let unique_id = state.get_var_unique_id(&x);
+            Ok((vec![], Some(mk_exp(ExpX::VarLoc(unique_id)))))
+        }
         ExprX::VarAt(x, VarAt::Pre) => {
             if let Some((scope, _)) = state.rename_map.scope_and_index_of_key(x) {
                 if scope != 0 {
                     err_str(&expr.span, "the parameter is shadowed here")?;
                 }
             }
-            Ok((vec![], Some(mk_exp(ExpX::VarAt(x.clone(), VarAt::Pre)))))
+            Ok((vec![], Some(mk_exp(ExpX::VarAt(state.get_var_unique_id(&x), VarAt::Pre)))))
         }
         ExprX::ConstVar(..) => panic!("ConstVar should already be removed"),
+        ExprX::Loc(expr1) => {
+            let (stms, e0) = expr_to_stm(ctx, state, expr1)?;
+            Ok((stms, Some(mk_exp(ExpX::Loc(e0)))))
+        }
         ExprX::Assign(expr1, expr2) => {
             let dest_x = match &expr1.x {
-                ExprX::Var(x) => Ok(state.get_var_unique_id(&x)),
+                ExprX::VarLoc(x) => Ok(state.get_var_unique_id(&x)),
                 _ => err_str(&expr1.span, "complex assignments not yet supported"),
             };
             match expr_must_be_call_stm(ctx, state, expr2)? {

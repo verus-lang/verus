@@ -139,14 +139,18 @@ fn check_function(ctxt: &Ctxt, function: &Function) -> Result<(), VirErr> {
                     for (_param, arg) in
                         f.x.params.iter().zip(args.iter()).filter(|(p, _)| p.x.is_mut)
                     {
-                        match &arg.x {
-                            ExprX::Var(_) => (),
-                            _ => {
-                                return err_str(
-                                    &arg.span,
-                                    "complex arguments to &mut parameters are currently unsupported",
-                                );
-                            }
+                        let ok = match &arg.x {
+                            ExprX::Loc(l) => match l.x {
+                                ExprX::VarLoc(_) => true,
+                                _ => false,
+                            },
+                            _ => false,
+                        };
+                        if !ok {
+                            return err_str(
+                                &arg.span,
+                                "complex arguments to &mut parameters are currently unsupported",
+                            );
                         }
                     }
                     if disallow_private_access {

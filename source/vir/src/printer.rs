@@ -178,10 +178,12 @@ fn expr_to_node(expr: &Expr) -> Node {
             }
         ),
         ExprX::Var(ident) => nodes!(var {str_to_node(ident)}),
+        ExprX::VarLoc(ident) => nodes!(varloc {str_to_node(ident)}),
         ExprX::VarAt(ident, var_at) => {
             nodes!(varat {str_to_node(ident)} {str_to_node(&format!("{:?}", var_at))})
         }
         ExprX::ConstVar(fun) => nodes!(constvar {fun_to_node(fun)}),
+        ExprX::Loc(expr) => nodes!(loc {expr_to_node(expr)}),
         ExprX::Call(call_target, exprs) => nodes!(call {match call_target {
             CallTarget::Static(fun, typs) => nodes!(static {fun_to_node(fun)} {typs_to_node(typs)}),
             CallTarget::FnSpec(e) => nodes!(fnspec {expr_to_node(e)}),

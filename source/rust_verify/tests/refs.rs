@@ -145,7 +145,29 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_mut_ref_arg_self_fail MUT_REF_ARG_SELF_COMMON.to_string() + code_str! {
+    #[test] test_mut_ref_arg_self_pass_2 MUT_REF_ARG_SELF_COMMON.to_string() + code_str! {
+        fn caller() {
+            let mut v = Value { v: 2 };
+            v.add1();
+            v.add1();
+            assert(v.v == 4);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_mut_ref_arg_self_fail_1 MUT_REF_ARG_SELF_COMMON.to_string() + code_str! {
+        fn caller_fail() {
+            let mut v = Value { v: 2 };
+            v.add1();
+            v.add1();
+            assert(false); // FAILS
+        }
+    } => Err(e) => assert_one_fails(e)
+}
+
+test_verify_one_file! {
+    #[test] test_mut_ref_arg_self_fail_2 MUT_REF_ARG_SELF_COMMON.to_string() + code_str! {
         fn caller1() {
             let mut v = Value { v: 2 };
             v.add1();
@@ -194,9 +216,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    // TODO(utaal) this is currently rejected by the same check that disallows complex arguments
-    // for &mut parameters; consider fixing this when adding support for those
-    #[ignore] #[test] test_mut_ref_generic_1 code! {
+    #[test] test_mut_ref_generic_1 code! {
         fn add1<A>(a: &mut A) {
             ensures(equal(*old(a), *a));
         }
@@ -228,12 +248,55 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    // TODO(utaal) support old(v).call()
-    #[ignore] #[test] test_mut_ref_old_trigger code! {
+    #[test] test_mut_ref_trigger_0 code! {
+        #[verifier(external_body)]
+        struct A {
+            _p: std::marker::PhantomData<()>,
+        }
+
+        impl A {
+            #[spec]
+            #[verifier(external_body)]
+            fn index(&self, i: nat) -> nat { unimplemented!() }
+        }
+
+        #[exec]
+        fn add1(a: &mut A, i: usize) {
+            ensures(forall(|j: nat| a.index(j) == old(a).index(j) + 1));
+            assume(false);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_mut_ref_old_trigger code! {
         use crate::pervasive::vec::*;
 
         fn add1(v: &mut Vec<u64>) {
-            requires(forall(|i: nat| i < v.len() >>= old(v).index(i) < 10));
+            requires(forall(|i: nat| i < old(v).len() >>= old(v).index(i) < 10));
+        }
+
+        fn test(v: Vec<u64>) {
+            requires(forall(|i: nat| i < v.len() >>= v.index(i) < 5));
+            let mut v1 = v;
+            add1(&mut v1);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_mut_ref_shadow code! {
+        fn foo(x: &mut u32) {
+            ensures(equal(*x, *old(x)));
+        }
+
+        fn main() {
+            let h = 5;
+
+            let mut h = 6;
+            foo(&mut h);
+
+            assert(h == 6);
         }
     } => Ok(())
 }
