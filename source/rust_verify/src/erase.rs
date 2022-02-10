@@ -432,7 +432,7 @@ fn erase_expr_opt(ctxt: &Ctxt, mctxt: &mut MCtxt, expect: Mode, expr: &Expr) -> 
             }
         }
         ExprKind::Paren(e) => {
-            mctxt.remap_parens.insert(e.span, expr.span);
+            mctxt.remap_parens.insert(e.span, expr.span).map(|_| panic!("{:?}", e.span));
             match erase_expr_opt(ctxt, mctxt, expect, e) {
                 None => return None,
                 Some(e) => ExprKind::Paren(P(e)),
@@ -1145,34 +1145,38 @@ fn mk_ctxt(erasure_hints: &ErasureHints, keep_proofs: bool) -> Ctxt {
     let mut resolved_exprs: HashMap<Span, vir::ast::Expr> = HashMap::new();
     let mut resolved_pats: HashMap<Span, Pattern> = HashMap::new();
     for f in &erasure_hints.vir_crate.functions {
-        functions.insert(f.x.name.clone(), Some(f.clone()));
-        functions_by_span.insert(from_raw_span(&f.span.raw_span), Some(f.clone()));
+        functions.insert(f.x.name.clone(), Some(f.clone())).map(|_| panic!("{:?}", &f.x.name));
+        functions_by_span
+            .insert(from_raw_span(&f.span.raw_span), Some(f.clone()))
+            .map(|_| panic!("{:?}", &f.span));
     }
     for name in &erasure_hints.external_functions {
-        functions.insert(name.clone(), None);
+        functions.insert(name.clone(), None).map(|_| panic!("{:?}", name));
     }
     for span in &erasure_hints.ignored_functions {
-        functions_by_span.insert(span.span(), None);
+        functions_by_span.insert(span.span(), None).map(|v| v.map(|_| panic!("{:?}", span)));
     }
     for d in &erasure_hints.vir_crate.datatypes {
-        datatypes.insert(d.x.path.clone(), d.clone());
+        datatypes.insert(d.x.path.clone(), d.clone()).map(|_| panic!("{:?}", &d.x.path));
     }
     for (span, call) in &erasure_hints.resolved_calls {
-        calls.insert(span.span(), call.clone());
+        calls.insert(span.span(), call.clone()).map(|_| panic!("{:?}", span));
     }
     for (span, expr) in &erasure_hints.resolved_exprs {
-        resolved_exprs.insert(span.span(), expr.clone());
+        resolved_exprs.insert(span.span(), expr.clone()).map(|_| panic!("{:?}", span));
     }
     for (span, expr) in &erasure_hints.resolved_pats {
-        resolved_pats.insert(span.span(), expr.clone());
+        resolved_pats.insert(span.span(), expr.clone()).map(|_| panic!("{:?}", span));
     }
     let mut condition_modes: HashMap<Span, Mode> = HashMap::new();
     let mut var_modes: HashMap<Span, Mode> = HashMap::new();
     for (span, mode) in &erasure_hints.erasure_modes.condition_modes {
-        condition_modes.insert(from_raw_span(&span.raw_span), *mode);
+        condition_modes.insert(from_raw_span(&span.raw_span), *mode).map(|_| panic!("{:?}", span));
     }
     for (span, mode) in &erasure_hints.erasure_modes.var_modes {
-        var_modes.insert(from_raw_span(&span.raw_span), *mode);
+        var_modes
+            .insert(from_raw_span(&span.raw_span), *mode)
+            .map(|v| panic!("{:?} {:?}", span, v));
     }
     Ctxt {
         vir_crate: erasure_hints.vir_crate.clone(),

@@ -252,8 +252,9 @@ fn check_expr(typing: &mut Typing, outer_mode: Mode, expr: &Expr) -> Result<Mode
                             ),
                         );
                     }
+                } else {
+                    check_expr_has_mode(typing, param_mode, arg, param.x.mode)?;
                 }
-                check_expr_has_mode(typing, param_mode, arg, param.x.mode)?;
             }
             Ok(function.x.ret.x.mode)
         }

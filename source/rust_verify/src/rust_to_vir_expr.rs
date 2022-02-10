@@ -174,16 +174,14 @@ fn extract_choose<'tcx>(
     match &expr.kind {
         ExprKind::Closure(_, fn_decl, body_id, _, _) => {
             let closure_body = tcx.hir().body(*body_id);
-            let params: Vec<Binder<Typ>> = closure_body
-                .params
-                .iter()
-                .zip(fn_decl.inputs)
-                .map(|(x, t)| {
-                    Arc::new(BinderX { name: Arc::new(pat_to_var(x.pat)), a: ty_to_vir(tcx, t) })
-                })
-                .collect();
-            let vars =
-                vec_map(&params, |p| spanned_typed_new(span, &p.a, ExprX::Var(p.name.clone())));
+            let mut params: Vec<Binder<Typ>> = Vec::new();
+            let mut vars: Vec<vir::ast::Expr> = Vec::new();
+            for (x, t) in closure_body.params.iter().zip(fn_decl.inputs) {
+                let name = Arc::new(pat_to_var(x.pat));
+                let typ = ty_to_vir(tcx, t);
+                vars.push(spanned_typed_new(x.span, &typ, ExprX::Var(name.clone())));
+                params.push(Arc::new(BinderX { name, a: typ }));
+            }
             let typs = vec_map(&params, |p| p.a.clone());
             let cond_expr = &closure_body.value;
             let cond = expr_to_vir(bctx, cond_expr, ExprModifier::REGULAR)?;
