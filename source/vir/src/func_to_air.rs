@@ -1,5 +1,6 @@
 use crate::ast::{
-    Function, GenericBoundX, Ident, Idents, Mode, ParamX, Params, SpannedTyped, Typ, TypX, VirErr,
+    Function, GenericBoundX, Ident, Idents, Mode, Param, ParamX, Params, SpannedTyped, Typ, TypX,
+    VirErr,
 };
 use crate::context::Ctx;
 use crate::def::{
@@ -7,7 +8,7 @@ use crate::def::{
     prefix_requires, suffix_global_id, suffix_local_stmt_id, suffix_typ_param_id, SnapPos, Spanned,
     FUEL_BOOL, FUEL_BOOL_DEFAULT, FUEL_LOCAL, FUEL_TYPE, SUCC, ZERO,
 };
-use crate::sst::{BndX, ExpX};
+use crate::sst::{BndX, ExpX, Par, ParPurpose, ParX, Pars};
 use crate::sst_to_air::{exp_to_expr, fun_to_air_ident, typ_invariant, typ_to_air, ExprCtxt};
 use crate::util::{vec_map, vec_map_result};
 use air::ast::{
@@ -25,7 +26,7 @@ use std::sync::Arc;
 pub(crate) fn func_bind_trig(
     ctx: &Ctx,
     typ_params: &Idents,
-    params: &Params,
+    params: &Pars,
     trig_exprs: &Vec<Expr>,
     add_fuel: bool,
 ) -> Bind {
@@ -34,10 +35,12 @@ pub(crate) fn func_bind_trig(
         binders.push(ident_binder(&suffix_typ_param_id(&typ_param), &str_typ(crate::def::TYPE)));
     }
     for param in params.iter() {
-        binders.push(ident_binder(
-            &suffix_local_stmt_id(&param.x.name.clone()),
-            &typ_to_air(ctx, &param.x.typ),
-        ));
+        let name = if matches!(param.x.purpose, ParPurpose::MutPre) {
+            prefix_pre_var(&param.x.name)
+        } else {
+            param.x.name.clone()
+        };
+        binders.push(ident_binder(&suffix_local_stmt_id(&name), &typ_to_air(ctx, &param.x.typ)));
     }
     if add_fuel {
         binders.push(ident_binder(&str_ident(FUEL_LOCAL), &str_typ(FUEL_TYPE)));
@@ -51,7 +54,7 @@ pub(crate) fn func_bind_trig(
 pub(crate) fn func_bind(
     ctx: &Ctx,
     typ_params: &Idents,
-    params: &Params,
+    params: &Pars,
     trig_expr: &Expr,
     add_fuel: bool,
 ) -> Bind {
@@ -59,13 +62,18 @@ pub(crate) fn func_bind(
 }
 
 // arguments for function call f(typ_params, params)
-pub(crate) fn func_def_args(typ_params: &Idents, params: &Params) -> Vec<Expr> {
+pub(crate) fn func_def_args(typ_params: &Idents, params: &Pars) -> Vec<Expr> {
     let mut f_args: Vec<Expr> = Vec::new();
     for typ_param in typ_params.iter() {
         f_args.push(ident_var(&suffix_typ_param_id(&typ_param)));
     }
     for param in params.iter() {
-        f_args.push(ident_var(&suffix_local_stmt_id(&param.x.name.clone())));
+        let name = if matches!(param.x.purpose, ParPurpose::MutPre) {
+            prefix_pre_var(&param.x.name)
+        } else {
+            param.x.name.clone()
+        };
+        f_args.push(ident_var(&suffix_local_stmt_id(&name)));
     }
     f_args
 }
@@ -75,7 +83,7 @@ fn func_def_quant(
     ctx: &Ctx,
     name: &Ident,
     typ_params: &Idents,
-    params: &Params,
+    params: &Pars,
     body: Expr,
 ) -> Result<Expr, VirErr> {
     let f_args = func_def_args(typ_params, params);
@@ -93,9 +101,10 @@ fn func_body_to_air(
 ) -> Result<(), VirErr> {
     let id_fuel = prefix_fuel_id(&fun_to_air_ident(&function.x.name));
 
+    let pars = params_to_pars(&function.x.params, false);
+
     // ast --> sst
-    let (local_decls, body_exp) =
-        crate::ast_to_sst::expr_to_decls_exp(&ctx, &function.x.params, &body)?;
+    let (local_decls, body_exp) = crate::ast_to_sst::expr_to_decls_exp(&ctx, &pars, &body)?;
 
     // Check termination
     let (is_recursive, termination_commands, body_exp) =
@@ -123,7 +132,7 @@ fn func_body_to_air(
     } else {
         let rec_f = suffix_global_id(&fun_to_air_ident(&prefix_recursive_fun(&function.x.name)));
         let fuel_nat_f = prefix_fuel_nat(&fun_to_air_ident(&function.x.name));
-        let args = func_def_args(&function.x.typ_params(), &function.x.params);
+        let args = func_def_args(&function.x.typ_params(), &pars);
         let mut args_zero = args.clone();
         let mut args_fuel = args.clone();
         let mut args_succ = args.clone();
@@ -138,10 +147,8 @@ fn func_body_to_air(
         let rec_f_def = ident_apply(&rec_f, &args_def);
         let eq_zero = mk_eq(&rec_f_fuel, &rec_f_zero);
         let eq_body = mk_eq(&rec_f_succ, &body_expr);
-        let bind_zero =
-            func_bind(ctx, &function.x.typ_params(), &function.x.params, &rec_f_fuel, true);
-        let bind_body =
-            func_bind(ctx, &function.x.typ_params(), &function.x.params, &rec_f_succ, true);
+        let bind_zero = func_bind(ctx, &function.x.typ_params(), &pars, &rec_f_fuel, true);
+        let bind_body = func_bind(ctx, &function.x.typ_params(), &pars, &rec_f_succ, true);
         let forall_zero = mk_bind_expr(&bind_zero, &eq_zero);
         let forall_body = mk_bind_expr(&bind_body, &eq_body);
         let fuel_nat_decl = Arc::new(DeclX::Const(fuel_nat_f, str_typ(FUEL_TYPE)));
@@ -156,7 +163,7 @@ fn func_body_to_air(
         ctx,
         &suffix_global_id(&fun_to_air_ident(&function.x.name)),
         &function.x.typ_params(),
-        &function.x.params,
+        &pars,
         def_body,
     )?;
     let fuel_bool = str_apply(FUEL_BOOL, &vec![ident_var(&id_fuel)]);
@@ -168,7 +175,7 @@ fn func_body_to_air(
 pub fn req_ens_to_air(
     ctx: &Ctx,
     commands: &mut Vec<Command>,
-    params: &Params,
+    params: &Pars,
     typing_invs: &Vec<Expr>,
     specs: &Vec<crate::ast::Expr>,
     typ_params: &Idents,
@@ -188,7 +195,7 @@ pub fn req_ens_to_air(
             exprs.push(e.clone());
         }
         for e in specs.iter() {
-            let exp = crate::ast_to_sst::expr_to_exp(ctx, &params, e)?;
+            let exp = crate::ast_to_sst::expr_to_exp(ctx, params, e)?;
             let expr = exp_to_expr(ctx, &exp, ExprCtxt::Spec);
             let loc_expr = match msg {
                 None => expr,
@@ -228,7 +235,11 @@ pub fn func_name_to_air(ctx: &Ctx, function: &Function) -> Result<Commands, VirE
 
         // Check whether we need to declare the recursive version too
         if let Some(body) = &function.x.body {
-            let body_exp = crate::ast_to_sst::expr_to_exp(&ctx, &function.x.params, &body)?;
+            let body_exp = crate::ast_to_sst::expr_to_exp(
+                &ctx,
+                &params_to_pars(&function.x.params, false),
+                &body,
+            )?;
             if crate::recursion::is_recursive_exp(ctx, &function.x.name, &body_exp) {
                 let rec_f =
                     suffix_global_id(&fun_to_air_ident(&prefix_recursive_fun(&function.x.name)));
@@ -246,22 +257,45 @@ pub fn func_name_to_air(ctx: &Ctx, function: &Function) -> Result<Commands, VirE
     Ok(Arc::new(commands))
 }
 
-fn params_to_pre_post_params(params: &Params, pre: bool) -> Params {
+pub(crate) fn param_to_par(param: &Param, allow_is_mut: bool) -> Par {
+    param.map_x(|p| {
+        let ParamX { name, typ, mode, is_mut } = p;
+        if *is_mut && !allow_is_mut {
+            panic!("mut unexpected here");
+        }
+        ParX { name: name.clone(), typ: typ.clone(), mode: *mode, purpose: ParPurpose::Regular }
+    })
+}
+
+pub(crate) fn params_to_pars(params: &Params, allow_is_mut: bool) -> Pars {
+    Arc::new(vec_map(params, |p| param_to_par(p, allow_is_mut)))
+}
+
+fn params_to_pre_post_pars(params: &Params, pre: bool) -> Pars {
     Arc::new(
         params
             .iter()
             .flat_map(|param| {
                 let mut res = Vec::new();
                 if param.x.is_mut {
-                    res.push(param.map_x(|p| ParamX {
-                        name: prefix_pre_var(&p.name),
+                    res.push(param.map_x(|p| ParX {
+                        name: p.name.clone(),
                         typ: p.typ.clone(),
                         mode: p.mode,
-                        is_mut: false,
+                        purpose: ParPurpose::MutPre,
                     }));
                 }
                 if !(param.x.is_mut && pre) {
-                    res.push(param.clone());
+                    res.push(param.map_x(|p| ParX {
+                        name: p.name.clone(),
+                        typ: p.typ.clone(),
+                        mode: p.mode,
+                        purpose: if param.x.is_mut {
+                            ParPurpose::MutPost
+                        } else {
+                            ParPurpose::Regular
+                        },
+                    }));
                 }
                 res
             })
@@ -317,7 +351,13 @@ pub fn func_decl_to_air(
             if let Some(post) = typ_invariant(ctx, &function.x.ret.x.typ, &f_app) {
                 // (axiom (forall (...) (=> pre post)))
                 let e_forall = mk_bind_expr(
-                    &func_bind(ctx, &function.x.typ_params(), &function.x.params, &f_app, false),
+                    &func_bind(
+                        ctx,
+                        &function.x.typ_params(),
+                        &params_to_pars(&function.x.params, false),
+                        &f_app,
+                        false,
+                    ),
                     &mk_implies(&mk_and(&f_pre), &post),
                 );
                 let inv_axiom = Arc::new(DeclX::Axiom(e_forall));
@@ -331,7 +371,7 @@ pub fn func_decl_to_air(
                 // We don't highlight the failed precondition if the programmer supplied their own msg
                 Some(_) => None,
             };
-            let req_params = params_to_pre_post_params(&function.x.params, true);
+            let req_params = params_to_pre_post_pars(&function.x.params, true);
             let _ = req_ens_to_air(
                 ctx,
                 &mut decl_commands,
@@ -343,13 +383,13 @@ pub fn func_decl_to_air(
                 &prefix_requires(&fun_to_air_ident(&function.x.name)),
                 &msg,
             )?;
-            let params = params_to_pre_post_params(&function.x.params, false);
+            let params = params_to_pre_post_pars(&function.x.params, false);
             let mut ens_params = (*params).clone();
             let mut ens_typing_invs: Vec<Expr> = Vec::new();
             if function.x.has_return() {
                 let ParamX { name, typ, .. } = &function.x.ret.x;
                 ens_typs.push(typ_to_air(ctx, &typ));
-                ens_params.push(function.x.ret.clone());
+                ens_params.push(param_to_par(&function.x.ret, false));
                 if let Some(expr) =
                     typ_invariant(ctx, &typ, &ident_var(&suffix_local_stmt_id(&name)))
                 {
@@ -357,7 +397,7 @@ pub fn func_decl_to_air(
                 }
             }
             // typing invariants for synthetic out-params for &mut params
-            for param in params.iter().filter(|p| p.x.is_mut) {
+            for param in params.iter().filter(|p| matches!(p.x.purpose, ParPurpose::MutPost)) {
                 if let Some(expr) = typ_invariant(
                     ctx,
                     &param.x.typ,
@@ -401,7 +441,7 @@ pub fn func_decl_to_air(
                 }
                 for param in params.iter() {
                     vars.push(param.x.name.clone());
-                    binders.push(crate::ast_util::param_to_binder(&param));
+                    binders.push(crate::ast_util::par_to_binder(&param));
                 }
                 let triggers = crate::triggers::build_triggers(ctx, span, &vars, &exp)?;
                 let bndx = BndX::Quant(Quant::Forall, Arc::new(binders), triggers);
@@ -438,10 +478,10 @@ pub fn func_def_to_air(
             };
             let ens_params = Arc::new(ens_params);
             let reqs = vec_map_result(&*function.x.require, |e| {
-                crate::ast_to_sst::expr_to_exp(ctx, &function.x.params, e)
+                crate::ast_to_sst::expr_to_exp(ctx, &params_to_pars(&function.x.params, true), e)
             })?;
             let enss = vec_map_result(&*function.x.ensure, |e| {
-                crate::ast_to_sst::expr_to_exp(ctx, &ens_params, e)
+                crate::ast_to_sst::expr_to_exp(ctx, &params_to_pars(&ens_params, true), e)
             })?;
             let enss = Arc::new(enss);
             for param in function.x.params.iter() {

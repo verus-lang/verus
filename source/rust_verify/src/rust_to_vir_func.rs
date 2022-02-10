@@ -28,7 +28,7 @@ pub(crate) fn body_to_vir<'tcx>(
     let def = rustc_middle::ty::WithOptConstParam::unknown(id.hir_id.owner);
     let types = ctxt.tcx.typeck_opt_const_arg(def);
     let bctx = BodyCtxt { ctxt: ctxt.clone(), types, mode, external_body };
-    expr_to_vir(&bctx, &body.value, ExprModifier::Regular)
+    expr_to_vir(&bctx, &body.value, ExprModifier::REGULAR)
 }
 
 fn is_self_or_self_ref(span: Span, ty: &rustc_hir::Ty) -> Result<bool, VirErr> {

@@ -351,6 +351,9 @@ impl Verifier {
         krate: &Krate,
         no_span: Span,
     ) -> Result<(), VirErr> {
+        #[cfg(debug_assertions)]
+        vir::check_ast_flavor::check_krate(&krate);
+
         let mut air_context = air::context::Context::new(air::smt_manager::SmtManager::new());
         air_context.set_ignore_unexpected_smt(self.args.ignore_unexpected_smt);
         air_context.set_debug(self.args.debug);
@@ -385,7 +388,7 @@ impl Verifier {
         if let Some(filename) = &self.args.log_vir_simple {
             let mut file =
                 File::create(filename).expect(&format!("could not open file {}", filename));
-            vir::ast_util::debug_write(&mut file, &krate);
+            vir::printer::write_krate(&mut file, &krate);
         }
 
         #[cfg(debug_assertions)]
@@ -439,7 +442,7 @@ impl Verifier {
                 };
                 let mut file = File::create(filename.to_string() + "-" + &module_name_os)
                     .expect(&format!("could not open file {}", filename));
-                vir::ast_util::debug_write(&mut file, &poly_krate);
+                vir::printer::write_krate(&mut file, &poly_krate);
             }
             self.verify_module(compiler, &poly_krate, &mut air_context, &mut ctx)?;
             global_ctx = ctx.free();
@@ -508,7 +511,7 @@ impl Verifier {
         if let Some(filename) = &self.args.log_vir {
             let mut file =
                 File::create(filename).expect(&format!("could not open file {}", filename));
-            vir::ast_util::debug_write(&mut file, &vir_crate);
+            vir::printer::write_krate(&mut file, &vir_crate);
         }
         vir::well_formed::check_crate(&vir_crate)?;
         let erasure_modes = vir::modes::check_crate(&vir_crate)?;

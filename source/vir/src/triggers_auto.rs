@@ -36,7 +36,7 @@ enum App {
     Call(Fun),
     Ctor(Path, Ident), // datatype constructor: (Path, Variant)
     Other(u64),        // u64 is an id, assigned via a simple counter
-    VarAt(Ident, VarAt),
+    VarAt(UniqueIdent, VarAt),
 }
 
 type Term = Arc<TermX>;
@@ -72,7 +72,7 @@ impl std::fmt::Debug for TermX {
             TermX::App(App::Other(_), _) => {
                 write!(f, "_")
             }
-            TermX::App(App::VarAt(x, VarAt::Pre), _) => {
+            TermX::App(App::VarAt((x, _), VarAt::Pre), _) => {
                 write!(f, "old({})", x)
             }
         }
@@ -198,6 +198,7 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
     let (is_pure, term) = match &exp.x {
         ExpX::Const(c) => (true, Arc::new(TermX::App(App::Const(c.clone()), Arc::new(vec![])))),
         ExpX::Var(x) => (true, Arc::new(TermX::Var(x.clone()))),
+        ExpX::VarLoc(..) | ExpX::Loc(..) => panic!("unexpected Loc/VarLoc in quantifier"),
         ExpX::VarAt(x, _) => {
             (true, Arc::new(TermX::App(App::VarAt(x.clone(), VarAt::Pre), Arc::new(vec![]))))
         }
