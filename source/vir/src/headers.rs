@@ -1,5 +1,9 @@
-use crate::ast::{Expr, ExprX, Exprs, Fun, HeaderExprX, Ident, MaskSpec, Stmt, StmtX, Typ, VirErr};
+use crate::ast::{
+    Expr, ExprX, Exprs, Fun, HeaderExprX, Ident, MaskSpec, SpannedTyped, Stmt, StmtX, Typ, TypX,
+    VirErr,
+};
 use crate::ast_util::err_str;
+use crate::def::Spanned;
 use std::sync::Arc;
 
 #[derive(Clone, Debug)]
@@ -13,7 +17,7 @@ pub struct Header {
     pub invariant_mask: MaskSpec,
 }
 
-fn read_header_block(block: &mut Vec<Stmt>) -> Result<Header, VirErr> {
+fn read_header_block(block: &mut Vec<Stmt>) -> Result<(Header, usize), VirErr> {
     let mut hidden: Vec<Fun> = Vec::new();
     let mut require: Option<Exprs> = None;
     let mut ensure: Option<(Option<(Ident, Typ)>, Exprs)> = None;
@@ -89,7 +93,16 @@ fn read_header_block(block: &mut Vec<Stmt>) -> Result<Header, VirErr> {
         }
         n += 1;
     }
-    *block = block[n..].to_vec();
+    for i in 0..n {
+        block[i] = Spanned::new(
+            block[i].span.clone(),
+            StmtX::Expr(SpannedTyped::new(
+                &block[i].span,
+                &Arc::new(TypX::Tuple(Arc::new(vec![]))),
+                ExprX::HeaderStub,
+            )),
+        );
+    }
     let require = require.unwrap_or(Arc::new(vec![]));
     let (ensure_id_typ, ensure) = match ensure {
         None => (None, Arc::new(vec![])),
@@ -97,10 +110,10 @@ fn read_header_block(block: &mut Vec<Stmt>) -> Result<Header, VirErr> {
     };
     let invariant = invariant.unwrap_or(Arc::new(vec![]));
     let decrease = decrease.unwrap_or(Arc::new(vec![]));
-    Ok(Header { hidden, require, ensure_id_typ, ensure, invariant, decrease, invariant_mask })
+    Ok((Header { hidden, require, ensure_id_typ, ensure, invariant, decrease, invariant_mask }, n))
 }
 
-pub fn read_header(body: &mut Expr) -> Result<Header, VirErr> {
+pub fn read_header(body: &mut Expr) -> Result<(Header, usize), VirErr> {
     match &body.x {
         ExprX::Block(stmts, expr) => {
             let mut block: Vec<Stmt> = (**stmts).clone();

@@ -391,6 +391,7 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
         ExprX::AssertBV(_) => expr.clone(),
         ExprX::Fuel(..) => expr.clone(),
         ExprX::Header(..) => panic!("Header should already be removed"),
+        ExprX::HeaderStub => expr.clone(),
         ExprX::Admit => expr.clone(),
         ExprX::Forall { vars, require, ensure, proof } => {
             let mut bs: Vec<Binder<Typ>> = Vec::new();

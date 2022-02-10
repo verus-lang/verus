@@ -1,7 +1,6 @@
 use crate::attributes::{get_trigger, get_var_mode, get_verifier_attrs, parse_attrs, Attr};
 use crate::context::BodyCtxt;
 use crate::def::is_get_variant_fn_name;
-use crate::erase::ResolvedCall;
 use crate::rust_to_vir_base::{
     def_id_to_vir_path, def_to_path_ident, get_function_def, get_range, hack_get_def_name,
     ident_to_var, is_smt_arith, is_smt_equality, mid_ty_simplify, mid_ty_to_vir, mk_range,
@@ -129,7 +128,7 @@ fn extract_quant<'tcx>(
                 .collect();
             let expr = &body.value;
             let mut vir_expr = expr_to_vir(bctx, expr, ExprModifier::REGULAR)?;
-            let header = vir::headers::read_header(&mut vir_expr)?;
+            let (header, _) = vir::headers::read_header(&mut vir_expr)?;
             if header.require.len() <= 1
                 && header.ensure.len() == 1
                 && header.ensure_id_typ.is_none()
@@ -240,24 +239,6 @@ pub(crate) fn expr_to_vir<'tcx>(
     Ok(vir_expr)
 }
 
-fn record_fun(
-    ctxt: &crate::context::Context,
-    span: Span,
-    name: &vir::ast::Fun,
-    is_spec: bool,
-    is_compilable_operator: bool,
-) {
-    let mut erasure_info = ctxt.erasure_info.borrow_mut();
-    let resolved_call = if is_spec {
-        ResolvedCall::Spec
-    } else if is_compilable_operator {
-        ResolvedCall::CompilableOperator
-    } else {
-        ResolvedCall::Call(name.clone())
-    };
-    erasure_info.resolved_calls.push((span.data(), resolved_call));
-}
-
 fn get_fn_path<'tcx>(tcx: TyCtxt<'tcx>, expr: &Expr<'tcx>) -> Result<vir::ast::Fun, VirErr> {
     match &expr.kind {
         ExprKind::Path(QPath::Resolved(None, path)) => match path.res {
@@ -282,7 +263,6 @@ fn fn_call_to_vir<'tcx>(
     expr: &Expr<'tcx>,
     f: DefId,
     node_substs: &[rustc_middle::ty::subst::GenericArg<'tcx>],
-    fn_span: Span,
     args_slice: &'tcx [Expr<'tcx>],
     autoview_typ: Option<&Typ>,
 ) -> Result<vir::ast::Expr, VirErr> {
@@ -355,17 +335,6 @@ fn fn_call_to_vir<'tcx>(
     let is_add = f_name == "core::ops::arith::Add::add";
     let is_sub = f_name == "core::ops::arith::Sub::sub";
     let is_mul = f_name == "core::ops::arith::Mul::mul";
-    let is_spec = is_admit
-        || is_requires
-        || is_ensures
-        || is_invariant
-        || is_decreases
-        || is_opens_invariants_none
-        || is_opens_invariants_any
-        || is_opens_invariants
-        || is_opens_invariants_except;
-    let is_quant = is_forall || is_exists;
-    let is_directive = is_hide || is_reveal || is_reveal_fuel;
     let is_cmp = is_equal || is_eq || is_ne || is_le || is_ge || is_lt || is_gt;
     let is_arith_binary = is_add || is_sub || is_mul;
 
@@ -406,22 +375,6 @@ fn fn_call_to_vir<'tcx>(
         "call of trait impl"
     );
     let name = Arc::new(FunX { path: path.clone(), trait_path: None });
-
-    record_fun(
-        &bctx.ctxt,
-        fn_span,
-        &name,
-        is_spec
-            || is_quant
-            || is_directive
-            || is_assert_by
-            || is_choose
-            || is_choose_tuple
-            || is_assert_bit_vector
-            || is_old
-            || is_get_variant.is_some(),
-        is_implies,
-    );
 
     let len = args.len();
     let expr_typ = || typ_of_node(bctx, &expr.hir_id, false);
@@ -738,7 +691,6 @@ pub(crate) fn expr_tuple_datatype_ctor_to_vir<'tcx>(
     expr: &Expr<'tcx>,
     res: &Res,
     args_slice: &[Expr<'tcx>],
-    path_span: Span,
     modifier: ExprModifier,
 ) -> Result<vir::ast::Expr, VirErr> {
     let tcx = bctx.ctxt.tcx;
@@ -772,9 +724,6 @@ pub(crate) fn expr_tuple_datatype_ctor_to_vir<'tcx>(
             })
             .collect::<Result<Vec<_>, _>>()?,
     );
-    let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
-    let resolved_call = ResolvedCall::Ctor(vir_path.clone(), variant_name.clone());
-    erasure_info.resolved_calls.push((path_span.data(), resolved_call));
     let exprx = ExprX::Ctor(vir_path, variant_name, vir_fields, None);
     Ok(spanned_typed_new(expr.span, &expr_typ, exprx))
 }
@@ -885,8 +834,6 @@ pub(crate) fn pattern_to_vir<'tcx>(
     };
     let pat_typ = typ_of_node(bctx, &pat.hir_id, false);
     let pattern = spanned_typed_new(pat.span, &pat_typ, pattern);
-    let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
-    erasure_info.resolved_pats.push((pat.span.data(), pattern.clone()));
     Ok(pattern)
 }
 
@@ -1196,17 +1143,10 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                     None,
                     rustc_hir::Path {
                         res: res @ Res::Def(DefKind::Ctor(_, _), _),
-                        span: path_span,
+                        span: _path_span,
                         ..
                     },
-                )) => Some(expr_tuple_datatype_ctor_to_vir(
-                    bctx,
-                    expr,
-                    res,
-                    *args_slice,
-                    *path_span,
-                    modifier,
-                )),
+                )) => Some(expr_tuple_datatype_ctor_to_vir(bctx, expr, res, *args_slice, modifier)),
                 ExprKind::Path(qpath) => {
                     let def = bctx.types.qpath_res(&qpath, fun.hir_id);
                     match def {
@@ -1216,7 +1156,6 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                             expr,
                             def_id,
                             bctx.types.node_substs(fun.hir_id),
-                            fun.span,
                             args_slice,
                             None,
                         )),
@@ -1247,9 +1186,6 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                     let vir_args = vec_map_result(&args, |arg| expr_to_vir(bctx, arg, modifier))?;
                     let expr_typ = typ_of_node(bctx, &expr.hir_id, false);
                     let target = CallTarget::FnSpec(vir_fun);
-                    let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
-                    // Only spec closures are currently supported:
-                    erasure_info.resolved_calls.push((fun.span.data(), ResolvedCall::Spec));
                     Ok(spanned_typed_new(
                         expr.span,
                         &expr_typ,
@@ -1405,14 +1341,9 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                         let name = hack_get_def_name(tcx, id); // TODO: proper handling of paths
                         Ok(mk_expr(ExprX::Var(Arc::new(name))))
                     }
-                    DefKind::Ctor(_, _ctor_kind) => expr_tuple_datatype_ctor_to_vir(
-                        bctx,
-                        expr,
-                        &path.res,
-                        &[],
-                        path.span,
-                        modifier,
-                    ),
+                    DefKind::Ctor(_, _ctor_kind) => {
+                        expr_tuple_datatype_ctor_to_vir(bctx, expr, &path.res, &[], modifier)
+                    }
                     _ => {
                         unsupported_err!(expr.span, format!("Path {:?} kind {:?}", id, def_kind))
                     }
@@ -1465,8 +1396,6 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                         str::parse(&name.as_str()).expect("integer index into tuple");
                     let field_opr = UnaryOpr::TupleField { tuple_arity: ts.len(), field };
                     let vir = mk_expr(ExprX::UnaryOpr(field_opr, vir_lhs));
-                    let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
-                    erasure_info.resolved_exprs.push((expr.span.data(), vir.clone()));
                     return Ok(vir);
                 }
                 unsupported_err!(expr.span, "field_of_non_adt", expr)
@@ -1480,8 +1409,6 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                     vir_lhs,
                 ),
             );
-            let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
-            erasure_info.resolved_exprs.push((expr.span.data(), vir.clone()));
             Ok(vir)
         }
         ExprKind::If(cond, lhs, rhs) => {
@@ -1558,7 +1485,7 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
             };
             let cond = expr_to_vir(bctx, cond, modifier)?;
             let mut body = expr_to_vir(bctx, body, modifier)?;
-            let header = vir::headers::read_header(&mut body)?;
+            let (header, _) = vir::headers::read_header(&mut body)?;
             let invs = header.invariant;
             Ok(mk_expr(ExprX::While { cond, body, invs }))
         }
@@ -1574,7 +1501,7 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                 None => None,
                 Some(update) => Some(expr_to_vir(bctx, update, modifier)?),
             };
-            let (path, path_span, variant_name) = match qpath {
+            let (path, _path_span, variant_name) = match qpath {
                 QPath::Resolved(slf, path) => {
                     unsupported_unless!(
                         matches!(path.res, Res::Def(DefKind::Struct | DefKind::Variant, _)),
@@ -1604,12 +1531,9 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                     })
                     .collect::<Result<Vec<_>, _>>()?,
             );
-            let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
-            let resolved_call = ResolvedCall::Ctor(path.clone(), variant_name.clone());
-            erasure_info.resolved_calls.push((path_span.data(), resolved_call));
             Ok(mk_expr(ExprX::Ctor(path, variant_name, vir_fields, update)))
         }
-        ExprKind::MethodCall(_name_and_generics, _call_span_0, all_args, call_span_1) => {
+        ExprKind::MethodCall(_name_and_generics, _call_span_0, all_args, _call_span_1) => {
             let fn_def_id = bctx
                 .types
                 .type_dependent_def_id(expr.hir_id)
@@ -1627,7 +1551,6 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                 expr,
                 fn_def_id,
                 bctx.types.node_substs(expr.hir_id),
-                *call_span_1,
                 all_args,
                 autoview_typ,
             )

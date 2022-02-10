@@ -68,5 +68,16 @@ fn test_result<E>(r: Result<u64, E>) -> u64 {
     }
 }
 
+fn if_let_test(r: Result<u64, u64>) -> bool {
+    requires(r.is_Ok());
+    ensures(|b: bool| b == true);
+
+    if let Result::Ok(r_inner) = r {
+        return true;
+    }
+
+    false
+}
+
 fn main() {
 }

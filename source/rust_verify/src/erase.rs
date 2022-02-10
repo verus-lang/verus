@@ -46,6 +46,7 @@
 //! #[verifier(external_body)] functions, on the other hand, need erasure to remove requires/ensures.
 
 use crate::attributes::{get_mode, get_verifier_attrs};
+use crate::context::ExternalBodyErasureInfo;
 use crate::rust_to_vir_expr::attrs_is_invariant_block;
 use crate::util::{from_raw_span, vec_map};
 use crate::{unsupported, unsupported_unless};
@@ -55,7 +56,7 @@ use rustc_ast::ast::{
     EnumDef, Expr, ExprKind, Field, FieldPat, FnDecl, FnKind, FnRetTy, FnSig, GenericArg,
     GenericArgs, GenericParam, GenericParamKind, Generics, ImplKind, Item, ItemKind, Lit,
     LitIntType, LitKind, Local, ModKind, NodeId, Param, Pat, PatKind, PathSegment, Stmt, StmtKind,
-    StructField, StructRest, Variant, VariantData,
+    StructField, StructRest, UnOp, Variant, VariantData,
 };
 use rustc_ast::ptr::P;
 use rustc_data_structures::thin_vec::ThinVec;
@@ -69,34 +70,16 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use vir::ast::{
-    Datatype, ExprX, Fun, Function, GenericBoundX, Krate, Mode, Path, Pattern, PatternX, UnaryOpr,
+    BinaryOp, CallTarget, Datatype, ExprX, Fun, Function, GenericBoundX, Krate, Mode, Path,
+    PatternX, StmtX, UnaryOp, UnaryOpr,
 };
 use vir::ast_util::get_field;
 use vir::modes::{mode_join, ErasureModes};
-
-/// Information about each call in the AST (each ExprKind::Call).
-#[derive(Clone, Debug)]
-pub enum ResolvedCall {
-    /// The call is to a spec or proof function, and should be erased
-    Spec,
-    /// The call is to an operator like == or + that should be compiled.
-    CompilableOperator,
-    /// The call is to a function, and we record the resolved name of the function here.
-    Call(Fun),
-    /// Path and variant of datatype constructor
-    Ctor(Path, vir::ast::Ident),
-}
 
 #[derive(Clone)]
 pub struct ErasureHints {
     /// Copy of the entire VIR crate that was created in the first run's HIR -> VIR transformation
     pub vir_crate: Krate,
-    /// Details of each call in the first run's HIR
-    pub resolved_calls: Vec<(SpanData, ResolvedCall)>,
-    /// Details of some expressions in first run's HIR
-    pub resolved_exprs: Vec<(SpanData, vir::ast::Expr)>,
-    /// Details of some patterns in first run's HIR
-    pub resolved_pats: Vec<(SpanData, Pattern)>,
     /// Results of mode (spec/proof/exec) inference from first run's VIR
     pub erasure_modes: ErasureModes,
     /// List of #[verifier(external)] functions.  (These don't appear in vir_crate,
@@ -104,6 +87,8 @@ pub struct ErasureHints {
     pub external_functions: Vec<Fun>,
     /// List of function spans ignored by the verifier. These should not be erased
     pub ignored_functions: Vec<SpanData>,
+    /// List of external_body functions. We need to erase their headers.
+    pub external_body_functions: Vec<(SpanData, ExternalBodyErasureInfo)>,
 }
 
 #[derive(Clone)]
@@ -118,12 +103,8 @@ pub struct Ctxt {
     /// Map each function span to its VIR Function, excluding #[verifier(external)] functions.
     /// Spans of functions ignored by the verifier map to None.
     functions_by_span: HashMap<Span, Option<Function>>,
-    /// Details of each call in the first run's HIR
-    calls: HashMap<Span, ResolvedCall>,
-    /// Details of some expressions in first run's HIR
-    resolved_exprs: HashMap<Span, vir::ast::Expr>,
-    /// Details of some patterns in first run's HIR
-    resolved_pats: HashMap<Span, Pattern>,
+    /// Information about erasing an external_body function
+    external_body_functions: HashMap<Span, ExternalBodyErasureInfo>,
     /// Mode of each if/else or match condition, used to decide how to erase if/else and match
     /// condition.  For example, in "if x < 10 { x + 1 } else { x + 2 }", this will record the span
     /// and mode of the expression "x < 10"
@@ -141,14 +122,8 @@ pub struct Ctxt {
 struct MCtxt<'a> {
     // Allocate a fresh NodeId
     f_next_node_id: &'a mut dyn FnMut() -> NodeId,
-    // Unfortunately for us, Rust likes to include surrounding parentheses in an
-    // expression's span in HIR, but not in Rust AST.
-    // For an expression "((5))", the span is like "((5))" in HIR and like "5" in AST.
-    // Keep a mapping from "5" to "(5)" to "((5))" so we can correct for this.
-    remap_parens: HashMap<Span, Span>,
     // Mode of current function's return value
     ret_mode: Option<Mode>,
-    external_body: bool,
 }
 
 impl<'a> MCtxt<'a> {
@@ -156,20 +131,16 @@ impl<'a> MCtxt<'a> {
         (self.f_next_node_id)()
     }
 
-    fn find_span_opt<'m, A>(&self, map: &'m HashMap<Span, A>, mut span: Span) -> Option<&'m A> {
-        loop {
-            if let Some(a) = map.get(&span) {
-                return Some(a);
-            }
-            if let Some(s) = self.remap_parens.get(&span) {
-                span = *s;
-            } else {
-                return None;
-            }
-        }
+    fn find_span_opt<'m, A>(
+        &self,
+        map: &'m HashMap<Span, A>,
+        span: &air::ast::Span,
+    ) -> Option<&'m A> {
+        let span = from_raw_span(&span.raw_span);
+        map.get(&span)
     }
 
-    fn find_span<'m, A>(&self, map: &'m HashMap<Span, A>, span: Span) -> &'m A {
+    fn find_span<'m, A>(&self, map: &'m HashMap<Span, A>, span: &air::ast::Span) -> &'m A {
         if let Some(a) = self.find_span_opt(map, span) {
             a
         } else {
@@ -275,75 +246,105 @@ fn replace_with_exprs(mctxt: &mut MCtxt, expr: &Expr, exprs: Vec<Option<Expr>>) 
     replace_with_exprs_span(mctxt, expr.span, Some(expr), exprs)
 }
 
-fn erase_field_pat(ctxt: &Ctxt, mctxt: &mut MCtxt, fpat: &FieldPat) -> FieldPat {
+fn erase_field_pat(
+    ctxt: &Ctxt,
+    mctxt: &mut MCtxt,
+    fpat: &FieldPat,
+    vir_pat: &vir::ast::Pattern,
+) -> FieldPat {
     let FieldPat { ident, is_shorthand, id, span, is_placeholder, .. } = *fpat;
-    let pat = P(erase_pat(ctxt, mctxt, &fpat.pat));
+    let pat = P(erase_pat(ctxt, mctxt, &fpat.pat, vir_pat));
     FieldPat { ident, pat, is_shorthand, attrs: fpat.attrs.clone(), id, span, is_placeholder }
 }
 
-fn erase_pat(ctxt: &Ctxt, mctxt: &mut MCtxt, pat: &Pat) -> Pat {
-    let kind = match &pat.kind {
-        PatKind::Wild => return pat.clone(),
-        PatKind::Ident(_, _, None) => return pat.clone(),
-        PatKind::Struct(path, fields, recovered) => match &ctxt.resolved_pats[&pat.span].x {
-            PatternX::Constructor(vir_path, variant, _) => {
-                let datatype = &ctxt.datatypes[vir_path];
-                let variant = &datatype.x.get_variant(variant).a;
-                let mut fpats: Vec<FieldPat> = Vec::new();
-                for fpat in fields {
-                    let name = Arc::new(fpat.ident.as_str().to_string());
-                    let (_, mode, _) = get_field(variant, &name).a;
-                    if keep_mode(ctxt, mode) {
-                        fpats.push(erase_field_pat(ctxt, mctxt, fpat));
-                    }
-                }
-                PatKind::Struct(path.clone(), fpats, *recovered)
+fn erase_pat(ctxt: &Ctxt, mctxt: &mut MCtxt, pat: &Pat, vir_pat: &vir::ast::Pattern) -> Pat {
+    let kind = match (&pat.kind, &vir_pat.x) {
+        (PatKind::Wild, PatternX::Wildcard) => return pat.clone(),
+        (PatKind::Ident(_, _, None), PatternX::Var { .. }) => return pat.clone(),
+        (
+            PatKind::Struct(path, fields, recovered),
+            PatternX::Constructor(vir_path, variant, vir_binders),
+        ) => {
+            let mut vir_binder_map = HashMap::new();
+            for arg in vir_binders.iter() {
+                vir_binder_map.insert(arg.name.clone(), &arg.a);
             }
-            _ => panic!("internal error: expected PatternX::Constructor"),
-        },
-        PatKind::TupleStruct(path, pats0) => match &ctxt.resolved_pats[&pat.span].x {
-            PatternX::Constructor(vir_path, variant, _) => {
-                let datatype = &ctxt.datatypes[vir_path];
-                let variant = &datatype.x.get_variant(variant).a;
-                let mut pats: Vec<P<Pat>> = Vec::new();
-                for (field, pat) in variant.iter().zip(pats0.iter()) {
-                    let (_, mode, _) = field.a;
-                    if keep_mode(ctxt, mode) {
-                        pats.push(P(erase_pat(ctxt, mctxt, pat)));
-                    }
+
+            let datatype = &ctxt.datatypes[vir_path];
+            let variant = &datatype.x.get_variant(variant).a;
+            let mut fpats: Vec<FieldPat> = Vec::new();
+            for fpat in fields {
+                let name = Arc::new(fpat.ident.as_str().to_string());
+                let (_, mode, _) = get_field(variant, &name).a;
+                if keep_mode(ctxt, mode) {
+                    let vir_p = vir_binder_map.get(&name).expect("vir_binder_map.get");
+                    fpats.push(erase_field_pat(ctxt, mctxt, fpat, vir_p));
                 }
-                PatKind::TupleStruct(path.clone(), pats)
             }
-            _ => panic!("internal error: expected PatternX::Constructor"),
-        },
-        PatKind::Path(..) => return pat.clone(),
-        PatKind::Tuple(pats) => {
-            let pats = vec_map(pats, |p| P(erase_pat(ctxt, mctxt, p)));
+            PatKind::Struct(path.clone(), fpats, *recovered)
+        }
+        (
+            PatKind::TupleStruct(path, pats0),
+            PatternX::Constructor(vir_path, variant, vir_binders),
+        ) => {
+            let datatype = &ctxt.datatypes[vir_path];
+            let variant = &datatype.x.get_variant(variant).a;
+            let mut pats: Vec<P<Pat>> = Vec::new();
+            assert!(pats0.len() == vir_binders.len());
+            for ((field, pat), vir_binder) in
+                variant.iter().zip(pats0.iter()).zip(vir_binders.iter())
+            {
+                let (_, mode, _) = field.a;
+                if keep_mode(ctxt, mode) {
+                    pats.push(P(erase_pat(ctxt, mctxt, pat, &vir_binder.a)));
+                }
+            }
+            PatKind::TupleStruct(path.clone(), pats)
+        }
+        (PatKind::Path(..), PatternX::Constructor(_, _, vir_binders)) => {
+            assert!(vir_binders.len() == 0);
+            return pat.clone();
+        }
+        (PatKind::Tuple(pats), PatternX::Tuple(vir_pats)) => {
+            assert!(pats.len() == vir_pats.len());
+            let pats = pats
+                .iter()
+                .zip(vir_pats.iter())
+                .map(|(p, vir_p)| P(erase_pat(ctxt, mctxt, p, vir_p)))
+                .collect();
             PatKind::Tuple(pats)
         }
-        PatKind::Paren(pat) => PatKind::Paren(P(erase_pat(ctxt, mctxt, pat))),
-        _ => panic!("internal error: unsupported pattern"),
+        (PatKind::Paren(pat), _) => PatKind::Paren(P(erase_pat(ctxt, mctxt, pat, vir_pat))),
+        _ => panic!("erase_pat: unable to match:\nRust AST: {:#?}\nVIR: {:#?}\n", pat, vir_pat),
     };
     let Pat { id, span, .. } = *pat; // for asymptotic efficiency, don't call pat.clone()
     Pat { id, kind, span, tokens: pat.tokens.clone() }
 }
 
-fn erase_arm(ctxt: &Ctxt, mctxt: &mut MCtxt, expect: Mode, arm: &Arm) -> Arm {
-    let pat = P(erase_pat(ctxt, mctxt, &*arm.pat));
-    let guard = arm.guard.as_ref().map(|e| P(erase_expr(ctxt, mctxt, expect, e)));
-    let body = P(erase_expr(ctxt, mctxt, expect, &*arm.body));
+fn erase_arm(
+    ctxt: &Ctxt,
+    mctxt: &mut MCtxt,
+    expect: Mode,
+    arm: &Arm,
+    vir_arm: &vir::ast::Arm,
+) -> Arm {
+    let pat = P(erase_pat(ctxt, mctxt, &*arm.pat, &vir_arm.x.pattern));
+    let guard = arm.guard.as_ref().map(|e| P(erase_expr(ctxt, mctxt, expect, e, &vir_arm.x.guard)));
+    let body = P(erase_expr(ctxt, mctxt, expect, &*arm.body, &vir_arm.x.body));
     // for asymptotic efficiency, don't call arm.clone()
     let Arm { span, id, is_placeholder, .. } = *arm;
     let Arm { attrs, .. } = arm;
     Arm { attrs: attrs.clone(), pat, guard, body, span, id, is_placeholder }
 }
 
+// TODO use an enum instead of Option<Option<...>>
 fn erase_call(
     ctxt: &Ctxt,
     mctxt: &mut MCtxt,
     segment: &PathSegment,
     f_name: &Fun,
     args: &Vec<P<Expr>>,
+    vir_args: &Vec<vir::ast::Expr>,
 ) -> Option<Option<(PathSegment, Vec<P<Expr>>)>> {
     let f = &ctxt.functions[f_name];
     if let Some(f) = f {
@@ -379,9 +380,10 @@ fn erase_call(
         }
         if keep_mode(ctxt, f.x.mode) {
             let mut new_args: Vec<P<Expr>> = Vec::new();
-            for (arg, param) in args.iter().zip(f.x.params.iter()) {
+            assert!(vir_args.len() == args.len());
+            for ((arg, param), vir_arg) in args.iter().zip(f.x.params.iter()).zip(vir_args.iter()) {
                 if keep_mode(ctxt, param.x.mode) {
-                    new_args.push(P(erase_expr(ctxt, mctxt, param.x.mode, arg)));
+                    new_args.push(P(erase_expr(ctxt, mctxt, param.x.mode, arg, vir_arg)));
                 }
             }
             Some(Some((segment, new_args)))
@@ -393,37 +395,38 @@ fn erase_call(
     }
 }
 
-fn erase_expr(ctxt: &Ctxt, mctxt: &mut MCtxt, expect: Mode, expr: &Expr) -> Expr {
-    erase_expr_opt(ctxt, mctxt, expect, expr).expect("erase_expr")
+fn erase_expr(
+    ctxt: &Ctxt,
+    mctxt: &mut MCtxt,
+    expect: Mode,
+    expr: &Expr,
+    vir_expr: &vir::ast::Expr,
+) -> Expr {
+    erase_expr_opt(ctxt, mctxt, expect, expr, vir_expr).expect("erase_expr")
 }
 
 /// Erase ghost code from expr, and return Some resulting expression.
 /// If the entire expression is ghost, return None.
-fn erase_expr_opt(ctxt: &Ctxt, mctxt: &mut MCtxt, expect: Mode, expr: &Expr) -> Option<Expr> {
-    if mctxt.external_body {
-        match &expr.kind {
-            ExprKind::Block(..) => {}
-            ExprKind::Call(f_expr, _) => match mctxt.find_span_opt(&ctxt.calls, f_expr.span) {
-                Some(ResolvedCall::Spec) => return None,
-                _ => return Some(expr.clone()),
-            },
-            _ => return Some(expr.clone()),
-        }
-    }
-
-    let kind = match &expr.kind {
-        ExprKind::Lit(_) => {
+fn erase_expr_opt(
+    ctxt: &Ctxt,
+    mctxt: &mut MCtxt,
+    expect: Mode,
+    expr: &Expr,
+    vir_expr: &vir::ast::Expr,
+) -> Option<Expr> {
+    let kind = match (&expr.kind, &vir_expr.x) {
+        (ExprKind::Lit(_), ExprX::Const(..)) => {
             if keep_mode(ctxt, expect) {
                 expr.kind.clone()
             } else {
                 return None;
             }
         }
-        ExprKind::Path(_, _) => {
-            if mctxt.find_span_opt(&ctxt.calls, expr.span).is_some() {
-                // 0-argument datatype constructor
-                expr.kind.clone()
-            } else if keep_mode(ctxt, *mctxt.find_span(&ctxt.var_modes, expr.span))
+        (ExprKind::Path(None, path), ExprX::Var(vir_ident))
+        | (ExprKind::Path(None, path), ExprX::VarLoc(vir_ident)) => {
+            assert!(path.segments.len() == 1);
+            assert!(path.segments[0].ident.as_str() == **vir_ident);
+            if keep_mode(ctxt, *mctxt.find_span(&ctxt.var_modes, &vir_expr.span))
                 && keep_mode(ctxt, expect)
             {
                 expr.kind.clone()
@@ -431,190 +434,269 @@ fn erase_expr_opt(ctxt: &Ctxt, mctxt: &mut MCtxt, expect: Mode, expr: &Expr) -> 
                 return None;
             }
         }
-        ExprKind::Paren(e) => {
-            mctxt.remap_parens.insert(e.span, expr.span).map(|_| panic!("{:?}", e.span));
-            match erase_expr_opt(ctxt, mctxt, expect, e) {
-                None => return None,
-                Some(e) => ExprKind::Paren(P(e)),
+        (ExprKind::Path(_qself, _path), ExprX::ConstVar(_)) => {
+            if keep_mode(ctxt, *mctxt.find_span(&ctxt.var_modes, &vir_expr.span))
+                && keep_mode(ctxt, expect)
+            {
+                expr.kind.clone()
+            } else {
+                return None;
             }
         }
-        ExprKind::Cast(e1, ty) => {
+        (ExprKind::Path(_qself, _path), ExprX::Ctor(..)) => {
+            // nullary constructor
+            // REVIEW: why do we not check the mode here?
+            expr.kind.clone()
+        }
+        (ExprKind::Paren(e), _) => {
+            // Paren in Rust AST can be ignored
+            return erase_expr_opt(ctxt, mctxt, expect, e, vir_expr);
+        }
+        (_, ExprX::Loc(vir_expr)) => {
+            // Loc in Verus AST can be ignored
+            return erase_expr_opt(ctxt, mctxt, expect, expr, vir_expr);
+        }
+        (_, ExprX::Unary(UnaryOp::Clip(..), vir_expr)) => {
+            // Clip in Verus AST can be ignored
+            return erase_expr_opt(ctxt, mctxt, expect, expr, vir_expr);
+        }
+        (ExprKind::Cast(e1, ty), _) => {
             if keep_mode(ctxt, expect) {
-                let e1 = erase_expr(ctxt, mctxt, expect, e1);
+                let e1 = erase_expr(ctxt, mctxt, expect, e1, vir_expr);
                 ExprKind::Cast(P(e1), ty.clone())
             } else {
-                let e1 = erase_expr_opt(ctxt, mctxt, expect, e1);
+                let e1 = erase_expr_opt(ctxt, mctxt, expect, e1, vir_expr);
                 return replace_with_exprs(mctxt, expr, vec![e1]);
             }
         }
-        ExprKind::AddrOf(borrow, mutability, e1) => {
+        (ExprKind::AddrOf(borrow, mutability, e1), _) => {
             if keep_mode(ctxt, expect) {
-                let e1 = erase_expr(ctxt, mctxt, expect, e1);
+                let e1 = erase_expr(ctxt, mctxt, expect, e1, vir_expr);
                 ExprKind::AddrOf(*borrow, *mutability, P(e1))
             } else {
-                let e1 = erase_expr_opt(ctxt, mctxt, expect, e1);
+                let e1 = erase_expr_opt(ctxt, mctxt, expect, e1, vir_expr);
                 return replace_with_exprs(mctxt, expr, vec![e1]);
             }
         }
-        ExprKind::Box(e1) => {
+        (ExprKind::Box(e1), _) => {
             if keep_mode(ctxt, expect) {
-                let e1 = erase_expr(ctxt, mctxt, expect, e1);
+                let e1 = erase_expr(ctxt, mctxt, expect, e1, vir_expr);
                 ExprKind::Box(P(e1))
             } else {
-                let e1 = erase_expr_opt(ctxt, mctxt, expect, e1);
+                let e1 = erase_expr_opt(ctxt, mctxt, expect, e1, vir_expr);
                 return replace_with_exprs(mctxt, expr, vec![e1]);
             }
         }
-        ExprKind::Unary(op, e1) => {
+        (ExprKind::Unary(UnOp::Deref, e1), _) => {
+            // REVIEW: is this always the right way to handle Deref?
             if keep_mode(ctxt, expect) {
-                let e1 = erase_expr(ctxt, mctxt, expect, e1);
+                let e1 = erase_expr(ctxt, mctxt, expect, e1, vir_expr);
+                ExprKind::Unary(UnOp::Deref, P(e1))
+            } else {
+                let e1 = erase_expr_opt(ctxt, mctxt, expect, e1, vir_expr);
+                return replace_with_exprs(mctxt, expr, vec![e1]);
+            }
+        }
+        (ExprKind::Unary(op, e1), ExprX::Unary(_, vir_e1)) => {
+            if keep_mode(ctxt, expect) {
+                let e1 = erase_expr(ctxt, mctxt, expect, e1, vir_e1);
                 ExprKind::Unary(*op, P(e1))
             } else {
-                let e1 = erase_expr_opt(ctxt, mctxt, expect, e1);
+                let e1 = erase_expr_opt(ctxt, mctxt, expect, e1, vir_e1);
                 return replace_with_exprs(mctxt, expr, vec![e1]);
             }
         }
-        ExprKind::Binary(op, e1, e2) => {
+        (ExprKind::Unary(UnOp::Neg, e1), ExprX::Binary(BinaryOp::Sub, const_zero, vir_e1)) => {
+            match &const_zero.x {
+                ExprX::Const(vir::ast::Constant::Nat(s)) if **s == "0" => {}
+                _ => {
+                    panic!("cannot match UnaryOp with BinaryOp");
+                }
+            }
             if keep_mode(ctxt, expect) {
-                let e1 = erase_expr(ctxt, mctxt, expect, e1);
-                let e2 = erase_expr(ctxt, mctxt, expect, e2);
+                let e1 = erase_expr(ctxt, mctxt, expect, e1, vir_e1);
+                ExprKind::Unary(UnOp::Neg, P(e1))
+            } else {
+                let e1 = erase_expr_opt(ctxt, mctxt, expect, e1, vir_e1);
+                return replace_with_exprs(mctxt, expr, vec![e1]);
+            }
+        }
+        (ExprKind::Binary(op, e1, e2), ExprX::Binary(_vir_op, vir_e1, vir_e2)) => {
+            if keep_mode(ctxt, expect) {
+                let e1 = erase_expr(ctxt, mctxt, expect, e1, vir_e1);
+                let e2 = erase_expr(ctxt, mctxt, expect, e2, vir_e2);
                 ExprKind::Binary(*op, P(e1), P(e2))
             } else {
-                let e1 = erase_expr_opt(ctxt, mctxt, expect, e1);
-                let e2 = erase_expr_opt(ctxt, mctxt, expect, e2);
+                let e1 = erase_expr_opt(ctxt, mctxt, expect, e1, vir_e1);
+                let e2 = erase_expr_opt(ctxt, mctxt, expect, e2, vir_e2);
                 return replace_with_exprs(mctxt, expr, vec![e1, e2]);
             }
         }
-        ExprKind::AssignOp(
-            op @ rustc_span::source_map::Spanned { node: BinOpKind::Shr, .. },
-            e1,
-            e2,
+        (
+            ExprKind::AssignOp(
+                op @ rustc_span::source_map::Spanned { node: BinOpKind::Shr, .. },
+                e1,
+                e2,
+            ),
+            ExprX::Binary(BinaryOp::Implies, vir_e1, vir_e2),
         ) => {
             if keep_mode(ctxt, expect) {
-                let e1 = erase_expr(ctxt, mctxt, expect, e1);
-                let e2 = erase_expr(ctxt, mctxt, expect, e2);
+                let e1 = erase_expr(ctxt, mctxt, expect, e1, vir_e1);
+                let e2 = erase_expr(ctxt, mctxt, expect, e2, vir_e2);
                 ExprKind::AssignOp(*op, P(e1), P(e2))
             } else {
-                let e1 = erase_expr_opt(ctxt, mctxt, expect, e1);
-                let e2 = erase_expr_opt(ctxt, mctxt, expect, e2);
+                let e1 = erase_expr_opt(ctxt, mctxt, expect, e1, vir_e1);
+                let e2 = erase_expr_opt(ctxt, mctxt, expect, e2, vir_e2);
                 return replace_with_exprs(mctxt, expr, vec![e1, e2]);
             }
         }
-        ExprKind::Assign(e1, e2, span) => {
-            let e1_var_span = match &e1.kind {
-                rustc_ast::ExprKind::Unary(rustc_ast::UnOp::Deref, e) => e.span,
-                _ => e1.span,
-            };
-            let mode1 = *mctxt.find_span(&ctxt.var_modes, e1_var_span);
+        (ExprKind::Assign(e1, e2, span), ExprX::Assign(vir_e1, vir_e2)) => {
+            let mode1 = *mctxt.find_span(&ctxt.var_modes, &vir_e1.span);
             if keep_mode(ctxt, mode1) {
-                let e1 = erase_expr(ctxt, mctxt, mode1, e1);
-                let e2 = erase_expr(ctxt, mctxt, mode1, e2);
+                let e1 = erase_expr(ctxt, mctxt, mode1, e1, vir_e1);
+                let e2 = erase_expr(ctxt, mctxt, mode1, e2, vir_e2);
                 ExprKind::Assign(P(e1), P(e2), *span)
             } else {
-                let e1 = erase_expr_opt(ctxt, mctxt, mode1, e1);
-                let e2 = erase_expr_opt(ctxt, mctxt, expect, e2);
+                let e1 = erase_expr_opt(ctxt, mctxt, mode1, e1, vir_e1);
+                let e2 = erase_expr_opt(ctxt, mctxt, expect, e2, vir_e2);
                 return replace_with_exprs(mctxt, expr, vec![e1, e2]);
             }
         }
-        ExprKind::Call(f_expr, args) => {
-            let (qself, path, call) = match &f_expr.kind {
-                ExprKind::Path(qself, path)
-                    if mctxt.find_span_opt(&ctxt.calls, f_expr.span).is_some() =>
-                {
-                    (qself, path, mctxt.find_span(&ctxt.calls, f_expr.span).clone())
-                }
-                ExprKind::Path(..) => panic!("internal error: missing function: {:?}", f_expr.span),
+        (ExprKind::Call(..), ExprX::Admit) => {
+            return None;
+        }
+        (ExprKind::Call(..), ExprX::AssertBV(..)) => {
+            return None;
+        }
+        (ExprKind::Call(..), ExprX::Choose { .. }) => {
+            return None;
+        }
+        (ExprKind::Call(..), ExprX::Fuel(..)) => {
+            return None;
+        }
+        (ExprKind::Call(..), ExprX::Forall { .. }) => {
+            return None;
+        }
+        (ExprKind::Call(..), ExprX::HeaderStub) => {
+            return None;
+        }
+        (ExprKind::Call(..), ExprX::Quant(..)) => {
+            return None;
+        }
+        (ExprKind::Call(_f_expr, _args), ExprX::Call(CallTarget::FnSpec(..), _vir_args)) => {
+            // This case is only supported for 'spec' right now
+            return None;
+        }
+        (
+            ExprKind::Call(f_expr, args),
+            ExprX::Call(CallTarget::Static(f_name, _typs), vir_args),
+        ) => {
+            let (qself, path) = match &f_expr.kind {
+                ExprKind::Path(qself, path) => (qself, path),
                 _ => {
                     unsupported!("complex function call", f_expr)
                 }
             };
-            match &call {
-                ResolvedCall::Spec => return None,
-                ResolvedCall::CompilableOperator => {
-                    if keep_mode(ctxt, expect) {
-                        ExprKind::Call(
-                            f_expr.clone(),
-                            vec_map(args, |e| P(erase_expr(ctxt, mctxt, expect, e))),
-                        )
-                    } else {
-                        return None;
-                    }
-                }
-                ResolvedCall::Call(f_name) => {
-                    let segment = path.segments.last().expect("path with segments");
-                    match erase_call(ctxt, mctxt, segment, f_name, args) {
-                        None => return Some(expr.clone()),
-                        Some(None) => return None,
-                        Some(Some((segment, args))) => {
-                            let mut path = path.clone();
-                            *path.segments.last_mut().unwrap() = segment;
-                            let kind = ExprKind::Path(qself.clone(), path);
-                            let f_expr = P(Expr { kind, ..(**f_expr).clone() });
-                            ExprKind::Call(f_expr, args)
-                        }
-                    }
-                }
-                ResolvedCall::Ctor(path, variant) => {
-                    if keep_mode(ctxt, expect) {
-                        let datatype = &ctxt.datatypes[path];
-                        let mut new_args: Vec<P<Expr>> = Vec::new();
-                        let variant = datatype.x.get_variant(variant);
-                        for (field, arg) in variant.a.iter().zip(args.iter()) {
-                            let (_, field_mode, _) = field.a;
-                            if keep_mode(ctxt, field_mode) {
-                                new_args.push(P(erase_expr(
-                                    ctxt,
-                                    mctxt,
-                                    mode_join(expect, field_mode),
-                                    &arg,
-                                )));
-                            }
-                        }
-                        // TODO: instantiate any type parameters left unused after erasure
-                        ExprKind::Call(f_expr.clone(), new_args)
-                    } else {
-                        return None;
-                    }
+            let segment = path.segments.last().expect("path with segments");
+            match erase_call(ctxt, mctxt, segment, f_name, args, vir_args) {
+                None => return Some(expr.clone()),
+                Some(None) => return None,
+                Some(Some((segment, args))) => {
+                    let mut path = path.clone();
+                    *path.segments.last_mut().unwrap() = segment;
+                    let kind = ExprKind::Path(qself.clone(), path);
+                    let f_expr = P(Expr { kind, ..(**f_expr).clone() });
+                    ExprKind::Call(f_expr, args)
                 }
             }
         }
-        ExprKind::MethodCall(m_path, args, span) => {
-            let call = mctxt.find_span(&ctxt.calls, *span).clone();
-            match &call {
-                ResolvedCall::Call(f_path) => match erase_call(ctxt, mctxt, m_path, f_path, args) {
-                    None => return Some(expr.clone()),
-                    Some(None) => return None,
-                    Some(Some((segment, args))) => ExprKind::MethodCall(segment, args, *span),
-                },
-                _ => panic!("internal error: MethodCall ResolvedCall"),
-            }
-        }
-        ExprKind::Tup(exprs) => {
+        (ExprKind::Call(f_expr, args), ExprX::Ctor(path, variant, vir_binders, None)) => {
+            // This is a tuple-style constructor: args are "0", "1", ...
+            assert!(args.len() == vir_binders.len());
             if keep_mode(ctxt, expect) {
-                ExprKind::Tup(vec_map(exprs, |e| P(erase_expr(ctxt, mctxt, expect, e))))
+                let datatype = &ctxt.datatypes[path];
+                let mut new_args: Vec<P<Expr>> = Vec::new();
+                let variant = datatype.x.get_variant(variant);
+                for ((field, arg), vir_binder) in
+                    variant.a.iter().zip(args.iter()).zip(vir_binders.iter())
+                {
+                    let (_, field_mode, _) = field.a;
+                    if keep_mode(ctxt, field_mode) {
+                        new_args.push(P(erase_expr(
+                            ctxt,
+                            mctxt,
+                            mode_join(expect, field_mode),
+                            &arg,
+                            &vir_binder.a,
+                        )));
+                    }
+                }
+                // TODO: instantiate any type parameters left unused after erasure
+                ExprKind::Call(f_expr.clone(), new_args)
             } else {
-                let exprs = vec_map(exprs, |e| erase_expr_opt(ctxt, mctxt, expect, e));
+                return None;
+            }
+        }
+        (
+            ExprKind::MethodCall(m_path, args, span),
+            ExprX::Call(CallTarget::Static(f_name, _typs), vir_args),
+        ) => match erase_call(ctxt, mctxt, m_path, f_name, args, vir_args) {
+            None => return Some(expr.clone()),
+            Some(None) => return None,
+            Some(Some((segment, args))) => ExprKind::MethodCall(segment, args, *span),
+        },
+        (ExprKind::Tup(exprs), ExprX::Tuple(vir_exprs)) => {
+            assert!(exprs.len() == vir_exprs.len());
+            if keep_mode(ctxt, expect) {
+                ExprKind::Tup(
+                    exprs
+                        .iter()
+                        .zip(vir_exprs.iter())
+                        .map(|(e, vir_e)| P(erase_expr(ctxt, mctxt, expect, e, vir_e)))
+                        .collect(),
+                )
+            } else {
+                let exprs = exprs
+                    .iter()
+                    .zip(vir_exprs.iter())
+                    .map(|(e, vir_e)| erase_expr_opt(ctxt, mctxt, expect, e, vir_e))
+                    .collect();
                 return replace_with_exprs(mctxt, expr, exprs);
             }
         }
-        ExprKind::Struct(path, fields, rest) => {
+        (
+            ExprKind::Struct(path, fields, rest),
+            ExprX::Ctor(vir_path, variant, vir_binders, vir_rest_opt),
+        ) => {
+            let mut vir_binder_map = HashMap::new();
+            for arg in vir_binders.iter() {
+                vir_binder_map.insert(arg.name.clone(), &arg.a);
+            }
+
             if keep_mode(ctxt, expect) {
-                let rest = match rest {
-                    StructRest::None | StructRest::Rest(_) => rest.clone(),
-                    StructRest::Base(e) => StructRest::Base(P(erase_expr(ctxt, mctxt, expect, e))),
-                };
-                let (vir_path, variant) = match mctxt.find_span(&ctxt.calls, path.span) {
-                    ResolvedCall::Ctor(path, variant) => (path, variant),
-                    _ => panic!("internal error: expected Ctor"),
+                let rest = match (rest, vir_rest_opt) {
+                    (StructRest::None, None) | (StructRest::Rest(_), None) => rest.clone(),
+                    (StructRest::Base(e), Some(vir_rest)) => {
+                        StructRest::Base(P(erase_expr(ctxt, mctxt, expect, e, vir_rest)))
+                    }
+                    _ => panic!("AST and VIR 'rest' doesn't match"),
                 };
                 let datatype = &ctxt.datatypes[vir_path];
                 let mut new_fields: Vec<Field> = Vec::new();
                 let variant = datatype.x.get_variant(variant);
+
                 for field in fields {
                     let name = Arc::new(field.ident.as_str().to_string());
                     let (_, field_mode, _) = get_field(&variant.a, &name).a;
                     if keep_mode(ctxt, field_mode) {
-                        let e = erase_expr(ctxt, mctxt, mode_join(expect, field_mode), &field.expr);
+                        let vir_e = vir_binder_map.get(&name).expect("vir_binder_map.get");
+                        let e = erase_expr(
+                            ctxt,
+                            mctxt,
+                            mode_join(expect, field_mode),
+                            &field.expr,
+                            vir_e,
+                        );
                         // for asymptotic efficiency, don't call field.clone():
                         let Field { attrs, .. } = field;
                         let Field { id, span, ident, is_shorthand, is_placeholder, .. } = *field;
@@ -633,53 +715,111 @@ fn erase_expr_opt(ctxt: &Ctxt, mctxt: &mut MCtxt, expect: Mode, expr: &Expr) -> 
                 // TODO: instantiate any type parameters left unused after erasure
                 ExprKind::Struct(path.clone(), new_fields, rest)
             } else {
-                let mut exprs = vec_map(fields, |f| erase_expr_opt(ctxt, mctxt, expect, &f.expr));
-                match rest {
-                    StructRest::None | StructRest::Rest(_) => {}
-                    StructRest::Base(e) => exprs.push(erase_expr_opt(ctxt, mctxt, expect, e)),
+                let mut exprs = vec_map(fields, |field| {
+                    let name = Arc::new(field.ident.as_str().to_string());
+                    let vir_e = vir_binder_map.get(&name).expect("vir_binder_map.get");
+                    erase_expr_opt(ctxt, mctxt, expect, &field.expr, vir_e)
+                });
+                match (rest, vir_rest_opt) {
+                    (StructRest::None, None) | (StructRest::Rest(_), None) => {}
+                    (StructRest::Base(e), Some(vir_rest)) => {
+                        exprs.push(erase_expr_opt(ctxt, mctxt, expect, e, vir_rest))
+                    }
+                    _ => panic!("AST and VIR 'rest' doesn't match"),
                 }
                 return replace_with_exprs(mctxt, expr, exprs);
             }
         }
-        ExprKind::Field(e1, field) => {
-            let field_mode = match &mctxt.find_span(&ctxt.resolved_exprs, expr.span).x {
-                ExprX::UnaryOpr(UnaryOpr::Field { datatype, variant, field }, _) => {
+        (ExprKind::Field(e1, field), _) => {
+            let (field_mode, vir_e1) = match &vir_expr.x {
+                ExprX::UnaryOpr(UnaryOpr::Field { datatype, variant, field }, vir_e1) => {
                     let datatype = &ctxt.datatypes[datatype];
                     let variant = datatype.x.get_variant(variant);
-                    get_field(&variant.a, field).a.1
+                    (get_field(&variant.a, field).a.1, vir_e1)
                 }
-                ExprX::UnaryOpr(UnaryOpr::TupleField { .. }, _) => Mode::Exec,
+                ExprX::UnaryOpr(UnaryOpr::TupleField { .. }, vir_e1) => (Mode::Exec, vir_e1),
                 _ => panic!("internal error: expected Field"),
             };
             if keep_mode(ctxt, field_mode) && keep_mode(ctxt, expect) {
-                let e1 = erase_expr(ctxt, mctxt, expect, e1);
+                let e1 = erase_expr(ctxt, mctxt, expect, e1, vir_e1);
                 ExprKind::Field(P(e1), field.clone())
             } else {
-                let e1 = erase_expr_opt(ctxt, mctxt, expect, e1);
+                let e1 = erase_expr_opt(ctxt, mctxt, expect, e1, vir_e1);
                 return replace_with_exprs(mctxt, expr, vec![e1]);
             }
         }
-        ExprKind::Closure(..) => return None,
-        ExprKind::If(eb, e1, e2_opt) => {
-            let modeb = *mctxt.find_span(&ctxt.condition_modes, expr.span);
-            let eb_erase = match &eb.kind {
+        (ExprKind::Closure(..), ExprX::Closure(..)) => return None,
+        (ExprKind::If(eb, e1, e2_opt), _) => {
+            let modeb = *mctxt.find_span(&ctxt.condition_modes, &vir_expr.span);
+            let (eb_erase, vir_e1, vir_e2_opt) = match &eb.kind {
                 ExprKind::Let(pat, eb1) => {
-                    let eb1 = erase_expr_opt(ctxt, mctxt, modeb, eb1);
-                    if let Some(eb1) = eb1 {
-                        let pat = erase_pat(ctxt, mctxt, pat);
-                        let Expr { id, span, .. } = **eb; // for asymptotic efficiency, don't call eb.clone()
-                        let kind = ExprKind::Let(P(pat), P(eb1));
-                        let attrs = eb.attrs.clone();
-                        Some(Expr { id, kind, span, attrs, tokens: eb.tokens.clone() })
-                    } else {
-                        None
+                    // An 'if-let' expression de-sugars to a 'match' expression
+                    // Rust AST:
+                    //    if $pat = $eb1 {
+                    //        e1
+                    //    } else {
+                    //        e2_opt
+                    //    }
+                    // VIR:
+                    //    match $vir_eb {
+                    //        $vir_arms[0].pattern => { $vir_arms[0].body }
+                    //        _                    => { $vir_arms[1].body }
+                    //    }
+                    //
+                    // Thus:
+                    //       `eb1` matches `vir_eb`,
+                    //       `pat` matches `vir_arms[0].pattern`
+                    //       `e1` matches `vir_arms[0].body`
+                    //       `e2_opt` matches `vir_arms[1].body`
+                    // If e2_opt=None, then we expect `vir_arms[1].body` to be empty
+                    // so we just ignore it in that case.
+                    match &vir_expr.x {
+                        ExprX::Match(vir_eb, vir_arms) => {
+                            assert!(vir_arms.len() == 2);
+                            let vir_e1 = vir_arms[0].x.body.clone();
+                            let vir_e2_opt = if e2_opt.is_some() {
+                                Some(vir_arms[1].x.body.clone())
+                            } else {
+                                None
+                            };
+
+                            let eb1 = erase_expr_opt(ctxt, mctxt, modeb, eb1, vir_eb);
+                            let eb_erase = if let Some(eb1) = eb1 {
+                                let pat = erase_pat(ctxt, mctxt, pat, &vir_arms[0].x.pattern);
+                                let Expr { id, span, .. } = **eb; // for asymptotic efficiency, don't call eb.clone()
+                                let kind = ExprKind::Let(P(pat), P(eb1));
+                                let attrs = eb.attrs.clone();
+                                Some(Expr { id, kind, span, attrs, tokens: eb.tokens.clone() })
+                            } else {
+                                None
+                            };
+
+                            (eb_erase, vir_e1, vir_e2_opt)
+                        }
+                        _ => {
+                            panic!("could not match 'if-let' with de-sugared 'match'");
+                        }
                     }
                 }
-                _ => erase_expr_opt(ctxt, mctxt, modeb, eb),
+                _ => match &vir_expr.x {
+                    ExprX::If(vir_eb, vir_e1, vir_e2_opt) => {
+                        let eb_erase = erase_expr_opt(ctxt, mctxt, modeb, eb, vir_eb);
+                        (eb_erase, vir_e1.clone(), vir_e2_opt.clone())
+                    }
+                    _ => {
+                        panic!("could not match If with If");
+                    }
+                },
             };
             let keep = |mctxt: &mut MCtxt, eb| {
-                let e1 = erase_block(ctxt, mctxt, expect, e1);
-                let e2_opt = e2_opt.as_ref().map(|e2| P(erase_expr(ctxt, mctxt, expect, e2)));
+                let e1 = erase_block(ctxt, mctxt, expect, e1, &vir_e1);
+                let e2_opt = match (e2_opt, vir_e2_opt) {
+                    (None, None) => None,
+                    (Some(e2), Some(vir_e2)) => {
+                        Some(P(erase_expr(ctxt, mctxt, expect, e2, &vir_e2)))
+                    }
+                    _ => panic!("mismatched if statements"),
+                };
                 ExprKind::If(P(eb), P(e1), e2_opt)
             };
             if modeb == Mode::Exec {
@@ -706,21 +846,26 @@ fn erase_expr_opt(ctxt: &Ctxt, mctxt: &mut MCtxt, expect: Mode, expr: &Expr) -> 
                 }
             }
         }
-        ExprKind::Match(e0, arms0) => {
-            let mode0 = *mctxt.find_span(&ctxt.condition_modes, expr.span);
+        (ExprKind::Match(e0, arms0), ExprX::Match(vir_e0, vir_arms0)) => {
+            let mode0 = *mctxt.find_span(&ctxt.condition_modes, &vir_expr.span);
+            assert!(arms0.len() == vir_arms0.len());
             let keep = |mctxt: &mut MCtxt, e0| {
-                let arms = vec_map(&arms0, |arm| erase_arm(ctxt, mctxt, expect, arm));
+                let arms = arms0
+                    .iter()
+                    .zip(vir_arms0.iter())
+                    .map(|(arm, vir_arm)| erase_arm(ctxt, mctxt, expect, arm, vir_arm))
+                    .collect();
                 ExprKind::Match(P(e0), arms)
             };
             if mode0 == Mode::Exec {
-                let e0 = erase_expr(ctxt, mctxt, mode0, e0);
+                let e0 = erase_expr(ctxt, mctxt, mode0, e0, vir_e0);
                 keep(mctxt, e0)
             } else {
                 assert!(expect != Mode::Exec);
                 if !ctxt.keep_proofs {
-                    return erase_expr_opt(ctxt, mctxt, mode0, e0);
+                    return erase_expr_opt(ctxt, mctxt, mode0, e0, vir_e0);
                 } else if ctxt.keep_proofs && mode0 == Mode::Spec {
-                    let e0_erase = erase_expr_opt(ctxt, mctxt, mode0, e0);
+                    let e0_erase = erase_expr_opt(ctxt, mctxt, mode0, e0, vir_e0);
                     // We erase e0, so we have no value to match on.
                     // Create nondeterministic booleans to take e0's place
                     // and a series of if/else to replace the match.
@@ -730,8 +875,9 @@ fn erase_expr_opt(ctxt: &Ctxt, mctxt: &mut MCtxt, expect: Mode, expr: &Expr) -> 
                     for i in (0..arms0.len()).rev() {
                         // Turn arms0[i].body into block
                         let arm = &arms0[i];
+                        let vir_arm = &vir_arms0[i];
                         let span = expr.span;
-                        let body = erase_expr(ctxt, mctxt, expect, &arm.body);
+                        let body = erase_expr(ctxt, mctxt, expect, &arm.body, &vir_arm.x.body);
                         let kind = StmtKind::Expr(P(body));
                         let id = mctxt.next_node_id();
                         let stmt = Stmt { id, kind, span };
@@ -751,32 +897,36 @@ fn erase_expr_opt(ctxt: &Ctxt, mctxt: &mut MCtxt, expect: Mode, expr: &Expr) -> 
                     }
                     return replace_with_exprs(mctxt, expr, vec![e0_erase, if_else]);
                 } else {
-                    let e0 = erase_expr(ctxt, mctxt, mode0, e0);
+                    let e0 = erase_expr(ctxt, mctxt, mode0, e0, vir_e0);
                     keep(mctxt, e0)
                 }
             }
         }
-        ExprKind::While(eb, block, None) => {
+        (
+            ExprKind::While(eb, block, None),
+            ExprX::While { cond: vir_cond, body: vir_body, invs: _ },
+        ) => {
             // The mode checker only allows While for Mode::Exec
-            let eb = erase_expr(ctxt, mctxt, Mode::Exec, eb);
-            let block = erase_block(ctxt, mctxt, Mode::Exec, block);
+            let eb = erase_expr(ctxt, mctxt, Mode::Exec, eb, vir_cond);
+            let block = erase_block(ctxt, mctxt, Mode::Exec, block, vir_body);
             ExprKind::While(P(eb), P(block), None)
         }
-        ExprKind::Ret(None) => ExprKind::Ret(None),
-        ExprKind::Ret(Some(e1)) => {
-            let e1 = erase_expr(ctxt, mctxt, mctxt.ret_mode.expect("erase: ret_mode"), e1);
+        (ExprKind::Ret(None), ExprX::Return(None)) => ExprKind::Ret(None),
+        (ExprKind::Ret(Some(e1)), ExprX::Return(Some(vir_e1))) => {
+            let e1 = erase_expr(ctxt, mctxt, mctxt.ret_mode.expect("erase: ret_mode"), e1, vir_e1);
             ExprKind::Ret(Some(P(e1)))
         }
-        ExprKind::Block(block, None) => {
+        (ExprKind::Block(block, None), _) => {
             let is_inv_block = attrs_is_invariant_block(&expr.attrs).expect("attrs fail");
             if is_inv_block {
-                ExprKind::Block(P(erase_inv_block(ctxt, mctxt, expect, block)), None)
+                ExprKind::Block(P(erase_inv_block(ctxt, mctxt, expect, block, vir_expr)), None)
             } else {
-                ExprKind::Block(P(erase_block(ctxt, mctxt, expect, block)), None)
+                ExprKind::Block(P(erase_block(ctxt, mctxt, expect, block, vir_expr)), None)
             }
         }
+
         _ => {
-            unsupported!("unsupported expr", expr)
+            panic!("erase_expr: unable to match:\nRust AST: {:#?}\nVIR: {:#?}\n", expr, vir_expr)
         }
     };
     let Expr { id, span, .. } = *expr; // for asymptotic efficiency, don't call expr.clone()
@@ -788,55 +938,93 @@ fn erase_expr_opt(ctxt: &Ctxt, mctxt: &mut MCtxt, expect: Mode, expr: &Expr) -> 
 fn erase_stmt(
     ctxt: &Ctxt,
     mctxt: &mut MCtxt,
-    expect: Mode,
     stmt: &Stmt,
-    is_last: bool,
+    vir_stmt: &vir::ast::Stmt,
 ) -> Option<Stmt> {
-    if mctxt.external_body {
-        match &stmt.kind {
-            StmtKind::Expr(..) | StmtKind::Semi(..) => {}
-            _ => return Some(stmt.clone()),
-        }
-    }
-
-    let kind = match &stmt.kind {
-        StmtKind::Local(local) => {
-            let mode1 = *mctxt.find_span(&ctxt.var_modes, local.pat.span);
+    let kind: Option<StmtKind> = match (&stmt.kind, &vir_stmt.x) {
+        (StmtKind::Local(local), StmtX::Decl { pattern: vir_pattern, init: vir_init_opt, .. }) => {
+            let mode1 = *mctxt.find_span(&ctxt.var_modes, &vir_pattern.span);
             if keep_mode(ctxt, mode1) {
-                let init = local.init.as_ref().map(|expr| P(erase_expr(ctxt, mctxt, mode1, expr)));
+                let init = match (&local.init, vir_init_opt) {
+                    (None, None) => None,
+                    (Some(local_init), Some(vir_init)) => {
+                        Some(P(erase_expr(ctxt, mctxt, mode1, &*local_init, vir_init)))
+                    }
+                    _ => {
+                        panic!("Local init options do not match");
+                    }
+                };
                 let Local { id, span, .. } = **local; // for asymptotic efficiency, don't call local.clone()
                 let Local { ty, attrs, tokens, .. } = &**local;
-                let pat = P(erase_pat(ctxt, mctxt, &local.pat));
+                let pat = P(erase_pat(ctxt, mctxt, &local.pat, vir_pattern));
                 let ty = ty.clone();
                 let attrs = attrs.clone();
                 let tokens = tokens.clone();
                 let local = Local { id, pat, ty, init, span, attrs, tokens };
                 Some(StmtKind::Local(P(local)))
             } else {
-                local.init.as_ref().and_then(|expr| {
-                    erase_expr_opt(ctxt, mctxt, mode1, expr).map(|expr| StmtKind::Semi(P(expr)))
-                })
+                match (&local.init, vir_init_opt) {
+                    (None, None) => None,
+                    (Some(local_init), Some(vir_init)) => {
+                        match erase_expr_opt(ctxt, mctxt, mode1, &*local_init, vir_init) {
+                            None => None,
+                            Some(expr) => Some(StmtKind::Semi(P(expr))),
+                        }
+                    }
+                    _ => {
+                        panic!("Local init options do not match");
+                    }
+                }
             }
         }
-        StmtKind::Expr(expr) if is_last => {
-            erase_expr_opt(ctxt, mctxt, expect, expr).map(|e| StmtKind::Expr(P(e)))
+        (StmtKind::Expr(expr), StmtX::Expr(vir_expr)) => {
+            erase_expr_opt(ctxt, mctxt, Mode::Spec, expr, vir_expr).map(|e| StmtKind::Expr(P(e)))
         }
-        StmtKind::Expr(expr) => {
-            erase_expr_opt(ctxt, mctxt, Mode::Spec, expr).map(|e| StmtKind::Expr(P(e)))
+        (StmtKind::Semi(expr), StmtX::Expr(vir_expr)) => {
+            erase_expr_opt(ctxt, mctxt, Mode::Spec, expr, vir_expr).map(|e| StmtKind::Semi(P(e)))
         }
-        StmtKind::Semi(expr) => {
-            erase_expr_opt(ctxt, mctxt, Mode::Spec, expr).map(|e| StmtKind::Semi(P(e)))
-        }
-        StmtKind::Empty => Some(stmt.kind.clone()),
         _ => {
-            unsupported!("unsupported stmt", stmt)
+            panic!("erase_stmt: unable to match:\nRust AST: {:#?}\nVIR: {:#?}\n", stmt, vir_stmt)
         }
     };
     let Stmt { id, span, .. } = *stmt; // for asymptotic efficiency, don't call stmt.clone()
     kind.map(|kind| Stmt { id, kind, span })
 }
 
-fn erase_inv_block(ctxt: &Ctxt, mctxt: &mut MCtxt, expect: Mode, block: &Block) -> Block {
+fn erase_stmt_matched_with_expr(
+    ctxt: &Ctxt,
+    mctxt: &mut MCtxt,
+    expect: Mode,
+    stmt: &Stmt,
+    vir_expr: &vir::ast::Expr,
+) -> Option<Stmt> {
+    let kind: Option<StmtKind> = match &stmt.kind {
+        StmtKind::Expr(expr) => {
+            erase_expr_opt(ctxt, mctxt, expect, expr, vir_expr).map(|e| StmtKind::Expr(P(e)))
+        }
+        _ => {
+            panic!(
+                "erase_stmt_matched_with_expr: unable to match:\nRust AST: {:#?}\nVIR: {:#?}\n",
+                stmt, vir_expr
+            )
+        }
+    };
+    let Stmt { id, span, .. } = *stmt; // for asymptotic efficiency, don't call stmt.clone()
+    kind.map(|kind| Stmt { id, kind, span })
+}
+
+fn erase_inv_block(
+    ctxt: &Ctxt,
+    mctxt: &mut MCtxt,
+    expect: Mode,
+    block: &Block,
+    vir_expr: &vir::ast::Expr,
+) -> Block {
+    let (vir_arg, vir_body) = match &vir_expr.x {
+        ExprX::OpenInvariant(vir_arg, _vir_binder, vir_body) => (vir_arg, vir_body),
+        _ => panic!("expected OpenInvariant"),
+    };
+
     if block.stmts.len() != 3 {
         panic!(
             "erase_inv_block: the checks in invariant_block_to_vir should ensure the block has exactly 3 statements"
@@ -856,7 +1044,7 @@ fn erase_inv_block(ctxt: &Ctxt, mctxt: &mut MCtxt, expect: Mode, block: &Block) 
             match &**local.init.as_ref().expect("erase_inv_block: the checks in invariant_block_to_vir should ensure the first statement is an initializer") {
                 Expr { kind: ExprKind::Call(callfn, args), span, id, attrs, tokens } => {
                     let arg = &args[0];
-                    let expr_opt = erase_expr_opt(ctxt, mctxt, Mode::Proof, arg);
+                    let expr_opt = erase_expr_opt(ctxt, mctxt, Mode::Proof, arg, vir_arg);
                     if ctxt.keep_proofs {
                         let expr = expr_opt.expect("erase_inv_block: arg shouldn't be erased");
                         // Reconstruct the call statement with the new expression
@@ -908,7 +1096,8 @@ fn erase_inv_block(ctxt: &Ctxt, mctxt: &mut MCtxt, expect: Mode, block: &Block) 
     }
 
     // Middle statement: the user-supplied block
-    if let Some(stmt) = erase_stmt(ctxt, mctxt, expect, &block.stmts[1], false) {
+    if let Some(stmt) = erase_stmt_matched_with_expr(ctxt, mctxt, expect, &block.stmts[1], vir_body)
+    {
         result_stmts.push(stmt);
     }
 
@@ -923,15 +1112,69 @@ fn erase_inv_block(ctxt: &Ctxt, mctxt: &mut MCtxt, expect: Mode, block: &Block) 
     Block { stmts: result_stmts, id, rules, span, tokens: block.tokens.clone() }
 }
 
-fn erase_block(ctxt: &Ctxt, mctxt: &mut MCtxt, expect: Mode, block: &Block) -> Block {
+fn erase_block_external_body(block: &Block, info: &ExternalBodyErasureInfo) -> Block {
+    assert!(info.num_header_stmts <= block.stmts.len());
     let stmts: Vec<Stmt> = block
         .stmts
         .iter()
         .enumerate()
-        .filter_map(|(i, stmt)| erase_stmt(ctxt, mctxt, expect, stmt, i == block.stmts.len() - 1))
+        .filter_map(|(i, stmt)| {
+            if i < info.num_header_stmts {
+                match &stmt.kind {
+                    StmtKind::Semi(e) => match &e.kind {
+                        ExprKind::Call(..) => {}
+                        _ => {
+                            panic!("expected something that looks like a header");
+                        }
+                    },
+                    _ => {
+                        panic!("expected something that looks like a header: {:#?}", stmt);
+                    }
+                }
+                None
+            } else {
+                Some(stmt.clone())
+            }
+        })
         .collect();
     let Block { id, rules, span, .. } = *block; // for asymptotic efficiency, don't call block.clone()
     Block { stmts, id, rules, span, tokens: block.tokens.clone() }
+}
+
+fn erase_block(
+    ctxt: &Ctxt,
+    mctxt: &mut MCtxt,
+    expect: Mode,
+    block: &Block,
+    vir_expr: &vir::ast::Expr,
+) -> Block {
+    match &vir_expr.x {
+        ExprX::Block(vir_stmts, vir_expr_opt) => {
+            let stmts: Vec<Stmt> = block
+                .stmts
+                .iter()
+                .enumerate()
+                .filter_map(|(i, stmt)| {
+                    if i == vir_stmts.len() {
+                        match vir_expr_opt {
+                            Some(vir_expr) => {
+                                erase_stmt_matched_with_expr(ctxt, mctxt, expect, stmt, vir_expr)
+                            }
+                            None => panic!("expected vir_expr"), // see above assert
+                        }
+                    } else {
+                        erase_stmt(ctxt, mctxt, stmt, &vir_stmts[i])
+                    }
+                })
+                .collect();
+
+            let Block { id, rules, span, .. } = *block; // for asymptotic efficiency, don't call block.clone()
+            Block { stmts, id, rules, span, tokens: block.tokens.clone() }
+        }
+        _ => {
+            panic!("tried to match block with unexpected Expr");
+        }
+    }
 }
 
 fn erase_fn(ctxt: &Ctxt, mctxt: &mut MCtxt, f: &FnKind, external_body: bool) -> Option<FnKind> {
@@ -993,11 +1236,23 @@ fn erase_fn(ctxt: &Ctxt, mctxt: &mut MCtxt, f: &FnKind, external_body: bool) -> 
     let decl = FnDecl { inputs: new_inputs, output };
     let sig = FnSig { decl: P(decl), ..sig.clone() };
     mctxt.ret_mode = Some(ret_mode);
-    mctxt.external_body = external_body;
-    let body_opt = body_opt.as_ref().map(|body| P(erase_block(ctxt, mctxt, ret_mode, &**body)));
-    mctxt.ret_mode = None;
-    mctxt.external_body = false;
-    Some(FnKind(*defaultness, sig, generics, body_opt))
+
+    match &f_vir.x.body {
+        Some(vir_body) => {
+            let body_opt = body_opt
+                .as_ref()
+                .map(|body| P(erase_block(ctxt, mctxt, ret_mode, &**body, vir_body)));
+            mctxt.ret_mode = None;
+            Some(FnKind(*defaultness, sig, generics, body_opt))
+        }
+        _ => {
+            assert!(external_body);
+            let info = &ctxt.external_body_functions[&sig.span];
+            let body_opt =
+                body_opt.as_ref().map(|body| P(erase_block_external_body(&**body, info)));
+            Some(FnKind(*defaultness, sig, generics, body_opt))
+        }
+    }
 }
 
 fn erase_assoc_item(ctxt: &Ctxt, mctxt: &mut MCtxt, item: &AssocItem) -> Option<AssocItem> {
@@ -1140,10 +1395,8 @@ fn erase_crate(ctxt: &Ctxt, mctxt: &mut MCtxt, krate: &Crate) -> Crate {
 fn mk_ctxt(erasure_hints: &ErasureHints, keep_proofs: bool) -> Ctxt {
     let mut functions = HashMap::new();
     let mut functions_by_span = HashMap::new();
+    let mut external_body_functions = HashMap::new();
     let mut datatypes = HashMap::new();
-    let mut calls: HashMap<Span, ResolvedCall> = HashMap::new();
-    let mut resolved_exprs: HashMap<Span, vir::ast::Expr> = HashMap::new();
-    let mut resolved_pats: HashMap<Span, Pattern> = HashMap::new();
     for f in &erasure_hints.vir_crate.functions {
         functions.insert(f.x.name.clone(), Some(f.clone())).map(|_| panic!("{:?}", &f.x.name));
         functions_by_span
@@ -1156,17 +1409,11 @@ fn mk_ctxt(erasure_hints: &ErasureHints, keep_proofs: bool) -> Ctxt {
     for span in &erasure_hints.ignored_functions {
         functions_by_span.insert(span.span(), None).map(|v| v.map(|_| panic!("{:?}", span)));
     }
+    for (span, info) in &erasure_hints.external_body_functions {
+        external_body_functions.insert(span.span(), info.clone());
+    }
     for d in &erasure_hints.vir_crate.datatypes {
         datatypes.insert(d.x.path.clone(), d.clone()).map(|_| panic!("{:?}", &d.x.path));
-    }
-    for (span, call) in &erasure_hints.resolved_calls {
-        calls.insert(span.span(), call.clone()).map(|_| panic!("{:?}", span));
-    }
-    for (span, expr) in &erasure_hints.resolved_exprs {
-        resolved_exprs.insert(span.span(), expr.clone()).map(|_| panic!("{:?}", span));
-    }
-    for (span, expr) in &erasure_hints.resolved_pats {
-        resolved_pats.insert(span.span(), expr.clone()).map(|_| panic!("{:?}", span));
     }
     let mut condition_modes: HashMap<Span, Mode> = HashMap::new();
     let mut var_modes: HashMap<Span, Mode> = HashMap::new();
@@ -1182,10 +1429,8 @@ fn mk_ctxt(erasure_hints: &ErasureHints, keep_proofs: bool) -> Ctxt {
         vir_crate: erasure_hints.vir_crate.clone(),
         functions,
         functions_by_span,
+        external_body_functions,
         datatypes,
-        calls,
-        resolved_exprs,
-        resolved_pats,
         condition_modes,
         var_modes,
         keep_proofs,
@@ -1229,12 +1474,7 @@ impl rustc_lint::FormalVerifierRewrite for CompilerCallbacks {
         next_node_id: &mut dyn FnMut() -> NodeId,
     ) -> rustc_ast::ast::Crate {
         let ctxt = mk_ctxt(&self.erasure_hints, self.lifetimes_only);
-        let mut mctxt = MCtxt {
-            f_next_node_id: next_node_id,
-            remap_parens: HashMap::new(),
-            ret_mode: None,
-            external_body: false,
-        };
+        let mut mctxt = MCtxt { f_next_node_id: next_node_id, ret_mode: None };
         let time0 = Instant::now();
         let krate = crate::erase::erase_crate(&ctxt, &mut mctxt, krate);
         let time1 = Instant::now();

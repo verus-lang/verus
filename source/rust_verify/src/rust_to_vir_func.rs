@@ -1,5 +1,5 @@
 use crate::attributes::{get_fuel, get_mode, get_ret_mode, get_var_mode, get_verifier_attrs};
-use crate::context::{BodyCtxt, Context};
+use crate::context::{BodyCtxt, Context, ExternalBodyErasureInfo};
 use crate::rust_to_vir_base::{
     check_generics_bounds_fun, check_generics_idents, def_id_to_vir_path, ident_to_var, ty_to_vir,
 };
@@ -217,7 +217,13 @@ pub(crate) fn check_item_fn<'tcx>(
         }
     }
     let mut vir_body = body_to_vir(ctxt, body_id, body, mode, vattrs.external_body)?;
-    let header = vir::headers::read_header(&mut vir_body)?;
+    let (header, num_header_stmts) = vir::headers::read_header(&mut vir_body)?;
+    if vattrs.external_body {
+        ctxt.erasure_info
+            .borrow_mut()
+            .external_body_functions
+            .push((sig.span.data(), ExternalBodyErasureInfo { num_header_stmts }));
+    }
     if mode == Mode::Spec && (header.require.len() + header.ensure.len()) > 0 {
         return err_span_str(sig.span, "spec functions cannot have requires/ensures");
     }

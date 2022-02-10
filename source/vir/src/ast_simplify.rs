@@ -194,6 +194,7 @@ fn small_loc_or_temp(state: &mut State, expr: &Expr) -> SmallLocOrTemp {
         ExprX::Forall { .. }
         | ExprX::AssertBV(..)
         | ExprX::Header(_)
+        | ExprX::HeaderStub
         | ExprX::Match(..)
         | ExprX::While { .. }
         | ExprX::Return(..)
@@ -416,7 +417,30 @@ fn simplify_one_expr(ctx: &GlobalCtx, state: &mut State, expr: &Expr) -> Result<
                 err_str(&expr.span, "not yet implemented: zero-arm match expressions")
             }
         }
+        ExprX::Block(stmts, e) => {
+            let mut new_stmts = Vec::new();
+            for stmt in stmts.iter() {
+                if should_keep_stmt(stmt) {
+                    new_stmts.push(stmt.clone());
+                }
+            }
+            Ok(SpannedTyped::new(
+                &expr.span,
+                &expr.typ,
+                ExprX::Block(Arc::new(new_stmts), e.clone()),
+            ))
+        }
         _ => Ok(expr.clone()),
+    }
+}
+
+fn should_keep_stmt(stmt: &Stmt) -> bool {
+    match &stmt.x {
+        StmtX::Expr(e) => match &e.x {
+            ExprX::HeaderStub => false,
+            _ => true,
+        },
+        _ => true,
     }
 }
 

@@ -71,6 +71,7 @@ fn expr_get_early_exits_rec(
             | ExprX::AssertBV(..)
             | ExprX::Fuel(..)
             | ExprX::Header(..)
+            | ExprX::HeaderStub
             | ExprX::Admit
             | ExprX::Forall { .. } => VisitorControlFlow::Return,
             ExprX::While { cond, body, invs: _ } => {

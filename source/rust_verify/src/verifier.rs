@@ -493,11 +493,9 @@ impl Verifier {
 
         let hir = tcx.hir();
         let erasure_info = ErasureInfo {
-            resolved_calls: vec![],
-            resolved_exprs: vec![],
-            resolved_pats: vec![],
             external_functions: vec![],
             ignored_functions: vec![],
+            external_body_functions: vec![],
         };
         let erasure_info = std::rc::Rc::new(std::cell::RefCell::new(erasure_info));
         let ctxt =
@@ -524,19 +522,15 @@ impl Verifier {
         let time4 = Instant::now();
 
         let erasure_info = ctxt.erasure_info.borrow();
-        let resolved_calls = erasure_info.resolved_calls.clone();
-        let resolved_exprs = erasure_info.resolved_exprs.clone();
-        let resolved_pats = erasure_info.resolved_pats.clone();
         let external_functions = erasure_info.external_functions.clone();
         let ignored_functions = erasure_info.ignored_functions.clone();
+        let external_body_functions = erasure_info.external_body_functions.clone();
         let erasure_hints = crate::erase::ErasureHints {
             vir_crate,
-            resolved_calls,
-            resolved_exprs,
-            resolved_pats,
             erasure_modes,
             external_functions,
             ignored_functions,
+            external_body_functions,
         };
         self.erasure_hints = Some(erasure_hints);
 

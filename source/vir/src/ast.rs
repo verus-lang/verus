@@ -313,6 +313,9 @@ pub enum ExprX {
     /// Note: this only appears temporarily during rust_to_vir construction, and should not
     /// appear in the final Expr produced by rust_to_vir (see vir::headers::read_header).
     Header(HeaderExpr),
+    /// Indicates that a header *used* to be here. This has no effect, but it is useful
+    /// for erasure.
+    HeaderStub,
     /// Assume false
     Admit,
     /// Forall or assert-by statement; proves "forall vars. ensure" via proof.

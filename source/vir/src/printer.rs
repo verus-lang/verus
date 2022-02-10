@@ -254,6 +254,7 @@ fn expr_to_node(expr: &Expr) -> Node {
             nodes!(fuel {fun_to_node(fun)} {str_to_node(&format!("{}", fuel))})
         }
         ExprX::Header(header_expr) => nodes!(header {header_expr_to_node(header_expr)}),
+        ExprX::HeaderStub => nodes!(header_stub),
         ExprX::Admit => node!(admit),
         ExprX::Forall { vars, require, ensure, proof } => {
             nodes!(forall {binders_node(vars, &typ_to_node)} {str_to_node(":require")} {expr_to_node(require)} {str_to_node(":ensure")} {expr_to_node(ensure)} {str_to_node(":proof")} {expr_to_node(proof)})

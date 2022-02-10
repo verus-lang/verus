@@ -379,6 +379,7 @@ fn check_expr(typing: &mut Typing, outer_mode: Mode, expr: &Expr) -> Result<Mode
         }
         ExprX::Fuel(_, _) => Ok(outer_mode),
         ExprX::Header(_) => panic!("internal error: Header shouldn't exist here"),
+        ExprX::HeaderStub => Ok(outer_mode),
         ExprX::Admit => Ok(outer_mode),
         ExprX::Forall { vars, require, ensure, proof } => {
             let in_forall_stmt = typing.in_forall_stmt;

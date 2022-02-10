@@ -241,6 +241,7 @@ where
                 ExprX::Header(_) => {
                     panic!("header expression not allowed here: {:?}", &expr.span);
                 }
+                ExprX::HeaderStub => (),
                 ExprX::Admit => (),
                 ExprX::Forall { vars, require, ensure, proof } => {
                     map.push_scope(true);
@@ -438,6 +439,7 @@ where
         ExprX::Header(_) => {
             return err_str(&expr.span, "header expression not allowed here");
         }
+        ExprX::HeaderStub => ExprX::HeaderStub,
         ExprX::Admit => ExprX::Admit,
         ExprX::Forall { vars, require, ensure, proof } => {
             let vars =

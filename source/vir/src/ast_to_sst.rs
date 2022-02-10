@@ -573,6 +573,7 @@ pub(crate) fn expr_to_stm_opt(
         ExprX::Header(_) => {
             return err_str(&expr.span, "header expression not allowed here");
         }
+        ExprX::HeaderStub => Ok((vec![], None)),
         ExprX::Admit => {
             let expx = ExpX::Const(Constant::Bool(false));
             let exp = SpannedTyped::new(&expr.span, &Arc::new(TypX::Bool), expx);

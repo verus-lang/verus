@@ -1,17 +1,19 @@
-use crate::erase::ResolvedCall;
 use rustc_hir::{Crate, HirId};
 use rustc_middle::ty::{TyCtxt, TypeckResults};
 use rustc_span::SpanData;
 use std::collections::HashMap;
 use std::sync::Arc;
-use vir::ast::{Expr, Mode, Pattern, Typ};
+use vir::ast::{Mode, Typ};
 
 pub struct ErasureInfo {
-    pub(crate) resolved_calls: Vec<(SpanData, ResolvedCall)>,
-    pub(crate) resolved_exprs: Vec<(SpanData, Expr)>,
-    pub(crate) resolved_pats: Vec<(SpanData, Pattern)>,
     pub(crate) external_functions: Vec<vir::ast::Fun>,
     pub(crate) ignored_functions: Vec<SpanData>,
+    pub(crate) external_body_functions: Vec<(SpanData, ExternalBodyErasureInfo)>,
+}
+
+#[derive(Clone)]
+pub struct ExternalBodyErasureInfo {
+    pub num_header_stmts: usize,
 }
 
 type ErasureInfoRef = std::rc::Rc<std::cell::RefCell<ErasureInfo>>;
