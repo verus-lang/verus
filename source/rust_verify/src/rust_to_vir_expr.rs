@@ -77,7 +77,7 @@ fn get_ensures_arg<'tcx>(
     expr: &Expr<'tcx>,
 ) -> Result<vir::ast::Expr, VirErr> {
     if matches!(bctx.types.node_type(expr.hir_id).kind(), TyKind::Bool) {
-        expr_to_vir(bctx, expr, ExprModifier::Regular)
+        expr_to_vir(bctx, expr, ExprModifier::REGULAR)
     } else {
         err_span_str(expr.span, "ensures needs a bool expression")
     }
@@ -128,7 +128,7 @@ fn extract_quant<'tcx>(
                 })
                 .collect();
             let expr = &body.value;
-            let mut vir_expr = expr_to_vir(bctx, expr, ExprModifier::Regular)?;
+            let mut vir_expr = expr_to_vir(bctx, expr, ExprModifier::REGULAR)?;
             let header = vir::headers::read_header(&mut vir_expr)?;
             if header.require.len() <= 1
                 && header.ensure.len() == 1
@@ -186,7 +186,7 @@ fn extract_choose<'tcx>(
                 vec_map(&params, |p| spanned_typed_new(span, &p.a, ExprX::Var(p.name.clone())));
             let typs = vec_map(&params, |p| p.a.clone());
             let cond_expr = &closure_body.value;
-            let cond = expr_to_vir(bctx, cond_expr, ExprModifier::Regular)?;
+            let cond = expr_to_vir(bctx, cond_expr, ExprModifier::REGULAR)?;
             let body = if tuple {
                 let typ = Arc::new(TypX::Tuple(Arc::new(typs)));
                 if !vir::ast_util::types_equal(&typ, &expr_typ) {
@@ -439,7 +439,7 @@ fn fn_call_to_vir<'tcx>(
                 return err_span_str(arg.span, "requires needs a bool expression");
             }
         }
-        let vir_args = vec_map_result(&args, |arg| expr_to_vir(&bctx, arg, ExprModifier::Regular))?;
+        let vir_args = vec_map_result(&args, |arg| expr_to_vir(&bctx, arg, ExprModifier::REGULAR))?;
         let header = Arc::new(HeaderExprX::Requires(Arc::new(vir_args)));
         return Ok(mk_expr(ExprX::Header(header)));
     }
@@ -523,7 +523,7 @@ fn fn_call_to_vir<'tcx>(
     if is_reveal_fuel {
         unsupported_err_unless!(len == 2, expr.span, "expected reveal_fuel", &args);
         let x = get_fn_path(tcx, &args[0])?;
-        match &expr_to_vir(bctx, &args[1], ExprModifier::Regular)?.x {
+        match &expr_to_vir(bctx, &args[1], ExprModifier::REGULAR)?.x {
             ExprX::Const(Constant::Nat(s)) => {
                 let n = s.parse::<u32>().expect(&format!("internal error: parse {}", s));
                 return Ok(mk_expr(ExprX::Fuel(x, n)));
@@ -536,13 +536,13 @@ fn fn_call_to_vir<'tcx>(
         let vars = Arc::new(vec![]);
         let require =
             spanned_typed_new(expr.span, &Arc::new(TypX::Bool), ExprX::Const(Constant::Bool(true)));
-        let ensure = expr_to_vir(bctx, &args[0], ExprModifier::Regular)?;
-        let proof = expr_to_vir(bctx, &args[1], ExprModifier::Regular)?;
+        let ensure = expr_to_vir(bctx, &args[0], ExprModifier::REGULAR)?;
+        let proof = expr_to_vir(bctx, &args[1], ExprModifier::REGULAR)?;
         return Ok(mk_expr(ExprX::Forall { vars, require, ensure, proof }));
     }
 
     if is_assert_bit_vector {
-        let expr = expr_to_vir(bctx, &args[0], ExprModifier::Regular)?;
+        let expr = expr_to_vir(bctx, &args[0], ExprModifier::REGULAR)?;
         return Ok(mk_expr(ExprX::AssertBV(expr)));
     }
 
@@ -573,10 +573,10 @@ fn fn_call_to_vir<'tcx>(
                     ExprKind::AddrOf(BorrowKind::Ref, Mutability::Mut, e) => e,
                     _ => arg,
                 };
-                let expr = expr_to_vir(bctx, arg_x, ExprModifier::AddrOf)?;
+                let expr = expr_to_vir(bctx, arg_x, ExprModifier::ADDR_OF)?;
                 Ok(spanned_typed_new(arg.span, &expr.typ.clone(), ExprX::Loc(expr)))
             } else {
-                expr_to_vir(bctx, arg, is_expr_typ_mut_ref(bctx, arg, ExprModifier::Regular)?)
+                expr_to_vir(bctx, arg, is_expr_typ_mut_ref(bctx, arg, ExprModifier::REGULAR)?)
             }
         })
         .collect::<Result<Vec<_>, _>>()?;
@@ -1083,30 +1083,40 @@ fn invariant_block_to_vir<'tcx>(
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Copy)]
-pub enum ExprModifier {
-    Regular,
+pub(crate) struct ExprModifier {
     /// dereferencing a mutable reference
-    DerefMut,
+    deref_mut: bool,
     /// taking a mutable reference
-    AddrOf,
+    addr_of: bool,
+}
+
+impl ExprModifier {
+    pub(crate) const REGULAR: Self = Self { deref_mut: false, addr_of: false };
+
+    #[allow(dead_code)]
+    pub(crate) const DEREF_MUT: Self = Self { deref_mut: true, addr_of: false };
+
+    pub(crate) const ADDR_OF: Self = Self { deref_mut: false, addr_of: true };
 }
 
 fn is_expr_typ_mut_ref<'tcx>(
     bctx: &BodyCtxt<'tcx>,
     expr: &Expr<'tcx>,
-    _modifier: ExprModifier,
+    modifier: ExprModifier,
 ) -> Result<ExprModifier, VirErr> {
     match bctx.types.node_type(expr.hir_id).kind() {
-        TyKind::Ref(_, _tys, rustc_ast::Mutability::Not) => Ok(ExprModifier::Regular),
-        TyKind::Ref(_, _tys, rustc_ast::Mutability::Mut) => Ok(ExprModifier::DerefMut),
-        _ => Ok(ExprModifier::Regular),
+        TyKind::Ref(_, _tys, rustc_ast::Mutability::Not) => Ok(modifier),
+        TyKind::Ref(_, _tys, rustc_ast::Mutability::Mut) => {
+            Ok(ExprModifier { deref_mut: true, ..modifier })
+        }
+        _ => Ok(modifier),
     }
 }
 
 pub(crate) fn expr_to_vir_inner<'tcx>(
     bctx: &BodyCtxt<'tcx>,
     expr: &Expr<'tcx>,
-    modifier: ExprModifier,
+    current_modifier: ExprModifier,
 ) -> Result<vir::ast::Expr, VirErr> {
     if bctx.external_body {
         // we want just requires/ensures, not the whole body
@@ -1124,13 +1134,17 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
 
     let tcx = bctx.ctxt.tcx;
     let tc = bctx.types;
-    let expr_typ = || match modifier {
-        ExprModifier::Regular | ExprModifier::AddrOf => typ_of_node(bctx, &expr.hir_id, false),
-        // TODO(utaal): propagate this error, instead of crashing
-        ExprModifier::DerefMut => typ_of_node_expect_mut_ref(bctx, &expr.hir_id, expr.span)
-            .expect("unexpected non-mut-ref type here"),
+    let expr_typ = || {
+        if current_modifier.deref_mut {
+            typ_of_node_expect_mut_ref(bctx, &expr.hir_id, expr.span)
+                .expect("unexpected non-mut-ref type here")
+        } else {
+            typ_of_node(bctx, &expr.hir_id, false)
+        }
     };
     let mk_expr = move |x: ExprX| spanned_typed_new(expr.span, &expr_typ(), x);
+
+    let modifier = ExprModifier { deref_mut: false, ..current_modifier };
 
     let mk_lit_int = |in_negative_literal: bool, i: u128, typ: Typ| {
         let c = vir::ast::Constant::Nat(Arc::new(i.to_string()));
@@ -1267,9 +1281,9 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
             Ok(mk_ty_clip(&expr_typ(), &expr_to_vir(bctx, source, modifier)?))
         }
         ExprKind::AddrOf(BorrowKind::Ref, Mutability::Not, e) => {
-            expr_to_vir_inner(bctx, e, ExprModifier::Regular)
+            expr_to_vir_inner(bctx, e, ExprModifier::REGULAR)
         }
-        ExprKind::Box(e) => expr_to_vir_inner(bctx, e, ExprModifier::Regular),
+        ExprKind::Box(e) => expr_to_vir_inner(bctx, e, ExprModifier::REGULAR),
         ExprKind::Unary(op, arg) => match op {
             UnOp::Not => {
                 let not_op = match (tc.node_type(expr.hir_id)).kind() {
@@ -1375,11 +1389,10 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
         }
         ExprKind::Path(QPath::Resolved(None, path)) => match path.res {
             Res::Local(id) => match tcx.hir().get(id) {
-                Node::Binding(pat) => Ok(mk_expr(match modifier {
-                    ExprModifier::Regular | ExprModifier::DerefMut => {
-                        ExprX::Var(Arc::new(pat_to_var(pat)))
-                    }
-                    ExprModifier::AddrOf => ExprX::VarLoc(Arc::new(pat_to_var(pat))),
+                Node::Binding(pat) => Ok(mk_expr(if modifier.addr_of {
+                    ExprX::VarLoc(Arc::new(pat_to_var(pat)))
+                } else {
+                    ExprX::Var(Arc::new(pat_to_var(pat)))
                 })),
                 node => unsupported_err!(expr.span, format!("Path {:?}", node)),
             },
@@ -1414,7 +1427,7 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                 unsupported_err!(expr.span, format!("field updates"), lhs);
             }
             Ok(mk_expr(ExprX::Assign(
-                expr_to_vir(bctx, lhs, ExprModifier::AddrOf)?,
+                expr_to_vir(bctx, lhs, ExprModifier::ADDR_OF)?,
                 expr_to_vir(bctx, rhs, modifier)?,
             )))
         }
@@ -1677,7 +1690,7 @@ pub(crate) fn let_stmt_to_vir<'tcx>(
 ) -> Result<Vec<vir::ast::Stmt>, VirErr> {
     let vir_pattern = pattern_to_vir(bctx, pattern)?;
     let mode = get_var_mode(bctx.mode, attrs);
-    let init = initializer.map(|e| expr_to_vir(bctx, e, ExprModifier::Regular)).transpose()?;
+    let init = initializer.map(|e| expr_to_vir(bctx, e, ExprModifier::REGULAR)).transpose()?;
     Ok(vec![spanned_new(pattern.span, StmtX::Decl { pattern: vir_pattern, mode, init })])
 }
 
@@ -1695,7 +1708,7 @@ pub(crate) fn stmt_to_vir<'tcx>(
 
     match &stmt.kind {
         StmtKind::Expr(expr) | StmtKind::Semi(expr) => {
-            let vir_expr = expr_to_vir(bctx, expr, ExprModifier::Regular)?;
+            let vir_expr = expr_to_vir(bctx, expr, ExprModifier::REGULAR)?;
             Ok(vec![spanned_new(expr.span, StmtX::Expr(vir_expr))])
         }
         StmtKind::Local(Local { pat, init, .. }) => {

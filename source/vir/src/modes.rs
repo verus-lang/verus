@@ -373,7 +373,7 @@ fn check_expr(typing: &mut Typing, outer_mode: Mode, expr: &Expr) -> Result<Mode
                     check_expr_has_mode(typing, outer_mode, rhs, x_mode)?;
                     Ok(x_mode)
                 }
-                _ => panic!("expected var, found {:?}", &lhs),
+                _ => panic!("expected VarLoc, found {:?}", &lhs),
             }
         }
         ExprX::Fuel(_, _) => Ok(outer_mode),
