@@ -92,7 +92,7 @@ enum FnAttrInfo {
     Readonly,
     Init,
     Invariant,
-    Lemma(LemmaPurpose<Ident>),
+    Lemma(LemmaPurpose),
 }
 
 fn err_on_dupe(info: &FnAttrInfo, span: Span) -> syn::parse::Result<()> {
@@ -180,8 +180,8 @@ fn parse_fn_attr_info(attrs: &Vec<Attribute>) -> syn::parse::Result<FnAttrInfo> 
 }
 
 pub enum MaybeSM {
-    SM(SM<Span, Ident, ImplItemMethod, Expr, Type>, FieldsNamed, Vec<ImplItemMethod>),
-    Extras(Extras<Ident, ImplItemMethod>),
+    SM(SM, FieldsNamed, Vec<ImplItemMethod>),
+    Extras(Extras),
 }
 
 pub struct SMAndFuncs {
@@ -234,7 +234,7 @@ fn ensure_no_mode(impl_item_method: &ImplItemMethod, msg: &str) -> syn::parse::R
 fn to_transition(
     impl_item_method: &mut ImplItemMethod,
     kind: TransitionKind,
-) -> syn::parse::Result<Transition<Span, Ident, Expr, Type>> {
+) -> syn::parse::Result<Transition> {
     ensure_no_mode(
         &impl_item_method,
         "a transition fn is implied to be 'spec'; it should not be explicitly labelled",
@@ -243,7 +243,7 @@ fn to_transition(
     return parse_impl_item_method(impl_item_method, &ctxt);
 }
 
-fn to_invariant(impl_item_method: ImplItemMethod) -> syn::parse::Result<Invariant<ImplItemMethod>> {
+fn to_invariant(impl_item_method: ImplItemMethod) -> syn::parse::Result<Invariant> {
     ensure_no_mode(
         &impl_item_method,
         "an invariant fn is implied to be 'spec'; it should not be explicitly labelled",
@@ -278,8 +278,8 @@ fn to_invariant(impl_item_method: ImplItemMethod) -> syn::parse::Result<Invarian
 
 fn to_lemma(
     impl_item_method: ImplItemMethod,
-    purpose: LemmaPurpose<Ident>,
-) -> syn::parse::Result<Lemma<Ident, ImplItemMethod>> {
+    purpose: LemmaPurpose,
+) -> syn::parse::Result<Lemma> {
     ensure_no_mode(
         &impl_item_method,
         "an inductivity lemma is implied to be 'proof'; it should not be explicitly labelled",
@@ -353,8 +353,8 @@ fn get_sharding_type(field_span: Span, attrs: &[Attribute], concurrent: bool) ->
     }
 }
 
-fn to_fields(fields_named: &mut FieldsNamed, concurrent: bool) -> syn::parse::Result<Vec<crate::ast::Field<Ident, Type>>> {
-    let mut v: Vec<crate::ast::Field<Ident, Type>> = Vec::new();
+fn to_fields(fields_named: &mut FieldsNamed, concurrent: bool) -> syn::parse::Result<Vec<crate::ast::Field>> {
+    let mut v: Vec<crate::ast::Field> = Vec::new();
     for field in fields_named.named.iter_mut() {
         let ident = match &field.ident {
             None => {
@@ -392,9 +392,9 @@ pub fn parse_result_to_smir(pr: ParseResult, concurrent: bool) -> syn::parse::Re
     let ParseResult { name, fns, fields } = pr;
 
     let mut normal_fns = Vec::new();
-    let mut transitions: Vec<Transition<Span, Ident, Expr, Type>> = Vec::new();
-    let mut invariants: Vec<Invariant<ImplItemMethod>> = Vec::new();
-    let mut lemmas: Vec<Lemma<Ident, ImplItemMethod>> = Vec::new();
+    let mut transitions: Vec<Transition> = Vec::new();
+    let mut invariants: Vec<Invariant> = Vec::new();
+    let mut lemmas: Vec<Lemma> = Vec::new();
 
     let err_if_not_primary = |impl_item_method: &ImplItemMethod| match fields {
         None => Err(Error::new(

@@ -1,36 +1,39 @@
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct SM<Span, Ident, Func, Expr, Ty> {
+use syn::{Expr, ImplItemMethod, Ident, Type};
+use proc_macro2::Span;
+
+#[derive(Clone, Debug)]
+pub struct SM {
     pub name: Ident,
     // TODO generic args
-    pub fields: Vec<Field<Ident, Ty>>,
-    pub transitions: Vec<Transition<Span, Ident, Expr, Ty>>,
-    pub invariants: Vec<Invariant<Func>>,
-    pub lemmas: Vec<Lemma<Ident, Func>>,
+    pub fields: Vec<Field>,
+    pub transitions: Vec<Transition>,
+    pub invariants: Vec<Invariant>,
+    pub lemmas: Vec<Lemma>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Extras<Ident, Func> {
+#[derive(Clone, Debug)]
+pub struct Extras {
     pub name: Ident,
-    pub invariants: Vec<Invariant<Func>>,
-    pub lemmas: Vec<Lemma<Ident, Func>>,
+    pub invariants: Vec<Invariant>,
+    pub lemmas: Vec<Lemma>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Field<Ident, Ty> {
+#[derive(Clone, Debug)]
+pub struct Field {
     pub ident: Ident,
-    pub stype: ShardableType<Ty>,
+    pub stype: ShardableType<Type>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Arg<Ident, Ty> {
+#[derive(Clone, Debug)]
+pub struct TransitionParam {
     pub ident: Ident,
-    pub ty: Ty,
+    pub ty: Type,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum ShardableType<Ty> {
-    Variable(Ty),
-    Constant(Ty),
+#[derive(Clone, Debug)]
+pub enum ShardableType<Type> {
+    Variable(Type),
+    Constant(Type),
     // TODO more here
 }
 
@@ -41,25 +44,25 @@ pub enum TransitionKind {
     Readonly,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Transition<Span, Ident, Expr, Ty> {
+#[derive(Clone, Debug)]
+pub struct Transition {
     pub name: Ident,
     pub kind: TransitionKind,
-    pub args: Vec<Arg<Ident, Ty>>,
-    pub body: TransitionStmt<Span, Ident, Expr>,
+    pub args: Vec<TransitionParam>,
+    pub body: TransitionStmt,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum TransitionStmt<Span, Ident, Expr> {
-    Block(Span, Vec<TransitionStmt<Span, Ident, Expr>>),
+#[derive(Clone, Debug)]
+pub enum TransitionStmt {
+    Block(Span, Vec<TransitionStmt>),
     Let(Span, Ident, Expr),
-    If(Span, Expr, Box<TransitionStmt<Span, Ident, Expr>>, Box<TransitionStmt<Span, Ident, Expr>>),
+    If(Span, Expr, Box<TransitionStmt>, Box<TransitionStmt>),
     Require(Span, Expr),
     Assert(Span, Expr),
     Update(Span, Ident, Expr),
 }
 
-impl<Span, Ident, Expr> TransitionStmt<Span, Ident, Expr> {
+impl TransitionStmt {
     pub fn get_span<'a>(&'a self) -> &'a Span {
         match self {
             TransitionStmt::Block(span, _) => span,
@@ -72,25 +75,25 @@ impl<Span, Ident, Expr> TransitionStmt<Span, Ident, Expr> {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Invariant<Func> {
-    pub func: Func,
+#[derive(Clone, Debug)]
+pub struct Invariant {
+    pub func: ImplItemMethod,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, Hash)]
 pub enum LemmaPurposeKind {
     PreservesInvariant,
-    SatisfiesAsserts,
+    SatisfiesAsserts, // TODO remove?
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub struct LemmaPurpose<Ident> {
+#[derive(Clone, Debug, Hash)]
+pub struct LemmaPurpose {
     pub transition: Ident,
     pub kind: LemmaPurposeKind,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Lemma<Ident, Func> {
-    pub purpose: LemmaPurpose<Ident>,
-    pub func: Func,
+#[derive(Clone, Debug)]
+pub struct Lemma {
+    pub purpose: LemmaPurpose,
+    pub func: ImplItemMethod,
 }

@@ -4,7 +4,7 @@ use proc_macro2::Span;
 use proc_macro2::TokenStream;
 use quote::quote_spanned;
 use crate::ast::{
-    Arg, Extras, Field, Invariant, Lemma, LemmaPurpose, ShardableType, Transition, TransitionKind,
+    TransitionParam, Extras, Field, Invariant, Lemma, LemmaPurpose, ShardableType, Transition, TransitionKind,
     TransitionStmt, SM,
 };
 use syn::buffer::Cursor;
@@ -19,21 +19,21 @@ use syn::{
 };
 
 pub struct Ctxt {
-    //pub fields: &'a Vec<crate::ast::Field<Ident, Type>>,
+    //pub fields: &'a Vec<crate::ast::Field>,
     pub kind: TransitionKind,
 }
 
 pub fn parse_impl_item_method(
     iim: &mut ImplItemMethod,
     ctxt: &Ctxt,
-) -> syn::parse::Result<Transition<Span, Ident, Expr, Type>> {
+) -> syn::parse::Result<Transition> {
     let args = parse_sig(&iim.sig)?;
     let body = parse_block(&mut iim.block, ctxt)?;
     let name = iim.sig.ident.clone();
     return Ok(Transition { kind: ctxt.kind, args, body, name });
 }
 
-fn parse_sig(sig: &Signature) -> syn::parse::Result<Vec<Arg<Ident, Type>>> {
+fn parse_sig(sig: &Signature) -> syn::parse::Result<Vec<TransitionParam>> {
     if sig.generics.params.len() > 0 {
         return Err(Error::new(sig.span(), "transition expected no type arguments"));
     }
@@ -64,7 +64,7 @@ fn parse_sig(sig: &Signature) -> syn::parse::Result<Vec<Arg<Ident, Type>>> {
                 }
             },
         };
-        v.push(Arg { ident, ty });
+        v.push(TransitionParam { ident, ty });
     }
     return Ok(v);
 }
@@ -72,7 +72,7 @@ fn parse_sig(sig: &Signature) -> syn::parse::Result<Vec<Arg<Ident, Type>>> {
 fn parse_block(
     block: &mut Block,
     ctxt: &Ctxt,
-) -> syn::parse::Result<TransitionStmt<Span, Ident, Expr>> {
+) -> syn::parse::Result<TransitionStmt> {
     let mut tstmts = Vec::new();
     for mut stmt in block.stmts.iter_mut() {
         let tstmt = parse_stmt(&mut stmt, ctxt)?;
@@ -84,7 +84,7 @@ fn parse_block(
 fn parse_stmt(
     stmt: &mut Stmt,
     ctxt: &Ctxt,
-) -> syn::parse::Result<TransitionStmt<Span, Ident, Expr>> {
+) -> syn::parse::Result<TransitionStmt> {
     match stmt {
         Stmt::Local(local) => parse_local(local, ctxt),
         Stmt::Expr(expr) => parse_expr(expr, ctxt),
@@ -98,7 +98,7 @@ fn parse_stmt(
 fn parse_local(
     local: &mut Local,
     _ctxt: &Ctxt,
-) -> syn::parse::Result<TransitionStmt<Span, Ident, Expr>> {
+) -> syn::parse::Result<TransitionStmt> {
     let ident = match &local.pat {
         Pat::Ident(PatIdent { attrs: _, by_ref: None, mutability: None, ident, subpat: None }) => {
             ident.clone()
@@ -119,7 +119,7 @@ fn parse_local(
 fn parse_expr(
     expr: &mut Expr,
     ctxt: &Ctxt,
-) -> syn::parse::Result<TransitionStmt<Span, Ident, Expr>> {
+) -> syn::parse::Result<TransitionStmt> {
     match expr {
         Expr::If(expr_if) => parse_expr_if(expr_if, ctxt),
         Expr::Block(block) => parse_block(&mut block.block, ctxt),
@@ -133,7 +133,7 @@ fn parse_expr(
 fn parse_expr_if(
     expr_if: &mut ExprIf,
     ctxt: &Ctxt,
-) -> syn::parse::Result<TransitionStmt<Span, Ident, Expr>> {
+) -> syn::parse::Result<TransitionStmt> {
     let thn = parse_block(&mut expr_if.then_branch, ctxt)?;
     let els = match &mut expr_if.else_branch {
         Some((_, el)) => parse_expr(&mut *el, ctxt)?,
@@ -156,7 +156,7 @@ enum CallType {
 fn parse_call(
     call: &mut ExprCall,
     ctxt: &Ctxt,
-) -> syn::parse::Result<TransitionStmt<Span, Ident, Expr>> {
+) -> syn::parse::Result<TransitionStmt> {
     let ct = parse_call_type(&call.func, ctxt)?;
     match ct {
         CallType::Assert => {

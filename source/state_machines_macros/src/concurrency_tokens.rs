@@ -6,7 +6,7 @@ use proc_macro2::Span;
 use proc_macro2::TokenStream;
 use quote::{quote, quote_spanned, ToTokens};
 use crate::ast::{
-    Arg, Extras, Field, Invariant, Lemma, LemmaPurpose, ShardableType, Transition, TransitionKind,
+    TransitionParam, Extras, Field, Invariant, Lemma, LemmaPurpose, ShardableType, Transition, TransitionKind,
     TransitionStmt, SM,
 };
 use std::collections::HashMap;
@@ -29,33 +29,33 @@ fn inst_type_name(sm_name: &Ident) -> Ident {
     Ident::new(&name, sm_name.span())
 }
 
-fn field_token_type_name(sm_name: &Ident, field: &Field<Ident, Type>) -> Ident {
+fn field_token_type_name(sm_name: &Ident, field: &Field) -> Ident {
     let name = sm_name.to_string() + "_" + &field.ident.to_string();
     Ident::new(&name, field.ident.span())
 }
 
-fn field_token_field_name(field: &Field<Ident, Type>) -> Ident {
+fn field_token_field_name(field: &Field) -> Ident {
     field.ident.clone()
 }
 
-fn field_token_field_type(field: &Field<Ident, Type>) -> Type {
+fn field_token_field_type(field: &Field) -> Type {
     match &field.stype {
         ShardableType::Variable(ty) => ty.clone(),
         ShardableType::Constant(ty) => ty.clone(),
     }
 }
 
-fn exchange_name(sm_name: &Ident, tr: &Transition<Span, Ident, Expr, Type>) -> Ident {
+fn exchange_name(sm_name: &Ident, tr: &Transition) -> Ident {
     let name = sm_name.to_string() + "_" + &tr.name.to_string();
     Ident::new(&name, tr.name.span())
 }
 
-fn transition_arg_name(field: &Field<Ident, Type>) -> Ident {
+fn transition_arg_name(field: &Field) -> Ident {
     let name = "token_".to_string() + &field.ident.to_string();
     Ident::new(&name, field.ident.span())
 }
 
-fn instance_struct_stream(sm: &SM<Span, Ident, ImplItemMethod, Expr, Type>) -> TokenStream {
+fn instance_struct_stream(sm: &SM) -> TokenStream {
     let insttype = inst_type_name(&sm.name);
     return quote! {
         #[spec]
@@ -67,7 +67,7 @@ fn instance_struct_stream(sm: &SM<Span, Ident, ImplItemMethod, Expr, Type>) -> T
     };
 }
 
-fn token_struct_stream(sm_name: &Ident, field: &Field<Ident, Type>) -> TokenStream {
+fn token_struct_stream(sm_name: &Ident, field: &Field) -> TokenStream {
     let tokenname = field_token_type_name(sm_name, field);
     let fieldname = field_token_field_name(field);
     let fieldtype = field_token_field_type(field);
@@ -84,7 +84,7 @@ fn token_struct_stream(sm_name: &Ident, field: &Field<Ident, Type>) -> TokenStre
     };
 }
 
-fn const_fn_stream(field: &Field<Ident, Type>) -> TokenStream {
+fn const_fn_stream(field: &Field) -> TokenStream {
     let fieldname = field_token_field_name(field);
     let fieldtype = field_token_field_type(field);
 
@@ -97,7 +97,7 @@ fn const_fn_stream(field: &Field<Ident, Type>) -> TokenStream {
 
 pub fn output_token_types_and_fns(
     token_stream: &mut TokenStream,
-    sm: &SM<Span, Ident, ImplItemMethod, Expr, Type>,
+    sm: &SM,
 ) -> syn::parse::Result<()> {
     let mut inst_impl_token_stream = TokenStream::new();
 
@@ -132,7 +132,7 @@ struct Ctxt {
     fields_written: HashSet<Ident>,
     requires: Vec<Expr>,
     ensures: Vec<Expr>,
-    ident_to_field: HashMap<Ident, Field<Ident, Type>>,
+    ident_to_field: HashMap<Ident, Field>,
     is_init: bool,
 }
 
@@ -141,7 +141,7 @@ impl Ctxt {
         &self,
         span: Span,
         ident: &Ident,
-    ) -> syn::parse::Result<Field<Ident, Type>> {
+    ) -> syn::parse::Result<Field> {
         match self.ident_to_field.get(ident) {
             Some(f) => Ok(f.clone()),
             None => Err(Error::new(
@@ -151,21 +151,21 @@ impl Ctxt {
         }
     }
 
-    pub fn get_field_or_panic(&self, ident: &Ident) -> Field<Ident, Type> {
+    pub fn get_field_or_panic(&self, ident: &Ident) -> Field {
         match self.ident_to_field.get(ident) {
             Some(f) => f.clone(),
             None => panic!("should have already checked field updates are valid"),
         }
     }
 
-    pub fn mark_field_as_read(&mut self, field: &Field<Ident, Type>) {
+    pub fn mark_field_as_read(&mut self, field: &Field) {
         self.fields_read.insert(field.ident.clone());
     }
 }
 
 pub fn exchange_stream(
-    sm: &SM<Span, Ident, ImplItemMethod, Expr, Type>,
-    tr: &Transition<Span, Ident, Expr, Type>,
+    sm: &SM,
+    tr: &Transition,
 ) -> syn::parse::Result<TokenStream> {
     let mut ident_to_field = HashMap::new();
     for field in &sm.fields {
@@ -370,7 +370,7 @@ pub fn exchange_stream(
 
 fn determine_outputs(
     ctxt: &mut Ctxt,
-    ts: &TransitionStmt<Span, Ident, Expr>,
+    ts: &TransitionStmt,
 ) -> syn::parse::Result<()> {
     match ts {
         TransitionStmt::Block(_span, v) => {
@@ -409,7 +409,7 @@ fn determine_outputs(
 
 fn walk_translate_expressions(
     ctxt: &mut Ctxt,
-    ts: &mut TransitionStmt<Span, Ident, Expr>,
+    ts: &mut TransitionStmt,
 ) -> syn::parse::Result<()> {
     match ts {
         TransitionStmt::Block(_span, v) => {
@@ -514,13 +514,13 @@ fn get_inst_value(ctxt: &Ctxt) -> Expr {
     }
 }
 
-fn get_const_field_value(ctxt: &Ctxt, field: &Field<Ident, Type>) -> Expr {
+fn get_const_field_value(ctxt: &Ctxt, field: &Field) -> Expr {
     let inst = get_inst_value(ctxt);
     let field_name = field_token_field_name(&field);
     Expr::Verbatim(quote! { #inst.#field_name() })
 }
 
-fn get_old_field_value(ctxt: &Ctxt, field: &Field<Ident, Type>) -> Expr {
+fn get_old_field_value(ctxt: &Ctxt, field: &Field) -> Expr {
     let arg = transition_arg_name(&field);
     let field_name = field_token_field_name(&field);
     if ctxt.fields_written.contains(&field.ident) {
@@ -530,13 +530,13 @@ fn get_old_field_value(ctxt: &Ctxt, field: &Field<Ident, Type>) -> Expr {
     }
 }
 
-fn get_new_field_value(field: &Field<Ident, Type>) -> Expr {
+fn get_new_field_value(field: &Field) -> Expr {
     let arg = transition_arg_name(&field);
     let field = field_token_field_name(&field);
     Expr::Verbatim(quote! { #arg.#field })
 }
 
-fn get_old_field_inst(ctxt: &Ctxt, field: &Field<Ident, Type>) -> Expr {
+fn get_old_field_inst(ctxt: &Ctxt, field: &Field) -> Expr {
     let arg = transition_arg_name(&field);
     if ctxt.fields_written.contains(&field.ident) {
         Expr::Verbatim(quote! { ::builtin::old(#arg).instance })
@@ -545,7 +545,7 @@ fn get_old_field_inst(ctxt: &Ctxt, field: &Field<Ident, Type>) -> Expr {
     }
 }
 
-fn get_new_field_inst(field: &Field<Ident, Type>) -> Expr {
+fn get_new_field_inst(field: &Field) -> Expr {
     let arg = transition_arg_name(&field);
     Expr::Verbatim(quote! { #arg.instance })
 }
@@ -561,7 +561,7 @@ enum PrequelElement {
 
 fn exchange_collect(
     ctxt: &mut Ctxt,
-    ts: &TransitionStmt<Span, Ident, Expr>,
+    ts: &TransitionStmt,
     prequel: Vec<PrequelElement>,
     prequel_with_asserts: Vec<PrequelElement>,
 ) -> syn::parse::Result<(Vec<PrequelElement>, Vec<PrequelElement>)> {
@@ -713,8 +713,8 @@ fn prequel_vec_to_expr(v: &Vec<PrequelElement>) -> Option<Expr> {
 
 fn get_output_value_for_variable(
     ctxt: &Ctxt,
-    ts: &TransitionStmt<Span, Ident, Expr>,
-    field: &Field<Ident, Type>,
+    ts: &TransitionStmt,
+    field: &Field,
 ) -> Option<Expr> {
     match ts {
         TransitionStmt::Block(_span, v) => {

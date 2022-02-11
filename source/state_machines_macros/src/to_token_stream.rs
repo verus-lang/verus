@@ -7,7 +7,7 @@ use proc_macro2::Span;
 use proc_macro2::TokenStream;
 use quote::{quote, quote_spanned, ToTokens};
 use crate::ast::{
-    Arg, Extras, Field, Invariant, Lemma, LemmaPurpose, ShardableType, Transition, TransitionKind,
+    TransitionParam, Extras, Field, Invariant, Lemma, LemmaPurpose, ShardableType, Transition, TransitionKind,
     TransitionStmt, SM,
 };
 use syn::buffer::Cursor;
@@ -113,7 +113,7 @@ pub fn fields_named_fix_attrs(fields_named: &mut FieldsNamed) {
 pub fn output_primary_stuff(
     token_stream: &mut TokenStream,
     impl_token_stream: &mut TokenStream,
-    sm: &SM<Span, Ident, ImplItemMethod, Expr, Type>,
+    sm: &SM,
     fields_named: &FieldsNamed,
     //trans_fns: &Vec<ImplItemMethod>,
 ) {
@@ -240,8 +240,9 @@ pub fn output_primary_stuff(
     }
 }
 
-fn self_post_params(args: &Vec<Arg<Ident, Type>>) -> TokenStream {
-    let args: Vec<TokenStream> = args
+/// self, post: Self, params...
+fn self_post_params(params: &Vec<TransitionParam>) -> TokenStream {
+    let params: Vec<TokenStream> = params
         .iter()
         .map(|arg| {
             let ident = &arg.ident;
@@ -252,12 +253,13 @@ fn self_post_params(args: &Vec<Arg<Ident, Type>>) -> TokenStream {
     return quote! {
         self,
         post: Self,
-        #(#args),*
+        #(#params),*
     };
 }
 
-fn self_assoc_params(ty_name: &Ident, args: &Vec<Arg<Ident, Type>>) -> TokenStream {
-    let args: Vec<TokenStream> = args
+// self: X, params...
+fn self_assoc_params(ty_name: &Ident, params: &Vec<TransitionParam>) -> TokenStream {
+    let params: Vec<TokenStream> = params
         .iter()
         .map(|arg| {
             let ident = &arg.ident;
@@ -267,12 +269,13 @@ fn self_assoc_params(ty_name: &Ident, args: &Vec<Arg<Ident, Type>>) -> TokenStre
         .collect();
     return quote! {
         self: #ty_name,
-        #(#args),*
+        #(#params),*
     };
 }
 
-fn self_params(args: &Vec<Arg<Ident, Type>>) -> TokenStream {
-    let args: Vec<TokenStream> = args
+// self, params...
+fn self_params(params: &Vec<TransitionParam>) -> TokenStream {
+    let params: Vec<TokenStream> = params
         .iter()
         .map(|arg| {
             let ident = &arg.ident;
@@ -282,12 +285,13 @@ fn self_params(args: &Vec<Arg<Ident, Type>>) -> TokenStream {
         .collect();
     return quote! {
         self,
-        #(#args),*
+        #(#params),*
     };
 }
 
-fn post_params(args: &Vec<Arg<Ident, Type>>) -> TokenStream {
-    let args: Vec<TokenStream> = args
+// post: Self, params...
+fn post_params(params: &Vec<TransitionParam>) -> TokenStream {
+    let params: Vec<TokenStream> = params
         .iter()
         .map(|arg| {
             let ident = &arg.ident;
@@ -297,11 +301,11 @@ fn post_params(args: &Vec<Arg<Ident, Type>>) -> TokenStream {
         .collect();
     return quote! {
         post: Self,
-        #(#args),*
+        #(#params),*
     };
 }
 
-fn post_args(args: &Vec<Arg<Ident, Type>>) -> TokenStream {
+fn post_args(args: &Vec<TransitionParam>) -> TokenStream {
     let args: Vec<TokenStream> = args
         .iter()
         .map(|arg| {
@@ -315,7 +319,7 @@ fn post_args(args: &Vec<Arg<Ident, Type>>) -> TokenStream {
     };
 }
 
-fn lone_args(args: &Vec<Arg<Ident, Type>>) -> TokenStream {
+fn lone_args(args: &Vec<TransitionParam>) -> TokenStream {
     let args: Vec<TokenStream> = args
         .iter()
         .map(|arg| {
@@ -347,8 +351,8 @@ fn field_to_tokens(field: &Field<Ident, Type>) -> TokenStream {
 
 fn output_other_fns(
     impl_token_stream: &mut TokenStream,
-    invariants: &Vec<Invariant<ImplItemMethod>>,
-    lemmas: &Vec<Lemma<Ident, ImplItemMethod>>,
+    invariants: &Vec<Invariant>,
+    lemmas: &Vec<Lemma>,
     normal_fns: Vec<ImplItemMethod>,
 ) {
     for inv in invariants {

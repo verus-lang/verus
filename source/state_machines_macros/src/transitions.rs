@@ -20,7 +20,7 @@ use syn::{
     Type,
 };
 
-pub fn fields_contain(fields: &Vec<Field<Ident, Type>>, ident: &Ident) -> bool {
+pub fn fields_contain(fields: &Vec<Field>, ident: &Ident) -> bool {
     for f in fields {
         if f.ident.to_string() == ident.to_string() {
             return true;
@@ -30,8 +30,8 @@ pub fn fields_contain(fields: &Vec<Field<Ident, Type>>, ident: &Ident) -> bool {
 }
 
 fn check_updates_refer_to_valid_fields(
-    fields: &Vec<Field<Ident, Type>>,
-    ts: &TransitionStmt<Span, Ident, Expr>,
+    fields: &Vec<Field>,
+    ts: &TransitionStmt,
 ) -> syn::parse::Result<()> {
     match ts {
         TransitionStmt::Block(_, v) => {
@@ -57,7 +57,7 @@ fn check_updates_refer_to_valid_fields(
     }
 }
 
-fn check_readonly(ts: &TransitionStmt<Span, Ident, Expr>) -> syn::parse::Result<()> {
+fn check_readonly(ts: &TransitionStmt) -> syn::parse::Result<()> {
     match ts {
         TransitionStmt::Block(_, v) => {
             for t in v.iter() {
@@ -137,7 +137,7 @@ fn simple_union(h1: Vec<(Ident, Span)>, h2: Vec<(Ident, Span)>) -> Vec<(Ident, S
 fn check_has_all_fields(
     sp: Span,
     h: &Vec<(Ident, Span)>,
-    fields: &Vec<Field<Ident, Type>>,
+    fields: &Vec<Field>,
 ) -> syn::parse::Result<()> {
     for field in fields {
         if !update_set_contains(h, &field.ident) {
@@ -153,7 +153,7 @@ fn check_has_all_fields(
     Ok(())
 }
 
-fn check_init(ts: &TransitionStmt<Span, Ident, Expr>) -> syn::parse::Result<Vec<(Ident, Span)>> {
+fn check_init(ts: &TransitionStmt) -> syn::parse::Result<Vec<(Ident, Span)>> {
     match ts {
         TransitionStmt::Block(_, v) => {
             let mut h = Vec::new();
@@ -192,7 +192,7 @@ fn check_init(ts: &TransitionStmt<Span, Ident, Expr>) -> syn::parse::Result<Vec<
 }
 
 pub fn check_normal(
-    ts: &TransitionStmt<Span, Ident, Expr>,
+    ts: &TransitionStmt,
 ) -> syn::parse::Result<Vec<(Ident, Span)>> {
     match ts {
         TransitionStmt::Block(_, v) => {
@@ -226,12 +226,12 @@ pub fn check_normal(
 }
 
 fn append_stmt_front(
-    t1: TransitionStmt<Span, Ident, Expr>,
-    t2: TransitionStmt<Span, Ident, Expr>,
-) -> TransitionStmt<Span, Ident, Expr> {
+    t1: TransitionStmt,
+    t2: TransitionStmt,
+) -> TransitionStmt {
     match t1 {
         TransitionStmt::Block(span, mut v) => {
-            let mut w: Vec<TransitionStmt<Span, Ident, Expr>> = vec![t2];
+            let mut w: Vec<TransitionStmt> = vec![t2];
             w.append(&mut v);
             TransitionStmt::Block(span, w)
         }
@@ -296,9 +296,9 @@ fn builtin_equal_call(span: Span, e1: Expr, e2: Expr) -> Expr {
 }
 
 pub fn add_noop_updates(
-    sm: &SM<Span, Ident, ImplItemMethod, Expr, Type>,
-    ts: &TransitionStmt<Span, Ident, Expr>,
-) -> TransitionStmt<Span, Ident, Expr> {
+    sm: &SM,
+    ts: &TransitionStmt,
+) -> TransitionStmt {
     let (mut ts, idents) = add_noop_updates_rec(ts);
     for f in &sm.fields {
         if !idents.contains(&f.ident) {
@@ -313,8 +313,8 @@ pub fn add_noop_updates(
 }
 
 fn add_noop_updates_rec(
-    ts: &TransitionStmt<Span, Ident, Expr>,
-) -> (TransitionStmt<Span, Ident, Expr>, Vec<Ident>) {
+    ts: &TransitionStmt,
+) -> (TransitionStmt, Vec<Ident>) {
     match ts {
         TransitionStmt::Block(span, v) => {
             let mut h = Vec::new();
@@ -374,7 +374,7 @@ fn add_noop_updates_rec(
 }
 
 pub fn check_transitions(
-    sm: &SM<Span, Ident, ImplItemMethod, Expr, Type>,
+    sm: &SM,
 ) -> syn::parse::Result<()> {
     for tr in &sm.transitions {
         check_updates_refer_to_valid_fields(&sm.fields, &tr.body)?;
@@ -398,8 +398,8 @@ pub fn check_transitions(
 }
 
 pub fn replace_updates(
-    ts: &TransitionStmt<Span, Ident, Expr>,
-) -> TransitionStmt<Span, Ident, Expr> {
+    ts: &TransitionStmt,
+) -> TransitionStmt {
     match ts {
         TransitionStmt::Block(span, v) => {
             let mut h = Vec::new();
@@ -424,7 +424,7 @@ pub fn replace_updates(
     }
 }
 
-pub fn safety_condition_body(ts: &TransitionStmt<Span, Ident, Expr>) -> Option<Expr> {
+pub fn safety_condition_body(ts: &TransitionStmt) -> Option<Expr> {
     match ts {
         TransitionStmt::Block(span, v) => {
             let mut h = Vec::new();
@@ -485,7 +485,7 @@ pub fn safety_condition_body(ts: &TransitionStmt<Span, Ident, Expr>) -> Option<E
     }
 }
 
-pub fn has_any_assert(ts: &TransitionStmt<Span, Ident, Expr>) -> bool {
+pub fn has_any_assert(ts: &TransitionStmt) -> bool {
     match ts {
         TransitionStmt::Block(_span, v) => {
             for t in v.iter() {

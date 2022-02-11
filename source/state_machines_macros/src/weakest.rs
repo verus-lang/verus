@@ -20,8 +20,8 @@ use syn::{
 };
 
 pub fn to_weakest(
-    sm: &SM<Span, Ident, ImplItemMethod, Expr, Type>,
-    trans: &Transition<Span, Ident, Expr, Type>,
+    sm: &SM,
+    trans: &Transition,
 ) -> TokenStream {
     let ts = add_noop_updates(sm, &trans.body);
     let ts = replace_updates(&ts);
@@ -32,7 +32,7 @@ pub fn to_weakest(
 }
 
 fn to_weakest_rec(
-    trans: &TransitionStmt<Span, Ident, Expr>,
+    trans: &TransitionStmt,
     p: Option<TokenStream>,
 ) -> Option<TokenStream> {
     match trans {
@@ -76,7 +76,7 @@ fn to_weakest_rec(
     }
 }
 
-pub fn get_safety_conditions(ts: &TransitionStmt<Span, Ident, Expr>) -> Vec<TokenStream> {
+pub fn get_safety_conditions(ts: &TransitionStmt) -> Vec<TokenStream> {
     let v = get_safety_conditions_ts(ts);
     v.iter()
         .map(|ts| match to_weakest_rec(&ts, None) {
@@ -87,12 +87,12 @@ pub fn get_safety_conditions(ts: &TransitionStmt<Span, Ident, Expr>) -> Vec<Toke
 }
 
 fn get_safety_conditions_ts(
-    ts: &TransitionStmt<Span, Ident, Expr>,
-) -> Vec<TransitionStmt<Span, Ident, Expr>> {
+    ts: &TransitionStmt,
+) -> Vec<TransitionStmt> {
     match ts {
         TransitionStmt::Block(span, v) => {
-            let mut res: Vec<TransitionStmt<Span, Ident, Expr>> = Vec::new();
-            let mut prefix: Vec<TransitionStmt<Span, Ident, Expr>> = Vec::new();
+            let mut res: Vec<TransitionStmt> = Vec::new();
+            let mut prefix: Vec<TransitionStmt> = Vec::new();
             for t in v {
                 let suffs = get_safety_conditions_ts(t);
                 res.append(
@@ -113,7 +113,7 @@ fn get_safety_conditions_ts(
         TransitionStmt::If(span, cond, e1, e2) => {
             let v1 = get_safety_conditions_ts(e1);
             let v2 = get_safety_conditions_ts(e2);
-            let mut m: Vec<TransitionStmt<Span, Ident, Expr>> = v1
+            let mut m: Vec<TransitionStmt> = v1
                 .iter()
                 .map(|t| {
                     TransitionStmt::If(
@@ -147,7 +147,7 @@ fn get_safety_conditions_ts(
     }
 }
 
-fn to_asserts(ts: &TransitionStmt<Span, Ident, Expr>) -> TransitionStmt<Span, Ident, Expr> {
+fn to_asserts(ts: &TransitionStmt) -> TransitionStmt {
     match ts {
         TransitionStmt::Block(span, v) => {
             TransitionStmt::Block(*span, v.iter().map(|t| to_asserts(t)).collect())
