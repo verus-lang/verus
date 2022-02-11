@@ -3,7 +3,7 @@
 use proc_macro2::Span;
 use proc_macro2::TokenStream;
 use quote::quote_spanned;
-use smir::ast::{
+use crate::ast::{
     Arg, Extras, Field, Invariant, Lemma, LemmaPurpose, ShardableType, Transition, TransitionKind,
     TransitionStmt, SM,
 };
@@ -19,7 +19,7 @@ use syn::{
 };
 
 pub struct Ctxt {
-    //pub fields: &'a Vec<smir::ast::Field<Ident, Type>>,
+    //pub fields: &'a Vec<crate::ast::Field<Ident, Type>>,
     pub kind: TransitionKind,
 }
 

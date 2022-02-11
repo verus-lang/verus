@@ -5,7 +5,7 @@ use crate::transitions::{add_noop_updates, replace_updates};
 use proc_macro2::Span;
 use proc_macro2::TokenStream;
 use quote::{quote, quote_spanned, ToTokens};
-use smir::ast::{
+use crate::ast::{
     Extras, Field, Invariant, Lemma, LemmaPurpose, ShardableType, Transition, TransitionKind,
     TransitionStmt, SM,
 };

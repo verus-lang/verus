@@ -3,7 +3,7 @@
 use crate::parse_transition::parse_impl_item_method;
 use crate::transitions::check_transitions;
 use proc_macro2::Span;
-use smir::ast::{
+use crate::ast::{
     Extras, Invariant, Lemma, LemmaPurpose, LemmaPurposeKind, ShardableType, Transition,
     TransitionKind, TransitionStmt, SM,
 };

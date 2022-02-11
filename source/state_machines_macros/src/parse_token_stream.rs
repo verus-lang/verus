@@ -5,7 +5,7 @@ use crate::parse_transition::parse_impl_item_method;
 use crate::transitions::check_transitions;
 use crate::to_token_stream::shardable_type_to_type;
 use proc_macro2::Span;
-use smir::ast::{
+use crate::ast::{
     Extras, Invariant, Lemma, LemmaPurpose, LemmaPurposeKind, ShardableType, Transition,
     TransitionKind, TransitionStmt, SM,
 };
@@ -353,8 +353,8 @@ fn get_sharding_type(field_span: Span, attrs: &[Attribute], concurrent: bool) ->
     }
 }
 
-fn to_fields(fields_named: &mut FieldsNamed, concurrent: bool) -> syn::parse::Result<Vec<smir::ast::Field<Ident, Type>>> {
-    let mut v: Vec<smir::ast::Field<Ident, Type>> = Vec::new();
+fn to_fields(fields_named: &mut FieldsNamed, concurrent: bool) -> syn::parse::Result<Vec<crate::ast::Field<Ident, Type>>> {
+    let mut v: Vec<crate::ast::Field<Ident, Type>> = Vec::new();
     for field in fields_named.named.iter_mut() {
         let ident = match &field.ident {
             None => {
@@ -377,7 +377,7 @@ fn to_fields(fields_named: &mut FieldsNamed, concurrent: bool) -> syn::parse::Re
 
         field.ty = shardable_type_to_type(&stype);
 
-        v.push(smir::ast::Field { ident, stype });
+        v.push(crate::ast::Field { ident, stype });
     }
     return Ok(v);
 }

@@ -3,6 +3,7 @@
 
 extern crate proc_macro;
 
+mod ast;
 mod concurrency_tokens;
 mod ident_visitor;
 mod parse_token_stream;

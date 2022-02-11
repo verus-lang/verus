@@ -4,7 +4,7 @@ use crate::parse_token_stream::{MaybeSM, SMAndFuncs};
 use proc_macro2::Span;
 use proc_macro2::TokenStream;
 use quote::{quote, quote_spanned, ToTokens};
-use smir::ast::{
+use crate::ast::{
     Extras, Field, Invariant, Lemma, LemmaPurpose, ShardableType, Transition, TransitionKind,
     TransitionStmt, SM,
 };
