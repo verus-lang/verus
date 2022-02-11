@@ -432,3 +432,20 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] test_enum_field_visibility code! {
+        #[is_variant]
+        enum E {
+            One(u64),
+            Two(u64),
+        }
+
+        impl E {
+            #[spec]
+            pub fn is_One_le(self, v: u64) -> bool {
+                self.is_One() && self.get_One_0() <= v
+            }
+        }
+    } => Ok(())
+}

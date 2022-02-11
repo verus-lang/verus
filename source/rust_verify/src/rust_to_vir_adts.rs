@@ -36,7 +36,7 @@ fn check_variant_data<'tcx>(
                             &(
                                 ty_to_vir(ctxt.tcx, field.ty),
                                 get_mode(Mode::Exec, ctxt.tcx.hir().attrs(field.hir_id)),
-                                mk_visibility(&Some(module_path.clone()), &field.vis),
+                                mk_visibility(&Some(module_path.clone()), &field.vis, !in_enum),
                             ),
                         ),
                         is_visibility_private(&field.vis.node, !in_enum),
@@ -56,7 +56,7 @@ fn check_variant_data<'tcx>(
                             &(
                                 ty_to_vir(ctxt.tcx, field.ty),
                                 get_mode(Mode::Exec, ctxt.tcx.hir().attrs(field.hir_id)),
-                                mk_visibility(&Some(module_path.clone()), &field.vis),
+                                mk_visibility(&Some(module_path.clone()), &field.vis, !in_enum),
                             ),
                         ),
                         is_visibility_private(&field.vis.node, !in_enum),
