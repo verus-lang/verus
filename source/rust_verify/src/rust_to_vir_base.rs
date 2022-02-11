@@ -167,10 +167,11 @@ pub(crate) fn is_visibility_private(vis_kind: &VisibilityKind, inherited_is_priv
 pub(crate) fn mk_visibility<'tcx>(
     owning_module: &Option<Path>,
     vis: &Visibility<'tcx>,
+    inherited_is_private: bool,
 ) -> vir::ast::Visibility {
     vir::ast::Visibility {
         owning_module: owning_module.clone(),
-        is_private: is_visibility_private(&vis.node, true),
+        is_private: is_visibility_private(&vis.node, inherited_is_private),
     }
 }
 

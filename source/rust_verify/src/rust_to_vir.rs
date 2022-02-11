@@ -34,7 +34,7 @@ fn check_item<'tcx>(
     id: &ItemId,
     item: &'tcx Item<'tcx>,
 ) -> Result<(), VirErr> {
-    let visibility = mk_visibility(&Some(module_path.clone()), &item.vis);
+    let visibility = mk_visibility(&Some(module_path.clone()), &item.vis, true);
     match &item.kind {
         ItemKind::Fn(sig, generics, body_id) => {
             check_item_fn(
@@ -187,7 +187,7 @@ fn check_item<'tcx>(
                             AssocItemKind::Fn { has_self: _ } => {
                                 let impl_item = ctxt.tcx.hir().impl_item(impl_item_ref.id);
                                 let impl_item_visibility =
-                                    mk_visibility(&Some(module_path.clone()), &impl_item.vis);
+                                    mk_visibility(&Some(module_path.clone()), &impl_item.vis, true);
                                 match &impl_item.kind {
                                     ImplItemKind::Fn(sig, body_id) => {
                                         let fn_attrs = ctxt.tcx.hir().attrs(impl_item.hir_id());
@@ -339,7 +339,7 @@ fn check_foreign_item<'tcx>(
                 vir,
                 item.def_id.to_def_id(),
                 item.span,
-                mk_visibility(&None, &item.vis),
+                mk_visibility(&None, &item.vis, true),
                 ctxt.tcx.hir().attrs(item.hir_id()),
                 decl,
                 idents,
