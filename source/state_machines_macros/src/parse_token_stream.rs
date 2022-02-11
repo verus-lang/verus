@@ -18,6 +18,13 @@ use syn::{
     MetaList, NestedMeta, Receiver, Type, Visibility,
 };
 
+pub struct SMBundle {
+    pub name: Ident,
+    pub sm: Option<SM>,
+    pub extras: Extras,
+    pub normal_fns: Vec<ImplItemMethod>,
+}
+
 ///////// TokenStream -> ParseResult
 
 pub struct ParseResult {
@@ -177,16 +184,6 @@ fn parse_fn_attr_info(attrs: &Vec<Attribute>) -> syn::parse::Result<FnAttrInfo> 
     }
 
     return Ok(fn_attr_info);
-}
-
-pub enum MaybeSM {
-    SM(SM, FieldsNamed, Vec<ImplItemMethod>),
-    Extras(Extras),
-}
-
-pub struct SMAndFuncs {
-    pub sm: MaybeSM,
-    pub normal_fns: Vec<ImplItemMethod>,
 }
 
 /*
@@ -388,7 +385,7 @@ pub fn check_idents(iim: &ImplItemMethod) -> syn::parse::Result<()> {
     idv.error
 }
 
-pub fn parse_result_to_smir(pr: ParseResult, concurrent: bool) -> syn::parse::Result<SMAndFuncs> {
+pub fn parse_result_to_smir(pr: ParseResult, concurrent: bool) -> syn::parse::Result<SMBundle> {
     let ParseResult { name, fns, fields } = pr;
 
     let mut normal_fns = Vec::new();
@@ -403,8 +400,6 @@ pub fn parse_result_to_smir(pr: ParseResult, concurrent: bool) -> syn::parse::Re
         )),
         Some(_) => Ok(()),
     };
-
-    let mut trans_fns = Vec::new();
 
     for impl_item_method in fns {
         let attr_info = parse_fn_attr_info(&impl_item_method.attrs)?;
@@ -427,7 +422,6 @@ pub fn parse_result_to_smir(pr: ParseResult, concurrent: bool) -> syn::parse::Re
                 err_if_not_primary(&impl_item_method)?;
                 let mut iim = impl_item_method;
                 transitions.push(to_transition(&mut iim, kind)?);
-                trans_fns.push(iim);
             }
             FnAttrInfo::Invariant => {
                 invariants.push(to_invariant(impl_item_method)?);
@@ -436,18 +430,20 @@ pub fn parse_result_to_smir(pr: ParseResult, concurrent: bool) -> syn::parse::Re
         }
     }
 
-    let maybe_sm = match fields {
+    let sm_opt = match fields {
         None => {
             assert!(transitions.len() == 0);
-            MaybeSM::Extras(Extras { name, invariants, lemmas })
+            None
         }
         Some(fields_named) => {
-            let mut fnamed = fields_named;
-            let fields = to_fields(&mut fnamed, concurrent)?;
-            let sm = SM { name, fields, transitions, invariants, lemmas };
+            let mut fields_named_ast = fields_named;
+            let fields = to_fields(&mut fields_named_ast, concurrent)?;
+            let name = name.clone();
+            let sm = SM { name, fields, fields_named_ast, transitions };
             check_transitions(&sm)?;
-            MaybeSM::SM(sm, fnamed, trans_fns)
+            Some(sm)
         }
     };
-    Ok(SMAndFuncs { normal_fns, sm: maybe_sm })
+
+    Ok(SMBundle { name, normal_fns, sm: sm_opt, extras: Extras { invariants, lemmas } })
 }

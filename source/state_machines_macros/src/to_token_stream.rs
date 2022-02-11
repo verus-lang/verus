@@ -1,7 +1,7 @@
 #![allow(unused_imports)]
 
 use crate::concurrency_tokens::output_token_types_and_fns;
-use crate::parse_token_stream::{MaybeSM, SMAndFuncs};
+use crate::parse_token_stream::{SMBundle};
 use crate::weakest::{get_safety_conditions, to_weakest};
 use proc_macro2::Span;
 use proc_macro2::TokenStream;
@@ -22,37 +22,30 @@ use syn::{
 use crate::transitions::{has_any_assert, safety_condition_body};
 
 pub fn output_token_stream(
-    sm_and_funcs: SMAndFuncs,
+    bundle: SMBundle,
     concurrent: bool,
 ) -> syn::parse::Result<TokenStream> {
-    let SMAndFuncs { normal_fns, sm: maybe_sm } = sm_and_funcs;
-
     let mut token_stream = TokenStream::new();
     let mut impl_token_stream = TokenStream::new();
 
-    match &maybe_sm {
-        MaybeSM::SM(sm, fields_named, _trans_fns) => {
+    match &bundle.sm {
+        Some(sm) => {
             output_primary_stuff(
                 &mut token_stream,
                 &mut impl_token_stream,
                 &sm,
-                &fields_named,
             );
-            output_other_fns(&mut impl_token_stream, &sm.invariants, &sm.lemmas, normal_fns);
 
             if concurrent {
                 output_token_types_and_fns(&mut token_stream, sm)?;
             }
         }
-        MaybeSM::Extras(ex) => {
-            output_other_fns(&mut impl_token_stream, &ex.invariants, &ex.lemmas, normal_fns);
-        }
+        None => { }
     }
 
-    let name = match maybe_sm {
-        MaybeSM::SM(sm, _, _) => sm.name,
-        MaybeSM::Extras(ex) => ex.name,
-    };
+    output_other_fns(&mut impl_token_stream, &bundle.extras.invariants, &bundle.extras.lemmas, bundle.normal_fns);
+
+    let name = &bundle.name;
 
     let final_code = quote! {
         #token_stream
@@ -114,13 +107,11 @@ pub fn output_primary_stuff(
     token_stream: &mut TokenStream,
     impl_token_stream: &mut TokenStream,
     sm: &SM,
-    fields_named: &FieldsNamed,
-    //trans_fns: &Vec<ImplItemMethod>,
 ) {
     let name = &sm.name;
     //let fields: Vec<TokenStream> = sm.fields.iter().map(field_to_tokens).collect();
 
-    let mut fields_named = fields_named.clone();
+    let mut fields_named = sm.fields_named_ast.clone();
     fields_named_fix_attrs(&mut fields_named);
 
     // Note: #fields_named will include the braces.
@@ -138,14 +129,6 @@ pub fn output_primary_stuff(
         }
     };
     impl_token_stream.extend(inv_sig);
-
-    /*
-    for trans_fn in trans_fns {
-        let mut f = trans_fn.clone();
-        fix_attrs(&mut f.attrs);
-        f.to_tokens(impl_token_stream);
-    }
-    */
 
     for trans in &sm.transitions {
         let mut strong_rel_idents: Vec<Ident> = Vec::new();

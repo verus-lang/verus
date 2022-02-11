@@ -1,6 +1,5 @@
 #![allow(unused_imports)]
 
-use crate::parse_token_stream::{MaybeSM, SMAndFuncs};
 use crate::weakest::{get_safety_conditions, to_weakest};
 use proc_macro2::Span;
 use proc_macro2::TokenStream;

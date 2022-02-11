@@ -1,6 +1,5 @@
 #![allow(unused_imports)]
 
-use crate::parse_token_stream::{MaybeSM, SMAndFuncs};
 use crate::transitions::{add_noop_updates, replace_updates};
 use proc_macro2::Span;
 use proc_macro2::TokenStream;

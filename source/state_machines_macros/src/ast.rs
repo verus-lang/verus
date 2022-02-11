@@ -1,19 +1,19 @@
-use syn::{Expr, ImplItemMethod, Ident, Type};
+use syn::{Expr, ImplItemMethod, Ident, Type, FieldsNamed};
 use proc_macro2::Span;
 
 #[derive(Clone, Debug)]
 pub struct SM {
     pub name: Ident,
+
     // TODO generic args
     pub fields: Vec<Field>,
+    pub fields_named_ast: FieldsNamed,
+
     pub transitions: Vec<Transition>,
-    pub invariants: Vec<Invariant>,
-    pub lemmas: Vec<Lemma>,
 }
 
 #[derive(Clone, Debug)]
 pub struct Extras {
-    pub name: Ident,
     pub invariants: Vec<Invariant>,
     pub lemmas: Vec<Lemma>,
 }
