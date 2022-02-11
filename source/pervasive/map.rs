@@ -28,6 +28,12 @@ impl<K, V> Map<K, V> {
     fndecl!(pub fn insert(self, key: K, value: V) -> Map<K, V>);
 
     #[spec]
+    #[verifier(pub_abstract)]
+    pub fn remove(self, key: K) -> Map<K, V> {
+        arbitrary()
+    }
+
+    #[spec]
     pub fn ext_equal(self, m2: Map<K, V>) -> bool {
         self.dom().ext_equal(m2.dom()) &&
         forall(|k: K| self.dom().contains(k) >>= equal(self.index(k), m2.index(k)))
@@ -66,6 +72,13 @@ pub fn axiom_map_insert_different<K, V>(m: Map<K, V>, key1: K, key2: K, value: V
         !equal(key1, key2),
     ]);
     ensures(equal(m.insert(key2, value).index(key1), m.index(key1)));
+}
+
+#[proof]
+#[verifier(external_body)]
+#[verifier(broadcast_forall)]
+pub fn axiom_map_remove_domain<K, V>(m: Map<K, V>, key: K) {
+    ensures(equal(#[trigger] m.remove(key).dom(), m.dom().remove(key)));
 }
 
 #[proof]
