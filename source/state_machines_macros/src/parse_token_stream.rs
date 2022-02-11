@@ -9,18 +9,19 @@ use crate::ast::{
     Extras, Invariant, Lemma, LemmaPurpose, LemmaPurposeKind, ShardableType, Transition,
     TransitionKind, TransitionStmt, SM,
 };
+use syn::Token;
 use syn::buffer::Cursor;
 use syn::parse::{Parse, ParseStream};
 use syn::spanned::Spanned;
 use syn::visit::Visit;
 use syn::{
     braced, AttrStyle, Attribute, Error, Expr, FieldsNamed, FnArg, Ident, ImplItemMethod, Meta,
-    MetaList, NestedMeta, Receiver, Type, Visibility,
+    MetaList, NestedMeta, Receiver, Type, Visibility, Generics, GenericParam, WhereClause,
 };
 
 pub struct SMBundle {
     pub name: Ident,
-    pub sm: Option<SM>,
+    pub sm: SM,
     pub extras: Extras,
     pub normal_fns: Vec<ImplItemMethod>,
 }
@@ -31,16 +32,45 @@ pub struct ParseResult {
     pub name: Ident,
     pub fns: Vec<ImplItemMethod>,
     pub fields: Option<FieldsNamed>,
+    pub generics: Option<Generics>,
 }
 
 impl Parse for ParseResult {
     fn parse(input: ParseStream) -> syn::parse::Result<Self> {
         // parse
         //
-        // state machine IDENT {
+        // IDENT <...> {
         //    ... a bunch of items
         // }
         let name: Ident = input.parse()?;
+
+        let generics = if input.peek(Token![<]) {
+            let mut gen: Generics = input.parse()?;
+
+            for gp in gen.params.iter() {
+                match gp {
+                    GenericParam::Type(_) => { }
+                    _ => {
+                        return Err(Error::new(
+                            gp.span(),
+                            "Only generic type parameters are supported for state machine"
+                        ));
+                    }
+                }
+            }
+
+            // parsing a `Generics` doesn't parse the 'where' clause by default
+            // so we add this in
+            assert!(gen.where_clause.is_none());
+            if peek_keyword(input.cursor(), "where") {
+                let where_clause: WhereClause = input.parse()?;
+                gen.where_clause = Some(where_clause);
+            }
+
+            Some(gen)
+        } else {
+            None
+        };
 
         let items_stream;
         let _ = braced!(items_stream in input);
@@ -72,7 +102,7 @@ impl Parse for ParseResult {
             fns.push(item);
         }
 
-        return Ok(ParseResult { name: name, fns: fns, fields: fields_opt });
+        return Ok(ParseResult { name, fns, generics, fields: fields_opt });
     }
 }
 
@@ -386,7 +416,7 @@ pub fn check_idents(iim: &ImplItemMethod) -> syn::parse::Result<()> {
 }
 
 pub fn parse_result_to_smir(pr: ParseResult, concurrent: bool) -> syn::parse::Result<SMBundle> {
-    let ParseResult { name, fns, fields } = pr;
+    let ParseResult { name, generics, fns, fields } = pr;
 
     let mut normal_fns = Vec::new();
     let mut transitions: Vec<Transition> = Vec::new();
@@ -430,20 +460,21 @@ pub fn parse_result_to_smir(pr: ParseResult, concurrent: bool) -> syn::parse::Re
         }
     }
 
-    let sm_opt = match fields {
+    let sm = match fields {
         None => {
-            assert!(transitions.len() == 0);
-            None
+            panic!("not implemented");
+            //assert!(transitions.len() == 0);
+            //None
         }
         Some(fields_named) => {
             let mut fields_named_ast = fields_named;
             let fields = to_fields(&mut fields_named_ast, concurrent)?;
             let name = name.clone();
-            let sm = SM { name, fields, fields_named_ast, transitions };
+            let sm = SM { name, generics, fields, fields_named_ast, transitions };
             check_transitions(&sm)?;
-            Some(sm)
+            sm
         }
     };
 
-    Ok(SMBundle { name, normal_fns, sm: sm_opt, extras: Extras { invariants, lemmas } })
+    Ok(SMBundle { name, normal_fns, sm, extras: Extras { invariants, lemmas } })
 }

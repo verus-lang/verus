@@ -17,7 +17,7 @@ use syn::spanned::Spanned;
 use syn::token::Colon2;
 use syn::{
     braced, AttrStyle, Attribute, Error, Expr, FieldsNamed, FnArg, Ident, ImplItemMethod, Meta,
-    MetaList, NestedMeta, Path, PathArguments, PathSegment, Type,
+    MetaList, NestedMeta, Path, PathArguments, PathSegment, Type, Generics, GenericParam,
 };
 use crate::transitions::{has_any_assert, safety_condition_body};
 
@@ -28,34 +28,76 @@ pub fn output_token_stream(
     let mut token_stream = TokenStream::new();
     let mut impl_token_stream = TokenStream::new();
 
-    match &bundle.sm {
-        Some(sm) => {
-            output_primary_stuff(
-                &mut token_stream,
-                &mut impl_token_stream,
-                &sm,
-            );
+    let self_ty = get_self_ty(&bundle.sm);
 
-            if concurrent {
-                output_token_types_and_fns(&mut token_stream, sm)?;
-            }
-        }
-        None => { }
+    output_primary_stuff(
+        &mut token_stream,
+        &mut impl_token_stream,
+        &bundle.sm,
+    );
+
+    if concurrent {
+        output_token_types_and_fns(&mut token_stream, &bundle.sm)?;
     }
 
     output_other_fns(&mut impl_token_stream, &bundle.extras.invariants, &bundle.extras.lemmas, bundle.normal_fns);
 
-    let name = &bundle.name;
+    let impl_decl = impl_decl_stream(&self_ty, &bundle.sm.generics);
 
     let final_code = quote! {
         #token_stream
 
-        impl #name {
+        #impl_decl {
             #impl_token_stream
         }
     };
 
     return Ok(final_code);
+}
+
+pub fn get_self_ty(sm: &SM) -> Type {
+    let name = &sm.name;
+    Type::Verbatim(match &sm.generics {
+        None => quote!{ #name },
+        Some(gen) => {
+            if gen.params.len() > 0 {
+                //let ids = gen.params.iter().map(|gp| 
+                let args = get_generic_args(&gen.params);
+                quote!{ #name<#args> }
+            } else {
+                quote!{ #name }
+            }
+        }
+    })
+}
+
+pub fn get_generic_args(params: &Punctuated<GenericParam, syn::token::Comma>) -> TokenStream {
+    let args = params.iter().map(|gp| {
+        match gp {
+            GenericParam::Type(type_param) => type_param.ident.clone(),
+            _ => {
+                // should have been checked already
+                panic!("unsupported generic param type");
+            }
+        }
+    });
+    quote!{ #(#args),* }
+}
+
+pub fn impl_decl_stream(self_ty: &Type, generics: &Option<Generics>) -> TokenStream {
+    match generics {
+        None => quote!{ impl #self_ty },
+        Some(gen) => {
+            if gen.params.len() > 0 {
+                let params = &gen.params;
+                let where_clause = &gen.where_clause;
+                quote!{ impl<#params> #self_ty #where_clause }
+            } else {
+                let where_clause = &gen.where_clause;
+                quote!{ impl #self_ty #where_clause }
+            }
+        }
+    }
 }
 
 pub fn fix_attr(attr: &mut Attribute) {
@@ -114,10 +156,15 @@ pub fn output_primary_stuff(
     let mut fields_named = sm.fields_named_ast.clone();
     fields_named_fix_attrs(&mut fields_named);
 
+    let gen = match &sm.generics {
+        Some(gen) => quote! { #gen },
+        None => TokenStream::new(),
+    };
+
     // Note: #fields_named will include the braces.
     let code: TokenStream = quote! {
         #[verifier(state_machine_struct)]
-        pub struct #name #fields_named
+        pub struct #name #gen #fields_named
     };
     token_stream.extend(code);
 
@@ -129,6 +176,8 @@ pub fn output_primary_stuff(
         }
     };
     impl_token_stream.extend(inv_sig);
+
+    let self_ty = get_self_ty(&sm);
 
     for trans in &sm.transitions {
         let mut strong_rel_idents: Vec<Ident> = Vec::new();
@@ -207,7 +256,7 @@ pub fn output_primary_stuff(
         if has_any_assert(&trans.body) {
             let b = safety_condition_body(&trans.body);
             let name = Ident::new(&(trans.name.to_string() + "_asserts"), trans.name.span());
-            let params = self_assoc_params(&sm.name, &trans.args);
+            let params = self_assoc_params(&self_ty, &trans.args);
             let b = match b {
                 Some(b) => quote! { #b },
                 None => TokenStream::new(),
@@ -241,7 +290,7 @@ fn self_post_params(params: &Vec<TransitionParam>) -> TokenStream {
 }
 
 // self: X, params...
-fn self_assoc_params(ty_name: &Ident, params: &Vec<TransitionParam>) -> TokenStream {
+fn self_assoc_params(ty: &Type, params: &Vec<TransitionParam>) -> TokenStream {
     let params: Vec<TokenStream> = params
         .iter()
         .map(|arg| {
@@ -251,7 +300,7 @@ fn self_assoc_params(ty_name: &Ident, params: &Vec<TransitionParam>) -> TokenStr
         })
         .collect();
     return quote! {
-        self: #ty_name,
+        self: #ty,
         #(#params),*
     };
 }
