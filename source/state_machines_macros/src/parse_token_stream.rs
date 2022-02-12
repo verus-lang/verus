@@ -171,7 +171,8 @@ fn parse_fn_attr_info(attrs: &Vec<Attribute>) -> syn::parse::Result<FnAttrInfo> 
                     let is_safety = path.is_ident("safety");
                     let attrname = if is_safety { "safety" } else { "inductive" };
                     let lp_kind = if is_safety {
-                        LemmaPurposeKind::SatisfiesAsserts
+                        panic!("unimplemented"); // TODO remove this case
+                        //LemmaPurposeKind::SatisfiesAsserts
                     } else {
                         LemmaPurposeKind::PreservesInvariant
                     };

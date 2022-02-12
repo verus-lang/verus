@@ -1,11 +1,13 @@
 #![allow(unused_imports)]
 #![feature(box_patterns)]
+#![feature(format_args_capture)]
 
 extern crate proc_macro;
 
 mod ast;
 mod concurrency_tokens;
 mod ident_visitor;
+mod lemmas;
 mod parse_token_stream;
 mod parse_transition;
 mod to_token_stream;
@@ -16,6 +18,7 @@ use parse_token_stream::{parse_result_to_smir, ParseResult};
 use proc_macro::TokenStream;
 use syn::{braced, parse_macro_input, Error, Expr, Field, FieldsNamed, Ident, ItemFn, Token, Type};
 use to_token_stream::output_token_stream;
+use lemmas::check_lemmas;
 
 fn construct_state_machine(input: TokenStream, concurrent: bool) -> TokenStream {
     let pr: ParseResult = parse_macro_input!(input as ParseResult);
@@ -27,6 +30,13 @@ fn construct_state_machine(input: TokenStream, concurrent: bool) -> TokenStream 
             return TokenStream::from(err.to_compile_error());
         }
     };
+
+    match check_lemmas(&smir) {
+        Ok(_) => { }
+        Err(err) => {
+            return TokenStream::from(err.to_compile_error());
+        }
+    }
 
     let token_stream = match output_token_stream(smir, concurrent) {
         Ok(ts) => ts,

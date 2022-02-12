@@ -84,7 +84,6 @@ pub struct Invariant {
 #[derive(Clone, Debug, Hash)]
 pub enum LemmaPurposeKind {
     PreservesInvariant,
-    SatisfiesAsserts, // TODO remove?
 }
 
 #[derive(Clone, Debug, Hash)]

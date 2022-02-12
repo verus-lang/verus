@@ -163,19 +163,10 @@ pub fn output_primary_stuff(
 
     // Note: #fields_named will include the braces.
     let code: TokenStream = quote! {
-        #[verifier(state_machine_struct)]
+        //#[verifier(state_machine_struct)]
         pub struct #name #gen #fields_named
     };
     token_stream.extend(code);
-
-    // We will fill in the 'inv' body later
-    let inv_sig = quote! {
-        #[spec]
-        pub fn invariant(&self) -> bool {
-            ::builtin::state_machine_ops::to_be_determined()
-        }
-    };
-    impl_token_stream.extend(inv_sig);
 
     let self_ty = get_self_ty(&sm);
 
@@ -387,6 +378,14 @@ fn output_other_fns(
     lemmas: &Vec<Lemma>,
     normal_fns: Vec<ImplItemMethod>,
 ) {
+    let inv_names = invariants.iter().map(|i| &i.func.sig.ident);
+    impl_token_stream.extend(quote! {
+        #[spec]
+        pub fn invariant(&self) -> bool {
+            #(self.#inv_names())&&*
+        }
+    });
+
     for inv in invariants {
         impl_token_stream.extend(quote! { #[spec] });
         let mut f = inv.func.clone();
