@@ -31,7 +31,10 @@ pub fn check_lemmas(bundle: &SMBundle) -> syn::parse::Result<()> {
     Ok(())
 }
 
-pub fn get_transition<'a>(transitions: &'a Vec<Transition>, name: &String) -> Option<&'a Transition> {
+pub fn get_transition<'a>(
+    transitions: &'a Vec<Transition>,
+    name: &String,
+) -> Option<&'a Transition> {
     for t in transitions.iter() {
         if t.name.to_string() == *name {
             return Some(t);

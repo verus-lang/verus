@@ -5,24 +5,24 @@ use crate::ast::{
     TransitionParam, TransitionStmt, SM,
 };
 use crate::concurrency_tokens::output_token_types_and_fns;
+use crate::lemmas::get_transition;
 use crate::parse_token_stream::SMBundle;
 use crate::transitions::{has_any_assert, safety_condition_body};
 use crate::weakest::{get_safety_conditions, to_weakest};
-use crate::lemmas::get_transition;
 use proc_macro2::Span;
 use proc_macro2::TokenStream;
 use quote::{quote, quote_spanned, ToTokens};
+use std::mem::swap;
 use syn::buffer::Cursor;
 use syn::parse::{Parse, ParseStream};
 use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
 use syn::token::{Colon2, Semi};
 use syn::{
-    braced, AttrStyle, Attribute, Error, Expr, FieldsNamed, FnArg, GenericParam, Generics, Ident,
-    ImplItemMethod, Meta, MetaList, NestedMeta, Path, PathArguments, PathSegment, Type,
-    Block, PatType, ExprBlock, Stmt, Pat,
+    braced, AttrStyle, Attribute, Block, Error, Expr, ExprBlock, FieldsNamed, FnArg, GenericParam,
+    Generics, Ident, ImplItemMethod, Meta, MetaList, NestedMeta, Pat, PatType, Path, PathArguments,
+    PathSegment, Stmt, Type,
 };
-use std::mem::swap;
 
 pub fn output_token_stream(bundle: SMBundle, concurrent: bool) -> syn::parse::Result<TokenStream> {
     let mut token_stream = TokenStream::new();
@@ -392,38 +392,50 @@ fn output_other_fns(
 fn left_of_colon<'a>(fn_arg: &'a FnArg) -> &'a Pat {
     match fn_arg {
         FnArg::Receiver(_) => panic!("should have been ruled out by lemma well-formedness"),
-        FnArg::Typed(pat_type) => &pat_type.pat
+        FnArg::Typed(pat_type) => &pat_type.pat,
     }
 }
 
 fn lemma_update_body(sm: &SM, l: &Lemma, func: &mut ImplItemMethod) {
     // TODO give a more helpful error if the body already has requires/ensures
 
-    let trans = get_transition(&sm.transitions, &l.purpose.transition.to_string()).expect("transition");
+    let trans =
+        get_transition(&sm.transitions, &l.purpose.transition.to_string()).expect("transition");
 
     let precondition = if trans.kind == TransitionKind::Init {
-        let trans_name = Ident::new(&(l.purpose.transition.to_string()), l.purpose.transition.span());
+        let trans_name =
+            Ident::new(&(l.purpose.transition.to_string()), l.purpose.transition.span());
         let trans_args: Vec<&Pat> = l.func.sig.inputs.iter().map(|i| left_of_colon(i)).collect();
         quote! { Self::#trans_name(#(#trans_args),*) }
     } else {
-        let trans_name_strong = Ident::new(&(l.purpose.transition.to_string() + "_strong"), l.purpose.transition.span());
-        let trans_args: Vec<&Pat> = l.func.sig.inputs.iter().skip(1).map(|i| left_of_colon(i)).collect();
+        let trans_name_strong = Ident::new(
+            &(l.purpose.transition.to_string() + "_strong"),
+            l.purpose.transition.span(),
+        );
+        let trans_args: Vec<&Pat> =
+            l.func.sig.inputs.iter().skip(1).map(|i| left_of_colon(i)).collect();
         quote! { self.invariant() && self.#trans_name_strong(#(#trans_args),*) }
     };
 
     let new_block = Block {
         brace_token: func.block.brace_token.clone(),
         stmts: vec![
-            Stmt::Semi(Expr::Verbatim(quote!{
-                ::builtin::requires(
-                    #precondition
-                )
-            }), Semi { spans: [l.func.span()] } ),
-            Stmt::Semi(Expr::Verbatim(quote!{
-                ::builtin::ensures(
-                    post.invariant()
-                )
-            }), Semi { spans: [l.func.span()] } ),
+            Stmt::Semi(
+                Expr::Verbatim(quote! {
+                    ::builtin::requires(
+                        #precondition
+                    )
+                }),
+                Semi { spans: [l.func.span()] },
+            ),
+            Stmt::Semi(
+                Expr::Verbatim(quote! {
+                    ::builtin::ensures(
+                        post.invariant()
+                    )
+                }),
+                Semi { spans: [l.func.span()] },
+            ),
             Stmt::Expr(Expr::Block(ExprBlock {
                 attrs: vec![],
                 label: None,
