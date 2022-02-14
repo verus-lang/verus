@@ -288,6 +288,7 @@ fn check_item<'tcx>(
             if hack_get_def_name(ctxt.tcx, body_id.hir_id.owner.to_def_id())
                 .starts_with("_DERIVE_builtin_Structural_FOR_")
             {
+                ctxt.erasure_info.borrow_mut().ignored_functions.push(item.span.data());
                 return Ok(());
             }
             crate::rust_to_vir_func::check_item_const(

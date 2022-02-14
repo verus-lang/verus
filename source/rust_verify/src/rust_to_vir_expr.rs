@@ -738,7 +738,7 @@ pub(crate) fn expr_tuple_datatype_ctor_to_vir<'tcx>(
     expr: &Expr<'tcx>,
     res: &Res,
     args_slice: &[Expr<'tcx>],
-    path_span: Span,
+    fun_span: Span,
     modifier: ExprModifier,
 ) -> Result<vir::ast::Expr, VirErr> {
     let tcx = bctx.ctxt.tcx;
@@ -774,7 +774,7 @@ pub(crate) fn expr_tuple_datatype_ctor_to_vir<'tcx>(
     );
     let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
     let resolved_call = ResolvedCall::Ctor(vir_path.clone(), variant_name.clone());
-    erasure_info.resolved_calls.push((path_span.data(), resolved_call));
+    erasure_info.resolved_calls.push((fun_span.data(), resolved_call));
     let exprx = ExprX::Ctor(vir_path, variant_name, vir_fields, None);
     Ok(spanned_typed_new(expr.span, &expr_typ, exprx))
 }
@@ -1194,17 +1194,13 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                 // a tuple-style datatype constructor
                 ExprKind::Path(QPath::Resolved(
                     None,
-                    rustc_hir::Path {
-                        res: res @ Res::Def(DefKind::Ctor(_, _), _),
-                        span: path_span,
-                        ..
-                    },
+                    rustc_hir::Path { res: res @ Res::Def(DefKind::Ctor(_, _), _), .. },
                 )) => Some(expr_tuple_datatype_ctor_to_vir(
                     bctx,
                     expr,
                     res,
                     *args_slice,
-                    *path_span,
+                    fun.span,
                     modifier,
                 )),
                 ExprKind::Path(qpath) => {
@@ -1410,7 +1406,7 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                         expr,
                         &path.res,
                         &[],
-                        path.span,
+                        expr.span,
                         modifier,
                     ),
                     _ => {

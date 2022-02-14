@@ -64,7 +64,7 @@ use rustc_span::symbol::{Ident, Symbol};
 use rustc_span::{Span, SpanData};
 
 use std::cell::Cell;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -1137,7 +1137,7 @@ fn erase_crate(ctxt: &Ctxt, mctxt: &mut MCtxt, krate: &Crate) -> Crate {
     Crate { items: new_items, attrs: attrs.clone(), span: *span, proc_macros: proc_macros.clone() }
 }
 
-fn mk_ctxt(erasure_hints: &ErasureHints, keep_proofs: bool) -> Ctxt {
+fn mk_ctxt(erasure_hints: &ErasureHints, known_spans: &HashSet<Span>, keep_proofs: bool) -> Ctxt {
     let mut functions = HashMap::new();
     let mut functions_by_span = HashMap::new();
     let mut datatypes = HashMap::new();
@@ -1146,37 +1146,43 @@ fn mk_ctxt(erasure_hints: &ErasureHints, keep_proofs: bool) -> Ctxt {
     let mut resolved_pats: HashMap<Span, Pattern> = HashMap::new();
     for f in &erasure_hints.vir_crate.functions {
         functions.insert(f.x.name.clone(), Some(f.clone())).map(|_| panic!("{:?}", &f.x.name));
-        functions_by_span
-            .insert(from_raw_span(&f.span.raw_span), Some(f.clone()))
-            .map(|_| panic!("{:?}", &f.span));
+        let span = from_raw_span(&f.span.raw_span);
+        assert!(known_spans.contains(&span));
+        functions_by_span.insert(span, Some(f.clone())).map(|_| panic!("{:?}", &f.span));
     }
     for name in &erasure_hints.external_functions {
         functions.insert(name.clone(), None).map(|_| panic!("{:?}", name));
     }
     for span in &erasure_hints.ignored_functions {
+        assert!(known_spans.contains(&span.span()));
         functions_by_span.insert(span.span(), None).map(|v| v.map(|_| panic!("{:?}", span)));
     }
     for d in &erasure_hints.vir_crate.datatypes {
         datatypes.insert(d.x.path.clone(), d.clone()).map(|_| panic!("{:?}", &d.x.path));
     }
     for (span, call) in &erasure_hints.resolved_calls {
+        assert!(known_spans.contains(&span.span()));
         calls.insert(span.span(), call.clone()).map(|_| panic!("{:?}", span));
     }
     for (span, expr) in &erasure_hints.resolved_exprs {
+        assert!(known_spans.contains(&span.span()));
         resolved_exprs.insert(span.span(), expr.clone()).map(|_| panic!("{:?}", span));
     }
     for (span, expr) in &erasure_hints.resolved_pats {
+        assert!(known_spans.contains(&span.span()));
         resolved_pats.insert(span.span(), expr.clone()).map(|_| panic!("{:?}", span));
     }
     let mut condition_modes: HashMap<Span, Mode> = HashMap::new();
     let mut var_modes: HashMap<Span, Mode> = HashMap::new();
     for (span, mode) in &erasure_hints.erasure_modes.condition_modes {
-        condition_modes.insert(from_raw_span(&span.raw_span), *mode).map(|_| panic!("{:?}", span));
+        let span = from_raw_span(&span.raw_span);
+        assert!(known_spans.contains(&span));
+        condition_modes.insert(span, *mode).map(|_| panic!("{:?}", span));
     }
     for (span, mode) in &erasure_hints.erasure_modes.var_modes {
-        var_modes
-            .insert(from_raw_span(&span.raw_span), *mode)
-            .map(|v| panic!("{:?} {:?}", span, v));
+        let span = from_raw_span(&span.raw_span);
+        assert!(known_spans.contains(&span));
+        var_modes.insert(span, *mode).map(|v| panic!("{:?} {:?}", span, v));
     }
     Ctxt {
         vir_crate: erasure_hints.vir_crate.clone(),
@@ -1228,7 +1234,12 @@ impl rustc_lint::FormalVerifierRewrite for CompilerCallbacks {
         krate: &rustc_ast::ast::Crate,
         next_node_id: &mut dyn FnMut() -> NodeId,
     ) -> rustc_ast::ast::Crate {
-        let ctxt = mk_ctxt(&self.erasure_hints, self.lifetimes_only);
+        use crate::rustc_ast::mut_visit::MutVisitor;
+        let mut krate = krate.clone();
+        let mut visitor = crate::erase_rewrite::Visitor::new();
+        visitor.visit_crate(&mut krate);
+
+        let ctxt = mk_ctxt(&self.erasure_hints, &visitor.spans, self.lifetimes_only);
         let mut mctxt = MCtxt {
             f_next_node_id: next_node_id,
             remap_parens: HashMap::new(),
@@ -1236,7 +1247,7 @@ impl rustc_lint::FormalVerifierRewrite for CompilerCallbacks {
             external_body: false,
         };
         let time0 = Instant::now();
-        let krate = crate::erase::erase_crate(&ctxt, &mut mctxt, krate);
+        let krate = crate::erase::erase_crate(&ctxt, &mut mctxt, &krate);
         let time1 = Instant::now();
         (*self.time_erasure.lock().unwrap()) += time1 - time0;
         krate
