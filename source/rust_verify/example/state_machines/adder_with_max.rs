@@ -5,7 +5,7 @@ use pervasive::*;
 
 use state_machines_macros::concurrent_state_machine;
 
-concurrent_state_machine!(
+concurrent_state_machine!{
     AdderWithMax {
         fields {
             #[sharding(constant)]
@@ -41,6 +41,6 @@ concurrent_state_machine!(
         fn add_preserves(self: AdderWithMax, post: AdderWithMax, n: int) {
         }
     }
-);
+}
 
 fn main() { }

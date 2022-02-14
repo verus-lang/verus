@@ -31,6 +31,7 @@ state_machine!(
 
         #[inductive(add)]
         fn add_inductive(self: X, post: X, n: int) { }
+
     }
 );
 

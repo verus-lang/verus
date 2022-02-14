@@ -241,7 +241,7 @@ fn transition_params_to_string(
     params: &Vec<TransitionParam>,
 ) -> String {
     let mut v1 = vec![];
-    if is_init {
+    if !is_init {
         v1.push("self: ".to_string() + &self_ty.to_token_stream().to_string());
     }
     v1.push("post: ".to_string() + &self_ty.to_token_stream().to_string());
