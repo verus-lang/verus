@@ -5,7 +5,7 @@ use builtin::*;
 mod pervasive;
 use pervasive::*;
 use crate::pervasive::{invariants::*};
-use crate::pervasive::{atomics::*};
+use crate::pervasive::{atomic::*};
 use crate::pervasive::{modes::*};
 
 // LTS tokens (currently trusted)
@@ -81,6 +81,7 @@ pub fn do_inc_b(#[proof] counter: &mut Counter, #[proof] inc_b: &mut IncB) {
   ensures([
     inc_b.done,
     equal(counter.counter, old(counter).counter + 1),
+    counter.counter <= 2,
   ]);
 
   unimplemented!();
@@ -127,16 +128,9 @@ fn main() {
 
   // Initialize the counter
 
-  let mut at;
-  #[proof] let mut perm_token;
-  match new_atomic_u32(0) {
-    (patomic, proof(token)) => {
-      at = patomic;
-      perm_token = token;
-    }
-  }
+  let (at, proof(perm_token)) = PAtomicU32::new(0);
 
-  #[proof] let at_inv: Invariant<G> = invariant_new(
+  #[proof] let at_inv: Invariant<G> = Invariant::new(
       G { counter: counter_token, perm: perm_token },
       |g: G| g.wf(at),
       0);
@@ -148,7 +142,7 @@ fn main() {
   open_invariant!(&at_inv => g => {
     #[proof] let G { counter: mut c, perm: mut p } = g;
 
-    at.fetch_add(&mut p, 1);
+    at.fetch_add_wrapping(&mut p, 1);
     do_inc_a(&mut c, &mut inc_a_token); // atomic increment
 
     g = G { counter: c, perm: p };
@@ -159,7 +153,7 @@ fn main() {
   open_invariant!(&at_inv => g => {
     #[proof] let G { counter: mut c, perm: mut p } = g;
 
-    at.fetch_add(&mut p, 1);
+    at.fetch_add_wrapping(&mut p, 1);
     do_inc_b(&mut c, &mut inc_b_token); // atomic increment
 
     g = G { counter: c, perm: p };

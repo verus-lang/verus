@@ -1,22 +1,19 @@
 #[allow(unused_imports)]
 use builtin::*;
 #[allow(unused_imports)]
+use builtin_macros::*;
+#[allow(unused_imports)]
 use crate::pervasive::*;
 #[allow(unused_imports)]
 use crate::pervasive::seq::*;
 
 #[verifier(external_body)]
-pub struct Vec<A> {
+pub struct Vec<#[verifier(strictly_positive)] A> {
     pub vec: std::vec::Vec<A>,
 }
 
 impl<A> Vec<A> {
-    #[verifier(external_body)]
-    #[verifier(pub_abstract)]
-    #[spec]
-    pub fn view(&self) -> Seq<A> {
-        arbitrary()
-    }
+    fndecl!(pub fn view(&self) -> Seq<A>);
 
     #[verifier(external_body)]
     #[verifier(autoview)]

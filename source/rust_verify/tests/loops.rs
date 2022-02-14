@@ -146,3 +146,106 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] test_variables_havoc_basic code! {
+        fn test(a: u64) {
+            requires(a < 10);
+            let mut i = a;
+            while i < 20 {
+                i = i + 1;
+            }
+            assert(i == a); // FAILS
+        }
+    } => Err(e) => assert_one_fails(e)
+}
+
+test_verify_one_file! {
+    #[test] test_variables_not_havoc_basic code! {
+        fn test(a: u64) {
+            requires(a < 10);
+            let mut i = a;
+            let mut j = a;
+            j = j + 2;
+            while i < 20 {
+                i = i + 1;
+            }
+            j = j + 2;
+            assert(j == a + 4);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_variables_no_effect_basic code! {
+        fn test(a: u64) {
+            requires(a < 10);
+            let mut i = a;
+            let mut k = 12;
+            while i < 20 {
+                let mut k = i;
+                i = i + 1;
+                k = k + 1;
+                assert(k == i);
+            }
+            k = k + 1;
+            assert(k == 13);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_variables_havoc_nested code! {
+        fn test(a: u64) {
+            requires(a < 10);
+            let mut i = a;
+            while i < 20 {
+                i = i + 1;
+                let mut j = a;
+                while j < 10 {
+                    j = j + 1;
+                }
+                assert(j == a); // FAILS
+            }
+        }
+    } => Err(e) => assert_one_fails(e)
+}
+
+test_verify_one_file! {
+    #[test] test_variables_not_havoc_nested code! {
+        fn test(a: u64) {
+            requires(a < 10);
+            let mut i = a;
+            let mut j = a;
+            j = j + 2;
+            while i < 20 {
+                i = i + 1;
+                let mut j = a;
+                while j < 20 {
+                    j = j + 1;
+                }
+            }
+            j = j + 2;
+            assert(j == a + 4);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_variables_no_effect_nested code! {
+        fn test(a: u64) {
+            requires(a < 10);
+            let mut i = a;
+            let mut k = 12;
+            while i < 20 {
+                let mut k = i;
+                i = i + 1;
+                while k < 20 {
+                    k = k + 1;
+                }
+            }
+            k = k + 1;
+            assert(k == 13);
+        }
+    } => Ok(())
+}

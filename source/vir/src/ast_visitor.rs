@@ -6,28 +6,12 @@ use crate::ast::{
 use crate::ast_util::err_str;
 use crate::def::Spanned;
 use crate::util::vec_map_result;
+use crate::visitor::expr_visitor_control_flow;
+pub(crate) use crate::visitor::VisitorControlFlow;
 use air::scope_map::ScopeMap;
 use std::sync::Arc;
 
 pub type VisitorScopeMap = ScopeMap<Ident, Typ>;
-
-pub(crate) enum VisitorControlFlow<T> {
-    Recurse,
-    Return,
-    Stop(T),
-}
-
-macro_rules! expr_visitor_control_flow {
-    ($cf:expr) => {
-        match $cf {
-            crate::ast_visitor::VisitorControlFlow::Recurse => (),
-            crate::ast_visitor::VisitorControlFlow::Return => (),
-            crate::ast_visitor::VisitorControlFlow::Stop(val) => {
-                return crate::ast_visitor::VisitorControlFlow::Stop(val);
-            }
-        }
-    };
-}
 
 pub(crate) fn typ_visitor_check<E, MF>(typ: &Typ, mf: &mut MF) -> Result<(), E>
 where
@@ -176,7 +160,14 @@ where
         VisitorControlFlow::Return => VisitorControlFlow::Recurse,
         VisitorControlFlow::Recurse => {
             match &expr.x {
-                ExprX::Const(_) | ExprX::Var(_) | ExprX::VarAt(_, _) => (),
+                ExprX::Const(_)
+                | ExprX::Var(_)
+                | ExprX::VarLoc(_)
+                | ExprX::VarAt(_, _)
+                | ExprX::ConstVar(..) => (),
+                ExprX::Loc(e) => {
+                    expr_visitor_control_flow!(expr_visitor_dfs(e, map, mf));
+                }
                 ExprX::Call(target, es) => {
                     match target {
                         CallTarget::Static(_, _) => (),
@@ -230,10 +221,13 @@ where
                     expr_visitor_control_flow!(expr_visitor_dfs(body, map, mf));
                     map.pop_scope();
                 }
-                ExprX::Choose(binder, e1) => {
+                ExprX::Choose { params, cond, body } => {
                     map.push_scope(true);
-                    let _ = map.insert(binder.name.clone(), binder.a.clone());
-                    expr_visitor_control_flow!(expr_visitor_dfs(e1, map, mf));
+                    for binder in params.iter() {
+                        let _ = map.insert(binder.name.clone(), binder.a.clone());
+                    }
+                    expr_visitor_control_flow!(expr_visitor_dfs(cond, map, mf));
+                    expr_visitor_control_flow!(expr_visitor_dfs(body, map, mf));
                     map.pop_scope();
                 }
                 ExprX::Assign(e1, e2) => {
@@ -341,7 +335,10 @@ where
     let exprx = match &expr.x {
         ExprX::Const(c) => ExprX::Const(c.clone()),
         ExprX::Var(x) => ExprX::Var(x.clone()),
+        ExprX::VarLoc(x) => ExprX::VarLoc(x.clone()),
         ExprX::VarAt(x, at) => ExprX::VarAt(x.clone(), at.clone()),
+        ExprX::ConstVar(x) => ExprX::ConstVar(x.clone()),
+        ExprX::Loc(e) => ExprX::Loc(map_expr_visitor_env(e, map, env, fe, fs, ft)?),
         ExprX::Call(target, es) => {
             let target = match target {
                 CallTarget::Static(x, typs) => {
@@ -420,13 +417,17 @@ where
             map.pop_scope();
             ExprX::Closure(Arc::new(params), body)
         }
-        ExprX::Choose(binder, e1) => {
-            let binder = binder.map_result(|t| map_typ_visitor_env(t, env, ft))?;
+        ExprX::Choose { params, cond, body } => {
+            let params =
+                vec_map_result(&**params, |b| b.map_result(|t| map_typ_visitor_env(t, env, ft)))?;
             map.push_scope(true);
-            let _ = map.insert(binder.name.clone(), binder.a.clone());
-            let expr1 = map_expr_visitor_env(e1, map, env, fe, fs, ft)?;
+            for binder in params.iter() {
+                let _ = map.insert(binder.name.clone(), binder.a.clone());
+            }
+            let cond = map_expr_visitor_env(cond, map, env, fe, fs, ft)?;
+            let body = map_expr_visitor_env(body, map, env, fe, fs, ft)?;
             map.pop_scope();
-            ExprX::Choose(binder, expr1)
+            ExprX::Choose { params: Arc::new(params), cond, body }
         }
         ExprX::Assign(e1, e2) => {
             let expr1 = map_expr_visitor_env(e1, map, env, fe, fs, ft)?;
@@ -606,6 +607,7 @@ where
         ensure,
         decrease,
         mask_spec,
+        is_const,
         is_abstract,
         attrs,
         body,
@@ -651,6 +653,7 @@ where
         }
     };
     let attrs = attrs.clone();
+    let is_const = *is_const;
     let is_abstract = *is_abstract;
     let body = body.as_ref().map(|e| map_expr_visitor_env(e, map, env, fe, fs, ft)).transpose()?;
     map.pop_scope();
@@ -666,6 +669,7 @@ where
         ensure,
         decrease,
         mask_spec,
+        is_const,
         is_abstract,
         attrs,
         body,

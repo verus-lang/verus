@@ -1,45 +1,33 @@
 #[allow(unused_imports)]
 use builtin::*;
 #[allow(unused_imports)]
+use builtin_macros::*;
+#[allow(unused_imports)]
 use crate::pervasive::*;
 #[allow(unused_imports)]
 use crate::pervasive::set::*;
 
 /// map type for specifications
 #[verifier(external_body)]
-pub struct Map<K, V> {
+pub struct Map<#[verifier(maybe_negative)] K, #[verifier(strictly_positive)] V> {
     dummy: std::marker::PhantomData<(K, V)>,
 }
 
-#[spec]
-#[verifier(pub_abstract)]
-pub fn map_empty<K, V>() -> Map<K, V> {
-    arbitrary()
-}
-
-#[spec]
-pub fn map_total<K, V, F: Fn(K) -> V>(f: F) -> Map<K, V> {
-    set_full().mk_map(f)
-}
-
 impl<K, V> Map<K, V> {
-    #[spec]
-    #[verifier(pub_abstract)]
-    pub fn dom(self) -> Set<K> {
-        arbitrary()
-    }
+    fndecl!(pub fn empty() -> Map<K, V>);
 
     #[spec]
-    #[verifier(pub_abstract)]
-    pub fn index(self, key: K) -> V {
-        arbitrary()
+    pub fn total<F: Fn(K) -> V>(f: F) -> Map<K, V> {
+        Set::full().mk_map(f)
     }
 
-    #[spec]
-    #[verifier(pub_abstract)]
-    pub fn insert(self, key: K, value: V) -> Map<K, V> {
-        arbitrary()
-    }
+    fndecl!(pub fn dom(self) -> Set<K>);
+
+    fndecl!(pub fn index(self, key: K) -> V);
+
+    fndecl!(pub fn insert(self, key: K, value: V) -> Map<K, V>);
+
+    fndecl!(pub fn remove(self, key: K) -> Map<K, V>);
 
     #[spec]
     pub fn ext_equal(self, m2: Map<K, V>) -> bool {
@@ -54,7 +42,7 @@ impl<K, V> Map<K, V> {
 #[verifier(external_body)]
 #[verifier(broadcast_forall)]
 pub fn axiom_map_empty<K, V>() {
-    ensures(equal(map_empty::<K, V>().dom(), set_empty()));
+    ensures(equal(Map::<K, V>::empty().dom(), Set::empty()));
 }
 
 #[proof]
@@ -85,6 +73,24 @@ pub fn axiom_map_insert_different<K, V>(m: Map<K, V>, key1: K, key2: K, value: V
 #[proof]
 #[verifier(external_body)]
 #[verifier(broadcast_forall)]
+pub fn axiom_map_remove_domain<K, V>(m: Map<K, V>, key: K) {
+    ensures(equal(#[trigger] m.remove(key).dom(), m.dom().remove(key)));
+}
+
+#[proof]
+#[verifier(external_body)]
+#[verifier(broadcast_forall)]
+pub fn axiom_map_remove_different<K, V>(m: Map<K, V>, key1: K, key2: K) {
+    requires([
+        m.dom().contains(key1),
+        !equal(key1, key2),
+    ]);
+    ensures(equal(m.remove(key2).index(key1), m.index(key1)));
+}
+
+#[proof]
+#[verifier(external_body)]
+#[verifier(broadcast_forall)]
 pub fn axiom_map_ext_equal<K, V>(m1: Map<K, V>, m2: Map<K, V>) {
     ensures(m1.ext_equal(m2) == equal(m1, m2));
 }
@@ -107,6 +113,6 @@ macro_rules! map_insert_rec {
 #[macro_export]
 macro_rules! map {
     [$($tail:tt)*] => {
-        map_insert_rec![$crate::pervasive::map::map_empty();$($tail)*]
+        map_insert_rec![$crate::pervasive::map::Map::empty();$($tail)*]
     }
 } 

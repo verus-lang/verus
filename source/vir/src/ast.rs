@@ -241,6 +241,18 @@ pub struct ArmX {
     pub body: Expr,
 }
 
+/// Static function identifier
+pub type Fun = Arc<FunX>;
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct FunX {
+    /// Path of function
+    pub path: Path,
+    /// Path of the trait that defines the function, if any.
+    /// This disambiguates between impls for the same type of multiple traits that define functions
+    /// with the same name.
+    pub trait_path: Option<Path>,
+}
+
 #[derive(Clone, Debug)]
 pub enum CallTarget {
     /// Call a statically known function, passing some type arguments
@@ -262,17 +274,23 @@ pub type Exprs = Arc<Vec<Expr>>;
 pub enum ExprX {
     /// Constant
     Const(Constant),
-    /// Local variable
+    /// Local variable as a right-hand side
     Var(Ident),
+    /// Local variable as a left-hand side
+    VarLoc(Ident),
     /// Local variable, at a different stage (e.g. a mutable reference in the post-state)
     VarAt(Ident, VarAt),
+    /// Use of a const variable.  Note: ast_simplify replaces this with Call.
+    ConstVar(Fun),
+    /// Mutable reference (location)
+    Loc(Expr),
     /// Call to a function passing some expression arguments
     Call(CallTarget, Exprs),
     /// Note: ast_simplify replaces this with Ctor
     Tuple(Exprs),
     /// Construct datatype value of type Path and variant Ident,
     /// with field initializers Binders<Expr> and an optional ".." update expression.
-    /// For tuple-style variants, the field initializers appear in order and are named "0", "1", etc.
+    /// For tuple-style variants, the field initializers appear in order and are named "_0", "_1", etc.
     /// For struct-style variants, the field initializers may appear in any order.
     Ctor(Path, Ident, Binders<Expr>, Option<Expr>),
     /// Primitive unary operation
@@ -285,8 +303,8 @@ pub enum ExprX {
     Quant(Quant, Binders<Typ>, Expr),
     /// Specification closure
     Closure(Binders<Typ>, Expr),
-    /// Choose a specification value satisfying a predicate
-    Choose(Binder<Typ>, Expr),
+    /// Choose specification values satisfying a condition, compute body
+    Choose { params: Binders<Typ>, cond: Expr, body: Expr },
     /// Assign to local variable
     Assign(Expr, Expr),
     /// Reveal definition of an opaque function with some integer fuel amount
@@ -370,18 +388,6 @@ pub struct FunctionAttrsX {
     pub atomic: bool,
 }
 
-/// Static function identifier
-pub type Fun = Arc<FunX>;
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct FunX {
-    /// Path of function
-    pub path: Path,
-    /// Path of the trait that defines the function, if any.
-    /// This disambiguates between impls for the same type of multiple traits that define functions
-    /// with the same name.
-    pub trait_path: Option<Path>,
-}
-
 /// Function specification of its invariant mask
 #[derive(Clone, Debug)]
 pub enum MaskSpec {
@@ -421,6 +427,11 @@ pub struct FunctionX {
     pub decrease: Exprs,
     /// MaskSpec that specifies what invariants the function is allowed to open
     pub mask_spec: MaskSpec,
+    /// is_const == true means that this function is actually a const declaration;
+    /// we treat const declarations as functions with 0 arguments, having mode == Spec.
+    /// However, if ret.x.mode != Spec, there are some differences: the const can dually be used as spec,
+    /// and the body is restricted to a subset of expressions that are spec-safe.
+    pub is_const: bool,
     /// For public spec functions, is_abstract == true means that the body is private
     /// even though the function is public
     pub is_abstract: bool,
@@ -452,7 +463,8 @@ pub struct DatatypeX {
     pub path: Path,
     pub visibility: Visibility,
     pub transparency: DatatypeTransparency,
-    pub typ_params: Idents,
+    /// Each type parameter is (name: Ident, strictly_positive: bool)
+    pub typ_params: Arc<Vec<(Ident, bool)>>,
     pub variants: Variants,
     pub mode: Mode,
     // For token types that need to be 'unforgeable'. Only makes sense for 'Proof' types.

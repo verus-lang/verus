@@ -28,6 +28,9 @@ fn run_nodes_as_test(should_typecheck: bool, should_be_valid: bool, nodes: &[Nod
                     }
                     _ => {}
                 }
+                if matches!(**command, CommandX::CheckValid(..)) {
+                    air_context.finish_query();
+                }
             }
         }
         Err(s) => {
@@ -1341,8 +1344,23 @@ fn yes_choose1() {
         (axiom (f 3 3))
         (check-valid
             (assert
-                (let (( a (choose (x Int) (f x x)) ))
+                (let (( a (choose ((x Int)) (f x x) x) ))
                     (f a a)
+                )
+            )
+        )
+    )
+}
+
+#[test]
+fn yes_choose1_2() {
+    yes!(
+        (declare-fun f (Int Int) Bool)
+        (axiom (f 3 3))
+        (check-valid
+            (assert
+                (let (( a (choose ((x Int) (y Int)) (and (f x y) (= x y)) (+ x y)) ))
+                    (f (div a 2) (div a 2))
                 )
             )
         )
@@ -1356,8 +1374,23 @@ fn no_choose1() {
         (axiom (f 3 4))
         (check-valid
             (assert
-                (let (( a (choose (x Int) (f x x)) ))
+                (let (( a (choose ((x Int)) (f x x) x) ))
                     (f a a)
+                )
+            )
+        )
+    )
+}
+
+#[test]
+fn no_choose1_2() {
+    no!(
+        (declare-fun f (Int Int) Bool)
+        (axiom (f 3 4))
+        (check-valid
+            (assert
+                (let (( a (choose ((x Int) (y Int)) (and (f x y) (= x y)) (+ x y)) ))
+                    (f (div a 2) (div a 2))
                 )
             )
         )
@@ -1372,11 +1405,12 @@ fn yes_choose2() {
         (check-valid
             (assert
                 (let (( a
-                        (choose (x Int)
+                        (choose ((x Int))
                             (!
                                 (f x x)
                                 :pattern ((f x x))
                             )
+                            x
                         )
                     ))
                     (f a a)
@@ -1394,11 +1428,12 @@ fn no_choose2() {
         (check-valid
             (assert
                 (let (( a
-                        (choose (x Int)
+                        (choose ((x Int))
                             (!
                                 (f x x)
                                 :pattern ((f x x))
                             )
+                            x
                         )
                     ))
                     (f a a)
@@ -1415,7 +1450,7 @@ fn yes_choose3() {
         (axiom (f 3 4))
         (check-valid
             (assert
-                (let (( a (choose (x Int) (f x 4)) ))
+                (let (( a (choose ((x Int)) (f x 4) x) ))
                     (f a 4)
                 )
             )
@@ -1430,7 +1465,7 @@ fn no_choose3() {
         (axiom (f 3 4))
         (check-valid
             (assert
-                (let (( a (choose (x Int) (f x 3)) ))
+                (let (( a (choose ((x Int)) (f x 3) x) ))
                     (f a 3)
                 )
             )
@@ -1444,8 +1479,8 @@ fn yes_choose4() {
         (declare-fun f (Int Int) Bool)
         (check-valid
             (assert (=
-                (choose (x Int) (f x 4))
-                (choose (x Int) (f x (+ 2 2)))
+                (choose ((x Int)) (f x 4) x)
+                (choose ((x Int)) (f x (+ 2 2)) x)
             ))
         )
     )
@@ -1457,8 +1492,8 @@ fn no_choose4() {
         (declare-fun f (Int Int) Bool)
         (check-valid
             (assert (=
-                (choose (x Int) (f x 5))
-                (choose (x Int) (f x (+ 2 2)))
+                (choose ((x Int)) (f x 5) x)
+                (choose ((x Int)) (f x (+ 2 2)) x)
             ))
         )
     )
@@ -1472,7 +1507,7 @@ fn yes_choose5() {
             (assert
                 (let (( g
                         (lambda ((m Int))
-                            (choose (x Int) (f x (+ m 1)))
+                            (choose ((x Int)) (f x (+ m 1)) x)
                         )
                     ))
                     (=
@@ -1493,7 +1528,7 @@ fn no_choose5() {
             (assert
                 (let (( g
                         (lambda ((m Int))
-                            (choose (x Int) (f x (+ m 1)))
+                            (choose ((x Int)) (f x (+ m 1)) x)
                         )
                     ))
                     (=

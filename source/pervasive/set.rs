@@ -1,40 +1,33 @@
 #[allow(unused_imports)]
 use builtin::*;
 #[allow(unused_imports)]
+use builtin_macros::*;
+#[allow(unused_imports)]
 use crate::pervasive::*;
 #[allow(unused_imports)]
 use crate::pervasive::map::*;
 
 /// set type for specifications
 #[verifier(external_body)]
-pub struct Set<A> {
+pub struct Set<#[verifier(maybe_negative)] A> {
     dummy: std::marker::PhantomData<A>,
 }
 
-// TODO(andrea) move into impl once associated functions supported
 #[spec]
-#[verifier(pub_abstract)]
-pub fn set_empty<A>() -> Set<A> {
-    arbitrary()
-}
-
-#[spec]
-pub fn set_full<A>() -> Set<A> {
-    set_empty().complement()
-}
-
-#[spec]
-#[verifier(pub_abstract)]
+#[verifier(external_body)]
 pub fn set_new<A, F: Fn(A) -> bool>(f: F) -> Set<A> {
-    arbitrary()
+    unimplemented!()
 }
 
 impl<A> Set<A> {
+    fndecl!(pub fn empty() -> Set<A>);
+
     #[spec]
-    #[verifier(pub_abstract)]
-    pub fn contains(self, a: A) -> bool {
-        arbitrary()
+    pub fn full() -> Set<A> {
+        Set::empty().complement()
     }
+
+    fndecl!(pub fn contains(self, a: A) -> bool);
 
     #[spec]
     pub fn ext_equal(self, s2: Set<A>) -> bool {
@@ -46,69 +39,33 @@ impl<A> Set<A> {
         forall(|a: A| self.contains(a) >>= s2.contains(a))
     }
 
-    #[spec]
-    #[verifier(pub_abstract)]
-    pub fn insert(self, a: A) -> Set<A> {
-        arbitrary()
-    }
+    fndecl!(pub fn insert(self, a: A) -> Set<A>);
 
-    #[spec]
-    #[verifier(pub_abstract)]
-    pub fn remove(self, a: A) -> Set<A> {
-        arbitrary()
-    }
+    fndecl!(pub fn remove(self, a: A) -> Set<A>);
 
-    #[spec]
-    #[verifier(pub_abstract)]
-    pub fn union(self, s2: Set<A>) -> Set<A> {
-        arbitrary()
-    }
+    fndecl!(pub fn union(self, s2: Set<A>) -> Set<A>);
 
-    #[spec]
-    #[verifier(pub_abstract)]
-    pub fn intersect(self, s2: Set<A>) -> Set<A> {
-        arbitrary()
-    }
+    fndecl!(pub fn intersect(self, s2: Set<A>) -> Set<A>);
 
-    #[spec]
-    #[verifier(pub_abstract)]
-    pub fn difference(self, s2: Set<A>) -> Set<A> {
-        arbitrary()
-    }
+    fndecl!(pub fn difference(self, s2: Set<A>) -> Set<A>);
 
-    #[spec]
-    #[verifier(pub_abstract)]
-    pub fn complement(self) -> Set<A> {
-        arbitrary()
-    }
+    fndecl!(pub fn complement(self) -> Set<A>);
 
     #[spec]
     pub fn filter<F: Fn(A) -> bool>(self, f: F) -> Set<A> {
         self.intersect(set_new(f))
     }
 
-    #[spec]
-    #[verifier(pub_abstract)]
-    pub fn finite(self) -> bool {
-        arbitrary()
-    }
+    fndecl!(pub fn finite(self) -> bool);
 
-    #[spec]
-    #[verifier(pub_abstract)]
-    pub fn len(self) -> nat {
-        arbitrary()
-    }
+    fndecl!(pub fn len(self) -> nat);
 
     #[spec]
     pub fn choose(self) -> A {
         choose(|a: A| self.contains(a))
     }
 
-    #[spec]
-    #[verifier(pub_abstract)]
-    pub fn mk_map<V, F: Fn(A) -> V>(self, f: F) -> Map<A, V> {
-        arbitrary()
-    }
+    fndecl!(pub fn mk_map<V, F: Fn(A) -> V>(self, f: F) -> Map<A, V>);
 
 }
 
@@ -118,7 +75,7 @@ impl<A> Set<A> {
 #[verifier(external_body)]
 #[verifier(broadcast_forall)]
 pub fn axiom_set_empty<A>(a: A) {
-    ensures(!set_empty().contains(a));
+    ensures(!Set::empty().contains(a));
 }
 
 #[proof]
@@ -214,7 +171,7 @@ pub fn axiom_mk_map_index<K, V, F: Fn(K) -> V>(s: Set<K>, f: F, key: K) {
 #[verifier(external_body)]
 #[verifier(broadcast_forall)]
 pub fn axiom_set_empty_finite<A>() {
-    ensures(#[trigger] set_empty::<A>().finite());
+    ensures(#[trigger] Set::<A>::empty().finite());
 }
 
 #[proof]
@@ -278,7 +235,7 @@ pub fn axiom_set_choose_finite<A>(s: Set<A>) {
 #[verifier(broadcast_forall)]
 pub fn axiom_set_empty_len<A>() {
     ensures([
-        #[trigger] set_empty::<A>().len() == 0,
+        #[trigger] Set::<A>::empty().len() == 0,
     ]);
 }
 
@@ -333,6 +290,6 @@ macro_rules! set_insert_rec {
 #[macro_export]
 macro_rules! set {
     [$($tail:tt)*] => {
-        set_insert_rec![$crate::pervasive::set::set_empty();$($tail)*]
+        set_insert_rec![$crate::pervasive::set::Set::empty();$($tail)*]
     }
 }

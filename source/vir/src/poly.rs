@@ -226,9 +226,13 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
     match &expr.x {
         ExprX::Const(_) => expr.clone(),
         ExprX::Var(x) => SpannedTyped::new(&expr.span, &state.types[x], ExprX::Var(x.clone())),
+        ExprX::VarLoc(x) => {
+            SpannedTyped::new(&expr.span, &state.types[x], ExprX::VarLoc(x.clone()))
+        }
         ExprX::VarAt(x, at) => {
             SpannedTyped::new(&expr.span, &state.types[x], ExprX::VarAt(x.clone(), *at))
         }
+        ExprX::ConstVar(..) => panic!("ConstVar should already be removed"),
         ExprX::Call(target, exprs) => match target {
             CallTarget::Static(name, _) => {
                 let function = &ctx.func_map[name].x;
@@ -322,6 +326,7 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
                 }
             }
         }
+        ExprX::Loc(e) => mk_expr(ExprX::Loc(poly_expr(ctx, state, e))),
         ExprX::Binary(op, e1, e2) => {
             let e1 = poly_expr(ctx, state, e1);
             let e2 = poly_expr(ctx, state, e2);
@@ -365,13 +370,18 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
             state.types.pop_scope();
             mk_expr(ExprX::Closure(Arc::new(bs), e1))
         }
-        ExprX::Choose(binder, e1) => {
+        ExprX::Choose { params, cond, body } => {
+            let mut bs: Vec<Binder<Typ>> = Vec::new();
             state.types.push_scope(true);
-            let typ = coerce_typ_to_poly(ctx, &binder.a);
-            let _ = state.types.insert(binder.name.clone(), typ.clone());
-            let e1 = poly_expr(ctx, state, e1);
+            for binder in params.iter() {
+                let typ = coerce_typ_to_poly(ctx, &binder.a);
+                let _ = state.types.insert(binder.name.clone(), typ.clone());
+                bs.push(binder.new_a(typ));
+            }
+            let cond = coerce_expr_to_native(ctx, &poly_expr(ctx, state, cond));
+            let body = coerce_expr_to_poly(ctx, &poly_expr(ctx, state, body));
             state.types.pop_scope();
-            mk_expr_typ(&typ, ExprX::Choose(binder.new_a(typ.clone()), e1))
+            mk_expr_typ(&body.clone().typ, ExprX::Choose { params: Arc::new(bs), cond, body })
         }
         ExprX::Assign(e1, e2) => {
             let e1 = poly_expr(ctx, state, e1);
@@ -497,6 +507,7 @@ fn poly_function(ctx: &Ctx, function: &Function) -> Function {
         ensure,
         decrease,
         mask_spec,
+        is_const,
         is_abstract,
         attrs,
         body,
@@ -574,6 +585,7 @@ fn poly_function(ctx: &Ctx, function: &Function) -> Function {
         ensure,
         decrease,
         mask_spec,
+        is_const: *is_const,
         is_abstract: *is_abstract,
         attrs: attrs.clone(),
         body,

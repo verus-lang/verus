@@ -237,6 +237,54 @@ test_verify_one_file! {
     } => Err(TestErr { has_vir_error: true, .. })
 }
 
+test_verify_one_file! {
+    #[test] test_well_founded1 code! {
+        enum List {
+            Cons(int, Box<List>)
+        }
+    } => Err(TestErr { has_vir_error: true, .. })
+}
+
+test_verify_one_file! {
+    #[test] test_well_founded2 code! {
+        enum List {
+            Cons1(int, Box<List>),
+            Cons2(int, Box<List>),
+        }
+    } => Err(TestErr { has_vir_error: true, .. })
+}
+
+test_verify_one_file! {
+    #[test] test_well_founded3 code! {
+        enum List1 {
+            Cons(int, Box<List2>)
+        }
+        enum List2 {
+            Cons(int, Box<List1>)
+        }
+    } => Err(TestErr { has_vir_error: true, .. })
+}
+
+test_verify_one_file! {
+    #[test] test_well_founded4 code! {
+        enum List {
+            Cons(int, (Box<List>, bool))
+        }
+    } => Err(TestErr { has_vir_error: true, .. })
+}
+
+test_verify_one_file! {
+    #[test] test_well_field_unbox code! {
+        struct B { b: bool }
+        fn foo(s1: Box<B>, s2: &Box<B>, s3: Box<&B>, s4: Box<(bool, bool)>) {
+            let z1 = s1.b;
+            let z2 = s2.b;
+            let z3 = s3.b;
+            let z4 = s4.0;
+        }
+    } => Ok(())
+}
+
 const IS_VARIANT_MAYBE: &str = code_str! {
     #[is_variant]
     pub enum Maybe<T> {
@@ -373,4 +421,31 @@ test_verify_one_file! {
             assert(v.get_Some_1() == 3);
         }
     } => Err(_) // type-checking error
+}
+
+test_verify_one_file! {
+    #[test] test_regression_tuple_1 code! {
+        struct B(bool);
+
+        fn test1(b: B) {
+            let z = b.0;
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_enum_field_visibility code! {
+        #[is_variant]
+        enum E {
+            One(u64),
+            Two(u64),
+        }
+
+        impl E {
+            #[spec]
+            pub fn is_One_le(self, v: u64) -> bool {
+                self.is_One() && self.get_One_0() <= v
+            }
+        }
+    } => Ok(())
 }

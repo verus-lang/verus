@@ -9,15 +9,18 @@ use crate::def::{
     check_decrease_int, decrease_at_entry, height, prefix_recursive_fun, suffix_rename, Spanned,
     FUEL_PARAM, FUEL_TYPE,
 };
+use crate::func_to_air::params_to_pars;
 use crate::scc::Graph;
 use crate::sst::{BndX, Exp, ExpX, Exps, LocalDecl, LocalDeclX, Stm, StmX, UniqueIdent};
 use crate::sst_visitor::{
-    exp_rename_vars, map_exp_visitor, map_exp_visitor_result, map_stm_visitor,
+    exp_rename_vars, exp_visitor_check, exp_visitor_dfs, map_exp_visitor, map_stm_visitor,
+    stm_visitor_dfs, VisitorControlFlow,
 };
 use crate::util::vec_map_result;
 use air::ast::{Binder, Commands, Quant, Span};
 use air::ast_util::{ident_binder, str_ident, str_typ};
 use air::errors::error;
+use air::scope_map::ScopeMap;
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -85,7 +88,8 @@ fn check_decrease_call(ctxt: &Ctxt, span: &Span, name: &Fun, args: &Exps) -> Res
         .collect();
     let mut decreases_exps: Vec<Exp> = Vec::new();
     for expr in function.x.decrease.iter() {
-        let decreases_exp = expr_to_exp(ctxt.ctx, &function.x.params, expr)?;
+        let decreases_exp =
+            expr_to_exp(ctxt.ctx, &params_to_pars(&function.x.params, false), expr)?;
         let dec_exp = exp_rename_vars(&decreases_exp, &renames);
         let e_decx = ExpX::Bind(
             Spanned::new(span.clone(), BndX::Let(Arc::new(binders.clone()))),
@@ -100,9 +104,10 @@ fn check_decrease_call(ctxt: &Ctxt, span: &Span, name: &Fun, args: &Exps) -> Res
 fn terminates(ctxt: &Ctxt, exp: &Exp) -> Result<Exp, VirErr> {
     let bool_exp = |expx: ExpX| SpannedTyped::new(&exp.span, &Arc::new(TypX::Bool), expx);
     match &exp.x {
-        ExpX::Const(_) | ExpX::Var(..) | ExpX::VarAt(..) | ExpX::Old(..) => {
+        ExpX::Const(_) | ExpX::Var(..) | ExpX::VarAt(..) | ExpX::VarLoc(..) | ExpX::Old(..) => {
             Ok(bool_exp(ExpX::Const(Constant::Bool(true))))
         }
+        ExpX::Loc(e) => terminates(ctxt, e),
         ExpX::Call(x, _, args) => {
             let mut e = if *x == ctxt.recursive_function_name
                 || ctxt.ctx.func_call_graph.get_scc_rep(x) == ctxt.scc_rep
@@ -199,16 +204,15 @@ pub(crate) fn is_recursive_exp(ctx: &Ctx, name: &Fun, body: &Exp) -> bool {
         // This function is part of a mutually recursive component
         true
     } else {
+        let mut scope_map = ScopeMap::new();
         // Check for self-recursion, which SCC computation does not account for
-        let mut recurse = false;
-        map_exp_visitor(body, &mut |exp| match &exp.x {
-            ExpX::Call(x, _, _) if x == name => {
-                recurse = true;
-                exp.clone()
-            }
-            _ => exp.clone(),
-        });
-        recurse
+        match exp_visitor_dfs(body, &mut scope_map, &mut |exp, _scope_map| match &exp.x {
+            ExpX::Call(x, _, _) if x == name => VisitorControlFlow::Stop(()),
+            _ => VisitorControlFlow::Recurse,
+        }) {
+            VisitorControlFlow::Stop(()) => true,
+            _ => false,
+        }
     }
 }
 
@@ -218,16 +222,13 @@ pub(crate) fn is_recursive_stm(ctx: &Ctx, name: &Fun, body: &Stm) -> bool {
         true
     } else {
         // Check for self-recursion, which SCC computation does not account for
-        let mut recurse = false;
-        map_stm_visitor(body, &mut |stm| match &stm.x {
-            StmX::Call(x, _, _, _) if x == name => {
-                recurse = true;
-                Ok(stm.clone())
-            }
-            _ => Ok(stm.clone()),
-        })
-        .unwrap();
-        recurse
+        match stm_visitor_dfs(body, &mut |stm| match &stm.x {
+            StmX::Call(x, _, _, _) if x == name => VisitorControlFlow::Stop(()),
+            _ => VisitorControlFlow::Recurse,
+        }) {
+            VisitorControlFlow::Stop(()) => true,
+            _ => false,
+        }
     }
 }
 
@@ -258,20 +259,16 @@ fn mk_decreases_at_entry(ctxt: &Ctxt, span: &Span, exps: &Vec<Exp>) -> (Vec<Loca
 // It's possible that we could be allow some recursion.
 fn disallow_recursion_exp(ctxt: &Ctxt, exp: &Exp) -> Result<(), VirErr> {
     let scc_rep = ctxt.ctx.func_call_graph.get_scc_rep(&ctxt.recursive_function_name);
-    let _ = map_exp_visitor_result(exp, &mut |exp| {
-        match &exp.x {
-            ExpX::Call(x, _, _) => {
-                if *x == ctxt.recursive_function_name
-                    || ctxt.ctx.func_call_graph.get_scc_rep(x) == scc_rep
-                {
-                    return err_str(&exp.span, "recursion not allowed here");
-                }
-            }
-            _ => {}
+    let mut scope_map = ScopeMap::new();
+    exp_visitor_check(exp, &mut scope_map, &mut |exp, _scope_map| match &exp.x {
+        ExpX::Call(x, _, _)
+            if *x == ctxt.recursive_function_name
+                || ctxt.ctx.func_call_graph.get_scc_rep(x) == scc_rep =>
+        {
+            err_str(&exp.span, "recursion not allowed here")
         }
-        Ok(exp.clone())
-    })?;
-    Ok(())
+        _ => Ok(()),
+    })
 }
 
 pub(crate) fn check_termination_exp(
@@ -288,8 +285,9 @@ pub(crate) fn check_termination_exp(
         return err_str(&function.span, "recursive function must call decreases(...)");
     }
 
-    let decreases_exps =
-        vec_map_result(&function.x.decrease, |e| expr_to_exp(ctx, &function.x.params, e))?;
+    let decreases_exps = vec_map_result(&function.x.decrease, |e| {
+        expr_to_exp(ctx, &params_to_pars(&function.x.params, false), e)
+    })?;
     let scc_rep = ctx.func_call_graph.get_scc_rep(&function.x.name);
     let scc_rep_clone = scc_rep.clone();
     let ctxt =
@@ -349,8 +347,9 @@ pub(crate) fn check_termination_stm(
         return err_str(&function.span, "recursive function must call decreases(...)");
     }
 
-    let decreases_exps =
-        vec_map_result(&function.x.decrease, |e| expr_to_exp(ctx, &function.x.params, e))?;
+    let decreases_exps = vec_map_result(&function.x.decrease, |e| {
+        expr_to_exp(ctx, &params_to_pars(&function.x.params, false), e)
+    })?;
     let scc_rep = ctx.func_call_graph.get_scc_rep(&function.x.name);
     let ctxt =
         Ctxt { recursive_function_name: function.x.name.clone(), num_decreases, scc_rep, ctx };

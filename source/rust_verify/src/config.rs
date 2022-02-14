@@ -10,7 +10,11 @@ pub struct Args {
     pub no_lifetime: bool,
     pub time: bool,
     pub rlimit: u32,
+    pub smt_options: Vec<(String, String)>,
+    pub multiple_errors: u32,
     pub log_vir: Option<String>,
+    pub log_vir_simple: Option<String>,
+    pub log_vir_poly: Option<String>,
     pub log_air_initial: Option<String>,
     pub log_air_final: Option<String>,
     pub log_smt: Option<String>,
@@ -39,7 +43,11 @@ pub fn parse_args(program: &String, args: impl Iterator<Item = String>) -> (Args
     const OPT_NO_LIFETIME: &str = "no-lifetime";
     const OPT_TIME: &str = "time";
     const OPT_RLIMIT: &str = "rlimit";
+    const OPT_SMT_OPTION: &str = "smt-option";
+    const OPT_MULTIPLE_ERRORS: &str = "multiple-errors";
     const OPT_LOG_VIR: &str = "log-vir";
+    const OPT_LOG_VIR_SIMPLE: &str = "log-vir-simple";
+    const OPT_LOG_VIR_POLY: &str = "log-vir-poly";
     const OPT_LOG_AIR_INITIAL: &str = "log-air";
     const OPT_LOG_AIR_FINAL: &str = "log-air-final";
     const OPT_LOG_SMT: &str = "log-smt";
@@ -65,7 +73,16 @@ pub fn parse_args(program: &String, args: impl Iterator<Item = String>) -> (Args
     opts.optflag("", OPT_NO_LIFETIME, "Do not run lifetime checking on proofs");
     opts.optflag("", OPT_TIME, "Measure and report time taken");
     opts.optopt("", OPT_RLIMIT, "Set SMT resource limit (roughly in seconds)", "INTEGER");
+    opts.optmulti("", OPT_SMT_OPTION, "Set an SMT option (e.g. smt.random_seed=7)", "OPTION=VALUE");
+    opts.optopt("", OPT_MULTIPLE_ERRORS, "If 0, look for at most one error per function; if > 0, always find first error in function and make extra queries to find more errors (default: 2)", "INTEGER");
     opts.optopt("", OPT_LOG_VIR, "Log VIR", "FILENAME");
+    opts.optopt("", OPT_LOG_VIR_SIMPLE, "Log simplified VIR", "FILENAME");
+    opts.optopt(
+        "",
+        OPT_LOG_VIR_POLY,
+        "Log poly VIR, filename prefix (it will be suffixed with the current module name)",
+        "FILENAME",
+    );
     opts.optopt("", OPT_LOG_AIR_INITIAL, "Log AIR queries in initial form", "FILENAME");
     opts.optopt("", OPT_LOG_AIR_FINAL, "Log AIR queries in final form", "FILENAME");
     opts.optopt("", OPT_LOG_SMT, "Log SMT queries", "FILENAME");
@@ -83,6 +100,12 @@ pub fn parse_args(program: &String, args: impl Iterator<Item = String>) -> (Args
         eprint!("{}", opts.usage(&brief));
     };
 
+    let error = |msg: String| -> ! {
+        eprintln!("Error: {}", msg);
+        print_usage();
+        std::process::exit(-1)
+    };
+
     let (matches, unmatched) = match opts.parse_partial(args) {
         Ok((m, mut unmatched)) => {
             if m.opt_present("h") {
@@ -96,11 +119,7 @@ pub fn parse_args(program: &String, args: impl Iterator<Item = String>) -> (Args
             unmatched.insert(0, program.clone());
             (m, unmatched)
         }
-        Err(f) => {
-            eprintln!("Error: {}", f.to_string());
-            print_usage();
-            std::process::exit(-1);
-        }
+        Err(f) => error(f.to_string()),
     };
 
     let args = Args {
@@ -113,9 +132,27 @@ pub fn parse_args(program: &String, args: impl Iterator<Item = String>) -> (Args
         time: matches.opt_present(OPT_TIME),
         rlimit: matches
             .opt_get::<u32>(OPT_RLIMIT)
-            .expect("expected integer after rlimit")
+            .unwrap_or_else(|_| error("expected integer after rlimit".to_string()))
             .unwrap_or(0),
+        smt_options: matches
+            .opt_strs(OPT_SMT_OPTION)
+            .iter()
+            .map(|line| {
+                let v = line.split('=').map(|s| s.trim()).collect::<Vec<_>>();
+                if v.len() == 2 {
+                    (v[0].to_string(), v[1].to_string())
+                } else {
+                    error("expected SMT option of form option_name=option_value".to_string())
+                }
+            })
+            .collect(),
+        multiple_errors: matches
+            .opt_get::<u32>(OPT_MULTIPLE_ERRORS)
+            .unwrap_or_else(|_| error("expected integer after multiple-errors".to_string()))
+            .unwrap_or(2),
         log_vir: matches.opt_str(OPT_LOG_VIR),
+        log_vir_simple: matches.opt_str(OPT_LOG_VIR_SIMPLE),
+        log_vir_poly: matches.opt_str(OPT_LOG_VIR_POLY),
         log_air_initial: matches.opt_str(OPT_LOG_AIR_INITIAL),
         log_air_final: matches.opt_str(OPT_LOG_AIR_FINAL),
         log_smt: matches.opt_str(OPT_LOG_SMT),

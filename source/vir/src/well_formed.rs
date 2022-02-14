@@ -139,14 +139,18 @@ fn check_function(ctxt: &Ctxt, function: &Function) -> Result<(), VirErr> {
                     for (_param, arg) in
                         f.x.params.iter().zip(args.iter()).filter(|(p, _)| p.x.is_mut)
                     {
-                        match &arg.x {
-                            ExprX::Var(_) => (),
-                            _ => {
-                                return err_str(
-                                    &arg.span,
-                                    "complex arguments to &mut parameters are currently unsupported",
-                                );
-                            }
+                        let ok = match &arg.x {
+                            ExprX::Loc(l) => match l.x {
+                                ExprX::VarLoc(_) => true,
+                                _ => false,
+                            },
+                            _ => false,
+                        };
+                        if !ok {
+                            return err_str(
+                                &arg.span,
+                                "complex arguments to &mut parameters are currently unsupported",
+                            );
                         }
                     }
                     if disallow_private_access {
@@ -213,11 +217,6 @@ fn check_function(ctxt: &Ctxt, function: &Function) -> Result<(), VirErr> {
 }
 
 fn check_datatype(dt: &Datatype) -> Result<(), VirErr> {
-    if dt.x.variants.len() == 0 {
-        // We could support this, but it's probably better to use a dedicated "never" type anyway
-        return err_str(&dt.span, "an enum must have at least one variant");
-    }
-
     let unforgeable = dt.x.unforgeable;
     let dt_mode = dt.x.mode;
 

@@ -22,6 +22,7 @@ use vir::def::SnapPos;
 pub struct Verifier {
     pub encountered_vir_error: bool,
     pub count_verified: u64,
+    pub count_errors: u64,
     pub errors: Vec<Vec<ErrorSpan>>,
     pub args: Args,
     pub test_capture_output: Option<std::sync::Arc<std::sync::Mutex<Vec<u8>>>>,
@@ -105,6 +106,7 @@ impl Verifier {
         Verifier {
             encountered_vir_error: false,
             count_verified: 0,
+            count_errors: 0,
             errors: Vec::new(),
             args: args,
             test_capture_output: None,
@@ -141,56 +143,73 @@ impl Verifier {
         snap_map: &Vec<(air::ast::Span, SnapPos)>,
         command: &Command,
     ) {
-        let result = air_context.command(&command);
+        let is_check_valid = matches!(**command, CommandX::CheckValid(_));
+        let mut result = air_context.command(&command);
+        let mut is_first_check = true;
+        let mut checks_remaining = self.args.multiple_errors;
+        let mut only_check_earlier = false;
+        loop {
+            match result {
+                ValidityResult::Valid => {
+                    if is_check_valid && is_first_check {
+                        self.count_verified += 1;
+                    }
+                    break;
+                }
+                ValidityResult::TypeError(err) => {
+                    panic!("internal error: generated ill-typed AIR code: {}", err);
+                }
+                ValidityResult::Invalid(air_model, error) => {
+                    if is_first_check {
+                        self.count_errors += 1;
+                    }
+                    report_error(compiler, &error);
 
-        let mut is_check_valid = false;
-        if let CommandX::CheckValid(_) = **command {
-            is_check_valid = true;
+                    let mut errors = vec![ErrorSpan::new_from_air_span(
+                        compiler.session().source_map(),
+                        &error.msg,
+                        &error.spans[0],
+                    )];
+                    for ErrorLabel { msg, span } in &error.labels {
+                        errors.push(ErrorSpan::new_from_air_span(
+                            compiler.session().source_map(),
+                            msg,
+                            span,
+                        ));
+                    }
+
+                    self.errors.push(errors);
+                    if self.args.debug {
+                        let mut debugger = Debugger::new(
+                            air_model,
+                            assign_map,
+                            snap_map,
+                            compiler.session().source_map(),
+                        );
+                        debugger.start_shell(air_context);
+                    }
+
+                    if self.args.multiple_errors == 0 {
+                        break;
+                    }
+                    is_first_check = false;
+                    if !only_check_earlier {
+                        checks_remaining -= 1;
+                        if checks_remaining == 0 {
+                            only_check_earlier = true;
+                        }
+                    }
+
+                    result = air_context.check_valid_again(only_check_earlier);
+                }
+                ValidityResult::UnexpectedSmtOutput(err) => {
+                    panic!("unexpected SMT output: {}", err);
+                }
+            }
         }
 
-        match result {
-            ValidityResult::Valid => {
-                if is_check_valid {
-                    self.count_verified += 1;
-                }
-            }
-            ValidityResult::TypeError(err) => {
-                panic!("internal error: generated ill-typed AIR code: {}", err);
-            }
-            ValidityResult::Invalid(air_model, error) => {
-                report_error(compiler, &error);
-
-                let mut errors = vec![ErrorSpan::new_from_air_span(
-                    compiler.session().source_map(),
-                    &error.msg,
-                    &error.spans[0],
-                )];
-                for ErrorLabel { msg, span } in &error.labels {
-                    errors.push(ErrorSpan::new_from_air_span(
-                        compiler.session().source_map(),
-                        msg,
-                        span,
-                    ));
-                }
-
-                self.errors.push(errors);
-                if self.args.debug {
-                    let mut debugger = Debugger::new(
-                        air_model,
-                        assign_map,
-                        snap_map,
-                        compiler.session().source_map(),
-                    );
-                    debugger.start_shell(air_context);
-                }
-            }
-            ValidityResult::UnexpectedSmtOutput(err) => {
-                panic!("unexpected SMT output: {}", err);
-            }
-        }
-
-        if is_check_valid && self.args.debug {
-            air_context.cleanup_check_valid();
+        if is_check_valid {
+            air_context.finish_query();
         }
     }
 
@@ -332,6 +351,9 @@ impl Verifier {
         krate: &Krate,
         no_span: Span,
     ) -> Result<(), VirErr> {
+        #[cfg(debug_assertions)]
+        vir::check_ast_flavor::check_krate(&krate);
+
         let mut air_context = air::context::Context::new(air::smt_manager::SmtManager::new());
         air_context.set_ignore_unexpected_smt(self.args.ignore_unexpected_smt);
         air_context.set_debug(self.args.debug);
@@ -352,6 +374,9 @@ impl Verifier {
         // air_recommended_options causes AIR to apply a preset collection of Z3 options
         air_context.set_z3_param("air_recommended_options", "true");
         air_context.set_rlimit(self.args.rlimit * 1000000);
+        for (option, value) in self.args.smt_options.iter() {
+            air_context.set_z3_param(&option, &value);
+        }
 
         let air_no_span = air::ast::Span {
             raw_span: crate::util::to_raw_span(no_span),
@@ -359,6 +384,12 @@ impl Verifier {
         };
         let mut global_ctx = vir::context::GlobalCtx::new(&krate, air_no_span);
         let krate = vir::ast_simplify::simplify_krate(&mut global_ctx, &krate)?;
+
+        if let Some(filename) = &self.args.log_vir_simple {
+            let mut file =
+                File::create(filename).expect(&format!("could not open file {}", filename));
+            vir::printer::write_krate(&mut file, &krate);
+        }
 
         #[cfg(debug_assertions)]
         vir::check_ast_flavor::check_krate_simplified(&krate);
@@ -403,6 +434,16 @@ impl Verifier {
                 self.args.debug,
             )?;
             let poly_krate = vir::poly::poly_krate_for_module(&mut ctx, &pruned_krate);
+            if let Some(filename) = &self.args.log_vir_poly {
+                let module_name_os = if module.segments.len() > 0 {
+                    module.segments.iter().map(|s| s.to_string()).collect::<Vec<_>>().join("__")
+                } else {
+                    "root".to_string()
+                };
+                let mut file = File::create(filename.to_string() + "-" + &module_name_os)
+                    .expect(&format!("could not open file {}", filename));
+                vir::printer::write_krate(&mut file, &poly_krate);
+            }
             self.verify_module(compiler, &poly_krate, &mut air_context, &mut ctx)?;
             global_ctx = ctx.free();
             air_context.pop();
@@ -470,40 +511,7 @@ impl Verifier {
         if let Some(filename) = &self.args.log_vir {
             let mut file =
                 File::create(filename).expect(&format!("could not open file {}", filename));
-            for datatype in vir_crate.datatypes.iter() {
-                writeln!(&mut file, "datatype {:?} @ {:?}", datatype.x.path, datatype.span)
-                    .expect("cannot write to vir file");
-                writeln!(&mut file, "{:?}", datatype.x.variants).expect("cannot write to vir file");
-                writeln!(&mut file).expect("cannot write to vir file");
-            }
-            for func in vir_crate.functions.iter() {
-                writeln!(&mut file, "fn {} @ {:?}", fun_as_rust_dbg(&func.x.name), func.span)
-                    .expect("cannot write to vir file");
-                writeln!(
-                    &mut file,
-                    "visibility {:?} mode {:?} fuel {} is_abstract {}",
-                    func.x.visibility, func.x.mode, func.x.fuel, func.x.is_abstract
-                )
-                .expect("cannot write to vir file");
-                for require in func.x.require.iter() {
-                    writeln!(&mut file, "requires {:#?}", require)
-                        .expect("cannot write to vir file");
-                }
-                for ensure in func.x.ensure.iter() {
-                    writeln!(&mut file, "ensures {:#?}", ensure).expect("cannot write to vir file");
-                }
-                for param in func.x.params.iter() {
-                    writeln!(
-                        &mut file,
-                        "parameter {}: {:?} @ {:?}",
-                        param.x.name, param.x.typ, param.span
-                    )
-                    .expect("cannot write to vir file");
-                }
-                writeln!(&mut file, "returns {:?}", func.x.ret).expect("cannot write to vir file");
-                writeln!(&mut file, "body {:#?}", func.x.body).expect("cannot write to vir file");
-                writeln!(&mut file).expect("cannot write to vir file");
-            }
+            vir::printer::write_krate(&mut file, &vir_crate);
         }
         vir::well_formed::check_crate(&vir_crate)?;
         let erasure_modes = vir::modes::check_crate(&vir_crate)?;
@@ -554,6 +562,22 @@ impl std::io::Write for DiagnosticOutputBuffer {
     }
 }
 
+struct Rewrite {}
+
+impl rustc_lint::FormalVerifierRewrite for Rewrite {
+    fn rewrite_crate(
+        &mut self,
+        krate: &rustc_ast::ast::Crate,
+        _next_node_id: &mut dyn FnMut() -> rustc_ast::ast::NodeId,
+    ) -> rustc_ast::ast::Crate {
+        use crate::rustc_ast::mut_visit::MutVisitor;
+        let mut krate = krate.clone();
+        let mut visitor = crate::erase_rewrite::Visitor::new();
+        visitor.visit_crate(&mut krate);
+        krate
+    }
+}
+
 impl rustc_driver::Callbacks for Verifier {
     fn config(&mut self, config: &mut rustc_interface::interface::Config) {
         if let Some(target) = &self.test_capture_output {
@@ -562,6 +586,21 @@ impl rustc_driver::Callbacks for Verifier {
                     output: target.clone(),
                 }));
         }
+    }
+
+    fn after_parsing<'tcx>(
+        &mut self,
+        _compiler: &Compiler,
+        queries: &'tcx rustc_interface::Queries<'tcx>,
+    ) -> rustc_driver::Compilation {
+        let _ = {
+            // Install the rewrite_crate callback so that Rust will later call us back on the AST
+            let registration = queries.register_plugins().expect("register_plugins");
+            let peeked = registration.peek();
+            let lint_store = &peeked.1;
+            lint_store.formal_verifier_callback.replace(Some(Box::new(Rewrite {})));
+        };
+        rustc_driver::Compilation::Continue
     }
 
     fn after_expansion<'tcx>(

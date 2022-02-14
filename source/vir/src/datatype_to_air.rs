@@ -1,6 +1,4 @@
-use crate::ast::{
-    DatatypeTransparency, Field, Ident, Idents, Mode, Param, ParamX, Path, Typ, TypX, Variants,
-};
+use crate::ast::{DatatypeTransparency, Field, Ident, Idents, Mode, Path, Typ, TypX, Variants};
 use crate::ast_util::is_visible_to_of_owner;
 use crate::context::Ctx;
 use crate::def::{
@@ -9,6 +7,7 @@ use crate::def::{
     Spanned,
 };
 use crate::func_to_air::{func_bind, func_bind_trig, func_def_args};
+use crate::sst::{Par, ParPurpose, ParX};
 use crate::sst_to_air::{
     datatype_has_type, datatype_id, expr_has_type, path_to_air_ident, typ_invariant, typ_to_air,
 };
@@ -45,10 +44,15 @@ pub fn is_datatype_transparent(source_module: &Path, datatype: &crate::ast::Data
     }
 }
 
-fn field_to_param(span: &Span, f: &Field) -> Param {
+fn field_to_par(span: &Span, f: &Field) -> Par {
     Spanned::new(
         span.clone(),
-        ParamX { name: f.name.clone(), typ: f.a.0.clone(), mode: f.a.1, is_mut: false },
+        ParX {
+            name: f.name.clone(),
+            typ: f.a.0.clone(),
+            mode: f.a.1,
+            purpose: ParPurpose::Regular,
+        },
     )
 }
 
@@ -105,7 +109,12 @@ fn datatype_or_fun_to_air_commands(
     let x_param = |typ: &Typ| {
         Spanned::new(
             span.clone(),
-            ParamX { name: x.clone(), typ: typ.clone(), mode: Mode::Exec, is_mut: false },
+            ParX {
+                name: x.clone(),
+                typ: typ.clone(),
+                mode: Mode::Exec,
+                purpose: ParPurpose::Regular,
+            },
         )
     };
     let x_params = |typ: &Typ| Arc::new(vec![x_param(typ)]);
@@ -142,7 +151,7 @@ fn datatype_or_fun_to_air_commands(
 
     // function axiom
     if is_fun {
-        let mut params: Vec<Param> = Vec::new();
+        let mut params: Vec<Par> = Vec::new();
         let mut args: Vec<Expr> = Vec::new();
         let mut pre: Vec<Expr> = Vec::new();
         for i in 0..tparams.len() - 1 {
@@ -152,8 +161,13 @@ fn datatype_or_fun_to_air_commands(
                 pre.push(inv);
             }
             args.push(arg);
-            let paramx = ParamX { name, typ: vpolytyp.clone(), mode: Mode::Exec, is_mut: false };
-            params.push(Spanned::new(span.clone(), paramx));
+            let parx = ParX {
+                name,
+                typ: vpolytyp.clone(),
+                mode: Mode::Exec,
+                purpose: ParPurpose::Regular,
+            };
+            params.push(Spanned::new(span.clone(), parx));
         }
         let tparamret = typ_args.last().expect("return type").clone();
         let app = Arc::new(ExprX::ApplyLambda(apolytyp.clone(), x_var.clone(), Arc::new(args)));
@@ -201,7 +215,7 @@ fn datatype_or_fun_to_air_commands(
             //   forall typs, arg1 ... argn.
             //     inv1 && ... && invn => has_type(box(ctor(arg1 ... argn)), T(typs))
             // trigger on has_type(box(ctor(arg1 ... argn)), T(typs))
-            let params = vec_map(&*variant.a, |f| field_to_param(span, f));
+            let params = vec_map(&*variant.a, |f| field_to_par(span, f));
             let params = Arc::new(params);
             let ctor_args = func_def_args(&Arc::new(vec![]), &params);
             let ctor = ident_apply(&variant_ident(&dpath, &variant.name), &ctor_args);
@@ -273,6 +287,7 @@ fn datatype_or_fun_to_air_commands(
     }
 
     // height axiom
+    // (make sure that this stays in sync with recursive_types::check_well_founded)
     if add_height {
         for variant in variants.iter() {
             for field in variant.a.iter() {
@@ -372,7 +387,7 @@ pub fn datatypes_to_air(ctx: &Ctx, datatypes: &crate::ast::Datatypes) -> Command
             &str_typ(&path_to_air_ident(dpath)),
             None,
             None,
-            &datatype.x.typ_params,
+            &Arc::new(vec_map(&datatype.x.typ_params, |(x, _strict_pos)| x.clone())),
             &datatype.x.variants,
             false,
             is_transparent,

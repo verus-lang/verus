@@ -3,6 +3,8 @@
 mod common;
 use common::*;
 
+// choose
+
 test_verify_one_file! {
     #[test] test1 code! {
         #[spec]
@@ -122,4 +124,158 @@ test_verify_one_file! {
             assert(choose(|n: nat| cnatf(n) && n >= 10) >= 10);
         }
     } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test1_choose_must_be_tuple code! {
+        #[spec]
+        fn f(i: int, j: int) -> bool {
+            i <= j
+        }
+
+        #[proof]
+        fn test_choose() {
+            let (i, j): (int, int) = choose(|i: int, j: int| f(i, j));
+            assert(f(7, 8));
+            assert(i <= j);
+        }
+    } => Err(TestErr { has_vir_error: false, .. })
+}
+
+// choose_tuple
+
+test_verify_one_file! {
+    #[test] test1_tuple code! {
+        #[spec]
+        fn f(i: int, j: int) -> bool {
+            i <= j
+        }
+
+        #[proof]
+        fn test_choose() {
+            let (i, j): (int, int) = choose_tuple(|i: int, j: int| f(i, j));
+            assert(f(7, 8));
+            assert(i <= j);
+        }
+
+        #[proof]
+        fn test_choose_eq() {
+            let (i1, j1): (int, int) = choose_tuple(|i: int, j: int| f(i, j) && (1 + 1 == 2));
+            let (i2, j2): (int, int) = choose_tuple(|i: int, j: int| f(i, j) && (2 + 2 == 4));
+            assert(i1 == i2);
+            assert(j1 == j2);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test1_fails1_tuple code! {
+        #[spec]
+        fn f(i: int, j: int) -> bool {
+            i <= j
+        }
+
+        #[proof]
+        fn test_choose() {
+            let (i, j): (int, int) = choose_tuple(|i: int, j: int| f(i, j));
+            assert(i <= j); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] test1_fails2_tuple code! {
+        #[spec]
+        fn f(i: int, j: int) -> bool {
+            i <= j
+        }
+
+        #[proof]
+        fn test_choose() {
+            let (i, j): (int, int) = choose_tuple(|i: int, j: int| f(i, j));
+            assert(f(7, 8));
+            assert(i == 7); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] test1_fails3_tuple code! {
+        #[spec]
+        fn f(i: int, j: int) -> bool {
+            i <= j
+        }
+
+        #[proof]
+        fn test_choose_eq() {
+            let (i1, j1): (int, int) = choose_tuple(|i: int, j: int| f(i, j) && (2 + 2 == 4));
+            let (i2, j2): (int, int) = choose_tuple(|i: int, j: int| (2 + 2 == 4) && f(i, j));
+            // requires extensional equality
+            assert(i1 == i2); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] test_refine_tuple code! {
+        #[spec]
+        fn cnatf(m: nat, n: nat) -> bool {
+            true
+        }
+
+        #[spec]
+        fn cintf(m: int, n: int) -> bool {
+            true
+        }
+
+        #[proof]
+        fn cnat() {
+            assert(choose_tuple::<(nat, nat), _>(|m: nat, n: nat| cnatf(m, n)).0 >= 0);
+            assert(choose_tuple::<(nat, nat), _>(|m: nat, n: nat| cintf(m, n) && m < 0 && n < 0).0 >= 0);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_refine_fail1_tuple code! {
+        #[spec]
+        fn cintf(m: int, n: int) -> bool {
+            true
+        }
+
+        #[proof]
+        fn cnat() {
+            assert(cintf(-10, -10));
+            assert(choose_tuple::<(nat, nat), _>(|m: nat, n: nat| cintf(m, n) && m < 0 && n < 0).0 < 0); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] test_refine2_tuple code! {
+        #[spec]
+        fn cnatf(m: nat, n: nat) -> bool {
+            true
+        }
+
+        #[proof]
+        fn cnat() {
+            assert(cnatf(10, 10));
+            assert(choose_tuple::<(nat, nat), _>(|m: nat, n: nat| cnatf(m, n) && m >= 10 && n >= 10).0 >= 10);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test1_choose_tuple_wrong_type code! {
+        #[spec]
+        fn f(i: int, j: int) -> bool {
+            i <= j
+        }
+
+        #[proof]
+        fn test_choose() {
+            let (i, j): (int, nat) = choose_tuple(|i: int, j: int| f(i, j));
+        }
+    } => Err(TestErr { has_vir_error: true, .. })
 }

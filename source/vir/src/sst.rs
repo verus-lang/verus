@@ -7,10 +7,10 @@
 //! SST is designed to make the translation to AIR as straightforward as possible.
 
 use crate::ast::{
-    BinaryOp, Constant, Fun, Path, SpannedTyped, Typ, Typs, UnaryOp, UnaryOpr, VarAt,
+    BinaryOp, Constant, Fun, Mode, Path, SpannedTyped, Typ, Typs, UnaryOp, UnaryOpr, VarAt,
 };
 use crate::def::Spanned;
-use air::ast::{Binder, Binders, Ident, Quant};
+use air::ast::{Binders, Ident, Quant};
 use air::errors::Error;
 use std::sync::Arc;
 
@@ -23,7 +23,7 @@ pub enum BndX {
     Let(Binders<Exp>),
     Quant(Quant, Binders<Typ>, Trigs),
     Lambda(Binders<Typ>),
-    Choose(Binder<Typ>, Trigs),
+    Choose(Binders<Typ>, Trigs, Exp),
 }
 
 // variable name with optional unique id for renaming (equal to unique_id in LocalDeclX)
@@ -35,9 +35,11 @@ pub type Exps = Arc<Vec<Exp>>;
 pub enum ExpX {
     Const(Constant),
     Var(UniqueIdent),
-    VarAt(Ident, VarAt),
+    VarLoc(UniqueIdent),
+    VarAt(UniqueIdent, VarAt),
+    Loc(Exp),
     // used only during sst_to_air to generate AIR Old
-    Old(Ident, Ident),
+    Old(Ident, UniqueIdent),
     // call to spec function
     Call(Fun, Typs, Exps),
     CallLambda(Typ, Exp, Exps),
@@ -47,6 +49,24 @@ pub enum ExpX {
     Binary(BinaryOp, Exp, Exp),
     If(Exp, Exp, Exp),
     Bind(Bnd, Exp),
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum ParPurpose {
+    MutPre,
+    MutPost,
+    Regular,
+}
+
+/// Function parameter
+pub type Par = Arc<Spanned<ParX>>;
+pub type Pars = Arc<Vec<Par>>;
+#[derive(Debug, Clone)]
+pub struct ParX {
+    pub name: Ident,
+    pub typ: Typ,
+    pub mode: Mode,
+    pub purpose: ParPurpose,
 }
 
 #[derive(Clone, Debug)]

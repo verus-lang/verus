@@ -1,50 +1,28 @@
 #[allow(unused_imports)]
 use builtin::*;
 #[allow(unused_imports)]
+use builtin_macros::*;
+#[allow(unused_imports)]
 use crate::pervasive::*;
 
 /// sequence type for specifications
 #[verifier(external_body)]
-pub struct Seq<A> {
+pub struct Seq<#[verifier(strictly_positive)] A> {
     dummy: std::marker::PhantomData<A>,
 }
 
-#[spec]
-#[verifier(pub_abstract)]
-pub fn seq_empty<A>() -> Seq<A> {
-    arbitrary()
-}
-
-#[spec]
-#[verifier(pub_abstract)]
-pub fn seq_new<A, F: Fn(int) -> A>(len: nat, f: F) -> Seq<A> {
-    arbitrary()
-}
-
 impl<A> Seq<A> {
-    #[spec]
-    #[verifier(pub_abstract)]
-    pub fn len(self) -> nat {
-        arbitrary()
-    }
+    fndecl!(pub fn empty() -> Seq<A>);
 
-    #[spec]
-    #[verifier(pub_abstract)]
-    pub fn index(self, i: int) -> A {
-        arbitrary()
-    }
+    fndecl!(pub fn new<F: Fn(int) -> A>(len: nat, f: F) -> Seq<A>);
 
-    #[spec]
-    #[verifier(pub_abstract)]
-    pub fn push(self, a: A) -> Seq<A> {
-        arbitrary()
-    }
+    fndecl!(pub fn len(self) -> nat);
 
-    #[spec]
-    #[verifier(pub_abstract)]
-    pub fn update(self, i: int, a: A) -> Seq<A> {
-        arbitrary()
-    }
+    fndecl!(pub fn index(self, i: int) -> A);
+
+    fndecl!(pub fn push(self, a: A) -> Seq<A>);
+
+    fndecl!(pub fn update(self, i: int, a: A) -> Seq<A>);
 
     #[spec]
     pub fn ext_equal(self, s2: Seq<A>) -> bool {
@@ -52,17 +30,9 @@ impl<A> Seq<A> {
         forall(|i: int| 0 <= i && i < self.len() >>= equal(self.index(i), s2.index(i)))
     }
 
-    #[spec]
-    #[verifier(pub_abstract)]
-    pub fn subrange(self, start_inclusive: int, end_exclusive: int) -> Seq<A> {
-        arbitrary()
-    }
+    fndecl!(pub fn subrange(self, start_inclusive: int, end_exclusive: int) -> Seq<A>);
 
-    #[spec]
-    #[verifier(pub_abstract)]
-    pub fn add(self, rhs: Seq<A>) -> Seq<A> {
-        arbitrary()
-    }
+    fndecl!(pub fn add(self, rhs: Seq<A>) -> Seq<A>);
 }
 
 // Trusted axioms
@@ -71,14 +41,14 @@ impl<A> Seq<A> {
 #[verifier(external_body)]
 #[verifier(broadcast_forall)]
 pub fn axiom_seq_empty<A>() {
-    ensures(#[trigger] seq_empty::<A>().len() == 0);
+    ensures(#[trigger] Seq::<A>::empty().len() == 0);
 }
 
 #[proof]
 #[verifier(external_body)]
 #[verifier(broadcast_forall)]
 pub fn axiom_seq_new_len<A, F: Fn(int) -> A>(len: nat, f: F) {
-    ensures(#[trigger] seq_new(len, f).len() == len);
+    ensures(#[trigger] Seq::new(len, f).len() == len);
 }
 
 #[proof]
@@ -89,7 +59,7 @@ pub fn axiom_seq_new_index<A, F: Fn(int) -> A>(len: nat, f: F, i: int) {
         0 <= i,
         i < len,
     ]);
-    ensures(equal(seq_new(len, f).index(i), f(i)));
+    ensures(equal(Seq::new(len, f).index(i), f(i)));
 }
 
 #[proof]
@@ -230,6 +200,6 @@ macro_rules! seq_insert_rec {
 #[macro_export]
 macro_rules! seq {
     [$($tail:tt)*] => {
-        seq_insert_rec![$crate::pervasive::seq::seq_empty();$($tail)*]
+        seq_insert_rec![$crate::pervasive::seq::Seq::empty();$($tail)*]
     }
 }

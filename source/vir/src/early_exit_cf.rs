@@ -50,7 +50,10 @@ fn expr_get_early_exits_rec(
         match &expr.x {
             ExprX::Const(..)
             | ExprX::Var(..)
+            | ExprX::VarLoc(..)
             | ExprX::VarAt(..)
+            | ExprX::ConstVar(..)
+            | ExprX::Loc(..)
             | ExprX::Call(CallTarget::Static(..), _)
             | ExprX::Call(CallTarget::FnSpec(..), _)
             | ExprX::Tuple(..)
@@ -64,7 +67,7 @@ fn expr_get_early_exits_rec(
             | ExprX::Block(..) => VisitorControlFlow::Recurse,
             ExprX::Quant(..)
             | ExprX::Closure(..)
-            | ExprX::Choose(..)
+            | ExprX::Choose { .. }
             | ExprX::AssertBV(..)
             | ExprX::Fuel(..)
             | ExprX::Header(..)

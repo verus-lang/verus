@@ -1,25 +1,255 @@
 use crate::ast::{Ident, SpannedTyped, VirErr};
 use crate::def::Spanned;
-use crate::sst::{BndX, Exp, ExpX, Stm, StmX, Trig, UniqueIdent};
+use crate::sst::{BndX, Exp, ExpX, Stm, StmX, Trig, Trigs, UniqueIdent};
 use crate::util::vec_map;
+use crate::visitor::expr_visitor_control_flow;
+pub(crate) use crate::visitor::VisitorControlFlow;
 use air::ast::{Binder, BinderX};
 use air::scope_map::ScopeMap;
 use std::collections::HashMap;
 use std::sync::Arc;
 
+pub type VisitorScopeMap = ScopeMap<Ident, bool>;
+
+pub(crate) fn exp_visitor_check<E, MF>(
+    expr: &Exp,
+    map: &mut VisitorScopeMap,
+    mf: &mut MF,
+) -> Result<(), E>
+where
+    MF: FnMut(&Exp, &mut VisitorScopeMap) -> Result<(), E>,
+{
+    match exp_visitor_dfs(expr, map, &mut |expr, map| match mf(expr, map) {
+        Ok(()) => VisitorControlFlow::Recurse,
+        Err(e) => VisitorControlFlow::Stop(e),
+    }) {
+        VisitorControlFlow::Recurse => Ok(()),
+        VisitorControlFlow::Return => unreachable!(),
+        VisitorControlFlow::Stop(e) => Err(e),
+    }
+}
+
+pub(crate) fn exp_visitor_dfs<T, F>(
+    exp: &Exp,
+    map: &mut VisitorScopeMap,
+    f: &mut F,
+) -> VisitorControlFlow<T>
+where
+    F: FnMut(&Exp, &mut VisitorScopeMap) -> VisitorControlFlow<T>,
+{
+    match f(exp, map) {
+        VisitorControlFlow::Stop(val) => VisitorControlFlow::Stop(val),
+        VisitorControlFlow::Return => VisitorControlFlow::Recurse,
+        VisitorControlFlow::Recurse => {
+            match &exp.x {
+                ExpX::Const(_)
+                | ExpX::Var(..)
+                | ExpX::VarAt(..)
+                | ExpX::Old(..)
+                | ExpX::VarLoc(..) => (),
+                ExpX::Loc(e0) => {
+                    expr_visitor_control_flow!(exp_visitor_dfs(e0, map, f));
+                }
+                ExpX::Call(_x, _typs, es) => {
+                    for e in es.iter() {
+                        expr_visitor_control_flow!(exp_visitor_dfs(e, map, f));
+                    }
+                }
+                ExpX::CallLambda(_typ, e0, es) => {
+                    expr_visitor_control_flow!(exp_visitor_dfs(e0, map, f));
+                    for e in es.iter() {
+                        expr_visitor_control_flow!(exp_visitor_dfs(e, map, f));
+                    }
+                }
+                ExpX::Ctor(_path, _ident, binders) => {
+                    for binder in binders.iter() {
+                        expr_visitor_control_flow!(exp_visitor_dfs(&binder.a, map, f));
+                    }
+                }
+                ExpX::Unary(_op, e1) => {
+                    expr_visitor_control_flow!(exp_visitor_dfs(e1, map, f));
+                }
+                ExpX::UnaryOpr(_op, e1) => {
+                    expr_visitor_control_flow!(exp_visitor_dfs(e1, map, f));
+                }
+                ExpX::Binary(_op, e1, e2) => {
+                    expr_visitor_control_flow!(exp_visitor_dfs(e1, map, f));
+                    expr_visitor_control_flow!(exp_visitor_dfs(e2, map, f));
+                }
+                ExpX::If(e1, e2, e3) => {
+                    expr_visitor_control_flow!(exp_visitor_dfs(e1, map, f));
+                    expr_visitor_control_flow!(exp_visitor_dfs(e2, map, f));
+                    expr_visitor_control_flow!(exp_visitor_dfs(e3, map, f));
+                }
+                ExpX::Bind(bnd, e1) => {
+                    let mut bvars: Vec<(Ident, bool)> = Vec::new();
+                    let mut trigs: Trigs = Arc::new(vec![]);
+                    match &bnd.x {
+                        BndX::Let(bs) => {
+                            for b in bs.iter() {
+                                expr_visitor_control_flow!(exp_visitor_dfs(&b.a, map, f));
+                                bvars.push((b.name.clone(), false));
+                            }
+                        }
+                        BndX::Quant(_quant, binders, ts) => {
+                            for b in binders.iter() {
+                                bvars.push((b.name.clone(), true));
+                            }
+                            trigs = ts.clone();
+                        }
+                        BndX::Lambda(params) => {
+                            for b in params.iter() {
+                                bvars.push((b.name.clone(), false));
+                            }
+                        }
+                        BndX::Choose(params, ts, _) => {
+                            for b in params.iter() {
+                                bvars.push((b.name.clone(), true));
+                            }
+                            trigs = ts.clone();
+                        }
+                    }
+                    map.push_scope(true);
+                    for (x, is_triggered) in bvars {
+                        let _ = map.insert(x, is_triggered);
+                    }
+                    for t in trigs.iter() {
+                        for exp in t.iter() {
+                            expr_visitor_control_flow!(exp_visitor_dfs(exp, map, f));
+                        }
+                    }
+                    if let BndX::Choose(_, _, cond) = &bnd.x {
+                        expr_visitor_control_flow!(exp_visitor_dfs(cond, map, f));
+                    }
+                    expr_visitor_control_flow!(exp_visitor_dfs(e1, map, f));
+                    map.pop_scope();
+                }
+            }
+            VisitorControlFlow::Recurse
+        }
+    }
+}
+
+pub(crate) fn stm_visitor_dfs<T, F>(stm: &Stm, f: &mut F) -> VisitorControlFlow<T>
+where
+    F: FnMut(&Stm) -> VisitorControlFlow<T>,
+{
+    match f(stm) {
+        VisitorControlFlow::Stop(val) => VisitorControlFlow::Stop(val),
+        VisitorControlFlow::Return => VisitorControlFlow::Recurse,
+        VisitorControlFlow::Recurse => {
+            match &stm.x {
+                StmX::Call(..)
+                | StmX::Assert(_, _)
+                | StmX::Assume(_)
+                | StmX::Assign { .. }
+                | StmX::AssertBV { .. }
+                | StmX::Fuel(..) => (),
+                StmX::DeadEnd(s) => {
+                    expr_visitor_control_flow!(stm_visitor_dfs(s, f));
+                }
+                StmX::If(_cond, lhs, rhs) => {
+                    expr_visitor_control_flow!(stm_visitor_dfs(lhs, f));
+                    if let Some(rhs) = rhs {
+                        expr_visitor_control_flow!(stm_visitor_dfs(rhs, f));
+                    }
+                }
+                StmX::While {
+                    cond_stms,
+                    cond_exp: _,
+                    body,
+                    invs: _,
+                    typ_inv_vars: _,
+                    modified_vars: _,
+                } => {
+                    for s in cond_stms.iter() {
+                        expr_visitor_control_flow!(stm_visitor_dfs(s, f));
+                    }
+                    expr_visitor_control_flow!(stm_visitor_dfs(body, f));
+                }
+                StmX::OpenInvariant(_inv, _ident, _ty, body) => {
+                    expr_visitor_control_flow!(stm_visitor_dfs(body, f));
+                }
+                StmX::Block(ss) => {
+                    for s in ss.iter() {
+                        expr_visitor_control_flow!(stm_visitor_dfs(s, f));
+                    }
+                }
+            }
+            VisitorControlFlow::Recurse
+        }
+    }
+}
+
+#[allow(dead_code)]
+pub(crate) fn stm_exp_visitor_dfs<T, F>(stm: &Stm, f: &mut F) -> VisitorControlFlow<T>
+where
+    F: FnMut(&Exp, &mut VisitorScopeMap) -> VisitorControlFlow<T>,
+{
+    stm_visitor_dfs(stm, &mut |stm| {
+        match &stm.x {
+            StmX::Call(_path, _typs, exps, _dest) => {
+                for exp in exps.iter() {
+                    expr_visitor_control_flow!(exp_visitor_dfs(exp, &mut ScopeMap::new(), f));
+                }
+            }
+            StmX::Assert(_span2, exp) => {
+                expr_visitor_control_flow!(exp_visitor_dfs(exp, &mut ScopeMap::new(), f))
+            }
+            StmX::AssertBV(exp) => {
+                expr_visitor_control_flow!(exp_visitor_dfs(exp, &mut ScopeMap::new(), f))
+            }
+            StmX::Assume(exp) => {
+                expr_visitor_control_flow!(exp_visitor_dfs(exp, &mut ScopeMap::new(), f))
+            }
+            StmX::Assign { lhs: _, rhs, is_init: _ } => {
+                expr_visitor_control_flow!(exp_visitor_dfs(rhs, &mut ScopeMap::new(), f))
+            }
+            StmX::Fuel(..) | StmX::DeadEnd(..) => (),
+            StmX::If(exp, _s1, _s2) => {
+                expr_visitor_control_flow!(exp_visitor_dfs(exp, &mut ScopeMap::new(), f))
+            }
+            StmX::While {
+                cond_stms: _,
+                cond_exp,
+                body: _,
+                invs,
+                typ_inv_vars: _,
+                modified_vars: _,
+            } => {
+                expr_visitor_control_flow!(exp_visitor_dfs(cond_exp, &mut ScopeMap::new(), f));
+                for inv in invs.iter() {
+                    expr_visitor_control_flow!(exp_visitor_dfs(inv, &mut ScopeMap::new(), f));
+                }
+            }
+            StmX::OpenInvariant(inv, _ident, _ty, _body) => {
+                expr_visitor_control_flow!(exp_visitor_dfs(inv, &mut ScopeMap::new(), f))
+            }
+            StmX::Block(_) => (),
+        }
+        VisitorControlFlow::Recurse
+    })
+}
+
 pub(crate) fn map_exp_visitor_bind<F>(
     exp: &Exp,
-    map: &mut ScopeMap<Ident, bool>,
+    map: &mut VisitorScopeMap,
     f: &mut F,
 ) -> Result<Exp, VirErr>
 where
-    F: FnMut(&Exp, &mut ScopeMap<Ident, bool>) -> Result<Exp, VirErr>,
+    F: FnMut(&Exp, &mut VisitorScopeMap) -> Result<Exp, VirErr>,
 {
     let exp_new = |e: ExpX| SpannedTyped::new(&exp.span, &exp.typ, e);
     match &exp.x {
         ExpX::Const(_) => f(exp, map),
         ExpX::Var(..) => f(exp, map),
         ExpX::VarAt(..) => f(exp, map),
+        ExpX::VarLoc(..) => f(exp, map),
+        ExpX::Loc(e1) => {
+            let expr1 = map_exp_visitor_bind(e1, map, f)?;
+            let exp = exp_new(ExpX::Loc(expr1));
+            f(&exp, map)
+        }
         ExpX::Old(..) => f(exp, map),
         ExpX::Call(x, typs, es) => {
             let mut exps: Vec<Exp> = Vec::new();
@@ -70,22 +300,25 @@ where
             f(&exp, map)
         }
         ExpX::Bind(bnd, e1) => {
-            let mut bvars: Vec<(Ident, bool)> = Vec::new();
             let bndx = match &bnd.x {
                 BndX::Let(bs) => {
                     let mut binders: Vec<Binder<Exp>> = Vec::new();
                     for b in bs.iter() {
                         let a = map_exp_visitor_bind(&b.a, map, f)?;
                         binders.push(Arc::new(BinderX { name: b.name.clone(), a }));
-                        bvars.push((b.name.clone(), false));
+                    }
+                    map.push_scope(true);
+                    for b in binders.iter() {
+                        let _ = map.insert(b.name.clone(), false);
                     }
                     BndX::Let(Arc::new(binders))
                 }
                 BndX::Quant(quant, binders, ts) => {
-                    let mut triggers: Vec<Trig> = Vec::new();
+                    map.push_scope(true);
                     for b in binders.iter() {
-                        bvars.push((b.name.clone(), true));
+                        let _ = map.insert(b.name.clone(), true);
                     }
+                    let mut triggers: Vec<Trig> = Vec::new();
                     for t in ts.iter() {
                         let mut exprs: Vec<Exp> = Vec::new();
                         for exp in t.iter() {
@@ -95,10 +328,19 @@ where
                     }
                     BndX::Quant(*quant, binders.clone(), Arc::new(triggers))
                 }
-                BndX::Lambda(_) => bnd.x.clone(),
-                BndX::Choose(binder, ts) => {
+                BndX::Lambda(binders) => {
+                    map.push_scope(true);
+                    for b in binders.iter() {
+                        let _ = map.insert(b.name.clone(), false);
+                    }
+                    bnd.x.clone()
+                }
+                BndX::Choose(binders, ts, cond) => {
+                    map.push_scope(true);
+                    for b in binders.iter() {
+                        let _ = map.insert(b.name.clone(), true);
+                    }
                     let mut triggers: Vec<Trig> = Vec::new();
-                    bvars.push((binder.name.clone(), true));
                     for t in ts.iter() {
                         let mut exprs: Vec<Exp> = Vec::new();
                         for exp in t.iter() {
@@ -106,14 +348,11 @@ where
                         }
                         triggers.push(Arc::new(exprs));
                     }
-                    BndX::Choose(binder.clone(), Arc::new(triggers))
+                    let cond = map_exp_visitor_bind(cond, map, f)?;
+                    BndX::Choose(binders.clone(), Arc::new(triggers), cond)
                 }
             };
             let bnd = Spanned::new(bnd.span.clone(), bndx);
-            map.push_scope(true);
-            for (x, is_quant) in bvars {
-                let _ = map.insert(x, is_quant);
-            }
             let e1 = map_exp_visitor_bind(e1, map, f)?;
             map.pop_scope();
             let expx = ExpX::Bind(bnd, e1);
@@ -123,19 +362,11 @@ where
     }
 }
 
-pub(crate) fn map_exp_visitor_result<F>(exp: &Exp, f: &mut F) -> Result<Exp, VirErr>
-where
-    F: FnMut(&Exp) -> Result<Exp, VirErr>,
-{
-    let mut map: ScopeMap<Ident, bool> = ScopeMap::new();
-    map_exp_visitor_bind(exp, &mut map, &mut |e, _| f(e))
-}
-
 pub(crate) fn map_exp_visitor<F>(exp: &Exp, f: &mut F) -> Exp
 where
     F: FnMut(&Exp) -> Exp,
 {
-    let mut map: ScopeMap<Ident, bool> = ScopeMap::new();
+    let mut map: VisitorScopeMap = ScopeMap::new();
     map_exp_visitor_bind(exp, &mut map, &mut |e, _| Ok(f(e))).unwrap()
 }
 

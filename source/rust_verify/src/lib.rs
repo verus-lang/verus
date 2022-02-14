@@ -17,13 +17,16 @@ extern crate rustc_resolve;
 extern crate rustc_session;
 extern crate rustc_span;
 extern crate rustc_typeck;
+extern crate smallvec;
 
+mod attributes;
 pub mod config;
 pub mod context;
 pub mod debugger;
 pub mod def;
 pub mod driver;
 pub mod erase;
+mod erase_rewrite;
 pub mod file_loader;
 mod lifetime;
 pub mod rust_to_vir;

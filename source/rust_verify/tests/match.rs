@@ -288,6 +288,20 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test3_tuple_struct code! {
+        struct Pair<A, B>(A, B);
+
+        fn test() {
+            let Pair(mut y, z) = Pair(true, false);
+            assert(y);
+            y = false;
+            assert(!y);
+            assert(!z);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] test3_struct_dots code! {
         struct Pair<A, B> { a: A, b: B }
 
