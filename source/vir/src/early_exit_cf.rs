@@ -69,8 +69,6 @@ fn expr_get_early_exits_rec(
             | ExprX::Closure(..)
             | ExprX::Choose { .. }
             | ExprX::AssertBV(..)
-            | ExprX::Assert(_, _)
-            | ExprX::Assume(_)
             | ExprX::Fuel(..)
             | ExprX::Header(..)
             | ExprX::Admit

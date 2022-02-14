@@ -237,12 +237,6 @@ where
                 ExprX::AssertBV(e) => {
                     expr_visitor_control_flow!(expr_visitor_dfs(e, map, mf));
                 }
-                ExprX::Assert(_, e) => {
-                    expr_visitor_control_flow!(expr_visitor_dfs(e, map, mf));
-                }
-                ExprX::Assume(e) => {
-                    expr_visitor_control_flow!(expr_visitor_dfs(e, map, mf));
-                }
                 ExprX::Fuel(_, _) => (),
                 ExprX::Header(_) => {
                     panic!("header expression not allowed here: {:?}", &expr.span);
@@ -461,14 +455,6 @@ where
         ExprX::AssertBV(e) => {
             let expr1 = map_expr_visitor_env(e, map, env, fe, fs, ft)?;
             ExprX::AssertBV(expr1)
-        }
-        ExprX::Assert(err, e) => {
-            let expr1 = map_expr_visitor_env(e, map, env, fe, fs, ft)?;
-            ExprX::Assert(err.clone(), expr1)
-        }
-        ExprX::Assume(e) => {
-            let expr1 = map_expr_visitor_env(e, map, env, fe, fs, ft)?;
-            ExprX::Assume(expr1)
         }
         ExprX::If(e1, e2, e3) => {
             let expr1 = map_expr_visitor_env(e1, map, env, fe, fs, ft)?;

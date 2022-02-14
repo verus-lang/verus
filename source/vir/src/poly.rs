@@ -389,8 +389,6 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
             mk_expr(ExprX::Assign(e1, e2))
         }
         ExprX::AssertBV(_) => expr.clone(),
-        ExprX::Assert(_, _) => expr.clone(),
-        ExprX::Assume(_) => expr.clone(),
         ExprX::Fuel(..) => expr.clone(),
         ExprX::Header(..) => panic!("Header should already be removed"),
         ExprX::Admit => expr.clone(),

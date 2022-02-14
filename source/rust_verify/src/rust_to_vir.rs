@@ -14,7 +14,6 @@ use crate::rust_to_vir_base::{
     def_id_to_vir_path, fn_item_hir_id_to_self_def_id, hack_get_def_name, mk_visibility, ty_to_vir,
 };
 use crate::rust_to_vir_func::{check_foreign_item_fn, check_item_fn};
-use crate::sm_to_vir::SMCtxt;
 use crate::util::{err_span_str, unsupported_err_span};
 use crate::{err_unless, unsupported_err, unsupported_unless};
 use rustc_ast::Attribute;
@@ -31,7 +30,6 @@ use vir::ast_util::path_as_rust_name;
 fn check_item<'tcx>(
     ctxt: &Context<'tcx>,
     vir: &mut KrateX,
-    sm_ctxt: &mut SMCtxt,
     module_path: &Path,
     id: &ItemId,
     item: &'tcx Item<'tcx>,
@@ -42,7 +40,6 @@ fn check_item<'tcx>(
             check_item_fn(
                 ctxt,
                 vir,
-                None,
                 None,
                 item.def_id.to_def_id(),
                 visibility,
@@ -65,7 +62,6 @@ fn check_item<'tcx>(
             check_item_struct(
                 ctxt,
                 vir,
-                sm_ctxt,
                 module_path,
                 item.span,
                 id,
@@ -247,7 +243,6 @@ fn check_item<'tcx>(
                                             check_item_fn(
                                                 ctxt,
                                                 vir,
-                                                Some(sm_ctxt),
                                                 Some((self_path.clone(), adt_mode)),
                                                 impl_item.def_id.to_def_id(),
                                                 impl_item_visibility,
@@ -400,9 +395,8 @@ pub fn crate_to_vir<'tcx>(ctxt: &Context<'tcx>) -> Result<Krate, VirErr> {
     for (id, item) in foreign_items {
         check_foreign_item(ctxt, &mut vir, id, item)?;
     }
-    let mut sm_ctxt = SMCtxt::new();
     for (id, item) in items {
-        check_item(ctxt, &mut vir, &mut sm_ctxt, &item_to_module[id], id, item)?;
+        check_item(ctxt, &mut vir, &item_to_module[id], id, item)?;
     }
     unsupported_unless!(trait_items.len() == 0, "trait definitions", trait_items);
     for (_id, impl_item) in impl_items {
@@ -425,9 +419,6 @@ pub fn crate_to_vir<'tcx>(ctxt: &Context<'tcx>) -> Result<Krate, VirErr> {
             }
         }
     }
-
-    sm_ctxt.finalize(&mut vir)?;
-
     // for (id, _trait_impl) in trait_impls {
     //
     // }

@@ -631,16 +631,6 @@ pub(crate) fn expr_to_stm_opt(
             let assert = Spanned::new(e.span.clone(), StmX::AssertBV(expr));
             Ok((vec![assert], None))
         }
-        ExprX::Assert(err, e) => {
-            let expr = expr_to_exp_state(ctx, state, &e)?;
-            let stm = Spanned::new(expr.span.clone(), StmX::Assert(err.clone(), expr));
-            Ok((vec![stm], None))
-        }
-        ExprX::Assume(e) => {
-            let expr = expr_to_exp_state(ctx, state, &e)?;
-            let stm = Spanned::new(expr.span.clone(), StmX::Assume(expr));
-            Ok((vec![stm], None))
-        }
         ExprX::If(e0, e1, None) => {
             let (mut stms0, e0) = expr_to_stm(ctx, state, e0)?;
             let stms1 = expr_to_one_stm(ctx, state, e1)?;

@@ -4,7 +4,6 @@ use crate::rust_to_vir_base::{
     check_generics_bounds_fun, check_generics_idents, def_id_to_vir_path, ident_to_var, ty_to_vir,
 };
 use crate::rust_to_vir_expr::{expr_to_vir, pat_to_var, ExprModifier};
-use crate::sm_to_vir::SMCtxt;
 use crate::util::{err_span_str, err_span_string, spanned_new, unsupported_err_span, vec_map};
 use crate::{unsupported, unsupported_err, unsupported_err_unless, unsupported_unless};
 use rustc_ast::Attribute;
@@ -89,7 +88,6 @@ fn check_fn_decl<'tcx>(
 pub(crate) fn check_item_fn<'tcx>(
     ctxt: &Context<'tcx>,
     vir: &mut KrateX,
-    sm_ctxt: Option<&mut SMCtxt>,
     self_path_mode: Option<(vir::ast::Path, Mode)>,
     id: rustc_span::def_id::DefId,
     visibility: vir::ast::Visibility,
@@ -295,10 +293,6 @@ pub(crate) fn check_item_fn<'tcx>(
         body: if vattrs.external_body { None } else { Some(vir_body) },
     };
     let function = spanned_new(sig.span, func);
-    match sm_ctxt {
-        Some(sm_ctxt) => sm_ctxt.check_impl_item(&vattrs.state_machine_fn, &function)?,
-        None => {}
-    }
     vir.functions.push(function);
     Ok(())
 }

@@ -259,8 +259,6 @@ fn expr_to_node(expr: &Expr) -> Node {
             nodes!(forall {binders_node(vars, &typ_to_node)} {str_to_node(":require")} {expr_to_node(require)} {str_to_node(":ensure")} {expr_to_node(ensure)} {str_to_node(":proof")} {expr_to_node(proof)})
         }
         ExprX::AssertBV(expr) => nodes!(assertbv {expr_to_node(expr)}),
-        ExprX::Assert(_, expr) => nodes!(assert {expr_to_node(expr)}),
-        ExprX::Assume(expr) => nodes!(assume {expr_to_node(expr)}),
         ExprX::If(e0, e1, e2) => {
             let mut nodes = nodes_vec!(if { expr_to_node(e0) } {
                 expr_to_node(e1)

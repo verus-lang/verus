@@ -193,8 +193,6 @@ fn small_loc_or_temp(state: &mut State, expr: &Expr) -> SmallLocOrTemp {
         }
         ExprX::Forall { .. }
         | ExprX::AssertBV(..)
-        | ExprX::Assert(..)
-        | ExprX::Assume(..)
         | ExprX::Header(_)
         | ExprX::Match(..)
         | ExprX::While { .. }

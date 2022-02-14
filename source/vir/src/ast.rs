@@ -304,11 +304,7 @@ pub enum ExprX {
     /// Specification closure
     Closure(Binders<Typ>, Expr),
     /// Choose specification values satisfying a condition, compute body
-    Choose {
-        params: Binders<Typ>,
-        cond: Expr,
-        body: Expr,
-    },
+    Choose { params: Binders<Typ>, cond: Expr, body: Expr },
     /// Assign to local variable
     Assign(Expr, Expr),
     /// Reveal definition of an opaque function with some integer fuel amount
@@ -319,16 +315,8 @@ pub enum ExprX {
     Header(HeaderExpr),
     /// Assume false
     Admit,
-    /// Assert & assume
-    Assert(Option<Error>, Expr),
-    Assume(Expr),
     /// Forall or assert-by statement; proves "forall vars. ensure" via proof.
-    Forall {
-        vars: Binders<Typ>,
-        require: Expr,
-        ensure: Expr,
-        proof: Expr,
-    },
+    Forall { vars: Binders<Typ>, require: Expr, ensure: Expr, proof: Expr },
     /// bit vector assertions
     AssertBV(Expr),
     /// If-else
@@ -336,11 +324,7 @@ pub enum ExprX {
     /// Match (Note: ast_simplify replaces Match with other expressions)
     Match(Expr, Arms),
     /// While loop, with invariants
-    While {
-        cond: Expr,
-        body: Expr,
-        invs: Exprs,
-    },
+    While { cond: Expr, body: Expr, invs: Exprs },
     /// Open invariant
     OpenInvariant(Expr, Binder<Typ>, Expr),
     /// Return from function

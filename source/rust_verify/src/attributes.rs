@@ -1,5 +1,4 @@
 use crate::rust_to_vir_base::ident_to_var;
-use crate::sm_to_vir::{parse_state_machine_fn_attr, StateMachineFnAttr};
 use crate::util::{err_span_str, err_span_string};
 use rustc_ast::token::{Token, TokenKind};
 use rustc_ast::tokenstream::{TokenStream, TokenTree};
@@ -127,9 +126,6 @@ pub(crate) enum Attr {
     InvariantBlock,
     // an enum variant is_Variant
     IsVariant,
-    // for state machines
-    StateMachineStruct,
-    StateMachineFn(StateMachineFnAttr),
 }
 
 fn get_trigger_arg(span: Span, attr_tree: &AttrTree) -> Result<u64, VirErr> {
@@ -197,9 +193,6 @@ pub(crate) fn parse_attrs(attrs: &[Attribute]) -> Result<Vec<Attr>, VirErr> {
                 Some(box [AttrTree::Fun(_, arg, None)]) if arg == "invariant_block" => {
                     v.push(Attr::InvariantBlock)
                 }
-                Some(box [AttrTree::Fun(_, arg, None)]) if arg == "state_machine_struct" => {
-                    v.push(Attr::StateMachineStruct)
-                }
                 Some(box [AttrTree::Fun(_, arg, None)]) if arg == "is_variant" => {
                     v.push(Attr::IsVariant)
                 }
@@ -225,9 +218,6 @@ pub(crate) fn parse_attrs(attrs: &[Attribute]) -> Result<Vec<Attr>, VirErr> {
                     if arg == "returns" && name == "exec" =>
                 {
                     v.push(Attr::ReturnMode(Mode::Exec))
-                }
-                Some(box [AttrTree::Fun(_, arg, Some(box [t]))]) if arg == "state_machine_fn" => {
-                    v.push(Attr::StateMachineFn(parse_state_machine_fn_attr(t)?));
                 }
                 _ => return err_span_str(span, "unrecognized verifier attribute"),
             },
@@ -309,8 +299,6 @@ pub(crate) struct VerifierAttrs {
     pub(crate) unforgeable: bool,
     pub(crate) atomic: bool,
     pub(crate) is_variant: bool,
-    pub(crate) state_machine_struct: bool,
-    pub(crate) state_machine_fn: Option<StateMachineFnAttr>,
 }
 
 pub(crate) fn get_verifier_attrs(attrs: &[Attribute]) -> Result<VerifierAttrs, VirErr> {
@@ -327,8 +315,6 @@ pub(crate) fn get_verifier_attrs(attrs: &[Attribute]) -> Result<VerifierAttrs, V
         unforgeable: false,
         atomic: false,
         is_variant: false,
-        state_machine_struct: false,
-        state_machine_fn: None,
     };
     for attr in parse_attrs(attrs)? {
         match attr {
@@ -344,8 +330,6 @@ pub(crate) fn get_verifier_attrs(attrs: &[Attribute]) -> Result<VerifierAttrs, V
             Attr::Unforgeable => vs.unforgeable = true,
             Attr::Atomic => vs.atomic = true,
             Attr::IsVariant => vs.is_variant = true,
-            Attr::StateMachineStruct => vs.state_machine_struct = true,
-            Attr::StateMachineFn(a) => vs.state_machine_fn = Some(a.clone()),
             _ => {}
         }
     }
