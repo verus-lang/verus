@@ -22,6 +22,7 @@ use syn::{
     ImplItemMethod, Meta, MetaList, NestedMeta, Path, PathArguments, PathSegment, Type,
     Block, PatType, ExprBlock, Stmt, Pat,
 };
+use std::mem::swap;
 
 pub fn output_token_stream(bundle: SMBundle, concurrent: bool) -> syn::parse::Result<TokenStream> {
     let mut token_stream = TokenStream::new();
@@ -101,8 +102,8 @@ pub fn impl_decl_stream(self_ty: &Type, generics: &Option<Generics>) -> TokenStr
     }
 }
 
-pub fn fix_attr(attr: &mut Attribute) {
-    let should_wrap_in_verified = match attr.parse_meta() {
+pub fn should_delete_attr(attr: &Attribute) -> bool {
+    match attr.parse_meta() {
         Ok(Meta::Path(path)) | Ok(Meta::List(MetaList { path, .. })) => {
             path.is_ident("invariant")
                 || path.is_ident("inductive")
@@ -113,30 +114,17 @@ pub fn fix_attr(attr: &mut Attribute) {
                 || path.is_ident("sharding")
         }
         _ => false,
-    };
-
-    if should_wrap_in_verified {
-        let span = attr.span();
-        let mut old_toks = attr.path.to_token_stream();
-        old_toks.extend(attr.tokens.clone());
-        let toks = quote_spanned! {span =>
-            (state_machine_fn(#old_toks))
-        };
-        let mut segs = Punctuated::<PathSegment, Colon2>::new();
-        segs.push(PathSegment {
-            ident: Ident::new("verifier", span),
-            arguments: PathArguments::None,
-        });
-        let p = Path { leading_colon: None, segments: segs };
-
-        attr.tokens = toks;
-        attr.path = p;
     }
 }
 
 pub fn fix_attrs(attrs: &mut Vec<Attribute>) {
-    for attr in attrs.iter_mut() {
-        fix_attr(attr);
+    let mut old_attrs = Vec::new();
+    swap(&mut old_attrs, attrs);
+
+    for attr in old_attrs {
+        if !should_delete_attr(&attr) {
+            attrs.push(attr);
+        }
     }
 }
 
@@ -164,7 +152,6 @@ pub fn output_primary_stuff(
 
     // Note: #fields_named will include the braces.
     let code: TokenStream = quote! {
-        //#[verifier(state_machine_struct)]
         pub struct #name #gen #fields_named
     };
     token_stream.extend(code);
@@ -182,7 +169,6 @@ pub fn output_primary_stuff(
                 let args = post_params(&trans.params);
                 rel_fn = quote! {
                     #[spec]
-                    #[verifier(state_machine_fn(init(#name)))]
                     pub fn #name (#args) -> bool {
                         #f
                     }
@@ -191,7 +177,6 @@ pub fn output_primary_stuff(
                 let args = self_post_params(&trans.params);
                 rel_fn = quote! {
                     #[spec]
-                    #[verifier(state_machine_fn(transition(#name)))]
                     pub fn #name (#args) -> bool {
                         #f
                     }
@@ -207,10 +192,8 @@ pub fn output_primary_stuff(
                 &(trans.name.to_string() + "_safety_" + &idx.to_string()),
                 trans.name.span(),
             );
-            let idx_lit = syn::LitInt::new(&idx.to_string(), trans.name.span());
             let rel_fn = quote! {
                 #[spec]
-                #[verifier(state_machine_fn(safety_condition(#name, #idx_lit)))]
                 pub fn #name (#args) -> bool {
                     #safety_cond
                 }
