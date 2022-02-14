@@ -562,6 +562,22 @@ impl std::io::Write for DiagnosticOutputBuffer {
     }
 }
 
+struct Rewrite {}
+
+impl rustc_lint::FormalVerifierRewrite for Rewrite {
+    fn rewrite_crate(
+        &mut self,
+        krate: &rustc_ast::ast::Crate,
+        _next_node_id: &mut dyn FnMut() -> rustc_ast::ast::NodeId,
+    ) -> rustc_ast::ast::Crate {
+        use crate::rustc_ast::mut_visit::MutVisitor;
+        let mut krate = krate.clone();
+        let mut visitor = crate::erase_rewrite::Visitor::new();
+        visitor.visit_crate(&mut krate);
+        krate
+    }
+}
+
 impl rustc_driver::Callbacks for Verifier {
     fn config(&mut self, config: &mut rustc_interface::interface::Config) {
         if let Some(target) = &self.test_capture_output {
@@ -570,6 +586,21 @@ impl rustc_driver::Callbacks for Verifier {
                     output: target.clone(),
                 }));
         }
+    }
+
+    fn after_parsing<'tcx>(
+        &mut self,
+        _compiler: &Compiler,
+        queries: &'tcx rustc_interface::Queries<'tcx>,
+    ) -> rustc_driver::Compilation {
+        let _ = {
+            // Install the rewrite_crate callback so that Rust will later call us back on the AST
+            let registration = queries.register_plugins().expect("register_plugins");
+            let peeked = registration.peek();
+            let lint_store = &peeked.1;
+            lint_store.formal_verifier_callback.replace(Some(Box::new(Rewrite {})));
+        };
+        rustc_driver::Compilation::Continue
     }
 
     fn after_expansion<'tcx>(
