@@ -1,12 +1,12 @@
 #![allow(unused_imports)]
 
-use proc_macro2::Span;
-use proc_macro2::TokenStream;
-use quote::{quote, quote_spanned, ToTokens};
 use crate::ast::{
     Extras, Field, Invariant, Lemma, LemmaPurpose, ShardableType, Transition, TransitionKind,
     TransitionStmt, SM,
 };
+use proc_macro2::Span;
+use proc_macro2::TokenStream;
+use quote::{quote, quote_spanned, ToTokens};
 use std::collections::HashMap;
 use syn::buffer::Cursor;
 use syn::parse::{Parse, ParseStream};
@@ -190,9 +190,7 @@ fn check_init(ts: &TransitionStmt) -> syn::parse::Result<Vec<(Ident, Span)>> {
     }
 }
 
-pub fn check_normal(
-    ts: &TransitionStmt,
-) -> syn::parse::Result<Vec<(Ident, Span)>> {
+pub fn check_normal(ts: &TransitionStmt) -> syn::parse::Result<Vec<(Ident, Span)>> {
     match ts {
         TransitionStmt::Block(_, v) => {
             let mut h = Vec::new();
@@ -224,10 +222,7 @@ pub fn check_normal(
     }
 }
 
-fn append_stmt_front(
-    t1: TransitionStmt,
-    t2: TransitionStmt,
-) -> TransitionStmt {
+fn append_stmt_front(t1: TransitionStmt, t2: TransitionStmt) -> TransitionStmt {
     match t1 {
         TransitionStmt::Block(span, mut v) => {
             let mut w: Vec<TransitionStmt> = vec![t2];
@@ -294,10 +289,7 @@ fn builtin_equal_call(span: Span, e1: Expr, e2: Expr) -> Expr {
     })
 }
 
-pub fn add_noop_updates(
-    sm: &SM,
-    ts: &TransitionStmt,
-) -> TransitionStmt {
+pub fn add_noop_updates(sm: &SM, ts: &TransitionStmt) -> TransitionStmt {
     let (mut ts, idents) = add_noop_updates_rec(ts);
     for f in &sm.fields {
         if !idents.contains(&f.ident) {
@@ -311,9 +303,7 @@ pub fn add_noop_updates(
     return ts;
 }
 
-fn add_noop_updates_rec(
-    ts: &TransitionStmt,
-) -> (TransitionStmt, Vec<Ident>) {
+fn add_noop_updates_rec(ts: &TransitionStmt) -> (TransitionStmt, Vec<Ident>) {
     match ts {
         TransitionStmt::Block(span, v) => {
             let mut h = Vec::new();
@@ -372,9 +362,7 @@ fn add_noop_updates_rec(
     }
 }
 
-pub fn check_transitions(
-    sm: &SM,
-) -> syn::parse::Result<()> {
+pub fn check_transitions(sm: &SM) -> syn::parse::Result<()> {
     for tr in &sm.transitions {
         check_updates_refer_to_valid_fields(&sm.fields, &tr.body)?;
 
@@ -396,9 +384,7 @@ pub fn check_transitions(
     Ok(())
 }
 
-pub fn replace_updates(
-    ts: &TransitionStmt,
-) -> TransitionStmt {
+pub fn replace_updates(ts: &TransitionStmt) -> TransitionStmt {
     match ts {
         TransitionStmt::Block(span, v) => {
             let mut h = Vec::new();
@@ -433,53 +419,44 @@ pub fn safety_condition_body(ts: &TransitionStmt) -> Option<Expr> {
                 }
             }
             if h.len() > 0 {
-                Some(Expr::Verbatim(quote_spanned!{ *span => #(#h)* }))
+                Some(Expr::Verbatim(quote_spanned! { *span => #(#h)* }))
             } else {
                 None
             }
         }
-        TransitionStmt::Let(span, id, v) => {
-            Some(Expr::Verbatim(quote_spanned!{*span =>
-                let #id = #v;
-            }))
-        }
+        TransitionStmt::Let(span, id, v) => Some(Expr::Verbatim(quote_spanned! {*span =>
+            let #id = #v;
+        })),
         TransitionStmt::If(span, cond, thn, els) => {
             let t1 = safety_condition_body(thn);
             let t2 = safety_condition_body(els);
             match (t1, t2) {
                 (None, None) => None,
-                (Some(e), None) => 
-                    Some(Expr::Verbatim(quote_spanned!{*span =>
-                        if #cond {
-                            #e
-                        }
-                    })),
-                (None, Some(e)) => 
-                    Some(Expr::Verbatim(quote_spanned!{*span =>
-                        if !(#cond) {
-                            #e
-                        }
-                    })),
-                (Some(e1), Some(e2)) =>
-                    Some(Expr::Verbatim(quote_spanned!{*span =>
-                        if #cond {
-                            #e1
-                        } else {
-                            #e2
-                        }
-                    })),
+                (Some(e), None) => Some(Expr::Verbatim(quote_spanned! {*span =>
+                    if #cond {
+                        #e
+                    }
+                })),
+                (None, Some(e)) => Some(Expr::Verbatim(quote_spanned! {*span =>
+                    if !(#cond) {
+                        #e
+                    }
+                })),
+                (Some(e1), Some(e2)) => Some(Expr::Verbatim(quote_spanned! {*span =>
+                    if #cond {
+                        #e1
+                    } else {
+                        #e2
+                    }
+                })),
             }
         }
-        TransitionStmt::Require(span, e) => {
-            Some(Expr::Verbatim(quote_spanned!{*span =>
-                crate::pervasive::assume(#e);
-            }))
-        }
-        TransitionStmt::Assert(span, e) => {
-            Some(Expr::Verbatim(quote_spanned!{*span =>
-                crate::pervasive::assert(#e);
-            }))
-        }
+        TransitionStmt::Require(span, e) => Some(Expr::Verbatim(quote_spanned! {*span =>
+            crate::pervasive::assume(#e);
+        })),
+        TransitionStmt::Assert(span, e) => Some(Expr::Verbatim(quote_spanned! {*span =>
+            crate::pervasive::assert(#e);
+        })),
         TransitionStmt::Update(_span, _ident, _e) => None,
     }
 }
@@ -495,9 +472,7 @@ pub fn has_any_assert(ts: &TransitionStmt) -> bool {
             false
         }
         TransitionStmt::Let(_, _, _) => false,
-        TransitionStmt::If(_span, _cond, thn, els) => {
-            has_any_assert(thn) || has_any_assert(els)
-        }
+        TransitionStmt::If(_span, _cond, thn, els) => has_any_assert(thn) || has_any_assert(els),
         TransitionStmt::Require(_, _) => false,
         TransitionStmt::Assert(_, _) => true,
         TransitionStmt::Update(_, _, _) => false,

@@ -1,5 +1,5 @@
-use syn::{Expr, ImplItemMethod, Ident, Type, FieldsNamed, Generics};
 use proc_macro2::Span;
+use syn::{Expr, FieldsNamed, Generics, Ident, ImplItemMethod, Type};
 
 #[derive(Clone, Debug)]
 pub struct SM {
@@ -49,7 +49,7 @@ pub enum TransitionKind {
 pub struct Transition {
     pub name: Ident,
     pub kind: TransitionKind,
-    pub args: Vec<TransitionParam>,
+    pub params: Vec<TransitionParam>,
     pub body: TransitionStmt,
 }
 

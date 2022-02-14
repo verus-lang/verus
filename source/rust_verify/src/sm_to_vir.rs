@@ -3,9 +3,7 @@ use crate::util::err_span_str;
 use air::ast_util::str_ident;
 use air::errors::error;
 use rustc_hir::VariantData;
-use smir::ast::{
-    Field, Invariant, Lemma, LemmaPurpose, LemmaPurposeKind, ShardableType, SM,
-};
+use smir::ast::{Field, Invariant, Lemma, LemmaPurpose, LemmaPurposeKind, ShardableType, SM};
 use smir_vir::update_krate::{update_krate, Predicate};
 use std::collections::HashMap;
 use std::sync::Arc;

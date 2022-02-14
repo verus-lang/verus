@@ -1,46 +1,44 @@
 #![allow(unused_imports)]
 
+use crate::ast::{
+    Extras, Field, Invariant, Lemma, LemmaPurpose, ShardableType, Transition, TransitionKind,
+    TransitionParam, TransitionStmt, SM,
+};
 use crate::concurrency_tokens::output_token_types_and_fns;
-use crate::parse_token_stream::{SMBundle};
+use crate::parse_token_stream::SMBundle;
+use crate::transitions::{has_any_assert, safety_condition_body};
 use crate::weakest::{get_safety_conditions, to_weakest};
 use proc_macro2::Span;
 use proc_macro2::TokenStream;
 use quote::{quote, quote_spanned, ToTokens};
-use crate::ast::{
-    TransitionParam, Extras, Field, Invariant, Lemma, LemmaPurpose, ShardableType, Transition, TransitionKind,
-    TransitionStmt, SM,
-};
 use syn::buffer::Cursor;
 use syn::parse::{Parse, ParseStream};
 use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
 use syn::token::Colon2;
 use syn::{
-    braced, AttrStyle, Attribute, Error, Expr, FieldsNamed, FnArg, Ident, ImplItemMethod, Meta,
-    MetaList, NestedMeta, Path, PathArguments, PathSegment, Type, Generics, GenericParam,
+    braced, AttrStyle, Attribute, Error, Expr, FieldsNamed, FnArg, GenericParam, Generics, Ident,
+    ImplItemMethod, Meta, MetaList, NestedMeta, Path, PathArguments, PathSegment, Type,
 };
-use crate::transitions::{has_any_assert, safety_condition_body};
 
-pub fn output_token_stream(
-    bundle: SMBundle,
-    concurrent: bool,
-) -> syn::parse::Result<TokenStream> {
+pub fn output_token_stream(bundle: SMBundle, concurrent: bool) -> syn::parse::Result<TokenStream> {
     let mut token_stream = TokenStream::new();
     let mut impl_token_stream = TokenStream::new();
 
     let self_ty = get_self_ty(&bundle.sm);
 
-    output_primary_stuff(
-        &mut token_stream,
-        &mut impl_token_stream,
-        &bundle.sm,
-    );
+    output_primary_stuff(&mut token_stream, &mut impl_token_stream, &bundle.sm);
 
     if concurrent {
         output_token_types_and_fns(&mut token_stream, &bundle.sm)?;
     }
 
-    output_other_fns(&mut impl_token_stream, &bundle.extras.invariants, &bundle.extras.lemmas, bundle.normal_fns);
+    output_other_fns(
+        &mut impl_token_stream,
+        &bundle.extras.invariants,
+        &bundle.extras.lemmas,
+        bundle.normal_fns,
+    );
 
     let impl_decl = impl_decl_stream(&self_ty, &bundle.sm.generics);
 
@@ -58,14 +56,14 @@ pub fn output_token_stream(
 pub fn get_self_ty(sm: &SM) -> Type {
     let name = &sm.name;
     Type::Verbatim(match &sm.generics {
-        None => quote!{ #name },
+        None => quote! { #name },
         Some(gen) => {
             if gen.params.len() > 0 {
-                //let ids = gen.params.iter().map(|gp| 
+                //let ids = gen.params.iter().map(|gp|
                 let args = get_generic_args(&gen.params);
-                quote!{ #name<#args> }
+                quote! { #name<#args> }
             } else {
-                quote!{ #name }
+                quote! { #name }
             }
         }
     })
@@ -81,20 +79,20 @@ pub fn get_generic_args(params: &Punctuated<GenericParam, syn::token::Comma>) ->
             }
         }
     });
-    quote!{ #(#args),* }
+    quote! { #(#args),* }
 }
 
 pub fn impl_decl_stream(self_ty: &Type, generics: &Option<Generics>) -> TokenStream {
     match generics {
-        None => quote!{ impl #self_ty },
+        None => quote! { impl #self_ty },
         Some(gen) => {
             if gen.params.len() > 0 {
                 let params = &gen.params;
                 let where_clause = &gen.where_clause;
-                quote!{ impl<#params> #self_ty #where_clause }
+                quote! { impl<#params> #self_ty #where_clause }
             } else {
                 let where_clause = &gen.where_clause;
-                quote!{ impl #self_ty #where_clause }
+                quote! { impl #self_ty #where_clause }
             }
         }
     }
@@ -178,7 +176,7 @@ pub fn output_primary_stuff(
             let name = &trans.name;
             let rel_fn;
             if trans.kind == TransitionKind::Init {
-                let args = post_params(&trans.args);
+                let args = post_params(&trans.params);
                 rel_fn = quote! {
                     #[spec]
                     #[verifier(state_machine_fn(init(#name)))]
@@ -187,7 +185,7 @@ pub fn output_primary_stuff(
                     }
                 };
             } else {
-                let args = self_post_params(&trans.args);
+                let args = self_post_params(&trans.params);
                 rel_fn = quote! {
                     #[spec]
                     #[verifier(state_machine_fn(transition(#name)))]
@@ -200,7 +198,7 @@ pub fn output_primary_stuff(
         }
 
         for (i, safety_cond) in get_safety_conditions(&trans.body).iter().enumerate() {
-            let args = self_params(&trans.args);
+            let args = self_params(&trans.params);
             let idx = i + 1;
             let name = Ident::new(
                 &(trans.name.to_string() + "_safety_" + &idx.to_string()),
@@ -219,12 +217,12 @@ pub fn output_primary_stuff(
         }
 
         if trans.kind == TransitionKind::Transition {
-            let params = self_post_params(&trans.args);
+            let params = self_post_params(&trans.params);
             let name = Ident::new(&(trans.name.to_string() + "_strong"), trans.name.span());
 
             let base_name = &trans.name;
-            let args = lone_args(&trans.args);
-            let p_args = post_args(&trans.args);
+            let args = lone_args(&trans.params);
+            let p_args = post_args(&trans.params);
 
             let mut conjuncts = vec![quote! {
                 self.#base_name(#p_args)
@@ -247,7 +245,7 @@ pub fn output_primary_stuff(
         if has_any_assert(&trans.body) {
             let b = safety_condition_body(&trans.body);
             let name = Ident::new(&(trans.name.to_string() + "_asserts"), trans.name.span());
-            let params = self_assoc_params(&self_ty, &trans.args);
+            let params = self_assoc_params(&self_ty, &trans.params);
             let b = match b {
                 Some(b) => quote! { #b },
                 None => TokenStream::new(),

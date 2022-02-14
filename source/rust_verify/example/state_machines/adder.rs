@@ -26,26 +26,11 @@ state_machine!(
             self.number % 2 == 0
         }
 
-        /*#[inductive(initialize)]
-        fn init_preserves(post: X) {
-        }*/
-
-        /*#[inductive(add)]
-        fn add_preserves(self: X, post: X, n: int) {
-        }*/
-
-        /*#[inductive(initialize)]
-        fn initialize_inductive() { }
-
-        #[inductive(add)]
-        fn add_inductive(n: int) { }*/
-
         #[inductive(initialize)]
-        fn initialize_inductive(self: X, post: X) { }
+        fn initialize_inductive(post: X) { }
 
         #[inductive(add)]
-        fn add_inductive(post: X, n: int) { }
-
+        fn add_inductive(self: X, post: X, n: int) { }
     }
 );
 

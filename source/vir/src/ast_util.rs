@@ -1,7 +1,7 @@
 use crate::ast::{
-    BinaryOp, CallTarget, Constant, DatatypeX, Expr, ExprX, Fun, FunX, FunctionX, Ident, Idents, IntRange,
-    Mode, Param, Params, Path, PathX, SpannedTyped, Typ, TypX, Typs, Variant, Variants, VirErr,
-    Visibility, StmtX, PatternX, Stmt,
+    BinaryOp, CallTarget, Constant, DatatypeX, Expr, ExprX, Fun, FunX, FunctionX, Ident, Idents,
+    IntRange, Mode, Param, Params, Path, PathX, PatternX, SpannedTyped, Stmt, StmtX, Typ, TypX,
+    Typs, Variant, Variants, VirErr, Visibility,
 };
 use crate::def::Spanned;
 use crate::sst::{Par, Pars};

@@ -68,21 +68,6 @@ concurrent_state_machine!(
         #[inductive(initialize)]
         fn initialize_inv(post: X) {
         }
-
-        #[safety(finalize_safety_1)]
-        fn finalize_correct(pre: X) {
-            // XXX TODO need to generate VCs here
-        }
-
-        #[safety(tr_inc_a_safety_1)]
-        fn s1_correct(pre: X) {
-            // XXX TODO need to generate VCs here
-        }
-
-        #[safety(tr_inc_b_safety_1)]
-        fn s2_correct(pre: X) {
-            // XXX TODO need to generate VCs here
-        }
     }
 );
 

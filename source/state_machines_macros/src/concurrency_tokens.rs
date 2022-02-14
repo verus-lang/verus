@@ -1,13 +1,13 @@
 #![allow(unused_imports)]
 
+use crate::ast::{
+    Extras, Field, Invariant, Lemma, LemmaPurpose, ShardableType, Transition, TransitionKind,
+    TransitionParam, TransitionStmt, SM,
+};
 use crate::weakest::{get_safety_conditions, to_weakest};
 use proc_macro2::Span;
 use proc_macro2::TokenStream;
 use quote::{quote, quote_spanned, ToTokens};
-use crate::ast::{
-    TransitionParam, Extras, Field, Invariant, Lemma, LemmaPurpose, ShardableType, Transition, TransitionKind,
-    TransitionStmt, SM,
-};
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::ops::Index;
@@ -114,7 +114,7 @@ pub fn output_token_types_and_fns(
     }
 
     let insttype = inst_type_name(&sm.name);
-    token_stream.extend(quote!{
+    token_stream.extend(quote! {
         impl #insttype {
             #inst_impl_token_stream
         }
@@ -136,11 +136,7 @@ struct Ctxt {
 }
 
 impl Ctxt {
-    pub fn get_field_by_ident(
-        &self,
-        span: Span,
-        ident: &Ident,
-    ) -> syn::parse::Result<Field> {
+    pub fn get_field_by_ident(&self, span: Span, ident: &Ident) -> syn::parse::Result<Field> {
         match self.ident_to_field.get(ident) {
             Some(f) => Ok(f.clone()),
             None => Err(Error::new(
@@ -162,10 +158,7 @@ impl Ctxt {
     }
 }
 
-pub fn exchange_stream(
-    sm: &SM,
-    tr: &Transition,
-) -> syn::parse::Result<TokenStream> {
+pub fn exchange_stream(sm: &SM, tr: &Transition) -> syn::parse::Result<TokenStream> {
     let mut ident_to_field = HashMap::new();
     for field in &sm.fields {
         ident_to_field.insert(field.ident.clone(), field.clone());
@@ -196,7 +189,7 @@ pub fn exchange_stream(
         in_args.push(quote! { #[spec] instance: #itn });
     }
 
-    for param in &tr.args {
+    for param in &tr.params {
         let id = &param.ident;
         let ty = &param.ty;
         in_args.push(quote! { #[spec] #id: #ty });
@@ -226,8 +219,8 @@ pub fn exchange_stream(
         let arg_type = field_token_type_name(&sm.name, field);
 
         let is_const = match field.stype {
-              ShardableType::Constant(_) => true,
-              _ => false,
+            ShardableType::Constant(_) => true,
+            _ => false,
         };
 
         if is_output {
@@ -367,10 +360,7 @@ pub fn exchange_stream(
 
 // Find things that updated
 
-fn determine_outputs(
-    ctxt: &mut Ctxt,
-    ts: &TransitionStmt,
-) -> syn::parse::Result<()> {
+fn determine_outputs(ctxt: &mut Ctxt, ts: &TransitionStmt) -> syn::parse::Result<()> {
     match ts {
         TransitionStmt::Block(_span, v) => {
             for child in v.iter() {
@@ -391,10 +381,12 @@ fn determine_outputs(
             if !ctxt.is_init {
                 match f.stype {
                     ShardableType::Constant(_) => {
-                        return Err(Error::new(*span,
-                            "cannot update a field marked constant outside of initialization"));
+                        return Err(Error::new(
+                            *span,
+                            "cannot update a field marked constant outside of initialization",
+                        ));
                     }
-                    _ => { }
+                    _ => {}
                 }
             }
 
@@ -406,10 +398,7 @@ fn determine_outputs(
 
 // Translate expressions
 
-fn walk_translate_expressions(
-    ctxt: &mut Ctxt,
-    ts: &mut TransitionStmt,
-) -> syn::parse::Result<()> {
+fn walk_translate_expressions(ctxt: &mut Ctxt, ts: &mut TransitionStmt) -> syn::parse::Result<()> {
     match ts {
         TransitionStmt::Block(_span, v) => {
             for child in v.iter_mut() {
@@ -710,11 +699,7 @@ fn prequel_vec_to_expr(v: &Vec<PrequelElement>) -> Option<Expr> {
     opt
 }
 
-fn get_output_value_for_variable(
-    ctxt: &Ctxt,
-    ts: &TransitionStmt,
-    field: &Field,
-) -> Option<Expr> {
+fn get_output_value_for_variable(ctxt: &Ctxt, ts: &TransitionStmt, field: &Field) -> Option<Expr> {
     match ts {
         TransitionStmt::Block(_span, v) => {
             let mut opt = None;

@@ -1,12 +1,12 @@
 #![allow(unused_imports)]
 
+use crate::ast::{
+    Extras, Field, Invariant, Lemma, LemmaPurpose, ShardableType, Transition, TransitionKind,
+    TransitionParam, TransitionStmt, SM,
+};
 use proc_macro2::Span;
 use proc_macro2::TokenStream;
 use quote::quote_spanned;
-use crate::ast::{
-    TransitionParam, Extras, Field, Invariant, Lemma, LemmaPurpose, ShardableType, Transition, TransitionKind,
-    TransitionStmt, SM,
-};
 use syn::buffer::Cursor;
 use syn::parse::{Parse, ParseStream};
 use syn::punctuated::Punctuated;
@@ -27,10 +27,10 @@ pub fn parse_impl_item_method(
     iim: &mut ImplItemMethod,
     ctxt: &Ctxt,
 ) -> syn::parse::Result<Transition> {
-    let args = parse_sig(&iim.sig)?;
+    let params = parse_sig(&iim.sig)?;
     let body = parse_block(&mut iim.block, ctxt)?;
     let name = iim.sig.ident.clone();
-    return Ok(Transition { kind: ctxt.kind, args, body, name });
+    return Ok(Transition { kind: ctxt.kind, params, body, name });
 }
 
 fn parse_sig(sig: &Signature) -> syn::parse::Result<Vec<TransitionParam>> {
@@ -69,10 +69,7 @@ fn parse_sig(sig: &Signature) -> syn::parse::Result<Vec<TransitionParam>> {
     return Ok(v);
 }
 
-fn parse_block(
-    block: &mut Block,
-    ctxt: &Ctxt,
-) -> syn::parse::Result<TransitionStmt> {
+fn parse_block(block: &mut Block, ctxt: &Ctxt) -> syn::parse::Result<TransitionStmt> {
     let mut tstmts = Vec::new();
     for mut stmt in block.stmts.iter_mut() {
         let tstmt = parse_stmt(&mut stmt, ctxt)?;
@@ -81,10 +78,7 @@ fn parse_block(
     return Ok(TransitionStmt::Block(block.span(), tstmts));
 }
 
-fn parse_stmt(
-    stmt: &mut Stmt,
-    ctxt: &Ctxt,
-) -> syn::parse::Result<TransitionStmt> {
+fn parse_stmt(stmt: &mut Stmt, ctxt: &Ctxt) -> syn::parse::Result<TransitionStmt> {
     match stmt {
         Stmt::Local(local) => parse_local(local, ctxt),
         Stmt::Expr(expr) => parse_expr(expr, ctxt),
@@ -95,10 +89,7 @@ fn parse_stmt(
     }
 }
 
-fn parse_local(
-    local: &mut Local,
-    _ctxt: &Ctxt,
-) -> syn::parse::Result<TransitionStmt> {
+fn parse_local(local: &mut Local, _ctxt: &Ctxt) -> syn::parse::Result<TransitionStmt> {
     let ident = match &local.pat {
         Pat::Ident(PatIdent { attrs: _, by_ref: None, mutability: None, ident, subpat: None }) => {
             ident.clone()
@@ -116,10 +107,7 @@ fn parse_local(
     Ok(TransitionStmt::Let(local.span(), ident, e))
 }
 
-fn parse_expr(
-    expr: &mut Expr,
-    ctxt: &Ctxt,
-) -> syn::parse::Result<TransitionStmt> {
+fn parse_expr(expr: &mut Expr, ctxt: &Ctxt) -> syn::parse::Result<TransitionStmt> {
     match expr {
         Expr::If(expr_if) => parse_expr_if(expr_if, ctxt),
         Expr::Block(block) => parse_block(&mut block.block, ctxt),
@@ -130,10 +118,7 @@ fn parse_expr(
     }
 }
 
-fn parse_expr_if(
-    expr_if: &mut ExprIf,
-    ctxt: &Ctxt,
-) -> syn::parse::Result<TransitionStmt> {
+fn parse_expr_if(expr_if: &mut ExprIf, ctxt: &Ctxt) -> syn::parse::Result<TransitionStmt> {
     let thn = parse_block(&mut expr_if.then_branch, ctxt)?;
     let els = match &mut expr_if.else_branch {
         Some((_, el)) => parse_expr(&mut *el, ctxt)?,
@@ -153,10 +138,7 @@ enum CallType {
     Update,
 }
 
-fn parse_call(
-    call: &mut ExprCall,
-    ctxt: &Ctxt,
-) -> syn::parse::Result<TransitionStmt> {
+fn parse_call(call: &mut ExprCall, ctxt: &Ctxt) -> syn::parse::Result<TransitionStmt> {
     let ct = parse_call_type(&call.func, ctxt)?;
     match ct {
         CallType::Assert => {

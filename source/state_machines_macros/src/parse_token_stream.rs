@@ -1,22 +1,22 @@
 #![allow(unused_imports)]
 
-use crate::ident_visitor::IdentVisitor;
-use crate::parse_transition::parse_impl_item_method;
-use crate::transitions::check_transitions;
-use crate::to_token_stream::shardable_type_to_type;
-use proc_macro2::Span;
 use crate::ast::{
     Extras, Invariant, Lemma, LemmaPurpose, LemmaPurposeKind, ShardableType, Transition,
     TransitionKind, TransitionStmt, SM,
 };
-use syn::Token;
+use crate::ident_visitor::IdentVisitor;
+use crate::parse_transition::parse_impl_item_method;
+use crate::to_token_stream::shardable_type_to_type;
+use crate::transitions::check_transitions;
+use proc_macro2::Span;
 use syn::buffer::Cursor;
 use syn::parse::{Parse, ParseStream};
 use syn::spanned::Spanned;
 use syn::visit::Visit;
+use syn::Token;
 use syn::{
-    braced, AttrStyle, Attribute, Error, Expr, FieldsNamed, FnArg, Ident, ImplItemMethod, Meta,
-    MetaList, NestedMeta, Receiver, Type, Visibility, Generics, GenericParam, WhereClause,
+    braced, AttrStyle, Attribute, Error, Expr, FieldsNamed, FnArg, GenericParam, Generics, Ident,
+    ImplItemMethod, Meta, MetaList, NestedMeta, Receiver, Type, Visibility, WhereClause,
 };
 
 pub struct SMBundle {
@@ -49,11 +49,11 @@ impl Parse for ParseResult {
 
             for gp in gen.params.iter() {
                 match gp {
-                    GenericParam::Type(_) => { }
+                    GenericParam::Type(_) => {}
                     _ => {
                         return Err(Error::new(
                             gp.span(),
-                            "Only generic type parameters are supported for state machine"
+                            "Only generic type parameters are supported for state machine",
                         ));
                     }
                 }
@@ -172,7 +172,7 @@ fn parse_fn_attr_info(attrs: &Vec<Attribute>) -> syn::parse::Result<FnAttrInfo> 
                     let attrname = if is_safety { "safety" } else { "inductive" };
                     let lp_kind = if is_safety {
                         panic!("unimplemented"); // TODO remove this case
-                        //LemmaPurposeKind::SatisfiesAsserts
+                    //LemmaPurposeKind::SatisfiesAsserts
                     } else {
                         LemmaPurposeKind::PreservesInvariant
                     };
@@ -304,10 +304,7 @@ fn to_invariant(impl_item_method: ImplItemMethod) -> syn::parse::Result<Invarian
     return Ok(Invariant { func: impl_item_method });
 }
 
-fn to_lemma(
-    impl_item_method: ImplItemMethod,
-    purpose: LemmaPurpose,
-) -> syn::parse::Result<Lemma> {
+fn to_lemma(impl_item_method: ImplItemMethod, purpose: LemmaPurpose) -> syn::parse::Result<Lemma> {
     ensure_no_mode(
         &impl_item_method,
         "an inductivity lemma is implied to be 'proof'; it should not be explicitly labelled",
@@ -320,68 +317,97 @@ enum ShardingType {
     Constant,
 }
 
-fn get_sharding_type(field_span: Span, attrs: &[Attribute], concurrent: bool) ->
-      syn::parse::Result<ShardingType>
-{
+fn get_sharding_type(
+    field_span: Span,
+    attrs: &[Attribute],
+    concurrent: bool,
+) -> syn::parse::Result<ShardingType> {
     let mut res = None;
 
     for attr in attrs {
         match attr.parse_meta() {
             Ok(Meta::Path(path)) if path.is_ident("sharding") => {
-                return Err(Error::new(attr.span(), "expected 1 argument as the sharding strategy, e.g., #[sharding(variable)]"));
+                return Err(Error::new(
+                    attr.span(),
+                    "expected 1 argument as the sharding strategy, e.g., #[sharding(variable)]",
+                ));
             }
-            Ok(Meta::List(MetaList { path, paren_token: _, nested })) if path.is_ident("sharding") => {
+            Ok(Meta::List(MetaList { path, paren_token: _, nested }))
+                if path.is_ident("sharding") =>
+            {
                 if nested.len() != 1 {
-                    return Err(Error::new(attr.span(), "expected 1 argument as the sharding strategy, e.g., #[sharding(variable)]"));
+                    return Err(Error::new(
+                        attr.span(),
+                        "expected 1 argument as the sharding strategy, e.g., #[sharding(variable)]",
+                    ));
                 }
                 let arg = &nested[0];
                 match arg {
-                    NestedMeta::Meta(Meta::Path(p)) => {
-                        match p.get_ident() {
-                            Some(ident) => {
-                                let t = match ident.to_string().as_str() {
-                                    "variable" => ShardingType::Variable,
-                                    "constant" => ShardingType::Constant,
-                                    name => {
-                                        return Err(Error::new(attr.span(), format!("unrecognized sharding strategy: '{}'", name)));
-                                    }
-                                };
-                                if !concurrent {
-                                    return Err(Error::new(attr.span(), "sharding strategy only makes sense for concurrent state machines; did you mean to use the concurrent_state_machine! macro?"));
+                    NestedMeta::Meta(Meta::Path(p)) => match p.get_ident() {
+                        Some(ident) => {
+                            let t = match ident.to_string().as_str() {
+                                "variable" => ShardingType::Variable,
+                                "constant" => ShardingType::Constant,
+                                name => {
+                                    return Err(Error::new(
+                                        attr.span(),
+                                        format!("unrecognized sharding strategy: '{}'", name),
+                                    ));
                                 }
-                                match res {
-                                    Some(_) => {
-                                        return Err(Error::new(attr.span(), "duplicate sharding attribute"));
-                                    }
-                                    None => { }
+                            };
+                            if !concurrent {
+                                return Err(Error::new(
+                                    attr.span(),
+                                    "sharding strategy only makes sense for concurrent state machines; did you mean to use the concurrent_state_machine! macro?",
+                                ));
+                            }
+                            match res {
+                                Some(_) => {
+                                    return Err(Error::new(
+                                        attr.span(),
+                                        "duplicate sharding attribute",
+                                    ));
                                 }
-                                res = Some(t);
+                                None => {}
                             }
-                            None => {
-                                return Err(Error::new(attr.span(), "expected a single identifier as the sharding strategy, e.g., #[sharding(variable)]"));
-                            }
+                            res = Some(t);
                         }
-                    }
+                        None => {
+                            return Err(Error::new(
+                                attr.span(),
+                                "expected a single identifier as the sharding strategy, e.g., #[sharding(variable)]",
+                            ));
+                        }
+                    },
                     _ => {
-                        return Err(Error::new(attr.span(), "expected a single identifier as the sharding strategy, e.g., #[sharding(variable)]"));
+                        return Err(Error::new(
+                            attr.span(),
+                            "expected a single identifier as the sharding strategy, e.g., #[sharding(variable)]",
+                        ));
                     }
                 }
             }
-            _ => { }
+            _ => {}
         }
     }
 
     if concurrent {
         match res {
-            None => Err(Error::new(field_span, "concurrent state machine requires a sharding strategy, e.g., #[sharding(variable)]")),
-            Some(r) => Ok(r)
+            None => Err(Error::new(
+                field_span,
+                "concurrent state machine requires a sharding strategy, e.g., #[sharding(variable)]",
+            )),
+            Some(r) => Ok(r),
         }
     } else {
         Ok(ShardingType::Variable)
     }
 }
 
-fn to_fields(fields_named: &mut FieldsNamed, concurrent: bool) -> syn::parse::Result<Vec<crate::ast::Field>> {
+fn to_fields(
+    fields_named: &mut FieldsNamed,
+    concurrent: bool,
+) -> syn::parse::Result<Vec<crate::ast::Field>> {
     let mut v: Vec<crate::ast::Field> = Vec::new();
     for field in fields_named.named.iter_mut() {
         let ident = match &field.ident {
@@ -391,7 +417,7 @@ fn to_fields(fields_named: &mut FieldsNamed, concurrent: bool) -> syn::parse::Re
             Some(ident) => ident.clone(),
         };
         match &field.vis {
-            Visibility::Public(..) => { }
+            Visibility::Public(..) => {}
             _ => {
                 return Err(Error::new(field.span(), "state machine field must be marked public"));
             }

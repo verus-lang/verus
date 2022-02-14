@@ -1,13 +1,13 @@
 #![allow(unused_imports)]
 
-use crate::transitions::{add_noop_updates, replace_updates};
-use proc_macro2::Span;
-use proc_macro2::TokenStream;
-use quote::{quote, quote_spanned, ToTokens};
 use crate::ast::{
     Extras, Field, Invariant, Lemma, LemmaPurpose, ShardableType, Transition, TransitionKind,
     TransitionStmt, SM,
 };
+use crate::transitions::{add_noop_updates, replace_updates};
+use proc_macro2::Span;
+use proc_macro2::TokenStream;
+use quote::{quote, quote_spanned, ToTokens};
 use syn::buffer::Cursor;
 use syn::parse::{Parse, ParseStream};
 use syn::punctuated::Punctuated;
@@ -18,10 +18,7 @@ use syn::{
     MetaList, NestedMeta, Path, PathArguments, PathSegment, Type,
 };
 
-pub fn to_weakest(
-    sm: &SM,
-    trans: &Transition,
-) -> TokenStream {
+pub fn to_weakest(sm: &SM, trans: &Transition) -> TokenStream {
     let ts = add_noop_updates(sm, &trans.body);
     let ts = replace_updates(&ts);
     match to_weakest_rec(&ts, None) {
@@ -30,10 +27,7 @@ pub fn to_weakest(
     }
 }
 
-fn to_weakest_rec(
-    trans: &TransitionStmt,
-    p: Option<TokenStream>,
-) -> Option<TokenStream> {
+fn to_weakest_rec(trans: &TransitionStmt, p: Option<TokenStream>) -> Option<TokenStream> {
     match trans {
         TransitionStmt::Block(_span, v) => {
             let mut p = p;
@@ -85,9 +79,7 @@ pub fn get_safety_conditions(ts: &TransitionStmt) -> Vec<TokenStream> {
         .collect()
 }
 
-fn get_safety_conditions_ts(
-    ts: &TransitionStmt,
-) -> Vec<TransitionStmt> {
+fn get_safety_conditions_ts(ts: &TransitionStmt) -> Vec<TransitionStmt> {
     match ts {
         TransitionStmt::Block(span, v) => {
             let mut res: Vec<TransitionStmt> = Vec::new();

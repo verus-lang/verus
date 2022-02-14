@@ -18,8 +18,8 @@ use vir::ast::{
     ParamX, Params, Path, PathX, SpannedTyped, Typ, TypX, VirErr,
 };
 use vir::ast_util::{
-    conjoin, mk_and, mk_assert, mk_assume, mk_bool, mk_call, mk_decl_stmt, mk_eq,
-    mk_ife, mk_implies, mk_or, mk_var, types_equal,
+    conjoin, mk_and, mk_assert, mk_assume, mk_bool, mk_call, mk_decl_stmt, mk_eq, mk_ife,
+    mk_implies, mk_or, mk_var, types_equal,
 };
 
 pub fn get_transition_func_name(
