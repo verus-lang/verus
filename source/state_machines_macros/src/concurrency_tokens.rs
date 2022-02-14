@@ -90,7 +90,7 @@ fn const_fn_stream(field: &Field) -> TokenStream {
     return quote! {
         ::builtin_macros::fndecl!(
             pub fn #fieldname(&self) -> #fieldtype
-        )
+        );
     };
 }
 
