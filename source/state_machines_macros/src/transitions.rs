@@ -28,6 +28,8 @@ pub fn fields_contain(fields: &Vec<Field>, ident: &Ident) -> bool {
     return false;
 }
 
+/// Check that every update statement actually refers to a valid field.
+
 fn check_updates_refer_to_valid_fields(
     fields: &Vec<Field>,
     ts: &TransitionStmt,
@@ -52,28 +54,6 @@ fn check_updates_refer_to_valid_fields(
                 return Err(Error::new(sp.span(), format!("field '{}' not found", f.to_string())));
             }
             Ok(())
-        }
-    }
-}
-
-fn check_readonly(ts: &TransitionStmt) -> syn::parse::Result<()> {
-    match ts {
-        TransitionStmt::Block(_, v) => {
-            for t in v.iter() {
-                check_readonly(t)?;
-            }
-            Ok(())
-        }
-        TransitionStmt::Let(_, _, _) => Ok(()),
-        TransitionStmt::If(_, _, thn, els) => {
-            check_readonly(thn)?;
-            check_readonly(els)?;
-            Ok(())
-        }
-        TransitionStmt::Require(_, _) => Ok(()),
-        TransitionStmt::Assert(_, _) => Ok(()),
-        TransitionStmt::Update(sp, _, _) => {
-            return Err(Error::new(*sp, "'update' statement not allowed in readonly transitions"));
         }
     }
 }
@@ -152,12 +132,54 @@ fn check_has_all_fields(
     Ok(())
 }
 
-fn check_init(ts: &TransitionStmt) -> syn::parse::Result<Vec<(Ident, Span)>> {
+/// Check well-formedness for a 'readonly' transition.
+///
+/// There should be no 'update' statements.
+
+fn check_readonly(ts: &TransitionStmt) -> syn::parse::Result<()> {
+    match ts {
+        TransitionStmt::Block(_, v) => {
+            for t in v.iter() {
+                check_readonly(t)?;
+            }
+            Ok(())
+        }
+        TransitionStmt::Let(_, _, _) => Ok(()),
+        TransitionStmt::If(_, _, thn, els) => {
+            check_readonly(thn)?;
+            check_readonly(els)?;
+            Ok(())
+        }
+        TransitionStmt::Require(_, _) => Ok(()),
+        TransitionStmt::Assert(_, _) => Ok(()),
+        TransitionStmt::Update(sp, _, _) => {
+            return Err(Error::new(*sp, "'update' statement not allowed in readonly transitions"));
+        }
+    }
+}
+
+
+/// Check well-formedness for an 'ordinary' transition.
+///
+/// We require every field to be updated exactly once. That means if a field
+/// is updated in one branch of a conditional, it must also be updated in the other.
+
+fn check_init(ts: &TransitionStmt, sm: &SM) -> syn::parse::Result<()> {
+    let h = check_init_rec(&ts)?;
+    let span = ts.get_span();
+
+    // Check we actually got all the fields.
+    check_has_all_fields(*span, &h, &sm.fields)?;
+
+    Ok(())
+}
+
+fn check_init_rec(ts: &TransitionStmt) -> syn::parse::Result<Vec<(Ident, Span)>> {
     match ts {
         TransitionStmt::Block(_, v) => {
             let mut h = Vec::new();
             for t in v.iter() {
-                let q = check_init(t)?;
+                let q = check_init_rec(t)?;
                 h = disjoint_union(&h, &q)?;
             }
             Ok(h)
@@ -166,8 +188,8 @@ fn check_init(ts: &TransitionStmt) -> syn::parse::Result<Vec<(Ident, Span)>> {
             return Ok(Vec::new());
         }
         TransitionStmt::If(sp, _, thn, els) => {
-            let h1 = check_init(thn)?;
-            let h2 = check_init(els)?;
+            let h1 = check_init_rec(thn)?;
+            let h2 = check_init_rec(els)?;
             if !update_sets_eq(&h1, &h2) {
                 return Err(Error::new(
                     *sp,
@@ -189,6 +211,12 @@ fn check_init(ts: &TransitionStmt) -> syn::parse::Result<Vec<(Ident, Span)>> {
         }
     }
 }
+
+/// Check well-formedness for an 'ordinary' transition.
+///
+/// Don't allow any single field to be updated more than once.
+/// (Note a field might be updated on both sides of a conditional, but it should not, e.g.,
+/// be updated inside a conditional and also outside of it.)
 
 pub fn check_normal(ts: &TransitionStmt) -> syn::parse::Result<Vec<(Ident, Span)>> {
     match ts {
@@ -222,6 +250,8 @@ pub fn check_normal(ts: &TransitionStmt) -> syn::parse::Result<Vec<(Ident, Span)
     }
 }
 
+/// Check simple well-formedness properties of the transitions.
+
 pub fn check_transitions(sm: &SM) -> syn::parse::Result<()> {
     for tr in &sm.transitions {
         check_updates_refer_to_valid_fields(&sm.fields, &tr.body)?;
@@ -234,9 +264,7 @@ pub fn check_transitions(sm: &SM) -> syn::parse::Result<()> {
                 check_normal(&tr.body)?;
             }
             TransitionKind::Init => {
-                let h = check_init(&tr.body)?;
-                let span = tr.body.get_span();
-                check_has_all_fields(*span, &h, &sm.fields)?;
+                check_init(&tr.body, sm)?;
             }
         }
     }
@@ -244,7 +272,26 @@ pub fn check_transitions(sm: &SM) -> syn::parse::Result<()> {
     Ok(())
 }
 
-
+/// Given a transition, we convert it into a lemma that will create the correct
+/// verification conditions for its 'assert' statement.
+///
+/// For example,
+///
+///     require(A);
+///     assert(B);
+///
+/// would turn into:
+///
+///     assume(A);
+///     assert(B);
+///
+/// Notably, this wouldn't actually be safe Verus code for a user to produce;
+/// it doesn't produce a lemma that would be callable as it would be if it had requires/ensures,
+/// so this only makes sense as long as we're willing to trust the macro expansion code.
+///
+/// Still, it's a very easy transformation to do, and doesn't require us to write even
+/// more weakest-precondition-esque conditions than we already do, so it's what I'm going
+/// with for now.
 
 pub fn safety_condition_body(ts: &TransitionStmt) -> Option<Expr> {
     match ts {
@@ -297,6 +344,8 @@ pub fn safety_condition_body(ts: &TransitionStmt) -> Option<Expr> {
         TransitionStmt::Update(_span, _ident, _e) => None,
     }
 }
+
+/// Returns true if there are any 'assert' statements.
 
 pub fn has_any_assert(ts: &TransitionStmt) -> bool {
     match ts {
