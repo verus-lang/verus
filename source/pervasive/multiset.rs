@@ -22,10 +22,21 @@ impl<V> Multiset<V> {
     fndecl!(pub fn empty() -> Self);
     fndecl!(pub fn singleton(v: V) -> Self);
     fndecl!(pub fn add(self, m2: Self) -> Self);
+    fndecl!(pub fn sub(self, m2: Self) -> Self);
 
     #[spec]
     pub fn insert(self, v: V) -> Self {
         self.add(Self::singleton(v))
+    }
+
+    #[spec]
+    pub fn remove(self, v: V) -> Self {
+        self.sub(Self::singleton(v))
+    }
+
+    #[spec]
+    pub fn le(self, m2: Self) -> bool {
+        forall(|v: V| self.count(v) <= m2.count(v))
     }
 
     #[spec]
@@ -66,6 +77,16 @@ pub fn axiom_multiset_singleton_different<V>(v: V, w: V) {
 #[verifier(broadcast_forall)]
 pub fn axiom_multiset_add<V>(m1: Multiset<V>, m2: Multiset<V>, v: V) {
     ensures(m1.add(m2).count(v) == m1.count(v) + m2.count(v));
+}
+
+// Specification of `sub`
+
+#[proof]
+#[verifier(external_body)]
+#[verifier(broadcast_forall)]
+pub fn axiom_multiset_sub<V>(m1: Multiset<V>, m2: Multiset<V>, v: V) {
+    ensures(m1.sub(m2).count(v) ==
+        if m1.count(v) >= m2.count(v) { m1.count(v) - m2.count(v) } else { 0 });
 }
 
 // Extensional equality

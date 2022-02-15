@@ -8,16 +8,14 @@ test_verify_one_file! {
         use crate::pervasive::multiset::*;
 
         #[proof]
-        pub fn commutative<V>(a: Multiset<V>, b: Multiset<V>)
-        {
+        pub fn commutative<V>(a: Multiset<V>, b: Multiset<V>) {
             ensures(equal(a.add(b), b.add(a)));
 
             assert(a.add(b).ext_equal(b.add(a)));
         }
 
         #[proof]
-        pub fn associative<V>(a: Multiset<V>, b: Multiset<V>, c: Multiset<V>)
-        {
+        pub fn associative<V>(a: Multiset<V>, b: Multiset<V>, c: Multiset<V>) {
             ensures(equal(
                 a.add(b.add(c)),
                 a.add(b).add(c)));
@@ -45,6 +43,22 @@ test_verify_one_file! {
             assert(Multiset::empty().insert(a).insert(b).count(b) == 1);
             assert(Multiset::empty().insert(a).insert(b).count(c) == 0);
         }
+
+        #[proof]
+        pub fn add_sub_cancel<V>(a: Multiset<V>, b: Multiset<V>) {
+            ensures(equal(a.add(b).sub(b), a));
+
+            assert(a.add(b).sub(b).ext_equal(a));
+        }
+
+        #[proof]
+        pub fn sub_add_cancel<V>(a: Multiset<V>, b: Multiset<V>) {
+            requires(b.le(a));
+            ensures(equal(a.sub(b).add(b), a));
+
+            assert(a.sub(b).add(b).ext_equal(a));
+        }
+
     } => Ok(())
 }
 
@@ -65,11 +79,24 @@ test_verify_one_file! {
         use crate::pervasive::multiset::*;
 
         #[proof]
-        pub fn add_fail<V>(a: Multiset<V>, b: Multiset<V>)
-        {
+        pub fn add_fail<V>(a: Multiset<V>, b: Multiset<V>) {
             ensures(equal(a.add(b), a.add(a)));
 
             assert(a.add(b).ext_equal(a.add(a))); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] multiset_fail3 code! {
+        use crate::pervasive::multiset::*;
+
+        #[proof]
+        pub fn sub_add_cancel<V>(a: Multiset<V>, b: Multiset<V>) {
+            // Missing the condition `b.le(a)`
+            ensures(equal(a.sub(b).add(b), a));
+
+            assert(a.sub(b).add(b).ext_equal(a)); // FAILS
         }
     } => Err(err) => assert_one_fails(err)
 }
