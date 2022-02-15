@@ -60,12 +60,16 @@ fn set_bit_exec(bv:u32, loc:u32, bit:bool) -> u32 {
 }
 
 #[exec]
-fn set_bit_test(bv:u32, loc:u32, bit:bool) {
+fn set_bit_test(bv:u32, loc:u32, loc2: u32, bit:bool) -> u32 {
+    requires([loc < 32,
+        loc2 < 32,
+        loc != loc2]);
+    ensures(|bv2:u32| get_bit(bv2, loc2) == get_bit(bv, loc2));
+
     let bv2 = set_bit_exec(bv, loc, bit);
-    assert_bit_vector((bv2 == set_bit(bv, loc, bit) && (loc < 32)) >>= get_bit(bv2, loc) == bit);
+    assert_bit_vector((bv2 == set_bit(bv, loc, bit) && (loc < 32) && (loc2 < 32) && (loc != loc2)) >>= get_bit(bv2, loc2) == get_bit(bv, loc2));
+    bv2
 }
-
-
 
 // #[spec]
 // fn color_view(high:bool, low:bool) -> Color {
