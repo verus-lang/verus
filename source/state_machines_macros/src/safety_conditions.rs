@@ -1,8 +1,6 @@
-use crate::ast::{
-    TransitionStmt,
-};
+use crate::ast::TransitionStmt;
+use quote::quote_spanned;
 use syn::Expr;
-use quote::{quote_spanned};
 
 /// Given a transition, we convert it into a lemma that will create the correct
 /// verification conditions for its 'assert' statement.

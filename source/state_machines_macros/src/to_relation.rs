@@ -22,7 +22,7 @@ use syn::{
 ///
 /// 1. Process and remove all 'update' statements (`add_noop_updates` and `replace_updates`).
 /// 2. Walk the tree and straightforwardly convert it to a relation.
-/// 
+///
 /// There are actually two different relations we can form, the "weak" relation and
 /// the "strong" one.
 ///
@@ -60,7 +60,11 @@ pub fn to_relation(sm: &SM, trans: &Transition, weak: bool) -> TokenStream {
 
 // Recursive traversal, post-order.
 
-fn to_relation_rec(trans: &TransitionStmt, p: Option<TokenStream>, weak: bool) -> Option<TokenStream> {
+fn to_relation_rec(
+    trans: &TransitionStmt,
+    p: Option<TokenStream>,
+    weak: bool,
+) -> Option<TokenStream> {
     match trans {
         TransitionStmt::Block(_span, v) => {
             let mut p = p;
@@ -104,7 +108,7 @@ fn to_relation_rec(trans: &TransitionStmt, p: Option<TokenStream>, weak: bool) -
                     Some(r) => Some(quote! { ((#e) && #r) }),
                 }
             }
-        },
+        }
         TransitionStmt::Update(_span, _id, _e) => {
             panic!("should have been removed in pre-processing step");
         }
@@ -126,7 +130,11 @@ fn add_noop_updates(sm: &SM, ts: &TransitionStmt) -> TransitionStmt {
             let ident = &f.ident;
             ts = append_stmt_front(
                 ts,
-                TransitionStmt::Update(span, f.ident.clone(), Expr::Verbatim(quote!{ self.#ident })),
+                TransitionStmt::Update(
+                    span,
+                    f.ident.clone(),
+                    Expr::Verbatim(quote! { self.#ident }),
+                ),
             );
         }
     }
@@ -161,7 +169,7 @@ fn add_noop_updates_rec(ts: &TransitionStmt) -> (TransitionStmt, Vec<Ident>) {
                         TransitionStmt::Update(
                             span.clone(),
                             ident.clone(),
-                            Expr::Verbatim(quote!{ self.#ident }),
+                            Expr::Verbatim(quote! { self.#ident }),
                         ),
                     );
                 }
@@ -174,7 +182,7 @@ fn add_noop_updates_rec(ts: &TransitionStmt) -> (TransitionStmt, Vec<Ident>) {
                         TransitionStmt::Update(
                             span.clone(),
                             ident.clone(),
-                            Expr::Verbatim(quote!{ self.#ident }),
+                            Expr::Verbatim(quote! { self.#ident }),
                         ),
                     );
                     union.push(ident.clone());
@@ -230,7 +238,7 @@ pub fn replace_updates(ts: &TransitionStmt) -> TransitionStmt {
         TransitionStmt::Assert(_, _) => ts.clone(),
         TransitionStmt::Update(span, ident, e) => TransitionStmt::Require(
             *span,
-            Expr::Verbatim(quote!{ ::builtin::equal(post.#ident, #e) })
+            Expr::Verbatim(quote! { ::builtin::equal(post.#ident, #e) }),
         ),
     }
 }

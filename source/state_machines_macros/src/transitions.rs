@@ -158,7 +158,6 @@ fn check_readonly(ts: &TransitionStmt) -> syn::parse::Result<()> {
     }
 }
 
-
 /// Check well-formedness for an 'ordinary' transition.
 ///
 /// We require every field to be updated exactly once. That means if a field

@@ -8,7 +8,7 @@ use crate::concurrency_tokens::output_token_types_and_fns;
 use crate::lemmas::get_transition;
 use crate::parse_token_stream::SMBundle;
 use crate::safety_conditions::{has_any_assert, safety_condition_body};
-use crate::to_relation::{to_relation};
+use crate::to_relation::to_relation;
 use proc_macro2::Span;
 use proc_macro2::TokenStream;
 use quote::{quote, quote_spanned, ToTokens};
