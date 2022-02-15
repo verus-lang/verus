@@ -1,13 +1,20 @@
-use crate::ast::{Transition, TransitionKind, TransitionParam, SM};
+use crate::ast::{
+    Transition, TransitionKind,
+    TransitionParam, SM,
+};
 use crate::parse_token_stream::SMBundle;
 use crate::to_token_stream::get_self_ty;
 use proc_macro2::Span;
-use quote::ToTokens;
+use quote::{ToTokens};
 use std::collections::{HashMap, HashSet};
 use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
-use syn::token::Comma;
-use syn::{Error, FnArg, Ident, Pat, PatIdent, PatType, ReturnType, Type};
+use syn::token::{Comma};
+use syn::{
+    Error, FnArg, Pat, PatIdent, PatType, ReturnType, Type, Ident
+};
+
+/// Check that the declarations of 'inductive' lemmas are well-formed.
 
 pub fn check_lemmas(bundle: &SMBundle) -> syn::parse::Result<()> {
     check_each_lemma_valid(bundle)?;
@@ -27,6 +34,16 @@ pub fn get_transition<'a>(
     }
     None
 }
+
+/// Check that each lemma is valid by making sure it has the right arguments.
+/// They should match token-by-token (since at this point we are incapable of more complex
+/// type analysis) and be named the same.
+///
+/// Naturally, in the process, we check that each lemma actually names a transition
+/// that exists. We also check that there are no duplicate lemmas.
+///
+/// Make sure the error message is helpful. On error, just tell the user exactly
+/// what params they can copy-paste in.
 
 fn check_each_lemma_valid(bundle: &SMBundle) -> syn::parse::Result<()> {
     let mut seen_lemmas = HashSet::new();
@@ -94,6 +111,16 @@ fn check_each_lemma_valid(bundle: &SMBundle) -> syn::parse::Result<()> {
     Ok(())
 }
 
+// For the lemma about an 'init' routine,
+// we expect params: `post: X, ...` where `...` are the transition params and X is the self type.
+// For a 'transition' routine,
+// we expect params: `self: X, post: X, ...`
+//
+// NOTE: unfortunately we have to write out the name `X` rather than just using the
+// keyword `Self`. The reason is that using `Self` turns the param into a special 'self'
+// param, which runs into a current limitation of Verus: we cannot have a `#[spec] self`
+// argument on a `#[proof]` function.
+
 fn get_expected_params(sm: &SM, t: &Transition) -> Vec<TransitionParam> {
     let mut v = vec![];
     let self_ty = get_self_ty(sm);
@@ -116,8 +143,10 @@ fn get_expected_params(sm: &SM, t: &Transition) -> Vec<TransitionParam> {
     v
 }
 
-// If yes, return None
+// If the params match, return None
 // if no, return a span to error at
+// Pick the earliest span where a discrepancy is found.
+
 fn params_match(
     expected: &Vec<TransitionParam>,
     actual: &Punctuated<FnArg, Comma>,
@@ -155,6 +184,7 @@ fn params_match(
     return None;
 }
 
+// Check if the `pat` is for the given ident, with no extra stuff.
 fn pat_is_ident(pat: &Pat, ident: &Ident) -> bool {
     match pat {
         Pat::Ident(PatIdent {
@@ -167,6 +197,9 @@ fn pat_is_ident(pat: &Pat, ident: &Ident) -> bool {
         _ => false,
     }
 }
+
+/// Check that every transition has a corresponding 'inductive' lemma.
+/// On error, print out a list of stubs that the user can directly copy-paste into their source.
 
 fn check_lemmas_cover_all_cases(bundle: &SMBundle) -> syn::parse::Result<()> {
     let mut names = HashMap::new();
