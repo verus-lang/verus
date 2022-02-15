@@ -37,11 +37,11 @@ pub fn output_token_stream(bundle: SMBundle, concurrent: bool) -> syn::parse::Re
     }
 
     output_other_fns(
-        &bundle.sm,
+        &bundle,
         &mut impl_token_stream,
         &bundle.extras.invariants,
         &bundle.extras.lemmas,
-        bundle.normal_fns,
+        &bundle.normal_fns,
     );
 
     let impl_decl = impl_decl_stream(&self_ty, &bundle.sm.generics);
@@ -357,11 +357,11 @@ fn field_to_tokens(field: &Field<Ident, Type>) -> TokenStream {
 */
 
 fn output_other_fns(
-    sm: &SM,
+    bundle: &SMBundle,
     impl_token_stream: &mut TokenStream,
     invariants: &Vec<Invariant>,
     lemmas: &Vec<Lemma>,
-    normal_fns: Vec<ImplItemMethod>,
+    normal_fns: &Vec<ImplItemMethod>,
 ) {
     let inv_names = invariants.iter().map(|i| &i.func.sig.ident);
     impl_token_stream.extend(quote! {
@@ -377,10 +377,28 @@ fn output_other_fns(
         fix_attrs(&mut f.attrs);
         f.to_tokens(impl_token_stream);
     }
+
+    for inv in invariants {
+        let inv_ident = &inv.func.sig.ident;
+        let inv_name = inv_ident.to_string();
+        let error_msg = format!("could not show invariant `{:}` on the `post` state", inv_name);
+        let lemma_msg_ident = Ident::new(&format!("lemma_msg_{:}", inv_name), inv_ident.span());
+        let self_ty = get_self_ty(&bundle.sm);
+        impl_token_stream.extend(quote! {
+            #[proof]
+            #[verifier(custom_req_err(#error_msg))]
+            #[verifier(external_body)]
+            fn #lemma_msg_ident(s: #self_ty) {
+                requires(s.#inv_ident());
+                ensures(s.#inv_ident());
+            }
+        });
+    }
+
     for lemma in lemmas {
         impl_token_stream.extend(quote! { #[proof] });
         let mut f = lemma.func.clone();
-        lemma_update_body(sm, lemma, &mut f);
+        lemma_update_body(bundle, lemma, &mut f);
         fix_attrs(&mut f.attrs);
         f.to_tokens(impl_token_stream);
     }
@@ -396,11 +414,11 @@ fn left_of_colon<'a>(fn_arg: &'a FnArg) -> &'a Pat {
     }
 }
 
-fn lemma_update_body(sm: &SM, l: &Lemma, func: &mut ImplItemMethod) {
+fn lemma_update_body(bundle: &SMBundle, l: &Lemma, func: &mut ImplItemMethod) {
     // TODO give a more helpful error if the body already has requires/ensures
 
-    let trans =
-        get_transition(&sm.transitions, &l.purpose.transition.to_string()).expect("transition");
+    let trans = get_transition(&bundle.sm.transitions, &l.purpose.transition.to_string())
+        .expect("transition");
 
     let precondition = if trans.kind == TransitionKind::Init {
         let trans_name =
@@ -417,31 +435,42 @@ fn lemma_update_body(sm: &SM, l: &Lemma, func: &mut ImplItemMethod) {
         quote! { self.invariant() && self.#trans_name_strong(#(#trans_args),*) }
     };
 
-    let new_block = Block {
-        brace_token: func.block.brace_token.clone(),
-        stmts: vec![
-            Stmt::Semi(
-                Expr::Verbatim(quote! {
-                    ::builtin::requires(
-                        #precondition
-                    )
-                }),
-                Semi { spans: [l.func.span()] },
-            ),
-            Stmt::Semi(
-                Expr::Verbatim(quote! {
-                    ::builtin::ensures(
-                        post.invariant()
-                    )
-                }),
-                Semi { spans: [l.func.span()] },
-            ),
-            Stmt::Expr(Expr::Block(ExprBlock {
-                attrs: vec![],
-                label: None,
-                block: func.block.clone(),
-            })),
-        ],
-    };
+    let mut stmts = vec![
+        Stmt::Semi(
+            Expr::Verbatim(quote! {
+                ::builtin::requires(
+                    #precondition
+                )
+            }),
+            Semi { spans: [l.func.span()] },
+        ),
+        Stmt::Semi(
+            Expr::Verbatim(quote! {
+                ::builtin::ensures(
+                    post.invariant()
+                )
+            }),
+            Semi { spans: [l.func.span()] },
+        ),
+        Stmt::Expr(Expr::Block(ExprBlock {
+            attrs: vec![],
+            label: None,
+            block: func.block.clone(),
+        })),
+    ];
+    for inv in &bundle.extras.invariants {
+        let inv_ident = &inv.func.sig.ident;
+        let inv_name = inv_ident.to_string();
+        let lemma_msg_ident = Ident::new(&format!("lemma_msg_{:}", inv_name), inv_ident.span());
+        let span = l.func.span();
+        stmts.push(Stmt::Semi(
+            Expr::Verbatim(quote_spanned! { span =>
+                Self::#lemma_msg_ident(post)
+            }),
+            Semi { spans: [l.func.span()] },
+        ));
+    }
+
+    let new_block = Block { brace_token: func.block.brace_token.clone(), stmts: stmts };
     func.block = new_block;
 }
