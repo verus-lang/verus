@@ -10,9 +10,9 @@ mod ident_visitor;
 mod lemmas;
 mod parse_token_stream;
 mod parse_transition;
+mod to_relation;
 mod to_token_stream;
 mod transitions;
-mod weakest;
 
 use lemmas::check_lemmas;
 use parse_token_stream::{parse_result_to_smir, ParseResult};

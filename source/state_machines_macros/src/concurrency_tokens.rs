@@ -4,7 +4,6 @@ use crate::ast::{
     Extras, Field, Invariant, Lemma, LemmaPurpose, ShardableType, Transition, TransitionKind,
     TransitionParam, TransitionStmt, SM,
 };
-use crate::weakest::{get_safety_conditions, to_weakest};
 use proc_macro2::Span;
 use proc_macro2::TokenStream;
 use quote::{quote, quote_spanned, ToTokens};

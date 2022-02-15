@@ -8,7 +8,7 @@ use crate::concurrency_tokens::output_token_types_and_fns;
 use crate::lemmas::get_transition;
 use crate::parse_token_stream::SMBundle;
 use crate::transitions::{has_any_assert, safety_condition_body};
-use crate::weakest::{get_safety_conditions, to_weakest};
+use crate::to_relation::{to_relation};
 use proc_macro2::Span;
 use proc_macro2::TokenStream;
 use quote::{quote, quote_spanned, ToTokens};
@@ -159,10 +159,8 @@ pub fn output_primary_stuff(
     let self_ty = get_self_ty(&sm);
 
     for trans in &sm.transitions {
-        let mut strong_rel_idents: Vec<Ident> = Vec::new();
-
         if trans.kind != TransitionKind::Readonly {
-            let f = to_weakest(sm, trans);
+            let f = to_relation(sm, trans, true /* weak */);
             let name = &trans.name;
             let rel_fn;
             if trans.kind == TransitionKind::Init {
@@ -185,44 +183,16 @@ pub fn output_primary_stuff(
             impl_token_stream.extend(rel_fn);
         }
 
-        for (i, safety_cond) in get_safety_conditions(&trans.body).iter().enumerate() {
-            let args = self_params(&trans.params);
-            let idx = i + 1;
-            let name = Ident::new(
-                &(trans.name.to_string() + "_safety_" + &idx.to_string()),
-                trans.name.span(),
-            );
-            let rel_fn = quote! {
-                #[spec]
-                pub fn #name (#args) -> bool {
-                    #safety_cond
-                }
-            };
-            impl_token_stream.extend(rel_fn);
-            strong_rel_idents.push(name);
-        }
-
         if trans.kind == TransitionKind::Transition {
             let params = self_post_params(&trans.params);
             let name = Ident::new(&(trans.name.to_string() + "_strong"), trans.name.span());
 
-            let base_name = &trans.name;
-            let args = lone_args(&trans.params);
-            let p_args = post_args(&trans.params);
-
-            let mut conjuncts = vec![quote! {
-                self.#base_name(#p_args)
-            }];
-            for ident in strong_rel_idents {
-                conjuncts.push(quote! {
-                    self.#ident(#args)
-                });
-            }
+            let f = to_relation(sm, trans, false /* weak */);
 
             let rel_fn = quote! {
                 #[spec]
                 pub fn #name (#params) -> bool {
-                    #(#conjuncts)&&*
+                    #f
                 }
             };
             impl_token_stream.extend(rel_fn);
@@ -280,22 +250,6 @@ fn self_assoc_params(ty: &Type, params: &Vec<TransitionParam>) -> TokenStream {
     };
 }
 
-// self, params...
-fn self_params(params: &Vec<TransitionParam>) -> TokenStream {
-    let params: Vec<TokenStream> = params
-        .iter()
-        .map(|arg| {
-            let ident = &arg.ident;
-            let ty = &arg.ty;
-            quote! { #ident: #ty }
-        })
-        .collect();
-    return quote! {
-        self,
-        #(#params),*
-    };
-}
-
 // post: Self, params...
 fn post_params(params: &Vec<TransitionParam>) -> TokenStream {
     let params: Vec<TokenStream> = params
@@ -309,33 +263,6 @@ fn post_params(params: &Vec<TransitionParam>) -> TokenStream {
     return quote! {
         post: Self,
         #(#params),*
-    };
-}
-
-fn post_args(args: &Vec<TransitionParam>) -> TokenStream {
-    let args: Vec<TokenStream> = args
-        .iter()
-        .map(|arg| {
-            let ident = &arg.ident;
-            quote! { #ident }
-        })
-        .collect();
-    return quote! {
-        post,
-        #(#args),*
-    };
-}
-
-fn lone_args(args: &Vec<TransitionParam>) -> TokenStream {
-    let args: Vec<TokenStream> = args
-        .iter()
-        .map(|arg| {
-            let ident = &arg.ident;
-            quote! { #ident }
-        })
-        .collect();
-    return quote! {
-        #(#args),*
     };
 }
 
