@@ -116,6 +116,7 @@ pub const UINT_OR: &str = "uintor";
 pub const UINT_SHR: &str = "uintshr";
 pub const UINT_SHL: &str = "uintshl";
 pub const UINT_NOT: &str = "uintnot";
+pub const UINT_GET: &str = "uintget";
 
 // We assume that usize is at least ARCH_SIZE_MIN_BITS wide
 pub const ARCH_SIZE_MIN_BITS: u32 = 32;

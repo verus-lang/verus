@@ -50,6 +50,7 @@ pub(crate) fn prelude_nodes() -> Vec<Node> {
     let uint_shr = str_to_node(UINT_SHR);
     let uint_shl = str_to_node(UINT_SHL);
     let uint_not = str_to_node(UINT_NOT);
+    let uint_get = str_to_node(UINT_GET);
 
     nodes_vec!(
         // Fuel
@@ -277,11 +278,14 @@ pub(crate) fn prelude_nodes() -> Vec<Node> {
         // BitVector
         // these are the uninterpreted integer versions
         (declare-fun [uint_xor] (Int Int) Int)
-        (declare-fun [uint_and] (Poly Poly) Int)
+        // (declare-fun [uint_and] (Poly Poly) Int)
+        (declare-fun [uint_and] (Int Int) Int)
         (declare-fun [uint_or] (Int Int) Int)
         (declare-fun [uint_shr] (Int Int) Int)
         (declare-fun [uint_shl] (Int Int) Int)
         (declare-fun [uint_not] (Int) Int)
+
+        (declare-fun [uint_get] (Int Int) Bool)
     )
 }
 

@@ -2,49 +2,27 @@ use builtin::*;
 mod pervasive;
 use pervasive::*;
 
-// TODO: concat and bit-select function as builtin (directly translate into z3)
-fn concat32(b1: u32, b2: u32) -> u64 {
-}
+#[spec]
+fn arith_sum_int(i: int) -> int {
+    decreases(i);
 
-fn extract(high: u32, low: u32, b:u32) -> u(high-low+1) {    
-   // return type u(high-low+1) OR
-   // return the same width from input, and move the selected bits to the lowest
-   // but second approach will give a type mismatch for "split"
-} 
-
-fn split(b:u64) -> (u32, u32){
-   (extract(63,32,b), extract(31,0,b))
+    if i <= 0 { 0 } else { i + arith_sum_int(i - 1) }
 }
 
 #[proof]
-fn concat_and_split32(u1:u32, u2:u32){
-   ensures(split(concat(u1,u2)) == (u1,u2));
+fn arith_sum_test2() {
+    // Instead of writing out intermediate assertions, 
+    // we can instead boost the fuel setting
+    reveal_with_fuel(arith_sum_int, 4);
+    assert(arith_sum_int(3) == 6);
 }
 
-#[proof]
-fn concat_and_split64(u1:u64, u2:u64){
-   ensures(split(concat(u1,u2)) == (u1,u2));
+#[verifier(external)]
+fn main() {
+   //  let args = std::env::args();
+   //  for arg in args {
+   //      if let Ok(n) = arg.parse::<u64>() {
+   //          println!("{}", run_arith_sum(n));
+   //      }
+   //  }
 }
- 
-#[proof]
-fn concat_property(u1:u64, u2:u64){
-   ensures(concat(u1,u2) == u1 * 0x10000000000000000 + u2);
-}
-
-// TODO: bitvector function mode 
-#[verifier(bit_vector)]
-#[exec]
-fn bitvec_mode_example(b: u32) -> u32 {
-   assert(b + 1 == 1 + b);
-   b
-}
-
-#[verifier(bit_vector)]
-#[exec]
-fn shift_by_2(b: u32) -> u32 {
-   requires(b < 0x1000);
-   ensures(|ret: u32| ret == b * 4);
-   b << 2
-}
-
-fn main() { }

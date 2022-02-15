@@ -2,7 +2,7 @@ use crate::ast::{
     BinaryOp, Fun, Ident, Idents, IntRange, MaskSpec, Mode, Params, Path, PathX, SpannedTyped, Typ,
     TypX, Typs, UnaryOp, UnaryOpr, VarAt,
 };
-use crate::ast_util::{bitwidth_from_type, get_field, get_variant};
+use crate::ast_util::{bitwidth_from_type, get_field, get_variant, path_as_rust_name};
 use crate::context::Ctx;
 use crate::def::{fn_inv_name, fn_namespace_name};
 use crate::def::{
@@ -429,27 +429,29 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: ExprCtxt) -> Expr {
                     ExprX::Apply(Arc::new(crate::def::UINT_XOR.to_string()), Arc::new(vec![lh, rh]))
                 }
                 BinaryOp::BitAnd => {
-                    let box_lh = try_box(ctx, lh, &lhs.typ).expect("Box");
-                    let box_rh = try_box(ctx, rh, &rhs.typ).expect("Box");
-                    if let TypX::Int(range) = &*lhs.typ {
-                        match range {
-                            IntRange::I(_) | IntRange::U(_) => {
-                                let expr = Arc::new(ExprX::Apply(
-                                    Arc::new(crate::def::UINT_AND.to_string()),
-                                    Arc::new(vec![box_lh, box_rh]),
-                                ));
-                                let f_name = crate::def::U_CLIP;
-                                return apply_range_fun(&f_name, &range, vec![expr]);
-                            }
-                            _ => {
-                                return Arc::new(ExprX::Apply(
-                                    Arc::new(crate::def::UINT_AND.to_string()),
-                                    Arc::new(vec![box_lh, box_rh]),
-                                ));
-                            }
-                        };
-                    };
-                    panic!("BitAnd")
+                    ExprX::Apply(Arc::new(crate::def::UINT_AND.to_string()), Arc::new(vec![lh, rh]))
+
+                    // let box_lh = try_box(ctx, lh, &lhs.typ).expect("Box");
+                    // let box_rh = try_box(ctx, rh, &rhs.typ).expect("Box");
+                    // if let TypX::Int(range) = &*lhs.typ {
+                    //     match range {
+                    //         IntRange::I(_) | IntRange::U(_) => {
+                    //             let expr = Arc::new(ExprX::Apply(
+                    //                 Arc::new(crate::def::UINT_AND.to_string()),
+                    //                 Arc::new(vec![box_lh, box_rh]),
+                    //             ));
+                    //             let f_name = crate::def::U_CLIP;
+                    //             return apply_range_fun(&f_name, &range, vec![expr]);
+                    //         }
+                    //         _ => {
+                    //             return Arc::new(ExprX::Apply(
+                    //                 Arc::new(crate::def::UINT_AND.to_string()),
+                    //                 Arc::new(vec![box_lh, box_rh]),
+                    //             ));
+                    //         }
+                    //     };
+                    // };
+                    // panic!("BitAnd")
                 }
                 BinaryOp::BitOr => {
                     ExprX::Apply(Arc::new(crate::def::UINT_OR.to_string()), Arc::new(vec![lh, rh]))
@@ -771,6 +773,41 @@ fn exp_to_bv_expr(state: &State, exp: &Exp) -> Expr {
             }
             _ => panic!("unhandled bv UnaryOpr {:?}", op),
         },
+        ExpX::Call(target, types, args) => {
+            if path_as_rust_name(&target.path) == "crate::get_bit" {
+                let bv = exp_to_bv_expr(state, &args[0]);
+                let loc = exp_to_bv_expr(state, &args[1]);
+                let shift = Arc::new(ExprX::Binary(air::ast::BinaryOp::LShr, bv, loc));
+                let one_mask = Arc::new(ExprX::Const(Constant::BitVec(
+                    Arc::new("1".to_string()),
+                    32,
+                )));
+                let and = Arc::new(ExprX::Binary(air::ast::BinaryOp::BitAnd, shift, one_mask.clone()));
+                return Arc::new(ExprX::Binary(air::ast::BinaryOp::Eq, and, one_mask));
+            } else if path_as_rust_name(&target.path) == "crate::set_bit" {
+                let bv = exp_to_bv_expr(state, &args[0]);
+                let loc = exp_to_bv_expr(state, &args[1]);
+                let bit = exp_to_bv_expr(state, &args[2]);
+
+                let one_mask = Arc::new(ExprX::Const(Constant::BitVec(
+                    Arc::new("1".to_string()),
+                    32,
+                )));
+                let shift = Arc::new(ExprX::Binary(air::ast::BinaryOp::Shl, one_mask, loc));
+                let neg = Arc::new(ExprX::Unary(air::ast::UnaryOp::BitNot, shift.clone()));
+                let or = Arc::new(ExprX::Binary(air::ast::BinaryOp::BitOr, bv.clone(), shift));
+                let and = Arc::new(ExprX::Binary(air::ast::BinaryOp::BitAnd, bv, neg));
+                return Arc::new(ExprX::IfElse(bit, or, and));
+            } else {
+                panic!("unhandled bv expr conversion")
+            }
+        },
+        ExpX::If(cond, tbranch, fbranch) => {
+            let cond = exp_to_bv_expr(state, &cond);
+            let tbranch = exp_to_bv_expr(state, &tbranch);
+            let fbranch = exp_to_bv_expr(state, &fbranch);
+            return Arc::new(ExprX::IfElse(cond, tbranch, fbranch));
+        }
         _ => panic!("unhandled bv expr conversion {:?}", exp.x),
     }
 }
@@ -1209,6 +1246,8 @@ pub fn body_stm_to_air(
         if let Some(width) = bitwidth_from_type(&decl.typ) {
             let typ = bv_typ(width);
             local_bv_shared.push(Arc::new(DeclX::Var(suffix_local_unique_id(&decl.ident), typ)));
+        } else if let TypX::Bool = *decl.typ {
+            local_bv_shared.push(Arc::new(DeclX::Var(suffix_local_unique_id(&decl.ident), bool_typ())));
         }
     }
 
