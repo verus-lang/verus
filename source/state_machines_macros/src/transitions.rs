@@ -233,6 +233,13 @@ fn append_stmt_front(t1: TransitionStmt, t2: TransitionStmt) -> TransitionStmt {
     }
 }
 
+// Turns implicit updates into explicit 'update' statements.
+//
+//  - For any field `f` which is not updated at all, add an `update(f, self.f)`
+//    statement at the root node of the transition AST.
+//  - For any field `f` which is updated in one branch of a conditional, but not the other,
+//    add a trivial update statement
+
 pub fn add_noop_updates(sm: &SM, ts: &TransitionStmt) -> TransitionStmt {
     let (mut ts, idents) = add_noop_updates_rec(ts);
     for f in &sm.fields {

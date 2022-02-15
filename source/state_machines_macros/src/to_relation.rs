@@ -18,6 +18,38 @@ use syn::{
     MetaList, NestedMeta, Path, PathArguments, PathSegment, Type,
 };
 
+// Converts a transition description into a relation between `self` and `post`.
+// We proceed in two steps.
+//
+// 1. Walk the tree and add any implicit 'update' statements (`add_noop_updates`).
+// 2. Walk the tree and straightforwardly convert it to a relation.
+// 
+// There are actually two different relations we can form, the "weak" relation and
+// the "strong" one.
+//
+// These differ only in how they handle "assert" statements. (Thus if there are no assert
+// statements, then the two versions are the same.) In short, the 'strong' version treats
+// an 'assert' like it does any other enabling condition, while the 'weak' version puts
+// the 'asserts' on the _left_ side of the implication.
+//
+// For example, consider a transition like,
+//
+//   require(A);
+//   assert(B);
+//   require(C);
+//
+// Then the weak relation would become
+//
+//   A && (B ==> C)
+//
+// While the strong relation would become simply,
+//
+//   A && B && C
+//
+// Note that we require the user to prove that any asserts follow from the invariant.
+// (In this case, that means showing that (Inv && A ==> B).
+// Thus, subject to the invariant, the weak & strong versions will actually be equivalent.
+
 pub fn to_relation(sm: &SM, trans: &Transition, weak: bool) -> TokenStream {
     let ts = add_noop_updates(sm, &trans.body);
     let ts = replace_updates(&ts);
