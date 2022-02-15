@@ -1,20 +1,5 @@
-#![allow(unused_imports)]
-
-use crate::ast::{
-    Extras, Invariant, Lemma, LemmaPurpose, LemmaPurposeKind, ShardableType, Transition,
-    TransitionKind, TransitionStmt, SM,
-};
-use crate::parse_transition::parse_impl_item_method;
-use crate::transitions::check_transitions;
-use proc_macro2::Span;
-use syn::buffer::Cursor;
-use syn::parse::{Parse, ParseStream};
-use syn::spanned::Spanned;
 use syn::visit::Visit;
-use syn::{
-    braced, AttrStyle, Attribute, Error, Expr, FieldsNamed, FnArg, Ident, ImplItemMethod, Meta,
-    MetaList, NestedMeta, Receiver, Type,
-};
+use syn::{Error, Ident};
 
 pub struct IdentVisitor {
     pub error: syn::parse::Result<()>,

@@ -1,21 +1,7 @@
-#![allow(unused_imports)]
-
-use crate::ast::{
-    Extras, Field, Invariant, Lemma, LemmaPurpose, ShardableType, Transition, TransitionKind,
-    TransitionStmt, SM,
-};
-use proc_macro2::Span;
+use crate::ast::{Transition, TransitionStmt, SM};
 use proc_macro2::TokenStream;
-use quote::{quote, quote_spanned, ToTokens};
-use syn::buffer::Cursor;
-use syn::parse::{Parse, ParseStream};
-use syn::punctuated::Punctuated;
-use syn::spanned::Spanned;
-use syn::token::Colon2;
-use syn::{
-    braced, AttrStyle, Attribute, Error, Expr, FieldsNamed, FnArg, Ident, ImplItemMethod, Meta,
-    MetaList, NestedMeta, Path, PathArguments, PathSegment, Type,
-};
+use quote::quote;
+use syn::{Expr, Ident};
 
 /// Converts a transition description into a relation between `self` and `post`.
 /// We proceed in two steps.

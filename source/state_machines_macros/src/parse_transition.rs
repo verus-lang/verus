@@ -1,21 +1,11 @@
-#![allow(unused_imports)]
-
-use crate::ast::{
-    Extras, Field, Invariant, Lemma, LemmaPurpose, ShardableType, Transition, TransitionKind,
-    TransitionParam, TransitionStmt, SM,
-};
+use crate::ast::{Transition, TransitionKind, TransitionParam, TransitionStmt};
 use proc_macro2::Span;
-use proc_macro2::TokenStream;
-use quote::quote_spanned;
-use syn::buffer::Cursor;
-use syn::parse::{Parse, ParseStream};
 use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
 use syn::token::{Colon2, Dot};
 use syn::{
-    braced, AttrStyle, Attribute, Block, Error, Expr, ExprCall, ExprField, ExprIf, ExprPath,
-    FieldsNamed, FnArg, Ident, ImplItemMethod, Local, Member, Meta, MetaList, NestedMeta, Pat,
-    PatIdent, Path, PathArguments, PathSegment, Receiver, Signature, Stmt, Type,
+    Block, Error, Expr, ExprCall, ExprField, ExprIf, ExprPath, FnArg, Ident, ImplItemMethod, Local,
+    Member, Pat, PatIdent, Path, PathArguments, PathSegment, Signature, Stmt,
 };
 
 pub struct Ctxt {

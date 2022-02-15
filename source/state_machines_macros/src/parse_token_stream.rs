@@ -1,8 +1,8 @@
-#![allow(unused_imports)]
+//! Module for the initial processing of the macro tokens, to return an SM AST
 
 use crate::ast::{
     Extras, Invariant, Lemma, LemmaPurpose, LemmaPurposeKind, ShardableType, Transition,
-    TransitionKind, TransitionStmt, SM,
+    TransitionKind, SM,
 };
 use crate::ident_visitor::IdentVisitor;
 use crate::parse_transition::parse_impl_item_method;
@@ -15,8 +15,8 @@ use syn::spanned::Spanned;
 use syn::visit::Visit;
 use syn::Token;
 use syn::{
-    braced, AttrStyle, Attribute, Error, Expr, FieldsNamed, FnArg, GenericParam, Generics, Ident,
-    ImplItemMethod, Meta, MetaList, NestedMeta, Receiver, Type, Visibility, WhereClause,
+    braced, AttrStyle, Attribute, Error, FieldsNamed, FnArg, GenericParam, Generics, Ident,
+    ImplItemMethod, Meta, MetaList, NestedMeta, Receiver, Visibility, WhereClause,
 };
 
 pub struct SMBundle {
@@ -121,7 +121,7 @@ fn peek_keyword(cursor: Cursor, token: &str) -> bool {
     if let Some((ident, _rest)) = cursor.ident() { ident == token } else { false }
 }
 
-///////// ParseResult -> SMIR
+///////// ParseResult -> SM AST
 
 enum FnAttrInfo {
     NoneFound,

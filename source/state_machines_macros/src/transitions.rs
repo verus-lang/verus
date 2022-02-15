@@ -1,23 +1,8 @@
-#![allow(unused_imports)]
-
-use crate::ast::{
-    Extras, Field, Invariant, Lemma, LemmaPurpose, ShardableType, Transition, TransitionKind,
-    TransitionStmt, SM,
-};
+use crate::ast::{Field, TransitionKind, TransitionStmt, SM};
 use proc_macro2::Span;
-use proc_macro2::TokenStream;
-use quote::{quote, quote_spanned, ToTokens};
 use std::collections::HashMap;
-use syn::buffer::Cursor;
-use syn::parse::{Parse, ParseStream};
-use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
-use syn::token::{Colon2, Dot, Paren};
-use syn::{
-    braced, AttrStyle, Attribute, Error, Expr, ExprCall, ExprField, ExprPath, FieldsNamed, FnArg,
-    Ident, ImplItemMethod, Member, Meta, MetaList, NestedMeta, Path, PathArguments, PathSegment,
-    Type,
-};
+use syn::{Error, Ident};
 
 pub fn fields_contain(fields: &Vec<Field>, ident: &Ident) -> bool {
     for f in fields {

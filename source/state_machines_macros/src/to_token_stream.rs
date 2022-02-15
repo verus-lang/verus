@@ -1,27 +1,18 @@
-#![allow(unused_imports)]
-
-use crate::ast::{
-    Extras, Field, Invariant, Lemma, LemmaPurpose, ShardableType, Transition, TransitionKind,
-    TransitionParam, TransitionStmt, SM,
-};
+use crate::ast::{Invariant, Lemma, ShardableType, TransitionKind, TransitionParam, SM};
 use crate::concurrency_tokens::output_token_types_and_fns;
 use crate::lemmas::get_transition;
 use crate::parse_token_stream::SMBundle;
 use crate::safety_conditions::{has_any_assert, safety_condition_body};
 use crate::to_relation::to_relation;
-use proc_macro2::Span;
 use proc_macro2::TokenStream;
 use quote::{quote, quote_spanned, ToTokens};
 use std::mem::swap;
-use syn::buffer::Cursor;
-use syn::parse::{Parse, ParseStream};
 use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
-use syn::token::{Colon2, Semi};
+use syn::token::Semi;
 use syn::{
-    braced, AttrStyle, Attribute, Block, Error, Expr, ExprBlock, FieldsNamed, FnArg, GenericParam,
-    Generics, Ident, ImplItemMethod, Meta, MetaList, NestedMeta, Pat, PatType, Path, PathArguments,
-    PathSegment, Stmt, Type,
+    Attribute, Block, Expr, ExprBlock, FieldsNamed, FnArg, GenericParam, Generics, Ident,
+    ImplItemMethod, Meta, MetaList, Pat, Stmt, Type,
 };
 
 pub fn output_token_stream(bundle: SMBundle, concurrent: bool) -> syn::parse::Result<TokenStream> {
