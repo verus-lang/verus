@@ -222,98 +222,6 @@ pub fn check_normal(ts: &TransitionStmt) -> syn::parse::Result<Vec<(Ident, Span)
     }
 }
 
-fn append_stmt_front(t1: TransitionStmt, t2: TransitionStmt) -> TransitionStmt {
-    match t1 {
-        TransitionStmt::Block(span, mut v) => {
-            let mut w: Vec<TransitionStmt> = vec![t2];
-            w.append(&mut v);
-            TransitionStmt::Block(span, w)
-        }
-        _ => TransitionStmt::Block(t1.get_span().clone(), vec![t2, t1]),
-    }
-}
-
-// Turns implicit updates into explicit 'update' statements.
-//
-//  - For any field `f` which is not updated at all, add an `update(f, self.f)`
-//    statement at the root node of the transition AST.
-//  - For any field `f` which is updated in one branch of a conditional, but not the other,
-//    add a trivial update statement
-
-pub fn add_noop_updates(sm: &SM, ts: &TransitionStmt) -> TransitionStmt {
-    let (mut ts, idents) = add_noop_updates_rec(ts);
-    for f in &sm.fields {
-        if !idents.contains(&f.ident) {
-            let span = ts.get_span().clone();
-            let ident = &f.ident;
-            ts = append_stmt_front(
-                ts,
-                TransitionStmt::Update(span, f.ident.clone(), Expr::Verbatim(quote!{ self.#ident })),
-            );
-        }
-    }
-    return ts;
-}
-
-fn add_noop_updates_rec(ts: &TransitionStmt) -> (TransitionStmt, Vec<Ident>) {
-    match ts {
-        TransitionStmt::Block(span, v) => {
-            let mut h = Vec::new();
-            let mut v1 = Vec::new();
-            for t in v.iter() {
-                let (t1, q) = add_noop_updates_rec(t);
-                v1.push(t1);
-                h.extend(q)
-            }
-            (TransitionStmt::Block(span.clone(), v1), h)
-        }
-        TransitionStmt::Let(_, _, _)
-        | TransitionStmt::Require(_, _)
-        | TransitionStmt::Assert(_, _) => {
-            return (ts.clone(), Vec::new());
-        }
-        TransitionStmt::If(span, cond, thn, els) => {
-            let (mut s1, h1) = add_noop_updates_rec(thn);
-            let (mut s2, h2) = add_noop_updates_rec(els);
-
-            for ident in &h1 {
-                if !h2.contains(ident) {
-                    s1 = append_stmt_front(
-                        s1,
-                        TransitionStmt::Update(
-                            span.clone(),
-                            ident.clone(),
-                            Expr::Verbatim(quote!{ self.#ident }),
-                        ),
-                    );
-                }
-            }
-            let mut union = h1.clone();
-            for ident in &h2 {
-                if !h1.contains(ident) {
-                    s2 = append_stmt_front(
-                        s2,
-                        TransitionStmt::Update(
-                            span.clone(),
-                            ident.clone(),
-                            Expr::Verbatim(quote!{ self.#ident }),
-                        ),
-                    );
-                    union.push(ident.clone());
-                }
-            }
-
-            return (
-                TransitionStmt::If(span.clone(), cond.clone(), Box::new(s1), Box::new(s2)),
-                union,
-            );
-        }
-        TransitionStmt::Update(_, ident, _) => {
-            return (ts.clone(), vec![ident.clone()]);
-        }
-    }
-}
-
 pub fn check_transitions(sm: &SM) -> syn::parse::Result<()> {
     for tr in &sm.transitions {
         check_updates_refer_to_valid_fields(&sm.fields, &tr.body)?;
@@ -336,30 +244,7 @@ pub fn check_transitions(sm: &SM) -> syn::parse::Result<()> {
     Ok(())
 }
 
-pub fn replace_updates(ts: &TransitionStmt) -> TransitionStmt {
-    match ts {
-        TransitionStmt::Block(span, v) => {
-            let mut h = Vec::new();
-            for t in v.iter() {
-                let q = replace_updates(t);
-                h.push(q);
-            }
-            TransitionStmt::Block(*span, h)
-        }
-        TransitionStmt::Let(_, _, _) => ts.clone(),
-        TransitionStmt::If(span, cond, thn, els) => {
-            let t1 = replace_updates(thn);
-            let t2 = replace_updates(els);
-            TransitionStmt::If(*span, cond.clone(), Box::new(t1), Box::new(t2))
-        }
-        TransitionStmt::Require(_, _) => ts.clone(),
-        TransitionStmt::Assert(_, _) => ts.clone(),
-        TransitionStmt::Update(span, ident, e) => TransitionStmt::Require(
-            *span,
-            Expr::Verbatim(quote!{ ::builtin::equal(post.#ident, #e) })
-        ),
-    }
-}
+
 
 pub fn safety_condition_body(ts: &TransitionStmt) -> Option<Expr> {
     match ts {
