@@ -1,18 +1,13 @@
-use crate::ast::{
-    Transition, TransitionKind,
-    TransitionParam, SM,
-};
+use crate::ast::{Transition, TransitionKind, TransitionParam, SM};
 use crate::parse_token_stream::SMBundle;
 use crate::to_token_stream::get_self_ty;
 use proc_macro2::Span;
-use quote::{ToTokens};
+use quote::ToTokens;
 use std::collections::{HashMap, HashSet};
 use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
-use syn::token::{Comma};
-use syn::{
-    Error, FnArg, Pat, PatIdent, PatType, ReturnType, Type, Ident
-};
+use syn::token::Comma;
+use syn::{Error, FnArg, Ident, Pat, PatIdent, PatType, ReturnType, Type};
 
 /// Check that the declarations of 'inductive' lemmas are well-formed.
 

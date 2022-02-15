@@ -1,26 +1,13 @@
-#![allow(unused_imports)]
-
-use crate::ast::{
-    Extras, Field, Invariant, Lemma, LemmaPurpose, ShardableType, Transition, TransitionKind,
-    TransitionParam, TransitionStmt, SM,
-};
+use crate::ast::{Field, ShardableType, Transition, TransitionKind, TransitionStmt, SM};
 use proc_macro2::Span;
 use proc_macro2::TokenStream;
-use quote::{quote, quote_spanned, ToTokens};
+use quote::quote;
 use std::collections::HashMap;
 use std::collections::HashSet;
-use std::ops::Index;
-use syn::buffer::Cursor;
 use syn::parse::Error;
-use syn::parse::{Parse, ParseStream};
-use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
-use syn::token::Colon2;
 use syn::visit_mut::VisitMut;
-use syn::{
-    braced, AttrStyle, Attribute, Expr, ExprField, ExprPath, FieldsNamed, FnArg, Ident,
-    ImplItemMethod, Member, Meta, MetaList, NestedMeta, Path, PathArguments, PathSegment, Type,
-};
+use syn::{Expr, ExprField, ExprPath, Ident, Member, Type};
 
 fn inst_type_name(sm_name: &Ident) -> Ident {
     let name = sm_name.to_string() + "_Instance";
