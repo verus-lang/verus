@@ -233,70 +233,15 @@ fn append_stmt_front(t1: TransitionStmt, t2: TransitionStmt) -> TransitionStmt {
     }
 }
 
-fn single_identifier_path(ident: Ident) -> Expr {
-    let mut post_segs = Punctuated::new();
-    post_segs.push(PathSegment { ident, arguments: PathArguments::None });
-    Expr::Path(ExprPath {
-        attrs: Vec::new(),
-        qself: None,
-        path: Path { leading_colon: None, segments: post_segs },
-    })
-}
-
-fn double_colon_path(span: Span, idents: Vec<Ident>) -> Expr {
-    let mut post_segs = Punctuated::new();
-    for ident in idents {
-        post_segs.push(PathSegment { ident, arguments: PathArguments::None });
-    }
-    Expr::Path(ExprPath {
-        attrs: Vec::new(),
-        qself: None,
-        path: Path { leading_colon: Some(Colon2 { spans: [span, span] }), segments: post_segs },
-    })
-}
-
-fn self_dot_ident(ident: Ident) -> Expr {
-    Expr::Field(ExprField {
-        attrs: Vec::new(),
-        base: Box::new(single_identifier_path(Ident::new("self", ident.span()))),
-        dot_token: Dot { spans: [ident.span()] },
-        member: Member::Named(ident),
-    })
-}
-
-fn post_dot_ident(ident: Ident) -> Expr {
-    Expr::Field(ExprField {
-        attrs: Vec::new(),
-        base: Box::new(single_identifier_path(Ident::new("post", ident.span()))),
-        dot_token: Dot { spans: [ident.span()] },
-        member: Member::Named(ident),
-    })
-}
-
-fn builtin_equal_call(span: Span, e1: Expr, e2: Expr) -> Expr {
-    let mut args = Punctuated::new();
-    args.push(e1);
-    args.push(e2);
-
-    let builtin_equal =
-        double_colon_path(span, vec![Ident::new("builtin", span), Ident::new("equal", span)]);
-
-    Expr::Call(ExprCall {
-        attrs: Vec::new(),
-        func: Box::new(builtin_equal),
-        paren_token: Paren { span: span },
-        args,
-    })
-}
-
 pub fn add_noop_updates(sm: &SM, ts: &TransitionStmt) -> TransitionStmt {
     let (mut ts, idents) = add_noop_updates_rec(ts);
     for f in &sm.fields {
         if !idents.contains(&f.ident) {
             let span = ts.get_span().clone();
+            let ident = &f.ident;
             ts = append_stmt_front(
                 ts,
-                TransitionStmt::Update(span, f.ident.clone(), self_dot_ident(f.ident.clone())),
+                TransitionStmt::Update(span, f.ident.clone(), Expr::Verbatim(quote!{ self.#ident })),
             );
         }
     }
@@ -331,7 +276,7 @@ fn add_noop_updates_rec(ts: &TransitionStmt) -> (TransitionStmt, Vec<Ident>) {
                         TransitionStmt::Update(
                             span.clone(),
                             ident.clone(),
-                            self_dot_ident(ident.clone()),
+                            Expr::Verbatim(quote!{ self.#ident }),
                         ),
                     );
                 }
@@ -344,7 +289,7 @@ fn add_noop_updates_rec(ts: &TransitionStmt) -> (TransitionStmt, Vec<Ident>) {
                         TransitionStmt::Update(
                             span.clone(),
                             ident.clone(),
-                            self_dot_ident(ident.clone()),
+                            Expr::Verbatim(quote!{ self.#ident }),
                         ),
                     );
                     union.push(ident.clone());
@@ -404,7 +349,7 @@ pub fn replace_updates(ts: &TransitionStmt) -> TransitionStmt {
         TransitionStmt::Assert(_, _) => ts.clone(),
         TransitionStmt::Update(span, ident, e) => TransitionStmt::Require(
             *span,
-            builtin_equal_call(*span, post_dot_ident(ident.clone()), e.clone()),
+            Expr::Verbatim(quote!{ ::builtin::equal(post.#ident, #e) })
         ),
     }
 }
