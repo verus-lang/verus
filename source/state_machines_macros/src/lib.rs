@@ -1,4 +1,3 @@
-#![allow(unused_imports)]
 #![feature(box_patterns)]
 #![feature(format_args_capture)]
 
@@ -18,7 +17,7 @@ mod transitions;
 use lemmas::check_lemmas;
 use parse_token_stream::{parse_result_to_smir, ParseResult};
 use proc_macro::TokenStream;
-use syn::{braced, parse_macro_input, Error, Expr, Field, FieldsNamed, Ident, ItemFn, Token, Type};
+use syn::{parse_macro_input};
 use to_token_stream::output_token_stream;
 
 fn construct_state_machine(input: TokenStream, concurrent: bool) -> TokenStream {

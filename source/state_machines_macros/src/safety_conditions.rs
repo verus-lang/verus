@@ -1,21 +1,18 @@
 use crate::ast::{
-    Extras, Field, Invariant, Lemma, LemmaPurpose, ShardableType, Transition, TransitionKind,
-    TransitionStmt, SM,
+    TransitionStmt,
 };
-use proc_macro2::Span;
-use proc_macro2::TokenStream;
 use syn::Expr;
-use quote::{quote, quote_spanned};
+use quote::{quote_spanned};
 
 /// Given a transition, we convert it into a lemma that will create the correct
 /// verification conditions for its 'assert' statement.
 ///
-/// For example,
+/// For example, a transition, written in our state machine DSL:
 ///
 ///     require(A);
 ///     assert(B);
 ///
-/// would turn into:
+/// would turn into Verus code:
 ///
 ///     assume(A);
 ///     assert(B);

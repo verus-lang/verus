@@ -1,25 +1,17 @@
-#![allow(unused_imports)]
-
 use crate::ast::{
-    Extras, Field, Invariant, Lemma, LemmaPurpose, ShardableType, Transition, TransitionKind,
-    TransitionParam, TransitionStmt, SM,
+    Transition, TransitionKind,
+    TransitionParam, SM,
 };
-use crate::concurrency_tokens::output_token_types_and_fns;
 use crate::parse_token_stream::SMBundle;
 use crate::to_token_stream::get_self_ty;
 use proc_macro2::Span;
-use proc_macro2::TokenStream;
-use quote::{quote, quote_spanned, ToTokens};
+use quote::{ToTokens};
 use std::collections::{HashMap, HashSet};
-use syn::buffer::Cursor;
-use syn::parse::{Parse, ParseStream};
 use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
-use syn::token::{Colon2, Comma};
+use syn::token::{Comma};
 use syn::{
-    braced, AttrStyle, Attribute, Error, Expr, FieldsNamed, FnArg, GenericParam, Generics, Ident,
-    ImplItemMethod, Meta, MetaList, NestedMeta, Pat, PatIdent, PatType, Path, PathArguments,
-    PathSegment, ReturnType, Type,
+    Error, FnArg, Pat, PatIdent, PatType, ReturnType, Type, Ident
 };
 
 pub fn check_lemmas(bundle: &SMBundle) -> syn::parse::Result<()> {
