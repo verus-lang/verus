@@ -55,7 +55,7 @@ use rustc_ast::ast::{
     EnumDef, Expr, ExprKind, Field, FieldPat, FnDecl, FnKind, FnRetTy, FnSig, GenericArg,
     GenericArgs, GenericParam, GenericParamKind, Generics, ImplKind, Item, ItemKind, Lit,
     LitIntType, LitKind, Local, ModKind, NodeId, Param, Pat, PatKind, PathSegment, Stmt, StmtKind,
-    StructField, StructRest, Variant, VariantData,
+    StructField, StructRest, Ty, TyKind, Variant, VariantData,
 };
 use rustc_ast::ptr::P;
 use rustc_data_structures::thin_vec::ThinVec;
@@ -212,6 +212,22 @@ fn call_arbitrary(ctxt: &Ctxt, mctxt: &mut MCtxt, span: Span) -> Expr {
     Expr { id, kind, span, attrs, tokens: None }
 }
 
+fn phantom_data_segments(mctxt: &mut MCtxt, span: Span) -> Vec<PathSegment> {
+    let phantom_data = Symbol::intern("PhantomData");
+    let syms = vec![rustc_span::sym::std, rustc_span::sym::marker, phantom_data];
+    syms.into_iter()
+        .map(|s| PathSegment { ident: Ident::new(s, span), id: mctxt.next_node_id(), args: None })
+        .collect()
+}
+
+fn phantom_data_expr(mctxt: &mut MCtxt, span: Span) -> Expr {
+    let segments = phantom_data_segments(mctxt, span);
+    let path = rustc_ast::Path { span, segments, tokens: None };
+    let kind = ExprKind::Path(None, path);
+    let id = mctxt.next_node_id();
+    Expr { id, kind, span, attrs: ThinVec::new(), tokens: None }
+}
+
 fn keep_mode(ctxt: &Ctxt, mode: Mode) -> bool {
     match mode {
         Mode::Spec => false,
@@ -293,9 +309,14 @@ fn erase_pat(ctxt: &Ctxt, mctxt: &mut MCtxt, pat: &Pat) -> Pat {
                 for fpat in fields {
                     let name = Arc::new(fpat.ident.as_str().to_string());
                     let (_, mode, _) = get_field(variant, &name).a;
-                    if keep_mode(ctxt, mode) {
-                        fpats.push(erase_field_pat(ctxt, mctxt, fpat));
-                    }
+                    let p = if keep_mode(ctxt, mode) {
+                        erase_field_pat(ctxt, mctxt, fpat)
+                    } else {
+                        let mut p = fpat.clone();
+                        p.pat.kind = PatKind::Wild;
+                        p
+                    };
+                    fpats.push(p);
                 }
                 PatKind::Struct(path.clone(), fpats, *recovered)
             }
@@ -308,9 +329,12 @@ fn erase_pat(ctxt: &Ctxt, mctxt: &mut MCtxt, pat: &Pat) -> Pat {
                 let mut pats: Vec<P<Pat>> = Vec::new();
                 for (field, pat) in variant.iter().zip(pats0.iter()) {
                     let (_, mode, _) = field.a;
-                    if keep_mode(ctxt, mode) {
-                        pats.push(P(erase_pat(ctxt, mctxt, pat)));
-                    }
+                    let p = if keep_mode(ctxt, mode) {
+                        erase_pat(ctxt, mctxt, pat)
+                    } else {
+                        Pat { kind: PatKind::Wild, ..(**pat).clone() }
+                    };
+                    pats.push(P(p));
                 }
                 PatKind::TupleStruct(path.clone(), pats)
             }
@@ -561,16 +585,14 @@ fn erase_expr_opt(ctxt: &Ctxt, mctxt: &mut MCtxt, expect: Mode, expr: &Expr) -> 
                         let variant = datatype.x.get_variant(variant);
                         for (field, arg) in variant.a.iter().zip(args.iter()) {
                             let (_, field_mode, _) = field.a;
-                            if keep_mode(ctxt, field_mode) {
-                                new_args.push(P(erase_expr(
-                                    ctxt,
-                                    mctxt,
-                                    mode_join(expect, field_mode),
-                                    &arg,
-                                )));
-                            }
+                            let e = if keep_mode(ctxt, field_mode) {
+                                erase_expr(ctxt, mctxt, mode_join(expect, field_mode), &arg)
+                            } else {
+                                // TODO: use arg.span without causing a failure in rustc's build_reduced_graph:
+                                phantom_data_expr(mctxt, rustc_span::DUMMY_SP)
+                            };
+                            new_args.push(P(e));
                         }
-                        // TODO: instantiate any type parameters left unused after erasure
                         ExprKind::Call(f_expr.clone(), new_args)
                     } else {
                         return None;
@@ -613,22 +635,24 @@ fn erase_expr_opt(ctxt: &Ctxt, mctxt: &mut MCtxt, expect: Mode, expr: &Expr) -> 
                 for field in fields {
                     let name = Arc::new(field.ident.as_str().to_string());
                     let (_, field_mode, _) = get_field(&variant.a, &name).a;
-                    if keep_mode(ctxt, field_mode) {
-                        let e = erase_expr(ctxt, mctxt, mode_join(expect, field_mode), &field.expr);
-                        // for asymptotic efficiency, don't call field.clone():
-                        let Field { attrs, .. } = field;
-                        let Field { id, span, ident, is_shorthand, is_placeholder, .. } = *field;
-                        let field = Field {
-                            attrs: attrs.clone(),
-                            id,
-                            span,
-                            ident,
-                            expr: P(e),
-                            is_shorthand,
-                            is_placeholder,
-                        };
-                        new_fields.push(field);
-                    }
+                    let e = if keep_mode(ctxt, field_mode) {
+                        erase_expr(ctxt, mctxt, mode_join(expect, field_mode), &field.expr)
+                    } else {
+                        phantom_data_expr(mctxt, field.span)
+                    };
+                    // for asymptotic efficiency, don't call field.clone():
+                    let Field { attrs, .. } = field;
+                    let Field { id, span, ident, is_shorthand, is_placeholder, .. } = *field;
+                    let field = Field {
+                        attrs: attrs.clone(),
+                        id,
+                        span,
+                        ident,
+                        expr: P(e),
+                        is_shorthand,
+                        is_placeholder,
+                    };
+                    new_fields.push(field);
                 }
                 // TODO: instantiate any type parameters left unused after erasure
                 ExprKind::Struct(path.clone(), new_fields, rest)
@@ -1031,33 +1055,50 @@ fn erase_mod(ctxt: &Ctxt, mctxt: &mut MCtxt, module: &ModKind) -> ModKind {
     }
 }
 
-fn erase_fields(ctxt: &Ctxt, old_fields: &Vec<StructField>) -> Vec<StructField> {
+fn erase_fields(ctxt: &Ctxt, mctxt: &mut MCtxt, old_fields: &Vec<StructField>) -> Vec<StructField> {
     let mut fields: Vec<StructField> = Vec::new();
     for field in old_fields {
         let mode = get_mode(Mode::Exec, &field.attrs[..]);
         if keep_mode(ctxt, mode) {
-            fields.push(field.clone())
+            fields.push(field.clone());
+        } else {
+            // Replace erased field of type t with std::marker::PhantomData<t>
+            let span = field.span;
+            let mut field = field.clone();
+            let arg = GenericArg::Type(field.ty.clone());
+            let arg = AngleBracketedArg::Arg(arg);
+            let args = AngleBracketedArgs { span, args: vec![arg] };
+            let args = GenericArgs::AngleBracketed(args);
+            let mut segments = phantom_data_segments(mctxt, span);
+            segments.last_mut().unwrap().args = Some(P(args));
+            let path = rustc_ast::Path { span, segments, tokens: None };
+            let kind = TyKind::Path(None, path);
+            let id = mctxt.next_node_id();
+            field.ty = P(Ty { id, kind, span, tokens: None });
+            fields.push(field.clone());
         }
     }
     fields
 }
 
-fn erase_variant_data(ctxt: &Ctxt, variant: &VariantData) -> VariantData {
+fn erase_variant_data(ctxt: &Ctxt, mctxt: &mut MCtxt, variant: &VariantData) -> VariantData {
     match variant {
         VariantData::Struct(fields, recovered) => {
-            VariantData::Struct(erase_fields(ctxt, fields), *recovered)
+            VariantData::Struct(erase_fields(ctxt, mctxt, fields), *recovered)
         }
-        VariantData::Tuple(fields, id) => VariantData::Tuple(erase_fields(ctxt, fields), *id),
+        VariantData::Tuple(fields, id) => {
+            VariantData::Tuple(erase_fields(ctxt, mctxt, fields), *id)
+        }
         VariantData::Unit(_) => variant.clone(),
     }
 }
 
-fn erase_variant(ctxt: &Ctxt, variant: &Variant) -> Variant {
+fn erase_variant(ctxt: &Ctxt, mctxt: &mut MCtxt, variant: &Variant) -> Variant {
     let Variant { id, span, ident, is_placeholder, .. } = *variant;
     let Variant { attrs, vis, data, disr_expr, .. } = variant;
     let attrs = attrs.clone();
     let vis = vis.clone();
-    let data = erase_variant_data(ctxt, data);
+    let data = erase_variant_data(ctxt, mctxt, data);
     let disr_expr = disr_expr.clone();
     Variant { attrs, id, span, vis, ident, data, disr_expr, is_placeholder }
 }
@@ -1069,10 +1110,10 @@ fn erase_item(ctxt: &Ctxt, mctxt: &mut MCtxt, item: &Item) -> Vec<P<Item>> {
         ItemKind::Mod(unsafety, kind) => ItemKind::Mod(*unsafety, erase_mod(ctxt, mctxt, kind)),
         ItemKind::ForeignMod { .. } => item.kind.clone(),
         ItemKind::Struct(variant, generics) => {
-            ItemKind::Struct(erase_variant_data(ctxt, variant), generics.clone())
+            ItemKind::Struct(erase_variant_data(ctxt, mctxt, variant), generics.clone())
         }
         ItemKind::Enum(EnumDef { variants }, generics) => {
-            let variants = vec_map(&variants, |v| erase_variant(ctxt, v));
+            let variants = vec_map(&variants, |v| erase_variant(ctxt, mctxt, v));
             ItemKind::Enum(EnumDef { variants }, generics.clone())
         }
         ItemKind::Fn(kind) => {

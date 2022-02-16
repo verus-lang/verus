@@ -201,3 +201,57 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] test_erase1 code! {
+        struct S1<A, B>(
+            #[spec] A,
+            #[exec] B,
+        );
+
+        fn test() {
+            let x = S1::<bool, _>(true, false);
+            assert(x.0);
+            assert(!x.1);
+            let S1(y, z) = x;
+            assert(y);
+            assert(!z);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_erase1_fail code! {
+        struct S1<A, B>(
+            #[spec] A,
+            #[exec] B,
+        );
+
+        fn test() {
+            let x = S1::<bool, _>(true, false);
+            assert(x.0);
+            assert(!x.1);
+            let S1(y, z) = x;
+            assert(y);
+            assert(z); // FAILS
+        }
+    } => Err(e) => assert_one_fails(e)
+}
+
+test_verify_one_file! {
+    #[test] test_erase2 code! {
+        struct S1<A, B> {
+            #[spec] a: A,
+            #[exec] b: B,
+        }
+
+        fn test() {
+            let x = S1::<bool, _> { a: true, b: false };
+            assert(x.a);
+            assert(!x.b);
+            let S1 { a: y, b: z } = x;
+            assert(y);
+            assert(!z);
+        }
+    } => Ok(())
+}
