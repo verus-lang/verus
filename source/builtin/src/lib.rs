@@ -1,7 +1,5 @@
 #![feature(rustc_attrs)]
 
-pub mod state_machine_ops;
-
 #[proof]
 pub fn admit() {
     unimplemented!();
