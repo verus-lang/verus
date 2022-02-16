@@ -512,7 +512,11 @@ fn translate_expr(ctxt: &mut Ctxt, expr: &Expr) -> syn::parse::Result<Expr> {
     let mut e = expr.clone();
     v.visit_expr_mut(&mut e);
     if v.errors.len() > 0 {
-        return Err(v.errors[0].clone()); // TODO report all errors?
+        let mut error = v.errors[0].clone();
+        for i in 1..v.errors.len() {
+            error.combine(v.errors[i].clone());
+        }
+        return Err(error);
     }
     Ok(e)
 }

@@ -4,7 +4,7 @@ use crate::ast::{
     Extras, Invariant, Lemma, LemmaPurpose, LemmaPurposeKind, ShardableType, Transition,
     TransitionKind, SM,
 };
-use crate::ident_visitor::IdentVisitor;
+use crate::ident_visitor::validate_idents_impl_item_method;
 use crate::parse_transition::parse_impl_item_method;
 use crate::to_token_stream::shardable_type_to_type;
 use crate::transitions::check_transitions;
@@ -12,7 +12,6 @@ use proc_macro2::Span;
 use syn::buffer::Cursor;
 use syn::parse::{Parse, ParseStream};
 use syn::spanned::Spanned;
-use syn::visit::Visit;
 use syn::Token;
 use syn::{
     braced, AttrStyle, Attribute, Error, FieldsNamed, FnArg, GenericParam, Generics, Ident,
@@ -430,13 +429,6 @@ fn to_fields(
     return Ok(v);
 }
 
-/// Error if any identifiers conflict with reserved IDs used by macro expanion.
-pub fn check_idents(iim: &ImplItemMethod) -> syn::parse::Result<()> {
-    let mut idv = IdentVisitor::new();
-    idv.visit_impl_item_method(iim);
-    idv.error
-}
-
 pub fn parse_result_to_smir(pr: ParseResult, concurrent: bool) -> syn::parse::Result<SMBundle> {
     let ParseResult { name, generics, fns, fields } = pr;
 
@@ -462,7 +454,7 @@ pub fn parse_result_to_smir(pr: ParseResult, concurrent: bool) -> syn::parse::Re
                 normal_fns.push(impl_item_method);
             }
             FnAttrInfo::Transition | FnAttrInfo::Readonly | FnAttrInfo::Init => {
-                check_idents(&impl_item_method)?;
+                validate_idents_impl_item_method(&impl_item_method)?;
 
                 let kind = match attr_info {
                     FnAttrInfo::Transition => TransitionKind::Transition,
