@@ -1,3 +1,10 @@
+//! Primary module for outputting the generated code.
+//! This includes: the primary struct, the transition definitions,
+//! invariant predicates, lemmas that prove inductiveness, and lemmas
+//! that prove safety conditions (as given by the 'assert' statements).
+//!
+//! Concurrent-state-machine-specific stuff is in concurrency_tokens.rs
+
 use crate::ast::{Invariant, Lemma, ShardableType, TransitionKind, TransitionParam, SM};
 use crate::concurrency_tokens::output_token_types_and_fns;
 use crate::lemmas::get_transition;
@@ -93,6 +100,8 @@ pub fn impl_decl_stream(self_ty: &Type, generics: &Option<Generics>) -> TokenStr
     }
 }
 
+// We delete the special state machine attributes, since Rust/Verus won't recognize them.
+
 pub fn should_delete_attr(attr: &Attribute) -> bool {
     match attr.parse_meta() {
         Ok(Meta::Path(path)) | Ok(Meta::List(MetaList { path, .. })) => {
@@ -150,6 +159,8 @@ pub fn output_primary_stuff(
     let self_ty = get_self_ty(&sm);
 
     for trans in &sm.transitions {
+        // Output the 'weak' transition relation.
+        // (or for the 'Init' case, a single-state predicate).
         if trans.kind != TransitionKind::Readonly {
             let f = to_relation(sm, trans, true /* weak */);
             let name = &trans.name;
@@ -174,6 +185,9 @@ pub fn output_primary_stuff(
             impl_token_stream.extend(rel_fn);
         }
 
+        // Output the 'strong' transition relation.
+        // Note that 'init' routines don't allow asserts, so there is no need for an
+        // additional 'strong' relation.
         if trans.kind == TransitionKind::Transition {
             let params = self_post_params(&trans.params);
             let name = Ident::new(&(trans.name.to_string() + "_strong"), trans.name.span());
@@ -189,6 +203,7 @@ pub fn output_primary_stuff(
             impl_token_stream.extend(rel_fn);
         }
 
+        // If necessary, output a lemma with proof obligations for the safety conditions.
         if has_any_assert(&trans.body) {
             let b = safety_condition_body(&trans.body);
             let name = Ident::new(&(trans.name.to_string() + "_asserts"), trans.name.span());
@@ -264,16 +279,6 @@ pub fn shardable_type_to_type(stype: &ShardableType<Type>) -> Type {
     }
 }
 
-/*
-fn field_to_tokens(field: &Field<Ident, Type>) -> TokenStream {
-    let name = &field.ident;
-    let ty = shardable_type_to_type(&field.stype);
-    return quote! {
-        #[spec] pub #name: #ty
-    };
-}
-*/
-
 fn output_other_fns(
     bundle: &SMBundle,
     impl_token_stream: &mut TokenStream,
@@ -331,6 +336,19 @@ fn left_of_colon<'a>(fn_arg: &'a FnArg) -> &'a Pat {
         FnArg::Typed(pat_type) => &pat_type.pat,
     }
 }
+
+/// Add pre-conditions and post-conditions to the inductiveness lemma.
+///
+/// For 'init' routines:
+///   requires(initialized(post, ...));
+///   ensures(post.invariant());
+///
+/// For normal transitions:
+///   requires(self.invariant() && transition(self, post, ...));
+///   ensures(post.invariant());
+///
+/// For 'readonly' transitions, there is no need to prove inductiveness.
+/// We should have already ruled out the existence of such lemmas.
 
 fn lemma_update_body(bundle: &SMBundle, l: &Lemma, func: &mut ImplItemMethod) {
     // TODO give a more helpful error if the body already has requires/ensures

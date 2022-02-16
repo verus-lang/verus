@@ -227,6 +227,7 @@ pub fn exchange_stream(sm: &SM, tr: &Transition) -> syn::parse::Result<TokenStre
     //     takes an Instance as input.
     //   * An 'init' will always return tokens for every field, and take no tokens as input.
     //     A normal transition takes only those as input that are necessary.
+
     if ctxt.is_init {
         let itn = inst_type_name(&sm.name);
         out_args.push((quote! { instance }, quote! { crate::pervasive::modes::Spec<#itn> }));
