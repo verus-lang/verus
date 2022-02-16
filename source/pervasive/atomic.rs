@@ -124,7 +124,7 @@ macro_rules! atomic_common_methods {
             );
 
             let p = $at_ident { ato: <$rust_ty>::new(i) };
-            #[proof] let t = proof_from_false();
+            let Proof::proof(t) = exec_proof_from_false();
             (p, proof(t))
         }
 
