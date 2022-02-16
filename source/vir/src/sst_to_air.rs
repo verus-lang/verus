@@ -357,6 +357,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: ExprCtxt) -> Expr {
             UnaryOp::Not => mk_not(&exp_to_expr(ctx, exp, expr_ctxt)),
             UnaryOp::BitNot => {
                 let expr = exp_to_expr(ctx, exp, expr_ctxt);
+                let expr = try_box(ctx, expr, &exp.typ).expect("Box");
                 Arc::new(ExprX::Apply(
                     Arc::new(crate::def::UINT_NOT.to_string()),
                     Arc::new(vec![expr]),
@@ -426,13 +427,16 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: ExprCtxt) -> Expr {
                 }
                 // here the bv operation is translated to the integer versions
                 BinaryOp::BitXor => {
+                    let lh = try_box(ctx, lh, &lhs.typ).expect("Box");
+                    let rh = try_box(ctx, rh, &rhs.typ).expect("Box");
                     ExprX::Apply(Arc::new(crate::def::UINT_XOR.to_string()), Arc::new(vec![lh, rh]))
                 }
                 BinaryOp::BitAnd => {
+                    let lh = try_box(ctx, lh, &lhs.typ).expect("Box");
+                    let rh = try_box(ctx, rh, &rhs.typ).expect("Box");
                     ExprX::Apply(Arc::new(crate::def::UINT_AND.to_string()), Arc::new(vec![lh, rh]))
 
-                    // let box_lh = try_box(ctx, lh, &lhs.typ).expect("Box");
-                    // let box_rh = try_box(ctx, rh, &rhs.typ).expect("Box");
+
                     // if let TypX::Int(range) = &*lhs.typ {
                     //     match range {
                     //         IntRange::I(_) | IntRange::U(_) => {
@@ -454,12 +458,18 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: ExprCtxt) -> Expr {
                     // panic!("BitAnd")
                 }
                 BinaryOp::BitOr => {
+                    let lh = try_box(ctx, lh, &lhs.typ).expect("Box");
+                    let rh = try_box(ctx, rh, &rhs.typ).expect("Box");
                     ExprX::Apply(Arc::new(crate::def::UINT_OR.to_string()), Arc::new(vec![lh, rh]))
                 }
                 BinaryOp::Shl => {
+                    let lh = try_box(ctx, lh, &lhs.typ).expect("Box");
+                    let rh = try_box(ctx, rh, &rhs.typ).expect("Box");
                     ExprX::Apply(Arc::new(crate::def::UINT_SHL.to_string()), Arc::new(vec![lh, rh]))
                 }
                 BinaryOp::Shr => {
+                    let lh = try_box(ctx, lh, &lhs.typ).expect("Box");
+                    let rh = try_box(ctx, rh, &rhs.typ).expect("Box");
                     ExprX::Apply(Arc::new(crate::def::UINT_SHR.to_string()), Arc::new(vec![lh, rh]))
                 }
 
@@ -664,6 +674,42 @@ fn assert_unsigned(exp: &Exp) {
     };
 }
 
+pub(crate) fn bv_typ_to_air(typ: &Typ) -> air::ast::Typ {
+    match &**typ {
+        TypX::Int(_) => bv_typ(32),
+        TypX::Bool => bool_typ(),
+        // TypX::Tuple(_) => panic!("internal error: Tuple should have been removed by ast_simplify"),
+        // TypX::Lambda(..) => Arc::new(air::ast::TypX::Lambda),
+        TypX::Boxed(t) => bv_typ_to_air(t),
+        // TypX::TypParam(_) => str_typ(POLY),
+        // TypX::TypeId => str_typ(crate::def::TYPE),
+        // TypX::Air(t) => t.clone(),
+        _ => panic!("bv_typ_to_air: {:?}", typ)
+    }
+}
+
+pub(crate) fn bv_typ_invariant(typ: &Typ, expr: &Expr) -> Option<Expr> {
+    // Should be kept in sync with typ_invariant()
+    match &**typ {
+        TypX::Int(IntRange::Int) => None,
+        TypX::Int(IntRange::Nat) => {
+            let zero = Arc::new(ExprX::Const(Constant::Nat(Arc::new("0".to_string()))));
+            Some(Arc::new(ExprX::Binary(air::ast::BinaryOp::Le, zero, expr.clone())))
+        }
+        TypX::Int(range) => {
+            let f_name = match range {
+                IntRange::Int => panic!("internal error: Int"),
+                IntRange::Nat => panic!("internal error: Int"),
+                IntRange::U(_) | IntRange::USize => crate::def::U_INV,
+                IntRange::I(_) | IntRange::ISize => crate::def::I_INV,
+            };
+            Some(apply_range_fun(&f_name, &range, vec![expr.clone()]))
+        }
+        TypX::Boxed(t) => Some(str_apply(crate::def::HAS_TYPE, &vec![expr.clone(), typ_to_id(t)])),
+        _ => None,
+    }
+}
+
 // convert the sst expression into bv air expression
 fn exp_to_bv_expr(state: &State, exp: &Exp) -> Expr {
     match &exp.x {
@@ -764,7 +810,7 @@ fn exp_to_bv_expr(state: &State, exp: &Exp) -> Expr {
                     "IntRange error: should be I(_) or U(_) for bit-vector, got {:?}",
                     exp.typ
                 ),
-                UnaryOp::Trigger(_) => panic!("Trigger is not supported in bit-vector"),
+                UnaryOp::Trigger(_) => exp_to_bv_expr(state,exp)
             }
         }
         ExpX::UnaryOpr(op, exp) => match op {
@@ -773,7 +819,7 @@ fn exp_to_bv_expr(state: &State, exp: &Exp) -> Expr {
             }
             _ => panic!("unhandled bv UnaryOpr {:?}", op),
         },
-        ExpX::Call(target, types, args) => {
+        ExpX::Call(target, _types, args) => {
             if path_as_rust_name(&target.path) == "crate::get_bit" {
                 let bv = exp_to_bv_expr(state, &args[0]);
                 let loc = exp_to_bv_expr(state, &args[1]);
@@ -804,9 +850,52 @@ fn exp_to_bv_expr(state: &State, exp: &Exp) -> Expr {
         },
         ExpX::If(cond, tbranch, fbranch) => {
             let cond = exp_to_bv_expr(state, &cond);
-            let tbranch = exp_to_bv_expr(state, &tbranch);
-            let fbranch = exp_to_bv_expr(state, &fbranch);
-            return Arc::new(ExprX::IfElse(cond, tbranch, fbranch));
+            let bv_tbranch = exp_to_bv_expr(state, &tbranch);
+            let bv_fbranch = exp_to_bv_expr(state, &fbranch);
+            return Arc::new(ExprX::IfElse(cond, bv_tbranch, bv_fbranch));
+        }
+        ExpX::Bind(bnd, exp) => match &bnd.x {
+            BndX::Quant(quant, binders, trigs) => {
+                // println!("quant: {:?}", quant);
+                // println!("binders: {:?}", binders);
+                // println!("trigs: {:?}", trigs);
+                // println!("exp: {:?}", exp);
+                // println!("bnd: {:?}", bnd);
+                // panic!();
+                let bv_expr = exp_to_bv_expr(state, exp);
+                let mut invs: Vec<Expr> = Vec::new();
+                // for binder in binders.iter() {
+                //     let typ_inv = bv_typ_invariant(
+                //         &binder.a,
+                //         &ident_var(&suffix_local_expr_id(&binder.name)),
+                //     );
+                //     if let Some(inv) = typ_inv {
+                //         invs.push(inv);
+                //     }
+                // }
+                let inv = mk_and(&invs);
+                let expr = match quant {
+                    Quant::Forall => mk_implies(&inv, &bv_expr),
+                    Quant::Exists => mk_and(&vec![inv, bv_expr]),
+                };
+                let binders = vec_map(&*binders, |b| {
+                    let name = match &*b.a {
+                        // allow quantifiers over type parameters, generated for broadcast_forall
+                        TypX::TypeId => suffix_typ_param_id(&b.name),
+                        _ => suffix_local_expr_id(&b.name),
+                    };
+                    Arc::new(BinderX { name, a: bv_typ_to_air(&b.a) })
+                });
+
+                // we might not need triggers in assert_bit_vector 
+                // as long as we are not planning to use the assert_bit_vector()'s bitvector-fact in the future
+                let triggers = vec_map(&*trigs, |trig| {
+                    Arc::new(vec_map(trig, |x| exp_to_bv_expr(state, x)))
+                });
+                air::ast_util::mk_quantifier(*quant, &binders, &triggers, &expr)
+
+            }
+            _ => panic!("unhandled bv bind conversion {:?} ", exp.x)
         }
         _ => panic!("unhandled bv expr conversion {:?}", exp.x),
     }
@@ -930,6 +1019,9 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
             vec![Arc::new(StmtX::Assert(error, air_expr))]
         }
         StmX::AssertBV(expr) => {
+            // here expr is boxed/unboxed in poly::poly_expr
+            // this is for integer version
+            // for bitvector part, box/unbox will be completely removed in exp_to_bv_expr
             let error = error_with_label(
                 "assertion failed".to_string(),
                 &stm.span,

@@ -12,23 +12,11 @@ pub fn get_bit(bv:u32, loc:u32) -> bool {
     unimplemented!();
 }
 
-// (assert
-//     (forall ((bv@ Poly) (loc@ Poly)) (!                              ;int2bv
-//       (= (get_bit.? bv@ loc@) (= #b1 ((_ extract (%I loc) (%I loc)) (%I bv)) ) )
-//       :pattern ((get_bit.? bv@ loc@))
-//   )))
-
 #[spec]
 #[verifier(external_body)]
 pub fn set_bit(bv:u32, loc:u32, bit:bool) -> u32 {
     unimplemented!();
 } 
-//   (assert
-//     (forall ((bv@ Poly) (loc@ Poly) (bit@ Poly)) (!                       ;int2bv ;bool2int                               ;int2bv
-//       (= (set_bit.? bv@ loc@ bit@) (concat ((_ extract 31 (+ (%I loc) 1)) (%I bv)) (%B bit) ((_ extract (- (%I loc) 1) 0) (%I bv))) )
-//                                   ;bv2int
-//       :pattern ((set_bit.? bv@ loc@))
-//   )))
 
 #[exec]
 fn get_bit_exec(bv:u32, loc:u32) -> bool {
@@ -52,31 +40,54 @@ fn set_bit_exec(bv:u32, loc:u32, bit:bool) -> u32 {
 }
 
 #[proof]
-fn set_bit_property(bv:u32, loc:u32, loc2: u32, bit:bool) -> u32 {
+fn set_bit_property_forall(bv:u32, bv2:u32, loc:u32, bit:bool) {
     requires([
         loc < 32,
-        loc2 < 32,
-        loc != loc2
+        bv2 == set_bit(bv,loc,bit),
     ]);
-    ensures(|bv2:u32| 
-            bv2 == set_bit(bv,loc,bit) &&
+    ensures(
+        forall( |loc2:u32| 
+            (loc2 < 32 && loc != loc2) >>= (
             get_bit(bv2, loc2) == get_bit(bv, loc2) &&
-            get_bit(bv2, loc) == bit &&
-            (bv == bv2 >>= (get_bit(bv,loc) == bit) ) &&
-            (bv != bv2 >>= (get_bit(bv,loc) == !bit) )
+            get_bit(bv2, loc) == bit 
+            )
+        )
     );
-
-    #[spec] let bv2 = set_bit(bv, loc, bit);
-    assert_bit_vector((bv2 == set_bit(bv, loc, bit) && (loc < 32) && (loc2 < 32) && (loc != loc2)) 
-                           >>= get_bit(bv2, loc2) == get_bit(bv, loc2));
-    assert_bit_vector((bv2 == set_bit(bv, loc, bit) && (loc < 32))  
-                           >>= get_bit(bv2, loc) == bit);
-    assert_bit_vector((bv2 == set_bit(bv, loc, bit) && (loc < 32) && bv == bv2)  
-                           >>= get_bit(bv, loc) == bit);
-    assert_bit_vector((bv2 == set_bit(bv, loc, bit) && (loc < 32) && bv != bv2)  
-                           >>= get_bit(bv, loc) == !bit);
-    bv2
+    assert_bit_vector(forall( |loc2:u32| 
+        ( (bv2 == set_bit(bv, loc, bit) && (loc < 32) && loc2 < 32 && loc != loc2) >>= (
+        get_bit(bv2, loc2) == get_bit(bv, loc2) 
+        && get_bit(bv2, loc) == bit
+        )
+    )));
 }
+
+
+// #[proof]
+// fn set_bit_property(bv:u32, loc:u32, loc2: u32, bit:bool) -> u32 {
+//     requires([
+//         loc < 32,
+//         loc2 < 32,
+//         loc != loc2
+//     ]);
+//     ensures(|bv2:u32| 
+//             bv2 == set_bit(bv,loc,bit) &&
+//             get_bit(bv2, loc2) == get_bit(bv, loc2) &&
+//             get_bit(bv2, loc) == bit &&
+//             (bv == bv2 >>= (get_bit(bv,loc) == bit) ) &&
+//             (bv != bv2 >>= (get_bit(bv,loc) == !bit) )
+//     );
+
+//     #[spec] let bv2 = set_bit(bv, loc, bit);
+//     assert_bit_vector((bv2 == set_bit(bv, loc, bit) && (loc < 32) && (loc2 < 32) && (loc != loc2)) 
+//                            >>= get_bit(bv2, loc2) == get_bit(bv, loc2));
+//     assert_bit_vector((bv2 == set_bit(bv, loc, bit) && (loc < 32))  
+//                            >>= get_bit(bv2, loc) == bit);
+//     assert_bit_vector((bv2 == set_bit(bv, loc, bit) && (loc < 32) && bv == bv2)  
+//                            >>= get_bit(bv, loc) == bit);
+//     assert_bit_vector((bv2 == set_bit(bv, loc, bit) && (loc < 32) && bv != bv2)  
+//                            >>= get_bit(bv, loc) == !bit);
+//     bv2
+// }
 
 
 #[derive(Structural, PartialEq, Eq)]
@@ -103,26 +114,33 @@ fn color_to_bits(c: Color) -> (bool, bool) {
     }
 }
 
-// #[proof]
-// fn bucket_element(bucket: u32, i:u32) {
-//     requires(i<32);
-//     ensures([
-//         bucket_view(bucket,15).index(i) == color_view(get_bit(bucket,2*i+1), get_bit(bucket,2*i)) ,
-//     ]);
-//     reveal_with_fuel(bucket_view, 3);
-// }
-
 #[proof]
-fn bucket_element(bucket1:u32, bucket2:u32, index:u32){
-    requires([
-        index < 32,
-        bucket_view(bucket1,15).index(index) == bucket_view(bucket2,15).index(index),
+fn bucket_element(bucket: u32, i:u32) {
+    requires(i<16);
+    ensures([
+        bucket_view(bucket,15).index(i) == color_view(get_bit(bucket,2*i+1), get_bit(bucket,2*i)) ,
     ]);
-    ensures(
-        get_bit(bucket1, index*2) == get_bit(bucket2, index*2) &&
-        get_bit(bucket1, index*2 + 1) == get_bit(bucket2, index*2 + 1)
-    )
+    reveal_with_fuel(bucket_view, 3);
+    if i == 0 {
+        
+
+    }
+    else {
+        assume(false);
+    }
 }
+
+// #[proof]
+// fn bucket_element(bucket1:u32, bucket2:u32, index:u32){
+//     requires([
+//         index < 32,
+//         bucket_view(bucket1,15).index(index) == bucket_view(bucket2,15).index(index),
+//     ]);
+//     ensures(
+//         get_bit(bucket1, index*2) == get_bit(bucket2, index*2) &&
+//         get_bit(bucket1, index*2 + 1) == get_bit(bucket2, index*2 + 1)
+//     )
+// }
 
 #[spec]
 fn bucket_view(bucket: u32, index: u32) -> Seq<Color> {
