@@ -179,19 +179,12 @@ fn parse_fn_attr_info(attrs: &Vec<Attribute>) -> syn::parse::Result<FnAttrInfo> 
                 }
             }
             Meta::List(MetaList { path, nested, .. }) => {
-                if path.is_ident("inductive") || path.is_ident("safety") {
-                    let is_safety = path.is_ident("safety");
-                    let attrname = if is_safety { "safety" } else { "inductive" };
-                    let lp_kind = if is_safety {
-                        panic!("unimplemented"); // TODO remove this case
-                    //LemmaPurposeKind::SatisfiesAsserts
-                    } else {
-                        LemmaPurposeKind::PreservesInvariant
-                    };
+                if path.is_ident("inductive") {
+                    let lp_kind = LemmaPurposeKind::PreservesInvariant;
                     if nested.len() != 1 {
                         return Err(Error::new(
                             attr.span(),
-                            "expected transition name: #[".to_string() + attrname + "(name)]",
+                            "expected transition name: #[".to_string() + "inductive(name)]",
                         ));
                     }
                     err_on_dupe(&fn_attr_info, attr.span())?;
@@ -203,15 +196,14 @@ fn parse_fn_attr_info(attrs: &Vec<Attribute>) -> syn::parse::Result<FnAttrInfo> 
                                 return Err(Error::new(
                                     attr.span(),
                                     "expected transition name: #[".to_string()
-                                        + attrname
-                                        + "(name)]",
+                                        + "inductive(name)]",
                                 ));
                             }
                         },
                         _ => {
                             return Err(Error::new(
                                 attr.span(),
-                                "expected transition name: #[".to_string() + attrname + "(name)]",
+                                "expected transition name: #[".to_string() + "inductive(name)]",
                             ));
                         }
                     };
