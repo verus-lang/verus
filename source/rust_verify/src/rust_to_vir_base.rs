@@ -304,6 +304,20 @@ pub(crate) fn _ty_resolved_path_to_debug_path(_tcx: TyCtxt<'_>, ty: &Ty) -> Stri
     }
 }
 
+pub(crate) fn impl_def_id_to_self_ty<'tcx>(tcx: TyCtxt<'tcx>, impl_def_id: DefId) -> Typ {
+    let local_id = impl_def_id.as_local().expect("impl_def_id_to_self_ty expects local id");
+    let hir_id = tcx.hir().local_def_id_to_hir_id(local_id);
+    let node = tcx.hir().get(hir_id);
+    match node {
+        rustc_hir::Node::Item(rustc_hir::Item {
+            kind: rustc_hir::ItemKind::Impl(impll), ..
+        }) => ty_to_vir(tcx, &impll.self_ty),
+        _ => {
+            panic!("impl_def_id_to_self_ty expected an Impl node");
+        }
+    }
+}
+
 pub(crate) fn ty_to_vir<'tcx>(tcx: TyCtxt<'tcx>, ty: &Ty) -> Typ {
     let Ty { hir_id: _, kind, span } = ty;
     match kind {
@@ -352,7 +366,7 @@ pub(crate) fn ty_to_vir<'tcx>(tcx: TyCtxt<'tcx>, ty: &Ty) -> Typ {
                 def_id_to_datatype_segments(tcx, def_id, &path.segments)
             }
             Res::SelfTy(None, Some((impl_def_id, false))) => {
-                def_id_to_datatype_segments(tcx, impl_def_id, &path.segments)
+                return impl_def_id_to_self_ty(tcx, impl_def_id);
             }
             _ => {
                 unsupported!(format!("type {:#?} {:?} {:?}", kind, path.res, span))
