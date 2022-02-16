@@ -23,10 +23,16 @@ pub struct SMBundle {
     pub name: Ident,
     pub sm: SM,
     pub extras: Extras,
+    // Any extra functions the user declares, which are copied verbatim to the
+    // 'impl' of the resulting datatype, with no extra processing.
     pub normal_fns: Vec<ImplItemMethod>,
 }
 
 ///////// TokenStream -> ParseResult
+
+// Here, we do VERY minimal processing, primarily obtaining a list of ImplItemMethods
+// to be processed later. The only trick is that we have to look out for the special item
+// 'fields' which of course is not valid Rust syntax.
 
 pub struct ParseResult {
     pub name: Ident,
@@ -123,6 +129,8 @@ fn peek_keyword(cursor: Cursor, token: &str) -> bool {
 
 ///////// ParseResult -> SM AST
 
+// For a given ImplItemMethod, we check its attributes to see if it needs special processing.
+
 enum FnAttrInfo {
     NoneFound,
     Transition,
@@ -217,15 +225,6 @@ fn parse_fn_attr_info(attrs: &Vec<Attribute>) -> syn::parse::Result<FnAttrInfo> 
     return Ok(fn_attr_info);
 }
 
-/*
-fn attr_is_mode(attr: &Attribute, mode: &str) -> bool {
-    match attr.parse_meta() {
-        Ok(Meta::Path(path)) if path.is_ident(mode) => true,
-        _ => false,
-    }
-}
-*/
-
 fn attr_is_any_mode(attr: &Attribute) -> bool {
     match attr.parse_meta() {
         Ok(Meta::Path(path))
@@ -237,17 +236,8 @@ fn attr_is_any_mode(attr: &Attribute) -> bool {
     }
 }
 
-/*
-fn ensure_mode(impl_item_method: &ImplItemMethod, msg: &str, mode: &str) -> syn::parse::Result<()> {
-    for attr in &impl_item_method.attrs {
-        if attr_is_mode(attr, mode) {
-            return Ok(());
-        }
-    }
-
-    return Err(Error::new(impl_item_method.span(), msg));
-}
-*/
+// Check that the user did not apply an explicit mode. We will be apply the modes ourselves
+// during macro expansion.
 
 fn ensure_no_mode(impl_item_method: &ImplItemMethod, msg: &str) -> syn::parse::Result<()> {
     for attr in &impl_item_method.attrs {
@@ -301,6 +291,8 @@ fn to_invariant(impl_item_method: ImplItemMethod) -> syn::parse::Result<Invarian
         ));
     }
 
+    // TODO check the return type
+
     return Ok(Invariant { func: impl_item_method });
 }
 
@@ -312,10 +304,17 @@ fn to_lemma(impl_item_method: ImplItemMethod, purpose: LemmaPurpose) -> syn::par
     Ok(Lemma { purpose, func: impl_item_method })
 }
 
+// Process the fields of the state machine.
+
 enum ShardingType {
     Variable,
     Constant,
 }
+
+/// Get the sharding type from the attributes of the field.
+/// In a concurrent state machine, we require this for each field.
+/// In a 'normal' state machine, we error if we find such an attribute
+/// (but internally we represent the field as having the 'variable' strategy).
 
 fn get_sharding_type(
     field_span: Span,
@@ -436,6 +435,7 @@ fn to_fields(
     return Ok(v);
 }
 
+/// Error if any identifiers conflict with reserved IDs used by macro expanion.
 pub fn check_idents(iim: &ImplItemMethod) -> syn::parse::Result<()> {
     let mut idv = IdentVisitor::new();
     idv.visit_impl_item_method(iim);
