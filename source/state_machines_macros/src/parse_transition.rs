@@ -10,7 +10,8 @@ use syn::{
 //  * A special call, e.g., require(...);
 //  * A 'let' statement
 //  * A conditional
-// We translate each statement appropriately.
+// We translate each statement appropriately. Some Rust Exprs will be put into the
+// SM AST as-is.
 
 pub struct Ctxt {
     pub kind: TransitionKind,

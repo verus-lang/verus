@@ -1,3 +1,12 @@
+//! Output all the generated code specific to concurrent state machines.
+//! We print declarations for:
+//!
+//!  * The Instance type
+//!  * All the Token types for shardable fields
+//!  * #[proof] methods for each transition (including init and readonly transitions)
+//!
+//! Currently supports: 'variable' and 'constant' sharding
+
 use crate::ast::{Field, ShardableType, Transition, TransitionKind, TransitionStmt, SM};
 use proc_macro2::Span;
 use proc_macro2::TokenStream;
@@ -8,6 +17,8 @@ use syn::parse::Error;
 use syn::spanned::Spanned;
 use syn::visit_mut::VisitMut;
 use syn::{Expr, ExprField, ExprPath, Ident, Member, Type};
+
+// Misc. definitions for various identifiers we use
 
 fn inst_type_name(sm_name: &Ident) -> Ident {
     let name = sm_name.to_string() + "_Instance";
@@ -40,6 +51,9 @@ fn transition_arg_name(field: &Field) -> Ident {
     Ident::new(&name, field.ident.span())
 }
 
+/// Print declaration for the Instance type.
+/// Pretty straightforward definition: we only need some kind of
+/// unique identifier.
 fn instance_struct_stream(sm: &SM) -> TokenStream {
     let insttype = inst_type_name(&sm.name);
     return quote! {
@@ -52,6 +66,8 @@ fn instance_struct_stream(sm: &SM) -> TokenStream {
     };
 }
 
+/// Create the struct for a Token that derives from a
+/// sharding(variable) field.
 fn token_struct_stream(sm_name: &Ident, field: &Field) -> TokenStream {
     let tokenname = field_token_type_name(sm_name, field);
     let fieldname = field_token_field_name(field);
@@ -69,6 +85,9 @@ fn token_struct_stream(sm_name: &Ident, field: &Field) -> TokenStream {
     };
 }
 
+/// For a given sharding(constant) field, add that constant
+/// as a #[spec] fn on the Instant type. (The field is constant
+/// for the entire instance.)
 fn const_fn_stream(field: &Field) -> TokenStream {
     let fieldname = field_token_field_name(field);
     let fieldtype = field_token_field_type(field);
@@ -80,6 +99,13 @@ fn const_fn_stream(field: &Field) -> TokenStream {
     };
 }
 
+/// Pull everything together.
+///
+///     struct Instance
+///     token structs ...
+///     impl Instance {
+///         exchange fns ...
+///     }
 pub fn output_token_types_and_fns(
     token_stream: &mut TokenStream,
     sm: &SM,
@@ -111,6 +137,9 @@ pub fn output_token_types_and_fns(
     }
     Ok(())
 }
+
+/// Context object for the complex task of translating a single
+/// transition into a token-exchange method.
 
 struct Ctxt {
     fields_read: HashSet<Ident>,
@@ -144,6 +173,19 @@ impl Ctxt {
     }
 }
 
+/// Primary method to build an exchange method for a given transition.
+///
+/// To build an exchange method, we need to collect 4 key pieces
+/// of information:
+///
+///  * input arguments (may include spec & proof tokens)
+///  * outputs (may include spec & proof tokens)
+///  * pre-conditions (mostly follow from 'require' statements)
+///  * post-conditions (mostly follow from 'update' and 'assert' statements)
+///
+/// When possible, we use &mut arguments (i.e., if a given token is
+/// both an input and an output).
+
 pub fn exchange_stream(sm: &SM, tr: &Transition) -> syn::parse::Result<TokenStream> {
     let mut ident_to_field = HashMap::new();
     for field in &sm.fields {
@@ -160,13 +202,31 @@ pub fn exchange_stream(sm: &SM, tr: &Transition) -> syn::parse::Result<TokenStre
     };
 
     let mut tr = tr.clone();
+
+    // determine output tokens based on 'update' statements
     determine_outputs(&mut ctxt, &tr.body)?;
+
+    // translate the expressions in the TransitionStmt so that
+    // where they previously referred to fields like `self.foo`,
+    // they now refer to the field that comes from an input.
+    // (in the process, we also determine inputs).
     walk_translate_expressions(&mut ctxt, &mut tr.body)?;
+
+    // translate the (new) TransitionStmt into an expressions that
+    // can be used as pre-conditions and post-conditions
     exchange_collect(&mut ctxt, &tr.body, Vec::new(), Vec::new())?;
 
     let mut in_args: Vec<TokenStream> = Vec::new();
     let mut out_args: Vec<(TokenStream, TokenStream)> = Vec::new();
 
+    // For our purposes here, a 'readonly' is just a special case of a normal transition.
+    // The 'init' transitions are the interesting case.
+    // For the most part, there are two key differences:
+    //
+    //   * An 'init' returns an arbitrary new Instance object, whereas a normal transition
+    //     takes an Instance as input.
+    //   * An 'init' will always return tokens for every field, and take no tokens as input.
+    //     A normal transition takes only those as input that are necessary.
     if ctxt.is_init {
         let itn = inst_type_name(&sm.name);
         out_args.push((quote! { instance }, quote! { crate::pervasive::modes::Spec<#itn> }));
@@ -175,16 +235,23 @@ pub fn exchange_stream(sm: &SM, tr: &Transition) -> syn::parse::Result<TokenStre
         in_args.push(quote! { #[spec] instance: #itn });
     }
 
+    // Take the transition parameters (the normal parameters defined in the transition)
+    // and make them input parameters (spec-mode) to the corresponding exchange method.
     for param in &tr.params {
         let id = &param.ident;
         let ty = &param.ty;
         in_args.push(quote! { #[spec] #id: #ty });
     }
 
+    // We need some pre/post conditions that the input/output
+    // tokens are all of the correct Instance.
     let mut inst_eq_reqs = Vec::new();
     let mut inst_eq_enss = Vec::new();
 
     for field in &sm.fields {
+        // Determine if the field is an input, output, or both.
+        // (If neither, we get to skip.)
+
         let is_output;
         let is_input;
         if tr.kind == TransitionKind::Init {
@@ -210,8 +277,12 @@ pub fn exchange_stream(sm: &SM, tr: &Transition) -> syn::parse::Result<TokenStre
         };
 
         if is_output {
+            // For a normal transition, we are not allowed to update a constant
+            // field. (This should have been checked already.)
             assert!(!is_const || ctxt.is_init);
 
+            // We need to create a post-condition that says
+            //     field_value == (expression from update statement)
             let (e, lhs) = match field.stype {
                 ShardableType::Variable(_) => {
                     let e_opt = get_output_value_for_variable(&ctxt, &tr.body, field);
@@ -230,11 +301,15 @@ pub fn exchange_stream(sm: &SM, tr: &Transition) -> syn::parse::Result<TokenStre
             ctxt.ensures.push(eq_e);
 
             if is_input {
+                // If it's both an input and an output, make it a &mut parameter
                 in_args.push(quote! { #[proof] #arg_name: &mut #arg_type });
             } else if !is_const {
                 out_args.push((quote! {#arg_name}, quote! {#arg_type}));
             }
         } else {
+            // For sharding(constant), the field is input via the Instance object
+            // so we don't have to add anything here.
+            // For sharding(variable), we add a token that corresponds to the field.
             if !is_const {
                 in_args.push(quote! { #[proof] #arg_name: &#arg_type });
             }
@@ -275,6 +350,9 @@ pub fn exchange_stream(sm: &SM, tr: &Transition) -> syn::parse::Result<TokenStre
         TokenStream::new()
     };
 
+    // Output types are a bit tricky
+    // because of the lack of named output params.
+
     let (out_args_ret, ens_stream) = if out_args.len() == 0 {
         let ens_stream = if enss.len() > 0 {
             quote! {
@@ -305,6 +383,10 @@ pub fn exchange_stream(sm: &SM, tr: &Transition) -> syn::parse::Result<TokenStre
 
         (quote! { -> #arg_ty }, ens_stream)
     } else {
+        // If we have more than one output param (we aren't counting the &mut inputs here,
+        // only stuff in the 'return type' position) then we have to package it all into
+        // a tuple and unpack it in the 'ensures' clause.
+
         let arg_tys: Vec<TokenStream> = out_args.iter().map(|oa| oa.1.clone()).collect();
         let arg_names: Vec<TokenStream> = out_args.iter().map(|oa| oa.0.clone()).collect();
         let tup_typ = quote! { (#(#arg_tys),*) };
@@ -331,6 +413,8 @@ pub fn exchange_stream(sm: &SM, tr: &Transition) -> syn::parse::Result<TokenStre
     } else {
         quote! { #[verifier(returns(proof))] }
     };
+
+    // Tie it all together
 
     return Ok(quote! {
         #[proof]
@@ -524,7 +608,25 @@ fn get_new_field_inst(field: &Field) -> Expr {
     Expr::Verbatim(quote! { #arg.instance })
 }
 
-// Collect requires and ensures
+// Collect requires and ensures.
+//
+// This is somewhat tricky because of how we handle 'assert' statements.
+// The pre-condition should have a condition that corresponds to the
+// enabling conditions of the _weak_ translation relation, i.e., the caller
+// of the exchange method should NOT need to prove any asserts.
+//
+// So if the transition is defined like,
+//      assert(A);
+//      require(B);
+// then the precondition should be `A ==> B`.
+//
+// On the other hand, we also want to put the results of the 'assert'
+// statements in the post-condition. (This is, in fact, the whole point
+// of even having read-only transitions.)
+//
+// And of course, we have to consider some of these may be under conditionals.
+// So as we walk the tree, we have to collect all these conditions that might
+// be in the hypothesis of the condition we want to generate.
 
 #[derive(Clone, Debug)]
 enum PrequelElement {
@@ -685,6 +787,12 @@ fn prequel_vec_to_expr(v: &Vec<PrequelElement>) -> Option<Expr> {
     opt
 }
 
+/// Get the expression E that a given field gets updated to.
+/// This is used in the post-condition of the exchange method.
+/// Since the 'update' might be inside a conditional, we may need to build
+/// a conditional expression.
+///
+/// Returns 'None' if it doesn't find an 'update' for the given variable.
 fn get_output_value_for_variable(ctxt: &Ctxt, ts: &TransitionStmt, field: &Field) -> Option<Expr> {
     match ts {
         TransitionStmt::Block(_span, v) => {
@@ -692,6 +800,8 @@ fn get_output_value_for_variable(ctxt: &Ctxt, ts: &TransitionStmt, field: &Field
             for child in v.iter() {
                 let o = get_output_value_for_variable(ctxt, child, field);
                 if o.is_some() {
+                    // We should have already performed a check that the field
+                    // is not updated more than once.
                     assert!(!opt.is_some());
                     opt = o;
                 }
