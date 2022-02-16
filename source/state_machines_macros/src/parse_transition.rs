@@ -1,24 +1,24 @@
 use crate::ast::{Transition, TransitionKind, TransitionParam, TransitionStmt};
-use proc_macro2::Span;
-use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
-use syn::token::{Colon2, Dot};
 use syn::{
-    Block, Error, Expr, ExprCall, ExprField, ExprIf, ExprPath, FnArg, Ident, ImplItemMethod, Local,
-    Member, Pat, PatIdent, Path, PathArguments, PathSegment, Signature, Stmt,
+    Block, Error, Expr, ExprCall, ExprIf, FnArg, ImplItemMethod, Local, Pat, PatIdent, Signature,
+    Stmt,
 };
 
+// Translate Rust AST into an SM AST, given by a TransitionStmt.
+// Every statement should be one of:
+//  * A special call, e.g., require(...);
+//  * A 'let' statement
+//  * A conditional
+// We translate each statement appropriately.
+
 pub struct Ctxt {
-    //pub fields: &'a Vec<crate::ast::Field>,
     pub kind: TransitionKind,
 }
 
-pub fn parse_impl_item_method(
-    iim: &mut ImplItemMethod,
-    ctxt: &Ctxt,
-) -> syn::parse::Result<Transition> {
+pub fn parse_impl_item_method(iim: &ImplItemMethod, ctxt: &Ctxt) -> syn::parse::Result<Transition> {
     let params = parse_sig(&iim.sig)?;
-    let body = parse_block(&mut iim.block, ctxt)?;
+    let body = parse_block(&iim.block, ctxt)?;
     let name = iim.sig.ident.clone();
     return Ok(Transition { kind: ctxt.kind, params, body, name });
 }
@@ -59,16 +59,16 @@ fn parse_sig(sig: &Signature) -> syn::parse::Result<Vec<TransitionParam>> {
     return Ok(v);
 }
 
-fn parse_block(block: &mut Block, ctxt: &Ctxt) -> syn::parse::Result<TransitionStmt> {
+fn parse_block(block: &Block, ctxt: &Ctxt) -> syn::parse::Result<TransitionStmt> {
     let mut tstmts = Vec::new();
-    for mut stmt in block.stmts.iter_mut() {
-        let tstmt = parse_stmt(&mut stmt, ctxt)?;
+    for stmt in block.stmts.iter() {
+        let tstmt = parse_stmt(stmt, ctxt)?;
         tstmts.push(tstmt);
     }
     return Ok(TransitionStmt::Block(block.span(), tstmts));
 }
 
-fn parse_stmt(stmt: &mut Stmt, ctxt: &Ctxt) -> syn::parse::Result<TransitionStmt> {
+fn parse_stmt(stmt: &Stmt, ctxt: &Ctxt) -> syn::parse::Result<TransitionStmt> {
     match stmt {
         Stmt::Local(local) => parse_local(local, ctxt),
         Stmt::Expr(expr) => parse_expr(expr, ctxt),
@@ -79,7 +79,7 @@ fn parse_stmt(stmt: &mut Stmt, ctxt: &Ctxt) -> syn::parse::Result<TransitionStmt
     }
 }
 
-fn parse_local(local: &mut Local, _ctxt: &Ctxt) -> syn::parse::Result<TransitionStmt> {
+fn parse_local(local: &Local, _ctxt: &Ctxt) -> syn::parse::Result<TransitionStmt> {
     let ident = match &local.pat {
         Pat::Ident(PatIdent { attrs: _, by_ref: None, mutability: None, ident, subpat: None }) => {
             ident.clone()
@@ -97,10 +97,10 @@ fn parse_local(local: &mut Local, _ctxt: &Ctxt) -> syn::parse::Result<Transition
     Ok(TransitionStmt::Let(local.span(), ident, e))
 }
 
-fn parse_expr(expr: &mut Expr, ctxt: &Ctxt) -> syn::parse::Result<TransitionStmt> {
+fn parse_expr(expr: &Expr, ctxt: &Ctxt) -> syn::parse::Result<TransitionStmt> {
     match expr {
         Expr::If(expr_if) => parse_expr_if(expr_if, ctxt),
-        Expr::Block(block) => parse_block(&mut block.block, ctxt),
+        Expr::Block(block) => parse_block(&block.block, ctxt),
         Expr::Call(call) => parse_call(call, ctxt),
         _ => {
             return Err(Error::new(expr.span(), "unsupported expression type"));
@@ -108,10 +108,10 @@ fn parse_expr(expr: &mut Expr, ctxt: &Ctxt) -> syn::parse::Result<TransitionStmt
     }
 }
 
-fn parse_expr_if(expr_if: &mut ExprIf, ctxt: &Ctxt) -> syn::parse::Result<TransitionStmt> {
-    let thn = parse_block(&mut expr_if.then_branch, ctxt)?;
-    let els = match &mut expr_if.else_branch {
-        Some((_, el)) => parse_expr(&mut *el, ctxt)?,
+fn parse_expr_if(expr_if: &ExprIf, ctxt: &Ctxt) -> syn::parse::Result<TransitionStmt> {
+    let thn = parse_block(&expr_if.then_branch, ctxt)?;
+    let els = match &expr_if.else_branch {
+        Some((_, el)) => parse_expr(el, ctxt)?,
         None => TransitionStmt::Block(expr_if.span(), Vec::new()),
     };
     return Ok(TransitionStmt::If(
@@ -128,14 +128,13 @@ enum CallType {
     Update,
 }
 
-fn parse_call(call: &mut ExprCall, ctxt: &Ctxt) -> syn::parse::Result<TransitionStmt> {
+fn parse_call(call: &ExprCall, ctxt: &Ctxt) -> syn::parse::Result<TransitionStmt> {
     let ct = parse_call_type(&call.func, ctxt)?;
     match ct {
         CallType::Assert => {
             if call.args.len() != 1 {
                 return Err(Error::new(call.span(), "assert expected 1 arguments"));
             }
-            call.func = Box::new(mk_builtin_path("assert", call.func.span()));
             let e = call.args[0].clone();
             return Ok(TransitionStmt::Assert(call.span(), e));
         }
@@ -144,7 +143,6 @@ fn parse_call(call: &mut ExprCall, ctxt: &Ctxt) -> syn::parse::Result<Transition
                 return Err(Error::new(call.span(), "require expected 1 arguments"));
             }
             let e = call.args[0].clone();
-            call.func = Box::new(mk_builtin_path("require", call.func.span()));
             return Ok(TransitionStmt::Require(call.span(), e));
         }
         CallType::Update => {
@@ -171,8 +169,6 @@ fn parse_call(call: &mut ExprCall, ctxt: &Ctxt) -> syn::parse::Result<Transition
                     return Err(Error::new(call.args[0].span(), "expected field name"));
                 }
             };
-            call.func = Box::new(mk_builtin_path("update", call.func.span()));
-            call.args[0] = mk_self_field(ident.clone(), call.args[0].span());
             let e = call.args[1].clone();
             return Ok(TransitionStmt::Update(call.span(), ident.clone(), e));
         }
@@ -208,35 +204,4 @@ fn parse_call_type(callf: &Expr, _ctxt: &Ctxt) -> syn::parse::Result<CallType> {
     }
 
     return Err(Error::new(callf.span(), "expected 'require', 'assert', or 'update'"));
-}
-
-fn mk_builtin_path(s: &str, sp: Span) -> Expr {
-    let mut segments = Punctuated::<PathSegment, Colon2>::new();
-    segments.push(PathSegment { ident: Ident::new("builtin", sp), arguments: PathArguments::None });
-    segments.push(PathSegment {
-        ident: Ident::new("state_machine_ops", sp),
-        arguments: PathArguments::None,
-    });
-    segments.push(PathSegment { ident: Ident::new(s, sp), arguments: PathArguments::None });
-    return Expr::Path(ExprPath {
-        attrs: Vec::new(),
-        qself: None,
-        path: Path { leading_colon: Some(Colon2 { spans: [sp, sp] }), segments: segments },
-    });
-}
-
-fn mk_self_field(ident: Ident, sp: Span) -> Expr {
-    let mut self_segments = Punctuated::<PathSegment, Colon2>::new();
-    self_segments
-        .push(PathSegment { ident: Ident::new("self", sp), arguments: PathArguments::None });
-    return Expr::Field(ExprField {
-        attrs: Vec::new(),
-        base: Box::new(Expr::Path(ExprPath {
-            attrs: Vec::new(),
-            qself: None,
-            path: Path { leading_colon: None, segments: self_segments },
-        })),
-        dot_token: Dot { spans: [sp] },
-        member: Member::Named(ident),
-    });
 }

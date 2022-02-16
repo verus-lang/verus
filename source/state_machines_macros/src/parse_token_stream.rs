@@ -195,8 +195,7 @@ fn parse_fn_attr_info(attrs: &Vec<Attribute>) -> syn::parse::Result<FnAttrInfo> 
                             None => {
                                 return Err(Error::new(
                                     attr.span(),
-                                    "expected transition name: #[".to_string()
-                                        + "inductive(name)]",
+                                    "expected transition name: #[".to_string() + "inductive(name)]",
                                 ));
                             }
                         },
@@ -246,11 +245,11 @@ fn ensure_no_mode(impl_item_method: &ImplItemMethod, msg: &str) -> syn::parse::R
 }
 
 fn to_transition(
-    impl_item_method: &mut ImplItemMethod,
+    impl_item_method: &ImplItemMethod,
     kind: TransitionKind,
 ) -> syn::parse::Result<Transition> {
     ensure_no_mode(
-        &impl_item_method,
+        impl_item_method,
         "a transition fn is implied to be 'spec'; it should not be explicitly labelled",
     )?;
     let ctxt = crate::parse_transition::Ctxt { kind };
@@ -472,8 +471,7 @@ pub fn parse_result_to_smir(pr: ParseResult, concurrent: bool) -> syn::parse::Re
                     _ => panic!("can't get here"),
                 };
 
-                let mut iim = impl_item_method;
-                transitions.push(to_transition(&mut iim, kind)?);
+                transitions.push(to_transition(&impl_item_method, kind)?);
             }
             FnAttrInfo::Invariant => {
                 invariants.push(to_invariant(impl_item_method)?);
