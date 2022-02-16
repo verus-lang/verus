@@ -130,6 +130,10 @@ fn peek_keyword(cursor: Cursor, token: &str) -> bool {
 ///////// ParseResult -> SM AST
 
 // For a given ImplItemMethod, we check its attributes to see if it needs special processing.
+// Transitions (init, transition, and readonly) require the most processing. We have to
+// translate the body AST, interpreting it as our mini-language.
+// The other special functions (inv, lemma) are kept as-is for now, although they receive
+// minimal processing later.
 
 enum FnAttrInfo {
     NoneFound,
@@ -450,12 +454,14 @@ pub fn parse_result_to_smir(pr: ParseResult, concurrent: bool) -> syn::parse::Re
     let mut invariants: Vec<Invariant> = Vec::new();
     let mut lemmas: Vec<Lemma> = Vec::new();
 
-    let err_if_not_primary = |impl_item_method: &ImplItemMethod| match fields {
-        None => Err(Error::new(
-            impl_item_method.span(),
-            "a transition definition must be in the primary body for a state machine, i.e.,the body with the 'fields' definition",
-        )),
-        Some(_) => Ok(()),
+    let fields_named = match fields {
+        None => {
+            return Err(Error::new(
+                name.span(),
+                "the 'fields' declaration was not found in the state machine definition",
+            ));
+        }
+        Some(f) => f,
     };
 
     for impl_item_method in fns {
@@ -471,12 +477,9 @@ pub fn parse_result_to_smir(pr: ParseResult, concurrent: bool) -> syn::parse::Re
                     FnAttrInfo::Transition => TransitionKind::Transition,
                     FnAttrInfo::Readonly => TransitionKind::Readonly,
                     FnAttrInfo::Init => TransitionKind::Init,
-                    _ => {
-                        panic!("can't get here");
-                    }
+                    _ => panic!("can't get here"),
                 };
 
-                err_if_not_primary(&impl_item_method)?;
                 let mut iim = impl_item_method;
                 transitions.push(to_transition(&mut iim, kind)?);
             }
@@ -487,21 +490,11 @@ pub fn parse_result_to_smir(pr: ParseResult, concurrent: bool) -> syn::parse::Re
         }
     }
 
-    let sm = match fields {
-        None => {
-            panic!("not implemented");
-            //assert!(transitions.len() == 0);
-            //None
-        }
-        Some(fields_named) => {
-            let mut fields_named_ast = fields_named;
-            let fields = to_fields(&mut fields_named_ast, concurrent)?;
-            let name = name.clone();
-            let sm = SM { name, generics, fields, fields_named_ast, transitions };
-            check_transitions(&sm)?;
-            sm
-        }
-    };
+    let mut fields_named_ast = fields_named;
+    let fields = to_fields(&mut fields_named_ast, concurrent)?;
+    let sm = SM { name: name.clone(), generics, fields, fields_named_ast, transitions };
+
+    check_transitions(&sm)?;
 
     Ok(SMBundle { name, normal_fns, sm, extras: Extras { invariants, lemmas } })
 }
