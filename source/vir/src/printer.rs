@@ -326,7 +326,7 @@ fn function_to_node(function: &FunctionX) -> Node {
         decrease,
         mask_spec,
         is_const,
-        is_abstract,
+        publish,
         attrs,
         body,
     } = function;
@@ -428,8 +428,8 @@ fn function_to_node(function: &FunctionX) -> Node {
     if *is_const {
         nodes.push(str_to_node("+is_const"));
     }
-    if *is_abstract {
-        nodes.push(str_to_node("+is_abstract"));
+    if let Some(publish) = publish {
+        nodes.push(nodes!(publish {Node::Atom(format!("{}", publish))}));
     }
     nodes.push(function_attrs_node);
     if let Some(body) = body {

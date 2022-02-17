@@ -508,7 +508,7 @@ fn poly_function(ctx: &Ctx, function: &Function) -> Function {
         decrease,
         mask_spec,
         is_const,
-        is_abstract,
+        publish,
         attrs,
         body,
     } = &function.x;
@@ -586,7 +586,7 @@ fn poly_function(ctx: &Ctx, function: &Function) -> Function {
         decrease,
         mask_spec,
         is_const: *is_const,
-        is_abstract: *is_abstract,
+        publish: *publish,
         attrs: attrs.clone(),
         body,
     };

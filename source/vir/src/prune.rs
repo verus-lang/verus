@@ -6,9 +6,9 @@
 ///    since we're traversing the module-visible datatypes anyway.
 use crate::ast::{
     CallTarget, Datatype, Expr, ExprX, Fun, Function, Ident, Krate, KrateX, Mode, Path, Stmt, Typ,
-    TypX, Visibility,
+    TypX,
 };
-use crate::ast_util::is_visible_to;
+use crate::ast_util::{is_visible_to, is_visible_to_of_owner};
 use crate::datatype_to_air::is_datatype_transparent;
 use crate::def::{datatype_invariant_path, fn_inv_name, fn_namespace_name, Spanned};
 use crate::poly::MonoTyp;
@@ -174,12 +174,19 @@ pub fn prune_krate_for_module(krate: &Krate, module: &Path) -> (Krate, Vec<MonoT
         // - function is opaque and not revealed
         // - function is exec or proof
         let vis = f.x.visibility.clone();
-        let vis = Visibility { is_private: vis.is_private || f.x.is_abstract, ..vis };
         let is_vis = is_visible_to(&vis, module);
-        let is_revealed = f.x.fuel > 0 || revealed_functions.contains(&f.x.name);
+        let within_module = is_visible_to_of_owner(&vis.owning_module, module);
+        let is_non_opaque = if within_module { f.x.fuel > 0 } else { f.x.publish == Some(true) };
+        let is_revealed = is_non_opaque || revealed_functions.contains(&f.x.name);
         let is_spec = f.x.mode == Mode::Spec;
         if is_vis && is_revealed && is_spec {
-            functions.push(f.clone());
+            if !within_module && f.x.publish == Some(false) {
+                let mut function = f.x.clone();
+                function.fuel = 0;
+                functions.push(Spanned::new(f.span.clone(), function));
+            } else {
+                functions.push(f.clone());
+            }
         } else if f.x.body.is_none() {
             functions.push(f.clone());
         } else {

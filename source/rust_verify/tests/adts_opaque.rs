@@ -93,3 +93,39 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] test_opaque_fn_modules code! {
+        mod M1 {
+            use builtin::*;
+            use crate::pervasive::*;
+
+            pub struct A {
+                field: u64,
+            }
+
+            impl A {
+                #[spec] #[verifier(publish_opaque)]
+                pub fn always(&self) -> bool {
+                    true
+                }
+            }
+
+            fn test1() {
+                let a = A { field: 12 };
+                reveal(A::always);
+                assert(a.always());
+            }
+        }
+
+        mod M2 {
+            use builtin::*;
+            use crate::pervasive::*;
+
+            fn test2(a: crate::M1::A) {
+                // reveal(crate::M1::A::always);
+                assert(a.always());
+            }
+        }
+    } => Ok(())
+}

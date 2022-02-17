@@ -608,7 +608,7 @@ where
         decrease,
         mask_spec,
         is_const,
-        is_abstract,
+        publish,
         attrs,
         body,
     } = &function.x;
@@ -654,7 +654,7 @@ where
     };
     let attrs = attrs.clone();
     let is_const = *is_const;
-    let is_abstract = *is_abstract;
+    let publish = *publish;
     let body = body.as_ref().map(|e| map_expr_visitor_env(e, map, env, fe, fs, ft)).transpose()?;
     map.pop_scope();
     let functionx = FunctionX {
@@ -670,7 +670,7 @@ where
         decrease,
         mask_spec,
         is_const,
-        is_abstract,
+        publish,
         attrs,
         body,
     };
