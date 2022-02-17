@@ -55,7 +55,7 @@ const M1_OPAQUE: &str = code_str! {
         }
 
         #[spec]
-        #[verifier(publish_opaque)]
+        #[verifier(publish)] #[verifier(opaque_outside_module)]
         pub fn is_four_doors(c: Car) -> bool {
             c.four_doors
         }

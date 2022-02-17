@@ -103,7 +103,7 @@ const M1_OPAQUE: &str = code_str! {
         }
 
         impl A {
-            #[spec] #[verifier(publish_opaque)]
+            #[spec] #[verifier(publish)] #[verifier(opaque_outside_module)]
             pub fn always(&self) -> bool {
                 true
             }

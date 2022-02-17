@@ -107,7 +107,7 @@ pub(crate) enum Attr {
     // publish body
     Publish,
     // publish body with zero fuel
-    PublishOpaque,
+    OpaqueOutsideModule,
     // type parameter is not necessarily used in strictly positive positions
     MaybeNegative,
     // type parameter is used in strictly positive positions
@@ -181,8 +181,8 @@ pub(crate) fn parse_attrs(attrs: &[Attribute]) -> Result<Vec<Attr>, VirErr> {
                 Some(box [AttrTree::Fun(_, arg, None)]) if arg == "publish" => {
                     v.push(Attr::Publish)
                 }
-                Some(box [AttrTree::Fun(_, arg, None)]) if arg == "publish_opaque" => {
-                    v.push(Attr::PublishOpaque)
+                Some(box [AttrTree::Fun(_, arg, None)]) if arg == "opaque_outside_module" => {
+                    v.push(Attr::OpaqueOutsideModule)
                 }
                 Some(box [AttrTree::Fun(_, arg, None)]) if arg == "maybe_negative" => {
                     v.push(Attr::MaybeNegative)
@@ -290,17 +290,11 @@ pub(crate) fn get_fuel(vattrs: &VerifierAttrs) -> u32 {
 }
 
 pub(crate) fn get_publish(vattrs: &VerifierAttrs) -> Option<bool> {
-    match vattrs.publish {
-        crate::attributes::Publish::No => None,
-        crate::attributes::Publish::PublishOpaque => Some(false),
-        crate::attributes::Publish::Publish => Some(true),
+    match (vattrs.publish, vattrs.opaque_outside_module) {
+        (false, _) => None,
+        (true, false) => Some(true),
+        (true, true) => Some(false),
     }
-}
-
-pub(crate) enum Publish {
-    No,
-    PublishOpaque,
-    Publish,
 }
 
 pub(crate) struct VerifierAttrs {
@@ -308,7 +302,8 @@ pub(crate) struct VerifierAttrs {
     pub(crate) external: bool,
     pub(crate) is_abstract: bool,
     pub(crate) opaque: bool,
-    pub(crate) publish: Publish,
+    pub(crate) publish: bool,
+    pub(crate) opaque_outside_module: bool,
     pub(crate) strictly_positive: bool,
     pub(crate) maybe_negative: bool,
     pub(crate) broadcast_forall: bool,
@@ -326,7 +321,8 @@ pub(crate) fn get_verifier_attrs(attrs: &[Attribute]) -> Result<VerifierAttrs, V
         external: false,
         is_abstract: false,
         opaque: false,
-        publish: Publish::No,
+        publish: false,
+        opaque_outside_module: false,
         maybe_negative: false,
         strictly_positive: false,
         broadcast_forall: false,
@@ -343,8 +339,8 @@ pub(crate) fn get_verifier_attrs(attrs: &[Attribute]) -> Result<VerifierAttrs, V
             Attr::External => vs.external = true,
             Attr::Abstract => vs.is_abstract = true,
             Attr::Opaque => vs.opaque = true,
-            Attr::Publish => vs.publish = Publish::Publish,
-            Attr::PublishOpaque => vs.publish = Publish::PublishOpaque,
+            Attr::Publish => vs.publish = true,
+            Attr::OpaqueOutsideModule => vs.opaque_outside_module = true,
             Attr::MaybeNegative => vs.maybe_negative = true,
             Attr::StrictlyPositive => vs.strictly_positive = true,
             Attr::BroadcastForall => vs.broadcast_forall = true,
