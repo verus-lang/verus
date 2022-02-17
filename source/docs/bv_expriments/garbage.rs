@@ -31,12 +31,8 @@ fn set_bit_exec(bv:u32, loc:u32, bit:bool) -> u32 {
     ensures(|ret:u32| ret == set_bit(bv,loc,bit));
     assert_bit_vector((if bit { bv | 1u32 << loc } else { bv & (!(1u32 << loc)) }) == set_bit(bv, loc, bit));
     let one = 1u32 << loc;
-    if bit {
-        bv | one
-    }
-    else {
-        bv & (!one)
-    }
+    if bit {bv | one}
+    else {bv & (!one)}
 }
 
 #[proof]
@@ -47,7 +43,7 @@ fn set_bit_property_auto(bv:u32, bv2:u32, loc:u32, bit:bool) {
     ]);
     ensures([
         forall(|loc2:u32| (loc2 < 32 && loc != loc2) >>= (get_bit(bv2, loc2) == get_bit(bv, loc2))),
-        get_bit(bv2, loc) == bit
+        get_bit(bv2, loc) == bit,
     ]);
     assert_bit_vector(bv2 == set_bit(bv, loc, bit) >>= 
         ((forall(|loc2:u32| (loc2 < 32 && loc != loc2) >>= (get_bit(bv2, loc2) == get_bit(bv, loc2)))))) ;
@@ -69,27 +65,23 @@ fn bv_view_aux(bv: u32, i: u32) -> Seq<bool> {
     }
 }
 
+#[spec]
+fn bv_view(bv: u32) -> Seq<bool> {
+    bv_view_aux(bv, 31)
+}
+
 #[proof]
 fn bv_view_aux_correspond(bv: u32, i: u32) {
     decreases(i);
+    requires(i<32u32);
     ensures([
         bv_view_aux(bv, i).len() == i as int + 1,
-        forall(|j: u32| (j < i) >>= bv_view_aux(bv, i).index(j) == get_bit(bv, j))
+        forall(|j: u32| (j <= i) >>= (bv_view_aux(bv, i).index(j) == get_bit(bv, j)) )
     ]);
 
     if i != 0 {
         bv_view_aux_correspond(bv, i - 1);
-        let prev = bv_view_aux(bv, i - 1);
-        let curr = bv_view_aux(bv, i);
-
-       assert(forall(|j: u32| (j < i - 1) >>= prev.index(j) == get_bit(bv, j)));
-       assert(prev.add(seq![get_bit(bv, i)]).ext_equal(curr));
     }
-}
-
-#[spec]
-fn bv_view(bv: u32) -> Seq<bool> {
-    bv_view_aux(bv, 31)
 }
 
 #[proof]
@@ -116,18 +108,18 @@ fn color_view(high:bool, low:bool) -> Color {
     else {if low {Color::Black} else {Color::Undefined}}
 }
 
-#[exec]
-fn color_to_bits(c: Color) -> (bool, bool) {
-    match c {
-        Color::White => (false, false),
-        Color::Gray =>  (false, true),
-        Color::Black => (true, false),
-        Color::Undefined => (true, true),
-    }
-}
+// #[exec]
+// fn color_to_bits(c: Color) -> (bool, bool) {
+//     match c {
+//         Color::White => (false, false),
+//         Color::Gray =>  (false, true),
+//         Color::Black => (true, false),
+//         Color::Undefined => (true, true),
+//     }
+// }
 
 #[spec]
-fn bucket_view(bucket: u32, index: u32) -> Seq<Color> {
+fn bucket_view_aux(bucket: u32, index: u32) -> Seq<Color> {
     decreases(index);
     
     let up_bit:bool = get_bit(bucket, index*2 + 1);
@@ -137,36 +129,63 @@ fn bucket_view(bucket: u32, index: u32) -> Seq<Color> {
     if index == 0 {
         seq![c]
     } else {
-        bucket_view(bucket, index-1).add(seq![c])
+        bucket_view_aux(bucket, index-1).add(seq![c])
     }
 }
 
-// #[exec]
-// fn set_color(bucket:u32, high:bool, low:bool , index:u32, #[proof] ghost_bucket:Seq<Color>) -> u32 {
-//     requires([
-//         index < 16,
-//         bucket_view(bucket, 15).ext_equal(ghost_bucket)
-//     ]);
-//     ensures(|new_bucket: u32| [
-//         bucket_view(new_bucket, 15).ext_equal(ghost_bucket.update(index, color_view(high,low))),
-//     ]);
+#[proof]
+fn bucket_view_aux_correspond(bucket: u32, i: u32) {
+    decreases(i);
+    requires(i < 16u32);
+    ensures([
+        bucket_view_aux(bucket, i).len() == i as int + 1,
+        forall(|j: u32| (j <= i) >>= (bucket_view_aux(bucket, i).index(j) == color_view(get_bit(bucket, 2*j+1), get_bit(bucket, 2*j)))),
+    ]);
 
-//     reveal_with_fuel(bucket_view, 3);  // 15?
+    if i != 0 {
+        bucket_view_aux_correspond(bucket, i - 1);
+        // let prev = bucket_view_aux(bucket, i - 1);
+        // let curr = bucket_view_aux(bucket, i);
+        // let new_color:Color = color_view(get_bit(bucket, 2*i+1), get_bit(bucket, 2*i));
+        // assert(forall(|j: u32| (j <= i - 1) >>= prev.index(j) == color_view(get_bit(bucket, 2*j+1), get_bit(bucket, 2*j))));
+        // assert(curr.index(i) == new_color);
+        // assert(prev.add(seq![new_color]).ext_equal(curr));
+    }
+}
 
-//     let bucket1 = set_bit_exec(bucket, 2*index+1, high);
-//     let new_bucket = set_bit_exec(bucket1, 2*index, low);
-//     assert(bucket_view(bucket,15).index(index) == color_view(high,low));
-//     new_bucket
-// }
+
+#[spec]
+fn bucket_view(bucket: u32) -> Seq<Color> {
+    bucket_view_aux(bucket, 15)
+}
+
+#[proof]
+fn bucket_view_correspond(bucket: u32) {
+    ensures([
+        bucket_view(bucket).len() == 16,
+        forall(|i: u32| (i < 16) >>= bucket_view(bucket).index(i) == color_view(get_bit(bucket, 2*i+1), get_bit(bucket, 2*i)))
+    ]);
+    bucket_view_aux_correspond(bucket, 15);
+}
+
+#[exec]
+fn set_color(bucket:u32, high:bool, low:bool , i:u32, #[proof] ghost_bucket:Seq<Color>) -> u32 {
+    requires([
+        i < 16,
+        bucket_view(bucket).ext_equal(ghost_bucket)
+    ]);
+    ensures(|new_bucket: u32| [
+        bucket_view(new_bucket).ext_equal(ghost_bucket.update(i, color_view(high,low))),
+    ]);
+
+    let bucket1 = set_bit_exec(bucket, 2*i+1, high);
+    let new_bucket = set_bit_exec(bucket1, 2*i, low);
+    set_bit_property_auto(bucket, bucket1, 2*i+1, high);
+    set_bit_property_auto(bucket1, new_bucket, 2*i, low);
+    assert(color_view(high,low) == color_view(get_bit(new_bucket, 2*i+1), get_bit(new_bucket, 2*i)));
+    bucket_view_correspond(bucket);
+    bucket_view_correspond(new_bucket);
+    new_bucket
+}
 
 fn main(){}
-
-    // shift is uintshift, hence there is no sementic....  maybe I need `variable support` for assert_bit_vector
-    // 1. I can support the  semantics of <<,!, etc.   OR
-    // 2. make function mode, and interpret everything as bitvector in bv function mode
-    
-    // implement forall in assert_bit_vector
-    // fix 
-    // make gc work
-    // bv function mode ?
-    // separate process
