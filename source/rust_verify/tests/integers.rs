@@ -16,7 +16,7 @@ test_verify_one_file! {
         }
 
         #[spec]
-        #[opaque]
+        #[verifier(opaque)]
         fn add1_nat_opaque(i: nat) -> nat {
             i + 1
         }

@@ -22,19 +22,19 @@ pub fn set_new<A, F: Fn(A) -> bool>(f: F) -> Set<A> {
 impl<A> Set<A> {
     fndecl!(pub fn empty() -> Set<A>);
 
-    #[spec]
+    #[spec] #[verifier(publish)]
     pub fn full() -> Set<A> {
         Set::empty().complement()
     }
 
     fndecl!(pub fn contains(self, a: A) -> bool);
 
-    #[spec]
+    #[spec] #[verifier(publish)]
     pub fn ext_equal(self, s2: Set<A>) -> bool {
         forall(|a: A| self.contains(a) == s2.contains(a))
     }
 
-    #[spec]
+    #[spec] #[verifier(publish)]
     pub fn subset_of(self, s2: Set<A>) -> bool {
         forall(|a: A| self.contains(a) >>= s2.contains(a))
     }
@@ -51,7 +51,7 @@ impl<A> Set<A> {
 
     fndecl!(pub fn complement(self) -> Set<A>);
 
-    #[spec]
+    #[spec] #[verifier(publish)]
     pub fn filter<F: Fn(A) -> bool>(self, f: F) -> Set<A> {
         self.intersect(set_new(f))
     }
@@ -60,7 +60,7 @@ impl<A> Set<A> {
 
     fndecl!(pub fn len(self) -> nat);
 
-    #[spec]
+    #[spec] #[verifier(publish)]
     pub fn choose(self) -> A {
         choose(|a: A| self.contains(a))
     }

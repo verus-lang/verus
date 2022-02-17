@@ -6,7 +6,7 @@ use common::*;
 test_verify_one_file! {
     #[test] test_assertby1 code! {
         #[spec]
-        #[opaque]
+        #[verifier(opaque)]
         fn f1(i: int) -> int {
             i + 1
         }
@@ -21,7 +21,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test_assertby1_fail1 code! {
         #[spec]
-        #[opaque]
+        #[verifier(opaque)]
         fn f1(i: int) -> int {
             i + 1
         }
@@ -35,7 +35,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test_assertby1_fail2 code! {
         #[spec]
-        #[opaque]
+        #[verifier(opaque)]
         fn f1(i: int) -> int {
             i + 1
         }
@@ -62,7 +62,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test_forallstmt1 code! {
         #[spec]
-        #[opaque]
+        #[verifier(opaque)]
         fn f1(i: int) -> int {
             i + 1
         }
@@ -91,7 +91,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test_forallstmt1_fail1 code! {
         #[spec]
-        #[opaque]
+        #[verifier(opaque)]
         fn f1(i: int) -> int {
             i + 1
         }
@@ -108,7 +108,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test_forallstmt1_fail2 code! {
         #[spec]
-        #[opaque]
+        #[verifier(opaque)]
         fn f1(i: int) -> int {
             i + 1
         }
@@ -126,7 +126,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test_forallstmt1_fail3 code! {
         #[spec]
-        #[opaque]
+        #[verifier(opaque)]
         fn f1(i: int) -> int {
             i + 1
         }
@@ -147,7 +147,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test_forallstmt2 code! {
         #[spec]
-        #[opaque]
+        #[verifier(opaque)]
         fn f1(i: int) -> int {
             i + 1
         }
@@ -166,7 +166,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test_forallstmt2_fails1 code! {
         #[spec]
-        #[opaque]
+        #[verifier(opaque)]
         fn f1(i: int) -> int {
             i + 1
         }
@@ -185,7 +185,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test_forallstmt2_fails2 code! {
         #[spec]
-        #[opaque]
+        #[verifier(opaque)]
         fn f1(i: int) -> int {
             i + 1
         }
@@ -222,7 +222,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test_forallstmt_typ code! {
         #[spec]
-        #[opaque]
+        #[verifier(opaque)]
         fn f1(i: int) -> int {
             i + 1
         }
@@ -240,7 +240,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test_forallstmt_typ_fails code! {
         #[spec]
-        #[opaque]
+        #[verifier(opaque)]
         fn f1(i: int) -> int {
             i + 1
         }

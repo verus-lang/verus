@@ -6,7 +6,7 @@ use crate::pervasive::*;
 use crate::pervasive::seq::*;
 
 impl<A> Seq<A> {
-    #[spec]
+    #[spec] #[verifier(publish)]
     pub fn map<B, F: Fn(int, A) -> B>(self, f: F) -> Seq<B> {
         Seq::new(self.len(), |i: int| f(i, self.index(i)))
     }

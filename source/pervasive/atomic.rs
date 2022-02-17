@@ -15,7 +15,7 @@ macro_rules! make_unsigned_integer_atomic {
         // TODO when we support `std::intrinsics::wrapping_add`,
         // use that instead.
 
-        #[spec]
+        #[spec] #[verifier(publish)]
         pub fn $wrap_add(a: int, b: int) -> int {
             if a + b > $int_max {
                 a + b - ($int_max - $int_min + 1)
@@ -24,7 +24,7 @@ macro_rules! make_unsigned_integer_atomic {
             }
         }
 
-        #[spec]
+        #[spec] #[verifier(publish)]
         pub fn $wrap_sub(a: int, b: int) -> int {
             if a - b < $int_min {
                 a - b + ($int_max - $int_min + 1)
@@ -43,7 +43,7 @@ macro_rules! make_unsigned_integer_atomic {
 
 macro_rules! make_signed_integer_atomic {
     ($at_ident:ident, $p_ident:ident, $rust_ty: ty, $value_ty: ty, $wrap_add:ident, $wrap_sub:ident, $int_min:expr, $int_max: expr) => {
-        #[spec]
+        #[spec] #[verifier(publish)]
         pub fn $wrap_add(a: int, b: int) -> int {
             if a + b > $int_max {
                 a + b - ($int_max - $int_min + 1)
@@ -54,7 +54,7 @@ macro_rules! make_signed_integer_atomic {
             }
         }
 
-        #[spec]
+        #[spec] #[verifier(publish)]
         pub fn $wrap_sub(a: int, b: int) -> int {
             if a - b > $int_max {
                 a - b - ($int_max - $int_min + 1)
@@ -99,12 +99,12 @@ macro_rules! atomic_types {
         }
 
         impl $p_ident {
-            #[spec]
+            #[spec] #[verifier(publish)]
             fn is_for(&self, patomic: $at_ident) -> bool {
                 self.patomic == patomic.view()
             }
 
-            #[spec]
+            #[spec] #[verifier(publish)]
             fn points_to(&self, v: $value_ty) -> bool {
                 self.value == v
             }

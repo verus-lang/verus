@@ -78,7 +78,7 @@ test_verify_one_file! {
     #[test] test_choose_assert_witness code! {
         use crate::pervasive::set::*;
 
-        #[opaque]
+        #[verifier(opaque)]
         #[spec]
         fn f(x: int) -> bool {
             true
@@ -100,7 +100,7 @@ test_verify_one_file! {
     #[test] test_choose_fails_witness code! {
         use crate::pervasive::set::*;
 
-        #[opaque]
+        #[verifier(opaque)]
         #[spec]
         fn f(x: int) -> bool {
             true

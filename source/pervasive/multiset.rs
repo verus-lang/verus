@@ -24,22 +24,22 @@ impl<V> Multiset<V> {
     fndecl!(pub fn add(self, m2: Self) -> Self);
     fndecl!(pub fn sub(self, m2: Self) -> Self);
 
-    #[spec]
+    #[spec] #[verifier(publish)]
     pub fn insert(self, v: V) -> Self {
         self.add(Self::singleton(v))
     }
 
-    #[spec]
+    #[spec] #[verifier(publish)]
     pub fn remove(self, v: V) -> Self {
         self.sub(Self::singleton(v))
     }
 
-    #[spec]
+    #[spec] #[verifier(publish)]
     pub fn le(self, m2: Self) -> bool {
         forall(|v: V| self.count(v) <= m2.count(v))
     }
 
-    #[spec]
+    #[spec] #[verifier(publish)]
     pub fn ext_equal(self, m2: Self) -> bool {
         forall(|v: V| self.count(v) == m2.count(v))
     }

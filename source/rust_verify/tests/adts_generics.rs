@@ -78,7 +78,7 @@ test_verify_one_file! {
         }
 
         #[spec]
-        #[opaque]
+        #[verifier(opaque)]
         fn id<A>(a: A) -> A {
             a
         }
@@ -104,7 +104,7 @@ test_verify_one_file! {
         }
 
         #[spec]
-        #[opaque]
+        #[verifier(opaque)]
         fn id<A>(a: A) -> A {
             a
         }
@@ -126,7 +126,7 @@ test_verify_one_file! {
         }
 
         #[spec]
-        #[opaque]
+        #[verifier(opaque)]
         fn id<A>(a: A) -> A {
             a
         }
@@ -147,7 +147,7 @@ test_verify_one_file! {
         }
 
         #[spec]
-        #[opaque]
+        #[verifier(opaque)]
         fn id<A>(a: A) -> A {
             a
         }
@@ -178,13 +178,13 @@ test_verify_one_file! {
             i: int,
         }
 
-        #[opaque]
+        #[verifier(opaque)]
         #[spec]
         fn fi(i: int) -> bool {
             true
         }
 
-        #[opaque]
+        #[verifier(opaque)]
         #[spec]
         fn fs(s: S) -> bool {
             true
