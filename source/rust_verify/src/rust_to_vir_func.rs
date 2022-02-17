@@ -291,6 +291,7 @@ pub(crate) fn check_item_fn<'tcx>(
         is_abstract: vattrs.is_abstract,
         attrs: Arc::new(fattrs),
         body: if vattrs.external_body { None } else { Some(vir_body) },
+        extra_dependencies: header.extra_dependencies,
     };
     let function = spanned_new(sig.span, func);
     vir.functions.push(function);
@@ -349,6 +350,7 @@ pub(crate) fn check_item_const<'tcx>(
         is_abstract: vattrs.is_abstract,
         attrs: Default::default(),
         body: if vattrs.external_body { None } else { Some(vir_body) },
+        extra_dependencies: vec![],
     };
     let function = spanned_new(span, func);
     vir.functions.push(function);
@@ -410,6 +412,7 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
         is_abstract: false,
         attrs: Default::default(),
         body: None,
+        extra_dependencies: vec![],
     };
     let function = spanned_new(span, func);
     vir.functions.push(function);
