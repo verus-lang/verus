@@ -57,22 +57,22 @@ function method set_bit(bv: uint32, i: uint5, b: bool): (bv': uint32)
     ensures forall j: uint5 :: (j != i) ==> (get_bit(bv', j) == get_bit(bv, i))
     ensures get_bit(bv', i) == b
 
-function I_aux(bv: uint32, i: uint5): seq<bool>
+function bv_view_aux(bv: uint32, i: uint5): seq<bool>
 {
     if i == 0 then
         [get_bit(bv, 0)]
     else
-       I_aux(bv, i - 1) + [get_bit(bv, i)]
+       bv_view_aux(bv, i - 1) + [get_bit(bv, i)]
 }
 
-lemma I_aux_correspond(bv: uint32, i: uint5)
-    ensures |I_aux(bv, i)| == i + 1
-    ensures forall j: uint5 :: (j < i) ==> I_aux(bv, i)[j] == get_bit(bv, j)
+lemma bv_view_aux_correspond(bv: uint32, i: uint5)
+    ensures |bv_view_aux(bv, i)| == i + 1
+    ensures forall j: uint5 :: (j < i) ==> bv_view_aux(bv, i)[j] == get_bit(bv, j)
 {
     if i != 0 {
-        I_aux_correspond(bv, i - 1);
-        var preI := I_aux(bv, i - 1);
-        var curI := I_aux(bv, i);
+        bv_view_aux_correspond(bv, i - 1);
+        var preI := bv_view_aux(bv, i - 1);
+        var curI := bv_view_aux(bv, i);
 
         assert forall j: uint5 :: (j < i - 1) ==> preI[j] == get_bit(bv, j);
         assert preI + [get_bit(bv, i)] == curI;
@@ -90,14 +90,14 @@ lemma I_aux_correspond(bv: uint32, i: uint5)
     }
 }
 
-function I(bv: uint32): seq<bool>
+function bv_view(bv: uint32): seq<bool>
 {
-    I_aux(bv, 31)
+    bv_view_aux(bv, 31)
 }
 
-lemma I_correspond(bv: uint32)
-    ensures |I(bv)| == 32
-    ensures forall i: uint5 :: I(bv)[i] == get_bit(bv, i)
+lemma bv_view_correspond(bv: uint32)
+    ensures |bv_view(bv)| == 32
+    ensures forall i: uint5 :: bv_view(bv)[i] == get_bit(bv, i)
 {
-    I_aux_correspond(bv, 31);
+    bv_view_aux_correspond(bv, 31);
 }

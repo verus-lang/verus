@@ -40,50 +40,67 @@ fn set_bit_exec(bv:u32, loc:u32, bit:bool) -> u32 {
 }
 
 #[proof]
-fn set_bit_property_forall(bv:u32, bv2:u32, loc:u32, bit:bool) {
+fn set_bit_property_auto(bv:u32, bv2:u32, loc:u32, bit:bool) {
     requires([
         loc < 32,
         bv2 == set_bit(bv,loc,bit),
     ]);
-    ensures(
-        forall( |loc2:u32| (loc2 < 32 && loc != loc2) >>= (get_bit(bv2, loc2) == get_bit(bv, loc2))),
+    ensures([
+        forall(|loc2:u32| (loc2 < 32 && loc != loc2) >>= (get_bit(bv2, loc2) == get_bit(bv, loc2))),
         get_bit(bv2, loc) == bit
-    );
-    assert_bit_vector(forall( |loc2:u32| 
-        ( (bv2 == set_bit(bv, loc, bit) && (loc < 32) && loc2 < 32 && loc != loc2) >>= (
-        get_bit(bv2, loc2) == get_bit(bv, loc2) 
-        && get_bit(bv2, loc) == bit
-        )
-    )));
+    ]);
+    assert_bit_vector(bv2 == set_bit(bv, loc, bit) >>= 
+        ((forall(|loc2:u32| (loc2 < 32 && loc != loc2) >>= (get_bit(bv2, loc2) == get_bit(bv, loc2)))))) ;
+
+    assert_bit_vector((loc < 32 && bv2 == set_bit(bv, loc, bit)) >>= 
+        get_bit(bv2, loc) == bit);
 }
 
-// #[proof]
-// fn set_bit_property(bv:u32, loc:u32, loc2: u32, bit:bool) -> u32 {
-//     requires([
-//         loc < 32,
-//         loc2 < 32,
-//         loc != loc2
-//     ]);
-//     ensures(|bv2:u32| 
-//             bv2 == set_bit(bv,loc,bit) &&
-//             get_bit(bv2, loc2) == get_bit(bv, loc2) &&
-//             get_bit(bv2, loc) == bit &&
-//             (bv == bv2 >>= (get_bit(bv,loc) == bit) ) &&
-//             (bv != bv2 >>= (get_bit(bv,loc) == !bit) )
-//     );
 
-//     #[spec] let bv2 = set_bit(bv, loc, bit);
-//     assert_bit_vector((bv2 == set_bit(bv, loc, bit) && (loc < 32) && (loc2 < 32) && (loc != loc2)) 
-//                            >>= get_bit(bv2, loc2) == get_bit(bv, loc2));
-//     assert_bit_vector((bv2 == set_bit(bv, loc, bit) && (loc < 32))  
-//                            >>= get_bit(bv2, loc) == bit);
-//     assert_bit_vector((bv2 == set_bit(bv, loc, bit) && (loc < 32) && bv == bv2)  
-//                            >>= get_bit(bv, loc) == bit);
-//     assert_bit_vector((bv2 == set_bit(bv, loc, bit) && (loc < 32) && bv != bv2)  
-//                            >>= get_bit(bv, loc) == !bit);
-//     bv2
-// }
+#[spec]
+fn bv_view_aux(bv: u32, i: u32) -> Seq<bool> {
+    decreases(i);
 
+    let bit = seq![get_bit(bv, i)];
+    if i == 0 {
+        bit
+    } else {
+        bv_view_aux(bv, i - 1).add(bit)
+    }
+}
+
+#[proof]
+fn bv_view_aux_correspond(bv: u32, i: u32) {
+    decreases(i);
+    ensures([
+        bv_view_aux(bv, i).len() == i as int + 1,
+        forall(|j: u32| (j < i) >>= bv_view_aux(bv, i).index(j) == get_bit(bv, j))
+    ]);
+
+    if i != 0 {
+        bv_view_aux_correspond(bv, i - 1);
+        let prev = bv_view_aux(bv, i - 1);
+        let curr = bv_view_aux(bv, i);
+
+       assert(forall(|j: u32| (j < i - 1) >>= prev.index(j) == get_bit(bv, j)));
+       assert(prev.add(seq![get_bit(bv, i)]).ext_equal(curr));
+    }
+}
+
+#[spec]
+fn bv_view(bv: u32) -> Seq<bool> {
+    bv_view_aux(bv, 31)
+}
+
+#[proof]
+fn bv_view_correspond(bv: u32)
+{
+    ensures([
+        bv_view(bv).len() == 32,
+        forall(|i: u32| (i < 32) >>= bv_view(bv).index(i) == get_bit(bv, i))
+    ]);
+    bv_view_aux_correspond(bv, 31);
+}
 
 #[derive(Structural, PartialEq, Eq)]
 enum Color {
