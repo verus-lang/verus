@@ -157,6 +157,17 @@ test_verify_one_file! {
     } => Err(err) => assert_one_fails(err)
 }
 
+test_verify_one_file! {
+    #[test] test7_fails code! {
+        #[proof]
+        fn test7(b: u32) {
+            assert_bit_vector(!0u32 == 0xffffffffu32);
+            assert_bit_vector(!0u64 == 0xffffffff_ffffffffu64);
+            assert(false); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
 // test_verify_one_file! {
 //     #[test] test6_fails code! {
 //         #[proof]
