@@ -258,18 +258,18 @@ fn record_fun(
     erasure_info.resolved_calls.push((span.data(), resolved_call));
 }
 
-fn get_fn_path<'tcx>(tcx: TyCtxt<'tcx>, expr: &Expr<'tcx>) -> Result<vir::ast::Fun, VirErr> {
+fn get_fn_path<'tcx>(bctx: &BodyCtxt<'tcx>, expr: &Expr<'tcx>) -> Result<vir::ast::Fun, VirErr> {
     match &expr.kind {
-        ExprKind::Path(QPath::Resolved(None, path)) => match path.res {
-            Res::Def(DefKind::Fn, id) => {
-                if let Some(_) = tcx.impl_of_method(id).and_then(|ii| tcx.trait_id_of_impl(ii)) {
-                    unsupported_err!(expr.span, format!("Fn {:?}", id))
-                } else {
-                    Ok(Arc::new(FunX { path: def_id_to_vir_path(tcx, id), trait_path: None }))
-                }
+        ExprKind::Path(qpath) => {
+            let id = bctx.types.qpath_res(qpath, expr.hir_id).def_id();
+            if let Some(_) =
+                bctx.ctxt.tcx.impl_of_method(id).and_then(|ii| bctx.ctxt.tcx.trait_id_of_impl(ii))
+            {
+                unsupported_err!(expr.span, format!("Fn {:?}", id))
+            } else {
+                Ok(Arc::new(FunX { path: def_id_to_vir_path(bctx.ctxt.tcx, id), trait_path: None }))
             }
-            res => unsupported_err!(expr.span, format!("Path {:?}", res)),
-        },
+        }
         _ => unsupported_err!(expr.span, format!("{:?}", expr)),
     }
 }
@@ -510,7 +510,7 @@ fn fn_call_to_vir<'tcx>(
 
     if is_hide || is_reveal {
         unsupported_err_unless!(len == 1, expr.span, "expected hide/reveal", &args);
-        let x = get_fn_path(tcx, &args[0])?;
+        let x = get_fn_path(bctx, &args[0])?;
         if is_hide {
             let header = Arc::new(HeaderExprX::Hide(x));
             return Ok(mk_expr(ExprX::Header(header)));
@@ -520,7 +520,7 @@ fn fn_call_to_vir<'tcx>(
     }
     if is_reveal_fuel {
         unsupported_err_unless!(len == 2, expr.span, "expected reveal_fuel", &args);
-        let x = get_fn_path(tcx, &args[0])?;
+        let x = get_fn_path(bctx, &args[0])?;
         match &expr_to_vir(bctx, &args[1], ExprModifier::REGULAR)?.x {
             ExprX::Const(Constant::Nat(s)) => {
                 let n = s.parse::<u32>().expect(&format!("internal error: parse {}", s));

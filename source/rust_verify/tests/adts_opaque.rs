@@ -73,5 +73,23 @@ test_verify_one_file! {
             }
         }
     } => Ok(())
-    // => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] test_opaque_fn code! {
+        struct A {}
+
+        impl A {
+            #[spec] #[opaque]
+            pub fn always(&self) -> bool {
+                true
+            }
+        }
+
+        fn main() {
+            let a = A {};
+            reveal(A::always);
+            assert(a.always());
+        }
+    } => Ok(())
 }
