@@ -21,6 +21,9 @@ test_verify_one_file! {
 
             assert_bit_vector(b | b == b);
             assert(b | b == b);
+
+            assert_bit_vector(b & 0xff < 0x100);
+            assert(b & 0xff < 0x100);
         }
     } => Ok(())
 }
@@ -29,10 +32,6 @@ test_verify_one_file! {
     #[test] test2 code! {
         #[proof]
         fn test2(b: u32) {
-            assert_bit_vector(b & 0xff < 0x100);
-            assert(b & 0xff < 0x100);
-            //assert(0xff & b < 0x100);  // fails without communtativity
-
             assert_bit_vector(b<<2 == b*4);
             assert(b<<2 == b*4);
             assert(b < 256 >>= ((b<<2) as int) == (b as int) *4);
@@ -97,6 +96,17 @@ test_verify_one_file! {
             assert_bit_vector(((b1 == (1 as u64)) && (b2 == b3)) >>= (b1 + b2 == b3 + 1));
             assert_bit_vector((b1 == b2)  >>= (!b1 == !b2));
             assert_bit_vector( b1 == (!(!b1)));
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test8 code! {
+        #[proof]
+        fn test8(b: u32) {
+            assert_bit_vector(forall(|a: u32, b: u32| #[trigger] (a&b) == b&a));
+            assert_bit_vector(b & 0xff < 0x100);
+            assert(0xff & b < 0x100);
         }
     } => Ok(())
 }

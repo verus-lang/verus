@@ -23,6 +23,14 @@ fn bit_and32_auto(){
 }
 
 #[proof]
+fn bit_not32_auto(){
+    ensures([
+        forall(|a: u32| #[trigger] !(!a) == a),
+    ]);
+    assert_bit_vector(forall(|a: u32| #[trigger] !(!a) == a));
+}
+
+#[proof]
 fn test9(b1: u32, b2:u32, b3:u32) { 
     bit_and32_auto();
 
@@ -35,6 +43,9 @@ fn test9(b1: u32, b2:u32, b3:u32) {
     assert( (b1&b2)&b3 == b1&(b2&b3) );
     assert(b1&0 == 0);
     assert(0&b2 == 0);
+
+    bit_not32_auto();
+    assert(!(!5u32) == 5u32);
 }
 
 fn main() {}
