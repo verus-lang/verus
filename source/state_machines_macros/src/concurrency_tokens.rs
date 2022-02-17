@@ -57,11 +57,32 @@ fn transition_arg_name(field: &Field) -> Ident {
 fn instance_struct_stream(sm: &SM) -> TokenStream {
     let insttype = inst_type_name(&sm.name);
     return quote! {
-        #[spec]
+        #[proof]
         #[allow(non_camel_case_types)]
         #[verifier(external_body)]
+        #[verifier(unforgeable)]
         pub struct #insttype {
-            #[spec] pub id: ::builtin::int,
+            #[proof] pub dummy_field: (),
+        }
+    };
+}
+
+/// Add a `clone()` method to the Instance type.
+/// This is safe, because the Instance object effectively just represents
+///
+///   * the fact that the protocol exists, and has been initialized
+///   * any constants associated to the protocol
+///
+/// TODO it would be even better to add a Copy instance as well; however, this
+/// currently runs into Verus limitations with deriving instances.
+fn trusted_clone() -> TokenStream {
+    return quote! {
+        #[proof]
+        #[verifier(external_body)]
+        #[verifier(returns(proof))]
+        pub fn clone(#[proof] &self) -> Self {
+            ensures(|s: Self| ::builtin::equal(*self, s));
+            unimplemented!();
         }
     };
 }
@@ -113,6 +134,7 @@ pub fn output_token_types_and_fns(
     let mut inst_impl_token_stream = TokenStream::new();
 
     token_stream.extend(instance_struct_stream(sm));
+    inst_impl_token_stream.extend(trusted_clone());
 
     for field in &sm.fields {
         match field.stype {
@@ -230,10 +252,10 @@ pub fn exchange_stream(sm: &SM, tr: &Transition) -> syn::parse::Result<TokenStre
 
     if ctxt.is_init {
         let itn = inst_type_name(&sm.name);
-        out_args.push((quote! { instance }, quote! { crate::pervasive::modes::Spec<#itn> }));
+        out_args.push((quote! { instance }, quote! { #itn }));
     } else {
         let itn = inst_type_name(&sm.name);
-        in_args.push(quote! { #[spec] instance: #itn });
+        in_args.push(quote! { #[proof] instance: #itn }); // TODO make this argument self?
     }
 
     // Take the transition parameters (the normal parameters defined in the transition)
@@ -569,12 +591,8 @@ impl<'a> VisitMut for TranslatorVisitor<'a> {
     }
 }
 
-fn get_inst_value(ctxt: &Ctxt) -> Expr {
-    if ctxt.is_init {
-        Expr::Verbatim(quote! { instance.value() })
-    } else {
-        Expr::Verbatim(quote! { instance })
-    }
+fn get_inst_value(_ctxt: &Ctxt) -> Expr {
+    Expr::Verbatim(quote! { instance })
 }
 
 fn get_const_field_value(ctxt: &Ctxt, field: &Field) -> Expr {

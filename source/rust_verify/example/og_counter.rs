@@ -89,7 +89,7 @@ impl G {
 fn main() {
   // Initialize protocol 
 
-  #[proof] let (spec(inst),
+  #[proof] let (inst,
       mut counter_token,
       mut inc_a_token,
       mut inc_b_token) = X_initialize();
@@ -110,7 +110,7 @@ fn main() {
   open_invariant!(&at_inv => g => {
     #[proof] let G { counter: mut c, perm: mut p } = g;
 
-    X_tr_inc_a(inst, &mut c, &mut inc_a_token); // atomic increment
+    X_tr_inc_a(inst.clone(), &mut c, &mut inc_a_token); // atomic increment
     at.fetch_add(&mut p, 1);
 
     g = G { counter: c, perm: p };
@@ -121,7 +121,7 @@ fn main() {
   open_invariant!(&at_inv => g => {
     #[proof] let G { counter: mut c2, perm: mut p2 } = g;
 
-    X_tr_inc_b(inst, &mut c2, &mut inc_b_token); // atomic increment
+    X_tr_inc_b(inst.clone(), &mut c2, &mut inc_b_token); // atomic increment
     at.fetch_add(&mut p2, 1);
 
     g = G { counter: c2, perm: p2 };
@@ -137,7 +137,7 @@ fn main() {
     #[proof] let G { counter: mut c3, perm: mut p3 } = g;
 
     x = at.load(&p3);
-    X_finalize(inst, &c3, &inc_a_token, &inc_b_token);
+    X_finalize(inst.clone(), &c3, &inc_a_token, &inc_b_token);
 
     g = G { counter: c3, perm: p3 };
   });
