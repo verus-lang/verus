@@ -6,6 +6,88 @@
 //!  * #[proof] methods for each transition (including init and readonly transitions)
 //!
 //! Currently supports: 'variable' and 'constant' sharding
+//!
+//! For a state machine named X, we produce code that looks like:
+//!    
+//!    // Primary Instance object:
+//!    
+//!    #[proof]
+//!    #[allow(non_camel_case_types)]
+//!    #[verifier(external_body)]
+//!    #[verifier(unforgeable)]
+//!    pub struct X_Instance {
+//!        #[proof]
+//!        pub dummy_field: ::std::marker::PhantomData<X>,
+//!    }
+//!    
+//!    // Token types, each of which look something like:
+//!    
+//!    #[proof]
+//!    #[verifier(unforgeable)]
+//!    #[allow(non_camel_case_types)]
+//!    pub struct X_counter {
+//!        #[spec]
+//!        pub instance: X_Instance,
+//!        #[spec]
+//!        pub counter: int,
+//!    }
+//!    
+//!    // Clone method for the instance:
+//!    
+//!    impl X_Instance {
+//!        #[proof]
+//!        #[verifier(external_body)]
+//!        #[verifier(returns(proof))]
+//!        pub fn clone(#[proof] &self) -> Self {
+//!            ensures(|s: Self| ::builtin::equal(*self, s));
+//!            ::core::panicking::panic("not implemented");
+//!        }
+//!    }
+//!    
+//!    // Exchange methods. An initialization looks something like this
+//!    
+//!    #[proof]
+//!    #[verifier(returns(proof))]
+//!    #[verifier(external_body)]
+//!    pub fn X_initialize(params...) -> (X_Instance, /* ... tokens */) {
+//!        ::builtin::requires(/* enabling conditions for the Init */)
+//!        ::builtin::ensures(|tmp_tuple: (X_Instance, /* ... tokens */)| {
+//!            [{
+//!                let (instance, /* ... tokens */) = tmp_tuple;
+//!                // ensure the new tokens are of the new instance
+//!                (::builtin::equal(token_counter.instance, instance))
+//!                // ...
+//!                // post-conditions on the values of the tokens
+//!                (::builtin::equal(token_counter.counter, 0))
+//!            }]
+//!        });
+//!        ::core::panicking::panic("not implemented");
+//!    }
+//!    
+//!    // A normal transition looks something like:
+//!    
+//!    #[proof]
+//!    #[verifier(external_body)]
+//!    pub fn X_tr_inc_a(
+//!        #[proof] instance: X_Instance,
+//!        // input tokens:
+//!        #[proof] token_counter: &mut X_counter,
+//!        #[proof] token_inc_a: &mut X_inc_a,
+//!    ) {
+//!        ::builtin::requires([
+//!            // Check that input tokens are of the right instance
+//!            ::builtin::equal(::builtin::old(token_counter).instance, instance),
+//!            // ...
+//!            // Other enabling conditions here ...
+//!        ]);
+//!        ::builtin::ensures([
+//!            // Check that output tokens are of the right instance
+//!            ::builtin::equal(token_counter.instance, instance),
+//!            // ...
+//!            // Other conditions on input/output tokens assured by the transition ...
+//!        ]);
+//!        ::core::panicking::panic("not implemented");
+//!    }
 
 use crate::ast::{Field, ShardableType, Transition, TransitionKind, TransitionStmt, SM};
 use proc_macro2::Span;
@@ -56,13 +138,14 @@ fn transition_arg_name(field: &Field) -> Ident {
 /// unique identifier.
 fn instance_struct_stream(sm: &SM) -> TokenStream {
     let insttype = inst_type_name(&sm.name);
+    let smname = &sm.name;
     return quote! {
         #[proof]
         #[allow(non_camel_case_types)]
         #[verifier(external_body)]
         #[verifier(unforgeable)]
         pub struct #insttype {
-            #[proof] pub dummy_field: (),
+            #[proof] pub dummy_field: ::std::marker::PhantomData<#smname>,
         }
     };
 }
@@ -107,8 +190,11 @@ fn token_struct_stream(sm_name: &Ident, field: &Field) -> TokenStream {
 }
 
 /// For a given sharding(constant) field, add that constant
-/// as a #[spec] fn on the Instant type. (The field is constant
+/// as a #[spec] fn on the Instance type. (The field is constant
 /// for the entire instance.)
+///
+/// TODO we could make these fields on the Instance type instead
+/// (this is safe as long as the Instance type is an unforgeable proof type)
 fn const_fn_stream(field: &Field) -> TokenStream {
     let fieldname = field_token_field_name(field);
     let fieldtype = field_token_field_type(field);
