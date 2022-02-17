@@ -356,11 +356,13 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: ExprCtxt) -> Expr {
         ExpX::Unary(op, exp) => match op {
             UnaryOp::Not => mk_not(&exp_to_expr(ctx, exp, expr_ctxt)),
             UnaryOp::BitNot => {
+                let width = bitwidth_from_type(&exp.typ).expect("BitNot Width");
+                let width_exp = Arc::new(ExprX::Const(Constant::Nat(Arc::new(width.to_string()))));                
                 let expr = exp_to_expr(ctx, exp, expr_ctxt);
                 let expr = try_box(ctx, expr, &exp.typ).expect("Box");
                 Arc::new(ExprX::Apply(
                     Arc::new(crate::def::UINT_NOT.to_string()),
-                    Arc::new(vec![expr]),
+                    Arc::new(vec![width_exp, expr]),
                 ))
             }
             UnaryOp::Trigger(_) => exp_to_expr(ctx, exp, expr_ctxt),
@@ -433,6 +435,8 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: ExprCtxt) -> Expr {
                 | BinaryOp::Shr => {
                     let box_lh = try_box(ctx, lh, &lhs.typ).expect("Box");
                     let box_rh = try_box(ctx, rh, &rhs.typ).expect("Box");
+                    let width = bitwidth_from_type(&lhs.typ).expect("BitNot Width");
+                    let width_exp = Arc::new(ExprX::Const(Constant::Nat(Arc::new(width.to_string()))));    
                     let fname = match op {
                         BinaryOp::BitXor => crate::def::UINT_XOR,
                         BinaryOp::BitAnd => crate::def::UINT_AND,
@@ -441,7 +445,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: ExprCtxt) -> Expr {
                         BinaryOp::Shr => crate::def::UINT_AND,
                         _ => unreachable!(),
                     };
-                    ExprX::Apply(Arc::new(fname.to_string()), Arc::new(vec![box_lh, box_rh]))
+                    ExprX::Apply(Arc::new(fname.to_string()), Arc::new(vec![width_exp, box_lh, box_rh]))
                 }
                 _ => {
                     let aop = match op {
@@ -646,7 +650,7 @@ fn assert_unsigned(exp: &Exp) {
 
 pub(crate) fn bv_typ_to_air(typ: &Typ) -> air::ast::Typ {
     match &**typ {
-        TypX::Int(_) => bv_typ(32),
+        TypX::Int(_) => bv_typ(32),   // TODO: 32
         TypX::Bool => bool_typ(),
         TypX::Boxed(t) => bv_typ_to_air(t),
         _ => panic!("bv_typ_to_air: {:?}", typ),
@@ -1259,7 +1263,7 @@ pub fn body_stm_to_air(
         } else {
             Arc::new(DeclX::Const(suffix_local_unique_id(&decl.ident), typ_to_air(ctx, &decl.typ)))
         });
-
+        // for assert_bit_vector, only allow integer and boolean types
         if let Some(width) = bitwidth_from_type(&decl.typ) {
             let typ = bv_typ(width);
             local_bv_shared.push(Arc::new(DeclX::Var(suffix_local_unique_id(&decl.ident), typ)));

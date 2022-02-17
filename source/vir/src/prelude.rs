@@ -277,12 +277,14 @@ pub(crate) fn prelude_nodes() -> Vec<Node> {
         // BitVector
         // these are the uninterpreted integer versions
 
-        (declare-fun [uint_xor] (Poly Poly) Int)
-        (declare-fun [uint_and] (Poly Poly) Int)
-        (declare-fun [uint_or]  (Poly Poly) Int)
-        (declare-fun [uint_shr] (Poly Poly) Int)
-        (declare-fun [uint_shl] (Poly Poly) Int)
-        (declare-fun [uint_not] (Poly) Int)
+        (declare-fun [uint_xor] (Int Poly Poly) Int)
+        (declare-fun [uint_and] (Int Poly Poly) Int)
+        (declare-fun [uint_or]  (Int Poly Poly) Int)
+        (declare-fun [uint_shr] (Int Poly Poly) Int)
+        (declare-fun [uint_shl] (Int Poly Poly) Int)
+
+        // uint_not: width -> bitvec -> bitvec
+        (declare-fun [uint_not] (Int Poly) Int)
     )
 }
 
