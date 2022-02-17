@@ -611,6 +611,7 @@ where
         is_abstract,
         attrs,
         body,
+        extra_dependencies,
     } = &function.x;
     let name = name.clone();
     let visibility = visibility.clone();
@@ -653,6 +654,7 @@ where
         }
     };
     let attrs = attrs.clone();
+    let extra_dependencies = extra_dependencies.clone();
     let is_const = *is_const;
     let is_abstract = *is_abstract;
     let body = body.as_ref().map(|e| map_expr_visitor_env(e, map, env, fe, fs, ft)).transpose()?;
@@ -673,6 +675,7 @@ where
         is_abstract,
         attrs,
         body,
+        extra_dependencies,
     };
     Ok(Spanned::new(function.span.clone(), functionx))
 }

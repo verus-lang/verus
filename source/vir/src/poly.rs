@@ -511,6 +511,7 @@ fn poly_function(ctx: &Ctx, function: &Function) -> Function {
         is_abstract,
         attrs,
         body,
+        extra_dependencies,
     } = &function.x;
 
     let mut types = ScopeMap::new();
@@ -589,6 +590,7 @@ fn poly_function(ctx: &Ctx, function: &Function) -> Function {
         is_abstract: *is_abstract,
         attrs: attrs.clone(),
         body,
+        extra_dependencies: extra_dependencies.clone(),
     };
     Spanned::new(function.span.clone(), functionx)
 }
