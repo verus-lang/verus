@@ -287,10 +287,15 @@ fn output_other_fns(
     normal_fns: &Vec<ImplItemMethod>,
 ) {
     let inv_names = invariants.iter().map(|i| &i.func.sig.ident);
+    let conj = if inv_names.len() == 0 {
+        quote!{ true }
+    } else {
+        quote!{ #(self.#inv_names())&&* }
+    };
     impl_token_stream.extend(quote! {
         #[spec]
-        pub fn invariant(&self) -> bool {
-            #(self.#inv_names())&&*
+        pub fn invariant(&self) -> ::std::primitive::bool {
+            #conj
         }
     });
 

@@ -16,6 +16,7 @@ use syn::Token;
 use syn::{
     braced, AttrStyle, Attribute, Error, FieldsNamed, FnArg, GenericParam, Generics, Ident,
     ImplItemMethod, Meta, MetaList, NestedMeta, Receiver, Visibility, WhereClause,
+    ReturnType, Type, TypePath,
 };
 
 pub struct SMBundle {
@@ -285,7 +286,28 @@ fn to_invariant(impl_item_method: ImplItemMethod) -> syn::parse::Result<Invarian
         ));
     }
 
-    // TODO check the return type
+    // make sure the return type is 'bool'
+    match &impl_item_method.sig.output {
+        ReturnType::Default => {
+            return Err(Error::new(
+                impl_item_method.sig.span(),
+                "an invariant function must return a bool",
+            ));
+        }
+        ReturnType::Type(_, ty) => {
+            match &**ty {
+                Type::Path(TypePath{ qself: None, path }) if path.is_ident("bool") => {
+                    // ok
+                }
+                _ => {
+                    return Err(Error::new(
+                        ty.span(),
+                        "an invariant function must return a bool",
+                    ));
+                }
+            }
+        }
+    }
 
     return Ok(Invariant { func: impl_item_method });
 }
