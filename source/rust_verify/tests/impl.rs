@@ -332,3 +332,25 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] test_resolve_self_ty code! {
+        struct Foo<V> {
+          x: V,
+        }
+
+        impl<V> Foo<V> {
+            fn bar(self) -> Self {
+                ensures(|s: Self| equal(self, s));
+
+                self
+            }
+
+            fn bar2(self) -> Self {
+                ensures(|s: Self| equal(self, s));
+
+                Self::bar(self)
+            }
+        }
+    } => Ok(())
+}
