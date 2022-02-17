@@ -46,12 +46,8 @@ fn set_bit_property_forall(bv:u32, bv2:u32, loc:u32, bit:bool) {
         bv2 == set_bit(bv,loc,bit),
     ]);
     ensures(
-        forall( |loc2:u32| 
-            (loc2 < 32 && loc != loc2) >>= (
-            get_bit(bv2, loc2) == get_bit(bv, loc2) &&
-            get_bit(bv2, loc) == bit 
-            )
-        )
+        forall( |loc2:u32| (loc2 < 32 && loc != loc2) >>= (get_bit(bv2, loc2) == get_bit(bv, loc2))),
+        get_bit(bv2, loc) == bit
     );
     assert_bit_vector(forall( |loc2:u32| 
         ( (bv2 == set_bit(bv, loc, bit) && (loc < 32) && loc2 < 32 && loc != loc2) >>= (
@@ -60,7 +56,6 @@ fn set_bit_property_forall(bv:u32, bv2:u32, loc:u32, bit:bool) {
         )
     )));
 }
-
 
 // #[proof]
 // fn set_bit_property(bv:u32, loc:u32, loc2: u32, bit:bool) -> u32 {
@@ -114,34 +109,6 @@ fn color_to_bits(c: Color) -> (bool, bool) {
     }
 }
 
-#[proof]
-fn bucket_element(bucket: u32, i:u32) {
-    requires(i<16);
-    ensures([
-        bucket_view(bucket,15).index(i) == color_view(get_bit(bucket,2*i+1), get_bit(bucket,2*i)) ,
-    ]);
-    reveal_with_fuel(bucket_view, 3);
-    if i == 0 {
-        
-
-    }
-    else {
-        assume(false);
-    }
-}
-
-// #[proof]
-// fn bucket_element(bucket1:u32, bucket2:u32, index:u32){
-//     requires([
-//         index < 32,
-//         bucket_view(bucket1,15).index(index) == bucket_view(bucket2,15).index(index),
-//     ]);
-//     ensures(
-//         get_bit(bucket1, index*2) == get_bit(bucket2, index*2) &&
-//         get_bit(bucket1, index*2 + 1) == get_bit(bucket2, index*2 + 1)
-//     )
-// }
-
 #[spec]
 fn bucket_view(bucket: u32, index: u32) -> Seq<Color> {
     decreases(index);
@@ -153,7 +120,7 @@ fn bucket_view(bucket: u32, index: u32) -> Seq<Color> {
     if index == 0 {
         seq![c]
     } else {
-        seq![c].add(bucket_view(bucket, index-1))
+        bucket_view(bucket, index-1).add(seq![c])
     }
 }
 
