@@ -176,7 +176,8 @@ pub fn prune_krate_for_module(krate: &Krate, module: &Path) -> (Krate, Vec<MonoT
         let vis = f.x.visibility.clone();
         let is_vis = is_visible_to(&vis, module);
         let within_module = is_visible_to_of_owner(&vis.owning_module, module);
-        let is_non_opaque = if within_module { f.x.fuel > 0 } else { f.x.publish == Some(true) };
+        let is_non_opaque =
+            if within_module { f.x.fuel > 0 } else { f.x.fuel > 0 && f.x.publish == Some(true) };
         let is_revealed = is_non_opaque || revealed_functions.contains(&f.x.name);
         let is_spec = f.x.mode == Mode::Spec;
         if is_vis && is_revealed && is_spec {
