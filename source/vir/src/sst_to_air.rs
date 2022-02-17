@@ -425,54 +425,24 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: ExprCtxt) -> Expr {
                     let eq = ExprX::Binary(air::ast::BinaryOp::Eq, lh, rh);
                     ExprX::Unary(air::ast::UnaryOp::Not, Arc::new(eq))
                 }
-                // here the bv operation is translated to the integer versions
-                BinaryOp::BitXor => {
-                    let lh = try_box(ctx, lh, &lhs.typ).expect("Box");
-                    let rh = try_box(ctx, rh, &rhs.typ).expect("Box");
-                    ExprX::Apply(Arc::new(crate::def::UINT_XOR.to_string()), Arc::new(vec![lh, rh]))
+                // here the binary bitvector Ops are translated into the integer versions
+                BinaryOp::BitXor
+                | BinaryOp::BitAnd
+                | BinaryOp::BitOr
+                | BinaryOp::Shl
+                | BinaryOp::Shr => {
+                    let box_lh = try_box(ctx, lh, &lhs.typ).expect("Box");
+                    let box_rh = try_box(ctx, rh, &rhs.typ).expect("Box");
+                    let fname = match op {
+                        BinaryOp::BitXor => crate::def::UINT_XOR,
+                        BinaryOp::BitAnd => crate::def::UINT_AND,
+                        BinaryOp::BitOr => crate::def::UINT_AND,
+                        BinaryOp::Shl => crate::def::UINT_AND,
+                        BinaryOp::Shr => crate::def::UINT_AND,
+                        _ => unreachable!(),
+                    };
+                    ExprX::Apply(Arc::new(fname.to_string()), Arc::new(vec![box_lh, box_rh]))
                 }
-                BinaryOp::BitAnd => {
-                    let lh = try_box(ctx, lh, &lhs.typ).expect("Box");
-                    let rh = try_box(ctx, rh, &rhs.typ).expect("Box");
-                    ExprX::Apply(Arc::new(crate::def::UINT_AND.to_string()), Arc::new(vec![lh, rh]))
-
-
-                    // if let TypX::Int(range) = &*lhs.typ {
-                    //     match range {
-                    //         IntRange::I(_) | IntRange::U(_) => {
-                    //             let expr = Arc::new(ExprX::Apply(
-                    //                 Arc::new(crate::def::UINT_AND.to_string()),
-                    //                 Arc::new(vec![box_lh, box_rh]),
-                    //             ));
-                    //             let f_name = crate::def::U_CLIP;
-                    //             return apply_range_fun(&f_name, &range, vec![expr]);
-                    //         }
-                    //         _ => {
-                    //             return Arc::new(ExprX::Apply(
-                    //                 Arc::new(crate::def::UINT_AND.to_string()),
-                    //                 Arc::new(vec![box_lh, box_rh]),
-                    //             ));
-                    //         }
-                    //     };
-                    // };
-                    // panic!("BitAnd")
-                }
-                BinaryOp::BitOr => {
-                    let lh = try_box(ctx, lh, &lhs.typ).expect("Box");
-                    let rh = try_box(ctx, rh, &rhs.typ).expect("Box");
-                    ExprX::Apply(Arc::new(crate::def::UINT_OR.to_string()), Arc::new(vec![lh, rh]))
-                }
-                BinaryOp::Shl => {
-                    let lh = try_box(ctx, lh, &lhs.typ).expect("Box");
-                    let rh = try_box(ctx, rh, &rhs.typ).expect("Box");
-                    ExprX::Apply(Arc::new(crate::def::UINT_SHL.to_string()), Arc::new(vec![lh, rh]))
-                }
-                BinaryOp::Shr => {
-                    let lh = try_box(ctx, lh, &lhs.typ).expect("Box");
-                    let rh = try_box(ctx, rh, &rhs.typ).expect("Box");
-                    ExprX::Apply(Arc::new(crate::def::UINT_SHR.to_string()), Arc::new(vec![lh, rh]))
-                }
-
                 _ => {
                     let aop = match op {
                         BinaryOp::And => unreachable!(),
@@ -678,35 +648,8 @@ pub(crate) fn bv_typ_to_air(typ: &Typ) -> air::ast::Typ {
     match &**typ {
         TypX::Int(_) => bv_typ(32),
         TypX::Bool => bool_typ(),
-        // TypX::Tuple(_) => panic!("internal error: Tuple should have been removed by ast_simplify"),
-        // TypX::Lambda(..) => Arc::new(air::ast::TypX::Lambda),
         TypX::Boxed(t) => bv_typ_to_air(t),
-        // TypX::TypParam(_) => str_typ(POLY),
-        // TypX::TypeId => str_typ(crate::def::TYPE),
-        // TypX::Air(t) => t.clone(),
-        _ => panic!("bv_typ_to_air: {:?}", typ)
-    }
-}
-
-pub(crate) fn bv_typ_invariant(typ: &Typ, expr: &Expr) -> Option<Expr> {
-    // Should be kept in sync with typ_invariant()
-    match &**typ {
-        TypX::Int(IntRange::Int) => None,
-        TypX::Int(IntRange::Nat) => {
-            let zero = Arc::new(ExprX::Const(Constant::Nat(Arc::new("0".to_string()))));
-            Some(Arc::new(ExprX::Binary(air::ast::BinaryOp::Le, zero, expr.clone())))
-        }
-        TypX::Int(range) => {
-            let f_name = match range {
-                IntRange::Int => panic!("internal error: Int"),
-                IntRange::Nat => panic!("internal error: Int"),
-                IntRange::U(_) | IntRange::USize => crate::def::U_INV,
-                IntRange::I(_) | IntRange::ISize => crate::def::I_INV,
-            };
-            Some(apply_range_fun(&f_name, &range, vec![expr.clone()]))
-        }
-        TypX::Boxed(t) => Some(str_apply(crate::def::HAS_TYPE, &vec![expr.clone(), typ_to_id(t)])),
-        _ => None,
+        _ => panic!("bv_typ_to_air: {:?}", typ),
     }
 }
 
@@ -778,8 +721,8 @@ fn exp_to_bv_expr(state: &State, exp: &Exp) -> Expr {
                     let bop = air::ast::UnaryOp::BitNot;
                     return Arc::new(ExprX::Unary(bop, bv_e));
                 }
-                // bv type casting by 'as' keyword
-                // convert Clip into concat/extract
+                // bitvector type casting by 'as' keyword
+                // via converting Clip into concat/extract
                 UnaryOp::Clip(IntRange::U(new_n) | IntRange::I(new_n)) => {
                     match &*exp.typ {
                         TypX::Int(IntRange::U(old_n) | IntRange::I(old_n)) => {
@@ -810,7 +753,7 @@ fn exp_to_bv_expr(state: &State, exp: &Exp) -> Expr {
                     "IntRange error: should be I(_) or U(_) for bit-vector, got {:?}",
                     exp.typ
                 ),
-                UnaryOp::Trigger(_) => exp_to_bv_expr(state,exp)
+                UnaryOp::Trigger(_) => exp_to_bv_expr(state, exp),
             }
         }
         ExpX::UnaryOpr(op, exp) => match op {
@@ -820,25 +763,25 @@ fn exp_to_bv_expr(state: &State, exp: &Exp) -> Expr {
             _ => panic!("unhandled bv UnaryOpr {:?}", op),
         },
         ExpX::Call(target, _types, args) => {
+            // TODO: find a better way than hard-coding primitives
+            // hard-coded get_bit primitive
             if path_as_rust_name(&target.path) == "crate::get_bit" {
                 let bv = exp_to_bv_expr(state, &args[0]);
                 let loc = exp_to_bv_expr(state, &args[1]);
                 let shift = Arc::new(ExprX::Binary(air::ast::BinaryOp::LShr, bv, loc));
-                let one_mask = Arc::new(ExprX::Const(Constant::BitVec(
-                    Arc::new("1".to_string()),
-                    32,
-                )));
-                let and = Arc::new(ExprX::Binary(air::ast::BinaryOp::BitAnd, shift, one_mask.clone()));
+                let one_mask =
+                    Arc::new(ExprX::Const(Constant::BitVec(Arc::new("1".to_string()), 32)));
+                let and =
+                    Arc::new(ExprX::Binary(air::ast::BinaryOp::BitAnd, shift, one_mask.clone()));
                 return Arc::new(ExprX::Binary(air::ast::BinaryOp::Eq, and, one_mask));
-            } else if path_as_rust_name(&target.path) == "crate::set_bit" {
+            }
+            // hard-coded set_bit primitive
+            else if path_as_rust_name(&target.path) == "crate::set_bit" {
                 let bv = exp_to_bv_expr(state, &args[0]);
                 let loc = exp_to_bv_expr(state, &args[1]);
                 let bit = exp_to_bv_expr(state, &args[2]);
-
-                let one_mask = Arc::new(ExprX::Const(Constant::BitVec(
-                    Arc::new("1".to_string()),
-                    32,
-                )));
+                let one_mask =
+                    Arc::new(ExprX::Const(Constant::BitVec(Arc::new("1".to_string()), 32)));
                 let shift = Arc::new(ExprX::Binary(air::ast::BinaryOp::Shl, one_mask, loc));
                 let neg = Arc::new(ExprX::Unary(air::ast::UnaryOp::BitNot, shift.clone()));
                 let or = Arc::new(ExprX::Binary(air::ast::BinaryOp::BitOr, bv.clone(), shift));
@@ -847,7 +790,7 @@ fn exp_to_bv_expr(state: &State, exp: &Exp) -> Expr {
             } else {
                 panic!("unhandled bv expr conversion")
             }
-        },
+        }
         ExpX::If(cond, tbranch, fbranch) => {
             let cond = exp_to_bv_expr(state, &cond);
             let bv_tbranch = exp_to_bv_expr(state, &tbranch);
@@ -856,24 +799,9 @@ fn exp_to_bv_expr(state: &State, exp: &Exp) -> Expr {
         }
         ExpX::Bind(bnd, exp) => match &bnd.x {
             BndX::Quant(quant, binders, trigs) => {
-                // println!("quant: {:?}", quant);
-                // println!("binders: {:?}", binders);
-                // println!("trigs: {:?}", trigs);
-                // println!("exp: {:?}", exp);
-                // println!("bnd: {:?}", bnd);
-                // panic!();
                 let bv_expr = exp_to_bv_expr(state, exp);
-                let mut invs: Vec<Expr> = Vec::new();
-                // for binder in binders.iter() {
-                //     let typ_inv = bv_typ_invariant(
-                //         &binder.a,
-                //         &ident_var(&suffix_local_expr_id(&binder.name)),
-                //     );
-                //     if let Some(inv) = typ_inv {
-                //         invs.push(inv);
-                //     }
-                // }
-                let inv = mk_and(&invs);
+                let invs: Vec<Expr> = Vec::new();
+                let inv = mk_and(&invs); // placeholder
                 let expr = match quant {
                     Quant::Forall => mk_implies(&inv, &bv_expr),
                     Quant::Exists => mk_and(&vec![inv, bv_expr]),
@@ -886,17 +814,14 @@ fn exp_to_bv_expr(state: &State, exp: &Exp) -> Expr {
                     };
                     Arc::new(BinderX { name, a: bv_typ_to_air(&b.a) })
                 });
-
-                // we might not need triggers in assert_bit_vector 
+                // In fact, we might not need triggers in assert_bit_vector
                 // as long as we are not planning to use the assert_bit_vector()'s bitvector-fact in the future
-                let triggers = vec_map(&*trigs, |trig| {
-                    Arc::new(vec_map(trig, |x| exp_to_bv_expr(state, x)))
-                });
+                let triggers =
+                    vec_map(&*trigs, |trig| Arc::new(vec_map(trig, |x| exp_to_bv_expr(state, x))));
                 air::ast_util::mk_quantifier(*quant, &binders, &triggers, &expr)
-
             }
-            _ => panic!("unhandled bv bind conversion {:?} ", exp.x)
-        }
+            _ => panic!("unhandled bv bind conversion {:?} ", exp.x),
+        },
         _ => panic!("unhandled bv expr conversion {:?}", exp.x),
     }
 }
@@ -1339,7 +1264,8 @@ pub fn body_stm_to_air(
             let typ = bv_typ(width);
             local_bv_shared.push(Arc::new(DeclX::Var(suffix_local_unique_id(&decl.ident), typ)));
         } else if let TypX::Bool = *decl.typ {
-            local_bv_shared.push(Arc::new(DeclX::Var(suffix_local_unique_id(&decl.ident), bool_typ())));
+            local_bv_shared
+                .push(Arc::new(DeclX::Var(suffix_local_unique_id(&decl.ident), bool_typ())));
         }
     }
 
