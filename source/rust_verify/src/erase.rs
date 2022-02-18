@@ -588,8 +588,7 @@ fn erase_expr_opt(ctxt: &Ctxt, mctxt: &mut MCtxt, expect: Mode, expr: &Expr) -> 
                             let e = if keep_mode(ctxt, field_mode) {
                                 erase_expr(ctxt, mctxt, mode_join(expect, field_mode), &arg)
                             } else {
-                                // TODO: use arg.span without causing a failure in rustc's build_reduced_graph:
-                                phantom_data_expr(mctxt, rustc_span::DUMMY_SP)
+                                phantom_data_expr(mctxt, arg.span)
                             };
                             new_args.push(P(e));
                         }

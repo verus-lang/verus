@@ -17,20 +17,7 @@ pub(crate) struct Visitor {
 }
 
 fn fresh_span(span: Span) -> Span {
-    let data1 = &span.data().ctxt.outer_expn_data();
-    let data2 = rustc_span::ExpnData::new(
-        data1.kind.clone(),
-        data1.parent,
-        data1.call_site,
-        data1.def_site,
-        data1.allow_internal_unstable.clone(),
-        data1.allow_internal_unsafe,
-        data1.local_inner_macros,
-        data1.edition,
-        data1.macro_def_id,
-    );
-    let id2 = rustc_span::ExpnId::fresh(Some(data2));
-    span.with_ctxt_from_mark(id2, span.data().ctxt.outer_mark().1)
+    span.with_ctxt(span.data().ctxt.clone_unique_id())
 }
 
 impl Visitor {

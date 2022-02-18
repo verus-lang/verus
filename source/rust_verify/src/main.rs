@@ -32,6 +32,7 @@ pub fn main() {
     let total_time_0 = std::time::Instant::now();
 
     let _ = os_setup();
+    rustc_driver::init_env_logger("RUSTVERIFY_LOG");
 
     let mut args = std::env::args();
     let program = args.next().unwrap();
