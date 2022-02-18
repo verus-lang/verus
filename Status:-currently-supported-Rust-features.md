@@ -56,7 +56,7 @@ The following items are fully or partially supported:
 The following items are not yet supported:
 - type aliases: high priority
 - trait definitions: high priority
-- constant items: high priority
+- constant items: supported, for the most common uses
 - static items: low priority
 - union definitions: unsafe, and therefore unsupported
 
