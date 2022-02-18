@@ -1,4 +1,6 @@
-use crate::attributes::{get_fuel, get_mode, get_ret_mode, get_var_mode, get_verifier_attrs};
+use crate::attributes::{
+    get_fuel, get_mode, get_publish, get_ret_mode, get_var_mode, get_verifier_attrs,
+};
 use crate::context::{BodyCtxt, Context};
 use crate::rust_to_vir_base::{
     check_generics_bounds_fun, check_generics_idents, def_id_to_vir_path, ident_to_var, ty_to_vir,
@@ -143,8 +145,8 @@ pub(crate) fn check_item_fn<'tcx>(
         }
     };
     let sig_typ_bounds = check_generics_bounds_fun(ctxt.tcx, generics)?;
-    let fuel = get_fuel(attrs);
     let vattrs = get_verifier_attrs(attrs)?;
+    let fuel = get_fuel(&vattrs);
     if vattrs.external {
         let mut erasure_info = ctxt.erasure_info.borrow_mut();
         erasure_info.external_functions.push(name);
@@ -266,6 +268,7 @@ pub(crate) fn check_item_fn<'tcx>(
         typ_bounds.extend_from_slice(&sig_typ_bounds[..]);
         Arc::new(typ_bounds)
     };
+    let publish = get_publish(&vattrs);
     let fattrs = FunctionAttrsX {
         hidden: Arc::new(header.hidden),
         custom_req_err: vattrs.custom_req_err,
@@ -288,7 +291,7 @@ pub(crate) fn check_item_fn<'tcx>(
         decrease: header.decrease,
         mask_spec: header.invariant_mask,
         is_const: false,
-        is_abstract: vattrs.is_abstract,
+        publish,
         attrs: Arc::new(fattrs),
         body: if vattrs.external_body { None } else { Some(vir_body) },
         extra_dependencies: header.extra_dependencies,
@@ -322,8 +325,8 @@ pub(crate) fn check_item_const<'tcx>(
     let path = def_id_to_vir_path(ctxt.tcx, id);
     let name = Arc::new(FunX { path, trait_path: None });
     let mode = get_mode(Mode::Exec, attrs);
-    let fuel = get_fuel(attrs);
     let vattrs = get_verifier_attrs(attrs)?;
+    let fuel = get_fuel(&vattrs);
     if vattrs.external {
         let mut erasure_info = ctxt.erasure_info.borrow_mut();
         erasure_info.external_functions.push(name);
@@ -347,7 +350,7 @@ pub(crate) fn check_item_const<'tcx>(
         decrease: Arc::new(vec![]),
         mask_spec: MaskSpec::NoSpec,
         is_const: true,
-        is_abstract: vattrs.is_abstract,
+        publish: get_publish(&vattrs),
         attrs: Default::default(),
         body: if vattrs.external_body { None } else { Some(vir_body) },
         extra_dependencies: vec![],
@@ -371,7 +374,8 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
     let mode = get_mode(Mode::Exec, attrs);
     let ret_typ_mode = check_fn_decl(ctxt.tcx, &span, decl, None, None, attrs, mode)?;
     let typ_bounds = check_generics_bounds_fun(ctxt.tcx, generics)?;
-    let fuel = get_fuel(attrs);
+    let vattrs = get_verifier_attrs(attrs)?;
+    let fuel = get_fuel(&vattrs);
     let mut vir_params: Vec<vir::ast::Param> = Vec::new();
     for (param, input) in idents.iter().zip(decl.inputs.iter()) {
         let name = Arc::new(ident_to_var(param));
@@ -409,7 +413,7 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
         decrease: Arc::new(vec![]),
         mask_spec: MaskSpec::NoSpec,
         is_const: false,
-        is_abstract: false,
+        publish: None,
         attrs: Default::default(),
         body: None,
         extra_dependencies: vec![],

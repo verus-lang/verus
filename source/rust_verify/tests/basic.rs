@@ -96,7 +96,7 @@ test_verify_one_file! {
         }
 
         #[spec]
-        #[opaque]
+        #[verifier(opaque)]
         fn f3(i: int, j: int) -> bool {
             f1(j, i)
         }

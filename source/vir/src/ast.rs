@@ -435,9 +435,10 @@ pub struct FunctionX {
     /// However, if ret.x.mode != Spec, there are some differences: the const can dually be used as spec,
     /// and the body is restricted to a subset of expressions that are spec-safe.
     pub is_const: bool,
-    /// For public spec functions, is_abstract == true means that the body is private
-    /// even though the function is public
-    pub is_abstract: bool,
+    /// For public spec functions, publish == None means that the body is private
+    /// even though the function is public, the bool indicates false = opaque, true = visible
+    /// the body is public
+    pub publish: Option<bool>,
     /// Various attributes
     pub attrs: FunctionAttrs,
     /// Body of the function (may be None for foreign functions or for external_body functions)

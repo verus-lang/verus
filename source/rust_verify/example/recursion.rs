@@ -10,7 +10,7 @@ fn arith_sum_int(i: int) -> int {
 }
 
 #[spec]
-#[opaque]
+#[verifier(opaque)]
 fn arith_sum_u64(i: u64) -> u64 {
     decreases(i);
 

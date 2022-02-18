@@ -16,7 +16,7 @@ pub struct Map<#[verifier(maybe_negative)] K, #[verifier(strictly_positive)] V> 
 impl<K, V> Map<K, V> {
     fndecl!(pub fn empty() -> Map<K, V>);
 
-    #[spec]
+    #[spec] #[verifier(publish)]
     pub fn total<F: Fn(K) -> V>(f: F) -> Map<K, V> {
         Set::full().mk_map(f)
     }
@@ -29,7 +29,7 @@ impl<K, V> Map<K, V> {
 
     fndecl!(pub fn remove(self, key: K) -> Map<K, V>);
 
-    #[spec]
+    #[spec] #[verifier(publish)]
     pub fn ext_equal(self, m2: Map<K, V>) -> bool {
         self.dom().ext_equal(m2.dom()) &&
         forall(|k: K| self.dom().contains(k) >>= equal(self.index(k), m2.index(k)))

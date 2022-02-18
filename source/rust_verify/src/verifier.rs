@@ -299,7 +299,7 @@ impl Verifier {
             if !is_visible_to(&vis, module) {
                 continue;
             }
-            let vis_abs = Visibility { is_private: function.x.is_abstract, ..vis };
+            let vis_abs = Visibility { is_private: function.x.publish.is_none(), ..vis };
             let (decl_commands, check_commands) = vir::func_to_air::func_decl_to_air(
                 ctx,
                 &function,

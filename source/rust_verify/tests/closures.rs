@@ -27,7 +27,7 @@ test_verify_one_file! {
         }
 
         #[spec]
-        #[opaque]
+        #[verifier(opaque)]
         fn apply_to_1<F: Fn(u8) -> u8>(f: F) -> u8 {
             f(1)
         }

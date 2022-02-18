@@ -24,7 +24,7 @@ impl<A> Seq<A> {
 
     fndecl!(pub fn update(self, i: int, a: A) -> Seq<A>);
 
-    #[spec]
+    #[spec] #[verifier(publish)]
     pub fn ext_equal(self, s2: Seq<A>) -> bool {
         self.len() == s2.len() &&
         forall(|i: int| 0 <= i && i < self.len() >>= equal(self.index(i), s2.index(i)))
