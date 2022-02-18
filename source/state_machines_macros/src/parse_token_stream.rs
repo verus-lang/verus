@@ -4,7 +4,7 @@ use crate::ast::{
     Extras, Invariant, Lemma, LemmaPurpose, LemmaPurposeKind, ShardableType, Transition,
     TransitionKind, SM,
 };
-use crate::ident_visitor::validate_idents_impl_item_method;
+use crate::ident_visitor::{validate_idents_impl_item_method, validate_ident};
 use crate::parse_transition::parse_impl_item_method;
 use crate::to_token_stream::shardable_type_to_type;
 use crate::transitions::check_transitions;
@@ -437,6 +437,8 @@ fn to_fields(
                 return Err(Error::new(field.span(), "state machine field must be marked public"));
             }
         }
+
+        validate_ident(&ident)?;
 
         let sharding_type = get_sharding_type(field.span(), &field.attrs, concurrent)?;
         let stype = match sharding_type {

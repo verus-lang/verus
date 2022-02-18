@@ -16,8 +16,7 @@
 //!    #[verifier(external_body)]
 //!    #[verifier(unforgeable)]
 //!    pub struct X_Instance {
-//!        #[proof]
-//!        pub dummy_field: ::std::marker::PhantomData<X>,
+//!        #[proof] pub dummy_field: ::std::marker::PhantomData<X>,
 //!    }
 //!    
 //!    // Token types, each of which look something like:
@@ -26,10 +25,8 @@
 //!    #[verifier(unforgeable)]
 //!    #[allow(non_camel_case_types)]
 //!    pub struct X_counter {
-//!        #[spec]
-//!        pub instance: X_Instance,
-//!        #[spec]
-//!        pub counter: int,
+//!        #[spec] pub instance: X_Instance,
+//!        #[spec] pub counter: int,
 //!    }
 //!    
 //!    // Clone method for the instance:
@@ -575,7 +572,35 @@ fn determine_outputs(ctxt: &mut Ctxt, ts: &TransitionStmt) -> syn::parse::Result
     }
 }
 
-// Translate expressions
+/// Translate expressions
+///
+/// The function has several purposes:
+///
+///   1. Identify any fields `self.foo` that are read
+///   2. Make sure `self` is never used on its own other than for field accesses
+///   3. Replace `self.foo` with the corresponding value from the input tokens,
+///      e.g., `token_foo.foo`
+///
+/// Unfortunately, there are a variety of technical challenges here which have to
+/// do with the fact that this pass operates on raw Rust AST, i.e., it runs BEFORE
+/// type-resolution and even before macro-expansion.
+///
+/// In order to ensure this transformation is done correctly, we need to:
+///
+///   * Make sure that identifiers like `token_foo` are not shadowed in the expression
+///   * Disallow macros entirely, which could interfere in a number of ways
+///
+/// Both these things are done in ident_visitor.rs.
+///
+/// This is all very awkward, and it's also hard to be sure we've really handled every
+/// case. The awkwardness here suggests that it would be more principled to do this
+/// in VIR, or with VIR support. Unfortunately, this plan has its own problems: namely,
+/// the type signatures we generate (namely the input tokens) actually depend on the
+/// results of this analysis.
+///
+/// There are a handful of ways that we could address this, but I think we will learn
+/// a lot about the right way to structure this as we try to understand the design behind
+/// more advanced sharding strategies, so I'm not committing to an overhaul right now.
 
 fn walk_translate_expressions(ctxt: &mut Ctxt, ts: &mut TransitionStmt) -> syn::parse::Result<()> {
     match ts {

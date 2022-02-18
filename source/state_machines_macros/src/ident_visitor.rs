@@ -4,6 +4,10 @@ use syn::{Error, ExprMacro, Ident, ImplItemMethod};
 
 /// Error if any identifiers conflict with reserved IDs used by macro expanion.
 ///
+/// This validation should be applied to:
+///  * the entire body of any transition definition
+///  * any field name
+///
 /// Since macros might introduce arbitrary identifiers or otherwise interfere with
 /// our checks or transformations, we also disallow macros entirely.
 /// (TODO This makes the whole transformation process feel very brittle / non-robust.
@@ -36,11 +40,9 @@ impl IdentVisitor {
 
 impl<'ast> Visit<'ast> for IdentVisitor {
     fn visit_ident(&mut self, node: &'ast Ident) {
-        if node.to_string() == "post" {
-            self.errors.push(Error::new(
-                node.span(),
-                format!("'post' is a reserved identifier in state machine definitions"),
-            ));
+        match validate_ident(node) {
+            Err(err) => self.errors.push(err),
+            Ok(()) => { }
         }
     }
 
@@ -48,4 +50,27 @@ impl<'ast> Visit<'ast> for IdentVisitor {
         self.errors
             .push(Error::new(node.span(), format!("macro not allowed in transition expression")));
     }
+}
+
+/// Validate a single identifier.
+pub fn validate_ident(ident: &Ident) -> Result<(), Error> {
+    for kw in vec!["post", "instance", "tmp_tuple"] {
+        if ident.to_string() == kw {
+            return Err(Error::new(
+                ident.span(),
+                format!("'{kw:}' is a reserved identifier in state machine definitions"),
+            ));
+        }
+    }
+
+    for prefix in vec!["token_"] {
+        if ident.to_string().starts_with(prefix) {
+            return Err(Error::new(
+                ident.span(),
+                format!("identifiers starting with '{prefix:}' are reserved identifiers in state machine definitions"),
+            ));
+        }
+    }
+
+    Ok(())
 }
