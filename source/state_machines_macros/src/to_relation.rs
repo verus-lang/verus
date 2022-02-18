@@ -197,12 +197,12 @@ fn append_stmt_front(t1: TransitionStmt, t2: TransitionStmt) -> TransitionStmt {
     }
 }
 
-/// Turn all 'update' statements into ordinary enabling conditions like:
-///
-///        update(f, x)      -->       require(post.f == x)
-///
-/// Note that ordinary, user-defined 'require' statements wouldn't have been allowed
-/// to reference `post`.
+// Turn all 'update' statements into ordinary enabling conditions like:
+//
+//        update(f, x)      -->       require(post.f == x)
+//
+// Note that ordinary, user-defined 'require' statements wouldn't have been allowed
+// to reference `post`.
 
 pub fn replace_updates(ts: &TransitionStmt) -> TransitionStmt {
     match ts {

@@ -217,13 +217,13 @@ fn const_fn_stream(field: &Field) -> TokenStream {
     };
 }
 
-/// Pull everything together.
-///
-///     struct Instance
-///     token structs ...
-///     impl Instance {
-///         exchange fns ...
-///     }
+// Pull everything together.
+//
+//     struct Instance
+//     token structs ...
+//     impl Instance {
+//         exchange fns ...
+//     }
 pub fn output_token_types_and_fns(
     token_stream: &mut TokenStream,
     bundle: &SMBundle,

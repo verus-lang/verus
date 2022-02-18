@@ -2,30 +2,30 @@ use crate::ast::TransitionStmt;
 use quote::quote_spanned;
 use syn::Expr;
 
-/// Given a transition, we convert it into a lemma that will create the correct
-/// verification conditions for its 'assert' statement.
-///
-/// For example, a transition, written in our state machine DSL:
-///
-///     require(A);
-///     assert(B);
-///
-/// would turn into Verus code:
-///
-///     assume(A);
-///     assert(B);
-///
-/// If the resulting sequence of statements passes verification, one can conclude that
-/// the 'weak' version of the transition is equivalent to the 'strong' version
-/// (conditional on the invariant holding).
-///
-/// Notably, this wouldn't actually be safe Verus code for a user to produce;
-/// it doesn't produce a lemma that would be callable as it would be if it had requires/ensures,
-/// so this only makes sense as long as we're willing to "trust" the macro expansion code.
-///
-/// Still, it's a very easy transformation to do, and doesn't require us to write even
-/// more weakest-precondition-esque conditions than we already do, so it's what I'm going
-/// with for now.
+// Given a transition, we convert it into a lemma that will create the correct
+// verification conditions for its 'assert' statement.
+//
+// For example, a transition, written in our state machine DSL:
+//
+//     require(A);
+//     assert(B);
+//
+// would turn into Verus code:
+//
+//     assume(A);
+//     assert(B);
+//
+// If the resulting sequence of statements passes verification, one can conclude that
+// the 'weak' version of the transition is equivalent to the 'strong' version
+// (conditional on the invariant holding).
+//
+// Notably, this wouldn't actually be safe Verus code for a user to produce;
+// it doesn't produce a lemma that would be callable as it would be if it had requires/ensures,
+// so this only makes sense as long as we're willing to "trust" the macro expansion code.
+//
+// Still, it's a very easy transformation to do, and doesn't require us to write even
+// more weakest-precondition-esque conditions than we already do, so it's what I'm going
+// with for now.
 
 pub fn safety_condition_body(ts: &TransitionStmt) -> Option<Expr> {
     match ts {
