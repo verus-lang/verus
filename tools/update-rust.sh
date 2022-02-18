@@ -27,7 +27,8 @@ fi
         exit 1
     fi
 
+    cp config.toml.verify config.toml
     git pull --ff-only origin verification
-    ./x.py install
+    ./x.py install -i
 )
 

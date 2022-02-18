@@ -24,3 +24,11 @@ impl<V> Spec<V> {
         }
     }
 }
+
+#[allow(dead_code)]
+#[inline(always)]
+pub fn exec_proof_from_false<A>() -> Proof<A> {
+    requires(false);
+
+    proof(proof_from_false())
+}

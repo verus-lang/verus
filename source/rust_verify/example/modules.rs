@@ -13,7 +13,6 @@ mod M1 {
     }
 
     #[spec]
-    #[verifier(pub_abstract)]
     pub fn f2(i: int) -> int {
         f1(i) + 1
     }

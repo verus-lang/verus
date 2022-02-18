@@ -100,10 +100,12 @@ pub(crate) enum Attr {
     ExternalBody,
     // don't parse function; function can't be called directly from verified code
     External,
-    // hide body from other modules
-    Abstract,
     // hide body (from all modules) until revealed
     Opaque,
+    // publish body
+    Publish,
+    // publish body with zero fuel
+    OpaqueOutsideModule,
     // type parameter is not necessarily used in strictly positive positions
     MaybeNegative,
     // type parameter is used in strictly positive positions
@@ -149,7 +151,6 @@ pub(crate) fn parse_attrs(attrs: &[Attribute]) -> Result<Vec<Attr>, VirErr> {
             AttrTree::Fun(_, name, None) if name == "spec" => v.push(Attr::Mode(Mode::Spec)),
             AttrTree::Fun(_, name, None) if name == "proof" => v.push(Attr::Mode(Mode::Proof)),
             AttrTree::Fun(_, name, None) if name == "exec" => v.push(Attr::Mode(Mode::Exec)),
-            AttrTree::Fun(_, name, None) if name == "opaque" => v.push(Attr::Opaque),
             AttrTree::Fun(_, name, None) if name == "trigger" => v.push(Attr::Trigger(None)),
             AttrTree::Fun(span, name, Some(args)) if name == "trigger" => {
                 let mut groups: Vec<u64> = Vec::new();
@@ -171,8 +172,12 @@ pub(crate) fn parse_attrs(attrs: &[Attribute]) -> Result<Vec<Attr>, VirErr> {
                 Some(box [AttrTree::Fun(_, arg, None)]) if arg == "external" => {
                     v.push(Attr::External)
                 }
-                Some(box [AttrTree::Fun(_, arg, None)]) if arg == "pub_abstract" => {
-                    v.push(Attr::Abstract)
+                Some(box [AttrTree::Fun(_, arg, None)]) if arg == "opaque" => v.push(Attr::Opaque),
+                Some(box [AttrTree::Fun(_, arg, None)]) if arg == "publish" => {
+                    v.push(Attr::Publish)
+                }
+                Some(box [AttrTree::Fun(_, arg, None)]) if arg == "opaque_outside_module" => {
+                    v.push(Attr::OpaqueOutsideModule)
                 }
                 Some(box [AttrTree::Fun(_, arg, None)]) if arg == "maybe_negative" => {
                     v.push(Attr::MaybeNegative)
@@ -275,21 +280,24 @@ pub(crate) fn get_trigger(attrs: &[Attribute]) -> Result<Vec<Option<u64>>, VirEr
     Ok(groups)
 }
 
-pub(crate) fn get_fuel(attrs: &[Attribute]) -> u32 {
-    let mut fuel: u32 = 1;
-    for attr in parse_attrs_opt(attrs) {
-        match attr {
-            Attr::Opaque => fuel = 0,
-            _ => {}
-        }
+pub(crate) fn get_fuel(vattrs: &VerifierAttrs) -> u32 {
+    if vattrs.opaque { 0 } else { 1 }
+}
+
+pub(crate) fn get_publish(vattrs: &VerifierAttrs) -> Option<bool> {
+    match (vattrs.publish, vattrs.opaque_outside_module) {
+        (false, _) => None,
+        (true, false) => Some(true),
+        (true, true) => Some(false),
     }
-    fuel
 }
 
 pub(crate) struct VerifierAttrs {
     pub(crate) external_body: bool,
     pub(crate) external: bool,
-    pub(crate) is_abstract: bool,
+    pub(crate) opaque: bool,
+    pub(crate) publish: bool,
+    pub(crate) opaque_outside_module: bool,
     pub(crate) strictly_positive: bool,
     pub(crate) maybe_negative: bool,
     pub(crate) broadcast_forall: bool,
@@ -305,7 +313,9 @@ pub(crate) fn get_verifier_attrs(attrs: &[Attribute]) -> Result<VerifierAttrs, V
     let mut vs = VerifierAttrs {
         external_body: false,
         external: false,
-        is_abstract: false,
+        opaque: false,
+        publish: false,
+        opaque_outside_module: false,
         maybe_negative: false,
         strictly_positive: false,
         broadcast_forall: false,
@@ -320,7 +330,9 @@ pub(crate) fn get_verifier_attrs(attrs: &[Attribute]) -> Result<VerifierAttrs, V
         match attr {
             Attr::ExternalBody => vs.external_body = true,
             Attr::External => vs.external = true,
-            Attr::Abstract => vs.is_abstract = true,
+            Attr::Opaque => vs.opaque = true,
+            Attr::Publish => vs.publish = true,
+            Attr::OpaqueOutsideModule => vs.opaque_outside_module = true,
             Attr::MaybeNegative => vs.maybe_negative = true,
             Attr::StrictlyPositive => vs.strictly_positive = true,
             Attr::BroadcastForall => vs.broadcast_forall = true,

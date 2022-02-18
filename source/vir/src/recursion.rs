@@ -387,4 +387,8 @@ pub(crate) fn expand_call_graph(call_graph: &mut Graph<Fun>, function: &Function
         })
         .expect("expr_visitor_check failed unexpectedly");
     }
+
+    for fun in &function.x.extra_dependencies {
+        call_graph.add_edge(function.x.name.clone(), fun.clone());
+    }
 }

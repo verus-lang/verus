@@ -4,6 +4,7 @@ use std::mem::MaybeUninit;
 #[allow(unused_imports)] use builtin::*;
 #[allow(unused_imports)] use builtin_macros::*;
 #[allow(unused_imports)] use crate::pervasive::*;
+#[allow(unused_imports)] use crate::pervasive::modes::*;
 
 // TODO Identifier should be some opaque type, not necessarily an int
 
@@ -39,7 +40,7 @@ impl<V> PCell<V> {
     );
 
     let p = PCell { ucell: UnsafeCell::new(MaybeUninit::uninit()) };
-    #[proof] let t = proof_from_false();
+    let Proof::proof(t) = exec_proof_from_false();
     PCellWithToken {pcell: p, token: t}
   }
 

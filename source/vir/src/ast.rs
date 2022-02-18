@@ -193,6 +193,9 @@ pub enum HeaderExprX {
     /// Make a function f opaque (definition hidden) within the current function body.
     /// (The current function body can later reveal f in specific parts of the current function body if desired.)
     Hide(Fun),
+    /// `extra_dependency(f)` means that recursion-checking should act as if the current
+    /// function calls `f`
+    ExtraDependency(Fun),
 }
 
 /// Primitive constant values
@@ -432,13 +435,17 @@ pub struct FunctionX {
     /// However, if ret.x.mode != Spec, there are some differences: the const can dually be used as spec,
     /// and the body is restricted to a subset of expressions that are spec-safe.
     pub is_const: bool,
-    /// For public spec functions, is_abstract == true means that the body is private
-    /// even though the function is public
-    pub is_abstract: bool,
+    /// For public spec functions, publish == None means that the body is private
+    /// even though the function is public, the bool indicates false = opaque, true = visible
+    /// the body is public
+    pub publish: Option<bool>,
     /// Various attributes
     pub attrs: FunctionAttrs,
     /// Body of the function (may be None for foreign functions or for external_body functions)
     pub body: Option<Expr>,
+    /// Extra dependencies, only used for for the purposes of recursion-well-foundedness
+    /// Useful only for trusted fns.
+    pub extra_dependencies: Vec<Fun>,
 }
 
 /// Single field in a variant

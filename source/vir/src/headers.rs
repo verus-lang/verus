@@ -11,10 +11,12 @@ pub struct Header {
     pub invariant: Exprs,
     pub decrease: Exprs,
     pub invariant_mask: MaskSpec,
+    pub extra_dependencies: Vec<Fun>,
 }
 
 fn read_header_block(block: &mut Vec<Stmt>) -> Result<Header, VirErr> {
     let mut hidden: Vec<Fun> = Vec::new();
+    let mut extra_dependencies: Vec<Fun> = Vec::new();
     let mut require: Option<Exprs> = None;
     let mut ensure: Option<(Option<(Ident, Typ)>, Exprs)> = None;
     let mut invariant: Option<Exprs> = None;
@@ -64,6 +66,9 @@ fn read_header_block(block: &mut Vec<Stmt>) -> Result<Header, VirErr> {
                     HeaderExprX::Hide(x) => {
                         hidden.push(x.clone());
                     }
+                    HeaderExprX::ExtraDependency(x) => {
+                        extra_dependencies.push(x.clone());
+                    }
                     HeaderExprX::InvariantOpens(es) => {
                         match invariant_mask {
                             MaskSpec::NoSpec => {}
@@ -97,7 +102,16 @@ fn read_header_block(block: &mut Vec<Stmt>) -> Result<Header, VirErr> {
     };
     let invariant = invariant.unwrap_or(Arc::new(vec![]));
     let decrease = decrease.unwrap_or(Arc::new(vec![]));
-    Ok(Header { hidden, require, ensure_id_typ, ensure, invariant, decrease, invariant_mask })
+    Ok(Header {
+        hidden,
+        require,
+        ensure_id_typ,
+        ensure,
+        invariant,
+        decrease,
+        invariant_mask,
+        extra_dependencies,
+    })
 }
 
 pub fn read_header(body: &mut Expr) -> Result<Header, VirErr> {

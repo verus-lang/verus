@@ -37,6 +37,12 @@ pub fn hide<F>(_f: F) {
 
 // Can only appear at beginning of function body
 #[proof]
+pub fn extra_dependency<F>(_f: F) {
+    unimplemented!();
+}
+
+// Can only appear at beginning of function body
+#[proof]
 pub fn opens_invariants_none() {
     unimplemented!();
 }

@@ -128,7 +128,7 @@ fn check_function(ctxt: &Ctxt, function: &Function) -> Result<(), VirErr> {
     }
     if let Some(body) = &function.x.body {
         // Check that public, non-abstract spec function bodies don't refer to private items:
-        let disallow_private_access = !function.x.is_abstract
+        let disallow_private_access = function.x.publish.is_some()
             && !function.x.visibility.is_private
             && function.x.mode == Mode::Spec;
 
@@ -159,7 +159,7 @@ fn check_function(ctxt: &Ctxt, function: &Function) -> Result<(), VirErr> {
                             return err_string(
                                 &expr.span,
                                 format!(
-                                    "public spec function cannot refer to private items, unless function is marked #[verifier(pub_abstract)]"
+                                    "public spec function cannot refer to private items, when it is marked #[verifier(publish)]"
                                 ),
                             );
                         }
@@ -196,7 +196,7 @@ fn check_function(ctxt: &Ctxt, function: &Function) -> Result<(), VirErr> {
                                 return err_string(
                                     &expr.span,
                                     format!(
-                                        "public spec function cannot refer to private items, unless function is marked #[verifier(pub_abstract)]"
+                                        "public spec function cannot refer to private items, if it is marked #[verifier(publish)]"
                                     ),
                                 );
                             }

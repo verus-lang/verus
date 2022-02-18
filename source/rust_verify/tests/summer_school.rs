@@ -406,7 +406,7 @@ const DIRECTIONS_SHARED_CODE: &str = code_str! {
         West,
     }
 
-    #[spec]
+    #[spec] #[verifier(publish)]
     pub fn turn_right(direction: Direction) -> Direction {
         // TODO do we want the ADT dependent typing that dafny does for enums?
         // NOTE(Chris): there is already an expression in VIR for this
@@ -426,7 +426,7 @@ const DIRECTIONS_SHARED_CODE: &str = code_str! {
         assert(turn_right(Direction::North) == Direction::East);
     }
 
-    #[spec]
+    #[spec] #[verifier(publish)]
     pub fn turn_left(direction: Direction) -> Direction {
         match direction {
             Direction::North => Direction::West,

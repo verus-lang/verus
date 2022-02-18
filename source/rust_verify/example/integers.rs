@@ -15,7 +15,7 @@ fn add1_nat(i: nat) -> nat {
 }
 
 #[spec]
-#[opaque]
+#[verifier(opaque)]
 fn add1_nat_opaque(i: nat) -> nat {
     i + 1
 }
