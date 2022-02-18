@@ -5,10 +5,10 @@ These are attributes that can be applied to `struct`s and `enum`s.
 
 ## Encoding abstractly
 
-`#[verifier(abstract)]` marks `struct`s and `enum`s that should always be encoded as an uninterpreted sort where the fields are not visibile to the verifier. This is useful to, e.g., define a datatype whose properties are defined exclusively by functions and does not have any fields:
+`#[verifier(external_body)]` marks `struct`s and `enum`s that should always be encoded as an uninterpreted sort where the fields are not visibile to the verifier. This is useful to, e.g., define a datatype whose properties are defined exclusively by functions and does not have any fields:
 
 ```rust
-#[verifier(abstract)] #[spec]
+#[verifier(external_body)] #[spec]
 struct Properties {}
 ```
 

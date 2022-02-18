@@ -95,7 +95,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_mod_adt_no_verify code! {
-        #[verifier(abstract_def)]
+        #[verifier(external_body)]
         #[derive(PartialEq, Eq)]
         pub struct Car {
             pub four_doors: bool,

@@ -91,7 +91,7 @@ pub fn check_item_struct<'tcx>(
     } else {
         check_variant_data(ctxt, module_path, &variant_name, variant_data, false)
     };
-    let transparency = if vattrs.external_body || vattrs.is_abstract {
+    let transparency = if vattrs.external_body {
         DatatypeTransparency::Never
     } else if one_field_private {
         DatatypeTransparency::WithinModule

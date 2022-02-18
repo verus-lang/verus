@@ -100,8 +100,6 @@ pub(crate) enum Attr {
     ExternalBody,
     // don't parse function; function can't be called directly from verified code
     External,
-    // hide ADT body
-    Abstract,
     // hide body (from all modules) until revealed
     Opaque,
     // publish body
@@ -173,9 +171,6 @@ pub(crate) fn parse_attrs(attrs: &[Attribute]) -> Result<Vec<Attr>, VirErr> {
                 }
                 Some(box [AttrTree::Fun(_, arg, None)]) if arg == "external" => {
                     v.push(Attr::External)
-                }
-                Some(box [AttrTree::Fun(_, arg, None)]) if arg == "abstract_def" => {
-                    v.push(Attr::Abstract)
                 }
                 Some(box [AttrTree::Fun(_, arg, None)]) if arg == "opaque" => v.push(Attr::Opaque),
                 Some(box [AttrTree::Fun(_, arg, None)]) if arg == "publish" => {
@@ -300,7 +295,6 @@ pub(crate) fn get_publish(vattrs: &VerifierAttrs) -> Option<bool> {
 pub(crate) struct VerifierAttrs {
     pub(crate) external_body: bool,
     pub(crate) external: bool,
-    pub(crate) is_abstract: bool,
     pub(crate) opaque: bool,
     pub(crate) publish: bool,
     pub(crate) opaque_outside_module: bool,
@@ -319,7 +313,6 @@ pub(crate) fn get_verifier_attrs(attrs: &[Attribute]) -> Result<VerifierAttrs, V
     let mut vs = VerifierAttrs {
         external_body: false,
         external: false,
-        is_abstract: false,
         opaque: false,
         publish: false,
         opaque_outside_module: false,
@@ -337,7 +330,6 @@ pub(crate) fn get_verifier_attrs(attrs: &[Attribute]) -> Result<VerifierAttrs, V
         match attr {
             Attr::ExternalBody => vs.external_body = true,
             Attr::External => vs.external = true,
-            Attr::Abstract => vs.is_abstract = true,
             Attr::Opaque => vs.opaque = true,
             Attr::Publish => vs.publish = true,
             Attr::OpaqueOutsideModule => vs.opaque_outside_module = true,
