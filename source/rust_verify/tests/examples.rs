@@ -60,14 +60,14 @@ fn run_examples() {
 
         #[cfg(target_os = "windows")]
         let script = format!(
-            "..\\rust\\install\\bin\\rust_verify --pervasive-path pervasive --extern builtin=../rust/install/bin/libbuiltin.rlib --extern builtin_macros=../rust/install/bin/builtin_macros.dll --edition=2018 {}",
+            "..\\rust\\install\\bin\\rust_verify --pervasive-path pervasive --extern builtin=../rust/install/bin/libbuiltin.rlib --extern builtin_macros=../rust/install/bin/builtin_macros.dll --extern state_machines_macros=../rust/install/bin/libstate_machines_macros.dll --edition=2018 {}",
             &path
         );
 
         #[cfg(any(target_os = "macos", target_os = "linux"))]
         let script = format!(
-            "DYLD_LIBRARY_PATH=../rust/install/lib/rustlib/{}/lib LD_LIBRARY_PATH=../rust/install/lib ../rust/install/bin/rust_verify --pervasive-path pervasive --extern builtin=../rust/install/bin/libbuiltin.rlib --extern builtin_macros=../rust/install/bin/libbuiltin_macros.{} --edition=2018 {}",
-            RUST_LIB_TARGET, DYN_LIB_EXT, &path
+            "DYLD_LIBRARY_PATH=../rust/install/lib/rustlib/{}/lib LD_LIBRARY_PATH=../rust/install/lib ../rust/install/bin/rust_verify --pervasive-path pervasive --extern builtin=../rust/install/bin/libbuiltin.rlib --extern builtin_macros=../rust/install/bin/libbuiltin_macros.{} --extern state_machines_macros=../rust/install/bin/libstate_machines_macros.{} --edition=2018 {}",
+            RUST_LIB_TARGET, DYN_LIB_EXT, DYN_LIB_EXT, &path
         );
 
         let output = if cfg!(target_os = "windows") {
