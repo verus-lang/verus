@@ -31,7 +31,7 @@ pub fn output_token_stream(bundle: SMBundle, concurrent: bool) -> syn::parse::Re
     output_primary_stuff(&mut token_stream, &mut impl_token_stream, &bundle.sm);
 
     if concurrent {
-        output_token_types_and_fns(&mut token_stream, &bundle.sm)?;
+        output_token_types_and_fns(&mut token_stream, &bundle)?;
     }
 
     output_other_fns(
@@ -288,9 +288,9 @@ fn output_other_fns(
 ) {
     let inv_names = invariants.iter().map(|i| &i.func.sig.ident);
     let conj = if inv_names.len() == 0 {
-        quote!{ true }
+        quote! { true }
     } else {
-        quote!{ #(self.#inv_names())&&* }
+        quote! { #(self.#inv_names())&&* }
     };
     impl_token_stream.extend(quote! {
         #[spec]

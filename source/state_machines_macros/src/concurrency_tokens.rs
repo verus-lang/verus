@@ -86,7 +86,9 @@
 //!        ::core::panicking::panic("not implemented");
 //!    }
 
-use crate::ast::{Field, ShardableType, Transition, TransitionKind, TransitionStmt, SM};
+use crate::ast::{Field, Lemma, ShardableType, Transition, TransitionKind, TransitionStmt, SM};
+use crate::parse_token_stream::SMBundle;
+use crate::safety_conditions::has_any_assert;
 use proc_macro2::Span;
 use proc_macro2::TokenStream;
 use quote::quote;
@@ -98,6 +100,10 @@ use syn::visit_mut::VisitMut;
 use syn::{Expr, ExprField, ExprPath, Ident, Member, Type};
 
 // Misc. definitions for various identifiers we use
+
+// TODO names like {name}_Instance kind of suck, {name}::Instance
+// would feel so much better, but this currently isn't possible unless {name}
+// is a module... still, there's probably something better we can do though
 
 fn inst_type_name(sm_name: &Ident) -> Ident {
     let name = sm_name.to_string() + "_Instance";
@@ -131,18 +137,26 @@ fn transition_arg_name(field: &Field) -> Ident {
 }
 
 /// Print declaration for the Instance type.
-/// Pretty straightforward definition: we only need some kind of
-/// unique identifier.
+///
+/// From the user's perspective, this should just be an opaque, unforgeable token type
+/// that serves as an identifier for a protocol instance and contains the constants
+/// for the instance.
+///
+/// Formally, this token should be derived in terms of a monoid derived from the state
+/// machine state. (See `formalism.md`.) Since that formalism is not implemented mechanically
+/// in Verus, we instead make the state itself a field. This is kind of meaningless, but it
+/// serves as a placeholder and does result in the necessary dependency edge between this
+/// struct and the type struct. The fields are private, so they shouldn't matter to the user.
 fn instance_struct_stream(sm: &SM) -> TokenStream {
     let insttype = inst_type_name(&sm.name);
     let smname = &sm.name;
     return quote! {
         #[proof]
         #[allow(non_camel_case_types)]
-        #[verifier(external_body)]
         #[verifier(unforgeable)]
         pub struct #insttype {
-            #[proof] pub dummy_field: ::std::marker::PhantomData<#smname>,
+            #[spec] state: #smname,
+            #[spec] location: ::builtin::int,
         }
     };
 }
@@ -212,33 +226,33 @@ fn const_fn_stream(field: &Field) -> TokenStream {
 ///     }
 pub fn output_token_types_and_fns(
     token_stream: &mut TokenStream,
-    sm: &SM,
+    bundle: &SMBundle,
 ) -> syn::parse::Result<()> {
     let mut inst_impl_token_stream = TokenStream::new();
 
-    token_stream.extend(instance_struct_stream(sm));
+    token_stream.extend(instance_struct_stream(&bundle.sm));
     inst_impl_token_stream.extend(trusted_clone());
 
-    for field in &sm.fields {
+    for field in &bundle.sm.fields {
         match field.stype {
             ShardableType::Constant(_) => {
                 inst_impl_token_stream.extend(const_fn_stream(field));
             }
             ShardableType::Variable(_) => {
-                token_stream.extend(token_struct_stream(&sm.name, field));
+                token_stream.extend(token_struct_stream(&bundle.sm.name, field));
             }
         }
     }
 
-    let insttype = inst_type_name(&sm.name);
+    let insttype = inst_type_name(&bundle.sm.name);
     token_stream.extend(quote! {
         impl #insttype {
             #inst_impl_token_stream
         }
     });
 
-    for tr in &sm.transitions {
-        token_stream.extend(exchange_stream(&sm, tr)?);
+    for tr in &bundle.sm.transitions {
+        token_stream.extend(exchange_stream(bundle, tr)?);
     }
     Ok(())
 }
@@ -291,7 +305,9 @@ impl Ctxt {
 /// When possible, we use &mut arguments (i.e., if a given token is
 /// both an input and an output).
 
-pub fn exchange_stream(sm: &SM, tr: &Transition) -> syn::parse::Result<TokenStream> {
+pub fn exchange_stream(bundle: &SMBundle, tr: &Transition) -> syn::parse::Result<TokenStream> {
+    let sm = &bundle.sm;
+
     let mut ident_to_field = HashMap::new();
     for field in &sm.fields {
         ident_to_field.insert(field.ident.clone(), field.clone());
@@ -522,6 +538,8 @@ pub fn exchange_stream(sm: &SM, tr: &Transition) -> syn::parse::Result<TokenStre
 
     // Tie it all together
 
+    let extra_deps = get_extra_deps(bundle, &tr);
+
     return Ok(quote! {
         #[proof]
         #return_value_mode
@@ -529,9 +547,53 @@ pub fn exchange_stream(sm: &SM, tr: &Transition) -> syn::parse::Result<TokenStre
         pub fn #exch_name(#(#in_args),*) #out_args_ret {
             #req_stream
             #ens_stream
+            #extra_deps
             unimplemented!();
         }
     });
+}
+
+fn get_extra_deps(bundle: &SMBundle, trans: &Transition) -> TokenStream {
+    let smname = &bundle.sm.name;
+    let deps: Vec<TokenStream> = get_all_lemma_for_transition(bundle, trans)
+        .iter()
+        .map(|ident| {
+            quote! {
+                ::builtin::extra_dependency(#smname::#ident);
+            }
+        })
+        .collect();
+    quote! { #(#deps)* }
+}
+
+/// Gets the lemmas that prove validity of the given transition.
+fn get_all_lemma_for_transition(bundle: &SMBundle, trans: &Transition) -> Vec<Ident> {
+    let mut v = Vec::new();
+
+    if trans.kind != TransitionKind::Readonly {
+        let l = get_main_lemma_for_transition_or_panic(&bundle.extras.lemmas, &trans.name);
+        v.push(l.func.sig.ident.clone());
+    }
+
+    if has_any_assert(&trans.body) {
+        let name = Ident::new(&(trans.name.to_string() + "_asserts"), trans.name.span());
+        v.push(name);
+    }
+
+    v
+}
+
+fn get_main_lemma_for_transition_or_panic<'a>(
+    lemmas: &'a Vec<Lemma>,
+    trans_name: &Ident,
+) -> &'a Lemma {
+    for l in lemmas {
+        if l.purpose.transition.to_string() == trans_name.to_string() {
+            return l;
+        }
+    }
+
+    panic!("could not find lemma for: {}", trans_name.to_string());
 }
 
 // Find things that updated

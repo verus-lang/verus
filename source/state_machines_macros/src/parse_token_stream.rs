@@ -4,7 +4,7 @@ use crate::ast::{
     Extras, Invariant, Lemma, LemmaPurpose, LemmaPurposeKind, ShardableType, Transition,
     TransitionKind, SM,
 };
-use crate::ident_visitor::{validate_idents_impl_item_method, validate_ident};
+use crate::ident_visitor::{validate_ident, validate_idents_impl_item_method};
 use crate::parse_transition::parse_impl_item_method;
 use crate::to_token_stream::shardable_type_to_type;
 use crate::transitions::check_transitions;
@@ -15,8 +15,8 @@ use syn::spanned::Spanned;
 use syn::Token;
 use syn::{
     braced, AttrStyle, Attribute, Error, FieldsNamed, FnArg, GenericParam, Generics, Ident,
-    ImplItemMethod, Meta, MetaList, NestedMeta, Receiver, Visibility, WhereClause,
-    ReturnType, Type, TypePath,
+    ImplItemMethod, Meta, MetaList, NestedMeta, Receiver, ReturnType, Type, TypePath, Visibility,
+    WhereClause,
 };
 
 pub struct SMBundle {
@@ -49,6 +49,8 @@ impl Parse for ParseResult {
         //    ... a bunch of items
         // }
         let name: Ident = input.parse()?;
+
+        validate_ident(&name)?;
 
         let generics = if input.peek(Token![<]) {
             let mut gen: Generics = input.parse()?;
@@ -296,14 +298,11 @@ fn to_invariant(impl_item_method: ImplItemMethod) -> syn::parse::Result<Invarian
         }
         ReturnType::Type(_, ty) => {
             match &**ty {
-                Type::Path(TypePath{ qself: None, path }) if path.is_ident("bool") => {
+                Type::Path(TypePath { qself: None, path }) if path.is_ident("bool") => {
                     // ok
                 }
                 _ => {
-                    return Err(Error::new(
-                        ty.span(),
-                        "an invariant function must return a bool",
-                    ));
+                    return Err(Error::new(ty.span(), "an invariant function must return a bool"));
                 }
             }
         }

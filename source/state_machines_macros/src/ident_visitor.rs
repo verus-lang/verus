@@ -42,7 +42,7 @@ impl<'ast> Visit<'ast> for IdentVisitor {
     fn visit_ident(&mut self, node: &'ast Ident) {
         match validate_ident(node) {
             Err(err) => self.errors.push(err),
-            Ok(()) => { }
+            Ok(()) => {}
         }
     }
 
@@ -67,7 +67,9 @@ pub fn validate_ident(ident: &Ident) -> Result<(), Error> {
         if ident.to_string().starts_with(prefix) {
             return Err(Error::new(
                 ident.span(),
-                format!("identifiers starting with '{prefix:}' are reserved identifiers in state machine definitions"),
+                format!(
+                    "identifiers starting with '{prefix:}' are reserved identifiers in state machine definitions"
+                ),
             ));
         }
     }
