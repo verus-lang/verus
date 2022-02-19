@@ -40,7 +40,7 @@ impl<V> PCell<V> {
     );
 
     let p = PCell { ucell: UnsafeCell::new(MaybeUninit::uninit()) };
-    let Proof::proof(t) = exec_proof_from_false();
+    let Proof(t) = exec_proof_from_false();
     PCellWithToken {pcell: p, token: t}
   }
 

@@ -120,12 +120,12 @@ macro_rules! atomic_common_methods {
         #[verifier(external_body)]
         pub fn new(i: $value_ty) -> ($at_ident, Proof<$p_ident>) {
             ensures(|res : ($at_ident, Proof<$p_ident>)|
-                equal(res.1, proof($p_ident{ patomic: res.0.view(), value: i }))
+                equal(res.1, Proof($p_ident{ patomic: res.0.view(), value: i }))
             );
 
             let p = $at_ident { ato: <$rust_ty>::new(i) };
-            let Proof::proof(t) = exec_proof_from_false();
-            (p, proof(t))
+            let Proof(t) = exec_proof_from_false();
+            (p, Proof(t))
         }
 
         #[inline(always)]
