@@ -35,6 +35,7 @@ pub struct TransitionParam {
 pub enum ShardableType<Type> {
     Variable(Type),
     Constant(Type),
+    NotTokenized(Type),
     // TODO more here
 }
 

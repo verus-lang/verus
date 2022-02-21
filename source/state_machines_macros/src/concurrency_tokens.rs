@@ -88,7 +88,8 @@
 
 use crate::ast::{Field, Lemma, ShardableType, Transition, TransitionKind, TransitionStmt, SM};
 use crate::parse_token_stream::SMBundle;
-use crate::safety_conditions::has_any_assert;
+use crate::to_token_stream::{shardable_type_to_type};
+use crate::safety_conditions::{has_any_assert, has_any_require};
 use proc_macro2::Span;
 use proc_macro2::TokenStream;
 use quote::quote;
@@ -119,10 +120,16 @@ fn field_token_field_name(field: &Field) -> Ident {
     field.ident.clone()
 }
 
+fn not_tokenized_spec_out_name(field: &Field) -> Ident {
+    let name = "original_field_".to_string() + &field.ident.to_string();
+    Ident::new(&name, field.ident.span())
+}
+
 fn field_token_field_type(field: &Field) -> Type {
     match &field.stype {
         ShardableType::Variable(ty) => ty.clone(),
         ShardableType::Constant(ty) => ty.clone(),
+        ShardableType::NotTokenized(ty) => ty.clone(),
     }
 }
 
@@ -241,6 +248,9 @@ pub fn output_token_types_and_fns(
             ShardableType::Variable(_) => {
                 token_stream.extend(token_struct_stream(&bundle.sm.name, field));
             }
+            ShardableType::NotTokenized(_) => {
+                // don't need to add a struct in this case
+            }
         }
     }
 
@@ -331,7 +341,7 @@ pub fn exchange_stream(bundle: &SMBundle, tr: &Transition) -> syn::parse::Result
     // where they previously referred to fields like `self.foo`,
     // they now refer to the field that comes from an input.
     // (in the process, we also determine inputs).
-    walk_translate_expressions(&mut ctxt, &mut tr.body)?;
+    walk_translate_expressions(&mut ctxt, &mut tr.body, false)?;
 
     // translate the (new) TransitionStmt into an expressions that
     // can be used as pre-conditions and post-conditions
@@ -397,8 +407,26 @@ pub fn exchange_stream(bundle: &SMBundle, tr: &Transition) -> syn::parse::Result
             ShardableType::Constant(_) => true,
             _ => false,
         };
+        let is_not_tokenized = match field.stype {
+            ShardableType::NotTokenized(_) => true,
+            _ => false,
+        };
 
-        if is_output {
+        if is_not_tokenized {
+            if is_input {
+                // If a "not_tokenized" field value is "input", i.e., if it is
+                // read by the transition definition, we do not obtain that value
+                // from a token but instead consider it as a nondeterminstic value.
+                // Thus if is_input=true, then we need to make it an _output_ argument.
+
+                let ty = shardable_type_to_type(&field.stype);
+                let name = not_tokenized_spec_out_name(field);
+                out_args.push((quote!{ #name },
+                    quote!{ crate::modes::Spec<#ty> }));
+            }
+
+            // Nothing special to do for is_output
+        } else if is_output {
             // For a normal transition, we are not allowed to update a constant
             // field. (This should have been checked already.)
             assert!(!is_const || ctxt.is_init);
@@ -417,6 +445,9 @@ pub fn exchange_stream(bundle: &SMBundle, tr: &Transition) -> syn::parse::Result
                     let e = e_opt.expect("get_output_value_for_variable");
                     let lhs = get_const_field_value(&ctxt, field);
                     (e, lhs)
+                }
+                ShardableType::NotTokenized(_) => {
+                    panic!("not impl");
                 }
             };
             let eq_e = Expr::Verbatim(quote! { ::builtin::equal(#lhs, #e) });
@@ -437,7 +468,7 @@ pub fn exchange_stream(bundle: &SMBundle, tr: &Transition) -> syn::parse::Result
             }
         }
 
-        if !is_const {
+        if !is_not_tokenized && !is_const {
             let inst = get_inst_value(&ctxt);
             if is_output {
                 let lhs = get_new_field_inst(field);
@@ -664,46 +695,61 @@ fn determine_outputs(ctxt: &mut Ctxt, ts: &TransitionStmt) -> syn::parse::Result
 /// a lot about the right way to structure this as we try to understand the design behind
 /// more advanced sharding strategies, so I'm not committing to an overhaul right now.
 
-fn walk_translate_expressions(ctxt: &mut Ctxt, ts: &mut TransitionStmt) -> syn::parse::Result<()> {
+fn walk_translate_expressions(ctxt: &mut Ctxt, ts: &mut TransitionStmt, comes_before_precondition: bool) -> syn::parse::Result<()> {
     match ts {
         TransitionStmt::Block(_span, v) => {
-            for child in v.iter_mut() {
-                walk_translate_expressions(ctxt, child)?;
+            // Compute `latest_precondition` such that
+            // forall i < latest_precondition ==> v[i] , v[i] definitely comes before
+            //    some precondition.
+            let latest_precondition = if comes_before_precondition {
+                v.len()
+            } else {
+                let mut i = v.len();
+                while i >= 1 && !has_any_require(&v[i-1]) {
+                    i -= 1;
+                }
+                i
+            };
+
+            for (i, child) in v.iter_mut().enumerate() {
+                walk_translate_expressions(ctxt, child,
+                    comes_before_precondition || i < latest_precondition)?;
             }
             Ok(())
         }
         TransitionStmt::Let(_span, _id, e) => {
-            let init_e = translate_expr(ctxt, e)?;
+            let init_e = translate_expr(ctxt, e, comes_before_precondition)?;
             *e = init_e;
             Ok(())
         }
         TransitionStmt::If(_span, cond, e1, e2) => {
-            let cond_e = translate_expr(ctxt, cond)?;
+            let cond_e = translate_expr(ctxt, cond, comes_before_precondition
+                || has_any_require(e1) || has_any_require(e2))?;
             *cond = cond_e;
-            walk_translate_expressions(ctxt, e1)?;
-            walk_translate_expressions(ctxt, e2)?;
+            walk_translate_expressions(ctxt, e1, comes_before_precondition)?;
+            walk_translate_expressions(ctxt, e2, comes_before_precondition)?;
             Ok(())
         }
         TransitionStmt::Require(_span, e) => {
-            let req_e = translate_expr(ctxt, e)?;
+            let req_e = translate_expr(ctxt, e, true)?;
             *e = req_e;
             Ok(())
         }
         TransitionStmt::Assert(_span, e) => {
-            let assert_e = translate_expr(ctxt, e)?;
+            let assert_e = translate_expr(ctxt, e, comes_before_precondition)?;
             *e = assert_e;
             Ok(())
         }
         TransitionStmt::Update(_span, _id, e) => {
-            let update_e = translate_expr(ctxt, e)?;
+            let update_e = translate_expr(ctxt, e, false)?;
             *e = update_e;
             Ok(())
         }
     }
 }
 
-fn translate_expr(ctxt: &mut Ctxt, expr: &Expr) -> syn::parse::Result<Expr> {
-    let mut v = TranslatorVisitor::new(ctxt);
+fn translate_expr(ctxt: &mut Ctxt, expr: &Expr, comes_before_precondition: bool) -> syn::parse::Result<Expr> {
+    let mut v = TranslatorVisitor::new(ctxt, comes_before_precondition);
     let mut e = expr.clone();
     v.visit_expr_mut(&mut e);
     if v.errors.len() > 0 {
@@ -719,11 +765,12 @@ fn translate_expr(ctxt: &mut Ctxt, expr: &Expr) -> syn::parse::Result<Expr> {
 struct TranslatorVisitor<'a> {
     pub errors: Vec<Error>,
     pub ctxt: &'a mut Ctxt,
+    pub comes_before_precondition: bool,
 }
 
 impl<'a> TranslatorVisitor<'a> {
-    pub fn new(ctxt: &'a mut Ctxt) -> TranslatorVisitor<'a> {
-        TranslatorVisitor { errors: Vec::new(), ctxt: ctxt }
+    pub fn new(ctxt: &'a mut Ctxt, comes_before_precondition: bool) -> TranslatorVisitor<'a> {
+        TranslatorVisitor { errors: Vec::new(), ctxt: ctxt, comes_before_precondition }
     }
 }
 
@@ -752,6 +799,13 @@ impl<'a> VisitMut for TranslatorVisitor<'a> {
                             ShardableType::Constant(_ty) => {
                                 *node = get_const_field_value(&self.ctxt, &field);
                             }
+                            ShardableType::NotTokenized(_ty) => {
+                                if self.comes_before_precondition {
+                                    self.errors.push(Error::new(span,
+                                        "A `not_tokenized` field cannot be referenced either in or before a `require` statement, as this would require its value to be referenced in the pre-condition of the exchange method"));
+                                }
+                                *node = get_not_tokenized_field_value(&self.ctxt, &field);
+                            }
                         }
                     }
                 },
@@ -772,6 +826,11 @@ fn get_const_field_value(ctxt: &Ctxt, field: &Field) -> Expr {
     let inst = get_inst_value(ctxt);
     let field_name = field_token_field_name(&field);
     Expr::Verbatim(quote! { #inst.#field_name() })
+}
+
+fn get_not_tokenized_field_value(_ctxt: &Ctxt, field: &Field) -> Expr {
+    let name = not_tokenized_spec_out_name(field);
+    Expr::Verbatim(quote! { #name.value() })
 }
 
 fn get_old_field_value(ctxt: &Ctxt, field: &Field) -> Expr {

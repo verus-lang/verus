@@ -276,6 +276,7 @@ pub fn shardable_type_to_type(stype: &ShardableType<Type>) -> Type {
     match stype {
         ShardableType::Variable(ty) => ty.clone(),
         ShardableType::Constant(ty) => ty.clone(),
+        ShardableType::NotTokenized(ty) => ty.clone(),
     }
 }
 
