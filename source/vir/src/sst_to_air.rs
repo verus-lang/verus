@@ -435,7 +435,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: ExprCtxt) -> Expr {
                 | BinaryOp::Shr => {
                     let box_lh = try_box(ctx, lh, &lhs.typ).expect("Box");
                     let box_rh = try_box(ctx, rh, &rhs.typ).expect("Box");
-                    let width = bitwidth_from_type(&lhs.typ).expect("BitNot Width");
+                    let width = bitwidth_from_type(&lhs.typ).expect("Binary Bit Op Width");
                     let width_exp =
                         Arc::new(ExprX::Const(Constant::Nat(Arc::new(width.to_string()))));
                     let fname = match op {
