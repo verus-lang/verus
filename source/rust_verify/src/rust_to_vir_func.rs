@@ -87,6 +87,16 @@ fn check_fn_decl<'tcx>(
     }
 }
 
+fn find_body<'tcx>(ctxt: &Context<'tcx>, body_id: &BodyId) -> &'tcx Body<'tcx> {
+    let owner = ctxt.krate.owners[body_id.hir_id.owner].as_ref();
+    if let Some(owner) = owner {
+        if let Some(body) = owner.nodes.bodies.get(&body_id.hir_id.local_id) {
+            return body;
+        }
+    }
+    panic!("Body not found");
+}
+
 pub(crate) fn check_item_fn<'tcx>(
     ctxt: &Context<'tcx>,
     vir: &mut KrateX,
@@ -152,7 +162,7 @@ pub(crate) fn check_item_fn<'tcx>(
         erasure_info.external_functions.push(name);
         return Ok(());
     }
-    let body = &ctxt.krate.bodies[body_id];
+    let body = find_body(ctxt, body_id);
     let Body { params, value: _, generator_kind } = body;
     let mut vir_params: Vec<vir::ast::Param> = Vec::new();
     for (param, input) in params.iter().zip(sig.decl.inputs.iter()) {
@@ -332,7 +342,7 @@ pub(crate) fn check_item_const<'tcx>(
         erasure_info.external_functions.push(name);
         return Ok(());
     }
-    let body = &ctxt.krate.bodies[body_id];
+    let body = find_body(ctxt, body_id);
     let vir_body = body_to_vir(ctxt, body_id, body, mode, vattrs.external_body)?;
     let ret_name = Arc::new(RETURN_VALUE.to_string());
     let ret =

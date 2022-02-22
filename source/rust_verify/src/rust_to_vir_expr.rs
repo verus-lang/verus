@@ -14,11 +14,11 @@ use crate::util::{
 use crate::{unsupported, unsupported_err, unsupported_err_unless, unsupported_unless};
 use air::ast::{Binder, BinderX, Quant};
 use air::ast_util::str_ident;
-use rustc_ast::{Attribute, BorrowKind, LitKind, Mutability};
+use rustc_ast::{Attribute, BorrowKind, Mutability};
 use rustc_hir::def::{DefKind, Res};
 use rustc_hir::{
-    Arm, BinOpKind, BindingAnnotation, Block, Destination, Expr, ExprKind, Guard, Local,
-    LoopSource, MatchSource, Node, Pat, PatKind, QPath, Stmt, StmtKind, UnOp,
+    BinOpKind, BindingAnnotation, Block, Destination, Expr, ExprKind, Guard, Local, LoopSource,
+    Node, Pat, PatKind, QPath, Stmt, StmtKind, UnOp,
 };
 use rustc_middle::ty::subst::GenericArgKind;
 use rustc_middle::ty::{PredicateKind, TyCtxt, TyKind};
@@ -304,9 +304,7 @@ fn fn_call_to_vir<'tcx>(
     let is_get_variant = {
         match tcx.hir().get_if_local(f) {
             Some(rustc_hir::Node::ImplItem(
-                impl_item
-                @
-                rustc_hir::ImplItem {
+                impl_item @ rustc_hir::ImplItem {
                     kind: rustc_hir::ImplItemKind::Fn(..),
                     ident: fn_ident,
                     ..
@@ -689,7 +687,7 @@ fn fn_call_to_vir<'tcx>(
         // filter out the Fn type parameters
         let mut fn_params: Vec<Ident> = Vec::new();
         for (x, _) in tcx.predicates_of(f).predicates {
-            if let PredicateKind::Trait(t, _) = x.kind().skip_binder() {
+            if let PredicateKind::Trait(t) = x.kind().skip_binder() {
                 let name = path_as_rust_name(&def_id_to_vir_path(tcx, t.trait_ref.def_id));
                 if name == "core::ops::function::Fn" {
                     for s in t.trait_ref.substs {
@@ -802,9 +800,7 @@ pub(crate) fn pattern_to_vir<'tcx>(
             None,
             rustc_hir::Path {
                 res:
-                    res
-                    @
-                    Res::Def(
+                    res @ Res::Def(
                         DefKind::Ctor(
                             rustc_hir::def::CtorOf::Variant,
                             rustc_hir::def::CtorKind::Const,
@@ -829,13 +825,9 @@ pub(crate) fn pattern_to_vir<'tcx>(
                 None,
                 rustc_hir::Path {
                     res:
-                        res
-                        @
-                        Res::Def(
+                        res @ Res::Def(
                             DefKind::Ctor(
-                                ctor_of
-                                @
-                                (rustc_hir::def::CtorOf::Variant
+                                ctor_of @ (rustc_hir::def::CtorOf::Variant
                                 | rustc_hir::def::CtorOf::Struct),
                                 rustc_hir::def::CtorKind::Fn,
                             ),
@@ -961,19 +953,25 @@ fn invariant_block_to_vir<'tcx>(
                 Pat {
                     kind:
                         PatKind::Tuple(
-                            [Pat {
-                                kind:
-                                    PatKind::Binding(BindingAnnotation::Unannotated, guard_hir, _, None),
-                                default_binding_modes: true,
-                                ..
-                            }, inner_pat
-                            @
-                            Pat {
-                                kind:
-                                    PatKind::Binding(BindingAnnotation::Mutable, inner_hir, _, None),
-                                default_binding_modes: true,
-                                ..
-                            }],
+                            [
+                                Pat {
+                                    kind:
+                                        PatKind::Binding(
+                                            BindingAnnotation::Unannotated,
+                                            guard_hir,
+                                            _,
+                                            None,
+                                        ),
+                                    default_binding_modes: true,
+                                    ..
+                                },
+                                inner_pat @ Pat {
+                                    kind:
+                                        PatKind::Binding(BindingAnnotation::Mutable, inner_hir, _, None),
+                                    default_binding_modes: true,
+                                    ..
+                                },
+                            ],
                             None,
                         ),
                     ..
@@ -1021,21 +1019,24 @@ fn invariant_block_to_vir<'tcx>(
                             )),
                         ..
                     },
-                    [Expr {
-                        kind:
-                            ExprKind::Path(QPath::Resolved(
-                                None,
-                                rustc_hir::Path { res: Res::Local(hir_id1), .. },
-                            )),
-                        ..
-                    }, Expr {
-                        kind:
-                            ExprKind::Path(QPath::Resolved(
-                                None,
-                                rustc_hir::Path { res: Res::Local(hir_id2), .. },
-                            )),
-                        ..
-                    }],
+                    [
+                        Expr {
+                            kind:
+                                ExprKind::Path(QPath::Resolved(
+                                    None,
+                                    rustc_hir::Path { res: Res::Local(hir_id1), .. },
+                                )),
+                            ..
+                        },
+                        Expr {
+                            kind:
+                                ExprKind::Path(QPath::Resolved(
+                                    None,
+                                    rustc_hir::Path { res: Res::Local(hir_id2), .. },
+                                )),
+                            ..
+                        },
+                    ],
                 ),
             ..
         }) => {
@@ -1121,6 +1122,8 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
     expr: &Expr<'tcx>,
     current_modifier: ExprModifier,
 ) -> Result<vir::ast::Expr, VirErr> {
+    let expr = expr.peel_drop_temps();
+
     if bctx.external_body {
         // we want just requires/ensures, not the whole body
         match &expr.kind {
@@ -1486,10 +1489,42 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
             Ok(vir)
         }
         ExprKind::If(cond, lhs, rhs) => {
-            let vir_cond = expr_to_vir(bctx, cond, modifier)?;
-            let vir_lhs = expr_to_vir(bctx, lhs, modifier)?;
-            let vir_rhs = rhs.map(|e| expr_to_vir(bctx, e, modifier)).transpose()?;
-            Ok(mk_expr(ExprX::If(vir_cond, vir_lhs, vir_rhs)))
+            let cond = cond.peel_drop_temps();
+            match cond.kind {
+                ExprKind::Let(pat, expr, _let_span) => {
+                    // if let
+                    let vir_expr = expr_to_vir(bctx, expr, modifier)?;
+                    let mut vir_arms: Vec<vir::ast::Arm> = Vec::new();
+                    /* lhs */
+                    {
+                        let pattern = pattern_to_vir(bctx, pat)?;
+                        let guard = mk_expr(ExprX::Const(Constant::Bool(true)));
+                        let body = expr_to_vir(bctx, &lhs, modifier)?;
+                        let vir_arm = ArmX { pattern, guard, body };
+                        vir_arms.push(spanned_new(lhs.span, vir_arm));
+                    }
+                    /* rhs */
+                    {
+                        let pat_typ = typ_of_node(bctx, &pat.hir_id, false);
+                        let pattern = spanned_typed_new(cond.span, &pat_typ, PatternX::Wildcard);
+                        let guard = mk_expr(ExprX::Const(Constant::Bool(true)));
+                        let body = if let Some(rhs) = rhs {
+                            expr_to_vir(bctx, &rhs, modifier)?
+                        } else {
+                            mk_expr(ExprX::Block(Arc::new(Vec::new()), None))
+                        };
+                        let vir_arm = ArmX { pattern, guard, body };
+                        vir_arms.push(spanned_new(lhs.span, vir_arm));
+                    }
+                    Ok(mk_expr(ExprX::Match(vir_expr, Arc::new(vir_arms))))
+                }
+                _ => {
+                    let vir_cond = expr_to_vir(bctx, cond, modifier)?;
+                    let vir_lhs = expr_to_vir(bctx, lhs, modifier)?;
+                    let vir_rhs = rhs.map(|e| expr_to_vir(bctx, e, modifier)).transpose()?;
+                    Ok(mk_expr(ExprX::If(vir_cond, vir_lhs, vir_rhs)))
+                }
+            }
         }
         ExprKind::Match(expr, arms, _match_source) => {
             let vir_expr = expr_to_vir(bctx, expr, modifier)?;
@@ -1509,54 +1544,42 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
         }
         ExprKind::Loop(
             Block {
-                stmts: [],
-                expr:
-                    Some(Expr {
-                        kind:
-                            ExprKind::Match(
-                                cond,
-                                [Arm {
-                                    pat:
-                                        Pat {
-                                            kind:
-                                                PatKind::Lit(Expr {
-                                                    kind:
-                                                        ExprKind::Lit(rustc_span::source_map::Spanned {
-                                                            node: LitKind::Bool(true),
-                                                            ..
-                                                        }),
-                                                    ..
-                                                }),
-                                            ..
-                                        },
-                                    guard: None,
-                                    body,
-                                    ..
-                                }, Arm {
-                                    pat: Pat { kind: PatKind::Wild, .. },
-                                    guard: None,
-                                    body:
-                                        Expr {
-                                            kind:
-                                                ExprKind::Break(Destination { label: None, .. }, None),
-                                            ..
-                                        },
-                                    ..
-                                }],
-                                MatchSource::WhileDesugar,
-                            ),
-                        ..
-                    }),
-                ..
+                stmts: [], expr: Some(Expr { kind: ExprKind::If(cond, body, other), .. }), ..
             },
             None,
             LoopSource::While,
             _span,
         ) => {
-            let cond = match cond {
-                Expr { kind: ExprKind::DropTemps(cond), .. } => cond,
-                _ => cond,
-            };
+            if let Some(Expr {
+                kind:
+                    ExprKind::Block(
+                        Block {
+                            stmts:
+                                [
+                                    Stmt {
+                                        kind:
+                                            StmtKind::Expr(Expr {
+                                                kind:
+                                                    ExprKind::Break(
+                                                        Destination { label: None, .. },
+                                                        None,
+                                                    ),
+                                                ..
+                                            }),
+                                        ..
+                                    },
+                                ],
+                            expr: None,
+                            ..
+                        },
+                        None,
+                    ),
+                ..
+            }) = other
+            {
+            } else {
+                unsupported!("loop else", expr);
+            }
             let cond = expr_to_vir(bctx, cond, modifier)?;
             let mut body = expr_to_vir(bctx, body, modifier)?;
             let header = vir::headers::read_header(&mut body)?;
@@ -1592,7 +1615,7 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                             .expect(format!("variant name in Struct ctor for {:?}", path).as_str());
                     }
                     let variant_name = str_ident(&variant.ident.as_str());
-                    (vir_path, path.span, variant_name)
+                    (vir_path, path.raw_span, variant_name)
                 }
                 _ => panic!("unexpected qpath {:?}", qpath),
             };

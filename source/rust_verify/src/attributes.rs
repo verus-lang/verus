@@ -292,6 +292,7 @@ pub(crate) fn get_publish(vattrs: &VerifierAttrs) -> Option<bool> {
     }
 }
 
+#[derive(Debug)]
 pub(crate) struct VerifierAttrs {
     pub(crate) external_body: bool,
     pub(crate) external: bool,
