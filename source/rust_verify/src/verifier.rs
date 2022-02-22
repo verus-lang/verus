@@ -6,6 +6,7 @@ use crate::util::from_raw_span;
 use air::ast::{Command, CommandX};
 use air::context::ValidityResult;
 use air::errors::{Error, ErrorLabel};
+use rustc_hir::OwnerNode;
 use rustc_interface::interface::Compiler;
 use rustc_middle::ty::TyCtxt;
 use rustc_span::source_map::SourceMap;
@@ -51,6 +52,7 @@ impl ErrorSpan {
         let filename: String = match source_map.span_to_filename(span) {
             FileName::Real(rfn) => rfn
                 .local_path()
+                .expect("internal error: not a local path")
                 .to_str()
                 .expect("internal error: path is not a valid string")
                 .to_string(),
@@ -519,7 +521,18 @@ impl Verifier {
         // Verify crate
         let time3 = Instant::now();
         if !self.args.external_body {
-            self.verify_crate(&compiler, &vir_crate, hir.krate().item.span)?;
+            let span = hir
+                .krate()
+                .owners
+                .iter()
+                .filter_map(|oi| {
+                    oi.as_ref().and_then(|o| {
+                        if let OwnerNode::Crate(c) = o.node() { Some(c.inner) } else { None }
+                    })
+                })
+                .next()
+                .expect("OwnerNode::Crate missing");
+            self.verify_crate(&compiler, &vir_crate, span)?;
         }
         let time4 = Instant::now();
 
@@ -608,17 +621,17 @@ impl rustc_driver::Callbacks for Verifier {
         compiler: &Compiler,
         queries: &'tcx rustc_interface::Queries<'tcx>,
     ) -> rustc_driver::Compilation {
-        let _result = queries.global_ctxt().expect("global_ctxt").peek_mut().enter(|tcx| {
-            queries.expansion().expect("expansion");
-            match self.run(compiler, tcx) {
-                Ok(true) => {}
-                Ok(false) => {}
-                Err(err) => {
-                    report_error(compiler, &err);
-                    self.encountered_vir_error = true;
+        let _result =
+            queries.global_ctxt().expect("global_ctxt").peek_mut().enter(|tcx| {
+                match self.run(compiler, tcx) {
+                    Ok(true) => {}
+                    Ok(false) => {}
+                    Err(err) => {
+                        report_error(compiler, &err);
+                        self.encountered_vir_error = true;
+                    }
                 }
-            }
-        });
+            });
         rustc_driver::Compilation::Stop
     }
 }
