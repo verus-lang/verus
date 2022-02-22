@@ -127,11 +127,14 @@ enum CallType {
     Assert,
     Require,
     Update,
+    AddElement,
+    HaveElement,
+    RemoveElement,
 }
 
 fn parse_call(call: &ExprCall, ctxt: &Ctxt) -> syn::parse::Result<TransitionStmt> {
     let ct = parse_call_type(&call.func, ctxt)?;
-    match ct {
+    match &ct {
         CallType::Assert => {
             if call.args.len() != 1 {
                 return Err(Error::new(call.span(), "assert expected 1 arguments"));
@@ -146,9 +149,12 @@ fn parse_call(call: &ExprCall, ctxt: &Ctxt) -> syn::parse::Result<TransitionStmt
             let e = call.args[0].clone();
             return Ok(TransitionStmt::Require(call.span(), e));
         }
-        CallType::Update => {
+        CallType::Update |
+        CallType::HaveElement |
+        CallType::AddElement |
+        CallType::RemoveElement => {
             if call.args.len() != 2 {
-                return Err(Error::new(call.span(), "update expected 1 arguments"));
+                return Err(Error::new(call.span(), "expected 2 arguments"));
             }
             let ident = match &call.args[0] {
                 Expr::Path(path) => {
@@ -171,7 +177,17 @@ fn parse_call(call: &ExprCall, ctxt: &Ctxt) -> syn::parse::Result<TransitionStmt
                 }
             };
             let e = call.args[1].clone();
-            return Ok(TransitionStmt::Update(call.span(), ident.clone(), e));
+            return match ct {
+                CallType::Update =>
+                    Ok(TransitionStmt::Update(call.span(), ident.clone(), e)),
+                CallType::HaveElement =>
+                    Ok(TransitionStmt::HaveElement(call.span(), ident.clone(), e)),
+                CallType::AddElement =>
+                    Ok(TransitionStmt::AddElement(call.span(), ident.clone(), e)),
+                CallType::RemoveElement =>
+                    Ok(TransitionStmt::RemoveElement(call.span(), ident.clone(), e)),
+                _ => { panic!("shouldn't get here"); }
+            };
         }
     }
 }
@@ -197,6 +213,15 @@ fn parse_call_type(callf: &Expr, _ctxt: &Ctxt) -> syn::parse::Result<CallType> {
             }
             if path.path.is_ident("update") {
                 return Ok(CallType::Update);
+            }
+            if path.path.is_ident("add_element") {
+                return Ok(CallType::AddElement);
+            }
+            if path.path.is_ident("remove_element") {
+                return Ok(CallType::RemoveElement);
+            }
+            if path.path.is_ident("have_element") {
+                return Ok(CallType::HaveElement);
             }
         }
         _ => {

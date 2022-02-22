@@ -22,7 +22,7 @@ pub struct Extras {
 #[derive(Clone, Debug)]
 pub struct Field {
     pub ident: Ident,
-    pub stype: ShardableType<Type>,
+    pub stype: ShardableType,
 }
 
 #[derive(Clone, Debug)]
@@ -32,10 +32,11 @@ pub struct TransitionParam {
 }
 
 #[derive(Clone, Debug)]
-pub enum ShardableType<Type> {
+pub enum ShardableType {
     Variable(Type),
     Constant(Type),
     NotTokenized(Type),
+    Multiset(Type),
     // TODO more here
 }
 
@@ -62,6 +63,11 @@ pub enum TransitionStmt {
     Require(Span, Expr),
     Assert(Span, Expr),
     Update(Span, Ident, Expr),
+
+    // concurrent-state-machine-specific stuff
+    AddElement(Span, Ident, Expr),
+    RemoveElement(Span, Ident, Expr),
+    HaveElement(Span, Ident, Expr),
 }
 
 impl TransitionStmt {
@@ -73,6 +79,9 @@ impl TransitionStmt {
             TransitionStmt::Require(span, _) => span,
             TransitionStmt::Assert(span, _) => span,
             TransitionStmt::Update(span, _, _) => span,
+            TransitionStmt::AddElement(span, _, _) => span,
+            TransitionStmt::RemoveElement(span, _, _) => span,
+            TransitionStmt::HaveElement(span, _, _) => span,
         }
     }
 }
@@ -97,4 +106,44 @@ pub struct LemmaPurpose {
 pub struct Lemma {
     pub purpose: LemmaPurpose,
     pub func: ImplItemMethod,
+}
+
+impl TransitionStmt {
+    pub fn visit_updatelike_stmts<F>(&self, ident: &Ident, f: &mut F)
+    where F: FnMut(&TransitionStmt) -> ()
+    {
+        match self {
+            TransitionStmt::Block(_, v) => {
+                for t in v.iter() {
+                    t.visit_updatelike_stmts(ident, f);
+                }
+            }
+            TransitionStmt::Let(_, _, _) => { }
+            TransitionStmt::If(_, _, thn, els) => {
+                thn.visit_updatelike_stmts(ident, f);
+                els.visit_updatelike_stmts(ident, f);
+            }
+            TransitionStmt::Require(_, _) => { }
+            TransitionStmt::Assert(_, _) => { }
+            TransitionStmt::Update(_, id, _) |
+            TransitionStmt::AddElement(_, id, _) |
+            TransitionStmt::RemoveElement(_, id, _) |
+            TransitionStmt::HaveElement(_, id, _) => {
+                if id.to_string() == ident.to_string() {
+                    f(self);
+                }
+            }
+        }
+    }
+}
+
+impl ShardableType {
+    pub fn strategy_name(&self) -> &str {
+        match self {
+            ShardableType::Variable(_) => "variable",
+            ShardableType::Constant(_) => "constant",
+            ShardableType::NotTokenized(_) => "not_tokenized",
+            ShardableType::Multiset(_) => "multiset",
+        }
+    }
 }

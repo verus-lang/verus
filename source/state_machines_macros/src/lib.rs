@@ -13,6 +13,7 @@ mod safety_conditions;
 mod to_relation;
 mod to_token_stream;
 mod transitions;
+mod util;
 
 use lemmas::check_lemmas;
 use parse_token_stream::{parse_result_to_smir, ParseResult};

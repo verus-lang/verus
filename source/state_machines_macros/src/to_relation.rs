@@ -95,7 +95,10 @@ fn to_relation_rec(
                 }
             }
         }
-        TransitionStmt::Update(_span, _id, _e) => {
+        TransitionStmt::Update(_, _, _) |
+        TransitionStmt::AddElement(_, _, _) |
+        TransitionStmt::RemoveElement(_, _, _) |
+        TransitionStmt::HaveElement(_, _, _) => {
             panic!("should have been removed in pre-processing step");
         }
     }
@@ -183,6 +186,11 @@ fn add_noop_updates_rec(ts: &TransitionStmt) -> (TransitionStmt, Vec<Ident>) {
         TransitionStmt::Update(_, ident, _) => {
             return (ts.clone(), vec![ident.clone()]);
         }
+        TransitionStmt::HaveElement(..) |
+        TransitionStmt::RemoveElement(..) |
+        TransitionStmt::AddElement(..) => {
+            panic!("should have been removed at earlier processing stage");
+        }
     }
 }
 
@@ -226,5 +234,10 @@ pub fn replace_updates(ts: &TransitionStmt) -> TransitionStmt {
             *span,
             Expr::Verbatim(quote! { ::builtin::equal(post.#ident, #e) }),
         ),
+        TransitionStmt::HaveElement(..) |
+        TransitionStmt::RemoveElement(..) |
+        TransitionStmt::AddElement(..) => {
+            panic!("should have been removed at earlier processing stage");
+        }
     }
 }

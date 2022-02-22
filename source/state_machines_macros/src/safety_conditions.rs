@@ -76,6 +76,11 @@ pub fn safety_condition_body(ts: &TransitionStmt) -> Option<Expr> {
             crate::pervasive::assert(#e);
         })),
         TransitionStmt::Update(_span, _ident, _e) => None,
+        TransitionStmt::HaveElement(..) |
+        TransitionStmt::RemoveElement(..) |
+        TransitionStmt::AddElement(..) => {
+            panic!("should have been removed at earlier processing stage");
+        }
     }
 }
 
@@ -96,6 +101,9 @@ pub fn has_any_assert(ts: &TransitionStmt) -> bool {
         TransitionStmt::Require(_, _) => false,
         TransitionStmt::Assert(_, _) => true,
         TransitionStmt::Update(_, _, _) => false,
+        TransitionStmt::HaveElement(..) => false,
+        TransitionStmt::RemoveElement(..) => false,
+        TransitionStmt::AddElement(..) => false,
     }
 }
 
@@ -116,5 +124,8 @@ pub fn has_any_require(ts: &TransitionStmt) -> bool {
         TransitionStmt::Require(_, _) => true,
         TransitionStmt::Assert(_, _) => false,
         TransitionStmt::Update(_, _, _) => false,
+        TransitionStmt::HaveElement(..) => false,
+        TransitionStmt::RemoveElement(..) => false,
+        TransitionStmt::AddElement(..) => false,
     }
 }

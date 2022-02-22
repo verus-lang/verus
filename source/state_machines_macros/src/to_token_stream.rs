@@ -272,11 +272,14 @@ fn post_params(params: &Vec<TransitionParam>) -> TokenStream {
     };
 }
 
-pub fn shardable_type_to_type(stype: &ShardableType<Type>) -> Type {
+pub fn shardable_type_to_type(stype: &ShardableType) -> Type {
     match stype {
         ShardableType::Variable(ty) => ty.clone(),
         ShardableType::Constant(ty) => ty.clone(),
         ShardableType::NotTokenized(ty) => ty.clone(),
+        ShardableType::Multiset(ty) => {
+            Type::Verbatim(quote!{ crate::pervasive::multiset::Multiset<#ty> })
+        }
     }
 }
 

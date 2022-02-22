@@ -325,6 +325,7 @@ enum ShardingType {
     Variable,
     Constant,
     NotTokenized,
+    Multiset,
 }
 
 /// Get the sharding type from the attributes of the field.
@@ -363,6 +364,7 @@ fn get_sharding_type(
                             let t = match ident.to_string().as_str() {
                                 "variable" => ShardingType::Variable,
                                 "constant" => ShardingType::Constant,
+                                "multiset" => ShardingType::Multiset,
                                 "not_tokenized" => ShardingType::NotTokenized,
                                 name => {
                                     return Err(Error::new(
@@ -420,6 +422,14 @@ fn get_sharding_type(
     }
 }
 
+/// Checks the given type to be of the form `type_name<...>` and if so, extracts
+/// the type parameter and returns it.
+/// Returns an Error (using the given strategy name in the error message) if the given
+/// type is not of the right form.
+fn extract_template_param(ty: &Type, _strategy: &str, _type_name: &str) -> syn::parse::Result<Type> {
+    panic!("not impl {:#?}", ty);
+}
+
 fn to_fields(
     fields_named: &mut FieldsNamed,
     concurrent: bool,
@@ -446,6 +456,8 @@ fn to_fields(
             ShardingType::Variable => ShardableType::Variable(field.ty.clone()),
             ShardingType::Constant => ShardableType::Constant(field.ty.clone()),
             ShardingType::NotTokenized => ShardableType::NotTokenized(field.ty.clone()),
+            ShardingType::Multiset => ShardableType::Multiset(
+                  extract_template_param(&field.ty, "multiset", "Multiset")?),
         };
 
         field.ty = shardable_type_to_type(&stype);

@@ -116,6 +116,11 @@ fn field_token_type_name(sm_name: &Ident, field: &Field) -> Ident {
     Ident::new(&name, field.ident.span())
 }
 
+fn field_token_type(sm_name: &Ident, field: &Field) -> Type {
+    let ident = field_token_type_name(sm_name, field);
+    Type::Verbatim(quote!{ #ident })
+}
+
 fn field_token_field_name(field: &Field) -> Ident {
     field.ident.clone()
 }
@@ -130,6 +135,7 @@ fn field_token_field_type(field: &Field) -> Type {
         ShardableType::Variable(ty) => ty.clone(),
         ShardableType::Constant(ty) => ty.clone(),
         ShardableType::NotTokenized(ty) => ty.clone(),
+        ShardableType::Multiset(ty) => ty.clone(),
     }
 }
 
@@ -250,6 +256,9 @@ pub fn output_token_types_and_fns(
             }
             ShardableType::NotTokenized(_) => {
                 // don't need to add a struct in this case
+            }
+            ShardableType::Multiset(_) => {
+                token_stream.extend(token_struct_stream(&bundle.sm.name, field));
             }
         }
     }
@@ -381,108 +390,70 @@ pub fn exchange_stream(bundle: &SMBundle, tr: &Transition) -> syn::parse::Result
     let mut inst_eq_enss = Vec::new();
 
     for field in &sm.fields {
-        // Determine if the field is an input, output, or both.
-        // (If neither, we get to skip.)
-
-        let is_output;
-        let is_input;
-        if tr.kind == TransitionKind::Init {
+        if ctxt.is_init {
             assert!(ctxt.fields_written.contains(&field.ident));
             assert!(!ctxt.fields_read.contains(&field.ident));
-            is_output = true;
-            is_input = false;
-        } else {
-            is_output = ctxt.fields_written.contains(&field.ident);
-            is_input = is_output || ctxt.fields_read.contains(&field.ident);
         }
 
-        if !is_input && !is_output {
-            continue;
-        }
-
-        let arg_name = transition_arg_name(field);
-        let arg_type = field_token_type_name(&sm.name, field);
-
-        let is_const = match field.stype {
-            ShardableType::Constant(_) => true,
-            _ => false,
-        };
-        let is_not_tokenized = match field.stype {
-            ShardableType::NotTokenized(_) => true,
-            _ => false,
-        };
-
-        if is_not_tokenized {
-            if is_input {
-                // If a "not_tokenized" field value is "input", i.e., if it is
-                // read by the transition definition, we do not obtain that value
-                // from a token but instead consider it as a nondeterminstic value.
-                // Thus if is_input=true, then we need to make it an _output_ argument.
-
-                let ty = shardable_type_to_type(&field.stype);
-                let name = not_tokenized_spec_out_name(field);
-                out_args.push((quote!{ #name },
-                    quote!{ crate::modes::Spec<#ty> }));
-            }
-
-            // Nothing special to do for is_output
-        } else if is_output {
-            // For a normal transition, we are not allowed to update a constant
-            // field. (This should have been checked already.)
-            assert!(!is_const || ctxt.is_init);
-
-            // We need to create a post-condition that says
-            //     field_value == (expression from update statement)
-            let (e, lhs) = match field.stype {
-                ShardableType::Variable(_) => {
-                    let e_opt = get_output_value_for_variable(&ctxt, &tr.body, field);
-                    let e = e_opt.expect("get_output_value_for_variable");
-                    let lhs = get_new_field_value(field);
-                    (e, lhs)
-                }
-                ShardableType::Constant(_) => {
+        match field.stype {
+            ShardableType::Constant(_) => {
+                if ctxt.is_init {
                     let e_opt = get_output_value_for_variable(&ctxt, &tr.body, field);
                     let e = e_opt.expect("get_output_value_for_variable");
                     let lhs = get_const_field_value(&ctxt, field);
-                    (e, lhs)
+                    ctxt.ensures.push(mk_eq(&lhs, &e));
+                } else {
+                    // We can't update a constant field in a non-init transition.
+                    // This should have been checked already.
+                    assert!(!ctxt.fields_written.contains(&field.ident));
                 }
-                ShardableType::NotTokenized(_) => {
-                    panic!("not impl");
+            }
+            ShardableType::NotTokenized(_) => {
+                let is_read = ctxt.fields_read.contains(&field.ident);
+                if is_read {
+                    // If a "not_tokenized" field value is
+                    // read by the transition definition, we do not obtain that value
+                    // from a token but instead consider it as a nondeterminstic value.
+                    // Thus if is_input=true, then we need to make it an _output_ argument.
+
+                    let ty = shardable_type_to_type(&field.stype);
+                    let name = not_tokenized_spec_out_name(field);
+                    out_args.push((quote!{ #name },
+                        quote!{ crate::modes::Spec<#ty> }));
                 }
-            };
-            let eq_e = Expr::Verbatim(quote! { ::builtin::equal(#lhs, #e) });
-            ctxt.ensures.push(eq_e);
+            }
+            ShardableType::Variable(_) => {
+                let is_output;
+                let is_input;
+                if ctxt.is_init {
+                    is_output = true;
+                    is_input = false;
+                } else {
+                    is_output = ctxt.fields_written.contains(&field.ident);
+                    is_input = is_output || ctxt.fields_read.contains(&field.ident);
+                }
 
-            if is_input {
-                // If it's both an input and an output, make it a &mut parameter
-                in_args.push(quote! { #[proof] #arg_name: &mut #arg_type });
-            } else if !is_const {
-                out_args.push((quote! {#arg_name}, quote! {#arg_type}));
-            }
-        } else {
-            // For sharding(constant), the field is input via the Instance object
-            // so we don't have to add anything here.
-            // For sharding(variable), we add a token that corresponds to the field.
-            if !is_const {
-                in_args.push(quote! { #[proof] #arg_name: &#arg_type });
-            }
-        }
+                add_token_param_in_out(&ctxt,
+                    &mut in_args,
+                    &mut out_args,
+                    &mut inst_eq_enss,
+                    &mut inst_eq_reqs,
+                    &transition_arg_name(field),
+                    &field_token_type(&sm.name, field),
+                    is_input,
+                    is_output);
 
-        if !is_not_tokenized && !is_const {
-            let inst = get_inst_value(&ctxt);
-            if is_output {
-                let lhs = get_new_field_inst(field);
-                inst_eq_enss.push(Expr::Verbatim(quote! {
-                    ::builtin::equal(#lhs, #inst)
-                }));
+                if is_output {
+                    let e_opt = get_output_value_for_variable(&ctxt, &tr.body, field);
+                    let e = e_opt.expect("get_output_value_for_variable");
+                    let lhs = get_new_field_value(field);
+                    ctxt.ensures.push(mk_eq(&lhs, &e));
+                }
             }
-            if is_input {
-                let lhs = get_old_field_inst(&ctxt, field);
-                inst_eq_reqs.push(Expr::Verbatim(quote! {
-                    ::builtin::equal(#lhs, #inst)
-                }));
+            ShardableType::Multiset(_) => {
+                panic!("unimpl");
             }
-        }
+        };
     }
 
     let mut reqs = inst_eq_reqs;
@@ -584,6 +555,57 @@ pub fn exchange_stream(bundle: &SMBundle, tr: &Transition) -> syn::parse::Result
     });
 }
 
+fn add_token_param_in_out(ctxt: &Ctxt,
+    in_args: &mut Vec<TokenStream>,
+    out_args: &mut Vec<(TokenStream, TokenStream)>,
+    inst_eq_enss: &mut Vec<Expr>,
+    inst_eq_reqs: &mut Vec<Expr>,
+
+    arg_name: &Ident,
+    arg_type: &Type,
+    is_input: bool,
+    is_output: bool)
+{
+    if !is_input && !is_output {
+        return;
+    }
+
+    if is_output {
+        if is_input {
+            // If it's both an input and an output, make it a &mut parameter
+            in_args.push(quote! { #[proof] #arg_name: &mut #arg_type });
+        } else {
+            out_args.push((quote! {#arg_name}, quote! {#arg_type}));
+        }
+    } else {
+        in_args.push(quote! { #[proof] #arg_name: &#arg_type });
+    }
+
+    let inst = get_inst_value(&ctxt);
+    if is_output {
+        let lhs = Expr::Verbatim(quote! { #arg_name.instance });
+        inst_eq_enss.push(Expr::Verbatim(quote! {
+            ::builtin::equal(#lhs, #inst)
+        }));
+    }
+    if is_input {
+        let lhs = if is_output {
+            Expr::Verbatim(quote! { ::builtin::old(#arg_name).instance })
+        } else {
+            Expr::Verbatim(quote! { #arg_name.instance })
+        };
+        inst_eq_reqs.push(Expr::Verbatim(quote! {
+            ::builtin::equal(#lhs, #inst)
+        }));
+    }
+}
+
+fn mk_eq(lhs: &Expr, rhs: &Expr) -> Expr {
+    Expr::Verbatim(quote! {
+        ::builtin::equal(#lhs, #rhs)
+    })
+}
+
 fn get_extra_deps(bundle: &SMBundle, trans: &Transition) -> TokenStream {
     let smname = &bundle.sm.name;
     let deps: Vec<TokenStream> = get_all_lemma_for_transition(bundle, trans)
@@ -662,6 +684,9 @@ fn determine_outputs(ctxt: &mut Ctxt, ts: &TransitionStmt) -> syn::parse::Result
             ctxt.fields_written.insert(id.clone());
             Ok(())
         }
+        TransitionStmt::AddElement(_span, _id, _e) => { panic!("not impl"); }
+        TransitionStmt::RemoveElement(_span, _id, _e) => { panic!("not impl"); }
+        TransitionStmt::HaveElement(_span, _id, _e) => { panic!("not impl"); }
     }
 }
 
@@ -740,7 +765,10 @@ fn walk_translate_expressions(ctxt: &mut Ctxt, ts: &mut TransitionStmt, comes_be
             *e = assert_e;
             Ok(())
         }
-        TransitionStmt::Update(_span, _id, e) => {
+        TransitionStmt::Update(_span, _id, e) |
+        TransitionStmt::HaveElement(_span, _id, e) |
+        TransitionStmt::AddElement(_span, _id, e) |
+        TransitionStmt::RemoveElement(_span, _id, e) => {
             let update_e = translate_expr(ctxt, e, false)?;
             *e = update_e;
             Ok(())
@@ -806,6 +834,10 @@ impl<'a> VisitMut for TranslatorVisitor<'a> {
                                 }
                                 *node = get_not_tokenized_field_value(&self.ctxt, &field);
                             }
+                            ShardableType::Multiset(_ty) => {
+                                self.errors.push(Error::new(span,
+                                    "A `multiset` field cannot be directly referenced here")); // TODO be more specific
+                            }
                         }
                     }
                 },
@@ -847,20 +879,6 @@ fn get_new_field_value(field: &Field) -> Expr {
     let arg = transition_arg_name(&field);
     let field = field_token_field_name(&field);
     Expr::Verbatim(quote! { #arg.#field })
-}
-
-fn get_old_field_inst(ctxt: &Ctxt, field: &Field) -> Expr {
-    let arg = transition_arg_name(&field);
-    if ctxt.fields_written.contains(&field.ident) {
-        Expr::Verbatim(quote! { ::builtin::old(#arg).instance })
-    } else {
-        Expr::Verbatim(quote! { #arg.instance })
-    }
-}
-
-fn get_new_field_inst(field: &Field) -> Expr {
-    let arg = transition_arg_name(&field);
-    Expr::Verbatim(quote! { #arg.instance })
 }
 
 // Collect requires and ensures.
@@ -951,7 +969,10 @@ fn exchange_collect(
             pa.push(PrequelElement::Condition(assert_e.clone()));
             Ok((prequel, pa))
         }
-        TransitionStmt::Update(_span, _id, _e) => Ok((prequel, prequel_with_asserts)),
+        TransitionStmt::Update(..) |
+        TransitionStmt::HaveElement(..) |
+        TransitionStmt::AddElement(..) |
+        TransitionStmt::RemoveElement(..) => Ok((prequel, prequel_with_asserts)),
     }
 }
 
@@ -1063,9 +1084,6 @@ fn get_output_value_for_variable(ctxt: &Ctxt, ts: &TransitionStmt, field: &Field
             }
             opt
         }
-        TransitionStmt::Let(_, _, _)
-        | TransitionStmt::Require(_, _)
-        | TransitionStmt::Assert(_, _) => None,
         TransitionStmt::If(_span, cond_e, e1, e2) => {
             let o1 = get_output_value_for_variable(ctxt, e1, field);
             let o2 = get_output_value_for_variable(ctxt, e2, field);
@@ -1090,5 +1108,11 @@ fn get_output_value_for_variable(ctxt: &Ctxt, ts: &TransitionStmt, field: &Field
                 None
             }
         }
+        TransitionStmt::Let(_, _, _)
+        | TransitionStmt::Require(_, _)
+        | TransitionStmt::Assert(_, _)
+        | TransitionStmt::AddElement(..)
+        | TransitionStmt::RemoveElement(..)
+        | TransitionStmt::HaveElement(..) => None,
     }
 }
