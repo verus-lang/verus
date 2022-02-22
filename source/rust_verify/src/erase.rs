@@ -109,7 +109,7 @@ pub struct ErasureHints {
 #[derive(Clone)]
 pub struct Ctxt {
     /// Copy of the entire VIR crate that was created in the first run's HIR -> VIR transformation
-    vir_crate: Krate,
+    _vir_crate: Krate,
     /// Map each function path to its VIR Function, or to None if it is a #[verifier(external)]
     /// function
     functions: HashMap<Fun, Option<Function>>,
@@ -1225,7 +1225,7 @@ fn mk_ctxt(erasure_hints: &ErasureHints, known_spans: &HashSet<Span>, keep_proof
         var_modes.insert(span, *mode).map(|v| panic!("{:?} {:?}", span, v));
     }
     Ctxt {
-        vir_crate: erasure_hints.vir_crate.clone(),
+        _vir_crate: erasure_hints.vir_crate.clone(),
         functions,
         functions_by_span,
         datatypes,
