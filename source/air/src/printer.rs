@@ -104,14 +104,18 @@ impl Printer {
 
     pub(crate) fn bv_const_expr_to_node(&self, n: &Arc<String>, width: &u32) -> Node {
         let value = n.parse::<u128>().expect(&format!("could not parse option value {}", n));
-        if *width == 32 {
+        if *width == 8 {
+            Node::Atom(format!("#x{:02x}", value))
+        } else if *width == 16 {
+            Node::Atom(format!("#x{:04x}", value))
+        } else if *width == 32 {
             Node::Atom(format!("#x{:08x}", value))
         } else if *width == 64 {
             Node::Atom(format!("#x{:016x}", value))
         } else if *width == 128 {
             Node::Atom(format!("#x{:032x}", value))
         } else {
-            panic!("unhandled bitwidth")
+            panic!("unhandled bit-width in printing bitvector constant")
         }
     }
 

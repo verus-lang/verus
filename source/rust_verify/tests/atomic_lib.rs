@@ -137,17 +137,17 @@ const ATOMIC_U32: &str = code_str! {
 
     let l = at.fetch_or(&mut perm, 2);
     assert(l == 9);
-    assert_bit_vector((9 as u64 | 2 as u64) == 11 as u64);
+    assert_bit_vector((9 as u32 | 2 as u32) == 11 as u32);
     assert(perm.value == 11);
 
     let l = at.fetch_and(&mut perm, 6);
     assert(l == 11);
-    assert_bit_vector((11 as u64 & 6 as u64) == 2 as u64);
+    assert_bit_vector((11 as u32 & 6 as u32) == 2 as u32);
     assert(perm.value == 2);
 
     let l = at.fetch_xor(&mut perm, 3);
     assert(l == 2);
-    assert_bit_vector((2 as u64 ^ 3 as u64) == 1 as u64);
+    assert_bit_vector((2 as u32 ^ 3 as u32) == 1 as u32);
     assert(perm.value == 1);
 
     let l = at.fetch_max(&mut perm, 5);
@@ -230,17 +230,17 @@ const ATOMIC_U16: &str = code_str! {
 
     let l = at.fetch_or(&mut perm, 2);
     assert(l == 9);
-    assert_bit_vector((9 as u64 | 2 as u64) == 11 as u64);
+    assert_bit_vector((9 as u16 | 2 as u16) == 11 as u16);
     assert(perm.value == 11);
 
     let l = at.fetch_and(&mut perm, 6);
     assert(l == 11);
-    assert_bit_vector((11 as u64 & 6 as u64) == 2 as u64);
+    assert_bit_vector((11 as u16 & 6 as u16) == 2 as u16);
     assert(perm.value == 2);
 
     let l = at.fetch_xor(&mut perm, 3);
     assert(l == 2);
-    assert_bit_vector((2 as u64 ^ 3 as u64) == 1 as u64);
+    assert_bit_vector((2 as u16 ^ 3 as u16) == 1 as u16);
     assert(perm.value == 1);
 
     let l = at.fetch_max(&mut perm, 5);
@@ -323,17 +323,17 @@ const ATOMIC_U8: &str = code_str! {
 
     let l = at.fetch_or(&mut perm, 2);
     assert(l == 9);
-    assert_bit_vector((9 as u64 | 2 as u64) == 11 as u64);
+    assert_bit_vector((9 as u8 | 2 as u8) == 11 as u8);
     assert(perm.value == 11);
 
     let l = at.fetch_and(&mut perm, 6);
     assert(l == 11);
-    assert_bit_vector((11 as u64 & 6 as u64) == 2 as u64);
+    assert_bit_vector((11 as u8 & 6 as u8) == 2 as u8);
     assert(perm.value == 2);
 
     let l = at.fetch_xor(&mut perm, 3);
     assert(l == 2);
-    assert_bit_vector((2 as u64 ^ 3 as u64) == 1 as u64);
+    assert_bit_vector((2 as u8 ^ 3 as u8) == 1 as u8);
     assert(perm.value == 1);
 
     let l = at.fetch_max(&mut perm, 5);
@@ -525,17 +525,17 @@ const ATOMIC_I32: &str = code_str! {
 
     let l = at.fetch_or(&mut perm, 2);
     assert(l == 9);
-    assert_bit_vector((9 as u64 | 2 as u64) == 11 as u64);
+    assert_bit_vector((9 as u32 | 2 as u32) == 11 as u32);
     assert(perm.value == 11);
 
     let l = at.fetch_and(&mut perm, 6);
     assert(l == 11);
-    assert_bit_vector((11 as u64 & 6 as u64) == 2 as u64);
+    assert_bit_vector((11 as u32 & 6 as u32) == 2 as u32);
     assert(perm.value == 2);
 
     let l = at.fetch_xor(&mut perm, 3);
     assert(l == 2);
-    assert_bit_vector((2 as u64 ^ 3 as u64) == 1 as u64);
+    assert_bit_vector((2 as u32 ^ 3 as u32) == 1 as u32);
     assert(perm.value == 1);
 
     let l = at.fetch_max(&mut perm, 5);
@@ -626,17 +626,17 @@ const ATOMIC_I16: &str = code_str! {
 
     let l = at.fetch_or(&mut perm, 2);
     assert(l == 9);
-    assert_bit_vector((9 as u64 | 2 as u64) == 11 as u64);
+    assert_bit_vector((9 as u16 | 2 as u16) == 11 as u16);
     assert(perm.value == 11);
 
     let l = at.fetch_and(&mut perm, 6);
     assert(l == 11);
-    assert_bit_vector((11 as u64 & 6 as u64) == 2 as u64);
+    assert_bit_vector((11 as u16 & 6 as u16) == 2 as u16);
     assert(perm.value == 2);
 
     let l = at.fetch_xor(&mut perm, 3);
     assert(l == 2);
-    assert_bit_vector((2 as u64 ^ 3 as u64) == 1 as u64);
+    assert_bit_vector((2 as u16 ^ 3 as u16) == 1 as u16);
     assert(perm.value == 1);
 
     let l = at.fetch_max(&mut perm, 5);
@@ -727,17 +727,17 @@ const ATOMIC_I8: &str = code_str! {
 
     let l = at.fetch_or(&mut perm, 2);
     assert(l == 9);
-    assert_bit_vector((9 as u64 | 2 as u64) == 11 as u64);
+    assert_bit_vector((9 as u8 | 2 as u8) == 11 as u8);
     assert(perm.value == 11);
 
     let l = at.fetch_and(&mut perm, 6);
     assert(l == 11);
-    assert_bit_vector((11 as u64 & 6 as u64) == 2 as u64);
+    assert_bit_vector((11 as u8 & 6 as u8) == 2 as u8);
     assert(perm.value == 2);
 
     let l = at.fetch_xor(&mut perm, 3);
     assert(l == 2);
-    assert_bit_vector((2 as u64 ^ 3 as u64) == 1 as u64);
+    assert_bit_vector((2 as u8 ^ 3 as u8) == 1 as u8);
     assert(perm.value == 1);
 
     let l = at.fetch_max(&mut perm, 5);
