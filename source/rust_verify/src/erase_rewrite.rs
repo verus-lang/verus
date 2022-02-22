@@ -3,7 +3,7 @@
 
 use rustc_ast::ast::{
     AssocItem, AssocItemKind, Expr, ExprKind, ForeignItem, ForeignItemKind, Item, ItemKind, Param,
-    Pat, Path,
+    Pat,
 };
 use rustc_ast::mut_visit::MutVisitor;
 use rustc_ast::ptr::P;
@@ -32,11 +32,6 @@ impl Visitor {
 }
 
 impl MutVisitor for Visitor {
-    fn visit_path(&mut self, p: &mut Path) {
-        self.freshen_span(&mut p.span);
-        rustc_ast::mut_visit::noop_visit_path(p, self);
-    }
-
     fn visit_pat(&mut self, p: &mut P<Pat>) {
         self.freshen_span(&mut p.span);
         rustc_ast::mut_visit::noop_visit_pat(p, self);
