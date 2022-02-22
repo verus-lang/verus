@@ -28,11 +28,63 @@ fn get_bit_exec(bv:u32, loc:u32) -> bool {
 
 #[exec]
 fn set_bit_exec(bv:u32, loc:u32, bit:bool) -> u32 {
+    requires(loc < 32);
     ensures(|ret:u32| ret == set_bit(bv,loc,bit));
     assert_bit_vector((if bit { bv | 1u32 << loc } else { bv & (!(1u32 << loc)) }) == set_bit(bv, loc, bit));
     let one = 1u32 << loc;
     if bit {bv | one}
     else {bv & (!one)}
+}
+
+// #[exec]
+// fn get_two_bit_exec(bv:u32, low_loc:u32) -> (bool, bool) {
+//     requires(low_loc < 31);
+//     ensures(|(high,low):(bool,bool)| [ 
+//         high == get_bit(bv, low_loc + 1) && low == get_bit(bv, low_loc)
+//     ]);
+//     let val = 3u32 & (bv >> low_loc);
+//     assert_bit_vector(3u32 & (bv >> low_loc) < 4);
+//     if val == 3 {(true, true)} else if val == 2 {(true, false)} else if val == 1 {(false, true)} else {(false,false)}
+// }
+
+#[exec]
+fn set_two_bit_exec(bv:u32, low_loc:u32, high:bool, low:bool) -> u32 {
+    requires(low_loc < 31);
+    ensures(|ret:u32| [ 
+        ret == set_bit(set_bit(bv, low_loc, low), low_loc+1, high),
+        ret == set_bit(set_bit(bv, low_loc+1, high), low_loc, low),
+        get_bit(ret, low_loc) == low,
+        get_bit(ret, low_loc+1) == high,
+        forall(|loc2:u32| (loc2 < 32 && loc2 != low_loc && loc2 != (low_loc+1)) >>= (get_bit(ret, loc2) == get_bit(bv, loc2))),
+    ]);
+    let target:u32 = {if high {if low {3u32} else {2u32}} else {if low {1u32} else {0u32}}} << low_loc;
+    let mask:u32 = !(3u32 << low_loc);
+    let result:u32 = (bv & mask) | target;
+    assert_bit_vector(
+        low_loc < 31 >>= 
+        (   (bv & (!(3u32 << low_loc))) |  
+        ({if high {if low {3u32} else {2u32}} else {if low {1u32} else {0u32}}} << low_loc) 
+        == set_bit(set_bit(bv, low_loc, low), low_loc+1, high)     ));
+    assert_bit_vector(
+        low_loc < 31 >>= 
+        ((bv & (!(3u32 << low_loc))) |  
+        ({if high {if low {3u32} else {2u32}} else {if low {1u32} else {0u32}}} << low_loc) 
+        ==  set_bit(set_bit(bv, low_loc+1, high), low_loc, low)));
+    assert_bit_vector(
+        low_loc < 31 >>= 
+        (get_bit((bv & (!(3u32 << low_loc))) |  
+        ({if high {if low {3u32} else {2u32}} else {if low {1u32} else {0u32}}} << low_loc), low_loc) 
+        == low));
+    assert_bit_vector(
+        low_loc < 31 >>= 
+        (get_bit((bv & (!(3u32 << low_loc))) |  
+        ({if high {if low {3u32} else {2u32}} else {if low {1u32} else {0u32}}} << low_loc), low_loc+1) 
+        == high));
+    assert_bit_vector(forall (|loc2:u32|  (low_loc <31 && loc2 < 32 && low_loc != loc2 && (low_loc+1) != loc2) >>=
+            (get_bit((bv & (!(3u32 << low_loc))) |  
+            ({if high {if low {3u32} else {2u32}} else {if low {1u32} else {0u32}}} << low_loc), loc2)
+             ==  get_bit(bv, loc2))));
+    result
 }
 
 #[proof]
@@ -52,48 +104,6 @@ fn set_bit_property_auto(bv:u32, bv2:u32, loc:u32, bit:bool) {
         get_bit(bv2, loc) == bit);
 }
 
-
-#[spec]
-fn bv_view_aux(bv: u32, i: u32) -> Seq<bool> {
-    decreases(i);
-
-    let bit = seq![get_bit(bv, i)];
-    if i == 0 {
-        bit
-    } else {
-        bv_view_aux(bv, i - 1).add(bit)
-    }
-}
-
-#[spec]
-fn bv_view(bv: u32) -> Seq<bool> {
-    bv_view_aux(bv, 31)
-}
-
-#[proof]
-fn bv_view_aux_correspond(bv: u32, i: u32) {
-    decreases(i);
-    requires(i<32u32);
-    ensures([
-        bv_view_aux(bv, i).len() == i as int + 1,
-        forall(|j: u32| (j <= i) >>= (bv_view_aux(bv, i).index(j) == get_bit(bv, j)) )
-    ]);
-
-    if i != 0 {
-        bv_view_aux_correspond(bv, i - 1);
-    }
-}
-
-#[proof]
-fn bv_view_correspond(bv: u32)
-{
-    ensures([
-        bv_view(bv).len() == 32,
-        forall(|i: u32| (i < 32) >>= bv_view(bv).index(i) == get_bit(bv, i))
-    ]);
-    bv_view_aux_correspond(bv, 31);
-}
-
 #[derive(Structural, PartialEq, Eq)]
 enum Color {
     White,     // 00
@@ -107,16 +117,6 @@ fn color_view(high:bool, low:bool) -> Color {
     if high {if low {Color::White} else {Color::Gray}}
     else {if low {Color::Black} else {Color::Undefined}}
 }
-
-// #[exec]
-// fn color_to_bits(c: Color) -> (bool, bool) {
-//     match c {
-//         Color::White => (false, false),
-//         Color::Gray =>  (false, true),
-//         Color::Black => (true, false),
-//         Color::Undefined => (true, true),
-//     }
-// }
 
 #[spec]
 fn bucket_view_aux(bucket: u32, index: u32) -> Seq<Color> {
@@ -153,7 +153,6 @@ fn bucket_view_aux_correspond(bucket: u32, i: u32) {
     }
 }
 
-
 #[spec]
 fn bucket_view(bucket: u32) -> Seq<Color> {
     bucket_view_aux(bucket, 15)
@@ -178,10 +177,7 @@ fn set_color(bucket:u32, high:bool, low:bool , i:u32, #[proof] ghost_bucket:Seq<
         bucket_view(new_bucket).ext_equal(ghost_bucket.update(i, color_view(high,low))),
     ]);
 
-    let bucket1 = set_bit_exec(bucket, 2*i+1, high);
-    let new_bucket = set_bit_exec(bucket1, 2*i, low);
-    set_bit_property_auto(bucket, bucket1, 2*i+1, high);
-    set_bit_property_auto(bucket1, new_bucket, 2*i, low);
+    let new_bucket = set_two_bit_exec(bucket, 2*i, high, low);
     assert(color_view(high,low) == color_view(get_bit(new_bucket, 2*i+1), get_bit(new_bucket, 2*i)));
     bucket_view_correspond(bucket);
     bucket_view_correspond(new_bucket);
