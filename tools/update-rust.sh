@@ -28,7 +28,8 @@ fi
     fi
 
     cp config.toml.verify config.toml
-    git pull --ff-only origin verification
+    git fetch origin verification
+    git reset --hard origin/verification
     ./x.py install -i
 )
 
