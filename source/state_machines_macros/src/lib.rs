@@ -10,6 +10,7 @@ mod lemmas;
 mod parse_token_stream;
 mod parse_transition;
 mod safety_conditions;
+mod simplification;
 mod to_relation;
 mod to_token_stream;
 mod transitions;

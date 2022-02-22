@@ -3,6 +3,7 @@ use builtin::*;
 mod pervasive;
 use pervasive::*;
 use pervasive::multiset::*;
+use pervasive::option::*;
 
 use state_machines_macros::concurrent_state_machine;
 
@@ -40,8 +41,8 @@ concurrent_state_machine!(RwLock {
 
         remove_element(pending_reader, ());
 
-        let x = self.storage.storage.get_Some_0();
-        add_element(pending_reader, x);
+        let x = self.storage.get_Some_0();
+        add_element(reader, x);
     }
 
     #[inductive(start_read)]
