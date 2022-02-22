@@ -513,3 +513,21 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_one_fails(err)
 }
+
+test_verify_one_file! {
+    #[test] extra_dep_fail code! {
+        // We expect this to complain about the lack of 'decreases' clause
+
+        #[proof]
+        fn dec1(i: nat) {
+            dec2(i);
+        }
+
+        #[proof]
+        #[verifier(external_body)]
+        fn dec2(i: nat) {
+            extra_dependency(dec1);
+            unimplemented!();
+        }
+    } => Err(err) => assert_vir_error(err)
+}

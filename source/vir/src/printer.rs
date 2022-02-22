@@ -138,6 +138,7 @@ fn header_expr_to_node(header_expr: &HeaderExprX) -> Node {
             nodes!(invariantOpensExcept {exprs_to_node(exprs)})
         }
         HeaderExprX::Hide(fun) => nodes!(hide {fun_to_node(fun)}),
+        HeaderExprX::ExtraDependency(fun) => nodes!(extra_dependency {fun_to_node(fun)}),
     }
 }
 
@@ -326,9 +327,10 @@ fn function_to_node(function: &FunctionX) -> Node {
         decrease,
         mask_spec,
         is_const,
-        is_abstract,
+        publish,
         attrs,
         body,
+        extra_dependencies,
     } = function;
     let typ_bounds_node = Node::List(
         typ_bounds
@@ -403,6 +405,11 @@ fn function_to_node(function: &FunctionX) -> Node {
 
         Node::List(nodes)
     };
+    let extra_dependencies_node = {
+        let mut nodes: Vec<Node> = vec![str_to_node("extra_dependencies")];
+        nodes.extend(extra_dependencies.iter().map(|ed| fun_to_node(ed)));
+        Node::List(nodes)
+    };
     let mut nodes = vec![
         str_to_node("function"),
         fun_to_node(name),
@@ -424,12 +431,13 @@ fn function_to_node(function: &FunctionX) -> Node {
         str_to_node(":decrease"),
         exprs_to_node(decrease),
         mask_spec_node,
+        extra_dependencies_node,
     ];
     if *is_const {
         nodes.push(str_to_node("+is_const"));
     }
-    if *is_abstract {
-        nodes.push(str_to_node("+is_abstract"));
+    if let Some(publish) = publish {
+        nodes.push(nodes!(publish {Node::Atom(format!("{}", publish))}));
     }
     nodes.push(function_attrs_node);
     if let Some(body) = body {

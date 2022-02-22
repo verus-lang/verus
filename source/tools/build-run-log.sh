@@ -24,11 +24,12 @@ mkdir -p $rs_file_dir/log
 
 RUSTC=../rust/install/bin/rustc ../rust/install/bin/cargo build && \
         VERUS_Z3_PATH="$(pwd)/z3" DYLD_LIBRARY_PATH=../rust/install/lib/rustlib/x86_64-apple-darwin/lib LD_LIBRARY_PATH=../rust/install/lib ../rust/install/bin/rust_verify --edition=2018 --pervasive-path pervasive --extern builtin=../rust/install/bin/libbuiltin.rlib --extern builtin_macros=../rust/install/bin/libbuiltin_macros.$DYN_LIB_EXT $rs_file \
-        --log-air $rs_file_dir/log/$rs_file_basename.air --log-vir $rs_file_dir/log/$rs_file_basename.vir --log-smt $rs_file_dir/log/$rs_file_basename.smt
+        --log-air $rs_file_dir/log/$rs_file_basename.air --log-vir $rs_file_dir/log/$rs_file_basename.vir --log-vir-simple $rs_file_dir/log/$rs_file_bbasename.vir-simple --log-smt $rs_file_dir/log/$rs_file_basename.smt
 result=$?
 
 echo
 echo -e "${color_blue}log-air${color_reset}" "$rs_file_dir/log/$rs_file_basename.air"
 echo -e "${color_blue}log-vir${color_reset}" "$rs_file_dir/log/$rs_file_basename.vir"
+echo -e "${color_blue}log-vir-simple${color_reset}" "$rs_file_dir/log/$rs_file_basename.vir-simple..."
 echo -e "${color_blue}log-smt${color_reset}" "$rs_file_dir/log/$rs_file_basename.smt"
 exit $?

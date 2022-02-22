@@ -10,6 +10,7 @@ pub mod cell;
 pub mod invariants;
 pub mod atomic;
 pub mod modes;
+pub mod multiset;
 
 #[allow(unused_imports)]
 use builtin::*;

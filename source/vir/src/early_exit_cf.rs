@@ -11,8 +11,8 @@ enum StatementType {
 
 #[derive(Clone, Debug)]
 struct EarlyExitInst {
-    pub span: Span,
-    pub statement: StatementType,
+    span: Span,
+    _statement: StatementType,
 }
 
 pub fn assert_no_early_exit_in_inv_block(inv_span: &Span, expr: &Expr) -> Result<(), VirErr> {
@@ -81,7 +81,7 @@ fn expr_get_early_exits_rec(
             ExprX::Return(_) => {
                 results.push(EarlyExitInst {
                     span: expr.span.clone(),
-                    statement: StatementType::Return,
+                    _statement: StatementType::Return,
                 });
                 VisitorControlFlow::Recurse
             }

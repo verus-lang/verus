@@ -16,7 +16,7 @@ and `spec` and `proof` are two different kinds of "ghost".
 
 Here is an example:
 ```
-#[opaque]
+#[verifier(opaque)]
 #[spec]
 fn f(n: int) -> int { n + 1 }
 
@@ -38,7 +38,7 @@ fn main() {
 or, with a hypothetical future nice syntax:
 
 ```
-#[opaque]
+#[verifier(opaque)]
 spec fn f(n: int) -> int { n + 1 }
 
 proof fn lemma_f(n: int)

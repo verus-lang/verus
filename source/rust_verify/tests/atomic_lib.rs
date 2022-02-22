@@ -20,7 +20,7 @@ fn test_body(tests: &str, contradiction_smoke_test: bool) -> String {
 }
 
 const ATOMIC_U64: &str = code_str! {
-    let (at, proof(mut perm)) = PAtomicU64::new(5);
+    let (at, Proof(mut perm)) = PAtomicU64::new(5);
 
     assert(perm.value == 5);
 
@@ -113,7 +113,7 @@ test_verify_one_file! {
 }
 
 const ATOMIC_U32: &str = code_str! {
-    let (at, proof(mut perm)) = PAtomicU32::new(5);
+    let (at, Proof(mut perm)) = PAtomicU32::new(5);
 
     assert(perm.value == 5);
 
@@ -206,7 +206,7 @@ test_verify_one_file! {
 }
 
 const ATOMIC_U16: &str = code_str! {
-    let (at, proof(mut perm)) = PAtomicU16::new(5);
+    let (at, Proof(mut perm)) = PAtomicU16::new(5);
 
     assert(perm.value == 5);
 
@@ -299,7 +299,7 @@ test_verify_one_file! {
 }
 
 const ATOMIC_U8: &str = code_str! {
-    let (at, proof(mut perm)) = PAtomicU8::new(5);
+    let (at, Proof(mut perm)) = PAtomicU8::new(5);
 
     assert(perm.value == 5);
 
@@ -392,7 +392,7 @@ test_verify_one_file! {
 }
 
 const ATOMIC_I64: &str = code_str! {
-    let (at, proof(mut perm)) = PAtomicI64::new(5);
+    let (at, Proof(mut perm)) = PAtomicI64::new(5);
 
     assert(perm.value == 5);
 
@@ -493,7 +493,7 @@ test_verify_one_file! {
 }
 
 const ATOMIC_I32: &str = code_str! {
-    let (at, proof(mut perm)) = PAtomicI32::new(5);
+    let (at, Proof(mut perm)) = PAtomicI32::new(5);
 
     assert(perm.value == 5);
 
@@ -594,7 +594,7 @@ test_verify_one_file! {
 }
 
 const ATOMIC_I16: &str = code_str! {
-    let (at, proof(mut perm)) = PAtomicI16::new(5);
+    let (at, Proof(mut perm)) = PAtomicI16::new(5);
 
     assert(perm.value == 5);
 
@@ -695,7 +695,7 @@ test_verify_one_file! {
 }
 
 const ATOMIC_I8: &str = code_str! {
-    let (at, proof(mut perm)) = PAtomicI8::new(5);
+    let (at, Proof(mut perm)) = PAtomicI8::new(5);
 
     assert(perm.value == 5);
 
@@ -796,7 +796,7 @@ test_verify_one_file! {
 }
 
 const ATOMIC_BOOL: &str = code_str! {
-    let (at, proof(mut perm)) = PAtomicBool::new(false);
+    let (at, Proof(mut perm)) = PAtomicBool::new(false);
 
     assert(perm.value == false);
 

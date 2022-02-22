@@ -14,7 +14,6 @@ test_verify_one_file! {
     #[test] test_impl_1 STRUCT.to_string() + code_str! {
         impl Bike {
             #[spec]
-            #[verifier(pub_abstract)]
             pub fn is_hard_tail(&self) -> bool {
                 self.hard_tail
             }
@@ -55,7 +54,7 @@ test_verify_one_file! {
             }
 
             impl Bike {
-                #[spec]
+                #[spec] #[verifier(publish)]
                 pub fn is_hard_tail(&self) -> bool {
                     self.hard_tail
                 }
@@ -95,7 +94,6 @@ test_verify_one_file! {
 
             impl Bike {
                 #[spec]
-                #[verifier(pub_abstract)]
                 pub fn is_hard_tail(&self) -> bool {
                     self.hard_tail
                 }
@@ -123,7 +121,6 @@ const IMPL_GENERIC_SHARED: &str = code_str! {
 
     impl<A> Wrapper<A> {
         #[spec]
-        #[verifier(pub_abstract)]
         pub fn take(self) -> A {
             self.v
         }
@@ -165,7 +162,6 @@ test_verify_one_file! {
 
         impl<A> Wrapper<A> {
             #[spec]
-            #[verifier(pub_abstract)]
             pub fn take<B>(self, b: B) -> Two<A, B> {
                 Two { a: self.v, b: b }
             }
@@ -329,6 +325,28 @@ test_verify_one_file! {
 
             let f = Foo::<u64> { v: 17 };
             #[spec] let b = f.bar2(|y: u64| true);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_resolve_self_ty code! {
+        struct Foo<V> {
+          x: V,
+        }
+
+        impl<V> Foo<V> {
+            fn bar(self) -> Self {
+                ensures(|s: Self| equal(self, s));
+
+                self
+            }
+
+            fn bar2(self) -> Self {
+                ensures(|s: Self| equal(self, s));
+
+                Self::bar(self)
+            }
         }
     } => Ok(())
 }

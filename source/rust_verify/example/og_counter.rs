@@ -38,7 +38,6 @@ pub struct Init {
 
 impl Init {
   #[spec]
-  #[verifier(pub_abstract)]
   pub fn valid(self) -> bool {
       equal(self.counter.counter, 0)
       && !self.incA.done
@@ -112,7 +111,6 @@ pub struct G {
 
 impl G {
   #[spec]
-  #[verifier(pub_abstract)]
   pub fn wf(self, patomic: PAtomicU32) -> bool {
     equal(self.perm.patomic, patomic.view()) && equal(self.perm.value as int, self.counter.counter)
   }
@@ -128,7 +126,7 @@ fn main() {
 
   // Initialize the counter
 
-  let (at, proof(perm_token)) = PAtomicU32::new(0);
+  let (at, Proof(perm_token)) = PAtomicU32::new(0);
 
   #[proof] let at_inv: Invariant<G> = Invariant::new(
       G { counter: counter_token, perm: perm_token },

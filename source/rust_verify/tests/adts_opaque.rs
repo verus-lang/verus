@@ -15,7 +15,7 @@ test_verify_one_file! {
             }
 
             #[spec]
-            //must have this: #[verifier(pub_abstract)]
+            #[verifier(publish)] // illegal
             pub fn get_passengers(c: Car) -> nat {
                 c.passengers
             }
@@ -34,7 +34,6 @@ const M1: &str = code_str! {
         }
 
         #[spec]
-        #[verifier(pub_abstract)]
         pub fn get_passengers(c: Car) -> nat {
             c.passengers
         }
@@ -73,5 +72,77 @@ test_verify_one_file! {
             }
         }
     } => Ok(())
-    // => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] test_opaque_fn code! {
+        struct A {}
+
+        impl A {
+            #[spec] #[verifier(opaque)]
+            pub fn always(&self) -> bool {
+                true
+            }
+        }
+
+        fn main() {
+            let a = A {};
+            reveal(A::always);
+            assert(a.always());
+        }
+    } => Ok(())
+}
+
+const M1_OPAQUE: &str = code_str! {
+    mod M1 {
+        use builtin::*;
+        use crate::pervasive::*;
+
+        pub struct A {
+            field: u64,
+        }
+
+        impl A {
+            #[spec] #[verifier(publish)] #[verifier(opaque_outside_module)]
+            pub fn always(&self) -> bool {
+                true
+            }
+        }
+
+        fn test1() {
+            let a = A { field: 12 };
+            assert(a.always());
+        }
+    }
+};
+
+test_verify_one_file! {
+    #[test] test_opaque_fn_modules_within M1_OPAQUE.to_string() => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_opaque_fn_modules_pass M1_OPAQUE.to_string() + code_str! {
+        mod M2 {
+            use builtin::*;
+            use crate::pervasive::*;
+
+            fn test(a: crate::M1::A) {
+                reveal(crate::M1::A::always);
+                assert(a.always());
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_opaque_fn_modules_fail M1_OPAQUE.to_string() + code_str! {
+        mod M2 {
+            use builtin::*;
+            use crate::pervasive::*;
+
+            fn test(a: crate::M1::A) {
+                assert(a.always()); // FAILS
+            }
+        }
+    } => Err(e) => assert_one_fails(e)
 }

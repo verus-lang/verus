@@ -62,7 +62,7 @@ fn s_prop2<C>(x: S<C>, y: S<C>) {
 }
 
 #[spec]
-#[opaque]
+#[verifier(opaque)]
 fn g<A>(a: A) -> A {
     a
 }
