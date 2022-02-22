@@ -16,7 +16,7 @@ use syn::Token;
 use syn::{
     braced, AttrStyle, Attribute, Error, FieldsNamed, FnArg, GenericParam, Generics, Ident,
     ImplItemMethod, Meta, MetaList, NestedMeta, Receiver, ReturnType, Type, TypePath, Visibility,
-    WhereClause,
+    WhereClause, PathArguments, GenericArgument,
 };
 
 pub struct SMBundle {
@@ -426,8 +426,34 @@ fn get_sharding_type(
 /// the type parameter and returns it.
 /// Returns an Error (using the given strategy name in the error message) if the given
 /// type is not of the right form.
-fn extract_template_param(ty: &Type, _strategy: &str, _type_name: &str) -> syn::parse::Result<Type> {
-    panic!("not impl {:#?}", ty);
+fn extract_template_param(ty: &Type, strategy: &str, type_name: &str) -> syn::parse::Result<Type> {
+    match ty {
+        Type::Path(TypePath { qself: None, path }) if path.segments.len() == 1 => {
+            let path_segment = &path.segments[0];
+            if path_segment.ident.to_string() == type_name {
+                match &path_segment.arguments {
+                    PathArguments::AngleBracketed(args) => {
+                        if args.args.len() == 1 {
+                            let gen_arg = &args.args[0];
+                            match gen_arg {
+                                GenericArgument::Type(ty) => {
+                                    return Ok(ty.clone());
+                                }
+                                _ => { }
+                            }
+                        }
+                    }
+                    _ => { }
+                }
+            }
+        }
+        _ => {
+        }
+    }
+
+    let expected_form = type_name.to_string() + "<...>";
+    return Err(Error::new(ty.span(),
+        format!("type of a field with sharding strategy '{strategy:}' must be of the form {expected_form:}")));
 }
 
 fn to_fields(
