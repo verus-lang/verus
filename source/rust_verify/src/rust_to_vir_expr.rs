@@ -1598,7 +1598,7 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                 None => None,
                 Some(update) => Some(expr_to_vir(bctx, update, modifier)?),
             };
-            let (path, path_span, variant_name) = match qpath {
+            let (path, variant_name) = match qpath {
                 QPath::Resolved(slf, path) => {
                     unsupported_unless!(
                         matches!(path.res, Res::Def(DefKind::Struct | DefKind::Variant, _)),
@@ -1615,7 +1615,7 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                             .expect(format!("variant name in Struct ctor for {:?}", path).as_str());
                     }
                     let variant_name = str_ident(&variant.ident.as_str());
-                    (vir_path, path.raw_span, variant_name)
+                    (vir_path, variant_name)
                 }
                 _ => panic!("unexpected qpath {:?}", qpath),
             };
@@ -1630,7 +1630,7 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
             );
             let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
             let resolved_call = ResolvedCall::Ctor(path.clone(), variant_name.clone());
-            erasure_info.resolved_calls.push((path_span.data(), resolved_call));
+            erasure_info.resolved_calls.push((expr.span.data(), resolved_call));
             Ok(mk_expr(ExprX::Ctor(path, variant_name, vir_fields, update)))
         }
         ExprKind::MethodCall(_name_and_generics, _call_span_0, all_args, call_span_1) => {

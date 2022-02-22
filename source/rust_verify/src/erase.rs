@@ -625,7 +625,7 @@ fn erase_expr_opt(ctxt: &Ctxt, mctxt: &mut MCtxt, expect: Mode, expr: &Expr) -> 
                     StructRest::None | StructRest::Rest(_) => rest.clone(),
                     StructRest::Base(e) => StructRest::Base(P(erase_expr(ctxt, mctxt, expect, e))),
                 };
-                let (vir_path, variant) = match mctxt.find_span(&ctxt.calls, path.span) {
+                let (vir_path, variant) = match mctxt.find_span(&ctxt.calls, expr.span) {
                     ResolvedCall::Ctor(path, variant) => (path, variant),
                     _ => panic!("internal error: expected Ctor"),
                 };
