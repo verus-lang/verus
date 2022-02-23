@@ -68,46 +68,8 @@ fn color_view(high:bool, low:bool) -> Color {
 }
 
 #[spec]
-fn bucket_view_aux(bucket: u32, index: u32) -> Seq<Color> {
-    decreases(index);
-    
-    let up_bit:bool = get_bit(bucket, index*2 + 1);
-    let low_bit:bool = get_bit(bucket, index*2);
-    let c:Color = color_view(up_bit,low_bit);
-
-    if index == 0 {
-        seq![c]
-    } else {
-        bucket_view_aux(bucket, index-1).add(seq![c])
-    }
-}
-
-#[proof]
-fn bucket_view_aux_correspond(bucket: u32, i: u32) {
-    decreases(i);
-    requires(i < 16u32);
-    ensures([
-        bucket_view_aux(bucket, i).len() == i as int + 1,
-        forall(|j: u32| (j <= i) >>= (bucket_view_aux(bucket, i).index(j) == color_view(get_bit(bucket, 2*j+1), get_bit(bucket, 2*j)))),
-    ]);
-
-    if i != 0 {
-        bucket_view_aux_correspond(bucket, i - 1);
-    }
-}
-
-#[spec]
 fn bucket_view(bucket: u32) -> Seq<Color> {
-    bucket_view_aux(bucket, 15)
-}
-
-#[proof]
-fn bucket_view_correspond(bucket: u32) {
-    ensures([
-        bucket_view(bucket).len() == 16,
-        forall(|i: u32| (i < 16) >>= bucket_view(bucket).index(i) == color_view(get_bit(bucket, 2*i+1), get_bit(bucket, 2*i)))
-    ]);
-    bucket_view_aux_correspond(bucket, 15);
+    Seq::new(16, |i: int| color_view(get_bit(bucket, (i as u32)*2 + 1),get_bit(bucket, (i as u32) * 2)))
 }
 
 #[exec]
@@ -150,8 +112,6 @@ fn set_color(bucket:u32, high:bool, low:bool , i:u32, #[proof] ghost_bucket:Seq<
 
     let new_bucket = set_two_bit_exec(bucket, 2*i, high, low);
     assert(color_view(high,low) == color_view(get_bit(new_bucket, 2*i+1), get_bit(new_bucket, 2*i)));
-    bucket_view_correspond(bucket);
-    bucket_view_correspond(new_bucket);
     new_bucket
 }
 
@@ -178,7 +138,6 @@ fn get_color(bv:u32, index:u32) -> Color {
 
     assert_bit_vector((3u32 & (bv >> index*2) == 0) >>= !get_bit(bv, index*2));
     assert_bit_vector((3u32 & (bv >> index*2) == 0) >>= !get_bit(bv, index*2+1));
-
 
     let c = if v == 0 {
         Color::Undefined
