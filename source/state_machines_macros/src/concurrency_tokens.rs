@@ -213,6 +213,12 @@ fn token_struct_stream(sm_name: &Ident, field: &Field) -> TokenStream {
     };
 }
 
+/// Create the struct for a Token that derives from a
+/// sharding(multiset) field.
+fn token_struct_stream_multiset(sm_name: &Ident, field: &Field) -> TokenStream {
+    token_struct_stream(sm_name, field)
+}
+
 /// For a given sharding(constant) field, add that constant
 /// as a #[spec] fn on the Instance type. (The field is constant
 /// for the entire instance.)
@@ -258,7 +264,7 @@ pub fn output_token_types_and_fns(
                 // don't need to add a struct in this case
             }
             ShardableType::Multiset(_) => {
-                token_stream.extend(token_struct_stream(&bundle.sm.name, field));
+                token_stream.extend(token_struct_stream_multiset(&bundle.sm.name, field));
             }
         }
     }
@@ -451,7 +457,21 @@ pub fn exchange_stream(bundle: &SMBundle, tr: &Transition) -> syn::parse::Result
                 }
             }
             ShardableType::Multiset(_) => {
-                panic!("unimpl");
+                if ctxt.is_init {
+                    panic!("multiset is_init not implemented");
+                } else {
+                    assert!(!ctxt.fields_written.contains(&field.ident));
+                    assert!(!ctxt.fields_read.contains(&field.ident));
+
+                    add_token_params_remove_have_add(
+                        &mut ctxt,
+                        &mut in_args,
+                        &mut out_args,
+                        &mut inst_eq_enss,
+                        &mut inst_eq_reqs,
+                        &tr,
+                        field);
+                }
             }
         };
     }
@@ -555,7 +575,8 @@ pub fn exchange_stream(bundle: &SMBundle, tr: &Transition) -> syn::parse::Result
     });
 }
 
-fn add_token_param_in_out(ctxt: &Ctxt,
+fn add_token_param_in_out(
+    ctxt: &Ctxt,
     in_args: &mut Vec<TokenStream>,
     out_args: &mut Vec<(TokenStream, TokenStream)>,
     inst_eq_enss: &mut Vec<Expr>,
@@ -598,6 +619,26 @@ fn add_token_param_in_out(ctxt: &Ctxt,
             ::builtin::equal(#lhs, #inst)
         }));
     }
+}
+
+fn add_token_params_remove_have_add(
+    ctxt: &mut Ctxt,
+    in_args: &mut Vec<TokenStream>,
+    out_args: &mut Vec<(TokenStream, TokenStream)>,
+    inst_eq_enss: &mut Vec<Expr>,
+    inst_eq_reqs: &mut Vec<Expr>,
+    tr: &Transition,
+    field: &Field)
+{
+    let mut removes = Vec::new();
+    let mut haves = Vec::new();
+    let mut adds = Vec::new();
+
+    let seen_remove = false;
+    let seen_have = false;
+
+    collect_removes_haves_adds(&tr.body, field
+        &mut adds, &mut haves, &mut removes, &mut seen_remove, &mut seen_have);
 }
 
 fn mk_eq(lhs: &Expr, rhs: &Expr) -> Expr {
@@ -671,12 +712,14 @@ fn determine_outputs(ctxt: &mut Ctxt, ts: &TransitionStmt) -> syn::parse::Result
             let f = ctxt.get_field_or_panic(id);
             if !ctxt.is_init {
                 match f.stype {
+                    ShardableType::Variable(_) => { }
                     ShardableType::Constant(_) => {
                         return Err(Error::new(
                             *span,
                             "cannot update a field marked constant outside of initialization",
                         ));
                     }
+                    ShardableType::
                     _ => {}
                 }
             }
@@ -684,9 +727,9 @@ fn determine_outputs(ctxt: &mut Ctxt, ts: &TransitionStmt) -> syn::parse::Result
             ctxt.fields_written.insert(id.clone());
             Ok(())
         }
-        TransitionStmt::AddElement(_span, _id, _e) => { panic!("not impl"); }
-        TransitionStmt::RemoveElement(_span, _id, _e) => { panic!("not impl"); }
-        TransitionStmt::HaveElement(_span, _id, _e) => { panic!("not impl"); }
+        TransitionStmt::AddElement(_span, _id, _e) => Ok(()),
+        TransitionStmt::RemoveElement(_span, _id, _e) => Ok(()),
+        TransitionStmt::HaveElement(_span, _id, _e) => Ok(()),
     }
 }
 
@@ -1070,6 +1113,58 @@ fn prequel_vec_to_expr(v: &Vec<PrequelElement>) -> Option<Expr> {
 ///
 /// Returns 'None' if it doesn't find an 'update' for the given variable.
 fn get_output_value_for_variable(ctxt: &Ctxt, ts: &TransitionStmt, field: &Field) -> Option<Expr> {
+    match ts {
+        TransitionStmt::Block(_span, v) => {
+            let mut opt = None;
+            for child in v.iter() {
+                let o = get_output_value_for_variable(ctxt, child, field);
+                if o.is_some() {
+                    // We should have already performed a check that the field
+                    // is not updated more than once.
+                    assert!(!opt.is_some());
+                    opt = o;
+                }
+            }
+            opt
+        }
+        TransitionStmt::If(_span, cond_e, e1, e2) => {
+            let o1 = get_output_value_for_variable(ctxt, e1, field);
+            let o2 = get_output_value_for_variable(ctxt, e2, field);
+            if o1.is_none() && o2.is_none() {
+                None
+            } else {
+                let e1 = match o1 {
+                    None => get_old_field_value(ctxt, &field),
+                    Some(e) => e,
+                };
+                let e2 = match o2 {
+                    None => get_old_field_value(ctxt, &field),
+                    Some(e) => e,
+                };
+                Some(Expr::Verbatim(quote! { if #cond_e { #e1 } else { #e2 } }))
+            }
+        }
+        TransitionStmt::Update(_span, id, e) => {
+            if *id.to_string() == *field.ident.to_string() {
+                Some(e.clone())
+            } else {
+                None
+            }
+        }
+        TransitionStmt::Let(_, _, _)
+        | TransitionStmt::Require(_, _)
+        | TransitionStmt::Assert(_, _)
+        | TransitionStmt::AddElement(..)
+        | TransitionStmt::RemoveElement(..)
+        | TransitionStmt::HaveElement(..) => None,
+    }
+}
+
+fn collect_removes_haves_adds(body: &TransitionStmt, field: &Field,
+      adds: &mut Vec<Expr>,
+      haves: &mut Vec<Expr>,
+      removes: &mut Vec<Expr>)
+{
     match ts {
         TransitionStmt::Block(_span, v) => {
             let mut opt = None;
