@@ -44,6 +44,7 @@ fn check_updates_refer_to_valid_fields(
             }
             Ok(())
         }
+        TransitionStmt::PostCondition(..) => Ok(()),
     }
 }
 
@@ -155,6 +156,7 @@ fn check_readonly_variable(field: &Field, ts: &TransitionStmt) -> syn::parse::Re
             TransitionStmt::HaveElement(span, _, _) => {
                 errors.push(Error::new(*span, format!("'have_element' statement not allowed for field with sharding strategy '{:}'", field.stype.strategy_name())));
             }
+            TransitionStmt::PostCondition(..) => { }
         }
     });
     combine_errors_or_ok(errors)
@@ -179,6 +181,7 @@ fn check_readonly_elemental(field: &Field, ts: &TransitionStmt) -> syn::parse::R
                 errors.push(Error::new(*span, "'remove_element' statement not allowed in readonly transition"))
             }
             TransitionStmt::HaveElement(_, _, _) => { }
+            TransitionStmt::PostCondition(..) => { }
         }
     });
     combine_errors_or_ok(errors)
@@ -205,6 +208,7 @@ fn check_constant_not_updated(field: &Field, ts: &TransitionStmt) -> syn::parse:
             TransitionStmt::HaveElement(span, _, _) => {
                 errors.push(Error::new(*span, "'have_element' statement not allowed for field with sharding strategy 'constant'"))
             }
+            TransitionStmt::PostCondition(..) => { }
         }
     });
     combine_errors_or_ok(errors)
@@ -269,6 +273,7 @@ fn check_init_rec(ts: &TransitionStmt) -> syn::parse::Result<Vec<(Ident, Span)>>
         TransitionStmt::HaveElement(span, _, _) => {
             Err(Error::new(*span, "'have_element' statement not allowed in initialization"))
         }
+        TransitionStmt::PostCondition(..) => Ok(Vec::new()),
     }
 }
 
@@ -349,6 +354,7 @@ fn check_transition_variable(field: &Field, ts: &TransitionStmt) -> syn::parse::
                 Ok(None)
             }
         }
+        TransitionStmt::PostCondition(..) => Ok(None),
     }
 }
 
@@ -368,6 +374,7 @@ fn check_transition_elemental(field: &Field, ts: &TransitionStmt) -> syn::parse:
             TransitionStmt::AddElement(_, _, _) => { }
             TransitionStmt::RemoveElement(_, _, _) => { }
             TransitionStmt::HaveElement(_, _, _) => { }
+            TransitionStmt::PostCondition(..) => { }
         }
     });
     combine_errors_or_ok(errors)

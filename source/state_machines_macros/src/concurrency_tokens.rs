@@ -87,6 +87,7 @@
 //!    }
 
 use crate::ast::{Field, Lemma, ShardableType, Transition, TransitionKind, TransitionStmt, SM};
+use crate::checks::{check_unsupported_updates_in_conditionals, check_ordering_remove_have_add};
 use crate::parse_token_stream::SMBundle;
 use crate::to_token_stream::{shardable_type_to_type};
 use crate::safety_conditions::{has_any_assert, has_any_require};
@@ -282,21 +283,46 @@ pub fn output_token_types_and_fns(
     Ok(())
 }
 
+#[derive(Clone, Copy)]
+enum InoutType {
+    In,
+    Out,
+    InOut,
+    BorrowIn, 
+    //BorrowOut,
+}
+
+struct TokenParam {
+    pub inout_type: InoutType,
+    pub name: Ident,
+    pub ty: Type,
+}
+
 /// Context object for the complex task of translating a single
 /// transition into a token-exchange method.
 
 struct Ctxt {
-    fields_read: HashSet<Ident>,
-    fields_written: HashSet<Ident>,
+    // fields read in some expression
+    fields_read: HashSet<String>,
+
+    // fields written in some normal 'update' statements
+    fields_written: HashSet<String>,
+
+    // in/out params resulting from remove/have/add statements
+    params: HashMap<String, Vec<TokenParam>>,
+
     requires: Vec<Expr>,
     ensures: Vec<Expr>,
-    ident_to_field: HashMap<Ident, Field>,
+    ident_to_field: HashMap<String, Field>,
     is_init: bool,
+    sm_name: Ident,
+
+    fresh_num_counter: usize,
 }
 
 impl Ctxt {
     pub fn get_field_by_ident(&self, span: Span, ident: &Ident) -> syn::parse::Result<Field> {
-        match self.ident_to_field.get(ident) {
+        match self.ident_to_field.get(&ident.to_string()) {
             Some(f) => Ok(f.clone()),
             None => Err(Error::new(
                 span,
@@ -306,14 +332,22 @@ impl Ctxt {
     }
 
     pub fn get_field_or_panic(&self, ident: &Ident) -> Field {
-        match self.ident_to_field.get(ident) {
+        match self.ident_to_field.get(&ident.to_string()) {
             Some(f) => f.clone(),
             None => panic!("should have already checked field updates are valid"),
         }
     }
 
     pub fn mark_field_as_read(&mut self, field: &Field) {
-        self.fields_read.insert(field.ident.clone());
+        self.fields_read.insert(field.ident.to_string());
+    }
+
+    pub fn get_numbered_token_ident(&mut self, base_id: &Ident) -> Ident {
+        let i = self.fresh_num_counter;
+        self.fresh_num_counter += 1;
+        Ident::new(&format!("token_{}_{}", i, base_id.to_string()),
+            base_id.span())
+
     }
 }
 
@@ -333,21 +367,39 @@ impl Ctxt {
 pub fn exchange_stream(bundle: &SMBundle, tr: &Transition) -> syn::parse::Result<TokenStream> {
     let sm = &bundle.sm;
 
+    let is_init = tr.kind == TransitionKind::Init;
+
     let mut ident_to_field = HashMap::new();
+    let mut init_params = HashMap::new();
     for field in &sm.fields {
-        ident_to_field.insert(field.ident.clone(), field.clone());
+        ident_to_field.insert(field.ident.to_string(), field.clone());
+
+        if !is_init {
+            match &field.stype {
+                ShardableType::Multiset(_) => {
+                    init_params.insert(field.ident.to_string(), Vec::new());
+                }
+                _ => { }
+            }
+        }
     }
 
     let mut ctxt = Ctxt {
         fields_read: HashSet::new(),
         fields_written: HashSet::new(),
+        params: init_params,
         requires: Vec::new(),
         ensures: Vec::new(),
         ident_to_field,
-        is_init: tr.kind == TransitionKind::Init,
+        is_init: is_init,
+        sm_name: bundle.sm.name.clone(),
+        fresh_num_counter: 0,
     };
 
     let mut tr = tr.clone();
+
+    check_unsupported_updates_in_conditionals(&tr.body)?;
+    check_ordering_remove_have_add(&tr.body)?;
 
     // determine output tokens based on 'update' statements
     determine_outputs(&mut ctxt, &tr.body)?;
@@ -397,8 +449,8 @@ pub fn exchange_stream(bundle: &SMBundle, tr: &Transition) -> syn::parse::Result
 
     for field in &sm.fields {
         if ctxt.is_init {
-            assert!(ctxt.fields_written.contains(&field.ident));
-            assert!(!ctxt.fields_read.contains(&field.ident));
+            assert!(ctxt.fields_written.contains(&field.ident.to_string()));
+            assert!(!ctxt.fields_read.contains(&field.ident.to_string()));
         }
 
         match field.stype {
@@ -411,11 +463,11 @@ pub fn exchange_stream(bundle: &SMBundle, tr: &Transition) -> syn::parse::Result
                 } else {
                     // We can't update a constant field in a non-init transition.
                     // This should have been checked already.
-                    assert!(!ctxt.fields_written.contains(&field.ident));
+                    assert!(!ctxt.fields_written.contains(&field.ident.to_string()));
                 }
             }
             ShardableType::NotTokenized(_) => {
-                let is_read = ctxt.fields_read.contains(&field.ident);
+                let is_read = ctxt.fields_read.contains(&field.ident.to_string());
                 if is_read {
                     // If a "not_tokenized" field value is
                     // read by the transition definition, we do not obtain that value
@@ -435,11 +487,11 @@ pub fn exchange_stream(bundle: &SMBundle, tr: &Transition) -> syn::parse::Result
                     is_output = true;
                     is_input = false;
                 } else {
-                    is_output = ctxt.fields_written.contains(&field.ident);
-                    is_input = is_output || ctxt.fields_read.contains(&field.ident);
+                    is_output = ctxt.fields_written.contains(&field.ident.to_string());
+                    is_input = is_output || ctxt.fields_read.contains(&field.ident.to_string());
                 }
 
-                add_token_param_in_out(&ctxt,
+                add_token_param_for_var(&ctxt,
                     &mut in_args,
                     &mut out_args,
                     &mut inst_eq_enss,
@@ -450,6 +502,11 @@ pub fn exchange_stream(bundle: &SMBundle, tr: &Transition) -> syn::parse::Result
                     is_output);
 
                 if is_output {
+                    // Post-condition that gives the value of the output token
+                    // TODO, maybe instead of doing this here, we could translate the
+                    // `Update` statements into `PostCondition` statements like we
+                    // do for other kinds of tokens. Then we wouldn't have to have this here.
+
                     let e_opt = get_output_value_for_variable(&ctxt, &tr.body, field);
                     let e = e_opt.expect("get_output_value_for_variable");
                     let lhs = get_new_field_value(field);
@@ -460,17 +517,25 @@ pub fn exchange_stream(bundle: &SMBundle, tr: &Transition) -> syn::parse::Result
                 if ctxt.is_init {
                     panic!("multiset is_init not implemented");
                 } else {
-                    assert!(!ctxt.fields_written.contains(&field.ident));
-                    assert!(!ctxt.fields_read.contains(&field.ident));
+                    assert!(!ctxt.fields_written.contains(&field.ident.to_string()));
+                    assert!(!ctxt.fields_read.contains(&field.ident.to_string()));
 
-                    add_token_params_remove_have_add(
-                        &mut ctxt,
-                        &mut in_args,
-                        &mut out_args,
-                        &mut inst_eq_enss,
-                        &mut inst_eq_reqs,
-                        &tr,
-                        field);
+                    for p in &ctxt.params[&field.ident.to_string()] {
+                        add_token_param_in_out(
+                            &ctxt,
+                            &mut in_args,
+                            &mut out_args,
+                            &mut inst_eq_enss,
+                            &mut inst_eq_reqs,
+                            &p.name,
+                            &p.ty,
+                            p.inout_type
+                        );
+                    }
+
+                    // Any pre-conditions or post-conditions we need should have been
+                    // placed into the TransitionStmt as a `Require` or `PostCondition`
+                    // statement, so we don't need to explicitly add them here.
                 }
             }
         };
@@ -584,23 +649,26 @@ fn add_token_param_in_out(
 
     arg_name: &Ident,
     arg_type: &Type,
-    is_input: bool,
-    is_output: bool)
+    inout_type: InoutType)
 {
-    if !is_input && !is_output {
-        return;
-    }
-
-    if is_output {
-        if is_input {
-            // If it's both an input and an output, make it a &mut parameter
-            in_args.push(quote! { #[proof] #arg_name: &mut #arg_type });
-        } else {
+    let (is_input, is_output) = match inout_type {
+        InoutType::In => {
+            in_args.push(quote! { #[proof] #arg_name: &#arg_type });
+            (true, false)
+        },
+        InoutType::Out => {
             out_args.push((quote! {#arg_name}, quote! {#arg_type}));
-        }
-    } else {
-        in_args.push(quote! { #[proof] #arg_name: &#arg_type });
-    }
+            (false, true)
+        },
+        InoutType::InOut => {
+            in_args.push(quote! { #[proof] #arg_name: &mut #arg_type });
+            (true, true)
+        },
+        InoutType::BorrowIn => {
+            in_args.push(quote! { #[proof] #arg_name: &#arg_type });
+            (true, false)
+        },
+    };
 
     let inst = get_inst_value(&ctxt);
     if is_output {
@@ -621,24 +689,32 @@ fn add_token_param_in_out(
     }
 }
 
-fn add_token_params_remove_have_add(
-    ctxt: &mut Ctxt,
+fn add_token_param_for_var(
+    ctxt: &Ctxt,
     in_args: &mut Vec<TokenStream>,
     out_args: &mut Vec<(TokenStream, TokenStream)>,
     inst_eq_enss: &mut Vec<Expr>,
     inst_eq_reqs: &mut Vec<Expr>,
-    tr: &Transition,
-    field: &Field)
+
+    arg_name: &Ident,
+    arg_type: &Type,
+    is_input: bool,
+    is_output: bool)
 {
-    let mut removes = Vec::new();
-    let mut haves = Vec::new();
-    let mut adds = Vec::new();
+    if !is_input && !is_output {
+        return;
+    }
 
-    let seen_remove = false;
-    let seen_have = false;
-
-    collect_removes_haves_adds(&tr.body, field
-        &mut adds, &mut haves, &mut removes, &mut seen_remove, &mut seen_have);
+    add_token_param_in_out(ctxt, in_args, out_args, inst_eq_enss, inst_eq_reqs,
+        arg_name, arg_type,
+        if is_input && is_output {
+            InoutType::InOut
+        } else if is_input {
+            InoutType::In
+        } else {
+            InoutType::Out
+        }
+    );
 }
 
 fn mk_eq(lhs: &Expr, rhs: &Expr) -> Expr {
@@ -719,17 +795,22 @@ fn determine_outputs(ctxt: &mut Ctxt, ts: &TransitionStmt) -> syn::parse::Result
                             "cannot update a field marked constant outside of initialization",
                         ));
                     }
-                    ShardableType::
+                    ShardableType::Multiset(_) => {
+                        panic!("case should have been ruled out earlier");
+                    }
                     _ => {}
                 }
             }
 
-            ctxt.fields_written.insert(id.clone());
+            ctxt.fields_written.insert(id.to_string());
             Ok(())
         }
         TransitionStmt::AddElement(_span, _id, _e) => Ok(()),
         TransitionStmt::RemoveElement(_span, _id, _e) => Ok(()),
         TransitionStmt::HaveElement(_span, _id, _e) => Ok(()),
+        TransitionStmt::PostCondition(..) => {
+            panic!("PostCondition statement shouldn't exist yet");
+        }
     }
 }
 
@@ -764,7 +845,7 @@ fn determine_outputs(ctxt: &mut Ctxt, ts: &TransitionStmt) -> syn::parse::Result
 /// more advanced sharding strategies, so I'm not committing to an overhaul right now.
 
 fn walk_translate_expressions(ctxt: &mut Ctxt, ts: &mut TransitionStmt, comes_before_precondition: bool) -> syn::parse::Result<()> {
-    match ts {
+    let new_ts = match ts {
         TransitionStmt::Block(_span, v) => {
             // Compute `latest_precondition` such that
             // forall i < latest_precondition ==> v[i] , v[i] definitely comes before
@@ -783,12 +864,12 @@ fn walk_translate_expressions(ctxt: &mut Ctxt, ts: &mut TransitionStmt, comes_be
                 walk_translate_expressions(ctxt, child,
                     comes_before_precondition || i < latest_precondition)?;
             }
-            Ok(())
+            return Ok(());
         }
         TransitionStmt::Let(_span, _id, e) => {
             let init_e = translate_expr(ctxt, e, comes_before_precondition)?;
             *e = init_e;
-            Ok(())
+            return Ok(());
         }
         TransitionStmt::If(_span, cond, e1, e2) => {
             let cond_e = translate_expr(ctxt, cond, comes_before_precondition
@@ -796,27 +877,99 @@ fn walk_translate_expressions(ctxt: &mut Ctxt, ts: &mut TransitionStmt, comes_be
             *cond = cond_e;
             walk_translate_expressions(ctxt, e1, comes_before_precondition)?;
             walk_translate_expressions(ctxt, e2, comes_before_precondition)?;
-            Ok(())
+            return Ok(());
         }
         TransitionStmt::Require(_span, e) => {
             let req_e = translate_expr(ctxt, e, true)?;
             *e = req_e;
-            Ok(())
+            return Ok(());
         }
         TransitionStmt::Assert(_span, e) => {
             let assert_e = translate_expr(ctxt, e, comes_before_precondition)?;
             *e = assert_e;
-            Ok(())
+            return Ok(());
         }
-        TransitionStmt::Update(_span, _id, e) |
-        TransitionStmt::HaveElement(_span, _id, e) |
-        TransitionStmt::AddElement(_span, _id, e) |
-        TransitionStmt::RemoveElement(_span, _id, e) => {
+
+        TransitionStmt::Update(_span, _id, e) => {
             let update_e = translate_expr(ctxt, e, false)?;
             *e = update_e;
-            Ok(())
+            return Ok(());
         }
-    }
+
+        TransitionStmt::HaveElement(span, id, e) => {
+            let e = translate_expr(ctxt, e, comes_before_precondition)?;
+
+            let ident = ctxt.get_numbered_token_ident(id);
+            let field = ctxt.get_field_or_panic(id);
+            let ty = field_token_type(&ctxt.sm_name, &field);
+            let field_name = field_token_field_name(&field);
+
+            ctxt.params.get_mut(&field.ident.to_string()).expect("get_mut").push(
+                TokenParam {
+                    inout_type: InoutType::BorrowIn,
+                    name: ident.clone(),
+                    ty: ty,
+                }
+            );
+
+            TransitionStmt::Require(
+                *span,
+                mk_eq(&Expr::Verbatim(quote!{#ident.#field_name}), &e),
+            )
+        }
+
+        TransitionStmt::AddElement(span, id, e) => {
+            let e = translate_expr(ctxt, e, comes_before_precondition)?;
+
+            let ident = ctxt.get_numbered_token_ident(id);
+            let field = ctxt.get_field_or_panic(id);
+            let ty = field_token_type(&ctxt.sm_name, &field);
+            let field_name = field_token_field_name(&field);
+
+            ctxt.params.get_mut(&field.ident.to_string()).expect("get_mut").push(
+                TokenParam {
+                    inout_type: InoutType::Out,
+                    name: ident.clone(),
+                    ty: ty,
+                }
+            );
+
+            TransitionStmt::PostCondition(
+                *span,
+                mk_eq(&Expr::Verbatim(quote!{#ident.#field_name}), &e),
+            )
+        }
+
+        TransitionStmt::RemoveElement(span, id, e) => {
+            let e = translate_expr(ctxt, e, comes_before_precondition)?;
+
+            let ident = ctxt.get_numbered_token_ident(id);
+            let field = ctxt.get_field_or_panic(id);
+            let ty = field_token_type(&ctxt.sm_name, &field);
+            let field_name = field_token_field_name(&field);
+
+            ctxt.params.get_mut(&field.ident.to_string()).expect("get_mut").push(
+                TokenParam {
+                    inout_type: InoutType::In,
+                    name: ident.clone(),
+                    ty: ty,
+                }
+            );
+
+            TransitionStmt::Require(
+                *span,
+                mk_eq(&Expr::Verbatim(quote!{#ident.#field_name}), &e),
+            )
+        }
+
+        TransitionStmt::PostCondition(..) => {
+            panic!("PostCondition statement shouldn't exist yet");
+        }
+    };
+
+    *ts = new_ts;
+
+    Ok(())
 }
 
 fn translate_expr(ctxt: &mut Ctxt, expr: &Expr, comes_before_precondition: bool) -> syn::parse::Result<Expr> {
@@ -911,7 +1064,7 @@ fn get_not_tokenized_field_value(_ctxt: &Ctxt, field: &Field) -> Expr {
 fn get_old_field_value(ctxt: &Ctxt, field: &Field) -> Expr {
     let arg = transition_arg_name(&field);
     let field_name = field_token_field_name(&field);
-    if ctxt.fields_written.contains(&field.ident) {
+    if ctxt.fields_written.contains(&field.ident.to_string()) {
         Expr::Verbatim(quote! { ::builtin::old(#arg).#field_name })
     } else {
         Expr::Verbatim(quote! { #arg.#field_name })
@@ -1011,6 +1164,10 @@ fn exchange_collect(
             let mut pa = prequel_with_asserts;
             pa.push(PrequelElement::Condition(assert_e.clone()));
             Ok((prequel, pa))
+        }
+        TransitionStmt::PostCondition(_span, post_e) => {
+            ctxt.ensures.push(with_prequel(&prequel, post_e.clone()));
+            Ok((prequel, prequel_with_asserts))
         }
         TransitionStmt::Update(..) |
         TransitionStmt::HaveElement(..) |
@@ -1156,58 +1313,7 @@ fn get_output_value_for_variable(ctxt: &Ctxt, ts: &TransitionStmt, field: &Field
         | TransitionStmt::Assert(_, _)
         | TransitionStmt::AddElement(..)
         | TransitionStmt::RemoveElement(..)
-        | TransitionStmt::HaveElement(..) => None,
-    }
-}
-
-fn collect_removes_haves_adds(body: &TransitionStmt, field: &Field,
-      adds: &mut Vec<Expr>,
-      haves: &mut Vec<Expr>,
-      removes: &mut Vec<Expr>)
-{
-    match ts {
-        TransitionStmt::Block(_span, v) => {
-            let mut opt = None;
-            for child in v.iter() {
-                let o = get_output_value_for_variable(ctxt, child, field);
-                if o.is_some() {
-                    // We should have already performed a check that the field
-                    // is not updated more than once.
-                    assert!(!opt.is_some());
-                    opt = o;
-                }
-            }
-            opt
-        }
-        TransitionStmt::If(_span, cond_e, e1, e2) => {
-            let o1 = get_output_value_for_variable(ctxt, e1, field);
-            let o2 = get_output_value_for_variable(ctxt, e2, field);
-            if o1.is_none() && o2.is_none() {
-                None
-            } else {
-                let e1 = match o1 {
-                    None => get_old_field_value(ctxt, &field),
-                    Some(e) => e,
-                };
-                let e2 = match o2 {
-                    None => get_old_field_value(ctxt, &field),
-                    Some(e) => e,
-                };
-                Some(Expr::Verbatim(quote! { if #cond_e { #e1 } else { #e2 } }))
-            }
-        }
-        TransitionStmt::Update(_span, id, e) => {
-            if *id.to_string() == *field.ident.to_string() {
-                Some(e.clone())
-            } else {
-                None
-            }
-        }
-        TransitionStmt::Let(_, _, _)
-        | TransitionStmt::Require(_, _)
-        | TransitionStmt::Assert(_, _)
-        | TransitionStmt::AddElement(..)
-        | TransitionStmt::RemoveElement(..)
-        | TransitionStmt::HaveElement(..) => None,
+        | TransitionStmt::HaveElement(..)
+        | TransitionStmt::PostCondition(..) => None,
     }
 }

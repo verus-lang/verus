@@ -81,6 +81,9 @@ pub fn safety_condition_body(ts: &TransitionStmt) -> Option<Expr> {
         TransitionStmt::AddElement(..) => {
             panic!("should have been removed at earlier processing stage");
         }
+        TransitionStmt::PostCondition(..) => {
+            panic!("PostCondition statement shouldn't exist here");
+        }
     }
 }
 
@@ -104,6 +107,7 @@ pub fn has_any_assert(ts: &TransitionStmt) -> bool {
         TransitionStmt::HaveElement(..) => false,
         TransitionStmt::RemoveElement(..) => false,
         TransitionStmt::AddElement(..) => false,
+        TransitionStmt::PostCondition(..) => false,
     }
 }
 
@@ -127,5 +131,6 @@ pub fn has_any_require(ts: &TransitionStmt) -> bool {
         TransitionStmt::HaveElement(..) => false,
         TransitionStmt::RemoveElement(..) => false,
         TransitionStmt::AddElement(..) => false,
+        TransitionStmt::PostCondition(..) => false,
     }
 }

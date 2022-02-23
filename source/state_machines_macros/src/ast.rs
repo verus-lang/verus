@@ -68,6 +68,10 @@ pub enum TransitionStmt {
     AddElement(Span, Ident, Expr),
     RemoveElement(Span, Ident, Expr),
     HaveElement(Span, Ident, Expr),
+
+    // used internally by concurrency_tokens.rs
+    // Different than an Assert - this expression is allowed to depend on output values
+    PostCondition(Span, Expr),
 }
 
 impl TransitionStmt {
@@ -82,6 +86,22 @@ impl TransitionStmt {
             TransitionStmt::AddElement(span, _, _) => span,
             TransitionStmt::RemoveElement(span, _, _) => span,
             TransitionStmt::HaveElement(span, _, _) => span,
+            TransitionStmt::PostCondition(span, _) => span,
+        }
+    }
+
+    pub fn statement_name(&self) -> &'static str {
+        match self {
+            TransitionStmt::Block(..) => "block",
+            TransitionStmt::Let(..) => "let",
+            TransitionStmt::If(..) => "if",
+            TransitionStmt::Require(..) => "require",
+            TransitionStmt::Assert(..) => "assert",
+            TransitionStmt::Update(..) => "update",
+            TransitionStmt::AddElement(..) => "add_element",
+            TransitionStmt::RemoveElement(..) => "remove_element",
+            TransitionStmt::HaveElement(..) => "have_element",
+            TransitionStmt::PostCondition(..) => "post_condition",
         }
     }
 }
@@ -133,6 +153,7 @@ impl TransitionStmt {
                     f(self);
                 }
             }
+            TransitionStmt::PostCondition(..) => { }
         }
     }
 }

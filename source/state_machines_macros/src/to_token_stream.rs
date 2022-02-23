@@ -11,6 +11,7 @@ use crate::lemmas::get_transition;
 use crate::parse_token_stream::SMBundle;
 use crate::safety_conditions::{has_any_assert, safety_condition_body};
 use crate::to_relation::to_relation;
+use crate::simplification::simplify_updates;
 use proc_macro2::TokenStream;
 use quote::{quote, quote_spanned, ToTokens};
 use std::mem::swap;
@@ -159,10 +160,12 @@ pub fn output_primary_stuff(
     let self_ty = get_self_ty(&sm);
 
     for trans in &sm.transitions {
+        let simplified_body = simplify_updates(sm, &trans.body, true);
+
         // Output the 'weak' transition relation.
         // (or for the 'Init' case, a single-state predicate).
         if trans.kind != TransitionKind::Readonly {
-            let f = to_relation(sm, trans, true /* weak */);
+            let f = to_relation(&simplified_body, true /* weak */);
             let name = &trans.name;
             let rel_fn;
             if trans.kind == TransitionKind::Init {
@@ -192,7 +195,7 @@ pub fn output_primary_stuff(
             let params = self_post_params(&trans.params);
             let name = Ident::new(&(trans.name.to_string() + "_strong"), trans.name.span());
 
-            let f = to_relation(sm, trans, false /* weak */);
+            let f = to_relation(&simplified_body, false /* weak */);
 
             let rel_fn = quote! {
                 #[spec]
@@ -204,8 +207,10 @@ pub fn output_primary_stuff(
         }
 
         // If necessary, output a lemma with proof obligations for the safety conditions.
-        if has_any_assert(&trans.body) {
-            let b = safety_condition_body(&trans.body);
+        let simplified_body_no_updates = simplify_updates(sm, &trans.body, false);
+        if has_any_assert(&simplified_body_no_updates) {
+            assert!(trans.kind != TransitionKind::Init);
+            let b = safety_condition_body(&simplified_body_no_updates);
             let name = Ident::new(&(trans.name.to_string() + "_asserts"), trans.name.span());
             let params = self_assoc_params(&self_ty, &trans.params);
             let b = match b {

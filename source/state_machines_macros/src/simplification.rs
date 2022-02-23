@@ -7,8 +7,12 @@ use proc_macro2::TokenStream;
 
 /// Simplify out `update' statements, including `add_element` etc.
 
-pub fn simplify_updates(sm: &SM, ts: &TransitionStmt) -> TransitionStmt {
-    let ts = add_finalizes(sm, ts);
+pub fn simplify_updates(sm: &SM, ts: &TransitionStmt, include_post: bool) -> TransitionStmt {
+    let ts = if include_post {
+        add_finalizes(sm, ts)
+    } else {
+        ts.clone()
+    };
 
     let mut field_map = HashMap::new();
     for field in &sm.fields {
@@ -63,10 +67,10 @@ fn simplify_updates_rec(ts: &TransitionStmt, field_map: HashMap<String, Expr>)
 
         TransitionStmt::HaveElement(span, f, e) => {
             let cur = &field_map[&f.to_string()];
-            let safety = Expr::Verbatim(quote!{
+            let prec = Expr::Verbatim(quote!{
                 (#cur).count(#e) >= 1
             });
-            (TransitionStmt::Assert(*span, safety), field_map)
+            (TransitionStmt::Require(*span, prec), field_map)
         }
         TransitionStmt::Update(span, f, e) => {
             let mut field_map = field_map;
@@ -87,10 +91,13 @@ fn simplify_updates_rec(ts: &TransitionStmt, field_map: HashMap<String, Expr>)
             field_map.insert(f.to_string(), Expr::Verbatim(quote!{
                 (#cur).remove(#e)
             }));
-            let safety = Expr::Verbatim(quote!{
+            let prec = Expr::Verbatim(quote!{
                 (#cur).count(#e) >= 1
             });
-            (TransitionStmt::Assert(*span, safety), field_map)
+            (TransitionStmt::Require(*span, prec), field_map)
+        }
+        TransitionStmt::PostCondition(..) => {
+            panic!("PostCondition statement shouldn't exist here");
         }
     }
 }
@@ -127,6 +134,9 @@ fn add_finalizes_rec(ts: &mut TransitionStmt, found: &mut Vec<Ident>) {
         TransitionStmt::AddElement(_, f, _) |
         TransitionStmt::RemoveElement(_, f, _) => {
             is_update_for = Some(f.clone());
+        }
+        TransitionStmt::PostCondition(..) => {
+            panic!("PostCondition statement shouldn't exist here");
         }
     }
 
@@ -175,6 +185,9 @@ fn add_finalizes_rec(ts: &mut TransitionStmt, found: &mut Vec<Ident>) {
         TransitionStmt::Update(_, _, _) |
         TransitionStmt::AddElement(_, _, _) |
         TransitionStmt::RemoveElement(_, _, _) => { }
+        TransitionStmt::PostCondition(..) => {
+            panic!("PostCondition statement shouldn't exist here");
+        }
     }
 }
 

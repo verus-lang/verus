@@ -1,7 +1,6 @@
-use crate::ast::{Transition, TransitionStmt, SM};
+use crate::ast::{TransitionStmt};
 use proc_macro2::TokenStream;
 use quote::quote;
-use crate::simplification::simplify_updates;
 
 /// Converts a transition description into a relation between `self` and `post`.
 /// We proceed in two steps.
@@ -35,8 +34,7 @@ use crate::simplification::simplify_updates;
 /// (In this case, that means showing that (Inv && A ==> B).
 /// Thus, subject to the invariant, the weak & strong versions will actually be equivalent.
 
-pub fn to_relation(sm: &SM, trans: &Transition, weak: bool) -> TokenStream {
-    let ts = simplify_updates(sm, &trans.body);
+pub fn to_relation(ts: &TransitionStmt, weak: bool) -> TokenStream {
     match to_relation_rec(&ts, None, weak) {
         Some(e) => e,
         None => quote! { true },
@@ -99,6 +97,9 @@ fn to_relation_rec(
         TransitionStmt::RemoveElement(_, _, _) |
         TransitionStmt::HaveElement(_, _, _) => {
             panic!("should have been removed in pre-processing step");
+        }
+        TransitionStmt::PostCondition(..) => {
+            panic!("PostCondition statement shouldn't exist here");
         }
     }
 }
