@@ -47,15 +47,15 @@
 
 use crate::attributes::{get_mode, get_verifier_attrs};
 use crate::rust_to_vir_expr::attrs_is_invariant_block;
+use crate::unsupported;
 use crate::util::{from_raw_span, vec_map};
-use crate::{unsupported, unsupported_unless};
 
 use rustc_ast::ast::{
     AngleBracketedArg, AngleBracketedArgs, Arm, AssocItem, AssocItemKind, BinOpKind, Block, Crate,
-    EnumDef, Expr, ExprKind, Field, FieldPat, FnDecl, FnKind, FnRetTy, FnSig, GenericArg,
-    GenericArgs, GenericParam, GenericParamKind, Generics, ImplKind, Item, ItemKind, Lit,
-    LitIntType, LitKind, Local, ModKind, NodeId, Param, Pat, PatKind, PathSegment, Stmt, StmtKind,
-    StructField, StructRest, Ty, TyKind, Variant, VariantData,
+    EnumDef, Expr, ExprField, ExprKind, FieldDef, FnDecl, FnRetTy, FnSig, GenericArg, GenericArgs,
+    GenericParam, GenericParamKind, Generics, Impl, Item, ItemKind, Lit, LitIntType, LitKind,
+    Local, LocalKind, ModKind, NodeId, Param, Pat, PatField, PatKind, PathSegment, Stmt, StmtKind,
+    StructExpr, StructRest, Ty, TyKind, Variant, VariantData,
 };
 use rustc_ast::ptr::P;
 use rustc_data_structures::thin_vec::ThinVec;
@@ -269,7 +269,7 @@ fn replace_with_exprs_span(
             .collect();
         let rules = rustc_ast::BlockCheckMode::Default;
         let id = mctxt.next_node_id();
-        let block = Block { stmts, id, rules, span, tokens: None };
+        let block = Block { stmts, id, rules, span, tokens: None, could_be_bare_literal: false };
         let kind = ExprKind::Block(P(block), None);
         match expr {
             None => {
@@ -291,21 +291,21 @@ fn replace_with_exprs(mctxt: &mut MCtxt, expr: &Expr, exprs: Vec<Option<Expr>>) 
     replace_with_exprs_span(mctxt, expr.span, Some(expr), exprs)
 }
 
-fn erase_field_pat(ctxt: &Ctxt, mctxt: &mut MCtxt, fpat: &FieldPat) -> FieldPat {
-    let FieldPat { ident, is_shorthand, id, span, is_placeholder, .. } = *fpat;
+fn erase_field_pat(ctxt: &Ctxt, mctxt: &mut MCtxt, fpat: &PatField) -> PatField {
+    let PatField { ident, is_shorthand, id, span, is_placeholder, .. } = *fpat;
     let pat = P(erase_pat(ctxt, mctxt, &fpat.pat));
-    FieldPat { ident, pat, is_shorthand, attrs: fpat.attrs.clone(), id, span, is_placeholder }
+    PatField { ident, pat, is_shorthand, attrs: fpat.attrs.clone(), id, span, is_placeholder }
 }
 
 fn erase_pat(ctxt: &Ctxt, mctxt: &mut MCtxt, pat: &Pat) -> Pat {
     let kind = match &pat.kind {
         PatKind::Wild => return pat.clone(),
         PatKind::Ident(_, _, None) => return pat.clone(),
-        PatKind::Struct(path, fields, recovered) => match &ctxt.resolved_pats[&pat.span].x {
+        PatKind::Struct(qself, path, fields, recovered) => match &ctxt.resolved_pats[&pat.span].x {
             PatternX::Constructor(vir_path, variant, _) => {
                 let datatype = &ctxt.datatypes[vir_path];
                 let variant = &datatype.x.get_variant(variant).a;
-                let mut fpats: Vec<FieldPat> = Vec::new();
+                let mut fpats: Vec<PatField> = Vec::new();
                 for fpat in fields {
                     let name = Arc::new(fpat.ident.as_str().to_string());
                     let (_, mode, _) = get_field(variant, &name).a;
@@ -318,11 +318,11 @@ fn erase_pat(ctxt: &Ctxt, mctxt: &mut MCtxt, pat: &Pat) -> Pat {
                     };
                     fpats.push(p);
                 }
-                PatKind::Struct(path.clone(), fpats, *recovered)
+                PatKind::Struct(qself.clone(), path.clone(), fpats, *recovered)
             }
             _ => panic!("internal error: expected PatternX::Constructor"),
         },
-        PatKind::TupleStruct(path, pats0) => match &ctxt.resolved_pats[&pat.span].x {
+        PatKind::TupleStruct(qself, path, pats0) => match &ctxt.resolved_pats[&pat.span].x {
             PatternX::Constructor(vir_path, variant, _) => {
                 let datatype = &ctxt.datatypes[vir_path];
                 let variant = &datatype.x.get_variant(variant).a;
@@ -336,7 +336,7 @@ fn erase_pat(ctxt: &Ctxt, mctxt: &mut MCtxt, pat: &Pat) -> Pat {
                     };
                     pats.push(P(p));
                 }
-                PatKind::TupleStruct(path.clone(), pats)
+                PatKind::TupleStruct(qself.clone(), path.clone(), pats)
             }
             _ => panic!("internal error: expected PatternX::Constructor"),
         },
@@ -618,18 +618,19 @@ fn erase_expr_opt(ctxt: &Ctxt, mctxt: &mut MCtxt, expect: Mode, expr: &Expr) -> 
                 return replace_with_exprs(mctxt, expr, exprs);
             }
         }
-        ExprKind::Struct(path, fields, rest) => {
+        ExprKind::Struct(strct) => {
+            let StructExpr { qself, path, fields, rest } = &**strct;
             if keep_mode(ctxt, expect) {
                 let rest = match rest {
                     StructRest::None | StructRest::Rest(_) => rest.clone(),
                     StructRest::Base(e) => StructRest::Base(P(erase_expr(ctxt, mctxt, expect, e))),
                 };
-                let (vir_path, variant) = match mctxt.find_span(&ctxt.calls, path.span) {
+                let (vir_path, variant) = match mctxt.find_span(&ctxt.calls, expr.span) {
                     ResolvedCall::Ctor(path, variant) => (path, variant),
                     _ => panic!("internal error: expected Ctor"),
                 };
                 let datatype = &ctxt.datatypes[vir_path];
-                let mut new_fields: Vec<Field> = Vec::new();
+                let mut new_fields: Vec<ExprField> = Vec::new();
                 let variant = datatype.x.get_variant(variant);
                 for field in fields {
                     let name = Arc::new(field.ident.as_str().to_string());
@@ -640,9 +641,10 @@ fn erase_expr_opt(ctxt: &Ctxt, mctxt: &mut MCtxt, expect: Mode, expr: &Expr) -> 
                         phantom_data_expr(mctxt, field.span)
                     };
                     // for asymptotic efficiency, don't call field.clone():
-                    let Field { attrs, .. } = field;
-                    let Field { id, span, ident, is_shorthand, is_placeholder, .. } = *field;
-                    let field = Field {
+                    let ExprField {
+                        id, span, ident, is_shorthand, is_placeholder, ref attrs, ..
+                    } = *field;
+                    let field = ExprField {
                         attrs: attrs.clone(),
                         id,
                         span,
@@ -654,7 +656,12 @@ fn erase_expr_opt(ctxt: &Ctxt, mctxt: &mut MCtxt, expect: Mode, expr: &Expr) -> 
                     new_fields.push(field);
                 }
                 // TODO: instantiate any type parameters left unused after erasure
-                ExprKind::Struct(path.clone(), new_fields, rest)
+                ExprKind::Struct(P(StructExpr {
+                    qself: qself.clone(),
+                    path: path.clone(),
+                    fields: new_fields,
+                    rest,
+                }))
             } else {
                 let mut exprs = vec_map(fields, |f| erase_expr_opt(ctxt, mctxt, expect, &f.expr));
                 match rest {
@@ -686,12 +693,12 @@ fn erase_expr_opt(ctxt: &Ctxt, mctxt: &mut MCtxt, expect: Mode, expr: &Expr) -> 
         ExprKind::If(eb, e1, e2_opt) => {
             let modeb = *mctxt.find_span(&ctxt.condition_modes, expr.span);
             let eb_erase = match &eb.kind {
-                ExprKind::Let(pat, eb1) => {
+                ExprKind::Let(pat, eb1, _span) => {
                     let eb1 = erase_expr_opt(ctxt, mctxt, modeb, eb1);
                     if let Some(eb1) = eb1 {
                         let pat = erase_pat(ctxt, mctxt, pat);
                         let Expr { id, span, .. } = **eb; // for asymptotic efficiency, don't call eb.clone()
-                        let kind = ExprKind::Let(P(pat), P(eb1));
+                        let kind = ExprKind::Let(P(pat), P(eb1), span);
                         let attrs = eb.attrs.clone();
                         Some(Expr { id, kind, span, attrs, tokens: eb.tokens.clone() })
                     } else {
@@ -760,7 +767,14 @@ fn erase_expr_opt(ctxt: &Ctxt, mctxt: &mut MCtxt, expect: Mode, expr: &Expr) -> 
                         let stmt = Stmt { id, kind, span };
                         let id = mctxt.next_node_id();
                         let rules = rustc_ast::BlockCheckMode::Default;
-                        let block = Block { stmts: vec![stmt], id, rules, span, tokens: None };
+                        let block = Block {
+                            stmts: vec![stmt],
+                            id,
+                            rules,
+                            span,
+                            tokens: None,
+                            could_be_bare_literal: false,
+                        };
                         // Create if/else
                         let kind = if i == arms0.len() - 1 {
                             ExprKind::Block(P(block), None)
@@ -825,20 +839,30 @@ fn erase_stmt(
     let kind = match &stmt.kind {
         StmtKind::Local(local) => {
             let mode1 = *mctxt.find_span(&ctxt.var_modes, local.pat.span);
+            let Local { id, span, ref ty, ref kind, ref attrs, ref tokens, .. } = **local;
             if keep_mode(ctxt, mode1) {
-                let init = local.init.as_ref().map(|expr| P(erase_expr(ctxt, mctxt, mode1, expr)));
-                let Local { id, span, .. } = **local; // for asymptotic efficiency, don't call local.clone()
-                let Local { ty, attrs, tokens, .. } = &**local;
+                let kind = match kind {
+                    LocalKind::Decl => LocalKind::Decl,
+                    LocalKind::Init(expr) => {
+                        LocalKind::Init(P(erase_expr(ctxt, mctxt, mode1, expr)))
+                    }
+                    LocalKind::InitElse(_, _) => unsupported!("unsupported stmt", stmt),
+                };
                 let pat = P(erase_pat(ctxt, mctxt, &local.pat));
                 let ty = ty.clone();
                 let attrs = attrs.clone();
                 let tokens = tokens.clone();
-                let local = Local { id, pat, ty, init, span, attrs, tokens };
+                let local = Local { id, pat, ty, kind, span, attrs, tokens };
+
                 Some(StmtKind::Local(P(local)))
             } else {
-                local.init.as_ref().and_then(|expr| {
-                    erase_expr_opt(ctxt, mctxt, mode1, expr).map(|expr| StmtKind::Semi(P(expr)))
-                })
+                match kind {
+                    LocalKind::Decl => None,
+                    LocalKind::Init(expr) => {
+                        erase_expr_opt(ctxt, mctxt, mode1, expr).map(|expr| StmtKind::Semi(P(expr)))
+                    }
+                    LocalKind::InitElse(_, _) => unsupported!("unsupported stmt", stmt),
+                }
             }
         }
         StmtKind::Expr(expr) if is_last => {
@@ -876,7 +900,14 @@ fn erase_inv_block(ctxt: &Ctxt, mctxt: &mut MCtxt, expect: Mode, block: &Block) 
     let open_stmt = &block.stmts[0];
     match &open_stmt.kind {
         StmtKind::Local(local) => {
-            match &**local.init.as_ref().expect("erase_inv_block: the checks in invariant_block_to_vir should ensure the first statement is an initializer") {
+            let init = match &local.kind {
+                LocalKind::Decl => panic!(
+                    "erase_inv_block: the checks in invariant_block_to_vir should ensure the first statement is an initializer"
+                ),
+                LocalKind::Init(init) => init,
+                LocalKind::InitElse(_, _) => unsupported!("unsupported stmt", open_stmt),
+            };
+            match &**init {
                 Expr { kind: ExprKind::Call(callfn, args), span, id, attrs, tokens } => {
                     let arg = &args[0];
                     let expr_opt = erase_expr_opt(ctxt, mctxt, Mode::Proof, arg);
@@ -890,7 +921,7 @@ fn erase_inv_block(ctxt: &Ctxt, mctxt: &mut MCtxt, expect: Mode, block: &Block) 
                             span: local.span.clone(),
                             tokens: local.tokens.clone(),
                             ty: local.ty.clone(),
-                            init: Some(P(Expr {
+                            kind: LocalKind::Init(P(Expr {
                                 kind: ExprKind::Call(callfn.clone(), vec![P(expr)]),
                                 span: span.clone(),
                                 id: *id,
@@ -943,7 +974,14 @@ fn erase_inv_block(ctxt: &Ctxt, mctxt: &mut MCtxt, expect: Mode, block: &Block) 
     }
 
     let Block { id, rules, span, .. } = *block;
-    Block { stmts: result_stmts, id, rules, span, tokens: block.tokens.clone() }
+    Block {
+        stmts: result_stmts,
+        id,
+        rules,
+        span,
+        tokens: block.tokens.clone(),
+        could_be_bare_literal: false,
+    }
 }
 
 fn erase_block(ctxt: &Ctxt, mctxt: &mut MCtxt, expect: Mode, block: &Block) -> Block {
@@ -954,11 +992,16 @@ fn erase_block(ctxt: &Ctxt, mctxt: &mut MCtxt, expect: Mode, block: &Block) -> B
         .filter_map(|(i, stmt)| erase_stmt(ctxt, mctxt, expect, stmt, i == block.stmts.len() - 1))
         .collect();
     let Block { id, rules, span, .. } = *block; // for asymptotic efficiency, don't call block.clone()
-    Block { stmts, id, rules, span, tokens: block.tokens.clone() }
+    Block { stmts, id, rules, span, tokens: block.tokens.clone(), could_be_bare_literal: false }
 }
 
-fn erase_fn(ctxt: &Ctxt, mctxt: &mut MCtxt, f: &FnKind, external_body: bool) -> Option<FnKind> {
-    let FnKind(defaultness, sig, generics, body_opt) = f;
+fn erase_fn(
+    ctxt: &Ctxt,
+    mctxt: &mut MCtxt,
+    f: &rustc_ast::ast::Fn,
+    external_body: bool,
+) -> Option<rustc_ast::ast::Fn> {
+    let rustc_ast::ast::Fn { defaultness, sig, generics, body: body_opt } = f;
     let f_vir = if let Some(f_vir) = &ctxt.functions_by_span[&sig.span] {
         f_vir
     } else {
@@ -1020,7 +1063,7 @@ fn erase_fn(ctxt: &Ctxt, mctxt: &mut MCtxt, f: &FnKind, external_body: bool) -> 
     let body_opt = body_opt.as_ref().map(|body| P(erase_block(ctxt, mctxt, ret_mode, &**body)));
     mctxt.ret_mode = None;
     mctxt.external_body = false;
-    Some(FnKind(*defaultness, sig, generics, body_opt))
+    Some(rustc_ast::ast::Fn { defaultness: *defaultness, sig, generics, body: body_opt })
 }
 
 fn erase_assoc_item(ctxt: &Ctxt, mctxt: &mut MCtxt, item: &AssocItem) -> Option<AssocItem> {
@@ -1054,8 +1097,8 @@ fn erase_mod(ctxt: &Ctxt, mctxt: &mut MCtxt, module: &ModKind) -> ModKind {
     }
 }
 
-fn erase_fields(ctxt: &Ctxt, mctxt: &mut MCtxt, old_fields: &Vec<StructField>) -> Vec<StructField> {
-    let mut fields: Vec<StructField> = Vec::new();
+fn erase_fields(ctxt: &Ctxt, mctxt: &mut MCtxt, old_fields: &Vec<FieldDef>) -> Vec<FieldDef> {
+    let mut fields: Vec<FieldDef> = Vec::new();
     for field in old_fields {
         let mode = get_mode(Mode::Exec, &field.attrs[..]);
         if keep_mode(ctxt, mode) {
@@ -1134,9 +1177,17 @@ fn erase_item(ctxt: &Ctxt, mctxt: &mut MCtxt, item: &Item) -> Vec<P<Item>> {
             }
             // TODO we may need to erase some generic params
             // for asymptotic efficiency, don't call kind.clone():
-            let ImplKind { unsafety, polarity, defaultness, constness, .. } = **kind;
-            let ImplKind { generics, of_trait, self_ty, .. } = &**kind;
-            let kind = ImplKind {
+            let Impl {
+                unsafety,
+                polarity,
+                defaultness,
+                constness,
+                ref generics,
+                ref of_trait,
+                ref self_ty,
+                ..
+            } = **kind;
+            let kind = Impl {
                 unsafety,
                 polarity,
                 defaultness,
@@ -1168,13 +1219,12 @@ fn erase_item(ctxt: &Ctxt, mctxt: &mut MCtxt, item: &Item) -> Vec<P<Item>> {
 }
 
 fn erase_crate(ctxt: &Ctxt, mctxt: &mut MCtxt, krate: &Crate) -> Crate {
-    let Crate { attrs, items, span, proc_macros } = krate;
-    unsupported_unless!(proc_macros.len() == 0, "procedural macros", proc_macros);
+    let Crate { attrs, items, span } = krate;
     let mut new_items: Vec<P<Item>> = Vec::new();
     for item in items {
         new_items.extend(erase_item(ctxt, mctxt, item));
     }
-    Crate { items: new_items, attrs: attrs.clone(), span: *span, proc_macros: proc_macros.clone() }
+    Crate { items: new_items, attrs: attrs.clone(), span: *span }
 }
 
 fn mk_ctxt(erasure_hints: &ErasureHints, known_spans: &HashSet<Span>, keep_proofs: bool) -> Ctxt {

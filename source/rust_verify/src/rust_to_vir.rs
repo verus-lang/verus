@@ -15,13 +15,13 @@ use crate::rust_to_vir_base::{
 };
 use crate::rust_to_vir_func::{check_foreign_item_fn, check_item_fn};
 use crate::util::{err_span_str, unsupported_err_span};
-use crate::{err_unless, unsupported_err, unsupported_unless};
-use rustc_ast::Attribute;
+use crate::{err_unless, unsupported_err};
+
 use rustc_hir::{
-    AssocItemKind, Crate, ForeignItem, ForeignItemId, ForeignItemKind, HirId, ImplItemKind, Item,
-    ItemId, ItemKind, ModuleItems, QPath, TraitRef, TyKind,
+    AssocItemKind, ForeignItem, ForeignItemId, ForeignItemKind, ImplItemKind, Item, ItemId,
+    ItemKind, OwnerNode, QPath, TraitRef, TyKind,
 };
-use rustc_middle::ty::TyCtxt;
+
 use std::collections::HashMap;
 use std::sync::Arc;
 use vir::ast::{Krate, KrateX, Mode, Path, VirErr};
@@ -297,31 +297,9 @@ fn check_item<'tcx>(
                 body_id,
             )?;
         }
+        ItemKind::Macro(_macro_def) => {}
         _ => {
             unsupported_err!(item.span, "unsupported item", item);
-        }
-    }
-    Ok(())
-}
-
-fn check_module<'tcx>(
-    _tcx: TyCtxt<'tcx>,
-    module_path: &Path,
-    module_items: &'tcx ModuleItems,
-    item_to_module: &mut HashMap<ItemId, Path>,
-) -> Result<(), VirErr> {
-    match module_items {
-        ModuleItems { items, trait_items, impl_items, foreign_items } => {
-            for item_id in items {
-                item_to_module.insert(*item_id, module_path.clone());
-            }
-            unsupported_unless!(trait_items.len() == 0, "trait definitions", trait_items);
-            for _id in impl_items {
-                // TODO?
-            }
-            for _id in foreign_items {
-                // TODO
-            }
         }
     }
     Ok(())
@@ -354,78 +332,77 @@ fn check_foreign_item<'tcx>(
     Ok(())
 }
 
-fn check_attr<'tcx>(
-    _tcx: TyCtxt<'tcx>,
-    _id: &HirId,
-    _attr: &'tcx [Attribute],
-) -> Result<(), VirErr> {
-    // TODO
-    Ok(())
-}
-
 pub fn crate_to_vir<'tcx>(ctxt: &Context<'tcx>) -> Result<Krate, VirErr> {
-    let Crate {
-        item: _,
-        exported_macros: _,
-        non_exported_macro_attrs,
-        items,
-        trait_items,
-        impl_items,
-        foreign_items,
-        bodies: _,
-        trait_impls: _,
-        body_ids: _,
-        modules,
-        proc_macros,
-        trait_map: _,
-        attrs,
-    } = ctxt.krate;
     let mut vir: KrateX = Default::default();
-    unsupported_unless!(
-        non_exported_macro_attrs.len() == 0,
-        "non-exported macro attributes",
-        non_exported_macro_attrs
-    );
     let mut item_to_module: HashMap<ItemId, Path> = HashMap::new();
-    for (id, module) in modules {
-        let path = crate::rust_to_vir_base::def_id_to_vir_path(ctxt.tcx, id.to_def_id());
-        check_module(ctxt.tcx, &path, module, &mut item_to_module)?;
-        vir.module_ids.push(path);
-    }
-    for (id, item) in foreign_items {
-        check_foreign_item(ctxt, &mut vir, id, item)?;
-    }
-    for (id, item) in items {
-        check_item(ctxt, &mut vir, &item_to_module[id], id, item)?;
-    }
-    unsupported_unless!(trait_items.len() == 0, "trait definitions", trait_items);
-    for (_id, impl_item) in impl_items {
-        match impl_item.kind {
-            ImplItemKind::Fn(_, _) => {
-                let impl_item_ident = impl_item.ident.as_str();
-                if impl_item_ident == "assert_receiver_is_total_eq"
-                    || impl_item_ident == "eq"
-                    || impl_item_ident == "ne"
-                    || impl_item_ident == "assert_receiver_is_structural"
-                {
-                    // TODO: check whether these implement the correct trait
+    for (owner_id, owner_opt) in ctxt.krate.owners.iter_enumerated() {
+        if let Some(owner) = owner_opt {
+            match owner.node() {
+                OwnerNode::Item(Item { kind: ItemKind::Mod(mod_), def_id, .. }) => {
+                    let path =
+                        crate::rust_to_vir_base::def_id_to_vir_path(ctxt.tcx, def_id.to_def_id());
+                    vir.module_ids.push(path.clone());
+                    item_to_module.extend(mod_.item_ids.iter().map(move |ii| (*ii, path.clone())))
                 }
-            }
-            ImplItemKind::TyAlias(_ty) => {
-                // checked by the type system
-            }
-            _ => {
-                unsupported_err!(impl_item.span, "unsupported_impl_item", impl_item);
+                OwnerNode::Crate(mod_) => {
+                    let path =
+                        crate::rust_to_vir_base::def_id_to_vir_path(ctxt.tcx, owner_id.to_def_id());
+                    vir.module_ids.push(path.clone());
+                    item_to_module.extend(mod_.item_ids.iter().map(move |ii| (*ii, path.clone())))
+                }
+                _ => (),
             }
         }
     }
-    // for (id, _trait_impl) in trait_impls {
-    //
-    // }
-    unsupported_unless!(proc_macros.len() == 0, "procedural macros", proc_macros);
-    // unsupported_unless!(trait_map.iter().all(|(_, v)| v.len() == 0), "traits", trait_map);
-    for (id, attr) in attrs {
-        check_attr(ctxt.tcx, id, attr)?;
+    for owner in ctxt.krate.owners.iter() {
+        if let Some(owner) = owner {
+            match owner.node() {
+                OwnerNode::Item(item) => {
+                    let item_path;
+                    // If the item does not belong to a module, use the def_id of its owner as the
+                    // module path
+                    let module_path = if let Some(path) = item_to_module.get(&item.item_id()) {
+                        path
+                    } else {
+                        let owned_by = ctxt.krate.owners[item.hir_id().owner]
+                            .as_ref()
+                            .expect("owner of item")
+                            .node();
+                        item_path = def_id_to_vir_path(ctxt.tcx, owned_by.def_id().to_def_id());
+                        &item_path
+                    };
+                    check_item(ctxt, &mut vir, module_path, &item.item_id(), item)?
+                }
+                OwnerNode::ForeignItem(foreign_item) => check_foreign_item(
+                    ctxt,
+                    &mut vir,
+                    &foreign_item.foreign_item_id(),
+                    foreign_item,
+                )?,
+                OwnerNode::TraitItem(trait_item) => {
+                    unsupported_err!(trait_item.span, "trait items", trait_item)
+                }
+                OwnerNode::ImplItem(impl_item) => match impl_item.kind {
+                    ImplItemKind::Fn(_, _) => {
+                        let impl_item_ident = impl_item.ident.as_str();
+                        if impl_item_ident == "assert_receiver_is_total_eq"
+                            || impl_item_ident == "eq"
+                            || impl_item_ident == "ne"
+                            || impl_item_ident == "assert_receiver_is_structural"
+                        {
+                            // TODO: check whether these implement the correct trait
+                        }
+                    }
+                    ImplItemKind::TyAlias(_ty) => {
+                        // checked by the type system
+                    }
+                    _ => {
+                        unsupported_err!(impl_item.span, "unsupported_impl_item", impl_item);
+                    }
+                },
+                OwnerNode::Crate(_mod_) => (),
+            }
+        }
     }
     Ok(Arc::new(vir))
 }
