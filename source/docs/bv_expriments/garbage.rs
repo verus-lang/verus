@@ -55,10 +55,10 @@ fn set_bit_exec(bv:u32, loc:u32, bit:bool) -> u32 {
 
 #[derive(Structural, PartialEq, Eq)]
 enum Color {
-    White,     // 00
-    Gray,      // 01
-    Black,     // 10
-    Undefined, // 11
+    White,     // 11
+    Gray,      // 10
+    Black,     // 01
+    Undefined, // 00
 }
 
 #[spec]
@@ -156,7 +156,7 @@ fn set_color(bucket:u32, high:bool, low:bool , i:u32, #[proof] ghost_bucket:Seq<
 }
 
 #[exec]
-fn get_two_bit_exec(bv:u32, index:u32) -> Color {
+fn get_color(bv:u32, index:u32) -> Color {
     requires(index < 15);
     ensures(|c:Color| [
         c == color_view(get_bit(bv, 2*index +1), get_bit(bv, 2*index)),
@@ -190,20 +190,8 @@ fn get_two_bit_exec(bv:u32, index:u32) -> Color {
         Color::White
     };
     assert(c == color_view(get_bit(bv, 2*index +1), get_bit(bv, 2*index)));
-
     c
 }
-
-//     let val = 3u32 & (bv >> index*2);
-//     assert_bit_vector(3u32 & (bv >> index*2) < 4);
-//     assert_bit_vector( 
-//         (if 3u32 & (bv >> index*2) == 3 {Color::Undefined} else if 3u32 & (bv >> index*2) == 2 {Color::Black} 
-//         else if 3u32 & (bv >> index*2)== 1 {Color::} else {}) 
-//         == color_view(get_bit(bv, 2*index +1), get_bit(bv, 2*index)) 
-//     ); 
-
-//     if val == 3 {Color::Undefined} else if val == 2 {Color::Black} else if val == 1 {Color::Gray} else {Color::White}
-// }
 
 
 fn main(){}
