@@ -36,6 +36,9 @@ fn check_updates_refer_to_valid_fields(
         TransitionStmt::Require(_, _) => Ok(()),
         TransitionStmt::Assert(_, _) => Ok(()),
         TransitionStmt::Update(sp, f, _) |
+        TransitionStmt::AddSome(sp, f, _) |
+        TransitionStmt::RemoveSome(sp, f, _) |
+        TransitionStmt::HaveSome(sp, f, _) |
         TransitionStmt::AddElement(sp, f, _) |
         TransitionStmt::RemoveElement(sp, f, _) |
         TransitionStmt::HaveElement(sp, f, _) => {
@@ -128,6 +131,9 @@ fn check_readonly(sm: &SM, ts: &TransitionStmt) -> syn::parse::Result<()> {
             ShardableType::Multiset(_ty) => {
                 check_readonly_elemental(field, ts)?;
             }
+            ShardableType::Optional(_ty) => {
+                check_readonly_optional(field, ts)?;
+            }
         }
     }
     Ok(())
@@ -145,16 +151,16 @@ fn check_readonly_variable(field: &Field, ts: &TransitionStmt) -> syn::parse::Re
             TransitionStmt::Update(span, _, _) => {
                 errors.push(Error::new(*span, "'update' statement not allowed in readonly transition"));
             }
-            TransitionStmt::AddElement(span, _, _) => {
-                errors.push(Error::new(*span, "'add_element' statement not allowed in readonly transition"));
-                errors.push(Error::new(*span, format!("'add_element' statement not allowed for field with sharding strategy '{:}'", field.stype.strategy_name())));
-            }
+            TransitionStmt::AddSome(span, _, _) |
+            TransitionStmt::RemoveSome(span, _, _) |
+            TransitionStmt::AddElement(span, _, _) |
             TransitionStmt::RemoveElement(span, _, _) => {
-                errors.push(Error::new(*span, "'remove_element' statement not allowed in readonly transition"));
-                errors.push(Error::new(*span, format!("'remove_element' statement not allowed for field with sharding strategy '{:}'", field.stype.strategy_name())));
+                errors.push(Error::new(*span, format!("'{:}' statement not allowed in readonly transition", ts.statement_name())));
+                errors.push(Error::new(*span, format!("'{:}' statement not allowed for field with sharding strategy '{:}'", ts.statement_name(), field.stype.strategy_name())));
             }
+            TransitionStmt::HaveSome(span, _, _) |
             TransitionStmt::HaveElement(span, _, _) => {
-                errors.push(Error::new(*span, format!("'have_element' statement not allowed for field with sharding strategy '{:}'", field.stype.strategy_name())));
+                errors.push(Error::new(*span, format!("'{:}' statement not allowed for field with sharding strategy '{:}'", ts.statement_name(), field.stype.strategy_name())));
             }
             TransitionStmt::PostCondition(..) => { }
         }
@@ -171,16 +177,43 @@ fn check_readonly_elemental(field: &Field, ts: &TransitionStmt) -> syn::parse::R
             TransitionStmt::If(_, _, _, _) |
             TransitionStmt::Require(_, _) |
             TransitionStmt::Assert(_, _) => { panic!("visit_updatelike_stmts"); }
-            TransitionStmt::Update(span, _, _) => {
-                errors.push(Error::new(*span, "'update' statement not allowed in readonly transition"))
-            }
-            TransitionStmt::AddElement(span, _, _) => {
-                errors.push(Error::new(*span, "'add_element' statement not allowed in readonly transition"))
-            }
+            TransitionStmt::Update(span, _, _) |
+            TransitionStmt::AddSome(span, _, _) |
+            TransitionStmt::RemoveSome(span, _, _) |
+            TransitionStmt::AddElement(span, _, _) |
             TransitionStmt::RemoveElement(span, _, _) => {
-                errors.push(Error::new(*span, "'remove_element' statement not allowed in readonly transition"))
+                errors.push(Error::new(*span, format!("'{:}' statement not allowed in readonly transition", ts.statement_name())));
             }
             TransitionStmt::HaveElement(_, _, _) => { }
+            TransitionStmt::HaveSome(span, _, _) => {
+                errors.push(Error::new(*span, format!("'{:}' statement not allowed for field with sharding strategy '{:}'", ts.statement_name(), field.stype.strategy_name())));
+            }
+            TransitionStmt::PostCondition(..) => { }
+        }
+    });
+    combine_errors_or_ok(errors)
+}
+
+fn check_readonly_optional(field: &Field, ts: &TransitionStmt) -> syn::parse::Result<()> {
+    let mut errors = Vec::new();
+    ts.visit_updatelike_stmts(&field.ident, &mut |ts| {
+        match ts {
+            TransitionStmt::Block(_, _) |
+            TransitionStmt::Let(_, _, _) |
+            TransitionStmt::If(_, _, _, _) |
+            TransitionStmt::Require(_, _) |
+            TransitionStmt::Assert(_, _) => { panic!("visit_updatelike_stmts"); }
+            TransitionStmt::Update(span, _, _) |
+            TransitionStmt::AddSome(span, _, _) |
+            TransitionStmt::RemoveSome(span, _, _) |
+            TransitionStmt::AddElement(span, _, _) |
+            TransitionStmt::RemoveElement(span, _, _) => {
+                errors.push(Error::new(*span, format!("'{:}' statement not allowed in readonly transition", ts.statement_name())));
+            }
+            TransitionStmt::HaveSome(_, _, _) => { }
+            TransitionStmt::HaveElement(span, _, _) => {
+                errors.push(Error::new(*span, format!("'{:}' statement not allowed for field with sharding strategy '{:}'", ts.statement_name(), field.stype.strategy_name())));
+            }
             TransitionStmt::PostCondition(..) => { }
         }
     });
@@ -199,14 +232,13 @@ fn check_constant_not_updated(field: &Field, ts: &TransitionStmt) -> syn::parse:
             TransitionStmt::Update(span, _, _) => {
                 errors.push(Error::new(*span, "cannot update 'constant' field"))
             }
-            TransitionStmt::AddElement(span, _, _) => {
-                errors.push(Error::new(*span, "'add_element' statement not allowed for field with sharding strategy 'constant'"))
-            }
-            TransitionStmt::RemoveElement(span, _, _) => {
-                errors.push(Error::new(*span, "'remove_element' statement not allowed for field with sharding strategy 'constant'"))
-            }
+            TransitionStmt::AddSome(span, _, _) |
+            TransitionStmt::RemoveSome(span, _, _) |
+            TransitionStmt::HaveSome(span, _, _) |
+            TransitionStmt::AddElement(span, _, _) |
+            TransitionStmt::RemoveElement(span, _, _) |
             TransitionStmt::HaveElement(span, _, _) => {
-                errors.push(Error::new(*span, "'have_element' statement not allowed for field with sharding strategy 'constant'"))
+                errors.push(Error::new(*span, format!("'{:}' statement not allowed for field with sharding strategy 'constant'", ts.statement_name())));
             }
             TransitionStmt::PostCondition(..) => { }
         }
@@ -264,14 +296,13 @@ fn check_init_rec(ts: &TransitionStmt) -> syn::parse::Result<Vec<(Ident, Span)>>
             v.push((ident.clone(), span.clone()));
             Ok(v)
         }
-        TransitionStmt::AddElement(span, _, _) => {
-            Err(Error::new(*span, "'add_element' statement not allowed in initialization"))
-        }
-        TransitionStmt::RemoveElement(span, _, _) => {
-            Err(Error::new(*span, "'remove_element' statement not allowed in initialization"))
-        }
+        TransitionStmt::AddSome(span, _, _) |
+        TransitionStmt::RemoveSome(span, _, _) |
+        TransitionStmt::HaveSome(span, _, _) |
+        TransitionStmt::AddElement(span, _, _) |
+        TransitionStmt::RemoveElement(span, _, _) |
         TransitionStmt::HaveElement(span, _, _) => {
-            Err(Error::new(*span, "'have_element' statement not allowed in initialization"))
+            Err(Error::new(*span, format!("'{:}' statement not allowed in initialization", ts.statement_name())))
         }
         TransitionStmt::PostCondition(..) => Ok(Vec::new()),
     }
@@ -294,6 +325,9 @@ pub fn check_normal(sm: &SM, ts: &TransitionStmt) -> syn::parse::Result<()> {
             }
             ShardableType::Multiset(_ty) => {
                 check_transition_elemental(field, ts)?;
+            }
+            ShardableType::Optional(_ty) => {
+                check_transition_optional(field, ts)?;
             }
         }
     }
@@ -333,23 +367,14 @@ fn check_transition_variable(field: &Field, ts: &TransitionStmt) -> syn::parse::
                 Ok(None)
             }
         }
-        TransitionStmt::AddElement(span, id, _) => {
-            if id.to_string() == field.ident.to_string() {
-                Err(Error::new(*span, format!("'add_element' statement not allowed for field with sharding strategy '{:}'", field.stype.strategy_name())))
-            } else {
-                Ok(None)
-            }
-        }
-        TransitionStmt::RemoveElement(span, id, _) => {
-            if id.to_string() == field.ident.to_string() {
-                Err(Error::new(*span, format!("'remove_element' statement not allowed for field with sharding strategy '{:}'", field.stype.strategy_name())))
-            } else {
-                Ok(None)
-            }
-        }
+        TransitionStmt::AddSome(span, id, _) |
+        TransitionStmt::RemoveSome(span, id, _) |
+        TransitionStmt::HaveSome(span, id, _) |
+        TransitionStmt::AddElement(span, id, _) |
+        TransitionStmt::RemoveElement(span, id, _) |
         TransitionStmt::HaveElement(span, id, _) => {
             if id.to_string() == field.ident.to_string() {
-                Err(Error::new(*span, format!("'have_element' statement not allowed for field with sharding strategy '{:}'", field.stype.strategy_name())))
+                Err(Error::new(*span, format!("'{:}' statement not allowed for field with sharding strategy '{:}'", ts.statement_name(), field.stype.strategy_name())))
             } else {
                 Ok(None)
             }
@@ -367,13 +392,46 @@ fn check_transition_elemental(field: &Field, ts: &TransitionStmt) -> syn::parse:
             TransitionStmt::If(_, _, _, _) |
             TransitionStmt::Require(_, _) |
             TransitionStmt::Assert(_, _) => { panic!("visit_updatelike_stmts"); }
+
+            TransitionStmt::RemoveSome(span, _, _) |
+            TransitionStmt::HaveSome(span, _, _) |
+            TransitionStmt::AddSome(span, _, _) |
             TransitionStmt::Update(span, _, _) => {
-                errors.push(Error::new(*span, format!("'update' statement not allowed for field with sharding strategy '{:}'", field.stype.strategy_name())));
+                errors.push(Error::new(*span, format!("'{:}' statement not allowed for field with sharding strategy '{:}'", ts.statement_name(), field.stype.strategy_name())));
             }
+
             // These 3 are expected:
             TransitionStmt::AddElement(_, _, _) => { }
             TransitionStmt::RemoveElement(_, _, _) => { }
             TransitionStmt::HaveElement(_, _, _) => { }
+            TransitionStmt::PostCondition(..) => { }
+        }
+    });
+    combine_errors_or_ok(errors)
+}
+
+fn check_transition_optional(field: &Field, ts: &TransitionStmt) -> syn::parse::Result<()> {
+    let mut errors = Vec::new();
+    ts.visit_updatelike_stmts(&field.ident, &mut |ts| {
+        match ts {
+            TransitionStmt::Block(_, _) |
+            TransitionStmt::Let(_, _, _) |
+            TransitionStmt::If(_, _, _, _) |
+            TransitionStmt::Require(_, _) |
+            TransitionStmt::Assert(_, _) => { panic!("visit_updatelike_stmts"); }
+
+            TransitionStmt::AddElement(_, _, _) => { }
+            TransitionStmt::RemoveElement(_, _, _) => { }
+            TransitionStmt::HaveElement(_, _, _) => { }
+            TransitionStmt::Update(span, _, _) => {
+                errors.push(Error::new(*span, format!("'{:}' statement not allowed for field with sharding strategy '{:}'", ts.statement_name(), field.stype.strategy_name())));
+            }
+
+            // These 3 are expected:
+            TransitionStmt::RemoveSome(_, _, _) |
+            TransitionStmt::HaveSome(_, _, _) |
+            TransitionStmt::AddSome(..) |
+
             TransitionStmt::PostCondition(..) => { }
         }
     });

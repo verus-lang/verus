@@ -93,6 +93,9 @@ fn to_relation_rec(
             }
         }
         TransitionStmt::Update(_, _, _) |
+        TransitionStmt::AddSome(_, _, _) |
+        TransitionStmt::RemoveSome(_, _, _) |
+        TransitionStmt::HaveSome(_, _, _) |
         TransitionStmt::AddElement(_, _, _) |
         TransitionStmt::RemoveElement(_, _, _) |
         TransitionStmt::HaveElement(_, _, _) => {

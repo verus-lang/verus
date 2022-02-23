@@ -37,6 +37,7 @@ pub enum ShardableType {
     Constant(Type),
     NotTokenized(Type),
     Multiset(Type),
+    Optional(Type),
     // TODO more here
 }
 
@@ -68,6 +69,10 @@ pub enum TransitionStmt {
     AddElement(Span, Ident, Expr),
     RemoveElement(Span, Ident, Expr),
     HaveElement(Span, Ident, Expr),
+
+    AddSome(Span, Ident, Expr),
+    RemoveSome(Span, Ident, Expr),
+    HaveSome(Span, Ident, Expr),
 
     // used internally by concurrency_tokens.rs
     // Different than an Assert - this expression is allowed to depend on output values

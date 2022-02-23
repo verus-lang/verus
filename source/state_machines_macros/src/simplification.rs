@@ -65,17 +65,54 @@ fn simplify_updates_rec(ts: &TransitionStmt, field_map: HashMap<String, Expr>)
             (ts.clone(), field_map)
         }
 
+        TransitionStmt::Update(span, f, e) => {
+            let mut field_map = field_map;
+            field_map.insert(f.to_string(), e.clone());
+            (TransitionStmt::Block(*span, Vec::new()), field_map)
+        }
+
+        TransitionStmt::HaveSome(span, f, e) => {
+            let cur = &field_map[&f.to_string()];
+            let prec = Expr::Verbatim(quote!{
+                ::builtin::equal(
+                    #cur,
+                    crate::pervasive::option::Option::Some(#e)
+                )
+            });
+            (TransitionStmt::Require(*span, prec), field_map)
+        }
+        TransitionStmt::AddSome(span, f, e) => {
+            let mut field_map = field_map;
+            let cur = field_map[&f.to_string()].clone();
+            field_map.insert(f.to_string(), Expr::Verbatim(quote!{
+                crate::pervasive::option::Option::Some(#e)
+            }));
+            let safety = Expr::Verbatim(quote!{
+                (#cur).is_None()
+            });
+            (TransitionStmt::Assert(*span, safety), field_map)
+        }
+        TransitionStmt::RemoveSome(span, f, e) => {
+            let mut field_map = field_map;
+            let cur = field_map[&f.to_string()].clone();
+            field_map.insert(f.to_string(), Expr::Verbatim(quote!{
+                crate::pervasive::option::Option::None
+            }));
+            let prec = Expr::Verbatim(quote!{
+                ::builtin::equal(
+                    #cur,
+                    crate::pervasive::option::Option::Some(#e)
+                )
+            });
+            (TransitionStmt::Require(*span, prec), field_map)
+        }
+
         TransitionStmt::HaveElement(span, f, e) => {
             let cur = &field_map[&f.to_string()];
             let prec = Expr::Verbatim(quote!{
                 (#cur).count(#e) >= 1
             });
             (TransitionStmt::Require(*span, prec), field_map)
-        }
-        TransitionStmt::Update(span, f, e) => {
-            let mut field_map = field_map;
-            field_map.insert(f.to_string(), e.clone());
-            (TransitionStmt::Block(*span, Vec::new()), field_map)
         }
         TransitionStmt::AddElement(span, f, e) => {
             let mut field_map = field_map;
@@ -129,8 +166,11 @@ fn add_finalizes_rec(ts: &mut TransitionStmt, found: &mut Vec<Ident>) {
         TransitionStmt::Require(_, _) => { }
         TransitionStmt::Assert(_, _) => { }
         TransitionStmt::HaveElement(_, _, _) => { }
+        TransitionStmt::HaveSome(_, _, _) => { }
 
         TransitionStmt::Update(_, f, _) |
+        TransitionStmt::AddSome(_, f, _) |
+        TransitionStmt::RemoveSome(_, f, _) |
         TransitionStmt::AddElement(_, f, _) |
         TransitionStmt::RemoveElement(_, f, _) => {
             is_update_for = Some(f.clone());
@@ -181,9 +221,12 @@ fn add_finalizes_rec(ts: &mut TransitionStmt, found: &mut Vec<Ident>) {
         TransitionStmt::Let(_, _, _) => { }
         TransitionStmt::Require(_, _) => { }
         TransitionStmt::Assert(_, _) => { }
+        TransitionStmt::Update(_, _, _) => { }
+        TransitionStmt::HaveSome(_, _, _) => { }
+        TransitionStmt::AddSome(_, _, _) => { }
+        TransitionStmt::RemoveSome(_, _, _) => { }
         TransitionStmt::HaveElement(_, _, _) => { }
-        TransitionStmt::Update(_, _, _) |
-        TransitionStmt::AddElement(_, _, _) |
+        TransitionStmt::AddElement(_, _, _) => { }
         TransitionStmt::RemoveElement(_, _, _) => { }
         TransitionStmt::PostCondition(..) => {
             panic!("PostCondition statement shouldn't exist here");

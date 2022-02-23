@@ -285,6 +285,9 @@ pub fn shardable_type_to_type(stype: &ShardableType) -> Type {
         ShardableType::Multiset(ty) => {
             Type::Verbatim(quote!{ crate::pervasive::multiset::Multiset<#ty> })
         }
+        ShardableType::Optional(ty) => {
+            Type::Verbatim(quote!{ crate::pervasive::option::Option<#ty> })
+        }
     }
 }
 

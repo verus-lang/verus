@@ -1034,6 +1034,10 @@ impl<'a> VisitMut for TranslatorVisitor<'a> {
                                 self.errors.push(Error::new(span,
                                     "A `multiset` field cannot be directly referenced here")); // TODO be more specific
                             }
+                            ShardableType::Optional(_ty) => {
+                                self.errors.push(Error::new(span,
+                                    "An `option` field cannot be directly referenced here")); // TODO be more specific
+                            }
                         }
                     }
                 },
@@ -1169,10 +1173,16 @@ fn exchange_collect(
             ctxt.ensures.push(with_prequel(&prequel, post_e.clone()));
             Ok((prequel, prequel_with_asserts))
         }
-        TransitionStmt::Update(..) |
+        TransitionStmt::Update(..) => Ok((prequel, prequel_with_asserts)),
+
+        TransitionStmt::HaveSome(..) |
+        TransitionStmt::AddSome(..) |
+        TransitionStmt::RemoveSome(..) |
         TransitionStmt::HaveElement(..) |
         TransitionStmt::AddElement(..) |
-        TransitionStmt::RemoveElement(..) => Ok((prequel, prequel_with_asserts)),
+        TransitionStmt::RemoveElement(..) => {
+            panic!("should have been removed in preprocessing");
+        }
     }
 }
 
@@ -1311,6 +1321,9 @@ fn get_output_value_for_variable(ctxt: &Ctxt, ts: &TransitionStmt, field: &Field
         TransitionStmt::Let(_, _, _)
         | TransitionStmt::Require(_, _)
         | TransitionStmt::Assert(_, _)
+        | TransitionStmt::AddSome(..)
+        | TransitionStmt::RemoveSome(..)
+        | TransitionStmt::HaveSome(..)
         | TransitionStmt::AddElement(..)
         | TransitionStmt::RemoveElement(..)
         | TransitionStmt::HaveElement(..)
