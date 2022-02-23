@@ -3,7 +3,7 @@ use crate::context::{ContextX, ErasureInfo};
 use crate::debugger::Debugger;
 use crate::unsupported;
 use crate::util::from_raw_span;
-use air::ast::{Command, CommandX};
+use air::ast::{Command, CommandX, Commands};
 use air::context::ValidityResult;
 use air::errors::{Error, ErrorLabel};
 use rustc_hir::OwnerNode;
@@ -16,7 +16,7 @@ use std::fs::File;
 use std::io::Write;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use vir::ast::{Krate, VirErr, Visibility};
+use vir::ast::{Fun, Function, Krate, VirErr, Visibility};
 use vir::ast_util::{fun_as_rust_dbg, is_visible_to};
 use vir::def::SnapPos;
 
@@ -293,8 +293,8 @@ impl Verifier {
             );
         }
 
-        // Declare consequence axioms for spec functions, and function signatures for proof/exec functions
-        // Also check termination
+        // Collect function definitions
+        let mut fun_decls: HashMap<Fun, (Function, Commands, Commands)> = HashMap::new();
         for function in &krate.functions {
             let vis = function.x.visibility.clone();
             let vis = Visibility { is_private: vis.is_private, ..vis };
@@ -307,25 +307,44 @@ impl Verifier {
                 &function,
                 is_visible_to(&vis_abs, module),
             )?;
-            self.run_commands(
-                air_context,
-                &decl_commands,
-                &("Function-Axioms ".to_string() + &fun_as_rust_dbg(&function.x.name)),
-            );
-
-            // Check termination
-            if Some(module.clone()) != function.x.visibility.owning_module {
-                continue;
-            }
-            self.run_commands_queries(
-                compiler,
-                air_context,
-                &check_commands,
-                &HashMap::new(),
-                &vec![],
-                &("Function-Termination ".to_string() + &fun_as_rust_dbg(&function.x.name)),
-            );
+            assert!(!fun_decls.contains_key(&function.x.name));
+            fun_decls
+                .insert(function.x.name.clone(), (function.clone(), check_commands, decl_commands));
         }
+
+        // For spec functions, check termination and declare consequence axioms.
+        // Declarte them in SCC (strongly connected component) sorted order so that
+        // termination checking precedes consequence axioms for each SCC.
+        for scc in &ctx.func_call_graph.sort_sccs() {
+            let scc_nodes = ctx.func_call_graph.get_scc_nodes(scc);
+            // Check termination
+            for f in scc_nodes.iter() {
+                let (function, check_commands, _) = &fun_decls[f];
+                if Some(module.clone()) != function.x.visibility.owning_module {
+                    continue;
+                }
+                self.run_commands_queries(
+                    compiler,
+                    air_context,
+                    &check_commands,
+                    &HashMap::new(),
+                    &vec![],
+                    &("Function-Termination ".to_string() + &fun_as_rust_dbg(f)),
+                );
+            }
+
+            // Declare consequence axioms
+            for f in scc_nodes.iter() {
+                let (_, _, decl_commands) = &fun_decls[f];
+                self.run_commands(
+                    air_context,
+                    &decl_commands,
+                    &("Function-Axioms ".to_string() + &fun_as_rust_dbg(f)),
+                );
+                fun_decls.remove(f);
+            }
+        }
+        assert!(fun_decls.len() == 0);
 
         // Create queries to check the validity of proof/exec function bodies
         for function in &krate.functions {

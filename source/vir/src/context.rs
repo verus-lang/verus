@@ -28,9 +28,9 @@ pub struct Ctx {
     pub(crate) datatypes_with_invariant: HashSet<Path>,
     pub(crate) mono_abstract_datatypes: Vec<MonoTyp>,
     pub(crate) lambda_types: Vec<usize>,
-    pub(crate) functions: Vec<Function>,
-    pub(crate) func_map: HashMap<Fun, Function>,
-    pub(crate) func_call_graph: Graph<Fun>,
+    pub functions: Vec<Function>,
+    pub func_map: HashMap<Fun, Function>,
+    pub func_call_graph: Graph<Fun>,
     pub(crate) funcs_with_ensure_predicate: HashSet<Fun>,
     pub(crate) datatype_map: HashMap<Path, Datatype>,
     pub(crate) debug: bool,
@@ -143,6 +143,7 @@ impl Ctx {
         let funcs_with_ensure_predicate: HashSet<Fun> = HashSet::new();
         for function in krate.functions.iter() {
             func_map.insert(function.x.name.clone(), function.clone());
+            func_call_graph.add_node(function.x.name.clone());
             crate::recursion::expand_call_graph(&mut func_call_graph, function);
             functions.push(function.clone());
         }

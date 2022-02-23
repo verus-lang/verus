@@ -148,6 +148,31 @@ impl<T: std::cmp::Eq + std::hash::Hash + Clone> Graph<T> {
         }
     }
 
+    fn sort_sccs_node(&self, visited: &mut Vec<bool>, sorted: &mut Vec<T>, s: usize) {
+        if visited[s] {
+            return;
+        }
+        visited[s] = true;
+        for v in self.sccs[s].nodes.iter() {
+            for w in self.nodes[*v].edges.iter() {
+                self.sort_sccs_node(visited, sorted, self.mapping[&self.nodes[*w].t]);
+            }
+        }
+        sorted.push(self.nodes[self.sccs[s].rep()].t.clone());
+    }
+
+    // Return vector of representatives, one for each SCC, sorted so that later
+    // elements point only to earlier elements.
+    pub fn sort_sccs(&self) -> Vec<T> {
+        assert!(self.has_run);
+        let mut visited: Vec<bool> = self.sccs.iter().map(|_| false).collect();
+        let mut sorted: Vec<T> = Vec::new();
+        for s in 0..self.sccs.len() {
+            self.sort_sccs_node(&mut visited, &mut sorted, s);
+        }
+        sorted
+    }
+
     pub fn get_scc_size(&self, t: &T) -> usize {
         assert!(self.has_run);
         match self.mapping.get(&t) {
@@ -161,5 +186,13 @@ impl<T: std::cmp::Eq + std::hash::Hash + Clone> Graph<T> {
         assert!(self.mapping.contains_key(&t));
         let id = self.mapping.get(&t).expect("key was present in the line above");
         self.nodes[self.sccs[*id].rep()].t.clone()
+    }
+
+    pub fn get_scc_nodes(&self, t: &T) -> Vec<T> {
+        assert!(self.has_run);
+        assert!(self.mapping.contains_key(&t));
+        let id = self.mapping[t];
+        let scc = &self.sccs[id];
+        scc.nodes.iter().map(|i| self.nodes[*i].t.clone()).collect()
     }
 }

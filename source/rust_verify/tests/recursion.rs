@@ -531,3 +531,66 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_vir_error(err)
 }
+
+test_verify_one_file! {
+    #[test] termination_checked_before_definition1 code! {
+        #[spec]
+        fn f(i: int) -> int {
+            decreases(f(0) + i);
+            f(i) + 1 // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] termination_checked_before_definition2 code! {
+        #[spec]
+        fn f(i: int) -> int {
+            decreases(g(0) + i);
+            g(i) + 1 // FAILS
+        }
+
+        #[spec]
+        fn g(i: int) -> int {
+            decreases(f(0) + i);
+            f(i) + 1 // FAILS
+        }
+    } => Err(err) => assert_fails(err, 2)
+}
+
+test_verify_one_file! {
+    #[test] termination_checked_before_definition3 code! {
+        #[spec]
+        fn f(i: int) -> int {
+            decreases(g(0) + h(0) + i);
+            g(i) + 1 // FAILS
+        }
+
+        #[spec]
+        fn g(i: int) -> int {
+            decreases(f(0) + h(0) + i);
+            f(i) + 1 // FAILS
+        }
+
+        #[spec]
+        fn h(i: int) -> int {
+            decreases(f(0) + i);
+            h(i) + 1 // FAILS
+        }
+    } => Err(err) => assert_fails(err, 3)
+}
+
+test_verify_one_file! {
+    #[test] termination_checked_before_definition4 code! {
+        #[spec]
+        fn f(i: int) -> int {
+            decreases(i);
+            if i > 0 { 2 + f(g(i - 1)) } else { 0 }
+        }
+
+        #[spec]
+        fn g(i: int) -> int {
+            i
+        }
+    } => Ok(())
+}
