@@ -54,12 +54,12 @@ Similarly for multiset & option strategies.
 
 A field `f` can be marked as a "storage" field, which means that instead of tokenizing like the other fields, it represents the _stored_ values. (That is, we can define the interpretation function I, as an extension PCM, to simply return the value of this field.)
 
-We can then define `deposit` and `withdraw` similar to `add` and `remove`. However, stored objects are in some sense dual to the ordinary tokenized objects, and therefore the  are flipped:
+We can then define `deposit` and `withdraw` similar to `add` and `remove`. However, stored objects are in some sense dual to the ordinary tokenized objects, and therefore the  are flipped. `deposit` (similarly to `add`) operationally augments the field `f`; however, `deposit` corresponds to an _input_ object. Likewise, `withdraw` operationally subtracts from the field `f`, but corresponds to an _output_ object.
 
  * `deposit(f, x)` is operationally equivalent to `assert(post.f ## x); post.f := post.f · x`
  * `withdraw(f, x)` is operationally equivalent to `assert(post.f >= x); post.f := post.f - x`
 
-However, note that _both_ conditions are `assert` statement here. The deposited tokens come externally from the protocol, and the monoidal structure of those tokens might differ from the monoidal structure used on the field `f`. The existence of a token to deposit does not _a priori_ guarantee that the protocol "has room for it". (For example, in the RwLock example, the client needs to provide a particular token in order to perform a lock release, i.e., a deposit.)
+Also, note that _both_ conditions are `assert` statement here. The deposited tokens come externally from the protocol, and the monoidal structure of those tokens might differ from the monoidal structure used on the field `f`. The existence of a token to deposit does not _a priori_ guarantee that the protocol "has room for it". (For example, in the RwLock example, the client needs to provide a particular token in order to perform a lock release, i.e., a deposit.)
 
 Guards are easy:
 
