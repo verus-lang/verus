@@ -32,6 +32,19 @@ concurrent_state_machine!(RwLock {
         pub reader: Multiset<T>,
     }
 
+    #[init]
+    fn initialize_empty(&self) {
+        init(flags, (true, 0));
+        init(storage, Option::None);
+        init(pending_writer, Option::None);
+        init(writer, Option::Some(()));
+        init(pending_reader, Multiset::empty());
+        init(reader, Multiset::empty());
+    }
+
+    #[inductive(initialize_empty)]
+    fn initialize_empty_inductive(post: RwLock) { }
+
     /// Increment the 'rc' counter, obtain a pending_reader
     #[transition]
     fn acquire_read_start(&self) {

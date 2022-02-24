@@ -496,85 +496,107 @@ pub fn exchange_stream(bundle: &SMBundle, tr: &Transition) -> syn::parse::Result
 
     for field in &sm.fields {
         if ctxt.is_init {
+            assert!(!use_explicit_lifetime);
             assert!(ctxt.fields_written.contains(&field.ident.to_string()));
             assert!(!ctxt.fields_read.contains(&field.ident.to_string()));
-        }
 
-        let nondeterministic_read = match field.stype {
-                ShardableType::NotTokenized(_) => true,
-                ShardableType::StorageOptional(_) => true,
-                _ => false
-            } && ctxt.fields_read.contains(&field.ident.to_string());
+            match &field.stype {
+                ShardableType::Constant(_) => {
+                     let e_opt = get_output_value_for_variable(&ctxt, &tr.body, field);
+                     let e = e_opt.expect("get_output_value_for_variable");
+                     let lhs = get_const_field_value(&ctxt, field);
+                     ctxt.ensures.push(mk_eq(&lhs, &e));
+                }
+                _ => { }
+            }
 
-        if nondeterministic_read {
-            // It is possible to read a value non-deterministically without it coming
-            // from an input token.
-            // In that case, we need to make the field value an _output_ argument.
-            let ty = shardable_type_to_type(&field.stype);
-            let name = nondeterministic_read_spec_out_name(field);
-            out_args.push((quote! { #name }, quote! { crate::modes::Spec<#ty> }));
-        }
+            // TODO handle input params
 
-        match field.stype {
-            ShardableType::Constant(_) => {
-                if ctxt.is_init {
-                    let e_opt = get_output_value_for_variable(&ctxt, &tr.body, field);
-                    let e = e_opt.expect("get_output_value_for_variable");
-                    let lhs = get_const_field_value(&ctxt, field);
-                    ctxt.ensures.push(mk_eq(&lhs, &e));
-                } else {
+            if let Some(init_output_token_type) = get_init_param_out_type(sm, &field) {
+                add_token_param_in_out(
+                            &ctxt,
+                            &mut in_args,
+                            &mut out_args,
+                            &mut inst_eq_enss,
+                            &mut inst_eq_reqs,
+                            &transition_arg_name(field),
+                            &init_output_token_type,
+                            InoutType::Out,
+                            true, // apply_instance_condition
+                            false, // (don't) use_explicit_lifetime
+                        );
+
+                let e_opt = get_output_value_for_variable(&ctxt, &tr.body, field);
+                let e = e_opt.expect("get_output_value_for_variable");
+                let lhs = get_new_field_value(field);
+                ctxt.ensures.push(mk_eq(&lhs, &e));
+            }
+        } else {
+            let nondeterministic_read = match field.stype {
+                    ShardableType::NotTokenized(_) => true,
+                    ShardableType::StorageOptional(_) => true,
+                    _ => false
+                } && ctxt.fields_read.contains(&field.ident.to_string());
+
+            if nondeterministic_read {
+                // It is possible to read a value non-deterministically without it coming
+                // from an input token.
+                // In that case, we need to make the field value an _output_ argument.
+                let ty = shardable_type_to_type(&field.stype);
+                let name = nondeterministic_read_spec_out_name(field);
+                out_args.push((quote! { #name }, quote! { crate::modes::Spec<#ty> }));
+            }
+
+            match field.stype {
+                ShardableType::Constant(_) => {
                     // We can't update a constant field in a non-init transition.
                     // This should have been checked already.
                     assert!(!ctxt.fields_written.contains(&field.ident.to_string()));
                 }
-            }
-            ShardableType::NotTokenized(_) => {
-                // do nothing
-                // the nondeterministic_read case was handled above
-                // nothing to do for writes (they simply aren't reflected in output tokens)
-            }
-            ShardableType::Variable(_) => {
-                let is_written;
-                let is_read;
-                if ctxt.is_init {
-                    is_written = true;
-                    is_read = false;
-                } else {
-                    is_written = ctxt.fields_written.contains(&field.ident.to_string());
-                    is_read = is_written || ctxt.fields_read.contains(&field.ident.to_string());
+                ShardableType::NotTokenized(_) => {
+                    // do nothing
+                    // the nondeterministic_read case was handled above
+                    // nothing to do for writes (they simply aren't reflected in output tokens)
                 }
+                ShardableType::Variable(_) => {
+                    let is_written = ctxt.fields_written.contains(&field.ident.to_string());
+                    let is_read = ctxt.fields_read.contains(&field.ident.to_string());
 
-                add_token_param_for_var(
-                    &ctxt,
-                    &mut in_args,
-                    &mut out_args,
-                    &mut inst_eq_enss,
-                    &mut inst_eq_reqs,
-                    &transition_arg_name(field),
-                    &field_token_type(&sm.name, field),
-                    is_read,
-                    is_written,
-                    use_explicit_lifetime,
-                );
+                    if is_written || is_read {
+                        // If is_written=true, then it doesn't really matter what is_read is;
+                        // we have to take the token as input either way.
+                        // So there are really two cases here:
+                        //  * is_written=true: InOut variable
+                        //  * is_written=false (but in_read=true): BorrowIn variable
+                        add_token_param_in_out(
+                            &ctxt,
+                            &mut in_args,
+                            &mut out_args,
+                            &mut inst_eq_enss,
+                            &mut inst_eq_reqs,
+                            &transition_arg_name(field),
+                            &field_token_type(&sm.name, field),
+                            if is_written { InoutType::InOut } else { InoutType::BorrowIn },
+                            true,
+                            use_explicit_lifetime,
+                        );
+                    }
 
-                if is_written {
-                    // Post-condition that gives the value of the output token
-                    // TODO, maybe instead of doing this here, we could translate the
-                    // `Update` statements into `PostCondition` statements like we
-                    // do for other kinds of tokens. Then we wouldn't have to have this here.
+                    if is_written {
+                        // Post-condition that gives the value of the output token
+                        // TODO, maybe instead of doing this here, we could translate the
+                        // `Update` statements into `PostCondition` statements like we
+                        // do for other kinds of tokens. Then we wouldn't have to have this here.
 
-                    let e_opt = get_output_value_for_variable(&ctxt, &tr.body, field);
-                    let e = e_opt.expect("get_output_value_for_variable");
-                    let lhs = get_new_field_value(field);
-                    ctxt.ensures.push(mk_eq(&lhs, &e));
+                        let e_opt = get_output_value_for_variable(&ctxt, &tr.body, field);
+                        let e = e_opt.expect("get_output_value_for_variable");
+                        let lhs = get_new_field_value(field);
+                        ctxt.ensures.push(mk_eq(&lhs, &e));
+                    }
                 }
-            }
-            ShardableType::Multiset(_)
-            | ShardableType::StorageOptional(_)
-            | ShardableType::Optional(_) => {
-                if ctxt.is_init {
-                    panic!("multiset is_init not implemented");
-                } else {
+                ShardableType::Multiset(_)
+                | ShardableType::StorageOptional(_)
+                | ShardableType::Optional(_) => {
                     assert!(!ctxt.fields_written.contains(&field.ident.to_string()));
                     assert!(nondeterministic_read ||
                         !ctxt.fields_read.contains(&field.ident.to_string()));
@@ -598,8 +620,8 @@ pub fn exchange_stream(bundle: &SMBundle, tr: &Transition) -> syn::parse::Result
                     // placed into the TransitionStmt as a `Require` or `PostCondition`
                     // statement, so we don't need to explicitly add them here.
                 }
-            }
-        };
+            };
+        }
     }
 
     let mut reqs = inst_eq_reqs;
@@ -707,6 +729,17 @@ pub fn exchange_stream(bundle: &SMBundle, tr: &Transition) -> syn::parse::Result
     });
 }
 
+fn get_init_param_out_type(sm: &SM, field: &Field) -> Option<Type> {
+    match &field.stype {
+        ShardableType::Variable(_) => Some(field_token_type(&sm.name, field)),
+        ShardableType::Constant(_) => None, // constants handled separately
+        ShardableType::NotTokenized(_) => None, // no tokens
+        ShardableType::Multiset(_) => None, // TODO handle this case
+        ShardableType::Optional(_) => None, // TODO handle this case
+        ShardableType::StorageOptional(_) => None // no output token
+    }
+}
+
 fn add_token_param_in_out(
     ctxt: &Ctxt,
     in_args: &mut Vec<TokenStream>,
@@ -722,10 +755,12 @@ fn add_token_param_in_out(
 ) {
     let (is_input, is_output) = match inout_type {
         InoutType::In => {
+            assert!(!use_explicit_lifetime);
             in_args.push(quote! { #[proof] #arg_name: #arg_type });
             (true, false)
         }
         InoutType::Out => {
+            assert!(!use_explicit_lifetime);
             out_args.push((quote! {#arg_name}, quote! {#arg_type}));
             (false, true)
         }
@@ -744,7 +779,7 @@ fn add_token_param_in_out(
         }
         InoutType::BorrowOut => {
             assert!(use_explicit_lifetime);
-            in_args.push(quote! { #[proof] #arg_name: &'a #arg_type });
+            out_args.push((quote! {#arg_name}, quote! {&'a #arg_type}));
             (false, true)
         }
     };
@@ -768,43 +803,6 @@ fn add_token_param_in_out(
             }));
         }
     }
-}
-
-fn add_token_param_for_var(
-    ctxt: &Ctxt,
-    in_args: &mut Vec<TokenStream>,
-    out_args: &mut Vec<(TokenStream, TokenStream)>,
-    inst_eq_enss: &mut Vec<Expr>,
-    inst_eq_reqs: &mut Vec<Expr>,
-
-    arg_name: &Ident,
-    arg_type: &Type,
-    is_read: bool,
-    is_written: bool,
-    use_explicit_lifetime: bool,
-) {
-    if !is_read && !is_written {
-        return;
-    }
-
-    add_token_param_in_out(
-        ctxt,
-        in_args,
-        out_args,
-        inst_eq_enss,
-        inst_eq_reqs,
-        arg_name,
-        arg_type,
-        if is_read && is_written {
-            InoutType::InOut
-        } else if is_read {
-            InoutType::BorrowIn
-        } else {
-            InoutType::Out
-        },
-        true,
-        use_explicit_lifetime,
-    );
 }
 
 fn mk_eq(lhs: &Expr, rhs: &Expr) -> Expr {
