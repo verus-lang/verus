@@ -54,7 +54,7 @@ impl<'ast> Visit<'ast> for IdentVisitor {
 
 /// Validate a single identifier.
 pub fn validate_ident(ident: &Ident) -> Result<(), Error> {
-    for kw in vec!["post", "instance", "tmp_tuple"] {
+    for kw in vec!["post", "instance", "tmp_tuple", "tmp_e"] {
         if ident.to_string() == kw {
             return Err(Error::new(
                 ident.span(),

@@ -512,6 +512,8 @@ pub fn exchange_stream(bundle: &SMBundle, tr: &Transition) -> syn::parse::Result
 
             // TODO handle input params
 
+            let arg_name = transition_arg_name(field);
+
             if let Some(init_output_token_type) = get_init_param_out_type(sm, &field) {
                 add_token_param_in_out(
                             &ctxt,
@@ -519,17 +521,24 @@ pub fn exchange_stream(bundle: &SMBundle, tr: &Transition) -> syn::parse::Result
                             &mut out_args,
                             &mut inst_eq_enss,
                             &mut inst_eq_reqs,
-                            &transition_arg_name(field),
+                            &arg_name,
                             &init_output_token_type,
                             InoutType::Out,
-                            true, // apply_instance_condition
+                            false, // (don't) apply_instance_condition
                             false, // (don't) use_explicit_lifetime
                         );
 
                 let e_opt = get_output_value_for_variable(&ctxt, &tr.body, field);
                 let e = e_opt.expect("get_output_value_for_variable");
-                let lhs = get_new_field_value(field);
-                ctxt.ensures.push(mk_eq(&lhs, &e));
+
+                let inst = get_inst_value(&ctxt);
+                add_initialization_output_conditions(
+                    field,
+                    &mut ctxt.ensures,
+                    &mut inst_eq_enss,
+                    e,
+                    inst,
+                    Expr::Verbatim(quote! { #arg_name }));
             }
         } else {
             let nondeterministic_read = match field.stype {
@@ -735,8 +744,58 @@ fn get_init_param_out_type(sm: &SM, field: &Field) -> Option<Type> {
         ShardableType::Constant(_) => None, // constants handled separately
         ShardableType::NotTokenized(_) => None, // no tokens
         ShardableType::Multiset(_) => None, // TODO handle this case
-        ShardableType::Optional(_) => None, // TODO handle this case
+        ShardableType::Optional(_) => {
+            let ty = field_token_type(&sm.name, field);
+            Some(Type::Verbatim(quote!{
+                crate::pervasive::option::Option<#ty>
+            }))
+        }
         ShardableType::StorageOptional(_) => None // no output token
+    }
+}
+
+fn add_initialization_output_conditions(
+    field: &Field,
+    ensures: &mut Vec<Expr>,
+    inst_eq_enss: &mut Vec<Expr>,
+    e: Expr,
+    inst_value: Expr,
+    param_value: Expr)
+{
+    match &field.stype {
+        ShardableType::Variable(_) => {
+            inst_eq_enss.push(Expr::Verbatim(quote!{
+                ::builtin::equal(#param_value.instance, #inst_value)
+            }));
+            let field_name = field_token_field_name(field);
+            ensures.push(Expr::Verbatim(quote!{
+                ::builtin::equal(#param_value.#field_name, #e)
+            }));
+        }
+        ShardableType::Constant(_) => { panic!("shouldn't get here"); }
+        ShardableType::NotTokenized(_) => { panic!("shouldn't get here"); }
+        ShardableType::Multiset(_) => { panic!("shouldn't get here"); }
+        ShardableType::Optional(_) => {
+            // TODO factor this into a helper function to simplify the generated code
+            let field_name = field_token_field_name(field);
+            ensures.push(Expr::Verbatim(quote!{
+                match #e {
+                    crate::pervasive::option::Option::None => {
+                        #param_value.is_None()
+                    }
+                    crate::pervasive::option::Option::Some(tmp_e) => {
+                        #param_value.is_Some()
+                        && ::builtin::equal(
+                            #param_value.get_Some_0().instance,
+                            #inst_value)
+                        && ::builtin::equal(
+                            #param_value.get_Some_0().#field_name,
+                            tmp_e)
+                    }
+                }
+            }));
+        }
+        ShardableType::StorageOptional(_) => { panic!("shouldn't get here"); }
     }
 }
 
