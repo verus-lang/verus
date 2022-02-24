@@ -32,12 +32,15 @@ concurrent_state_machine!(RwLock {
         pub reader: Multiset<T>,
     }
 
+    /// Increment the 'rc' counter, obtain a pending_reader
     #[transition]
     fn acquire_read_start(&self) {
         update(flags, (self.flags.0, self.flags.1 + 1));
         add_element(pending_reader, ());
     }
 
+    /// Exchange the pending_reader for a reader by checking
+    /// that the 'exc' bit is 0
     #[transition]
     fn acquire_read_end(&self) {
         require(self.flags.0 == false);
@@ -48,6 +51,8 @@ concurrent_state_machine!(RwLock {
         add_element(reader, x);
     }
 
+    /// Decrement the 'rc' counter, abandon the attempt to gain
+    /// the 'read' lock.
     #[transition]
     fn acquire_read_abandon(&self) {
         remove_element(pending_reader, ());
@@ -55,6 +60,8 @@ concurrent_state_machine!(RwLock {
         update(flags, (self.flags.0, self.flags.1 - 1));
     }
 
+    /// Atomically set 'exc' bit from 'false' to 'true'
+    /// Obtain a pending_writer
     #[transition]
     fn acquire_exc_start(&self) {
         require(self.flags.0 == false);
@@ -62,6 +69,9 @@ concurrent_state_machine!(RwLock {
         add_some(pending_writer, ());
     }
 
+    /// Finish obtaining the write lock by checking that 'rc' is 0.
+    /// Exchange the pending_writer for a writer and withdraw the
+    /// stored object.
     #[transition]
     fn acquire_exc_end(&self) {
         require(self.flags.1 == 0);
@@ -70,9 +80,11 @@ concurrent_state_machine!(RwLock {
 
         add_some(writer, ());
 
-        withdraw_some(storage, self.storage.is_Some());
+        withdraw_some(storage, self.storage.get_Some_0());
     }
 
+    /// Release the write-lock. Update the 'exc' bit back to 'false'.
+    /// Return the 'writer' and also deposit an object back into storage.
     #[transition]
     fn release_exc(&self, x: T) {
         remove_some(writer, ());
@@ -82,17 +94,19 @@ concurrent_state_machine!(RwLock {
         deposit_some(storage, x);
     }
 
+    /// Check that the 'reader' is actually a guard for the given object.
     #[readonly]
     fn read_guard(&self, x: T) {
         have_element(reader, x);
         guard_some(storage, x);
     }
 
+    /// Release the reader-lock. Decrement 'rc' and return the 'reader' object.
     #[transition]
     fn release_shared(&self, x: T) {
         remove_element(reader, x);
 
-        assert(self.flags.1 >= 1);
+        //assert(self.flags.1 >= 1);
         update(flags, (self.flags.0, self.flags.1 - 1));
     }
 

@@ -128,7 +128,7 @@ fn field_token_field_name(field: &Field) -> Ident {
     field.ident.clone()
 }
 
-fn not_tokenized_spec_out_name(field: &Field) -> Ident {
+fn nondeterministic_read_spec_out_name(field: &Field) -> Ident {
     let name = "original_field_".to_string() + &field.ident.to_string();
     Ident::new(&name, field.ident.span())
 }
@@ -500,6 +500,21 @@ pub fn exchange_stream(bundle: &SMBundle, tr: &Transition) -> syn::parse::Result
             assert!(!ctxt.fields_read.contains(&field.ident.to_string()));
         }
 
+        let nondeterministic_read = match field.stype {
+                ShardableType::NotTokenized(_) => true,
+                ShardableType::StorageOptional(_) => true,
+                _ => false
+            } && ctxt.fields_read.contains(&field.ident.to_string());
+
+        if nondeterministic_read {
+            // It is possible to read a value non-deterministically without it coming
+            // from an input token.
+            // In that case, we need to make the field value an _output_ argument.
+            let ty = shardable_type_to_type(&field.stype);
+            let name = nondeterministic_read_spec_out_name(field);
+            out_args.push((quote! { #name }, quote! { crate::modes::Spec<#ty> }));
+        }
+
         match field.stype {
             ShardableType::Constant(_) => {
                 if ctxt.is_init {
@@ -514,17 +529,9 @@ pub fn exchange_stream(bundle: &SMBundle, tr: &Transition) -> syn::parse::Result
                 }
             }
             ShardableType::NotTokenized(_) => {
-                let is_read = ctxt.fields_read.contains(&field.ident.to_string());
-                if is_read {
-                    // If a "not_tokenized" field value is
-                    // read by the transition definition, we do not obtain that value
-                    // from a token but instead consider it as a nondeterminstic value.
-                    // Thus if is_input=true, then we need to make it an _output_ argument.
-
-                    let ty = shardable_type_to_type(&field.stype);
-                    let name = not_tokenized_spec_out_name(field);
-                    out_args.push((quote! { #name }, quote! { crate::modes::Spec<#ty> }));
-                }
+                // do nothing
+                // the nondeterministic_read case was handled above
+                // nothing to do for writes (they simply aren't reflected in output tokens)
             }
             ShardableType::Variable(_) => {
                 let is_written;
@@ -569,7 +576,8 @@ pub fn exchange_stream(bundle: &SMBundle, tr: &Transition) -> syn::parse::Result
                     panic!("multiset is_init not implemented");
                 } else {
                     assert!(!ctxt.fields_written.contains(&field.ident.to_string()));
-                    assert!(!ctxt.fields_read.contains(&field.ident.to_string()));
+                    assert!(nondeterministic_read ||
+                        !ctxt.fields_read.contains(&field.ident.to_string()));
 
                     for p in &ctxt.params[&field.ident.to_string()] {
                         add_token_param_in_out(
@@ -1159,16 +1167,16 @@ impl<'a> VisitMut for TranslatorVisitor<'a> {
                                     ShardableType::Constant(_ty) => {
                                         *node = get_const_field_value(&self.ctxt, &field);
                                     }
-                                    ShardableType::NotTokenized(_ty) => {
+                                    ShardableType::NotTokenized(_ty)
+                                    | ShardableType::StorageOptional(_ty) => {
                                         if self.comes_before_precondition {
                                             self.errors.push(Error::new(span,
-                                        "A `not_tokenized` field cannot be referenced either in or before a `require` statement, as this would require its value to be referenced in the pre-condition of the exchange method"));
+                                        "A field read nondeterministically cannot be referenced either in or before a `require` statement, as this would require its value to be referenced in the pre-condition of the exchange method"));
                                         }
-                                        *node = get_not_tokenized_field_value(&self.ctxt, &field);
+                                        *node = get_nondeterministic_out_value(&self.ctxt, &field);
                                     }
                                     ShardableType::Multiset(_ty)
-                                    | ShardableType::Optional(_ty)
-                                    | ShardableType::StorageOptional(_ty) => {
+                                    | ShardableType::Optional(_ty) => {
                                         let strat = field.stype.strategy_name();
                                         self.errors.push(Error::new(span,
                                     format!("A '{strat:}' field cannot be directly referenced here"))); // TODO be more specific
@@ -1197,8 +1205,8 @@ fn get_const_field_value(ctxt: &Ctxt, field: &Field) -> Expr {
     Expr::Verbatim(quote! { #inst.#field_name() })
 }
 
-fn get_not_tokenized_field_value(_ctxt: &Ctxt, field: &Field) -> Expr {
-    let name = not_tokenized_spec_out_name(field);
+fn get_nondeterministic_out_value(_ctxt: &Ctxt, field: &Field) -> Expr {
+    let name = nondeterministic_read_spec_out_name(field);
     Expr::Verbatim(quote! { #name.value() })
 }
 
