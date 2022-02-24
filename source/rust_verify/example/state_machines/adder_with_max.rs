@@ -21,9 +21,9 @@ concurrent_state_machine!{
         #[init]
         fn initialize(&self, m: int) {
             require(m >= 0);
-            update(number, 0);
-            update(minimum, 0);
-            update(maximum, m);
+            init(number, 0);
+            init(minimum, 0);
+            init(maximum, m);
         }
 
         #[transition]

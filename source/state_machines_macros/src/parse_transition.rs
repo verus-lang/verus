@@ -127,6 +127,7 @@ enum CallType {
     Assert,
     Require,
     Update,
+    Initialize,
     AddElement,
     HaveElement,
     RemoveElement,
@@ -156,6 +157,7 @@ fn parse_call(call: &ExprCall, ctxt: &Ctxt) -> syn::parse::Result<TransitionStmt
             return Ok(TransitionStmt::Require(call.span(), e));
         }
         CallType::Update |
+        CallType::Initialize |
         CallType::HaveSome |
         CallType::AddSome |
         CallType::RemoveSome |
@@ -192,6 +194,8 @@ fn parse_call(call: &ExprCall, ctxt: &Ctxt) -> syn::parse::Result<TransitionStmt
             return match ct {
                 CallType::Update =>
                     Ok(TransitionStmt::Update(call.span(), ident.clone(), e)),
+                CallType::Initialize =>
+                    Ok(TransitionStmt::Initialize(call.span(), ident.clone(), e)),
                 CallType::HaveElement =>
                     Ok(TransitionStmt::Special(call.span(), ident.clone(), SpecialOp::HaveElement(e))),
                 CallType::AddElement =>
@@ -238,6 +242,9 @@ fn parse_call_type(callf: &Expr, _ctxt: &Ctxt) -> syn::parse::Result<CallType> {
             if path.path.is_ident("update") {
                 return Ok(CallType::Update);
             }
+            if path.path.is_ident("init") {
+                return Ok(CallType::Initialize);
+            }
             if path.path.is_ident("add_element") {
                 return Ok(CallType::AddElement);
             }
@@ -267,9 +274,9 @@ fn parse_call_type(callf: &Expr, _ctxt: &Ctxt) -> syn::parse::Result<CallType> {
             }
         }
         _ => {
-            return Err(Error::new(callf.span(), "expected 'require', 'assert', or 'update'"));
+            return Err(Error::new(callf.span(), "expected a valid command"));
         }
     }
 
-    return Err(Error::new(callf.span(), "expected 'require', 'assert', or 'update'"));
+    return Err(Error::new(callf.span(), "expected a valid command"));
 }

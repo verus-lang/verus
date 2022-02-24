@@ -75,9 +75,8 @@ pub fn safety_condition_body(ts: &TransitionStmt) -> Option<Expr> {
         TransitionStmt::Assert(span, e) => Some(Expr::Verbatim(quote_spanned! {*span =>
             crate::pervasive::assert(#e);
         })),
-        TransitionStmt::Update(_span, _ident, _e) => {
-            panic!("should have been removed at earlier processing stage");
-        }
+        TransitionStmt::Initialize(..) |
+        TransitionStmt::Update(..) |
         TransitionStmt::Special(..) => {
             panic!("should have been removed at earlier processing stage");
         }
@@ -103,6 +102,7 @@ pub fn has_any_assert(ts: &TransitionStmt) -> bool {
         TransitionStmt::If(_span, _cond, thn, els) => has_any_assert(thn) || has_any_assert(els),
         TransitionStmt::Require(_, _) => false,
         TransitionStmt::Assert(_, _) => true,
+        TransitionStmt::Initialize(_, _, _) => false,
         TransitionStmt::Update(_, _, _) => false,
         TransitionStmt::Special(..) => false,
         TransitionStmt::PostCondition(..) => false,
@@ -125,6 +125,7 @@ pub fn has_any_require(ts: &TransitionStmt) -> bool {
         TransitionStmt::If(_span, _cond, thn, els) => has_any_require(thn) || has_any_require(els),
         TransitionStmt::Require(_, _) => true,
         TransitionStmt::Assert(_, _) => false,
+        TransitionStmt::Initialize(_, _, _) => false,
         TransitionStmt::Update(_, _, _) => false,
         TransitionStmt::Special(..) => false,
         TransitionStmt::PostCondition(..) => false,

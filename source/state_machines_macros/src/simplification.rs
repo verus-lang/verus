@@ -65,6 +65,7 @@ fn simplify_updates_rec(ts: &TransitionStmt, field_map: HashMap<String, Expr>)
             (ts.clone(), field_map)
         }
 
+        TransitionStmt::Initialize(span, f, e) |
         TransitionStmt::Update(span, f, e) => {
             let mut field_map = field_map;
             field_map.insert(f.to_string(), e.clone());
@@ -202,6 +203,7 @@ fn add_finalizes_rec(ts: &mut TransitionStmt, found: &mut Vec<Ident>) {
         TransitionStmt::Require(_, _) => { }
         TransitionStmt::Assert(_, _) => { }
 
+        TransitionStmt::Initialize(_, f, _) |
         TransitionStmt::Update(_, f, _) => {
             is_update_for = Some(f.clone());
         }
@@ -256,6 +258,7 @@ fn add_finalizes_rec(ts: &mut TransitionStmt, found: &mut Vec<Ident>) {
         TransitionStmt::Let(_, _, _) => { }
         TransitionStmt::Require(_, _) => { }
         TransitionStmt::Assert(_, _) => { }
+        TransitionStmt::Initialize(_, _, _) => { }
         TransitionStmt::Update(_, _, _) => { }
         TransitionStmt::Special(_, _, _) => { }
         TransitionStmt::PostCondition(..) => {

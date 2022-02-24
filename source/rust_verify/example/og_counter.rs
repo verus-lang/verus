@@ -29,9 +29,9 @@ concurrent_state_machine!(
 
         #[init]
         fn initialize(&self) {
-            update(counter, 0);
-            update(inc_a, false);
-            update(inc_b, false);
+            init(counter, 0);
+            init(inc_a, false);
+            init(inc_b, false);
         }
 
         #[transition]

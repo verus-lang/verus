@@ -14,8 +14,8 @@ state_machine!(
 
         #[init]
         fn initialize(&self, t: T) {
-            update(number, 0);
-            update(t, t);
+            init(number, 0);
+            init(t, t);
         }
 
         #[transition]
@@ -29,7 +29,7 @@ state_machine!(
         }
 
         #[inductive(initialize)]
-        fn init_preserves(post: X<T>) {
+        fn init_preserves(post: X<T>, t: T) {
         }
 
         #[inductive(add)]

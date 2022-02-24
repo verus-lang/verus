@@ -80,6 +80,7 @@ pub enum TransitionStmt {
     Require(Span, Expr),
     Assert(Span, Expr),
     Update(Span, Ident, Expr),
+    Initialize(Span, Ident, Expr),
 
     /// concurrent-state-machine-specific stuff
     Special(Span, Ident, SpecialOp),
@@ -142,6 +143,7 @@ impl TransitionStmt {
             TransitionStmt::Require(span, _) => span,
             TransitionStmt::Assert(span, _) => span,
             TransitionStmt::Update(span, _, _) => span,
+            TransitionStmt::Initialize(span, _, _) => span,
             TransitionStmt::Special(span, _, _) => span,
             TransitionStmt::PostCondition(span, _) => span,
         }
@@ -155,6 +157,7 @@ impl TransitionStmt {
             TransitionStmt::Require(..) => "require",
             TransitionStmt::Assert(..) => "assert",
             TransitionStmt::Update(..) => "update",
+            TransitionStmt::Initialize(..) => "init",
             TransitionStmt::Special(_, _, op) => op.statement_name(),
             TransitionStmt::PostCondition(..) => "post_condition",
         }

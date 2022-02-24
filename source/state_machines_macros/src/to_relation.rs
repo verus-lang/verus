@@ -92,6 +92,7 @@ fn to_relation_rec(
                 }
             }
         }
+        TransitionStmt::Initialize(_, _, _) |
         TransitionStmt::Update(_, _, _) |
         TransitionStmt::Special(_, _, _) => {
             panic!("should have been removed in pre-processing step");

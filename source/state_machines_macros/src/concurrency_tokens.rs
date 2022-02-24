@@ -852,22 +852,26 @@ fn determine_outputs(ctxt: &mut Ctxt, ts: &TransitionStmt) -> syn::parse::Result
         }
         TransitionStmt::Require(_span, _req_e) => Ok(()),
         TransitionStmt::Assert(_span, _assert_e) => Ok(()),
+        TransitionStmt::Initialize(_span, id, _e) => {
+            // TODO consider if this is necessary or useful
+            ctxt.fields_written.insert(id.to_string());
+            Ok(())
+        }
         TransitionStmt::Update(span, id, _e) => {
             let f = ctxt.get_field_or_panic(id);
-            if !ctxt.is_init {
-                match f.stype {
-                    ShardableType::Variable(_) => { }
-                    ShardableType::Constant(_) => {
-                        return Err(Error::new(
-                            *span,
-                            "cannot update a field marked constant outside of initialization",
-                        ));
-                    }
-                    ShardableType::Multiset(_) => {
-                        panic!("case should have been ruled out earlier");
-                    }
-                    _ => {}
+
+            match f.stype {
+                ShardableType::Variable(_) => { }
+                ShardableType::Constant(_) => {
+                    return Err(Error::new(
+                        *span,
+                        "cannot update a field marked constant",
+                    ));
                 }
+                ShardableType::Multiset(_) => {
+                    panic!("case should have been ruled out earlier");
+                }
+                _ => {}
             }
 
             ctxt.fields_written.insert(id.to_string());
@@ -956,6 +960,7 @@ fn walk_translate_expressions(ctxt: &mut Ctxt, ts: &mut TransitionStmt, comes_be
             return Ok(());
         }
 
+        TransitionStmt::Initialize(_span, _id, e) |
         TransitionStmt::Update(_span, _id, e) => {
             let update_e = translate_expr(ctxt, e, false)?;
             *e = update_e;
@@ -1305,6 +1310,7 @@ fn exchange_collect(
             Ok((prequel, prequel_with_asserts))
         }
         TransitionStmt::Update(..) => Ok((prequel, prequel_with_asserts)),
+        TransitionStmt::Initialize(..) => Ok((prequel, prequel_with_asserts)),
 
         TransitionStmt::Special(..) => {
             panic!("should have been removed in preprocessing");
@@ -1437,6 +1443,7 @@ fn get_output_value_for_variable(ctxt: &Ctxt, ts: &TransitionStmt, field: &Field
                 Some(Expr::Verbatim(quote! { if #cond_e { #e1 } else { #e2 } }))
             }
         }
+        TransitionStmt::Initialize(_span, id, e) |
         TransitionStmt::Update(_span, id, e) => {
             if *id.to_string() == *field.ident.to_string() {
                 Some(e.clone())

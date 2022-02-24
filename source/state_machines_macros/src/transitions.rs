@@ -44,6 +44,7 @@ fn check_updates_refer_to_valid_fields(
         TransitionStmt::Require(_, _) => Ok(()),
         TransitionStmt::Assert(_, _) => Ok(()),
         TransitionStmt::Update(span, f, _) |
+        TransitionStmt::Initialize(span, f, _) |
         TransitionStmt::Special(span, f, _) => {
             if !fields_contain(fields, f) {
                 return Err(Error::new(span.span(), format!("field '{}' not found", f.to_string())));
@@ -163,13 +164,16 @@ fn check_init_rec(ts: &TransitionStmt) -> syn::parse::Result<Vec<(Ident, Span)>>
         TransitionStmt::Assert(span, _) => {
             Err(Error::new(*span, "'assert' statement not allowed in initialization"))
         }
-        TransitionStmt::Update(span, ident, _) => {
+        TransitionStmt::Initialize(span, ident, _) => {
             let mut v = Vec::new();
             v.push((ident.clone(), span.clone()));
             Ok(v)
         }
+        TransitionStmt::Update(span, _, _) => {
+            Err(Error::new(*span, "'update' statement not allowed in initialization; use 'init' instead"))
+        }
         TransitionStmt::Special(span, _, _) => {
-            Err(Error::new(*span, format!("'{:}' statement not allowed in initialization", ts.statement_name())))
+            Err(Error::new(*span, format!("'{:}' statement not allowed in initialization; use 'init' instead", ts.statement_name())))
         }
         TransitionStmt::PostCondition(..) => {
             panic!("should have have PostCondition statement here");
@@ -210,6 +214,7 @@ fn check_at_most_one_update_rec(field: &Field, ts: &TransitionStmt) -> syn::pars
         TransitionStmt::Let(_, _, _) => Ok(None),
         TransitionStmt::Require(_, _) => Ok(None),
         TransitionStmt::Assert(_, _) => Ok(None),
+        TransitionStmt::Initialize(_, _, _) => Ok(None),
         TransitionStmt::Update(span, id, _) => {
             if id.to_string() == field.ident.to_string() {
                 Ok(Some(*span))
@@ -288,6 +293,9 @@ fn check_valid_ops(
         }
         TransitionStmt::Require(_, _) => Ok(()),
         TransitionStmt::Assert(_, _) => Ok(()),
+        TransitionStmt::Initialize(span, _, _) => {
+            return Err(Error::new(span.span(), format!("'init' statement not allowed outside 'init' routine")));
+        }
         TransitionStmt::Update(span, f, _) => {
             let field = get_field(fields, f);
             if !is_allowed_in_update_in_normal_transition(&field.stype) {

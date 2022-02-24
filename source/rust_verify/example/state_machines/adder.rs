@@ -13,7 +13,7 @@ state_machine!(
 
         #[init]
         fn initialize(&self) {
-            update(number, 0);
+            init(number, 0);
         }
 
         #[transition]

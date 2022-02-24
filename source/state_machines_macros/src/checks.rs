@@ -18,6 +18,7 @@ pub fn check_unsupported_updates_in_conditionals(ts: &TransitionStmt) -> syn::pa
         TransitionStmt::Require(..) => Ok(()),
         TransitionStmt::Assert(..) => Ok(()),
         TransitionStmt::Update(..) => Ok(()),
+        TransitionStmt::Initialize(..) => Ok(()),
         TransitionStmt::Special(..) => Ok(()),
         TransitionStmt::PostCondition(..) => Ok(()),
     }
@@ -40,6 +41,7 @@ fn check_unsupported_updates_helper(ts: &TransitionStmt) -> syn::parse::Result<(
         TransitionStmt::Require(_, _) => Ok(()),
         TransitionStmt::Assert(_, _) => Ok(()),
         TransitionStmt::Update(_, _, _) => Ok(()),
+        TransitionStmt::Initialize(_, _, _) => Ok(()),
         TransitionStmt::PostCondition(..) => Ok(()),
 
         TransitionStmt::Special(span, _, _) => {
