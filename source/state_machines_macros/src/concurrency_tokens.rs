@@ -527,14 +527,14 @@ pub fn exchange_stream(bundle: &SMBundle, tr: &Transition) -> syn::parse::Result
                 }
             }
             ShardableType::Variable(_) => {
-                let is_output;
-                let is_input;
+                let is_written;
+                let is_read;
                 if ctxt.is_init {
-                    is_output = true;
-                    is_input = false;
+                    is_written = true;
+                    is_read = false;
                 } else {
-                    is_output = ctxt.fields_written.contains(&field.ident.to_string());
-                    is_input = is_output || ctxt.fields_read.contains(&field.ident.to_string());
+                    is_written = ctxt.fields_written.contains(&field.ident.to_string());
+                    is_read = is_written || ctxt.fields_read.contains(&field.ident.to_string());
                 }
 
                 add_token_param_for_var(
@@ -545,12 +545,12 @@ pub fn exchange_stream(bundle: &SMBundle, tr: &Transition) -> syn::parse::Result
                     &mut inst_eq_reqs,
                     &transition_arg_name(field),
                     &field_token_type(&sm.name, field),
-                    is_input,
-                    is_output,
+                    is_read,
+                    is_written,
                     use_explicit_lifetime,
                 );
 
-                if is_output {
+                if is_written {
                     // Post-condition that gives the value of the output token
                     // TODO, maybe instead of doing this here, we could translate the
                     // `Update` statements into `PostCondition` statements like we
@@ -771,11 +771,11 @@ fn add_token_param_for_var(
 
     arg_name: &Ident,
     arg_type: &Type,
-    is_input: bool,
-    is_output: bool,
+    is_read: bool,
+    is_written: bool,
     use_explicit_lifetime: bool,
 ) {
-    if !is_input && !is_output {
+    if !is_read && !is_written {
         return;
     }
 
@@ -787,9 +787,9 @@ fn add_token_param_for_var(
         inst_eq_reqs,
         arg_name,
         arg_type,
-        if is_input && is_output {
+        if is_read && is_written {
             InoutType::InOut
-        } else if is_input {
+        } else if is_read {
             InoutType::BorrowIn
         } else {
             InoutType::Out
