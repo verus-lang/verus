@@ -177,11 +177,7 @@ fn extract_assert_forall_by<'tcx>(
             let require = if header.require.len() == 1 {
                 header.require[0].clone()
             } else {
-                spanned_typed_new(
-                    span,
-                    &Arc::new(TypX::Bool),
-                    ExprX::Const(Constant::Bool(true)),
-                )
+                spanned_typed_new(span, &Arc::new(TypX::Bool), ExprX::Const(Constant::Bool(true)))
             };
             let ensure = header.ensure[0].clone();
             let forallx = ExprX::Forall { vars, require, ensure, proof: vir_expr };
