@@ -130,34 +130,62 @@ fn extract_quant<'tcx>(
             let expr = &body.value;
             let mut vir_expr = expr_to_vir(bctx, expr, ExprModifier::REGULAR)?;
             let header = vir::headers::read_header(&mut vir_expr)?;
-            if header.require.len() <= 1
-                && header.ensure.len() == 1
-                && header.ensure_id_typ.is_none()
-                && quant == Quant::Forall
-            {
-                // forall statement
-                let typ = Arc::new(TypX::Tuple(Arc::new(vec![])));
-                let vars = Arc::new(binders);
-                let require = if header.require.len() == 1 {
-                    header.require[0].clone()
-                } else {
-                    spanned_typed_new(
-                        span,
-                        &Arc::new(TypX::Bool),
-                        ExprX::Const(Constant::Bool(true)),
-                    )
-                };
-                let ensure = header.ensure[0].clone();
-                let forallx = ExprX::Forall { vars, require, ensure, proof: vir_expr };
-                Ok(spanned_typed_new(span, &typ, forallx))
-            } else {
-                // forall/exists expression
-                let typ = Arc::new(TypX::Bool);
-                if !matches!(bctx.types.node_type(expr.hir_id).kind(), TyKind::Bool) {
-                    return err_span_str(expr.span, "forall/ensures needs a bool expression");
-                }
-                Ok(spanned_typed_new(span, &typ, ExprX::Quant(quant, Arc::new(binders), vir_expr)))
+            if header.require.len() + header.ensure.len() > 0 {
+                return err_span_str(expr.span, "forall/ensures cannot have requires/ensures");
             }
+            let typ = Arc::new(TypX::Bool);
+            if !matches!(bctx.types.node_type(expr.hir_id).kind(), TyKind::Bool) {
+                return err_span_str(expr.span, "forall/ensures needs a bool expression");
+            }
+            Ok(spanned_typed_new(span, &typ, ExprX::Quant(quant, Arc::new(binders), vir_expr)))
+        }
+        _ => err_span_str(expr.span, "argument to forall/exists must be a closure"),
+    }
+}
+
+fn extract_assert_forall_by<'tcx>(
+    bctx: &BodyCtxt<'tcx>,
+    span: Span,
+    expr: &'tcx Expr<'tcx>,
+) -> Result<vir::ast::Expr, VirErr> {
+    let tcx = bctx.ctxt.tcx;
+    match &expr.kind {
+        ExprKind::Closure(_, fn_decl, body_id, _, _) => {
+            let body = tcx.hir().body(*body_id);
+            let binders: Vec<Binder<Typ>> = body
+                .params
+                .iter()
+                .zip(fn_decl.inputs)
+                .map(|(x, t)| {
+                    Arc::new(BinderX { name: Arc::new(pat_to_var(x.pat)), a: ty_to_vir(tcx, t) })
+                })
+                .collect();
+            let expr = &body.value;
+            let mut vir_expr = expr_to_vir(bctx, expr, ExprModifier::REGULAR)?;
+            let header = vir::headers::read_header(&mut vir_expr)?;
+            if header.require.len() > 1 {
+                return err_span_str(expr.span, "assert_forall_by can have at most one requires");
+            }
+            if header.ensure.len() != 1 {
+                return err_span_str(expr.span, "assert_forall_by must have exactly one ensures");
+            }
+            if header.ensure_id_typ.is_some() {
+                return err_span_str(expr.span, "ensures clause must be a bool");
+            }
+            let typ = Arc::new(TypX::Tuple(Arc::new(vec![])));
+            let vars = Arc::new(binders);
+            let require = if header.require.len() == 1 {
+                header.require[0].clone()
+            } else {
+                spanned_typed_new(
+                    span,
+                    &Arc::new(TypX::Bool),
+                    ExprX::Const(Constant::Bool(true)),
+                )
+            };
+            let ensure = header.ensure[0].clone();
+            let forallx = ExprX::Forall { vars, require, ensure, proof: vir_expr };
+            Ok(spanned_typed_new(span, &typ, forallx))
         }
         _ => err_span_str(expr.span, "argument to forall/exists must be a closure"),
     }
@@ -343,6 +371,7 @@ fn fn_call_to_vir<'tcx>(
     let is_reveal_fuel = f_name == "builtin::reveal_with_fuel";
     let is_implies = f_name == "builtin::imply";
     let is_assert_by = f_name == "builtin::assert_by";
+    let is_assert_forall_by = f_name == "builtin::assert_forall_by";
     let is_assert_bit_vector = f_name == "builtin::assert_bit_vector";
     let is_old = f_name == "builtin::old";
     let is_eq = f_name == "core::cmp::PartialEq::eq";
@@ -414,9 +443,10 @@ fn fn_call_to_vir<'tcx>(
         is_spec
             || is_quant
             || is_directive
-            || is_assert_by
             || is_choose
             || is_choose_tuple
+            || is_assert_by
+            || is_assert_forall_by
             || is_assert_bit_vector
             || is_old
             || is_get_variant.is_some(),
@@ -540,6 +570,10 @@ fn fn_call_to_vir<'tcx>(
         let ensure = expr_to_vir(bctx, &args[0], ExprModifier::REGULAR)?;
         let proof = expr_to_vir(bctx, &args[1], ExprModifier::REGULAR)?;
         return Ok(mk_expr(ExprX::Forall { vars, require, ensure, proof }));
+    }
+    if is_assert_forall_by {
+        unsupported_err_unless!(len == 1, expr.span, "expected assert_forall_by", &args);
+        return extract_assert_forall_by(bctx, expr.span, args[0]);
     }
 
     if is_assert_bit_vector {
