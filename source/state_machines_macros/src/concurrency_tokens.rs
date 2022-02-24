@@ -776,7 +776,7 @@ fn add_token_param_for_var(
         if is_input && is_output {
             InoutType::InOut
         } else if is_input {
-            InoutType::In
+            InoutType::BorrowIn
         } else {
             InoutType::Out
         },
