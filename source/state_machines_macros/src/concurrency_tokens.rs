@@ -86,11 +86,13 @@
 //!        ::core::panicking::panic("not implemented");
 //!    }
 
-use crate::ast::{Field, Lemma, ShardableType, Transition, TransitionKind, TransitionStmt, SM, SpecialOp};
-use crate::checks::{check_unsupported_updates_in_conditionals, check_ordering_remove_have_add};
+use crate::ast::{
+    Field, Lemma, ShardableType, SpecialOp, Transition, TransitionKind, TransitionStmt, SM,
+};
+use crate::checks::{check_ordering_remove_have_add, check_unsupported_updates_in_conditionals};
 use crate::parse_token_stream::SMBundle;
-use crate::to_token_stream::{shardable_type_to_type};
 use crate::safety_conditions::{has_any_assert, has_any_require};
+use crate::to_token_stream::shardable_type_to_type;
 use proc_macro2::Span;
 use proc_macro2::TokenStream;
 use quote::quote;
@@ -119,7 +121,7 @@ fn field_token_type_name(sm_name: &Ident, field: &Field) -> Ident {
 
 fn field_token_type(sm_name: &Ident, field: &Field) -> Type {
     let ident = field_token_type_name(sm_name, field);
-    Type::Verbatim(quote!{ #ident })
+    Type::Verbatim(quote! { #ident })
 }
 
 fn field_token_field_name(field: &Field) -> Ident {
@@ -135,21 +137,25 @@ fn field_token_field_type(field: &Field) -> Type {
     match &field.stype {
         ShardableType::Variable(ty) => ty.clone(),
         ShardableType::Constant(ty) => ty.clone(),
-        ShardableType::NotTokenized(_ty) => { panic!("no token field for NotTokenized"); }
+        ShardableType::NotTokenized(_ty) => {
+            panic!("no token field for NotTokenized");
+        }
         ShardableType::Multiset(ty) => ty.clone(),
         ShardableType::Optional(ty) => ty.clone(),
-        ShardableType::StorageOptional(_ty) => { panic!("no token field for StorageOptional"); }
+        ShardableType::StorageOptional(_ty) => {
+            panic!("no token field for StorageOptional");
+        }
     }
 }
 
 fn stored_object_type(field: &Field) -> Type {
     match &field.stype {
         ShardableType::StorageOptional(ty) => ty.clone(),
-        ShardableType::Variable(_) |
-        ShardableType::Constant(_) |
-        ShardableType::NotTokenized(_) |
-        ShardableType::Multiset(_) |
-        ShardableType::Optional(_) => {
+        ShardableType::Variable(_)
+        | ShardableType::Constant(_)
+        | ShardableType::NotTokenized(_)
+        | ShardableType::Multiset(_)
+        | ShardableType::Optional(_) => {
             panic!("stored_object_type");
         }
     }
@@ -291,7 +297,7 @@ pub fn output_token_types_and_fns(
             ShardableType::Optional(_) => {
                 token_stream.extend(token_struct_stream_optional(&bundle.sm.name, field));
             }
-            ShardableType::StorageOptional(_) => { }
+            ShardableType::StorageOptional(_) => {}
         }
     }
 
@@ -313,7 +319,7 @@ enum InoutType {
     In,
     Out,
     InOut,
-    BorrowIn, 
+    BorrowIn,
     BorrowOut,
 }
 
@@ -370,16 +376,17 @@ impl Ctxt {
     pub fn get_numbered_token_ident(&mut self, base_id: &Ident) -> Ident {
         let i = self.fresh_num_counter;
         self.fresh_num_counter += 1;
-        Ident::new(&format!("token_{}_{}", i, base_id.to_string()),
-            base_id.span())
+        Ident::new(&format!("token_{}_{}", i, base_id.to_string()), base_id.span())
     }
 
     pub fn get_explicit_lifetime(&self) -> bool {
         for (_p, v) in self.params.iter() {
             for tp in v {
                 match tp.inout_type {
-                    InoutType::BorrowOut => { return true; }
-                    _ => { }
+                    InoutType::BorrowOut => {
+                        return true;
+                    }
+                    _ => {}
                 }
             }
         }
@@ -412,12 +419,12 @@ pub fn exchange_stream(bundle: &SMBundle, tr: &Transition) -> syn::parse::Result
 
         if !is_init {
             match &field.stype {
-                ShardableType::Multiset(_) |
-                ShardableType::Optional(_) |
-                ShardableType::StorageOptional(_) => {
+                ShardableType::Multiset(_)
+                | ShardableType::Optional(_)
+                | ShardableType::StorageOptional(_) => {
                     init_params.insert(field.ident.to_string(), Vec::new());
                 }
-                _ => { }
+                _ => {}
             }
         }
     }
@@ -516,8 +523,7 @@ pub fn exchange_stream(bundle: &SMBundle, tr: &Transition) -> syn::parse::Result
 
                     let ty = shardable_type_to_type(&field.stype);
                     let name = not_tokenized_spec_out_name(field);
-                    out_args.push((quote!{ #name },
-                        quote!{ crate::modes::Spec<#ty> }));
+                    out_args.push((quote! { #name }, quote! { crate::modes::Spec<#ty> }));
                 }
             }
             ShardableType::Variable(_) => {
@@ -531,7 +537,8 @@ pub fn exchange_stream(bundle: &SMBundle, tr: &Transition) -> syn::parse::Result
                     is_input = is_output || ctxt.fields_read.contains(&field.ident.to_string());
                 }
 
-                add_token_param_for_var(&ctxt,
+                add_token_param_for_var(
+                    &ctxt,
                     &mut in_args,
                     &mut out_args,
                     &mut inst_eq_enss,
@@ -540,7 +547,8 @@ pub fn exchange_stream(bundle: &SMBundle, tr: &Transition) -> syn::parse::Result
                     &field_token_type(&sm.name, field),
                     is_input,
                     is_output,
-                    use_explicit_lifetime);
+                    use_explicit_lifetime,
+                );
 
                 if is_output {
                     // Post-condition that gives the value of the output token
@@ -673,7 +681,7 @@ pub fn exchange_stream(bundle: &SMBundle, tr: &Transition) -> syn::parse::Result
     let extra_deps = get_extra_deps(bundle, &tr);
 
     let generic_params = if use_explicit_lifetime {
-        quote!{ <'a> }
+        quote! { <'a> }
     } else {
         TokenStream::new()
     };
@@ -702,22 +710,22 @@ fn add_token_param_in_out(
     arg_type: &Type,
     inout_type: InoutType,
     apply_instance_condition: bool,
-    use_explicit_lifetime: bool)
-{
+    use_explicit_lifetime: bool,
+) {
     let (is_input, is_output) = match inout_type {
         InoutType::In => {
             in_args.push(quote! { #[proof] #arg_name: #arg_type });
             (true, false)
-        },
+        }
         InoutType::Out => {
             out_args.push((quote! {#arg_name}, quote! {#arg_type}));
             (false, true)
-        },
+        }
         InoutType::InOut => {
             assert!(!use_explicit_lifetime);
             in_args.push(quote! { #[proof] #arg_name: &mut #arg_type });
             (true, true)
-        },
+        }
         InoutType::BorrowIn => {
             if use_explicit_lifetime {
                 in_args.push(quote! { #[proof] #arg_name: &'a #arg_type });
@@ -725,12 +733,12 @@ fn add_token_param_in_out(
                 in_args.push(quote! { #[proof] #arg_name: &#arg_type });
             }
             (true, false)
-        },
+        }
         InoutType::BorrowOut => {
             assert!(use_explicit_lifetime);
             in_args.push(quote! { #[proof] #arg_name: &'a #arg_type });
             (false, true)
-        },
+        }
     };
 
     if apply_instance_condition {
@@ -765,14 +773,20 @@ fn add_token_param_for_var(
     arg_type: &Type,
     is_input: bool,
     is_output: bool,
-    use_explicit_lifetime: bool)
-{
+    use_explicit_lifetime: bool,
+) {
     if !is_input && !is_output {
         return;
     }
 
-    add_token_param_in_out(ctxt, in_args, out_args, inst_eq_enss, inst_eq_reqs,
-        arg_name, arg_type,
+    add_token_param_in_out(
+        ctxt,
+        in_args,
+        out_args,
+        inst_eq_enss,
+        inst_eq_reqs,
+        arg_name,
+        arg_type,
         if is_input && is_output {
             InoutType::InOut
         } else if is_input {
@@ -861,12 +875,9 @@ fn determine_outputs(ctxt: &mut Ctxt, ts: &TransitionStmt) -> syn::parse::Result
             let f = ctxt.get_field_or_panic(id);
 
             match f.stype {
-                ShardableType::Variable(_) => { }
+                ShardableType::Variable(_) => {}
                 ShardableType::Constant(_) => {
-                    return Err(Error::new(
-                        *span,
-                        "cannot update a field marked constant",
-                    ));
+                    return Err(Error::new(*span, "cannot update a field marked constant"));
                 }
                 ShardableType::Multiset(_) => {
                     panic!("case should have been ruled out earlier");
@@ -914,7 +925,11 @@ fn determine_outputs(ctxt: &mut Ctxt, ts: &TransitionStmt) -> syn::parse::Result
 /// a lot about the right way to structure this as we try to understand the design behind
 /// more advanced sharding strategies, so I'm not committing to an overhaul right now.
 
-fn walk_translate_expressions(ctxt: &mut Ctxt, ts: &mut TransitionStmt, comes_before_precondition: bool) -> syn::parse::Result<()> {
+fn walk_translate_expressions(
+    ctxt: &mut Ctxt,
+    ts: &mut TransitionStmt,
+    comes_before_precondition: bool,
+) -> syn::parse::Result<()> {
     let new_ts = match ts {
         TransitionStmt::Block(_span, v) => {
             // Compute `latest_precondition` such that
@@ -924,15 +939,18 @@ fn walk_translate_expressions(ctxt: &mut Ctxt, ts: &mut TransitionStmt, comes_be
                 v.len()
             } else {
                 let mut i = v.len();
-                while i >= 1 && !has_any_require(&v[i-1]) {
+                while i >= 1 && !has_any_require(&v[i - 1]) {
                     i -= 1;
                 }
                 i
             };
 
             for (i, child) in v.iter_mut().enumerate() {
-                walk_translate_expressions(ctxt, child,
-                    comes_before_precondition || i < latest_precondition)?;
+                walk_translate_expressions(
+                    ctxt,
+                    child,
+                    comes_before_precondition || i < latest_precondition,
+                )?;
             }
             return Ok(());
         }
@@ -942,8 +960,11 @@ fn walk_translate_expressions(ctxt: &mut Ctxt, ts: &mut TransitionStmt, comes_be
             return Ok(());
         }
         TransitionStmt::If(_span, cond, e1, e2) => {
-            let cond_e = translate_expr(ctxt, cond, comes_before_precondition
-                || has_any_require(e1) || has_any_require(e2))?;
+            let cond_e = translate_expr(
+                ctxt,
+                cond,
+                comes_before_precondition || has_any_require(e1) || has_any_require(e2),
+            )?;
             *cond = cond_e;
             walk_translate_expressions(ctxt, e1, comes_before_precondition)?;
             walk_translate_expressions(ctxt, e2, comes_before_precondition)?;
@@ -960,15 +981,14 @@ fn walk_translate_expressions(ctxt: &mut Ctxt, ts: &mut TransitionStmt, comes_be
             return Ok(());
         }
 
-        TransitionStmt::Initialize(_span, _id, e) |
-        TransitionStmt::Update(_span, _id, e) => {
+        TransitionStmt::Initialize(_span, _id, e) | TransitionStmt::Update(_span, _id, e) => {
             let update_e = translate_expr(ctxt, e, false)?;
             *e = update_e;
             return Ok(());
         }
 
-        TransitionStmt::Special(span, id, SpecialOp::HaveSome(e)) |
-        TransitionStmt::Special(span, id, SpecialOp::HaveElement(e)) => {
+        TransitionStmt::Special(span, id, SpecialOp::HaveSome(e))
+        | TransitionStmt::Special(span, id, SpecialOp::HaveElement(e)) => {
             let e = translate_expr(ctxt, e, comes_before_precondition)?;
 
             let ident = ctxt.get_numbered_token_ident(id);
@@ -976,22 +996,17 @@ fn walk_translate_expressions(ctxt: &mut Ctxt, ts: &mut TransitionStmt, comes_be
             let ty = field_token_type(&ctxt.sm_name, &field);
             let field_name = field_token_field_name(&field);
 
-            ctxt.params.get_mut(&field.ident.to_string()).expect("get_mut").push(
-                TokenParam {
-                    inout_type: InoutType::BorrowIn,
-                    name: ident.clone(),
-                    ty: ty,
-                }
-            );
+            ctxt.params.get_mut(&field.ident.to_string()).expect("get_mut").push(TokenParam {
+                inout_type: InoutType::BorrowIn,
+                name: ident.clone(),
+                ty: ty,
+            });
 
-            TransitionStmt::Require(
-                *span,
-                mk_eq(&Expr::Verbatim(quote!{#ident.#field_name}), &e),
-            )
+            TransitionStmt::Require(*span, mk_eq(&Expr::Verbatim(quote! {#ident.#field_name}), &e))
         }
 
-        TransitionStmt::Special(span, id, SpecialOp::AddSome(e)) |
-        TransitionStmt::Special(span, id, SpecialOp::AddElement(e)) => {
+        TransitionStmt::Special(span, id, SpecialOp::AddSome(e))
+        | TransitionStmt::Special(span, id, SpecialOp::AddElement(e)) => {
             let e = translate_expr(ctxt, e, comes_before_precondition)?;
 
             let ident = ctxt.get_numbered_token_ident(id);
@@ -999,22 +1014,20 @@ fn walk_translate_expressions(ctxt: &mut Ctxt, ts: &mut TransitionStmt, comes_be
             let ty = field_token_type(&ctxt.sm_name, &field);
             let field_name = field_token_field_name(&field);
 
-            ctxt.params.get_mut(&field.ident.to_string()).expect("get_mut").push(
-                TokenParam {
-                    inout_type: InoutType::Out,
-                    name: ident.clone(),
-                    ty: ty,
-                }
-            );
+            ctxt.params.get_mut(&field.ident.to_string()).expect("get_mut").push(TokenParam {
+                inout_type: InoutType::Out,
+                name: ident.clone(),
+                ty: ty,
+            });
 
             TransitionStmt::PostCondition(
                 *span,
-                mk_eq(&Expr::Verbatim(quote!{#ident.#field_name}), &e),
+                mk_eq(&Expr::Verbatim(quote! {#ident.#field_name}), &e),
             )
         }
 
-        TransitionStmt::Special(span, id, SpecialOp::RemoveSome(e)) |
-        TransitionStmt::Special(span, id, SpecialOp::RemoveElement(e)) => {
+        TransitionStmt::Special(span, id, SpecialOp::RemoveSome(e))
+        | TransitionStmt::Special(span, id, SpecialOp::RemoveElement(e)) => {
             let e = translate_expr(ctxt, e, comes_before_precondition)?;
 
             let ident = ctxt.get_numbered_token_ident(id);
@@ -1022,18 +1035,13 @@ fn walk_translate_expressions(ctxt: &mut Ctxt, ts: &mut TransitionStmt, comes_be
             let ty = field_token_type(&ctxt.sm_name, &field);
             let field_name = field_token_field_name(&field);
 
-            ctxt.params.get_mut(&field.ident.to_string()).expect("get_mut").push(
-                TokenParam {
-                    inout_type: InoutType::In,
-                    name: ident.clone(),
-                    ty: ty,
-                }
-            );
+            ctxt.params.get_mut(&field.ident.to_string()).expect("get_mut").push(TokenParam {
+                inout_type: InoutType::In,
+                name: ident.clone(),
+                ty: ty,
+            });
 
-            TransitionStmt::Require(
-                *span,
-                mk_eq(&Expr::Verbatim(quote!{#ident.#field_name}), &e),
-            )
+            TransitionStmt::Require(*span, mk_eq(&Expr::Verbatim(quote! {#ident.#field_name}), &e))
         }
 
         TransitionStmt::Special(span, id, SpecialOp::GuardSome(e)) => {
@@ -1043,18 +1051,13 @@ fn walk_translate_expressions(ctxt: &mut Ctxt, ts: &mut TransitionStmt, comes_be
             let field = ctxt.get_field_or_panic(id);
             let ty = stored_object_type(&field);
 
-            ctxt.params.get_mut(&field.ident.to_string()).expect("get_mut").push(
-                TokenParam {
-                    inout_type: InoutType::BorrowOut,
-                    name: ident.clone(),
-                    ty: ty,
-                }
-            );
+            ctxt.params.get_mut(&field.ident.to_string()).expect("get_mut").push(TokenParam {
+                inout_type: InoutType::BorrowOut,
+                name: ident.clone(),
+                ty: ty,
+            });
 
-            TransitionStmt::PostCondition(
-                *span,
-                mk_eq(&Expr::Verbatim(quote!{*#ident}), &e),
-            )
+            TransitionStmt::PostCondition(*span, mk_eq(&Expr::Verbatim(quote! {*#ident}), &e))
         }
 
         TransitionStmt::Special(span, id, SpecialOp::DepositSome(e)) => {
@@ -1064,18 +1067,13 @@ fn walk_translate_expressions(ctxt: &mut Ctxt, ts: &mut TransitionStmt, comes_be
             let field = ctxt.get_field_or_panic(id);
             let ty = stored_object_type(&field);
 
-            ctxt.params.get_mut(&field.ident.to_string()).expect("get_mut").push(
-                TokenParam {
-                    inout_type: InoutType::In,
-                    name: ident.clone(),
-                    ty: ty,
-                }
-            );
+            ctxt.params.get_mut(&field.ident.to_string()).expect("get_mut").push(TokenParam {
+                inout_type: InoutType::In,
+                name: ident.clone(),
+                ty: ty,
+            });
 
-            TransitionStmt::Require(
-                *span,
-                mk_eq(&Expr::Verbatim(quote!{#ident}), &e),
-            )
+            TransitionStmt::Require(*span, mk_eq(&Expr::Verbatim(quote! {#ident}), &e))
         }
 
         TransitionStmt::Special(span, id, SpecialOp::WithdrawSome(e)) => {
@@ -1085,18 +1083,13 @@ fn walk_translate_expressions(ctxt: &mut Ctxt, ts: &mut TransitionStmt, comes_be
             let field = ctxt.get_field_or_panic(id);
             let ty = stored_object_type(&field);
 
-            ctxt.params.get_mut(&field.ident.to_string()).expect("get_mut").push(
-                TokenParam {
-                    inout_type: InoutType::Out,
-                    name: ident.clone(),
-                    ty: ty,
-                }
-            );
+            ctxt.params.get_mut(&field.ident.to_string()).expect("get_mut").push(TokenParam {
+                inout_type: InoutType::Out,
+                name: ident.clone(),
+                ty: ty,
+            });
 
-            TransitionStmt::PostCondition(
-                *span,
-                mk_eq(&Expr::Verbatim(quote!{#ident}), &e),
-            )
+            TransitionStmt::PostCondition(*span, mk_eq(&Expr::Verbatim(quote! {#ident}), &e))
         }
 
         TransitionStmt::PostCondition(..) => {
@@ -1109,7 +1102,11 @@ fn walk_translate_expressions(ctxt: &mut Ctxt, ts: &mut TransitionStmt, comes_be
     Ok(())
 }
 
-fn translate_expr(ctxt: &mut Ctxt, expr: &Expr, comes_before_precondition: bool) -> syn::parse::Result<Expr> {
+fn translate_expr(
+    ctxt: &mut Ctxt,
+    expr: &Expr,
+    comes_before_precondition: bool,
+) -> syn::parse::Result<Expr> {
     let mut v = TranslatorVisitor::new(ctxt, comes_before_precondition);
     let mut e = expr.clone();
     v.visit_expr_mut(&mut e);
@@ -1148,39 +1145,43 @@ impl<'a> VisitMut for TranslatorVisitor<'a> {
                 member,
                 attrs: _,
                 dot_token: _,
-            }) if path.is_ident("self") => match member {
-                Member::Named(ident) => match self.ctxt.get_field_by_ident(span, ident) {
-                    Err(err) => self.errors.push(err),
-                    Ok(field) => {
-                        self.ctxt.mark_field_as_read(&field);
-                        match &field.stype {
-                            ShardableType::Variable(_ty) => {
-                                *node = get_old_field_value(&self.ctxt, &field);
-                            }
-                            ShardableType::Constant(_ty) => {
-                                *node = get_const_field_value(&self.ctxt, &field);
-                            }
-                            ShardableType::NotTokenized(_ty) => {
-                                if self.comes_before_precondition {
-                                    self.errors.push(Error::new(span,
+            }) if path.is_ident("self") => {
+                match member {
+                    Member::Named(ident) => {
+                        match self.ctxt.get_field_by_ident(span, ident) {
+                            Err(err) => self.errors.push(err),
+                            Ok(field) => {
+                                self.ctxt.mark_field_as_read(&field);
+                                match &field.stype {
+                                    ShardableType::Variable(_ty) => {
+                                        *node = get_old_field_value(&self.ctxt, &field);
+                                    }
+                                    ShardableType::Constant(_ty) => {
+                                        *node = get_const_field_value(&self.ctxt, &field);
+                                    }
+                                    ShardableType::NotTokenized(_ty) => {
+                                        if self.comes_before_precondition {
+                                            self.errors.push(Error::new(span,
                                         "A `not_tokenized` field cannot be referenced either in or before a `require` statement, as this would require its value to be referenced in the pre-condition of the exchange method"));
-                                }
-                                *node = get_not_tokenized_field_value(&self.ctxt, &field);
-                            }
-                            ShardableType::Multiset(_ty) |
-                            ShardableType::Optional(_ty) |
-                            ShardableType::StorageOptional(_ty) => {
-                                let strat = field.stype.strategy_name();
-                                self.errors.push(Error::new(span,
+                                        }
+                                        *node = get_not_tokenized_field_value(&self.ctxt, &field);
+                                    }
+                                    ShardableType::Multiset(_ty)
+                                    | ShardableType::Optional(_ty)
+                                    | ShardableType::StorageOptional(_ty) => {
+                                        let strat = field.stype.strategy_name();
+                                        self.errors.push(Error::new(span,
                                     format!("A '{strat:}' field cannot be directly referenced here"))); // TODO be more specific
+                                    }
+                                }
                             }
                         }
                     }
-                },
-                _ => {
-                    self.errors.push(Error::new(span, "expected a named field"));
+                    _ => {
+                        self.errors.push(Error::new(span, "expected a named field"));
+                    }
                 }
-            },
+            }
             _ => syn::visit_mut::visit_expr_mut(self, node),
         }
     }
@@ -1443,13 +1444,8 @@ fn get_output_value_for_variable(ctxt: &Ctxt, ts: &TransitionStmt, field: &Field
                 Some(Expr::Verbatim(quote! { if #cond_e { #e1 } else { #e2 } }))
             }
         }
-        TransitionStmt::Initialize(_span, id, e) |
-        TransitionStmt::Update(_span, id, e) => {
-            if *id.to_string() == *field.ident.to_string() {
-                Some(e.clone())
-            } else {
-                None
-            }
+        TransitionStmt::Initialize(_span, id, e) | TransitionStmt::Update(_span, id, e) => {
+            if *id.to_string() == *field.ident.to_string() { Some(e.clone()) } else { None }
         }
         TransitionStmt::Let(_, _, _)
         | TransitionStmt::Require(_, _)

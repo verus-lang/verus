@@ -75,9 +75,9 @@ pub fn safety_condition_body(ts: &TransitionStmt) -> Option<Expr> {
         TransitionStmt::Assert(span, e) => Some(Expr::Verbatim(quote_spanned! {*span =>
             crate::pervasive::assert(#e);
         })),
-        TransitionStmt::Initialize(..) |
-        TransitionStmt::Update(..) |
-        TransitionStmt::Special(..) => {
+        TransitionStmt::Initialize(..)
+        | TransitionStmt::Update(..)
+        | TransitionStmt::Special(..) => {
             panic!("should have been removed at earlier processing stage");
         }
         TransitionStmt::PostCondition(..) => {

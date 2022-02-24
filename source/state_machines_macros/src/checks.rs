@@ -1,4 +1,4 @@
-use crate::ast::{TransitionStmt};
+use crate::ast::TransitionStmt;
 use syn::parse::Error;
 
 pub fn check_unsupported_updates_in_conditionals(ts: &TransitionStmt) -> syn::parse::Result<()> {
@@ -46,7 +46,10 @@ fn check_unsupported_updates_helper(ts: &TransitionStmt) -> syn::parse::Result<(
 
         TransitionStmt::Special(span, _, _) => {
             let name = ts.statement_name();
-            return Err(Error::new(*span, format!("currently, a '{name:}' statement is not supported inside a conditional")));
+            return Err(Error::new(
+                *span,
+                format!("currently, a '{name:}' statement is not supported inside a conditional"),
+            ));
         }
     }
 }

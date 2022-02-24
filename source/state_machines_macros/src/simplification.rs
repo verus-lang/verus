@@ -1,24 +1,19 @@
-use crate::ast::{TransitionStmt, SM, SpecialOp};
+use crate::ast::{SpecialOp, TransitionStmt, SM};
 use proc_macro2::Span;
+use proc_macro2::TokenStream;
+use quote::quote;
 use std::collections::HashMap;
 use syn::{Expr, Ident};
-use quote::quote;
-use proc_macro2::TokenStream;
 
 /// Simplify out `update' statements, including `add_element` etc.
 
 pub fn simplify_updates(sm: &SM, ts: &TransitionStmt, include_post: bool) -> TransitionStmt {
-    let ts = if include_post {
-        add_finalizes(sm, ts)
-    } else {
-        ts.clone()
-    };
+    let ts = if include_post { add_finalizes(sm, ts) } else { ts.clone() };
 
     let mut field_map = HashMap::new();
     for field in &sm.fields {
         let ident = &field.ident;
-        field_map.insert(ident.to_string(),
-            Expr::Verbatim(quote!{ self.#ident }));
+        field_map.insert(ident.to_string(), Expr::Verbatim(quote! { self.#ident }));
     }
 
     let (ts, _field_map) = simplify_updates_rec(&ts, field_map);
@@ -26,18 +21,22 @@ pub fn simplify_updates(sm: &SM, ts: &TransitionStmt, include_post: bool) -> Tra
     ts
 }
 
-fn simplify_updates_rec(ts: &TransitionStmt, field_map: HashMap<String, Expr>)
-    -> (TransitionStmt, HashMap<String, Expr>)
-{
+fn simplify_updates_rec(
+    ts: &TransitionStmt,
+    field_map: HashMap<String, Expr>,
+) -> (TransitionStmt, HashMap<String, Expr>) {
     if is_finalize_stmt(ts) {
         let (span, f) = match ts {
             TransitionStmt::Update(span, f, _) => (span, f),
             _ => panic!("shouldn't get here"),
         };
         let e = &field_map[&f.to_string()];
-        let ts = TransitionStmt::Require(*span, Expr::Verbatim(quote!{
-            ::builtin::equal(post.#f, #e)
-        }));
+        let ts = TransitionStmt::Require(
+            *span,
+            Expr::Verbatim(quote! {
+                ::builtin::equal(post.#f, #e)
+            }),
+        );
         return (ts, field_map);
     }
 
@@ -52,21 +51,14 @@ fn simplify_updates_rec(ts: &TransitionStmt, field_map: HashMap<String, Expr>)
             }
             (TransitionStmt::Block(*span, res), field_map)
         }
-        TransitionStmt::Let(_, _, _) => {
-            (ts.clone(), field_map)
-        }
+        TransitionStmt::Let(_, _, _) => (ts.clone(), field_map),
         TransitionStmt::If(_, _, _, _) => {
             panic!("unimpl");
         }
-        TransitionStmt::Require(_, _) => {
-            (ts.clone(), field_map)
-        }
-        TransitionStmt::Assert(_, _) => {
-            (ts.clone(), field_map)
-        }
+        TransitionStmt::Require(_, _) => (ts.clone(), field_map),
+        TransitionStmt::Assert(_, _) => (ts.clone(), field_map),
 
-        TransitionStmt::Initialize(span, f, e) |
-        TransitionStmt::Update(span, f, e) => {
+        TransitionStmt::Initialize(span, f, e) | TransitionStmt::Update(span, f, e) => {
             let mut field_map = field_map;
             field_map.insert(f.to_string(), e.clone());
             (TransitionStmt::Block(*span, Vec::new()), field_map)
@@ -74,7 +66,7 @@ fn simplify_updates_rec(ts: &TransitionStmt, field_map: HashMap<String, Expr>)
 
         TransitionStmt::Special(span, f, SpecialOp::HaveSome(e)) => {
             let cur = &field_map[&f.to_string()];
-            let prec = Expr::Verbatim(quote!{
+            let prec = Expr::Verbatim(quote! {
                 ::builtin::equal(
                     #cur,
                     crate::pervasive::option::Option::Some(#e)
@@ -85,10 +77,13 @@ fn simplify_updates_rec(ts: &TransitionStmt, field_map: HashMap<String, Expr>)
         TransitionStmt::Special(span, f, SpecialOp::AddSome(e)) => {
             let mut field_map = field_map;
             let cur = field_map[&f.to_string()].clone();
-            field_map.insert(f.to_string(), Expr::Verbatim(quote!{
-                crate::pervasive::option::Option::Some(#e)
-            }));
-            let safety = Expr::Verbatim(quote!{
+            field_map.insert(
+                f.to_string(),
+                Expr::Verbatim(quote! {
+                    crate::pervasive::option::Option::Some(#e)
+                }),
+            );
+            let safety = Expr::Verbatim(quote! {
                 (#cur).is_None()
             });
             (TransitionStmt::Assert(*span, safety), field_map)
@@ -96,10 +91,13 @@ fn simplify_updates_rec(ts: &TransitionStmt, field_map: HashMap<String, Expr>)
         TransitionStmt::Special(span, f, SpecialOp::RemoveSome(e)) => {
             let mut field_map = field_map;
             let cur = field_map[&f.to_string()].clone();
-            field_map.insert(f.to_string(), Expr::Verbatim(quote!{
-                crate::pervasive::option::Option::None
-            }));
-            let prec = Expr::Verbatim(quote!{
+            field_map.insert(
+                f.to_string(),
+                Expr::Verbatim(quote! {
+                    crate::pervasive::option::Option::None
+                }),
+            );
+            let prec = Expr::Verbatim(quote! {
                 ::builtin::equal(
                     #cur,
                     crate::pervasive::option::Option::Some(#e)
@@ -107,10 +105,10 @@ fn simplify_updates_rec(ts: &TransitionStmt, field_map: HashMap<String, Expr>)
             });
             (TransitionStmt::Require(*span, prec), field_map)
         }
-        
+
         TransitionStmt::Special(span, f, SpecialOp::GuardSome(e)) => {
             let cur = &field_map[&f.to_string()];
-            let prec = Expr::Verbatim(quote!{
+            let prec = Expr::Verbatim(quote! {
                 ::builtin::equal(
                     #cur,
                     crate::pervasive::option::Option::Some(#e)
@@ -121,10 +119,13 @@ fn simplify_updates_rec(ts: &TransitionStmt, field_map: HashMap<String, Expr>)
         TransitionStmt::Special(span, f, SpecialOp::DepositSome(e)) => {
             let mut field_map = field_map;
             let cur = field_map[&f.to_string()].clone();
-            field_map.insert(f.to_string(), Expr::Verbatim(quote!{
-                crate::pervasive::option::Option::Some(#e)
-            }));
-            let safety = Expr::Verbatim(quote!{
+            field_map.insert(
+                f.to_string(),
+                Expr::Verbatim(quote! {
+                    crate::pervasive::option::Option::Some(#e)
+                }),
+            );
+            let safety = Expr::Verbatim(quote! {
                 (#cur).is_None()
             });
             (TransitionStmt::Assert(*span, safety), field_map)
@@ -132,10 +133,13 @@ fn simplify_updates_rec(ts: &TransitionStmt, field_map: HashMap<String, Expr>)
         TransitionStmt::Special(span, f, SpecialOp::WithdrawSome(e)) => {
             let mut field_map = field_map;
             let cur = field_map[&f.to_string()].clone();
-            field_map.insert(f.to_string(), Expr::Verbatim(quote!{
-                crate::pervasive::option::Option::None
-            }));
-            let prec = Expr::Verbatim(quote!{
+            field_map.insert(
+                f.to_string(),
+                Expr::Verbatim(quote! {
+                    crate::pervasive::option::Option::None
+                }),
+            );
+            let prec = Expr::Verbatim(quote! {
                 ::builtin::equal(
                     #cur,
                     crate::pervasive::option::Option::Some(#e)
@@ -146,7 +150,7 @@ fn simplify_updates_rec(ts: &TransitionStmt, field_map: HashMap<String, Expr>)
 
         TransitionStmt::Special(span, f, SpecialOp::HaveElement(e)) => {
             let cur = &field_map[&f.to_string()];
-            let prec = Expr::Verbatim(quote!{
+            let prec = Expr::Verbatim(quote! {
                 (#cur).count(#e) >= 1
             });
             (TransitionStmt::Require(*span, prec), field_map)
@@ -154,18 +158,24 @@ fn simplify_updates_rec(ts: &TransitionStmt, field_map: HashMap<String, Expr>)
         TransitionStmt::Special(span, f, SpecialOp::AddElement(e)) => {
             let mut field_map = field_map;
             let cur = field_map[&f.to_string()].clone();
-            field_map.insert(f.to_string(), Expr::Verbatim(quote!{
-                (#cur).insert(#e)
-            }));
+            field_map.insert(
+                f.to_string(),
+                Expr::Verbatim(quote! {
+                    (#cur).insert(#e)
+                }),
+            );
             (TransitionStmt::Block(*span, Vec::new()), field_map)
         }
         TransitionStmt::Special(span, f, SpecialOp::RemoveElement(e)) => {
             let mut field_map = field_map;
             let cur = field_map[&f.to_string()].clone();
-            field_map.insert(f.to_string(), Expr::Verbatim(quote!{
-                (#cur).remove(#e)
-            }));
-            let prec = Expr::Verbatim(quote!{
+            field_map.insert(
+                f.to_string(),
+                Expr::Verbatim(quote! {
+                    (#cur).remove(#e)
+                }),
+            );
+            let prec = Expr::Verbatim(quote! {
                 (#cur).count(#e) >= 1
             });
             (TransitionStmt::Require(*span, prec), field_map)
@@ -197,14 +207,13 @@ fn add_finalizes(sm: &SM, ts: &TransitionStmt) -> TransitionStmt {
 fn add_finalizes_rec(ts: &mut TransitionStmt, found: &mut Vec<Ident>) {
     let mut is_update_for = None;
     match &ts {
-        TransitionStmt::Block(_, _) => { }
-        TransitionStmt::Let(_, _, _) => { }
-        TransitionStmt::If(_, _, _, _) => { }
-        TransitionStmt::Require(_, _) => { }
-        TransitionStmt::Assert(_, _) => { }
+        TransitionStmt::Block(_, _) => {}
+        TransitionStmt::Let(_, _, _) => {}
+        TransitionStmt::If(_, _, _, _) => {}
+        TransitionStmt::Require(_, _) => {}
+        TransitionStmt::Assert(_, _) => {}
 
-        TransitionStmt::Initialize(_, f, _) |
-        TransitionStmt::Update(_, f, _) => {
+        TransitionStmt::Initialize(_, f, _) | TransitionStmt::Update(_, f, _) => {
             is_update_for = Some(f.clone());
         }
         TransitionStmt::Special(_, f, op) => {
@@ -225,7 +234,7 @@ fn add_finalizes_rec(ts: &mut TransitionStmt, found: &mut Vec<Ident>) {
                 return;
             }
         }
-        None => { }
+        None => {}
     }
 
     match ts {
@@ -241,13 +250,13 @@ fn add_finalizes_rec(ts: &mut TransitionStmt, found: &mut Vec<Ident>) {
             add_finalizes_rec(e1, found);
             add_finalizes_rec(e2, &mut found2);
 
-            for i in idx .. found.len() {
+            for i in idx..found.len() {
                 if !contains_ident(&found2, &found[i]) {
                     append_stmt(e2, finalize_stmt(*span, found[i].clone()));
                 }
             }
 
-            for i in idx .. found2.len() {
+            for i in idx..found2.len() {
                 if !contains_ident(found, &found2[i]) {
                     found.push(found2[i].clone());
                     append_stmt(e1, finalize_stmt(*span, found[i].clone()));
@@ -255,12 +264,12 @@ fn add_finalizes_rec(ts: &mut TransitionStmt, found: &mut Vec<Ident>) {
             }
         }
 
-        TransitionStmt::Let(_, _, _) => { }
-        TransitionStmt::Require(_, _) => { }
-        TransitionStmt::Assert(_, _) => { }
-        TransitionStmt::Initialize(_, _, _) => { }
-        TransitionStmt::Update(_, _, _) => { }
-        TransitionStmt::Special(_, _, _) => { }
+        TransitionStmt::Let(_, _, _) => {}
+        TransitionStmt::Require(_, _) => {}
+        TransitionStmt::Assert(_, _) => {}
+        TransitionStmt::Initialize(_, _, _) => {}
+        TransitionStmt::Update(_, _, _) => {}
+        TransitionStmt::Special(_, _, _) => {}
         TransitionStmt::PostCondition(..) => {
             panic!("PostCondition statement shouldn't exist here");
         }
@@ -292,11 +301,7 @@ fn append_stmt(t1: &mut TransitionStmt, t2: TransitionStmt) {
         TransitionStmt::Block(_span, v) => {
             return v.push(t2);
         }
-        _ => { }
+        _ => {}
     }
-    *t1 = TransitionStmt::Block(t1.get_span().clone(),
-        vec![
-            t1.clone(), t2
-        ]);
+    *t1 = TransitionStmt::Block(t1.get_span().clone(), vec![t1.clone(), t2]);
 }
-

@@ -10,8 +10,8 @@ use crate::concurrency_tokens::output_token_types_and_fns;
 use crate::lemmas::get_transition;
 use crate::parse_token_stream::SMBundle;
 use crate::safety_conditions::{has_any_assert, safety_condition_body};
-use crate::to_relation::to_relation;
 use crate::simplification::simplify_updates;
+use crate::to_relation::to_relation;
 use proc_macro2::TokenStream;
 use quote::{quote, quote_spanned, ToTokens};
 use std::mem::swap;
@@ -283,13 +283,13 @@ pub fn shardable_type_to_type(stype: &ShardableType) -> Type {
         ShardableType::Constant(ty) => ty.clone(),
         ShardableType::NotTokenized(ty) => ty.clone(),
         ShardableType::Multiset(ty) => {
-            Type::Verbatim(quote!{ crate::pervasive::multiset::Multiset<#ty> })
+            Type::Verbatim(quote! { crate::pervasive::multiset::Multiset<#ty> })
         }
         ShardableType::Optional(ty) => {
-            Type::Verbatim(quote!{ crate::pervasive::option::Option<#ty> })
+            Type::Verbatim(quote! { crate::pervasive::option::Option<#ty> })
         }
         ShardableType::StorageOptional(ty) => {
-            Type::Verbatim(quote!{ crate::pervasive::option::Option<#ty> })
+            Type::Verbatim(quote! { crate::pervasive::option::Option<#ty> })
         }
     }
 }

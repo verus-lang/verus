@@ -1,4 +1,4 @@
-use crate::ast::{Field, TransitionKind, TransitionStmt, SM, ShardableType, SpecialOp};
+use crate::ast::{Field, ShardableType, SpecialOp, TransitionKind, TransitionStmt, SM};
 use proc_macro2::Span;
 use std::collections::HashMap;
 use syn::spanned::Spanned;
@@ -43,11 +43,14 @@ fn check_updates_refer_to_valid_fields(
         }
         TransitionStmt::Require(_, _) => Ok(()),
         TransitionStmt::Assert(_, _) => Ok(()),
-        TransitionStmt::Update(span, f, _) |
-        TransitionStmt::Initialize(span, f, _) |
-        TransitionStmt::Special(span, f, _) => {
+        TransitionStmt::Update(span, f, _)
+        | TransitionStmt::Initialize(span, f, _)
+        | TransitionStmt::Special(span, f, _) => {
             if !fields_contain(fields, f) {
-                return Err(Error::new(span.span(), format!("field '{}' not found", f.to_string())));
+                return Err(Error::new(
+                    span.span(),
+                    format!("field '{}' not found", f.to_string()),
+                ));
             }
             Ok(())
         }
@@ -144,9 +147,7 @@ fn check_init_rec(ts: &TransitionStmt) -> syn::parse::Result<Vec<(Ident, Span)>>
             }
             Ok(h)
         }
-        TransitionStmt::Let(_, _, _) => {
-            Ok(Vec::new())
-        }
+        TransitionStmt::Let(_, _, _) => Ok(Vec::new()),
         TransitionStmt::If(span, _, thn, els) => {
             let h1 = check_init_rec(thn)?;
             let h2 = check_init_rec(els)?;
@@ -158,9 +159,7 @@ fn check_init_rec(ts: &TransitionStmt) -> syn::parse::Result<Vec<(Ident, Span)>>
             }
             Ok(h1)
         }
-        TransitionStmt::Require(_, _) => {
-            Ok(Vec::new())
-        }
+        TransitionStmt::Require(_, _) => Ok(Vec::new()),
         TransitionStmt::Assert(span, _) => {
             Err(Error::new(*span, "'assert' statement not allowed in initialization"))
         }
@@ -169,12 +168,17 @@ fn check_init_rec(ts: &TransitionStmt) -> syn::parse::Result<Vec<(Ident, Span)>>
             v.push((ident.clone(), span.clone()));
             Ok(v)
         }
-        TransitionStmt::Update(span, _, _) => {
-            Err(Error::new(*span, "'update' statement not allowed in initialization; use 'init' instead"))
-        }
-        TransitionStmt::Special(span, _, _) => {
-            Err(Error::new(*span, format!("'{:}' statement not allowed in initialization; use 'init' instead", ts.statement_name())))
-        }
+        TransitionStmt::Update(span, _, _) => Err(Error::new(
+            *span,
+            "'update' statement not allowed in initialization; use 'init' instead",
+        )),
+        TransitionStmt::Special(span, _, _) => Err(Error::new(
+            *span,
+            format!(
+                "'{:}' statement not allowed in initialization; use 'init' instead",
+                ts.statement_name()
+            ),
+        )),
         TransitionStmt::PostCondition(..) => {
             panic!("should have have PostCondition statement here");
         }
@@ -188,7 +192,10 @@ fn check_at_most_one_update(sm: &SM, ts: &TransitionStmt) -> syn::parse::Result<
     Ok(())
 }
 
-fn check_at_most_one_update_rec(field: &Field, ts: &TransitionStmt) -> syn::parse::Result<Option<Span>> {
+fn check_at_most_one_update_rec(
+    field: &Field,
+    ts: &TransitionStmt,
+) -> syn::parse::Result<Option<Span>> {
     match ts {
         TransitionStmt::Block(_, v) => {
             let mut o = None;
@@ -199,8 +206,13 @@ fn check_at_most_one_update_rec(field: &Field, ts: &TransitionStmt) -> syn::pars
                     (Some(s), None) => Some(s),
                     (None, Some(s)) => Some(s),
                     (Some(_s1), Some(s2)) => {
-                        return Err(Error::new(s2,
-                            format!("field '{}' might be updated multiple times", field.ident.to_string())));
+                        return Err(Error::new(
+                            s2,
+                            format!(
+                                "field '{}' might be updated multiple times",
+                                field.ident.to_string()
+                            ),
+                        ));
                     }
                 };
             }
@@ -244,40 +256,34 @@ fn is_allowed_in_special_op(stype: &ShardableType, sop: &SpecialOp) -> bool {
         ShardableType::Constant(_) => false,
         ShardableType::NotTokenized(_) => false,
 
-        ShardableType::Multiset(_) => {
-            match sop {
-                SpecialOp::AddElement(_) => true,
-                SpecialOp::RemoveElement(_) => true,
-                SpecialOp::HaveElement(_) => true,
-                _ => false,
-            }
+        ShardableType::Multiset(_) => match sop {
+            SpecialOp::AddElement(_) => true,
+            SpecialOp::RemoveElement(_) => true,
+            SpecialOp::HaveElement(_) => true,
+            _ => false,
         },
 
-        ShardableType::Optional(_) => {
-            match sop {
-                SpecialOp::AddSome(_) => true,
-                SpecialOp::RemoveSome(_) => true,
-                SpecialOp::HaveSome(_) => true,
-                _ => false,
-            }
-        }
+        ShardableType::Optional(_) => match sop {
+            SpecialOp::AddSome(_) => true,
+            SpecialOp::RemoveSome(_) => true,
+            SpecialOp::HaveSome(_) => true,
+            _ => false,
+        },
 
-        ShardableType::StorageOptional(_) => {
-            match sop {
-                SpecialOp::DepositSome(_) => true,
-                SpecialOp::WithdrawSome(_) => true,
-                SpecialOp::GuardSome(_) => true,
-                _ => false,
-            }
-        }
+        ShardableType::StorageOptional(_) => match sop {
+            SpecialOp::DepositSome(_) => true,
+            SpecialOp::WithdrawSome(_) => true,
+            SpecialOp::GuardSome(_) => true,
+            _ => false,
+        },
     }
 }
 
 fn check_valid_ops(
     fields: &Vec<Field>,
     ts: &TransitionStmt,
-    is_readonly: bool) -> syn::parse::Result<()>
-{
+    is_readonly: bool,
+) -> syn::parse::Result<()> {
     match ts {
         TransitionStmt::Block(_, v) => {
             for t in v.iter() {
@@ -294,28 +300,59 @@ fn check_valid_ops(
         TransitionStmt::Require(_, _) => Ok(()),
         TransitionStmt::Assert(_, _) => Ok(()),
         TransitionStmt::Initialize(span, _, _) => {
-            return Err(Error::new(span.span(), format!("'init' statement not allowed outside 'init' routine")));
+            return Err(Error::new(
+                span.span(),
+                format!("'init' statement not allowed outside 'init' routine"),
+            ));
         }
         TransitionStmt::Update(span, f, _) => {
             let field = get_field(fields, f);
             if !is_allowed_in_update_in_normal_transition(&field.stype) {
-                return Err(Error::new(span.span(), format!("'update' statement not allowed for field with sharding strategy '{:}'", field.stype.strategy_name())));
+                return Err(Error::new(
+                    span.span(),
+                    format!(
+                        "'update' statement not allowed for field with sharding strategy '{:}'",
+                        field.stype.strategy_name()
+                    ),
+                ));
             }
             if is_readonly {
-                return Err(Error::new(span.span(), format!("'update' statement not allowed in readonly transition")));
+                return Err(Error::new(
+                    span.span(),
+                    format!("'update' statement not allowed in readonly transition"),
+                ));
             }
             Ok(())
         }
         TransitionStmt::Special(span, f, op) => {
             let field = get_field(fields, f);
             if !is_allowed_in_special_op(&field.stype, op) {
-                return Err(Error::new(span.span(), format!("'{:}' statement not allowed for field with sharding strategy '{:}'", op.statement_name(), field.stype.strategy_name())));
+                return Err(Error::new(
+                    span.span(),
+                    format!(
+                        "'{:}' statement not allowed for field with sharding strategy '{:}'",
+                        op.statement_name(),
+                        field.stype.strategy_name()
+                    ),
+                ));
             }
             if is_readonly && op.is_modifier() {
-                return Err(Error::new(span.span(), format!("'{:}' statement not allowed in readonly transition", op.statement_name())));
+                return Err(Error::new(
+                    span.span(),
+                    format!(
+                        "'{:}' statement not allowed in readonly transition",
+                        op.statement_name()
+                    ),
+                ));
             }
             if !is_readonly && op.is_only_allowed_in_readonly() {
-                return Err(Error::new(span.span(), format!("'{:}' statement only allowed in readonly transition", op.statement_name())));
+                return Err(Error::new(
+                    span.span(),
+                    format!(
+                        "'{:}' statement only allowed in readonly transition",
+                        op.statement_name()
+                    ),
+                ));
             }
             Ok(())
         }

@@ -14,9 +14,9 @@ use syn::parse::{Parse, ParseStream};
 use syn::spanned::Spanned;
 use syn::Token;
 use syn::{
-    braced, AttrStyle, Attribute, Error, FieldsNamed, FnArg, GenericParam, Generics, Ident,
-    ImplItemMethod, Meta, MetaList, NestedMeta, Receiver, ReturnType, Type, TypePath, Visibility,
-    WhereClause, PathArguments, GenericArgument,
+    braced, AttrStyle, Attribute, Error, FieldsNamed, FnArg, GenericArgument, GenericParam,
+    Generics, Ident, ImplItemMethod, Meta, MetaList, NestedMeta, PathArguments, Receiver,
+    ReturnType, Type, TypePath, Visibility, WhereClause,
 };
 
 pub struct SMBundle {
@@ -443,21 +443,24 @@ fn extract_template_param(ty: &Type, strategy: &str, type_name: &str) -> syn::pa
                                 GenericArgument::Type(ty) => {
                                     return Ok(ty.clone());
                                 }
-                                _ => { }
+                                _ => {}
                             }
                         }
                     }
-                    _ => { }
+                    _ => {}
                 }
             }
         }
-        _ => {
-        }
+        _ => {}
     }
 
     let expected_form = type_name.to_string() + "<...>";
-    return Err(Error::new(ty.span(),
-        format!("type of a field with sharding strategy '{strategy:}' must be of the form {expected_form:}")));
+    return Err(Error::new(
+        ty.span(),
+        format!(
+            "type of a field with sharding strategy '{strategy:}' must be of the form {expected_form:}"
+        ),
+    ));
 }
 
 fn to_fields(
@@ -486,12 +489,15 @@ fn to_fields(
             ShardingType::Variable => ShardableType::Variable(field.ty.clone()),
             ShardingType::Constant => ShardableType::Constant(field.ty.clone()),
             ShardingType::NotTokenized => ShardableType::NotTokenized(field.ty.clone()),
-            ShardingType::Multiset => ShardableType::Multiset(
-                  extract_template_param(&field.ty, "multiset", "Multiset")?),
-            ShardingType::Optional => ShardableType::Optional(
-                  extract_template_param(&field.ty, "option", "Option")?),
+            ShardingType::Multiset => {
+                ShardableType::Multiset(extract_template_param(&field.ty, "multiset", "Multiset")?)
+            }
+            ShardingType::Optional => {
+                ShardableType::Optional(extract_template_param(&field.ty, "option", "Option")?)
+            }
             ShardingType::StorageOptional => ShardableType::StorageOptional(
-                  extract_template_param(&field.ty, "storage_option", "Option")?),
+                extract_template_param(&field.ty, "storage_option", "Option")?,
+            ),
         };
 
         field.ty = shardable_type_to_type(&stype);

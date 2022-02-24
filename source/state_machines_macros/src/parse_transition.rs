@@ -1,4 +1,4 @@
-use crate::ast::{Transition, TransitionKind, TransitionParam, TransitionStmt, SpecialOp};
+use crate::ast::{SpecialOp, Transition, TransitionKind, TransitionParam, TransitionStmt};
 use syn::spanned::Spanned;
 use syn::{
     Block, Error, Expr, ExprCall, ExprIf, FnArg, ImplItemMethod, Local, Pat, PatIdent, Signature,
@@ -156,17 +156,17 @@ fn parse_call(call: &ExprCall, ctxt: &Ctxt) -> syn::parse::Result<TransitionStmt
             let e = call.args[0].clone();
             return Ok(TransitionStmt::Require(call.span(), e));
         }
-        CallType::Update |
-        CallType::Initialize |
-        CallType::HaveSome |
-        CallType::AddSome |
-        CallType::RemoveSome |
-        CallType::GuardSome |
-        CallType::DepositSome |
-        CallType::WithdrawSome |
-        CallType::HaveElement |
-        CallType::AddElement |
-        CallType::RemoveElement => {
+        CallType::Update
+        | CallType::Initialize
+        | CallType::HaveSome
+        | CallType::AddSome
+        | CallType::RemoveSome
+        | CallType::GuardSome
+        | CallType::DepositSome
+        | CallType::WithdrawSome
+        | CallType::HaveElement
+        | CallType::AddElement
+        | CallType::RemoveElement => {
             if call.args.len() != 2 {
                 return Err(Error::new(call.span(), "expected 2 arguments"));
             }
@@ -192,29 +192,52 @@ fn parse_call(call: &ExprCall, ctxt: &Ctxt) -> syn::parse::Result<TransitionStmt
             };
             let e = call.args[1].clone();
             return match ct {
-                CallType::Update =>
-                    Ok(TransitionStmt::Update(call.span(), ident.clone(), e)),
-                CallType::Initialize =>
-                    Ok(TransitionStmt::Initialize(call.span(), ident.clone(), e)),
-                CallType::HaveElement =>
-                    Ok(TransitionStmt::Special(call.span(), ident.clone(), SpecialOp::HaveElement(e))),
-                CallType::AddElement =>
-                    Ok(TransitionStmt::Special(call.span(), ident.clone(), SpecialOp::AddElement(e))),
-                CallType::RemoveElement =>
-                    Ok(TransitionStmt::Special(call.span(), ident.clone(), SpecialOp::RemoveElement(e))),
-                CallType::HaveSome =>
-                    Ok(TransitionStmt::Special(call.span(), ident.clone(), SpecialOp::HaveSome(e))),
-                CallType::AddSome =>
-                    Ok(TransitionStmt::Special(call.span(), ident.clone(), SpecialOp::AddSome(e))),
-                CallType::RemoveSome =>
-                    Ok(TransitionStmt::Special(call.span(), ident.clone(), SpecialOp::RemoveSome(e))),
-                CallType::GuardSome =>
-                    Ok(TransitionStmt::Special(call.span(), ident.clone(), SpecialOp::GuardSome(e))),
-                CallType::DepositSome =>
-                    Ok(TransitionStmt::Special(call.span(), ident.clone(), SpecialOp::DepositSome(e))),
-                CallType::WithdrawSome =>
-                    Ok(TransitionStmt::Special(call.span(), ident.clone(), SpecialOp::WithdrawSome(e))),
-                _ => { panic!("shouldn't get here"); }
+                CallType::Update => Ok(TransitionStmt::Update(call.span(), ident.clone(), e)),
+                CallType::Initialize => {
+                    Ok(TransitionStmt::Initialize(call.span(), ident.clone(), e))
+                }
+                CallType::HaveElement => Ok(TransitionStmt::Special(
+                    call.span(),
+                    ident.clone(),
+                    SpecialOp::HaveElement(e),
+                )),
+                CallType::AddElement => Ok(TransitionStmt::Special(
+                    call.span(),
+                    ident.clone(),
+                    SpecialOp::AddElement(e),
+                )),
+                CallType::RemoveElement => Ok(TransitionStmt::Special(
+                    call.span(),
+                    ident.clone(),
+                    SpecialOp::RemoveElement(e),
+                )),
+                CallType::HaveSome => {
+                    Ok(TransitionStmt::Special(call.span(), ident.clone(), SpecialOp::HaveSome(e)))
+                }
+                CallType::AddSome => {
+                    Ok(TransitionStmt::Special(call.span(), ident.clone(), SpecialOp::AddSome(e)))
+                }
+                CallType::RemoveSome => Ok(TransitionStmt::Special(
+                    call.span(),
+                    ident.clone(),
+                    SpecialOp::RemoveSome(e),
+                )),
+                CallType::GuardSome => {
+                    Ok(TransitionStmt::Special(call.span(), ident.clone(), SpecialOp::GuardSome(e)))
+                }
+                CallType::DepositSome => Ok(TransitionStmt::Special(
+                    call.span(),
+                    ident.clone(),
+                    SpecialOp::DepositSome(e),
+                )),
+                CallType::WithdrawSome => Ok(TransitionStmt::Special(
+                    call.span(),
+                    ident.clone(),
+                    SpecialOp::WithdrawSome(e),
+                )),
+                _ => {
+                    panic!("shouldn't get here");
+                }
             };
         }
     }
