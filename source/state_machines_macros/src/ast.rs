@@ -38,6 +38,7 @@ pub enum ShardableType {
     NotTokenized(Type),
     Multiset(Type),
     Optional(Type),
+    StorageOptional(Type),
     // TODO more here
 }
 
@@ -61,9 +62,14 @@ pub enum SpecialOp {
     AddElement(Expr),
     RemoveElement(Expr),
     HaveElement(Expr),
+
     AddSome(Expr),
     RemoveSome(Expr),
     HaveSome(Expr),
+
+    DepositSome(Expr),
+    WithdrawSome(Expr),
+    GuardSome(Expr),
 }
 
 #[derive(Clone, Debug)]
@@ -92,6 +98,9 @@ impl SpecialOp {
             SpecialOp::RemoveSome(..) => "remove_some",
             SpecialOp::HaveSome(..) => "have_some",
             SpecialOp::AddSome(..) => "add_some",
+            SpecialOp::DepositSome(..) => "deposit_some",
+            SpecialOp::WithdrawSome(..) => "withdraw_some",
+            SpecialOp::GuardSome(..) => "guard_some",
         }
     }
 
@@ -103,6 +112,9 @@ impl SpecialOp {
             SpecialOp::RemoveSome(..) => true,
             SpecialOp::HaveSome(..) => false,
             SpecialOp::AddSome(..) => true,
+            SpecialOp::DepositSome(..) => true,
+            SpecialOp::WithdrawSome(..) => true,
+            SpecialOp::GuardSome(..) => false,
         }
     }
 
@@ -114,6 +126,9 @@ impl SpecialOp {
             SpecialOp::RemoveSome(..) => false,
             SpecialOp::HaveSome(..) => false,
             SpecialOp::AddSome(..) => false,
+            SpecialOp::DepositSome(..) => false,
+            SpecialOp::WithdrawSome(..) => false,
+            SpecialOp::GuardSome(..) => true,
         }
     }
 }
@@ -176,6 +191,18 @@ impl ShardableType {
             ShardableType::NotTokenized(_) => "not_tokenized",
             ShardableType::Multiset(_) => "multiset",
             ShardableType::Optional(_) => "option",
+            ShardableType::StorageOptional(_) => "storage_option",
+        }
+    }
+
+    pub fn is_storage(&self) -> bool {
+        match self {
+            ShardableType::Variable(_) => false,
+            ShardableType::Constant(_) => false,
+            ShardableType::NotTokenized(_) => false,
+            ShardableType::Multiset(_) => false,
+            ShardableType::Optional(_) => false,
+            ShardableType::StorageOptional(_) => true,
         }
     }
 }

@@ -288,6 +288,9 @@ pub fn shardable_type_to_type(stype: &ShardableType) -> Type {
         ShardableType::Optional(ty) => {
             Type::Verbatim(quote!{ crate::pervasive::option::Option<#ty> })
         }
+        ShardableType::StorageOptional(ty) => {
+            Type::Verbatim(quote!{ crate::pervasive::option::Option<#ty> })
+        }
     }
 }
 

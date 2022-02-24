@@ -16,7 +16,7 @@ concurrent_state_machine!(RwLock {
         #[sharding(variable)]
         pub flags: (bool, nat),
 
-        #[sharding(not_tokenized)]
+        #[sharding(storage_option)]
         pub storage: Option<T>,
 
         #[sharding(option)]
@@ -38,6 +38,7 @@ concurrent_state_machine!(RwLock {
         add_element(pending_reader, ());
     }
 
+/*
     #[transition]
     fn acquire_read_end(&self) {
         require(self.flags.0 == false);
@@ -47,6 +48,7 @@ concurrent_state_machine!(RwLock {
         let x = self.storage.get_Some_0();
         add_element(reader, x);
     }
+    */
 
     #[transition]
     fn acquire_read_abandon(&self) {
@@ -62,6 +64,7 @@ concurrent_state_machine!(RwLock {
         add_some(pending_writer, ());
     }
 
+/*
     #[transition]
     fn acquire_exc_end(&self) {
         require(self.flags.1 == 0);
@@ -70,8 +73,9 @@ concurrent_state_machine!(RwLock {
 
         add_some(writer, ());
 
-        update(storage, Option::None);
+        withdraw_some(storage, self.storage.is_Some());
     }
+    */
 
     #[transition]
     fn release_exc(&self, x: T) {
@@ -79,7 +83,13 @@ concurrent_state_machine!(RwLock {
 
         update(flags, (false, self.flags.1));
 
-        update(storage, Option::Some(x));
+        deposit_some(storage, x);
+    }
+
+    #[readonly]
+    fn read_guard(&self, x: T) {
+        have_element(reader, x);
+        guard_some(storage, x);
     }
 
     #[transition]
@@ -123,8 +133,8 @@ concurrent_state_machine!(RwLock {
     #[inductive(acquire_read_start)]
     fn acquire_read_start_inductive(self: RwLock, post: RwLock) { }
 
-    #[inductive(acquire_read_end)]
-    fn acquire_read_end_inductive(self: RwLock, post: RwLock) { }
+    //#[inductive(acquire_read_end)]
+    //fn acquire_read_end_inductive(self: RwLock, post: RwLock) { }
 
     #[inductive(acquire_read_abandon)]
     fn acquire_read_abandon_inductive(self: RwLock, post: RwLock) { }
@@ -132,8 +142,8 @@ concurrent_state_machine!(RwLock {
     #[inductive(acquire_exc_start)]
     fn acquire_exc_start_inductive(self: RwLock, post: RwLock) { }
 
-    #[inductive(acquire_exc_end)]
-    fn acquire_exc_end_inductive(self: RwLock, post: RwLock) { }
+    //#[inductive(acquire_exc_end)]
+    //fn acquire_exc_end_inductive(self: RwLock, post: RwLock) { }
 
     #[inductive(release_exc)]
     fn release_exc_inductive(self: RwLock, post: RwLock, x: T) { }

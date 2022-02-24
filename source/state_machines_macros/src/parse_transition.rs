@@ -133,6 +133,9 @@ enum CallType {
     AddSome,
     HaveSome,
     RemoveSome,
+    WithdrawSome,
+    DepositSome,
+    GuardSome,
 }
 
 fn parse_call(call: &ExprCall, ctxt: &Ctxt) -> syn::parse::Result<TransitionStmt> {
@@ -156,6 +159,9 @@ fn parse_call(call: &ExprCall, ctxt: &Ctxt) -> syn::parse::Result<TransitionStmt
         CallType::HaveSome |
         CallType::AddSome |
         CallType::RemoveSome |
+        CallType::GuardSome |
+        CallType::DepositSome |
+        CallType::WithdrawSome |
         CallType::HaveElement |
         CallType::AddElement |
         CallType::RemoveElement => {
@@ -198,6 +204,12 @@ fn parse_call(call: &ExprCall, ctxt: &Ctxt) -> syn::parse::Result<TransitionStmt
                     Ok(TransitionStmt::Special(call.span(), ident.clone(), SpecialOp::AddSome(e))),
                 CallType::RemoveSome =>
                     Ok(TransitionStmt::Special(call.span(), ident.clone(), SpecialOp::RemoveSome(e))),
+                CallType::GuardSome =>
+                    Ok(TransitionStmt::Special(call.span(), ident.clone(), SpecialOp::GuardSome(e))),
+                CallType::DepositSome =>
+                    Ok(TransitionStmt::Special(call.span(), ident.clone(), SpecialOp::DepositSome(e))),
+                CallType::WithdrawSome =>
+                    Ok(TransitionStmt::Special(call.span(), ident.clone(), SpecialOp::WithdrawSome(e))),
                 _ => { panic!("shouldn't get here"); }
             };
         }
@@ -243,6 +255,15 @@ fn parse_call_type(callf: &Expr, _ctxt: &Ctxt) -> syn::parse::Result<CallType> {
             }
             if path.path.is_ident("have_some") {
                 return Ok(CallType::HaveSome);
+            }
+            if path.path.is_ident("deposit_some") {
+                return Ok(CallType::DepositSome);
+            }
+            if path.path.is_ident("withdraw_some") {
+                return Ok(CallType::WithdrawSome);
+            }
+            if path.path.is_ident("guard_some") {
+                return Ok(CallType::GuardSome);
             }
         }
         _ => {

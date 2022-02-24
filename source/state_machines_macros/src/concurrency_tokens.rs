@@ -135,9 +135,23 @@ fn field_token_field_type(field: &Field) -> Type {
     match &field.stype {
         ShardableType::Variable(ty) => ty.clone(),
         ShardableType::Constant(ty) => ty.clone(),
-        ShardableType::NotTokenized(ty) => ty.clone(),
+        ShardableType::NotTokenized(_ty) => { panic!("no token field for NotTokenized"); }
         ShardableType::Multiset(ty) => ty.clone(),
         ShardableType::Optional(ty) => ty.clone(),
+        ShardableType::StorageOptional(_ty) => { panic!("no token field for StorageOptional"); }
+    }
+}
+
+fn stored_object_type(field: &Field) -> Type {
+    match &field.stype {
+        ShardableType::StorageOptional(ty) => ty.clone(),
+        ShardableType::Variable(_) |
+        ShardableType::Constant(_) |
+        ShardableType::NotTokenized(_) |
+        ShardableType::Multiset(_) |
+        ShardableType::Optional(_) => {
+            panic!("stored_object_type");
+        }
     }
 }
 
@@ -277,6 +291,7 @@ pub fn output_token_types_and_fns(
             ShardableType::Optional(_) => {
                 token_stream.extend(token_struct_stream_optional(&bundle.sm.name, field));
             }
+            ShardableType::StorageOptional(_) => { }
         }
     }
 
@@ -299,7 +314,7 @@ enum InoutType {
     Out,
     InOut,
     BorrowIn, 
-    //BorrowOut,
+    BorrowOut,
 }
 
 struct TokenParam {
@@ -357,7 +372,18 @@ impl Ctxt {
         self.fresh_num_counter += 1;
         Ident::new(&format!("token_{}_{}", i, base_id.to_string()),
             base_id.span())
+    }
 
+    pub fn get_explicit_lifetime(&self) -> bool {
+        for (_p, v) in self.params.iter() {
+            for tp in v {
+                match tp.inout_type {
+                    InoutType::BorrowOut => { return true; }
+                    _ => { }
+                }
+            }
+        }
+        return false;
     }
 }
 
@@ -387,7 +413,8 @@ pub fn exchange_stream(bundle: &SMBundle, tr: &Transition) -> syn::parse::Result
         if !is_init {
             match &field.stype {
                 ShardableType::Multiset(_) |
-                ShardableType::Optional(_) => {
+                ShardableType::Optional(_) |
+                ShardableType::StorageOptional(_) => {
                     init_params.insert(field.ident.to_string(), Vec::new());
                 }
                 _ => { }
@@ -458,6 +485,8 @@ pub fn exchange_stream(bundle: &SMBundle, tr: &Transition) -> syn::parse::Result
     let mut inst_eq_reqs = Vec::new();
     let mut inst_eq_enss = Vec::new();
 
+    let use_explicit_lifetime = ctxt.get_explicit_lifetime();
+
     for field in &sm.fields {
         if ctxt.is_init {
             assert!(ctxt.fields_written.contains(&field.ident.to_string()));
@@ -510,7 +539,8 @@ pub fn exchange_stream(bundle: &SMBundle, tr: &Transition) -> syn::parse::Result
                     &transition_arg_name(field),
                     &field_token_type(&sm.name, field),
                     is_input,
-                    is_output);
+                    is_output,
+                    use_explicit_lifetime);
 
                 if is_output {
                     // Post-condition that gives the value of the output token
@@ -524,7 +554,9 @@ pub fn exchange_stream(bundle: &SMBundle, tr: &Transition) -> syn::parse::Result
                     ctxt.ensures.push(mk_eq(&lhs, &e));
                 }
             }
-            ShardableType::Multiset(_) | ShardableType::Optional(_) => {
+            ShardableType::Multiset(_)
+            | ShardableType::StorageOptional(_)
+            | ShardableType::Optional(_) => {
                 if ctxt.is_init {
                     panic!("multiset is_init not implemented");
                 } else {
@@ -540,7 +572,9 @@ pub fn exchange_stream(bundle: &SMBundle, tr: &Transition) -> syn::parse::Result
                             &mut inst_eq_reqs,
                             &p.name,
                             &p.ty,
-                            p.inout_type
+                            p.inout_type,
+                            !field.stype.is_storage(),
+                            use_explicit_lifetime,
                         );
                     }
 
@@ -638,11 +672,17 @@ pub fn exchange_stream(bundle: &SMBundle, tr: &Transition) -> syn::parse::Result
 
     let extra_deps = get_extra_deps(bundle, &tr);
 
+    let generic_params = if use_explicit_lifetime {
+        quote!{ <'a> }
+    } else {
+        TokenStream::new()
+    };
+
     return Ok(quote! {
         #[proof]
         #return_value_mode
         #[verifier(external_body)]
-        pub fn #exch_name(#(#in_args),*) #out_args_ret {
+        pub fn #exch_name#generic_params(#(#in_args),*) #out_args_ret {
             #req_stream
             #ens_stream
             #extra_deps
@@ -660,11 +700,13 @@ fn add_token_param_in_out(
 
     arg_name: &Ident,
     arg_type: &Type,
-    inout_type: InoutType)
+    inout_type: InoutType,
+    apply_instance_condition: bool,
+    use_explicit_lifetime: bool)
 {
     let (is_input, is_output) = match inout_type {
         InoutType::In => {
-            in_args.push(quote! { #[proof] #arg_name: &#arg_type });
+            in_args.push(quote! { #[proof] #arg_name: #arg_type });
             (true, false)
         },
         InoutType::Out => {
@@ -672,31 +714,43 @@ fn add_token_param_in_out(
             (false, true)
         },
         InoutType::InOut => {
+            assert!(!use_explicit_lifetime);
             in_args.push(quote! { #[proof] #arg_name: &mut #arg_type });
             (true, true)
         },
         InoutType::BorrowIn => {
-            in_args.push(quote! { #[proof] #arg_name: &#arg_type });
+            if use_explicit_lifetime {
+                in_args.push(quote! { #[proof] #arg_name: &'a #arg_type });
+            } else {
+                in_args.push(quote! { #[proof] #arg_name: &#arg_type });
+            }
             (true, false)
+        },
+        InoutType::BorrowOut => {
+            assert!(use_explicit_lifetime);
+            in_args.push(quote! { #[proof] #arg_name: &'a #arg_type });
+            (false, true)
         },
     };
 
-    let inst = get_inst_value(&ctxt);
-    if is_output {
-        let lhs = Expr::Verbatim(quote! { #arg_name.instance });
-        inst_eq_enss.push(Expr::Verbatim(quote! {
-            ::builtin::equal(#lhs, #inst)
-        }));
-    }
-    if is_input {
-        let lhs = if is_output {
-            Expr::Verbatim(quote! { ::builtin::old(#arg_name).instance })
-        } else {
-            Expr::Verbatim(quote! { #arg_name.instance })
-        };
-        inst_eq_reqs.push(Expr::Verbatim(quote! {
-            ::builtin::equal(#lhs, #inst)
-        }));
+    if apply_instance_condition {
+        let inst = get_inst_value(&ctxt);
+        if is_output {
+            let lhs = Expr::Verbatim(quote! { #arg_name.instance });
+            inst_eq_enss.push(Expr::Verbatim(quote! {
+                ::builtin::equal(#lhs, #inst)
+            }));
+        }
+        if is_input {
+            let lhs = if is_output {
+                Expr::Verbatim(quote! { ::builtin::old(#arg_name).instance })
+            } else {
+                Expr::Verbatim(quote! { #arg_name.instance })
+            };
+            inst_eq_reqs.push(Expr::Verbatim(quote! {
+                ::builtin::equal(#lhs, #inst)
+            }));
+        }
     }
 }
 
@@ -710,7 +764,8 @@ fn add_token_param_for_var(
     arg_name: &Ident,
     arg_type: &Type,
     is_input: bool,
-    is_output: bool)
+    is_output: bool,
+    use_explicit_lifetime: bool)
 {
     if !is_input && !is_output {
         return;
@@ -724,7 +779,9 @@ fn add_token_param_for_var(
             InoutType::In
         } else {
             InoutType::Out
-        }
+        },
+        true,
+        use_explicit_lifetime,
     );
 }
 
@@ -974,6 +1031,69 @@ fn walk_translate_expressions(ctxt: &mut Ctxt, ts: &mut TransitionStmt, comes_be
             )
         }
 
+        TransitionStmt::Special(span, id, SpecialOp::GuardSome(e)) => {
+            let e = translate_expr(ctxt, e, comes_before_precondition)?;
+
+            let ident = ctxt.get_numbered_token_ident(id);
+            let field = ctxt.get_field_or_panic(id);
+            let ty = stored_object_type(&field);
+
+            ctxt.params.get_mut(&field.ident.to_string()).expect("get_mut").push(
+                TokenParam {
+                    inout_type: InoutType::BorrowOut,
+                    name: ident.clone(),
+                    ty: ty,
+                }
+            );
+
+            TransitionStmt::PostCondition(
+                *span,
+                mk_eq(&Expr::Verbatim(quote!{*#ident}), &e),
+            )
+        }
+
+        TransitionStmt::Special(span, id, SpecialOp::DepositSome(e)) => {
+            let e = translate_expr(ctxt, e, comes_before_precondition)?;
+
+            let ident = ctxt.get_numbered_token_ident(id);
+            let field = ctxt.get_field_or_panic(id);
+            let ty = stored_object_type(&field);
+
+            ctxt.params.get_mut(&field.ident.to_string()).expect("get_mut").push(
+                TokenParam {
+                    inout_type: InoutType::In,
+                    name: ident.clone(),
+                    ty: ty,
+                }
+            );
+
+            TransitionStmt::Require(
+                *span,
+                mk_eq(&Expr::Verbatim(quote!{#ident}), &e),
+            )
+        }
+
+        TransitionStmt::Special(span, id, SpecialOp::WithdrawSome(e)) => {
+            let e = translate_expr(ctxt, e, comes_before_precondition)?;
+
+            let ident = ctxt.get_numbered_token_ident(id);
+            let field = ctxt.get_field_or_panic(id);
+            let ty = stored_object_type(&field);
+
+            ctxt.params.get_mut(&field.ident.to_string()).expect("get_mut").push(
+                TokenParam {
+                    inout_type: InoutType::Out,
+                    name: ident.clone(),
+                    ty: ty,
+                }
+            );
+
+            TransitionStmt::PostCondition(
+                *span,
+                mk_eq(&Expr::Verbatim(quote!{#ident}), &e),
+            )
+        }
+
         TransitionStmt::PostCondition(..) => {
             panic!("PostCondition statement shouldn't exist yet");
         }
@@ -1042,13 +1162,12 @@ impl<'a> VisitMut for TranslatorVisitor<'a> {
                                 }
                                 *node = get_not_tokenized_field_value(&self.ctxt, &field);
                             }
-                            ShardableType::Multiset(_ty) => {
+                            ShardableType::Multiset(_ty) |
+                            ShardableType::Optional(_ty) |
+                            ShardableType::StorageOptional(_ty) => {
+                                let strat = field.stype.strategy_name();
                                 self.errors.push(Error::new(span,
-                                    "A `multiset` field cannot be directly referenced here")); // TODO be more specific
-                            }
-                            ShardableType::Optional(_ty) => {
-                                self.errors.push(Error::new(span,
-                                    "An `option` field cannot be directly referenced here")); // TODO be more specific
+                                    format!("A '{strat:}' field cannot be directly referenced here"))); // TODO be more specific
                             }
                         }
                     }

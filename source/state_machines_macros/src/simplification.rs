@@ -106,6 +106,42 @@ fn simplify_updates_rec(ts: &TransitionStmt, field_map: HashMap<String, Expr>)
             });
             (TransitionStmt::Require(*span, prec), field_map)
         }
+        
+        TransitionStmt::Special(span, f, SpecialOp::GuardSome(e)) => {
+            let cur = &field_map[&f.to_string()];
+            let prec = Expr::Verbatim(quote!{
+                ::builtin::equal(
+                    #cur,
+                    crate::pervasive::option::Option::Some(#e)
+                )
+            });
+            (TransitionStmt::Assert(*span, prec), field_map)
+        }
+        TransitionStmt::Special(span, f, SpecialOp::DepositSome(e)) => {
+            let mut field_map = field_map;
+            let cur = field_map[&f.to_string()].clone();
+            field_map.insert(f.to_string(), Expr::Verbatim(quote!{
+                crate::pervasive::option::Option::Some(#e)
+            }));
+            let safety = Expr::Verbatim(quote!{
+                (#cur).is_None()
+            });
+            (TransitionStmt::Assert(*span, safety), field_map)
+        }
+        TransitionStmt::Special(span, f, SpecialOp::WithdrawSome(e)) => {
+            let mut field_map = field_map;
+            let cur = field_map[&f.to_string()].clone();
+            field_map.insert(f.to_string(), Expr::Verbatim(quote!{
+                crate::pervasive::option::Option::None
+            }));
+            let prec = Expr::Verbatim(quote!{
+                ::builtin::equal(
+                    #cur,
+                    crate::pervasive::option::Option::Some(#e)
+                )
+            });
+            (TransitionStmt::Assert(*span, prec), field_map)
+        }
 
         TransitionStmt::Special(span, f, SpecialOp::HaveElement(e)) => {
             let cur = &field_map[&f.to_string()];
