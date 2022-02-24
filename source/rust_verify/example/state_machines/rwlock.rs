@@ -38,7 +38,6 @@ concurrent_state_machine!(RwLock {
         add_element(pending_reader, ());
     }
 
-/*
     #[transition]
     fn acquire_read_end(&self) {
         require(self.flags.0 == false);
@@ -48,7 +47,6 @@ concurrent_state_machine!(RwLock {
         let x = self.storage.get_Some_0();
         add_element(reader, x);
     }
-    */
 
     #[transition]
     fn acquire_read_abandon(&self) {
@@ -64,7 +62,6 @@ concurrent_state_machine!(RwLock {
         add_some(pending_writer, ());
     }
 
-/*
     #[transition]
     fn acquire_exc_end(&self) {
         require(self.flags.1 == 0);
@@ -75,7 +72,6 @@ concurrent_state_machine!(RwLock {
 
         withdraw_some(storage, self.storage.is_Some());
     }
-    */
 
     #[transition]
     fn release_exc(&self, x: T) {
@@ -133,8 +129,8 @@ concurrent_state_machine!(RwLock {
     #[inductive(acquire_read_start)]
     fn acquire_read_start_inductive(self: RwLock, post: RwLock) { }
 
-    //#[inductive(acquire_read_end)]
-    //fn acquire_read_end_inductive(self: RwLock, post: RwLock) { }
+    #[inductive(acquire_read_end)]
+    fn acquire_read_end_inductive(self: RwLock, post: RwLock) { }
 
     #[inductive(acquire_read_abandon)]
     fn acquire_read_abandon_inductive(self: RwLock, post: RwLock) { }
@@ -142,8 +138,8 @@ concurrent_state_machine!(RwLock {
     #[inductive(acquire_exc_start)]
     fn acquire_exc_start_inductive(self: RwLock, post: RwLock) { }
 
-    //#[inductive(acquire_exc_end)]
-    //fn acquire_exc_end_inductive(self: RwLock, post: RwLock) { }
+    #[inductive(acquire_exc_end)]
+    fn acquire_exc_end_inductive(self: RwLock, post: RwLock) { }
 
     #[inductive(release_exc)]
     fn release_exc_inductive(self: RwLock, post: RwLock, x: T) { }
