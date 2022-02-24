@@ -26,22 +26,17 @@ pub struct Permission<V> {
   #[spec] pub value: option::Option<V>,
 }
 
-pub struct PCellWithToken<V> {
-  pub pcell: PCell<V>,
-  #[proof] pub token: Permission<V>,
-}
-
 impl<V> PCell<V> {
   #[inline(always)]
   #[verifier(external_body)]
-  pub fn empty() -> PCellWithToken<V> {
-    ensures(|pt : PCellWithToken<V>|
-      equal(pt.token, Permission{ pcell: pt.pcell.view(), value: option::Option::None })
+  pub fn empty() -> (PCell<V>, Proof<Permission<V>>) {
+    ensures(|pt : (PCell<V>, Proof<Permission<V>>)|
+      equal(pt.1, proof(Permission{ pcell: pt.0.view(), value: option::Option::None }))
     );
 
     let p = PCell { ucell: UnsafeCell::new(MaybeUninit::uninit()) };
     let Proof(t) = exec_proof_from_false();
-    PCellWithToken {pcell: p, token: t}
+    (p, Proof(t))
   }
 
   fndecl!(pub fn view(&self) -> int);
@@ -52,26 +47,44 @@ impl<V> PCell<V> {
   #[verifier(external_body)]
   fn put_external(&self, v: V) {
     ensures(false);
+    opens_invariants_none();
     unsafe {
       *(self.ucell.get()) = MaybeUninit::new(v);
     }
   }
 
   #[inline(always)]
-  #[verifier(returns(proof))]
-  pub fn put(&self, v: V, #[proof] perm: Permission<V>) -> Permission<V> {
+  pub fn put(&self, v: V, #[proof] perm: &mut Permission<V>) {
     requires([
-        equal(self.view(), perm.pcell),
-        equal(perm.value, option::Option::None),
+        equal(self.view(), old(perm).pcell),
+        equal(old(perm).value, option::Option::None),
     ]);
-    ensures(|p: Permission<V>|
-        equal(p.value, option::Option::Some(v))
+    ensures(
+        equal(perm.pcell, old(perm).pcell) &&
+        equal(perm.value, option::Option::Some(v))
     );
+    opens_invariants_none();
 
     self.put_external(v);
-
-    perm
   }
+
+  #[inline(always)]
+  #[verifier(external_body)]
+  pub fn take(&self, #[proof] perm: &mut Permission<V>) -> V {
+    requires([
+        equal(self.view(), old(perm).pcell),
+        old(perm).value.is_Some(),
+    ]);
+    ensures(|v: V| [
+        equal(perm.pcell, old(perm).pcell),
+        equal(perm.value, option::Option::None),
+        equal(v, old(perm).value.get_Some_0()),
+    ]);
+    opens_invariants_none();
+
+    unimplemented!();
+  }
+
 
   /*
   #[inline(always)]

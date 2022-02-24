@@ -4,9 +4,12 @@ mod pervasive;
 use pervasive::*;
 use pervasive::multiset::*;
 use pervasive::option::*;
+use pervasive::ptr::*;
+use pervasive::cell::*;
 
 use state_machines_macros::concurrent_state_machine;
 
+// TODO make T generic
 struct T {
     t: u8,
 }
@@ -175,7 +178,6 @@ concurrent_state_machine!(RwLock {
     fn release_shared_inductive(self: RwLock, post: RwLock, x: T) {
         assert(equal(self.storage, Option::Some(x)));
     }
-
 });
 
 fn main() { }
