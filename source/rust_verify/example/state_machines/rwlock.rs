@@ -19,10 +19,10 @@ concurrent_state_machine!(RwLock {
         #[sharding(not_tokenized)]
         pub storage: Option<T>,
 
-        #[sharding(variable)] // TODO make option
+        #[sharding(option)]
         pub pending_writer: Option<()>,
 
-        #[sharding(variable)] // TODO make option
+        #[sharding(option)]
         pub writer: Option<()>,
 
         #[sharding(multiset)]
@@ -59,26 +59,23 @@ concurrent_state_machine!(RwLock {
     fn acquire_exc_start(&self) {
         require(self.flags.0 == false);
         update(flags, (true, self.flags.1));
-        update(pending_writer, Option::Some(()));
+        add_some(pending_writer, ());
     }
 
     #[transition]
     fn acquire_exc_end(&self) {
         require(self.flags.1 == 0);
 
-        require(equal(self.pending_writer, Option::Some(())));
-        update(pending_writer, Option::None);
+        remove_some(pending_writer, ());
 
-        require(equal(self.writer, Option::None));
-        update(writer, Option::Some(()));
+        add_some(writer, ());
 
         update(storage, Option::None);
     }
 
     #[transition]
     fn release_exc(&self, x: T) {
-        require(equal(self.writer, Option::Some(())));
-        update(writer, Option::None);
+        remove_some(writer, ());
 
         update(flags, (false, self.flags.1));
 

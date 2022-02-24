@@ -1,4 +1,4 @@
-use crate::ast::{TransitionStmt, SM};
+use crate::ast::{TransitionStmt, SM, SpecialOp};
 use proc_macro2::Span;
 use std::collections::HashMap;
 use syn::{Expr, Ident};
@@ -71,7 +71,7 @@ fn simplify_updates_rec(ts: &TransitionStmt, field_map: HashMap<String, Expr>)
             (TransitionStmt::Block(*span, Vec::new()), field_map)
         }
 
-        TransitionStmt::HaveSome(span, f, e) => {
+        TransitionStmt::Special(span, f, SpecialOp::HaveSome(e)) => {
             let cur = &field_map[&f.to_string()];
             let prec = Expr::Verbatim(quote!{
                 ::builtin::equal(
@@ -81,7 +81,7 @@ fn simplify_updates_rec(ts: &TransitionStmt, field_map: HashMap<String, Expr>)
             });
             (TransitionStmt::Require(*span, prec), field_map)
         }
-        TransitionStmt::AddSome(span, f, e) => {
+        TransitionStmt::Special(span, f, SpecialOp::AddSome(e)) => {
             let mut field_map = field_map;
             let cur = field_map[&f.to_string()].clone();
             field_map.insert(f.to_string(), Expr::Verbatim(quote!{
@@ -92,7 +92,7 @@ fn simplify_updates_rec(ts: &TransitionStmt, field_map: HashMap<String, Expr>)
             });
             (TransitionStmt::Assert(*span, safety), field_map)
         }
-        TransitionStmt::RemoveSome(span, f, e) => {
+        TransitionStmt::Special(span, f, SpecialOp::RemoveSome(e)) => {
             let mut field_map = field_map;
             let cur = field_map[&f.to_string()].clone();
             field_map.insert(f.to_string(), Expr::Verbatim(quote!{
@@ -107,14 +107,14 @@ fn simplify_updates_rec(ts: &TransitionStmt, field_map: HashMap<String, Expr>)
             (TransitionStmt::Require(*span, prec), field_map)
         }
 
-        TransitionStmt::HaveElement(span, f, e) => {
+        TransitionStmt::Special(span, f, SpecialOp::HaveElement(e)) => {
             let cur = &field_map[&f.to_string()];
             let prec = Expr::Verbatim(quote!{
                 (#cur).count(#e) >= 1
             });
             (TransitionStmt::Require(*span, prec), field_map)
         }
-        TransitionStmt::AddElement(span, f, e) => {
+        TransitionStmt::Special(span, f, SpecialOp::AddElement(e)) => {
             let mut field_map = field_map;
             let cur = field_map[&f.to_string()].clone();
             field_map.insert(f.to_string(), Expr::Verbatim(quote!{
@@ -122,7 +122,7 @@ fn simplify_updates_rec(ts: &TransitionStmt, field_map: HashMap<String, Expr>)
             }));
             (TransitionStmt::Block(*span, Vec::new()), field_map)
         }
-        TransitionStmt::RemoveElement(span, f, e) => {
+        TransitionStmt::Special(span, f, SpecialOp::RemoveElement(e)) => {
             let mut field_map = field_map;
             let cur = field_map[&f.to_string()].clone();
             field_map.insert(f.to_string(), Expr::Verbatim(quote!{
@@ -165,15 +165,14 @@ fn add_finalizes_rec(ts: &mut TransitionStmt, found: &mut Vec<Ident>) {
         TransitionStmt::If(_, _, _, _) => { }
         TransitionStmt::Require(_, _) => { }
         TransitionStmt::Assert(_, _) => { }
-        TransitionStmt::HaveElement(_, _, _) => { }
-        TransitionStmt::HaveSome(_, _, _) => { }
 
-        TransitionStmt::Update(_, f, _) |
-        TransitionStmt::AddSome(_, f, _) |
-        TransitionStmt::RemoveSome(_, f, _) |
-        TransitionStmt::AddElement(_, f, _) |
-        TransitionStmt::RemoveElement(_, f, _) => {
+        TransitionStmt::Update(_, f, _) => {
             is_update_for = Some(f.clone());
+        }
+        TransitionStmt::Special(_, f, op) => {
+            if op.is_modifier() {
+                is_update_for = Some(f.clone());
+            }
         }
         TransitionStmt::PostCondition(..) => {
             panic!("PostCondition statement shouldn't exist here");
@@ -222,12 +221,7 @@ fn add_finalizes_rec(ts: &mut TransitionStmt, found: &mut Vec<Ident>) {
         TransitionStmt::Require(_, _) => { }
         TransitionStmt::Assert(_, _) => { }
         TransitionStmt::Update(_, _, _) => { }
-        TransitionStmt::HaveSome(_, _, _) => { }
-        TransitionStmt::AddSome(_, _, _) => { }
-        TransitionStmt::RemoveSome(_, _, _) => { }
-        TransitionStmt::HaveElement(_, _, _) => { }
-        TransitionStmt::AddElement(_, _, _) => { }
-        TransitionStmt::RemoveElement(_, _, _) => { }
+        TransitionStmt::Special(_, _, _) => { }
         TransitionStmt::PostCondition(..) => {
             panic!("PostCondition statement shouldn't exist here");
         }

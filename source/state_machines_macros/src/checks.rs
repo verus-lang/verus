@@ -18,9 +18,7 @@ pub fn check_unsupported_updates_in_conditionals(ts: &TransitionStmt) -> syn::pa
         TransitionStmt::Require(..) => Ok(()),
         TransitionStmt::Assert(..) => Ok(()),
         TransitionStmt::Update(..) => Ok(()),
-        TransitionStmt::AddElement(..) => Ok(()),
-        TransitionStmt::RemoveElement(..) => Ok(()),
-        TransitionStmt::HaveElement(..) => Ok(()),
+        TransitionStmt::Special(..) => Ok(()),
         TransitionStmt::PostCondition(..) => Ok(()),
     }
 }
@@ -44,9 +42,7 @@ fn check_unsupported_updates_helper(ts: &TransitionStmt) -> syn::parse::Result<(
         TransitionStmt::Update(_, _, _) => Ok(()),
         TransitionStmt::PostCondition(..) => Ok(()),
 
-        TransitionStmt::AddElement(span, _, _) |
-        TransitionStmt::RemoveElement(span, _, _) |
-        TransitionStmt::HaveElement(span, _, _) => {
+        TransitionStmt::Special(span, _, _) => {
             let name = ts.statement_name();
             return Err(Error::new(*span, format!("currently, a '{name:}' statement is not supported inside a conditional")));
         }

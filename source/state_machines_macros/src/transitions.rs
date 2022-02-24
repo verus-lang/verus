@@ -1,5 +1,4 @@
-use crate::ast::{Field, TransitionKind, TransitionStmt, SM, ShardableType};
-use crate::util::combine_errors_or_ok;
+use crate::ast::{Field, TransitionKind, TransitionStmt, SM, ShardableType, SpecialOp};
 use proc_macro2::Span;
 use std::collections::HashMap;
 use syn::spanned::Spanned;
@@ -12,6 +11,15 @@ pub fn fields_contain(fields: &Vec<Field>, ident: &Ident) -> bool {
         }
     }
     return false;
+}
+
+pub fn get_field<'a>(fields: &'a Vec<Field>, ident: &Ident) -> &'a Field {
+    for f in fields {
+        if f.ident.to_string() == ident.to_string() {
+            return f;
+        }
+    }
+    panic!("could not find field");
 }
 
 /// Check that every update statement actually refers to a valid field.
@@ -35,15 +43,10 @@ fn check_updates_refer_to_valid_fields(
         }
         TransitionStmt::Require(_, _) => Ok(()),
         TransitionStmt::Assert(_, _) => Ok(()),
-        TransitionStmt::Update(sp, f, _) |
-        TransitionStmt::AddSome(sp, f, _) |
-        TransitionStmt::RemoveSome(sp, f, _) |
-        TransitionStmt::HaveSome(sp, f, _) |
-        TransitionStmt::AddElement(sp, f, _) |
-        TransitionStmt::RemoveElement(sp, f, _) |
-        TransitionStmt::HaveElement(sp, f, _) => {
+        TransitionStmt::Update(span, f, _) |
+        TransitionStmt::Special(span, f, _) => {
             if !fields_contain(fields, f) {
-                return Err(Error::new(sp.span(), format!("field '{}' not found", f.to_string())));
+                return Err(Error::new(span.span(), format!("field '{}' not found", f.to_string())));
             }
             Ok(())
         }
@@ -97,14 +100,14 @@ fn update_set_contains(h: &Vec<(Ident, Span)>, ident: &Ident) -> bool {
 }
 
 fn check_has_all_fields(
-    sp: Span,
+    span: Span,
     h: &Vec<(Ident, Span)>,
     fields: &Vec<Field>,
 ) -> syn::parse::Result<()> {
     for field in fields {
         if !update_set_contains(h, &field.ident) {
             return Err(Error::new(
-                sp,
+                span,
                 format!(
                     "itialization procedure does not initialize field {}",
                     field.ident.to_string()
@@ -113,137 +116,6 @@ fn check_has_all_fields(
         }
     }
     Ok(())
-}
-
-/// Check well-formedness for a 'readonly' transition.
-///
-/// There should be no 'update' statements.
-
-fn check_readonly(sm: &SM, ts: &TransitionStmt) -> syn::parse::Result<()> {
-    for field in &sm.fields {
-        match &field.stype {
-            ShardableType::Variable(_ty) | ShardableType::NotTokenized(_ty) => {
-                check_readonly_variable(field, ts)?;
-            }
-            ShardableType::Constant(_ty) => {
-                check_constant_not_updated(field, ts)?;
-            }
-            ShardableType::Multiset(_ty) => {
-                check_readonly_elemental(field, ts)?;
-            }
-            ShardableType::Optional(_ty) => {
-                check_readonly_optional(field, ts)?;
-            }
-        }
-    }
-    Ok(())
-}
-
-fn check_readonly_variable(field: &Field, ts: &TransitionStmt) -> syn::parse::Result<()> {
-    let mut errors = Vec::new();
-    ts.visit_updatelike_stmts(&field.ident, &mut |ts: &TransitionStmt| {
-        match ts {
-            TransitionStmt::Block(_, _) |
-            TransitionStmt::Let(_, _, _) |
-            TransitionStmt::If(_, _, _, _) |
-            TransitionStmt::Require(_, _) |
-            TransitionStmt::Assert(_, _) => { panic!("visit_updatelike_stmts"); }
-            TransitionStmt::Update(span, _, _) => {
-                errors.push(Error::new(*span, "'update' statement not allowed in readonly transition"));
-            }
-            TransitionStmt::AddSome(span, _, _) |
-            TransitionStmt::RemoveSome(span, _, _) |
-            TransitionStmt::AddElement(span, _, _) |
-            TransitionStmt::RemoveElement(span, _, _) => {
-                errors.push(Error::new(*span, format!("'{:}' statement not allowed in readonly transition", ts.statement_name())));
-                errors.push(Error::new(*span, format!("'{:}' statement not allowed for field with sharding strategy '{:}'", ts.statement_name(), field.stype.strategy_name())));
-            }
-            TransitionStmt::HaveSome(span, _, _) |
-            TransitionStmt::HaveElement(span, _, _) => {
-                errors.push(Error::new(*span, format!("'{:}' statement not allowed for field with sharding strategy '{:}'", ts.statement_name(), field.stype.strategy_name())));
-            }
-            TransitionStmt::PostCondition(..) => { }
-        }
-    });
-    combine_errors_or_ok(errors)
-}
-
-fn check_readonly_elemental(field: &Field, ts: &TransitionStmt) -> syn::parse::Result<()> {
-    let mut errors = Vec::new();
-    ts.visit_updatelike_stmts(&field.ident, &mut |ts| {
-        match ts {
-            TransitionStmt::Block(_, _) |
-            TransitionStmt::Let(_, _, _) |
-            TransitionStmt::If(_, _, _, _) |
-            TransitionStmt::Require(_, _) |
-            TransitionStmt::Assert(_, _) => { panic!("visit_updatelike_stmts"); }
-            TransitionStmt::Update(span, _, _) |
-            TransitionStmt::AddSome(span, _, _) |
-            TransitionStmt::RemoveSome(span, _, _) |
-            TransitionStmt::AddElement(span, _, _) |
-            TransitionStmt::RemoveElement(span, _, _) => {
-                errors.push(Error::new(*span, format!("'{:}' statement not allowed in readonly transition", ts.statement_name())));
-            }
-            TransitionStmt::HaveElement(_, _, _) => { }
-            TransitionStmt::HaveSome(span, _, _) => {
-                errors.push(Error::new(*span, format!("'{:}' statement not allowed for field with sharding strategy '{:}'", ts.statement_name(), field.stype.strategy_name())));
-            }
-            TransitionStmt::PostCondition(..) => { }
-        }
-    });
-    combine_errors_or_ok(errors)
-}
-
-fn check_readonly_optional(field: &Field, ts: &TransitionStmt) -> syn::parse::Result<()> {
-    let mut errors = Vec::new();
-    ts.visit_updatelike_stmts(&field.ident, &mut |ts| {
-        match ts {
-            TransitionStmt::Block(_, _) |
-            TransitionStmt::Let(_, _, _) |
-            TransitionStmt::If(_, _, _, _) |
-            TransitionStmt::Require(_, _) |
-            TransitionStmt::Assert(_, _) => { panic!("visit_updatelike_stmts"); }
-            TransitionStmt::Update(span, _, _) |
-            TransitionStmt::AddSome(span, _, _) |
-            TransitionStmt::RemoveSome(span, _, _) |
-            TransitionStmt::AddElement(span, _, _) |
-            TransitionStmt::RemoveElement(span, _, _) => {
-                errors.push(Error::new(*span, format!("'{:}' statement not allowed in readonly transition", ts.statement_name())));
-            }
-            TransitionStmt::HaveSome(_, _, _) => { }
-            TransitionStmt::HaveElement(span, _, _) => {
-                errors.push(Error::new(*span, format!("'{:}' statement not allowed for field with sharding strategy '{:}'", ts.statement_name(), field.stype.strategy_name())));
-            }
-            TransitionStmt::PostCondition(..) => { }
-        }
-    });
-    combine_errors_or_ok(errors)
-}
-
-fn check_constant_not_updated(field: &Field, ts: &TransitionStmt) -> syn::parse::Result<()> {
-    let mut errors = Vec::new();
-    ts.visit_updatelike_stmts(&field.ident, &mut |ts: &TransitionStmt| {
-        match ts {
-            TransitionStmt::Block(_, _) |
-            TransitionStmt::Let(_, _, _) |
-            TransitionStmt::If(_, _, _, _) |
-            TransitionStmt::Require(_, _) |
-            TransitionStmt::Assert(_, _) => { panic!("visit_updatelike_stmts"); }
-            TransitionStmt::Update(span, _, _) => {
-                errors.push(Error::new(*span, "cannot update 'constant' field"))
-            }
-            TransitionStmt::AddSome(span, _, _) |
-            TransitionStmt::RemoveSome(span, _, _) |
-            TransitionStmt::HaveSome(span, _, _) |
-            TransitionStmt::AddElement(span, _, _) |
-            TransitionStmt::RemoveElement(span, _, _) |
-            TransitionStmt::HaveElement(span, _, _) => {
-                errors.push(Error::new(*span, format!("'{:}' statement not allowed for field with sharding strategy 'constant'", ts.statement_name())));
-            }
-            TransitionStmt::PostCondition(..) => { }
-        }
-    });
-    combine_errors_or_ok(errors)
 }
 
 /// Check well-formedness for an 'initialization' transition.
@@ -274,12 +146,12 @@ fn check_init_rec(ts: &TransitionStmt) -> syn::parse::Result<Vec<(Ident, Span)>>
         TransitionStmt::Let(_, _, _) => {
             Ok(Vec::new())
         }
-        TransitionStmt::If(sp, _, thn, els) => {
+        TransitionStmt::If(span, _, thn, els) => {
             let h1 = check_init_rec(thn)?;
             let h2 = check_init_rec(els)?;
             if !update_sets_eq(&h1, &h2) {
                 return Err(Error::new(
-                    *sp,
+                    *span,
                     "for initialization, both branches of if-statement must update the same fields",
                 ));
             }
@@ -296,50 +168,28 @@ fn check_init_rec(ts: &TransitionStmt) -> syn::parse::Result<Vec<(Ident, Span)>>
             v.push((ident.clone(), span.clone()));
             Ok(v)
         }
-        TransitionStmt::AddSome(span, _, _) |
-        TransitionStmt::RemoveSome(span, _, _) |
-        TransitionStmt::HaveSome(span, _, _) |
-        TransitionStmt::AddElement(span, _, _) |
-        TransitionStmt::RemoveElement(span, _, _) |
-        TransitionStmt::HaveElement(span, _, _) => {
+        TransitionStmt::Special(span, _, _) => {
             Err(Error::new(*span, format!("'{:}' statement not allowed in initialization", ts.statement_name())))
         }
-        TransitionStmt::PostCondition(..) => Ok(Vec::new()),
+        TransitionStmt::PostCondition(..) => {
+            panic!("should have have PostCondition statement here");
+        }
     }
 }
 
-/// Check well-formedness for an 'ordinary' transition.
-///
-/// Don't allow any single field to be updated more than once.
-/// (Note a field might be updated on both sides of a conditional, but it should not, e.g.,
-/// be updated inside a conditional and also outside of it.)
-
-pub fn check_normal(sm: &SM, ts: &TransitionStmt) -> syn::parse::Result<()> {
-    for field in &sm.fields {
-        match &field.stype {
-            ShardableType::Variable(_ty) | ShardableType::NotTokenized(_ty) => {
-                check_transition_variable(field, ts)?;
-            }
-            ShardableType::Constant(_ty) => {
-                check_constant_not_updated(field, ts)?;
-            }
-            ShardableType::Multiset(_ty) => {
-                check_transition_elemental(field, ts)?;
-            }
-            ShardableType::Optional(_ty) => {
-                check_transition_optional(field, ts)?;
-            }
-        }
+fn check_at_most_one_update(sm: &SM, ts: &TransitionStmt) -> syn::parse::Result<()> {
+    for f in &sm.fields {
+        check_at_most_one_update_rec(f, ts)?;
     }
     Ok(())
 }
 
-fn check_transition_variable(field: &Field, ts: &TransitionStmt) -> syn::parse::Result<Option<Span>> {
+fn check_at_most_one_update_rec(field: &Field, ts: &TransitionStmt) -> syn::parse::Result<Option<Span>> {
     match ts {
         TransitionStmt::Block(_, v) => {
             let mut o = None;
             for t in v.iter() {
-                let o2 = check_transition_variable(field, t)?;
+                let o2 = check_at_most_one_update_rec(field, t)?;
                 o = match (o, o2) {
                     (None, None) => None,
                     (Some(s), None) => Some(s),
@@ -353,8 +203,8 @@ fn check_transition_variable(field: &Field, ts: &TransitionStmt) -> syn::parse::
             Ok(o)
         }
         TransitionStmt::If(_, _, thn, els) => {
-            let o1 = check_transition_variable(field, thn)?;
-            let o2 = check_transition_variable(field, els)?;
+            let o1 = check_at_most_one_update_rec(field, thn)?;
+            let o2 = check_at_most_one_update_rec(field, els)?;
             Ok(if o1.is_some() { o1 } else { o2 })
         }
         TransitionStmt::Let(_, _, _) => Ok(None),
@@ -367,75 +217,92 @@ fn check_transition_variable(field: &Field, ts: &TransitionStmt) -> syn::parse::
                 Ok(None)
             }
         }
-        TransitionStmt::AddSome(span, id, _) |
-        TransitionStmt::RemoveSome(span, id, _) |
-        TransitionStmt::HaveSome(span, id, _) |
-        TransitionStmt::AddElement(span, id, _) |
-        TransitionStmt::RemoveElement(span, id, _) |
-        TransitionStmt::HaveElement(span, id, _) => {
-            if id.to_string() == field.ident.to_string() {
-                Err(Error::new(*span, format!("'{:}' statement not allowed for field with sharding strategy '{:}'", ts.statement_name(), field.stype.strategy_name())))
-            } else {
-                Ok(None)
-            }
-        }
+        TransitionStmt::Special(..) => Ok(None),
         TransitionStmt::PostCondition(..) => Ok(None),
     }
 }
 
-fn check_transition_elemental(field: &Field, ts: &TransitionStmt) -> syn::parse::Result<()> {
-    let mut errors = Vec::new();
-    ts.visit_updatelike_stmts(&field.ident, &mut |ts| {
-        match ts {
-            TransitionStmt::Block(_, _) |
-            TransitionStmt::Let(_, _, _) |
-            TransitionStmt::If(_, _, _, _) |
-            TransitionStmt::Require(_, _) |
-            TransitionStmt::Assert(_, _) => { panic!("visit_updatelike_stmts"); }
-
-            TransitionStmt::RemoveSome(span, _, _) |
-            TransitionStmt::HaveSome(span, _, _) |
-            TransitionStmt::AddSome(span, _, _) |
-            TransitionStmt::Update(span, _, _) => {
-                errors.push(Error::new(*span, format!("'{:}' statement not allowed for field with sharding strategy '{:}'", ts.statement_name(), field.stype.strategy_name())));
-            }
-
-            // These 3 are expected:
-            TransitionStmt::AddElement(_, _, _) => { }
-            TransitionStmt::RemoveElement(_, _, _) => { }
-            TransitionStmt::HaveElement(_, _, _) => { }
-            TransitionStmt::PostCondition(..) => { }
-        }
-    });
-    combine_errors_or_ok(errors)
+fn is_allowed_in_update_in_normal_transition(stype: &ShardableType) -> bool {
+    match stype {
+        ShardableType::Variable(_) => true,
+        ShardableType::Constant(_) => false,
+        ShardableType::NotTokenized(_) => true,
+        ShardableType::Multiset(_) => false,
+        ShardableType::Optional(_) => false,
+    }
 }
 
-fn check_transition_optional(field: &Field, ts: &TransitionStmt) -> syn::parse::Result<()> {
-    let mut errors = Vec::new();
-    ts.visit_updatelike_stmts(&field.ident, &mut |ts| {
-        match ts {
-            TransitionStmt::Block(_, _) |
-            TransitionStmt::Let(_, _, _) |
-            TransitionStmt::If(_, _, _, _) |
-            TransitionStmt::Require(_, _) |
-            TransitionStmt::Assert(_, _) => { panic!("visit_updatelike_stmts"); }
+fn is_allowed_in_special_op(stype: &ShardableType, sop: &SpecialOp) -> bool {
+    match stype {
+        ShardableType::Variable(_) => false,
+        ShardableType::Constant(_) => false,
+        ShardableType::NotTokenized(_) => false,
 
-            TransitionStmt::AddElement(_, _, _) => { }
-            TransitionStmt::RemoveElement(_, _, _) => { }
-            TransitionStmt::HaveElement(_, _, _) => { }
-            TransitionStmt::Update(span, _, _) => {
-                errors.push(Error::new(*span, format!("'{:}' statement not allowed for field with sharding strategy '{:}'", ts.statement_name(), field.stype.strategy_name())));
+        ShardableType::Multiset(_) => {
+            match sop {
+                SpecialOp::AddElement(_) => true,
+                SpecialOp::RemoveElement(_) => true,
+                SpecialOp::HaveElement(_) => true,
+                _ => false,
             }
+        },
 
-            // These 3 are expected:
-            TransitionStmt::RemoveSome(_, _, _) |
-            TransitionStmt::HaveSome(_, _, _) |
-            TransitionStmt::AddSome(..) |
-
-            TransitionStmt::PostCondition(..) => { }
+        ShardableType::Optional(_) => {
+            match sop {
+                SpecialOp::AddSome(_) => true,
+                SpecialOp::RemoveSome(_) => true,
+                SpecialOp::HaveSome(_) => true,
+                _ => false,
+            }
         }
-    });
-    combine_errors_or_ok(errors)
+    }
+}
+
+fn check_valid_ops(
+    fields: &Vec<Field>,
+    ts: &TransitionStmt,
+    is_readonly: bool) -> syn::parse::Result<()>
+{
+    match ts {
+        TransitionStmt::Block(_, v) => {
+            for t in v.iter() {
+                check_valid_ops(fields, t, is_readonly)?;
+            }
+            Ok(())
+        }
+        TransitionStmt::Let(_, _, _) => Ok(()),
+        TransitionStmt::If(_, _, thn, els) => {
+            check_valid_ops(fields, thn, is_readonly)?;
+            check_valid_ops(fields, els, is_readonly)?;
+            Ok(())
+        }
+        TransitionStmt::Require(_, _) => Ok(()),
+        TransitionStmt::Assert(_, _) => Ok(()),
+        TransitionStmt::Update(span, f, _) => {
+            let field = get_field(fields, f);
+            if !is_allowed_in_update_in_normal_transition(&field.stype) {
+                return Err(Error::new(span.span(), format!("'update' statement not allowed for field with sharding strategy '{:}'", field.stype.strategy_name())));
+            }
+            if is_readonly {
+                return Err(Error::new(span.span(), format!("'update' statement not allowed in readonly transition")));
+            }
+            Ok(())
+        }
+        TransitionStmt::Special(span, f, op) => {
+            let field = get_field(fields, f);
+            if !is_allowed_in_special_op(&field.stype, op) {
+                return Err(Error::new(span.span(), format!("'{:}' statement not allowed for field with sharding strategy '{:}'", op.statement_name(), field.stype.strategy_name())));
+            }
+            if is_readonly && op.is_modifier() {
+                return Err(Error::new(span.span(), format!("'{:}' statement not allowed in readonly transition", op.statement_name())));
+            }
+            if !is_readonly && op.is_only_allowed_in_readonly() {
+                return Err(Error::new(span.span(), format!("'{:}' statement only allowed in readonly transition", op.statement_name())));
+            }
+            Ok(())
+        }
+        TransitionStmt::PostCondition(..) => Ok(()),
+    }
 }
 
 /// Check simple well-formedness properties of the transitions.
@@ -446,12 +313,14 @@ pub fn check_transitions(sm: &SM) -> syn::parse::Result<()> {
 
         match &tr.kind {
             TransitionKind::Readonly => {
-                check_readonly(sm, &tr.body)?;
+                check_valid_ops(&sm.fields, &tr.body, true)?;
             }
             TransitionKind::Transition => {
-                check_normal(sm, &tr.body)?;
+                check_valid_ops(&sm.fields, &tr.body, false)?;
+                check_at_most_one_update(sm, &tr.body)?;
             }
             TransitionKind::Init => {
+                // check exactly one update
                 check_init(sm, &tr.body)?;
             }
         }

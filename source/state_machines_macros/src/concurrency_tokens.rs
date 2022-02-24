@@ -86,7 +86,7 @@
 //!        ::core::panicking::panic("not implemented");
 //!    }
 
-use crate::ast::{Field, Lemma, ShardableType, Transition, TransitionKind, TransitionStmt, SM};
+use crate::ast::{Field, Lemma, ShardableType, Transition, TransitionKind, TransitionStmt, SM, SpecialOp};
 use crate::checks::{check_unsupported_updates_in_conditionals, check_ordering_remove_have_add};
 use crate::parse_token_stream::SMBundle;
 use crate::to_token_stream::{shardable_type_to_type};
@@ -137,6 +137,7 @@ fn field_token_field_type(field: &Field) -> Type {
         ShardableType::Constant(ty) => ty.clone(),
         ShardableType::NotTokenized(ty) => ty.clone(),
         ShardableType::Multiset(ty) => ty.clone(),
+        ShardableType::Optional(ty) => ty.clone(),
     }
 }
 
@@ -220,6 +221,12 @@ fn token_struct_stream_multiset(sm_name: &Ident, field: &Field) -> TokenStream {
     token_struct_stream(sm_name, field)
 }
 
+/// Create the struct for a Token that derives from a
+/// sharding(optional) field.
+fn token_struct_stream_optional(sm_name: &Ident, field: &Field) -> TokenStream {
+    token_struct_stream(sm_name, field)
+}
+
 /// For a given sharding(constant) field, add that constant
 /// as a #[spec] fn on the Instance type. (The field is constant
 /// for the entire instance.)
@@ -266,6 +273,9 @@ pub fn output_token_types_and_fns(
             }
             ShardableType::Multiset(_) => {
                 token_stream.extend(token_struct_stream_multiset(&bundle.sm.name, field));
+            }
+            ShardableType::Optional(_) => {
+                token_stream.extend(token_struct_stream_optional(&bundle.sm.name, field));
             }
         }
     }
@@ -376,7 +386,8 @@ pub fn exchange_stream(bundle: &SMBundle, tr: &Transition) -> syn::parse::Result
 
         if !is_init {
             match &field.stype {
-                ShardableType::Multiset(_) => {
+                ShardableType::Multiset(_) |
+                ShardableType::Optional(_) => {
                     init_params.insert(field.ident.to_string(), Vec::new());
                 }
                 _ => { }
@@ -513,7 +524,7 @@ pub fn exchange_stream(bundle: &SMBundle, tr: &Transition) -> syn::parse::Result
                     ctxt.ensures.push(mk_eq(&lhs, &e));
                 }
             }
-            ShardableType::Multiset(_) => {
+            ShardableType::Multiset(_) | ShardableType::Optional(_) => {
                 if ctxt.is_init {
                     panic!("multiset is_init not implemented");
                 } else {
@@ -805,9 +816,7 @@ fn determine_outputs(ctxt: &mut Ctxt, ts: &TransitionStmt) -> syn::parse::Result
             ctxt.fields_written.insert(id.to_string());
             Ok(())
         }
-        TransitionStmt::AddElement(_span, _id, _e) => Ok(()),
-        TransitionStmt::RemoveElement(_span, _id, _e) => Ok(()),
-        TransitionStmt::HaveElement(_span, _id, _e) => Ok(()),
+        TransitionStmt::Special(_span, _id, _op) => Ok(()),
         TransitionStmt::PostCondition(..) => {
             panic!("PostCondition statement shouldn't exist yet");
         }
@@ -896,7 +905,8 @@ fn walk_translate_expressions(ctxt: &mut Ctxt, ts: &mut TransitionStmt, comes_be
             return Ok(());
         }
 
-        TransitionStmt::HaveElement(span, id, e) => {
+        TransitionStmt::Special(span, id, SpecialOp::HaveSome(e)) |
+        TransitionStmt::Special(span, id, SpecialOp::HaveElement(e)) => {
             let e = translate_expr(ctxt, e, comes_before_precondition)?;
 
             let ident = ctxt.get_numbered_token_ident(id);
@@ -918,7 +928,8 @@ fn walk_translate_expressions(ctxt: &mut Ctxt, ts: &mut TransitionStmt, comes_be
             )
         }
 
-        TransitionStmt::AddElement(span, id, e) => {
+        TransitionStmt::Special(span, id, SpecialOp::AddSome(e)) |
+        TransitionStmt::Special(span, id, SpecialOp::AddElement(e)) => {
             let e = translate_expr(ctxt, e, comes_before_precondition)?;
 
             let ident = ctxt.get_numbered_token_ident(id);
@@ -940,7 +951,8 @@ fn walk_translate_expressions(ctxt: &mut Ctxt, ts: &mut TransitionStmt, comes_be
             )
         }
 
-        TransitionStmt::RemoveElement(span, id, e) => {
+        TransitionStmt::Special(span, id, SpecialOp::RemoveSome(e)) |
+        TransitionStmt::Special(span, id, SpecialOp::RemoveElement(e)) => {
             let e = translate_expr(ctxt, e, comes_before_precondition)?;
 
             let ident = ctxt.get_numbered_token_ident(id);
@@ -1175,12 +1187,7 @@ fn exchange_collect(
         }
         TransitionStmt::Update(..) => Ok((prequel, prequel_with_asserts)),
 
-        TransitionStmt::HaveSome(..) |
-        TransitionStmt::AddSome(..) |
-        TransitionStmt::RemoveSome(..) |
-        TransitionStmt::HaveElement(..) |
-        TransitionStmt::AddElement(..) |
-        TransitionStmt::RemoveElement(..) => {
+        TransitionStmt::Special(..) => {
             panic!("should have been removed in preprocessing");
         }
     }
@@ -1321,12 +1328,7 @@ fn get_output_value_for_variable(ctxt: &Ctxt, ts: &TransitionStmt, field: &Field
         TransitionStmt::Let(_, _, _)
         | TransitionStmt::Require(_, _)
         | TransitionStmt::Assert(_, _)
-        | TransitionStmt::AddSome(..)
-        | TransitionStmt::RemoveSome(..)
-        | TransitionStmt::HaveSome(..)
-        | TransitionStmt::AddElement(..)
-        | TransitionStmt::RemoveElement(..)
-        | TransitionStmt::HaveElement(..)
+        | TransitionStmt::Special(..)
         | TransitionStmt::PostCondition(..) => None,
     }
 }

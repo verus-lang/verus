@@ -326,6 +326,7 @@ enum ShardingType {
     Constant,
     NotTokenized,
     Multiset,
+    Optional,
 }
 
 /// Get the sharding type from the attributes of the field.
@@ -365,6 +366,7 @@ fn get_sharding_type(
                                 "variable" => ShardingType::Variable,
                                 "constant" => ShardingType::Constant,
                                 "multiset" => ShardingType::Multiset,
+                                "option" => ShardingType::Optional,
                                 "not_tokenized" => ShardingType::NotTokenized,
                                 name => {
                                     return Err(Error::new(
@@ -484,6 +486,8 @@ fn to_fields(
             ShardingType::NotTokenized => ShardableType::NotTokenized(field.ty.clone()),
             ShardingType::Multiset => ShardableType::Multiset(
                   extract_template_param(&field.ty, "multiset", "Multiset")?),
+            ShardingType::Optional => ShardableType::Optional(
+                  extract_template_param(&field.ty, "option", "Option")?),
         };
 
         field.ty = shardable_type_to_type(&stype);

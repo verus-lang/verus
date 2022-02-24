@@ -57,6 +57,16 @@ pub struct Transition {
 }
 
 #[derive(Clone, Debug)]
+pub enum SpecialOp {
+    AddElement(Expr),
+    RemoveElement(Expr),
+    HaveElement(Expr),
+    AddSome(Expr),
+    RemoveSome(Expr),
+    HaveSome(Expr),
+}
+
+#[derive(Clone, Debug)]
 pub enum TransitionStmt {
     Block(Span, Vec<TransitionStmt>),
     Let(Span, Ident, Expr),
@@ -65,18 +75,47 @@ pub enum TransitionStmt {
     Assert(Span, Expr),
     Update(Span, Ident, Expr),
 
-    // concurrent-state-machine-specific stuff
-    AddElement(Span, Ident, Expr),
-    RemoveElement(Span, Ident, Expr),
-    HaveElement(Span, Ident, Expr),
+    /// concurrent-state-machine-specific stuff
+    Special(Span, Ident, SpecialOp),
 
-    AddSome(Span, Ident, Expr),
-    RemoveSome(Span, Ident, Expr),
-    HaveSome(Span, Ident, Expr),
-
-    // used internally by concurrency_tokens.rs
-    // Different than an Assert - this expression is allowed to depend on output values
+    /// used internally by concurrency_tokens.rs
+    /// Different than an Assert - this expression is allowed to depend on output values
     PostCondition(Span, Expr),
+}
+
+impl SpecialOp {
+    pub fn statement_name(&self) -> &'static str {
+        match self {
+            SpecialOp::RemoveElement(..) => "remove_element",
+            SpecialOp::HaveElement(..) => "have_element",
+            SpecialOp::AddElement(..) => "add_element",
+            SpecialOp::RemoveSome(..) => "remove_some",
+            SpecialOp::HaveSome(..) => "have_some",
+            SpecialOp::AddSome(..) => "add_some",
+        }
+    }
+
+    pub fn is_modifier(&self) -> bool {
+        match self {
+            SpecialOp::RemoveElement(..) => true,
+            SpecialOp::HaveElement(..) => false,
+            SpecialOp::AddElement(..) => true,
+            SpecialOp::RemoveSome(..) => true,
+            SpecialOp::HaveSome(..) => false,
+            SpecialOp::AddSome(..) => true,
+        }
+    }
+
+    pub fn is_only_allowed_in_readonly(&self) -> bool {
+        match self {
+            SpecialOp::RemoveElement(..) => false,
+            SpecialOp::HaveElement(..) => false,
+            SpecialOp::AddElement(..) => false,
+            SpecialOp::RemoveSome(..) => false,
+            SpecialOp::HaveSome(..) => false,
+            SpecialOp::AddSome(..) => false,
+        }
+    }
 }
 
 impl TransitionStmt {
@@ -88,9 +127,7 @@ impl TransitionStmt {
             TransitionStmt::Require(span, _) => span,
             TransitionStmt::Assert(span, _) => span,
             TransitionStmt::Update(span, _, _) => span,
-            TransitionStmt::AddElement(span, _, _) => span,
-            TransitionStmt::RemoveElement(span, _, _) => span,
-            TransitionStmt::HaveElement(span, _, _) => span,
+            TransitionStmt::Special(span, _, _) => span,
             TransitionStmt::PostCondition(span, _) => span,
         }
     }
@@ -103,9 +140,7 @@ impl TransitionStmt {
             TransitionStmt::Require(..) => "require",
             TransitionStmt::Assert(..) => "assert",
             TransitionStmt::Update(..) => "update",
-            TransitionStmt::AddElement(..) => "add_element",
-            TransitionStmt::RemoveElement(..) => "remove_element",
-            TransitionStmt::HaveElement(..) => "have_element",
+            TransitionStmt::Special(_, _, op) => op.statement_name(),
             TransitionStmt::PostCondition(..) => "post_condition",
         }
     }
@@ -133,36 +168,6 @@ pub struct Lemma {
     pub func: ImplItemMethod,
 }
 
-impl TransitionStmt {
-    pub fn visit_updatelike_stmts<F>(&self, ident: &Ident, f: &mut F)
-    where F: FnMut(&TransitionStmt) -> ()
-    {
-        match self {
-            TransitionStmt::Block(_, v) => {
-                for t in v.iter() {
-                    t.visit_updatelike_stmts(ident, f);
-                }
-            }
-            TransitionStmt::Let(_, _, _) => { }
-            TransitionStmt::If(_, _, thn, els) => {
-                thn.visit_updatelike_stmts(ident, f);
-                els.visit_updatelike_stmts(ident, f);
-            }
-            TransitionStmt::Require(_, _) => { }
-            TransitionStmt::Assert(_, _) => { }
-            TransitionStmt::Update(_, id, _) |
-            TransitionStmt::AddElement(_, id, _) |
-            TransitionStmt::RemoveElement(_, id, _) |
-            TransitionStmt::HaveElement(_, id, _) => {
-                if id.to_string() == ident.to_string() {
-                    f(self);
-                }
-            }
-            TransitionStmt::PostCondition(..) => { }
-        }
-    }
-}
-
 impl ShardableType {
     pub fn strategy_name(&self) -> &str {
         match self {
@@ -170,6 +175,7 @@ impl ShardableType {
             ShardableType::Constant(_) => "constant",
             ShardableType::NotTokenized(_) => "not_tokenized",
             ShardableType::Multiset(_) => "multiset",
+            ShardableType::Optional(_) => "option",
         }
     }
 }

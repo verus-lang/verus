@@ -1,4 +1,4 @@
-use crate::ast::{Transition, TransitionKind, TransitionParam, TransitionStmt};
+use crate::ast::{Transition, TransitionKind, TransitionParam, TransitionStmt, SpecialOp};
 use syn::spanned::Spanned;
 use syn::{
     Block, Error, Expr, ExprCall, ExprIf, FnArg, ImplItemMethod, Local, Pat, PatIdent, Signature,
@@ -130,6 +130,9 @@ enum CallType {
     AddElement,
     HaveElement,
     RemoveElement,
+    AddSome,
+    HaveSome,
+    RemoveSome,
 }
 
 fn parse_call(call: &ExprCall, ctxt: &Ctxt) -> syn::parse::Result<TransitionStmt> {
@@ -150,6 +153,9 @@ fn parse_call(call: &ExprCall, ctxt: &Ctxt) -> syn::parse::Result<TransitionStmt
             return Ok(TransitionStmt::Require(call.span(), e));
         }
         CallType::Update |
+        CallType::HaveSome |
+        CallType::AddSome |
+        CallType::RemoveSome |
         CallType::HaveElement |
         CallType::AddElement |
         CallType::RemoveElement => {
@@ -181,11 +187,17 @@ fn parse_call(call: &ExprCall, ctxt: &Ctxt) -> syn::parse::Result<TransitionStmt
                 CallType::Update =>
                     Ok(TransitionStmt::Update(call.span(), ident.clone(), e)),
                 CallType::HaveElement =>
-                    Ok(TransitionStmt::HaveElement(call.span(), ident.clone(), e)),
+                    Ok(TransitionStmt::Special(call.span(), ident.clone(), SpecialOp::HaveElement(e))),
                 CallType::AddElement =>
-                    Ok(TransitionStmt::AddElement(call.span(), ident.clone(), e)),
+                    Ok(TransitionStmt::Special(call.span(), ident.clone(), SpecialOp::AddElement(e))),
                 CallType::RemoveElement =>
-                    Ok(TransitionStmt::RemoveElement(call.span(), ident.clone(), e)),
+                    Ok(TransitionStmt::Special(call.span(), ident.clone(), SpecialOp::RemoveElement(e))),
+                CallType::HaveSome =>
+                    Ok(TransitionStmt::Special(call.span(), ident.clone(), SpecialOp::HaveSome(e))),
+                CallType::AddSome =>
+                    Ok(TransitionStmt::Special(call.span(), ident.clone(), SpecialOp::AddSome(e))),
+                CallType::RemoveSome =>
+                    Ok(TransitionStmt::Special(call.span(), ident.clone(), SpecialOp::RemoveSome(e))),
                 _ => { panic!("shouldn't get here"); }
             };
         }
@@ -222,6 +234,15 @@ fn parse_call_type(callf: &Expr, _ctxt: &Ctxt) -> syn::parse::Result<CallType> {
             }
             if path.path.is_ident("have_element") {
                 return Ok(CallType::HaveElement);
+            }
+            if path.path.is_ident("add_some") {
+                return Ok(CallType::AddSome);
+            }
+            if path.path.is_ident("remove_some") {
+                return Ok(CallType::RemoveSome);
+            }
+            if path.path.is_ident("have_some") {
+                return Ok(CallType::HaveSome);
             }
         }
         _ => {

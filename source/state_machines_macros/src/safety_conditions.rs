@@ -75,13 +75,10 @@ pub fn safety_condition_body(ts: &TransitionStmt) -> Option<Expr> {
         TransitionStmt::Assert(span, e) => Some(Expr::Verbatim(quote_spanned! {*span =>
             crate::pervasive::assert(#e);
         })),
-        TransitionStmt::Update(_span, _ident, _e) => None,
-        TransitionStmt::HaveSome(..) |
-        TransitionStmt::RemoveSome(..) |
-        TransitionStmt::AddSome(..) |
-        TransitionStmt::HaveElement(..) |
-        TransitionStmt::RemoveElement(..) |
-        TransitionStmt::AddElement(..) => {
+        TransitionStmt::Update(_span, _ident, _e) => {
+            panic!("should have been removed at earlier processing stage");
+        }
+        TransitionStmt::Special(..) => {
             panic!("should have been removed at earlier processing stage");
         }
         TransitionStmt::PostCondition(..) => {
@@ -107,12 +104,7 @@ pub fn has_any_assert(ts: &TransitionStmt) -> bool {
         TransitionStmt::Require(_, _) => false,
         TransitionStmt::Assert(_, _) => true,
         TransitionStmt::Update(_, _, _) => false,
-        TransitionStmt::HaveSome(..) => false,
-        TransitionStmt::RemoveSome(..) => false,
-        TransitionStmt::AddSome(..) => false,
-        TransitionStmt::HaveElement(..) => false,
-        TransitionStmt::RemoveElement(..) => false,
-        TransitionStmt::AddElement(..) => false,
+        TransitionStmt::Special(..) => false,
         TransitionStmt::PostCondition(..) => false,
     }
 }
@@ -134,12 +126,7 @@ pub fn has_any_require(ts: &TransitionStmt) -> bool {
         TransitionStmt::Require(_, _) => true,
         TransitionStmt::Assert(_, _) => false,
         TransitionStmt::Update(_, _, _) => false,
-        TransitionStmt::HaveSome(..) => false,
-        TransitionStmt::RemoveSome(..) => false,
-        TransitionStmt::AddSome(..) => false,
-        TransitionStmt::HaveElement(..) => false,
-        TransitionStmt::RemoveElement(..) => false,
-        TransitionStmt::AddElement(..) => false,
+        TransitionStmt::Special(..) => false,
         TransitionStmt::PostCondition(..) => false,
     }
 }
