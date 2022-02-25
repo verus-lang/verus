@@ -12,6 +12,13 @@ if [ ! -d rust ]; then
     exit 1
 fi
 
+if command -v python3 > /dev/null; then 
+    pythoncmd=python3
+else
+    pythoncmd=python
+fi
+
+
 (
     cd rust
     current_branch=`git branch --show-current`
@@ -21,7 +28,7 @@ fi
         exit 1
     fi
 
-    if [[ -n $(git status -s) ]]; then
+    if [ ! -z "$(git status --porcelain)" ]; then 
         echo "ERROR: The rust checkout in rust/ has a dirty working directory. Updating it may delete your changes."
         echo "To continue, commit you changes and switch back to the verification branch in the rust repository."
         exit 1
@@ -30,7 +37,7 @@ fi
     git fetch origin verification
     git reset --hard origin/verification
     cp config.toml.verify config.toml
-    ./x.py clean
-    ./x.py install -i
+    $pythoncmd ./x.py clean
+    $pythoncmd ./x.py install -i
 )
 
