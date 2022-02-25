@@ -10,10 +10,12 @@ use rustc_hir::{
     ParamName, PathSegment, PolyTraitRef, PrimTy, QPath, TraitBoundModifier, Ty, Visibility,
     VisibilityKind,
 };
+use rustc_infer::infer::TyCtxtInferExt;
 use rustc_middle::ty::{AdtDef, TyCtxt, TyKind};
 use rustc_span::def_id::{DefId, LOCAL_CRATE};
 use rustc_span::symbol::Ident;
 use rustc_span::Span;
+use rustc_trait_selection::infer::InferCtxtExt;
 use std::sync::Arc;
 use vir::ast::{GenericBoundX, Idents, IntRange, Path, PathX, Typ, TypBounds, TypX, Typs, VirErr};
 use vir::ast_util::{path_as_rust_name, types_equal};
@@ -403,12 +405,16 @@ pub(crate) fn implements_structural<'tcx>(
         .get_diagnostic_item(rustc_span::Symbol::intern("builtin::Structural"))
         .expect("structural trait is not defined");
     let substs_ref = tcx.mk_substs([].iter());
-    let ty_impls_structural = tcx.type_implements_trait((
-        structural_def_id,
-        ty,
-        substs_ref,
-        rustc_middle::ty::ParamEnv::empty(),
-    ));
+    let ty_impls_structural = tcx.infer_ctxt().enter(|infcx| {
+        infcx
+            .type_implements_trait(
+                structural_def_id,
+                ty,
+                substs_ref,
+                rustc_middle::ty::ParamEnv::empty(),
+            )
+            .must_apply_modulo_regions()
+    });
     ty_impls_structural
 }
 
@@ -518,7 +524,7 @@ pub(crate) fn check_generics_bounds<'tcx>(
         unsupported_err_unless!(bounds.len() <= 1, generics.span, "generic bounds");
         unsupported_err_unless!(!pure_wrt_drop, generics.span, "generic pure_wrt_drop");
         match (name, kind) {
-            (ParamName::Plain(id), GenericParamKind::Type { default: None, synthetic: None }) => {
+            (ParamName::Plain(id), GenericParamKind::Type { default: None, synthetic: false }) => {
                 let ident = Arc::new(id.name.as_str().to_string());
                 let bound = if bounds.len() == 1 {
                     check_generic_bound(tcx, generics.span, &bounds[0])?

@@ -3,9 +3,10 @@ use crate::context::{ContextX, ErasureInfo};
 use crate::debugger::Debugger;
 use crate::unsupported;
 use crate::util::from_raw_span;
-use air::ast::{Command, CommandX};
+use air::ast::{Command, CommandX, Commands};
 use air::context::ValidityResult;
 use air::errors::{Error, ErrorLabel};
+use rustc_hir::OwnerNode;
 use rustc_interface::interface::Compiler;
 use rustc_middle::ty::TyCtxt;
 use rustc_span::source_map::SourceMap;
@@ -15,7 +16,7 @@ use std::fs::File;
 use std::io::Write;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use vir::ast::{Krate, VirErr, Visibility};
+use vir::ast::{Fun, Function, Krate, VirErr, Visibility};
 use vir::ast_util::{fun_as_rust_dbg, is_visible_to};
 use vir::def::SnapPos;
 
@@ -51,6 +52,7 @@ impl ErrorSpan {
         let filename: String = match source_map.span_to_filename(span) {
             FileName::Real(rfn) => rfn
                 .local_path()
+                .expect("internal error: not a local path")
                 .to_str()
                 .expect("internal error: path is not a valid string")
                 .to_string(),
@@ -291,8 +293,8 @@ impl Verifier {
             );
         }
 
-        // Declare consequence axioms for spec functions, and function signatures for proof/exec functions
-        // Also check termination
+        // Collect function definitions
+        let mut fun_decls: HashMap<Fun, (Function, Commands, Commands)> = HashMap::new();
         for function in &krate.functions {
             let vis = function.x.visibility.clone();
             let vis = Visibility { is_private: vis.is_private, ..vis };
@@ -305,25 +307,44 @@ impl Verifier {
                 &function,
                 is_visible_to(&vis_abs, module),
             )?;
-            self.run_commands(
-                air_context,
-                &decl_commands,
-                &("Function-Axioms ".to_string() + &fun_as_rust_dbg(&function.x.name)),
-            );
-
-            // Check termination
-            if Some(module.clone()) != function.x.visibility.owning_module {
-                continue;
-            }
-            self.run_commands_queries(
-                compiler,
-                air_context,
-                &check_commands,
-                &HashMap::new(),
-                &vec![],
-                &("Function-Termination ".to_string() + &fun_as_rust_dbg(&function.x.name)),
-            );
+            assert!(!fun_decls.contains_key(&function.x.name));
+            fun_decls
+                .insert(function.x.name.clone(), (function.clone(), check_commands, decl_commands));
         }
+
+        // For spec functions, check termination and declare consequence axioms.
+        // Declarte them in SCC (strongly connected component) sorted order so that
+        // termination checking precedes consequence axioms for each SCC.
+        for scc in &ctx.func_call_graph.sort_sccs() {
+            let scc_nodes = ctx.func_call_graph.get_scc_nodes(scc);
+            // Check termination
+            for f in scc_nodes.iter() {
+                let (function, check_commands, _) = &fun_decls[f];
+                if Some(module.clone()) != function.x.visibility.owning_module {
+                    continue;
+                }
+                self.run_commands_queries(
+                    compiler,
+                    air_context,
+                    &check_commands,
+                    &HashMap::new(),
+                    &vec![],
+                    &("Function-Termination ".to_string() + &fun_as_rust_dbg(f)),
+                );
+            }
+
+            // Declare consequence axioms
+            for f in scc_nodes.iter() {
+                let (_, _, decl_commands) = &fun_decls[f];
+                self.run_commands(
+                    air_context,
+                    &decl_commands,
+                    &("Function-Axioms ".to_string() + &fun_as_rust_dbg(f)),
+                );
+                fun_decls.remove(f);
+            }
+        }
+        assert!(fun_decls.len() == 0);
 
         // Create queries to check the validity of proof/exec function bodies
         for function in &krate.functions {
@@ -519,7 +540,18 @@ impl Verifier {
         // Verify crate
         let time3 = Instant::now();
         if !self.args.external_body {
-            self.verify_crate(&compiler, &vir_crate, hir.krate().item.span)?;
+            let span = hir
+                .krate()
+                .owners
+                .iter()
+                .filter_map(|oi| {
+                    oi.as_ref().and_then(|o| {
+                        if let OwnerNode::Crate(c) = o.node() { Some(c.inner) } else { None }
+                    })
+                })
+                .next()
+                .expect("OwnerNode::Crate missing");
+            self.verify_crate(&compiler, &vir_crate, span)?;
         }
         let time4 = Instant::now();
 
@@ -608,17 +640,17 @@ impl rustc_driver::Callbacks for Verifier {
         compiler: &Compiler,
         queries: &'tcx rustc_interface::Queries<'tcx>,
     ) -> rustc_driver::Compilation {
-        let _result = queries.global_ctxt().expect("global_ctxt").peek_mut().enter(|tcx| {
-            queries.expansion().expect("expansion");
-            match self.run(compiler, tcx) {
-                Ok(true) => {}
-                Ok(false) => {}
-                Err(err) => {
-                    report_error(compiler, &err);
-                    self.encountered_vir_error = true;
+        let _result =
+            queries.global_ctxt().expect("global_ctxt").peek_mut().enter(|tcx| {
+                match self.run(compiler, tcx) {
+                    Ok(true) => {}
+                    Ok(false) => {}
+                    Err(err) => {
+                        report_error(compiler, &err);
+                        self.encountered_vir_error = true;
+                    }
                 }
-            }
-        });
+            });
         rustc_driver::Compilation::Stop
     }
 }

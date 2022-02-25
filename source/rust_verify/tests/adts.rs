@@ -449,3 +449,56 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] test_spec code! {
+        use crate::pervasive::modes::*;
+
+        struct S {
+            a: u8,
+            b: Spec<int>,
+        }
+
+        impl Clone for S {
+            fn clone(&self) -> Self {
+                *self
+            }
+        }
+
+        impl Copy for S {}
+
+        impl S {
+            fn equals(&self, rhs: &S) -> bool {
+                ensures(|b: bool| b == (self.a == rhs.a));
+                self.a == rhs.a
+            }
+        }
+
+        fn test() -> (S, S) {
+            ensures(|s: (S, S)| equal(s.0, s.1));
+
+            let s1 = S { a: 10, b: Spec::exec(20) };
+            let s2 = s1;
+            assert(s1.b.value() == s2.b.value());
+            let b = s1.equals(&s2); assert(b);
+            (s1, s2)
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_spec_fails code! {
+        use crate::pervasive::modes::*;
+
+        struct S {
+            a: u8,
+            b: Spec<int>,
+        }
+
+        fn test() {
+            let s1 = S { a: 10, b: Spec::exec(20) };
+            let s2 = S { a: 10, b: Spec::exec(30) };
+            assert(equal(s1, s2)); // FAILS
+        }
+    } => Err(e) => assert_one_fails(e)
+}

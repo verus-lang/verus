@@ -68,7 +68,7 @@ test_verify_one_file! {
         }
 
         fn forallstmt_test() {
-            forall(|x: int| {
+            assert_forall_by(|x: int| {
                 ensures(f1(x) > x);
                 reveal(f1);
             });
@@ -80,7 +80,7 @@ test_verify_one_file! {
         }
 
         fn forallstmt_proof_var_allowed_as_spec(#[proof] x: bool) {
-            forall(|i: int| {
+            assert_forall_by(|i: int| {
                 ensures(f1(i) == f1(i));
                 no_consume(x);
             });
@@ -97,7 +97,7 @@ test_verify_one_file! {
         }
 
         fn forallstmt_test() {
-            forall(|x: int| {
+            assert_forall_by(|x: int| {
                 ensures(f1(x) < x); // FAILS
                 reveal(f1);
             });
@@ -114,7 +114,7 @@ test_verify_one_file! {
         }
 
         fn forallstmt_test() {
-            forall(|x: int| {
+            assert_forall_by(|x: int| {
                 ensures(f1(x) > x);
                 reveal(f1);
             });
@@ -136,7 +136,7 @@ test_verify_one_file! {
         }
 
         fn forallstmt_proof_var_disallowed(#[proof] x: bool) {
-            forall(|i: int| {
+            assert_forall_by(|i: int| {
                 ensures(f1(i) == f1(i));
                 consume(x);
             });
@@ -153,7 +153,7 @@ test_verify_one_file! {
         }
 
         fn forallstmt_test() {
-            forall(|x: int| {
+            assert_forall_by(|x: int| {
                 requires(0 <= x);
                 ensures(1 <= f1(x));
                 reveal(f1);
@@ -172,7 +172,7 @@ test_verify_one_file! {
         }
 
         fn forallstmt_test() {
-            forall(|x: int| {
+            assert_forall_by(|x: int| {
                 requires(0 <= x);
                 ensures(1 <= f1(x));
                 reveal(f1);
@@ -191,7 +191,7 @@ test_verify_one_file! {
         }
 
         fn forallstmt_test() {
-            forall(|x: int| {
+            assert_forall_by(|x: int| {
                 ensures(1 <= f1(x)); // FAILS
                 reveal(f1);
             });
@@ -208,12 +208,12 @@ test_verify_one_file! {
         fn scope(b: bool, i: u64) {
             if b {
                 let i = 5;
-                forall(|i: int| {ensures(f(i));});
-                forall(|j: int| {ensures(f(j));});
+                assert_forall_by(|i: int| {ensures(f(i));});
+                assert_forall_by(|j: int| {ensures(f(j));});
             } else {
                 let i = 6;
-                forall(|i: int| {ensures(f(i));});
-                forall(|j: int| {ensures(f(j));});
+                assert_forall_by(|i: int| {ensures(f(i));});
+                assert_forall_by(|j: int| {ensures(f(j));});
             }
         }
     } => Ok(())
@@ -228,7 +228,7 @@ test_verify_one_file! {
         }
 
         fn forallstmt_test() {
-            forall(|x: nat| {
+            assert_forall_by(|x: nat| {
                 ensures(1 <= f1(x));
                 reveal(f1);
             });
@@ -246,7 +246,7 @@ test_verify_one_file! {
         }
 
         fn forallstmt_test() {
-            forall(|x: nat| {
+            assert_forall_by(|x: nat| {
                 ensures(1 <= f1(x)); // FAILS
             });
             assert(f1(3) > 0);

@@ -25,7 +25,7 @@ pub fn do_nothing(#[proof] i: Invariant<u8>) {
 }
 
 pub fn main() {
-    let (at, proof(mut perm)) = PAtomicU64::new(5);
+    let (at, Proof(mut perm)) = PAtomicU64::new(5);
 
     assert(perm.value == 5);
 

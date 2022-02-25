@@ -2,8 +2,8 @@
 //! so that there is no ambiguity between two expressions with the same span.
 
 use rustc_ast::ast::{
-    AssocItem, AssocItemKind, Expr, ExprKind, FnKind, ForeignItem, ForeignItemKind, Item, ItemKind,
-    Param, Pat, Path,
+    AssocItem, AssocItemKind, Expr, ExprKind, ForeignItem, ForeignItemKind, Item, ItemKind, Param,
+    Pat,
 };
 use rustc_ast::mut_visit::MutVisitor;
 use rustc_ast::ptr::P;
@@ -17,20 +17,7 @@ pub(crate) struct Visitor {
 }
 
 fn fresh_span(span: Span) -> Span {
-    let data1 = &span.data().ctxt.outer_expn_data();
-    let data2 = rustc_span::ExpnData::new(
-        data1.kind.clone(),
-        data1.parent,
-        data1.call_site,
-        data1.def_site,
-        data1.allow_internal_unstable.clone(),
-        data1.allow_internal_unsafe,
-        data1.local_inner_macros,
-        data1.edition,
-        data1.macro_def_id,
-    );
-    let id2 = rustc_span::ExpnId::fresh(Some(data2));
-    span.with_ctxt_from_mark(id2, span.data().ctxt.outer_mark().1)
+    span.with_ctxt(span.data().ctxt.clone_unique_id())
 }
 
 impl Visitor {
@@ -45,11 +32,6 @@ impl Visitor {
 }
 
 impl MutVisitor for Visitor {
-    fn visit_path(&mut self, p: &mut Path) {
-        self.freshen_span(&mut p.span);
-        rustc_ast::mut_visit::noop_visit_path(p, self);
-    }
-
     fn visit_pat(&mut self, p: &mut P<Pat>) {
         self.freshen_span(&mut p.span);
         rustc_ast::mut_visit::noop_visit_pat(p, self);
@@ -73,7 +55,7 @@ impl MutVisitor for Visitor {
 
     fn visit_item_kind(&mut self, i: &mut ItemKind) {
         match i {
-            ItemKind::Fn(box FnKind(_, sig, _generics, _body)) => {
+            ItemKind::Fn(box rustc_ast::ast::Fn { sig, .. }) => {
                 self.freshen_span(&mut sig.span);
             }
             _ => {}
@@ -84,7 +66,7 @@ impl MutVisitor for Visitor {
     fn flat_map_foreign_item(&mut self, mut ni: P<ForeignItem>) -> SmallVec<[P<ForeignItem>; 1]> {
         use std::ops::DerefMut;
         match &mut ni.deref_mut().kind {
-            ForeignItemKind::Fn(box FnKind(_, sig, _generics, _body)) => {
+            ForeignItemKind::Fn(box rustc_ast::ast::Fn { sig, .. }) => {
                 self.freshen_span(&mut sig.span);
             }
             _ => {}
@@ -95,7 +77,7 @@ impl MutVisitor for Visitor {
     fn flat_map_impl_item(&mut self, mut i: P<AssocItem>) -> SmallVec<[P<AssocItem>; 1]> {
         use std::ops::DerefMut;
         match &mut i.deref_mut().kind {
-            AssocItemKind::Fn(box FnKind(_, sig, _generics, _body)) => {
+            AssocItemKind::Fn(box rustc_ast::ast::Fn { sig, .. }) => {
                 self.freshen_span(&mut sig.span);
             }
             _ => {}
