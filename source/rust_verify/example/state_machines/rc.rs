@@ -13,16 +13,6 @@ use pervasive::invariants::*;
 
 use state_machines_macros::concurrent_state_machine;
 
-// TODO make S generic (this requires a trait bound `S: &'static`)
-struct S {
-    s: u8,
-}
-
-struct InnerRc {
-    pub rc_cell: PCell<u64>,
-    pub s: S,
-}
-
 concurrent_state_machine!(RefCounter<#[verifier(maybe_negative)] T> {
     fields {
         #[sharding(variable)]
@@ -126,15 +116,20 @@ concurrent_state_machine!(RefCounter<#[verifier(maybe_negative)] T> {
     fn dec_to_zero_inductive(self: RefCounter<T>, post: RefCounter<T>, x: T) { }
 });
 
-#[proof]
-struct GhostStuff {
-    #[proof] pub rc_perm: cell::Permission<u64>,
-    #[proof] pub rc_token: RefCounter_counter<ptr::Permission<InnerRc>>,
+struct InnerRc<S> {
+    pub rc_cell: PCell<u64>,
+    pub s: S,
 }
 
-impl GhostStuff {
+#[proof]
+struct GhostStuff<S> {
+    #[proof] pub rc_perm: cell::Permission<u64>,
+    #[proof] pub rc_token: RefCounter_counter<ptr::Permission<InnerRc<S>>>,
+}
+
+impl<S> GhostStuff<S> {
     #[spec]
-    fn wf(self, inst: RefCounter_Instance<ptr::Permission<InnerRc>>, cell: PCell<u64>) -> bool {
+    fn wf(self, inst: RefCounter_Instance<ptr::Permission<InnerRc<S>>>, cell: PCell<u64>) -> bool {
         equal(self.rc_perm.pcell, cell.view())
         && equal(self.rc_token.instance, inst)
         && self.rc_perm.value.is_Some()
@@ -142,28 +137,27 @@ impl GhostStuff {
     }
 }
 
-impl InnerRc {
+impl<S> InnerRc<S> {
     #[spec]
     fn wf(self, cell: PCell<u64>) -> bool {
         equal(self.rc_cell, cell)
     }
 }
 
-
-struct MyRc {
-    #[proof] pub inst: RefCounter_Instance<ptr::Permission<InnerRc>>,
-    #[proof] pub inv: &'static LocalInvariant<GhostStuff>,
-    #[proof] pub reader: RefCounter_reader<ptr::Permission<InnerRc>>,
-    pub ptr: PPtr<InnerRc>,
+struct MyRc<'a, S: 'a> {
+    #[proof] pub inst: RefCounter_Instance<ptr::Permission<InnerRc<S>>>,
+    #[proof] pub inv: &'a LocalInvariant<GhostStuff<S>>,
+    #[proof] pub reader: RefCounter_reader<ptr::Permission<InnerRc<S>>>,
+    pub ptr: PPtr<InnerRc<S>>,
 }
 
-impl MyRc {
+impl<S> MyRc<'_, S> {
     #[spec]
     fn wf(self) -> bool {
         equal(self.reader.reader.pptr, self.ptr.view())
         && equal(self.reader.instance, self.inst)
         && self.reader.reader.value.is_Some()
-        && (forall(|g: GhostStuff| self.inv.inv(g) ==
+        && (forall(|g: GhostStuff<S>| self.inv.inv(g) ==
             g.wf(self.inst, self.reader.reader.value.get_Some_0().rc_cell)))
     }
 
@@ -172,15 +166,15 @@ impl MyRc {
         self.reader.reader.value.get_Some_0().s
     }
 
-    fn new(s: S) -> MyRc {
-        ensures(|rc: MyRc| [
+    fn new(s: S) -> Self {
+        ensures(|rc: MyRc<S>| [
             rc.wf(),
             equal(rc.view(), s),
         ]);
 
         let (rc_cell, Proof(mut rc_perm)) = PCell::empty();
         rc_cell.put(1, &mut rc_perm);
-        let inner_rc = InnerRc { rc_cell, s };
+        let inner_rc = InnerRc::<S> { rc_cell, s };
 
         let (ptr, Proof(mut ptr_perm)) = PPtr::empty();
         ptr.put(inner_rc, &mut ptr_perm);
@@ -188,20 +182,20 @@ impl MyRc {
         #[proof] let (inst, mut rc_token) = RefCounter_initialize_empty();
         #[proof] let reader = RefCounter_do_deposit(inst.clone(), ptr_perm, &mut rc_token, ptr_perm);
 
-        #[proof] let g = GhostStuff { rc_perm, rc_token };
+        #[proof] let g = GhostStuff::<S> { rc_perm, rc_token };
 
         #[proof] let inv = LocalInvariant::new(g,
-            |g: GhostStuff|
+            |g: GhostStuff<S>|
                 g.wf(reader.instance, reader.reader.value.get_Some_0().rc_cell),
             0);
-        #[proof] let inv = inv.to_static_ref();
+        #[proof] let inv = proof_to_ref(inv);
 
         MyRc { inst, inv, reader, ptr }
     }
 
-    fn as_ref<'a>(&'a self) -> &'a S {
+    fn as_ref<'b>(&'b self) -> &'b S {
         requires(self.wf());
-        ensures(|s: &'a S| equal(*s, self.view()));
+        ensures(|s: &'b S| equal(*s, self.view()));
 
         #[proof] let perm = RefCounter_reader_guard(
             self.inst.clone(),

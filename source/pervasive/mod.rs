@@ -65,3 +65,11 @@ pub fn unreached<A>() -> A {
 pub fn print_u64(i: u64) {
     println!("{}", i);
 }
+
+#[verifier(external_body)]
+#[verifier(returns(proof))]
+#[proof]
+pub fn proof_to_ref<'a, T: 'a>(#[proof] t: T) -> &'a T {
+    ensures(|t2: &'a T| equal(t, *t2));
+    unimplemented!();
+}
