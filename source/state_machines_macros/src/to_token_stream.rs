@@ -57,7 +57,14 @@ pub fn output_token_stream(bundle: SMBundle, concurrent: bool) -> syn::parse::Re
 }
 
 pub fn get_self_ty(sm: &SM) -> Type {
-    let name = &sm.name;
+    name_with_type_args(&sm.name, sm)
+}
+
+pub fn get_self_ty_double_colon(sm: &SM) -> Type {
+    name_with_type_args_double_colon(&sm.name, sm)
+}
+
+pub fn name_with_type_args(name: &Ident, sm: &SM) -> Type {
     Type::Verbatim(match &sm.generics {
         None => quote! { #name },
         Some(gen) => {
@@ -65,6 +72,21 @@ pub fn get_self_ty(sm: &SM) -> Type {
                 //let ids = gen.params.iter().map(|gp|
                 let args = get_generic_args(&gen.params);
                 quote! { #name<#args> }
+            } else {
+                quote! { #name }
+            }
+        }
+    })
+}
+
+pub fn name_with_type_args_double_colon(name: &Ident, sm: &SM) -> Type {
+    Type::Verbatim(match &sm.generics {
+        None => quote! { #name },
+        Some(gen) => {
+            if gen.params.len() > 0 {
+                //let ids = gen.params.iter().map(|gp|
+                let args = get_generic_args(&gen.params);
+                quote! { #name::<#args> }
             } else {
                 quote! { #name }
             }

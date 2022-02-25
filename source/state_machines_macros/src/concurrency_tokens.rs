@@ -92,7 +92,7 @@ use crate::ast::{
 use crate::checks::{check_ordering_remove_have_add, check_unsupported_updates_in_conditionals};
 use crate::parse_token_stream::SMBundle;
 use crate::safety_conditions::{has_any_assert, has_any_require};
-use crate::to_token_stream::shardable_type_to_type;
+use crate::to_token_stream::{shardable_type_to_type, name_with_type_args, impl_decl_stream, get_self_ty, get_self_ty_double_colon};
 use proc_macro2::Span;
 use proc_macro2::TokenStream;
 use quote::quote;
@@ -101,7 +101,7 @@ use std::collections::HashSet;
 use syn::parse::Error;
 use syn::spanned::Spanned;
 use syn::visit_mut::VisitMut;
-use syn::{Expr, ExprField, ExprPath, Ident, Member, Type};
+use syn::{Expr, ExprField, ExprPath, Ident, Member, Type, Generics};
 
 // Misc. definitions for various identifiers we use
 
@@ -114,14 +114,17 @@ fn inst_type_name(sm_name: &Ident) -> Ident {
     Ident::new(&name, sm_name.span())
 }
 
+fn inst_type(sm: &SM) -> Type {
+    name_with_type_args(&inst_type_name(&sm.name), sm)
+}
+
 fn field_token_type_name(sm_name: &Ident, field: &Field) -> Ident {
     let name = sm_name.to_string() + "_" + &field.ident.to_string();
     Ident::new(&name, field.ident.span())
 }
 
-fn field_token_type(sm_name: &Ident, field: &Field) -> Type {
-    let ident = field_token_type_name(sm_name, field);
-    Type::Verbatim(quote! { #ident })
+fn field_token_type(sm: &SM, field: &Field) -> Type {
+    name_with_type_args(&field_token_type_name(&sm.name, field), sm)
 }
 
 fn field_token_field_name(field: &Field) -> Ident {
@@ -184,13 +187,14 @@ fn transition_arg_name(field: &Field) -> Ident {
 /// struct and the type struct. The fields are private, so they shouldn't matter to the user.
 fn instance_struct_stream(sm: &SM) -> TokenStream {
     let insttype = inst_type_name(&sm.name);
-    let smname = &sm.name;
+    let self_ty = get_self_ty(sm);
+    let gen = &sm.generics;
     return quote! {
         #[proof]
         #[allow(non_camel_case_types)]
         #[verifier(unforgeable)]
-        pub struct #insttype {
-            #[spec] state: #smname,
+        pub struct #insttype #gen {
+            #[spec] state: #self_ty,
             #[spec] location: ::builtin::int,
         }
     };
@@ -218,17 +222,18 @@ fn trusted_clone() -> TokenStream {
 
 /// Create the struct for a Token that derives from a
 /// sharding(variable) field.
-fn token_struct_stream(sm_name: &Ident, field: &Field) -> TokenStream {
-    let tokenname = field_token_type_name(sm_name, field);
+fn token_struct_stream(sm: &SM, field: &Field) -> TokenStream {
+    let tokenname = field_token_type_name(&sm.name, field);
     let fieldname = field_token_field_name(field);
     let fieldtype = field_token_field_type(field);
-    let insttype = inst_type_name(sm_name);
+    let insttype = inst_type(sm);
+    let gen = &sm.generics;
 
     return quote! {
         #[proof]
         #[verifier(unforgeable)]
         #[allow(non_camel_case_types)]
-        pub struct #tokenname {
+        pub struct #tokenname#gen {
             #[spec] pub instance: #insttype,
             #[spec] pub #fieldname: #fieldtype,
         }
@@ -237,14 +242,14 @@ fn token_struct_stream(sm_name: &Ident, field: &Field) -> TokenStream {
 
 /// Create the struct for a Token that derives from a
 /// sharding(multiset) field.
-fn token_struct_stream_multiset(sm_name: &Ident, field: &Field) -> TokenStream {
-    token_struct_stream(sm_name, field)
+fn token_struct_stream_multiset(sm: &SM, field: &Field) -> TokenStream {
+    token_struct_stream(sm, field)
 }
 
 /// Create the struct for a Token that derives from a
 /// sharding(optional) field.
-fn token_struct_stream_optional(sm_name: &Ident, field: &Field) -> TokenStream {
-    token_struct_stream(sm_name, field)
+fn token_struct_stream_optional(sm: &SM, field: &Field) -> TokenStream {
+    token_struct_stream(sm, field)
 }
 
 /// For a given sharding(constant) field, add that constant
@@ -286,24 +291,25 @@ pub fn output_token_types_and_fns(
                 inst_impl_token_stream.extend(const_fn_stream(field));
             }
             ShardableType::Variable(_) => {
-                token_stream.extend(token_struct_stream(&bundle.sm.name, field));
+                token_stream.extend(token_struct_stream(&bundle.sm, field));
             }
             ShardableType::NotTokenized(_) => {
                 // don't need to add a struct in this case
             }
             ShardableType::Multiset(_) => {
-                token_stream.extend(token_struct_stream_multiset(&bundle.sm.name, field));
+                token_stream.extend(token_struct_stream_multiset(&bundle.sm, field));
             }
             ShardableType::Optional(_) => {
-                token_stream.extend(token_struct_stream_optional(&bundle.sm.name, field));
+                token_stream.extend(token_struct_stream_optional(&bundle.sm, field));
             }
             ShardableType::StorageOptional(_) => {}
         }
     }
 
-    let insttype = inst_type_name(&bundle.sm.name);
+    let insttype = inst_type(&bundle.sm);
+    let impldecl = impl_decl_stream(&insttype, &bundle.sm.generics);
     token_stream.extend(quote! {
-        impl #insttype {
+        #impldecl {
             #inst_impl_token_stream
         }
     });
@@ -346,7 +352,7 @@ struct Ctxt {
     ensures: Vec<Expr>,
     ident_to_field: HashMap<String, Field>,
     is_init: bool,
-    sm_name: Ident,
+    sm: SM,
 
     fresh_num_counter: usize,
 }
@@ -437,7 +443,7 @@ pub fn exchange_stream(bundle: &SMBundle, tr: &Transition) -> syn::parse::Result
         ensures: Vec::new(),
         ident_to_field,
         is_init: is_init,
-        sm_name: bundle.sm.name.clone(),
+        sm: bundle.sm.clone(),
         fresh_num_counter: 0,
     };
 
@@ -472,10 +478,10 @@ pub fn exchange_stream(bundle: &SMBundle, tr: &Transition) -> syn::parse::Result
     //     A normal transition takes only those as input that are necessary.
 
     if ctxt.is_init {
-        let itn = inst_type_name(&sm.name);
+        let itn = inst_type(sm);
         out_args.push((quote! { instance }, quote! { #itn }));
     } else {
-        let itn = inst_type_name(&sm.name);
+        let itn = inst_type(sm);
         in_args.push(quote! { #[proof] instance: #itn }); // TODO make this argument self?
     }
 
@@ -584,7 +590,7 @@ pub fn exchange_stream(bundle: &SMBundle, tr: &Transition) -> syn::parse::Result
                             &mut inst_eq_enss,
                             &mut inst_eq_reqs,
                             &transition_arg_name(field),
-                            &field_token_type(&sm.name, field),
+                            &field_token_type(&sm, field),
                             if is_written { InoutType::InOut } else { InoutType::BorrowIn },
                             true,
                             use_explicit_lifetime,
@@ -719,17 +725,14 @@ pub fn exchange_stream(bundle: &SMBundle, tr: &Transition) -> syn::parse::Result
 
     let extra_deps = get_extra_deps(bundle, &tr);
 
-    let generic_params = if use_explicit_lifetime {
-        quote! { <'a> }
-    } else {
-        TokenStream::new()
-    };
+    let (fn_generic_params, where_clause) = get_fn_generic_params(
+        &sm.generics, use_explicit_lifetime);
 
     return Ok(quote! {
         #[proof]
         #return_value_mode
         #[verifier(external_body)]
-        pub fn #exch_name#generic_params(#(#in_args),*) #out_args_ret {
+        pub fn #exch_name#fn_generic_params(#(#in_args),*) #out_args_ret #where_clause {
             #req_stream
             #ens_stream
             #extra_deps
@@ -738,14 +741,49 @@ pub fn exchange_stream(bundle: &SMBundle, tr: &Transition) -> syn::parse::Result
     });
 }
 
+fn get_fn_generic_params(generics: &Option<Generics>, use_explicit_lifetime: bool) -> (TokenStream, TokenStream) {
+    match generics {
+        None => {
+            let gen = if use_explicit_lifetime {
+                quote! { <'a> }
+            } else {
+                TokenStream::new()
+            };
+            (gen, TokenStream::new())
+        }
+        Some(gen) => {
+            let params = if use_explicit_lifetime {
+                if gen.params.len() > 0 {
+                    let params = &gen.params;
+                    quote! { <'a, #params> }
+                } else {
+                    quote! { <'a> }
+                }
+            } else {
+                if gen.params.len() > 0 {
+                    let params = &gen.params;
+                    quote! { <#params> }
+                } else {
+                    TokenStream::new()
+                }
+            };
+
+            let where_clause = &gen.where_clause;
+            let wh = quote!{ #where_clause };
+
+            (params, wh)
+        }
+    }
+}
+
 fn get_init_param_out_type(sm: &SM, field: &Field) -> Option<Type> {
     match &field.stype {
-        ShardableType::Variable(_) => Some(field_token_type(&sm.name, field)),
+        ShardableType::Variable(_) => Some(field_token_type(&sm, field)),
         ShardableType::Constant(_) => None, // constants handled separately
         ShardableType::NotTokenized(_) => None, // no tokens
         ShardableType::Multiset(_) => None, // TODO handle this case
         ShardableType::Optional(_) => {
-            let ty = field_token_type(&sm.name, field);
+            let ty = field_token_type(&sm, field);
             Some(Type::Verbatim(quote!{
                 crate::pervasive::option::Option<#ty>
             }))
@@ -871,12 +909,12 @@ fn mk_eq(lhs: &Expr, rhs: &Expr) -> Expr {
 }
 
 fn get_extra_deps(bundle: &SMBundle, trans: &Transition) -> TokenStream {
-    let smname = &bundle.sm.name;
-    let deps: Vec<TokenStream> = get_all_lemma_for_transition(bundle, trans)
+    let ty = get_self_ty_double_colon(&bundle.sm);
+    let deps: Vec<TokenStream> = get_all_lemmas_for_transition(bundle, trans)
         .iter()
         .map(|ident| {
             quote! {
-                ::builtin::extra_dependency(#smname::#ident);
+                ::builtin::extra_dependency(#ty::#ident);
             }
         })
         .collect();
@@ -884,7 +922,7 @@ fn get_extra_deps(bundle: &SMBundle, trans: &Transition) -> TokenStream {
 }
 
 /// Gets the lemmas that prove validity of the given transition.
-fn get_all_lemma_for_transition(bundle: &SMBundle, trans: &Transition) -> Vec<Ident> {
+fn get_all_lemmas_for_transition(bundle: &SMBundle, trans: &Transition) -> Vec<Ident> {
     let mut v = Vec::new();
 
     if trans.kind != TransitionKind::Readonly {
@@ -1058,7 +1096,7 @@ fn walk_translate_expressions(
 
             let ident = ctxt.get_numbered_token_ident(id);
             let field = ctxt.get_field_or_panic(id);
-            let ty = field_token_type(&ctxt.sm_name, &field);
+            let ty = field_token_type(&ctxt.sm, &field);
             let field_name = field_token_field_name(&field);
 
             ctxt.params.get_mut(&field.ident.to_string()).expect("get_mut").push(TokenParam {
@@ -1076,7 +1114,7 @@ fn walk_translate_expressions(
 
             let ident = ctxt.get_numbered_token_ident(id);
             let field = ctxt.get_field_or_panic(id);
-            let ty = field_token_type(&ctxt.sm_name, &field);
+            let ty = field_token_type(&ctxt.sm, &field);
             let field_name = field_token_field_name(&field);
 
             ctxt.params.get_mut(&field.ident.to_string()).expect("get_mut").push(TokenParam {
@@ -1097,7 +1135,7 @@ fn walk_translate_expressions(
 
             let ident = ctxt.get_numbered_token_ident(id);
             let field = ctxt.get_field_or_panic(id);
-            let ty = field_token_type(&ctxt.sm_name, &field);
+            let ty = field_token_type(&ctxt.sm, &field);
             let field_name = field_token_field_name(&field);
 
             ctxt.params.get_mut(&field.ident.to_string()).expect("get_mut").push(TokenParam {

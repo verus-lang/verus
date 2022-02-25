@@ -13,7 +13,7 @@ use pervasive::invariants::*;
 
 use state_machines_macros::concurrent_state_machine;
 
-// TODO make S generic
+// TODO make S generic (this requires a trait bound `S: &'static`)
 struct S {
     s: u8,
 }
@@ -23,21 +23,21 @@ struct InnerRc {
     pub s: S,
 }
 
-concurrent_state_machine!(RefCounter {
+concurrent_state_machine!(RefCounter<#[verifier(maybe_negative)] T> {
     fields {
         #[sharding(variable)]
         pub counter: nat,
 
         #[sharding(storage_option)]
-        pub storage: Option<ptr::Permission<InnerRc>>,
+        pub storage: Option<T>,
 
         #[sharding(multiset)]
-        pub reader: Multiset<ptr::Permission<InnerRc>>,
+        pub reader: Multiset<T>,
     }
 
     #[invariant]
     fn reader_agrees_storage(&self) -> bool {
-        forall(|t: ptr::Permission<InnerRc>| self.reader.count(t) > 0 >>=
+        forall(|t: T| self.reader.count(t) > 0 >>=
             equal(self.storage, Option::Some(t)))
     }
 
@@ -66,10 +66,10 @@ concurrent_state_machine!(RefCounter {
     }
 
     #[inductive(initialize_empty)]
-    fn initialize_empty_inductive(post: RefCounter) { }
+    fn initialize_empty_inductive(post: RefCounter<T>) { }
     
     #[transition]
-    fn do_deposit(&self, x: ptr::Permission<InnerRc>) {
+    fn do_deposit(&self, x: T) {
         require(self.counter == 0);
         update(counter, 1);
         deposit_some(storage, x);
@@ -77,23 +77,23 @@ concurrent_state_machine!(RefCounter {
     }
 
     #[inductive(do_deposit)]
-    fn do_deposit_inductive(self: RefCounter, post: RefCounter, x: ptr :: Permission < InnerRc >) { }
+    fn do_deposit_inductive(self: RefCounter<T>, post: RefCounter<T>, x: T) { }
 
     #[readonly]
-    fn reader_guard(&self, x: ptr::Permission<InnerRc>) {
+    fn reader_guard(&self, x: T) {
         have_element(reader, x);
         guard_some(storage, x);
     }
 
     #[transition]
-    fn do_clone(&self, x: ptr::Permission<InnerRc>) {
+    fn do_clone(&self, x: T) {
         have_element(reader, x);
         add_element(reader, x);
         update(counter, self.counter + 1);
     }
 
     #[inductive(do_clone)]
-    fn do_clone_inductive(self: RefCounter, post: RefCounter, x: ptr :: Permission < InnerRc >) {
+    fn do_clone_inductive(self: RefCounter<T>, post: RefCounter<T>, x: T) {
         assert(self.reader.count(x) > 0);
         assert(equal(self.storage, Option::Some(x)));
         assert(self.storage.is_Some());
@@ -101,14 +101,14 @@ concurrent_state_machine!(RefCounter {
     }
 
     #[transition]
-    fn dec_basic(&self, x: ptr::Permission<InnerRc>) {
+    fn dec_basic(&self, x: T) {
         require(self.counter >= 2);
         remove_element(reader, x);
         update(counter, self.counter - 1);
     }
 
     #[transition]
-    fn dec_to_zero(&self, x: ptr::Permission<InnerRc>) {
+    fn dec_to_zero(&self, x: T) {
         remove_element(reader, x);
         require(self.counter < 2);
         assert(self.counter == 1);
@@ -117,24 +117,24 @@ concurrent_state_machine!(RefCounter {
     }
 
     #[inductive(dec_basic)]
-    fn dec_basic_inductive(self: RefCounter, post: RefCounter, x: ptr :: Permission < InnerRc >) {
+    fn dec_basic_inductive(self: RefCounter<T>, post: RefCounter<T>, x: T) {
         assert(self.reader.count(x) > 0);
         assert(equal(self.storage, Option::Some(x)));
     }
 
     #[inductive(dec_to_zero)]
-    fn dec_to_zero_inductive(self: RefCounter, post: RefCounter, x: ptr :: Permission < InnerRc >) { }
+    fn dec_to_zero_inductive(self: RefCounter<T>, post: RefCounter<T>, x: T) { }
 });
 
 #[proof]
 struct GhostStuff {
     #[proof] pub rc_perm: cell::Permission<u64>,
-    #[proof] pub rc_token: RefCounter_counter,
+    #[proof] pub rc_token: RefCounter_counter<ptr::Permission<InnerRc>>,
 }
 
 impl GhostStuff {
     #[spec]
-    fn wf(self, inst: RefCounter_Instance, cell: PCell<u64>) -> bool {
+    fn wf(self, inst: RefCounter_Instance<ptr::Permission<InnerRc>>, cell: PCell<u64>) -> bool {
         equal(self.rc_perm.pcell, cell.view())
         && equal(self.rc_token.instance, inst)
         && self.rc_perm.value.is_Some()
@@ -151,9 +151,9 @@ impl InnerRc {
 
 
 struct MyRc {
-    #[proof] pub inst: RefCounter_Instance,
+    #[proof] pub inst: RefCounter_Instance<ptr::Permission<InnerRc>>,
     #[proof] pub inv: &'static LocalInvariant<GhostStuff>,
-    #[proof] pub reader: RefCounter_reader,
+    #[proof] pub reader: RefCounter_reader<ptr::Permission<InnerRc>>,
     pub ptr: PPtr<InnerRc>,
 }
 
