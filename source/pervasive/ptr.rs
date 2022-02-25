@@ -31,15 +31,15 @@ impl<V> PPtr<V> {
   #[verifier(external_body)]
   pub fn empty() -> (PPtr<V>, Proof<Permission<V>>) {
     ensures(|pt : (PPtr<V>, Proof<Permission<V>>)|
-      equal(pt.1, proof(Permission{ pptr: pt.0.view(), value: option::Option::None }))
+      equal(pt.1, Proof(Permission{ pptr: pt.0.view(), value: option::Option::None }))
     );
     opens_invariants_none();
 
     let p = PPtr {
       uptr: Box::leak(box MaybeUninit::uninit()).into(),
     };
-    let Proof::proof(t) = exec_proof_from_false();
-    (p, proof(t))
+    let Proof(t) = exec_proof_from_false();
+    (p, Proof(t))
   }
 
   fndecl!(pub fn view(&self) -> int);

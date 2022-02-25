@@ -31,7 +31,7 @@ impl<V> PCell<V> {
   #[verifier(external_body)]
   pub fn empty() -> (PCell<V>, Proof<Permission<V>>) {
     ensures(|pt : (PCell<V>, Proof<Permission<V>>)|
-      equal(pt.1, proof(Permission{ pcell: pt.0.view(), value: option::Option::None }))
+      equal(pt.1, Proof(Permission{ pcell: pt.0.view(), value: option::Option::None }))
     );
 
     let p = PCell { ucell: UnsafeCell::new(MaybeUninit::uninit()) };

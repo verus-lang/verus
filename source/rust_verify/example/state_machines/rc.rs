@@ -178,11 +178,11 @@ impl MyRc {
             equal(rc.view(), s),
         ]);
 
-        let (rc_cell, proof(mut rc_perm)) = PCell::empty();
+        let (rc_cell, Proof(mut rc_perm)) = PCell::empty();
         rc_cell.put(1, &mut rc_perm);
         let inner_rc = InnerRc { rc_cell, s };
 
-        let (ptr, proof(mut ptr_perm)) = PPtr::empty();
+        let (ptr, Proof(mut ptr_perm)) = PPtr::empty();
         ptr.put(inner_rc, &mut ptr_perm);
 
         #[proof] let (inst, mut rc_token) = RefCounter_initialize_empty();
@@ -225,7 +225,9 @@ impl MyRc {
             #[proof] let GhostStuff { rc_perm: mut rc_perm, rc_token: mut rc_token } = g;
 
             let count = inner_rc_ref.rc_cell.take(&mut rc_perm);
+
             assume(count < 100000000);
+
             let count = count + 1;
             inner_rc_ref.rc_cell.put(count, &mut rc_perm);
 
@@ -273,10 +275,15 @@ impl MyRc {
                     reader.reader,
                     &mut rc_token,
                     reader);
-                let count = count - 1;
 
                 let inner_rc = ptr.take(&mut inner_rc_perm);
+
+                // we still have to write back to the `inner_rc` to restore the invariant
+                // even though inner_rc has been moved onto the stack here.
+                // so this will probably get optimized out
+                let count = count - 1;
                 inner_rc.rc_cell.put(count, &mut rc_perm);
+
                 ptr.dispose(inner_rc_perm);
             }
 

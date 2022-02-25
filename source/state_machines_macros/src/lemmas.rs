@@ -243,10 +243,22 @@ fn check_lemmas_cover_all_cases(bundle: &SMBundle) -> syn::parse::Result<()> {
     Ok(())
 }
 
+fn ty_to_string(ty: &Type) -> String {
+    let s = ty.to_token_stream().to_string();
+    // Make the string look slightly better:
+    let s = s.replace("< ", "<");
+    let s = s.replace(" <", "<");
+    let s = s.replace("> ", ">");
+    let s = s.replace(" >", ">");
+    let s = s.replace(":: ", "::");
+    let s = s.replace(" ::", "::");
+    s
+}
+
 fn params_to_string(params: &Vec<TransitionParam>) -> String {
     let mut v1 = vec![];
     v1.extend(
-        params.iter().map(|f| f.ident.to_string() + ": " + &f.ty.to_token_stream().to_string()),
+        params.iter().map(|f| f.ident.to_string() + ": " + &ty_to_string(&f.ty)),
     );
     v1.join(", ")
 }
@@ -258,11 +270,11 @@ fn transition_params_to_string(
 ) -> String {
     let mut v1 = vec![];
     if !is_init {
-        v1.push("self: ".to_string() + &self_ty.to_token_stream().to_string());
+        v1.push("self: ".to_string() + &ty_to_string(self_ty));
     }
-    v1.push("post: ".to_string() + &self_ty.to_token_stream().to_string());
+    v1.push("post: ".to_string() + &ty_to_string(self_ty));
     v1.extend(
-        params.iter().map(|f| f.ident.to_string() + ": " + &f.ty.to_token_stream().to_string()),
+        params.iter().map(|f| f.ident.to_string() + ": " + &ty_to_string(&f.ty)),
     );
     v1.join(", ")
 }

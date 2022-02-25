@@ -60,15 +60,6 @@ impl<A> PartialEq for Proof<A> {
 impl<A> Eq for Proof<A> {
 }
 
-impl<V> Spec<V> {
-    #[spec]
-    pub fn value(self) -> V {
-        match self {
-            spec(v) => v
-        }
-    }
-}
-
 #[allow(dead_code)]
 #[inline(always)]
 pub fn exec_proof_from_false<A>() -> Proof<A> {

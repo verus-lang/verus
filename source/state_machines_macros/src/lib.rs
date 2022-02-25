@@ -1,5 +1,4 @@
 #![feature(box_patterns)]
-#![feature(format_args_capture)]
 
 extern crate proc_macro;
 
