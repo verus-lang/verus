@@ -916,3 +916,69 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test_atomic_bool_smoke test_body(ATOMIC_BOOL, true) => Err(e) => assert_one_fails(e)
 }
+
+test_verify_one_file! {
+    #[test] test_unsigned_add_overflow_fail
+    IMPORTS.to_string() + code_str! {
+        pub fn do_nothing() {
+            let (at, Proof(mut perm)) = PAtomicU32::new(0xf000_0000);
+
+            at.fetch_add(&mut perm, 0xf000_0000); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] test_unsigned_sub_underflow_fail
+    IMPORTS.to_string() + code_str! {
+        pub fn do_nothing() {
+            let (at, Proof(mut perm)) = PAtomicU32::new(5);
+
+            at.fetch_sub(&mut perm, 6); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] test_signed_add_overflow_fail
+    IMPORTS.to_string() + code_str! {
+        pub fn do_nothing() {
+            let (at, Proof(mut perm)) = PAtomicI32::new(0x7000_0000);
+
+            at.fetch_add(&mut perm, 0x7000_0000); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] test_signed_add_underflow_fail
+    IMPORTS.to_string() + code_str! {
+        pub fn do_nothing() {
+            let (at, Proof(mut perm)) = PAtomicI32::new(-0x7000_0000);
+
+            at.fetch_add(&mut perm, -0x7000_0000); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] test_signed_sub_overflow_fail
+    IMPORTS.to_string() + code_str! {
+        pub fn do_nothing() {
+            let (at, Proof(mut perm)) = PAtomicI32::new(0x7000_0000);
+
+            at.fetch_sub(&mut perm, -0x7000_0000); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] test_signed_sub_underflow_fail
+    IMPORTS.to_string() + code_str! {
+        pub fn do_nothing() {
+            let (at, Proof(mut perm)) = PAtomicI32::new(-0x7000_0000);
+
+            at.fetch_sub(&mut perm, 0x7000_0000); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}

@@ -290,8 +290,8 @@ macro_rules! atomic_integer_methods {
         pub fn fetch_add(&self, #[proof] perm: &mut $p_ident, n: $value_ty) -> $value_ty {
             requires([
                 equal(self.view(), old(perm).patomic),
-                $int_min <= old(perm).value + n,
-                old(perm).value + n <= $int_max,
+                $int_min as int <= old(perm).value as int + n as int,
+                old(perm).value as int + n as int <= $int_max as int,
             ]);
             ensures(|ret: $value_ty| equal(old(perm).value, ret)
                 && perm.patomic == old(perm).patomic
@@ -308,8 +308,8 @@ macro_rules! atomic_integer_methods {
         pub fn fetch_sub(&self, #[proof] perm: &mut $p_ident, n: $value_ty) -> $value_ty {
             requires([
                 equal(self.view(), old(perm).patomic),
-                $int_min <= old(perm).value - n,
-                old(perm).value - n <= $int_max,
+                $int_min as int <= old(perm).value as int - n as int,
+                old(perm).value as int - n  as int<= $int_max as int,
             ]);
             ensures(|ret: $value_ty| equal(old(perm).value, ret)
                 && perm.patomic == old(perm).patomic
