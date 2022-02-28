@@ -14,7 +14,7 @@ use builtin_macros::*;
 //     }
 // }
 
-macro_rules! get_bit{
+macro_rules! get_bit_trigger{
     ($a:expr,$b:expr)=>{
         {
             #[trigger](0x1u32 & ($a>>$b))  == 1
@@ -22,7 +22,7 @@ macro_rules! get_bit{
     }
 }
 
-macro_rules! get_bit_no_trigger{
+macro_rules! get_bit{
     ($a:expr,$b:expr)=>{
         {
             (0x1u32 & ($a>>$b)) == 1
@@ -46,11 +46,11 @@ fn set_bit_property_auto(bv:u32, bv2:u32, loc:u32, bit:bool) {
         bv2 == set_bit!(bv,loc,bit),
     ]);
     ensures([
-        forall(|loc2:u32| (loc2 < 32 && loc != loc2) >>= (get_bit!(bv2, loc2) == get_bit!(bv, loc2))),
+        forall(|loc2:u32| (loc2 < 32 && loc != loc2) >>= (get_bit_trigger!(bv2, loc2) == get_bit!(bv, loc2))),
         get_bit!(bv2, loc) == bit,
     ]);
     assert_bit_vector(bv2 == set_bit!(bv, loc, bit) >>= 
-        ((forall(|loc2:u32| (loc2 < 32 && loc != loc2) >>= (get_bit!(bv2, loc2) == get_bit!(bv, loc2)))))) ;
+        ((forall(|loc2:u32| (loc2 < 32 && loc != loc2) >>= (get_bit_trigger!(bv2, loc2) == get_bit!(bv, loc2)))))) ;
 
     assert_bit_vector((loc < 32 && bv2 == set_bit!(bv, loc, bit)) >>= 
         get_bit!(bv2, loc) == bit);
@@ -81,7 +81,7 @@ fn set_two_bit_exec(bv:u32, low_loc:u32, high:bool, low:bool) -> u32 {
     ensures(|ret:u32| [ 
         get_bit!(ret, low_loc) == low,
         get_bit!(ret, low_loc+1) == high,
-        forall(|loc2:u32| (loc2 < 32 && loc2 != low_loc && loc2 != (low_loc+1)) >>= (get_bit!(ret, loc2) == get_bit!(bv, loc2))),
+        forall(|loc2:u32| (loc2 < 32 && loc2 != low_loc && loc2 != (low_loc+1)) >>= (get_bit_trigger!(ret, loc2) == get_bit!(bv, loc2))),
     ]);
     let target:u32 = {if high {if low {3u32} else {2u32}} else {if low {1u32} else {0u32}}} << low_loc;
     let mask:u32 = !(3u32 << low_loc);
@@ -98,14 +98,14 @@ fn set_two_bit_exec(bv:u32, low_loc:u32, high:bool, low:bool) -> u32 {
         == high));
     forall(|loc2:u32| { 
         ensures((low_loc <31 && loc2 < 32 && low_loc != loc2 && (low_loc+1) != loc2) >>=
-        (get_bit_no_trigger!((bv & (!(3u32 << low_loc))) |  
+        (get_bit!((bv & (!(3u32 << low_loc))) |  
         ({if high {if low {3u32} else {2u32}} else {if low {1u32} else {0u32}}} << low_loc), loc2)
-         ==  get_bit!(bv, loc2)));
+         ==  get_bit_trigger!(bv, loc2)));
 
         assert_bit_vector((low_loc <31 && loc2 < 32 && low_loc != loc2 && (low_loc+1) != loc2) >>=
-        (get_bit_no_trigger!((bv & (!(3u32 << low_loc))) |  
+        (get_bit!((bv & (!(3u32 << low_loc))) |  
         ({if high {if low {3u32} else {2u32}} else {if low {1u32} else {0u32}}} << low_loc), loc2)
-         ==  get_bit!(bv, loc2)));
+         ==  get_bit_trigger!(bv, loc2)));
     });
     result
 }
