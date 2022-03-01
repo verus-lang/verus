@@ -39,22 +39,22 @@ macro_rules! set_bit{
        }
 }
 
-#[proof]
-fn set_bit_property_auto(bv:u32, bv2:u32, loc:u32, bit:bool) {
-    requires([
-        loc < 32,
-        bv2 == set_bit!(bv,loc,bit),
-    ]);
-    ensures([
-        forall(|loc2:u32| (loc2 < 32 && loc != loc2) >>= (get_bit_trigger!(bv2, loc2) == get_bit!(bv, loc2))),
-        get_bit!(bv2, loc) == bit,
-    ]);
-    assert_bit_vector(bv2 == set_bit!(bv, loc, bit) >>= 
-        ((forall(|loc2:u32| (loc2 < 32 && loc != loc2) >>= (get_bit_trigger!(bv2, loc2) == get_bit!(bv, loc2)))))) ;
+// #[proof]
+// fn set_bit_property_auto(bv:u32, bv2:u32, loc:u32, bit:bool) {
+//     requires([
+//         loc < 32,
+//         bv2 == set_bit!(bv,loc,bit),
+//     ]);
+//     ensures([
+//         forall(|loc2:u32| (loc2 < 32 && loc != loc2) >>= (get_bit_trigger!(bv2, loc2) == get_bit!(bv, loc2))),
+//         get_bit!(bv2, loc) == bit,
+//     ]);
+//     assert_bit_vector(bv2 == set_bit!(bv, loc, bit) >>= 
+//         ((forall(|loc2:u32| (loc2 < 32 && loc != loc2) >>= (get_bit_trigger!(bv2, loc2) == get_bit!(bv, loc2)))))) ;
 
-    assert_bit_vector((loc < 32 && bv2 == set_bit!(bv, loc, bit)) >>= 
-        get_bit!(bv2, loc) == bit);
-}
+//     assert_bit_vector((loc < 32 && bv2 == set_bit!(bv, loc, bit)) >>= 
+//         get_bit!(bv2, loc) == bit);
+// }
 
 #[derive(Structural, PartialEq, Eq)]
 enum Color {

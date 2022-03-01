@@ -2,7 +2,7 @@ use crate::ast::{
     BinaryOp, Fun, Ident, Idents, IntRange, MaskSpec, Mode, Params, Path, PathX, SpannedTyped, Typ,
     TypX, Typs, UnaryOp, UnaryOpr, VarAt,
 };
-use crate::ast_util::{bitwidth_from_type, get_field, get_variant, path_as_rust_name};
+use crate::ast_util::{bitwidth_from_type, get_field, get_variant};
 use crate::context::Ctx;
 use crate::def::{fn_inv_name, fn_namespace_name};
 use crate::def::{
@@ -428,6 +428,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: ExprCtxt) -> Expr {
                     ExprX::Unary(air::ast::UnaryOp::Not, Arc::new(eq))
                 }
                 // here the binary bitvector Ops are translated into the integer versions
+                // Similar to typ_invariant(), make obvious range according to bit-width
                 BinaryOp::BitXor
                 | BinaryOp::BitAnd
                 | BinaryOp::BitOr
@@ -441,15 +442,19 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: ExprCtxt) -> Expr {
                     let fname = match op {
                         BinaryOp::BitXor => crate::def::UINT_XOR,
                         BinaryOp::BitAnd => crate::def::UINT_AND,
-                        BinaryOp::BitOr => crate::def::UINT_AND,
-                        BinaryOp::Shl => crate::def::UINT_AND,
-                        BinaryOp::Shr => crate::def::UINT_AND,
+                        BinaryOp::BitOr => crate::def::UINT_OR,
+                        BinaryOp::Shl => crate::def::UINT_SHL,
+                        BinaryOp::Shr => crate::def::UINT_SHR,
                         _ => unreachable!(),
                     };
-                    ExprX::Apply(
+                    let ret_exp = ExprX::Apply(
                         Arc::new(fname.to_string()),
-                        Arc::new(vec![width_exp, box_lh, box_rh]),
-                    )
+                        Arc::new(vec![width_exp.clone(), box_lh, box_rh]),
+                    );
+                    ret_exp
+                    // let inv_name = crate::def::U_INV;   // in this case, we need to make sure signed integer is not used in bv
+                    // let exp_with_inv = str_apply(inv_name, &vec![width_exp, Arc::new(ret_exp)]);
+                    // return exp_with_inv;
                 }
                 _ => {
                     let aop = match op {
@@ -662,7 +667,7 @@ pub(crate) fn bv_typ_to_air(typ: &Typ) -> air::ast::Typ {
 }
 
 // convert the sst expression into bv air expression
-fn exp_to_bv_expr(state: &State, exp: &Exp) -> Expr {
+pub(crate) fn exp_to_bv_expr(exp: &Exp) -> Expr {
     match &exp.x {
         ExpX::Const(crate::ast::Constant::Nat(s)) => {
             if let Some(width) = bitwidth_from_type(&exp.typ) {
@@ -683,8 +688,8 @@ fn exp_to_bv_expr(state: &State, exp: &Exp) -> Expr {
                     assert_unsigned(&rhs);
                 }
             };
-            let lh = exp_to_bv_expr(state, lhs);
-            let rh = exp_to_bv_expr(state, rhs);
+            let lh = exp_to_bv_expr(lhs);
+            let rh = exp_to_bv_expr(rhs);
             let _ = match op {
                 BinaryOp::And => return mk_and(&vec![lh, rh]),
                 BinaryOp::Or => return mk_or(&vec![lh, rh]),
@@ -719,7 +724,7 @@ fn exp_to_bv_expr(state: &State, exp: &Exp) -> Expr {
             return Arc::new(ExprX::Binary(bop, lh, rh));
         }
         ExpX::Unary(op, exp) => {
-            let bv_e = exp_to_bv_expr(state, exp);
+            let bv_e = exp_to_bv_expr(exp);
             match op {
                 UnaryOp::Not => {
                     let bop = air::ast::UnaryOp::Not;
@@ -761,53 +766,24 @@ fn exp_to_bv_expr(state: &State, exp: &Exp) -> Expr {
                     "IntRange error: should be I(_) or U(_) for bit-vector, got {:?}",
                     exp.typ
                 ),
-                UnaryOp::Trigger(_) => exp_to_bv_expr(state, exp),
+                UnaryOp::Trigger(_) => exp_to_bv_expr(exp),
             }
         }
         ExpX::UnaryOpr(op, exp) => match op {
             UnaryOpr::Box(_) | UnaryOpr::Unbox(_) => {
-                return exp_to_bv_expr(state, exp);
+                return exp_to_bv_expr(exp);
             }
             _ => panic!("unhandled bv UnaryOpr {:?}", op),
         },
-        ExpX::Call(target, _types, args) => {
-            // TODO: find a better way than hard-coding primitives
-            // hard-coded get_bit primitive
-            if path_as_rust_name(&target.path) == "crate::get_bit" {
-                let bv = exp_to_bv_expr(state, &args[0]);
-                let loc = exp_to_bv_expr(state, &args[1]);
-                let shift = Arc::new(ExprX::Binary(air::ast::BinaryOp::LShr, bv, loc));
-                let one_mask =
-                    Arc::new(ExprX::Const(Constant::BitVec(Arc::new("1".to_string()), 32)));
-                let and =
-                    Arc::new(ExprX::Binary(air::ast::BinaryOp::BitAnd, shift, one_mask.clone()));
-                return Arc::new(ExprX::Binary(air::ast::BinaryOp::Eq, and, one_mask));
-            }
-            // hard-coded set_bit primitive
-            else if path_as_rust_name(&target.path) == "crate::set_bit" {
-                let bv = exp_to_bv_expr(state, &args[0]);
-                let loc = exp_to_bv_expr(state, &args[1]);
-                let bit = exp_to_bv_expr(state, &args[2]);
-                let one_mask =
-                    Arc::new(ExprX::Const(Constant::BitVec(Arc::new("1".to_string()), 32)));
-                let shift = Arc::new(ExprX::Binary(air::ast::BinaryOp::Shl, one_mask, loc));
-                let neg = Arc::new(ExprX::Unary(air::ast::UnaryOp::BitNot, shift.clone()));
-                let or = Arc::new(ExprX::Binary(air::ast::BinaryOp::BitOr, bv.clone(), shift));
-                let and = Arc::new(ExprX::Binary(air::ast::BinaryOp::BitAnd, bv, neg));
-                return Arc::new(ExprX::IfElse(bit, or, and));
-            } else {
-                panic!("unhandled bv expr conversion")
-            }
-        }
         ExpX::If(cond, tbranch, fbranch) => {
-            let cond = exp_to_bv_expr(state, &cond);
-            let bv_tbranch = exp_to_bv_expr(state, &tbranch);
-            let bv_fbranch = exp_to_bv_expr(state, &fbranch);
+            let cond = exp_to_bv_expr(&cond);
+            let bv_tbranch = exp_to_bv_expr(&tbranch);
+            let bv_fbranch = exp_to_bv_expr(&fbranch);
             return Arc::new(ExprX::IfElse(cond, bv_tbranch, bv_fbranch));
         }
         ExpX::Bind(bnd, exp) => match &bnd.x {
             BndX::Quant(quant, binders, trigs) => {
-                let bv_expr = exp_to_bv_expr(state, exp);
+                let bv_expr = exp_to_bv_expr(exp);
                 let invs: Vec<Expr> = Vec::new();
                 let inv = mk_and(&invs); // placeholder
                 let expr = match quant {
@@ -825,7 +801,7 @@ fn exp_to_bv_expr(state: &State, exp: &Exp) -> Expr {
                 // In fact, we might not need triggers in assert_bit_vector
                 // as long as we are not planning to use the assert_bit_vector()'s bitvector-fact in the future
                 let triggers =
-                    vec_map(&*trigs, |trig| Arc::new(vec_map(trig, |x| exp_to_bv_expr(state, x))));
+                    vec_map(&*trigs, |trig| Arc::new(vec_map(trig, |x| exp_to_bv_expr(x))));
                 air::ast_util::mk_quantifier(*quant, &binders, &triggers, &expr)
             }
             _ => panic!("unhandled bv bind conversion {:?} ", exp.x),
@@ -961,7 +937,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
                 "assertion failed".to_string(),
             );
             let local = state.local_bv_shared.clone();
-            let air_expr = exp_to_bv_expr(&state, &expr);
+            let air_expr = exp_to_bv_expr(&expr);
             let assertion = Arc::new(StmtX::Assert(error, air_expr));
             // this creates a separate query for the bv assertion
             let query = Arc::new(QueryX { local: Arc::new(local), assertion });
