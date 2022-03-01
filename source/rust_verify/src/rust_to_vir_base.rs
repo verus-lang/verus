@@ -500,7 +500,6 @@ pub(crate) fn check_generic_bound<'tcx>(
 pub(crate) fn check_generics_bounds<'tcx>(
     tcx: TyCtxt<'tcx>,
     generics: &'tcx Generics<'tcx>,
-    _function_decl: bool,
     check_that_external_body_datatype_declares_positivity: bool,
 ) -> Result<Vec<(vir::ast::Ident, vir::ast::GenericBound, bool)>, VirErr> {
     let Generics { params, where_clause, span: _ } = generics;
@@ -564,23 +563,18 @@ pub(crate) fn check_generics_bounds_fun<'tcx>(
     generics: &'tcx Generics<'tcx>,
 ) -> Result<TypBounds, VirErr> {
     Ok(Arc::new(
-        check_generics_bounds(tcx, generics, true, false)?
-            .into_iter()
-            .map(|(a, b, _)| (a, b))
-            .collect(),
+        check_generics_bounds(tcx, generics, false)?.into_iter().map(|(a, b, _)| (a, b)).collect(),
     ))
 }
 
 pub(crate) fn check_generics<'tcx>(
     tcx: TyCtxt<'tcx>,
     generics: &'tcx Generics<'tcx>,
-    function_decl: bool,
     check_that_external_body_datatype_declares_positivity: bool,
 ) -> Result<Vec<(vir::ast::Ident, bool)>, VirErr> {
     let typ_bounds = check_generics_bounds(
         tcx,
         generics,
-        function_decl,
         check_that_external_body_datatype_declares_positivity,
     )?;
     let mut typ_params: Vec<(vir::ast::Ident, bool)> = Vec::new();
@@ -602,11 +596,8 @@ pub(crate) fn check_generics<'tcx>(
 pub(crate) fn check_generics_idents<'tcx>(
     tcx: TyCtxt<'tcx>,
     generics: &'tcx Generics<'tcx>,
-    function_decl: bool,
 ) -> Result<Idents, VirErr> {
-    Ok(Arc::new(
-        check_generics(tcx, generics, function_decl, false)?.into_iter().map(|(a, _)| a).collect(),
-    ))
+    Ok(Arc::new(check_generics(tcx, generics, false)?.into_iter().map(|(a, _)| a).collect()))
 }
 
 pub(crate) fn is_lifetime_bound(bound: &GenericBound) -> bool {
