@@ -20,8 +20,9 @@ pub struct Invariant<#[verifier(maybe_negative)] V> {
 #[verifier(external_body)]
 pub struct LocalInvariant<#[verifier(maybe_negative)] V> {
     dummy: std::marker::PhantomData<V>,
-    dummy_no_sync: PhantomNoSync,
 }
+
+impl<V> !Sync for LocalInvariant<V> {}
 
 macro_rules! declare_invariant_impl {
     ($invariant:ident) => {
