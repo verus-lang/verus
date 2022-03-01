@@ -109,12 +109,13 @@ struct Score {
     // prefer
     depth: u64, // 1 or more, or 0 for next to ==
     size: u64,
+    is_operator: bool,
 }
 
 impl Score {
     // lower total score is better
     fn total(&self) -> u64 {
-        self.depth * 1000 + self.size
+        self.depth * 1000 + self.size + {if self.is_operator {1000000} else {0}}
     }
 }
 
@@ -190,8 +191,8 @@ fn trigger_var_depth(ctxt: &Ctxt, term: &Term, depth: u64) -> Option<u64> {
     }
 }
 
-fn make_score(term: &Term, depth: u64) -> Score {
-    Score { depth, size: term_size(term) }
+fn make_score(term: &Term, depth: u64, is_operator: bool) -> Score {
+    Score { depth, size: term_size(term), is_operator}
 }
 
 fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Term) {
@@ -316,7 +317,7 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
             if !ctxt.pure_terms.contains_key(&term) {
                 ctxt.pure_terms.insert(term.clone(), exp.clone());
             }
-            let score = make_score(&term, var_depth);
+            let score = make_score(&term, var_depth, false);
             if !ctxt.pure_best_scores.contains_key(&term)
                 || score.total() < ctxt.pure_best_scores[&term].total()
             {
@@ -324,6 +325,24 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
             }
         }
     }
+    // bitwise operators as trigger
+    use BinaryOp::*;
+    let _ = match &exp.x {
+        ExpX::Unary(UnaryOp::BitNot, _) |
+        ExpX::Binary(BitXor | BitAnd | BitOr | Shr | Shl, _, _ ) => {
+            if !ctxt.pure_terms.contains_key(&term) {
+                ctxt.pure_terms.insert(term.clone(), exp.clone());
+            }
+            let score = make_score(&term, depth+1, true);
+            if !ctxt.pure_best_scores.contains_key(&term)
+                || score.total() < ctxt.pure_best_scores[&term].total()
+            {
+                ctxt.pure_best_scores.insert(term.clone(), score);
+            }
+        },
+        _ => (),
+    };
+
     (is_pure, term)
 }
 
