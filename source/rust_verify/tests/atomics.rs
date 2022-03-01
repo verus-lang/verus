@@ -111,9 +111,37 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] untrusted_atomic_success
+    COMMON.to_string() + code_str! {
+        #[verifier(atomic)]
+        fn untrusted_atomic_op_1() { }
+
+        #[verifier(atomic)]
+        fn untrusted_atomic_op_2() {
+            atomic_op();
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] untrusted_atomic_fail
     COMMON.to_string() + code_str! {
         #[verifier(atomic)]
-        fn untrusted_atomic_op() { }
+        fn untrusted_atomic_op() {
+            non_atomic_op();
+        }
+
+    } => Err(err) => assert_vir_error(err)
+}
+
+test_verify_one_file! {
+    #[test] untrusted_atomic_fail2
+    COMMON.to_string() + code_str! {
+        #[verifier(atomic)]
+        fn untrusted_atomic_op() {
+            atomic_op();
+            atomic_op();
+        }
+
     } => Err(err) => assert_vir_error(err)
 }

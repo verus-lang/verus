@@ -279,13 +279,8 @@ macro_rules! atomic_integer_methods {
 
         // fetch_add and fetch_sub are more natural in the common case that you
         // don't expect wrapping
-        //
-        // TODO fetch_add and fetch_sub could be verified, untrusted, in terms of
-        // fetch_add_wrapping and fetch_sub_wrapping; however, right now we do not
-        // support the #[verifier(atomic)] attribute on untrusted functions
 
         #[inline(always)]
-        #[verifier(external_body)]
         #[verifier(atomic)]
         pub fn fetch_add(&self, #[proof] perm: &mut $p_ident, n: $value_ty) -> $value_ty {
             requires([
@@ -299,17 +294,16 @@ macro_rules! atomic_integer_methods {
             );
             opens_invariants_none();
 
-            return self.ato.fetch_add(n, Ordering::SeqCst);
+            self.fetch_add_wrapping(&mut *perm, n)
         }
 
         #[inline(always)]
-        #[verifier(external_body)]
         #[verifier(atomic)]
         pub fn fetch_sub(&self, #[proof] perm: &mut $p_ident, n: $value_ty) -> $value_ty {
             requires([
                 equal(self.view(), old(perm).patomic),
                 $int_min as int <= old(perm).value as int - n as int,
-                old(perm).value as int - n  as int<= $int_max as int,
+                old(perm).value as int - n  as int <= $int_max as int,
             ]);
             ensures(|ret: $value_ty| equal(old(perm).value, ret)
                 && perm.patomic == old(perm).patomic
@@ -317,7 +311,7 @@ macro_rules! atomic_integer_methods {
             );
             opens_invariants_none();
 
-            return self.ato.fetch_add(n, Ordering::SeqCst);
+            self.fetch_sub_wrapping(&mut *perm, n)
         }
 
         #[inline(always)]
