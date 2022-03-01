@@ -737,7 +737,8 @@ fn fn_call_to_vir<'tcx>(
                 GenericArgKind::Type(ty) => {
                     typ_args.push(mid_ty_to_vir(tcx, ty, false));
                 }
-                _ => unsupported_err!(expr.span, format!("lifetime/const type arguments"), expr),
+                GenericArgKind::Lifetime(_) => {}
+                _ => unsupported_err!(expr.span, format!("const type arguments"), expr),
             }
         }
         let target = CallTarget::Static(name, Arc::new(typ_args));
