@@ -83,14 +83,35 @@ fn get_ensures_arg<'tcx>(
     }
 }
 
+fn closure_param_typs<'tcx>(bctx: &BodyCtxt<'tcx>, expr: &Expr<'tcx>) -> Vec<Typ> {
+    let node_type = bctx.types.node_type(expr.hir_id);
+    match node_type.kind() {
+        TyKind::Closure(_def, substs) => {
+            let sig = substs.as_closure().sig();
+            let args: Vec<Typ> = sig
+                .inputs()
+                .skip_binder()
+                .iter()
+                .map(|t| mid_ty_to_vir(bctx.ctxt.tcx, t, false /* allow_mut_ref */))
+                .collect();
+            assert!(args.len() == 1);
+            match &*args[0] {
+                TypX::Tuple(typs) => (**typs).clone(),
+                _ => panic!("expected tuple type"),
+            }
+        }
+        _ => panic!("closure_param_types expected Closure type"),
+    }
+}
+
 fn extract_ensures<'tcx>(
     bctx: &BodyCtxt<'tcx>,
     expr: &'tcx Expr<'tcx>,
 ) -> Result<HeaderExpr, VirErr> {
     let tcx = bctx.ctxt.tcx;
     match &expr.kind {
-        ExprKind::Closure(_, fn_decl, body_id, _, _) => {
-            let typs: Vec<Typ> = fn_decl.inputs.iter().map(|t| ty_to_vir(tcx, t)).collect();
+        ExprKind::Closure(_, _fn_decl, body_id, _, _) => {
+            let typs: Vec<Typ> = closure_param_typs(bctx, expr);
             let body = tcx.hir().body(*body_id);
             let xs: Vec<String> = body.params.iter().map(|param| pat_to_var(param.pat)).collect();
             let expr = &body.value;
@@ -119,13 +140,13 @@ fn extract_quant<'tcx>(
     match &expr.kind {
         ExprKind::Closure(_, fn_decl, body_id, _, _) => {
             let body = tcx.hir().body(*body_id);
+            let typs = closure_param_typs(bctx, expr);
+            assert!(typs.len() == body.params.len());
             let binders: Vec<Binder<Typ>> = body
                 .params
                 .iter()
-                .zip(fn_decl.inputs)
-                .map(|(x, t)| {
-                    Arc::new(BinderX { name: Arc::new(pat_to_var(x.pat)), a: ty_to_vir(tcx, t) })
-                })
+                .zip(typs)
+                .map(|(x, t)| Arc::new(BinderX { name: Arc::new(pat_to_var(x.pat)), a: t }))
                 .collect();
             let expr = &body.value;
             let mut vir_expr = expr_to_vir(bctx, expr, ExprModifier::REGULAR)?;
@@ -152,13 +173,13 @@ fn extract_assert_forall_by<'tcx>(
     match &expr.kind {
         ExprKind::Closure(_, fn_decl, body_id, _, _) => {
             let body = tcx.hir().body(*body_id);
+            let typs = closure_param_typs(bctx, expr);
+            assert!(body.params.len() == typs.len());
             let binders: Vec<Binder<Typ>> = body
                 .params
                 .iter()
-                .zip(fn_decl.inputs)
-                .map(|(x, t)| {
-                    Arc::new(BinderX { name: Arc::new(pat_to_var(x.pat)), a: ty_to_vir(tcx, t) })
-                })
+                .zip(typs)
+                .map(|(x, t)| Arc::new(BinderX { name: Arc::new(pat_to_var(x.pat)), a: t }))
                 .collect();
             let expr = &body.value;
             let mut vir_expr = expr_to_vir(bctx, expr, ExprModifier::REGULAR)?;
@@ -200,9 +221,10 @@ fn extract_choose<'tcx>(
             let closure_body = tcx.hir().body(*body_id);
             let mut params: Vec<Binder<Typ>> = Vec::new();
             let mut vars: Vec<vir::ast::Expr> = Vec::new();
-            for (x, t) in closure_body.params.iter().zip(fn_decl.inputs) {
+            let typs = closure_param_typs(bctx, expr);
+            assert!(closure_body.params.len() == typs.len());
+            for (x, typ) in closure_body.params.iter().zip(typs) {
                 let name = Arc::new(pat_to_var(x.pat));
-                let typ = ty_to_vir(tcx, t);
                 vars.push(spanned_typed_new(x.span, &typ, ExprX::Var(name.clone())));
                 params.push(Arc::new(BinderX { name, a: typ }));
             }
@@ -1689,18 +1711,15 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
         }
         ExprKind::Closure(_, fn_decl, body_id, _, _) => {
             let body = tcx.hir().body(*body_id);
+            let typs = closure_param_typs(bctx, expr);
+            assert!(typs.len() == body.params.len());
             let params: Vec<Binder<Typ>> = body
                 .params
                 .iter()
-                .zip(fn_decl.inputs)
-                .map(|(x, t)| {
-                    Arc::new(BinderX { name: Arc::new(pat_to_var(x.pat)), a: ty_to_vir(tcx, t) })
-                })
+                .zip(typs.clone())
+                .map(|(x, t)| Arc::new(BinderX { name: Arc::new(pat_to_var(x.pat)), a: t }))
                 .collect();
             let body = expr_to_vir(bctx, &body.value, modifier)?;
-            // Rust seems to report the type (A, B) -> C as ((A, B)) -> C,
-            // so recompute the type ourselves:
-            let typs = params.iter().map(|b| b.a.clone()).collect();
             let typ = Arc::new(TypX::Lambda(Arc::new(typs), body.typ.clone()));
             Ok(spanned_typed_new(expr.span, &typ, ExprX::Closure(Arc::new(params), body)))
         }

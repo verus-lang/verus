@@ -66,6 +66,20 @@ test_verify_one_file! {
             let q: u32 = 3;
             assert(specf(10, |z: u32| z + 1 + p + q) == 18 + 2 * p);
         }
+
+        #[proof]
+        fn test_specf_inference(p: u32) {
+            requires(p < 100);
+
+            let q: u32 = 3;
+            assert(specf(10, |z| z + 1 + p + q) == 18 + 2 * p);
+        }
+
+        #[proof]
+        fn test_refine_inference<F: Fn(bool, bool) -> nat>(f: F) {
+            refine_takefun(|x, y| 10);
+            assert(apply_to_1(|u| 10) >= 0);
+        }
     } => Ok(())
 }
 

@@ -75,6 +75,14 @@ test_verify_one_file! {
             assert(f1(3) > 3);
         }
 
+        fn forallstmt_test_inference() {
+            assert_forall_by(|x| {
+                ensures(f1(x) > x);
+                reveal(f1);
+            });
+            assert(f1(3) > 3);
+        }
+
         #[proof]
         fn no_consume(x: bool) {
         }
