@@ -61,7 +61,7 @@ impl Typing {
     }
 }
 
-// One tricky thing in mode-checking is that an invariant blocks needs to have
+// One tricky thing in mode-checking is that an invariant block needs to have
 // *at most one* atomic instruction in it.
 // Thus, we can't just declare everything inside it to be 'proof' code,
 // but we can't allow it all to be 'exec' code either.
