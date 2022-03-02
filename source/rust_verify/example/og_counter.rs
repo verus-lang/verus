@@ -80,7 +80,7 @@ pub struct G {
 impl G {
   #[spec]
   pub fn wf(self, inst: X_Instance, patomic: PAtomicU32) -> bool {
-    equal(self.perm.patomic, patomic.view()) && equal(self.perm.value as int, self.counter.counter)
+    equal(self.perm.patomic, patomic.view()) && equal(self.perm.value as int, self.counter.value)
     && equal(self.counter.instance, inst)
   }
 }

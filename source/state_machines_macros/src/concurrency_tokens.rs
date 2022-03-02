@@ -51,7 +51,9 @@ fn field_token_type_double_colon(sm: &SM, field: &Field) -> Type {
 }
 
 fn field_token_field_name(field: &Field) -> Ident {
-    field.ident.clone()
+    // just call it value rather than repeat the field name
+    // else, the user will be writing foo.foo everywhere
+    Ident::new("value", field.ident.span())
 }
 
 fn nondeterministic_read_spec_out_name(field: &Field) -> Ident {

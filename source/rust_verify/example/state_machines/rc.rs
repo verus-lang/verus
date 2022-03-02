@@ -68,7 +68,7 @@ impl<T> Duplicable<T> {
 
     #[spec]
     pub fn view(self) -> T {
-        self.reader.reader
+        self.reader.value
     }
 
     #[proof]
@@ -77,7 +77,7 @@ impl<T> Duplicable<T> {
         ensures(|s: Self| s.wf() && equal(s.view(), t));
 
         #[proof] let (inst, mut readers) = Dupe_Instance::initialize_one(/* spec */ t, Option::Some(t));
-        #[proof] let reader = readers.proof_remove(Dupe_reader { reader: t, instance: inst });
+        #[proof] let reader = readers.proof_remove(Dupe_reader { value: t, instance: inst });
         Duplicable {
             inst, reader
         }
@@ -91,7 +91,7 @@ impl<T> Duplicable<T> {
             other.wf() && equal(self.view(), other.view())
         );
 
-        #[proof] let r = self.inst.dupe(self.reader.reader, &self.reader);
+        #[proof] let r = self.inst.dupe(self.reader.value, &self.reader);
         Duplicable { inst: self.inst.clone(), reader: r }
     }
 
@@ -101,7 +101,7 @@ impl<T> Duplicable<T> {
         requires(self.wf());
         ensures(|t: &T| equal(*t, self.view()));
 
-        self.inst.borrow(self.reader.reader, &self.reader)
+        self.inst.borrow(self.reader.value, &self.reader)
     }
 }
 
@@ -225,7 +225,7 @@ impl<S> GhostStuff<S> {
         equal(self.rc_perm.pcell, cell.view())
         && equal(self.rc_token.instance, inst)
         && self.rc_perm.value.is_Some()
-        && self.rc_perm.value.get_Some_0() as nat == self.rc_token.counter
+        && self.rc_perm.value.get_Some_0() as nat == self.rc_token.value
     }
 }
 
@@ -246,17 +246,17 @@ struct MyRc<S> {
 impl<S> MyRc<S> {
     #[spec]
     fn wf(self) -> bool {
-        equal(self.reader.reader.pptr, self.ptr.view())
+        equal(self.reader.value.pptr, self.ptr.view())
         && equal(self.reader.instance, self.inst)
-        && self.reader.reader.value.is_Some()
+        && self.reader.value.value.is_Some()
         && self.inv.wf()
         && (forall(|g: GhostStuff<S>| self.inv.view().inv(g) ==
-            g.wf(self.inst, self.reader.reader.value.get_Some_0().rc_cell)))
+            g.wf(self.inst, self.reader.value.value.get_Some_0().rc_cell)))
     }
 
     #[spec]
     fn view(self) -> S {
-        self.reader.reader.value.get_Some_0().s
+        self.reader.value.value.get_Some_0().s
     }
 
     fn new(s: S) -> Self {
@@ -279,7 +279,7 @@ impl<S> MyRc<S> {
 
         #[proof] let inv = LocalInvariant::new(g,
             |g: GhostStuff<S>|
-                g.wf(reader.instance, reader.reader.value.get_Some_0().rc_cell),
+                g.wf(reader.instance, reader.value.value.get_Some_0().rc_cell),
             0);
         #[proof] let inv = Duplicable::new(inv);
 
@@ -291,7 +291,7 @@ impl<S> MyRc<S> {
         ensures(|s: &'b S| equal(*s, self.view()));
 
         #[proof] let perm = self.inst.reader_guard(
-            self.reader.reader,
+            self.reader.value,
             &self.reader);
         &self.ptr.as_ref(perm).s
     }
@@ -301,7 +301,7 @@ impl<S> MyRc<S> {
         ensures(|s: Self| s.wf() && equal(s.view(), self.view()));
 
         #[proof] let perm = self.inst.reader_guard(
-            self.reader.reader,
+            self.reader.value,
             &self.reader);
         let inner_rc_ref = &self.ptr.as_ref(perm);
 
@@ -317,7 +317,7 @@ impl<S> MyRc<S> {
             inner_rc_ref.rc_cell.put(count, &mut rc_perm);
 
             new_reader = self.inst.do_clone(
-                self.reader.reader,
+                self.reader.value,
                 &mut rc_token,
                 &self.reader);
                 
@@ -338,7 +338,7 @@ impl<S> MyRc<S> {
         let MyRc { inst, inv, reader, ptr } = self;
 
         #[proof] let perm = inst.reader_guard(
-            reader.reader,
+            reader.value,
             &reader);
         let inner_rc_ref = &ptr.as_ref(perm);
 
@@ -351,12 +351,12 @@ impl<S> MyRc<S> {
                 inner_rc_ref.rc_cell.put(count, &mut rc_perm);
 
                 inst.dec_basic(
-                    reader.reader,
+                    reader.value,
                     &mut rc_token,
                     reader);
             } else {
                 #[proof] let mut inner_rc_perm = inst.dec_to_zero(
-                    reader.reader,
+                    reader.value,
                     &mut rc_token,
                     reader);
 
