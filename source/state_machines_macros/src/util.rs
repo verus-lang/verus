@@ -16,3 +16,12 @@ pub fn combine_errors_or_ok(errors: Vec<Error>) -> syn::parse::Result<()> {
     }
     res
 }
+
+pub fn combine_results(errors: Vec<syn::parse::Result<()>>) -> syn::parse::Result<()> {
+    combine_errors_or_ok(
+        errors.iter().filter_map(|res|
+            match res {
+                Ok(_) => None,
+                Err(e) => Some(e.clone()),
+            }).collect())
+}

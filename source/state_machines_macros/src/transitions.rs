@@ -1,4 +1,5 @@
 use crate::ast::{Field, ShardableType, SpecialOp, Transition, TransitionKind, TransitionStmt, SM};
+use crate::util::{combine_results, combine_errors_or_ok};
 use proc_macro2::Span;
 use std::collections::HashMap;
 use syn::spanned::Spanned;
@@ -27,34 +28,32 @@ pub fn get_field<'a>(fields: &'a Vec<Field>, ident: &Ident) -> &'a Field {
 fn check_updates_refer_to_valid_fields(
     fields: &Vec<Field>,
     ts: &TransitionStmt,
-) -> syn::parse::Result<()> {
+    errors: &mut Vec<Error>,
+) {
     match ts {
         TransitionStmt::Block(_, v) => {
             for t in v.iter() {
-                check_updates_refer_to_valid_fields(fields, t)?;
+                check_updates_refer_to_valid_fields(fields, t, errors);
             }
-            Ok(())
         }
-        TransitionStmt::Let(_, _, _) => Ok(()),
+        TransitionStmt::Let(_, _, _) => { }
         TransitionStmt::If(_, _, thn, els) => {
-            check_updates_refer_to_valid_fields(fields, thn)?;
-            check_updates_refer_to_valid_fields(fields, els)?;
-            Ok(())
+            check_updates_refer_to_valid_fields(fields, thn, errors);
+            check_updates_refer_to_valid_fields(fields, els, errors);
         }
-        TransitionStmt::Require(_, _) => Ok(()),
-        TransitionStmt::Assert(_, _) => Ok(()),
+        TransitionStmt::Require(_, _) => { }
+        TransitionStmt::Assert(_, _) => { }
         TransitionStmt::Update(span, f, _)
         | TransitionStmt::Initialize(span, f, _)
         | TransitionStmt::Special(span, f, _) => {
             if !fields_contain(fields, f) {
-                return Err(Error::new(
+                errors.push(Error::new(
                     span.span(),
                     format!("field '{}' not found", f.to_string()),
                 ));
             }
-            Ok(())
         }
-        TransitionStmt::PostCondition(..) => Ok(()),
+        TransitionStmt::PostCondition(..) => { }
     }
 }
 
@@ -185,11 +184,13 @@ fn check_init_rec(ts: &TransitionStmt) -> syn::parse::Result<Vec<(Ident, Span)>>
     }
 }
 
-fn check_at_most_one_update(sm: &SM, ts: &TransitionStmt) -> syn::parse::Result<()> {
+fn check_at_most_one_update(sm: &SM, ts: &TransitionStmt, errors: &mut Vec<Error>) {
     for f in &sm.fields {
-        check_at_most_one_update_rec(f, ts)?;
+        match check_at_most_one_update_rec(f, ts) {
+            Ok(_) => { }
+            Err(e) => errors.push(e),
+        }
     }
-    Ok(())
 }
 
 fn check_at_most_one_update_rec(
@@ -283,24 +284,23 @@ fn check_valid_ops(
     fields: &Vec<Field>,
     ts: &TransitionStmt,
     is_readonly: bool,
-) -> syn::parse::Result<()> {
+    errors: &mut Vec<Error>,
+) {
     match ts {
         TransitionStmt::Block(_, v) => {
             for t in v.iter() {
-                check_valid_ops(fields, t, is_readonly)?;
+                check_valid_ops(fields, t, is_readonly, errors);
             }
-            Ok(())
         }
-        TransitionStmt::Let(_, _, _) => Ok(()),
+        TransitionStmt::Let(_, _, _) => { }
         TransitionStmt::If(_, _, thn, els) => {
-            check_valid_ops(fields, thn, is_readonly)?;
-            check_valid_ops(fields, els, is_readonly)?;
-            Ok(())
+            check_valid_ops(fields, thn, is_readonly, errors);
+            check_valid_ops(fields, els, is_readonly, errors);
         }
-        TransitionStmt::Require(_, _) => Ok(()),
-        TransitionStmt::Assert(_, _) => Ok(()),
+        TransitionStmt::Require(_, _) => { }
+        TransitionStmt::Assert(_, _) => { }
         TransitionStmt::Initialize(span, _, _) => {
-            return Err(Error::new(
+            errors.push(Error::new(
                 span.span(),
                 format!("'init' statement not allowed outside 'init' routine"),
             ));
@@ -308,7 +308,7 @@ fn check_valid_ops(
         TransitionStmt::Update(span, f, _) => {
             let field = get_field(fields, f);
             if !is_allowed_in_update_in_normal_transition(&field.stype) {
-                return Err(Error::new(
+                errors.push(Error::new(
                     span.span(),
                     format!(
                         "'update' statement not allowed for field with sharding strategy '{:}'",
@@ -317,17 +317,16 @@ fn check_valid_ops(
                 ));
             }
             if is_readonly {
-                return Err(Error::new(
+                errors.push(Error::new(
                     span.span(),
                     format!("'update' statement not allowed in readonly transition"),
                 ));
             }
-            Ok(())
         }
         TransitionStmt::Special(span, f, op) => {
             let field = get_field(fields, f);
             if !is_allowed_in_special_op(&field.stype, op) {
-                return Err(Error::new(
+                errors.push(Error::new(
                     span.span(),
                     format!(
                         "'{:}' statement not allowed for field with sharding strategy '{:}'",
@@ -337,7 +336,7 @@ fn check_valid_ops(
                 ));
             }
             if is_readonly && op.is_modifier() {
-                return Err(Error::new(
+                errors.push(Error::new(
                     span.span(),
                     format!(
                         "'{:}' statement not allowed in readonly transition",
@@ -346,7 +345,7 @@ fn check_valid_ops(
                 ));
             }
             if !is_readonly && op.is_only_allowed_in_readonly() {
-                return Err(Error::new(
+                errors.push(Error::new(
                     span.span(),
                     format!(
                         "'{:}' statement only allowed in readonly transition",
@@ -354,74 +353,86 @@ fn check_valid_ops(
                     ),
                 ));
             }
-            Ok(())
         }
-        TransitionStmt::PostCondition(..) => Ok(()),
+        TransitionStmt::PostCondition(..) => { }
     }
 }
 
-fn check_let_shadowing(trans: &Transition) -> syn::parse::Result<()> {
+fn check_let_shadowing(trans: &Transition, errors: &mut Vec<Error>) {
     let mut ids = trans.params.iter().map(|p| p.ident.to_string()).collect();
-    check_let_shadowing_rec(&trans.body, &mut ids)
+    check_let_shadowing_rec(&trans.body, &mut ids, errors)
 }
 
-fn check_let_shadowing_rec(ts: &TransitionStmt, ids: &mut Vec<String>) -> syn::parse::Result<()> {
+fn check_let_shadowing_rec(ts: &TransitionStmt, ids: &mut Vec<String>, errors: &mut Vec<Error>) {
     match ts {
         TransitionStmt::Block(_, v) => {
             for t in v {
-                check_let_shadowing_rec(t, ids)?;
+                check_let_shadowing_rec(t, ids, errors);
             }
-            Ok(())
         }
         TransitionStmt::If(_, _, e1, e2) => {
-            check_let_shadowing_rec(e1, ids)?;
-            check_let_shadowing_rec(e2, ids)?;
-            Ok(())
+            check_let_shadowing_rec(e1, ids, errors);
+            check_let_shadowing_rec(e2, ids, errors);
         }
 
         TransitionStmt::Let(span, id, _) => {
             let s = id.to_string();
             if ids.contains(&s) {
-                Err(Error::new(
+                errors.push(Error::new(
                     *span,
-                    format!("state machine transitions forbid let-shadowing")))
+                    format!("state machine transitions forbid let-shadowing")));
             } else {
                 ids.push(s);
-                Ok(())
             }
         }
 
-        TransitionStmt::Require(_, _) => Ok(()),
-        TransitionStmt::Assert(_, _) => Ok(()),
-        TransitionStmt::Update(_, _, _) => Ok(()),
-        TransitionStmt::Initialize(_, _, _) => Ok(()),
-        TransitionStmt::PostCondition(..) => Ok(()),
-        TransitionStmt::Special(_, _, _) => Ok(()),
+        TransitionStmt::Require(_, _) => { }
+        TransitionStmt::Assert(_, _) => { }
+        TransitionStmt::Update(_, _, _) => { }
+        TransitionStmt::Initialize(_, _, _) => { }
+        TransitionStmt::PostCondition(..) => { }
+        TransitionStmt::Special(_, _, _) => { }
     }
 }
 
 /// Check simple well-formedness properties of the transitions.
 
 pub fn check_transitions(sm: &SM) -> syn::parse::Result<()> {
+    let mut results: Vec<syn::parse::Result<()>> = Vec::new();
+
     for tr in &sm.transitions {
-        check_updates_refer_to_valid_fields(&sm.fields, &tr.body)?;
-
-        match &tr.kind {
-            TransitionKind::Readonly => {
-                check_valid_ops(&sm.fields, &tr.body, true)?;
-            }
-            TransitionKind::Transition => {
-                check_valid_ops(&sm.fields, &tr.body, false)?;
-                check_at_most_one_update(sm, &tr.body)?;
-            }
-            TransitionKind::Init => {
-                // check exactly one update
-                check_init(sm, &tr.body)?;
-            }
-        }
-
-        check_let_shadowing(tr)?;
+        results.push(check_transition(sm, tr));
     }
 
-    Ok(())
+    combine_results(results)
+}
+
+pub fn check_transition(sm: &SM, tr: &Transition) -> syn::parse::Result<()> {
+    let mut errors = Vec::new();
+    check_updates_refer_to_valid_fields(&sm.fields, &tr.body, &mut errors);
+
+    if errors.len() > 0 {
+        return combine_errors_or_ok(errors);
+    }
+
+    match &tr.kind {
+        TransitionKind::Readonly => {
+            check_valid_ops(&sm.fields, &tr.body, true, &mut errors);
+        }
+        TransitionKind::Transition => {
+            check_valid_ops(&sm.fields, &tr.body, false, &mut errors);
+            check_at_most_one_update(sm, &tr.body, &mut errors);
+        }
+        TransitionKind::Init => {
+            // check exactly one update
+            match check_init(sm, &tr.body) {
+                Ok(()) => { }
+                Err(e) => errors.push(e),
+            }
+        }
+    }
+
+    check_let_shadowing(tr, &mut errors);
+
+    combine_errors_or_ok(errors)
 }
