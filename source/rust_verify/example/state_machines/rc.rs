@@ -76,7 +76,7 @@ impl<T> Duplicable<T> {
     pub fn new(#[proof] t: T) -> Self {
         ensures(|s: Self| s.wf() && equal(s.view(), t));
 
-        #[proof] let (inst, mut readers) = Dupe_initialize_one(/* spec */ t, Option::Some(t));
+        #[proof] let (inst, mut readers) = Dupe_Instance::initialize_one(/* spec */ t, Option::Some(t));
         #[proof] let reader = readers.proof_remove(Dupe_reader { reader: t, instance: inst });
         Duplicable {
             inst, reader
@@ -91,7 +91,7 @@ impl<T> Duplicable<T> {
             other.wf() && equal(self.view(), other.view())
         );
 
-        #[proof] let r = Dupe_dupe(self.inst.clone(), self.reader.reader, &self.reader);
+        #[proof] let r = self.inst.dupe(self.reader.reader, &self.reader);
         Duplicable { inst: self.inst.clone(), reader: r }
     }
 
@@ -101,7 +101,7 @@ impl<T> Duplicable<T> {
         requires(self.wf());
         ensures(|t: &T| equal(*t, self.view()));
 
-        Dupe_borrow(self.inst.clone(), self.reader.reader, &self.reader)
+        self.inst.borrow(self.reader.reader, &self.reader)
     }
 }
 
@@ -272,8 +272,8 @@ impl<S> MyRc<S> {
         let (ptr, Proof(mut ptr_perm)) = PPtr::empty();
         ptr.put(inner_rc, &mut ptr_perm);
 
-        #[proof] let (inst, mut rc_token, _) = RefCounter_initialize_empty(Option::None);
-        #[proof] let reader = RefCounter_do_deposit(inst.clone(), ptr_perm, &mut rc_token, ptr_perm);
+        #[proof] let (inst, mut rc_token, _) = RefCounter_Instance::initialize_empty(Option::None);
+        #[proof] let reader = inst.do_deposit(ptr_perm, &mut rc_token, ptr_perm);
 
         #[proof] let g = GhostStuff::<S> { rc_perm, rc_token };
 
@@ -290,8 +290,7 @@ impl<S> MyRc<S> {
         requires(self.wf());
         ensures(|s: &'b S| equal(*s, self.view()));
 
-        #[proof] let perm = RefCounter_reader_guard(
-            self.inst.clone(),
+        #[proof] let perm = self.inst.reader_guard(
             self.reader.reader,
             &self.reader);
         &self.ptr.as_ref(perm).s
@@ -301,8 +300,7 @@ impl<S> MyRc<S> {
         requires(self.wf());
         ensures(|s: Self| s.wf() && equal(s.view(), self.view()));
 
-        #[proof] let perm = RefCounter_reader_guard(
-            self.inst.clone(),
+        #[proof] let perm = self.inst.reader_guard(
             self.reader.reader,
             &self.reader);
         let inner_rc_ref = &self.ptr.as_ref(perm);
@@ -318,7 +316,7 @@ impl<S> MyRc<S> {
             let count = count + 1;
             inner_rc_ref.rc_cell.put(count, &mut rc_perm);
 
-            new_reader = RefCounter_do_clone(self.inst.clone(),
+            new_reader = self.inst.do_clone(
                 self.reader.reader,
                 &mut rc_token,
                 &self.reader);
@@ -339,8 +337,7 @@ impl<S> MyRc<S> {
 
         let MyRc { inst, inv, reader, ptr } = self;
 
-        #[proof] let perm = RefCounter_reader_guard(
-            inst.clone(),
+        #[proof] let perm = inst.reader_guard(
             reader.reader,
             &reader);
         let inner_rc_ref = &ptr.as_ref(perm);
@@ -353,12 +350,12 @@ impl<S> MyRc<S> {
                 let count = count - 1;
                 inner_rc_ref.rc_cell.put(count, &mut rc_perm);
 
-                RefCounter_dec_basic(inst.clone(),
+                inst.dec_basic(
                     reader.reader,
                     &mut rc_token,
                     reader);
             } else {
-                #[proof] let mut inner_rc_perm = RefCounter_dec_to_zero(inst.clone(),
+                #[proof] let mut inner_rc_perm = inst.dec_to_zero(
                     reader.reader,
                     &mut rc_token,
                     reader);

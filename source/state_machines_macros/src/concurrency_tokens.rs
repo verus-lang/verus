@@ -4,87 +4,6 @@
 //!  * The Instance type
 //!  * All the Token types for shardable fields
 //!  * #[proof] methods for each transition (including init and readonly transitions)
-//!
-//! Currently supports: 'variable' and 'constant' sharding
-//!
-//! For a state machine named X, we produce code that looks like:
-//!    
-//!    // Primary Instance object:
-//!    
-//!    #[proof]
-//!    #[allow(non_camel_case_types)]
-//!    #[verifier(external_body)]
-//!    #[verifier(unforgeable)]
-//!    pub struct X_Instance {
-//!        #[proof] pub dummy_field: ::std::marker::PhantomData<X>,
-//!    }
-//!    
-//!    // Token types, each of which look something like:
-//!    
-//!    #[proof]
-//!    #[verifier(unforgeable)]
-//!    #[allow(non_camel_case_types)]
-//!    pub struct X_counter {
-//!        #[spec] pub instance: X_Instance,
-//!        #[spec] pub counter: int,
-//!    }
-//!    
-//!    // Clone method for the instance:
-//!    
-//!    impl X_Instance {
-//!        #[proof]
-//!        #[verifier(external_body)]
-//!        #[verifier(returns(proof))]
-//!        pub fn clone(#[proof] &self) -> Self {
-//!            ensures(|s: Self| ::builtin::equal(*self, s));
-//!            ::core::panicking::panic("not implemented");
-//!        }
-//!    }
-//!    
-//!    // Exchange methods. An initialization looks something like this
-//!    
-//!    #[proof]
-//!    #[verifier(returns(proof))]
-//!    #[verifier(external_body)]
-//!    pub fn X_initialize(params...) -> (X_Instance, /* ... tokens */) {
-//!        ::builtin::requires(/* enabling conditions for the Init */)
-//!        ::builtin::ensures(|tmp_tuple: (X_Instance, /* ... tokens */)| {
-//!            [{
-//!                let (instance, /* ... tokens */) = tmp_tuple;
-//!                // ensure the new tokens are of the new instance
-//!                (::builtin::equal(token_counter.instance, instance))
-//!                // ...
-//!                // post-conditions on the values of the tokens
-//!                (::builtin::equal(token_counter.counter, 0))
-//!            }]
-//!        });
-//!        ::core::panicking::panic("not implemented");
-//!    }
-//!    
-//!    // A normal transition looks something like:
-//!    
-//!    #[proof]
-//!    #[verifier(external_body)]
-//!    pub fn X_tr_inc_a(
-//!        #[proof] instance: X_Instance,
-//!        // input tokens:
-//!        #[proof] token_counter: &mut X_counter,
-//!        #[proof] token_inc_a: &mut X_inc_a,
-//!    ) {
-//!        ::builtin::requires([
-//!            // Check that input tokens are of the right instance
-//!            ::builtin::equal(::builtin::old(token_counter).instance, instance),
-//!            // ...
-//!            // Other enabling conditions here ...
-//!        ]);
-//!        ::builtin::ensures([
-//!            // Check that output tokens are of the right instance
-//!            ::builtin::equal(token_counter.instance, instance),
-//!            // ...
-//!            // Other conditions on input/output tokens assured by the transition ...
-//!        ]);
-//!        ::core::panicking::panic("not implemented");
-//!    }
 
 use crate::ast::{
     Field, Lemma, ShardableType, SpecialOp, Transition, TransitionKind, TransitionStmt, SM,
@@ -101,7 +20,7 @@ use std::collections::HashSet;
 use syn::parse::Error;
 use syn::spanned::Spanned;
 use syn::visit_mut::VisitMut;
-use syn::{Expr, ExprField, ExprPath, Ident, Member, Type, Generics};
+use syn::{Expr, ExprField, ExprPath, Ident, Member, Type};
 
 // Misc. definitions for various identifiers we use
 
@@ -168,9 +87,8 @@ fn stored_object_type(field: &Field) -> Type {
     }
 }
 
-fn exchange_name(sm_name: &Ident, tr: &Transition) -> Ident {
-    let name = sm_name.to_string() + "_" + &tr.name.to_string();
-    Ident::new(&name, tr.name.span())
+fn exchange_name(tr: &Transition) -> Ident {
+    tr.name.clone()
 }
 
 fn transition_arg_name(field: &Field) -> Ident {
@@ -327,6 +245,10 @@ pub fn output_token_types_and_fns(
         }
     }
 
+    for tr in &bundle.sm.transitions {
+        inst_impl_token_stream.extend(exchange_stream(bundle, tr)?);
+    }
+
     let insttype = inst_type(&bundle.sm);
     let impldecl = impl_decl_stream(&insttype, &bundle.sm.generics);
     token_stream.extend(quote! {
@@ -334,10 +256,6 @@ pub fn output_token_types_and_fns(
             #inst_impl_token_stream
         }
     });
-
-    for tr in &bundle.sm.transitions {
-        token_stream.extend(exchange_stream(bundle, tr)?);
-    }
     Ok(())
 }
 
@@ -502,8 +420,7 @@ pub fn exchange_stream(bundle: &SMBundle, tr: &Transition) -> syn::parse::Result
         let itn = inst_type(sm);
         out_args.push((quote! { instance }, quote! { #itn }));
     } else {
-        let itn = inst_type(sm);
-        in_args.push(quote! { #[proof] instance: #itn }); // TODO make this argument self?
+        in_args.push(quote! { #[proof] &self });
     }
 
     // Take the transition parameters (the normal parameters defined in the transition)
@@ -689,7 +606,7 @@ pub fn exchange_stream(bundle: &SMBundle, tr: &Transition) -> syn::parse::Result
     let mut enss = inst_eq_enss;
     enss.extend(ctxt.ensures);
 
-    let exch_name = exchange_name(&sm.name, &tr);
+    let exch_name = exchange_name(&tr);
 
     let req_stream = if reqs.len() > 0 {
         quote! {
@@ -769,55 +686,23 @@ pub fn exchange_stream(bundle: &SMBundle, tr: &Transition) -> syn::parse::Result
 
     let extra_deps = get_extra_deps(bundle, &tr);
 
-    let (fn_generic_params, where_clause) = get_fn_generic_params(
-        &sm.generics, use_explicit_lifetime);
+    let gen = if use_explicit_lifetime {
+        quote! { <'a> }
+    } else {
+        TokenStream::new()
+    };
 
     return Ok(quote! {
         #[proof]
         #return_value_mode
         #[verifier(external_body)]
-        pub fn #exch_name#fn_generic_params(#(#in_args),*) #out_args_ret #where_clause {
+        pub fn #exch_name#gen(#(#in_args),*) #out_args_ret {
             #req_stream
             #ens_stream
             #extra_deps
             unimplemented!();
         }
     });
-}
-
-fn get_fn_generic_params(generics: &Option<Generics>, use_explicit_lifetime: bool) -> (TokenStream, TokenStream) {
-    match generics {
-        None => {
-            let gen = if use_explicit_lifetime {
-                quote! { <'a> }
-            } else {
-                TokenStream::new()
-            };
-            (gen, TokenStream::new())
-        }
-        Some(gen) => {
-            let params = if use_explicit_lifetime {
-                if gen.params.len() > 0 {
-                    let params = &gen.params;
-                    quote! { <'a, #params> }
-                } else {
-                    quote! { <'a> }
-                }
-            } else {
-                if gen.params.len() > 0 {
-                    let params = &gen.params;
-                    quote! { <#params> }
-                } else {
-                    TokenStream::new()
-                }
-            };
-
-            let where_clause = &gen.where_clause;
-            let wh = quote!{ #where_clause };
-
-            (params, wh)
-        }
-    }
 }
 
 fn get_init_param_input_type(_sm: &SM, field: &Field) -> Option<Type> {
@@ -1412,8 +1297,12 @@ impl<'a> VisitMut for TranslatorVisitor<'a> {
     }
 }
 
-fn get_inst_value(_ctxt: &Ctxt) -> Expr {
-    Expr::Verbatim(quote! { instance })
+fn get_inst_value(ctxt: &Ctxt) -> Expr {
+    if ctxt.is_init {
+        Expr::Verbatim(quote! { instance })
+    } else {
+        Expr::Verbatim(quote! { (*self) })
+    }
 }
 
 fn get_const_field_value(ctxt: &Ctxt, field: &Field) -> Expr {
