@@ -502,11 +502,11 @@ test_verify_one_file! {
 
             assert(maxSet.len() == 3);
 
-            forall(|eltSet: Set<HAlign>| {
+            assert_forall_by(|eltSet: Set<HAlign>| {
                 ensures(eltSet.len() <= 3);
 
                 // Prove eltSet <= maxSet
-                forall(|elt: HAlign| {
+                assert_forall_by(|elt: HAlign| {
                     requires(eltSet.contains(elt));
                     ensures(maxSet.contains(elt));
 
@@ -606,7 +606,7 @@ fn e13_pass() {
 
                 #[proof]
                 fn cheese_take_two() {
-                    forall(|o1:Order| {
+                    assert_forall_by(|o1:Order| {
                         requires(o1.is_appetizer());
                         ensures(exists(|o2:Order| o2.is_sandwich() && o1.get_cheese() == o2.get_cheese()));
                         let o3 = Order::Sandwich { meat: Meat::Ham, cheese: o1.get_cheese() };
@@ -893,7 +893,7 @@ test_verify_one_file! {
             // RIGHT THERE! Error should say "matching loop" instead.
             // assume(forall(|i:nat| fibo(i) < fibo(i+1)));
 
-            forall(|i:nat, j:nat| {
+            assert_forall_by(|i:nat, j:nat| {
                 requires(i <= j);
                 ensures(fibo(i) <= fibo(j));
 
@@ -1110,7 +1110,7 @@ test_verify_one_file! {
                 if *haystack.index(mid) < needle {
                     #[spec] let old_low = low;
                     low = mid + 1;
-                    forall(|i:int| {
+                    assert_forall_by(|i:int| {
                         requires(0 <= i && i < low);
                         ensures(haystack.index(i) < needle);
                         assert(view_u64(haystack.view()).index(i) <= view_u64(haystack.view()).index(mid));
@@ -1119,7 +1119,7 @@ test_verify_one_file! {
                     #[spec] let old_high = high;
                     high = mid;
                     // TODO(chris): i2 is a workaround for name collision with prior forall
-                    forall(|i2:int| {
+                    assert_forall_by(|i2:int| {
                         requires(high < i2 && i2 < haystack.len());
                         ensures(needle <= haystack.index(i2));
                         assert(view_u64(haystack.view()).index(mid) <= view_u64(haystack.view()).index(i2));

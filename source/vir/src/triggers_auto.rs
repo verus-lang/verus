@@ -34,8 +34,10 @@ enum App {
     Const(Constant),
     Field(Path, Ident, Ident),
     Call(Fun),
-    Ctor(Path, Ident), // datatype constructor: (Path, Variant)
-    Other(u64),        // u64 is an id, assigned via a simple counter
+    // datatype constructor: (Path, Variant)
+    Ctor(Path, Ident),
+    // u64 is an id, assigned via a simple counter
+    Other(u64),
     VarAt(UniqueIdent, VarAt),
 }
 
@@ -125,7 +127,8 @@ struct Ctxt {
     // terms with App
     all_terms: HashMap<Term, Span>,
     // terms with App and without Other
-    pure_terms: HashMap<Term, Exp>,
+    // The usize is used to sort the terms in the triggers for better stability
+    pure_terms: HashMap<Term, (Exp, usize)>,
     // all_terms, indexed by head App
     all_terms_by_app: HashMap<App, HashMap<Term, Span>>,
     // pure_terms, indexed by trigger_vars
@@ -144,8 +147,10 @@ impl Ctxt {
 }
 
 struct Timer {
-    span: Span,             // span of entire quantifier
-    timeout_countdown: u64, // algorithms are exponential, so give up rather than taking too long
+    // span of entire quantifier
+    span: Span,
+    // algorithms are exponential, so give up rather than taking too long
+    timeout_countdown: u64,
 }
 
 fn check_timeout(timer: &mut Timer) -> Result<(), VirErr> {
@@ -315,7 +320,7 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
     if is_pure {
         if let Some(var_depth) = trigger_var_depth(ctxt, &term, depth) {
             if !ctxt.pure_terms.contains_key(&term) {
-                ctxt.pure_terms.insert(term.clone(), exp.clone());
+                ctxt.pure_terms.insert(term.clone(), (exp.clone(), ctxt.pure_terms.len()));
             }
             let score = make_score(&term, var_depth, false);
             if !ctxt.pure_best_scores.contains_key(&term)
@@ -516,6 +521,14 @@ pub(crate) fn build_triggers(
         best_so_far: Vec::new(),
     };
     compute_triggers(&ctxt, &mut state, &mut timer)?;
+
+    // To stabilize the order of the chosen triggers,
+    // sort the triggers by the position of their terms in exp
+    for trigger in &mut state.best_so_far {
+        trigger.sort_by_key(|(term, _)| ctxt.pure_terms[term].1);
+    }
+    state.best_so_far.sort_by_key(|trig| vec_map(trig, |(term, _)| ctxt.pure_terms[term].1));
+
     /*
     for found in &state.best_so_far {
         let score: u64 = trigger_score(&ctxt, &found);
@@ -529,7 +542,7 @@ pub(crate) fn build_triggers(
     //println!();
     if state.best_so_far.len() >= 1 {
         let trigs: Vec<Trig> = vec_map(&state.best_so_far, |trig| {
-            Arc::new(vec_map(&trig, |(term, _)| ctxt.pure_terms[term].clone()))
+            Arc::new(vec_map(&trig, |(term, _)| ctxt.pure_terms[term].0.clone()))
         });
         Ok(Arc::new(trigs))
     } else {

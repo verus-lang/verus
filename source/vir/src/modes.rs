@@ -61,7 +61,7 @@ impl Typing {
     }
 }
 
-// One tricky thing in mode-checking is that an invariant blocks needs to have
+// One tricky thing in mode-checking is that an invariant block needs to have
 // *at most one* atomic instruction in it.
 // Thus, we can't just declare everything inside it to be 'proof' code,
 // but we can't allow it all to be 'exec' code either.
@@ -110,24 +110,30 @@ impl AtomicInstCollector {
     }
 
     /// Check that the collected operations are well-formed; error if not
-    pub fn validate(&self, inv_block_span: &Span) -> Result<(), VirErr> {
+    /// `is_atomic_fn` is for error-reporting purposes; if 'true', then the check
+    /// is for a fn marked #[verifier(atomic)]. Otherwise, it's for a invariant block.
+    pub fn validate(&self, inv_block_span: &Span, is_atomic_fn: bool) -> Result<(), VirErr> {
+        let context = if is_atomic_fn { "atomic function" } else { "open_invariant" };
+
         if self.loops.len() > 0 {
             return Err(error_with_label(
-                "open_invariant cannot contain an 'exec' loop",
+                format!("{context:} cannot contain an 'exec' loop"),
                 inv_block_span,
                 "this invariant block contains a loop",
             )
             .secondary_span(&self.loops[0]));
         } else if self.non_atomics.len() > 0 {
             let mut e =
-                error("open_invariant cannot contain non-atomic operations", inv_block_span);
+                error(format!("{context:} cannot contain non-atomic operations"), inv_block_span);
             for i in 0..min(self.non_atomics.len(), 3) {
                 e = e.secondary_label(&self.non_atomics[i], "non-atomic here");
             }
             return Err(e);
         } else if self.atomics.len() > 1 {
-            let mut e =
-                error("open_invariant cannot contain more than 1 atomic operation", inv_block_span);
+            let mut e = error(
+                format!("{context:} cannot contain more than 1 atomic operation"),
+                inv_block_span,
+            );
             for i in 0..min(self.atomics.len(), 3) {
                 e = e.secondary_label(&self.atomics[i], "atomic here");
             }
@@ -508,7 +514,7 @@ fn check_expr(typing: &mut Typing, outer_mode: Mode, expr: &Expr) -> Result<Mode
                 swap(&mut my_atomic_insts, &mut typing.atomic_insts);
                 let _ = check_expr(typing, outer_mode, body)?;
                 swap(&mut my_atomic_insts, &mut typing.atomic_insts);
-                my_atomic_insts.expect("my_atomic_insts").validate(&body.span)?;
+                my_atomic_insts.expect("my_atomic_insts").validate(&body.span, false)?;
             }
 
             typing.vars.pop_scope();
@@ -616,7 +622,17 @@ pub fn check_crate(krate: &Krate) -> Result<ErasureModes, VirErr> {
         atomic_insts: None,
     };
     for function in krate.functions.iter() {
-        check_function(&mut typing, function)?;
+        if function.x.attrs.atomic {
+            let mut my_atomic_insts = Some(AtomicInstCollector::new());
+            swap(&mut my_atomic_insts, &mut typing.atomic_insts);
+
+            check_function(&mut typing, function)?;
+
+            swap(&mut my_atomic_insts, &mut typing.atomic_insts);
+            my_atomic_insts.expect("my_atomic_insts").validate(&function.span, true)?;
+        } else {
+            check_function(&mut typing, function)?;
+        }
     }
     Ok(typing.erasure_modes)
 }

@@ -15,6 +15,12 @@ test_verify_one_file! {
             assert(tr(300));
             assert(exists(|i: nat| i >= 0 && tr(i)));
         }
+
+        #[proof]
+        fn test1_inference() {
+            assert(tr(300));
+            assert(exists(|i| i >= 0 && tr(i)));
+        }
     } => Ok(())
 }
 
