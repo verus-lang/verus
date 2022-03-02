@@ -92,7 +92,7 @@ use crate::ast::{
 use crate::checks::{check_ordering_remove_have_add, check_unsupported_updates_in_conditionals};
 use crate::parse_token_stream::SMBundle;
 use crate::safety_conditions::{has_any_assert, has_any_require};
-use crate::to_token_stream::{shardable_type_to_type, name_with_type_args, impl_decl_stream, get_self_ty, get_self_ty_double_colon};
+use crate::to_token_stream::{shardable_type_to_type, name_with_type_args, impl_decl_stream, get_self_ty, get_self_ty_double_colon, name_with_type_args_double_colon};
 use proc_macro2::Span;
 use proc_macro2::TokenStream;
 use quote::quote;
@@ -125,6 +125,10 @@ fn field_token_type_name(sm_name: &Ident, field: &Field) -> Ident {
 
 fn field_token_type(sm: &SM, field: &Field) -> Type {
     name_with_type_args(&field_token_type_name(&sm.name, field), sm)
+}
+
+fn field_token_type_double_colon(sm: &SM, field: &Field) -> Type {
+    name_with_type_args_double_colon(&field_token_type_name(&sm.name, field), sm)
 }
 
 fn field_token_field_name(field: &Field) -> Ident {
@@ -172,6 +176,16 @@ fn exchange_name(sm_name: &Ident, tr: &Transition) -> Ident {
 fn transition_arg_name(field: &Field) -> Ident {
     let name = "token_".to_string() + &field.ident.to_string();
     Ident::new(&name, field.ident.span())
+}
+
+fn multiset_relation_post_condition_name(field: &Field) -> Ident {
+    Ident::new("multiset_agree", field.ident.span())
+}
+
+fn multiset_relation_post_condition_qualified_name(sm: &SM, field: &Field) -> Type {
+    let ty = field_token_type_double_colon(sm, field);
+    let name = multiset_relation_post_condition_name(field);
+    Type::Verbatim(quote!{ #ty::#name })
 }
 
 /// Print declaration for the Instance type.
@@ -229,6 +243,9 @@ fn token_struct_stream(sm: &SM, field: &Field) -> TokenStream {
     let insttype = inst_type(sm);
     let gen = &sm.generics;
 
+    let impldecl = impl_decl_stream(&field_token_type(sm, field), &sm.generics);
+    let impl_token_stream = collection_relation_fns_stream(sm, field);
+
     return quote! {
         #[proof]
         #[verifier(unforgeable)]
@@ -236,6 +253,10 @@ fn token_struct_stream(sm: &SM, field: &Field) -> TokenStream {
         pub struct #tokenname#gen {
             #[spec] pub instance: #insttype,
             #[spec] pub #fieldname: #fieldtype,
+        }
+
+        #impldecl {
+            #impl_token_stream
         }
     };
 }
@@ -508,19 +529,41 @@ pub fn exchange_stream(bundle: &SMBundle, tr: &Transition) -> syn::parse::Result
 
             match &field.stype {
                 ShardableType::Constant(_) => {
-                     let e_opt = get_output_value_for_variable(&ctxt, &tr.body, field);
-                     let e = e_opt.expect("get_output_value_for_variable");
+                     let e_opt = get_post_value_for_variable(&ctxt, &tr.body, field);
+                     let e = e_opt.expect("get_post_value_for_variable");
                      let lhs = get_const_field_value(&ctxt, field);
                      ctxt.ensures.push(mk_eq(&lhs, &e));
                 }
                 _ => { }
             }
 
-            // TODO handle input params
+            if let Some(init_input_token_type) = get_init_param_input_type(sm, &field) {
+                let arg_name = transition_arg_name(field);
 
-            let arg_name = transition_arg_name(field);
+                add_token_param_in_out(
+                            &ctxt,
+                            &mut in_args,
+                            &mut out_args,
+                            &mut inst_eq_enss,
+                            &mut inst_eq_reqs,
+                            &arg_name,
+                            &init_input_token_type,
+                            InoutType::In,
+                            false, // (don't) apply_instance_condition
+                            false, // (don't) use_explicit_lifetime
+                        );
 
-            if let Some(init_output_token_type) = get_init_param_out_type(sm, &field) {
+                let e_opt = get_post_value_for_variable(&ctxt, &tr.body, field);
+                let e = e_opt.expect("get_post_value_for_variable");
+
+                add_initialization_input_conditions(
+                    field,
+                    &mut ctxt.ensures,
+                    e,
+                    Expr::Verbatim(quote! { #arg_name }));
+            } else if let Some(init_output_token_type) = get_init_param_output_type(sm, &field) {
+                let arg_name = transition_arg_name(field);
+
                 add_token_param_in_out(
                             &ctxt,
                             &mut in_args,
@@ -534,11 +577,12 @@ pub fn exchange_stream(bundle: &SMBundle, tr: &Transition) -> syn::parse::Result
                             false, // (don't) use_explicit_lifetime
                         );
 
-                let e_opt = get_output_value_for_variable(&ctxt, &tr.body, field);
-                let e = e_opt.expect("get_output_value_for_variable");
+                let e_opt = get_post_value_for_variable(&ctxt, &tr.body, field);
+                let e = e_opt.expect("get_post_value_for_variable");
 
                 let inst = get_inst_value(&ctxt);
                 add_initialization_output_conditions(
+                    sm,
                     field,
                     &mut ctxt.ensures,
                     &mut inst_eq_enss,
@@ -603,8 +647,8 @@ pub fn exchange_stream(bundle: &SMBundle, tr: &Transition) -> syn::parse::Result
                         // `Update` statements into `PostCondition` statements like we
                         // do for other kinds of tokens. Then we wouldn't have to have this here.
 
-                        let e_opt = get_output_value_for_variable(&ctxt, &tr.body, field);
-                        let e = e_opt.expect("get_output_value_for_variable");
+                        let e_opt = get_post_value_for_variable(&ctxt, &tr.body, field);
+                        let e = e_opt.expect("get_post_value_for_variable");
                         let lhs = get_new_field_value(field);
                         ctxt.ensures.push(mk_eq(&lhs, &e));
                     }
@@ -776,12 +820,47 @@ fn get_fn_generic_params(generics: &Option<Generics>, use_explicit_lifetime: boo
     }
 }
 
-fn get_init_param_out_type(sm: &SM, field: &Field) -> Option<Type> {
+fn get_init_param_input_type(_sm: &SM, field: &Field) -> Option<Type> {
+    // Upon initialization, we may have to input stuff corresponding to storage.
+    match &field.stype {
+        ShardableType::Variable(_) => None,
+        ShardableType::Constant(_) => None,
+        ShardableType::NotTokenized(_) => None,
+        ShardableType::Multiset(_) => None,
+        ShardableType::Optional(_) => None,
+        ShardableType::StorageOptional(ty) => {
+            Some(Type::Verbatim(quote!{
+                crate::pervasive::option::Option<#ty>
+            }))
+        }
+    }
+}
+
+fn add_initialization_input_conditions(
+    field: &Field,
+    ensures: &mut Vec<Expr>,
+    init_value: Expr,
+    param_value: Expr)
+{
+    match &field.stype {
+        ShardableType::StorageOptional(_) => {
+            ensures.push(mk_eq(&param_value, &init_value));
+        }
+        _ => { panic!("this should implement each case enabled by get_init_param_input_type"); }
+    }
+}
+
+fn get_init_param_output_type(sm: &SM, field: &Field) -> Option<Type> {
     match &field.stype {
         ShardableType::Variable(_) => Some(field_token_type(&sm, field)),
         ShardableType::Constant(_) => None, // constants handled separately
         ShardableType::NotTokenized(_) => None, // no tokens
-        ShardableType::Multiset(_) => None, // TODO handle this case
+        ShardableType::Multiset(_) => {
+            let ty = field_token_type(&sm, field);
+            Some(Type::Verbatim(quote!{
+                crate::pervasive::multiset::Multiset<#ty>
+            }))
+        }
         ShardableType::Optional(_) => {
             let ty = field_token_type(&sm, field);
             Some(Type::Verbatim(quote!{
@@ -793,10 +872,11 @@ fn get_init_param_out_type(sm: &SM, field: &Field) -> Option<Type> {
 }
 
 fn add_initialization_output_conditions(
+    sm: &SM,
     field: &Field,
     ensures: &mut Vec<Expr>,
     inst_eq_enss: &mut Vec<Expr>,
-    e: Expr,
+    init_value: Expr,
     inst_value: Expr,
     param_value: Expr)
 {
@@ -807,17 +887,14 @@ fn add_initialization_output_conditions(
             }));
             let field_name = field_token_field_name(field);
             ensures.push(Expr::Verbatim(quote!{
-                ::builtin::equal(#param_value.#field_name, #e)
+                ::builtin::equal(#param_value.#field_name, #init_value)
             }));
         }
-        ShardableType::Constant(_) => { panic!("shouldn't get here"); }
-        ShardableType::NotTokenized(_) => { panic!("shouldn't get here"); }
-        ShardableType::Multiset(_) => { panic!("shouldn't get here"); }
         ShardableType::Optional(_) => {
             // TODO factor this into a helper function to simplify the generated code
             let field_name = field_token_field_name(field);
             ensures.push(Expr::Verbatim(quote!{
-                match #e {
+                match #init_value {
                     crate::pervasive::option::Option::None => {
                         #param_value.is_None()
                     }
@@ -833,7 +910,52 @@ fn add_initialization_output_conditions(
                 }
             }));
         }
-        ShardableType::StorageOptional(_) => { panic!("shouldn't get here"); }
+        ShardableType::Multiset(_) => {
+            let fn_name = multiset_relation_post_condition_qualified_name(sm, field);
+            ensures.push(Expr::Verbatim(quote!{
+                #fn_name(#param_value, #init_value, #inst_value)
+            }));
+        }
+        _ => { panic!("this should implement each case enabled by get_init_param_output_type"); }
+    }
+}
+
+fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
+    match &field.stype {
+        ShardableType::Multiset(ty) => {
+            let fn_name = multiset_relation_post_condition_name(field);
+            let constructor_name = field_token_type_double_colon(sm, field);
+            let field_name = field_token_field_name(field);
+            let inst_ty = inst_type(sm);
+            let token_ty = field_token_type(sm, field);
+            let multiset_token_ty = Type::Verbatim(quote!{
+                crate::pervasive::multiset::Multiset<#token_ty>
+            });
+            let multiset_normal_ty = Type::Verbatim(quote!{
+                crate::pervasive::multiset::Multiset<#ty>
+            });
+
+            // TODO what should the visibility of this fn be?
+            quote!{
+                #[spec]
+                pub fn #fn_name(tokens: #multiset_token_ty, m: #multiset_normal_ty, instance: #inst_ty) -> bool {
+                    ::builtin::forall(|x: #ty|
+                        tokens.count(
+                            #constructor_name {
+                                instance: instance,
+                                #field_name: x,
+                            }) == m.count(x)
+                    )
+                    && ::builtin::forall(|t: #token_ty|
+                        ::builtin::imply(
+                            tokens.count(t) > 0,
+                            ::builtin::equal(t.instance, instance)
+                        )
+                    )
+                }
+            }
+        }
+        _ => { TokenStream::new() }
     }
 }
 
@@ -1515,12 +1637,18 @@ fn prequel_vec_to_expr(v: &Vec<PrequelElement>) -> Option<Expr> {
 /// a conditional expression.
 ///
 /// Returns 'None' if it doesn't find an 'update' for the given variable.
-fn get_output_value_for_variable(ctxt: &Ctxt, ts: &TransitionStmt, field: &Field) -> Option<Expr> {
+///
+/// Also handles 'init' statements in the same way as 'update' statements,
+/// so it can be used for initialization as well.
+///
+/// Does NOT handle special ops.
+
+fn get_post_value_for_variable(ctxt: &Ctxt, ts: &TransitionStmt, field: &Field) -> Option<Expr> {
     match ts {
         TransitionStmt::Block(_span, v) => {
             let mut opt = None;
             for child in v.iter() {
-                let o = get_output_value_for_variable(ctxt, child, field);
+                let o = get_post_value_for_variable(ctxt, child, field);
                 if o.is_some() {
                     // We should have already performed a check that the field
                     // is not updated more than once.
@@ -1531,8 +1659,8 @@ fn get_output_value_for_variable(ctxt: &Ctxt, ts: &TransitionStmt, field: &Field
             opt
         }
         TransitionStmt::If(_span, cond_e, e1, e2) => {
-            let o1 = get_output_value_for_variable(ctxt, e1, field);
-            let o2 = get_output_value_for_variable(ctxt, e2, field);
+            let o1 = get_post_value_for_variable(ctxt, e1, field);
+            let o2 = get_post_value_for_variable(ctxt, e2, field);
             if o1.is_none() && o2.is_none() {
                 None
             } else {

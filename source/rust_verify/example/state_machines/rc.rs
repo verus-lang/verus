@@ -13,6 +13,98 @@ use pervasive::invariants::*;
 
 use state_machines_macros::concurrent_state_machine;
 
+concurrent_state_machine!(Dupe<#[verifier(maybe_negative)] T> {
+    fields {
+        #[sharding(storage_option)]
+        pub storage: Option<T>,
+
+        #[sharding(multiset)]
+        pub reader: Multiset<T>,
+    }
+
+    #[init]
+    fn initialize_one(&self, t: T) {
+        // Initialize with a single reader
+        init(storage, Option::Some(t));
+        init(reader, Multiset::singleton(t));
+    }
+
+    #[invariant]
+    fn agreement(&self) -> bool {
+        forall(|x: T| self.reader.count(x) > 0 >>=
+            equal(self.storage, Option::Some(x)))
+    }
+
+    #[transition]
+    fn dupe(&self, t: T) {
+        have_element(reader, t);
+        add_element(reader, t);
+    }
+
+    #[readonly]
+    fn borrow(&self, t: T) {
+        have_element(reader, t);
+        guard_some(storage, t);
+    }
+
+     #[inductive(initialize_one)]
+     fn initialize_one_inductive(post: Dupe<T>, t: T) { }
+ 
+     #[inductive(dupe)]
+     fn dupe_inductive(self: Dupe<T>, post: Dupe<T>, t: T) { }
+});
+
+#[proof]
+pub struct Duplicable<#[verifier(maybe_negative)] T> {
+    #[proof] pub inst: Dupe_Instance<T>,
+    #[proof] pub reader: Dupe_reader<T>,
+}
+
+impl<T> Duplicable<T> {
+    #[spec]
+    pub fn wf(self) -> bool {
+        equal(self.reader.instance, self.inst)
+    }
+
+    #[spec]
+    pub fn view(self) -> T {
+        self.reader.reader
+    }
+
+    #[proof]
+    #[verifier(returns(proof))]
+    pub fn new(#[proof] t: T) -> Self {
+        ensures(|s: Self| s.wf() && equal(s.view(), t));
+
+        #[proof] let (inst, mut readers) = Dupe_initialize_one(/* spec */ t, Option::Some(t));
+        #[proof] let reader = readers.proof_remove(Dupe_reader { reader: t, instance: inst });
+        Duplicable {
+            inst, reader
+        }
+    }
+
+    #[proof]
+    #[verifier(returns(proof))]
+    pub fn clone(#[proof] &self) -> Self {
+        requires(self.wf());
+        ensures(|other: Self|
+            other.wf() && equal(self.view(), other.view())
+        );
+
+        #[proof] let r = Dupe_dupe(self.inst.clone(), self.reader.reader, &self.reader);
+        Duplicable { inst: self.inst.clone(), reader: r }
+    }
+
+    #[proof]
+    #[verifier(returns(proof))]
+    pub fn borrow(#[proof] &self) -> &T {
+        requires(self.wf());
+        ensures(|t: &T| equal(*t, self.view()));
+
+        Dupe_borrow(self.inst.clone(), self.reader.reader, &self.reader)
+    }
+}
+
 concurrent_state_machine!(RefCounter<#[verifier(maybe_negative)] T> {
     fields {
         #[sharding(variable)]
@@ -144,20 +236,21 @@ impl<S> InnerRc<S> {
     }
 }
 
-struct MyRc<'a, S: 'a> {
+struct MyRc<S> {
     #[proof] pub inst: RefCounter_Instance<ptr::Permission<InnerRc<S>>>,
-    #[proof] pub inv: &'a LocalInvariant<GhostStuff<S>>,
+    #[proof] pub inv: Duplicable<LocalInvariant<GhostStuff<S>>>,
     #[proof] pub reader: RefCounter_reader<ptr::Permission<InnerRc<S>>>,
     pub ptr: PPtr<InnerRc<S>>,
 }
 
-impl<S> MyRc<'_, S> {
+impl<S> MyRc<S> {
     #[spec]
     fn wf(self) -> bool {
         equal(self.reader.reader.pptr, self.ptr.view())
         && equal(self.reader.instance, self.inst)
         && self.reader.reader.value.is_Some()
-        && (forall(|g: GhostStuff<S>| self.inv.inv(g) ==
+        && self.inv.wf()
+        && (forall(|g: GhostStuff<S>| self.inv.view().inv(g) ==
             g.wf(self.inst, self.reader.reader.value.get_Some_0().rc_cell)))
     }
 
@@ -179,7 +272,7 @@ impl<S> MyRc<'_, S> {
         let (ptr, Proof(mut ptr_perm)) = PPtr::empty();
         ptr.put(inner_rc, &mut ptr_perm);
 
-        #[proof] let (inst, mut rc_token) = RefCounter_initialize_empty();
+        #[proof] let (inst, mut rc_token, _) = RefCounter_initialize_empty(Option::None);
         #[proof] let reader = RefCounter_do_deposit(inst.clone(), ptr_perm, &mut rc_token, ptr_perm);
 
         #[proof] let g = GhostStuff::<S> { rc_perm, rc_token };
@@ -188,7 +281,7 @@ impl<S> MyRc<'_, S> {
             |g: GhostStuff<S>|
                 g.wf(reader.instance, reader.reader.value.get_Some_0().rc_cell),
             0);
-        #[proof] let inv = proof_to_ref(inv);
+        #[proof] let inv = Duplicable::new(inv);
 
         MyRc { inst, inv, reader, ptr }
     }
@@ -215,7 +308,7 @@ impl<S> MyRc<'_, S> {
         let inner_rc_ref = &self.ptr.as_ref(perm);
 
         #[proof] let mut new_reader;
-        open_local_invariant!(&self.inv => g => {
+        open_local_invariant!(self.inv.borrow() => g => {
             #[proof] let GhostStuff { rc_perm: mut rc_perm, rc_token: mut rc_token } = g;
 
             let count = inner_rc_ref.rc_cell.take(&mut rc_perm);
@@ -235,7 +328,7 @@ impl<S> MyRc<'_, S> {
 
         MyRc {
             inst: self.inst.clone(),
-            inv: self.inv,
+            inv: self.inv.clone(),
             reader: new_reader,
             ptr: self.ptr.clone(),
         }
@@ -252,7 +345,7 @@ impl<S> MyRc<'_, S> {
             &reader);
         let inner_rc_ref = &ptr.as_ref(perm);
 
-        open_local_invariant!(&inv => g => {
+        open_local_invariant!(inv.borrow() => g => {
             #[proof] let GhostStuff { rc_perm: mut rc_perm, rc_token: mut rc_token } = g;
 
             let count = inner_rc_ref.rc_cell.take(&mut rc_perm);
