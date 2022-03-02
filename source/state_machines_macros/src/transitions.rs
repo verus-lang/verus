@@ -1,4 +1,4 @@
-use crate::ast::{Field, ShardableType, SpecialOp, TransitionKind, TransitionStmt, SM};
+use crate::ast::{Field, ShardableType, SpecialOp, Transition, TransitionKind, TransitionStmt, SM};
 use proc_macro2::Span;
 use std::collections::HashMap;
 use syn::spanned::Spanned;
@@ -360,6 +360,46 @@ fn check_valid_ops(
     }
 }
 
+fn check_let_shadowing(trans: &Transition) -> syn::parse::Result<()> {
+    let mut ids = trans.params.iter().map(|p| p.ident.to_string()).collect();
+    check_let_shadowing_rec(&trans.body, &mut ids)
+}
+
+fn check_let_shadowing_rec(ts: &TransitionStmt, ids: &mut Vec<String>) -> syn::parse::Result<()> {
+    match ts {
+        TransitionStmt::Block(_, v) => {
+            for t in v {
+                check_let_shadowing_rec(t, ids)?;
+            }
+            Ok(())
+        }
+        TransitionStmt::If(_, _, e1, e2) => {
+            check_let_shadowing_rec(e1, ids)?;
+            check_let_shadowing_rec(e2, ids)?;
+            Ok(())
+        }
+
+        TransitionStmt::Let(span, id, _) => {
+            let s = id.to_string();
+            if ids.contains(&s) {
+                Err(Error::new(
+                    *span,
+                    format!("state machine transitions forbid let-shadowing")))
+            } else {
+                ids.push(s);
+                Ok(())
+            }
+        }
+
+        TransitionStmt::Require(_, _) => Ok(()),
+        TransitionStmt::Assert(_, _) => Ok(()),
+        TransitionStmt::Update(_, _, _) => Ok(()),
+        TransitionStmt::Initialize(_, _, _) => Ok(()),
+        TransitionStmt::PostCondition(..) => Ok(()),
+        TransitionStmt::Special(_, _, _) => Ok(()),
+    }
+}
+
 /// Check simple well-formedness properties of the transitions.
 
 pub fn check_transitions(sm: &SM) -> syn::parse::Result<()> {
@@ -379,6 +419,8 @@ pub fn check_transitions(sm: &SM) -> syn::parse::Result<()> {
                 check_init(sm, &tr.body)?;
             }
         }
+
+        check_let_shadowing(tr)?;
     }
 
     Ok(())
