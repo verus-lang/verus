@@ -5,7 +5,7 @@ use crate::erase::ResolvedCall;
 use crate::rust_to_vir_base::{
     def_id_to_vir_path, def_to_path_ident, get_function_def, get_range, hack_get_def_name,
     ident_to_var, is_smt_arith, is_smt_equality, mid_ty_simplify, mid_ty_to_vir, mk_range,
-    ty_to_vir, typ_of_node, typ_of_node_expect_mut_ref, typ_path_and_ident_to_vir_path,
+    typ_of_node, typ_of_node_expect_mut_ref, typ_path_and_ident_to_vir_path,
 };
 use crate::util::{
     err_span_str, err_span_string, slice_vec_map_result, spanned_new, spanned_typed_new,
@@ -138,7 +138,7 @@ fn extract_quant<'tcx>(
 ) -> Result<vir::ast::Expr, VirErr> {
     let tcx = bctx.ctxt.tcx;
     match &expr.kind {
-        ExprKind::Closure(_, fn_decl, body_id, _, _) => {
+        ExprKind::Closure(_, _fn_decl, body_id, _, _) => {
             let body = tcx.hir().body(*body_id);
             let typs = closure_param_typs(bctx, expr);
             assert!(typs.len() == body.params.len());
@@ -171,7 +171,7 @@ fn extract_assert_forall_by<'tcx>(
 ) -> Result<vir::ast::Expr, VirErr> {
     let tcx = bctx.ctxt.tcx;
     match &expr.kind {
-        ExprKind::Closure(_, fn_decl, body_id, _, _) => {
+        ExprKind::Closure(_, _fn_decl, body_id, _, _) => {
             let body = tcx.hir().body(*body_id);
             let typs = closure_param_typs(bctx, expr);
             assert!(body.params.len() == typs.len());
@@ -217,7 +217,7 @@ fn extract_choose<'tcx>(
 ) -> Result<vir::ast::Expr, VirErr> {
     let tcx = bctx.ctxt.tcx;
     match &expr.kind {
-        ExprKind::Closure(_, fn_decl, body_id, _, _) => {
+        ExprKind::Closure(_, _fn_decl, body_id, _, _) => {
             let closure_body = tcx.hir().body(*body_id);
             let mut params: Vec<Binder<Typ>> = Vec::new();
             let mut vars: Vec<vir::ast::Expr> = Vec::new();
@@ -1709,7 +1709,7 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                 autoview_typ,
             )
         }
-        ExprKind::Closure(_, fn_decl, body_id, _, _) => {
+        ExprKind::Closure(_, _fn_decl, body_id, _, _) => {
             let body = tcx.hir().body(*body_id);
             let typs = closure_param_typs(bctx, expr);
             assert!(typs.len() == body.params.len());
