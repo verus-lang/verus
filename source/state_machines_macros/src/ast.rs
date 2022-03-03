@@ -132,6 +132,53 @@ impl SpecialOp {
             SpecialOp::GuardSome(..) => true,
         }
     }
+
+    pub fn is_have(&self) -> bool {
+        match self {
+            SpecialOp::HaveElement(..) => true,
+            SpecialOp::HaveSome(..) => true,
+
+            SpecialOp::RemoveElement(..) => false,
+            SpecialOp::AddElement(..) => false,
+            SpecialOp::RemoveSome(..) => false,
+            SpecialOp::AddSome(..) => false,
+            SpecialOp::DepositSome(..) => false,
+            SpecialOp::WithdrawSome(..) => false,
+            SpecialOp::GuardSome(..) => false,
+        }
+    }
+
+    pub fn is_remove(&self) -> bool {
+        match self {
+            SpecialOp::RemoveElement(..) => true,
+            SpecialOp::RemoveSome(..) => true,
+
+            SpecialOp::HaveElement(..) => false,
+            SpecialOp::AddElement(..) => false,
+            SpecialOp::HaveSome(..) => false,
+            SpecialOp::AddSome(..) => false,
+            SpecialOp::DepositSome(..) => false,
+            SpecialOp::WithdrawSome(..) => false,
+            SpecialOp::GuardSome(..) => false,
+        }
+    }
+
+    pub fn is_add(&self) -> bool {
+        match self {
+            SpecialOp::AddElement(..) => true,
+            SpecialOp::AddSome(..) => true,
+
+            SpecialOp::RemoveElement(..) => false,
+            SpecialOp::HaveElement(..) => false,
+            SpecialOp::RemoveSome(..) => false,
+            SpecialOp::HaveSome(..) => false,
+            SpecialOp::DepositSome(..) => false,
+            SpecialOp::WithdrawSome(..) => false,
+            SpecialOp::GuardSome(..) => false,
+        }
+    }
+
+
 }
 
 impl TransitionStmt {

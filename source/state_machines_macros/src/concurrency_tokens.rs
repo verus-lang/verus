@@ -9,6 +9,7 @@ use crate::ast::{
     Field, Lemma, ShardableType, SpecialOp, Transition, TransitionKind, TransitionStmt, SM,
 };
 use crate::checks::{check_ordering_remove_have_add, check_unsupported_updates_in_conditionals};
+use crate::util::combine_errors_or_ok;
 use crate::parse_token_stream::SMBundle;
 use crate::safety_conditions::{has_any_assert, has_any_require};
 use crate::to_token_stream::{shardable_type_to_type, name_with_type_args, impl_decl_stream, get_self_ty, get_self_ty_double_colon, name_with_type_args_double_colon};
@@ -243,13 +244,25 @@ pub fn output_token_types_and_fns(
             ShardableType::Optional(_) => {
                 token_stream.extend(token_struct_stream_optional(&bundle.sm, field));
             }
-            ShardableType::StorageOptional(_) => {}
+            ShardableType::StorageOptional(_) => {
+                // storage types don't have tokens; the 'token type' is just the
+                // the type of the field
+            }
         }
     }
 
+    let mut errors = Vec::new();
     for tr in &bundle.sm.transitions {
-        inst_impl_token_stream.extend(exchange_stream(bundle, tr)?);
+        match exchange_stream(bundle, tr) {
+            Ok(stream) => {
+                inst_impl_token_stream.extend(stream);
+            }
+            Err(err) => {
+                errors.push(err);
+            }
+        }
     }
+    combine_errors_or_ok(errors)?;
 
     let insttype = inst_type(&bundle.sm);
     let impldecl = impl_decl_stream(&insttype, &bundle.sm.generics);
@@ -258,6 +271,7 @@ pub fn output_token_types_and_fns(
             #inst_impl_token_stream
         }
     });
+
     Ok(())
 }
 
@@ -391,7 +405,7 @@ pub fn exchange_stream(bundle: &SMBundle, tr: &Transition) -> syn::parse::Result
     let mut tr = tr.clone();
 
     check_unsupported_updates_in_conditionals(&tr.body)?;
-    check_ordering_remove_have_add(&tr.body)?;
+    check_ordering_remove_have_add(sm, &tr.body)?;
 
     // determine output tokens based on 'update' statements
     determine_outputs(&mut ctxt, &tr.body)?;
