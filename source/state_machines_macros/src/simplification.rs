@@ -238,6 +238,9 @@ fn get_field_for_placeholder(e: &Expr) -> String {
 //
 //   1. updating the `field_map` as necessary
 //   2. translating to `require` and `assert` statements as necessary
+//
+// See `concurrency-doc.md` for the command reference and rationale
+// for their definitions.
 
 #[derive(Clone)]
 struct FieldMap {

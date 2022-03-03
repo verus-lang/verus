@@ -75,7 +75,7 @@ fn parse_stmt(stmt: &Stmt, ctxt: &Ctxt) -> syn::parse::Result<TransitionStmt> {
         Stmt::Expr(expr) => parse_expr(expr, ctxt),
         Stmt::Semi(expr, _) => parse_expr(expr, ctxt),
         _ => {
-            return Err(Error::new(stmt.span(), "unsupported statement type"));
+            return Err(Error::new(stmt.span(), "unsupported statement type in state transition"));
         }
     }
 }
@@ -86,13 +86,13 @@ fn parse_local(local: &Local, _ctxt: &Ctxt) -> syn::parse::Result<TransitionStmt
             ident.clone()
         }
         _ => {
-            return Err(Error::new(local.span(), "unsupported Local statement type"));
+            return Err(Error::new(local.span(), "unsupported Local statement type in state transition"));
         }
     };
     let e = match &local.init {
         Some((_eq, e)) => (**e).clone(),
         None => {
-            return Err(Error::new(local.span(), "'let' statement must have initializer"));
+            return Err(Error::new(local.span(), "'let' statement must have initializer in state transition"));
         }
     };
     Ok(TransitionStmt::Let(local.span(), ident, e))
@@ -104,7 +104,7 @@ fn parse_expr(expr: &Expr, ctxt: &Ctxt) -> syn::parse::Result<TransitionStmt> {
         Expr::Block(block) => parse_block(&block.block, ctxt),
         Expr::Call(call) => parse_call(call, ctxt),
         _ => {
-            return Err(Error::new(expr.span(), "unsupported expression type"));
+            return Err(Error::new(expr.span(), "unsupported expression type in state transition"));
         }
     }
 }
@@ -115,6 +115,12 @@ fn parse_expr_if(expr_if: &ExprIf, ctxt: &Ctxt) -> syn::parse::Result<Transition
         Some((_, el)) => parse_expr(el, ctxt)?,
         None => TransitionStmt::Block(expr_if.span(), Vec::new()),
     };
+    match &*expr_if.cond {
+        Expr::Let(..) => {
+            return Err(Error::new(expr_if.cond.span(), "unsupported if-let conditional in state transition"));
+        }
+        _ => { }
+    }
     return Ok(TransitionStmt::If(
         expr_if.span(),
         (*expr_if.cond).clone(),
