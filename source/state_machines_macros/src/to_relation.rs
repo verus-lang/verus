@@ -70,8 +70,8 @@ fn to_relation_rec(
                 let x2 = to_relation_rec(e2, None, weak);
                 match (x1, x2) {
                     (None, None) => None,
-                    (Some(e1), None) => Some(quote! { ((#cond) >>= #e1) }),
-                    (None, Some(e2)) => Some(quote! { (!(#cond) >>= #e2) }),
+                    (Some(e1), None) => Some(quote! { ::builtin::imply(#cond, #e1) }),
+                    (None, Some(e2)) => Some(quote! { ::builtin::imply(!(#cond), #e2) }),
                     (Some(e1), Some(e2)) => Some(quote! { if #cond { #e1 } else { #e2 } }),
                 }
             }
@@ -79,8 +79,7 @@ fn to_relation_rec(
                 panic!("not implemented");
             }
         },
-        TransitionStmt::PostCondition(_span, e) |
-        TransitionStmt::Require(_span, e) => match p {
+        TransitionStmt::PostCondition(_span, e) | TransitionStmt::Require(_span, e) => match p {
             None => Some(quote! { (#e) }),
             Some(r) => Some(quote! { ((#e) && #r) }),
         },
@@ -88,12 +87,12 @@ fn to_relation_rec(
             if weak {
                 match p {
                     None => None,
-                    Some(r) => Some(quote! { ((#e) >>= #r) }),
+                    Some(r) => Some(quote! { ::builtin::imply(#e, #r) }),
                 }
             } else {
                 match p {
                     None => Some(quote! { (#e) }),
-                    Some(r) => Some(quote! { ((#e) && #r) }),
+                    Some(r) => Some(quote! { ((#e) && (#r)) }),
                 }
             }
         }

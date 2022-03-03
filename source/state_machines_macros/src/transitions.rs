@@ -1,5 +1,5 @@
 use crate::ast::{Field, ShardableType, SpecialOp, Transition, TransitionKind, TransitionStmt, SM};
-use crate::util::{combine_results, combine_errors_or_ok};
+use crate::util::{combine_errors_or_ok, combine_results};
 use proc_macro2::Span;
 use std::collections::HashMap;
 use syn::spanned::Spanned;
@@ -37,24 +37,22 @@ fn check_updates_refer_to_valid_fields(
                 check_updates_refer_to_valid_fields(fields, t, errors);
             }
         }
-        TransitionStmt::Let(_, _, _) => { }
+        TransitionStmt::Let(_, _, _) => {}
         TransitionStmt::If(_, _, thn, els) => {
             check_updates_refer_to_valid_fields(fields, thn, errors);
             check_updates_refer_to_valid_fields(fields, els, errors);
         }
-        TransitionStmt::Require(_, _) => { }
-        TransitionStmt::Assert(_, _) => { }
+        TransitionStmt::Require(_, _) => {}
+        TransitionStmt::Assert(_, _) => {}
         TransitionStmt::Update(span, f, _)
         | TransitionStmt::Initialize(span, f, _)
         | TransitionStmt::Special(span, f, _) => {
             if !fields_contain(fields, f) {
-                errors.push(Error::new(
-                    span.span(),
-                    format!("field '{}' not found", f.to_string()),
-                ));
+                errors
+                    .push(Error::new(span.span(), format!("field '{}' not found", f.to_string())));
             }
         }
-        TransitionStmt::PostCondition(..) => { }
+        TransitionStmt::PostCondition(..) => {}
     }
 }
 
@@ -199,7 +197,7 @@ fn check_at_most_one_update(sm: &SM, ts: &TransitionStmt, errors: &mut Vec<Error
     for f in &sm.fields {
         if is_allowed_in_update_in_normal_transition(&f.stype) {
             match check_at_most_one_update_rec(f, ts) {
-                Ok(_) => { }
+                Ok(_) => {}
                 Err(e) => errors.push(e),
             }
         }
@@ -322,13 +320,13 @@ fn check_valid_ops(
                 check_valid_ops(fields, t, is_readonly, errors);
             }
         }
-        TransitionStmt::Let(_, _, _) => { }
+        TransitionStmt::Let(_, _, _) => {}
         TransitionStmt::If(_, _, thn, els) => {
             check_valid_ops(fields, thn, is_readonly, errors);
             check_valid_ops(fields, els, is_readonly, errors);
         }
-        TransitionStmt::Require(_, _) => { }
-        TransitionStmt::Assert(_, _) => { }
+        TransitionStmt::Require(_, _) => {}
+        TransitionStmt::Assert(_, _) => {}
         TransitionStmt::Initialize(span, _, _) => {
             errors.push(Error::new(
                 span.span(),
@@ -384,7 +382,7 @@ fn check_valid_ops(
                 ));
             }
         }
-        TransitionStmt::PostCondition(..) => { }
+        TransitionStmt::PostCondition(..) => {}
     }
 }
 
@@ -413,18 +411,19 @@ fn check_let_shadowing_rec(ts: &TransitionStmt, ids: &mut Vec<String>, errors: &
             if ids.contains(&s) {
                 errors.push(Error::new(
                     *span,
-                    format!("state machine transitions forbid let-shadowing")));
+                    format!("state machine transitions forbid let-shadowing"),
+                ));
             } else {
                 ids.push(s);
             }
         }
 
-        TransitionStmt::Require(_, _) => { }
-        TransitionStmt::Assert(_, _) => { }
-        TransitionStmt::Update(_, _, _) => { }
-        TransitionStmt::Initialize(_, _, _) => { }
-        TransitionStmt::PostCondition(..) => { }
-        TransitionStmt::Special(_, _, _) => { }
+        TransitionStmt::Require(_, _) => {}
+        TransitionStmt::Assert(_, _) => {}
+        TransitionStmt::Update(_, _, _) => {}
+        TransitionStmt::Initialize(_, _, _) => {}
+        TransitionStmt::PostCondition(..) => {}
+        TransitionStmt::Special(_, _, _) => {}
     }
 }
 
@@ -459,7 +458,7 @@ pub fn check_transition(sm: &SM, tr: &Transition) -> syn::parse::Result<()> {
         TransitionKind::Init => {
             // check exactly one update
             match check_init(sm, &tr.body) {
-                Ok(()) => { }
+                Ok(()) => {}
                 Err(e) => errors.push(e),
             }
         }

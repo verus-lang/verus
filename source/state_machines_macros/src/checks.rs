@@ -1,12 +1,12 @@
 //! More sanity checks on transitions, checking properties specifically for
 //! concurrency_tokens.rs
 
-use crate::ast::{SM, TransitionStmt};
+use crate::ast::{TransitionStmt, SM};
 use syn::parse::Error;
 
 /// Check if any SpecialOp is inside a conditional, which is currently unsupported.
 /// e.g., this is disallowed:
-/// 
+///
 /// if cond {
 ///    add_element(...);
 /// }
@@ -100,17 +100,19 @@ pub fn check_ordering_remove_have_add(sm: &SM, ts: &TransitionStmt) -> syn::pars
     Ok(())
 }
 
-pub fn check_ordering_remove_have_add_rec(ts: &TransitionStmt,
-      field_name: &String,
-      seen_have: bool,
-      seen_add: bool
+pub fn check_ordering_remove_have_add_rec(
+    ts: &TransitionStmt,
+    field_name: &String,
+    seen_have: bool,
+    seen_add: bool,
 ) -> syn::parse::Result<(bool, bool)> {
     match ts {
         TransitionStmt::Block(_, v) => {
             let mut seen_have = seen_have;
             let mut seen_add = seen_add;
             for t in v {
-                let (h, a) = check_ordering_remove_have_add_rec(t, field_name, seen_have, seen_add)?;
+                let (h, a) =
+                    check_ordering_remove_have_add_rec(t, field_name, seen_have, seen_add)?;
                 seen_have = h;
                 seen_add = a;
             }
@@ -122,14 +124,12 @@ pub fn check_ordering_remove_have_add_rec(ts: &TransitionStmt,
             Ok((h1 || h2, a1 || a2))
         }
 
-        TransitionStmt::Let(_, _, _) |
-        TransitionStmt::Require(_, _) |
-        TransitionStmt::Assert(_, _) |
-        TransitionStmt::Update(_, _, _) |
-        TransitionStmt::Initialize(_, _, _) |
-        TransitionStmt::PostCondition(..) => {
-            Ok((seen_have, seen_add))
-        }
+        TransitionStmt::Let(_, _, _)
+        | TransitionStmt::Require(_, _)
+        | TransitionStmt::Assert(_, _)
+        | TransitionStmt::Update(_, _, _)
+        | TransitionStmt::Initialize(_, _, _)
+        | TransitionStmt::PostCondition(..) => Ok((seen_have, seen_add)),
 
         TransitionStmt::Special(span, id, op) => {
             let msg = "updates for a field should always go in order 'remove -> have -> add'; otherwise, the transition relation may be weaker than necessary";

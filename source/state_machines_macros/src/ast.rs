@@ -179,8 +179,6 @@ impl SpecialOp {
             SpecialOp::GuardSome(..) => false,
         }
     }
-
-
 }
 
 impl TransitionStmt {

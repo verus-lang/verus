@@ -257,9 +257,7 @@ fn ty_to_string(ty: &Type) -> String {
 
 fn params_to_string(params: &Vec<TransitionParam>) -> String {
     let mut v1 = vec![];
-    v1.extend(
-        params.iter().map(|f| f.ident.to_string() + ": " + &ty_to_string(&f.ty)),
-    );
+    v1.extend(params.iter().map(|f| f.ident.to_string() + ": " + &ty_to_string(&f.ty)));
     v1.join(", ")
 }
 
@@ -273,8 +271,6 @@ fn transition_params_to_string(
         v1.push("self: ".to_string() + &ty_to_string(self_ty));
     }
     v1.push("post: ".to_string() + &ty_to_string(self_ty));
-    v1.extend(
-        params.iter().map(|f| f.ident.to_string() + ": " + &ty_to_string(&f.ty)),
-    );
+    v1.extend(params.iter().map(|f| f.ident.to_string() + ": " + &ty_to_string(&f.ty)));
     v1.join(", ")
 }

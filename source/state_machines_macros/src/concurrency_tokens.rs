@@ -9,10 +9,13 @@ use crate::ast::{
     Field, Lemma, ShardableType, SpecialOp, Transition, TransitionKind, TransitionStmt, SM,
 };
 use crate::checks::{check_ordering_remove_have_add, check_unsupported_updates_in_conditionals};
-use crate::util::combine_errors_or_ok;
 use crate::parse_token_stream::SMBundle;
 use crate::safety_conditions::{has_any_assert, has_any_require};
-use crate::to_token_stream::{shardable_type_to_type, name_with_type_args, impl_decl_stream, get_self_ty, get_self_ty_double_colon, name_with_type_args_double_colon};
+use crate::to_token_stream::{
+    get_self_ty, get_self_ty_double_colon, impl_decl_stream, name_with_type_args,
+    name_with_type_args_double_colon, shardable_type_to_type,
+};
+use crate::util::combine_errors_or_ok;
 use proc_macro2::Span;
 use proc_macro2::TokenStream;
 use quote::quote;
@@ -106,7 +109,7 @@ fn multiset_relation_post_condition_name(field: &Field) -> Ident {
 fn multiset_relation_post_condition_qualified_name(sm: &SM, field: &Field) -> Type {
     let ty = field_token_type_double_colon(sm, field);
     let name = multiset_relation_post_condition_name(field);
-    Type::Verbatim(quote!{ #ty::#name })
+    Type::Verbatim(quote! { #ty::#name })
 }
 
 /// Print declaration for the Instance type.
@@ -462,29 +465,29 @@ pub fn exchange_stream(bundle: &SMBundle, tr: &Transition) -> syn::parse::Result
 
             match &field.stype {
                 ShardableType::Constant(_) => {
-                     let e_opt = get_post_value_for_variable(&ctxt, &tr.body, field);
-                     let e = e_opt.expect("get_post_value_for_variable");
-                     let lhs = get_const_field_value(&ctxt, field);
-                     ctxt.ensures.push(mk_eq(&lhs, &e));
+                    let e_opt = get_post_value_for_variable(&ctxt, &tr.body, field);
+                    let e = e_opt.expect("get_post_value_for_variable");
+                    let lhs = get_const_field_value(&ctxt, field);
+                    ctxt.ensures.push(mk_eq(&lhs, &e));
                 }
-                _ => { }
+                _ => {}
             }
 
             if let Some(init_input_token_type) = get_init_param_input_type(sm, &field) {
                 let arg_name = transition_arg_name(field);
 
                 add_token_param_in_out(
-                            &ctxt,
-                            &mut in_args,
-                            &mut out_args,
-                            &mut inst_eq_enss,
-                            &mut inst_eq_reqs,
-                            &arg_name,
-                            &init_input_token_type,
-                            InoutType::In,
-                            false, // (don't) apply_instance_condition
-                            false, // (don't) use_explicit_lifetime
-                        );
+                    &ctxt,
+                    &mut in_args,
+                    &mut out_args,
+                    &mut inst_eq_enss,
+                    &mut inst_eq_reqs,
+                    &arg_name,
+                    &init_input_token_type,
+                    InoutType::In,
+                    false, // (don't) apply_instance_condition
+                    false, // (don't) use_explicit_lifetime
+                );
 
                 let e_opt = get_post_value_for_variable(&ctxt, &tr.body, field);
                 let e = e_opt.expect("get_post_value_for_variable");
@@ -493,22 +496,23 @@ pub fn exchange_stream(bundle: &SMBundle, tr: &Transition) -> syn::parse::Result
                     field,
                     &mut ctxt.ensures,
                     e,
-                    Expr::Verbatim(quote! { #arg_name }));
+                    Expr::Verbatim(quote! { #arg_name }),
+                );
             } else if let Some(init_output_token_type) = get_init_param_output_type(sm, &field) {
                 let arg_name = transition_arg_name(field);
 
                 add_token_param_in_out(
-                            &ctxt,
-                            &mut in_args,
-                            &mut out_args,
-                            &mut inst_eq_enss,
-                            &mut inst_eq_reqs,
-                            &arg_name,
-                            &init_output_token_type,
-                            InoutType::Out,
-                            false, // (don't) apply_instance_condition
-                            false, // (don't) use_explicit_lifetime
-                        );
+                    &ctxt,
+                    &mut in_args,
+                    &mut out_args,
+                    &mut inst_eq_enss,
+                    &mut inst_eq_reqs,
+                    &arg_name,
+                    &init_output_token_type,
+                    InoutType::Out,
+                    false, // (don't) apply_instance_condition
+                    false, // (don't) use_explicit_lifetime
+                );
 
                 let e_opt = get_post_value_for_variable(&ctxt, &tr.body, field);
                 let e = e_opt.expect("get_post_value_for_variable");
@@ -521,14 +525,15 @@ pub fn exchange_stream(bundle: &SMBundle, tr: &Transition) -> syn::parse::Result
                     &mut inst_eq_enss,
                     e,
                     inst,
-                    Expr::Verbatim(quote! { #arg_name }));
+                    Expr::Verbatim(quote! { #arg_name }),
+                );
             }
         } else {
             let nondeterministic_read = match field.stype {
-                    ShardableType::NotTokenized(_) => true,
-                    ShardableType::StorageOptional(_) => true,
-                    _ => false
-                } && ctxt.fields_read.contains(&field.ident.to_string());
+                ShardableType::NotTokenized(_) => true,
+                ShardableType::StorageOptional(_) => true,
+                _ => false,
+            } && ctxt.fields_read.contains(&field.ident.to_string());
 
             if nondeterministic_read {
                 // It is possible to read a value non-deterministically without it coming
@@ -590,8 +595,10 @@ pub fn exchange_stream(bundle: &SMBundle, tr: &Transition) -> syn::parse::Result
                 | ShardableType::StorageOptional(_)
                 | ShardableType::Optional(_) => {
                     assert!(!ctxt.fields_written.contains(&field.ident.to_string()));
-                    assert!(nondeterministic_read ||
-                        !ctxt.fields_read.contains(&field.ident.to_string()));
+                    assert!(
+                        nondeterministic_read
+                            || !ctxt.fields_read.contains(&field.ident.to_string())
+                    );
 
                     for p in &ctxt.params[&field.ident.to_string()] {
                         add_token_param_in_out(
@@ -729,11 +736,9 @@ fn get_init_param_input_type(_sm: &SM, field: &Field) -> Option<Type> {
         ShardableType::NotTokenized(_) => None,
         ShardableType::Multiset(_) => None,
         ShardableType::Optional(_) => None,
-        ShardableType::StorageOptional(ty) => {
-            Some(Type::Verbatim(quote!{
-                crate::pervasive::option::Option<#ty>
-            }))
-        }
+        ShardableType::StorageOptional(ty) => Some(Type::Verbatim(quote! {
+            crate::pervasive::option::Option<#ty>
+        })),
     }
 }
 
@@ -741,13 +746,15 @@ fn add_initialization_input_conditions(
     field: &Field,
     ensures: &mut Vec<Expr>,
     init_value: Expr,
-    param_value: Expr)
-{
+    param_value: Expr,
+) {
     match &field.stype {
         ShardableType::StorageOptional(_) => {
             ensures.push(mk_eq(&param_value, &init_value));
         }
-        _ => { panic!("this should implement each case enabled by get_init_param_input_type"); }
+        _ => {
+            panic!("this should implement each case enabled by get_init_param_input_type");
+        }
     }
 }
 
@@ -758,17 +765,17 @@ fn get_init_param_output_type(sm: &SM, field: &Field) -> Option<Type> {
         ShardableType::NotTokenized(_) => None, // no tokens
         ShardableType::Multiset(_) => {
             let ty = field_token_type(&sm, field);
-            Some(Type::Verbatim(quote!{
+            Some(Type::Verbatim(quote! {
                 crate::pervasive::multiset::Multiset<#ty>
             }))
         }
         ShardableType::Optional(_) => {
             let ty = field_token_type(&sm, field);
-            Some(Type::Verbatim(quote!{
+            Some(Type::Verbatim(quote! {
                 crate::pervasive::option::Option<#ty>
             }))
         }
-        ShardableType::StorageOptional(_) => None // no output token
+        ShardableType::StorageOptional(_) => None, // no output token
     }
 }
 
@@ -779,22 +786,22 @@ fn add_initialization_output_conditions(
     inst_eq_enss: &mut Vec<Expr>,
     init_value: Expr,
     inst_value: Expr,
-    param_value: Expr)
-{
+    param_value: Expr,
+) {
     match &field.stype {
         ShardableType::Variable(_) => {
-            inst_eq_enss.push(Expr::Verbatim(quote!{
+            inst_eq_enss.push(Expr::Verbatim(quote! {
                 ::builtin::equal(#param_value.instance, #inst_value)
             }));
             let field_name = field_token_field_name(field);
-            ensures.push(Expr::Verbatim(quote!{
+            ensures.push(Expr::Verbatim(quote! {
                 ::builtin::equal(#param_value.#field_name, #init_value)
             }));
         }
         ShardableType::Optional(_) => {
             // TODO factor this into a helper function to simplify the generated code
             let field_name = field_token_field_name(field);
-            ensures.push(Expr::Verbatim(quote!{
+            ensures.push(Expr::Verbatim(quote! {
                 match #init_value {
                     crate::pervasive::option::Option::None => {
                         #param_value.is_None()
@@ -813,11 +820,13 @@ fn add_initialization_output_conditions(
         }
         ShardableType::Multiset(_) => {
             let fn_name = multiset_relation_post_condition_qualified_name(sm, field);
-            ensures.push(Expr::Verbatim(quote!{
+            ensures.push(Expr::Verbatim(quote! {
                 #fn_name(#param_value, #init_value, #inst_value)
             }));
         }
-        _ => { panic!("this should implement each case enabled by get_init_param_output_type"); }
+        _ => {
+            panic!("this should implement each case enabled by get_init_param_output_type");
+        }
     }
 }
 
@@ -829,15 +838,15 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
             let field_name = field_token_field_name(field);
             let inst_ty = inst_type(sm);
             let token_ty = field_token_type(sm, field);
-            let multiset_token_ty = Type::Verbatim(quote!{
+            let multiset_token_ty = Type::Verbatim(quote! {
                 crate::pervasive::multiset::Multiset<#token_ty>
             });
-            let multiset_normal_ty = Type::Verbatim(quote!{
+            let multiset_normal_ty = Type::Verbatim(quote! {
                 crate::pervasive::multiset::Multiset<#ty>
             });
 
             // TODO what should the visibility of this fn be?
-            quote!{
+            quote! {
                 #[spec]
                 pub fn #fn_name(tokens: #multiset_token_ty, m: #multiset_normal_ty, instance: #inst_ty) -> bool {
                     ::builtin::forall(|x: #ty|
@@ -856,7 +865,7 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
                 }
             }
         }
-        _ => { TokenStream::new() }
+        _ => TokenStream::new(),
     }
 }
 
@@ -1293,8 +1302,7 @@ impl<'a> VisitMut for TranslatorVisitor<'a> {
                                         }
                                         *node = get_nondeterministic_out_value(&self.ctxt, &field);
                                     }
-                                    ShardableType::Multiset(_ty)
-                                    | ShardableType::Optional(_ty) => {
+                                    ShardableType::Multiset(_ty) | ShardableType::Optional(_ty) => {
                                         let strat = field.stype.strategy_name();
                                         self.errors.push(Error::new(span,
                                     format!("A '{strat:}' field cannot be directly referenced here"))); // TODO be more specific

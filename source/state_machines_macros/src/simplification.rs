@@ -36,7 +36,7 @@ use syn::{Expr, Ident};
 // When we reach the PostCondition for `foo`, we then then add
 // the postcondition `self.foo == temp_foo` for whatever accumulated `temp_foo` we have.
 //
-// (As we perform this process, we also remove the update and special op statements from the 
+// (As we perform this process, we also remove the update and special op statements from the
 // AST, possibly introducing some 'require' or 'assert' statements when necessary,
 // depending on the semantics of the given special op. Again, if it's a read-only transition,
 // this last part is the only part that actually does anything.)
@@ -119,6 +119,10 @@ fn add_placeholders(sm: &SM, ts: &TransitionStmt) -> TransitionStmt {
 }
 
 fn add_placeholders_rec(ts: &mut TransitionStmt, found: &mut Vec<Ident>) {
+    // First check if this statement is any kind of update-ish statement
+    // (that includes 'update' statements, 'init' statements, and any special
+    // ops that might modify the field).
+
     let mut is_update_for = None;
     match &ts {
         TransitionStmt::Block(_, _) => {}
@@ -143,6 +147,11 @@ fn add_placeholders_rec(ts: &mut TransitionStmt, found: &mut Vec<Ident>) {
     match is_update_for {
         Some(f) => {
             if !contains_ident(found, &f) {
+                // If it _is_ an update-ish statement, AND we haven't added
+                // a placeholder for this field yet, then add a placeholder
+                // immediately after the current statement. (And leave the
+                // current statement unchanged).
+
                 found.push(f.clone());
                 append_stmt(ts, placeholder_stmt(*ts.get_span(), f));
                 return;
@@ -150,6 +159,9 @@ fn add_placeholders_rec(ts: &mut TransitionStmt, found: &mut Vec<Ident>) {
         }
         None => {}
     }
+
+    // All the other cases. For any other kind of leaf statement, there's nothing
+    // else to do. For blocks and branches, we recurse.
 
     match ts {
         TransitionStmt::Block(_, v) => {
@@ -164,6 +176,17 @@ fn add_placeholders_rec(ts: &mut TransitionStmt, found: &mut Vec<Ident>) {
             add_placeholders_rec(e1, found);
             add_placeholders_rec(e2, &mut found2);
 
+            // For each side of the conditional, look at any newly-found
+            // fields from that conditional (those after `idx`, the original
+            // length of the array). For such field, if it wasn't ALSO found
+            // in the other branch, then we go ahead and add it to the other
+            // branch now. Thus we maintain that, for each field and for each
+            // conditional, we will either get a placeholder on both branches,
+            // or on neither.
+
+            // Make sure we end with `found` (the &mut argument) containing the
+            // union of all the fields that were found on either branch.
+
             for i in idx..found.len() {
                 if !contains_ident(&found2, &found[i]) {
                     append_stmt(e2, placeholder_stmt(*span, found[i].clone()));
@@ -173,7 +196,7 @@ fn add_placeholders_rec(ts: &mut TransitionStmt, found: &mut Vec<Ident>) {
             for i in idx..found2.len() {
                 if !contains_ident(found, &found2[i]) {
                     found.push(found2[i].clone());
-                    append_stmt(e1, placeholder_stmt(*span, found[i].clone()));
+                    append_stmt(e1, placeholder_stmt(*span, found2[i].clone()));
                 }
             }
         }
@@ -185,6 +208,7 @@ fn add_placeholders_rec(ts: &mut TransitionStmt, found: &mut Vec<Ident>) {
         TransitionStmt::Update(_, _, _) => {}
         TransitionStmt::Special(_, _, _) => {}
         TransitionStmt::PostCondition(..) => {
+            // We're in the process of adding these; they shouldn't be in here already!
             panic!("PostCondition statement shouldn't exist here");
         }
     }
@@ -195,14 +219,12 @@ fn add_placeholders_rec(ts: &mut TransitionStmt, found: &mut Vec<Ident>) {
 // we will update the expression later in phase 2.
 
 fn placeholder_stmt(span: Span, f: Ident) -> TransitionStmt {
-    TransitionStmt::PostCondition(span, Expr::Verbatim(quote!{ #f }))
+    TransitionStmt::PostCondition(span, Expr::Verbatim(quote! { #f }))
 }
 
 fn get_field_for_placeholder(e: &Expr) -> String {
     match e {
-        Expr::Verbatim(stream) => {
-            stream.to_string()
-        }
+        Expr::Verbatim(stream) => stream.to_string(),
         _ => panic!("get_field_for_placeholder found invalid placeholder"),
     }
 }
@@ -228,8 +250,7 @@ impl FieldMap {
         let mut field_map = HashMap::new();
         for field in &sm.fields {
             let ident = &field.ident;
-            field_map.insert(ident.to_string(),
-                (0, Expr::Verbatim(quote! { self.#ident })));
+            field_map.insert(ident.to_string(), (0, Expr::Verbatim(quote! { self.#ident })));
         }
         FieldMap { field_map }
     }
@@ -270,17 +291,14 @@ impl FieldMap {
                         // we should get a 'panic' when we try to access it later.
                     }
                 }
-                _ => { }
+                _ => {}
             }
         }
         FieldMap { field_map: merged }
     }
 }
 
-fn simplify_ops_rec(
-    ts: &TransitionStmt,
-    field_map: FieldMap,
-) -> (TransitionStmt, FieldMap) {
+fn simplify_ops_rec(ts: &TransitionStmt, field_map: FieldMap) -> (TransitionStmt, FieldMap) {
     match ts {
         TransitionStmt::PostCondition(span, placeholder_e) => {
             // We found a placeholder PostCondition.
@@ -297,7 +315,7 @@ fn simplify_ops_rec(
             );
             return (ts, field_map);
         }
-        _ => { }
+        _ => {}
     }
 
     match ts {
@@ -315,8 +333,10 @@ fn simplify_ops_rec(
         TransitionStmt::If(span, cond, e1, e2) => {
             let (new_e1, field_map1) = simplify_ops_rec(e1, field_map.clone());
             let (new_e2, field_map2) = simplify_ops_rec(e2, field_map.clone());
-            (TransitionStmt::If(*span, cond.clone(), Box::new(new_e1), Box::new(new_e2)),
-                FieldMap::merge(field_map, field_map1, field_map2))
+            (
+                TransitionStmt::If(*span, cond.clone(), Box::new(new_e1), Box::new(new_e2)),
+                FieldMap::merge(field_map, field_map1, field_map2),
+            )
         }
         TransitionStmt::Require(_, _) => (ts.clone(), field_map),
         TransitionStmt::Assert(_, _) => (ts.clone(), field_map),
