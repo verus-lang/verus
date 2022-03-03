@@ -87,7 +87,7 @@ Monoidal:
    * `remove_some(f, x)` --> `remove(f, Some(x))`
    * `have_some(f, x)` --> `have(f, Some(x))`
    * `add_add(f, x)` --> `add(f, Some(x))`
- * `sharding(multiset)` field of type `Multi<T>`
+ * `sharding(multiset)` field of type `Multiset<T>`
    * `Option<T>` is given a monoidal structure where (·) is given by multiset addition.
    * `remove_element(f, x)` --> `remove(f, {x})`
    * `have_element(f, x)` --> `have(f, {x})`
@@ -110,7 +110,7 @@ Storage:
    * `withdraw_some(f, x)` --> `withdraw(f, Some(x))`
    * `guard_some(f, x)` --> `guard(f, Some(x))`
    * `deposit_add(f, x)` --> `deposit(f, Some(x))`
- * `storage(multiset)` field of type `Multi<T>`
+ * `storage(multiset)` field of type `Multiset<T>`
    * `Option<T>` is given a monoidal structure where (·) is given by multiset addition.
    * `withdraw_element(f, x)` --> `withdraw(f, {x})`
    * `guard_element(f, x)` --> `guard(f, {x})`
