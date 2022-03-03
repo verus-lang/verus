@@ -1,5 +1,18 @@
+//! More sanity checks on transitions, checking properties specifically for
+//! concurrency_tokens.rs
+
 use crate::ast::{SM, TransitionStmt};
 use syn::parse::Error;
+
+/// Check if any SpecialOp is inside a conditional, which is currently unsupported.
+/// e.g., this is disallowed:
+/// 
+/// if cond {
+///    add_element(...);
+/// }
+///
+/// Such a thing would mean we need "conditional arguments" in the exchange methods
+/// (presumably via Option types) a feature that we don't implement.
 
 pub fn check_unsupported_updates_in_conditionals(ts: &TransitionStmt) -> syn::parse::Result<()> {
     match ts {
@@ -53,6 +66,32 @@ fn check_unsupported_updates_helper(ts: &TransitionStmt) -> syn::parse::Result<(
         }
     }
 }
+
+/// We require the token updates to go in remove -> have -> add order.
+/// This isn't strictly necessary; however, doing otherwise might result in a transition
+/// relation which is weaker than would be enforced by the exchange method.
+///
+/// The reason is that 'remove' corresponds to input tokens that are consumed
+/// 'have' corresponds to readonly input tokens, and 'add' corresponds to output tokens.
+/// However, this translation does not take into account the order of statements,
+/// while the order of statements IS meaningful to the operational definitions of
+/// have/remove/add for the purposes of constructing a relation.
+/// And in particular, the exchange method corresponds to the remove -> have -> add order.
+///
+/// For example, suppose the user entered the commands in a different order:
+///
+/// have(x);
+/// remove(y);
+///
+/// Operationally, this means that the starting state contains `x`, and then the state `y`
+/// is removed. This means `x` and `y` might overlap. However, the exchange method will
+/// take both 'x' and 'y' as tokens (the first read-only, the second not). But here, the
+/// tokens are necessarily disjoint!
+///
+/// Note that we don't apply a similar restriction for withdraw/deposit/guard. For one thing,
+/// 'guard' can only be in a readonly transiton and 'withdraw/deposit' in a normal transition.
+/// So those can't interact at all. For another, there could conceivably be reason
+/// to put 'withdraw' and 'deposit' in either order.
 
 pub fn check_ordering_remove_have_add(sm: &SM, ts: &TransitionStmt) -> syn::parse::Result<()> {
     for field in &sm.fields {

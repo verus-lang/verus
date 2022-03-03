@@ -3,10 +3,14 @@ use proc_macro2::TokenStream;
 use quote::quote;
 
 /// Converts a transition description into a relation between `self` and `post`.
-/// We proceed in two steps.
+/// Overall, this process has two steps:
 ///
-/// 1. Process and remove all 'update' statements.
+/// 1. Process all 'update' statements and special ops, turning them into
+///    require, assert, and postcondition operations. (See `simplification.rs`.)
 /// 2. Walk the tree and straightforwardly convert it to a relation.
+///
+/// This function performs step (2) (and it assumes that step (1) has already been applied.
+/// See `simplification.rs`.)
 ///
 /// There are actually two different relations we can form, the "weak" relation and
 /// the "strong" one.
@@ -75,6 +79,7 @@ fn to_relation_rec(
                 panic!("not implemented");
             }
         },
+        TransitionStmt::PostCondition(_span, e) |
         TransitionStmt::Require(_span, e) => match p {
             None => Some(quote! { (#e) }),
             Some(r) => Some(quote! { ((#e) && #r) }),
@@ -96,9 +101,6 @@ fn to_relation_rec(
         | TransitionStmt::Update(_, _, _)
         | TransitionStmt::Special(_, _, _) => {
             panic!("should have been removed in pre-processing step");
-        }
-        TransitionStmt::PostCondition(..) => {
-            panic!("PostCondition statement shouldn't exist here");
         }
     }
 }

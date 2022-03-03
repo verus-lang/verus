@@ -10,7 +10,7 @@ use crate::concurrency_tokens::output_token_types_and_fns;
 use crate::lemmas::get_transition;
 use crate::parse_token_stream::SMBundle;
 use crate::safety_conditions::{has_any_assert, safety_condition_body};
-use crate::simplification::simplify_updates;
+use crate::simplification::simplify_ops;
 use crate::to_relation::to_relation;
 use proc_macro2::TokenStream;
 use quote::{quote, quote_spanned, ToTokens};
@@ -182,10 +182,16 @@ pub fn output_primary_stuff(
     let self_ty = get_self_ty(&sm);
 
     for trans in &sm.transitions {
-        let simplified_body = simplify_updates(sm, &trans.body, true);
+        // `simplify_ops` translates the transition by processing all the special ops
+        // and turns them into the core transition primitives.
+        // `to_relation` then takes that simplified transition and turns it into
+        // a boolean predicate between `self` and `post`.
+
+        let simplified_body = simplify_ops(sm, &trans.body, trans.kind == TransitionKind::Readonly);
 
         // Output the 'weak' transition relation.
         // (or for the 'Init' case, a single-state predicate).
+
         if trans.kind != TransitionKind::Readonly {
             let f = to_relation(&simplified_body, true /* weak */);
             let name = &trans.name;
@@ -213,6 +219,7 @@ pub fn output_primary_stuff(
         // Output the 'strong' transition relation.
         // Note that 'init' routines don't allow asserts, so there is no need for an
         // additional 'strong' relation.
+
         if trans.kind == TransitionKind::Transition {
             let params = self_post_params(&trans.params);
             let name = Ident::new(&(trans.name.to_string() + "_strong"), trans.name.span());
@@ -229,10 +236,13 @@ pub fn output_primary_stuff(
         }
 
         // If necessary, output a lemma with proof obligations for the safety conditions.
-        let simplified_body_no_updates = simplify_updates(sm, &trans.body, false);
-        if has_any_assert(&simplified_body_no_updates) {
+        // Note that we specifically check for asserts on the _simplified_ transition AST,
+        // not the original, because 'assert' statements may have been introduced in
+        // simplificiation.
+
+        if has_any_assert(&simplified_body) {
             assert!(trans.kind != TransitionKind::Init);
-            let b = safety_condition_body(&simplified_body_no_updates);
+            let b = safety_condition_body(&simplified_body);
             let name = Ident::new(&(trans.name.to_string() + "_asserts"), trans.name.span());
             let params = self_assoc_params(&self_ty, &trans.params);
             let b = match b {

@@ -85,8 +85,10 @@ pub enum TransitionStmt {
     /// concurrent-state-machine-specific stuff
     Special(Span, Ident, SpecialOp),
 
-    /// used internally by concurrency_tokens.rs
     /// Different than an Assert - this expression is allowed to depend on output values
+    /// Used internally by various transformations, both by `concurrency_tokens.rs`
+    /// and by `to_relation.rs`.
+    /// This cannot be directly constructed by the user.
     PostCondition(Span, Expr),
 }
 

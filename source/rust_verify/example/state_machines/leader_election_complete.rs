@@ -106,10 +106,10 @@ state_machine!(
             let dst_new_max = max(self.highest_heard.index(dstidx), message);
 
             assert_by(post.on_chord_heard_dominates_id_inv(), {
-              forall(|start: int, end: int| {
+              assert_forall_by(|start: int, end: int| {
                 requires(post.is_chord(start, end));
                 ensures(post.OnChordHeardDominatesId(start, end));
-                forall(|node: int| {
+                assert_forall_by(|node: int| {
                   requires(between(start, node, end) && post.valid_idx(node));
                   ensures(post.highest_heard.index(node) > post.ids.index(node));
                   if dstidx == end {
@@ -138,7 +138,7 @@ state_machine!(
             });
 
             assert_by(post.safety_condition(), {
-                forall(|i: int, j: int| {
+                assert_forall_by(|i: int, j: int| {
                     requires(post.is_leader(i) && post.is_leader(j));
                     ensures(i == j);
 

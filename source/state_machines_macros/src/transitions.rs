@@ -24,6 +24,7 @@ pub fn get_field<'a>(fields: &'a Vec<Field>, ident: &Ident) -> &'a Field {
 }
 
 /// Check that every update statement actually refers to a valid field.
+/// We'll assume that all the fields are valid in the later checks.
 
 fn check_updates_refer_to_valid_fields(
     fields: &Vec<Field>,
@@ -123,8 +124,14 @@ fn check_has_all_fields(
 
 /// Check well-formedness for an 'initialization' transition.
 ///
-/// We require every field to be updated exactly once. That means if a field
-/// is updated in one branch of a conditional, it must also be updated in the other.
+/// We require every field to be initialized exactly once. That means if a field
+/// is initialized in one branch of a conditional, it must also be updated in the other.
+///
+/// This also checks that ONLY 'init' statements are used (i.e., no 'update' statements
+/// or SpecialOps).
+///
+/// TODO this would probably be cleaner to do it one field at a time rather than doing
+/// all the set-union logic
 
 fn check_init(sm: &SM, ts: &TransitionStmt) -> syn::parse::Result<()> {
     let h = check_init_rec(&ts)?;
@@ -184,11 +191,17 @@ fn check_init_rec(ts: &TransitionStmt) -> syn::parse::Result<Vec<(Ident, Span)>>
     }
 }
 
+/// For each field, checks that this field is updated at most once.
+/// Only checks 'update' statements, not 'init' statements or any special ops.
+/// Only checks fields for which 'update' statements are allowed at all.
+
 fn check_at_most_one_update(sm: &SM, ts: &TransitionStmt, errors: &mut Vec<Error>) {
     for f in &sm.fields {
-        match check_at_most_one_update_rec(f, ts) {
-            Ok(_) => { }
-            Err(e) => errors.push(e),
+        if is_allowed_in_update_in_normal_transition(&f.stype) {
+            match check_at_most_one_update_rec(f, ts) {
+                Ok(_) => { }
+                Err(e) => errors.push(e),
+            }
         }
     }
 }
@@ -240,6 +253,11 @@ fn check_at_most_one_update_rec(
     }
 }
 
+/// Returns `true` if you're allowed to have an 'update' statement for the given
+/// sharding strategy. Naturally, this is false for constants, which cannot be updated
+/// at all, and also false for option, multiset, etc. which have to be updated with
+/// special ops.
+
 fn is_allowed_in_update_in_normal_transition(stype: &ShardableType) -> bool {
     match stype {
         ShardableType::Variable(_) => true,
@@ -250,6 +268,8 @@ fn is_allowed_in_update_in_normal_transition(stype: &ShardableType) -> bool {
         ShardableType::StorageOptional(_) => false,
     }
 }
+
+/// Big matrix for whether a given sharding type is allowed for a given SpecialOp type
 
 fn is_allowed_in_special_op(stype: &ShardableType, sop: &SpecialOp) -> bool {
     match stype {
@@ -279,6 +299,16 @@ fn is_allowed_in_special_op(stype: &ShardableType, sop: &SpecialOp) -> bool {
         },
     }
 }
+
+/// Check that every Update and SpecialOp statement is allowed for the given
+/// sharding strategy of its field.
+///
+/// This check is meant for 'transition' and 'readonly' transitions, so it also checks
+/// that there are no 'init' statements, which are only meaningful in 'init' transitions.
+///
+/// It also checks that no fields are modified if it's a 'readonly' transition,
+/// and conversely for a 'transition' transition, it checks that there are no
+/// guard operations (these operations are allowed ONLY in 'readonly' transitions).
 
 fn check_valid_ops(
     fields: &Vec<Field>,
@@ -357,6 +387,9 @@ fn check_valid_ops(
         TransitionStmt::PostCondition(..) => { }
     }
 }
+
+/// Check that the identifiers bound in 'let' statements are all distinct,
+/// and that they don't overlap with the parameters of a transition.
 
 fn check_let_shadowing(trans: &Transition, errors: &mut Vec<Error>) {
     let mut ids = trans.params.iter().map(|p| p.ident.to_string()).collect();

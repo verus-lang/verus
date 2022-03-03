@@ -56,7 +56,8 @@ pub fn safety_condition_body(ts: &TransitionStmt) -> Option<Expr> {
                     }
                 })),
                 (None, Some(e)) => Some(Expr::Verbatim(quote_spanned! {*span =>
-                    if !(#cond) {
+                    if #cond {
+                    } else {
                         #e
                     }
                 })),
@@ -81,7 +82,9 @@ pub fn safety_condition_body(ts: &TransitionStmt) -> Option<Expr> {
             panic!("should have been removed at earlier processing stage");
         }
         TransitionStmt::PostCondition(..) => {
-            panic!("PostCondition statement shouldn't exist here");
+            // These may have been created during simplification, but we can ignore
+            // them. The updated values are irrelevant for safety conditions.
+            None
         }
     }
 }
