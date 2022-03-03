@@ -18,7 +18,7 @@ Considered as members of the state machine description language, these three new
 
  * `remove(f, x)` is equivalent to `require(post.f >= x); post.f := post.f - x`
  * `have(f, x)` is equivalent to `require(post.f >= x);`
- * `add(f, x)` is equivlanet to `assert(post.f ## x); post.f := post.f · x`
+ * `add(f, x)` is equivalent to `assert(post.f ## x); post.f := post.f · x`
 
 ### Meaning of operations in terms of monoid updates
 
@@ -66,3 +66,57 @@ Guards are easy:
  * `guard(f, x)` is operationally equivalent to `assert(post.f >= x);`
  
 Guards are only allowed in `readonly` transitions. Guards correspond to output tokens which are borrowed, and whose lifetimes are bounded by the input lifetimes.
+
+### Command reference
+
+Here is a list of planned commands and their definitions, organized by “sharding type”:
+
+Basics:
+
+ * `sharding(variable)` field of type `T`
+   * `update(f, x)` --> `post.f := x`.
+
+Monoidal:
+
+ * `sharding(monoid)` field of type `T` with an arbitrary (partial) monoid structure
+   * `remove(f, x)` --> `require(post.f >= x); post.f := post.f - x`
+   * `have(f, x)` --> `require(post.f >= x);`
+   * `add(f, x)` --> `assert(post.f ## x); post.f := post.f · x`
+ * `sharding(option)` field of type `Option<T>`
+   * `Option<T>` is given a monoidal structure where `None` is unit and `Some(x) · Some(y)` is undefined.
+   * `remove_some(f, x)` --> `remove(f, Some(x))`
+   * `have_some(f, x)` --> `have(f, Some(x))`
+   * `add_add(f, x)` --> `add(f, Some(x))`
+ * `sharding(multiset)` field of type `Multi<T>`
+   * `Option<T>` is given a monoidal structure where (·) is given by multiset addition.
+   * `remove_element(f, x)` --> `remove(f, {x})`
+   * `have_element(f, x)` --> `have(f, {x})`
+   * `add_element(f, x)` --> `add(f, {x})`
+     * Note that the safety condition posed by `add_element` is trivial, since (·) is always defined for the multiset monoid.
+ * `sharding(map)` field of type `Map<K, V>`
+   * `Map<K, V>` is given a monoidal structure where (·) is map union (undefined in the case of overlapping keys)
+   * `remove_kv(f, k, v)` --> `remove(f, [k := v])`
+   * `have_kv(f, k, v)` --> `have(f, [k := v])`
+   * `add_kv(f, k, v)` --> `add(f, [k := v])`
+
+Storage:
+
+ * For field of type `T` with an arbitrary (partial) monoid structure (I'm not currently planning a storage strategy for a generic monoid, but the real strategies below are given in terms of the general definitions.) 
+   * `withdraw(f, x)` --> `assert(post.f >= x); post.f := post.f - x`
+   * `guard(f, x)` --> `assert(post.f >= x);`
+   * `deposit(f, x)` --> `assert(post.f ## x); post.f := post.f · x`
+ * `storage(option)` field of type `Option<T>`
+   * `Option<T>` is given a monoidal structure where `None` is unit and `Some(x) · Some(y)` is undefined.
+   * `withdraw_some(f, x)` --> `withdraw(f, Some(x))`
+   * `guard_some(f, x)` --> `guard(f, Some(x))`
+   * `deposit_add(f, x)` --> `deposit(f, Some(x))`
+ * `storage(multiset)` field of type `Multi<T>`
+   * `Option<T>` is given a monoidal structure where (·) is given by multiset addition.
+   * `withdraw_element(f, x)` --> `withdraw(f, {x})`
+   * `guard_element(f, x)` --> `guard(f, {x})`
+   * `deposit_element(f, x)` --> `deposit(f, {x})`
+ * `storage(map)` field of type `Map<K, V>`
+   * `Map<K, V>` is given a monoidal structure where (·) is map union (undefined in the case of overlapping keys)
+   * `withdraw_kv(f, k, v)` --> `withdraw(f, [k := v])`
+   * `guard_kv(f, k, v)` --> `guard(f, [k := v])`
+   * `deposit_kv(f, k, v)` --> `deposit(f, [k := v])`
