@@ -1271,6 +1271,9 @@ impl<'a> VisitMut for TranslatorVisitor<'a> {
     fn visit_expr_mut(&mut self, node: &mut Expr) {
         let span = node.span();
         match node {
+            Expr::Verbatim(_) => {
+                panic!("can't process a Verbatim expression; (and there shouldn't be one a user-provided expression in the first place)");
+            }
             Expr::Path(ExprPath { attrs: _, qself: None, path }) if path.is_ident("self") => {
                 self.errors.push(Error::new(span,
                     "in a concurrent state machine, 'self' cannot be used opaquely; it may only be used by accessing its fields"));

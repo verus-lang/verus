@@ -3,15 +3,18 @@ use builtin::*;
 mod pervasive;
 use pervasive::*;
 
-use state_machines_macros::state_machine;
+use state_machines_macros::concurrent_state_machine;
 
-state_machine!(
+concurrent_state_machine!(
     X {
         fields {
+            #[sharding(variable)]
             pub a: int,
 
+            #[sharding(variable)]
             pub b: int,
 
+            #[sharding(variable)]
             pub c: int,
         }
 
