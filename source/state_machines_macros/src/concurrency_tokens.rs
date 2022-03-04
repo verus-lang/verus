@@ -11,6 +11,7 @@ use crate::ast::{
 use crate::checks::{check_ordering_remove_have_add, check_unsupported_updates_in_conditionals};
 use crate::parse_token_stream::SMBundle;
 use crate::safety_conditions::{has_any_assert, has_any_require};
+use crate::to_relation::asserts_to_single_predicate;
 use crate::to_token_stream::{
     get_self_ty, get_self_ty_double_colon, impl_decl_stream, name_with_type_args,
     name_with_type_args_double_colon, shardable_type_to_type,
@@ -1001,7 +1002,10 @@ fn determine_outputs(ctxt: &mut Ctxt, ts: &TransitionStmt) -> syn::parse::Result
             }
             Ok(())
         }
-        TransitionStmt::Let(_span, _id, _init_e) => Ok(()),
+        TransitionStmt::Let(_span, _id, _init_e, child) => {
+            determine_outputs(ctxt, child)?;
+            Ok(())
+        }
         TransitionStmt::If(_span, _cond_e, e1, e2) => {
             determine_outputs(ctxt, e1)?;
             determine_outputs(ctxt, e2)?;
@@ -1098,9 +1102,10 @@ fn walk_translate_expressions(
             }
             return Ok(());
         }
-        TransitionStmt::Let(_span, _id, e) => {
+        TransitionStmt::Let(_span, _id, e, child) => {
             let init_e = translate_expr(ctxt, e, comes_before_precondition)?;
             *e = init_e;
+            walk_translate_expressions(ctxt, child, comes_before_precondition)?;
             return Ok(());
         }
         TransitionStmt::If(_span, cond, e1, e2) => {
@@ -1393,7 +1398,6 @@ fn get_new_field_value(field: &Field) -> Expr {
 enum PrequelElement {
     Condition(Expr),
     Let(Ident, Expr),
-    Branch(Expr, Vec<PrequelElement>, Vec<PrequelElement>),
 }
 
 fn exchange_collect(
@@ -1413,13 +1417,20 @@ fn exchange_collect(
             }
             Ok((p, pa))
         }
-        TransitionStmt::Let(_span, id, init_e) => {
-            let mut p = prequel;
-            let mut pa = prequel_with_asserts;
-            let el = PrequelElement::Let(id.clone(), init_e.clone());
-            p.push(el.clone());
-            pa.push(el);
-            Ok((p, pa))
+        TransitionStmt::Let(_span, id, init_e, child) => {
+            let mut p = prequel.clone();
+            let mut pa = prequel_with_asserts.clone();
+            let preq = PrequelElement::Let(id.clone(), init_e.clone());
+            p.push(preq.clone());
+            pa.push(preq);
+            let _ = exchange_collect(ctxt, child, p, pa);
+
+            let mut prequel_with_asserts = prequel_with_asserts;
+            if let Some(e) = asserts_to_single_predicate(ts) {
+                prequel_with_asserts.push(PrequelElement::Condition(Expr::Verbatim(e)));
+            }
+
+            Ok((prequel, prequel_with_asserts))
         }
         TransitionStmt::If(_span, cond_e, e1, e2) => {
             let cond = PrequelElement::Condition(cond_e.clone());
@@ -1429,23 +1440,20 @@ fn exchange_collect(
             let mut pa1 = prequel_with_asserts.clone();
             p1.push(cond.clone());
             pa1.push(cond);
-            let (_p1, pa1) = exchange_collect(ctxt, e1, p1, pa1)?;
+            let (_p1, _pa1) = exchange_collect(ctxt, e1, p1, pa1)?;
 
             let mut p2 = prequel.clone();
             let mut pa2 = prequel_with_asserts.clone();
             p2.push(not_cond.clone());
             pa2.push(not_cond);
-            let (_p2, pa2) = exchange_collect(ctxt, e2, p2, pa2)?;
+            let (_p2, _pa2) = exchange_collect(ctxt, e2, p2, pa2)?;
 
-            let l = prequel_with_asserts.len();
-            let joined_pa = join_with_conditional(
-                prequel_with_asserts,
-                cond_e.clone(),
-                pa1[l + 1..].to_vec(),
-                pa2[l + 1..].to_vec(),
-            );
+            let mut prequel_with_asserts = prequel_with_asserts;
+            if let Some(e) = asserts_to_single_predicate(ts) {
+                prequel_with_asserts.push(PrequelElement::Condition(Expr::Verbatim(e)));
+            }
 
-            Ok((prequel, joined_pa))
+            Ok((prequel, prequel_with_asserts))
         }
         TransitionStmt::Require(_span, req_e) => {
             ctxt.requires.push(with_prequel(&prequel_with_asserts, req_e.clone()));
@@ -1470,17 +1478,6 @@ fn exchange_collect(
     }
 }
 
-fn join_with_conditional(
-    base: Vec<PrequelElement>,
-    cond: Expr,
-    v1: Vec<PrequelElement>,
-    v2: Vec<PrequelElement>,
-) -> Vec<PrequelElement> {
-    let mut b = base;
-    b.push(PrequelElement::Branch(cond, v1, v2));
-    b
-}
-
 fn bool_not_expr(e: &Expr) -> Expr {
     Expr::Verbatim(quote! { !(#e) })
 }
@@ -1495,66 +1492,9 @@ fn with_prequel(pre: &Vec<PrequelElement>, e: Expr) -> Expr {
             PrequelElement::Condition(cond_e) => {
                 e = Expr::Verbatim(quote! { ((#cond_e) >>= (#e)) });
             }
-            PrequelElement::Branch(_, _, _) => {
-                let cond_e = prequel_element_to_expr(p);
-                if let Some(ce) = cond_e {
-                    e = Expr::Verbatim(quote! { (#ce >>= #e) });
-                }
-            }
         }
     }
     e
-}
-
-fn prequel_element_to_expr(p: &PrequelElement) -> Option<Expr> {
-    match p {
-        PrequelElement::Condition(e) => Some(e.clone()),
-        PrequelElement::Let(_, _) => None,
-        PrequelElement::Branch(b, v1, v2) => {
-            let e1 = prequel_vec_to_expr(v1);
-            let e2 = prequel_vec_to_expr(v2);
-            match (e1, e2) {
-                (None, None) => None,
-                (Some(e1), None) => Some(Expr::Verbatim(quote! { ((#b) >>= (#e1)) })),
-                (None, Some(e2)) => Some(Expr::Verbatim(quote! { (!(#b) >>= (#e2)) })),
-                (Some(e1), Some(e2)) => {
-                    Some(Expr::Verbatim(quote! { (if #b { #e1 } else { #e2 }) }))
-                }
-            }
-        }
-    }
-}
-
-fn prequel_vec_to_expr(v: &Vec<PrequelElement>) -> Option<Expr> {
-    let mut opt = None;
-    for p in v.iter().rev() {
-        match p {
-            PrequelElement::Let(id, init_e) => {
-                if let Some(o) = opt {
-                    opt = Some(Expr::Verbatim(quote! { { let #id = #init_e; #o } }));
-                }
-            }
-            PrequelElement::Condition(cond_e) => match opt {
-                None => {
-                    opt = Some(Expr::Verbatim(quote! { (#cond_e) }));
-                }
-                Some(e) => {
-                    opt = Some(Expr::Verbatim(quote! { ((#cond_e) && #e) }));
-                }
-            },
-            PrequelElement::Branch(_, _, _) => {
-                let cond_e = prequel_element_to_expr(p);
-                if let Some(ce) = cond_e {
-                    if let Some(o) = opt {
-                        opt = Some(Expr::Verbatim(quote! { (#ce && #o) }));
-                    } else {
-                        opt = Some(ce);
-                    }
-                }
-            }
-        }
-    }
-    opt
 }
 
 /// Get the expression E that a given field gets updated to.
@@ -1567,7 +1507,7 @@ fn prequel_vec_to_expr(v: &Vec<PrequelElement>) -> Option<Expr> {
 /// Also handles 'init' statements in the same way as 'update' statements,
 /// so it can be used for initialization as well.
 ///
-/// Does NOT handle special ops.
+/// Ignores all special ops.
 
 fn get_post_value_for_variable(ctxt: &Ctxt, ts: &TransitionStmt, field: &Field) -> Option<Expr> {
     match ts {
@@ -1583,6 +1523,15 @@ fn get_post_value_for_variable(ctxt: &Ctxt, ts: &TransitionStmt, field: &Field) 
                 }
             }
             opt
+        }
+        TransitionStmt::Let(_span, id, e, child) => {
+            let o = get_post_value_for_variable(ctxt, child, field);
+            match o {
+                None => None,
+                Some(child_e) => Some(Expr::Verbatim(quote! {
+                    { let #id = #e; #child_e }
+                })),
+            }
         }
         TransitionStmt::If(_span, cond_e, e1, e2) => {
             let o1 = get_post_value_for_variable(ctxt, e1, field);
@@ -1604,8 +1553,7 @@ fn get_post_value_for_variable(ctxt: &Ctxt, ts: &TransitionStmt, field: &Field) 
         TransitionStmt::Initialize(_span, id, e) | TransitionStmt::Update(_span, id, e) => {
             if *id.to_string() == *field.ident.to_string() { Some(e.clone()) } else { None }
         }
-        TransitionStmt::Let(_, _, _)
-        | TransitionStmt::Require(_, _)
+        TransitionStmt::Require(_, _)
         | TransitionStmt::Assert(_, _)
         | TransitionStmt::Special(..)
         | TransitionStmt::PostCondition(..) => None,

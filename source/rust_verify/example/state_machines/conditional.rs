@@ -51,6 +51,25 @@ concurrent_state_machine!(
             }
         }
 
+        #[transition]
+        fn foo(&self, n: int) {
+            require(n >= 1);
+            assert(n >= 1);
+
+            let x = n + 2;
+
+            if n >= 5 {
+                require(n < 10);
+                assert(x != 4);
+            } else {
+                update(c, 12);
+            }
+
+            require(n != 1001);
+        }
+
+        #[inductive(foo)]
+        fn foo_inductive(self: X, post: X, n: int) { }
        
         #[inductive(initialize)]
         fn initialize_inductive(post: X, cond: bool) { }

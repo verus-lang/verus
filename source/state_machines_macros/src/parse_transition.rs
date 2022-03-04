@@ -1,8 +1,9 @@
 use crate::ast::{SpecialOp, Transition, TransitionKind, TransitionParam, TransitionStmt};
 use syn::spanned::Spanned;
+use proc_macro2::Span;
 use syn::{
     Block, Error, Expr, ExprCall, ExprIf, FnArg, ImplItemMethod, Local, Pat, PatIdent, Signature,
-    Stmt,
+    Stmt, Ident,
 };
 
 // Translate Rust AST into an SM AST, given by a TransitionStmt.
@@ -60,27 +61,49 @@ fn parse_sig(sig: &Signature) -> syn::parse::Result<Vec<TransitionParam>> {
     return Ok(v);
 }
 
+struct TLet(Span, Ident, Expr);
+
+enum StmtOrLet {
+    Stmt(TransitionStmt),
+    Let(TLet),
+}
+
 fn parse_block(block: &Block, ctxt: &Ctxt) -> syn::parse::Result<TransitionStmt> {
     let mut tstmts = Vec::new();
     for stmt in block.stmts.iter() {
         let tstmt = parse_stmt(stmt, ctxt)?;
         tstmts.push(tstmt);
     }
-    return Ok(TransitionStmt::Block(block.span(), tstmts));
+
+    let mut cur_block = Vec::new();
+    for stmt_or_let in tstmts.into_iter().rev() {
+        match stmt_or_let {
+            StmtOrLet::Stmt(s) => cur_block.push(s),
+            StmtOrLet::Let(TLet(span, id, e)) => {
+                cur_block = vec![
+                    TransitionStmt::Let(span, id, e, Box::new(
+                        TransitionStmt::Block(span, cur_block.into_iter().rev().collect())
+                    ))
+                ];
+            }
+        }
+    }
+
+    return Ok(TransitionStmt::Block(block.span(), cur_block.into_iter().rev().collect()));
 }
 
-fn parse_stmt(stmt: &Stmt, ctxt: &Ctxt) -> syn::parse::Result<TransitionStmt> {
+fn parse_stmt(stmt: &Stmt, ctxt: &Ctxt) -> syn::parse::Result<StmtOrLet> {
     match stmt {
-        Stmt::Local(local) => parse_local(local, ctxt),
-        Stmt::Expr(expr) => parse_expr(expr, ctxt),
-        Stmt::Semi(expr, _) => parse_expr(expr, ctxt),
+        Stmt::Local(local) => Ok(StmtOrLet::Let(parse_local(local, ctxt)?)),
+        Stmt::Expr(expr) => Ok(StmtOrLet::Stmt(parse_expr(expr, ctxt)?)),
+        Stmt::Semi(expr, _) => Ok(StmtOrLet::Stmt(parse_expr(expr, ctxt)?)),
         _ => {
             return Err(Error::new(stmt.span(), "unsupported statement type in state transition"));
         }
     }
 }
 
-fn parse_local(local: &Local, _ctxt: &Ctxt) -> syn::parse::Result<TransitionStmt> {
+fn parse_local(local: &Local, _ctxt: &Ctxt) -> syn::parse::Result<TLet> {
     let ident = match &local.pat {
         Pat::Ident(PatIdent { attrs: _, by_ref: None, mutability: None, ident, subpat: None }) => {
             ident.clone()
@@ -95,7 +118,7 @@ fn parse_local(local: &Local, _ctxt: &Ctxt) -> syn::parse::Result<TransitionStmt
             return Err(Error::new(local.span(), "'let' statement must have initializer in state transition"));
         }
     };
-    Ok(TransitionStmt::Let(local.span(), ident, e))
+    Ok(TLet(local.span(), ident, e))
 }
 
 fn parse_expr(expr: &Expr, ctxt: &Ctxt) -> syn::parse::Result<TransitionStmt> {

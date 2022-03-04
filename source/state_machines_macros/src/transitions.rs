@@ -37,7 +37,9 @@ fn check_updates_refer_to_valid_fields(
                 check_updates_refer_to_valid_fields(fields, t, errors);
             }
         }
-        TransitionStmt::Let(_, _, _) => {}
+        TransitionStmt::Let(_, _, _, child) => {
+            check_updates_refer_to_valid_fields(fields, child, errors);
+        }
         TransitionStmt::If(_, _, thn, els) => {
             check_updates_refer_to_valid_fields(fields, thn, errors);
             check_updates_refer_to_valid_fields(fields, els, errors);
@@ -151,7 +153,9 @@ fn check_init_rec(ts: &TransitionStmt) -> syn::parse::Result<Vec<(Ident, Span)>>
             }
             Ok(h)
         }
-        TransitionStmt::Let(_, _, _) => Ok(Vec::new()),
+        TransitionStmt::Let(_, _, _, child) => {
+            check_init_rec(child)
+        }
         TransitionStmt::If(span, _, thn, els) => {
             let h1 = check_init_rec(thn)?;
             let h2 = check_init_rec(els)?;
@@ -230,12 +234,14 @@ fn check_at_most_one_update_rec(
             }
             Ok(o)
         }
+        TransitionStmt::Let(_, _, _, child) => {
+            check_at_most_one_update_rec(field, child)
+        }
         TransitionStmt::If(_, _, thn, els) => {
             let o1 = check_at_most_one_update_rec(field, thn)?;
             let o2 = check_at_most_one_update_rec(field, els)?;
             Ok(if o1.is_some() { o1 } else { o2 })
         }
-        TransitionStmt::Let(_, _, _) => Ok(None),
         TransitionStmt::Require(_, _) => Ok(None),
         TransitionStmt::Assert(_, _) => Ok(None),
         TransitionStmt::Initialize(_, _, _) => Ok(None),
@@ -320,7 +326,9 @@ fn check_valid_ops(
                 check_valid_ops(fields, t, is_readonly, errors);
             }
         }
-        TransitionStmt::Let(_, _, _) => {}
+        TransitionStmt::Let(_, _, _, child) => {
+            check_valid_ops(fields, child, is_readonly, errors);
+        }
         TransitionStmt::If(_, _, thn, els) => {
             check_valid_ops(fields, thn, is_readonly, errors);
             check_valid_ops(fields, els, is_readonly, errors);
@@ -401,12 +409,7 @@ fn check_let_shadowing_rec(ts: &TransitionStmt, ids: &mut Vec<String>, errors: &
                 check_let_shadowing_rec(t, ids, errors);
             }
         }
-        TransitionStmt::If(_, _, e1, e2) => {
-            check_let_shadowing_rec(e1, ids, errors);
-            check_let_shadowing_rec(e2, ids, errors);
-        }
-
-        TransitionStmt::Let(span, id, _) => {
+        TransitionStmt::Let(span, id, _, child) => {
             let s = id.to_string();
             if ids.contains(&s) {
                 errors.push(Error::new(
@@ -416,8 +419,13 @@ fn check_let_shadowing_rec(ts: &TransitionStmt, ids: &mut Vec<String>, errors: &
             } else {
                 ids.push(s);
             }
-        }
 
+            check_let_shadowing_rec(child, ids, errors);
+        }
+        TransitionStmt::If(_, _, e1, e2) => {
+            check_let_shadowing_rec(e1, ids, errors);
+            check_let_shadowing_rec(e2, ids, errors);
+        }
         TransitionStmt::Require(_, _) => {}
         TransitionStmt::Assert(_, _) => {}
         TransitionStmt::Update(_, _, _) => {}

@@ -42,9 +42,12 @@ pub fn safety_condition_body(ts: &TransitionStmt) -> Option<Expr> {
                 None
             }
         }
-        TransitionStmt::Let(span, id, v) => Some(Expr::Verbatim(quote_spanned! {*span =>
-            let #id = #v;
-        })),
+        TransitionStmt::Let(span, id, v, child) => {
+            let t = safety_condition_body(child);
+            Some(Expr::Verbatim(quote_spanned! {*span =>
+                { let #id = #v; #t }
+            }))
+        }
         TransitionStmt::If(span, cond, thn, els) => {
             let t1 = safety_condition_body(thn);
             let t2 = safety_condition_body(els);
@@ -101,7 +104,7 @@ pub fn has_any_assert(ts: &TransitionStmt) -> bool {
             }
             false
         }
-        TransitionStmt::Let(_, _, _) => false,
+        TransitionStmt::Let(_, _, _, child) => has_any_assert(child),
         TransitionStmt::If(_span, _cond, thn, els) => has_any_assert(thn) || has_any_assert(els),
         TransitionStmt::Require(_, _) => false,
         TransitionStmt::Assert(_, _) => true,
@@ -124,7 +127,7 @@ pub fn has_any_require(ts: &TransitionStmt) -> bool {
             }
             false
         }
-        TransitionStmt::Let(_, _, _) => false,
+        TransitionStmt::Let(_, _, _, child) => has_any_assert(child),
         TransitionStmt::If(_span, _cond, thn, els) => has_any_require(thn) || has_any_require(els),
         TransitionStmt::Require(_, _) => true,
         TransitionStmt::Assert(_, _) => false,

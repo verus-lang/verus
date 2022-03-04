@@ -126,7 +126,7 @@ fn add_placeholders_rec(ts: &mut TransitionStmt, found: &mut Vec<Ident>) {
     let mut is_update_for = None;
     match &ts {
         TransitionStmt::Block(_, _) => {}
-        TransitionStmt::Let(_, _, _) => {}
+        TransitionStmt::Let(_, _, _, _) => {}
         TransitionStmt::If(_, _, _, _) => {}
         TransitionStmt::Require(_, _) => {}
         TransitionStmt::Assert(_, _) => {}
@@ -169,6 +169,9 @@ fn add_placeholders_rec(ts: &mut TransitionStmt, found: &mut Vec<Ident>) {
                 add_placeholders_rec(t, found);
             }
         }
+        TransitionStmt::Let(_, _, _, child) => {
+            add_placeholders_rec(child, found);
+        }
         TransitionStmt::If(span, _, e1, e2) => {
             let mut found2 = found.clone();
             let idx = found.len();
@@ -201,7 +204,6 @@ fn add_placeholders_rec(ts: &mut TransitionStmt, found: &mut Vec<Ident>) {
             }
         }
 
-        TransitionStmt::Let(_, _, _) => {}
         TransitionStmt::Require(_, _) => {}
         TransitionStmt::Assert(_, _) => {}
         TransitionStmt::Initialize(_, _, _) => {}
@@ -241,6 +243,16 @@ fn get_field_for_placeholder(e: &Expr) -> String {
 //
 // See `docs/command-reference.md` for the command reference and rationale
 // for their definitions.
+//
+// TODO there are a couple of problems: one, we should probably introduce temp
+// variables for the unwieldy expressions that get introduced, and second, we don't
+// handle a case like `{ ... special_op(foo, ...) }; special_op(foo, ...)` 
+// i.e., any case where we update a field in a scoped block and then access it outside
+// that scope (again, tmp variables could probably handle this)
+// (see the handling of the 'Let' and 'If' cases)
+// TODO also - and this might be a correctness issue - but moving expressions from _outside_
+// a let-block to inside one could cause shadowing and again we should probably use tmp
+// variables to prevent that
 
 #[derive(Clone)]
 struct FieldMap {
@@ -259,12 +271,30 @@ impl FieldMap {
     }
 
     pub fn get<'a>(&'a self, s: &String) -> &'a Expr {
-        &self.field_map[s].1
+        match self.field_map.get(s).as_ref() {
+            Some((_, e)) => e,
+            None => panic!("simplification failed, perhaps a let-variable went out-of-scope?"),
+        }
     }
 
     pub fn set(&mut self, s: String, e: Expr) {
         let counter = self.field_map[&s].0;
         self.field_map.insert(s, (counter + 1, e));
+    }
+
+    pub fn remove_changed(old: FieldMap, new: FieldMap) -> FieldMap {
+        let mut res = HashMap::new();
+        for (field, (old_counter, old_e)) in old.field_map.iter() {
+            match new.field_map.get(field) {
+                Some((new_counter, _new_e)) => {
+                    if old_counter == new_counter {
+                        res.insert(field.clone(), (*old_counter, old_e.clone()));
+                    }
+                }
+                None => { }
+            }
+        }
+        FieldMap { field_map: res }
     }
 
     /// Merge two value maps at the end of a conditional.
@@ -279,11 +309,9 @@ impl FieldMap {
                     } else {
                         // Case: The expression was changed in some branch.
                         // So, technically, we should construct something
-                        // like `if cond { e1 } else { e2 }` here, although it's a bit
-                        // tricky because we would have to account for the possibility
-                        // of let-bindings inside the conditional which are now out-of-scope.
+                        // like `if cond { e1 } else { e2 }` here.
                         //
-                        // Anyway, due to current constraints, it happens that
+                        // Due to current constraints, it happens that
                         // if a field is updated inside an 'if' statement, then
                         // our temp var should never be accessed again after this point.
                         // (Special ops are forbidden in conditionals for unrelated reasons,
@@ -332,7 +360,16 @@ fn simplify_ops_rec(ts: &TransitionStmt, field_map: FieldMap) -> (TransitionStmt
             }
             (TransitionStmt::Block(*span, res), field_map)
         }
-        TransitionStmt::Let(_, _, _) => (ts.clone(), field_map),
+        TransitionStmt::Let(span, id, e, child) => {
+            let (new_child, new_map) = simplify_ops_rec(child, field_map.clone());
+            // We call `remove_changed` to remove any field that has been modified
+            // inside this block. We do this because the new expression could possibly
+            // refer to the bound variable here which is about to go out-of-scope.
+            (
+                TransitionStmt::Let(*span, id.clone(), e.clone(), Box::new(new_child)),
+                FieldMap::remove_changed(field_map, new_map)
+            )
+        }
         TransitionStmt::If(span, cond, e1, e2) => {
             let (new_e1, field_map1) = simplify_ops_rec(e1, field_map.clone());
             let (new_e2, field_map2) = simplify_ops_rec(e2, field_map.clone());

@@ -22,7 +22,10 @@ pub fn check_unsupported_updates_in_conditionals(ts: &TransitionStmt) -> syn::pa
             }
             Ok(())
         }
-        TransitionStmt::Let(_span, _id, _init_e) => Ok(()),
+        TransitionStmt::Let(_span, _id, _init_e, child) => {
+            check_unsupported_updates_in_conditionals(child)?;
+            Ok(())
+        }
         TransitionStmt::If(_span, _cond_e, e1, e2) => {
             check_unsupported_updates_helper(e1)?;
             check_unsupported_updates_helper(e2)?;
@@ -45,7 +48,9 @@ fn check_unsupported_updates_helper(ts: &TransitionStmt) -> syn::parse::Result<(
             }
             Ok(())
         }
-        TransitionStmt::Let(_, _, _) => Ok(()),
+        TransitionStmt::Let(_, _, _, child) => {
+            check_unsupported_updates_helper(child)
+        }
         TransitionStmt::If(_, _, e1, e2) => {
             check_unsupported_updates_helper(e1)?;
             check_unsupported_updates_helper(e2)?;
@@ -118,14 +123,16 @@ pub fn check_ordering_remove_have_add_rec(
             }
             Ok((seen_have, seen_add))
         }
+        TransitionStmt::Let(_, _, _, child) => {
+            check_ordering_remove_have_add_rec(child, field_name, seen_have, seen_add)
+        }
         TransitionStmt::If(_, _, e1, e2) => {
             let (h1, a1) = check_ordering_remove_have_add_rec(e1, field_name, seen_have, seen_add)?;
             let (h2, a2) = check_ordering_remove_have_add_rec(e2, field_name, seen_have, seen_add)?;
             Ok((h1 || h2, a1 || a2))
         }
 
-        TransitionStmt::Let(_, _, _)
-        | TransitionStmt::Require(_, _)
+        TransitionStmt::Require(_, _)
         | TransitionStmt::Assert(_, _)
         | TransitionStmt::Update(_, _, _)
         | TransitionStmt::Initialize(_, _, _)
