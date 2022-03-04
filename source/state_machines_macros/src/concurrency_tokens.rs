@@ -433,7 +433,7 @@ pub fn exchange_stream(bundle: &SMBundle, tr: &Transition) -> syn::parse::Result
 
     // translate the (new) TransitionStmt into an expressions that
     // can be used as pre-conditions and post-conditions
-    exchange_collect(&mut ctxt, &tr.body, Vec::new(), Vec::new())?;
+    let _ = exchange_collect(&mut ctxt, &tr.body, Vec::new())?;
 
     let mut in_args: Vec<TokenStream> = Vec::new();
     let mut out_args: Vec<(TokenStream, TokenStream)> = Vec::new();
@@ -1382,7 +1382,8 @@ fn get_new_field_value(field: &Field) -> Expr {
     Expr::Verbatim(quote! { #arg.#field })
 }
 
-// Collect requires and ensures.
+// Collect requires and ensures. Updates `ctxt.requires` and `ctxt.ensures`
+// of the &mut ctxt argument.
 //
 // This is somewhat tricky because of how we handle 'assert' statements.
 // The pre-condition should have a condition that corresponds to the
@@ -1404,6 +1405,7 @@ fn get_new_field_value(field: &Field) -> Expr {
 
 #[derive(Clone, Debug)]
 enum PrequelElement {
+    AssertCondition(Expr),
     Condition(Expr),
     Let(Ident, Expr),
 }
@@ -1412,73 +1414,61 @@ fn exchange_collect(
     ctxt: &mut Ctxt,
     ts: &TransitionStmt,
     prequel: Vec<PrequelElement>,
-    prequel_with_asserts: Vec<PrequelElement>,
-) -> syn::parse::Result<(Vec<PrequelElement>, Vec<PrequelElement>)> {
+) -> syn::parse::Result<Vec<PrequelElement>> {
     match ts {
         TransitionStmt::Block(_span, v) => {
             let mut p = prequel;
-            let mut pa = prequel_with_asserts;
             for child in v.iter() {
-                let (p1, pa1) = exchange_collect(ctxt, child, p, pa)?;
+                let p1 = exchange_collect(ctxt, child, p)?;
                 p = p1;
-                pa = pa1;
             }
-            Ok((p, pa))
+            Ok(p)
         }
         TransitionStmt::Let(_span, id, init_e, child) => {
             let mut p = prequel.clone();
-            let mut pa = prequel_with_asserts.clone();
-            let preq = PrequelElement::Let(id.clone(), init_e.clone());
-            p.push(preq.clone());
-            pa.push(preq);
-            let _ = exchange_collect(ctxt, child, p, pa);
+            p.push(PrequelElement::Let(id.clone(), init_e.clone()));
+            let _ = exchange_collect(ctxt, child, p);
 
-            let mut prequel_with_asserts = prequel_with_asserts;
+            let mut prequel = prequel;
             if let Some(e) = asserts_to_single_predicate(ts) {
-                prequel_with_asserts.push(PrequelElement::Condition(Expr::Verbatim(e)));
+                prequel.push(PrequelElement::AssertCondition(Expr::Verbatim(e)));
             }
-
-            Ok((prequel, prequel_with_asserts))
+            Ok(prequel)
         }
         TransitionStmt::If(_span, cond_e, e1, e2) => {
             let cond = PrequelElement::Condition(cond_e.clone());
             let not_cond = PrequelElement::Condition(bool_not_expr(cond_e));
 
             let mut p1 = prequel.clone();
-            let mut pa1 = prequel_with_asserts.clone();
-            p1.push(cond.clone());
-            pa1.push(cond);
-            let (_p1, _pa1) = exchange_collect(ctxt, e1, p1, pa1)?;
+            p1.push(cond);
+            let _ = exchange_collect(ctxt, e1, p1)?;
 
             let mut p2 = prequel.clone();
-            let mut pa2 = prequel_with_asserts.clone();
-            p2.push(not_cond.clone());
-            pa2.push(not_cond);
-            let (_p2, _pa2) = exchange_collect(ctxt, e2, p2, pa2)?;
+            p2.push(not_cond);
+            let _ = exchange_collect(ctxt, e2, p2)?;
 
-            let mut prequel_with_asserts = prequel_with_asserts;
+            let mut prequel = prequel;
             if let Some(e) = asserts_to_single_predicate(ts) {
-                prequel_with_asserts.push(PrequelElement::Condition(Expr::Verbatim(e)));
+                prequel.push(PrequelElement::AssertCondition(Expr::Verbatim(e)));
             }
-
-            Ok((prequel, prequel_with_asserts))
+            Ok(prequel)
         }
         TransitionStmt::Require(_span, req_e) => {
-            ctxt.requires.push(with_prequel(&prequel_with_asserts, req_e.clone()));
-            Ok((prequel, prequel_with_asserts))
+            ctxt.requires.push(with_prequel(&prequel, true, req_e.clone()));
+            Ok(prequel)
         }
         TransitionStmt::Assert(_span, assert_e) => {
-            ctxt.ensures.push(with_prequel(&prequel, assert_e.clone()));
-            let mut pa = prequel_with_asserts;
-            pa.push(PrequelElement::Condition(assert_e.clone()));
-            Ok((prequel, pa))
+            ctxt.ensures.push(with_prequel(&prequel, false, assert_e.clone()));
+            let mut prequel = prequel;
+            prequel.push(PrequelElement::AssertCondition(assert_e.clone()));
+            Ok(prequel)
         }
         TransitionStmt::PostCondition(_span, post_e) => {
-            ctxt.ensures.push(with_prequel(&prequel, post_e.clone()));
-            Ok((prequel, prequel_with_asserts))
+            ctxt.ensures.push(with_prequel(&prequel, false, post_e.clone()));
+            Ok(prequel)
         }
-        TransitionStmt::Update(..) => Ok((prequel, prequel_with_asserts)),
-        TransitionStmt::Initialize(..) => Ok((prequel, prequel_with_asserts)),
+        TransitionStmt::Update(..) => Ok(prequel),
+        TransitionStmt::Initialize(..) => Ok(prequel),
 
         TransitionStmt::Special(..) => {
             panic!("should have been removed in preprocessing");
@@ -1490,7 +1480,7 @@ fn bool_not_expr(e: &Expr) -> Expr {
     Expr::Verbatim(quote! { !(#e) })
 }
 
-fn with_prequel(pre: &Vec<PrequelElement>, e: Expr) -> Expr {
+fn with_prequel(pre: &Vec<PrequelElement>, include_assert_conditions: bool, e: Expr) -> Expr {
     let mut e = e;
     for p in pre.iter().rev() {
         match p {
@@ -1499,6 +1489,11 @@ fn with_prequel(pre: &Vec<PrequelElement>, e: Expr) -> Expr {
             }
             PrequelElement::Condition(cond_e) => {
                 e = Expr::Verbatim(quote! { ::builtin::imply(#cond_e, #e) });
+            }
+            PrequelElement::AssertCondition(cond_e) => {
+                if include_assert_conditions {
+                    e = Expr::Verbatim(quote! { ::builtin::imply(#cond_e, #e) });
+                }
             }
         }
     }
