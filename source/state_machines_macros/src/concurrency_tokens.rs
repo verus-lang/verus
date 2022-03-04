@@ -419,6 +419,9 @@ pub fn exchange_stream(bundle: &SMBundle, tr: &Transition) -> syn::parse::Result
     check_unsupported_updates_in_conditionals(&tr.body)?;
     check_ordering_remove_have_add(sm, &tr.body)?;
 
+    // Potentially remove stuff that won't be useful
+    tr.body = prune_irrelevant_ops(&ctxt, tr.body);
+
     // determine output tokens based on 'update' statements
     determine_outputs(&mut ctxt, &tr.body)?;
 
@@ -468,6 +471,11 @@ pub fn exchange_stream(bundle: &SMBundle, tr: &Transition) -> syn::parse::Result
 
     for field in &sm.fields {
         if ctxt.is_init {
+            match &field.stype {
+                ShardableType::NotTokenized(..) => { continue; }
+                _ => { }
+            }
+
             assert!(!use_explicit_lifetime);
             assert!(ctxt.fields_written.contains(&field.ident.to_string()));
             assert!(!ctxt.fields_read.contains(&field.ident.to_string()));
@@ -1490,11 +1498,91 @@ fn with_prequel(pre: &Vec<PrequelElement>, e: Expr) -> Expr {
                 e = Expr::Verbatim(quote! { { let #id = #init_e; #e } });
             }
             PrequelElement::Condition(cond_e) => {
-                e = Expr::Verbatim(quote! { ((#cond_e) >>= (#e)) });
+                e = Expr::Verbatim(quote! { ::builtin::imply(#cond_e, #e) });
             }
         }
     }
     e
+}
+
+/// Prune out ops that update a NotTokenized field.
+/// The resulting transition is, of course, not equivalent to the original in the
+/// sense of its action on the global state, but for the purpose of the exchange method,
+/// it doesn't matter. Updates to a NotTokenized field aren't observed by the exchange method.
+/// (Also, if there's just any dead code for any other reason, that will also get pruned
+/// as a byproduct.)
+
+fn prune_irrelevant_ops(ctxt: &Ctxt, ts: TransitionStmt) -> TransitionStmt {
+    let span = ts.get_span().clone();
+    match prune_irrelevant_ops_rec(ctxt, ts) {
+        Some(ts) => ts,
+        None => TransitionStmt::Block(span, vec![]),
+    }
+}
+
+fn prune_irrelevant_ops_rec(ctxt: &Ctxt, ts: TransitionStmt) -> Option<TransitionStmt> {
+    match ts {
+        TransitionStmt::Block(span, v) => {
+            let res: Vec<TransitionStmt> = v.into_iter().filter_map(|t|
+                prune_irrelevant_ops_rec(ctxt, t)).collect();
+            if res.len() == 0 {
+                None
+            } else {
+                Some(TransitionStmt::Block(span, res))
+            }
+        }
+        TransitionStmt::Let(span, id, init_e, box child) => {
+            match prune_irrelevant_ops_rec(ctxt, child) {
+                None => None,
+                Some(new_child) =>
+                    Some(TransitionStmt::Let(span, id, init_e, Box::new(new_child))),
+            }
+        }
+        TransitionStmt::If(span, cond_e, box thn, box els) => {
+            let new_thn = prune_irrelevant_ops_rec(ctxt, thn);
+            let new_els = prune_irrelevant_ops_rec(ctxt, els);
+            if new_thn.is_none() && new_els.is_none() {
+                None
+            } else {
+                let new_thn = new_thn.unwrap_or(
+                    TransitionStmt::Block(span, vec![]));
+                let new_els = new_els.unwrap_or(
+                    TransitionStmt::Block(span, vec![]));
+                Some(TransitionStmt::If(span, cond_e, Box::new(new_thn), Box::new(new_els)))
+            }
+        }
+
+        TransitionStmt::Update(span, id, e) => {
+            let f = ctxt.get_field_or_panic(&id);
+            let is_not_tokenized = match &f.stype {
+                ShardableType::NotTokenized(..) => true,
+                _ => false,
+            };
+            if is_not_tokenized {
+                None
+            } else {
+                Some(TransitionStmt::Update(span, id, e))
+            }
+        }
+
+        TransitionStmt::Initialize(span, id, e) => {
+            let f = ctxt.get_field_or_panic(&id);
+            let is_not_tokenized = match &f.stype {
+                ShardableType::NotTokenized(..) => true,
+                _ => false,
+            };
+            if is_not_tokenized {
+                None
+            } else {
+                Some(TransitionStmt::Initialize(span, id, e))
+            }
+        }
+
+        TransitionStmt::Require(span, req_e) => Some(TransitionStmt::Require(span, req_e)),
+        TransitionStmt::Assert(span, assert_e) => Some(TransitionStmt::Assert(span, assert_e)),
+        TransitionStmt::PostCondition(span, post_e) => Some(TransitionStmt::PostCondition(span, post_e)),
+        TransitionStmt::Special(span, id, op) => Some(TransitionStmt::Special(span, id, op)),
+    }
 }
 
 /// Get the expression E that a given field gets updated to.
