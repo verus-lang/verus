@@ -1,9 +1,9 @@
-use crate::ast::{SpecialOp, Transition, TransitionKind, TransitionParam, TransitionStmt};
+use crate::ast::{SpecialOp, Transition, TransitionKind, TransitionParam, TransitionStmt, LetKind};
 use syn::spanned::Spanned;
 use proc_macro2::Span;
 use syn::{
     Block, Error, Expr, ExprCall, ExprIf, FnArg, ImplItemMethod, Local, Pat, PatIdent, Signature,
-    Stmt, Ident,
+    Stmt, Ident, Attribute, Meta,
 };
 
 // Translate Rust AST into an SM AST, given by a TransitionStmt.
@@ -61,7 +61,7 @@ fn parse_sig(sig: &Signature) -> syn::parse::Result<Vec<TransitionParam>> {
     return Ok(v);
 }
 
-struct TLet(Span, Ident, Expr);
+struct TLet(Span, Ident, LetKind, Expr);
 
 enum StmtOrLet {
     Stmt(TransitionStmt),
@@ -79,9 +79,9 @@ fn parse_block(block: &Block, ctxt: &Ctxt) -> syn::parse::Result<TransitionStmt>
     for stmt_or_let in tstmts.into_iter().rev() {
         match stmt_or_let {
             StmtOrLet::Stmt(s) => cur_block.push(s),
-            StmtOrLet::Let(TLet(span, id, e)) => {
+            StmtOrLet::Let(TLet(span, id, lk, e)) => {
                 cur_block = vec![
-                    TransitionStmt::Let(span, id, e, Box::new(
+                    TransitionStmt::Let(span, id, lk, e, Box::new(
                         TransitionStmt::Block(span, cur_block.into_iter().rev().collect())
                     ))
                 ];
@@ -104,9 +104,9 @@ fn parse_stmt(stmt: &Stmt, ctxt: &Ctxt) -> syn::parse::Result<StmtOrLet> {
 }
 
 fn parse_local(local: &Local, _ctxt: &Ctxt) -> syn::parse::Result<TLet> {
-    let ident = match &local.pat {
-        Pat::Ident(PatIdent { attrs: _, by_ref: None, mutability: None, ident, subpat: None }) => {
-            ident.clone()
+    let (ident, lk) = match &local.pat {
+        Pat::Ident(PatIdent { attrs, by_ref: None, mutability: None, ident, subpat: None }) => {
+            (ident.clone(), get_let_kind(attrs)?)
         }
         _ => {
             return Err(Error::new(local.span(), "unsupported Local statement type in state transition"));
@@ -118,7 +118,22 @@ fn parse_local(local: &Local, _ctxt: &Ctxt) -> syn::parse::Result<TLet> {
             return Err(Error::new(local.span(), "'let' statement must have initializer in state transition"));
         }
     };
-    Ok(TLet(local.span(), ident, e))
+
+    Ok(TLet(local.span(), ident, lk, e))
+}
+
+fn get_let_kind(attrs: &Vec<Attribute>) -> syn::parse::Result<LetKind> {
+    for attr in attrs {
+        match attr.parse_meta()? {
+            Meta::Path(path) if path.is_ident("birds_eye") => {
+                return Ok(LetKind::BirdsEye);
+            }
+            _ => {
+                return Err(Error::new(attr.span(), "unrecognized attribute for 'let' statement; the only supported attribute here is #[birds_eye]"));
+            }
+        }
+    }
+    return Ok(LetKind::Normal);
 }
 
 fn parse_expr(expr: &Expr, ctxt: &Ctxt) -> syn::parse::Result<TransitionStmt> {

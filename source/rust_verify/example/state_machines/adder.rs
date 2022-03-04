@@ -13,6 +13,7 @@ state_machine!(
 
         #[init]
         fn initialize(&self) {
+            let x = #[birds_eye] 5 + 9;
             init(number, 0);
         }
 

@@ -60,7 +60,7 @@ fn to_relation_rec(
             }
             p
         }
-        TransitionStmt::Let(_span, id, e, child) => {
+        TransitionStmt::Let(_span, id, _lk, e, child) => {
             let x = to_relation_rec(child, None, weak);
             let t = match x {
                 None => None,
@@ -153,7 +153,7 @@ pub fn asserts_to_single_predicate(
             }
             o
         }
-        TransitionStmt::Let(_span, id, e, child) => {
+        TransitionStmt::Let(_span, id, _, e, child) => {
             match asserts_to_single_predicate(child) {
                 None => None,
                 Some(r) => Some(quote! { { let #id = #e; #r } }),

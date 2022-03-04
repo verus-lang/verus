@@ -125,11 +125,11 @@ fn add_placeholders_rec(ts: &mut TransitionStmt, found: &mut Vec<Ident>) {
 
     let mut is_update_for = None;
     match &ts {
-        TransitionStmt::Block(_, _) => {}
-        TransitionStmt::Let(_, _, _, _) => {}
-        TransitionStmt::If(_, _, _, _) => {}
-        TransitionStmt::Require(_, _) => {}
-        TransitionStmt::Assert(_, _) => {}
+        TransitionStmt::Block(..) => {}
+        TransitionStmt::Let(..) => {}
+        TransitionStmt::If(..) => {}
+        TransitionStmt::Require(..) => {}
+        TransitionStmt::Assert(..) => {}
 
         TransitionStmt::Initialize(_, f, _) | TransitionStmt::Update(_, f, _) => {
             is_update_for = Some(f.clone());
@@ -169,7 +169,7 @@ fn add_placeholders_rec(ts: &mut TransitionStmt, found: &mut Vec<Ident>) {
                 add_placeholders_rec(t, found);
             }
         }
-        TransitionStmt::Let(_, _, _, child) => {
+        TransitionStmt::Let(_, _, _, _, child) => {
             add_placeholders_rec(child, found);
         }
         TransitionStmt::If(span, _, e1, e2) => {
@@ -360,13 +360,13 @@ fn simplify_ops_rec(ts: &TransitionStmt, field_map: FieldMap) -> (TransitionStmt
             }
             (TransitionStmt::Block(*span, res), field_map)
         }
-        TransitionStmt::Let(span, id, e, child) => {
+        TransitionStmt::Let(span, id, lk, e, child) => {
             let (new_child, new_map) = simplify_ops_rec(child, field_map.clone());
             // We call `remove_changed` to remove any field that has been modified
             // inside this block. We do this because the new expression could possibly
             // refer to the bound variable here which is about to go out-of-scope.
             (
-                TransitionStmt::Let(*span, id.clone(), e.clone(), Box::new(new_child)),
+                TransitionStmt::Let(*span, id.clone(), lk.clone(), e.clone(), Box::new(new_child)),
                 FieldMap::remove_changed(field_map, new_map)
             )
         }

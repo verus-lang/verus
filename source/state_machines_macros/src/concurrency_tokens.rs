@@ -1010,7 +1010,7 @@ fn determine_outputs(ctxt: &mut Ctxt, ts: &TransitionStmt) -> syn::parse::Result
             }
             Ok(())
         }
-        TransitionStmt::Let(_span, _id, _init_e, child) => {
+        TransitionStmt::Let(_span, _id, _lk, _init_e, child) => {
             determine_outputs(ctxt, child)?;
             Ok(())
         }
@@ -1110,7 +1110,7 @@ fn walk_translate_expressions(
             }
             return Ok(());
         }
-        TransitionStmt::Let(_span, _id, e, child) => {
+        TransitionStmt::Let(_span, _id, _lk, e, child) => {
             let init_e = translate_expr(ctxt, e, comes_before_precondition)?;
             *e = init_e;
             walk_translate_expressions(ctxt, child, comes_before_precondition)?;
@@ -1424,7 +1424,7 @@ fn exchange_collect(
             }
             Ok(p)
         }
-        TransitionStmt::Let(_span, id, init_e, child) => {
+        TransitionStmt::Let(_span, id, _lk, init_e, child) => {
             let mut p = prequel.clone();
             p.push(PrequelElement::Let(id.clone(), init_e.clone()));
             let _ = exchange_collect(ctxt, child, p);
@@ -1526,11 +1526,11 @@ fn prune_irrelevant_ops_rec(ctxt: &Ctxt, ts: TransitionStmt) -> Option<Transitio
                 Some(TransitionStmt::Block(span, res))
             }
         }
-        TransitionStmt::Let(span, id, init_e, box child) => {
+        TransitionStmt::Let(span, id, lk, init_e, box child) => {
             match prune_irrelevant_ops_rec(ctxt, child) {
                 None => None,
                 Some(new_child) =>
-                    Some(TransitionStmt::Let(span, id, init_e, Box::new(new_child))),
+                    Some(TransitionStmt::Let(span, id, lk, init_e, Box::new(new_child))),
             }
         }
         TransitionStmt::If(span, cond_e, box thn, box els) => {
@@ -1607,7 +1607,7 @@ fn get_post_value_for_variable(ctxt: &Ctxt, ts: &TransitionStmt, field: &Field) 
             }
             opt
         }
-        TransitionStmt::Let(_span, id, e, child) => {
+        TransitionStmt::Let(_span, id, _lk, e, child) => {
             let o = get_post_value_for_variable(ctxt, child, field);
             match o {
                 None => None,

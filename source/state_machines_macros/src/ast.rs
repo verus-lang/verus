@@ -72,9 +72,14 @@ pub enum SpecialOp {
 }
 
 #[derive(Clone, Debug)]
+pub enum LetKind {
+    Normal, BirdsEye,
+}
+
+#[derive(Clone, Debug)]
 pub enum TransitionStmt {
     Block(Span, Vec<TransitionStmt>),
-    Let(Span, Ident, Expr, Box<TransitionStmt>),
+    Let(Span, Ident, LetKind, Expr, Box<TransitionStmt>),
     If(Span, Expr, Box<TransitionStmt>, Box<TransitionStmt>),
     Require(Span, Expr),
     Assert(Span, Expr),
@@ -184,7 +189,7 @@ impl TransitionStmt {
     pub fn get_span<'a>(&'a self) -> &'a Span {
         match self {
             TransitionStmt::Block(span, _) => span,
-            TransitionStmt::Let(span, _, _, _) => span,
+            TransitionStmt::Let(span, _, _, _, _) => span,
             TransitionStmt::If(span, _, _, _) => span,
             TransitionStmt::Require(span, _) => span,
             TransitionStmt::Assert(span, _) => span,
