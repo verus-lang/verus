@@ -65,6 +65,11 @@ fn nondeterministic_read_spec_out_name(field: &Field) -> Ident {
     Ident::new(&name, field.ident.span())
 }
 
+// The type that goes in the created struct, e.g.,
+//     struct Token {
+//         instance: X_Instance, 
+//         value: [[THIS_TYPE]],
+//     }
 fn field_token_field_type(field: &Field) -> Type {
     match &field.stype {
         ShardableType::Variable(ty) => ty.clone(),
@@ -205,7 +210,10 @@ fn token_struct_stream_optional(sm: &SM, field: &Field) -> TokenStream {
 /// (this is safe as long as the Instance type is an unforgeable proof type)
 fn const_fn_stream(field: &Field) -> TokenStream {
     let fieldname = field_token_field_name(field);
-    let fieldtype = field_token_field_type(field);
+    let fieldtype = match &field.stype {
+        ShardableType::Constant(ty) => ty,
+        _ => panic!("const_fn_stream expected Constant"),
+    };
 
     return quote! {
         ::builtin_macros::fndecl!(
@@ -297,7 +305,7 @@ struct TokenParam {
 /// transition into a token-exchange method.
 
 struct Ctxt {
-    // fields read in some expression
+    // fields read (via `self.field`) in some expression
     fields_read: HashSet<String>,
 
     // fields written in some normal 'update' statements
@@ -1067,8 +1075,9 @@ fn walk_translate_expressions(
 ) -> syn::parse::Result<()> {
     let new_ts = match ts {
         TransitionStmt::Block(_span, v) => {
+            // TODO ugh we need to account for the special ops, here
             // Compute `latest_precondition` such that
-            // forall i < latest_precondition ==> v[i] , v[i] definitely comes before
+            // forall i :: i < latest_precondition ==> v[i] definitely comes before
             //    some precondition.
             let latest_precondition = if comes_before_precondition {
                 v.len()
@@ -1117,6 +1126,7 @@ fn walk_translate_expressions(
         }
 
         TransitionStmt::Initialize(_span, _id, e) | TransitionStmt::Update(_span, _id, e) => {
+            // TODO should ignore this if it's a NotTokenized field?
             let update_e = translate_expr(ctxt, e, false)?;
             *e = update_e;
             return Ok(());

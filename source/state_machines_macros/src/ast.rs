@@ -39,7 +39,6 @@ pub enum ShardableType {
     Multiset(Type),
     Optional(Type),
     StorageOptional(Type),
-    // TODO more here
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Copy)]
