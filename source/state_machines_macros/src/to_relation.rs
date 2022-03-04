@@ -47,11 +47,7 @@ pub fn to_relation(ts: &TransitionStmt, weak: bool) -> TokenStream {
 
 // Recursive traversal, post-order.
 
-fn to_relation_rec(
-    ts: &TransitionStmt,
-    p: Option<TokenStream>,
-    weak: bool,
-) -> Option<TokenStream> {
+fn to_relation_rec(ts: &TransitionStmt, p: Option<TokenStream>, weak: bool) -> Option<TokenStream> {
     match ts {
         TransitionStmt::Block(_span, v) => {
             let mut p = p;
@@ -68,9 +64,7 @@ fn to_relation_rec(
             };
             // note this strategy is going to be quadratic in nesting depth or something
             if weak {
-                conjunct_opt(t,
-                    impl_opt(asserts_to_single_predicate(ts), p)
-                )
+                conjunct_opt(t, impl_opt(asserts_to_single_predicate(ts), p))
             } else {
                 conjunct_opt(t, p)
             }
@@ -86,9 +80,7 @@ fn to_relation_rec(
             };
             // note this strategy is going to be quadratic in nesting depth or something
             if weak {
-                conjunct_opt(t,
-                    impl_opt(asserts_to_single_predicate(ts), p)
-                )
+                conjunct_opt(t, impl_opt(asserts_to_single_predicate(ts), p))
             } else {
                 conjunct_opt(t, p)
             }
@@ -121,30 +113,24 @@ fn to_relation_rec(
 fn conjunct_opt(a: Option<TokenStream>, b: Option<TokenStream>) -> Option<TokenStream> {
     match a {
         None => b,
-        Some(x) => {
-            match b {
-                None => Some(x),
-                Some(y) => Some(quote!{ (#x && #y) })
-            }
-        }
+        Some(x) => match b {
+            None => Some(x),
+            Some(y) => Some(quote! { (#x && #y) }),
+        },
     }
 }
 
 fn impl_opt(a: Option<TokenStream>, b: Option<TokenStream>) -> Option<TokenStream> {
     match a {
         None => b,
-        Some(x) => {
-            match b {
-                None => None,
-                Some(y) => Some(quote!{ ::builtin::imply(#x, #y) })
-            }
-        }
+        Some(x) => match b {
+            None => None,
+            Some(y) => Some(quote! { ::builtin::imply(#x, #y) }),
+        },
     }
 }
 
-pub fn asserts_to_single_predicate(
-    ts: &TransitionStmt,
-) -> Option<TokenStream> {
+pub fn asserts_to_single_predicate(ts: &TransitionStmt) -> Option<TokenStream> {
     match ts {
         TransitionStmt::Block(_span, v) => {
             let mut o = None;
@@ -153,12 +139,10 @@ pub fn asserts_to_single_predicate(
             }
             o
         }
-        TransitionStmt::Let(_span, id, _, e, child) => {
-            match asserts_to_single_predicate(child) {
-                None => None,
-                Some(r) => Some(quote! { { let #id = #e; #r } }),
-            }
-        }
+        TransitionStmt::Let(_span, id, _, e, child) => match asserts_to_single_predicate(child) {
+            None => None,
+            Some(r) => Some(quote! { { let #id = #e; #r } }),
+        },
         TransitionStmt::If(_span, cond, e1, e2) => {
             let x1 = asserts_to_single_predicate(e1);
             let x2 = asserts_to_single_predicate(e2);
@@ -169,7 +153,7 @@ pub fn asserts_to_single_predicate(
                 (Some(e1), Some(e2)) => Some(quote! { if #cond { #e1 } else { #e2 } }),
             }
         }
-        TransitionStmt::Assert(_span, e) => { Some(quote!{ (#e) }) }
+        TransitionStmt::Assert(_span, e) => Some(quote! { (#e) }),
         TransitionStmt::PostCondition(_, _)
         | TransitionStmt::Require(_, _)
         | TransitionStmt::Initialize(_, _, _)
@@ -177,5 +161,3 @@ pub fn asserts_to_single_predicate(
         | TransitionStmt::Special(_, _, _) => None,
     }
 }
-
-

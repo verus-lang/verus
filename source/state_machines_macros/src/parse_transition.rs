@@ -1,9 +1,9 @@
-use crate::ast::{SpecialOp, Transition, TransitionKind, TransitionParam, TransitionStmt, LetKind};
-use syn::spanned::Spanned;
+use crate::ast::{LetKind, SpecialOp, Transition, TransitionKind, TransitionParam, TransitionStmt};
 use proc_macro2::Span;
+use syn::spanned::Spanned;
 use syn::{
-    Block, Error, Expr, ExprCall, ExprIf, FnArg, ImplItemMethod, Local, Pat, PatIdent, Signature,
-    Stmt, Ident, Attribute, Meta,
+    Attribute, Block, Error, Expr, ExprCall, ExprIf, FnArg, Ident, ImplItemMethod, Local, Meta,
+    Pat, PatIdent, Signature, Stmt,
 };
 
 // Translate Rust AST into an SM AST, given by a TransitionStmt.
@@ -80,11 +80,13 @@ fn parse_block(block: &Block, ctxt: &Ctxt) -> syn::parse::Result<TransitionStmt>
         match stmt_or_let {
             StmtOrLet::Stmt(s) => cur_block.push(s),
             StmtOrLet::Let(TLet(span, id, lk, e)) => {
-                cur_block = vec![
-                    TransitionStmt::Let(span, id, lk, e, Box::new(
-                        TransitionStmt::Block(span, cur_block.into_iter().rev().collect())
-                    ))
-                ];
+                cur_block = vec![TransitionStmt::Let(
+                    span,
+                    id,
+                    lk,
+                    e,
+                    Box::new(TransitionStmt::Block(span, cur_block.into_iter().rev().collect())),
+                )];
             }
         }
     }
@@ -109,13 +111,19 @@ fn parse_local(local: &Local, _ctxt: &Ctxt) -> syn::parse::Result<TLet> {
             (ident.clone(), get_let_kind(attrs)?)
         }
         _ => {
-            return Err(Error::new(local.span(), "unsupported Local statement type in state transition"));
+            return Err(Error::new(
+                local.span(),
+                "unsupported Local statement type in state transition",
+            ));
         }
     };
     let e = match &local.init {
         Some((_eq, e)) => (**e).clone(),
         None => {
-            return Err(Error::new(local.span(), "'let' statement must have initializer in state transition"));
+            return Err(Error::new(
+                local.span(),
+                "'let' statement must have initializer in state transition",
+            ));
         }
     };
 
@@ -129,7 +137,10 @@ fn get_let_kind(attrs: &Vec<Attribute>) -> syn::parse::Result<LetKind> {
                 return Ok(LetKind::BirdsEye);
             }
             _ => {
-                return Err(Error::new(attr.span(), "unrecognized attribute for 'let' statement; the only supported attribute here is #[birds_eye]"));
+                return Err(Error::new(
+                    attr.span(),
+                    "unrecognized attribute for 'let' statement; the only supported attribute here is #[birds_eye]",
+                ));
             }
         }
     }
@@ -155,9 +166,12 @@ fn parse_expr_if(expr_if: &ExprIf, ctxt: &Ctxt) -> syn::parse::Result<Transition
     };
     match &*expr_if.cond {
         Expr::Let(..) => {
-            return Err(Error::new(expr_if.cond.span(), "unsupported if-let conditional in state transition"));
+            return Err(Error::new(
+                expr_if.cond.span(),
+                "unsupported if-let conditional in state transition",
+            ));
         }
-        _ => { }
+        _ => {}
     }
     return Ok(TransitionStmt::If(
         expr_if.span(),

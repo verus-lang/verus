@@ -153,9 +153,7 @@ fn check_init_rec(ts: &TransitionStmt) -> syn::parse::Result<Vec<(Ident, Span)>>
             }
             Ok(h)
         }
-        TransitionStmt::Let(_, _, _, _, child) => {
-            check_init_rec(child)
-        }
+        TransitionStmt::Let(_, _, _, _, child) => check_init_rec(child),
         TransitionStmt::If(span, _, thn, els) => {
             let h1 = check_init_rec(thn)?;
             let h2 = check_init_rec(els)?;
@@ -234,9 +232,7 @@ fn check_at_most_one_update_rec(
             }
             Ok(o)
         }
-        TransitionStmt::Let(_, _, _, _, child) => {
-            check_at_most_one_update_rec(field, child)
-        }
+        TransitionStmt::Let(_, _, _, _, child) => check_at_most_one_update_rec(field, child),
         TransitionStmt::If(_, _, thn, els) => {
             let o1 = check_at_most_one_update_rec(field, thn)?;
             let o2 = check_at_most_one_update_rec(field, els)?;

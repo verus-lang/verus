@@ -68,7 +68,7 @@ fn nondeterministic_read_spec_out_name(field: &Field) -> Ident {
 
 // The type that goes in the created struct, e.g.,
 //     struct Token {
-//         instance: X_Instance, 
+//         instance: X_Instance,
 //         value: [[THIS_TYPE]],
 //     }
 fn field_token_field_type(field: &Field) -> Type {
@@ -472,8 +472,10 @@ pub fn exchange_stream(bundle: &SMBundle, tr: &Transition) -> syn::parse::Result
     for field in &sm.fields {
         if ctxt.is_init {
             match &field.stype {
-                ShardableType::NotTokenized(..) => { continue; }
-                _ => { }
+                ShardableType::NotTokenized(..) => {
+                    continue;
+                }
+                _ => {}
             }
 
             assert!(!use_explicit_lifetime);
@@ -1295,7 +1297,9 @@ impl<'a> VisitMut for TranslatorVisitor<'a> {
         let span = node.span();
         match node {
             Expr::Verbatim(_) => {
-                panic!("can't process a Verbatim expression; (and there shouldn't be one a user-provided expression in the first place)");
+                panic!(
+                    "can't process a Verbatim expression; (and there shouldn't be one a user-provided expression in the first place)"
+                );
             }
             Expr::Path(ExprPath { attrs: _, qself: None, path }) if path.is_ident("self") => {
                 self.errors.push(Error::new(span,
@@ -1518,19 +1522,16 @@ fn prune_irrelevant_ops(ctxt: &Ctxt, ts: TransitionStmt) -> TransitionStmt {
 fn prune_irrelevant_ops_rec(ctxt: &Ctxt, ts: TransitionStmt) -> Option<TransitionStmt> {
     match ts {
         TransitionStmt::Block(span, v) => {
-            let res: Vec<TransitionStmt> = v.into_iter().filter_map(|t|
-                prune_irrelevant_ops_rec(ctxt, t)).collect();
-            if res.len() == 0 {
-                None
-            } else {
-                Some(TransitionStmt::Block(span, res))
-            }
+            let res: Vec<TransitionStmt> =
+                v.into_iter().filter_map(|t| prune_irrelevant_ops_rec(ctxt, t)).collect();
+            if res.len() == 0 { None } else { Some(TransitionStmt::Block(span, res)) }
         }
         TransitionStmt::Let(span, id, lk, init_e, box child) => {
             match prune_irrelevant_ops_rec(ctxt, child) {
                 None => None,
-                Some(new_child) =>
-                    Some(TransitionStmt::Let(span, id, lk, init_e, Box::new(new_child))),
+                Some(new_child) => {
+                    Some(TransitionStmt::Let(span, id, lk, init_e, Box::new(new_child)))
+                }
             }
         }
         TransitionStmt::If(span, cond_e, box thn, box els) => {
@@ -1539,10 +1540,8 @@ fn prune_irrelevant_ops_rec(ctxt: &Ctxt, ts: TransitionStmt) -> Option<Transitio
             if new_thn.is_none() && new_els.is_none() {
                 None
             } else {
-                let new_thn = new_thn.unwrap_or(
-                    TransitionStmt::Block(span, vec![]));
-                let new_els = new_els.unwrap_or(
-                    TransitionStmt::Block(span, vec![]));
+                let new_thn = new_thn.unwrap_or(TransitionStmt::Block(span, vec![]));
+                let new_els = new_els.unwrap_or(TransitionStmt::Block(span, vec![]));
                 Some(TransitionStmt::If(span, cond_e, Box::new(new_thn), Box::new(new_els)))
             }
         }
@@ -1553,11 +1552,7 @@ fn prune_irrelevant_ops_rec(ctxt: &Ctxt, ts: TransitionStmt) -> Option<Transitio
                 ShardableType::NotTokenized(..) => true,
                 _ => false,
             };
-            if is_not_tokenized {
-                None
-            } else {
-                Some(TransitionStmt::Update(span, id, e))
-            }
+            if is_not_tokenized { None } else { Some(TransitionStmt::Update(span, id, e)) }
         }
 
         TransitionStmt::Initialize(span, id, e) => {
@@ -1566,16 +1561,14 @@ fn prune_irrelevant_ops_rec(ctxt: &Ctxt, ts: TransitionStmt) -> Option<Transitio
                 ShardableType::NotTokenized(..) => true,
                 _ => false,
             };
-            if is_not_tokenized {
-                None
-            } else {
-                Some(TransitionStmt::Initialize(span, id, e))
-            }
+            if is_not_tokenized { None } else { Some(TransitionStmt::Initialize(span, id, e)) }
         }
 
         TransitionStmt::Require(span, req_e) => Some(TransitionStmt::Require(span, req_e)),
         TransitionStmt::Assert(span, assert_e) => Some(TransitionStmt::Assert(span, assert_e)),
-        TransitionStmt::PostCondition(span, post_e) => Some(TransitionStmt::PostCondition(span, post_e)),
+        TransitionStmt::PostCondition(span, post_e) => {
+            Some(TransitionStmt::PostCondition(span, post_e))
+        }
         TransitionStmt::Special(span, id, op) => Some(TransitionStmt::Special(span, id, op)),
     }
 }

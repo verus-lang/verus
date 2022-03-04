@@ -73,7 +73,8 @@ pub enum SpecialOp {
 
 #[derive(Clone, Debug)]
 pub enum LetKind {
-    Normal, BirdsEye,
+    Normal,
+    BirdsEye,
 }
 
 #[derive(Clone, Debug)]

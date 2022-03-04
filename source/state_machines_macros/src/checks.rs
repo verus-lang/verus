@@ -48,9 +48,7 @@ fn check_unsupported_updates_helper(ts: &TransitionStmt) -> syn::parse::Result<(
             }
             Ok(())
         }
-        TransitionStmt::Let(_, _, _, _, child) => {
-            check_unsupported_updates_helper(child)
-        }
+        TransitionStmt::Let(_, _, _, _, child) => check_unsupported_updates_helper(child),
         TransitionStmt::If(_, _, e1, e2) => {
             check_unsupported_updates_helper(e1)?;
             check_unsupported_updates_helper(e2)?;

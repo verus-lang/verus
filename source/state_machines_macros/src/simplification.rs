@@ -246,7 +246,7 @@ fn get_field_for_placeholder(e: &Expr) -> String {
 //
 // TODO there are a couple of problems: one, we should probably introduce temp
 // variables for the unwieldy expressions that get introduced, and second, we don't
-// handle a case like `{ ... special_op(foo, ...) }; special_op(foo, ...)` 
+// handle a case like `{ ... special_op(foo, ...) }; special_op(foo, ...)`
 // i.e., any case where we update a field in a scoped block and then access it outside
 // that scope (again, tmp variables could probably handle this)
 // (see the handling of the 'Let' and 'If' cases)
@@ -291,7 +291,7 @@ impl FieldMap {
                         res.insert(field.clone(), (*old_counter, old_e.clone()));
                     }
                 }
-                None => { }
+                None => {}
             }
         }
         FieldMap { field_map: res }
@@ -367,7 +367,7 @@ fn simplify_ops_rec(ts: &TransitionStmt, field_map: FieldMap) -> (TransitionStmt
             // refer to the bound variable here which is about to go out-of-scope.
             (
                 TransitionStmt::Let(*span, id.clone(), lk.clone(), e.clone(), Box::new(new_child)),
-                FieldMap::remove_changed(field_map, new_map)
+                FieldMap::remove_changed(field_map, new_map),
             )
         }
         TransitionStmt::If(span, cond, e1, e2) => {
