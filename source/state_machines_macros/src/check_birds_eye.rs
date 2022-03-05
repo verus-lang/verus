@@ -32,7 +32,7 @@ use syn::parse::Error;
 //         #[birds_eye] let x = foo;
 //         require(e);
 //
-//    then e might depend on `x`. So when we try to output the precondition in the
+//    then `e` might depend on `x`. So when we try to output the precondition in the
 //    exchange fn, we have to output the expression `let x = foo; e`.
 //    But if the let-statement is a birds_eye statement, then the 'foo' would have
 //    reference variables that don't exist in the input parameters to the exchange fn.
@@ -53,6 +53,11 @@ use syn::parse::Error;
 //    But the intent is that the preconditions should match what we do for the
 //    'weak' transition relation (i.e., the formal definition of the transition
 //    relation) and it seems better to optimize for meeting that goal.
+//
+// In summary: (1) and (2) are basically warnings; (4) and (5) are necessary, but if
+// they were omitted, we would probably just end up with errors in type-resolution
+// of the generated code. Meanwhile, (3) is necessary for soundness and wouldn't be
+// caught otherwise.
 
 pub fn check_birds_eye(trans: &Transition, concurrent: bool, errors: &mut Vec<Error>) {
     check_birds_eye_rec(
