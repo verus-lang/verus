@@ -18,7 +18,7 @@ use syn::{Expr, Ident};
 //
 // The first pass, then, is to determine where the `PostCondition`
 // statements should go, each with a dummy placeholder expression.
-// This is handled by `add_placeholders`
+// This is handled by `add_placeholders`.
 //
 // In the second pass, `simplify_ops_rec`, we fill in the expressions.
 // This is where the meat of the translation is, and where we apply the operational
@@ -244,7 +244,7 @@ fn get_field_for_placeholder(e: &Expr) -> String {
 // See `docs/command-reference.md` for the command reference and rationale
 // for their definitions.
 //
-// TODO there are a couple of problems: one, we should probably introduce temp
+// TODO there are a couple of problems: one, we should probably introduce explicit temp
 // variables for the unwieldy expressions that get introduced, and second, we don't
 // handle a case like `{ ... special_op(foo, ...) }; special_op(foo, ...)`
 // i.e., any case where we update a field in a scoped block and then access it outside

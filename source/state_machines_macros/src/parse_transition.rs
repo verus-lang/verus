@@ -6,7 +6,7 @@ use syn::{
     Pat, PatIdent, Signature, Stmt,
 };
 
-// Translate Rust AST into an SM AST, given by a TransitionStmt.
+// Translate Rust AST into a transition AST, given by the TransitionStmt type.
 // Every statement should be one of:
 //  * A special call, e.g., require(...);
 //  * A 'let' statement
@@ -69,6 +69,22 @@ enum StmtOrLet {
 }
 
 fn parse_block(block: &Block, ctxt: &Ctxt) -> syn::parse::Result<TransitionStmt> {
+    // A block is a list of statements, but we want to re-organize the AST
+    // into the style of a 'let ... in ...' expression, so that
+    // for each 'let' statement, the scope of the bound variable is given by
+    // the child of the 'let' node in our tree representation.
+    //
+    // So for example, if the Rust AST has a block like this:
+    //
+    //    a;
+    //    let x = foo;
+    //    b;
+    //    c;
+    //
+    // We'd turn it into:
+    //
+    //    {a; let x = foo in { b; c; } }
+
     let mut tstmts = Vec::new();
     for stmt in block.stmts.iter() {
         let tstmt = parse_stmt(stmt, ctxt)?;

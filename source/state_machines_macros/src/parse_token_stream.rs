@@ -233,7 +233,7 @@ fn attr_is_any_mode(attr: &Attribute) -> bool {
     }
 }
 
-// Check that the user did not apply an explicit mode. We will be apply the modes ourselves
+// Check that the user did not apply an explicit mode. We will apply the modes ourselves
 // during macro expansion.
 
 fn ensure_no_mode(impl_item_method: &ImplItemMethod, msg: &str) -> syn::parse::Result<()> {

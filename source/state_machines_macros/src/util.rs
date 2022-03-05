@@ -1,5 +1,8 @@
 use syn::Error;
 
+// If there is at least one error, combine them all into one
+// Else, return Ok(())
+
 pub fn combine_errors_or_ok(errors: Vec<Error>) -> syn::parse::Result<()> {
     let mut res = Ok(());
     for e in errors {
