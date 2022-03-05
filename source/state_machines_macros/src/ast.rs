@@ -37,7 +37,7 @@ pub struct TransitionParam {
 /// along with their sharding strategies.
 /// (For non-concurrent state machines, we just say everything
 /// is 'Variable'.)
-/// 
+///
 /// Be aware of the relationship between the enum representation here
 /// and the user's field declarations. As an example, a user's declaration
 /// might look like `#[sharding(option)] foo: Option<Foo>`.
@@ -150,14 +150,14 @@ impl SpecialOp {
 
     pub fn is_only_allowed_in_readonly(&self) -> bool {
         match self {
-            SpecialOp::RemoveElement(..) |
-            SpecialOp::HaveElement(..) |
-            SpecialOp::AddElement(..) |
-            SpecialOp::RemoveSome(..) |
-            SpecialOp::HaveSome(..) |
-            SpecialOp::AddSome(..) |
-            SpecialOp::DepositSome(..) |
-            SpecialOp::WithdrawSome(..) => false,
+            SpecialOp::RemoveElement(..)
+            | SpecialOp::HaveElement(..)
+            | SpecialOp::AddElement(..)
+            | SpecialOp::RemoveSome(..)
+            | SpecialOp::HaveSome(..)
+            | SpecialOp::AddSome(..)
+            | SpecialOp::DepositSome(..)
+            | SpecialOp::WithdrawSome(..) => false,
 
             SpecialOp::GuardSome(..) => true,
         }
@@ -165,46 +165,43 @@ impl SpecialOp {
 
     pub fn is_have(&self) -> bool {
         match self {
-            SpecialOp::HaveElement(..) |
-            SpecialOp::HaveSome(..) => true,
+            SpecialOp::HaveElement(..) | SpecialOp::HaveSome(..) => true,
 
-            SpecialOp::RemoveElement(..) |
-            SpecialOp::AddElement(..) |
-            SpecialOp::RemoveSome(..) |
-            SpecialOp::AddSome(..) |
-            SpecialOp::DepositSome(..) |
-            SpecialOp::WithdrawSome(..) |
-            SpecialOp::GuardSome(..) => false,
+            SpecialOp::RemoveElement(..)
+            | SpecialOp::AddElement(..)
+            | SpecialOp::RemoveSome(..)
+            | SpecialOp::AddSome(..)
+            | SpecialOp::DepositSome(..)
+            | SpecialOp::WithdrawSome(..)
+            | SpecialOp::GuardSome(..) => false,
         }
     }
 
     pub fn is_remove(&self) -> bool {
         match self {
-            SpecialOp::RemoveElement(..) |
-            SpecialOp::RemoveSome(..) => true,
+            SpecialOp::RemoveElement(..) | SpecialOp::RemoveSome(..) => true,
 
-            SpecialOp::HaveElement(..) |
-            SpecialOp::AddElement(..) |
-            SpecialOp::HaveSome(..) |
-            SpecialOp::AddSome(..) |
-            SpecialOp::DepositSome(..) |
-            SpecialOp::WithdrawSome(..) |
-            SpecialOp::GuardSome(..) => false,
+            SpecialOp::HaveElement(..)
+            | SpecialOp::AddElement(..)
+            | SpecialOp::HaveSome(..)
+            | SpecialOp::AddSome(..)
+            | SpecialOp::DepositSome(..)
+            | SpecialOp::WithdrawSome(..)
+            | SpecialOp::GuardSome(..) => false,
         }
     }
 
     pub fn is_add(&self) -> bool {
         match self {
-            SpecialOp::AddElement(..) |
-            SpecialOp::AddSome(..) => true,
+            SpecialOp::AddElement(..) | SpecialOp::AddSome(..) => true,
 
-            SpecialOp::RemoveElement(..) |
-            SpecialOp::HaveElement(..) |
-            SpecialOp::RemoveSome(..) |
-            SpecialOp::HaveSome(..) |
-            SpecialOp::DepositSome(..) |
-            SpecialOp::WithdrawSome(..) |
-            SpecialOp::GuardSome(..) => false,
+            SpecialOp::RemoveElement(..)
+            | SpecialOp::HaveElement(..)
+            | SpecialOp::RemoveSome(..)
+            | SpecialOp::HaveSome(..)
+            | SpecialOp::DepositSome(..)
+            | SpecialOp::WithdrawSome(..)
+            | SpecialOp::GuardSome(..) => false,
         }
     }
 
@@ -212,14 +209,14 @@ impl SpecialOp {
         match self {
             SpecialOp::GuardSome(..) => true,
 
-            SpecialOp::AddElement(..) |
-            SpecialOp::AddSome(..) |
-            SpecialOp::RemoveElement(..) |
-            SpecialOp::HaveElement(..) |
-            SpecialOp::RemoveSome(..) |
-            SpecialOp::HaveSome(..) |
-            SpecialOp::DepositSome(..) |
-            SpecialOp::WithdrawSome(..) => false,
+            SpecialOp::AddElement(..)
+            | SpecialOp::AddSome(..)
+            | SpecialOp::RemoveElement(..)
+            | SpecialOp::HaveElement(..)
+            | SpecialOp::RemoveSome(..)
+            | SpecialOp::HaveSome(..)
+            | SpecialOp::DepositSome(..)
+            | SpecialOp::WithdrawSome(..) => false,
         }
     }
 }

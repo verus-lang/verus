@@ -1,4 +1,4 @@
-use crate::ast::{TransitionStmt, LetKind, SpecialOp, TransitionKind, Transition};
+use crate::ast::{LetKind, SpecialOp, Transition, TransitionKind, TransitionStmt};
 use syn::parse::Error;
 
 // Here we check the following rules related to #[birds_eye] let-bindings:
@@ -46,11 +46,11 @@ use syn::parse::Error;
 //    problems, because we would generate a precondition like,
 //
 //         { let x = foo; e } ==> e2
-//         
+//
 //    And again, we can't put `foo` in a precondition.
 //    In principle, we could leave these hypotheses out entirely (this would be sound,
 //    since leaving off the hypothesis only makes the precondition harder to meet).
-//    But the intent is that the preconditions should match what we do for the 
+//    But the intent is that the preconditions should match what we do for the
 //    'weak' transition relation (i.e., the formal definition of the transition
 //    relation) and it seems better to optimize for meeting that goal.
 
@@ -61,7 +61,8 @@ pub fn check_birds_eye(trans: &Transition, concurrent: bool, errors: &mut Vec<Er
         concurrent,
         false,
         &mut false,
-        errors);
+        errors,
+    );
 }
 
 fn check_birds_eye_rec(
@@ -70,12 +71,19 @@ fn check_birds_eye_rec(
     concurrent: bool,
     scoped_in_birds_eye: bool,
     past_assert: &mut bool,
-    errors: &mut Vec<Error>)
-{
+    errors: &mut Vec<Error>,
+) {
     match ts {
         TransitionStmt::Block(_span, v) => {
             for child in v.iter() {
-                check_birds_eye_rec(child, is_init, concurrent, scoped_in_birds_eye, past_assert, errors);
+                check_birds_eye_rec(
+                    child,
+                    is_init,
+                    concurrent,
+                    scoped_in_birds_eye,
+                    past_assert,
+                    errors,
+                );
             }
         }
         TransitionStmt::Let(span, _id, lk, _init_e, child) => {
@@ -90,17 +98,39 @@ fn check_birds_eye_rec(
                 if is_init {
                     errors.push(Error::new(
                         *span,
-                        "#[birds_eye] has no effect in an #[init] definition"));
+                        "#[birds_eye] has no effect in an #[init] definition",
+                    ));
                     is_birds_eye = false; // to prevent the other errors from triggering
                 }
             }
-            check_birds_eye_rec(child, is_init, concurrent, scoped_in_birds_eye || is_birds_eye, past_assert, errors);
+            check_birds_eye_rec(
+                child,
+                is_init,
+                concurrent,
+                scoped_in_birds_eye || is_birds_eye,
+                past_assert,
+                errors,
+            );
         }
         TransitionStmt::If(_span, _cond_e, e1, e2) => {
             let mut past_assert1 = *past_assert;
             let mut past_assert2 = *past_assert;
-            check_birds_eye_rec(e1, is_init, concurrent, scoped_in_birds_eye, &mut past_assert1, errors);
-            check_birds_eye_rec(e2, is_init, concurrent, scoped_in_birds_eye, &mut past_assert2, errors);
+            check_birds_eye_rec(
+                e1,
+                is_init,
+                concurrent,
+                scoped_in_birds_eye,
+                &mut past_assert1,
+                errors,
+            );
+            check_birds_eye_rec(
+                e2,
+                is_init,
+                concurrent,
+                scoped_in_birds_eye,
+                &mut past_assert2,
+                errors,
+            );
             *past_assert = past_assert1 || past_assert2;
         }
         TransitionStmt::Assert(..) => {
@@ -140,9 +170,9 @@ fn check_birds_eye_rec(
             }
         }
 
-        TransitionStmt::Update(..) => { }
-        TransitionStmt::Initialize(..) => { }
-        TransitionStmt::PostCondition(..) => { }
+        TransitionStmt::Update(..) => {}
+        TransitionStmt::Initialize(..) => {}
+        TransitionStmt::PostCondition(..) => {}
     }
 }
 

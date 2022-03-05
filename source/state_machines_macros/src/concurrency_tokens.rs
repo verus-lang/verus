@@ -6,11 +6,11 @@
 //!  * #[proof] methods for each transition (including init and readonly transitions)
 
 use crate::ast::{
-    Field, Lemma, ShardableType, SpecialOp, Transition, TransitionKind, TransitionStmt, SM, LetKind,
+    Field, Lemma, LetKind, ShardableType, SpecialOp, Transition, TransitionKind, TransitionStmt, SM,
 };
 use crate::checks::{check_ordering_remove_have_add, check_unsupported_updates_in_conditionals};
 use crate::parse_token_stream::SMBundle;
-use crate::safety_conditions::{has_any_assert};
+use crate::safety_conditions::has_any_assert;
 use crate::to_relation::asserts_to_single_predicate;
 use crate::to_token_stream::{
     get_self_ty, get_self_ty_double_colon, impl_decl_stream, name_with_type_args,
@@ -735,7 +735,7 @@ pub fn exchange_stream(bundle: &SMBundle, tr: &Transition) -> syn::parse::Result
             };
         }
     }
-    
+
     // Now we have all the parameters, and all the preconditions and postconditions
     // as expressions, so we just need to put it all together.
 
@@ -1206,11 +1206,7 @@ fn walk_translate_expressions(
     let new_ts = match ts {
         TransitionStmt::Block(_span, v) => {
             for child in v.iter_mut() {
-                walk_translate_expressions(
-                    ctxt,
-                    child,
-                    birds_eye_phase,
-                )?;
+                walk_translate_expressions(ctxt, child, birds_eye_phase)?;
             }
             return Ok(());
         }
@@ -1225,10 +1221,7 @@ fn walk_translate_expressions(
         }
         TransitionStmt::If(_span, cond, e1, e2) => {
             if !birds_eye_phase {
-                let cond_e = translate_expr(
-                    ctxt,
-                    cond,
-                    false)?;
+                let cond_e = translate_expr(ctxt, cond, false)?;
                 *cond = cond_e;
             }
             walk_translate_expressions(ctxt, e1, birds_eye_phase)?;
@@ -1385,11 +1378,7 @@ fn walk_translate_expressions(
     Ok(())
 }
 
-fn translate_expr(
-    ctxt: &mut Ctxt,
-    expr: &Expr,
-    birds_eye: bool,
-) -> syn::parse::Result<Expr> {
+fn translate_expr(ctxt: &mut Ctxt, expr: &Expr, birds_eye: bool) -> syn::parse::Result<Expr> {
     let mut v = TranslatorVisitor::new(ctxt, birds_eye);
     let mut e = expr.clone();
     v.visit_expr_mut(&mut e);
@@ -1444,11 +1433,18 @@ impl<'a> VisitMut for TranslatorVisitor<'a> {
                                         ShardableType::Variable(_ty) => {
                                             // Handle it as a 'nondeterministic' value UNLESS
                                             // we're already reading this token anyway.
-                                            if self.ctxt.fields_read.contains(&field.ident.to_string()) {
+                                            if self
+                                                .ctxt
+                                                .fields_read
+                                                .contains(&field.ident.to_string())
+                                            {
                                                 *node = get_old_field_value(&self.ctxt, &field);
                                             } else {
-                                                self.ctxt.mark_field_as_nondeterministic_read(&field);
-                                                *node = get_nondeterministic_out_value(&self.ctxt, &field);
+                                                self.ctxt
+                                                    .mark_field_as_nondeterministic_read(&field);
+                                                *node = get_nondeterministic_out_value(
+                                                    &self.ctxt, &field,
+                                                );
                                             }
                                         }
                                         ShardableType::Constant(_ty) => {
@@ -1457,7 +1453,8 @@ impl<'a> VisitMut for TranslatorVisitor<'a> {
                                         }
                                         _ => {
                                             self.ctxt.mark_field_as_nondeterministic_read(&field);
-                                            *node = get_nondeterministic_out_value(&self.ctxt, &field);
+                                            *node =
+                                                get_nondeterministic_out_value(&self.ctxt, &field);
                                         }
                                     }
                                 } else {

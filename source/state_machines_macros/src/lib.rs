@@ -3,8 +3,8 @@
 extern crate proc_macro;
 
 mod ast;
-mod checks;
 mod check_birds_eye;
+mod checks;
 mod concurrency_tokens;
 mod ident_visitor;
 mod lemmas;
