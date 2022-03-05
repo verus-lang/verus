@@ -6,11 +6,11 @@
 //!  * #[proof] methods for each transition (including init and readonly transitions)
 
 use crate::ast::{
-    Field, Lemma, ShardableType, SpecialOp, Transition, TransitionKind, TransitionStmt, SM,
+    Field, Lemma, ShardableType, SpecialOp, Transition, TransitionKind, TransitionStmt, SM, LetKind,
 };
 use crate::checks::{check_ordering_remove_have_add, check_unsupported_updates_in_conditionals};
 use crate::parse_token_stream::SMBundle;
-use crate::safety_conditions::{has_any_assert, has_any_require};
+use crate::safety_conditions::{has_any_assert};
 use crate::to_relation::asserts_to_single_predicate;
 use crate::to_token_stream::{
     get_self_ty, get_self_ty_double_colon, impl_decl_stream, name_with_type_args,
@@ -306,11 +306,15 @@ struct TokenParam {
 /// transition into a token-exchange method.
 
 struct Ctxt {
+    // fields written in some normal 'update' or 'init' statements
+    // (not including special ops)
+    fields_written: HashSet<String>,
+
     // fields read (via `self.field`) in some expression
     fields_read: HashSet<String>,
 
-    // fields written in some normal 'update' statements
-    fields_written: HashSet<String>,
+    // fields read in a birds_eye statement
+    fields_read_birds_eye: HashSet<String>,
 
     // in/out params resulting from remove/have/add statements
     params: HashMap<String, Vec<TokenParam>>,
@@ -344,6 +348,10 @@ impl Ctxt {
 
     pub fn mark_field_as_read(&mut self, field: &Field) {
         self.fields_read.insert(field.ident.to_string());
+    }
+
+    pub fn mark_field_as_nondeterministic_read(&mut self, field: &Field) {
+        self.fields_read_birds_eye.insert(field.ident.to_string());
     }
 
     pub fn get_numbered_token_ident(&mut self, base_id: &Ident) -> Ident {
@@ -405,6 +413,7 @@ pub fn exchange_stream(bundle: &SMBundle, tr: &Transition) -> syn::parse::Result
     let mut ctxt = Ctxt {
         fields_read: HashSet::new(),
         fields_written: HashSet::new(),
+        fields_read_birds_eye: HashSet::new(),
         params: init_params,
         requires: Vec::new(),
         ensures: Vec::new(),
@@ -430,6 +439,7 @@ pub fn exchange_stream(bundle: &SMBundle, tr: &Transition) -> syn::parse::Result
     // they now refer to the field that comes from an input.
     // (in the process, we also determine inputs).
     walk_translate_expressions(&mut ctxt, &mut tr.body, false)?;
+    walk_translate_expressions(&mut ctxt, &mut tr.body, true)?;
 
     // translate the (new) TransitionStmt into an expressions that
     // can be used as pre-conditions and post-conditions
@@ -481,6 +491,7 @@ pub fn exchange_stream(bundle: &SMBundle, tr: &Transition) -> syn::parse::Result
             assert!(!use_explicit_lifetime);
             assert!(ctxt.fields_written.contains(&field.ident.to_string()));
             assert!(!ctxt.fields_read.contains(&field.ident.to_string()));
+            assert!(!ctxt.fields_read_birds_eye.contains(&field.ident.to_string()));
 
             match &field.stype {
                 ShardableType::Constant(_) => {
@@ -548,11 +559,8 @@ pub fn exchange_stream(bundle: &SMBundle, tr: &Transition) -> syn::parse::Result
                 );
             }
         } else {
-            let nondeterministic_read = match field.stype {
-                ShardableType::NotTokenized(_) => true,
-                ShardableType::StorageOptional(_) => true,
-                _ => false,
-            } && ctxt.fields_read.contains(&field.ident.to_string());
+            let nondeterministic_read =
+                ctxt.fields_read_birds_eye.contains(&field.ident.to_string());
 
             if nondeterministic_read {
                 // It is possible to read a value non-deterministically without it coming
@@ -570,9 +578,10 @@ pub fn exchange_stream(bundle: &SMBundle, tr: &Transition) -> syn::parse::Result
                     assert!(!ctxt.fields_written.contains(&field.ident.to_string()));
                 }
                 ShardableType::NotTokenized(_) => {
-                    // do nothing
-                    // the nondeterministic_read case was handled above
-                    // nothing to do for writes (they simply aren't reflected in output tokens)
+                    // Do nothing.
+                    // This field can only be accessed via nondeterministic
+                    // read which was handled above.
+                    // Nothing to do for writes (they simply aren't reflected in output tokens).
                 }
                 ShardableType::Variable(_) => {
                     let is_written = ctxt.fields_written.contains(&field.ident.to_string());
@@ -981,6 +990,7 @@ fn get_all_lemmas_for_transition(bundle: &SMBundle, trans: &Transition) -> Vec<I
         v.push(l.func.sig.ident.clone());
     }
 
+    // TODO This isn't right!!! we need to check for other kinds of safety conditions!!!
     if has_any_assert(&trans.body) {
         let name = Ident::new(&(trans.name.to_string() + "_asserts"), trans.name.span());
         v.push(name);
@@ -1082,74 +1092,78 @@ fn determine_outputs(ctxt: &mut Ctxt, ts: &TransitionStmt) -> syn::parse::Result
 /// a lot about the right way to structure this as we try to understand the design behind
 /// more advanced sharding strategies, so I'm not committing to an overhaul right now.
 
+// Note: we run this in two phases.
+// The second phase, birds_eye, handles the birds_eye statements,
+// while the first phase handles everything else.
+// We have to split it in to because the first phase computes
+// `ctxt.fields_read`, while the second phase needs to read it.
+// TODO two-phase thing sucks; just factor the field_read computation into an earlier phase
+
 fn walk_translate_expressions(
     ctxt: &mut Ctxt,
     ts: &mut TransitionStmt,
-    comes_before_precondition: bool,
+    birds_eye_phase: bool,
 ) -> syn::parse::Result<()> {
     let new_ts = match ts {
         TransitionStmt::Block(_span, v) => {
-            // TODO ugh we need to account for the special ops, here
-            // Compute `latest_precondition` such that
-            // forall i :: i < latest_precondition ==> v[i] definitely comes before
-            //    some precondition.
-            let latest_precondition = if comes_before_precondition {
-                v.len()
-            } else {
-                let mut i = v.len();
-                while i >= 1 && !has_any_require(&v[i - 1]) {
-                    i -= 1;
-                }
-                i
-            };
-
-            for (i, child) in v.iter_mut().enumerate() {
+            for child in v.iter_mut() {
                 walk_translate_expressions(
                     ctxt,
                     child,
-                    comes_before_precondition || i < latest_precondition,
+                    birds_eye_phase,
                 )?;
             }
             return Ok(());
         }
-        TransitionStmt::Let(_span, _id, _lk, e, child) => {
-            let init_e = translate_expr(ctxt, e, comes_before_precondition)?;
-            *e = init_e;
-            walk_translate_expressions(ctxt, child, comes_before_precondition)?;
+        TransitionStmt::Let(_span, _id, lk, e, child) => {
+            let this_stmt_birds_eye = *lk == LetKind::BirdsEye;
+            if birds_eye_phase == this_stmt_birds_eye {
+                let init_e = translate_expr(ctxt, e, this_stmt_birds_eye)?;
+                *e = init_e;
+            }
+            walk_translate_expressions(ctxt, child, birds_eye_phase)?;
             return Ok(());
         }
         TransitionStmt::If(_span, cond, e1, e2) => {
-            let cond_e = translate_expr(
-                ctxt,
-                cond,
-                comes_before_precondition || has_any_require(e1) || has_any_require(e2),
-            )?;
-            *cond = cond_e;
-            walk_translate_expressions(ctxt, e1, comes_before_precondition)?;
-            walk_translate_expressions(ctxt, e2, comes_before_precondition)?;
+            if !birds_eye_phase {
+                let cond_e = translate_expr(
+                    ctxt,
+                    cond,
+                    false)?;
+                *cond = cond_e;
+            }
+            walk_translate_expressions(ctxt, e1, birds_eye_phase)?;
+            walk_translate_expressions(ctxt, e2, birds_eye_phase)?;
             return Ok(());
         }
         TransitionStmt::Require(_span, e) => {
-            let req_e = translate_expr(ctxt, e, true)?;
-            *e = req_e;
+            if !birds_eye_phase {
+                let req_e = translate_expr(ctxt, e, false)?;
+                *e = req_e;
+            }
             return Ok(());
         }
         TransitionStmt::Assert(_span, e) => {
-            let assert_e = translate_expr(ctxt, e, comes_before_precondition)?;
-            *e = assert_e;
+            if !birds_eye_phase {
+                let assert_e = translate_expr(ctxt, e, false)?;
+                *e = assert_e;
+            }
             return Ok(());
         }
 
         TransitionStmt::Initialize(_span, _id, e) | TransitionStmt::Update(_span, _id, e) => {
-            // TODO should ignore this if it's a NotTokenized field?
-            let update_e = translate_expr(ctxt, e, false)?;
-            *e = update_e;
+            if !birds_eye_phase {
+                let update_e = translate_expr(ctxt, e, false)?;
+                *e = update_e;
+            }
             return Ok(());
         }
 
         TransitionStmt::Special(span, id, SpecialOp::HaveSome(e))
         | TransitionStmt::Special(span, id, SpecialOp::HaveElement(e)) => {
-            let e = translate_expr(ctxt, e, comes_before_precondition)?;
+            assert!(!birds_eye_phase);
+
+            let e = translate_expr(ctxt, e, false)?;
 
             let ident = ctxt.get_numbered_token_ident(id);
             let field = ctxt.get_field_or_panic(id);
@@ -1167,7 +1181,9 @@ fn walk_translate_expressions(
 
         TransitionStmt::Special(span, id, SpecialOp::AddSome(e))
         | TransitionStmt::Special(span, id, SpecialOp::AddElement(e)) => {
-            let e = translate_expr(ctxt, e, comes_before_precondition)?;
+            assert!(!birds_eye_phase);
+
+            let e = translate_expr(ctxt, e, false)?;
 
             let ident = ctxt.get_numbered_token_ident(id);
             let field = ctxt.get_field_or_panic(id);
@@ -1188,7 +1204,9 @@ fn walk_translate_expressions(
 
         TransitionStmt::Special(span, id, SpecialOp::RemoveSome(e))
         | TransitionStmt::Special(span, id, SpecialOp::RemoveElement(e)) => {
-            let e = translate_expr(ctxt, e, comes_before_precondition)?;
+            assert!(!birds_eye_phase);
+
+            let e = translate_expr(ctxt, e, false)?;
 
             let ident = ctxt.get_numbered_token_ident(id);
             let field = ctxt.get_field_or_panic(id);
@@ -1205,7 +1223,9 @@ fn walk_translate_expressions(
         }
 
         TransitionStmt::Special(span, id, SpecialOp::GuardSome(e)) => {
-            let e = translate_expr(ctxt, e, comes_before_precondition)?;
+            assert!(!birds_eye_phase);
+
+            let e = translate_expr(ctxt, e, false)?;
 
             let ident = ctxt.get_numbered_token_ident(id);
             let field = ctxt.get_field_or_panic(id);
@@ -1221,7 +1241,9 @@ fn walk_translate_expressions(
         }
 
         TransitionStmt::Special(span, id, SpecialOp::DepositSome(e)) => {
-            let e = translate_expr(ctxt, e, comes_before_precondition)?;
+            assert!(!birds_eye_phase);
+
+            let e = translate_expr(ctxt, e, false)?;
 
             let ident = ctxt.get_numbered_token_ident(id);
             let field = ctxt.get_field_or_panic(id);
@@ -1237,7 +1259,9 @@ fn walk_translate_expressions(
         }
 
         TransitionStmt::Special(span, id, SpecialOp::WithdrawSome(e)) => {
-            let e = translate_expr(ctxt, e, comes_before_precondition)?;
+            assert!(!birds_eye_phase);
+
+            let e = translate_expr(ctxt, e, false)?;
 
             let ident = ctxt.get_numbered_token_ident(id);
             let field = ctxt.get_field_or_panic(id);
@@ -1253,7 +1277,7 @@ fn walk_translate_expressions(
         }
 
         TransitionStmt::PostCondition(..) => {
-            panic!("PostCondition statement shouldn't exist yet");
+            return Ok(());
         }
     };
 
@@ -1265,9 +1289,9 @@ fn walk_translate_expressions(
 fn translate_expr(
     ctxt: &mut Ctxt,
     expr: &Expr,
-    comes_before_precondition: bool,
+    birds_eye: bool,
 ) -> syn::parse::Result<Expr> {
-    let mut v = TranslatorVisitor::new(ctxt, comes_before_precondition);
+    let mut v = TranslatorVisitor::new(ctxt, birds_eye);
     let mut e = expr.clone();
     v.visit_expr_mut(&mut e);
     if v.errors.len() > 0 {
@@ -1283,12 +1307,12 @@ fn translate_expr(
 struct TranslatorVisitor<'a> {
     pub errors: Vec<Error>,
     pub ctxt: &'a mut Ctxt,
-    pub comes_before_precondition: bool,
+    pub birds_eye: bool,
 }
 
 impl<'a> TranslatorVisitor<'a> {
-    pub fn new(ctxt: &'a mut Ctxt, comes_before_precondition: bool) -> TranslatorVisitor<'a> {
-        TranslatorVisitor { errors: Vec::new(), ctxt: ctxt, comes_before_precondition }
+    pub fn new(ctxt: &'a mut Ctxt, birds_eye: bool) -> TranslatorVisitor<'a> {
+        TranslatorVisitor { errors: Vec::new(), ctxt, birds_eye }
     }
 }
 
@@ -1316,26 +1340,41 @@ impl<'a> VisitMut for TranslatorVisitor<'a> {
                         match self.ctxt.get_field_by_ident(span, ident) {
                             Err(err) => self.errors.push(err),
                             Ok(field) => {
-                                self.ctxt.mark_field_as_read(&field);
-                                match &field.stype {
-                                    ShardableType::Variable(_ty) => {
-                                        *node = get_old_field_value(&self.ctxt, &field);
-                                    }
-                                    ShardableType::Constant(_ty) => {
-                                        *node = get_const_field_value(&self.ctxt, &field);
-                                    }
-                                    ShardableType::NotTokenized(_ty)
-                                    | ShardableType::StorageOptional(_ty) => {
-                                        if self.comes_before_precondition {
-                                            self.errors.push(Error::new(span,
-                                        "A field read nondeterministically cannot be referenced either in or before a `require` statement, as this would require its value to be referenced in the pre-condition of the exchange method"));
+                                if self.birds_eye {
+                                    match &field.stype {
+                                        ShardableType::Variable(_ty) => {
+                                            // Handle it as a 'nondeterministic' value UNLESS
+                                            // we're already reading this token anyway.
+                                            if self.ctxt.fields_read.contains(&field.ident.to_string()) {
+                                                *node = get_old_field_value(&self.ctxt, &field);
+                                            } else {
+                                                self.ctxt.mark_field_as_nondeterministic_read(&field);
+                                                *node = get_nondeterministic_out_value(&self.ctxt, &field);
+                                            }
                                         }
-                                        *node = get_nondeterministic_out_value(&self.ctxt, &field);
+                                        ShardableType::Constant(_ty) => {
+                                            // Handle constants as normal
+                                            *node = get_const_field_value(&self.ctxt, &field);
+                                        }
+                                        _ => {
+                                            self.ctxt.mark_field_as_nondeterministic_read(&field);
+                                            *node = get_nondeterministic_out_value(&self.ctxt, &field);
+                                        }
                                     }
-                                    ShardableType::Multiset(_ty) | ShardableType::Optional(_ty) => {
-                                        let strat = field.stype.strategy_name();
-                                        self.errors.push(Error::new(span,
-                                    format!("A '{strat:}' field cannot be directly referenced here"))); // TODO be more specific
+                                } else {
+                                    self.ctxt.mark_field_as_read(&field);
+                                    match &field.stype {
+                                        ShardableType::Variable(_ty) => {
+                                            *node = get_old_field_value(&self.ctxt, &field);
+                                        }
+                                        ShardableType::Constant(_ty) => {
+                                            *node = get_const_field_value(&self.ctxt, &field);
+                                        }
+                                        _ => {
+                                            let strat = field.stype.strategy_name();
+                                            self.errors.push(Error::new(span,
+                                                format!("A '{strat:}' field cannot be directly referenced here"))); // TODO be more specific
+                                        }
                                     }
                                 }
                             }

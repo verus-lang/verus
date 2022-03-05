@@ -1,4 +1,5 @@
 use crate::ast::{Field, ShardableType, SpecialOp, Transition, TransitionKind, TransitionStmt, SM};
+use crate::check_birds_eye::check_birds_eye;
 use crate::util::{combine_errors_or_ok, combine_results};
 use proc_macro2::Span;
 use std::collections::HashMap;
@@ -469,6 +470,7 @@ pub fn check_transition(sm: &SM, tr: &Transition) -> syn::parse::Result<()> {
     }
 
     check_let_shadowing(tr, &mut errors);
+    check_birds_eye(tr, sm.concurrent, &mut errors);
 
     combine_errors_or_ok(errors)
 }

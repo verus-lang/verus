@@ -11,6 +11,8 @@ pub struct SM {
     pub fields_named_ast: FieldsNamed,
 
     pub transitions: Vec<Transition>,
+
+    pub concurrent: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -71,7 +73,7 @@ pub enum SpecialOp {
     GuardSome(Expr),
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum LetKind {
     Normal,
     BirdsEye,
@@ -128,60 +130,76 @@ impl SpecialOp {
 
     pub fn is_only_allowed_in_readonly(&self) -> bool {
         match self {
-            SpecialOp::RemoveElement(..) => false,
-            SpecialOp::HaveElement(..) => false,
-            SpecialOp::AddElement(..) => false,
-            SpecialOp::RemoveSome(..) => false,
-            SpecialOp::HaveSome(..) => false,
-            SpecialOp::AddSome(..) => false,
-            SpecialOp::DepositSome(..) => false,
+            SpecialOp::RemoveElement(..) |
+            SpecialOp::HaveElement(..) |
+            SpecialOp::AddElement(..) |
+            SpecialOp::RemoveSome(..) |
+            SpecialOp::HaveSome(..) |
+            SpecialOp::AddSome(..) |
+            SpecialOp::DepositSome(..) |
             SpecialOp::WithdrawSome(..) => false,
+
             SpecialOp::GuardSome(..) => true,
         }
     }
 
     pub fn is_have(&self) -> bool {
         match self {
-            SpecialOp::HaveElement(..) => true,
+            SpecialOp::HaveElement(..) |
             SpecialOp::HaveSome(..) => true,
 
-            SpecialOp::RemoveElement(..) => false,
-            SpecialOp::AddElement(..) => false,
-            SpecialOp::RemoveSome(..) => false,
-            SpecialOp::AddSome(..) => false,
-            SpecialOp::DepositSome(..) => false,
-            SpecialOp::WithdrawSome(..) => false,
+            SpecialOp::RemoveElement(..) |
+            SpecialOp::AddElement(..) |
+            SpecialOp::RemoveSome(..) |
+            SpecialOp::AddSome(..) |
+            SpecialOp::DepositSome(..) |
+            SpecialOp::WithdrawSome(..) |
             SpecialOp::GuardSome(..) => false,
         }
     }
 
     pub fn is_remove(&self) -> bool {
         match self {
-            SpecialOp::RemoveElement(..) => true,
+            SpecialOp::RemoveElement(..) |
             SpecialOp::RemoveSome(..) => true,
 
-            SpecialOp::HaveElement(..) => false,
-            SpecialOp::AddElement(..) => false,
-            SpecialOp::HaveSome(..) => false,
-            SpecialOp::AddSome(..) => false,
-            SpecialOp::DepositSome(..) => false,
-            SpecialOp::WithdrawSome(..) => false,
+            SpecialOp::HaveElement(..) |
+            SpecialOp::AddElement(..) |
+            SpecialOp::HaveSome(..) |
+            SpecialOp::AddSome(..) |
+            SpecialOp::DepositSome(..) |
+            SpecialOp::WithdrawSome(..) |
             SpecialOp::GuardSome(..) => false,
         }
     }
 
     pub fn is_add(&self) -> bool {
         match self {
-            SpecialOp::AddElement(..) => true,
+            SpecialOp::AddElement(..) |
             SpecialOp::AddSome(..) => true,
 
-            SpecialOp::RemoveElement(..) => false,
-            SpecialOp::HaveElement(..) => false,
-            SpecialOp::RemoveSome(..) => false,
-            SpecialOp::HaveSome(..) => false,
-            SpecialOp::DepositSome(..) => false,
-            SpecialOp::WithdrawSome(..) => false,
+            SpecialOp::RemoveElement(..) |
+            SpecialOp::HaveElement(..) |
+            SpecialOp::RemoveSome(..) |
+            SpecialOp::HaveSome(..) |
+            SpecialOp::DepositSome(..) |
+            SpecialOp::WithdrawSome(..) |
             SpecialOp::GuardSome(..) => false,
+        }
+    }
+
+    pub fn is_guard(&self) -> bool {
+        match self {
+            SpecialOp::GuardSome(..) => true,
+
+            SpecialOp::AddElement(..) |
+            SpecialOp::AddSome(..) |
+            SpecialOp::RemoveElement(..) |
+            SpecialOp::HaveElement(..) |
+            SpecialOp::RemoveSome(..) |
+            SpecialOp::HaveSome(..) |
+            SpecialOp::DepositSome(..) |
+            SpecialOp::WithdrawSome(..) => false,
         }
     }
 }

@@ -106,9 +106,9 @@ fn parse_stmt(stmt: &Stmt, ctxt: &Ctxt) -> syn::parse::Result<StmtOrLet> {
 }
 
 fn parse_local(local: &Local, _ctxt: &Ctxt) -> syn::parse::Result<TLet> {
-    let (ident, lk) = match &local.pat {
-        Pat::Ident(PatIdent { attrs, by_ref: None, mutability: None, ident, subpat: None }) => {
-            (ident.clone(), get_let_kind(attrs)?)
+    let ident = match &local.pat {
+        Pat::Ident(PatIdent { attrs: _, by_ref: None, mutability: None, ident, subpat: None }) => {
+            ident.clone()
         }
         _ => {
             return Err(Error::new(
@@ -126,6 +126,8 @@ fn parse_local(local: &Local, _ctxt: &Ctxt) -> syn::parse::Result<TLet> {
             ));
         }
     };
+
+    let lk = get_let_kind(&local.attrs)?;
 
     Ok(TLet(local.span(), ident, lk, e))
 }

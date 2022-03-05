@@ -552,7 +552,7 @@ pub fn parse_result_to_smir(pr: ParseResult, concurrent: bool) -> syn::parse::Re
 
     let mut fields_named_ast = fields_named;
     let fields = to_fields(&mut fields_named_ast, concurrent)?;
-    let sm = SM { name: name.clone(), generics, fields, fields_named_ast, transitions };
+    let sm = SM { name: name.clone(), generics, fields, fields_named_ast, transitions, concurrent };
 
     check_transitions(&sm)?;
 

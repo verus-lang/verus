@@ -114,26 +114,3 @@ pub fn has_any_assert(ts: &TransitionStmt) -> bool {
         TransitionStmt::PostCondition(..) => false,
     }
 }
-
-/// Returns true if there are any 'require' statements.
-
-pub fn has_any_require(ts: &TransitionStmt) -> bool {
-    match ts {
-        TransitionStmt::Block(_span, v) => {
-            for t in v.iter() {
-                if has_any_require(t) {
-                    return true;
-                }
-            }
-            false
-        }
-        TransitionStmt::Let(_, _, _, _, child) => has_any_assert(child),
-        TransitionStmt::If(_span, _cond, thn, els) => has_any_require(thn) || has_any_require(els),
-        TransitionStmt::Require(_, _) => true,
-        TransitionStmt::Assert(_, _) => false,
-        TransitionStmt::Initialize(_, _, _) => false,
-        TransitionStmt::Update(_, _, _) => false,
-        TransitionStmt::Special(..) => false,
-        TransitionStmt::PostCondition(..) => false,
-    }
-}

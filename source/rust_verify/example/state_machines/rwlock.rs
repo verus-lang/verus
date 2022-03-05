@@ -63,7 +63,7 @@ concurrent_state_machine!(RwLock {
 
         remove_element(pending_reader, ());
 
-        let x = self.storage.get_Some_0();
+        #[birds_eye] let x = self.storage.get_Some_0();
         add_element(reader, x);
     }
 
@@ -96,7 +96,8 @@ concurrent_state_machine!(RwLock {
 
         add_some(writer, ());
 
-        withdraw_some(storage, self.storage.get_Some_0());
+        #[birds_eye] let x = self.storage.get_Some_0();
+        withdraw_some(storage, x);
     }
 
     /// Release the write-lock. Update the 'exc' bit back to 'false'.
