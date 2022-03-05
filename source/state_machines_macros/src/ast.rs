@@ -33,6 +33,23 @@ pub struct TransitionParam {
     pub ty: Type,
 }
 
+/// These represent the types of the state machine fields,
+/// along with their sharding strategies.
+/// (For non-concurrent state machines, we just say everything
+/// is 'Variable'.)
+/// 
+/// Be aware of the relationship between the enum representation here
+/// and the user's field declarations. As an example, a user's declaration
+/// might look like `#[sharding(option)] foo: Option<Foo>`.
+/// Recall the user is expected to declare a type of a certain form which
+/// depends on the sharding strategy; e.g., in `#[sharding(option)]`, the
+/// user is required to declare a type of the form `Option<something>`.
+///
+/// In the representation here, we actually "destruct" user-provided type,
+/// and just represent it as `Optional(Foo)` (not `Optional(Option<Foo>)`).
+/// This way, we can easily talk about `Foo` directly when necessary,
+/// while we can easily reconstruct the user-provided type (see `shardable_type_to_type`).
+
 #[derive(Clone, Debug)]
 pub enum ShardableType {
     Variable(Type),
@@ -92,7 +109,7 @@ pub enum TransitionStmt {
     /// concurrent-state-machine-specific stuff
     Special(Span, Ident, SpecialOp),
 
-    /// Different than an Assert - this expression is allowed to depend on output values
+    /// Different than an Assert - this statement is allowed to depend on output values.
     /// Used internally by various transformations, both by `concurrency_tokens.rs`
     /// and by `to_relation.rs`.
     /// This cannot be directly constructed by the user.
@@ -100,6 +117,7 @@ pub enum TransitionStmt {
 }
 
 impl SpecialOp {
+    /// get the name of an op (for error reporting)
     pub fn statement_name(&self) -> &'static str {
         match self {
             SpecialOp::RemoveElement(..) => "remove_element",
@@ -114,6 +132,8 @@ impl SpecialOp {
         }
     }
 
+    /// returns 'true' if the operational definition of the operation
+    /// updates the field value
     pub fn is_modifier(&self) -> bool {
         match self {
             SpecialOp::RemoveElement(..) => true,
@@ -257,6 +277,7 @@ pub struct Lemma {
 }
 
 impl ShardableType {
+    /// get the name the user uses in the field declarations to declare the given strategy
     pub fn strategy_name(&self) -> &str {
         match self {
             ShardableType::Variable(_) => "variable",

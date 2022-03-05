@@ -360,6 +360,8 @@ impl Ctxt {
         Ident::new(&format!("token_{}_{}", i, base_id.to_string()), base_id.span())
     }
 
+    /// Determines if we need to add an explicit lifetime parameter
+    /// by checking if any of the out parameters is a borrow.
     pub fn get_explicit_lifetime(&self) -> bool {
         for (_p, v) in self.params.iter() {
             for tp in v {
@@ -456,6 +458,14 @@ pub fn exchange_stream(bundle: &SMBundle, tr: &Transition) -> syn::parse::Result
     //     takes an Instance as input.
     //   * An 'init' will always return tokens for every field, and take no tokens as input.
     //     A normal transition takes only those as input that are necessary.
+    //
+    // Generally speaking, the input parameters are going to look like:
+    //    (instance as the 'self' argument)?    (present if not init)
+    //    (spec transition params,)*            (parameters to the transition)
+    //    (proof token params,)*
+    //
+    // First, we create a parameter for the Instance, either an input or output parameter
+    // as appropriate.
 
     if ctxt.is_init {
         let itn = inst_type(sm);
@@ -466,6 +476,7 @@ pub fn exchange_stream(bundle: &SMBundle, tr: &Transition) -> syn::parse::Result
 
     // Take the transition parameters (the normal parameters defined in the transition)
     // and make them input parameters (spec-mode) to the corresponding exchange method.
+
     for param in &tr.params {
         let id = &param.ident;
         let ty = &param.ty;
@@ -474,13 +485,24 @@ pub fn exchange_stream(bundle: &SMBundle, tr: &Transition) -> syn::parse::Result
 
     // We need some pre/post conditions that the input/output
     // tokens are all of the correct Instance.
+
     let mut inst_eq_reqs = Vec::new();
     let mut inst_eq_enss = Vec::new();
 
+    // Whether or not to mark all borrows with a lifetime parameter 'a
+    // We need to do this if there is any borrow in an out param
+    // (which only happens for guards in 'readonly' transitions).
     let use_explicit_lifetime = ctxt.get_explicit_lifetime();
 
     for field in &sm.fields {
+        // the 'init' case is different enough from the other two that we
+        // handle it completely separately
+
         if ctxt.is_init {
+            // For 'init', we start with a few special cases.
+            // For a NotTokenized field, there's nothing to do. No token to output,
+            // and no postcondition about it.
+
             match &field.stype {
                 ShardableType::NotTokenized(..) => {
                     continue;
@@ -488,10 +510,17 @@ pub fn exchange_stream(bundle: &SMBundle, tr: &Transition) -> syn::parse::Result
                 _ => {}
             }
 
+            // Sanity check some assumptions that should hold for any well-formed
+            // 'init' routine. In particular, there should be no occurrences to `self.field`
+            // and every field should be written.
+
             assert!(!use_explicit_lifetime);
             assert!(ctxt.fields_written.contains(&field.ident.to_string()));
             assert!(!ctxt.fields_read.contains(&field.ident.to_string()));
             assert!(!ctxt.fields_read_birds_eye.contains(&field.ident.to_string()));
+
+            // Next case is the Constant type. We don't need to output a new token for it,
+            // we just need to add a postcondition like `instance.field() == value`.
 
             match &field.stype {
                 ShardableType::Constant(_) => {
@@ -503,7 +532,33 @@ pub fn exchange_stream(bundle: &SMBundle, tr: &Transition) -> syn::parse::Result
                 _ => {}
             }
 
+            // Now everything else should fall into one of two buckets. We either need
+            // to generate an input token or an output token.
+            //
+            // In most cases, we need to generate an output token param. This applies to
+            // 'variable', naturally, but also 'option', 'multiset', etc.
+            // And we need to generate a postconditions (an 'ensures') that the value of
+            // the token is the value it was initialized to via the 'init' statement.
+            //
+            // For _storage_ type, we need to generate an _input_ token param.
+            // The storage type comes externally from the system, so for example,
+            // if the transition initializes the storage field to say, Some(x),
+            // then the user needs to actually deposit 'x' in order to run
+            // the initialization. Thus the Some(x) actually needs to come in
+            // an input param.
+            //
+            // So in either case we:
+            //  1. Determine type of the (input / output) token
+            //  2. Determine the value the field is set to via the 'init' statement(s)
+            //  3. Generate a (precondition / postcondition) that the token has
+            //     the correct value.
+            // Also note that in the non-storage (i.e., output) case, this includes
+            // the conditions that the new tokens are all associated with the newly
+            // generated Instance. But of course the input tokens have so such constraint.
+
             if let Some(init_input_token_type) = get_init_param_input_type(sm, &field) {
+                // Storage case, input token & precondition:
+
                 let arg_name = transition_arg_name(field);
 
                 add_token_param_in_out(
@@ -524,11 +579,13 @@ pub fn exchange_stream(bundle: &SMBundle, tr: &Transition) -> syn::parse::Result
 
                 add_initialization_input_conditions(
                     field,
-                    &mut ctxt.ensures,
+                    &mut ctxt.requires,
                     e,
                     Expr::Verbatim(quote! { #arg_name }),
                 );
             } else if let Some(init_output_token_type) = get_init_param_output_type(sm, &field) {
+                // Everything else case, output token & postcondition:
+
                 let arg_name = transition_arg_name(field);
 
                 add_token_param_in_out(
@@ -559,6 +616,23 @@ pub fn exchange_stream(bundle: &SMBundle, tr: &Transition) -> syn::parse::Result
                 );
             }
         } else {
+            // The case for a 'transition' or 'readonly' transition.
+            // (At this point, the distinction doesn't matter.)
+            //
+            // First, we handle fields that have "nondeterminstic reads"
+            // which come from the #[birds_eye] let statements.
+            // From the client's perspective, these values appear nondeterministically
+            // when they make the call, so the client doesn't have to provide the
+            // values, but rather, the exchange method provides them as outputs
+            // (as spec values). These nondeterministic reads are the only way for the
+            // client to interact with NotTokenized values.
+            // Also, a nondeterministic read of the field is not inconsistent with
+            // other tokens of that field, although in the 'variable' strategy case,
+            // there is no reason to have both.
+            //
+            // Anyway, start by checking if a nondeterministic read occurs, and if so,
+            // we add a spec-mode output param for the corresponding value.
+
             let nondeterministic_read =
                 ctxt.fields_read_birds_eye.contains(&field.ident.to_string());
 
@@ -570,6 +644,8 @@ pub fn exchange_stream(bundle: &SMBundle, tr: &Transition) -> syn::parse::Result
                 let name = nondeterministic_read_spec_out_name(field);
                 out_args.push((quote! { #name }, quote! { crate::modes::Spec<#ty> }));
             }
+
+            // Now, we handle the actual proof-mode tokens.
 
             match field.stype {
                 ShardableType::Constant(_) => {
@@ -584,15 +660,21 @@ pub fn exchange_stream(bundle: &SMBundle, tr: &Transition) -> syn::parse::Result
                     // Nothing to do for writes (they simply aren't reflected in output tokens).
                 }
                 ShardableType::Variable(_) => {
+                    // Variable case.
+                    // We need to do something if it was either read or written.
+
                     let is_written = ctxt.fields_written.contains(&field.ident.to_string());
                     let is_read = ctxt.fields_read.contains(&field.ident.to_string());
 
                     if is_written || is_read {
+                        assert!(!nondeterministic_read);
+
                         // If is_written=true, then it doesn't really matter what is_read is;
                         // we have to take the token as input either way.
                         // So there are really two cases here:
                         //  * is_written=true: InOut variable
                         //  * is_written=false (but in_read=true): BorrowIn variable
+
                         add_token_param_in_out(
                             &ctxt,
                             &mut in_args,
@@ -609,7 +691,7 @@ pub fn exchange_stream(bundle: &SMBundle, tr: &Transition) -> syn::parse::Result
 
                     if is_written {
                         // Post-condition that gives the value of the output token
-                        // TODO, maybe instead of doing this here, we could translate the
+                        // NOTE: maybe instead of doing this here, we could translate the
                         // `Update` statements into `PostCondition` statements like we
                         // do for other kinds of tokens. Then we wouldn't have to have this here.
 
@@ -622,6 +704,13 @@ pub fn exchange_stream(bundle: &SMBundle, tr: &Transition) -> syn::parse::Result
                 ShardableType::Multiset(_)
                 | ShardableType::StorageOptional(_)
                 | ShardableType::Optional(_) => {
+                    // These sharding types all use the SpecialOps. The earlier translation
+                    // phase has already processed those and established all the necessary
+                    // pre-conditions and post-conditions, and it has also established
+                    // the tokens we need to create, in `ctxt.params`.
+                    // So we just need to look up it and actually add the params that it
+                    // tells us to add.
+
                     assert!(!ctxt.fields_written.contains(&field.ident.to_string()));
                     assert!(
                         nondeterministic_read
@@ -642,14 +731,13 @@ pub fn exchange_stream(bundle: &SMBundle, tr: &Transition) -> syn::parse::Result
                             use_explicit_lifetime,
                         );
                     }
-
-                    // Any pre-conditions or post-conditions we need should have been
-                    // placed into the TransitionStmt as a `Require` or `PostCondition`
-                    // statement, so we don't need to explicitly add them here.
                 }
             };
         }
     }
+    
+    // Now we have all the parameters, and all the preconditions and postconditions
+    // as expressions, so we just need to put it all together.
 
     let mut reqs = inst_eq_reqs;
     reqs.extend(ctxt.requires);
@@ -772,13 +860,13 @@ fn get_init_param_input_type(_sm: &SM, field: &Field) -> Option<Type> {
 
 fn add_initialization_input_conditions(
     field: &Field,
-    ensures: &mut Vec<Expr>,
+    requires: &mut Vec<Expr>,
     init_value: Expr,
     param_value: Expr,
 ) {
     match &field.stype {
         ShardableType::StorageOptional(_) => {
-            ensures.push(mk_eq(&param_value, &init_value));
+            requires.push(mk_eq(&param_value, &init_value));
         }
         _ => {
             panic!("this should implement each case enabled by get_init_param_input_type");
@@ -910,6 +998,15 @@ fn add_token_param_in_out(
     apply_instance_condition: bool,
     use_explicit_lifetime: bool,
 ) {
+    // Explanation for the asserts about `use_explicit_lifetime`:
+    //
+    // Firstly, In, Out, and InOut can only occur in non-readonly
+    // transitions, whereas guards can only occur in readonly transitions.
+    // Therefore, In, Out, and InOut cases should all imply !use_explicit_lifetime
+    //
+    // Conversely, BorrowOut (which only occurs for guards) should imply
+    // use_explicit_lifetime (this is how `use_explicit_lifetime` is computed).
+
     let (is_input, is_output) = match inout_type {
         InoutType::In => {
             assert!(!use_explicit_lifetime);
@@ -940,6 +1037,8 @@ fn add_token_param_in_out(
             (false, true)
         }
     };
+
+    // Add a condition like `token.instance == instance`
 
     if apply_instance_condition {
         let inst = get_inst_value(&ctxt);
