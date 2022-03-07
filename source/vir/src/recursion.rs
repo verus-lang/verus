@@ -313,6 +313,7 @@ pub(crate) fn check_termination_exp(
         &MaskSpec::NoSpec,
         function.x.mode,
         &stm_block,
+        false,
     );
 
     // New body: substitute rec%f(args, fuel) for f(args)

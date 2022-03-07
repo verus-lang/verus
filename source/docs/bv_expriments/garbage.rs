@@ -6,52 +6,13 @@ use pervasive::*;
 use crate::pervasive::seq::*;
 use builtin_macros::*;
 
-#[spec]
-#[verifier(external_body)]
-pub fn get_bit(bv:u32, loc:u32) -> bool {
-    unimplemented!();
+macro_rules! get_bit{
+    ($a:expr,$b:expr)=>{
+        {
+            (0x1u32 & ($a>>$b)) == 1
+        }
+    }
 }
-
-#[spec]
-#[verifier(external_body)]
-pub fn set_bit(bv:u32, loc:u32, bit:bool) -> u32 {
-    unimplemented!();
-} 
-
-#[exec]
-fn get_bit_exec(bv:u32, loc:u32) -> bool {
-    ensures(|ret:bool| ret == get_bit(bv,loc));
-    assert_bit_vector((0x1u32 & (bv>>loc) == 1) == get_bit(bv, loc));
-    if 0x1u32 & bv>>loc == 1 {true}
-    else {false}
-}
-
-#[exec]
-fn set_bit_exec(bv:u32, loc:u32, bit:bool) -> u32 {
-    requires(loc < 32);
-    ensures(|ret:u32| ret == set_bit(bv,loc,bit));
-    assert_bit_vector((if bit { bv | 1u32 << loc } else { bv & (!(1u32 << loc)) }) == set_bit(bv, loc, bit));
-    let one = 1u32 << loc;
-    if bit {bv | one}
-    else {bv & (!one)}
-}
-
-// #[proof]
-// fn set_bit_property_auto(bv:u32, bv2:u32, loc:u32, bit:bool) {
-//     requires([
-//         loc < 32,
-//         bv2 == set_bit(bv,loc,bit),
-//     ]);
-//     ensures([
-//         forall(|loc2:u32| (loc2 < 32 && loc != loc2) >>= (get_bit(bv2, loc2) == get_bit(bv, loc2))),
-//         get_bit(bv2, loc) == bit,
-//     ]);
-//     assert_bit_vector(bv2 == set_bit(bv, loc, bit) >>= 
-//         ((forall(|loc2:u32| (loc2 < 32 && loc != loc2) >>= (get_bit(bv2, loc2) == get_bit(bv, loc2)))))) ;
-
-//     assert_bit_vector((loc < 32 && bv2 == set_bit(bv, loc, bit)) >>= 
-//         get_bit(bv2, loc) == bit);
-// }
 
 #[derive(Structural, PartialEq, Eq)]
 enum Color {
@@ -69,34 +30,35 @@ fn color_view(high:bool, low:bool) -> Color {
 
 #[spec]
 fn bucket_view(bucket: u32) -> Seq<Color> {
-    Seq::new(16, |i: int| color_view(get_bit(bucket, (i as u32)*2 + 1),get_bit(bucket, (i as u32) * 2)))
+    Seq::new(16, |i: int| color_view(get_bit!(bucket, (i as u32)*2 + 1),get_bit!(bucket, (i as u32) * 2)))
+}
+
+#[verifier(bit_vector)]
+#[proof]
+fn set_two_bit_proof(bv:u32, result:u32, low_loc:u32, high:bool, low:bool) {
+    requires([
+        low_loc < 31,
+        result == (bv & (!(3u32 << low_loc))) | (if high {if low {3u32} else {2u32}} else {if low {1u32} else {0u32}} << low_loc), 
+    ]);
+    ensures([
+        get_bit!(result, low_loc) == low,
+        get_bit!(result, low_loc+1) == high,
+        forall(|loc2:u32| (loc2 < 32 && loc2 != low_loc && loc2 != (low_loc+1)) >>= (get_bit!(result, loc2) == get_bit!(bv, loc2))),
+    ]);    
 }
 
 #[exec]
 fn set_two_bit_exec(bv:u32, low_loc:u32, high:bool, low:bool) -> u32 {
     requires(low_loc < 31);
     ensures(|ret:u32| [ 
-        get_bit(ret, low_loc) == low,
-        get_bit(ret, low_loc+1) == high,
-        forall(|loc2:u32| (loc2 < 32 && loc2 != low_loc && loc2 != (low_loc+1)) >>= (get_bit(ret, loc2) == get_bit(bv, loc2))),
+        get_bit!(ret, low_loc) == low,
+        get_bit!(ret, low_loc+1) == high,
+        forall(|loc2:u32| (loc2 < 32 && loc2 != low_loc && loc2 != (low_loc+1)) >>= (get_bit!(ret, loc2) == get_bit!(bv, loc2))),
     ]);
     let target:u32 = {if high {if low {3u32} else {2u32}} else {if low {1u32} else {0u32}}} << low_loc;
     let mask:u32 = !(3u32 << low_loc);
     let result:u32 = (bv & mask) | target;
-    assert_bit_vector(
-        low_loc < 31 >>= 
-        (get_bit((bv & (!(3u32 << low_loc))) |  
-        ({if high {if low {3u32} else {2u32}} else {if low {1u32} else {0u32}}} << low_loc), low_loc) 
-        == low));
-    assert_bit_vector(
-        low_loc < 31 >>= 
-        (get_bit((bv & (!(3u32 << low_loc))) |  
-        ({if high {if low {3u32} else {2u32}} else {if low {1u32} else {0u32}}} << low_loc), low_loc+1) 
-        == high));
-    assert_bit_vector(forall (|loc2:u32|  (low_loc <31 && loc2 < 32 && low_loc != loc2 && (low_loc+1) != loc2) >>=
-            (get_bit((bv & (!(3u32 << low_loc))) |  
-            ({if high {if low {3u32} else {2u32}} else {if low {1u32} else {0u32}}} << low_loc), loc2)
-             ==  get_bit(bv, loc2))));
+    set_two_bit_proof(bv, result, low_loc, high, low);
     result
 }
 
@@ -111,7 +73,7 @@ fn set_color(bucket:u32, high:bool, low:bool , i:u32, #[proof] ghost_bucket:Seq<
     ]);
 
     let new_bucket = set_two_bit_exec(bucket, 2*i, high, low);
-    assert(color_view(high,low) == color_view(get_bit(new_bucket, 2*i+1), get_bit(new_bucket, 2*i)));
+    assert(color_view(high,low) == color_view(get_bit!(new_bucket, 2*i+1), get_bit!(new_bucket, 2*i)));
     new_bucket
 }
 
@@ -119,7 +81,7 @@ fn set_color(bucket:u32, high:bool, low:bool , i:u32, #[proof] ghost_bucket:Seq<
 fn get_color(bv:u32, index:u32) -> Color {
     requires(index < 15);
     ensures(|c:Color| [
-        c == color_view(get_bit(bv, 2*index +1), get_bit(bv, 2*index)),
+        c == color_view(get_bit!(bv, 2*index +1), get_bit!(bv, 2*index)),
     ]);
 
     let v: u32 = 3u32 & (bv >> index*2);
@@ -127,17 +89,17 @@ fn get_color(bv:u32, index:u32) -> Color {
     assert_bit_vector(0 <= 3u32 & (bv >> index*2));
     assert_bit_vector(3u32 & (bv >> index*2) < 4);
 
-    assert_bit_vector((3u32 & (bv >> index*2) == 3) >>= get_bit(bv, index*2));
-    assert_bit_vector((3u32 & (bv >> index*2) == 3) >>= get_bit(bv, index*2+1));
+    assert_bit_vector((3u32 & (bv >> index*2) == 3) >>= get_bit!(bv, index*2));
+    assert_bit_vector((3u32 & (bv >> index*2) == 3) >>= get_bit!(bv, index*2+1));
 
-    assert_bit_vector((3u32 & (bv >> index*2) == 2) >>= !get_bit(bv, index*2));
-    assert_bit_vector((3u32 & (bv >> index*2) == 2) >>= get_bit(bv, index*2+1));
+    assert_bit_vector((3u32 & (bv >> index*2) == 2) >>= !get_bit!(bv, index*2));
+    assert_bit_vector((3u32 & (bv >> index*2) == 2) >>= get_bit!(bv, index*2+1));
 
-    assert_bit_vector((3u32 & (bv >> index*2) == 1) >>= get_bit(bv, index*2));
-    assert_bit_vector((3u32 & (bv >> index*2) == 1) >>= !get_bit(bv, index*2+1));
+    assert_bit_vector((3u32 & (bv >> index*2) == 1) >>= get_bit!(bv, index*2));
+    assert_bit_vector((3u32 & (bv >> index*2) == 1) >>= !get_bit!(bv, index*2+1));
 
-    assert_bit_vector((3u32 & (bv >> index*2) == 0) >>= !get_bit(bv, index*2));
-    assert_bit_vector((3u32 & (bv >> index*2) == 0) >>= !get_bit(bv, index*2+1));
+    assert_bit_vector((3u32 & (bv >> index*2) == 0) >>= !get_bit!(bv, index*2));
+    assert_bit_vector((3u32 & (bv >> index*2) == 0) >>= !get_bit!(bv, index*2+1));
 
     let c = if v == 0 {
         Color::Undefined
@@ -148,7 +110,7 @@ fn get_color(bv:u32, index:u32) -> Color {
     } else {
         Color::White
     };
-    assert(c == color_view(get_bit(bv, 2*index +1), get_bit(bv, 2*index)));
+    assert(c == color_view(get_bit!(bv, 2*index +1), get_bit!(bv, 2*index)));
     c
 }
 

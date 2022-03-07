@@ -33,6 +33,7 @@ fn bucket_view(bucket: u32) -> Seq<Color> {
     Seq::new(16, |i: int| color_view(get_bit!(bucket, (i as u32)*2 + 1),get_bit!(bucket, (i as u32) * 2)))
 }
 
+#[verifier(bit_vector)]
 #[exec]
 fn set_two_bit_exec(bv:u32, low_loc:u32, high:bool, low:bool) -> u32 {
     requires(low_loc < 31);
@@ -44,29 +45,10 @@ fn set_two_bit_exec(bv:u32, low_loc:u32, high:bool, low:bool) -> u32 {
     let target:u32 = {if high {if low {3u32} else {2u32}} else {if low {1u32} else {0u32}}} << low_loc;
     let mask:u32 = !(3u32 << low_loc);
     let result:u32 = (bv & mask) | target;
-    assert_bit_vector(
-        low_loc < 31 >>= 
-        (get_bit!((bv & (!(3u32 << low_loc))) |  
-        ({if high {if low {3u32} else {2u32}} else {if low {1u32} else {0u32}}} << low_loc), low_loc) 
-        == low));
-    assert_bit_vector(
-        low_loc < 31 >>= 
-        (get_bit!((bv & (!(3u32 << low_loc))) |  
-        ({if high {if low {3u32} else {2u32}} else {if low {1u32} else {0u32}}} << low_loc), low_loc+1) 
-        == high));
-    assert_forall_by(|loc2:u32| { 
-        ensures((low_loc <31 && loc2 < 32 && low_loc != loc2 && (low_loc+1) != loc2) >>=
-        (get_bit!((bv & (!(3u32 << low_loc))) |  
-        ({if high {if low {3u32} else {2u32}} else {if low {1u32} else {0u32}}} << low_loc), loc2)
-         ==  get_bit!(bv, loc2)));
-
-        assert_bit_vector((low_loc <31 && loc2 < 32 && low_loc != loc2 && (low_loc+1) != loc2) >>=
-        (get_bit!((bv & (!(3u32 << low_loc))) |  
-        ({if high {if low {3u32} else {2u32}} else {if low {1u32} else {0u32}}} << low_loc), loc2)
-         ==  get_bit!(bv, loc2)));
-    });
     result
+    // (bv & (!(3u32 << low_loc))) | (if high {if low {3u32} else {2u32}} else {if low {1u32} else {0u32}} << low_loc)
 }
+
 
 #[exec]
 fn set_color(bucket:u32, high:bool, low:bool , i:u32, #[proof] ghost_bucket:Seq<Color>) -> u32 {

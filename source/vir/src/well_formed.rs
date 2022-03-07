@@ -57,8 +57,8 @@ fn check_function(ctxt: &Ctxt, function: &Function) -> Result<(), VirErr> {
     }
 
     if function.x.attrs.bit_vector {
+        // println!("TODO: function level bitvec mode well-formed check");
         // TODO: return error if function has a non-integer type, or function call
-        unimplemented!("function level bitvector mode");
     }
 
     if function.x.attrs.autoview {

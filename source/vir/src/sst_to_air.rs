@@ -804,9 +804,64 @@ pub(crate) fn exp_to_bv_expr(exp: &Exp) -> Expr {
                     vec_map(&*trigs, |trig| Arc::new(vec_map(trig, |x| exp_to_bv_expr(x))));
                 air::ast_util::mk_quantifier(*quant, &binders, &triggers, &expr)
             }
-            _ => panic!("unhandled bv bind conversion {:?} ", exp.x),
+            BndX::Let(binders) => {
+                let expr = exp_to_bv_expr(exp);
+                let binders = vec_map(&*binders, |b| {
+                    Arc::new(BinderX {
+                        name: suffix_local_expr_id(&b.name),
+                        a: exp_to_bv_expr(&b.a),
+                    })
+                });
+                air::ast_util::mk_let(&binders, &expr)
+            }
+            _ => panic!("unhandled bv bind conversion, {:?} ", exp.x),
         },
         _ => panic!("unhandled bv expr conversion {:?}", exp.x),
+    }
+}
+
+fn stm_to_bv_stmts(stm: &Stm) -> Vec<Stmt> {
+    match &stm.x {
+        StmX::Assume(expr) => {
+            // if ctx.debug {
+            //     state.map_span(&stm, SpanKind::Full);
+            // }
+            vec![Arc::new(StmtX::Assume(exp_to_bv_expr(&expr)))]
+        }
+        StmX::Assign { lhs, rhs, is_init: true } => {
+            stm_to_bv_stmts(&assume_var(&stm.span, lhs, rhs))
+        }
+        // StmX::Assign { lhs, rhs, is_init: true } => {
+        //     stm_to_stmts(ctx, state, &assume_var(&stm.span, lhs, rhs))
+        // }
+        StmX::Assign { lhs, rhs, is_init: false } => {
+            let mut stmts: Vec<Stmt> = Vec::new();
+            let name = suffix_local_unique_id(lhs);
+            stmts.push(Arc::new(StmtX::Assign(name, exp_to_bv_expr(rhs))));
+            // if ctx.debug {
+            //     // Add a snapshot after we modify the destination
+            //     let sid = state.update_current_sid(SUFFIX_SNAP_MUT);
+            //     let snapshot = Arc::new(StmtX::Snapshot(sid.clone()));
+            //     stmts.push(snapshot);
+            //     // Update the snap_map so that it reflects the state _after_ the
+            //     // statement takes effect.
+            //     state.map_span(&stm, SpanKind::Full);
+            // }
+            stmts
+        }
+        StmX::Block(stms) => {
+            // if ctx.debug {
+            //     state.push_scope();
+            //     state.map_span(&stm, SpanKind::Start);
+            // }
+            let stmts: Vec<Stmt> = stms.iter().map(|s| stm_to_bv_stmts(s)).flatten().collect();
+            // stms.iter().map(|s| stm_to_stmts(ctx, state, s)).flatten().collect();
+            // if ctx.debug {
+            //     state.pop_scope();
+            // }
+            stmts
+        }
+        _ => panic!("unhandled bv stm conversion {:?}", stm.x),
     }
 }
 
@@ -1226,6 +1281,7 @@ pub fn body_stm_to_air(
     mask_spec: &MaskSpec,
     mode: Mode,
     stm: &Stm,
+    is_bit_vector_mode: bool,
 ) -> (Commands, Vec<(Span, SnapPos)>) {
     // Verifying a single function can generate multiple SMT queries.
     // Some declarations (local_shared) are shared among the queries.
@@ -1291,7 +1347,13 @@ pub fn body_stm_to_air(
         &mut HashSet::new(),
         stm,
     );
-    let mut stmts = stm_to_stmts(ctx, &mut state, &stm);
+    let mut stmts;
+    if !is_bit_vector_mode {
+        stmts = stm_to_stmts(ctx, &mut state, &stm);
+    } else {
+        stmts = stm_to_bv_stmts(&stm);
+    }
+
     if has_mut_params {
         stmts.insert(0, Arc::new(StmtX::Snapshot(snapshot_ident(SNAPSHOT_PRE))));
     }
@@ -1303,25 +1365,39 @@ pub fn body_stm_to_air(
         stmts = new_stmts;
     }
 
-    let mut local = state.local_shared.clone();
+    let mut local = if !is_bit_vector_mode {
+        state.local_shared.clone()
+    } else {
+        state.local_bv_shared.clone()
+    };
 
     for ens in enss {
         let error = error("postcondition not satisfied", &ens.span);
-        let ens_stmt = StmtX::Assert(error, exp_to_expr(ctx, ens, ExprCtxt::Body));
+        let ens_stmt = if !is_bit_vector_mode {
+            StmtX::Assert(error, exp_to_expr(ctx, ens, ExprCtxt::Body))
+        } else {
+            StmtX::Assert(error, exp_to_bv_expr(ens))
+        };
         stmts.push(Arc::new(ens_stmt));
     }
     let assertion = one_stmt(stmts);
 
-    for param in params.iter() {
-        let typ_inv =
-            typ_invariant(ctx, &param.x.typ, &ident_var(&suffix_local_stmt_id(&param.x.name)));
-        if let Some(expr) = typ_inv {
-            local.push(Arc::new(DeclX::Axiom(expr)));
+    if !is_bit_vector_mode {
+        for param in params.iter() {
+            let typ_inv =
+                typ_invariant(ctx, &param.x.typ, &ident_var(&suffix_local_stmt_id(&param.x.name)));
+            if let Some(expr) = typ_inv {
+                local.push(Arc::new(DeclX::Axiom(expr)));
+            }
         }
     }
 
     for req in reqs {
-        local.push(Arc::new(DeclX::Axiom(exp_to_expr(ctx, req, ExprCtxt::BodyPre))));
+        if !is_bit_vector_mode {
+            local.push(Arc::new(DeclX::Axiom(exp_to_expr(ctx, req, ExprCtxt::BodyPre))));
+        } else {
+            local.push(Arc::new(DeclX::Axiom(exp_to_bv_expr(req))));
+        }
     }
 
     let query = Arc::new(QueryX { local: Arc::new(local), assertion });
