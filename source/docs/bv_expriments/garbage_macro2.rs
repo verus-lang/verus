@@ -54,7 +54,7 @@ fn set_two_bit_exec(bv:u32, low_loc:u32, high:bool, low:bool) -> u32 {
         (get_bit!((bv & (!(3u32 << low_loc))) |  
         ({if high {if low {3u32} else {2u32}} else {if low {1u32} else {0u32}}} << low_loc), low_loc+1) 
         == high));
-    forall(|loc2:u32| { 
+    assert_forall_by(|loc2:u32| { 
         ensures((low_loc <31 && loc2 < 32 && low_loc != loc2 && (low_loc+1) != loc2) >>=
         (get_bit!((bv & (!(3u32 << low_loc))) |  
         ({if high {if low {3u32} else {2u32}} else {if low {1u32} else {0u32}}} << low_loc), loc2)

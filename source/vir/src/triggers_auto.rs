@@ -39,6 +39,7 @@ enum App {
     // u64 is an id, assigned via a simple counter
     Other(u64),
     VarAt(UniqueIdent, VarAt),
+    BitOp,
 }
 
 type Term = Arc<TermX>;
@@ -77,6 +78,9 @@ impl std::fmt::Debug for TermX {
             TermX::App(App::VarAt((x, _), VarAt::Pre), _) => {
                 write!(f, "old({})", x)
             }
+            TermX::App(App::BitOp, _) => {
+                write!(f, "BitOp")
+            }
         }
     }
 }
@@ -111,13 +115,13 @@ struct Score {
     // prefer
     depth: u64, // 1 or more, or 0 for next to ==
     size: u64,
-    is_operator: bool,
+    num_operators: u64,
 }
 
 impl Score {
     // lower total score is better
     fn total(&self) -> u64 {
-        self.depth * 1000 + self.size + {if self.is_operator {1000000} else {0}}
+        self.depth * 1000 + self.size + 1000000 * self.num_operators
     }
 }
 
@@ -196,23 +200,35 @@ fn trigger_var_depth(ctxt: &Ctxt, term: &Term, depth: u64) -> Option<u64> {
     }
 }
 
-fn make_score(term: &Term, depth: u64, is_operator: bool) -> Score {
-    Score { depth, size: term_size(term), is_operator}
+fn make_score(term: &Term, depth: u64, num_operators: u64) -> Score {
+    Score { depth, size: term_size(term), num_operators }
 }
 
-fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Term) {
-    let (is_pure, term) = match &exp.x {
-        ExpX::Const(c) => (true, Arc::new(TermX::App(App::Const(c.clone()), Arc::new(vec![])))),
-        ExpX::Var(x) => (true, Arc::new(TermX::Var(x.clone()))),
+fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, u64, Term) {
+    let (is_pure, num_operators, term) = match &exp.x {
+        ExpX::Const(c) => (true, 0, Arc::new(TermX::App(App::Const(c.clone()), Arc::new(vec![])))),
+        ExpX::Var(x) => (true, 0, Arc::new(TermX::Var(x.clone()))),
         ExpX::VarLoc(..) | ExpX::Loc(..) => panic!("unexpected Loc/VarLoc in quantifier"),
         ExpX::VarAt(x, _) => {
-            (true, Arc::new(TermX::App(App::VarAt(x.clone(), VarAt::Pre), Arc::new(vec![]))))
+            (true, 0, Arc::new(TermX::App(App::VarAt(x.clone(), VarAt::Pre), Arc::new(vec![]))))
         }
         ExpX::Old(_, _) => panic!("internal error: Old"),
         ExpX::Call(x, typs, args) => {
-            let (is_pures, terms): (Vec<bool>, Vec<Term>) =
-                args.iter().map(|e| gather_terms(ctxt, ctx, e, depth + 1)).unzip();
+            let (is_pures, num_ops, terms): (Vec<bool>, Vec<u64>, Vec<Term>) = {
+                let mut is_pures = vec![];
+                let mut num_ops = vec![];
+                let mut terms = vec![];
+                for e in args.iter() {
+                    let (b, u, t) = gather_terms(ctxt, ctx, e, depth + 1);
+                    is_pures.push(b);
+                    num_ops.push(u);
+                    terms.push(t);
+                }
+                (is_pures, num_ops, terms)
+            };
+
             let is_pure = is_pures.into_iter().all(|b| b);
+            let sum_ops = num_ops.iter().sum();
             let mut all_terms: Vec<Term> = Vec::new();
             for typ in typs.iter() {
                 let ft = |all_terms: &mut Vec<Term>, t: &Typ| match &**t {
@@ -228,26 +244,53 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
             all_terms.extend(terms);
             match ctx.func_map.get(x) {
                 Some(f) if f.x.attrs.no_auto_trigger => {
-                    (false, Arc::new(TermX::App(ctxt.other(), Arc::new(all_terms))))
+                    (false, sum_ops, Arc::new(TermX::App(ctxt.other(), Arc::new(all_terms))))
                 }
-                _ => (is_pure, Arc::new(TermX::App(App::Call(x.clone()), Arc::new(all_terms)))),
+                _ => (
+                    is_pure,
+                    sum_ops,
+                    Arc::new(TermX::App(App::Call(x.clone()), Arc::new(all_terms))),
+                ),
             }
         }
         ExpX::CallLambda(_, e0, es) => {
             // REVIEW: maybe we should include CallLambdas in the auto-triggers
             let depth = 1;
-            let (_, term0) = gather_terms(ctxt, ctx, e0, depth);
-            let mut terms: Vec<Term> =
-                es.iter().map(|e| gather_terms(ctxt, ctx, e, depth).1).collect();
+            let (_, num_op, term0) = gather_terms(ctxt, ctx, e0, depth);
+            let mut sum_op = num_op;
+            let mut terms = vec![];
+            for e in es.iter() {
+                let (_, u, t) = gather_terms(ctxt, ctx, e, depth);
+                terms.push(t);
+                sum_op += u;
+            }
+            // let mut terms: Vec<Term> =
+            //     es.iter().map(|e| gather_terms(ctxt, ctx, e, depth).1).collect();
             terms.insert(0, term0);
-            (false, Arc::new(TermX::App(ctxt.other(), Arc::new(terms))))
+            (false, sum_op, Arc::new(TermX::App(ctxt.other(), Arc::new(terms))))
         }
         ExpX::Ctor(path, variant, fields) => {
             let (variant, args) = crate::sst_to_air::ctor_to_apply(ctx, path, variant, fields);
-            let (is_pures, terms): (Vec<bool>, Vec<Term>) =
-                args.map(|e| gather_terms(ctxt, ctx, &e.a, depth + 1)).unzip();
+            let (is_pures, num_ops, terms): (Vec<bool>, Vec<u64>, Vec<Term>) = {
+                let mut is_pures = vec![];
+                let mut num_ops = vec![];
+                let mut terms = vec![];
+                for e in args {
+                    let (b, u, t) = gather_terms(ctxt, ctx, &e.a, depth + 1);
+                    is_pures.push(b);
+                    num_ops.push(u);
+                    terms.push(t);
+                }
+                (is_pures, num_ops, terms)
+            };
+            // let (is_pures, terms): (Vec<bool>, Vec<Term>) =
+            //     args.map(|e| gather_terms(ctxt, ctx, &e.a, depth + 1, num_operators)).unzip();
             let is_pure = is_pures.into_iter().all(|b| b);
-            (is_pure, Arc::new(TermX::App(App::Ctor(path.clone(), variant), Arc::new(terms))))
+            (
+                is_pure,
+                num_ops.iter().sum(),
+                Arc::new(TermX::App(App::Ctor(path.clone(), variant), Arc::new(terms))),
+            )
         }
         ExpX::Unary(UnaryOp::Trigger(_), e1) => gather_terms(ctxt, ctx, e1, depth),
         ExpX::Unary(op, e1) => {
@@ -255,27 +298,33 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
                 UnaryOp::Not => 0,
                 UnaryOp::Trigger(_) | UnaryOp::Clip(_) | UnaryOp::BitNot => 1,
             };
-            let (_, term1) = gather_terms(ctxt, ctx, e1, depth);
-            (false, Arc::new(TermX::App(ctxt.other(), Arc::new(vec![term1]))))
+            let (_, n, term1) = gather_terms(ctxt, ctx, e1, depth);
+            match op {
+                UnaryOp::BitNot => {
+                    (true, n + 1, Arc::new(TermX::App(App::BitOp, Arc::new(vec![term1]))))
+                }
+                _ => (false, n, Arc::new(TermX::App(ctxt.other(), Arc::new(vec![term1])))),
+            }
         }
         ExpX::UnaryOpr(UnaryOpr::Box(_), e1) => gather_terms(ctxt, ctx, e1, depth),
         ExpX::UnaryOpr(UnaryOpr::Unbox(_), e1) => gather_terms(ctxt, ctx, e1, depth),
         ExpX::UnaryOpr(UnaryOpr::HasType(_), _) => {
-            (false, Arc::new(TermX::App(ctxt.other(), Arc::new(vec![]))))
+            (false, 0, Arc::new(TermX::App(ctxt.other(), Arc::new(vec![]))))
         }
         ExpX::UnaryOpr(UnaryOpr::IsVariant { .. }, e1) => {
             // We currently don't auto-trigger on IsVariant
             // Even if we did, it might be best not to trigger on IsVariants generated from Match
-            let (_, term1) = gather_terms(ctxt, ctx, e1, 1);
-            (false, Arc::new(TermX::App(ctxt.other(), Arc::new(vec![term1]))))
+            let (_, n, term1) = gather_terms(ctxt, ctx, e1, 1);
+            (false, n, Arc::new(TermX::App(ctxt.other(), Arc::new(vec![term1]))))
         }
         ExpX::UnaryOpr(UnaryOpr::TupleField { .. }, _) => {
             panic!("internal error: TupleField should have been removed before here")
         }
         ExpX::UnaryOpr(UnaryOpr::Field { datatype, variant, field }, lhs) => {
-            let (is_pure, arg) = gather_terms(ctxt, ctx, lhs, depth + 1);
+            let (is_pure, n, arg) = gather_terms(ctxt, ctx, lhs, depth + 1);
             (
                 is_pure,
+                n,
                 Arc::new(TermX::App(
                     App::Field(datatype.clone(), variant.clone(), field.clone()),
                     Arc::new(vec![arg]),
@@ -289,24 +338,37 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
                 Ne | Le | Ge | Lt | Gt | Add | Sub | Mul | EuclideanDiv | EuclideanMod => 1,
                 BitXor | BitAnd | BitOr | Shr | Shl => 1,
             };
-            let (_, term1) = gather_terms(ctxt, ctx, e1, depth);
-            let (_, term2) = gather_terms(ctxt, ctx, e2, depth);
-            (false, Arc::new(TermX::App(ctxt.other(), Arc::new(vec![term1, term2]))))
+            let (_, n1, term1) = gather_terms(ctxt, ctx, e1, depth);
+            let (_, n2, term2) = gather_terms(ctxt, ctx, e2, depth);
+            match op {
+                BitXor | BitAnd | BitOr | Shr | Shl => {
+                    (true, n1 + n2, Arc::new(TermX::App(App::BitOp, Arc::new(vec![term1, term2]))))
+                }
+                _ => (
+                    false,
+                    n1 + n2,
+                    Arc::new(TermX::App(ctxt.other(), Arc::new(vec![term1, term2]))),
+                ),
+            }
         }
         ExpX::If(e1, e2, e3) => {
             let depth = 1;
-            let (_, term1) = gather_terms(ctxt, ctx, e1, depth);
-            let (_, term2) = gather_terms(ctxt, ctx, e2, depth);
-            let (_, term3) = gather_terms(ctxt, ctx, e3, depth);
-            (false, Arc::new(TermX::App(ctxt.other(), Arc::new(vec![term1, term2, term3]))))
+            let (_, n1, term1) = gather_terms(ctxt, ctx, e1, depth);
+            let (_, n2, term2) = gather_terms(ctxt, ctx, e2, depth);
+            let (_, n3, term3) = gather_terms(ctxt, ctx, e3, depth);
+            (
+                false,
+                n1 + n2 + n3,
+                Arc::new(TermX::App(ctxt.other(), Arc::new(vec![term1, term2, term3]))),
+            )
         }
         ExpX::Bind(_, _) => {
             // REVIEW: we could at least look for matching loops here
-            (false, Arc::new(TermX::App(ctxt.other(), Arc::new(vec![]))))
+            (false, 0, Arc::new(TermX::App(ctxt.other(), Arc::new(vec![]))))
         }
     };
     if let TermX::Var(..) = *term {
-        return (is_pure, term);
+        return (is_pure, 0, term);
     }
     if !ctxt.all_terms.contains_key(&term) {
         ctxt.all_terms.insert(term.clone(), exp.span.clone());
@@ -322,7 +384,7 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
             if !ctxt.pure_terms.contains_key(&term) {
                 ctxt.pure_terms.insert(term.clone(), (exp.clone(), ctxt.pure_terms.len()));
             }
-            let score = make_score(&term, var_depth, false);
+            let score = make_score(&term, var_depth, num_operators);
             if !ctxt.pure_best_scores.contains_key(&term)
                 || score.total() < ctxt.pure_best_scores[&term].total()
             {
@@ -330,25 +392,8 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
             }
         }
     }
-    // bitwise operators as trigger
-    use BinaryOp::*;
-    let _ = match &exp.x {
-        ExpX::Unary(UnaryOp::BitNot, _) |
-        ExpX::Binary(BitXor | BitAnd | BitOr | Shr | Shl, _, _ ) => {
-            if !ctxt.pure_terms.contains_key(&term) {
-                ctxt.pure_terms.insert(term.clone(), exp.clone());
-            }
-            let score = make_score(&term, depth+1, true);
-            if !ctxt.pure_best_scores.contains_key(&term)
-                || score.total() < ctxt.pure_best_scores[&term].total()
-            {
-                ctxt.pure_best_scores.insert(term.clone(), score);
-            }
-        },
-        _ => (),
-    };
 
-    (is_pure, term)
+    (is_pure, num_operators, term)
 }
 
 // First bool: is term equal to template for some instantiation of trigger_vars?
