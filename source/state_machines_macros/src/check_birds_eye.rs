@@ -54,10 +54,12 @@ use syn::parse::Error;
 //    'weak' transition relation (i.e., the formal definition of the transition
 //    relation) and it seems better to optimize for meeting that goal.
 //
-// In summary: (1) and (2) are basically warnings; (4) and (5) are necessary, but if
-// they were omitted, we would probably just end up with errors in type-resolution
-// of the generated code. Meanwhile, (3) is necessary for soundness and wouldn't be
-// caught otherwise.
+// In summary:
+//
+//  * (1) and (2) are basically warnings
+//  * (4) and (5) are necessary, but if they were omitted, we would probably just
+//    end up with errors in type-resolution of the generated code.
+//  * (3) is necessary for soundness and wouldn't be caught otherwise.
 
 pub fn check_birds_eye(trans: &Transition, concurrent: bool, errors: &mut Vec<Error>) {
     check_birds_eye_rec(
@@ -98,14 +100,14 @@ fn check_birds_eye_rec(
                     errors.push(Error::new(
                         *span,
                         "#[birds_eye] only makes sense for concurrent state machines; did you mean to use the concurrent_state_machine! macro?"));
-                    is_birds_eye = false; // to prevent the other errors from triggering
+                    is_birds_eye = false; // to prevent the other errors from cluttering
                 }
                 if is_init {
                     errors.push(Error::new(
                         *span,
                         "#[birds_eye] has no effect in an #[init] definition",
                     ));
-                    is_birds_eye = false; // to prevent the other errors from triggering
+                    is_birds_eye = false; // to prevent the other errors from cluttering
                 }
             }
             check_birds_eye_rec(
@@ -182,8 +184,8 @@ fn check_birds_eye_rec(
 }
 
 /// True if it's the case that an expression in the op
-/// might appear in the _precondition_ of an exchange method
-/// should return 'true' for remove, have, and deposit ops
+/// might appear in the _precondition_ of an exchange method.
+/// Should return 'true' for remove, have, and deposit ops.
 fn affects_precondition(op: &SpecialOp) -> bool {
     match op {
         SpecialOp::AddElement(_) => false,
