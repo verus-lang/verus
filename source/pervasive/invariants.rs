@@ -38,7 +38,6 @@ impl<V> Invariant<V> {
 
     fndecl!(pub fn namespace(&self) -> int);
 
-<<<<<<< HEAD
     #[proof]
     #[verifier(external_body)]
     #[verifier(returns(proof))]
