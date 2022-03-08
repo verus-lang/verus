@@ -1,4 +1,4 @@
-use crate::ast::{Fun, FunX, Path, PathX};
+use crate::ast::{Fun, FunX, InvAtomicity, Path, PathX};
 use crate::sst::UniqueIdent;
 use crate::util::vec_map;
 use air::ast::{Ident, Span};
@@ -376,25 +376,32 @@ impl<X: Debug> Debug for Spanned<X> {
     }
 }
 
-pub fn datatype_invariant_path() -> Path {
+fn atomicity_type_name(atomicity: InvAtomicity) -> Ident {
+    match atomicity {
+        InvAtomicity::Atomic => Arc::new("Invariant".to_string()),
+        InvAtomicity::NonAtomic => Arc::new("LocalInvariant".to_string()),
+    }
+}
+
+pub fn datatype_invariant_path(atomicity: InvAtomicity) -> Path {
     Arc::new(PathX {
         krate: None,
         segments: Arc::new(vec![
             Arc::new("pervasive".to_string()),
             Arc::new("invariants".to_string()),
-            Arc::new("Invariant".to_string()),
+            atomicity_type_name(atomicity),
         ]),
     })
 }
 
-pub fn fn_inv_name() -> Fun {
+pub fn fn_inv_name(atomicity: InvAtomicity) -> Fun {
     Arc::new(FunX {
         path: Arc::new(PathX {
             krate: None,
             segments: Arc::new(vec![
                 Arc::new("pervasive".to_string()),
                 Arc::new("invariants".to_string()),
-                Arc::new("Invariant".to_string()),
+                atomicity_type_name(atomicity),
                 Arc::new("inv".to_string()),
             ]),
         }),
@@ -402,14 +409,14 @@ pub fn fn_inv_name() -> Fun {
     })
 }
 
-pub fn fn_namespace_name() -> Fun {
+pub fn fn_namespace_name(atomicity: InvAtomicity) -> Fun {
     Arc::new(FunX {
         path: Arc::new(PathX {
             krate: None,
             segments: Arc::new(vec![
                 Arc::new("pervasive".to_string()),
                 Arc::new("invariants".to_string()),
-                Arc::new("Invariant".to_string()),
+                atomicity_type_name(atomicity),
                 Arc::new("namespace".to_string()),
             ]),
         }),

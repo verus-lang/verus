@@ -67,6 +67,13 @@ fn typ_to_node(typ: &Typ) -> Node {
     }
 }
 
+fn atomicity_to_node(atomicity: InvAtomicity) -> Node {
+    match atomicity {
+        InvAtomicity::Atomic => node!(Atomic),
+        InvAtomicity::NonAtomic => node!(NonAtomic),
+    }
+}
+
 fn datatype_to_node(datatype: &DatatypeX) -> Node {
     let DatatypeX { path, visibility, transparency, typ_params, variants, mode, unforgeable } =
         datatype;
@@ -279,8 +286,8 @@ fn expr_to_node(expr: &Expr) -> Node {
         ExprX::While { cond, body, invs } => {
             nodes!(while {expr_to_node(cond)} {expr_to_node(body)} {str_to_node(":invs")} {exprs_to_node(invs)})
         }
-        ExprX::OpenInvariant(e1, binder, e2) => {
-            nodes!(openinvariant {expr_to_node(e1)} {binder_node(binder, &typ_to_node)} {expr_to_node(e2)})
+        ExprX::OpenInvariant(e1, binder, e2, atomicity) => {
+            nodes!(openinvariant {expr_to_node(e1)} {binder_node(binder, &typ_to_node)} {expr_to_node(e2)}, {atomicity_to_node(*atomicity)})
         }
         ExprX::Return(expr) => {
             let mut nodes = nodes_vec!(return);

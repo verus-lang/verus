@@ -199,7 +199,7 @@ fn check_function(ctxt: &Ctxt, function: &Function) -> Result<(), VirErr> {
                         panic!("field access of undefined datatype");
                     }
                 }
-                ExprX::OpenInvariant(_inv, _binder, body) => {
+                ExprX::OpenInvariant(_inv, _binder, body, _atomicity) => {
                     assert_no_early_exit_in_inv_block(&body.span, body)?;
                 }
                 _ => {}

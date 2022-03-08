@@ -276,7 +276,7 @@ where
                         expr_visitor_control_flow!(expr_visitor_dfs(inv, map, mf));
                     }
                 }
-                ExprX::OpenInvariant(inv, binder, body) => {
+                ExprX::OpenInvariant(inv, binder, body, _atomicity) => {
                     expr_visitor_control_flow!(expr_visitor_dfs(inv, map, mf));
                     map.push_scope(true);
                     let _ = map.insert(binder.name.clone(), binder.a.clone());
@@ -511,14 +511,14 @@ where
             }
             ExprX::Block(Arc::new(stmts), expr1)
         }
-        ExprX::OpenInvariant(e1, binder, e2) => {
+        ExprX::OpenInvariant(e1, binder, e2, atomicity) => {
             let expr1 = map_expr_visitor_env(e1, map, env, fe, fs, ft)?;
             let binder = binder.map_result(|t| map_typ_visitor_env(t, env, ft))?;
             map.push_scope(true);
             let _ = map.insert(binder.name.clone(), binder.a.clone());
             let expr2 = map_expr_visitor_env(e2, map, env, fe, fs, ft)?;
             map.pop_scope();
-            ExprX::OpenInvariant(expr1, binder, expr2)
+            ExprX::OpenInvariant(expr1, binder, expr2, *atomicity)
         }
     };
     let expr = SpannedTyped::new(&expr.span, &map_typ_visitor_env(&expr.typ, env, ft)?, exprx);

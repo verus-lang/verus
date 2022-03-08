@@ -1,6 +1,6 @@
 use crate::ast::{
-    BinaryOp, CallTarget, Datatype, Expr, ExprX, Fun, Function, Ident, Krate, Mode, Path, Pattern,
-    PatternX, Stmt, StmtX, UnaryOpr, VirErr,
+    BinaryOp, CallTarget, Datatype, Expr, ExprX, Fun, Function, Ident, InvAtomicity, Krate, Mode,
+    Path, Pattern, PatternX, Stmt, StmtX, UnaryOpr, VirErr,
 };
 use crate::ast_util::{err_str, err_string, get_field};
 use crate::util::vec_map_result;
@@ -492,7 +492,7 @@ fn check_expr(typing: &mut Typing, outer_mode: Mode, expr: &Expr) -> Result<Mode
             }
             Ok(mode)
         }
-        ExprX::OpenInvariant(inv, binder, body) => {
+        ExprX::OpenInvariant(inv, binder, body, atomicity) => {
             if outer_mode == Mode::Spec {
                 return err_string(&expr.span, format!("Cannot open invariant in Spec mode."));
             }
@@ -503,11 +503,16 @@ fn check_expr(typing: &mut Typing, outer_mode: Mode, expr: &Expr) -> Result<Mode
             typing.vars.push_scope(true);
             typing.insert(&expr.span, &binder.name, /* mutable */ true, Mode::Proof);
 
-            if typing.atomic_insts.is_some() || outer_mode != Mode::Exec {
+            if *atomicity == InvAtomicity::NonAtomic
+                || typing.atomic_insts.is_some()
+                || outer_mode != Mode::Exec
+            {
                 // If we're a nested atomic block, we don't need to create a new
                 // AtomicInstCollector. We just rely on the outer one.
                 // Also, if we're already in Proof mode, then we just recurse in Proof
                 // mode, and we don't need to do the atomicity check at all.
+                // And of course, we don't do atomicity checks for the 'NonAtomic'
+                // invariant type.
                 let _ = check_expr(typing, outer_mode, body)?;
             } else {
                 let mut my_atomic_insts = Some(AtomicInstCollector::new());
