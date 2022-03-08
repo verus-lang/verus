@@ -9,6 +9,7 @@ use crate::ast::{
     Field, Lemma, LetKind, ShardableType, SpecialOp, Transition, TransitionKind, TransitionStmt, SM,
 };
 use crate::checks::{check_ordering_remove_have_add, check_unsupported_updates_in_conditionals};
+use crate::field_access_visitor::{find_all_accesses, visit_field_accesses};
 use crate::parse_token_stream::SMBundle;
 use crate::safety_conditions::has_any_assert;
 use crate::to_relation::asserts_to_single_predicate;
@@ -17,15 +18,13 @@ use crate::to_token_stream::{
     name_with_type_args_double_colon, shardable_type_to_type,
 };
 use crate::util::combine_errors_or_ok;
-use proc_macro2::Span;
 use proc_macro2::TokenStream;
 use quote::quote;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use syn::parse::Error;
 use syn::spanned::Spanned;
-use syn::visit_mut::VisitMut;
-use syn::{Expr, ExprField, ExprPath, Ident, Member, Type};
+use syn::{Expr, Ident, Type};
 
 // Misc. definitions for various identifiers we use
 
@@ -329,29 +328,11 @@ struct Ctxt {
 }
 
 impl Ctxt {
-    pub fn get_field_by_ident(&self, span: Span, ident: &Ident) -> syn::parse::Result<Field> {
-        match self.ident_to_field.get(&ident.to_string()) {
-            Some(f) => Ok(f.clone()),
-            None => Err(Error::new(
-                span,
-                "in a concurrent transition, any field access but be a state field",
-            )),
-        }
-    }
-
     pub fn get_field_or_panic(&self, ident: &Ident) -> Field {
         match self.ident_to_field.get(&ident.to_string()) {
             Some(f) => f.clone(),
             None => panic!("should have already checked field updates are valid"),
         }
-    }
-
-    pub fn mark_field_as_read(&mut self, field: &Field) {
-        self.fields_read.insert(field.ident.to_string());
-    }
-
-    pub fn mark_field_as_nondeterministic_read(&mut self, field: &Field) {
-        self.fields_read_birds_eye.insert(field.ident.to_string());
     }
 
     pub fn get_numbered_token_ident(&mut self, base_id: &Ident) -> Ident {
@@ -430,7 +411,12 @@ pub fn exchange_stream(bundle: &SMBundle, tr: &Transition) -> syn::parse::Result
     check_unsupported_updates_in_conditionals(&tr.body)?;
     check_ordering_remove_have_add(sm, &tr.body)?;
 
-    // Potentially remove stuff that won't be useful
+    // Potentially remove steps that won't be useful.
+    // We want to do this before `find_all_accesses` below, since this step may potentially
+    // remove field accesses that we would like to ignore.
+    // For example, suppose the user writes `update(foo, self.bar)` where `foo` is
+    // NotTokenized. In that case, we want to make sure that we _don't_ process
+    // self.bar as a requirement to have `bar` as an input token.
     tr.body = prune_irrelevant_ops(&ctxt, tr.body);
 
     // determine output tokens based on 'update' statements
@@ -440,8 +426,18 @@ pub fn exchange_stream(bundle: &SMBundle, tr: &Transition) -> syn::parse::Result
     // where they previously referred to fields like `self.foo`,
     // they now refer to the field that comes from an input.
     // (in the process, we also determine inputs).
-    walk_translate_expressions(&mut ctxt, &mut tr.body, false)?;
-    walk_translate_expressions(&mut ctxt, &mut tr.body, true)?;
+
+    let mut errors = Vec::new();
+    let (fields_read, fields_read_birds_eye) =
+        find_all_accesses(&mut tr.body, &mut errors, &ctxt.ident_to_field);
+    combine_errors_or_ok(errors)?;
+
+    ctxt.fields_read = fields_read;
+    ctxt.fields_read_birds_eye = fields_read_birds_eye;
+
+    let mut errors = Vec::new();
+    walk_translate_expressions(&mut ctxt, &mut tr.body, &mut errors)?;
+    combine_errors_or_ok(errors)?;
 
     // translate the (new) TransitionStmt into an expressions that
     // can be used as pre-conditions and post-conditions
@@ -1191,71 +1187,52 @@ fn determine_outputs(ctxt: &mut Ctxt, ts: &TransitionStmt) -> syn::parse::Result
 /// a lot about the right way to structure this as we try to understand the design behind
 /// more advanced sharding strategies, so I'm not committing to an overhaul right now.
 
-// Note: we run this in two phases.
-// The second phase, birds_eye, handles the birds_eye statements,
-// while the first phase handles everything else.
-// We have to split it in to because the first phase computes
-// `ctxt.fields_read`, while the second phase needs to read it.
-// TODO two-phase thing sucks; just factor the field_read computation into an earlier phase
-
 fn walk_translate_expressions(
     ctxt: &mut Ctxt,
     ts: &mut TransitionStmt,
-    birds_eye_phase: bool,
+    errors: &mut Vec<Error>,
 ) -> syn::parse::Result<()> {
     let new_ts = match ts {
         TransitionStmt::Block(_span, v) => {
             for child in v.iter_mut() {
-                walk_translate_expressions(ctxt, child, birds_eye_phase)?;
+                walk_translate_expressions(ctxt, child, errors)?;
             }
             return Ok(());
         }
         TransitionStmt::Let(_span, _id, lk, e, child) => {
-            let this_stmt_birds_eye = *lk == LetKind::BirdsEye;
-            if birds_eye_phase == this_stmt_birds_eye {
-                let init_e = translate_expr(ctxt, e, this_stmt_birds_eye)?;
-                *e = init_e;
-            }
-            walk_translate_expressions(ctxt, child, birds_eye_phase)?;
+            let birds_eye = *lk == LetKind::BirdsEye;
+            let init_e = translate_expr(ctxt, e, birds_eye, errors);
+            *e = init_e;
+            walk_translate_expressions(ctxt, child, errors)?;
             return Ok(());
         }
         TransitionStmt::If(_span, cond, e1, e2) => {
-            if !birds_eye_phase {
-                let cond_e = translate_expr(ctxt, cond, false)?;
-                *cond = cond_e;
-            }
-            walk_translate_expressions(ctxt, e1, birds_eye_phase)?;
-            walk_translate_expressions(ctxt, e2, birds_eye_phase)?;
+            let cond_e = translate_expr(ctxt, cond, false, errors);
+            *cond = cond_e;
+            walk_translate_expressions(ctxt, e1, errors)?;
+            walk_translate_expressions(ctxt, e2, errors)?;
             return Ok(());
         }
         TransitionStmt::Require(_span, e) => {
-            if !birds_eye_phase {
-                let req_e = translate_expr(ctxt, e, false)?;
-                *e = req_e;
-            }
+            let req_e = translate_expr(ctxt, e, false, errors);
+            *e = req_e;
             return Ok(());
         }
         TransitionStmt::Assert(_span, e) => {
-            if !birds_eye_phase {
-                let assert_e = translate_expr(ctxt, e, false)?;
-                *e = assert_e;
-            }
+            let assert_e = translate_expr(ctxt, e, false, errors);
+            *e = assert_e;
             return Ok(());
         }
 
         TransitionStmt::Initialize(_span, _id, e) | TransitionStmt::Update(_span, _id, e) => {
-            if !birds_eye_phase {
-                let update_e = translate_expr(ctxt, e, false)?;
-                *e = update_e;
-            }
+            let update_e = translate_expr(ctxt, e, false, errors);
+            *e = update_e;
             return Ok(());
         }
 
         TransitionStmt::Special(span, id, SpecialOp::HaveSome(e))
         | TransitionStmt::Special(span, id, SpecialOp::HaveElement(e)) => {
-            assert!(!birds_eye_phase);
-
-            let e = translate_expr(ctxt, e, false)?;
+            let e = translate_expr(ctxt, e, false, errors);
 
             let ident = ctxt.get_numbered_token_ident(id);
             let field = ctxt.get_field_or_panic(id);
@@ -1273,9 +1250,7 @@ fn walk_translate_expressions(
 
         TransitionStmt::Special(span, id, SpecialOp::AddSome(e))
         | TransitionStmt::Special(span, id, SpecialOp::AddElement(e)) => {
-            assert!(!birds_eye_phase);
-
-            let e = translate_expr(ctxt, e, false)?;
+            let e = translate_expr(ctxt, e, false, errors);
 
             let ident = ctxt.get_numbered_token_ident(id);
             let field = ctxt.get_field_or_panic(id);
@@ -1296,9 +1271,7 @@ fn walk_translate_expressions(
 
         TransitionStmt::Special(span, id, SpecialOp::RemoveSome(e))
         | TransitionStmt::Special(span, id, SpecialOp::RemoveElement(e)) => {
-            assert!(!birds_eye_phase);
-
-            let e = translate_expr(ctxt, e, false)?;
+            let e = translate_expr(ctxt, e, false, errors);
 
             let ident = ctxt.get_numbered_token_ident(id);
             let field = ctxt.get_field_or_panic(id);
@@ -1315,9 +1288,7 @@ fn walk_translate_expressions(
         }
 
         TransitionStmt::Special(span, id, SpecialOp::GuardSome(e)) => {
-            assert!(!birds_eye_phase);
-
-            let e = translate_expr(ctxt, e, false)?;
+            let e = translate_expr(ctxt, e, false, errors);
 
             let ident = ctxt.get_numbered_token_ident(id);
             let field = ctxt.get_field_or_panic(id);
@@ -1333,9 +1304,7 @@ fn walk_translate_expressions(
         }
 
         TransitionStmt::Special(span, id, SpecialOp::DepositSome(e)) => {
-            assert!(!birds_eye_phase);
-
-            let e = translate_expr(ctxt, e, false)?;
+            let e = translate_expr(ctxt, e, false, errors);
 
             let ident = ctxt.get_numbered_token_ident(id);
             let field = ctxt.get_field_or_panic(id);
@@ -1351,9 +1320,7 @@ fn walk_translate_expressions(
         }
 
         TransitionStmt::Special(span, id, SpecialOp::WithdrawSome(e)) => {
-            assert!(!birds_eye_phase);
-
-            let e = translate_expr(ctxt, e, false)?;
+            let e = translate_expr(ctxt, e, false, errors);
 
             let ident = ctxt.get_numbered_token_ident(id);
             let field = ctxt.get_field_or_panic(id);
@@ -1378,112 +1345,52 @@ fn walk_translate_expressions(
     Ok(())
 }
 
-fn translate_expr(ctxt: &mut Ctxt, expr: &Expr, birds_eye: bool) -> syn::parse::Result<Expr> {
-    let mut v = TranslatorVisitor::new(ctxt, birds_eye);
-    let mut e = expr.clone();
-    v.visit_expr_mut(&mut e);
-    if v.errors.len() > 0 {
-        let mut error = v.errors[0].clone();
-        for i in 1..v.errors.len() {
-            error.combine(v.errors[i].clone());
-        }
-        return Err(error);
-    }
-    Ok(e)
-}
-
-struct TranslatorVisitor<'a> {
-    pub errors: Vec<Error>,
-    pub ctxt: &'a mut Ctxt,
-    pub birds_eye: bool,
-}
-
-impl<'a> TranslatorVisitor<'a> {
-    pub fn new(ctxt: &'a mut Ctxt, birds_eye: bool) -> TranslatorVisitor<'a> {
-        TranslatorVisitor { errors: Vec::new(), ctxt, birds_eye }
-    }
-}
-
-impl<'a> VisitMut for TranslatorVisitor<'a> {
-    fn visit_expr_mut(&mut self, node: &mut Expr) {
-        let span = node.span();
-        match node {
-            Expr::Verbatim(_) => {
-                panic!(
-                    "can't process a Verbatim expression; (and there shouldn't be one a user-provided expression in the first place)"
-                );
-            }
-            Expr::Path(ExprPath { attrs: _, qself: None, path }) if path.is_ident("self") => {
-                self.errors.push(Error::new(span,
-                    "in a concurrent state machine, 'self' cannot be used opaquely; it may only be used by accessing its fields"));
-            }
-            Expr::Field(ExprField {
-                base: box Expr::Path(ExprPath { attrs: _, qself: None, path }),
-                member,
-                attrs: _,
-                dot_token: _,
-            }) if path.is_ident("self") => {
-                match member {
-                    Member::Named(ident) => {
-                        match self.ctxt.get_field_by_ident(span, ident) {
-                            Err(err) => self.errors.push(err),
-                            Ok(field) => {
-                                if self.birds_eye {
-                                    match &field.stype {
-                                        ShardableType::Variable(_ty) => {
-                                            // Handle it as a 'nondeterministic' value UNLESS
-                                            // we're already reading this token anyway.
-                                            if self
-                                                .ctxt
-                                                .fields_read
-                                                .contains(&field.ident.to_string())
-                                            {
-                                                *node = get_old_field_value(&self.ctxt, &field);
-                                            } else {
-                                                self.ctxt
-                                                    .mark_field_as_nondeterministic_read(&field);
-                                                *node = get_nondeterministic_out_value(
-                                                    &self.ctxt, &field,
-                                                );
-                                            }
-                                        }
-                                        ShardableType::Constant(_ty) => {
-                                            // Handle constants as normal
-                                            *node = get_const_field_value(&self.ctxt, &field);
-                                        }
-                                        _ => {
-                                            self.ctxt.mark_field_as_nondeterministic_read(&field);
-                                            *node =
-                                                get_nondeterministic_out_value(&self.ctxt, &field);
-                                        }
-                                    }
-                                } else {
-                                    self.ctxt.mark_field_as_read(&field);
-                                    match &field.stype {
-                                        ShardableType::Variable(_ty) => {
-                                            *node = get_old_field_value(&self.ctxt, &field);
-                                        }
-                                        ShardableType::Constant(_ty) => {
-                                            *node = get_const_field_value(&self.ctxt, &field);
-                                        }
-                                        _ => {
-                                            let strat = field.stype.strategy_name();
-                                            self.errors.push(Error::new(span,
-                                                format!("A '{strat:}' field cannot be directly referenced here"))); // TODO be more specific
-                                        }
-                                    }
-                                }
-                            }
+fn translate_expr(ctxt: &Ctxt, expr: &Expr, birds_eye: bool, errors: &mut Vec<Error>) -> Expr {
+    let mut expr = expr.clone();
+    visit_field_accesses(
+        &mut expr,
+        |errors, field, node| {
+            if birds_eye {
+                match &field.stype {
+                    ShardableType::Variable(_ty) => {
+                        // Handle it as a 'nondeterministic' value UNLESS
+                        // we're already reading this token anyway.
+                        if ctxt.fields_read.contains(&field.ident.to_string()) {
+                            *node = get_old_field_value(ctxt, &field);
+                        } else {
+                            *node = get_nondeterministic_out_value(ctxt, &field);
                         }
                     }
+                    ShardableType::Constant(_ty) => {
+                        // Always handle constants as normal
+                        *node = get_const_field_value(ctxt, &field);
+                    }
                     _ => {
-                        self.errors.push(Error::new(span, "expected a named field"));
+                        *node = get_nondeterministic_out_value(ctxt, &field);
+                    }
+                }
+            } else {
+                match &field.stype {
+                    ShardableType::Variable(_ty) => {
+                        *node = get_old_field_value(ctxt, &field);
+                    }
+                    ShardableType::Constant(_ty) => {
+                        *node = get_const_field_value(ctxt, &field);
+                    }
+                    _ => {
+                        let strat = field.stype.strategy_name();
+                        errors.push(Error::new(
+                            node.span(),
+                            format!("A '{strat:}' field cannot be directly referenced here"),
+                        )); // TODO be more specific
                     }
                 }
             }
-            _ => syn::visit_mut::visit_expr_mut(self, node),
-        }
-    }
+        },
+        errors,
+        &ctxt.ident_to_field,
+    );
+    expr
 }
 
 fn get_inst_value(ctxt: &Ctxt) -> Expr {

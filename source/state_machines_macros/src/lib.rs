@@ -6,6 +6,7 @@ mod ast;
 mod check_birds_eye;
 mod checks;
 mod concurrency_tokens;
+mod field_access_visitor;
 mod ident_visitor;
 mod lemmas;
 mod parse_token_stream;

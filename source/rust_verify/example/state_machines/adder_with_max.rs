@@ -35,7 +35,8 @@ concurrent_state_machine!{
 
         #[transition]
         fn change_to_minimum(&self) {
-            update(number, self.minimum);
+            #[birds_eye] let min = self.minimum;
+            update(number, min);
         }
 
         #[invariant]
