@@ -6,6 +6,17 @@ use syn::spanned::Spanned;
 use syn::visit_mut::VisitMut;
 use syn::{Expr, ExprField, ExprPath, Ident, Member};
 
+/// Given a (Rust AST) Expr `e`, visits all the subexpressions of the form
+/// `self.foo` where `foo` is a state machine field, and calls the given
+/// function `f` on each one.
+/// Note `f` takes a `&mut Expr` so it is allowed to modify the subexpression,
+/// and it also takes a `&mut Vec<Error>` so it can produce errors.
+///
+/// The visitor itself may also produce errors. Specifically, it will create
+/// an error if it finds a use of `self` for any reason that is NOT an access
+/// of a state machine field. For example, `self.associated_method()` is
+/// not allowed, nor is using `self` without a "dot" access.
+
 pub fn visit_field_accesses<F>(
     e: &mut Expr,
     f: F,
@@ -81,6 +92,12 @@ fn get_field_by_ident<'a>(
     }
 }
 
+/// Applies the visitor `visit_field_accesses` to every Expr in the TransitionStmt.
+/// Here, the visitor function `f` takes a fourth argument: a bool that indicates
+/// if the given expression is from the initializer of a `#[birds_eye] let` statement
+/// (i.e., the bool is false for expressions in any non-birds-eye `let` statement,
+/// or in any other non-`let` statement).
+
 pub fn visit_field_accesses_all_exprs<F>(
     ts: &mut TransitionStmt,
     f: &mut F,
@@ -138,6 +155,16 @@ pub fn visit_field_accesses_all_exprs<F>(
         }
     }
 }
+
+/// Returns two sets, the first consisting of all fields accessed by `self.foo`
+/// in some expression OTHER than a `#[birds_eye] let` statement,
+/// and the second consiting of those accesses from a `#[birds_eye] let` statement.
+///
+/// (Note: Even though `ts` is `&mut`, the argument isn't actually modified.
+/// The only reason it is marked `&mut` is because we need to call `visit_field_accesses`,
+/// and it doesn't seem worthwhile to implement two different versions for
+/// `&mut` vs `&` parameters. But if we really needed to pass a `&TransitionStmt` here,
+/// it could be done.)
 
 pub fn find_all_accesses(
     ts: &mut TransitionStmt,

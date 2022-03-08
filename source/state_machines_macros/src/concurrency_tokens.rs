@@ -419,7 +419,7 @@ pub fn exchange_stream(bundle: &SMBundle, tr: &Transition) -> syn::parse::Result
     // self.bar as a requirement to have `bar` as an input token.
     tr.body = prune_irrelevant_ops(&ctxt, tr.body);
 
-    // determine output tokens based on 'update' statements
+    // compute `ctxt.fields_written`, which is used to determine the output tokens
     determine_outputs(&mut ctxt, &tr.body)?;
 
     // translate the expressions in the TransitionStmt so that
