@@ -1,10 +1,21 @@
 use std::ptr::NonNull;
 use std::mem::MaybeUninit;
+use std::alloc::{Layout};
+use std::alloc::{dealloc};
 
 #[allow(unused_imports)] use builtin::*;
 #[allow(unused_imports)] use builtin_macros::*;
 #[allow(unused_imports)] use crate::pervasive::*;
 #[allow(unused_imports)] use crate::pervasive::modes::*;
+
+/// PPtr ("i.e., permissioned pointer").
+///
+/// This is similar to PCell, but has a few key differences:
+///  * In PCell<T>, the type T is placed internally to the PCell, whereas with PPtr,
+///    the type T is placed at some location on the heap.
+///  * Since PPtr is just a pointer (represented by an integer), it can be `Copy`
+///  * The `ptr::Permission` token represents not just the permission to read/write
+///    the contents, but also to deallocate.
 
 // TODO Identifier should be some opaque type, not necessarily an int
 
@@ -104,12 +115,9 @@ impl<V> PPtr<V> {
     );
     opens_invariants_none();
     
-    unimplemented!();
-    /*
     unsafe {
-        (self.uptr.as_ref()).assume_init_ref()
+        self.uptr.as_ref().assume_init_ref()
     }
-    */
   }
 
   #[inline(always)]
@@ -121,6 +129,7 @@ impl<V> PPtr<V> {
     ]);
     opens_invariants_none();
 
-    // TODO how to deallocate?
+    // based on the implementation of Rc::drop
+    dealloc(self.uptr.cast().as_ptr(), Layout::for_value(self.uptr.as_ref()));
   }
 }
