@@ -41,8 +41,8 @@ fn inst_type(sm: &SM) -> Type {
 }
 
 fn field_token_type_name(sm_name: &Ident, field: &Field) -> Ident {
-    let name = sm_name.to_string() + "_" + &field.ident.to_string();
-    Ident::new(&name, field.ident.span())
+    let name = sm_name.to_string() + "_" + &field.name.to_string();
+    Ident::new(&name, field.name.span())
 }
 
 fn field_token_type(sm: &SM, field: &Field) -> Type {
@@ -56,12 +56,12 @@ fn field_token_type_double_colon(sm: &SM, field: &Field) -> Type {
 fn field_token_field_name(field: &Field) -> Ident {
     // just call it value rather than repeat the field name
     // else, the user will be writing foo.foo everywhere
-    Ident::new("value", field.ident.span())
+    Ident::new("value", field.name.span())
 }
 
 fn nondeterministic_read_spec_out_name(field: &Field) -> Ident {
-    let name = "original_field_".to_string() + &field.ident.to_string();
-    Ident::new(&name, field.ident.span())
+    let name = "original_field_".to_string() + &field.name.to_string();
+    Ident::new(&name, field.name.span())
 }
 
 // The type that goes in the created struct, e.g.,
@@ -102,12 +102,12 @@ fn exchange_name(tr: &Transition) -> Ident {
 }
 
 fn transition_arg_name(field: &Field) -> Ident {
-    let name = "token_".to_string() + &field.ident.to_string();
-    Ident::new(&name, field.ident.span())
+    let name = "token_".to_string() + &field.name.to_string();
+    Ident::new(&name, field.name.span())
 }
 
 fn multiset_relation_post_condition_name(field: &Field) -> Ident {
-    Ident::new("multiset_agree", field.ident.span())
+    Ident::new("multiset_agree", field.name.span())
 }
 
 fn multiset_relation_post_condition_qualified_name(sm: &SM, field: &Field) -> Type {
@@ -383,14 +383,14 @@ pub fn exchange_stream(
     let mut ident_to_field = HashMap::new();
     let mut init_params = HashMap::new();
     for field in &sm.fields {
-        ident_to_field.insert(field.ident.to_string(), field.clone());
+        ident_to_field.insert(field.name.to_string(), field.clone());
 
         if !is_init {
             match &field.stype {
                 ShardableType::Multiset(_)
                 | ShardableType::Optional(_)
                 | ShardableType::StorageOptional(_) => {
-                    init_params.insert(field.ident.to_string(), Vec::new());
+                    init_params.insert(field.name.to_string(), Vec::new());
                 }
                 _ => {}
             }
@@ -478,7 +478,7 @@ pub fn exchange_stream(
     // and make them input parameters (spec-mode) to the corresponding exchange method.
 
     for param in &tr.params {
-        let id = &param.ident;
+        let id = &param.name;
         let ty = &param.ty;
         in_args.push(quote! { #[spec] #id: #ty });
     }
@@ -515,9 +515,9 @@ pub fn exchange_stream(
             // and every field should be written.
 
             assert!(!use_explicit_lifetime);
-            assert!(ctxt.fields_written.contains(&field.ident.to_string()));
-            assert!(!ctxt.fields_read.contains(&field.ident.to_string()));
-            assert!(!ctxt.fields_read_birds_eye.contains(&field.ident.to_string()));
+            assert!(ctxt.fields_written.contains(&field.name.to_string()));
+            assert!(!ctxt.fields_read.contains(&field.name.to_string()));
+            assert!(!ctxt.fields_read_birds_eye.contains(&field.name.to_string()));
 
             // Next case is the Constant type. We don't need to output a new token for it,
             // we just need to add a postcondition like `instance.field() == value`.
@@ -634,7 +634,7 @@ pub fn exchange_stream(
             // we add a spec-mode output param for the corresponding value.
 
             let nondeterministic_read =
-                ctxt.fields_read_birds_eye.contains(&field.ident.to_string());
+                ctxt.fields_read_birds_eye.contains(&field.name.to_string());
 
             if nondeterministic_read {
                 // It is possible to read a value non-deterministically without it coming
@@ -651,7 +651,7 @@ pub fn exchange_stream(
                 ShardableType::Constant(_) => {
                     // We can't update a constant field in a non-init transition.
                     // This should have been checked already.
-                    assert!(!ctxt.fields_written.contains(&field.ident.to_string()));
+                    assert!(!ctxt.fields_written.contains(&field.name.to_string()));
                 }
                 ShardableType::NotTokenized(_) => {
                     // Do nothing.
@@ -663,8 +663,8 @@ pub fn exchange_stream(
                     // Variable case.
                     // We need to do something if it was either read or written.
 
-                    let is_written = ctxt.fields_written.contains(&field.ident.to_string());
-                    let is_read = ctxt.fields_read.contains(&field.ident.to_string());
+                    let is_written = ctxt.fields_written.contains(&field.name.to_string());
+                    let is_read = ctxt.fields_read.contains(&field.name.to_string());
 
                     if is_written || is_read {
                         assert!(!nondeterministic_read);
@@ -711,13 +711,13 @@ pub fn exchange_stream(
                     // So we just need to look up it and actually add the params that it
                     // tells us to add.
 
-                    assert!(!ctxt.fields_written.contains(&field.ident.to_string()));
+                    assert!(!ctxt.fields_written.contains(&field.name.to_string()));
                     assert!(
                         nondeterministic_read
-                            || !ctxt.fields_read.contains(&field.ident.to_string())
+                            || !ctxt.fields_read.contains(&field.name.to_string())
                     );
 
-                    for p in &ctxt.params[&field.ident.to_string()] {
+                    for p in &ctxt.params[&field.name.to_string()] {
                         add_token_param_in_out(
                             &ctxt,
                             &mut in_args,
@@ -1242,7 +1242,7 @@ fn walk_translate_expressions(
             let ty = field_token_type(&ctxt.sm, &field);
             let field_name = field_token_field_name(&field);
 
-            ctxt.params.get_mut(&field.ident.to_string()).expect("get_mut").push(TokenParam {
+            ctxt.params.get_mut(&field.name.to_string()).expect("get_mut").push(TokenParam {
                 inout_type: InoutType::BorrowIn,
                 name: ident.clone(),
                 ty: ty,
@@ -1260,7 +1260,7 @@ fn walk_translate_expressions(
             let ty = field_token_type(&ctxt.sm, &field);
             let field_name = field_token_field_name(&field);
 
-            ctxt.params.get_mut(&field.ident.to_string()).expect("get_mut").push(TokenParam {
+            ctxt.params.get_mut(&field.name.to_string()).expect("get_mut").push(TokenParam {
                 inout_type: InoutType::Out,
                 name: ident.clone(),
                 ty: ty,
@@ -1281,7 +1281,7 @@ fn walk_translate_expressions(
             let ty = field_token_type(&ctxt.sm, &field);
             let field_name = field_token_field_name(&field);
 
-            ctxt.params.get_mut(&field.ident.to_string()).expect("get_mut").push(TokenParam {
+            ctxt.params.get_mut(&field.name.to_string()).expect("get_mut").push(TokenParam {
                 inout_type: InoutType::In,
                 name: ident.clone(),
                 ty: ty,
@@ -1297,7 +1297,7 @@ fn walk_translate_expressions(
             let field = ctxt.get_field_or_panic(id);
             let ty = stored_object_type(&field);
 
-            ctxt.params.get_mut(&field.ident.to_string()).expect("get_mut").push(TokenParam {
+            ctxt.params.get_mut(&field.name.to_string()).expect("get_mut").push(TokenParam {
                 inout_type: InoutType::BorrowOut,
                 name: ident.clone(),
                 ty: ty,
@@ -1313,7 +1313,7 @@ fn walk_translate_expressions(
             let field = ctxt.get_field_or_panic(id);
             let ty = stored_object_type(&field);
 
-            ctxt.params.get_mut(&field.ident.to_string()).expect("get_mut").push(TokenParam {
+            ctxt.params.get_mut(&field.name.to_string()).expect("get_mut").push(TokenParam {
                 inout_type: InoutType::In,
                 name: ident.clone(),
                 ty: ty,
@@ -1329,7 +1329,7 @@ fn walk_translate_expressions(
             let field = ctxt.get_field_or_panic(id);
             let ty = stored_object_type(&field);
 
-            ctxt.params.get_mut(&field.ident.to_string()).expect("get_mut").push(TokenParam {
+            ctxt.params.get_mut(&field.name.to_string()).expect("get_mut").push(TokenParam {
                 inout_type: InoutType::Out,
                 name: ident.clone(),
                 ty: ty,
@@ -1358,7 +1358,7 @@ fn translate_expr(ctxt: &Ctxt, expr: &Expr, birds_eye: bool, errors: &mut Vec<Er
                     ShardableType::Variable(_ty) => {
                         // Handle it as a 'nondeterministic' value UNLESS
                         // we're already reading this token anyway.
-                        if ctxt.fields_read.contains(&field.ident.to_string()) {
+                        if ctxt.fields_read.contains(&field.name.to_string()) {
                             *node = get_old_field_value(ctxt, &field);
                         } else {
                             *node = get_nondeterministic_out_value(ctxt, &field);
@@ -1418,7 +1418,7 @@ fn get_nondeterministic_out_value(_ctxt: &Ctxt, field: &Field) -> Expr {
 fn get_old_field_value(ctxt: &Ctxt, field: &Field) -> Expr {
     let arg = transition_arg_name(&field);
     let field_name = field_token_field_name(&field);
-    if ctxt.fields_written.contains(&field.ident.to_string()) {
+    if ctxt.fields_written.contains(&field.name.to_string()) {
         Expr::Verbatim(quote! { ::builtin::old(#arg).#field_name })
     } else {
         Expr::Verbatim(quote! { #arg.#field_name })
@@ -1672,7 +1672,7 @@ fn get_post_value_for_variable(ctxt: &Ctxt, ts: &TransitionStmt, field: &Field) 
             }
         }
         TransitionStmt::Initialize(_span, id, e) | TransitionStmt::Update(_span, id, e) => {
-            if *id.to_string() == *field.ident.to_string() { Some(e.clone()) } else { None }
+            if *id.to_string() == *field.name.to_string() { Some(e.clone()) } else { None }
         }
         TransitionStmt::Require(_, _)
         | TransitionStmt::Assert(_, _)

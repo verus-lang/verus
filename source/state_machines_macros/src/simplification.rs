@@ -109,8 +109,8 @@ fn add_placeholders(sm: &SM, ts: &TransitionStmt) -> TransitionStmt {
     add_placeholders_rec(&mut ts, &mut found);
 
     for field in &sm.fields {
-        if !contains_ident(&found, &field.ident) {
-            let fs = placeholder_stmt(ts.get_span().clone(), field.ident.clone());
+        if !contains_ident(&found, &field.name) {
+            let fs = placeholder_stmt(ts.get_span().clone(), field.name.clone());
             append_stmt(&mut ts, fs);
         }
     }
@@ -264,7 +264,7 @@ impl FieldMap {
     pub fn new(sm: &SM) -> FieldMap {
         let mut field_map = HashMap::new();
         for field in &sm.fields {
-            let ident = &field.ident;
+            let ident = &field.name;
             field_map.insert(ident.to_string(), (0, Expr::Verbatim(quote! { self.#ident })));
         }
         FieldMap { field_map }

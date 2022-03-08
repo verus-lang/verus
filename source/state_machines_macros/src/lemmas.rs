@@ -121,14 +121,14 @@ fn get_expected_params(sm: &SM, t: &Transition) -> Vec<TransitionParam> {
     let self_ty = get_self_ty(sm);
     match &t.kind {
         TransitionKind::Init => {
-            v.push(TransitionParam { ident: Ident::new("post", self_ty.span()), ty: self_ty });
+            v.push(TransitionParam { name: Ident::new("post", self_ty.span()), ty: self_ty });
         }
         TransitionKind::Transition => {
             v.push(TransitionParam {
-                ident: Ident::new("self", self_ty.span()),
+                name: Ident::new("self", self_ty.span()),
                 ty: self_ty.clone(),
             });
-            v.push(TransitionParam { ident: Ident::new("post", self_ty.span()), ty: self_ty });
+            v.push(TransitionParam { name: Ident::new("post", self_ty.span()), ty: self_ty });
         }
         TransitionKind::Readonly => {
             panic!("case should have been ruled out earlier");
@@ -159,7 +159,7 @@ fn params_match(
                     return Some(attrs[0].span());
                 }
 
-                if !pat_is_ident(pat, &expected[i].ident) {
+                if !pat_is_ident(pat, &expected[i].name) {
                     return Some(pat.span());
                 }
 
@@ -257,7 +257,7 @@ fn ty_to_string(ty: &Type) -> String {
 
 fn params_to_string(params: &Vec<TransitionParam>) -> String {
     let mut v1 = vec![];
-    v1.extend(params.iter().map(|f| f.ident.to_string() + ": " + &ty_to_string(&f.ty)));
+    v1.extend(params.iter().map(|f| f.name.to_string() + ": " + &ty_to_string(&f.ty)));
     v1.join(", ")
 }
 
@@ -271,6 +271,6 @@ fn transition_params_to_string(
         v1.push("self: ".to_string() + &ty_to_string(self_ty));
     }
     v1.push("post: ".to_string() + &ty_to_string(self_ty));
-    v1.extend(params.iter().map(|f| f.ident.to_string() + ": " + &ty_to_string(&f.ty)));
+    v1.extend(params.iter().map(|f| f.name.to_string() + ": " + &ty_to_string(&f.ty)));
     v1.join(", ")
 }

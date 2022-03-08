@@ -502,7 +502,7 @@ fn to_fields(
 
         field.ty = shardable_type_to_type(&stype);
 
-        v.push(crate::ast::Field { ident, stype });
+        v.push(crate::ast::Field { name: ident, stype });
     }
     return Ok(v);
 }

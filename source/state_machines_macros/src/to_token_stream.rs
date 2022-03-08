@@ -272,9 +272,9 @@ pub fn output_primary_stuff(
 fn self_post_params(params: &Vec<TransitionParam>) -> TokenStream {
     let params: Vec<TokenStream> = params
         .iter()
-        .map(|arg| {
-            let ident = &arg.ident;
-            let ty = &arg.ty;
+        .map(|param| {
+            let ident = &param.name;
+            let ty = &param.ty;
             quote! { #ident: #ty }
         })
         .collect();
@@ -289,9 +289,9 @@ fn self_post_params(params: &Vec<TransitionParam>) -> TokenStream {
 fn self_assoc_params(ty: &Type, params: &Vec<TransitionParam>) -> TokenStream {
     let params: Vec<TokenStream> = params
         .iter()
-        .map(|arg| {
-            let ident = &arg.ident;
-            let ty = &arg.ty;
+        .map(|param| {
+            let ident = &param.name;
+            let ty = &param.ty;
             quote! { #ident: #ty }
         })
         .collect();
@@ -305,9 +305,9 @@ fn self_assoc_params(ty: &Type, params: &Vec<TransitionParam>) -> TokenStream {
 fn post_params(params: &Vec<TransitionParam>) -> TokenStream {
     let params: Vec<TokenStream> = params
         .iter()
-        .map(|arg| {
-            let ident = &arg.ident;
-            let ty = &arg.ty;
+        .map(|param| {
+            let ident = &param.name;
+            let ty = &param.ty;
             quote! { #ident: #ty }
         })
         .collect();

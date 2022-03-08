@@ -178,9 +178,9 @@ pub fn find_all_accesses(
         ts,
         &mut |_errors, field, _e, is_birds_eye| {
             if is_birds_eye {
-                fields_read_birds_eye.insert(field.ident.to_string());
+                fields_read_birds_eye.insert(field.name.to_string());
             } else {
-                fields_read.insert(field.ident.to_string());
+                fields_read.insert(field.name.to_string());
             }
         },
         errors,

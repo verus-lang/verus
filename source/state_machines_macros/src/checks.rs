@@ -98,7 +98,7 @@ fn check_unsupported_updates_helper(ts: &TransitionStmt) -> syn::parse::Result<(
 
 pub fn check_ordering_remove_have_add(sm: &SM, ts: &TransitionStmt) -> syn::parse::Result<()> {
     for field in &sm.fields {
-        check_ordering_remove_have_add_rec(ts, &field.ident.to_string(), false, false)?;
+        check_ordering_remove_have_add_rec(ts, &field.name.to_string(), false, false)?;
     }
     Ok(())
 }

@@ -8,7 +8,7 @@ use syn::{Error, Ident};
 
 pub fn fields_contain(fields: &Vec<Field>, ident: &Ident) -> bool {
     for f in fields {
-        if f.ident.to_string() == ident.to_string() {
+        if f.name.to_string() == ident.to_string() {
             return true;
         }
     }
@@ -17,7 +17,7 @@ pub fn fields_contain(fields: &Vec<Field>, ident: &Ident) -> bool {
 
 pub fn get_field<'a>(fields: &'a Vec<Field>, ident: &Ident) -> &'a Field {
     for f in fields {
-        if f.ident.to_string() == ident.to_string() {
+        if f.name.to_string() == ident.to_string() {
             return f;
         }
     }
@@ -110,12 +110,12 @@ fn check_has_all_fields(
     fields: &Vec<Field>,
 ) -> syn::parse::Result<()> {
     for field in fields {
-        if !update_set_contains(h, &field.ident) {
+        if !update_set_contains(h, &field.name) {
             return Err(Error::new(
                 span,
                 format!(
                     "itialization procedure does not initialize field {}",
-                    field.ident.to_string()
+                    field.name.to_string()
                 ),
             ));
         }
@@ -225,7 +225,7 @@ fn check_at_most_one_update_rec(
                             s2,
                             format!(
                                 "field '{}' might be updated multiple times",
-                                field.ident.to_string()
+                                field.name.to_string()
                             ),
                         ));
                     }
@@ -243,7 +243,7 @@ fn check_at_most_one_update_rec(
         TransitionStmt::Assert(_, _) => Ok(None),
         TransitionStmt::Initialize(_, _, _) => Ok(None),
         TransitionStmt::Update(span, id, _) => {
-            if id.to_string() == field.ident.to_string() {
+            if id.to_string() == field.name.to_string() {
                 Ok(Some(*span))
             } else {
                 Ok(None)
@@ -395,7 +395,7 @@ fn check_valid_ops(
 /// and that they don't overlap with the parameters of a transition.
 
 fn check_let_shadowing(trans: &Transition, errors: &mut Vec<Error>) {
-    let mut ids = trans.params.iter().map(|p| p.ident.to_string()).collect();
+    let mut ids = trans.params.iter().map(|p| p.name.to_string()).collect();
     check_let_shadowing_rec(&trans.body, &mut ids, errors)
 }
 

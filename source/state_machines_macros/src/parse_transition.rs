@@ -56,7 +56,7 @@ fn parse_sig(sig: &Signature) -> syn::parse::Result<Vec<TransitionParam>> {
                 }
             },
         };
-        v.push(TransitionParam { ident, ty });
+        v.push(TransitionParam { name: ident, ty });
     }
     return Ok(v);
 }

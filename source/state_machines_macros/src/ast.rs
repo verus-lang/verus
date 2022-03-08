@@ -23,13 +23,13 @@ pub struct Extras {
 
 #[derive(Clone, Debug)]
 pub struct Field {
-    pub ident: Ident,
+    pub name: Ident,
     pub stype: ShardableType,
 }
 
 #[derive(Clone, Debug)]
 pub struct TransitionParam {
-    pub ident: Ident,
+    pub name: Ident,
     pub ty: Type,
 }
 
