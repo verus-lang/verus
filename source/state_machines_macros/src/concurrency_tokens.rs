@@ -11,7 +11,6 @@ use crate::ast::{
 use crate::checks::{check_ordering_remove_have_add, check_unsupported_updates_in_conditionals};
 use crate::field_access_visitor::{find_all_accesses, visit_field_accesses};
 use crate::parse_token_stream::SMBundle;
-use crate::safety_conditions::has_any_assert;
 use crate::to_relation::asserts_to_single_predicate;
 use crate::to_token_stream::{
     get_self_ty, get_self_ty_double_colon, impl_decl_stream, name_with_type_args,
@@ -232,6 +231,7 @@ fn const_fn_stream(field: &Field) -> TokenStream {
 pub fn output_token_types_and_fns(
     token_stream: &mut TokenStream,
     bundle: &SMBundle,
+    safety_condition_lemmas: &HashMap<String, Ident>,
 ) -> syn::parse::Result<()> {
     let mut inst_impl_token_stream = TokenStream::new();
 
@@ -264,7 +264,7 @@ pub fn output_token_types_and_fns(
 
     let mut errors = Vec::new();
     for tr in &bundle.sm.transitions {
-        match exchange_stream(bundle, tr) {
+        match exchange_stream(bundle, tr, safety_condition_lemmas) {
             Ok(stream) => {
                 inst_impl_token_stream.extend(stream);
             }
@@ -371,7 +371,11 @@ impl Ctxt {
 /// When possible, we use &mut arguments (i.e., if a given token is
 /// both an input and an output).
 
-pub fn exchange_stream(bundle: &SMBundle, tr: &Transition) -> syn::parse::Result<TokenStream> {
+pub fn exchange_stream(
+        bundle: &SMBundle,
+        tr: &Transition,
+        safety_condition_lemmas: &HashMap<String, Ident>,
+) -> syn::parse::Result<TokenStream> {
     let sm = &bundle.sm;
 
     let is_init = tr.kind == TransitionKind::Init;
@@ -819,7 +823,7 @@ pub fn exchange_stream(bundle: &SMBundle, tr: &Transition) -> syn::parse::Result
 
     // Tie it all together
 
-    let extra_deps = get_extra_deps(bundle, &tr);
+    let extra_deps = get_extra_deps(bundle, &tr, safety_condition_lemmas);
 
     let gen = if use_explicit_lifetime {
         quote! { <'a> }
@@ -1063,9 +1067,9 @@ fn mk_eq(lhs: &Expr, rhs: &Expr) -> Expr {
     })
 }
 
-fn get_extra_deps(bundle: &SMBundle, trans: &Transition) -> TokenStream {
+fn get_extra_deps(bundle: &SMBundle, trans: &Transition, safety_condition_lemmas: &HashMap<String, Ident>) -> TokenStream {
     let ty = get_self_ty_double_colon(&bundle.sm);
-    let deps: Vec<TokenStream> = get_all_lemmas_for_transition(bundle, trans)
+    let deps: Vec<TokenStream> = get_all_lemmas_for_transition(bundle, trans, safety_condition_lemmas)
         .iter()
         .map(|ident| {
             quote! {
@@ -1077,7 +1081,7 @@ fn get_extra_deps(bundle: &SMBundle, trans: &Transition) -> TokenStream {
 }
 
 /// Gets the lemmas that prove validity of the given transition.
-fn get_all_lemmas_for_transition(bundle: &SMBundle, trans: &Transition) -> Vec<Ident> {
+fn get_all_lemmas_for_transition(bundle: &SMBundle, trans: &Transition, safety_condition_lemmas: &HashMap<String, Ident>) -> Vec<Ident> {
     let mut v = Vec::new();
 
     if trans.kind != TransitionKind::Readonly {
@@ -1085,10 +1089,9 @@ fn get_all_lemmas_for_transition(bundle: &SMBundle, trans: &Transition) -> Vec<I
         v.push(l.func.sig.ident.clone());
     }
 
-    // TODO This isn't right!!! we need to check for other kinds of safety conditions!!!
-    if has_any_assert(&trans.body) {
-        let name = Ident::new(&(trans.name.to_string() + "_asserts"), trans.name.span());
-        v.push(name);
+    match safety_condition_lemmas.get(&trans.name.to_string()) {
+        Some(name) => v.push(name.clone()),
+        None => { }
     }
 
     v

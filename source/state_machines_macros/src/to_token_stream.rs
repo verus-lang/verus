@@ -22,6 +22,7 @@ use syn::{
     Attribute, Block, Expr, ExprBlock, FieldsNamed, FnArg, GenericParam, Generics, Ident,
     ImplItemMethod, Meta, MetaList, Pat, Stmt, Type,
 };
+use std::collections::HashMap;
 
 pub fn output_token_stream(bundle: SMBundle, concurrent: bool) -> syn::parse::Result<TokenStream> {
     let mut token_stream = TokenStream::new();
@@ -29,10 +30,11 @@ pub fn output_token_stream(bundle: SMBundle, concurrent: bool) -> syn::parse::Re
 
     let self_ty = get_self_ty(&bundle.sm);
 
-    output_primary_stuff(&mut token_stream, &mut impl_token_stream, &bundle.sm);
+    let safety_condition_lemmas =
+        output_primary_stuff(&mut token_stream, &mut impl_token_stream, &bundle.sm);
 
     if concurrent {
-        output_token_types_and_fns(&mut token_stream, &bundle)?;
+        output_token_types_and_fns(&mut token_stream, &bundle, &safety_condition_lemmas)?;
     }
 
     output_other_fns(
@@ -161,7 +163,7 @@ pub fn output_primary_stuff(
     token_stream: &mut TokenStream,
     impl_token_stream: &mut TokenStream,
     sm: &SM,
-) {
+) -> HashMap<String, Ident> {
     let name = &sm.name;
     //let fields: Vec<TokenStream> = sm.fields.iter().map(field_to_tokens).collect();
 
@@ -180,6 +182,8 @@ pub fn output_primary_stuff(
     token_stream.extend(code);
 
     let self_ty = get_self_ty(&sm);
+
+    let mut safety_condition_lemmas = HashMap::new();
 
     for trans in &sm.transitions {
         // `simplify_ops` translates the transition by processing all the special ops
@@ -256,8 +260,12 @@ pub fn output_primary_stuff(
                     #b
                 }
             });
+
+            safety_condition_lemmas.insert(trans.name.to_string(), name);
         }
     }
+
+    safety_condition_lemmas
 }
 
 /// self, post: Self, params...
