@@ -20,6 +20,14 @@ test_verify_one_file! {
         }
 
         #[proof]
+        fn test_choose_inference() {
+            let i = choose(|i| f(i));
+            assert(f(7));
+            assert(5 <= i);
+        }
+
+
+        #[proof]
         fn test_choose_eq() {
             let i1 = choose(|i: int| f(i) && (1 + 1 == 2));
             let i2 = choose(|i: int| f(i) && (2 + 2 == 4));

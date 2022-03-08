@@ -132,7 +132,7 @@ pub(crate) fn check_item_fn<'tcx>(
         None
     };
     let self_typ_params = if let Some(cg) = self_generics {
-        Some(check_generics_idents(ctxt.tcx, cg, false)?)
+        Some(check_generics_idents(ctxt.tcx, cg)?)
     } else {
         None
     };

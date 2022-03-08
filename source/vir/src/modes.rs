@@ -1,6 +1,6 @@
 use crate::ast::{
-    BinaryOp, CallTarget, Datatype, Expr, ExprX, Fun, Function, Ident, Krate, Mode, Path, Pattern,
-    PatternX, Stmt, StmtX, UnaryOpr, VirErr,
+    BinaryOp, CallTarget, Datatype, Expr, ExprX, Fun, Function, Ident, InvAtomicity, Krate, Mode,
+    Path, Pattern, PatternX, Stmt, StmtX, UnaryOpr, VirErr,
 };
 use crate::ast_util::{err_str, err_string, get_field};
 use crate::util::vec_map_result;
@@ -61,7 +61,7 @@ impl Typing {
     }
 }
 
-// One tricky thing in mode-checking is that an invariant blocks needs to have
+// One tricky thing in mode-checking is that an invariant block needs to have
 // *at most one* atomic instruction in it.
 // Thus, we can't just declare everything inside it to be 'proof' code,
 // but we can't allow it all to be 'exec' code either.
@@ -110,24 +110,30 @@ impl AtomicInstCollector {
     }
 
     /// Check that the collected operations are well-formed; error if not
-    pub fn validate(&self, inv_block_span: &Span) -> Result<(), VirErr> {
+    /// `is_atomic_fn` is for error-reporting purposes; if 'true', then the check
+    /// is for a fn marked #[verifier(atomic)]. Otherwise, it's for a invariant block.
+    pub fn validate(&self, inv_block_span: &Span, is_atomic_fn: bool) -> Result<(), VirErr> {
+        let context = if is_atomic_fn { "atomic function" } else { "open_invariant" };
+
         if self.loops.len() > 0 {
             return Err(error_with_label(
-                "open_invariant cannot contain an 'exec' loop",
+                format!("{context:} cannot contain an 'exec' loop"),
                 inv_block_span,
                 "this invariant block contains a loop",
             )
             .secondary_span(&self.loops[0]));
         } else if self.non_atomics.len() > 0 {
             let mut e =
-                error("open_invariant cannot contain non-atomic operations", inv_block_span);
+                error(format!("{context:} cannot contain non-atomic operations"), inv_block_span);
             for i in 0..min(self.non_atomics.len(), 3) {
                 e = e.secondary_label(&self.non_atomics[i], "non-atomic here");
             }
             return Err(e);
         } else if self.atomics.len() > 1 {
-            let mut e =
-                error("open_invariant cannot contain more than 1 atomic operation", inv_block_span);
+            let mut e = error(
+                format!("{context:} cannot contain more than 1 atomic operation"),
+                inv_block_span,
+            );
             for i in 0..min(self.atomics.len(), 3) {
                 e = e.secondary_label(&self.atomics[i], "atomic here");
             }
@@ -486,7 +492,7 @@ fn check_expr(typing: &mut Typing, outer_mode: Mode, expr: &Expr) -> Result<Mode
             }
             Ok(mode)
         }
-        ExprX::OpenInvariant(inv, binder, body) => {
+        ExprX::OpenInvariant(inv, binder, body, atomicity) => {
             if outer_mode == Mode::Spec {
                 return err_string(&expr.span, format!("Cannot open invariant in Spec mode."));
             }
@@ -497,18 +503,23 @@ fn check_expr(typing: &mut Typing, outer_mode: Mode, expr: &Expr) -> Result<Mode
             typing.vars.push_scope(true);
             typing.insert(&expr.span, &binder.name, /* mutable */ true, Mode::Proof);
 
-            if typing.atomic_insts.is_some() || outer_mode != Mode::Exec {
+            if *atomicity == InvAtomicity::NonAtomic
+                || typing.atomic_insts.is_some()
+                || outer_mode != Mode::Exec
+            {
                 // If we're a nested atomic block, we don't need to create a new
                 // AtomicInstCollector. We just rely on the outer one.
                 // Also, if we're already in Proof mode, then we just recurse in Proof
                 // mode, and we don't need to do the atomicity check at all.
+                // And of course, we don't do atomicity checks for the 'NonAtomic'
+                // invariant type.
                 let _ = check_expr(typing, outer_mode, body)?;
             } else {
                 let mut my_atomic_insts = Some(AtomicInstCollector::new());
                 swap(&mut my_atomic_insts, &mut typing.atomic_insts);
                 let _ = check_expr(typing, outer_mode, body)?;
                 swap(&mut my_atomic_insts, &mut typing.atomic_insts);
-                my_atomic_insts.expect("my_atomic_insts").validate(&body.span)?;
+                my_atomic_insts.expect("my_atomic_insts").validate(&body.span, false)?;
             }
 
             typing.vars.pop_scope();
@@ -616,7 +627,17 @@ pub fn check_crate(krate: &Krate) -> Result<ErasureModes, VirErr> {
         atomic_insts: None,
     };
     for function in krate.functions.iter() {
-        check_function(&mut typing, function)?;
+        if function.x.attrs.atomic {
+            let mut my_atomic_insts = Some(AtomicInstCollector::new());
+            swap(&mut my_atomic_insts, &mut typing.atomic_insts);
+
+            check_function(&mut typing, function)?;
+
+            swap(&mut my_atomic_insts, &mut typing.atomic_insts);
+            my_atomic_insts.expect("my_atomic_insts").validate(&function.span, true)?;
+        } else {
+            check_function(&mut typing, function)?;
+        }
     }
     Ok(typing.erasure_modes)
 }

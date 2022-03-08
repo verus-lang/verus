@@ -280,3 +280,21 @@ test_verify_one_file! {
         }
     } => Err(TestErr { has_vir_error: true, .. })
 }
+
+test_verify_one_file! {
+    #[test] test_ensures_type_inference code! {
+        struct Foo {
+            pub b: bool,
+        }
+
+        #[spec]
+        fn get_b(foo: Foo) -> bool {
+            foo.b
+        }
+
+        fn test1() -> Foo {
+            ensures(|b| get_b(b));
+            Foo {b: true}
+        }
+    } => Ok(())
+}

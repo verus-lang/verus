@@ -136,8 +136,9 @@ pub(crate) fn def_id_to_datatype_segments<'tcx, 'hir>(
         Some(args) => args
             .args
             .iter()
-            .map(|a| match a {
-                rustc_hir::GenericArg::Type(t) => ty_to_vir(tcx, &t),
+            .filter_map(|a| match a {
+                rustc_hir::GenericArg::Type(t) => Some(ty_to_vir(tcx, &t)),
+                rustc_hir::GenericArg::Lifetime(_) => None,
                 _ => panic!("unexpected type arguments"),
             })
             .collect(),
@@ -262,10 +263,11 @@ pub(crate) fn mid_ty_to_vir<'tcx>(
             } else {
                 let typ_args: Vec<Typ> = args
                     .iter()
-                    .map(|arg| match arg.unpack() {
+                    .filter_map(|arg| match arg.unpack() {
                         rustc_middle::ty::subst::GenericArgKind::Type(t) => {
-                            mid_ty_to_vir(tcx, t, allow_mut_ref)
+                            Some(mid_ty_to_vir(tcx, t, allow_mut_ref))
                         }
+                        rustc_middle::ty::subst::GenericArgKind::Lifetime(_) => None,
                         _ => panic!("unexpected type argument"),
                     })
                     .collect();
@@ -498,7 +500,6 @@ pub(crate) fn check_generic_bound<'tcx>(
 pub(crate) fn check_generics_bounds<'tcx>(
     tcx: TyCtxt<'tcx>,
     generics: &'tcx Generics<'tcx>,
-    function_decl: bool,
     check_that_external_body_datatype_declares_positivity: bool,
 ) -> Result<Vec<(vir::ast::Ident, vir::ast::GenericBound, bool)>, VirErr> {
     let Generics { params, where_clause, span: _ } = generics;
@@ -520,14 +521,23 @@ pub(crate) fn check_generics_bounds<'tcx>(
             );
         }
         let strictly_positive = !neg; // strictly_positive is the default
-        let GenericParam { hir_id: _, name, bounds, span: _, pure_wrt_drop, kind } = param;
-        unsupported_err_unless!(bounds.len() <= 1, generics.span, "generic bounds");
-        unsupported_err_unless!(!pure_wrt_drop, generics.span, "generic pure_wrt_drop");
+        let GenericParam { hir_id: _, name, bounds, span, pure_wrt_drop, kind } = param;
+
+        unsupported_err_unless!(!pure_wrt_drop, *span, "generic pure_wrt_drop");
         match (name, kind) {
             (ParamName::Plain(id), GenericParamKind::Type { default: None, synthetic: false }) => {
+                // lifetime bounds can be ignored for VIR, since they are only relevant
+                // for rustc's borrow-checking pass
+                let bounds: Vec<&GenericBound> =
+                    bounds.iter().filter(|bound| !is_lifetime_bound(bound)).collect();
+                unsupported_err_unless!(bounds.len() <= 1, *span, "generic bounds");
+
+                // Handle type bounds here. Right now we only support Fn trait bounds, of which
+                // there can only be one. So if there's 1 bound, we check if it's a Fn
+                // (and error otherwise).
                 let ident = Arc::new(id.name.as_str().to_string());
                 let bound = if bounds.len() == 1 {
-                    check_generic_bound(tcx, generics.span, &bounds[0])?
+                    check_generic_bound(tcx, *span, &bounds[0])?
                 } else {
                     Arc::new(GenericBoundX::None)
                 };
@@ -536,12 +546,12 @@ pub(crate) fn check_generics_bounds<'tcx>(
             (
                 ParamName::Plain(_id),
                 GenericParamKind::Lifetime { kind: LifetimeParamKind::Explicit },
-            ) => {
-                if !function_decl {
-                    unsupported_err!(generics.span, "explicit lifetimes on non-function", generics)
-                }
-            }
-            _ => unsupported_err!(generics.span, "complex generics", generics),
+            ) => {}
+            (
+                ParamName::Fresh(_),
+                GenericParamKind::Lifetime { kind: LifetimeParamKind::Elided },
+            ) => {}
+            _ => unsupported_err!(*span, "complex generics", generics),
         }
     }
     unsupported_err_unless!(where_clause.predicates.len() == 0, generics.span, "where clause");
@@ -553,23 +563,18 @@ pub(crate) fn check_generics_bounds_fun<'tcx>(
     generics: &'tcx Generics<'tcx>,
 ) -> Result<TypBounds, VirErr> {
     Ok(Arc::new(
-        check_generics_bounds(tcx, generics, true, false)?
-            .into_iter()
-            .map(|(a, b, _)| (a, b))
-            .collect(),
+        check_generics_bounds(tcx, generics, false)?.into_iter().map(|(a, b, _)| (a, b)).collect(),
     ))
 }
 
 pub(crate) fn check_generics<'tcx>(
     tcx: TyCtxt<'tcx>,
     generics: &'tcx Generics<'tcx>,
-    function_decl: bool,
     check_that_external_body_datatype_declares_positivity: bool,
 ) -> Result<Vec<(vir::ast::Ident, bool)>, VirErr> {
     let typ_bounds = check_generics_bounds(
         tcx,
         generics,
-        function_decl,
         check_that_external_body_datatype_declares_positivity,
     )?;
     let mut typ_params: Vec<(vir::ast::Ident, bool)> = Vec::new();
@@ -591,9 +596,14 @@ pub(crate) fn check_generics<'tcx>(
 pub(crate) fn check_generics_idents<'tcx>(
     tcx: TyCtxt<'tcx>,
     generics: &'tcx Generics<'tcx>,
-    function_decl: bool,
 ) -> Result<Idents, VirErr> {
-    Ok(Arc::new(
-        check_generics(tcx, generics, function_decl, false)?.into_iter().map(|(a, _)| a).collect(),
-    ))
+    Ok(Arc::new(check_generics(tcx, generics, false)?.into_iter().map(|(a, _)| a).collect()))
+}
+
+pub(crate) fn is_lifetime_bound(bound: &GenericBound) -> bool {
+    match bound {
+        GenericBound::Trait(..) => false,
+        GenericBound::LangItemTrait(..) => false,
+        GenericBound::Outlives(..) => true,
+    }
 }

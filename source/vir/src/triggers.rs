@@ -4,14 +4,17 @@ use crate::context::Ctx;
 use crate::sst::{BndX, Exp, ExpX, Trig, Trigs};
 use air::ast::Span;
 use air::scope_map::ScopeMap;
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::Arc;
 
 // Manual triggers
 struct State {
-    trigger_vars: HashSet<Ident>, // variables the triggers must cover
-    triggers: HashMap<Option<u64>, Vec<Exp>>, // user-specified triggers
-    coverage: HashMap<Option<u64>, HashSet<Ident>>, // trigger_vars covered by each trigger
+    // variables the triggers must cover
+    trigger_vars: HashSet<Ident>,
+    // user-specified triggers (for sortedness stability, use BTreeMap rather than HashMap)
+    triggers: BTreeMap<Option<u64>, Vec<Exp>>,
+    // trigger_vars covered by each trigger
+    coverage: HashMap<Option<u64>, HashSet<Ident>>,
 }
 
 fn remove_boxing(exp: &Exp) -> Exp {
@@ -158,7 +161,7 @@ pub(crate) fn build_triggers(
 ) -> Result<Trigs, VirErr> {
     let mut state = State {
         trigger_vars: vars.iter().cloned().collect(),
-        triggers: HashMap::new(),
+        triggers: BTreeMap::new(),
         coverage: HashMap::new(),
     };
     get_manual_triggers(&mut state, exp)?;
