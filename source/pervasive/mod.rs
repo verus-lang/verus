@@ -7,6 +7,7 @@ pub mod seq_lib;
 pub mod set;
 pub mod set_lib;
 pub mod cell;
+pub mod ptr;
 pub mod invariants;
 pub mod atomic;
 pub mod modes;
