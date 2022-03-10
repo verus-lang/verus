@@ -1,6 +1,6 @@
 use crate::ast::{
-    BinaryOp, CallTarget, Constant, Fun, Function, IntRange, MaskSpec, SpannedTyped, TypX, UnaryOp,
-    UnaryOpr, VirErr,
+    BinaryOp, CallTarget, Constant, ExprX, Fun, Function, IntRange, MaskSpec, SpannedTyped, TypX,
+    UnaryOp, UnaryOpr, VirErr,
 };
 use crate::ast_to_sst::expr_to_exp;
 use crate::ast_util::err_str;
@@ -373,20 +373,16 @@ pub(crate) fn check_termination_stm(
 }
 
 pub(crate) fn expand_call_graph(call_graph: &mut Graph<Fun>, function: &Function) {
-    // We only traverse expressions (not statements), since calls only appear in the former (see ast.rs)
-    if let Some(body) = &function.x.body {
-        crate::ast_visitor::expr_visitor_check::<VirErr, _>(body, &mut |expr| {
-            use crate::ast::ExprX;
-            match &expr.x {
-                ExprX::Call(CallTarget::Static(x, _), _) | ExprX::Fuel(x, _) => {
-                    call_graph.add_edge(function.x.name.clone(), x.clone())
-                }
-                _ => {}
+    crate::ast_visitor::function_visitor_check::<VirErr, _>(function, &mut |expr| {
+        match &expr.x {
+            ExprX::Call(CallTarget::Static(x, _), _) => {
+                call_graph.add_edge(function.x.name.clone(), x.clone())
             }
-            Ok(())
-        })
-        .expect("expr_visitor_check failed unexpectedly");
-    }
+            _ => {}
+        }
+        Ok(())
+    })
+    .expect("function_visitor_check failed unexpectedly");
 
     for fun in &function.x.extra_dependencies {
         call_graph.add_edge(function.x.name.clone(), fun.clone());
