@@ -65,3 +65,8 @@ pub fn unreached<A>() -> A {
 pub fn print_u64(i: u64) {
     println!("{}", i);
 }
+
+#[verifier(external_body)]
+pub struct SyncSendIfSyncSend<#[verifier(strictly_positive)] T> {
+    sync_send: builtin::SyncSendIfSyncSend<T>,
+}

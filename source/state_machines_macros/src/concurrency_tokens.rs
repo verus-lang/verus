@@ -123,23 +123,54 @@ fn multiset_relation_post_condition_qualified_name(sm: &SM, field: &Field) -> Ty
 /// for the instance.
 ///
 /// Formally, this token should be derived in terms of a monoid derived from the state
-/// machine state. (See `formalism.md`.) Since that formalism is not implemented mechanically
+/// machine state. (See `monoid-formalism.md`.) Since that formalism is not
+/// implemented mechanically
 /// in Verus, we instead make the state itself a field. This is kind of meaningless, but it
 /// serves as a placeholder and does result in the necessary dependency edge between this
 /// struct and the type struct. The fields are private, so they shouldn't matter to the user.
+///
+/// Another thing is that we need the `Instance` struct to have the correct Send/Sync traits.
+/// (All the other token types will then inherit those traits. The Senc/Synd traits of
+/// the Instance should depend on the Sync/Send traits of the storage types.
+/// In particular, the Instance should be Sync+Send iff the storage types are all Sync+Send.
+/// Otherwise, the Instance type should have neither.
+/// Initially, this rule might seem a little extra-restrictive, but we need this restriction
+/// because if it is possible for the instance to interact with another thread at all, it
+/// could conceivably do arbitrary withdraw/deposits (thus 'sending' the storage objects
+/// to the other thread) or arbitrary guards (thus 'syncing' the storage objects to the
+/// other thread). Due to the flexibility of the guard protocol, this could theoretically
+/// happen regardless of whether the instance/tokens are synced or sent to the other thread.
+///
+/// TODO make sure that the Instance/tokens don't inherit !Sync or !Send instances from
+/// the other fields where it doesn't matter. (Completeness issue)
+
 fn instance_struct_stream(sm: &SM) -> TokenStream {
     let insttype = inst_type_name(&sm.name);
     let self_ty = get_self_ty(sm);
     let gen = &sm.generics;
+
+    let storage_types = get_storage_type_tuple(sm);
+
     return quote! {
         #[proof]
         #[allow(non_camel_case_types)]
         #[verifier(unforgeable)]
         pub struct #insttype #gen {
+            #[spec] send_sync: crate::pervasive::SyncSendIfSyncSend<#storage_types>,
             #[spec] state: #self_ty,
             #[spec] location: ::builtin::int,
         }
     };
+}
+
+/// If the SM has storage types T1, T2, ...
+/// this returns the tuple type (T1, T2, ...).
+/// Uses the "inner" type (e.g., the X in Option<X>, not Option<X> itself)
+fn get_storage_type_tuple(sm: &SM) -> Type {
+    let types: Vec<Type> = sm.fields.iter().filter_map(|field|
+        if field.stype.is_storage() { Some(stored_object_type(field)) } else { None }
+    ).collect();
+    Type::Verbatim(quote!{ (#(#types),*) })
 }
 
 /// Add a `clone()` method to the Instance type.

@@ -265,12 +265,10 @@ impl<S> MyRc<S> {
             equal(rc.view(), s),
         ]);
 
-        let (rc_cell, Proof(mut rc_perm)) = PCell::empty();
-        rc_cell.put(1, &mut rc_perm);
+        let (rc_cell, Proof(mut rc_perm)) = PCell::new(1);
         let inner_rc = InnerRc::<S> { rc_cell, s };
 
-        let (ptr, Proof(mut ptr_perm)) = PPtr::empty();
-        ptr.put(inner_rc, &mut ptr_perm);
+        let (ptr, Proof(mut ptr_perm)) = PPtr::new(inner_rc);
 
         #[proof] let (inst, mut rc_token, _) = RefCounter_Instance::initialize_empty(Option::None);
         #[proof] let reader = inst.do_deposit(ptr_perm, &mut rc_token, ptr_perm);
@@ -314,7 +312,7 @@ impl<S> MyRc<S> {
             assume(count < 100000000);
 
             let count = count + 1;
-            inner_rc_ref.rc_cell.put(count, &mut rc_perm);
+            inner_rc_ref.rc_cell.put(&mut rc_perm, count);
 
             new_reader = self.inst.do_clone(
                 self.reader.value,
@@ -348,7 +346,7 @@ impl<S> MyRc<S> {
             let count = inner_rc_ref.rc_cell.take(&mut rc_perm);
             if count >= 2 {
                 let count = count - 1;
-                inner_rc_ref.rc_cell.put(count, &mut rc_perm);
+                inner_rc_ref.rc_cell.put(&mut rc_perm, count);
 
                 inst.dec_basic(
                     reader.value,
@@ -366,7 +364,7 @@ impl<S> MyRc<S> {
                 // even though inner_rc has been moved onto the stack here.
                 // so this will probably get optimized out
                 let count = count - 1;
-                inner_rc.rc_cell.put(count, &mut rc_perm);
+                inner_rc.rc_cell.put(&mut rc_perm, count);
 
                 ptr.dispose(inner_rc_perm);
             }

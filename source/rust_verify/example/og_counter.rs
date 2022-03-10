@@ -109,7 +109,16 @@ fn main() {
   open_invariant!(&at_inv => g => {
     #[proof] let G { counter: mut c, perm: mut p } = g;
 
+    #[spec] let now_c = c;
+
     inst.tr_inc_a(&mut c, &mut inc_a_token); // atomic increment
+    assert(now_c.value == p.value);
+    assert(c.value <= 3);
+    assert(now_c.value <= 2);
+    assert(0 <= now_c.value);
+    assert(p.value <= 2);
+    assert(0 <= p.value);
+    assert(p.value as int + 1 <= 3);
     at.fetch_add(&mut p, 1);
 
     g = G { counter: c, perm: p };
