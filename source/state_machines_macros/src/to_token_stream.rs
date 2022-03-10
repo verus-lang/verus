@@ -14,6 +14,7 @@ use crate::simplification::simplify_ops;
 use crate::to_relation::to_relation;
 use proc_macro2::TokenStream;
 use quote::{quote, quote_spanned, ToTokens};
+use std::collections::HashMap;
 use std::mem::swap;
 use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
@@ -22,7 +23,6 @@ use syn::{
     Attribute, Block, Expr, ExprBlock, FieldsNamed, FnArg, GenericParam, Generics, Ident,
     ImplItemMethod, Meta, MetaList, Pat, Stmt, Type,
 };
-use std::collections::HashMap;
 
 pub fn output_token_stream(bundle: SMBundle, concurrent: bool) -> syn::parse::Result<TokenStream> {
     let mut token_stream = TokenStream::new();

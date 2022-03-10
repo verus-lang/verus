@@ -285,10 +285,9 @@ impl_structural! {
     bool char
 }
 
-
-struct NoSyncSend { }
-impl !Sync for NoSyncSend { }
-impl !Send for NoSyncSend { }
+struct NoSyncSend {}
+impl !Sync for NoSyncSend {}
+impl !Send for NoSyncSend {}
 
 // Used by state_machine_macros codegen
 #[doc(hidden)]
@@ -298,5 +297,5 @@ pub struct SyncSendIfSyncSend<T> {
     t: std::marker::PhantomData<T>,
 }
 
-unsafe impl<T: Sync + Send> Sync for SyncSendIfSyncSend<T> { }
-unsafe impl<T: Sync + Send> Send for SyncSendIfSyncSend<T> { }
+unsafe impl<T: Sync + Send> Sync for SyncSendIfSyncSend<T> {}
+unsafe impl<T: Sync + Send> Send for SyncSendIfSyncSend<T> {}

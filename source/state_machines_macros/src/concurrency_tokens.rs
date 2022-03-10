@@ -167,10 +167,14 @@ fn instance_struct_stream(sm: &SM) -> TokenStream {
 /// this returns the tuple type (T1, T2, ...).
 /// Uses the "inner" type (e.g., the X in Option<X>, not Option<X> itself)
 fn get_storage_type_tuple(sm: &SM) -> Type {
-    let types: Vec<Type> = sm.fields.iter().filter_map(|field|
-        if field.stype.is_storage() { Some(stored_object_type(field)) } else { None }
-    ).collect();
-    Type::Verbatim(quote!{ (#(#types),*) })
+    let types: Vec<Type> = sm
+        .fields
+        .iter()
+        .filter_map(
+            |field| if field.stype.is_storage() { Some(stored_object_type(field)) } else { None },
+        )
+        .collect();
+    Type::Verbatim(quote! { (#(#types),*) })
 }
 
 /// Add a `clone()` method to the Instance type.
@@ -403,9 +407,9 @@ impl Ctxt {
 /// both an input and an output).
 
 pub fn exchange_stream(
-        bundle: &SMBundle,
-        tr: &Transition,
-        safety_condition_lemmas: &HashMap<String, Ident>,
+    bundle: &SMBundle,
+    tr: &Transition,
+    safety_condition_lemmas: &HashMap<String, Ident>,
 ) -> syn::parse::Result<TokenStream> {
     let sm = &bundle.sm;
 
@@ -676,12 +680,16 @@ pub fn exchange_stream(
             // we add a spec-mode output param for the corresponding value.
 
             let nondeterministic_read =
-                ctxt.fields_read_birds_eye.contains(&field.name.to_string());
+                ctxt.fields_read_birds_eye.contains(&field.name.to_string())
+                    && match field.stype {
+                        ShardableType::Variable(_) => {
+                            !ctxt.fields_written.contains(&field.name.to_string())
+                                && !ctxt.fields_read.contains(&field.name.to_string())
+                        }
+                        _ => true,
+                    };
 
             if nondeterministic_read {
-                // It is possible to read a value non-deterministically without it coming
-                // from an input token.
-                // In that case, we need to make the field value an _output_ argument.
                 let ty = shardable_type_to_type(&field.stype);
                 let name = nondeterministic_read_spec_out_name(field);
                 out_args.push((quote! { #name }, quote! { crate::modes::Spec<#ty> }));
@@ -733,7 +741,7 @@ pub fn exchange_stream(
 
                     if is_written {
                         // Post-condition that gives the value of the output token
-                        // NOTE: maybe instead of doing this here, we could translate the
+                        // note: maybe instead of doing this here, we could translate the
                         // `Update` statements into `PostCondition` statements like we
                         // do for other kinds of tokens. Then we wouldn't have to have this here.
 
@@ -754,10 +762,7 @@ pub fn exchange_stream(
                     // tells us to add.
 
                     assert!(!ctxt.fields_written.contains(&field.name.to_string()));
-                    assert!(
-                        nondeterministic_read
-                            || !ctxt.fields_read.contains(&field.name.to_string())
-                    );
+                    assert!(!ctxt.fields_read.contains(&field.name.to_string());
 
                     for p in &ctxt.params[&field.name.to_string()] {
                         add_token_param_in_out(
@@ -1109,21 +1114,30 @@ fn mk_eq(lhs: &Expr, rhs: &Expr) -> Expr {
     })
 }
 
-fn get_extra_deps(bundle: &SMBundle, trans: &Transition, safety_condition_lemmas: &HashMap<String, Ident>) -> TokenStream {
+fn get_extra_deps(
+    bundle: &SMBundle,
+    trans: &Transition,
+    safety_condition_lemmas: &HashMap<String, Ident>,
+) -> TokenStream {
     let ty = get_self_ty_double_colon(&bundle.sm);
-    let deps: Vec<TokenStream> = get_all_lemmas_for_transition(bundle, trans, safety_condition_lemmas)
-        .iter()
-        .map(|ident| {
-            quote! {
-                ::builtin::extra_dependency(#ty::#ident);
-            }
-        })
-        .collect();
+    let deps: Vec<TokenStream> =
+        get_all_lemmas_for_transition(bundle, trans, safety_condition_lemmas)
+            .iter()
+            .map(|ident| {
+                quote! {
+                    ::builtin::extra_dependency(#ty::#ident);
+                }
+            })
+            .collect();
     quote! { #(#deps)* }
 }
 
 /// Gets the lemmas that prove validity of the given transition.
-fn get_all_lemmas_for_transition(bundle: &SMBundle, trans: &Transition, safety_condition_lemmas: &HashMap<String, Ident>) -> Vec<Ident> {
+fn get_all_lemmas_for_transition(
+    bundle: &SMBundle,
+    trans: &Transition,
+    safety_condition_lemmas: &HashMap<String, Ident>,
+) -> Vec<Ident> {
     let mut v = Vec::new();
 
     if trans.kind != TransitionKind::Readonly {
@@ -1133,7 +1147,7 @@ fn get_all_lemmas_for_transition(bundle: &SMBundle, trans: &Transition, safety_c
 
     match safety_condition_lemmas.get(&trans.name.to_string()) {
         Some(name) => v.push(name.clone()),
-        None => { }
+        None => {}
     }
 
     v
@@ -1400,7 +1414,9 @@ fn translate_expr(ctxt: &Ctxt, expr: &Expr, birds_eye: bool, errors: &mut Vec<Er
                     ShardableType::Variable(_ty) => {
                         // Handle it as a 'nondeterministic' value UNLESS
                         // we're already reading this token anyway.
-                        if ctxt.fields_read.contains(&field.name.to_string()) {
+                        if ctxt.fields_read.contains(&field.name.to_string())
+                            || ctxt.fields_written.contains(&field.name.to_string())
+                        {
                             *node = get_old_field_value(ctxt, &field);
                         } else {
                             *node = get_nondeterministic_out_value(ctxt, &field);
