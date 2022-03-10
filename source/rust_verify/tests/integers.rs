@@ -264,3 +264,13 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_one_fails(err)
 }
+
+test_verify_one_file! {
+    #[test] test_literals_fails7 code! {
+        #[proof]
+        fn f() {
+            #[spec] let x = -5 as nat;
+            assert(x < 0); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}

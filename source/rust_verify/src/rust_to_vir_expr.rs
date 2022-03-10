@@ -1213,19 +1213,30 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
 
     let modifier = ExprModifier { deref_mut: false, ..current_modifier };
 
+    // If in_negative_literal=true, then this returns a negative constant,
+    // (so a negation doesn't need to be applied on the outside).
     let mk_lit_int = |in_negative_literal: bool, i: u128, typ: Typ| {
-        let c = vir::ast::Constant::Nat(Arc::new(i.to_string()));
+        let c = if in_negative_literal {
+            vir::ast::Constant::Nat(Arc::new("-".to_string() + &i.to_string()))
+        } else {
+            vir::ast::Constant::Nat(Arc::new(i.to_string()))
+        };
         let i_bump = if in_negative_literal { 1 } else { 0 };
         if let TypX::Int(range) = *typ {
             match range {
-                IntRange::Int | IntRange::Nat => Ok(mk_expr(ExprX::Const(c))),
-                IntRange::U(n) if n == 128 || (n < 128 && i < (1u128 << n)) => {
+                IntRange::Int => Ok(mk_expr(ExprX::Const(c))),
+                IntRange::Nat if !in_negative_literal => Ok(mk_expr(ExprX::Const(c))),
+                IntRange::U(n)
+                    if !in_negative_literal && (n == 128 || (n < 128 && i < (1u128 << n))) =>
+                {
                     Ok(mk_expr(ExprX::Const(c)))
                 }
                 IntRange::I(n) if n - 1 < 128 && i < (1u128 << (n - 1)) + i_bump => {
                     Ok(mk_expr(ExprX::Const(c)))
                 }
-                IntRange::USize if i < (1u128 << vir::def::ARCH_SIZE_MIN_BITS) => {
+                IntRange::USize
+                    if !in_negative_literal && i < (1u128 << vir::def::ARCH_SIZE_MIN_BITS) =>
+                {
                     Ok(mk_expr(ExprX::Const(c)))
                 }
                 IntRange::ISize if i < (1u128 << (vir::def::ARCH_SIZE_MIN_BITS - 1)) + i_bump => {
@@ -1361,18 +1372,14 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                         ExprKind::Lit(lit) => match lit.node {
                             rustc_ast::LitKind::Int(i, _) => {
                                 // Use the type of the Cast expr, not the Lit expr
-                                let lit = mk_lit_int(false, i, ty.clone())?;
-                                let clipped = mk_ty_clip(&expr_typ(), &lit);
-                                return Ok(clipped);
+                                return mk_lit_int(false, i, ty.clone());
                             }
                             _ => {}
                         },
                         ExprKind::Unary(UnOp::Neg, arg) => match &arg.kind {
                             ExprKind::Lit(lit) => match lit.node {
                                 rustc_ast::LitKind::Int(i, _) => {
-                                    let lit = mk_lit_int(true, i, ty.clone())?;
-                                    let clipped = mk_ty_clip(&expr_typ(), &lit);
-                                    return Ok(arithmetic_negate(expr.span, &ty, clipped));
+                                    return mk_lit_int(true, i, ty.clone());
                                 }
                                 _ => {}
                             },
@@ -1407,7 +1414,7 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                     ..
                 }) = &arg.kind
                 {
-                    mk_lit_int(true, *i, typ_of_node(bctx, &expr.hir_id, false))?
+                    return mk_lit_int(true, *i, typ_of_node(bctx, &expr.hir_id, false));
                 } else {
                     expr_to_vir(bctx, arg, modifier)?
                 };
