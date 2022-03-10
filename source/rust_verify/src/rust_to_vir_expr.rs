@@ -1334,14 +1334,58 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                 Ok(mk_expr(ExprX::Const(c)))
             }
             rustc_ast::LitKind::Int(i, _) => {
-                mk_lit_int(false, i, typ_of_node(bctx, &expr.hir_id, false))
+                let t = typ_of_node(bctx, &expr.hir_id, false);
+                let l = mk_lit_int(false, i, t);
+                l
             }
             _ => {
                 panic!("unexpected constant: {:?}", lit)
             }
         },
         ExprKind::Cast(source, _) => {
-            Ok(mk_ty_clip(&expr_typ(), &expr_to_vir(bctx, source, modifier)?))
+            let ty = expr_typ();
+
+            // rustc doesn't do the right thing when we have `literal as int`:
+            // It always decides that `literal` is a i32 even if the given literal
+            // doesn't fit into an i32.
+            // So we handle `literal as type` as a special case, ignoring the type
+            // rust assigns to the literal.
+            // We handle the negative literal case here too.
+            // (Note: `-5 as int` parses as `(-5) as int`)
+            // Also note: since Int and Nat are erased types, we don't take on
+            // a risk of unsoundness here by ignoring rustc's inferred type.
+
+            match *ty {
+                TypX::Int(IntRange::Int) | TypX::Int(IntRange::Nat) => {
+                    match &source.kind {
+                        ExprKind::Lit(lit) => match lit.node {
+                            rustc_ast::LitKind::Int(i, _) => {
+                                // Use the type of the Cast expr, not the Lit expr
+                                let lit = mk_lit_int(false, i, ty.clone())?;
+                                let clipped = mk_ty_clip(&expr_typ(), &lit);
+                                return Ok(clipped);
+                            }
+                            _ => {}
+                        },
+                        ExprKind::Unary(UnOp::Neg, arg) => match &arg.kind {
+                            ExprKind::Lit(lit) => match lit.node {
+                                rustc_ast::LitKind::Int(i, _) => {
+                                    let lit = mk_lit_int(true, i, ty.clone())?;
+                                    let clipped = mk_ty_clip(&expr_typ(), &lit);
+                                    return Ok(arithmetic_negate(expr.span, &ty, clipped));
+                                }
+                                _ => {}
+                            },
+                            _ => {}
+                        },
+                        _ => {}
+                    }
+                }
+                _ => {}
+            }
+
+            let e = expr_to_vir(bctx, source, modifier)?;
+            Ok(mk_ty_clip(&ty, &e))
         }
         ExprKind::AddrOf(BorrowKind::Ref, Mutability::Not, e) => {
             expr_to_vir_inner(bctx, e, ExprModifier::REGULAR)
@@ -1358,8 +1402,6 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                 Ok(mk_expr(ExprX::Unary(not_op, varg)))
             }
             UnOp::Neg => {
-                let zero_const = vir::ast::Constant::Nat(Arc::new("0".to_string()));
-                let zero = mk_expr(ExprX::Const(zero_const));
                 let varg = if let ExprKind::Lit(rustc_span::source_map::Spanned {
                     node: rustc_ast::LitKind::Int(i, _),
                     ..
@@ -1369,7 +1411,7 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                 } else {
                     expr_to_vir(bctx, arg, modifier)?
                 };
-                Ok(mk_expr(ExprX::Binary(BinaryOp::Sub, zero, varg)))
+                Ok(arithmetic_negate(expr.span, &expr_typ(), varg))
             }
             UnOp::Deref => expr_to_vir_inner(bctx, arg, is_expr_typ_mut_ref(bctx, arg, modifier)?),
         },
@@ -1760,6 +1802,12 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
             unsupported_err!(expr.span, format!("expression"), expr)
         }
     }
+}
+
+fn arithmetic_negate(span: Span, typ: &Typ, arg: vir::ast::Expr) -> vir::ast::Expr {
+    let zero_const = vir::ast::Constant::Nat(Arc::new("0".to_string()));
+    let zero = spanned_typed_new(span, typ, ExprX::Const(zero_const));
+    spanned_typed_new(span, typ, ExprX::Binary(BinaryOp::Sub, zero, arg))
 }
 
 pub(crate) fn let_stmt_to_vir<'tcx>(

@@ -50,6 +50,38 @@ test_verify_one_file! {
             assert(u / 2 <= u);
             assert(u % 10 < 10);
         }
+
+        fn int_literals() {
+            #[spec] let x0 = -5000000000000000000000 as int;
+            #[spec] let x1 = -5000000000000 as int;
+            #[spec] let x2 = -3000000000 as int;
+            #[spec] let x3 = -5 as int;
+            #[spec] let x4 = 0 as int;
+            #[spec] let x5 = 5 as int;
+            #[spec] let x6 = 3000000000 as int;
+            #[spec] let x7 = 5000000000000 as int;
+            #[spec] let x8 = 5000000000000000000000 as int;
+            assert(x0 < x1);
+            assert(x1 < x2);
+            assert(x2 < x3);
+            assert(x3 < x4);
+            assert(x4 < x5);
+            assert(x5 < x6);
+            assert(x6 < x7);
+            assert(x7 < x8);
+        }
+
+        fn nat_literals() {
+            #[spec] let x4 = 0 as nat;
+            #[spec] let x5 = 5 as nat;
+            #[spec] let x6 = 3000000000 as nat;
+            #[spec] let x7 = 5000000000000 as nat;
+            #[spec] let x8 = 5000000000000000000000 as nat;
+            assert(x4 < x5);
+            assert(x5 < x6);
+            assert(x6 < x7);
+            assert(x7 < x8);
+        }
     } => Ok(())
 }
 
