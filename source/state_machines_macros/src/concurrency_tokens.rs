@@ -13,8 +13,8 @@ use crate::field_access_visitor::{find_all_accesses, visit_field_accesses};
 use crate::parse_token_stream::SMBundle;
 use crate::to_relation::asserts_to_single_predicate;
 use crate::to_token_stream::{
-    get_self_ty, get_self_ty_double_colon, impl_decl_stream, name_with_type_args,
-    name_with_type_args_double_colon, shardable_type_to_type,
+    get_self_ty, get_self_ty_turbofish, impl_decl_stream, name_with_type_args,
+    name_with_type_args_turbofish, shardable_type_to_type,
 };
 use crate::util::combine_errors_or_ok;
 use proc_macro2::TokenStream;
@@ -49,8 +49,8 @@ fn field_token_type(sm: &SM, field: &Field) -> Type {
     name_with_type_args(&field_token_type_name(&sm.name, field), sm)
 }
 
-fn field_token_type_double_colon(sm: &SM, field: &Field) -> Type {
-    name_with_type_args_double_colon(&field_token_type_name(&sm.name, field), sm)
+fn field_token_type_turbofish(sm: &SM, field: &Field) -> Type {
+    name_with_type_args_turbofish(&field_token_type_name(&sm.name, field), sm)
 }
 
 fn field_token_field_name(field: &Field) -> Ident {
@@ -106,12 +106,22 @@ fn transition_arg_name(field: &Field) -> Ident {
     Ident::new(&name, field.name.span())
 }
 
+fn option_relation_post_condition_name(field: &Field) -> Ident {
+    Ident::new("option_agree", field.name.span())
+}
+
+fn option_relation_post_condition_qualified_name(sm: &SM, field: &Field) -> Type {
+    let ty = field_token_type_turbofish(sm, field);
+    let name = option_relation_post_condition_name(field);
+    Type::Verbatim(quote! { #ty::#name })
+}
+
 fn multiset_relation_post_condition_name(field: &Field) -> Ident {
     Ident::new("multiset_agree", field.name.span())
 }
 
 fn multiset_relation_post_condition_qualified_name(sm: &SM, field: &Field) -> Type {
-    let ty = field_token_type_double_colon(sm, field);
+    let ty = field_token_type_turbofish(sm, field);
     let name = multiset_relation_post_condition_name(field);
     Type::Verbatim(quote! { #ty::#name })
 }
@@ -240,8 +250,9 @@ fn token_struct_stream_optional(sm: &SM, field: &Field) -> TokenStream {
 /// as a #[spec] fn on the Instance type. (The field is constant
 /// for the entire instance.)
 ///
-/// TODO we could make these fields on the Instance type instead
+/// note: we could make these fields on the Instance type instead
 /// (this is safe as long as the Instance type is an unforgeable proof type)
+/// but currently we have the body of the Instance as private
 fn const_fn_stream(field: &Field) -> TokenStream {
     let fieldname = field_token_field_name(field);
     let fieldtype = match &field.stype {
@@ -962,23 +973,9 @@ fn add_initialization_output_conditions(
             }));
         }
         ShardableType::Optional(_) => {
-            // TODO factor this into a helper function to simplify the generated code
-            let field_name = field_token_field_name(field);
+            let fn_name = option_relation_post_condition_qualified_name(sm, field);
             ensures.push(Expr::Verbatim(quote! {
-                match #init_value {
-                    crate::pervasive::option::Option::None => {
-                        #param_value.is_None()
-                    }
-                    crate::pervasive::option::Option::Some(tmp_e) => {
-                        #param_value.is_Some()
-                        && ::builtin::equal(
-                            #param_value.get_Some_0().instance,
-                            #inst_value)
-                        && ::builtin::equal(
-                            #param_value.get_Some_0().#field_name,
-                            tmp_e)
-                    }
-                }
+                #fn_name(#param_value, #init_value, #inst_value)
             }));
         }
         ShardableType::Multiset(_) => {
@@ -993,11 +990,39 @@ fn add_initialization_output_conditions(
     }
 }
 
+/// Add some helper functions that are useful to call from other
+/// generated conditions (e.g., see `add_initialization_output_conditions`)
 fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
     match &field.stype {
+        ShardableType::Optional(ty) => {
+            let fn_name = option_relation_post_condition_name(field);
+            let token_ty = field_token_type(sm, field);
+            let inst_ty = inst_type(sm);
+            let option_token_ty = Type::Verbatim(quote! {
+                crate::pervasive::option::Option<#token_ty>
+            });
+            let option_normal_ty = Type::Verbatim(quote! {
+                crate::pervasive::option::Option<#ty>
+            });
+            quote! {
+                #[spec]
+                pub fn #fn_name(token_opt: #option_token_ty, opt: #option_normal_ty, instance: #inst_ty) -> bool {
+                    match token_opt {
+                        crate::pervasive::option::Option::None => {
+                            opt.is_None()
+                        }
+                        crate::pervasive::option::Option::Some(token) => {
+                            ::builtin::equal(token.instance, instance)
+                            && opt.is_Some()
+                            && ::builtin::equal(token.value, opt.get_Some_0())
+                        }
+                    }
+                }
+            }
+        }
         ShardableType::Multiset(ty) => {
             let fn_name = multiset_relation_post_condition_name(field);
-            let constructor_name = field_token_type_double_colon(sm, field);
+            let constructor_name = field_token_type_turbofish(sm, field);
             let field_name = field_token_field_name(field);
             let inst_ty = inst_type(sm);
             let token_ty = field_token_type(sm, field);
@@ -1119,7 +1144,7 @@ fn get_extra_deps(
     trans: &Transition,
     safety_condition_lemmas: &HashMap<String, Ident>,
 ) -> TokenStream {
-    let ty = get_self_ty_double_colon(&bundle.sm);
+    let ty = get_self_ty_turbofish(&bundle.sm);
     let deps: Vec<TokenStream> =
         get_all_lemmas_for_transition(bundle, trans, safety_condition_lemmas)
             .iter()

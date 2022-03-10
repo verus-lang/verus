@@ -156,7 +156,6 @@ concurrent_state_machine!(RwLock {
         self.storage.is_None() >>= self.writer.is_Some()
     }
 
-
     #[inductive(acquire_read_start)]
     fn acquire_read_start_inductive(self: RwLock, post: RwLock) { }
 
@@ -174,6 +173,7 @@ concurrent_state_machine!(RwLock {
 
     #[inductive(release_exc)]
     fn release_exc_inductive(self: RwLock, post: RwLock, x: T) { }
+
 
     #[inductive(release_shared)]
     fn release_shared_inductive(self: RwLock, post: RwLock, x: T) {

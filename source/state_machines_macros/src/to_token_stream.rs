@@ -12,12 +12,12 @@ use crate::parse_token_stream::SMBundle;
 use crate::safety_conditions::{has_any_assert, safety_condition_body};
 use crate::simplification::simplify_ops;
 use crate::to_relation::to_relation;
+use proc_macro2::Span;
 use proc_macro2::TokenStream;
 use quote::{quote, quote_spanned, ToTokens};
 use std::collections::HashMap;
 use std::mem::swap;
 use syn::punctuated::Punctuated;
-use proc_macro2::Span;
 use syn::spanned::Spanned;
 use syn::token::Semi;
 use syn::{
@@ -63,8 +63,8 @@ pub fn get_self_ty(sm: &SM) -> Type {
     name_with_type_args(&sm.name, sm)
 }
 
-pub fn get_self_ty_double_colon(sm: &SM) -> Type {
-    name_with_type_args_double_colon(&sm.name, sm)
+pub fn get_self_ty_turbofish(sm: &SM) -> Type {
+    name_with_type_args_turbofish(&sm.name, sm)
 }
 
 pub fn name_with_type_args(name: &Ident, sm: &SM) -> Type {
@@ -82,7 +82,7 @@ pub fn name_with_type_args(name: &Ident, sm: &SM) -> Type {
     })
 }
 
-pub fn name_with_type_args_double_colon(name: &Ident, sm: &SM) -> Type {
+pub fn name_with_type_args_turbofish(name: &Ident, sm: &SM) -> Type {
     Type::Verbatim(match &sm.generics {
         None => quote! { #name },
         Some(gen) => {
