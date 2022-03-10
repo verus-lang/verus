@@ -13,7 +13,7 @@ state_machine!(
 
         #[init]
         fn initialize(&self) {
-            let x = #[birds_eye] 5 + 9;
+            let x = 5 + 9;
             init(number, 0);
         }
 
@@ -31,7 +31,8 @@ state_machine!(
         fn initialize_inductive(post: X) { }
 
         #[inductive(add)]
-        fn add_inductive(self: X, post: X, n: int) { }
+        fn add_inductive(self: X, post: X, n: int) {
+        }
 
     }
 );

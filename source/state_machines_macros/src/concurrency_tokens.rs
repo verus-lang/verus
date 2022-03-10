@@ -1006,6 +1006,7 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
             });
             quote! {
                 #[spec]
+                #[verifier(publish)]
                 pub fn #fn_name(token_opt: #option_token_ty, opt: #option_normal_ty, instance: #inst_ty) -> bool {
                     match token_opt {
                         crate::pervasive::option::Option::None => {
@@ -1033,9 +1034,9 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
                 crate::pervasive::multiset::Multiset<#ty>
             });
 
-            // TODO what should the visibility of this fn be?
             quote! {
                 #[spec]
+                #[verifier(publish)]
                 pub fn #fn_name(tokens: #multiset_token_ty, m: #multiset_normal_ty, instance: #inst_ty) -> bool {
                     ::builtin::forall(|x: #ty|
                         tokens.count(
@@ -1213,7 +1214,6 @@ fn determine_outputs(ctxt: &mut Ctxt, ts: &TransitionStmt) -> syn::parse::Result
         TransitionStmt::Require(_span, _req_e) => Ok(()),
         TransitionStmt::Assert(_span, _assert_e) => Ok(()),
         TransitionStmt::Initialize(_span, id, _e) => {
-            // TODO consider if this is necessary or useful
             ctxt.fields_written.insert(id.to_string());
             Ok(())
         }

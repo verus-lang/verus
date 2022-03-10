@@ -205,6 +205,7 @@ pub fn output_primary_stuff(
                 let args = post_params(&trans.params);
                 rel_fn = quote! {
                     #[spec]
+                    #[verifier(publish)]
                     pub fn #name (#args) -> bool {
                         #f
                     }
@@ -213,6 +214,7 @@ pub fn output_primary_stuff(
                 let args = self_post_params(&trans.params);
                 rel_fn = quote! {
                     #[spec]
+                    #[verifier(publish)]
                     pub fn #name (#args) -> bool {
                         #f
                     }
@@ -233,6 +235,7 @@ pub fn output_primary_stuff(
 
             let rel_fn = quote! {
                 #[spec]
+                #[verifier(publish)]
                 pub fn #name (#params) -> bool {
                     #f
                 }
@@ -412,8 +415,6 @@ fn left_of_colon<'a>(fn_arg: &'a FnArg) -> &'a Pat {
 /// We should have already ruled out the existence of such lemmas.
 
 fn lemma_update_body(bundle: &SMBundle, l: &Lemma, func: &mut ImplItemMethod) {
-    // TODO give a more helpful error if the body already has requires/ensures
-
     let trans = get_transition(&bundle.sm.transitions, &l.purpose.transition.to_string())
         .expect("transition");
 
