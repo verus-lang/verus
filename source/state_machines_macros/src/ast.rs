@@ -25,6 +25,7 @@ pub struct Extras {
 pub struct Field {
     pub name: Ident,
     pub stype: ShardableType,
+    pub type_span: Span,
 }
 
 #[derive(Clone, Debug)]

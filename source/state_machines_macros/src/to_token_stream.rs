@@ -17,6 +17,7 @@ use quote::{quote, quote_spanned, ToTokens};
 use std::collections::HashMap;
 use std::mem::swap;
 use syn::punctuated::Punctuated;
+use proc_macro2::Span;
 use syn::spanned::Spanned;
 use syn::token::Semi;
 use syn::{
@@ -176,7 +177,7 @@ pub fn output_primary_stuff(
     };
 
     // Note: #fields_named will include the braces.
-    let code: TokenStream = quote! {
+    let code: TokenStream = quote_spanned! { fields_named.span() =>
         pub struct #name #gen #fields_named
     };
     token_stream.extend(code);
@@ -317,19 +318,19 @@ fn post_params(params: &Vec<TransitionParam>) -> TokenStream {
     };
 }
 
-pub fn shardable_type_to_type(stype: &ShardableType) -> Type {
+pub fn shardable_type_to_type(span: Span, stype: &ShardableType) -> Type {
     match stype {
         ShardableType::Variable(ty) => ty.clone(),
         ShardableType::Constant(ty) => ty.clone(),
         ShardableType::NotTokenized(ty) => ty.clone(),
         ShardableType::Multiset(ty) => {
-            Type::Verbatim(quote! { crate::pervasive::multiset::Multiset<#ty> })
+            Type::Verbatim(quote_spanned! { span => crate::pervasive::multiset::Multiset<#ty> })
         }
         ShardableType::Optional(ty) => {
-            Type::Verbatim(quote! { crate::pervasive::option::Option<#ty> })
+            Type::Verbatim(quote_spanned! { span => crate::pervasive::option::Option<#ty> })
         }
         ShardableType::StorageOptional(ty) => {
-            Type::Verbatim(quote! { crate::pervasive::option::Option<#ty> })
+            Type::Verbatim(quote_spanned! { span => crate::pervasive::option::Option<#ty> })
         }
     }
 }

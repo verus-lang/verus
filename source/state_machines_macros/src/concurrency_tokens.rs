@@ -690,7 +690,7 @@ pub fn exchange_stream(
                     };
 
             if nondeterministic_read {
-                let ty = shardable_type_to_type(&field.stype);
+                let ty = shardable_type_to_type(field.type_span, &field.stype);
                 let name = nondeterministic_read_spec_out_name(field);
                 out_args.push((quote! { #name }, quote! { crate::modes::Spec<#ty> }));
             }
@@ -762,7 +762,7 @@ pub fn exchange_stream(
                     // tells us to add.
 
                     assert!(!ctxt.fields_written.contains(&field.name.to_string()));
-                    assert!(!ctxt.fields_read.contains(&field.name.to_string());
+                    assert!(!ctxt.fields_read.contains(&field.name.to_string()));
 
                     for p in &ctxt.params[&field.name.to_string()] {
                         add_token_param_in_out(

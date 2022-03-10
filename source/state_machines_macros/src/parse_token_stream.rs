@@ -500,9 +500,10 @@ fn to_fields(
             ),
         };
 
-        field.ty = shardable_type_to_type(&stype);
+        field.ty = shardable_type_to_type(field.ty.span(), &stype);
+        let type_span = field.ty.span();
 
-        v.push(crate::ast::Field { name: ident, stype });
+        v.push(crate::ast::Field { name: ident, stype, type_span });
     }
     return Ok(v);
 }
