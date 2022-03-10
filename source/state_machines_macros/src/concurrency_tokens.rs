@@ -412,6 +412,9 @@ pub fn exchange_stream(
     let is_init = tr.kind == TransitionKind::Init;
 
     let mut ident_to_field = HashMap::new();
+
+    // Initialize the `params` field of the `Ctxt` object. We'll fill this up
+    // later; for now, just create an entry with an empty Vec for each relevant field.
     let mut init_params = HashMap::new();
     for field in &sm.fields {
         ident_to_field.insert(field.name.to_string(), field.clone());
@@ -457,10 +460,8 @@ pub fn exchange_stream(
     // compute `ctxt.fields_written`, which is used to determine the output tokens
     determine_outputs(&mut ctxt, &tr.body)?;
 
-    // translate the expressions in the TransitionStmt so that
-    // where they previously referred to fields like `self.foo`,
-    // they now refer to the field that comes from an input.
-    // (in the process, we also determine inputs).
+    // Determine which fields are read (e.g., `self.foo`) and in what context those
+    // fields are read.
 
     let mut errors = Vec::new();
     let (fields_read, fields_read_birds_eye) =
@@ -470,20 +471,23 @@ pub fn exchange_stream(
     ctxt.fields_read = fields_read;
     ctxt.fields_read_birds_eye = fields_read_birds_eye;
 
+    // translate the expressions in the TransitionStmt so that
+    // where they previously referred to fields like `self.foo`,
+    // they now refer to the field that comes from an input.
+    // Also simplifies away SpecialOps.
+
     let mut errors = Vec::new();
     walk_translate_expressions(&mut ctxt, &mut tr.body, &mut errors)?;
     combine_errors_or_ok(errors)?;
 
-    // translate the (new) TransitionStmt into an expressions that
+    // translate the (new) TransitionStmt into expressions that
     // can be used as pre-conditions and post-conditions
+    // This fills up `ctxt.requires` and `ctxt.ensures`.
     let _ = exchange_collect(&mut ctxt, &tr.body, Vec::new())?;
-
-    let mut in_args: Vec<TokenStream> = Vec::new();
-    let mut out_args: Vec<(TokenStream, TokenStream)> = Vec::new();
 
     // For our purposes here, a 'readonly' is just a special case of a normal transition.
     // The 'init' transitions are the interesting case.
-    // For the most part, there are two key differences:
+    // For the most part, there are two key differences between init and transition/readonly.
     //
     //   * An 'init' returns an arbitrary new Instance object, whereas a normal transition
     //     takes an Instance as input.
@@ -494,7 +498,10 @@ pub fn exchange_stream(
     //    (instance as the 'self' argument)?    (present if not init)
     //    (spec transition params,)*            (parameters to the transition)
     //    (proof token params,)*
-    //
+
+    let mut in_args: Vec<TokenStream> = Vec::new();
+    let mut out_args: Vec<(TokenStream, TokenStream)> = Vec::new();
+
     // First, we create a parameter for the Instance, either an input or output parameter
     // as appropriate.
 
@@ -516,6 +523,10 @@ pub fn exchange_stream(
 
     // We need some pre/post conditions that the input/output
     // tokens are all of the correct Instance.
+    // We will fill these in as we go. (Note these might not contain all instance-related
+    // conditions; for collection types, the pre- and post-conditions are more complicated
+    // and in that case, some instance-related conditions might go in with the
+    // `ctxt.requires` or `ctxt.ensures`).
 
     let mut inst_eq_reqs = Vec::new();
     let mut inst_eq_enss = Vec::new();
