@@ -2,7 +2,6 @@ use crate::ast::{Field, ShardableType, SpecialOp, Transition, TransitionKind, Tr
 use crate::check_birds_eye::check_birds_eye;
 use crate::util::{combine_errors_or_ok, combine_results};
 use proc_macro2::Span;
-use std::collections::HashMap;
 use syn::spanned::Spanned;
 use syn::{Error, Ident};
 
@@ -59,142 +58,101 @@ fn check_updates_refer_to_valid_fields(
     }
 }
 
-fn disjoint_union(
-    h1: &Vec<(Ident, Span)>,
-    h2: &Vec<(Ident, Span)>,
-) -> syn::parse::Result<Vec<(Ident, Span)>> {
-    let mut h1_map: HashMap<Ident, Span> = HashMap::new();
-    for (ident, span) in h1 {
-        h1_map.insert(ident.clone(), span.clone());
-    }
-    for (ident, _span2) in h2 {
-        match h1_map.get(ident) {
-            None => {}
-            Some(span1) => {
-                return Err(Error::new(
-                    *span1,
-                    format!("field '{}' might be updated multiple times", ident.to_string()),
+/// For each field, checks that this field is initialized *exactly* once.
+/// This check applies for *all* fields.
+
+fn check_exactly_one_init(sm: &SM, ts: &TransitionStmt, errors: &mut Vec<Error>) {
+    for f in &sm.fields {
+        match check_exactly_one_init_rec(f, ts) {
+            Ok(Some(_)) => {}
+            Ok(None) => {
+                errors.push(Error::new(
+                    *ts.get_span(),
+                    format!(
+                        "itialization procedure does not initialize field '{}'",
+                        f.name.to_string()
+                    ),
                 ));
             }
+            Err(e) => errors.push(e),
         }
     }
-    let mut con = h1.clone();
-    con.extend(h2.clone());
-    return Ok(con);
 }
 
-fn update_sets_eq(h1: &Vec<(Ident, Span)>, h2: &Vec<(Ident, Span)>) -> bool {
-    if h1.len() != h2.len() {
-        return false;
-    }
-    for (ident, _) in h1 {
-        if !update_set_contains(h2, ident) {
-            return false;
-        }
-    }
-    return true;
-}
-
-fn update_set_contains(h: &Vec<(Ident, Span)>, ident: &Ident) -> bool {
-    for (ident2, _) in h {
-        if *ident == *ident2 {
-            return true;
-        }
-    }
-    return false;
-}
-
-fn check_has_all_fields(
-    span: Span,
-    h: &Vec<(Ident, Span)>,
-    fields: &Vec<Field>,
-) -> syn::parse::Result<()> {
-    for field in fields {
-        if !update_set_contains(h, &field.name) {
-            return Err(Error::new(
-                span,
-                format!(
-                    "itialization procedure does not initialize field {}",
-                    field.name.to_string()
-                ),
-            ));
-        }
-    }
-    Ok(())
-}
-
-/// Check well-formedness for an 'initialization' transition.
-///
-/// We require every field to be initialized exactly once. That means if a field
-/// is initialized in one branch of a conditional, it must also be updated in the other.
-///
-/// This also checks that ONLY 'init' statements are used (i.e., no 'update' statements
-/// or SpecialOps).
-///
-/// TODO this would probably be cleaner to do it one field at a time rather than doing
-/// all the set-union logic
-
-fn check_init(sm: &SM, ts: &TransitionStmt) -> syn::parse::Result<()> {
-    let h = check_init_rec(&ts)?;
-    let span = ts.get_span();
-
-    // Check we actually got all the fields.
-    check_has_all_fields(*span, &h, &sm.fields)?;
-
-    Ok(())
-}
-
-fn check_init_rec(ts: &TransitionStmt) -> syn::parse::Result<Vec<(Ident, Span)>> {
+fn check_exactly_one_init_rec(
+    field: &Field,
+    ts: &TransitionStmt,
+) -> syn::parse::Result<Option<Span>> {
     match ts {
         TransitionStmt::Block(_, v) => {
-            let mut h = Vec::new();
+            let mut o = None;
             for t in v.iter() {
-                let q = check_init_rec(t)?;
-                h = disjoint_union(&h, &q)?;
+                let o2 = check_exactly_one_init_rec(field, t)?;
+                o = match (o, o2) {
+                    (None, None) => None,
+                    (Some(s), None) => Some(s),
+                    (None, Some(s)) => Some(s),
+                    (Some(_s1), Some(s2)) => {
+                        return Err(Error::new(
+                            s2,
+                            format!(
+                                "field '{}' might be updated multiple times",
+                                field.name.to_string()
+                            ),
+                        ));
+                    }
+                };
             }
-            Ok(h)
+            Ok(o)
         }
-        TransitionStmt::Let(_, _, _, _, child) => check_init_rec(child),
-        TransitionStmt::If(span, _, thn, els) => {
-            let h1 = check_init_rec(thn)?;
-            let h2 = check_init_rec(els)?;
-            if !update_sets_eq(&h1, &h2) {
-                return Err(Error::new(
-                    *span,
-                    "for initialization, both branches of if-statement must update the same fields",
-                ));
+        TransitionStmt::Let(_, _, _, _, child) => check_exactly_one_init_rec(field, child),
+        TransitionStmt::If(if_span, _, thn, els) => {
+            let o1 = check_exactly_one_init_rec(field, thn)?;
+            let o2 = check_exactly_one_init_rec(field, els)?;
+            // The user is required to initialize the field in both branches if they update
+            // it in either. Therefore we need to produce an error if there was a mismatch
+            // between the two branches.
+            match (o1, o2) {
+                (Some(span1), Some(_span2)) => Ok(Some(span1)),
+                (None, None) => Ok(None),
+                (Some(_span1), None) => {
+                    return Err(Error::new(
+                        *if_span,
+                        format!(
+                            "for initialization, both branches of if-statement must initialize the same fields; the else-branch does not initialize '{}'",
+                            field.name
+                        ),
+                    ));
+                }
+                (None, Some(_span1)) => {
+                    return Err(Error::new(
+                        *if_span,
+                        format!(
+                            "for initialization, both branches of if-statement must initialize the same fields; the if-branch does not initialize '{}'",
+                            field.name
+                        ),
+                    ));
+                }
             }
-            Ok(h1)
         }
-        TransitionStmt::Require(_, _) => Ok(Vec::new()),
-        TransitionStmt::Assert(span, _) => {
-            Err(Error::new(*span, "'assert' statement not allowed in initialization"))
+        TransitionStmt::Require(_, _) => Ok(None),
+        TransitionStmt::Assert(_, _) => Ok(None),
+        TransitionStmt::Initialize(span, id, _) => {
+            if id.to_string() == field.name.to_string() {
+                Ok(Some(*span))
+            } else {
+                Ok(None)
+            }
         }
-        TransitionStmt::Initialize(span, ident, _) => {
-            let mut v = Vec::new();
-            v.push((ident.clone(), span.clone()));
-            Ok(v)
-        }
-        TransitionStmt::Update(span, _, _) => Err(Error::new(
-            *span,
-            "'update' statement not allowed in initialization; use 'init' instead",
-        )),
-        TransitionStmt::Special(span, _, _) => Err(Error::new(
-            *span,
-            format!(
-                "'{:}' statement not allowed in initialization; use 'init' instead",
-                ts.statement_name()
-            ),
-        )),
-        TransitionStmt::PostCondition(..) => {
-            panic!("should have have PostCondition statement here");
-        }
+        TransitionStmt::Update(_, _, _) => Ok(None),
+        TransitionStmt::Special(..) => Ok(None),
+        TransitionStmt::PostCondition(..) => Ok(None),
     }
 }
 
-/// For each field, checks that this field is updated at most once.
-/// Only checks 'update' statements, not 'init' statements or any special ops.
-/// Only checks fields for which 'update' statements are allowed at all.
+/// For each field, checks that this field is updated *at most* once.
+/// Only checks 'update' statements, not special ops, and it
+/// only does the check for fields for which 'update' statements are supported.
 
 fn check_at_most_one_update(sm: &SM, ts: &TransitionStmt, errors: &mut Vec<Error>) {
     for f in &sm.fields {
@@ -237,6 +195,9 @@ fn check_at_most_one_update_rec(
         TransitionStmt::If(_, _, thn, els) => {
             let o1 = check_at_most_one_update_rec(field, thn)?;
             let o2 = check_at_most_one_update_rec(field, els)?;
+            // In contrast to the initialization case,
+            // it _is_ allowed to perform an 'update' in only one branch.
+            // We return 'Some(_)' if either of the branches returned Some(_).
             Ok(if o1.is_some() { o1 } else { o2 })
         }
         TransitionStmt::Require(_, _) => Ok(None),
@@ -391,6 +352,50 @@ fn check_valid_ops(
     }
 }
 
+/// Version of `check_valid_ops` but for 'init' routines.
+/// The only valid ops in an 'init' routine are the 'init' statements.
+/// Updates and special ops are all disallowed.
+
+fn check_valid_ops_init(fields: &Vec<Field>, ts: &TransitionStmt, errors: &mut Vec<Error>) {
+    match ts {
+        TransitionStmt::Block(_, v) => {
+            for t in v.iter() {
+                check_valid_ops_init(fields, t, errors);
+            }
+        }
+        TransitionStmt::Let(_, _, _, _, child) => {
+            check_valid_ops_init(fields, child, errors);
+        }
+        TransitionStmt::If(_, _, thn, els) => {
+            check_valid_ops_init(fields, thn, errors);
+            check_valid_ops_init(fields, els, errors);
+        }
+        TransitionStmt::Require(_, _) => {}
+        TransitionStmt::Assert(span, _) => {
+            errors.push(Error::new(*span, "'assert' statement not allowed in initialization"));
+        }
+        TransitionStmt::Initialize(_, _, _) => {}
+        TransitionStmt::Update(span, _, _) => {
+            errors.push(Error::new(
+                *span,
+                "'update' statement not allowed in initialization; use 'init' instead",
+            ));
+        }
+        TransitionStmt::Special(span, _, _) => {
+            errors.push(Error::new(
+                *span,
+                format!(
+                    "'{:}' statement not allowed in initialization; use 'init' instead",
+                    ts.statement_name()
+                ),
+            ));
+        }
+        TransitionStmt::PostCondition(..) => {
+            panic!("should have have PostCondition statement here");
+        }
+    }
+}
+
 /// Check that the identifiers bound in 'let' statements are all distinct,
 /// and that they don't overlap with the parameters of a transition.
 
@@ -461,10 +466,9 @@ pub fn check_transition(sm: &SM, tr: &Transition) -> syn::parse::Result<()> {
             check_at_most_one_update(sm, &tr.body, &mut errors);
         }
         TransitionKind::Init => {
-            // check exactly one update
-            match check_init(sm, &tr.body) {
-                Ok(()) => {}
-                Err(e) => errors.push(e),
+            check_valid_ops_init(&sm.fields, &tr.body, &mut errors);
+            if errors.len() == 0 {
+                check_exactly_one_init(sm, &tr.body, &mut errors);
             }
         }
     }

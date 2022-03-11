@@ -37,7 +37,7 @@ state_machine!(
         pub fn init(self, ids: Seq<nat>) {
             require(ids_distinct(ids));
             init(ids, ids);
-            init(highest_heard, Seq::new(ids.len(), |i: int| -1))
+            init(highest_heard, Seq::new(ids.len(), |i: int| -1));
         }
 
         #[transition]
