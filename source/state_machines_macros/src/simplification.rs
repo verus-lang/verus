@@ -231,6 +231,27 @@ fn get_field_for_placeholder(e: &Expr) -> String {
     }
 }
 
+fn contains_ident(v: &Vec<Ident>, id: &Ident) -> bool {
+    for id0 in v {
+        if id0.to_string() == id.to_string() {
+            return true;
+        }
+    }
+    return false;
+}
+
+/// Sequences t1 and t2, mutating *t1 to store the result.
+
+fn append_stmt(t1: &mut TransitionStmt, t2: TransitionStmt) {
+    match t1 {
+        TransitionStmt::Block(_span, v) => {
+            return v.push(t2);
+        }
+        _ => {}
+    }
+    *t1 = TransitionStmt::Block(t1.get_span().clone(), vec![t1.clone(), t2]);
+}
+
 // Phase 2. Primary logic of the translation
 //
 // The `field_map` we pass around contains the "temporary" variables as we
@@ -507,25 +528,4 @@ fn simplify_ops_rec(ts: &TransitionStmt, field_map: FieldMap) -> (TransitionStmt
             panic!("PostCondition statement shouldn't exist here");
         }
     }
-}
-
-fn contains_ident(v: &Vec<Ident>, id: &Ident) -> bool {
-    for id0 in v {
-        if id0.to_string() == id.to_string() {
-            return true;
-        }
-    }
-    return false;
-}
-
-// Sequences t1 and t2, mutating *t1 to store the result.
-
-fn append_stmt(t1: &mut TransitionStmt, t2: TransitionStmt) {
-    match t1 {
-        TransitionStmt::Block(_span, v) => {
-            return v.push(t2);
-        }
-        _ => {}
-    }
-    *t1 = TransitionStmt::Block(t1.get_span().clone(), vec![t1.clone(), t2]);
 }

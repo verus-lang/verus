@@ -117,6 +117,20 @@ pub enum TransitionStmt {
     PostCondition(Span, Expr),
 }
 
+// Output of the simplification process
+
+#[derive(Clone, Debug)]
+pub enum SimplifiedStmt {
+    Block(Span, Vec<SimplifiedStmt>, Vec<Expr>),
+    Let(Span, Vec<Ident>, Box<SimplifiedStmt>, Box<SimplifiedStmt>),
+    If(Span, Expr, Box<SimplifiedStmt>, Box<SimplifiedStmt>),
+
+    TmpAssign(Span, Ident, Expr),
+    Require(Span, Expr),
+    Assert(Span, Expr),
+    PostCondition(Span, Expr),
+}
+
 impl SpecialOp {
     /// get the name of an op (for error reporting)
     pub fn statement_name(&self) -> &'static str {
