@@ -1,6 +1,7 @@
 use crate::erase::CompilerCallbacks;
+use crate::util::signalling;
 use crate::verifier::{Verifier, VerifierCallbacks};
-use std::sync::{Arc, Condvar, Mutex};
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 fn mk_compiler<'a, 'b, F>(
@@ -35,16 +36,15 @@ where
     let mut time_erasure1 = Duration::new(0, 0);
     let mut time_erasure2 = Duration::new(0, 0);
 
-    let vir_ready = Arc::new((Mutex::new(None), Condvar::new()));
-    let now_verify = Arc::new((Mutex::new(None), Condvar::new()));
+    let (vir_ready_s, vir_ready_d) = signalling::signal();
+    let (now_verify_s, now_verify_d) = signalling::signal();
     let verifier = Arc::new(Mutex::new(verifier));
     let compiler_thread = {
         let mut verifier_callbacks = VerifierCallbacks {
             verifier: verifier.clone(),
-            vir_ready: vir_ready.clone(),
-            now_verify: now_verify.clone(),
+            vir_ready: vir_ready_s.clone(),
+            now_verify: now_verify_d,
         };
-        let vir_ready = vir_ready.clone();
         let rustc_args = rustc_args.clone();
         let file_loader = file_loader.clone();
         // Run verifier callback to build VIR tree and run verifier
@@ -54,23 +54,14 @@ where
             match status {
                 Ok(_) => Ok(()),
                 Err(_) => {
-                    let (vir_ready, cvar) = &*vir_ready;
-                    *vir_ready.lock().expect("vir_ready mutex") = Some(true);
-                    cvar.notify_one();
+                    vir_ready_s.signal(true);
                     Err(())
                 }
             }
         })
     };
 
-    let compiler_err = {
-        let (lock, cvar) = &*vir_ready;
-        let mut vir_ready = lock.lock().expect("vir_ready mutex");
-        while vir_ready.is_none() {
-            vir_ready = cvar.wait(vir_ready).expect("cvar wait");
-        }
-        vir_ready.unwrap()
-    };
+    let compiler_err = vir_ready_d.wait();
 
     let time1 = Instant::now();
 
@@ -94,11 +85,7 @@ where
             Ok(())
         }
     } {
-        {
-            let (now_verify, cvar) = &*now_verify;
-            *now_verify.lock().expect("now_verify mutex") = Some(true);
-            cvar.notify_one();
-        }
+        now_verify_s.signal(true);
         let _status = compiler_thread.join().expect("join compiler thread");
         let verifier = Arc::try_unwrap(verifier)
             .map_err(|_| ())
@@ -110,11 +97,7 @@ where
 
     let time2 = Instant::now();
 
-    {
-        let (now_verify, cvar) = &*now_verify;
-        *now_verify.lock().expect("now_verify mutex") = Some(false);
-        cvar.notify_one();
-    }
+    now_verify_s.signal(false);
     let status = compiler_thread.join().expect("join compiler thread");
 
     let time3 = Instant::now();

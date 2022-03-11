@@ -2,7 +2,7 @@ use crate::config::Args;
 use crate::context::{ContextX, ErasureInfo};
 use crate::debugger::Debugger;
 use crate::unsupported;
-use crate::util::from_raw_span;
+use crate::util::{from_raw_span, signalling};
 use air::ast::{Command, CommandX, Commands};
 use air::context::ValidityResult;
 use air::errors::{Error, ErrorLabel};
@@ -15,7 +15,7 @@ use rustc_span::{CharPos, FileName, MultiSpan, Span};
 use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::io::Write;
-use std::sync::{Arc, Condvar, Mutex};
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use vir::ast::{Fun, Function, Krate, VirErr, Visibility};
@@ -24,8 +24,8 @@ use vir::def::SnapPos;
 
 pub struct VerifierCallbacks {
     pub verifier: Arc<Mutex<Verifier>>,
-    pub vir_ready: Arc<(Mutex<Option<bool>>, Condvar)>,
-    pub now_verify: Arc<(Mutex<Option<bool>>, Condvar)>,
+    pub vir_ready: signalling::Signaller<bool>,
+    pub now_verify: signalling::Signalled<bool>,
 }
 
 pub struct Verifier {
@@ -681,22 +681,10 @@ impl rustc_driver::Callbacks for VerifierCallbacks {
                 return;
             }
 
-            {
-                let (vir_ready, cvar) = &*self.vir_ready;
-                *vir_ready.lock().expect("vir_ready mutex") = Some(false);
-                cvar.notify_one();
-            }
+            self.vir_ready.signal(false);
 
-            let verifier_err = {
-                let (now_verify, cvar) = &*self.now_verify;
-                let mut now_verify = now_verify.lock().expect("now_verify mutex");
-                while now_verify.is_none() {
-                    now_verify = cvar.wait(now_verify).expect("cvar wait");
-                }
-                now_verify.unwrap()
-            };
-
-            if verifier_err {
+            if self.now_verify.wait() {
+                // there was an error in typeck or borrowck
                 return;
             }
 

@@ -128,3 +128,40 @@ pub(crate) fn slice_vec_map_result<A, B, E, F: Fn(&A) -> Result<B, E>>(
 ) -> Result<Vec<B>, E> {
     slice.iter().map(f).collect()
 }
+
+pub mod signalling {
+    use std::sync::{Arc, Condvar, Mutex};
+
+    #[derive(Clone)]
+    pub struct Signaller<T: Copy> {
+        coord: Arc<(Mutex<Option<T>>, Condvar)>,
+    }
+
+    impl<T: Copy> Signaller<T> {
+        pub fn signal(&self, t: T) {
+            let (value, cvar) = &*self.coord;
+            *value.lock().expect("Signaller mutex") = Some(t);
+            cvar.notify_one();
+        }
+    }
+
+    pub struct Signalled<T: Copy> {
+        coord: Arc<(Mutex<Option<T>>, Condvar)>,
+    }
+
+    impl<T: Copy> Signalled<T> {
+        pub fn wait(&self) -> T {
+            let (lock, cvar) = &*self.coord;
+            let mut value = lock.lock().expect("value mutex");
+            while value.is_none() {
+                value = cvar.wait(value).expect("cvar wait");
+            }
+            value.unwrap()
+        }
+    }
+
+    pub fn signal<T: Copy>() -> (Signaller<T>, Signalled<T>) {
+        let coord = Arc::new((Mutex::new(None), Condvar::new()));
+        (Signaller { coord: coord.clone() }, Signalled { coord: coord.clone() })
+    }
+}
