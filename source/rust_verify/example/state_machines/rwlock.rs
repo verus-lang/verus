@@ -36,7 +36,7 @@ concurrent_state_machine!(RwLock {
     }
 
     #[init]
-    fn initialize_empty(&self) {
+    fn initialize_empty() {
         init(flags, (true, 0));
         init(storage, Option::None);
         init(pending_writer, Option::None);

@@ -19,31 +19,51 @@ pub struct Ctxt {
 }
 
 pub fn parse_impl_item_method(iim: &ImplItemMethod, ctxt: &Ctxt) -> syn::parse::Result<Transition> {
-    let params = parse_sig(&iim.sig)?;
+    let params = parse_sig(&iim.sig, ctxt.kind == TransitionKind::Init)?;
     let body = parse_block(&iim.block, ctxt)?;
     let name = iim.sig.ident.clone();
     return Ok(Transition { kind: ctxt.kind, params, body, name });
 }
 
-fn parse_sig(sig: &Signature) -> syn::parse::Result<Vec<TransitionParam>> {
+fn parse_sig(sig: &Signature, is_init: bool) -> syn::parse::Result<Vec<TransitionParam>> {
     if sig.generics.params.len() > 0 {
         return Err(Error::new(sig.span(), "transition expected no type arguments"));
     }
-    if sig.inputs.len() == 0 {
-        return Err(Error::new(sig.span(), "transition expected self as first argument"));
-    }
-    match sig.inputs[0] {
-        FnArg::Receiver(_) => {}
-        _ => {
-            return Err(Error::new(
-                sig.inputs[0].span(),
-                "transition expected self as first argument",
-            ));
+
+    // For 'init' transitions, don't expect a 'self' argument
+    // For all other transitions *do* expect a 'self' argument
+
+    if is_init {
+        if sig.inputs.len() > 0 {
+            match sig.inputs[0] {
+                FnArg::Receiver(_) => {
+                    return Err(Error::new(
+                        sig.inputs[0].span(),
+                        "'init' procedure should not take 'self' argument; there is no \"previous state\" to reference in an 'init' procedure",
+                    ));
+                }
+                _ => {}
+            }
+        }
+    } else {
+        if sig.inputs.len() == 0 {
+            return Err(Error::new(sig.span(), "transition expected self as first argument"));
+        }
+        match sig.inputs[0] {
+            FnArg::Receiver(_) => {}
+            _ => {
+                return Err(Error::new(
+                    sig.inputs[0].span(),
+                    "transition expected self as first argument",
+                ));
+            }
         }
     }
 
+    let start_idx = if is_init { 0 } else { 1 };
+
     let mut v = Vec::new();
-    for i in 1..sig.inputs.len() {
+    for i in start_idx..sig.inputs.len() {
         let t = &sig.inputs[i];
         let (ident, ty) = match t {
             FnArg::Receiver(_) => {

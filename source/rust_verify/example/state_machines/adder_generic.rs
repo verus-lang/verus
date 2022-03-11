@@ -13,7 +13,7 @@ state_machine!(
         }
 
         #[init]
-        fn initialize(&self, t: T) {
+        fn initialize(t: T) {
             init(number, 0);
             init(t, t);
         }

@@ -19,7 +19,7 @@ concurrent_state_machine!{
         }
 
         #[init]
-        fn initialize(&self, m: int) {
+        fn initialize(m: int) {
             require(m >= 0);
             init(number, 0);
             init(minimum, 0);

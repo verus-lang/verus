@@ -10,8 +10,7 @@ use syn::{Error, ExprMacro, Ident, ImplItemMethod};
 ///
 /// Since macros might introduce arbitrary identifiers or otherwise interfere with
 /// our checks or transformations, we also disallow macros entirely.
-/// (TODO This makes the whole transformation process feel very brittle / non-robust.
-/// Is there something better we can do?)
+/// (See the more detailed explanation in `field_access_visitor.rs`.)
 
 pub fn validate_idents_impl_item_method(iim: &ImplItemMethod) -> syn::parse::Result<()> {
     let mut idv = IdentVisitor::new();

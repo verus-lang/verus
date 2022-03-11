@@ -151,8 +151,8 @@ fn multiset_relation_post_condition_qualified_name(sm: &SM, field: &Field) -> Ty
 /// other thread). Due to the flexibility of the guard protocol, this could theoretically
 /// happen regardless of whether the instance/tokens are synced or sent to the other thread.
 ///
-/// TODO make sure that the Instance/tokens don't inherit !Sync or !Send instances from
-/// the other fields where it doesn't matter. (Completeness issue)
+/// TODO make sure that the Instance/tokens don't inherit !Sync or !Send negative-instances
+/// from the other fields where it doesn't matter. (Completeness issue)
 
 fn instance_struct_stream(sm: &SM) -> TokenStream {
     let insttype = inst_type_name(&sm.name);
@@ -492,27 +492,30 @@ pub fn exchange_stream(
     // Also simplifies away SpecialOps.
 
     let mut errors = Vec::new();
-    walk_translate_expressions(&mut ctxt, &mut tr.body, &mut errors)?;
+    translate_transition(&mut ctxt, &mut tr.body, &mut errors)?;
     combine_errors_or_ok(errors)?;
 
     // translate the (new) TransitionStmt into expressions that
     // can be used as pre-conditions and post-conditions
     // This fills up `ctxt.requires` and `ctxt.ensures`.
-    let _ = exchange_collect(&mut ctxt, &tr.body, Vec::new())?;
+    exchange_collect(&mut ctxt, &tr.body, Vec::new())?;
 
-    // For our purposes here, a 'readonly' is just a special case of a normal transition.
-    // The 'init' transitions are the interesting case.
+    // For our purposes here, a 'readonly' is just a special case of a normal transition,
+    // but 'init' transitions need to be handled differently.
     // For the most part, there are two key differences between init and transition/readonly.
     //
     //   * An 'init' returns an arbitrary new Instance object, whereas a normal transition
     //     takes an Instance as input.
-    //   * An 'init' will always return tokens for every field, and take no tokens as input.
-    //     A normal transition takes only those as input that are necessary.
+    //   * An 'init' will always return tokens for every field, and take no tokens as input
+    //     (except for external 'storage' tokens).
+    //     A normal transition takes tokens as input as is necessary.
     //
     // Generally speaking, the input parameters are going to look like:
     //    (instance as the 'self' argument)?    (present if not init)
     //    (spec transition params,)*            (parameters to the transition)
-    //    (proof token params,)*
+    //    (proof token params,)*                (if init, only includes storage tokens;
+    //                                           otherwise, includes storage tokens AND
+    //                                           tokens of this instance)
 
     let mut in_args: Vec<TokenStream> = Vec::new();
     let mut out_args: Vec<(TokenStream, TokenStream)> = Vec::new();
@@ -1241,37 +1244,33 @@ fn determine_outputs(ctxt: &mut Ctxt, ts: &TransitionStmt) -> syn::parse::Result
     }
 }
 
-/// Translate expressions
-///
 /// The function has several purposes:
 ///
-///   1. Identify any fields `self.foo` that are read
-///   2. Make sure `self` is never used on its own other than for field accesses
-///   3. Replace `self.foo` with the corresponding value from the input tokens,
-///      e.g., `token_foo.foo`
+///   1. Replace `self.foo` subexpression with the corresponding value from the
+///      input tokens, e.g., `token_foo.value`
+///   2. Expand the definitions for any SpecialOps.
 ///
-/// Unfortunately, there are a variety of technical challenges here which have to
-/// do with the fact that this pass operates on raw Rust AST, i.e., it runs BEFORE
-/// type-resolution and even before macro-expansion.
+/// For point (1), we call `translate_expr` on each Rust Expr found in the transition AST.
 ///
-/// In order to ensure this transformation is done correctly, we need to:
+/// For point (2), we translate all the SpecialOp into Require and PostCondition statements.
+/// The Require statements, of course, will become pre-conditions on the exchange method,
+/// while the PostCondition statements become post-conditions (and thus they can refer to
+/// the out-params). Also, when processing the SpecialOps, we determine what params we need
+/// to add to the exchange method (e.g., a 'remove' statement corresponds to an in-param,
+/// an 'add' statement corresponds to an out-param, and so on). We collect that information
+/// in `ctxt.params`.
 ///
-///   * Make sure that identifiers like `token_foo` are not shadowed in the expression
-///   * Disallow macros entirely, which could interfere in a number of ways
-///
-/// Both these things are done in ident_visitor.rs.
-///
-/// This is all very awkward, and it's also hard to be sure we've really handled every
-/// case. The awkwardness here suggests that it would be more principled to do this
-/// in VIR, or with VIR support. Unfortunately, this plan has its own problems: namely,
-/// the type signatures we generate (namely the input tokens) actually depend on the
-/// results of this analysis.
-///
-/// There are a handful of ways that we could address this, but I think we will learn
-/// a lot about the right way to structure this as we try to understand the design behind
-/// more advanced sharding strategies, so I'm not committing to an overhaul right now.
+/// Also note that the translation looks slightly different than the translation done in
+/// `simplification.rs` which is used for the relations describing the atomic transitions.
+/// The reason for that is that the translation of `simplification.rs` often creates
+/// conditions that refer to the entire state (e.g., the safety conditions for 'add').
+/// On the other hand, the conditions we produce here must refer to local state (although
+/// they must also _imply_ the enabling conditions of the atomic transition relation).
+/// Further, we do not create new 'Assert' statements here at all. If the user wants
+/// the exchange postcondition to contain any additional predicates, they can always
+/// add an 'assert' explicitly.
 
-fn walk_translate_expressions(
+fn translate_transition(
     ctxt: &mut Ctxt,
     ts: &mut TransitionStmt,
     errors: &mut Vec<Error>,
@@ -1279,7 +1278,7 @@ fn walk_translate_expressions(
     let new_ts = match ts {
         TransitionStmt::Block(_span, v) => {
             for child in v.iter_mut() {
-                walk_translate_expressions(ctxt, child, errors)?;
+                translate_transition(ctxt, child, errors)?;
             }
             return Ok(());
         }
@@ -1287,14 +1286,14 @@ fn walk_translate_expressions(
             let birds_eye = *lk == LetKind::BirdsEye;
             let init_e = translate_expr(ctxt, e, birds_eye, errors);
             *e = init_e;
-            walk_translate_expressions(ctxt, child, errors)?;
+            translate_transition(ctxt, child, errors)?;
             return Ok(());
         }
         TransitionStmt::If(_span, cond, e1, e2) => {
             let cond_e = translate_expr(ctxt, cond, false, errors);
             *cond = cond_e;
-            walk_translate_expressions(ctxt, e1, errors)?;
-            walk_translate_expressions(ctxt, e2, errors)?;
+            translate_transition(ctxt, e1, errors)?;
+            translate_transition(ctxt, e2, errors)?;
             return Ok(());
         }
         TransitionStmt::Require(_span, e) => {
@@ -1429,6 +1428,22 @@ fn walk_translate_expressions(
     Ok(())
 }
 
+/// Perform translation on the Rust AST Exprs.
+/// We need to find expressions like `self.foo` that refer to individual fields and replace
+/// them with some expression in terms of the parameters of the exchange function.
+/// There are a few ways this can happen, depending on the context:
+///
+///  * Reading a 'Constant' field. In this case, we replace it with the constant value
+///    from the instance object, e.g., `instance.foo()`.
+///
+///  * Reading a 'Variable' field. Replace it with the value from the input token
+///    e.g., `token_foo.value` or `old(token_foo).value`.
+///
+///  * A nondeterministic read. In this case, we replace it with the value of one of the
+///    _out_ parameters. Previous well-formedness checks (`check_birds_eye`) should ensure
+///    that this will only happen in contexts that will ultimately appears in the
+///    post-conditions, never pre-conditions.
+
 fn translate_expr(ctxt: &Ctxt, expr: &Expr, birds_eye: bool, errors: &mut Vec<Error>) -> Expr {
     let mut expr = expr.clone();
     visit_field_accesses(
@@ -1448,7 +1463,7 @@ fn translate_expr(ctxt: &Ctxt, expr: &Expr, birds_eye: bool, errors: &mut Vec<Er
                         }
                     }
                     ShardableType::Constant(_ty) => {
-                        // Always handle constants as normal
+                        // Always handle constants as normal, since we always have access to them.
                         *node = get_const_field_value(ctxt, &field);
                     }
                     _ => {

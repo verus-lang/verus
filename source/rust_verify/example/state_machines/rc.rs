@@ -23,7 +23,7 @@ concurrent_state_machine!(Dupe<#[verifier(maybe_negative)] T> {
     }
 
     #[init]
-    fn initialize_one(&self, t: T) {
+    fn initialize_one(t: T) {
         // Initialize with a single reader
         init(storage, Option::Some(t));
         init(reader, Multiset::singleton(t));
@@ -141,7 +141,7 @@ concurrent_state_machine!(RefCounter<#[verifier(maybe_negative)] T> {
 
 
     #[init]
-    fn initialize_empty(&self) {
+    fn initialize_empty() {
         init(counter, 0);
         init(storage, Option::None);
         init(reader, Multiset::empty());

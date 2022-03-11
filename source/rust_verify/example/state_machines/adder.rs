@@ -12,7 +12,7 @@ state_machine!(
         }
 
         #[init]
-        fn initialize(&self) {
+        fn initialize() {
             let x = 5 + 9;
             init(number, 0);
         }

@@ -19,7 +19,7 @@ concurrent_state_machine!(
         }
 
         #[init]
-        fn initialize(&self, cond: bool) {
+        fn initialize(cond: bool) {
             init(a, 0);
             init(b, 1);
             if cond {

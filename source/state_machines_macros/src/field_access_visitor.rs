@@ -1,3 +1,34 @@
+//! This the module with utilities for processing a Rust Expr.
+//! Formally, the codegen for the token exchange methods needs to:
+//!
+//!  1. Look for all `self.field` subexpressions to determine which fields are read.
+//!  2. Perform substitutions of the `self.field` subexpressions for other expressions
+//!     we construct.
+//!
+//! Unfortunately, attempting to treat a Rust Expr as anything other than a completely
+//! opaque expression comes with a variety of technical challenges, which have to do with
+//! the fact that this has to run before type-resolution and even before macro-expansion.
+//!
+//! In order to ensure this transformation is done correctly, we need to:
+//!
+//!   * Make sure that reserved identifiers like `token_foo` are not shadowed in the expressions
+//!   * Disallow macros entirely, which could interfere in a number of ways
+//!
+//! Both these things are done in ident_visitor.rs.
+//!
+//! This is all very awkward, and it's also hard to be sure we've really handled every
+//! case. The awkwardness here suggests that it would be more principled to do this
+//! in VIR, or with VIR support. Unfortunately, this plan has its own problems: namely,
+//! the type signatures we generate (namely the input tokens) actually depend on the
+//! results of analysis (1).
+//!
+//! If this becomes a problem, there a few things we could do. We could avoid
+//! the need for analysis (1) by requiring the user to be more explicit about which fields
+//! are read. Then we could move the trickiest parts of the analysis into VIR, or at least
+//! use VIR to help us enforce extra constraints we need to hold. However, I intend
+//! to experiment with the current method for now, since generating all the conditions
+//! in the macro has a lot of advantages for usability.
+
 use crate::ast::{Field, LetKind, SpecialOp, TransitionStmt};
 use proc_macro2::Span;
 use std::collections::{HashMap, HashSet};
