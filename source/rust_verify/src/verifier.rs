@@ -315,10 +315,13 @@ impl Verifier {
         // For spec functions, check termination and declare consequence axioms.
         // Declarte them in SCC (strongly connected component) sorted order so that
         // termination checking precedes consequence axioms for each SCC.
-        for scc in &ctx.func_call_graph.sort_sccs() {
-            let scc_nodes = ctx.func_call_graph.get_scc_nodes(scc);
+        for scc in &ctx.global.func_call_sccs {
+            let scc_nodes = ctx.global.func_call_graph.get_scc_nodes(scc);
             // Check termination
             for f in scc_nodes.iter() {
+                if !fun_decls.contains_key(f) {
+                    continue;
+                }
                 let (function, check_commands, _) = &fun_decls[f];
                 if Some(module.clone()) != function.x.visibility.owning_module {
                     continue;
@@ -335,6 +338,9 @@ impl Verifier {
 
             // Declare consequence axioms
             for f in scc_nodes.iter() {
+                if !fun_decls.contains_key(f) {
+                    continue;
+                }
                 let (_, _, decl_commands) = &fun_decls[f];
                 self.run_commands(
                     air_context,

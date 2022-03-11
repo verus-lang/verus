@@ -594,3 +594,40 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] termination_checked_across_modules code! {
+        // We expect this to complain about the lack of 'decreases' clause
+        mod M1 {
+            use builtin::*;
+            #[spec]
+            pub(crate) fn f1(i: int) -> int { crate::M2::f2(i - 1) }
+        }
+        mod M2 {
+            use builtin::*;
+            #[spec]
+            pub(crate) fn f2(i: int) -> int { crate::M1::f1(i - 1) }
+        }
+    } => Err(err) => assert_vir_error(err)
+}
+
+test_verify_one_file! {
+    #[test] termination_checked_across_modules2 code! {
+        mod M1 {
+            use builtin::*;
+            #[spec]
+            pub(crate) fn f1(i: int) -> int {
+                decreases(i);
+                crate::M2::f2(i - 1) // FAILS
+            }
+        }
+        mod M2 {
+            use builtin::*;
+            #[spec]
+            pub(crate) fn f2(i: int) -> int {
+                decreases(i);
+                crate::M1::f1(i - 1) // FAILS
+            }
+        }
+    } => Err(err) => assert_fails(err, 2)
+}
