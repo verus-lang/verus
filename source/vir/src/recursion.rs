@@ -1,6 +1,6 @@
 use crate::ast::{
-    BinaryOp, CallTarget, Constant, Fun, Function, IntRange, MaskSpec, SpannedTyped, TypX, UnaryOp,
-    UnaryOpr, VirErr,
+    BinaryOp, CallTarget, Constant, ExprX, Fun, Function, IntRange, MaskSpec, SpannedTyped, TypX,
+    UnaryOp, UnaryOpr, VirErr,
 };
 use crate::ast_to_sst::expr_to_exp;
 use crate::ast_util::err_str;
@@ -110,7 +110,7 @@ fn terminates(ctxt: &Ctxt, exp: &Exp) -> Result<Exp, VirErr> {
         ExpX::Loc(e) => terminates(ctxt, e),
         ExpX::Call(x, _, args) => {
             let mut e = if *x == ctxt.recursive_function_name
-                || ctxt.ctx.func_call_graph.get_scc_rep(x) == ctxt.scc_rep
+                || ctxt.ctx.global.func_call_graph.get_scc_rep(x) == ctxt.scc_rep
             {
                 check_decrease_call(ctxt, &exp.span, x, args)?
             } else {
@@ -200,7 +200,7 @@ fn terminates(ctxt: &Ctxt, exp: &Exp) -> Result<Exp, VirErr> {
 }
 
 pub(crate) fn is_recursive_exp(ctx: &Ctx, name: &Fun, body: &Exp) -> bool {
-    if ctx.func_call_graph.get_scc_size(name) > 1 {
+    if ctx.global.func_call_graph.get_scc_size(name) > 1 {
         // This function is part of a mutually recursive component
         true
     } else {
@@ -217,7 +217,7 @@ pub(crate) fn is_recursive_exp(ctx: &Ctx, name: &Fun, body: &Exp) -> bool {
 }
 
 pub(crate) fn is_recursive_stm(ctx: &Ctx, name: &Fun, body: &Stm) -> bool {
-    if ctx.func_call_graph.get_scc_size(name) > 1 {
+    if ctx.global.func_call_graph.get_scc_size(name) > 1 {
         // This function is part of a mutually recursive component
         true
     } else {
@@ -258,12 +258,12 @@ fn mk_decreases_at_entry(ctxt: &Ctxt, span: &Span, exps: &Vec<Exp>) -> (Vec<Loca
 // REVIEW: for simplicity, we completely disallow recursive calls from inside closures.
 // It's possible that we could be allow some recursion.
 fn disallow_recursion_exp(ctxt: &Ctxt, exp: &Exp) -> Result<(), VirErr> {
-    let scc_rep = ctxt.ctx.func_call_graph.get_scc_rep(&ctxt.recursive_function_name);
+    let scc_rep = ctxt.ctx.global.func_call_graph.get_scc_rep(&ctxt.recursive_function_name);
     let mut scope_map = ScopeMap::new();
     exp_visitor_check(exp, &mut scope_map, &mut |exp, _scope_map| match &exp.x {
         ExpX::Call(x, _, _)
             if *x == ctxt.recursive_function_name
-                || ctxt.ctx.func_call_graph.get_scc_rep(x) == scc_rep =>
+                || ctxt.ctx.global.func_call_graph.get_scc_rep(x) == scc_rep =>
         {
             err_str(&exp.span, "recursion not allowed here")
         }
@@ -288,7 +288,7 @@ pub(crate) fn check_termination_exp(
     let decreases_exps = vec_map_result(&function.x.decrease, |e| {
         expr_to_exp(ctx, &params_to_pars(&function.x.params, false), e)
     })?;
-    let scc_rep = ctx.func_call_graph.get_scc_rep(&function.x.name);
+    let scc_rep = ctx.global.func_call_graph.get_scc_rep(&function.x.name);
     let scc_rep_clone = scc_rep.clone();
     let ctxt =
         Ctxt { recursive_function_name: function.x.name.clone(), num_decreases, scc_rep, ctx };
@@ -318,7 +318,9 @@ pub(crate) fn check_termination_exp(
     // New body: substitute rec%f(args, fuel) for f(args)
     let body = map_exp_visitor(&body, &mut |exp| match &exp.x {
         ExpX::Call(x, typs, args)
-            if *x == function.x.name || ctx.func_call_graph.get_scc_rep(x) == scc_rep_clone =>
+            if (*x == function.x.name
+                || ctx.global.func_call_graph.get_scc_rep(x) == scc_rep_clone)
+                && ctx.func_map[x].x.body.is_some() =>
         {
             let mut args = (**args).clone();
             let varx = ExpX::Var((str_ident(FUEL_PARAM), Some(0)));
@@ -350,12 +352,13 @@ pub(crate) fn check_termination_stm(
     let decreases_exps = vec_map_result(&function.x.decrease, |e| {
         expr_to_exp(ctx, &params_to_pars(&function.x.params, false), e)
     })?;
-    let scc_rep = ctx.func_call_graph.get_scc_rep(&function.x.name);
+    let scc_rep = ctx.global.func_call_graph.get_scc_rep(&function.x.name);
     let ctxt =
         Ctxt { recursive_function_name: function.x.name.clone(), num_decreases, scc_rep, ctx };
     let stm = map_stm_visitor(body, &mut |s| match &s.x {
         StmX::Call(x, _, args, _)
-            if *x == function.x.name || ctx.func_call_graph.get_scc_rep(x) == ctxt.scc_rep =>
+            if *x == function.x.name
+                || ctx.global.func_call_graph.get_scc_rep(x) == ctxt.scc_rep =>
         {
             let check = check_decrease_call(&ctxt, &s.span, x, args)?;
             let error = error("could not prove termination", &s.span);
@@ -373,20 +376,16 @@ pub(crate) fn check_termination_stm(
 }
 
 pub(crate) fn expand_call_graph(call_graph: &mut Graph<Fun>, function: &Function) {
-    // We only traverse expressions (not statements), since calls only appear in the former (see ast.rs)
-    if let Some(body) = &function.x.body {
-        crate::ast_visitor::expr_visitor_check::<VirErr, _>(body, &mut |expr| {
-            use crate::ast::ExprX;
-            match &expr.x {
-                ExprX::Call(CallTarget::Static(x, _), _) | ExprX::Fuel(x, _) => {
-                    call_graph.add_edge(function.x.name.clone(), x.clone())
-                }
-                _ => {}
+    crate::ast_visitor::function_visitor_check::<VirErr, _>(function, &mut |expr| {
+        match &expr.x {
+            ExprX::Call(CallTarget::Static(x, _), _) => {
+                call_graph.add_edge(function.x.name.clone(), x.clone())
             }
-            Ok(())
-        })
-        .expect("expr_visitor_check failed unexpectedly");
-    }
+            _ => {}
+        }
+        Ok(())
+    })
+    .expect("function_visitor_check failed unexpectedly");
 
     for fun in &function.x.extra_dependencies {
         call_graph.add_edge(function.x.name.clone(), fun.clone());

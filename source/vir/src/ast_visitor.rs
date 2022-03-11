@@ -289,18 +289,7 @@ where
                 },
                 ExprX::Block(ss, e1) => {
                     for stmt in ss.iter() {
-                        match &stmt.x {
-                            StmtX::Expr(e) => {
-                                expr_visitor_control_flow!(expr_visitor_dfs(e, map, mf));
-                            }
-                            StmtX::Decl { pattern, mode: _, init } => {
-                                map.push_scope(true);
-                                if let Some(init) = init {
-                                    expr_visitor_control_flow!(expr_visitor_dfs(init, map, mf));
-                                }
-                                insert_pattern_vars(map, &pattern);
-                            }
-                        }
+                        expr_visitor_control_flow!(stmt_visitor_dfs(stmt, map, mf));
                     }
                     match e1 {
                         None => (),
@@ -316,6 +305,93 @@ where
             }
             VisitorControlFlow::Recurse
         }
+    }
+}
+
+pub(crate) fn stmt_visitor_dfs<T, MF>(
+    stmt: &Stmt,
+    map: &mut VisitorScopeMap,
+    mf: &mut MF,
+) -> VisitorControlFlow<T>
+where
+    MF: FnMut(&mut VisitorScopeMap, &Expr) -> VisitorControlFlow<T>,
+{
+    match &stmt.x {
+        StmtX::Expr(e) => {
+            expr_visitor_control_flow!(expr_visitor_dfs(e, map, mf));
+        }
+        StmtX::Decl { pattern, mode: _, init } => {
+            map.push_scope(true);
+            if let Some(init) = init {
+                expr_visitor_control_flow!(expr_visitor_dfs(init, map, mf));
+            }
+            insert_pattern_vars(map, &pattern);
+        }
+    }
+    VisitorControlFlow::Recurse
+}
+
+pub(crate) fn function_visitor_dfs<T, MF>(
+    function: &Function,
+    map: &mut VisitorScopeMap,
+    mf: &mut MF,
+) -> VisitorControlFlow<T>
+where
+    MF: FnMut(&mut VisitorScopeMap, &Expr) -> VisitorControlFlow<T>,
+{
+    let FunctionX {
+        name: _,
+        visibility: _,
+        mode: _,
+        fuel: _,
+        typ_bounds: _,
+        params: _,
+        ret: _,
+        require,
+        ensure,
+        decrease,
+        mask_spec,
+        is_const: _,
+        publish: _,
+        attrs: _,
+        body,
+        extra_dependencies: _,
+    } = &function.x;
+    for e in require.iter() {
+        expr_visitor_control_flow!(expr_visitor_dfs(e, map, mf));
+    }
+    for e in ensure.iter() {
+        expr_visitor_control_flow!(expr_visitor_dfs(e, map, mf));
+    }
+    for e in decrease.iter() {
+        expr_visitor_control_flow!(expr_visitor_dfs(e, map, mf));
+    }
+    match mask_spec {
+        MaskSpec::NoSpec => {}
+        MaskSpec::InvariantOpens(es) | MaskSpec::InvariantOpensExcept(es) => {
+            for e in es.iter() {
+                expr_visitor_control_flow!(expr_visitor_dfs(e, map, mf));
+            }
+        }
+    }
+    if let Some(e) = body {
+        expr_visitor_control_flow!(expr_visitor_dfs(e, map, mf));
+    }
+    VisitorControlFlow::Recurse
+}
+
+pub(crate) fn function_visitor_check<E, MF>(function: &Function, mf: &mut MF) -> Result<(), E>
+where
+    MF: FnMut(&Expr) -> Result<(), E>,
+{
+    let mut scope_map: VisitorScopeMap = ScopeMap::new();
+    match function_visitor_dfs(function, &mut scope_map, &mut |_scope_map, expr| match mf(expr) {
+        Ok(()) => VisitorControlFlow::Recurse,
+        Err(e) => VisitorControlFlow::Stop(e),
+    }) {
+        VisitorControlFlow::Recurse => Ok(()),
+        VisitorControlFlow::Return => unreachable!(),
+        VisitorControlFlow::Stop(e) => Err(e),
     }
 }
 
