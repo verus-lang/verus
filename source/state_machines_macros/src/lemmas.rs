@@ -109,15 +109,15 @@ fn check_each_lemma_valid(bundle: &SMBundle) -> syn::parse::Result<()> {
     Ok(())
 }
 
-// For the lemma about an 'init' routine,
-// we expect params: `post: X, ...` where `...` are the transition params and X is the self type.
-// For a 'transition' routine,
-// we expect params: `self: X, post: X, ...`
-//
-// NOTE: unfortunately we have to write out the name `X` rather than just using the
-// keyword `Self`. The reason is that using `Self` turns the param into a special 'self'
-// param, which runs into a current limitation of Verus: we cannot have a `#[spec] self`
-// argument on a `#[proof]` function.
+/// For the lemma about an 'init' routine,
+/// we expect params: `post: X, ...` where `...` are the transition params and X is the self type.
+/// For a 'transition' routine,
+/// we expect params: `self: X, post: X, ...`
+///
+/// NOTE: unfortunately we have to write out the name `X` rather than just using the
+/// keyword `Self`. The reason is that using `Self` turns the param into a special 'self'
+/// param, which runs into a current limitation of Verus: we cannot have a `#[spec] self`
+/// argument on a `#[proof]` function.
 
 fn get_expected_params(sm: &SM, t: &Transition) -> Vec<TransitionParam> {
     let mut v = vec![];
@@ -141,9 +141,8 @@ fn get_expected_params(sm: &SM, t: &Transition) -> Vec<TransitionParam> {
     v
 }
 
-// If the params match, return None
-// if no, return a span to error at
-// Pick the earliest span where a discrepancy is found.
+/// If the params match, return None.
+/// If not, return a span to error at. Pick the earliest span where a discrepancy is found.
 
 fn params_match(
     expected: &Vec<TransitionParam>,
@@ -182,7 +181,7 @@ fn params_match(
     return None;
 }
 
-// Check if the `pat` is for the given ident, with no extra stuff.
+/// Check if the `pat` is for the given ident, with no extra stuff.
 fn pat_is_ident(pat: &Pat, ident: &Ident) -> bool {
     match pat {
         Pat::Ident(PatIdent {
@@ -293,11 +292,12 @@ fn check_no_explicit_conditions(bundle: &SMBundle) -> syn::parse::Result<()> {
     //       requires(/* macro-generated pre-conditition */);
     //       ensures(/* macro-generated post-conditition */);
     //       {
-    //         requires(bar);
+    //           requires(bar);
     //       }
     //    }
     //
     // and Verus will reject the `requires` in the block.
+    //
     // The goal of this error message is to just give a more user-friendly message.
     //
     // Strictly speaking, it isn't really even possible to do this check exactly right
