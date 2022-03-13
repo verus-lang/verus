@@ -56,8 +56,9 @@ pub enum ShardableType {
     Variable(Type),
     Constant(Type),
     NotTokenized(Type),
-    Multiset(Type),
     Optional(Type),
+    Map(Type, Type),
+    Multiset(Type),
     StorageOptional(Type),
 }
 
@@ -78,13 +79,17 @@ pub struct Transition {
 
 #[derive(Clone, Debug)]
 pub enum SpecialOp {
-    AddElement(Expr),
-    RemoveElement(Expr),
-    HaveElement(Expr),
-
     AddSome(Expr),
     RemoveSome(Expr),
     HaveSome(Expr),
+
+    AddKV(Expr, Expr),
+    RemoveKV(Expr, Expr),
+    HaveKV(Expr, Expr),
+
+    AddElement(Expr),
+    RemoveElement(Expr),
+    HaveElement(Expr),
 
     DepositSome(Expr),
     WithdrawSome(Expr),
@@ -121,6 +126,9 @@ impl SpecialOp {
     /// get the name of an op (for error reporting)
     pub fn statement_name(&self) -> &'static str {
         match self {
+            SpecialOp::RemoveKV(..) => "remove_kv",
+            SpecialOp::HaveKV(..) => "have_kv",
+            SpecialOp::AddKV(..) => "add_kv",
             SpecialOp::RemoveElement(..) => "remove_element",
             SpecialOp::HaveElement(..) => "have_element",
             SpecialOp::AddElement(..) => "add_element",
@@ -137,6 +145,9 @@ impl SpecialOp {
     /// updates the field value
     pub fn is_modifier(&self) -> bool {
         match self {
+            SpecialOp::RemoveKV(..) => true,
+            SpecialOp::HaveKV(..) => false,
+            SpecialOp::AddKV(..) => true,
             SpecialOp::RemoveElement(..) => true,
             SpecialOp::HaveElement(..) => false,
             SpecialOp::AddElement(..) => true,
@@ -150,25 +161,16 @@ impl SpecialOp {
     }
 
     pub fn is_only_allowed_in_readonly(&self) -> bool {
-        match self {
-            SpecialOp::RemoveElement(..)
-            | SpecialOp::HaveElement(..)
-            | SpecialOp::AddElement(..)
-            | SpecialOp::RemoveSome(..)
-            | SpecialOp::HaveSome(..)
-            | SpecialOp::AddSome(..)
-            | SpecialOp::DepositSome(..)
-            | SpecialOp::WithdrawSome(..) => false,
-
-            SpecialOp::GuardSome(..) => true,
-        }
+        self.is_guard()
     }
 
     pub fn is_have(&self) -> bool {
         match self {
-            SpecialOp::HaveElement(..) | SpecialOp::HaveSome(..) => true,
+            SpecialOp::HaveElement(..) | SpecialOp::HaveSome(..) | SpecialOp::HaveKV(..) => true,
 
-            SpecialOp::RemoveElement(..)
+            SpecialOp::RemoveKV(..)
+            | SpecialOp::AddKV(..)
+            | SpecialOp::RemoveElement(..)
             | SpecialOp::AddElement(..)
             | SpecialOp::RemoveSome(..)
             | SpecialOp::AddSome(..)
@@ -180,9 +182,11 @@ impl SpecialOp {
 
     pub fn is_remove(&self) -> bool {
         match self {
-            SpecialOp::RemoveElement(..) | SpecialOp::RemoveSome(..) => true,
+            SpecialOp::RemoveElement(..) | SpecialOp::RemoveSome(..) | SpecialOp::RemoveKV(..) => true,
 
-            SpecialOp::HaveElement(..)
+            SpecialOp::HaveKV(..)
+            | SpecialOp::AddKV(..)
+            | SpecialOp::HaveElement(..)
             | SpecialOp::AddElement(..)
             | SpecialOp::HaveSome(..)
             | SpecialOp::AddSome(..)
@@ -194,9 +198,11 @@ impl SpecialOp {
 
     pub fn is_add(&self) -> bool {
         match self {
-            SpecialOp::AddElement(..) | SpecialOp::AddSome(..) => true,
+            SpecialOp::AddElement(..) | SpecialOp::AddSome(..) | SpecialOp::AddKV(..) => true,
 
-            SpecialOp::RemoveElement(..)
+            SpecialOp::RemoveKV(..)
+            | SpecialOp::HaveKV(..)
+            | SpecialOp::RemoveElement(..)
             | SpecialOp::HaveElement(..)
             | SpecialOp::RemoveSome(..)
             | SpecialOp::HaveSome(..)
@@ -210,10 +216,13 @@ impl SpecialOp {
         match self {
             SpecialOp::GuardSome(..) => true,
 
-            SpecialOp::AddElement(..)
-            | SpecialOp::AddSome(..)
+            SpecialOp::AddKV(..)
+            | SpecialOp::RemoveKV(..)
+            | SpecialOp::HaveKV(..)
+            | SpecialOp::AddElement(..)
             | SpecialOp::RemoveElement(..)
             | SpecialOp::HaveElement(..)
+            | SpecialOp::AddSome(..)
             | SpecialOp::RemoveSome(..)
             | SpecialOp::HaveSome(..)
             | SpecialOp::DepositSome(..)
@@ -283,6 +292,7 @@ impl ShardableType {
             ShardableType::NotTokenized(_) => "not_tokenized",
             ShardableType::Multiset(_) => "multiset",
             ShardableType::Optional(_) => "option",
+            ShardableType::Map(_, _) => "map",
             ShardableType::StorageOptional(_) => "storage_option",
         }
     }
@@ -294,6 +304,7 @@ impl ShardableType {
             ShardableType::NotTokenized(_) => false,
             ShardableType::Multiset(_) => false,
             ShardableType::Optional(_) => false,
+            ShardableType::Map(_, _) => false,
             ShardableType::StorageOptional(_) => true,
         }
     }

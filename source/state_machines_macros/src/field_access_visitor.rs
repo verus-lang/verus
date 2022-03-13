@@ -184,6 +184,22 @@ pub fn visit_field_accesses_all_exprs<F>(
                 ident_to_field,
             );
         }
+        TransitionStmt::Special(_, _, SpecialOp::AddKV(key, val))
+        | TransitionStmt::Special(_, _, SpecialOp::RemoveKV(key, val))
+        | TransitionStmt::Special(_, _, SpecialOp::HaveKV(key, val)) => {
+            visit_field_accesses(
+                key,
+                |errors, field, e| f(errors, field, e, false),
+                errors,
+                ident_to_field,
+            );
+            visit_field_accesses(
+                val,
+                |errors, field, e| f(errors, field, e, false),
+                errors,
+                ident_to_field,
+            );
+        }
     }
 }
 

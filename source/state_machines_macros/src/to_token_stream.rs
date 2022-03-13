@@ -326,11 +326,14 @@ pub fn shardable_type_to_type(span: Span, stype: &ShardableType) -> Type {
         ShardableType::Variable(ty) => ty.clone(),
         ShardableType::Constant(ty) => ty.clone(),
         ShardableType::NotTokenized(ty) => ty.clone(),
-        ShardableType::Multiset(ty) => {
-            Type::Verbatim(quote_spanned! { span => crate::pervasive::multiset::Multiset<#ty> })
-        }
         ShardableType::Optional(ty) => {
             Type::Verbatim(quote_spanned! { span => crate::pervasive::option::Option<#ty> })
+        }
+        ShardableType::Map(key, val) => {
+            Type::Verbatim(quote_spanned! { span => crate::pervasive::map::Map<#key, #val> })
+        }
+        ShardableType::Multiset(ty) => {
+            Type::Verbatim(quote_spanned! { span => crate::pervasive::multiset::Multiset<#ty> })
         }
         ShardableType::StorageOptional(ty) => {
             Type::Verbatim(quote_spanned! { span => crate::pervasive::option::Option<#ty> })

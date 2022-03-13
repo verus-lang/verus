@@ -227,6 +227,7 @@ fn is_allowed_in_update_in_normal_transition(stype: &ShardableType) -> bool {
         ShardableType::NotTokenized(_) => true,
         ShardableType::Multiset(_) => false,
         ShardableType::Optional(_) => false,
+        ShardableType::Map(_, _) => false,
         ShardableType::StorageOptional(_) => false,
     }
 }
@@ -239,10 +240,10 @@ fn is_allowed_in_special_op(stype: &ShardableType, sop: &SpecialOp) -> bool {
         ShardableType::Constant(_) => false,
         ShardableType::NotTokenized(_) => false,
 
-        ShardableType::Multiset(_) => match sop {
-            SpecialOp::AddElement(_) => true,
-            SpecialOp::RemoveElement(_) => true,
-            SpecialOp::HaveElement(_) => true,
+        ShardableType::Map(_, _) => match sop {
+            SpecialOp::AddKV(_, _) => true,
+            SpecialOp::RemoveKV(_, _) => true,
+            SpecialOp::HaveKV(_, _) => true,
             _ => false,
         },
 
@@ -250,6 +251,13 @@ fn is_allowed_in_special_op(stype: &ShardableType, sop: &SpecialOp) -> bool {
             SpecialOp::AddSome(_) => true,
             SpecialOp::RemoveSome(_) => true,
             SpecialOp::HaveSome(_) => true,
+            _ => false,
+        },
+
+        ShardableType::Multiset(_) => match sop {
+            SpecialOp::AddElement(_) => true,
+            SpecialOp::RemoveElement(_) => true,
+            SpecialOp::HaveElement(_) => true,
             _ => false,
         },
 

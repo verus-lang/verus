@@ -71,6 +71,7 @@ fn nondeterministic_read_spec_out_name(field: &Field) -> Ident {
 //     }
 fn field_token_field_type(field: &Field) -> Type {
     match &field.stype {
+        ShardableType::Map(_, _) => { panic!("no single field for map"); }
         ShardableType::Variable(ty) => ty.clone(),
         ShardableType::Constant(ty) => ty.clone(),
         ShardableType::NotTokenized(_ty) => {
@@ -90,8 +91,9 @@ fn stored_object_type(field: &Field) -> Type {
         ShardableType::Variable(_)
         | ShardableType::Constant(_)
         | ShardableType::NotTokenized(_)
-        | ShardableType::Multiset(_)
-        | ShardableType::Optional(_) => {
+        | ShardableType::Optional(_)
+        | ShardableType::Map(_, _)
+        | ShardableType::Multiset(_) => {
             panic!("stored_object_type");
         }
     }
@@ -207,17 +209,22 @@ fn trusted_clone() -> TokenStream {
     };
 }
 
-/// Create the struct for a Token that derives from a
-/// sharding(variable) field.
-fn token_struct_stream(sm: &SM, field: &Field) -> TokenStream {
+/// Create the struct for a Token.
+/// For map types, include the key type to create both a 'key' and 'value' field;
+/// otherwise, just include the value type.
+fn token_struct_stream(sm: &SM, field: &Field, key_ty: Option<&Type>, value_ty: &Type) -> TokenStream {
     let tokenname = field_token_type_name(&sm.name, field);
     let fieldname = field_token_field_name(field);
-    let fieldtype = field_token_field_type(field);
     let insttype = inst_type(sm);
     let gen = &sm.generics;
 
     let impldecl = impl_decl_stream(&field_token_type(sm, field), &sm.generics);
     let impl_token_stream = collection_relation_fns_stream(sm, field);
+
+    let key_field = match key_ty {
+        Some(key_ty) => quote!{ #[spec] pub key: #key_ty, },
+        None => TokenStream::new(),
+    };
 
     return quote! {
         #[proof]
@@ -225,25 +232,14 @@ fn token_struct_stream(sm: &SM, field: &Field) -> TokenStream {
         #[allow(non_camel_case_types)]
         pub struct #tokenname#gen {
             #[spec] pub instance: #insttype,
-            #[spec] pub #fieldname: #fieldtype,
+            #key_field
+            #[spec] pub value: #value_ty,
         }
 
         #impldecl {
             #impl_token_stream
         }
     };
-}
-
-/// Create the struct for a Token that derives from a
-/// sharding(multiset) field.
-fn token_struct_stream_multiset(sm: &SM, field: &Field) -> TokenStream {
-    token_struct_stream(sm, field)
-}
-
-/// Create the struct for a Token that derives from a
-/// sharding(optional) field.
-fn token_struct_stream_optional(sm: &SM, field: &Field) -> TokenStream {
-    token_struct_stream(sm, field)
 }
 
 /// For a given sharding(constant) field, add that constant
@@ -285,21 +281,24 @@ pub fn output_token_types_and_fns(
     inst_impl_token_stream.extend(trusted_clone());
 
     for field in &bundle.sm.fields {
-        match field.stype {
+        match &field.stype {
             ShardableType::Constant(_) => {
                 inst_impl_token_stream.extend(const_fn_stream(field));
             }
-            ShardableType::Variable(_) => {
-                token_stream.extend(token_struct_stream(&bundle.sm, field));
+            ShardableType::Variable(ty) => {
+                token_stream.extend(token_struct_stream(&bundle.sm, field, None, ty));
             }
             ShardableType::NotTokenized(_) => {
                 // don't need to add a struct in this case
             }
-            ShardableType::Multiset(_) => {
-                token_stream.extend(token_struct_stream_multiset(&bundle.sm, field));
+            ShardableType::Optional(ty) => {
+                token_stream.extend(token_struct_stream(&bundle.sm, field, None, ty));
             }
-            ShardableType::Optional(_) => {
-                token_stream.extend(token_struct_stream_optional(&bundle.sm, field));
+            ShardableType::Map(key, val) => {
+                token_stream.extend(token_struct_stream(&bundle.sm, field, Some(key), val));
+            }
+            ShardableType::Multiset(ty) => {
+                token_stream.extend(token_struct_stream(&bundle.sm, field, None, ty));
             }
             ShardableType::StorageOptional(_) => {
                 // storage types don't have tokens; the 'token type' is just the
