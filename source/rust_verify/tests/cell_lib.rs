@@ -35,7 +35,7 @@ const CELL_TEST: &str = code_str! {
     assert(equal(token.value, option::Option::Some(7)));
     assert(equal(x, 5));
 
-    let t = cell.as_ref(&token);
+    let t = cell.borrow(&token);
     assert(equal(*t, 7));
 
     let x = cell.take(&mut token);
@@ -66,7 +66,7 @@ const PTR_TEST: &str = code_str! {
     assert(equal(token.value, option::Option::Some(7)));
     assert(equal(x, 5));
 
-    let t = ptr.as_ref(&token);
+    let t = ptr.borrow(&token);
     assert(equal(*t, 7));
 
     let x = ptr.take(&mut token);
@@ -120,13 +120,13 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] cell_mismatch_as_ref IMPORTS.to_string() + code_str! {
+    #[test] cell_mismatch_borrow IMPORTS.to_string() + code_str! {
         pub fn f() {
             let (cell1, Proof(mut token1)) = PCell::<u32>::empty();
             let (cell2, Proof(mut token2)) = PCell::<u32>::empty();
             cell1.put(&mut token1, 5);
             cell2.put(&mut token2, 5);
-            let x = cell1.as_ref(&token2); // FAILS
+            let x = cell1.borrow(&token2); // FAILS
         }
     } => Err(err) => assert_one_fails(err)
 }
@@ -160,10 +160,10 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] cell_none_as_ref IMPORTS.to_string() + code_str! {
+    #[test] cell_none_borrow IMPORTS.to_string() + code_str! {
         pub fn f() {
             let (cell1, Proof(mut token1)) = PCell::<u32>::empty();
-            let x = cell1.as_ref(&token1); // FAILS
+            let x = cell1.borrow(&token1); // FAILS
         }
     } => Err(err) => assert_one_fails(err)
 }
@@ -203,13 +203,13 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] ptr_mismatch_as_ref IMPORTS.to_string() + code_str! {
+    #[test] ptr_mismatch_borrow IMPORTS.to_string() + code_str! {
         pub fn f() {
             let (ptr1, Proof(mut token1)) = PPtr::<u32>::empty();
             let (ptr2, Proof(mut token2)) = PPtr::<u32>::empty();
             ptr1.put(&mut token1, 5);
             ptr2.put(&mut token2, 5);
-            let x = ptr1.as_ref(&token2); // FAILS
+            let x = ptr1.borrow(&token2); // FAILS
         }
     } => Err(err) => assert_one_fails(err)
 }
@@ -253,10 +253,10 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] ptr_none_as_ref IMPORTS.to_string() + code_str! {
+    #[test] ptr_none_borrow IMPORTS.to_string() + code_str! {
         pub fn f() {
             let (ptr1, Proof(mut token1)) = PPtr::<u32>::empty();
-            let x = ptr1.as_ref(&token1); // FAILS
+            let x = ptr1.borrow(&token1); // FAILS
         }
     } => Err(err) => assert_one_fails(err)
 }

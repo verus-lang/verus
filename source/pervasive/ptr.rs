@@ -18,7 +18,7 @@ use std::alloc::{dealloc};
 ///    the contents, but also to deallocate.
 
 
-// TODO implement: borrow_mut, Drop
+// TODO implement: borrow_mut; figure out Drop, see if we can avoid leaking?
 
 // TODO Identifier should be some opaque type, not necessarily an int
 //type Identifier = int;
@@ -127,7 +127,7 @@ impl<V> PPtr<V> {
 
     #[inline(always)]
     #[verifier(external_body)]
-    pub fn as_ref<'a>(&self, #[proof] perm: &'a Permission<V>) -> &'a V {
+    pub fn borrow<'a>(&self, #[proof] perm: &'a Permission<V>) -> &'a V {
         requires([
             equal(self.view(), perm.pptr),
             perm.value.is_Some(),

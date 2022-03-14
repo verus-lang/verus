@@ -7,7 +7,7 @@ use std::mem::MaybeUninit;
 #[allow(unused_imports)] use crate::pervasive::modes::*;
 
 
-// TODO implement: borrow_mut, drop
+// TODO implement: borrow_mut; figure out Drop, see if we can avoid leaking?
 
 // TODO Identifier should be some opaque type, not necessarily an int
 //type Identifier = int;
@@ -104,7 +104,7 @@ impl<V> PCell<V> {
 
     #[inline(always)]
     #[verifier(external_body)]
-    pub fn as_ref<'a>(&'a self, #[proof] perm: &'a Permission<V>) -> &'a V {
+    pub fn borrow<'a>(&'a self, #[proof] perm: &'a Permission<V>) -> &'a V {
         requires([
             equal(self.view(), perm.pcell),
             perm.value.is_Some(),
