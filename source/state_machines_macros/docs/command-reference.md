@@ -105,17 +105,17 @@ Storage:
    * `withdraw(f, x)` --> `assert(post.f >= x); post.f := post.f - x`
    * `guard(f, x)` --> `assert(post.f >= x);`
    * `deposit(f, x)` --> `assert(post.f ## x); post.f := post.f · x`
- * `storage(option)` field of type `Option<T>`
+ * `sharding(storage_option)` field of type `Option<T>`
    * `Option<T>` is given a monoidal structure where `None` is unit and `Some(x) · Some(y)` is undefined.
    * `withdraw_some(f, x)` --> `withdraw(f, Some(x))`
    * `guard_some(f, x)` --> `guard(f, Some(x))`
    * `deposit_add(f, x)` --> `deposit(f, Some(x))`
- * `storage(multiset)` field of type `Multiset<T>`
+ * `sharding(storage_multiset)` field of type `Multiset<T>`
    * `Option<T>` is given a monoidal structure where (·) is given by multiset addition.
    * `withdraw_element(f, x)` --> `withdraw(f, {x})`
    * `guard_element(f, x)` --> `guard(f, {x})`
    * `deposit_element(f, x)` --> `deposit(f, {x})`
- * `storage(map)` field of type `Map<K, V>`
+ * `sharding(storage_map)` field of type `Map<K, V>`
    * `Map<K, V>` is given a monoidal structure where (·) is map union (undefined in the case of overlapping keys)
    * `withdraw_kv(f, k, v)` --> `withdraw(f, [k := v])`
    * `guard_kv(f, k, v)` --> `guard(f, [k := v])`

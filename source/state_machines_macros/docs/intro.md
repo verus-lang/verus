@@ -1,6 +1,6 @@
 # Overview
 
-The `state_machines_macros` library provides two macros, `state_machine!` and `concurrent_state_machine!`. This overview will discuss the first.
+The `state_machines_macros` library provides two macros, `state_machine!` and `tokenized_state_machine!`. This overview will discuss the first.
 
 The `state_machine!` framework provides a way to establish a basic state machine, consisting of four components:
 
