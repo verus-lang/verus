@@ -227,6 +227,9 @@ enum CallType {
     AddElement,
     HaveElement,
     RemoveElement,
+    AddKV,
+    HaveKV,
+    RemoveKV,
     AddSome,
     HaveSome,
     RemoveSome,
@@ -257,14 +260,21 @@ fn parse_call(call: &ExprCall, ctxt: &Ctxt) -> syn::parse::Result<TransitionStmt
         | CallType::HaveSome
         | CallType::AddSome
         | CallType::RemoveSome
+        | CallType::HaveKV
+        | CallType::AddKV
+        | CallType::RemoveKV
         | CallType::GuardSome
         | CallType::DepositSome
         | CallType::WithdrawSome
         | CallType::HaveElement
         | CallType::AddElement
         | CallType::RemoveElement => {
-            if call.args.len() != 2 {
-                return Err(Error::new(call.span(), "expected 2 arguments"));
+            let n_args = match ct {
+                CallType::HaveKV | CallType::RemoveKV | CallType::AddKV => 3,
+                _ => 2,
+            };
+            if call.args.len() != n_args {
+                return Err(Error::new(call.span(), "expected {n_args:} arguments"));
             }
             let ident = match &call.args[0] {
                 Expr::Path(path) => {
@@ -307,6 +317,22 @@ fn parse_call(call: &ExprCall, ctxt: &Ctxt) -> syn::parse::Result<TransitionStmt
                     ident.clone(),
                     SpecialOp::RemoveElement(e),
                 )),
+                CallType::HaveKV => Ok(TransitionStmt::Special(
+                    call.span(),
+                    ident.clone(),
+                    SpecialOp::HaveKV(e, call.args[2].clone()),
+                )),
+                CallType::AddKV => Ok(TransitionStmt::Special(
+                    call.span(),
+                    ident.clone(),
+                    SpecialOp::AddKV(e, call.args[2].clone()),
+                )),
+                CallType::RemoveKV => Ok(TransitionStmt::Special(
+                    call.span(),
+                    ident.clone(),
+                    SpecialOp::RemoveKV(e, call.args[2].clone()),
+                )),
+
                 CallType::HaveSome => {
                     Ok(TransitionStmt::Special(call.span(), ident.clone(), SpecialOp::HaveSome(e)))
                 }
@@ -372,6 +398,15 @@ fn parse_call_type(callf: &Expr, _ctxt: &Ctxt) -> syn::parse::Result<CallType> {
             }
             if path.path.is_ident("have_element") {
                 return Ok(CallType::HaveElement);
+            }
+            if path.path.is_ident("add_kv") {
+                return Ok(CallType::AddKV);
+            }
+            if path.path.is_ident("remove_kv") {
+                return Ok(CallType::RemoveKV);
+            }
+            if path.path.is_ident("have_kv") {
+                return Ok(CallType::HaveKV);
             }
             if path.path.is_ident("add_some") {
                 return Ok(CallType::AddSome);

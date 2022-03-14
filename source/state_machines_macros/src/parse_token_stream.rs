@@ -327,6 +327,7 @@ enum ShardingType {
     NotTokenized,
     Multiset,
     Optional,
+    Map,
     StorageOptional,
 }
 
@@ -368,6 +369,7 @@ fn get_sharding_type(
                                 "constant" => ShardingType::Constant,
                                 "multiset" => ShardingType::Multiset,
                                 "option" => ShardingType::Optional,
+                                "map" => ShardingType::Map,
                                 "storage_option" => ShardingType::StorageOptional,
                                 "not_tokenized" => ShardingType::NotTokenized,
                                 name => {
@@ -430,20 +432,23 @@ fn get_sharding_type(
 /// the type parameter and returns it.
 /// Returns an Error (using the given strategy name in the error message) if the given
 /// type is not of the right form.
-fn extract_template_param(ty: &Type, strategy: &str, type_name: &str) -> syn::parse::Result<Type> {
+fn extract_template_params(ty: &Type, strategy: &str, type_name: &str, num_expected_args: usize) -> syn::parse::Result<Vec<Type>> {
     match ty {
         Type::Path(TypePath { qself: None, path }) if path.segments.len() == 1 => {
             let path_segment = &path.segments[0];
             if path_segment.ident.to_string() == type_name {
                 match &path_segment.arguments {
                     PathArguments::AngleBracketed(args) => {
-                        if args.args.len() == 1 {
-                            let gen_arg = &args.args[0];
-                            match gen_arg {
-                                GenericArgument::Type(ty) => {
-                                    return Ok(ty.clone());
+                        if args.args.len() == num_expected_args {
+                            let types: Vec<Type> = args.args.iter().filter_map(|gen_arg| {
+                                match gen_arg {
+                                    GenericArgument::Type(ty) => Some(ty.clone()),
+                                    _ => None,
                                 }
-                                _ => {}
+                            }).collect();
+                            // Check that the filter_map succeeded for each element:
+                            if types.len() == num_expected_args {
+                                return Ok(types);
                             }
                         }
                     }
@@ -454,7 +459,10 @@ fn extract_template_param(ty: &Type, strategy: &str, type_name: &str) -> syn::pa
         _ => {}
     }
 
-    let expected_form = type_name.to_string() + "<...>";
+    let expected_form = type_name.to_string()
+        + "<"
+        + &vec!["_"; num_expected_args].join(", ")
+        + ">";
     return Err(Error::new(
         ty.span(),
         format!(
@@ -490,14 +498,21 @@ fn to_fields(
             ShardingType::Constant => ShardableType::Constant(field.ty.clone()),
             ShardingType::NotTokenized => ShardableType::NotTokenized(field.ty.clone()),
             ShardingType::Multiset => {
-                ShardableType::Multiset(extract_template_param(&field.ty, "multiset", "Multiset")?)
+                let v = extract_template_params(&field.ty, "multiset", "Multiset", 1)?;
+                ShardableType::Multiset(v[0].clone())
             }
             ShardingType::Optional => {
-                ShardableType::Optional(extract_template_param(&field.ty, "option", "Option")?)
+                let v = extract_template_params(&field.ty, "option", "Option", 1)?;
+                ShardableType::Optional(v[0].clone())
             }
-            ShardingType::StorageOptional => ShardableType::StorageOptional(
-                extract_template_param(&field.ty, "storage_option", "Option")?,
-            ),
+            ShardingType::Map => {
+                let v = extract_template_params(&field.ty, "map", "Map", 2)?;
+                ShardableType::Map(v[0].clone(), v[1].clone())
+            }
+            ShardingType::StorageOptional => {
+                let v = extract_template_params(&field.ty, "storage_option", "Option", 1)?;
+                ShardableType::StorageOptional(v[0].clone())
+            }
         };
 
         field.ty = shardable_type_to_type(field.ty.span(), &stype);

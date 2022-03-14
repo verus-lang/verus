@@ -64,27 +64,6 @@ fn nondeterministic_read_spec_out_name(field: &Field) -> Ident {
     Ident::new(&name, field.name.span())
 }
 
-// The type that goes in the created struct, e.g.,
-//     struct Token {
-//         instance: X_Instance,
-//         value: [[THIS_TYPE]],
-//     }
-fn field_token_field_type(field: &Field) -> Type {
-    match &field.stype {
-        ShardableType::Map(_, _) => { panic!("no single field for map"); }
-        ShardableType::Variable(ty) => ty.clone(),
-        ShardableType::Constant(ty) => ty.clone(),
-        ShardableType::NotTokenized(_ty) => {
-            panic!("no token field for NotTokenized");
-        }
-        ShardableType::Multiset(ty) => ty.clone(),
-        ShardableType::Optional(ty) => ty.clone(),
-        ShardableType::StorageOptional(_ty) => {
-            panic!("no token field for StorageOptional");
-        }
-    }
-}
-
 fn stored_object_type(field: &Field) -> Type {
     match &field.stype {
         ShardableType::StorageOptional(ty) => ty.clone(),
@@ -115,6 +94,16 @@ fn option_relation_post_condition_name(field: &Field) -> Ident {
 fn option_relation_post_condition_qualified_name(sm: &SM, field: &Field) -> Type {
     let ty = field_token_type_turbofish(sm, field);
     let name = option_relation_post_condition_name(field);
+    Type::Verbatim(quote! { #ty::#name })
+}
+
+fn map_relation_post_condition_name(field: &Field) -> Ident {
+    Ident::new("map_agree", field.name.span())
+}
+
+fn map_relation_post_condition_qualified_name(sm: &SM, field: &Field) -> Type {
+    let ty = field_token_type_turbofish(sm, field);
+    let name = map_relation_post_condition_name(field);
     Type::Verbatim(quote! { #ty::#name })
 }
 
@@ -214,7 +203,6 @@ fn trusted_clone() -> TokenStream {
 /// otherwise, just include the value type.
 fn token_struct_stream(sm: &SM, field: &Field, key_ty: Option<&Type>, value_ty: &Type) -> TokenStream {
     let tokenname = field_token_type_name(&sm.name, field);
-    let fieldname = field_token_field_name(field);
     let insttype = inst_type(sm);
     let gen = &sm.generics;
 
@@ -765,6 +753,7 @@ pub fn exchange_stream(
                     }
                 }
                 ShardableType::Multiset(_)
+                | ShardableType::Map(_, _)
                 | ShardableType::StorageOptional(_)
                 | ShardableType::Optional(_) => {
                     // These sharding types all use the SpecialOps. The earlier translation
@@ -912,6 +901,7 @@ fn get_init_param_input_type(_sm: &SM, field: &Field) -> Option<Type> {
         ShardableType::NotTokenized(_) => None,
         ShardableType::Multiset(_) => None,
         ShardableType::Optional(_) => None,
+        ShardableType::Map(_, _) => None,
         ShardableType::StorageOptional(ty) => Some(Type::Verbatim(quote! {
             crate::pervasive::option::Option<#ty>
         })),
@@ -951,6 +941,12 @@ fn get_init_param_output_type(sm: &SM, field: &Field) -> Option<Type> {
                 crate::pervasive::option::Option<#ty>
             }))
         }
+        ShardableType::Map(key, _val) => {
+            let ty = field_token_type(&sm, field);
+            Some(Type::Verbatim(quote! {
+                crate::pervasive::option::Map<#key, #ty>
+            }))
+        }
         ShardableType::StorageOptional(_) => None, // no output token
     }
 }
@@ -976,6 +972,12 @@ fn add_initialization_output_conditions(
         }
         ShardableType::Optional(_) => {
             let fn_name = option_relation_post_condition_qualified_name(sm, field);
+            ensures.push(Expr::Verbatim(quote! {
+                #fn_name(#param_value, #init_value, #inst_value)
+            }));
+        }
+        ShardableType::Map(_, _) => {
+            let fn_name = map_relation_post_condition_qualified_name(sm, field);
             ensures.push(Expr::Verbatim(quote! {
                 #fn_name(#param_value, #init_value, #inst_value)
             }));
@@ -1006,6 +1008,13 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
             let option_normal_ty = Type::Verbatim(quote! {
                 crate::pervasive::option::Option<#ty>
             });
+
+            // Predicate to check the option values agree:
+            //
+            // opt            token_opt
+            // None           None
+            // Some(x)        Some(Token { instance: instance, value: x })
+
             quote! {
                 #[spec]
                 #[verifier(publish)]
@@ -1023,6 +1032,43 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
                 }
             }
         }
+        ShardableType::Map(key, val) => {
+            let fn_name = map_relation_post_condition_name(field);
+            let token_ty = field_token_type(sm, field);
+            let inst_ty = inst_type(sm);
+            let map_token_ty = Type::Verbatim(quote! {
+                crate::pervasive::map::Map<#key, #token_ty>
+            });
+            let map_normal_ty = Type::Verbatim(quote! {
+                crate::pervasive::map::Map<#key, #val>
+            });
+
+            // Predicate to check the map values agree:
+            //
+            // map:
+            // map[k1 := v1]
+            //    [k2 := v2]...
+            //
+            // token_map:
+            // map[k1 := Token { instance: instance, value: v1 }]
+            //    [k1 := Token { instance: instance, value: v2 }]...
+
+            quote! {
+                #[spec]
+                #[verifier(publish)]
+                pub fn #fn_name(token_map: #map_token_ty, m: #map_normal_ty, instance: #inst_ty) -> bool {
+                    ::builtin::equal(token_map.dom(), m.dom())
+                    && ::builtin::forall(|key: #key|
+                        ::builtin::imply(
+                            token_map.dom().contains(key),
+                            ::builin::equal(token_map.index(key).instance, instance)
+                                && ::builin::equal(token_map.index(key).key, key)
+                                && ::builin::equal(token_map.index(key).value, m.index(key))
+                        )
+                    )
+                }
+            }
+        }
         ShardableType::Multiset(ty) => {
             let fn_name = multiset_relation_post_condition_name(field);
             let constructor_name = field_token_type_turbofish(sm, field);
@@ -1035,6 +1081,17 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
             let multiset_normal_ty = Type::Verbatim(quote! {
                 crate::pervasive::multiset::Multiset<#ty>
             });
+
+            // Predicate to check the multiset values agree:
+            //
+            // m:
+            // multiset{v1, v2, ...}
+            //
+            // tokens:
+            // multiset{
+            //    Token { instance: instance, value: v1 }]
+            //    Token { instance: instance, value: v2 }]
+            // }
 
             quote! {
                 #[spec]
@@ -1135,6 +1192,13 @@ fn add_token_param_in_out(
         }
     }
 }
+
+fn mk_and(lhs: Expr, rhs: Expr) -> Expr {
+    Expr::Verbatim(quote! {
+        ((#lhs) && (#rhs))
+    })
+}
+
 
 fn mk_eq(lhs: &Expr, rhs: &Expr) -> Expr {
     Expr::Verbatim(quote! {
@@ -1368,6 +1432,74 @@ fn translate_transition(
 
             TransitionStmt::Require(*span, mk_eq(&Expr::Verbatim(quote! {#ident.#field_name}), &e))
         }
+
+        TransitionStmt::Special(span, id, SpecialOp::HaveKV(key, val)) => {
+            let key = translate_expr(ctxt, key, false, errors);
+            let val = translate_expr(ctxt, val, false, errors);
+
+            let ident = ctxt.get_numbered_token_ident(id);
+            let field = ctxt.get_field_or_panic(id);
+            let ty = field_token_type(&ctxt.sm, &field);
+
+            ctxt.params.get_mut(&field.name.to_string()).expect("get_mut").push(TokenParam {
+                inout_type: InoutType::BorrowIn,
+                name: ident.clone(),
+                ty: ty,
+            });
+
+            TransitionStmt::Require(*span,
+                mk_and(
+                    mk_eq(&Expr::Verbatim(quote! {#ident.key}), &key),
+                    mk_eq(&Expr::Verbatim(quote! {#ident.value}), &val),
+                )
+            )
+        }
+
+        TransitionStmt::Special(span, id, SpecialOp::AddKV(key, val)) => {
+            let key = translate_expr(ctxt, key, false, errors);
+            let val = translate_expr(ctxt, val, false, errors);
+
+            let ident = ctxt.get_numbered_token_ident(id);
+            let field = ctxt.get_field_or_panic(id);
+            let ty = field_token_type(&ctxt.sm, &field);
+
+            ctxt.params.get_mut(&field.name.to_string()).expect("get_mut").push(TokenParam {
+                inout_type: InoutType::Out,
+                name: ident.clone(),
+                ty: ty,
+            });
+
+            TransitionStmt::PostCondition(
+                *span,
+                mk_and(
+                    mk_eq(&Expr::Verbatim(quote! {#ident.key}), &key),
+                    mk_eq(&Expr::Verbatim(quote! {#ident.value}), &val),
+                )
+            )
+        }
+
+        TransitionStmt::Special(span, id, SpecialOp::RemoveKV(key, val)) => {
+            let key = translate_expr(ctxt, key, false, errors);
+            let val = translate_expr(ctxt, val, false, errors);
+
+            let ident = ctxt.get_numbered_token_ident(id);
+            let field = ctxt.get_field_or_panic(id);
+            let ty = field_token_type(&ctxt.sm, &field);
+
+            ctxt.params.get_mut(&field.name.to_string()).expect("get_mut").push(TokenParam {
+                inout_type: InoutType::In,
+                name: ident.clone(),
+                ty: ty,
+            });
+
+            TransitionStmt::Require(*span,
+                mk_and(
+                    mk_eq(&Expr::Verbatim(quote! {#ident.key}), &key),
+                    mk_eq(&Expr::Verbatim(quote! {#ident.value}), &val),
+                )
+            )
+        }
+
 
         TransitionStmt::Special(span, id, SpecialOp::GuardSome(e)) => {
             let e = translate_expr(ctxt, e, false, errors);

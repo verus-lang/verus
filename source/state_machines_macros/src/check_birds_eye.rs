@@ -196,6 +196,10 @@ fn affects_precondition(op: &SpecialOp) -> bool {
         SpecialOp::RemoveSome(_) => true,
         SpecialOp::HaveSome(_) => true,
 
+        SpecialOp::AddKV(_, _) => false,
+        SpecialOp::RemoveKV(_, _) => true,
+        SpecialOp::HaveKV(_, _) => true,
+
         SpecialOp::DepositSome(_) => true,
         SpecialOp::WithdrawSome(_) => false,
         SpecialOp::GuardSome(_) => false,
