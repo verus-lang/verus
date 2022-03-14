@@ -8,13 +8,15 @@
 use crate::ast::{
     Field, Lemma, LetKind, ShardableType, SpecialOp, Transition, TransitionKind, TransitionStmt, SM,
 };
-use crate::checks::{check_ordering_remove_have_add, check_unsupported_updates_in_conditionals};
 use crate::field_access_visitor::{find_all_accesses, visit_field_accesses};
 use crate::parse_token_stream::SMBundle;
 use crate::to_relation::asserts_to_single_predicate;
 use crate::to_token_stream::{
     get_self_ty, get_self_ty_turbofish, impl_decl_stream, name_with_type_args,
     name_with_type_args_turbofish, shardable_type_to_type,
+};
+use crate::token_transition_checks::{
+    check_ordering_remove_have_add, check_unsupported_updates_in_conditionals,
 };
 use crate::util::combine_errors_or_ok;
 use proc_macro2::TokenStream;

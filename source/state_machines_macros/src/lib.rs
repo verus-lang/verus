@@ -5,7 +5,6 @@ extern crate proc_macro;
 mod add_tmp_vars;
 mod ast;
 mod check_birds_eye;
-mod checks;
 mod concurrency_tokens;
 mod field_access_visitor;
 mod ident_visitor;
@@ -16,6 +15,7 @@ mod safety_conditions;
 mod simplification;
 mod to_relation;
 mod to_token_stream;
+mod token_transition_checks;
 mod transitions;
 mod util;
 
