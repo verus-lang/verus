@@ -3,6 +3,11 @@ use proc_macro2::Span;
 use quote::quote;
 use syn::{Expr, Ident};
 
+/// Add temp variables for special ops. More specifically:
+/// Replace each `SpecialOp(_, _, expr)` with
+/// `let update_tmp_x = expr; SpecialOp(_, _, update_tmp_x);`
+/// The scope of the newly-introduced let-statement will reach forward as far as possible.
+
 pub fn add_tmp_vars_special_ops(ts: &TransitionStmt) -> TransitionStmt {
     let mut ctxt = Ctxt { counter: 0 };
 
