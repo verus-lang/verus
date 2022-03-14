@@ -530,6 +530,42 @@ fn simplify_ops_rec(ts: &TransitionStmt, field_map: FieldMap) -> (TransitionStmt
             (TransitionStmt::Require(*span, prec), field_map)
         }
 
+        TransitionStmt::Special(span, f, SpecialOp::GuardKV(key, val)) => {
+            let cur = field_map.get(&f.to_string());
+            let prec = Expr::Verbatim(quote! {
+                (#cur).contains_pair(#key, #val)
+            });
+            (TransitionStmt::Assert(*span, prec), field_map)
+        }
+        TransitionStmt::Special(span, f, SpecialOp::DepositKV(key, val)) => {
+            let mut field_map = field_map;
+            let cur = field_map.get(&f.to_string()).clone();
+            field_map.set(
+                f.to_string(),
+                Expr::Verbatim(quote! {
+                    (#cur).insert(#key, #val)
+                }),
+            );
+            let safety = Expr::Verbatim(quote! {
+                !(#cur).dom().contains(#key)
+            });
+            (TransitionStmt::Assert(*span, safety), field_map)
+        }
+        TransitionStmt::Special(span, f, SpecialOp::WithdrawKV(key, val)) => {
+            let mut field_map = field_map;
+            let cur = field_map.get(&f.to_string()).clone();
+            field_map.set(
+                f.to_string(),
+                Expr::Verbatim(quote! {
+                    (#cur).remove(#key)
+                }),
+            );
+            let prec = Expr::Verbatim(quote! {
+                (#cur).contains_pair(#key, #val)
+            });
+            (TransitionStmt::Assert(*span, prec), field_map)
+        }
+
         TransitionStmt::Special(span, f, SpecialOp::HaveElement(e)) => {
             let cur = field_map.get(&f.to_string());
             let prec = Expr::Verbatim(quote! {

@@ -329,6 +329,7 @@ enum ShardingType {
     Option,
     Map,
     StorageOption,
+    StorageMap,
 }
 
 /// Get the sharding type from the attributes of the field.
@@ -371,6 +372,7 @@ fn get_sharding_type(
                                 "option" => ShardingType::Option,
                                 "map" => ShardingType::Map,
                                 "storage_option" => ShardingType::StorageOption,
+                                "storage_map" => ShardingType::StorageMap,
                                 "not_tokenized" => ShardingType::NotTokenized,
                                 name => {
                                     return Err(Error::new(
@@ -517,6 +519,10 @@ fn to_fields(
             ShardingType::StorageOption => {
                 let v = extract_template_params(&field.ty, "storage_option", "Option", 1)?;
                 ShardableType::StorageOption(v[0].clone())
+            }
+            ShardingType::StorageMap => {
+                let v = extract_template_params(&field.ty, "map", "Map", 2)?;
+                ShardableType::StorageMap(v[0].clone(), v[1].clone())
             }
         };
 

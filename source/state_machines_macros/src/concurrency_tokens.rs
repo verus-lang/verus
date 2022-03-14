@@ -69,6 +69,7 @@ fn nondeterministic_read_spec_out_name(field: &Field) -> Ident {
 fn stored_object_type(field: &Field) -> Type {
     match &field.stype {
         ShardableType::StorageOption(ty) => ty.clone(),
+        ShardableType::StorageMap(_key, ty) => ty.clone(),
         ShardableType::Variable(_)
         | ShardableType::Constant(_)
         | ShardableType::NotTokenized(_)
@@ -295,7 +296,7 @@ pub fn output_token_types_and_fns(
             ShardableType::Multiset(ty) => {
                 token_stream.extend(token_struct_stream(&bundle.sm, field, None, ty));
             }
-            ShardableType::StorageOption(_) => {
+            ShardableType::StorageOption(_) | ShardableType::StorageMap(_, _) => {
                 // storage types don't have tokens; the 'token type' is just the
                 // the type of the field
             }
@@ -433,7 +434,8 @@ pub fn exchange_stream(
                 ShardableType::Multiset(_)
                 | ShardableType::Option(_)
                 | ShardableType::Map(_, _)
-                | ShardableType::StorageOption(_) => {
+                | ShardableType::StorageOption(_)
+                | ShardableType::StorageMap(_, _) => {
                     init_params.insert(field.name.to_string(), Vec::new());
                 }
                 _ => {}
@@ -761,9 +763,10 @@ pub fn exchange_stream(
                     }
                 }
                 ShardableType::Multiset(_)
+                | ShardableType::Option(_)
                 | ShardableType::Map(_, _)
                 | ShardableType::StorageOption(_)
-                | ShardableType::Option(_) => {
+                | ShardableType::StorageMap(_, _) => {
                     // These sharding types all use the SpecialOps. The earlier translation
                     // phase has already processed those and established all the necessary
                     // pre-conditions and post-conditions, and it has also established
@@ -913,6 +916,9 @@ fn get_init_param_input_type(_sm: &SM, field: &Field) -> Option<Type> {
         ShardableType::StorageOption(ty) => Some(Type::Verbatim(quote! {
             crate::pervasive::option::Option<#ty>
         })),
+        ShardableType::StorageMap(key, val) => Some(Type::Verbatim(quote! {
+            crate::pervasive::map::Map<#key, #val>
+        })),
     }
 }
 
@@ -923,7 +929,8 @@ fn add_initialization_input_conditions(
     param_value: Expr,
 ) {
     match &field.stype {
-        ShardableType::StorageOption(_) => {
+        ShardableType::StorageOption(_) |
+        ShardableType::StorageMap(_, _) => {
             requires.push(mk_eq(&param_value, &init_value));
         }
         _ => {
@@ -955,7 +962,8 @@ fn get_init_param_output_type(sm: &SM, field: &Field) -> Option<Type> {
                 crate::pervasive::map::Map<#key, #ty>
             }))
         }
-        ShardableType::StorageOption(_) => None, // no output token
+        ShardableType::StorageOption(_) => None, // no output tokens for storage
+        ShardableType::StorageMap(_, _) => None,
     }
 }
 
@@ -1509,7 +1517,9 @@ fn translate_transition(
             )
         }
 
-        TransitionStmt::Special(span, id, SpecialOp::GuardSome(e)) => {
+        TransitionStmt::Special(span, id, SpecialOp::GuardSome(e))
+        | TransitionStmt::Special(span, id, SpecialOp::GuardKV(_, e)) => {
+            // note: ignore 'key' expression for the KV case
             let e = translate_expr(ctxt, e, false, errors);
 
             let ident = ctxt.get_numbered_token_ident(id);
@@ -1525,7 +1535,8 @@ fn translate_transition(
             TransitionStmt::PostCondition(*span, mk_eq(&Expr::Verbatim(quote! {*#ident}), &e))
         }
 
-        TransitionStmt::Special(span, id, SpecialOp::DepositSome(e)) => {
+        TransitionStmt::Special(span, id, SpecialOp::DepositSome(e))
+        | TransitionStmt::Special(span, id, SpecialOp::DepositKV(_, e)) => {
             let e = translate_expr(ctxt, e, false, errors);
 
             let ident = ctxt.get_numbered_token_ident(id);
@@ -1541,7 +1552,8 @@ fn translate_transition(
             TransitionStmt::Require(*span, mk_eq(&Expr::Verbatim(quote! {#ident}), &e))
         }
 
-        TransitionStmt::Special(span, id, SpecialOp::WithdrawSome(e)) => {
+        TransitionStmt::Special(span, id, SpecialOp::WithdrawSome(e))
+        | TransitionStmt::Special(span, id, SpecialOp::WithdrawKV(_, e)) => {
             let e = translate_expr(ctxt, e, false, errors);
 
             let ident = ctxt.get_numbered_token_ident(id);

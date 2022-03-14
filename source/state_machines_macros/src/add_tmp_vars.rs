@@ -115,7 +115,12 @@ fn op_replace_with_tmps(
             vec![binding]
         }
 
-        SpecialOp::AddKV(e1, e2) | SpecialOp::RemoveKV(e1, e2) | SpecialOp::HaveKV(e1, e2) => {
+        SpecialOp::AddKV(e1, e2)
+        | SpecialOp::RemoveKV(e1, e2)
+        | SpecialOp::HaveKV(e1, e2)
+        | SpecialOp::DepositKV(e1, e2)
+        | SpecialOp::WithdrawKV(e1, e2)
+        | SpecialOp::GuardKV(e1, e2) => {
             let tmp_name1 = ctxt.get_next_name();
             let tmp_ident1 = Ident::new(&tmp_name1, span);
             let binding1 = (tmp_ident1.clone(), e1.clone());

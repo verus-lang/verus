@@ -224,18 +224,21 @@ enum CallType {
     Require,
     Update,
     Initialize,
+    AddSome,
+    HaveSome,
+    RemoveSome,
     AddElement,
     HaveElement,
     RemoveElement,
     AddKV,
     HaveKV,
     RemoveKV,
-    AddSome,
-    HaveSome,
-    RemoveSome,
     WithdrawSome,
     DepositSome,
     GuardSome,
+    WithdrawKV,
+    DepositKV,
+    GuardKV,
 }
 
 fn parse_call(call: &ExprCall, ctxt: &Ctxt) -> syn::parse::Result<TransitionStmt> {
@@ -255,22 +258,10 @@ fn parse_call(call: &ExprCall, ctxt: &Ctxt) -> syn::parse::Result<TransitionStmt
             let e = call.args[0].clone();
             return Ok(TransitionStmt::Require(call.span(), e));
         }
-        CallType::Update
-        | CallType::Initialize
-        | CallType::HaveSome
-        | CallType::AddSome
-        | CallType::RemoveSome
-        | CallType::HaveKV
-        | CallType::AddKV
-        | CallType::RemoveKV
-        | CallType::GuardSome
-        | CallType::DepositSome
-        | CallType::WithdrawSome
-        | CallType::HaveElement
-        | CallType::AddElement
-        | CallType::RemoveElement => {
+        _ => {
             let n_args = match ct {
-                CallType::HaveKV | CallType::RemoveKV | CallType::AddKV => 3,
+                CallType::HaveKV | CallType::RemoveKV | CallType::AddKV |
+                CallType::GuardKV | CallType::WithdrawKV | CallType::DepositKV => 3,
                 _ => 2,
             };
             if call.args.len() != n_args {
@@ -357,6 +348,22 @@ fn parse_call(call: &ExprCall, ctxt: &Ctxt) -> syn::parse::Result<TransitionStmt
                     ident.clone(),
                     SpecialOp::WithdrawSome(e),
                 )),
+                CallType::GuardKV => Ok(TransitionStmt::Special(
+                    call.span(),
+                    ident.clone(),
+                    SpecialOp::GuardKV(e, call.args[2].clone()),
+                )),
+                CallType::DepositKV => Ok(TransitionStmt::Special(
+                    call.span(),
+                    ident.clone(),
+                    SpecialOp::DepositKV(e, call.args[2].clone()),
+                )),
+                CallType::WithdrawKV => Ok(TransitionStmt::Special(
+                    call.span(),
+                    ident.clone(),
+                    SpecialOp::WithdrawKV(e, call.args[2].clone()),
+                )),
+
                 _ => {
                     panic!("shouldn't get here");
                 }
@@ -425,6 +432,15 @@ fn parse_call_type(callf: &Expr, _ctxt: &Ctxt) -> syn::parse::Result<CallType> {
             }
             if path.path.is_ident("guard_some") {
                 return Ok(CallType::GuardSome);
+            }
+            if path.path.is_ident("deposit_kv") {
+                return Ok(CallType::DepositKV);
+            }
+            if path.path.is_ident("withdraw_kv") {
+                return Ok(CallType::WithdrawKV);
+            }
+            if path.path.is_ident("guard_kv") {
+                return Ok(CallType::GuardKV);
             }
         }
         _ => {

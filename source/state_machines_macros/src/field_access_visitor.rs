@@ -128,6 +128,13 @@ fn get_field_by_ident<'a>(
 /// if the given expression is from the initializer of a `#[birds_eye] let` statement
 /// (i.e., the bool is false for expressions in any non-birds-eye `let` statement,
 /// or in any other non-`let` statement).
+///
+/// Corner case: we skip over the 'key' fields in GuardKV, DepositKV, and WithdrawKV,
+/// (i.e., for the StorageMap case). The field is actually irrelevant for the codegen
+/// of an exchange method, because a token guarded, deposited, or withdrawn is just
+/// the value exactly.
+/// (This ONLY applies to the StorageMap, not the ordinary Map; i.e., for
+/// RemoveKV, AddKV, and HaveKV, we check the 'key' expression like you'd expect.)
 
 pub fn visit_field_accesses_all_exprs<F>(
     ts: &mut TransitionStmt,
@@ -176,7 +183,10 @@ pub fn visit_field_accesses_all_exprs<F>(
         | TransitionStmt::Special(_, _, SpecialOp::HaveSome(e))
         | TransitionStmt::Special(_, _, SpecialOp::DepositSome(e))
         | TransitionStmt::Special(_, _, SpecialOp::WithdrawSome(e))
-        | TransitionStmt::Special(_, _, SpecialOp::GuardSome(e)) => {
+        | TransitionStmt::Special(_, _, SpecialOp::GuardSome(e))
+        | TransitionStmt::Special(_, _, SpecialOp::DepositKV(_, e)) // ignore 'key'
+        | TransitionStmt::Special(_, _, SpecialOp::WithdrawKV(_, e))
+        | TransitionStmt::Special(_, _, SpecialOp::GuardKV(_, e)) => {
             visit_field_accesses(
                 e,
                 |errors, field, e| f(errors, field, e, false),

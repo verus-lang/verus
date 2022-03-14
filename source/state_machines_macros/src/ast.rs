@@ -60,6 +60,7 @@ pub enum ShardableType {
     Map(Type, Type),
     Multiset(Type),
     StorageOption(Type),
+    StorageMap(Type, Type),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Copy)]
@@ -94,6 +95,10 @@ pub enum SpecialOp {
     DepositSome(Expr),
     WithdrawSome(Expr),
     GuardSome(Expr),
+
+    DepositKV(Expr, Expr),
+    WithdrawKV(Expr, Expr),
+    GuardKV(Expr, Expr),
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -138,6 +143,9 @@ impl SpecialOp {
             SpecialOp::DepositSome(..) => "deposit_some",
             SpecialOp::WithdrawSome(..) => "withdraw_some",
             SpecialOp::GuardSome(..) => "guard_some",
+            SpecialOp::DepositKV(..) => "deposit_kv",
+            SpecialOp::WithdrawKV(..) => "withdraw_kv",
+            SpecialOp::GuardKV(..) => "guard_kv",
         }
     }
 
@@ -157,6 +165,9 @@ impl SpecialOp {
             SpecialOp::DepositSome(..) => true,
             SpecialOp::WithdrawSome(..) => true,
             SpecialOp::GuardSome(..) => false,
+            SpecialOp::DepositKV(..) => true,
+            SpecialOp::WithdrawKV(..) => true,
+            SpecialOp::GuardKV(..) => false,
         }
     }
 
@@ -176,7 +187,10 @@ impl SpecialOp {
             | SpecialOp::AddSome(..)
             | SpecialOp::DepositSome(..)
             | SpecialOp::WithdrawSome(..)
-            | SpecialOp::GuardSome(..) => false,
+            | SpecialOp::GuardSome(..)
+            | SpecialOp::DepositKV(..)
+            | SpecialOp::WithdrawKV(..)
+            | SpecialOp::GuardKV(..) => false,
         }
     }
 
@@ -194,7 +208,10 @@ impl SpecialOp {
             | SpecialOp::AddSome(..)
             | SpecialOp::DepositSome(..)
             | SpecialOp::WithdrawSome(..)
-            | SpecialOp::GuardSome(..) => false,
+            | SpecialOp::GuardSome(..)
+            | SpecialOp::DepositKV(..)
+            | SpecialOp::WithdrawKV(..)
+            | SpecialOp::GuardKV(..) => false,
         }
     }
 
@@ -210,13 +227,16 @@ impl SpecialOp {
             | SpecialOp::HaveSome(..)
             | SpecialOp::DepositSome(..)
             | SpecialOp::WithdrawSome(..)
-            | SpecialOp::GuardSome(..) => false,
+            | SpecialOp::GuardSome(..)
+            | SpecialOp::DepositKV(..)
+            | SpecialOp::WithdrawKV(..)
+            | SpecialOp::GuardKV(..) => false,
         }
     }
 
     pub fn is_guard(&self) -> bool {
         match self {
-            SpecialOp::GuardSome(..) => true,
+            SpecialOp::GuardSome(..) | SpecialOp::GuardKV(..) => true,
 
             SpecialOp::AddKV(..)
             | SpecialOp::RemoveKV(..)
@@ -228,7 +248,9 @@ impl SpecialOp {
             | SpecialOp::RemoveSome(..)
             | SpecialOp::HaveSome(..)
             | SpecialOp::DepositSome(..)
-            | SpecialOp::WithdrawSome(..) => false,
+            | SpecialOp::WithdrawSome(..)
+            | SpecialOp::DepositKV(..)
+            | SpecialOp::WithdrawKV(..) => false,
         }
     }
 }
@@ -296,6 +318,7 @@ impl ShardableType {
             ShardableType::Option(_) => "option",
             ShardableType::Map(_, _) => "map",
             ShardableType::StorageOption(_) => "storage_option",
+            ShardableType::StorageMap(_, _) => "storage_map",
         }
     }
 
@@ -308,6 +331,7 @@ impl ShardableType {
             ShardableType::Option(_) => false,
             ShardableType::Map(_, _) => false,
             ShardableType::StorageOption(_) => true,
+            ShardableType::StorageMap(_, _) => true,
         }
     }
 }

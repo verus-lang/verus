@@ -27,6 +27,13 @@ use syn::parse::Error;
 // 3. This is a soundness issue. For the guarding rule to work, the guard has to be a
 //    deterministic function of the inputs to the exchange function.
 //
+//    (Note: this rule may actually be stronger than necessary right now. For example,
+//    in the StorageMap case, suppose we have `guard_kv(key, val)`. Then token being
+//    guarded has value `val`, but it does not depend on the `key` argument.
+//    This means that, in principle, we could have the key depend on a `birds_eye` value
+//    as long as `val` does not. Making this distinction would require more fine-grained
+//    dependency analysis.)
+//
 // 4. The point here is that if we have something like,
 //
 //         #[birds_eye] let x = foo;
@@ -203,5 +210,9 @@ fn affects_precondition(op: &SpecialOp) -> bool {
         SpecialOp::DepositSome(_) => true,
         SpecialOp::WithdrawSome(_) => false,
         SpecialOp::GuardSome(_) => false,
+
+        SpecialOp::DepositKV(_, _) => true,
+        SpecialOp::WithdrawKV(_, _) => false,
+        SpecialOp::GuardKV(_, _) => false,
     }
 }
