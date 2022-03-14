@@ -5,19 +5,18 @@ mod pervasive;
 use crate::pervasive::{*, cell::*};
 #[allow(unused_imports)]
 use crate::cell::*;
+#[allow(unused_imports)] use crate::pervasive::modes::*;
 
 struct X {
-  pub i: u64,
+    pub i: u64,
 }
 
 fn main() {
-  let x = X { i: 5 };
+    let x = X { i: 5 };
 
-  match PCell::empty() {
-    PCellWithToken{pcell, token} => {
-      #[proof] let t1 = pcell.put(x, token);
+    let (pcell, Proof(mut token)) = PCell::empty();
 
-      assert(equal(t1.value, option::Option::Some(X { i : 5 })));
-    }
-  }
+    pcell.put(&mut token, x);
+
+    assert(equal(token.value, option::Option::Some(X { i : 5 })));
 }
