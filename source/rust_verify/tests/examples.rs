@@ -20,8 +20,17 @@ enum Mode {
 }
 
 #[test]
-fn run_examples() {
-    let entries = std::fs::read_dir("example").expect("cannot find example directory");
+fn example() {
+    run_examples_in_directory("example");
+}
+
+#[test]
+fn state_machines() {
+    run_examples_in_directory("example/state_machines");
+}
+
+fn run_examples_in_directory(dir_path: &str) {
+    let entries = std::fs::read_dir(dir_path).expect("cannot find example directory");
 
     for entry in entries {
         let entry = entry.expect("invalid path");
