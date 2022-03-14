@@ -36,8 +36,16 @@ where
     let mut time_erasure1 = Duration::new(0, 0);
     let mut time_erasure2 = Duration::new(0, 0);
 
+    // In order to run borrowck on proof and exec code _before_ lowering to AIR and running Z3,
+    // we start the first instance of rustc, pause it after expansion to generate VIR, then keep
+    // the rustc thread waiting to maintain its state for VIR->AIR and to report errors from Z3.
+
+    // Signal from the rustc thread to this thread that expansion and HIR->VIR are complete
     let (vir_ready_s, vir_ready_d) = signalling::signal();
+    // Signal from this thread to the rustc thread that we've run borrowck (on a separate instance
+    // of rustc) and it's now time to lower to AIR and run Z3
     let (now_verify_s, now_verify_d) = signalling::signal();
+
     let verifier = Arc::new(Mutex::new(verifier));
     let compiler_thread = {
         let mut verifier_callbacks = VerifierCallbacks {
@@ -47,7 +55,7 @@ where
         };
         let rustc_args = rustc_args.clone();
         let file_loader = file_loader.clone();
-        // Run verifier callback to build VIR tree and run verifier
+        // Start rustc in a separate thread: run verifier callback to build VIR tree and run verifier
         std::thread::spawn(move || {
             let verifier_compiler = mk_compiler(&rustc_args, &mut verifier_callbacks, &file_loader);
             let status = verifier_compiler.run();
