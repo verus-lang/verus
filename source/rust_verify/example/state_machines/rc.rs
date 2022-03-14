@@ -284,14 +284,14 @@ impl<S> MyRc<S> {
         MyRc { inst, inv, reader, ptr }
     }
 
-    fn as_ref<'b>(&'b self) -> &'b S {
+    fn borrow<'b>(&'b self) -> &'b S {
         requires(self.wf());
         ensures(|s: &'b S| equal(*s, self.view()));
 
         #[proof] let perm = self.inst.reader_guard(
             self.reader.value,
             &self.reader);
-        &self.ptr.as_ref(perm).s
+        &self.ptr.borrow(perm).s
     }
 
     fn clone(&self) -> Self {
@@ -301,7 +301,7 @@ impl<S> MyRc<S> {
         #[proof] let perm = self.inst.reader_guard(
             self.reader.value,
             &self.reader);
-        let inner_rc_ref = &self.ptr.as_ref(perm);
+        let inner_rc_ref = &self.ptr.borrow(perm);
 
         #[proof] let mut new_reader;
         open_local_invariant!(self.inv.borrow() => g => {
@@ -338,7 +338,7 @@ impl<S> MyRc<S> {
         #[proof] let perm = inst.reader_guard(
             reader.value,
             &reader);
-        let inner_rc_ref = &ptr.as_ref(perm);
+        let inner_rc_ref = &ptr.borrow(perm);
 
         open_local_invariant!(inv.borrow() => g => {
             #[proof] let GhostStuff { rc_perm: mut rc_perm, rc_token: mut rc_token } = g;
