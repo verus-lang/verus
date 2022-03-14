@@ -57,38 +57,38 @@ fn add_tmp_vars(ts: &TransitionStmt, ctxt: &mut Ctxt) -> TransitionStmt {
 }
 
 fn add_tmp_vars_vec(span: Span, v: Vec<TransitionStmt>, ctxt: &mut Ctxt) -> TransitionStmt {
-    let mut res: Vec<TransitionStmt> = Vec::new();
+    let mut stmts: Vec<TransitionStmt> = Vec::new();
+    let mut bindings: Vec<(Ident, Expr)> = Vec::new();
 
-    for ts in v.iter().rev() {
+    for ts in v.iter() {
         match ts {
             TransitionStmt::Require(_, _)
             | TransitionStmt::Assert(_, _)
             | TransitionStmt::Initialize(_, _, _)
             | TransitionStmt::Update(_, _, _)
             | TransitionStmt::PostCondition(..) => {
-                res.push(ts.clone());
+                stmts.push(ts.clone());
             }
 
             TransitionStmt::Special(span, ident, op) => {
-                let (new_op, bindings) = op_replace_with_tmps(ctxt, *span, op.clone());
+                let (new_op, new_bindings) = op_replace_with_tmps(ctxt, *span, op.clone());
                 let new_special = TransitionStmt::Special(*span, ident.clone(), new_op);
-                res.push(new_special);
-                let mut node = TransitionStmt::Block(*span, res.into_iter().rev().collect());
-
-                for (id, e) in bindings {
-                    node = TransitionStmt::Let(*span, id, LetKind::Normal, e, Box::new(node));
-                }
-
-                res = vec![node];
+                stmts.push(new_special);
+                bindings.extend(new_bindings);
             }
 
             _ => {
-                res.push(add_tmp_vars(ts, ctxt));
+                stmts.push(add_tmp_vars(ts, ctxt));
             }
         }
     }
 
-    TransitionStmt::Block(span, res.into_iter().rev().collect())
+    let mut node = TransitionStmt::Block(span, stmts);
+    for (id, e) in bindings.into_iter().rev() {
+        node = TransitionStmt::Let(span, id, LetKind::Normal, e, Box::new(node));
+    }
+
+    node
 }
 
 fn op_replace_with_tmps(
