@@ -386,10 +386,10 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
             state.types.pop_scope();
             mk_expr_typ(&body.clone().typ, ExprX::Choose { params: Arc::new(bs), cond, body })
         }
-        ExprX::Assign(e1, e2) => {
+        ExprX::Assign { is_init, lhs: e1, rhs: e2 } => {
             let e1 = poly_expr(ctx, state, e1);
             let e2 = coerce_expr_to_native(ctx, &poly_expr(ctx, state, e2));
-            mk_expr(ExprX::Assign(e1, e2))
+            mk_expr(ExprX::Assign { is_init: *is_init, lhs: e1, rhs: e2 })
         }
         ExprX::AssertBV(_) => expr.clone(),
         ExprX::Fuel(..) => expr.clone(),

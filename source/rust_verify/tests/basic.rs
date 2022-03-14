@@ -302,3 +302,33 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] test_decl_init_let_pass code! {
+        fn test1() {
+            let x: u64;
+            x = 23;
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_decl_init_let_fail code! {
+        fn test1() {
+            let x: u64;
+            assert(x == 23); // FAILS
+            x = 23;
+        }
+
+        fn test2(a: bool) {
+            let x: u64;
+            if a {
+                x = 1;
+            } else {
+                x = 2;
+            }
+            assert(a >>= (x == 1));
+            assert(false); // FAILS
+        }
+    } => Err(e) => assert_fails(e, 2)
+}

@@ -232,3 +232,14 @@ test_verify_one_file! {
         }
     } => Err(TestErr { has_vir_error: true, .. })
 }
+
+test_verify_one_file! {
+    #[test] spec_let_decl_init_fail code! {
+        #[spec]
+        fn test1() -> u64 {
+            let x: u64;
+            x = 23;
+            x
+        }
+    } => Err(e) => assert_vir_error(e)
+}
