@@ -201,7 +201,12 @@ fn trusted_clone() -> TokenStream {
 /// Create the struct for a Token.
 /// For map types, include the key type to create both a 'key' and 'value' field;
 /// otherwise, just include the value type.
-fn token_struct_stream(sm: &SM, field: &Field, key_ty: Option<&Type>, value_ty: &Type) -> TokenStream {
+fn token_struct_stream(
+    sm: &SM,
+    field: &Field,
+    key_ty: Option<&Type>,
+    value_ty: &Type,
+) -> TokenStream {
     let tokenname = field_token_type_name(&sm.name, field);
     let insttype = inst_type(sm);
     let gen = &sm.generics;
@@ -210,7 +215,7 @@ fn token_struct_stream(sm: &SM, field: &Field, key_ty: Option<&Type>, value_ty: 
     let impl_token_stream = collection_relation_fns_stream(sm, field);
 
     let key_field = match key_ty {
-        Some(key_ty) => quote!{ #[spec] pub key: #key_ty, },
+        Some(key_ty) => quote! { #[spec] pub key: #key_ty, },
         None => TokenStream::new(),
     };
 
@@ -1200,7 +1205,6 @@ fn mk_and(lhs: Expr, rhs: Expr) -> Expr {
     })
 }
 
-
 fn mk_eq(lhs: &Expr, rhs: &Expr) -> Expr {
     Expr::Verbatim(quote! {
         ::builtin::equal(#lhs, #rhs)
@@ -1448,11 +1452,12 @@ fn translate_transition(
                 ty: ty,
             });
 
-            TransitionStmt::Require(*span,
+            TransitionStmt::Require(
+                *span,
                 mk_and(
                     mk_eq(&Expr::Verbatim(quote! {#ident.key}), &key),
                     mk_eq(&Expr::Verbatim(quote! {#ident.value}), &val),
-                )
+                ),
             )
         }
 
@@ -1475,7 +1480,7 @@ fn translate_transition(
                 mk_and(
                     mk_eq(&Expr::Verbatim(quote! {#ident.key}), &key),
                     mk_eq(&Expr::Verbatim(quote! {#ident.value}), &val),
-                )
+                ),
             )
         }
 
@@ -1493,14 +1498,14 @@ fn translate_transition(
                 ty: ty,
             });
 
-            TransitionStmt::Require(*span,
+            TransitionStmt::Require(
+                *span,
                 mk_and(
                     mk_eq(&Expr::Verbatim(quote! {#ident.key}), &key),
                     mk_eq(&Expr::Verbatim(quote! {#ident.value}), &val),
-                )
+                ),
             )
         }
-
 
         TransitionStmt::Special(span, id, SpecialOp::GuardSome(e)) => {
             let e = translate_expr(ctxt, e, false, errors);

@@ -1,3 +1,4 @@
+use crate::add_tmp_vars::add_tmp_vars_special_ops;
 use crate::ast::{SpecialOp, TransitionStmt, SM};
 use proc_macro2::Span;
 use quote::quote;
@@ -79,7 +80,8 @@ use syn::{Expr, Ident};
 // PostCondition statements and mark those positions with placeholders.
 
 pub fn simplify_ops(sm: &SM, ts: &TransitionStmt, is_readonly: bool) -> TransitionStmt {
-    let ts = if !is_readonly { add_placeholders(sm, ts) } else { ts.clone() };
+    let ts = add_tmp_vars_special_ops(ts);
+    let ts = if !is_readonly { add_placeholders(sm, &ts) } else { ts };
 
     let field_map = FieldMap::new(sm);
     let (ts, _field_map) = simplify_ops_rec(&ts, field_map);
@@ -267,9 +269,11 @@ fn append_stmt(t1: &mut TransitionStmt, t2: TransitionStmt) {
 // for their definitions.
 //
 // TODO this is kind of jank and doesn't support all cases right now, and it's also
-// somewhat difficult to the reality of manipulating opaque Rust Exprs which could cause
+// somewhat difficult due to the reality of manipulating opaque Rust Exprs which could cause
 // problems if they are moved into or out of a let-scope that changes the results of path
-// lookups. This would be much easier with VIR support (e.g., if we could have 'mut' local
+// lookups. (Currently, this issue is prevented because we introduce tmp_* variables for
+// the expressions in SpecialOps.)
+// This would be much easier with VIR support (e.g., if we could have 'mut' local
 // variables in spec expressions, it would be a lot easier to represent the
 // update definitions).
 

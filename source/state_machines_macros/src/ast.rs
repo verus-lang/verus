@@ -96,7 +96,7 @@ pub enum SpecialOp {
     GuardSome(Expr),
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum LetKind {
     Normal,
     BirdsEye,
@@ -182,7 +182,9 @@ impl SpecialOp {
 
     pub fn is_remove(&self) -> bool {
         match self {
-            SpecialOp::RemoveElement(..) | SpecialOp::RemoveSome(..) | SpecialOp::RemoveKV(..) => true,
+            SpecialOp::RemoveElement(..) | SpecialOp::RemoveSome(..) | SpecialOp::RemoveKV(..) => {
+                true
+            }
 
             SpecialOp::HaveKV(..)
             | SpecialOp::AddKV(..)

@@ -62,7 +62,7 @@ pub fn validate_ident(ident: &Ident) -> Result<(), Error> {
         }
     }
 
-    for prefix in vec!["token_", "original_field_"] {
+    for prefix in vec!["token_", "original_field_", "update_tmp_"] {
         if ident.to_string().starts_with(prefix) {
             return Err(Error::new(
                 ident.span(),

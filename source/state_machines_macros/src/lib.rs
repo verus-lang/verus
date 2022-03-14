@@ -2,6 +2,7 @@
 
 extern crate proc_macro;
 
+mod add_tmp_vars;
 mod ast;
 mod check_birds_eye;
 mod checks;

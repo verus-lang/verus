@@ -432,7 +432,12 @@ fn get_sharding_type(
 /// the type parameter and returns it.
 /// Returns an Error (using the given strategy name in the error message) if the given
 /// type is not of the right form.
-fn extract_template_params(ty: &Type, strategy: &str, type_name: &str, num_expected_args: usize) -> syn::parse::Result<Vec<Type>> {
+fn extract_template_params(
+    ty: &Type,
+    strategy: &str,
+    type_name: &str,
+    num_expected_args: usize,
+) -> syn::parse::Result<Vec<Type>> {
     match ty {
         Type::Path(TypePath { qself: None, path }) if path.segments.len() == 1 => {
             let path_segment = &path.segments[0];
@@ -440,12 +445,14 @@ fn extract_template_params(ty: &Type, strategy: &str, type_name: &str, num_expec
                 match &path_segment.arguments {
                     PathArguments::AngleBracketed(args) => {
                         if args.args.len() == num_expected_args {
-                            let types: Vec<Type> = args.args.iter().filter_map(|gen_arg| {
-                                match gen_arg {
+                            let types: Vec<Type> = args
+                                .args
+                                .iter()
+                                .filter_map(|gen_arg| match gen_arg {
                                     GenericArgument::Type(ty) => Some(ty.clone()),
                                     _ => None,
-                                }
-                            }).collect();
+                                })
+                                .collect();
                             // Check that the filter_map succeeded for each element:
                             if types.len() == num_expected_args {
                                 return Ok(types);
@@ -459,10 +466,8 @@ fn extract_template_params(ty: &Type, strategy: &str, type_name: &str, num_expec
         _ => {}
     }
 
-    let expected_form = type_name.to_string()
-        + "<"
-        + &vec!["_"; num_expected_args].join(", ")
-        + ">";
+    let expected_form =
+        type_name.to_string() + "<" + &vec!["_"; num_expected_args].join(", ") + ">";
     return Err(Error::new(
         ty.span(),
         format!(
