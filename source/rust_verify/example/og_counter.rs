@@ -7,9 +7,9 @@ use pervasive::*;
 use crate::pervasive::{invariants::*};
 use crate::pervasive::{atomic::*};
 use crate::pervasive::{modes::*};
-use state_machines_macros::concurrent_state_machine;
+use state_machines_macros::tokenized_state_machine;
 
-concurrent_state_machine!(
+tokenized_state_machine!(
     X {
         fields {
             #[sharding(variable)]

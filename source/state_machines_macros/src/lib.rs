@@ -59,6 +59,6 @@ pub fn state_machine(input: TokenStream) -> TokenStream {
 }
 
 #[proc_macro]
-pub fn concurrent_state_machine(input: TokenStream) -> TokenStream {
+pub fn tokenized_state_machine(input: TokenStream) -> TokenStream {
     construct_state_machine(input, true)
 }

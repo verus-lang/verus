@@ -7,14 +7,14 @@ use pervasive::option::*;
 use pervasive::ptr::*;
 use pervasive::cell::*;
 
-use state_machines_macros::concurrent_state_machine;
+use state_machines_macros::tokenized_state_machine;
 
 // TODO make T generic
 struct T {
     t: u8,
 }
 
-concurrent_state_machine!(RwLock {
+tokenized_state_machine!(RwLock {
     fields {
         #[sharding(variable)]
         pub flags: (bool, nat),

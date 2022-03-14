@@ -11,9 +11,9 @@ use pervasive::cell::*;
 use pervasive::modes::*;
 use pervasive::invariants::*;
 
-use state_machines_macros::concurrent_state_machine;
+use state_machines_macros::tokenized_state_machine;
 
-concurrent_state_machine!(Dupe<#[verifier(maybe_negative)] T> {
+tokenized_state_machine!(Dupe<#[verifier(maybe_negative)] T> {
     fields {
         #[sharding(storage_option)]
         pub storage: Option<T>,
@@ -105,7 +105,7 @@ impl<T> Duplicable<T> {
     }
 }
 
-concurrent_state_machine!(RefCounter<#[verifier(maybe_negative)] T> {
+tokenized_state_machine!(RefCounter<#[verifier(maybe_negative)] T> {
     fields {
         #[sharding(variable)]
         pub counter: nat,

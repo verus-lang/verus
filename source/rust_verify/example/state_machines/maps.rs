@@ -4,9 +4,9 @@ mod pervasive;
 use pervasive::*;
 use pervasive::map::*;
 
-use state_machines_macros::concurrent_state_machine;
+use state_machines_macros::tokenized_state_machine;
 
-concurrent_state_machine!(
+tokenized_state_machine!(
     X {
         fields {
             #[sharding(map)]

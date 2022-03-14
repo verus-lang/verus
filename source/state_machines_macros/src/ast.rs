@@ -36,7 +36,7 @@ pub struct TransitionParam {
 
 /// These represent the types of the state machine fields,
 /// along with their sharding strategies.
-/// (For non-concurrent state machines, we just say everything
+/// (For non-tokenized state machines, we just say everything
 /// is 'Variable'.)
 ///
 /// Be aware of the relationship between the enum representation here

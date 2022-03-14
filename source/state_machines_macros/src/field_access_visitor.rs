@@ -84,7 +84,7 @@ where
             }
             Expr::Path(ExprPath { attrs: _, qself: None, path }) if path.is_ident("self") => {
                 self.errors.push(Error::new(span,
-                    "in a concurrent state machine, 'self' cannot be used opaquely; it may only be used by accessing its fields"));
+                    "in a tokenized state machine, 'self' cannot be used opaquely; it may only be used by accessing its fields"));
             }
             Expr::Field(ExprField {
                 base: box Expr::Path(ExprPath { attrs: _, qself: None, path }),

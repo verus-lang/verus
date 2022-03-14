@@ -1,4 +1,4 @@
-//! Output all the generated code specific to concurrent state machines.
+//! Output all the generated code specific to tokenized state machines.
 //! We print declarations for:
 //!
 //!  * The Instance type

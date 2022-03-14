@@ -18,7 +18,7 @@ use syn::parse::Error;
 //
 // The rationale for these rules is as follows:
 //
-// 1. This is self-explanatory. #[birds_eye] is a feature for concurrent state machines.
+// 1. This is self-explanatory. #[birds_eye] is a feature for tokenized state machines.
 //    It only affects the token exchange functions, not the atomic transition relations.
 //
 // 2. We can't even access 'self' in an 'init' transition, so #[birds_eye] wouldn't
@@ -99,7 +99,7 @@ fn check_birds_eye_rec(
                 if !concurrent {
                     errors.push(Error::new(
                         *span,
-                        "#[birds_eye] only makes sense for concurrent state machines; did you mean to use the concurrent_state_machine! macro?"));
+                        "#[birds_eye] only makes sense for tokenized state machines; did you mean to use the tokenized_state_machine! macro?"));
                     is_birds_eye = false; // to prevent the other errors from cluttering
                 }
                 if is_init {

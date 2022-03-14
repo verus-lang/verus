@@ -332,7 +332,7 @@ enum ShardingType {
 }
 
 /// Get the sharding type from the attributes of the field.
-/// In a concurrent state machine, we require this for each field.
+/// In a tokenized state machine, we require this for each field.
 /// In a 'normal' state machine, we error if we find such an attribute
 /// (but internally we represent the field as having the 'variable' strategy).
 
@@ -382,7 +382,7 @@ fn get_sharding_type(
                             if !concurrent {
                                 return Err(Error::new(
                                     attr.span(),
-                                    "sharding strategy only makes sense for concurrent state machines; did you mean to use the concurrent_state_machine! macro?",
+                                    "sharding strategy only makes sense for tokenized state machines; did you mean to use the tokenized_state_machine! macro?",
                                 ));
                             }
                             match res {
@@ -419,7 +419,7 @@ fn get_sharding_type(
         match res {
             None => Err(Error::new(
                 field_span,
-                "concurrent state machine requires a sharding strategy, e.g., #[sharding(variable)]",
+                "tokenized state machine requires a sharding strategy, e.g., #[sharding(variable)]",
             )),
             Some(r) => Ok(r),
         }
