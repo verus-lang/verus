@@ -89,7 +89,7 @@ fn to_relation_rec(ts: &TransitionStmt, p: Option<TokenStream>, weak: bool) -> O
             None => Some(quote! { (#e) }),
             Some(r) => Some(quote! { ((#e) && #r) }),
         },
-        TransitionStmt::Assert(_span, e) => {
+        TransitionStmt::Assert(_span, e, _) => {
             if weak {
                 match p {
                     None => None,
@@ -102,9 +102,9 @@ fn to_relation_rec(ts: &TransitionStmt, p: Option<TokenStream>, weak: bool) -> O
                 }
             }
         }
-        TransitionStmt::Initialize(_, _, _)
-        | TransitionStmt::Update(_, _, _)
-        | TransitionStmt::Special(_, _, _) => {
+        TransitionStmt::Initialize(..)
+        | TransitionStmt::Update(..)
+        | TransitionStmt::Special(..) => {
             panic!("should have been removed in pre-processing step");
         }
     }
@@ -153,11 +153,11 @@ pub fn asserts_to_single_predicate(ts: &TransitionStmt) -> Option<TokenStream> {
                 (Some(e1), Some(e2)) => Some(quote! { if #cond { #e1 } else { #e2 } }),
             }
         }
-        TransitionStmt::Assert(_span, e) => Some(quote! { (#e) }),
-        TransitionStmt::PostCondition(_, _)
-        | TransitionStmt::Require(_, _)
-        | TransitionStmt::Initialize(_, _, _)
-        | TransitionStmt::Update(_, _, _)
-        | TransitionStmt::Special(_, _, _) => None,
+        TransitionStmt::Assert(_span, e, _) => Some(quote! { (#e) }),
+        TransitionStmt::PostCondition(..)
+        | TransitionStmt::Require(..)
+        | TransitionStmt::Initialize(..)
+        | TransitionStmt::Update(..)
+        | TransitionStmt::Special(..) => None,
     }
 }

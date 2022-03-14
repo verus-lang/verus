@@ -1,5 +1,5 @@
 use proc_macro2::Span;
-use syn::{Expr, FieldsNamed, Generics, Ident, ImplItemMethod, Type};
+use syn::{Expr, FieldsNamed, Generics, Ident, ImplItemMethod, Type, Block};
 
 #[derive(Clone, Debug)]
 pub struct SM {
@@ -113,12 +113,12 @@ pub enum TransitionStmt {
     Let(Span, Ident, LetKind, Expr, Box<TransitionStmt>),
     If(Span, Expr, Box<TransitionStmt>, Box<TransitionStmt>),
     Require(Span, Expr),
-    Assert(Span, Expr),
+    Assert(Span, Expr, Option<Block>),
     Update(Span, Ident, Expr),
     Initialize(Span, Ident, Expr),
 
     /// concurrent-state-machine-specific stuff
-    Special(Span, Ident, SpecialOp),
+    Special(Span, Ident, SpecialOp, Option<Block>),
 
     /// Different than an Assert - this statement is allowed to depend on output values.
     /// Used internally by various transformations, both by `concurrency_tokens.rs`

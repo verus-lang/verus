@@ -45,10 +45,10 @@ fn check_updates_refer_to_valid_fields(
             check_updates_refer_to_valid_fields(fields, els, errors);
         }
         TransitionStmt::Require(_, _) => {}
-        TransitionStmt::Assert(_, _) => {}
+        TransitionStmt::Assert(_, _, _) => {}
         TransitionStmt::Update(span, f, _)
         | TransitionStmt::Initialize(span, f, _)
-        | TransitionStmt::Special(span, f, _) => {
+        | TransitionStmt::Special(span, f, _, _) => {
             if !fields_contain(fields, f) {
                 errors
                     .push(Error::new(span.span(), format!("field '{}' not found", f.to_string())));
@@ -136,7 +136,7 @@ fn check_exactly_one_init_rec(
             }
         }
         TransitionStmt::Require(_, _) => Ok(None),
-        TransitionStmt::Assert(_, _) => Ok(None),
+        TransitionStmt::Assert(..) => Ok(None),
         TransitionStmt::Initialize(span, id, _) => {
             if id.to_string() == field.name.to_string() {
                 Ok(Some(*span))
@@ -201,7 +201,7 @@ fn check_at_most_one_update_rec(
             Ok(if o1.is_some() { o1 } else { o2 })
         }
         TransitionStmt::Require(_, _) => Ok(None),
-        TransitionStmt::Assert(_, _) => Ok(None),
+        TransitionStmt::Assert(..) => Ok(None),
         TransitionStmt::Initialize(_, _, _) => Ok(None),
         TransitionStmt::Update(span, id, _) => {
             if id.to_string() == field.name.to_string() {
@@ -308,7 +308,7 @@ fn check_valid_ops(
             check_valid_ops(fields, els, is_readonly, errors);
         }
         TransitionStmt::Require(_, _) => {}
-        TransitionStmt::Assert(_, _) => {}
+        TransitionStmt::Assert(_, _, _) => {}
         TransitionStmt::Initialize(span, _, _) => {
             errors.push(Error::new(
                 span.span(),
@@ -333,7 +333,7 @@ fn check_valid_ops(
                 ));
             }
         }
-        TransitionStmt::Special(span, f, op) => {
+        TransitionStmt::Special(span, f, op, _) => {
             let field = get_field(fields, f);
             if !is_allowed_in_special_op(&field.stype, op) {
                 errors.push(Error::new(
@@ -387,7 +387,7 @@ fn check_valid_ops_init(fields: &Vec<Field>, ts: &TransitionStmt, errors: &mut V
             check_valid_ops_init(fields, els, errors);
         }
         TransitionStmt::Require(_, _) => {}
-        TransitionStmt::Assert(span, _) => {
+        TransitionStmt::Assert(span, _, _) => {
             errors.push(Error::new(*span, "'assert' statement not allowed in initialization"));
         }
         TransitionStmt::Initialize(_, _, _) => {}
@@ -397,7 +397,7 @@ fn check_valid_ops_init(fields: &Vec<Field>, ts: &TransitionStmt, errors: &mut V
                 "'update' statement not allowed in initialization; use 'init' instead",
             ));
         }
-        TransitionStmt::Special(span, _, _) => {
+        TransitionStmt::Special(span, _, _, _) => {
             errors.push(Error::new(
                 *span,
                 format!(
@@ -444,12 +444,12 @@ fn check_let_shadowing_rec(ts: &TransitionStmt, ids: &mut Vec<String>, errors: &
             check_let_shadowing_rec(e1, ids, errors);
             check_let_shadowing_rec(e2, ids, errors);
         }
-        TransitionStmt::Require(_, _) => {}
-        TransitionStmt::Assert(_, _) => {}
-        TransitionStmt::Update(_, _, _) => {}
-        TransitionStmt::Initialize(_, _, _) => {}
+        TransitionStmt::Require(..) => {}
+        TransitionStmt::Assert(..) => {}
+        TransitionStmt::Update(..) => {}
+        TransitionStmt::Initialize(..) => {}
         TransitionStmt::PostCondition(..) => {}
-        TransitionStmt::Special(_, _, _) => {}
+        TransitionStmt::Special(..) => {}
     }
 }
 

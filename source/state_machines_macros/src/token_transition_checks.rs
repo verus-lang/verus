@@ -55,12 +55,12 @@ fn check_unsupported_updates_helper(ts: &TransitionStmt) -> syn::parse::Result<(
             Ok(())
         }
         TransitionStmt::Require(_, _) => Ok(()),
-        TransitionStmt::Assert(_, _) => Ok(()),
+        TransitionStmt::Assert(..) => Ok(()),
         TransitionStmt::Update(_, _, _) => Ok(()),
         TransitionStmt::Initialize(_, _, _) => Ok(()),
         TransitionStmt::PostCondition(..) => Ok(()),
 
-        TransitionStmt::Special(span, _, _) => {
+        TransitionStmt::Special(span, _, _, _) => {
             let name = ts.statement_name();
             return Err(Error::new(
                 *span,
@@ -130,13 +130,13 @@ pub fn check_ordering_remove_have_add_rec(
             Ok((h1 || h2, a1 || a2))
         }
 
-        TransitionStmt::Require(_, _)
-        | TransitionStmt::Assert(_, _)
-        | TransitionStmt::Update(_, _, _)
-        | TransitionStmt::Initialize(_, _, _)
+        TransitionStmt::Require(..)
+        | TransitionStmt::Assert(..)
+        | TransitionStmt::Update(..)
+        | TransitionStmt::Initialize(..)
         | TransitionStmt::PostCondition(..) => Ok((seen_have, seen_add)),
 
-        TransitionStmt::Special(span, id, op) => {
+        TransitionStmt::Special(span, id, op, _) => {
             let msg = "updates for a field should always go in order 'remove -> have -> add'; otherwise, the transition relation may be weaker than necessary";
             if id.to_string() == *field_name {
                 if op.is_remove() {
