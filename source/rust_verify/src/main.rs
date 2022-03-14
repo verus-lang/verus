@@ -41,9 +41,10 @@ pub fn main() {
     let pervasive_path = our_args.pervasive_path.clone();
 
     let file_loader = rust_verify::file_loader::PervasiveFileLoader::new(pervasive_path);
-    let mut verifier = rust_verify::verifier::Verifier::new(our_args);
+    let verifier = rust_verify::verifier::Verifier::new(our_args);
 
-    let status = rust_verify::driver::run(&mut verifier, &rustc_args, &file_loader);
+    let (verifier, status) = rust_verify::driver::run(verifier, rustc_args, file_loader);
+
     if !verifier.encountered_vir_error {
         println!(
             "Verification results:: verified: {} errors: {}",
