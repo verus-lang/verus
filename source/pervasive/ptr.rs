@@ -17,12 +17,10 @@ use std::alloc::{dealloc};
 ///  * The `ptr::Permission` token represents not just the permission to read/write
 ///    the contents, but also to deallocate.
 
+
+// TODO implement: borrow_mut; figure out Drop, see if we can avoid leaking?
+
 // TODO Identifier should be some opaque type, not necessarily an int
-
-// TODO implement: borrow, borrow_mut, take, swap, read_copy
-
-// TODO figure out how Drop should work
-
 //type Identifier = int;
 
 #[verifier(external_body)]
@@ -124,9 +122,12 @@ impl<V> PPtr<V> {
         }
     }
 
+    /// Note that `self` is just a pointer, so it doesn't need to outlive 
+    /// the returned borrow.
+
     #[inline(always)]
     #[verifier(external_body)]
-    pub fn as_ref<'a>(&self, #[proof] perm: &'a Permission<V>) -> &'a V {
+    pub fn borrow<'a>(&self, #[proof] perm: &'a Permission<V>) -> &'a V {
         requires([
             equal(self.view(), perm.pptr),
             perm.value.is_Some(),
@@ -184,5 +185,4 @@ impl<V> PPtr<V> {
         p.put(&mut t, v);
         (p, Proof(t))
     }
-
 }

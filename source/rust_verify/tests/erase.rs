@@ -19,3 +19,14 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] test_regression_70 code! {
+        fn m(v: &mut u64) { }
+
+        fn main() {
+            let v = 6;
+            m(&mut v);
+        }
+    } => Err(e) => assert_eq!(e.errors.len(), 0)
+}

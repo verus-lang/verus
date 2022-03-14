@@ -6,12 +6,10 @@ use std::mem::MaybeUninit;
 #[allow(unused_imports)] use crate::pervasive::*;
 #[allow(unused_imports)] use crate::pervasive::modes::*;
 
+
+// TODO implement: borrow_mut; figure out Drop, see if we can avoid leaking?
+
 // TODO Identifier should be some opaque type, not necessarily an int
-
-// TODO implement: borrow, borrow_mut, take, swap, read_copy
-
-// TODO figure out how Drop should work
-
 //type Identifier = int;
 
 #[verifier(external_body)]
@@ -101,9 +99,12 @@ impl<V> PCell<V> {
         }
     }
 
+    /// Note that `self` actually contains the data in its interior, so it needs
+    /// to outlive the returned borrow.
+
     #[inline(always)]
     #[verifier(external_body)]
-    pub fn as_ref<'a>(&self, #[proof] perm: &'a Permission<V>) -> &'a V {
+    pub fn borrow<'a>(&'a self, #[proof] perm: &'a Permission<V>) -> &'a V {
         requires([
             equal(self.view(), perm.pcell),
             perm.value.is_Some(),
