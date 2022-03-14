@@ -929,8 +929,7 @@ fn add_initialization_input_conditions(
     param_value: Expr,
 ) {
     match &field.stype {
-        ShardableType::StorageOption(_) |
-        ShardableType::StorageMap(_, _) => {
+        ShardableType::StorageOption(_) | ShardableType::StorageMap(_, _) => {
             requires.push(mk_eq(&param_value, &init_value));
         }
         _ => {

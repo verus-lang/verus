@@ -260,8 +260,12 @@ fn parse_call(call: &ExprCall, ctxt: &Ctxt) -> syn::parse::Result<TransitionStmt
         }
         _ => {
             let n_args = match ct {
-                CallType::HaveKV | CallType::RemoveKV | CallType::AddKV |
-                CallType::GuardKV | CallType::WithdrawKV | CallType::DepositKV => 3,
+                CallType::HaveKV
+                | CallType::RemoveKV
+                | CallType::AddKV
+                | CallType::GuardKV
+                | CallType::WithdrawKV
+                | CallType::DepositKV => 3,
                 _ => 2,
             };
             if call.args.len() != n_args {
