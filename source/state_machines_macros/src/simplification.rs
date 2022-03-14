@@ -10,6 +10,7 @@ use syn::{Expr, Ident};
 /// updates. However, we still need to handle 'guard' and 'have' statements, which will
 /// be translated into 'asserts'.
 
+// Implementation:
 // We proceed in two passes (although we can skip the first pass for readonly transitions,
 // since this first pass only has to do with updates).
 //
@@ -265,15 +266,12 @@ fn append_stmt(t1: &mut TransitionStmt, t2: TransitionStmt) {
 // See `docs/command-reference.md` for the command reference and rationale
 // for their definitions.
 //
-// TODO there are a couple of problems: one, we should probably introduce explicit temp
-// variables for the unwieldy expressions that get introduced, and second, we don't
-// handle a case like `{ ... special_op(foo, ...) }; special_op(foo, ...)`
-// i.e., any case where we update a field in a scoped block and then access it outside
-// that scope (again, tmp variables could probably handle this)
-// (see the handling of the 'Let' and 'If' cases)
-// TODO also - and this might be a correctness issue - but moving expressions from _outside_
-// a let-block to inside one could cause shadowing and again we should probably use tmp
-// variables to prevent that
+// TODO this is kind of jank and doesn't support all cases right now, and it's also
+// somewhat difficult to the reality of manipulating opaque Rust Exprs which could cause
+// problems if they are moved into or out of a let-scope that changes the results of path
+// lookups. This would be much easier with VIR support (e.g., if we could have 'mut' local
+// variables in spec expressions, it would be a lot easier to represent the
+// update definitions).
 
 #[derive(Clone)]
 struct FieldMap {

@@ -425,6 +425,7 @@ pub fn exchange_stream(
             match &field.stype {
                 ShardableType::Multiset(_)
                 | ShardableType::Optional(_)
+                | ShardableType::Map(_, _)
                 | ShardableType::StorageOptional(_) => {
                     init_params.insert(field.name.to_string(), Vec::new());
                 }
@@ -944,7 +945,7 @@ fn get_init_param_output_type(sm: &SM, field: &Field) -> Option<Type> {
         ShardableType::Map(key, _val) => {
             let ty = field_token_type(&sm, field);
             Some(Type::Verbatim(quote! {
-                crate::pervasive::option::Map<#key, #ty>
+                crate::pervasive::map::Map<#key, #ty>
             }))
         }
         ShardableType::StorageOptional(_) => None, // no output token
@@ -1061,9 +1062,9 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
                     && ::builtin::forall(|key: #key|
                         ::builtin::imply(
                             token_map.dom().contains(key),
-                            ::builin::equal(token_map.index(key).instance, instance)
-                                && ::builin::equal(token_map.index(key).key, key)
-                                && ::builin::equal(token_map.index(key).value, m.index(key))
+                            ::builtin::equal(token_map.index(key).instance, instance)
+                                && ::builtin::equal(token_map.index(key).key, key)
+                                && ::builtin::equal(token_map.index(key).value, m.index(key))
                         )
                     )
                 }
