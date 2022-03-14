@@ -226,9 +226,9 @@ fn is_allowed_in_update_in_normal_transition(stype: &ShardableType) -> bool {
         ShardableType::Constant(_) => false,
         ShardableType::NotTokenized(_) => true,
         ShardableType::Multiset(_) => false,
-        ShardableType::Optional(_) => false,
+        ShardableType::Option(_) => false,
         ShardableType::Map(_, _) => false,
-        ShardableType::StorageOptional(_) => false,
+        ShardableType::StorageOption(_) => false,
     }
 }
 
@@ -247,7 +247,7 @@ fn is_allowed_in_special_op(stype: &ShardableType, sop: &SpecialOp) -> bool {
             _ => false,
         },
 
-        ShardableType::Optional(_) => match sop {
+        ShardableType::Option(_) => match sop {
             SpecialOp::AddSome(_) => true,
             SpecialOp::RemoveSome(_) => true,
             SpecialOp::HaveSome(_) => true,
@@ -261,7 +261,7 @@ fn is_allowed_in_special_op(stype: &ShardableType, sop: &SpecialOp) -> bool {
             _ => false,
         },
 
-        ShardableType::StorageOptional(_) => match sop {
+        ShardableType::StorageOption(_) => match sop {
             SpecialOp::DepositSome(_) => true,
             SpecialOp::WithdrawSome(_) => true,
             SpecialOp::GuardSome(_) => true,

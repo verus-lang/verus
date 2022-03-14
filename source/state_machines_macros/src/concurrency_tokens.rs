@@ -66,11 +66,11 @@ fn nondeterministic_read_spec_out_name(field: &Field) -> Ident {
 
 fn stored_object_type(field: &Field) -> Type {
     match &field.stype {
-        ShardableType::StorageOptional(ty) => ty.clone(),
+        ShardableType::StorageOption(ty) => ty.clone(),
         ShardableType::Variable(_)
         | ShardableType::Constant(_)
         | ShardableType::NotTokenized(_)
-        | ShardableType::Optional(_)
+        | ShardableType::Option(_)
         | ShardableType::Map(_, _)
         | ShardableType::Multiset(_) => {
             panic!("stored_object_type");
@@ -284,7 +284,7 @@ pub fn output_token_types_and_fns(
             ShardableType::NotTokenized(_) => {
                 // don't need to add a struct in this case
             }
-            ShardableType::Optional(ty) => {
+            ShardableType::Option(ty) => {
                 token_stream.extend(token_struct_stream(&bundle.sm, field, None, ty));
             }
             ShardableType::Map(key, val) => {
@@ -293,7 +293,7 @@ pub fn output_token_types_and_fns(
             ShardableType::Multiset(ty) => {
                 token_stream.extend(token_struct_stream(&bundle.sm, field, None, ty));
             }
-            ShardableType::StorageOptional(_) => {
+            ShardableType::StorageOption(_) => {
                 // storage types don't have tokens; the 'token type' is just the
                 // the type of the field
             }
@@ -429,9 +429,9 @@ pub fn exchange_stream(
         if !is_init {
             match &field.stype {
                 ShardableType::Multiset(_)
-                | ShardableType::Optional(_)
+                | ShardableType::Option(_)
                 | ShardableType::Map(_, _)
-                | ShardableType::StorageOptional(_) => {
+                | ShardableType::StorageOption(_) => {
                     init_params.insert(field.name.to_string(), Vec::new());
                 }
                 _ => {}
@@ -760,8 +760,8 @@ pub fn exchange_stream(
                 }
                 ShardableType::Multiset(_)
                 | ShardableType::Map(_, _)
-                | ShardableType::StorageOptional(_)
-                | ShardableType::Optional(_) => {
+                | ShardableType::StorageOption(_)
+                | ShardableType::Option(_) => {
                     // These sharding types all use the SpecialOps. The earlier translation
                     // phase has already processed those and established all the necessary
                     // pre-conditions and post-conditions, and it has also established
@@ -906,9 +906,9 @@ fn get_init_param_input_type(_sm: &SM, field: &Field) -> Option<Type> {
         ShardableType::Constant(_) => None,
         ShardableType::NotTokenized(_) => None,
         ShardableType::Multiset(_) => None,
-        ShardableType::Optional(_) => None,
+        ShardableType::Option(_) => None,
         ShardableType::Map(_, _) => None,
-        ShardableType::StorageOptional(ty) => Some(Type::Verbatim(quote! {
+        ShardableType::StorageOption(ty) => Some(Type::Verbatim(quote! {
             crate::pervasive::option::Option<#ty>
         })),
     }
@@ -921,7 +921,7 @@ fn add_initialization_input_conditions(
     param_value: Expr,
 ) {
     match &field.stype {
-        ShardableType::StorageOptional(_) => {
+        ShardableType::StorageOption(_) => {
             requires.push(mk_eq(&param_value, &init_value));
         }
         _ => {
@@ -941,7 +941,7 @@ fn get_init_param_output_type(sm: &SM, field: &Field) -> Option<Type> {
                 crate::pervasive::multiset::Multiset<#ty>
             }))
         }
-        ShardableType::Optional(_) => {
+        ShardableType::Option(_) => {
             let ty = field_token_type(&sm, field);
             Some(Type::Verbatim(quote! {
                 crate::pervasive::option::Option<#ty>
@@ -953,7 +953,7 @@ fn get_init_param_output_type(sm: &SM, field: &Field) -> Option<Type> {
                 crate::pervasive::map::Map<#key, #ty>
             }))
         }
-        ShardableType::StorageOptional(_) => None, // no output token
+        ShardableType::StorageOption(_) => None, // no output token
     }
 }
 
@@ -976,7 +976,7 @@ fn add_initialization_output_conditions(
                 ::builtin::equal(#param_value.#field_name, #init_value)
             }));
         }
-        ShardableType::Optional(_) => {
+        ShardableType::Option(_) => {
             let fn_name = option_relation_post_condition_qualified_name(sm, field);
             ensures.push(Expr::Verbatim(quote! {
                 #fn_name(#param_value, #init_value, #inst_value)
@@ -1004,7 +1004,7 @@ fn add_initialization_output_conditions(
 /// generated conditions (e.g., see `add_initialization_output_conditions`)
 fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
     match &field.stype {
-        ShardableType::Optional(ty) => {
+        ShardableType::Option(ty) => {
             let fn_name = option_relation_post_condition_name(field);
             let token_ty = field_token_type(sm, field);
             let inst_ty = inst_type(sm);

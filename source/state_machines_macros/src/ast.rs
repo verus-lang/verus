@@ -47,7 +47,7 @@ pub struct TransitionParam {
 /// user is required to declare a type of the form `Option<something>`.
 ///
 /// In the representation here, we actually "destruct" user-provided type,
-/// and just represent it as `Optional(Foo)` (not `Optional(Option<Foo>)`).
+/// and just represent it as `Option(Foo)` (not `Option(Option<Foo>)`).
 /// This way, we can easily talk about `Foo` directly when necessary,
 /// while we can easily reconstruct the user-provided type (see `shardable_type_to_type`).
 
@@ -56,10 +56,10 @@ pub enum ShardableType {
     Variable(Type),
     Constant(Type),
     NotTokenized(Type),
-    Optional(Type),
+    Option(Type),
     Map(Type, Type),
     Multiset(Type),
-    StorageOptional(Type),
+    StorageOption(Type),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Copy)]
@@ -293,9 +293,9 @@ impl ShardableType {
             ShardableType::Constant(_) => "constant",
             ShardableType::NotTokenized(_) => "not_tokenized",
             ShardableType::Multiset(_) => "multiset",
-            ShardableType::Optional(_) => "option",
+            ShardableType::Option(_) => "option",
             ShardableType::Map(_, _) => "map",
-            ShardableType::StorageOptional(_) => "storage_option",
+            ShardableType::StorageOption(_) => "storage_option",
         }
     }
 
@@ -305,9 +305,9 @@ impl ShardableType {
             ShardableType::Constant(_) => false,
             ShardableType::NotTokenized(_) => false,
             ShardableType::Multiset(_) => false,
-            ShardableType::Optional(_) => false,
+            ShardableType::Option(_) => false,
             ShardableType::Map(_, _) => false,
-            ShardableType::StorageOptional(_) => true,
+            ShardableType::StorageOption(_) => true,
         }
     }
 }

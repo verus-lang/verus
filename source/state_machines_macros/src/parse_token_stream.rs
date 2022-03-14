@@ -326,9 +326,9 @@ enum ShardingType {
     Constant,
     NotTokenized,
     Multiset,
-    Optional,
+    Option,
     Map,
-    StorageOptional,
+    StorageOption,
 }
 
 /// Get the sharding type from the attributes of the field.
@@ -368,9 +368,9 @@ fn get_sharding_type(
                                 "variable" => ShardingType::Variable,
                                 "constant" => ShardingType::Constant,
                                 "multiset" => ShardingType::Multiset,
-                                "option" => ShardingType::Optional,
+                                "option" => ShardingType::Option,
                                 "map" => ShardingType::Map,
-                                "storage_option" => ShardingType::StorageOptional,
+                                "storage_option" => ShardingType::StorageOption,
                                 "not_tokenized" => ShardingType::NotTokenized,
                                 name => {
                                     return Err(Error::new(
@@ -506,17 +506,17 @@ fn to_fields(
                 let v = extract_template_params(&field.ty, "multiset", "Multiset", 1)?;
                 ShardableType::Multiset(v[0].clone())
             }
-            ShardingType::Optional => {
+            ShardingType::Option => {
                 let v = extract_template_params(&field.ty, "option", "Option", 1)?;
-                ShardableType::Optional(v[0].clone())
+                ShardableType::Option(v[0].clone())
             }
             ShardingType::Map => {
                 let v = extract_template_params(&field.ty, "map", "Map", 2)?;
                 ShardableType::Map(v[0].clone(), v[1].clone())
             }
-            ShardingType::StorageOptional => {
+            ShardingType::StorageOption => {
                 let v = extract_template_params(&field.ty, "storage_option", "Option", 1)?;
-                ShardableType::StorageOptional(v[0].clone())
+                ShardableType::StorageOption(v[0].clone())
             }
         };
 
