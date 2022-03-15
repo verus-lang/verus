@@ -43,11 +43,11 @@ test_verify_one_file! {
             a: A,
         }
 
-        fn one(v: int) {
+        fn one(v: u64) {
             let t1 = Thing { a: v };
             let t2 = Thing { a: v };
-            let a1: int = t1.a;
-            let a2: int = t2.a;
+            let a1: u64 = t1.a;
+            let a2: u64 = t2.a;
             assert(a1 == a2);
             assert(a1 != a2); // FAILS
         }

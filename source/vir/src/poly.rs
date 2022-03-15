@@ -427,7 +427,7 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
             let invs = Arc::new(invs.collect());
             mk_expr(ExprX::While { cond, body, invs })
         }
-        ExprX::OpenInvariant(inv, binder, body) => {
+        ExprX::OpenInvariant(inv, binder, body, atomicity) => {
             let inv = coerce_expr_to_poly(ctx, &poly_expr(ctx, state, inv));
             state.types.push_scope(true);
             let typ = coerce_typ_to_native(ctx, &binder.a);
@@ -435,7 +435,7 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
             let body = poly_expr(ctx, state, body);
             state.types.pop_scope();
             let binder = binder.new_a(typ.clone());
-            mk_expr(ExprX::OpenInvariant(inv, binder, body))
+            mk_expr(ExprX::OpenInvariant(inv, binder, body, *atomicity))
         }
         ExprX::Return(None) => expr.clone(),
         ExprX::Return(Some(e1)) => {

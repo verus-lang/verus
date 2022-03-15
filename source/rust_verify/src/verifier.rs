@@ -2,23 +2,31 @@ use crate::config::Args;
 use crate::context::{ContextX, ErasureInfo};
 use crate::debugger::Debugger;
 use crate::unsupported;
-use crate::util::from_raw_span;
+use crate::util::{from_raw_span, signalling};
 use air::ast::{Command, CommandX, Commands};
 use air::context::ValidityResult;
 use air::errors::{Error, ErrorLabel};
 use rustc_hir::OwnerNode;
 use rustc_interface::interface::Compiler;
+
 use rustc_middle::ty::TyCtxt;
 use rustc_span::source_map::SourceMap;
 use rustc_span::{CharPos, FileName, MultiSpan, Span};
 use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::io::Write;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
+
 use vir::ast::{Fun, Function, Krate, VirErr, Visibility};
 use vir::ast_util::{fun_as_rust_dbg, is_visible_to};
 use vir::def::SnapPos;
+
+pub struct VerifierCallbacks {
+    pub verifier: Arc<Mutex<Verifier>>,
+    pub vir_ready: signalling::Signaller<bool>,
+    pub now_verify: signalling::Signalled<bool>,
+}
 
 pub struct Verifier {
     pub encountered_vir_error: bool,
@@ -34,6 +42,9 @@ pub struct Verifier {
     pub time_air: Duration,
     pub time_smt_init: Duration,
     pub time_smt_run: Duration,
+
+    pub vir_crate: Option<Krate>,
+    pub air_no_span: Option<air::ast::Span>,
 }
 
 #[derive(Debug)]
@@ -110,7 +121,7 @@ impl Verifier {
             count_verified: 0,
             count_errors: 0,
             errors: Vec::new(),
-            args: args,
+            args,
             test_capture_output: None,
             erasure_hints: None,
             time_vir: Duration::new(0, 0),
@@ -119,6 +130,9 @@ impl Verifier {
             time_air: Duration::new(0, 0),
             time_smt_init: Duration::new(0, 0),
             time_smt_run: Duration::new(0, 0),
+
+            vir_crate: None,
+            air_no_span: None,
         }
     }
 
@@ -315,10 +329,13 @@ impl Verifier {
         // For spec functions, check termination and declare consequence axioms.
         // Declarte them in SCC (strongly connected component) sorted order so that
         // termination checking precedes consequence axioms for each SCC.
-        for scc in &ctx.func_call_graph.sort_sccs() {
-            let scc_nodes = ctx.func_call_graph.get_scc_nodes(scc);
+        for scc in &ctx.global.func_call_sccs {
+            let scc_nodes = ctx.global.func_call_graph.get_scc_nodes(scc);
             // Check termination
             for f in scc_nodes.iter() {
+                if !fun_decls.contains_key(f) {
+                    continue;
+                }
                 let (function, check_commands, _) = &fun_decls[f];
                 if Some(module.clone()) != function.x.visibility.owning_module {
                     continue;
@@ -335,6 +352,9 @@ impl Verifier {
 
             // Declare consequence axioms
             for f in scc_nodes.iter() {
+                if !fun_decls.contains_key(f) {
+                    continue;
+                }
                 let (_, _, decl_commands) = &fun_decls[f];
                 self.run_commands(
                     air_context,
@@ -366,12 +386,10 @@ impl Verifier {
     }
 
     // Verify one or more modules in a crate
-    fn verify_crate(
-        &mut self,
-        compiler: &Compiler,
-        krate: &Krate,
-        no_span: Span,
-    ) -> Result<(), VirErr> {
+    fn verify_crate(&mut self, compiler: &Compiler) -> Result<(), VirErr> {
+        let krate = self.vir_crate.as_ref().expect("vir_crate should be initialized");
+        let air_no_span = self.air_no_span.as_ref().expect("air_no_span should be initialized");
+
         #[cfg(debug_assertions)]
         vir::check_ast_flavor::check_krate(&krate);
 
@@ -399,11 +417,7 @@ impl Verifier {
             air_context.set_z3_param(&option, &value);
         }
 
-        let air_no_span = air::ast::Span {
-            raw_span: crate::util::to_raw_span(no_span),
-            as_string: "no location".to_string(),
-        };
-        let mut global_ctx = vir::context::GlobalCtx::new(&krate, air_no_span);
+        let mut global_ctx = vir::context::GlobalCtx::new(&krate, air_no_span.clone());
         let krate = vir::ast_simplify::simplify_krate(&mut global_ctx, &krate)?;
 
         if let Some(filename) = &self.args.log_vir_simple {
@@ -492,7 +506,7 @@ impl Verifier {
         Ok(())
     }
 
-    fn run<'tcx>(&mut self, compiler: &Compiler, tcx: TyCtxt<'tcx>) -> Result<bool, VirErr> {
+    fn vir<'tcx>(&mut self, tcx: TyCtxt<'tcx>) -> Result<bool, VirErr> {
         let autoviewed_call_typs = Arc::new(std::sync::Mutex::new(HashMap::new()));
         let _ = tcx.formal_verifier_callback.replace(Some(Box::new(crate::typecheck::Typecheck {
             int_ty_id: None,
@@ -537,10 +551,9 @@ impl Verifier {
         vir::well_formed::check_crate(&vir_crate)?;
         let erasure_modes = vir::modes::check_crate(&vir_crate)?;
 
-        // Verify crate
-        let time3 = Instant::now();
-        if !self.args.external_body {
-            let span = hir
+        self.vir_crate = Some(vir_crate.clone());
+        self.air_no_span = (!self.args.external_body).then(|| {
+            let no_span = hir
                 .krate()
                 .owners
                 .iter()
@@ -551,9 +564,11 @@ impl Verifier {
                 })
                 .next()
                 .expect("OwnerNode::Crate missing");
-            self.verify_crate(&compiler, &vir_crate, span)?;
-        }
-        let time4 = Instant::now();
+            air::ast::Span {
+                raw_span: crate::util::to_raw_span(no_span),
+                as_string: "no location".to_string(),
+            }
+        });
 
         let erasure_info = ctxt.erasure_info.borrow();
         let resolved_calls = erasure_info.resolved_calls.clone();
@@ -572,11 +587,23 @@ impl Verifier {
         };
         self.erasure_hints = Some(erasure_hints);
 
-        let time5 = Instant::now();
-        self.time_vir = time5 - time0;
+        let time4 = Instant::now();
+        self.time_vir = time4 - time0;
         self.time_vir_rust_to_vir = time2 - time1;
-        self.time_vir_verify = time4 - time3;
 
+        Ok(true)
+    }
+
+    pub fn verify<'tcx>(&mut self, compiler: &Compiler) -> Result<bool, VirErr> {
+        // Verify crate
+        let time3 = Instant::now();
+        if !self.args.external_body {
+            self.verify_crate(&compiler)?;
+        }
+        let time4 = Instant::now();
+
+        self.time_vir_verify = time4 - time3;
+        self.time_vir += self.time_vir_verify;
         Ok(true)
     }
 }
@@ -610,9 +637,9 @@ impl rustc_lint::FormalVerifierRewrite for Rewrite {
     }
 }
 
-impl rustc_driver::Callbacks for Verifier {
+impl rustc_driver::Callbacks for VerifierCallbacks {
     fn config(&mut self, config: &mut rustc_interface::interface::Config) {
-        if let Some(target) = &self.test_capture_output {
+        if let Some(target) = &self.verifier.lock().unwrap().test_capture_output {
             config.diagnostic_output =
                 rustc_session::DiagnosticOutput::Raw(Box::new(DiagnosticOutputBuffer {
                     output: target.clone(),
@@ -640,17 +667,38 @@ impl rustc_driver::Callbacks for Verifier {
         compiler: &Compiler,
         queries: &'tcx rustc_interface::Queries<'tcx>,
     ) -> rustc_driver::Compilation {
-        let _result =
-            queries.global_ctxt().expect("global_ctxt").peek_mut().enter(|tcx| {
-                match self.run(compiler, tcx) {
-                    Ok(true) => {}
-                    Ok(false) => {}
+        let _result = queries.global_ctxt().expect("global_ctxt").peek_mut().enter(|tcx| {
+            {
+                let mut verifier = self.verifier.lock().expect("verifier mutex");
+                if let Err(err) = verifier.vir(tcx) {
+                    report_error(compiler, &err);
+                    verifier.encountered_vir_error = true;
+                    return;
+                }
+            }
+
+            if !compiler.session().compile_status().is_ok() {
+                return;
+            }
+
+            self.vir_ready.signal(false);
+
+            if self.now_verify.wait() {
+                // there was an error in typeck or borrowck
+                return;
+            }
+
+            {
+                let mut verifier = self.verifier.lock().expect("verifier mutex");
+                match verifier.verify(compiler) {
+                    Ok(_) => {}
                     Err(err) => {
                         report_error(compiler, &err);
-                        self.encountered_vir_error = true;
+                        verifier.encountered_vir_error = true;
                     }
                 }
-            });
+            }
+        });
         rustc_driver::Compilation::Stop
     }
 }

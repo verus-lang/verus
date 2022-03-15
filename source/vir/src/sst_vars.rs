@@ -102,13 +102,13 @@ pub(crate) fn stm_assign(
             };
             Spanned::new(stm.span.clone(), while_x)
         }
-        StmX::OpenInvariant(inv, ident, ty, body_stm) => {
+        StmX::OpenInvariant(inv, ident, ty, body_stm, atomicity) => {
             assigned.insert(ident.clone());
             modified.insert(ident.clone());
             let body_stm = stm_assign(assign_map, declared, assigned, modified, body_stm);
             Spanned::new(
                 stm.span.clone(),
-                StmX::OpenInvariant(inv.clone(), ident.clone(), ty.clone(), body_stm),
+                StmX::OpenInvariant(inv.clone(), ident.clone(), ty.clone(), body_stm, *atomicity),
             )
         }
         StmX::Block(stms) => {

@@ -1,10 +1,38 @@
+#![feature(concat_idents)]
 #![feature(rustc_private)]
 #[macro_use]
 mod common;
 use common::*;
 
-test_verify_one_file! {
-    #[test] basic_usage code! {
+// Run each test for both Invariant/open_invariant and LocalInvariant/open_local_invariant
+
+macro_rules! test_both {
+    ($name:ident $name2:ident $test:expr => $p:pat) => {
+        test_verify_one_file! {
+            #[test] $name $test => $p
+        }
+
+        test_verify_one_file! {
+            #[test] $name2 ($test
+                .replace("Invariant", "LocalInvariant")
+                .replace("open_invariant", "open_local_invariant")) => $p
+        }
+    };
+    ($name:ident $name2:ident $test:expr => $p:pat => $e:expr) => {
+        test_verify_one_file! {
+            #[test] $name $test => $p => $e
+        }
+
+        test_verify_one_file! {
+            #[test] $name2 ($test
+                .replace("Invariant", "LocalInvariant")
+                .replace("open_invariant", "open_local_invariant")) => $p => $e
+        }
+    };
+}
+
+test_both! {
+    basic_usage basic_usage_local code! {
         use crate::pervasive::invariants::*;
 
         pub fn X(#[proof] i: Invariant<u8>) {
@@ -20,8 +48,8 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file! {
-    #[test] basic_usage2 code! {
+test_both! {
+    basic_usage2 basic_usage2_local code! {
         use crate::pervasive::invariants::*;
 
         pub fn X(#[proof] i: Invariant<u8>) {
@@ -31,8 +59,8 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file! {
-    #[test] inv_fail code! {
+test_both! {
+    inv_fail inv_fail_local code! {
         use crate::pervasive::invariants::*;
         pub fn X(#[proof] i: Invariant<u8>) {
             open_invariant!(&i => inner => {
@@ -44,8 +72,8 @@ test_verify_one_file! {
     } => Err(err) => assert_one_fails(err)
 }
 
-test_verify_one_file! {
-    #[test] nested_failure code! {
+test_both! {
+    nested_failure nested_failure_local code! {
         use crate::pervasive::invariants::*;
         pub fn nested(#[proof] i: Invariant<u8>) {
             requires([
@@ -61,8 +89,8 @@ test_verify_one_file! {
     } => Err(err) => assert_one_fails(err)
 }
 
-test_verify_one_file! {
-    #[test] nested_good code! {
+test_both! {
+    nested_good nested_good_local code! {
         use crate::pervasive::invariants::*;
         pub fn nested_good(#[proof] i: Invariant<u8>, #[proof] j: Invariant<u8>) {
             requires([
@@ -81,8 +109,8 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file! {
-    #[test] full_call_empty code! {
+test_both! {
+    full_call_empty full_call_empty_local code! {
         use crate::pervasive::invariants::*;
         #[proof]
         pub fn callee_mask_empty() {
@@ -96,8 +124,8 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file! {
-    #[test] open_call_full code! {
+test_both! {
+    open_call_full open_call_full_local code! {
         use crate::pervasive::invariants::*;
         #[proof]
         pub fn callee_mask_full() {
@@ -111,8 +139,8 @@ test_verify_one_file! {
     } => Err(err) => assert_one_fails(err)
 }
 
-test_verify_one_file! {
-    #[test] empty_open code! {
+test_both! {
+    empty_open empty_open_local code! {
         use crate::pervasive::invariants::*;
         #[proof]
         pub fn callee_mask_empty() {
@@ -128,8 +156,8 @@ test_verify_one_file! {
 
 // mode stuff
 
-test_verify_one_file! {
-    #[test] open_inv_in_spec code! {
+test_both! {
+    open_inv_in_spec open_inv_in_spec_local code! {
         use crate::pervasive::invariants::*;
 
         #[spec]
@@ -140,8 +168,8 @@ test_verify_one_file! {
     } => Err(err) => assert_vir_error(err)
 }
 
-test_verify_one_file! {
-    #[test] inv_header_in_spec code! {
+test_both! {
+    inv_header_in_spec inv_header_in_spec_local code! {
         use crate::pervasive::invariants::*;
 
         #[spec]
@@ -151,8 +179,8 @@ test_verify_one_file! {
     } => Err(err) => assert_vir_error(err)
 }
 
-test_verify_one_file! {
-    #[test] open_inv_in_proof code! {
+test_both! {
+    open_inv_in_proof open_inv_in_proof_local code! {
         use crate::pervasive::invariants::*;
 
         #[proof]
@@ -164,8 +192,8 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-test_verify_one_file! {
-    #[test] inv_cannot_be_exec code! {
+test_both! {
+    inv_cannot_be_exec inv_cannot_be_exec_local code! {
         use crate::pervasive::invariants::*;
 
         pub fn X(#[exec] i: Invariant<u8>) {
@@ -176,8 +204,8 @@ test_verify_one_file! {
     } => Err(err) => assert_vir_error(err)
 }
 
-test_verify_one_file! {
-    #[test] inv_cannot_be_spec code! {
+test_both! {
+    inv_cannot_be_spec inv_cannot_be_spec_local code! {
         use crate::pervasive::invariants::*;
 
         pub fn X(#[spec] i: Invariant<u8>) {
@@ -188,6 +216,7 @@ test_verify_one_file! {
     } => Err(err) => assert_vir_error(err)
 }
 
+// This test doesn't apply to LocalInvariant
 test_verify_one_file! {
     #[test] exec_code_in_inv_block code! {
         use crate::pervasive::invariants::*;
@@ -199,12 +228,11 @@ test_verify_one_file! {
                 exec_fn();
             });
         }
-
     } => Err(err) => assert_vir_error(err)
 }
 
-test_verify_one_file! {
-    #[test] inv_lifetime code! {
+test_both! {
+    inv_lifetime inv_lifetime_local code! {
         use crate::pervasive::invariants::*;
 
         #[proof]
@@ -222,8 +250,8 @@ test_verify_one_file! {
     } => Err(_) => ()
 }
 
-test_verify_one_file! {
-    #[test] return_early code! {
+test_both! {
+    return_early return_early_local code! {
         use crate::pervasive::invariants::*;
 
         pub fn blah(#[proof] i: Invariant<u8>) {
@@ -234,8 +262,8 @@ test_verify_one_file! {
     } => Err(err) => assert_vir_error(err)
 }
 
-test_verify_one_file! {
-    #[test] return_early_nested code! {
+test_both! {
+    return_early_nested return_early_nested_local code! {
         use crate::pervasive::invariants::*;
 
         pub fn blah(#[proof] i: Invariant<u8>, #[proof] j: Invariant<u8>) {
@@ -248,8 +276,8 @@ test_verify_one_file! {
     } => Err(err) => assert_vir_error(err)
 }
 
-test_verify_one_file! {
-    #[test] break_early code! {
+test_both! {
+    break_early break_early_local code! {
         use crate::pervasive::invariants::*;
 
         pub fn blah(#[proof] i: Invariant<u8>) {
@@ -264,8 +292,8 @@ test_verify_one_file! {
     } => Err(err) => assert_vir_error(err)
 }
 
-test_verify_one_file! {
-    #[test] continue_early code! {
+test_both! {
+    continue_early continue_early_local code! {
         use crate::pervasive::invariants::*;
 
         pub fn blah(#[proof] i: Invariant<u8>) {
@@ -280,8 +308,8 @@ test_verify_one_file! {
     } => Err(err) => assert_vir_error(err)
 }
 
-test_verify_one_file! {
-    #[test] return_early_proof code! {
+test_both! {
+    return_early_proof return_early_proof_local code! {
         use crate::pervasive::invariants::*;
 
         #[proof]
@@ -293,8 +321,8 @@ test_verify_one_file! {
     } => Err(err) => assert_vir_error(err)
 }
 
-test_verify_one_file! {
-    #[test] break_early_proof code! {
+test_both! {
+    break_early_proof break_early_proof_local code! {
         use crate::pervasive::invariants::*;
 
         #[proof]
@@ -310,8 +338,8 @@ test_verify_one_file! {
     } => Err(err) => assert_vir_error(err)
 }
 
-test_verify_one_file! {
-    #[test] continue_early_proof code! {
+test_both! {
+    continue_early_proof continue_early_proof_local code! {
         use crate::pervasive::invariants::*;
 
         #[proof]
@@ -325,4 +353,28 @@ test_verify_one_file! {
         }
 
     } => Err(err) => assert_vir_error(err)
+}
+
+// Check that we can't open a normal Invariant with open_local_invariant and vice-versa
+
+test_verify_one_file! {
+    #[test] mixup1 code! {
+        use crate::pervasive::invariants::*;
+
+        pub fn X(#[proof] i: LocalInvariant<u8>) {
+            open_invariant!(&i => inner => {
+            });
+        }
+    } => Err(err)
+}
+
+test_verify_one_file! {
+    #[test] mixup2 code! {
+        use crate::pervasive::invariants::*;
+
+        pub fn X(#[proof] i: Invariant<u8>) {
+            open_local_invariant!(&i => inner => {
+            });
+        }
+    } => Err(err)
 }

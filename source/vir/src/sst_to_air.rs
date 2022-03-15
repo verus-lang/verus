@@ -1,6 +1,6 @@
 use crate::ast::{
-    BinaryOp, Fun, Ident, Idents, IntRange, MaskSpec, Mode, Params, Path, PathX, SpannedTyped, Typ,
-    TypX, Typs, UnaryOp, UnaryOpr, VarAt,
+    BinaryOp, Fun, Ident, Idents, IntRange, InvAtomicity, MaskSpec, Mode, Params, Path, PathX,
+    SpannedTyped, Typ, TypX, Typs, UnaryOp, UnaryOpr, VarAt,
 };
 use crate::ast_util::{bitwidth_from_type, get_field, get_variant};
 use crate::context::Ctx;
@@ -264,16 +264,16 @@ fn try_unbox(ctx: &Ctx, expr: Expr, typ: &Typ) -> Option<Expr> {
     f_name.map(|f_name| ident_apply(&f_name, &vec![expr]))
 }
 
-fn call_inv(ctx: &Ctx, outer: Expr, inner: Expr, typ: &Typ) -> Expr {
-    let inv_fn_ident = suffix_global_id(&fun_to_air_ident(&fn_inv_name()));
+fn call_inv(ctx: &Ctx, outer: Expr, inner: Expr, typ: &Typ, atomicity: InvAtomicity) -> Expr {
+    let inv_fn_ident = suffix_global_id(&fun_to_air_ident(&fn_inv_name(atomicity)));
     let typ_expr = typ_to_id(typ);
     let boxed_inner = try_box(ctx, inner.clone(), typ).unwrap_or(inner);
     let args = vec![typ_expr, outer, boxed_inner];
     ident_apply(&inv_fn_ident, &args)
 }
 
-fn call_namespace(arg: Expr, typ: &Typ) -> Expr {
-    let inv_fn_ident = suffix_global_id(&fun_to_air_ident(&fn_namespace_name()));
+fn call_namespace(arg: Expr, typ: &Typ, atomicity: InvAtomicity) -> Expr {
+    let inv_fn_ident = suffix_global_id(&fun_to_air_ident(&fn_namespace_name(atomicity)));
     let typ_expr = typ_to_id(typ);
     let args = vec![typ_expr, arg];
     ident_apply(&inv_fn_ident, &args)
@@ -1113,7 +1113,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
             }
             stmts
         }
-        StmX::OpenInvariant(inv_exp, uid, typ, body_stm) => {
+        StmX::OpenInvariant(inv_exp, uid, typ, body_stm, atomicity) => {
             let mut stmts = vec![];
 
             // Build the inv_expr. Note: In the SST, this should have been assigned
@@ -1123,7 +1123,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
             let inv_expr = exp_to_expr(ctx, inv_exp, ExprCtxt::Body);
 
             // Assert that the namespace of the inv we are opening is in the mask set
-            let namespace_expr = call_namespace(inv_expr.clone(), typ);
+            let namespace_expr = call_namespace(inv_expr.clone(), typ, *atomicity);
             state.mask.assert_contains(&inv_exp.span, &namespace_expr, &mut stmts);
 
             // add an 'assume' that inv holds
@@ -1133,7 +1133,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
             if let Some(ty_inv) = ty_inv_opt {
                 stmts.push(Arc::new(StmtX::Assume(ty_inv)));
             }
-            let main_inv = call_inv(ctx, inv_expr, inner_expr, typ);
+            let main_inv = call_inv(ctx, inv_expr, inner_expr, typ, *atomicity);
             stmts.push(Arc::new(StmtX::Assume(main_inv.clone())));
 
             // process the body

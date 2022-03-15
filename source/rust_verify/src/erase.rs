@@ -607,7 +607,8 @@ fn erase_expr_opt(ctxt: &Ctxt, mctxt: &mut MCtxt, expect: Mode, expr: &Expr) -> 
                     Some(None) => return None,
                     Some(Some((segment, args))) => ExprKind::MethodCall(segment, args, *span),
                 },
-                _ => panic!("internal error: MethodCall ResolvedCall"),
+                ResolvedCall::Spec => return None,
+                _ => panic!("internal error: MethodCall ResolvedCall {:?}", call),
             }
         }
         ExprKind::Tup(exprs) => {

@@ -19,6 +19,8 @@ pub struct GlobalCtx {
     pub(crate) fun_bounds: HashMap<Fun, Vec<GenericBound>>,
     // Used for synthesized AST nodes that have no relation to any location in the original code:
     pub(crate) no_span: Span,
+    pub func_call_graph: Graph<Fun>,
+    pub func_call_sccs: Vec<Fun>,
 }
 
 // Context for verifying one module
@@ -30,11 +32,10 @@ pub struct Ctx {
     pub(crate) lambda_types: Vec<usize>,
     pub functions: Vec<Function>,
     pub func_map: HashMap<Fun, Function>,
-    pub func_call_graph: Graph<Fun>,
     pub(crate) funcs_with_ensure_predicate: HashSet<Fun>,
     pub(crate) datatype_map: HashMap<Path, Datatype>,
     pub(crate) debug: bool,
-    pub(crate) global: GlobalCtx,
+    pub global: GlobalCtx,
 }
 
 fn datatypes_inv_visit(
@@ -108,11 +109,23 @@ impl GlobalCtx {
         let datatypes: HashMap<Path, Variants> =
             krate.datatypes.iter().map(|d| (d.x.path.clone(), d.x.variants.clone())).collect();
         let mut fun_bounds: HashMap<Fun, Vec<GenericBound>> = HashMap::new();
+        let mut func_call_graph: Graph<Fun> = Graph::new();
         for f in &krate.functions {
             let bounds = vec_map(&f.x.typ_bounds, |(_, bound)| bound.clone());
             fun_bounds.insert(f.x.name.clone(), bounds);
+            func_call_graph.add_node(f.x.name.clone());
+            crate::recursion::expand_call_graph(&mut func_call_graph, f);
         }
-        GlobalCtx { chosen_triggers, datatypes, fun_bounds, no_span }
+        func_call_graph.compute_sccs();
+        let func_call_sccs = func_call_graph.sort_sccs();
+        GlobalCtx {
+            chosen_triggers,
+            datatypes,
+            fun_bounds,
+            no_span,
+            func_call_graph,
+            func_call_sccs,
+        }
     }
 
     // Report chosen triggers as strings for printing diagnostics
@@ -139,15 +152,11 @@ impl Ctx {
             datatypes_invs(&module, &datatype_is_transparent, &krate.datatypes);
         let mut functions: Vec<Function> = Vec::new();
         let mut func_map: HashMap<Fun, Function> = HashMap::new();
-        let mut func_call_graph: Graph<Fun> = Graph::new();
         let funcs_with_ensure_predicate: HashSet<Fun> = HashSet::new();
         for function in krate.functions.iter() {
             func_map.insert(function.x.name.clone(), function.clone());
-            func_call_graph.add_node(function.x.name.clone());
-            crate::recursion::expand_call_graph(&mut func_call_graph, function);
             functions.push(function.clone());
         }
-        func_call_graph.compute_sccs();
         let mut datatype_map: HashMap<Path, Datatype> = HashMap::new();
         for datatype in krate.datatypes.iter() {
             datatype_map.insert(datatype.x.path.clone(), datatype.clone());
@@ -160,7 +169,6 @@ impl Ctx {
             lambda_types,
             functions,
             func_map,
-            func_call_graph,
             funcs_with_ensure_predicate,
             datatype_map,
             debug,

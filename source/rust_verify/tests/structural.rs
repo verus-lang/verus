@@ -7,7 +7,7 @@ const STRUCTS: &str = code_str! {
     #[derive(PartialEq, Eq, Structural)]
     struct Car {
         four_doors: bool,
-        passengers: int,
+        passengers: u64,
     }
 
     #[derive(PartialEq, Eq, Structural)]
@@ -19,7 +19,7 @@ const STRUCTS: &str = code_str! {
 
 test_verify_one_file! {
     #[test] test_structural_eq STRUCTS.to_string() + code_str! {
-        fn test_structural_eq(passengers: int) {
+        fn test_structural_eq(passengers: u64) {
             let c1 = Car { passengers, four_doors: true };
             let c2 = Car { passengers, four_doors: false };
             let c3 = Car { passengers, four_doors: true };
@@ -43,7 +43,7 @@ test_verify_one_file! {
             v: bool,
         }
 
-        fn test_not_structural(passengers: int) {
+        fn test_not_structural(passengers: u64) {
             let v1 = Thing { v: true };
             let v2 = Thing { v: true };
             assert(v1 == v2);
@@ -65,7 +65,7 @@ test_verify_one_file! {
             fn eq(&self, _: &Self) -> bool { todo!() }
         }
 
-        fn test_not_structural(passengers: int) {
+        fn test_not_structural(passengers: u64) {
             let v1 = Thing { v: true };
             let v2 = Thing { v: true };
             assert(v1 == v2);

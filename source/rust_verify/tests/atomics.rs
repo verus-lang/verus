@@ -145,3 +145,51 @@ test_verify_one_file! {
 
     } => Err(err) => assert_vir_error(err)
 }
+
+test_verify_one_file! {
+    #[test] nonatomic_everything_ok
+    COMMON.to_string() + code_str! {
+        pub fn do_nothing(#[proof] i: LocalInvariant<u8>) -> u32 {
+            let mut x: u32 = 5;
+            open_local_invariant!(&i => inner => {
+                atomic_op();
+                atomic_op();
+                atomic_op();
+                non_atomic_op();
+                non_atomic_op();
+                while x < 10 {
+                    x = x + 1;
+                }
+            });
+            x
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] two_atomic_fail_nest1
+    COMMON.to_string() + code_str! {
+        pub fn do_nothing(#[proof] i: Invariant<u8>, #[proof] j: LocalInvariant<u8>) {
+            open_local_invariant!(&j => inner => {
+                open_invariant!(&i => inner => {
+                    atomic_op();
+                    atomic_op();
+                });
+            });
+        }
+    } => Err(err) => assert_vir_error(err)
+}
+
+test_verify_one_file! {
+    #[test] two_atomic_fail_nest2
+    COMMON.to_string() + code_str! {
+        pub fn do_nothing(#[proof] i: Invariant<u8>, #[proof] j: LocalInvariant<u8>) {
+            open_invariant!(&i => inner => {
+                open_local_invariant!(&j => inner => {
+                    atomic_op();
+                    atomic_op();
+                });
+            });
+        }
+    } => Err(err) => assert_vir_error(err)
+}
