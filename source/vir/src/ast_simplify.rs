@@ -214,10 +214,10 @@ fn small_loc_or_temp(state: &mut State, expr: &Expr) -> SmallLocOrTemp {
     }
 }
 
-fn is_removed(bound: &GenericBound) -> bool {
+fn keep_bound(bound: &GenericBound) -> bool {
     // Remove FnSpec type bounds
     match &**bound {
-        GenericBoundX::None => true,
+        GenericBoundX::Traits(_) => true,
         GenericBoundX::FnSpec(..) => false,
     }
 }
@@ -302,7 +302,7 @@ fn simplify_one_expr(ctx: &GlobalCtx, state: &mut State, expr: &Expr) -> Result<
             let typs: Vec<Typ> = typs
                 .iter()
                 .zip(bounds.iter())
-                .filter(|(_, bound)| is_removed(bound))
+                .filter(|(_, bound)| keep_bound(bound))
                 .map(|(t, _)| t.clone())
                 .collect();
             let call = ExprX::Call(CallTarget::Static(tgt.clone(), Arc::new(typs)), args.clone());
@@ -449,11 +449,11 @@ fn simplify_one_typ(local: &LocalCtxt, state: &mut State, typ: &Typ) -> Result<T
             if !local.bounds.contains_key(x) {
                 return err_string(
                     &local.span,
-                    format!("type paramater {} used before being declared", x),
+                    format!("type parameter {} used before being declared", x),
                 );
             }
             match &*local.bounds[x] {
-                GenericBoundX::None => Ok(typ.clone()),
+                GenericBoundX::Traits(_) => Ok(typ.clone()),
                 GenericBoundX::FnSpec(ts, tr) => Ok(Arc::new(TypX::Lambda(ts.clone(), tr.clone()))),
             }
         }
@@ -472,7 +472,7 @@ fn simplify_function(
         LocalCtxt { span: function.span.clone(), typ_params: Vec::new(), bounds: HashMap::new() };
     for (x, bound) in functionx.typ_bounds.iter() {
         match &**bound {
-            GenericBoundX::None => local.typ_params.push(x.clone()),
+            GenericBoundX::Traits(_) => local.typ_params.push(x.clone()),
             GenericBoundX::FnSpec(..) => {}
         }
         // simplify types in bounds and disallow recursive bounds like F: FnSpec(F, F) -> F
@@ -487,7 +487,7 @@ fn simplify_function(
         functionx
             .typ_bounds
             .iter()
-            .filter(|(_, bound)| is_removed(bound))
+            .filter(|(_, bound)| keep_bound(bound))
             .map(|x| x.clone())
             .collect(),
     );
@@ -507,9 +507,9 @@ fn simplify_function(
 fn simplify_datatype(state: &mut State, datatype: &Datatype) -> Result<Datatype, VirErr> {
     let mut local =
         LocalCtxt { span: datatype.span.clone(), typ_params: Vec::new(), bounds: HashMap::new() };
-    for (x, _strict_pos) in datatype.x.typ_params.iter() {
+    for (x, bound, _strict_pos) in datatype.x.typ_params.iter() {
         local.typ_params.push(x.clone());
-        local.bounds.insert(x.clone(), Arc::new(GenericBoundX::None));
+        local.bounds.insert(x.clone(), bound.clone());
     }
     crate::ast_visitor::map_datatype_visitor_env(datatype, state, &|state, typ| {
         simplify_one_typ(&local, state, typ)
@@ -551,7 +551,7 @@ fn mk_fun_decl(
 */
 
 pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirErr> {
-    let KrateX { functions, datatypes, module_ids } = &**krate;
+    let KrateX { functions, datatypes, traits, module_ids } = &**krate;
     let mut state = State::new();
     let functions = vec_map_result(functions, |f| simplify_function(ctx, &mut state, f))?;
     let mut datatypes = vec_map_result(&datatypes, |d| simplify_datatype(&mut state, d))?;
@@ -560,7 +560,9 @@ pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirEr
     for (arity, path) in state.tuple_typs {
         let visibility = Visibility { owning_module: None, is_private: false };
         let transparency = DatatypeTransparency::Always;
-        let typ_params = Arc::new((0..arity).map(|i| (prefix_tuple_param(i), true)).collect());
+        let bound = Arc::new(GenericBoundX::Traits(vec![]));
+        let typ_params =
+            Arc::new((0..arity).map(|i| (prefix_tuple_param(i), bound.clone(), true)).collect());
         let mut fields: Vec<Field> = Vec::new();
         for i in 0..arity {
             let typ = Arc::new(TypX::TypParam(prefix_tuple_param(i)));
@@ -582,8 +584,9 @@ pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirEr
         datatypes.push(Spanned::new(ctx.no_span.clone(), datatypex));
     }
 
+    let traits = traits.clone();
     let module_ids = module_ids.clone();
-    let krate = Arc::new(KrateX { functions, datatypes, module_ids });
-    *ctx = crate::context::GlobalCtx::new(&krate, ctx.no_span.clone());
+    let krate = Arc::new(KrateX { functions, datatypes, traits, module_ids });
+    *ctx = crate::context::GlobalCtx::new(&krate, ctx.no_span.clone())?;
     Ok(krate)
 }

@@ -1,8 +1,12 @@
-use crate::ast::{Datatype, Ident, Krate, Path, Typ, TypX, VirErr};
+use crate::ast::{Datatype, FunctionKind, GenericBoundX, Ident, Krate, Path, Typ, TypX, VirErr};
 use crate::ast_util::{err_str, err_string, path_as_rust_name};
+use crate::context::GlobalCtx;
+use crate::recursion::Node;
 use crate::scc::Graph;
 use air::ast::Span;
+use air::errors::ErrorLabel;
 use std::collections::HashMap;
+use std::sync::Arc;
 
 // To enable decreases clauses on datatypes while treating the datatypes as inhabited in specs,
 // we need to make sure that the datatypes have base cases, not just inductive cases.
@@ -128,7 +132,7 @@ fn check_positive_uses(
                 }
             }
             let typ_params = &global.datatypes[path].x.typ_params;
-            for ((_, strictly_positive), t) in typ_params.iter().zip(ts.iter()) {
+            for ((_, _, strictly_positive), t) in typ_params.iter().zip(ts.iter()) {
                 let t_polarity = if *strictly_positive { Some(true) } else { None };
                 check_positive_uses(global, local, t_polarity, t)?;
             }
@@ -180,8 +184,59 @@ pub(crate) fn check_recursive_types(krate: &Krate) -> Result<(), VirErr> {
     type_graph.compute_sccs();
     let global = CheckPositiveGlobal { datatypes, type_graph };
 
+    for function in &krate.functions {
+        let mut typ_params = function.x.typ_bounds.iter();
+        if let FunctionKind::TraitMethodDecl { .. } = function.x.kind {
+            let (self_name, _) = typ_params.next().expect("self type parameter");
+            assert!(self_name == &crate::def::trait_self_type_param());
+        }
+        for (_name, bound) in typ_params {
+            match (&**bound, &function.x.kind) {
+                (GenericBoundX::Traits(ts), _) if ts.len() == 0 => {}
+                (_, FunctionKind::Static) => {}
+                _ => {
+                    // REVIEW: when we support bounds on method type parameters,
+                    // we'll need the appropriate termination checking.
+                    return err_str(
+                        &function.span,
+                        "not yet supported: bounds on method type parameters",
+                    );
+                }
+            }
+        }
+    }
+
+    for tr in &krate.traits {
+        for (_name, bound, _positive) in tr.x.typ_params.iter() {
+            match &**bound {
+                GenericBoundX::Traits(ts) if ts.len() == 0 => {}
+                _ => {
+                    // REVIEW: when we support bounds on trait type parameters,
+                    // we'll need the appropriate termination checking.
+                    // (e.g. by including traits in the datatype graph
+                    // and checking bounded type variables occur in positive positions)
+                    return err_str(&tr.span, "not yet supported: bounds on trait type parameters");
+                }
+            }
+        }
+    }
+
     for datatype in &krate.datatypes {
-        let tparams: HashMap<Ident, bool> = (*datatype.x.typ_params).clone().into_iter().collect();
+        let mut tparams: HashMap<Ident, bool> = HashMap::new();
+        for (name, bound, positive) in datatype.x.typ_params.iter() {
+            match &**bound {
+                GenericBoundX::Traits(ts) if ts.len() == 0 => {}
+                _ => {
+                    // REVIEW: when we support bounds on datatype parameters,
+                    // we'll need the appropriate termination checking.
+                    return err_str(
+                        &datatype.span,
+                        "not yet supported: bounds on datatype parameters",
+                    );
+                }
+            }
+            tparams.insert(name.clone(), *positive);
+        }
         let local = CheckPositiveLocal {
             span: datatype.span.clone(),
             my_datatype: datatype.x.path.clone(),
@@ -198,5 +253,116 @@ pub(crate) fn check_recursive_types(krate: &Krate) -> Result<(), VirErr> {
         }
     }
 
+    Ok(())
+}
+
+fn scc_error(krate: &Krate, head: &Node, nodes: &Vec<Node>) -> VirErr {
+    let mut labels: Vec<ErrorLabel> = Vec::new();
+    let mut spans: Vec<Span> = Vec::new();
+    for node in nodes {
+        let mut push = |node: &Node, span: Span| {
+            if node == head {
+                spans.push(span);
+            } else {
+                let msg = "may be part of cycle".to_string();
+                labels.push(ErrorLabel { span, msg });
+            }
+        };
+        match node {
+            Node::Fun(fun) => {
+                if let Some(f) = krate.functions.iter().find(|f| f.x.name == *fun) {
+                    let span = f.span.clone();
+                    push(node, span);
+                }
+            }
+            Node::Trait(trait_path) => {
+                if let Some(t) = krate.traits.iter().find(|t| t.x.name == *trait_path) {
+                    let span = t.span.clone();
+                    push(node, span);
+                }
+            }
+            Node::DatatypeTraitBound { datatype, .. } => {
+                if let Some(d) = krate.datatypes.iter().find(|d| d.x.path == *datatype) {
+                    let span = d.span.clone();
+                    push(node, span);
+                }
+            }
+        }
+    }
+    let msg =
+        "found a cyclic self-reference in a trait definition, which may result in nontermination"
+            .to_string();
+    Arc::new(air::errors::ErrorX { msg, spans, labels })
+}
+
+// Check for cycles in traits
+pub fn check_traits(krate: &Krate, ctx: &GlobalCtx) -> Result<(), VirErr> {
+    // It's possible to encode nontermination using trait methods.
+    // For soundness, proof/spec functions must terminate, so we must check trait termination.
+    // (REVIEW: we could be more lenient and allow cycles through exec functions.)
+
+    // We use the approach taken by Coq and F* for type classes as inspiration.
+    // These languages encode type classes and methods as datatypes and functions,
+    // so that the termination checks for datatypes and functions guarantee termination
+    // of traits and methods.
+    // Suppose we have a trait (type class) T:
+    //   trait T {
+    //     fn f(x: Self, y: Self) -> bool;
+    //     fn g(x: Self, y: Self) -> Self { requires(f(x, y)); };
+    //   }
+    // Coq/F* would encode this using a "dictionary" datatype:
+    //   struct Dictionary_T<Self> {
+    //     f: Fn(Self, Self) -> bool,
+    //     g: Fn(Self, Self) -> Self { requires(f(x, y)); },
+    //   }
+    // (Note that this is a dependent record in Coq/F*, where g's type depends on f,
+    // because g's requires clause mentions f.  Because of this, the order of the fields matters --
+    // f must precede g in the record type.  Also notice that f and g do not recursively
+    // take the dictionary as an argument -- it's f(Self, Self),
+    // not f(Dictionary_T<Self>, Self, Self).)
+    // An implementations of T for datatype D would then have to produce a value
+    // of type Dictionary_T<D> containing the functions f and g:
+    //   let dictionary_T_for_D_f = |x: D, y: D| -> bool { ... };
+    //   let dictionary_T_for_D_g = |x: D, y: D| -> D { ... };
+    //   let dictionary_T_for_D: Dictionary_T<D> = Dictionary_T {
+    //     f: dictionary_T_for_D_f,
+    //     g: dictionary_T_for_D_g,
+    //   };
+    // A trait bound A: T is treated as an argument of type Dictionary_T<A>.
+    // In other words, we have to justify any instantiation of a trait bound A: T
+    // by passing in a dictionary that represents the implementation of T for A.
+
+    // Although we don't actually encode traits and methods as datatypes and functions,
+    // we ensure termination by checking that it would be possible to encode traits and methods
+    // as datatypes and functions.
+    // So it must be possible to define the following in the following order, with no cycle:
+    //   1) The trait T and the trait's method declarations
+    //   2) Method implementations for any datatype D that implements T
+    //   3) Uses of datatype D to satisfy the trait bound T (in Rust notation, D: T).
+
+    // We extend the call graph to represent trait declarations (T) and datatypes implementing
+    // traits (D: T) using Node::Trait(T) and Node::DatatypeTraitBound(D, T).
+    // We add the following edges to the call graph (see recursion::expand_call_graph):
+    //   - T --> f if the requires/ensures of T's method declarations call f
+    //   - f --> T for any function f<A: T> with type parameter A: T
+    //   - D: T --> T
+    //   - f --> D: T where one of f's expressions instantiates A: T with D: T.
+    //   - D: T --> f where f is one of D's methods that implements T
+    // It is an error for Node::Trait(T) or Node::DatatypeTraitBound(D, T) to appear in a cycle in
+    // the call graph.
+
+    for scc in &ctx.func_call_sccs {
+        let scc_nodes = ctx.func_call_graph.get_scc_nodes(scc);
+        let count = scc_nodes.len();
+        for node in scc_nodes.iter() {
+            match node {
+                Node::Fun(_) => {}
+                _ if count == 1 => {}
+                _ => {
+                    return Err(scc_error(krate, node, &scc_nodes));
+                }
+            }
+        }
+    }
     Ok(())
 }

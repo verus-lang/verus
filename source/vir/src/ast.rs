@@ -178,6 +178,8 @@ pub enum BinaryOp {
 pub type HeaderExpr = Arc<HeaderExprX>;
 #[derive(Debug)]
 pub enum HeaderExprX {
+    /// Marker that trait declaration method body is omitted and should be erased
+    NoMethodBody,
     /// Preconditions on functions
     Requires(Exprs),
     /// Postconditions on functions, with an optional name and type for the return value
@@ -370,13 +372,16 @@ pub struct ParamX {
 pub type GenericBound = Arc<GenericBoundX>;
 #[derive(Debug)]
 pub enum GenericBoundX {
-    None,
+    /// List of implemented traits
+    Traits(Vec<Path>),
     /// Spec function type (t1, ..., tn) -> t0.
     /// Note: ast_simplify removes FnSpec type parameters, using a Datatype to represent FnSpec.
     FnSpec(Typs, Typ),
 }
 
 pub type TypBounds = Arc<Vec<(Ident, GenericBound)>>;
+/// Each type parameter is (name: Ident, bound: GenericBound, strictly_positive: bool)
+pub type TypPositiveBounds = Arc<Vec<(Ident, GenericBound, bool)>>;
 
 pub type FunctionAttrs = Arc<FunctionAttrsX>;
 #[derive(Debug, Default, Clone)]
@@ -405,12 +410,31 @@ pub enum MaskSpec {
     NoSpec,
 }
 
+#[derive(Debug, Clone)]
+pub enum FunctionKind {
+    Static,
+    /// Method declaration inside a trait
+    TraitMethodDecl {
+        trait_path: Path,
+    },
+    /// Method implementation inside an impl, implementing a trait method for a trait for a datatype
+    TraitMethodImpl {
+        method: Fun,
+        trait_path: Path,
+        trait_typ_args: Typs,
+        datatype: Path,
+        datatype_typ_args: Typs,
+    },
+}
+
 /// Function, including signature and body
 pub type Function = Arc<Spanned<FunctionX>>;
 #[derive(Debug, Clone)]
 pub struct FunctionX {
     /// Name of function
     pub name: Fun,
+    /// Kind (translation to AIR is different for each different kind)
+    pub kind: FunctionKind,
     /// Access control (public/private)
     pub visibility: Visibility,
     /// exec functions are compiled, proof/spec are erased
@@ -476,8 +500,7 @@ pub struct DatatypeX {
     pub path: Path,
     pub visibility: Visibility,
     pub transparency: DatatypeTransparency,
-    /// Each type parameter is (name: Ident, strictly_positive: bool)
-    pub typ_params: Arc<Vec<(Ident, bool)>>,
+    pub typ_params: TypPositiveBounds,
     pub variants: Variants,
     pub mode: Mode,
     // For token types that need to be 'unforgeable'. Only makes sense for 'Proof' types.
@@ -485,6 +508,14 @@ pub struct DatatypeX {
 }
 pub type Datatype = Arc<Spanned<DatatypeX>>;
 pub type Datatypes = Vec<Datatype>;
+
+pub type Trait = Arc<Spanned<TraitX>>;
+#[derive(Clone, Debug)]
+pub struct TraitX {
+    pub name: Path,
+    pub typ_params: TypPositiveBounds,
+    pub methods: Arc<Vec<Fun>>,
+}
 
 /// An entire crate
 pub type Krate = Arc<KrateX>;
@@ -494,6 +525,8 @@ pub struct KrateX {
     pub functions: Vec<Function>,
     /// All datatypes in the crate
     pub datatypes: Vec<Datatype>,
+    /// All traits in the crate
+    pub traits: Vec<Trait>,
     /// List of all modules in the crate
     pub module_ids: Vec<Path>,
 }

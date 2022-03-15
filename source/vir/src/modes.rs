@@ -1,6 +1,6 @@
 use crate::ast::{
-    BinaryOp, CallTarget, Datatype, Expr, ExprX, Fun, Function, Ident, InvAtomicity, Krate, Mode,
-    Path, Pattern, PatternX, Stmt, StmtX, UnaryOpr, VirErr,
+    BinaryOp, CallTarget, Datatype, Expr, ExprX, Fun, Function, FunctionKind, Ident, InvAtomicity,
+    Krate, Mode, Path, Pattern, PatternX, Stmt, StmtX, UnaryOpr, VirErr,
 };
 use crate::ast_util::{err_str, err_string, get_field};
 use crate::util::vec_map_result;
@@ -8,7 +8,7 @@ use air::ast::Span;
 use air::errors::{error, error_with_label};
 use air::scope_map::ScopeMap;
 use std::cmp::min;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::mem::swap;
 
 // Exec <= Proof <= Spec
@@ -43,6 +43,7 @@ pub struct ErasureModes {
 struct Typing {
     pub(crate) funs: HashMap<Fun, Function>,
     pub(crate) datatypes: HashMap<Path, Datatype>,
+    pub(crate) traits: HashSet<Path>,
     // for each variable: (is_mutable, mode)
     pub(crate) vars: ScopeMap<Ident, (bool, Mode)>,
     pub(crate) erasure_modes: ErasureModes,
@@ -552,6 +553,53 @@ fn check_stmt(typing: &mut Typing, outer_mode: Mode, stmt: &Stmt) -> Result<(), 
 
 fn check_function(typing: &mut Typing, function: &Function) -> Result<(), VirErr> {
     typing.vars.push_scope(true);
+
+    if let FunctionKind::TraitMethodImpl { method, trait_path, datatype, .. } = &function.x.kind {
+        let datatype_mode = typing.datatypes[datatype].x.mode;
+        let self_mode = function.x.params[0].x.mode;
+        let our_trait = typing.traits.contains(trait_path);
+        if self_mode != function.x.mode {
+            // It's hard for erase.rs to support mode != param_mode (we'd have to erase self),
+            // so we currently disallow it:
+            return err_string(
+                &function.x.params[0].span,
+                format!(
+                    "self has mode {}, function has mode {} -- these cannot be different",
+                    self_mode, function.x.mode
+                ),
+            );
+        }
+        let (expected_params, expected_ret_mode): (Vec<Mode>, Mode) = if our_trait {
+            let trait_method = &typing.funs[method];
+            let expect_mode = mode_join(trait_method.x.mode, datatype_mode);
+            if function.x.mode != expect_mode {
+                return err_string(
+                    &function.span,
+                    format!("function must have mode {}", expect_mode),
+                );
+            }
+            (trait_method.x.params.iter().map(|f| f.x.mode).collect(), trait_method.x.ret.x.mode)
+        } else {
+            (function.x.params.iter().map(|_| Mode::Exec).collect(), Mode::Exec)
+        };
+        assert!(expected_params.len() == function.x.params.len());
+        for (param, expect) in function.x.params.iter().zip(expected_params.iter()) {
+            let expect_mode = mode_join(*expect, datatype_mode);
+            if param.x.mode != expect_mode {
+                return err_string(
+                    &param.span,
+                    format!("parameter must have mode {}", expect_mode),
+                );
+            }
+        }
+        if function.x.ret.x.mode != mode_join(expected_ret_mode, datatype_mode) {
+            return err_string(
+                &function.span,
+                format!("function return value must have mode {}", expected_ret_mode),
+            );
+        }
+    }
+
     for param in function.x.params.iter() {
         if !mode_le(function.x.mode, param.x.mode) {
             return err_string(
@@ -587,12 +635,17 @@ fn check_function(typing: &mut Typing, function: &Function) -> Result<(), VirErr
                 format!("return type cannot have mode {}", ret_mode),
             );
         }
-        if function.x.body.is_none() {
+        if function.x.body.is_none()
+            && !matches!(&function.x.kind, FunctionKind::TraitMethodDecl { .. })
+        {
             // can't erase return values in external_body functions, so:
             if function.x.mode != ret_mode {
                 return err_string(
                     &function.span,
-                    format!("because of external_body, return type cannot have mode {}", ret_mode),
+                    format!(
+                        "because function has no body, return type cannot have mode {}",
+                        ret_mode
+                    ),
                 );
             }
         }
@@ -620,6 +673,7 @@ pub fn check_crate(krate: &Krate) -> Result<ErasureModes, VirErr> {
     let mut typing = Typing {
         funs,
         datatypes,
+        traits: krate.traits.iter().map(|t| t.x.name.clone()).collect(),
         vars: ScopeMap::new(),
         erasure_modes,
         in_forall_stmt: false,
