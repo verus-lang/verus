@@ -164,7 +164,7 @@ impl BitMap {
 
 #[verifier(external)]
 fn main(){
-    // Note that for bmap1, lsb is 0 from v1[0], and msb is 1 from v[3]
+    // Note that for bmap1, lsb is 0 from v1[0], and msb is 1 from v1[3]
     let v1:Vec<u64> = Vec{vec: vec![0xfff0, 0xfff0, 0x000f, 0xf000_0000_0000_000f]};
     let v2:Vec<u64> = Vec{vec: vec![0x000f, 0x000f, 0xfff0, 0xfff0]};
     let v3:Vec<u64> = Vec{vec: vec![0x0, 0x0, 0x0, 0x0]}; // vector for output

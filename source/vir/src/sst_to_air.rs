@@ -773,7 +773,7 @@ pub(crate) fn exp_to_bv_expr(exp: &Exp) -> Expr {
             UnaryOpr::Box(_) | UnaryOpr::Unbox(_) => {
                 return exp_to_bv_expr(exp);
             }
-            _ => panic!("unhandled bv UnaryOpr {:?}", op),
+            _ => panic!("unsupported for bit-vector: UnaryOpr {:?}", op),
         },
         ExpX::If(cond, tbranch, fbranch) => {
             let cond = exp_to_bv_expr(&cond);
@@ -814,54 +814,9 @@ pub(crate) fn exp_to_bv_expr(exp: &Exp) -> Expr {
                 });
                 air::ast_util::mk_let(&binders, &expr)
             }
-            _ => panic!("unhandled bv bind conversion, {:?} ", exp.x),
+            _ => panic!("unsupported for bit-vector: bind conversion, {:?} ", exp.x),
         },
-        _ => panic!("unhandled bv expr conversion {:?}", exp.x),
-    }
-}
-
-fn stm_to_bv_stmts(stm: &Stm) -> Vec<Stmt> {
-    match &stm.x {
-        StmX::Assume(expr) => {
-            // if ctx.debug {
-            //     state.map_span(&stm, SpanKind::Full);
-            // }
-            vec![Arc::new(StmtX::Assume(exp_to_bv_expr(&expr)))]
-        }
-        StmX::Assign { lhs, rhs, is_init: true } => {
-            stm_to_bv_stmts(&assume_var(&stm.span, lhs, rhs))
-        }
-        // StmX::Assign { lhs, rhs, is_init: true } => {
-        //     stm_to_stmts(ctx, state, &assume_var(&stm.span, lhs, rhs))
-        // }
-        StmX::Assign { lhs, rhs, is_init: false } => {
-            let mut stmts: Vec<Stmt> = Vec::new();
-            let name = suffix_local_unique_id(lhs);
-            stmts.push(Arc::new(StmtX::Assign(name, exp_to_bv_expr(rhs))));
-            // if ctx.debug {
-            //     // Add a snapshot after we modify the destination
-            //     let sid = state.update_current_sid(SUFFIX_SNAP_MUT);
-            //     let snapshot = Arc::new(StmtX::Snapshot(sid.clone()));
-            //     stmts.push(snapshot);
-            //     // Update the snap_map so that it reflects the state _after_ the
-            //     // statement takes effect.
-            //     state.map_span(&stm, SpanKind::Full);
-            // }
-            stmts
-        }
-        StmX::Block(stms) => {
-            // if ctx.debug {
-            //     state.push_scope();
-            //     state.map_span(&stm, SpanKind::Start);
-            // }
-            let stmts: Vec<Stmt> = stms.iter().map(|s| stm_to_bv_stmts(s)).flatten().collect();
-            // stms.iter().map(|s| stm_to_stmts(ctx, state, s)).flatten().collect();
-            // if ctx.debug {
-            //     state.pop_scope();
-            // }
-            stmts
-        }
-        _ => panic!("unhandled bv stm conversion {:?}", stm.x),
+        _ => panic!("unsupported for bit-vector: expression conversion {:?}", exp.x),
     }
 }
 
@@ -1299,7 +1254,7 @@ pub fn body_stm_to_air(
         } else {
             Arc::new(DeclX::Const(suffix_local_unique_id(&decl.ident), typ_to_air(ctx, &decl.typ)))
         });
-        // for assert_bit_vector, only allow integer and boolean types
+        // for assert_bit_vector/bit_vector function, only allow integer and boolean types
         if let Some(width) = bitwidth_from_type(&decl.typ) {
             let typ = bv_typ(width);
             local_bv_shared.push(Arc::new(DeclX::Var(suffix_local_unique_id(&decl.ident), typ)));
@@ -1347,12 +1302,7 @@ pub fn body_stm_to_air(
         &mut HashSet::new(),
         stm,
     );
-    let mut stmts;
-    if !is_bit_vector_mode {
-        stmts = stm_to_stmts(ctx, &mut state, &stm);
-    } else {
-        stmts = stm_to_bv_stmts(&stm);
-    }
+    let mut stmts=stm_to_stmts(ctx, &mut state, &stm);
 
     if has_mut_params {
         stmts.insert(0, Arc::new(StmtX::Snapshot(snapshot_ident(SNAPSHOT_PRE))));
