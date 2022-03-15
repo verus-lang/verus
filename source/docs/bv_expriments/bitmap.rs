@@ -31,13 +31,6 @@ fn u64_view(u: u64) -> Seq<bool> {
     Seq::new(64, |i: int| get_bit64!(u, i as u64))
 }
 
-#[proof]
-fn u64_view_proof(bv: u64){
-    ensures([
-        forall(|i: u32| (i < 64) >>= u64_view(bv).index(i) == get_bit64!(bv, i))
-    ]);
-}
-
 #[verifier(bit_vector)]
 #[proof]
 fn set_bit64_proof(bv_new: u64, bv_old: u64, index: u32, bit: bool){
@@ -70,15 +63,7 @@ fn bit_or_64_view_proof(u1: u64, u2: u64, bv_new:u64){
     ensures([
         u64_view(bv_new).ext_equal(Seq::new(64, |i: int| u64_view(u1).index(i) || u64_view(u2).index(i))),
     ]);
-    #[spec] let s1:Seq<bool> = u64_view(u1);
-    #[spec] let s2:Seq<bool> = u64_view(u2);
-    #[spec] let s3:Seq<bool> = u64_view(bv_new);    
-    #[spec] let s4:Seq<bool> = Seq::new(64, |i: int| s1.index(i) || s2.index(i));
-    u64_view_proof(u1);
-    u64_view_proof(u2);
-    u64_view_proof(bv_new); 
     bit_or_64_proof(u1,u2, bv_new);
-    assert(s3.ext_equal(s4));
 }
 
 #[spec]
@@ -124,7 +109,6 @@ impl BitMap {
         ]);
         ensures(|ret:BitMap| [
             equal(ret.view(), self.view().update(index,bit)),
-            ret.view().ext_equal(self.view().update(index,bit)),
         ]);
         let seq_index = (index/64) as usize;
         let bit_index = index%64;
@@ -138,6 +122,7 @@ impl BitMap {
         result
     }
 
+    // bitwise-OR for bitmap
     #[exec]
     fn or(&self, bm: &BitMap, out: BitMap) -> BitMap {
         requires([
@@ -160,16 +145,14 @@ impl BitMap {
                 n == bm.bits.view().len(),
                 n == result.bits.view().len(),
                 forall(|k: usize| k < i >>=  or_u64_relation(self.bits.view().index(k), bm.bits.view().index(k), result.bits.view().index(k))),
-                forall(|k: usize| k < i*64 >>= ( result.view().index(k) == (self.view().index(k) || bm.view().index(k)) ) ),
+                forall(|k: usize| k < i*64 >>= (result.view().index(k) == (self.view().index(k) || bm.view().index(k)))),
             ]);
             assert(i < n);
             v3 = result.bits;
             let u1:u64 = *self.bits.index(i);
             let u2:u64 = *bm.bits.index(i);
             let or_int:u64 = u1 | u2;
-
             bit_or_64_view_proof(u1, u2, or_int);
-            axiom_seq_update_len::<u64>(result.bits.view(), i, or_int);
             axiom_seq_update_same::<u64>(result.bits.view(), i, or_int);
             v3 = v3.set(i, or_int);
             result = BitMap{bits:v3};
@@ -177,14 +160,22 @@ impl BitMap {
         }
         result
     }
-
-    // Similarly, we can add more functions for bitwise operations: &, |, ^, !, shr, shrl, +, -, *, /, mod, 
 }
 
-
-// #[verifier(external)]
+#[verifier(external)]
 fn main(){
-    // let v:Vec<u64> = Vec{vec: vec![0xf, 0xff, 0xfff, 0xffff]};
-    // let bmap = BitMap::from(v);
-    // println!("{:?}", bmap.bits.vec);
+    // Note that for bmap1, lsb is 0 from v1[0], and msb is 1 from v[3]
+    let v1:Vec<u64> = Vec{vec: vec![0xfff0, 0xfff0, 0x000f, 0xf000_0000_0000_000f]};
+    let v2:Vec<u64> = Vec{vec: vec![0x000f, 0x000f, 0xfff0, 0xfff0]};
+    let v3:Vec<u64> = Vec{vec: vec![0x0, 0x0, 0x0, 0x0]}; // vector for output
+    let mut bmap1 = BitMap::from(v1);
+    println!("{:?}", bmap1.get_bit(255));
+    println!("{:?}", bmap1.get_bit(0));
+    bmap1 = bmap1.set_bit(0, true);
+    println!("{:?}", bmap1.get_bit(0));
+    println!("{:?}", bmap1.bits.vec);
+    let bmap2 = BitMap::from(v2);
+    let mut result = BitMap::from(v3);
+    result = bmap1.or(&bmap2,result);
+    println!("{:?}", result.bits.vec);
 }       
