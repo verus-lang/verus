@@ -118,6 +118,7 @@ pub fn axiom_seq_update_different<A>(s: Seq<A>, i1: int, i2: int, a: A) {
         i1 < s.len(),
         0 <= i2,
         i2 < s.len(),
+        i1 != i2,
     ]);
     ensures(equal(s.update(i2, a).index(i1), s.index(i1)));
 }
