@@ -1,5 +1,6 @@
 use proc_macro2::Span;
-use syn::{Expr, FieldsNamed, Generics, Ident, ImplItemMethod, Type, Block};
+use syn::{Expr, FieldsNamed, Generics, Ident, ImplItemMethod, Type};
+use std::rc::Rc;
 
 #[derive(Clone, Debug)]
 pub struct SM {
@@ -113,12 +114,12 @@ pub enum TransitionStmt {
     Let(Span, Ident, LetKind, Expr, Box<TransitionStmt>),
     If(Span, Expr, Box<TransitionStmt>, Box<TransitionStmt>),
     Require(Span, Expr),
-    Assert(Span, Expr, Option<Block>),
+    Assert(Span, Expr, Option<Rc<syn::Block>>),
     Update(Span, Ident, Expr),
     Initialize(Span, Ident, Expr),
 
     /// concurrent-state-machine-specific stuff
-    Special(Span, Ident, SpecialOp, Option<Block>),
+    Special(Span, Ident, SpecialOp, Option<Rc<syn::Block>>),
 
     /// Different than an Assert - this statement is allowed to depend on output values.
     /// Used internally by various transformations, both by `concurrency_tokens.rs`
@@ -262,10 +263,10 @@ impl TransitionStmt {
             TransitionStmt::Let(span, _, _, _, _) => span,
             TransitionStmt::If(span, _, _, _) => span,
             TransitionStmt::Require(span, _) => span,
-            TransitionStmt::Assert(span, _) => span,
+            TransitionStmt::Assert(span, _, _) => span,
             TransitionStmt::Update(span, _, _) => span,
             TransitionStmt::Initialize(span, _, _) => span,
-            TransitionStmt::Special(span, _, _) => span,
+            TransitionStmt::Special(span, _, _, _) => span,
             TransitionStmt::PostCondition(span, _) => span,
         }
     }
@@ -279,7 +280,7 @@ impl TransitionStmt {
             TransitionStmt::Assert(..) => "assert",
             TransitionStmt::Update(..) => "update",
             TransitionStmt::Initialize(..) => "init",
-            TransitionStmt::Special(_, _, op) => op.statement_name(),
+            TransitionStmt::Special(_, _, op, _) => op.statement_name(),
             TransitionStmt::PostCondition(..) => "post_condition",
         }
     }

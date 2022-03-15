@@ -123,7 +123,11 @@ tokenized_state_machine!(RwLock {
     fn release_shared(&self, x: T) {
         remove_element(reader, x);
 
-        //assert(self.flags.1 >= 1);
+        assert_by(self.flags.1 >= 1, {
+            //assert(self.reader.count(x) >= 1);
+            assert(equal(self.storage, Option::Some(x)));
+            //assert(equal(x, self.storage.get_Some_0()));
+        });
         update(flags, (self.flags.0, self.flags.1 - 1));
     }
 

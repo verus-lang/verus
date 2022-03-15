@@ -1292,7 +1292,7 @@ fn determine_outputs(ctxt: &mut Ctxt, ts: &TransitionStmt) -> syn::parse::Result
             Ok(())
         }
         TransitionStmt::Require(_span, _req_e) => Ok(()),
-        TransitionStmt::Assert(_span, _assert_e) => Ok(()),
+        TransitionStmt::Assert(_span, _assert_e, _) => Ok(()),
         TransitionStmt::Initialize(_span, id, _e) => {
             ctxt.fields_written.insert(id.to_string());
             Ok(())
@@ -1314,7 +1314,7 @@ fn determine_outputs(ctxt: &mut Ctxt, ts: &TransitionStmt) -> syn::parse::Result
             ctxt.fields_written.insert(id.to_string());
             Ok(())
         }
-        TransitionStmt::Special(_span, _id, _op) => Ok(()),
+        TransitionStmt::Special(_span, _id, _op, _) => Ok(()),
         TransitionStmt::PostCondition(..) => {
             panic!("PostCondition statement shouldn't exist yet");
         }
@@ -1378,7 +1378,7 @@ fn translate_transition(
             *e = req_e;
             return Ok(());
         }
-        TransitionStmt::Assert(_span, e) => {
+        TransitionStmt::Assert(_span, e, _) => {
             let assert_e = translate_expr(ctxt, e, false, errors);
             *e = assert_e;
             return Ok(());
@@ -1390,8 +1390,8 @@ fn translate_transition(
             return Ok(());
         }
 
-        TransitionStmt::Special(span, id, SpecialOp::HaveSome(e))
-        | TransitionStmt::Special(span, id, SpecialOp::HaveElement(e)) => {
+        TransitionStmt::Special(span, id, SpecialOp::HaveSome(e), _)
+        | TransitionStmt::Special(span, id, SpecialOp::HaveElement(e), _) => {
             let e = translate_expr(ctxt, e, false, errors);
 
             let ident = ctxt.get_numbered_token_ident(id);
@@ -1408,8 +1408,8 @@ fn translate_transition(
             TransitionStmt::Require(*span, mk_eq(&Expr::Verbatim(quote! {#ident.#field_name}), &e))
         }
 
-        TransitionStmt::Special(span, id, SpecialOp::AddSome(e))
-        | TransitionStmt::Special(span, id, SpecialOp::AddElement(e)) => {
+        TransitionStmt::Special(span, id, SpecialOp::AddSome(e), _)
+        | TransitionStmt::Special(span, id, SpecialOp::AddElement(e), _) => {
             let e = translate_expr(ctxt, e, false, errors);
 
             let ident = ctxt.get_numbered_token_ident(id);
@@ -1429,8 +1429,8 @@ fn translate_transition(
             )
         }
 
-        TransitionStmt::Special(span, id, SpecialOp::RemoveSome(e))
-        | TransitionStmt::Special(span, id, SpecialOp::RemoveElement(e)) => {
+        TransitionStmt::Special(span, id, SpecialOp::RemoveSome(e), _)
+        | TransitionStmt::Special(span, id, SpecialOp::RemoveElement(e), _) => {
             let e = translate_expr(ctxt, e, false, errors);
 
             let ident = ctxt.get_numbered_token_ident(id);
@@ -1447,7 +1447,7 @@ fn translate_transition(
             TransitionStmt::Require(*span, mk_eq(&Expr::Verbatim(quote! {#ident.#field_name}), &e))
         }
 
-        TransitionStmt::Special(span, id, SpecialOp::HaveKV(key, val)) => {
+        TransitionStmt::Special(span, id, SpecialOp::HaveKV(key, val), _) => {
             let key = translate_expr(ctxt, key, false, errors);
             let val = translate_expr(ctxt, val, false, errors);
 
@@ -1470,7 +1470,7 @@ fn translate_transition(
             )
         }
 
-        TransitionStmt::Special(span, id, SpecialOp::AddKV(key, val)) => {
+        TransitionStmt::Special(span, id, SpecialOp::AddKV(key, val), _) => {
             let key = translate_expr(ctxt, key, false, errors);
             let val = translate_expr(ctxt, val, false, errors);
 
@@ -1493,7 +1493,7 @@ fn translate_transition(
             )
         }
 
-        TransitionStmt::Special(span, id, SpecialOp::RemoveKV(key, val)) => {
+        TransitionStmt::Special(span, id, SpecialOp::RemoveKV(key, val), _) => {
             let key = translate_expr(ctxt, key, false, errors);
             let val = translate_expr(ctxt, val, false, errors);
 
@@ -1516,8 +1516,8 @@ fn translate_transition(
             )
         }
 
-        TransitionStmt::Special(span, id, SpecialOp::GuardSome(e))
-        | TransitionStmt::Special(span, id, SpecialOp::GuardKV(_, e)) => {
+        TransitionStmt::Special(span, id, SpecialOp::GuardSome(e), _)
+        | TransitionStmt::Special(span, id, SpecialOp::GuardKV(_, e), _) => {
             // note: ignore 'key' expression for the KV case
             let e = translate_expr(ctxt, e, false, errors);
 
@@ -1534,8 +1534,8 @@ fn translate_transition(
             TransitionStmt::PostCondition(*span, mk_eq(&Expr::Verbatim(quote! {*#ident}), &e))
         }
 
-        TransitionStmt::Special(span, id, SpecialOp::DepositSome(e))
-        | TransitionStmt::Special(span, id, SpecialOp::DepositKV(_, e)) => {
+        TransitionStmt::Special(span, id, SpecialOp::DepositSome(e), _)
+        | TransitionStmt::Special(span, id, SpecialOp::DepositKV(_, e), _) => {
             let e = translate_expr(ctxt, e, false, errors);
 
             let ident = ctxt.get_numbered_token_ident(id);
@@ -1551,8 +1551,8 @@ fn translate_transition(
             TransitionStmt::Require(*span, mk_eq(&Expr::Verbatim(quote! {#ident}), &e))
         }
 
-        TransitionStmt::Special(span, id, SpecialOp::WithdrawSome(e))
-        | TransitionStmt::Special(span, id, SpecialOp::WithdrawKV(_, e)) => {
+        TransitionStmt::Special(span, id, SpecialOp::WithdrawSome(e), _)
+        | TransitionStmt::Special(span, id, SpecialOp::WithdrawKV(_, e), _) => {
             let e = translate_expr(ctxt, e, false, errors);
 
             let ident = ctxt.get_numbered_token_ident(id);
@@ -1754,7 +1754,7 @@ fn exchange_collect(
             ctxt.requires.push(with_prequel(&prequel, true, req_e.clone()));
             Ok(prequel)
         }
-        TransitionStmt::Assert(_span, assert_e) => {
+        TransitionStmt::Assert(_span, assert_e, _) => {
             ctxt.ensures.push(with_prequel(&prequel, false, assert_e.clone()));
             let mut prequel = prequel;
             prequel.push(PrequelElement::AssertCondition(assert_e.clone()));
@@ -1858,11 +1858,13 @@ fn prune_irrelevant_ops_rec(ctxt: &Ctxt, ts: TransitionStmt) -> Option<Transitio
         }
 
         TransitionStmt::Require(span, req_e) => Some(TransitionStmt::Require(span, req_e)),
-        TransitionStmt::Assert(span, assert_e) => Some(TransitionStmt::Assert(span, assert_e)),
+        TransitionStmt::Assert(span, assert_e, proof) => {
+            Some(TransitionStmt::Assert(span, assert_e, proof.clone()))
+        }
         TransitionStmt::PostCondition(span, post_e) => {
             Some(TransitionStmt::PostCondition(span, post_e))
         }
-        TransitionStmt::Special(span, id, op) => Some(TransitionStmt::Special(span, id, op)),
+        TransitionStmt::Special(span, id, op, proof) => Some(TransitionStmt::Special(span, id, op, proof.clone())),
     }
 }
 
@@ -1922,8 +1924,8 @@ fn get_post_value_for_variable(ctxt: &Ctxt, ts: &TransitionStmt, field: &Field) 
         TransitionStmt::Initialize(_span, id, e) | TransitionStmt::Update(_span, id, e) => {
             if *id.to_string() == *field.name.to_string() { Some(e.clone()) } else { None }
         }
-        TransitionStmt::Require(_, _)
-        | TransitionStmt::Assert(_, _)
+        TransitionStmt::Require(..)
+        | TransitionStmt::Assert(..)
         | TransitionStmt::Special(..)
         | TransitionStmt::PostCondition(..) => None,
     }

@@ -76,8 +76,11 @@ pub fn safety_condition_body(ts: &TransitionStmt) -> Option<Expr> {
         TransitionStmt::Require(span, e) => Some(Expr::Verbatim(quote_spanned! {*span =>
             crate::pervasive::assume(#e);
         })),
-        TransitionStmt::Assert(span, e) => Some(Expr::Verbatim(quote_spanned! {*span =>
+        TransitionStmt::Assert(span, e, None) => Some(Expr::Verbatim(quote_spanned! {*span =>
             crate::pervasive::assert(#e);
+        })),
+        TransitionStmt::Assert(span, e, Some(proof)) => Some(Expr::Verbatim(quote_spanned! {*span =>
+            ::builtin::assert_by(#e, #proof);
         })),
         TransitionStmt::Initialize(..)
         | TransitionStmt::Update(..)
@@ -107,9 +110,9 @@ pub fn has_any_assert(ts: &TransitionStmt) -> bool {
         TransitionStmt::Let(_, _, _, _, child) => has_any_assert(child),
         TransitionStmt::If(_span, _cond, thn, els) => has_any_assert(thn) || has_any_assert(els),
         TransitionStmt::Require(_, _) => false,
-        TransitionStmt::Assert(_, _) => true,
-        TransitionStmt::Initialize(_, _, _) => false,
-        TransitionStmt::Update(_, _, _) => false,
+        TransitionStmt::Assert(..) => true,
+        TransitionStmt::Initialize(..) => false,
+        TransitionStmt::Update(..) => false,
         TransitionStmt::Special(..) => false,
         TransitionStmt::PostCondition(..) => false,
     }

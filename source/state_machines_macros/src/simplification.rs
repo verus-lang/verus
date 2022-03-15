@@ -79,14 +79,14 @@ use syn::{Expr, Ident};
 // Thus the purpose of the first phase is to find these ideal positions for the
 // PostCondition statements and mark those positions with placeholders.
 
-pub fn simplify_ops(sm: &SM, ts: &TransitionStmt, is_readonly: bool) -> syn::parse::Result<TransitionStmt> {
+pub fn simplify_ops(sm: &SM, ts: &TransitionStmt, is_readonly: bool) -> TransitionStmt {
     let ts = add_tmp_vars_special_ops(ts);
     let ts = if !is_readonly { add_placeholders(sm, &ts) } else { ts };
 
     let field_map = FieldMap::new(sm);
-    let (ts, _field_map) = simplify_ops_rec(&ts, field_map)?;
+    let (ts, _field_map) = simplify_ops_rec(&ts, field_map);
 
-    Ok(ts)
+    ts
 }
 
 // Phase 1. Adding the placeholders for the PostCondition operations.
@@ -137,7 +137,7 @@ fn add_placeholders_rec(ts: &mut TransitionStmt, found: &mut Vec<Ident>) {
         TransitionStmt::Initialize(_, f, _) | TransitionStmt::Update(_, f, _) => {
             is_update_for = Some(f.clone());
         }
-        TransitionStmt::Special(_, f, op) => {
+        TransitionStmt::Special(_, f, op, _) => {
             if op.is_modifier() {
                 is_update_for = Some(f.clone());
             }
@@ -208,10 +208,10 @@ fn add_placeholders_rec(ts: &mut TransitionStmt, found: &mut Vec<Ident>) {
         }
 
         TransitionStmt::Require(_, _) => {}
-        TransitionStmt::Assert(_, _) => {}
+        TransitionStmt::Assert(..) => {}
         TransitionStmt::Initialize(_, _, _) => {}
         TransitionStmt::Update(_, _, _) => {}
-        TransitionStmt::Special(_, _, _) => {}
+        TransitionStmt::Special(..) => {}
         TransitionStmt::PostCondition(..) => {
             // We're in the process of adding these; they shouldn't be in here already!
             panic!("PostCondition statement shouldn't exist here");
@@ -352,7 +352,7 @@ impl FieldMap {
     }
 }
 
-fn simplify_ops_rec(ts: &TransitionStmt, field_map: FieldMap) -> syn::parse::Result<(TransitionStmt, FieldMap)> {
+fn simplify_ops_rec(ts: &TransitionStmt, field_map: FieldMap) -> (TransitionStmt, FieldMap) {
     match ts {
         TransitionStmt::PostCondition(span, placeholder_e) => {
             // We found a placeholder PostCondition.
@@ -367,7 +367,7 @@ fn simplify_ops_rec(ts: &TransitionStmt, field_map: FieldMap) -> syn::parse::Res
                     ::builtin::equal(post.#f, #e)
                 }),
             );
-            return Ok((ts, field_map));
+            return (ts, field_map);
         }
         _ => {}
     }
@@ -377,40 +377,40 @@ fn simplify_ops_rec(ts: &TransitionStmt, field_map: FieldMap) -> syn::parse::Res
             let mut field_map = field_map;
             let mut res = Vec::new();
             for t in v {
-                let (t, fm) = simplify_ops_rec(t, field_map)?;
+                let (t, fm) = simplify_ops_rec(t, field_map);
                 field_map = fm;
                 res.push(t);
             }
-            Ok((TransitionStmt::Block(*span, res), field_map))
+            (TransitionStmt::Block(*span, res), field_map)
         }
         TransitionStmt::Let(span, id, lk, e, child) => {
-            let (new_child, new_map) = simplify_ops_rec(child, field_map.clone())?;
+            let (new_child, new_map) = simplify_ops_rec(child, field_map.clone());
             // We call `remove_changed` to remove any field that has been modified
             // inside this block. We do this because the new expression could possibly
             // refer to the bound variable here which is about to go out-of-scope.
-            Ok((
+            (
                 TransitionStmt::Let(*span, id.clone(), lk.clone(), e.clone(), Box::new(new_child)),
                 FieldMap::remove_changed(field_map, new_map),
-            ))
+            )
         }
         TransitionStmt::If(span, cond, e1, e2) => {
-            let (new_e1, field_map1) = simplify_ops_rec(e1, field_map.clone())?;
-            let (new_e2, field_map2) = simplify_ops_rec(e2, field_map.clone())?;
-            Ok((
+            let (new_e1, field_map1) = simplify_ops_rec(e1, field_map.clone());
+            let (new_e2, field_map2) = simplify_ops_rec(e2, field_map.clone());
+            (
                 TransitionStmt::If(*span, cond.clone(), Box::new(new_e1), Box::new(new_e2)),
                 FieldMap::merge(field_map, field_map1, field_map2),
-            ))
+            )
         }
-        TransitionStmt::Require(_, _) => Ok((ts.clone(), field_map)),
-        TransitionStmt::Assert(_, _) => Ok((ts.clone(), field_map)),
+        TransitionStmt::Require(..) => (ts.clone(), field_map),
+        TransitionStmt::Assert(..) => (ts.clone(), field_map),
 
         TransitionStmt::Initialize(span, f, e) | TransitionStmt::Update(span, f, e) => {
             let mut field_map = field_map;
             field_map.set(f.to_string(), e.clone());
-            Ok((TransitionStmt::Block(*span, Vec::new()), field_map))
+            (TransitionStmt::Block(*span, Vec::new()), field_map)
         }
 
-        TransitionStmt::Special(span, f, SpecialOp::HaveSome(e), None) => {
+        TransitionStmt::Special(span, f, SpecialOp::HaveSome(e), _) => {
             let cur = field_map.get(&f.to_string());
             let prec = Expr::Verbatim(quote! {
                 ::builtin::equal(
@@ -418,7 +418,7 @@ fn simplify_ops_rec(ts: &TransitionStmt, field_map: FieldMap) -> syn::parse::Res
                     crate::pervasive::option::Option::Some(#e)
                 )
             });
-            Ok((TransitionStmt::Require(*span, prec), field_map))
+            (TransitionStmt::Require(*span, prec), field_map)
         }
         TransitionStmt::Special(span, f, SpecialOp::AddSome(e), proof) => {
             let mut field_map = field_map;
@@ -432,9 +432,9 @@ fn simplify_ops_rec(ts: &TransitionStmt, field_map: FieldMap) -> syn::parse::Res
             let safety = Expr::Verbatim(quote! {
                 (#cur).is_None()
             });
-            Ok((TransitionStmt::Assert(*span, safety, proof.clone()), field_map))
+            (TransitionStmt::Assert(*span, safety, proof.clone()), field_map)
         }
-        TransitionStmt::Special(span, f, SpecialOp::RemoveSome(e), None) => {
+        TransitionStmt::Special(span, f, SpecialOp::RemoveSome(e), _) => {
             let mut field_map = field_map;
             let cur = field_map.get(&f.to_string()).clone();
             field_map.set(
@@ -449,7 +449,7 @@ fn simplify_ops_rec(ts: &TransitionStmt, field_map: FieldMap) -> syn::parse::Res
                     crate::pervasive::option::Option::Some(#e)
                 )
             });
-            Ok((TransitionStmt::Require(*span, prec), field_map))
+            (TransitionStmt::Require(*span, prec), field_map)
         }
 
         TransitionStmt::Special(span, f, SpecialOp::GuardSome(e), proof) => {
@@ -460,7 +460,7 @@ fn simplify_ops_rec(ts: &TransitionStmt, field_map: FieldMap) -> syn::parse::Res
                     crate::pervasive::option::Option::Some(#e)
                 )
             });
-            Ok((TransitionStmt::Assert(*span, prec, proof.clone()), field_map))
+            (TransitionStmt::Assert(*span, prec, proof.clone()), field_map)
         }
         TransitionStmt::Special(span, f, SpecialOp::DepositSome(e), proof) => {
             let mut field_map = field_map;
@@ -474,7 +474,7 @@ fn simplify_ops_rec(ts: &TransitionStmt, field_map: FieldMap) -> syn::parse::Res
             let safety = Expr::Verbatim(quote! {
                 (#cur).is_None()
             });
-            Ok((TransitionStmt::Assert(*span, safety, proof.clone()), field_map))
+            (TransitionStmt::Assert(*span, safety, proof.clone()), field_map)
         }
         TransitionStmt::Special(span, f, SpecialOp::WithdrawSome(e), proof) => {
             let mut field_map = field_map;
@@ -491,15 +491,15 @@ fn simplify_ops_rec(ts: &TransitionStmt, field_map: FieldMap) -> syn::parse::Res
                     crate::pervasive::option::Option::Some(#e)
                 )
             });
-            Ok((TransitionStmt::Assert(*span, prec, proof.clone()), field_map))
+            (TransitionStmt::Assert(*span, prec, proof.clone()), field_map)
         }
 
-        TransitionStmt::Special(span, f, SpecialOp::HaveKV(key, val), None) => {
+        TransitionStmt::Special(span, f, SpecialOp::HaveKV(key, val), _) => {
             let cur = field_map.get(&f.to_string());
             let prec = Expr::Verbatim(quote! {
                 (#cur).contains_pair(#key, #val)
             });
-            Ok((TransitionStmt::Require(*span, prec), field_map))
+            (TransitionStmt::Require(*span, prec), field_map)
         }
         TransitionStmt::Special(span, f, SpecialOp::AddKV(key, val), proof) => {
             let mut field_map = field_map;
@@ -513,9 +513,9 @@ fn simplify_ops_rec(ts: &TransitionStmt, field_map: FieldMap) -> syn::parse::Res
             let safety = Expr::Verbatim(quote! {
                 !(#cur).dom().contains(#key)
             });
-            Ok((TransitionStmt::Assert(*span, safety, proof.clone()), field_map))
+            (TransitionStmt::Assert(*span, safety, proof.clone()), field_map)
         }
-        TransitionStmt::Special(span, f, SpecialOp::RemoveKV(key, val), None) => {
+        TransitionStmt::Special(span, f, SpecialOp::RemoveKV(key, val), _) => {
             let mut field_map = field_map;
             let cur = field_map.get(&f.to_string()).clone();
             field_map.set(
@@ -527,7 +527,7 @@ fn simplify_ops_rec(ts: &TransitionStmt, field_map: FieldMap) -> syn::parse::Res
             let prec = Expr::Verbatim(quote! {
                 (#cur).contains_pair(#key, #val)
             });
-            Ok((TransitionStmt::Require(*span, prec), field_map))
+            (TransitionStmt::Require(*span, prec), field_map)
         }
 
         TransitionStmt::Special(span, f, SpecialOp::GuardKV(key, val), proof) => {
@@ -535,7 +535,7 @@ fn simplify_ops_rec(ts: &TransitionStmt, field_map: FieldMap) -> syn::parse::Res
             let prec = Expr::Verbatim(quote! {
                 (#cur).contains_pair(#key, #val)
             });
-            Ok((TransitionStmt::Assert(*span, prec, proof.clone()), field_map))
+            (TransitionStmt::Assert(*span, prec, proof.clone()), field_map)
         }
         TransitionStmt::Special(span, f, SpecialOp::DepositKV(key, val), proof) => {
             let mut field_map = field_map;
@@ -549,7 +549,7 @@ fn simplify_ops_rec(ts: &TransitionStmt, field_map: FieldMap) -> syn::parse::Res
             let safety = Expr::Verbatim(quote! {
                 !(#cur).dom().contains(#key)
             });
-            Ok((TransitionStmt::Assert(*span, safety, proof.clone()), field_map))
+            (TransitionStmt::Assert(*span, safety, proof.clone()), field_map)
         }
         TransitionStmt::Special(span, f, SpecialOp::WithdrawKV(key, val), proof) => {
             let mut field_map = field_map;
@@ -563,17 +563,17 @@ fn simplify_ops_rec(ts: &TransitionStmt, field_map: FieldMap) -> syn::parse::Res
             let prec = Expr::Verbatim(quote! {
                 (#cur).contains_pair(#key, #val)
             });
-            Ok((TransitionStmt::Assert(*span, prec, proof.clone()), field_map))
+            (TransitionStmt::Assert(*span, prec, proof.clone()), field_map)
         }
 
-        TransitionStmt::Special(span, f, SpecialOp::HaveElement(e), None) => {
+        TransitionStmt::Special(span, f, SpecialOp::HaveElement(e), _) => {
             let cur = field_map.get(&f.to_string());
             let prec = Expr::Verbatim(quote! {
                 (#cur).count(#e) >= 1
             });
-            Ok((TransitionStmt::Require(*span, prec), field_map))
+            (TransitionStmt::Require(*span, prec), field_map)
         }
-        TransitionStmt::Special(span, f, SpecialOp::AddElement(e), None) => {
+        TransitionStmt::Special(span, f, SpecialOp::AddElement(e), _) => {
             let mut field_map = field_map;
             let cur = field_map.get(&f.to_string()).clone();
             field_map.set(
@@ -582,9 +582,9 @@ fn simplify_ops_rec(ts: &TransitionStmt, field_map: FieldMap) -> syn::parse::Res
                     (#cur).insert(#e)
                 }),
             );
-            Ok((TransitionStmt::Block(*span, Vec::new()), field_map))
+            (TransitionStmt::Block(*span, Vec::new()), field_map)
         }
-        TransitionStmt::Special(span, f, SpecialOp::RemoveElement(e), None) => {
+        TransitionStmt::Special(span, f, SpecialOp::RemoveElement(e), _) => {
             let mut field_map = field_map;
             let cur = field_map.get(&f.to_string()).clone();
             field_map.set(
@@ -596,18 +596,7 @@ fn simplify_ops_rec(ts: &TransitionStmt, field_map: FieldMap) -> syn::parse::Res
             let prec = Expr::Verbatim(quote! {
                 (#cur).count(#e) >= 1
             });
-            Ok((TransitionStmt::Require(*span, prec), field_map))
-        }
-
-        TransitionStmt::Special(_span, _f, SpecialOp::HaveSome(_), Some(proof)) |
-        TransitionStmt::Special(_span, _f, SpecialOp::RemoveSome(_), Some(proof)) |
-        TransitionStmt::Special(_span, _f, SpecialOp::HaveKV(_, _), Some(proof)) |
-        TransitionStmt::Special(_span, _f, SpecialOp::RemoveKV(_, _), Some(proof)) |
-        TransitionStmt::Special(_span, _f, SpecialOp::HaveElement(_), Some(proof)) |
-        TransitionStmt::Special(_span, _f, SpecialOp::AddElement(_), Some(proof)) |
-        TransitionStmt::Special(_span, _f, SpecialOp::RemoveElement(..), Some(proof)) => {
-            let name = ts.statement_name();
-            Err(Error::new(proof.span(), format!("a '{name:}' command does not have an inherent safety condition, so the 'by'-style proof does nothing here")))
+            (TransitionStmt::Require(*span, prec), field_map)
         }
 
         TransitionStmt::PostCondition(..) => {

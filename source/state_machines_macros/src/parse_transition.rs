@@ -1,6 +1,7 @@
 use crate::ast::{LetKind, SpecialOp, Transition, TransitionKind, TransitionParam, TransitionStmt};
 use proc_macro2::Span;
 use syn::spanned::Spanned;
+use std::rc::Rc;
 use syn::{
     Attribute, Block, Error, Expr, ExprCall, ExprIf, FnArg, Ident, ImplItemMethod, Local, Meta,
     Pat, PatIdent, Signature, Stmt,
@@ -219,8 +220,10 @@ fn parse_expr_if(expr_if: &ExprIf, ctxt: &Ctxt) -> syn::parse::Result<Transition
     ));
 }
 
+#[derive(Clone, Copy)]
 enum CallType {
     Assert,
+    AssertBy,
     Require,
     Update,
     Initialize,
@@ -241,15 +244,61 @@ enum CallType {
     GuardKV,
 }
 
+/// We should return 'true' for any special op which has an inherent
+/// safety condition, that is, if its operational definition expands to 
+/// include an 'assert' statement. This means:
+/// withdraw, guard: true
+/// remove, have: false,
+/// add, desposit: true iff the underlying monoid's composition operator is not total.
+///   (e.g., composition is total for multiset, so AddElement returns false)
+/// See `docs/command-reference.md` for more explanation.
+fn call_type_accepts_proof(ct: CallType) -> bool {
+    match ct {
+        CallType::Assert => false,
+        CallType::AssertBy => true,
+        CallType::Require => false,
+        CallType::Update => false,
+        CallType::Initialize => false,
+        CallType::AddSome => true,
+        CallType::HaveSome => false,
+        CallType::RemoveSome => false,
+        CallType::AddElement => false,
+        CallType::HaveElement => false,
+        CallType::RemoveElement => false,
+        CallType::AddKV => true,
+        CallType::HaveKV => false,
+        CallType::RemoveKV => false,
+        CallType::WithdrawSome => true,
+        CallType::DepositSome => true,
+        CallType::GuardSome => true,
+        CallType::WithdrawKV => true,
+        CallType::DepositKV => true,
+        CallType::GuardKV => true,
+    }
+}
+
 fn parse_call(call: &ExprCall, ctxt: &Ctxt) -> syn::parse::Result<TransitionStmt> {
     let ct = parse_call_type(&call.func, ctxt)?;
     match &ct {
         CallType::Assert => {
             if call.args.len() != 1 {
-                return Err(Error::new(call.span(), "assert expected 1 arguments"));
+                return Err(Error::new(call.span(), "assert expected 1 argument"));
             }
             let e = call.args[0].clone();
-            return Ok(TransitionStmt::Assert(call.span(), e));
+            return Ok(TransitionStmt::Assert(call.span(), e, None));
+        }
+        CallType::AssertBy => {
+            if call.args.len() != 2 {
+                return Err(Error::new(call.span(), "assert expected 2 arguments"));
+            }
+            let e = call.args[0].clone();
+            let block = match &call.args[1] {
+                Expr::Block(expr_block) => expr_block.block.clone(),
+                _ => {
+                    return Err(Error::new(call.span(), "assert_by expected a proof block (using braces) as its second argument"));
+                }
+            };
+            return Ok(TransitionStmt::Assert(call.span(), e, Some(Rc::new(block))));
         }
         CallType::Require => {
             if call.args.len() != 1 {
@@ -268,9 +317,19 @@ fn parse_call(call: &ExprCall, ctxt: &Ctxt) -> syn::parse::Result<TransitionStmt
                 | CallType::DepositKV => 3,
                 _ => 2,
             };
-            if call.args.len() != n_args {
+
+            let proof_block = if call.args.len() == n_args {
+                false
+            } else if call_type_accepts_proof(ct) {
+                if call.args.len() == n_args + 1 {
+                    true
+                } else {
+                    return Err(Error::new(call.span(), "expected {n_args:} arguments, plus an optional proof block"));
+                }
+            } else {
                 return Err(Error::new(call.span(), "expected {n_args:} arguments"));
-            }
+            };
+
             let ident = match &call.args[0] {
                 Expr::Path(path) => {
                     match &path.qself {
@@ -292,6 +351,16 @@ fn parse_call(call: &ExprCall, ctxt: &Ctxt) -> syn::parse::Result<TransitionStmt
                 }
             };
             let e = call.args[1].clone();
+            let proof = if proof_block {
+                match &call.args[n_args] {
+                    Expr::Block(expr_block) => Some(Rc::new(expr_block.block.clone())),
+                    _ => {
+                        return Err(Error::new(call.span(), "expected a proof block (using braces) as the final argument"));
+                    }
+                }
+            } else {
+                None
+            };
             return match ct {
                 CallType::Update => Ok(TransitionStmt::Update(call.span(), ident.clone(), e)),
                 CallType::Initialize => {
@@ -301,71 +370,83 @@ fn parse_call(call: &ExprCall, ctxt: &Ctxt) -> syn::parse::Result<TransitionStmt
                     call.span(),
                     ident.clone(),
                     SpecialOp::HaveElement(e),
+                    proof,
                 )),
                 CallType::AddElement => Ok(TransitionStmt::Special(
                     call.span(),
                     ident.clone(),
                     SpecialOp::AddElement(e),
+                    proof,
                 )),
                 CallType::RemoveElement => Ok(TransitionStmt::Special(
                     call.span(),
                     ident.clone(),
                     SpecialOp::RemoveElement(e),
+                    proof,
                 )),
                 CallType::HaveKV => Ok(TransitionStmt::Special(
                     call.span(),
                     ident.clone(),
                     SpecialOp::HaveKV(e, call.args[2].clone()),
+                    proof,
                 )),
                 CallType::AddKV => Ok(TransitionStmt::Special(
                     call.span(),
                     ident.clone(),
                     SpecialOp::AddKV(e, call.args[2].clone()),
+                    proof,
                 )),
                 CallType::RemoveKV => Ok(TransitionStmt::Special(
                     call.span(),
                     ident.clone(),
                     SpecialOp::RemoveKV(e, call.args[2].clone()),
+                    proof,
                 )),
 
                 CallType::HaveSome => {
-                    Ok(TransitionStmt::Special(call.span(), ident.clone(), SpecialOp::HaveSome(e)))
+                    Ok(TransitionStmt::Special(call.span(), ident.clone(), SpecialOp::HaveSome(e), proof))
                 }
                 CallType::AddSome => {
-                    Ok(TransitionStmt::Special(call.span(), ident.clone(), SpecialOp::AddSome(e)))
+                    Ok(TransitionStmt::Special(call.span(), ident.clone(), SpecialOp::AddSome(e), proof))
                 }
                 CallType::RemoveSome => Ok(TransitionStmt::Special(
                     call.span(),
                     ident.clone(),
                     SpecialOp::RemoveSome(e),
+                    proof,
                 )),
                 CallType::GuardSome => {
-                    Ok(TransitionStmt::Special(call.span(), ident.clone(), SpecialOp::GuardSome(e)))
+                    Ok(TransitionStmt::Special(call.span(), ident.clone(), SpecialOp::GuardSome(e), proof))
                 }
                 CallType::DepositSome => Ok(TransitionStmt::Special(
                     call.span(),
                     ident.clone(),
                     SpecialOp::DepositSome(e),
+                    proof,
                 )),
                 CallType::WithdrawSome => Ok(TransitionStmt::Special(
                     call.span(),
                     ident.clone(),
                     SpecialOp::WithdrawSome(e),
+                    proof,
                 )),
                 CallType::GuardKV => Ok(TransitionStmt::Special(
                     call.span(),
                     ident.clone(),
                     SpecialOp::GuardKV(e, call.args[2].clone()),
+                    proof,
                 )),
                 CallType::DepositKV => Ok(TransitionStmt::Special(
                     call.span(),
                     ident.clone(),
                     SpecialOp::DepositKV(e, call.args[2].clone()),
+                    proof,
                 )),
                 CallType::WithdrawKV => Ok(TransitionStmt::Special(
                     call.span(),
                     ident.clone(),
                     SpecialOp::WithdrawKV(e, call.args[2].clone()),
+                    proof,
                 )),
 
                 _ => {
@@ -391,6 +472,9 @@ fn parse_call_type(callf: &Expr, _ctxt: &Ctxt) -> syn::parse::Result<CallType> {
 
             if path.path.is_ident("assert") {
                 return Ok(CallType::Assert);
+            }
+            if path.path.is_ident("assert_by") {
+                return Ok(CallType::AssertBy);
             }
             if path.path.is_ident("require") {
                 return Ok(CallType::Require);

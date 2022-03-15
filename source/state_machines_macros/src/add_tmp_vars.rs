@@ -45,11 +45,11 @@ fn add_tmp_vars(ts: &TransitionStmt, ctxt: &mut Ctxt) -> TransitionStmt {
             TransitionStmt::If(*span, cond.clone(), Box::new(thn), Box::new(els))
         }
 
-        TransitionStmt::Require(_, _)
-        | TransitionStmt::Assert(_, _)
-        | TransitionStmt::Initialize(_, _, _)
-        | TransitionStmt::Update(_, _, _)
-        | TransitionStmt::Special(_, _, _)
+        TransitionStmt::Require(..)
+        | TransitionStmt::Assert(..)
+        | TransitionStmt::Initialize(..)
+        | TransitionStmt::Update(..)
+        | TransitionStmt::Special(..)
         | TransitionStmt::PostCondition(..) => {
             add_tmp_vars_vec(*ts.get_span(), vec![ts.clone()], ctxt)
         }
@@ -62,17 +62,17 @@ fn add_tmp_vars_vec(span: Span, v: Vec<TransitionStmt>, ctxt: &mut Ctxt) -> Tran
 
     for ts in v.iter() {
         match ts {
-            TransitionStmt::Require(_, _)
-            | TransitionStmt::Assert(_, _)
-            | TransitionStmt::Initialize(_, _, _)
-            | TransitionStmt::Update(_, _, _)
+            TransitionStmt::Require(..)
+            | TransitionStmt::Assert(..)
+            | TransitionStmt::Initialize(..)
+            | TransitionStmt::Update(..)
             | TransitionStmt::PostCondition(..) => {
                 stmts.push(ts.clone());
             }
 
-            TransitionStmt::Special(span, ident, op) => {
+            TransitionStmt::Special(span, ident, op, proof) => {
                 let (new_op, new_bindings) = op_replace_with_tmps(ctxt, *span, op.clone());
-                let new_special = TransitionStmt::Special(*span, ident.clone(), new_op);
+                let new_special = TransitionStmt::Special(*span, ident.clone(), new_op, proof.clone());
                 stmts.push(new_special);
                 bindings.extend(new_bindings);
             }

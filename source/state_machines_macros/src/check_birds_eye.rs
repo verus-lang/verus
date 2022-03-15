@@ -152,7 +152,7 @@ fn check_birds_eye_rec(
                 *past_assert = true;
             }
         }
-        TransitionStmt::Special(span, _, op) => {
+        TransitionStmt::Special(span, _, op, _) => {
             let name = op.statement_name();
             if op.is_guard() {
                 if scoped_in_birds_eye {

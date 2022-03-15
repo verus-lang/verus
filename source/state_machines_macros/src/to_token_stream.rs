@@ -32,7 +32,7 @@ pub fn output_token_stream(bundle: SMBundle, concurrent: bool) -> syn::parse::Re
     let self_ty = get_self_ty(&bundle.sm);
 
     let safety_condition_lemmas =
-        output_primary_stuff(&mut token_stream, &mut impl_token_stream, &bundle.sm)?;
+        output_primary_stuff(&mut token_stream, &mut impl_token_stream, &bundle.sm);
 
     if concurrent {
         output_token_types_and_fns(&mut token_stream, &bundle, &safety_condition_lemmas)?;
@@ -164,7 +164,7 @@ pub fn output_primary_stuff(
     token_stream: &mut TokenStream,
     impl_token_stream: &mut TokenStream,
     sm: &SM,
-) -> syn::parse::Result<HashMap<String, Ident>> {
+) -> HashMap<String, Ident> {
     let name = &sm.name;
     //let fields: Vec<TokenStream> = sm.fields.iter().map(field_to_tokens).collect();
 
@@ -192,7 +192,7 @@ pub fn output_primary_stuff(
         // `to_relation` then takes that simplified transition and turns it into
         // a boolean predicate between `self` and `post`.
 
-        let simplified_body = simplify_ops(sm, &trans.body, trans.kind == TransitionKind::Readonly)?;
+        let simplified_body = simplify_ops(sm, &trans.body, trans.kind == TransitionKind::Readonly);
 
         // Output the 'weak' transition relation.
         // (or for the 'Init' case, a single-state predicate).

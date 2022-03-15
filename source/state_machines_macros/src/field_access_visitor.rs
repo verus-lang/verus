@@ -171,22 +171,22 @@ pub fn visit_field_accesses_all_exprs<F>(
             visit_field_accesses_all_exprs(els, f, errors, ident_to_field);
         }
         TransitionStmt::Require(_, e)
-        | TransitionStmt::Assert(_, e)
+        | TransitionStmt::Assert(_, e, _)
         | TransitionStmt::Initialize(_, _, e)
         | TransitionStmt::Update(_, _, e)
         | TransitionStmt::PostCondition(_, e)
-        | TransitionStmt::Special(_, _, SpecialOp::AddElement(e))
-        | TransitionStmt::Special(_, _, SpecialOp::RemoveElement(e))
-        | TransitionStmt::Special(_, _, SpecialOp::HaveElement(e))
-        | TransitionStmt::Special(_, _, SpecialOp::AddSome(e))
-        | TransitionStmt::Special(_, _, SpecialOp::RemoveSome(e))
-        | TransitionStmt::Special(_, _, SpecialOp::HaveSome(e))
-        | TransitionStmt::Special(_, _, SpecialOp::DepositSome(e))
-        | TransitionStmt::Special(_, _, SpecialOp::WithdrawSome(e))
-        | TransitionStmt::Special(_, _, SpecialOp::GuardSome(e))
-        | TransitionStmt::Special(_, _, SpecialOp::DepositKV(_, e)) // ignore 'key'
-        | TransitionStmt::Special(_, _, SpecialOp::WithdrawKV(_, e))
-        | TransitionStmt::Special(_, _, SpecialOp::GuardKV(_, e)) => {
+        | TransitionStmt::Special(_, _, SpecialOp::AddElement(e), _)
+        | TransitionStmt::Special(_, _, SpecialOp::RemoveElement(e), _)
+        | TransitionStmt::Special(_, _, SpecialOp::HaveElement(e), _)
+        | TransitionStmt::Special(_, _, SpecialOp::AddSome(e), _)
+        | TransitionStmt::Special(_, _, SpecialOp::RemoveSome(e), _)
+        | TransitionStmt::Special(_, _, SpecialOp::HaveSome(e), _)
+        | TransitionStmt::Special(_, _, SpecialOp::DepositSome(e), _)
+        | TransitionStmt::Special(_, _, SpecialOp::WithdrawSome(e), _)
+        | TransitionStmt::Special(_, _, SpecialOp::GuardSome(e), _)
+        | TransitionStmt::Special(_, _, SpecialOp::DepositKV(_, e), _) // ignore 'key'
+        | TransitionStmt::Special(_, _, SpecialOp::WithdrawKV(_, e), _)
+        | TransitionStmt::Special(_, _, SpecialOp::GuardKV(_, e), _) => {
             visit_field_accesses(
                 e,
                 |errors, field, e| f(errors, field, e, false),
@@ -194,9 +194,9 @@ pub fn visit_field_accesses_all_exprs<F>(
                 ident_to_field,
             );
         }
-        TransitionStmt::Special(_, _, SpecialOp::AddKV(key, val))
-        | TransitionStmt::Special(_, _, SpecialOp::RemoveKV(key, val))
-        | TransitionStmt::Special(_, _, SpecialOp::HaveKV(key, val)) => {
+        TransitionStmt::Special(_, _, SpecialOp::AddKV(key, val), _)
+        | TransitionStmt::Special(_, _, SpecialOp::RemoveKV(key, val), _)
+        | TransitionStmt::Special(_, _, SpecialOp::HaveKV(key, val), _) => {
             visit_field_accesses(
                 key,
                 |errors, field, e| f(errors, field, e, false),
