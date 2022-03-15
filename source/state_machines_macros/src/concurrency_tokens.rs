@@ -160,7 +160,7 @@ fn instance_struct_stream(sm: &SM) -> TokenStream {
         #[allow(non_camel_case_types)]
         #[verifier(unforgeable)]
         pub struct #insttype #gen {
-            #[spec] send_sync: crate::pervasive::SyncSendIfSyncSend<#storage_types>,
+            #[spec] send_sync: crate::pervasive::state_machine_internal::SyncSendIfSyncSend<#storage_types>,
             #[spec] state: #self_ty,
             #[spec] location: ::builtin::int,
         }
@@ -1864,7 +1864,9 @@ fn prune_irrelevant_ops_rec(ctxt: &Ctxt, ts: TransitionStmt) -> Option<Transitio
         TransitionStmt::PostCondition(span, post_e) => {
             Some(TransitionStmt::PostCondition(span, post_e))
         }
-        TransitionStmt::Special(span, id, op, proof) => Some(TransitionStmt::Special(span, id, op, proof.clone())),
+        TransitionStmt::Special(span, id, op, proof) => {
+            Some(TransitionStmt::Special(span, id, op, proof.clone()))
+        }
     }
 }
 

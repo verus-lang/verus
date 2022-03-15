@@ -1,6 +1,6 @@
-use crate::ast::TransitionStmt;
+use crate::ast::{AssertProof, TransitionStmt};
 use quote::quote_spanned;
-use syn::Expr;
+use syn::{Expr, Ident};
 
 // Given a transition, we convert it into a lemma that will create the correct
 // verification conditions for its 'assert' statement.
@@ -76,12 +76,21 @@ pub fn safety_condition_body(ts: &TransitionStmt) -> Option<Expr> {
         TransitionStmt::Require(span, e) => Some(Expr::Verbatim(quote_spanned! {*span =>
             crate::pervasive::assume(#e);
         })),
-        TransitionStmt::Assert(span, e, None) => Some(Expr::Verbatim(quote_spanned! {*span =>
-            crate::pervasive::assert(#e);
-        })),
-        TransitionStmt::Assert(span, e, Some(proof)) => Some(Expr::Verbatim(quote_spanned! {*span =>
-            ::builtin::assert_by(#e, #proof);
-        })),
+        TransitionStmt::Assert(span, e, AssertProof { proof: None, error_msg }) => {
+            let assert_fn = Ident::new(error_msg, *span);
+            Some(Expr::Verbatim(quote_spanned! {*span =>
+                crate::pervasive::state_machine_internal::#assert_fn(#e);
+            }))
+        }
+        TransitionStmt::Assert(span, e, AssertProof { proof: Some(proof), error_msg }) => {
+            let assert_fn = Ident::new(error_msg, *span);
+            Some(Expr::Verbatim(quote_spanned! {*span =>
+                ::builtin::assert_by(#e, {
+                    #proof
+                    crate::pervasive::state_machine_internal::#assert_fn(#e);
+                });
+            }))
+        }
         TransitionStmt::Initialize(..)
         | TransitionStmt::Update(..)
         | TransitionStmt::Special(..) => {

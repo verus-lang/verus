@@ -72,7 +72,8 @@ fn add_tmp_vars_vec(span: Span, v: Vec<TransitionStmt>, ctxt: &mut Ctxt) -> Tran
 
             TransitionStmt::Special(span, ident, op, proof) => {
                 let (new_op, new_bindings) = op_replace_with_tmps(ctxt, *span, op.clone());
-                let new_special = TransitionStmt::Special(*span, ident.clone(), new_op, proof.clone());
+                let new_special =
+                    TransitionStmt::Special(*span, ident.clone(), new_op, proof.clone());
                 stmts.push(new_special);
                 bindings.extend(new_bindings);
             }

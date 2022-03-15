@@ -12,6 +12,7 @@ pub mod invariants;
 pub mod atomic;
 pub mod modes;
 pub mod multiset;
+pub mod state_machine_internal;
 
 #[allow(unused_imports)]
 use builtin::*;
@@ -64,9 +65,4 @@ pub fn unreached<A>() -> A {
 #[verifier(external_body)]
 pub fn print_u64(i: u64) {
     println!("{}", i);
-}
-
-#[verifier(external_body)]
-pub struct SyncSendIfSyncSend<#[verifier(strictly_positive)] T> {
-    sync_send: builtin::SyncSendIfSyncSend<T>,
 }

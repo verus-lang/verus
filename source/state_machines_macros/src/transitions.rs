@@ -45,7 +45,7 @@ fn check_updates_refer_to_valid_fields(
             check_updates_refer_to_valid_fields(fields, els, errors);
         }
         TransitionStmt::Require(_, _) => {}
-        TransitionStmt::Assert(_, _, _) => {}
+        TransitionStmt::Assert(..) => {}
         TransitionStmt::Update(span, f, _)
         | TransitionStmt::Initialize(span, f, _)
         | TransitionStmt::Special(span, f, _, _) => {
@@ -308,7 +308,7 @@ fn check_valid_ops(
             check_valid_ops(fields, els, is_readonly, errors);
         }
         TransitionStmt::Require(_, _) => {}
-        TransitionStmt::Assert(_, _, _) => {}
+        TransitionStmt::Assert(..) => {}
         TransitionStmt::Initialize(span, _, _) => {
             errors.push(Error::new(
                 span.span(),

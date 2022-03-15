@@ -1,6 +1,6 @@
 use proc_macro2::Span;
-use syn::{Expr, FieldsNamed, Generics, Ident, ImplItemMethod, Type};
 use std::rc::Rc;
+use syn::{Expr, FieldsNamed, Generics, Ident, ImplItemMethod, Type};
 
 #[derive(Clone, Debug)]
 pub struct SM {
@@ -108,18 +108,25 @@ pub enum LetKind {
     BirdsEye,
 }
 
+/// Extra info for generating the verification condition of a safety condition
+#[derive(Clone, Debug)]
+pub struct AssertProof {
+    pub proof: Option<Rc<syn::Block>>,
+    pub error_msg: &'static str,
+}
+
 #[derive(Clone, Debug)]
 pub enum TransitionStmt {
     Block(Span, Vec<TransitionStmt>),
     Let(Span, Ident, LetKind, Expr, Box<TransitionStmt>),
     If(Span, Expr, Box<TransitionStmt>, Box<TransitionStmt>),
     Require(Span, Expr),
-    Assert(Span, Expr, Option<Rc<syn::Block>>),
+    Assert(Span, Expr, AssertProof),
     Update(Span, Ident, Expr),
     Initialize(Span, Ident, Expr),
 
     /// concurrent-state-machine-specific stuff
-    Special(Span, Ident, SpecialOp, Option<Rc<syn::Block>>),
+    Special(Span, Ident, SpecialOp, AssertProof),
 
     /// Different than an Assert - this statement is allowed to depend on output values.
     /// Used internally by various transformations, both by `concurrency_tokens.rs`
