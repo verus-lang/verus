@@ -2,6 +2,7 @@ use builtin::*;
 mod pervasive;
 use pervasive::*;
 
+#[verifier(bit_vector)]
 #[proof]
 fn bit_and32_auto(){
     ensures([
@@ -13,21 +14,14 @@ fn bit_and32_auto(){
         forall(|a: u32, b: u32| #[trigger] (a&b) >= 0),
         forall(|a: u32, b: u32| #[trigger] (a&b) <= 0xffffffffu32),
     ]);
-    assert_bit_vector(forall(|a: u32, b: u32| #[trigger] (a&b) == b&a));
-    assert_bit_vector(forall(|a: u32, b: u32, c:u32| #[trigger] ((a&b)&c) == a&(b&c)));
-    assert_bit_vector(forall(|a: u32| #[trigger] (a&a) == a));
-    assert_bit_vector(forall(|a: u32| #[trigger] (a&0) == 0));
-    assert_bit_vector(forall(|a: u32| #[trigger] (a& 0xffffffffu32) == a));
-    assert_bit_vector(forall(|a: u32, b: u32| #[trigger] (a&b) >= 0));
-    assert_bit_vector(forall(|a: u32, b: u32| #[trigger] (a&b) <= 0xffffffffu32));
 }
 
+#[verifier(bit_vector)]
 #[proof]
 fn bit_not32_auto(){
     ensures([
         forall(|a: u32| #[trigger] !(!a) == a),
     ]);
-    assert_bit_vector(forall(|a: u32| #[trigger] !(!a) == a));
 }
 
 #[proof]

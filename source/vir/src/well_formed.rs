@@ -63,11 +63,22 @@ fn check_function(ctxt: &Ctxt, function: &Function) -> Result<(), VirErr> {
         if let Some(body) = &function.x.body {
             crate::ast_visitor::expr_visitor_check(body, &mut |expr| {
                 match &expr.x {
-                    ExprX::Block(_,_) => {},                        
-                    _ => return err_str(&function.span, "bit-vector function mode cannot have a body exression"),
+                    ExprX::Block(_, _) => {}
+                    _ => {
+                        return err_str(
+                            &function.span,
+                            "bit-vector function mode cannot have a body exression",
+                        );
+                    }
                 }
                 Ok(())
             })?;
+        }
+        for p in function.x.params.iter() {
+            match *p.x.typ {
+                TypX::Bool | TypX::Int(_) | TypX::Boxed(_)  => {},
+                _ => return err_str(&p.span, "bit-vector function mode cannot have a datatype other than Integer/Boolean"),
+            }
         }
     }
 

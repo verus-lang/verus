@@ -9,9 +9,7 @@ use crate::def::{
     FUEL_BOOL, FUEL_BOOL_DEFAULT, FUEL_LOCAL, FUEL_TYPE, SUCC, ZERO,
 };
 use crate::sst::{BndX, ExpX, Par, ParPurpose, ParX, Pars};
-use crate::sst_to_air::{
-    exp_to_expr, fun_to_air_ident, typ_invariant, typ_to_air, ExprCtxt,
-};
+use crate::sst_to_air::{exp_to_expr, fun_to_air_ident, typ_invariant, typ_to_air, ExprCtxt};
 use crate::util::{vec_map, vec_map_result};
 use air::ast::{
     BinaryOp, Bind, BindX, Binder, BinderX, Command, CommandX, Commands, DeclX, Expr, ExprX, Quant,
@@ -129,8 +127,6 @@ fn func_body_to_air(
     //   (axiom (forall (... fuel) (= (rec%f ... (succ fuel)) body[rec%f ... fuel] )))
     //   (axiom (=> (fuel_bool fuel%f) (forall (...) (= (f ...) (rec%f ... (succ fuel_nat%f))))))
     let body_expr = exp_to_expr(&ctx, &body_exp, ExprCtxt::Body);
-    // let body_expr = if !function.x.attrs.bit_vector {exp_to_expr(&ctx, &body_exp, ExprCtxt::Body)}
-    // else {exp_to_bv_expr(&body_exp)};
     let def_body = if !is_recursive {
         body_expr
     } else {
@@ -454,10 +450,6 @@ pub fn func_decl_to_air(
                 let expr = exp_to_expr(ctx, &forall, ExprCtxt::Spec);
                 let axiom = Arc::new(DeclX::Axiom(expr));
                 decl_commands.push(Arc::new(CommandX::Global(axiom)));
-            }
-            if function.x.attrs.bit_vector {
-                // TODO: function level bitvector mode
-                // unimplemented!("function level bitvector mode");
             }
         }
     }

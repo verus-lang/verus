@@ -1302,7 +1302,7 @@ pub fn body_stm_to_air(
         &mut HashSet::new(),
         stm,
     );
-    let mut stmts=stm_to_stmts(ctx, &mut state, &stm);
+    let mut stmts = stm_to_stmts(ctx, &mut state, &stm);
 
     if has_mut_params {
         stmts.insert(0, Arc::new(StmtX::Snapshot(snapshot_ident(SNAPSHOT_PRE))));

@@ -2,25 +2,22 @@ use builtin::*;
 mod pervasive;
 use pervasive::*;
 
-
-// just a wrapper for assert_bit_vector
-
+#[verifier(bit_vector)]
 #[proof]
 fn bit_and_commutes(x: u32, y: u32) {
     ensures(x & y == y & x);
-    assert_bit_vector(x & y == y & x);
 }
 
+#[verifier(bit_vector)]
 #[proof]
 fn bit_and_associative(a: u32, b: u32, c:u32) {
     ensures((a&b)&c == a&(b&c));
-    assert_bit_vector((a&b)&c == a&(b&c));
 }
 
+#[verifier(bit_vector)]
 #[proof]
 fn bit_and_idempotent(a: u32) {
     ensures(a&a == a);
-    assert_bit_vector(a&a == a);
 }
 
 #[proof]

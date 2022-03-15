@@ -147,7 +147,6 @@ impl BitMap {
                 forall(|k: usize| k < i >>=  or_u64_relation(self.bits.view().index(k), bm.bits.view().index(k), result.bits.view().index(k))),
                 forall(|k: usize| k < i*64 >>= (result.view().index(k) == (self.view().index(k) || bm.view().index(k)))),
             ]);
-            assert(i < n);
             v3 = result.bits;
             let u1:u64 = *self.bits.index(i);
             let u2:u64 = *bm.bits.index(i);
