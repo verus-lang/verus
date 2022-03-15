@@ -243,3 +243,23 @@ test_verify_one_file! {
         }
     } => Err(e) => assert_vir_error(e)
 }
+
+test_verify_one_file! {
+    #[test] let_spec_pass code! {
+        fn test1() {
+            #[spec] let x: u64 = 2;
+            assert(x == 2);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] decl_init_let_spec_fail code! {
+        fn test1() {
+            #[spec] let x: u64;
+            x = 2;
+            x = 3;
+            assert(false); // FAILS
+        }
+    } => Err(e) => assert_vir_error(e)
+}

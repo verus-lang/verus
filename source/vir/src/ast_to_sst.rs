@@ -389,7 +389,7 @@ pub(crate) fn expr_to_stm_opt(
             let (stms, e0) = expr_to_stm(ctx, state, expr1)?;
             Ok((stms, Some(mk_exp(ExpX::Loc(e0)))))
         }
-        ExprX::Assign { is_init, lhs: expr1, rhs: expr2 } => {
+        ExprX::Assign { not_mut_init, lhs: expr1, rhs: expr2 } => {
             let dest_x = match &expr1.x {
                 ExprX::VarLoc(x) => Ok(state.get_var_unique_id(&x)),
                 _ => err_str(&expr1.span, "complex assignments not yet supported"),
@@ -397,14 +397,14 @@ pub(crate) fn expr_to_stm_opt(
             match expr_must_be_call_stm(ctx, state, expr2)? {
                 Some((mut stms2, func_path, typs, _, args)) => {
                     // make a Call
-                    let dest = Dest { var: dest_x?.clone(), is_init: *is_init };
+                    let dest = Dest { var: dest_x?.clone(), is_init: *not_mut_init };
                     stms2.push(stm_call(state, &expr.span, func_path, typs, args, Some(dest)));
                     Ok((stms2, None))
                 }
                 None => {
                     // make an Assign
                     let (mut stms2, e2) = expr_to_stm(ctx, state, expr2)?;
-                    let assign = StmX::Assign { lhs: dest_x?, rhs: e2, is_init: *is_init };
+                    let assign = StmX::Assign { lhs: dest_x?, rhs: e2, is_init: *not_mut_init };
                     stms2.push(Spanned::new(expr.span.clone(), assign));
                     Ok((stms2, None))
                 }
