@@ -51,41 +51,62 @@ fn set_bit64_proof(bv_new: u64, bv_old: u64, index: u32, bit: bool){
     ]);
 }
 
+#[verifier(bit_vector)]
+#[proof]
+fn bit_or_64_proof(bv1: u64, bv2: u64, bv_new:u64){
+    requires([
+        bv_new == bv1 | bv2,
+    ]);
+    ensures([
+        forall(|i: u32| (i < 64) >>= get_bit64!(bv_new, i)  == (get_bit64!(bv1, i) || get_bit64!(bv2, i))),
+    ]);
+}
 
-// #[derive(ViewEq)]
+#[proof]
+fn bit_or_64_view_proof(u1: u64, u2: u64, bv_new:u64){
+    requires([
+        bv_new == u1 | u2,
+    ]);
+    ensures([
+        u64_view(bv_new).ext_equal(Seq::new(64, |i: int| u64_view(u1).index(i) || u64_view(u2).index(i))),
+    ]);
+    #[spec] let s1:Seq<bool> = u64_view(u1);
+    #[spec] let s2:Seq<bool> = u64_view(u2);
+    #[spec] let s3:Seq<bool> = u64_view(bv_new);    
+    #[spec] let s4:Seq<bool> = Seq::new(64, |i: int| s1.index(i) || s2.index(i));
+    u64_view_proof(u1);
+    u64_view_proof(u2);
+    u64_view_proof(bv_new); 
+    bit_or_64_proof(u1,u2, bv_new);
+    assert(s3.ext_equal(s4));
+}
+
+#[spec]
+fn or_u64_relation(u1:u64, u2:u64, or_int:u64) -> bool {
+    u64_view(or_int).ext_equal(Seq::new(64, |i: int| u64_view(u1).index(i) || u64_view(u2).index(i)))
+}
+
+
 pub struct BitMap {
     bits: Vec<u64>,
-    #[spec] ghost_bits: Seq<u64>,
 }
 
 impl BitMap {
     #[spec]
     fn view(&self) -> Seq<bool> {        
-        let width = self.ghost_bits.len() * 64;
-        Seq::new(width, |i: int| get_bit64!(self.ghost_bits.index(i/64), (i as u64)%64))
+        let width = self.bits.view().len() * 64;
+        Seq::new(width, |i: int| u64_view(self.bits.view().index(i/64)).index(i%64))
     }
 
-    #[spec]
-    fn inv(&self) -> bool {
-        self.ghost_bits.ext_equal(self.bits.view())
+    #[exec]
+    fn from(v: Vec<u64>) -> BitMap {
+        BitMap{bits: v}
     }
- 
-    // need to add "new" in pervasive/vec.rs
-    // #[exec]
-    // fn new(width: u64) -> BitMap {
-    //     requires(width % 64 == 0);
-    //     let mut len = width/64;
-    //     let v:Vec<u64> = Vec::new();
-    //     // add 0 len times
-    //     BitMap{bits: v, width: width} 
-    // }
-
 
     #[exec]
     fn get_bit(&self, index: u32) -> bool {
         requires([
-            self.inv(),
-            index < self.ghost_bits.len() * 64,
+            index < self.view().len(),
         ]);
         ensures(|ret:bool|[
             ret == self.view().index(index),
@@ -93,23 +114,15 @@ impl BitMap {
         let seq_index:usize = (index/64) as usize;
         let bit_index = index%64;
         let target:u64 = *self.bits.index(seq_index);
-        // assert(target == self.bits.view().index(seq_index));
-        // assert( self.bits.view().index(seq_index) == self.ghost_bits.index(seq_index));
-        // assert(self.ghost_bits.index(seq_index) == target);
-        // assert(index == (seq_index as u32) * 64 + bit_index);        
-        // assert(u64_view(target).index(bit_index) == get_bit64!(target, bit_index));
-        // assert(u64_view(target).index(bit_index) == self.view().index(index));
         get_bit64!(target, bit_index)
     }
 
     #[exec]
     fn set_bit(self, index: u32, bit: bool) -> BitMap {
         requires([
-            self.inv(),
-            index < self.ghost_bits.len() * 64,
+            index < self.view().len(),
         ]);
         ensures(|ret:BitMap| [
-            ret.inv(),
             equal(ret.view(), self.view().update(index,bit)),
             ret.view().ext_equal(self.view().update(index,bit)),
         ]);
@@ -119,50 +132,59 @@ impl BitMap {
         let bv_new:u64 = set_bit64!(bv_old, bit_index, bit);
         set_bit64_proof(bv_new, bv_old, bit_index, bit);
         let bits:Vec<u64> = self.bits.set(seq_index, bv_new);
-        // axiom_seq_update_len::<u64>(self.bits.view(), seq_index, bv_new);
         axiom_seq_update_same::<u64>(self.bits.view(), seq_index, bv_new);
-        // assert_forall_by(|loc2:u32| {
-        //     requires(loc2< self.ghost_bits.len());
-        //     ensures( loc2 != (seq_index as u32) >>= (self.bits.index(loc2) == bits.index(loc2))  );
-        //     axiom_seq_update_different::<u64>(self.bits.view(), seq_index, loc2, bv_new);
-        // });
-
-        assert(bits.view().len() == self.bits.view().len());       
-        let result = BitMap{bits: bits, ghost_bits: bits.view()};
-        assert(self.ghost_bits.len() == result.ghost_bits.len());
-
-        assert(result.view().index(index) == bit);
-        assert_forall_by(|loc2:u32|{
-            requires(
-                loc2 < self.ghost_bits.len() * 64 &&
-                loc2 != index
-            );
-            ensures(self.view().index(loc2) == result.view().index(loc2)); 
-        });        
-
+        let result = BitMap{bits: bits};        
         assert(result.view().ext_equal(self.view().update(index,bit)));
         result
     }
+
+    #[exec]
+    fn or(&self, bm: &BitMap, out: BitMap) -> BitMap {
+        requires([
+            self.view().len() == bm.view().len(),
+            self.view().len() == out.view().len(),
+        ]);
+        ensures( |ret:BitMap| [
+            self.view().len() == ret.view().len(),
+            forall(|i: u32| (i < ret.view().len()) >>= (ret.view().index(i) == (self.view().index(i) || bm.view().index(i)))),
+        ]);
+
+        let n:usize = self.bits.len();
+        let mut i:usize = 0;
+        let mut v3:Vec<u64>;
+        let mut result = BitMap{bits:out.bits};
+        while i < n {
+            invariant([
+                i <= n,
+                n == self.bits.view().len(),
+                n == bm.bits.view().len(),
+                n == result.bits.view().len(),
+                forall(|k: usize| k < i >>=  or_u64_relation(self.bits.view().index(k), bm.bits.view().index(k), result.bits.view().index(k))),
+                forall(|k: usize| k < i*64 >>= ( result.view().index(k) == (self.view().index(k) || bm.view().index(k)) ) ),
+            ]);
+            assert(i < n);
+            v3 = result.bits;
+            let u1:u64 = *self.bits.index(i);
+            let u2:u64 = *bm.bits.index(i);
+            let or_int:u64 = u1 | u2;
+
+            bit_or_64_view_proof(u1, u2, or_int);
+            axiom_seq_update_len::<u64>(result.bits.view(), i, or_int);
+            axiom_seq_update_same::<u64>(result.bits.view(), i, or_int);
+            v3 = v3.set(i, or_int);
+            result = BitMap{bits:v3};
+            i = i+1;
+        }
+        result
+    }
+
+    // Similarly, we can add more functions for bitwise operations: &, |, ^, !, shr, shrl, +, -, *, /, mod, 
 }
 
+
 // #[verifier(external)]
-fn main(){}
-
-
-
-
-// in get_bit(),
-// when index was u64, below couldn't be proved
-// assert(index == (seq_index as u64) * 64 + bit_index);         
-// in prelude, it says "usize == u32 or u64".
-
-// 'rustc' panicked at 'unexpected qpath LangItem(Range, ... )
-// for i in 0..len {
-//     v.push(0);
-// }
-
-// BitMap{bits: vec![0; len as usize], width: width} // panicked at 'no entry found for key', vir/src/well_formed.rs:133:30
-
-// fn set_bit(&mut self, index: u64, bit: bool)  {
-//     self.bits = self.bits.update(seq_index, bv_new);   //error: The verifier does not yet support the following Rust feature: field updates        
-// }
+fn main(){
+    // let v:Vec<u64> = Vec{vec: vec![0xf, 0xff, 0xfff, 0xffff]};
+    // let bmap = BitMap::from(v);
+    // println!("{:?}", bmap.bits.vec);
+}       
