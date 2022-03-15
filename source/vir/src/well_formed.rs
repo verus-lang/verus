@@ -76,8 +76,13 @@ fn check_function(ctxt: &Ctxt, function: &Function) -> Result<(), VirErr> {
         }
         for p in function.x.params.iter() {
             match *p.x.typ {
-                TypX::Bool | TypX::Int(_) | TypX::Boxed(_)  => {},
-                _ => return err_str(&p.span, "bit-vector function mode cannot have a datatype other than Integer/Boolean"),
+                TypX::Bool | TypX::Int(_) | TypX::Boxed(_) => {}
+                _ => {
+                    return err_str(
+                        &p.span,
+                        "bit-vector function mode cannot have a datatype other than Integer/Boolean",
+                    );
+                }
             }
         }
     }
