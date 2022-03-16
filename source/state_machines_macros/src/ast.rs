@@ -79,6 +79,8 @@ pub struct Transition {
     pub body: TransitionStmt,
 }
 
+/// TODO factor this into a product of the command type / element type (like the parsing code)
+
 #[derive(Clone, Debug)]
 pub enum SpecialOp {
     AddSome(Expr),
@@ -137,6 +139,8 @@ pub enum TransitionStmt {
 
 impl SpecialOp {
     /// get the name of an op (for error reporting)
+    /// TODO using these names directly now isn't a good idea because these are no longer
+    /// the names of the user-facing functions
     pub fn statement_name(&self) -> &'static str {
         match self {
             SpecialOp::RemoveKV(..) => "remove_kv",

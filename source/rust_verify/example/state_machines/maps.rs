@@ -77,32 +77,36 @@ tokenized_state_machine!(
             equal(self.storage_map, self.map)
         }
 
-        #[init]
-        fn initialize(cond: bool) {
-            init(m, 0);
-            init(storage_map, Map::empty());
-            init(map, Map::empty());
+        init!{
+            initialize(cond: bool) {
+                init m = 0;
+                init storage_map = Map::empty();
+                init map = Map::empty();
+            }
         }
 
-        #[transition]
-        fn do_deposit(self, b: bool) {
-            update(m, self.m + 1);
-            add_kv(map, self.m, b);
-            deposit_kv(storage_map, self.m, b);
+        transition!{
+            do_deposit(b: bool) {
+                update m = self.m + 1;
+                add map += [self.m => b];
+                deposit storage_map += [self.m => b];
+            }
         }
 
-        #[transition]
-        fn do_withdraw(self, b: bool) {
-            require(self.m >= 1);
-            update(m, self.m - 1);
-            remove_kv(map, self.m, b);
-            withdraw_kv(storage_map, self.m, b);
+        transition! {
+            do_withdraw(b: bool) {
+                require(self.m >= 1);
+                update m = self.m - 1;
+                remove map -= [self.m => b];
+                withdraw storage_map -= [self.m => b];
+            }
         }
 
-        #[readonly]
-        fn do_guard(self, i: int, b: bool) {
-            have_kv(map, i, b);
-            guard_kv(storage_map, i, b);
+        readonly! {
+            do_guard(i: int, b: bool) {
+                have map >= [i => b];
+                guard storage_map >= [i => b];
+            }
         }
 
         #[inductive(initialize)]

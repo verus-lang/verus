@@ -273,7 +273,7 @@ fn parse_monoid_stmt(
     // and if not, gives an appropriate error.
     //
     // withdraw, guard: yes, has a safety condition
-    // remove, have: no safety condition
+    // remove, have: no safety condition; thus no proof needed
     // add, desposit: yes iff the underlying monoid's composition operator is not total.
     //   (e.g., composition is total for multiset, so AddElement returns false)
     //
@@ -299,7 +299,7 @@ fn parse_monoid_stmt(
                     return Err(Error::new(
                         stmt_span,
                         format!(
-                            "'{name:}' statement for multisets has no inherent safety condition (as composition is total and thus this statement never fails); adding a proof body is meaningless"
+                            "'{name:}' statement for multisets has no nontrivial inherent safety condition (as composition is total and thus this statement never fails); adding a proof body is meaningless"
                         ),
                     ));
                 }
@@ -308,6 +308,9 @@ fn parse_monoid_stmt(
     }
 
     // Return a SpecialOp depending on the inferred sharding type and command type.
+    // The `error_msg` should refer to the name of a lemma in
+    // `pervasive::state_machine_internal`.
+
     let (op, error_msg) = match (monoid_stmt_type, elem) {
         (MonoidStmtType::Have, MonoidElt::OptionSome(e)) => (SpecialOp::HaveSome(e), ""),
         (MonoidStmtType::Have, MonoidElt::SingletonKV(k, v)) => (SpecialOp::HaveKV(k, v), ""),
