@@ -12,6 +12,7 @@ pub mod invariants;
 pub mod atomic;
 pub mod modes;
 pub mod multiset;
+pub mod state_machine_internal;
 
 #[allow(unused_imports)]
 use builtin::*;
