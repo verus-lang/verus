@@ -1,5 +1,6 @@
 use crate::ast::{Field, ShardableType, SpecialOp, Transition, TransitionKind, TransitionStmt, SM};
 use crate::check_birds_eye::check_birds_eye;
+use crate::ident_visitor::validate_idents_transition;
 use crate::util::{combine_errors_or_ok, combine_results};
 use proc_macro2::Span;
 use syn::spanned::Spanned;
@@ -466,6 +467,8 @@ pub fn check_transitions(sm: &SM) -> syn::parse::Result<()> {
 }
 
 pub fn check_transition(sm: &SM, tr: &Transition) -> syn::parse::Result<()> {
+    validate_idents_transition(tr)?;
+
     let mut errors = Vec::new();
     check_updates_refer_to_valid_fields(&sm.fields, &tr.body, &mut errors);
 

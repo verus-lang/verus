@@ -1,11 +1,10 @@
 //! Module for the initial processing of the macro tokens, to return an SM AST
 
 use crate::ast::{
-    Extras, Invariant, Lemma, LemmaPurpose, LemmaPurposeKind, ShardableType, Transition,
-    TransitionKind, SM,
+    Extras, Invariant, Lemma, LemmaPurpose, LemmaPurposeKind, ShardableType, Transition, SM,
 };
-use crate::ident_visitor::{validate_ident, validate_idents_impl_item_method};
-use crate::parse_transition::{parse_impl_item_method, parse_transition};
+use crate::ident_visitor::validate_ident;
+use crate::parse_transition::parse_transition;
 use crate::to_token_stream::shardable_type_to_type;
 use crate::transitions::check_transitions;
 use proc_macro2::Span;
@@ -139,9 +138,6 @@ pub fn peek_keyword(cursor: Cursor, token: &str) -> bool {
 
 enum FnAttrInfo {
     NoneFound,
-    Transition,
-    Readonly,
-    Init,
     Invariant,
     Lemma(LemmaPurpose),
 }
@@ -169,15 +165,6 @@ fn parse_fn_attr_info(attrs: &Vec<Attribute>) -> syn::parse::Result<FnAttrInfo> 
                 if path.is_ident("invariant") {
                     err_on_dupe(&fn_attr_info, attr.span())?;
                     fn_attr_info = FnAttrInfo::Invariant;
-                } else if path.is_ident("transition") {
-                    err_on_dupe(&fn_attr_info, attr.span())?;
-                    fn_attr_info = FnAttrInfo::Transition;
-                } else if path.is_ident("readonly") {
-                    err_on_dupe(&fn_attr_info, attr.span())?;
-                    fn_attr_info = FnAttrInfo::Readonly;
-                } else if path.is_ident("init") {
-                    err_on_dupe(&fn_attr_info, attr.span())?;
-                    fn_attr_info = FnAttrInfo::Init;
                 }
             }
             Meta::List(MetaList { path, nested, .. }) => {
@@ -244,18 +231,6 @@ fn ensure_no_mode(impl_item_method: &ImplItemMethod, msg: &str) -> syn::parse::R
     }
 
     return Ok(());
-}
-
-fn to_transition(
-    impl_item_method: &ImplItemMethod,
-    kind: TransitionKind,
-) -> syn::parse::Result<Transition> {
-    ensure_no_mode(
-        impl_item_method,
-        "a transition fn is implied to be 'spec'; it should not be explicitly labelled",
-    )?;
-    let ctxt = crate::parse_transition::Ctxt { kind };
-    return parse_impl_item_method(impl_item_method, &ctxt);
 }
 
 fn to_invariant(impl_item_method: ImplItemMethod) -> syn::parse::Result<Invariant> {
@@ -559,18 +534,6 @@ pub fn parse_result_to_smir(pr: ParseResult, concurrent: bool) -> syn::parse::Re
                 match attr_info {
                     FnAttrInfo::NoneFound => {
                         normal_fns.push(impl_item_method);
-                    }
-                    FnAttrInfo::Transition | FnAttrInfo::Readonly | FnAttrInfo::Init => {
-                        validate_idents_impl_item_method(&impl_item_method)?;
-
-                        let kind = match attr_info {
-                            FnAttrInfo::Transition => TransitionKind::Transition,
-                            FnAttrInfo::Readonly => TransitionKind::Readonly,
-                            FnAttrInfo::Init => TransitionKind::Init,
-                            _ => panic!("can't get here"),
-                        };
-
-                        transitions.push(to_transition(&impl_item_method, kind)?);
                     }
                     FnAttrInfo::Invariant => {
                         invariants.push(to_invariant(impl_item_method)?);

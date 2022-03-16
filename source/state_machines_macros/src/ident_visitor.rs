@@ -1,6 +1,8 @@
+use crate::ast::{SpecialOp, Transition, TransitionStmt};
+use crate::util::combine_errors_or_ok;
 use syn::spanned::Spanned;
 use syn::visit::Visit;
-use syn::{Error, ExprMacro, Ident, ImplItemMethod};
+use syn::{Error, Expr, ExprMacro, Ident};
 
 /// Error if any identifiers conflict with reserved IDs used by macro expanion.
 ///
@@ -12,19 +14,86 @@ use syn::{Error, ExprMacro, Ident, ImplItemMethod};
 /// our checks or transformations, we also disallow macros entirely.
 /// (See the more detailed explanation in `field_access_visitor.rs`.)
 
-pub fn validate_idents_impl_item_method(iim: &ImplItemMethod) -> syn::parse::Result<()> {
-    let mut idv = IdentVisitor::new();
-    idv.visit_impl_item_method(iim);
-
-    if idv.errors.len() > 0 {
-        let mut error = idv.errors[0].clone();
-        for i in 1..idv.errors.len() {
-            error.combine(idv.errors[i].clone());
-        }
-        return Err(error);
+pub fn validate_idents_transition(trans: &Transition) -> syn::parse::Result<()> {
+    let Transition { name, kind: _, params, body } = trans;
+    validate_ident(name)?;
+    for param in params {
+        validate_ident(&param.name)?;
     }
-
+    validate_idents_transition_stmt(body)?;
     Ok(())
+}
+
+fn validate_idents_transition_stmt(ts: &TransitionStmt) -> syn::parse::Result<()> {
+    match ts {
+        TransitionStmt::Block(_, v) => {
+            for t in v.iter() {
+                validate_idents_transition_stmt(t)?;
+            }
+        }
+        TransitionStmt::Let(_, ident, _lk, e, child) => {
+            validate_ident(ident)?;
+            validate_idents_expr(e)?;
+            validate_idents_transition_stmt(child)?;
+        }
+        TransitionStmt::If(_, cond, thn, els) => {
+            validate_idents_expr(cond)?;
+            validate_idents_transition_stmt(thn)?;
+            validate_idents_transition_stmt(els)?;
+        }
+        TransitionStmt::Require(_, e) => {
+            validate_idents_expr(e)?;
+        }
+        TransitionStmt::Assert(_, e, _proof) => {
+            validate_idents_expr(e)?;
+        }
+        TransitionStmt::Update(_, f, e) | TransitionStmt::Initialize(_, f, e) => {
+            validate_ident(f)?;
+            validate_idents_expr(e)?;
+        }
+        TransitionStmt::Special(_, f, op, _proof) => {
+            validate_ident(f)?;
+            validate_idents_op(op)?;
+        }
+        TransitionStmt::PostCondition(_, e) => {
+            validate_idents_expr(e)?;
+        }
+    }
+    Ok(())
+}
+
+fn validate_idents_op(op: &SpecialOp) -> syn::parse::Result<()> {
+    match op {
+        SpecialOp::AddSome(e)
+        | SpecialOp::RemoveSome(e)
+        | SpecialOp::HaveSome(e)
+        | SpecialOp::AddElement(e)
+        | SpecialOp::RemoveElement(e)
+        | SpecialOp::HaveElement(e)
+        | SpecialOp::DepositSome(e)
+        | SpecialOp::WithdrawSome(e)
+        | SpecialOp::GuardSome(e) => {
+            validate_idents_expr(e)?;
+        }
+
+        SpecialOp::DepositKV(e1, e2)
+        | SpecialOp::WithdrawKV(e1, e2)
+        | SpecialOp::GuardKV(e1, e2)
+        | SpecialOp::AddKV(e1, e2)
+        | SpecialOp::RemoveKV(e1, e2)
+        | SpecialOp::HaveKV(e1, e2) => {
+            validate_idents_expr(e1)?;
+            validate_idents_expr(e2)?;
+        }
+    }
+    Ok(())
+}
+
+fn validate_idents_expr(e: &Expr) -> syn::parse::Result<()> {
+    let mut idv = IdentVisitor::new();
+    idv.visit_expr(e);
+
+    combine_errors_or_ok(idv.errors)
 }
 
 struct IdentVisitor {
