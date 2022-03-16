@@ -11,8 +11,6 @@ fn bit_and32_auto(){
         forall(|a: u32| #[trigger] (a&a) == a),
         forall(|a: u32| #[trigger] (a&0) == 0),
         forall(|a: u32| #[trigger] (a& 0xffffffffu32) == a),
-        forall(|a: u32, b: u32| #[trigger] (a&b) >= 0),
-        forall(|a: u32, b: u32| #[trigger] (a&b) <= 0xffffffffu32),
     ]);
 }
 

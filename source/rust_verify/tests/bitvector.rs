@@ -91,7 +91,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test7 code! {
         #[proof]
-        fn test8(b1:u64, b2:u64, b3:u64) {
+        fn test7(b1:u64, b2:u64, b3:u64) {
             assert_bit_vector( !b1 != !b2 >>= !(b1==b2));
             assert_bit_vector(((b1 == (1 as u64)) && (b2 == b3)) >>= (b1 + b2 == b3 + 1));
             assert_bit_vector((b1 == b2)  >>= (!b1 == !b2));
@@ -107,6 +107,20 @@ test_verify_one_file! {
             assert_bit_vector(forall(|a: u32, b: u32| #[trigger] (a&b) == b&a));
             assert_bit_vector(b & 0xff < 0x100);
             assert(0xff & b < 0x100);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test9 code! {
+        #[proof]
+        fn test9(x: u32, y:u32) {
+            let max:u32 = 0xffff_ffff;
+            assert(x >> 1 >= 0);
+            assert(x&y <= max);
+            assert(x|y >= 0);
+            assert(x<<y <= max);
+            assert((!x) <= max);
         }
     } => Ok(())
 }

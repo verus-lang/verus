@@ -116,7 +116,6 @@ impl BitMap {
         let bv_new:u64 = set_bit64!(bv_old, bit_index, bit);
         set_bit64_proof(bv_new, bv_old, bit_index, bit);
         let bits:Vec<u64> = self.bits.set(seq_index, bv_new);
-        axiom_seq_update_same::<u64>(self.bits.view(), seq_index, bv_new);
         let result = BitMap{bits: bits};        
         assert(result.view().ext_equal(self.view().update(index,bit)));
         result
@@ -152,7 +151,6 @@ impl BitMap {
             let u2:u64 = *bm.bits.index(i);
             let or_int:u64 = u1 | u2;
             bit_or_64_view_proof(u1, u2, or_int);
-            axiom_seq_update_same::<u64>(result.bits.view(), i, or_int);
             v3 = v3.set(i, or_int);
             result = BitMap{bits:v3};
             i = i+1;
