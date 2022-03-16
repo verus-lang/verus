@@ -7,12 +7,16 @@ use crate::pervasive::*;
 #[allow(unused_imports)]
 use crate::pervasive::set::*;
 
-/// Axioms for a Multiset datatype. A `Multiset<V>` is effectively a map from elements
-/// to natural numbers. A Multiset possibly has an infinite number of elements,
-/// though for any element, its number of occurrences will be finite.
+/// Axioms for a _finite_ Multiset datatype.
+/// Although we represent it as a map from elements to natural numbers,
+/// that map must have finite support (i.e., finite number of elements that map to
+/// a nonzero value).
+///
+/// As such, we could in principle implement the Multiset via an inductive datatype
+/// and so we can mark its type argument as strictly_positive.
 
 #[verifier(external_body)]
-pub struct Multiset<#[verifier(maybe_negative)] V> {
+pub struct Multiset<#[verifier(strictly_positive)] V> {
     dummy: std::marker::PhantomData<V>,
 }
 
