@@ -127,6 +127,7 @@ state_machine!(
                       assert(post.highest_heard.index(node) > post.ids.index(node));
                     } else if post.highest_heard.index(end) == self.highest_heard.index(srcidx) {
                       assert(self.is_chord(start, srcidx));  // trigger
+                      assert(self.valid_idx(node));
                       assert(post.highest_heard.index(node) > post.ids.index(node));
                     }
                   } else {
@@ -144,8 +145,24 @@ state_machine!(
                     requires(post.is_leader(i) && post.is_leader(j));
                     ensures(i == j);
 
-                    assert(self.is_chord(i, i));
-                    assert(self.is_chord(j, j));
+                    if i != j {
+                        if self.is_leader(i) {
+                            assert(self.is_chord(i, i));
+                            //assert(self.OnChordHeardDominatesId(i, i));
+                            //assert(between(i, j, i));
+                            assert(self.valid_idx(j));
+                            //assert(self.highest_heard.index(j) > self.ids.index(j));
+                            assert(!post.is_leader(j));
+                            assert(false);
+                        }
+
+                        if self.is_leader(j) {
+                            assert(self.is_chord(j, j));
+                            assert(self.valid_idx(i));
+                            assert(!post.is_leader(i));
+                            assert(false);
+                        }
+                    }
                 });
             });
         }
