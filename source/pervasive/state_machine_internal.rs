@@ -33,7 +33,7 @@ pub fn assert_guard_some(b: bool) { requires(b); ensures(b); }
 
 #[proof]
 #[verifier(custom_req_err("unable to prove inherent safety condition: the value to be withdrawn must be stored at the given key before the withdraw"))]
-pub fn assert_withdrawn_kv(b: bool) { requires(b); ensures(b); }
+pub fn assert_withdraw_kv(b: bool) { requires(b); ensures(b); }
 
 #[proof]
 #[verifier(custom_req_err("unable to prove inherent safety condition: the givden key must be absent from the map before the deposit"))]

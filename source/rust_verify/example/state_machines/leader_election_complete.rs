@@ -33,22 +33,24 @@ state_machine!(
             pub highest_heard: Seq<int>,
         }
 
-        #[init]
-        pub fn init(ids: Seq<nat>) {
-            require(ids_distinct(ids));
-            init(ids, ids);
-            init(highest_heard, Seq::new(ids.len(), |i: int| -1));
+        init!{
+            init(ids: Seq<nat>) {
+                require(ids_distinct(ids));
+                init ids = ids;
+                init highest_heard = Seq::new(ids.len(), |i: int| -1);
+            }
         }
 
-        #[transition]
-        pub fn transmission(self, srcidx: nat) {
-            require(0 <= srcidx && srcidx < self.ids.len());
+        transition!{
+            transmission(srcidx: nat) {
+                require(0 <= srcidx && srcidx < self.ids.len());
 
-            let dstidx = if srcidx + 1 == self.ids.len() { 0 } else { srcidx + 1 };
-            let message = max(self.highest_heard.index(srcidx), self.ids.index(srcidx));
-            let dst_new_max = max(self.highest_heard.index(dstidx), message);
+                let dstidx = if srcidx + 1 == self.ids.len() { 0 } else { srcidx + 1 };
+                let message = max(self.highest_heard.index(srcidx), self.ids.index(srcidx));
+                let dst_new_max = max(self.highest_heard.index(dstidx), message);
 
-            update(highest_heard, self.highest_heard.update(dstidx, dst_new_max));
+                update highest_heard = self.highest_heard.update(dstidx, dst_new_max);
+            }
         }
 
         #[invariant]

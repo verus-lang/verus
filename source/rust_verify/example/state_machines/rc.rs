@@ -22,11 +22,12 @@ tokenized_state_machine!(Dupe<#[verifier(maybe_negative)] T> {
         pub reader: Multiset<T>,
     }
 
-    #[init]
-    fn initialize_one(t: T) {
-        // Initialize with a single reader
-        init(storage, Option::Some(t));
-        init(reader, Multiset::singleton(t));
+    init!{
+        initialize_one(t: T) {
+            // Initialize with a single reader
+            init storage = Option::Some(t);
+            init reader = Multiset::singleton(t);
+        }
     }
 
     #[invariant]
@@ -35,16 +36,18 @@ tokenized_state_machine!(Dupe<#[verifier(maybe_negative)] T> {
             equal(self.storage, Option::Some(x)))
     }
 
-    #[transition]
-    fn dupe(&self, t: T) {
-        have_element(reader, t);
-        add_element(reader, t);
+    transition!{
+        dupe(t: T) {
+            have reader >= {t};
+            add reader += {t};
+        }
     }
 
-    #[readonly]
-    fn borrow(&self, t: T) {
-        have_element(reader, t);
-        guard_some(storage, t);
+    readonly!{
+        borrow(t: T) {
+            have reader >= {t};
+            guard storage >= Some(t);
+        }
     }
 
      #[inductive(initialize_one)]
@@ -141,37 +144,42 @@ tokenized_state_machine!(RefCounter<#[verifier(maybe_negative)] T> {
 
 
     #[init]
-    fn initialize_empty() {
-        init(counter, 0);
-        init(storage, Option::None);
-        init(reader, Multiset::empty());
+    init!{
+        initialize_empty() {
+            init counter = 0;
+            init storage = Option::None;
+            init reader = Multiset::empty();
+        }
     }
 
     #[inductive(initialize_empty)]
     fn initialize_empty_inductive(post: RefCounter<T>) { }
     
-    #[transition]
-    fn do_deposit(&self, x: T) {
-        require(self.counter == 0);
-        update(counter, 1);
-        deposit_some(storage, x);
-        add_element(reader, x);
+    transition!{
+        do_deposit(x: T) {
+            require(self.counter == 0);
+            update counter = 1;
+            deposit storage += Some(x);
+            add reader += {x};
+        }
     }
 
     #[inductive(do_deposit)]
     fn do_deposit_inductive(self: RefCounter<T>, post: RefCounter<T>, x: T) { }
 
-    #[readonly]
-    fn reader_guard(&self, x: T) {
-        have_element(reader, x);
-        guard_some(storage, x);
+    readonly!{
+        reader_guard(x: T) {
+            have reader >= {x};
+            guard storage >= Some(x);
+        }
     }
 
-    #[transition]
-    fn do_clone(&self, x: T) {
-        have_element(reader, x);
-        add_element(reader, x);
-        update(counter, self.counter + 1);
+    transition!{
+        do_clone(x: T) {
+            have reader >= {x};
+            add reader += {x};
+            update counter = self.counter + 1;
+        }
     }
 
     #[inductive(do_clone)]
@@ -182,20 +190,22 @@ tokenized_state_machine!(RefCounter<#[verifier(maybe_negative)] T> {
         assert(self.counter > 0);
     }
 
-    #[transition]
-    fn dec_basic(&self, x: T) {
-        require(self.counter >= 2);
-        remove_element(reader, x);
-        update(counter, self.counter - 1);
+    transition!{
+        dec_basic(x: T) {
+            require(self.counter >= 2);
+            remove reader -= {x};
+            update counter = self.counter - 1;
+        }
     }
 
-    #[transition]
-    fn dec_to_zero(&self, x: T) {
-        remove_element(reader, x);
-        require(self.counter < 2);
-        assert(self.counter == 1);
-        update(counter, 0);
-        withdraw_some(storage, x);
+    transition!{
+        dec_to_zero(x: T) {
+            remove reader -= {x};
+            require(self.counter < 2);
+            assert(self.counter == 1);
+            update counter = 0;
+            withdraw storage -= Some(x);
+        }
     }
 
     #[inductive(dec_basic)]

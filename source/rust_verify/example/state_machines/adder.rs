@@ -11,15 +11,18 @@ state_machine!(
             pub number: int,
         }
 
-        #[init]
-        fn initialize() {
-            let x = 5 + 9;
-            init(number, 0);
+        init!{
+            initialize() {
+                let x = 5 + 9;
+                init number = 0;
+            }
         }
 
-        #[transition]
-        fn add(&self, n: int) {
-            update(number, self.number + 2*n);
+        transition!{
+            add(n: int) {
+                require n == 0;
+                update number = self.number + 2*n;
+            }
         }
 
         #[invariant]

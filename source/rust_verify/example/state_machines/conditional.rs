@@ -18,54 +18,57 @@ tokenized_state_machine!(
             pub c: int,
         }
 
-        #[init]
-        fn initialize(cond: bool) {
-            init(a, 0);
-            init(b, 1);
-            if cond {
-                init(c, 2);
-            } else {
-                init(c, 3);
+        init!{
+            initialize(cond: bool) {
+                init a = 0;
+                init b = 1;
+                if cond {
+                    init c = 2;
+                } else if cond {
+                    init c = 3;
+                } else {
+                    init c = 4;
+                }
             }
         }
 
-        #[transition]
-        fn add(&self, n: int) {
-            update(a, 0);
-            if n >= 0 {
-                update(b, self.b + n);
-            } else {
-                update(b, self.b - n);
-                update(c, 15);
+        transition!{
+            add(n: int) {
+                update a = 0;
+                if n >= 0 {
+                    update b = self.b + n;
+                } else {
+                    update b = self.b - n;
+                    update c = 15;
+                }
             }
         }
 
-        #[transition]
-        fn add2(&self, n: int) {
-            update(a, 0);
-            if n >= 0 {
-                update(c, 15);
-                update(b, self.b + n);
-            } else {
-                update(b, self.b - n);
+        transition!{
+            add2(n: int) {
+                update a = 0;
+                if n >= 0 {
+                    update c = 15;
+                    update b = self.b + n;
+                } else {
+                    update b = self.b - n;
+                }
             }
         }
 
-        #[transition]
-        fn foo(&self, n: int) {
-            require(n >= 1);
-            assert(n >= 1);
-
-            let x = n + 2;
-
-            if n >= 5 {
-                require(n < 10);
-                assert(x != 4);
-            } else {
-                update(c, 12);
+        transition!{
+            foo(n: int) {
+                require(n >= 1);
+                assert(n >= 1);
+                let x = n + 2;
+                if n >= 5 {
+                    require(n < 10);
+                    assert(x != 4);
+                } else {
+                    update c = 12;
+                }
+                require(n != 1001);
             }
-
-            require(n != 1001);
         }
 
         #[inductive(foo)]

@@ -5,7 +5,7 @@ use crate::ast::{
     TransitionKind, SM,
 };
 use crate::ident_visitor::{validate_ident, validate_idents_impl_item_method};
-use crate::parse_transition::parse_impl_item_method;
+use crate::parse_transition::{parse_transition, parse_impl_item_method};
 use crate::to_token_stream::shardable_type_to_type;
 use crate::transitions::check_transitions;
 use proc_macro2::Span;
@@ -15,7 +15,7 @@ use syn::spanned::Spanned;
 use syn::Token;
 use syn::{
     braced, AttrStyle, Attribute, Error, FieldsNamed, FnArg, GenericArgument, GenericParam,
-    Generics, Ident, ImplItemMethod, Meta, MetaList, NestedMeta, PathArguments, Receiver,
+    Generics, Ident, ImplItemMethod, ImplItem, Meta, MetaList, NestedMeta, PathArguments, Receiver,
     ReturnType, Type, TypePath, Visibility, WhereClause,
 };
 
@@ -36,7 +36,7 @@ pub struct SMBundle {
 
 pub struct ParseResult {
     pub name: Ident,
-    pub fns: Vec<ImplItemMethod>,
+    pub items: Vec<ImplItem>,
     pub fields: Option<FieldsNamed>,
     pub generics: Option<Generics>,
 }
@@ -83,7 +83,7 @@ impl Parse for ParseResult {
         let items_stream;
         let _ = braced!(items_stream in input);
 
-        let mut fns = Vec::new();
+        let mut items = Vec::new();
         let mut fields_opt: Option<FieldsNamed> = None;
 
         while !items_stream.is_empty() {
@@ -106,15 +106,15 @@ impl Parse for ParseResult {
             }
 
             // Otherwise parse a function
-            let item: ImplItemMethod = items_stream.parse()?;
-            fns.push(item);
+            let item: ImplItem = items_stream.parse()?;
+            items.push(item);
         }
 
-        return Ok(ParseResult { name, fns, generics, fields: fields_opt });
+        return Ok(ParseResult { name, items, generics, fields: fields_opt });
     }
 }
 
-fn keyword(input: ParseStream, token: &str) -> syn::parse::Result<Span> {
+pub fn keyword(input: ParseStream, token: &str) -> syn::parse::Result<Span> {
     input.step(|cursor| {
         if let Some((ident, rest)) = cursor.ident() {
             if ident == token {
@@ -125,7 +125,7 @@ fn keyword(input: ParseStream, token: &str) -> syn::parse::Result<Span> {
     })
 }
 
-fn peek_keyword(cursor: Cursor, token: &str) -> bool {
+pub fn peek_keyword(cursor: Cursor, token: &str) -> bool {
     if let Some((ident, _rest)) = cursor.ident() { ident == token } else { false }
 }
 
@@ -535,7 +535,7 @@ fn to_fields(
 }
 
 pub fn parse_result_to_smir(pr: ParseResult, concurrent: bool) -> syn::parse::Result<SMBundle> {
-    let ParseResult { name, generics, fns, fields } = pr;
+    let ParseResult { name, generics, items, fields } = pr;
 
     let mut normal_fns = Vec::new();
     let mut transitions: Vec<Transition> = Vec::new();
@@ -552,28 +552,39 @@ pub fn parse_result_to_smir(pr: ParseResult, concurrent: bool) -> syn::parse::Re
         Some(f) => f,
     };
 
-    for impl_item_method in fns {
-        let attr_info = parse_fn_attr_info(&impl_item_method.attrs)?;
-        match attr_info {
-            FnAttrInfo::NoneFound => {
-                normal_fns.push(impl_item_method);
-            }
-            FnAttrInfo::Transition | FnAttrInfo::Readonly | FnAttrInfo::Init => {
-                validate_idents_impl_item_method(&impl_item_method)?;
+    for item in items {
+        match item {
+            ImplItem::Method(impl_item_method) => {
+                let attr_info = parse_fn_attr_info(&impl_item_method.attrs)?;
+                match attr_info {
+                    FnAttrInfo::NoneFound => {
+                        normal_fns.push(impl_item_method);
+                    }
+                    FnAttrInfo::Transition | FnAttrInfo::Readonly | FnAttrInfo::Init => {
+                        validate_idents_impl_item_method(&impl_item_method)?;
 
-                let kind = match attr_info {
-                    FnAttrInfo::Transition => TransitionKind::Transition,
-                    FnAttrInfo::Readonly => TransitionKind::Readonly,
-                    FnAttrInfo::Init => TransitionKind::Init,
-                    _ => panic!("can't get here"),
-                };
+                        let kind = match attr_info {
+                            FnAttrInfo::Transition => TransitionKind::Transition,
+                            FnAttrInfo::Readonly => TransitionKind::Readonly,
+                            FnAttrInfo::Init => TransitionKind::Init,
+                            _ => panic!("can't get here"),
+                        };
 
-                transitions.push(to_transition(&impl_item_method, kind)?);
+                        transitions.push(to_transition(&impl_item_method, kind)?);
+                    }
+                    FnAttrInfo::Invariant => {
+                        invariants.push(to_invariant(impl_item_method)?);
+                    }
+                    FnAttrInfo::Lemma(purpose) => lemmas.push(to_lemma(impl_item_method, purpose)?),
+                }
             }
-            FnAttrInfo::Invariant => {
-                invariants.push(to_invariant(impl_item_method)?);
+            ImplItem::Macro(impl_item_macro) => {
+                let t = parse_transition(impl_item_macro.mac)?;
+                transitions.push(t);
             }
-            FnAttrInfo::Lemma(purpose) => lemmas.push(to_lemma(impl_item_method, purpose)?),
+            item => {
+                return Err(Error::new(item.span(), "this impl item is not supported"));
+            }
         }
     }
 

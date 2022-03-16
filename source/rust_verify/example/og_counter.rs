@@ -27,34 +27,38 @@ tokenized_state_machine!(
             self.counter == (if self.inc_a { 1 } else { 0 }) + (if self.inc_b { 1 } else { 0 })
         }
 
-        #[init]
-        fn initialize() {
-            init(counter, 0);
-            init(inc_a, false);
-            init(inc_b, false);
+        init!{
+            initialize() {
+                init counter = 0;
+                init inc_a = false;
+                init inc_b = false;
+            }
         }
 
-        #[transition]
-        fn tr_inc_a(&self) {
-            require(!self.inc_a);
-            assert(self.counter <= 2);
-            update(counter, self.counter + 1);
-            update(inc_a, true);
+        transition!{
+            tr_inc_a() {
+                require(!self.inc_a);
+                assert(self.counter <= 2);
+                update counter = self.counter + 1;
+                update inc_a = true;
+            }
         }
 
-        #[transition]
-        fn tr_inc_b(&self) {
-            require(!self.inc_b);
-            assert(self.counter <= 2);
-            update(counter, self.counter + 1);
-            update(inc_b, true);
+        transition!{
+            tr_inc_b() {
+                require(!self.inc_b);
+                assert(self.counter <= 2);
+                update counter = self.counter + 1;
+                update inc_b = true;
+            }
         }
 
-        #[readonly]
-        fn finalize(&self) {
-            require(self.inc_a);
-            require(self.inc_b);
-            assert(self.counter == 2);
+        readonly!{
+            finalize() {
+                require(self.inc_a);
+                require(self.inc_b);
+                assert self.counter == 2;
+            }
         }
 
         #[inductive(tr_inc_a)]

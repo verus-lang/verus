@@ -225,7 +225,7 @@ fn check_lemmas_cover_all_cases(bundle: &SMBundle) -> syn::parse::Result<()> {
                     let is_init = t.kind == TransitionKind::Init;
                     let params = transition_params_to_string(&self_ty, is_init, fields);
                     msgs.push(format!(
-                        "    #[inductive({name:})]\n    fn {name:}_inductive({params:}) {{ }}\n"
+                        " #[inductive({name:})]\n fn {name:}_inductive({params:}) {{ }}\n"
                     ));
                 }
             }

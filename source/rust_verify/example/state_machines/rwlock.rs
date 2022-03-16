@@ -35,100 +35,110 @@ tokenized_state_machine!(RwLock {
         pub reader: Multiset<T>,
     }
 
-    #[init]
-    fn initialize_empty() {
-        init(flags, (true, 0));
-        init(storage, Option::None);
-        init(pending_writer, Option::None);
-        init(writer, Option::Some(()));
-        init(pending_reader, Multiset::empty());
-        init(reader, Multiset::empty());
+    init!{
+        initialize_empty() {
+            init flags = (true, 0);
+            init storage = Option::None;
+            init pending_writer = Option::None;
+            init writer = Option::Some(());
+            init pending_reader = Multiset::empty();
+            init reader = Multiset::empty();
+        }
     }
 
     #[inductive(initialize_empty)]
     fn initialize_empty_inductive(post: RwLock) { }
 
     /// Increment the 'rc' counter, obtain a pending_reader
-    #[transition]
-    fn acquire_read_start(&self) {
-        update(flags, (self.flags.0, self.flags.1 + 1));
-        add_element(pending_reader, ());
+    transition!{
+        acquire_read_start() {
+            update flags = (self.flags.0, self.flags.1 + 1);
+            add pending_reader += {()};
+        }
     }
 
     /// Exchange the pending_reader for a reader by checking
     /// that the 'exc' bit is 0
-    #[transition]
-    fn acquire_read_end(&self) {
-        require(self.flags.0 == false);
+    transition!{
+        acquire_read_end() {
+            require(self.flags.0 == false);
 
-        remove_element(pending_reader, ());
+            remove pending_reader -= {()};
 
-        #[birds_eye] let x = self.storage.get_Some_0();
-        add_element(reader, x);
+            birds_eye let x = self.storage.get_Some_0();
+            add reader += {x};
+        }
     }
 
     /// Decrement the 'rc' counter, abandon the attempt to gain
     /// the 'read' lock.
-    #[transition]
-    fn acquire_read_abandon(&self) {
-        remove_element(pending_reader, ());
-        assert(self.flags.1 >= 1);
-        update(flags, (self.flags.0, self.flags.1 - 1));
+    transition!{
+        acquire_read_abandon() {
+            remove pending_reader -= {()};
+            assert(self.flags.1 >= 1);
+            update flags = (self.flags.0, self.flags.1 - 1);
+        }
     }
 
     /// Atomically set 'exc' bit from 'false' to 'true'
     /// Obtain a pending_writer
-    #[transition]
-    fn acquire_exc_start(&self) {
-        require(self.flags.0 == false);
-        update(flags, (true, self.flags.1));
-        add_some(pending_writer, ());
+    transition!{
+        acquire_exc_start() {
+            require(self.flags.0 == false);
+            update flags = (true, self.flags.1);
+            add pending_writer += Some(());
+        }
     }
 
     /// Finish obtaining the write lock by checking that 'rc' is 0.
     /// Exchange the pending_writer for a writer and withdraw the
     /// stored object.
-    #[transition]
-    fn acquire_exc_end(&self) {
-        require(self.flags.1 == 0);
+    transition!{
+        acquire_exc_end() {
+            require(self.flags.1 == 0);
 
-        remove_some(pending_writer, ());
+            remove pending_writer -= Some(());
 
-        add_some(writer, ());
+            add writer += Some(());
 
-        #[birds_eye] let x = self.storage.get_Some_0();
-        withdraw_some(storage, x);
+            birds_eye let x = self.storage.get_Some_0();
+            withdraw storage -= Some(x);
+        }
     }
 
     /// Release the write-lock. Update the 'exc' bit back to 'false'.
     /// Return the 'writer' and also deposit an object back into storage.
-    #[transition]
-    fn release_exc(&self, x: T) {
-        remove_some(writer, ());
+    transition!{
+        release_exc(x: T) {
+            remove writer -= Some(());
 
-        update(flags, (false, self.flags.1));
+            update flags = (false, self.flags.1);
 
-        deposit_some(storage, x);
+            deposit storage += Some(x);
+        }
     }
 
     /// Check that the 'reader' is actually a guard for the given object.
-    #[readonly]
-    fn read_guard(&self, x: T) {
-        have_element(reader, x);
-        guard_some(storage, x);
+    readonly!{
+        read_guard(x: T) {
+            have reader >= {x};
+            guard storage >= Some(x);
+        }
     }
 
     /// Release the reader-lock. Decrement 'rc' and return the 'reader' object.
     #[transition]
-    fn release_shared(&self, x: T) {
-        remove_element(reader, x);
+    transition!{
+        release_shared(x: T) {
+            remove reader -= {x};
 
-        assert_by(self.flags.1 >= 1, {
-            //assert(self.reader.count(x) >= 1);
-            assert(equal(self.storage, Option::Some(x)));
-            //assert(equal(x, self.storage.get_Some_0()));
-        });
-        update(flags, (self.flags.0, self.flags.1 - 1));
+            assert(self.flags.1 >= 1) by {
+                //assert(self.reader.count(x) >= 1);
+                assert(equal(self.storage, Option::Some(x)));
+                //assert(equal(x, self.storage.get_Some_0()));
+            };
+            update flags = (self.flags.0, self.flags.1 - 1);
+        }
     }
 
     #[invariant]
@@ -177,7 +187,6 @@ tokenized_state_machine!(RwLock {
 
     #[inductive(release_exc)]
     fn release_exc_inductive(self: RwLock, post: RwLock, x: T) { }
-
 
     #[inductive(release_shared)]
     fn release_shared_inductive(self: RwLock, post: RwLock, x: T) {

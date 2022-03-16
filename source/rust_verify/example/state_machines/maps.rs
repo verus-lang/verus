@@ -14,22 +14,25 @@ tokenized_state_machine!(
 
         }
 
-        #[init]
-        fn initialize(cond: bool) {
-            init(bool_map, Map::empty().insert(5, true));
+        init!{
+            initialize(cond: bool) {
+                init bool_map = Map::empty().insert(5, true);
+            }
         }
 
-        #[transition]
-        fn add(&self, n: int) {
-            remove_kv(bool_map, n, true);
-            add_kv(bool_map, n, false);
+        transition!{
+            add(n: int) {
+                remove bool_map -= [n => true];
+                add bool_map += [n => true];
+            }
         }
 
-        #[transition]
-        fn add_have(&self, n: int) {
-            remove_kv(bool_map, n, false);
-            have_kv(bool_map, 19, false);
-            add_kv(bool_map, n, true);
+        transition!{
+            add_have(n: int) {
+                remove bool_map -= [n => false];
+                have bool_map >= [19 => false];
+                add bool_map += [n => true];
+            }
         }
 
         #[inductive(initialize)]

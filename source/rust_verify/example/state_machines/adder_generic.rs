@@ -12,15 +12,17 @@ state_machine!(
             pub t: T,
         }
 
-        #[init]
-        fn initialize(t: T) {
-            init(number, 0);
-            init(t, t);
+        init!{
+            initialize(t: T) {
+                init number = 0;
+                init t = t;
+            }
         }
 
-        #[transition]
-        fn add(&self, n: int) {
-            update(number, self.number + 2*n);
+        transition!{
+            add(n: int) {
+                update number = self.number + 2*n;
+            }
         }
 
         #[invariant]
