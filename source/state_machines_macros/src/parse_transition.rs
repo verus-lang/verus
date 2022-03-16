@@ -1,17 +1,17 @@
 use crate::ast::{
     AssertProof, LetKind, SpecialOp, Transition, TransitionKind, TransitionParam, TransitionStmt,
 };
-use crate::parse_token_stream::{peek_keyword, keyword};
+use crate::parse_token_stream::{keyword, peek_keyword};
 use proc_macro2::Span;
 use std::rc::Rc;
-use syn::spanned::Spanned;
-use syn::{
-    Attribute, Block, Error, Expr, ExprCall, ExprIf, FnArg, Ident, ImplItemMethod, Local, Meta,
-    Pat, PatIdent, Signature, Stmt, braced, bracketed, parenthesized, Token, Type, Macro,
-};
-use syn::punctuated::Punctuated;
-use syn::token::Comma;
 use syn::parse::{Parse, ParseStream};
+use syn::punctuated::Punctuated;
+use syn::spanned::Spanned;
+use syn::token::Comma;
+use syn::{
+    braced, bracketed, parenthesized, Attribute, Block, Error, Expr, ExprCall, ExprIf, FnArg,
+    Ident, ImplItemMethod, Local, Macro, Meta, Pat, PatIdent, Signature, Stmt, Token, Type,
+};
 
 // Translate Rust AST into a transition AST, given by the TransitionStmt type.
 // Every statement should be one of:
@@ -582,15 +582,16 @@ pub fn parse_transition(mac: Macro) -> syn::parse::Result<Transition> {
     } else if mac.path.is_ident("readonly") {
         TransitionKind::Readonly
     } else {
-        return Err(Error::new(mac.span(), "unrecognized macro for definiting a transition: expected `init!`, `transition!`, or `readonly!`"));
+        return Err(Error::new(
+            mac.span(),
+            "unrecognized macro for definiting a transition: expected `init!`, `transition!`, or `readonly!`",
+        ));
     };
 
     let ti: TransitionInner = syn::parse2(mac.tokens)?;
 
-    let TransitionInner { name, params, body} = ti;
-    Ok(Transition {
-        kind, name, params, body,
-    })
+    let TransitionInner { name, params, body } = ti;
+    Ok(Transition { kind, name, params, body })
 }
 
 struct TransitionInner {
@@ -607,9 +608,7 @@ impl Parse for TransitionInner {
         let params = parse_params(&params_stream)?;
         let body = parse_transition_block(input)?;
 
-        Ok(TransitionInner {
-            name, params, body
-        })
+        Ok(TransitionInner { name, params, body })
     }
 }
 
@@ -652,7 +651,9 @@ fn parse_transition_stmt(input: ParseStream) -> syn::parse::Result<StmtOrLet> {
 
     let ident: Ident = match input.parse() {
         Ok(ident) => ident,
-        Err(_) => { return Err(input.error("expected transition statement (e.g., `update ...`)")); }
+        Err(_) => {
+            return Err(input.error("expected transition statement (e.g., `update ...`)"));
+        }
     };
 
     if ident.to_string() == "update" {
@@ -736,7 +737,12 @@ fn stmts_or_lets_to_block(span: Span, tstmts: Vec<StmtOrLet>) -> TransitionStmt 
 
 #[derive(Clone, Copy)]
 enum MonoidStmtType {
-    Have, Add, Remove, Guard, Deposit, Withdraw,
+    Have,
+    Add,
+    Remove,
+    Guard,
+    Deposit,
+    Withdraw,
 }
 
 impl MonoidStmtType {
@@ -758,7 +764,11 @@ enum MonoidElt {
     SingletonMultiset(Expr),
 }
 
-fn parse_monoid_stmt(kw: Ident, input: ParseStream, monoid_stmt_type: MonoidStmtType) -> syn::parse::Result<TransitionStmt> {
+fn parse_monoid_stmt(
+    kw: Ident,
+    input: ParseStream,
+    monoid_stmt_type: MonoidStmtType,
+) -> syn::parse::Result<TransitionStmt> {
     let field: Ident = input.parse()?;
 
     match monoid_stmt_type {
@@ -789,22 +799,28 @@ fn parse_monoid_stmt(kw: Ident, input: ParseStream, monoid_stmt_type: MonoidStmt
 
     if proof_block.is_some() {
         match monoid_stmt_type {
-            MonoidStmtType::Withdraw | MonoidStmtType::Guard => { }
+            MonoidStmtType::Withdraw | MonoidStmtType::Guard => {}
             MonoidStmtType::Have | MonoidStmtType::Remove => {
                 let name = monoid_stmt_type.name();
-                return Err(Error::new(stmt_span,
-                    format!("'{name:}' statement has no inherent safety condition, adding a proof body is meaningless")));
+                return Err(Error::new(
+                    stmt_span,
+                    format!(
+                        "'{name:}' statement has no inherent safety condition, adding a proof body is meaningless"
+                    ),
+                ));
             }
-            MonoidStmtType::Add | MonoidStmtType::Deposit => {
-                match elem {
-                    MonoidElt::OptionSome(..) | MonoidElt::SingletonKV(..) => { }
-                    MonoidElt::SingletonMultiset(..) => {
-                        let name = monoid_stmt_type.name();
-                        return Err(Error::new(stmt_span,
-                            format!("'{name:}' statement for multisets has no inherent safety condition (as composition is total and thus this statement never fails); adding a proof body is meaningless")));
-                    }
+            MonoidStmtType::Add | MonoidStmtType::Deposit => match elem {
+                MonoidElt::OptionSome(..) | MonoidElt::SingletonKV(..) => {}
+                MonoidElt::SingletonMultiset(..) => {
+                    let name = monoid_stmt_type.name();
+                    return Err(Error::new(
+                        stmt_span,
+                        format!(
+                            "'{name:}' statement for multisets has no inherent safety condition (as composition is total and thus this statement never fails); adding a proof body is meaningless"
+                        ),
+                    ));
                 }
-            }
+            },
         }
     }
 
@@ -813,22 +829,40 @@ fn parse_monoid_stmt(kw: Ident, input: ParseStream, monoid_stmt_type: MonoidStmt
         (MonoidStmtType::Have, MonoidElt::SingletonKV(k, v)) => (SpecialOp::HaveKV(k, v), ""),
         (MonoidStmtType::Have, MonoidElt::SingletonMultiset(e)) => (SpecialOp::HaveElement(e), ""),
 
-        (MonoidStmtType::Add, MonoidElt::OptionSome(e)) => (SpecialOp::AddSome(e), "assert_add_some"),
-        (MonoidStmtType::Add, MonoidElt::SingletonKV(k, v)) => (SpecialOp::AddKV(k, v), "assert_add_kv"),
+        (MonoidStmtType::Add, MonoidElt::OptionSome(e)) => {
+            (SpecialOp::AddSome(e), "assert_add_some")
+        }
+        (MonoidStmtType::Add, MonoidElt::SingletonKV(k, v)) => {
+            (SpecialOp::AddKV(k, v), "assert_add_kv")
+        }
         (MonoidStmtType::Add, MonoidElt::SingletonMultiset(e)) => (SpecialOp::AddElement(e), ""),
 
         (MonoidStmtType::Remove, MonoidElt::OptionSome(e)) => (SpecialOp::RemoveSome(e), ""),
         (MonoidStmtType::Remove, MonoidElt::SingletonKV(k, v)) => (SpecialOp::RemoveKV(k, v), ""),
-        (MonoidStmtType::Remove, MonoidElt::SingletonMultiset(e)) => (SpecialOp::RemoveElement(e), ""),
+        (MonoidStmtType::Remove, MonoidElt::SingletonMultiset(e)) => {
+            (SpecialOp::RemoveElement(e), "")
+        }
 
-        (MonoidStmtType::Guard, MonoidElt::OptionSome(e)) => (SpecialOp::GuardSome(e), "assert_guard_some"),
-        (MonoidStmtType::Guard, MonoidElt::SingletonKV(k, v)) => (SpecialOp::GuardKV(k, v), "assert_guard_kv"),
+        (MonoidStmtType::Guard, MonoidElt::OptionSome(e)) => {
+            (SpecialOp::GuardSome(e), "assert_guard_some")
+        }
+        (MonoidStmtType::Guard, MonoidElt::SingletonKV(k, v)) => {
+            (SpecialOp::GuardKV(k, v), "assert_guard_kv")
+        }
 
-        (MonoidStmtType::Deposit, MonoidElt::OptionSome(e)) => (SpecialOp::DepositSome(e), "assert_deposit_some"),
-        (MonoidStmtType::Deposit, MonoidElt::SingletonKV(k, v)) => (SpecialOp::DepositKV(k, v), "assert_deposit_kv"),
+        (MonoidStmtType::Deposit, MonoidElt::OptionSome(e)) => {
+            (SpecialOp::DepositSome(e), "assert_deposit_some")
+        }
+        (MonoidStmtType::Deposit, MonoidElt::SingletonKV(k, v)) => {
+            (SpecialOp::DepositKV(k, v), "assert_deposit_kv")
+        }
 
-        (MonoidStmtType::Withdraw, MonoidElt::OptionSome(e)) => (SpecialOp::WithdrawSome(e), "assert_withdraw_some"),
-        (MonoidStmtType::Withdraw, MonoidElt::SingletonKV(k, v)) => (SpecialOp::WithdrawKV(k, v), "assert_withdraw_kv"),
+        (MonoidStmtType::Withdraw, MonoidElt::OptionSome(e)) => {
+            (SpecialOp::WithdrawSome(e), "assert_withdraw_some")
+        }
+        (MonoidStmtType::Withdraw, MonoidElt::SingletonKV(k, v)) => {
+            (SpecialOp::WithdrawKV(k, v), "assert_withdraw_kv")
+        }
 
         (_, MonoidElt::SingletonMultiset(_e)) => {
             return Err(Error::new(stmt_span, "storage_multiset strategy not implemented"));
@@ -839,7 +873,10 @@ fn parse_monoid_stmt(kw: Ident, input: ParseStream, monoid_stmt_type: MonoidStmt
     Ok(TransitionStmt::Special(stmt_span, field, op, proof))
 }
 
-fn parse_monoid_elt(input: ParseStream, monoid_stmt_type: MonoidStmtType) -> syn::parse::Result<MonoidElt> {
+fn parse_monoid_elt(
+    input: ParseStream,
+    monoid_stmt_type: MonoidStmtType,
+) -> syn::parse::Result<MonoidElt> {
     if input.peek(syn::token::Brace) {
         let content;
         let _ = braced!(content in input);
@@ -849,7 +886,7 @@ fn parse_monoid_elt(input: ParseStream, monoid_stmt_type: MonoidStmtType) -> syn
         let content;
         let _ = bracketed!(content in input);
         let key: Expr = content.parse()?;
-        let _ : Token![=>] = content.parse()?;
+        let _: Token![=>] = content.parse()?;
         let val: Expr = content.parse()?;
         Ok(MonoidElt::SingletonKV(key, val))
     } else if peek_keyword(input.cursor(), "Some") {
@@ -875,8 +912,12 @@ fn parse_conditional(input: ParseStream) -> syn::parse::Result<TransitionStmt> {
         Ok(TransitionStmt::If(span, cond, Box::new(thn), Box::new(els)))
     } else {
         let span = if_token.span.join(*thn.get_span()).unwrap_or(if_token.span);
-        Ok(TransitionStmt::If(span, cond, Box::new(thn),
-            Box::new(TransitionStmt::Block(if_token.span, vec![]))))
+        Ok(TransitionStmt::If(
+            span,
+            cond,
+            Box::new(thn),
+            Box::new(TransitionStmt::Block(if_token.span, vec![])),
+        ))
     }
 }
 

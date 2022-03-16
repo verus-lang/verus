@@ -5,7 +5,7 @@ use crate::ast::{
     TransitionKind, SM,
 };
 use crate::ident_visitor::{validate_ident, validate_idents_impl_item_method};
-use crate::parse_transition::{parse_transition, parse_impl_item_method};
+use crate::parse_transition::{parse_impl_item_method, parse_transition};
 use crate::to_token_stream::shardable_type_to_type;
 use crate::transitions::check_transitions;
 use proc_macro2::Span;
@@ -15,7 +15,7 @@ use syn::spanned::Spanned;
 use syn::Token;
 use syn::{
     braced, AttrStyle, Attribute, Error, FieldsNamed, FnArg, GenericArgument, GenericParam,
-    Generics, Ident, ImplItemMethod, ImplItem, Meta, MetaList, NestedMeta, PathArguments, Receiver,
+    Generics, Ident, ImplItem, ImplItemMethod, Meta, MetaList, NestedMeta, PathArguments, Receiver,
     ReturnType, Type, TypePath, Visibility, WhereClause,
 };
 
