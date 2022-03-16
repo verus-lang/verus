@@ -30,7 +30,6 @@ fi
     git fetch origin verification
     git reset --hard origin/verification
     cp config.toml.verify config.toml
-    ./x.py clean
     ./x.py install -i
 )
 
