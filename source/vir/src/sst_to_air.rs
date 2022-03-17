@@ -24,8 +24,8 @@ use air::ast::{
 };
 use air::ast_util::{
     bool_typ, bv_typ, ident_apply, ident_binder, ident_typ, ident_var, int_typ, mk_and,
-    mk_bind_expr, mk_eq, mk_exists, mk_implies, mk_ite, mk_not, mk_or, str_apply, str_ident,
-    str_typ, str_var, string_var,
+    mk_bind_expr, mk_eq, mk_exists, mk_implies, mk_ite, mk_let, mk_not, mk_or, str_apply,
+    str_ident, str_typ, str_var, string_var,
 };
 use air::errors::{error, error_with_label};
 use std::collections::{HashMap, HashSet};
@@ -1153,6 +1153,7 @@ fn set_fuel(local: &mut Vec<Decl>, hidden: &Vec<Fun>) {
 
 pub fn body_stm_to_air(
     ctx: &Ctx,
+    trait_typ_substs: &Vec<(Ident, Typ)>,
     typ_params: &Idents,
     params: &Params,
     local_decls: &Vec<LocalDecl>,
@@ -1168,6 +1169,9 @@ pub fn body_stm_to_air(
     // Others are private to each query.
     let mut local_shared: Vec<Decl> = Vec::new();
     let mut local_bv_shared: Vec<Decl> = Vec::new();
+
+    let trait_typ_bind =
+        vec_map(trait_typ_substs, |(x, t)| ident_binder(&suffix_typ_param_id(x), &typ_to_id(t)));
 
     for x in typ_params.iter() {
         local_shared
@@ -1240,7 +1244,8 @@ pub fn body_stm_to_air(
 
     for ens in enss {
         let error = error("postcondition not satisfied", &ens.span);
-        let ens_stmt = StmtX::Assert(error, exp_to_expr(ctx, ens, ExprCtxt::Body));
+        let e = mk_let(&trait_typ_bind, &exp_to_expr(ctx, ens, ExprCtxt::Body));
+        let ens_stmt = StmtX::Assert(error, e);
         stmts.push(Arc::new(ens_stmt));
     }
     let assertion = one_stmt(stmts);
@@ -1254,7 +1259,8 @@ pub fn body_stm_to_air(
     }
 
     for req in reqs {
-        local.push(Arc::new(DeclX::Axiom(exp_to_expr(ctx, req, ExprCtxt::BodyPre))));
+        let e = mk_let(&trait_typ_bind, &exp_to_expr(ctx, req, ExprCtxt::BodyPre));
+        local.push(Arc::new(DeclX::Axiom(e)));
     }
 
     let query = Arc::new(QueryX { local: Arc::new(local), assertion });

@@ -3,10 +3,10 @@ use crate::attributes::{
 };
 use crate::context::{BodyCtxt, Context};
 use crate::rust_to_vir_base::{
-    check_generics_bounds_fun, check_generics_idents, def_id_to_vir_path, ident_to_var, ty_to_vir,
+    check_generics_bounds_fun, def_id_to_vir_path, ident_to_var, ty_to_vir,
 };
 use crate::rust_to_vir_expr::{expr_to_vir, pat_to_var, ExprModifier};
-use crate::util::{err_span_str, err_span_string, spanned_new, unsupported_err_span, vec_map};
+use crate::util::{err_span_str, err_span_string, spanned_new, unsupported_err_span};
 use crate::{unsupported, unsupported_err, unsupported_err_unless, unsupported_unless};
 use rustc_ast::Attribute;
 use rustc_hir::{Body, BodyId, FnDecl, FnHeader, FnSig, Generics, Param, Unsafety};
@@ -15,7 +15,8 @@ use rustc_span::symbol::Ident;
 use rustc_span::Span;
 use std::sync::Arc;
 use vir::ast::{
-    FunX, FunctionAttrsX, FunctionX, KrateX, MaskSpec, Mode, ParamX, Typ, TypX, VirErr,
+    Fun, FunX, FunctionAttrsX, FunctionKind, FunctionX, GenericBoundX, KrateX, MaskSpec, Mode,
+    ParamX, Typ, TypX, VirErr,
 };
 use vir::def::RETURN_VALUE;
 
@@ -50,8 +51,7 @@ fn check_fn_decl<'tcx>(
     tcx: TyCtxt<'tcx>,
     sig_span: &Span,
     decl: &'tcx FnDecl<'tcx>,
-    self_path: Option<vir::ast::Path>,
-    self_typ_params: Option<vir::ast::Idents>,
+    self_typ: Option<Typ>,
     attrs: &[Attribute],
     mode: Mode,
 ) -> Result<Option<(Typ, Mode)>, VirErr> {
@@ -71,14 +71,7 @@ fn check_fn_decl<'tcx>(
         // The current workaround is to return a struct if the default doesn't work.
         rustc_hir::FnRetTy::Return(ty) => {
             let typ = if is_self_or_self_ref(*sig_span, &ty)? {
-                let typ_args = vec_map(
-                    self_typ_params.as_ref().expect("expected Self type parameters"),
-                    |t| Arc::new(TypX::TypParam(t.clone())),
-                );
-                Arc::new(TypX::Datatype(
-                    self_path.as_ref().expect("a param is Self, so this must be an impl").clone(),
-                    Arc::new(typ_args),
-                ))
+                self_typ.expect("a param is Self, so this must be an impl")
             } else {
                 ty_to_vir(tcx, ty)
             };
@@ -100,8 +93,9 @@ fn find_body<'tcx>(ctxt: &Context<'tcx>, body_id: &BodyId) -> &'tcx Body<'tcx> {
 pub(crate) fn check_item_fn<'tcx>(
     ctxt: &Context<'tcx>,
     vir: &mut KrateX,
-    self_path_mode: Option<(vir::ast::Path, Mode)>,
+    self_typ: Option<Typ>,
     id: rustc_span::def_id::DefId,
+    kind: FunctionKind,
     visibility: vir::ast::Visibility,
     attrs: &[Attribute],
     sig: &'tcx FnSig<'tcx>,
@@ -109,32 +103,22 @@ pub(crate) fn check_item_fn<'tcx>(
     self_generics: Option<&'tcx Generics>,
     generics: &'tcx Generics,
     body_id: &BodyId,
-) -> Result<(), VirErr> {
+) -> Result<Option<Fun>, VirErr> {
     let path = def_id_to_vir_path(ctxt.tcx, id);
-    let name = Arc::new(FunX { path, trait_path });
+    let name = Arc::new(FunX { path, trait_path: trait_path });
     let mode = get_mode(Mode::Exec, attrs);
-    let adt_mode_trait_impl: Option<(_, Mode)> = if let (Some(_), Some((self_path, adt_mode))) =
-        (&name.trait_path, &self_path_mode)
-    {
-        if !vir::modes::mode_le(mode, *adt_mode) {
-            return err_span_string(
-                sig.span,
-                format!(
-                    "{} has mode {}, which must not be lower than the function's mode {} for trait impls",
-                    vir::ast_util::path_as_rust_name(&self_path),
-                    adt_mode,
-                    mode
-                ),
-            );
-        }
-        Some((self_path, *adt_mode))
+    let self_typ_params = if let Some(cg) = self_generics {
+        Some(check_generics_bounds_fun(ctxt.tcx, cg)?)
     } else {
         None
     };
-    let self_typ_params = if let Some(cg) = self_generics {
-        Some(check_generics_idents(ctxt.tcx, cg)?)
-    } else {
-        None
+    let self_typ = match (self_typ, &kind) {
+        (Some(t), _) => Some(t),
+        (_, FunctionKind::TraitMethodDecl { .. }) => {
+            Some(Arc::new(TypX::TypParam(vir::def::trait_self_type_param())))
+        }
+        (_, FunctionKind::Static) => None,
+        _ => panic!("missing self type for kind {:?}", &kind),
     };
     let ret_typ_mode = match sig {
         FnSig {
@@ -143,15 +127,7 @@ pub(crate) fn check_item_fn<'tcx>(
             span: _,
         } => {
             unsupported_err_unless!(*unsafety == Unsafety::Normal, sig.span, "unsafe");
-            check_fn_decl(
-                ctxt.tcx,
-                &sig.span,
-                decl,
-                self_path_mode.as_ref().map(|(self_path, _)| self_path.clone()),
-                self_typ_params.clone(),
-                attrs,
-                mode,
-            )?
+            check_fn_decl(ctxt.tcx, &sig.span, decl, self_typ.clone(), attrs, mode)?
         }
     };
     let sig_typ_bounds = check_generics_bounds_fun(ctxt.tcx, generics)?;
@@ -160,7 +136,7 @@ pub(crate) fn check_item_fn<'tcx>(
     if vattrs.external {
         let mut erasure_info = ctxt.erasure_info.borrow_mut();
         erasure_info.external_functions.push(name);
-        return Ok(());
+        return Ok(None);
     }
     let body = find_body(ctxt, body_id);
     let Body { params, value: _, generator_kind } = body;
@@ -169,19 +145,6 @@ pub(crate) fn check_item_fn<'tcx>(
         let Param { hir_id, pat, ty_span: _, span } = param;
         let name = Arc::new(pat_to_var(pat));
         let param_mode = get_var_mode(mode, ctxt.tcx.hir().attrs(*hir_id));
-        if let Some((self_path, adt_mode)) = &adt_mode_trait_impl {
-            if !vir::modes::mode_le(param_mode, *adt_mode) {
-                return err_span_string(
-                    sig.span,
-                    format!(
-                        "{} has mode {}, which must not be lower than the paramater's mode {} for trait impls",
-                        vir::ast_util::path_as_rust_name(&self_path),
-                        adt_mode,
-                        param_mode
-                    ),
-                );
-            }
-        }
         let is_mut = is_mut_ty(&input);
         if is_mut.is_some() && mode == Mode::Spec {
             return err_span_string(
@@ -190,32 +153,7 @@ pub(crate) fn check_item_fn<'tcx>(
             );
         }
         let (typ, is_mut) = if is_self_or_self_ref(*span, &input)? {
-            if mode != param_mode {
-                // It's hard for erase.rs to support mode != param_mode (we'd have to erase self),
-                // so we currently disallow it:
-                return err_span_string(
-                    sig.span,
-                    format!(
-                        "self has mode {}, function has mode {} -- these cannot be different",
-                        param_mode, mode
-                    ),
-                );
-            }
-            let typ_args =
-                vec_map(self_typ_params.as_ref().expect("expected Self type parameters"), |t| {
-                    Arc::new(TypX::TypParam(t.clone()))
-                });
-            (
-                Arc::new(TypX::Datatype(
-                    self_path_mode
-                        .as_ref()
-                        .map(|(self_path, _)| self_path)
-                        .expect("a param is Self, so this must be an impl")
-                        .clone(),
-                    Arc::new(typ_args),
-                )),
-                is_mut.is_some(),
-            )
+            (self_typ.clone().expect("a param is Self, so this must be an impl"), is_mut.is_some())
         } else {
             (ty_to_vir(ctxt.tcx, is_mut.unwrap_or(&input)), is_mut.is_some())
         };
@@ -230,6 +168,22 @@ pub(crate) fn check_item_fn<'tcx>(
     }
     let mut vir_body = body_to_vir(ctxt, body_id, body, mode, vattrs.external_body)?;
     let header = vir::headers::read_header(&mut vir_body)?;
+    match (&kind, header.no_method_body) {
+        (FunctionKind::TraitMethodDecl { .. }, true) => {}
+        (FunctionKind::TraitMethodDecl { .. }, false) => {
+            return err_span_str(
+                sig.span,
+                "trait method declaration body must end with call to no_method_body()",
+            );
+        }
+        (_, false) => {}
+        (_, true) => {
+            return err_span_str(
+                sig.span,
+                "no_method_body can only appear in trait method declarations",
+            );
+        }
+    }
     if mode == Mode::Spec && (header.require.len() + header.ensure.len()) > 0 {
         return err_span_str(sig.span, "spec functions cannot have requires/ensures");
     }
@@ -270,10 +224,12 @@ pub(crate) fn check_item_fn<'tcx>(
     );
     let typ_bounds = {
         let mut typ_bounds: Vec<(vir::ast::Ident, vir::ast::GenericBound)> = Vec::new();
+        if let FunctionKind::TraitMethodDecl { .. } = kind {
+            let bound = GenericBoundX::Traits(vec![]);
+            typ_bounds.push((vir::def::trait_self_type_param(), Arc::new(bound)));
+        }
         if let Some(self_typ_params) = self_typ_params {
-            for x in self_typ_params.iter() {
-                typ_bounds.push((x.clone(), Arc::new(vir::ast::GenericBoundX::None)));
-            }
+            typ_bounds.append(&mut (*self_typ_params).clone());
         }
         typ_bounds.extend_from_slice(&sig_typ_bounds[..]);
         Arc::new(typ_bounds)
@@ -289,7 +245,8 @@ pub(crate) fn check_item_fn<'tcx>(
         atomic: vattrs.atomic,
     };
     let func = FunctionX {
-        name,
+        name: name.clone(),
+        kind,
         visibility,
         mode,
         fuel,
@@ -303,12 +260,12 @@ pub(crate) fn check_item_fn<'tcx>(
         is_const: false,
         publish,
         attrs: Arc::new(fattrs),
-        body: if vattrs.external_body { None } else { Some(vir_body) },
+        body: if vattrs.external_body || header.no_method_body { None } else { Some(vir_body) },
         extra_dependencies: header.extra_dependencies,
     };
     let function = spanned_new(sig.span, func);
     vir.functions.push(function);
-    Ok(())
+    Ok(Some(name))
 }
 
 fn is_mut_ty<'tcx>(ty: &'tcx rustc_hir::Ty<'tcx>) -> Option<&'tcx rustc_hir::Ty<'tcx>> {
@@ -349,6 +306,7 @@ pub(crate) fn check_item_const<'tcx>(
         spanned_new(span, ParamX { name: ret_name, typ: typ.clone(), mode: mode, is_mut: false });
     let func = FunctionX {
         name,
+        kind: FunctionKind::Static,
         visibility,
         mode: Mode::Spec, // the function has mode spec; the mode attribute goes into ret.x.mode
         fuel,
@@ -382,7 +340,7 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
     generics: &'tcx Generics,
 ) -> Result<(), VirErr> {
     let mode = get_mode(Mode::Exec, attrs);
-    let ret_typ_mode = check_fn_decl(ctxt.tcx, &span, decl, None, None, attrs, mode)?;
+    let ret_typ_mode = check_fn_decl(ctxt.tcx, &span, decl, None, attrs, mode)?;
     let typ_bounds = check_generics_bounds_fun(ctxt.tcx, generics)?;
     let vattrs = get_verifier_attrs(attrs)?;
     let fuel = get_fuel(&vattrs);
@@ -412,6 +370,7 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
     let ret = spanned_new(span, ret_param);
     let func = FunctionX {
         name,
+        kind: FunctionKind::Static,
         visibility,
         fuel,
         mode,

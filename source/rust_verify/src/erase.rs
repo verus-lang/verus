@@ -55,7 +55,7 @@ use rustc_ast::ast::{
     EnumDef, Expr, ExprField, ExprKind, FieldDef, FnDecl, FnRetTy, FnSig, GenericArg, GenericArgs,
     GenericParam, GenericParamKind, Generics, Impl, Item, ItemKind, Lit, LitIntType, LitKind,
     Local, LocalKind, ModKind, NodeId, Param, Pat, PatField, PatKind, PathSegment, Stmt, StmtKind,
-    StructExpr, StructRest, Ty, TyKind, Variant, VariantData,
+    StructExpr, StructRest, Trait, Ty, TyKind, Variant, VariantData,
 };
 use rustc_ast::ptr::P;
 use rustc_data_structures::thin_vec::ThinVec;
@@ -383,7 +383,7 @@ fn erase_call(
                                 let (_, bounds) =
                                     typ_bounds_iter.next().expect("missing typ_bound");
                                 match &**bounds {
-                                    GenericBoundX::None => new_args.push(arg.clone()),
+                                    GenericBoundX::Traits(_) => new_args.push(arg.clone()),
                                     GenericBoundX::FnSpec(..) => {}
                                 }
                             }
@@ -1001,6 +1001,7 @@ fn erase_fn(
     mctxt: &mut MCtxt,
     f: &rustc_ast::ast::Fn,
     external_body: bool,
+    is_trait: bool,
 ) -> Option<rustc_ast::ast::Fn> {
     let rustc_ast::ast::Fn { defaultness, sig, generics, body: body_opt } = f;
     let f_vir = if let Some(f_vir) = &ctxt.functions_by_span[&sig.span] {
@@ -1037,7 +1038,7 @@ fn erase_fn(
                 // erase Fn trait bounds, since the type checker won't be able to infer them
                 // TODO: also erase other type parameters left unused after erasure
                 match &**bound {
-                    GenericBoundX::None => new_params.push(param.clone()),
+                    GenericBoundX::Traits(_) => new_params.push(param.clone()),
                     GenericBoundX::FnSpec(..) => {}
                 }
             }
@@ -1061,13 +1062,19 @@ fn erase_fn(
     let sig = FnSig { decl: P(decl), ..sig.clone() };
     mctxt.ret_mode = Some(ret_mode);
     mctxt.external_body = external_body;
+    let body_opt = if is_trait { &None } else { body_opt };
     let body_opt = body_opt.as_ref().map(|body| P(erase_block(ctxt, mctxt, ret_mode, &**body)));
     mctxt.ret_mode = None;
     mctxt.external_body = false;
     Some(rustc_ast::ast::Fn { defaultness: *defaultness, sig, generics, body: body_opt })
 }
 
-fn erase_assoc_item(ctxt: &Ctxt, mctxt: &mut MCtxt, item: &AssocItem) -> Option<AssocItem> {
+fn erase_assoc_item(
+    ctxt: &Ctxt,
+    mctxt: &mut MCtxt,
+    item: &AssocItem,
+    is_trait: bool,
+) -> Option<AssocItem> {
     match &item.kind {
         AssocItemKind::Fn(f) => {
             let vattrs = get_verifier_attrs(&item.attrs).expect("get_verifier_attrs");
@@ -1077,7 +1084,7 @@ fn erase_assoc_item(ctxt: &Ctxt, mctxt: &mut MCtxt, item: &AssocItem) -> Option<
             if vattrs.is_variant {
                 return None;
             }
-            let erased = erase_fn(ctxt, mctxt, f, vattrs.external_body);
+            let erased = erase_fn(ctxt, mctxt, f, vattrs.external_body, is_trait);
             erased.map(|f| update_item(item, AssocItemKind::Fn(Box::new(f))))
         }
         AssocItemKind::TyAlias(_) => Some(item.clone()),
@@ -1146,6 +1153,21 @@ fn erase_variant(ctxt: &Ctxt, mctxt: &mut MCtxt, variant: &Variant) -> Variant {
     Variant { attrs, id, span, vis, ident, data, disr_expr, is_placeholder }
 }
 
+fn erase_trait(ctxt: &Ctxt, mctxt: &mut MCtxt, tr: &Trait) -> Box<Trait> {
+    let Trait { unsafety, is_auto, .. } = *tr;
+    let Trait { generics, bounds, .. } = tr;
+    let generics = generics.clone();
+    let bounds = bounds.clone();
+    let mut items: Vec<P<AssocItem>> = Vec::new();
+    for item in &tr.items {
+        if let Some(item) = erase_assoc_item(ctxt, mctxt, &item, true) {
+            items.push(P(item));
+        }
+    }
+    let tr = Trait { unsafety, is_auto, generics, bounds, items };
+    Box::new(tr.clone())
+}
+
 fn erase_item(ctxt: &Ctxt, mctxt: &mut MCtxt, item: &Item) -> Vec<P<Item>> {
     let kind = match &item.kind {
         ItemKind::ExternCrate(_) => item.kind.clone(),
@@ -1164,7 +1186,7 @@ fn erase_item(ctxt: &Ctxt, mctxt: &mut MCtxt, item: &Item) -> Vec<P<Item>> {
             if vattrs.external {
                 return vec![P(item.clone())];
             }
-            match erase_fn(ctxt, mctxt, kind, vattrs.external_body) {
+            match erase_fn(ctxt, mctxt, kind, vattrs.external_body, false) {
                 None => return vec![],
                 Some(kind) => ItemKind::Fn(Box::new(kind)),
             }
@@ -1172,7 +1194,7 @@ fn erase_item(ctxt: &Ctxt, mctxt: &mut MCtxt, item: &Item) -> Vec<P<Item>> {
         ItemKind::Impl(kind) => {
             let mut items: Vec<P<AssocItem>> = Vec::new();
             for item in &kind.items {
-                if let Some(item) = erase_assoc_item(ctxt, mctxt, &item) {
+                if let Some(item) = erase_assoc_item(ctxt, mctxt, &item, false) {
                     items.push(P(item));
                 }
             }
@@ -1212,6 +1234,7 @@ fn erase_item(ctxt: &Ctxt, mctxt: &mut MCtxt, item: &Item) -> Vec<P<Item>> {
             }
         }
         ItemKind::MacroDef(..) => item.kind.clone(),
+        ItemKind::Trait(tr) => ItemKind::Trait(erase_trait(ctxt, mctxt, tr)),
         _ => {
             unsupported!("unsupported item", item)
         }

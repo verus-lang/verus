@@ -8,6 +8,12 @@ pub fn admit() {
 
 // Can only appear at beginning of function body
 #[proof]
+pub fn no_method_body() -> ! {
+    unimplemented!()
+}
+
+// Can only appear at beginning of function body
+#[proof]
 pub fn requires<A>(_a: A) {
     unimplemented!();
 }

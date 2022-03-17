@@ -372,6 +372,7 @@ fn fn_call_to_vir<'tcx>(
 
     let f_name = path_as_rust_name(&def_id_to_vir_path(tcx, f));
     let is_admit = f_name == "builtin::admit";
+    let is_no_method_body = f_name == "builtin::no_method_body";
     let is_requires = f_name == "builtin::requires";
     let is_ensures = f_name == "builtin::ensures";
     let is_invariant = f_name == "builtin::invariant";
@@ -404,6 +405,7 @@ fn fn_call_to_vir<'tcx>(
     let is_sub = f_name == "core::ops::arith::Sub::sub";
     let is_mul = f_name == "core::ops::arith::Mul::mul";
     let is_spec = is_admit
+        || is_no_method_body
         || is_requires
         || is_ensures
         || is_invariant
@@ -479,6 +481,9 @@ fn fn_call_to_vir<'tcx>(
     let mk_expr = |x: ExprX| spanned_typed_new(expr.span, &expr_typ(), x);
     let mk_expr_span = |span: Span, x: ExprX| spanned_typed_new(span, &expr_typ(), x);
 
+    if is_no_method_body {
+        return Ok(mk_expr(ExprX::Header(Arc::new(HeaderExprX::NoMethodBody))));
+    }
     if is_requires {
         unsupported_err_unless!(len == 1, expr.span, "expected requires", &args);
         let bctx = &BodyCtxt { external_body: false, ..bctx.clone() };
@@ -1702,6 +1707,10 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
             match tcx.hir().get_if_local(fn_def_id).expect("fn def for method in hir") {
                 rustc_hir::Node::ImplItem(rustc_hir::ImplItem {
                     kind: rustc_hir::ImplItemKind::Fn(..),
+                    ..
+                }) => {}
+                rustc_hir::Node::TraitItem(rustc_hir::TraitItem {
+                    kind: rustc_hir::TraitItemKind::Fn(..),
                     ..
                 }) => {}
                 _ => panic!("unexpected hir for method impl item"),
