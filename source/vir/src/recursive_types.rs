@@ -193,6 +193,15 @@ pub(crate) fn check_recursive_types(krate: &Krate) -> Result<(), VirErr> {
         for (_name, bound) in typ_params {
             match (&**bound, &function.x.kind) {
                 (GenericBoundX::Traits(ts), _) if ts.len() == 0 => {}
+                (GenericBoundX::Traits(_), FunctionKind::Static)
+                    if function.x.attrs.broadcast_forall =>
+                {
+                    // See the todo!() in func_to_air.rs
+                    return err_str(
+                        &function.span,
+                        "not yet supported: bounds on broadcast_forall function type parameters",
+                    );
+                }
                 (_, FunctionKind::Static) => {}
                 _ => {
                     // REVIEW: when we support bounds on method type parameters,

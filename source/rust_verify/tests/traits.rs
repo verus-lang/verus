@@ -102,6 +102,55 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_not_yet_supported_9 code! {
+        trait T<A> {
+            fn f(&self, a: A) -> A { no_method_body() }
+        }
+        struct S {}
+        // not yet supported: multiple implementations of same trait for single datatype:
+        impl T<bool> for S {
+            fn f(&self, a: bool) -> bool { !a }
+        }
+        impl T<u64> for S {
+            fn f(&self, a: u64) -> u64 { a / 2 }
+        }
+        fn test() {
+            let s = S {};
+            s.f(true);
+            s.f(10);
+        }
+    } => Err(err) => assert_vir_error(err)
+}
+
+test_verify_one_file! {
+    #[test] test_not_yet_supported_10 code! {
+        trait T {
+            #[spec]
+            fn f(&self) -> bool { no_method_body() }
+
+            #[proof]
+            fn p(&self) {
+                ensures(exists(|x: &Self| self.f() != x.f()));
+                no_method_body()
+            }
+        }
+
+        #[proof]
+        #[verifier(external_body)]
+        #[verifier(broadcast_forall)]
+        fn f_not_g<A: T>() {
+            ensures(exists(|x: &A, y: &A| x.f() != y.f()));
+        }
+
+        struct S {}
+
+        fn test() {
+            assert(false);
+        }
+    } => Err(_)
+}
+
+test_verify_one_file! {
     #[test] test_ill_formed_1 code! {
         trait T1 {
             fn f(&self); // need to call no_method_body()

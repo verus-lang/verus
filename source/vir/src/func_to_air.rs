@@ -127,8 +127,7 @@ fn func_body_to_air(
     }
 
     // For trait method implementations, use trait method function name and add Self type argument
-    let mut typ_args = vec_map(&function.x.typ_params(), |x| Arc::new(TypX::TypParam(x.clone())));
-    let name = if let FunctionKind::TraitMethodImpl {
+    let (name, typ_args) = if let FunctionKind::TraitMethodImpl {
         method,
         trait_typ_args,
         datatype,
@@ -137,11 +136,12 @@ fn func_body_to_air(
     } = &function.x.kind
     {
         let self_typ = Arc::new(TypX::Datatype(datatype.clone(), datatype_typ_args.clone()));
-        typ_args = vec![self_typ];
+        let mut typ_args = vec![self_typ];
         typ_args.append(&mut (**trait_typ_args).clone());
-        method.clone()
+        (method.clone(), typ_args)
     } else {
-        function.x.name.clone()
+        let typ_args = vec_map(&function.x.typ_params(), |x| Arc::new(TypX::TypParam(x.clone())));
+        (function.x.name.clone(), typ_args)
     };
 
     // non-recursive:
