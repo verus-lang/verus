@@ -4,7 +4,6 @@ use std::sync::Arc;
 
 #[derive(Clone, Debug)]
 pub struct Header {
-    pub no_method_body: bool,
     pub hidden: Vec<Fun>,
     pub require: Exprs,
     pub ensure_id_typ: Option<(Ident, Typ)>,
@@ -28,12 +27,6 @@ fn read_header_block(block: &mut Vec<Stmt>) -> Result<Header, VirErr> {
         match &stmt.x {
             StmtX::Expr(expr) => match &expr.x {
                 ExprX::Header(header) => match &**header {
-                    HeaderExprX::NoMethodBody => {
-                        return err_str(
-                            &stmt.span,
-                            "no_method_body() must be a method's final expression, with no semicolon",
-                        );
-                    }
                     HeaderExprX::Requires(es) => {
                         if require.is_some() {
                             return err_str(
@@ -110,7 +103,6 @@ fn read_header_block(block: &mut Vec<Stmt>) -> Result<Header, VirErr> {
     let invariant = invariant.unwrap_or(Arc::new(vec![]));
     let decrease = decrease.unwrap_or(Arc::new(vec![]));
     Ok(Header {
-        no_method_body: false,
         hidden,
         require,
         ensure_id_typ,
@@ -125,26 +117,9 @@ fn read_header_block(block: &mut Vec<Stmt>) -> Result<Header, VirErr> {
 pub fn read_header(body: &mut Expr) -> Result<Header, VirErr> {
     match &body.x {
         ExprX::Block(stmts, expr) => {
-            let mut expr = expr.clone();
             let mut block: Vec<Stmt> = (**stmts).clone();
-            let mut header = read_header_block(&mut block)?;
-            if let Some(e) = &expr {
-                if let ExprX::Header(h) = &e.x {
-                    if let HeaderExprX::NoMethodBody = **h {
-                        if block.len() != 0 {
-                            return err_str(
-                                &e.span,
-                                "no statements are allowed before no_method_body()",
-                            );
-                        }
-                        expr = None;
-                        header.no_method_body = true;
-                    } else {
-                        return err_str(&e.span, "header must be a statement, with a semicolon");
-                    }
-                }
-            }
-            *body = body.new_x(ExprX::Block(Arc::new(block), expr));
+            let header = read_header_block(&mut block)?;
+            *body = body.new_x(ExprX::Block(Arc::new(block), expr.clone()));
             Ok(header)
         }
         _ => read_header_block(&mut vec![]),

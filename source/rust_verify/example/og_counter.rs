@@ -7,95 +7,122 @@ use pervasive::*;
 use crate::pervasive::{invariants::*};
 use crate::pervasive::{atomic::*};
 use crate::pervasive::{modes::*};
-use state_machines_macros::tokenized_state_machine;
 
-tokenized_state_machine!(
-    X {
-        fields {
-            #[sharding(variable)]
-            pub counter: int,
+// LTS tokens (currently trusted)
+// TODO, once we have state machine infrastructure, we can auto-generate these
 
-            #[sharding(variable)]
-            pub inc_a: bool,
+#[proof]
+#[verifier(unforgeable)]
+pub struct Counter {
+  #[spec] counter: int,
+}
 
-            #[sharding(variable)]
-            pub inc_b: bool,
-        }
+#[proof]
+#[verifier(unforgeable)]
+pub struct IncA {
+  #[spec] done: bool,
+}
 
-        #[invariant]
-        pub fn main_inv(&self) -> bool {
-            self.counter == (if self.inc_a { 1 } else { 0 }) + (if self.inc_b { 1 } else { 0 })
-        }
+#[proof]
+#[verifier(unforgeable)]
+pub struct IncB {
+  #[spec] done: bool,
+}
 
-        init!{
-            initialize() {
-                init counter = 0;
-                init inc_a = false;
-                init inc_b = false;
-            }
-        }
+#[proof]
+pub struct Init {
+  #[proof] pub counter: Counter,
+  #[proof] pub incA: IncA,
+  #[proof] pub incB: IncB,
+}
 
-        transition!{
-            tr_inc_a() {
-                require(!self.inc_a);
-                assert(self.counter <= 2);
-                update counter = self.counter + 1;
-                update inc_a = true;
-            }
-        }
+impl Init {
+  #[spec]
+  pub fn valid(self) -> bool {
+      equal(self.counter.counter, 0)
+      && !self.incA.done
+      && !self.incB.done
+  }
+}
 
-        transition!{
-            tr_inc_b() {
-                require(!self.inc_b);
-                assert(self.counter <= 2);
-                update counter = self.counter + 1;
-                update inc_b = true;
-            }
-        }
+#[proof]
+#[verifier(external_body)]
+#[verifier(returns(proof))]
+pub fn init_protocol() -> Init {
+  ensures(|init: Init| init.valid());
 
-        readonly!{
-            finalize() {
-                require(self.inc_a);
-                require(self.inc_b);
-                assert self.counter == 2;
-            }
-        }
+  unimplemented!();
+}
 
-        #[inductive(tr_inc_a)]
-        fn tr_inc_a_preserves(self: X, post: X) {
-        }
+#[proof]
+#[verifier(external_body)]
+#[verifier(returns(proof))]
+pub fn do_inc_a(#[proof] counter: &mut Counter, #[proof] inc_a: &mut IncA) {
+  requires([
+    !old(inc_a).done,
+  ]);
+  ensures([
+    inc_a.done,
+    equal(counter.counter, old(counter).counter + 1),
+    counter.counter <= 2,
+  ]);
 
-        #[inductive(tr_inc_b)]
-        fn tr_inc_b_preserves(self: X, post: X) {
-        }
+  unimplemented!();
+}
 
-        #[inductive(initialize)]
-        fn initialize_inv(post: X) {
-        }
-    }
-);
+#[proof]
+#[verifier(external_body)]
+#[verifier(returns(proof))]
+pub fn do_inc_b(#[proof] counter: &mut Counter, #[proof] inc_b: &mut IncB) {
+  requires([
+    !old(inc_b).done,
+  ]);
+  ensures([
+    inc_b.done,
+    equal(counter.counter, old(counter).counter + 1),
+    counter.counter <= 2,
+  ]);
+
+  unimplemented!();
+}
+
+#[proof]
+#[verifier(external_body)]
+#[verifier(returns(proof))]
+pub fn finish(#[proof] counter: &Counter, #[proof] inc_a: &IncA, #[proof] inc_b: &IncB) {
+  requires([
+    inc_a.done,
+    inc_b.done,
+  ]);
+  ensures([
+    equal(counter.counter, 2)
+  ]);
+
+  unimplemented!();
+}
+
+// Untrusted stuff starts here
 
 #[proof]
 pub struct G {
-  #[proof] pub counter: X_counter,
+  #[proof] pub counter: Counter,
   #[proof] pub perm: PermissionU32,
 }
 
 impl G {
   #[spec]
-  pub fn wf(self, inst: X_Instance, patomic: PAtomicU32) -> bool {
-    equal(self.perm.patomic, patomic.view()) && equal(self.perm.value as int, self.counter.value)
-    && equal(self.counter.instance, inst)
+  pub fn wf(self, patomic: PAtomicU32) -> bool {
+    equal(self.perm.patomic, patomic.view()) && equal(self.perm.value as int, self.counter.counter)
   }
 }
 
 fn main() {
   // Initialize protocol 
 
-  #[proof] let (inst,
-      mut counter_token,
-      mut inc_a_token,
-      mut inc_b_token) = X_Instance::initialize();
+  #[proof] let Init{
+       counter: mut counter_token,
+       incA: mut inc_a_token,
+       incB: mut inc_b_token} = init_protocol();
 
   // Initialize the counter
 
@@ -103,7 +130,7 @@ fn main() {
 
   #[proof] let at_inv: Invariant<G> = Invariant::new(
       G { counter: counter_token, perm: perm_token },
-      |g: G| g.wf(inst, at),
+      |g: G| g.wf(at),
       0);
 
   // TODO actually run these on separate threads
@@ -113,17 +140,8 @@ fn main() {
   open_invariant!(&at_inv => g => {
     #[proof] let G { counter: mut c, perm: mut p } = g;
 
-    #[spec] let now_c = c;
-
-    inst.tr_inc_a(&mut c, &mut inc_a_token); // atomic increment
-    assert(now_c.value == p.value);
-    assert(c.value <= 3);
-    assert(now_c.value <= 2);
-    assert(0 <= now_c.value);
-    assert(p.value <= 2);
-    assert(0 <= p.value);
-    assert(p.value as int + 1 <= 3);
-    at.fetch_add(&mut p, 1);
+    at.fetch_add_wrapping(&mut p, 1);
+    do_inc_a(&mut c, &mut inc_a_token); // atomic increment
 
     g = G { counter: c, perm: p };
   });
@@ -131,12 +149,12 @@ fn main() {
   // Thread 2 (gets access to inc_b_token)
 
   open_invariant!(&at_inv => g => {
-    #[proof] let G { counter: mut c2, perm: mut p2 } = g;
+    #[proof] let G { counter: mut c, perm: mut p } = g;
 
-    inst.tr_inc_b(&mut c2, &mut inc_b_token); // atomic increment
-    at.fetch_add(&mut p2, 1);
+    at.fetch_add_wrapping(&mut p, 1);
+    do_inc_b(&mut c, &mut inc_b_token); // atomic increment
 
-    g = G { counter: c2, perm: p2 };
+    g = G { counter: c, perm: p };
   });
 
   // Join threads, load the atomic again
@@ -146,12 +164,12 @@ fn main() {
 
   let mut x;
   open_invariant!(&at_inv => g => {
-    #[proof] let G { counter: mut c3, perm: mut p3 } = g;
+    #[proof] let G { counter: mut c, perm: mut p } = g;
 
-    x = at.load(&p3);
-    inst.finalize(&c3, &inc_a_token, &inc_b_token);
+    x = at.load(&p);
+    finish(&c, &inc_a_token, &inc_b_token);
 
-    g = G { counter: c3, perm: p3 };
+    g = G { counter: c, perm: p };
   });
 
   assert(equal(x, 2));

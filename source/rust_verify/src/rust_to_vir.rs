@@ -11,23 +11,20 @@ use crate::context::Context;
 use crate::def::is_get_variant_fn_name;
 use crate::rust_to_vir_adts::{check_item_enum, check_item_struct};
 use crate::rust_to_vir_base::{
-    check_generics_bounds, def_id_to_vir_path, fn_item_hir_id_to_self_def_id, hack_get_def_name,
-    ident_to_var, mk_visibility, ty_to_vir, typ_path_and_ident_to_vir_path,
+    def_id_to_vir_path, fn_item_hir_id_to_self_def_id, hack_get_def_name, mk_visibility, ty_to_vir,
 };
 use crate::rust_to_vir_func::{check_foreign_item_fn, check_item_fn};
-use crate::util::{err_span_str, spanned_new, unsupported_err_span};
-use crate::{err_unless, unsupported_err, unsupported_err_unless};
+use crate::util::{err_span_str, unsupported_err_span};
+use crate::{err_unless, unsupported_err};
 
-use rustc_ast::IsAuto;
 use rustc_hir::{
-    AssocItemKind, ForeignItem, ForeignItemId, ForeignItemKind, ImplItemKind, ImplicitSelfKind,
-    Item, ItemId, ItemKind, OwnerNode, QPath, TraitFn, TraitItem, TraitItemKind, TraitRef, TyKind,
-    Unsafety,
+    AssocItemKind, ForeignItem, ForeignItemId, ForeignItemKind, ImplItemKind, Item, ItemId,
+    ItemKind, OwnerNode, QPath, TraitRef, TyKind,
 };
 
 use std::collections::HashMap;
 use std::sync::Arc;
-use vir::ast::{Fun, FunX, FunctionKind, Krate, KrateX, Mode, Path, TypX, VirErr};
+use vir::ast::{Krate, KrateX, Mode, Path, VirErr};
 use vir::ast_util::path_as_rust_name;
 
 fn check_item<'tcx>(
@@ -45,7 +42,6 @@ fn check_item<'tcx>(
                 vir,
                 None,
                 item.def_id.to_def_id(),
-                FunctionKind::Static,
                 visibility,
                 ctxt.tcx.hir().attrs(item.hir_id()),
                 sig,
@@ -171,24 +167,24 @@ fn check_item<'tcx>(
                     None,
                     rustc_hir::Path { res: rustc_hir::def::Res::Def(_, self_def_id), .. },
                 )) => {
-                    let self_typ = ty_to_vir(ctxt.tcx, impll.self_ty);
-                    let datatype_typ_args = if let TypX::Datatype(_, typ_args) = &*self_typ {
-                        typ_args.clone()
-                    } else {
-                        panic!("expected datatype")
-                    };
                     let self_path = def_id_to_vir_path(ctxt.tcx, *self_def_id);
-                    let trait_path_typ_args =
-                        impll.of_trait.as_ref().map(|TraitRef { path, .. }| {
-                            crate::rust_to_vir_base::def_id_to_datatype_typ_args(
-                                ctxt.tcx,
-                                path.res.def_id(),
-                                path.segments,
-                            )
-                        });
+                    let trait_path = impll.of_trait.as_ref().map(|TraitRef { path, .. }| {
+                        def_id_to_vir_path(ctxt.tcx, path.res.def_id())
+                    });
+                    let adt_mode = {
+                        let attrs = ctxt.tcx.hir().attrs(
+                            ctxt.tcx
+                                .hir()
+                                .get_if_local(*self_def_id)
+                                .expect("non-local def id of fun")
+                                .hir_id()
+                                .expect("adt must have hir_id"),
+                        );
+                        get_mode(Mode::Exec, attrs)
+                    };
                     for impl_item_ref in impll.items {
                         match impl_item_ref.kind {
-                            AssocItemKind::Fn { has_self } => {
+                            AssocItemKind::Fn { has_self: _ } => {
                                 let impl_item = ctxt.tcx.hir().impl_item(impl_item_ref.id);
                                 let impl_item_visibility =
                                     mk_visibility(&Some(module_path.clone()), &impl_item.vis, true);
@@ -244,44 +240,15 @@ fn check_item<'tcx>(
                                                 );
                                             }
                                         } else {
-                                            let kind = if let Some((trait_path, trait_typ_args)) =
-                                                trait_path_typ_args.clone()
-                                            {
-                                                unsupported_err_unless!(
-                                                    has_self,
-                                                    sig.span,
-                                                    "method without self"
-                                                );
-                                                let ident = ident_to_var(&impl_item_ref.ident);
-                                                let ident = Arc::new(ident);
-                                                let path = typ_path_and_ident_to_vir_path(
-                                                    &trait_path,
-                                                    ident,
-                                                );
-                                                let fun = FunX { path, trait_path: None };
-                                                let method = Arc::new(fun);
-                                                let datatype = self_path.clone();
-                                                let datatype_typ_args = datatype_typ_args.clone();
-                                                FunctionKind::TraitMethodImpl {
-                                                    method,
-                                                    trait_path,
-                                                    trait_typ_args,
-                                                    datatype,
-                                                    datatype_typ_args,
-                                                }
-                                            } else {
-                                                FunctionKind::Static
-                                            };
                                             check_item_fn(
                                                 ctxt,
                                                 vir,
-                                                Some(self_typ.clone()),
+                                                Some((self_path.clone(), adt_mode)),
                                                 impl_item.def_id.to_def_id(),
-                                                kind,
                                                 impl_item_visibility,
                                                 fn_attrs,
                                                 sig,
-                                                trait_path_typ_args.clone().map(|(p, _)| p),
+                                                trait_path.clone(),
                                                 Some(&impll.generics),
                                                 &impl_item.generics,
                                                 body_id,
@@ -331,64 +298,6 @@ fn check_item<'tcx>(
             )?;
         }
         ItemKind::Macro(_macro_def) => {}
-        ItemKind::Trait(IsAuto::No, Unsafety::Normal, trait_generics, bounds, trait_items) => {
-            let generics_bnds = check_generics_bounds(ctxt.tcx, trait_generics, false)?;
-            unsupported_err_unless!(bounds.len() == 0, item.span, "trait generic bounds");
-            let trait_path = def_id_to_vir_path(ctxt.tcx, item.def_id.to_def_id());
-            let mut methods: Vec<Fun> = Vec::new();
-            for trait_item_ref in *trait_items {
-                let trait_item = ctxt.tcx.hir().trait_item(trait_item_ref.id);
-                let TraitItem { ident: _, def_id, generics: item_generics, kind, span } =
-                    trait_item;
-                let generics_bnds = check_generics_bounds(ctxt.tcx, item_generics, false)?;
-                unsupported_err_unless!(generics_bnds.len() == 0, *span, "trait generics");
-                match kind {
-                    TraitItemKind::Fn(sig, fun) => {
-                        let body_id = match fun {
-                            TraitFn::Required(..) => {
-                                // REVIEW: it would be nice to allow spec functions to omit the body,
-                                // but rustc seems to drop the parameter attributes if there's no body.
-                                unsupported_err!(
-                                    *span,
-                                    "trait function must have a body that calls no_method_body()"
-                                )
-                            }
-                            TraitFn::Provided(body_id) => body_id,
-                        };
-                        if let ImplicitSelfKind::None = sig.decl.implicit_self {
-                            unsupported_err!(*span, "trait function must have a self argument")
-                        }
-                        let attrs = ctxt.tcx.hir().attrs(trait_item.hir_id());
-                        let fun = check_item_fn(
-                            ctxt,
-                            vir,
-                            None,
-                            def_id.to_def_id(),
-                            FunctionKind::TraitMethodDecl { trait_path: trait_path.clone() },
-                            visibility.clone(),
-                            attrs,
-                            sig,
-                            None,
-                            Some(trait_generics),
-                            item_generics,
-                            body_id,
-                        )?;
-                        if let Some(fun) = fun {
-                            methods.push(fun);
-                        }
-                    }
-                    _ => {
-                        unsupported_err!(item.span, "unsupported item", item);
-                    }
-                }
-            }
-            let traitx = vir::ast::TraitX {
-                name: trait_path,
-                methods: Arc::new(methods),
-                typ_params: Arc::new(generics_bnds),
-            };
-            vir.traits.push(spanned_new(item.span, traitx));
-        }
         _ => {
             unsupported_err!(item.span, "unsupported item", item);
         }
@@ -430,12 +339,14 @@ pub fn crate_to_vir<'tcx>(ctxt: &Context<'tcx>) -> Result<Krate, VirErr> {
         if let Some(owner) = owner_opt {
             match owner.node() {
                 OwnerNode::Item(Item { kind: ItemKind::Mod(mod_), def_id, .. }) => {
-                    let path = def_id_to_vir_path(ctxt.tcx, def_id.to_def_id());
+                    let path =
+                        crate::rust_to_vir_base::def_id_to_vir_path(ctxt.tcx, def_id.to_def_id());
                     vir.module_ids.push(path.clone());
                     item_to_module.extend(mod_.item_ids.iter().map(move |ii| (*ii, path.clone())))
                 }
                 OwnerNode::Crate(mod_) => {
-                    let path = def_id_to_vir_path(ctxt.tcx, owner_id.to_def_id());
+                    let path =
+                        crate::rust_to_vir_base::def_id_to_vir_path(ctxt.tcx, owner_id.to_def_id());
                     vir.module_ids.push(path.clone());
                     item_to_module.extend(mod_.item_ids.iter().map(move |ii| (*ii, path.clone())))
                 }
@@ -468,8 +379,8 @@ pub fn crate_to_vir<'tcx>(ctxt: &Context<'tcx>) -> Result<Krate, VirErr> {
                     &foreign_item.foreign_item_id(),
                     foreign_item,
                 )?,
-                OwnerNode::TraitItem(_trait_item) => {
-                    // handled by ItemKind::Trait
+                OwnerNode::TraitItem(trait_item) => {
+                    unsupported_err!(trait_item.span, "trait items", trait_item)
                 }
                 OwnerNode::ImplItem(impl_item) => match impl_item.kind {
                     ImplItemKind::Fn(_, _) => {

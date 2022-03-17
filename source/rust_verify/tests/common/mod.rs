@@ -82,8 +82,6 @@ pub fn verify_files_and_pervasive(
         "builtin=../../rust/install/bin/libbuiltin.rlib".to_string(),
         "--extern".to_string(),
         "builtin_macros=../../rust/install/bin/libbuiltin_macros.dylib".to_string(),
-        "--extern".to_string(),
-        "state_machines_macros=../../rust/install/bin/libstate_machines_macros.dylib".to_string(),
     ]);
 
     #[cfg(target_os = "linux")]
@@ -92,8 +90,6 @@ pub fn verify_files_and_pervasive(
         "builtin=../../rust/install/bin/libbuiltin.rlib".to_string(),
         "--extern".to_string(),
         "builtin_macros=../../rust/install/bin/libbuiltin_macros.so".to_string(),
-        "--extern".to_string(),
-        "state_machines_macros=../../rust/install/bin/libstate_machines_macros.so".to_string(),
     ]);
 
     #[cfg(target_os = "windows")]
@@ -102,8 +98,6 @@ pub fn verify_files_and_pervasive(
         "builtin=../../rust/install/bin/libbuiltin.rlib".to_string(),
         "--extern".to_string(),
         "builtin_macros=../../rust/install/bin/builtin_macros.dll".to_string(),
-        "--extern".to_string(),
-        "state_machines_macros=../../rust/install/bin/state_machines_macros.dll".to_string(),
     ]);
 
     enable_default_features(&mut rustc_args);

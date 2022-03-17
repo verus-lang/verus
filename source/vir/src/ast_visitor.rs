@@ -1,7 +1,7 @@
 use crate::ast::{
-    Arm, ArmX, CallTarget, Datatype, DatatypeX, Expr, ExprX, Field, Function, FunctionKind,
-    FunctionX, GenericBound, GenericBoundX, Ident, MaskSpec, Param, ParamX, Pattern, PatternX,
-    SpannedTyped, Stmt, StmtX, Typ, TypX, UnaryOpr, Variant, VirErr,
+    Arm, ArmX, CallTarget, Datatype, DatatypeX, Expr, ExprX, Field, Function, FunctionX,
+    GenericBound, GenericBoundX, Ident, MaskSpec, Param, ParamX, Pattern, PatternX, SpannedTyped,
+    Stmt, StmtX, Typ, TypX, UnaryOpr, Variant, VirErr,
 };
 use crate::ast_util::err_str;
 use crate::def::Spanned;
@@ -230,7 +230,7 @@ where
                     expr_visitor_control_flow!(expr_visitor_dfs(body, map, mf));
                     map.pop_scope();
                 }
-                ExprX::Assign { init_not_mut: _, lhs: e1, rhs: e2 } => {
+                ExprX::Assign(e1, e2) => {
                     expr_visitor_control_flow!(expr_visitor_dfs(e1, map, mf));
                     expr_visitor_control_flow!(expr_visitor_dfs(e2, map, mf));
                 }
@@ -341,7 +341,6 @@ where
 {
     let FunctionX {
         name: _,
-        kind: _,
         visibility: _,
         mode: _,
         fuel: _,
@@ -506,10 +505,10 @@ where
             map.pop_scope();
             ExprX::Choose { params: Arc::new(params), cond, body }
         }
-        ExprX::Assign { init_not_mut, lhs: e1, rhs: e2 } => {
+        ExprX::Assign(e1, e2) => {
             let expr1 = map_expr_visitor_env(e1, map, env, fe, fs, ft)?;
             let expr2 = map_expr_visitor_env(e2, map, env, fe, fs, ft)?;
-            ExprX::Assign { init_not_mut: *init_not_mut, lhs: expr1, rhs: expr2 }
+            ExprX::Assign(expr1, expr2)
         }
         ExprX::Fuel(path, fuel) => ExprX::Fuel(path.clone(), *fuel),
         ExprX::Header(_) => {
@@ -650,7 +649,7 @@ where
     FT: Fn(&mut E, &Typ) -> Result<Typ, VirErr>,
 {
     match &**bound {
-        GenericBoundX::Traits(_) => Ok(bound.clone()),
+        GenericBoundX::None => Ok(bound.clone()),
         GenericBoundX::FnSpec(typs, typ) => {
             let typs = Arc::new(vec_map_result(&**typs, |t| (map_typ_visitor_env(t, env, ft)))?);
             let typ = map_typ_visitor_env(typ, env, ft)?;
@@ -674,7 +673,6 @@ where
 {
     let FunctionX {
         name,
-        kind,
         visibility,
         mode,
         fuel,
@@ -692,29 +690,6 @@ where
         extra_dependencies,
     } = &function.x;
     let name = name.clone();
-    let kind = match kind {
-        FunctionKind::Static | FunctionKind::TraitMethodDecl { trait_path: _ } => kind.clone(),
-        FunctionKind::TraitMethodImpl {
-            method,
-            trait_path,
-            trait_typ_args,
-            datatype,
-            datatype_typ_args,
-        } => {
-            let trait_typ_args =
-                Arc::new(vec_map_result(&**trait_typ_args, |t| map_typ_visitor_env(t, env, ft))?);
-            let datatype_typ_args = Arc::new(vec_map_result(&**datatype_typ_args, |t| {
-                map_typ_visitor_env(t, env, ft)
-            })?);
-            FunctionKind::TraitMethodImpl {
-                method: method.clone(),
-                trait_path: trait_path.clone(),
-                trait_typ_args,
-                datatype: datatype.clone(),
-                datatype_typ_args,
-            }
-        }
-    };
     let visibility = visibility.clone();
     let mode = *mode;
     let fuel = *fuel;
@@ -762,7 +737,6 @@ where
     map.pop_scope();
     let functionx = FunctionX {
         name,
-        kind,
         visibility,
         mode,
         fuel,

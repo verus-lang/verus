@@ -34,29 +34,24 @@ use vir::ast_util::{ident_binder, path_as_rust_name};
 use vir::def::positional_field_ident;
 
 pub(crate) fn pat_to_var<'tcx>(pat: &Pat) -> String {
-    let (_, name) = pat_to_mut_var(pat);
-    name
-}
-
-pub(crate) fn pat_to_mut_var<'tcx>(pat: &Pat) -> (bool, String) {
     let Pat { hir_id: _, kind, span: _, default_binding_modes } = pat;
     unsupported_unless!(default_binding_modes, "default_binding_modes");
     match kind {
         PatKind::Binding(annotation, _id, ident, pat) => {
-            let mutable = match annotation {
-                BindingAnnotation::Unannotated => false,
-                BindingAnnotation::Mutable => true,
+            match annotation {
+                BindingAnnotation::Unannotated => {}
+                BindingAnnotation::Mutable => {}
                 _ => {
                     unsupported!(format!("binding annotation {:?}", annotation))
                 }
-            };
+            }
             match pat {
                 None => {}
                 _ => {
                     unsupported!(format!("pattern {:?}", kind))
                 }
             }
-            (mutable, ident_to_var(ident))
+            ident_to_var(ident)
         }
         _ => {
             unsupported!(format!("pattern {:?}", kind))
@@ -377,7 +372,6 @@ fn fn_call_to_vir<'tcx>(
 
     let f_name = path_as_rust_name(&def_id_to_vir_path(tcx, f));
     let is_admit = f_name == "builtin::admit";
-    let is_no_method_body = f_name == "builtin::no_method_body";
     let is_requires = f_name == "builtin::requires";
     let is_ensures = f_name == "builtin::ensures";
     let is_invariant = f_name == "builtin::invariant";
@@ -410,7 +404,6 @@ fn fn_call_to_vir<'tcx>(
     let is_sub = f_name == "core::ops::arith::Sub::sub";
     let is_mul = f_name == "core::ops::arith::Mul::mul";
     let is_spec = is_admit
-        || is_no_method_body
         || is_requires
         || is_ensures
         || is_invariant
@@ -486,9 +479,6 @@ fn fn_call_to_vir<'tcx>(
     let mk_expr = |x: ExprX| spanned_typed_new(expr.span, &expr_typ(), x);
     let mk_expr_span = |span: Span, x: ExprX| spanned_typed_new(span, &expr_typ(), x);
 
-    if is_no_method_body {
-        return Ok(mk_expr(ExprX::Header(Arc::new(HeaderExprX::NoMethodBody))));
-    }
     if is_requires {
         unsupported_err_unless!(len == 1, expr.span, "expected requires", &args);
         let bctx = &BodyCtxt { external_body: false, ..bctx.clone() };
@@ -1499,25 +1489,10 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
             if let ExprKind::Field(_, _) = lhs.kind {
                 unsupported_err!(expr.span, format!("field updates"), lhs);
             }
-            let init_not_mut = if let ExprKind::Path(QPath::Resolved(
-                None,
-                rustc_hir::Path { res: Res::Local(id), .. },
-            )) = lhs.kind
-            {
-                if let Node::Binding(pat) = tcx.hir().get(*id) {
-                    let (mutable, _) = pat_to_mut_var(pat);
-                    !mutable
-                } else {
-                    panic!("assignment to non-local");
-                }
-            } else {
-                false
-            };
-            Ok(mk_expr(ExprX::Assign {
-                init_not_mut,
-                lhs: expr_to_vir(bctx, lhs, ExprModifier::ADDR_OF)?,
-                rhs: expr_to_vir(bctx, rhs, modifier)?,
-            }))
+            Ok(mk_expr(ExprX::Assign(
+                expr_to_vir(bctx, lhs, ExprModifier::ADDR_OF)?,
+                expr_to_vir(bctx, rhs, modifier)?,
+            )))
         }
         ExprKind::Field(lhs, name) => {
             let lhs_modifier = is_expr_typ_mut_ref(bctx, lhs, modifier)?;
@@ -1727,10 +1702,6 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
             match tcx.hir().get_if_local(fn_def_id).expect("fn def for method in hir") {
                 rustc_hir::Node::ImplItem(rustc_hir::ImplItem {
                     kind: rustc_hir::ImplItemKind::Fn(..),
-                    ..
-                }) => {}
-                rustc_hir::Node::TraitItem(rustc_hir::TraitItem {
-                    kind: rustc_hir::TraitItemKind::Fn(..),
                     ..
                 }) => {}
                 _ => panic!("unexpected hir for method impl item"),

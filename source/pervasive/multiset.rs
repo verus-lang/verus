@@ -43,20 +43,6 @@ impl<V> Multiset<V> {
     pub fn ext_equal(self, m2: Self) -> bool {
         forall(|v: V| self.count(v) == m2.count(v))
     }
-
-    // TODO flesh out remaining proof-mode functions
-
-    #[proof]
-    #[verifier(external_body)]
-    #[verifier(returns(proof))]
-    pub fn proof_remove(#[proof] &mut self, #[spec] v: V) -> V {
-        requires(old(self).count(v) >= 1);
-        ensures(|out_v: V|
-            equal(out_v, v) && equal(*self, old(self).remove(v))
-        );
-
-        unimplemented!();
-    }
 }
 
 // Specification of `empty`

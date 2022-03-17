@@ -85,10 +85,6 @@ impl MutVisitor for Visitor {
         rustc_ast::mut_visit::noop_flat_map_assoc_item(i, self)
     }
 
-    fn flat_map_trait_item(&mut self, i: P<AssocItem>) -> SmallVec<[P<AssocItem>; 1]> {
-        self.flat_map_impl_item(i)
-    }
-
     fn flat_map_item(&mut self, mut i: P<Item>) -> SmallVec<[P<Item>; 1]> {
         use std::ops::DerefMut;
         self.freshen_span(&mut i.deref_mut().span);

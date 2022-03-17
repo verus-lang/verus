@@ -41,8 +41,6 @@ where A is a type parameter:
 
 quantifier variable            Poly    Poly    Poly    Poly    Poly           Poly         Poly           Poly
 spec function parameter        Poly    Poly    Poly    Poly    Poly           Poly         Poly           Poly
-trait method parameter         Poly    Poly    Poly    Poly    Poly           Poly         Poly           Poly
-trait method return type       Poly    Poly    Poly    Poly    Poly           Poly         Poly           Poly
 
 exec/proof function parameter  bool    int     int*    Poly    map_u64_u8     Poly         pair*          pair*
 datatype field                 bool    int     int*    Poly    map_u64_u8     Poly         pair*          pair*
@@ -70,9 +68,9 @@ Therefore, the expression Unbox(Box(1)) explicitly introduces a superfluous Unbo
 */
 
 use crate::ast::{
-    BinaryOp, CallTarget, Datatype, DatatypeX, Expr, ExprX, Exprs, Function, FunctionKind,
-    FunctionX, Ident, IntRange, Krate, KrateX, MaskSpec, Mode, Param, ParamX, Path, PatternX,
-    SpannedTyped, Stmt, StmtX, Typ, TypX, UnaryOp, UnaryOpr,
+    BinaryOp, CallTarget, Datatype, DatatypeX, Expr, ExprX, Exprs, Function, FunctionX, Ident,
+    IntRange, Krate, KrateX, MaskSpec, Mode, Param, ParamX, Path, PatternX, SpannedTyped, Stmt,
+    StmtX, Typ, TypX, UnaryOp, UnaryOpr,
 };
 use crate::context::Ctx;
 use crate::def::Spanned;
@@ -239,19 +237,18 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
             CallTarget::Static(name, _) => {
                 let function = &ctx.func_map[name].x;
                 let is_spec = function.mode == Mode::Spec;
-                let is_trait = !matches!(function.kind, FunctionKind::Static);
                 assert!(exprs.len() == function.params.len());
                 let mut args: Vec<Expr> = Vec::new();
                 for (param, arg) in function.params.iter().zip(exprs.iter()) {
                     let arg = poly_expr(ctx, state, arg);
-                    let arg = if is_spec || is_trait || typ_is_poly(ctx, &param.x.typ) {
+                    let arg = if is_spec || typ_is_poly(ctx, &param.x.typ) {
                         coerce_expr_to_poly(ctx, &arg)
                     } else {
                         coerce_expr_to_native(ctx, &arg)
                     };
                     args.push(arg);
                 }
-                let typ = if is_trait || typ_is_poly(ctx, &function.ret.x.typ) {
+                let typ = if typ_is_poly(ctx, &function.ret.x.typ) {
                     coerce_typ_to_poly(ctx, &expr.typ)
                 } else {
                     coerce_typ_to_native(ctx, &expr.typ)
@@ -386,10 +383,10 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
             state.types.pop_scope();
             mk_expr_typ(&body.clone().typ, ExprX::Choose { params: Arc::new(bs), cond, body })
         }
-        ExprX::Assign { init_not_mut, lhs: e1, rhs: e2 } => {
+        ExprX::Assign(e1, e2) => {
             let e1 = poly_expr(ctx, state, e1);
             let e2 = coerce_expr_to_native(ctx, &poly_expr(ctx, state, e2));
-            mk_expr(ExprX::Assign { init_not_mut: *init_not_mut, lhs: e1, rhs: e2 })
+            mk_expr(ExprX::Assign(e1, e2))
         }
         ExprX::AssertBV(e) => mk_expr(ExprX::AssertBV(poly_expr(ctx, state, e))),
         ExprX::Fuel(..) => expr.clone(),
@@ -500,7 +497,6 @@ fn poly_stmt(ctx: &Ctx, state: &mut State, stmt: &Stmt) -> Stmt {
 fn poly_function(ctx: &Ctx, function: &Function) -> Function {
     let FunctionX {
         name,
-        kind,
         visibility,
         mode,
         fuel,
@@ -521,20 +517,16 @@ fn poly_function(ctx: &Ctx, function: &Function) -> Function {
     let mut types = ScopeMap::new();
     types.push_scope(true);
 
-    let is_trait = !matches!(kind, FunctionKind::Static);
-
-    // Return type is left native (except for trait methods)
-    let ret_typ = if is_trait && function.x.has_return() {
-        coerce_typ_to_poly(ctx, &ret.x.typ)
-    } else {
-        coerce_typ_to_native(ctx, &ret.x.typ)
-    };
-    let ret = Spanned::new(ret.span.clone(), ParamX { typ: ret_typ, ..ret.x.clone() });
-    // Parameter types are made Poly for spec functions and trait methods
+    // Return type is left native
+    let ret = Spanned::new(
+        ret.span.clone(),
+        ParamX { typ: coerce_typ_to_native(ctx, &ret.x.typ), ..ret.x.clone() },
+    );
+    // Parameter types are made Poly for spec functions
     let mut new_params: Vec<Param> = Vec::new();
     for param in params.iter() {
         let ParamX { name, typ, mode, is_mut } = &param.x;
-        let typ = if function.x.mode == Mode::Spec || is_trait {
+        let typ = if function.x.mode == Mode::Spec {
             coerce_typ_to_poly(ctx, typ)
         } else {
             coerce_typ_to_native(ctx, typ)
@@ -574,11 +566,7 @@ fn poly_function(ctx: &Ctx, function: &Function) -> Function {
     };
 
     let body = if let Some(body) = body {
-        if is_trait && function.x.has_return() {
-            Some(coerce_expr_to_poly(ctx, &poly_expr(ctx, &mut state, body)))
-        } else {
-            Some(coerce_expr_to_native(ctx, &poly_expr(ctx, &mut state, body)))
-        }
+        Some(coerce_expr_to_native(ctx, &poly_expr(ctx, &mut state, body)))
     } else {
         None
     };
@@ -588,7 +576,6 @@ fn poly_function(ctx: &Ctx, function: &Function) -> Function {
 
     let functionx = FunctionX {
         name: name.clone(),
-        kind: kind.clone(),
         visibility: visibility.clone(),
         mode: *mode,
         fuel: *fuel,
@@ -622,11 +609,10 @@ fn poly_datatype(ctx: &Ctx, datatype: &Datatype) -> Datatype {
 }
 
 pub fn poly_krate_for_module(ctx: &mut Ctx, krate: &Krate) -> Krate {
-    let KrateX { functions, datatypes, traits, module_ids } = &**krate;
+    let KrateX { functions, datatypes, module_ids } = &**krate;
     let kratex = KrateX {
         functions: functions.iter().map(|f| poly_function(ctx, f)).collect(),
         datatypes: datatypes.iter().map(|d| poly_datatype(ctx, d)).collect(),
-        traits: traits.clone(),
         module_ids: module_ids.clone(),
     };
     ctx.func_map = HashMap::new();

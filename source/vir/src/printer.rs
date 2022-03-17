@@ -30,15 +30,6 @@ fn visibility_to_node(visibility: &Visibility) -> Node {
     Node::List(nodes)
 }
 
-fn bound_to_node(bound: &GenericBound) -> Node {
-    match &**bound {
-        GenericBoundX::Traits(ts) => Node::List(ts.iter().map(path_to_node).collect()),
-        GenericBoundX::FnSpec(typs, ret) => {
-            nodes!(fnspec {typs_to_node(typs)} {typ_to_node(ret)})
-        }
-    }
-}
-
 fn binder_node<A: Clone>(binder: &Binder<A>, f: &impl Fn(&A) -> Node) -> Node {
     Node::List(vec![str_to_node(&binder.name), f(&binder.a)])
 }
@@ -89,8 +80,8 @@ fn datatype_to_node(datatype: &DatatypeX) -> Node {
     let typ_params_node = Node::List(
         typ_params
             .iter()
-            .map(|(ident, bound, positive)| {
-                let mut nodes = vec![str_to_node(ident), bound_to_node(bound)];
+            .map(|(ident, positive)| {
+                let mut nodes = vec![str_to_node(ident)];
                 if *positive {
                     nodes.push(str_to_node("+strictly_positive"));
                 }
@@ -138,7 +129,6 @@ fn fun_to_node(fun: &FunX) -> Node {
 
 fn header_expr_to_node(header_expr: &HeaderExprX) -> Node {
     match header_expr {
-        HeaderExprX::NoMethodBody => nodes!(no_method_body),
         HeaderExprX::Requires(exprs) => nodes!(requires {exprs_to_node(exprs)}),
         HeaderExprX::Ensures(retval, exprs) => {
             let mut nodes = nodes_vec!(ensures);
@@ -252,7 +242,7 @@ fn expr_to_node(expr: &Expr) -> Node {
         }),
         ExprX::Binary(binary_op, e1, e2) => match binary_op {
             BinaryOp::Eq(mode) => {
-                nodes!(eq {str_to_node(":mode")} {str_to_node(&format!("{:?}", mode))} {expr_to_node(e1)} {expr_to_node(e2)})
+                nodes!(eq {str_to_node(":mode")} {str_to_node(&format!("{:?}", mode))})
             }
             _ => {
                 nodes!({str_to_node(&format!("{:?}", binary_op).to_lowercase())} {expr_to_node(e1)} {expr_to_node(e2)})
@@ -267,15 +257,7 @@ fn expr_to_node(expr: &Expr) -> Node {
         ExprX::Choose { params, cond, body } => {
             nodes!(choose {binders_node(params, &typ_to_node)} {expr_to_node(cond)} {expr_to_node(body)})
         }
-        ExprX::Assign { init_not_mut, lhs: e0, rhs: e1 } => {
-            let mut nodes = nodes_vec!(assign);
-            if *init_not_mut {
-                nodes.push(str_to_node(":init_not_mut"));
-            }
-            nodes.push(expr_to_node(e0));
-            nodes.push(expr_to_node(e1));
-            Node::List(nodes)
-        }
+        ExprX::Assign(e0, e1) => nodes!(assign {expr_to_node(e0)} {expr_to_node(e1)}),
         ExprX::Fuel(fun, fuel) => {
             nodes!(fuel {fun_to_node(fun)} {str_to_node(&format!("{}", fuel))})
         }
@@ -305,7 +287,7 @@ fn expr_to_node(expr: &Expr) -> Node {
             nodes!(while {expr_to_node(cond)} {expr_to_node(body)} {str_to_node(":invs")} {exprs_to_node(invs)})
         }
         ExprX::OpenInvariant(e1, binder, e2, atomicity) => {
-            nodes!(openinvariant {expr_to_node(e1)} {binder_node(binder, &typ_to_node)} {expr_to_node(e2)} {atomicity_to_node(*atomicity)})
+            nodes!(openinvariant {expr_to_node(e1)} {binder_node(binder, &typ_to_node)} {expr_to_node(e2)}, {atomicity_to_node(*atomicity)})
         }
         ExprX::Return(expr) => {
             let mut nodes = nodes_vec!(return);
@@ -341,7 +323,6 @@ fn expr_to_node(expr: &Expr) -> Node {
 fn function_to_node(function: &FunctionX) -> Node {
     let FunctionX {
         name,
-        kind,
         visibility,
         mode,
         fuel,
@@ -361,7 +342,17 @@ fn function_to_node(function: &FunctionX) -> Node {
     let typ_bounds_node = Node::List(
         typ_bounds
             .iter()
-            .map(|(ident, bound)| Node::List(vec![str_to_node(ident), bound_to_node(bound)]))
+            .map(|(ident, bound)| {
+                Node::List(vec![
+                    str_to_node(ident),
+                    match &**bound {
+                        GenericBoundX::None => str_to_node("none"),
+                        GenericBoundX::FnSpec(typs, ret) => {
+                            nodes!(fnspec {typs_to_node(typs)} {typ_to_node(ret)})
+                        }
+                    },
+                ])
+            })
             .collect(),
     );
     let param_to_node = |param: &Param| {
@@ -429,29 +420,6 @@ fn function_to_node(function: &FunctionX) -> Node {
     let mut nodes = vec![
         str_to_node("function"),
         fun_to_node(name),
-        str_to_node(":kind"),
-        (match kind {
-            FunctionKind::Static => node!(static),
-            FunctionKind::TraitMethodDecl { trait_path } => {
-                node!((decl {path_to_node(trait_path)}))
-            }
-            FunctionKind::TraitMethodImpl {
-                method,
-                trait_path,
-                trait_typ_args,
-                datatype,
-                datatype_typ_args,
-            } => {
-                node!((
-                    impl
-                    {fun_to_node(method)}
-                    {path_to_node(trait_path)}
-                    {typs_to_node(trait_typ_args)}
-                    {path_to_node(datatype)}
-                    {typs_to_node(datatype_typ_args)}
-                ))
-            }
-        }),
         visibility_to_node(visibility),
         str_to_node(":mode"),
         Node::Atom(format!("{:?}", mode)),
@@ -487,7 +455,7 @@ fn function_to_node(function: &FunctionX) -> Node {
 }
 
 pub fn write_krate(mut write: impl std::io::Write, vir_crate: &Krate) {
-    let KrateX { datatypes, functions, traits, module_ids } = &**vir_crate;
+    let KrateX { datatypes, functions, module_ids } = &**vir_crate;
     let mut nw = NodeWriter::new();
     for datatype in datatypes.iter() {
         writeln!(
@@ -498,7 +466,7 @@ pub fn write_krate(mut write: impl std::io::Write, vir_crate: &Krate) {
                 &spanned_node(datatype_to_node(&datatype.x), &datatype.span)
             )
         )
-        .expect("cannot write to vir write");
+        .expect("canont write to vir write");
     }
     for function in functions.iter() {
         writeln!(
@@ -509,16 +477,11 @@ pub fn write_krate(mut write: impl std::io::Write, vir_crate: &Krate) {
                 &spanned_node(function_to_node(&function.x), &function.span)
             )
         )
-        .expect("cannot write to vir write");
-    }
-    for t in traits.iter() {
-        let t = nodes!(trait {path_to_node(&t.x.name)});
-        writeln!(&mut write, "{}\n", nw.node_to_string_indent(&" ".to_string(), &t))
-            .expect("cannot write to vir write");
+        .expect("canont write to vir write");
     }
     for module_id in module_ids.iter() {
         let module_id_node = nodes!(module_id {path_to_node(module_id)});
         writeln!(&mut write, "{}\n", nw.node_to_string_indent(&" ".to_string(), &module_id_node))
-            .expect("cannot write to vir write");
+            .expect("canont write to vir write");
     }
 }

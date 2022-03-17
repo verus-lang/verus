@@ -7,17 +7,17 @@ use rustc_hir::def::{DefKind, Res};
 use rustc_hir::definitions::DefPath;
 use rustc_hir::{
     GenericBound, GenericParam, GenericParamKind, Generics, HirId, ItemKind, LifetimeParamKind,
-    ParamName, PathSegment, PolyTraitRef, PrimTy, QPath, TraitBoundModifier, TraitFn,
-    TraitItemKind, Ty, Visibility, VisibilityKind,
+    ParamName, PathSegment, PolyTraitRef, PrimTy, QPath, TraitBoundModifier, Ty, Visibility,
+    VisibilityKind,
 };
 use rustc_infer::infer::TyCtxtInferExt;
 use rustc_middle::ty::{AdtDef, TyCtxt, TyKind};
 use rustc_span::def_id::{DefId, LOCAL_CRATE};
-use rustc_span::symbol::{kw, Ident};
+use rustc_span::symbol::Ident;
 use rustc_span::Span;
 use rustc_trait_selection::infer::InferCtxtExt;
 use std::sync::Arc;
-use vir::ast::{GenericBoundX, IntRange, Path, PathX, Typ, TypBounds, TypX, Typs, VirErr};
+use vir::ast::{GenericBoundX, Idents, IntRange, Path, PathX, Typ, TypBounds, TypX, Typs, VirErr};
 use vir::ast_util::{path_as_rust_name, types_equal};
 
 pub(crate) fn def_path_to_vir_path<'tcx>(tcx: TyCtxt<'tcx>, def_path: DefPath) -> Path {
@@ -50,16 +50,15 @@ pub(crate) fn get_function_def<'tcx>(
     hir_id: rustc_hir::HirId,
 ) -> (&'tcx rustc_hir::FnSig<'tcx>, &'tcx rustc_hir::BodyId) {
     get_function_def_impl_item_node(tcx, hir_id)
-        .or_else(|| match tcx.hir().get(hir_id) {
-            rustc_hir::Node::Item(item) => match &item.kind {
+        .or_else(|| {
+            let item = match tcx.hir().get(hir_id) {
+                rustc_hir::Node::Item(item) => item,
+                node => unsupported!("extern functions, or other function Node", node),
+            };
+            match &item.kind {
                 ItemKind::Fn(fn_sig, _, body_id) => Some((fn_sig, body_id)),
                 _ => None,
-            },
-            rustc_hir::Node::TraitItem(item) => match &item.kind {
-                TraitItemKind::Fn(fn_sig, TraitFn::Provided(body_id)) => Some((fn_sig, body_id)),
-                _ => None,
-            },
-            node => unsupported!("extern functions, or other function Node", node),
+            }
         })
         .expect("function expected")
 }
@@ -127,11 +126,11 @@ pub(crate) fn def_id_to_datatype<'tcx, 'hir>(
     TypX::Datatype(def_id_to_vir_path(tcx, def_id), typ_args)
 }
 
-pub(crate) fn def_id_to_datatype_typ_args<'tcx, 'hir>(
+pub(crate) fn def_id_to_datatype_segments<'tcx, 'hir>(
     tcx: TyCtxt<'tcx>,
     def_id: DefId,
     segments: &'hir [PathSegment<'hir>],
-) -> (Path, Typs) {
+) -> TypX {
     let typ_args: Vec<Typ> = match &segments.last().expect("type must have a segment").args {
         None => vec![],
         Some(args) => args
@@ -144,16 +143,7 @@ pub(crate) fn def_id_to_datatype_typ_args<'tcx, 'hir>(
             })
             .collect(),
     };
-    (def_id_to_vir_path(tcx, def_id), Arc::new(typ_args))
-}
-
-pub(crate) fn def_id_to_datatype_typx<'tcx, 'hir>(
-    tcx: TyCtxt<'tcx>,
-    def_id: DefId,
-    segments: &'hir [PathSegment<'hir>],
-) -> TypX {
-    let (path, typ_args) = def_id_to_datatype_typ_args(tcx, def_id, segments);
-    TypX::Datatype(path, typ_args)
+    TypX::Datatype(def_id_to_vir_path(tcx, def_id), Arc::new(typ_args))
 }
 
 // TODO: proper handling of def_ids
@@ -252,9 +242,6 @@ pub(crate) fn mid_ty_to_vir<'tcx>(
         TyKind::Ref(_, tys, rustc_ast::Mutability::Not) => mid_ty_to_vir(tcx, tys, allow_mut_ref),
         TyKind::Ref(_, tys, rustc_ast::Mutability::Mut) if allow_mut_ref => {
             mid_ty_to_vir(tcx, tys, allow_mut_ref)
-        }
-        TyKind::Param(param) if param.name == kw::SelfUpper => {
-            Arc::new(TypX::TypParam(vir::def::trait_self_type_param()))
         }
         TyKind::Param(param) => Arc::new(TypX::TypParam(Arc::new(param.name.to_string()))),
         TyKind::Never => {
@@ -361,12 +348,7 @@ pub(crate) fn ty_to_vir<'tcx>(tcx: TyCtxt<'tcx>, ty: &Ty) -> Typ {
             Res::PrimTy(PrimTy::Int(IntTy::Isize)) => TypX::Int(IntRange::ISize),
             Res::Def(DefKind::TyParam, def_id) => {
                 let path = def_id_to_vir_path(tcx, def_id);
-                let name = path.segments.last().unwrap();
-                if **name == kw::SelfUpper.to_string() {
-                    TypX::TypParam(vir::def::trait_self_type_param())
-                } else {
-                    TypX::TypParam(name.clone())
-                }
+                TypX::TypParam(path.segments.last().unwrap().clone())
             }
             Res::Def(DefKind::Struct, def_id) => {
                 // TODO: consider using #[rust_diagnostic_item] and https://doc.rust-lang.org/stable/nightly-rustc/rustc_middle/ty/query/query_stored/type.diagnostic_items.html for the builtin lib
@@ -381,10 +363,12 @@ pub(crate) fn ty_to_vir<'tcx>(tcx: TyCtxt<'tcx>, ty: &Ty) -> Typ {
                         _ => panic!("unexpected arg to Box"),
                     }
                 } else {
-                    def_id_to_datatype_typx(tcx, def_id, &path.segments)
+                    def_id_to_datatype_segments(tcx, def_id, &path.segments)
                 }
             }
-            Res::Def(DefKind::Enum, def_id) => def_id_to_datatype_typx(tcx, def_id, &path.segments),
+            Res::Def(DefKind::Enum, def_id) => {
+                def_id_to_datatype_segments(tcx, def_id, &path.segments)
+            }
             Res::SelfTy(None, Some((impl_def_id, false))) => {
                 return impl_def_id_to_self_ty(tcx, impl_def_id);
             }
@@ -504,12 +488,7 @@ pub(crate) fn check_generic_bound<'tcx>(
                 };
                 Ok(Arc::new(GenericBoundX::FnSpec(args, t_ret)))
             } else {
-                let typx = def_id_to_datatype_typx(tcx, def_id, &path.segments);
-                if let TypX::Datatype(trait_name, _args) = typx {
-                    Ok(Arc::new(GenericBoundX::Traits(vec![trait_name])))
-                } else {
-                    panic!("unexpected trait bound");
-                }
+                unsupported_err!(span, "generic bounds")
             }
         }
         _ => {
@@ -551,30 +530,16 @@ pub(crate) fn check_generics_bounds<'tcx>(
                 // for rustc's borrow-checking pass
                 let bounds: Vec<&GenericBound> =
                     bounds.iter().filter(|bound| !is_lifetime_bound(bound)).collect();
+                unsupported_err_unless!(bounds.len() <= 1, *span, "generic bounds");
 
-                // trait/function bounds
+                // Handle type bounds here. Right now we only support Fn trait bounds, of which
+                // there can only be one. So if there's 1 bound, we check if it's a Fn
+                // (and error otherwise).
                 let ident = Arc::new(id.name.as_str().to_string());
-                let mut trait_bounds: Vec<Path> = Vec::new();
-                let mut fn_bounds: Vec<vir::ast::GenericBound> = Vec::new();
-                for bound in bounds {
-                    let vir_bound = check_generic_bound(tcx, *span, bound)?;
-                    match &*vir_bound {
-                        GenericBoundX::Traits(ts) => {
-                            trait_bounds.extend(ts.clone());
-                        }
-                        GenericBoundX::FnSpec(..) => fn_bounds.push(vir_bound),
-                    }
-                }
-                unsupported_err_unless!(fn_bounds.len() <= 1, *span, "multiple function bounds");
-                unsupported_err_unless!(
-                    fn_bounds.len() == 0 || trait_bounds.len() == 0,
-                    *span,
-                    "combined trait/function bounds"
-                );
-                let bound = if fn_bounds.len() == 1 {
-                    fn_bounds[0].clone()
+                let bound = if bounds.len() == 1 {
+                    check_generic_bound(tcx, *span, &bounds[0])?
                 } else {
-                    Arc::new(GenericBoundX::Traits(trait_bounds))
+                    Arc::new(GenericBoundX::None)
                 };
                 typ_params.push((ident, bound, strictly_positive));
             }
@@ -600,6 +565,39 @@ pub(crate) fn check_generics_bounds_fun<'tcx>(
     Ok(Arc::new(
         check_generics_bounds(tcx, generics, false)?.into_iter().map(|(a, b, _)| (a, b)).collect(),
     ))
+}
+
+pub(crate) fn check_generics<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    generics: &'tcx Generics<'tcx>,
+    check_that_external_body_datatype_declares_positivity: bool,
+) -> Result<Vec<(vir::ast::Ident, bool)>, VirErr> {
+    let typ_bounds = check_generics_bounds(
+        tcx,
+        generics,
+        check_that_external_body_datatype_declares_positivity,
+    )?;
+    let mut typ_params: Vec<(vir::ast::Ident, bool)> = Vec::new();
+    for (x, bound, strictly_positive) in typ_bounds.iter() {
+        // REVIEW:
+        // We currently only allow bounds for functions, not for datatypes,
+        // so that datatypes cannot refer to function types.
+        // At some point, we may also want to allow bounds for datatypes.
+        match &**bound {
+            GenericBoundX::None => typ_params.push((x.clone(), *strictly_positive)),
+            _ => {
+                unsupported_err!(generics.span, "generic bounds");
+            }
+        }
+    }
+    Ok(typ_params)
+}
+
+pub(crate) fn check_generics_idents<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    generics: &'tcx Generics<'tcx>,
+) -> Result<Idents, VirErr> {
+    Ok(Arc::new(check_generics(tcx, generics, false)?.into_iter().map(|(a, _)| a).collect()))
 }
 
 pub(crate) fn is_lifetime_bound(bound: &GenericBound) -> bool {

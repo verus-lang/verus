@@ -20,17 +20,8 @@ enum Mode {
 }
 
 #[test]
-fn example() {
-    run_examples_in_directory("example");
-}
-
-#[test]
-fn state_machines() {
-    run_examples_in_directory("example/state_machines");
-}
-
-fn run_examples_in_directory(dir_path: &str) {
-    let entries = std::fs::read_dir(dir_path).expect("cannot find example directory");
+fn run_examples() {
+    let entries = std::fs::read_dir("example").expect("cannot find example directory");
 
     for entry in entries {
         let entry = entry.expect("invalid path");
@@ -69,14 +60,14 @@ fn run_examples_in_directory(dir_path: &str) {
 
         #[cfg(target_os = "windows")]
         let script = format!(
-            "..\\rust\\install\\bin\\rust_verify --pervasive-path pervasive --extern builtin=../rust/install/bin/libbuiltin.rlib --extern builtin_macros=../rust/install/bin/builtin_macros.dll --extern state_machines_macros=../rust/install/bin/state_machines_macros.dll --edition=2018 {}",
+            "..\\rust\\install\\bin\\rust_verify --pervasive-path pervasive --extern builtin=../rust/install/bin/libbuiltin.rlib --extern builtin_macros=../rust/install/bin/builtin_macros.dll --edition=2018 {}",
             &path
         );
 
         #[cfg(any(target_os = "macos", target_os = "linux"))]
         let script = format!(
-            "DYLD_LIBRARY_PATH=../rust/install/lib/rustlib/{}/lib LD_LIBRARY_PATH=../rust/install/lib ../rust/install/bin/rust_verify --pervasive-path pervasive --extern builtin=../rust/install/bin/libbuiltin.rlib --extern builtin_macros=../rust/install/bin/libbuiltin_macros.{} --extern state_machines_macros=../rust/install/bin/libstate_machines_macros.{} --edition=2018 {}",
-            RUST_LIB_TARGET, DYN_LIB_EXT, DYN_LIB_EXT, &path
+            "DYLD_LIBRARY_PATH=../rust/install/lib/rustlib/{}/lib LD_LIBRARY_PATH=../rust/install/lib ../rust/install/bin/rust_verify --pervasive-path pervasive --extern builtin=../rust/install/bin/libbuiltin.rlib --extern builtin_macros=../rust/install/bin/libbuiltin_macros.{} --edition=2018 {}",
+            RUST_LIB_TARGET, DYN_LIB_EXT, &path
         );
 
         let output = if cfg!(target_os = "windows") {

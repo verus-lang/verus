@@ -34,11 +34,6 @@ impl<K, V> Map<K, V> {
         self.dom().ext_equal(m2.dom()) &&
         forall(|k: K| self.dom().contains(k) >>= equal(self.index(k), m2.index(k)))
     }
-
-    #[spec] #[verifier(publish)]
-    pub fn contains_pair(self, k: K, v: V) -> bool {
-        self.dom().contains(k) && equal(self.index(k), v)
-    }
 }
 
 // Trusted axioms

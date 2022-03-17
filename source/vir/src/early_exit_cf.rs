@@ -61,7 +61,7 @@ fn expr_get_early_exits_rec(
             | ExprX::Unary(..)
             | ExprX::UnaryOpr(..)
             | ExprX::Binary(..)
-            | ExprX::Assign { .. }
+            | ExprX::Assign(..)
             | ExprX::If(..)
             | ExprX::Match(..)
             | ExprX::Block(..) => VisitorControlFlow::Recurse,
