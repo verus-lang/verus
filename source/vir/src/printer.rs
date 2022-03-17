@@ -267,7 +267,15 @@ fn expr_to_node(expr: &Expr) -> Node {
         ExprX::Choose { params, cond, body } => {
             nodes!(choose {binders_node(params, &typ_to_node)} {expr_to_node(cond)} {expr_to_node(body)})
         }
-        ExprX::Assign(e0, e1) => nodes!(assign {expr_to_node(e0)} {expr_to_node(e1)}),
+        ExprX::Assign { init_not_mut, lhs: e0, rhs: e1 } => {
+            let mut nodes = nodes_vec!(assign);
+            if *init_not_mut {
+                nodes.push(str_to_node(":init_not_mut"));
+            }
+            nodes.push(expr_to_node(e0));
+            nodes.push(expr_to_node(e1));
+            Node::List(nodes)
+        }
         ExprX::Fuel(fun, fuel) => {
             nodes!(fuel {fun_to_node(fun)} {str_to_node(&format!("{}", fuel))})
         }

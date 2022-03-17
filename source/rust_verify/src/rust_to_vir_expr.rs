@@ -34,24 +34,29 @@ use vir::ast_util::{ident_binder, path_as_rust_name};
 use vir::def::positional_field_ident;
 
 pub(crate) fn pat_to_var<'tcx>(pat: &Pat) -> String {
+    let (_, name) = pat_to_mut_var(pat);
+    name
+}
+
+pub(crate) fn pat_to_mut_var<'tcx>(pat: &Pat) -> (bool, String) {
     let Pat { hir_id: _, kind, span: _, default_binding_modes } = pat;
     unsupported_unless!(default_binding_modes, "default_binding_modes");
     match kind {
         PatKind::Binding(annotation, _id, ident, pat) => {
-            match annotation {
-                BindingAnnotation::Unannotated => {}
-                BindingAnnotation::Mutable => {}
+            let mutable = match annotation {
+                BindingAnnotation::Unannotated => false,
+                BindingAnnotation::Mutable => true,
                 _ => {
                     unsupported!(format!("binding annotation {:?}", annotation))
                 }
-            }
+            };
             match pat {
                 None => {}
                 _ => {
                     unsupported!(format!("pattern {:?}", kind))
                 }
             }
-            ident_to_var(ident)
+            (mutable, ident_to_var(ident))
         }
         _ => {
             unsupported!(format!("pattern {:?}", kind))
@@ -1494,10 +1499,25 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
             if let ExprKind::Field(_, _) = lhs.kind {
                 unsupported_err!(expr.span, format!("field updates"), lhs);
             }
-            Ok(mk_expr(ExprX::Assign(
-                expr_to_vir(bctx, lhs, ExprModifier::ADDR_OF)?,
-                expr_to_vir(bctx, rhs, modifier)?,
-            )))
+            let init_not_mut = if let ExprKind::Path(QPath::Resolved(
+                None,
+                rustc_hir::Path { res: Res::Local(id), .. },
+            )) = lhs.kind
+            {
+                if let Node::Binding(pat) = tcx.hir().get(*id) {
+                    let (mutable, _) = pat_to_mut_var(pat);
+                    !mutable
+                } else {
+                    panic!("assignment to non-local");
+                }
+            } else {
+                false
+            };
+            Ok(mk_expr(ExprX::Assign {
+                init_not_mut,
+                lhs: expr_to_vir(bctx, lhs, ExprModifier::ADDR_OF)?,
+                rhs: expr_to_vir(bctx, rhs, modifier)?,
+            }))
         }
         ExprKind::Field(lhs, name) => {
             let lhs_modifier = is_expr_typ_mut_ref(bctx, lhs, modifier)?;

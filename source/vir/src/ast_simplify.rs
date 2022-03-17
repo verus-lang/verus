@@ -169,13 +169,22 @@ fn small_loc_or_temp(state: &mut State, expr: &Expr) -> SmallLocOrTemp {
             .map_expr(|b| expr.new_x(ExprX::Closure(params.clone(), b)))
             .to_opt(),
         ExprX::Choose { .. } => None,
-        ExprX::Assign(e1, e2) => {
+        ExprX::Assign { init_not_mut, lhs: e1, rhs: e2 } => {
             let (stmts, exprs, contains_loc) =
                 small_loc_or_temp_exprs(state, &[e1.clone(), e2.clone()]);
             let mut exprs = exprs.into_iter();
             let expr1 = exprs.next().unwrap();
             let expr2 = exprs.next().unwrap();
-            contains_loc.then(|| (stmts, expr.new_x(ExprX::Assign(expr1, expr2))))
+            contains_loc.then(|| {
+                (
+                    stmts,
+                    expr.new_x(ExprX::Assign {
+                        init_not_mut: *init_not_mut,
+                        lhs: expr1,
+                        rhs: expr2,
+                    }),
+                )
+            })
         }
         ExprX::Fuel(..) => None,
         ExprX::Admit => None,
