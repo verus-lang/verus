@@ -133,7 +133,8 @@ fn check_is_sorted_tree(tree: &Tree) -> TreeSortedness {
             }
 
             sorted_tree_means_sorted_sequence(**left);
-            sorted_tree_means_sorted_sequence(**right);
+            // sorted_tree_means_sorted_sequence(**right); // TODO: why is only one of these calls
+            // necessary?
 
             // assert(equal(tree.view(), left.view().add(seq![*value as int]).add(right.view())));
             // assert(tree.view().len() > 0);
