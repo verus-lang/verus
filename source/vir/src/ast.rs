@@ -317,7 +317,7 @@ pub enum ExprX {
     /// Choose specification values satisfying a condition, compute body
     Choose { params: Binders<Typ>, cond: Expr, body: Expr },
     /// Assign to local variable
-    Assign { not_mut_init: bool, lhs: Expr, rhs: Expr },
+    Assign { init_not_mut: bool, lhs: Expr, rhs: Expr },
     /// Reveal definition of an opaque function with some integer fuel amount
     Fuel(Fun, u32),
     /// Header, which must appear at the beginning of a function or while loop.

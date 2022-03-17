@@ -361,7 +361,7 @@ fn check_expr(typing: &mut Typing, outer_mode: Mode, expr: &Expr) -> Result<Mode
             typing.vars.pop_scope();
             Ok(Mode::Spec)
         }
-        ExprX::Assign { not_mut_init, lhs, rhs } => {
+        ExprX::Assign { init_not_mut, lhs, rhs } => {
             if typing.in_forall_stmt {
                 return err_str(&expr.span, "assignment is not allowed in forall statements");
             }
@@ -370,7 +370,7 @@ fn check_expr(typing: &mut Typing, outer_mode: Mode, expr: &Expr) -> Result<Mode
                 // correctly.
                 ExprX::VarLoc(x) => {
                     let (_, x_mode) = typing.get(x);
-                    if x_mode == Mode::Spec && *not_mut_init {
+                    if x_mode == Mode::Spec && *init_not_mut {
                         return err_str(
                             &expr.span,
                             "delayed assignment to non-mut let not allowed for spec variables",
