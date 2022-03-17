@@ -1,5 +1,3 @@
-#![allow(unused_mut)] // TODO remove this once Verus allows removing 'mut'
-
 #[allow(unused_imports)]
 use builtin::*;
 mod pervasive;
@@ -93,7 +91,7 @@ fn main() {
   // Initialize protocol 
 
   #[proof] let (inst,
-      mut counter_token,
+      counter_token,
       mut inc_a_token,
       mut inc_b_token) = X_Instance::initialize();
 
@@ -144,9 +142,9 @@ fn main() {
   // Since we recovered exclusive control of the invariant, we could destruct it
   // if we want to. Or we can just open the invariant block like normal.
 
-  let mut x;
+  let x;
   open_invariant!(&at_inv => g => {
-    #[proof] let G { counter: mut c3, perm: mut p3 } = g;
+    #[proof] let G { counter: c3, perm: p3 } = g;
 
     x = at.load(&p3);
     inst.finalize(&c3, &inc_a_token, &inc_b_token);
