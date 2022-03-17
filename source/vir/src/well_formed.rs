@@ -1,6 +1,6 @@
 use crate::ast::{
-    CallTarget, Datatype, ExprX, Fun, FunX, Function, Krate, MaskSpec, Mode, Path, PathX, TypX,
-    UnaryOpr, VirErr,
+    CallTarget, Datatype, ExprX, Fun, FunX, Function, FunctionKind, Krate, MaskSpec, Mode, Path,
+    PathX, TypX, UnaryOpr, VirErr,
 };
 use crate::ast_util::{err_str, err_string};
 use crate::datatype_to_air::is_datatype_transparent;
@@ -14,6 +14,38 @@ struct Ctxt {
 }
 
 fn check_function(ctxt: &Ctxt, function: &Function) -> Result<(), VirErr> {
+    if let FunctionKind::TraitMethodDecl { .. } = function.x.kind {
+        if function.x.body.is_some() && function.x.mode != Mode::Exec {
+            // REVIEW: If we allow default method implementations, we'll need to make sure
+            // it doesn't introduce nontermination into proof/spec.
+            return err_str(
+                &function.span,
+                "trait proof/spec method declaration cannot provide a default implementation",
+            );
+        }
+        if !matches!(function.x.mask_spec, MaskSpec::NoSpec) {
+            return err_str(
+                &function.span,
+                "not yet supported: trait method declarations that open invariants",
+            );
+        }
+    }
+
+    if let FunctionKind::TraitMethodImpl { .. } = &function.x.kind {
+        if function.x.require.len() + function.x.ensure.len() != 0 {
+            return err_str(
+                &function.span,
+                "trait method implementation cannot declare requires/ensures; these can only be inherited from the trait declaration",
+            );
+        }
+        if !matches!(function.x.mask_spec, MaskSpec::NoSpec) {
+            return err_str(
+                &function.span,
+                "trait method implementation cannot open invariants; this can only be inherited from the trait declaration",
+            );
+        }
+    }
+
     for p in function.x.params.iter() {
         if p.x.name == function.x.ret.x.name {
             return err_str(&p.span, "parameter name cannot be same as return value name");
@@ -264,11 +296,17 @@ fn check_datatype(dt: &Datatype) -> Result<(), VirErr> {
 }
 
 pub fn check_crate(krate: &Krate) -> Result<(), VirErr> {
-    let funs = krate
-        .functions
-        .iter()
-        .map(|function| (function.x.name.clone(), function.clone()))
-        .collect();
+    let mut funs: HashMap<Fun, Function> = HashMap::new();
+    for function in krate.functions.iter() {
+        if funs.contains_key(&function.x.name) {
+            return Err(air::errors::error(
+                "not supported: multiple definitions of same function",
+                &function.span,
+            )
+            .secondary_span(&funs[&function.x.name].span));
+        }
+        funs.insert(function.x.name.clone(), function.clone());
+    }
     let dts = krate
         .datatypes
         .iter()

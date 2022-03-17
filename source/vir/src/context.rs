@@ -1,9 +1,11 @@
 use crate::ast::{
-    Datatype, Fun, Function, GenericBound, IntRange, Krate, Mode, Path, TypX, Variants, VirErr,
+    Datatype, Fun, Function, FunctionKind, GenericBound, IntRange, Krate, Mode, Path, Trait, TypX,
+    Variants, VirErr,
 };
 use crate::datatype_to_air::is_datatype_transparent;
 use crate::def::FUEL_ID;
 use crate::poly::MonoTyp;
+use crate::recursion::Node;
 use crate::scc::Graph;
 use crate::sst_to_air::fun_to_air_ident;
 use crate::util::vec_map;
@@ -19,8 +21,9 @@ pub struct GlobalCtx {
     pub(crate) fun_bounds: HashMap<Fun, Vec<GenericBound>>,
     // Used for synthesized AST nodes that have no relation to any location in the original code:
     pub(crate) no_span: Span,
-    pub func_call_graph: Graph<Fun>,
-    pub func_call_sccs: Vec<Fun>,
+    pub func_call_graph: Graph<Node>,
+    pub func_call_sccs: Vec<Node>,
+    pub method_map: HashMap<(Fun, Path), Fun>,
 }
 
 // Context for verifying one module
@@ -34,6 +37,7 @@ pub struct Ctx {
     pub func_map: HashMap<Fun, Function>,
     pub(crate) funcs_with_ensure_predicate: HashSet<Fun>,
     pub(crate) datatype_map: HashMap<Path, Datatype>,
+    pub(crate) trait_map: HashMap<Path, Trait>,
     pub(crate) debug: bool,
     pub global: GlobalCtx,
 }
@@ -103,29 +107,43 @@ fn datatypes_invs(
 }
 
 impl GlobalCtx {
-    pub fn new(krate: &Krate, no_span: Span) -> Self {
+    pub fn new(krate: &Krate, no_span: Span) -> Result<Self, VirErr> {
         let chosen_triggers: std::cell::RefCell<Vec<(Span, Vec<Vec<String>>)>> =
             std::cell::RefCell::new(Vec::new());
         let datatypes: HashMap<Path, Variants> =
             krate.datatypes.iter().map(|d| (d.x.path.clone(), d.x.variants.clone())).collect();
+        let mut func_map: HashMap<Fun, Function> = HashMap::new();
+        for function in krate.functions.iter() {
+            assert!(!func_map.contains_key(&function.x.name));
+            func_map.insert(function.x.name.clone(), function.clone());
+        }
+        let mut method_map: HashMap<(Fun, Path), Fun> = HashMap::new();
+        for function in krate.functions.iter() {
+            if let FunctionKind::TraitMethodImpl { method, datatype, .. } = &function.x.kind {
+                let key = (method.clone(), datatype.clone());
+                assert!(!method_map.contains_key(&key));
+                method_map.insert(key, function.x.name.clone());
+            }
+        }
         let mut fun_bounds: HashMap<Fun, Vec<GenericBound>> = HashMap::new();
-        let mut func_call_graph: Graph<Fun> = Graph::new();
+        let mut func_call_graph: Graph<Node> = Graph::new();
         for f in &krate.functions {
             let bounds = vec_map(&f.x.typ_bounds, |(_, bound)| bound.clone());
             fun_bounds.insert(f.x.name.clone(), bounds);
-            func_call_graph.add_node(f.x.name.clone());
-            crate::recursion::expand_call_graph(&mut func_call_graph, f);
+            func_call_graph.add_node(Node::Fun(f.x.name.clone()));
+            crate::recursion::expand_call_graph(&func_map, &method_map, &mut func_call_graph, f)?;
         }
         func_call_graph.compute_sccs();
         let func_call_sccs = func_call_graph.sort_sccs();
-        GlobalCtx {
+        Ok(GlobalCtx {
             chosen_triggers,
             datatypes,
             fun_bounds,
             no_span,
             func_call_graph,
             func_call_sccs,
-        }
+            method_map,
+        })
     }
 
     // Report chosen triggers as strings for printing diagnostics
@@ -161,6 +179,10 @@ impl Ctx {
         for datatype in krate.datatypes.iter() {
             datatype_map.insert(datatype.x.path.clone(), datatype.clone());
         }
+        let mut trait_map: HashMap<Path, Trait> = HashMap::new();
+        for tr in krate.traits.iter() {
+            trait_map.insert(tr.x.name.clone(), tr.clone());
+        }
         Ok(Ctx {
             module,
             datatype_is_transparent,
@@ -171,6 +193,7 @@ impl Ctx {
             func_map,
             funcs_with_ensure_predicate,
             datatype_map,
+            trait_map,
             debug,
             global,
         })

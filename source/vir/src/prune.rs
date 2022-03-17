@@ -253,6 +253,7 @@ pub fn prune_krate_for_module(krate: &Krate, module: &Path) -> (Krate, Vec<MonoT
             .into_iter()
             .filter(|d| state.reached_datatypes.contains(&d.x.path))
             .collect(),
+        traits: krate.traits.clone(),
         module_ids: krate.module_ids.clone(),
     };
     let mut lambda_types: Vec<usize> = state.lambda_types.into_iter().collect();
