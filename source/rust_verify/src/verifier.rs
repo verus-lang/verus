@@ -21,6 +21,7 @@ use std::time::{Duration, Instant};
 use vir::ast::{Fun, Function, Krate, VirErr, Visibility};
 use vir::ast_util::{fun_as_rust_dbg, is_visible_to};
 use vir::def::SnapPos;
+use vir::recursion::Node;
 
 pub struct VerifierCallbacks {
     pub verifier: Arc<Mutex<Verifier>>,
@@ -327,12 +328,19 @@ impl Verifier {
         }
 
         // For spec functions, check termination and declare consequence axioms.
-        // Declarte them in SCC (strongly connected component) sorted order so that
+        // Declare them in SCC (strongly connected component) sorted order so that
         // termination checking precedes consequence axioms for each SCC.
         for scc in &ctx.global.func_call_sccs {
             let scc_nodes = ctx.global.func_call_graph.get_scc_nodes(scc);
+            let mut scc_fun_nodes: Vec<Fun> = Vec::new();
+            for node in scc_nodes.into_iter() {
+                match node {
+                    Node::Fun(f) => scc_fun_nodes.push(f),
+                    _ => {}
+                }
+            }
             // Check termination
-            for f in scc_nodes.iter() {
+            for f in scc_fun_nodes.iter() {
                 if !fun_decls.contains_key(f) {
                     continue;
                 }
@@ -351,7 +359,7 @@ impl Verifier {
             }
 
             // Declare consequence axioms
-            for f in scc_nodes.iter() {
+            for f in scc_fun_nodes.iter() {
                 if !fun_decls.contains_key(f) {
                     continue;
                 }
@@ -417,7 +425,8 @@ impl Verifier {
             air_context.set_z3_param(&option, &value);
         }
 
-        let mut global_ctx = vir::context::GlobalCtx::new(&krate, air_no_span.clone());
+        let mut global_ctx = vir::context::GlobalCtx::new(&krate, air_no_span.clone())?;
+        vir::recursive_types::check_traits(&krate, &global_ctx)?;
         let krate = vir::ast_simplify::simplify_krate(&mut global_ctx, &krate)?;
 
         if let Some(filename) = &self.args.log_vir_simple {
@@ -550,6 +559,7 @@ impl Verifier {
         }
         vir::well_formed::check_crate(&vir_crate)?;
         let erasure_modes = vir::modes::check_crate(&vir_crate)?;
+        let vir_crate = vir::traits::demote_foreign_traits(&vir_crate)?;
 
         self.vir_crate = Some(vir_crate.clone());
         self.air_no_span = (!self.args.external_body).then(|| {

@@ -65,6 +65,7 @@ const FUN_TRAIT_DEF_END: &str = ">";
 const MONOTYPE_APP_BEGIN: &str = "<";
 const MONOTYPE_APP_END: &str = ">";
 const DECREASE_AT_ENTRY: &str = "decrease%init";
+const TRAIT_SELF_TYPE_PARAM: &str = "Self%";
 
 pub const SUFFIX_SNAP_MUT: &str = "_mutation";
 pub const SUFFIX_SNAP_JOIN: &str = "_join";
@@ -147,6 +148,10 @@ pub fn check_decrease_int() -> Fun {
 
 pub fn decrease_at_entry(n: usize) -> Ident {
     Arc::new(format!("{}{}", DECREASE_AT_ENTRY, n))
+}
+
+pub fn trait_self_type_param() -> Ident {
+    Arc::new(TRAIT_SELF_TYPE_PARAM.to_string())
 }
 
 pub fn height() -> Fun {
