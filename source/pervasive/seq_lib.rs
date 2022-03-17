@@ -10,4 +10,6 @@ impl<A> Seq<A> {
     pub fn map<B, F: Fn(int, A) -> B>(self, f: F) -> Seq<B> {
         Seq::new(self.len(), |i: int| f(i, self.index(i)))
     }
+
+    // TODO is_sorted -- summer_school e22
 }

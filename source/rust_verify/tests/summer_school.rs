@@ -1131,3 +1131,5 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+// e22 is in examples/summer_school/chapter-1-22.rs

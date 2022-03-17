@@ -33,6 +33,11 @@ impl<A> Seq<A> {
     fndecl!(pub fn subrange(self, start_inclusive: int, end_exclusive: int) -> Seq<A>);
 
     fndecl!(pub fn add(self, rhs: Seq<A>) -> Seq<A>);
+
+    #[spec] #[verifier(publish)]
+    pub fn last(self) -> A {
+        self.index(self.len() as int - 1)
+    }
 }
 
 // Trusted axioms
