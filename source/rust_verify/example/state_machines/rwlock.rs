@@ -1,0 +1,197 @@
+#[allow(unused_imports)]
+use builtin::*;
+mod pervasive;
+use pervasive::*;
+use pervasive::multiset::*;
+use pervasive::option::*;
+use pervasive::ptr::*;
+use pervasive::cell::*;
+
+use state_machines_macros::tokenized_state_machine;
+
+// TODO make T generic
+struct T {
+    t: u8,
+}
+
+tokenized_state_machine!(RwLock {
+    fields {
+        #[sharding(variable)]
+        pub flags: (bool, nat),
+
+        #[sharding(storage_option)]
+        pub storage: Option<T>,
+
+        #[sharding(option)]
+        pub pending_writer: Option<()>,
+
+        #[sharding(option)]
+        pub writer: Option<()>,
+
+        #[sharding(multiset)]
+        pub pending_reader: Multiset<()>,
+
+        #[sharding(multiset)]
+        pub reader: Multiset<T>,
+    }
+
+    init!{
+        initialize_empty() {
+            init flags = (true, 0);
+            init storage = Option::None;
+            init pending_writer = Option::None;
+            init writer = Option::Some(());
+            init pending_reader = Multiset::empty();
+            init reader = Multiset::empty();
+        }
+    }
+
+    #[inductive(initialize_empty)]
+    fn initialize_empty_inductive(post: RwLock) { }
+
+    /// Increment the 'rc' counter, obtain a pending_reader
+    transition!{
+        acquire_read_start() {
+            update flags = (self.flags.0, self.flags.1 + 1);
+            add pending_reader += {()};
+        }
+    }
+
+    /// Exchange the pending_reader for a reader by checking
+    /// that the 'exc' bit is 0
+    transition!{
+        acquire_read_end() {
+            require(self.flags.0 == false);
+
+            remove pending_reader -= {()};
+
+            birds_eye let x = self.storage.get_Some_0();
+            add reader += {x};
+        }
+    }
+
+    /// Decrement the 'rc' counter, abandon the attempt to gain
+    /// the 'read' lock.
+    transition!{
+        acquire_read_abandon() {
+            remove pending_reader -= {()};
+            assert(self.flags.1 >= 1);
+            update flags = (self.flags.0, self.flags.1 - 1);
+        }
+    }
+
+    /// Atomically set 'exc' bit from 'false' to 'true'
+    /// Obtain a pending_writer
+    transition!{
+        acquire_exc_start() {
+            require(self.flags.0 == false);
+            update flags = (true, self.flags.1);
+            add pending_writer += Some(());
+        }
+    }
+
+    /// Finish obtaining the write lock by checking that 'rc' is 0.
+    /// Exchange the pending_writer for a writer and withdraw the
+    /// stored object.
+    transition!{
+        acquire_exc_end() {
+            require(self.flags.1 == 0);
+
+            remove pending_writer -= Some(());
+
+            add writer += Some(());
+
+            birds_eye let x = self.storage.get_Some_0();
+            withdraw storage -= Some(x);
+        }
+    }
+
+    /// Release the write-lock. Update the 'exc' bit back to 'false'.
+    /// Return the 'writer' and also deposit an object back into storage.
+    transition!{
+        release_exc(x: T) {
+            remove writer -= Some(());
+
+            update flags = (false, self.flags.1);
+
+            deposit storage += Some(x);
+        }
+    }
+
+    /// Check that the 'reader' is actually a guard for the given object.
+    readonly!{
+        read_guard(x: T) {
+            have reader >= {x};
+            guard storage >= Some(x);
+        }
+    }
+
+    /// Release the reader-lock. Decrement 'rc' and return the 'reader' object.
+    #[transition]
+    transition!{
+        release_shared(x: T) {
+            remove reader -= {x};
+
+            assert(self.flags.1 >= 1) by {
+                //assert(self.reader.count(x) >= 1);
+                assert(equal(self.storage, Option::Some(x)));
+                //assert(equal(x, self.storage.get_Some_0()));
+            };
+            update flags = (self.flags.0, self.flags.1 - 1);
+        }
+    }
+
+    #[invariant]
+    fn exc_bit_matches(&self) -> bool {
+        (if self.flags.0 { 1 } else { 0 }) ==
+            (if self.pending_writer.is_Some() { 1 } else { 0 })
+            + (if self.writer.is_Some() { 1 } else { 0 })
+    }
+
+    #[invariant]
+    fn count_matches(&self) -> bool {
+        self.flags.1 == self.pending_reader.count(())
+            + self.reader.count(self.storage.get_Some_0())
+    }
+
+    #[invariant]
+    fn reader_agrees_storage(&self) -> bool {
+        forall(|t: T| self.reader.count(t) > 0 >>=
+            equal(self.storage, Option::Some(t)))
+    }
+
+    #[invariant]
+    fn writer_agrees_storage(&self) -> bool {
+        self.writer.is_Some() >>= self.storage.is_None()
+    }
+
+    #[invariant]
+    fn writer_agrees_storage_rev(&self) -> bool {
+        self.storage.is_None() >>= self.writer.is_Some()
+    }
+
+    #[inductive(acquire_read_start)]
+    fn acquire_read_start_inductive(self: RwLock, post: RwLock) { }
+
+    #[inductive(acquire_read_end)]
+    fn acquire_read_end_inductive(self: RwLock, post: RwLock) { }
+
+    #[inductive(acquire_read_abandon)]
+    fn acquire_read_abandon_inductive(self: RwLock, post: RwLock) { }
+
+    #[inductive(acquire_exc_start)]
+    fn acquire_exc_start_inductive(self: RwLock, post: RwLock) { }
+
+    #[inductive(acquire_exc_end)]
+    fn acquire_exc_end_inductive(self: RwLock, post: RwLock) { }
+
+    #[inductive(release_exc)]
+    fn release_exc_inductive(self: RwLock, post: RwLock, x: T) { }
+
+    #[inductive(release_shared)]
+    fn release_shared_inductive(self: RwLock, post: RwLock, x: T) {
+        assert(equal(self.storage, Option::Some(x)));
+    }
+});
+
+fn main() { }

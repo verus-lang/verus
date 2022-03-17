@@ -1,4 +1,5 @@
 #![feature(rustc_attrs)]
+#![feature(negative_impls)]
 
 #[proof]
 pub fn admit() {
@@ -289,3 +290,18 @@ impl_structural! {
     // TODO: support f32 f64 ?
     bool char
 }
+
+struct NoSyncSend {}
+impl !Sync for NoSyncSend {}
+impl !Send for NoSyncSend {}
+
+// Used by state_machine_macros codegen
+#[doc(hidden)]
+#[allow(dead_code)]
+pub struct SyncSendIfSyncSend<T> {
+    no_sync_send: NoSyncSend,
+    t: std::marker::PhantomData<T>,
+}
+
+unsafe impl<T: Sync + Send> Sync for SyncSendIfSyncSend<T> {}
+unsafe impl<T: Sync + Send> Send for SyncSendIfSyncSend<T> {}
