@@ -5,6 +5,7 @@ use pervasive::*;
 use crate::pervasive::{invariants::*};
 use crate::pervasive::{atomic::*};
 use crate::pervasive::{modes::*};
+use crate::pervasive::{thread::*};
 use state_machines_macros::tokenized_state_machine;
 
 tokenized_state_machine!(
@@ -85,6 +86,31 @@ impl G {
     equal(self.perm.patomic, patomic.view()) && equal(self.perm.value as int, self.counter.value)
     && equal(self.counter.instance, inst)
   }
+}
+
+//// thread 1
+
+pub struct Thread1Data {
+    #[proof] pub instance: X_Instance,
+    #[proof] pub token: X_inc_a,
+}
+
+impl Thread1Data for Spawnable<Thread1Data> {
+    #[spec]
+    fn pre(&self) -> bool {
+        equal(self.token.instance, self.instance)
+        && !self.token.value
+    }
+
+    #[spec]
+    fn post(&self, new: Thread1Data) -> bool {
+        equal(new.token.instance, self.instance)
+        && new.token.value
+    }
+
+    fn run(&self) {
+
+    }
 }
 
 fn main() {
