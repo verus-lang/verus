@@ -957,6 +957,25 @@ pub(crate) fn pattern_to_vir<'tcx>(
     Ok(pattern)
 }
 
+pub(crate) fn block_to_vir<'tcx>(
+    bctx: &BodyCtxt<'tcx>,
+    block: &Block<'tcx>,
+    span: &Span,
+    ty: &Typ,
+    modifier: ExprModifier,
+) -> Result<vir::ast::Expr, VirErr> {
+    let vir_stmts: Stmts = Arc::new(
+        slice_vec_map_result(block.stmts, |stmt| stmt_to_vir(bctx, stmt))?
+            .into_iter()
+            .flatten()
+            .collect(),
+    );
+    let vir_expr = block.expr.map(|expr| expr_to_vir(bctx, &expr, modifier)).transpose()?;
+
+    let x = ExprX::Block(vir_stmts, vir_expr);
+    Ok(spanned_typed_new(span.clone(), ty, x))
+}
+
 /// Check for the #[verifier(invariant_block)] attribute
 pub fn attrs_is_invariant_block(attrs: &[Attribute]) -> Result<bool, VirErr> {
     let attrs_vec = parse_attrs(attrs)?;
@@ -1259,15 +1278,7 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
             if is_invariant_block(bctx, expr)? {
                 invariant_block_to_vir(bctx, expr, modifier)
             } else {
-                let vir_stmts: Stmts = Arc::new(
-                    slice_vec_map_result(body.stmts, |stmt| stmt_to_vir(bctx, stmt))?
-                        .into_iter()
-                        .flatten()
-                        .collect(),
-                );
-                let vir_expr =
-                    body.expr.map(|expr| expr_to_vir(bctx, &expr, modifier)).transpose()?;
-                Ok(mk_expr(ExprX::Block(vir_stmts, vir_expr)))
+                block_to_vir(bctx, body, &expr.span, &expr_typ(), modifier)
             }
         }
         ExprKind::Call(fun, args_slice) => {
@@ -1663,6 +1674,15 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
             }
             Ok(mk_expr(ExprX::Match(vir_expr, Arc::new(vir_arms))))
         }
+        ExprKind::Loop(block, None, LoopSource::Loop, _span) => {
+            // A rust `loop { body }` is equivalent to `while true { body }`
+            let cond = mk_expr(ExprX::Const(vir::ast::Constant::Bool(true)));
+            let typ = typ_of_node(bctx, &block.hir_id, false);
+            let mut body = block_to_vir(bctx, block, &expr.span, &typ, ExprModifier::REGULAR)?;
+            let header = vir::headers::read_header(&mut body)?;
+            let invs = header.invariant;
+            Ok(mk_expr(ExprX::While { cond, body, invs }))
+        }
         ExprKind::Loop(
             Block {
                 stmts: [], expr: Some(Expr { kind: ExprKind::If(cond, body, other), .. }), ..
@@ -1671,6 +1691,11 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
             LoopSource::While,
             _span,
         ) => {
+            // rustc desugars a while loop of the form `while cond { body }`
+            // to `loop { if cond { body } else { break; } }`
+            // We want to "un-desugar" it to represent it as a while loop.
+            // We already got `body` from the if-branch; now sanity check that the
+            // 'else' branch really has a 'break' statement as expected.
             if let Some(Expr {
                 kind:
                     ExprKind::Block(
@@ -1701,8 +1726,9 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
             } else {
                 unsupported!("loop else", expr);
             }
-            let cond = expr_to_vir(bctx, cond, modifier)?;
-            let mut body = expr_to_vir(bctx, body, modifier)?;
+            assert!(modifier == ExprModifier::REGULAR);
+            let cond = expr_to_vir(bctx, cond, ExprModifier::REGULAR)?;
+            let mut body = expr_to_vir(bctx, body, ExprModifier::REGULAR)?;
             let header = vir::headers::read_header(&mut body)?;
             let invs = header.invariant;
             Ok(mk_expr(ExprX::While { cond, body, invs }))

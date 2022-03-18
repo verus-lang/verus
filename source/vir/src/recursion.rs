@@ -358,7 +358,6 @@ pub(crate) fn check_termination_exp(
         &Arc::new(local_decls),
         &Arc::new(vec![]),
         &Arc::new(vec![]),
-        &Arc::new(vec![]),
         &MaskSpec::NoSpec,
         function.x.mode,
         &stm_block,
