@@ -92,7 +92,7 @@ fn check_is_sorted_tree(tree: &Tree) -> TreeSortedness {
 
     match tree {
         Tree::Nil => TreeSortedness::Empty,
-        Tree::Node { left, right, value } => {
+        Tree::Node { left, value, right } => {
             let left_sortedness = check_is_sorted_tree(left);
             let left_bound;
             match left_sortedness {
@@ -163,5 +163,62 @@ fn check_is_sorted_tree(tree: &Tree) -> TreeSortedness {
     }
 }
 
+fn find_in_binary_tree(tree: &Tree, needle: i64) -> bool {
+    decreases(tree);
+    requires(tree.is_sorted());
+    ensures(|ret: bool| ret == tree.view().contains(needle));
+    
+    match tree {
+        Tree::Nil => false,
+        Tree::Node { left, value, right } => {
+            if needle == *value {
+                assert(tree.view().index(left.view().len()) == needle); // trigger
+                true
+            } else if needle < *value {
+                let ret = find_in_binary_tree(left, needle);
+                if ret {
+                    //let idx = choose(|idx: nat| idx < left.view().len() && left.view().index(nat) == needle); // TODO(utaal): bad error message for stray nat?
+                    #[spec] let idx = choose(|idx: nat| idx < left.view().len() && left.view().index(idx) == needle);
+                    assert(tree.view().index(idx) == needle);   // trigger
+                } else {
+                    sorted_tree_means_sorted_sequence(**right);
+//                    assert_forall_by(|idx: nat| {
+//                        requires(idx < tree.view().len());
+//                        ensures(tree.view().index(idx) != needle);
+//                        if idx < left.view().len() {
+//                          assert(tree.view().index(idx) != needle);
+//                        } else if idx==left.view().len() {
+//                          assert(tree.view().index(idx) != needle);
+//                        } else {
+//                          assert(tree.view().index(idx) == right.view().index(idx + left.view().len() + 1));    // TODO(utaal): surprising complaint "expected struct `builtin::int`, found struct `builtin::nat`"
+//                          #[spec] let right_idx: int = idx - (left.view().len() as int + 1);
+//                          assert(tree.view().index(idx) == right.view().index(right_idx));
+                          // assert(sequences_ordered_at_interface(seq![*value as int], right.view())); // TODO(utal): How about *value as int is just value.view()? And then maybe even auto_view that? How cool would that be?
+//                          assert(sequences_ordered_at_interface(seq![*value as int], right.view()));
+//                          assert(sequence_is_sorted(right.view()));
+//                          if 0 < right_idx {
+//                            assert(right.view().index(0) <= right.view().index(right_idx));
+//                          }
+//                          assert((*value as int) <= right.view().index(right_idx));
+//                          assert(tree.view().index(idx) != needle);
+//                        }
+//                    });
+                }
+//                assert(ret == tree.view().contains(needle));
+                ret
+            } else {
+                let ret = find_in_binary_tree(right, needle);
+                if ret {
+                    #[spec] let idx = choose(|idx: nat| idx < right.view().len() && right.view().index(idx) == needle);
+                    assert(tree.view().index(left.view().len() as int + 1 + idx) == needle);   // trigger
+                } else {
+                    sorted_tree_means_sorted_sequence(**left);
+                }
+//                assert(ret == tree.view().contains(needle));    // TODO(jonh): symmetric case incomplete
+                ret
+            }
+        }
+    }
+}
 
 fn main() {}

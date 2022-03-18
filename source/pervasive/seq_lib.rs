@@ -11,5 +11,9 @@ impl<A> Seq<A> {
         Seq::new(self.len(), |i: int| f(i, self.index(i)))
     }
 
-    // TODO is_sorted -- summer_school e22
+    // TODO is_sorted -- extract from summer_school e22
+    #[spec] #[verifier(publish)]
+    pub fn contains(self, needle: A) -> bool {
+        exists(|i: nat| i<self.len() && equal(self.index(i), needle))
+    }
 }
