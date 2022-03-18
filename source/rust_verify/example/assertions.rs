@@ -17,3 +17,10 @@ fn has_expectations(b:bool) {
 fn fails_expectations() {
     has_expectations(false);
 }
+
+fn fails_post() {
+    ensures(false);
+
+    let x = 5;
+    let y = 7;
+}
