@@ -3,7 +3,8 @@
 #[allow(unused_imports)] use crate::pervasive::*;
 #[allow(unused_imports)] use crate::pervasive::result::*;
 
-trait Spawnable<Ret: Sized> : Sized {
+/*
+pub trait Spawnable<Ret: Sized> : Sized {
     #[spec]
     fn pre(self) -> bool { no_method_body() }
 
@@ -51,3 +52,4 @@ pub fn spawn<Param: Spawnable<Ret> + Send + 'static, Ret: Send + 'static>(p: Par
     let handle = std::thread::spawn(move || p.run());
     JoinHandle { handle }
 }
+*/
