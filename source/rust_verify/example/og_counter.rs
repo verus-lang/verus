@@ -90,7 +90,7 @@ impl G {
 
 //// thread 1
 
-pub struct Thread1Data {
+/*pub struct Thread1Data {
     #[proof] pub instance: X_Instance,
     #[proof] pub token: X_inc_a,
 }
@@ -111,7 +111,7 @@ impl Thread1Data for Spawnable<Thread1Data> {
     fn run(&self) {
 
     }
-}
+}*/
 
 fn main() {
   // Initialize protocol 

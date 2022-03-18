@@ -3,15 +3,13 @@
 #[allow(unused_imports)] use crate::pervasive::*;
 #[allow(unused_imports)] use crate::pervasive::result::*;
 
-trait Spawnable<Ret> {
+trait Spawnable<Ret: Sized> : Sized {
     #[spec]
-    fn pre(&self) -> bool { no_method_body() }
+    fn pre(self) -> bool { no_method_body() }
 
     #[spec]
-    fn post(&self, ret: Ret) -> bool { no_method_body() }
+    fn post(self, ret: Ret) -> bool { no_method_body() }
     
-    // TODO: we use Boxes because the values would otherwise have to be Sized,
-    // and right now, adding a `Sized` bound is unsupported.
     fn run(self) -> Ret {
         requires(self.pre());
         ensures(|r: Ret| self.post(r));
@@ -22,7 +20,7 @@ trait Spawnable<Ret> {
 #[verifier(external_body)]
 pub struct JoinHandle<#[verifier(maybe_negative)] Ret>
 {
-    handle: std::thread::JoinHandle<Box<Ret>>,
+    handle: std::thread::JoinHandle<Ret>,
 }
 
 impl<Ret> JoinHandle<Ret>
@@ -37,7 +35,7 @@ impl<Ret> JoinHandle<Ret>
             r.is_Ok() >>= self.predicate(r.get_Ok_0()));
 
         match self.handle.join() {
-            Ok(box r) => Result::Ok(r),
+            Ok(r) => Result::Ok(r),
             Err(_) => Result::Err(()),
         }
     }
