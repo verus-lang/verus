@@ -18,7 +18,7 @@ use rustc_span::Span;
 use rustc_trait_selection::infer::InferCtxtExt;
 use std::sync::Arc;
 use vir::ast::{GenericBoundX, IntRange, Path, PathX, Typ, TypBounds, TypX, Typs, VirErr};
-use vir::ast_util::{path_as_rust_name, types_equal};
+use vir::ast_util::types_equal;
 
 pub(crate) fn def_path_to_vir_path<'tcx>(tcx: TyCtxt<'tcx>, def_path: DefPath) -> Path {
     let krate = if def_path.krate == LOCAL_CRATE {
@@ -480,8 +480,7 @@ pub(crate) fn check_generic_bound<'tcx>(
                 rustc_hir::def::Res::Def(_, def_id) => def_id,
                 _ => return unsupported_err!(span, "generic bounds"),
             };
-            let f_name = path_as_rust_name(&def_id_to_vir_path(tcx, def_id));
-            if f_name == "core::ops::function::Fn" {
+            if Some(def_id) == tcx.lang_items().fn_trait() {
                 let args = &path.segments.last().expect("last segment").args.expect("GenericArgs");
                 unsupported_err_unless!(args.args.len() == 1, span, "generic bounds");
                 unsupported_err_unless!(args.bindings.len() == 1, span, "generic bounds");
@@ -503,6 +502,14 @@ pub(crate) fn check_generic_bound<'tcx>(
                     _ => panic!("unexpected arg to Fn"),
                 };
                 Ok(Arc::new(GenericBoundX::FnSpec(args, t_ret)))
+            } else if Some(def_id) == tcx.lang_items().sized_trait()
+                || Some(def_id) == tcx.lang_items().copy_trait()
+                || Some(def_id) == tcx.lang_items().unpin_trait()
+                || Some(def_id) == tcx.lang_items().sync_trait()
+                || Some(def_id) == tcx.get_diagnostic_item(rustc_span::sym::Send)
+            {
+                // Rust language marker traits are ignored in VIR
+                Ok(Arc::new(GenericBoundX::Traits(vec![])))
             } else {
                 let typx = def_id_to_datatype_typx(tcx, def_id, &path.segments);
                 if let TypX::Datatype(trait_name, _args) = typx {
