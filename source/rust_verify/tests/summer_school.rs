@@ -608,7 +608,7 @@ fn e13_pass() {
                     assert_forall_by(|o1:Order| {
                         requires(o1.is_appetizer());
 
-                        // ensures(exists(|o2: Order| matches!((o1, o2), (Order::Appetizer { cheese: c1, .. }, Order::Sanwhich { cheese: c2, .. }) if c1 == c2))) 
+                        // ensures(exists(|o2: Order| matches!((o1, o2), (Order::Appetizer { cheese: c1, .. }, Order::Sanwhich { cheese: c2, .. }) if c1 == c2)))
 
                         // ensures(exists(|o2:Order| o2.is_sandwich() && o1.get_cheese() == o2.get_sandwich().cheese));
                         ensures(exists(|o2:Order| o2.is_sandwich() && o1.get_cheese() == o2.get_cheese()));
