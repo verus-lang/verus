@@ -3,7 +3,6 @@
 #[allow(unused_imports)] use crate::pervasive::*;
 #[allow(unused_imports)] use crate::pervasive::result::*;
 
-/*
 pub trait Spawnable<Ret: Sized> : Sized {
     #[spec]
     fn pre(self) -> bool { no_method_body() }
@@ -30,7 +29,7 @@ impl<Ret> JoinHandle<Ret>
 
     // TODO note that std::thread::JoinHandle::join is allowed to panic
     #[verifier(external_body)]
-    fn join(self) -> Result<Ret, ()>
+    pub fn join(self) -> Result<Ret, ()>
     {
         ensures(|r: Result<Ret, ()>|
             r.is_Ok() >>= self.predicate(r.get_Ok_0()));
@@ -52,4 +51,4 @@ pub fn spawn<Param: Spawnable<Ret> + Send + 'static, Ret: Send + 'static>(p: Par
     let handle = std::thread::spawn(move || p.run());
     JoinHandle { handle }
 }
-*/
+
