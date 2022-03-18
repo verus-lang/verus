@@ -792,6 +792,36 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_generic_1_ok_markers code! {
+        trait T<A: Sized> : Sized {
+            #[spec]
+            fn apple(&self, #[spec] b: A) -> bool {
+                no_method_body()
+            }
+        }
+
+        struct S<A: Sized, B: Sized>(A, B);
+
+        impl<C: Sized> T<(C, u16)> for S<bool, C> {
+            #[spec]
+            fn apple(&self, #[spec] b: (C, u16)) -> bool {
+                b.1 > 10
+            }
+        }
+
+        #[proof]
+        fn test() -> bool {
+            ensures(|b: bool| b);
+
+            let i: u8 = 10;
+            let s = S(true, i);
+            let b: bool = s.apple((i, 20));
+            b
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] test_generic_1_fail code! {
         trait T<A> {
             #[spec]
