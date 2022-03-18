@@ -227,7 +227,7 @@ test_verify_one_file! {
             v.v = add1(v.v);
             assert(v.v == 3);
         }
-    } => Err(e) => assert_vir_error(e)
+    } => Ok(())
 }
 
 test_verify_one_file! {
@@ -501,4 +501,126 @@ test_verify_one_file! {
             assert(equal(s1, s2)); // FAILS
         }
     } => Err(e) => assert_one_fails(e)
+}
+
+const FIELD_UPDATE: &str = code_str! {
+    #[derive(PartialEq, Eq, Structural)]
+    struct S {
+        a: usize,
+        b: i32,
+    }
+};
+
+test_verify_one_file! {
+    #[test] test_field_update_1_pass FIELD_UPDATE.to_string() + code_str! {
+        fn test() {
+            let mut s = S { a: 10, b: -10 };
+            s.a = s.a + 1;
+            s.b = s.b + 1;
+            assert(s.a == 11 && s.b == -9);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_field_update_1_fail FIELD_UPDATE.to_string() + code_str! {
+        fn test() {
+            let mut s = S { a: 10, b: -10 };
+            s.a = s.a + 1;
+            s.b = s.b + 1;
+            assert(false); // FAILS
+        }
+    } => Err(e) => assert_one_fails(e)
+}
+
+const FIELD_UPDATE_2: &str = code_str! {
+    #[derive(PartialEq, Eq, Structural)]
+    struct T {
+        s: S,
+        c: bool,
+    }
+};
+
+test_verify_one_file! {
+    #[test] test_field_update_2_pass FIELD_UPDATE.to_string() + FIELD_UPDATE_2 + code_str! {
+        fn test() {
+            let mut t = T { s: S { a: 10, b: -10 }, c: false };
+            t.s.a = t.s.a + 1;
+            t.s.b = t.s.b + 1;
+            assert(t == T { s: S { a: 11, b: -9 }, c: false });
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_field_update_2_fails FIELD_UPDATE.to_string() + FIELD_UPDATE_2 + code_str! {
+        fn test() {
+            let mut t = T { s: S { a: 10, b: -10 }, c: false };
+            t.s.a = t.s.a + 1;
+            t.s.b = t.s.b + 1;
+            t.c = true;
+            assert(false); // FAILS
+        }
+    } => Err(e) => assert_one_fails(e)
+}
+
+test_verify_one_file! {
+    #[test] test_field_update_param_1_pass FIELD_UPDATE.to_string() + FIELD_UPDATE_2 + code_str! {
+        fn test(t: &mut T) {
+            ensures(*t == T { s: S { a: old(t).s.a + 1, b: old(t).s.b + 1 }, ..*old(t) });
+            t.s.a = t.s.a + 1;
+            t.s.b = t.s.b + 1;
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_field_update_param_1_fail FIELD_UPDATE.to_string() + FIELD_UPDATE_2 + code_str! {
+        fn test(t: &mut T) {
+            ensures(*t == T { s: S { a: old(t).s.a + 1, b: old(t).s.b + 1 }, ..*old(t) });
+            t.s.a = t.s.a + 1;
+            t.s.b = t.s.b + 1;
+            assert(false); // FAILS
+        }
+    } => Err(e) => assert_one_fails(e)
+}
+
+test_verify_one_file! {
+    #[test] test_field_update_param_2_pass FIELD_UPDATE.to_string() + FIELD_UPDATE_2 + code_str! {
+        fn test(t: &mut T, v: usize) {
+            ensures(*t == T { s: S { a: old(t).s.a + v, ..old(t).s }, ..*old(t) });
+            t.s.a = t.s.a + v;
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    // TODO support complex arguments to &mut params
+    #[test] #[ignore] test_field_update_param_mut_ref_pass FIELD_UPDATE.to_string() + FIELD_UPDATE_2 + code_str! {
+        fn foo(s: &mut S, v: usize) {
+            ensures(*s == S { a: old(s).a + v, ..*old(s) });
+            s.a = s.a + v;
+        }
+
+        fn test() {
+            let mut t = T { s: S { a: 12, b: 12 }, c: false };
+            foo(&mut t.s, 0);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_field_update_mode_fail_1 FIELD_UPDATE.to_string() + code_str! {
+        fn test(#[spec] s: S) {
+            s.a = s.a + 1;
+        }
+    } => Err(e) => assert_vir_error(e)
+}
+
+test_verify_one_file! {
+    #[test] test_field_update_mode_fail_2 FIELD_UPDATE.to_string() + FIELD_UPDATE_2 + code_str! {
+        fn test(#[spec] t: T) {
+            t.s.a = t.s.a + 1;
+        }
+    } => Err(e) => assert_vir_error(e)
 }

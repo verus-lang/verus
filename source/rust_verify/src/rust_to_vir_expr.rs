@@ -1542,23 +1542,28 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
             res => unsupported_err!(expr.span, format!("Path {:?}", res)),
         },
         ExprKind::Assign(lhs, rhs, _) => {
-            if let ExprKind::Field(_, _) = lhs.kind {
-                unsupported_err!(expr.span, format!("field updates"), lhs);
+            fn init_not_mut<'tcx>(bctx: &BodyCtxt<'tcx>, lhs: &Expr) -> Result<bool, VirErr> {
+                Ok(match lhs.kind {
+                    ExprKind::Path(QPath::Resolved(
+                        None,
+                        rustc_hir::Path { res: Res::Local(id), .. },
+                    )) => {
+                        if let Node::Binding(pat) = bctx.ctxt.tcx.hir().get(*id) {
+                            let (mutable, _) = pat_to_mut_var(pat);
+                            let ty = bctx.types.node_type(*id);
+                            !(mutable || ty.ref_mutability() == Some(Mutability::Mut))
+                        } else {
+                            panic!("assignment to non-local");
+                        }
+                    }
+                    ExprKind::Field(lhs, _) => init_not_mut(bctx, lhs)?,
+                    ExprKind::Unary(UnOp::Deref, _) => false,
+                    _ => {
+                        unsupported_err!(lhs.span, format!("unsupported assign lhs {:?}", lhs))
+                    }
+                })
             }
-            let init_not_mut = if let ExprKind::Path(QPath::Resolved(
-                None,
-                rustc_hir::Path { res: Res::Local(id), .. },
-            )) = lhs.kind
-            {
-                if let Node::Binding(pat) = tcx.hir().get(*id) {
-                    let (mutable, _) = pat_to_mut_var(pat);
-                    !mutable
-                } else {
-                    panic!("assignment to non-local");
-                }
-            } else {
-                false
-            };
+            let init_not_mut = init_not_mut(bctx, lhs)?;
             Ok(mk_expr(ExprX::Assign {
                 init_not_mut,
                 lhs: expr_to_vir(bctx, lhs, ExprModifier::ADDR_OF)?,

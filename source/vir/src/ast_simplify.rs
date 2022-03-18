@@ -155,6 +155,50 @@ fn pattern_to_exprs(
     }
 }
 
+fn simplify_assign_lhs(
+    ctx: &GlobalCtx,
+    state: &mut State,
+    datatype_path: &Path,
+    variant: &Ident,
+    field: &Ident,
+    base: &Expr,
+    rhs: &Expr,
+) -> Result<(Expr, Expr), VirErr> {
+    let datatype = &ctx.datatypes[datatype_path];
+    assert_eq!(datatype.len(), 1);
+    let fields = &datatype[0].a;
+    let binders = fields
+        .iter()
+        .map(|f| {
+            let field_op;
+            ident_binder(
+                &f.name,
+                if f.name == *field {
+                    rhs
+                } else {
+                    let op = UnaryOpr::Field {
+                        datatype: datatype_path.clone(),
+                        variant: variant.clone(),
+                        field: f.name.clone(),
+                    };
+                    let exprx = ExprX::UnaryOpr(op, base.clone());
+                    field_op = SpannedTyped::new(&base.span, &f.a.0, exprx);
+                    &field_op
+                },
+            )
+        })
+        .collect();
+    let ctorx = ExprX::Ctor(datatype_path.clone(), variant.clone(), Arc::new(binders), None);
+    let ctor = SpannedTyped::new(&base.span, &base.typ, ctorx);
+    match &base.x {
+        ExprX::VarLoc(_) => Ok((base.clone(), ctor)),
+        ExprX::UnaryOpr(UnaryOpr::Field { datatype, variant, field }, base) => {
+            Ok(simplify_assign_lhs(ctx, state, datatype, variant, field, base, &ctor)?)
+        }
+        _ => err_str(&base.span, "complex assignments not yet supported"),
+    }
+}
+
 fn simplify_one_expr(ctx: &GlobalCtx, state: &mut State, expr: &Expr) -> Result<Expr, VirErr> {
     match &expr.x {
         ExprX::ConstVar(x) => {
@@ -187,6 +231,29 @@ fn simplify_one_expr(ctx: &GlobalCtx, state: &mut State, expr: &Expr) -> Result<
             let exprx = ExprX::Ctor(datatype, variant, binders, None);
             Ok(SpannedTyped::new(&expr.span, &expr.typ, exprx))
         }
+        ExprX::Assign { init_not_mut, lhs, rhs } => match &lhs.x {
+            ExprX::VarLoc(_) => Ok(expr.clone()),
+            ExprX::UnaryOpr(UnaryOpr::Field { datatype, variant, field }, rcvr) => {
+                let (temp_decls, rhs) = small_or_temp(state, rhs);
+                if *init_not_mut {
+                    panic!("unexpected init_not_mut here");
+                }
+                let (simplified_lhs, simplified_rhs) =
+                    simplify_assign_lhs(ctx, state, datatype, variant, field, rcvr, &rhs)?;
+                let assign = SpannedTyped::new(
+                    &expr.span,
+                    &expr.typ,
+                    ExprX::Assign { init_not_mut: false, lhs: simplified_lhs, rhs: simplified_rhs },
+                );
+                if temp_decls.len() == 0 {
+                    Ok(assign)
+                } else {
+                    let block = ExprX::Block(Arc::new(temp_decls), Some(assign));
+                    Ok(SpannedTyped::new(&expr.span, &expr.typ, block))
+                }
+            }
+            _ => err_str(&expr.span, "complex assignments not yet supported"),
+        },
         ExprX::Ctor(path, variant, partial_binders, Some(update)) => {
             let (temp_decl, update) = small_or_temp(state, update);
             let mut decls: Vec<Stmt> = Vec::new();
