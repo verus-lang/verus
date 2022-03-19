@@ -624,3 +624,25 @@ test_verify_one_file! {
         }
     } => Err(e) => assert_vir_error(e)
 }
+
+const FIELD_UPDATE_MODES: &str = code_str! {
+    #[derive(PartialEq, Eq, Structural)]
+    struct S {
+        #[spec] a: nat,
+        b: i32,
+    }
+
+    #[derive(PartialEq, Eq, Structural)]
+    struct T {
+        #[proof] s: S,
+        c: bool,
+    }
+};
+
+test_verify_one_file! {
+    #[test] test_field_update_field_mode_pass_1 FIELD_UPDATE_MODES.to_string() + code_str! {
+        fn test(t: T) {
+            t.s.a = t.s.a + 1;
+        }
+    } => Err(e) => assert_vir_error(e)
+}

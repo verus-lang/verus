@@ -1548,18 +1548,29 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                         None,
                         rustc_hir::Path { res: Res::Local(id), .. },
                     )) => {
-                        if let Node::Binding(pat) = bctx.ctxt.tcx.hir().get(*id) {
+                        let not_mut = if let Node::Binding(pat) = bctx.ctxt.tcx.hir().get(*id) {
                             let (mutable, _) = pat_to_mut_var(pat);
                             let ty = bctx.types.node_type(*id);
                             !(mutable || ty.ref_mutability() == Some(Mutability::Mut))
                         } else {
                             panic!("assignment to non-local");
+                        };
+                        if not_mut {
+                            match bctx.ctxt.tcx.hir().get(bctx.ctxt.tcx.hir().get_parent_node(*id))
+                            {
+                                Node::Param(_) => {
+                                    err_span_str(lhs.span, "cannot assign to non-mut parameter")?
+                                }
+                                Node::Local(_) => (),
+                                other => unsupported_err!(lhs.span, "assignee node", other),
+                            }
                         }
+                        not_mut
                     }
                     ExprKind::Field(lhs, _) => init_not_mut(bctx, lhs)?,
                     ExprKind::Unary(UnOp::Deref, _) => false,
                     _ => {
-                        unsupported_err!(lhs.span, format!("unsupported assign lhs {:?}", lhs))
+                        unsupported_err!(lhs.span, format!("assign lhs {:?}", lhs))
                     }
                 })
             }

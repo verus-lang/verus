@@ -237,12 +237,6 @@ fn get_var_loc_mode(typing: &mut Typing, expr: &Expr, init_not_mut: bool) -> Res
     let x_mode = match &expr.x {
         ExprX::VarLoc(x) => {
             let (_, x_mode) = typing.get(x);
-            if x_mode == Mode::Spec && init_not_mut {
-                return err_str(
-                    &expr.span,
-                    "delayed assignment to non-mut let not allowed for spec variables",
-                );
-            }
             x_mode
         }
         ExprX::UnaryOpr(UnaryOpr::Field { datatype, variant: _, field }, rcvr) => {
@@ -264,6 +258,12 @@ fn get_var_loc_mode(typing: &mut Typing, expr: &Expr, init_not_mut: bool) -> Res
             panic!("unexpected loc {:?}", expr);
         }
     };
+    if x_mode == Mode::Spec && init_not_mut {
+        return err_str(
+            &expr.span,
+            "delayed assignment to non-mut let not allowed for spec variables",
+        );
+    }
     typing.erasure_modes.var_modes.push((expr.span.clone(), x_mode));
     Ok(x_mode)
 }

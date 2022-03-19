@@ -360,3 +360,20 @@ test_verify_one_file! {
         }
     } => Err(e) => assert_fails(e, 4)
 }
+
+test_verify_one_file! {
+    #[test] test_init_spec_param_fail_1 code! {
+        fn test1(#[spec] x: u64) {
+            x = 5;
+        }
+    } => Err(e) => assert_vir_error(e)
+}
+
+test_verify_one_file! {
+    #[test] test_init_spec_param_fail_2 code! {
+        #[spec]
+        fn test1(x: u64) {
+            x = 5;
+        }
+    } => Err(e) => assert_vir_error(e)
+}
