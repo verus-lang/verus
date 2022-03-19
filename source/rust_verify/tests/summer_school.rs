@@ -642,7 +642,7 @@ test_verify_one_file! {
         #[proof]
         fn set_comprehension()
         {
-            let modest_evens = set_new(|x:int| 0 <= x && x < 10 && is_even(x));
+            let modest_evens = Set::new(|x:int| 0 <= x && x < 10 && is_even(x));
             assert(modest_evens.ext_equal(set![0,2,4,6,8]));
 
             /* This is beyond summer school, but shows a verus-preferred style */
@@ -701,7 +701,7 @@ test_verify_one_file! {
         #[proof]
         fn set_comprehension()
         {
-            let modest_evens = set_new(|x:int| 0 <= x && x < 10 && is_even(x));
+            let modest_evens = Set::new(|x:int| 0 <= x && x < 10 && is_even(x));
             assert(modest_evens.ext_equal(set![0,2,4,8]));   // FAILS
         }
 
@@ -755,7 +755,7 @@ test_verify_one_file! {
         #[proof]
         fn is_this_set_finite()
         {
-            let modest_evens = set_new(|x:int| is_modest(x) && is_even(x));
+            let modest_evens = Set::new(|x:int| is_modest(x) && is_even(x));
             // In verus, unlike Dafny, it's fine to have infinite sets, but you may want a finite
             // one (say because you're using it as a decreases to well-found an induction).
             let modest_numbers = set_int_range(0, 10);
@@ -787,7 +787,7 @@ test_verify_one_file! {
         #[proof]
         fn is_this_set_finite()
         {
-            let modest_evens = set_new(|x:int| is_modest(x) && is_even(x));
+            let modest_evens = Set::new(|x:int| is_modest(x) && is_even(x));
             // Need additional proof to show that this construction is finite.
             assert(modest_evens.finite());  // FAILS
         }

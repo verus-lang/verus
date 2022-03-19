@@ -13,15 +13,9 @@ pub struct Set<#[verifier(maybe_negative)] A> {
     dummy: std::marker::PhantomData<A>,
 }
 
-// TODO replace this with Set::new
-#[spec]
-#[verifier(external_body)]
-pub fn set_new<A, F: Fn(A) -> bool>(f: F) -> Set<A> {
-    unimplemented!()
-}
-
 impl<A> Set<A> {
     fndecl!(pub fn empty() -> Set<A>);
+    fndecl!(pub fn new<F: Fn(A) -> bool>(f: F) -> Set<A>);
 
     #[spec] #[verifier(publish)]
     pub fn full() -> Set<A> {
@@ -54,7 +48,7 @@ impl<A> Set<A> {
 
     #[spec] #[verifier(publish)]
     pub fn filter<F: Fn(A) -> bool>(self, f: F) -> Set<A> {
-        self.intersect(set_new(f))
+        self.intersect(Self::new(f))
     }
 
     fndecl!(pub fn finite(self) -> bool);
@@ -83,7 +77,7 @@ pub fn axiom_set_empty<A>(a: A) {
 #[verifier(external_body)]
 #[verifier(broadcast_forall)]
 pub fn axiom_set_new<A, F: Fn(A) -> bool>(f: F, a: A) {
-    ensures(set_new(f).contains(a) == f(a));
+    ensures(Set::new(f).contains(a) == f(a));
 }
 
 #[proof]

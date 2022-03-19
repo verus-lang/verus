@@ -23,7 +23,7 @@ impl<K, V> Map<K, V> {
 
     #[spec] #[verifier(publish)]
     pub fn new<FK: Fn(K) -> bool, FV: Fn(K) -> V>(fk: FK, fv: FV) -> Map<K, V> {
-        set_new(fk).mk_map(fv)
+        Set::new(fk).mk_map(fv)
     }
 
     fndecl!(pub fn dom(self) -> Set<K>);
