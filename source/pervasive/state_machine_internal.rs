@@ -36,7 +36,7 @@ pub fn assert_guard_some(b: bool) { requires(b); ensures(b); }
 pub fn assert_withdraw_kv(b: bool) { requires(b); ensures(b); }
 
 #[proof]
-#[verifier(custom_req_err("unable to prove inherent safety condition: the givden key must be absent from the map before the deposit"))]
+#[verifier(custom_req_err("unable to prove inherent safety condition: the given key must be absent from the map before the deposit"))]
 pub fn assert_deposit_kv(b: bool) { requires(b); ensures(b); }
 
 #[proof]

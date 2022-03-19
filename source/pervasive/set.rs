@@ -13,6 +13,7 @@ pub struct Set<#[verifier(maybe_negative)] A> {
     dummy: std::marker::PhantomData<A>,
 }
 
+// TODO replace this with Set::new
 #[spec]
 #[verifier(external_body)]
 pub fn set_new<A, F: Fn(A) -> bool>(f: F) -> Set<A> {
