@@ -57,19 +57,13 @@ where
         let file_loader = file_loader.clone();
         // Start rustc in a separate thread: run verifier callback to build VIR tree and run verifier
         std::thread::spawn(move || {
-            let panic_hook = std::panic::take_hook();
-
-            let vir_ready_s_hook = vir_ready_s.clone();
-            std::panic::set_hook(Box::new(move |arg| {
-                panic_hook(arg);
-                vir_ready_s_hook.signal(true);
+            let status = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                let verifier_compiler = mk_compiler(&rustc_args, &mut verifier_callbacks, &file_loader);
+                verifier_compiler.run()
             }));
-
-            let verifier_compiler = mk_compiler(&rustc_args, &mut verifier_callbacks, &file_loader);
-            let status = verifier_compiler.run();
             match status {
-                Ok(_) => Ok(()),
-                Err(_) => {
+                Ok(Ok(_)) => Ok(()),
+                _ => {
                     vir_ready_s.signal(true);
                     Err(())
                 }
@@ -78,8 +72,6 @@ where
     };
 
     let compiler_err = vir_ready_d.wait();
-
-    let _ = std::panic::take_hook();
 
     let time1 = Instant::now();
 
