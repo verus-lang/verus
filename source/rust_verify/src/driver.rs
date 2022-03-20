@@ -58,7 +58,8 @@ where
         // Start rustc in a separate thread: run verifier callback to build VIR tree and run verifier
         std::thread::spawn(move || {
             let status = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                let verifier_compiler = mk_compiler(&rustc_args, &mut verifier_callbacks, &file_loader);
+                let verifier_compiler =
+                    mk_compiler(&rustc_args, &mut verifier_callbacks, &file_loader);
                 verifier_compiler.run()
             }));
             match status {
