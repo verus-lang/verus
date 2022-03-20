@@ -26,8 +26,8 @@ use rustc_span::def_id::DefId;
 use rustc_span::Span;
 use std::sync::Arc;
 use vir::ast::{
-    ArithOp, ArmX, BinaryOp, CallTarget, Constant, ExprX, FunX, HeaderExpr, HeaderExprX, Ident,
-    IntRange, InvAtomicity, Mode, PatternX, SpannedTyped, StmtX, Stmts, Typ, TypX, UnaryOp,
+    ArithOp, ArmX, BinaryOp, CallTarget, Constant, ExprX, FieldOpr, FunX, HeaderExpr, HeaderExprX,
+    Ident, IntRange, InvAtomicity, Mode, PatternX, SpannedTyped, StmtX, Stmts, Typ, TypX, UnaryOp,
     UnaryOpr, VarAt, VirErr,
 };
 use vir::ast_util::{ident_binder, path_as_rust_name};
@@ -688,14 +688,14 @@ fn fn_call_to_vir<'tcx>(
             use crate::def::FieldName;
             let variant_name_ident = str_ident(&variant_name);
             return Ok(mk_expr(ExprX::UnaryOpr(
-                UnaryOpr::Field {
+                UnaryOpr::Field(FieldOpr {
                     datatype: self_path.clone(),
                     variant: variant_name_ident.clone(),
                     field: match variant_field {
                         FieldName::Unnamed(i) => positional_field_ident(i),
                         FieldName::Named(f) => str_ident(&f),
                     },
-                },
+                }),
                 vir_args.into_iter().next().expect("missing arg for is_variant"),
             )));
         }
@@ -1628,7 +1628,11 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                 expr.span,
                 &field_type,
                 ExprX::UnaryOpr(
-                    UnaryOpr::Field { datatype, variant: variant_name, field: field_name },
+                    UnaryOpr::Field(FieldOpr {
+                        datatype,
+                        variant: variant_name,
+                        field: field_name,
+                    }),
                     vir_lhs,
                 ),
             );

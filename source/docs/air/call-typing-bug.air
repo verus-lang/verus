@@ -1,0 +1,65 @@
+;; ...
+
+ ;; Function-Def crate::foo
+ (check-valid
+  (declare-const s@ S.)
+  (declare-const tmp%1@ Bool)
+  (declare-const tmp%2@ Bool)
+  (declare-const tmp%3@ Bool)
+  (declare-var s$1@ S.)
+  (axiom fuel_defaults)
+  (axiom (has_type (Poly%S. s@) (TYPE%S. (UINT 32))))
+  (block
+   (assume
+    (= s$1@ (S./S (I 5) (%B (B false))))
+   )
+   (block
+    (assert
+     ("precondition not satisfied")
+     (req%add1. (%I (S./S/a (%Poly%S. (Poly%S. s$1@)))))
+    )
+    (snapshot snap%CALL)
+    (havoc s$1@)
+    (assume
+     (and
+      (= (S./S/b (old snap%CALL s$1@)) (S./S/b s$1@))
+    ))
+    (assume
+     (ens%add1. (%I (S./S/a (%Poly%S. (Poly%S. (old snap%CALL s$1@))))) (%I (S./S/a (%Poly%S.
+         (Poly%S. s$1@)
+    )))))
+    (assume (has_type (S./S/a (%Poly%S. (Poly%S. s$1@))) (UINT 32)))
+   )
+   (assume
+    (= tmp%1@ (= (%I (S./S/a (%Poly%S. (Poly%S. s$1@)))) 6))
+   )
+   (block
+    (assert
+     ("assertion failure")
+     (req%pervasive.assert. tmp%1@)
+    )
+    (assume
+     (ens%pervasive.assert. tmp%1@)
+   ))
+   (assume
+    (= tmp%2@ (= (S./S/b (%Poly%S. (Poly%S. s$1@))) false))
+   )
+   (block
+    (assert
+     ("assertion failure")
+     (req%pervasive.assert. tmp%2@)
+    )
+    (assume
+     (ens%pervasive.assert. tmp%2@)
+   ))
+   (assume
+    (= tmp%3@ (= s$1@ (S./S (I 6) (%B (B false)))))
+   )
+   (block
+    (assert
+     ("assertion failure")
+     (req%pervasive.assert. tmp%3@)
+    )
+    (assume
+     (ens%pervasive.assert. tmp%3@)
+ ))))

@@ -113,6 +113,13 @@ pub enum UnaryOp {
     Clip(IntRange),
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub struct FieldOpr {
+    pub datatype: Path,
+    pub variant: Ident,
+    pub field: Ident,
+}
+
 /// More complex unary operations (requires Clone rather than Copy)
 /// (Below, "boxed" refers to boxing types in the SMT encoding, not the Rust Box type)
 #[derive(Clone, Debug)]
@@ -129,7 +136,7 @@ pub enum UnaryOpr {
     /// Read .0, .1, etc. from tuple (Note: ast_simplify replaces this with Field)
     TupleField { tuple_arity: usize, field: usize },
     /// Read field from variant of datatype
-    Field { datatype: Path, variant: Ident, field: Ident },
+    Field(FieldOpr),
 }
 
 /// Arithmetic operation that might fail (overflow or divide by zero)

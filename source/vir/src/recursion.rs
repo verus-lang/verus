@@ -11,7 +11,7 @@ use crate::def::{
 };
 use crate::func_to_air::params_to_pars;
 use crate::scc::Graph;
-use crate::sst::{BndX, Exp, ExpX, Exps, LocalDecl, LocalDeclX, Stm, StmX, UniqueIdent};
+use crate::sst::{BndX, Dest, Exp, ExpX, Exps, LocalDecl, LocalDeclX, Stm, StmX, UniqueIdent};
 use crate::sst_visitor::{
     exp_rename_vars, exp_visitor_check, exp_visitor_dfs, map_exp_visitor, map_stm_visitor,
     stm_visitor_dfs, VisitorControlFlow,
@@ -289,17 +289,21 @@ fn mk_decreases_at_entry(ctxt: &Ctxt, span: &Span, exps: &Vec<Exp>) -> (Vec<Loca
     let mut decls: Vec<LocalDecl> = Vec::new();
     let mut stm_assigns: Vec<Stm> = Vec::new();
     for (i, exp) in exps.iter().enumerate() {
+        let typ = Arc::new(TypX::Int(IntRange::Int));
         let decl = Arc::new(LocalDeclX {
             ident: (decrease_at_entry(i), Some(0)),
-            typ: Arc::new(TypX::Int(IntRange::Int)),
+            typ: typ.clone(),
             mutable: false,
         });
+        let uniq_ident = (decrease_at_entry(i), Some(0));
         let stm_assign = Spanned::new(
             span.clone(),
             StmX::Assign {
-                lhs: (decrease_at_entry(i), Some(0)),
+                lhs: Dest {
+                    dest: crate::ast_to_sst::var_loc_exp(&span, &typ, uniq_ident),
+                    is_init: true,
+                },
                 rhs: height_of_exp(ctxt, exp),
-                is_init: true,
             },
         );
         decls.push(decl);

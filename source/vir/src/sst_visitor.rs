@@ -1,6 +1,6 @@
 use crate::ast::{Ident, SpannedTyped, VirErr};
 use crate::def::Spanned;
-use crate::sst::{BndX, Exp, ExpX, Stm, StmX, Trig, Trigs, UniqueIdent};
+use crate::sst::{BndX, Dest, Exp, ExpX, Stm, StmX, Trig, Trigs, UniqueIdent};
 use crate::util::vec_map;
 use crate::visitor::expr_visitor_control_flow;
 pub(crate) use crate::visitor::VisitorControlFlow;
@@ -202,7 +202,8 @@ where
             StmX::Assume(exp) => {
                 expr_visitor_control_flow!(exp_visitor_dfs(exp, &mut ScopeMap::new(), f))
             }
-            StmX::Assign { lhs: _, rhs, is_init: _ } => {
+            StmX::Assign { lhs: Dest { dest, .. }, rhs } => {
+                expr_visitor_control_flow!(exp_visitor_dfs(dest, &mut ScopeMap::new(), f));
                 expr_visitor_control_flow!(exp_visitor_dfs(rhs, &mut ScopeMap::new(), f))
             }
             StmX::Fuel(..) | StmX::DeadEnd(..) => (),
@@ -453,9 +454,10 @@ where
             StmX::Assert(span2, exp) => Spanned::new(span, StmX::Assert(span2.clone(), f(exp))),
             StmX::AssertBV(exp) => Spanned::new(span, StmX::AssertBV(f(exp))),
             StmX::Assume(exp) => Spanned::new(span, StmX::Assume(f(exp))),
-            StmX::Assign { lhs, rhs, is_init } => {
+            StmX::Assign { lhs: Dest { dest, is_init }, rhs } => {
+                let dest = f(dest);
                 let rhs = f(rhs);
-                Spanned::new(span, StmX::Assign { lhs: lhs.clone(), rhs, is_init: *is_init })
+                Spanned::new(span, StmX::Assign { lhs: Dest { dest, is_init: *is_init }, rhs })
             }
             StmX::Fuel(..) => stm.clone(),
             StmX::DeadEnd(..) => stm.clone(),

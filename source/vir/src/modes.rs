@@ -1,6 +1,6 @@
 use crate::ast::{
-    BinaryOp, CallTarget, Datatype, Expr, ExprX, Fun, Function, FunctionKind, Ident, InferMode,
-    InvAtomicity, Krate, Mode, Path, Pattern, PatternX, Stmt, StmtX, UnaryOpr, VirErr,
+    BinaryOp, CallTarget, Datatype, Expr, ExprX, FieldOpr, Fun, Function, FunctionKind, Ident,
+    InferMode, InvAtomicity, Krate, Mode, Path, Pattern, PatternX, Stmt, StmtX, UnaryOpr, VirErr,
 };
 use crate::ast_util::{err_str, err_string, get_field};
 use crate::util::vec_map_result;
@@ -239,7 +239,7 @@ fn get_var_loc_mode(typing: &mut Typing, expr: &Expr, init_not_mut: bool) -> Res
             let (_, x_mode) = typing.get(x);
             x_mode
         }
-        ExprX::UnaryOpr(UnaryOpr::Field { datatype, variant: _, field }, rcvr) => {
+        ExprX::UnaryOpr(UnaryOpr::Field(FieldOpr { datatype, variant: _, field }), rcvr) => {
             let rcvr_mode = get_var_loc_mode(typing, rcvr, init_not_mut)?;
             let datatype = &typing.datatypes[datatype].x;
             if datatype.unforgeable {
@@ -405,7 +405,7 @@ fn check_expr(
         ExprX::UnaryOpr(UnaryOpr::TupleField { .. }, e1) => {
             check_expr(typing, outer_mode, erasure_mode, e1)
         }
-        ExprX::UnaryOpr(UnaryOpr::Field { datatype, variant, field }, e1) => {
+        ExprX::UnaryOpr(UnaryOpr::Field(FieldOpr { datatype, variant, field }), e1) => {
             let e1_mode = check_expr(typing, outer_mode, erasure_mode, e1)?;
             let datatype = &typing.datatypes[datatype];
             let field = get_field(&datatype.x.get_variant(variant).a, field);
@@ -473,7 +473,6 @@ fn check_expr(
                 return err_str(&expr.span, "assignment is not allowed in forall statements");
             }
             let x_mode = get_var_loc_mode(typing, lhs, *init_not_mut)?;
-            // typing.erasure_modes.var_modes.push((lhs.span.clone(), x_mode));
             check_expr_has_mode(typing, outer_mode, rhs, x_mode)?;
             Ok(x_mode)
         }

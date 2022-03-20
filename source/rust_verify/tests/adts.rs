@@ -567,6 +567,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test_field_update_param_1_pass FIELD_UPDATE.to_string() + FIELD_UPDATE_2 + code_str! {
         fn test(t: &mut T) {
+            requires(old(t).s.b < 30);
             ensures(*t == T { s: S { a: old(t).s.a + 1, b: old(t).s.b + 1 }, ..*old(t) });
             t.s.a = t.s.a + 1;
             t.s.b = t.s.b + 1;
@@ -577,6 +578,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test_field_update_param_1_fail FIELD_UPDATE.to_string() + FIELD_UPDATE_2 + code_str! {
         fn test(t: &mut T) {
+            requires(old(t).s.b < 30);
             ensures(*t == T { s: S { a: old(t).s.a + 1, b: old(t).s.b + 1 }, ..*old(t) });
             t.s.a = t.s.a + 1;
             t.s.b = t.s.b + 1;
@@ -595,8 +597,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    // TODO support complex arguments to &mut params
-    #[test] #[ignore] test_field_update_param_mut_ref_pass FIELD_UPDATE.to_string() + FIELD_UPDATE_2 + code_str! {
+    #[test] test_field_update_param_mut_ref_pass FIELD_UPDATE.to_string() + FIELD_UPDATE_2 + code_str! {
         fn foo(s: &mut S, v: usize) {
             ensures(*s == S { a: old(s).a + v, ..*old(s) });
             s.a = s.a + v;

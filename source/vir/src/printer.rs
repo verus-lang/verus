@@ -243,7 +243,7 @@ fn expr_to_node(expr: &Expr) -> Node {
                 UnaryOpr::TupleField { tuple_arity, field } => {
                     nodes_vec!(tuplefield {str_to_node(":arity")} {str_to_node(&format!("{}", tuple_arity))} {str_to_node(&format!("{}", field))})
                 }
-                UnaryOpr::Field { datatype, variant, field } => {
+                UnaryOpr::Field(FieldOpr { datatype, variant, field }) => {
                     nodes_vec!(field {path_to_node(datatype)} {str_to_node(variant)} {str_to_node(field)})
                 }
             };

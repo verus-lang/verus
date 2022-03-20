@@ -58,6 +58,14 @@ impl ReturnValue {
             ReturnValue::Never => None,
         }
     }
+
+    fn expect_value(self) -> Exp {
+        match self {
+            ReturnValue::Some(e) => e,
+            ReturnValue::ImplicitUnit(span) => lowered_unit_value(&span),
+            ReturnValue::Never => panic!("ReturnValue::Never unexpected here"),
+        }
+    }
 }
 
 /// Macro to help while processing an expression.
@@ -181,9 +189,18 @@ impl State {
     }
 }
 
+pub(crate) fn var_loc_exp(span: &Span, typ: &Typ, lhs: UniqueIdent) -> Exp {
+    SpannedTyped::new(span, typ, ExpX::VarLoc(lhs))
+}
+
 fn init_var(span: &Span, x: &UniqueIdent, exp: &Exp) -> Stm {
-    let lhs = x.clone();
-    Spanned::new(span.clone(), StmX::Assign { lhs, rhs: exp.clone(), is_init: true })
+    Spanned::new(
+        span.clone(),
+        StmX::Assign {
+            lhs: Dest { dest: var_loc_exp(&exp.span, &exp.typ, x.clone()), is_init: true },
+            rhs: exp.clone(),
+        },
+    )
 }
 
 fn get_function(ctx: &Ctx, expr: &Expr, name: &Fun) -> Result<Function, VirErr> {
@@ -596,26 +613,31 @@ fn expr_to_stm_opt(
             let e0 = unwrap_or_return_never!(e0, stms);
             Ok((stms, ReturnValue::Some(mk_exp(ExpX::Loc(e0)))))
         }
-        ExprX::Assign { init_not_mut, lhs: expr1, rhs: expr2 } => {
-            let dest_x = match &expr1.x {
-                ExprX::VarLoc(x) => state.get_var_unique_id(&x),
-                _ => panic!("complex Assign should have been simplified"),
-            };
+        ExprX::Assign { init_not_mut, lhs: lhs_expr, rhs: expr2 } => {
+            let (mut stms, lhs_exp) = expr_to_stm_opt(ctx, state, lhs_expr)?;
             match expr_must_be_call_stm(ctx, state, expr2)? {
-                Some((stms2, ReturnedCall::Never)) => Ok((stms2, ReturnValue::Never)),
-                Some((mut stms2, ReturnedCall::Call { fun, typs, has_return: _, args })) => {
+                Some((stms2, ReturnedCall::Never)) => {
+                    stms.extend(stms2.into_iter());
+                    Ok((stms, ReturnValue::Never))
+                }
+                Some((stms2, ReturnedCall::Call { fun, typs, has_return: _, args })) => {
                     // make a Call
-                    let dest = Dest { var: dest_x.clone(), is_init: *init_not_mut };
-                    stms2.push(stm_call(state, &expr.span, fun, typs, args, Some(dest)));
-                    Ok((stms2, ReturnValue::ImplicitUnit(expr.span.clone())))
+                    let dest = Dest { dest: lhs_exp.expect_value(), is_init: *init_not_mut };
+                    stms.extend(stms2.into_iter());
+                    stms.push(stm_call(state, &expr.span, fun, typs, args, Some(dest)));
+                    Ok((stms, ReturnValue::ImplicitUnit(expr.span.clone())))
                 }
                 None => {
                     // make an Assign
-                    let (mut stms2, e2) = expr_to_stm_opt(ctx, state, expr2)?;
+                    let (stms2, e2) = expr_to_stm_opt(ctx, state, expr2)?;
                     let e2 = unwrap_or_return_never!(e2, stms2);
-                    let assign = StmX::Assign { lhs: dest_x, rhs: e2, is_init: *init_not_mut };
-                    stms2.push(Spanned::new(expr.span.clone(), assign));
-                    Ok((stms2, ReturnValue::ImplicitUnit(expr.span.clone())))
+                    let assign = StmX::Assign {
+                        lhs: Dest { dest: lhs_exp.expect_value(), is_init: *init_not_mut },
+                        rhs: e2,
+                    };
+                    stms.extend(stms2.into_iter());
+                    stms.push(Spanned::new(expr.span.clone(), assign));
+                    Ok((stms, ReturnValue::ImplicitUnit(expr.span.clone())))
                 }
             }
         }
@@ -638,7 +660,11 @@ fn expr_to_stm_opt(
                         let (temp, temp_var) = state.next_temp(&expr.span, &expr.typ);
                         state.declare_new_var(&temp, &expr.typ, false, false);
                         // tmp = StmX::Call;
-                        let dest = Dest { var: (temp.clone(), Some(0)), is_init: true };
+                        let uniq_ident = (temp.clone(), Some(0));
+                        let dest = Dest {
+                            dest: var_loc_exp(&expr.span, &expr.typ, uniq_ident),
+                            is_init: true,
+                        };
                         stms.push(stm_call(
                             state,
                             &expr.span,
@@ -1142,7 +1168,7 @@ fn stmt_to_stm(
 
             let ident = state.alloc_unique_var(&name);
             let typ = pattern.typ.clone();
-            let decl = Arc::new(LocalDeclX { ident, typ, mutable: *mutable });
+            let decl = Arc::new(LocalDeclX { ident, typ: typ.clone(), mutable: *mutable });
 
             // First check if the initializer needs to be translate to a Call instead
             // of an Exp. If so, translate it that way.
@@ -1154,7 +1180,10 @@ fn stmt_to_stm(
                     Some((mut stms, ReturnedCall::Call { fun, typs, has_return: _, args })) => {
                         // Special case: convert to a Call
                         // It can't be pure in this case, so don't return a Bnd.
-                        let dest = Dest { var: decl.ident.clone(), is_init: true };
+                        let dest = Dest {
+                            dest: var_loc_exp(&pattern.span, &typ, decl.ident.clone()),
+                            is_init: true,
+                        };
                         stms.push(stm_call(state, &init.span, fun, typs, args, Some(dest)));
                         let ret = ReturnValue::ImplicitUnit(stmt.span.clone());
                         return Ok((stms, ret, Some((decl, None))));
