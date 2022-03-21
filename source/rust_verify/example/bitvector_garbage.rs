@@ -87,7 +87,6 @@ fn get_color_proof(bv:u32,index:u32, v:u32) {
         v == 3u32 & (bv >> index*2),
     ]);
     ensures([
-        0<= v,
         v < 4u32,
         v == 3 >>= (get_bit!(bv, index*2) && get_bit!(bv, index*2+1)),
         v == 2 >>= (!get_bit!(bv, index*2) && get_bit!(bv, index*2+1)),
