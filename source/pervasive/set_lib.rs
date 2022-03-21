@@ -8,7 +8,7 @@ use crate::pervasive::set::*;
 impl<A> Set<A> {
     #[spec] #[verifier(publish)]
     pub fn map<F: Fn(A) -> A>(self, f: F) -> Set<A> {
-        set_new(|a: A| exists(|x: A| self.contains(x) && equal(a, f(x))))
+        Set::new(|a: A| exists(|x: A| self.contains(x) && equal(a, f(x))))
     }
 }
 
@@ -103,12 +103,12 @@ pub fn lemma_len_filter<A, F: Fn(A) -> bool>(s: Set<A>, f: F) {
     ]);
     decreases(s.len());
 
-    lemma_len_intersect::<A>(s, set_new(f));
+    lemma_len_intersect::<A>(s, Set::new(f));
 }
 
 #[spec] #[verifier(publish)]
 pub fn set_int_range(lo: int, hi: int) -> Set<int> {
-    set_new(|i: int| lo <= i && i < hi)
+    Set::new(|i: int| lo <= i && i < hi)
 }
 
 #[proof]

@@ -584,13 +584,13 @@ test_verify_one_file! {
     #[test] test_verify_2 code! {
         trait T {
             fn f(&self) {
-                ensures(false); // FAILS
+                ensures(false);
                 no_method_body()
             }
         }
         struct S {}
         impl T for S {
-            fn f(&self) {}
+            fn f(&self) {} // FAILS
         }
     } => Err(err) => assert_one_fails(err)
 }
@@ -624,7 +624,7 @@ test_verify_one_file! {
             #[spec]
             fn ens(&self) -> bool { no_method_body() }
             fn f(&self) {
-                ensures(self.ens()); // FAILS
+                ensures(self.ens());
                 no_method_body()
             }
         }
@@ -632,7 +632,7 @@ test_verify_one_file! {
         impl T for S {
             #[spec]
             fn ens(&self) -> bool { false }
-            fn f(&self) {}
+            fn f(&self) {} // FAILS
         }
     } => Err(err) => assert_one_fails(err)
 }
@@ -673,7 +673,7 @@ test_verify_one_file! {
 
             fn f(&self, a: &A) -> A {
                 requires(self.req(*a));
-                ensures(|ra: A| self.ens(*a, ra)); // FAILS
+                ensures(|ra: A| self.ens(*a, ra));
                 no_method_body()
             }
         }
@@ -715,7 +715,7 @@ test_verify_one_file! {
 
             fn f(&self, a: &u64) -> u64 {
                 self.x / 2 + a
-            }
+            } // FAILS
         }
 
         fn p<A, Z: T<A>>(a: &A, z: &Z) -> A {
@@ -773,6 +773,36 @@ test_verify_one_file! {
         struct S<A, B>(A, B);
 
         impl<C> T<(C, u16)> for S<bool, C> {
+            #[spec]
+            fn apple(&self, #[spec] b: (C, u16)) -> bool {
+                b.1 > 10
+            }
+        }
+
+        #[proof]
+        fn test() -> bool {
+            ensures(|b: bool| b);
+
+            let i: u8 = 10;
+            let s = S(true, i);
+            let b: bool = s.apple((i, 20));
+            b
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_generic_1_ok_markers code! {
+        trait T<A: Sized> : Sized {
+            #[spec]
+            fn apple(&self, #[spec] b: A) -> bool {
+                no_method_body()
+            }
+        }
+
+        struct S<A: Sized, B: Sized>(A, B);
+
+        impl<C: Sized> T<(C, u16)> for S<bool, C> {
             #[spec]
             fn apple(&self, #[spec] b: (C, u16)) -> bool {
                 b.1 > 10
@@ -962,7 +992,7 @@ test_verify_one_file! {
             fn f<'a>(&'a self, x: &'a Self, b: bool) -> &'a Self {
                 ensures(|r: &'a Self| [
                     b >>= equal(r, self),
-                    !b >>= equal(r, x), // FAILS
+                    !b >>= equal(r, x),
                 ]);
                 no_method_body()
             }
@@ -978,7 +1008,7 @@ test_verify_one_file! {
         impl T for S {
             fn f<'a>(&'a self, x: &'a Self, b: bool) -> &'a Self {
                 if b { self } else { self }
-            }
+            } // FAILS
         }
 
         fn test() {

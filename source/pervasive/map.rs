@@ -21,6 +21,11 @@ impl<K, V> Map<K, V> {
         Set::full().mk_map(f)
     }
 
+    #[spec] #[verifier(publish)]
+    pub fn new<FK: Fn(K) -> bool, FV: Fn(K) -> V>(fk: FK, fv: FV) -> Map<K, V> {
+        Set::new(fk).mk_map(fv)
+    }
+
     fndecl!(pub fn dom(self) -> Set<K>);
 
     fndecl!(pub fn index(self, key: K) -> V);

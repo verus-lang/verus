@@ -639,7 +639,11 @@ fn fn_call_to_vir<'tcx>(
                     ExprKind::AddrOf(BorrowKind::Ref, Mutability::Mut, e) => e,
                     _ => arg,
                 };
-                let expr = expr_to_vir(bctx, arg_x, ExprModifier::ADDR_OF)?;
+                let deref_mut = match bctx.types.node_type(arg_x.hir_id).ref_mutability() {
+                    Some(Mutability::Mut) => true,
+                    _ => false,
+                };
+                let expr = expr_to_vir(bctx, arg_x, ExprModifier { addr_of: true, deref_mut })?;
                 Ok(spanned_typed_new(arg.span, &expr.typ.clone(), ExprX::Loc(expr)))
             } else {
                 expr_to_vir(bctx, arg, is_expr_typ_mut_ref(bctx, arg, ExprModifier::REGULAR)?)

@@ -29,11 +29,17 @@ fn state_machines() {
     run_examples_in_directory("example/state_machines");
 }
 
+#[test]
+fn summer_school() {
+    run_examples_in_directory("example/summer_school");
+}
+
 fn run_examples_in_directory(dir_path: &str) {
     let entries = std::fs::read_dir(dir_path).expect("cannot find example directory");
 
     for entry in entries {
         let entry = entry.expect("invalid path");
+        eprintln!("example test {:?}", entry.path());
         let relative_path = entry.path();
 
         if relative_path.extension() != Some(std::ffi::OsStr::new("rs")) {

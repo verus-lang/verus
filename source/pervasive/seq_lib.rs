@@ -10,4 +10,10 @@ impl<A> Seq<A> {
     pub fn map<B, F: Fn(int, A) -> B>(self, f: F) -> Seq<B> {
         Seq::new(self.len(), |i: int| f(i, self.index(i)))
     }
+
+    // TODO is_sorted -- extract from summer_school e22
+    #[spec] #[verifier(publish)]
+    pub fn contains(self, needle: A) -> bool {
+        exists(|i: nat| i<self.len() && equal(self.index(i), needle))
+    }
 }

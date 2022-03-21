@@ -32,7 +32,7 @@ test_verify_one_file! {
 
         #[proof]
         fn test_set() {
-            let nonneg = set_new(|i: int| i >= 0);
+            let nonneg = Set::new(|i: int| i >= 0);
             assert(forall(|i: int| nonneg.contains(i) == (i >= 0)));
             let pos1 = nonneg.filter(|i: int| i > 0);
             assert(forall(|i: int| pos1.contains(i) == (i > 0)));
@@ -54,12 +54,12 @@ test_verify_one_file! {
 
         #[spec]
         pub fn set_map<A, F: Fn(A) -> A>(s: Set<A>, f: F) -> Set<A> {
-            set_new(|a: A| exists(|x: A| s.contains(x) && equal(a, f(x))))
+            Set::new(|a: A| exists(|x: A| s.contains(x) && equal(a, f(x))))
         }
 
         #[proof]
         fn test_set() {
-            let nonneg = set_new(|i: int| i >= 0);
+            let nonneg = Set::new(|i: int| i >= 0);
             assert(forall(|i: int| nonneg.contains(i) == (i >= 0)));
             let pos1 = nonneg.filter(|i: int| i > 0);
             assert(forall(|i: int| pos1.contains(i) == (i > 0)));
@@ -88,7 +88,7 @@ test_verify_one_file! {
         fn test_witness() {
             assume(exists(|x: int| f(x)));
 
-            let s = set_new(|x: int| f(x));
+            let s = Set::new(|x: int| f(x));
             assert(exists(|x: int| f(x) && s.contains(x)));
 
             assert(s.contains(s.choose()));
@@ -110,7 +110,7 @@ test_verify_one_file! {
         fn test_witness() {
             assume(exists(|x: int| f(x)));
 
-            let s = set_new(|x: int| f(x));
+            let s = Set::new(|x: int| f(x));
 
             assert(s.contains(s.choose())); // FAILS
         }

@@ -1360,13 +1360,19 @@ pub fn body_stm_to_air(
     };
 
     for ens in enss {
-        let error = error("postcondition not satisfied", &ens.span);
+        let error = error_with_label(
+            "postcondition not satisfied".to_string(),
+            &stm.span,
+            "at the end of the function body".to_string(),
+        )
+        .secondary_label(&ens.span, "failed this postcondition".to_string());
 
         let e = if !is_bit_vector_mode {
             mk_let(&trait_typ_bind, &exp_to_expr(ctx, ens, ExprCtxt::Body))
         } else {
             exp_to_bv_expr(ens)
         };
+
         let ens_stmt = StmtX::Assert(error, e);
         stmts.push(Arc::new(ens_stmt));
     }

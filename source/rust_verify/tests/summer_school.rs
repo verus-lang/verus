@@ -543,7 +543,6 @@ const LUNCH_SHARED_CODE: &str = code_str! {
 };
 
 #[test]
-#[ignore]
 fn e13_pass() {
     let files = vec![
         ("directions.rs".to_string(), DIRECTIONS_SHARED_CODE.to_string()),
@@ -608,9 +607,13 @@ fn e13_pass() {
                 fn cheese_take_two() {
                     assert_forall_by(|o1:Order| {
                         requires(o1.is_appetizer());
+
+                        // ensures(exists(|o2: Order| matches!((o1, o2), (Order::Appetizer { cheese: c1, .. }, Order::Sanwhich { cheese: c2, .. }) if c1 == c2)))
+
+                        // ensures(exists(|o2:Order| o2.is_sandwich() && o1.get_cheese() == o2.get_sandwich().cheese));
                         ensures(exists(|o2:Order| o2.is_sandwich() && o1.get_cheese() == o2.get_cheese()));
                         let o3 = Order::Sandwich { meat: Meat::Ham, cheese: o1.get_cheese() };
-                        // TODO(jonh) fill in
+                        assert(o3.is_sandwich() /*&& o1.get_cheese() == o3.get_cheese()*/); // witness to ensures.
                     });
                 }
             },
@@ -639,7 +642,7 @@ test_verify_one_file! {
         #[proof]
         fn set_comprehension()
         {
-            let modest_evens = set_new(|x:int| 0 <= x && x < 10 && is_even(x));
+            let modest_evens = Set::new(|x:int| 0 <= x && x < 10 && is_even(x));
             assert(modest_evens.ext_equal(set![0,2,4,6,8]));
 
             /* This is beyond summer school, but shows a verus-preferred style */
@@ -698,7 +701,7 @@ test_verify_one_file! {
         #[proof]
         fn set_comprehension()
         {
-            let modest_evens = set_new(|x:int| 0 <= x && x < 10 && is_even(x));
+            let modest_evens = Set::new(|x:int| 0 <= x && x < 10 && is_even(x));
             assert(modest_evens.ext_equal(set![0,2,4,8]));   // FAILS
         }
 
@@ -752,7 +755,7 @@ test_verify_one_file! {
         #[proof]
         fn is_this_set_finite()
         {
-            let modest_evens = set_new(|x:int| is_modest(x) && is_even(x));
+            let modest_evens = Set::new(|x:int| is_modest(x) && is_even(x));
             // In verus, unlike Dafny, it's fine to have infinite sets, but you may want a finite
             // one (say because you're using it as a decreases to well-found an induction).
             let modest_numbers = set_int_range(0, 10);
@@ -784,7 +787,7 @@ test_verify_one_file! {
         #[proof]
         fn is_this_set_finite()
         {
-            let modest_evens = set_new(|x:int| is_modest(x) && is_even(x));
+            let modest_evens = Set::new(|x:int| is_modest(x) && is_even(x));
             // Need additional proof to show that this construction is finite.
             assert(modest_evens.finite());  // FAILS
         }
@@ -1131,3 +1134,5 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+// e22 is in examples/summer_school/chapter-1-22.rs

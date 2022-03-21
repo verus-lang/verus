@@ -333,7 +333,14 @@ fn check_item<'tcx>(
         ItemKind::Macro(_macro_def) => {}
         ItemKind::Trait(IsAuto::No, Unsafety::Normal, trait_generics, bounds, trait_items) => {
             let generics_bnds = check_generics_bounds(ctxt.tcx, trait_generics, false)?;
-            unsupported_err_unless!(bounds.len() == 0, item.span, "trait generic bounds");
+            for b in bounds.iter() {
+                match &*crate::rust_to_vir_base::check_generic_bound(ctxt.tcx, b.span(), b)? {
+                    vir::ast::GenericBoundX::Traits(ts) if ts.len() == 0 => {}
+                    _ => {
+                        unsupported_err!(item.span, "trait generic bounds");
+                    }
+                }
+            }
             let trait_path = def_id_to_vir_path(ctxt.tcx, item.def_id.to_def_id());
             let mut methods: Vec<Fun> = Vec::new();
             for trait_item_ref in *trait_items {

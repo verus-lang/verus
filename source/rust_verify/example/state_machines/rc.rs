@@ -1,5 +1,3 @@
-#![feature(maybe_uninit_ref)]
-
 #[allow(unused_imports)]
 use builtin::*;
 mod pervasive;
@@ -275,10 +273,10 @@ impl<S> MyRc<S> {
             equal(rc.view(), s),
         ]);
 
-        let (rc_cell, Proof(mut rc_perm)) = PCell::new(1);
+        let (rc_cell, Proof(rc_perm)) = PCell::new(1);
         let inner_rc = InnerRc::<S> { rc_cell, s };
 
-        let (ptr, Proof(mut ptr_perm)) = PPtr::new(inner_rc);
+        let (ptr, Proof(ptr_perm)) = PPtr::new(inner_rc);
 
         #[proof] let (inst, mut rc_token, _) = RefCounter_Instance::initialize_empty(Option::None);
         #[proof] let reader = inst.do_deposit(ptr_perm, &mut rc_token, ptr_perm);
@@ -313,7 +311,7 @@ impl<S> MyRc<S> {
             &self.reader);
         let inner_rc_ref = &self.ptr.borrow(perm);
 
-        #[proof] let mut new_reader;
+        #[proof] let new_reader;
         open_local_invariant!(self.inv.borrow() => g => {
             #[proof] let GhostStuff { rc_perm: mut rc_perm, rc_token: mut rc_token } = g;
 
