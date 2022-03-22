@@ -190,7 +190,7 @@ fn check_item<'tcx>(
                         match impl_item_ref.kind {
                             AssocItemKind::Fn { has_self } => {
                                 let impl_item = ctxt.tcx.hir().impl_item(impl_item_ref.id);
-                                let impl_item_visibility =
+                                let mut impl_item_visibility =
                                     mk_visibility(&Some(module_path.clone()), &impl_item.vis, true);
                                 match &impl_item.kind {
                                     ImplItemKind::Fn(sig, body_id) => {
@@ -251,6 +251,11 @@ fn check_item<'tcx>(
                                                     has_self,
                                                     sig.span,
                                                     "method without self"
+                                                );
+                                                impl_item_visibility = mk_visibility(
+                                                    &Some(module_path.clone()),
+                                                    &impl_item.vis,
+                                                    false,
                                                 );
                                                 let ident = ident_to_var(&impl_item_ref.ident);
                                                 let ident = Arc::new(ident);
