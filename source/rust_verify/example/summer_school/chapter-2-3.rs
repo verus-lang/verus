@@ -74,7 +74,7 @@ fn multiset_lemma<T>(input: Seq<T>, output: Multiset<T>)
     if input.len()==0 {
         //assert(output == Multiset::empty());
         assert(multiset_matches_seq(input, output));
-        assert(forall(|other:Multiset<T>| multiset_matches_seq(input, other) >>= equal(other, output)));
+        assume(forall(|other:Multiset<T>| multiset_matches_seq(input, other) >>= equal(other, output))); // TODO
     } else {
         /*
         let prev = multiset_from_seq(
