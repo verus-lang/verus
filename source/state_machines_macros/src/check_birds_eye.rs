@@ -180,7 +180,7 @@ fn check_birds_eye_rec(
             } else if *past_assert {
                 errors.push(Error::new(
                     *span,
-                    "a 'require' should not be preceeded by an assert which is the scope of a #[birds_eye] let-binding; preconditions of an exchange cannot depend on such bindings"));
+                    "a 'require' should not be preceeded by an assert which is in the scope of a #[birds_eye] let-binding; preconditions of an exchange cannot depend on such bindings"));
             }
         }
 

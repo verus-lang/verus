@@ -118,7 +118,7 @@ fn get_field_by_ident<'a>(
         Some(f) => Ok(f),
         None => Err(Error::new(
             span,
-            "in a concurrent transition, any field access but be a state field",
+            "in a concurrent transition, any field access must be a state field",
         )),
     }
 }

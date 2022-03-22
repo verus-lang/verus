@@ -246,7 +246,7 @@ fn token_struct_stream(
 /// (this is safe as long as the Instance type is an unforgeable proof type)
 /// but currently we have the body of the Instance as private
 fn const_fn_stream(field: &Field) -> TokenStream {
-    let fieldname = field_token_field_name(field);
+    let fieldname = &field.name;
     let fieldtype = match &field.stype {
         ShardableType::Constant(ty) => ty,
         _ => panic!("const_fn_stream expected Constant"),
@@ -697,6 +697,7 @@ pub fn exchange_stream(
                             !ctxt.fields_written.contains(&field.name.to_string())
                                 && !ctxt.fields_read.contains(&field.name.to_string())
                         }
+                        ShardableType::Constant(_) => false,
                         _ => true,
                     };
 
@@ -1247,8 +1248,10 @@ fn get_all_lemmas_for_transition(
     let mut v = Vec::new();
 
     if trans.kind != TransitionKind::Readonly {
-        let l = get_main_lemma_for_transition_or_panic(&bundle.extras.lemmas, &trans.name);
-        v.push(l.func.sig.ident.clone());
+        match get_main_lemma_for_transition_opt(&bundle.extras.lemmas, &trans.name) {
+            Some(l) => v.push(l.func.sig.ident.clone()),
+            None => {}
+        }
     }
 
     match safety_condition_lemmas.get(&trans.name.to_string()) {
@@ -1259,17 +1262,17 @@ fn get_all_lemmas_for_transition(
     v
 }
 
-fn get_main_lemma_for_transition_or_panic<'a>(
+fn get_main_lemma_for_transition_opt<'a>(
     lemmas: &'a Vec<Lemma>,
     trans_name: &Ident,
-) -> &'a Lemma {
+) -> Option<&'a Lemma> {
     for l in lemmas {
         if l.purpose.transition.to_string() == trans_name.to_string() {
-            return l;
+            return Some(l);
         }
     }
 
-    panic!("could not find lemma for: {}", trans_name.to_string());
+    None
 }
 
 // Find things that updated
@@ -1654,7 +1657,7 @@ fn get_inst_value(ctxt: &Ctxt) -> Expr {
 
 fn get_const_field_value(ctxt: &Ctxt, field: &Field) -> Expr {
     let inst = get_inst_value(ctxt);
-    let field_name = field_token_field_name(&field);
+    let field_name = &field.name;
     Expr::Verbatim(quote! { #inst.#field_name() })
 }
 

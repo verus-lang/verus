@@ -97,7 +97,7 @@ fn check_exactly_one_init_rec(
                         return Err(Error::new(
                             s2,
                             format!(
-                                "field '{}' might be updated multiple times",
+                                "field '{}' might be initialized multiple times",
                                 field.name.to_string()
                             ),
                         ));

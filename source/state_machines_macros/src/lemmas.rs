@@ -15,7 +15,9 @@ use syn::{
 
 pub fn check_lemmas(bundle: &SMBundle) -> syn::parse::Result<()> {
     check_each_lemma_valid(bundle)?;
-    check_lemmas_cover_all_cases(bundle)?;
+    if bundle.extras.invariants.len() > 0 {
+        check_lemmas_cover_all_cases(bundle)?;
+    }
     check_no_explicit_conditions(bundle)?;
 
     Ok(())

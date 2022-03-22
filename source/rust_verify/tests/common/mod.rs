@@ -48,6 +48,7 @@ impl FileLoader for TestFileLoader {
 pub struct TestErr {
     pub errors: Vec<Vec<ErrorSpan>>,
     pub has_vir_error: bool,
+    pub output: String,
 }
 
 #[allow(dead_code)]
@@ -152,17 +153,26 @@ pub fn verify_files_and_pervasive(
         status.map(|_| ()).map_err(|_| TestErr {
             errors: verifier.errors,
             has_vir_error: verifier.encountered_vir_error,
+            output: "".to_string(),
         })
     });
-    eprintln!(
-        "{}",
-        std::str::from_utf8(
-            &captured_output.lock().expect("internal error: cannot lock captured output")
-        )
-        .expect("captured output is invalid utf8")
-    );
+    let output = std::str::from_utf8(
+        &captured_output.lock().expect("internal error: cannot lock captured output"),
+    )
+    .expect("captured output is invalid utf8")
+    .to_string();
+    eprintln!("{}", output);
     match result {
-        Ok(result) => result,
+        Ok(result) => {
+            let mut result = result;
+            match &mut result {
+                Ok(_) => {}
+                Err(res) => {
+                    res.output = output;
+                }
+            }
+            result
+        }
         Err(_) => {
             panic!(
                 "The compiler panicked. This may be due to rustc not being available in the `rust` directory in the project root. Check the README for more information."
@@ -231,4 +241,15 @@ pub fn assert_fails(err: TestErr, count: usize) {
 #[allow(dead_code)]
 pub fn assert_vir_error(err: TestErr) {
     assert!(err.has_vir_error);
+}
+
+#[allow(dead_code)]
+pub fn assert_vir_error_msg(err: TestErr, expected_msg: &str) {
+    assert!(err.has_vir_error);
+    assert!(err.output.contains(expected_msg));
+}
+
+#[allow(dead_code)]
+pub fn assert_error_msg(err: TestErr, expected_msg: &str) {
+    assert!(err.output.contains(expected_msg));
 }

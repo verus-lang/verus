@@ -1,9 +1,9 @@
 use crate::add_tmp_vars::add_tmp_vars_special_ops;
-use crate::ast::{SpecialOp, TransitionStmt, SM};
+use crate::ast::{ShardableType, SpecialOp, TransitionStmt, SM};
 use proc_macro2::Span;
 use quote::quote;
 use std::collections::HashMap;
-use syn::{Expr, Ident};
+use syn::{Expr, Ident, Type};
 
 /// Simplify out `update' statements, including `add_element` etc.
 ///
@@ -84,7 +84,7 @@ pub fn simplify_ops(sm: &SM, ts: &TransitionStmt, is_readonly: bool) -> Transiti
     let ts = if !is_readonly { add_placeholders(sm, &ts) } else { ts };
 
     let field_map = FieldMap::new(sm);
-    let (ts, _field_map) = simplify_ops_rec(&ts, field_map);
+    let (ts, _field_map) = simplify_ops_rec(&ts, &sm, field_map);
 
     ts
 }
@@ -248,7 +248,12 @@ fn contains_ident(v: &Vec<Ident>, id: &Ident) -> bool {
 fn append_stmt(t1: &mut TransitionStmt, t2: TransitionStmt) {
     match t1 {
         TransitionStmt::Block(_span, v) => {
-            return v.push(t2);
+            v.push(t2);
+            return;
+        }
+        TransitionStmt::Let(_span, _ident, _lk, _e, child) => {
+            append_stmt(&mut **child, t2);
+            return;
         }
         _ => {}
     }
@@ -352,7 +357,11 @@ impl FieldMap {
     }
 }
 
-fn simplify_ops_rec(ts: &TransitionStmt, field_map: FieldMap) -> (TransitionStmt, FieldMap) {
+fn simplify_ops_rec(
+    ts: &TransitionStmt,
+    sm: &SM,
+    field_map: FieldMap,
+) -> (TransitionStmt, FieldMap) {
     match ts {
         TransitionStmt::PostCondition(span, placeholder_e) => {
             // We found a placeholder PostCondition.
@@ -377,14 +386,14 @@ fn simplify_ops_rec(ts: &TransitionStmt, field_map: FieldMap) -> (TransitionStmt
             let mut field_map = field_map;
             let mut res = Vec::new();
             for t in v {
-                let (t, fm) = simplify_ops_rec(t, field_map);
+                let (t, fm) = simplify_ops_rec(t, sm, field_map);
                 field_map = fm;
                 res.push(t);
             }
             (TransitionStmt::Block(*span, res), field_map)
         }
         TransitionStmt::Let(span, id, lk, e, child) => {
-            let (new_child, new_map) = simplify_ops_rec(child, field_map.clone());
+            let (new_child, new_map) = simplify_ops_rec(child, sm, field_map.clone());
             // We call `remove_changed` to remove any field that has been modified
             // inside this block. We do this because the new expression could possibly
             // refer to the bound variable here which is about to go out-of-scope.
@@ -394,8 +403,8 @@ fn simplify_ops_rec(ts: &TransitionStmt, field_map: FieldMap) -> (TransitionStmt
             )
         }
         TransitionStmt::If(span, cond, e1, e2) => {
-            let (new_e1, field_map1) = simplify_ops_rec(e1, field_map.clone());
-            let (new_e2, field_map2) = simplify_ops_rec(e2, field_map.clone());
+            let (new_e1, field_map1) = simplify_ops_rec(e1, sm, field_map.clone());
+            let (new_e2, field_map2) = simplify_ops_rec(e2, sm, field_map.clone());
             (
                 TransitionStmt::If(*span, cond.clone(), Box::new(new_e1), Box::new(new_e2)),
                 FieldMap::merge(field_map, field_map1, field_map2),
@@ -412,10 +421,11 @@ fn simplify_ops_rec(ts: &TransitionStmt, field_map: FieldMap) -> (TransitionStmt
 
         TransitionStmt::Special(span, f, SpecialOp::HaveSome(e), _) => {
             let cur = field_map.get(&f.to_string());
+            let ty = get_opt_type(sm, f);
             let prec = Expr::Verbatim(quote! {
                 ::builtin::equal(
                     #cur,
-                    crate::pervasive::option::Option::Some(#e)
+                    crate::pervasive::option::Option::<#ty>::Some(#e)
                 )
             });
             (TransitionStmt::Require(*span, prec), field_map)
@@ -423,10 +433,11 @@ fn simplify_ops_rec(ts: &TransitionStmt, field_map: FieldMap) -> (TransitionStmt
         TransitionStmt::Special(span, f, SpecialOp::AddSome(e), proof) => {
             let mut field_map = field_map;
             let cur = field_map.get(&f.to_string()).clone();
+            let ty = get_opt_type(sm, f);
             field_map.set(
                 f.to_string(),
                 Expr::Verbatim(quote! {
-                    crate::pervasive::option::Option::Some(#e)
+                    crate::pervasive::option::Option::<#ty>::Some(#e)
                 }),
             );
             let safety = Expr::Verbatim(quote! {
@@ -437,10 +448,11 @@ fn simplify_ops_rec(ts: &TransitionStmt, field_map: FieldMap) -> (TransitionStmt
         TransitionStmt::Special(span, f, SpecialOp::RemoveSome(e), _) => {
             let mut field_map = field_map;
             let cur = field_map.get(&f.to_string()).clone();
+            let ty = get_opt_type(sm, f);
             field_map.set(
                 f.to_string(),
                 Expr::Verbatim(quote! {
-                    crate::pervasive::option::Option::None
+                    crate::pervasive::option::Option::<#ty>::None
                 }),
             );
             let prec = Expr::Verbatim(quote! {
@@ -454,10 +466,11 @@ fn simplify_ops_rec(ts: &TransitionStmt, field_map: FieldMap) -> (TransitionStmt
 
         TransitionStmt::Special(span, f, SpecialOp::GuardSome(e), proof) => {
             let cur = field_map.get(&f.to_string());
+            let ty = get_opt_type(sm, f);
             let prec = Expr::Verbatim(quote! {
                 ::builtin::equal(
                     #cur,
-                    crate::pervasive::option::Option::Some(#e)
+                    crate::pervasive::option::Option::<#ty>::Some(#e)
                 )
             });
             (TransitionStmt::Assert(*span, prec, proof.clone()), field_map)
@@ -465,10 +478,11 @@ fn simplify_ops_rec(ts: &TransitionStmt, field_map: FieldMap) -> (TransitionStmt
         TransitionStmt::Special(span, f, SpecialOp::DepositSome(e), proof) => {
             let mut field_map = field_map;
             let cur = field_map.get(&f.to_string()).clone();
+            let ty = get_opt_type(sm, f);
             field_map.set(
                 f.to_string(),
                 Expr::Verbatim(quote! {
-                    crate::pervasive::option::Option::Some(#e)
+                    crate::pervasive::option::Option::<#ty>::Some(#e)
                 }),
             );
             let safety = Expr::Verbatim(quote! {
@@ -479,16 +493,17 @@ fn simplify_ops_rec(ts: &TransitionStmt, field_map: FieldMap) -> (TransitionStmt
         TransitionStmt::Special(span, f, SpecialOp::WithdrawSome(e), proof) => {
             let mut field_map = field_map;
             let cur = field_map.get(&f.to_string()).clone();
+            let ty = get_opt_type(sm, f);
             field_map.set(
                 f.to_string(),
                 Expr::Verbatim(quote! {
-                    crate::pervasive::option::Option::None
+                    crate::pervasive::option::Option::<#ty>::None
                 }),
             );
             let prec = Expr::Verbatim(quote! {
                 ::builtin::equal(
                     #cur,
-                    crate::pervasive::option::Option::Some(#e)
+                    crate::pervasive::option::Option::<#ty>::Some(#e)
                 )
             });
             (TransitionStmt::Assert(*span, prec, proof.clone()), field_map)
@@ -601,6 +616,17 @@ fn simplify_ops_rec(ts: &TransitionStmt, field_map: FieldMap) -> (TransitionStmt
 
         TransitionStmt::PostCondition(..) => {
             panic!("PostCondition statement shouldn't exist here");
+        }
+    }
+}
+
+fn get_opt_type(sm: &SM, ident: &Ident) -> Type {
+    let field = crate::transitions::get_field(&sm.fields, ident);
+    match &field.stype {
+        ShardableType::Option(ty) => ty.clone(),
+        ShardableType::StorageOption(ty) => ty.clone(),
+        _ => {
+            panic!("get_opt_type expected option");
         }
     }
 }
