@@ -99,7 +99,7 @@ fn check_function(ctxt: &Ctxt, function: &Function) -> Result<(), VirErr> {
                     _ => {
                         return err_str(
                             &function.span,
-                            "bit-vector function mode cannot have a body exression",
+                            "bit-vector function mode cannot have a body",
                         );
                     }
                 }

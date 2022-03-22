@@ -283,8 +283,6 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, u64
                 }
                 (is_pures, num_ops, terms)
             };
-            // let (is_pures, terms): (Vec<bool>, Vec<Term>) =
-            //     args.map(|e| gather_terms(ctxt, ctx, &e.a, depth + 1, num_operators)).unzip();
             let is_pure = is_pures.into_iter().all(|b| b);
             (
                 is_pure,

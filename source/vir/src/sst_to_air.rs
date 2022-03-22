@@ -364,15 +364,21 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: ExprCtxt) -> Expr {
                     Arc::new(crate::def::UINT_NOT.to_string()),
                     Arc::new(vec![width_exp, expr]),
                 );
-                let uclip_name = crate::def::U_CLIP;
-                let iclip_name = crate::def::I_CLIP;
                 if let TypX::Int(range) = &*exp.typ {
                     match range {
                         IntRange::I(_) | IntRange::ISize => {
-                            return apply_range_fun(&iclip_name, &range, vec![Arc::new(bit_expr)]);
+                            return apply_range_fun(
+                                &crate::def::I_CLIP,
+                                &range,
+                                vec![Arc::new(bit_expr)],
+                            );
                         }
                         IntRange::U(_) | IntRange::USize => {
-                            return apply_range_fun(&uclip_name, &range, vec![Arc::new(bit_expr)]);
+                            return apply_range_fun(
+                                &crate::def::U_CLIP,
+                                &range,
+                                vec![Arc::new(bit_expr)],
+                            );
                         }
                         _ => return Arc::new(bit_expr),
                     };
@@ -466,20 +472,18 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: ExprCtxt) -> Expr {
                         Arc::new(fname.to_string()),
                         Arc::new(vec![width_exp.clone(), box_lh, box_rh]),
                     );
-                    let uclip_name = crate::def::U_CLIP;
-                    let iclip_name = crate::def::I_CLIP;
                     if let TypX::Int(range) = &*lhs.typ {
                         match range {
                             IntRange::I(_) | IntRange::ISize => {
                                 return apply_range_fun(
-                                    &iclip_name,
+                                    &crate::def::I_CLIP,
                                     &range,
                                     vec![Arc::new(bit_expr)],
                                 );
                             }
                             IntRange::U(_) | IntRange::USize => {
                                 return apply_range_fun(
-                                    &uclip_name,
+                                    &crate::def::U_CLIP,
                                     &range,
                                     vec![Arc::new(bit_expr)],
                                 );
