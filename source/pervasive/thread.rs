@@ -25,7 +25,7 @@ pub struct JoinHandle<#[verifier(maybe_negative)] Ret>
 
 impl<Ret> JoinHandle<Ret>
 {
-    fndecl!(fn predicate(&self, ret: Ret) -> bool);
+    fndecl!(pub fn predicate(&self, ret: Ret) -> bool);
 
     // TODO note that std::thread::JoinHandle::join is allowed to panic
     #[verifier(external_body)]
