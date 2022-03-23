@@ -11,7 +11,7 @@ use pervasive::invariants::*;
 
 use state_machines_macros::tokenized_state_machine;
 
-tokenized_state_machine!(Dupe<#[verifier(maybe_negative)] T> {
+tokenized_state_machine!(Dupe<T> {
     fields {
         #[sharding(storage_option)]
         pub storage: Option<T>,
@@ -56,7 +56,7 @@ tokenized_state_machine!(Dupe<#[verifier(maybe_negative)] T> {
 });
 
 #[proof]
-pub struct Duplicable<#[verifier(maybe_negative)] T> {
+pub struct Duplicable<T> {
     #[proof] pub inst: Dupe_Instance<T>,
     #[proof] pub reader: Dupe_reader<T>,
 }
