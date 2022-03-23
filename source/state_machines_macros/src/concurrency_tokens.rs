@@ -350,7 +350,7 @@ struct Ctxt {
     // (not including special ops)
     fields_written: HashSet<String>,
 
-    // fields read (via `self.field`) in some expression
+    // fields read (via `pre.field`) in some expression
     fields_read: HashSet<String>,
 
     // fields read in a birds_eye statement
@@ -464,15 +464,15 @@ pub fn exchange_stream(
     // Potentially remove steps that won't be useful.
     // We want to do this before `find_all_accesses` below, since this step may potentially
     // remove field accesses that we would like to ignore.
-    // For example, suppose the user writes `update(foo, self.bar)` where `foo` is
+    // For example, suppose the user writes `update(foo, pre.bar)` where `foo` is
     // NotTokenized. In that case, we want to make sure that we _don't_ process
-    // self.bar as a requirement to have `bar` as an input token.
+    // pre.bar as a requirement to have `bar` as an input token.
     tr.body = prune_irrelevant_ops(&ctxt, tr.body);
 
     // compute `ctxt.fields_written`, which is used to determine the output tokens
     determine_outputs(&mut ctxt, &tr.body)?;
 
-    // Determine which fields are read (e.g., `self.foo`) and in what context those
+    // Determine which fields are read (e.g., `pre.foo`) and in what context those
     // fields are read.
 
     let mut errors = Vec::new();
@@ -484,7 +484,7 @@ pub fn exchange_stream(
     ctxt.fields_read_birds_eye = fields_read_birds_eye;
 
     // translate the expressions in the TransitionStmt so that
-    // where they previously referred to fields like `self.foo`,
+    // where they previously referred to fields like `pre.foo`,
     // they now refer to the field that comes from an input.
     // Also simplifies away SpecialOps.
 
@@ -568,7 +568,7 @@ pub fn exchange_stream(
             }
 
             // Sanity check some assumptions that should hold for any well-formed
-            // 'init' routine. In particular, there should be no occurrences to `self.field`
+            // 'init' routine. In particular, there should be no occurrences to `pre.field`
             // and every field should be written.
 
             assert!(!use_explicit_lifetime);
@@ -1326,7 +1326,7 @@ fn determine_outputs(ctxt: &mut Ctxt, ts: &TransitionStmt) -> syn::parse::Result
 
 /// The function has several purposes:
 ///
-///   1. Replace `self.foo` subexpression with the corresponding value from the
+///   1. Replace `pre.foo` subexpression with the corresponding value from the
 ///      input tokens, e.g., `token_foo.value`
 ///   2. Expand the definitions for any SpecialOps.
 ///
@@ -1582,7 +1582,7 @@ fn translate_transition(
 }
 
 /// Perform translation on the Rust AST Exprs.
-/// We need to find expressions like `self.foo` that refer to individual fields and replace
+/// We need to find expressions like `pre.foo` that refer to individual fields and replace
 /// them with some expression in terms of the parameters of the exchange function.
 /// There are a few ways this can happen, depending on the context:
 ///

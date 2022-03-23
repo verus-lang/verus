@@ -112,14 +112,9 @@ fn check_each_lemma_valid(bundle: &SMBundle) -> syn::parse::Result<()> {
 }
 
 /// For the lemma about an 'init' routine,
-/// we expect params: `post: X, ...` where `...` are the transition params and X is the self type.
+/// we expect params: `post: X, ...` where `...` are the transition params and X is the Self type.
 /// For a 'transition' routine,
-/// we expect params: `self: X, post: X, ...`
-///
-/// NOTE: unfortunately we have to write out the name `X` rather than just using the
-/// keyword `Self`. The reason is that using `Self` turns the param into a special 'self'
-/// param, which runs into a current limitation of Verus: we cannot have a `#[spec] self`
-/// argument on a `#[proof]` function.
+/// we expect params: `pre: X, post: X, ...`
 
 fn get_expected_params(sm: &SM, t: &Transition) -> Vec<TransitionParam> {
     let mut v = vec![];
@@ -130,7 +125,7 @@ fn get_expected_params(sm: &SM, t: &Transition) -> Vec<TransitionParam> {
         }
         TransitionKind::Transition => {
             v.push(TransitionParam {
-                name: Ident::new("self", self_ty.span()),
+                name: Ident::new("pre", self_ty.span()),
                 ty: self_ty.clone(),
             });
             v.push(TransitionParam { name: Ident::new("post", self_ty.span()), ty: self_ty });
@@ -272,7 +267,7 @@ fn transition_params_to_string(
 ) -> String {
     let mut v1 = vec![];
     if !is_init {
-        v1.push("self: ".to_string() + &ty_to_string(self_ty));
+        v1.push("pre: ".to_string() + &ty_to_string(self_ty));
     }
     v1.push("post: ".to_string() + &ty_to_string(self_ty));
     v1.extend(params.iter().map(|f| f.name.to_string() + ": " + &ty_to_string(&f.ty)));

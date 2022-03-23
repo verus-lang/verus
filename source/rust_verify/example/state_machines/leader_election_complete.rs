@@ -43,13 +43,13 @@ state_machine!(
 
         transition!{
             transmission(srcidx: nat) {
-                require(0 <= srcidx && srcidx < self.ids.len());
+                require(0 <= srcidx && srcidx < pre.ids.len());
 
-                let dstidx = if srcidx + 1 == self.ids.len() { 0 } else { srcidx + 1 };
-                let message = max(self.highest_heard.index(srcidx), self.ids.index(srcidx));
-                let dst_new_max = max(self.highest_heard.index(dstidx), message);
+                let dstidx = if srcidx + 1 == pre.ids.len() { 0 } else { srcidx + 1 };
+                let message = max(pre.highest_heard.index(srcidx), pre  .ids.index(srcidx));
+                let dst_new_max = max(pre.highest_heard.index(dstidx), message);
 
-                update highest_heard = self.highest_heard.update(dstidx, dst_new_max);
+                update highest_heard = pre.highest_heard.update(dstidx, dst_new_max);
             }
         }
 
@@ -100,12 +100,12 @@ state_machine!(
         }
 
         #[inductive(transmission)]
-        pub fn preserves_ind(self: X, post: X, srcidx: nat) {
+        pub fn preserves_ind(pre: X, post: X, srcidx: nat) {
             // XXX(travis): this sort of copy-paste is extremely common, we could have
             // a language feature to let us skip it
-            let dstidx = if srcidx + 1 == self.ids.len() { 0 } else { srcidx + 1 };
-            let message = max(self.highest_heard.index(srcidx), self.ids.index(srcidx));
-            let dst_new_max = max(self.highest_heard.index(dstidx), message);
+            let dstidx = if srcidx + 1 == pre.ids.len() { 0 } else { srcidx + 1 };
+            let message = max(pre.highest_heard.index(srcidx), pre.ids.index(srcidx));
+            let dst_new_max = max(pre.highest_heard.index(dstidx), message);
 
             assert_by(post.on_chord_heard_dominates_id_inv(), {
               assert_forall_by(|start: int, end: int| {
@@ -116,24 +116,24 @@ state_machine!(
                   ensures(post.highest_heard.index(node) > post.ids.index(node));
                   if dstidx == end {
                     // maybe this chord just sprung into existence
-                    if post.highest_heard.index(end) == self.highest_heard.index(end) {
+                    if post.highest_heard.index(end) == pre.highest_heard.index(end) {
                       // no change -- 
-                      assert(self.highest_heard.ext_equal(post.highest_heard));
-                      assert(equal(self.highest_heard, post.highest_heard));
-                      assert(equal(self, post));
+                      assert(pre.highest_heard.ext_equal(post.highest_heard));
+                      assert(equal(pre.highest_heard, post.highest_heard));
+                      assert(equal(pre, post));
                       assert(post.highest_heard.index(node) > post.ids.index(node));
-                    } else if post.highest_heard.index(end) == self.ids.index(srcidx) {
+                    } else if post.highest_heard.index(end) == pre.ids.index(srcidx) {
                       assert(false); // proof by contradiction
                       assert(post.highest_heard.index(node) > post.ids.index(node));
-                    } else if post.highest_heard.index(end) == self.highest_heard.index(srcidx) {
-                      assert(self.is_chord(start, srcidx));  // trigger
-                      assert(self.valid_idx(node));
+                    } else if post.highest_heard.index(end) == pre.highest_heard.index(srcidx) {
+                      assert(pre.is_chord(start, srcidx));  // trigger
+                      assert(pre.valid_idx(node));
                       assert(post.highest_heard.index(node) > post.ids.index(node));
                     }
                   } else {
                     // this chord was already here
-                    assert(self.is_chord(start, end)); // trigger
-                    assert(self.valid_idx(node)); // trigger
+                    assert(pre.is_chord(start, end)); // trigger
+                    assert(pre.valid_idx(node)); // trigger
                     assert(post.highest_heard.index(node) > post.ids.index(node));
                   }
                 });
@@ -146,19 +146,19 @@ state_machine!(
                     ensures(i == j);
 
                     if i != j {
-                        if self.is_leader(i) {
-                            assert(self.is_chord(i, i));
-                            //assert(self.OnChordHeardDominatesId(i, i));
+                        if pre.is_leader(i) {
+                            assert(pre.is_chord(i, i));
+                            //assert(pre.OnChordHeardDominatesId(i, i));
                             //assert(between(i, j, i));
-                            assert(self.valid_idx(j));
-                            //assert(self.highest_heard.index(j) > self.ids.index(j));
+                            assert(pre.valid_idx(j));
+                            //assert(pre.highest_heard.index(j) > pre.ids.index(j));
                             assert(!post.is_leader(j));
                             assert(false);
                         }
 
-                        if self.is_leader(j) {
-                            assert(self.is_chord(j, j));
-                            assert(self.valid_idx(i));
+                        if pre.is_leader(j) {
+                            assert(pre.is_chord(j, j));
+                            assert(pre.valid_idx(i));
                             assert(!post.is_leader(i));
                             assert(false);
                         }

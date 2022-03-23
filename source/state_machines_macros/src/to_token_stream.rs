@@ -190,7 +190,7 @@ pub fn output_primary_stuff(
         // `simplify_ops` translates the transition by processing all the special ops
         // and turns them into the core transition primitives.
         // `to_relation` then takes that simplified transition and turns it into
-        // a boolean predicate between `self` and `post`.
+        // a boolean predicate between `pre` and `post`.
 
         let simplified_body = simplify_ops(sm, &trans.body, trans.kind == TransitionKind::Readonly);
 
@@ -211,7 +211,7 @@ pub fn output_primary_stuff(
                     }
                 };
             } else {
-                let args = self_post_params(&trans.params);
+                let args = pre_post_params(&trans.params);
                 rel_fn = quote! {
                     #[spec]
                     #[verifier(publish)]
@@ -228,7 +228,7 @@ pub fn output_primary_stuff(
         // additional 'strong' relation.
 
         if trans.kind == TransitionKind::Transition {
-            let params = self_post_params(&trans.params);
+            let params = pre_post_params(&trans.params);
             let name = Ident::new(&(trans.name.to_string() + "_strong"), trans.name.span());
 
             let f = to_relation(&simplified_body, false /* weak */);
@@ -252,7 +252,7 @@ pub fn output_primary_stuff(
             assert!(trans.kind != TransitionKind::Init);
             let b = safety_condition_body(&simplified_body);
             let name = Ident::new(&(trans.name.to_string() + "_asserts"), trans.name.span());
-            let params = self_assoc_params(&self_ty, &trans.params);
+            let params = pre_assoc_params(&self_ty, &trans.params);
             let b = match b {
                 Some(b) => quote! { #b },
                 None => TokenStream::new(),
@@ -260,7 +260,7 @@ pub fn output_primary_stuff(
             impl_token_stream.extend(quote! {
                 #[proof]
                 pub fn #name(#params) {
-                    crate::pervasive::assume(self.invariant());
+                    crate::pervasive::assume(pre.invariant());
                     #b
                 }
             });
@@ -272,8 +272,8 @@ pub fn output_primary_stuff(
     safety_condition_lemmas
 }
 
-/// self, post: Self, params...
-fn self_post_params(params: &Vec<TransitionParam>) -> TokenStream {
+/// pre: Self, post: Self, params...
+fn pre_post_params(params: &Vec<TransitionParam>) -> TokenStream {
     let params: Vec<TokenStream> = params
         .iter()
         .map(|param| {
@@ -283,14 +283,14 @@ fn self_post_params(params: &Vec<TransitionParam>) -> TokenStream {
         })
         .collect();
     return quote! {
-        self,
+        pre: Self,
         post: Self,
         #(#params),*
     };
 }
 
-// self: X, params...
-fn self_assoc_params(ty: &Type, params: &Vec<TransitionParam>) -> TokenStream {
+// pre: X, params...
+fn pre_assoc_params(ty: &Type, params: &Vec<TransitionParam>) -> TokenStream {
     let params: Vec<TokenStream> = params
         .iter()
         .map(|param| {
@@ -300,7 +300,7 @@ fn self_assoc_params(ty: &Type, params: &Vec<TransitionParam>) -> TokenStream {
         })
         .collect();
     return quote! {
-        self: #ty,
+        pre: #ty,
         #(#params),*
     };
 }
@@ -408,7 +408,7 @@ fn left_of_colon<'a>(fn_arg: &'a FnArg) -> &'a Pat {
 ///   ensures(post.invariant());
 ///
 /// For normal transitions:
-///   requires(self.invariant() && transition(self, post, ...));
+///   requires(pre.invariant() && transition(pre, post, ...));
 ///   ensures(post.invariant());
 ///
 /// For 'readonly' transitions, there is no need to prove inductiveness.
@@ -428,9 +428,9 @@ fn lemma_update_body(bundle: &SMBundle, l: &Lemma, func: &mut ImplItemMethod) {
             &(l.purpose.transition.to_string() + "_strong"),
             l.purpose.transition.span(),
         );
-        let trans_args: Vec<&Pat> =
-            l.func.sig.inputs.iter().skip(1).map(|i| left_of_colon(i)).collect();
-        quote! { self.invariant() && self.#trans_name_strong(#(#trans_args),*) }
+        let self_ty = get_self_ty_turbofish(&bundle.sm);
+        let trans_args: Vec<&Pat> = l.func.sig.inputs.iter().map(|i| left_of_colon(i)).collect();
+        quote! { pre.invariant() && #self_ty::#trans_name_strong(#(#trans_args),*) }
     };
 
     let mut stmts = vec![

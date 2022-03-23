@@ -39,10 +39,10 @@ tokenized_state_machine!(
         fn initialize_inductive(post: X, cond: bool) { }
    
         #[inductive(add)]
-        fn add_inductive(self: X, post: X, n: int) { }
+        fn add_inductive(pre: X, post: X, n: int) { }
    
         #[inductive(add_have)]
-        fn add_have_inductive(self: X, post: X, n: int) { }
+        fn add_have_inductive(pre: X, post: X, n: int) { }
     }
 );
 
@@ -87,18 +87,18 @@ tokenized_state_machine!(
 
         transition!{
             do_deposit(b: bool) {
-                update m = self.m + 1;
-                add map += [self.m => b];
-                deposit storage_map += [self.m => b];
+                update m = pre.m + 1;
+                add map += [pre.m => b];
+                deposit storage_map += [pre.m => b];
             }
         }
 
         transition! {
             do_withdraw(b: bool) {
-                require(self.m >= 1);
-                update m = self.m - 1;
-                remove map -= [self.m => b];
-                withdraw storage_map -= [self.m => b];
+                require(pre.m >= 1);
+                update m = pre.m - 1;
+                remove map -= [pre.m => b];
+                withdraw storage_map -= [pre.m => b];
             }
         }
 
@@ -113,15 +113,15 @@ tokenized_state_machine!(
         fn initialize_inductive(post: Fancy, cond: bool) { }
    
         #[inductive(do_deposit)]
-        fn do_deposit_inductive(self: Fancy, post: Fancy, b: bool) {
+        fn do_deposit_inductive(pre: Fancy, post: Fancy, b: bool) {
             /*
             assert_forall_by(|i: int| {
               requires(post.storage_map.dom().contains(i));
               ensures(0 <= i && i < post.m);
-              if self.storage_map.dom().contains(i) {
+              if pre.storage_map.dom().contains(i) {
                   assert(0 <= i && i < post.m);
               } else {
-                  assert(i == self.m);
+                  assert(i == pre.m);
                   assert(0 <= i && i < post.m);
               }
             });
@@ -129,7 +129,7 @@ tokenized_state_machine!(
         }
 
         #[inductive(do_withdraw)]
-        fn do_withdraw_inductive(self: Fancy, post: Fancy, b: bool) { }
+        fn do_withdraw_inductive(pre: Fancy, post: Fancy, b: bool) { }
     }
 );
 

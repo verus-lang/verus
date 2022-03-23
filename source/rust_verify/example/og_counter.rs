@@ -35,36 +35,36 @@ tokenized_state_machine!(
 
         transition!{
             tr_inc_a() {
-                require(!self.inc_a);
-                assert(self.counter <= 2);
-                update counter = self.counter + 1;
+                require(!pre.inc_a);
+                assert(pre.counter <= 2);
+                update counter = pre.counter + 1;
                 update inc_a = true;
             }
         }
 
         transition!{
             tr_inc_b() {
-                require(!self.inc_b);
-                assert(self.counter <= 2);
-                update counter = self.counter + 1;
+                require(!pre.inc_b);
+                assert(pre.counter <= 2);
+                update counter = pre.counter + 1;
                 update inc_b = true;
             }
         }
 
         readonly!{
             finalize() {
-                require(self.inc_a);
-                require(self.inc_b);
-                assert self.counter == 2;
+                require(pre.inc_a);
+                require(pre.inc_b);
+                assert pre.counter == 2;
             }
         }
 
         #[inductive(tr_inc_a)]
-        fn tr_inc_a_preserves(self: X, post: X) {
+        fn tr_inc_a_preserves(pre: X, post: X) {
         }
 
         #[inductive(tr_inc_b)]
-        fn tr_inc_b_preserves(self: X, post: X) {
+        fn tr_inc_b_preserves(pre: X, post: X) {
         }
 
         #[inductive(initialize)]

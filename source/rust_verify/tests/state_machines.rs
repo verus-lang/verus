@@ -161,7 +161,7 @@ test_verify_one_file! {
 
             transition!{
                 tr() {
-                    update v = self.t.get_Some_0();
+                    update v = pre.t.get_Some_0();
                 }
             }
         }}
@@ -178,7 +178,7 @@ test_verify_one_file! {
 
             transition!{
                 tr() {
-                    update v = self.t.index(0);
+                    update v = pre.t.index(0);
                 }
             }
         }}
@@ -195,7 +195,7 @@ test_verify_one_file! {
 
             transition!{
                 tr() {
-                    update v = self.t;
+                    update v = pre.t;
                 }
             }
         }}
@@ -212,7 +212,7 @@ test_verify_one_file! {
 
             transition!{
                 tr() {
-                    update v = self.t.get_Some_0();
+                    update v = pre.t.get_Some_0();
                 }
             }
         }}
@@ -229,7 +229,7 @@ test_verify_one_file! {
 
             transition!{
                 tr() {
-                    update v = self.t;
+                    update v = pre.t;
                 }
             }
         }}
@@ -237,7 +237,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_use_self_no_field IMPORTS.to_string() + code_str! {
+    #[test] test_use_pre_no_field IMPORTS.to_string() + code_str! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(variable)] pub v: int,
@@ -245,7 +245,7 @@ test_verify_one_file! {
 
             transition!{
                 tr() {
-                    update v = { let s = self; s.v };
+                    update v = { let s = pre; s.v };
                 }
             }
         }}
@@ -253,7 +253,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_use_self_no_field2 IMPORTS.to_string() + code_str! {
+    #[test] test_use_pre_no_field2 IMPORTS.to_string() + code_str! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(variable)] pub v: int,
@@ -261,15 +261,15 @@ test_verify_one_file! {
 
             transition!{
                 tr() {
-                    update v = self.some_fn();
+                    update v = pre.some_fn();
                 }
             }
         }}
-    } => Err(e) => assert_error_msg(e, "'self' cannot be used opaquely")
+    } => Err(e) => assert_error_msg(e, "'pre' cannot be used opaquely")
 }
 
 test_verify_one_file! {
-    #[test] test_use_self_no_field3 IMPORTS.to_string() + code_str! {
+    #[test] test_use_pre_no_field3 IMPORTS.to_string() + code_str! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(variable)] pub v: int,
@@ -277,7 +277,7 @@ test_verify_one_file! {
 
             transition!{
                 tr() {
-                    update v = self.not_a_field;
+                    update v = pre.not_a_field;
                 }
             }
         }}
@@ -285,7 +285,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_use_self_no_field4 IMPORTS.to_string() + code_str! {
+    #[test] test_use_pre_no_field4 IMPORTS.to_string() + code_str! {
         tokenized_state_machine!{ X {
             fields {
                 #[sharding(variable)] pub v: int,
@@ -293,7 +293,7 @@ test_verify_one_file! {
 
             transition!{
                 tr() {
-                    update v = self.0;
+                    update v = pre.0;
                 }
             }
         }}
@@ -416,11 +416,11 @@ test_verify_one_file! {
             }
 
             #[inductive(tr)]
-            pub fn lemma_tr1(self: X, post: X, x: int) {
+            pub fn lemma_tr1(pre: X, post: X, x: int) {
             }
 
             #[inductive(tr)]
-            pub fn lemma_tr2(self: X, post: X, x: int) {
+            pub fn lemma_tr2(pre: X, post: X, x: int) {
             }
         }}
     } => Err(e) => assert_error_msg(e, "duplicate 'inductive' lemma")
@@ -481,7 +481,7 @@ test_verify_one_file! {
             }
 
             #[inductive(tr)]
-            pub fn lemma_tr1(self: X, post: X, x: int) {
+            pub fn lemma_tr1(pre: X, post: X, x: int) {
             }
         }}
     } => Err(e) => assert_error_msg(e, "'inductive' lemma does not make sense for a 'readonly' transition")
@@ -500,7 +500,7 @@ test_verify_one_file! {
             }
 
             #[inductive(tr)]
-            pub fn lemma_tr1(self: X, post: X, y: int) {
+            pub fn lemma_tr1(pre: X, post: X, y: int) {
             }
         }}
     } => Err(e) => assert_error_msg(e, "params for 'inductive' lemma should be")
@@ -519,7 +519,7 @@ test_verify_one_file! {
             }
 
             #[inductive(tro)]
-            pub fn lemma_tr1(self: X, post: X, x: int) {
+            pub fn lemma_tr1(pre: X, post: X, x: int) {
             }
         }}
     } => Err(e) => assert_error_msg(e, "could not find transition")
@@ -538,7 +538,7 @@ test_verify_one_file! {
             }
 
             #[inductive(tr)]
-            pub fn lemma_tr1<T>(self: X, post: X, x: int) {
+            pub fn lemma_tr1<T>(pre: X, post: X, x: int) {
             }
         }}
     } => Err(e) => assert_error_msg(e, "should have no generic parameters")
@@ -557,7 +557,7 @@ test_verify_one_file! {
             }
 
             #[inductive(tr)]
-            pub fn lemma_tr1(self: X, post: X, x: int) -> bool {
+            pub fn lemma_tr1(pre: X, post: X, x: int) -> bool {
             }
         }}
     } => Err(e) => assert_error_msg(e, "should have no return type")
@@ -576,7 +576,7 @@ test_verify_one_file! {
             }
 
             #[inductive(tr)]
-            pub fn lemma_tr1(self: X, post: X, x: int) {
+            pub fn lemma_tr1(pre: X, post: X, x: int) {
                 requires(true);
             }
         }}
@@ -602,7 +602,7 @@ test_verify_one_file! {
             }
 
             #[inductive(tr)]
-            pub fn lemma_tr1(self: X, post: X, x: int) {
+            pub fn lemma_tr1(pre: X, post: X, x: int) {
             } // FAILS
         }}
     } => Err(e) => assert_one_fails(e)
@@ -1443,8 +1443,8 @@ test_verify_one_file! {
             }
 
             #[inductive(tr)]
-            pub fn is_inductive(self: X, post: X) {
-                assert(self.t.is_None());
+            pub fn is_inductive(pre: X, post: X) {
+                assert(pre.t.is_None());
                 assert(post.t.is_Some());
                 assert(post.t.get_Some_0() == 5);
             }
@@ -1467,8 +1467,8 @@ test_verify_one_file! {
             }
 
             #[inductive(tr)]
-            pub fn is_inductive(self: X, post: X) {
-                assert(!self.t.dom().contains(5));
+            pub fn is_inductive(pre: X, post: X) {
+                assert(!pre.t.dom().contains(5));
                 assert(post.t.dom().contains(5));
                 assert(post.t.index(5) == 7);
             }
@@ -1559,9 +1559,9 @@ test_verify_one_file! {
             }
 
             #[inductive(tr)]
-            pub fn is_inductive(self: X, post: X) {
-                assert(self.t.is_Some());
-                assert(self.t.get_Some_0() == 5);
+            pub fn is_inductive(pre: X, post: X) {
+                assert(pre.t.is_Some());
+                assert(pre.t.get_Some_0() == 5);
                 assert(post.t.is_None());
             }
         }}
@@ -1583,9 +1583,9 @@ test_verify_one_file! {
             }
 
             #[inductive(tr)]
-            pub fn is_inductive(self: X, post: X) {
-                assert(self.t.dom().contains(5));
-                assert(self.t.index(5) == 7);
+            pub fn is_inductive(pre: X, post: X) {
+                assert(pre.t.dom().contains(5));
+                assert(pre.t.index(5) == 7);
                 assert(!post.t.dom().contains(5));
             }
         }}
@@ -1607,9 +1607,9 @@ test_verify_one_file! {
             }
 
             #[inductive(tr)]
-            pub fn is_inductive(self: X, post: X) {
-                assert(self.t.count(5) >= 1);
-                assert(equal(post.t, self.t.remove(5)));
+            pub fn is_inductive(pre: X, post: X) {
+                assert(pre.t.count(5) >= 1);
+                assert(equal(post.t, pre.t.remove(5)));
             }
         }}
     // not supported right now:
@@ -1629,7 +1629,7 @@ test_verify_one_file! {
                 tr() {
                     guard t >= Some(5) by { }; // FAILS
 
-                    birds_eye let t = self.t;
+                    birds_eye let t = pre.t;
                     assert(t.is_Some() && t.get_Some_0() == 5);
                 }
             }
@@ -1649,7 +1649,7 @@ test_verify_one_file! {
                 tr() {
                     guard t >= [5 => 7] by { }; // FAILS
 
-                    birds_eye let t = self.t;
+                    birds_eye let t = pre.t;
                     assert(t.dom().contains(5) && t.index(5) == 7);
                 }
             }
@@ -1669,7 +1669,7 @@ test_verify_one_file! {
                 tr() {
                     guard t >= { 5 } by { }; // FAILS
 
-                    birds_eye let t = self.t;
+                    birds_eye let t = pre.t;
                     assert(t.count(5) >= 1);
                 }
             }
@@ -1694,8 +1694,8 @@ test_verify_one_file! {
             }
 
             #[inductive(tr)]
-            pub fn is_inductive(self: X, post: X) {
-                assert(self.t.is_None());
+            pub fn is_inductive(pre: X, post: X) {
+                assert(pre.t.is_None());
                 assert(post.t.is_Some());
                 assert(post.t.get_Some_0() == 5);
             }
@@ -1718,8 +1718,8 @@ test_verify_one_file! {
             }
 
             #[inductive(tr)]
-            pub fn is_inductive(self: X, post: X) {
-                assert(!self.t.dom().contains(5));
+            pub fn is_inductive(pre: X, post: X) {
+                assert(!pre.t.dom().contains(5));
                 assert(post.t.dom().contains(5));
                 assert(post.t.index(5) == 7);
             }
@@ -1753,7 +1753,7 @@ test_verify_one_file! {
 
             transition!{
                 tr() {
-                    assert(self.t == 0); // FAILS
+                    assert(pre.t == 0); // FAILS
                 }
             }
         }}
@@ -1769,7 +1769,7 @@ test_verify_one_file! {
 
             readonly!{
                 tr() {
-                    assert(self.t == 0); // FAILS
+                    assert(pre.t == 0); // FAILS
                 }
             }
         }}
@@ -2008,7 +2008,7 @@ test_verify_one_file! {
 
             readonly!{
                 ro() {
-                    assert(self.t == 2);
+                    assert(pre.t == 2);
                 }
             }
 
@@ -2043,7 +2043,7 @@ test_verify_one_file! {
 
             readonly!{
                 ro() {
-                    assert(self.t == 2) by {
+                    assert(pre.t == 2) by {
                         foo_lemma();
                     };
                 }
@@ -2083,18 +2083,18 @@ test_verify_one_file! {
             transition!{
                 tr1(b: bool, c: bool) {
                     require(b);
-                    assert(self.y <= self.z);
+                    assert(pre.y <= pre.z);
                     require(c);
-                    update z = self.z + 1;
+                    update z = pre.z + 1;
                 }
             }
 
             transition!{
                 tr2(b: bool, c: bool) {
                     if b {
-                        update z = self.z + 1;
+                        update z = pre.z + 1;
                     } else {
-                        assert(self.y <= self.z);
+                        assert(pre.y <= pre.z);
                     }
                     require(c);
                 }
@@ -2103,9 +2103,9 @@ test_verify_one_file! {
             transition!{
                 tr3(b: bool, c: bool) {
                     if b {
-                        assert(self.y <= self.z);
+                        assert(pre.y <= pre.z);
                     } else {
-                        let j = self.z + 1;
+                        let j = pre.z + 1;
                         update z = j;
                     }
                     require(c);
@@ -2119,13 +2119,13 @@ test_verify_one_file! {
             fn init_inductive(post: X, x: int, y: int, z: int) { }
 
             #[inductive(tr1)]
-            fn tr1_inductive(self: X, post: X, b: bool, c: bool) { }
+            fn tr1_inductive(pre: X, post: X, b: bool, c: bool) { }
 
             #[inductive(tr2)]
-            fn tr2_inductive(self: X, post: X, b: bool, c: bool) { }
+            fn tr2_inductive(pre: X, post: X, b: bool, c: bool) { }
 
             #[inductive(tr3)]
-            fn tr3_inductive(self: X, post: X, b: bool, c: bool) { }
+            fn tr3_inductive(pre: X, post: X, b: bool, c: bool) { }
 
         }}
 
@@ -2569,15 +2569,15 @@ test_verify_one_file! {
 
             transition!{
                 tr1() {
-                    update nt = self.nt + 1; // this is ok because the exchange fn ignores this line
-                    update v1 = self.v1 + 2;
+                    update nt = pre.nt + 1; // this is ok because the exchange fn ignores this line
+                    update v1 = pre.v1 + 2;
                 }
             }
 
             transition!{
                 tr2() {
                     // v1 should be passed in as tokens, v2 read nondeterministically
-                    birds_eye let x = self.nt + self.c + self.v1 - self.v2;
+                    birds_eye let x = pre.nt + pre.c + pre.v1 - pre.v2;
                     update v1 = x;
                 }
             }
@@ -2585,8 +2585,8 @@ test_verify_one_file! {
             transition!{
                 tr3() {
                     // v1, v2 both passed in as tokens
-                    birds_eye let x = self.nt + self.c + self.v1 - self.v2;
-                    update v1 = x + self.v2;
+                    birds_eye let x = pre.nt + pre.c + pre.v1 - pre.v2;
+                    update v1 = x + pre.v2;
                 }
             }
         }}
@@ -2607,7 +2607,8 @@ test_verify_one_file! {
             #[spec] let old_v1_value = v1.value;
             #[proof] let (birds_eye_v2, birds_eye_nt) = instance.tr2(&mut v1);
             assert(equal(v1.instance, instance));
-            // TODO why doesn't this work?
+            // TODO this should pass but currently fails, see
+            // https://github.com/secure-foundations/verus/issues/102
             //assert(equal(v1.value,
             //    birds_eye_nt.value() + instance.c() + old_v1_value - birds_eye_v2.value()));
 
@@ -2618,4 +2619,52 @@ test_verify_one_file! {
             //assert(equal(v1.value, birds_eye_nt.value() + instance.c() + old_v1_value - v2.value));
         }
     } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] pre_in_init IMPORTS.to_string() + code_str! {
+        state_machine!{ X {
+            fields {
+                pub t: int,
+            }
+
+            init!{
+                init() {
+                    update t = pre.t;
+                }
+            }
+        }}
+    } => Err(e) => assert_error_msg(e, "no previous state to refer to")
+}
+
+test_verify_one_file! {
+    #[test] self_in_transition IMPORTS.to_string() + code_str! {
+        state_machine!{ X {
+            fields {
+                pub t: int,
+            }
+
+            transition!{
+                tr() {
+                    update t = self.t;
+                }
+            }
+        }}
+    } => Err(e) => assert_error_msg(e, "`self` is meaningless")
+}
+
+test_verify_one_file! {
+    #[test] post_in_transition IMPORTS.to_string() + code_str! {
+        state_machine!{ X {
+            fields {
+                pub t: int,
+            }
+
+            transition!{
+                tr() {
+                    update t = post.t;
+                }
+            }
+        }}
+    } => Err(e) => assert_error_msg(e, "cannot refer directly to `post`")
 }

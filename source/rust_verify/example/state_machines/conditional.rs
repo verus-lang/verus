@@ -36,9 +36,9 @@ tokenized_state_machine!(
             add(n: int) {
                 update a = 0;
                 if n >= 0 {
-                    update b = self.b + n;
+                    update b = pre.b + n;
                 } else {
-                    update b = self.b - n;
+                    update b = pre.b - n;
                     update c = 15;
                 }
             }
@@ -49,9 +49,9 @@ tokenized_state_machine!(
                 update a = 0;
                 if n >= 0 {
                     update c = 15;
-                    update b = self.b + n;
+                    update b = pre.b + n;
                 } else {
-                    update b = self.b - n;
+                    update b = pre.b - n;
                 }
             }
         }
@@ -72,16 +72,16 @@ tokenized_state_machine!(
         }
 
         #[inductive(foo)]
-        fn foo_inductive(self: X, post: X, n: int) { }
+        fn foo_inductive(pre: X, post: X, n: int) { }
        
         #[inductive(initialize)]
         fn initialize_inductive(post: X, cond: bool) { }
      
         #[inductive(add)]
-        fn add_inductive(self: X, post: X, n: int) { }
+        fn add_inductive(pre: X, post: X, n: int) { }
      
         #[inductive(add2)]
-        fn add2_inductive(self: X, post: X, n: int) { }
+        fn add2_inductive(pre: X, post: X, n: int) { }
 
     }
 );

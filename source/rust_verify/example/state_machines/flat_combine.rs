@@ -192,7 +192,7 @@ tokenized_state_machine!{
 
         transition!{
             client_send(j: nat, request: Request, cur_slot: bool) {
-                require(0 <= j && j < self.num_clients);
+                require(0 <= j && j < pre.num_clients);
 
                 // Move client to 'waiting' state
                 remove clients -= [j => Client::Idle];
@@ -204,21 +204,21 @@ tokenized_state_machine!{
 
                 // deposit the request
                 deposit requests += [j => request] by {
-                    assert(!self.request_stored(j));
+                    assert(!pre.request_stored(j));
                 };
             }
         }
 
         #[inductive(client_send)]
-        fn client_send_inductive(self: FlatCombiner,
+        fn client_send_inductive(pre: FlatCombiner,
             post: FlatCombiner, j: nat, request: Request, cur_slot: bool)
         {
-            assert(forall(|i| post.valid_idx(i) >>= self.valid_idx(i)));
-            assert(self.valid_idx(j));
-            assert(forall(|i| post.client_waiting(i) && i != j >>= self.client_waiting(i)));
-            assert(forall(|i| post.combiner_has(i) >>= self.combiner_has(i)));
-            assert(forall(|i| post.request_stored(i) && i != j >>= self.request_stored(i)));
-            assert(forall(|i| post.response_stored(i) >>= self.response_stored(i)));
+            assert(forall(|i| post.valid_idx(i) >>= pre.valid_idx(i)));
+            assert(pre.valid_idx(j));
+            assert(forall(|i| post.client_waiting(i) && i != j >>= pre.client_waiting(i)));
+            assert(forall(|i| post.combiner_has(i) >>= pre.combiner_has(i)));
+            assert(forall(|i| post.request_stored(i) && i != j >>= pre.request_stored(i)));
+            assert(forall(|i| post.response_stored(i) >>= pre.response_stored(i)));
 
             assert(post.request_stored(j));
             assert(post.client_waiting(j));
@@ -229,7 +229,7 @@ tokenized_state_machine!{
                 if i == j {
                     assert(post.request_stored(i));
                 } else {
-                    assert(self.client_waiting(i));
+                    assert(pre.client_waiting(i));
                     assert(post.request_stored(i) || post.response_stored(i) || post.combiner_has(i));
                 }
             });*/
@@ -237,7 +237,7 @@ tokenized_state_machine!{
             
         transition!{
             client_recv(j: nat, rid: int) {
-                require(0 <= j && j < self.num_clients);
+                require(0 <= j && j < pre.num_clients);
 
                 // Move client to 'idle' state
                 remove clients -= [j => Client::Waiting{rid}];
@@ -247,29 +247,29 @@ tokenized_state_machine!{
                 have slots >= [j => false];
 
                 // withdraw the response
-                birds_eye let response = self.responses.index(j);
+                birds_eye let response = pre.responses.index(j);
                 withdraw responses -= [j => response] by {
-                    assert(self.client_waiting(j));
-                    //assert(!self.request_stored(j));
-                    //assert(!self.combiner_has(j));
-                    //assert(self.response_stored(j));
+                    assert(pre.client_waiting(j));
+                    //assert(!pre.request_stored(j));
+                    //assert(!pre.combiner_has(j));
+                    //assert(pre.response_stored(j));
                 };
 
                 // make sure we get back the response for the correct request id:
                 assert(response.rid == rid) by {
-                    assert(self.client_waiting(j));
+                    assert(pre.client_waiting(j));
                 };
             }
         }
 
         #[inductive(client_recv)]
-        fn client_recv_inductive(self: FlatCombiner, post: FlatCombiner, j: nat, rid: int) {
-            assert(forall(|i| post.valid_idx(i) >>= self.valid_idx(i)));
-            assert(self.valid_idx(j));
-            assert(forall(|i| post.client_waiting(i) >>= self.client_waiting(i)));
-            assert(forall(|i| post.combiner_has(i) >>= self.combiner_has(i)));
-            assert(forall(|i| post.request_stored(i) >>= self.request_stored(i)));
-            assert(forall(|i| post.response_stored(i) && i != j >>= self.response_stored(i)));
+        fn client_recv_inductive(pre: FlatCombiner, post: FlatCombiner, j: nat, rid: int) {
+            assert(forall(|i| post.valid_idx(i) >>= pre.valid_idx(i)));
+            assert(pre.valid_idx(j));
+            assert(forall(|i| post.client_waiting(i) >>= pre.client_waiting(i)));
+            assert(forall(|i| post.combiner_has(i) >>= pre.combiner_has(i)));
+            assert(forall(|i| post.request_stored(i) >>= pre.request_stored(i)));
+            assert(forall(|i| post.response_stored(i) && i != j >>= pre.response_stored(i)));
 
             assert(!post.client_waiting(j));
         }
@@ -278,46 +278,46 @@ tokenized_state_machine!{
 
         transition!{
             combiner_recv() {
-                require(self.combiner.is_Collecting());
-                let j = self.combiner.get_Collecting_elems().len();
-                require(0 <= j && j < self.num_clients);
+                require(pre.combiner.is_Collecting());
+                let j = pre.combiner.get_Collecting_elems().len();
+                require(0 <= j && j < pre.num_clients);
 
                 // Observe that the slot has been set to 'true'
                 have slots >= [j => true];
 
                 // Withdraw a request
-                birds_eye let request = self.requests.index(j);
+                birds_eye let request = pre.requests.index(j);
                 withdraw requests -= [j => request] by {
-                    assert(self.valid_idx(j));
-                    assert(self.client_waiting(j));
-                    assert(self.request_stored(j));
+                    assert(pre.valid_idx(j));
+                    assert(pre.client_waiting(j));
+                    assert(pre.request_stored(j));
                 };
 
                 // Update combiner's local state to remember we withdrew a request with this ID
                 update combiner = Combiner::Collecting{
-                    elems: self.combiner.get_Collecting_elems().push(Option::Some(request.rid)),
+                    elems: pre.combiner.get_Collecting_elems().push(Option::Some(request.rid)),
                 };
             }
         }
 
         #[inductive(combiner_recv)]
-        fn combiner_recv_inductive(self: FlatCombiner, post: FlatCombiner) {
-            let j = self.combiner.get_Collecting_elems().len();
-            assert(forall(|i| post.valid_idx(i) >>= self.valid_idx(i)));
+        fn combiner_recv_inductive(pre: FlatCombiner, post: FlatCombiner) {
+            let j = pre.combiner.get_Collecting_elems().len();
+            assert(forall(|i| post.valid_idx(i) >>= pre.valid_idx(i)));
             assert(post.valid_idx(j));
-            assert(forall(|i| post.client_waiting(i) >>= self.client_waiting(i)));
-            assert(forall(|i| post.combiner_has(i) && i != j >>= self.combiner_has(i)));
-            assert(forall(|i| post.request_stored(i) >>= self.request_stored(i)));
-            assert(forall(|i| post.response_stored(i) >>= self.response_stored(i)));
+            assert(forall(|i| post.client_waiting(i) >>= pre.client_waiting(i)));
+            assert(forall(|i| post.combiner_has(i) && i != j >>= pre.combiner_has(i)));
+            assert(forall(|i| post.request_stored(i) >>= pre.request_stored(i)));
+            assert(forall(|i| post.response_stored(i) >>= pre.response_stored(i)));
 
             assert(post.combiner_has(j));
         }
 
         transition!{
             combiner_skip() {
-                require(self.combiner.is_Collecting());
-                let j = self.combiner.get_Collecting_elems().len();
-                require(0 <= j && j < self.num_clients);
+                require(pre.combiner.is_Collecting());
+                let j = pre.combiner.get_Collecting_elems().len();
+                require(0 <= j && j < pre.num_clients);
 
                 // In practice, this happens when slot j is set to false, so we could add this:
                 //    have slots >= [j => false];
@@ -326,30 +326,30 @@ tokenized_state_machine!{
                 // Update combiner's local state to remember that we didn't withdraw
                 // anything here.
                 update combiner = Combiner::Collecting{
-                    elems: self.combiner.get_Collecting_elems().push(Option::None),
+                    elems: pre.combiner.get_Collecting_elems().push(Option::None),
                 };
             }
         }
 
         #[inductive(combiner_skip)]
-        fn combiner_skip_inductive(self: FlatCombiner, post: FlatCombiner) {
-            let j = self.combiner.get_Collecting_elems().len();
-            assert(forall(|i| post.valid_idx(i) >>= self.valid_idx(i)));
+        fn combiner_skip_inductive(pre: FlatCombiner, post: FlatCombiner) {
+            let j = pre.combiner.get_Collecting_elems().len();
+            assert(forall(|i| post.valid_idx(i) >>= pre.valid_idx(i)));
             assert(post.valid_idx(j));
-            assert(forall(|i| post.client_waiting(i) >>= self.client_waiting(i)));
-            assert(forall(|i| post.combiner_has(i) && i != j >>= self.combiner_has(i)));
-            assert(forall(|i| post.request_stored(i) >>= self.request_stored(i)));
-            assert(forall(|i| post.response_stored(i) >>= self.response_stored(i)));
+            assert(forall(|i| post.client_waiting(i) >>= pre.client_waiting(i)));
+            assert(forall(|i| post.combiner_has(i) && i != j >>= pre.combiner_has(i)));
+            assert(forall(|i| post.request_stored(i) >>= pre.request_stored(i)));
+            assert(forall(|i| post.response_stored(i) >>= pre.response_stored(i)));
 
             assert(!post.combiner_has(j));
         }
 
         transition!{
             combiner_go_to_responding() {
-                require(self.combiner.is_Collecting());
-                require(self.combiner.get_Collecting_elems().len() == self.num_clients);
+                require(pre.combiner.is_Collecting());
+                require(pre.combiner.get_Collecting_elems().len() == pre.num_clients);
                 update combiner = Combiner::Responding{
-                    elems: self.combiner.get_Collecting_elems(),
+                    elems: pre.combiner.get_Collecting_elems(),
                     idx: 0,
                 };
             }
@@ -357,10 +357,10 @@ tokenized_state_machine!{
 
         transition!{
             combiner_send(response: Response, cur_slot: bool) {
-                require(self.combiner.is_Responding());
-                let j = self.combiner.get_Responding_idx();
-                require(0 <= j && j < self.num_clients);
-                let response_opt = self.combiner.get_Responding_elems().index(j);
+                require(pre.combiner.is_Responding());
+                let j = pre.combiner.get_Responding_idx();
+                require(0 <= j && j < pre.num_clients);
+                let response_opt = pre.combiner.get_Responding_elems().index(j);
 
                 // The response we return has to have the right request ID
                 require(equal(response_opt, Option::Some(response.rid)));
@@ -371,88 +371,88 @@ tokenized_state_machine!{
 
                 // Update the combiner's local state
                 update combiner = Combiner::Responding{
-                    elems: self.combiner.get_Responding_elems(),
+                    elems: pre.combiner.get_Responding_elems(),
                     idx: j + 1,
                 };
 
                 deposit responses += [j => response] by {
-                    assert(self.valid_idx(j));
-                    assert(self.combiner_has(j));
-                    assert(!self.response_stored(j));
+                    assert(pre.valid_idx(j));
+                    assert(pre.combiner_has(j));
+                    assert(!pre.response_stored(j));
                 };
             }
         }
 
         #[inductive(combiner_send)]
-        fn combiner_send_inductive(self: FlatCombiner, post: FlatCombiner, response: Response, cur_slot: bool) {
-            let j = self.combiner.get_Responding_idx();
+        fn combiner_send_inductive(pre: FlatCombiner, post: FlatCombiner, response: Response, cur_slot: bool) {
+            let j = pre.combiner.get_Responding_idx();
 
-            assert(forall(|i| post.valid_idx(i) >>= self.valid_idx(i)));
+            assert(forall(|i| post.valid_idx(i) >>= pre.valid_idx(i)));
             assert(post.valid_idx(j));
-            assert(forall(|i| post.client_waiting(i) >>= self.client_waiting(i)));
-            assert(forall(|i| post.combiner_has(i) >>= self.combiner_has(i)));
-            assert(forall(|i| post.request_stored(i) >>= self.request_stored(i)));
-            assert(forall(|i| post.response_stored(i) && i != j >>= self.response_stored(i)));
+            assert(forall(|i| post.client_waiting(i) >>= pre.client_waiting(i)));
+            assert(forall(|i| post.combiner_has(i) >>= pre.combiner_has(i)));
+            assert(forall(|i| post.request_stored(i) >>= pre.request_stored(i)));
+            assert(forall(|i| post.response_stored(i) && i != j >>= pre.response_stored(i)));
 
             assert(!post.combiner_has(j));
         }
 
         transition!{
             combiner_send_skip() {
-                require(self.combiner.is_Responding());
-                let j = self.combiner.get_Responding_idx();
-                require(0 <= j && j < self.num_clients);
-                let response_opt = self.combiner.get_Responding_elems().index(j);
+                require(pre.combiner.is_Responding());
+                let j = pre.combiner.get_Responding_idx();
+                require(0 <= j && j < pre.num_clients);
+                let response_opt = pre.combiner.get_Responding_elems().index(j);
 
                 // The response we return has to have the right request ID
                 require(equal(response_opt, Option::None));
 
                 // Update the combiner's local state
                 update combiner = Combiner::Responding{
-                    elems: self.combiner.get_Responding_elems(),
+                    elems: pre.combiner.get_Responding_elems(),
                     idx: j + 1,
                 };
             }
         }
 
         #[inductive(combiner_send_skip)]
-        fn combiner_send_skip_inductive(self: FlatCombiner, post: FlatCombiner) {
-            let j = self.combiner.get_Responding_idx();
+        fn combiner_send_skip_inductive(pre: FlatCombiner, post: FlatCombiner) {
+            let j = pre.combiner.get_Responding_idx();
 
-            assert(forall(|i| post.valid_idx(i) >>= self.valid_idx(i)));
+            assert(forall(|i| post.valid_idx(i) >>= pre.valid_idx(i)));
             assert(post.valid_idx(j));
-            assert(forall(|i| post.client_waiting(i) >>= self.client_waiting(i)));
-            assert(forall(|i| post.combiner_has(i) >>= self.combiner_has(i)));
-            assert(forall(|i| post.request_stored(i) >>= self.request_stored(i)));
-            assert(forall(|i| post.response_stored(i) >>= self.response_stored(i)));
+            assert(forall(|i| post.client_waiting(i) >>= pre.client_waiting(i)));
+            assert(forall(|i| post.combiner_has(i) >>= pre.combiner_has(i)));
+            assert(forall(|i| post.request_stored(i) >>= pre.request_stored(i)));
+            assert(forall(|i| post.response_stored(i) >>= pre.response_stored(i)));
 
             assert(!post.combiner_has(j));
         }
 
         #[inductive(combiner_go_to_responding)]
-        fn combiner_go_to_responding_inductive(self: FlatCombiner, post: FlatCombiner) {
-            assert(forall(|i| post.valid_idx(i) == self.valid_idx(i)));
-            assert(forall(|i| post.client_waiting(i) == self.client_waiting(i)));
-            assert(forall(|i| post.combiner_has(i) == self.combiner_has(i)));
-            assert(forall(|i| post.request_stored(i) == self.request_stored(i)));
-            assert(forall(|i| post.response_stored(i) == self.response_stored(i)));
+        fn combiner_go_to_responding_inductive(pre: FlatCombiner, post: FlatCombiner) {
+            assert(forall(|i| post.valid_idx(i) == pre.valid_idx(i)));
+            assert(forall(|i| post.client_waiting(i) == pre.client_waiting(i)));
+            assert(forall(|i| post.combiner_has(i) == pre.combiner_has(i)));
+            assert(forall(|i| post.request_stored(i) == pre.request_stored(i)));
+            assert(forall(|i| post.response_stored(i) == pre.response_stored(i)));
         }
 
         transition!{
             combiner_go_to_collecting() {
-                require(self.combiner.is_Responding());
-                require(self.combiner.get_Responding_idx() == self.num_clients);
+                require(pre.combiner.is_Responding());
+                require(pre.combiner.get_Responding_idx() == pre.num_clients);
                 update combiner = Combiner::Collecting{ elems: Seq::empty() };
             }
         }
 
         #[inductive(combiner_go_to_collecting)]
-        fn combiner_go_to_collecting_inductive(self: FlatCombiner, post: FlatCombiner) {
-            assert(forall(|i| post.valid_idx(i) == self.valid_idx(i)));
-            assert(forall(|i| post.client_waiting(i) == self.client_waiting(i)));
-            assert(forall(|i| post.combiner_has(i) == self.combiner_has(i)));
-            assert(forall(|i| post.request_stored(i) == self.request_stored(i)));
-            assert(forall(|i| post.response_stored(i) == self.response_stored(i)));
+        fn combiner_go_to_collecting_inductive(pre: FlatCombiner, post: FlatCombiner) {
+            assert(forall(|i| post.valid_idx(i) == pre.valid_idx(i)));
+            assert(forall(|i| post.client_waiting(i) == pre.client_waiting(i)));
+            assert(forall(|i| post.combiner_has(i) == pre.combiner_has(i)));
+            assert(forall(|i| post.request_stored(i) == pre.request_stored(i)));
+            assert(forall(|i| post.response_stored(i) == pre.response_stored(i)));
         }
 
     }

@@ -27,7 +27,7 @@ use syn::{Expr, Ident, Type};
 // definitions of the various special ops.
 //
 // It's easiest to discuss the second pass first. It works as follows:
-// for a field `foo`, we're going to initialize a "temporary variable" to `self.foo`
+// for a field `foo`, we're going to initialize a "temporary variable" to `pre.foo`
 // at the beginning of the transition. We then symbolically step through the transition
 // performing update and other op statements to update the temporary variables, e.g.,
 //
@@ -36,7 +36,7 @@ use syn::{Expr, Ident, Type};
 //        ... and so on
 //
 // When we reach the PostCondition for `foo`, we then then add
-// the postcondition `self.foo == temp_foo` for whatever accumulated `temp_foo` we have.
+// the postcondition `post.foo == temp_foo` for whatever accumulated `temp_foo` we have.
 //
 // (As we perform this process, we also remove the update and special op statements from the
 // AST, possibly introducing some 'require' or 'assert' statements when necessary,
@@ -293,7 +293,7 @@ impl FieldMap {
         let mut field_map = HashMap::new();
         for field in &sm.fields {
             let ident = &field.name;
-            field_map.insert(ident.to_string(), (0, Expr::Verbatim(quote! { self.#ident })));
+            field_map.insert(ident.to_string(), (0, Expr::Verbatim(quote! { pre.#ident })));
         }
         FieldMap { field_map }
     }

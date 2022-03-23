@@ -52,7 +52,7 @@ tokenized_state_machine!(RwLock {
     /// Increment the 'rc' counter, obtain a pending_reader
     transition!{
         acquire_read_start() {
-            update flags = (self.flags.0, self.flags.1 + 1);
+            update flags = (pre.flags.0, pre.flags.1 + 1);
             add pending_reader += {()};
         }
     }
@@ -61,11 +61,11 @@ tokenized_state_machine!(RwLock {
     /// that the 'exc' bit is 0
     transition!{
         acquire_read_end() {
-            require(self.flags.0 == false);
+            require(pre.flags.0 == false);
 
             remove pending_reader -= {()};
 
-            birds_eye let x = self.storage.get_Some_0();
+            birds_eye let x = pre.storage.get_Some_0();
             add reader += {x};
         }
     }
@@ -75,8 +75,8 @@ tokenized_state_machine!(RwLock {
     transition!{
         acquire_read_abandon() {
             remove pending_reader -= {()};
-            assert(self.flags.1 >= 1);
-            update flags = (self.flags.0, self.flags.1 - 1);
+            assert(pre.flags.1 >= 1);
+            update flags = (pre.flags.0, pre.flags.1 - 1);
         }
     }
 
@@ -84,8 +84,8 @@ tokenized_state_machine!(RwLock {
     /// Obtain a pending_writer
     transition!{
         acquire_exc_start() {
-            require(self.flags.0 == false);
-            update flags = (true, self.flags.1);
+            require(pre.flags.0 == false);
+            update flags = (true, pre.flags.1);
             add pending_writer += Some(());
         }
     }
@@ -95,13 +95,13 @@ tokenized_state_machine!(RwLock {
     /// stored object.
     transition!{
         acquire_exc_end() {
-            require(self.flags.1 == 0);
+            require(pre.flags.1 == 0);
 
             remove pending_writer -= Some(());
 
             add writer += Some(());
 
-            birds_eye let x = self.storage.get_Some_0();
+            birds_eye let x = pre.storage.get_Some_0();
             withdraw storage -= Some(x);
         }
     }
@@ -112,7 +112,7 @@ tokenized_state_machine!(RwLock {
         release_exc(x: T) {
             remove writer -= Some(());
 
-            update flags = (false, self.flags.1);
+            update flags = (false, pre.flags.1);
 
             deposit storage += Some(x);
         }
@@ -132,12 +132,12 @@ tokenized_state_machine!(RwLock {
         release_shared(x: T) {
             remove reader -= {x};
 
-            assert(self.flags.1 >= 1) by {
-                //assert(self.reader.count(x) >= 1);
-                assert(equal(self.storage, Option::Some(x)));
-                //assert(equal(x, self.storage.get_Some_0()));
+            assert(pre.flags.1 >= 1) by {
+                //assert(pre.reader.count(x) >= 1);
+                assert(equal(pre.storage, Option::Some(x)));
+                //assert(equal(x, pre.storage.get_Some_0()));
             };
-            update flags = (self.flags.0, self.flags.1 - 1);
+            update flags = (pre.flags.0, pre.flags.1 - 1);
         }
     }
 
@@ -171,26 +171,26 @@ tokenized_state_machine!(RwLock {
     }
 
     #[inductive(acquire_read_start)]
-    fn acquire_read_start_inductive(self: RwLock, post: RwLock) { }
+    fn acquire_read_start_inductive(pre: RwLock, post: RwLock) { }
 
     #[inductive(acquire_read_end)]
-    fn acquire_read_end_inductive(self: RwLock, post: RwLock) { }
+    fn acquire_read_end_inductive(pre: RwLock, post: RwLock) { }
 
     #[inductive(acquire_read_abandon)]
-    fn acquire_read_abandon_inductive(self: RwLock, post: RwLock) { }
+    fn acquire_read_abandon_inductive(pre: RwLock, post: RwLock) { }
 
     #[inductive(acquire_exc_start)]
-    fn acquire_exc_start_inductive(self: RwLock, post: RwLock) { }
+    fn acquire_exc_start_inductive(pre: RwLock, post: RwLock) { }
 
     #[inductive(acquire_exc_end)]
-    fn acquire_exc_end_inductive(self: RwLock, post: RwLock) { }
+    fn acquire_exc_end_inductive(pre: RwLock, post: RwLock) { }
 
     #[inductive(release_exc)]
-    fn release_exc_inductive(self: RwLock, post: RwLock, x: T) { }
+    fn release_exc_inductive(pre: RwLock, post: RwLock, x: T) { }
 
     #[inductive(release_shared)]
-    fn release_shared_inductive(self: RwLock, post: RwLock, x: T) {
-        assert(equal(self.storage, Option::Some(x)));
+    fn release_shared_inductive(pre: RwLock, post: RwLock, x: T) {
+        assert(equal(pre.storage, Option::Some(x)));
     }
 });
 

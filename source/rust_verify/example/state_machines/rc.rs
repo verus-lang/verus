@@ -52,7 +52,7 @@ tokenized_state_machine!(Dupe<#[verifier(maybe_negative)] T> {
      fn initialize_one_inductive(post: Dupe<T>, t: T) { }
  
      #[inductive(dupe)]
-     fn dupe_inductive(self: Dupe<T>, post: Dupe<T>, t: T) { }
+     fn dupe_inductive(pre: Dupe<T>, post: Dupe<T>, t: T) { }
 });
 
 #[proof]
@@ -140,8 +140,6 @@ tokenized_state_machine!(RefCounter<#[verifier(maybe_negative)] T> {
             self.reader.count(self.storage.get_Some_0()) == self.counter
     }
 
-
-    #[init]
     init!{
         initialize_empty() {
             init counter = 0;
@@ -155,7 +153,7 @@ tokenized_state_machine!(RefCounter<#[verifier(maybe_negative)] T> {
     
     transition!{
         do_deposit(x: T) {
-            require(self.counter == 0);
+            require(pre.counter == 0);
             update counter = 1;
             deposit storage += Some(x);
             add reader += {x};
@@ -163,7 +161,7 @@ tokenized_state_machine!(RefCounter<#[verifier(maybe_negative)] T> {
     }
 
     #[inductive(do_deposit)]
-    fn do_deposit_inductive(self: RefCounter<T>, post: RefCounter<T>, x: T) { }
+    fn do_deposit_inductive(pre: RefCounter<T>, post: RefCounter<T>, x: T) { }
 
     readonly!{
         reader_guard(x: T) {
@@ -176,44 +174,44 @@ tokenized_state_machine!(RefCounter<#[verifier(maybe_negative)] T> {
         do_clone(x: T) {
             have reader >= {x};
             add reader += {x};
-            update counter = self.counter + 1;
+            update counter = pre.counter + 1;
         }
     }
 
     #[inductive(do_clone)]
-    fn do_clone_inductive(self: RefCounter<T>, post: RefCounter<T>, x: T) {
-        assert(self.reader.count(x) > 0);
-        assert(equal(self.storage, Option::Some(x)));
-        assert(self.storage.is_Some());
-        assert(self.counter > 0);
+    fn do_clone_inductive(pre: RefCounter<T>, post: RefCounter<T>, x: T) {
+        assert(pre.reader.count(x) > 0);
+        assert(equal(pre.storage, Option::Some(x)));
+        assert(pre.storage.is_Some());
+        assert(pre.counter > 0);
     }
 
     transition!{
         dec_basic(x: T) {
-            require(self.counter >= 2);
+            require(pre.counter >= 2);
             remove reader -= {x};
-            update counter = self.counter - 1;
+            update counter = pre.counter - 1;
         }
     }
 
     transition!{
         dec_to_zero(x: T) {
             remove reader -= {x};
-            require(self.counter < 2);
-            assert(self.counter == 1);
+            require(pre.counter < 2);
+            assert(pre.counter == 1);
             update counter = 0;
             withdraw storage -= Some(x);
         }
     }
 
     #[inductive(dec_basic)]
-    fn dec_basic_inductive(self: RefCounter<T>, post: RefCounter<T>, x: T) {
-        assert(self.reader.count(x) > 0);
-        assert(equal(self.storage, Option::Some(x)));
+    fn dec_basic_inductive(pre: RefCounter<T>, post: RefCounter<T>, x: T) {
+        assert(pre.reader.count(x) > 0);
+        assert(equal(pre.storage, Option::Some(x)));
     }
 
     #[inductive(dec_to_zero)]
-    fn dec_to_zero_inductive(self: RefCounter<T>, post: RefCounter<T>, x: T) { }
+    fn dec_to_zero_inductive(pre: RefCounter<T>, post: RefCounter<T>, x: T) { }
 });
 
 struct InnerRc<S> {

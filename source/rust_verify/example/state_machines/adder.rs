@@ -21,7 +21,7 @@ state_machine!(
         transition!{
             add(n: int) {
                 require n == 0;
-                update number = self.number + 2*n;
+                update number = pre.number + 2*n;
             }
         }
 
@@ -34,7 +34,7 @@ state_machine!(
         fn initialize_inductive(post: X) { }
 
         #[inductive(add)]
-        fn add_inductive(self: X, post: X, n: int) {
+        fn add_inductive(pre: X, post: X, n: int) {
         }
 
     }
