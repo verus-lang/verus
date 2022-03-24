@@ -14,7 +14,7 @@ use crate::pervasive::result::*;
 // TODO support Rust's std::sync::Arc instead
 
 #[verifier(external_body)]
-struct Arc<#[verifier(strictly_positive)] T> {
+pub struct Arc<#[verifier(strictly_positive)] T> {
     dummy: std::marker::PhantomData<T>,
 }
 

@@ -138,7 +138,6 @@ impl<V> PCell<V> {
     }
 
     #[inline(always)]
-    #[verifier(external_body)]
     pub fn new(v: V) -> (PCell<V>, Proof<Permission<V>>) {
         ensures(|pt : (PCell<V>, Proof<Permission<V>>)|
             equal(pt.1, Proof(Permission{ pcell: pt.0.view(), value: option::Option::Some(v) }))
