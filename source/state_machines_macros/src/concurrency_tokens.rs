@@ -20,12 +20,13 @@ use crate::token_transition_checks::{
 };
 use crate::util::combine_errors_or_ok;
 use proc_macro2::TokenStream;
-use quote::quote;
+use quote::{quote, quote_spanned};
 use std::collections::HashMap;
 use std::collections::HashSet;
 use syn::parse::Error;
 use syn::spanned::Spanned;
 use syn::{Expr, Ident, Type};
+use proc_macro2::Span;
 
 // Misc. definitions for various identifiers we use
 
@@ -583,7 +584,7 @@ pub fn exchange_stream(
                 ShardableType::Constant(_) => {
                     let e_opt = get_post_value_for_variable(&ctxt, &tr.body, field);
                     let e = e_opt.expect("get_post_value_for_variable");
-                    let lhs = get_const_field_value(&ctxt, field);
+                    let lhs = get_const_field_value(&ctxt, field, field.name.span());
                     ctxt.ensures.push(mk_eq(&lhs, &e));
                 }
                 _ => {}
@@ -1610,26 +1611,26 @@ fn translate_expr(ctxt: &Ctxt, expr: &Expr, birds_eye: bool, errors: &mut Vec<Er
                         if ctxt.fields_read.contains(&field.name.to_string())
                             || ctxt.fields_written.contains(&field.name.to_string())
                         {
-                            *node = get_old_field_value(ctxt, &field);
+                            *node = get_old_field_value(ctxt, &field, node.span());
                         } else {
-                            *node = get_nondeterministic_out_value(ctxt, &field);
+                            *node = get_nondeterministic_out_value(ctxt, &field, node.span());
                         }
                     }
                     ShardableType::Constant(_ty) => {
                         // Always handle constants as normal, since we always have access to them.
-                        *node = get_const_field_value(ctxt, &field);
+                        *node = get_const_field_value(ctxt, &field, node.span());
                     }
                     _ => {
-                        *node = get_nondeterministic_out_value(ctxt, &field);
+                        *node = get_nondeterministic_out_value(ctxt, &field, node.span());
                     }
                 }
             } else {
                 match &field.stype {
                     ShardableType::Variable(_ty) => {
-                        *node = get_old_field_value(ctxt, &field);
+                        *node = get_old_field_value(ctxt, &field, node.span());
                     }
                     ShardableType::Constant(_ty) => {
-                        *node = get_const_field_value(ctxt, &field);
+                        *node = get_const_field_value(ctxt, &field, node.span());
                     }
                     _ => {
                         let strat = field.stype.strategy_name();
@@ -1655,24 +1656,24 @@ fn get_inst_value(ctxt: &Ctxt) -> Expr {
     }
 }
 
-fn get_const_field_value(ctxt: &Ctxt, field: &Field) -> Expr {
+fn get_const_field_value(ctxt: &Ctxt, field: &Field, span: Span) -> Expr {
     let inst = get_inst_value(ctxt);
     let field_name = &field.name;
-    Expr::Verbatim(quote! { #inst.#field_name() })
+    Expr::Verbatim(quote_spanned! { span => #inst.#field_name() })
 }
 
-fn get_nondeterministic_out_value(_ctxt: &Ctxt, field: &Field) -> Expr {
+fn get_nondeterministic_out_value(_ctxt: &Ctxt, field: &Field, span: Span) -> Expr {
     let name = nondeterministic_read_spec_out_name(field);
-    Expr::Verbatim(quote! { #name.value() })
+    Expr::Verbatim(quote_spanned! { span => #name.value() })
 }
 
-fn get_old_field_value(ctxt: &Ctxt, field: &Field) -> Expr {
+fn get_old_field_value(ctxt: &Ctxt, field: &Field, span: Span) -> Expr {
     let arg = transition_arg_name(&field);
     let field_name = field_token_field_name(&field);
     if ctxt.fields_written.contains(&field.name.to_string()) {
-        Expr::Verbatim(quote! { ::builtin::old(#arg).#field_name })
+        Expr::Verbatim(quote_spanned! { span => ::builtin::old(#arg).#field_name })
     } else {
-        Expr::Verbatim(quote! { #arg.#field_name })
+        Expr::Verbatim(quote_spanned! { span => #arg.#field_name })
     }
 }
 
@@ -1916,11 +1917,11 @@ fn get_post_value_for_variable(ctxt: &Ctxt, ts: &TransitionStmt, field: &Field) 
                 None
             } else {
                 let e1 = match o1 {
-                    None => get_old_field_value(ctxt, &field),
+                    None => get_old_field_value(ctxt, &field, field.name.span()),
                     Some(e) => e,
                 };
                 let e2 = match o2 {
-                    None => get_old_field_value(ctxt, &field),
+                    None => get_old_field_value(ctxt, &field, field.name.span()),
                     Some(e) => e,
                 };
                 Some(Expr::Verbatim(quote! { if #cond_e { #e1 } else { #e2 } }))
