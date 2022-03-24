@@ -27,16 +27,24 @@ impl<Ret> JoinHandle<Ret>
 {
     fndecl!(pub fn predicate(&self, ret: Ret) -> bool);
 
-    // TODO note that std::thread::JoinHandle::join is allowed to panic
     #[verifier(external_body)]
     pub fn join(self) -> Result<Ret, ()>
     {
         ensures(|r: Result<Ret, ()>|
             r.is_Ok() >>= self.predicate(r.get_Ok_0()));
 
-        match self.handle.join() {
-            Ok(r) => Result::Ok(r),
-            Err(_) => Result::Err(()),
+        let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            match self.handle.join() {
+                Ok(r) => Result::Ok(r),
+                Err(_) => Result::Err(()),
+            }
+        }));
+        match res {
+            Ok(res) => res,
+            Err(_) => {
+                println!("panic on join");
+                std::process::abort();
+            }
         }
     }
 }
@@ -48,7 +56,16 @@ pub fn spawn<Param: Spawnable<Ret> + Send + 'static, Ret: Send + 'static>(p: Par
     ensures(|handle: JoinHandle<Ret>|
         forall(|ret: Ret| handle.predicate(ret) >>= p.post(ret)));
 
-    let handle = std::thread::spawn(move || p.run());
-    JoinHandle { handle }
+    let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let handle = std::thread::spawn(move || p.run());
+        JoinHandle { handle }
+    }));
+    match res {
+        Ok(res) => res,
+        Err(_) => {
+            println!("panic on spawn");
+            std::process::abort();
+        }
+    }
 }
 
