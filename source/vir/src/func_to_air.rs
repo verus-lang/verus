@@ -9,7 +9,9 @@ use crate::def::{
     FUEL_BOOL, FUEL_BOOL_DEFAULT, FUEL_LOCAL, FUEL_TYPE, SUCC, ZERO,
 };
 use crate::sst::{BndX, ExpX, Par, ParPurpose, ParX, Pars};
-use crate::sst_to_air::{exp_to_expr, fun_to_air_ident, typ_invariant, typ_to_air, ExprCtxt};
+use crate::sst_to_air::{
+    exp_to_expr, fun_to_air_ident, typ_invariant, typ_to_air, ExprCtxt, ExprMode,
+};
 use crate::util::{vec_map, vec_map_result};
 use air::ast::{
     BinaryOp, Bind, BindX, Binder, BinderX, Command, CommandX, Commands, DeclX, Expr, ExprX, Quant,
@@ -151,7 +153,8 @@ fn func_body_to_air(
     //   (axiom (forall (... fuel) (= (rec%f ... fuel) (rec%f ... zero) )))
     //   (axiom (forall (... fuel) (= (rec%f ... (succ fuel)) body[rec%f ... fuel] )))
     //   (axiom (=> (fuel_bool fuel%f) (forall (...) (= (f ...) (rec%f ... (succ fuel_nat%f))))))
-    let body_expr = exp_to_expr(&ctx, &body_exp, ExprCtxt::Body);
+    let body_expr =
+        exp_to_expr(&ctx, &body_exp, ExprCtxt { mode: ExprMode::Body, is_bit_vector: false });
     let def_body = if !is_recursive {
         body_expr
     } else {
@@ -223,7 +226,8 @@ pub fn req_ens_to_air(
         }
         for e in specs.iter() {
             let exp = crate::ast_to_sst::expr_to_exp(ctx, params, e)?;
-            let expr = exp_to_expr(ctx, &exp, ExprCtxt::Spec);
+            let expr =
+                exp_to_expr(ctx, &exp, ExprCtxt { mode: ExprMode::Spec, is_bit_vector: false });
             let loc_expr = match msg {
                 None => expr,
                 Some(msg) => {
@@ -497,7 +501,11 @@ pub fn func_decl_to_air(
                 let bndx = BndX::Quant(Quant::Forall, Arc::new(binders), triggers);
                 let forallx = ExpX::Bind(Spanned::new(span.clone(), bndx), exp);
                 let forall = SpannedTyped::new(&span, &Arc::new(TypX::Bool), forallx);
-                let expr = exp_to_expr(ctx, &forall, ExprCtxt::Spec);
+                let expr = exp_to_expr(
+                    ctx,
+                    &forall,
+                    ExprCtxt { mode: ExprMode::Spec, is_bit_vector: false },
+                );
                 let axiom = Arc::new(DeclX::Axiom(expr));
                 decl_commands.push(Arc::new(CommandX::Global(axiom)));
             }
