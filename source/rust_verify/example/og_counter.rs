@@ -1,11 +1,44 @@
 #[allow(unused_imports)]
 use builtin::*;
+use builtin_macros::*;
 mod pervasive;
 use pervasive::*;
 use crate::pervasive::{invariants::*};
 use crate::pervasive::{atomic::*};
 use crate::pervasive::{modes::*};
+use crate::pervasive::{thread::*};
 use state_machines_macros::tokenized_state_machine;
+use crate::pervasive::result::*;
+
+// Arc lib (stub)
+// TODO support Rust's std::sync::Arc instead
+
+#[verifier(external_body)]
+pub struct Arc<#[verifier(strictly_positive)] T> {
+    dummy: std::marker::PhantomData<T>,
+}
+
+impl<T> Arc<T> {
+    fndecl!(pub fn view(&self) -> T);
+
+    #[verifier(external_body)]
+    pub fn borrow(&self) -> &T {
+        ensures(|t: T| equal(t, self.view()));
+        unimplemented!();
+    }
+
+    #[verifier(external_body)]
+    pub fn new(t: T) -> Arc<T> {
+        ensures(|a: Arc<T>| equal(t, a.view()));
+        unimplemented!();
+    }
+
+    #[verifier(external_body)]
+    pub fn clone(&self) -> Arc<T> {
+        ensures(|a: Arc<T>| equal(a, *self));
+        unimplemented!();
+    }
+}
 
 tokenized_state_machine!(
     X {
@@ -75,79 +108,166 @@ tokenized_state_machine!(
 
 #[proof]
 pub struct G {
-  #[proof] pub counter: X_counter,
-  #[proof] pub perm: PermissionU32,
+    #[proof] pub counter: X_counter,
+    #[proof] pub perm: PermissionU32,
 }
 
 impl G {
-  #[spec]
-  pub fn wf(self, inst: X_Instance, patomic: PAtomicU32) -> bool {
-    equal(self.perm.patomic, patomic.view()) && equal(self.perm.value as int, self.counter.value)
-    && equal(self.counter.instance, inst)
-  }
+    #[spec]
+    pub fn wf(self, instance: X_Instance, patomic: PAtomicU32) -> bool {
+        equal(self.perm.patomic, patomic.view())
+        && equal(self.perm.value as int, self.counter.value)
+        && equal(self.counter.instance, instance)
+    }
+}
+
+pub struct Global {
+    pub atomic: PAtomicU32,
+    #[proof] pub instance: X_Instance,
+    #[proof] pub inv: Invariant<G>,
+}
+
+impl Global {
+    #[spec]
+    pub fn wf(self) -> bool {
+        forall(|g: G| self.inv.inv(g) == g.wf(self.instance, self.atomic))
+    }
+}
+
+//// thread 1
+
+pub struct Thread1Data {
+    pub globals: Arc<Global>,
+
+    #[proof] pub token: X_inc_a,
+}
+
+impl Spawnable<Proof<X_inc_a>> for Thread1Data {
+    #[spec]
+    fn pre(self) -> bool {
+        self.globals.view().wf()
+        && equal(self.token.instance, self.globals.view().instance)
+        && !self.token.value
+    }
+
+    #[spec]
+    fn post(self, new_token: Proof<X_inc_a>) -> bool {
+        equal(new_token.0.instance, self.globals.view().instance)
+        && new_token.0.value
+    }
+
+    fn run(self) -> Proof<X_inc_a> {
+        let Thread1Data { globals: globals, mut token } = self;
+        let globals = globals.borrow();
+
+        open_invariant!(&globals.inv => g => {
+            #[proof] let G { counter: mut c, perm: mut p } = g;
+
+            #[spec] let now_c = c;
+
+            globals.instance.tr_inc_a(&mut c, &mut token); // atomic increment
+            globals.atomic.fetch_add(&mut p, 1);
+
+            g = G { counter: c, perm: p };
+        });
+
+        Proof(token)
+    }
+}
+
+//// thread 2
+
+pub struct Thread2Data {
+    pub globals: Arc<Global>,
+
+    #[proof] pub token: X_inc_b,
+}
+
+impl Spawnable<Proof<X_inc_b>> for Thread2Data {
+    #[spec]
+    fn pre(self) -> bool {
+        self.globals.view().wf()
+        && equal(self.token.instance, self.globals.view().instance)
+        && !self.token.value
+    }
+
+    #[spec]
+    fn post(self, new_token: Proof<X_inc_b>) -> bool {
+        equal(new_token.0.instance, self.globals.view().instance)
+        && new_token.0.value
+    }
+
+    fn run(self) -> Proof<X_inc_b> {
+        let Thread2Data { globals: globals, mut token } = self;
+        let globals = globals.borrow();
+
+        open_invariant!(&globals.inv => g => {
+            #[proof] let G { counter: mut c, perm: mut p } = g;
+
+            #[spec] let now_c = c;
+
+            globals.instance.tr_inc_b(&mut c, &mut token); // atomic increment
+            globals.atomic.fetch_add(&mut p, 1);
+
+        
+            g = G { counter: c, perm: p };
+        });
+
+        Proof(token)
+    }
 }
 
 fn main() {
   // Initialize protocol 
 
-  #[proof] let (inst,
+  #[proof] let (instance,
       counter_token,
       mut inc_a_token,
       mut inc_b_token) = X_Instance::initialize();
 
   // Initialize the counter
 
-  let (at, Proof(perm_token)) = PAtomicU32::new(0);
+  let (atomic, Proof(perm_token)) = PAtomicU32::new(0);
 
   #[proof] let at_inv: Invariant<G> = Invariant::new(
       G { counter: counter_token, perm: perm_token },
-      |g: G| g.wf(inst, at),
+      |g: G| g.wf(instance, atomic),
       0);
 
-  // TODO actually run these on separate threads
+  let global = Global { atomic, instance: instance.clone(), inv: at_inv };
+  let global_arc = Arc::new(global);
 
-  // Thread 1 (gets access to inc_a_token)
+  // Spawn threads
 
-  open_invariant!(&at_inv => g => {
-    #[proof] let G { counter: mut c, perm: mut p } = g;
+  let thread1_data = Thread1Data { globals: global_arc.clone(), token: inc_a_token };
+  let join_handle1 = spawn(thread1_data);
 
-    #[spec] let now_c = c;
+  let thread2_data = Thread2Data { globals: global_arc.clone(), token: inc_b_token };
+  let join_handle2 = spawn(thread2_data);
 
-    inst.tr_inc_a(&mut c, &mut inc_a_token); // atomic increment
-    assert(now_c.value == p.value);
-    assert(c.value <= 3);
-    assert(now_c.value <= 2);
-    assert(0 <= now_c.value);
-    assert(p.value <= 2);
-    assert(0 <= p.value);
-    assert(p.value as int + 1 <= 3);
-    at.fetch_add(&mut p, 1);
+  // Join threads
 
-    g = G { counter: c, perm: p };
-  });
+  #[proof] let inc_a_token;
+  match join_handle1.join() {
+      Result::Ok(Proof(token)) => { inc_a_token = token; }
+      _ => { return; }
+  };
 
-  // Thread 2 (gets access to inc_b_token)
-
-  open_invariant!(&at_inv => g => {
-    #[proof] let G { counter: mut c2, perm: mut p2 } = g;
-
-    inst.tr_inc_b(&mut c2, &mut inc_b_token); // atomic increment
-    at.fetch_add(&mut p2, 1);
-
-    g = G { counter: c2, perm: p2 };
-  });
+  #[proof] let inc_b_token;
+  match join_handle2.join() {
+      Result::Ok(Proof(token)) => { inc_b_token = token; }
+      _ => { return; }
+  };
 
   // Join threads, load the atomic again
 
-  // Since we recovered exclusive control of the invariant, we could destruct it
-  // if we want to. Or we can just open the invariant block like normal.
-
+  let global = global_arc.borrow();
   let x;
-  open_invariant!(&at_inv => g => {
+  open_invariant!(&global.inv => g => {
     #[proof] let G { counter: c3, perm: p3 } = g;
 
-    x = at.load(&p3);
-    inst.finalize(&c3, &inc_a_token, &inc_b_token);
+    x = global.atomic.load(&p3);
+    instance.finalize(&c3, &inc_a_token, &inc_b_token);
 
     g = G { counter: c3, perm: p3 };
   });

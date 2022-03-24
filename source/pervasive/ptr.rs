@@ -151,7 +151,9 @@ impl<V> PPtr<V> {
         ]);
         opens_invariants_none();
 
-        dealloc(self.uptr.cast().as_ptr(), Layout::for_value(self.uptr.as_ref()));
+        unsafe {
+            dealloc(self.uptr.cast().as_ptr(), Layout::for_value(self.uptr.as_ref()));
+        }
     }
 
     //////////////////////////////////
@@ -175,7 +177,6 @@ impl<V> PPtr<V> {
     }
 
     #[inline(always)]
-    #[verifier(external_body)]
     pub fn new(v: V) -> (PPtr<V>, Proof<Permission<V>>) {
         ensures(|pt : (PPtr<V>, Proof<Permission<V>>)|
             equal(pt.1, Proof(Permission{ pptr: pt.0.view(), value: option::Option::Some(v) }))
