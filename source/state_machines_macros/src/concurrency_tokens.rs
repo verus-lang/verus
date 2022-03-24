@@ -19,6 +19,7 @@ use crate::token_transition_checks::{
     check_ordering_remove_have_add, check_unsupported_updates_in_conditionals,
 };
 use crate::util::combine_errors_or_ok;
+use proc_macro2::Span;
 use proc_macro2::TokenStream;
 use quote::{quote, quote_spanned};
 use std::collections::HashMap;
@@ -26,7 +27,6 @@ use std::collections::HashSet;
 use syn::parse::Error;
 use syn::spanned::Spanned;
 use syn::{Expr, Ident, Type};
-use proc_macro2::Span;
 
 // Misc. definitions for various identifiers we use
 
