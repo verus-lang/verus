@@ -1,13 +1,22 @@
-# `#[verifier(bit_vector)]` and `assert_bit_vector`
-There are two ways to use bit-vector reasoning. The first one is using bit-vector function mode with annotation `#[verifier(bit_vector)]`, and the second one is using single line assertion, `assert_bit_vector`. These will try to prove assertions using bit-vector theory(in a separate Z3 query), and produce its corresponding integer property as an axiom. When making the corresponding property, bitwise operators are translated into uninterpreted functions in Z3.   
+# Proving Properties About Bit Manipulation
 
+Verus offers two dedicated mechanisms for reasoning about bit manipulation
+(e.g., to prove that `xor(w, w) == 0`).  Small, one-off proofs can by done
+via `assert_bit_vector` (similar to a standard `assert`).  Larger proofs,
+or proofs that will be needed in more than one place, can be done by writing
+a lemma (i.e., a function in `#[proof]` mode) and adding the annotation 
+`#[verifier(bit_vector)]`.  Both mechanisms export facts expressed over
+integers (e.g., in terms of `u32`), but internally, they translate the proof
+obligations into assertions about bit vectors and use a dedicated solver to
+discharge those assertions.
 
-### `assert_bit_vector`
-`assert_bit_vector` is used when a short and context-free bit-vector fact is needed. 
-Currently, `assert_bit_vector` does not recognize any context(variable definition, `requires` in the function scope, etc).  
-Example use cases:  
+## Details
+
+### Details on `assert_bit_vector`
+`assert_bit_vector` is used when a short and context-free bit-related fact is needed. 
+Here are two example use cases:
 ```
-fn test1(b: u32) {
+fn test_passes(b: u32) {
   assert_bit_vector(b & 7 == b % 8);
   assert(b & 7 == b % 8);
 
@@ -16,44 +25,71 @@ fn test1(b: u32) {
 }
 ```
 
+Currently, assertions expressed via `assert_bit_vector` do not include any
+ambient facts from the surrounding context (e.g., from `requires` clauses or
+previous variable definitions).  For example, the following example will fail.
 
-
-### `#[verifier(bit_vector)]`
-To use this annotation, the function must be specified as `proof` mode. Also, this function should not have a body. Contexts can be provided by `requires`. 
-Example:     
 ```
-#[verifier(bit_vector)]
-#[proof]
-fn de_morgan_auto(){
-    ensures([
-        forall(|a: u32, b: u32| #[trigger] (!(a & b)) == !a | !b),
-        forall(|a: u32, b: u32| #[trigger] (!(a | b)) == !a & !b),
-    ]);
+fn test_fails(x: u32, y: u32) {
+  requires(x == y);
+  assert_bit_vector(x & 3 == y & 3);  // Fails
 }
+```
+
+
+### Details on `#[verifier(bit_vector)]`
+This mechanism should be used when proving more complex facts about bit manipulation,
+or when a proof will be used more than once.
+To use this mechanism, the developer should write a
+function in `proof` mode (i.e., annotated with `#[proof]`). 
+The function **should not** have a body. 
+Context can be provided via a `requires` clause. 
+For example:     
+```
+  #[verifier(bit_vector)]
+  #[proof]
+  fn de_morgan_auto(){
+      ensures([
+          forall(|a: u32, b: u32| #[trigger] (!(a & b)) == !a | !b),
+          forall(|a: u32, b: u32| #[trigger] (!(a | b)) == !a & !b),
+      ]);
+  }
 ```
 For more examples, please refer to the bit-manipulation examples at the bottom.
 
-### Supported expressions inside `assert_bit_vector` and `#[verifier(bit_vector)]`
-The supported functionalities for bit-vector can be found in `exp_to_bv_expr` in `sst_to_air.rs`. Integer types(as well as `as` keyword between integers), builtin operators, `let` binding, quantifier binding, and `if and else` are supported.  
- Function call is not supported, and macro might be used instead of functions in some cases. Any types other than integer types can make the translation process panic.
+## Limitations
+
+### Supported Expressions 
+
+The two bit-reasoning mechanisms support only a subset of the full set of expressions Verus offers.
+Currently, they support:
+- Integer types (as well as the `as` keyword between integers)
+- Built-in operators
+- `let` binding
+- Quantifiers
+- `if-then-else` 
+For more details, see `exp_to_bv_expr` in `source/vir/src/sst_to_air.rs`.
+Use of other expressions or non-integer types will cause Verus to panic.
+
+Note that function calls are not supported. As a workaround, you may consider using a macro instead of a function.
+
+### Signed integers are not supported
+Currently, if a signed integer is used as an operand in bit-reasoning, the translation process panics.
 
 
-### Signed bit-vector is not supported
-In the current setting, if a signed integer is used as an operand in bit-vector reasoning, the translation process panics.
+### Bitwise Operators As Uninterpreted Functions
+Outside of `#[verifier(bit_vector)]` and `assert_bit_vector`, bitwise operators
+are translated into uninterpreted functions in Z3, meaning Z3 knows nothing
+about them when used in other other contexts. 
+As a consequence, basic properties such as commutativity and associativity of
+bitwise-AND will not be applied automatically. To make use of these properties,
+please refer to `source/rust_verify/example/bitvector_basic.rs`, which contains
+basic properties for bitwise operators.
 
 
 
-
-## Bitwise operators as uninterpreted functions
-Outside of `#[verifier(bit_vector)]` and `assert_bit_vector`, bitwise operators are translated into uninterpreted functions in Z3. Therefore, it is even impossible to prove trivial facts about bit-vectors without `#[verifier(bit_vector)]` or `assert_bit_vector`.
-
-### Basic properties are missing
-As a consequence, basic properties such as `&`'s commutativity and associativity are not triggered automatically. To trigger these, please refer to `rust_verify/example/bitvector_basic.rs`, which contains basic properties for bit-wise operators.
-
-
-
-## Examples on bit manipulation
-First, let's define macros to manipulation bits. `get_bit64!` reads a single bit from a `u64`, and `set_64!` sets a single bit for a `u64`. For this example, we are using boolean to represent one bit.
+## Examples of Bit Manipulation Proofs
+First, let's define macros to manipulate bits. `get_bit64!` reads a single bit from a `u64`, and `set_64!` sets a single bit for a `u64`. For this example, we are using a boolean value to represent one bit.
 ```
 // a: bitvec, b: index
 macro_rules! get_bit64{
@@ -74,7 +110,7 @@ macro_rules! set_bit64{
     }
 }
 ```
-With macros above, we can prove that `set_bit64!` does what is has to do.
+With the macros above, we can prove that `set_bit64!` has the desired behavior. 
 ```
 #[verifier(bit_vector)]
 #[proof]
@@ -90,8 +126,7 @@ fn set_bit64_proof(bv_new: u64, bv_old: u64, index: u32, bit: bool){
 }
 ```
 
-We can also set two bits at once. First function proves that the second function behaves as desired. 
-
+We can also set two bits at once.  The second function below executes the operation, while the first funciton proves that that execution has the desired effect.
 ```
 #[verifier(bit_vector)]
 #[proof]
