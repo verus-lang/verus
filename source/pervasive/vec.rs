@@ -25,13 +25,11 @@ impl<A> Vec<A> {
     }
 
     #[verifier(external_body)]
-    pub fn set(self, i: usize, a: A) -> Vec<A> {
-        requires(i < self.view().len());
-        ensures(|v2: Vec<A>| equal(v2.view(), self.view().update(i, a)));
+    pub fn set(&mut self, i: usize, a: A) {
+        requires(i < old(self).view().len());
+        ensures(equal(self.view(), old(self).view().update(i, a)));
 
-        let mut v2 = self;
-        v2.vec[i] = a;
-        v2
+        self.vec[i] = a;
     }
 
     #[verifier(external_body)]
