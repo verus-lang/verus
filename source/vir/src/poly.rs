@@ -335,7 +335,7 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
             let e2 = poly_expr(ctx, state, e2);
             use BinaryOp::*;
             let native = match op {
-                And | Or | Implies | Le | Ge | Lt | Gt => true,
+                And | Or | Xor | Implies | Le | Ge | Lt | Gt => true,
                 Add | Sub | Mul | EuclideanDiv | EuclideanMod => true,
                 Eq(_) | Ne => false,
                 BitXor | BitAnd | BitOr | Shr | Shl => true,

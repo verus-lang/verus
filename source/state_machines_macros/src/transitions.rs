@@ -1,4 +1,6 @@
-use crate::ast::{Field, ShardableType, SpecialOp, Transition, TransitionKind, TransitionStmt, SM};
+use crate::ast::{
+    Field, MonoidElt, ShardableType, SpecialOp, Transition, TransitionKind, TransitionStmt, SM,
+};
 use crate::check_birds_eye::check_birds_eye;
 use crate::ident_visitor::validate_idents_transition;
 use crate::util::{combine_errors_or_ok, combine_results};
@@ -97,7 +99,7 @@ fn check_exactly_one_init_rec(
                         return Err(Error::new(
                             s2,
                             format!(
-                                "field '{}' might be updated multiple times",
+                                "field '{}' might be initialized multiple times",
                                 field.name.to_string()
                             ),
                         ));
@@ -236,44 +238,91 @@ fn is_allowed_in_update_in_normal_transition(stype: &ShardableType) -> bool {
 
 /// Big matrix for whether a given sharding type is allowed for a given SpecialOp type
 
-fn is_allowed_in_special_op(stype: &ShardableType, sop: &SpecialOp) -> bool {
+fn is_allowed_in_special_op(
+    span: Span,
+    stype: &ShardableType,
+    sop: &SpecialOp,
+) -> syn::parse::Result<()> {
     match stype {
-        ShardableType::Variable(_) => false,
-        ShardableType::Constant(_) => false,
-        ShardableType::NotTokenized(_) => false,
+        ShardableType::Constant(_) => {
+            Err(Error::new(span, "field marked 'constant' cannot be modified"))
+        }
 
-        ShardableType::Map(_, _) => match sop {
-            SpecialOp::AddKV(_, _) => true,
-            SpecialOp::RemoveKV(_, _) => true,
-            SpecialOp::HaveKV(_, _) => true,
+        ShardableType::Variable(_) | ShardableType::NotTokenized(_) => {
+            let stmt_name = sop.stmt.name();
+            let strat = stype.strategy_name();
+            Err(Error::new(
+                span,
+                format!(
+                    "'{stmt_name:}' statement not allowed for field with sharding strategy '{strat:}'; use 'update' instead"
+                ),
+            ))
+        }
+
+        ShardableType::Map(_, _)
+        | ShardableType::Option(_)
+        | ShardableType::Multiset(_)
+        | ShardableType::StorageOption(_)
+        | ShardableType::StorageMap(_, _) => {
+            if !op_matches_type(stype, &sop.elt) {
+                let syntax = sop.elt.syntax();
+                let elt_name = sop.elt.type_name();
+                let strat = stype.strategy_name();
+                return Err(Error::new(
+                    span,
+                    format!(
+                        "`{syntax:}` gives a `{elt_name:}` element but the given field has sharding strategy '{strat:}'",
+                    ),
+                ));
+            }
+
+            let strat_is_storage = stype.is_storage();
+            let op_is_storage = sop.stmt.is_for_storage();
+
+            if !strat_is_storage && op_is_storage {
+                let stmt_name = sop.stmt.name();
+                let strat = stype.strategy_name();
+                return Err(Error::new(
+                    span,
+                    format!(
+                        "'{stmt_name:}' statement not allowed for field with sharding strategy '{strat:}'; '{stmt_name:}' is only for storage types; use add/remove/have statements instead"
+                    ),
+                ));
+            }
+            if strat_is_storage && !op_is_storage {
+                let stmt_name = sop.stmt.name();
+                let strat = stype.strategy_name();
+                return Err(Error::new(
+                    span,
+                    format!(
+                        "'{stmt_name:}' statement not allowed for field with sharding strategy '{strat:}'; use deposit/withdraw/guard statements for storage strategies"
+                    ),
+                ));
+            }
+
+            Ok(())
+        }
+    }
+}
+
+fn op_matches_type(stype: &ShardableType, elt: &MonoidElt) -> bool {
+    match stype {
+        ShardableType::Constant(_)
+        | ShardableType::Variable(_)
+        | ShardableType::NotTokenized(_) => false,
+
+        ShardableType::Map(_, _) | ShardableType::StorageMap(_, _) => match elt {
+            MonoidElt::SingletonKV(_, _) => true,
             _ => false,
         },
 
-        ShardableType::Option(_) => match sop {
-            SpecialOp::AddSome(_) => true,
-            SpecialOp::RemoveSome(_) => true,
-            SpecialOp::HaveSome(_) => true,
+        ShardableType::Option(_) | ShardableType::StorageOption(_) => match elt {
+            MonoidElt::OptionSome(_) => true,
             _ => false,
         },
 
-        ShardableType::Multiset(_) => match sop {
-            SpecialOp::AddElement(_) => true,
-            SpecialOp::RemoveElement(_) => true,
-            SpecialOp::HaveElement(_) => true,
-            _ => false,
-        },
-
-        ShardableType::StorageOption(_) => match sop {
-            SpecialOp::DepositSome(_) => true,
-            SpecialOp::WithdrawSome(_) => true,
-            SpecialOp::GuardSome(_) => true,
-            _ => false,
-        },
-
-        ShardableType::StorageMap(_, _) => match sop {
-            SpecialOp::DepositKV(_, _) => true,
-            SpecialOp::WithdrawKV(_, _) => true,
-            SpecialOp::GuardKV(_, _) => true,
+        ShardableType::Multiset(_) => match elt {
+            MonoidElt::SingletonMultiset(_) => true,
             _ => false,
         },
     }
@@ -336,36 +385,28 @@ fn check_valid_ops(
         }
         TransitionStmt::Special(span, f, op, _) => {
             let field = get_field(fields, f);
-            if !is_allowed_in_special_op(&field.stype, op) {
-                errors.push(Error::new(
-                    span.span(),
-                    format!(
-                        "'{:}' statement not allowed for field with sharding strategy '{:}'",
-                        op.statement_name(),
-                        field.stype.strategy_name()
-                    ),
-                ));
+            match is_allowed_in_special_op(*span, &field.stype, op) {
+                Ok(()) => {}
+                Err(err) => {
+                    errors.push(err);
+                }
             }
             if is_readonly && op.is_modifier() {
                 errors.push(Error::new(
                     span.span(),
-                    format!(
-                        "'{:}' statement not allowed in readonly transition",
-                        op.statement_name()
-                    ),
+                    format!("'{:}' statement not allowed in readonly transition", op.stmt.name()),
                 ));
             }
             if !is_readonly && op.is_only_allowed_in_readonly() {
                 errors.push(Error::new(
                     span.span(),
-                    format!(
-                        "'{:}' statement only allowed in readonly transition",
-                        op.statement_name()
-                    ),
+                    format!("'{:}' statement only allowed in readonly transition", op.stmt.name()),
                 ));
             }
         }
-        TransitionStmt::PostCondition(..) => {}
+        TransitionStmt::PostCondition(..) => {
+            panic!("should not have created any PostCondition statement yet");
+        }
     }
 }
 

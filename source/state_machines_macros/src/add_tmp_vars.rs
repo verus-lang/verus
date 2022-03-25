@@ -1,4 +1,4 @@
-use crate::ast::{LetKind, SpecialOp, TransitionStmt};
+use crate::ast::{LetKind, MonoidElt, SpecialOp, TransitionStmt};
 use proc_macro2::Span;
 use quote::quote;
 use syn::{Expr, Ident};
@@ -99,16 +99,8 @@ fn op_replace_with_tmps(
 ) -> (SpecialOp, Vec<(Ident, Expr)>) {
     let mut op = op;
 
-    let bindings = match &mut op {
-        SpecialOp::AddSome(e)
-        | SpecialOp::RemoveSome(e)
-        | SpecialOp::HaveSome(e)
-        | SpecialOp::AddElement(e)
-        | SpecialOp::RemoveElement(e)
-        | SpecialOp::HaveElement(e)
-        | SpecialOp::DepositSome(e)
-        | SpecialOp::WithdrawSome(e)
-        | SpecialOp::GuardSome(e) => {
+    let bindings = match &mut op.elt {
+        MonoidElt::OptionSome(e) | MonoidElt::SingletonMultiset(e) => {
             let tmp_name = ctxt.get_next_name();
             let tmp_ident = Ident::new(&tmp_name, span);
             let binding = (tmp_ident.clone(), e.clone());
@@ -116,12 +108,7 @@ fn op_replace_with_tmps(
             vec![binding]
         }
 
-        SpecialOp::AddKV(e1, e2)
-        | SpecialOp::RemoveKV(e1, e2)
-        | SpecialOp::HaveKV(e1, e2)
-        | SpecialOp::DepositKV(e1, e2)
-        | SpecialOp::WithdrawKV(e1, e2)
-        | SpecialOp::GuardKV(e1, e2) => {
+        MonoidElt::SingletonKV(e1, e2) => {
             let tmp_name1 = ctxt.get_next_name();
             let tmp_ident1 = Ident::new(&tmp_name1, span);
             let binding1 = (tmp_ident1.clone(), e1.clone());

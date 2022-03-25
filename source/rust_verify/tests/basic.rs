@@ -332,3 +332,31 @@ test_verify_one_file! {
         }
     } => Err(e) => assert_fails(e, 2)
 }
+
+test_verify_one_file! {
+    #[test] bool_xor code! {
+        fn test1() {
+            assert((true ^ true) == false);
+            assert((false ^ true) == true);
+            assert((true ^ false) == true);
+            assert((false ^ false) == false);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] bool_xor_fails code! {
+        fn test1() {
+            assert((true ^ true) == true); // FAILS
+        }
+        fn test2() {
+            assert((false ^ true) == false); // FAILS
+        }
+        fn test3() {
+            assert((true ^ false) == false); // FAILS
+        }
+        fn test4() {
+            assert((false ^ false) == true); // FAILS
+        }
+    } => Err(e) => assert_fails(e, 4)
+}

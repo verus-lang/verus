@@ -1,5 +1,6 @@
 use crate::ast::{
-    AssertProof, LetKind, SpecialOp, Transition, TransitionKind, TransitionParam, TransitionStmt,
+    AssertProof, LetKind, MonoidElt, MonoidStmtType, SpecialOp, Transition, TransitionKind,
+    TransitionParam, TransitionStmt,
 };
 use crate::parse_token_stream::{keyword, peek_keyword};
 use proc_macro2::Span;
@@ -196,35 +197,6 @@ fn stmts_or_lets_to_block(span: Span, tstmts: Vec<StmtOrLet>) -> TransitionStmt 
     TransitionStmt::Block(span, cur_block.into_iter().rev().collect())
 }
 
-#[derive(Clone, Copy)]
-enum MonoidStmtType {
-    Have,
-    Add,
-    Remove,
-    Guard,
-    Deposit,
-    Withdraw,
-}
-
-impl MonoidStmtType {
-    fn name(self) -> &'static str {
-        match self {
-            MonoidStmtType::Have => "have",
-            MonoidStmtType::Add => "add",
-            MonoidStmtType::Remove => "remove",
-            MonoidStmtType::Guard => "guard",
-            MonoidStmtType::Deposit => "deposit",
-            MonoidStmtType::Withdraw => "withdraw",
-        }
-    }
-}
-
-enum MonoidElt {
-    OptionSome(Expr),
-    SingletonKV(Expr, Expr),
-    SingletonMultiset(Expr),
-}
-
 /// Parse a statement that looks like `add field += ...;`
 /// Assumes the parsing cursor starts after the initial keyword.
 /// This handles add, remove, have, deposit, withdraw, guard.
@@ -311,50 +283,29 @@ fn parse_monoid_stmt(
     // The `error_msg` should refer to the name of a lemma in
     // `pervasive::state_machine_internal`.
 
-    let (op, error_msg) = match (monoid_stmt_type, elem) {
-        (MonoidStmtType::Have, MonoidElt::OptionSome(e)) => (SpecialOp::HaveSome(e), ""),
-        (MonoidStmtType::Have, MonoidElt::SingletonKV(k, v)) => (SpecialOp::HaveKV(k, v), ""),
-        (MonoidStmtType::Have, MonoidElt::SingletonMultiset(e)) => (SpecialOp::HaveElement(e), ""),
+    let error_msg = match (&monoid_stmt_type, &elem) {
+        (MonoidStmtType::Have, _) => "",
+        (MonoidStmtType::Remove, _) => "",
 
-        (MonoidStmtType::Add, MonoidElt::OptionSome(e)) => {
-            (SpecialOp::AddSome(e), "assert_add_some")
-        }
-        (MonoidStmtType::Add, MonoidElt::SingletonKV(k, v)) => {
-            (SpecialOp::AddKV(k, v), "assert_add_kv")
-        }
-        (MonoidStmtType::Add, MonoidElt::SingletonMultiset(e)) => (SpecialOp::AddElement(e), ""),
+        (MonoidStmtType::Add, MonoidElt::OptionSome(_)) => "assert_add_some",
+        (MonoidStmtType::Add, MonoidElt::SingletonKV(_, _)) => "assert_add_kv",
+        (MonoidStmtType::Add, MonoidElt::SingletonMultiset(_)) => "",
 
-        (MonoidStmtType::Remove, MonoidElt::OptionSome(e)) => (SpecialOp::RemoveSome(e), ""),
-        (MonoidStmtType::Remove, MonoidElt::SingletonKV(k, v)) => (SpecialOp::RemoveKV(k, v), ""),
-        (MonoidStmtType::Remove, MonoidElt::SingletonMultiset(e)) => {
-            (SpecialOp::RemoveElement(e), "")
-        }
+        (MonoidStmtType::Guard, MonoidElt::OptionSome(_)) => "assert_guard_some",
+        (MonoidStmtType::Guard, MonoidElt::SingletonKV(_, _)) => "assert_guard_kv",
 
-        (MonoidStmtType::Guard, MonoidElt::OptionSome(e)) => {
-            (SpecialOp::GuardSome(e), "assert_guard_some")
-        }
-        (MonoidStmtType::Guard, MonoidElt::SingletonKV(k, v)) => {
-            (SpecialOp::GuardKV(k, v), "assert_guard_kv")
-        }
+        (MonoidStmtType::Deposit, MonoidElt::OptionSome(_)) => "assert_deposit_some",
+        (MonoidStmtType::Deposit, MonoidElt::SingletonKV(_, _)) => "assert_deposit_kv",
 
-        (MonoidStmtType::Deposit, MonoidElt::OptionSome(e)) => {
-            (SpecialOp::DepositSome(e), "assert_deposit_some")
-        }
-        (MonoidStmtType::Deposit, MonoidElt::SingletonKV(k, v)) => {
-            (SpecialOp::DepositKV(k, v), "assert_deposit_kv")
-        }
-
-        (MonoidStmtType::Withdraw, MonoidElt::OptionSome(e)) => {
-            (SpecialOp::WithdrawSome(e), "assert_withdraw_some")
-        }
-        (MonoidStmtType::Withdraw, MonoidElt::SingletonKV(k, v)) => {
-            (SpecialOp::WithdrawKV(k, v), "assert_withdraw_kv")
-        }
+        (MonoidStmtType::Withdraw, MonoidElt::OptionSome(_)) => "assert_withdraw_some",
+        (MonoidStmtType::Withdraw, MonoidElt::SingletonKV(_, _)) => "assert_withdraw_kv",
 
         (_, MonoidElt::SingletonMultiset(_e)) => {
             return Err(Error::new(stmt_span, "storage_multiset strategy not implemented"));
         }
     };
+
+    let op = SpecialOp { stmt: monoid_stmt_type, elt: elem };
 
     let proof = AssertProof { proof: proof_block, error_msg };
     Ok(TransitionStmt::Special(stmt_span, field, op, proof))

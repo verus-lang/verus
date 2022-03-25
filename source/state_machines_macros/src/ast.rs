@@ -79,29 +79,69 @@ pub struct Transition {
     pub body: TransitionStmt,
 }
 
-/// TODO factor this into a product of the command type / element type (like the parsing code)
+#[derive(Clone, Copy, Debug)]
+pub enum MonoidStmtType {
+    Have,
+    Add,
+    Remove,
+    Guard,
+    Deposit,
+    Withdraw,
+}
+
+impl MonoidStmtType {
+    pub fn name(self) -> &'static str {
+        match self {
+            MonoidStmtType::Have => "have",
+            MonoidStmtType::Add => "add",
+            MonoidStmtType::Remove => "remove",
+            MonoidStmtType::Guard => "guard",
+            MonoidStmtType::Deposit => "deposit",
+            MonoidStmtType::Withdraw => "withdraw",
+        }
+    }
+
+    pub fn is_for_storage(self) -> bool {
+        match self {
+            MonoidStmtType::Have => false,
+            MonoidStmtType::Add => false,
+            MonoidStmtType::Remove => false,
+            MonoidStmtType::Guard => true,
+            MonoidStmtType::Deposit => true,
+            MonoidStmtType::Withdraw => true,
+        }
+    }
+}
 
 #[derive(Clone, Debug)]
-pub enum SpecialOp {
-    AddSome(Expr),
-    RemoveSome(Expr),
-    HaveSome(Expr),
+pub enum MonoidElt {
+    OptionSome(Expr),
+    SingletonKV(Expr, Expr),
+    SingletonMultiset(Expr),
+}
 
-    AddKV(Expr, Expr),
-    RemoveKV(Expr, Expr),
-    HaveKV(Expr, Expr),
+impl MonoidElt {
+    pub fn syntax(&self) -> &'static str {
+        match self {
+            MonoidElt::OptionSome(_) => "Some(...)",
+            MonoidElt::SingletonKV(_, _) => "[... => ...]",
+            MonoidElt::SingletonMultiset(_) => "{ ... }",
+        }
+    }
 
-    AddElement(Expr),
-    RemoveElement(Expr),
-    HaveElement(Expr),
+    pub fn type_name(&self) -> &'static str {
+        match self {
+            MonoidElt::OptionSome(_) => "Option",
+            MonoidElt::SingletonKV(_, _) => "Map",
+            MonoidElt::SingletonMultiset(_) => "Multiset",
+        }
+    }
+}
 
-    DepositSome(Expr),
-    WithdrawSome(Expr),
-    GuardSome(Expr),
-
-    DepositKV(Expr, Expr),
-    WithdrawKV(Expr, Expr),
-    GuardKV(Expr, Expr),
+#[derive(Clone, Debug)]
+pub struct SpecialOp {
+    pub stmt: MonoidStmtType,
+    pub elt: MonoidElt,
 }
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -138,131 +178,81 @@ pub enum TransitionStmt {
 }
 
 impl SpecialOp {
-    /// get the name of an op (for error reporting)
-    /// TODO using these names directly now isn't a good idea because these are no longer
-    /// the names of the user-facing functions
-    pub fn statement_name(&self) -> &'static str {
-        match self {
-            SpecialOp::RemoveKV(..) => "remove_kv",
-            SpecialOp::HaveKV(..) => "have_kv",
-            SpecialOp::AddKV(..) => "add_kv",
-            SpecialOp::RemoveElement(..) => "remove_element",
-            SpecialOp::HaveElement(..) => "have_element",
-            SpecialOp::AddElement(..) => "add_element",
-            SpecialOp::RemoveSome(..) => "remove_some",
-            SpecialOp::HaveSome(..) => "have_some",
-            SpecialOp::AddSome(..) => "add_some",
-            SpecialOp::DepositSome(..) => "deposit_some",
-            SpecialOp::WithdrawSome(..) => "withdraw_some",
-            SpecialOp::GuardSome(..) => "guard_some",
-            SpecialOp::DepositKV(..) => "deposit_kv",
-            SpecialOp::WithdrawKV(..) => "withdraw_kv",
-            SpecialOp::GuardKV(..) => "guard_kv",
-        }
-    }
-
     /// returns 'true' if the operational definition of the operation
     /// updates the field value
     pub fn is_modifier(&self) -> bool {
-        match self {
-            SpecialOp::RemoveKV(..) => true,
-            SpecialOp::HaveKV(..) => false,
-            SpecialOp::AddKV(..) => true,
-            SpecialOp::RemoveElement(..) => true,
-            SpecialOp::HaveElement(..) => false,
-            SpecialOp::AddElement(..) => true,
-            SpecialOp::RemoveSome(..) => true,
-            SpecialOp::HaveSome(..) => false,
-            SpecialOp::AddSome(..) => true,
-            SpecialOp::DepositSome(..) => true,
-            SpecialOp::WithdrawSome(..) => true,
-            SpecialOp::GuardSome(..) => false,
-            SpecialOp::DepositKV(..) => true,
-            SpecialOp::WithdrawKV(..) => true,
-            SpecialOp::GuardKV(..) => false,
-        }
+        self.stmt.is_modifier()
     }
 
     pub fn is_only_allowed_in_readonly(&self) -> bool {
-        self.is_guard()
+        self.stmt.is_guard()
     }
 
     pub fn is_have(&self) -> bool {
-        match self {
-            SpecialOp::HaveElement(..) | SpecialOp::HaveSome(..) | SpecialOp::HaveKV(..) => true,
+        self.stmt.is_have()
+    }
 
-            SpecialOp::RemoveKV(..)
-            | SpecialOp::AddKV(..)
-            | SpecialOp::RemoveElement(..)
-            | SpecialOp::AddElement(..)
-            | SpecialOp::RemoveSome(..)
-            | SpecialOp::AddSome(..)
-            | SpecialOp::DepositSome(..)
-            | SpecialOp::WithdrawSome(..)
-            | SpecialOp::GuardSome(..)
-            | SpecialOp::DepositKV(..)
-            | SpecialOp::WithdrawKV(..)
-            | SpecialOp::GuardKV(..) => false,
-        }
+    pub fn is_deposit(&self) -> bool {
+        self.stmt.is_deposit()
     }
 
     pub fn is_remove(&self) -> bool {
-        match self {
-            SpecialOp::RemoveElement(..) | SpecialOp::RemoveSome(..) | SpecialOp::RemoveKV(..) => {
-                true
-            }
-
-            SpecialOp::HaveKV(..)
-            | SpecialOp::AddKV(..)
-            | SpecialOp::HaveElement(..)
-            | SpecialOp::AddElement(..)
-            | SpecialOp::HaveSome(..)
-            | SpecialOp::AddSome(..)
-            | SpecialOp::DepositSome(..)
-            | SpecialOp::WithdrawSome(..)
-            | SpecialOp::GuardSome(..)
-            | SpecialOp::DepositKV(..)
-            | SpecialOp::WithdrawKV(..)
-            | SpecialOp::GuardKV(..) => false,
-        }
+        self.stmt.is_remove()
     }
 
     pub fn is_add(&self) -> bool {
-        match self {
-            SpecialOp::AddElement(..) | SpecialOp::AddSome(..) | SpecialOp::AddKV(..) => true,
-
-            SpecialOp::RemoveKV(..)
-            | SpecialOp::HaveKV(..)
-            | SpecialOp::RemoveElement(..)
-            | SpecialOp::HaveElement(..)
-            | SpecialOp::RemoveSome(..)
-            | SpecialOp::HaveSome(..)
-            | SpecialOp::DepositSome(..)
-            | SpecialOp::WithdrawSome(..)
-            | SpecialOp::GuardSome(..)
-            | SpecialOp::DepositKV(..)
-            | SpecialOp::WithdrawKV(..)
-            | SpecialOp::GuardKV(..) => false,
-        }
+        self.stmt.is_add()
     }
 
     pub fn is_guard(&self) -> bool {
-        match self {
-            SpecialOp::GuardSome(..) | SpecialOp::GuardKV(..) => true,
+        self.stmt.is_guard()
+    }
+}
 
-            SpecialOp::AddKV(..)
-            | SpecialOp::RemoveKV(..)
-            | SpecialOp::HaveKV(..)
-            | SpecialOp::AddElement(..)
-            | SpecialOp::RemoveElement(..)
-            | SpecialOp::HaveElement(..)
-            | SpecialOp::AddSome(..)
-            | SpecialOp::RemoveSome(..)
-            | SpecialOp::HaveSome(..)
-            | SpecialOp::DepositSome(..)
-            | SpecialOp::WithdrawSome(..)
-            | SpecialOp::DepositKV(..)
-            | SpecialOp::WithdrawKV(..) => false,
+impl MonoidStmtType {
+    pub fn is_modifier(self) -> bool {
+        match self {
+            MonoidStmtType::Have => false,
+            MonoidStmtType::Guard => false,
+            MonoidStmtType::Add => true,
+            MonoidStmtType::Remove => true,
+            MonoidStmtType::Deposit => true,
+            MonoidStmtType::Withdraw => true,
+        }
+    }
+
+    pub fn is_have(self) -> bool {
+        match self {
+            MonoidStmtType::Have => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_deposit(self) -> bool {
+        match self {
+            MonoidStmtType::Deposit => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_remove(self) -> bool {
+        match self {
+            MonoidStmtType::Remove => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_add(self) -> bool {
+        match self {
+            MonoidStmtType::Add => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_guard(self) -> bool {
+        match self {
+            MonoidStmtType::Guard => true,
+            _ => false,
         }
     }
 }
@@ -291,7 +281,7 @@ impl TransitionStmt {
             TransitionStmt::Assert(..) => "assert",
             TransitionStmt::Update(..) => "update",
             TransitionStmt::Initialize(..) => "init",
-            TransitionStmt::Special(_, _, op, _) => op.statement_name(),
+            TransitionStmt::Special(_, _, op, _) => op.stmt.name(),
             TransitionStmt::PostCondition(..) => "post_condition",
         }
     }

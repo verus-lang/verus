@@ -6,7 +6,8 @@
 //!  * #[proof] methods for each transition (including init and readonly transitions)
 
 use crate::ast::{
-    Field, Lemma, LetKind, ShardableType, SpecialOp, Transition, TransitionKind, TransitionStmt, SM,
+    Field, Lemma, LetKind, MonoidElt, MonoidStmtType, ShardableType, SpecialOp, Transition,
+    TransitionKind, TransitionStmt, SM,
 };
 use crate::field_access_visitor::{find_all_accesses, visit_field_accesses};
 use crate::parse_token_stream::SMBundle;
@@ -19,8 +20,9 @@ use crate::token_transition_checks::{
     check_ordering_remove_have_add, check_unsupported_updates_in_conditionals,
 };
 use crate::util::combine_errors_or_ok;
+use proc_macro2::Span;
 use proc_macro2::TokenStream;
-use quote::quote;
+use quote::{quote, quote_spanned};
 use std::collections::HashMap;
 use std::collections::HashSet;
 use syn::parse::Error;
@@ -246,7 +248,7 @@ fn token_struct_stream(
 /// (this is safe as long as the Instance type is an unforgeable proof type)
 /// but currently we have the body of the Instance as private
 fn const_fn_stream(field: &Field) -> TokenStream {
-    let fieldname = field_token_field_name(field);
+    let fieldname = &field.name;
     let fieldtype = match &field.stype {
         ShardableType::Constant(ty) => ty,
         _ => panic!("const_fn_stream expected Constant"),
@@ -350,7 +352,7 @@ struct Ctxt {
     // (not including special ops)
     fields_written: HashSet<String>,
 
-    // fields read (via `self.field`) in some expression
+    // fields read (via `pre.field`) in some expression
     fields_read: HashSet<String>,
 
     // fields read in a birds_eye statement
@@ -464,15 +466,15 @@ pub fn exchange_stream(
     // Potentially remove steps that won't be useful.
     // We want to do this before `find_all_accesses` below, since this step may potentially
     // remove field accesses that we would like to ignore.
-    // For example, suppose the user writes `update(foo, self.bar)` where `foo` is
+    // For example, suppose the user writes `update(foo, pre.bar)` where `foo` is
     // NotTokenized. In that case, we want to make sure that we _don't_ process
-    // self.bar as a requirement to have `bar` as an input token.
+    // pre.bar as a requirement to have `bar` as an input token.
     tr.body = prune_irrelevant_ops(&ctxt, tr.body);
 
     // compute `ctxt.fields_written`, which is used to determine the output tokens
     determine_outputs(&mut ctxt, &tr.body)?;
 
-    // Determine which fields are read (e.g., `self.foo`) and in what context those
+    // Determine which fields are read (e.g., `pre.foo`) and in what context those
     // fields are read.
 
     let mut errors = Vec::new();
@@ -484,7 +486,7 @@ pub fn exchange_stream(
     ctxt.fields_read_birds_eye = fields_read_birds_eye;
 
     // translate the expressions in the TransitionStmt so that
-    // where they previously referred to fields like `self.foo`,
+    // where they previously referred to fields like `pre.foo`,
     // they now refer to the field that comes from an input.
     // Also simplifies away SpecialOps.
 
@@ -568,7 +570,7 @@ pub fn exchange_stream(
             }
 
             // Sanity check some assumptions that should hold for any well-formed
-            // 'init' routine. In particular, there should be no occurrences to `self.field`
+            // 'init' routine. In particular, there should be no occurrences to `pre.field`
             // and every field should be written.
 
             assert!(!use_explicit_lifetime);
@@ -583,7 +585,7 @@ pub fn exchange_stream(
                 ShardableType::Constant(_) => {
                     let e_opt = get_post_value_for_variable(&ctxt, &tr.body, field);
                     let e = e_opt.expect("get_post_value_for_variable");
-                    let lhs = get_const_field_value(&ctxt, field);
+                    let lhs = get_const_field_value(&ctxt, field, field.name.span());
                     ctxt.ensures.push(mk_eq(&lhs, &e));
                 }
                 _ => {}
@@ -697,6 +699,7 @@ pub fn exchange_stream(
                             !ctxt.fields_written.contains(&field.name.to_string())
                                 && !ctxt.fields_read.contains(&field.name.to_string())
                         }
+                        ShardableType::Constant(_) => false,
                         _ => true,
                     };
 
@@ -1247,8 +1250,10 @@ fn get_all_lemmas_for_transition(
     let mut v = Vec::new();
 
     if trans.kind != TransitionKind::Readonly {
-        let l = get_main_lemma_for_transition_or_panic(&bundle.extras.lemmas, &trans.name);
-        v.push(l.func.sig.ident.clone());
+        match get_main_lemma_for_transition_opt(&bundle.extras.lemmas, &trans.name) {
+            Some(l) => v.push(l.func.sig.ident.clone()),
+            None => {}
+        }
     }
 
     match safety_condition_lemmas.get(&trans.name.to_string()) {
@@ -1259,17 +1264,17 @@ fn get_all_lemmas_for_transition(
     v
 }
 
-fn get_main_lemma_for_transition_or_panic<'a>(
+fn get_main_lemma_for_transition_opt<'a>(
     lemmas: &'a Vec<Lemma>,
     trans_name: &Ident,
-) -> &'a Lemma {
+) -> Option<&'a Lemma> {
     for l in lemmas {
         if l.purpose.transition.to_string() == trans_name.to_string() {
-            return l;
+            return Some(l);
         }
     }
 
-    panic!("could not find lemma for: {}", trans_name.to_string());
+    None
 }
 
 // Find things that updated
@@ -1323,7 +1328,7 @@ fn determine_outputs(ctxt: &mut Ctxt, ts: &TransitionStmt) -> syn::parse::Result
 
 /// The function has several purposes:
 ///
-///   1. Replace `self.foo` subexpression with the corresponding value from the
+///   1. Replace `pre.foo` subexpression with the corresponding value from the
 ///      input tokens, e.g., `token_foo.value`
 ///   2. Expand the definitions for any SpecialOps.
 ///
@@ -1390,66 +1395,8 @@ fn translate_transition(
             return Ok(());
         }
 
-        TransitionStmt::Special(span, id, SpecialOp::HaveSome(e), _)
-        | TransitionStmt::Special(span, id, SpecialOp::HaveElement(e), _) => {
-            let e = translate_expr(ctxt, e, false, errors);
-
-            let ident = ctxt.get_numbered_token_ident(id);
-            let field = ctxt.get_field_or_panic(id);
-            let ty = field_token_type(&ctxt.sm, &field);
-            let field_name = field_token_field_name(&field);
-
-            ctxt.params.get_mut(&field.name.to_string()).expect("get_mut").push(TokenParam {
-                inout_type: InoutType::BorrowIn,
-                name: ident.clone(),
-                ty: ty,
-            });
-
-            TransitionStmt::Require(*span, mk_eq(&Expr::Verbatim(quote! {#ident.#field_name}), &e))
-        }
-
-        TransitionStmt::Special(span, id, SpecialOp::AddSome(e), _)
-        | TransitionStmt::Special(span, id, SpecialOp::AddElement(e), _) => {
-            let e = translate_expr(ctxt, e, false, errors);
-
-            let ident = ctxt.get_numbered_token_ident(id);
-            let field = ctxt.get_field_or_panic(id);
-            let ty = field_token_type(&ctxt.sm, &field);
-            let field_name = field_token_field_name(&field);
-
-            ctxt.params.get_mut(&field.name.to_string()).expect("get_mut").push(TokenParam {
-                inout_type: InoutType::Out,
-                name: ident.clone(),
-                ty: ty,
-            });
-
-            TransitionStmt::PostCondition(
-                *span,
-                mk_eq(&Expr::Verbatim(quote! {#ident.#field_name}), &e),
-            )
-        }
-
-        TransitionStmt::Special(span, id, SpecialOp::RemoveSome(e), _)
-        | TransitionStmt::Special(span, id, SpecialOp::RemoveElement(e), _) => {
-            let e = translate_expr(ctxt, e, false, errors);
-
-            let ident = ctxt.get_numbered_token_ident(id);
-            let field = ctxt.get_field_or_panic(id);
-            let ty = field_token_type(&ctxt.sm, &field);
-            let field_name = field_token_field_name(&field);
-
-            ctxt.params.get_mut(&field.name.to_string()).expect("get_mut").push(TokenParam {
-                inout_type: InoutType::In,
-                name: ident.clone(),
-                ty: ty,
-            });
-
-            TransitionStmt::Require(*span, mk_eq(&Expr::Verbatim(quote! {#ident.#field_name}), &e))
-        }
-
-        TransitionStmt::Special(span, id, SpecialOp::HaveKV(key, val), _) => {
-            let key = translate_expr(ctxt, key, false, errors);
-            let val = translate_expr(ctxt, val, false, errors);
+        TransitionStmt::Special(span, id, SpecialOp { stmt: MonoidStmtType::Have, elt }, _) => {
+            let elt = translate_elt(ctxt, elt, false, errors);
 
             let ident = ctxt.get_numbered_token_ident(id);
             let field = ctxt.get_field_or_panic(id);
@@ -1461,18 +1408,11 @@ fn translate_transition(
                 ty: ty,
             });
 
-            TransitionStmt::Require(
-                *span,
-                mk_and(
-                    mk_eq(&Expr::Verbatim(quote! {#ident.key}), &key),
-                    mk_eq(&Expr::Verbatim(quote! {#ident.value}), &val),
-                ),
-            )
+            TransitionStmt::Require(*span, token_matches_elt(&ident, &elt))
         }
 
-        TransitionStmt::Special(span, id, SpecialOp::AddKV(key, val), _) => {
-            let key = translate_expr(ctxt, key, false, errors);
-            let val = translate_expr(ctxt, val, false, errors);
+        TransitionStmt::Special(span, id, SpecialOp { stmt: MonoidStmtType::Add, elt }, _) => {
+            let elt = translate_elt(ctxt, elt, false, errors);
 
             let ident = ctxt.get_numbered_token_ident(id);
             let field = ctxt.get_field_or_panic(id);
@@ -1484,18 +1424,11 @@ fn translate_transition(
                 ty: ty,
             });
 
-            TransitionStmt::PostCondition(
-                *span,
-                mk_and(
-                    mk_eq(&Expr::Verbatim(quote! {#ident.key}), &key),
-                    mk_eq(&Expr::Verbatim(quote! {#ident.value}), &val),
-                ),
-            )
+            TransitionStmt::PostCondition(*span, token_matches_elt(&ident, &elt))
         }
 
-        TransitionStmt::Special(span, id, SpecialOp::RemoveKV(key, val), _) => {
-            let key = translate_expr(ctxt, key, false, errors);
-            let val = translate_expr(ctxt, val, false, errors);
+        TransitionStmt::Special(span, id, SpecialOp { stmt: MonoidStmtType::Remove, elt }, _) => {
+            let elt = translate_elt(ctxt, elt, false, errors);
 
             let ident = ctxt.get_numbered_token_ident(id);
             let field = ctxt.get_field_or_panic(id);
@@ -1507,19 +1440,12 @@ fn translate_transition(
                 ty: ty,
             });
 
-            TransitionStmt::Require(
-                *span,
-                mk_and(
-                    mk_eq(&Expr::Verbatim(quote! {#ident.key}), &key),
-                    mk_eq(&Expr::Verbatim(quote! {#ident.value}), &val),
-                ),
-            )
+            TransitionStmt::Require(*span, token_matches_elt(&ident, &elt))
         }
 
-        TransitionStmt::Special(span, id, SpecialOp::GuardSome(e), _)
-        | TransitionStmt::Special(span, id, SpecialOp::GuardKV(_, e), _) => {
+        TransitionStmt::Special(span, id, SpecialOp { stmt: MonoidStmtType::Guard, elt }, _) => {
             // note: ignore 'key' expression for the KV case
-            let e = translate_expr(ctxt, e, false, errors);
+            let e = translate_value_expr(ctxt, elt, false, errors);
 
             let ident = ctxt.get_numbered_token_ident(id);
             let field = ctxt.get_field_or_panic(id);
@@ -1534,9 +1460,8 @@ fn translate_transition(
             TransitionStmt::PostCondition(*span, mk_eq(&Expr::Verbatim(quote! {*#ident}), &e))
         }
 
-        TransitionStmt::Special(span, id, SpecialOp::DepositSome(e), _)
-        | TransitionStmt::Special(span, id, SpecialOp::DepositKV(_, e), _) => {
-            let e = translate_expr(ctxt, e, false, errors);
+        TransitionStmt::Special(span, id, SpecialOp { stmt: MonoidStmtType::Deposit, elt }, _) => {
+            let e = translate_value_expr(ctxt, elt, false, errors);
 
             let ident = ctxt.get_numbered_token_ident(id);
             let field = ctxt.get_field_or_panic(id);
@@ -1551,9 +1476,8 @@ fn translate_transition(
             TransitionStmt::Require(*span, mk_eq(&Expr::Verbatim(quote! {#ident}), &e))
         }
 
-        TransitionStmt::Special(span, id, SpecialOp::WithdrawSome(e), _)
-        | TransitionStmt::Special(span, id, SpecialOp::WithdrawKV(_, e), _) => {
-            let e = translate_expr(ctxt, e, false, errors);
+        TransitionStmt::Special(span, id, SpecialOp { stmt: MonoidStmtType::Withdraw, elt }, _) => {
+            let e = translate_value_expr(ctxt, elt, false, errors);
 
             let ident = ctxt.get_numbered_token_ident(id);
             let field = ctxt.get_field_or_panic(id);
@@ -1578,8 +1502,56 @@ fn translate_transition(
     Ok(())
 }
 
+fn token_matches_elt(token_name: &Ident, elt: &MonoidElt) -> Expr {
+    match elt {
+        MonoidElt::OptionSome(e) | MonoidElt::SingletonMultiset(e) => {
+            mk_eq(&Expr::Verbatim(quote! {#token_name.value}), &e)
+        }
+        MonoidElt::SingletonKV(key, val) => mk_and(
+            mk_eq(&Expr::Verbatim(quote! {#token_name.key}), &key),
+            mk_eq(&Expr::Verbatim(quote! {#token_name.value}), &val),
+        ),
+    }
+}
+
+fn translate_elt(
+    ctxt: &Ctxt,
+    elt: &MonoidElt,
+    birds_eye: bool,
+    errors: &mut Vec<Error>,
+) -> MonoidElt {
+    match elt {
+        MonoidElt::OptionSome(e) => {
+            let e = translate_expr(ctxt, e, birds_eye, errors);
+            MonoidElt::OptionSome(e)
+        }
+        MonoidElt::SingletonMultiset(e) => {
+            let e = translate_expr(ctxt, e, birds_eye, errors);
+            MonoidElt::SingletonMultiset(e)
+        }
+        MonoidElt::SingletonKV(e1, e2) => {
+            let e1 = translate_expr(ctxt, e1, birds_eye, errors);
+            let e2 = translate_expr(ctxt, e2, birds_eye, errors);
+            MonoidElt::SingletonKV(e1, e2)
+        }
+    }
+}
+
+fn translate_value_expr(
+    ctxt: &Ctxt,
+    elt: &MonoidElt,
+    birds_eye: bool,
+    errors: &mut Vec<Error>,
+) -> Expr {
+    match elt {
+        MonoidElt::OptionSome(e)
+        | MonoidElt::SingletonMultiset(e)
+        | MonoidElt::SingletonKV(_, e) => translate_expr(ctxt, e, birds_eye, errors),
+    }
+}
+
 /// Perform translation on the Rust AST Exprs.
-/// We need to find expressions like `self.foo` that refer to individual fields and replace
+/// We need to find expressions like `pre.foo` that refer to individual fields and replace
 /// them with some expression in terms of the parameters of the exchange function.
 /// There are a few ways this can happen, depending on the context:
 ///
@@ -1607,26 +1579,26 @@ fn translate_expr(ctxt: &Ctxt, expr: &Expr, birds_eye: bool, errors: &mut Vec<Er
                         if ctxt.fields_read.contains(&field.name.to_string())
                             || ctxt.fields_written.contains(&field.name.to_string())
                         {
-                            *node = get_old_field_value(ctxt, &field);
+                            *node = get_old_field_value(ctxt, &field, node.span());
                         } else {
-                            *node = get_nondeterministic_out_value(ctxt, &field);
+                            *node = get_nondeterministic_out_value(ctxt, &field, node.span());
                         }
                     }
                     ShardableType::Constant(_ty) => {
                         // Always handle constants as normal, since we always have access to them.
-                        *node = get_const_field_value(ctxt, &field);
+                        *node = get_const_field_value(ctxt, &field, node.span());
                     }
                     _ => {
-                        *node = get_nondeterministic_out_value(ctxt, &field);
+                        *node = get_nondeterministic_out_value(ctxt, &field, node.span());
                     }
                 }
             } else {
                 match &field.stype {
                     ShardableType::Variable(_ty) => {
-                        *node = get_old_field_value(ctxt, &field);
+                        *node = get_old_field_value(ctxt, &field, node.span());
                     }
                     ShardableType::Constant(_ty) => {
-                        *node = get_const_field_value(ctxt, &field);
+                        *node = get_const_field_value(ctxt, &field, node.span());
                     }
                     _ => {
                         let strat = field.stype.strategy_name();
@@ -1652,24 +1624,24 @@ fn get_inst_value(ctxt: &Ctxt) -> Expr {
     }
 }
 
-fn get_const_field_value(ctxt: &Ctxt, field: &Field) -> Expr {
+fn get_const_field_value(ctxt: &Ctxt, field: &Field, span: Span) -> Expr {
     let inst = get_inst_value(ctxt);
-    let field_name = field_token_field_name(&field);
-    Expr::Verbatim(quote! { #inst.#field_name() })
+    let field_name = &field.name;
+    Expr::Verbatim(quote_spanned! { span => #inst.#field_name() })
 }
 
-fn get_nondeterministic_out_value(_ctxt: &Ctxt, field: &Field) -> Expr {
+fn get_nondeterministic_out_value(_ctxt: &Ctxt, field: &Field, span: Span) -> Expr {
     let name = nondeterministic_read_spec_out_name(field);
-    Expr::Verbatim(quote! { #name.value() })
+    Expr::Verbatim(quote_spanned! { span => #name.value() })
 }
 
-fn get_old_field_value(ctxt: &Ctxt, field: &Field) -> Expr {
+fn get_old_field_value(ctxt: &Ctxt, field: &Field, span: Span) -> Expr {
     let arg = transition_arg_name(&field);
     let field_name = field_token_field_name(&field);
     if ctxt.fields_written.contains(&field.name.to_string()) {
-        Expr::Verbatim(quote! { ::builtin::old(#arg).#field_name })
+        Expr::Verbatim(quote_spanned! { span => ::builtin::old(#arg).#field_name })
     } else {
-        Expr::Verbatim(quote! { #arg.#field_name })
+        Expr::Verbatim(quote_spanned! { span => #arg.#field_name })
     }
 }
 
@@ -1913,11 +1885,11 @@ fn get_post_value_for_variable(ctxt: &Ctxt, ts: &TransitionStmt, field: &Field) 
                 None
             } else {
                 let e1 = match o1 {
-                    None => get_old_field_value(ctxt, &field),
+                    None => get_old_field_value(ctxt, &field, field.name.span()),
                     Some(e) => e,
                 };
                 let e2 = match o2 {
-                    None => get_old_field_value(ctxt, &field),
+                    None => get_old_field_value(ctxt, &field, field.name.span()),
                     Some(e) => e,
                 };
                 Some(Expr::Verbatim(quote! { if #cond_e { #e1 } else { #e2 } }))

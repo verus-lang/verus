@@ -33,40 +33,39 @@ fn binary_search(v: &Vec<u64>, k: u64) -> usize {
     i1
 }
 
-// TODO(utaal) use &mut support
-fn reverse(v1: Vec<u64>) -> Vec<u64> {
-    ensures(|r: Vec<u64>| [
-        r.len() == v1.len(),
-        forall(|i: int| 0 <= i && i < v1.len() >>= r.index(i) == v1.index(v1.len() - i - 1)),
+fn reverse(v: &mut Vec<u64>) {
+    ensures([
+        v.len() == old(v).len(),
+        forall(|i: int| 0 <= i && i < old(v).len() >>= v.index(i) == old(v).index(old(v).len() - i - 1)),
     ]);
 
-    let length = v1.len();
-    let mut v2 = v1;
+    let length = v.len();
+    #[spec] let v1 = *v;
     let mut n: usize = 0;
     while n < length / 2 {
         invariant([
-            length == v2.len(),
-            forall(|i: int| n <= i && i + n < length >>= v2.index(i) == v1.index(i)),
-            forall(|i: int| 0 <= i && i < n >>= v2.index(i) == v1.index(length - i - 1)),
-            forall(|i: int| 0 <= i && i < n >>= v1.index(i) == v2.index(length - i - 1)),
+            length == v.len(),
+            forall(|i: int| n <= i && i + n < length >>= v.index(i) == v1.index(i)),
+            forall(|i: int| 0 <= i && i < n >>= v.index(i) == v1.index(length - i - 1)),
+            forall(|i: int| 0 <= i && i < n >>= v1.index(i) == v.index(length - i - 1)),
         ]);
 
-        let x = *v2.index(n);
-        let y = *v2.index(length - 1 - n);
-        v2 = v2.set(n, y);
-        v2 = v2.set(length - 1 - n, x);
+        let x = *v.index(n);
+        let y = *v.index(length - 1 - n);
+        v.set(n, y);
+        v.set(length - 1 - n, x);
 
         n = n + 1;
     }
-    v2
 }
 
 #[verifier(external)]
 fn main() {
-    let v = Vec{vec: vec![0, 10, 20, 30, 40, 50, 60, 70, 80, 90]};
+    let mut v = Vec{vec: vec![0, 10, 20, 30, 40, 50, 60, 70, 80, 90]};
     println!("{}", binary_search(&v, 70));
     println!();
-    for x in reverse(v).vec {
+    reverse(&mut v);
+    for x in v.vec {
         println!("{}", x);
     }
 }

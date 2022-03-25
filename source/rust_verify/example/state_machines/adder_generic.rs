@@ -21,7 +21,7 @@ state_machine!(
 
         transition!{
             add(n: int) {
-                update number = self.number + 2*n;
+                update number = pre.number + 2*n;
             }
         }
 
@@ -35,7 +35,7 @@ state_machine!(
         }
 
         #[inductive(add)]
-        fn add_preserves(self: X<T>, post: X<T>, n: int) {
+        fn add_preserves(pre: X<T>, post: X<T>, n: int) {
         }
     }
 );

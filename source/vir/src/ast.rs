@@ -140,6 +140,8 @@ pub enum BinaryOp {
     And,
     /// boolean or (short-circuiting: right side is evaluated only if left side is false)
     Or,
+    /// boolean xor (no short-circuiting)
+    Xor,
     /// boolean implies (short-circuiting: right side is evaluated only if left side is true)
     Implies,
     /// SMT equality for any type -- two expressions are exactly the same value

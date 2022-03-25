@@ -16,4 +16,9 @@ impl<A> Seq<A> {
     pub fn contains(self, needle: A) -> bool {
         exists(|i: nat| i<self.len() && equal(self.index(i), needle))
     }
+
+    #[spec] #[verifier(publish)]
+    pub fn drop_last(self) -> Seq<A> {
+        self.subrange(0, self.len() as int - 1)
+    } 
 }

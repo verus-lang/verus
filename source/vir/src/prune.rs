@@ -5,8 +5,8 @@
 /// 3) Also compute names for abstract datatype sorts for the module,
 ///    since we're traversing the module-visible datatypes anyway.
 use crate::ast::{
-    CallTarget, Datatype, Expr, ExprX, Fun, Function, Ident, InvAtomicity, Krate, KrateX, Mode,
-    Path, Stmt, Typ, TypX,
+    CallTarget, Datatype, Expr, ExprX, Fun, Function, FunctionKind, Ident, InvAtomicity, Krate,
+    KrateX, Mode, Path, Stmt, Typ, TypX,
 };
 use crate::ast_util::{is_visible_to, is_visible_to_of_owner};
 use crate::datatype_to_air::is_datatype_transparent;
@@ -20,6 +20,8 @@ struct Ctxt {
     module: Path,
     function_map: HashMap<Fun, Function>,
     datatype_map: HashMap<Path, Datatype>,
+    // Map (D, T.f) -> D.f if D implements T.f:
+    method_map: HashMap<(Path, Fun), Fun>,
     all_functions_in_each_module: HashMap<Path, Vec<Fun>>,
 }
 
@@ -74,6 +76,29 @@ fn reach_datatype(ctxt: &Ctxt, state: &mut State, path: &Path) {
     }
 }
 
+fn reached_methods<'a, 'b, I>(ctxt: &Ctxt, iter: I) -> Vec<Fun>
+where
+    I: Iterator<Item = (&'a Path, &'b Fun)>,
+{
+    // If:
+    // - we reach both D and T.f
+    // - and D implements T.f with D.f
+    // add D.f
+    let mut method_impls: Vec<Fun> = Vec::new();
+    for (datatype, function) in iter {
+        if let Some(method_impl) = ctxt.method_map.get(&(datatype.clone(), function.clone())) {
+            method_impls.push(method_impl.clone());
+        }
+    }
+    method_impls
+}
+
+fn reach_methods(ctxt: &Ctxt, state: &mut State, method_impls: Vec<Fun>) {
+    for method_impl in &method_impls {
+        reach_function(ctxt, state, method_impl);
+    }
+}
+
 fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
     loop {
         let ft = |state: &mut State, t: &Typ| {
@@ -91,6 +116,9 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
         };
         if let Some(f) = state.worklist_functions.pop() {
             let function = &ctxt.function_map[&f];
+            if let FunctionKind::TraitMethodImpl { method, .. } = &function.x.kind {
+                reach_function(ctxt, state, method);
+            }
             let fe = |state: &mut State, _: &mut ScopeMap<Ident, Typ>, e: &Expr| {
                 match &e.x {
                     ExprX::Call(CallTarget::Static(name, _), _) => {
@@ -105,11 +133,15 @@ fn traverse_reachable(ctxt: &Ctxt, state: &mut State) {
             let mut map: ScopeMap<Ident, Typ> = ScopeMap::new();
             crate::ast_visitor::map_function_visitor_env(&function, &mut map, state, &fe, &fs, &ft)
                 .unwrap();
+            let methods = reached_methods(ctxt, state.reached_datatypes.iter().map(|d| (d, &f)));
+            reach_methods(ctxt, state, methods);
             continue;
         }
         if let Some(d) = state.worklist_datatypes.pop() {
             let datatype = &ctxt.datatype_map[&d];
             crate::ast_visitor::map_datatype_visitor_env(&datatype, state, &ft).unwrap();
+            let methods = reached_methods(ctxt, state.reached_functions.iter().map(|f| (&d, f)));
+            reach_methods(ctxt, state, methods);
             continue;
         }
         if let Some(m) = state.worklist_modules.pop() {
@@ -220,9 +252,13 @@ pub fn prune_krate_for_module(krate: &Krate, module: &Path) -> (Krate, Vec<MonoT
 
     let mut function_map: HashMap<Fun, Function> = HashMap::new();
     let mut datatype_map: HashMap<Path, Datatype> = HashMap::new();
+    let mut method_map: HashMap<(Path, Fun), Fun> = HashMap::new();
     let mut all_functions_in_each_module: HashMap<Path, Vec<Fun>> = HashMap::new();
     for f in &functions {
         function_map.insert(f.x.name.clone(), f.clone());
+        if let FunctionKind::TraitMethodImpl { method, datatype, .. } = &f.x.kind {
+            method_map.insert((datatype.clone(), method.clone()), f.x.name.clone());
+        }
         let module = f.x.name.path.pop_segment();
         if !all_functions_in_each_module.contains_key(&module) {
             all_functions_in_each_module.insert(module.clone(), Vec::new());
@@ -232,8 +268,13 @@ pub fn prune_krate_for_module(krate: &Krate, module: &Path) -> (Krate, Vec<MonoT
     for d in &datatypes {
         datatype_map.insert(d.x.path.clone(), d.clone());
     }
-    let ctxt =
-        Ctxt { module: module.clone(), function_map, datatype_map, all_functions_in_each_module };
+    let ctxt = Ctxt {
+        module: module.clone(),
+        function_map,
+        datatype_map,
+        method_map,
+        all_functions_in_each_module,
+    };
     traverse_reachable(&ctxt, &mut state);
 
     // Add function decls that should always exist

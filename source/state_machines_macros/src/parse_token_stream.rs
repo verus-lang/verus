@@ -102,11 +102,11 @@ impl Parse for ParseResult {
 
                 let fields_named: FieldsNamed = items_stream.parse()?;
                 fields_opt = Some(fields_named);
+            } else {
+                // Otherwise parse a function
+                let item: ImplItem = items_stream.parse()?;
+                items.push(item);
             }
-
-            // Otherwise parse a function
-            let item: ImplItem = items_stream.parse()?;
-            items.push(item);
         }
 
         return Ok(ParseResult { name, items, generics, fields: fields_opt });
@@ -173,7 +173,7 @@ fn parse_fn_attr_info(attrs: &Vec<Attribute>) -> syn::parse::Result<FnAttrInfo> 
                     if nested.len() != 1 {
                         return Err(Error::new(
                             attr.span(),
-                            "expected transition name: #[".to_string() + "inductive(name)]",
+                            "expected transition name: #[inductive(name)]",
                         ));
                     }
                     err_on_dupe(&fn_attr_info, attr.span())?;
@@ -184,14 +184,14 @@ fn parse_fn_attr_info(attrs: &Vec<Attribute>) -> syn::parse::Result<FnAttrInfo> 
                             None => {
                                 return Err(Error::new(
                                     attr.span(),
-                                    "expected transition name: #[".to_string() + "inductive(name)]",
+                                    "expected transition name: #[inductive(name)]",
                                 ));
                             }
                         },
                         _ => {
                             return Err(Error::new(
                                 attr.span(),
-                                "expected transition name: #[".to_string() + "inductive(name)]",
+                                "expected transition name: #[inductive(name)]",
                             ));
                         }
                     };
@@ -396,7 +396,7 @@ fn get_sharding_type(
         match res {
             None => Err(Error::new(
                 field_span,
-                "tokenized state machine requires a sharding strategy, e.g., #[sharding(variable)]",
+                "tokenized state machine requires a sharding strategy on each field, e.g., #[sharding(variable)]",
             )),
             Some(r) => Ok(r),
         }
@@ -469,6 +469,15 @@ fn to_fields(
             Visibility::Public(..) => {}
             _ => {
                 return Err(Error::new(field.span(), "state machine field must be marked public"));
+            }
+        }
+
+        for attr in &field.attrs {
+            if attr_is_any_mode(attr) {
+                return Err(Error::new(
+                    attr.span(),
+                    "a state field is implied to be 'spec'; it should not be explicitly labelled",
+                ));
             }
         }
 

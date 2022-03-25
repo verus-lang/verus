@@ -1,8 +1,8 @@
 //! This the module with utilities for processing a Rust Expr.
 //! Formally, the codegen for the token exchange methods needs to:
 //!
-//!  1. Look for all `self.field` subexpressions to determine which fields are read.
-//!  2. Perform substitutions of the `self.field` subexpressions for other expressions
+//!  1. Look for all `pre.field` subexpressions to determine which fields are read.
+//!  2. Perform substitutions of the `pre.field` subexpressions for other expressions
 //!     we construct.
 //!
 //! Unfortunately, attempting to treat a Rust Expr as anything other than a completely
@@ -29,7 +29,7 @@
 //! to experiment with the current method for now, since generating all the conditions
 //! in the macro has a lot of advantages for usability.
 
-use crate::ast::{Field, LetKind, SpecialOp, TransitionStmt};
+use crate::ast::{Field, LetKind, MonoidElt, MonoidStmtType, SpecialOp, TransitionStmt};
 use proc_macro2::Span;
 use std::collections::{HashMap, HashSet};
 use syn::parse::Error;
@@ -38,15 +38,15 @@ use syn::visit_mut::VisitMut;
 use syn::{Expr, ExprField, ExprPath, Ident, Member};
 
 /// Given a (Rust AST) Expr `e`, visits all the subexpressions of the form
-/// `self.foo` where `foo` is a state machine field, and calls the given
+/// `pre.foo` where `foo` is a state machine field, and calls the given
 /// function `f` on each one.
 /// Note `f` takes a `&mut Expr` so it is allowed to modify the subexpression,
 /// and it also takes a `&mut Vec<Error>` so it can produce errors.
 ///
 /// The visitor itself may also produce errors. Specifically, it will create
-/// an error if it finds a use of `self` for any reason that is NOT an access
-/// of a state machine field. For example, `self.associated_method()` is
-/// not allowed, nor is using `self` without a "dot" access.
+/// an error if it finds a use of `pre` for any reason that is NOT an access
+/// of a state machine field. For example, `pre.associated_method()` is
+/// not allowed, nor is using `pre` without a "dot" access.
 
 pub fn visit_field_accesses<F>(
     e: &mut Expr,
@@ -82,16 +82,16 @@ where
                     "can't process a Verbatim expression; (and there shouldn't be one in a user-provided expression in the first place)"
                 );
             }
-            Expr::Path(ExprPath { attrs: _, qself: None, path }) if path.is_ident("self") => {
+            Expr::Path(ExprPath { attrs: _, qself: None, path }) if path.is_ident("pre") => {
                 self.errors.push(Error::new(span,
-                    "in a tokenized state machine, 'self' cannot be used opaquely; it may only be used by accessing its fields"));
+                    "in a tokenized state machine, 'pre' cannot be used opaquely; it may only be used by accessing its fields"));
             }
             Expr::Field(ExprField {
                 base: box Expr::Path(ExprPath { attrs: _, qself: None, path }),
                 member,
                 attrs: _,
                 dot_token: _,
-            }) if path.is_ident("self") => match member {
+            }) if path.is_ident("pre") => match member {
                 Member::Named(ident) => {
                     match get_field_by_ident(self.ident_to_field, span, ident) {
                         Err(err) => self.errors.push(err),
@@ -118,7 +118,7 @@ fn get_field_by_ident<'a>(
         Some(f) => Ok(f),
         None => Err(Error::new(
             span,
-            "in a concurrent transition, any field access but be a state field",
+            "in a concurrent transition, any field access must be a state field",
         )),
     }
 }
@@ -175,18 +175,13 @@ pub fn visit_field_accesses_all_exprs<F>(
         | TransitionStmt::Initialize(_, _, e)
         | TransitionStmt::Update(_, _, e)
         | TransitionStmt::PostCondition(_, e)
-        | TransitionStmt::Special(_, _, SpecialOp::AddElement(e), _)
-        | TransitionStmt::Special(_, _, SpecialOp::RemoveElement(e), _)
-        | TransitionStmt::Special(_, _, SpecialOp::HaveElement(e), _)
-        | TransitionStmt::Special(_, _, SpecialOp::AddSome(e), _)
-        | TransitionStmt::Special(_, _, SpecialOp::RemoveSome(e), _)
-        | TransitionStmt::Special(_, _, SpecialOp::HaveSome(e), _)
-        | TransitionStmt::Special(_, _, SpecialOp::DepositSome(e), _)
-        | TransitionStmt::Special(_, _, SpecialOp::WithdrawSome(e), _)
-        | TransitionStmt::Special(_, _, SpecialOp::GuardSome(e), _)
-        | TransitionStmt::Special(_, _, SpecialOp::DepositKV(_, e), _) // ignore 'key'
-        | TransitionStmt::Special(_, _, SpecialOp::WithdrawKV(_, e), _)
-        | TransitionStmt::Special(_, _, SpecialOp::GuardKV(_, e), _) => {
+        | TransitionStmt::Special(_, _, SpecialOp { stmt: _, elt: MonoidElt::OptionSome(e) }, _)
+        | TransitionStmt::Special(
+            _,
+            _,
+            SpecialOp { stmt: _, elt: MonoidElt::SingletonMultiset(e) },
+            _,
+        ) => {
             visit_field_accesses(
                 e,
                 |errors, field, e| f(errors, field, e, false),
@@ -194,15 +189,30 @@ pub fn visit_field_accesses_all_exprs<F>(
                 ident_to_field,
             );
         }
-        TransitionStmt::Special(_, _, SpecialOp::AddKV(key, val), _)
-        | TransitionStmt::Special(_, _, SpecialOp::RemoveKV(key, val), _)
-        | TransitionStmt::Special(_, _, SpecialOp::HaveKV(key, val), _) => {
-            visit_field_accesses(
-                key,
-                |errors, field, e| f(errors, field, e, false),
-                errors,
-                ident_to_field,
-            );
+        TransitionStmt::Special(
+            _,
+            _,
+            SpecialOp { stmt, elt: MonoidElt::SingletonKV(key, val) },
+            _,
+        ) => {
+            // We skip the processing of the key in some cases because in those cases,
+            // this expresson will not appear in the signature of the exchange fn at all.
+            let skip_key = match stmt {
+                MonoidStmtType::Deposit => true,
+                MonoidStmtType::Guard => true,
+                MonoidStmtType::Withdraw => true,
+                MonoidStmtType::Add => false,
+                MonoidStmtType::Remove => false,
+                MonoidStmtType::Have => false,
+            };
+            if !skip_key {
+                visit_field_accesses(
+                    key,
+                    |errors, field, e| f(errors, field, e, false),
+                    errors,
+                    ident_to_field,
+                );
+            }
             visit_field_accesses(
                 val,
                 |errors, field, e| f(errors, field, e, false),
@@ -213,7 +223,7 @@ pub fn visit_field_accesses_all_exprs<F>(
     }
 }
 
-/// Returns two sets, the first consisting of all fields accessed by `self.foo`
+/// Returns two sets, the first consisting of all fields accessed by `pre.foo`
 /// in some expression OTHER than a `#[birds_eye] let` statement,
 /// and the second consiting of those accesses from a `#[birds_eye] let` statement.
 ///

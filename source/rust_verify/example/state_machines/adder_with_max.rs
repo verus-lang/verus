@@ -30,14 +30,14 @@ tokenized_state_machine!{
         transition!{
             add(n: int) {
                 require(n >= 0);
-                require(self.number + n <= self.maximum);
-                update number = self.number + n;
+                require(pre.number + n <= pre.maximum);
+                update number = pre.number + n;
             }
         }
 
         transition!{
             change_to_minimum() {
-                birds_eye let min = self.minimum;
+                birds_eye let min = pre.minimum;
                 update number = min;
             }
         }
@@ -57,11 +57,11 @@ tokenized_state_machine!{
         }
 
         #[inductive(add)]
-        fn add_preserves(self: AdderWithMax, post: AdderWithMax, n: int) {
+        fn add_preserves(pre: AdderWithMax, post: AdderWithMax, n: int) {
         }
 
         #[inductive(change_to_minimum)]
-        fn change_to_minimum_inductive(self: AdderWithMax, post: AdderWithMax) { }
+        fn change_to_minimum_inductive(pre: AdderWithMax, post: AdderWithMax) { }
     }
 }
 

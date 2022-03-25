@@ -306,6 +306,7 @@ fn check_expr(typing: &mut Typing, expr: &Expr) -> Result<Typ, TypeError> {
             let (x, t) = match op {
                 MultiOp::And => ("and", bt()),
                 MultiOp::Or => ("or", bt()),
+                MultiOp::Xor => ("xor", bt()),
                 MultiOp::Add => ("+", it()),
                 MultiOp::Sub => ("-", it()),
                 MultiOp::Mul => ("*", it()),

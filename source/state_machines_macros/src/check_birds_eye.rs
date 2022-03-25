@@ -153,7 +153,7 @@ fn check_birds_eye_rec(
             }
         }
         TransitionStmt::Special(span, _, op, _) => {
-            let name = op.statement_name();
+            let name = op.stmt.name();
             if op.is_guard() {
                 if scoped_in_birds_eye {
                     errors.push(Error::new(
@@ -180,7 +180,7 @@ fn check_birds_eye_rec(
             } else if *past_assert {
                 errors.push(Error::new(
                     *span,
-                    "a 'require' should not be preceeded by an assert which is the scope of a #[birds_eye] let-binding; preconditions of an exchange cannot depend on such bindings"));
+                    "a 'require' should not be preceeded by an assert which is in the scope of a #[birds_eye] let-binding; preconditions of an exchange cannot depend on such bindings"));
             }
         }
 
@@ -194,25 +194,5 @@ fn check_birds_eye_rec(
 /// might appear in the _precondition_ of an exchange method.
 /// Should return 'true' for remove, have, and deposit ops.
 fn affects_precondition(op: &SpecialOp) -> bool {
-    match op {
-        SpecialOp::AddElement(_) => false,
-        SpecialOp::RemoveElement(_) => true,
-        SpecialOp::HaveElement(_) => true,
-
-        SpecialOp::AddSome(_) => false,
-        SpecialOp::RemoveSome(_) => true,
-        SpecialOp::HaveSome(_) => true,
-
-        SpecialOp::AddKV(_, _) => false,
-        SpecialOp::RemoveKV(_, _) => true,
-        SpecialOp::HaveKV(_, _) => true,
-
-        SpecialOp::DepositSome(_) => true,
-        SpecialOp::WithdrawSome(_) => false,
-        SpecialOp::GuardSome(_) => false,
-
-        SpecialOp::DepositKV(_, _) => true,
-        SpecialOp::WithdrawKV(_, _) => false,
-        SpecialOp::GuardKV(_, _) => false,
-    }
+    op.is_remove() || op.is_have() || op.is_deposit()
 }
