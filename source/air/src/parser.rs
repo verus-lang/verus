@@ -173,6 +173,7 @@ impl Parser {
                 };
                 let bop = match &nodes[0] {
                     Node::Atom(s) if s.to_string() == "=>" => Some(BinaryOp::Implies),
+                    Node::Atom(s) if s.to_string() == "xor" => Some(BinaryOp::Xor),
                     Node::Atom(s) if s.to_string() == "=" => Some(BinaryOp::Eq),
                     Node::Atom(s) if s.to_string() == "<=" => Some(BinaryOp::Le),
                     Node::Atom(s) if s.to_string() == ">=" => Some(BinaryOp::Ge),

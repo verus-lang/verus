@@ -167,6 +167,7 @@ impl Printer {
             ExprX::Binary(op, lhs, rhs) => {
                 let sop = match op {
                     BinaryOp::Implies => "=>",
+                    BinaryOp::Xor => "xor",
                     BinaryOp::Eq => "=",
                     BinaryOp::Le => "<=",
                     BinaryOp::Ge => ">=",
