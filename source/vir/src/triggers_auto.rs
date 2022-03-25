@@ -14,11 +14,13 @@ This trigger selection algorithm is experimental and somewhat different from the
 selection algorithms, such as the algorithm used by Z3 internally.
 The goal is to be cautious and avoid triggers that lead to excessive quantifier
 instantiations, which could lead to SMT timeouts.
+
 To that end, the algorithm tries to choose only one trigger for any given quantifier,
 because multiple triggers lead to more unintended instantiations.
 The one "best" trigger is chosen using a rather arbitrary heuristic score.
 The algorithm selects multiple triggers only if there is a tie for the first-place score
 between multiple candidates.
+
 If the chosen triggers are too conservative,
 programmers can always override the decision with manual trigger annotations.
 In fact, the hope is that the default triggers will err on the side of avoiding timeouts,
@@ -98,6 +100,7 @@ First, we prefer triggers containing the fewest number of terms:
 - {f(x, y)} (1 term) is better (safer) than {g(x), h(y)} (2 terms)
 We choose this because a smaller number of terms leads to fewer quantifier instantiations,
 meaning less chance of an SMT timeout.
+
 Second, for triggers that are tied for number of terms, we compute a heuristic score:
 - the depth measures how deeply buried the term is inside other terms
   - lower depth is better
@@ -112,8 +115,10 @@ Second, for triggers that are tied for number of terms, we compute a heuristic s
 We choose these because they are likely to identify relevant terms
 such as function definitions f(x, y) == ... or implication f(x, y) ==> ...
 rather than terms used incidentally inside other terms.
+
 Obviously, these are fairly arbitrary criteria, but the goal is to make *some* choice,
 rather than just selecting all the candidate triggers.
+
 REVIEW: these heuristics are experimental -- are they useful in practice?  Can they be improved?
 */
 struct Score {
@@ -209,58 +214,11 @@ fn make_score(term: &Term, depth: u64, num_operators: u64) -> Score {
     Score { depth, size: term_size(term), num_operators }
 }
 
-fn count_bit_operators(ctx: &Ctx, exp: &Exp) -> u64 {
-    match &exp.x {
-        ExpX::Const(_)
-        | ExpX::Var(_)
-        | ExpX::VarLoc(..)
-        | ExpX::Loc(..)
-        | ExpX::VarAt(..)
-        | ExpX::Old(_, _) => 0,
-        ExpX::Call(_, _, args) => {
-            let mut sum = 0;
-            let _ = args.iter().map(|e| sum += count_bit_operators(ctx, e));
-            sum
-        }
-        ExpX::CallLambda(_, e0, es) => {
-            let mut sum = count_bit_operators(ctx, e0);
-            let _ = es.iter().map(|e| sum += count_bit_operators(ctx, e));
-            sum
-        }
-        ExpX::Ctor(path, variant, fields) => {
-            let (_, args) = crate::sst_to_air::ctor_to_apply(ctx, path, variant, fields);
-            let mut sum = 0;
-            let _ = args.map(|e| sum += count_bit_operators(ctx, &e.a));
-            sum
-        }
-        ExpX::Unary(UnaryOp::Trigger(_), e1) => count_bit_operators(ctx, e1),
-        ExpX::Unary(op, e1) => {
-            let sum = count_bit_operators(ctx, e1);
-            match op {
-                UnaryOp::BitNot => sum + 1,
-                _ => sum,
-            }
-        }
-        ExpX::UnaryOpr(UnaryOpr::Box(_), e1) => count_bit_operators(ctx, e1),
-        ExpX::UnaryOpr(UnaryOpr::Unbox(_), e1) => count_bit_operators(ctx, e1),
-        ExpX::UnaryOpr(UnaryOpr::HasType(_), _) => 0,
-        ExpX::UnaryOpr(UnaryOpr::IsVariant { .. }, e1) => count_bit_operators(ctx, e1),
-        ExpX::UnaryOpr(UnaryOpr::TupleField { .. }, _) => 0,
-        ExpX::UnaryOpr(UnaryOpr::Field { .. }, lhs) => count_bit_operators(ctx, lhs),
-        ExpX::Binary(op, e1, e2) => {
-            let sum = count_bit_operators(ctx, e1) + count_bit_operators(ctx, e2);
-            use BinaryOp::*;
-            match op {
-                BitXor | BitAnd | BitOr | Shr | Shl => sum + 1,
-                _ => sum,
-            }
-        }
-        ExpX::If(e1, e2, e3) => {
-            count_bit_operators(ctx, e1)
-                + count_bit_operators(ctx, e2)
-                + count_bit_operators(ctx, e3)
-        }
-        ExpX::Bind(_, e1) => count_bit_operators(ctx, e1),
+fn count_bit_operators(term: &Term) -> u64 {
+    match &**term {
+        TermX::App(App::BitOp(_), args) => 1 + args.iter().map(count_bit_operators).sum::<u64>(),
+        TermX::App(_, args) => args.iter().map(count_bit_operators).sum::<u64>(),
+        TermX::Var(..) => 0,
     }
 }
 
@@ -405,7 +363,7 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
             if !ctxt.pure_terms.contains_key(&term) {
                 ctxt.pure_terms.insert(term.clone(), (exp.clone(), ctxt.pure_terms.len()));
             }
-            let num_operators = count_bit_operators(ctx, exp);
+            let num_operators = count_bit_operators(&term);
             let score = make_score(&term, var_depth, num_operators);
             if !ctxt.pure_best_scores.contains_key(&term)
                 || score.total() < ctxt.pure_best_scores[&term].total()
