@@ -45,7 +45,6 @@ pub enum UnaryOp {
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum BinaryOp {
     Implies,
-    Xor,
     Eq,
     Le,
     Ge,
@@ -75,6 +74,7 @@ pub enum BinaryOp {
 pub enum MultiOp {
     And,
     Or,
+    Xor,
     Add,
     Sub,
     Mul,

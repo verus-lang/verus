@@ -673,6 +673,7 @@ fn exp_to_bv_expr(state: &State, exp: &Exp) -> Expr {
             let _ = match op {
                 BinaryOp::And => return mk_and(&vec![lh, rh]),
                 BinaryOp::Or => return mk_or(&vec![lh, rh]),
+                BinaryOp::Xor => return mk_xor(&lh, &rh),
                 BinaryOp::Ne => {
                     let eq = ExprX::Binary(air::ast::BinaryOp::Eq, lh, rh);
                     return Arc::new(ExprX::Unary(air::ast::UnaryOp::Not, Arc::new(eq)));
@@ -698,9 +699,9 @@ fn exp_to_bv_expr(state: &State, exp: &Exp) -> Expr {
                 BinaryOp::Shl => air::ast::BinaryOp::Shl,
                 BinaryOp::Shr => air::ast::BinaryOp::LShr,
                 BinaryOp::Implies => air::ast::BinaryOp::Implies,
-                BinaryOp::Xor => air::ast::BinaryOp::Xor,
                 BinaryOp::And => unreachable!(),
                 BinaryOp::Or => unreachable!(),
+                BinaryOp::Xor => unreachable!(),
             };
             return Arc::new(ExprX::Binary(bop, lh, rh));
         }

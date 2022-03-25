@@ -240,7 +240,7 @@ pub fn mk_xor(e1: &Expr, e2: &Expr) -> Expr {
         (ExprX::Const(Constant::Bool(true)), _) => mk_not(e2),
         (_, ExprX::Const(Constant::Bool(false))) => e1.clone(),
         (_, ExprX::Const(Constant::Bool(true))) => mk_not(e1),
-        _ => Arc::new(ExprX::Binary(BinaryOp::Xor, e1.clone(), e2.clone())),
+        _ => Arc::new(ExprX::Multi(MultiOp::Xor, Arc::new(vec![e1.clone(), e2.clone()]))),
     }
 }
 

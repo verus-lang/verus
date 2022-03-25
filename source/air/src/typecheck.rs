@@ -225,9 +225,6 @@ fn check_expr(typing: &mut Typing, expr: &Expr) -> Result<Typ, TypeError> {
         ExprX::Binary(BinaryOp::Implies, e1, e2) => {
             check_exprs(typing, "=>", &[bt(), bt()], &bt(), &[e1.clone(), e2.clone()])
         }
-        ExprX::Binary(BinaryOp::Xor, e1, e2) => {
-            check_exprs(typing, "xor", &[bt(), bt()], &bt(), &[e1.clone(), e2.clone()])
-        }
         ExprX::Binary(BinaryOp::Eq, e1, e2) => {
             let t1 = check_expr(typing, e1)?;
             let t2 = check_expr(typing, e2)?;
@@ -309,6 +306,7 @@ fn check_expr(typing: &mut Typing, expr: &Expr) -> Result<Typ, TypeError> {
             let (x, t) = match op {
                 MultiOp::And => ("and", bt()),
                 MultiOp::Or => ("or", bt()),
+                MultiOp::Xor => ("xor", bt()),
                 MultiOp::Add => ("+", it()),
                 MultiOp::Sub => ("-", it()),
                 MultiOp::Mul => ("*", it()),
