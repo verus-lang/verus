@@ -234,6 +234,16 @@ pub fn mk_implies(e1: &Expr, e2: &Expr) -> Expr {
     }
 }
 
+pub fn mk_xor(e1: &Expr, e2: &Expr) -> Expr {
+    match (&**e1, &**e2) {
+        (ExprX::Const(Constant::Bool(false)), _) => e2.clone(),
+        (ExprX::Const(Constant::Bool(true)), _) => mk_not(e2),
+        (_, ExprX::Const(Constant::Bool(false))) => e1.clone(),
+        (_, ExprX::Const(Constant::Bool(true))) => mk_not(e1),
+        _ => Arc::new(ExprX::Multi(MultiOp::Xor, Arc::new(vec![e1.clone(), e2.clone()]))),
+    }
+}
+
 pub fn mk_ite(e1: &Expr, e2: &Expr, e3: &Expr) -> Expr {
     match (&**e1, &**e2, &**e3) {
         (ExprX::Const(Constant::Bool(true)), _, _) => e2.clone(),

@@ -463,7 +463,7 @@ fn simplify_expr(ctxt: &mut Context, state: &mut State, expr: &Expr) -> (Typ, Ex
         }
         ExprX::Multi(op, es) => {
             let typ = match op {
-                MultiOp::And | MultiOp::Or => Arc::new(TypX::Bool),
+                MultiOp::And | MultiOp::Or | MultiOp::Xor => Arc::new(TypX::Bool),
                 MultiOp::Add | MultiOp::Sub | MultiOp::Mul => Arc::new(TypX::Int),
                 MultiOp::Distinct => Arc::new(TypX::Bool),
             };

@@ -197,6 +197,7 @@ impl Printer {
                 let sop = match op {
                     MultiOp::And => "and",
                     MultiOp::Or => "or",
+                    MultiOp::Xor => "xor",
                     MultiOp::Add => "+",
                     MultiOp::Sub => "-",
                     MultiOp::Mul => "*",

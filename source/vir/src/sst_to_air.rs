@@ -24,7 +24,7 @@ use air::ast::{
 };
 use air::ast_util::{
     bool_typ, bv_typ, ident_apply, ident_binder, ident_typ, ident_var, int_typ, mk_and,
-    mk_bind_expr, mk_eq, mk_exists, mk_implies, mk_ite, mk_let, mk_not, mk_or, str_apply,
+    mk_bind_expr, mk_eq, mk_exists, mk_implies, mk_ite, mk_let, mk_not, mk_or, mk_xor, str_apply,
     str_ident, str_typ, str_var, string_var,
 };
 use air::errors::{error, error_with_label};
@@ -414,6 +414,9 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: ExprCtxt) -> Expr {
                 BinaryOp::Or => {
                     return mk_or(&vec![lh, rh]);
                 }
+                BinaryOp::Xor => {
+                    return mk_xor(&lh, &rh);
+                }
                 BinaryOp::Implies => {
                     return mk_implies(&lh, &rh);
                 }
@@ -445,6 +448,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: ExprCtxt) -> Expr {
                     let aop = match op {
                         BinaryOp::And => unreachable!(),
                         BinaryOp::Or => unreachable!(),
+                        BinaryOp::Xor => unreachable!(),
                         BinaryOp::Implies => unreachable!(),
                         BinaryOp::Eq(_) => air::ast::BinaryOp::Eq,
                         BinaryOp::Ne => unreachable!(),
@@ -669,6 +673,7 @@ fn exp_to_bv_expr(state: &State, exp: &Exp) -> Expr {
             let _ = match op {
                 BinaryOp::And => return mk_and(&vec![lh, rh]),
                 BinaryOp::Or => return mk_or(&vec![lh, rh]),
+                BinaryOp::Xor => return mk_xor(&lh, &rh),
                 BinaryOp::Ne => {
                     let eq = ExprX::Binary(air::ast::BinaryOp::Eq, lh, rh);
                     return Arc::new(ExprX::Unary(air::ast::UnaryOp::Not, Arc::new(eq)));
@@ -696,6 +701,7 @@ fn exp_to_bv_expr(state: &State, exp: &Exp) -> Expr {
                 BinaryOp::Implies => air::ast::BinaryOp::Implies,
                 BinaryOp::And => unreachable!(),
                 BinaryOp::Or => unreachable!(),
+                BinaryOp::Xor => unreachable!(),
             };
             return Arc::new(ExprX::Binary(bop, lh, rh));
         }

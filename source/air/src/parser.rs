@@ -185,6 +185,7 @@ impl Parser {
                 let lop = match &nodes[0] {
                     Node::Atom(s) if s.to_string() == "and" => Some(MultiOp::And),
                     Node::Atom(s) if s.to_string() == "or" => Some(MultiOp::Or),
+                    Node::Atom(s) if s.to_string() == "xor" => Some(MultiOp::Xor),
                     Node::Atom(s) if s.to_string() == "+" => Some(MultiOp::Add),
                     Node::Atom(s) if s.to_string() == "-" => Some(MultiOp::Sub),
                     Node::Atom(s) if s.to_string() == "*" => Some(MultiOp::Mul),

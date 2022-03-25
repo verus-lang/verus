@@ -1423,9 +1423,38 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                 BinOpKind::Mul => BinaryOp::Mul,
                 BinOpKind::Div => BinaryOp::EuclideanDiv,
                 BinOpKind::Rem => BinaryOp::EuclideanMod,
-                BinOpKind::BitXor => BinaryOp::BitXor,
-                BinOpKind::BitAnd => BinaryOp::BitAnd,
-                BinOpKind::BitOr => BinaryOp::BitOr,
+                BinOpKind::BitXor => {
+                    match ((tc.node_type(lhs.hir_id)).kind(), (tc.node_type(rhs.hir_id)).kind()) {
+                        (TyKind::Bool, TyKind::Bool) => BinaryOp::Xor,
+                        (TyKind::Int(_), TyKind::Int(_)) => BinaryOp::BitXor,
+                        (TyKind::Uint(_), TyKind::Uint(_)) => BinaryOp::BitXor,
+                        _ => panic!("bitwise XOR for this type not supported"),
+                    }
+                }
+                BinOpKind::BitAnd => {
+                    match ((tc.node_type(lhs.hir_id)).kind(), (tc.node_type(rhs.hir_id)).kind()) {
+                        (TyKind::Bool, TyKind::Bool) => {
+                            panic!(
+                                "bitwise AND for bools (i.e., the not-short-circuited version) not supported"
+                            );
+                        }
+                        (TyKind::Int(_), TyKind::Int(_)) => BinaryOp::BitAnd,
+                        (TyKind::Uint(_), TyKind::Uint(_)) => BinaryOp::BitAnd,
+                        t => panic!("bitwise AND for this type not supported {:#?}", t),
+                    }
+                }
+                BinOpKind::BitOr => {
+                    match ((tc.node_type(lhs.hir_id)).kind(), (tc.node_type(rhs.hir_id)).kind()) {
+                        (TyKind::Bool, TyKind::Bool) => {
+                            panic!(
+                                "bitwise OR for bools (i.e., the not-short-circuited version) not supported"
+                            );
+                        }
+                        (TyKind::Int(_), TyKind::Int(_)) => BinaryOp::BitOr,
+                        (TyKind::Uint(_), TyKind::Uint(_)) => BinaryOp::BitOr,
+                        _ => panic!("bitwise OR for this type not supported"),
+                    }
+                }
                 BinOpKind::Shr => BinaryOp::Shr,
                 BinOpKind::Shl => BinaryOp::Shl,
             };

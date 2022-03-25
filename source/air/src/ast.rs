@@ -74,6 +74,7 @@ pub enum BinaryOp {
 pub enum MultiOp {
     And,
     Or,
+    Xor,
     Add,
     Sub,
     Mul,
