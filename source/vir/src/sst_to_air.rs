@@ -324,6 +324,15 @@ pub(crate) struct ExprCtxt {
     pub is_bit_vector: bool,
 }
 
+pub(crate) fn bv_typ_to_air(typ: &Typ) -> air::ast::Typ {
+    match &**typ {
+        TypX::Int(IntRange::U(size) | IntRange::I(size)) => bv_typ(*size),
+        TypX::Bool => bool_typ(),
+        TypX::Boxed(t) => bv_typ_to_air(t),
+        _ => panic!("bv_typ_to_air: {:?}", typ),
+    }
+}
+
 fn clip_bitwise_result(bit_expr: ExprX, exp: &Exp) -> Expr {
     if let TypX::Int(range) = &*exp.typ {
         match range {
@@ -340,36 +349,47 @@ fn clip_bitwise_result(bit_expr: ExprX, exp: &Exp) -> Expr {
     }
 }
 
-fn assert_bitvec_exp_supported(exp: &Exp) {
-    match &exp.x {
-        ExpX::Const(crate::ast::Constant::Nat(_)) => {}
-        ExpX::Var(_) => {}
-        ExpX::Binary(_, e1, e2) => {
-            assert_bitvec_exp_supported(e1);
-            assert_bitvec_exp_supported(e2);
+//TODO: find better error - other than panic
+fn assert_unsigned(exp: &Exp) {
+    if let TypX::Int(range) = &*exp.typ {
+        match range {
+            IntRange::I(_) | IntRange::ISize => {
+                panic!("error: signed integer is not supported for bit-vector reasoning")
+            }
+            _ => (),
         }
-        ExpX::Unary(_, exp) => assert_bitvec_exp_supported(exp),
-        ExpX::UnaryOpr(UnaryOpr::Box(_) | UnaryOpr::Unbox(_), _) => {}
-        ExpX::If(e1, e2, e3) => {
-            assert_bitvec_exp_supported(e1);
-            assert_bitvec_exp_supported(e2);
-            assert_bitvec_exp_supported(e3);
+    };
+}
+
+fn assert_bitvec_exp_supported(exp: &Exp, expr_ctxt: ExprCtxt) {
+    if expr_ctxt.is_bit_vector {
+        match &exp.x {
+            ExpX::Const(crate::ast::Constant::Nat(_)) => {}
+            ExpX::Var(_) => {}
+            ExpX::Binary(_, e1, e2) => {
+                assert_bitvec_exp_supported(e1, expr_ctxt);
+                assert_bitvec_exp_supported(e2, expr_ctxt);
+            }
+            ExpX::Unary(_, exp) => assert_bitvec_exp_supported(exp, expr_ctxt),
+            ExpX::UnaryOpr(UnaryOpr::Box(_) | UnaryOpr::Unbox(_), _) => {}
+            ExpX::If(e1, e2, e3) => {
+                assert_bitvec_exp_supported(e1, expr_ctxt);
+                assert_bitvec_exp_supported(e2, expr_ctxt);
+                assert_bitvec_exp_supported(e3, expr_ctxt);
+            }
+            ExpX::Bind(bnd, exp) => {
+                assert_bitvec_exp_supported(exp, expr_ctxt);
+                match &bnd.x {
+                    BndX::Quant(..) | BndX::Let(_) => {}
+                    _ => panic!("unsupported for bit-vector: bind conversion, {:?} ", exp.x),
+                };
+            }
+            _ => panic!("unsupported for bit-vector: expression conversion {:?}", exp.x),
         }
-        ExpX::Bind(bnd, exp) => {
-            assert_bitvec_exp_supported(exp);
-            match &bnd.x {
-                BndX::Quant(..) | BndX::Let(_) => {}
-                _ => panic!("unsupported for bit-vector: bind conversion, {:?} ", exp.x),
-            };
-        }
-        _ => panic!("unsupported for bit-vector: expression conversion {:?}", exp.x),
     }
 }
 
 pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: ExprCtxt) -> Expr {
-    if expr_ctxt.is_bit_vector {
-        assert_bitvec_exp_supported(exp)
-    };
     match &exp.x {
         ExpX::Const(crate::ast::Constant::Nat(s)) if expr_ctxt.is_bit_vector => {
             if let Some(width) = bitwidth_from_type(&exp.typ) {
@@ -535,7 +555,6 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: ExprCtxt) -> Expr {
                 }
                 _ => (),
             };
-
             let bop = match op {
                 BinaryOp::Eq(_) => air::ast::BinaryOp::Eq,
                 BinaryOp::Ne => unreachable!(),
@@ -803,27 +822,6 @@ fn one_stmt(stmts: Vec<Stmt>) -> Stmt {
     if stmts.len() == 1 { stmts[0].clone() } else { Arc::new(StmtX::Block(Arc::new(stmts))) }
 }
 
-//TODO: find better error - other than panic
-fn assert_unsigned(exp: &Exp) {
-    if let TypX::Int(range) = &*exp.typ {
-        match range {
-            IntRange::I(_) | IntRange::ISize => {
-                panic!("error: signed integer is not supported for bit-vector reasoning")
-            }
-            _ => (),
-        }
-    };
-}
-
-pub(crate) fn bv_typ_to_air(typ: &Typ) -> air::ast::Typ {
-    match &**typ {
-        TypX::Int(IntRange::U(size) | IntRange::I(size)) => bv_typ(*size),
-        TypX::Bool => bool_typ(),
-        TypX::Boxed(t) => bv_typ_to_air(t),
-        _ => panic!("bv_typ_to_air: {:?}", typ),
-    }
-}
-
 fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
     let expr_ctxt = ExprCtxt { mode: ExprMode::Body, is_bit_vector: false };
     match &stm.x {
@@ -952,7 +950,10 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
                 "assertion failed".to_string(),
             );
             let local = state.local_bv_shared.clone();
-            let air_expr = exp_to_expr(ctx, &expr, bv_expr_ctxt);
+            let air_expr = {
+                assert_bitvec_exp_supported(expr, bv_expr_ctxt);
+                exp_to_expr(ctx, &expr, bv_expr_ctxt)
+            };
             let assertion = Arc::new(StmtX::Assert(error, air_expr));
             // this creates a separate query for the bv assertion
             let query = Arc::new(QueryX { local: Arc::new(local), assertion });
@@ -1343,14 +1344,11 @@ pub fn body_stm_to_air(
         )
         .secondary_label(&ens.span, "failed this postcondition".to_string());
 
-        let e = mk_let(
-            &trait_typ_bind,
-            &exp_to_expr(
-                ctx,
-                ens,
-                ExprCtxt { mode: ExprMode::Body, is_bit_vector: is_bit_vector_mode },
-            ),
-        );
+        let expr_ctxt = ExprCtxt { mode: ExprMode::Body, is_bit_vector: is_bit_vector_mode };
+        let e = {
+            assert_bitvec_exp_supported(ens, expr_ctxt);
+            mk_let(&trait_typ_bind, &exp_to_expr(ctx, ens, expr_ctxt))
+        };
         let ens_stmt = StmtX::Assert(error, e);
         stmts.push(Arc::new(ens_stmt));
     }
@@ -1367,14 +1365,11 @@ pub fn body_stm_to_air(
     }
 
     for req in reqs {
-        let e = mk_let(
-            &trait_typ_bind,
-            &exp_to_expr(
-                ctx,
-                req,
-                ExprCtxt { mode: ExprMode::BodyPre, is_bit_vector: is_bit_vector_mode },
-            ),
-        );
+        let expr_ctxt = ExprCtxt { mode: ExprMode::BodyPre, is_bit_vector: is_bit_vector_mode };
+        let e = {
+            assert_bitvec_exp_supported(req, expr_ctxt);
+            mk_let(&trait_typ_bind, &exp_to_expr(ctx, req, expr_ctxt))
+        };
         local.push(Arc::new(DeclX::Axiom(e)));
     }
 
