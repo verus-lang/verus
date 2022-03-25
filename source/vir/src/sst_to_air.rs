@@ -549,6 +549,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: ExprCtxt) -> Expr {
                 BinaryOp::Implies => air::ast::BinaryOp::Implies,
                 BinaryOp::And => unreachable!(),
                 BinaryOp::Or => unreachable!(),
+                BinaryOp::Xor => unreachable!(),
             };
             return Arc::new(ExprX::Binary(bop, lh, rh));
         }
