@@ -39,6 +39,17 @@ enum App {
     // u64 is an id, assigned via a simple counter
     Other(u64),
     VarAt(UniqueIdent, VarAt),
+    BitOp(BitOpName),
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub enum BitOpName {
+    BitXor,
+    BitAnd,
+    BitOr,
+    Shr,
+    Shl,
+    BitNot,
 }
 
 type Term = Arc<TermX>;
@@ -77,6 +88,9 @@ impl std::fmt::Debug for TermX {
             TermX::App(App::VarAt((x, _), VarAt::Pre), _) => {
                 write!(f, "old({})", x)
             }
+            TermX::App(App::BitOp(bop), _) => {
+                write!(f, "BitOp: {:?}", bop)
+            }
         }
     }
 }
@@ -111,12 +125,13 @@ struct Score {
     // prefer
     depth: u64, // 1 or more, or 0 for next to ==
     size: u64,
+    num_operators: u64,
 }
 
 impl Score {
     // lower total score is better
     fn total(&self) -> u64 {
-        self.depth * 1000 + self.size
+        self.depth * 1000 + self.size + 1000000 * self.num_operators
     }
 }
 
@@ -195,8 +210,16 @@ fn trigger_var_depth(ctxt: &Ctxt, term: &Term, depth: u64) -> Option<u64> {
     }
 }
 
-fn make_score(term: &Term, depth: u64) -> Score {
-    Score { depth, size: term_size(term) }
+fn make_score(term: &Term, depth: u64, num_operators: u64) -> Score {
+    Score { depth, size: term_size(term), num_operators }
+}
+
+fn count_bit_operators(term: &Term) -> u64 {
+    match &**term {
+        TermX::App(App::BitOp(_), args) => 1 + args.iter().map(count_bit_operators).sum::<u64>(),
+        TermX::App(_, args) => args.iter().map(count_bit_operators).sum::<u64>(),
+        TermX::Var(..) => 0,
+    }
 }
 
 fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Term) {
@@ -255,7 +278,13 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
                 UnaryOp::Trigger(_) | UnaryOp::Clip(_) | UnaryOp::BitNot => 1,
             };
             let (_, term1) = gather_terms(ctxt, ctx, e1, depth);
-            (false, Arc::new(TermX::App(ctxt.other(), Arc::new(vec![term1]))))
+            match op {
+                UnaryOp::BitNot => (
+                    true,
+                    Arc::new(TermX::App(App::BitOp(BitOpName::BitNot), Arc::new(vec![term1]))),
+                ),
+                _ => (false, Arc::new(TermX::App(ctxt.other(), Arc::new(vec![term1])))),
+            }
         }
         ExpX::UnaryOpr(UnaryOpr::Box(_), e1) => gather_terms(ctxt, ctx, e1, depth),
         ExpX::UnaryOpr(UnaryOpr::Unbox(_), e1) => gather_terms(ctxt, ctx, e1, depth),
@@ -290,7 +319,20 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
             };
             let (_, term1) = gather_terms(ctxt, ctx, e1, depth);
             let (_, term2) = gather_terms(ctxt, ctx, e2, depth);
-            (false, Arc::new(TermX::App(ctxt.other(), Arc::new(vec![term1, term2]))))
+            match op {
+                BitXor | BitAnd | BitOr | Shr | Shl => {
+                    let bop = match op {
+                        BitXor => BitOpName::BitXor,
+                        BitAnd => BitOpName::BitAnd,
+                        Shr => BitOpName::Shr,
+                        Shl => BitOpName::Shl,
+                        BitOr => BitOpName::BitOr,
+                        _ => unreachable!(),
+                    };
+                    (true, Arc::new(TermX::App(App::BitOp(bop), Arc::new(vec![term1, term2]))))
+                }
+                _ => (false, Arc::new(TermX::App(ctxt.other(), Arc::new(vec![term1, term2])))),
+            }
         }
         ExpX::If(e1, e2, e3) => {
             let depth = 1;
@@ -321,7 +363,8 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
             if !ctxt.pure_terms.contains_key(&term) {
                 ctxt.pure_terms.insert(term.clone(), (exp.clone(), ctxt.pure_terms.len()));
             }
-            let score = make_score(&term, var_depth);
+            let num_operators = count_bit_operators(&term);
+            let score = make_score(&term, var_depth, num_operators);
             if !ctxt.pure_best_scores.contains_key(&term)
                 || score.total() < ctxt.pure_best_scores[&term].total()
             {

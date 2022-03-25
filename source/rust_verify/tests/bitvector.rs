@@ -21,6 +21,9 @@ test_verify_one_file! {
 
             assert_bit_vector(b | b == b);
             assert(b | b == b);
+
+            assert_bit_vector(b & 0xff < 0x100);
+            assert(b & 0xff < 0x100);
         }
     } => Ok(())
 }
@@ -29,10 +32,6 @@ test_verify_one_file! {
     #[test] test2 code! {
         #[proof]
         fn test2(b: u32) {
-            assert_bit_vector(b & 0xff < 0x100);
-            assert(b & 0xff < 0x100);
-            //assert(0xff & b < 0x100);  // fails without communtativity
-
             assert_bit_vector(b<<2 == b*4);
             assert(b<<2 == b*4);
             assert(b < 256 >>= ((b<<2) as int) == (b as int) *4);
@@ -92,11 +91,36 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test7 code! {
         #[proof]
-        fn test8(b1:u64, b2:u64, b3:u64) {
+        fn test7(b1:u64, b2:u64, b3:u64) {
             assert_bit_vector( !b1 != !b2 >>= !(b1==b2));
             assert_bit_vector(((b1 == (1 as u64)) && (b2 == b3)) >>= (b1 + b2 == b3 + 1));
             assert_bit_vector((b1 == b2)  >>= (!b1 == !b2));
             assert_bit_vector( b1 == (!(!b1)));
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test8 code! {
+        #[proof]
+        fn test8(b: u32) {
+            assert_bit_vector(forall(|a: u32, b: u32| #[trigger] (a&b) == b&a));
+            assert_bit_vector(b & 0xff < 0x100);
+            assert(0xff & b < 0x100);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test9 code! {
+        #[proof]
+        fn test9(x: u32, y:u32) {
+            let max:u32 = 0xffff_ffff;
+            assert(x >> 1 >= 0);
+            assert(x&y <= max);
+            assert(x|y >= 0);
+            assert(x<<y <= max);
+            assert((!x) <= max);
         }
     } => Ok(())
 }
@@ -153,6 +177,17 @@ test_verify_one_file! {
         fn test6(b: u32) {
             assert_bit_vector(b<<2 == b*4);
             assert(((b<<2) as int) == (b as int) *4);  // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] test7_fails code! {
+        #[proof]
+        fn test7(b: u32) {
+            assert_bit_vector(!0u32 == 0xffffffffu32);
+            assert_bit_vector(!0u64 == 0xffffffff_ffffffffu64);
+            assert(false); // FAILS
         }
     } => Err(err) => assert_one_fails(err)
 }

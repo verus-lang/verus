@@ -391,7 +391,7 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
             let e2 = coerce_expr_to_native(ctx, &poly_expr(ctx, state, e2));
             mk_expr(ExprX::Assign { init_not_mut: *init_not_mut, lhs: e1, rhs: e2 })
         }
-        ExprX::AssertBV(_) => expr.clone(),
+        ExprX::AssertBV(e) => mk_expr(ExprX::AssertBV(poly_expr(ctx, state, e))),
         ExprX::Fuel(..) => expr.clone(),
         ExprX::Header(..) => panic!("Header should already be removed"),
         ExprX::Admit => expr.clone(),
