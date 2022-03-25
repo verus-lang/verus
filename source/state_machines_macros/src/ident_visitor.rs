@@ -70,7 +70,7 @@ fn validate_idents_transition_stmt(
 
 fn validate_idents_op(op: &SpecialOp, kind: TransitionKind) -> syn::parse::Result<()> {
     match &op.elt {
-        MonoidElt::OptionSome(e) | MonoidElt::SingletonMultiset(e) => {
+        MonoidElt::OptionSome(e) | MonoidElt::SingletonMultiset(e) | MonoidElt::General(e) => {
             validate_idents_expr(e, kind)?;
         }
         MonoidElt::SingletonKV(e1, e2) => {

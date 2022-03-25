@@ -39,7 +39,7 @@ use quote::quote;
 /// Thus, subject to the invariant, the weak & strong versions will actually be equivalent.
 
 pub fn to_relation(ts: &TransitionStmt, weak: bool) -> TokenStream {
-    match to_relation_rec(&ts, None, weak) {
+    match to_relation_rec(&ts, None, weak, false) {
         Some(e) => e,
         None => quote! { true },
     }
@@ -47,20 +47,31 @@ pub fn to_relation(ts: &TransitionStmt, weak: bool) -> TokenStream {
 
 // Recursive traversal, post-order.
 
-fn to_relation_rec(ts: &TransitionStmt, p: Option<TokenStream>, weak: bool) -> Option<TokenStream> {
+fn to_relation_rec(
+    ts: &TransitionStmt,
+    p: Option<TokenStream>,
+    weak: bool,
+    let_skip_brace: bool,
+) -> Option<TokenStream> {
     match ts {
         TransitionStmt::Block(_span, v) => {
             let mut p = p;
             for e in v.iter().rev() {
-                p = to_relation_rec(e, p, weak);
+                p = to_relation_rec(e, p, weak, false);
             }
             p
         }
         TransitionStmt::Let(_span, id, _lk, e, child) => {
-            let x = to_relation_rec(child, None, weak);
+            let x = to_relation_rec(child, None, weak, true);
             let t = match x {
                 None => None,
-                Some(r) => Some(quote! { { let #id = #e; #r } }),
+                Some(r) => {
+                    if let_skip_brace {
+                        Some(quote! { let #id = #e; #r })
+                    } else {
+                        Some(quote! { { let #id = #e; #r } })
+                    }
+                }
             };
             // note this strategy is going to be quadratic in nesting depth or something
             if weak {
@@ -70,8 +81,8 @@ fn to_relation_rec(ts: &TransitionStmt, p: Option<TokenStream>, weak: bool) -> O
             }
         }
         TransitionStmt::If(_span, cond, e1, e2) => {
-            let x1 = to_relation_rec(e1, None, weak);
-            let x2 = to_relation_rec(e2, None, weak);
+            let x1 = to_relation_rec(e1, None, weak, false);
+            let x2 = to_relation_rec(e2, None, weak, false);
             let t = match (x1, x2) {
                 (None, None) => None,
                 (Some(e1), None) => Some(quote! { ::builtin::imply(#cond, #e1) }),

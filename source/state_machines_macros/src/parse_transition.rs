@@ -239,71 +239,17 @@ fn parse_monoid_stmt(
 
     let stmt_span = kw.span().join(semi.span()).unwrap_or(kw.span());
 
-    // The user is allowed to attach a proof block to any statement which has an inherent
-    // safety condition.
-    // Here, we check if the given statement actually has such a safety condition,
-    // and if not, gives an appropriate error.
-    //
-    // withdraw, guard: yes, has a safety condition
-    // remove, have: no safety condition; thus no proof needed
-    // add, desposit: yes iff the underlying monoid's composition operator is not total.
-    //   (e.g., composition is total for multiset, so AddElement returns false)
-    //
-    // See `docs/command-reference.md` for more explanation, or `simplification.rs`
-    // for the expansions.
-
-    if proof_block.is_some() {
-        match monoid_stmt_type {
-            MonoidStmtType::Withdraw | MonoidStmtType::Guard => {}
-            MonoidStmtType::Have | MonoidStmtType::Remove => {
-                let name = monoid_stmt_type.name();
-                return Err(Error::new(
-                    stmt_span,
-                    format!(
-                        "'{name:}' statement has no inherent safety condition, adding a proof body is meaningless"
-                    ),
-                ));
-            }
-            MonoidStmtType::Add | MonoidStmtType::Deposit => match elem {
-                MonoidElt::OptionSome(..) | MonoidElt::SingletonKV(..) => {}
-                MonoidElt::SingletonMultiset(..) => {
-                    let name = monoid_stmt_type.name();
-                    return Err(Error::new(
-                        stmt_span,
-                        format!(
-                            "'{name:}' statement for multisets has no nontrivial inherent safety condition (as composition is total and thus this statement never fails); adding a proof body is meaningless"
-                        ),
-                    ));
-                }
-            },
-        }
-    }
-
-    // Return a SpecialOp depending on the inferred sharding type and command type.
-    // The `error_msg` should refer to the name of a lemma in
-    // `pervasive::state_machine_internal`.
-
-    let error_msg = match (&monoid_stmt_type, &elem) {
-        (MonoidStmtType::Have, _) => "",
-        (MonoidStmtType::Remove, _) => "",
-
-        (MonoidStmtType::Add, MonoidElt::OptionSome(_)) => "assert_add_some",
-        (MonoidStmtType::Add, MonoidElt::SingletonKV(_, _)) => "assert_add_kv",
-        (MonoidStmtType::Add, MonoidElt::SingletonMultiset(_)) => "",
-
-        (MonoidStmtType::Guard, MonoidElt::OptionSome(_)) => "assert_guard_some",
-        (MonoidStmtType::Guard, MonoidElt::SingletonKV(_, _)) => "assert_guard_kv",
-
-        (MonoidStmtType::Deposit, MonoidElt::OptionSome(_)) => "assert_deposit_some",
-        (MonoidStmtType::Deposit, MonoidElt::SingletonKV(_, _)) => "assert_deposit_kv",
-
-        (MonoidStmtType::Withdraw, MonoidElt::OptionSome(_)) => "assert_withdraw_some",
-        (MonoidStmtType::Withdraw, MonoidElt::SingletonKV(_, _)) => "assert_withdraw_kv",
-
-        (_, MonoidElt::SingletonMultiset(_e)) => {
+    match (&monoid_stmt_type, &elem) {
+        (MonoidStmtType::Guard, MonoidElt::SingletonMultiset(_e))
+        | (MonoidStmtType::Deposit, MonoidElt::SingletonMultiset(_e))
+        | (MonoidStmtType::Withdraw, MonoidElt::SingletonMultiset(_e)) => {
             return Err(Error::new(stmt_span, "storage_multiset strategy not implemented"));
         }
+        _ => {}
     };
+
+    // We fill this in later.
+    let error_msg = "".to_string();
 
     let op = SpecialOp { stmt: monoid_stmt_type, elt: elem };
 
@@ -338,6 +284,11 @@ fn parse_monoid_elt(
         let _ = parenthesized!(content in input);
         let e: Expr = content.parse()?;
         Ok(MonoidElt::OptionSome(e))
+    } else if input.peek(syn::token::Paren) {
+        let content;
+        let _ = parenthesized!(content in input);
+        let e: Expr = content.parse()?;
+        Ok(MonoidElt::General(e))
     } else {
         let name = monoid_stmt_type.name();
         Err(input.error(format!("malformed {name:} statement")))
@@ -432,7 +383,7 @@ fn parse_assert(kw: Ident, input: ParseStream) -> syn::parse::Result<TransitionS
 
     let stmt_span = kw.span().join(semi.span()).unwrap_or(kw.span());
 
-    let proof = AssertProof { proof: proof_block, error_msg: "assert_safety" };
+    let proof = AssertProof { proof: proof_block, error_msg: "assert_safety".to_string() };
     Ok(TransitionStmt::Assert(stmt_span, e, proof))
 }
 

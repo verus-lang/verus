@@ -115,9 +115,15 @@ impl MonoidStmtType {
 
 #[derive(Clone, Debug)]
 pub enum MonoidElt {
+    /// Represents the element Some(e)
     OptionSome(Expr),
+    /// Represents the singleton map [k => v]
     SingletonKV(Expr, Expr),
+    /// Represents the singleton multiset {e}
     SingletonMultiset(Expr),
+    /// Represents e
+    /// (can be used with any sharding strategy)
+    General(Expr),
 }
 
 impl MonoidElt {
@@ -126,6 +132,7 @@ impl MonoidElt {
             MonoidElt::OptionSome(_) => "Some(...)",
             MonoidElt::SingletonKV(_, _) => "[... => ...]",
             MonoidElt::SingletonMultiset(_) => "{ ... }",
+            MonoidElt::General(_) => "( ... )",
         }
     }
 
@@ -134,6 +141,18 @@ impl MonoidElt {
             MonoidElt::OptionSome(_) => "Option",
             MonoidElt::SingletonKV(_, _) => "Map",
             MonoidElt::SingletonMultiset(_) => "Multiset",
+            MonoidElt::General(_) => {
+                // This function is just for error messages, and the relevant error
+                // shouldn't show up for this case.
+                panic!("no single applicable type");
+            }
+        }
+    }
+
+    pub fn is_general(&self) -> bool {
+        match self {
+            MonoidElt::General(_) => true,
+            _ => false,
         }
     }
 }
@@ -154,7 +173,7 @@ pub enum LetKind {
 #[derive(Clone, Debug)]
 pub struct AssertProof {
     pub proof: Option<Rc<syn::Block>>,
-    pub error_msg: &'static str,
+    pub error_msg: String,
 }
 
 #[derive(Clone, Debug)]

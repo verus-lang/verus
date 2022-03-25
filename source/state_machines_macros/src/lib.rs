@@ -8,6 +8,7 @@ mod check_birds_eye;
 mod concurrency_tokens;
 mod field_access_visitor;
 mod ident_visitor;
+mod inherent_safety_conditions;
 mod lemmas;
 mod parse_token_stream;
 mod parse_transition;

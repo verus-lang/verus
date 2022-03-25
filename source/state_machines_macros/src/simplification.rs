@@ -1,5 +1,6 @@
 use crate::add_tmp_vars::add_tmp_vars_special_ops;
 use crate::ast::{MonoidElt, MonoidStmtType, ShardableType, SpecialOp, TransitionStmt, SM};
+use crate::transitions::get_field;
 use proc_macro2::Span;
 use quote::quote;
 use std::collections::HashMap;
@@ -419,296 +420,65 @@ fn simplify_ops_rec(
             (TransitionStmt::Block(*span, Vec::new()), field_map)
         }
 
-        TransitionStmt::Special(
-            span,
-            f,
-            SpecialOp { stmt: MonoidStmtType::Have, elt: MonoidElt::OptionSome(e) },
-            _,
-        ) => {
+        TransitionStmt::Special(span, f, SpecialOp { stmt: MonoidStmtType::Have, elt }, _) => {
             let cur = field_map.get(&f.to_string());
-            let ty = get_opt_type(sm, f);
-            let prec = Expr::Verbatim(quote! {
-                ::builtin::equal(
-                    #cur,
-                    crate::pervasive::option::Option::<#ty>::Some(#e)
-                )
-            });
+            let field = get_field(&sm.fields, f);
+            let prec = expr_ge(&field.stype, &cur, elt);
             (TransitionStmt::Require(*span, prec), field_map)
         }
-        TransitionStmt::Special(
-            span,
-            f,
-            SpecialOp { stmt: MonoidStmtType::Add, elt: MonoidElt::OptionSome(e) },
-            proof,
-        ) => {
+        TransitionStmt::Special(span, f, SpecialOp { stmt: MonoidStmtType::Add, elt }, proof) => {
             let mut field_map = field_map;
             let cur = field_map.get(&f.to_string()).clone();
-            let ty = get_opt_type(sm, f);
-            field_map.set(
-                f.to_string(),
-                Expr::Verbatim(quote! {
-                    crate::pervasive::option::Option::<#ty>::Some(#e)
-                }),
-            );
-            let safety = Expr::Verbatim(quote! {
-                (#cur).is_None()
-            });
-            (TransitionStmt::Assert(*span, safety, proof.clone()), field_map)
+            let field = get_field(&sm.fields, f);
+            field_map.set(f.to_string(), expr_add(&field.stype, &cur, elt));
+            match expr_can_add(&field.stype, &cur, elt) {
+                Some(safety) => (TransitionStmt::Assert(*span, safety, proof.clone()), field_map),
+                None => (TransitionStmt::Block(*span, Vec::new()), field_map),
+            }
         }
-        TransitionStmt::Special(
-            span,
-            f,
-            SpecialOp { stmt: MonoidStmtType::Remove, elt: MonoidElt::OptionSome(e) },
-            _,
-        ) => {
+        TransitionStmt::Special(span, f, SpecialOp { stmt: MonoidStmtType::Remove, elt }, _) => {
             let mut field_map = field_map;
             let cur = field_map.get(&f.to_string()).clone();
-            let ty = get_opt_type(sm, f);
-            field_map.set(
-                f.to_string(),
-                Expr::Verbatim(quote! {
-                    crate::pervasive::option::Option::<#ty>::None
-                }),
-            );
-            let prec = Expr::Verbatim(quote! {
-                ::builtin::equal(
-                    #cur,
-                    crate::pervasive::option::Option::Some(#e)
-                )
-            });
+            let field = get_field(&sm.fields, f);
+            field_map.set(f.to_string(), expr_remove(&field.stype, &cur, elt));
+            let prec = expr_ge(&field.stype, &cur, elt);
             (TransitionStmt::Require(*span, prec), field_map)
         }
 
-        TransitionStmt::Special(
-            span,
-            f,
-            SpecialOp { stmt: MonoidStmtType::Guard, elt: MonoidElt::OptionSome(e) },
-            proof,
-        ) => {
+        TransitionStmt::Special(span, f, SpecialOp { stmt: MonoidStmtType::Guard, elt }, proof) => {
             let cur = field_map.get(&f.to_string());
-            let ty = get_opt_type(sm, f);
-            let prec = Expr::Verbatim(quote! {
-                ::builtin::equal(
-                    #cur,
-                    crate::pervasive::option::Option::<#ty>::Some(#e)
-                )
-            });
+            let field = get_field(&sm.fields, f);
+            let prec = expr_ge(&field.stype, &cur, elt);
             (TransitionStmt::Assert(*span, prec, proof.clone()), field_map)
         }
 
         TransitionStmt::Special(
             span,
             f,
-            SpecialOp { stmt: MonoidStmtType::Deposit, elt: MonoidElt::OptionSome(e) },
+            SpecialOp { stmt: MonoidStmtType::Deposit, elt },
             proof,
         ) => {
             let mut field_map = field_map;
             let cur = field_map.get(&f.to_string()).clone();
-            let ty = get_opt_type(sm, f);
-            field_map.set(
-                f.to_string(),
-                Expr::Verbatim(quote! {
-                    crate::pervasive::option::Option::<#ty>::Some(#e)
-                }),
-            );
-            let safety = Expr::Verbatim(quote! {
-                (#cur).is_None()
-            });
-            (TransitionStmt::Assert(*span, safety, proof.clone()), field_map)
+            let field = get_field(&sm.fields, f);
+            field_map.set(f.to_string(), expr_add(&field.stype, &cur, elt));
+            match expr_can_add(&field.stype, &cur, elt) {
+                Some(safety) => (TransitionStmt::Assert(*span, safety, proof.clone()), field_map),
+                None => (TransitionStmt::Block(*span, Vec::new()), field_map),
+            }
         }
         TransitionStmt::Special(
             span,
             f,
-            SpecialOp { stmt: MonoidStmtType::Withdraw, elt: MonoidElt::OptionSome(e) },
+            SpecialOp { stmt: MonoidStmtType::Withdraw, elt },
             proof,
         ) => {
             let mut field_map = field_map;
             let cur = field_map.get(&f.to_string()).clone();
-            let ty = get_opt_type(sm, f);
-            field_map.set(
-                f.to_string(),
-                Expr::Verbatim(quote! {
-                    crate::pervasive::option::Option::<#ty>::None
-                }),
-            );
-            let prec = Expr::Verbatim(quote! {
-                ::builtin::equal(
-                    #cur,
-                    crate::pervasive::option::Option::<#ty>::Some(#e)
-                )
-            });
+            let field = get_field(&sm.fields, f);
+            field_map.set(f.to_string(), expr_remove(&field.stype, &cur, elt));
+            let prec = expr_ge(&field.stype, &cur, elt);
             (TransitionStmt::Assert(*span, prec, proof.clone()), field_map)
-        }
-
-        TransitionStmt::Special(
-            span,
-            f,
-            SpecialOp { stmt: MonoidStmtType::Have, elt: MonoidElt::SingletonKV(key, val) },
-            _,
-        ) => {
-            let cur = field_map.get(&f.to_string());
-            let prec = Expr::Verbatim(quote! {
-                (#cur).contains_pair(#key, #val)
-            });
-            (TransitionStmt::Require(*span, prec), field_map)
-        }
-        TransitionStmt::Special(
-            span,
-            f,
-            SpecialOp { stmt: MonoidStmtType::Add, elt: MonoidElt::SingletonKV(key, val) },
-            proof,
-        ) => {
-            let mut field_map = field_map;
-            let cur = field_map.get(&f.to_string()).clone();
-            field_map.set(
-                f.to_string(),
-                Expr::Verbatim(quote! {
-                    (#cur).insert(#key, #val)
-                }),
-            );
-            let safety = Expr::Verbatim(quote! {
-                !(#cur).dom().contains(#key)
-            });
-            (TransitionStmt::Assert(*span, safety, proof.clone()), field_map)
-        }
-        TransitionStmt::Special(
-            span,
-            f,
-            SpecialOp { stmt: MonoidStmtType::Remove, elt: MonoidElt::SingletonKV(key, val) },
-            _,
-        ) => {
-            let mut field_map = field_map;
-            let cur = field_map.get(&f.to_string()).clone();
-            field_map.set(
-                f.to_string(),
-                Expr::Verbatim(quote! {
-                    (#cur).remove(#key)
-                }),
-            );
-            let prec = Expr::Verbatim(quote! {
-                (#cur).contains_pair(#key, #val)
-            });
-            (TransitionStmt::Require(*span, prec), field_map)
-        }
-
-        TransitionStmt::Special(
-            span,
-            f,
-            SpecialOp { stmt: MonoidStmtType::Guard, elt: MonoidElt::SingletonKV(key, val) },
-            proof,
-        ) => {
-            let cur = field_map.get(&f.to_string());
-            let prec = Expr::Verbatim(quote! {
-                (#cur).contains_pair(#key, #val)
-            });
-            (TransitionStmt::Assert(*span, prec, proof.clone()), field_map)
-        }
-        TransitionStmt::Special(
-            span,
-            f,
-            SpecialOp { stmt: MonoidStmtType::Deposit, elt: MonoidElt::SingletonKV(key, val) },
-            proof,
-        ) => {
-            let mut field_map = field_map;
-            let cur = field_map.get(&f.to_string()).clone();
-            field_map.set(
-                f.to_string(),
-                Expr::Verbatim(quote! {
-                    (#cur).insert(#key, #val)
-                }),
-            );
-            let safety = Expr::Verbatim(quote! {
-                !(#cur).dom().contains(#key)
-            });
-            (TransitionStmt::Assert(*span, safety, proof.clone()), field_map)
-        }
-        TransitionStmt::Special(
-            span,
-            f,
-            SpecialOp { stmt: MonoidStmtType::Withdraw, elt: MonoidElt::SingletonKV(key, val) },
-            proof,
-        ) => {
-            let mut field_map = field_map;
-            let cur = field_map.get(&f.to_string()).clone();
-            field_map.set(
-                f.to_string(),
-                Expr::Verbatim(quote! {
-                    (#cur).remove(#key)
-                }),
-            );
-            let prec = Expr::Verbatim(quote! {
-                (#cur).contains_pair(#key, #val)
-            });
-            (TransitionStmt::Assert(*span, prec, proof.clone()), field_map)
-        }
-
-        TransitionStmt::Special(
-            span,
-            f,
-            SpecialOp { stmt: MonoidStmtType::Have, elt: MonoidElt::SingletonMultiset(e) },
-            _,
-        ) => {
-            let cur = field_map.get(&f.to_string());
-            let prec = Expr::Verbatim(quote! {
-                (#cur).count(#e) >= 1
-            });
-            (TransitionStmt::Require(*span, prec), field_map)
-        }
-        TransitionStmt::Special(
-            span,
-            f,
-            SpecialOp { stmt: MonoidStmtType::Add, elt: MonoidElt::SingletonMultiset(e) },
-            _,
-        ) => {
-            let mut field_map = field_map;
-            let cur = field_map.get(&f.to_string()).clone();
-            field_map.set(
-                f.to_string(),
-                Expr::Verbatim(quote! {
-                    (#cur).insert(#e)
-                }),
-            );
-            (TransitionStmt::Block(*span, Vec::new()), field_map)
-        }
-        TransitionStmt::Special(
-            span,
-            f,
-            SpecialOp { stmt: MonoidStmtType::Remove, elt: MonoidElt::SingletonMultiset(e) },
-            _,
-        ) => {
-            let mut field_map = field_map;
-            let cur = field_map.get(&f.to_string()).clone();
-            field_map.set(
-                f.to_string(),
-                Expr::Verbatim(quote! {
-                    (#cur).remove(#e)
-                }),
-            );
-            let prec = Expr::Verbatim(quote! {
-                (#cur).count(#e) >= 1
-            });
-            (TransitionStmt::Require(*span, prec), field_map)
-        }
-
-        TransitionStmt::Special(
-            _,
-            _,
-            SpecialOp { stmt: MonoidStmtType::Guard, elt: MonoidElt::SingletonMultiset(_) },
-            _,
-        )
-        | TransitionStmt::Special(
-            _,
-            _,
-            SpecialOp { stmt: MonoidStmtType::Deposit, elt: MonoidElt::SingletonMultiset(_) },
-            _,
-        )
-        | TransitionStmt::Special(
-            _,
-            _,
-            SpecialOp { stmt: MonoidStmtType::Withdraw, elt: MonoidElt::SingletonMultiset(_) },
-            _,
-        ) => {
-            panic!("not supported");
         }
 
         TransitionStmt::PostCondition(..) => {
@@ -717,13 +487,149 @@ fn simplify_ops_rec(
     }
 }
 
-fn get_opt_type(sm: &SM, ident: &Ident) -> Type {
-    let field = crate::transitions::get_field(&sm.fields, ident);
-    match &field.stype {
+fn get_opt_type(stype: &ShardableType) -> Type {
+    match stype {
         ShardableType::Option(ty) => ty.clone(),
         ShardableType::StorageOption(ty) => ty.clone(),
         _ => {
             panic!("get_opt_type expected option");
         }
+    }
+}
+
+fn expr_can_add(stype: &ShardableType, cur: &Expr, elt: &MonoidElt) -> Option<Expr> {
+    match elt {
+        MonoidElt::OptionSome(_e) => Some(Expr::Verbatim(quote! { (#cur).is_None() })),
+        MonoidElt::SingletonKV(key, _val) => {
+            Some(Expr::Verbatim(quote! { !(#cur).dom().contains(#key) }))
+        }
+        MonoidElt::SingletonMultiset(_e) => None,
+        MonoidElt::General(e) => match stype {
+            ShardableType::Option(_) | ShardableType::StorageOption(_) => {
+                Some(Expr::Verbatim(quote! {
+                    ((#e).is_None() || (#cur).is_None())
+                }))
+            }
+
+            ShardableType::Map(_, _) | ShardableType::StorageMap(_, _) => {
+                Some(Expr::Verbatim(quote! {
+                    (#cur).dom().disjoint((#e).dom())
+                }))
+            }
+
+            ShardableType::Multiset(_) => None,
+
+            _ => {
+                panic!("expected option/map/multiset");
+            }
+        },
+    }
+}
+
+/// Add the elements, assuming they are addable. Build the expression assuming
+/// to "prefer" the content from the right-hand side, even though it shouldn't really matter.
+/// That's often easier, anyway.
+fn expr_add(stype: &ShardableType, cur: &Expr, elt: &MonoidElt) -> Expr {
+    match elt {
+        MonoidElt::OptionSome(e) => {
+            let ty = get_opt_type(stype);
+            Expr::Verbatim(quote! {
+                crate::pervasive::option::Option::<#ty>::Some(#e)
+            })
+        }
+        MonoidElt::SingletonKV(key, val) => Expr::Verbatim(quote! {
+            (#cur).insert(#key, #val)
+        }),
+        MonoidElt::SingletonMultiset(e) => Expr::Verbatim(quote! {
+            (#cur).insert(#e)
+        }),
+        MonoidElt::General(e) => match stype {
+            ShardableType::Option(_) | ShardableType::StorageOption(_) => Expr::Verbatim(quote! {
+                (#e).or(#cur)
+            }),
+
+            ShardableType::Map(_, _) | ShardableType::StorageMap(_, _) => Expr::Verbatim(quote! {
+                (#cur).union_prefer_right(#e)
+            }),
+
+            ShardableType::Multiset(_) => Expr::Verbatim(quote! {
+                (#cur).add(#e)
+            }),
+
+            _ => {
+                panic!("expected option/map/multiset");
+            }
+        },
+    }
+}
+
+fn expr_ge(stype: &ShardableType, cur: &Expr, elt: &MonoidElt) -> Expr {
+    match elt {
+        MonoidElt::OptionSome(e) => {
+            let ty = get_opt_type(stype);
+            Expr::Verbatim(quote! {
+                ::builtin::equal(
+                    #cur,
+                    crate::pervasive::option::Option::<#ty>::Some(#e)
+                )
+            })
+        }
+        MonoidElt::SingletonKV(key, val) => Expr::Verbatim(quote! {
+            (#cur).contains_pair(#key, #val)
+        }),
+        MonoidElt::SingletonMultiset(e) => Expr::Verbatim(quote! {
+            (#cur).count(#e) >= 1
+        }),
+        MonoidElt::General(e) => match stype {
+            ShardableType::Option(_) | ShardableType::StorageOption(_) => Expr::Verbatim(quote! {
+                ((#e).is_Some() >>= ::builtin::equal(#cur, #e))
+            }),
+
+            ShardableType::Map(_, _) | ShardableType::StorageMap(_, _) => Expr::Verbatim(quote! {
+                (#e).le(#cur)
+            }),
+
+            ShardableType::Multiset(_) => Expr::Verbatim(quote! {
+                (#e).le(#cur)
+            }),
+
+            _ => {
+                panic!("expected option/map/multiset");
+            }
+        },
+    }
+}
+
+fn expr_remove(stype: &ShardableType, cur: &Expr, elt: &MonoidElt) -> Expr {
+    match elt {
+        MonoidElt::OptionSome(_e) => {
+            let ty = get_opt_type(stype);
+            Expr::Verbatim(quote! {
+                crate::pervasive::option::Option::<#ty>::None
+            })
+        }
+        MonoidElt::SingletonKV(key, _val) => Expr::Verbatim(quote! {
+            (#cur).remove(#key)
+        }),
+        MonoidElt::SingletonMultiset(e) => Expr::Verbatim(quote! {
+            (#cur).remove(#e)
+        }),
+        MonoidElt::General(e) => match stype {
+            ShardableType::Option(_) | ShardableType::StorageOption(_) => Expr::Verbatim(quote! {
+                (if (#e).is_Some() { crate::pervasive::option::Option::None } else { #cur })
+            }),
+
+            ShardableType::Map(_, _) | ShardableType::StorageMap(_, _) => Expr::Verbatim(quote! {
+                (#cur).remove_keys(#e.dom())
+            }),
+
+            ShardableType::Multiset(_) => Expr::Verbatim(quote! {
+                (#cur).sub(#e)
+            }),
+
+            _ => {
+                panic!("expected option/map/multiset");
+            }
+        },
     }
 }

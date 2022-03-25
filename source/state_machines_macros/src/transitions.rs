@@ -3,6 +3,7 @@ use crate::ast::{
 };
 use crate::check_birds_eye::check_birds_eye;
 use crate::ident_visitor::validate_idents_transition;
+use crate::inherent_safety_conditions::check_inherent_conditions;
 use crate::util::{combine_errors_or_ok, combine_results};
 use proc_macro2::Span;
 use syn::spanned::Spanned;
@@ -312,16 +313,19 @@ fn op_matches_type(stype: &ShardableType, elt: &MonoidElt) -> bool {
         | ShardableType::NotTokenized(_) => false,
 
         ShardableType::Map(_, _) | ShardableType::StorageMap(_, _) => match elt {
+            MonoidElt::General(_) => true,
             MonoidElt::SingletonKV(_, _) => true,
             _ => false,
         },
 
         ShardableType::Option(_) | ShardableType::StorageOption(_) => match elt {
+            MonoidElt::General(_) => true,
             MonoidElt::OptionSome(_) => true,
             _ => false,
         },
 
         ShardableType::Multiset(_) => match elt {
+            MonoidElt::General(_) => true,
             MonoidElt::SingletonMultiset(_) => true,
             _ => false,
         },
@@ -497,17 +501,22 @@ fn check_let_shadowing_rec(ts: &TransitionStmt, ids: &mut Vec<String>, errors: &
 
 /// Check simple well-formedness properties of the transitions.
 
-pub fn check_transitions(sm: &SM) -> syn::parse::Result<()> {
+pub fn check_transitions(sm: &mut SM) -> syn::parse::Result<()> {
     let mut results: Vec<syn::parse::Result<()>> = Vec::new();
 
-    for tr in &sm.transitions {
+    let mut transitions = Vec::new();
+    std::mem::swap(&mut transitions, &mut sm.transitions);
+
+    for tr in transitions.iter_mut() {
         results.push(check_transition(sm, tr));
     }
+
+    std::mem::swap(&mut transitions, &mut sm.transitions);
 
     combine_results(results)
 }
 
-pub fn check_transition(sm: &SM, tr: &Transition) -> syn::parse::Result<()> {
+pub fn check_transition(sm: &SM, tr: &mut Transition) -> syn::parse::Result<()> {
     validate_idents_transition(tr)?;
 
     let mut errors = Vec::new();
@@ -535,6 +544,7 @@ pub fn check_transition(sm: &SM, tr: &Transition) -> syn::parse::Result<()> {
 
     check_let_shadowing(tr, &mut errors);
     check_birds_eye(tr, sm.concurrent, &mut errors);
+    check_inherent_conditions(sm, &mut tr.body, &mut errors);
 
     combine_errors_or_ok(errors)
 }

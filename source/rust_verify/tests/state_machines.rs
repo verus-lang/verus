@@ -1517,6 +1517,30 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] inherent_safety_condition_option_general_add IMPORTS.to_string() + code_str! {
+        tokenized_state_machine!{ X {
+            fields {
+                #[sharding(option)]
+                pub t: Option<int>
+            }
+
+            transition!{
+                tr() {
+                    add t += (Option::Some(5)) by { }; // FAILS
+                }
+            }
+
+            #[inductive(tr)]
+            pub fn is_inductive(pre: X, post: X) {
+                assert(pre.t.is_None());
+                assert(post.t.is_Some());
+                assert(post.t.get_Some_0() == 5);
+            }
+        }}
+    } => Err(e) => assert_one_fails(e)
+}
+
+test_verify_one_file! {
     #[test] inherent_safety_condition_map_add IMPORTS.to_string() + code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -1541,6 +1565,30 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] inherent_safety_condition_map_general_add IMPORTS.to_string() + code_str! {
+        tokenized_state_machine!{ X {
+            fields {
+                #[sharding(map)]
+                pub t: Map<int, int>
+            }
+
+            transition!{
+                tr() {
+                    add t += (Map::<int, int>::empty().insert(5, 7)) by { }; // FAILS
+                }
+            }
+
+            #[inductive(tr)]
+            pub fn is_inductive(pre: X, post: X) {
+                assert(!pre.t.dom().contains(5));
+                assert(post.t.dom().contains(5));
+                assert(post.t.index(5) == 7);
+            }
+        }}
+    } => Err(e) => assert_one_fails(e)
+}
+
+test_verify_one_file! {
     #[test] inherent_safety_condition_multiset_add IMPORTS.to_string() + code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -1551,6 +1599,23 @@ test_verify_one_file! {
             transition!{
                 tr() {
                     add t += { 5 } by { };
+                }
+            }
+        }}
+    } => Err(e) => assert_error_msg(e, "adding a proof body is meaningless")
+}
+
+test_verify_one_file! {
+    #[test] inherent_safety_condition_multiset_general_add IMPORTS.to_string() + code_str! {
+        tokenized_state_machine!{ X {
+            fields {
+                #[sharding(multiset)]
+                pub t: Multiset<int>
+            }
+
+            transition!{
+                tr() {
+                    add t += ({ 5 }) by { };
                 }
             }
         }}
@@ -1722,6 +1787,46 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] inherent_safety_condition_option_general_guard IMPORTS.to_string() + code_str! {
+        tokenized_state_machine!{ X {
+            fields {
+                #[sharding(storage_option)]
+                pub t: Option<int>
+            }
+
+            readonly!{
+                tr() {
+                    guard t >= (Option::Some(5)) by { }; // FAILS
+
+                    birds_eye let t = pre.t;
+                    assert(t.is_Some() && t.get_Some_0() == 5);
+                }
+            }
+        }}
+    } => Err(e) => assert_one_fails(e)
+}
+
+test_verify_one_file! {
+    #[test] inherent_safety_condition_map_general_guard IMPORTS.to_string() + code_str! {
+        tokenized_state_machine!{ X {
+            fields {
+                #[sharding(storage_map)]
+                pub t: Map<int, int>
+            }
+
+            readonly!{
+                tr() {
+                    guard t >= (Map::<int,int>::empty().insert(5, 7)) by { }; // FAILS
+
+                    birds_eye let t = pre.t;
+                    assert(t.dom().contains(5) && t.index(5) == 7);
+                }
+            }
+        }}
+    } => Err(e) => assert_one_fails(e)
+}
+
+test_verify_one_file! {
     #[test] inherent_safety_condition_multiset_guard IMPORTS.to_string() + code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -1740,6 +1845,28 @@ test_verify_one_file! {
         }}
     // not supported right now:
     } => Err(e) => assert_error_msg(e, "storage_multiset strategy not implemented")
+    //} => Err(e) => assert_one_fails(e)
+}
+
+test_verify_one_file! {
+    #[test] inherent_safety_condition_multiset_general_guard IMPORTS.to_string() + code_str! {
+        tokenized_state_machine!{ X {
+            fields {
+                #[sharding(storage_multiset)]
+                pub t: Multiset<int>
+            }
+
+            readonly!{
+                tr() {
+                    guard t >= (Multiset::singleton(5)) by { }; // FAILS
+
+                    birds_eye let t = pre.t;
+                    assert(t.count(5) >= 1);
+                }
+            }
+        }}
+    // not supported right now:
+    } => Err(e) => assert_error_msg(e, "unrecognized sharding strategy: 'storage_multiset'")
     //} => Err(e) => assert_one_fails(e)
 }
 
@@ -1805,7 +1932,7 @@ test_verify_one_file! {
                 }
             }
         }}
-    } => Err(e) => assert_error_msg(e, "adding a proof body is meaningless")
+    } => Err(e) => assert_error_msg(e, "storage_multiset strategy not implemented")
 }
 
 test_verify_one_file! {
@@ -2635,6 +2762,428 @@ test_verify_one_file! {
         fn rev_tr4_strong(pre: Y, post: Y) {
             requires(rel_tr4_strong(pre, post));
             ensures(Y::tr4_strong(pre, post));
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] relation_codegen_special_general IMPORTS.to_string() + code_str! {
+        tokenized_state_machine!{ Y {
+            fields {
+                #[sharding(option)]
+                pub opt: Option<int>,
+
+                #[sharding(map)]
+                pub map: Map<int, int>,
+
+                #[sharding(multiset)]
+                pub mset: Multiset<int>,
+
+                #[sharding(storage_option)]
+                pub storage_opt: Option<int>,
+
+                #[sharding(storage_map)]
+                pub storage_map: Map<int, int>,
+            }
+
+            transition!{
+                tr1() {
+                    remove opt -= ( Option::Some(5) );
+                    add opt += ( Option::Some(8) );
+
+                    remove map -= ( Map::<int, int>::empty().insert(0, 1) );
+                    have map >= ( Map::<int, int>::empty().insert(2, 3) );
+                    add map += ( Map::<int, int>::empty().insert(4, 5) ) by { assume(false); };
+
+                    remove mset -= ( Multiset::<int>::singleton(10) );
+                    have mset >= ( Multiset::<int>::singleton(11) );
+                    add mset += ( Multiset::<int>::singleton(12) );
+
+                    withdraw storage_opt -= ( Option::Some(13) ) by { assume(false); };
+                    deposit storage_opt += ( Option::Some(14) );
+
+                    withdraw storage_map -= ( Map::<int, int>::empty().insert(15, 16) ) by { assume(false); };
+                    deposit storage_map += ( Map::<int, int>::empty().insert(17, 18) ) by { assume(false); };
+                }
+            }
+
+            transition!{
+                tr2() {
+                    have opt >= (Option::Some(7));
+                    add map += (Map::<int, int>::empty().insert(4, 5)) by { assume(false); };
+                }
+            }
+
+            transition!{
+                tr3() {
+                    remove opt -= (Option::Some(7));
+                    withdraw storage_opt -= (Option::Some(12)) by { assume(false); };
+                }
+            }
+
+            transition!{
+                tr4() {
+                    add opt += (Option::Some(7)) by { assume(false); };
+                    deposit storage_opt += (Option::Some(12)) by { assume(false); };
+                }
+            }
+        }}
+
+        #[spec]
+        fn rel_tr1(pre: Y, post: Y) -> bool {
+            equal(pre.opt, Option::Some(5))
+            && equal(post.opt, Option::Some(8))
+
+            && map![0 => 1].le(pre.map)
+            && map![2 => 3].le(pre.map.remove_keys(map![0 => 1].dom()))
+            && (pre.map.remove_keys(map![0 => 1].dom()).dom().disjoint(map![4 => 5].dom()) >>=
+            equal(post.map, pre.map.remove_keys(map![0 => 1].dom()).union_prefer_right(map![4 => 5]))
+
+            && Multiset::singleton(10).le(pre.mset)
+            && Multiset::singleton(11).le(pre.mset.sub(Multiset::singleton(10)))
+            && equal(post.mset,
+                pre.mset.sub(Multiset::singleton(10)).add(Multiset::singleton(12)))
+
+            && (equal(pre.storage_opt, Option::Some(13)) >>=
+            equal(post.storage_opt, Option::Some(14))
+
+            && (map![15 => 16].le(pre.storage_map) >>=
+            (pre.storage_map.remove_keys(map![15 => 16].dom()).dom().disjoint(map![17 => 18].dom()) >>=
+            equal(post.storage_map,
+                pre.storage_map.remove_keys(map![15 => 16].dom()).union_prefer_right(map![17 => 18]))
+            ))))
+        }
+
+        #[spec]
+        fn rel_tr1_strong(pre: Y, post: Y) -> bool {
+            equal(pre.opt, Option::Some(5))
+            && equal(post.opt, Option::Some(8))
+
+            && map![0 => 1].le(pre.map)
+            && map![2 => 3].le(pre.map.remove_keys(map![0 => 1].dom()))
+            && pre.map.remove_keys(map![0 => 1].dom()).dom().disjoint(map![4 => 5].dom())
+            && equal(post.map, pre.map.remove_keys(map![0 => 1].dom()).union_prefer_right(map![4 => 5]))
+
+            && Multiset::singleton(10).le(pre.mset)
+            && Multiset::singleton(11).le(pre.mset.sub(Multiset::singleton(10)))
+            && equal(post.mset,
+                pre.mset.sub(Multiset::singleton(10)).add(Multiset::singleton(12)))
+
+            && equal(pre.storage_opt, Option::Some(13))
+            && equal(post.storage_opt, Option::Some(14))
+
+            && map![15 => 16].le(pre.storage_map)
+            && pre.storage_map.remove_keys(map![15 => 16].dom()).dom().disjoint(map![17 => 18].dom())
+            && equal(post.storage_map,
+                pre.storage_map.remove_keys(map![15 => 16].dom()).union_prefer_right(map![17 => 18]))
+        }
+
+        #[spec]
+        fn rel_tr2(pre: Y, post: Y) -> bool {
+            equal(pre.opt, Option::Some(7))
+            && (!pre.map.dom().contains(4) >>=
+                   equal(post.map, pre.map.union_prefer_right(map![4 => 5]))
+                && equal(post.opt, pre.opt)
+                && equal(post.storage_opt, pre.storage_opt)
+                && equal(post.storage_map, pre.storage_map)
+                && equal(post.mset, pre.mset)
+            )
+        }
+
+        #[spec]
+        fn rel_tr2_strong(pre: Y, post: Y) -> bool {
+            equal(pre.opt, Option::Some(7))
+            && !pre.map.dom().contains(4)
+            && equal(post.map, pre.map.union_prefer_right(map![4 => 5]))
+            && equal(post.opt, pre.opt)
+            && equal(post.storage_opt, pre.storage_opt)
+            && equal(post.storage_map, pre.storage_map)
+            && equal(post.mset, pre.mset)
+        }
+
+        #[spec]
+        fn rel_tr3(pre: Y, post: Y) -> bool {
+            equal(pre.opt, Option::Some(7))
+            && equal(post.opt, Option::None)
+            && (equal(pre.storage_opt, Option::Some(12))
+              >>= equal(post.storage_opt, Option::None)
+                && equal(post.map, pre.map)
+                && equal(post.storage_map, pre.storage_map)
+                && equal(post.mset, pre.mset)
+            )
+        }
+
+        #[spec]
+        fn rel_tr3_strong(pre: Y, post: Y) -> bool {
+            equal(pre.opt, Option::Some(7))
+            && equal(post.opt, Option::None)
+            && equal(pre.storage_opt, Option::Some(12))
+            && equal(post.storage_opt, Option::None)
+            && equal(post.map, pre.map)
+            && equal(post.storage_map, pre.storage_map)
+            && equal(post.mset, pre.mset)
+        }
+
+        #[spec]
+        fn rel_tr4(pre: Y, post: Y) -> bool {
+            equal(pre.opt, Option::None) >>= (
+              equal(post.opt, Option::Some(7))
+              && (equal(pre.storage_opt, Option::None) >>= (
+                equal(post.storage_opt, Option::Some(12))
+                && equal(post.map, pre.map)
+                && equal(post.storage_map, pre.storage_map)
+                && equal(post.mset, pre.mset)
+              ))
+            )
+        }
+
+        #[spec]
+        fn rel_tr4_strong(pre: Y, post: Y) -> bool {
+            equal(pre.opt, Option::None)
+            && equal(post.opt, Option::Some(7))
+            && equal(pre.storage_opt, Option::None)
+            && equal(post.storage_opt, Option::Some(12))
+            && equal(post.map, pre.map)
+            && equal(post.storage_map, pre.storage_map)
+            && equal(post.mset, pre.mset)
+        }
+
+        #[proof]
+        fn correct_tr1(pre: Y, post: Y) {
+            requires(Y::tr1(pre, post));
+            ensures(rel_tr1(pre, post));
+        }
+
+        #[proof]
+        fn rev_tr1(pre: Y, post: Y) {
+            requires(rel_tr1(pre, post));
+            ensures(Y::tr1(pre, post));
+        }
+
+        #[proof]
+        fn correct_tr1_strong(pre: Y, post: Y) {
+            requires(Y::tr1_strong(pre, post));
+            ensures(rel_tr1_strong(pre, post));
+        }
+
+        #[proof]
+        fn rev_tr1_strong(pre: Y, post: Y) {
+            requires(rel_tr1_strong(pre, post));
+            ensures(Y::tr1_strong(pre, post));
+        }
+
+        #[proof]
+        fn correct_tr2(pre: Y, post: Y) {
+            requires(Y::tr2(pre, post));
+            ensures(rel_tr2(pre, post));
+        }
+
+        #[proof]
+        fn rev_tr2(pre: Y, post: Y) {
+            requires(rel_tr2(pre, post));
+            ensures(Y::tr2(pre, post));
+        }
+
+        #[proof]
+        fn correct_tr2_strong(pre: Y, post: Y) {
+            requires(Y::tr2_strong(pre, post));
+            ensures(rel_tr2_strong(pre, post));
+        }
+
+        #[proof]
+        fn rev_tr2_strong(pre: Y, post: Y) {
+            requires(rel_tr2_strong(pre, post));
+            ensures(Y::tr2_strong(pre, post));
+        }
+
+        #[proof]
+        fn correct_tr3(pre: Y, post: Y) {
+            requires(Y::tr3(pre, post));
+            ensures(rel_tr3(pre, post));
+        }
+
+        #[proof]
+        fn rev_tr3(pre: Y, post: Y) {
+            requires(rel_tr3(pre, post));
+            ensures(Y::tr3(pre, post));
+        }
+
+        #[proof]
+        fn correct_tr3_strong(pre: Y, post: Y) {
+            requires(Y::tr3_strong(pre, post));
+            ensures(rel_tr3_strong(pre, post));
+        }
+
+        #[proof]
+        fn rev_tr3_strong(pre: Y, post: Y) {
+            requires(rel_tr3_strong(pre, post));
+            ensures(Y::tr3_strong(pre, post));
+        }
+
+        #[proof]
+        fn correct_tr4(pre: Y, post: Y) {
+            requires(Y::tr4(pre, post));
+            ensures(rel_tr4(pre, post));
+        }
+
+        #[proof]
+        fn rev_tr4(pre: Y, post: Y) {
+            requires(rel_tr4(pre, post));
+            ensures(Y::tr4(pre, post));
+        }
+
+        #[proof]
+        fn correct_tr4_strong(pre: Y, post: Y) {
+            requires(Y::tr4_strong(pre, post));
+            ensures(rel_tr4_strong(pre, post));
+        }
+
+        #[proof]
+        fn rev_tr4_strong(pre: Y, post: Y) {
+            requires(rel_tr4_strong(pre, post));
+            ensures(Y::tr4_strong(pre, post));
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] relation_codegen_opt_general IMPORTS.to_string() + code_str! {
+        tokenized_state_machine!{ Y {
+            fields {
+                #[sharding(option)]
+                pub opt: Option<int>,
+
+                #[sharding(storage_option)]
+                pub storage_opt: Option<int>,
+            }
+
+            readonly!{
+                ro() {
+                    guard storage_opt >= (Option::<int>::None);
+                }
+            }
+
+            transition!{
+                tr1() {
+                    have opt >= (Option::<int>::None);
+                }
+            }
+
+            transition!{
+                tr2() {
+                    add opt += (Option::<int>::None);
+                    deposit storage_opt += (Option::<int>::None);
+                }
+            }
+
+            transition!{
+                tr3() {
+                    remove opt -= (Option::<int>::None);
+                    withdraw storage_opt -= (Option::<int>::None);
+                }
+            }
+        }}
+
+        #[spec]
+        fn rel_tr1(pre: Y, post: Y) -> bool {
+            equal(pre.opt, post.opt) && equal(pre.storage_opt, post.storage_opt)
+        }
+
+        #[spec]
+        fn rel_tr1_strong(pre: Y, post: Y) -> bool {
+            equal(pre.opt, post.opt) && equal(pre.storage_opt, post.storage_opt)
+        }
+
+        #[spec]
+        fn rel_tr2(pre: Y, post: Y) -> bool {
+            equal(pre.opt, post.opt) && equal(pre.storage_opt, post.storage_opt)
+        }
+
+        #[spec]
+        fn rel_tr2_strong(pre: Y, post: Y) -> bool {
+            equal(pre.opt, post.opt) && equal(pre.storage_opt, post.storage_opt)
+        }
+
+        #[spec]
+        fn rel_tr3(pre: Y, post: Y) -> bool {
+            equal(pre.opt, post.opt) && equal(pre.storage_opt, post.storage_opt)
+        }
+
+        #[spec]
+        fn rel_tr3_strong(pre: Y, post: Y) -> bool {
+            equal(pre.opt, post.opt) && equal(pre.storage_opt, post.storage_opt)
+        }
+
+        #[proof]
+        fn correct_tr1(pre: Y, post: Y) {
+            requires(Y::tr1(pre, post));
+            ensures(rel_tr1(pre, post));
+        }
+
+        #[proof]
+        fn rev_tr1(pre: Y, post: Y) {
+            requires(rel_tr1(pre, post));
+            ensures(Y::tr1(pre, post));
+        }
+
+        #[proof]
+        fn correct_tr1_strong(pre: Y, post: Y) {
+            requires(Y::tr1_strong(pre, post));
+            ensures(rel_tr1_strong(pre, post));
+        }
+
+        #[proof]
+        fn rev_tr1_strong(pre: Y, post: Y) {
+            requires(rel_tr1_strong(pre, post));
+            ensures(Y::tr1_strong(pre, post));
+        }
+
+        #[proof]
+        fn correct_tr2(pre: Y, post: Y) {
+            requires(Y::tr2(pre, post));
+            ensures(rel_tr2(pre, post));
+        }
+
+        #[proof]
+        fn rev_tr2(pre: Y, post: Y) {
+            requires(rel_tr2(pre, post));
+            ensures(Y::tr2(pre, post));
+        }
+
+        #[proof]
+        fn correct_tr2_strong(pre: Y, post: Y) {
+            requires(Y::tr2_strong(pre, post));
+            ensures(rel_tr2_strong(pre, post));
+        }
+
+        #[proof]
+        fn rev_tr2_strong(pre: Y, post: Y) {
+            requires(rel_tr2_strong(pre, post));
+            ensures(Y::tr2_strong(pre, post));
+        }
+
+        #[proof]
+        fn correct_tr3(pre: Y, post: Y) {
+            requires(Y::tr3(pre, post));
+            ensures(rel_tr3(pre, post));
+        }
+
+        #[proof]
+        fn rev_tr3(pre: Y, post: Y) {
+            requires(rel_tr3(pre, post));
+            ensures(Y::tr3(pre, post));
+        }
+
+        #[proof]
+        fn correct_tr3_strong(pre: Y, post: Y) {
+            requires(Y::tr3_strong(pre, post));
+            ensures(rel_tr3_strong(pre, post));
+        }
+
+        #[proof]
+        fn rev_tr3_strong(pre: Y, post: Y) {
+            requires(rel_tr3_strong(pre, post));
+            ensures(Y::tr3_strong(pre, post));
         }
     } => Ok(())
 }

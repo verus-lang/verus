@@ -100,7 +100,7 @@ fn op_replace_with_tmps(
     let mut op = op;
 
     let bindings = match &mut op.elt {
-        MonoidElt::OptionSome(e) | MonoidElt::SingletonMultiset(e) => {
+        MonoidElt::OptionSome(e) | MonoidElt::SingletonMultiset(e) | MonoidElt::General(e) => {
             let tmp_name = ctxt.get_next_name();
             let tmp_ident = Ident::new(&tmp_name, span);
             let binding = (tmp_ident.clone(), e.clone());

@@ -44,6 +44,28 @@ impl<K, V> Map<K, V> {
     pub fn contains_pair(self, k: K, v: V) -> bool {
         self.dom().contains(k) && equal(self.index(k), v)
     }
+
+    #[spec] #[verifier(publish)]
+    pub fn le(self, m2: Self) -> bool {
+        forall(|k: K| #[trigger] self.dom().contains(k) >>=
+            #[trigger] m2.dom().contains(k) && equal(self.index(k), m2.index(k)))
+    }
+
+    #[spec] #[verifier(publish)]
+    pub fn union_prefer_right(self, m2: Self) -> Self {
+        Self::new(
+            |k: K| self.dom().contains(k) || m2.dom().contains(k),
+            |k: K| if m2.dom().contains(k) { m2.index(k) } else { self.index(k) }
+        )
+    }
+
+    #[spec] #[verifier(publish)]
+    pub fn remove_keys(self, keys: Set<K>) -> Self {
+        Self::new(
+            |k: K| self.dom().contains(k) && !keys.contains(k),
+            |k: K| self.index(k)
+        )
+    }
 }
 
 // Trusted axioms
@@ -119,6 +141,8 @@ macro_rules! map_insert_rec {
         map_insert_rec![$val.insert($key, $value);$($tail)*]
     }
 }
+
+/// Create a map using syntax like `map![key => val, key2 => val, ...]`.
 
 #[macro_export]
 macro_rules! map {

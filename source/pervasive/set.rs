@@ -62,6 +62,11 @@ impl<A> Set<A> {
 
     fndecl!(pub fn mk_map<V, F: Fn(A) -> V>(self, f: F) -> Map<A, V>);
 
+    #[spec] #[verifier(publish)]
+    pub fn disjoint(self, s2: Self) -> bool {
+        forall(|a: A| self.contains(a) >>= !s2.contains(a))
+    }
+
 }
 
 // Trusted axioms

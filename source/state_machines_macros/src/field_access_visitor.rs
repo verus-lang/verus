@@ -37,7 +37,7 @@ use syn::spanned::Spanned;
 use syn::visit_mut::VisitMut;
 use syn::{Expr, ExprField, ExprPath, Ident, Member};
 
-/// Given a (Rust AST) Expr `e`, visits all the subexpressions of the form
+/// Given a (Rust AST) Expr `e`, visits the subexpressions of the form
 /// `pre.foo` where `foo` is a state machine field, and calls the given
 /// function `f` on each one.
 /// Note `f` takes a `&mut Expr` so it is allowed to modify the subexpression,
@@ -176,6 +176,7 @@ pub fn visit_field_accesses_all_exprs<F>(
         | TransitionStmt::Update(_, _, e)
         | TransitionStmt::PostCondition(_, e)
         | TransitionStmt::Special(_, _, SpecialOp { stmt: _, elt: MonoidElt::OptionSome(e) }, _)
+        | TransitionStmt::Special(_, _, SpecialOp { stmt: _, elt: MonoidElt::General(e) }, _)
         | TransitionStmt::Special(
             _,
             _,
