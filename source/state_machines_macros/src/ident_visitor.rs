@@ -1,4 +1,4 @@
-use crate::ast::{SpecialOp, Transition, TransitionKind, TransitionStmt};
+use crate::ast::{MonoidElt, SpecialOp, Transition, TransitionKind, TransitionStmt};
 use crate::util::combine_errors_or_ok;
 use syn::spanned::Spanned;
 use syn::visit::Visit;
@@ -69,25 +69,11 @@ fn validate_idents_transition_stmt(
 }
 
 fn validate_idents_op(op: &SpecialOp, kind: TransitionKind) -> syn::parse::Result<()> {
-    match op {
-        SpecialOp::AddSome(e)
-        | SpecialOp::RemoveSome(e)
-        | SpecialOp::HaveSome(e)
-        | SpecialOp::AddElement(e)
-        | SpecialOp::RemoveElement(e)
-        | SpecialOp::HaveElement(e)
-        | SpecialOp::DepositSome(e)
-        | SpecialOp::WithdrawSome(e)
-        | SpecialOp::GuardSome(e) => {
+    match &op.elt {
+        MonoidElt::OptionSome(e) | MonoidElt::SingletonMultiset(e) => {
             validate_idents_expr(e, kind)?;
         }
-
-        SpecialOp::DepositKV(e1, e2)
-        | SpecialOp::WithdrawKV(e1, e2)
-        | SpecialOp::GuardKV(e1, e2)
-        | SpecialOp::AddKV(e1, e2)
-        | SpecialOp::RemoveKV(e1, e2)
-        | SpecialOp::HaveKV(e1, e2) => {
+        MonoidElt::SingletonKV(e1, e2) => {
             validate_idents_expr(e1, kind)?;
             validate_idents_expr(e2, kind)?;
         }

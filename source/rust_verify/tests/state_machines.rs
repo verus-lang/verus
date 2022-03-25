@@ -112,7 +112,7 @@ test_verify_one_file! {
                 }
             }
         }}
-    } => Err(e) => assert_error_msg(e, "a 'remove_some' should not be in the scope of a #[birds_eye] let-binding")
+    } => Err(e) => assert_error_msg(e, "a 'remove' should not be in the scope of a #[birds_eye] let-binding")
 }
 
 test_verify_one_file! {
@@ -132,7 +132,7 @@ test_verify_one_file! {
                 }
             }
         }}
-    } => Err(e) => assert_error_msg(e, "a 'remove_some' should not be preceeded by an assert which is in the scope of")
+    } => Err(e) => assert_error_msg(e, "a 'remove' should not be preceeded by an assert which is in the scope of")
 }
 
 test_verify_one_file! {
@@ -250,6 +250,70 @@ test_verify_one_file! {
             }
         }}
     } => Err(e) => assert_error_msg(e, "cannot be used opaquely")
+}
+
+test_verify_one_file! {
+    #[test] test_use_pre_no_field_withdraw_kv_value IMPORTS.to_string() + code_str! {
+        tokenized_state_machine!{ X {
+            fields {
+                #[sharding(storage_map)] pub v: Map<int, int>,
+            }
+
+            transition!{
+                tr() {
+                    withdraw v -= [5 => { let s = pre; s.v } ];
+                }
+            }
+        }}
+    } => Err(e) => assert_error_msg(e, "cannot be used opaquely")
+}
+
+test_verify_one_file! {
+    #[test] test_use_pre_no_field_remove_kv_key IMPORTS.to_string() + code_str! {
+        tokenized_state_machine!{ X {
+            fields {
+                #[sharding(map)] pub v: Map<int, int>,
+            }
+
+            transition!{
+                tr() {
+                    remove v -= [5 => { let s = pre; s.v } ];
+                }
+            }
+        }}
+    } => Err(e) => assert_error_msg(e, "cannot be used opaquely")
+}
+
+test_verify_one_file! {
+    #[test] test_use_pre_no_field_withdraw_kv_key IMPORTS.to_string() + code_str! {
+        tokenized_state_machine!{ X {
+            fields {
+                #[sharding(storage_map)] pub v: Map<int, int>,
+            }
+
+            init!{
+                init() {
+                    init v = Map::empty();
+                }
+            }
+
+            transition!{
+                tr() {
+                    // this is ok:
+                    withdraw v -= [{ let s = pre; s.v.index(0) } => 5]
+                          by { assume(false); };
+                }
+            }
+        }}
+
+        fn foo(#[proof] m: Map<int, int>) {
+            requires(equal(m, Map::empty()));
+
+            #[proof] let inst = X_Instance::init(m);
+            #[proof] let t = inst.tr();
+            assert(equal(t, 5));
+        }
+    } => Ok(())
 }
 
 test_verify_one_file! {
@@ -1807,7 +1871,7 @@ test_verify_one_file! {
                 }
             }
         }}
-    } => Err(e) => assert_error_msg(e, "statement not allowed for field with sharding strategy")
+    } => Err(e) => assert_error_msg(e, "element but the given field has sharding strategy 'multiset'")
 }
 
 test_verify_one_file! {
@@ -1824,7 +1888,7 @@ test_verify_one_file! {
                 }
             }
         }}
-    } => Err(e) => assert_error_msg(e, "statement not allowed for field with sharding strategy")
+    } => Err(e) => assert_error_msg(e, "element but the given field has sharding strategy 'map'")
 }
 
 test_verify_one_file! {
@@ -1841,7 +1905,7 @@ test_verify_one_file! {
                 }
             }
         }}
-    } => Err(e) => assert_error_msg(e, "statement not allowed for field with sharding strategy")
+    } => Err(e) => assert_error_msg(e, "element but the given field has sharding strategy 'option'")
 }
 
 test_verify_one_file! {
@@ -1858,7 +1922,7 @@ test_verify_one_file! {
                 }
             }
         }}
-    } => Err(e) => assert_error_msg(e, "statement not allowed for field with sharding strategy")
+    } => Err(e) => assert_error_msg(e, "element but the given field has sharding strategy 'option'")
 }
 
 test_verify_one_file! {
@@ -1875,7 +1939,7 @@ test_verify_one_file! {
                 }
             }
         }}
-    } => Err(e) => assert_error_msg(e, "statement not allowed for field with sharding strategy")
+    } => Err(e) => assert_error_msg(e, "element but the given field has sharding strategy 'map'")
 }
 
 test_verify_one_file! {
@@ -1892,7 +1956,7 @@ test_verify_one_file! {
                 }
             }
         }}
-    } => Err(e) => assert_error_msg(e, "statement not allowed for field with sharding strategy")
+    } => Err(e) => assert_error_msg(e, "element but the given field has sharding strategy 'multiset'")
 }
 
 test_verify_one_file! {
@@ -1909,7 +1973,41 @@ test_verify_one_file! {
                 }
             }
         }}
-    } => Err(e) => assert_error_msg(e, "statement not allowed for field with sharding strategy")
+    } => Err(e) => assert_error_msg(e, "element but the given field has sharding strategy 'map'")
+}
+
+test_verify_one_file! {
+    #[test] wrong_op_option_deposit_option IMPORTS.to_string() + code_str! {
+        tokenized_state_machine!{ X {
+            fields {
+                #[sharding(option)]
+                pub t: Option<int>,
+            }
+
+            transition!{
+                tr() {
+                   deposit t += Some(5);
+                }
+            }
+        }}
+    } => Err(e) => assert_error_msg(e, "'deposit' statement not allowed for field with sharding strategy 'option'")
+}
+
+test_verify_one_file! {
+    #[test] wrong_op_storage_option_add_option IMPORTS.to_string() + code_str! {
+        tokenized_state_machine!{ X {
+            fields {
+                #[sharding(storage_option)]
+                pub t: Option<int>,
+            }
+
+            transition!{
+                tr() {
+                   add t += Some(5);
+                }
+            }
+        }}
+    } => Err(e) => assert_error_msg(e, "'add' statement not allowed for field with sharding strategy 'storage_option'")
 }
 
 test_verify_one_file! {

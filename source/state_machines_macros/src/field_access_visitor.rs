@@ -29,7 +29,7 @@
 //! to experiment with the current method for now, since generating all the conditions
 //! in the macro has a lot of advantages for usability.
 
-use crate::ast::{Field, LetKind, SpecialOp, TransitionStmt};
+use crate::ast::{Field, LetKind, MonoidElt, MonoidStmtType, SpecialOp, TransitionStmt};
 use proc_macro2::Span;
 use std::collections::{HashMap, HashSet};
 use syn::parse::Error;
@@ -175,18 +175,13 @@ pub fn visit_field_accesses_all_exprs<F>(
         | TransitionStmt::Initialize(_, _, e)
         | TransitionStmt::Update(_, _, e)
         | TransitionStmt::PostCondition(_, e)
-        | TransitionStmt::Special(_, _, SpecialOp::AddElement(e), _)
-        | TransitionStmt::Special(_, _, SpecialOp::RemoveElement(e), _)
-        | TransitionStmt::Special(_, _, SpecialOp::HaveElement(e), _)
-        | TransitionStmt::Special(_, _, SpecialOp::AddSome(e), _)
-        | TransitionStmt::Special(_, _, SpecialOp::RemoveSome(e), _)
-        | TransitionStmt::Special(_, _, SpecialOp::HaveSome(e), _)
-        | TransitionStmt::Special(_, _, SpecialOp::DepositSome(e), _)
-        | TransitionStmt::Special(_, _, SpecialOp::WithdrawSome(e), _)
-        | TransitionStmt::Special(_, _, SpecialOp::GuardSome(e), _)
-        | TransitionStmt::Special(_, _, SpecialOp::DepositKV(_, e), _) // ignore 'key'
-        | TransitionStmt::Special(_, _, SpecialOp::WithdrawKV(_, e), _)
-        | TransitionStmt::Special(_, _, SpecialOp::GuardKV(_, e), _) => {
+        | TransitionStmt::Special(_, _, SpecialOp { stmt: _, elt: MonoidElt::OptionSome(e) }, _)
+        | TransitionStmt::Special(
+            _,
+            _,
+            SpecialOp { stmt: _, elt: MonoidElt::SingletonMultiset(e) },
+            _,
+        ) => {
             visit_field_accesses(
                 e,
                 |errors, field, e| f(errors, field, e, false),
@@ -194,15 +189,30 @@ pub fn visit_field_accesses_all_exprs<F>(
                 ident_to_field,
             );
         }
-        TransitionStmt::Special(_, _, SpecialOp::AddKV(key, val), _)
-        | TransitionStmt::Special(_, _, SpecialOp::RemoveKV(key, val), _)
-        | TransitionStmt::Special(_, _, SpecialOp::HaveKV(key, val), _) => {
-            visit_field_accesses(
-                key,
-                |errors, field, e| f(errors, field, e, false),
-                errors,
-                ident_to_field,
-            );
+        TransitionStmt::Special(
+            _,
+            _,
+            SpecialOp { stmt, elt: MonoidElt::SingletonKV(key, val) },
+            _,
+        ) => {
+            // We skip the processing of the key in some cases because in those cases,
+            // this expresson will not appear in the signature of the exchange fn at all.
+            let skip_key = match stmt {
+                MonoidStmtType::Deposit => true,
+                MonoidStmtType::Guard => true,
+                MonoidStmtType::Withdraw => true,
+                MonoidStmtType::Add => false,
+                MonoidStmtType::Remove => false,
+                MonoidStmtType::Have => false,
+            };
+            if !skip_key {
+                visit_field_accesses(
+                    key,
+                    |errors, field, e| f(errors, field, e, false),
+                    errors,
+                    ident_to_field,
+                );
+            }
             visit_field_accesses(
                 val,
                 |errors, field, e| f(errors, field, e, false),

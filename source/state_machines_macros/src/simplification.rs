@@ -1,5 +1,5 @@
 use crate::add_tmp_vars::add_tmp_vars_special_ops;
-use crate::ast::{ShardableType, SpecialOp, TransitionStmt, SM};
+use crate::ast::{MonoidElt, MonoidStmtType, ShardableType, SpecialOp, TransitionStmt, SM};
 use proc_macro2::Span;
 use quote::quote;
 use std::collections::HashMap;
@@ -419,7 +419,12 @@ fn simplify_ops_rec(
             (TransitionStmt::Block(*span, Vec::new()), field_map)
         }
 
-        TransitionStmt::Special(span, f, SpecialOp::HaveSome(e), _) => {
+        TransitionStmt::Special(
+            span,
+            f,
+            SpecialOp { stmt: MonoidStmtType::Have, elt: MonoidElt::OptionSome(e) },
+            _,
+        ) => {
             let cur = field_map.get(&f.to_string());
             let ty = get_opt_type(sm, f);
             let prec = Expr::Verbatim(quote! {
@@ -430,7 +435,12 @@ fn simplify_ops_rec(
             });
             (TransitionStmt::Require(*span, prec), field_map)
         }
-        TransitionStmt::Special(span, f, SpecialOp::AddSome(e), proof) => {
+        TransitionStmt::Special(
+            span,
+            f,
+            SpecialOp { stmt: MonoidStmtType::Add, elt: MonoidElt::OptionSome(e) },
+            proof,
+        ) => {
             let mut field_map = field_map;
             let cur = field_map.get(&f.to_string()).clone();
             let ty = get_opt_type(sm, f);
@@ -445,7 +455,12 @@ fn simplify_ops_rec(
             });
             (TransitionStmt::Assert(*span, safety, proof.clone()), field_map)
         }
-        TransitionStmt::Special(span, f, SpecialOp::RemoveSome(e), _) => {
+        TransitionStmt::Special(
+            span,
+            f,
+            SpecialOp { stmt: MonoidStmtType::Remove, elt: MonoidElt::OptionSome(e) },
+            _,
+        ) => {
             let mut field_map = field_map;
             let cur = field_map.get(&f.to_string()).clone();
             let ty = get_opt_type(sm, f);
@@ -464,7 +479,12 @@ fn simplify_ops_rec(
             (TransitionStmt::Require(*span, prec), field_map)
         }
 
-        TransitionStmt::Special(span, f, SpecialOp::GuardSome(e), proof) => {
+        TransitionStmt::Special(
+            span,
+            f,
+            SpecialOp { stmt: MonoidStmtType::Guard, elt: MonoidElt::OptionSome(e) },
+            proof,
+        ) => {
             let cur = field_map.get(&f.to_string());
             let ty = get_opt_type(sm, f);
             let prec = Expr::Verbatim(quote! {
@@ -475,7 +495,13 @@ fn simplify_ops_rec(
             });
             (TransitionStmt::Assert(*span, prec, proof.clone()), field_map)
         }
-        TransitionStmt::Special(span, f, SpecialOp::DepositSome(e), proof) => {
+
+        TransitionStmt::Special(
+            span,
+            f,
+            SpecialOp { stmt: MonoidStmtType::Deposit, elt: MonoidElt::OptionSome(e) },
+            proof,
+        ) => {
             let mut field_map = field_map;
             let cur = field_map.get(&f.to_string()).clone();
             let ty = get_opt_type(sm, f);
@@ -490,7 +516,12 @@ fn simplify_ops_rec(
             });
             (TransitionStmt::Assert(*span, safety, proof.clone()), field_map)
         }
-        TransitionStmt::Special(span, f, SpecialOp::WithdrawSome(e), proof) => {
+        TransitionStmt::Special(
+            span,
+            f,
+            SpecialOp { stmt: MonoidStmtType::Withdraw, elt: MonoidElt::OptionSome(e) },
+            proof,
+        ) => {
             let mut field_map = field_map;
             let cur = field_map.get(&f.to_string()).clone();
             let ty = get_opt_type(sm, f);
@@ -509,14 +540,24 @@ fn simplify_ops_rec(
             (TransitionStmt::Assert(*span, prec, proof.clone()), field_map)
         }
 
-        TransitionStmt::Special(span, f, SpecialOp::HaveKV(key, val), _) => {
+        TransitionStmt::Special(
+            span,
+            f,
+            SpecialOp { stmt: MonoidStmtType::Have, elt: MonoidElt::SingletonKV(key, val) },
+            _,
+        ) => {
             let cur = field_map.get(&f.to_string());
             let prec = Expr::Verbatim(quote! {
                 (#cur).contains_pair(#key, #val)
             });
             (TransitionStmt::Require(*span, prec), field_map)
         }
-        TransitionStmt::Special(span, f, SpecialOp::AddKV(key, val), proof) => {
+        TransitionStmt::Special(
+            span,
+            f,
+            SpecialOp { stmt: MonoidStmtType::Add, elt: MonoidElt::SingletonKV(key, val) },
+            proof,
+        ) => {
             let mut field_map = field_map;
             let cur = field_map.get(&f.to_string()).clone();
             field_map.set(
@@ -530,7 +571,12 @@ fn simplify_ops_rec(
             });
             (TransitionStmt::Assert(*span, safety, proof.clone()), field_map)
         }
-        TransitionStmt::Special(span, f, SpecialOp::RemoveKV(key, val), _) => {
+        TransitionStmt::Special(
+            span,
+            f,
+            SpecialOp { stmt: MonoidStmtType::Remove, elt: MonoidElt::SingletonKV(key, val) },
+            _,
+        ) => {
             let mut field_map = field_map;
             let cur = field_map.get(&f.to_string()).clone();
             field_map.set(
@@ -545,14 +591,24 @@ fn simplify_ops_rec(
             (TransitionStmt::Require(*span, prec), field_map)
         }
 
-        TransitionStmt::Special(span, f, SpecialOp::GuardKV(key, val), proof) => {
+        TransitionStmt::Special(
+            span,
+            f,
+            SpecialOp { stmt: MonoidStmtType::Guard, elt: MonoidElt::SingletonKV(key, val) },
+            proof,
+        ) => {
             let cur = field_map.get(&f.to_string());
             let prec = Expr::Verbatim(quote! {
                 (#cur).contains_pair(#key, #val)
             });
             (TransitionStmt::Assert(*span, prec, proof.clone()), field_map)
         }
-        TransitionStmt::Special(span, f, SpecialOp::DepositKV(key, val), proof) => {
+        TransitionStmt::Special(
+            span,
+            f,
+            SpecialOp { stmt: MonoidStmtType::Deposit, elt: MonoidElt::SingletonKV(key, val) },
+            proof,
+        ) => {
             let mut field_map = field_map;
             let cur = field_map.get(&f.to_string()).clone();
             field_map.set(
@@ -566,7 +622,12 @@ fn simplify_ops_rec(
             });
             (TransitionStmt::Assert(*span, safety, proof.clone()), field_map)
         }
-        TransitionStmt::Special(span, f, SpecialOp::WithdrawKV(key, val), proof) => {
+        TransitionStmt::Special(
+            span,
+            f,
+            SpecialOp { stmt: MonoidStmtType::Withdraw, elt: MonoidElt::SingletonKV(key, val) },
+            proof,
+        ) => {
             let mut field_map = field_map;
             let cur = field_map.get(&f.to_string()).clone();
             field_map.set(
@@ -581,14 +642,24 @@ fn simplify_ops_rec(
             (TransitionStmt::Assert(*span, prec, proof.clone()), field_map)
         }
 
-        TransitionStmt::Special(span, f, SpecialOp::HaveElement(e), _) => {
+        TransitionStmt::Special(
+            span,
+            f,
+            SpecialOp { stmt: MonoidStmtType::Have, elt: MonoidElt::SingletonMultiset(e) },
+            _,
+        ) => {
             let cur = field_map.get(&f.to_string());
             let prec = Expr::Verbatim(quote! {
                 (#cur).count(#e) >= 1
             });
             (TransitionStmt::Require(*span, prec), field_map)
         }
-        TransitionStmt::Special(span, f, SpecialOp::AddElement(e), _) => {
+        TransitionStmt::Special(
+            span,
+            f,
+            SpecialOp { stmt: MonoidStmtType::Add, elt: MonoidElt::SingletonMultiset(e) },
+            _,
+        ) => {
             let mut field_map = field_map;
             let cur = field_map.get(&f.to_string()).clone();
             field_map.set(
@@ -599,7 +670,12 @@ fn simplify_ops_rec(
             );
             (TransitionStmt::Block(*span, Vec::new()), field_map)
         }
-        TransitionStmt::Special(span, f, SpecialOp::RemoveElement(e), _) => {
+        TransitionStmt::Special(
+            span,
+            f,
+            SpecialOp { stmt: MonoidStmtType::Remove, elt: MonoidElt::SingletonMultiset(e) },
+            _,
+        ) => {
             let mut field_map = field_map;
             let cur = field_map.get(&f.to_string()).clone();
             field_map.set(
@@ -612,6 +688,27 @@ fn simplify_ops_rec(
                 (#cur).count(#e) >= 1
             });
             (TransitionStmt::Require(*span, prec), field_map)
+        }
+
+        TransitionStmt::Special(
+            _,
+            _,
+            SpecialOp { stmt: MonoidStmtType::Guard, elt: MonoidElt::SingletonMultiset(_) },
+            _,
+        )
+        | TransitionStmt::Special(
+            _,
+            _,
+            SpecialOp { stmt: MonoidStmtType::Deposit, elt: MonoidElt::SingletonMultiset(_) },
+            _,
+        )
+        | TransitionStmt::Special(
+            _,
+            _,
+            SpecialOp { stmt: MonoidStmtType::Withdraw, elt: MonoidElt::SingletonMultiset(_) },
+            _,
+        ) => {
+            panic!("not supported");
         }
 
         TransitionStmt::PostCondition(..) => {
