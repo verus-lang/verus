@@ -1,6 +1,6 @@
 use crate::ast::{
-    CallTarget, Datatype, ExprX, Fun, FunX, Function, FunctionKind, Krate, MaskSpec, Mode, Path,
-    PathX, TypX, UnaryOpr, VirErr,
+    CallTarget, Datatype, Expr, ExprX, Fun, FunX, Function, FunctionKind, Krate, MaskSpec, Mode,
+    Path, PathX, TypX, UnaryOpr, VirErr,
 };
 use crate::ast_util::{err_str, err_string};
 use crate::datatype_to_air::is_datatype_transparent;
@@ -11,6 +11,91 @@ use std::sync::Arc;
 struct Ctxt {
     pub(crate) funs: HashMap<Fun, Function>,
     pub(crate) dts: HashMap<Path, Datatype>,
+}
+
+fn check_one_expr(
+    ctxt: &Ctxt,
+    function: &Function,
+    expr: &Expr,
+    disallow_private_access: Option<&str>,
+) -> Result<(), VirErr> {
+    match &expr.x {
+        ExprX::Call(CallTarget::Static(x, _), args) => {
+            let f = &ctxt.funs[x];
+            for (_param, arg) in f.x.params.iter().zip(args.iter()).filter(|(p, _)| p.x.is_mut) {
+                let ok = match &arg.x {
+                    ExprX::Loc(l) => match l.x {
+                        ExprX::VarLoc(_) => true,
+                        _ => false,
+                    },
+                    _ => false,
+                };
+                if !ok {
+                    return err_str(
+                        &arg.span,
+                        "complex arguments to &mut parameters are currently unsupported",
+                    );
+                }
+            }
+            if let Some(msg) = disallow_private_access {
+                let callee = &ctxt.funs[x];
+                if callee.x.visibility.is_private {
+                    return err_str(&expr.span, msg);
+                }
+            }
+        }
+        ExprX::Ctor(path, _variant, _fields, _update) => {
+            if let Some(dt) = ctxt.dts.get(path) {
+                if let Some(module) = &function.x.visibility.owning_module {
+                    if !is_datatype_transparent(&module, dt) {
+                        return err_str(
+                            &expr.span,
+                            "constructor of datatype with unencoded fields here",
+                        );
+                    }
+                }
+            } else {
+                panic!("constructor of undefined datatype");
+            }
+        }
+        ExprX::UnaryOpr(UnaryOpr::Field { datatype: path, variant, field }, _) => {
+            if let Some(dt) = ctxt.dts.get(path) {
+                if let Some(module) = &function.x.visibility.owning_module {
+                    if !is_datatype_transparent(&module, dt) {
+                        return err_str(
+                            &expr.span,
+                            "field access of datatype with unencoded fields here",
+                        );
+                    }
+                }
+                if let Some(msg) = disallow_private_access {
+                    let variant = dt.x.get_variant(variant);
+                    let (_, _, vis) = &crate::ast_util::get_field(&variant.a, &field).a;
+                    if vis.is_private {
+                        return err_str(&expr.span, msg);
+                    }
+                }
+            } else {
+                panic!("field access of undefined datatype");
+            }
+        }
+        ExprX::OpenInvariant(_inv, _binder, body, _atomicity) => {
+            assert_no_early_exit_in_inv_block(&body.span, body)?;
+        }
+        _ => {}
+    }
+    Ok(())
+}
+
+fn check_expr(
+    ctxt: &Ctxt,
+    function: &Function,
+    expr: &Expr,
+    disallow_private_access: Option<&str>,
+) -> Result<(), VirErr> {
+    crate::ast_visitor::expr_visitor_check(expr, &mut |expr| {
+        check_one_expr(ctxt, function, expr, disallow_private_access)
+    })
 }
 
 fn check_function(ctxt: &Ctxt, function: &Function) -> Result<(), VirErr> {
@@ -161,6 +246,12 @@ fn check_function(ctxt: &Ctxt, function: &Function) -> Result<(), VirErr> {
         }
     }
     for req in function.x.require.iter() {
+        let disallow_private_access = if function.x.visibility.is_private {
+            None
+        } else {
+            Some("public function requires cannot refer to private items")
+        };
+        check_expr(ctxt, function, req, disallow_private_access)?;
         crate::ast_visitor::expr_visitor_check(req, &mut |expr| {
             if let ExprX::Var(x) = &expr.x {
                 for param in function.x.params.iter().filter(|p| p.x.is_mut) {
@@ -178,92 +269,36 @@ fn check_function(ctxt: &Ctxt, function: &Function) -> Result<(), VirErr> {
             Ok(())
         })?;
     }
+    for ens in function.x.ensure.iter() {
+        let disallow_private_access = if function.x.visibility.is_private {
+            None
+        } else {
+            Some("public function ensures cannot refer to private items")
+        };
+        check_expr(ctxt, function, ens, disallow_private_access)?;
+    }
+    for expr in function.x.decrease.iter() {
+        let disallow_private_access = if function.x.visibility.is_private {
+            None
+        } else {
+            Some("public function decreases cannot refer to private items")
+        };
+        check_expr(ctxt, function, expr, disallow_private_access)?;
+    }
     if let Some(body) = &function.x.body {
         // Check that public, non-abstract spec function bodies don't refer to private items:
         let disallow_private_access = function.x.publish.is_some()
             && !function.x.visibility.is_private
             && function.x.mode == Mode::Spec;
+        let disallow_private_access = if disallow_private_access {
+            Some(
+                "public spec function cannot refer to private items, if it is marked #[verifier(publish)]",
+            )
+        } else {
+            None
+        };
 
-        crate::ast_visitor::expr_visitor_check(body, &mut |expr| {
-            match &expr.x {
-                ExprX::Call(CallTarget::Static(x, _), args) => {
-                    let f = &ctxt.funs[x];
-                    for (_param, arg) in
-                        f.x.params.iter().zip(args.iter()).filter(|(p, _)| p.x.is_mut)
-                    {
-                        let ok = match &arg.x {
-                            ExprX::Loc(l) => match l.x {
-                                ExprX::VarLoc(_) => true,
-                                _ => false,
-                            },
-                            _ => false,
-                        };
-                        if !ok {
-                            return err_str(
-                                &arg.span,
-                                "complex arguments to &mut parameters are currently unsupported",
-                            );
-                        }
-                    }
-                    if disallow_private_access {
-                        let callee = &ctxt.funs[x];
-                        if callee.x.visibility.is_private {
-                            return err_string(
-                                &expr.span,
-                                format!(
-                                    "public spec function cannot refer to private items, when it is marked #[verifier(publish)]"
-                                ),
-                            );
-                        }
-                    }
-                }
-                ExprX::Ctor(path, _variant, _fields, _update) => {
-                    if let Some(dt) = ctxt.dts.get(path) {
-                        if let Some(module) = &function.x.visibility.owning_module {
-                            if !is_datatype_transparent(&module, dt) {
-                                return err_string(
-                                    &expr.span,
-                                    format!("constructor of datatype with unencoded fields here"),
-                                );
-                            }
-                        }
-                    } else {
-                        panic!("constructor of undefined datatype");
-                    }
-                }
-                ExprX::UnaryOpr(UnaryOpr::Field { datatype: path, variant, field }, _) => {
-                    if let Some(dt) = ctxt.dts.get(path) {
-                        if let Some(module) = &function.x.visibility.owning_module {
-                            if !is_datatype_transparent(&module, dt) {
-                                return err_string(
-                                    &expr.span,
-                                    format!("field access of datatype with unencoded fields here"),
-                                );
-                            }
-                        }
-                        if disallow_private_access {
-                            let variant = dt.x.get_variant(variant);
-                            let (_, _, vis) = &crate::ast_util::get_field(&variant.a, &field).a;
-                            if vis.is_private {
-                                return err_string(
-                                    &expr.span,
-                                    format!(
-                                        "public spec function cannot refer to private items, if it is marked #[verifier(publish)]"
-                                    ),
-                                );
-                            }
-                        }
-                    } else {
-                        panic!("field access of undefined datatype");
-                    }
-                }
-                ExprX::OpenInvariant(_inv, _binder, body, _atomicity) => {
-                    assert_no_early_exit_in_inv_block(&body.span, body)?;
-                }
-                _ => {}
-            }
-            Ok(())
-        })?;
+        check_expr(ctxt, function, body, disallow_private_access)?;
     }
     Ok(())
 }

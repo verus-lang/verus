@@ -35,12 +35,23 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test_impl_no_self STRUCT.to_string() + code_str! {
         impl Bike {
-            pub fn new() -> Bike {
+            fn new() -> Bike {
                 ensures(|result: Bike| result.hard_tail);
                 Bike { hard_tail: true }
             }
         }
     } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_impl_no_self_fail_pub_private STRUCT.to_string() + code_str! {
+        impl Bike {
+            pub fn new() -> Bike {
+                ensures(|result: Bike| result.hard_tail);
+                Bike { hard_tail: true }
+            }
+        }
+    } => Err(err) => assert_vir_error(err)
 }
 
 test_verify_one_file! {

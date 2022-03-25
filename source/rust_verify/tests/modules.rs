@@ -106,3 +106,54 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_vir_error(err)
 }
+
+test_verify_one_file! {
+    #[test] test_mod_child_ok code! {
+        #[spec]
+        fn f() -> bool {
+            true
+        }
+
+        mod M1 {
+            fn test() {
+                builtin::ensures(crate::f());
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_mod_sibling_fail code! {
+        mod M0 {
+            #[spec]
+            pub fn f() -> bool {
+                true
+            }
+        }
+
+        mod M1 {
+            fn test() {
+                builtin::ensures(crate::M0::f()); // FAILS
+            }
+        }
+    } => Err(e) => assert_one_fails(e)
+}
+
+test_verify_one_file! {
+    #[test] test_requires_private code! {
+        mod M1 {
+            #[spec]
+            fn f() -> bool { true }
+
+            pub fn g() {
+                builtin::requires(f());
+            }
+        }
+
+        mod M2 {
+            fn h() {
+                crate::M1::g();
+            }
+        }
+    } => Err(err) => assert_vir_error(err)
+}
