@@ -361,34 +361,6 @@ fn assert_unsigned(exp: &Exp) {
     };
 }
 
-fn assert_bitvec_exp_supported(exp: &Exp, expr_ctxt: ExprCtxt) {
-    if expr_ctxt.is_bit_vector {
-        match &exp.x {
-            ExpX::Const(crate::ast::Constant::Nat(_)) => {}
-            ExpX::Var(_) => {}
-            ExpX::Binary(_, e1, e2) => {
-                assert_bitvec_exp_supported(e1, expr_ctxt);
-                assert_bitvec_exp_supported(e2, expr_ctxt);
-            }
-            ExpX::Unary(_, exp) => assert_bitvec_exp_supported(exp, expr_ctxt),
-            ExpX::UnaryOpr(UnaryOpr::Box(_) | UnaryOpr::Unbox(_), _) => {}
-            ExpX::If(e1, e2, e3) => {
-                assert_bitvec_exp_supported(e1, expr_ctxt);
-                assert_bitvec_exp_supported(e2, expr_ctxt);
-                assert_bitvec_exp_supported(e3, expr_ctxt);
-            }
-            ExpX::Bind(bnd, exp) => {
-                assert_bitvec_exp_supported(exp, expr_ctxt);
-                match &bnd.x {
-                    BndX::Quant(..) | BndX::Let(_) => {}
-                    _ => panic!("unsupported for bit-vector: bind conversion, {:?} ", exp.x),
-                };
-            }
-            _ => panic!("unsupported for bit-vector: expression conversion {:?}", exp.x),
-        }
-    }
-}
-
 pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: ExprCtxt) -> Expr {
     match &exp.x {
         ExpX::Const(crate::ast::Constant::Nat(s)) if expr_ctxt.is_bit_vector => {
@@ -397,22 +369,24 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: ExprCtxt) -> Expr {
             }
             panic!("error: unable to get bit-width from constant of type {:?}", exp.typ);
         }
-        ExpX::Const(c) => {
+        ExpX::Const(c) if !expr_ctxt.is_bit_vector => {
             let expr = constant_to_expr(ctx, c);
             expr
         }
         ExpX::Var(x) => string_var(&suffix_local_unique_id(x)),
-        ExpX::VarLoc(x) => string_var(&suffix_local_unique_id(x)),
-        ExpX::VarAt(x, VarAt::Pre) => match expr_ctxt.mode {
+        ExpX::VarLoc(x) if !expr_ctxt.is_bit_vector => string_var(&suffix_local_unique_id(x)),
+        ExpX::VarAt(x, VarAt::Pre) if !expr_ctxt.is_bit_vector => match expr_ctxt.mode {
             ExprMode::Spec => string_var(&prefix_pre_var(&suffix_local_unique_id(x))),
             ExprMode::Body => {
                 Arc::new(ExprX::Old(snapshot_ident(SNAPSHOT_PRE), suffix_local_unique_id(x)))
             }
             ExprMode::BodyPre => string_var(&suffix_local_unique_id(x)),
         },
-        ExpX::Loc(e0) => exp_to_expr(ctx, e0, expr_ctxt),
-        ExpX::Old(span, x) => Arc::new(ExprX::Old(span.clone(), suffix_local_unique_id(x))),
-        ExpX::Call(x, typs, args) => {
+        ExpX::Loc(e0) if !expr_ctxt.is_bit_vector => exp_to_expr(ctx, e0, expr_ctxt),
+        ExpX::Old(span, x) if !expr_ctxt.is_bit_vector => {
+            Arc::new(ExprX::Old(span.clone(), suffix_local_unique_id(x)))
+        }
+        ExpX::Call(x, typs, args) if !expr_ctxt.is_bit_vector => {
             let name = suffix_global_id(&fun_to_air_ident(&x));
             let mut exprs: Vec<Expr> = vec_map(typs, typ_to_id);
             for arg in args.iter() {
@@ -420,12 +394,12 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: ExprCtxt) -> Expr {
             }
             ident_apply(&name, &exprs)
         }
-        ExpX::CallLambda(typ, e0, args) => {
+        ExpX::CallLambda(typ, e0, args) if !expr_ctxt.is_bit_vector => {
             let e0 = exp_to_expr(ctx, e0, expr_ctxt);
             let args = vec_map(args, |e| exp_to_expr(ctx, e, expr_ctxt));
             Arc::new(ExprX::ApplyLambda(typ_to_air(ctx, typ), e0, Arc::new(args)))
         }
-        ExpX::Ctor(path, variant, binders) => {
+        ExpX::Ctor(path, variant, binders) if !expr_ctxt.is_bit_vector => {
             let (variant, args) = ctor_to_apply(ctx, path, variant, binders);
             let args = args.map(|b| exp_to_expr(ctx, &b.a, expr_ctxt)).collect::<Vec<_>>();
             Arc::new(ExprX::Apply(variant, Arc::new(args)))
@@ -505,7 +479,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: ExprCtxt) -> Expr {
         ExpX::UnaryOpr(UnaryOpr::Box(_) | UnaryOpr::Unbox(_), exp) if expr_ctxt.is_bit_vector => {
             exp_to_expr(ctx, exp, expr_ctxt)
         }
-        ExpX::UnaryOpr(op, exp) => match op {
+        ExpX::UnaryOpr(op, exp) if !expr_ctxt.is_bit_vector => match op {
             UnaryOpr::Box(typ) => {
                 let expr = exp_to_expr(ctx, exp, expr_ctxt);
                 try_box(ctx, expr, typ).expect("Box")
@@ -707,7 +681,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: ExprCtxt) -> Expr {
                 });
                 air::ast_util::mk_quantifier(*quant, &binders, &triggers, &expr)
             }
-            BndX::Lambda(binders) => {
+            BndX::Lambda(binders) if !expr_ctxt.is_bit_vector => {
                 let expr = exp_to_expr(ctx, exp, expr_ctxt);
                 let binders = vec_map(&*binders, |b| {
                     let name = suffix_local_expr_id(&b.name);
@@ -716,7 +690,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: ExprCtxt) -> Expr {
                 let lambda = air::ast_util::mk_lambda(&binders, &expr);
                 str_apply(crate::def::MK_FUN, &vec![lambda])
             }
-            BndX::Choose(binders, trigs, cond) => {
+            BndX::Choose(binders, trigs, cond) if !expr_ctxt.is_bit_vector => {
                 let mut bs: Vec<Binder<air::ast::Typ>> = Vec::new();
                 let mut invs: Vec<Expr> = Vec::new();
                 for b in binders.iter() {
@@ -750,7 +724,15 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: ExprCtxt) -> Expr {
                 }
                 choose_expr
             }
+            _ if expr_ctxt.is_bit_vector => {
+                panic!("unsupported for bit-vector: bind conversion, {:?} ", exp.x)
+            }
+            _ => unreachable!(),
         },
+        _ if expr_ctxt.is_bit_vector => {
+            panic!("unsupported for bit-vector: expression conversion {:?}", exp.x)
+        }
+        _ => unreachable!(),
     }
 }
 
@@ -950,10 +932,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
                 "assertion failed".to_string(),
             );
             let local = state.local_bv_shared.clone();
-            let air_expr = {
-                assert_bitvec_exp_supported(expr, bv_expr_ctxt);
-                exp_to_expr(ctx, &expr, bv_expr_ctxt)
-            };
+            let air_expr = exp_to_expr(ctx, &expr, bv_expr_ctxt);
             let assertion = Arc::new(StmtX::Assert(error, air_expr));
             // this creates a separate query for the bv assertion
             let query = Arc::new(QueryX { local: Arc::new(local), assertion });
@@ -1345,10 +1324,7 @@ pub fn body_stm_to_air(
         .secondary_label(&ens.span, "failed this postcondition".to_string());
 
         let expr_ctxt = ExprCtxt { mode: ExprMode::Body, is_bit_vector: is_bit_vector_mode };
-        let e = {
-            assert_bitvec_exp_supported(ens, expr_ctxt);
-            mk_let(&trait_typ_bind, &exp_to_expr(ctx, ens, expr_ctxt))
-        };
+        let e = mk_let(&trait_typ_bind, &exp_to_expr(ctx, ens, expr_ctxt));
         let ens_stmt = StmtX::Assert(error, e);
         stmts.push(Arc::new(ens_stmt));
     }
@@ -1366,10 +1342,7 @@ pub fn body_stm_to_air(
 
     for req in reqs {
         let expr_ctxt = ExprCtxt { mode: ExprMode::BodyPre, is_bit_vector: is_bit_vector_mode };
-        let e = {
-            assert_bitvec_exp_supported(req, expr_ctxt);
-            mk_let(&trait_typ_bind, &exp_to_expr(ctx, req, expr_ctxt))
-        };
+        let e = mk_let(&trait_typ_bind, &exp_to_expr(ctx, req, expr_ctxt));
         local.push(Arc::new(DeclX::Axiom(e)));
     }
 
