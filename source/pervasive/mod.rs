@@ -8,7 +8,7 @@ pub mod set;
 pub mod set_lib;
 pub mod cell;
 pub mod ptr;
-pub mod invariants;
+pub mod invariant;
 pub mod atomic;
 pub mod modes;
 pub mod multiset;

@@ -393,7 +393,7 @@ pub fn datatype_invariant_path(atomicity: InvAtomicity) -> Path {
         krate: None,
         segments: Arc::new(vec![
             Arc::new("pervasive".to_string()),
-            Arc::new("invariants".to_string()),
+            Arc::new("invariant".to_string()),
             atomicity_type_name(atomicity),
         ]),
     })
@@ -405,7 +405,7 @@ pub fn fn_inv_name(atomicity: InvAtomicity) -> Fun {
             krate: None,
             segments: Arc::new(vec![
                 Arc::new("pervasive".to_string()),
-                Arc::new("invariants".to_string()),
+                Arc::new("invariant".to_string()),
                 atomicity_type_name(atomicity),
                 Arc::new("inv".to_string()),
             ]),
@@ -420,7 +420,7 @@ pub fn fn_namespace_name(atomicity: InvAtomicity) -> Fun {
             krate: None,
             segments: Arc::new(vec![
                 Arc::new("pervasive".to_string()),
-                Arc::new("invariants".to_string()),
+                Arc::new("invariant".to_string()),
                 atomicity_type_name(atomicity),
                 Arc::new("namespace".to_string()),
             ]),

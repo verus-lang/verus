@@ -2,7 +2,7 @@
 use builtin::*;
 mod pervasive;
 use pervasive::*;
-use crate::pervasive::{invariants::*};
+use crate::pervasive::{invariant::*};
 
 pub fn main() {
   #[proof] let u: u32 = 5;

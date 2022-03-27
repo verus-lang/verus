@@ -33,7 +33,7 @@ macro_rules! test_both {
 
 test_both! {
     basic_usage basic_usage_local code! {
-        use crate::pervasive::invariants::*;
+        use crate::pervasive::invariant::*;
 
         pub fn X(#[proof] i: Invariant<u8>) {
             requires([
@@ -50,7 +50,7 @@ test_both! {
 
 test_both! {
     basic_usage2 basic_usage2_local code! {
-        use crate::pervasive::invariants::*;
+        use crate::pervasive::invariant::*;
 
         pub fn X(#[proof] i: Invariant<u8>) {
             open_invariant!(&i => inner => {
@@ -61,7 +61,7 @@ test_both! {
 
 test_both! {
     inv_fail inv_fail_local code! {
-        use crate::pervasive::invariants::*;
+        use crate::pervasive::invariant::*;
         pub fn X(#[proof] i: Invariant<u8>) {
             open_invariant!(&i => inner => {
                 #[proof] let x = 5;
@@ -74,7 +74,7 @@ test_both! {
 
 test_both! {
     nested_failure nested_failure_local code! {
-        use crate::pervasive::invariants::*;
+        use crate::pervasive::invariant::*;
         pub fn nested(#[proof] i: Invariant<u8>) {
             requires([
                 i.inv(0)
@@ -91,7 +91,7 @@ test_both! {
 
 test_both! {
     nested_good nested_good_local code! {
-        use crate::pervasive::invariants::*;
+        use crate::pervasive::invariant::*;
         pub fn nested_good(#[proof] i: Invariant<u8>, #[proof] j: Invariant<u8>) {
             requires([
                 i.inv(0),
@@ -111,7 +111,7 @@ test_both! {
 
 test_both! {
     full_call_empty full_call_empty_local code! {
-        use crate::pervasive::invariants::*;
+        use crate::pervasive::invariant::*;
         #[proof]
         pub fn callee_mask_empty() {
           opens_invariants_none(); // will not open any invariant
@@ -126,7 +126,7 @@ test_both! {
 
 test_both! {
     open_call_full open_call_full_local code! {
-        use crate::pervasive::invariants::*;
+        use crate::pervasive::invariant::*;
         #[proof]
         pub fn callee_mask_full() {
           opens_invariants_any(); // can open any invariant
@@ -141,7 +141,7 @@ test_both! {
 
 test_both! {
     empty_open empty_open_local code! {
-        use crate::pervasive::invariants::*;
+        use crate::pervasive::invariant::*;
         #[proof]
         pub fn callee_mask_empty() {
           opens_invariants_none(); // will not open any invariant
@@ -158,7 +158,7 @@ test_both! {
 
 test_both! {
     open_inv_in_spec open_inv_in_spec_local code! {
-        use crate::pervasive::invariants::*;
+        use crate::pervasive::invariant::*;
 
         #[spec]
         pub fn open_inv_in_spec(i: Invariant<u8>) {
@@ -170,7 +170,7 @@ test_both! {
 
 test_both! {
     inv_header_in_spec inv_header_in_spec_local code! {
-        use crate::pervasive::invariants::*;
+        use crate::pervasive::invariant::*;
 
         #[spec]
         pub fn inv_header_in_spec(i: Invariant<u8>) {
@@ -181,7 +181,7 @@ test_both! {
 
 test_both! {
     open_inv_in_proof open_inv_in_proof_local code! {
-        use crate::pervasive::invariants::*;
+        use crate::pervasive::invariant::*;
 
         #[proof]
         pub fn open_inv_in_proof(#[proof] i: Invariant<u8>) {
@@ -194,7 +194,7 @@ test_both! {
 
 test_both! {
     inv_cannot_be_exec inv_cannot_be_exec_local code! {
-        use crate::pervasive::invariants::*;
+        use crate::pervasive::invariant::*;
 
         pub fn X(#[exec] i: Invariant<u8>) {
             open_invariant!(&i => inner => {
@@ -206,7 +206,7 @@ test_both! {
 
 test_both! {
     inv_cannot_be_spec inv_cannot_be_spec_local code! {
-        use crate::pervasive::invariants::*;
+        use crate::pervasive::invariant::*;
 
         pub fn X(#[spec] i: Invariant<u8>) {
             open_invariant!(&i => inner => {
@@ -219,7 +219,7 @@ test_both! {
 // This test doesn't apply to LocalInvariant
 test_verify_one_file! {
     #[test] exec_code_in_inv_block code! {
-        use crate::pervasive::invariants::*;
+        use crate::pervasive::invariant::*;
 
         pub fn exec_fn() { }
 
@@ -233,7 +233,7 @@ test_verify_one_file! {
 
 test_both! {
     inv_lifetime inv_lifetime_local code! {
-        use crate::pervasive::invariants::*;
+        use crate::pervasive::invariant::*;
 
         #[proof]
         fn throw_away(#[proof] i: Invariant<u8>) {
@@ -252,7 +252,7 @@ test_both! {
 
 test_both! {
     return_early return_early_local code! {
-        use crate::pervasive::invariants::*;
+        use crate::pervasive::invariant::*;
 
         pub fn blah(#[proof] i: Invariant<u8>) {
           open_invariant!(&i => inner => {
@@ -264,7 +264,7 @@ test_both! {
 
 test_both! {
     return_early_nested return_early_nested_local code! {
-        use crate::pervasive::invariants::*;
+        use crate::pervasive::invariant::*;
 
         pub fn blah(#[proof] i: Invariant<u8>, #[proof] j: Invariant<u8>) {
           open_invariant!(&i => inner => {
@@ -278,7 +278,7 @@ test_both! {
 
 test_both! {
     break_early break_early_local code! {
-        use crate::pervasive::invariants::*;
+        use crate::pervasive::invariant::*;
 
         pub fn blah(#[proof] i: Invariant<u8>) {
           let mut idx = 0;
@@ -294,7 +294,7 @@ test_both! {
 
 test_both! {
     continue_early continue_early_local code! {
-        use crate::pervasive::invariants::*;
+        use crate::pervasive::invariant::*;
 
         pub fn blah(#[proof] i: Invariant<u8>) {
           let mut idx = 0;
@@ -310,7 +310,7 @@ test_both! {
 
 test_both! {
     return_early_proof return_early_proof_local code! {
-        use crate::pervasive::invariants::*;
+        use crate::pervasive::invariant::*;
 
         #[proof]
         pub fn blah(#[proof] i: Invariant<u8>) {
@@ -323,7 +323,7 @@ test_both! {
 
 test_both! {
     break_early_proof break_early_proof_local code! {
-        use crate::pervasive::invariants::*;
+        use crate::pervasive::invariant::*;
 
         #[proof]
         pub fn blah(#[proof] i: Invariant<u8>) {
@@ -340,7 +340,7 @@ test_both! {
 
 test_both! {
     continue_early_proof continue_early_proof_local code! {
-        use crate::pervasive::invariants::*;
+        use crate::pervasive::invariant::*;
 
         #[proof]
         pub fn blah(#[proof] i: Invariant<u8>) {
@@ -359,7 +359,7 @@ test_both! {
 
 test_verify_one_file! {
     #[test] mixup1 code! {
-        use crate::pervasive::invariants::*;
+        use crate::pervasive::invariant::*;
 
         pub fn X(#[proof] i: LocalInvariant<u8>) {
             open_invariant!(&i => inner => {
@@ -370,7 +370,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] mixup2 code! {
-        use crate::pervasive::invariants::*;
+        use crate::pervasive::invariant::*;
 
         pub fn X(#[proof] i: Invariant<u8>) {
             open_local_invariant!(&i => inner => {

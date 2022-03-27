@@ -326,9 +326,9 @@ fn get_fn_path<'tcx>(bctx: &BodyCtxt<'tcx>, expr: &Expr<'tcx>) -> Result<vir::as
     }
 }
 
-const BUILTIN_INV_LOCAL_BEGIN: &str = "crate::pervasive::invariants::open_local_invariant_begin";
-const BUILTIN_INV_BEGIN: &str = "crate::pervasive::invariants::open_invariant_begin";
-const BUILTIN_INV_END: &str = "crate::pervasive::invariants::open_invariant_end";
+const BUILTIN_INV_LOCAL_BEGIN: &str = "crate::pervasive::invariant::open_local_invariant_begin";
+const BUILTIN_INV_BEGIN: &str = "crate::pervasive::invariant::open_invariant_begin";
+const BUILTIN_INV_END: &str = "crate::pervasive::invariant::open_invariant_end";
 
 fn fn_call_to_vir<'tcx>(
     bctx: &BodyCtxt<'tcx>,

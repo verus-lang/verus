@@ -7,7 +7,7 @@ use pervasive::option::*;
 use pervasive::ptr::*;
 use pervasive::cell::*;
 use pervasive::modes::*;
-use pervasive::invariants::*;
+use pervasive::invariant::*;
 
 use state_machines_macros::tokenized_state_machine;
 

@@ -3,7 +3,7 @@ use builtin::*;
 use builtin_macros::*;
 mod pervasive;
 use pervasive::*;
-use crate::pervasive::{invariants::*};
+use crate::pervasive::{invariant::*};
 use crate::pervasive::{atomic::*};
 use crate::pervasive::{modes::*};
 use crate::pervasive::{thread::*};

@@ -4,7 +4,7 @@ mod common;
 use common::*;
 
 const COMMON: &str = code_str! {
-    use crate::pervasive::invariants::*;
+    use crate::pervasive::invariant::*;
 
     #[verifier(atomic)]
     #[verifier(external_body)]
