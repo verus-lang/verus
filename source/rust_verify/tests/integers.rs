@@ -71,7 +71,7 @@ test_verify_one_file! {
     #[test] test2_fails code! {
         #[proof]
         fn test1(i: int, n: nat, u: u8) {
-            assert((u as int) < 256 >>= u < 256); // FAILS, because 256 is a u8 in u < 256
+            assert((u as int) < 256 >>= u < ((256 as int) as u8)); // FAILS, because 256 is a u8 in u < 256
         }
     } => Err(err) => assert_one_fails(err)
 }
@@ -95,7 +95,6 @@ test_verify_one_file! {
             let i5: int = n; // implicit coercion ok
             let n3: nat = 10;
             let i6: int = -10;
-            let u3: u8 = 300;
             let x = 2 + 2;
             let b1: bool = u <= i; // implicit coercion ok
             let b2: bool = i <= u; // implicit coercion ok
@@ -117,7 +116,7 @@ test_verify_one_file! {
             let u3: u8 = 300;
             assert(u3 > 100); // FAILS
         }
-    } => Err(err) => assert_one_fails(err)
+    } => Err(err) => assert_vir_error(err)
 }
 
 test_verify_one_file! {
@@ -194,7 +193,7 @@ test_verify_one_file! {
         fn f() {
             assert(255u8 == 256u8 - 1); // FAILS
         }
-    } => Err(err) => assert_one_fails(err)
+    } => Err(err) => assert_vir_error(err)
 }
 
 test_verify_one_file! {
@@ -203,7 +202,7 @@ test_verify_one_file! {
         fn f() {
             assert(-128i8 == -129i8 + 1); // FAILS
         }
-    } => Err(err) => assert_one_fails(err)
+    } => Err(err) => assert_vir_error(err)
 }
 
 test_verify_one_file! {
@@ -212,7 +211,7 @@ test_verify_one_file! {
         fn f() {
             assert(127i8 == 128i8 - 1); // FAILS
         }
-    } => Err(err) => assert_one_fails(err)
+    } => Err(err) => assert_vir_error(err)
 }
 
 test_verify_one_file! {
@@ -221,7 +220,7 @@ test_verify_one_file! {
         fn f() {
             assert(-0x8000_0000_0000_0000_0000_0000_0000_0000i128 == -0x8000_0000_0000_0000_0000_0000_0000_0001i128 + 1); // FAILS
         }
-    } => Err(err) => assert_one_fails(err)
+    } => Err(err) => assert_vir_error(err)
 }
 
 test_verify_one_file! {
@@ -230,5 +229,5 @@ test_verify_one_file! {
         fn f() {
             assert(0x7fff_ffff_ffff_ffff_ffff_ffff_ffff_ffffi128 == 0x8000_0000_0000_0000_0000_0000_0000_0000i128 - 1); // FAILS
         }
-    } => Err(err) => assert_one_fails(err)
+    } => Err(err) => assert_vir_error(err)
 }

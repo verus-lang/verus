@@ -45,9 +45,10 @@ fn fibo_impl(n: u64) -> u64 {
       fibo_fits_u64(n as nat), fibo_fits_u64(i as nat),
       cur == fibo(i), prev == fibo(i as nat - 1),
     ]);
-    let new_cur = cur + prev;
-    prev = cur; cur = new_cur; i = i + 1;
+    i = i + 1;
     lemma_fibo_is_monotonic(i, n);
+    let new_cur = cur + prev;
+    prev = cur; cur = new_cur;
   }
   cur
 }

@@ -1,6 +1,6 @@
 use crate::ast::{
-    BinaryOp, CallTarget, Constant, Expr, ExprX, Fun, Function, Ident, Mode, PatternX,
-    SpannedTyped, Stmt, StmtX, Typ, TypX, Typs, UnaryOp, UnaryOpr, VarAt, VirErr,
+    ArithOp, BinaryOp, CallTarget, Constant, Expr, ExprX, Fun, Function, Ident, IntRange, Mode,
+    PatternX, SpannedTyped, Stmt, StmtX, Typ, TypX, Typs, UnaryOp, UnaryOpr, VarAt, VirErr,
 };
 use crate::ast_util::{err_str, err_string};
 use crate::context::Ctx;
@@ -21,6 +21,9 @@ type Arg = (Exp, Typ);
 type Args = Arc<Vec<Arg>>;
 
 pub(crate) struct State {
+    // View exec/proof code as spec
+    // (used for is_const functions, where we let Rust --compile check for overflow)
+    view_as_spec: bool,
     // Counter to generate temporary variables
     next_var: u64,
     // Collect all local variable declarations
@@ -43,6 +46,7 @@ impl State {
         let mut rename_map = ScopeMap::new();
         rename_map.push_scope(true);
         State {
+            view_as_spec: false,
             next_var: 0,
             local_decls: Vec::new(),
             rename_map,
@@ -210,10 +214,12 @@ pub(crate) fn expr_to_exp_state(ctx: &Ctx, state: &mut State, expr: &Expr) -> Re
 
 pub(crate) fn expr_to_decls_exp(
     ctx: &Ctx,
+    view_as_spec: bool,
     params: &Pars,
     expr: &Expr,
 ) -> Result<(Vec<LocalDecl>, Exp), VirErr> {
     let mut state = State::new();
+    state.view_as_spec = view_as_spec;
     for param in params.iter() {
         if !matches!(param.x.purpose, ParPurpose::MutPost) {
             state.declare_new_var(&param.x.name, &param.x.typ, false, false);
@@ -238,7 +244,11 @@ pub(crate) fn expr_to_bind_decls_exp(ctx: &Ctx, params: &Pars, expr: &Expr) -> R
 }
 
 pub(crate) fn expr_to_exp(ctx: &Ctx, params: &Pars, expr: &Expr) -> Result<Exp, VirErr> {
-    Ok(expr_to_decls_exp(ctx, params, expr)?.1)
+    Ok(expr_to_decls_exp(ctx, false, params, expr)?.1)
+}
+
+pub(crate) fn expr_to_exp_as_spec(ctx: &Ctx, params: &Pars, expr: &Expr) -> Result<Exp, VirErr> {
+    Ok(expr_to_decls_exp(ctx, true, params, expr)?.1)
 }
 
 pub(crate) fn expr_to_stm(
@@ -492,9 +502,38 @@ pub(crate) fn expr_to_stm_opt(
                 }
                 _ => {
                     stms1.append(&mut stms2);
-                    mk_exp(ExpX::Binary(*op, e1, e2))
+                    mk_exp(ExpX::Binary(*op, e1, e2.clone()))
                 }
             };
+            if let BinaryOp::Arith(arith, inferred_mode) = op {
+                // Insert bounds check
+                match (state.view_as_spec, ctx.global.inferred_modes[inferred_mode], &*expr.typ) {
+                    (true, _, _) => {}
+                    (_, Mode::Spec, _) => {}
+                    (_, _, TypX::Int(IntRange::U(_) | IntRange::I(_))) => {
+                        let (assert_exp, msg) = match arith {
+                            ArithOp::Add | ArithOp::Sub | ArithOp::Mul => {
+                                let unary = UnaryOpr::HasType(expr.typ.clone());
+                                let has_type = ExpX::UnaryOpr(unary, bin.clone());
+                                let has_type =
+                                    SpannedTyped::new(&expr.span, &Arc::new(TypX::Bool), has_type);
+                                (has_type, "possible arithmetic underflow/overflow")
+                            }
+                            ArithOp::EuclideanDiv | ArithOp::EuclideanMod => {
+                                let zero = ExpX::Const(Constant::Nat(Arc::new("0".to_string())));
+                                let ne = ExpX::Binary(BinaryOp::Ne, e2.clone(), e2.new_x(zero));
+                                let ne = SpannedTyped::new(&expr.span, &Arc::new(TypX::Bool), ne);
+                                (ne, "possible division by zero")
+                            }
+                        };
+                        let error = air::errors::error(msg, &expr.span);
+                        let assert = StmX::Assert(Some(error), assert_exp);
+                        let assert = Spanned::new(expr.span.clone(), assert);
+                        stms1.push(assert);
+                    }
+                    _ => {}
+                }
+            }
             Ok((stms1, Some(bin)))
         }
         ExprX::Quant(quant, binders, body) => {

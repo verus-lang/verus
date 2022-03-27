@@ -249,14 +249,14 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_mut_ref_forward code! {
-        fn add1(a: &mut u64) {
-            ensures(*a == *old(a) + 1);
-            *a = *a + 1;
+        fn div2(a: &mut u64) {
+            ensures(*a == *old(a) / 2);
+            *a = *a / 2;
         }
 
         fn test(b: &mut u64) {
-            ensures(*b == *old(b) + 1);
-            add1(b);
+            ensures(*b == *old(b) / 2);
+            div2(b);
         }
     } => Ok(())
 }

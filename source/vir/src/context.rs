@@ -1,6 +1,6 @@
 use crate::ast::{
-    Datatype, Fun, Function, FunctionKind, GenericBound, IntRange, Krate, Mode, Path, Trait, TypX,
-    Variants, VirErr,
+    Datatype, Fun, Function, FunctionKind, GenericBound, InferMode, IntRange, Krate, Mode, Path,
+    Trait, TypX, Variants, VirErr,
 };
 use crate::datatype_to_air::is_datatype_transparent;
 use crate::def::FUEL_ID;
@@ -24,6 +24,7 @@ pub struct GlobalCtx {
     pub func_call_graph: Graph<Node>,
     pub func_call_sccs: Vec<Node>,
     pub method_map: HashMap<(Fun, Path), Fun>,
+    pub(crate) inferred_modes: HashMap<InferMode, Mode>,
 }
 
 // Context for verifying one module
@@ -107,7 +108,11 @@ fn datatypes_invs(
 }
 
 impl GlobalCtx {
-    pub fn new(krate: &Krate, no_span: Span) -> Result<Self, VirErr> {
+    pub fn new(
+        krate: &Krate,
+        no_span: Span,
+        inferred_modes: HashMap<InferMode, Mode>,
+    ) -> Result<Self, VirErr> {
         let chosen_triggers: std::cell::RefCell<Vec<(Span, Vec<Vec<String>>)>> =
             std::cell::RefCell::new(Vec::new());
         let datatypes: HashMap<Path, Variants> =
@@ -143,6 +148,7 @@ impl GlobalCtx {
             func_call_graph,
             func_call_sccs,
             method_map,
+            inferred_modes,
         })
     }
 

@@ -4,7 +4,7 @@ use rustc_middle::ty::{TyCtxt, TypeckResults};
 use rustc_span::SpanData;
 use std::collections::HashMap;
 use std::sync::Arc;
-use vir::ast::{Expr, Mode, Pattern, Typ};
+use vir::ast::{Expr, InferMode, Mode, Pattern, Typ};
 
 pub struct ErasureInfo {
     pub(crate) resolved_calls: Vec<(SpanData, ResolvedCall)>,
@@ -22,6 +22,7 @@ pub struct ContextX<'tcx> {
     pub(crate) krate: &'tcx Crate<'tcx>,
     pub(crate) erasure_info: ErasureInfoRef,
     pub(crate) autoviewed_call_typs: HashMap<HirId, Typ>,
+    pub(crate) unique_id: std::cell::Cell<u64>,
 }
 
 #[derive(Clone)]
@@ -30,4 +31,12 @@ pub(crate) struct BodyCtxt<'tcx> {
     pub(crate) types: &'tcx TypeckResults<'tcx>,
     pub(crate) mode: Mode,
     pub(crate) external_body: bool,
+}
+
+impl<'tcx> ContextX<'tcx> {
+    pub(crate) fn infer_mode(&self) -> InferMode {
+        let id = self.unique_id.get();
+        self.unique_id.set(id + 1);
+        id
+    }
 }

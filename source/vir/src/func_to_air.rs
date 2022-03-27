@@ -113,7 +113,7 @@ fn func_body_to_air(
     let pars = params_to_pars(&function.x.params, false);
 
     // ast --> sst
-    let (local_decls, body_exp) = crate::ast_to_sst::expr_to_decls_exp(&ctx, &pars, &body)?;
+    let (local_decls, body_exp) = crate::ast_to_sst::expr_to_decls_exp(&ctx, true, &pars, &body)?;
 
     // Check termination
     let (is_recursive, termination_commands, body_exp) =
@@ -274,7 +274,7 @@ pub fn func_name_to_air(ctx: &Ctx, function: &Function) -> Result<Commands, VirE
 
         // Check whether we need to declare the recursive version too
         if let Some(body) = &function.x.body {
-            let body_exp = crate::ast_to_sst::expr_to_exp(
+            let body_exp = crate::ast_to_sst::expr_to_exp_as_spec(
                 &ctx,
                 &params_to_pars(&function.x.params, false),
                 &body,
