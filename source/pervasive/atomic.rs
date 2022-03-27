@@ -100,12 +100,12 @@ macro_rules! atomic_types {
 
         impl $p_ident {
             #[spec] #[verifier(publish)]
-            fn is_for(&self, patomic: $at_ident) -> bool {
+            pub fn is_for(&self, patomic: $at_ident) -> bool {
                 self.patomic == patomic.view()
             }
 
             #[spec] #[verifier(publish)]
-            fn points_to(&self, v: $value_ty) -> bool {
+            pub fn points_to(&self, v: $value_ty) -> bool {
                 self.value == v
             }
         }
