@@ -32,7 +32,25 @@ pub fn mode_join(m1: Mode, m2: Mode) -> Mode {
     }
 }
 
-// placeholder for the erasure expected mode, which is computed after first mode checking pass
+// Placeholder for the erasure expected mode, which is computed after first mode checking pass.
+// (See in erase_expr(..., expect: Mode, ...) in erase.rs.)
+// We compute the erasure expected mode here so that the AIR/SMT generation can use it.
+// For example, if there are arithmetic operations that are exec (and therefore not erased),
+// then the AIR/SMT code will insert overflow checks for those arithmetic operations.
+// Example:
+//   fn test(#[exec] e: u64, #[spec] s: u64) {
+//     if e + 1 < s { ... }
+//   }
+// Here, e + 1 < y is erased because the "<" comparison with s is spec, not exec.
+// Therefore, the e + 1 is a spec-mode arithmetic operation, not an exec-mode arithmetic operation.
+// However, the mode checker doesn't know this when it first descends into e + 1:
+//   - the "if" expression can take a spec or proof or exec condition, so this doesn't constrain
+//     the mode of e + 1 < s a priori
+//   - the "<" expression can take spec or proof or exec subexpressions, so this doesn't constrain
+//     the mode of e + 1 a priori
+//   - we check the left side e + 1 before we check the right side s,
+//     so when we first reach e + 1, we don't yet know that "<"'s right side is spec
+// Therefore, we use Cell to delay the decision about the erasure expected mode of e + 1.
 type ErasureMode = std::rc::Rc<ErasureModeX>;
 enum ErasureModeX {
     Mode(std::cell::Cell<Option<Mode>>),
