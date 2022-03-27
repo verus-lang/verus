@@ -394,7 +394,7 @@ impl Verifier {
     }
 
     // Verify one or more modules in a crate
-    fn verify_crate(&mut self, compiler: &Compiler) -> Result<(), VirErr> {
+    fn verify_crate_inner(&mut self, compiler: &Compiler) -> Result<(), VirErr> {
         let krate = self.vir_crate.as_ref().expect("vir_crate should be initialized");
         let air_no_span = self.air_no_span.as_ref().expect("air_no_span should be initialized");
 
@@ -515,7 +515,20 @@ impl Verifier {
         Ok(())
     }
 
-    fn vir<'tcx>(&mut self, tcx: TyCtxt<'tcx>) -> Result<bool, VirErr> {
+    pub fn verify_crate<'tcx>(&mut self, compiler: &Compiler) -> Result<bool, VirErr> {
+        // Verify crate
+        let time3 = Instant::now();
+        if !self.args.no_verify {
+            self.verify_crate_inner(&compiler)?;
+        }
+        let time4 = Instant::now();
+
+        self.time_vir_verify = time4 - time3;
+        self.time_vir += self.time_vir_verify;
+        Ok(true)
+    }
+
+    fn construct_vir_crate<'tcx>(&mut self, tcx: TyCtxt<'tcx>) -> Result<bool, VirErr> {
         let autoviewed_call_typs = Arc::new(std::sync::Mutex::new(HashMap::new()));
         let _ = tcx.formal_verifier_callback.replace(Some(Box::new(crate::typecheck::Typecheck {
             int_ty_id: None,
@@ -562,7 +575,7 @@ impl Verifier {
         let vir_crate = vir::traits::demote_foreign_traits(&vir_crate)?;
 
         self.vir_crate = Some(vir_crate.clone());
-        self.air_no_span = (!self.args.external_body).then(|| {
+        self.air_no_span = (!self.args.no_verify).then(|| {
             let no_span = hir
                 .krate()
                 .owners
@@ -601,19 +614,6 @@ impl Verifier {
         self.time_vir = time4 - time0;
         self.time_vir_rust_to_vir = time2 - time1;
 
-        Ok(true)
-    }
-
-    pub fn verify<'tcx>(&mut self, compiler: &Compiler) -> Result<bool, VirErr> {
-        // Verify crate
-        let time3 = Instant::now();
-        if !self.args.external_body {
-            self.verify_crate(&compiler)?;
-        }
-        let time4 = Instant::now();
-
-        self.time_vir_verify = time4 - time3;
-        self.time_vir += self.time_vir_verify;
         Ok(true)
     }
 }
@@ -680,7 +680,7 @@ impl rustc_driver::Callbacks for VerifierCallbacks {
         let _result = queries.global_ctxt().expect("global_ctxt").peek_mut().enter(|tcx| {
             {
                 let mut verifier = self.verifier.lock().expect("verifier mutex");
-                if let Err(err) = verifier.vir(tcx) {
+                if let Err(err) = verifier.construct_vir_crate(tcx) {
                     report_error(compiler, &err);
                     verifier.encountered_vir_error = true;
                     return;
@@ -700,7 +700,7 @@ impl rustc_driver::Callbacks for VerifierCallbacks {
 
             {
                 let mut verifier = self.verifier.lock().expect("verifier mutex");
-                match verifier.verify(compiler) {
+                match verifier.verify_crate(compiler) {
                     Ok(_) => {}
                     Err(err) => {
                         report_error(compiler, &err);
