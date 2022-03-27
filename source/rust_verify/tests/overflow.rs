@@ -82,6 +82,18 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_const_ok code! {
+        const C: u8 = 254 + 1;
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_const_fail code! {
+        const C: u8 = 255 + 1 /* FAILS */;
+    } => Err(e) => assert_one_fails(e)
+}
+
+test_verify_one_file! {
     #[test] test_literal_out_of_range code! {
         const C: u8 = 256 - 1;
     } => Err(e) => assert_vir_error(e)

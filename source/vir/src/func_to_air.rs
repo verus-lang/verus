@@ -518,8 +518,12 @@ pub fn func_def_to_air(
     ctx: &Ctx,
     function: &Function,
 ) -> Result<(Commands, Vec<(Span, SnapPos)>), VirErr> {
-    match (function.x.mode, function.x.ret.as_ref(), function.x.body.as_ref()) {
-        (Mode::Exec, _, Some(body)) | (Mode::Proof, _, Some(body)) => {
+    match (function.x.mode, function.x.is_const, function.x.body.as_ref()) {
+        (Mode::Spec, true, Some(body))
+        | (Mode::Proof, _, Some(body))
+        | (Mode::Exec, _, Some(body)) => {
+            // Note: since is_const functions serve double duty as exec and spec,
+            // we generate an exec check for them here to catch any arithmetic overflows.
             let (trait_typ_substs, req_ens_function) = if let FunctionKind::TraitMethodImpl {
                 method,
                 trait_path,

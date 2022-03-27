@@ -22,7 +22,7 @@ type Args = Arc<Vec<Arg>>;
 
 pub(crate) struct State {
     // View exec/proof code as spec
-    // (used for is_const functions, where we let Rust --compile check for overflow)
+    // (used for is_const functions, which are viewable both as spec and exec)
     view_as_spec: bool,
     // Counter to generate temporary variables
     next_var: u64,
