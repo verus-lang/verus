@@ -1,6 +1,6 @@
 use crate::ast::{
-    BinaryOp, Fun, Ident, Idents, IntRange, InvAtomicity, MaskSpec, Mode, Params, Path, PathX,
-    SpannedTyped, Typ, TypX, Typs, UnaryOp, UnaryOpr, VarAt,
+    ArithOp, BinaryOp, Fun, Ident, Idents, IntRange, InvAtomicity, MaskSpec, Mode, Params, Path,
+    PathX, SpannedTyped, Typ, TypX, Typs, UnaryOp, UnaryOpr, VarAt,
 };
 use crate::ast_util::{bitwidth_from_type, get_field, get_variant};
 use crate::context::Ctx;
@@ -167,7 +167,7 @@ pub(crate) fn expr_has_type(id: &Expr, expr: &Expr) -> Expr {
 // For non-refinement types and abstract monotypes, return None,
 // since the SMT sorts for these types can express the types precisely with no need for refinement.
 pub(crate) fn typ_invariant(ctx: &Ctx, typ: &Typ, expr: &Expr) -> Option<Expr> {
-    // Should be kept in sync with vir::context::datatypes_invs and typ_has_invariant
+    // Should be kept in sync with vir::context::datatypes_invs
     match &**typ {
         TypX::Int(IntRange::Int) => None,
         TypX::Int(IntRange::Nat) => {
@@ -532,11 +532,11 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: ExprCtxt) -> Expr {
             let bop = match op {
                 BinaryOp::Eq(_) => air::ast::BinaryOp::Eq,
                 BinaryOp::Ne => unreachable!(),
-                BinaryOp::Add => air::ast::BinaryOp::BitAdd,
-                BinaryOp::Sub => air::ast::BinaryOp::BitSub,
-                BinaryOp::Mul => air::ast::BinaryOp::BitMul,
-                BinaryOp::EuclideanDiv => air::ast::BinaryOp::BitUDiv,
-                BinaryOp::EuclideanMod => air::ast::BinaryOp::BitUMod,
+                BinaryOp::Arith(ArithOp::Add, _) => air::ast::BinaryOp::BitAdd,
+                BinaryOp::Arith(ArithOp::Sub, _) => air::ast::BinaryOp::BitSub,
+                BinaryOp::Arith(ArithOp::Mul, _) => air::ast::BinaryOp::BitMul,
+                BinaryOp::Arith(ArithOp::EuclideanDiv, _) => air::ast::BinaryOp::BitUDiv,
+                BinaryOp::Arith(ArithOp::EuclideanMod, _) => air::ast::BinaryOp::BitUMod,
                 BinaryOp::Lt => air::ast::BinaryOp::BitULt,
                 BinaryOp::Gt => air::ast::BinaryOp::BitUGt,
                 BinaryOp::Le => air::ast::BinaryOp::BitULe,
@@ -569,9 +569,15 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: ExprCtxt) -> Expr {
                 BinaryOp::Implies => {
                     return mk_implies(&lh, &rh);
                 }
-                BinaryOp::Add => ExprX::Multi(MultiOp::Add, Arc::new(vec![lh, rh])),
-                BinaryOp::Sub => ExprX::Multi(MultiOp::Sub, Arc::new(vec![lh, rh])),
-                BinaryOp::Mul => ExprX::Multi(MultiOp::Mul, Arc::new(vec![lh, rh])),
+                BinaryOp::Arith(ArithOp::Add, _) => {
+                    ExprX::Multi(MultiOp::Add, Arc::new(vec![lh, rh]))
+                }
+                BinaryOp::Arith(ArithOp::Sub, _) => {
+                    ExprX::Multi(MultiOp::Sub, Arc::new(vec![lh, rh]))
+                }
+                BinaryOp::Arith(ArithOp::Mul, _) => {
+                    ExprX::Multi(MultiOp::Mul, Arc::new(vec![lh, rh]))
+                }
                 BinaryOp::Ne => {
                     let eq = ExprX::Binary(air::ast::BinaryOp::Eq, lh, rh);
                     ExprX::Unary(air::ast::UnaryOp::Not, Arc::new(eq))
@@ -614,11 +620,15 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: ExprCtxt) -> Expr {
                         BinaryOp::Ge => air::ast::BinaryOp::Ge,
                         BinaryOp::Lt => air::ast::BinaryOp::Lt,
                         BinaryOp::Gt => air::ast::BinaryOp::Gt,
-                        BinaryOp::Add => unreachable!(),
-                        BinaryOp::Sub => unreachable!(),
-                        BinaryOp::Mul => unreachable!(),
-                        BinaryOp::EuclideanDiv => air::ast::BinaryOp::EuclideanDiv,
-                        BinaryOp::EuclideanMod => air::ast::BinaryOp::EuclideanMod,
+                        BinaryOp::Arith(ArithOp::Add, _) => unreachable!(),
+                        BinaryOp::Arith(ArithOp::Sub, _) => unreachable!(),
+                        BinaryOp::Arith(ArithOp::Mul, _) => unreachable!(),
+                        BinaryOp::Arith(ArithOp::EuclideanDiv, _) => {
+                            air::ast::BinaryOp::EuclideanDiv
+                        }
+                        BinaryOp::Arith(ArithOp::EuclideanMod, _) => {
+                            air::ast::BinaryOp::EuclideanMod
+                        }
                         BinaryOp::BitOr => unreachable!(),
                         BinaryOp::Shr => unreachable!(),
                         BinaryOp::Shl => unreachable!(),

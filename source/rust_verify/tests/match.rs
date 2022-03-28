@@ -105,6 +105,7 @@ test_verify_one_file! {
                     }
                     List::Cons(_, tl) => {
                         iter = tl;
+                        reveal_with_fuel(len::<A>, 2);
                         n = n + 1;
                     }
                 }
@@ -150,6 +151,7 @@ test_verify_one_file! {
                     }
                     List::Cons { hd: _, tl } => {
                         iter = tl;
+                        reveal_with_fuel(len::<A>, 2);
                         n = n + 1;
                     }
                 }
@@ -184,7 +186,7 @@ test_verify_one_file! {
             let mut iter = list;
             while !done {
                 invariant([
-                    n + len(iter) == len(list), // FAILS
+                    n + len(iter) == len(list),
                     done >>= len(iter) == 0,
                 ]);
 
@@ -194,7 +196,8 @@ test_verify_one_file! {
                     }
                     List::Cons(_, tl) => {
                         iter = tl;
-                        n = n + 1;
+                        reveal_with_fuel(len::<A>, 2);
+                        n = n + 1; // FAILS
                     }
                 }
             }

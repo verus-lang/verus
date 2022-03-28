@@ -46,7 +46,7 @@ fn test_loop() {
         assert(b2 as int <= 255);
         i = i + 1;
         b1 = b1 + 2;
-        b2 = b2 + 1;
+        b2 = b2 / 2;
     }
 
     assert(b1 == 200);

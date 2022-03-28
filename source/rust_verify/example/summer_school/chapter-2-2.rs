@@ -33,7 +33,10 @@ fn test_prime(candidate: u64) -> bool
     let mut factor:u64 = 2;
     while (factor < candidate)
     {
-        invariant(forall(|smallerfactor:nat| 1 < smallerfactor && smallerfactor < factor >>= !divides(smallerfactor, candidate)));
+        invariant([
+            1 <= factor,
+            forall(|smallerfactor:nat| 1 < smallerfactor && smallerfactor < factor >>= !divides(smallerfactor, candidate))
+        ]);
         if candidate % factor == 0 {
             assert(divides(factor, candidate));
             assume(!is_prime(candidate));   // TODO(chris): can't prove the !forall. (Dafny doesn't need this line, either.)

@@ -92,7 +92,7 @@ fn check_trigger_expr(exp: &Exp, free_vars: &mut HashSet<Ident>) -> Result<(), V
                         err_str(&exp.span, "triggers cannot contain boolean operators")
                     }
                     Le | Ge | Lt | Gt => Ok(()),
-                    Add | Sub | Mul | EuclideanDiv | EuclideanMod => Ok(()),
+                    Arith(..) => Ok(()),
                     BitXor | BitAnd | BitOr | Shr | Shl => Ok(()),
                 }
             }

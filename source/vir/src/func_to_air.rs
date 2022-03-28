@@ -113,7 +113,7 @@ fn func_body_to_air(
     let pars = params_to_pars(&function.x.params, false);
 
     // ast --> sst
-    let (local_decls, body_exp) = crate::ast_to_sst::expr_to_decls_exp(&ctx, &pars, &body)?;
+    let (local_decls, body_exp) = crate::ast_to_sst::expr_to_decls_exp(&ctx, true, &pars, &body)?;
 
     // Check termination
     let (is_recursive, termination_commands, body_exp) =
@@ -274,7 +274,7 @@ pub fn func_name_to_air(ctx: &Ctx, function: &Function) -> Result<Commands, VirE
 
         // Check whether we need to declare the recursive version too
         if let Some(body) = &function.x.body {
-            let body_exp = crate::ast_to_sst::expr_to_exp(
+            let body_exp = crate::ast_to_sst::expr_to_exp_as_spec(
                 &ctx,
                 &params_to_pars(&function.x.params, false),
                 &body,
@@ -518,8 +518,12 @@ pub fn func_def_to_air(
     ctx: &Ctx,
     function: &Function,
 ) -> Result<(Commands, Vec<(Span, SnapPos)>), VirErr> {
-    match (function.x.mode, function.x.ret.as_ref(), function.x.body.as_ref()) {
-        (Mode::Exec, _, Some(body)) | (Mode::Proof, _, Some(body)) => {
+    match (function.x.mode, function.x.is_const, function.x.body.as_ref()) {
+        (Mode::Spec, true, Some(body))
+        | (Mode::Proof, _, Some(body))
+        | (Mode::Exec, _, Some(body)) => {
+            // Note: since is_const functions serve double duty as exec and spec,
+            // we generate an exec check for them here to catch any arithmetic overflows.
             let (trait_typ_substs, req_ens_function) = if let FunctionKind::TraitMethodImpl {
                 method,
                 trait_path,

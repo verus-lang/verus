@@ -39,6 +39,7 @@ fn get_len<A>(list: &List<A>) -> u64 {
             }
             List::Cons(_, tl) => {
                 iter = tl;
+                reveal_with_fuel(len::<A>, 2);
                 n = n + 1;
             }
         }

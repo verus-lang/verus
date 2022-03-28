@@ -47,6 +47,10 @@ pub enum Mode {
     Exec,
 }
 
+/// Mode that gets filled in by the mode checker.
+/// (A unique id marks the place that needs to be filled in.)
+pub type InferMode = u64;
+
 /// Describes integer types
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum IntRange {
@@ -118,7 +122,7 @@ pub enum UnaryOpr {
     /// coerce Boxed(Typ) --> Typ
     Unbox(Typ),
     /// satisfies type invariant for Typ
-    /// (should only be used when sst_to_air::typ_has_invariant returns true)
+    /// (should only be used when sst_to_air::typ_invariant returns Some(_))
     HasType(Typ),
     /// Test whether expression is a particular variant of a datatype
     IsVariant { datatype: Path, variant: Ident },
@@ -126,6 +130,21 @@ pub enum UnaryOpr {
     TupleField { tuple_arity: usize, field: usize },
     /// Read field from variant of datatype
     Field { datatype: Path, variant: Ident, field: Ident },
+}
+
+/// Arithmetic operation that might fail (overflow or divide by zero)
+#[derive(Copy, Clone, Debug)]
+pub enum ArithOp {
+    /// IntRange::Int +
+    Add,
+    /// IntRange::Int -
+    Sub,
+    /// IntRange::Int *
+    Mul,
+    /// IntRange::Int / defined as Euclidean (round towards -infinity, not round-towards zero)
+    EuclideanDiv,
+    /// IntRange::Int % defined as Euclidean (returns non-negative result even for negative divisor)
+    EuclideanMod,
 }
 
 /// Primitive binary operations
@@ -157,16 +176,8 @@ pub enum BinaryOp {
     Lt,
     /// IntRange::Int >
     Gt,
-    /// IntRange::Int +
-    Add,
-    /// IntRange::Int -
-    Sub,
-    /// IntRange::Int *
-    Mul,
-    /// IntRange::Int / defined as Euclidean (round towards -infinity, not round-towards zero)
-    EuclideanDiv,
-    /// IntRange::Int % defined as Euclidean (returns non-negative result even for negative divisor)
-    EuclideanMod,
+    /// IntRange operations that may require overflow or divide-by zero checks
+    Arith(ArithOp, InferMode),
     /// Bit Vector Operators
     BitXor,
     BitAnd,

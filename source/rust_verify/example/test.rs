@@ -4,6 +4,7 @@ mod pervasive;
 use pervasive::*;
 
 pub fn foo(a: u64) -> u64 {
+    requires(a < 100);
     a + 1
 }
 

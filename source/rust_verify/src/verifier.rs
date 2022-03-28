@@ -18,7 +18,7 @@ use std::io::Write;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use vir::ast::{Fun, Function, Krate, VirErr, Visibility};
+use vir::ast::{Fun, Function, InferMode, Krate, Mode, VirErr, Visibility};
 use vir::ast_util::{fun_as_rust_dbg, is_visible_to};
 use vir::def::SnapPos;
 use vir::recursion::Node;
@@ -44,8 +44,9 @@ pub struct Verifier {
     pub time_smt_init: Duration,
     pub time_smt_run: Duration,
 
-    pub vir_crate: Option<Krate>,
-    pub air_no_span: Option<air::ast::Span>,
+    vir_crate: Option<Krate>,
+    air_no_span: Option<air::ast::Span>,
+    inferred_modes: Option<HashMap<InferMode, Mode>>,
 }
 
 #[derive(Debug)]
@@ -134,6 +135,7 @@ impl Verifier {
 
             vir_crate: None,
             air_no_span: None,
+            inferred_modes: None,
         }
     }
 
@@ -397,6 +399,8 @@ impl Verifier {
     fn verify_crate_inner(&mut self, compiler: &Compiler) -> Result<(), VirErr> {
         let krate = self.vir_crate.as_ref().expect("vir_crate should be initialized");
         let air_no_span = self.air_no_span.as_ref().expect("air_no_span should be initialized");
+        let inferred_modes =
+            self.inferred_modes.take().expect("inferred_modes should be initialized");
 
         #[cfg(debug_assertions)]
         vir::check_ast_flavor::check_krate(&krate);
@@ -425,7 +429,8 @@ impl Verifier {
             air_context.set_z3_param(&option, &value);
         }
 
-        let mut global_ctx = vir::context::GlobalCtx::new(&krate, air_no_span.clone())?;
+        let mut global_ctx =
+            vir::context::GlobalCtx::new(&krate, air_no_span.clone(), inferred_modes)?;
         vir::recursive_types::check_traits(&krate, &global_ctx)?;
         let krate = vir::ast_simplify::simplify_krate(&mut global_ctx, &krate)?;
 
@@ -557,8 +562,13 @@ impl Verifier {
             ignored_functions: vec![],
         };
         let erasure_info = std::rc::Rc::new(std::cell::RefCell::new(erasure_info));
-        let ctxt =
-            Arc::new(ContextX { tcx, krate: hir.krate(), erasure_info, autoviewed_call_typs });
+        let ctxt = Arc::new(ContextX {
+            tcx,
+            krate: hir.krate(),
+            erasure_info,
+            autoviewed_call_typs,
+            unique_id: std::cell::Cell::new(0),
+        });
 
         // Convert HIR -> VIR
         let time1 = Instant::now();
@@ -571,7 +581,7 @@ impl Verifier {
             vir::printer::write_krate(&mut file, &vir_crate);
         }
         vir::well_formed::check_crate(&vir_crate)?;
-        let erasure_modes = vir::modes::check_crate(&vir_crate)?;
+        let (erasure_modes, inferred_modes) = vir::modes::check_crate(&vir_crate)?;
         let vir_crate = vir::traits::demote_foreign_traits(&vir_crate)?;
 
         self.vir_crate = Some(vir_crate.clone());
@@ -592,6 +602,7 @@ impl Verifier {
                 as_string: "no location".to_string(),
             }
         });
+        self.inferred_modes = Some(inferred_modes);
 
         let erasure_info = ctxt.erasure_info.borrow();
         let resolved_calls = erasure_info.resolved_calls.clone();

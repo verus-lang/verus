@@ -26,9 +26,9 @@ use rustc_span::def_id::DefId;
 use rustc_span::Span;
 use std::sync::Arc;
 use vir::ast::{
-    ArmX, BinaryOp, CallTarget, Constant, ExprX, FunX, HeaderExpr, HeaderExprX, Ident, IntRange,
-    InvAtomicity, Mode, PatternX, SpannedTyped, StmtX, Stmts, Typ, TypX, UnaryOp, UnaryOpr, VarAt,
-    VirErr,
+    ArithOp, ArmX, BinaryOp, CallTarget, Constant, ExprX, FunX, HeaderExpr, HeaderExprX, Ident,
+    IntRange, InvAtomicity, Mode, PatternX, SpannedTyped, StmtX, Stmts, Typ, TypX, UnaryOp,
+    UnaryOpr, VarAt, VirErr,
 };
 use vir::ast_util::{ident_binder, path_as_rust_name};
 use vir::def::positional_field_ident;
@@ -740,11 +740,11 @@ fn fn_call_to_vir<'tcx>(
         } else if is_gt {
             BinaryOp::Gt
         } else if is_add {
-            BinaryOp::Add
+            BinaryOp::Arith(ArithOp::Add, bctx.ctxt.infer_mode())
         } else if is_sub {
-            BinaryOp::Sub
+            BinaryOp::Arith(ArithOp::Sub, bctx.ctxt.infer_mode())
         } else if is_mul {
-            BinaryOp::Mul
+            BinaryOp::Arith(ArithOp::Mul, bctx.ctxt.infer_mode())
         } else if is_implies {
             BinaryOp::Implies
         } else {
@@ -1246,9 +1246,7 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                     Ok(mk_expr(ExprX::Const(c)))
                 }
                 _ => {
-                    // If we're not sure the constant fits in the range,
-                    // be cautious and clip it
-                    Ok(mk_clip(&range, &mk_expr(ExprX::Const(c))))
+                    return err_span_str(expr.span, "integer literal out of range");
                 }
             }
         } else {
@@ -1383,7 +1381,11 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                 } else {
                     expr_to_vir(bctx, arg, modifier)?
                 };
-                Ok(mk_expr(ExprX::Binary(BinaryOp::Sub, zero, varg)))
+                Ok(mk_expr(ExprX::Binary(
+                    BinaryOp::Arith(ArithOp::Sub, bctx.ctxt.infer_mode()),
+                    zero,
+                    varg,
+                )))
             }
             UnOp::Deref => expr_to_vir_inner(bctx, arg, is_expr_typ_mut_ref(bctx, arg, modifier)?),
         },
@@ -1418,11 +1420,11 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                 BinOpKind::Ge => BinaryOp::Ge,
                 BinOpKind::Lt => BinaryOp::Lt,
                 BinOpKind::Gt => BinaryOp::Gt,
-                BinOpKind::Add => BinaryOp::Add,
-                BinOpKind::Sub => BinaryOp::Sub,
-                BinOpKind::Mul => BinaryOp::Mul,
-                BinOpKind::Div => BinaryOp::EuclideanDiv,
-                BinOpKind::Rem => BinaryOp::EuclideanMod,
+                BinOpKind::Add => BinaryOp::Arith(ArithOp::Add, bctx.ctxt.infer_mode()),
+                BinOpKind::Sub => BinaryOp::Arith(ArithOp::Sub, bctx.ctxt.infer_mode()),
+                BinOpKind::Mul => BinaryOp::Arith(ArithOp::Mul, bctx.ctxt.infer_mode()),
+                BinOpKind::Div => BinaryOp::Arith(ArithOp::EuclideanDiv, bctx.ctxt.infer_mode()),
+                BinOpKind::Rem => BinaryOp::Arith(ArithOp::EuclideanMod, bctx.ctxt.infer_mode()),
                 BinOpKind::BitXor => {
                     match ((tc.node_type(lhs.hir_id)).kind(), (tc.node_type(rhs.hir_id)).kind()) {
                         (TyKind::Bool, TyKind::Bool) => BinaryOp::Xor,
