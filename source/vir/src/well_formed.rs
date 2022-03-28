@@ -245,6 +245,14 @@ fn check_function(ctxt: &Ctxt, function: &Function) -> Result<(), VirErr> {
             );
         }
     }
+
+    if function.x.publish.is_some() && function.x.visibility.is_private {
+        return err_str(
+            &function.span,
+            "function is marked #[verifier(publish)] but not marked `pub`; for the body of a function to be visible, the function symbol must also be visible",
+        );
+    }
+
     for req in function.x.require.iter() {
         let disallow_private_access = if function.x.visibility.is_private {
             None
