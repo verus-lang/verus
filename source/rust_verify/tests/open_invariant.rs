@@ -398,7 +398,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] never_terminate_in_invariant code! {
-        use crate::pervasive::invariants::*;
+        use crate::pervasive::invariant::*;
 
         pub fn X(#[proof] i: LocalInvariant<u8>) {
             open_local_invariant!(&i => inner => {

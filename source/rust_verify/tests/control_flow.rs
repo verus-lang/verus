@@ -477,3 +477,22 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] return_value_in_one_match_arm code! {
+        enum TreeSortedness {
+            Unsorted,
+            Empty,
+        }
+
+        fn moo(left_sortedness: TreeSortedness, b: bool) -> TreeSortedness {
+            let x;
+            match left_sortedness {
+                TreeSortedness::Unsorted => return TreeSortedness::Unsorted,
+                TreeSortedness::Empty => { x = 5; }
+            }
+            assert(x == 5);
+            TreeSortedness::Unsorted
+        }
+    } => Ok(())
+}

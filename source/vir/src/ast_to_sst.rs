@@ -408,7 +408,7 @@ pub(crate) fn expr_to_one_stm_dest(
     let (mut stms, exp) = expr_to_stm_opt(ctx, state, expr)?;
     let skip_ensures = match exp.to_value() {
         Some(e) => {
-            // Add assertions for the post-conditions.
+            // Assign to `dest` to use in the postconditions later on.
             if let Some(dest) = dest {
                 stms.push(init_var(&expr.span, &dest, &e));
             }
@@ -721,7 +721,11 @@ fn expr_to_stm_opt(
 
                     if let BinaryOp::Arith(arith, inferred_mode) = op {
                         // Insert bounds check
-                        match (state.view_as_spec, ctx.global.inferred_modes[inferred_mode], &*expr.typ) {
+                        match (
+                            state.view_as_spec,
+                            ctx.global.inferred_modes[inferred_mode],
+                            &*expr.typ,
+                        ) {
                             (true, _, _) => {}
                             (_, Mode::Spec, _) => {}
                             (_, _, TypX::Int(IntRange::U(_) | IntRange::I(_))) => {
@@ -729,14 +733,23 @@ fn expr_to_stm_opt(
                                     ArithOp::Add | ArithOp::Sub | ArithOp::Mul => {
                                         let unary = UnaryOpr::HasType(expr.typ.clone());
                                         let has_type = ExpX::UnaryOpr(unary, bin.clone());
-                                        let has_type =
-                                            SpannedTyped::new(&expr.span, &Arc::new(TypX::Bool), has_type);
+                                        let has_type = SpannedTyped::new(
+                                            &expr.span,
+                                            &Arc::new(TypX::Bool),
+                                            has_type,
+                                        );
                                         (has_type, "possible arithmetic underflow/overflow")
                                     }
                                     ArithOp::EuclideanDiv | ArithOp::EuclideanMod => {
-                                        let zero = ExpX::Const(Constant::Nat(Arc::new("0".to_string())));
-                                        let ne = ExpX::Binary(BinaryOp::Ne, e2.clone(), e2.new_x(zero));
-                                        let ne = SpannedTyped::new(&expr.span, &Arc::new(TypX::Bool), ne);
+                                        let zero =
+                                            ExpX::Const(Constant::Nat(Arc::new("0".to_string())));
+                                        let ne =
+                                            ExpX::Binary(BinaryOp::Ne, e2.clone(), e2.new_x(zero));
+                                        let ne = SpannedTyped::new(
+                                            &expr.span,
+                                            &Arc::new(TypX::Bool),
+                                            ne,
+                                        );
                                         (ne, "possible division by zero")
                                     }
                                 };

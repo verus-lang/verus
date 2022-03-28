@@ -448,7 +448,7 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
             } else {
                 coerce_expr_to_native(ctx, &poly_expr(ctx, state, e1))
             };
-            mk_expr_typ(&e1.typ, ExprX::Return(Some(e1.clone())))
+            mk_expr(ExprX::Return(Some(e1.clone())))
         }
         ExprX::Block(ss, e1) => {
             let mut stmts: Vec<Stmt> = Vec::new();
