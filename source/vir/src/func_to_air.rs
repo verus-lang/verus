@@ -572,8 +572,8 @@ pub fn func_def_to_air(
 
             // AST --> SST
             state.ret_post = Some((dest.clone(), enss.clone()));
-            let stm =
-                crate::ast_to_sst::expr_to_one_stm_dest(&ctx, &mut state, &body, &dest, &*enss)?;
+            let (stm, skip_ensures) =
+                crate::ast_to_sst::expr_to_one_stm_dest(&ctx, &mut state, &body, &dest)?;
             let stm = state.finalize_stm(&stm);
             state.ret_post = None;
 
@@ -594,10 +594,12 @@ pub fn func_def_to_air(
                 &state.local_decls,
                 &function.x.attrs.hidden,
                 &reqs,
+                &enss,
                 &function.x.mask_spec,
                 function.x.mode,
                 &stm,
                 function.x.attrs.bit_vector,
+                skip_ensures,
             );
 
             state.finalize();

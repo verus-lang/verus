@@ -1238,10 +1238,12 @@ pub fn body_stm_to_air(
     local_decls: &Vec<LocalDecl>,
     hidden: &Vec<Fun>,
     reqs: &Vec<Exp>,
+    enss: &Vec<Exp>,
     mask_spec: &MaskSpec,
     mode: Mode,
     stm: &Stm,
     is_bit_vector_mode: bool,
+    skip_ensures: bool,
 ) -> (Commands, Vec<(Span, SnapPos)>) {
     // Verifying a single function can generate multiple SMT queries.
     // Some declarations (local_shared) are shared among the queries.
@@ -1329,6 +1331,22 @@ pub fn body_stm_to_air(
         state.local_bv_shared.clone()
     };
 
+    if !skip_ensures {
+        // TODO move this into sst_to_ast to be consistent with the other postconditions emitted there
+        for ens in enss {
+            let error = error_with_label(
+                "postcondition not satisfied".to_string(),
+                &stm.span,
+                "at the end of the function body".to_string(),
+            )
+            .secondary_label(&ens.span, "failed this postcondition".to_string());
+
+            let expr_ctxt = ExprCtxt { mode: ExprMode::Body, is_bit_vector: is_bit_vector_mode };
+            let e = mk_let(&trait_typ_bind, &exp_to_expr(ctx, ens, expr_ctxt));
+            let ens_stmt = StmtX::Assert(error, e);
+            stmts.push(Arc::new(ens_stmt));
+        }
+    }
     let assertion = one_stmt(stmts);
 
     if !is_bit_vector_mode {

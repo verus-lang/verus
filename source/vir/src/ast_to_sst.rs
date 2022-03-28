@@ -398,30 +398,21 @@ fn check_unit_or_never(exp: &ReturnValue) -> Result<(), VirErr> {
     }
 }
 
+/// the bool return value: if true, skip generating the postconditions later
 pub(crate) fn expr_to_one_stm_dest(
     ctx: &Ctx,
     state: &mut State,
     expr: &Expr,
     dest: &Option<UniqueIdent>,
-    enss: &Vec<Exp>,
-) -> Result<Stm, VirErr> {
+) -> Result<(Stm, bool), VirErr> {
     let (mut stms, exp) = expr_to_stm_opt(ctx, state, expr)?;
-    match exp.to_value() {
+    let skip_ensures = match exp.to_value() {
         Some(e) => {
             // Add assertions for the post-conditions.
             if let Some(dest) = dest {
                 stms.push(init_var(&expr.span, &dest, &e));
             }
-            for ens in enss {
-                let error = error_with_label(
-                    "postcondition not satisfied".to_string(),
-                    &expr.span,
-                    "at the end of the function body".to_string(),
-                )
-                .secondary_label(&ens.span, "failed this postcondition".to_string());
-
-                stms.push(Spanned::new(expr.span.clone(), StmX::Assert(Some(error), ens.clone())));
-            }
+            false
         }
         None => {
             // Program execution never gets to this point, so we don't need to check
@@ -439,9 +430,10 @@ pub(crate) fn expr_to_one_stm_dest(
             // Anyway, the point is, we don't need to check the postconditions again
             // in that case, or in any other case where we never reach the end of the
             // function.
+            true
         }
-    }
-    Ok(stms_to_one_stm(&expr.span, stms))
+    };
+    Ok((stms_to_one_stm(&expr.span, stms), skip_ensures))
 }
 
 fn is_small_exp_or_loc(exp: &Exp) -> bool {
