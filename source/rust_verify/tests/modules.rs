@@ -157,3 +157,13 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_vir_error(err)
 }
+
+test_verify_one_file! {
+    #[test] test_publish_but_not_marked_pub code! {
+        #[spec]
+        #[verifier(publish)]
+        fn bar() -> int {
+            7
+        }
+    } => Err(err) => assert_vir_error(err)
+}
