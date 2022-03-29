@@ -16,10 +16,29 @@ impl<A> Vec<A> {
     fndecl!(pub fn view(&self) -> Seq<A>);
 
     #[verifier(external_body)]
+    pub fn new() -> Self {
+        ensures(|v:Vec<A>| v.len() == 0);
+
+        Vec { vec: std::vec::Vec::new() }
+    }
+    
     pub fn empty() -> Self {
         ensures(|v: Self| equal(v.view(), Seq::empty()));
 
-        Vec { vec: std::vec::Vec::new() }
+        new()
+    }
+
+    #[verifier(external_body)]
+    pub fn push(&mut self, value: A) {
+        ensures(equal(self.view(), old(self).view().push(value)));
+        self.vec.push(value);
+    }
+
+    #[verifier(external_body)]
+    pub fn pop(&mut self) -> A {
+        requires(old(self).len() > 0);
+        ensures(|value| equal(self.view().push(value), old(self).view()));
+        self.vec.pop().unwrap()  // Safe to unwrap given the precondition above
     }
 
     #[verifier(external_body)]
