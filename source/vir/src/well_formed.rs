@@ -246,6 +246,17 @@ fn check_function(ctxt: &Ctxt, function: &Function) -> Result<(), VirErr> {
         }
     }
 
+    if function.x.publish.is_some() && function.x.mode != Mode::Spec {
+        return err_str(
+            &function.span,
+            "function is marked #[verifier(publish)] but not marked #[spec]",
+        );
+    }
+
+    if function.x.is_main() && function.x.mode != Mode::Exec {
+        return err_str(&function.span, "`main` function should be #[exec]");
+    }
+
     if function.x.publish.is_some() && function.x.visibility.is_private {
         return err_str(
             &function.span,
