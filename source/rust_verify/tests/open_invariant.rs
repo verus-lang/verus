@@ -378,3 +378,20 @@ test_verify_one_file! {
         }
     } => Err(err)
 }
+
+test_verify_one_file! {
+    #[test] nest_local_loop_local code! {
+        use crate::pervasive::invariant::*;
+
+        pub fn X(#[proof] i: LocalInvariant<u8>, #[proof] j: LocalInvariant<u8>) {
+            open_local_invariant!(&i => inner => { // FAILS
+                let mut idx: u64 = 0;
+                while idx < 5 {
+                    open_local_invariant!(&j => jnner => {
+                    });
+                    idx = idx + 1;
+                }
+            });
+        }
+    } => Err(err) => assert_one_fails(err)
+}
