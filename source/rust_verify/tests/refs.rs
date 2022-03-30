@@ -350,7 +350,40 @@ test_verify_one_file! {
         fn bar(#[proof] x: int) {
             let mut x = true;
             let (a, b) = foo(&mut x);
-            assert(x == true); // FAILS 
+            assert(x == true); // FAILS
+        }
+    } => Err(e) => assert_one_fails(e)
+}
+
+test_verify_one_file! {
+    // TODO(utaal)
+    #[test] #[ignore] test_regression_115_mut_ref_eval_order code! {
+        struct Foo {
+            pub a: u64,
+            pub b: bool,
+            pub c: bool,
+        }
+
+        fn do_mut(x: &mut u64) -> u64 {
+            ensures(|b: u64| *x == 1 && b == 1);
+            *x = 1;
+            1
+        }
+
+        fn same_foo(foo: Foo) -> Foo {
+            ensures(|res: Foo| equal(res, foo));
+            foo
+        }
+
+        fn test() {
+            let foo = Foo { a: 0, b: false, c: false };
+            let mut x = 5;
+            let bar = Foo {
+                a: (do_mut(&mut x) + (x * 2)), // should evaluate to 1 + 1 * 2 = 3
+                ..same_foo(foo)
+            };
+            assert(bar.a == 3);
+            assert(bar.a == 11); // FAILS
         }
     } => Err(e) => assert_one_fails(e)
 }
