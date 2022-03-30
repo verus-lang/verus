@@ -314,3 +314,43 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] test_regression_115_mut_ref_pattern_case_1 code! {
+        #[proof]
+        #[verifier(external_body)]
+        #[verifier(returns(proof))]
+        fn foo(#[proof] x: &mut int) -> (int, int)
+        {
+            ensures(|ret: (int, int)|
+                { let (a, b) = ret;
+                    a + b == (*x)
+                });
+
+            unimplemented!();
+        }
+
+        fn bar(#[proof] x: int) {
+            #[proof] let mut x = x;
+            #[proof] let (a, b) = foo(&mut x);
+            assert(a + b == x); // THIS LINE FAILS
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_regression_115_mut_ref_pattern_case_2 code! {
+        fn foo(x: &mut bool) -> (u8, u8) {
+            ensures(|ret: (u8, u8)| (*x) == ! *old(x));
+
+            *x = ! *x;
+            (0, 0)
+        }
+
+        fn bar(#[proof] x: int) {
+            let mut x = true;
+            let (a, b) = foo(&mut x);
+            assert(x == true); // FAILS 
+        }
+    } => Err(e) => assert_one_fails(e)
+}
