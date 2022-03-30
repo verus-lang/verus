@@ -395,3 +395,16 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_one_fails(err)
 }
+
+test_verify_one_file! {
+    #[test] never_terminate_in_invariant code! {
+        use crate::pervasive::invariant::*;
+
+        pub fn X(#[proof] i: LocalInvariant<u8>) {
+            open_local_invariant!(&i => inner => {
+                inner = 7;
+                loop { }
+            });
+        }
+    } => Ok(())
+}

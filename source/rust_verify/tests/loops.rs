@@ -249,3 +249,27 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] basic_loop code! {
+        fn test() {
+            #[spec] let mut a: int = 5;
+            loop {
+                invariant(a > 0);
+                a = a + 1;
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] basic_loop_fail code! {
+        fn test() {
+            #[spec] let mut a: int = 5;
+            loop {
+                invariant(a > 0); // FAILS
+                a = a - 1;
+            }
+        }
+    } => Err(err) => assert_one_fails(err)
+}

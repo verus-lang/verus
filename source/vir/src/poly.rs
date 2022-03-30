@@ -93,6 +93,7 @@ pub enum MonoTypX {
 
 struct State {
     types: ScopeMap<Ident, Typ>,
+    is_trait: bool,
 }
 
 pub(crate) fn typ_as_mono(typ: &Typ) -> Option<MonoTyp> {
@@ -442,8 +443,12 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
         }
         ExprX::Return(None) => expr.clone(),
         ExprX::Return(Some(e1)) => {
-            let e1 = coerce_expr_to_native(ctx, &poly_expr(ctx, state, e1));
-            mk_expr_typ(&e1.typ, ExprX::Return(Some(e1.clone())))
+            let e1 = if state.is_trait {
+                coerce_expr_to_poly(ctx, &poly_expr(ctx, state, e1))
+            } else {
+                coerce_expr_to_native(ctx, &poly_expr(ctx, state, e1))
+            };
+            mk_expr(ExprX::Return(Some(e1.clone())))
         }
         ExprX::Block(ss, e1) => {
             let mut stmts: Vec<Stmt> = Vec::new();
@@ -545,7 +550,7 @@ fn poly_function(ctx: &Ctx, function: &Function) -> Function {
     }
     let params = Arc::new(new_params);
 
-    let mut state = State { types };
+    let mut state = State { types, is_trait };
 
     let native_exprs = |state: &mut State, es: &Exprs| {
         let mut exprs: Vec<Expr> = Vec::new();

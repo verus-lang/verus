@@ -794,8 +794,13 @@ fn erase_expr_opt(ctxt: &Ctxt, mctxt: &mut MCtxt, expect: Mode, expr: &Expr) -> 
                 }
             }
         }
+        ExprKind::Loop(block, None) => {
+            // The mode checker only allows loops for Mode::Exec
+            let block = erase_block(ctxt, mctxt, Mode::Exec, block);
+            ExprKind::Loop(P(block), None)
+        }
         ExprKind::While(eb, block, None) => {
-            // The mode checker only allows While for Mode::Exec
+            // The mode checker only allows loops for Mode::Exec
             let eb = erase_expr(ctxt, mctxt, Mode::Exec, eb);
             let block = erase_block(ctxt, mctxt, Mode::Exec, block);
             ExprKind::While(P(eb), P(block), None)

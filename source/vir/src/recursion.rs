@@ -363,6 +363,7 @@ pub(crate) fn check_termination_exp(
         function.x.mode,
         &stm_block,
         false,
+        false,
     );
 
     // New body: substitute rec%f(args, fuel) for f(args)
