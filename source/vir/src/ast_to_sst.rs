@@ -533,13 +533,12 @@ fn if_to_stm(
             } else {
                 // We have `if ( stms0; e0 ) { stms1; e1 } else { stms2; e2 }`.
                 // We turn this into:
-                //  stms0; if e0 { stms1 } else { stms2 };
-                //  if e0 { e1 } else { e2 }
+                //  stms0;
+                //  if e0 { stms1; temp = e1; } else { stms2; temp = e2; };
+                //  temp
 
-                // If statement, put results from e1/e2 in a temp variable, return temp variable
                 let (temp, temp_var) = state.next_temp(&expr.span, &expr.typ);
                 let temp_id = state.declare_new_var(&temp, &expr.typ, false, false);
-                // if e0 { stms1; temp = e1; } else { stms2; temp = e2; }
                 stms1.push(init_var(&expr.span, &temp_id, &e1));
                 stms2.push(init_var(&expr.span, &temp_id, &e2));
                 let stm1 = stms_to_one_stm(&expr.span, stms1);
