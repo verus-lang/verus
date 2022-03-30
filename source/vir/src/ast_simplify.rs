@@ -55,7 +55,7 @@ fn is_small_expr(expr: &Expr) -> bool {
         ExprX::Const(_) | ExprX::Var(_) | ExprX::VarAt(..) => true,
         ExprX::Unary(UnaryOp::Not | UnaryOp::Clip(_), e) => is_small_expr(e),
         ExprX::UnaryOpr(UnaryOpr::Box(_) | UnaryOpr::Unbox(_), e) => is_small_expr(e),
-        ExprX::Loc(_) => panic!("expr contains a location"),
+        ExprX::Loc(_) => panic!("expr is a location"),
         _ => false,
     }
 }
@@ -187,27 +187,6 @@ fn simplify_one_expr(ctx: &GlobalCtx, state: &mut State, expr: &Expr) -> Result<
             let exprx = ExprX::Ctor(datatype, variant, binders, None);
             Ok(SpannedTyped::new(&expr.span, &expr.typ, exprx))
         }
-        ExprX::Assign { init_not_mut, lhs, rhs } => match &lhs.x {
-            ExprX::VarLoc(_) => Ok(expr.clone()),
-            ExprX::UnaryOpr(UnaryOpr::Field(_), _) => {
-                let (temp_decls, rhs) = small_or_temp(state, rhs);
-                if *init_not_mut {
-                    panic!("unexpected init_not_mut here");
-                }
-                let assign = SpannedTyped::new(
-                    &expr.span,
-                    &expr.typ,
-                    ExprX::Assign { init_not_mut: false, lhs: lhs.clone(), rhs: rhs },
-                );
-                if temp_decls.len() == 0 {
-                    Ok(assign)
-                } else {
-                    let block = ExprX::Block(Arc::new(temp_decls), Some(assign));
-                    Ok(SpannedTyped::new(&expr.span, &expr.typ, block))
-                }
-            }
-            _ => err_str(&expr.span, "complex assignments not yet supported"),
-        },
         ExprX::Ctor(path, variant, partial_binders, Some(update)) => {
             let (temp_decl, update) = small_or_temp(state, update);
             let mut decls: Vec<Stmt> = Vec::new();

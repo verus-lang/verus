@@ -456,15 +456,21 @@ pub(crate) fn expr_to_one_stm_dest(
     Ok((stms_to_one_stm(&expr.span, stms), skip_ensures))
 }
 
-fn is_small_exp_or_loc(exp: &Exp) -> bool {
+fn is_small_exp(exp: &Exp) -> bool {
     match &exp.x {
         ExpX::Const(_) => true,
-        ExpX::Var(..) => true,
+        ExpX::Var(..) | ExpX::VarAt(..) => true,
         ExpX::Old(..) => true,
-        ExpX::Loc(..) => true,
         ExpX::Unary(UnaryOp::Not | UnaryOp::Clip(_), e) => is_small_exp_or_loc(e),
         ExpX::UnaryOpr(UnaryOpr::Box(_) | UnaryOpr::Unbox(_), e) => is_small_exp_or_loc(e),
         _ => false,
+    }
+}
+
+fn is_small_exp_or_loc(exp: &Exp) -> bool {
+    match &exp.x {
+        ExpX::Loc(..) => true,
+        _ => is_small_exp(exp),
     }
 }
 
@@ -615,6 +621,7 @@ fn expr_to_stm_opt(
         }
         ExprX::Assign { init_not_mut, lhs: lhs_expr, rhs: expr2 } => {
             let (mut stms, lhs_exp) = expr_to_stm_opt(ctx, state, lhs_expr)?;
+            let lhs_exp = lhs_exp.expect_value();
             match expr_must_be_call_stm(ctx, state, expr2)? {
                 Some((stms2, ReturnedCall::Never)) => {
                     stms.extend(stms2.into_iter());
@@ -622,7 +629,7 @@ fn expr_to_stm_opt(
                 }
                 Some((stms2, ReturnedCall::Call { fun, typs, has_return: _, args })) => {
                     // make a Call
-                    let dest = Dest { dest: lhs_exp.expect_value(), is_init: *init_not_mut };
+                    let dest = Dest { dest: lhs_exp, is_init: *init_not_mut };
                     stms.extend(stms2.into_iter());
                     stms.push(stm_call(state, &expr.span, fun, typs, args, Some(dest)));
                     Ok((stms, ReturnValue::ImplicitUnit(expr.span.clone())))
@@ -631,11 +638,17 @@ fn expr_to_stm_opt(
                     // make an Assign
                     let (stms2, e2) = expr_to_stm_opt(ctx, state, expr2)?;
                     let e2 = unwrap_or_return_never!(e2, stms2);
-                    let assign = StmX::Assign {
-                        lhs: Dest { dest: lhs_exp.expect_value(), is_init: *init_not_mut },
-                        rhs: e2,
-                    };
                     stms.extend(stms2.into_iter());
+                    let rhs = if matches!(lhs_exp.x, ExpX::VarLoc(_)) || is_small_exp(&e2) {
+                        e2
+                    } else {
+                        let (temp, temp_var) = state.next_temp(&e2.span, &e2.typ);
+                        let temp_ident = state.declare_new_var(&temp, &e2.typ, false, false);
+                        stms.push(init_var(&expr.span, &temp_ident, &e2));
+                        temp_var
+                    };
+                    let assign =
+                        StmX::Assign { lhs: Dest { dest: lhs_exp, is_init: *init_not_mut }, rhs };
                     stms.push(Spanned::new(expr.span.clone(), assign));
                     Ok((stms, ReturnValue::ImplicitUnit(expr.span.clone())))
                 }
@@ -658,11 +671,10 @@ fn expr_to_stm_opt(
                         Ok((stms, ReturnValue::Some(mk_exp(call))))
                     } else if ret {
                         let (temp, temp_var) = state.next_temp(&expr.span, &expr.typ);
-                        state.declare_new_var(&temp, &expr.typ, false, false);
+                        let temp_ident = state.declare_new_var(&temp, &expr.typ, false, false);
                         // tmp = StmX::Call;
-                        let uniq_ident = (temp.clone(), Some(0));
                         let dest = Dest {
-                            dest: var_loc_exp(&expr.span, &expr.typ, uniq_ident),
+                            dest: var_loc_exp(&expr.span, &expr.typ, temp_ident),
                             is_init: true,
                         };
                         stms.push(stm_call(
