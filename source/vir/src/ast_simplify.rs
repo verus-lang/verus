@@ -296,15 +296,8 @@ fn simplify_one_stmt(ctx: &GlobalCtx, state: &mut State, stmt: &Stmt) -> Result<
             if !matches!(pattern.x, PatternX::Var { .. }) =>
         {
             let mut decls: Vec<Stmt> = Vec::new();
-            let SmallLocOrTemp(temp_decl, init, init_contains_loc) = small_loc_or_temp(state, init);
+            let (temp_decl, init) = small_or_temp(state, init);
             decls.extend(temp_decl.into_iter());
-            let init = if init_contains_loc {
-                let (ts, te) = temp_expr(state, &init);
-                decls.push(ts);
-                te
-            } else {
-                init
-            };
             let _ = pattern_to_exprs(ctx, state, &init, &pattern, &mut decls)?;
             Ok(decls)
         }

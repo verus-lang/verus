@@ -356,8 +356,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    // TODO(utaal)
-    #[test] #[ignore] test_regression_115_mut_ref_eval_order code! {
+    #[test] test_regression_115_mut_ref_eval_order code! {
         struct Foo {
             pub a: u64,
             pub b: bool,
