@@ -224,7 +224,10 @@ pub fn assume_false(span: &Span) -> Stm {
 ///        (It is possible that a 'break' statement in a while loop might itself be
 ///        unreachable, but Rust doesn't seem to take that into account for this purpose.)
 ///
-/// (TODO update this check when we support 'break' statements.)
+/// TODO: Update this check when we support 'break' statements.
+/// Notes: it may be possible to get this information from rustc, either typeck or MIR.
+/// On the other hand, we'll need to answer the question "does this loop have any break
+/// statements?" for invariant gen anyway, and that's a slightly different question.
 
 pub fn can_control_flow_reach_after_loop(expr: &Expr) -> bool {
     match &expr.x {
@@ -987,6 +990,13 @@ fn expr_to_stm_opt(
             return Ok((stms0, ReturnValue::ImplicitUnit(expr.span.clone())));
         }
         ExprX::Return(e1) => {
+            // Note: there are currently a few inconsistencies between this and the
+            // emitted final post-condition in sst_to_air.
+            //  - We don't apply the trait_typ_substs here (TODO this is a bug)
+            //  - We don't apply the bit_vector context here
+            // (We could consider moving _all_ the postcondition handling to this file,
+            // so that inconsistencies become more clear.)
+
             if let Some((ret_dest, enss)) = state.ret_post.clone() {
                 let mut stms: Vec<Stm> = Vec::new();
                 match (ret_dest, e1) {

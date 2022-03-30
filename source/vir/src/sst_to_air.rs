@@ -1332,7 +1332,9 @@ pub fn body_stm_to_air(
     };
 
     if !skip_ensures {
-        // TODO move this into sst_to_ast to be consistent with the other postconditions emitted there
+        // This generates postconditions for the end of the function.
+        // Note: Postconditions for 'return' statements are handled in ast_to_sst.
+
         for ens in enss {
             let error = error_with_label(
                 "postcondition not satisfied".to_string(),
