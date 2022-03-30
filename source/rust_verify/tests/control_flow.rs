@@ -4,7 +4,7 @@ mod common;
 use common::*;
 
 test_verify_one_file! {
-    #[test] returns_and_implict_units_in_branches code! {
+    #[test] distinguish_returns_and_implict_units code! {
         fn test_return_from_else(b: bool) {
             let x = if b {
                 1
@@ -167,7 +167,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] returns_and_implict_units_in_branches_fail code! {
+    #[test] postconditions_fail_in_returns_in_conditional code! {
         fn postcondition_fail_if(b: bool) {
             ensures(false);
 
@@ -211,7 +211,11 @@ test_verify_one_file! {
             };
             4
         }
+    } => Err(err) => assert_fails(err, 4)
+}
 
+test_verify_one_file! {
+    #[test] return_from_if_else_fail code! {
         fn test_return_from_else(b: bool) {
             let x = if b {
                 1
@@ -233,7 +237,11 @@ test_verify_one_file! {
             assert(x == 1);
             assert(false); // FAILS
         }
+    } => Err(err) => assert_fails(err, 2)
+}
 
+test_verify_one_file! {
+    #[test] return_from_match_fail code! {
         pub enum Foo { A, B }
 
         fn test_return_from_match(foo: Foo) {
@@ -245,7 +253,11 @@ test_verify_one_file! {
             assert(match foo { Foo::A => false, Foo::B => true });
             assert(false); // FAILS
         }
+    } => Err(err) => assert_fails(err, 1)
+}
 
+test_verify_one_file! {
+    #[test] implicit_unit_block_fail code! {
         fn test_implicit_unit_block(b: bool) {
             let x = { };
             assert(equal(x, ()));
@@ -271,7 +283,11 @@ test_verify_one_file! {
             assert(equal(x, ()));
             assert(false); // FAILS
         }
+    } => Err(err) => assert_fails(err, 4)
+}
 
+test_verify_one_file! {
+    #[test] implicit_unit_conditional_fail code! {
         fn test_implicit_unit_from_left(b: bool) {
             let x = if b { () } else { };
             assert(equal(x, ()));
@@ -297,7 +313,11 @@ test_verify_one_file! {
             assert(equal(x, ()));
             assert(false); // FAILS
         }
+    } => Err(err) => assert_fails(err, 4)
+}
 
+test_verify_one_file! {
+    #[test] return_in_let_fail code! {
         fn test_add_u32_and_never() -> u32 {
             ensures(|r: u32| r > 3);
             let x: u32 = {
@@ -307,12 +327,20 @@ test_verify_one_file! {
             let y: u32 = {return 2;};
             x + y
         }
+    } => Err(err) => assert_fails(err, 1)
+}
 
+test_verify_one_file! {
+    #[test] final_stmt_return_fail code! {
         fn test_final_stmt_return() -> u8 {
             ensures(|y: u8| y == 6);
             return 5; // FAILS
         }
+    } => Err(err) => assert_fails(err, 1)
+}
 
+test_verify_one_file! {
+    #[test] short_circuit_returns_fail code! {
         fn never_short_circuit_left() {
             let x = {
                 assert(false); // FAILS
@@ -347,7 +375,11 @@ test_verify_one_file! {
                 5
             } + { return; 7 };
         }
+    } => Err(err) => assert_fails(err, 5)
+}
 
+test_verify_one_file! {
+    #[test] misc_never_returns_fail code! {
         fn never_in_conditional(b: bool) -> u8 {
             ensures(|y: u8| y == 7);
 
@@ -362,7 +394,7 @@ test_verify_one_file! {
                 assert(false);
             }
 
-            return 1243;
+            return 9;
         }
 
         fn never_in_return() -> u8 {
@@ -384,7 +416,11 @@ test_verify_one_file! {
             return 3; // FAILS
             5
         }
+    } => Err(err) => assert_fails(err, 4)
+}
 
+test_verify_one_file! {
+    #[test] conditionals_units_return_fail code! {
         fn if_unit_no_else() {
             let x = if true { () };
             assert(false); // FAILS
@@ -394,7 +430,7 @@ test_verify_one_file! {
             let r = if b { let mut x = 5; x = 7; x } else { return; };
             assert(r == 5); // FAILS
         }
-    } => Err(err) => assert_fails(err, 28)
+    } => Err(err) => assert_fails(err, 2)
 }
 
 test_verify_one_file! {

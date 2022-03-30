@@ -562,6 +562,10 @@ fn mk_fun_decl(
 pub fn simplify_krate(ctx: &mut GlobalCtx, krate: &Krate) -> Result<Krate, VirErr> {
     let KrateX { functions, datatypes, traits, module_ids } = &**krate;
     let mut state = State::new();
+
+    // Pre-emptively add this because unit values might be added later.
+    state.tuple_type_name(0);
+
     let functions = vec_map_result(functions, |f| simplify_function(ctx, &mut state, f))?;
     let mut datatypes = vec_map_result(&datatypes, |d| simplify_datatype(&mut state, d))?;
 

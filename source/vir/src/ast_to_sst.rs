@@ -687,6 +687,8 @@ fn expr_to_stm_opt(
             // If e1 evaluates to `proceed_on`, then evaluate and
             // return e2; otherwise, return the value `other`
             // (without evaluating `e2`).
+            // Also note: if `e2` is a pure expression, we don't need to do the
+            // special handling.
             let short_circuit = match op {
                 BinaryOp::And => Some((true, false)),
                 BinaryOp::Implies => Some((true, true)),
@@ -716,7 +718,7 @@ fn expr_to_stm_opt(
                     let e1 = unwrap_or_return_never!(e1, stms1);
                     stms1.append(&mut stms2);
                     let e2 = unwrap_or_return_never!(e2, stms1);
-                    let bin = mk_exp(ExpX::Binary(*op, e1, e2));
+                    let bin = mk_exp(ExpX::Binary(*op, e1, e2.clone()));
 
                     if let BinaryOp::Arith(arith, inferred_mode) = op {
                         // Insert bounds check
