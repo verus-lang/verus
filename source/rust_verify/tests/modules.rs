@@ -167,3 +167,37 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_vir_error(err)
 }
+
+test_verify_one_file! {
+    #[test] publish_proof_fail code! {
+        #[proof]
+        #[verifier(publish)]
+        pub fn bar() {
+        }
+    } => Err(err) => assert_vir_error(err)
+}
+
+test_verify_one_file! {
+    #[test] publish_exec_fail code! {
+        #[verifier(publish)]
+        pub fn bar() {
+        }
+    } => Err(err) => assert_vir_error(err)
+}
+
+test_verify_one_file! {
+    #[test] main_proof_fail code! {
+        #[proof]
+        pub fn main() {
+        }
+    } => Err(err) => assert_vir_error(err)
+}
+
+test_verify_one_file! {
+    #[test] main_spec_fail code! {
+        #[spec]
+        pub fn main() {
+            ()
+        }
+    } => Err(err) => assert_vir_error(err)
+}

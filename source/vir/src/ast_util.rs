@@ -172,6 +172,10 @@ impl FunctionX {
     pub fn typ_params(&self) -> Idents {
         Arc::new(vec_map(&self.typ_bounds, |(x, _)| x.clone()))
     }
+
+    pub fn is_main(&self) -> bool {
+        **self.name.path.segments.last().expect("last segment") == "main"
+    }
 }
 
 pub fn get_variant<'a>(variants: &'a Variants, variant: &Ident) -> &'a Variant {
