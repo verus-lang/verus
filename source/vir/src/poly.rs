@@ -326,7 +326,6 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
                     } else {
                         coerce_typ_to_native(ctx, &expr.typ)
                     };
-                    // dbg!(&field, &typ, &exprx);
                     mk_expr_typ(&typ, exprx)
                 }
             }
@@ -394,7 +393,11 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
         }
         ExprX::Assign { init_not_mut, lhs: e1, rhs: e2 } => {
             let e1 = poly_expr(ctx, state, e1);
-            let e2 = coerce_expr_to_native(ctx, &poly_expr(ctx, state, e2));
+            let e2 = if typ_is_poly(ctx, &e1.typ) {
+                coerce_expr_to_poly(ctx, &poly_expr(ctx, state, e2))
+            } else {
+                coerce_expr_to_native(ctx, &poly_expr(ctx, state, e2))
+            };
             mk_expr(ExprX::Assign { init_not_mut: *init_not_mut, lhs: e1, rhs: e2 })
         }
         ExprX::AssertBV(e) => mk_expr(ExprX::AssertBV(poly_expr(ctx, state, e))),

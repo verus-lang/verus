@@ -533,6 +533,41 @@ test_verify_one_file! {
     } => Err(e) => assert_one_fails(e)
 }
 
+test_verify_one_file! {
+    #[test] test_field_update_1_call_pass FIELD_UPDATE.to_string() + code_str! {
+        fn add1(a: i32) -> i32 {
+            requires(a < 30);
+            ensures(|ret: i32| ret == a + 1);
+            a + 1
+        }
+
+        fn test() {
+            let mut s = S { a: 10, b: -10 };
+            s.a = s.a + 1;
+            s.b = add1(s.b);
+            assert(s.a == 11);
+            assert(s.b == -9);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_field_update_poly_pass code! {
+        #[derive(PartialEq, Eq, Structural)]
+        struct S<A> {
+            a: A,
+            b: i32,
+        }
+
+        fn test() {
+            let mut s: S<usize> = S { a: 10, b: -10 };
+            s.a = s.a + 1;
+            s.b = s.b + 1;
+            assert(s.a == 11 && s.b == -9);
+        }
+    } => Ok(())
+}
+
 const FIELD_UPDATE_2: &str = code_str! {
     #[derive(PartialEq, Eq, Structural)]
     struct T {

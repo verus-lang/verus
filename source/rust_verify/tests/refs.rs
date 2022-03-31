@@ -437,3 +437,29 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] test_mut_ref_field_and_update_pass code! {
+        #[derive(PartialEq, Eq, Structural)]
+        struct S<A> {
+            a: A,
+            b: bool,
+        }
+
+        fn add1(a: &mut u32) -> u32 {
+            requires(*old(a) < 10);
+            ensures(|ret: u32| [
+                *a == *old(a) + 1,
+                ret == *old(a)
+            ]);
+            *a = *a + 1;
+            *a - 1
+        }
+
+        fn main() {
+            let mut s = S { a: 5, b: false };
+            s.a = add1(&mut s.a);
+            assert(s == S { a: 5, b: false });
+        }
+    } => Ok(())
+}

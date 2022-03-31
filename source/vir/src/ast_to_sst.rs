@@ -629,9 +629,30 @@ fn expr_to_stm_opt(
                 }
                 Some((stms2, ReturnedCall::Call { fun, typs, has_return: _, args })) => {
                     // make a Call
-                    let dest = Dest { dest: lhs_exp, is_init: *init_not_mut };
                     stms.extend(stms2.into_iter());
+                    let (dest, assign) = if matches!(lhs_exp.x, ExpX::VarLoc(_)) {
+                        (Dest { dest: lhs_exp, is_init: *init_not_mut }, None)
+                    } else {
+                        assert!(!*init_not_mut, "init_not_mut unexpected for complex call dest");
+                        let (temp, temp_var) = state.next_temp(&lhs_exp.span, &expr2.typ);
+                        let temp_ident = state.declare_new_var(&temp, &expr2.typ, false, false);
+                        let assign = Spanned::new(
+                            lhs_exp.span.clone(),
+                            StmX::Assign {
+                                lhs: Dest { dest: lhs_exp.clone(), is_init: false },
+                                rhs: temp_var,
+                            },
+                        );
+                        (
+                            Dest {
+                                dest: var_loc_exp(&lhs_exp.span, &expr2.typ, temp_ident),
+                                is_init: true,
+                            },
+                            Some(assign),
+                        )
+                    };
                     stms.push(stm_call(state, &expr.span, fun, typs, args, Some(dest)));
+                    stms.extend(assign.into_iter());
                     Ok((stms, ReturnValue::ImplicitUnit(expr.span.clone())))
                 }
                 None => {
