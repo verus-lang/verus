@@ -532,7 +532,7 @@ fn if_to_stm(
                 // In this case, we can construct a pure expression.
                 let expx = ExpX::If(e0.clone(), e1.clone(), e2.clone());
                 let exp = SpannedTyped::new(&expr.span, &expr.typ, expx);
-                (vec![], ReturnValue::Some(exp))
+                (stms0, ReturnValue::Some(exp))
             } else {
                 // We have `if ( stms0; e0 ) { stms1; e1 } else { stms2; e2 }`.
                 // We turn this into:

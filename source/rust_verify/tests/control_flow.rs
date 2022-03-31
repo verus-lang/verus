@@ -532,3 +532,76 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] requires_in_conditional_pure code! {
+        fn f(b: bool) -> bool {
+            requires(b);
+            true
+        }
+
+        fn test() -> u64 {
+            if f(false) { // FAILS
+                20
+            } else {
+                30
+            }
+        }
+    } => Err(err) => assert_fails(err, 1)
+}
+
+test_verify_one_file! {
+    #[test] requires_in_conditional_impure code! {
+        fn f(b: bool) -> bool {
+            requires(b);
+            true
+        }
+
+        fn test() -> u64 {
+            let mut a = 5;
+            if f(false) { // FAILS
+                a = 7;
+                a
+            } else {
+                30
+            }
+        }
+    } => Err(err) => assert_fails(err, 1)
+}
+
+test_verify_one_file! {
+    #[test] requires_in_conditional_implicit_unit code! {
+        fn f(b: bool) -> bool {
+            requires(b);
+            true
+        }
+
+        fn test() -> u64 {
+            let mut a = 5;
+            if f(false) { // FAILS
+                a = 7;
+            } else {
+                a = 9;
+            }
+            a
+        }
+    } => Err(err) => assert_fails(err, 1)
+}
+
+test_verify_one_file! {
+    #[test] requires_in_conditional_never code! {
+        fn f(b: bool) -> bool {
+            requires(b);
+            true
+        }
+
+        fn test() -> u64 {
+            if f(false) { // FAILS
+                let a = 5;
+            } else {
+                return 9;
+            }
+            12
+        }
+    } => Err(err) => assert_fails(err, 1)
+}
