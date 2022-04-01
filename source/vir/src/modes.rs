@@ -1,6 +1,6 @@
 use crate::ast::{
-    BinaryOp, CallTarget, Datatype, Expr, ExprX, Fun, Function, FunctionKind, Ident, InferMode,
-    InvAtomicity, Krate, Mode, Path, Pattern, PatternX, Stmt, StmtX, UnaryOpr, VirErr,
+    BinaryOp, CallTarget, Datatype, Expr, ExprX, FieldOpr, Fun, Function, FunctionKind, Ident,
+    InferMode, InvAtomicity, Krate, Mode, Path, Pattern, PatternX, Stmt, StmtX, UnaryOpr, VirErr,
 };
 use crate::ast_util::{err_str, err_string, get_field};
 use crate::util::vec_map_result;
@@ -233,6 +233,41 @@ fn add_pattern(typing: &mut Typing, mode: Mode, pattern: &Pattern) -> Result<(),
     }
 }
 
+fn get_var_loc_mode(typing: &mut Typing, expr: &Expr, init_not_mut: bool) -> Result<Mode, VirErr> {
+    let x_mode = match &expr.x {
+        ExprX::VarLoc(x) => {
+            let (_, x_mode) = typing.get(x);
+            x_mode
+        }
+        ExprX::UnaryOpr(UnaryOpr::Field(FieldOpr { datatype, variant: _, field }), rcvr) => {
+            let rcvr_mode = get_var_loc_mode(typing, rcvr, init_not_mut)?;
+            let datatype = &typing.datatypes[datatype].x;
+            if datatype.unforgeable {
+                return err_str(&expr.span, "unforgeable datatypes cannot be updated");
+            }
+            assert!(datatype.variants.len() == 1);
+            let (_, field_mode, _) = &datatype.variants[0]
+                .a
+                .iter()
+                .find(|x| x.name == *field)
+                .expect("datatype field valid")
+                .a;
+            mode_join(rcvr_mode, *field_mode)
+        }
+        _ => {
+            panic!("unexpected loc {:?}", expr);
+        }
+    };
+    if x_mode == Mode::Spec && init_not_mut {
+        return err_str(
+            &expr.span,
+            "delayed assignment to non-mut let not allowed for spec variables",
+        );
+    }
+    typing.erasure_modes.var_modes.push((expr.span.clone(), x_mode));
+    Ok(x_mode)
+}
+
 fn check_expr(
     typing: &mut Typing,
     outer_mode: Mode,
@@ -370,7 +405,7 @@ fn check_expr(
         ExprX::UnaryOpr(UnaryOpr::TupleField { .. }, e1) => {
             check_expr(typing, outer_mode, erasure_mode, e1)
         }
-        ExprX::UnaryOpr(UnaryOpr::Field { datatype, variant, field }, e1) => {
+        ExprX::UnaryOpr(UnaryOpr::Field(FieldOpr { datatype, variant, field }), e1) => {
             let e1_mode = check_expr(typing, outer_mode, erasure_mode, e1)?;
             let datatype = &typing.datatypes[datatype];
             let field = get_field(&datatype.x.get_variant(variant).a, field);
@@ -437,24 +472,9 @@ fn check_expr(
             if typing.in_forall_stmt {
                 return err_str(&expr.span, "assignment is not allowed in forall statements");
             }
-            match &lhs.x {
-                // TODO when we support field updates, make sure we handle 'unforgeable' types
-                // correctly.
-                ExprX::VarLoc(x) => {
-                    let (_, x_mode) = typing.get(x);
-                    if x_mode == Mode::Spec && *init_not_mut {
-                        return err_str(
-                            &expr.span,
-                            "delayed assignment to non-mut let not allowed for spec variables",
-                        );
-                    }
-                    typing.erasure_modes.var_modes.push((lhs.span.clone(), x_mode));
-
-                    check_expr_has_mode(typing, outer_mode, rhs, x_mode)?;
-                    Ok(x_mode)
-                }
-                _ => panic!("expected VarLoc, found {:?}", &lhs),
-            }
+            let x_mode = get_var_loc_mode(typing, lhs, *init_not_mut)?;
+            check_expr_has_mode(typing, outer_mode, rhs, x_mode)?;
+            Ok(x_mode)
         }
         ExprX::Fuel(_, _) => Ok(outer_mode),
         ExprX::Header(_) => panic!("internal error: Header shouldn't exist here"),

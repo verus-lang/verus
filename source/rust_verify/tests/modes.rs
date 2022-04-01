@@ -263,3 +263,36 @@ test_verify_one_file! {
         }
     } => Err(e) => assert_vir_error(e)
 }
+
+const FIELD_UPDATE: &str = code_str! {
+    #[derive(PartialEq, Eq, Structural)]
+    struct S {
+        #[spec] a: u64,
+        b: bool,
+    }
+};
+
+test_verify_one_file! {
+    #[test] test_field_update_fail FIELD_UPDATE.to_string() + code_str! {
+        fn test() {
+            let mut s = S { a: 5, b: false };
+            #[spec] let b = true;
+            s.b = b;
+        }
+    } => Err(e) => assert_vir_error(e)
+}
+
+test_verify_one_file! {
+    #[test] test_mut_ref_field_fail FIELD_UPDATE.to_string() + code_str! {
+        fn muts_exec(a: &mut u64) {
+            requires(*old(a) < 30);
+            ensures(*a == *old(a) + 1);
+            *a = *a + 1;
+        }
+
+        fn test() {
+            let mut s = S { a: 5, b: false };
+            muts_exec(&mut s.a);
+        }
+    } => Err(e) => assert_vir_error(e)
+}

@@ -2,8 +2,8 @@
 
 use crate::ast::{
     BinaryOp, Binder, CallTarget, Constant, Datatype, DatatypeTransparency, DatatypeX, Expr, ExprX,
-    Field, Function, GenericBound, GenericBoundX, Ident, Krate, KrateX, Mode, Path, Pattern,
-    PatternX, SpannedTyped, Stmt, StmtX, Typ, TypX, UnaryOp, UnaryOpr, VirErr, Visibility,
+    Field, FieldOpr, Function, GenericBound, GenericBoundX, Ident, Krate, KrateX, Mode, Path,
+    Pattern, PatternX, SpannedTyped, Stmt, StmtX, Typ, TypX, UnaryOp, UnaryOpr, VirErr, Visibility,
 };
 use crate::ast_util::{err_str, err_string};
 use crate::context::GlobalCtx;
@@ -55,7 +55,7 @@ fn is_small_expr(expr: &Expr) -> bool {
         ExprX::Const(_) | ExprX::Var(_) | ExprX::VarAt(..) => true,
         ExprX::Unary(UnaryOp::Not | UnaryOp::Clip(_), e) => is_small_expr(e),
         ExprX::UnaryOpr(UnaryOpr::Box(_) | UnaryOpr::Unbox(_), e) => is_small_expr(e),
-        ExprX::Loc(_) => panic!("expr contains a location"),
+        ExprX::Loc(_) => panic!("expr is a location"),
         _ => false,
     }
 }
@@ -122,11 +122,11 @@ fn pattern_to_exprs(
             let mut test =
                 SpannedTyped::new(&pattern.span, &t_bool, ExprX::Const(Constant::Bool(true)));
             for (i, pat) in patterns.iter().enumerate() {
-                let field_op = UnaryOpr::Field {
+                let field_op = UnaryOpr::Field(FieldOpr {
                     datatype: path.clone(),
                     variant: variant.clone(),
                     field: prefix_tuple_field(i),
-                };
+                });
                 let field_exp = pattern_field_expr(&pattern.span, expr, &pat.typ, field_op);
                 let pattern_test = pattern_to_exprs(ctx, state, &field_exp, pat, decls)?;
                 let and = ExprX::Binary(BinaryOp::And, test, pattern_test);
@@ -140,11 +140,11 @@ fn pattern_to_exprs(
             let test_variant = ExprX::UnaryOpr(is_variant_opr, expr.clone());
             let mut test = SpannedTyped::new(&pattern.span, &t_bool, test_variant);
             for binder in patterns.iter() {
-                let field_op = UnaryOpr::Field {
+                let field_op = UnaryOpr::Field(FieldOpr {
                     datatype: path.clone(),
                     variant: variant.clone(),
                     field: binder.name.clone(),
-                };
+                });
                 let field_exp = pattern_field_expr(&pattern.span, expr, &binder.a.typ, field_op);
                 let pattern_test = pattern_to_exprs(ctx, state, &field_exp, &binder.a, decls)?;
                 let and = ExprX::Binary(BinaryOp::And, test, pattern_test);
@@ -212,11 +212,11 @@ fn simplify_one_expr(ctx: &GlobalCtx, state: &mut State, expr: &Expr) -> Result<
             // with f1: update.f1, f2: update.f2, ...
             for field in fields.iter() {
                 if binders.iter().find(|b| b.name == field.name).is_none() {
-                    let op = UnaryOpr::Field {
+                    let op = UnaryOpr::Field(FieldOpr {
                         datatype: path.clone(),
                         variant: variant.clone(),
                         field: field.name.clone(),
-                    };
+                    });
                     let exprx = ExprX::UnaryOpr(op, update.clone());
                     let field_exp = SpannedTyped::new(&expr.span, &field.a.0, exprx);
                     binders.push(ident_binder(&field.name, &field_exp));
@@ -235,7 +235,7 @@ fn simplify_one_expr(ctx: &GlobalCtx, state: &mut State, expr: &Expr) -> Result<
             let datatype = state.tuple_type_name(*tuple_arity);
             let variant = prefix_tuple_variant(*tuple_arity);
             let field = prefix_tuple_field(*field);
-            let op = UnaryOpr::Field { datatype, variant, field };
+            let op = UnaryOpr::Field(FieldOpr { datatype, variant, field });
             let field_exp =
                 SpannedTyped::new(&expr.span, &expr.typ, ExprX::UnaryOpr(op, expr0.clone()));
             Ok(field_exp)

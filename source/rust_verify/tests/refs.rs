@@ -182,20 +182,19 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_mut_ref_arg_self_fail_complex MUT_REF_ARG_SELF_COMMON.to_string() + code_str! {
+    #[test] test_mut_ref_arg_self_complex_pass MUT_REF_ARG_SELF_COMMON.to_string() + code_str! {
         pub struct Wrap {
             pub w: Value,
         }
 
         impl Wrap {
             fn outer(&mut self) {
-                requires(old(self).w.v < 10);
-                // currently disallowing this
+                requires(old(self).w.v == 2);
                 self.w.add1();
                 assert(self.w.v == 3);
             }
         }
-    } => Err(e) => assert_vir_error(e)
+    } => Ok(())
 }
 
 test_verify_one_file! {
@@ -385,4 +384,82 @@ test_verify_one_file! {
             assert(bar.a == 11); // FAILS
         }
     } => Err(e) => assert_one_fails(e)
+}
+
+test_verify_one_file! {
+    #[test] test_mut_ref_field_pass_1 code! {
+        #[derive(PartialEq, Eq, Structural)]
+        struct S {
+            a: u32,
+            b: i32,
+            c: bool,
+        }
+
+        fn add1(a: &mut u32, b: &mut i32) {
+            requires([
+                *old(a) < 10,
+                *old(b) < 10,
+            ]);
+            ensures([
+                *a == *old(a) + 1,
+                *b == *old(b) + 1,
+            ]);
+            *a = *a + 1;
+            *b = *b + 1;
+        }
+
+        fn main() {
+            let mut s = S { a: 5, b: -5, c: false };
+            add1(&mut s.a, &mut s.b);
+            assert(s == S { a: 6, b: -4, c: false });
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_mut_ref_field_pass_2 code! {
+        #[derive(PartialEq, Eq, Structural)]
+        struct S<A> {
+            a: A,
+            b: bool,
+        }
+
+        fn add1(a: &mut u32) {
+            requires(*old(a) < 10);
+            ensures(*a == *old(a) + 1);
+            *a = *a + 1;
+        }
+
+        fn main() {
+            let mut s = S { a: 5, b: false };
+            add1(&mut s.a);
+            assert(s == S { a: 6, b: false });
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_mut_ref_field_and_update_pass code! {
+        #[derive(PartialEq, Eq, Structural)]
+        struct S<A> {
+            a: A,
+            b: bool,
+        }
+
+        fn add1(a: &mut u32) -> u32 {
+            requires(*old(a) < 10);
+            ensures(|ret: u32| [
+                *a == *old(a) + 1,
+                ret == *old(a)
+            ]);
+            *a = *a + 1;
+            *a - 1
+        }
+
+        fn main() {
+            let mut s = S { a: 5, b: false };
+            s.a = add1(&mut s.a);
+            assert(s == S { a: 5, b: false });
+        }
+    } => Ok(())
 }

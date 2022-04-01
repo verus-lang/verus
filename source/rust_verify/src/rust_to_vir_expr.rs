@@ -26,8 +26,8 @@ use rustc_span::def_id::DefId;
 use rustc_span::Span;
 use std::sync::Arc;
 use vir::ast::{
-    ArithOp, ArmX, BinaryOp, CallTarget, Constant, ExprX, FunX, HeaderExpr, HeaderExprX, Ident,
-    IntRange, InvAtomicity, Mode, PatternX, SpannedTyped, StmtX, Stmts, Typ, TypX, UnaryOp,
+    ArithOp, ArmX, BinaryOp, CallTarget, Constant, ExprX, FieldOpr, FunX, HeaderExpr, HeaderExprX,
+    Ident, IntRange, InvAtomicity, Mode, PatternX, SpannedTyped, StmtX, Stmts, Typ, TypX, UnaryOp,
     UnaryOpr, VarAt, VirErr,
 };
 use vir::ast_util::{ident_binder, path_as_rust_name};
@@ -688,14 +688,14 @@ fn fn_call_to_vir<'tcx>(
             use crate::def::FieldName;
             let variant_name_ident = str_ident(&variant_name);
             return Ok(mk_expr(ExprX::UnaryOpr(
-                UnaryOpr::Field {
+                UnaryOpr::Field(FieldOpr {
                     datatype: self_path.clone(),
                     variant: variant_name_ident.clone(),
                     field: match variant_field {
                         FieldName::Unnamed(i) => positional_field_ident(i),
                         FieldName::Named(f) => str_ident(&f),
                     },
-                },
+                }),
                 vir_args.into_iter().next().expect("missing arg for is_variant"),
             )));
         }
@@ -1542,23 +1542,39 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
             res => unsupported_err!(expr.span, format!("Path {:?}", res)),
         },
         ExprKind::Assign(lhs, rhs, _) => {
-            if let ExprKind::Field(_, _) = lhs.kind {
-                unsupported_err!(expr.span, format!("field updates"), lhs);
+            fn init_not_mut<'tcx>(bctx: &BodyCtxt<'tcx>, lhs: &Expr) -> Result<bool, VirErr> {
+                Ok(match lhs.kind {
+                    ExprKind::Path(QPath::Resolved(
+                        None,
+                        rustc_hir::Path { res: Res::Local(id), .. },
+                    )) => {
+                        let not_mut = if let Node::Binding(pat) = bctx.ctxt.tcx.hir().get(*id) {
+                            let (mutable, _) = pat_to_mut_var(pat);
+                            let ty = bctx.types.node_type(*id);
+                            !(mutable || ty.ref_mutability() == Some(Mutability::Mut))
+                        } else {
+                            panic!("assignment to non-local");
+                        };
+                        if not_mut {
+                            match bctx.ctxt.tcx.hir().get(bctx.ctxt.tcx.hir().get_parent_node(*id))
+                            {
+                                Node::Param(_) => {
+                                    err_span_str(lhs.span, "cannot assign to non-mut parameter")?
+                                }
+                                Node::Local(_) => (),
+                                other => unsupported_err!(lhs.span, "assignee node", other),
+                            }
+                        }
+                        not_mut
+                    }
+                    ExprKind::Field(lhs, _) => init_not_mut(bctx, lhs)?,
+                    ExprKind::Unary(UnOp::Deref, _) => false,
+                    _ => {
+                        unsupported_err!(lhs.span, format!("assign lhs {:?}", lhs))
+                    }
+                })
             }
-            let init_not_mut = if let ExprKind::Path(QPath::Resolved(
-                None,
-                rustc_hir::Path { res: Res::Local(id), .. },
-            )) = lhs.kind
-            {
-                if let Node::Binding(pat) = tcx.hir().get(*id) {
-                    let (mutable, _) = pat_to_mut_var(pat);
-                    !mutable
-                } else {
-                    panic!("assignment to non-local");
-                }
-            } else {
-                false
-            };
+            let init_not_mut = init_not_mut(bctx, lhs)?;
             Ok(mk_expr(ExprX::Assign {
                 init_not_mut,
                 lhs: expr_to_vir(bctx, lhs, ExprModifier::ADDR_OF)?,
@@ -1612,7 +1628,11 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                 expr.span,
                 &field_type,
                 ExprX::UnaryOpr(
-                    UnaryOpr::Field { datatype, variant: variant_name, field: field_name },
+                    UnaryOpr::Field(FieldOpr {
+                        datatype,
+                        variant: variant_name,
+                        field: field_name,
+                    }),
                     vir_lhs,
                 ),
             );

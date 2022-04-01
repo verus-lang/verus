@@ -1,6 +1,6 @@
 use crate::ast::{
-    CallTarget, Datatype, Expr, ExprX, Fun, FunX, Function, FunctionKind, Krate, MaskSpec, Mode,
-    Path, PathX, TypX, UnaryOpr, VirErr,
+    CallTarget, Datatype, Expr, ExprX, FieldOpr, Fun, FunX, Function, FunctionKind, Krate,
+    MaskSpec, Mode, Path, PathX, TypX, UnaryOpr, VirErr,
 };
 use crate::ast_util::{err_str, err_string};
 use crate::datatype_to_air::is_datatype_transparent;
@@ -23,14 +23,18 @@ fn check_one_expr(
         ExprX::Call(CallTarget::Static(x, _), args) => {
             let f = &ctxt.funs[x];
             for (_param, arg) in f.x.params.iter().zip(args.iter()).filter(|(p, _)| p.x.is_mut) {
-                let ok = match &arg.x {
-                    ExprX::Loc(l) => match l.x {
+                fn is_ok(e: &Expr) -> bool {
+                    match &e.x {
                         ExprX::VarLoc(_) => true,
+                        ExprX::UnaryOpr(UnaryOpr::Field { .. }, base) => is_ok(base),
                         _ => false,
-                    },
+                    }
+                }
+                let is_ok = match &arg.x {
+                    ExprX::Loc(l) => is_ok(l),
                     _ => false,
                 };
-                if !ok {
+                if !is_ok {
                     return err_str(
                         &arg.span,
                         "complex arguments to &mut parameters are currently unsupported",
@@ -58,7 +62,7 @@ fn check_one_expr(
                 panic!("constructor of undefined datatype");
             }
         }
-        ExprX::UnaryOpr(UnaryOpr::Field { datatype: path, variant, field }, _) => {
+        ExprX::UnaryOpr(UnaryOpr::Field(FieldOpr { datatype: path, variant, field }), _) => {
             if let Some(dt) = ctxt.dts.get(path) {
                 if let Some(module) = &function.x.visibility.owning_module {
                     if !is_datatype_transparent(&module, dt) {

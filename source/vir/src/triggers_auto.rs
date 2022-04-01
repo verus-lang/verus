@@ -1,5 +1,5 @@
 use crate::ast::{
-    BinaryOp, Constant, Fun, Ident, Path, Typ, TypX, UnaryOp, UnaryOpr, VarAt, VirErr,
+    BinaryOp, Constant, FieldOpr, Fun, Ident, Path, Typ, TypX, UnaryOp, UnaryOpr, VarAt, VirErr,
 };
 use crate::ast_util::{err_str, path_as_rust_name};
 use crate::context::Ctx;
@@ -320,7 +320,7 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
         ExpX::UnaryOpr(UnaryOpr::TupleField { .. }, _) => {
             panic!("internal error: TupleField should have been removed before here")
         }
-        ExpX::UnaryOpr(UnaryOpr::Field { datatype, variant, field }, lhs) => {
+        ExpX::UnaryOpr(UnaryOpr::Field(FieldOpr { datatype, variant, field }), lhs) => {
             let (is_pure, arg) = gather_terms(ctxt, ctx, lhs, depth + 1);
             (
                 is_pure,

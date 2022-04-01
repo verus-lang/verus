@@ -94,6 +94,7 @@ pub const I_INV: &str = "iInv";
 pub const ARCH_SIZE: &str = "SZ";
 pub const SNAPSHOT_CALL: &str = "CALL";
 pub const SNAPSHOT_PRE: &str = "PRE";
+pub const SNAPSHOT_ASSIGN: &str = "ASSIGN";
 pub const POLY: &str = "Poly";
 pub const BOX_INT: &str = "I";
 pub const BOX_BOOL: &str = "B";

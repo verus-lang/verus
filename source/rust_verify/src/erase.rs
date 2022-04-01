@@ -69,7 +69,8 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use vir::ast::{
-    Datatype, ExprX, Fun, Function, GenericBoundX, Krate, Mode, Path, Pattern, PatternX, UnaryOpr,
+    Datatype, ExprX, FieldOpr, Fun, Function, GenericBoundX, Krate, Mode, Path, Pattern, PatternX,
+    UnaryOpr,
 };
 use vir::ast_util::get_field;
 use vir::modes::{mode_join, ErasureModes};
@@ -674,7 +675,7 @@ fn erase_expr_opt(ctxt: &Ctxt, mctxt: &mut MCtxt, expect: Mode, expr: &Expr) -> 
         }
         ExprKind::Field(e1, field) => {
             let field_mode = match &mctxt.find_span(&ctxt.resolved_exprs, expr.span).x {
-                ExprX::UnaryOpr(UnaryOpr::Field { datatype, variant, field }, _) => {
+                ExprX::UnaryOpr(UnaryOpr::Field(FieldOpr { datatype, variant, field }), _) => {
                     let datatype = &ctxt.datatypes[datatype];
                     let variant = datatype.x.get_variant(variant);
                     get_field(&variant.a, field).a.1

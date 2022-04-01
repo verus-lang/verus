@@ -70,9 +70,9 @@ Therefore, the expression Unbox(Box(1)) explicitly introduces a superfluous Unbo
 */
 
 use crate::ast::{
-    BinaryOp, CallTarget, Datatype, DatatypeX, Expr, ExprX, Exprs, Function, FunctionKind,
-    FunctionX, Ident, IntRange, Krate, KrateX, MaskSpec, Mode, Param, ParamX, Path, PatternX,
-    SpannedTyped, Stmt, StmtX, Typ, TypX, UnaryOp, UnaryOpr,
+    BinaryOp, CallTarget, Datatype, DatatypeX, Expr, ExprX, Exprs, FieldOpr, Function,
+    FunctionKind, FunctionX, Ident, IntRange, Krate, KrateX, MaskSpec, Mode, Param, ParamX, Path,
+    PatternX, SpannedTyped, Stmt, StmtX, Typ, TypX, UnaryOp, UnaryOpr,
 };
 use crate::context::Ctx;
 use crate::def::Spanned;
@@ -312,7 +312,7 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
                     let e1 = coerce_expr_to_native(ctx, &e1);
                     mk_expr(ExprX::UnaryOpr(op.clone(), e1))
                 }
-                UnaryOpr::Field { datatype, variant, field } => {
+                UnaryOpr::Field(FieldOpr { datatype, variant, field }) => {
                     let fields = &ctx.datatype_map[datatype].x.get_variant(variant).a;
                     let field = crate::ast_util::get_field(fields, field);
 
@@ -330,7 +330,11 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
                 }
             }
         }
-        ExprX::Loc(e) => mk_expr(ExprX::Loc(poly_expr(ctx, state, e))),
+        ExprX::Loc(e) => {
+            let expr = poly_expr(ctx, state, e);
+            let typ = expr.typ.clone();
+            mk_expr_typ(&typ, ExprX::Loc(expr))
+        }
         ExprX::Binary(op, e1, e2) => {
             let e1 = poly_expr(ctx, state, e1);
             let e2 = poly_expr(ctx, state, e2);
@@ -389,7 +393,11 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
         }
         ExprX::Assign { init_not_mut, lhs: e1, rhs: e2 } => {
             let e1 = poly_expr(ctx, state, e1);
-            let e2 = coerce_expr_to_native(ctx, &poly_expr(ctx, state, e2));
+            let e2 = if typ_is_poly(ctx, &e1.typ) {
+                coerce_expr_to_poly(ctx, &poly_expr(ctx, state, e2))
+            } else {
+                coerce_expr_to_native(ctx, &poly_expr(ctx, state, e2))
+            };
             mk_expr(ExprX::Assign { init_not_mut: *init_not_mut, lhs: e1, rhs: e2 })
         }
         ExprX::AssertBV(e) => mk_expr(ExprX::AssertBV(poly_expr(ctx, state, e))),
