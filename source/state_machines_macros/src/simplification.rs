@@ -81,7 +81,7 @@ use syn::{Expr, Ident, Type};
 // PostCondition statements and mark those positions with placeholders.
 
 pub fn simplify_ops(sm: &SM, ts: &TransitionStmt, is_readonly: bool) -> TransitionStmt {
-    let ts = add_tmp_vars_special_ops(ts);
+    let ts = add_tmp_vars_special_ops(sm, ts);
     let ts = if !is_readonly { add_placeholders(sm, &ts) } else { ts };
 
     let field_map = FieldMap::new(sm);
@@ -173,7 +173,7 @@ fn add_placeholders_rec(ts: &mut TransitionStmt, found: &mut Vec<Ident>) {
                 add_placeholders_rec(t, found);
             }
         }
-        TransitionStmt::Let(_, _, _, _, child) => {
+        TransitionStmt::Let(_, _, _, _, _, child) => {
             add_placeholders_rec(child, found);
         }
         TransitionStmt::If(span, _, e1, e2) => {
@@ -252,7 +252,7 @@ fn append_stmt(t1: &mut TransitionStmt, t2: TransitionStmt) {
             v.push(t2);
             return;
         }
-        TransitionStmt::Let(_span, _ident, _lk, _e, child) => {
+        TransitionStmt::Let(_span, _ident, _ty, _lk, _e, child) => {
             append_stmt(&mut **child, t2);
             return;
         }
@@ -393,13 +393,20 @@ fn simplify_ops_rec(
             }
             (TransitionStmt::Block(*span, res), field_map)
         }
-        TransitionStmt::Let(span, id, lk, e, child) => {
+        TransitionStmt::Let(span, id, ty, lk, e, child) => {
             let (new_child, new_map) = simplify_ops_rec(child, sm, field_map.clone());
             // We call `remove_changed` to remove any field that has been modified
             // inside this block. We do this because the new expression could possibly
             // refer to the bound variable here which is about to go out-of-scope.
             (
-                TransitionStmt::Let(*span, id.clone(), lk.clone(), e.clone(), Box::new(new_child)),
+                TransitionStmt::Let(
+                    *span,
+                    id.clone(),
+                    ty.clone(),
+                    lk.clone(),
+                    e.clone(),
+                    Box::new(new_child),
+                ),
                 FieldMap::remove_changed(field_map, new_map),
             )
         }

@@ -60,7 +60,7 @@ tokenized_state_machine!(
             foo(n: int) {
                 require(n >= 1);
                 assert(n >= 1);
-                let x = n + 2;
+                let x: int = n + 2;
                 if n >= 5 {
                     require(n < 10);
                     assert(x != 4);

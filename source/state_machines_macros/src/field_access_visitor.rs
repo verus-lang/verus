@@ -150,7 +150,7 @@ pub fn visit_field_accesses_all_exprs<F>(
                 visit_field_accesses_all_exprs(child, f, errors, ident_to_field);
             }
         }
-        TransitionStmt::Let(_span, _id, lk, init_e, child) => {
+        TransitionStmt::Let(_span, _id, _ty, lk, init_e, child) => {
             let is_birds_eye = *lk == LetKind::BirdsEye;
             visit_field_accesses(
                 init_e,

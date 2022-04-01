@@ -61,15 +61,19 @@ fn to_relation_rec(
             }
             p
         }
-        TransitionStmt::Let(_span, id, _lk, e, child) => {
+        TransitionStmt::Let(_span, id, ty, _lk, e, child) => {
             let x = to_relation_rec(child, None, weak, true);
+            let ty_tokens = match ty {
+                None => TokenStream::new(),
+                Some(ty) => quote! { : #ty },
+            };
             let t = match x {
                 None => None,
                 Some(r) => {
                     if let_skip_brace {
-                        Some(quote! { let #id = #e; #r })
+                        Some(quote! { let #id #ty_tokens = #e; #r })
                     } else {
-                        Some(quote! { { let #id = #e; #r } })
+                        Some(quote! { { let #id #ty_tokens = #e; #r } })
                     }
                 }
             };
@@ -150,10 +154,16 @@ pub fn asserts_to_single_predicate(ts: &TransitionStmt) -> Option<TokenStream> {
             }
             o
         }
-        TransitionStmt::Let(_span, id, _, e, child) => match asserts_to_single_predicate(child) {
-            None => None,
-            Some(r) => Some(quote! { { let #id = #e; #r } }),
-        },
+        TransitionStmt::Let(_span, id, ty, _, e, child) => {
+            let ty_tokens = match ty {
+                None => TokenStream::new(),
+                Some(ty) => quote! { : #ty },
+            };
+            match asserts_to_single_predicate(child) {
+                None => None,
+                Some(r) => Some(quote! { { let #id #ty_tokens = #e; #r } }),
+            }
+        }
         TransitionStmt::If(_span, cond, e1, e2) => {
             let x1 = asserts_to_single_predicate(e1);
             let x2 = asserts_to_single_predicate(e2);

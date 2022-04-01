@@ -65,7 +65,7 @@ tokenized_state_machine!(RwLock {
 
             remove pending_reader -= {()};
 
-            birds_eye let x = pre.storage.get_Some_0();
+            birds_eye let x: T = pre.storage.get_Some_0();
             add reader += {x};
         }
     }

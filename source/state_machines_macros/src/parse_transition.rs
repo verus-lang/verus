@@ -80,7 +80,7 @@ fn parse_arg_typed(input: ParseStream) -> syn::parse::Result<(Ident, Type)> {
     Ok((ident, ty))
 }
 
-struct TLet(Span, Ident, LetKind, Expr);
+struct TLet(Span, Ident, Option<Type>, LetKind, Expr);
 
 enum StmtOrLet {
     Stmt(TransitionStmt),
@@ -182,10 +182,11 @@ fn stmts_or_lets_to_block(span: Span, tstmts: Vec<StmtOrLet>) -> TransitionStmt 
     for stmt_or_let in tstmts.into_iter().rev() {
         match stmt_or_let {
             StmtOrLet::Stmt(s) => cur_block.push(s),
-            StmtOrLet::Let(TLet(span, id, lk, e)) => {
+            StmtOrLet::Let(TLet(span, id, ty, lk, e)) => {
                 cur_block = vec![TransitionStmt::Let(
                     span,
                     id,
+                    ty,
                     lk,
                     e,
                     Box::new(TransitionStmt::Block(span, cur_block.into_iter().rev().collect())),
@@ -334,13 +335,22 @@ fn parse_else_block(input: ParseStream) -> syn::parse::Result<TransitionStmt> {
 /// Parse `let x = ...;` or `birds_eye let x = ...;`
 fn parse_let(span: Span, lk: LetKind, input: ParseStream) -> syn::parse::Result<TLet> {
     let varname: Ident = input.parse()?;
+
+    let ty = if input.peek(Token![:]) {
+        let _t: Token![:] = input.parse()?;
+        let ty: Type = input.parse()?;
+        Some(ty)
+    } else {
+        None
+    };
+
     let _t: Token![=] = input.parse()?;
     let e: Expr = input.parse()?;
     let semi: Token![;] = input.parse()?;
 
     let stmt_span = span.join(semi.span()).unwrap_or(span);
 
-    Ok(TLet(stmt_span, varname, lk, e))
+    Ok(TLet(stmt_span, varname, ty, lk, e))
 }
 
 /// Parse `update field = ...;`

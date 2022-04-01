@@ -179,7 +179,7 @@ pub struct AssertProof {
 #[derive(Clone, Debug)]
 pub enum TransitionStmt {
     Block(Span, Vec<TransitionStmt>),
-    Let(Span, Ident, LetKind, Expr, Box<TransitionStmt>),
+    Let(Span, Ident, Option<Type>, LetKind, Expr, Box<TransitionStmt>),
     If(Span, Expr, Box<TransitionStmt>, Box<TransitionStmt>),
     Require(Span, Expr),
     Assert(Span, Expr, AssertProof),
@@ -280,7 +280,7 @@ impl TransitionStmt {
     pub fn get_span<'a>(&'a self) -> &'a Span {
         match self {
             TransitionStmt::Block(span, _) => span,
-            TransitionStmt::Let(span, _, _, _, _) => span,
+            TransitionStmt::Let(span, _, _, _, _, _) => span,
             TransitionStmt::If(span, _, _, _) => span,
             TransitionStmt::Require(span, _) => span,
             TransitionStmt::Assert(span, _, _) => span,
@@ -353,6 +353,37 @@ impl ShardableType {
             ShardableType::Map(_, _) => false,
             ShardableType::StorageOption(_) => true,
             ShardableType::StorageMap(_, _) => true,
+        }
+    }
+
+    pub fn get_option_param_type(&self) -> Type {
+        match self {
+            ShardableType::Option(ty) => ty.clone(),
+            ShardableType::StorageOption(ty) => ty.clone(),
+            _ => panic!("get_option_param_type expected option"),
+        }
+    }
+
+    pub fn get_multiset_param_type(&self) -> Type {
+        match self {
+            ShardableType::Multiset(ty) => ty.clone(),
+            _ => panic!("get_multiset_param_type expected multiset"),
+        }
+    }
+
+    pub fn get_map_key_type(&self) -> Type {
+        match self {
+            ShardableType::Map(key, _val) => key.clone(),
+            ShardableType::StorageMap(key, _val) => key.clone(),
+            _ => panic!("get_map_key_type expected map"),
+        }
+    }
+
+    pub fn get_map_value_type(&self) -> Type {
+        match self {
+            ShardableType::Map(_key, val) => val.clone(),
+            ShardableType::StorageMap(_key, val) => val.clone(),
+            _ => panic!("get_map_value_type expected map"),
         }
     }
 }

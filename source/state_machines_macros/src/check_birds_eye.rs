@@ -100,7 +100,7 @@ fn check_birds_eye_rec(
                 );
             }
         }
-        TransitionStmt::Let(span, _id, lk, _init_e, child) => {
+        TransitionStmt::Let(span, _id, _ty, lk, _init_e, child) => {
             let mut is_birds_eye = *lk == LetKind::BirdsEye;
             if is_birds_eye {
                 if !concurrent {

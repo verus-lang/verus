@@ -127,7 +127,7 @@ pub fn check_inherent_conditions(sm: &SM, ts: &mut TransitionStmt, errors: &mut 
                 check_inherent_conditions(sm, t, errors);
             }
         }
-        TransitionStmt::Let(_span, _id, _, _, child) => {
+        TransitionStmt::Let(_span, _id, _ty, _, _, child) => {
             check_inherent_conditions(sm, child, errors);
         }
         TransitionStmt::If(_, _, e1, e2) => {

@@ -1314,7 +1314,7 @@ fn determine_outputs(ctxt: &mut Ctxt, ts: &TransitionStmt) -> syn::parse::Result
             }
             Ok(())
         }
-        TransitionStmt::Let(_span, _id, _lk, _init_e, child) => {
+        TransitionStmt::Let(_span, _id, _ty, _lk, _init_e, child) => {
             determine_outputs(ctxt, child)?;
             Ok(())
         }
@@ -1391,7 +1391,7 @@ fn translate_transition(
             }
             return Ok(());
         }
-        TransitionStmt::Let(_span, _id, lk, e, child) => {
+        TransitionStmt::Let(_span, _id, _ty, lk, e, child) => {
             let birds_eye = *lk == LetKind::BirdsEye;
             let init_e = translate_expr(ctxt, e, birds_eye, errors);
             *e = init_e;
@@ -1785,7 +1785,7 @@ fn get_new_field_value(field: &Field) -> Expr {
 enum PrequelElement {
     AssertCondition(Expr),
     Condition(Expr),
-    Let(Ident, Expr),
+    Let(Ident, Option<Type>, Expr),
 }
 
 fn exchange_collect(
@@ -1802,9 +1802,9 @@ fn exchange_collect(
             }
             Ok(p)
         }
-        TransitionStmt::Let(_span, id, _lk, init_e, child) => {
+        TransitionStmt::Let(_span, id, ty, _lk, init_e, child) => {
             let mut p = prequel.clone();
-            p.push(PrequelElement::Let(id.clone(), init_e.clone()));
+            p.push(PrequelElement::Let(id.clone(), ty.clone(), init_e.clone()));
             let _ = exchange_collect(ctxt, child, p);
 
             let mut prequel = prequel;
@@ -1862,8 +1862,11 @@ fn with_prequel(pre: &Vec<PrequelElement>, include_assert_conditions: bool, e: E
     let mut e = e;
     for p in pre.iter().rev() {
         match p {
-            PrequelElement::Let(id, init_e) => {
+            PrequelElement::Let(id, None, init_e) => {
                 e = Expr::Verbatim(quote! { { let #id = #init_e; #e } });
+            }
+            PrequelElement::Let(id, Some(ty), init_e) => {
+                e = Expr::Verbatim(quote! { { let #id: #ty = #init_e; #e } });
             }
             PrequelElement::Condition(cond_e) => {
                 e = Expr::Verbatim(quote! { ::builtin::imply(#cond_e, #e) });
@@ -1900,11 +1903,11 @@ fn prune_irrelevant_ops_rec(ctxt: &Ctxt, ts: TransitionStmt) -> Option<Transitio
                 v.into_iter().filter_map(|t| prune_irrelevant_ops_rec(ctxt, t)).collect();
             if res.len() == 0 { None } else { Some(TransitionStmt::Block(span, res)) }
         }
-        TransitionStmt::Let(span, id, lk, init_e, box child) => {
+        TransitionStmt::Let(span, id, ty, lk, init_e, box child) => {
             match prune_irrelevant_ops_rec(ctxt, child) {
                 None => None,
                 Some(new_child) => {
-                    Some(TransitionStmt::Let(span, id, lk, init_e, Box::new(new_child)))
+                    Some(TransitionStmt::Let(span, id, ty, lk, init_e, Box::new(new_child)))
                 }
             }
         }
@@ -1978,7 +1981,7 @@ fn get_post_value_for_variable(ctxt: &Ctxt, ts: &TransitionStmt, field: &Field) 
             }
             opt
         }
-        TransitionStmt::Let(_span, id, _lk, e, child) => {
+        TransitionStmt::Let(_span, id, _ty, _lk, e, child) => {
             let o = get_post_value_for_variable(ctxt, child, field);
             match o {
                 None => None,

@@ -37,7 +37,7 @@ fn validate_idents_transition_stmt(
                 validate_idents_transition_stmt(t, kind)?;
             }
         }
-        TransitionStmt::Let(_, ident, _lk, e, child) => {
+        TransitionStmt::Let(_, ident, _ty, _lk, e, child) => {
             validate_ident(ident)?;
             validate_idents_expr(e, kind)?;
             validate_idents_transition_stmt(child, kind)?;

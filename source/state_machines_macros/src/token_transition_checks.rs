@@ -22,7 +22,7 @@ pub fn check_unsupported_updates_in_conditionals(ts: &TransitionStmt) -> syn::pa
             }
             Ok(())
         }
-        TransitionStmt::Let(_span, _id, _lk, _init_e, child) => {
+        TransitionStmt::Let(_span, _id, _ty, _lk, _init_e, child) => {
             check_unsupported_updates_in_conditionals(child)?;
             Ok(())
         }
@@ -48,7 +48,7 @@ fn check_unsupported_updates_helper(ts: &TransitionStmt) -> syn::parse::Result<(
             }
             Ok(())
         }
-        TransitionStmt::Let(_, _, _, _, child) => check_unsupported_updates_helper(child),
+        TransitionStmt::Let(_, _, _, _, _, child) => check_unsupported_updates_helper(child),
         TransitionStmt::If(_, _, e1, e2) => {
             check_unsupported_updates_helper(e1)?;
             check_unsupported_updates_helper(e2)?;
@@ -121,7 +121,7 @@ pub fn check_ordering_remove_have_add_rec(
             }
             Ok((seen_have, seen_add))
         }
-        TransitionStmt::Let(_, _, _, _, child) => {
+        TransitionStmt::Let(_, _, _, _, _, child) => {
             check_ordering_remove_have_add_rec(child, field_name, seen_have, seen_add)
         }
         TransitionStmt::If(_, _, e1, e2) => {
