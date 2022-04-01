@@ -1,6 +1,14 @@
 #! /bin/bash
 
 toplevel=`git rev-parse --show-toplevel`
+python_command=''
+
+command -v python > /dev/null
+has_python=$?
+if [ ! $has_python -eq 0 ]; then 
+    echo "python not found, trying python3"
+    python_command='python3'
+fi
 
 if [ "$toplevel" != "$PWD" ]; then
     echo "ERROR: You should run this script at the root of the verus repository"
@@ -11,13 +19,6 @@ if [ ! -d rust ]; then
     echo "The rust/ repository clone is missing. Run tools/set-up-rust.sh first."
     exit 1
 fi
-
-if command -v python3 > /dev/null; then 
-    pythoncmd=python3
-else
-    pythoncmd=python
-fi
-
 
 (
     cd rust
@@ -37,6 +38,6 @@ fi
     git fetch origin verification
     git reset --hard origin/verification
     cp config.toml.verify config.toml
-    $pythoncmd ./x.py install -i
+    $python_command ./x.py install -i
 )
 
