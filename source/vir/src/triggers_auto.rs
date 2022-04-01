@@ -112,6 +112,8 @@ Second, for triggers that are tied for number of terms, we compute a heuristic s
     while we actually prefer small terms
 - the size measures how large a term is
   - smaller size is better
+- terms that contain a function call are better than terms with just constructors and fields
+  - (avoid choosing something like Option::Some(x) as the trigger)
 We choose these because they are likely to identify relevant terms
 such as function definitions f(x, y) == ... or implication f(x, y) ==> ...
 rather than terms used incidentally inside other terms.
@@ -121,17 +123,26 @@ rather than just selecting all the candidate triggers.
 
 REVIEW: these heuristics are experimental -- are they useful in practice?  Can they be improved?
 */
+
+// Score for a single term in a trigger.
+// Can be summed to compute a total score for all terms in a trigger
+// (lower scores are better)
 struct Score {
-    // prefer
-    depth: u64, // 1 or more, or 0 for next to ==
-    size: u64,
+    // number of bitwise operators
     num_operators: u64,
+    // 0 means term has function calls
+    // 1 means term has no function calls (only constructors, fields, operators)
+    no_calls: u64,
+    // 1 or more, or 0 for next to ==
+    depth: u64,
+    // total size of term
+    size: u64,
 }
 
 impl Score {
-    // lower total score is better
-    fn total(&self) -> u64 {
-        self.depth * 1000 + self.size + 1000000 * self.num_operators
+    // lower score is better (lexicographically ordered)
+    fn lex(&self) -> (u64, u64, u64, u64) {
+        (self.num_operators, self.no_calls, self.depth, self.size)
     }
 }
 
@@ -210,16 +221,25 @@ fn trigger_var_depth(ctxt: &Ctxt, term: &Term, depth: u64) -> Option<u64> {
     }
 }
 
-fn make_score(term: &Term, depth: u64, num_operators: u64) -> Score {
-    Score { depth, size: term_size(term), num_operators }
-}
-
 fn count_bit_operators(term: &Term) -> u64 {
     match &**term {
         TermX::App(App::BitOp(_), args) => 1 + args.iter().map(count_bit_operators).sum::<u64>(),
         TermX::App(_, args) => args.iter().map(count_bit_operators).sum::<u64>(),
         TermX::Var(..) => 0,
     }
+}
+
+fn count_calls(term: &Term) -> u64 {
+    match &**term {
+        TermX::App(App::Call(_), args) => 1 + args.iter().map(count_calls).sum::<u64>(),
+        TermX::App(_, args) => args.iter().map(count_calls).sum::<u64>(),
+        TermX::Var(..) => 0,
+    }
+}
+
+fn make_score(term: &Term, depth: u64) -> Score {
+    let no_calls = if count_calls(term) == 0 { 1 } else { 0 };
+    Score { num_operators: count_bit_operators(term), no_calls, depth, size: term_size(term) }
 }
 
 fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Term) {
@@ -363,10 +383,9 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
             if !ctxt.pure_terms.contains_key(&term) {
                 ctxt.pure_terms.insert(term.clone(), (exp.clone(), ctxt.pure_terms.len()));
             }
-            let num_operators = count_bit_operators(&term);
-            let score = make_score(&term, var_depth, num_operators);
+            let score = make_score(&term, var_depth);
             if !ctxt.pure_best_scores.contains_key(&term)
-                || score.total() < ctxt.pure_best_scores[&term].total()
+                || score.lex() < ctxt.pure_best_scores[&term].lex()
             {
                 ctxt.pure_best_scores.insert(term.clone(), score);
             }
@@ -432,8 +451,16 @@ struct State {
     best_so_far: Vec<Trigger>,
 }
 
-fn trigger_score(ctxt: &Ctxt, trigger: &Trigger) -> u64 {
-    trigger.iter().map(|(t, _)| ctxt.pure_best_scores[t].total()).sum()
+fn trigger_score(ctxt: &Ctxt, trigger: &Trigger) -> Score {
+    let mut total = Score { num_operators: 0, no_calls: 0, depth: 0, size: 0 };
+    for (t, _) in trigger.iter() {
+        let score = &ctxt.pure_best_scores[t];
+        total.num_operators += score.num_operators;
+        total.no_calls += score.no_calls;
+        total.depth += score.depth;
+        total.size += score.size;
+    }
+    total
 }
 
 // Find the best trigger that covers all the trigger variables.
@@ -448,8 +475,8 @@ fn compute_triggers(ctxt: &Ctxt, state: &mut State, timer: &mut Timer) -> Result
             if state.best_so_far[0].len() > trigger.len() {
                 state.best_so_far.clear();
             } else {
-                let prev_score = trigger_score(ctxt, &state.best_so_far[0]);
-                let new_score = trigger_score(ctxt, &trigger);
+                let prev_score = trigger_score(ctxt, &state.best_so_far[0]).lex();
+                let new_score = trigger_score(ctxt, &trigger).lex();
                 if prev_score > new_score {
                     state.best_so_far.clear();
                 } else if prev_score < new_score {
@@ -520,7 +547,7 @@ pub(crate) fn build_triggers(
     }
     println!("pure:");
     for t in ctxt.pure_terms.keys() {
-        println!("  {:?} {}", t, ctxt.pure_best_scores[t].total());
+        println!("  {:?} {}", t, ctxt.pure_best_scores[t].lex());
     }
     */
     remove_obvious_potential_loops(&mut ctxt, &mut timer)?;
