@@ -2,7 +2,7 @@ use crate::ast::{
     BinaryOp, Constant, FieldOpr, Fun, Ident, Path, Typ, TypX, UnaryOp, UnaryOpr, VarAt, VirErr,
 };
 use crate::ast_util::{err_str, path_as_rust_name};
-use crate::context::Ctx;
+use crate::context::{ChosenTriggers, Ctx};
 use crate::sst::{Exp, ExpX, Trig, Trigs, UniqueIdent};
 use crate::util::vec_map;
 use air::ast::Span;
@@ -552,11 +552,11 @@ pub(crate) fn build_triggers(
     */
     remove_obvious_potential_loops(&mut ctxt, &mut timer)?;
     // println!("pure after loop removal:");
-    for term in ctxt.pure_terms.keys() {
+    for (term, (e, _)) in ctxt.pure_terms.iter() {
         let mut vars: HashSet<Ident> = HashSet::new();
         trigger_vars_in_term(&ctxt, &mut vars, &term);
         for x in &vars {
-            ctxt.pure_terms_by_var.get_mut(x).unwrap().insert(term.clone(), exp.span.clone());
+            ctxt.pure_terms_by_var.get_mut(x).unwrap().insert(term.clone(), e.span.clone());
         }
         // println!("  {:?}", term);
     }
@@ -586,10 +586,13 @@ pub(crate) fn build_triggers(
         println!("FOUND: {} {:?}", score, found.iter().map(|(t, _)| t).collect::<Vec<_>>());
     }
     */
-    let mut chosen_triggers = ctx.global.chosen_triggers.borrow_mut();
-    let found_strings: Vec<Vec<String>> =
-        vec_map(&state.best_so_far, |trig| vec_map(&trig, |(term, _)| format!("{:?}", term)));
-    chosen_triggers.push((span.clone(), found_strings));
+    let mut chosen_triggers_vec = ctx.global.chosen_triggers.borrow_mut();
+    let found_triggers: Vec<Vec<(Span, String)>> = vec_map(&state.best_so_far, |trig| {
+        vec_map(&trig, |(term, span)| (span.clone(), format!("{:?}", term)))
+    });
+    let module = ctx.module_for_chosen_triggers.clone().unwrap_or(ctx.module.clone());
+    let chosen_triggers = ChosenTriggers { module, span: span.clone(), triggers: found_triggers };
+    chosen_triggers_vec.push(chosen_triggers);
     //println!();
     if state.best_so_far.len() >= 1 {
         let trigs: Vec<Trig> = vec_map(&state.best_so_far, |trig| {

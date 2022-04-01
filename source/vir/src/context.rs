@@ -14,9 +14,17 @@ use air::ast_util::str_typ;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
+pub type ChosenTrigger = Vec<(Span, String)>;
+#[derive(Debug, Clone)]
+pub struct ChosenTriggers {
+    pub module: Path,
+    pub span: Span,
+    pub triggers: Vec<ChosenTrigger>,
+}
+
 // Context for across all modules
 pub struct GlobalCtx {
-    pub(crate) chosen_triggers: std::cell::RefCell<Vec<(Span, Vec<Vec<String>>)>>, // diagnostics
+    pub(crate) chosen_triggers: std::cell::RefCell<Vec<ChosenTriggers>>, // diagnostics
     pub(crate) datatypes: HashMap<Path, Variants>,
     pub(crate) fun_bounds: HashMap<Fun, Vec<GenericBound>>,
     // Used for synthesized AST nodes that have no relation to any location in the original code:
@@ -30,6 +38,7 @@ pub struct GlobalCtx {
 // Context for verifying one module
 pub struct Ctx {
     pub(crate) module: Path,
+    pub module_for_chosen_triggers: Option<Path>, // diagnostics
     pub(crate) datatype_is_transparent: HashMap<Path, bool>,
     pub(crate) datatypes_with_invariant: HashSet<Path>,
     pub(crate) mono_abstract_datatypes: Vec<MonoTyp>,
@@ -113,7 +122,7 @@ impl GlobalCtx {
         no_span: Span,
         inferred_modes: HashMap<InferMode, Mode>,
     ) -> Result<Self, VirErr> {
-        let chosen_triggers: std::cell::RefCell<Vec<(Span, Vec<Vec<String>>)>> =
+        let chosen_triggers: std::cell::RefCell<Vec<ChosenTriggers>> =
             std::cell::RefCell::new(Vec::new());
         let datatypes: HashMap<Path, Variants> =
             krate.datatypes.iter().map(|d| (d.x.path.clone(), d.x.variants.clone())).collect();
@@ -153,7 +162,7 @@ impl GlobalCtx {
     }
 
     // Report chosen triggers as strings for printing diagnostics
-    pub fn get_chosen_triggers(&self) -> Vec<(Span, Vec<Vec<String>>)> {
+    pub fn get_chosen_triggers(&self) -> Vec<ChosenTriggers> {
         self.chosen_triggers.borrow().clone()
     }
 }
@@ -167,6 +176,7 @@ impl Ctx {
         lambda_types: Vec<usize>,
         debug: bool,
     ) -> Result<Self, VirErr> {
+        let module_for_chosen_triggers = None;
         let mut datatype_is_transparent: HashMap<Path, bool> = HashMap::new();
         for datatype in krate.datatypes.iter() {
             datatype_is_transparent
@@ -191,6 +201,7 @@ impl Ctx {
         }
         Ok(Ctx {
             module,
+            module_for_chosen_triggers,
             datatype_is_transparent,
             datatypes_with_invariant,
             mono_abstract_datatypes,

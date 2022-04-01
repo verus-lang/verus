@@ -1,4 +1,4 @@
-use crate::config::Args;
+use crate::config::{Args, ShowTriggers};
 use crate::context::{ContextX, ErasureInfo};
 use crate::debugger::Debugger;
 use crate::unsupported;
@@ -106,14 +106,17 @@ fn report_error(compiler: &Compiler, error: &Error) {
     compiler.session().parse_sess.span_diagnostic.span_err(multispan, &error.msg);
 }
 
-fn report_chosen_triggers(
-    compiler: &Compiler,
-    air_span: &air::ast::Span,
-    triggers: &Vec<Vec<String>>,
-) {
-    let span: Span = from_raw_span(&air_span.raw_span);
-    let msg = format!("chosen triggers: {:#?}", triggers);
-    compiler.session().parse_sess.span_diagnostic.span_note_without_error(span, &msg);
+fn report_chosen_triggers(compiler: &Compiler, chosen: &vir::context::ChosenTriggers) {
+    let span: Span = from_raw_span(&chosen.span.raw_span);
+    let msg = "automatically chose triggers for this expression:";
+    compiler.session().parse_sess.span_diagnostic.span_note_without_error(span, msg);
+    for (n, trigger) in chosen.triggers.iter().enumerate() {
+        let spans = MultiSpan::from_spans(
+            trigger.iter().map(|(s, _)| from_raw_span(&s.raw_span)).collect(),
+        );
+        let msg = format!("  trigger {} of {}:", n + 1, chosen.triggers.len());
+        compiler.session().parse_sess.span_diagnostic.span_note_without_error(spans, &msg);
+    }
 }
 
 impl Verifier {
@@ -299,6 +302,7 @@ impl Verifier {
 
         // Declare the function symbols
         for function in &krate.functions {
+            ctx.module_for_chosen_triggers = function.x.visibility.owning_module.clone();
             if !is_visible_to(&function.x.visibility, module) {
                 continue;
             }
@@ -309,10 +313,12 @@ impl Verifier {
                 &("Function-Decl ".to_string() + &fun_as_rust_dbg(&function.x.name)),
             );
         }
+        ctx.module_for_chosen_triggers = None;
 
         // Collect function definitions
         let mut fun_decls: HashMap<Fun, (Function, Commands, Commands)> = HashMap::new();
         for function in &krate.functions {
+            ctx.module_for_chosen_triggers = function.x.visibility.owning_module.clone();
             let vis = function.x.visibility.clone();
             let vis = Visibility { is_private: vis.is_private, ..vis };
             if !is_visible_to(&vis, module) {
@@ -328,6 +334,7 @@ impl Verifier {
             fun_decls
                 .insert(function.x.name.clone(), (function.clone(), check_commands, decl_commands));
         }
+        ctx.module_for_chosen_triggers = None;
 
         // For spec functions, check termination and declare consequence axioms.
         // Declare them in SCC (strongly connected component) sorted order so that
@@ -378,6 +385,7 @@ impl Verifier {
 
         // Create queries to check the validity of proof/exec function bodies
         for function in &krate.functions {
+            ctx.module_for_chosen_triggers = function.x.visibility.owning_module.clone();
             if Some(module.clone()) != function.x.visibility.owning_module {
                 continue;
             }
@@ -391,6 +399,7 @@ impl Verifier {
                 &("Function-Def ".to_string() + &fun_as_rust_dbg(&function.x.name)),
             );
         }
+        ctx.module_for_chosen_triggers = None;
 
         Ok(())
     }
@@ -450,6 +459,7 @@ impl Verifier {
         }
 
         let verify_entire_crate = !self.args.verify_root && self.args.verify_module.is_none();
+        let mut verified_modules = HashSet::new();
         for module in &krate.module_ids {
             let module_name =
                 module.segments.iter().map(|s| s.to_string()).collect::<Vec<_>>().join("::");
@@ -494,6 +504,7 @@ impl Verifier {
                 vir::printer::write_krate(&mut file, &poly_krate);
             }
             self.verify_module(compiler, &poly_krate, &mut air_context, &mut ctx)?;
+            verified_modules.insert(module.clone());
             global_ctx = ctx.free();
             air_context.pop();
         }
@@ -507,10 +518,16 @@ impl Verifier {
                     .expect(&format!("error writing to file {}", filename));
             }
         }
-        if self.args.show_triggers {
-            let chosen_triggers = global_ctx.get_chosen_triggers();
-            for (span, triggers) in chosen_triggers {
-                report_chosen_triggers(compiler, &span, &triggers);
+        let chosen_triggers = global_ctx.get_chosen_triggers();
+        for chosen in chosen_triggers {
+            match self.args.show_triggers {
+                ShowTriggers::Module if verified_modules.contains(&chosen.module) => {
+                    report_chosen_triggers(compiler, &chosen);
+                }
+                ShowTriggers::Verbose => {
+                    report_chosen_triggers(compiler, &chosen);
+                }
+                _ => {}
             }
         }
 

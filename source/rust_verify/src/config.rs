@@ -1,5 +1,17 @@
 use getopts::Options;
 
+#[derive(Debug, Clone, Copy)]
+pub enum ShowTriggers {
+    Silent,
+    Module,
+    Verbose,
+}
+impl Default for ShowTriggers {
+    fn default() -> Self {
+        ShowTriggers::Silent
+    }
+}
+
 #[derive(Debug, Default)]
 pub struct Args {
     pub pervasive_path: Option<String>,
@@ -19,7 +31,7 @@ pub struct Args {
     pub log_air_final: Option<String>,
     pub log_smt: Option<String>,
     pub log_triggers: Option<String>,
-    pub show_triggers: bool,
+    pub show_triggers: ShowTriggers,
     pub print_erased: bool,
     pub print_erased_spec: bool,
     pub ignore_unexpected_smt: bool,
@@ -52,7 +64,9 @@ pub fn parse_args(program: &String, args: impl Iterator<Item = String>) -> (Args
     const OPT_LOG_AIR_FINAL: &str = "log-air-final";
     const OPT_LOG_SMT: &str = "log-smt";
     const OPT_LOG_TRIGGERS: &str = "log-triggers";
+    const OPT_TRIGGERS_SILENT: &str = "triggers-silent";
     const OPT_TRIGGERS: &str = "triggers";
+    const OPT_TRIGGERS_VERBOSE: &str = "triggers-verbose";
     const OPT_PRINT_ERASED: &str = "print-erased";
     const OPT_PRINT_ERASED_SPEC: &str = "print-erased-spec";
     const OPT_IGNORE_UNEXPECTED_SMT: &str = "ignore-unexpected-smt";
@@ -87,7 +101,9 @@ pub fn parse_args(program: &String, args: impl Iterator<Item = String>) -> (Args
     opts.optopt("", OPT_LOG_AIR_FINAL, "Log AIR queries in final form", "FILENAME");
     opts.optopt("", OPT_LOG_SMT, "Log SMT queries", "FILENAME");
     opts.optopt("", OPT_LOG_TRIGGERS, "Log automatically chosen triggers", "FILENAME");
-    opts.optflag("", OPT_TRIGGERS, "Show automatically chosen triggers");
+    opts.optflag("", OPT_TRIGGERS_SILENT, "Do not show automatically chosen triggers (default)");
+    opts.optflag("", OPT_TRIGGERS, "Show all automatically chosen triggers for verified modules");
+    opts.optflag("", OPT_TRIGGERS_VERBOSE, "Show all automatically chosen triggers for verified modules and imported definitions from other modules");
     opts.optflag("", OPT_PRINT_ERASED, "Print code after erasing spec/proof (requires --compile)");
     opts.optflag("", OPT_PRINT_ERASED_SPEC, "Print code after erasing spec");
     opts.optflag("", OPT_IGNORE_UNEXPECTED_SMT, "Ignore unexpected SMT output");
@@ -157,7 +173,15 @@ pub fn parse_args(program: &String, args: impl Iterator<Item = String>) -> (Args
         log_air_final: matches.opt_str(OPT_LOG_AIR_FINAL),
         log_smt: matches.opt_str(OPT_LOG_SMT),
         log_triggers: matches.opt_str(OPT_LOG_TRIGGERS),
-        show_triggers: matches.opt_present(OPT_TRIGGERS),
+        show_triggers: if matches.opt_present(OPT_TRIGGERS_VERBOSE) {
+            ShowTriggers::Verbose
+        } else if matches.opt_present(OPT_TRIGGERS) {
+            ShowTriggers::Module
+        } else if matches.opt_present(OPT_TRIGGERS_SILENT) {
+            ShowTriggers::Silent
+        } else {
+            ShowTriggers::default()
+        },
         print_erased: matches.opt_present(OPT_PRINT_ERASED),
         print_erased_spec: matches.opt_present(OPT_PRINT_ERASED_SPEC),
         ignore_unexpected_smt: matches.opt_present(OPT_IGNORE_UNEXPECTED_SMT),
