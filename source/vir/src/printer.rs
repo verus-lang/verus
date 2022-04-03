@@ -221,7 +221,7 @@ fn expr_to_node(expr: &Expr) -> Node {
                 UnaryOp::BitNot => nodes_vec!(bitnot),
                 UnaryOp::Trigger(group) => {
                     let mut nodes = nodes_vec!(trigger);
-                    if let Some(group) = group {
+                    if let crate::ast::TriggerAnnotation::Trigger(Some(group)) = group {
                         nodes.push(str_to_node(":group"));
                         nodes.push(str_to_node(&format!("{}", group)));
                     }

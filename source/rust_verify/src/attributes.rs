@@ -4,7 +4,7 @@ use rustc_ast::token::{Token, TokenKind};
 use rustc_ast::tokenstream::{TokenStream, TokenTree};
 use rustc_ast::{AttrKind, Attribute, MacArgs};
 use rustc_span::Span;
-use vir::ast::{Mode, VirErr};
+use vir::ast::{Mode, TriggerAnnotation, VirErr};
 
 #[derive(Debug)]
 pub(crate) enum AttrTree {
@@ -112,6 +112,10 @@ pub(crate) enum Attr {
     StrictlyPositive,
     // export function's require/ensure as global forall
     BroadcastForall,
+    // accept the trigger chosen by triggers_auto without printing any diagnostics
+    AutoTrigger,
+    // exclude a particular function from being chosen in a trigger by triggers_auto
+    NoAutoTrigger,
     // when used in a spec context, promote to spec by inserting .view()
     Autoview,
     // add manual trigger to expression inside quantifier
@@ -165,6 +169,7 @@ pub(crate) fn parse_attrs(attrs: &[Attribute]) -> Result<Vec<Attr>, VirErr> {
                 }
                 v.push(Attr::Trigger(Some(groups)));
             }
+            AttrTree::Fun(_, name, None) if name == "auto_trigger" => v.push(Attr::AutoTrigger),
             AttrTree::Fun(span, name, args) if name == "verifier" => match &args {
                 Some(box [AttrTree::Fun(_, arg, None)]) if arg == "external_body" => {
                     v.push(Attr::ExternalBody)
@@ -187,6 +192,9 @@ pub(crate) fn parse_attrs(attrs: &[Attribute]) -> Result<Vec<Attr>, VirErr> {
                 }
                 Some(box [AttrTree::Fun(_, arg, None)]) if arg == "broadcast_forall" => {
                     v.push(Attr::BroadcastForall)
+                }
+                Some(box [AttrTree::Fun(_, arg, None)]) if arg == "no_auto_trigger" => {
+                    v.push(Attr::NoAutoTrigger)
                 }
                 Some(box [AttrTree::Fun(_, arg, None)]) if arg == "autoview" => {
                     v.push(Attr::Autoview)
@@ -266,13 +274,14 @@ pub(crate) fn get_ret_mode(function_mode: Mode, attrs: &[Attribute]) -> Mode {
     mode
 }
 
-pub(crate) fn get_trigger(attrs: &[Attribute]) -> Result<Vec<Option<u64>>, VirErr> {
-    let mut groups: Vec<Option<u64>> = Vec::new();
+pub(crate) fn get_trigger(attrs: &[Attribute]) -> Result<Vec<TriggerAnnotation>, VirErr> {
+    let mut groups: Vec<TriggerAnnotation> = Vec::new();
     for attr in parse_attrs(attrs)? {
         match attr {
-            Attr::Trigger(None) => groups.push(None),
+            Attr::AutoTrigger => groups.push(TriggerAnnotation::AutoTrigger),
+            Attr::Trigger(None) => groups.push(TriggerAnnotation::Trigger(None)),
             Attr::Trigger(Some(group_ids)) => {
-                groups.extend(group_ids.into_iter().map(|id| Some(id)));
+                groups.extend(group_ids.into_iter().map(|id| TriggerAnnotation::Trigger(Some(id))));
             }
             _ => {}
         }
@@ -302,6 +311,7 @@ pub(crate) struct VerifierAttrs {
     pub(crate) strictly_positive: bool,
     pub(crate) maybe_negative: bool,
     pub(crate) broadcast_forall: bool,
+    pub(crate) no_auto_trigger: bool,
     pub(crate) autoview: bool,
     pub(crate) custom_req_err: Option<String>,
     pub(crate) bit_vector: bool,
@@ -320,6 +330,7 @@ pub(crate) fn get_verifier_attrs(attrs: &[Attribute]) -> Result<VerifierAttrs, V
         maybe_negative: false,
         strictly_positive: false,
         broadcast_forall: false,
+        no_auto_trigger: false,
         autoview: false,
         custom_req_err: None,
         bit_vector: false,
@@ -337,6 +348,7 @@ pub(crate) fn get_verifier_attrs(attrs: &[Attribute]) -> Result<VerifierAttrs, V
             Attr::MaybeNegative => vs.maybe_negative = true,
             Attr::StrictlyPositive => vs.strictly_positive = true,
             Attr::BroadcastForall => vs.broadcast_forall = true,
+            Attr::NoAutoTrigger => vs.no_auto_trigger = true,
             Attr::Autoview => vs.autoview = true,
             Attr::CustomReqErr(s) => vs.custom_req_err = Some(s.clone()),
             Attr::BitVector => vs.bit_vector = true,

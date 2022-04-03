@@ -3,12 +3,13 @@ use getopts::Options;
 #[derive(Debug, Clone, Copy)]
 pub enum ShowTriggers {
     Silent,
+    Selective,
     Module,
     Verbose,
 }
 impl Default for ShowTriggers {
     fn default() -> Self {
-        ShowTriggers::Silent
+        ShowTriggers::Selective
     }
 }
 
@@ -65,6 +66,7 @@ pub fn parse_args(program: &String, args: impl Iterator<Item = String>) -> (Args
     const OPT_LOG_SMT: &str = "log-smt";
     const OPT_LOG_TRIGGERS: &str = "log-triggers";
     const OPT_TRIGGERS_SILENT: &str = "triggers-silent";
+    const OPT_TRIGGERS_SELECTIVE: &str = "triggers-selective";
     const OPT_TRIGGERS: &str = "triggers";
     const OPT_TRIGGERS_VERBOSE: &str = "triggers-verbose";
     const OPT_PRINT_ERASED: &str = "print-erased";
@@ -101,7 +103,8 @@ pub fn parse_args(program: &String, args: impl Iterator<Item = String>) -> (Args
     opts.optopt("", OPT_LOG_AIR_FINAL, "Log AIR queries in final form", "FILENAME");
     opts.optopt("", OPT_LOG_SMT, "Log SMT queries", "FILENAME");
     opts.optopt("", OPT_LOG_TRIGGERS, "Log automatically chosen triggers", "FILENAME");
-    opts.optflag("", OPT_TRIGGERS_SILENT, "Do not show automatically chosen triggers (default)");
+    opts.optflag("", OPT_TRIGGERS_SILENT, "Do not show automatically chosen triggers");
+    opts.optflag("", OPT_TRIGGERS_SELECTIVE, "Show automatically chosen triggers for some potentially ambiguous cases in verified modules (this is the default behavior)");
     opts.optflag("", OPT_TRIGGERS, "Show all automatically chosen triggers for verified modules");
     opts.optflag("", OPT_TRIGGERS_VERBOSE, "Show all automatically chosen triggers for verified modules and imported definitions from other modules");
     opts.optflag("", OPT_PRINT_ERASED, "Print code after erasing spec/proof (requires --compile)");
@@ -177,6 +180,8 @@ pub fn parse_args(program: &String, args: impl Iterator<Item = String>) -> (Args
             ShowTriggers::Verbose
         } else if matches.opt_present(OPT_TRIGGERS) {
             ShowTriggers::Module
+        } else if matches.opt_present(OPT_TRIGGERS_SELECTIVE) {
+            ShowTriggers::Selective
         } else if matches.opt_present(OPT_TRIGGERS_SILENT) {
             ShowTriggers::Silent
         } else {

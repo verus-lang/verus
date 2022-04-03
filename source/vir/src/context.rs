@@ -20,6 +20,7 @@ pub struct ChosenTriggers {
     pub module: Path,
     pub span: Span,
     pub triggers: Vec<ChosenTrigger>,
+    pub low_confidence: bool,
 }
 
 // Context for across all modules

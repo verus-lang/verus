@@ -452,6 +452,9 @@ struct State {
     remaining_vars: HashSet<Ident>,
     accumulated_terms: HashMap<Term, Span>,
     best_so_far: Vec<Trigger>,
+    // If we relied on Score to break a tie, we consider this a low-confidence trigger
+    // and we emit a report to the user.
+    low_confidence: bool,
 }
 
 fn trigger_score(ctxt: &Ctxt, trigger: &Trigger) -> Score {
@@ -477,12 +480,15 @@ fn compute_triggers(ctxt: &Ctxt, state: &mut State, timer: &mut Timer) -> Result
             // If we're better than what came before, drop what came before
             if state.best_so_far[0].len() > trigger.len() {
                 state.best_so_far.clear();
+                state.low_confidence = false;
             } else {
                 let prev_score = trigger_score(ctxt, &state.best_so_far[0]).lex();
                 let new_score = trigger_score(ctxt, &trigger).lex();
                 if prev_score > new_score {
+                    state.low_confidence = true;
                     state.best_so_far.clear();
                 } else if prev_score < new_score {
+                    state.low_confidence = true;
                     // If we're worse, return
                     return Ok(());
                 }
@@ -527,6 +533,7 @@ pub(crate) fn build_triggers(
     span: &Span,
     vars: &Vec<Ident>,
     exp: &Exp,
+    auto_trigger: bool,
 ) -> Result<Trigs, VirErr> {
     let mut ctxt = Ctxt {
         trigger_vars: vars.iter().cloned().collect(),
@@ -573,6 +580,7 @@ pub(crate) fn build_triggers(
         remaining_vars: ctxt.trigger_vars.iter().cloned().collect(),
         accumulated_terms: HashMap::new(),
         best_so_far: Vec::new(),
+        low_confidence: false,
     };
     compute_triggers(&ctxt, &mut state, &mut timer)?;
 
@@ -593,8 +601,12 @@ pub(crate) fn build_triggers(
     let found_triggers: Vec<Vec<(Span, String)>> = vec_map(&state.best_so_far, |trig| {
         vec_map(&trig, |(term, span)| (span.clone(), format!("{:?}", term)))
     });
-    let module = ctx.module_for_chosen_triggers.clone().unwrap_or(ctx.module.clone());
-    let chosen_triggers = ChosenTriggers { module, span: span.clone(), triggers: found_triggers };
+    let chosen_triggers = ChosenTriggers {
+        module: ctx.module_for_chosen_triggers.clone().unwrap_or(ctx.module.clone()),
+        span: span.clone(),
+        triggers: found_triggers,
+        low_confidence: state.low_confidence && !auto_trigger,
+    };
     chosen_triggers_vec.push(chosen_triggers);
     //println!();
     if state.best_so_far.len() >= 1 {

@@ -93,6 +93,19 @@ pub enum TypX {
     Air(air::ast::Typ),
 }
 
+#[derive(Copy, Clone, Debug)]
+pub enum TriggerAnnotation {
+    /// Automatically choose triggers for the expression containing this annotation,
+    /// with no diagnostics printed
+    AutoTrigger,
+    /// Each trigger group is named by either Some integer, or the unnamed group None.
+    /// (None is just another name; it is no different from an integer-named group.)
+    /// Example: #[trigger] expr is translated into Trigger(None) applied to expr
+    /// Example: #[trigger(1, 2, 3)] expr is translated into three Trigger ops wrapped around expr
+    ///   (Trigger(Some(1)), Trigger(Some(2)), Trigger(Some(3)))
+    Trigger(Option<u64>),
+}
+
 /// Primitive unary operations
 /// (not arbitrary user-defined functions -- these are represented by ExprX::Call)
 #[derive(Copy, Clone, Debug)]
@@ -103,12 +116,7 @@ pub enum UnaryOp {
     BitNot,
     /// Mark an expression as a member of an SMT quantifier trigger group.
     /// Each trigger group becomes one SMT trigger containing all the expressions in the trigger group.
-    /// Each group is named by either Some integer, or the unnamed group None.
-    /// (None is just another name; it is no different from an integer-named group.)
-    /// Example: #[trigger] expr is translated into Trigger(None) applied to expr
-    /// Example: #[trigger(1, 2, 3)] expr is translated into three Trigger ops wrapped around expr
-    ///   (Trigger(Some(1)), Trigger(Some(2)), Trigger(Some(3)))
-    Trigger(Option<u64>),
+    Trigger(TriggerAnnotation),
     /// Force integer value into range given by IntRange (e.g. by using mod)
     Clip(IntRange),
 }

@@ -1,4 +1,4 @@
-use crate::ast::{BinaryOp, Ident, Typ, TypX, UnaryOp, UnaryOpr, VarAt, VirErr};
+use crate::ast::{BinaryOp, Ident, TriggerAnnotation, Typ, TypX, UnaryOp, UnaryOpr, VarAt, VirErr};
 use crate::ast_util::{err_str, err_string};
 use crate::context::Ctx;
 use crate::sst::{BndX, Exp, ExpX, Trig, Trigs};
@@ -9,6 +9,8 @@ use std::sync::Arc;
 
 // Manual triggers
 struct State {
+    // use results from triggers_auto, no questions asked
+    auto_trigger: bool,
     // variables the triggers must cover
     trigger_vars: HashSet<Ident>,
     // user-specified triggers (for sortedness stability, use BTreeMap rather than HashMap)
@@ -114,7 +116,13 @@ fn get_manual_triggers(state: &mut State, exp: &Exp) -> Result<(), VirErr> {
     crate::sst_visitor::exp_visitor_check(exp, &mut map, &mut |exp, map| {
         // this closure mutates `state`
         match &exp.x {
-            ExpX::Unary(UnaryOp::Trigger(group), e1) => {
+            ExpX::Unary(UnaryOp::Trigger(TriggerAnnotation::AutoTrigger), _) => {
+                if map.num_scopes() == 1 {
+                    state.auto_trigger = true;
+                }
+                Ok(())
+            }
+            ExpX::Unary(UnaryOp::Trigger(TriggerAnnotation::Trigger(group)), e1) => {
                 let mut free_vars: HashSet<Ident> = HashSet::new();
                 let e1 = remove_boxing(&e1);
                 check_trigger_expr(&e1, &mut free_vars)?;
@@ -189,12 +197,19 @@ pub(crate) fn build_triggers(
     exp: &Exp,
 ) -> Result<Trigs, VirErr> {
     let mut state = State {
+        auto_trigger: false,
         trigger_vars: vars.iter().cloned().collect(),
         triggers: BTreeMap::new(),
         coverage: HashMap::new(),
     };
     get_manual_triggers(&mut state, exp)?;
     if state.triggers.len() > 0 {
+        if state.auto_trigger {
+            return err_str(
+                span,
+                "cannot use both manual triggers (#[trigger] or with_triggers) and #[auto_trigger]",
+            );
+        }
         let mut trigs: Vec<Trig> = Vec::new();
         for (group, trig) in state.triggers {
             for x in vars {
@@ -213,6 +228,6 @@ pub(crate) fn build_triggers(
         }
         Ok(Arc::new(trigs))
     } else {
-        crate::triggers_auto::build_triggers(ctx, span, vars, exp)
+        crate::triggers_auto::build_triggers(ctx, span, vars, exp, state.auto_trigger)
     }
 }

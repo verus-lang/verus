@@ -509,6 +509,7 @@ impl Verifier {
             air_context.pop();
         }
 
+        // Log/display triggers
         if let Some(filename) = &self.args.log_triggers {
             let mut file =
                 File::create(filename).expect(&format!("could not open file {}", filename));
@@ -519,16 +520,39 @@ impl Verifier {
             }
         }
         let chosen_triggers = global_ctx.get_chosen_triggers();
+        let mut low_confidence_triggers = None;
         for chosen in chosen_triggers {
-            match self.args.show_triggers {
-                ShowTriggers::Module if verified_modules.contains(&chosen.module) => {
+            match (self.args.show_triggers, verified_modules.contains(&chosen.module)) {
+                (ShowTriggers::Selective, true) if chosen.low_confidence => {
+                    report_chosen_triggers(compiler, &chosen);
+                    low_confidence_triggers = Some(chosen.span);
+                }
+                (ShowTriggers::Module, true) => {
                     report_chosen_triggers(compiler, &chosen);
                 }
-                ShowTriggers::Verbose => {
+                (ShowTriggers::Verbose, _) => {
                     report_chosen_triggers(compiler, &chosen);
                 }
                 _ => {}
             }
+        }
+        if let Some(span) = low_confidence_triggers {
+            let span = from_raw_span(&span.raw_span);
+            let msg = "Verus printed one or more automatically chosen quantifier triggers\n\
+                because it had low confidence in the chosen triggers.\n\
+                To suppress these messages, do one of the following:\n  \
+                (1) manually annotate a single desired trigger using #[trigger]\n      \
+                (example: forall(|i: int, j: int| f(i) && #[trigger] g(i) && #[trigger] h(j))),\n  \
+                (2) manually annotate multiple desired triggers using with_triggers\n      \
+                (example: forall(|i: int| with_triggers!([f(i)], [g(i)] => f(i) && g(i)))),\n  \
+                (3) accept the automatically chosen trigger using #[auto_trigger]\n      \
+                (example: forall(|i: int, j: int| #[auto_triggers] f(i) && g(i) && h(j)))\n  \
+                (4) use the --triggers-silent command-line option to suppress all printing of triggers.\n\
+                (Note: triggers are used by the underlying SMT theorem prover to instantiate quantifiers;\n\
+                the theorem prover instantiates a quantifier whenever some expression matches the\n\
+                pattern specified by one of the quantifier's triggers.)\
+                ";
+            compiler.session().parse_sess.span_diagnostic.span_note_without_error(span, &msg);
         }
 
         let (time_smt_init, time_smt_run) = air_context.get_time();
