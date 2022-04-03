@@ -97,6 +97,7 @@ fn check_trigger_expr(exp: &Exp, free_vars: &mut HashSet<Ident>) -> Result<(), V
                 }
             }
             ExpX::If(_, _, _) => err_str(&exp.span, "triggers cannot contain if/else"),
+            ExpX::WithTriggers(..) => err_str(&exp.span, "triggers cannot contain with_triggers"),
             ExpX::Bind(_, _) => {
                 err_str(&exp.span, "triggers cannot contain let/forall/exists/lambda/choose")
             }
@@ -132,6 +133,27 @@ fn get_manual_triggers(state: &mut State, exp: &Exp) -> Result<(), VirErr> {
                 for x in &free_vars {
                     if state.trigger_vars.contains(x) {
                         state.coverage.get_mut(group).unwrap().insert(x.clone());
+                    }
+                }
+                Ok(())
+            }
+            ExpX::WithTriggers(triggers, _body) => {
+                if map.num_scopes() == 1 {
+                    for (n, trigger) in triggers.iter().enumerate() {
+                        let group = Some(n as u64);
+                        let mut coverage: HashSet<Ident> = HashSet::new();
+                        let es: Vec<Exp> = trigger.iter().map(remove_boxing).collect();
+                        for e in &es {
+                            let mut free_vars: HashSet<Ident> = HashSet::new();
+                            check_trigger_expr(e, &mut free_vars)?;
+                            for x in free_vars {
+                                if state.trigger_vars.contains(&x) {
+                                    coverage.insert(x);
+                                }
+                            }
+                        }
+                        state.triggers.insert(group, es);
+                        state.coverage.insert(group, coverage);
                     }
                 }
                 Ok(())

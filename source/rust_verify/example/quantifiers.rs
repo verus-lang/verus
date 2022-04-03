@@ -85,22 +85,21 @@ fn test_manual() {
     assert(forall(|i: int, j: int| f1(i, j) >>= f1(#[trigger] g1(i), #[trigger] g2(j))));
 
     //
-    // For multiple triggers, use #[trigger(...)], where the triggers are numbered 1, 2, ...
+    // For multiple triggers, use
+    //   with_triggers!([...trigger 1 terms...], ..., [...trigger n terms...] => body)
     //
 
     // :pattern ((g1. i@) (g2. j@))
     // :pattern ((f1. i@ j@))
-    assert(forall(|i: int, j: int|
-        #[trigger(1)] f1(i, j) >>=
-        f1(#[trigger(2)] g1(i), #[trigger(2)] g2(j))
-    ));
+    assert(forall(|i: int, j: int| with_triggers!([g1(i), g2(j)], [f1(i, j)] =>
+        f1(i, j) >>= f1(g1(i), g2(j))
+    )));
 
     // :pattern ((g1. i@) (g2. j@))
     // :pattern ((f1. i@ j@) (g1. i@))
-    assert(forall(|i: int, j: int|
-        #[trigger(1)] f1(i, j) >>=
-        f1(#[trigger(1, 2)] g1(i), #[trigger(2)] g2(j))
-    ));
+    assert(forall(|i: int, j: int| with_triggers!([g1(i), g2(j)], [f1(i, j), g1(i)] =>
+        f1(i, j) >>= f1(g1(i), g2(j))
+    )));
 }
 
 #[spec]

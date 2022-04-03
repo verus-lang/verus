@@ -898,6 +898,16 @@ fn expr_to_stm_opt(
                 Spanned::new(body.span.clone(), BndX::Choose(params.clone(), trigs, cond_exp));
             Ok((vec![], ReturnValue::Some(mk_exp(ExpX::Bind(bnd, body_exp)))))
         }
+        ExprX::WithTriggers { triggers, body } => {
+            let mut trigs: Vec<crate::sst::Trig> = Vec::new();
+            for trigger in triggers.iter() {
+                let t = vec_map_result(&**trigger, |e| expr_to_pure_exp(ctx, state, e))?;
+                trigs.push(Arc::new(t));
+            }
+            let trigs = Arc::new(trigs);
+            let body_exp = expr_to_pure_exp(ctx, state, body)?;
+            Ok((vec![], ReturnValue::Some(mk_exp(ExpX::WithTriggers(trigs, body_exp)))))
+        }
         ExprX::Fuel(x, fuel) => {
             let stm = Spanned::new(expr.span.clone(), StmX::Fuel(x.clone(), *fuel));
             Ok((vec![stm], ReturnValue::ImplicitUnit(expr.span.clone())))

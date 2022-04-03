@@ -391,6 +391,14 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
             state.types.pop_scope();
             mk_expr_typ(&body.clone().typ, ExprX::Choose { params: Arc::new(bs), cond, body })
         }
+        ExprX::WithTriggers { triggers, body } => {
+            let triggers = triggers
+                .iter()
+                .map(|es| Arc::new(es.iter().map(|e| poly_expr(ctx, state, e)).collect()));
+            let triggers = Arc::new(triggers.collect());
+            let body = poly_expr(ctx, state, body);
+            mk_expr(ExprX::WithTriggers { triggers, body })
+        }
         ExprX::Assign { init_not_mut, lhs: e1, rhs: e2 } => {
             let e1 = poly_expr(ctx, state, e1);
             let e2 = if typ_is_poly(ctx, &e1.typ) {

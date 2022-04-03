@@ -270,6 +270,10 @@ fn expr_to_node(expr: &Expr) -> Node {
         ExprX::Choose { params, cond, body } => {
             nodes!(choose {binders_node(params, &typ_to_node)} {expr_to_node(cond)} {expr_to_node(body)})
         }
+        ExprX::WithTriggers { triggers, body } => {
+            let ts = Node::List(triggers.iter().map(exprs_to_node).collect());
+            nodes!(with_triggers {ts} {expr_to_node(body)})
+        }
         ExprX::Assign { init_not_mut, lhs: e0, rhs: e1 } => {
             let mut nodes = nodes_vec!(assign);
             if *init_not_mut {

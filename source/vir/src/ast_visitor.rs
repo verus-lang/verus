@@ -230,6 +230,14 @@ where
                     expr_visitor_control_flow!(expr_visitor_dfs(body, map, mf));
                     map.pop_scope();
                 }
+                ExprX::WithTriggers { triggers, body } => {
+                    for trigger in triggers.iter() {
+                        for term in trigger.iter() {
+                            expr_visitor_control_flow!(expr_visitor_dfs(term, map, mf));
+                        }
+                    }
+                    expr_visitor_control_flow!(expr_visitor_dfs(body, map, mf));
+                }
                 ExprX::Assign { init_not_mut: _, lhs: e1, rhs: e2 } => {
                     expr_visitor_control_flow!(expr_visitor_dfs(e1, map, mf));
                     expr_visitor_control_flow!(expr_visitor_dfs(e2, map, mf));
@@ -505,6 +513,17 @@ where
             let body = map_expr_visitor_env(body, map, env, fe, fs, ft)?;
             map.pop_scope();
             ExprX::Choose { params: Arc::new(params), cond, body }
+        }
+        ExprX::WithTriggers { triggers, body } => {
+            let mut trigs: Vec<crate::ast::Exprs> = Vec::new();
+            for trigger in triggers.iter() {
+                let terms =
+                    vec_map_result(&**trigger, |e| map_expr_visitor_env(e, map, env, fe, fs, ft))?;
+                trigs.push(Arc::new(terms));
+            }
+            let triggers = Arc::new(trigs);
+            let body = map_expr_visitor_env(body, map, env, fe, fs, ft)?;
+            ExprX::WithTriggers { triggers, body }
         }
         ExprX::Assign { init_not_mut, lhs: e1, rhs: e2 } => {
             let expr1 = map_expr_visitor_env(e1, map, env, fe, fs, ft)?;

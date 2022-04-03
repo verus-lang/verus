@@ -646,6 +646,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: ExprCtxt) -> Expr {
             &exp_to_expr(ctx, e2, expr_ctxt),
             &exp_to_expr(ctx, e3, expr_ctxt),
         ),
+        ExpX::WithTriggers(_triggers, body) => exp_to_expr(ctx, body, expr_ctxt),
         ExpX::Bind(bnd, exp) => match &bnd.x {
             BndX::Let(binders) => {
                 let expr = exp_to_expr(ctx, exp, expr_ctxt);

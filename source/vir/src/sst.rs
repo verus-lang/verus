@@ -49,6 +49,7 @@ pub enum ExpX {
     UnaryOpr(UnaryOpr, Exp),
     Binary(BinaryOp, Exp, Exp),
     If(Exp, Exp, Exp),
+    WithTriggers(Trigs, Exp),
     Bind(Bnd, Exp),
 }
 

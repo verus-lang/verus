@@ -390,6 +390,7 @@ fn fn_call_to_vir<'tcx>(
     let is_exists = f_name == "builtin::exists";
     let is_choose = f_name == "builtin::choose";
     let is_choose_tuple = f_name == "builtin::choose_tuple";
+    let is_with_triggers = f_name == "builtin::with_triggers";
     let is_equal = f_name == "builtin::equal";
     let is_hide = f_name == "builtin::hide";
     let is_extra_dependency = f_name == "builtin::extra_dependency";
@@ -473,6 +474,7 @@ fn fn_call_to_vir<'tcx>(
             || is_directive
             || is_choose
             || is_choose_tuple
+            || is_with_triggers
             || is_assert_by
             || is_assert_forall_by
             || is_assert_bit_vector
@@ -549,6 +551,26 @@ fn fn_call_to_vir<'tcx>(
     if is_choose_tuple {
         unsupported_err_unless!(len == 1, expr.span, "expected choose", &args);
         return extract_choose(bctx, expr.span, args[0], true, expr_typ());
+    }
+    if is_with_triggers {
+        unsupported_err_unless!(len == 2, expr.span, "expected with_triggers", &args);
+        let modifier = ExprModifier::REGULAR;
+        let triggers_tuples = expr_to_vir(bctx, args[0], modifier)?;
+        let body = expr_to_vir(bctx, args[1], modifier)?;
+        let mut trigs: Vec<vir::ast::Exprs> = Vec::new();
+        if let ExprX::Tuple(triggers) = &triggers_tuples.x {
+            for trigger_tuple in triggers.iter() {
+                if let ExprX::Tuple(terms) = &trigger_tuple.x {
+                    trigs.push(terms.clone());
+                } else {
+                    return err_span_str(expr.span, "expected tuple arguments to with_triggers");
+                }
+            }
+        } else {
+            return err_span_str(expr.span, "expected tuple arguments to with_triggers");
+        }
+        let triggers = Arc::new(trigs);
+        return Ok(mk_expr(ExprX::WithTriggers { triggers, body }));
     }
     if is_old {
         if let ExprKind::Path(QPath::Resolved(None, rustc_hir::Path { res: Res::Local(id), .. })) =

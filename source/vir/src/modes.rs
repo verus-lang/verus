@@ -468,6 +468,15 @@ fn check_expr(
             typing.vars.pop_scope();
             Ok(Mode::Spec)
         }
+        ExprX::WithTriggers { triggers, body } => {
+            for trigger in triggers.iter() {
+                for term in trigger.iter() {
+                    check_expr_has_mode(typing, Mode::Spec, term, Mode::Spec)?;
+                }
+            }
+            check_expr_has_mode(typing, Mode::Spec, body, Mode::Spec)?;
+            Ok(Mode::Spec)
+        }
         ExprX::Assign { init_not_mut, lhs, rhs } => {
             if typing.in_forall_stmt {
                 return err_str(&expr.span, "assignment is not allowed in forall statements");

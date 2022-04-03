@@ -214,6 +214,7 @@ fn terminates(ctxt: &Ctxt, exp: &Exp) -> Result<Exp, VirErr> {
             let e_if = bool_exp(ExpX::If(e1.clone(), t_e2, t_e3));
             Ok(bool_exp(ExpX::Binary(BinaryOp::And, t_e1, e_if)))
         }
+        ExpX::WithTriggers(_triggers, body) => terminates(ctxt, body),
         ExpX::Bind(bnd, e1) => {
             let t_e1 = terminates(ctxt, e1)?;
             match &bnd.x {

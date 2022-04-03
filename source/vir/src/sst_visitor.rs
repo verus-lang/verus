@@ -1,7 +1,7 @@
 use crate::ast::{Ident, SpannedTyped, VirErr};
 use crate::def::Spanned;
 use crate::sst::{BndX, Dest, Exp, ExpX, Stm, StmX, Trig, Trigs, UniqueIdent};
-use crate::util::vec_map;
+use crate::util::{vec_map, vec_map_result};
 use crate::visitor::expr_visitor_control_flow;
 pub(crate) use crate::visitor::VisitorControlFlow;
 use air::ast::{Binder, BinderX};
@@ -80,6 +80,14 @@ where
                     expr_visitor_control_flow!(exp_visitor_dfs(e1, map, f));
                     expr_visitor_control_flow!(exp_visitor_dfs(e2, map, f));
                     expr_visitor_control_flow!(exp_visitor_dfs(e3, map, f));
+                }
+                ExpX::WithTriggers(triggers, body) => {
+                    for trigger in triggers.iter() {
+                        for term in trigger.iter() {
+                            expr_visitor_control_flow!(exp_visitor_dfs(term, map, f));
+                        }
+                    }
+                    expr_visitor_control_flow!(exp_visitor_dfs(body, map, f));
                 }
                 ExpX::Bind(bnd, e1) => {
                     let mut bvars: Vec<(Ident, bool)> = Vec::new();
@@ -298,6 +306,16 @@ where
             let expr2 = map_exp_visitor_bind(e2, map, f)?;
             let expr3 = map_exp_visitor_bind(e3, map, f)?;
             let exp = exp_new(ExpX::If(expr1, expr2, expr3));
+            f(&exp, map)
+        }
+        ExpX::WithTriggers(triggers, body) => {
+            let mut trigs: Vec<Trig> = Vec::new();
+            for trigger in triggers.iter() {
+                let ts = vec_map_result(&**trigger, |e| map_exp_visitor_bind(e, map, f))?;
+                trigs.push(Arc::new(ts));
+            }
+            let body = map_exp_visitor_bind(body, map, f)?;
+            let exp = exp_new(ExpX::WithTriggers(Arc::new(trigs), body));
             f(&exp, map)
         }
         ExpX::Bind(bnd, e1) => {

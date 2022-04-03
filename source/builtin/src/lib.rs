@@ -109,6 +109,25 @@ pub fn choose_tuple<A, F>(_f: F) -> A {
     unimplemented!()
 }
 
+// used by with_triggers! macro
+// example: forall with three triggers [f(x), g(y)], [h(x, y)], [m(y, x)]:
+//   forall( |x: int, y: int| with_triggers(  ( (f(x), g(y)), (h(x, y),), (m(y, x),) )  ,  body  ) )
+#[spec]
+pub fn with_triggers<A, B>(_triggers_tuples: A, body: B) -> B {
+    body
+}
+
+// example: forall with three triggers [f(x), g(y)], [h(x, y)], [m(y, x)]:
+//   forall(|x: int, y: int| with_triggers!([f(x), g(y)], [h(x, y)], [m(y, x)] => body))
+#[macro_export]
+macro_rules! with_triggers {
+    ( $([ $($term:expr),* ]),* => $body:expr) => {
+        {
+            with_triggers(( $( ( $( $term, )* ), )* ), $body)
+        }
+    }
+}
+
 #[spec]
 pub fn equal<A>(_: A, _: A) -> bool {
     unimplemented!();

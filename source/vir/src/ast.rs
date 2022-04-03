@@ -336,6 +336,8 @@ pub enum ExprX {
     Closure(Binders<Typ>, Expr),
     /// Choose specification values satisfying a condition, compute body
     Choose { params: Binders<Typ>, cond: Expr, body: Expr },
+    /// Manually supply triggers for body of quantifier
+    WithTriggers { triggers: Arc<Vec<Exprs>>, body: Expr },
     /// Assign to local variable
     Assign { init_not_mut: bool, lhs: Expr, rhs: Expr },
     /// Reveal definition of an opaque function with some integer fuel amount
