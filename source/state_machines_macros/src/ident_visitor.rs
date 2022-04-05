@@ -1,8 +1,11 @@
-use crate::ast::{MonoidElt, SpecialOp, Transition, TransitionKind, TransitionStmt};
+use crate::ast::{
+    MonoidElt, SpecialOp, SplitKind, SubIdx, Transition, TransitionKind, TransitionStmt,
+};
+use crate::simplification::UPDATE_TMP_PREFIX;
 use crate::util::combine_errors_or_ok;
 use syn::spanned::Spanned;
 use syn::visit::Visit;
-use syn::{Error, Expr, ExprMacro, Ident};
+use syn::{Error, Expr, ExprMacro, Ident, Macro, Pat, PatIdent, Path, Type};
 
 /// Error if any identifiers conflict with reserved IDs used by macro expanion.
 ///
@@ -37,20 +40,51 @@ fn validate_idents_transition_stmt(
                 validate_idents_transition_stmt(t, kind)?;
             }
         }
-        TransitionStmt::Let(_, ident, _ty, _lk, e, child) => {
-            validate_ident(ident)?;
+        TransitionStmt::Let(_, pat, _ty, _lk, e, child) => {
+            validate_idents_pat(pat, kind)?;
             validate_idents_expr(e, kind)?;
             validate_idents_transition_stmt(child, kind)?;
         }
-        TransitionStmt::If(_, cond, thn, els) => {
-            validate_idents_expr(cond, kind)?;
-            validate_idents_transition_stmt(thn, kind)?;
-            validate_idents_transition_stmt(els, kind)?;
+        TransitionStmt::Split(_, split_kind, es) => {
+            match split_kind {
+                SplitKind::If(cond) => {
+                    validate_idents_expr(cond, kind)?;
+                }
+                SplitKind::Match(match_e, arms) => {
+                    validate_idents_expr(match_e, kind)?;
+                    for arm in arms {
+                        validate_idents_pat(&arm.pat, kind)?;
+                        match &arm.guard {
+                            Some((_, box guard_e)) => {
+                                validate_idents_expr(guard_e, kind)?;
+                            }
+                            None => {}
+                        }
+                    }
+                }
+            }
+            for e in es {
+                validate_idents_transition_stmt(e, kind)?;
+            }
         }
         TransitionStmt::Require(_, e) => {
             validate_idents_expr(e, kind)?;
         }
         TransitionStmt::Assert(_, e, _proof) => {
+            validate_idents_expr(e, kind)?;
+        }
+        TransitionStmt::SubUpdate(_, f, subs, e) => {
+            validate_ident(f)?;
+            for sub in subs {
+                match sub {
+                    SubIdx::Field(ident) => {
+                        validate_ident(ident)?;
+                    }
+                    SubIdx::Idx(e) => {
+                        validate_idents_expr(e, kind)?;
+                    }
+                }
+            }
             validate_idents_expr(e, kind)?;
         }
         TransitionStmt::Update(_, f, e) | TransitionStmt::Initialize(_, f, e) => {
@@ -84,6 +118,13 @@ fn validate_idents_op(op: &SpecialOp, kind: TransitionKind) -> syn::parse::Resul
 fn validate_idents_expr(e: &Expr, kind: TransitionKind) -> syn::parse::Result<()> {
     let mut idv = IdentVisitor::new(kind);
     idv.visit_expr(e);
+
+    combine_errors_or_ok(idv.errors)
+}
+
+fn validate_idents_pat(pat: &Pat, kind: TransitionKind) -> syn::parse::Result<()> {
+    let mut idv = IdentVisitor::new(kind);
+    idv.visit_pat(pat);
 
     combine_errors_or_ok(idv.errors)
 }
@@ -139,7 +180,7 @@ pub fn validate_ident(ident: &Ident) -> Result<(), Error> {
         }
     }
 
-    for prefix in vec!["token_", "original_field_", "update_tmp_"] {
+    for prefix in vec!["token_", "original_field_", UPDATE_TMP_PREFIX] {
         if ident.to_string().starts_with(prefix) {
             return Err(Error::new(
                 ident.span(),
@@ -151,4 +192,59 @@ pub fn validate_ident(ident: &Ident) -> Result<(), Error> {
     }
 
     Ok(())
+}
+
+/// Get all identifiers bound by the pattern
+
+pub fn pattern_get_bound_idents(pat: &Pat) -> Vec<Ident> {
+    let mut piv = PatIdentVisitor::new();
+    piv.visit_pat(pat);
+    piv.idents
+}
+
+struct PatIdentVisitor {
+    pub idents: Vec<Ident>,
+}
+
+impl PatIdentVisitor {
+    pub fn new() -> PatIdentVisitor {
+        PatIdentVisitor { idents: Vec::new() }
+    }
+}
+
+impl<'ast> Visit<'ast> for PatIdentVisitor {
+    fn visit_pat_ident(&mut self, node: &'ast PatIdent) {
+        let ident = node.ident.clone();
+        if !self.idents.contains(&ident) {
+            self.idents.push(ident);
+        }
+    }
+}
+
+/// Error if the type contains a `super::...` path.
+
+pub fn error_on_super_path(ty: &Type) -> syn::parse::Result<()> {
+    let mut sv = SuperVisitor { errors: Vec::new() };
+    sv.visit_type(ty);
+    combine_errors_or_ok(sv.errors)
+}
+
+struct SuperVisitor {
+    pub errors: Vec<Error>,
+}
+
+impl<'ast> Visit<'ast> for SuperVisitor {
+    fn visit_macro(&mut self, node: &'ast Macro) {
+        self.errors
+            .push(Error::new(node.span(), format!("state machine error: macro not allowed here")));
+    }
+
+    fn visit_path(&mut self, node: &'ast Path) {
+        if node.segments[0].ident.to_string() == "super" {
+            self.errors.push(Error::new(
+                node.span(),
+                format!("state machine error: `super::` path not allowed here"),
+            ));
+        }
+    }
 }

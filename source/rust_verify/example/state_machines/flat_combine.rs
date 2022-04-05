@@ -171,7 +171,7 @@ tokenized_state_machine!{
         }
 
         init!{
-            init(num_clients: nat) {
+            initialize(num_clients: nat) {
                 init num_clients = num_clients;
                 init clients = Map::new(
                     |i| 0 <= i && i < num_clients,
@@ -185,8 +185,8 @@ tokenized_state_machine!{
             }
         }
 
-        #[inductive(init)]
-        fn init_inductive(post: FlatCombiner, num_clients: nat) { }
+        #[inductive(initialize)]
+        fn init_inductive(post: Self, num_clients: nat) { }
 
         ///// Client transitions
 
@@ -210,8 +210,8 @@ tokenized_state_machine!{
         }
 
         #[inductive(client_send)]
-        fn client_send_inductive(pre: FlatCombiner,
-            post: FlatCombiner, j: nat, request: Request, cur_slot: bool)
+        fn client_send_inductive(pre: Self,
+            post: Self, j: nat, request: Request, cur_slot: bool)
         {
             assert(forall(|i| post.valid_idx(i) >>= pre.valid_idx(i)));
             assert(pre.valid_idx(j));
@@ -263,7 +263,7 @@ tokenized_state_machine!{
         }
 
         #[inductive(client_recv)]
-        fn client_recv_inductive(pre: FlatCombiner, post: FlatCombiner, j: nat, rid: int) {
+        fn client_recv_inductive(pre: Self, post: Self, j: nat, rid: int) {
             assert(forall(|i| post.valid_idx(i) >>= pre.valid_idx(i)));
             assert(pre.valid_idx(j));
             assert(forall(|i| post.client_waiting(i) >>= pre.client_waiting(i)));
@@ -301,7 +301,7 @@ tokenized_state_machine!{
         }
 
         #[inductive(combiner_recv)]
-        fn combiner_recv_inductive(pre: FlatCombiner, post: FlatCombiner) {
+        fn combiner_recv_inductive(pre: Self, post: Self) {
             let j = pre.combiner.get_Collecting_elems().len();
             assert(forall(|i| post.valid_idx(i) >>= pre.valid_idx(i)));
             assert(post.valid_idx(j));
@@ -332,7 +332,7 @@ tokenized_state_machine!{
         }
 
         #[inductive(combiner_skip)]
-        fn combiner_skip_inductive(pre: FlatCombiner, post: FlatCombiner) {
+        fn combiner_skip_inductive(pre: Self, post: Self) {
             let j = pre.combiner.get_Collecting_elems().len();
             assert(forall(|i| post.valid_idx(i) >>= pre.valid_idx(i)));
             assert(post.valid_idx(j));
@@ -384,7 +384,7 @@ tokenized_state_machine!{
         }
 
         #[inductive(combiner_send)]
-        fn combiner_send_inductive(pre: FlatCombiner, post: FlatCombiner, response: Response, cur_slot: bool) {
+        fn combiner_send_inductive(pre: Self, post: Self, response: Response, cur_slot: bool) {
             let j = pre.combiner.get_Responding_idx();
 
             assert(forall(|i| post.valid_idx(i) >>= pre.valid_idx(i)));
@@ -393,6 +393,10 @@ tokenized_state_machine!{
             assert(forall(|i| post.combiner_has(i) >>= pre.combiner_has(i)));
             assert(forall(|i| post.request_stored(i) >>= pre.request_stored(i)));
             assert(forall(|i| post.response_stored(i) && i != j >>= pre.response_stored(i)));
+
+            assert(pre.valid_idx(j));
+            assert(pre.combiner_has(j));
+            assert(pre.client_waiting(j));
 
             assert(!post.combiner_has(j));
         }
@@ -416,7 +420,7 @@ tokenized_state_machine!{
         }
 
         #[inductive(combiner_send_skip)]
-        fn combiner_send_skip_inductive(pre: FlatCombiner, post: FlatCombiner) {
+        fn combiner_send_skip_inductive(pre: Self, post: Self) {
             let j = pre.combiner.get_Responding_idx();
 
             assert(forall(|i| post.valid_idx(i) >>= pre.valid_idx(i)));
@@ -430,7 +434,7 @@ tokenized_state_machine!{
         }
 
         #[inductive(combiner_go_to_responding)]
-        fn combiner_go_to_responding_inductive(pre: FlatCombiner, post: FlatCombiner) {
+        fn combiner_go_to_responding_inductive(pre: Self, post: Self) {
             assert(forall(|i| post.valid_idx(i) == pre.valid_idx(i)));
             assert(forall(|i| post.client_waiting(i) == pre.client_waiting(i)));
             assert(forall(|i| post.combiner_has(i) == pre.combiner_has(i)));
@@ -447,7 +451,7 @@ tokenized_state_machine!{
         }
 
         #[inductive(combiner_go_to_collecting)]
-        fn combiner_go_to_collecting_inductive(pre: FlatCombiner, post: FlatCombiner) {
+        fn combiner_go_to_collecting_inductive(pre: Self, post: Self) {
             assert(forall(|i| post.valid_idx(i) == pre.valid_idx(i)));
             assert(forall(|i| post.client_waiting(i) == pre.client_waiting(i)));
             assert(forall(|i| post.combiner_has(i) == pre.combiner_has(i)));

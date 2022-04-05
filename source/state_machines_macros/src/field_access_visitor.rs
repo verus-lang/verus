@@ -12,7 +12,9 @@
 //! In order to ensure this transformation is done correctly, we need to:
 //!
 //!   * Make sure that reserved identifiers like `token_foo` are not shadowed in the expressions
-//!   * Disallow macros entirely, which could interfere in a number of ways
+//!   * Disallow macros entirely, which could interfere in a number of ways.
+//!     (Note: there seems to be an experimental API for expanding macros inside proc-macros,
+//!     which we could look into to possibly remove this restriction!)
 //!
 //! Both these things are done in ident_visitor.rs.
 //!
@@ -29,7 +31,9 @@
 //! to experiment with the current method for now, since generating all the conditions
 //! in the macro has a lot of advantages for usability.
 
-use crate::ast::{Field, LetKind, MonoidElt, MonoidStmtType, SpecialOp, TransitionStmt};
+use crate::ast::{
+    Field, LetKind, MonoidElt, MonoidStmtType, SpecialOp, SplitKind, SubIdx, TransitionStmt,
+};
 use proc_macro2::Span;
 use std::collections::{HashMap, HashSet};
 use syn::parse::Error;
@@ -125,7 +129,7 @@ fn get_field_by_ident<'a>(
 
 /// Applies the visitor `visit_field_accesses` to every Expr in the TransitionStmt.
 /// Here, the visitor function `f` takes a fourth argument: a bool that indicates
-/// if the given expression is from the initializer of a `#[birds_eye] let` statement
+/// if the given expression is from the initializer of a `birds_eye` let-statement
 /// (i.e., the bool is false for expressions in any non-birds-eye `let` statement,
 /// or in any other non-`let` statement).
 ///
@@ -150,7 +154,7 @@ pub fn visit_field_accesses_all_exprs<F>(
                 visit_field_accesses_all_exprs(child, f, errors, ident_to_field);
             }
         }
-        TransitionStmt::Let(_span, _id, _ty, lk, init_e, child) => {
+        TransitionStmt::Let(_span, _pat, _ty, lk, init_e, child) => {
             let is_birds_eye = *lk == LetKind::BirdsEye;
             visit_field_accesses(
                 init_e,
@@ -160,15 +164,41 @@ pub fn visit_field_accesses_all_exprs<F>(
             );
             visit_field_accesses_all_exprs(child, f, errors, ident_to_field);
         }
-        TransitionStmt::If(_span, cond_e, thn, els) => {
-            visit_field_accesses(
-                cond_e,
-                |errors, field, e| f(errors, field, e, false),
-                errors,
-                ident_to_field,
-            );
-            visit_field_accesses_all_exprs(thn, f, errors, ident_to_field);
-            visit_field_accesses_all_exprs(els, f, errors, ident_to_field);
+        TransitionStmt::Split(_span, split_kind, splits) => {
+            match split_kind {
+                SplitKind::If(cond_e) => {
+                    visit_field_accesses(
+                        cond_e,
+                        |errors, field, e| f(errors, field, e, false),
+                        errors,
+                        ident_to_field,
+                    );
+                }
+                SplitKind::Match(match_e, arms) => {
+                    visit_field_accesses(
+                        match_e,
+                        |errors, field, e| f(errors, field, e, false),
+                        errors,
+                        ident_to_field,
+                    );
+                    for arm in arms.iter_mut() {
+                        match &mut arm.guard {
+                            Some((_, box guard_e)) => {
+                                visit_field_accesses(
+                                    guard_e,
+                                    |errors, field, e| f(errors, field, e, false),
+                                    errors,
+                                    ident_to_field,
+                                );
+                            }
+                            None => {}
+                        }
+                    }
+                }
+            }
+            for split in splits {
+                visit_field_accesses_all_exprs(split, f, errors, ident_to_field);
+            }
         }
         TransitionStmt::Require(_, e)
         | TransitionStmt::Assert(_, e, _)
@@ -189,6 +219,27 @@ pub fn visit_field_accesses_all_exprs<F>(
                 errors,
                 ident_to_field,
             );
+        }
+        TransitionStmt::SubUpdate(_, _, subs, e) => {
+            visit_field_accesses(
+                e,
+                |errors, field, e| f(errors, field, e, false),
+                errors,
+                ident_to_field,
+            );
+            for sub in subs {
+                match sub {
+                    SubIdx::Field(_) => {}
+                    SubIdx::Idx(e) => {
+                        visit_field_accesses(
+                            e,
+                            |errors, field, e| f(errors, field, e, false),
+                            errors,
+                            ident_to_field,
+                        );
+                    }
+                }
+            }
         }
         TransitionStmt::Special(
             _,
@@ -225,8 +276,8 @@ pub fn visit_field_accesses_all_exprs<F>(
 }
 
 /// Returns two sets, the first consisting of all fields accessed by `pre.foo`
-/// in some expression OTHER than a `#[birds_eye] let` statement,
-/// and the second consiting of those accesses from a `#[birds_eye] let` statement.
+/// in some expression OTHER than a `birds_eye` let-statement,
+/// and the second consiting of those accesses from a `birds_eye let-statement.
 ///
 /// (Note: Even though `ts` is `&mut`, the argument isn't actually modified.
 /// The only reason it is marked `&mut` is because we need to call `visit_field_accesses`,

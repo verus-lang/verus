@@ -31,10 +31,10 @@ state_machine!(
         }
 
         #[inductive(initialize)]
-        fn initialize_inductive(post: X) { }
+        fn initialize_inductive(post: Self) { }
 
         #[inductive(add)]
-        fn add_inductive(pre: X, post: X, n: int) {
+        fn add_inductive(pre: Self, post: Self, n: int) {
         }
 
     }

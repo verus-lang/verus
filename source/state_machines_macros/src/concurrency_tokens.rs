@@ -6,19 +6,17 @@
 //!  * #[proof] methods for each transition (including init and readonly transitions)
 
 use crate::ast::{
-    Field, Lemma, LetKind, MonoidElt, MonoidStmtType, ShardableType, SpecialOp, Transition,
-    TransitionKind, TransitionStmt, SM,
+    Arm, Field, Lemma, LetKind, MonoidElt, MonoidStmtType, ShardableType, SpecialOp, SplitKind,
+    Transition, TransitionKind, TransitionStmt, SM,
 };
 use crate::field_access_visitor::{find_all_accesses, visit_field_accesses};
 use crate::parse_token_stream::SMBundle;
-use crate::to_relation::asserts_to_single_predicate;
+use crate::to_relation::{asserts_to_single_predicate, emit_match};
 use crate::to_token_stream::{
     get_self_ty, get_self_ty_turbofish, impl_decl_stream, name_with_type_args,
     name_with_type_args_turbofish, shardable_type_to_type,
 };
-use crate::token_transition_checks::{
-    check_ordering_remove_have_add, check_unsupported_updates_in_conditionals,
-};
+use crate::token_transition_checks::{check_ordering_remove_have_add, check_unsupported_updates};
 use crate::util::combine_errors_or_ok;
 use proc_macro2::Span;
 use proc_macro2::TokenStream;
@@ -27,34 +25,31 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use syn::parse::Error;
 use syn::spanned::Spanned;
-use syn::{Expr, Ident, Type};
+use syn::{Expr, Ident, Pat, Type};
 
 // Misc. definitions for various identifiers we use
-
-// TODO names like {name}_Instance kind of suck, {name}::Instance
-// would feel so much better, but this currently isn't possible unless {name}
-// is a module... still, there's probably something better we can do though
+// Note that everything is going to be inside a module, so for example,
+// the user will refer to the Instance type as `Name::Instance`.
 
 fn inst_type_name(sm_name: &Ident) -> Ident {
-    let name = sm_name.to_string() + "_Instance";
-    Ident::new(&name, sm_name.span())
+    Ident::new("Instance", sm_name.span())
 }
 
 fn inst_type(sm: &SM) -> Type {
     name_with_type_args(&inst_type_name(&sm.name), sm)
 }
 
-fn field_token_type_name(sm_name: &Ident, field: &Field) -> Ident {
-    let name = sm_name.to_string() + "_" + &field.name.to_string();
+fn field_token_type_name(field: &Field) -> Ident {
+    let name = &field.name.to_string();
     Ident::new(&name, field.name.span())
 }
 
 fn field_token_type(sm: &SM, field: &Field) -> Type {
-    name_with_type_args(&field_token_type_name(&sm.name, field), sm)
+    name_with_type_args(&field_token_type_name(field), sm)
 }
 
 fn field_token_type_turbofish(sm: &SM, field: &Field) -> Type {
-    name_with_type_args_turbofish(&field_token_type_name(&sm.name, field), sm)
+    name_with_type_args_turbofish(&field_token_type_name(field), sm)
 }
 
 fn field_token_field_name(field: &Field) -> Ident {
@@ -198,7 +193,7 @@ fn trusted_clone() -> TokenStream {
         #[verifier(returns(proof))]
         pub fn clone(#[proof] &self) -> Self {
             ensures(|s: Self| ::builtin::equal(*self, s));
-            unimplemented!();
+            ::std::unimplemented!();
         }
     };
 }
@@ -212,7 +207,7 @@ fn token_struct_stream(
     key_ty: Option<&Type>,
     value_ty: &Type,
 ) -> TokenStream {
-    let tokenname = field_token_type_name(&sm.name, field);
+    let tokenname = field_token_type_name(field);
     let insttype = inst_type(sm);
     let gen = &sm.generics;
 
@@ -464,7 +459,7 @@ pub fn exchange_stream(
 
     let mut tr = tr.clone();
 
-    check_unsupported_updates_in_conditionals(&tr.body)?;
+    check_unsupported_updates(&tr.body)?;
     check_ordering_remove_have_add(sm, &tr.body)?;
 
     // Potentially remove steps that won't be useful.
@@ -683,7 +678,7 @@ pub fn exchange_stream(
             // (At this point, the distinction doesn't matter.)
             //
             // First, we handle fields that have "nondeterminstic reads"
-            // which come from the #[birds_eye] let statements.
+            // which come from the `birds_eye` let-statements.
             // From the client's perspective, these values appear nondeterministically
             // when they make the call, so the client doesn't have to provide the
             // values, but rather, the exchange method provides them as outputs
@@ -906,7 +901,7 @@ pub fn exchange_stream(
             #req_stream
             #ens_stream
             #extra_deps
-            unimplemented!();
+            ::std::unimplemented!();
         }
     });
 }
@@ -1105,7 +1100,7 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
                     ::builtin::equal(token_map.dom(), m.dom())
                     && ::builtin::forall(|key: #key|
                         ::builtin::imply(
-                            token_map.dom().contains(key),
+                            #[trigger] token_map.dom().contains(key),
                             ::builtin::equal(token_map.index(key).instance, instance)
                                 && ::builtin::equal(token_map.index(key).key, key)
                                 && ::builtin::equal(token_map.index(key).value, m.index(key))
@@ -1143,7 +1138,7 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
                 #[verifier(publish)]
                 pub fn #fn_name(tokens: #multiset_token_ty, m: #multiset_normal_ty, instance: #inst_ty) -> bool {
                     ::builtin::forall(|x: #ty|
-                        tokens.count(
+                        #[trigger] tokens.count(
                             #constructor_name {
                                 instance: instance,
                                 #field_name: x,
@@ -1151,7 +1146,7 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
                     )
                     && ::builtin::forall(|t: #token_ty|
                         ::builtin::imply(
-                            tokens.count(t) > 0,
+                            #[trigger] tokens.count(t) > 0,
                             ::builtin::equal(t.instance, instance)
                         )
                     )
@@ -1314,13 +1309,14 @@ fn determine_outputs(ctxt: &mut Ctxt, ts: &TransitionStmt) -> syn::parse::Result
             }
             Ok(())
         }
-        TransitionStmt::Let(_span, _id, _ty, _lk, _init_e, child) => {
+        TransitionStmt::Let(_span, _pat, _ty, _lk, _init_e, child) => {
             determine_outputs(ctxt, child)?;
             Ok(())
         }
-        TransitionStmt::If(_span, _cond_e, e1, e2) => {
-            determine_outputs(ctxt, e1)?;
-            determine_outputs(ctxt, e2)?;
+        TransitionStmt::Split(_span, _split_kind, splits) => {
+            for split in splits {
+                determine_outputs(ctxt, split)?;
+            }
             Ok(())
         }
         TransitionStmt::Require(_span, _req_e) => Ok(()),
@@ -1328,6 +1324,9 @@ fn determine_outputs(ctxt: &mut Ctxt, ts: &TransitionStmt) -> syn::parse::Result
         TransitionStmt::Initialize(_span, id, _e) => {
             ctxt.fields_written.insert(id.to_string());
             Ok(())
+        }
+        TransitionStmt::SubUpdate(..) => {
+            panic!("sub-update not supported here");
         }
         TransitionStmt::Update(span, id, _e) => {
             let f = ctxt.get_field_or_panic(id);
@@ -1391,18 +1390,18 @@ fn translate_transition(
             }
             return Ok(());
         }
-        TransitionStmt::Let(_span, _id, _ty, lk, e, child) => {
+        TransitionStmt::Let(_span, _pat, _ty, lk, e, child) => {
             let birds_eye = *lk == LetKind::BirdsEye;
             let init_e = translate_expr(ctxt, e, birds_eye, errors);
             *e = init_e;
             translate_transition(ctxt, child, errors)?;
             return Ok(());
         }
-        TransitionStmt::If(_span, cond, e1, e2) => {
-            let cond_e = translate_expr(ctxt, cond, false, errors);
-            *cond = cond_e;
-            translate_transition(ctxt, e1, errors)?;
-            translate_transition(ctxt, e2, errors)?;
+        TransitionStmt::Split(_span, split_kind, splits) => {
+            translate_split_kind(ctxt, split_kind, errors);
+            for split in splits.iter_mut() {
+                translate_transition(ctxt, split, errors)?;
+            }
             return Ok(());
         }
         TransitionStmt::Require(_span, e) => {
@@ -1416,6 +1415,9 @@ fn translate_transition(
             return Ok(());
         }
 
+        TransitionStmt::SubUpdate(..) => {
+            panic!("sub-update not supported here");
+        }
         TransitionStmt::Initialize(_span, _id, e) | TransitionStmt::Update(_span, _id, e) => {
             let update_e = translate_expr(ctxt, e, false, errors);
             *e = update_e;
@@ -1563,6 +1565,25 @@ fn translate_transition(
     *ts = new_ts;
 
     Ok(())
+}
+
+fn translate_split_kind(ctxt: &mut Ctxt, sk: &mut SplitKind, errors: &mut Vec<Error>) {
+    match sk {
+        SplitKind::If(cond) => {
+            translate_expr(ctxt, cond, false, errors);
+        }
+        SplitKind::Match(match_e, arms) => {
+            translate_expr(ctxt, match_e, false, errors);
+            for arm in arms.iter_mut() {
+                match &mut arm.guard {
+                    None => {}
+                    Some((_, g)) => {
+                        translate_expr(ctxt, g, false, errors);
+                    }
+                }
+            }
+        }
+    }
 }
 
 fn field_token_collection_type(sm: &SM, field: &Field) -> Type {
@@ -1785,7 +1806,8 @@ fn get_new_field_value(field: &Field) -> Expr {
 enum PrequelElement {
     AssertCondition(Expr),
     Condition(Expr),
-    Let(Ident, Option<Type>, Expr),
+    Let(Pat, Option<Type>, Expr),
+    Match(Expr, Vec<Arm>, usize),
 }
 
 fn exchange_collect(
@@ -1802,9 +1824,9 @@ fn exchange_collect(
             }
             Ok(p)
         }
-        TransitionStmt::Let(_span, id, ty, _lk, init_e, child) => {
+        TransitionStmt::Let(_span, pat, ty, _lk, init_e, child) => {
             let mut p = prequel.clone();
-            p.push(PrequelElement::Let(id.clone(), ty.clone(), init_e.clone()));
+            p.push(PrequelElement::Let(pat.clone(), ty.clone(), init_e.clone()));
             let _ = exchange_collect(ctxt, child, p);
 
             let mut prequel = prequel;
@@ -1813,18 +1835,34 @@ fn exchange_collect(
             }
             Ok(prequel)
         }
-        TransitionStmt::If(_span, cond_e, e1, e2) => {
+        TransitionStmt::Split(_span, SplitKind::If(cond_e), es) => {
+            assert!(es.len() == 2);
+
             let cond = PrequelElement::Condition(cond_e.clone());
             let not_cond = PrequelElement::Condition(bool_not_expr(cond_e));
 
             let mut p1 = prequel.clone();
             p1.push(cond);
-            let _ = exchange_collect(ctxt, e1, p1)?;
+            let _ = exchange_collect(ctxt, &es[0], p1)?;
 
             let mut p2 = prequel.clone();
             p2.push(not_cond);
-            let _ = exchange_collect(ctxt, e2, p2)?;
+            let _ = exchange_collect(ctxt, &es[1], p2)?;
 
+            let mut prequel = prequel;
+            if let Some(e) = asserts_to_single_predicate(ts) {
+                prequel.push(PrequelElement::AssertCondition(Expr::Verbatim(e)));
+            }
+            Ok(prequel)
+        }
+        TransitionStmt::Split(_span, SplitKind::Match(match_e, arms), es) => {
+            assert!(arms.len() == es.len());
+            for i in 0..arms.len() {
+                let elem = PrequelElement::Match(match_e.clone(), arms.clone(), i);
+                let mut p1 = prequel.clone();
+                p1.push(elem);
+                let _ = exchange_collect(ctxt, &es[i], p1)?;
+            }
             let mut prequel = prequel;
             if let Some(e) = asserts_to_single_predicate(ts) {
                 prequel.push(PrequelElement::AssertCondition(Expr::Verbatim(e)));
@@ -1846,6 +1884,7 @@ fn exchange_collect(
             Ok(prequel)
         }
         TransitionStmt::Update(..) => Ok(prequel),
+        TransitionStmt::SubUpdate(..) => Ok(prequel),
         TransitionStmt::Initialize(..) => Ok(prequel),
 
         TransitionStmt::Special(..) => {
@@ -1862,14 +1901,29 @@ fn with_prequel(pre: &Vec<PrequelElement>, include_assert_conditions: bool, e: E
     let mut e = e;
     for p in pre.iter().rev() {
         match p {
-            PrequelElement::Let(id, None, init_e) => {
-                e = Expr::Verbatim(quote! { { let #id = #init_e; #e } });
+            PrequelElement::Let(pat, None, init_e) => {
+                e = Expr::Verbatim(quote! { { let #pat = #init_e; #e } });
             }
-            PrequelElement::Let(id, Some(ty), init_e) => {
-                e = Expr::Verbatim(quote! { { let #id: #ty = #init_e; #e } });
+            PrequelElement::Let(pat, Some(ty), init_e) => {
+                e = Expr::Verbatim(quote! { { let #pat: #ty = #init_e; #e } });
             }
             PrequelElement::Condition(cond_e) => {
                 e = Expr::Verbatim(quote! { ::builtin::imply(#cond_e, #e) });
+            }
+            PrequelElement::Match(match_e, arms, idx) => {
+                // Create something that looks like
+                // match m {
+                //    case1 => true,
+                //    case2 => e,
+                //    case3 => true,
+                //    ...
+                // }
+                // That is, all the cases are just `true`, except the one case of interest.
+                // Thus the match functions as an implication, i.e., "if the expression
+                // matches this particular case, then ..."
+                let mut arm_exprs = vec![Expr::Verbatim(quote! {true}); arms.len()];
+                arm_exprs[*idx] = e;
+                e = emit_match(match_e.span(), match_e, arms, &arm_exprs);
             }
             PrequelElement::AssertCondition(cond_e) => {
                 if include_assert_conditions {
@@ -1903,24 +1957,31 @@ fn prune_irrelevant_ops_rec(ctxt: &Ctxt, ts: TransitionStmt) -> Option<Transitio
                 v.into_iter().filter_map(|t| prune_irrelevant_ops_rec(ctxt, t)).collect();
             if res.len() == 0 { None } else { Some(TransitionStmt::Block(span, res)) }
         }
-        TransitionStmt::Let(span, id, ty, lk, init_e, box child) => {
+        TransitionStmt::Let(span, pat, ty, lk, init_e, box child) => {
             match prune_irrelevant_ops_rec(ctxt, child) {
                 None => None,
                 Some(new_child) => {
-                    Some(TransitionStmt::Let(span, id, ty, lk, init_e, Box::new(new_child)))
+                    Some(TransitionStmt::Let(span, pat, ty, lk, init_e, Box::new(new_child)))
                 }
             }
         }
-        TransitionStmt::If(span, cond_e, box thn, box els) => {
-            let new_thn = prune_irrelevant_ops_rec(ctxt, thn);
-            let new_els = prune_irrelevant_ops_rec(ctxt, els);
-            if new_thn.is_none() && new_els.is_none() {
+        TransitionStmt::Split(span, split_kind, splits) => {
+            let pruned_splits: Vec<Option<TransitionStmt>> =
+                splits.into_iter().map(|split| prune_irrelevant_ops_rec(ctxt, split)).collect();
+            let is_nontrivial = pruned_splits.iter().any(|s| s.is_some());
+            if !is_nontrivial {
                 None
             } else {
-                let new_thn = new_thn.unwrap_or(TransitionStmt::Block(span, vec![]));
-                let new_els = new_els.unwrap_or(TransitionStmt::Block(span, vec![]));
-                Some(TransitionStmt::If(span, cond_e, Box::new(new_thn), Box::new(new_els)))
+                let splits = pruned_splits
+                    .into_iter()
+                    .map(|split| split.unwrap_or(TransitionStmt::Block(span, vec![])))
+                    .collect();
+                Some(TransitionStmt::Split(span, split_kind, splits))
             }
+        }
+
+        TransitionStmt::SubUpdate(..) => {
+            panic!("sub-update not supported here");
         }
 
         TransitionStmt::Update(span, id, e) => {
@@ -1981,31 +2042,49 @@ fn get_post_value_for_variable(ctxt: &Ctxt, ts: &TransitionStmt, field: &Field) 
             }
             opt
         }
-        TransitionStmt::Let(_span, id, _ty, _lk, e, child) => {
+        TransitionStmt::Let(_span, pat, ty, _lk, e, child) => {
             let o = get_post_value_for_variable(ctxt, child, field);
+            let ty_tokens = match ty {
+                None => TokenStream::new(),
+                Some(ty) => quote! { : #ty },
+            };
             match o {
                 None => None,
                 Some(child_e) => Some(Expr::Verbatim(quote! {
-                    { let #id = #e; #child_e }
+                    { let #pat #ty_tokens = #e; #child_e }
                 })),
             }
         }
-        TransitionStmt::If(_span, cond_e, e1, e2) => {
-            let o1 = get_post_value_for_variable(ctxt, e1, field);
-            let o2 = get_post_value_for_variable(ctxt, e2, field);
-            if o1.is_none() && o2.is_none() {
-                None
+        TransitionStmt::Split(span, split_kind, es) => {
+            let opts: Vec<Option<Expr>> =
+                es.iter().map(|e| get_post_value_for_variable(ctxt, e, field)).collect();
+            if opts.iter().any(|o| o.is_some()) {
+                let cases: Vec<Expr> = opts
+                    .into_iter()
+                    .map(|o| match o {
+                        None => get_old_field_value(ctxt, &field, field.name.span()),
+                        Some(e) => e,
+                    })
+                    .collect();
+                match split_kind {
+                    SplitKind::If(cond_e) => {
+                        assert!(cases.len() == 2);
+                        let e1 = &cases[0];
+                        let e2 = &cases[1];
+                        Some(Expr::Verbatim(quote_spanned! { *span =>
+                            if #cond_e { #e1 } else { #e2 }
+                        }))
+                    }
+                    SplitKind::Match(match_e, arms) => {
+                        Some(emit_match(*span, match_e, arms, &cases))
+                    }
+                }
             } else {
-                let e1 = match o1 {
-                    None => get_old_field_value(ctxt, &field, field.name.span()),
-                    Some(e) => e,
-                };
-                let e2 = match o2 {
-                    None => get_old_field_value(ctxt, &field, field.name.span()),
-                    Some(e) => e,
-                };
-                Some(Expr::Verbatim(quote! { if #cond_e { #e1 } else { #e2 } }))
+                None
             }
+        }
+        TransitionStmt::SubUpdate(..) => {
+            panic!("sub-update not supported here");
         }
         TransitionStmt::Initialize(_span, id, e) | TransitionStmt::Update(_span, id, e) => {
             if *id.to_string() == *field.name.to_string() { Some(e.clone()) } else { None }

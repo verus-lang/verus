@@ -47,7 +47,7 @@ tokenized_state_machine!(RwLock {
     }
 
     #[inductive(initialize_empty)]
-    fn initialize_empty_inductive(post: RwLock) { }
+    fn initialize_empty_inductive(post: Self) { }
 
     /// Increment the 'rc' counter, obtain a pending_reader
     transition!{
@@ -171,25 +171,25 @@ tokenized_state_machine!(RwLock {
     }
 
     #[inductive(acquire_read_start)]
-    fn acquire_read_start_inductive(pre: RwLock, post: RwLock) { }
+    fn acquire_read_start_inductive(pre: Self, post: Self) { }
 
     #[inductive(acquire_read_end)]
-    fn acquire_read_end_inductive(pre: RwLock, post: RwLock) { }
+    fn acquire_read_end_inductive(pre: Self, post: Self) { }
 
     #[inductive(acquire_read_abandon)]
-    fn acquire_read_abandon_inductive(pre: RwLock, post: RwLock) { }
+    fn acquire_read_abandon_inductive(pre: Self, post: Self) { }
 
     #[inductive(acquire_exc_start)]
-    fn acquire_exc_start_inductive(pre: RwLock, post: RwLock) { }
+    fn acquire_exc_start_inductive(pre: Self, post: Self) { }
 
     #[inductive(acquire_exc_end)]
-    fn acquire_exc_end_inductive(pre: RwLock, post: RwLock) { }
+    fn acquire_exc_end_inductive(pre: Self, post: Self) { }
 
     #[inductive(release_exc)]
-    fn release_exc_inductive(pre: RwLock, post: RwLock, x: T) { }
+    fn release_exc_inductive(pre: Self, post: Self, x: T) { }
 
     #[inductive(release_shared)]
-    fn release_shared_inductive(pre: RwLock, post: RwLock, x: T) {
+    fn release_shared_inductive(pre: Self, post: Self, x: T) {
         assert(equal(pre.storage, Option::Some(x)));
     }
 });

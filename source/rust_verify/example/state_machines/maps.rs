@@ -36,13 +36,13 @@ tokenized_state_machine!(
         }
 
         #[inductive(initialize)]
-        fn initialize_inductive(post: X, cond: bool) { }
+        fn initialize_inductive(post: Self, cond: bool) { }
    
         #[inductive(add)]
-        fn add_inductive(pre: X, post: X, n: int) { }
+        fn add_inductive(pre: Self, post: Self, n: int) { }
    
         #[inductive(add_have)]
-        fn add_have_inductive(pre: X, post: X, n: int) { }
+        fn add_have_inductive(pre: Self, post: Self, n: int) { }
     }
 );
 
@@ -110,10 +110,10 @@ tokenized_state_machine!(
         }
 
         #[inductive(initialize)]
-        fn initialize_inductive(post: Fancy, cond: bool) { }
+        fn initialize_inductive(post: Self, cond: bool) { }
    
         #[inductive(do_deposit)]
-        fn do_deposit_inductive(pre: Fancy, post: Fancy, b: bool) {
+        fn do_deposit_inductive(pre: Self, post: Self, b: bool) {
             /*
             assert_forall_by(|i: int| {
               requires(post.storage_map.dom().contains(i));
@@ -129,7 +129,7 @@ tokenized_state_machine!(
         }
 
         #[inductive(do_withdraw)]
-        fn do_withdraw_inductive(pre: Fancy, post: Fancy, b: bool) { }
+        fn do_withdraw_inductive(pre: Self, post: Self, b: bool) { }
     }
 );
 

@@ -9,7 +9,7 @@ use crate::ast::{Invariant, Lemma, ShardableType, TransitionKind, TransitionPara
 use crate::concurrency_tokens::output_token_types_and_fns;
 use crate::lemmas::get_transition;
 use crate::parse_token_stream::SMBundle;
-use crate::safety_conditions::{has_any_assert, safety_condition_body};
+use crate::safety_conditions::{has_any_assert_simpl_vec, safety_condition_body_simpl_vec};
 use crate::simplification::simplify_ops;
 use crate::to_relation::to_relation;
 use proc_macro2::Span;
@@ -26,21 +26,21 @@ use syn::{
 };
 
 pub fn output_token_stream(bundle: SMBundle, concurrent: bool) -> syn::parse::Result<TokenStream> {
-    let mut token_stream = TokenStream::new();
-    let mut impl_token_stream = TokenStream::new();
+    let mut root_stream = TokenStream::new();
+    let mut impl_stream = TokenStream::new();
 
     let self_ty = get_self_ty(&bundle.sm);
 
     let safety_condition_lemmas =
-        output_primary_stuff(&mut token_stream, &mut impl_token_stream, &bundle.sm);
+        output_primary_stuff(&mut root_stream, &mut impl_stream, &bundle.sm);
 
     if concurrent {
-        output_token_types_and_fns(&mut token_stream, &bundle, &safety_condition_lemmas)?;
+        output_token_types_and_fns(&mut root_stream, &bundle, &safety_condition_lemmas)?;
     }
 
     output_other_fns(
         &bundle,
-        &mut impl_token_stream,
+        &mut impl_stream,
         &bundle.extras.invariants,
         &bundle.extras.lemmas,
         &bundle.normal_fns,
@@ -48,11 +48,17 @@ pub fn output_token_stream(bundle: SMBundle, concurrent: bool) -> syn::parse::Re
 
     let impl_decl = impl_decl_stream(&self_ty, &bundle.sm.generics);
 
-    let final_code = quote! {
-        #token_stream
+    let sm_name = &bundle.sm.name;
 
-        #impl_decl {
-            #impl_token_stream
+    let final_code = quote! {
+        mod #sm_name {
+            use super::*;
+
+            #root_stream
+
+            #impl_decl {
+                #impl_stream
+            }
         }
     };
 
@@ -60,11 +66,18 @@ pub fn output_token_stream(bundle: SMBundle, concurrent: bool) -> syn::parse::Re
 }
 
 pub fn get_self_ty(sm: &SM) -> Type {
-    name_with_type_args(&sm.name, sm)
+    let name = Ident::new("State", sm.name.span());
+    name_with_type_args(&name, sm)
+}
+
+fn get_step_ty(sm: &SM, is_init: bool) -> Type {
+    let name = Ident::new(if is_init { "Config" } else { "Step" }, sm.name.span());
+    name_with_type_args(&name, sm)
 }
 
 pub fn get_self_ty_turbofish(sm: &SM) -> Type {
-    name_with_type_args_turbofish(&sm.name, sm)
+    let name = Ident::new("State", sm.name.span());
+    name_with_type_args_turbofish(&name, sm)
 }
 
 pub fn name_with_type_args(name: &Ident, sm: &SM) -> Type {
@@ -108,6 +121,22 @@ pub fn get_generic_args(params: &Punctuated<GenericParam, syn::token::Comma>) ->
         }
     });
     quote! { #(#args),* }
+}
+
+fn generic_components_for_fn(generics: &Option<Generics>) -> (TokenStream, TokenStream) {
+    match generics {
+        None => (TokenStream::new(), TokenStream::new()),
+        Some(gen) => {
+            if gen.params.len() > 0 {
+                let params = &gen.params;
+                let where_clause = &gen.where_clause;
+                (quote! { <#params> }, quote! { #where_clause })
+            } else {
+                let where_clause = &gen.where_clause;
+                (TokenStream::new(), quote! { #where_clause })
+            }
+        }
+    }
 }
 
 pub fn impl_decl_stream(self_ty: &Type, generics: &Option<Generics>) -> TokenStream {
@@ -161,13 +190,10 @@ pub fn fields_named_fix_attrs(fields_named: &mut FieldsNamed) {
 }
 
 pub fn output_primary_stuff(
-    token_stream: &mut TokenStream,
-    impl_token_stream: &mut TokenStream,
+    root_stream: &mut TokenStream,
+    impl_stream: &mut TokenStream,
     sm: &SM,
 ) -> HashMap<String, Ident> {
-    let name = &sm.name;
-    //let fields: Vec<TokenStream> = sm.fields.iter().map(field_to_tokens).collect();
-
     let mut fields_named = sm.fields_named_ast.clone();
     fields_named_fix_attrs(&mut fields_named);
 
@@ -178,9 +204,9 @@ pub fn output_primary_stuff(
 
     // Note: #fields_named will include the braces.
     let code: TokenStream = quote_spanned! { fields_named.span() =>
-        pub struct #name #gen #fields_named
+        pub struct State #gen #fields_named
     };
-    token_stream.extend(code);
+    root_stream.extend(code);
 
     let self_ty = get_self_ty(&sm);
 
@@ -192,7 +218,7 @@ pub fn output_primary_stuff(
         // `to_relation` then takes that simplified transition and turns it into
         // a boolean predicate between `pre` and `post`.
 
-        let simplified_body = simplify_ops(sm, &trans.body, trans.kind == TransitionKind::Readonly);
+        let simplified_body = simplify_ops(sm, &trans.body, trans.kind);
 
         // Output the 'weak' transition relation.
         // (or for the 'Init' case, a single-state predicate).
@@ -206,7 +232,7 @@ pub fn output_primary_stuff(
                 rel_fn = quote! {
                     #[spec]
                     #[verifier(publish)]
-                    pub fn #name (#args) -> bool {
+                    pub fn #name (#args) -> ::std::primitive::bool {
                         #f
                     }
                 };
@@ -215,12 +241,12 @@ pub fn output_primary_stuff(
                 rel_fn = quote! {
                     #[spec]
                     #[verifier(publish)]
-                    pub fn #name (#args) -> bool {
+                    pub fn #name (#args) -> ::std::primitive::bool {
                         #f
                     }
                 };
             }
-            impl_token_stream.extend(rel_fn);
+            impl_stream.extend(rel_fn);
         }
 
         // Output the 'strong' transition relation.
@@ -236,11 +262,11 @@ pub fn output_primary_stuff(
             let rel_fn = quote! {
                 #[spec]
                 #[verifier(publish)]
-                pub fn #name (#params) -> bool {
+                pub fn #name (#params) -> ::std::primitive::bool {
                     #f
                 }
             };
-            impl_token_stream.extend(rel_fn);
+            impl_stream.extend(rel_fn);
         }
 
         // If necessary, output a lemma with proof obligations for the safety conditions.
@@ -248,16 +274,16 @@ pub fn output_primary_stuff(
         // not the original, because 'assert' statements may have been introduced in
         // simplificiation.
 
-        if has_any_assert(&simplified_body) {
+        if has_any_assert_simpl_vec(&simplified_body) {
             assert!(trans.kind != TransitionKind::Init);
-            let b = safety_condition_body(&simplified_body);
+            let b = safety_condition_body_simpl_vec(&simplified_body);
             let name = Ident::new(&(trans.name.to_string() + "_asserts"), trans.name.span());
             let params = pre_assoc_params(&self_ty, &trans.params);
             let b = match b {
                 Some(b) => quote! { #b },
                 None => TokenStream::new(),
             };
-            impl_token_stream.extend(quote! {
+            impl_stream.extend(quote! {
                 #[proof]
                 pub fn #name(#params) {
                     crate::pervasive::assume(pre.invariant());
@@ -269,7 +295,163 @@ pub fn output_primary_stuff(
         }
     }
 
+    let mut show_stream = TokenStream::new();
+    output_step_datatype(root_stream, &mut show_stream, impl_stream, sm, false);
+    output_step_datatype(root_stream, &mut show_stream, impl_stream, sm, true);
+    root_stream.extend(quote! {
+        pub mod show {
+            use super::*;
+            #show_stream
+        }
+    });
+
     safety_condition_lemmas
+}
+
+fn output_step_datatype(
+    root_stream: &mut TokenStream,
+    show_stream: &mut TokenStream,
+    impl_stream: &mut TokenStream,
+    sm: &SM,
+    is_init: bool,
+) {
+    let kind = if is_init { TransitionKind::Init } else { TransitionKind::Transition };
+    let type_name = if is_init { "Config" } else { "Step" };
+    let type_ident = Ident::new(type_name, sm.name.span());
+
+    let variants: Vec<TokenStream> = sm
+        .transitions
+        .iter()
+        .filter(|t| t.kind == kind)
+        .map(|t| {
+            let p = step_params(&t.params);
+            let tr_name = &t.name;
+            quote! { #tr_name(#p) }
+        })
+        .collect();
+
+    let generics = &sm.generics;
+
+    let self_ty = get_self_ty(sm);
+    let step_ty = get_step_ty(sm, is_init);
+
+    root_stream.extend(quote! {
+        #[allow(non_camel_case_types)]
+        pub enum #type_ident#generics {
+            #(#variants,)*
+            // We add this extra variant with the self_ty in order to avoid
+            // 'unused type param' errors in the definition of Step or Config.
+            dummy_to_use_type_params(#self_ty),
+        }
+    });
+
+    let arms: Vec<TokenStream> = sm
+        .transitions
+        .iter()
+        .filter(|t| t.kind == kind)
+        .map(|t| {
+            let step_args = just_args(&t.params);
+            let tr_args = if is_init { post_args(&t.params) } else { pre_post_args(&t.params) };
+            let tr_name = &t.name;
+            quote! {
+                #type_ident::#tr_name(#step_args) => Self::#tr_name(#tr_args),
+            }
+        })
+        .collect();
+
+    if is_init {
+        impl_stream.extend(quote! {
+            #[spec] #[verifier(opaque)] #[verifier(publish)]
+            pub fn init_by(post: #self_ty, step: #step_ty) -> ::std::primitive::bool {
+                match step {
+                    #(#arms)*
+                    // The dummy step never corresponds to a valid transition.
+                    #type_ident::dummy_to_use_type_params(_) => false,
+                }
+            }
+
+            #[spec] #[verifier(opaque)] #[verifier(publish)]
+            pub fn init(post: #self_ty) -> ::std::primitive::bool {
+                ::builtin::exists(|step: #step_ty| Self::init_by(post, step))
+            }
+        });
+    } else {
+        impl_stream.extend(quote!{
+            #[spec] #[verifier(opaque)] #[verifier(publish)]
+            pub fn next_by(pre: #self_ty, post: #self_ty, step: #step_ty) -> ::std::primitive::bool {
+                match step {
+                    #(#arms)*
+                    #type_ident::dummy_to_use_type_params(_) => false,
+                }
+            }
+
+            #[spec] #[verifier(opaque)] #[verifier(publish)]
+            pub fn next(pre: #self_ty, post: #self_ty) -> ::std::primitive::bool {
+                ::builtin::exists(|step: #step_ty| Self::next_by(pre, post, step))
+            }
+        });
+    }
+
+    let super_self_ty = Type::Verbatim(quote! { super::#self_ty });
+
+    let (gen1, gen2) = generic_components_for_fn(&sm.generics);
+
+    for trans in &sm.transitions {
+        if trans.kind == kind {
+            let tr_name = &trans.name;
+            if is_init {
+                let params = post_assoc_params(&super_self_ty, &trans.params);
+                let args = post_args(&trans.params);
+                //let step_args = just_args(&trans.params);
+                show_stream.extend(quote! {
+                    #[proof]
+                    #[verifier(external_body)]
+                    pub fn #tr_name#gen1(#params) #gen2 {
+                        ::builtin::requires(super::State::#tr_name(#args));
+                        ::builtin::ensures(super::State::init(post));
+
+                        //::builtin::reveal(super::State::init);
+                        //::builtin::reveal(super::State::init_by);
+                        //crate::pervasive::assert(super::State::init_by(post,
+                        //    super::Init::#tr_name(#step_args)));
+                    }
+                });
+            } else {
+                let params = pre_post_assoc_params(&super_self_ty, &trans.params);
+                let args = pre_post_args(&trans.params);
+                //let step_args = just_args(&trans.params);
+                show_stream.extend(quote! {
+                    #[proof]
+                    #[verifier(external_body)]
+                    pub fn #tr_name#gen1(#params) #gen2 {
+                        ::builtin::requires(super::State::#tr_name(#args));
+                        ::builtin::ensures(super::State::next(pre, post));
+
+                        //::builtin::reveal(super::State::next);
+                        //::builtin::reveal(super::State::next_by);
+                        //crate::pervasive::assert(super::State::next_by(pre, post,
+                        //    super::Step::#tr_name(#step_args)));
+                    }
+                });
+            }
+        }
+    }
+
+    /*
+    if is_init {
+    } else {
+        root_stream.extend(quote!{
+            #[proof]
+            #[verifier(returns(proof))]
+            #[verifier(external_body)]
+            pub fn get_step(pre: #self_ty, post: #self_ty) -> crate::pervasive::modes::Spec<#step_ty> {
+                requires(State::next(pre, post));
+                ensures(|step: crate::pervasive::modes::Spec<#step_ty>| State::next_by(pre, post, step.value()));
+                ::std::unimplemented!();
+            }
+        });
+    }
+    */
 }
 
 /// pre: Self, post: Self, params...
@@ -285,6 +467,20 @@ fn pre_post_params(params: &Vec<TransitionParam>) -> TokenStream {
     return quote! {
         pre: Self,
         post: Self,
+        #(#params),*
+    };
+}
+
+// params... (types only, no identifiers)
+fn step_params(params: &Vec<TransitionParam>) -> TokenStream {
+    let params: Vec<TokenStream> = params
+        .iter()
+        .map(|param| {
+            let ty = &param.ty;
+            quote! { #ty }
+        })
+        .collect();
+    return quote! {
         #(#params),*
     };
 }
@@ -305,6 +501,39 @@ fn pre_assoc_params(ty: &Type, params: &Vec<TransitionParam>) -> TokenStream {
     };
 }
 
+// post: X, params...
+fn post_assoc_params(ty: &Type, params: &Vec<TransitionParam>) -> TokenStream {
+    let params: Vec<TokenStream> = params
+        .iter()
+        .map(|param| {
+            let ident = &param.name;
+            let ty = &param.ty;
+            quote! { #ident: #ty }
+        })
+        .collect();
+    return quote! {
+        post: #ty,
+        #(#params),*
+    };
+}
+
+// post: X, params...
+fn pre_post_assoc_params(ty: &Type, params: &Vec<TransitionParam>) -> TokenStream {
+    let params: Vec<TokenStream> = params
+        .iter()
+        .map(|param| {
+            let ident = &param.name;
+            let ty = &param.ty;
+            quote! { #ident: #ty }
+        })
+        .collect();
+    return quote! {
+        pre: #ty,
+        post: #ty,
+        #(#params),*
+    };
+}
+
 // post: Self, params...
 fn post_params(params: &Vec<TransitionParam>) -> TokenStream {
     let params: Vec<TokenStream> = params
@@ -318,6 +547,51 @@ fn post_params(params: &Vec<TransitionParam>) -> TokenStream {
     return quote! {
         post: Self,
         #(#params),*
+    };
+}
+
+// pre, post, args...
+fn pre_post_args(params: &Vec<TransitionParam>) -> TokenStream {
+    let args: Vec<TokenStream> = params
+        .iter()
+        .map(|param| {
+            let ident = &param.name;
+            quote! { #ident }
+        })
+        .collect();
+    return quote! {
+        pre,
+        post,
+        #(#args),*
+    };
+}
+
+// post, args...
+fn post_args(params: &Vec<TransitionParam>) -> TokenStream {
+    let args: Vec<TokenStream> = params
+        .iter()
+        .map(|param| {
+            let ident = &param.name;
+            quote! { #ident }
+        })
+        .collect();
+    return quote! {
+        post,
+        #(#args),*
+    };
+}
+
+// args...
+fn just_args(params: &Vec<TransitionParam>) -> TokenStream {
+    let args: Vec<TokenStream> = params
+        .iter()
+        .map(|param| {
+            let ident = &param.name;
+            quote! { #ident }
+        })
+        .collect();
+    return quote! {
+        #(#args),*
     };
 }
 
@@ -340,7 +614,7 @@ pub fn shardable_type_to_type(span: Span, stype: &ShardableType) -> Type {
 
 fn output_other_fns(
     bundle: &SMBundle,
-    impl_token_stream: &mut TokenStream,
+    impl_stream: &mut TokenStream,
     invariants: &Vec<Invariant>,
     lemmas: &Vec<Lemma>,
     normal_fns: &Vec<ImplItemMethod>,
@@ -351,7 +625,7 @@ fn output_other_fns(
     } else {
         quote! { #(self.#inv_names())&&* }
     };
-    impl_token_stream.extend(quote! {
+    impl_stream.extend(quote! {
         #[spec]
         pub fn invariant(&self) -> ::std::primitive::bool {
             #conj
@@ -359,10 +633,10 @@ fn output_other_fns(
     });
 
     for inv in invariants {
-        impl_token_stream.extend(quote! { #[spec] });
+        impl_stream.extend(quote! { #[spec] });
         let mut f = inv.func.clone();
         fix_attrs(&mut f.attrs);
-        f.to_tokens(impl_token_stream);
+        f.to_tokens(impl_stream);
     }
 
     for inv in invariants {
@@ -371,7 +645,7 @@ fn output_other_fns(
         let error_msg = format!("could not show invariant `{:}` on the `post` state", inv_name);
         let lemma_msg_ident = Ident::new(&format!("lemma_msg_{:}", inv_name), inv_ident.span());
         let self_ty = get_self_ty(&bundle.sm);
-        impl_token_stream.extend(quote! {
+        impl_stream.extend(quote! {
             #[proof]
             #[verifier(custom_req_err(#error_msg))]
             #[verifier(external_body)]
@@ -383,14 +657,14 @@ fn output_other_fns(
     }
 
     for lemma in lemmas {
-        impl_token_stream.extend(quote! { #[proof] });
+        impl_stream.extend(quote! { #[proof] });
         let mut f = lemma.func.clone();
         lemma_update_body(bundle, lemma, &mut f);
         fix_attrs(&mut f.attrs);
-        f.to_tokens(impl_token_stream);
+        f.to_tokens(impl_stream);
     }
     for iim in normal_fns {
-        iim.to_tokens(impl_token_stream);
+        iim.to_tokens(impl_stream);
     }
 }
 

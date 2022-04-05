@@ -127,16 +127,18 @@ pub fn check_inherent_conditions(sm: &SM, ts: &mut TransitionStmt, errors: &mut 
                 check_inherent_conditions(sm, t, errors);
             }
         }
-        TransitionStmt::Let(_span, _id, _ty, _, _, child) => {
+        TransitionStmt::Let(_span, _pat, _ty, _, _, child) => {
             check_inherent_conditions(sm, child, errors);
         }
-        TransitionStmt::If(_, _, e1, e2) => {
-            check_inherent_conditions(sm, e1, errors);
-            check_inherent_conditions(sm, e2, errors);
+        TransitionStmt::Split(_, _, splits) => {
+            for split in splits {
+                check_inherent_conditions(sm, split, errors);
+            }
         }
         TransitionStmt::Require(..) => {}
         TransitionStmt::Assert(..) => {}
         TransitionStmt::Update(..) => {}
+        TransitionStmt::SubUpdate(..) => {}
         TransitionStmt::Initialize(..) => {}
         TransitionStmt::PostCondition(..) => {}
         TransitionStmt::Special(span, ident, op, proof) => {

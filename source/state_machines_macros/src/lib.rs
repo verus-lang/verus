@@ -2,8 +2,8 @@
 
 extern crate proc_macro;
 
-mod add_tmp_vars;
 mod ast;
+mod case_macro;
 mod check_birds_eye;
 mod concurrency_tokens;
 mod field_access_visitor;
@@ -14,12 +14,14 @@ mod parse_token_stream;
 mod parse_transition;
 mod safety_conditions;
 mod simplification;
+mod simplify_assigns;
 mod to_relation;
 mod to_token_stream;
 mod token_transition_checks;
 mod transitions;
 mod util;
 
+use case_macro::case_on;
 use lemmas::check_lemmas;
 use parse_token_stream::{parse_result_to_smir, ParseResult};
 use proc_macro::TokenStream;
@@ -62,4 +64,14 @@ pub fn state_machine(input: TokenStream) -> TokenStream {
 #[proc_macro]
 pub fn tokenized_state_machine(input: TokenStream) -> TokenStream {
     construct_state_machine(input, true)
+}
+
+#[proc_macro]
+pub fn case_on_next(input: TokenStream) -> TokenStream {
+    case_on(input, false)
+}
+
+#[proc_macro]
+pub fn case_on_init(input: TokenStream) -> TokenStream {
+    case_on(input, true)
 }

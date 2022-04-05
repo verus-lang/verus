@@ -1,6 +1,6 @@
 use proc_macro2::Span;
 use std::rc::Rc;
-use syn::{Expr, FieldsNamed, Generics, Ident, ImplItemMethod, Type};
+use syn::{Expr, FieldsNamed, Generics, Ident, ImplItemMethod, Pat, Type};
 
 #[derive(Clone, Debug)]
 pub struct SM {
@@ -176,24 +176,55 @@ pub struct AssertProof {
     pub error_msg: String,
 }
 
+/// like syn::Arm, without the body
+#[derive(Clone, Debug)]
+pub struct Arm {
+    pub pat: Pat,
+    pub guard: Option<(syn::token::If, Box<Expr>)>,
+    pub fat_arrow_token: syn::token::FatArrow,
+    pub comma: Option<syn::token::Comma>,
+}
+
+#[derive(Clone, Debug)]
+pub enum SplitKind {
+    If(Expr),
+    Match(Expr, Vec<Arm>),
+}
+
+#[derive(Clone, Debug)]
+pub enum SubIdx {
+    Field(Ident),
+    Idx(Expr),
+}
+
 #[derive(Clone, Debug)]
 pub enum TransitionStmt {
     Block(Span, Vec<TransitionStmt>),
-    Let(Span, Ident, Option<Type>, LetKind, Expr, Box<TransitionStmt>),
-    If(Span, Expr, Box<TransitionStmt>, Box<TransitionStmt>),
+    Let(Span, Pat, Option<Type>, LetKind, Expr, Box<TransitionStmt>),
+    Split(Span, SplitKind, Vec<TransitionStmt>),
     Require(Span, Expr),
     Assert(Span, Expr, AssertProof),
     Update(Span, Ident, Expr),
+    SubUpdate(Span, Ident, Vec<SubIdx>, Expr),
     Initialize(Span, Ident, Expr),
 
     /// concurrent-state-machine-specific stuff
     Special(Span, Ident, SpecialOp, AssertProof),
 
     /// Different than an Assert - this statement is allowed to depend on output values.
-    /// Used internally by various transformations, both by `concurrency_tokens.rs`
-    /// and by `to_relation.rs`.
-    /// This cannot be directly constructed by the user.
+    /// Used internally by various transformations in `concurrency_tokens.rs`.
     PostCondition(Span, Expr),
+}
+
+#[derive(Clone, Debug)]
+pub enum SimplStmt {
+    Let(Span, Pat, Option<Type>, Expr, Vec<SimplStmt>),
+    Split(Span, SplitKind, Vec<Vec<SimplStmt>>),
+
+    Require(Span, Expr),
+    PostCondition(Span, Expr),
+    Assert(Span, Expr, AssertProof),
+    Assign(Span, Ident, Type, Expr),
 }
 
 impl SpecialOp {
@@ -281,10 +312,11 @@ impl TransitionStmt {
         match self {
             TransitionStmt::Block(span, _) => span,
             TransitionStmt::Let(span, _, _, _, _, _) => span,
-            TransitionStmt::If(span, _, _, _) => span,
+            TransitionStmt::Split(span, _, _) => span,
             TransitionStmt::Require(span, _) => span,
             TransitionStmt::Assert(span, _, _) => span,
             TransitionStmt::Update(span, _, _) => span,
+            TransitionStmt::SubUpdate(span, _, _, _) => span,
             TransitionStmt::Initialize(span, _, _) => span,
             TransitionStmt::Special(span, _, _, _) => span,
             TransitionStmt::PostCondition(span, _) => span,
@@ -295,10 +327,12 @@ impl TransitionStmt {
         match self {
             TransitionStmt::Block(..) => "block",
             TransitionStmt::Let(..) => "let",
-            TransitionStmt::If(..) => "if",
+            TransitionStmt::Split(_, SplitKind::If(..), _) => "if",
+            TransitionStmt::Split(_, SplitKind::Match(..), _) => "match",
             TransitionStmt::Require(..) => "require",
             TransitionStmt::Assert(..) => "assert",
             TransitionStmt::Update(..) => "update",
+            TransitionStmt::SubUpdate(..) => "update",
             TransitionStmt::Initialize(..) => "init",
             TransitionStmt::Special(_, _, op, _) => op.stmt.name(),
             TransitionStmt::PostCondition(..) => "post_condition",
@@ -356,6 +390,7 @@ impl ShardableType {
         }
     }
 
+    #[allow(unused)]
     pub fn get_option_param_type(&self) -> Type {
         match self {
             ShardableType::Option(ty) => ty.clone(),
@@ -364,6 +399,7 @@ impl ShardableType {
         }
     }
 
+    #[allow(unused)]
     pub fn get_multiset_param_type(&self) -> Type {
         match self {
             ShardableType::Multiset(ty) => ty.clone(),
@@ -371,6 +407,7 @@ impl ShardableType {
         }
     }
 
+    #[allow(unused)]
     pub fn get_map_key_type(&self) -> Type {
         match self {
             ShardableType::Map(key, _val) => key.clone(),
@@ -379,11 +416,18 @@ impl ShardableType {
         }
     }
 
+    #[allow(unused)]
     pub fn get_map_value_type(&self) -> Type {
         match self {
             ShardableType::Map(_key, val) => val.clone(),
             ShardableType::StorageMap(_key, val) => val.clone(),
             _ => panic!("get_map_value_type expected map"),
         }
+    }
+}
+
+impl Field {
+    pub fn get_type(&self) -> Type {
+        crate::to_token_stream::shardable_type_to_type(self.type_span, &self.stype)
     }
 }

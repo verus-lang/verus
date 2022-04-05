@@ -1,5 +1,6 @@
-use crate::ast::{AssertProof, TransitionStmt};
-use quote::quote_spanned;
+use crate::ast::{AssertProof, SimplStmt, SplitKind};
+use crate::to_relation::emit_match;
+use quote::{quote, quote_spanned};
 use syn::{Expr, Ident};
 
 // Given a transition, we convert it into a lemma that will create the correct
@@ -27,36 +28,47 @@ use syn::{Expr, Ident};
 // more weakest-precondition-esque conditions than we already do, so it's what I'm going
 // with for now.
 
-pub fn safety_condition_body(ts: &TransitionStmt) -> Option<Expr> {
-    match ts {
-        TransitionStmt::Block(span, v) => {
-            let mut h = Vec::new();
-            for t in v.iter() {
-                if let Some(q) = safety_condition_body(t) {
-                    h.push(q);
-                }
-            }
-            if h.len() > 0 {
-                Some(Expr::Verbatim(quote_spanned! { *span => #(#h)* }))
+pub fn safety_condition_body_simpl_vec(sops: &Vec<SimplStmt>) -> Option<Expr> {
+    let mut h = Vec::new();
+    for (i, t) in sops.iter().enumerate() {
+        let is_last = i == sops.len() - 1;
+        if let Some(q) = safety_condition_body_simpl(t, is_last) {
+            h.push(q);
+        }
+    }
+    if h.len() > 0 { Some(Expr::Verbatim(quote! { #(#h)* })) } else { None }
+}
+
+pub fn safety_condition_body_simpl(sop: &SimplStmt, let_skip_brace: bool) -> Option<Expr> {
+    match sop {
+        SimplStmt::Let(span, pat, None, v, child) => {
+            let t = safety_condition_body_simpl_vec(child);
+            if let_skip_brace {
+                Some(Expr::Verbatim(quote_spanned! {*span =>
+                    let #pat = #v; #t
+                }))
             } else {
-                None
+                Some(Expr::Verbatim(quote_spanned! {*span =>
+                    { let #pat = #v; #t }
+                }))
             }
         }
-        TransitionStmt::Let(span, id, None, _lk, v, child) => {
-            let t = safety_condition_body(child);
-            Some(Expr::Verbatim(quote_spanned! {*span =>
-                { let #id = #v; #t }
-            }))
+        SimplStmt::Let(span, pat, Some(ty), v, child) => {
+            let t = safety_condition_body_simpl_vec(child);
+            if let_skip_brace {
+                Some(Expr::Verbatim(quote_spanned! {*span =>
+                    let #pat: #ty = #v; #t
+                }))
+            } else {
+                Some(Expr::Verbatim(quote_spanned! {*span =>
+                    { let #pat: #ty = #v; #t }
+                }))
+            }
         }
-        TransitionStmt::Let(span, id, Some(ty), _lk, v, child) => {
-            let t = safety_condition_body(child);
-            Some(Expr::Verbatim(quote_spanned! {*span =>
-                { let #id: #ty = #v; #t }
-            }))
-        }
-        TransitionStmt::If(span, cond, thn, els) => {
-            let t1 = safety_condition_body(thn);
-            let t2 = safety_condition_body(els);
+        SimplStmt::Split(span, SplitKind::If(cond), es) => {
+            assert!(es.len() == 2);
+            let t1 = safety_condition_body_simpl_vec(&es[0]);
+            let t2 = safety_condition_body_simpl_vec(&es[1]);
             match (t1, t2) {
                 (None, None) => None,
                 (Some(e), None) => Some(Expr::Verbatim(quote_spanned! {*span =>
@@ -79,16 +91,28 @@ pub fn safety_condition_body(ts: &TransitionStmt) -> Option<Expr> {
                 })),
             }
         }
-        TransitionStmt::Require(span, e) => Some(Expr::Verbatim(quote_spanned! {*span =>
+        SimplStmt::Split(span, SplitKind::Match(match_e, arms), es) => {
+            let cases: Vec<Option<Expr>> =
+                es.iter().map(|e| safety_condition_body_simpl_vec(e)).collect();
+            if cases.iter().any(|c| c.is_some()) {
+                // Any case which is empty will just look like
+                //      `... => { }`
+                Some(emit_match(*span, match_e, arms, &cases))
+            } else {
+                None
+            }
+        }
+        SimplStmt::Require(span, e) => Some(Expr::Verbatim(quote_spanned! {*span =>
             crate::pervasive::assume(#e);
         })),
-        TransitionStmt::Assert(span, e, AssertProof { proof: None, error_msg }) => {
+        SimplStmt::PostCondition(_span, _e) => None,
+        SimplStmt::Assert(span, e, AssertProof { proof: None, error_msg }) => {
             let assert_fn = Ident::new(error_msg, *span);
             Some(Expr::Verbatim(quote_spanned! {*span =>
                 crate::pervasive::state_machine_internal::#assert_fn(#e);
             }))
         }
-        TransitionStmt::Assert(span, e, AssertProof { proof: Some(proof), error_msg }) => {
+        SimplStmt::Assert(span, e, AssertProof { proof: Some(proof), error_msg }) => {
             let assert_fn = Ident::new(error_msg, *span);
             Some(Expr::Verbatim(quote_spanned! {*span =>
                 ::builtin::assert_by(#e, {
@@ -97,38 +121,38 @@ pub fn safety_condition_body(ts: &TransitionStmt) -> Option<Expr> {
                 });
             }))
         }
-        TransitionStmt::Initialize(..)
-        | TransitionStmt::Update(..)
-        | TransitionStmt::Special(..) => {
-            panic!("should have been removed at earlier processing stage");
-        }
-        TransitionStmt::PostCondition(..) => {
-            // These may have been created during simplification, but we can ignore
-            // them. The updated values are irrelevant for safety conditions.
-            None
+        SimplStmt::Assign(..) => {
+            // note: this would actually be pretty easy to emit in this context, though
+            panic!("Assign should have been removed at earlier processing stage");
         }
     }
 }
 
 /// Returns true if there are any 'assert' statements.
 
-pub fn has_any_assert(ts: &TransitionStmt) -> bool {
-    match ts {
-        TransitionStmt::Block(_span, v) => {
-            for t in v.iter() {
-                if has_any_assert(t) {
+pub fn has_any_assert_simpl_vec(sops: &Vec<SimplStmt>) -> bool {
+    for sop in sops.iter() {
+        if has_any_assert_simpl(sop) {
+            return true;
+        }
+    }
+    false
+}
+
+pub fn has_any_assert_simpl(sop: &SimplStmt) -> bool {
+    match sop {
+        SimplStmt::Let(_, _, _, _, child) => has_any_assert_simpl_vec(child),
+        SimplStmt::Split(_span, _cond, es) => {
+            for e in es {
+                if has_any_assert_simpl_vec(e) {
                     return true;
                 }
             }
             false
         }
-        TransitionStmt::Let(_, _, _, _, _, child) => has_any_assert(child),
-        TransitionStmt::If(_span, _cond, thn, els) => has_any_assert(thn) || has_any_assert(els),
-        TransitionStmt::Require(_, _) => false,
-        TransitionStmt::Assert(..) => true,
-        TransitionStmt::Initialize(..) => false,
-        TransitionStmt::Update(..) => false,
-        TransitionStmt::Special(..) => false,
-        TransitionStmt::PostCondition(..) => false,
+        SimplStmt::Require(..) => false,
+        SimplStmt::PostCondition(..) => false,
+        SimplStmt::Assert(..) => true,
+        SimplStmt::Assign(..) => false,
     }
 }

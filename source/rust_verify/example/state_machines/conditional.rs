@@ -5,6 +5,13 @@ use pervasive::*;
 
 use state_machines_macros::tokenized_state_machine;
 
+#[spec]
+enum Foo {
+    Bar(int),
+    Qax(int),
+    Duck(int),
+}
+
 tokenized_state_machine!(
     X {
         fields {
@@ -28,6 +35,24 @@ tokenized_state_machine!(
                     init c = 3;
                 } else {
                     init c = 4;
+                }
+            }
+        }
+
+        init!{
+            initialize2(foo: Foo) {
+                init a = 0;
+                init b = 1;
+                match foo {
+                    Foo::Bar(x) => {
+                        init c = 2;
+                    }
+                    Foo::Qax(y) => {
+                        init c = 3;
+                    }
+                    Foo::Duck(z) => {
+                        init c = 4;
+                    }
                 }
             }
         }
@@ -72,16 +97,16 @@ tokenized_state_machine!(
         }
 
         #[inductive(foo)]
-        fn foo_inductive(pre: X, post: X, n: int) { }
+        fn foo_inductive(pre: Self, post: Self, n: int) { }
        
         #[inductive(initialize)]
-        fn initialize_inductive(post: X, cond: bool) { }
+        fn initialize_inductive(post: Self, cond: bool) { }
      
         #[inductive(add)]
-        fn add_inductive(pre: X, post: X, n: int) { }
+        fn add_inductive(pre: Self, post: Self, n: int) { }
      
         #[inductive(add2)]
-        fn add2_inductive(pre: X, post: X, n: int) { }
+        fn add2_inductive(pre: Self, post: Self, n: int) { }
 
     }
 );

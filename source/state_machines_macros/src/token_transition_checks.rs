@@ -13,27 +13,34 @@ use syn::parse::Error;
 ///
 /// Such a thing would mean we need "conditional arguments" in the exchange methods
 /// (presumably via Option types) a feature that we don't implement.
+///
+/// Also checks to make sure there are no sub-updates.
 
-pub fn check_unsupported_updates_in_conditionals(ts: &TransitionStmt) -> syn::parse::Result<()> {
+pub fn check_unsupported_updates(ts: &TransitionStmt) -> syn::parse::Result<()> {
     match ts {
         TransitionStmt::Block(_span, v) => {
             for child in v.iter() {
-                check_unsupported_updates_in_conditionals(child)?;
+                check_unsupported_updates(child)?;
             }
             Ok(())
         }
-        TransitionStmt::Let(_span, _id, _ty, _lk, _init_e, child) => {
-            check_unsupported_updates_in_conditionals(child)?;
+        TransitionStmt::Let(_span, _pat, _ty, _lk, _init_e, child) => {
+            check_unsupported_updates(child)?;
             Ok(())
         }
-        TransitionStmt::If(_span, _cond_e, e1, e2) => {
-            check_unsupported_updates_helper(e1)?;
-            check_unsupported_updates_helper(e2)?;
+        TransitionStmt::Split(_span, _split_kind, es) => {
+            for e in es {
+                check_unsupported_updates_helper(e)?;
+            }
             Ok(())
         }
         TransitionStmt::Require(..) => Ok(()),
         TransitionStmt::Assert(..) => Ok(()),
         TransitionStmt::Update(..) => Ok(()),
+        TransitionStmt::SubUpdate(span, _, _, _) => Err(Error::new(
+            *span,
+            format!("field updates and index updates are not supported in tokenized transitions"),
+        )),
         TransitionStmt::Initialize(..) => Ok(()),
         TransitionStmt::Special(..) => Ok(()),
         TransitionStmt::PostCondition(..) => Ok(()),
@@ -49,14 +56,16 @@ fn check_unsupported_updates_helper(ts: &TransitionStmt) -> syn::parse::Result<(
             Ok(())
         }
         TransitionStmt::Let(_, _, _, _, _, child) => check_unsupported_updates_helper(child),
-        TransitionStmt::If(_, _, e1, e2) => {
-            check_unsupported_updates_helper(e1)?;
-            check_unsupported_updates_helper(e2)?;
+        TransitionStmt::Split(_, _, es) => {
+            for e in es {
+                check_unsupported_updates_helper(e)?;
+            }
             Ok(())
         }
         TransitionStmt::Require(_, _) => Ok(()),
         TransitionStmt::Assert(..) => Ok(()),
         TransitionStmt::Update(_, _, _) => Ok(()),
+        TransitionStmt::SubUpdate(..) => Ok(()),
         TransitionStmt::Initialize(_, _, _) => Ok(()),
         TransitionStmt::PostCondition(..) => Ok(()),
 
@@ -64,7 +73,7 @@ fn check_unsupported_updates_helper(ts: &TransitionStmt) -> syn::parse::Result<(
             let name = ts.statement_name();
             return Err(Error::new(
                 *span,
-                format!("currently, a '{name:}' statement is not supported inside a conditional"),
+                format!("currently, '{name:}' statements are not supported inside conditionals"),
             ));
         }
     }
@@ -124,15 +133,22 @@ pub fn check_ordering_remove_have_add_rec(
         TransitionStmt::Let(_, _, _, _, _, child) => {
             check_ordering_remove_have_add_rec(child, field_name, seen_have, seen_add)
         }
-        TransitionStmt::If(_, _, e1, e2) => {
-            let (h1, a1) = check_ordering_remove_have_add_rec(e1, field_name, seen_have, seen_add)?;
-            let (h2, a2) = check_ordering_remove_have_add_rec(e2, field_name, seen_have, seen_add)?;
-            Ok((h1 || h2, a1 || a2))
+        TransitionStmt::Split(_, _, es) => {
+            let mut h = false;
+            let mut a = false;
+            for e in es {
+                let (h1, a1) =
+                    check_ordering_remove_have_add_rec(e, field_name, seen_have, seen_add)?;
+                h |= h1;
+                a |= a1;
+            }
+            Ok((h, a))
         }
 
         TransitionStmt::Require(..)
         | TransitionStmt::Assert(..)
         | TransitionStmt::Update(..)
+        | TransitionStmt::SubUpdate(..)
         | TransitionStmt::Initialize(..)
         | TransitionStmt::PostCondition(..) => Ok((seen_have, seen_add)),
 

@@ -1,50 +1,53 @@
-use crate::add_tmp_vars::add_tmp_vars_special_ops;
-use crate::ast::{MonoidElt, MonoidStmtType, ShardableType, SpecialOp, TransitionStmt, SM};
+use crate::ast::{
+    MonoidElt, MonoidStmtType, ShardableType, SimplStmt, SpecialOp, SubIdx, TransitionKind,
+    TransitionStmt, SM,
+};
 use crate::transitions::get_field;
 use proc_macro2::Span;
-use quote::quote;
-use std::collections::HashMap;
+use quote::{quote, quote_spanned};
+use syn::spanned::Spanned;
 use syn::{Expr, Ident, Type};
 
-/// Simplify out `update' statements, including `add_element` etc.
+/// Simplify out `update` statements, including `add_element` etc.
 ///
 /// Note: for 'readonly' stuff, there's less to do because we don't need to handle
 /// updates. However, we still need to handle 'guard' and 'have' statements, which will
 /// be translated into 'asserts'.
 
 // Implementation:
-// We proceed in two passes (although we can skip the first pass for readonly transitions,
-// since this first pass only has to do with updates).
 //
-// Our goal here is basically to remove all the 'update' statements and replace them
-// with statements of the form PostCondition(post.field == expr).
+// The simplification process has 3 primary passes here:
 //
-// The first pass, then, is to determine where the `PostCondition`
-// statements should go, each with a dummy placeholder expression.
-// This is handled by `add_placeholders`.
+//  1. Turn the TransitionStmt into a SimplStmt by translating all the update, init,
+//     and special ops into require, assert, and assign statements.
+//     For example, `update x = 5` becomes `assign tmp_update_x = 5;`
+//     or `add x += z` becomes
+//        `assert (tmp_update_x + z is valid); assign tmp_update_x = tmp_update_x + z`
 //
-// In the second pass, `simplify_ops_rec`, we fill in the expressions.
-// This is where the meat of the translation is, and where we apply the operational
-// definitions of the various special ops.
+//  2. Add PostCondition statements that relate the final values of the tmp variables
+//     to the post.{field} values.
 //
-// It's easiest to discuss the second pass first. It works as follows:
-// for a field `foo`, we're going to initialize a "temporary variable" to `pre.foo`
-// at the beginning of the transition. We then symbolically step through the transition
-// performing update and other op statements to update the temporary variables, e.g.,
+//  3. A transformation pass to remove 'assign' statements, turning them into 'let' statements.
+//     This makes it easier to turn the statement into a pure expression.
 //
-//        update(foo, e)        means       temp_foo := e
-//        add_element(foo, e)   means       temp_foo := temp_foo + {e}
-//        ... and so on
+// So for example if we have fields {a, b, c} and a transition declared as
 //
-// When we reach the PostCondition for `foo`, we then then add
-// the postcondition `post.foo == temp_foo` for whatever accumulated `temp_foo` we have.
+//    `update a = 5;`
 //
-// (As we perform this process, we also remove the update and special op statements from the
-// AST, possibly introducing some 'require' or 'assert' statements when necessary,
-// depending on the semantics of the given special op. Again, if it's a read-only transition,
-// this last part is the only part that actually does anything.)
+// Then after steps 1 and 2 we would have:
 //
-// Thus for the first phase, the key is that the PostCondition statement has to go some
+//    assign tmp_update_a = pre.a;      // Prologue initializing each tmp
+//    assign tmp_update_b = pre.b;      // variable to the initial state
+//    assign tmp_update_c = pre.c;      // (This part is skipped for init transitions)
+//
+//    assign tmp_update_a = 5;          // Translated from the 'update' statement
+//
+//    postcondition post.a == tmp_update_a    // Added in phase 2
+//    postcondition post.b == tmp_update_a
+//    postcondition post.c == tmp_update_a
+//
+// Thus for the second phase, placing the PostCondition statements,
+// the key is that the PostCondition statement has to go some
 // place where temp_foo has taken on its final value (i.e., the PostCondition can't come
 // before any statement which might update the value). Granted, one option would be to
 // always put them at the end (in which case one might ask why we bother).
@@ -65,11 +68,11 @@ use syn::{Expr, Ident, Type};
 // So we would place the PostCondition statements like this:
 //
 //      if cond {
-//          update(foo, x);
-//          PostCondition(post.foo == x);
+//          assign tmp_update_foo = x;                 // from update(foo, x)
+//          PostCondition(post.foo == tmp_update_foo); // inserted
 //      } else {
-//          update(foo, y);
-//          PostCondition(post.foo == y);
+//          assign tmp_update_foo = y;                 // from update(foo, y)
+//          PostCondition(post.foo == tmp_update_foo); // inserted
 //      }
 //
 // Which then generates relations like:
@@ -77,24 +80,26 @@ use syn::{Expr, Ident, Type};
 //      `cond ==> post.foo == x`
 //      `!cond ==> post.foo == y`
 //
-// Thus the purpose of the first phase is to find these ideal positions for the
-// PostCondition statements and mark those positions with placeholders.
+// Thus the purpose of this phase is to find these ideal positions for the
+// PostCondition statements.
 
-pub fn simplify_ops(sm: &SM, ts: &TransitionStmt, is_readonly: bool) -> TransitionStmt {
-    let ts = add_tmp_vars_special_ops(sm, ts);
-    let ts = if !is_readonly { add_placeholders(sm, &ts) } else { ts };
+pub fn simplify_ops(sm: &SM, ts: &TransitionStmt, kind: TransitionKind) -> Vec<SimplStmt> {
+    // Phase 1: translate the update, init, and special ops into SimplStmts
+    let sops = simplify_ops_with_pre(&ts, &sm, kind);
 
-    let field_map = FieldMap::new(sm);
-    let (ts, _field_map) = simplify_ops_rec(&ts, &sm, field_map);
+    // Phase 2: Add PostCondition statements
+    let is_readonly = kind == TransitionKind::Readonly;
+    let sops = if !is_readonly { add_postconditions(sm, *ts.get_span(), sops) } else { sops };
 
-    ts
+    // Phase 3: Simplify out all 'assign' statements
+    crate::simplify_assigns::simplify_assigns(&sm, &sops)
 }
 
-// Phase 1. Adding the placeholders for the PostCondition operations.
+// Phase 2. Adding the PostCondition operations.
 //
 // The key correctness criteria are:
 //
-//    1. A placeholder for a field `foo` cannot come before a statement that updates `foo`
+//    1. A postcondition for a field `foo` cannot come before a statement that updates `foo`
 //    2. Every control-flow path must encounter exactly one PostCondition statement
 //
 // Other than that, we want the PostCondition to come as soon as possible.
@@ -104,135 +109,117 @@ pub fn simplify_ops(sm: &SM, ts: &TransitionStmt, is_readonly: bool) -> Transiti
 //
 // For each conditional, we have to check if we added a statement on one branch but not
 // the other, and if so, resolve.
-// Finally at the very end, we add placeholders for any fields that were never updated.
+// Finally at the very end, we add postconditions for any fields that were never updated.
 
-fn add_placeholders(sm: &SM, ts: &TransitionStmt) -> TransitionStmt {
-    let mut ts = ts.clone();
-
+fn add_postconditions(sm: &SM, span: Span, sops: Vec<SimplStmt>) -> Vec<SimplStmt> {
     let mut found = Vec::new();
-    add_placeholders_rec(&mut ts, &mut found);
+    let mut sops = sops;
+    add_postconditions_vec(&mut sops, &mut found);
 
     for field in &sm.fields {
         if !contains_ident(&found, &field.name) {
-            let fs = placeholder_stmt(ts.get_span().clone(), field.name.clone());
-            append_stmt(&mut ts, fs);
+            let fs = postcondition_stmt(span, field.name.clone());
+            sops.push(fs);
         }
     }
 
-    ts
+    sops
 }
 
-fn add_placeholders_rec(ts: &mut TransitionStmt, found: &mut Vec<Ident>) {
-    // First check if this statement is any kind of update-ish statement
-    // (that includes 'update' statements, 'init' statements, and any special
-    // ops that might modify the field).
+fn add_postconditions_vec(sops: &mut Vec<SimplStmt>, found: &mut Vec<Ident>) {
+    // To be appended at the end
+    let mut new_sops = Vec::new();
 
-    let mut is_update_for = None;
-    match &ts {
-        TransitionStmt::Block(..) => {}
-        TransitionStmt::Let(..) => {}
-        TransitionStmt::If(..) => {}
-        TransitionStmt::Require(..) => {}
-        TransitionStmt::Assert(..) => {}
+    for sop in sops.iter_mut().rev() {
+        // Add a postcondition statement if necessary.
 
-        TransitionStmt::Initialize(_, f, _) | TransitionStmt::Update(_, f, _) => {
-            is_update_for = Some(f.clone());
-        }
-        TransitionStmt::Special(_, f, op, _) => {
-            if op.is_modifier() {
-                is_update_for = Some(f.clone());
-            }
-        }
-        TransitionStmt::PostCondition(..) => {
-            panic!("PostCondition statement shouldn't exist here");
-        }
-    }
+        match &sop {
+            SimplStmt::Assign(span, tmp_ident, _, _) => {
+                let f_ident = field_name_from_tmp(tmp_ident);
+                if !contains_ident(found, &f_ident) {
+                    // If it's an assign statement, AND we haven't added
+                    // a postcondition for this field yet, then add a postcondition
+                    // at the end of this block of statements.
+                    // (And leave the current statement unchanged).
 
-    match is_update_for {
-        Some(f) => {
-            if !contains_ident(found, &f) {
-                // If it _is_ an update-ish statement, AND we haven't added
-                // a placeholder for this field yet, then add a placeholder
-                // immediately after the current statement. (And leave the
-                // current statement unchanged).
-
-                found.push(f.clone());
-                append_stmt(ts, placeholder_stmt(*ts.get_span(), f));
-                return;
-            }
-        }
-        None => {}
-    }
-
-    // All the other cases. For any other kind of leaf statement, there's nothing
-    // else to do. For blocks and branches, we recurse.
-
-    match ts {
-        TransitionStmt::Block(_, v) => {
-            for t in v.iter_mut().rev() {
-                add_placeholders_rec(t, found);
-            }
-        }
-        TransitionStmt::Let(_, _, _, _, _, child) => {
-            add_placeholders_rec(child, found);
-        }
-        TransitionStmt::If(span, _, e1, e2) => {
-            let mut found2 = found.clone();
-            let idx = found.len();
-
-            add_placeholders_rec(e1, found);
-            add_placeholders_rec(e2, &mut found2);
-
-            // For each side of the conditional, look at any newly-found
-            // fields from that conditional (those after `idx`, the original
-            // length of the array). For such field, if it wasn't ALSO found
-            // in the other branch, then we go ahead and add it to the other
-            // branch now. Thus we maintain that, for each field and for each
-            // conditional, we will either get a placeholder on both branches,
-            // or on neither.
-
-            // Make sure we end with `found` (the &mut argument) containing the
-            // union of all the fields that were found on either branch.
-
-            for i in idx..found.len() {
-                if !contains_ident(&found2, &found[i]) {
-                    append_stmt(e2, placeholder_stmt(*span, found[i].clone()));
+                    found.push(f_ident.clone());
+                    new_sops.push(postcondition_stmt(*span, f_ident));
                 }
             }
+            _ => {}
+        }
 
-            for i in idx..found2.len() {
-                if !contains_ident(found, &found2[i]) {
-                    found.push(found2[i].clone());
-                    append_stmt(e1, placeholder_stmt(*span, found2[i].clone()));
-                }
+        // Recurse.
+
+        match sop {
+            SimplStmt::Let(_, _, _, _, v) => {
+                add_postconditions_vec(v, found);
             }
-        }
+            SimplStmt::Split(span, _, es) => {
+                let idx = found.len();
+                let mut found_inner = vec![found.clone(); es.len()];
 
-        TransitionStmt::Require(_, _) => {}
-        TransitionStmt::Assert(..) => {}
-        TransitionStmt::Initialize(_, _, _) => {}
-        TransitionStmt::Update(_, _, _) => {}
-        TransitionStmt::Special(..) => {}
-        TransitionStmt::PostCondition(..) => {
-            // We're in the process of adding these; they shouldn't be in here already!
-            panic!("PostCondition statement shouldn't exist here");
+                for i in 0..es.len() {
+                    add_postconditions_vec(&mut es[i], &mut found_inner[i]);
+                }
+
+                // For each side of the conditional (or arm of the match),
+                // look at any newly-found
+                // fields from that conditional (those after `idx`, the original
+                // length of the array). For such a field, if it wasn't ALSO found
+                // in some other branch, then we go ahead and add it to the other
+                // branch now. Thus we maintain that, for each field and for each
+                // conditional, we will either get a postcondition on both branches,
+                // or on neither.
+
+                // Step 1: Collect any field which is newly updated in any branch.
+
+                let mut all_new = Vec::new();
+
+                for j in 0..es.len() {
+                    for i in idx..found_inner[j].len() {
+                        if !contains_ident(&all_new, &found_inner[j][i]) {
+                            all_new.push(found_inner[j][i].clone());
+                        }
+                    }
+                }
+
+                // Step 2: For each field and each branch, check if it needs to be
+                // added, and if so, do so.
+
+                for f in &all_new {
+                    for j in 0..es.len() {
+                        if !contains_ident(&found_inner[j], f) {
+                            found_inner[j].push(f.clone());
+                            es[j].push(postcondition_stmt(*span, f.clone()));
+                        }
+                    }
+                }
+
+                // Make sure we end with `found` (the &mut argument) containing the
+                // union of all the fields that were found on either branch.
+
+                *found = found_inner[0].clone();
+            }
+
+            SimplStmt::Require(..)
+            | SimplStmt::PostCondition(..)
+            | SimplStmt::Assert(..)
+            | SimplStmt::Assign(..) => {}
         }
     }
+
+    sops.append(&mut new_sops);
 }
 
-// 'Placeholder' for the PostCondition statement
-// We store the field name in order to track which field the placeholder is for.
-// we will update the expression later in phase 2.
-
-fn placeholder_stmt(span: Span, f: Ident) -> TransitionStmt {
-    TransitionStmt::PostCondition(span, Expr::Verbatim(quote! { #f }))
-}
-
-fn get_field_for_placeholder(e: &Expr) -> String {
-    match e {
-        Expr::Verbatim(stream) => stream.to_string(),
-        _ => panic!("get_field_for_placeholder found invalid placeholder"),
-    }
+fn postcondition_stmt(span: Span, f: Ident) -> SimplStmt {
+    let cur = get_cur(&f);
+    SimplStmt::PostCondition(
+        span,
+        Expr::Verbatim(quote! {
+            ::builtin::equal(post.#f, #cur)
+        }),
+    )
 }
 
 fn contains_ident(v: &Vec<Ident>, id: &Ident) -> bool {
@@ -244,219 +231,133 @@ fn contains_ident(v: &Vec<Ident>, id: &Ident) -> bool {
     return false;
 }
 
-/// Sequences t1 and t2, mutating *t1 to store the result.
+fn get_cur(field_name: &Ident) -> Expr {
+    let id = get_cur_ident(field_name);
+    Expr::Verbatim(quote! { #id })
+}
 
-fn append_stmt(t1: &mut TransitionStmt, t2: TransitionStmt) {
-    match t1 {
+pub const UPDATE_TMP_PREFIX: &str = "update_tmp_";
+
+fn get_cur_ident(field_name: &Ident) -> Ident {
+    let name = UPDATE_TMP_PREFIX.to_string() + &field_name.to_string();
+    Ident::new(&name, field_name.span())
+}
+
+fn field_name_from_tmp(tmp_name: &Ident) -> Ident {
+    let s = tmp_name.to_string();
+    assert!(s.starts_with(UPDATE_TMP_PREFIX));
+    Ident::new(&s[UPDATE_TMP_PREFIX.len()..], tmp_name.span())
+}
+
+// Phase 1. Give meaning to all the update, init, and special op statements.
+// User-provided require and assert statements are just translated as they are.
+
+fn simplify_ops_with_pre(ts: &TransitionStmt, sm: &SM, kind: TransitionKind) -> Vec<SimplStmt> {
+    let mut ops = simplify_ops_rec(ts, sm);
+    if kind == TransitionKind::Init {
+        ops
+    } else {
+        let mut ops1: Vec<SimplStmt> = sm
+            .fields
+            .iter()
+            .map(|f| {
+                let f_ident = &f.name;
+                SimplStmt::Assign(
+                    f_ident.span(),
+                    get_cur_ident(f_ident),
+                    f.get_type(),
+                    Expr::Verbatim(quote! {pre.#f_ident}),
+                )
+            })
+            .collect();
+        ops1.append(&mut ops);
+        ops1
+    }
+}
+
+fn simplify_ops_rec(ts: &TransitionStmt, sm: &SM) -> Vec<SimplStmt> {
+    match ts {
         TransitionStmt::Block(_span, v) => {
-            v.push(t2);
-            return;
-        }
-        TransitionStmt::Let(_span, _ident, _ty, _lk, _e, child) => {
-            append_stmt(&mut **child, t2);
-            return;
-        }
-        _ => {}
-    }
-    *t1 = TransitionStmt::Block(t1.get_span().clone(), vec![t1.clone(), t2]);
-}
-
-// Phase 2. Primary logic of the translation
-//
-// The `field_map` we pass around contains the "temporary" variables as we
-// described above.
-//
-// This phase gives meaning to all the special op statements by:
-//
-//   1. updating the `field_map` as necessary
-//   2. translating to `require` and `assert` statements as necessary
-//
-// See `docs/command-reference.md` for the command reference and rationale
-// for their definitions.
-//
-// TODO this is kind of jank and doesn't support all cases right now, and it's also
-// somewhat difficult due to the reality of manipulating opaque Rust Exprs which could cause
-// problems if they are moved into or out of a let-scope that changes the results of path
-// lookups. (Currently, this issue is prevented because we introduce tmp_* variables for
-// the expressions in SpecialOps.)
-// This would be much easier with VIR support (e.g., if we could have 'mut' local
-// variables in spec expressions, it would be a lot easier to represent the
-// update definitions).
-
-#[derive(Clone)]
-struct FieldMap {
-    // Each entry has a counter to track when the expression changed
-    pub field_map: HashMap<String, (u64, Expr)>,
-}
-
-impl FieldMap {
-    pub fn new(sm: &SM) -> FieldMap {
-        let mut field_map = HashMap::new();
-        for field in &sm.fields {
-            let ident = &field.name;
-            field_map.insert(ident.to_string(), (0, Expr::Verbatim(quote! { pre.#ident })));
-        }
-        FieldMap { field_map }
-    }
-
-    pub fn get<'a>(&'a self, s: &String) -> &'a Expr {
-        match self.field_map.get(s).as_ref() {
-            Some((_, e)) => e,
-            None => panic!("simplification failed, perhaps a let-variable went out-of-scope?"),
-        }
-    }
-
-    pub fn set(&mut self, s: String, e: Expr) {
-        let counter = self.field_map[&s].0;
-        self.field_map.insert(s, (counter + 1, e));
-    }
-
-    pub fn remove_changed(old: FieldMap, new: FieldMap) -> FieldMap {
-        let mut res = HashMap::new();
-        for (field, (old_counter, old_e)) in old.field_map.iter() {
-            match new.field_map.get(field) {
-                Some((new_counter, _new_e)) => {
-                    if old_counter == new_counter {
-                        res.insert(field.clone(), (*old_counter, old_e.clone()));
-                    }
-                }
-                None => {}
-            }
-        }
-        FieldMap { field_map: res }
-    }
-
-    /// Merge two value maps at the end of a conditional.
-    pub fn merge(old: FieldMap, new1: FieldMap, new2: FieldMap) -> FieldMap {
-        let mut merged = HashMap::new();
-        for (field, (old_counter, old_e)) in old.field_map.iter() {
-            match (new1.field_map.get(field), new2.field_map.get(field)) {
-                (Some((new1_counter, _new1_e)), Some((new2_counter, _new2_e))) => {
-                    if new1_counter == old_counter && new2_counter == old_counter {
-                        // Case: The expression wasn't changed in either branch.
-                        merged.insert(field.clone(), (*old_counter, old_e.clone()));
-                    } else {
-                        // Case: The expression was changed in some branch.
-                        // So, technically, we should construct something
-                        // like `if cond { e1 } else { e2 }` here.
-                        //
-                        // Due to current constraints, it happens that
-                        // if a field is updated inside an 'if' statement, then
-                        // our temp var should never be accessed again after this point.
-                        // (Special ops are forbidden in conditionals for unrelated reasons,
-                        // and we only allow one 'update' per field.)
-                        // So, we just leave it out of the newly constructed map.
-                        //
-                        // If/when this assumption turns out to not be right, then
-                        // we should get a 'panic' when we try to access it later.
-                    }
-                }
-                _ => {}
-            }
-        }
-        FieldMap { field_map: merged }
-    }
-}
-
-fn simplify_ops_rec(
-    ts: &TransitionStmt,
-    sm: &SM,
-    field_map: FieldMap,
-) -> (TransitionStmt, FieldMap) {
-    match ts {
-        TransitionStmt::PostCondition(span, placeholder_e) => {
-            // We found a placeholder PostCondition.
-            // Update its expression.
-
-            let f_string = get_field_for_placeholder(placeholder_e);
-            let e = &field_map.get(&f_string);
-            let f = Ident::new(&f_string, *span);
-            let ts = TransitionStmt::PostCondition(
-                *span,
-                Expr::Verbatim(quote! {
-                    ::builtin::equal(post.#f, #e)
-                }),
-            );
-            return (ts, field_map);
-        }
-        _ => {}
-    }
-
-    match ts {
-        TransitionStmt::Block(span, v) => {
-            let mut field_map = field_map;
             let mut res = Vec::new();
             for t in v {
-                let (t, fm) = simplify_ops_rec(t, sm, field_map);
-                field_map = fm;
-                res.push(t);
+                let mut t = simplify_ops_rec(t, sm);
+                res.append(&mut t);
             }
-            (TransitionStmt::Block(*span, res), field_map)
+            res
         }
-        TransitionStmt::Let(span, id, ty, lk, e, child) => {
-            let (new_child, new_map) = simplify_ops_rec(child, sm, field_map.clone());
-            // We call `remove_changed` to remove any field that has been modified
-            // inside this block. We do this because the new expression could possibly
-            // refer to the bound variable here which is about to go out-of-scope.
-            (
-                TransitionStmt::Let(
-                    *span,
-                    id.clone(),
-                    ty.clone(),
-                    lk.clone(),
-                    e.clone(),
-                    Box::new(new_child),
-                ),
-                FieldMap::remove_changed(field_map, new_map),
-            )
+        TransitionStmt::Let(span, pat, ty, _lk, e, child) => {
+            let new_child = simplify_ops_rec(child, sm);
+            vec![SimplStmt::Let(*span, pat.clone(), ty.clone(), e.clone(), new_child)]
         }
-        TransitionStmt::If(span, cond, e1, e2) => {
-            let (new_e1, field_map1) = simplify_ops_rec(e1, sm, field_map.clone());
-            let (new_e2, field_map2) = simplify_ops_rec(e2, sm, field_map.clone());
-            (
-                TransitionStmt::If(*span, cond.clone(), Box::new(new_e1), Box::new(new_e2)),
-                FieldMap::merge(field_map, field_map1, field_map2),
-            )
+        TransitionStmt::Split(span, split_kind, es) => {
+            let mut new_es: Vec<Vec<SimplStmt>> = Vec::new();
+            for e in es {
+                let new_e1 = simplify_ops_rec(&e, sm);
+                new_es.push(new_e1);
+            }
+
+            vec![SimplStmt::Split(*span, split_kind.clone(), new_es)]
         }
-        TransitionStmt::Require(..) => (ts.clone(), field_map),
-        TransitionStmt::Assert(..) => (ts.clone(), field_map),
+
+        TransitionStmt::PostCondition(span, e) => {
+            vec![SimplStmt::PostCondition(*span, e.clone())]
+        }
+        TransitionStmt::Require(span, e) => {
+            vec![SimplStmt::Require(*span, e.clone())]
+        }
+        TransitionStmt::Assert(span, e, pf) => {
+            vec![SimplStmt::Assert(*span, e.clone(), pf.clone())]
+        }
 
         TransitionStmt::Initialize(span, f, e) | TransitionStmt::Update(span, f, e) => {
-            let mut field_map = field_map;
-            field_map.set(f.to_string(), e.clone());
-            (TransitionStmt::Block(*span, Vec::new()), field_map)
+            let field = get_field(&sm.fields, f);
+            vec![SimplStmt::Assign(*span, get_cur_ident(f), field.get_type(), e.clone())]
+        }
+        TransitionStmt::SubUpdate(span, f, subs, e) => {
+            let field = get_field(&sm.fields, f);
+            vec![SimplStmt::Assign(
+                *span,
+                get_cur_ident(f),
+                field.get_type(),
+                update_sub_expr(&get_cur(f), subs, 0, e),
+            )]
         }
 
         TransitionStmt::Special(span, f, SpecialOp { stmt: MonoidStmtType::Have, elt }, _) => {
-            let cur = field_map.get(&f.to_string());
+            let cur = get_cur(f);
             let field = get_field(&sm.fields, f);
             let prec = expr_ge(&field.stype, &cur, elt);
-            (TransitionStmt::Require(*span, prec), field_map)
+            vec![SimplStmt::Require(*span, prec)]
         }
         TransitionStmt::Special(span, f, SpecialOp { stmt: MonoidStmtType::Add, elt }, proof) => {
-            let mut field_map = field_map;
-            let cur = field_map.get(&f.to_string()).clone();
+            let cur = get_cur(f);
             let field = get_field(&sm.fields, f);
-            field_map.set(f.to_string(), expr_add(&field.stype, &cur, elt));
+            let new_val = expr_add(&field.stype, &cur, elt);
+
+            let mut v = Vec::new();
             match expr_can_add(&field.stype, &cur, elt) {
-                Some(safety) => (TransitionStmt::Assert(*span, safety, proof.clone()), field_map),
-                None => (TransitionStmt::Block(*span, Vec::new()), field_map),
+                Some(safety) => v.push(SimplStmt::Assert(*span, safety, proof.clone())),
+                None => {}
             }
+            v.push(SimplStmt::Assign(*span, get_cur_ident(f), field.get_type(), new_val));
+            v
         }
         TransitionStmt::Special(span, f, SpecialOp { stmt: MonoidStmtType::Remove, elt }, _) => {
-            let mut field_map = field_map;
-            let cur = field_map.get(&f.to_string()).clone();
+            let cur = get_cur(f);
             let field = get_field(&sm.fields, f);
-            field_map.set(f.to_string(), expr_remove(&field.stype, &cur, elt));
+            let new_val = expr_remove(&field.stype, &cur, elt);
             let prec = expr_ge(&field.stype, &cur, elt);
-            (TransitionStmt::Require(*span, prec), field_map)
+            vec![
+                SimplStmt::Require(*span, prec),
+                SimplStmt::Assign(*span, get_cur_ident(f), field.get_type(), new_val),
+            ]
         }
 
         TransitionStmt::Special(span, f, SpecialOp { stmt: MonoidStmtType::Guard, elt }, proof) => {
-            let cur = field_map.get(&f.to_string());
+            let cur = get_cur(f);
             let field = get_field(&sm.fields, f);
             let prec = expr_ge(&field.stype, &cur, elt);
-            (TransitionStmt::Assert(*span, prec, proof.clone()), field_map)
+            vec![SimplStmt::Assert(*span, prec, proof.clone())]
         }
 
         TransitionStmt::Special(
@@ -465,31 +366,51 @@ fn simplify_ops_rec(
             SpecialOp { stmt: MonoidStmtType::Deposit, elt },
             proof,
         ) => {
-            let mut field_map = field_map;
-            let cur = field_map.get(&f.to_string()).clone();
+            let cur = get_cur(f);
             let field = get_field(&sm.fields, f);
-            field_map.set(f.to_string(), expr_add(&field.stype, &cur, elt));
+            let new_val = expr_add(&field.stype, &cur, elt);
+            let mut v = Vec::new();
             match expr_can_add(&field.stype, &cur, elt) {
-                Some(safety) => (TransitionStmt::Assert(*span, safety, proof.clone()), field_map),
-                None => (TransitionStmt::Block(*span, Vec::new()), field_map),
+                Some(safety) => v.push(SimplStmt::Assert(*span, safety, proof.clone())),
+                None => {}
             }
+            v.push(SimplStmt::Assign(*span, get_cur_ident(f), field.get_type(), new_val));
+            v
         }
+
         TransitionStmt::Special(
             span,
             f,
             SpecialOp { stmt: MonoidStmtType::Withdraw, elt },
             proof,
         ) => {
-            let mut field_map = field_map;
-            let cur = field_map.get(&f.to_string()).clone();
+            let cur = get_cur(f);
             let field = get_field(&sm.fields, f);
-            field_map.set(f.to_string(), expr_remove(&field.stype, &cur, elt));
+            let new_val = expr_remove(&field.stype, &cur, elt);
             let prec = expr_ge(&field.stype, &cur, elt);
-            (TransitionStmt::Assert(*span, prec, proof.clone()), field_map)
+            vec![
+                SimplStmt::Assert(*span, prec, proof.clone()),
+                SimplStmt::Assign(*span, get_cur_ident(f), field.get_type(), new_val),
+            ]
         }
+    }
+}
 
-        TransitionStmt::PostCondition(..) => {
-            panic!("PostCondition statement shouldn't exist here");
+fn update_sub_expr(root: &Expr, subs: &Vec<SubIdx>, i: usize, val: &Expr) -> Expr {
+    if i == subs.len() {
+        val.clone()
+    } else {
+        match &subs[i] {
+            SubIdx::Field(_field) => {
+                panic!("dot-fields in sub-updates not yet supported");
+            }
+            SubIdx::Idx(idx_e) => {
+                let child = Expr::Verbatim(quote_spanned! { idx_e.span() => #root.index(#idx_e) });
+                let r = update_sub_expr(&child, subs, i + 1, val);
+                Expr::Verbatim(quote_spanned! { idx_e.span() =>
+                    #root.update(#idx_e, #r)
+                })
+            }
         }
     }
 }

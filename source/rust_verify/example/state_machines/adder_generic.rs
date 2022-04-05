@@ -31,11 +31,11 @@ state_machine!(
         }
 
         #[inductive(initialize)]
-        fn init_preserves(post: X<T>, t: T) {
+        fn init_preserves(post: Self, t: T) {
         }
 
         #[inductive(add)]
-        fn add_preserves(pre: X<T>, post: X<T>, n: int) {
+        fn add_preserves(pre: Self, post: Self, n: int) {
         }
     }
 );

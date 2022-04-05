@@ -53,15 +53,15 @@ tokenized_state_machine!{
         }
 
         #[inductive(initialize)]
-        fn init_preserves(post: AdderWithMax, m: int) {
+        fn init_preserves(post: Self, m: int) {
         }
 
         #[inductive(add)]
-        fn add_preserves(pre: AdderWithMax, post: AdderWithMax, n: int) {
+        fn add_preserves(pre: Self, post: Self, n: int) {
         }
 
         #[inductive(change_to_minimum)]
-        fn change_to_minimum_inductive(pre: AdderWithMax, post: AdderWithMax) { }
+        fn change_to_minimum_inductive(pre: Self, post: Self) { }
     }
 }
 

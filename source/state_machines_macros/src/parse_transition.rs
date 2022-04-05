@@ -1,6 +1,6 @@
 use crate::ast::{
-    AssertProof, LetKind, MonoidElt, MonoidStmtType, SpecialOp, Transition, TransitionKind,
-    TransitionParam, TransitionStmt,
+    Arm, AssertProof, LetKind, MonoidElt, MonoidStmtType, SpecialOp, SplitKind, SubIdx, Transition,
+    TransitionKind, TransitionParam, TransitionStmt,
 };
 use crate::parse_token_stream::{keyword, peek_keyword};
 use proc_macro2::Span;
@@ -9,10 +9,12 @@ use syn::parse::{Parse, ParseStream};
 use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
 use syn::token::Comma;
-use syn::{braced, bracketed, parenthesized, Block, Error, Expr, Ident, Macro, Token, Type};
+use syn::{braced, bracketed, parenthesized, Block, Error, Expr, Ident, Macro, Pat, Token, Type};
 
 /// Translate Rust AST into a transition AST by parsing our transition DSL.
 /// Every statement should be one of:
+///   let, if, match (similar to the same statements in Rust)
+///   init, update, add, remove, have, deposit, withdraw, guard (statements specific to our DSL)
 
 pub fn parse_transition(mac: Macro) -> syn::parse::Result<Transition> {
     // A transition definition looks like
@@ -80,7 +82,7 @@ fn parse_arg_typed(input: ParseStream) -> syn::parse::Result<(Ident, Type)> {
     Ok((ident, ty))
 }
 
-struct TLet(Span, Ident, Option<Type>, LetKind, Expr);
+struct TLet(Span, Pat, Option<Type>, LetKind, Expr);
 
 enum StmtOrLet {
     Stmt(TransitionStmt),
@@ -104,6 +106,11 @@ fn parse_transition_stmt(input: ParseStream) -> syn::parse::Result<StmtOrLet> {
     // Try to parse as an 'if' statement
     if input.peek(Token![if]) {
         return Ok(StmtOrLet::Stmt(parse_conditional(input)?));
+    }
+
+    // Try to parse as a 'match' statement
+    if input.peek(Token![match]) {
+        return Ok(StmtOrLet::Stmt(parse_match(input)?));
     }
 
     // Parse anything else by reading the next identifier and treating it as a "keyword"
@@ -182,10 +189,10 @@ fn stmts_or_lets_to_block(span: Span, tstmts: Vec<StmtOrLet>) -> TransitionStmt 
     for stmt_or_let in tstmts.into_iter().rev() {
         match stmt_or_let {
             StmtOrLet::Stmt(s) => cur_block.push(s),
-            StmtOrLet::Let(TLet(span, id, ty, lk, e)) => {
+            StmtOrLet::Let(TLet(span, pat, ty, lk, e)) => {
                 cur_block = vec![TransitionStmt::Let(
                     span,
-                    id,
+                    pat,
                     ty,
                     lk,
                     e,
@@ -263,6 +270,7 @@ fn parse_monoid_stmt(
 /// * `{x}` multiset singleton
 /// * `[key => value]` map singleton
 /// * `Some(x)` optional value
+/// * `(x)` general value
 fn parse_monoid_elt(
     input: ParseStream,
     monoid_stmt_type: MonoidStmtType,
@@ -305,15 +313,11 @@ fn parse_conditional(input: ParseStream) -> syn::parse::Result<TransitionStmt> {
     if input.peek(Token![else]) {
         let els = parse_else_block(input)?;
         let span = if_token.span.join(*els.get_span()).unwrap_or(if_token.span);
-        Ok(TransitionStmt::If(span, cond, Box::new(thn), Box::new(els)))
+        Ok(TransitionStmt::Split(span, SplitKind::If(cond), vec![thn, els]))
     } else {
         let span = if_token.span.join(*thn.get_span()).unwrap_or(if_token.span);
-        Ok(TransitionStmt::If(
-            span,
-            cond,
-            Box::new(thn),
-            Box::new(TransitionStmt::Block(if_token.span, vec![])),
-        ))
+        let els = TransitionStmt::Block(if_token.span, vec![]);
+        Ok(TransitionStmt::Split(span, SplitKind::If(cond), vec![thn, els]))
     }
 }
 
@@ -334,7 +338,7 @@ fn parse_else_block(input: ParseStream) -> syn::parse::Result<TransitionStmt> {
 
 /// Parse `let x = ...;` or `birds_eye let x = ...;`
 fn parse_let(span: Span, lk: LetKind, input: ParseStream) -> syn::parse::Result<TLet> {
-    let varname: Ident = input.parse()?;
+    let pat: Pat = input.parse()?;
 
     let ty = if input.peek(Token![:]) {
         let _t: Token![:] = input.parse()?;
@@ -350,19 +354,40 @@ fn parse_let(span: Span, lk: LetKind, input: ParseStream) -> syn::parse::Result<
 
     let stmt_span = span.join(semi.span()).unwrap_or(span);
 
-    Ok(TLet(stmt_span, varname, ty, lk, e))
+    Ok(TLet(stmt_span, pat, ty, lk, e))
 }
 
 /// Parse `update field = ...;`
 fn parse_update(kw: Ident, input: ParseStream) -> syn::parse::Result<TransitionStmt> {
     let field: Ident = input.parse()?;
+
+    let mut subs = Vec::new();
+    loop {
+        if input.peek(Token![.]) {
+            let _: Token![.] = input.parse()?;
+            let sub_field: Ident = input.parse()?;
+            subs.push(SubIdx::Field(sub_field));
+        } else if input.peek(syn::token::Bracket) {
+            let content;
+            let _ = bracketed!(content in input);
+            let idx_expr: Expr = content.parse()?;
+            subs.push(SubIdx::Idx(idx_expr));
+        } else {
+            break;
+        }
+    }
+
     let _t: Token![=] = input.parse()?;
     let e: Expr = input.parse()?;
     let semi: Token![;] = input.parse()?;
 
     let stmt_span = kw.span().join(semi.span()).unwrap_or(kw.span());
 
-    Ok(TransitionStmt::Update(stmt_span, field, e))
+    if subs.len() > 0 {
+        Ok(TransitionStmt::SubUpdate(stmt_span, field, subs, e))
+    } else {
+        Ok(TransitionStmt::Update(stmt_span, field, e))
+    }
 }
 
 /// Parse `init field = ...;`
@@ -403,4 +428,80 @@ fn parse_require(kw: Ident, input: ParseStream) -> syn::parse::Result<Transition
     let semi: Token![;] = input.parse()?;
     let stmt_span = kw.span().join(semi.span()).unwrap_or(kw.span());
     Ok(TransitionStmt::Require(stmt_span, e))
+}
+
+/// Parse `match ... { ... }`
+/// This is based on syn's `impl Parse for ExprMatch`,
+/// but we have to modify it so that it parses a TransitionStmt instead of an Expr
+/// in each arm. However, we can re-use some of the code for parsing the patterns
+
+fn parse_match(input: ParseStream) -> syn::parse::Result<TransitionStmt> {
+    let match_token: Token![match] = input.parse()?;
+    let expr = Expr::parse_without_eager_brace(input)?;
+
+    let content;
+    let brace_token = braced!(content in input);
+
+    let mut arms = Vec::new();
+    let mut stmts = Vec::new();
+    while !content.is_empty() {
+        let (arm, stmt) = parse_arm(&content)?;
+        arms.push(arm);
+        stmts.push(stmt);
+    }
+
+    let span = match_token.span.join(brace_token.span).unwrap_or(match_token.span);
+
+    Ok(TransitionStmt::Split(span, SplitKind::Match(expr, arms), stmts))
+}
+
+/// Parse an arm of a match statement. Based on `impl Parse for syn::Arm`
+/// (but note that we return our own ast::Arm, not the syn::Arm)
+
+fn parse_arm(input: ParseStream) -> syn::parse::Result<(Arm, TransitionStmt)> {
+    let pat = multi_pat_with_leading_vert(input)?;
+    let guard = {
+        if input.peek(Token![if]) {
+            let if_token: Token![if] = input.parse()?;
+            let guard: Expr = input.parse()?;
+            Some((if_token, Box::new(guard)))
+        } else {
+            None
+        }
+    };
+    let fat_arrow_token = input.parse()?;
+    let body = parse_transition_block(input)?;
+
+    let requires_comma = false;
+    let comma = {
+        if requires_comma && !input.is_empty() { Some(input.parse()?) } else { input.parse()? }
+    };
+
+    let arm = Arm { pat, guard, fat_arrow_token, comma };
+    Ok((arm, body))
+}
+
+// these are (private) functions from syn, used for parsing patterns in a `match` statement
+
+fn multi_pat_with_leading_vert(input: ParseStream) -> syn::parse::Result<Pat> {
+    let leading_vert: Option<Token![|]> = input.parse()?;
+    multi_pat_impl(input, leading_vert)
+}
+
+fn multi_pat_impl(input: ParseStream, leading_vert: Option<Token![|]>) -> syn::parse::Result<Pat> {
+    let mut pat: Pat = input.parse()?;
+    if leading_vert.is_some()
+        || input.peek(Token![|]) && !input.peek(Token![||]) && !input.peek(Token![|=])
+    {
+        let mut cases = Punctuated::new();
+        cases.push_value(pat);
+        while input.peek(Token![|]) && !input.peek(Token![||]) && !input.peek(Token![|=]) {
+            let punct = input.parse()?;
+            cases.push_punct(punct);
+            let pat: Pat = input.parse()?;
+            cases.push_value(pat);
+        }
+        pat = Pat::Or(syn::PatOr { attrs: Vec::new(), leading_vert, cases });
+    }
+    Ok(pat)
 }

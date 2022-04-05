@@ -34,7 +34,7 @@ state_machine!(
         }
 
         init!{
-            init(ids: Seq<nat>) {
+            ini(ids: Seq<nat>) {
                 require(ids_distinct(ids));
                 init ids = ids;
                 init highest_heard = Seq::new(ids.len(), |i: int| -1);
@@ -100,7 +100,7 @@ state_machine!(
         }
 
         #[inductive(transmission)]
-        pub fn preserves_ind(pre: X, post: X, srcidx: nat) {
+        pub fn preserves_ind(pre: Self, post: Self, srcidx: nat) {
             // XXX(travis): this sort of copy-paste is extremely common, we could have
             // a language feature to let us skip it
             let dstidx = if srcidx + 1 == pre.ids.len() { 0 } else { srcidx + 1 };
@@ -167,8 +167,8 @@ state_machine!(
             });
         }
 
-        #[inductive(init)]
-        pub fn ind_on_init(post: X, ids: Seq<nat>) {
+        #[inductive(ini)]
+        pub fn ind_on_ini(post: Self, ids: Seq<nat>) {
             assert(post.on_chord_heard_dominates_id_inv());
         }
     }

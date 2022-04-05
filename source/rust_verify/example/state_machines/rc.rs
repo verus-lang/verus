@@ -49,16 +49,16 @@ tokenized_state_machine!(Dupe<T> {
     }
 
      #[inductive(initialize_one)]
-     fn initialize_one_inductive(post: Dupe<T>, t: T) { }
+     fn initialize_one_inductive(post: Self, t: T) { }
  
      #[inductive(dupe)]
-     fn dupe_inductive(pre: Dupe<T>, post: Dupe<T>, t: T) { }
+     fn dupe_inductive(pre: Self, post: Self, t: T) { }
 });
 
 #[proof]
 pub struct Duplicable<T> {
-    #[proof] pub inst: Dupe_Instance<T>,
-    #[proof] pub reader: Dupe_reader<T>,
+    #[proof] pub inst: Dupe::Instance<T>,
+    #[proof] pub reader: Dupe::reader<T>,
 }
 
 impl<T> Duplicable<T> {
@@ -77,8 +77,8 @@ impl<T> Duplicable<T> {
     pub fn new(#[proof] t: T) -> Self {
         ensures(|s: Self| s.wf() && equal(s.view(), t));
 
-        #[proof] let (inst, mut readers) = Dupe_Instance::initialize_one(/* spec */ t, Option::Some(t));
-        #[proof] let reader = readers.proof_remove(Dupe_reader { value: t, instance: inst });
+        #[proof] let (inst, mut readers) = Dupe::Instance::initialize_one(/* spec */ t, Option::Some(t));
+        #[proof] let reader = readers.proof_remove(Dupe::reader { value: t, instance: inst });
         Duplicable {
             inst, reader
         }
@@ -149,7 +149,7 @@ tokenized_state_machine!(RefCounter<#[verifier(maybe_negative)] T> {
     }
 
     #[inductive(initialize_empty)]
-    fn initialize_empty_inductive(post: RefCounter<T>) { }
+    fn initialize_empty_inductive(post: Self) { }
     
     transition!{
         do_deposit(x: T) {
@@ -161,7 +161,7 @@ tokenized_state_machine!(RefCounter<#[verifier(maybe_negative)] T> {
     }
 
     #[inductive(do_deposit)]
-    fn do_deposit_inductive(pre: RefCounter<T>, post: RefCounter<T>, x: T) { }
+    fn do_deposit_inductive(pre: Self, post: Self, x: T) { }
 
     readonly!{
         reader_guard(x: T) {
@@ -179,7 +179,7 @@ tokenized_state_machine!(RefCounter<#[verifier(maybe_negative)] T> {
     }
 
     #[inductive(do_clone)]
-    fn do_clone_inductive(pre: RefCounter<T>, post: RefCounter<T>, x: T) {
+    fn do_clone_inductive(pre: Self, post: Self, x: T) {
         assert(pre.reader.count(x) > 0);
         assert(equal(pre.storage, Option::Some(x)));
         assert(pre.storage.is_Some());
@@ -205,13 +205,13 @@ tokenized_state_machine!(RefCounter<#[verifier(maybe_negative)] T> {
     }
 
     #[inductive(dec_basic)]
-    fn dec_basic_inductive(pre: RefCounter<T>, post: RefCounter<T>, x: T) {
+    fn dec_basic_inductive(pre: Self, post: Self, x: T) {
         assert(pre.reader.count(x) > 0);
         assert(equal(pre.storage, Option::Some(x)));
     }
 
     #[inductive(dec_to_zero)]
-    fn dec_to_zero_inductive(pre: RefCounter<T>, post: RefCounter<T>, x: T) { }
+    fn dec_to_zero_inductive(pre: Self, post: Self, x: T) { }
 });
 
 struct InnerRc<S> {
@@ -222,12 +222,12 @@ struct InnerRc<S> {
 #[proof]
 struct GhostStuff<S> {
     #[proof] pub rc_perm: cell::Permission<u64>,
-    #[proof] pub rc_token: RefCounter_counter<ptr::Permission<InnerRc<S>>>,
+    #[proof] pub rc_token: RefCounter::counter<ptr::Permission<InnerRc<S>>>,
 }
 
 impl<S> GhostStuff<S> {
     #[spec]
-    fn wf(self, inst: RefCounter_Instance<ptr::Permission<InnerRc<S>>>, cell: PCell<u64>) -> bool {
+    fn wf(self, inst: RefCounter::Instance<ptr::Permission<InnerRc<S>>>, cell: PCell<u64>) -> bool {
         equal(self.rc_perm.pcell, cell.view())
         && equal(self.rc_token.instance, inst)
         && self.rc_perm.value.is_Some()
@@ -243,9 +243,9 @@ impl<S> InnerRc<S> {
 }
 
 struct MyRc<S> {
-    #[proof] pub inst: RefCounter_Instance<ptr::Permission<InnerRc<S>>>,
+    #[proof] pub inst: RefCounter::Instance<ptr::Permission<InnerRc<S>>>,
     #[proof] pub inv: Duplicable<LocalInvariant<GhostStuff<S>>>,
-    #[proof] pub reader: RefCounter_reader<ptr::Permission<InnerRc<S>>>,
+    #[proof] pub reader: RefCounter::reader<ptr::Permission<InnerRc<S>>>,
     pub ptr: PPtr<InnerRc<S>>,
 }
 
@@ -276,7 +276,7 @@ impl<S> MyRc<S> {
 
         let (ptr, Proof(ptr_perm)) = PPtr::new(inner_rc);
 
-        #[proof] let (inst, mut rc_token, _) = RefCounter_Instance::initialize_empty(Option::None);
+        #[proof] let (inst, mut rc_token, _) = RefCounter::Instance::initialize_empty(Option::None);
         #[proof] let reader = inst.do_deposit(ptr_perm, &mut rc_token, ptr_perm);
 
         #[proof] let g = GhostStuff::<S> { rc_perm, rc_token };

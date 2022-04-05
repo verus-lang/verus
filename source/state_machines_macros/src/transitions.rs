@@ -1,5 +1,6 @@
 use crate::ast::{
-    Field, MonoidElt, ShardableType, SpecialOp, Transition, TransitionKind, TransitionStmt, SM,
+    Field, MonoidElt, ShardableType, SpecialOp, SplitKind, Transition, TransitionKind,
+    TransitionStmt, SM,
 };
 use crate::check_birds_eye::check_birds_eye;
 use crate::ident_visitor::validate_idents_transition;
@@ -44,13 +45,15 @@ fn check_updates_refer_to_valid_fields(
         TransitionStmt::Let(_, _, _, _, _, child) => {
             check_updates_refer_to_valid_fields(fields, child, errors);
         }
-        TransitionStmt::If(_, _, thn, els) => {
-            check_updates_refer_to_valid_fields(fields, thn, errors);
-            check_updates_refer_to_valid_fields(fields, els, errors);
+        TransitionStmt::Split(_, _, splits) => {
+            for split in splits {
+                check_updates_refer_to_valid_fields(fields, split, errors);
+            }
         }
         TransitionStmt::Require(_, _) => {}
         TransitionStmt::Assert(..) => {}
         TransitionStmt::Update(span, f, _)
+        | TransitionStmt::SubUpdate(span, f, _, _)
         | TransitionStmt::Initialize(span, f, _)
         | TransitionStmt::Special(span, f, _, _) => {
             if !fields_contain(fields, f) {
@@ -110,9 +113,10 @@ fn check_exactly_one_init_rec(
             Ok(o)
         }
         TransitionStmt::Let(_, _, _, _, _, child) => check_exactly_one_init_rec(field, child),
-        TransitionStmt::If(if_span, _, thn, els) => {
-            let o1 = check_exactly_one_init_rec(field, thn)?;
-            let o2 = check_exactly_one_init_rec(field, els)?;
+        TransitionStmt::Split(if_span, SplitKind::If(_), es) => {
+            assert!(es.len() == 2);
+            let o1 = check_exactly_one_init_rec(field, &es[0])?;
+            let o2 = check_exactly_one_init_rec(field, &es[1])?;
             // The user is required to initialize the field in both branches if they update
             // it in either. Therefore we need to produce an error if there was a mismatch
             // between the two branches.
@@ -123,7 +127,7 @@ fn check_exactly_one_init_rec(
                     return Err(Error::new(
                         *if_span,
                         format!(
-                            "for initialization, both branches of if-statement must initialize the same fields; the else-branch does not initialize '{}'",
+                            "for initialization, both branches of an if-statement must initialize the same fields; the else-branch does not initialize '{}'",
                             field.name
                         ),
                     ));
@@ -132,12 +136,41 @@ fn check_exactly_one_init_rec(
                     return Err(Error::new(
                         *if_span,
                         format!(
-                            "for initialization, both branches of if-statement must initialize the same fields; the if-branch does not initialize '{}'",
+                            "for initialization, both branches of an if-statement must initialize the same fields; the if-branch does not initialize '{}'",
                             field.name
                         ),
                     ));
                 }
             }
+        }
+        TransitionStmt::Split(_span, SplitKind::Match(..), es) => {
+            let o1 = check_exactly_one_init_rec(field, &es[0])?;
+            for i in 1..es.len() {
+                let oi = check_exactly_one_init_rec(field, &es[i])?;
+                match (o1, oi) {
+                    (Some(_span1), Some(_span2)) => {}
+                    (None, None) => {}
+                    (Some(_span1), None) => {
+                        return Err(Error::new(
+                            *es[i].get_span(),
+                            format!(
+                                "for initialization, all branches of a match-statement must initialize the same fields; this branch does not initialize '{}'",
+                                field.name
+                            ),
+                        ));
+                    }
+                    (None, Some(_span1)) => {
+                        return Err(Error::new(
+                            *es[0].get_span(),
+                            format!(
+                                "for initialization, all branches of a match-statement must initialize the same fields; this branch does not initialize '{}'",
+                                field.name
+                            ),
+                        ));
+                    }
+                }
+            }
+            Ok(o1)
         }
         TransitionStmt::Require(_, _) => Ok(None),
         TransitionStmt::Assert(..) => Ok(None),
@@ -148,7 +181,8 @@ fn check_exactly_one_init_rec(
                 Ok(None)
             }
         }
-        TransitionStmt::Update(_, _, _) => Ok(None),
+        TransitionStmt::Update(..) => Ok(None),
+        TransitionStmt::SubUpdate(..) => Ok(None),
         TransitionStmt::Special(..) => Ok(None),
         TransitionStmt::PostCondition(..) => Ok(None),
     }
@@ -157,6 +191,7 @@ fn check_exactly_one_init_rec(
 /// For each field, checks that this field is updated *at most* once.
 /// Only checks 'update' statements, not special ops, and it
 /// only does the check for fields for which 'update' statements are supported.
+/// Ignores sub-updates, there is actually reason to have more than one of those.
 
 fn check_at_most_one_update(sm: &SM, ts: &TransitionStmt, errors: &mut Vec<Error>) {
     for f in &sm.fields {
@@ -196,17 +231,21 @@ fn check_at_most_one_update_rec(
             Ok(o)
         }
         TransitionStmt::Let(_, _, _, _, _, child) => check_at_most_one_update_rec(field, child),
-        TransitionStmt::If(_, _, thn, els) => {
-            let o1 = check_at_most_one_update_rec(field, thn)?;
-            let o2 = check_at_most_one_update_rec(field, els)?;
+        TransitionStmt::Split(_, _, es) => {
             // In contrast to the initialization case,
             // it _is_ allowed to perform an 'update' in only one branch.
-            // We return 'Some(_)' if either of the branches returned Some(_).
-            Ok(if o1.is_some() { o1 } else { o2 })
+            // We return 'Some(_)' if any of the branches returned Some(_).
+            let mut o = None;
+            for e in es {
+                let o1 = check_at_most_one_update_rec(field, e)?;
+                o = o.or(o1);
+            }
+            Ok(o)
         }
         TransitionStmt::Require(_, _) => Ok(None),
         TransitionStmt::Assert(..) => Ok(None),
         TransitionStmt::Initialize(_, _, _) => Ok(None),
+        TransitionStmt::SubUpdate(..) => Ok(None),
         TransitionStmt::Update(span, id, _) => {
             if id.to_string() == field.name.to_string() {
                 Ok(Some(*span))
@@ -357,9 +396,10 @@ fn check_valid_ops(
         TransitionStmt::Let(_, _, _, _, _, child) => {
             check_valid_ops(fields, child, is_readonly, errors);
         }
-        TransitionStmt::If(_, _, thn, els) => {
-            check_valid_ops(fields, thn, is_readonly, errors);
-            check_valid_ops(fields, els, is_readonly, errors);
+        TransitionStmt::Split(_, _, es) => {
+            for e in es {
+                check_valid_ops(fields, e, is_readonly, errors);
+            }
         }
         TransitionStmt::Require(_, _) => {}
         TransitionStmt::Assert(..) => {}
@@ -369,7 +409,7 @@ fn check_valid_ops(
                 format!("'init' statement not allowed outside 'init' routine"),
             ));
         }
-        TransitionStmt::Update(span, f, _) => {
+        TransitionStmt::Update(span, f, _) | TransitionStmt::SubUpdate(span, f, _, _) => {
             let field = get_field(fields, f);
             if !is_allowed_in_update_in_normal_transition(&field.stype) {
                 errors.push(Error::new(
@@ -428,16 +468,17 @@ fn check_valid_ops_init(fields: &Vec<Field>, ts: &TransitionStmt, errors: &mut V
         TransitionStmt::Let(_, _, _, _, _, child) => {
             check_valid_ops_init(fields, child, errors);
         }
-        TransitionStmt::If(_, _, thn, els) => {
-            check_valid_ops_init(fields, thn, errors);
-            check_valid_ops_init(fields, els, errors);
+        TransitionStmt::Split(_, _, es) => {
+            for e in es {
+                check_valid_ops_init(fields, e, errors);
+            }
         }
         TransitionStmt::Require(_, _) => {}
         TransitionStmt::Assert(span, _, _) => {
             errors.push(Error::new(*span, "'assert' statement not allowed in initialization"));
         }
         TransitionStmt::Initialize(_, _, _) => {}
-        TransitionStmt::Update(span, _, _) => {
+        TransitionStmt::Update(span, _, _) | TransitionStmt::SubUpdate(span, _, _, _) => {
             errors.push(Error::new(
                 *span,
                 "'update' statement not allowed in initialization; use 'init' instead",
@@ -467,36 +508,68 @@ fn check_let_shadowing(trans: &Transition, errors: &mut Vec<Error>) {
 }
 
 fn check_let_shadowing_rec(ts: &TransitionStmt, ids: &mut Vec<String>, errors: &mut Vec<Error>) {
+    let new_ids = stmt_get_bound_idents(ts);
+    for id in new_ids {
+        let s = id.to_string();
+        if ids.contains(&s) {
+            errors.push(Error::new(
+                id.span(),
+                format!(
+                    "state machine transitions forbid multiple bound variables with the same name"
+                ),
+            ));
+        } else {
+            ids.push(s);
+        }
+    }
+
     match ts {
         TransitionStmt::Block(_, v) => {
             for t in v {
                 check_let_shadowing_rec(t, ids, errors);
             }
         }
-        TransitionStmt::Let(span, id, _, _, _, child) => {
-            let s = id.to_string();
-            if ids.contains(&s) {
-                errors.push(Error::new(
-                    *span,
-                    format!("state machine transitions forbid let-shadowing"),
-                ));
-            } else {
-                ids.push(s);
-            }
-
+        TransitionStmt::Let(_span, _pat, _, _, _, child) => {
             check_let_shadowing_rec(child, ids, errors);
         }
-        TransitionStmt::If(_, _, e1, e2) => {
-            check_let_shadowing_rec(e1, ids, errors);
-            check_let_shadowing_rec(e2, ids, errors);
+        TransitionStmt::Split(_, _, es) => {
+            for e in es {
+                check_let_shadowing_rec(e, ids, errors);
+            }
         }
         TransitionStmt::Require(..) => {}
         TransitionStmt::Assert(..) => {}
+        TransitionStmt::SubUpdate(..) => {}
         TransitionStmt::Update(..) => {}
         TransitionStmt::Initialize(..) => {}
         TransitionStmt::PostCondition(..) => {}
         TransitionStmt::Special(..) => {}
     }
+}
+
+fn stmt_get_bound_idents(ts: &TransitionStmt) -> Vec<Ident> {
+    match ts {
+        TransitionStmt::Block(_, _) => {}
+        TransitionStmt::Let(_span, pat, _, _, _, _) => {
+            return crate::ident_visitor::pattern_get_bound_idents(pat);
+        }
+        TransitionStmt::Split(_, SplitKind::If(_), _) => {}
+        TransitionStmt::Split(_, SplitKind::Match(_, arms), _) => {
+            let mut v = Vec::new();
+            for arm in arms {
+                v.append(&mut crate::ident_visitor::pattern_get_bound_idents(&arm.pat));
+            }
+            return v;
+        }
+        TransitionStmt::Require(..) => {}
+        TransitionStmt::Assert(..) => {}
+        TransitionStmt::SubUpdate(..) => {}
+        TransitionStmt::Update(..) => {}
+        TransitionStmt::Initialize(..) => {}
+        TransitionStmt::PostCondition(..) => {}
+        TransitionStmt::Special(..) => {}
+    }
+    Vec::new()
 }
 
 /// Check simple well-formedness properties of the transitions.
@@ -545,6 +618,13 @@ pub fn check_transition(sm: &SM, tr: &mut Transition) -> syn::parse::Result<()> 
     check_let_shadowing(tr, &mut errors);
     check_birds_eye(tr, sm.concurrent, &mut errors);
     check_inherent_conditions(sm, &mut tr.body, &mut errors);
+
+    for p in &tr.params {
+        match crate::ident_visitor::error_on_super_path(&p.ty) {
+            Ok(()) => {}
+            Err(e) => errors.push(e),
+        }
+    }
 
     combine_errors_or_ok(errors)
 }

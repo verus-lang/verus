@@ -93,28 +93,28 @@ tokenized_state_machine!(
         }
 
         #[inductive(tr_inc_a)]
-        fn tr_inc_a_preserves(pre: X, post: X) {
+        fn tr_inc_a_preserves(pre: Self, post: Self) {
         }
 
         #[inductive(tr_inc_b)]
-        fn tr_inc_b_preserves(pre: X, post: X) {
+        fn tr_inc_b_preserves(pre: Self, post: Self) {
         }
 
         #[inductive(initialize)]
-        fn initialize_inv(post: X) {
+        fn initialize_inv(post: Self) {
         }
     }
 );
 
 #[proof]
 pub struct G {
-    #[proof] pub counter: X_counter,
+    #[proof] pub counter: X::counter,
     #[proof] pub perm: PermissionU32,
 }
 
 impl G {
     #[spec]
-    pub fn wf(self, instance: X_Instance, patomic: PAtomicU32) -> bool {
+    pub fn wf(self, instance: X::Instance, patomic: PAtomicU32) -> bool {
         equal(self.perm.patomic, patomic.view())
         && equal(self.perm.value as int, self.counter.value)
         && equal(self.counter.instance, instance)
@@ -123,7 +123,7 @@ impl G {
 
 pub struct Global {
     pub atomic: PAtomicU32,
-    #[proof] pub instance: X_Instance,
+    #[proof] pub instance: X::Instance,
     #[proof] pub inv: Invariant<G>,
 }
 
@@ -139,10 +139,10 @@ impl Global {
 pub struct Thread1Data {
     pub globals: Arc<Global>,
 
-    #[proof] pub token: X_inc_a,
+    #[proof] pub token: X::inc_a,
 }
 
-impl Spawnable<Proof<X_inc_a>> for Thread1Data {
+impl Spawnable<Proof<X::inc_a>> for Thread1Data {
     #[spec]
     fn pre(self) -> bool {
         self.globals.view().wf()
@@ -151,12 +151,12 @@ impl Spawnable<Proof<X_inc_a>> for Thread1Data {
     }
 
     #[spec]
-    fn post(self, new_token: Proof<X_inc_a>) -> bool {
+    fn post(self, new_token: Proof<X::inc_a>) -> bool {
         equal(new_token.0.instance, self.globals.view().instance)
         && new_token.0.value
     }
 
-    fn run(self) -> Proof<X_inc_a> {
+    fn run(self) -> Proof<X::inc_a> {
         let Thread1Data { globals: globals, mut token } = self;
         let globals = globals.borrow();
 
@@ -180,10 +180,10 @@ impl Spawnable<Proof<X_inc_a>> for Thread1Data {
 pub struct Thread2Data {
     pub globals: Arc<Global>,
 
-    #[proof] pub token: X_inc_b,
+    #[proof] pub token: X::inc_b,
 }
 
-impl Spawnable<Proof<X_inc_b>> for Thread2Data {
+impl Spawnable<Proof<X::inc_b>> for Thread2Data {
     #[spec]
     fn pre(self) -> bool {
         self.globals.view().wf()
@@ -192,12 +192,12 @@ impl Spawnable<Proof<X_inc_b>> for Thread2Data {
     }
 
     #[spec]
-    fn post(self, new_token: Proof<X_inc_b>) -> bool {
+    fn post(self, new_token: Proof<X::inc_b>) -> bool {
         equal(new_token.0.instance, self.globals.view().instance)
         && new_token.0.value
     }
 
-    fn run(self) -> Proof<X_inc_b> {
+    fn run(self) -> Proof<X::inc_b> {
         let Thread2Data { globals: globals, mut token } = self;
         let globals = globals.borrow();
 
@@ -222,8 +222,8 @@ fn main() {
 
   #[proof] let (instance,
       counter_token,
-      mut inc_a_token,
-      mut inc_b_token) = X_Instance::initialize();
+      inc_a_token,
+      inc_b_token) = X::Instance::initialize();
 
   // Initialize the counter
 
