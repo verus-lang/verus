@@ -10,6 +10,22 @@ impl<A> Set<A> {
     pub fn map<F: Fn(A) -> A>(self, f: F) -> Set<A> {
         Set::new(|a: A| exists(|x: A| self.contains(x) && equal(a, f(x))))
     }
+
+    #[spec] #[verifier(publish)]
+    pub fn fold<E, F: Fn(E, A) -> E>(self, init: E, f: F) -> E {
+        decreases(self.len());
+
+        if self.finite() {
+            if self.len() == 0 {
+                init
+            } else {
+                let a = self.choose();
+                self.remove(a).fold(f(init, a), f)
+            }
+        } else {
+            arbitrary()
+        }
+    }
 }
 
 #[proof]

@@ -116,3 +116,19 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_one_fails(err)
 }
+
+test_verify_one_file! {
+    #[test] test_set_fold code! {
+        use set::*;
+
+        fn test() {
+            #[spec] let s: Set<nat> = set![9];
+            reveal_with_fuel(Set::fold::<nat, fn(nat,nat)->nat>, 10);
+            assert(s.finite());
+            assert(s.len() > 0);
+            assert(s.fold(0, |p, a: nat| p + a) == 9);
+
+            assert(set![].fold(0, |p, a: nat| p + a) == 0);
+        }
+    } => Ok(())
+}
