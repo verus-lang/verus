@@ -296,3 +296,78 @@ test_verify_one_file! {
         }
     } => Err(e) => assert_vir_error(e)
 }
+
+test_verify_one_file! {
+    #[test] test_proof_fn_call_fail code! {
+        use seq::*;
+
+        #[proof]
+        struct Node {
+            v: nat,
+        }
+
+        #[proof]
+        fn lemma(#[proof] node: Node) {
+            requires(node.v < 10);
+            ensures(node.v * 2 < 20);
+        }
+
+        #[proof]
+        fn other(#[proof] node: Node) {
+            assume(node.v < 10);
+            lemma(node);
+            lemma(node);
+        }
+    } => Err(_)
+}
+
+test_verify_one_file! {
+    #[test] test_associated_proof_fn_call_pass code! {
+        use seq::*;
+
+        #[proof]
+        struct Node {
+            v: nat,
+        }
+
+        impl Node {
+            #[proof]
+            fn lemma(&self) {
+                requires(self.v < 10);
+                ensures(self.v * 2 < 20);
+            }
+
+            #[proof]
+            fn other(&self, other_node: Node) {
+                assume(other_node.v < 10);
+                other_node.lemma();
+            }
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_associated_proof_fn_call_fail code! {
+        use seq::*;
+
+        #[proof]
+        struct Node {
+            v: nat,
+        }
+
+        impl Node {
+            #[proof]
+            fn lemma(#[proof] self) {
+                requires(self.v < 10);
+                ensures(self.v * 2 < 20);
+            }
+
+            #[proof]
+            fn other(#[proof] self) {
+                assume(other_node.v < 10);
+                self.lemma();
+                self.lemma();
+            }
+        }
+    } => Err(_)
+}
