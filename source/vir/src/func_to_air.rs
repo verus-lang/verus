@@ -675,6 +675,7 @@ pub fn func_def_to_air(
                 &stm,
                 function.x.attrs.bit_vector,
                 skip_ensures,
+                function.x.attrs.non_linear,
             );
 
             state.finalize();
