@@ -297,15 +297,15 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error(e)
 }
 
+const PROOF_FN_COMMON: &str = code_str! {
+    #[proof]
+    struct Node {
+        v: nat,
+    }
+};
+
 test_verify_one_file! {
-    #[test] test_proof_fn_call_fail code! {
-        use seq::*;
-
-        #[proof]
-        struct Node {
-            v: nat,
-        }
-
+    #[test] test_proof_fn_call_fail PROOF_FN_COMMON.to_string() + code_str! {
         #[proof]
         fn lemma(#[proof] node: Node) {
             requires(node.v < 10);
@@ -322,14 +322,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_associated_proof_fn_call_pass code! {
-        use seq::*;
-
-        #[proof]
-        struct Node {
-            v: nat,
-        }
-
+    #[test] test_associated_proof_fn_call_pass PROOF_FN_COMMON.to_string() + code_str! {
         impl Node {
             #[proof]
             fn lemma(&self) {
@@ -347,14 +340,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_associated_proof_fn_call_fail code! {
-        use seq::*;
-
-        #[proof]
-        struct Node {
-            v: nat,
-        }
-
+    #[test] test_associated_proof_fn_call_fail_1 PROOF_FN_COMMON.to_string() + code_str! {
         impl Node {
             #[proof]
             fn lemma(#[proof] self) {
@@ -367,6 +353,24 @@ test_verify_one_file! {
                 assume(other_node.v < 10);
                 self.lemma();
                 self.lemma();
+            }
+        }
+    } => Err(_)
+}
+
+test_verify_one_file! {
+    // TODO un-ignore when #124 is fixed
+    #[test] #[ignore] test_associated_proof_fn_call_fail_2_regression_124 PROOF_FN_COMMON.to_string() + code_str! {
+        struct Token {}
+
+        impl Node {
+            #[proof]
+            fn lemma(self, #[proof] t: Token) {}
+
+            #[proof]
+            fn other(self, #[proof] t: Token) {
+                self.lemma(t);
+                self.lemma(t);
             }
         }
     } => Err(_)
