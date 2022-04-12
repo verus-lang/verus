@@ -606,7 +606,13 @@ fn erase_expr_opt(ctxt: &Ctxt, mctxt: &mut MCtxt, expect: Mode, expr: &Expr) -> 
                 ResolvedCall::Call(f_path) => match erase_call(ctxt, mctxt, m_path, f_path, args) {
                     None => return Some(expr.clone()),
                     Some(None) => return None,
-                    Some(Some((segment, args))) => ExprKind::MethodCall(segment, args, *span),
+                    Some(Some((segment, args))) => {
+                        if args.len() == 0 {
+                            return None;
+                        } else {
+                            ExprKind::MethodCall(segment, args, *span)
+                        }
+                    }
                 },
                 ResolvedCall::Spec => return None,
                 _ => panic!("internal error: MethodCall ResolvedCall {:?}", call),
