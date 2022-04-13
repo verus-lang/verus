@@ -382,6 +382,7 @@ fn fn_call_to_vir<'tcx>(
     let is_ensures = f_name == "builtin::ensures";
     let is_invariant = f_name == "builtin::invariant";
     let is_decreases = f_name == "builtin::decreases";
+    let is_decreases_by = f_name == "builtin::decreases_by";
     let is_opens_invariants_none = f_name == "builtin::opens_invariants_none";
     let is_opens_invariants_any = f_name == "builtin::opens_invariants_any";
     let is_opens_invariants = f_name == "builtin::opens_invariants";
@@ -416,6 +417,7 @@ fn fn_call_to_vir<'tcx>(
         || is_ensures
         || is_invariant
         || is_decreases
+        || is_decreases_by
         || is_opens_invariants_none
         || is_opens_invariants_any
         || is_opens_invariants
@@ -591,6 +593,12 @@ fn fn_call_to_vir<'tcx>(
         );
     }
 
+    if is_decreases_by {
+        unsupported_err_unless!(len == 1, expr.span, "expected function", &args);
+        let x = get_fn_path(bctx, &args[0])?;
+        let header = Arc::new(HeaderExprX::DecreasesBy(x));
+        return Ok(mk_expr(ExprX::Header(header)));
+    }
     if is_extra_dependency || is_hide || is_reveal {
         unsupported_err_unless!(len == 1, expr.span, "expected hide/reveal", &args);
         let x = get_fn_path(bctx, &args[0])?;

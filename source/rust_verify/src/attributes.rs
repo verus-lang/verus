@@ -132,6 +132,8 @@ pub(crate) enum Attr {
     InvariantBlock,
     // an enum variant is_Variant
     IsVariant,
+    // this proof function is a termination proof
+    DecreasesBy,
 }
 
 fn get_trigger_arg(span: Span, attr_tree: &AttrTree) -> Result<u64, VirErr> {
@@ -216,6 +218,9 @@ pub(crate) fn parse_attrs(attrs: &[Attribute]) -> Result<Vec<Attr>, VirErr> {
                 }
                 Some(box [AttrTree::Fun(_, arg, None)]) if arg == "bit_vector" => {
                     v.push(Attr::BitVector)
+                }
+                Some(box [AttrTree::Fun(_, arg, None)]) if arg == "decreases_by" => {
+                    v.push(Attr::DecreasesBy)
                 }
                 Some(box [AttrTree::Fun(_, arg, Some(box [AttrTree::Fun(_, name, None)]))])
                     if arg == "returns" && name == "spec" =>
@@ -318,6 +323,7 @@ pub(crate) struct VerifierAttrs {
     pub(crate) unforgeable: bool,
     pub(crate) atomic: bool,
     pub(crate) is_variant: bool,
+    pub(crate) decreases_by: bool,
 }
 
 pub(crate) fn get_verifier_attrs(attrs: &[Attribute]) -> Result<VerifierAttrs, VirErr> {
@@ -337,6 +343,7 @@ pub(crate) fn get_verifier_attrs(attrs: &[Attribute]) -> Result<VerifierAttrs, V
         unforgeable: false,
         atomic: false,
         is_variant: false,
+        decreases_by: false,
     };
     for attr in parse_attrs(attrs)? {
         match attr {
@@ -355,6 +362,7 @@ pub(crate) fn get_verifier_attrs(attrs: &[Attribute]) -> Result<VerifierAttrs, V
             Attr::Unforgeable => vs.unforgeable = true,
             Attr::Atomic => vs.atomic = true,
             Attr::IsVariant => vs.is_variant = true,
+            Attr::DecreasesBy => vs.decreases_by = true,
             _ => {}
         }
     }

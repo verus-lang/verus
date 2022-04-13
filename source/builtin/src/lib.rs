@@ -38,6 +38,12 @@ pub fn decreases<A>(_a: A) {
 
 // Can only appear at beginning of function body
 #[proof]
+pub fn decreases_by<F>(_f: F) {
+    unimplemented!();
+}
+
+// Can only appear at beginning of function body
+#[proof]
 pub fn hide<F>(_f: F) {
     unimplemented!();
 }

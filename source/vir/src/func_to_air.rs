@@ -410,6 +410,11 @@ pub fn func_decl_to_air(
             }
         }
         Mode::Exec | Mode::Proof => {
+            if function.x.attrs.is_decrease_by {
+                dbg!(function);
+                todo!();
+            }
+
             if let FunctionKind::TraitMethodImpl { .. } = &function.x.kind {
                 // For a trait method implementation, we inherit the trait requires/ensures,
                 // so we can just return here.

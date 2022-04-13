@@ -631,3 +631,20 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_fails(err, 2)
 }
+
+test_verify_one_file! {
+    #[test] basic_decreases_by code! {
+        #[spec]
+        fn arith_sum_nat(i: nat) -> nat {
+            decreases(i);
+            decreases_by(check_arith_sum_nat);
+
+            if i == 0 { 0 } else { i + arith_sum_nat(i - 1) }
+        }
+
+        #[proof] #[verifier(decreases_by)]
+        fn check_arith_sum_nat(i: nat) {
+
+        }
+    } => Ok(())
+}
