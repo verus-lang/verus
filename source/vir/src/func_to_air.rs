@@ -2,6 +2,7 @@ use crate::ast::{
     Function, FunctionKind, GenericBoundX, Ident, Idents, Mode, Param, ParamX, Params,
     SpannedTyped, Typ, TypX, Typs, VirErr,
 };
+use crate::ast_util::{err_str, types_equal};
 use crate::context::Ctx;
 use crate::def::{
     prefix_ensures, prefix_fuel_id, prefix_fuel_nat, prefix_pre_var, prefix_recursive_fun,
@@ -115,9 +116,29 @@ fn func_body_to_air(
     // ast --> sst
     let (local_decls, body_exp) = crate::ast_to_sst::expr_to_decls_exp(&ctx, true, &pars, &body)?;
 
+    // TODO: move checks to well_formed?
+    let decrease_by_body = function.x.decrease_by.as_ref().map(|decrease_by_fun| {
+        let decrease_by_fun = &ctx.func_map[decrease_by_fun];
+        if decrease_by_fun.x.params.len() != function.x.params.len() {
+            return err_str(&decrease_by_fun.span, "decreases_by function should have the same parameter types");
+        }
+        for (dfp, fp) in decrease_by_fun.x.params.iter().zip(function.x.params.iter()) {
+            if !types_equal(&dfp.x.typ, &fp.x.typ) {
+                return err_str(&dfp.span, format!("decreases_by parameter types should match the corresponding function, expected {:?} found {:?}", &dfp.x.typ, &fp.x.typ).as_str());
+            }
+        }
+        let (_local_decls, body_exp) = crate::ast_to_sst::expr_to_decls_exp(&ctx, true, &pars, function.x.body.as_ref().expect("decreases_by has body"))?;
+        Ok(body_exp)
+    }).transpose()?;
+
     // Check termination
-    let (is_recursive, termination_commands, body_exp) =
-        crate::recursion::check_termination_exp(ctx, function, local_decls, &body_exp)?;
+    let (is_recursive, termination_commands, body_exp) = crate::recursion::check_termination_exp(
+        ctx,
+        function,
+        local_decls,
+        &body_exp,
+        decrease_by_body.as_ref(),
+    )?;
     check_commands.extend(termination_commands.iter().cloned());
 
     // non-recursive:
@@ -410,10 +431,7 @@ pub fn func_decl_to_air(
             }
         }
         Mode::Exec | Mode::Proof => {
-            if function.x.attrs.is_decrease_by {
-                dbg!(function);
-                todo!();
-            }
+            assert!(!function.x.attrs.is_decrease_by);
 
             if let FunctionKind::TraitMethodImpl { .. } = &function.x.kind {
                 // For a trait method implementation, we inherit the trait requires/ensures,

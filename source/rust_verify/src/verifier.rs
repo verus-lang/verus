@@ -321,7 +321,7 @@ impl Verifier {
             ctx.module_for_chosen_triggers = function.x.visibility.owning_module.clone();
             let vis = function.x.visibility.clone();
             let vis = Visibility { is_private: vis.is_private, ..vis };
-            if !is_visible_to(&vis, module) {
+            if !is_visible_to(&vis, module) || function.x.attrs.is_decrease_by {
                 continue;
             }
             let vis_abs = Visibility { is_private: function.x.publish.is_none(), ..vis };

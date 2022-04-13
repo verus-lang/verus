@@ -330,7 +330,11 @@ pub(crate) fn check_termination_exp(
     function: &Function,
     mut local_decls: Vec<LocalDecl>,
     body: &Exp,
+    proof_body: Option<&Exp>,
 ) -> Result<(bool, Commands, Exp), VirErr> {
+    if let Some(proof_body) = proof_body {
+        todo!("use the body");
+    }
     if !is_recursive_exp(ctx, &function.x.name, body) {
         return Ok((false, Arc::new(vec![]), body.clone()));
     }
