@@ -148,8 +148,26 @@ impl GlobalCtx {
             func_call_graph.add_node(Node::Fun(f.x.name.clone()));
             crate::recursion::expand_call_graph(&func_map, &method_map, &mut func_call_graph, f)?;
         }
+
         func_call_graph.compute_sccs();
         let func_call_sccs = func_call_graph.sort_sccs();
+        for f in &krate.functions {
+            if f.x.attrs.is_decrease_by {
+                let f_node = Node::Fun(f.x.name.clone());
+                for g_node in func_call_graph.get_scc_nodes(&f_node) {
+                    if f_node != g_node {
+                        let g =
+                            krate.functions.iter().find(|g| Node::Fun(g.x.name.clone()) == g_node);
+                        return Err(air::errors::error(
+                            "found cyclic dependency in decreases_by function",
+                            &f.span,
+                        )
+                        .secondary_span(&g.unwrap().span));
+                    }
+                }
+            }
+        }
+
         Ok(GlobalCtx {
             chosen_triggers,
             datatypes,

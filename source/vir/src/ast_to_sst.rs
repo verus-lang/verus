@@ -23,7 +23,7 @@ type Args = Arc<Vec<Arg>>;
 pub(crate) struct State {
     // View exec/proof code as spec
     // (used for is_const functions, which are viewable both as spec and exec)
-    view_as_spec: bool,
+    pub(crate) view_as_spec: bool,
     // Counter to generate temporary variables
     next_var: u64,
     // Collect all local variable declarations
@@ -166,6 +166,14 @@ impl State {
         let decl = LocalDeclX { ident: unique_ident.clone(), typ: typ.clone(), mutable };
         self.local_decls.push(Arc::new(decl));
         unique_ident
+    }
+
+    pub(crate) fn declare_params(&mut self, params: &Pars) {
+        for param in params.iter() {
+            if !matches!(param.x.purpose, ParPurpose::MutPost) {
+                self.declare_new_var(&param.x.name, &param.x.typ, false, false);
+            }
+        }
     }
 
     // Erase unused unique ids from Vars
@@ -332,11 +340,7 @@ pub(crate) fn expr_to_decls_exp(
 ) -> Result<(Vec<LocalDecl>, Exp), VirErr> {
     let mut state = State::new();
     state.view_as_spec = view_as_spec;
-    for param in params.iter() {
-        if !matches!(param.x.purpose, ParPurpose::MutPost) {
-            state.declare_new_var(&param.x.name, &param.x.typ, false, false);
-        }
-    }
+    state.declare_params(params);
     let exp = expr_to_pure_exp(ctx, &mut state, expr)?;
     let exp = state.finalize_exp(&exp);
     state.finalize();

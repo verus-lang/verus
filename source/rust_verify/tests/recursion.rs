@@ -648,3 +648,366 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] basic_decreases_by_int code! {
+        #[spec]
+        fn arith_sum(i: int) -> int {
+            decreases(i);
+            decreases_by(check_arith_sum);
+
+            if i == 0 { 0 } else { i + arith_sum(i - 1) }
+        }
+
+        #[proof] #[verifier(decreases_by)]
+        fn check_arith_sum(i: int) {
+            requires(i >= 0);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] basic_decreases_by_int_fail1 code! {
+        #[spec]
+        fn arith_sum(i: int) -> int {
+            decreases(i);
+
+            if i == 0 { 0 } else { i + arith_sum(i - 1) } // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] basic_decreases_by_int_fail2 code! {
+        #[spec]
+        fn arith_sum(i: int) -> int {
+            decreases(i);
+            decreases_by(check_arith_sum);
+
+            if i == 0 { 0 } else { i + arith_sum(i - 1) }
+        }
+
+        #[proof] #[verifier(decreases_by)]
+        fn check_arith_sum(i: int) {
+            requires(i >= 0);
+        }
+
+        #[proof]
+        fn ignore_require(i: int) {
+            assert(arith_sum(i) == (if i == 0 { 0 } else { i + arith_sum(i - 1) })); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] basic_decreases_by_int_fail3 code! {
+        #[spec]
+        fn arith_sum(i: int) -> int {
+            decreases(i);
+            decreases_by(check_arith_sum);
+
+            if i == 0 { 0 } else { i + arith_sum(i - 1) }
+        }
+
+        #[proof] //#[verifier(decreases_by)]
+        fn check_arith_sum(i: int) {
+            requires(i >= 0);
+        }
+    } => Err(err) => assert_vir_error(err)
+}
+
+test_verify_one_file! {
+    #[test] basic_decreases_by_int_fail4 code! {
+        #[spec]
+        fn arith_sum(i: int) -> int {
+            decreases(i);
+            //decreases_by(check_arith_sum);
+
+            if i == 0 { 0 } else { i + arith_sum(i - 1) }
+        }
+
+        #[proof] #[verifier(decreases_by)]
+        fn check_arith_sum(i: int) {
+            requires(i >= 0);
+        }
+    } => Err(err) => assert_vir_error(err)
+}
+
+test_verify_one_file! {
+    #[test] basic_decreases_by_int_fail5 code! {
+        #[spec]
+        fn arith_sum(i: int) -> int {
+            decreases(i);
+            decreases_by(check_arith_sum);
+
+            if i == 0 { 0 } else { i + arith_sum(i - 1) }
+        }
+
+        #[proof] #[verifier(decreases_by)]
+        fn check_arith_sum(i: int) {
+            requires(i >= 0);
+            decreases(i);
+        }
+    } => Err(err) => assert_vir_error(err)
+}
+
+test_verify_one_file! {
+    #[test] basic_decreases_by_int_fail6 code! {
+        #[spec]
+        fn arith_sum(i: int) -> int {
+            decreases(i);
+            decreases_by(check_arith_sum);
+
+            if i == 0 { 0 } else { i + arith_sum(i - 1) }
+        }
+
+        #[proof] #[verifier(decreases_by)]
+        fn check_arith_sum(i: int) {
+            requires(i >= 0);
+            ensures(i >= 0);
+        }
+    } => Err(err) => assert_vir_error(err)
+}
+
+test_verify_one_file! {
+    #[test] basic_decreases_by_int_fail7 code! {
+        #[spec]
+        fn arith_sum(i: int) -> int {
+            decreases(i);
+            decreases_by(check_arith_sum);
+
+            if i == 0 { 0 } else { i + arith_sum(i - 1) }
+        }
+
+        #[proof] #[verifier(decreases_by)]
+        fn check_arith_sum(i: nat) {
+            requires(i >= 0);
+        }
+    } => Err(err) => assert_vir_error(err)
+}
+
+test_verify_one_file! {
+    #[test] basic_decreases_by_int_fail8 code! {
+        #[spec]
+        fn arith_sum(i: int) -> int {
+            decreases(i);
+            decreases_by(check_arith_sum);
+
+            if i == 0 { 0 } else { i + arith_sum(i - 1) }
+        }
+
+        #[proof] #[verifier(decreases_by)]
+        fn check_arith_sum(j: int) {
+            requires(j >= 0);
+        }
+    } => Err(err) => assert_vir_error(err)
+}
+
+test_verify_one_file! {
+    #[test] basic_decreases_by_int_fail9 code! {
+        #[spec]
+        fn arith_sum<A, B>(a: A, b: B, i: int) -> int {
+            decreases(i);
+            decreases_by(check_arith_sum::<int, int>);
+
+            if i == 0 { 0 } else { i + arith_sum(a, b, i - 1) }
+        }
+
+        #[proof] #[verifier(decreases_by)]
+        fn check_arith_sum<B, A>(a: A, b: B, i: int) {
+            requires(i >= 0);
+        }
+    } => Err(err) => assert_vir_error(err)
+}
+
+test_verify_one_file! {
+    #[test] basic_decreases_by_int_fail10 code! {
+        #[spec]
+        fn arith_sum(i: int) -> int {
+            decreases(i);
+            decreases_by(check_arith_sum);
+
+            if i == 0 { 0 } else { i + arith_sum(i - 1) }
+        }
+
+        #[proof] #[verifier(decreases_by)]
+        fn check_arith_sum(i: int) {
+            requires(i >= 0);
+            if false {
+                check_arith_sum(i);
+            }
+        }
+    } => Err(err) => assert_vir_error(err)
+}
+
+test_verify_one_file! {
+    #[test] basic_decreases_by_int_fail11 code! {
+        #[spec]
+        fn arith_sum(i: int) -> int {
+            decreases(i);
+            decreases_by(check_arith_sum);
+
+            if i == 0 { 0 } else { i + arith_sum(i - 1) }
+        }
+
+        #[proof] #[verifier(decreases_by)]
+        fn check_arith_sum(i: int) {
+            requires(i >= 0);
+        }
+
+        #[proof]
+        fn test() {
+            check_arith_sum(0);
+        }
+    } => Err(err) => assert_vir_error(err)
+}
+
+test_verify_one_file! {
+    #[test] basic_decreases_by_int_fail12 code! {
+        #[spec]
+        fn f(x: int) -> int {
+            decreases(x);
+            decreases_by(check_f);
+            f(x + 1) + 1
+        }
+
+        #[proof]
+        fn test() {
+            ensures(f(3) == f(4) + 1);
+        }
+
+        #[proof]
+        #[verifier(decreases_by)]
+        fn check_f(x: int) {
+            test();
+        }
+    } => Err(err) => assert_vir_error(err)
+}
+
+test_verify_one_file! {
+    #[test] basic_decreases_by_int_fail13 code! {
+        #[spec]
+        fn f(x: int) -> int {
+            decreases(x);
+            decreases_by(check_f);
+            3
+        }
+
+        #[proof]
+        #[verifier(decreases_by)]
+        fn check_f(x: int) {
+            let foo = f(x); // cyclic dependency on f
+        }
+    } => Err(err) => assert_vir_error(err)
+}
+
+test_verify_one_file! {
+    #[test] basic_decreases_by_int_fail14 code! {
+        #[proof]
+        fn arith_sum(i: int) -> int {
+            decreases(i);
+            decreases_by(check_arith_sum);
+
+            if i == 0 { 0 } else { i + arith_sum(i - 1) }
+        }
+
+        #[proof] #[verifier(decreases_by)]
+        fn check_arith_sum(i: int) {
+            requires(i >= 0);
+        }
+    } => Err(err) => assert_vir_error(err)
+}
+
+test_verify_one_file! {
+    #[test] basic_decreases_by_int_fail15 code! {
+        #[spec]
+        fn arith_sum(i: int) -> int {
+            decreases(i);
+            decreases_by(check_arith_sum);
+
+            3
+        }
+
+        #[spec] #[verifier(decreases_by)]
+        fn check_arith_sum(i: int) {
+        }
+    } => Err(err) => assert_vir_error(err)
+}
+
+test_verify_one_file! {
+    #[test] proof_decreases_by_int code! {
+        #[spec]
+        #[verifier(opaque)]
+        fn id(i: int) -> int {
+            i
+        }
+
+        #[spec]
+        fn arith_sum(i: int) -> int {
+            decreases(id(i));
+            decreases_by(check_arith_sum);
+
+            if i == 0 { 0 } else { i + arith_sum(i - 1) }
+        }
+
+        #[proof] #[verifier(decreases_by)]
+        fn check_arith_sum(i: int) {
+            requires(i >= 0);
+            reveal(id);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] proof_decreases_by_int2 code! {
+        #[spec]
+        #[verifier(opaque)]
+        fn id(i: int) -> int {
+            i
+        }
+
+        #[spec]
+        fn arith_sum(i: int) -> int {
+            decreases(id(i));
+            decreases_by(check_arith_sum);
+
+            if i == 0 { 0 } else { i + arith_sum(i - 1) }
+        }
+
+        #[proof] #[verifier(decreases_by)]
+        fn check_arith_sum(i: int) {
+            requires(i >= 0);
+            reveal_id(i);
+            reveal_id(i - 1);
+        }
+
+        #[proof]
+        fn reveal_id(i: int) {
+            ensures(id(i) == i);
+            reveal(id);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] proof_decreases_by_int_fail code! {
+        #[spec]
+        #[verifier(opaque)]
+        fn id(i: int) -> int {
+            i
+        }
+
+        #[spec]
+        fn arith_sum(i: int) -> int {
+            decreases(id(i));
+            decreases_by(check_arith_sum);
+
+            if i == 0 { 0 } else { i + arith_sum(i - 1) } // FAILS
+        }
+
+        #[proof] #[verifier(decreases_by)]
+        fn check_arith_sum(i: int) {
+            requires(i >= 0);
+        }
+    } => Err(err) => assert_one_fails(err)
+}

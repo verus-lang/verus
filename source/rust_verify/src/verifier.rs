@@ -303,7 +303,7 @@ impl Verifier {
         // Declare the function symbols
         for function in &krate.functions {
             ctx.module_for_chosen_triggers = function.x.visibility.owning_module.clone();
-            if !is_visible_to(&function.x.visibility, module) {
+            if !is_visible_to(&function.x.visibility, module) || function.x.attrs.is_decrease_by {
                 continue;
             }
             let commands = vir::func_to_air::func_name_to_air(ctx, &function)?;
@@ -316,30 +316,24 @@ impl Verifier {
         ctx.module_for_chosen_triggers = None;
 
         // Collect function definitions
-        let mut fun_decls: HashMap<Fun, (Function, Commands, Commands)> = HashMap::new();
+        let mut funs: HashMap<Fun, (Function, Visibility)> = HashMap::new();
         for function in &krate.functions {
-            ctx.module_for_chosen_triggers = function.x.visibility.owning_module.clone();
+            assert!(!funs.contains_key(&function.x.name));
             let vis = function.x.visibility.clone();
             let vis = Visibility { is_private: vis.is_private, ..vis };
             if !is_visible_to(&vis, module) || function.x.attrs.is_decrease_by {
                 continue;
             }
             let vis_abs = Visibility { is_private: function.x.publish.is_none(), ..vis };
-            let (decl_commands, check_commands) = vir::func_to_air::func_decl_to_air(
-                ctx,
-                &function,
-                is_visible_to(&vis_abs, module),
-            )?;
-            assert!(!fun_decls.contains_key(&function.x.name));
-            fun_decls
-                .insert(function.x.name.clone(), (function.clone(), check_commands, decl_commands));
+            funs.insert(function.x.name.clone(), (function.clone(), vis_abs));
         }
-        ctx.module_for_chosen_triggers = None;
 
         // For spec functions, check termination and declare consequence axioms.
+        // For proof/exec functions, declare requires/ensures.
         // Declare them in SCC (strongly connected component) sorted order so that
         // termination checking precedes consequence axioms for each SCC.
-        for scc in &ctx.global.func_call_sccs {
+        let mut fun_decls: HashMap<Fun, Commands> = HashMap::new();
+        for scc in &ctx.global.func_call_sccs.clone() {
             let scc_nodes = ctx.global.func_call_graph.get_scc_nodes(scc);
             let mut scc_fun_nodes: Vec<Fun> = Vec::new();
             for node in scc_nodes.into_iter() {
@@ -350,10 +344,20 @@ impl Verifier {
             }
             // Check termination
             for f in scc_fun_nodes.iter() {
-                if !fun_decls.contains_key(f) {
+                if !funs.contains_key(f) {
                     continue;
                 }
-                let (function, check_commands, _) = &fun_decls[f];
+                let (function, vis_abs) = &funs[f];
+
+                ctx.module_for_chosen_triggers = function.x.visibility.owning_module.clone();
+                let (decl_commands, check_commands) = vir::func_to_air::func_decl_to_air(
+                    ctx,
+                    &function,
+                    is_visible_to(&vis_abs, module),
+                )?;
+                fun_decls.insert(f.clone(), decl_commands);
+                ctx.module_for_chosen_triggers = None;
+
                 if Some(module.clone()) != function.x.visibility.owning_module {
                     continue;
                 }
@@ -369,19 +373,19 @@ impl Verifier {
 
             // Declare consequence axioms
             for f in scc_fun_nodes.iter() {
-                if !fun_decls.contains_key(f) {
+                if !funs.contains_key(f) {
                     continue;
                 }
-                let (_, _, decl_commands) = &fun_decls[f];
+                let decl_commands = &fun_decls[f];
                 self.run_commands(
                     air_context,
                     &decl_commands,
                     &("Function-Axioms ".to_string() + &fun_as_rust_dbg(f)),
                 );
-                fun_decls.remove(f);
+                funs.remove(f);
             }
         }
-        assert!(fun_decls.len() == 0);
+        assert!(funs.len() == 0);
 
         // Create queries to check the validity of proof/exec function bodies
         for function in &krate.functions {

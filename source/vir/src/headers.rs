@@ -76,7 +76,7 @@ fn read_header_block(block: &mut Vec<Stmt>) -> Result<Header, VirErr> {
                         if decrease_by.is_some() {
                             return err_str(
                                 &stmt.span,
-                                "only one decreases expression currently supported",
+                                "only one decreases_by expression currently supported",
                             );
                         }
                         decrease_by = Some(path.clone());
