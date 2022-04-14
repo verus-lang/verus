@@ -523,7 +523,7 @@ fn poly_function(ctx: &Ctx, function: &Function) -> Function {
         name,
         kind,
         visibility,
-        mode,
+        mode: mut function_mode,
         fuel,
         typ_bounds,
         params,
@@ -531,6 +531,7 @@ fn poly_function(ctx: &Ctx, function: &Function) -> Function {
         require,
         ensure,
         decrease,
+        decrease_by,
         mask_spec,
         is_const,
         publish,
@@ -538,6 +539,11 @@ fn poly_function(ctx: &Ctx, function: &Function) -> Function {
         body,
         extra_dependencies,
     } = &function.x;
+
+    if attrs.is_decrease_by {
+        // This is actually code for a the spec function that has the decreases clause
+        function_mode = Mode::Spec;
+    }
 
     let mut types = ScopeMap::new();
     types.push_scope(true);
@@ -555,7 +561,7 @@ fn poly_function(ctx: &Ctx, function: &Function) -> Function {
     let mut new_params: Vec<Param> = Vec::new();
     for param in params.iter() {
         let ParamX { name, typ, mode, is_mut } = &param.x;
-        let typ = if function.x.mode == Mode::Spec || is_trait {
+        let typ = if function_mode == Mode::Spec || is_trait {
             coerce_typ_to_poly(ctx, typ)
         } else {
             coerce_typ_to_native(ctx, typ)
@@ -611,7 +617,7 @@ fn poly_function(ctx: &Ctx, function: &Function) -> Function {
         name: name.clone(),
         kind: kind.clone(),
         visibility: visibility.clone(),
-        mode: *mode,
+        mode: function_mode,
         fuel: *fuel,
         typ_bounds: typ_bounds.clone(),
         params,
@@ -619,6 +625,7 @@ fn poly_function(ctx: &Ctx, function: &Function) -> Function {
         require,
         ensure,
         decrease,
+        decrease_by: decrease_by.clone(),
         mask_spec,
         is_const: *is_const,
         publish: *publish,

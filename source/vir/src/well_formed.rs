@@ -22,6 +22,11 @@ fn check_one_expr(
     match &expr.x {
         ExprX::Call(CallTarget::Static(x, _), args) => {
             let f = &ctxt.funs[x];
+            if f.x.attrs.is_decrease_by {
+                // a decreases_by function isn't a real function;
+                // it's just a container for proof code that goes in the corresponding spec function
+                return err_str(&expr.span, "cannot call a decreases_by function directly");
+            }
             for (_param, arg) in f.x.params.iter().zip(args.iter()).filter(|(p, _)| p.x.is_mut) {
                 fn is_ok(e: &Expr) -> bool {
                     match &e.x {
@@ -132,6 +137,36 @@ fn check_function(ctxt: &Ctxt, function: &Function) -> Result<(), VirErr> {
                 &function.span,
                 "trait method implementation cannot open invariants; this can only be inherited from the trait declaration",
             );
+        }
+    }
+
+    if function.x.attrs.is_decrease_by {
+        match function.x.kind {
+            FunctionKind::Static => {}
+            FunctionKind::TraitMethodDecl { .. } | FunctionKind::TraitMethodImpl { .. } => {
+                return err_str(&function.span, "decreases_by function cannot be a trait method");
+            }
+        }
+        if function.x.mode != Mode::Proof {
+            return err_str(&function.span, "decreases_by function must have mode proof");
+        }
+        if function.x.decrease.len() != 0 {
+            return err_str(
+                &function.span,
+                "decreases_by function cannot have its own decreases clause",
+            );
+        }
+        if function.x.ensure.len() != 0 {
+            return err_str(&function.span, "decreases_by function cannot have ensures clauses");
+        }
+        if function.x.has_return() {
+            return err_str(&function.span, "decreases_by function cannot have a return value");
+        }
+    }
+
+    if function.x.decrease_by.is_some() {
+        if function.x.mode != Mode::Spec {
+            return err_str(&function.span, "only spec functions can use decreases_by(...)");
         }
     }
 
@@ -370,6 +405,79 @@ pub fn check_crate(krate: &Krate) -> Result<(), VirErr> {
         .iter()
         .map(|datatype| (datatype.x.path.clone(), datatype.clone()))
         .collect();
+
+    // Check connections between decreases_by specs and proofs
+    let mut decreases_by_proof_to_spec: HashMap<Fun, Fun> = HashMap::new();
+    for function in krate.functions.iter() {
+        if let Some(proof_fun) = &function.x.decrease_by {
+            let proof_function = if let Some(proof_function) = funs.get(proof_fun) {
+                proof_function
+            } else {
+                return err_str(&function.span, "cannot find function referred to in decreases_by");
+            };
+            if !proof_function.x.attrs.is_decrease_by {
+                return Err(air::errors::error(
+                    "proof function must be marked #[verifier(decreases_by)] to be used as decreases_by",
+                    &proof_function.span,
+                )
+                .secondary_span(&function.span));
+            }
+            if let Some(prev) = decreases_by_proof_to_spec.get(proof_fun) {
+                return Err(air::errors::error(
+                    "same proof function used for two different decreases_by",
+                    &proof_function.span,
+                )
+                .secondary_span(&funs[prev].span)
+                .secondary_span(&function.span));
+            }
+            decreases_by_proof_to_spec.insert(proof_fun.clone(), function.x.name.clone());
+            if proof_function.x.typ_bounds.len() != function.x.typ_bounds.len() {
+                return Err(air::errors::error(
+                    "decreases_by function should have the same type bounds",
+                    &proof_function.span,
+                )
+                .secondary_span(&function.span));
+            }
+            for ((px, pb), (fx, fb)) in
+                proof_function.x.typ_bounds.iter().zip(function.x.typ_bounds.iter())
+            {
+                if px != fx || !crate::ast_util::generic_bounds_equal(&pb, &fb) {
+                    return Err(air::errors::error(
+                        "decreases_by function should have the same type bounds",
+                        &proof_function.span,
+                    )
+                    .secondary_span(&function.span));
+                }
+            }
+            if proof_function.x.params.len() != function.x.params.len() {
+                return Err(air::errors::error(
+                    "decreases_by function should have the same parameter types",
+                    &proof_function.span,
+                )
+                .secondary_span(&function.span));
+            }
+            for (pp, fp) in proof_function.x.params.iter().zip(function.x.params.iter()) {
+                if !crate::ast_util::params_equal(&pp, &fp) {
+                    return Err(air::errors::error(
+                        "decreases_by function should have the same parameter types",
+                        &pp.span,
+                    )
+                    .secondary_span(&fp.span));
+                }
+            }
+        }
+    }
+    for function in krate.functions.iter() {
+        if function.x.attrs.is_decrease_by
+            && !decreases_by_proof_to_spec.contains_key(&function.x.name)
+        {
+            return err_str(
+                &function.span,
+                "function cannot be marked #[verifier(decreases_by)] unless it used in some decreases_by",
+            );
+        }
+    }
+
     let ctxt = Ctxt { funs, dts };
     for function in krate.functions.iter() {
         check_function(&ctxt, function)?;

@@ -1,7 +1,7 @@
 use crate::ast::{
-    BinaryOp, Constant, DatatypeX, Expr, ExprX, Fun, FunX, FunctionX, Ident, Idents, IntRange,
-    Mode, Param, Params, Path, PathX, SpannedTyped, Typ, TypX, Typs, Variant, Variants, VirErr,
-    Visibility,
+    BinaryOp, Constant, DatatypeX, Expr, ExprX, Fun, FunX, FunctionX, GenericBound, GenericBoundX,
+    Ident, Idents, IntRange, Mode, Param, ParamX, Params, Path, PathX, SpannedTyped, Typ, TypX,
+    Typs, Variant, Variants, VirErr, Visibility,
 };
 use crate::sst::{Par, Pars};
 use crate::util::vec_map;
@@ -56,6 +56,22 @@ pub fn types_equal(typ1: &Typ, typ2: &Typ) -> bool {
 
 pub fn n_types_equal(typs1: &Typs, typs2: &Typs) -> bool {
     typs1.len() == typs2.len() && typs1.iter().zip(typs2.iter()).all(|(t1, t2)| types_equal(t1, t2))
+}
+
+pub fn params_equal(param1: &Param, param2: &Param) -> bool {
+    let ParamX { name: name1, typ: typ1, mode: mode1, is_mut: is_mut1 } = &param1.x;
+    let ParamX { name: name2, typ: typ2, mode: mode2, is_mut: is_mut2 } = &param2.x;
+    name1 == name2 && types_equal(typ1, typ2) && mode1 == mode2 && is_mut1 == is_mut2
+}
+
+pub fn generic_bounds_equal(b1: &GenericBound, b2: &GenericBound) -> bool {
+    match (&**b1, &**b2) {
+        (GenericBoundX::Traits(t1), GenericBoundX::Traits(t2)) => t1 == t2,
+        (GenericBoundX::FnSpec(ts1, t1), GenericBoundX::FnSpec(ts2, t2)) => {
+            n_types_equal(ts1, ts2) && types_equal(t1, t2)
+        }
+        _ => false,
+    }
 }
 
 pub fn bitwidth_from_type(et: &Typ) -> Option<u32> {

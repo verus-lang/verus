@@ -243,6 +243,7 @@ pub(crate) fn check_item_fn<'tcx>(
         bit_vector: vattrs.bit_vector,
         autoview: vattrs.autoview,
         atomic: vattrs.atomic,
+        is_decrease_by: vattrs.decreases_by,
     };
     let func = FunctionX {
         name: name.clone(),
@@ -256,6 +257,7 @@ pub(crate) fn check_item_fn<'tcx>(
         require: header.require,
         ensure: header.ensure,
         decrease: header.decrease,
+        decrease_by: header.decrease_by,
         mask_spec: header.invariant_mask,
         is_const: false,
         publish,
@@ -316,6 +318,7 @@ pub(crate) fn check_item_const<'tcx>(
         require: Arc::new(vec![]),
         ensure: Arc::new(vec![]),
         decrease: Arc::new(vec![]),
+        decrease_by: None,
         mask_spec: MaskSpec::NoSpec,
         is_const: true,
         publish: get_publish(&vattrs),
@@ -380,6 +383,7 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
         require: Arc::new(vec![]),
         ensure: Arc::new(vec![]),
         decrease: Arc::new(vec![]),
+        decrease_by: None,
         mask_spec: MaskSpec::NoSpec,
         is_const: false,
         publish: None,

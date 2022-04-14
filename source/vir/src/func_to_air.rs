@@ -8,7 +8,7 @@ use crate::def::{
     prefix_requires, suffix_global_id, suffix_local_stmt_id, suffix_typ_param_id, SnapPos, Spanned,
     FUEL_BOOL, FUEL_BOOL_DEFAULT, FUEL_LOCAL, FUEL_TYPE, SUCC, ZERO,
 };
-use crate::sst::{BndX, ExpX, Par, ParPurpose, ParX, Pars};
+use crate::sst::{BndX, ExpX, Par, ParPurpose, ParX, Pars, Stm, StmX};
 use crate::sst_to_air::{
     exp_to_expr, fun_to_air_ident, typ_invariant, typ_to_air, ExprCtxt, ExprMode,
 };
@@ -93,12 +93,14 @@ fn func_def_quant(
     typ_params: &Idents,
     typ_args: &Typs,
     params: &Pars,
+    pre: &Vec<Expr>,
     body: Expr,
 ) -> Result<Expr, VirErr> {
     let f_args = func_def_typs_args(typ_args, params);
     let f_app = string_apply(name, &Arc::new(f_args));
     let f_eq = Arc::new(ExprX::Binary(BinaryOp::Eq, f_app.clone(), body));
-    Ok(mk_bind_expr(&func_bind(ctx, typ_params, params, &f_app, false), &f_eq))
+    let f_imply = mk_implies(&mk_and(pre), &f_eq);
+    Ok(mk_bind_expr(&func_bind(ctx, typ_params, params, &f_app, false), &f_imply))
 }
 
 fn func_body_to_air(
@@ -113,11 +115,44 @@ fn func_body_to_air(
     let pars = params_to_pars(&function.x.params, false);
 
     // ast --> sst
-    let (local_decls, body_exp) = crate::ast_to_sst::expr_to_decls_exp(&ctx, true, &pars, &body)?;
+    let mut state = crate::ast_to_sst::State::new();
+    state.declare_params(&pars);
+    state.view_as_spec = true;
+    let body_exp = crate::ast_to_sst::expr_to_pure_exp(&ctx, &mut state, &body)?;
+    let body_exp = state.finalize_exp(&body_exp);
+
+    let (decrease_by_reqs, decrease_by_stms) = if let Some(fun) = &function.x.decrease_by {
+        let decrease_by_fun = &ctx.func_map[fun];
+        let mut reqs: Vec<Expr> = Vec::new();
+        let mut stms: Vec<Stm> = Vec::new();
+        for req in decrease_by_fun.x.require.iter() {
+            let exp = crate::ast_to_sst::expr_to_exp(ctx, &pars, req)?;
+            let expr =
+                exp_to_expr(ctx, &exp, ExprCtxt { mode: ExprMode::Spec, is_bit_vector: false });
+            reqs.push(expr);
+            stms.push(Spanned::new(req.span.clone(), StmX::Assume(exp)));
+        }
+        state.view_as_spec = false;
+        let (body_stms, _exp) = crate::ast_to_sst::expr_to_stm_or_error(
+            &ctx,
+            &mut state,
+            decrease_by_fun.x.body.as_ref().expect("decreases_by has body"),
+        )?;
+        stms.extend(body_stms);
+        (reqs, stms)
+    } else {
+        (vec![], vec![])
+    };
+    state.finalize();
 
     // Check termination
-    let (is_recursive, termination_commands, body_exp) =
-        crate::recursion::check_termination_exp(ctx, function, local_decls, &body_exp)?;
+    let (is_recursive, termination_commands, body_exp) = crate::recursion::check_termination_exp(
+        ctx,
+        function,
+        state.local_decls,
+        &body_exp,
+        decrease_by_stms,
+    )?;
     check_commands.extend(termination_commands.iter().cloned());
 
     // non-recursive:
@@ -177,8 +212,9 @@ fn func_body_to_air(
         let eq_body = mk_eq(&rec_f_succ, &body_expr);
         let bind_zero = func_bind(ctx, &function.x.typ_params(), &pars, &rec_f_fuel, true);
         let bind_body = func_bind(ctx, &function.x.typ_params(), &pars, &rec_f_succ, true);
+        let implies_body = mk_implies(&mk_and(&decrease_by_reqs), &eq_body);
         let forall_zero = mk_bind_expr(&bind_zero, &eq_zero);
-        let forall_body = mk_bind_expr(&bind_body, &eq_body);
+        let forall_body = mk_bind_expr(&bind_body, &implies_body);
         let fuel_nat_decl = Arc::new(DeclX::Const(fuel_nat_f, str_typ(FUEL_TYPE)));
         let axiom_zero = Arc::new(DeclX::Axiom(forall_zero));
         let axiom_body = Arc::new(DeclX::Axiom(forall_body));
@@ -194,6 +230,7 @@ fn func_body_to_air(
         &function.x.typ_params(),
         &Arc::new(typ_args),
         &pars,
+        &decrease_by_reqs,
         def_body,
     )?;
     let fuel_bool = str_apply(FUEL_BOOL, &vec![ident_var(&id_fuel)]);
@@ -240,7 +277,7 @@ pub fn req_ens_to_air(
         }
         let body = mk_and(&exprs);
         let typ_args = Arc::new(vec_map(&typ_params, |x| Arc::new(TypX::TypParam(x.clone()))));
-        let e_forall = func_def_quant(ctx, &name, &typ_params, &typ_args, &params, body)?;
+        let e_forall = func_def_quant(ctx, &name, &typ_params, &typ_args, &params, &vec![], body)?;
         let req_ens_axiom = Arc::new(DeclX::Axiom(e_forall));
         commands.push(Arc::new(CommandX::Global(req_ens_axiom)));
         Ok(true)
@@ -410,6 +447,8 @@ pub fn func_decl_to_air(
             }
         }
         Mode::Exec | Mode::Proof => {
+            assert!(!function.x.attrs.is_decrease_by);
+
             if let FunctionKind::TraitMethodImpl { .. } = &function.x.kind {
                 // For a trait method implementation, we inherit the trait requires/ensures,
                 // so we can just return here.

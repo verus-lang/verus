@@ -150,6 +150,7 @@ fn header_expr_to_node(header_expr: &HeaderExprX) -> Node {
         }
         HeaderExprX::Invariant(exprs) => nodes!(invariant {exprs_to_node(exprs)}),
         HeaderExprX::Decreases(exprs) => nodes!(decreases {exprs_to_node(exprs)}),
+        HeaderExprX::DecreasesBy(path) => nodes!(decreases_by {fun_to_node(path)}),
         HeaderExprX::InvariantOpens(exprs) => nodes!(invariantOpens {exprs_to_node(exprs)}),
         HeaderExprX::InvariantOpensExcept(exprs) => {
             nodes!(invariantOpensExcept {exprs_to_node(exprs)})
@@ -358,6 +359,7 @@ fn function_to_node(function: &FunctionX) -> Node {
         require,
         ensure,
         decrease,
+        decrease_by,
         mask_spec,
         is_const,
         publish,
@@ -399,6 +401,7 @@ fn function_to_node(function: &FunctionX) -> Node {
             autoview,
             bit_vector,
             atomic,
+            is_decrease_by,
         } = &**attrs;
 
         let mut nodes = vec![
@@ -424,6 +427,9 @@ fn function_to_node(function: &FunctionX) -> Node {
         }
         if *atomic {
             nodes.push(str_to_node("+atomic"));
+        }
+        if *is_decrease_by {
+            nodes.push(str_to_node("+is_decrease_by"));
         }
 
         Node::List(nodes)
@@ -476,9 +482,13 @@ fn function_to_node(function: &FunctionX) -> Node {
         exprs_to_node(ensure),
         str_to_node(":decrease"),
         exprs_to_node(decrease),
-        mask_spec_node,
-        extra_dependencies_node,
     ];
+    if let Some(decrease_by) = &decrease_by {
+        nodes.push(str_to_node(":decrease_by"));
+        nodes.push(fun_to_node(decrease_by));
+    }
+    nodes.push(mask_spec_node);
+    nodes.push(extra_dependencies_node);
     if *is_const {
         nodes.push(str_to_node("+is_const"));
     }

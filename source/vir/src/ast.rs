@@ -216,6 +216,8 @@ pub enum HeaderExprX {
     Invariant(Exprs),
     /// Decreases clauses for functions (possibly also for while loops, but this isn't implemented yet)
     Decreases(Exprs),
+    /// Proof function to prove termination for recursive functions
+    DecreasesBy(Fun),
     /// The function might open the following invariants
     InvariantOpens(Exprs),
     /// The function might open any BUT the following invariants
@@ -430,6 +432,8 @@ pub struct FunctionAttrsX {
     pub bit_vector: bool,
     /// Is atomic (i.e., can be inside an invariant block)
     pub atomic: bool,
+    /// This is a proof of termination for another spec function
+    pub is_decrease_by: bool,
 }
 
 /// Function specification of its invariant mask
@@ -488,6 +492,8 @@ pub struct FunctionX {
     /// decrease.len() == 0 means no decreases clause
     /// decrease.len() >= 1 means list of expressions, interpreted in lexicographic order
     pub decrease: Exprs,
+    /// Prove termination with a separate proof function
+    pub decrease_by: Option<Fun>,
     /// MaskSpec that specifies what invariants the function is allowed to open
     pub mask_spec: MaskSpec,
     /// is_const == true means that this function is actually a const declaration;

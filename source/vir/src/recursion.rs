@@ -330,6 +330,7 @@ pub(crate) fn check_termination_exp(
     function: &Function,
     mut local_decls: Vec<LocalDecl>,
     body: &Exp,
+    proof_body: Vec<Stm>,
 ) -> Result<(bool, Commands, Exp), VirErr> {
     if !is_recursive_exp(ctx, &function.x.name, body) {
         return Ok((false, Arc::new(vec![]), body.clone()));
@@ -347,6 +348,7 @@ pub(crate) fn check_termination_exp(
         Ctxt { recursive_function_name: function.x.name.clone(), num_decreases, scc_rep, ctx };
     let check = terminates(&ctxt, &body)?;
     let (mut decls, mut stm_assigns) = mk_decreases_at_entry(&ctxt, &body.span, &decreases_exps);
+    stm_assigns.extend(proof_body.clone());
     let error = error("could not prove termination", &body.span);
     let stm_assert = Spanned::new(body.span.clone(), StmX::Assert(Some(error), check));
     stm_assigns.push(stm_assert);
@@ -450,6 +452,11 @@ pub(crate) fn expand_call_graph(
                 call_graph.add_edge(Node::Trait(tr.clone()), f_node.clone());
             }
         }
+    }
+
+    // Add f --> fd if fd is the decreases proof for f's definition
+    if let Some(decrease_by) = &function.x.decrease_by {
+        call_graph.add_edge(f_node.clone(), Node::Fun(decrease_by.clone()))
     }
 
     // Add f1 --> f2 edges where f1 calls f2

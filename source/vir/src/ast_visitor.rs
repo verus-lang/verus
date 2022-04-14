@@ -359,6 +359,7 @@ where
         require,
         ensure,
         decrease,
+        decrease_by: _,
         mask_spec,
         is_const: _,
         publish: _,
@@ -703,6 +704,7 @@ where
         require,
         ensure,
         decrease,
+        decrease_by,
         mask_spec,
         is_const,
         publish,
@@ -773,6 +775,7 @@ where
             })?))
         }
     };
+    let decrease_by = decrease_by.clone();
     let attrs = attrs.clone();
     let extra_dependencies = extra_dependencies.clone();
     let is_const = *is_const;
@@ -791,6 +794,7 @@ where
         require,
         ensure,
         decrease,
+        decrease_by,
         mask_spec,
         is_const,
         publish,
