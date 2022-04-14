@@ -1011,3 +1011,23 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_one_fails(err)
 }
+
+test_verify_one_file! {
+    #[test] proof_decreases_by_self_1_pass code! {
+        #[proof] struct A { i: int }
+
+        impl A {
+            #[spec] fn count(self) -> int {
+                decreases(self.i);
+                decreases_by(Self::check_count);
+
+                if self.i == 0 { 0 } else { 1 + A { i: self.i - 1}.count() } // FAILS
+            }
+
+            #[proof] #[verifier(decreases_by)]
+            fn check_count(self) {
+                requires(self.i >= 0);
+            }
+        }
+    } => Ok(())
+}
