@@ -379,6 +379,7 @@ fn fn_call_to_vir<'tcx>(
     let is_admit = f_name == "builtin::admit";
     let is_no_method_body = f_name == "builtin::no_method_body";
     let is_requires = f_name == "builtin::requires";
+    let is_recommends = f_name == "builtin::recommends";
     let is_ensures = f_name == "builtin::ensures";
     let is_invariant = f_name == "builtin::invariant";
     let is_decreases = f_name == "builtin::decreases";
@@ -414,6 +415,7 @@ fn fn_call_to_vir<'tcx>(
     let is_spec = is_admit
         || is_no_method_body
         || is_requires
+        || is_recommends
         || is_ensures
         || is_invariant
         || is_decreases
@@ -442,6 +444,7 @@ fn fn_call_to_vir<'tcx>(
 
     if bctx.external_body
         && !is_requires
+        && !is_recommends
         && !is_ensures
         && !is_opens_invariants_none
         && !is_opens_invariants_any
@@ -493,17 +496,21 @@ fn fn_call_to_vir<'tcx>(
     if is_no_method_body {
         return Ok(mk_expr(ExprX::Header(Arc::new(HeaderExprX::NoMethodBody))));
     }
-    if is_requires {
-        unsupported_err_unless!(len == 1, expr.span, "expected requires", &args);
+    if is_requires || is_recommends {
+        unsupported_err_unless!(len == 1, expr.span, "expected requires/recommends", &args);
         let bctx = &BodyCtxt { external_body: false, ..bctx.clone() };
         args = extract_array(args[0]);
         for arg in &args {
             if !matches!(bctx.types.node_type(arg.hir_id).kind(), TyKind::Bool) {
-                return err_span_str(arg.span, "requires needs a bool expression");
+                return err_span_str(arg.span, "requires/recommends needs a bool expression");
             }
         }
         let vir_args = vec_map_result(&args, |arg| expr_to_vir(&bctx, arg, ExprModifier::REGULAR))?;
-        let header = Arc::new(HeaderExprX::Requires(Arc::new(vir_args)));
+        let header = if is_requires {
+            Arc::new(HeaderExprX::Requires(Arc::new(vir_args)))
+        } else {
+            Arc::new(HeaderExprX::Recommends(Arc::new(vir_args)))
+        };
         return Ok(mk_expr(ExprX::Header(header)));
     }
     if is_opens_invariants || is_opens_invariants_except {

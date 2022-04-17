@@ -7,6 +7,7 @@ pub struct Header {
     pub no_method_body: bool,
     pub hidden: Vec<Fun>,
     pub require: Exprs,
+    pub recommend: Exprs,
     pub ensure_id_typ: Option<(Ident, Typ)>,
     pub ensure: Exprs,
     pub invariant: Exprs,
@@ -21,6 +22,7 @@ fn read_header_block(block: &mut Vec<Stmt>) -> Result<Header, VirErr> {
     let mut extra_dependencies: Vec<Fun> = Vec::new();
     let mut require: Option<Exprs> = None;
     let mut ensure: Option<(Option<(Ident, Typ)>, Exprs)> = None;
+    let mut recommend: Option<Exprs> = None;
     let mut invariant: Option<Exprs> = None;
     let mut decrease: Option<Exprs> = None;
     let mut decrease_by: Option<Fun> = None;
@@ -44,6 +46,15 @@ fn read_header_block(block: &mut Vec<Stmt>) -> Result<Header, VirErr> {
                             );
                         }
                         require = Some(es.clone());
+                    }
+                    HeaderExprX::Recommends(es) => {
+                        if recommend.is_some() {
+                            return err_str(
+                                &stmt.span,
+                                "only one call to recommends allowed (use recommends([e1, ..., en]) for multiple expressions",
+                            );
+                        }
+                        recommend = Some(es.clone());
                     }
                     HeaderExprX::Ensures(id_typ, es) => {
                         if ensure.is_some() {
@@ -114,6 +125,7 @@ fn read_header_block(block: &mut Vec<Stmt>) -> Result<Header, VirErr> {
     }
     *block = block[n..].to_vec();
     let require = require.unwrap_or(Arc::new(vec![]));
+    let recommend = recommend.unwrap_or(Arc::new(vec![]));
     let (ensure_id_typ, ensure) = match ensure {
         None => (None, Arc::new(vec![])),
         Some((id_typ, es)) => (id_typ, es),
@@ -124,6 +136,7 @@ fn read_header_block(block: &mut Vec<Stmt>) -> Result<Header, VirErr> {
         no_method_body: false,
         hidden,
         require,
+        recommend,
         ensure_id_typ,
         ensure,
         invariant,

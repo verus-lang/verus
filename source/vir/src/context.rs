@@ -36,10 +36,17 @@ pub struct GlobalCtx {
     pub(crate) inferred_modes: HashMap<InferMode, Mode>,
 }
 
+// Context for verifying one function
+pub struct FunctionCtx {
+    // false normally, true if we're just checking recommends
+    pub checking_recommends: bool,
+    // used to print diagnostics for triggers
+    pub module_for_chosen_triggers: Option<Path>,
+}
+
 // Context for verifying one module
 pub struct Ctx {
     pub(crate) module: Path,
-    pub module_for_chosen_triggers: Option<Path>, // diagnostics
     pub(crate) datatype_is_transparent: HashMap<Path, bool>,
     pub(crate) datatypes_with_invariant: HashSet<Path>,
     pub(crate) mono_abstract_datatypes: Vec<MonoTyp>,
@@ -50,7 +57,17 @@ pub struct Ctx {
     pub(crate) datatype_map: HashMap<Path, Datatype>,
     pub(crate) trait_map: HashMap<Path, Trait>,
     pub(crate) debug: bool,
+    pub fun: Option<FunctionCtx>,
     pub global: GlobalCtx,
+}
+
+impl Ctx {
+    pub fn checking_recommends(&self) -> bool {
+        match self.fun {
+            Some(FunctionCtx { checking_recommends: true, .. }) => true,
+            _ => false,
+        }
+    }
 }
 
 fn datatypes_inv_visit(
@@ -195,7 +212,6 @@ impl Ctx {
         lambda_types: Vec<usize>,
         debug: bool,
     ) -> Result<Self, VirErr> {
-        let module_for_chosen_triggers = None;
         let mut datatype_is_transparent: HashMap<Path, bool> = HashMap::new();
         for datatype in krate.datatypes.iter() {
             datatype_is_transparent
@@ -220,7 +236,6 @@ impl Ctx {
         }
         Ok(Ctx {
             module,
-            module_for_chosen_triggers,
             datatype_is_transparent,
             datatypes_with_invariant,
             mono_abstract_datatypes,
@@ -231,6 +246,7 @@ impl Ctx {
             datatype_map,
             trait_map,
             debug,
+            fun: None,
             global,
         })
     }

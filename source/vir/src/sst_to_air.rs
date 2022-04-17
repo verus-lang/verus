@@ -957,19 +957,20 @@ fn assume_other_fields_unchanged_inner(
 fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
     let expr_ctxt = ExprCtxt { mode: ExprMode::Body, is_bit_vector: false };
     match &stm.x {
-        StmX::Call(x, typs, args, dest) => {
+        StmX::Call(x, mode, typs, args, dest) => {
             let mut stmts: Vec<Stmt> = Vec::new();
             let func = &ctx.func_map[x];
-            if func.x.require.len() > 0 {
+            if func.x.require.len() > 0 && (!ctx.checking_recommends() || *mode == Mode::Spec) {
                 let f_req = prefix_requires(&fun_to_air_ident(&func.x.name));
                 let mut req_args = vec_map(typs, typ_to_id);
                 for arg in args.iter() {
                     req_args.push(exp_to_expr(ctx, arg, expr_ctxt));
                 }
                 let e_req = Arc::new(ExprX::Apply(f_req, Arc::new(req_args)));
-                let description = match &func.x.attrs.custom_req_err {
-                    None => "precondition not satisfied".to_string(),
-                    Some(s) => s.clone(),
+                let description = match (ctx.checking_recommends(), &func.x.attrs.custom_req_err) {
+                    (true, None) => "recommendation not met".to_string(),
+                    (_, None) => "precondition not satisfied".to_string(),
+                    (_, Some(s)) => s.clone(),
                 };
                 let error = error(description, &stm.span);
                 stmts.push(Arc::new(StmtX::Assert(error, e_req)));
@@ -1237,10 +1238,12 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
             for (_, inv) in invs.iter() {
                 local.push(Arc::new(DeclX::Axiom(inv.clone())));
             }
-            for (span, inv) in invs.iter() {
-                let error = error("invariant not satisfied at end of loop body", span);
-                let inv_stmt = StmtX::Assert(error, inv.clone());
-                air_body.push(Arc::new(inv_stmt));
+            if !ctx.checking_recommends() {
+                for (span, inv) in invs.iter() {
+                    let error = error("invariant not satisfied at end of loop body", span);
+                    let inv_stmt = StmtX::Assert(error, inv.clone());
+                    air_body.push(Arc::new(inv_stmt));
+                }
             }
             let assertion = one_stmt(air_body);
 
@@ -1260,10 +1263,12 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
 
             // At original site of while loop, assert invariant, havoc, assume invariant + neg_cond
             let mut stmts: Vec<Stmt> = Vec::new();
-            for (span, inv) in invs.iter() {
-                let error = error("invariant not satisfied before loop", span);
-                let inv_stmt = StmtX::Assert(error, inv.clone());
-                stmts.push(Arc::new(inv_stmt));
+            if !ctx.checking_recommends() {
+                for (span, inv) in invs.iter() {
+                    let error = error("invariant not satisfied before loop", span);
+                    let inv_stmt = StmtX::Assert(error, inv.clone());
+                    stmts.push(Arc::new(inv_stmt));
+                }
             }
             for x in modified_vars.iter() {
                 stmts.push(Arc::new(StmtX::Havoc(suffix_local_unique_id(&x))));

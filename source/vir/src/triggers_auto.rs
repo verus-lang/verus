@@ -2,7 +2,7 @@ use crate::ast::{
     BinaryOp, Constant, FieldOpr, Fun, Ident, Path, Typ, TypX, UnaryOp, UnaryOpr, VarAt, VirErr,
 };
 use crate::ast_util::{err_str, path_as_rust_name};
-use crate::context::{ChosenTriggers, Ctx};
+use crate::context::{ChosenTriggers, Ctx, FunctionCtx};
 use crate::sst::{Exp, ExpX, Trig, Trigs, UniqueIdent};
 use crate::util::vec_map;
 use air::ast::Span;
@@ -601,14 +601,17 @@ pub(crate) fn build_triggers(
     let found_triggers: Vec<Vec<(Span, String)>> = vec_map(&state.best_so_far, |trig| {
         vec_map(&trig, |(term, span)| (span.clone(), format!("{:?}", term)))
     });
+    let module = match &ctx.fun {
+        Some(FunctionCtx { module_for_chosen_triggers: Some(m), .. }) => m.clone(),
+        _ => ctx.module.clone(),
+    };
     let chosen_triggers = ChosenTriggers {
-        module: ctx.module_for_chosen_triggers.clone().unwrap_or(ctx.module.clone()),
+        module,
         span: span.clone(),
         triggers: found_triggers,
         low_confidence: state.low_confidence && !auto_trigger,
     };
     chosen_triggers_vec.push(chosen_triggers);
-    //println!();
     if state.best_so_far.len() >= 1 {
         let trigs: Vec<Trig> = vec_map(&state.best_so_far, |trig| {
             Arc::new(vec_map(&trig, |(term, _)| ctxt.pure_terms[term].0.clone()))

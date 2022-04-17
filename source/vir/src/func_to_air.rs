@@ -8,11 +8,11 @@ use crate::def::{
     prefix_requires, suffix_global_id, suffix_local_stmt_id, suffix_typ_param_id, SnapPos, Spanned,
     FUEL_BOOL, FUEL_BOOL_DEFAULT, FUEL_LOCAL, FUEL_TYPE, SUCC, ZERO,
 };
-use crate::sst::{BndX, ExpX, Par, ParPurpose, ParX, Pars, Stm, StmX};
+use crate::sst::{BndX, Exp, ExpX, Par, ParPurpose, ParX, Pars, Stm, StmX};
 use crate::sst_to_air::{
     exp_to_expr, fun_to_air_ident, typ_invariant, typ_to_air, ExprCtxt, ExprMode,
 };
-use crate::util::{vec_map, vec_map_result};
+use crate::util::vec_map;
 use air::ast::{
     BinaryOp, Bind, BindX, Binder, BinderX, Command, CommandX, Commands, DeclX, Expr, ExprX, Quant,
     Span, Trigger, Triggers,
@@ -399,6 +399,27 @@ pub fn func_decl_to_air(
 
     let mut decl_commands: Vec<Command> = Vec::new();
     let mut check_commands: Vec<Command> = Vec::new();
+    if function.x.require.len() > 0 {
+        let msg = match (function.x.mode, &function.x.attrs.custom_req_err) {
+            // We don't highlight the failed precondition if the programmer supplied their own msg
+            (_, Some(_)) => None,
+            // Standard message
+            (Mode::Spec, None) => Some("recommendation not met".to_string()),
+            (_, None) => Some("failed precondition".to_string()),
+        };
+        let req_params = params_to_pre_post_pars(&function.x.params, true);
+        let _ = req_ens_to_air(
+            ctx,
+            &mut decl_commands,
+            &req_params,
+            &vec![],
+            &function.x.require,
+            &function.x.typ_params(),
+            &req_typs,
+            &prefix_requires(&fun_to_air_ident(&function.x.name)),
+            &msg,
+        )?;
+    }
     match function.x.mode {
         Mode::Spec => {
             // Body
@@ -455,24 +476,6 @@ pub fn func_decl_to_air(
                 return Ok((Arc::new(decl_commands), Arc::new(check_commands)));
             }
 
-            let msg = match &function.x.attrs.custom_req_err {
-                // Standard message
-                None => Some("failed precondition".to_string()),
-                // We don't highlight the failed precondition if the programmer supplied their own msg
-                Some(_) => None,
-            };
-            let req_params = params_to_pre_post_pars(&function.x.params, true);
-            let _ = req_ens_to_air(
-                ctx,
-                &mut decl_commands,
-                &req_params,
-                &vec![],
-                &function.x.require,
-                &function.x.typ_params(),
-                &req_typs,
-                &prefix_requires(&fun_to_air_ident(&function.x.name)),
-                &msg,
-            )?;
             let params = params_to_pre_post_pars(&function.x.params, false);
             let mut ens_params = (*params).clone();
             let mut ens_typing_invs: Vec<Expr> = Vec::new();
@@ -557,7 +560,11 @@ pub fn func_def_to_air(
     ctx: &Ctx,
     function: &Function,
 ) -> Result<(Commands, Vec<(Span, SnapPos)>), VirErr> {
-    match (function.x.mode, function.x.is_const, function.x.body.as_ref()) {
+    match (
+        function.x.mode,
+        function.x.is_const || function.x.attrs.check_recommends,
+        function.x.body.as_ref(),
+    ) {
         (Mode::Spec, true, Some(body))
         | (Mode::Proof, _, Some(body))
         | (Mode::Exec, _, Some(body)) => {
@@ -596,28 +603,57 @@ pub fn func_def_to_air(
             } else {
                 None
             };
-
             let ens_params = Arc::new(ens_params);
-            let reqs = vec_map_result(&*req_ens_function.x.require, |e| {
-                crate::ast_to_sst::expr_to_exp(ctx, &params_to_pars(&function.x.params, true), e)
-            })?;
-            let enss = vec_map_result(&*req_ens_function.x.ensure, |e| {
-                crate::ast_to_sst::expr_to_exp(ctx, &params_to_pars(&ens_params, true), e)
-            })?;
-            let enss = Arc::new(enss);
+            let req_pars = params_to_pars(&function.x.params, true);
+            let ens_pars = params_to_pars(&ens_params, true);
+
             for param in function.x.params.iter() {
                 state.declare_new_var(&param.x.name, &param.x.typ, param.x.is_mut, false);
             }
 
+            let mut req_stmts: Vec<Stm> = Vec::new();
+            let mut reqs: Vec<Exp> = Vec::new();
+            for e in req_ens_function.x.require.iter() {
+                if ctx.checking_recommends() {
+                    let (stms, exp) =
+                        crate::ast_to_sst::expr_to_pure_exp_check(ctx, &mut state, e)?;
+                    req_stmts.extend(stms);
+                    req_stmts.push(Spanned::new(exp.span.clone(), StmX::Assume(exp)));
+                } else {
+                    reqs.push(crate::ast_to_sst::expr_to_exp(ctx, &req_pars, e)?);
+                }
+            }
+            let mut ens_stmts: Vec<Stm> = Vec::new();
+            let mut enss: Vec<Exp> = Vec::new();
+            for e in req_ens_function.x.ensure.iter() {
+                if ctx.checking_recommends() {
+                    ens_stmts.extend(crate::ast_to_sst::check_pure_expr(ctx, &mut state, e)?);
+                } else {
+                    enss.push(crate::ast_to_sst::expr_to_exp(ctx, &ens_pars, e)?);
+                }
+            }
+            let enss = Arc::new(enss);
+
             // AST --> SST
-            state.ret_post = Some((dest.clone(), enss.clone()));
-            let (stm, skip_ensures) =
+            state.ret_post = Some((dest.clone(), ens_stmts.clone(), enss.clone()));
+            let (mut stm, skip_ensures) =
                 crate::ast_to_sst::expr_to_one_stm_dest(&ctx, &mut state, &body, &dest)?;
+            if ctx.checking_recommends() && trait_typ_substs.len() == 0 {
+                req_stmts.push(stm);
+                if !skip_ensures {
+                    req_stmts.extend(ens_stmts);
+                }
+                stm = crate::ast_to_sst::stms_to_one_stm(&body.span, req_stmts);
+            }
             let stm = state.finalize_stm(&stm);
             state.ret_post = None;
 
             // Check termination
-            let (decls, stm) = crate::recursion::check_termination_stm(ctx, function, &stm)?;
+            let (decls, stm) = if ctx.checking_recommends() {
+                (vec![], stm)
+            } else {
+                crate::recursion::check_termination_stm(ctx, function, &stm)?
+            };
 
             // SST --> AIR
             for decl in decls {

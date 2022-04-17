@@ -38,7 +38,9 @@ pub(crate) struct State {
     // rather than LocalDecls
     dont_rename: HashSet<UniqueIdent>,
     // If we allow return expressions, this is the return variable and ensures clauses:
-    pub(crate) ret_post: Option<(Option<UniqueIdent>, Exps)>,
+    pub(crate) ret_post: Option<(Option<UniqueIdent>, Vec<Stm>, Exps)>,
+    // If > 0, disable checking recommends (used to make sure pure expressions stay pure)
+    disable_recommends: u64,
 }
 
 #[derive(Clone)]
@@ -96,6 +98,7 @@ impl State {
             rename_counters: HashMap::new(),
             dont_rename: HashSet::new(),
             ret_post: None,
+            disable_recommends: 0,
         }
     }
 
@@ -195,6 +198,10 @@ impl State {
         self.pop_scope();
         assert_eq!(self.rename_map.num_scopes(), 0);
     }
+
+    fn checking_recommends(&self, ctx: &Ctx) -> bool {
+        ctx.checking_recommends() && self.disable_recommends == 0
+    }
 }
 
 pub(crate) fn var_loc_exp(span: &Span, typ: &Typ, lhs: UniqueIdent) -> Exp {
@@ -211,16 +218,17 @@ fn init_var(span: &Span, x: &UniqueIdent, exp: &Exp) -> Stm {
     )
 }
 
-fn get_function(ctx: &Ctx, expr: &Expr, name: &Fun) -> Result<Function, VirErr> {
+fn get_function(ctx: &Ctx, span: &Span, name: &Fun) -> Result<Function, VirErr> {
     match ctx.func_map.get(name) {
-        None => err_string(&expr.span, format!("could not find function {:?}", &name)),
+        None => err_string(span, format!("could not find function {:?}", &name)),
         Some(func) => Ok(func.clone()),
     }
 }
 
-fn function_can_be_exp(ctx: &Ctx, expr: &Expr, path: &Fun) -> Result<bool, VirErr> {
-    match get_function(ctx, expr, path)?.x.mode {
-        Mode::Spec => Ok(true),
+fn function_can_be_exp(ctx: &Ctx, state: &State, expr: &Expr, path: &Fun) -> Result<bool, VirErr> {
+    let fun = get_function(ctx, &expr.span, path)?;
+    match fun.x.mode {
+        Mode::Spec => Ok(!state.checking_recommends(ctx) || fun.x.require.len() == 0),
         Mode::Proof | Mode::Exec => Ok(false),
     }
 }
@@ -229,6 +237,14 @@ pub fn assume_false(span: &Span) -> Stm {
     let expx = ExpX::Const(Constant::Bool(false));
     let exp = SpannedTyped::new(&span, &Arc::new(TypX::Bool), expx);
     Spanned::new(span.clone(), StmX::Assume(exp))
+}
+
+fn assume_has_typ(x: &UniqueIdent, typ: &Typ, span: &Span) -> Stm {
+    let xvarx = ExpX::Var(x.clone());
+    let xvar = SpannedTyped::new(span, &Arc::new(TypX::Bool), xvarx);
+    let has_typx = ExpX::UnaryOpr(UnaryOpr::HasType(typ.clone()), xvar);
+    let has_typ = SpannedTyped::new(span, &Arc::new(TypX::Bool), has_typx);
+    Spanned::new(span.clone(), StmX::Assume(has_typ))
 }
 
 /// Determine if it's possible for control flow to reach the statement after the loop exit.
@@ -294,7 +310,7 @@ fn expr_get_call(
                 };
                 exps.push((e0, arg.typ.clone()));
             }
-            let has_ret = get_function(ctx, expr, x)?.x.has_return();
+            let has_ret = get_function(ctx, &expr.span, x)?.x.has_return();
             Ok(Some((
                 stms,
                 ReturnedCall::Call {
@@ -316,7 +332,7 @@ fn expr_must_be_call_stm(
     expr: &Expr,
 ) -> Result<Option<(Vec<Stm>, ReturnedCall)>, VirErr> {
     match &expr.x {
-        ExprX::Call(CallTarget::Static(x, _), _) if !function_can_be_exp(ctx, expr, x)? => {
+        ExprX::Call(CallTarget::Static(x, _), _) if !function_can_be_exp(ctx, state, expr, x)? => {
             expr_get_call(ctx, state, expr)
         }
         _ => Ok(None),
@@ -324,11 +340,66 @@ fn expr_must_be_call_stm(
 }
 
 pub(crate) fn expr_to_pure_exp(ctx: &Ctx, state: &mut State, expr: &Expr) -> Result<Exp, VirErr> {
+    state.disable_recommends += 1;
     let (stms, exp) = expr_to_stm_or_error(ctx, state, expr)?;
-    if stms.len() == 0 {
+    let result = if stms.len() == 0 {
         Ok(exp)
     } else {
         err_str(&expr.span, "expected pure mathematical expression")
+    };
+    state.disable_recommends -= 1;
+    result
+}
+
+pub(crate) fn check_pure_expr(
+    ctx: &Ctx,
+    state: &mut State,
+    expr: &Expr,
+) -> Result<Vec<Stm>, VirErr> {
+    if state.checking_recommends(ctx) {
+        let (stms, _exp) = expr_to_stm_or_error(ctx, state, expr)?;
+        Ok(stms)
+    } else {
+        Ok(vec![])
+    }
+}
+
+// For handling recommends, we need to generate both a recommends check of a pure expression
+// and the pure expression itself.
+pub(crate) fn expr_to_pure_exp_check(
+    ctx: &Ctx,
+    state: &mut State,
+    expr: &Expr,
+) -> Result<(Vec<Stm>, Exp), VirErr> {
+    let stms =
+        if state.checking_recommends(ctx) { check_pure_expr(ctx, state, expr)? } else { vec![] };
+    // Note: the _exp discarded by check_pure_expr depends on stms,
+    // and we can't use it as a self-contained pure Exp,
+    // so we need to call expr_to_pure_exp to generate a second Exp.
+    // REVIEW: it's inefficient to generate _exp and throw it away.
+    let exp = expr_to_pure_exp(ctx, state, expr)?;
+    Ok((stms, exp))
+}
+
+pub(crate) fn check_pure_expr_bind(
+    ctx: &Ctx,
+    state: &mut State,
+    binders: &Binders<Typ>,
+    expr: &Expr,
+) -> Result<Vec<Stm>, VirErr> {
+    if state.checking_recommends(ctx) {
+        state.push_scope();
+        let mut stms: Vec<Stm> = Vec::new();
+        for binder in binders.iter() {
+            let x = state.declare_new_var(&binder.name, &binder.a, false, true);
+            stms.push(assume_has_typ(&x, &binder.a, &expr.span));
+        }
+        let (stms1, _exp) = expr_to_stm_or_error(ctx, state, expr)?;
+        stms.extend(stms1);
+        state.pop_scope();
+        Ok(stms)
+    } else {
+        Ok(vec![])
     }
 }
 
@@ -479,13 +550,15 @@ fn is_small_exp_or_loc(exp: &Exp) -> bool {
 }
 
 fn stm_call(
+    ctx: &Ctx,
     state: &mut State,
     span: &Span,
     name: Fun,
     typs: Typs,
     args: Args,
     dest: Option<Dest>,
-) -> Stm {
+) -> Result<Stm, VirErr> {
+    let fun = get_function(ctx, span, &name)?;
     let mut small_args: Vec<Exp> = Vec::new();
     let mut stms: Vec<Stm> = Vec::new();
     for arg in args.iter() {
@@ -500,9 +573,9 @@ fn stm_call(
             stms.push(init_var(&arg.0.span, &temp_id, &arg.0));
         }
     }
-    let call = StmX::Call(name, typs, Arc::new(small_args), dest);
+    let call = StmX::Call(name, fun.x.mode, typs, Arc::new(small_args), dest);
     stms.push(Spanned::new(span.clone(), call));
-    stms_to_one_stm(span, stms)
+    Ok(stms_to_one_stm(span, stms))
 }
 
 fn if_to_stm(
@@ -655,7 +728,7 @@ fn expr_to_stm_opt(
                             Some(assign),
                         )
                     };
-                    stms.push(stm_call(state, &expr.span, fun, typs, args, Some(dest)));
+                    stms.push(stm_call(ctx, state, &expr.span, fun, typs, args, Some(dest))?);
                     stms.extend(assign.into_iter());
                     Ok((stms, ReturnValue::ImplicitUnit(expr.span.clone())))
                 }
@@ -689,7 +762,7 @@ fn expr_to_stm_opt(
             match expr_get_call(ctx, state, expr)?.expect("Call") {
                 (stms, ReturnedCall::Never) => Ok((stms, ReturnValue::Never)),
                 (mut stms, ReturnedCall::Call { fun: x, typs, has_return: ret, args }) => {
-                    if function_can_be_exp(ctx, expr, &x)? {
+                    if function_can_be_exp(ctx, state, expr, &x)? {
                         // ExpX::Call
                         let args = Arc::new(vec_map(&args, |(a, _)| a.clone()));
                         let call = ExpX::Call(x.clone(), typs.clone(), args);
@@ -699,22 +772,42 @@ fn expr_to_stm_opt(
                         let temp_ident = state.declare_new_var(&temp, &expr.typ, false, false);
                         // tmp = StmX::Call;
                         let dest = Dest {
-                            dest: var_loc_exp(&expr.span, &expr.typ, temp_ident),
+                            dest: var_loc_exp(&expr.span, &expr.typ, temp_ident.clone()),
                             is_init: true,
                         };
                         stms.push(stm_call(
+                            ctx,
+                            state,
+                            &expr.span,
+                            x.clone(),
+                            typs.clone(),
+                            args.clone(),
+                            Some(dest),
+                        )?);
+                        if state.checking_recommends(ctx) {
+                            let fun = get_function(ctx, &expr.span, &x)?;
+                            if fun.x.mode == Mode::Spec {
+                                // for recommends, we need a StmX::Call for the recommends
+                                // and an ExpX::Call for the value.
+                                let args = Arc::new(vec_map(&args, |(a, _)| a.clone()));
+                                let call = ExpX::Call(x.clone(), typs.clone(), args);
+                                let call = SpannedTyped::new(&expr.span, &expr.typ, call);
+                                stms.push(init_var(&expr.span, &temp_ident, &call));
+                            }
+                        }
+                        // tmp
+                        Ok((stms, ReturnValue::Some(temp_var)))
+                    } else {
+                        // StmX::Call
+                        stms.push(stm_call(
+                            ctx,
                             state,
                             &expr.span,
                             x.clone(),
                             typs.clone(),
                             args,
-                            Some(dest),
-                        ));
-                        // tmp
-                        Ok((stms, ReturnValue::Some(temp_var)))
-                    } else {
-                        // StmX::Call
-                        stms.push(stm_call(state, &expr.span, x.clone(), typs.clone(), args, None));
+                            None,
+                        )?);
                         Ok((stms, ReturnValue::ImplicitUnit(expr.span.clone())))
                     }
                 }
@@ -792,10 +885,12 @@ fn expr_to_stm_opt(
                             state.view_as_spec,
                             ctx.global.inferred_modes[inferred_mode],
                             &*expr.typ,
+                            state.checking_recommends(ctx),
                         ) {
-                            (true, _, _) => {}
-                            (_, Mode::Spec, _) => {}
-                            (_, _, TypX::Int(IntRange::U(_) | IntRange::I(_))) => {
+                            (true, _, _, false) => {}
+                            (_, Mode::Spec, _, false) => {}
+                            (_, Mode::Proof | Mode::Exec, _, true) => {}
+                            (_, _, TypX::Int(IntRange::U(_) | IntRange::I(_)), _) => {
                                 let (assert_exp, msg) = match arith {
                                     ArithOp::Add | ArithOp::Sub | ArithOp::Mul => {
                                         let unary = UnaryOpr::HasType(expr.typ.clone());
@@ -834,6 +929,7 @@ fn expr_to_stm_opt(
             }
         }
         ExprX::Quant(quant, binders, body) => {
+            let check_recommends_stms = check_pure_expr_bind(ctx, state, binders, body)?;
             state.push_scope();
             state.declare_binders(binders);
             let exp = expr_to_pure_exp(ctx, state, body)?;
@@ -847,11 +943,13 @@ fn expr_to_stm_opt(
             }
             let trigs = crate::triggers::build_triggers(ctx, &expr.span, &vars, &exp)?;
             let bnd = Spanned::new(body.span.clone(), BndX::Quant(*quant, binders.clone(), trigs));
-            Ok((vec![], ReturnValue::Some(mk_exp(ExpX::Bind(bnd, exp)))))
+            Ok((check_recommends_stms, ReturnValue::Some(mk_exp(ExpX::Bind(bnd, exp)))))
         }
         ExprX::Closure(params, body) => {
             state.push_scope();
             state.declare_binders(params);
+            // Note: to avoid false alarms, we don't check recommends inside closures
+            // (since there's no precondition on the closure parameters)
             let mut exp = expr_to_pure_exp(ctx, state, body)?;
             state.pop_scope();
 
@@ -891,6 +989,8 @@ fn expr_to_stm_opt(
             Ok((vec![], ReturnValue::Some(mk_exp(ExpX::Bind(bnd, exp)))))
         }
         ExprX::Choose { params, cond, body } => {
+            let mut check_recommends_stms = check_pure_expr_bind(ctx, state, params, cond)?;
+            check_recommends_stms.extend(check_pure_expr_bind(ctx, state, params, body)?);
             state.push_scope();
             state.declare_binders(&params);
             let cond_exp = expr_to_pure_exp(ctx, state, cond)?;
@@ -900,7 +1000,7 @@ fn expr_to_stm_opt(
             let trigs = crate::triggers::build_triggers(ctx, &expr.span, &vars, &cond_exp)?;
             let bnd =
                 Spanned::new(body.span.clone(), BndX::Choose(params.clone(), trigs, cond_exp));
-            Ok((vec![], ReturnValue::Some(mk_exp(ExpX::Bind(bnd, body_exp)))))
+            Ok((check_recommends_stms, ReturnValue::Some(mk_exp(ExpX::Bind(bnd, body_exp)))))
         }
         ExprX::WithTriggers { triggers, body } => {
             let mut trigs: Vec<crate::sst::Trig> = Vec::new();
@@ -909,8 +1009,12 @@ fn expr_to_stm_opt(
                 trigs.push(Arc::new(t));
             }
             let trigs = Arc::new(trigs);
+            let check_recommends_stms = check_pure_expr(ctx, state, body)?;
             let body_exp = expr_to_pure_exp(ctx, state, body)?;
-            Ok((vec![], ReturnValue::Some(mk_exp(ExpX::WithTriggers(trigs, body_exp)))))
+            Ok((
+                check_recommends_stms,
+                ReturnValue::Some(mk_exp(ExpX::WithTriggers(trigs, body_exp))),
+            ))
         }
         ExprX::Fuel(x, fuel) => {
             let stm = Spanned::new(expr.span.clone(), StmX::Fuel(x.clone(), *fuel));
@@ -937,24 +1041,24 @@ fn expr_to_stm_opt(
             let mut body: Vec<Stm> = Vec::new();
             for var in vars.iter() {
                 let x = state.declare_new_var(&var.name, &var.a, false, true);
-                let xvarx = ExpX::Var(x);
-                let xvar = SpannedTyped::new(&expr.span, &Arc::new(TypX::Bool), xvarx);
-                let has_typx = ExpX::UnaryOpr(UnaryOpr::HasType(var.a.clone()), xvar);
-                let has_typ = SpannedTyped::new(&expr.span, &Arc::new(TypX::Bool), has_typx);
-                let assume = Spanned::new(require.span.clone(), StmX::Assume(has_typ));
-                body.push(assume);
+                body.push(assume_has_typ(&x, &var.a, &require.span));
             }
             let (mut proof_stms, e) = expr_to_stm_opt(ctx, state, proof)?;
             if let ReturnValue::Some(_) = e {
                 return err_str(&expr.span, "forall/assert-by cannot end with an expression");
             }
-            let require_exp = expr_to_pure_exp(ctx, state, &require)?;
+            let (check_recommends, require_exp) = expr_to_pure_exp_check(ctx, state, &require)?;
+            body.extend(check_recommends);
             let assume = Spanned::new(require.span.clone(), StmX::Assume(require_exp));
             body.push(assume);
             body.append(&mut proof_stms);
-            let ensure_exp = expr_to_pure_exp(ctx, state, &ensure)?;
-            let assert = Spanned::new(ensure.span.clone(), StmX::Assert(None, ensure_exp));
-            body.push(assert);
+            if state.checking_recommends(ctx) {
+                body.extend(check_pure_expr(ctx, state, &ensure)?);
+            } else {
+                let ensure_exp = expr_to_pure_exp(ctx, state, &ensure)?;
+                let assert = Spanned::new(ensure.span.clone(), StmX::Assert(None, ensure_exp));
+                body.push(assert);
+            }
             let block = Spanned::new(expr.span.clone(), StmX::Block(Arc::new(body)));
             let deadend = Spanned::new(expr.span.clone(), StmX::DeadEnd(block));
             stms.push(deadend);
@@ -1006,16 +1110,23 @@ fn expr_to_stm_opt(
                 }
             };
 
-            let (stms1, e1) = expr_to_stm_opt(ctx, state, body)?;
+            let (mut stms1, e1) = expr_to_stm_opt(ctx, state, body)?;
             check_unit_or_never(&e1)?;
-            let invs = Arc::new(vec_map_result(invs, |e| expr_to_pure_exp(ctx, state, e))?);
+            let (check_recommends, invs): (Vec<Vec<Stm>>, Vec<Exp>) =
+                vec_map_result(invs, |e| expr_to_pure_exp_check(ctx, state, e))?
+                    .into_iter()
+                    .unzip();
+            if ctx.checking_recommends() {
+                let check_recommends: Vec<Stm> = check_recommends.into_iter().flatten().collect();
+                stms1.splice(0..0, check_recommends);
+            }
             let while_stm = Spanned::new(
                 expr.span.clone(),
                 StmX::While {
                     cond_stms: Arc::new(stms0),
                     cond_exp: e0,
                     body: stms_to_one_stm(&body.span, stms1),
-                    invs,
+                    invs: Arc::new(invs),
                     typ_inv_vars: Arc::new(vec![]),
                     modified_vars: Arc::new(vec![]),
                 },
@@ -1070,7 +1181,7 @@ fn expr_to_stm_opt(
             // (We could consider moving _all_ the postcondition handling to this file,
             // so that inconsistencies become more clear.)
 
-            if let Some((ret_dest, enss)) = state.ret_post.clone() {
+            if let Some((ret_dest, ens_recommends, enss)) = state.ret_post.clone() {
                 let mut stms: Vec<Stm> = Vec::new();
                 match (ret_dest, e1) {
                     (None, None) => {}
@@ -1082,6 +1193,9 @@ fn expr_to_stm_opt(
                         stms.append(&mut ret_stms);
                         stms.push(init_var(&expr.span, &dest, &exp));
                     }
+                }
+                if ctx.checking_recommends() {
+                    stms.extend(ens_recommends);
                 }
                 for ens in enss.iter() {
                     let error = error_with_label(
@@ -1231,7 +1345,7 @@ fn stmt_to_stm(
                             dest: var_loc_exp(&pattern.span, &typ, decl.ident.clone()),
                             is_init: true,
                         };
-                        stms.push(stm_call(state, &init.span, fun, typs, args, Some(dest)));
+                        stms.push(stm_call(ctx, state, &init.span, fun, typs, args, Some(dest))?);
                         let ret = ReturnValue::ImplicitUnit(stmt.span.clone());
                         return Ok((stms, ret, Some((decl, None))));
                     }

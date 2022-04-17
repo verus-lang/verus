@@ -18,11 +18,19 @@ impl<A> Seq<A> {
 
     fndecl!(pub fn len(self) -> nat);
 
-    fndecl!(pub fn index(self, i: int) -> A);
+    #[spec] #[verifier(external_body)]
+    pub fn index(self, i: int) -> A {
+        recommends([0 <= i, i < self.len()]);
+        unimplemented!()
+    }
 
     fndecl!(pub fn push(self, a: A) -> Seq<A>);
 
-    fndecl!(pub fn update(self, i: int, a: A) -> Seq<A>);
+    #[spec] #[verifier(external_body)]
+    pub fn update(self, i: int, a: A) -> Seq<A> {
+        recommends([0 <= i, i < self.len()]);
+        unimplemented!()
+    }
 
     #[spec] #[verifier(publish)]
     pub fn ext_equal(self, s2: Seq<A>) -> bool {
@@ -30,7 +38,15 @@ impl<A> Seq<A> {
         forall(|i: int| 0 <= i && i < self.len() >>= equal(self.index(i), s2.index(i)))
     }
 
-    fndecl!(pub fn subrange(self, start_inclusive: int, end_exclusive: int) -> Seq<A>);
+    #[spec] #[verifier(external_body)]
+    pub fn subrange(self, start_inclusive: int, end_exclusive: int) -> Seq<A> {
+        recommends([
+            0 <= start_inclusive,
+            start_inclusive <= end_exclusive,
+            end_exclusive < self.len(),
+        ]);
+        unimplemented!()
+    }
 
     fndecl!(pub fn add(self, rhs: Seq<A>) -> Seq<A>);
 

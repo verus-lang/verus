@@ -196,7 +196,7 @@ where
 {
     stm_visitor_dfs(stm, &mut |stm| {
         match &stm.x {
-            StmX::Call(_path, _typs, exps, _dest) => {
+            StmX::Call(_path, _mode, _typs, exps, _dest) => {
                 for exp in exps.iter() {
                     expr_visitor_control_flow!(exp_visitor_dfs(exp, &mut ScopeMap::new(), f));
                 }
@@ -465,9 +465,12 @@ where
     map_stm_visitor(stm, &mut |stm| {
         let span = stm.span.clone();
         let stm = match &stm.x {
-            StmX::Call(path, typs, exps, dest) => {
+            StmX::Call(path, mode, typs, exps, dest) => {
                 let exps = Arc::new(vec_map(exps, f));
-                Spanned::new(span, StmX::Call(path.clone(), typs.clone(), exps, (*dest).clone()))
+                Spanned::new(
+                    span,
+                    StmX::Call(path.clone(), *mode, typs.clone(), exps, (*dest).clone()),
+                )
             }
             StmX::Assert(span2, exp) => Spanned::new(span, StmX::Assert(span2.clone(), f(exp))),
             StmX::AssertBV(exp) => Spanned::new(span, StmX::AssertBV(f(exp))),

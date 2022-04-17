@@ -19,6 +19,7 @@ impl<A> Seq<A> {
 
     #[spec] #[verifier(publish)]
     pub fn drop_last(self) -> Seq<A> {
+        recommends(self.len() >= 1);
         self.subrange(0, self.len() as int - 1)
     } 
 }

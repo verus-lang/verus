@@ -21,6 +21,7 @@ pub struct Args {
     pub verify_pervasive: bool,
     pub no_verify: bool,
     pub no_lifetime: bool,
+    pub no_auto_recommends_check: bool,
     pub time: bool,
     pub rlimit: u32,
     pub smt_options: Vec<(String, String)>,
@@ -54,6 +55,7 @@ pub fn parse_args(program: &String, args: impl Iterator<Item = String>) -> (Args
     const OPT_VERIFY_PERVASIVE: &str = "verify-pervasive";
     const OPT_NO_VERIFY: &str = "no-verify";
     const OPT_NO_LIFETIME: &str = "no-lifetime";
+    const OPT_NO_AUTO_RECOMMENDS_CHECK: &str = "no-auto-recommends-check";
     const OPT_TIME: &str = "time";
     const OPT_RLIMIT: &str = "rlimit";
     const OPT_SMT_OPTION: &str = "smt-option";
@@ -87,6 +89,11 @@ pub fn parse_args(program: &String, args: impl Iterator<Item = String>) -> (Args
     opts.optflag("", OPT_VERIFY_PERVASIVE, "Verify trusted pervasive modules");
     opts.optflag("", OPT_NO_VERIFY, "Do not run verification");
     opts.optflag("", OPT_NO_LIFETIME, "Do not run lifetime checking on proofs");
+    opts.optflag(
+        "",
+        OPT_NO_AUTO_RECOMMENDS_CHECK,
+        "Do not automatically check recommends after verification failures",
+    );
     opts.optflag("", OPT_TIME, "Measure and report time taken");
     opts.optopt("", OPT_RLIMIT, "Set SMT resource limit (roughly in seconds)", "INTEGER");
     opts.optmulti("", OPT_SMT_OPTION, "Set an SMT option (e.g. smt.random_seed=7)", "OPTION=VALUE");
@@ -148,6 +155,7 @@ pub fn parse_args(program: &String, args: impl Iterator<Item = String>) -> (Args
         verify_pervasive: matches.opt_present(OPT_VERIFY_PERVASIVE),
         no_verify: matches.opt_present(OPT_NO_VERIFY),
         no_lifetime: matches.opt_present(OPT_NO_LIFETIME),
+        no_auto_recommends_check: matches.opt_present(OPT_NO_AUTO_RECOMMENDS_CHECK),
         time: matches.opt_present(OPT_TIME),
         rlimit: matches
             .opt_get::<u32>(OPT_RLIMIT)

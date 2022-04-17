@@ -208,10 +208,13 @@ pub type HeaderExpr = Arc<HeaderExprX>;
 pub enum HeaderExprX {
     /// Marker that trait declaration method body is omitted and should be erased
     NoMethodBody,
-    /// Preconditions on functions
+    /// Preconditions on exec/proof functions
     Requires(Exprs),
-    /// Postconditions on functions, with an optional name and type for the return value
+    /// Postconditions on exec/proof functions, with an optional name and type for the return value
     Ensures(Option<(Ident, Typ)>, Exprs),
+    /// Recommended preconditions on spec functions, used to help diagnose mistakes in specifications.
+    /// Checking of recommends is disabled by default.
+    Recommends(Exprs),
     /// Invariants on while loops
     Invariant(Exprs),
     /// Decreases clauses for functions (possibly also for while loops, but this isn't implemented yet)
@@ -434,6 +437,8 @@ pub struct FunctionAttrsX {
     pub atomic: bool,
     /// This is a proof of termination for another spec function
     pub is_decrease_by: bool,
+    /// In a spec function, check the body for violations of recommends
+    pub check_recommends: bool,
 }
 
 /// Function specification of its invariant mask
@@ -484,9 +489,9 @@ pub struct FunctionX {
     pub params: Params,
     /// Return value (unit return type is treated specially; see FunctionX::has_return in ast_util)
     pub ret: Param,
-    /// Preconditions
+    /// Preconditions (requires for proof/exec functions, recommends for spec functions)
     pub require: Exprs,
-    /// Postconditions
+    /// Postconditions (proof/exec functions only)
     pub ensure: Exprs,
     /// Decreases clause to ensure recursive function termination
     /// decrease.len() == 0 means no decreases clause

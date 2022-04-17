@@ -85,7 +85,14 @@ impl ErrorSpan {
     }
 }
 
-fn report_error(compiler: &Compiler, error: &Error) {
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ErrorAs {
+    Error,
+    Warning,
+    Note,
+}
+
+fn report_error(compiler: &Compiler, error: &Error, error_as: ErrorAs) {
     if error.spans.len() == 0 {
         panic!("internal error: found Error with no span")
     }
@@ -103,7 +110,19 @@ fn report_error(compiler: &Compiler, error: &Error) {
         multispan.push_span_label(span, msg.clone());
     }
 
-    compiler.session().parse_sess.span_diagnostic.span_err(multispan, &error.msg);
+    match error_as {
+        ErrorAs::Note => compiler
+            .session()
+            .parse_sess
+            .span_diagnostic
+            .span_note_without_error(multispan, &error.msg),
+        ErrorAs::Warning => {
+            compiler.session().parse_sess.span_diagnostic.span_warn(multispan, &error.msg)
+        }
+        ErrorAs::Error => {
+            compiler.session().parse_sess.span_diagnostic.span_err(multispan, &error.msg)
+        }
+    }
 }
 
 fn report_chosen_triggers(compiler: &Compiler, chosen: &vir::context::ChosenTriggers) {
@@ -157,23 +176,26 @@ impl Verifier {
 
     /// Check the result of a query that was based on user input.
     /// Success/failure will (eventually) be communicated back to the user.
+    /// Returns true if there was at least one Invalid resulting in an error.
     fn check_result_validity(
         &mut self,
         compiler: &Compiler,
+        error_as: ErrorAs,
         air_context: &mut air::context::Context,
         assign_map: &HashMap<*const air::ast::Span, HashSet<Arc<std::string::String>>>,
         snap_map: &Vec<(air::ast::Span, SnapPos)>,
         command: &Command,
-    ) {
+    ) -> bool {
         let is_check_valid = matches!(**command, CommandX::CheckValid(_));
         let mut result = air_context.command(&command);
         let mut is_first_check = true;
         let mut checks_remaining = self.args.multiple_errors;
         let mut only_check_earlier = false;
+        let mut invalidity = false;
         loop {
             match result {
                 ValidityResult::Valid => {
-                    if is_check_valid && is_first_check {
+                    if is_check_valid && is_first_check && error_as == ErrorAs::Error {
                         self.count_verified += 1;
                     }
                     break;
@@ -182,33 +204,36 @@ impl Verifier {
                     panic!("internal error: generated ill-typed AIR code: {}", err);
                 }
                 ValidityResult::Invalid(air_model, error) => {
-                    if is_first_check {
+                    if is_first_check && error_as == ErrorAs::Error {
                         self.count_errors += 1;
+                        invalidity = true;
                     }
-                    report_error(compiler, &error);
+                    report_error(compiler, &error, error_as);
 
-                    let mut errors = vec![ErrorSpan::new_from_air_span(
-                        compiler.session().source_map(),
-                        &error.msg,
-                        &error.spans[0],
-                    )];
-                    for ErrorLabel { msg, span } in &error.labels {
-                        errors.push(ErrorSpan::new_from_air_span(
+                    if error_as == ErrorAs::Error {
+                        let mut errors = vec![ErrorSpan::new_from_air_span(
                             compiler.session().source_map(),
-                            msg,
-                            span,
-                        ));
-                    }
+                            &error.msg,
+                            &error.spans[0],
+                        )];
+                        for ErrorLabel { msg, span } in &error.labels {
+                            errors.push(ErrorSpan::new_from_air_span(
+                                compiler.session().source_map(),
+                                msg,
+                                span,
+                            ));
+                        }
 
-                    self.errors.push(errors);
-                    if self.args.debug {
-                        let mut debugger = Debugger::new(
-                            air_model,
-                            assign_map,
-                            snap_map,
-                            compiler.session().source_map(),
-                        );
-                        debugger.start_shell(air_context);
+                        self.errors.push(errors);
+                        if self.args.debug {
+                            let mut debugger = Debugger::new(
+                                air_model,
+                                assign_map,
+                                snap_map,
+                                compiler.session().source_map(),
+                            );
+                            debugger.start_shell(air_context);
+                        }
                     }
 
                     if self.args.multiple_errors == 0 {
@@ -233,6 +258,8 @@ impl Verifier {
         if is_check_valid {
             air_context.finish_query();
         }
+
+        invalidity
     }
 
     fn run_commands(
@@ -253,25 +280,37 @@ impl Verifier {
         }
     }
 
+    /// Returns true if there was at least one Invalid resulting in an error.
     fn run_commands_queries(
         &mut self,
         compiler: &Compiler,
+        error_as: ErrorAs,
         air_context: &mut air::context::Context,
         commands: &Vec<Command>,
         assign_map: &HashMap<*const air::ast::Span, HashSet<Arc<String>>>,
         snap_map: &Vec<(air::ast::Span, SnapPos)>,
         comment: &str,
-    ) {
+    ) -> bool {
+        let mut invalidity = false;
         if commands.len() > 0 {
             air_context.blank_line();
             air_context.comment(comment);
         }
         for command in commands.iter() {
             let time0 = Instant::now();
-            self.check_result_validity(compiler, air_context, assign_map, snap_map, &command);
+            let result_invalidity = self.check_result_validity(
+                compiler,
+                error_as,
+                air_context,
+                assign_map,
+                snap_map,
+                &command,
+            );
+            invalidity = invalidity || result_invalidity;
             let time1 = Instant::now();
             self.time_air += time1 - time0;
         }
+        invalidity
     }
 
     // Verify a single module
@@ -300,9 +339,16 @@ impl Verifier {
         );
         self.run_commands(air_context, &datatype_commands, &("Datatypes".to_string()));
 
+        let mk_fun_ctx = |f: &Function, checking_recommends: bool| {
+            Some(vir::context::FunctionCtx {
+                checking_recommends,
+                module_for_chosen_triggers: f.x.visibility.owning_module.clone(),
+            })
+        };
+
         // Declare the function symbols
         for function in &krate.functions {
-            ctx.module_for_chosen_triggers = function.x.visibility.owning_module.clone();
+            ctx.fun = mk_fun_ctx(&function, false);
             if !is_visible_to(&function.x.visibility, module) || function.x.attrs.is_decrease_by {
                 continue;
             }
@@ -313,7 +359,7 @@ impl Verifier {
                 &("Function-Decl ".to_string() + &fun_as_rust_dbg(&function.x.name)),
             );
         }
-        ctx.module_for_chosen_triggers = None;
+        ctx.fun = None;
 
         // Collect function definitions
         let mut funs: HashMap<Fun, (Function, Visibility)> = HashMap::new();
@@ -349,20 +395,21 @@ impl Verifier {
                 }
                 let (function, vis_abs) = &funs[f];
 
-                ctx.module_for_chosen_triggers = function.x.visibility.owning_module.clone();
+                ctx.fun = mk_fun_ctx(&function, false);
                 let (decl_commands, check_commands) = vir::func_to_air::func_decl_to_air(
                     ctx,
                     &function,
                     is_visible_to(&vis_abs, module),
                 )?;
                 fun_decls.insert(f.clone(), decl_commands);
-                ctx.module_for_chosen_triggers = None;
+                ctx.fun = None;
 
                 if Some(module.clone()) != function.x.visibility.owning_module {
                     continue;
                 }
                 self.run_commands_queries(
                     compiler,
+                    ErrorAs::Error,
                     air_context,
                     &check_commands,
                     &HashMap::new(),
@@ -388,22 +435,40 @@ impl Verifier {
         assert!(funs.len() == 0);
 
         // Create queries to check the validity of proof/exec function bodies
+        // or (optionally) check recommends for spec function bodies
         for function in &krate.functions {
-            ctx.module_for_chosen_triggers = function.x.visibility.owning_module.clone();
             if Some(module.clone()) != function.x.visibility.owning_module {
                 continue;
             }
-            let (commands, snap_map) = vir::func_to_air::func_def_to_air(ctx, &function)?;
-            self.run_commands_queries(
-                compiler,
-                air_context,
-                &commands,
-                &HashMap::new(),
-                &snap_map,
-                &("Function-Def ".to_string() + &fun_as_rust_dbg(&function.x.name)),
-            );
+            let mut check_recommends = function.x.attrs.check_recommends;
+            loop {
+                ctx.fun = mk_fun_ctx(&function, check_recommends);
+                let (commands, snap_map) = vir::func_to_air::func_def_to_air(ctx, &function)?;
+                let error_as = match (function.x.mode, check_recommends) {
+                    (_, false) => ErrorAs::Error,
+                    (Mode::Spec, true) => ErrorAs::Warning,
+                    (Mode::Proof | Mode::Exec, true) => ErrorAs::Note,
+                };
+                let s =
+                    if check_recommends { "Function-Check-Recommends " } else { "Function-Def " };
+                let invalidity = self.run_commands_queries(
+                    compiler,
+                    error_as,
+                    air_context,
+                    &commands,
+                    &HashMap::new(),
+                    &snap_map,
+                    &(s.to_string() + &fun_as_rust_dbg(&function.x.name)),
+                );
+                if invalidity && !check_recommends && !self.args.no_auto_recommends_check {
+                    // Rerun failed query to report possible recommends violations
+                    check_recommends = true;
+                    continue;
+                }
+                break;
+            }
         }
-        ctx.module_for_chosen_triggers = None;
+        ctx.fun = None;
 
         Ok(())
     }
@@ -737,7 +802,7 @@ impl rustc_driver::Callbacks for VerifierCallbacks {
             {
                 let mut verifier = self.verifier.lock().expect("verifier mutex");
                 if let Err(err) = verifier.construct_vir_crate(tcx) {
-                    report_error(compiler, &err);
+                    report_error(compiler, &err, ErrorAs::Error);
                     verifier.encountered_vir_error = true;
                     return;
                 }
@@ -759,7 +824,7 @@ impl rustc_driver::Callbacks for VerifierCallbacks {
                 match verifier.verify_crate(compiler) {
                     Ok(_) => {}
                     Err(err) => {
-                        report_error(compiler, &err);
+                        report_error(compiler, &err, ErrorAs::Error);
                         verifier.encountered_vir_error = true;
                     }
                 }

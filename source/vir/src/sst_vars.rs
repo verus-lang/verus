@@ -35,7 +35,7 @@ pub(crate) fn stm_assign(
     stm: &Stm,
 ) -> Stm {
     let result = match &stm.x {
-        StmX::Call(_, _, _, Some(dest)) => {
+        StmX::Call(_, _, _, _, Some(dest)) => {
             let var: UniqueIdent = get_loc_var(&dest.dest);
             assigned.insert(var.clone());
             if !dest.is_init {

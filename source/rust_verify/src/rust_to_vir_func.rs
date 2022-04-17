@@ -187,6 +187,9 @@ pub(crate) fn check_item_fn<'tcx>(
     if mode == Mode::Spec && (header.require.len() + header.ensure.len()) > 0 {
         return err_span_str(sig.span, "spec functions cannot have requires/ensures");
     }
+    if mode != Mode::Spec && header.recommend.len() > 0 {
+        return err_span_str(sig.span, "non-spec functions cannot have recommends");
+    }
     if header.ensure.len() > 0 {
         match (&header.ensure_id_typ, ret_typ_mode.as_ref()) {
             (None, None) => {}
@@ -244,6 +247,7 @@ pub(crate) fn check_item_fn<'tcx>(
         autoview: vattrs.autoview,
         atomic: vattrs.atomic,
         is_decrease_by: vattrs.decreases_by,
+        check_recommends: vattrs.check_recommends,
     };
     let func = FunctionX {
         name: name.clone(),
@@ -254,7 +258,7 @@ pub(crate) fn check_item_fn<'tcx>(
         typ_bounds,
         params,
         ret,
-        require: header.require,
+        require: if mode == Mode::Spec { header.recommend } else { header.require },
         ensure: header.ensure,
         decrease: header.decrease,
         decrease_by: header.decrease_by,

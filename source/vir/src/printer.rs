@@ -148,6 +148,7 @@ fn header_expr_to_node(header_expr: &HeaderExprX) -> Node {
             nodes.push(exprs_to_node(exprs));
             Node::List(nodes)
         }
+        HeaderExprX::Recommends(exprs) => nodes!(recommends {exprs_to_node(exprs)}),
         HeaderExprX::Invariant(exprs) => nodes!(invariant {exprs_to_node(exprs)}),
         HeaderExprX::Decreases(exprs) => nodes!(decreases {exprs_to_node(exprs)}),
         HeaderExprX::DecreasesBy(path) => nodes!(decreases_by {fun_to_node(path)}),
@@ -402,6 +403,7 @@ fn function_to_node(function: &FunctionX) -> Node {
             bit_vector,
             atomic,
             is_decrease_by,
+            check_recommends,
         } = &**attrs;
 
         let mut nodes = vec![
@@ -430,6 +432,9 @@ fn function_to_node(function: &FunctionX) -> Node {
         }
         if *is_decrease_by {
             nodes.push(str_to_node("+is_decrease_by"));
+        }
+        if *check_recommends {
+            nodes.push(str_to_node("+check_recommends"));
         }
 
         Node::List(nodes)

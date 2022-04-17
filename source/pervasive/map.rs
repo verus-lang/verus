@@ -28,7 +28,11 @@ impl<K, V> Map<K, V> {
 
     fndecl!(pub fn dom(self) -> Set<K>);
 
-    fndecl!(pub fn index(self, key: K) -> V);
+    #[spec] #[verifier(external_body)]
+    pub fn index(self, key: K) -> V {
+        recommends(self.dom().contains(key));
+        unimplemented!()
+    }
 
     fndecl!(pub fn insert(self, key: K, value: V) -> Map<K, V>);
 

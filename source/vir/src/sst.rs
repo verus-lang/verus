@@ -82,8 +82,8 @@ pub type Stms = Arc<Vec<Stm>>;
 
 #[derive(Debug)]
 pub enum StmX {
-    // call to exec/proof function
-    Call(Fun, Typs, Exps, Option<Dest>),
+    // call to exec/proof function (or spec function for checking_recommends)
+    Call(Fun, Mode, Typs, Exps, Option<Dest>),
     // note: failed assertion reports Stm's span, plus an optional additional span
     Assert(Option<Error>, Exp),
     AssertBV(Exp),

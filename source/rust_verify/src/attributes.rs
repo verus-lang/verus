@@ -134,6 +134,8 @@ pub(crate) enum Attr {
     IsVariant,
     // this proof function is a termination proof
     DecreasesBy,
+    // in a spec function, check the body for violations of recommends
+    CheckRecommends,
 }
 
 fn get_trigger_arg(span: Span, attr_tree: &AttrTree) -> Result<u64, VirErr> {
@@ -153,19 +155,25 @@ fn get_trigger_arg(span: Span, attr_tree: &AttrTree) -> Result<u64, VirErr> {
 pub(crate) fn parse_attrs(attrs: &[Attribute]) -> Result<Vec<Attr>, VirErr> {
     let mut v: Vec<Attr> = Vec::new();
     for attr in attrs_to_trees(attrs) {
-        match attr {
+        match &attr {
             AttrTree::Fun(_, name, None) if name == "spec" => v.push(Attr::Mode(Mode::Spec)),
+            AttrTree::Fun(_, name, Some(box [AttrTree::Fun(_, arg, None)]))
+                if name == "spec" && arg == "checked" =>
+            {
+                v.push(Attr::Mode(Mode::Spec));
+                v.push(Attr::CheckRecommends);
+            }
             AttrTree::Fun(_, name, None) if name == "proof" => v.push(Attr::Mode(Mode::Proof)),
             AttrTree::Fun(_, name, None) if name == "exec" => v.push(Attr::Mode(Mode::Exec)),
             AttrTree::Fun(_, name, None) if name == "trigger" => v.push(Attr::Trigger(None)),
             AttrTree::Fun(span, name, Some(args)) if name == "trigger" => {
                 let mut groups: Vec<u64> = Vec::new();
                 for arg in args.iter() {
-                    groups.push(get_trigger_arg(span, arg)?);
+                    groups.push(get_trigger_arg(*span, arg)?);
                 }
                 if groups.len() == 0 {
                     return err_span_str(
-                        span,
+                        *span,
                         "expected either #[trigger] or non-empty #[trigger(...)]",
                     );
                 }
@@ -237,7 +245,7 @@ pub(crate) fn parse_attrs(attrs: &[Attribute]) -> Result<Vec<Attr>, VirErr> {
                 {
                     v.push(Attr::ReturnMode(Mode::Exec))
                 }
-                _ => return err_span_str(span, "unrecognized verifier attribute"),
+                _ => return err_span_str(*span, "unrecognized verifier attribute"),
             },
             _ => {}
         }
@@ -324,6 +332,7 @@ pub(crate) struct VerifierAttrs {
     pub(crate) atomic: bool,
     pub(crate) is_variant: bool,
     pub(crate) decreases_by: bool,
+    pub(crate) check_recommends: bool,
 }
 
 pub(crate) fn get_verifier_attrs(attrs: &[Attribute]) -> Result<VerifierAttrs, VirErr> {
@@ -344,6 +353,7 @@ pub(crate) fn get_verifier_attrs(attrs: &[Attribute]) -> Result<VerifierAttrs, V
         atomic: false,
         is_variant: false,
         decreases_by: false,
+        check_recommends: false,
     };
     for attr in parse_attrs(attrs)? {
         match attr {
@@ -363,6 +373,7 @@ pub(crate) fn get_verifier_attrs(attrs: &[Attribute]) -> Result<VerifierAttrs, V
             Attr::Atomic => vs.atomic = true,
             Attr::IsVariant => vs.is_variant = true,
             Attr::DecreasesBy => vs.decreases_by = true,
+            Attr::CheckRecommends => vs.check_recommends = true,
             _ => {}
         }
     }

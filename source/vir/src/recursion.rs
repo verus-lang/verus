@@ -275,7 +275,7 @@ pub(crate) fn is_recursive_stm(ctx: &Ctx, name: &Fun, body: &Stm) -> bool {
     } else {
         // Check for self-recursion, which SCC computation does not account for
         match stm_visitor_dfs(body, &mut |stm| match &stm.x {
-            StmX::Call(x, targs, _, _) if is_self_call(ctx, x, targs, name) => {
+            StmX::Call(x, _, targs, _, _) if is_self_call(ctx, x, targs, name) => {
                 VisitorControlFlow::Stop(())
             }
             _ => VisitorControlFlow::Recurse,
@@ -412,7 +412,7 @@ pub(crate) fn check_termination_stm(
     let ctxt =
         Ctxt { recursive_function_name: function.x.name.clone(), num_decreases, scc_rep, ctx };
     let stm = map_stm_visitor(body, &mut |s| match &s.x {
-        StmX::Call(x, targs, args, _) if is_recursive_call(&ctxt, x, targs) => {
+        StmX::Call(x, _, targs, args, _) if is_recursive_call(&ctxt, x, targs) => {
             let check = check_decrease_call(&ctxt, &s.span, x, targs, args)?;
             let error = error("could not prove termination", &s.span);
             let stm_assert = Spanned::new(s.span.clone(), StmX::Assert(Some(error), check));

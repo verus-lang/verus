@@ -24,6 +24,12 @@ pub fn ensures<A>(_a: A) {
     unimplemented!();
 }
 
+// Can only appear at beginning of spec function body
+#[proof]
+pub fn recommends<A>(_a: A) {
+    unimplemented!();
+}
+
 // Can only appear at beginning of loop body
 #[proof]
 pub fn invariant<A>(_a: A) {
