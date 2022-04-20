@@ -1104,6 +1104,43 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
             }
             vec![Arc::new(StmtX::Assert(error, air_expr))]
         }
+        StmX::AssertNonLinear{check, assume, vars} => {
+            // if ctx.debug {
+            //     state.push_scope();
+            //     state.map_span(&stm, SpanKind::Start);
+            // }
+            let assert_stmts = stm_to_stmts(ctx, state, check);
+            // let cond_stmts: Vec<Stmt> =
+            //     cond_stms.iter().map(|s| stm_to_stmts(ctx, state, s)).flatten().collect();
+            let mut air_body: Vec<Stmt> = Vec::new();
+            air_body.append(&mut assert_stmts.clone());
+            // air_body.push(pos_assume);
+            // air_body.append(&mut stm_to_stmts(ctx, state, body));
+
+            let mut local = state.local_shared.clone();
+            for (x, typ) in vars.iter() {
+                let typ_inv = typ_invariant(ctx, typ, &ident_var(&suffix_local_unique_id(x)));
+                if let Some(expr) = typ_inv {
+                    local.push(Arc::new(DeclX::Axiom(expr)));
+                }
+            }
+
+            let assertion = one_stmt(air_body);
+            let query = Arc::new(QueryX { local: Arc::new(local), assertion });
+            state.commands.push(Arc::new(CommandX::SetOption(
+                Arc::new(String::from("smt.arith.nl")),
+                Arc::new(String::from("true")),
+            )));
+            state.commands.push(Arc::new(CommandX::CheckValid(query)));
+            state.commands.push(Arc::new(CommandX::SetOption(
+                Arc::new(String::from("smt.arith.nl")),
+                Arc::new(String::from("false")),
+            )));
+
+
+            // stmts
+            stm_to_stmts(ctx, state, assume)
+        }
         StmX::AssertBV(expr) => {
             // here expr is boxed/unboxed in poly::poly_expr
             // this is for integer version

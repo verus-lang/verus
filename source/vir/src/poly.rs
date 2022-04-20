@@ -427,6 +427,14 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
             let vars = Arc::new(bs);
             mk_expr(ExprX::Forall { vars, require, ensure, proof })
         }
+        ExprX::AssertNonLinear {  require, ensure, proof } => {
+            state.types.push_scope(true);
+            let require = coerce_expr_to_native(ctx, &poly_expr(ctx, state, require));
+            let ensure = coerce_expr_to_native(ctx, &poly_expr(ctx, state, ensure));
+            let proof = poly_expr(ctx, state, proof);
+            state.types.pop_scope();
+            mk_expr(ExprX::AssertNonLinear { require, ensure, proof })
+        }
         ExprX::If(e0, e1, None) => {
             let e0 = coerce_expr_to_native(ctx, &poly_expr(ctx, state, e0));
             let e1 = poly_expr(ctx, state, e1);

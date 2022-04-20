@@ -504,6 +504,22 @@ fn check_expr(
             typing.in_forall_stmt = in_forall_stmt;
             Ok(Mode::Proof)
         }
+        ExprX::AssertNonLinear {require, ensure, proof } => {
+            // let in_forall_stmt = typing.in_forall_stmt;
+            // REVIEW: we could allow proof vars when vars.len() == 0,
+            // but we'd have to implement the proper lifetime checking in erase.rs
+            // typing.in_forall_stmt = true;
+            // typing.vars.push_scope(true);
+            // for var in vars.iter() {
+            //     typing.insert(&expr.span, &var.name, false, Mode::Spec);
+            // }
+            check_expr_has_mode(typing, Mode::Spec, require, Mode::Spec)?;
+            check_expr_has_mode(typing, Mode::Spec, ensure, Mode::Spec)?;
+            check_expr_has_mode(typing, Mode::Proof, proof, Mode::Proof)?;
+            // typing.vars.pop_scope();
+            // typing.in_forall_stmt = in_forall_stmt;
+            Ok(Mode::Proof)
+        }
         ExprX::AssertBV(e) => {
             check_expr_has_mode(typing, Mode::Spec, e, Mode::Spec)?;
             Ok(Mode::Proof)

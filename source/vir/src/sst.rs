@@ -105,6 +105,7 @@ pub enum StmX {
     },
     OpenInvariant(Exp, UniqueIdent, Typ, Stm, InvAtomicity),
     Block(Stms),
+    AssertNonLinear{check: Stm , assume: Stm, vars:Arc<Vec<(UniqueIdent, Typ)>>},
 }
 
 pub type LocalDecl = Arc<LocalDeclX>;

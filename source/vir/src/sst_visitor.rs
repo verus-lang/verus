@@ -152,6 +152,7 @@ where
                 | StmX::Assume(_)
                 | StmX::Assign { .. }
                 | StmX::AssertBV { .. }
+                | StmX::AssertNonLinear { .. }
                 | StmX::Fuel(..) => (),
                 StmX::DeadEnd(s) => {
                     expr_visitor_control_flow!(stm_visitor_dfs(s, f));
@@ -235,6 +236,8 @@ where
                 expr_visitor_control_flow!(exp_visitor_dfs(inv, &mut ScopeMap::new(), f))
             }
             StmX::Block(_) => (),
+            // StmX::AssertNonLinear {check, assume, vars} => {expr_visitor_control_flow!(exp_visitor_dfs(check, &mut ScopeMap::new(), f))}
+            StmX::AssertNonLinear{..} => {}
         }
         VisitorControlFlow::Recurse
     })
@@ -408,6 +411,7 @@ where
         StmX::Assume(_) => f(stm),
         StmX::Assign { .. } => f(stm),
         StmX::AssertBV { .. } => f(stm),
+        StmX::AssertNonLinear { .. } => f(stm),
         StmX::Fuel(..) => f(stm),
         StmX::DeadEnd(s) => {
             let s = map_stm_visitor(s, f)?;
@@ -480,6 +484,7 @@ where
                 let rhs = f(rhs);
                 Spanned::new(span, StmX::Assign { lhs: Dest { dest, is_init: *is_init }, rhs })
             }
+            StmX::AssertNonLinear{..} => stm.clone(),
             StmX::Fuel(..) => stm.clone(),
             StmX::DeadEnd(..) => stm.clone(),
             StmX::If(exp, s1, s2) => {

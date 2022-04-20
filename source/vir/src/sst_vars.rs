@@ -114,6 +114,14 @@ pub(crate) fn stm_assign(
             };
             Spanned::new(stm.span.clone(), while_x)
         }
+        StmX::AssertNonLinear{check, assume, vars} => {
+            assert!(vars.len() == 0);
+            let mut vars: Vec<(UniqueIdent, Typ)> = Vec::new();
+            for (x, typ) in declared.iter() {
+                vars.push((x.clone(), typ.clone()));
+            }
+            Spanned::new(stm.span.clone(), StmX::AssertNonLinear{check:check.clone(), assume:assume.clone(), vars:Arc::new(vars)})
+        }
         StmX::OpenInvariant(inv, ident, ty, body_stm, atomicity) => {
             assigned.insert(ident.clone());
             modified.insert(ident.clone());
