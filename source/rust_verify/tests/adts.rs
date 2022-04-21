@@ -683,14 +683,26 @@ test_verify_one_file! {
     } => Err(e) => assert_vir_error(e)
 }
 
-test_verify_one_file! {
-    #[test] test_match_empty_branch code! {
-        #[is_variant]
-        enum S {
-            V1,
-            V2,
-        }
+const ENUM_S: &str = code_str! {
+    #[is_variant]
+    enum S {
+        V1,
+        V2,
+    }
+};
 
+test_verify_one_file! {
+    #[ignore] #[test] test_match_exhaustiveness_regression_127 ENUM_S.to_string() + code_str! {
+        fn f(s: S) {
+            match s {
+                S::V1 => assert(true),
+            };
+        }
+    } => Err(_)
+}
+
+test_verify_one_file! {
+    #[test] test_match_empty_branch ENUM_S.to_string() + code_str! {
         fn f(#[spec] s: S) {
             match s {
                 S::V1 => assert(s.is_V1()),
