@@ -124,20 +124,8 @@ pub fn verify_files_and_pervasive(
             Default::default()
         };
         if let Ok(path) = std::env::var("VERIFY_LOG_IR_PATH") {
-            let path = std::path::Path::new(&path);
-            if !path.is_dir() {
-                panic!(
-                    "VERIFY_LOG_IR_PATH is not a directory, std::env::current_dir() is {:?}",
-                    std::env::current_dir()
-                );
-            }
-            our_args.log_vir = Some(path.join("log.vir").to_string_lossy().to_string());
-            our_args.log_vir_simple =
-                Some(path.join("log.vir-simple").to_string_lossy().to_string());
-            our_args.log_vir_poly = Some(path.join("log.vir-poly").to_string_lossy().to_string());
-            our_args.log_air_initial = Some(path.join("log.air").to_string_lossy().to_string());
-            our_args.log_air_final = Some(path.join("log.air-final").to_string_lossy().to_string());
-            our_args.log_smt = Some(path.join("log.smt").to_string_lossy().to_string());
+            our_args.log_dir = Some(path);
+            our_args.log_all = true;
         }
         our_args.verify_pervasive |= verify_pervasive;
         our_args

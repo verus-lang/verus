@@ -44,6 +44,8 @@ pub struct Verifier {
     pub time_smt_init: Duration,
     pub time_smt_run: Duration,
 
+    // If we've already created the log directory, this is the path to it:
+    created_log_dir: Option<String>,
     vir_crate: Option<Krate>,
     air_no_span: Option<air::ast::Span>,
     inferred_modes: Option<HashMap<InferMode, Mode>>,
@@ -138,6 +140,11 @@ fn report_chosen_triggers(compiler: &Compiler, chosen: &vir::context::ChosenTrig
     }
 }
 
+fn io_vir_err(msg: String, err: std::io::Error) -> VirErr {
+    let msg = format!("{msg}: {err}");
+    Arc::new(air::errors::ErrorX { msg, spans: vec![], labels: vec![] })
+}
+
 impl Verifier {
     pub fn new(args: Args) -> Verifier {
         Verifier {
@@ -155,9 +162,45 @@ impl Verifier {
             time_smt_init: Duration::new(0, 0),
             time_smt_run: Duration::new(0, 0),
 
+            created_log_dir: None,
             vir_crate: None,
             air_no_span: None,
             inferred_modes: None,
+        }
+    }
+
+    fn create_log_file(
+        &mut self,
+        module: Option<&vir::ast::Path>,
+        suffix: &str,
+    ) -> Result<File, VirErr> {
+        if self.created_log_dir.is_none() {
+            let dir = if let Some(dir) = &self.args.log_dir {
+                dir.clone()
+            } else {
+                crate::config::LOG_DIR.to_string()
+            };
+            match std::fs::create_dir_all(dir.clone()) {
+                Ok(()) => {
+                    self.created_log_dir = Some(dir);
+                }
+                Err(err) => {
+                    return Err(io_vir_err(format!("could not create directory {dir}"), err));
+                }
+            }
+        }
+        let dir_path = self.created_log_dir.clone().unwrap();
+        let prefix = match module {
+            None => "crate".to_string(),
+            Some(module) if module.segments.len() == 0 => "root".to_string(),
+            Some(module) => {
+                module.segments.iter().map(|s| s.to_string()).collect::<Vec<_>>().join("__")
+            }
+        };
+        let path = std::path::Path::new(&dir_path).join(format!("{prefix}{suffix}"));
+        match File::create(path.clone()) {
+            Ok(file) => Ok(file),
+            Err(err) => Err(io_vir_err(format!("could not open file {path:?}"), err)),
         }
     }
 
@@ -475,8 +518,8 @@ impl Verifier {
 
     // Verify one or more modules in a crate
     fn verify_crate_inner(&mut self, compiler: &Compiler) -> Result<(), VirErr> {
-        let krate = self.vir_crate.as_ref().expect("vir_crate should be initialized");
-        let air_no_span = self.air_no_span.as_ref().expect("air_no_span should be initialized");
+        let krate = self.vir_crate.clone().expect("vir_crate should be initialized");
+        let air_no_span = self.air_no_span.clone().expect("air_no_span should be initialized");
         let inferred_modes =
             self.inferred_modes.take().expect("inferred_modes should be initialized");
 
@@ -487,16 +530,16 @@ impl Verifier {
         air_context.set_ignore_unexpected_smt(self.args.ignore_unexpected_smt);
         air_context.set_debug(self.args.debug);
 
-        if let Some(filename) = &self.args.log_air_initial {
-            let file = File::create(filename).expect(&format!("could not open file {}", filename));
+        if self.args.log_all || self.args.log_air_initial {
+            let file = self.create_log_file(None, crate::config::AIR_INITIAL_FILE_SUFFIX)?;
             air_context.set_air_initial_log(Box::new(file));
         }
-        if let Some(filename) = &self.args.log_air_final {
-            let file = File::create(filename).expect(&format!("could not open file {}", filename));
+        if self.args.log_all || self.args.log_air_final {
+            let file = self.create_log_file(None, crate::config::AIR_FINAL_FILE_SUFFIX)?;
             air_context.set_air_final_log(Box::new(file));
         }
-        if let Some(filename) = &self.args.log_smt {
-            let file = File::create(filename).expect(&format!("could not open file {}", filename));
+        if self.args.log_all || self.args.log_smt {
+            let file = self.create_log_file(None, crate::config::SMT_FILE_SUFFIX)?;
             air_context.set_smt_log(Box::new(file));
         }
 
@@ -512,9 +555,8 @@ impl Verifier {
         vir::recursive_types::check_traits(&krate, &global_ctx)?;
         let krate = vir::ast_simplify::simplify_krate(&mut global_ctx, &krate)?;
 
-        if let Some(filename) = &self.args.log_vir_simple {
-            let mut file =
-                File::create(filename).expect(&format!("could not open file {}", filename));
+        if self.args.log_all || self.args.log_vir_simple {
+            let mut file = self.create_log_file(None, crate::config::VIR_SIMPLE_FILE_SUFFIX)?;
             vir::printer::write_krate(&mut file, &krate);
         }
 
@@ -562,14 +604,9 @@ impl Verifier {
                 self.args.debug,
             )?;
             let poly_krate = vir::poly::poly_krate_for_module(&mut ctx, &pruned_krate);
-            if let Some(filename) = &self.args.log_vir_poly {
-                let module_name_os = if module.segments.len() > 0 {
-                    module.segments.iter().map(|s| s.to_string()).collect::<Vec<_>>().join("__")
-                } else {
-                    "root".to_string()
-                };
-                let mut file = File::create(filename.to_string() + "-" + &module_name_os)
-                    .expect(&format!("could not open file {}", filename));
+            if self.args.log_all || self.args.log_vir_poly {
+                let mut file =
+                    self.create_log_file(Some(&module), crate::config::VIR_POLY_FILE_SUFFIX)?;
                 vir::printer::write_krate(&mut file, &poly_krate);
             }
             self.verify_module(compiler, &poly_krate, &mut air_context, &mut ctx)?;
@@ -579,13 +616,11 @@ impl Verifier {
         }
 
         // Log/display triggers
-        if let Some(filename) = &self.args.log_triggers {
-            let mut file =
-                File::create(filename).expect(&format!("could not open file {}", filename));
+        if self.args.log_all || self.args.log_triggers {
+            let mut file = self.create_log_file(None, crate::config::TRIGGERS_FILE_SUFFIX)?;
             let chosen_triggers = global_ctx.get_chosen_triggers();
             for triggers in chosen_triggers {
-                writeln!(file, "{:#?}", triggers)
-                    .expect(&format!("error writing to file {}", filename));
+                writeln!(file, "{:#?}", triggers).expect("error writing to trigger log file");
             }
         }
         let chosen_triggers = global_ctx.get_chosen_triggers();
@@ -685,9 +720,8 @@ impl Verifier {
         let vir_crate = crate::rust_to_vir::crate_to_vir(&ctxt)?;
         let time2 = Instant::now();
 
-        if let Some(filename) = &self.args.log_vir {
-            let mut file =
-                File::create(filename).expect(&format!("could not open file {}", filename));
+        if self.args.log_all || self.args.log_vir {
+            let mut file = self.create_log_file(None, crate::config::VIR_FILE_SUFFIX)?;
             vir::printer::write_krate(&mut file, &vir_crate);
         }
         vir::well_formed::check_crate(&vir_crate)?;

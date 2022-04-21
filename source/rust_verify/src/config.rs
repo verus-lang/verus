@@ -13,6 +13,15 @@ impl Default for ShowTriggers {
     }
 }
 
+pub const LOG_DIR: &str = ".verus-log";
+pub const VIR_FILE_SUFFIX: &str = ".vir";
+pub const VIR_SIMPLE_FILE_SUFFIX: &str = "-simple.vir";
+pub const VIR_POLY_FILE_SUFFIX: &str = "-poly.vir";
+pub const AIR_INITIAL_FILE_SUFFIX: &str = ".air";
+pub const AIR_FINAL_FILE_SUFFIX: &str = "-final.air";
+pub const SMT_FILE_SUFFIX: &str = ".smt2";
+pub const TRIGGERS_FILE_SUFFIX: &str = ".triggers";
+
 #[derive(Debug, Default)]
 pub struct Args {
     pub pervasive_path: Option<String>,
@@ -26,13 +35,15 @@ pub struct Args {
     pub rlimit: u32,
     pub smt_options: Vec<(String, String)>,
     pub multiple_errors: u32,
-    pub log_vir: Option<String>,
-    pub log_vir_simple: Option<String>,
-    pub log_vir_poly: Option<String>,
-    pub log_air_initial: Option<String>,
-    pub log_air_final: Option<String>,
-    pub log_smt: Option<String>,
-    pub log_triggers: Option<String>,
+    pub log_dir: Option<String>,
+    pub log_all: bool,
+    pub log_vir: bool,
+    pub log_vir_simple: bool,
+    pub log_vir_poly: bool,
+    pub log_air_initial: bool,
+    pub log_air_final: bool,
+    pub log_smt: bool,
+    pub log_triggers: bool,
     pub show_triggers: ShowTriggers,
     pub print_erased: bool,
     pub print_erased_spec: bool,
@@ -60,6 +71,8 @@ pub fn parse_args(program: &String, args: impl Iterator<Item = String>) -> (Args
     const OPT_RLIMIT: &str = "rlimit";
     const OPT_SMT_OPTION: &str = "smt-option";
     const OPT_MULTIPLE_ERRORS: &str = "multiple-errors";
+    const OPT_LOG_DIR: &str = "log-dir";
+    const OPT_LOG_ALL: &str = "log-all";
     const OPT_LOG_VIR: &str = "log-vir";
     const OPT_LOG_VIR_SIMPLE: &str = "log-vir-simple";
     const OPT_LOG_VIR_POLY: &str = "log-vir-poly";
@@ -98,18 +111,20 @@ pub fn parse_args(program: &String, args: impl Iterator<Item = String>) -> (Args
     opts.optopt("", OPT_RLIMIT, "Set SMT resource limit (roughly in seconds)", "INTEGER");
     opts.optmulti("", OPT_SMT_OPTION, "Set an SMT option (e.g. smt.random_seed=7)", "OPTION=VALUE");
     opts.optopt("", OPT_MULTIPLE_ERRORS, "If 0, look for at most one error per function; if > 0, always find first error in function and make extra queries to find more errors (default: 2)", "INTEGER");
-    opts.optopt("", OPT_LOG_VIR, "Log VIR", "FILENAME");
-    opts.optopt("", OPT_LOG_VIR_SIMPLE, "Log simplified VIR", "FILENAME");
     opts.optopt(
         "",
-        OPT_LOG_VIR_POLY,
-        "Log poly VIR, filename prefix (it will be suffixed with the current module name)",
-        "FILENAME",
+        OPT_LOG_DIR,
+        "Set directory for log file generation (default: .verus-log)",
+        "DIRECTORY_NAME",
     );
-    opts.optopt("", OPT_LOG_AIR_INITIAL, "Log AIR queries in initial form", "FILENAME");
-    opts.optopt("", OPT_LOG_AIR_FINAL, "Log AIR queries in final form", "FILENAME");
-    opts.optopt("", OPT_LOG_SMT, "Log SMT queries", "FILENAME");
-    opts.optopt("", OPT_LOG_TRIGGERS, "Log automatically chosen triggers", "FILENAME");
+    opts.optflag("", OPT_LOG_ALL, "Log everything");
+    opts.optflag("", OPT_LOG_VIR, "Log VIR");
+    opts.optflag("", OPT_LOG_VIR_SIMPLE, "Log simplified VIR");
+    opts.optflag("", OPT_LOG_VIR_POLY, "Log poly VIR");
+    opts.optflag("", OPT_LOG_AIR_INITIAL, "Log AIR queries in initial form");
+    opts.optflag("", OPT_LOG_AIR_FINAL, "Log AIR queries in final form");
+    opts.optflag("", OPT_LOG_SMT, "Log SMT queries");
+    opts.optflag("", OPT_LOG_TRIGGERS, "Log automatically chosen triggers");
     opts.optflag("", OPT_TRIGGERS_SILENT, "Do not show automatically chosen triggers");
     opts.optflag("", OPT_TRIGGERS_SELECTIVE, "Show automatically chosen triggers for some potentially ambiguous cases in verified modules (this is the default behavior)");
     opts.optflag("", OPT_TRIGGERS, "Show all automatically chosen triggers for verified modules");
@@ -177,13 +192,15 @@ pub fn parse_args(program: &String, args: impl Iterator<Item = String>) -> (Args
             .opt_get::<u32>(OPT_MULTIPLE_ERRORS)
             .unwrap_or_else(|_| error("expected integer after multiple-errors".to_string()))
             .unwrap_or(2),
-        log_vir: matches.opt_str(OPT_LOG_VIR),
-        log_vir_simple: matches.opt_str(OPT_LOG_VIR_SIMPLE),
-        log_vir_poly: matches.opt_str(OPT_LOG_VIR_POLY),
-        log_air_initial: matches.opt_str(OPT_LOG_AIR_INITIAL),
-        log_air_final: matches.opt_str(OPT_LOG_AIR_FINAL),
-        log_smt: matches.opt_str(OPT_LOG_SMT),
-        log_triggers: matches.opt_str(OPT_LOG_TRIGGERS),
+        log_dir: matches.opt_str(OPT_LOG_DIR),
+        log_all: matches.opt_present(OPT_LOG_ALL),
+        log_vir: matches.opt_present(OPT_LOG_VIR),
+        log_vir_simple: matches.opt_present(OPT_LOG_VIR_SIMPLE),
+        log_vir_poly: matches.opt_present(OPT_LOG_VIR_POLY),
+        log_air_initial: matches.opt_present(OPT_LOG_AIR_INITIAL),
+        log_air_final: matches.opt_present(OPT_LOG_AIR_FINAL),
+        log_smt: matches.opt_present(OPT_LOG_SMT),
+        log_triggers: matches.opt_present(OPT_LOG_TRIGGERS),
         show_triggers: if matches.opt_present(OPT_TRIGGERS_VERBOSE) {
             ShowTriggers::Verbose
         } else if matches.opt_present(OPT_TRIGGERS) {
