@@ -516,30 +516,47 @@ impl Verifier {
         Ok(())
     }
 
-    // Verify one or more modules in a crate
-    fn verify_crate_inner(&mut self, compiler: &Compiler) -> Result<(), VirErr> {
-        let krate = self.vir_crate.clone().expect("vir_crate should be initialized");
-        let air_no_span = self.air_no_span.clone().expect("air_no_span should be initialized");
-        let inferred_modes =
-            self.inferred_modes.take().expect("inferred_modes should be initialized");
-
-        #[cfg(debug_assertions)]
-        vir::check_ast_flavor::check_krate(&krate);
+    fn verify_module_outer(
+        &mut self,
+        compiler: &Compiler,
+        krate: &Krate,
+        module: &vir::ast::Path,
+        mut global_ctx: vir::context::GlobalCtx,
+    ) -> Result<(bool, vir::context::GlobalCtx), VirErr> {
+        let verify_entire_crate = !self.args.verify_root && self.args.verify_module.is_none();
+        let module_name =
+            module.segments.iter().map(|s| s.to_string()).collect::<Vec<_>>().join("::");
+        if module.segments.len() == 0 {
+            if !verify_entire_crate && !self.args.verify_root {
+                return Ok((false, global_ctx));
+            }
+            eprintln!("Verifying root module");
+        } else {
+            if !verify_entire_crate && self.args.verify_module != Some(module_name.clone()) {
+                return Ok((false, global_ctx));
+            }
+            let is_pervasive = module_name.starts_with("pervasive::") || module_name == "pervasive";
+            if !self.args.verify_pervasive && is_pervasive {
+                return Ok((false, global_ctx));
+            }
+            eprintln!("Verifying module {}", &module_name);
+        }
 
         let mut air_context = air::context::Context::new(air::smt_manager::SmtManager::new());
         air_context.set_ignore_unexpected_smt(self.args.ignore_unexpected_smt);
         air_context.set_debug(self.args.debug);
 
         if self.args.log_all || self.args.log_air_initial {
-            let file = self.create_log_file(None, crate::config::AIR_INITIAL_FILE_SUFFIX)?;
+            let file =
+                self.create_log_file(Some(module), crate::config::AIR_INITIAL_FILE_SUFFIX)?;
             air_context.set_air_initial_log(Box::new(file));
         }
         if self.args.log_all || self.args.log_air_final {
-            let file = self.create_log_file(None, crate::config::AIR_FINAL_FILE_SUFFIX)?;
+            let file = self.create_log_file(Some(module), crate::config::AIR_FINAL_FILE_SUFFIX)?;
             air_context.set_air_final_log(Box::new(file));
         }
         if self.args.log_all || self.args.log_smt {
-            let file = self.create_log_file(None, crate::config::SMT_FILE_SUFFIX)?;
+            let file = self.create_log_file(Some(module), crate::config::SMT_FILE_SUFFIX)?;
             air_context.set_smt_log(Box::new(file));
         }
 
@@ -549,6 +566,50 @@ impl Verifier {
         for (option, value) in self.args.smt_options.iter() {
             air_context.set_z3_param(&option, &value);
         }
+
+        air_context.blank_line();
+        air_context.comment("Prelude");
+        for command in vir::context::Ctx::prelude().iter() {
+            Self::check_internal_result(air_context.command(&command));
+        }
+
+        air_context.blank_line();
+        air_context.comment(&("MODULE '".to_string() + &module_name + "'"));
+        let (pruned_krate, mono_abstract_datatypes, lambda_types) =
+            vir::prune::prune_krate_for_module(&krate, &module);
+        let mut ctx = vir::context::Ctx::new(
+            &pruned_krate,
+            global_ctx,
+            module.clone(),
+            mono_abstract_datatypes,
+            lambda_types,
+            self.args.debug,
+        )?;
+        let poly_krate = vir::poly::poly_krate_for_module(&mut ctx, &pruned_krate);
+        if self.args.log_all || self.args.log_vir_poly {
+            let mut file =
+                self.create_log_file(Some(&module), crate::config::VIR_POLY_FILE_SUFFIX)?;
+            vir::printer::write_krate(&mut file, &poly_krate);
+        }
+        self.verify_module(compiler, &poly_krate, &mut air_context, &mut ctx)?;
+        global_ctx = ctx.free();
+
+        let (time_smt_init, time_smt_run) = air_context.get_time();
+        self.time_smt_init += time_smt_init;
+        self.time_smt_run += time_smt_run;
+
+        Ok((true, global_ctx))
+    }
+
+    // Verify one or more modules in a crate
+    fn verify_crate_inner(&mut self, compiler: &Compiler) -> Result<(), VirErr> {
+        let krate = self.vir_crate.clone().expect("vir_crate should be initialized");
+        let air_no_span = self.air_no_span.clone().expect("air_no_span should be initialized");
+        let inferred_modes =
+            self.inferred_modes.take().expect("inferred_modes should be initialized");
+
+        #[cfg(debug_assertions)]
+        vir::check_ast_flavor::check_krate(&krate);
 
         let mut global_ctx =
             vir::context::GlobalCtx::new(&krate, air_no_span.clone(), inferred_modes)?;
@@ -563,56 +624,14 @@ impl Verifier {
         #[cfg(debug_assertions)]
         vir::check_ast_flavor::check_krate_simplified(&krate);
 
-        air_context.blank_line();
-        air_context.comment("Prelude");
-        for command in vir::context::Ctx::prelude().iter() {
-            Self::check_internal_result(air_context.command(&command));
-        }
-
-        let verify_entire_crate = !self.args.verify_root && self.args.verify_module.is_none();
         let mut verified_modules = HashSet::new();
         for module in &krate.module_ids {
-            let module_name =
-                module.segments.iter().map(|s| s.to_string()).collect::<Vec<_>>().join("::");
-            if module.segments.len() == 0 {
-                if !verify_entire_crate && !self.args.verify_root {
-                    continue;
-                }
-                eprintln!("Verifying root module");
-            } else {
-                if !verify_entire_crate && self.args.verify_module != Some(module_name.clone()) {
-                    continue;
-                }
-                let is_pervasive =
-                    module_name.starts_with("pervasive::") || module_name == "pervasive";
-                if !self.args.verify_pervasive && is_pervasive {
-                    continue;
-                }
-                eprintln!("Verifying module {}", &module_name);
+            let (did_verify, new_global_ctx) =
+                self.verify_module_outer(compiler, &krate, module, global_ctx)?;
+            if did_verify {
+                verified_modules.insert(module.clone());
             }
-            air_context.blank_line();
-            air_context.comment(&("MODULE '".to_string() + &module_name + "'"));
-            air_context.push();
-            let (pruned_krate, mono_abstract_datatypes, lambda_types) =
-                vir::prune::prune_krate_for_module(&krate, &module);
-            let mut ctx = vir::context::Ctx::new(
-                &pruned_krate,
-                global_ctx,
-                module.clone(),
-                mono_abstract_datatypes,
-                lambda_types,
-                self.args.debug,
-            )?;
-            let poly_krate = vir::poly::poly_krate_for_module(&mut ctx, &pruned_krate);
-            if self.args.log_all || self.args.log_vir_poly {
-                let mut file =
-                    self.create_log_file(Some(&module), crate::config::VIR_POLY_FILE_SUFFIX)?;
-                vir::printer::write_krate(&mut file, &poly_krate);
-            }
-            self.verify_module(compiler, &poly_krate, &mut air_context, &mut ctx)?;
-            verified_modules.insert(module.clone());
-            global_ctx = ctx.free();
-            air_context.pop();
+            global_ctx = new_global_ctx;
         }
 
         // Log/display triggers
@@ -659,9 +678,6 @@ impl Verifier {
             compiler.session().parse_sess.span_diagnostic.span_note_without_error(span, &msg);
         }
 
-        let (time_smt_init, time_smt_run) = air_context.get_time();
-        self.time_smt_init = time_smt_init;
-        self.time_smt_run = time_smt_run;
         Ok(())
     }
 
