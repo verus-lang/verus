@@ -1,6 +1,7 @@
-use crate::attributes::{get_trigger, get_var_mode, get_verifier_attrs, parse_attrs, Attr};
+use crate::attributes::{
+    get_trigger, get_var_mode, get_verifier_attrs, parse_attrs, Attr, GetVariantField,
+};
 use crate::context::BodyCtxt;
-use crate::def::is_get_variant_fn_name;
 use crate::erase::ResolvedCall;
 use crate::rust_to_vir_base::{
     def_id_to_vir_path, def_to_path_ident, get_function_def, get_range, hack_get_def_name,
@@ -357,16 +358,14 @@ fn fn_call_to_vir<'tcx>(
     let is_get_variant = {
         match tcx.hir().get_if_local(f) {
             Some(rustc_hir::Node::ImplItem(
-                impl_item @ rustc_hir::ImplItem {
-                    kind: rustc_hir::ImplItemKind::Fn(..),
-                    ident: fn_ident,
-                    ..
-                },
+                impl_item @ rustc_hir::ImplItem { kind: rustc_hir::ImplItemKind::Fn(..), .. },
             )) => {
                 let fn_attrs = bctx.ctxt.tcx.hir().attrs(impl_item.hir_id());
                 let fn_vattrs = get_verifier_attrs(fn_attrs)?;
-                if fn_vattrs.is_variant {
-                    Some(is_get_variant_fn_name(fn_ident).expect("invalid is_variant function"))
+                if let Some(variant_ident) = fn_vattrs.is_variant {
+                    Some((variant_ident, None))
+                } else if let Some((variant_ident, field_ident)) = fn_vattrs.get_variant {
+                    Some((variant_ident, Some(field_ident)))
                 } else {
                     None
                 }
@@ -722,15 +721,14 @@ fn fn_call_to_vir<'tcx>(
             )));
         }
         Some((variant_name, Some(variant_field))) => {
-            use crate::def::FieldName;
             let variant_name_ident = str_ident(&variant_name);
             return Ok(mk_expr(ExprX::UnaryOpr(
                 UnaryOpr::Field(FieldOpr {
                     datatype: self_path.clone(),
                     variant: variant_name_ident.clone(),
                     field: match variant_field {
-                        FieldName::Unnamed(i) => positional_field_ident(i),
-                        FieldName::Named(f) => str_ident(&f),
+                        GetVariantField::Named(n) => str_ident(&n),
+                        GetVariantField::Unnamed(i) => positional_field_ident(i),
                     },
                 }),
                 vir_args.into_iter().next().expect("missing arg for is_variant"),

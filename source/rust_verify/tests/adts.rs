@@ -722,3 +722,28 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] test_if_is_variant_underscore_in_name_regression code! {
+        #[is_variant]
+        #[allow(non_camel_case_types)]
+        enum Has_Underscores {
+            #[allow(non_camel_case_types)]
+            More_Underscores,
+            #[allow(non_camel_case_types)]
+            A_Couple_More(nat),
+        }
+
+        #[proof]
+        fn test(h: Has_Underscores) {
+            requires([
+                     h.is_A_Couple_More(),
+                     match h {
+                         Has_Underscores::More_Underscores => false,
+                         Has_Underscores::A_Couple_More(x) => x == 10,
+                     }
+            ]);
+            assert(h.get_A_Couple_More_0() == 10);
+        }
+    } => Ok(())
+}

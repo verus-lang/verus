@@ -6,9 +6,9 @@ For soundness's sake, be as defensive as possible:
 - explicitly match all fields of the Rust AST so we catch any features added in the future
 */
 
-use crate::attributes::{get_mode, get_verifier_attrs};
+use crate::attributes::{get_mode, get_verifier_attrs, GetVariantField};
 use crate::context::Context;
-use crate::def::is_get_variant_fn_name;
+use crate::def::{get_variant_fn_name, is_variant_fn_name};
 use crate::rust_to_vir_adts::{check_item_enum, check_item_struct};
 use crate::rust_to_vir_base::{
     check_generics_bounds, def_id_to_vir_path, fn_item_hir_id_to_self_def_id, hack_get_def_name,
@@ -196,45 +196,50 @@ fn check_item<'tcx>(
                                     ImplItemKind::Fn(sig, body_id) => {
                                         let fn_attrs = ctxt.tcx.hir().attrs(impl_item.hir_id());
                                         let fn_vattrs = get_verifier_attrs(fn_attrs)?;
-                                        if fn_vattrs.is_variant {
-                                            let valid = fn_item_hir_id_to_self_def_id(
-                                                ctxt.tcx,
-                                                impl_item.hir_id(),
-                                            )
-                                            .map(|self_def_id| ctxt.tcx.adt_def(self_def_id))
-                                            .and_then(|adt| {
-                                                is_get_variant_fn_name(&impl_item.ident).and_then(
-                                                    |(variant_name, variant_field)| {
-                                                        adt.variants
-                                                            .iter()
-                                                            .find(|v| {
-                                                                v.ident.as_str() == variant_name
-                                                            })
-                                                            .and_then(|variant| {
-                                                                use crate::def::FieldName;
-                                                                match variant_field {
-                                                                    Some(FieldName::Named(
-                                                                        f_name,
-                                                                    )) => variant
-                                                                        .fields
-                                                                        .iter()
-                                                                        .find(|f| {
-                                                                            f.ident.as_str()
-                                                                                == f_name
-                                                                        })
-                                                                        .map(|_| ()),
-                                                                    Some(FieldName::Unnamed(
-                                                                        f_num,
-                                                                    )) => (f_num
-                                                                        < variant.fields.len())
-                                                                    .then(|| ()),
-                                                                    None => Some(()),
-                                                                }
-                                                            })
-                                                    },
+                                        if fn_vattrs.is_variant.is_some()
+                                            || fn_vattrs.get_variant.is_some()
+                                        {
+                                            let find_variant = |variant_name: &str| {
+                                                fn_item_hir_id_to_self_def_id(
+                                                    ctxt.tcx,
+                                                    impl_item.hir_id(),
                                                 )
-                                            })
-                                            .is_some();
+                                                .map(|self_def_id| ctxt.tcx.adt_def(self_def_id))
+                                                .and_then(|adt| {
+                                                    adt.variants
+                                                        .iter()
+                                                        .find(|v| v.ident.as_str() == variant_name)
+                                                })
+                                            };
+                                            let valid = if let Some(variant_name) =
+                                                fn_vattrs.is_variant
+                                            {
+                                                find_variant(&variant_name).is_some()
+                                                    && impl_item.ident.as_str()
+                                                        == is_variant_fn_name(&variant_name)
+                                            } else if let Some((variant_name, field_name)) =
+                                                fn_vattrs.get_variant
+                                            {
+                                                let field_name_str = match field_name {
+                                                    GetVariantField::Unnamed(i) => format!("{}", i),
+                                                    GetVariantField::Named(n) => n,
+                                                };
+                                                find_variant(&variant_name)
+                                                    .and_then(|variant| {
+                                                        variant.fields.iter().find(|f| {
+                                                            f.ident.as_str()
+                                                                == field_name_str.as_str()
+                                                        })
+                                                    })
+                                                    .is_some()
+                                                    && impl_item.ident.as_str()
+                                                        == get_variant_fn_name(
+                                                            &variant_name,
+                                                            &field_name_str,
+                                                        )
+                                            } else {
+                                                unreachable!()
+                                            };
                                             if !valid
                                                 || get_mode(Mode::Exec, fn_attrs) != Mode::Spec
                                             {
