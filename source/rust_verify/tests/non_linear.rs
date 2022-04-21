@@ -11,14 +11,14 @@ test_verify_one_file! {
     #[test] test1 code! {
         #[verifier(non_linear)]
         #[proof]
-        fn LemmaMulUpperBound(x: int, XBound: int, y: int, YBound: int) {
+        fn lemma_mul_upper_bound(x: int, x_bound: int, y: int, y_bound: int) {
             requires([
-                x <= XBound,
-                y <= YBound,
+                x <= x_bound,
+                y <= y_bound,
                 0 <= x,
                 0 <= y,
             ]);
-            ensures (x * y <= XBound * YBound);
+            ensures (x * y <= x_bound * y_bound);
         }
     } => Ok(())
 }
@@ -27,7 +27,7 @@ test_verify_one_file! {
     #[test] test2 code! {
         #[verifier(non_linear)]
         #[proof]
-        fn LemmaMulStayPositive(x: int, y: int) {
+        fn lemma_mul_stay_positive(x: int, y: int) {
             requires([
                 0 <= x,
                 0 <= y,
@@ -41,7 +41,7 @@ test_verify_one_file! {
     #[test] test3 code! {
         #[verifier(non_linear)]
         #[proof]
-        fn LemmaInequalityAfterMul(x: int, y: int, z: int) {
+        fn lemma_inequality_after_mul(x: int, y: int, z: int) {
             requires([
                 x <= y,
                 0 <= z,
@@ -55,7 +55,7 @@ test_verify_one_file! {
     #[test] test4 code! {
         #[verifier(non_linear)]
         #[proof]
-        fn LemmaDivPosIsPos(x: int, d: int) {
+        fn lemma_div_pos_is_pos(x: int, d: int) {
             requires([
                 0 <= x,
                 0 < d,
