@@ -578,7 +578,7 @@ impl Verifier {
                 if !verify_entire_crate && !self.args.verify_root {
                     continue;
                 }
-                println!("Verifying root module");
+                eprintln!("Verifying root module");
             } else {
                 if !verify_entire_crate && self.args.verify_module != Some(module_name.clone()) {
                     continue;
@@ -588,7 +588,7 @@ impl Verifier {
                 if !self.args.verify_pervasive && is_pervasive {
                     continue;
                 }
-                println!("Verifying module {}", &module_name);
+                eprintln!("Verifying module {}", &module_name);
             }
             air_context.blank_line();
             air_context.comment(&("MODULE '".to_string() + &module_name + "'"));
