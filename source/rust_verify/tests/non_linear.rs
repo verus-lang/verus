@@ -74,9 +74,9 @@ test_verify_one_file! {
                 x <= y,
                 0 <= z,
             ]);
-            ensures (x*z < y*z);
+            ensures (x*z < y*z); // FAILS
         }
-    } => Err(_)
+    } => Err(e) => assert_one_fails(e)
 }
 
 test_verify_one_file! {
@@ -88,7 +88,7 @@ test_verify_one_file! {
                 x > y,
                 3 <= z,
             ]);
-            ensures (y*z > x);
+            ensures (y*z > x); // FAILS
         }
-    } => Err(_)
+    } => Err(e) => assert_one_fails(e)
 }
