@@ -1097,7 +1097,7 @@ fn erase_assoc_item(
             if vattrs.external {
                 return Some(item.clone());
             }
-            if vattrs.is_variant {
+            if vattrs.is_variant.is_some() || vattrs.get_variant.is_some() {
                 return None;
             }
             let erased = erase_fn(ctxt, mctxt, f, vattrs.external_body, is_trait);

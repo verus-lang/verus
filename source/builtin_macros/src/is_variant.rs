@@ -23,19 +23,16 @@ pub fn attribute_is_variant(
                     .iter()
                     .map(|f| {
                         let field_ty = &f.ty;
+                        let field_ident = f.ident.as_ref().expect("missing field ident");
                         let get_ident = syn::Ident::new(
-                            &format!(
-                                "get_{}_{}",
-                                variant_ident_str,
-                                f.ident.as_ref().expect("missing field ident").to_string()
-                            ),
+                            &format!("get_{}_{}", variant_ident_str, field_ident.to_string()),
                             v.ast().ident.span(),
                         );
 
                         quote! {
                             #[spec]
                             #[allow(non_snake_case)]
-                            #[verifier(is_variant)]
+                            #[verifier(get_variant(#variant_ident, #field_ident))]
                             pub fn #get_ident(self) -> #field_ty {
                                 unimplemented!()
                             }
@@ -47,15 +44,19 @@ pub fn attribute_is_variant(
                     .zip(0..)
                     .map(|(f, i)| {
                         let field_ty = &f.ty;
+                        let field_lit = syn::Lit::Int(syn::LitInt::new(
+                            &format!("{}", i),
+                            v.ast().ident.span(),
+                        ));
                         let get_ident = syn::Ident::new(
-                            &format!("get_{}_{}", variant_ident_str, i),
+                            &format!("get_{}_{}", variant_ident, i),
                             v.ast().ident.span(),
                         );
 
                         quote! {
                             #[spec]
                             #[allow(non_snake_case)]
-                            #[verifier(is_variant)]
+                            #[verifier(get_variant(#variant_ident_str, #field_lit))]
                             pub fn #get_ident(self) -> #field_ty {
                                 unimplemented!()
                             }
@@ -67,7 +68,7 @@ pub fn attribute_is_variant(
 
             quote! {
                 #[spec]
-                #[verifier(is_variant)]
+                #[verifier(is_variant(#variant_ident_str))]
                 #[allow(non_snake_case)]
                 pub fn #fun_ident(&self) -> bool { unimplemented!() }
 

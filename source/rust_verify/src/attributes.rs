@@ -91,6 +91,12 @@ pub(crate) fn attrs_to_trees(attrs: &[Attribute]) -> Vec<AttrTree> {
     attr_trees
 }
 
+#[derive(Debug)]
+pub(crate) enum GetVariantField {
+    Named(String),
+    Unnamed(usize),
+}
+
 pub(crate) enum Attr {
     // specify mode (spec, proof, exec)
     Mode(Mode),
@@ -131,7 +137,9 @@ pub(crate) enum Attr {
     // specifies an invariant block
     InvariantBlock,
     // an enum variant is_Variant
-    IsVariant,
+    IsVariant(String),
+    // an enum variant get_Variant
+    GetVariant(String, GetVariantField),
     // this proof function is a termination proof
     DecreasesBy,
     // in a spec function, check the body for violations of recommends
@@ -218,8 +226,30 @@ pub(crate) fn parse_attrs(attrs: &[Attribute]) -> Result<Vec<Attr>, VirErr> {
                 Some(box [AttrTree::Fun(_, arg, None)]) if arg == "invariant_block" => {
                     v.push(Attr::InvariantBlock)
                 }
-                Some(box [AttrTree::Fun(_, arg, None)]) if arg == "is_variant" => {
-                    v.push(Attr::IsVariant)
+                Some(box [AttrTree::Fun(_, arg, Some(box [AttrTree::Fun(_, ident, None)]))])
+                    if arg == "is_variant" =>
+                {
+                    v.push(Attr::IsVariant(ident.clone()))
+                }
+                Some(
+                    box [
+                        AttrTree::Fun(
+                            _,
+                            arg,
+                            Some(
+                                box [
+                                    AttrTree::Fun(_, variant_ident, None),
+                                    AttrTree::Fun(_, field_ident, None),
+                                ],
+                            ),
+                        ),
+                    ],
+                ) if arg == "get_variant" => {
+                    let field_ident = match field_ident.parse::<usize>().ok() {
+                        Some(i) => GetVariantField::Unnamed(i),
+                        None => GetVariantField::Named(field_ident.clone()),
+                    };
+                    v.push(Attr::GetVariant(variant_ident.clone(), field_ident))
                 }
                 Some(box [AttrTree::Fun(_, arg, Some(box [AttrTree::Fun(_, msg, None)]))])
                     if arg == "custom_req_err" =>
@@ -335,7 +365,8 @@ pub(crate) struct VerifierAttrs {
     pub(crate) bit_vector: bool,
     pub(crate) unforgeable: bool,
     pub(crate) atomic: bool,
-    pub(crate) is_variant: bool,
+    pub(crate) is_variant: Option<String>,
+    pub(crate) get_variant: Option<(String, GetVariantField)>,
     pub(crate) decreases_by: bool,
     pub(crate) check_recommends: bool,
     pub(crate) non_linear: bool,
@@ -357,7 +388,8 @@ pub(crate) fn get_verifier_attrs(attrs: &[Attribute]) -> Result<VerifierAttrs, V
         bit_vector: false,
         unforgeable: false,
         atomic: false,
-        is_variant: false,
+        is_variant: None,
+        get_variant: None,
         decreases_by: false,
         check_recommends: false,
         non_linear: false,
@@ -378,7 +410,10 @@ pub(crate) fn get_verifier_attrs(attrs: &[Attribute]) -> Result<VerifierAttrs, V
             Attr::BitVector => vs.bit_vector = true,
             Attr::Unforgeable => vs.unforgeable = true,
             Attr::Atomic => vs.atomic = true,
-            Attr::IsVariant => vs.is_variant = true,
+            Attr::IsVariant(variant_ident) => vs.is_variant = Some(variant_ident),
+            Attr::GetVariant(variant_ident, field_ident) => {
+                vs.get_variant = Some((variant_ident, field_ident))
+            }
             Attr::DecreasesBy => vs.decreases_by = true,
             Attr::CheckRecommends => vs.check_recommends = true,
             Attr::NonLinear => vs.non_linear = true,

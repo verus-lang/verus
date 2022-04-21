@@ -11,7 +11,6 @@ air = { path = "../air" }
 vir = { path = "../vir" }
 sise = "0.6.0"
 getopts = { git = "https://github.com/utaal/getopts.git", branch = "parse-partial" }
-regex = "1"
 
 [target.'cfg(windows)'.dependencies]
 win32job = "1"
