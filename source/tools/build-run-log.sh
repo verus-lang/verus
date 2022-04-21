@@ -18,12 +18,9 @@ mkdir -p $rs_file_dir/log
 
 RUSTC=../rust/install/bin/rustc ../rust/install/bin/cargo build && \
         ./tools/rust-verify.sh $rs_file \
-        --log-air $rs_file_dir/log/$rs_file_basename.air --log-vir $rs_file_dir/log/$rs_file_basename.vir --log-vir-simple $rs_file_dir/log/$rs_file_bbasename.vir-simple --log-smt $rs_file_dir/log/$rs_file_basename.smt
+        --log-dir $rs_file_dir/log --log-all
 result=$?
 
 echo
-echo -e "${color_blue}log-air${color_reset}" "$rs_file_dir/log/$rs_file_basename.air"
-echo -e "${color_blue}log-vir${color_reset}" "$rs_file_dir/log/$rs_file_basename.vir"
-echo -e "${color_blue}log-vir-simple${color_reset}" "$rs_file_dir/log/$rs_file_basename.vir-simple..."
-echo -e "${color_blue}log-smt${color_reset}" "$rs_file_dir/log/$rs_file_basename.smt"
+echo -e "${color_blue}logs${color_reset}" "$rs_file_dir/log"
 exit $?
