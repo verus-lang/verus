@@ -1074,57 +1074,23 @@ fn expr_to_stm_opt(
             stms.push(assume);
             Ok((stms, ReturnValue::ImplicitUnit(expr.span.clone())))
         }
-        ExprX::AssertNonLinear{ require, ensure, proof} => {
-            // let mut stms_check: Vec<Stm> = Vec::new();
-            // Translate proof into a dead-end ending with an assert
-            // state.push_scope();
-            let mut body: Vec<Stm> = Vec::new();
-            // for var in vars.iter() {
-
-            //     let x = state.declare_new_var(&var.name, &var.a, false, true);
-            //     let xvarx = ExpX::Var(x);
-            //     let xvar = SpannedTyped::new(&expr.span, &Arc::new(TypX::Bool), xvarx);
-            //     let has_typx = ExpX::UnaryOpr(UnaryOpr::HasType(var.a.clone()), xvar);
-            //     let has_typ = SpannedTyped::new(&expr.span, &Arc::new(TypX::Bool), has_typx);
-            //     let assume = Spanned::new(require.span.clone(), StmX::Assume(has_typ));
-            //     body.push(assume);
-            // }
-            let (mut proof_stms, e) = expr_to_stm_opt(ctx, state, proof)?;
+        ExprX::AssertNonLinear { requires, ensure, proof } => {
+            let requires = Arc::new(vec_map_result(requires, |e| expr_to_pure_exp(ctx, state, e))?);
+            let ensure = expr_to_pure_exp(ctx, state, &ensure)?;
+            let (proof_stms, e) = expr_to_stm_opt(ctx, state, proof)?;
             if let ReturnValue::Some(_) = e {
-                return err_str(&expr.span, "forall/assert-by cannot end with an expression");
-            }
-            let require_exp = expr_to_pure_exp(ctx, state, &require)?;
-            let assume = Spanned::new(require.span.clone(), StmX::Assume(require_exp));
-            body.push(assume);
-            body.append(&mut proof_stms);
-            let ensure_exp = expr_to_pure_exp(ctx, state, &ensure)?;
-            let ensure_assert = Spanned::new(ensure.span.clone(), StmX::Assert(None, ensure_exp));
-            body.push(ensure_assert);
-            let block = Spanned::new(expr.span.clone(), StmX::Block(Arc::new(body)));
-            // let assert = Spanned::new(ensure.span.clone(), StmX::Assert(None, body));
-            // body.push(assert);
-            // let block = Spanned::new(expr.span.clone(), StmX::Block(Arc::new(body)));
-            // let deadend = Spanned::new(expr.span.clone(), StmX::DeadEnd(block));
-            // state.pop_scope();
-            
-        
-
-            
-            // Translate ensure into an assume
-            // let mut stms_assume: Vec<Stm> = Vec::new();
-            let implyx = ExprX::Binary(BinaryOp::Implies, require.clone(), ensure.clone());
-            let imply = SpannedTyped::new(&ensure.span, &Arc::new(TypX::Bool), implyx);
-            // let forallx = ExprX::Quant(Quant::Forall, vars.clone(), imply);
-            // let forall = SpannedTyped::new(&ensure.span, &Arc::new(TypX::Bool), forallx);
-            let forall_exp = expr_to_pure_exp(ctx, state, &imply)?;
-            let assume = Spanned::new(ensure.span.clone(), StmX::Assume(forall_exp));
-            // stms_assume.push(assume);
-            // let mut stms: Vec<Stm> = Vec::new();
-            let nonlinear = Spanned::new(expr.span.clone(), StmX::AssertNonLinear{check:block, assume:assume, vars:Arc::new(vec![])});
-            // stms.push(nonlinear);
+                return err_str(&expr.span, "assert_by_nonlinear cannot end with an expression");
+            };
+            let nonlinear = Spanned::new(
+                expr.span.clone(),
+                StmX::AssertNonLinear {
+                    requires: requires,
+                    ensure: ensure,
+                    proof: Arc::new(proof_stms),
+                    vars: Arc::new(vec![]),
+                },
+            );
             Ok((vec![nonlinear], ReturnValue::ImplicitUnit(expr.span.clone())))
-            // make assume for main query
-            // make Stmx::nonlinear disappear in sst_to_air translation, to a separate query
         }
         ExprX::AssertBV(e) => {
             let expr = expr_to_pure_exp(ctx, state, &e)?;

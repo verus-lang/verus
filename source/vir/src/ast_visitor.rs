@@ -260,15 +260,12 @@ where
                     expr_visitor_control_flow!(expr_visitor_dfs(proof, map, mf));
                     map.pop_scope();
                 }
-                ExprX::AssertNonLinear { require, ensure, proof } => {
-                    // map.push_scope(true);
-                    // for binder in vars.iter() {
-                    //     let _ = map.insert(binder.name.clone(), binder.a.clone());
-                    // }
-                    expr_visitor_control_flow!(expr_visitor_dfs(require, map, mf));
+                ExprX::AssertNonLinear { requires, ensure, proof } => {
+                    for req in requires.iter() {
+                        expr_visitor_control_flow!(expr_visitor_dfs(req, map, mf));
+                    }
                     expr_visitor_control_flow!(expr_visitor_dfs(ensure, map, mf));
                     expr_visitor_control_flow!(expr_visitor_dfs(proof, map, mf));
-                    // map.pop_scope();
                 }
                 ExprX::If(e1, e2, e3) => {
                     expr_visitor_control_flow!(expr_visitor_dfs(e1, map, mf));
@@ -559,18 +556,21 @@ where
             map.pop_scope();
             ExprX::Forall { vars: Arc::new(vars), require, ensure, proof }
         }
-        ExprX::AssertNonLinear { require, ensure, proof } => {
+        ExprX::AssertNonLinear { requires, ensure, proof } => {
             // let vars =
             //     vec_map_result(&**vars, |x| x.map_result(|t| map_typ_visitor_env(t, env, ft)))?;
             // map.push_scope(true);
             // for binder in vars.iter() {
             //     let _ = map.insert(binder.name.clone(), binder.a.clone());
             // }
-            let require = map_expr_visitor_env(require, map, env, fe, fs, ft)?;
+            let requires = Arc::new(vec_map_result(requires, |e| {
+                map_expr_visitor_env(e, map, env, fe, fs, ft)
+            })?);
+            // let require = map_expr_visitor_env(require, map, env, fe, fs, ft)?;
             let ensure = map_expr_visitor_env(ensure, map, env, fe, fs, ft)?;
             let proof = map_expr_visitor_env(proof, map, env, fe, fs, ft)?;
             // map.pop_scope();
-            ExprX::AssertNonLinear {  require, ensure, proof }
+            ExprX::AssertNonLinear { requires, ensure, proof }
         }
         ExprX::AssertBV(e) => {
             let expr1 = map_expr_visitor_env(e, map, env, fe, fs, ft)?;

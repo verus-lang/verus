@@ -641,31 +641,27 @@ fn fn_call_to_vir<'tcx>(
         return Ok(mk_expr(ExprX::Forall { vars, require, ensure, proof }));
     }
     if is_assert_by_nonlinear {
-        unsupported_err_unless!(len == 1, expr.span, "expected assert_by_nonlinear", &args);
-        // let vars = Arc::new(vec![]);
-        // let require =
-            // spanned_typed_new(expr.span, &Arc::new(TypX::Bool), ExprX::Const(Constant::Bool(true)));
-        let mut vir_expr = expr_to_vir(bctx, &args[0], ExprModifier::REGULAR)?; 
+        unsupported_err_unless!(
+            len == 2,
+            expr.span,
+            "expected assert_by_nonlinear with two argument",
+            &args
+        );
+        let mut vir_expr = expr_to_vir(bctx, &args[1], ExprModifier::REGULAR)?;
         let header = vir::headers::read_header(&mut vir_expr)?;
-        // let ensure = expr_to_vir(bctx, &args[0], ExprModifier::REGULAR)?;
-        // let require = expr_to_vir(bctx, &args[1], ExprModifier::REGULAR)?;
-        // let require = if header.require.len() == 1 {
-        //     header.require[0].clone()
-        // } else {
-        //     spanned_typed_new(span, &Arc::new(TypX::Bool), ExprX::Const(Constant::Bool(true)))
-        // };
-        println!("{:?}", header.require[0]);
-        println!("{:?}", header.require.len());
-        let require = header.require[0].clone();
-        let ensure = header.ensure[0].clone();
+        let requires = if header.require.len() >= 1 {
+            header.require
+        } else {
+            Arc::new(vec![spanned_typed_new(
+                expr.span,
+                &Arc::new(TypX::Bool),
+                ExprX::Const(Constant::Bool(true)),
+            )])
+        };
+        let ensure = expr_to_vir(bctx, &args[0], ExprModifier::REGULAR)?;
         let proof = vir_expr;
-        // println!("{:?}", require);
-        // println!("{:?}", ensure);
-        // println!("{:?}", proof);
-        // let proof = expr_to_vir(bctx, &args[2], ExprModifier::REGULAR)?;
-        // panic!();
-        return Ok(mk_expr(ExprX::AssertNonLinear{require , ensure, proof}));
-    } 
+        return Ok(mk_expr(ExprX::AssertNonLinear { requires, ensure, proof }));
+    }
     if is_assert_forall_by {
         unsupported_err_unless!(len == 1, expr.span, "expected assert_forall_by", &args);
         return extract_assert_forall_by(bctx, expr.span, args[0]);

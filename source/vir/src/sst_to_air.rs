@@ -1104,19 +1104,14 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
             }
             vec![Arc::new(StmtX::Assert(error, air_expr))]
         }
-        StmX::AssertNonLinear{check, assume, vars} => {
-            // if ctx.debug {
-            //     state.push_scope();
-            //     state.map_span(&stm, SpanKind::Start);
-            // }
-            let assert_stmts = stm_to_stmts(ctx, state, check);
-            // let cond_stmts: Vec<Stmt> =
-            //     cond_stms.iter().map(|s| stm_to_stmts(ctx, state, s)).flatten().collect();
-            let mut air_body: Vec<Stmt> = Vec::new();
-            air_body.append(&mut assert_stmts.clone());
-            // air_body.push(pos_assume);
-            // air_body.append(&mut stm_to_stmts(ctx, state, body));
+        StmX::AssertNonLinear { requires, ensure, proof, vars } => {
+            let requires: Vec<(Span, Expr)> =
+                requires.iter().map(|e| (e.span.clone(), exp_to_expr(ctx, e, expr_ctxt))).collect();
+            let ensure = (ensure.span.clone(), exp_to_expr(ctx, ensure, expr_ctxt));
+            let proof_stmts: Vec<Stmt> =
+                proof.iter().map(|s| stm_to_stmts(ctx, state, s)).flatten().collect();
 
+            // Push type invariants and requires as axiom for separate query
             let mut local = state.local_shared.clone();
             for (x, typ) in vars.iter() {
                 let typ_inv = typ_invariant(ctx, typ, &ident_var(&suffix_local_unique_id(x)));
@@ -1124,8 +1119,18 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
                     local.push(Arc::new(DeclX::Axiom(expr)));
                 }
             }
+            for (_, req) in requires.iter() {
+                local.push(Arc::new(DeclX::Axiom(req.clone())));
+            }
 
+            // assert_by body assertions and ensures
+            let mut air_body: Vec<Stmt> = Vec::new();
+            air_body.append(&mut proof_stmts.clone());
+            let error = error("assertion failed", &ensure.0);
+            let ensure_stmt = StmtX::Assert(error, ensure.1.clone());
+            air_body.push(Arc::new(ensure_stmt));
             let assertion = one_stmt(air_body);
+
             let query = Arc::new(QueryX { local: Arc::new(local), assertion });
             state.commands.push(Arc::new(CommandX::SetOption(
                 Arc::new(String::from("smt.arith.nl")),
@@ -1137,9 +1142,11 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
                 Arc::new(String::from("false")),
             )));
 
-
-            // stmts
-            stm_to_stmts(ctx, state, assume)
+            // At main query, assume `requires => ensure`
+            let reqs: Vec<Arc<ExprX>> = requires.iter().map(|x| x.1.clone()).collect();
+            let req = mk_and(&reqs);
+            let expr = mk_implies(&req, &ensure.1);
+            vec![(Arc::new(StmtX::Assume(expr)))]
         }
         StmX::AssertBV(expr) => {
             // here expr is boxed/unboxed in poly::poly_expr

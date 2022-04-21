@@ -74,7 +74,7 @@ fn expr_get_early_exits_rec(
             | ExprX::Header(..)
             | ExprX::Admit
             | ExprX::Forall { .. } => VisitorControlFlow::Return,
-            | ExprX::AssertNonLinear { .. } => VisitorControlFlow::Return,
+            ExprX::AssertNonLinear { .. } => VisitorControlFlow::Return,
             ExprX::While { cond, body, invs: _ } => {
                 expr_get_early_exits_rec(cond, in_loop, scope_map, results);
                 expr_get_early_exits_rec(body, true, scope_map, results);

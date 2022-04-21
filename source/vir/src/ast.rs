@@ -378,7 +378,7 @@ pub enum ExprX {
     /// Sequence of statements, optionally including an expression at the end
     Block(Stmts, Option<Expr>),
     /// assert_by with smt.arith.nl=true
-    AssertNonLinear{require: Expr, ensure: Expr, proof: Expr},
+    AssertNonLinear { requires: Exprs, ensure: Expr, proof: Expr },
 }
 
 /// Statement, similar to rustc_hir::Stmt
