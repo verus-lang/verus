@@ -555,6 +555,11 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: ExprCtxt) -> Expr {
             return Arc::new(ExprX::Binary(bop, lh, rh));
         }
         (ExpX::Binary(op, lhs, rhs), false) => {
+            let has_const = match (&lhs.x, &rhs.x) {
+                (ExpX::Const(..), _) => true,
+                (_, ExpX::Const(..)) => true,
+                _ => false,
+            };
             let lh = exp_to_expr(ctx, lhs, expr_ctxt);
             let rh = exp_to_expr(ctx, rhs, expr_ctxt);
             let expx = match op {
@@ -575,6 +580,15 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: ExprCtxt) -> Expr {
                 }
                 BinaryOp::Arith(ArithOp::Sub, _) => {
                     ExprX::Multi(MultiOp::Sub, Arc::new(vec![lh, rh]))
+                }
+                BinaryOp::Arith(ArithOp::Mul, _) if !has_const => {
+                    return str_apply(crate::def::MUL, &vec![lh, rh]);
+                }
+                BinaryOp::Arith(ArithOp::EuclideanDiv, _) if !has_const => {
+                    return str_apply(crate::def::EUC_DIV, &vec![lh, rh]);
+                }
+                BinaryOp::Arith(ArithOp::EuclideanMod, _) if !has_const => {
+                    return str_apply(crate::def::EUC_MOD, &vec![lh, rh]);
                 }
                 BinaryOp::Arith(ArithOp::Mul, _) => {
                     ExprX::Multi(MultiOp::Mul, Arc::new(vec![lh, rh]))

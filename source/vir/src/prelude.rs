@@ -25,6 +25,12 @@ pub(crate) fn prelude_nodes() -> Vec<Node> {
     let u_inv = str_to_node(U_INV);
     let i_inv = str_to_node(I_INV);
     let arch_size = str_to_node(ARCH_SIZE);
+    #[allow(non_snake_case)]
+    let Mul = str_to_node(MUL);
+    #[allow(non_snake_case)]
+    let EucDiv = str_to_node(EUC_DIV);
+    #[allow(non_snake_case)]
+    let EucMod = str_to_node(EUC_MOD);
     let check_decrease_int =
         str_to_node(&suffix_global_id(&fun_to_air_ident(&check_decrease_int())));
     let height = str_to_node(&suffix_global_id(&fun_to_air_ident(&height())));
@@ -255,6 +261,25 @@ pub(crate) fn prelude_nodes() -> Vec<Node> {
                 ([i_inv] bits ([unbox_int] x))
             )
             :pattern (([has_type] x ([type_id_sint] bits)))
+        )))
+
+        // With smt.arith.nl=false, Z3 sometimes fails to prove obvious formulas
+        // that happen to contain *, div, or mod (e.g. failing to prove P ==> P).
+        // So wrap nonlinear occurrences of *, div, mod in a function for better stability:
+        (declare-fun [Mul] (Int Int) Int)
+        (declare-fun [EucDiv] (Int Int) Int)
+        (declare-fun [EucMod] (Int Int) Int)
+        (axiom (forall ((x Int) (y Int)) (!
+            (= ([Mul] x y) (* x y))
+            :pattern (([Mul] x y))
+        )))
+        (axiom (forall ((x Int) (y Int)) (!
+            (= ([EucDiv] x y) (div x y))
+            :pattern (([EucDiv] x y))
+        )))
+        (axiom (forall ((x Int) (y Int)) (!
+            (= ([EucMod] x y) (mod x y))
+            :pattern (([EucMod] x y))
         )))
 
         // Decreases
