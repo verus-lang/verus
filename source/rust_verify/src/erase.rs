@@ -727,7 +727,7 @@ fn erase_expr_opt(ctxt: &Ctxt, mctxt: &mut MCtxt, expect: Mode, expr: &Expr) -> 
                 assert!(expect != Mode::Exec);
                 if !ctxt.keep_proofs {
                     return eb_erase;
-                } else if ctxt.keep_proofs && modeb == Mode::Spec {
+                } else if ctxt.keep_proofs && modeb == Mode::Spec || eb_erase.is_none() {
                     // We erase eb, so we have no bool for the If.
                     // Create a nondeterministic boolean to take eb's place.
                     let e_nondet = call_arbitrary(ctxt, mctxt, expr.span);
@@ -769,14 +769,18 @@ fn erase_expr_opt(ctxt: &Ctxt, mctxt: &mut MCtxt, expect: Mode, expr: &Expr) -> 
                         // Turn arms0[i].body into block
                         let arm = &arms0[i];
                         let span = expr.span;
-                        let body = erase_expr(ctxt, mctxt, expect, &arm.body);
-                        let kind = StmtKind::Expr(P(body));
-                        let id = mctxt.next_node_id();
-                        let stmt = Stmt { id, kind, span };
+                        let stmts = erase_expr_opt(ctxt, mctxt, expect, &arm.body)
+                            .map(|body| {
+                                let kind = StmtKind::Expr(P(body));
+                                let id = mctxt.next_node_id();
+                                Stmt { id, kind, span }
+                            })
+                            .into_iter()
+                            .collect();
                         let id = mctxt.next_node_id();
                         let rules = rustc_ast::BlockCheckMode::Default;
                         let block = Block {
-                            stmts: vec![stmt],
+                            stmts,
                             id,
                             rules,
                             span,

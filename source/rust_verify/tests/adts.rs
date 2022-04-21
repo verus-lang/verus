@@ -682,3 +682,31 @@ test_verify_one_file! {
         }
     } => Err(e) => assert_vir_error(e)
 }
+
+test_verify_one_file! {
+    #[test] test_match_empty_branch code! {
+        #[is_variant]
+        enum S {
+            V1,
+            V2,
+        }
+
+        fn f(#[spec] s: S) {
+            match s {
+                S::V1 => assert(s.is_V1()),
+                S::V2 => (),
+            };
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_if_is_variant_regression_125 code! {
+        use crate::pervasive::option::*;
+
+        #[proof]
+        fn foo() {
+            let x = (if (Option::Some(5)).is_Some() { 0 } else { 1 });
+        }
+    } => Ok(())
+}
