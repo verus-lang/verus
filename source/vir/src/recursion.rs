@@ -371,6 +371,7 @@ pub(crate) fn check_termination_exp(
         &stm_block,
         false,
         false,
+        false,
     );
 
     // New body: substitute rec%f(args, fuel) for f(args)

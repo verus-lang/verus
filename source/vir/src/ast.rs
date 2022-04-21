@@ -439,6 +439,8 @@ pub struct FunctionAttrsX {
     pub is_decrease_by: bool,
     /// In a spec function, check the body for violations of recommends
     pub check_recommends: bool,
+    /// set option smt.arith.nl=true
+    pub non_linear: bool,
 }
 
 /// Function specification of its invariant mask

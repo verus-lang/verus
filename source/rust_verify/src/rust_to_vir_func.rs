@@ -248,6 +248,7 @@ pub(crate) fn check_item_fn<'tcx>(
         atomic: vattrs.atomic,
         is_decrease_by: vattrs.decreases_by,
         check_recommends: vattrs.check_recommends,
+        non_linear: vattrs.non_linear,
     };
     let func = FunctionX {
         name: name.clone(),
