@@ -445,13 +445,15 @@ fn erase_expr_opt(ctxt: &Ctxt, mctxt: &mut MCtxt, expect: Mode, expr: &Expr) -> 
             }
         }
         ExprKind::Path(_, _) => {
-            if mctxt.find_span_opt(&ctxt.calls, expr.span).is_some() {
-                // 0-argument datatype constructor
-                expr.kind.clone()
-            } else if keep_mode(ctxt, *mctxt.find_span(&ctxt.var_modes, expr.span))
-                && keep_mode(ctxt, expect)
-            {
-                expr.kind.clone()
+            if keep_mode(ctxt, expect) {
+                if mctxt.find_span_opt(&ctxt.calls, expr.span).is_some() {
+                    // 0-argument datatype constructor
+                    expr.kind.clone()
+                } else if keep_mode(ctxt, *mctxt.find_span(&ctxt.var_modes, expr.span)) {
+                    expr.kind.clone()
+                } else {
+                    return None;
+                }
             } else {
                 return None;
             }
@@ -1398,8 +1400,8 @@ impl rustc_driver::Callbacks for CompilerCallbacks {
             lint_store.formal_verifier_callback.replace(Some(Box::new(self.clone())));
         };
         if self.lifetimes_only {
-            crate::lifetime::check(queries);
             self.maybe_print(compiler, queries);
+            crate::lifetime::check(queries);
             rustc_driver::Compilation::Stop
         } else {
             rustc_driver::Compilation::Continue
