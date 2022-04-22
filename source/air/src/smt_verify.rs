@@ -214,6 +214,7 @@ pub(crate) fn smt_check_assertion<'ctx>(
             enum SmtReasonUnknown {
                 Canceled,
                 Incomplete,
+                Unknown,
             }
 
             let mut reason = None;
@@ -221,6 +222,10 @@ pub(crate) fn smt_check_assertion<'ctx>(
                 if line == "(:reason-unknown \"canceled\")" {
                     assert!(reason == None);
                     reason = Some(SmtReasonUnknown::Canceled);
+                } else if line == "(:reason-unknown \"unknown\")" {
+                    // it appears this sometimes happens when rlimit is exceeded
+                    assert!(reason == None);
+                    reason = Some(SmtReasonUnknown::Unknown);
                 } else if line.starts_with("(:reason-unknown \"(incomplete") {
                     assert!(reason == None);
                     reason = Some(SmtReasonUnknown::Incomplete);
@@ -232,7 +237,7 @@ pub(crate) fn smt_check_assertion<'ctx>(
             }
 
             match reason.expect("expected :reason-unknown") {
-                SmtReasonUnknown::Canceled => {
+                SmtReasonUnknown::Canceled | SmtReasonUnknown::Unknown => {
                     context.state = ContextState::Canceled;
                     return ValidityResult::Canceled;
                 }
