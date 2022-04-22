@@ -146,6 +146,19 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_requires code! {
+        #[proof]
+        fn test(x: nat, y: nat, z:nat) {
+            assert_by_nonlinear(x*x + x == x * (x + 1), {
+                requires(x < 0xfff);
+            });
+            assert(x < 0xfff >>= x*x + x == x * (x + 1));
+            assert(x*x + x == x * (x + 1)); // FAILS
+        }
+    } => Err(e) => assert_one_fails(e)
+}
+
+test_verify_one_file! {
     #[test] test7 code! {
         #[proof]
         fn test6(x: int, y: int, z:int) {
@@ -187,4 +200,14 @@ test_verify_one_file! {
             assert(x*x + x == x * (x + 1));
         }
     } => Err(_)
+}
+
+test_verify_one_file! {
+    #[test] test_negative code! {
+        #[proof]
+        fn test6(x: int, y: int, z:int) {
+            assert_by_nonlinear((x+y)*z == x*z + y*z, {});
+            assert(false); // FAILS
+        }
+    } => Err(e) => assert_one_fails(e)
 }
