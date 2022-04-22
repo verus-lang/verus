@@ -3,12 +3,14 @@ use crate::ast::{
     TransitionKind, TransitionParam, TransitionStmt,
 };
 use crate::parse_token_stream::{keyword, peek_keyword};
+use crate::util::combine_errors_or_ok;
 use proc_macro2::Span;
 use std::rc::Rc;
 use syn::parse::{Parse, ParseStream};
 use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
 use syn::token::Comma;
+use syn::visit::Visit;
 use syn::{braced, bracketed, parenthesized, Block, Error, Expr, Ident, Macro, Pat, Token, Type};
 
 /// Translate Rust AST into a transition AST by parsing our transition DSL.
@@ -313,10 +315,12 @@ fn parse_conditional(input: ParseStream) -> syn::parse::Result<TransitionStmt> {
     if input.peek(Token![else]) {
         let els = parse_else_block(input)?;
         let span = if_token.span.join(*els.get_span()).unwrap_or(if_token.span);
+        error_on_if_let(&cond)?;
         Ok(TransitionStmt::Split(span, SplitKind::If(cond), vec![thn, els]))
     } else {
         let span = if_token.span.join(*thn.get_span()).unwrap_or(if_token.span);
         let els = TransitionStmt::Block(if_token.span, vec![]);
+        error_on_if_let(&cond)?;
         Ok(TransitionStmt::Split(span, SplitKind::If(cond), vec![thn, els]))
     }
 }
@@ -504,4 +508,29 @@ fn multi_pat_impl(input: ParseStream, leading_vert: Option<Token![|]>) -> syn::p
         pat = Pat::Or(syn::PatOr { attrs: Vec::new(), leading_vert, cases });
     }
     Ok(pat)
+}
+
+/// Error if the user writes `if let ... = ... { ... }` which is unsupported.
+/// Descend into the expression to check for chained if-let as well.
+fn error_on_if_let(cond: &Expr) -> syn::parse::Result<()> {
+    let mut ilv = IfLetVisitor { errors: Vec::new() };
+    ilv.visit_expr(cond);
+    combine_errors_or_ok(ilv.errors)
+}
+
+struct IfLetVisitor {
+    pub errors: Vec<Error>,
+}
+
+impl<'ast> Visit<'ast> for IfLetVisitor {
+    fn visit_expr_block(&mut self, _node: &'ast syn::ExprBlock) {
+        // do nothing here; don't recurse into block expressions
+    }
+
+    fn visit_expr_let(&mut self, node: &'ast syn::ExprLet) {
+        self.errors.push(Error::new(
+            node.span(),
+            "transition definitions do not support if-let conditionals",
+        ));
+    }
 }

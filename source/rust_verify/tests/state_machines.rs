@@ -3602,3 +3602,61 @@ test_verify_one_file! {
         }}
     } => Err(e) => assert_error_msg(e, "`super::` path not allowed here")
 }
+
+test_verify_one_file! {
+    #[test] if_let_fail IMPORTS.to_string() + code_str! {
+        tokenized_state_machine!{ X {
+            fields {
+                #[sharding(storage_option)] pub so: Option<int>
+            }
+
+            readonly!{
+                tr() {
+                    if let x = 5 {
+                        assert(x == 5);
+                    }
+                }
+            }
+        }}
+    } => Err(e) => assert_error_msg(e, "do not support if-let conditionals")
+}
+
+test_verify_one_file! {
+    #[test] if_let_fail_with_else IMPORTS.to_string() + code_str! {
+        tokenized_state_machine!{ X {
+            fields {
+                #[sharding(storage_option)] pub so: Option<int>
+            }
+
+            readonly!{
+                tr() {
+                    if let x = 5 {
+                        assert(x == 5);
+                    } else {
+                        assert(true);
+                    }
+                }
+            }
+        }}
+    } => Err(e) => assert_error_msg(e, "do not support if-let conditionals")
+}
+
+test_verify_one_file! {
+    #[test] if_let_fail_with_chain IMPORTS.to_string() + code_str! {
+        tokenized_state_machine!{ X {
+            fields {
+                #[sharding(storage_option)] pub so: Option<int>
+            }
+
+            readonly!{
+                tr() {
+                    if true && let x = 5 {
+                        assert(x == 5);
+                    } else {
+                        assert(true);
+                    }
+                }
+            }
+        }}
+    } => Err(e) => assert_error_msg(e, "do not support if-let conditionals")
+}
