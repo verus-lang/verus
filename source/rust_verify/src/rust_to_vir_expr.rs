@@ -644,7 +644,7 @@ fn fn_call_to_vir<'tcx>(
         unsupported_err_unless!(
             len == 2,
             expr.span,
-            "expected assert_by_nonlinear with two argument",
+            "expected assert_by_nonlinear with two arguments",
             &args
         );
         let mut vir_expr = expr_to_vir(bctx, &args[1], ExprModifier::REGULAR)?;

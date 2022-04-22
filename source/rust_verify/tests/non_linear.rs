@@ -5,8 +5,8 @@
 mod common;
 use common::*;
 
-// TODO: add testcases for assert_by_nonlinear
 // TODO: make sure testcases do not timeout
+
 // Test #[verifier(non_linear)]
 test_verify_one_file! {
     #[test] test1 code! {
@@ -66,7 +66,7 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-// Test `assert_by_nonlinear
+// Test assert_by_nonlinear
 test_verify_one_file! {
     #[test] test5 code! {
         #[proof]

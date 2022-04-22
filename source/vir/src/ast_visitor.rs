@@ -557,19 +557,11 @@ where
             ExprX::Forall { vars: Arc::new(vars), require, ensure, proof }
         }
         ExprX::AssertNonLinear { requires, ensure, proof } => {
-            // let vars =
-            //     vec_map_result(&**vars, |x| x.map_result(|t| map_typ_visitor_env(t, env, ft)))?;
-            // map.push_scope(true);
-            // for binder in vars.iter() {
-            //     let _ = map.insert(binder.name.clone(), binder.a.clone());
-            // }
             let requires = Arc::new(vec_map_result(requires, |e| {
                 map_expr_visitor_env(e, map, env, fe, fs, ft)
             })?);
-            // let require = map_expr_visitor_env(require, map, env, fe, fs, ft)?;
             let ensure = map_expr_visitor_env(ensure, map, env, fe, fs, ft)?;
             let proof = map_expr_visitor_env(proof, map, env, fe, fs, ft)?;
-            // map.pop_scope();
             ExprX::AssertNonLinear { requires, ensure, proof }
         }
         ExprX::AssertBV(e) => {

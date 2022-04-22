@@ -208,6 +208,15 @@ where
             StmX::AssertBV(exp) => {
                 expr_visitor_control_flow!(exp_visitor_dfs(exp, &mut ScopeMap::new(), f))
             }
+            StmX::AssertNonLinear { requires, ensure, proof, vars: _ } => {
+                for r in requires.iter() {
+                    expr_visitor_control_flow!(exp_visitor_dfs(r, &mut ScopeMap::new(), f));
+                }
+                expr_visitor_control_flow!(exp_visitor_dfs(ensure, &mut ScopeMap::new(), f));
+                for p in proof.iter() {
+                    expr_visitor_control_flow!(stm_exp_visitor_dfs(p, f));
+                }
+            }
             StmX::Assume(exp) => {
                 expr_visitor_control_flow!(exp_visitor_dfs(exp, &mut ScopeMap::new(), f))
             }
@@ -236,8 +245,6 @@ where
                 expr_visitor_control_flow!(exp_visitor_dfs(inv, &mut ScopeMap::new(), f))
             }
             StmX::Block(_) => (),
-            // StmX::AssertNonLinear {check, assume, vars} => {expr_visitor_control_flow!(exp_visitor_dfs(check, &mut ScopeMap::new(), f))}
-            StmX::AssertNonLinear { .. } => {}
         }
         VisitorControlFlow::Recurse
     })
