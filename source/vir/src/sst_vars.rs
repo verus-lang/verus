@@ -120,6 +120,11 @@ pub(crate) fn stm_assign(
             for (x, typ) in declared.iter() {
                 vars.push((x.clone(), typ.clone()));
             }
+            vars.sort_by(|a, b| {
+                let str1: &String = &*(((*a).0).0);
+                let str2: &String = &*(((*b).0).0);
+                str1.cmp(str2)
+            });
             Spanned::new(
                 stm.span.clone(),
                 StmX::AssertNonLinear {
