@@ -7,10 +7,10 @@ use common::*;
 
 // TODO: make sure testcases do not timeout
 
-// Test #[verifier(non_linear)]
+// Test #[verifier(nonlinear)]
 test_verify_one_file! {
     #[test] test1 code! {
-        #[verifier(non_linear)]
+        #[verifier(nonlinear)]
         #[proof]
         fn lemma_mul_upper_bound(x: int, x_bound: int, y: int, y_bound: int) {
             requires([
@@ -26,7 +26,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test2 code! {
-        #[verifier(non_linear)]
+        #[verifier(nonlinear)]
         #[proof]
         fn lemma_mul_stay_positive(x: int, y: int) {
             requires([
@@ -40,7 +40,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test3 code! {
-        #[verifier(non_linear)]
+        #[verifier(nonlinear)]
         #[proof]
         fn lemma_inequality_after_mul(x: int, y: int, z: int) {
             requires([
@@ -54,7 +54,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test4 code! {
-        #[verifier(non_linear)]
+        #[verifier(nonlinear)]
         #[proof]
         fn lemma_div_pos_is_pos(x: int, d: int) {
             requires([
@@ -68,7 +68,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test1_fails code! {
-        #[verifier(non_linear)]
+        #[verifier(nonlinear)]
         #[proof]
         fn wrong_lemma_1(x: int, y: int, z: int) {
             requires([
@@ -82,7 +82,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test2_fails code! {
-        #[verifier(non_linear)]
+        #[verifier(nonlinear)]
         #[proof]
         fn wrong_lemma_2(x: int, y: int, z: int) {
             requires([
@@ -178,7 +178,7 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_assert_by_nonlinear_in_nonlinear code! {
-        #[proof] #[verifier(non_linear)]
+        #[proof] #[verifier(nonlinear)]
         fn test(x: u32) {
             requires(x < 0xfff);
             assert_by_nonlinear(x*x + x == x * (x + 1), {

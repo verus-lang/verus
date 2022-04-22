@@ -1487,7 +1487,7 @@ pub fn body_stm_to_air(
     stm: &Stm,
     is_bit_vector_mode: bool,
     skip_ensures: bool,
-    is_non_linear: bool,
+    is_nonlinear: bool,
 ) -> (Commands, Vec<(Span, SnapPos)>) {
     // Verifying a single function can generate multiple SMT queries.
     // Some declarations (local_shared) are shared among the queries.
@@ -1612,7 +1612,7 @@ pub fn body_stm_to_air(
     }
 
     let query = Arc::new(QueryX { local: Arc::new(local), assertion });
-    if is_non_linear {
+    if is_nonlinear {
         state.commands.push(Arc::new(CommandX::SetOption(
             Arc::new(String::from("smt.arith.nl")),
             Arc::new(String::from("true")),

@@ -92,10 +92,10 @@ fn check_one_expr(
             assert_no_early_exit_in_inv_block(&body.span, body)?;
         }
         ExprX::AssertNonLinear { .. } => {
-            if function.x.attrs.non_linear {
+            if function.x.attrs.nonlinear {
                 return err_str(
                     &expr.span,
-                    "assert_by_nonlinear not allowed in #[verifier(non_linear)] functions",
+                    "assert_by_nonlinear not allowed in #[verifier(nonlinear)] functions",
                 );
             }
         }
@@ -251,11 +251,11 @@ fn check_function(ctxt: &Ctxt, function: &Function) -> Result<(), VirErr> {
         }
     }
 
-    if function.x.attrs.non_linear {
+    if function.x.attrs.nonlinear {
         if function.x.mode == Mode::Spec {
             return err_str(
                 &function.span,
-                "#[verifier(non_linear) is only allowed on proof and exec functions",
+                "#[verifier(nonlinear) is only allowed on proof and exec functions",
             );
         }
     }

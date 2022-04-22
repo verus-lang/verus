@@ -277,7 +277,7 @@ pub(crate) fn parse_attrs(attrs: &[Attribute]) -> Result<Vec<Attr>, VirErr> {
                 {
                     v.push(Attr::ReturnMode(Mode::Exec))
                 }
-                Some(box [AttrTree::Fun(_, arg, None)]) if arg == "non_linear" => {
+                Some(box [AttrTree::Fun(_, arg, None)]) if arg == "nonlinear" => {
                     v.push(Attr::NonLinear)
                 }
                 _ => return err_span_str(*span, "unrecognized verifier attribute"),
@@ -369,7 +369,7 @@ pub(crate) struct VerifierAttrs {
     pub(crate) get_variant: Option<(String, GetVariantField)>,
     pub(crate) decreases_by: bool,
     pub(crate) check_recommends: bool,
-    pub(crate) non_linear: bool,
+    pub(crate) nonlinear: bool,
 }
 
 pub(crate) fn get_verifier_attrs(attrs: &[Attribute]) -> Result<VerifierAttrs, VirErr> {
@@ -392,7 +392,7 @@ pub(crate) fn get_verifier_attrs(attrs: &[Attribute]) -> Result<VerifierAttrs, V
         get_variant: None,
         decreases_by: false,
         check_recommends: false,
-        non_linear: false,
+        nonlinear: false,
     };
     for attr in parse_attrs(attrs)? {
         match attr {
@@ -416,7 +416,7 @@ pub(crate) fn get_verifier_attrs(attrs: &[Attribute]) -> Result<VerifierAttrs, V
             }
             Attr::DecreasesBy => vs.decreases_by = true,
             Attr::CheckRecommends => vs.check_recommends = true,
-            Attr::NonLinear => vs.non_linear = true,
+            Attr::NonLinear => vs.nonlinear = true,
             _ => {}
         }
     }

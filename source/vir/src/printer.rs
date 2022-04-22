@@ -407,7 +407,7 @@ fn function_to_node(function: &FunctionX) -> Node {
             atomic,
             is_decrease_by,
             check_recommends,
-            non_linear,
+            nonlinear,
         } = &**attrs;
 
         let mut nodes = vec![
@@ -440,8 +440,8 @@ fn function_to_node(function: &FunctionX) -> Node {
         if *check_recommends {
             nodes.push(str_to_node("+check_recommends"));
         }
-        if *non_linear {
-            nodes.push(str_to_node("+non_linear"));
+        if *nonlinear {
+            nodes.push(str_to_node("+nonlinear"));
         }
 
         Node::List(nodes)

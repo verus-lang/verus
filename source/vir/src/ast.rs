@@ -442,7 +442,7 @@ pub struct FunctionAttrsX {
     /// In a spec function, check the body for violations of recommends
     pub check_recommends: bool,
     /// set option smt.arith.nl=true
-    pub non_linear: bool,
+    pub nonlinear: bool,
 }
 
 /// Function specification of its invariant mask
