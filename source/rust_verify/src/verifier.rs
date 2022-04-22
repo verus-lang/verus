@@ -23,6 +23,8 @@ use vir::ast_util::{fun_as_rust_dbg, is_visible_to};
 use vir::def::SnapPos;
 use vir::recursion::Node;
 
+const RLIMIT_PER_SECOND: u32 = 3000000;
+
 pub struct VerifierCallbacks {
     pub verifier: Arc<Mutex<Verifier>>,
     pub vir_ready: signalling::Signaller<bool>,
@@ -607,7 +609,7 @@ impl Verifier {
 
         // air_recommended_options causes AIR to apply a preset collection of Z3 options
         air_context.set_z3_param("air_recommended_options", "true");
-        air_context.set_rlimit(self.args.rlimit * 1000000);
+        air_context.set_rlimit(self.args.rlimit.checked_mul(RLIMIT_PER_SECOND).unwrap_or(0));
         for (option, value) in self.args.smt_options.iter() {
             air_context.set_z3_param(&option, &value);
         }
