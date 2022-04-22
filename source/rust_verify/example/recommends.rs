@@ -33,3 +33,16 @@ fn main() {
     reveal_with_fuel(seq_max_int, 4);
     assert(seq_max_int(s) == 30);
 }
+
+// Usage of `spec_affirm`
+#[spec] fn some_predicate(a: nat) -> bool {
+    recommends(a < 100);
+    if (a >= 50) {
+        let _ = spec_affirm(50 <= a && a < 100);
+        a >= 75
+    } else {
+        let _ = spec_affirm(a < 40); // spec(checked) would raise a recommends note here
+        a < 25
+    }
+}
+
