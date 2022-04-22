@@ -38,19 +38,9 @@ macro_rules! map_ext {
                     ((#[trigger] m1.dom().contains($k)) >>= (
                         m2.dom().contains($k) && ::builtin::equal(m1.index($k), m2.index($k))
                     ))
-                    && m2.dom().contains($k) >>= m1.dom().contains($k)
+                    && (m2.dom().contains($k) >>= m1.dom().contains($k))
                 ]);
                 { $bblock }
-            });
-            crate::pervasive::assert(m1.dom().ext_equal(m2.dom()));
-            ::builtin::assert_forall_by(|$k : $t| {
-                ::builtin::requires([
-                    #[trigger] m1.dom().contains($k)
-                ]);
-                ::builtin::ensures([
-                    ::builtin::equal(m1.index($k), m2.index($k))
-                ]);
-                crate::pervasive::assume(false); // TODO why is this not working?
             });
             crate::pervasive::assert(m1.ext_equal(m2));
         });
@@ -254,6 +244,34 @@ fn next_refines_next_with_macro(pre: ShardedKVProtocol::State, post: ShardedKVPr
     case_on_next!{pre, post, ShardedKVProtocol => {
         insert(idx, key, value) => {
             map_ext!(pre.interp_map().insert(key, value), post.interp_map(), k: Key => {
+                if equal(k, key) {
+                    assert(pre.host_has_key(idx, key));
+                    assert(post.host_has_key(idx, key));
+                } else {
+                    assert(pre.interp_map().dom().contains(k));
+                    assert(post.interp_map().dom().contains(k));
+
+                    if exists(|idx| pre.host_has_key(idx, k)) {
+                        let i = pre.key_holder(k);
+                        assert(pre.host_has_key(i, k));
+                        assert(post.host_has_key(i, k));
+                        assert(equal(pre.interp_map().index(k), post.interp_map().index(k)));
+                    } else {
+                        assert(forall(|idx| post.host_has_key(idx, k) >>= pre.host_has_key(idx, k)));
+                        /*assert(forall(|idx| !post.host_has_key(idx, k)));
+                        assert(!exists(|idx| post.host_has_key(idx, k)));
+                        assert(equal(pre.abstraction_one_key(k), default()));
+                        assert(equal(post.abstraction_one_key(k), default()));
+                        assert(equal(pre.interp_map().index(k), post.interp_map().index(k)));*/
+                    }
+
+                    /*assert(pre.interp_map().dom().contains(k) >>=
+                        post.interp_map().dom().contains(k)
+                        && equal(pre.interp_map().index(k), post.interp_map().index(k))
+                    );
+                    assert(post.interp_map().dom().contains(k) >>=
+                        pre.interp_map().dom().contains(k));*/
+                }
             });
             MapSpec::show::insert_op(interp(pre), interp(post), key, value);
         }
@@ -282,6 +300,22 @@ fn next_refines_next_with_macro(pre: ShardedKVProtocol::State, post: ShardedKVPr
         }
         transfer(send_idx, recv_idx, key, value) => {
             map_ext!(pre.interp_map(), post.interp_map(), k: Key => {
+                if equal(k, key) {
+                    assert(pre.host_has_key(send_idx, key));
+                    assert(post.host_has_key(recv_idx, key));
+                } else {
+                    assert(pre.interp_map().dom().contains(k));
+                    assert(post.interp_map().dom().contains(k));
+
+                    if exists(|idx| pre.host_has_key(idx, k)) {
+                        let i = pre.key_holder(k);
+                        assert(pre.host_has_key(i, k));
+                        assert(post.host_has_key(i, k));
+                        assert(equal(pre.interp_map().index(k), post.interp_map().index(k)));
+                    } else {
+                        assert(forall(|idx| post.host_has_key(idx, k) >>= pre.host_has_key(idx, k)));
+                    }
+                }
             });
             MapSpec::show::noop(interp(pre), interp(post));
         }
