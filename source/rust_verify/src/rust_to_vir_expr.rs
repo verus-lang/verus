@@ -1506,17 +1506,14 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                 BinOpKind::Shr => BinaryOp::Shr,
                 BinOpKind::Shl => BinaryOp::Shl,
             };
+            let e = mk_expr(ExprX::Binary(vop, vlhs, vrhs));
             match op.node {
-                BinOpKind::Add | BinOpKind::Sub | BinOpKind::Mul => {
-                    let e = mk_expr(ExprX::Binary(vop, vlhs, vrhs));
-                    Ok(mk_ty_clip(&expr_typ(), &e))
-                }
+                BinOpKind::Add | BinOpKind::Sub | BinOpKind::Mul => Ok(mk_ty_clip(&expr_typ(), &e)),
                 BinOpKind::Div | BinOpKind::Rem => {
-                    // TODO: disallow divide-by-zero in executable code?
                     match mk_range(tc.node_type(expr.hir_id)) {
                         IntRange::Int | IntRange::Nat | IntRange::U(_) | IntRange::USize => {
                             // Euclidean division
-                            Ok(mk_expr(ExprX::Binary(vop, vlhs, vrhs)))
+                            Ok(mk_ty_clip(&expr_typ(), &e))
                         }
                         IntRange::I(_) | IntRange::ISize => {
                             // Non-Euclidean division, which will need more encoding
@@ -1524,7 +1521,7 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                         }
                     }
                 }
-                _ => Ok(mk_expr(ExprX::Binary(vop, vlhs, vrhs))),
+                _ => Ok(e),
             }
         }
         ExprKind::AssignOp(
