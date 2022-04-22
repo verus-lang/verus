@@ -37,6 +37,30 @@ pub fn affirm(b: bool) {
     requires(b);
 }
 
+/// A tool to check one's reasoning while writing complex spec functions.
+/// Not intended to be used as a mechanism for instantiating quantifiers, `spec_affirm` should
+/// be removed from spec functions once they are complete.
+///
+/// ## Example
+///
+/// ```rust
+/// #[spec(checked)] fn some_predicate(a: nat) -> bool {
+///     recommends(a < 100);
+///     if (a >= 50) {
+///         let _ = spec_affirm(50 <= a && a < 100);
+///         a >= 75
+///     } else {
+///         let _ = spec_affirm(a < 50);
+///         // let _ = spec_affirm(a < 40); would raise a recommends note here
+///         a < 25
+///     }
+/// }
+/// ```
+#[spec] pub fn spec_affirm(b: bool) -> bool {
+    recommends(b);
+    b
+}
+
 /// In spec, all types are inhabited
 #[spec]
 #[verifier(external_body)]
