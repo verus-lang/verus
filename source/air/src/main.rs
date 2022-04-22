@@ -133,6 +133,10 @@ pub fn main() {
                     println!("Additional error detail at {}", msg);
                 }
             }
+            ValidityResult::Canceled => {
+                count_errors += 1;
+                println!("Canceled");
+            }
             ValidityResult::UnexpectedSmtOutput(err) => {
                 panic!("Unexpected SMT output: {}", err);
             }
