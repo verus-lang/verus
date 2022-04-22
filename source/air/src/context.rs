@@ -7,6 +7,7 @@ use crate::node;
 use crate::printer::{macro_push_node, str_to_node};
 use crate::scope_map::ScopeMap;
 use crate::smt_manager::SmtManager;
+use crate::smt_verify::ReportLongRunning;
 use crate::typecheck::Typing;
 use sise::Node;
 use std::collections::HashSet;
@@ -276,7 +277,11 @@ impl Context {
         Ok(())
     }
 
-    pub fn check_valid(&mut self, query: &Query) -> ValidityResult {
+    pub fn check_valid(
+        &mut self,
+        query: &Query,
+        report_long_running: &mut Option<ReportLongRunning>,
+    ) -> ValidityResult {
         self.ensure_started();
         self.air_initial_log.log_query(query);
         let query = match crate::typecheck::check_query(self, query) {
@@ -289,7 +294,7 @@ impl Context {
         self.air_final_log.log_query(&query);
 
         let model = Model::new(snapshots, local_vars);
-        let validity = crate::smt_verify::smt_check_query(self, &query, model);
+        let validity = crate::smt_verify::smt_check_query(self, &query, model, report_long_running);
 
         validity
     }
@@ -298,9 +303,19 @@ impl Context {
     /// only_check_earlier == true means to only look for errors preceding all the previous
     /// errors, with the goal of making sure that the earliest error gets reported.
     /// Once only_check_earlier is set, it remains set until finish_query is called.
-    pub fn check_valid_again(&mut self, only_check_earlier: bool) -> ValidityResult {
+    pub fn check_valid_again(
+        &mut self,
+        only_check_earlier: bool,
+        report_long_running: &mut Option<ReportLongRunning>,
+    ) -> ValidityResult {
         if let ContextState::FoundInvalid(infos, air_model) = self.state.clone() {
-            crate::smt_verify::smt_check_assertion(self, infos, air_model, only_check_earlier)
+            crate::smt_verify::smt_check_assertion(
+                self,
+                infos,
+                air_model,
+                only_check_earlier,
+                report_long_running,
+            )
         } else {
             panic!("check_valid_again expected query to be ValidityResult::Invalid");
         }
@@ -323,6 +338,14 @@ impl Context {
     }
 
     pub fn command(&mut self, command: &Command) -> ValidityResult {
+        self.command_report_long_running(command, &mut None)
+    }
+
+    pub fn command_report_long_running(
+        &mut self,
+        command: &Command,
+        report_long_running: &mut Option<ReportLongRunning>,
+    ) -> ValidityResult {
         match &**command {
             CommandX::Push => {
                 self.push();
@@ -343,7 +366,7 @@ impl Context {
                     ValidityResult::Valid
                 }
             }
-            CommandX::CheckValid(query) => self.check_valid(&query),
+            CommandX::CheckValid(query) => self.check_valid(&query, report_long_running),
         }
     }
 }

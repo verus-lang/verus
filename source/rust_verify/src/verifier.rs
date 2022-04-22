@@ -230,8 +230,18 @@ impl Verifier {
         command: &Command,
         context: &(&air::ast::Span, String),
     ) -> bool {
+        let mut report_long_running = {
+            let report_fn: Box<dyn FnMut(std::time::Duration) -> ()> = Box::new(|elapsed| {
+                let span = from_raw_span(&context.0.raw_span);
+                let msg =
+                    format!("{} has been running for {} seconds", context.1, elapsed.as_secs());
+                compiler.session().parse_sess.span_diagnostic.span_note_without_error(span, &msg);
+            });
+            Some((std::time::Duration::from_secs(2), report_fn))
+        };
         let is_check_valid = matches!(**command, CommandX::CheckValid(_));
-        let mut result = air_context.command(&command);
+        let mut result =
+            air_context.command_report_long_running(&command, &mut report_long_running);
         let mut is_first_check = true;
         let mut checks_remaining = self.args.multiple_errors;
         let mut only_check_earlier = false;
@@ -312,7 +322,8 @@ impl Verifier {
                         }
                     }
 
-                    result = air_context.check_valid_again(only_check_earlier);
+                    result =
+                        air_context.check_valid_again(only_check_earlier, &mut report_long_running);
                 }
                 ValidityResult::UnexpectedSmtOutput(err) => {
                     panic!("unexpected SMT output: {}", err);

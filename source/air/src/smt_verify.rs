@@ -106,11 +106,15 @@ pub(crate) fn smt_add_decl<'ctx>(context: &mut Context, decl: &Decl) {
     }
 }
 
+pub type ReportLongRunning<'a> =
+    (std::time::Duration, Box<dyn FnMut(std::time::Duration) -> () + 'a>);
+
 pub(crate) fn smt_check_assertion<'ctx>(
     context: &mut Context,
     mut infos: Vec<AssertionInfo>,
     air_model: Model,
     only_check_earlier: bool,
+    report_long_running: &mut Option<ReportLongRunning>,
 ) -> ValidityResult {
     if only_check_earlier {
         // disable all labels that come after the first known error
@@ -148,7 +152,20 @@ pub(crate) fn smt_check_assertion<'ctx>(
     let time0 = std::time::Instant::now();
     let smt_proc = context.smt_manager.get_smt_process();
     let time1 = std::time::Instant::now();
-    let smt_output = smt_proc.send_commands(context.smt_log.take_pipe_data());
+    let mut commands_handle = smt_proc.send_commands_async(context.smt_log.take_pipe_data());
+    let smt_output = if let Some((report_interval, report_fn)) = report_long_running {
+        loop {
+            match commands_handle.wait_timeout(*report_interval) {
+                Ok(smt_output) => break smt_output,
+                Err(handle) => {
+                    report_fn(time1.elapsed());
+                    commands_handle = handle;
+                }
+            }
+        }
+    } else {
+        commands_handle.wait()
+    };
     let time2 = std::time::Instant::now();
     context.time_smt_init += time1 - time0;
     context.time_smt_run += time2 - time1;
@@ -281,6 +298,7 @@ pub(crate) fn smt_check_query<'ctx>(
     context: &mut Context,
     query: &Query,
     air_model: Model,
+    report_long_running: &mut Option<ReportLongRunning>,
 ) -> ValidityResult {
     context.smt_log.log_push();
     context.push_name_scope();
@@ -316,7 +334,7 @@ pub(crate) fn smt_check_query<'ctx>(
     let not_expr = Arc::new(ExprX::Unary(UnaryOp::Not, labeled_assertion));
     context.smt_log.log_decl(&Arc::new(DeclX::Const(str_ident(QUERY), Arc::new(TypX::Bool))));
     context.smt_log.log_assert(&mk_implies(&str_var(QUERY), &not_expr));
-    let result = smt_check_assertion(context, infos, air_model, false);
+    let result = smt_check_assertion(context, infos, air_model, false, report_long_running);
 
     result
 }
