@@ -411,6 +411,7 @@ fn fn_call_to_vir<'tcx>(
     let is_add = f_name == "core::ops::arith::Add::add";
     let is_sub = f_name == "core::ops::arith::Sub::sub";
     let is_mul = f_name == "core::ops::arith::Mul::mul";
+    let is_panic = f_name == "core::panicking::panic";
     let is_spec = is_admit
         || is_no_method_body
         || is_requires
@@ -456,6 +457,15 @@ fn fn_call_to_vir<'tcx>(
             &Arc::new(TypX::Bool),
             ExprX::Block(Arc::new(vec![]), None),
         ));
+    }
+
+    if is_panic {
+        return err_span_string(
+            expr.span,
+            format!(
+                "panic is not supported (if you used Rust's `assert!` macro, you may have meant to use Verus's `assert` function)"
+            ),
+        );
     }
 
     unsupported_err_unless!(
