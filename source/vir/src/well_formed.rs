@@ -91,6 +91,14 @@ fn check_one_expr(
         ExprX::OpenInvariant(_inv, _binder, body, _atomicity) => {
             assert_no_early_exit_in_inv_block(&body.span, body)?;
         }
+        ExprX::AssertNonLinear { .. } => {
+            if function.x.attrs.non_linear {
+                return err_str(
+                    &expr.span,
+                    "assert_by_nonlinear not allowed in #[verifier(non_linear)] functions",
+                );
+            }
+        }
         _ => {}
     }
     Ok(())
@@ -240,6 +248,15 @@ fn check_function(ctxt: &Ctxt, function: &Function) -> Result<(), VirErr> {
                     );
                 }
             }
+        }
+    }
+
+    if function.x.attrs.non_linear {
+        if function.x.mode == Mode::Spec {
+            return err_str(
+                &function.span,
+                "#[verifier(non_linear) is only allowed on proof and exec functions",
+            );
         }
     }
 

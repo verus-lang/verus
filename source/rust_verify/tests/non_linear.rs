@@ -66,6 +66,34 @@ test_verify_one_file! {
     } => Ok(())
 }
 
+test_verify_one_file! {
+    #[test] test1_fails code! {
+        #[verifier(non_linear)]
+        #[proof]
+        fn wrong_lemma_1(x: int, y: int, z: int) {
+            requires([
+                x <= y,
+                0 <= z,
+            ]);
+            ensures (x*z < y*z); // FAILS
+        }
+    } => Err(e) => assert_one_fails(e)
+}
+
+test_verify_one_file! {
+    #[test] test2_fails code! {
+        #[verifier(non_linear)]
+        #[proof]
+        fn wrong_lemma_2(x: int, y: int, z: int) {
+            requires([
+                x > y,
+                3 <= z,
+            ]);
+            ensures (y*z > x); // FAILS
+        }
+    } => Err(e) => assert_one_fails(e)
+}
+
 // Test assert_by_nonlinear
 test_verify_one_file! {
     #[test] test5 code! {
@@ -131,34 +159,6 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test1_fails code! {
-        #[verifier(non_linear)]
-        #[proof]
-        fn wrong_lemma_1(x: int, y: int, z: int) {
-            requires([
-                x <= y,
-                0 <= z,
-            ]);
-            ensures (x*z < y*z); // FAILS
-        }
-    } => Err(e) => assert_one_fails(e)
-}
-
-test_verify_one_file! {
-    #[test] test2_fails code! {
-        #[verifier(non_linear)]
-        #[proof]
-        fn wrong_lemma_2(x: int, y: int, z: int) {
-            requires([
-                x > y,
-                3 <= z,
-            ]);
-            ensures (y*z > x); // FAILS
-        }
-    } => Err(e) => assert_one_fails(e)
-}
-
-test_verify_one_file! {
     #[test] test3_fails code! {
         #[proof]
         fn test3_fails(x: int, y: int, z: int) {
@@ -174,4 +174,17 @@ test_verify_one_file! {
             assert_by_nonlinear( (x as int) * (z as int) == ((x*z) as int), {}); //FAILS
         }
     } => Err(e) => assert_one_fails(e)
+}
+
+test_verify_one_file! {
+    #[test] test_assert_by_nonlinear_in_nonlinear code! {
+        #[proof] #[verifier(non_linear)]
+        fn test(x: u32) {
+            requires(x < 0xfff);
+            assert_by_nonlinear(x*x + x == x * (x + 1), {
+                requires(x < 0xfff);
+            });
+            assert(x*x + x == x * (x + 1));
+        }
+    } => Err(_)
 }
