@@ -32,6 +32,7 @@ pub(crate) struct AxiomInfo {
 pub enum ValidityResult {
     Valid,
     Invalid(Model, Error),
+    Canceled,
     TypeError(TypeError),
     UnexpectedSmtOutput(String),
 }
@@ -42,6 +43,7 @@ pub(crate) enum ContextState {
     ReadyForQuery,
     FoundResult,
     FoundInvalid(Vec<AssertionInfo>, Model),
+    Canceled,
 }
 
 pub struct Context {

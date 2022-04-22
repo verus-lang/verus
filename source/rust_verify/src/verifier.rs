@@ -228,6 +228,7 @@ impl Verifier {
         assign_map: &HashMap<*const air::ast::Span, HashSet<Arc<std::string::String>>>,
         snap_map: &Vec<(air::ast::Span, SnapPos)>,
         command: &Command,
+        context: &(&air::ast::Span, String),
     ) -> bool {
         let is_check_valid = matches!(**command, CommandX::CheckValid(_));
         let mut result = air_context.command(&command);
@@ -245,6 +246,27 @@ impl Verifier {
                 }
                 ValidityResult::TypeError(err) => {
                     panic!("internal error: generated ill-typed AIR code: {}", err);
+                }
+                ValidityResult::Canceled => {
+                    if is_first_check && error_as == ErrorAs::Error {
+                        self.count_errors += 1;
+                        invalidity = true;
+                    }
+                    let mut v = Vec::new();
+                    v.push(from_raw_span(&context.0.raw_span));
+                    let multispan = MultiSpan::from_spans(v);
+                    compiler
+                        .session()
+                        .parse_sess
+                        .span_diagnostic
+                        .span_err(multispan, &format!("{}: rlimit exceeded", context.1));
+
+                    self.errors.push(vec![ErrorSpan::new_from_air_span(
+                        compiler.session().source_map(),
+                        &context.1,
+                        &context.0,
+                    )]);
+                    break;
                 }
                 ValidityResult::Invalid(air_model, error) => {
                     if is_first_check && error_as == ErrorAs::Error {
@@ -333,6 +355,7 @@ impl Verifier {
         assign_map: &HashMap<*const air::ast::Span, HashSet<Arc<String>>>,
         snap_map: &Vec<(air::ast::Span, SnapPos)>,
         comment: &str,
+        context: &(&air::ast::Span, String),
     ) -> bool {
         let mut invalidity = false;
         if commands.len() > 0 {
@@ -348,6 +371,7 @@ impl Verifier {
                 assign_map,
                 snap_map,
                 &command,
+                context,
             );
             invalidity = invalidity || result_invalidity;
             let time1 = Instant::now();
@@ -458,6 +482,7 @@ impl Verifier {
                     &HashMap::new(),
                     &vec![],
                     &("Function-Termination ".to_string() + &fun_as_rust_dbg(f)),
+                    &(&function.span, "termination proof".to_string()),
                 );
             }
 
@@ -502,6 +527,15 @@ impl Verifier {
                     &HashMap::new(),
                     &snap_map,
                     &(s.to_string() + &fun_as_rust_dbg(&function.x.name)),
+                    &(
+                        &function.span,
+                        if check_recommends {
+                            "recommends check"
+                        } else {
+                            "function definition check"
+                        }
+                        .to_string(),
+                    ),
                 );
                 if invalidity && !check_recommends && !self.args.no_auto_recommends_check {
                     // Rerun failed query to report possible recommends violations
