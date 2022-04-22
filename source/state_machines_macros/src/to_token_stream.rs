@@ -627,6 +627,7 @@ fn output_other_fns(
     };
     impl_stream.extend(quote! {
         #[spec]
+        #[verifier(publish)]
         pub fn invariant(&self) -> ::std::primitive::bool {
             #conj
         }

@@ -29,7 +29,7 @@ tokenized_state_machine!(Dupe<T> {
     }
 
     #[invariant]
-    fn agreement(&self) -> bool {
+    pub fn agreement(&self) -> bool {
         forall(|x: T| self.reader.count(x) > 0 >>=
             equal(self.storage, Option::Some(x)))
     }
@@ -119,23 +119,23 @@ tokenized_state_machine!(RefCounter<#[verifier(maybe_negative)] T> {
     }
 
     #[invariant]
-    fn reader_agrees_storage(&self) -> bool {
+    pub fn reader_agrees_storage(&self) -> bool {
         forall(|t: T| self.reader.count(t) > 0 >>=
             equal(self.storage, Option::Some(t)))
     }
 
     #[invariant]
-    fn counter_agrees_storage(&self) -> bool {
+    pub fn counter_agrees_storage(&self) -> bool {
         self.counter == 0 >>= self.storage.is_None()
     }
 
     #[invariant]
-    fn counter_agrees_storage_rev(&self) -> bool {
+    pub fn counter_agrees_storage_rev(&self) -> bool {
         self.storage.is_None() >>= self.counter == 0
     }
 
     #[invariant]
-    fn counter_agrees_reader_count(&self) -> bool {
+    pub fn counter_agrees_reader_count(&self) -> bool {
         self.storage.is_Some() >>=
             self.reader.count(self.storage.get_Some_0()) == self.counter
     }

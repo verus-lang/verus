@@ -23,6 +23,14 @@ struct Value { }
 #[spec]
 pub fn default() -> Value { unimplemented!() }
 
+// TODO(tjhance) this is a hack to get the transition vec/map updates working for this file
+impl<K, V> Map<K, V> {
+    #[spec] #[verifier(publish)]
+    pub fn update(self, key: K, value: V) -> Map<K, V> {
+        self.insert(key, value)
+    }
+}
+
 state_machine!{
     MapSpec {
         fields {
@@ -77,7 +85,7 @@ state_machine!{
             }
         }
 
-        #[spec]
+        #[spec] #[verifier(publish)]
         pub fn valid_host(&self, i: nat) -> bool {
             i < self.map_count
         }
@@ -108,18 +116,18 @@ state_machine!{
             }
         }
 
-        #[spec]
+        #[spec] #[verifier(publish)]
         pub fn host_has_key(&self, hostidx: nat, key: Key) -> bool {
             self.valid_host(hostidx)
             && self.maps.index(hostidx).dom().contains(key)
         }
 
-        #[spec]
+        #[spec] #[verifier(publish)]
         pub fn key_holder(&self, key: Key) -> nat {
             choose(|idx| self.host_has_key(idx, key))
         }
 
-        #[spec]
+        #[spec] #[verifier(publish)]
         pub fn abstraction_one_key(&self, key: Key) -> Value {
             if exists(|idx| self.host_has_key(idx, key)) {
                 self.maps.index(self.key_holder(key)).index(key)
@@ -128,17 +136,19 @@ state_machine!{
             }
         }
 
-        #[spec]
+        #[spec] #[verifier(publish)]
         pub fn interp_map(&self) -> Map<Key, Value> {
             Map::total(|key| self.abstraction_one_key(key))
         }
 
         #[invariant]
+        #[verifier(publish)]
         pub fn num_hosts(&self) -> bool {
             self.maps.len() == self.map_count
         }
 
         #[invariant]
+        #[verifier(publish)]
         pub fn inv_no_dupes(&self) -> bool {
             forall(|i: nat, j: nat, key: Key|
                 self.host_has_key(i, key) && self.host_has_key(j, key) >>= i == j)
@@ -231,6 +241,14 @@ fn next_refines_next_with_macro(pre: ShardedKVProtocol::State, post: ShardedKVPr
 
             assert(equal(interp(pre).map.dom(), Set::empty().complement()));
             assert(interp(pre).map.dom().contains(key));
+            assert(equal(interp(pre).map.index(key),
+                pre.abstraction_one_key(key)));
+
+            assert(pre.host_has_key(idx, key));
+            assert(pre.host_has_key(pre.key_holder(key), key));
+            assert(equal(pre.key_holder(key), idx));
+
+            assert(equal(pre.abstraction_one_key(key), value));
             assert(equal(interp(pre).map.index(key), value));
             MapSpec::show::query_op(interp(pre), interp(post), key, value);
         }
