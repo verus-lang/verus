@@ -232,19 +232,29 @@ impl Verifier {
         command: &Command,
         context: &(&air::ast::Span, String),
     ) -> bool {
-        let mut report_long_running = {
-            let report_fn: Box<dyn FnMut(std::time::Duration) -> ()> = Box::new(|elapsed| {
-                let span = from_raw_span(&context.0.raw_span);
+        let report_long_running = || {
+            let mut counter = 0;
+            let report_fn: Box<dyn FnMut(std::time::Duration) -> ()> = Box::new(move |elapsed| {
                 let msg =
                     format!("{} has been running for {} seconds", context.1, elapsed.as_secs());
-                compiler.session().parse_sess.span_diagnostic.span_note_without_error(span, &msg);
+                if counter % 5 == 0 {
+                    let span = from_raw_span(&context.0.raw_span);
+                    compiler
+                        .session()
+                        .parse_sess
+                        .span_diagnostic
+                        .span_note_without_error(span, &msg);
+                } else {
+                    compiler.session().note_without_error(&msg);
+                }
+                counter += 1;
             });
             (std::time::Duration::from_secs(2), report_fn)
         };
         let is_check_valid = matches!(**command, CommandX::CheckValid(_));
         let mut result = air_context.command(
             &command,
-            QueryContext { report_long_running: Some(&mut report_long_running) },
+            QueryContext { report_long_running: Some(&mut report_long_running()) },
         );
         let mut is_first_check = true;
         let mut checks_remaining = self.args.multiple_errors;
@@ -328,7 +338,7 @@ impl Verifier {
 
                     result = air_context.check_valid_again(
                         only_check_earlier,
-                        QueryContext { report_long_running: Some(&mut report_long_running) },
+                        QueryContext { report_long_running: Some(&mut report_long_running()) },
                     );
                 }
                 ValidityResult::UnexpectedSmtOutput(err) => {
