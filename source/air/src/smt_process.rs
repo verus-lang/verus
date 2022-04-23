@@ -4,7 +4,9 @@ use std::sync::mpsc::{channel, Receiver, Sender};
 
 pub(crate) struct SmtProcess {
     requests: Sender<Vec<u8>>,
-    smt_pipe_stdout: Option<BufReader<ChildStdout>>,
+    responses_buf_recv:
+        Option<(BufReader<ChildStdout>, Receiver<(BufReader<ChildStdout>, Vec<String>)>)>,
+    recv_requests: Sender<BufReader<ChildStdout>>,
 }
 
 const DONE: &str = "<<DONE>>";
@@ -25,6 +27,31 @@ fn writer_thread(requests: Receiver<Vec<u8>>, mut smt_pipe_stdin: ChildStdin) {
     // Exit when the other side closes the channel
 }
 
+/// A separate thread read data from the SMT solver over a pipe.
+fn reader_thread(
+    recv_requests: Receiver<BufReader<ChildStdout>>,
+    responses: Sender<(BufReader<ChildStdout>, Vec<String>)>,
+) {
+    while let Ok(mut smt_pipe_stdout) = recv_requests.recv() {
+        let mut lines = Vec::new();
+        loop {
+            let mut line = String::new();
+            smt_pipe_stdout
+                .read_line(&mut line)
+                // The Z3 process could die unexpectedly.  In that case, we die too:
+                .expect("IO error: failure when receiving data to Z3 process across pipe");
+            line = line.replace("\n", "").replace("\r", "");
+            if line == DONE {
+                responses
+                    .send((smt_pipe_stdout, lines))
+                    .expect("internal error: Z3 reader thread failure");
+                break;
+            }
+            lines.push(line);
+        }
+    }
+}
+
 impl SmtProcess {
     pub(crate) fn launch(smt_executable_name: &String) -> Self {
         let mut child = std::process::Command::new(smt_executable_name)
@@ -35,9 +62,16 @@ impl SmtProcess {
             .expect("could not execute Z3 process");
         let smt_pipe_stdout = BufReader::new(child.stdout.take().expect("take stdout"));
         let child_stdin = child.stdin.take().expect("take stdin");
-        let (sender, receiver) = channel();
-        std::thread::spawn(move || writer_thread(receiver, child_stdin));
-        SmtProcess { requests: sender, smt_pipe_stdout: Some(smt_pipe_stdout) }
+        let (requests_sender, requests_receiver) = channel();
+        let (responses_sender, responses_receiver) = channel();
+        let (recv_responses_sender, recv_responses_receiver) = channel();
+        std::thread::spawn(move || writer_thread(requests_receiver, child_stdin));
+        std::thread::spawn(move || reader_thread(recv_responses_receiver, responses_sender));
+        SmtProcess {
+            requests: requests_sender,
+            responses_buf_recv: Some((smt_pipe_stdout, responses_receiver)),
+            recv_requests: recv_responses_sender,
+        }
     }
 
     /// Send commands to Z3, wait for Z3 to acknowledge commands, and return responses
@@ -50,52 +84,37 @@ impl SmtProcess {
         // Send request to writer thread
         self.requests.send(commands).expect("internal error: failed to send to writer thread");
 
-        let smt_pipe_stdout =
-            self.smt_pipe_stdout.take().expect("internal error: wait on the CommandsHandle first");
-        let (sender, receiver) = std::sync::mpsc::channel();
+        let (smt_pipe_stdout, receiver) = self
+            .responses_buf_recv
+            .take()
+            .expect("internal error: wait on the CommandsHandle first");
 
-        let join_handle = std::thread::spawn(move || {
-            let mut smt_pipe_stdout = smt_pipe_stdout;
-            let mut lines = Vec::new();
-            loop {
-                let mut line = String::new();
-                smt_pipe_stdout
-                    .read_line(&mut line)
-                    // The Z3 process could die unexpectedly.  In that case, we die too:
-                    .expect("IO error: failure when receiving data to Z3 process across pipe");
-                line = line.replace("\n", "").replace("\r", "");
-                if line == DONE {
-                    sender.send(lines).expect("internal error: Z3 reader thread failure");
-                    break smt_pipe_stdout;
-                }
-                lines.push(line);
-            }
-        });
+        // Send read request to reader thread
+        self.recv_requests
+            .send(smt_pipe_stdout)
+            .expect("internal error: failed to send to reader thread");
 
-        CommandsHandle { smt_process: self, join_handle, receiver }
+        CommandsHandle { smt_process: self, receiver }
     }
 }
 
 pub struct CommandsHandle<'a> {
     smt_process: &'a mut SmtProcess,
-    join_handle: std::thread::JoinHandle<BufReader<ChildStdout>>,
-    receiver: std::sync::mpsc::Receiver<Vec<String>>,
+    receiver: std::sync::mpsc::Receiver<(BufReader<ChildStdout>, Vec<String>)>,
 }
 
 impl<'a> CommandsHandle<'a> {
     pub fn wait(self) -> Vec<String> {
-        let result = self.receiver.recv().expect("internal error: Z3 reader thread failure");
-        self.smt_process.smt_pipe_stdout =
-            Some(self.join_handle.join().expect("internal error: Z3 reader thread failure"));
+        let (smt_pipe_stdout, result) =
+            self.receiver.recv().expect("internal error: Z3 reader thread failure");
+        self.smt_process.responses_buf_recv = Some((smt_pipe_stdout, self.receiver));
         result
     }
 
     pub fn wait_timeout(self, timeout: std::time::Duration) -> Result<Vec<String>, Self> {
         match self.receiver.recv_timeout(timeout) {
-            Ok(result) => {
-                self.smt_process.smt_pipe_stdout = Some(
-                    self.join_handle.join().expect("internal error: Z3 reader thread failure"),
-                );
+            Ok((smt_pipe_stdout, result)) => {
+                self.smt_process.responses_buf_recv = Some((smt_pipe_stdout, self.receiver));
                 Ok(result)
             }
             Err(std::sync::mpsc::RecvTimeoutError::Timeout) => Err(self),
