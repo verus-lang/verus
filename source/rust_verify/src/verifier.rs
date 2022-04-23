@@ -4,7 +4,7 @@ use crate::debugger::Debugger;
 use crate::unsupported;
 use crate::util::{from_raw_span, signalling};
 use air::ast::{Command, CommandX, Commands};
-use air::context::ValidityResult;
+use air::context::{QueryContext, ValidityResult};
 use air::errors::{Error, ErrorLabel};
 use rustc_hir::OwnerNode;
 use rustc_interface::interface::Compiler;
@@ -239,11 +239,13 @@ impl Verifier {
                     format!("{} has been running for {} seconds", context.1, elapsed.as_secs());
                 compiler.session().parse_sess.span_diagnostic.span_note_without_error(span, &msg);
             });
-            Some((std::time::Duration::from_secs(2), report_fn))
+            (std::time::Duration::from_secs(2), report_fn)
         };
         let is_check_valid = matches!(**command, CommandX::CheckValid(_));
-        let mut result =
-            air_context.command_report_long_running(&command, &mut report_long_running);
+        let mut result = air_context.command(
+            &command,
+            QueryContext { report_long_running: Some(&mut report_long_running) },
+        );
         let mut is_first_check = true;
         let mut checks_remaining = self.args.multiple_errors;
         let mut only_check_earlier = false;
@@ -324,8 +326,10 @@ impl Verifier {
                         }
                     }
 
-                    result =
-                        air_context.check_valid_again(only_check_earlier, &mut report_long_running);
+                    result = air_context.check_valid_again(
+                        only_check_earlier,
+                        QueryContext { report_long_running: Some(&mut report_long_running) },
+                    );
                 }
                 ValidityResult::UnexpectedSmtOutput(err) => {
                     panic!("unexpected SMT output: {}", err);
@@ -352,7 +356,7 @@ impl Verifier {
         }
         for command in commands.iter() {
             let time0 = Instant::now();
-            Self::check_internal_result(air_context.command(&command));
+            Self::check_internal_result(air_context.command(&command, Default::default()));
             let time1 = Instant::now();
             self.time_air += time1 - time0;
         }
@@ -405,7 +409,7 @@ impl Verifier {
         air_context.blank_line();
         air_context.comment("Fuel");
         for command in ctx.fuel().iter() {
-            Self::check_internal_result(air_context.command(&command));
+            Self::check_internal_result(air_context.command(&command, Default::default()));
         }
 
         let datatype_commands = vir::datatype_to_air::datatypes_to_air(
@@ -617,7 +621,7 @@ impl Verifier {
         air_context.blank_line();
         air_context.comment("Prelude");
         for command in vir::context::Ctx::prelude().iter() {
-            Self::check_internal_result(air_context.command(&command));
+            Self::check_internal_result(air_context.command(&command, Default::default()));
         }
 
         air_context.blank_line();

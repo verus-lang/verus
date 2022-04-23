@@ -15,7 +15,7 @@ fn run_nodes_as_test(should_typecheck: bool, should_be_valid: bool, nodes: &[Nod
     match Parser::new().nodes_to_commands(&nodes) {
         Ok(commands) => {
             for command in commands.iter() {
-                let result = air_context.command(&command);
+                let result = air_context.command(&command, Default::default());
                 match (&**command, should_typecheck, should_be_valid, result) {
                     (_, false, _, ValidityResult::TypeError(_)) => {}
                     (_, true, _, ValidityResult::TypeError(s)) => {

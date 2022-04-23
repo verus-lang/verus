@@ -47,6 +47,16 @@ pub(crate) enum ContextState {
     Canceled,
 }
 
+pub struct QueryContext<'a, 'b: 'a> {
+    pub report_long_running: Option<&'a mut ReportLongRunning<'b>>,
+}
+
+impl<'a, 'b: 'a> Default for QueryContext<'a, 'b> {
+    fn default() -> Self {
+        QueryContext { report_long_running: None }
+    }
+}
+
 pub struct Context {
     pub(crate) smt_manager: SmtManager,
     pub(crate) axiom_infos: ScopeMap<Ident, Arc<AxiomInfo>>,
@@ -280,7 +290,7 @@ impl Context {
     pub fn check_valid(
         &mut self,
         query: &Query,
-        report_long_running: &mut Option<ReportLongRunning>,
+        query_context: QueryContext<'_, '_>,
     ) -> ValidityResult {
         self.ensure_started();
         self.air_initial_log.log_query(query);
@@ -294,7 +304,12 @@ impl Context {
         self.air_final_log.log_query(&query);
 
         let model = Model::new(snapshots, local_vars);
-        let validity = crate::smt_verify::smt_check_query(self, &query, model, report_long_running);
+        let validity = crate::smt_verify::smt_check_query(
+            self,
+            &query,
+            model,
+            query_context.report_long_running,
+        );
 
         validity
     }
@@ -306,7 +321,7 @@ impl Context {
     pub fn check_valid_again(
         &mut self,
         only_check_earlier: bool,
-        report_long_running: &mut Option<ReportLongRunning>,
+        query_context: QueryContext<'_, '_>,
     ) -> ValidityResult {
         if let ContextState::FoundInvalid(infos, air_model) = self.state.clone() {
             crate::smt_verify::smt_check_assertion(
@@ -314,7 +329,7 @@ impl Context {
                 infos,
                 air_model,
                 only_check_earlier,
-                report_long_running,
+                query_context.report_long_running,
             )
         } else {
             panic!("check_valid_again expected query to be ValidityResult::Invalid");
@@ -337,14 +352,10 @@ impl Context {
         smt_output[0].clone()
     }
 
-    pub fn command(&mut self, command: &Command) -> ValidityResult {
-        self.command_report_long_running(command, &mut None)
-    }
-
-    pub fn command_report_long_running(
+    pub fn command(
         &mut self,
         command: &Command,
-        report_long_running: &mut Option<ReportLongRunning>,
+        query_context: QueryContext<'_, '_>,
     ) -> ValidityResult {
         match &**command {
             CommandX::Push => {
@@ -366,7 +377,7 @@ impl Context {
                     ValidityResult::Valid
                 }
             }
-            CommandX::CheckValid(query) => self.check_valid(&query, report_long_running),
+            CommandX::CheckValid(query) => self.check_valid(&query, query_context),
         }
     }
 }

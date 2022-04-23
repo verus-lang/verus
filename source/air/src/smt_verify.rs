@@ -114,7 +114,7 @@ pub(crate) fn smt_check_assertion<'ctx>(
     mut infos: Vec<AssertionInfo>,
     air_model: Model,
     only_check_earlier: bool,
-    report_long_running: &mut Option<ReportLongRunning>,
+    report_long_running: Option<&mut ReportLongRunning>,
 ) -> ValidityResult {
     if only_check_earlier {
         // disable all labels that come after the first known error
@@ -303,7 +303,7 @@ pub(crate) fn smt_check_query<'ctx>(
     context: &mut Context,
     query: &Query,
     air_model: Model,
-    report_long_running: &mut Option<ReportLongRunning>,
+    report_long_running: Option<&mut ReportLongRunning>,
 ) -> ValidityResult {
     context.smt_log.log_push();
     context.push_name_scope();
