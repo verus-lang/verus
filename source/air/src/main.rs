@@ -116,7 +116,7 @@ pub fn main() {
     let mut count_errors = 0;
     let mut count_verified = 0;
     for command in commands.iter() {
-        let result = air_context.command(&command);
+        let result = air_context.command(&command, Default::default());
         match result {
             ValidityResult::Valid => {
                 if let CommandX::CheckValid(_) = &**command {

@@ -4,7 +4,7 @@ use crate::debugger::Debugger;
 use crate::unsupported;
 use crate::util::{from_raw_span, signalling};
 use air::ast::{Command, CommandX, Commands};
-use air::context::ValidityResult;
+use air::context::{QueryContext, ValidityResult};
 use air::errors::{Error, ErrorLabel};
 use rustc_hir::OwnerNode;
 use rustc_interface::interface::Compiler;
@@ -22,6 +22,8 @@ use vir::ast::{Fun, Function, InferMode, Krate, Mode, VirErr, Visibility};
 use vir::ast_util::{fun_as_rust_dbg, is_visible_to};
 use vir::def::SnapPos;
 use vir::recursion::Node;
+
+const RLIMIT_PER_SECOND: u32 = 3000000;
 
 pub struct VerifierCallbacks {
     pub verifier: Arc<Mutex<Verifier>>,
@@ -230,8 +232,30 @@ impl Verifier {
         command: &Command,
         context: &(&air::ast::Span, String),
     ) -> bool {
+        let report_long_running = || {
+            let mut counter = 0;
+            let report_fn: Box<dyn FnMut(std::time::Duration) -> ()> = Box::new(move |elapsed| {
+                let msg =
+                    format!("{} has been running for {} seconds", context.1, elapsed.as_secs());
+                if counter % 5 == 0 {
+                    let span = from_raw_span(&context.0.raw_span);
+                    compiler
+                        .session()
+                        .parse_sess
+                        .span_diagnostic
+                        .span_note_without_error(span, &msg);
+                } else {
+                    compiler.session().note_without_error(&msg);
+                }
+                counter += 1;
+            });
+            (std::time::Duration::from_secs(2), report_fn)
+        };
         let is_check_valid = matches!(**command, CommandX::CheckValid(_));
-        let mut result = air_context.command(&command);
+        let mut result = air_context.command(
+            &command,
+            QueryContext { report_long_running: Some(&mut report_long_running()) },
+        );
         let mut is_first_check = true;
         let mut checks_remaining = self.args.multiple_errors;
         let mut only_check_earlier = false;
@@ -312,7 +336,10 @@ impl Verifier {
                         }
                     }
 
-                    result = air_context.check_valid_again(only_check_earlier);
+                    result = air_context.check_valid_again(
+                        only_check_earlier,
+                        QueryContext { report_long_running: Some(&mut report_long_running()) },
+                    );
                 }
                 ValidityResult::UnexpectedSmtOutput(err) => {
                     panic!("unexpected SMT output: {}", err);
@@ -339,7 +366,7 @@ impl Verifier {
         }
         for command in commands.iter() {
             let time0 = Instant::now();
-            Self::check_internal_result(air_context.command(&command));
+            Self::check_internal_result(air_context.command(&command, Default::default()));
             let time1 = Instant::now();
             self.time_air += time1 - time0;
         }
@@ -392,7 +419,7 @@ impl Verifier {
         air_context.blank_line();
         air_context.comment("Fuel");
         for command in ctx.fuel().iter() {
-            Self::check_internal_result(air_context.command(&command));
+            Self::check_internal_result(air_context.command(&command, Default::default()));
         }
 
         let datatype_commands = vir::datatype_to_air::datatypes_to_air(
@@ -596,7 +623,7 @@ impl Verifier {
 
         // air_recommended_options causes AIR to apply a preset collection of Z3 options
         air_context.set_z3_param("air_recommended_options", "true");
-        air_context.set_rlimit(self.args.rlimit * 1000000);
+        air_context.set_rlimit(self.args.rlimit.saturating_mul(RLIMIT_PER_SECOND));
         for (option, value) in self.args.smt_options.iter() {
             air_context.set_z3_param(&option, &value);
         }
@@ -604,7 +631,7 @@ impl Verifier {
         air_context.blank_line();
         air_context.comment("Prelude");
         for command in vir::context::Ctx::prelude().iter() {
-            Self::check_internal_result(air_context.command(&command));
+            Self::check_internal_result(air_context.command(&command, Default::default()));
         }
 
         air_context.blank_line();
