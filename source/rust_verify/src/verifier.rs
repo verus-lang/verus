@@ -623,7 +623,7 @@ impl Verifier {
 
         // air_recommended_options causes AIR to apply a preset collection of Z3 options
         air_context.set_z3_param("air_recommended_options", "true");
-        air_context.set_rlimit(self.args.rlimit.checked_mul(RLIMIT_PER_SECOND).unwrap_or(0));
+        air_context.set_rlimit(self.args.rlimit.saturating_mul(RLIMIT_PER_SECOND));
         for (option, value) in self.args.smt_options.iter() {
             air_context.set_z3_param(&option, &value);
         }
