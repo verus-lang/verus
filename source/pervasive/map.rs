@@ -70,6 +70,40 @@ impl<K, V> Map<K, V> {
             |k: K| self.index(k)
         )
     }
+
+    #[proof]
+    #[verifier(external_body)]
+    #[verifier(returns(proof))]
+    pub fn proof_empty() -> Self {
+        ensures(|out_v: Self|
+            equal(out_v, Map::empty())
+        );
+
+        unimplemented!();
+    }
+
+    #[proof]
+    #[verifier(external_body)]
+    pub fn proof_insert(#[proof] &mut self, #[spec] key: K, #[proof] value: V) {
+        ensures(
+            equal(*self, Map::insert(*old(self), key, value))
+        );
+
+        unimplemented!();
+    }
+
+    #[proof]
+    #[verifier(external_body)]
+    #[verifier(returns(proof))]
+    pub fn proof_remove(#[proof] &mut self, #[spec] key: K) -> V {
+        requires(old(self).dom().contains(key));
+        ensures(|v: V| [
+            equal(*self, Map::remove(*old(self), key)),
+            equal(v, old(self).index(key)),
+        ]);
+
+        unimplemented!();
+    }
 }
 
 // Trusted axioms
