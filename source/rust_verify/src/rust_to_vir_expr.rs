@@ -382,6 +382,7 @@ fn fn_call_to_vir<'tcx>(
     let is_ensures = f_name == "builtin::ensures";
     let is_invariant = f_name == "builtin::invariant";
     let is_decreases = f_name == "builtin::decreases";
+    let is_decreases_when = f_name == "builtin::decreases_when";
     let is_decreases_by = f_name == "builtin::decreases_by";
     let is_opens_invariants_none = f_name == "builtin::opens_invariants_none";
     let is_opens_invariants_any = f_name == "builtin::opens_invariants_any";
@@ -419,6 +420,7 @@ fn fn_call_to_vir<'tcx>(
         || is_ensures
         || is_invariant
         || is_decreases
+        || is_decreases_when
         || is_decreases_by
         || is_opens_invariants_none
         || is_opens_invariants_any
@@ -762,6 +764,10 @@ fn fn_call_to_vir<'tcx>(
         Ok(mk_expr(ExprX::Header(header)))
     } else if is_decreases {
         let header = Arc::new(HeaderExprX::Decreases(Arc::new(vir_args)));
+        Ok(mk_expr(ExprX::Header(header)))
+    } else if is_decreases_when {
+        unsupported_err_unless!(len == 1, expr.span, "expected decreases_when", &args);
+        let header = Arc::new(HeaderExprX::DecreasesWhen(vir_args[0].clone()));
         Ok(mk_expr(ExprX::Header(header)))
     } else if is_admit {
         unsupported_err_unless!(len == 0, expr.span, "expected admit", args);

@@ -531,6 +531,7 @@ fn poly_function(ctx: &Ctx, function: &Function) -> Function {
         require,
         ensure,
         decrease,
+        decrease_when,
         decrease_by,
         mask_spec,
         is_const,
@@ -591,6 +592,8 @@ fn poly_function(ctx: &Ctx, function: &Function) -> Function {
     state.types.pop_scope();
 
     let decrease = native_exprs(&mut state, decrease);
+    let decrease_when =
+        decrease_when.as_ref().map(|e| coerce_expr_to_native(ctx, &poly_expr(ctx, &mut state, e)));
 
     let mask_spec = match mask_spec {
         MaskSpec::InvariantOpens(es) => MaskSpec::InvariantOpens(native_exprs(&mut state, es)),
@@ -625,6 +628,7 @@ fn poly_function(ctx: &Ctx, function: &Function) -> Function {
         require,
         ensure,
         decrease,
+        decrease_when,
         decrease_by: decrease_by.clone(),
         mask_spec,
         is_const: *is_const,

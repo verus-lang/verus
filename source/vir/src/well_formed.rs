@@ -156,11 +156,32 @@ fn check_function(ctxt: &Ctxt, function: &Function) -> Result<(), VirErr> {
                 "decreases_by function cannot have its own decreases clause",
             );
         }
+        if function.x.require.len() != 0 {
+            return err_str(
+                &function.span,
+                "decreases_by function cannot have requires clauses (use decreases_when in the spec function instead)",
+            );
+        }
         if function.x.ensure.len() != 0 {
             return err_str(&function.span, "decreases_by function cannot have ensures clauses");
         }
         if function.x.has_return() {
             return err_str(&function.span, "decreases_by function cannot have a return value");
+        }
+    }
+
+    if function.x.decrease_when.is_some() {
+        if function.x.mode != Mode::Spec {
+            return err_str(
+                &function.span,
+                "only spec functions can use decreases_when (use requires for proof/exec functions)",
+            );
+        }
+        if function.x.decrease.len() == 0 {
+            return err_str(
+                &function.span,
+                "decreases_when can only be used when there is a decreases clause (use recommends(...) for nonrecursive functions)",
+            );
         }
     }
 
