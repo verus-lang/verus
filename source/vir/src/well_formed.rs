@@ -170,21 +170,6 @@ fn check_function(ctxt: &Ctxt, function: &Function) -> Result<(), VirErr> {
         }
     }
 
-    if function.x.decrease_when.is_some() {
-        if function.x.mode != Mode::Spec {
-            return err_str(
-                &function.span,
-                "only spec functions can use decreases_when (use requires for proof/exec functions)",
-            );
-        }
-        if function.x.decrease.len() == 0 {
-            return err_str(
-                &function.span,
-                "decreases_when can only be used when there is a decreases clause (use recommends(...) for nonrecursive functions)",
-            );
-        }
-    }
-
     if function.x.decrease_by.is_some() {
         if function.x.mode != Mode::Spec {
             return err_str(&function.span, "only spec functions can use decreases_by(...)");
@@ -364,6 +349,27 @@ fn check_function(ctxt: &Ctxt, function: &Function) -> Result<(), VirErr> {
         };
         check_expr(ctxt, function, expr, disallow_private_access)?;
     }
+    if let Some(expr) = &function.x.decrease_when {
+        let disallow_private_access = if function.x.visibility.is_private {
+            None
+        } else {
+            Some("public function decreases_when cannot refer to private items")
+        };
+        if function.x.mode != Mode::Spec {
+            return err_str(
+                &function.span,
+                "only spec functions can use decreases_when (use requires for proof/exec functions)",
+            );
+        }
+        if function.x.decrease.len() == 0 {
+            return err_str(
+                &function.span,
+                "decreases_when can only be used when there is a decreases clause (use recommends(...) for nonrecursive functions)",
+            );
+        }
+        check_expr(ctxt, function, expr, disallow_private_access)?;
+    }
+
     if let Some(body) = &function.x.body {
         // Check that public, non-abstract spec function bodies don't refer to private items:
         let disallow_private_access = function.x.publish.is_some()
