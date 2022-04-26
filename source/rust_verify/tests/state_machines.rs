@@ -670,7 +670,7 @@ test_verify_one_file! {
             }
 
             #[invariant]
-            fn the_inv(self) -> bool {
+            pub fn the_inv(self) -> bool {
                 self.t == 5
             }
 
@@ -695,7 +695,7 @@ test_verify_one_file! {
             }
 
             #[invariant]
-            fn the_inv(self) -> bool {
+            pub fn the_inv(self) -> bool {
                 self.t == 5
             }
 
@@ -752,7 +752,7 @@ test_verify_one_file! {
 
             #[invariant]
             #[inductive(tr)]
-            fn the_inv(self) -> bool {
+            pub fn the_inv(self) -> bool {
                 self.t == 5
             }
         }}
@@ -805,7 +805,7 @@ test_verify_one_file! {
             }
 
             #[invariant]
-            fn the_inv(self) -> bool {
+            pub fn the_inv(self) -> bool {
                 true
             }
 
@@ -831,7 +831,7 @@ test_verify_one_file! {
             }
 
             #[invariant]
-            fn the_inv(x: int) -> bool {
+            pub fn the_inv(x: int) -> bool {
                 true
             }
 
@@ -857,7 +857,7 @@ test_verify_one_file! {
             }
 
             #[invariant]
-            fn the_inv(self) -> int {
+            pub fn the_inv(self) -> int {
                 5
             }
 
@@ -883,7 +883,7 @@ test_verify_one_file! {
             }
 
             #[invariant]
-            fn the_inv<V>(self) -> bool {
+            pub fn the_inv<V>(self) -> bool {
                 true
             }
 
@@ -2363,7 +2363,7 @@ test_verify_one_file! {
             }
 
             #[invariant]
-            fn inv_2(self) -> bool {
+            pub fn inv_2(self) -> bool {
                 self.t == 2
             }
 
@@ -2463,7 +2463,7 @@ test_verify_one_file! {
             }
 
             #[invariant]
-            fn the_inv(self) -> bool { self.y <= self.z }
+            pub fn the_inv(self) -> bool { self.y <= self.z }
 
             #[inductive(initialize)]
             fn init_inductive(post: Self, x: int, y: int, z: int) { }
@@ -2652,7 +2652,7 @@ test_verify_one_file! {
             }
 
             #[invariant]
-            fn the_inv(self) -> bool { self.y <= self.z }
+            pub fn the_inv(self) -> bool { self.y <= self.z }
 
             #[inductive(initialize)]
             fn init_inductive(post: Self, x: int, y: int, z: int, foo: Foo) { }
@@ -3572,7 +3572,7 @@ test_verify_one_file! {
             }
 
             #[invariant]
-            fn inv(&self) -> bool {
+            pub fn inv(&self) -> bool {
                 self.t.0 == self.t.1
             }
 
@@ -3601,4 +3601,62 @@ test_verify_one_file! {
             }
         }}
     } => Err(e) => assert_error_msg(e, "`super::` path not allowed here")
+}
+
+test_verify_one_file! {
+    #[test] if_let_fail IMPORTS.to_string() + code_str! {
+        tokenized_state_machine!{ X {
+            fields {
+                #[sharding(storage_option)] pub so: Option<int>
+            }
+
+            readonly!{
+                tr() {
+                    if let x = 5 {
+                        assert(x == 5);
+                    }
+                }
+            }
+        }}
+    } => Err(e) => assert_error_msg(e, "do not support if-let conditionals")
+}
+
+test_verify_one_file! {
+    #[test] if_let_fail_with_else IMPORTS.to_string() + code_str! {
+        tokenized_state_machine!{ X {
+            fields {
+                #[sharding(storage_option)] pub so: Option<int>
+            }
+
+            readonly!{
+                tr() {
+                    if let x = 5 {
+                        assert(x == 5);
+                    } else {
+                        assert(true);
+                    }
+                }
+            }
+        }}
+    } => Err(e) => assert_error_msg(e, "do not support if-let conditionals")
+}
+
+test_verify_one_file! {
+    #[test] if_let_fail_with_chain IMPORTS.to_string() + code_str! {
+        tokenized_state_machine!{ X {
+            fields {
+                #[sharding(storage_option)] pub so: Option<int>
+            }
+
+            readonly!{
+                tr() {
+                    if true && let x = 5 {
+                        assert(x == 5);
+                    } else {
+                        assert(true);
+                    }
+                }
+            }
+        }}
+    } => Err(e) => assert_error_msg(e, "do not support if-let conditionals")
 }

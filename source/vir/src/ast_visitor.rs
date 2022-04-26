@@ -366,6 +366,7 @@ where
         require,
         ensure,
         decrease,
+        decrease_when,
         decrease_by: _,
         mask_spec,
         is_const: _,
@@ -381,6 +382,9 @@ where
         expr_visitor_control_flow!(expr_visitor_dfs(e, map, mf));
     }
     for e in decrease.iter() {
+        expr_visitor_control_flow!(expr_visitor_dfs(e, map, mf));
+    }
+    if let Some(e) = decrease_when {
         expr_visitor_control_flow!(expr_visitor_dfs(e, map, mf));
     }
     match mask_spec {
@@ -719,6 +723,7 @@ where
         require,
         ensure,
         decrease,
+        decrease_when,
         decrease_by,
         mask_spec,
         is_const,
@@ -777,6 +782,12 @@ where
 
     let decrease =
         Arc::new(vec_map_result(decrease, |e| map_expr_visitor_env(e, map, env, fe, fs, ft))?);
+    let decrease_when = decrease_when
+        .as_ref()
+        .map(|e| map_expr_visitor_env(e, map, env, fe, fs, ft))
+        .transpose()?;
+    let decrease_by = decrease_by.clone();
+
     let mask_spec = match mask_spec {
         MaskSpec::NoSpec => MaskSpec::NoSpec,
         MaskSpec::InvariantOpens(es) => {
@@ -790,7 +801,6 @@ where
             })?))
         }
     };
-    let decrease_by = decrease_by.clone();
     let attrs = attrs.clone();
     let extra_dependencies = extra_dependencies.clone();
     let is_const = *is_const;
@@ -809,6 +819,7 @@ where
         require,
         ensure,
         decrease,
+        decrease_when,
         decrease_by,
         mask_spec,
         is_const,

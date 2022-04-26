@@ -12,6 +12,7 @@ pub struct Header {
     pub ensure: Exprs,
     pub invariant: Exprs,
     pub decrease: Exprs,
+    pub decrease_when: Option<Expr>,
     pub decrease_by: Option<Fun>,
     pub invariant_mask: MaskSpec,
     pub extra_dependencies: Vec<Fun>,
@@ -25,6 +26,7 @@ fn read_header_block(block: &mut Vec<Stmt>) -> Result<Header, VirErr> {
     let mut recommend: Option<Exprs> = None;
     let mut invariant: Option<Exprs> = None;
     let mut decrease: Option<Exprs> = None;
+    let mut decrease_when: Option<Expr> = None;
     let mut decrease_by: Option<Fun> = None;
     let mut invariant_mask = MaskSpec::NoSpec;
     let mut n = 0;
@@ -82,6 +84,15 @@ fn read_header_block(block: &mut Vec<Stmt>) -> Result<Header, VirErr> {
                             );
                         }
                         decrease = Some(es.clone());
+                    }
+                    HeaderExprX::DecreasesWhen(e) => {
+                        if decrease_when.is_some() {
+                            return err_str(
+                                &stmt.span,
+                                "only one if decrease_when expression currently supported",
+                            );
+                        }
+                        decrease_when = Some(e.clone());
                     }
                     HeaderExprX::DecreasesBy(path) => {
                         if decrease_by.is_some() {
@@ -141,6 +152,7 @@ fn read_header_block(block: &mut Vec<Stmt>) -> Result<Header, VirErr> {
         ensure,
         invariant,
         decrease,
+        decrease_when,
         decrease_by,
         invariant_mask,
         extra_dependencies,

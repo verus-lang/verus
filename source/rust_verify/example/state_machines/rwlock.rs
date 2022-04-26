@@ -142,31 +142,31 @@ tokenized_state_machine!(RwLock {
     }
 
     #[invariant]
-    fn exc_bit_matches(&self) -> bool {
+    pub fn exc_bit_matches(&self) -> bool {
         (if self.flags.0 { 1 } else { 0 }) ==
             (if self.pending_writer.is_Some() { 1 } else { 0 })
             + (if self.writer.is_Some() { 1 } else { 0 })
     }
 
     #[invariant]
-    fn count_matches(&self) -> bool {
+    pub fn count_matches(&self) -> bool {
         self.flags.1 == self.pending_reader.count(())
             + self.reader.count(self.storage.get_Some_0())
     }
 
     #[invariant]
-    fn reader_agrees_storage(&self) -> bool {
+    pub fn reader_agrees_storage(&self) -> bool {
         forall(|t: T| self.reader.count(t) > 0 >>=
             equal(self.storage, Option::Some(t)))
     }
 
     #[invariant]
-    fn writer_agrees_storage(&self) -> bool {
+    pub fn writer_agrees_storage(&self) -> bool {
         self.writer.is_Some() >>= self.storage.is_None()
     }
 
     #[invariant]
-    fn writer_agrees_storage_rev(&self) -> bool {
+    pub fn writer_agrees_storage_rev(&self) -> bool {
         self.storage.is_None() >>= self.writer.is_Some()
     }
 

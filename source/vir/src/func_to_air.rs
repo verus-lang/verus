@@ -121,28 +121,25 @@ fn func_body_to_air(
     let body_exp = crate::ast_to_sst::expr_to_pure_exp(&ctx, &mut state, &body)?;
     let body_exp = state.finalize_exp(&body_exp);
 
-    let (decrease_by_reqs, decrease_by_stms) = if let Some(fun) = &function.x.decrease_by {
+    let mut decrease_by_stms: Vec<Stm> = Vec::new();
+    let decrease_by_reqs = if let Some(req) = &function.x.decrease_when {
+        let exp = crate::ast_to_sst::expr_to_exp(ctx, &pars, req)?;
+        let expr = exp_to_expr(ctx, &exp, ExprCtxt { mode: ExprMode::Spec, is_bit_vector: false });
+        decrease_by_stms.push(Spanned::new(req.span.clone(), StmX::Assume(exp)));
+        vec![expr]
+    } else {
+        vec![]
+    };
+    if let Some(fun) = &function.x.decrease_by {
         let decrease_by_fun = &ctx.func_map[fun];
-        let mut reqs: Vec<Expr> = Vec::new();
-        let mut stms: Vec<Stm> = Vec::new();
-        for req in decrease_by_fun.x.require.iter() {
-            let exp = crate::ast_to_sst::expr_to_exp(ctx, &pars, req)?;
-            let expr =
-                exp_to_expr(ctx, &exp, ExprCtxt { mode: ExprMode::Spec, is_bit_vector: false });
-            reqs.push(expr);
-            stms.push(Spanned::new(req.span.clone(), StmX::Assume(exp)));
-        }
         state.view_as_spec = false;
         let (body_stms, _exp) = crate::ast_to_sst::expr_to_stm_or_error(
             &ctx,
             &mut state,
             decrease_by_fun.x.body.as_ref().expect("decreases_by has body"),
         )?;
-        stms.extend(body_stms);
-        (reqs, stms)
-    } else {
-        (vec![], vec![])
-    };
+        decrease_by_stms.extend(body_stms);
+    }
     state.finalize();
 
     // Check termination

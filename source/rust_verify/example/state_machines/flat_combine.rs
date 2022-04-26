@@ -65,19 +65,19 @@ tokenized_state_machine!{
         }
 
         #[invariant]
-        fn clients_complete(self) -> bool {
+        pub fn clients_complete(self) -> bool {
             forall(|i: nat| (0 <= i && i < self.num_clients) ==
                 self.clients.dom().contains(i))
         }
 
         #[invariant]
-        fn slots_complete(self) -> bool {
+        pub fn slots_complete(self) -> bool {
             forall(|i: nat| (0 <= i && i < self.num_clients) ==
                 self.slots.dom().contains(i))
         }
 
         #[invariant]
-        fn clients_size(self) -> bool {
+        pub fn clients_size(self) -> bool {
             match self.combiner {
                 Combiner::Collecting{elems} => elems.len() <= self.num_clients,
                 Combiner::Responding{elems, idx} => elems.len() == self.num_clients &&
@@ -132,19 +132,19 @@ tokenized_state_machine!{
         }
 
         #[invariant]
-        fn not_waiting_inv(self) -> bool {
+        pub fn not_waiting_inv(self) -> bool {
             forall(|i: nat| #[trigger] self.valid_idx(i) && self.clients.index(i).is_Idle() >>=
                 !self.slots.index(i))
         }
 
         #[invariant]
-        fn waiting_inv(self) -> bool {
+        pub fn waiting_inv(self) -> bool {
             forall(|i: nat| #[trigger] self.client_waiting(i) >>=
                 self.request_stored(i) || self.response_stored(i) || self.combiner_has(i))
         }
 
         #[invariant]
-        fn request_stored_inv(self) -> bool {
+        pub fn request_stored_inv(self) -> bool {
             forall(|i: nat| #[trigger] self.request_stored(i) >>=
                 self.client_waiting(i)
                 && self.requests.index(i).rid == self.clients.index(i).get_Waiting_rid()
@@ -152,7 +152,7 @@ tokenized_state_machine!{
         }
 
         #[invariant]
-        fn response_stored_inv(self) -> bool {
+        pub fn response_stored_inv(self) -> bool {
             forall(|i: nat| #[trigger] self.response_stored(i) >>=
                 self.client_waiting(i)
                 && self.responses.index(i).rid == self.clients.index(i).get_Waiting_rid()
@@ -161,7 +161,7 @@ tokenized_state_machine!{
 
 
         #[invariant]
-        fn combiner_has_inv(self) -> bool {
+        pub fn combiner_has_inv(self) -> bool {
             forall(|i: nat| #[trigger] self.combiner_has(i) >>=
                 self.client_waiting(i)
                 && self.slots.index(i)

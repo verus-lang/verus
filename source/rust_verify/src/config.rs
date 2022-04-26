@@ -1,5 +1,7 @@
 use getopts::Options;
 
+pub const DEFAULT_RLIMIT_SECS: u32 = 10;
+
 #[derive(Debug, Clone, Copy)]
 pub enum ShowTriggers {
     Silent,
@@ -108,7 +110,13 @@ pub fn parse_args(program: &String, args: impl Iterator<Item = String>) -> (Args
         "Do not automatically check recommends after verification failures",
     );
     opts.optflag("", OPT_TIME, "Measure and report time taken");
-    opts.optopt("", OPT_RLIMIT, "Set SMT resource limit (roughly in seconds)", "INTEGER");
+    opts.optopt(
+        "",
+        OPT_RLIMIT,
+        format!("Set SMT resource limit (roughly in seconds). Default: {}.", DEFAULT_RLIMIT_SECS)
+            .as_str(),
+        "INTEGER",
+    );
     opts.optmulti("", OPT_SMT_OPTION, "Set an SMT option (e.g. smt.random_seed=7)", "OPTION=VALUE");
     opts.optopt("", OPT_MULTIPLE_ERRORS, "If 0, look for at most one error per function; if > 0, always find first error in function and make extra queries to find more errors (default: 2)", "INTEGER");
     opts.optopt(
@@ -175,7 +183,7 @@ pub fn parse_args(program: &String, args: impl Iterator<Item = String>) -> (Args
         rlimit: matches
             .opt_get::<u32>(OPT_RLIMIT)
             .unwrap_or_else(|_| error("expected integer after rlimit".to_string()))
-            .unwrap_or(0),
+            .unwrap_or(DEFAULT_RLIMIT_SECS),
         smt_options: matches
             .opt_strs(OPT_SMT_OPTION)
             .iter()

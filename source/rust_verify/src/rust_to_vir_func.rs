@@ -250,6 +250,13 @@ pub(crate) fn check_item_fn<'tcx>(
         check_recommends: vattrs.check_recommends,
         nonlinear: vattrs.nonlinear,
     };
+
+    let mut recommend: Vec<vir::ast::Expr> = (*header.recommend).clone();
+    if let Some(decrease_when) = &header.decrease_when {
+        // Automatically add decrease_when to recommends
+        recommend.push(decrease_when.clone());
+    }
+
     let func = FunctionX {
         name: name.clone(),
         kind,
@@ -259,9 +266,10 @@ pub(crate) fn check_item_fn<'tcx>(
         typ_bounds,
         params,
         ret,
-        require: if mode == Mode::Spec { header.recommend } else { header.require },
+        require: if mode == Mode::Spec { Arc::new(recommend) } else { header.require },
         ensure: header.ensure,
         decrease: header.decrease,
+        decrease_when: header.decrease_when,
         decrease_by: header.decrease_by,
         mask_spec: header.invariant_mask,
         is_const: false,
@@ -323,6 +331,7 @@ pub(crate) fn check_item_const<'tcx>(
         require: Arc::new(vec![]),
         ensure: Arc::new(vec![]),
         decrease: Arc::new(vec![]),
+        decrease_when: None,
         decrease_by: None,
         mask_spec: MaskSpec::NoSpec,
         is_const: true,
@@ -388,6 +397,7 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
         require: Arc::new(vec![]),
         ensure: Arc::new(vec![]),
         decrease: Arc::new(vec![]),
+        decrease_when: None,
         decrease_by: None,
         mask_spec: MaskSpec::NoSpec,
         is_const: false,

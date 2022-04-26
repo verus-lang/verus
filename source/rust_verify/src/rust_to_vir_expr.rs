@@ -382,6 +382,7 @@ fn fn_call_to_vir<'tcx>(
     let is_ensures = f_name == "builtin::ensures";
     let is_invariant = f_name == "builtin::invariant";
     let is_decreases = f_name == "builtin::decreases";
+    let is_decreases_when = f_name == "builtin::decreases_when";
     let is_decreases_by = f_name == "builtin::decreases_by";
     let is_opens_invariants_none = f_name == "builtin::opens_invariants_none";
     let is_opens_invariants_any = f_name == "builtin::opens_invariants_any";
@@ -412,6 +413,7 @@ fn fn_call_to_vir<'tcx>(
     let is_add = f_name == "core::ops::arith::Add::add";
     let is_sub = f_name == "core::ops::arith::Sub::sub";
     let is_mul = f_name == "core::ops::arith::Mul::mul";
+    let is_panic = f_name == "core::panicking::panic";
     let is_spec = is_admit
         || is_no_method_body
         || is_requires
@@ -419,6 +421,7 @@ fn fn_call_to_vir<'tcx>(
         || is_ensures
         || is_invariant
         || is_decreases
+        || is_decreases_when
         || is_decreases_by
         || is_opens_invariants_none
         || is_opens_invariants_any
@@ -457,6 +460,15 @@ fn fn_call_to_vir<'tcx>(
             &Arc::new(TypX::Bool),
             ExprX::Block(Arc::new(vec![]), None),
         ));
+    }
+
+    if is_panic {
+        return err_span_string(
+            expr.span,
+            format!(
+                "panic is not supported (if you used Rust's `assert!` macro, you may have meant to use Verus's `assert` function)"
+            ),
+        );
     }
 
     unsupported_err_unless!(
@@ -776,6 +788,10 @@ fn fn_call_to_vir<'tcx>(
         Ok(mk_expr(ExprX::Header(header)))
     } else if is_decreases {
         let header = Arc::new(HeaderExprX::Decreases(Arc::new(vir_args)));
+        Ok(mk_expr(ExprX::Header(header)))
+    } else if is_decreases_when {
+        unsupported_err_unless!(len == 1, expr.span, "expected decreases_when", &args);
+        let header = Arc::new(HeaderExprX::DecreasesWhen(vir_args[0].clone()));
         Ok(mk_expr(ExprX::Header(header)))
     } else if is_admit {
         unsupported_err_unless!(len == 0, expr.span, "expected admit", args);
@@ -1530,17 +1546,14 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                 BinOpKind::Shr => BinaryOp::Shr,
                 BinOpKind::Shl => BinaryOp::Shl,
             };
+            let e = mk_expr(ExprX::Binary(vop, vlhs, vrhs));
             match op.node {
-                BinOpKind::Add | BinOpKind::Sub | BinOpKind::Mul => {
-                    let e = mk_expr(ExprX::Binary(vop, vlhs, vrhs));
-                    Ok(mk_ty_clip(&expr_typ(), &e))
-                }
+                BinOpKind::Add | BinOpKind::Sub | BinOpKind::Mul => Ok(mk_ty_clip(&expr_typ(), &e)),
                 BinOpKind::Div | BinOpKind::Rem => {
-                    // TODO: disallow divide-by-zero in executable code?
                     match mk_range(tc.node_type(expr.hir_id)) {
                         IntRange::Int | IntRange::Nat | IntRange::U(_) | IntRange::USize => {
                             // Euclidean division
-                            Ok(mk_expr(ExprX::Binary(vop, vlhs, vrhs)))
+                            Ok(mk_ty_clip(&expr_typ(), &e))
                         }
                         IntRange::I(_) | IntRange::ISize => {
                             // Non-Euclidean division, which will need more encoding
@@ -1548,7 +1561,7 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                         }
                     }
                 }
-                _ => Ok(mk_expr(ExprX::Binary(vop, vlhs, vrhs))),
+                _ => Ok(e),
             }
         }
         ExprKind::AssignOp(

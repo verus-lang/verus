@@ -106,11 +106,15 @@ pub(crate) fn smt_add_decl<'ctx>(context: &mut Context, decl: &Decl) {
     }
 }
 
+pub type ReportLongRunning<'a> =
+    (std::time::Duration, Box<dyn FnMut(std::time::Duration) -> () + 'a>);
+
 pub(crate) fn smt_check_assertion<'ctx>(
     context: &mut Context,
     mut infos: Vec<AssertionInfo>,
     air_model: Model,
     only_check_earlier: bool,
+    report_long_running: Option<&mut ReportLongRunning>,
 ) -> ValidityResult {
     if only_check_earlier {
         // disable all labels that come after the first known error
@@ -148,20 +152,43 @@ pub(crate) fn smt_check_assertion<'ctx>(
     let time0 = std::time::Instant::now();
     let smt_proc = context.smt_manager.get_smt_process();
     let time1 = std::time::Instant::now();
-    let smt_output = smt_proc.send_commands(context.smt_log.take_pipe_data());
+    let mut commands_handle = smt_proc.send_commands_async(context.smt_log.take_pipe_data());
+    let smt_output = if let Some((report_interval, report_fn)) = report_long_running {
+        loop {
+            match commands_handle.wait_timeout(*report_interval) {
+                Ok(smt_output) => break smt_output,
+                Err(handle) => {
+                    report_fn(time1.elapsed());
+                    commands_handle = handle;
+                }
+            }
+        }
+    } else {
+        commands_handle.wait()
+    };
     let time2 = std::time::Instant::now();
     context.time_smt_init += time1 - time0;
     context.time_smt_run += time2 - time1;
+
+    #[derive(PartialEq, Eq)]
+    enum SmtOutput {
+        Unsat,
+        Sat,
+        Unknown,
+    }
 
     // Process SMT results
     let mut unsat = None;
     for line in smt_output {
         if line == "unsat" {
             assert!(unsat == None);
-            unsat = Some(true);
-        } else if line == "sat" || line == "unknown" {
+            unsat = Some(SmtOutput::Unsat);
+        } else if line == "sat" {
             assert!(unsat == None);
-            unsat = Some(false);
+            unsat = Some(SmtOutput::Sat);
+        } else if line == "unknown" {
+            assert!(unsat == None);
+            unsat = Some(SmtOutput::Unknown);
         } else if context.ignore_unexpected_smt {
             println!("warning: unexpected SMT output: {}", line);
         } else {
@@ -172,64 +199,103 @@ pub(crate) fn smt_check_assertion<'ctx>(
     context.smt_log.log_set_option("rlimit", "0");
     context.set_z3_param_u32("rlimit", 0, false);
 
-    match unsat {
-        None => {
-            panic!("expected sat/unsat/unknown from SMT solver");
-        }
-        Some(true) => {
-            context.state = ContextState::FoundResult;
-            ValidityResult::Valid
-        }
-        Some(false) => {
-            context.smt_log.log_word("get-model");
+    let unsat = unsat.expect("expected sat/unsat/unknown from SMT solver");
+    let unsat = match unsat {
+        SmtOutput::Unsat => true,
+        SmtOutput::Sat => false,
+        SmtOutput::Unknown => {
+            context.smt_log.log_get_info("reason-unknown");
             let smt_output = context
                 .smt_manager
                 .get_smt_process()
                 .send_commands(context.smt_log.take_pipe_data());
-            let model = crate::parser::Parser::new().lines_to_model(&smt_output);
-            let mut model_defs: HashMap<Ident, ModelDef> = HashMap::new();
-            for def in model.iter() {
-                model_defs.insert(def.name.clone(), def.clone());
+
+            #[derive(PartialEq, Eq)]
+            enum SmtReasonUnknown {
+                Canceled,
+                Incomplete,
+                Unknown,
             }
-            for info in infos.iter_mut() {
-                if let Some(def) = model_defs.get(&info.label) {
-                    if *def.body == "true" {
-                        discovered_error = Some(info.error.clone());
 
-                        // Disable this label in subsequent check-sat calls to get additional errors
-                        info.disabled = true;
-                        let disable_label = mk_not(&ident_var(&info.label));
-                        context.smt_log.log_assert(&disable_label);
-
-                        break;
-                    }
+            let mut reason = None;
+            for line in smt_output {
+                if line == "(:reason-unknown \"canceled\")" {
+                    assert!(reason == None);
+                    reason = Some(SmtReasonUnknown::Canceled);
+                } else if line == "(:reason-unknown \"unknown\")" {
+                    // it appears this sometimes happens when rlimit is exceeded
+                    assert!(reason == None);
+                    reason = Some(SmtReasonUnknown::Unknown);
+                } else if line.starts_with("(:reason-unknown \"(incomplete") {
+                    assert!(reason == None);
+                    reason = Some(SmtReasonUnknown::Incomplete);
+                } else if context.ignore_unexpected_smt {
+                    println!("warning: unexpected SMT output: {}", line);
+                } else {
+                    return ValidityResult::UnexpectedSmtOutput(line);
                 }
             }
-            for (_, info) in context.axiom_infos.map().iter() {
-                if let Some(def) = model_defs.get(&info.label) {
-                    if *def.body == "true" {
-                        discovered_additional_info.append(&mut (*info.labels).clone());
-                        break;
-                    }
+
+            match reason.expect("expected :reason-unknown") {
+                SmtReasonUnknown::Canceled | SmtReasonUnknown::Unknown => {
+                    context.state = ContextState::Canceled;
+                    return ValidityResult::Canceled;
                 }
+                SmtReasonUnknown::Incomplete => false,
             }
-
-            if context.debug {
-                println!("Z3 model: {:?}", &model);
-            }
-
-            // Attach the additional info to the error
-            // For example, the error might be something like "precondition not satisfied"
-            // (an error which comes from the air assert statement)
-            // and the additional info might tell you _which_ precondition failed
-            // (a label that comes from one of the axioms associated
-            // to the function precondition)
-
-            let error = discovered_error.expect("discovered_error");
-            let e = error.append_labels(&discovered_additional_info);
-            context.state = ContextState::FoundInvalid(infos, air_model.clone());
-            ValidityResult::Invalid(air_model, e)
         }
+    };
+
+    if unsat {
+        context.state = ContextState::FoundResult;
+        ValidityResult::Valid
+    } else {
+        context.smt_log.log_word("get-model");
+        let smt_output =
+            context.smt_manager.get_smt_process().send_commands(context.smt_log.take_pipe_data());
+        let model = crate::parser::Parser::new().lines_to_model(&smt_output);
+        let mut model_defs: HashMap<Ident, ModelDef> = HashMap::new();
+        for def in model.iter() {
+            model_defs.insert(def.name.clone(), def.clone());
+        }
+        for info in infos.iter_mut() {
+            if let Some(def) = model_defs.get(&info.label) {
+                if *def.body == "true" {
+                    discovered_error = Some(info.error.clone());
+
+                    // Disable this label in subsequent check-sat calls to get additional errors
+                    info.disabled = true;
+                    let disable_label = mk_not(&ident_var(&info.label));
+                    context.smt_log.log_assert(&disable_label);
+
+                    break;
+                }
+            }
+        }
+        for (_, info) in context.axiom_infos.map().iter() {
+            if let Some(def) = model_defs.get(&info.label) {
+                if *def.body == "true" {
+                    discovered_additional_info.append(&mut (*info.labels).clone());
+                    break;
+                }
+            }
+        }
+
+        if context.debug {
+            println!("Z3 model: {:?}", &model);
+        }
+
+        // Attach the additional info to the error
+        // For example, the error might be something like "precondition not satisfied"
+        // (an error which comes from the air assert statement)
+        // and the additional info might tell you _which_ precondition failed
+        // (a label that comes from one of the axioms associated
+        // to the function precondition)
+
+        let error = discovered_error.expect("discovered_error");
+        let e = error.append_labels(&discovered_additional_info);
+        context.state = ContextState::FoundInvalid(infos, air_model.clone());
+        ValidityResult::Invalid(air_model, e)
     }
 }
 
@@ -237,6 +303,7 @@ pub(crate) fn smt_check_query<'ctx>(
     context: &mut Context,
     query: &Query,
     air_model: Model,
+    report_long_running: Option<&mut ReportLongRunning>,
 ) -> ValidityResult {
     context.smt_log.log_push();
     context.push_name_scope();
@@ -272,7 +339,7 @@ pub(crate) fn smt_check_query<'ctx>(
     let not_expr = Arc::new(ExprX::Unary(UnaryOp::Not, labeled_assertion));
     context.smt_log.log_decl(&Arc::new(DeclX::Const(str_ident(QUERY), Arc::new(TypX::Bool))));
     context.smt_log.log_assert(&mk_implies(&str_var(QUERY), &not_expr));
-    let result = smt_check_assertion(context, infos, air_model, false);
+    let result = smt_check_assertion(context, infos, air_model, false, report_long_running);
 
     result
 }

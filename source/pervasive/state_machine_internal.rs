@@ -4,7 +4,7 @@
 
 #[verifier(external_body)]
 pub struct SyncSendIfSyncSend<#[verifier(strictly_positive)] T> {
-    sync_send: builtin::SyncSendIfSyncSend<T>,
+    _sync_send: builtin::SyncSendIfSyncSend<T>,
 }
 
 #[proof]

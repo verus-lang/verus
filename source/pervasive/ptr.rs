@@ -25,7 +25,7 @@ use std::alloc::{dealloc};
 
 #[verifier(external_body)]
 pub struct PPtr<#[verifier(strictly_positive)] V> {
-    uptr: NonNull<MaybeUninit<V>>,
+    uptr: *mut MaybeUninit<V>,
 }
 
 #[proof]
@@ -35,7 +35,35 @@ pub struct Permission<V> {
     #[spec] pub value: option::Option<V>,
 }
 
+impl<V> Permission<V> {
+    /// Any dereferenceable pointer must be non-null.
+
+    #[proof]
+    #[verifier(external_body)]
+    pub fn is_nonnull(#[proof] &self) {
+        ensures(self.pptr != 0);
+        unimplemented!();
+    }
+}
+
 impl<V> PPtr<V> {
+    #[inline(always)]
+    #[verifier(external_body)]
+    #[exec]
+    pub fn to_usize(&self) -> usize {
+        ensures(|u: usize| u as int == self.view());
+        self.uptr as usize
+    }
+
+    #[inline(always)]
+    #[verifier(external_body)]
+    #[exec]
+    pub fn from_usize(u: usize) -> Self {
+        ensures(|p: Self| p.view() == u as int);
+        let uptr = u as *mut MaybeUninit<V>;
+        PPtr { uptr }
+    }
+
     #[inline(always)]
     #[verifier(external_body)]
     pub fn empty() -> (PPtr<V>, Proof<Permission<V>>) {
@@ -45,7 +73,7 @@ impl<V> PPtr<V> {
         opens_invariants_none();
 
         let p = PPtr {
-            uptr: Box::leak(box MaybeUninit::uninit()).into(),
+            uptr: Box::leak(box MaybeUninit::uninit()).as_mut_ptr(),
         };
         let Proof(t) = exec_proof_from_false();
         (p, Proof(t))
@@ -76,7 +104,7 @@ impl<V> PPtr<V> {
         opens_invariants_none();
 
         unsafe {
-            *(self.uptr.as_ptr()) = MaybeUninit::new(v);
+            *(self.uptr) = MaybeUninit::new(v);
         }
     }
 
@@ -96,7 +124,7 @@ impl<V> PPtr<V> {
 
         unsafe {
             let mut m = MaybeUninit::uninit();
-            std::mem::swap(&mut m, &mut *self.uptr.as_ptr());
+            std::mem::swap(&mut m, &mut *self.uptr);
             m.assume_init()
         }
     }
@@ -117,7 +145,7 @@ impl<V> PPtr<V> {
 
         unsafe {
             let mut m = MaybeUninit::new(in_v);
-            std::mem::swap(&mut m, &mut *self.uptr.as_ptr());
+            std::mem::swap(&mut m, &mut *self.uptr);
             m.assume_init()
         }
     }
@@ -138,7 +166,7 @@ impl<V> PPtr<V> {
         opens_invariants_none();
         
         unsafe {
-            self.uptr.as_ref().assume_init_ref()
+            (*self.uptr).assume_init_ref()
         }
     }
 
@@ -152,7 +180,7 @@ impl<V> PPtr<V> {
         opens_invariants_none();
 
         unsafe {
-            dealloc(self.uptr.cast().as_ptr(), Layout::for_value(self.uptr.as_ref()));
+            dealloc(self.uptr as *mut u8, Layout::for_value(&*self.uptr));
         }
     }
 

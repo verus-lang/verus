@@ -43,6 +43,13 @@ pub fn decreases<A>(_a: A) {
 }
 
 // Can only appear at beginning of function body
+// decrease_when is automatically added to list of recommends
+#[proof]
+pub fn decreases_when(_b: bool) {
+    unimplemented!();
+}
+
+// Can only appear at beginning of function body
 #[proof]
 pub fn decreases_by<F>(_f: F) {
     unimplemented!();

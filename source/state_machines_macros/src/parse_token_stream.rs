@@ -567,5 +567,19 @@ pub fn parse_result_to_smir(pr: ParseResult, concurrent: bool) -> syn::parse::Re
 
     check_transitions(&mut sm)?;
 
+    for inv in invariants.iter() {
+        match inv.func.vis {
+            Visibility::Public(_) => {}
+            _ => {
+                return Err(Error::new(
+                    inv.func.span(),
+                    format!(
+                        "#[invariant] fn must be be marked `pub` so it can called from the auto-generated `invariant` fn"
+                    ),
+                ));
+            }
+        }
+    }
+
     Ok(SMBundle { name, normal_fns, sm, extras: Extras { invariants, lemmas } })
 }

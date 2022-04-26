@@ -48,7 +48,7 @@ impl<V> Multiset<V> {
         forall(|v: V| self.count(v) == m2.count(v))
     }
 
-    // TODO flesh out remaining proof-mode functions
+    // TODO(tjhance) flesh out remaining proof-mode functions
 
     #[proof]
     #[verifier(external_body)]

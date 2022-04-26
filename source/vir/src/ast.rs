@@ -219,6 +219,8 @@ pub enum HeaderExprX {
     Invariant(Exprs),
     /// Decreases clauses for functions (possibly also for while loops, but this isn't implemented yet)
     Decreases(Exprs),
+    /// Recursive function is uninterpreted when Expr is false
+    DecreasesWhen(Expr),
     /// Proof function to prove termination for recursive functions
     DecreasesBy(Fun),
     /// The function might open the following invariants
@@ -501,6 +503,10 @@ pub struct FunctionX {
     /// decrease.len() == 0 means no decreases clause
     /// decrease.len() >= 1 means list of expressions, interpreted in lexicographic order
     pub decrease: Exprs,
+    /// If Expr is true for the arguments to the function,
+    /// the function is defined according to the function body and the decreases clauses must hold.
+    /// If Expr is false, the function is uninterpreted, the body and decreases clauses are ignored.
+    pub decrease_when: Option<Expr>,
     /// Prove termination with a separate proof function
     pub decrease_by: Option<Fun>,
     /// MaskSpec that specifies what invariants the function is allowed to open

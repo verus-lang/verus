@@ -116,7 +116,7 @@ pub fn main() {
     let mut count_errors = 0;
     let mut count_verified = 0;
     for command in commands.iter() {
-        let result = air_context.command(&command);
+        let result = air_context.command(&command, Default::default());
         match result {
             ValidityResult::Valid => {
                 if let CommandX::CheckValid(_) = &**command {
@@ -132,6 +132,10 @@ pub fn main() {
                 for ErrorLabel { msg, .. } in &err.labels {
                     println!("Additional error detail at {}", msg);
                 }
+            }
+            ValidityResult::Canceled => {
+                count_errors += 1;
+                println!("Canceled");
             }
             ValidityResult::UnexpectedSmtOutput(err) => {
                 panic!("Unexpected SMT output: {}", err);

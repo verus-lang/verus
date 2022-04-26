@@ -7,6 +7,7 @@ use crate::node;
 use crate::printer::{macro_push_node, str_to_node};
 use crate::scope_map::ScopeMap;
 use crate::smt_manager::SmtManager;
+use crate::smt_verify::ReportLongRunning;
 use crate::typecheck::Typing;
 use sise::Node;
 use std::collections::HashSet;
@@ -32,6 +33,7 @@ pub(crate) struct AxiomInfo {
 pub enum ValidityResult {
     Valid,
     Invalid(Model, Error),
+    Canceled,
     TypeError(TypeError),
     UnexpectedSmtOutput(String),
 }
@@ -42,6 +44,17 @@ pub(crate) enum ContextState {
     ReadyForQuery,
     FoundResult,
     FoundInvalid(Vec<AssertionInfo>, Model),
+    Canceled,
+}
+
+pub struct QueryContext<'a, 'b: 'a> {
+    pub report_long_running: Option<&'a mut ReportLongRunning<'b>>,
+}
+
+impl<'a, 'b: 'a> Default for QueryContext<'a, 'b> {
+    fn default() -> Self {
+        QueryContext { report_long_running: None }
+    }
 }
 
 pub struct Context {
@@ -274,7 +287,11 @@ impl Context {
         Ok(())
     }
 
-    pub fn check_valid(&mut self, query: &Query) -> ValidityResult {
+    pub fn check_valid(
+        &mut self,
+        query: &Query,
+        query_context: QueryContext<'_, '_>,
+    ) -> ValidityResult {
         self.ensure_started();
         self.air_initial_log.log_query(query);
         let query = match crate::typecheck::check_query(self, query) {
@@ -287,7 +304,12 @@ impl Context {
         self.air_final_log.log_query(&query);
 
         let model = Model::new(snapshots, local_vars);
-        let validity = crate::smt_verify::smt_check_query(self, &query, model);
+        let validity = crate::smt_verify::smt_check_query(
+            self,
+            &query,
+            model,
+            query_context.report_long_running,
+        );
 
         validity
     }
@@ -296,9 +318,19 @@ impl Context {
     /// only_check_earlier == true means to only look for errors preceding all the previous
     /// errors, with the goal of making sure that the earliest error gets reported.
     /// Once only_check_earlier is set, it remains set until finish_query is called.
-    pub fn check_valid_again(&mut self, only_check_earlier: bool) -> ValidityResult {
+    pub fn check_valid_again(
+        &mut self,
+        only_check_earlier: bool,
+        query_context: QueryContext<'_, '_>,
+    ) -> ValidityResult {
         if let ContextState::FoundInvalid(infos, air_model) = self.state.clone() {
-            crate::smt_verify::smt_check_assertion(self, infos, air_model, only_check_earlier)
+            crate::smt_verify::smt_check_assertion(
+                self,
+                infos,
+                air_model,
+                only_check_earlier,
+                query_context.report_long_running,
+            )
         } else {
             panic!("check_valid_again expected query to be ValidityResult::Invalid");
         }
@@ -320,7 +352,11 @@ impl Context {
         smt_output[0].clone()
     }
 
-    pub fn command(&mut self, command: &Command) -> ValidityResult {
+    pub fn command(
+        &mut self,
+        command: &Command,
+        query_context: QueryContext<'_, '_>,
+    ) -> ValidityResult {
         match &**command {
             CommandX::Push => {
                 self.push();
@@ -341,7 +377,7 @@ impl Context {
                     ValidityResult::Valid
                 }
             }
-            CommandX::CheckValid(query) => self.check_valid(&query),
+            CommandX::CheckValid(query) => self.check_valid(&query, query_context),
         }
     }
 }

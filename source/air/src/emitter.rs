@@ -100,6 +100,14 @@ impl Emitter {
         }
     }
 
+    pub fn log_get_info(&mut self, param: &str) {
+        if !self.is_none() {
+            self.log_node(&node!(
+                (get-info {Node::Atom(format!(":{}", param))})
+            ));
+        }
+    }
+
     pub fn log_push(&mut self) {
         if !self.is_none() {
             self.log_node(&nodes!(push));
