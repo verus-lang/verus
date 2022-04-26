@@ -1094,3 +1094,19 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_one_fails(err)
 }
+
+test_verify_one_file! {
+    #[test] proof_decreases_recommends_fail code! {
+        #[spec]
+        fn f(i: int) -> int {
+            decreases(i);
+            recommends(false);
+
+            if i == 0 {
+                0
+            } else {
+                i + f(i) // FAILS
+            }
+        }
+    } => Err(err) => assert_one_fails(err)
+}

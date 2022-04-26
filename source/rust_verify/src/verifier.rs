@@ -472,7 +472,7 @@ impl Verifier {
         // For proof/exec functions, declare requires/ensures.
         // Declare them in SCC (strongly connected component) sorted order so that
         // termination checking precedes consequence axioms for each SCC.
-        let mut fun_decls: HashMap<Fun, Commands> = HashMap::new();
+        let mut fun_axioms: HashMap<Fun, Commands> = HashMap::new();
         for scc in &ctx.global.func_call_sccs.clone() {
             let scc_nodes = ctx.global.func_call_graph.get_scc_nodes(scc);
             let mut scc_fun_nodes: Vec<Fun> = Vec::new();
@@ -482,6 +482,22 @@ impl Verifier {
                     _ => {}
                 }
             }
+            // Declare requires/ensures
+            for f in scc_fun_nodes.iter() {
+                if !funs.contains_key(f) {
+                    continue;
+                }
+                let (function, _vis_abs) = &funs[f];
+
+                ctx.fun = mk_fun_ctx(&function, false);
+                let decl_commands = vir::func_to_air::func_decl_to_air(ctx, &function)?;
+                ctx.fun = None;
+                self.run_commands(
+                    air_context,
+                    &decl_commands,
+                    &("Function-Specs ".to_string() + &fun_as_rust_dbg(f)),
+                );
+            }
             // Check termination
             for f in scc_fun_nodes.iter() {
                 if !funs.contains_key(f) {
@@ -490,18 +506,18 @@ impl Verifier {
                 let (function, vis_abs) = &funs[f];
 
                 ctx.fun = mk_fun_ctx(&function, false);
-                let (decl_commands, check_commands) = vir::func_to_air::func_decl_to_air(
+                let (decl_commands, check_commands) = vir::func_to_air::func_axioms_to_air(
                     ctx,
                     &function,
                     is_visible_to(&vis_abs, module),
                 )?;
-                fun_decls.insert(f.clone(), decl_commands);
+                fun_axioms.insert(f.clone(), decl_commands);
                 ctx.fun = None;
 
                 if Some(module.clone()) != function.x.visibility.owning_module {
                     continue;
                 }
-                self.run_commands_queries(
+                let invalidity = self.run_commands_queries(
                     compiler,
                     ErrorAs::Error,
                     air_context,
@@ -511,6 +527,31 @@ impl Verifier {
                     &("Function-Termination ".to_string() + &fun_as_rust_dbg(f)),
                     &(&function.span, "termination proof".to_string()),
                 );
+                let check_recommends = function.x.attrs.check_recommends;
+                if (invalidity && !self.args.no_auto_recommends_check) || check_recommends {
+                    // Rerun failed query to report possible recommends violations
+                    // or (optionally) check recommends for spec function bodies
+                    ctx.fun = mk_fun_ctx(&function, true);
+                    let (commands, snap_map) = vir::func_to_air::func_def_to_air(
+                        ctx,
+                        &function,
+                        vir::func_to_air::FuncDefPhase::CheckingSpecs,
+                        true,
+                    )?;
+                    ctx.fun = None;
+                    let error_as = if invalidity { ErrorAs::Note } else { ErrorAs::Warning };
+                    let s = "Function-Decl-Check-Recommends ";
+                    self.run_commands_queries(
+                        compiler,
+                        error_as,
+                        air_context,
+                        &commands,
+                        &HashMap::new(),
+                        &snap_map,
+                        &(s.to_string() + &fun_as_rust_dbg(&function.x.name)),
+                        &(&function.span, "recommends check".to_string()),
+                    );
+                }
             }
 
             // Declare consequence axioms
@@ -518,7 +559,7 @@ impl Verifier {
                 if !funs.contains_key(f) {
                     continue;
                 }
-                let decl_commands = &fun_decls[f];
+                let decl_commands = &fun_axioms[f];
                 self.run_commands(
                     air_context,
                     &decl_commands,
@@ -530,22 +571,22 @@ impl Verifier {
         assert!(funs.len() == 0);
 
         // Create queries to check the validity of proof/exec function bodies
-        // or (optionally) check recommends for spec function bodies
         for function in &krate.functions {
             if Some(module.clone()) != function.x.visibility.owning_module {
                 continue;
             }
-            let mut check_recommends = function.x.attrs.check_recommends;
+            let mut recommends_rerun = false;
             loop {
-                ctx.fun = mk_fun_ctx(&function, check_recommends);
-                let (commands, snap_map) = vir::func_to_air::func_def_to_air(ctx, &function)?;
-                let error_as = match (function.x.mode, check_recommends) {
-                    (_, false) => ErrorAs::Error,
-                    (Mode::Spec, true) => ErrorAs::Warning,
-                    (Mode::Proof | Mode::Exec, true) => ErrorAs::Note,
-                };
+                ctx.fun = mk_fun_ctx(&function, recommends_rerun);
+                let (commands, snap_map) = vir::func_to_air::func_def_to_air(
+                    ctx,
+                    &function,
+                    vir::func_to_air::FuncDefPhase::CheckingProofExec,
+                    recommends_rerun,
+                )?;
+                let error_as = if recommends_rerun { ErrorAs::Note } else { ErrorAs::Error };
                 let s =
-                    if check_recommends { "Function-Check-Recommends " } else { "Function-Def " };
+                    if recommends_rerun { "Function-Check-Recommends " } else { "Function-Def " };
                 let invalidity = self.run_commands_queries(
                     compiler,
                     error_as,
@@ -556,7 +597,7 @@ impl Verifier {
                     &(s.to_string() + &fun_as_rust_dbg(&function.x.name)),
                     &(
                         &function.span,
-                        if check_recommends {
+                        if recommends_rerun {
                             "recommends check"
                         } else {
                             "function definition check"
@@ -564,9 +605,9 @@ impl Verifier {
                         .to_string(),
                     ),
                 );
-                if invalidity && !check_recommends && !self.args.no_auto_recommends_check {
+                if invalidity && !recommends_rerun && !self.args.no_auto_recommends_check {
                     // Rerun failed query to report possible recommends violations
-                    check_recommends = true;
+                    recommends_rerun = true;
                     continue;
                 }
                 break;
