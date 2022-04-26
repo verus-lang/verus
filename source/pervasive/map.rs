@@ -188,3 +188,42 @@ macro_rules! map {
         map_insert_rec![$crate::pervasive::map::Map::empty();$($tail)*]
     }
 } 
+
+/// Prove two maps equal by extensionality. Usage is:
+///
+/// ```rust,ignore
+/// map_ext!(map1, map2);
+/// ```
+/// 
+/// or,
+/// 
+/// ```rust,ignore
+/// map_ext!(map1, map2, k: Key => {
+///     // proof goes here that `map1` and `map2` agree on key `k`,
+///     // i.e., `k` is in the domain of `map`` iff it is in the domain of `map2`
+///     // and if so, then their values agree.
+/// });
+/// ```
+
+#[macro_export]
+macro_rules! map_ext {
+    ($m1:expr, $m2:expr $(,)?) => {
+        map_ext!($m1, $m2, key => { })
+    };
+    ($m1:expr, $m2:expr, $k:ident $( : $t:ty )? => $bblock:block) => {
+        #[spec] let m1 = $m1;
+        #[spec] let m2 = $m2;
+        ::builtin::assert_by(::builtin::equal(m1, m2), {
+            ::builtin::assert_forall_by(|$k $( : $t )?| {
+                ::builtin::ensures([
+                    ((#[trigger] m1.dom().contains($k)) >>= m2.dom().contains($k))
+                    && (m2.dom().contains($k) >>= m1.dom().contains($k))
+                    && (m1.dom().contains($k) && m2.dom().contains($k) >>=
+                        ::builtin::equal(m1.index($k), m2.index($k)))
+                ]);
+                { $bblock }
+            });
+            $crate::pervasive::assert(m1.ext_equal(m2));
+        });
+    }
+}

@@ -143,3 +143,39 @@ pub fn lemma_int_range(lo: int, hi: int) {
         assert(set_int_range(lo, hi - 1).insert(hi - 1).ext_equal(set_int_range(lo, hi)));
     }
 }
+
+/// Prove two sets equal by extensionality. Usage is:
+///
+/// ```rust,ignore
+/// set_ext!(set1, set2);
+/// ```
+/// 
+/// or,
+/// 
+/// ```rust,ignore
+/// seq_ext!(set1, set2, elem => {
+///     // prove that set1.contains(elem) iff set2.contains(elem)
+/// });
+/// ```
+
+#[macro_export]
+macro_rules! set_ext {
+    ($s1:expr, $s2:expr $(,)?) => {
+        set_ext!($s1, $s2, elem => { })
+    };
+    ($s1:expr, $s2:expr, $elem:ident $( : $t:ty )? => $bblock:block) => {
+        let s1 = $s1;
+        let s2 = $s2;
+        ::builtin::assert_by(::builtin::equal(s1, s2), {
+            ::builtin::assert_forall_by(|$elem $( : $t )?| {
+                ::builtin::ensures(
+                    (s1.contains($elem) >>= s2.contains($elem))
+                    &&
+                    (s2.contains($elem) >>= s1.contains($elem))
+                );
+                { $bblock }
+            });
+            $crate::pervasive::assert(s1.ext_equal(s2));
+        });
+    }
+}

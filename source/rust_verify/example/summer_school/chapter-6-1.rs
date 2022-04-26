@@ -28,25 +28,6 @@ impl<K, V> Map<K, V> {
     }
 }
 
-macro_rules! map_ext {
-    ($m1:expr, $m2:expr, $k:ident : $t:ty => $bblock:block) => {
-        #[spec] let m1 = $m1;
-        #[spec] let m2 = $m2;
-        ::builtin::assert_by(::builtin::equal(m1, m2), {
-            ::builtin::assert_forall_by(|$k : $t| {
-                ::builtin::ensures([
-                    ((#[trigger] m1.dom().contains($k)) >>= (
-                        m2.dom().contains($k) && ::builtin::equal(m1.index($k), m2.index($k))
-                    ))
-                    && (m2.dom().contains($k) >>= m1.dom().contains($k))
-                ]);
-                { $bblock }
-            });
-            crate::pervasive::assert(m1.ext_equal(m2));
-        });
-    }
-}
-
 state_machine!{
     MapSpec {
         fields {
@@ -243,7 +224,7 @@ fn next_refines_next_with_macro(pre: ShardedKVProtocol::State, post: ShardedKVPr
 
     case_on_next!{pre, post, ShardedKVProtocol => {
         insert(idx, key, value) => {
-            map_ext!(pre.interp_map().insert(key, value), post.interp_map(), k: Key => {
+            map_ext!(pre.interp_map().insert(key, value), post.interp_map(), k => {
                 if equal(k, key) {
                     assert(pre.host_has_key(idx, key));
                     assert(post.host_has_key(idx, key));
