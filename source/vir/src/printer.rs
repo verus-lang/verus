@@ -151,6 +151,7 @@ fn header_expr_to_node(header_expr: &HeaderExprX) -> Node {
         HeaderExprX::Recommends(exprs) => nodes!(recommends {exprs_to_node(exprs)}),
         HeaderExprX::Invariant(exprs) => nodes!(invariant {exprs_to_node(exprs)}),
         HeaderExprX::Decreases(exprs) => nodes!(decreases {exprs_to_node(exprs)}),
+        HeaderExprX::DecreasesWhen(expr) => nodes!(decreases_when {expr_to_node(expr)}),
         HeaderExprX::DecreasesBy(path) => nodes!(decreases_by {fun_to_node(path)}),
         HeaderExprX::InvariantOpens(exprs) => nodes!(invariantOpens {exprs_to_node(exprs)}),
         HeaderExprX::InvariantOpensExcept(exprs) => {
@@ -360,6 +361,7 @@ fn function_to_node(function: &FunctionX) -> Node {
         require,
         ensure,
         decrease,
+        decrease_when,
         decrease_by,
         mask_spec,
         is_const,
@@ -492,6 +494,10 @@ fn function_to_node(function: &FunctionX) -> Node {
         str_to_node(":decrease"),
         exprs_to_node(decrease),
     ];
+    if let Some(decrease_when) = &decrease_when {
+        nodes.push(str_to_node(":decrease_when"));
+        nodes.push(expr_to_node(decrease_when));
+    }
     if let Some(decrease_by) = &decrease_by {
         nodes.push(str_to_node(":decrease_by"));
         nodes.push(fun_to_node(decrease_by));
