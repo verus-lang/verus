@@ -15,7 +15,7 @@ use crate::sst_to_air::{
 use crate::util::vec_map;
 use air::ast::{
     BinaryOp, Bind, BindX, Binder, BinderX, Command, CommandX, Commands, DeclX, Expr, ExprX, Quant,
-    Span, Trigger, Triggers,
+    Span, SpannedCommands, Trigger, Triggers,
 };
 use air::ast_util::{
     bool_typ, ident_apply, ident_binder, ident_var, mk_and, mk_bind_expr, mk_eq, mk_implies,
@@ -556,7 +556,7 @@ pub fn func_decl_to_air(
 pub fn func_def_to_air(
     ctx: &Ctx,
     function: &Function,
-) -> Result<(Commands, Vec<(Span, SnapPos)>), VirErr> {
+) -> Result<(SpannedCommands, Vec<(Span, SnapPos)>), VirErr> {
     match (
         function.x.mode,
         function.x.is_const || function.x.attrs.check_recommends,

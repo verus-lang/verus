@@ -373,6 +373,7 @@ pub(crate) fn check_termination_exp(
         false,
         false,
     );
+    let commands: Commands = Arc::new((*commands).iter().map(|c| (*c).1.clone()).collect());
 
     // New body: substitute rec%f(args, fuel) for f(args)
     let body = map_exp_visitor(&body, &mut |exp| match &exp.x {

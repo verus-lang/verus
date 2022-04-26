@@ -3,7 +3,7 @@ use crate::context::{ContextX, ErasureInfo};
 use crate::debugger::Debugger;
 use crate::unsupported;
 use crate::util::{from_raw_span, signalling};
-use air::ast::{Command, CommandX, Commands};
+use air::ast::{Command, CommandX, Commands, SpannedCommand, SpannedCommands};
 use air::context::{QueryContext, ValidityResult};
 use air::errors::{Error, ErrorLabel};
 use rustc_hir::OwnerNode;
@@ -231,7 +231,16 @@ impl Verifier {
         snap_map: &Vec<(air::ast::Span, SnapPos)>,
         command: &Command,
         context: &(&air::ast::Span, String),
+        optional_span: Option<Arc<air::ast::Span>>,
     ) -> bool {
+        let comment = if optional_span.is_some() {
+            "separate query checking".to_string()
+        } else {
+            context.1.clone()
+        };
+        let span = if let Some(s) = optional_span { (*s).clone() } else { context.0.clone() };
+        let context: &(&air::ast::Span, String) = &(&span, comment);
+
         let report_long_running = || {
             let mut counter = 0;
             let report_fn: Box<dyn FnMut(std::time::Duration) -> ()> = Box::new(move |elapsed| {
@@ -378,7 +387,7 @@ impl Verifier {
         compiler: &Compiler,
         error_as: ErrorAs,
         air_context: &mut air::context::Context,
-        commands: &Vec<Command>,
+        commands: &Vec<SpannedCommand>,
         assign_map: &HashMap<*const air::ast::Span, HashSet<Arc<String>>>,
         snap_map: &Vec<(air::ast::Span, SnapPos)>,
         comment: &str,
@@ -389,7 +398,7 @@ impl Verifier {
             air_context.blank_line();
             air_context.comment(comment);
         }
-        for command in commands.iter() {
+        for (span, command) in commands.iter() {
             let time0 = Instant::now();
             let result_invalidity = self.check_result_validity(
                 compiler,
@@ -399,6 +408,7 @@ impl Verifier {
                 snap_map,
                 &command,
                 context,
+                span.clone(),
             );
             invalidity = invalidity || result_invalidity;
             let time1 = Instant::now();
@@ -501,6 +511,9 @@ impl Verifier {
                 if Some(module.clone()) != function.x.visibility.owning_module {
                     continue;
                 }
+
+                let check_commands: SpannedCommands =
+                    Arc::new((*check_commands).iter().map(|c| (None, c.clone())).collect());
                 self.run_commands_queries(
                     compiler,
                     ErrorAs::Error,
@@ -538,7 +551,8 @@ impl Verifier {
             let mut check_recommends = function.x.attrs.check_recommends;
             loop {
                 ctx.fun = mk_fun_ctx(&function, check_recommends);
-                let (commands, snap_map) = vir::func_to_air::func_def_to_air(ctx, &function)?;
+                let (spanned_commands, snap_map) =
+                    vir::func_to_air::func_def_to_air(ctx, &function)?;
                 let error_as = match (function.x.mode, check_recommends) {
                     (_, false) => ErrorAs::Error,
                     (Mode::Spec, true) => ErrorAs::Warning,
@@ -550,7 +564,7 @@ impl Verifier {
                     compiler,
                     error_as,
                     air_context,
-                    &commands,
+                    &spanned_commands,
                     &HashMap::new(),
                     &snap_map,
                     &(s.to_string() + &fun_as_rust_dbg(&function.x.name)),

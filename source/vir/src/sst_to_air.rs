@@ -21,7 +21,8 @@ use crate::sst_vars::{get_loc_var, AssignMap};
 use crate::util::vec_map;
 use air::ast::{
     BindX, Binder, BinderX, Binders, Command, CommandX, Commands, Constant, Decl, DeclX, Expr,
-    ExprX, MultiOp, Quant, QueryX, Span, Stmt, StmtX, Trigger, Triggers,
+    ExprX, MultiOp, Quant, QueryX, Span, SpannedCommand, SpannedCommands, Stmt, StmtX, Trigger,
+    Triggers,
 };
 use air::ast_util::{
     bool_typ, bv_typ, ident_apply, ident_binder, ident_typ, ident_var, int_typ, mk_and,
@@ -768,7 +769,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: ExprCtxt) -> Expr {
 struct State {
     local_shared: Vec<Decl>, // shared between all queries for a single function
     local_bv_shared: Vec<Decl>, // used in bv mode, fixed width uint variables have corresponding bv types
-    commands: Vec<Command>,
+    commands: Vec<SpannedCommand>,
     snapshot_count: u32, // Used to ensure unique Idents for each snapshot
     sids: Vec<Ident>, // a stack of snapshot ids, the top one should dominate the current position in the AST
     snap_map: Vec<(Span, SnapPos)>, // Maps each statement's span to the closest dominating snapshot's ID
@@ -1132,15 +1133,23 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
             let assertion = one_stmt(air_body);
 
             let query = Arc::new(QueryX { local: Arc::new(local), assertion });
-            state.commands.push(Arc::new(CommandX::SetOption(
-                Arc::new(String::from("smt.arith.nl")),
-                Arc::new(String::from("true")),
-            )));
-            state.commands.push(Arc::new(CommandX::CheckValid(query)));
-            state.commands.push(Arc::new(CommandX::SetOption(
-                Arc::new(String::from("smt.arith.nl")),
-                Arc::new(String::from("false")),
-            )));
+            state.commands.push((
+                Some(Arc::new(stm.span.clone())),
+                Arc::new(CommandX::SetOption(
+                    Arc::new(String::from("smt.arith.nl")),
+                    Arc::new(String::from("true")),
+                )),
+            ));
+            state
+                .commands
+                .push((Some(Arc::new(stm.span.clone())), Arc::new(CommandX::CheckValid(query))));
+            state.commands.push((
+                Some(Arc::new(stm.span.clone())),
+                Arc::new(CommandX::SetOption(
+                    Arc::new(String::from("smt.arith.nl")),
+                    Arc::new(String::from("false")),
+                )),
+            ));
 
             // At main query, assume `requires => ensure`
             let reqs: Vec<Arc<ExprX>> = requires.iter().map(|x| x.1.clone()).collect();
@@ -1163,7 +1172,25 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
             let assertion = Arc::new(StmtX::Assert(error, air_expr));
             // this creates a separate query for the bv assertion
             let query = Arc::new(QueryX { local: Arc::new(local), assertion });
-            state.commands.push(Arc::new(CommandX::CheckValid(query)));
+
+            // state.commands.push(Arc::new(CommandX::CheckValid(query)));
+            state.commands.push((
+                Some(Arc::new(stm.span.clone())),
+                Arc::new(CommandX::SetOption(
+                    Arc::new(String::from("smt.case_split")),
+                    Arc::new(String::from("0")),
+                )),
+            ));
+            state
+                .commands
+                .push((Some(Arc::new(stm.span.clone())), Arc::new(CommandX::CheckValid(query))));
+            state.commands.push((
+                Some(Arc::new(stm.span.clone())),
+                Arc::new(CommandX::SetOption(
+                    Arc::new(String::from("smt.case_split")),
+                    Arc::new(String::from("3")),
+                )),
+            ));
 
             vec![Arc::new(StmtX::Assume(exp_to_expr(ctx, &expr, expr_ctxt)))]
         }
@@ -1317,7 +1344,9 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
             };
 
             let query = Arc::new(QueryX { local: Arc::new(local), assertion });
-            state.commands.push(Arc::new(CommandX::CheckValid(query)));
+            state
+                .commands
+                .push((Some(Arc::new(stm.span.clone())), Arc::new(CommandX::CheckValid(query))));
 
             // At original site of while loop, assert invariant, havoc, assume invariant + neg_cond
             let mut stmts: Vec<Stmt> = Vec::new();
@@ -1488,7 +1517,7 @@ pub fn body_stm_to_air(
     is_bit_vector_mode: bool,
     skip_ensures: bool,
     is_nonlinear: bool,
-) -> (Commands, Vec<(Span, SnapPos)>) {
+) -> (SpannedCommands, Vec<(Span, SnapPos)>) {
     // Verifying a single function can generate multiple SMT queries.
     // Some declarations (local_shared) are shared among the queries.
     // Others are private to each query.
@@ -1613,17 +1642,39 @@ pub fn body_stm_to_air(
 
     let query = Arc::new(QueryX { local: Arc::new(local), assertion });
     if is_nonlinear {
-        state.commands.push(Arc::new(CommandX::SetOption(
-            Arc::new(String::from("smt.arith.nl")),
-            Arc::new(String::from("true")),
-        )));
-        state.commands.push(Arc::new(CommandX::CheckValid(query)));
-        state.commands.push(Arc::new(CommandX::SetOption(
-            Arc::new(String::from("smt.arith.nl")),
-            Arc::new(String::from("false")),
-        )));
+        state.commands.push((
+            None,
+            Arc::new(CommandX::SetOption(
+                Arc::new(String::from("smt.arith.nl")),
+                Arc::new(String::from("true")),
+            )),
+        ));
+        state.commands.push((None, Arc::new(CommandX::CheckValid(query))));
+        state.commands.push((
+            None,
+            Arc::new(CommandX::SetOption(
+                Arc::new(String::from("smt.arith.nl")),
+                Arc::new(String::from("false")),
+            )),
+        ));
+    } else if is_bit_vector_mode {
+        state.commands.push((
+            None,
+            Arc::new(CommandX::SetOption(
+                Arc::new(String::from("smt.case_split")),
+                Arc::new(String::from("0")),
+            )),
+        ));
+        state.commands.push((None, Arc::new(CommandX::CheckValid(query))));
+        state.commands.push((
+            None,
+            Arc::new(CommandX::SetOption(
+                Arc::new(String::from("smt.case_split")),
+                Arc::new(String::from("3")),
+            )),
+        ));
     } else {
-        state.commands.push(Arc::new(CommandX::CheckValid(query)));
+        state.commands.push((None, Arc::new(CommandX::CheckValid(query))));
     }
     (Arc::new(state.commands), state.snap_map)
 }

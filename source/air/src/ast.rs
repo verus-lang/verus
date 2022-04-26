@@ -182,3 +182,6 @@ pub enum CommandX {
     Global(Decl),            // global declarations
     CheckValid(Query),       // SMT check-sat (reporting validity rather than satisfiability)
 }
+
+pub type SpannedCommand = (Option<Arc<Span>>, Command);
+pub type SpannedCommands = Arc<Vec<SpannedCommand>>;
