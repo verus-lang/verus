@@ -3660,3 +3660,64 @@ test_verify_one_file! {
         }}
     } => Err(e) => assert_error_msg(e, "do not support if-let conditionals")
 }
+
+test_verify_one_file! {
+    #[test] use_self_type IMPORTS.to_string() + code_str! {
+        tokenized_state_machine!{ Y {
+            fields {
+                #[sharding(variable)]
+                pub x: int,
+
+                #[sharding(variable)]
+                pub recursing: Option<Box<Self>>,
+            }
+
+            init!{
+                ini(t: Self) {
+                    let r: Self = t;
+                    init x = r.x;
+                    init recursing = t.recursing;
+                }
+            }
+
+            #[spec] #[verifier(publish)]
+            pub fn add1(x: int) -> int {
+                x + 1
+            }
+
+            transition!{
+                tr(a: int) {
+                    update x = Self::add1(a);
+                }
+            }
+
+            transition!{
+                tr2(y: Option<Box<Self>>) {
+                    let t: Option<Box<Self>> = y;
+                    update recursing = t;
+                }
+            }
+
+            transition!{
+                tr3() {
+                    update recursing = Option::<Box<Self>>::None;
+                }
+            }
+
+        }}
+
+        pub fn foo() {
+            #[proof] let (inst, mut x_tok, mut r_tok) = Y::Instance::ini(
+                Y::State { x: 5, recursing: Option::None }
+            );
+            inst.tr(19, &mut x_tok);
+            assert(x_tok.value == 20);
+
+            inst.tr2(Option::<Box<Y::State>>::None, &mut r_tok);
+            assert(equal(Option::<Box<Y::State>>::None, r_tok.value));
+
+            inst.tr3(&mut r_tok);
+            assert(equal(Option::<Box<Y::State>>::None, r_tok.value));
+        }
+    } => Ok(())
+}

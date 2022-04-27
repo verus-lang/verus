@@ -5,6 +5,7 @@ use crate::ast::{
 };
 use crate::ident_visitor::validate_ident;
 use crate::parse_transition::parse_transition;
+use crate::self_type_visitor::replace_self_sm;
 use crate::to_token_stream::shardable_type_to_type;
 use crate::transitions::check_transitions;
 use proc_macro2::Span;
@@ -565,6 +566,7 @@ pub fn parse_result_to_smir(pr: ParseResult, concurrent: bool) -> syn::parse::Re
     let mut sm =
         SM { name: name.clone(), generics, fields, fields_named_ast, transitions, concurrent };
 
+    replace_self_sm(&mut sm);
     check_transitions(&mut sm)?;
 
     for inv in invariants.iter() {
