@@ -5,8 +5,9 @@ use crate::ast::{
 use crate::context::Ctx;
 use crate::def::{
     prefix_ensures, prefix_fuel_id, prefix_fuel_nat, prefix_pre_var, prefix_recursive_fun,
-    prefix_requires, suffix_global_id, suffix_local_stmt_id, suffix_typ_param_id, SnapPos, Spanned,
-    FUEL_BOOL, FUEL_BOOL_DEFAULT, FUEL_LOCAL, FUEL_TYPE, SUCC, ZERO,
+    prefix_requires, suffix_global_id, suffix_local_stmt_id, suffix_typ_param_id,
+    CommandsWithContext, SnapPos, Spanned, FUEL_BOOL, FUEL_BOOL_DEFAULT, FUEL_LOCAL, FUEL_TYPE,
+    SUCC, ZERO,
 };
 use crate::sst::{BndX, Exp, ExpX, Par, ParPurpose, ParX, Pars, Stm, StmX};
 use crate::sst_to_air::{
@@ -15,7 +16,7 @@ use crate::sst_to_air::{
 use crate::util::vec_map;
 use air::ast::{
     BinaryOp, Bind, BindX, Binder, BinderX, Command, CommandX, Commands, DeclX, Expr, ExprX, Quant,
-    Span, SpannedCommands, Trigger, Triggers,
+    Span, Trigger, Triggers,
 };
 use air::ast_util::{
     bool_typ, ident_apply, ident_binder, ident_var, mk_and, mk_bind_expr, mk_eq, mk_implies,
@@ -556,7 +557,7 @@ pub fn func_decl_to_air(
 pub fn func_def_to_air(
     ctx: &Ctx,
     function: &Function,
-) -> Result<(SpannedCommands, Vec<(Span, SnapPos)>), VirErr> {
+) -> Result<(Arc<Vec<CommandsWithContext>>, Vec<(Span, SnapPos)>), VirErr> {
     match (
         function.x.mode,
         function.x.is_const || function.x.attrs.check_recommends,
@@ -660,6 +661,7 @@ pub fn func_def_to_air(
 
             let (commands, snap_map) = crate::sst_to_air::body_stm_to_air(
                 ctx,
+                &function.span,
                 &trait_typ_substs,
                 &function.x.typ_params(),
                 &function.x.params,
@@ -676,7 +678,7 @@ pub fn func_def_to_air(
             );
 
             state.finalize();
-            Ok((commands, snap_map))
+            Ok((Arc::new(commands), snap_map))
         }
         _ => Ok((Arc::new(vec![]), vec![])),
     }
