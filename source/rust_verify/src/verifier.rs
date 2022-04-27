@@ -3,7 +3,7 @@ use crate::context::{ContextX, ErasureInfo};
 use crate::debugger::Debugger;
 use crate::unsupported;
 use crate::util::{from_raw_span, signalling};
-use air::ast::{Command, CommandX, Commands, SpannedCommand, SpannedCommands};
+use air::ast::{Command, CommandX, Commands};
 use air::context::{QueryContext, ValidityResult};
 use air::errors::{Error, ErrorLabel};
 use rustc_hir::OwnerNode;
@@ -21,6 +21,7 @@ use std::time::{Duration, Instant};
 use vir::ast::{Fun, Function, InferMode, Krate, Mode, VirErr, Visibility};
 use vir::ast_util::{fun_as_rust_dbg, is_visible_to};
 use vir::def::SnapPos;
+use vir::def::{CommandsWithContext, CommandsWithContextX};
 use vir::recursion::Node;
 
 const RLIMIT_PER_SECOND: u32 = 3000000;
@@ -231,16 +232,7 @@ impl Verifier {
         snap_map: &Vec<(air::ast::Span, SnapPos)>,
         command: &Command,
         context: &(&air::ast::Span, String),
-        optional_span: Option<Arc<air::ast::Span>>,
     ) -> bool {
-        let comment = if optional_span.is_some() {
-            "separate query checking".to_string()
-        } else {
-            context.1.clone()
-        };
-        let span = if let Some(s) = optional_span { (*s).clone() } else { context.0.clone() };
-        let context: &(&air::ast::Span, String) = &(&span, comment);
-
         let report_long_running = || {
             let mut counter = 0;
             let report_fn: Box<dyn FnMut(std::time::Duration) -> ()> = Box::new(move |elapsed| {
@@ -387,32 +379,32 @@ impl Verifier {
         compiler: &Compiler,
         error_as: ErrorAs,
         air_context: &mut air::context::Context,
-        commands: &Vec<SpannedCommand>,
+        commands: &Arc<Vec<CommandsWithContext>>,
         assign_map: &HashMap<*const air::ast::Span, HashSet<Arc<String>>>,
         snap_map: &Vec<(air::ast::Span, SnapPos)>,
         comment: &str,
-        context: &(&air::ast::Span, String),
     ) -> bool {
         let mut invalidity = false;
         if commands.len() > 0 {
             air_context.blank_line();
             air_context.comment(comment);
         }
-        for (span, command) in commands.iter() {
-            let time0 = Instant::now();
-            let result_invalidity = self.check_result_validity(
-                compiler,
-                error_as,
-                air_context,
-                assign_map,
-                snap_map,
-                &command,
-                context,
-                span.clone(),
-            );
-            invalidity = invalidity || result_invalidity;
-            let time1 = Instant::now();
-            self.time_air += time1 - time0;
+        for CommandsWithContextX { span, desc, commands } in commands.iter().map(|x| &**x) {
+            for command in commands.iter() {
+                let time0 = Instant::now();
+                let result_invalidity = self.check_result_validity(
+                    compiler,
+                    error_as,
+                    air_context,
+                    assign_map,
+                    snap_map,
+                    &command,
+                    &(span, desc.clone()), // TODO string clone
+                );
+                invalidity = invalidity || result_invalidity;
+                let time1 = Instant::now();
+                self.time_air += time1 - time0;
+            }
         }
         invalidity
     }
@@ -512,17 +504,18 @@ impl Verifier {
                     continue;
                 }
 
-                let check_commands: SpannedCommands =
-                    Arc::new((*check_commands).iter().map(|c| (None, c.clone())).collect());
                 self.run_commands_queries(
                     compiler,
                     ErrorAs::Error,
                     air_context,
-                    &check_commands,
+                    &Arc::new(vec![Arc::new(CommandsWithContextX {
+                        span: function.span.clone(),
+                        desc: "termination proof".to_string(),
+                        commands: check_commands,
+                    })]),
                     &HashMap::new(),
                     &vec![],
                     &("Function-Termination ".to_string() + &fun_as_rust_dbg(f)),
-                    &(&function.span, "termination proof".to_string()),
                 );
             }
 
@@ -551,8 +544,7 @@ impl Verifier {
             let mut check_recommends = function.x.attrs.check_recommends;
             loop {
                 ctx.fun = mk_fun_ctx(&function, check_recommends);
-                let (spanned_commands, snap_map) =
-                    vir::func_to_air::func_def_to_air(ctx, &function)?;
+                let (commands, snap_map) = vir::func_to_air::func_def_to_air(ctx, &function)?;
                 let error_as = match (function.x.mode, check_recommends) {
                     (_, false) => ErrorAs::Error,
                     (Mode::Spec, true) => ErrorAs::Warning,
@@ -564,19 +556,15 @@ impl Verifier {
                     compiler,
                     error_as,
                     air_context,
-                    &spanned_commands,
+                    // TODO if check_recommends {
+                    // TODO     "recommends check"
+                    // TODO } else {
+                    // TODO     "function definition check"
+                    // TODO }
+                    &commands,
                     &HashMap::new(),
                     &snap_map,
                     &(s.to_string() + &fun_as_rust_dbg(&function.x.name)),
-                    &(
-                        &function.span,
-                        if check_recommends {
-                            "recommends check"
-                        } else {
-                            "function definition check"
-                        }
-                        .to_string(),
-                    ),
                 );
                 if invalidity && !check_recommends && !self.args.no_auto_recommends_check {
                     // Rerun failed query to report possible recommends violations
