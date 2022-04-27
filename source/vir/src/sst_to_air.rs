@@ -26,8 +26,8 @@ use air::ast::{
 };
 use air::ast_util::{
     bool_typ, bv_typ, ident_apply, ident_binder, ident_typ, ident_var, int_typ, mk_and,
-    mk_bind_expr, mk_eq, mk_exists, mk_implies, mk_ite, mk_let, mk_not, mk_or, mk_xor, str_apply,
-    str_ident, str_typ, str_var, string_var,
+    mk_bind_expr, mk_eq, mk_exists, mk_implies, mk_ite, mk_let, mk_not, mk_option_command, mk_or,
+    mk_xor, str_apply, str_ident, str_typ, str_var, string_var,
 };
 use air::errors::{error, error_with_label};
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -1133,21 +1133,15 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
             let assertion = one_stmt(air_body);
 
             let query = Arc::new(QueryX { local: Arc::new(local), assertion });
-            state.commands.push(Arc::new(CommandsWithContextX {
-                span: stm.span.clone(),
-                desc: "assert_by_nonlinear".to_string(),
-                commands: Arc::new(vec![
-                    Arc::new(CommandX::SetOption(
-                        Arc::new(String::from("smt.arith.nl")),
-                        Arc::new(String::from("true")),
-                    )),
+            state.commands.push(CommandsWithContextX::new(
+                stm.span.clone(),
+                "assert_by_nonlinear".to_string(),
+                Arc::new(vec![
+                    mk_option_command("smt.arith.nl", "true"),
                     Arc::new(CommandX::CheckValid(query)),
-                    Arc::new(CommandX::SetOption(
-                        Arc::new(String::from("smt.arith.nl")),
-                        Arc::new(String::from("false")),
-                    )),
+                    mk_option_command("smt.arith.nl", "false"),
                 ]),
-            }));
+            ));
 
             // At main query, assume `requires => ensure`
             let reqs: Vec<Arc<ExprX>> = requires.iter().map(|x| x.1.clone()).collect();
@@ -1170,22 +1164,15 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
             let assertion = Arc::new(StmtX::Assert(error, air_expr));
             // this creates a separate query for the bv assertion
             let query = Arc::new(QueryX { local: Arc::new(local), assertion });
-
-            state.commands.push(Arc::new(CommandsWithContextX {
-                span: stm.span.clone(),
-                desc: "assert_bit_vector".to_string(),
-                commands: Arc::new(vec![
-                    Arc::new(CommandX::SetOption(
-                        Arc::new(String::from("smt.case_split")),
-                        Arc::new(String::from("0")),
-                    )),
+            state.commands.push(CommandsWithContextX::new(
+                stm.span.clone(),
+                "assert_bit_vector".to_string(),
+                Arc::new(vec![
+                    mk_option_command("smt.case_split", "0"),
                     Arc::new(CommandX::CheckValid(query)),
-                    Arc::new(CommandX::SetOption(
-                        Arc::new(String::from("smt.case_split")),
-                        Arc::new(String::from("3")),
-                    )),
+                    mk_option_command("smt.case_split", "3"),
                 ]),
-            }));
+            ));
 
             vec![Arc::new(StmtX::Assume(exp_to_expr(ctx, &expr, expr_ctxt)))]
         }
@@ -1641,35 +1628,23 @@ pub fn body_stm_to_air(
     let query = Arc::new(QueryX { local: Arc::new(local), assertion });
     let commands = if is_nonlinear {
         vec![
-            Arc::new(CommandX::SetOption(
-                Arc::new(String::from("smt.arith.nl")),
-                Arc::new(String::from("true")),
-            )),
+            mk_option_command("smt.arith.nl", "true"),
             Arc::new(CommandX::CheckValid(query)),
-            Arc::new(CommandX::SetOption(
-                Arc::new(String::from("smt.arith.nl")),
-                Arc::new(String::from("false")),
-            )),
+            mk_option_command("smt.arith.nl", "false"),
         ]
     } else if is_bit_vector_mode {
         vec![
-            Arc::new(CommandX::SetOption(
-                Arc::new(String::from("smt.case_split")),
-                Arc::new(String::from("0")),
-            )),
+            mk_option_command("smt.case_split", "0"),
             Arc::new(CommandX::CheckValid(query)),
-            Arc::new(CommandX::SetOption(
-                Arc::new(String::from("smt.case_split")),
-                Arc::new(String::from("3")),
-            )),
+            mk_option_command("smt.case_split", "3"),
         ]
     } else {
         vec![Arc::new(CommandX::CheckValid(query))]
     };
-    state.commands.push(Arc::new(CommandsWithContextX {
-        span: func_span.clone(),
-        desc: "function body".to_string(),
-        commands: Arc::new(commands),
-    }));
+    state.commands.push(CommandsWithContextX::new(
+        func_span.clone(),
+        "function body".to_string(),
+        Arc::new(commands),
+    ));
     (state.commands, state.snap_map)
 }

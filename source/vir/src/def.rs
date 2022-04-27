@@ -391,6 +391,12 @@ pub struct CommandsWithContextX {
     pub commands: Commands,
 }
 
+impl CommandsWithContextX {
+    pub fn new(span: Span, desc: String, commands: Commands) -> CommandsWithContext {
+        Arc::new(CommandsWithContextX { span: span, desc: desc, commands: commands })
+    }
+}
+
 pub type CommandsWithContext = Arc<CommandsWithContextX>;
 
 fn atomicity_type_name(atomicity: InvAtomicity) -> Ident {

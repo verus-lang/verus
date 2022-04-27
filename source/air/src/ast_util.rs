@@ -1,6 +1,6 @@
 use crate::ast::{
-    BinaryOp, Bind, BindX, Binder, BinderX, Constant, DeclX, Expr, ExprX, Exprs, Ident, MultiOp,
-    Quant, Span, Trigger, Typ, TypX, Typs, UnaryOp,
+    BinaryOp, Bind, BindX, Binder, BinderX, Command, CommandX, Constant, DeclX, Expr, ExprX, Exprs,
+    Ident, MultiOp, Quant, Span, Trigger, Typ, TypX, Typs, UnaryOp,
 };
 use crate::errors::ErrorX;
 use std::fmt::Debug;
@@ -258,4 +258,8 @@ pub fn mk_ite(e1: &Expr, e2: &Expr, e3: &Expr) -> Expr {
 
 pub fn mk_eq(e1: &Expr, e2: &Expr) -> Expr {
     Arc::new(ExprX::Binary(BinaryOp::Eq, e1.clone(), e2.clone()))
+}
+
+pub fn mk_option_command(s1: &str, s2: &str) -> Command {
+    Arc::new(CommandX::SetOption(Arc::new(String::from(s1)), Arc::new(String::from(s2))))
 }
