@@ -349,3 +349,24 @@ pub struct SyncSendIfSyncSend<T> {
 
 unsafe impl<T: Sync + Send> Sync for SyncSendIfSyncSend<T> {}
 unsafe impl<T: Sync + Send> Send for SyncSendIfSyncSend<T> {}
+
+// Used by Invariant lib
+
+#[doc(hidden)]
+#[allow(dead_code)]
+pub struct SendIfSend<T> {
+    no_sync_send: NoSyncSend,
+    t: std::marker::PhantomData<T>,
+}
+
+unsafe impl<T: Send> Send for SendIfSend<T> {}
+
+#[doc(hidden)]
+#[allow(dead_code)]
+pub struct SyncSendIfSend<T> {
+    no_sync_send: NoSyncSend,
+    t: std::marker::PhantomData<T>,
+}
+
+unsafe impl<T: Send> Sync for SyncSendIfSend<T> {}
+unsafe impl<T: Send> Send for SyncSendIfSend<T> {}

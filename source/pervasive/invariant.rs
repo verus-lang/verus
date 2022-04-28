@@ -8,21 +8,39 @@
 // note the names of `inv` and `namespace` are harcoded into the VIR crate.
 
 // LocalInvariant is NEVER `Sync`.
-// Other than that, Invariant & LocalInvariant both inherit
-// Sync/Send-ness from the inner type.
+//
+// Furthermore, for either type:
+//
+//  * If (Local?)Invariant<T> is Sync, then T must be Send
+//      * We could put the T in an Invariant, sync the invariant to another thread,
+//        and then extract the T, having effectively send it to the other thread.
+//  * If (Local?)Invariant<T> is Send, then T must be Send
+//      * We could put the T in an Invariant, send the invariant to another thread,
+//        and then take the T out.
+//
+// So the Sync/Send-ness of the Invariant depends on the Send-ness of T;
+// however, the Sync-ness of T is unimportant (the invariant doesn't give you an extra
+// ability to share a reference to a T across threads).
+//
+// In conclusion, we should have:
+//
+//    T                   Invariant<T>        LocalInvariant<T>
+//
+//    {}          ==>     {}                  {}
+//    Send        ==>     Send+Sync           Send
+//    Sync        ==>     {}                  {}
+//    Sync+Send   ==>     Send+Sync           Send
 
 #[proof]
 #[verifier(external_body)]
 pub struct Invariant<#[verifier(maybe_negative)] V> {
-    dummy: std::marker::PhantomData<V>,
+    dummy: builtin::SyncSendIfSend<V>,
 }
 
 #[verifier(external_body)]
 pub struct LocalInvariant<#[verifier(maybe_negative)] V> {
-    dummy: std::marker::PhantomData<V>,
+    dummy: builtin::SendIfSend<V>,
 }
-
-impl<V> !Sync for LocalInvariant<V> {}
 
 macro_rules! declare_invariant_impl {
     ($invariant:ident) => {
