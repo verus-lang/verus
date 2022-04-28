@@ -177,11 +177,8 @@ impl<V> DListXor<V> {
         if self.tail == 0 {
             // Special case: list is empty
 
-            assert_by(self.ptrs.len() == 0, {
-                if self.ptrs.len() != 0 {
-                    assert(self.wf_perm(self.ptrs.len() - 1));
-                    assert(false);
-                }
+            assert_by_contradiction!(self.ptrs.len() == 0, {
+                assert(self.wf_perm(self.ptrs.len() - 1));
             });
 
             self.push_first(v);
@@ -275,13 +272,10 @@ impl<V> DListXor<V> {
             self.tail = 0;
             self.head = 0;
 
-            assert_by(self.ptrs.len() == 1, {
-                if self.ptrs.len() >= 2 {
-                    assert(old(self).wf_perm(self.ptrs.len() - 2));
-                    #[spec] let actual_penult_u64 = self.prev_of(self.ptrs.len() - 1);
-                    assert_bit_vector(actual_penult_u64 ^ 0 == actual_penult_u64);
-                    assert(false);
-                }
+            assert_by_contradiction!(self.ptrs.len() == 1, {
+                assert(old(self).wf_perm(self.ptrs.len() - 2));
+                #[spec] let actual_penult_u64 = self.prev_of(self.ptrs.len() - 1);
+                assert_bit_vector(actual_penult_u64 ^ 0 == actual_penult_u64);
             });
         } else {
             self.tail = penult_u64;
