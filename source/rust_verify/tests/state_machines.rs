@@ -16,7 +16,7 @@ const IMPORTS: &str = code_str! {
 
     #[spec]
     #[is_variant]
-    enum Foo {
+    pub enum Foo {
         Bar(int),
         Qax(int),
         Duck(int),

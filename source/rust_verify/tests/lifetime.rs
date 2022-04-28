@@ -40,7 +40,7 @@ test_verify_one_file! {
             unimplemented!();
         }
 
-        struct Foo<'a, T: 'a> {
+        pub struct Foo<'a, T: 'a> {
             #[proof] pub t: &'a T,
         }
 

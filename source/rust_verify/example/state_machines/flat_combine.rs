@@ -15,24 +15,24 @@ use state_machines_macros::tokenized_state_machine;
 // rather complicated to use, and it wasn't necessary.
 // Now, I expect storage to be a lot easier to use, easier than the alternative.
 
-struct Request {
+pub struct Request {
     pub rid: int,
     pub req: int,
 }
 
-struct Response {
+pub struct Response {
     pub rid: int,
     pub resp: int,
 }
 
 #[is_variant]
-enum Client {
+pub enum Client {
     Idle,
     Waiting {rid: int},
 }
 
 #[is_variant]
-enum Combiner {
+pub enum Combiner {
     Collecting {elems: Seq<Option<int>>},
     Responding {elems: Seq<Option<int>>, idx: nat},
 }

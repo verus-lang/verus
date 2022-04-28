@@ -692,7 +692,7 @@ const ENUM_S: &str = code_str! {
 };
 
 test_verify_one_file! {
-    #[ignore] #[test] test_match_exhaustiveness_regression_127 ENUM_S.to_string() + code_str! {
+    #[test] test_match_exhaustiveness_regression_127 ENUM_S.to_string() + code_str! {
         fn f(s: S) {
             match s {
                 S::V1 => assert(true),

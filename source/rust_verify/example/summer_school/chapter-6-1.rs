@@ -11,10 +11,10 @@ use state_machines_macros::case_on_next;
 use state_machines_macros::case_on_init;
 
 #[verifier(external_body)]
-struct Key { }
+pub struct Key { }
 
 #[verifier(external_body)]
-struct Value { }
+pub struct Value { }
 
 #[verifier(external_body)]
 #[spec]

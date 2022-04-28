@@ -6,7 +6,7 @@ use pervasive::*;
 use state_machines_macros::tokenized_state_machine;
 
 #[spec]
-enum Foo {
+pub enum Foo {
     Bar(int),
     Qax(int),
     Duck(int),
