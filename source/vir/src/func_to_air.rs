@@ -377,26 +377,11 @@ fn params_to_pre_post_pars(params: &Params, pre: bool) -> Pars {
     )
 }
 
-pub fn func_decl_to_air(
-    ctx: &mut Ctx,
-    function: &Function,
-    public_body: bool,
-) -> Result<(Commands, Commands), VirErr> {
+pub fn func_decl_to_air(ctx: &mut Ctx, function: &Function) -> Result<Commands, VirErr> {
     // let typ_params: Vec<_> = funxtion.x.typ_bounds.iter().map(|_| str_typ(crate::def::TYPE)).collect();
     let req_typs: Arc<Vec<_>> =
         Arc::new(function.x.params.iter().map(|param| typ_to_air(ctx, &param.x.typ)).collect());
-    let mut ens_typs: Vec<_> = function
-        .x
-        .params
-        .iter()
-        .flat_map(|param| {
-            let air_typ = typ_to_air(ctx, &param.x.typ);
-            if !param.x.is_mut { vec![air_typ] } else { vec![air_typ.clone(), air_typ] }
-        })
-        .collect();
-
     let mut decl_commands: Vec<Command> = Vec::new();
-    let mut check_commands: Vec<Command> = Vec::new();
     if function.x.require.len() > 0 {
         let msg = match (function.x.mode, &function.x.attrs.custom_req_err) {
             // We don't highlight the failed precondition if the programmer supplied their own msg
@@ -418,6 +403,25 @@ pub fn func_decl_to_air(
             &msg,
         )?;
     }
+    Ok(Arc::new(decl_commands))
+}
+
+pub fn func_axioms_to_air(
+    ctx: &mut Ctx,
+    function: &Function,
+    public_body: bool,
+) -> Result<(Commands, Commands), VirErr> {
+    let mut ens_typs: Vec<_> = function
+        .x
+        .params
+        .iter()
+        .flat_map(|param| {
+            let air_typ = typ_to_air(ctx, &param.x.typ);
+            if !param.x.is_mut { vec![air_typ] } else { vec![air_typ.clone(), air_typ] }
+        })
+        .collect();
+    let mut decl_commands: Vec<Command> = Vec::new();
+    let mut check_commands: Vec<Command> = Vec::new();
     match function.x.mode {
         Mode::Spec => {
             // Body
@@ -554,18 +558,30 @@ pub fn func_decl_to_air(
     Ok((Arc::new(decl_commands), Arc::new(check_commands)))
 }
 
+pub enum FuncDefPhase {
+    CheckingSpecs,
+    CheckingProofExec,
+}
+
 pub fn func_def_to_air(
     ctx: &Ctx,
     function: &Function,
+    phase: FuncDefPhase,
+    checking_recommends: bool,
 ) -> Result<(Arc<Vec<CommandsWithContext>>, Vec<(Span, SnapPos)>), VirErr> {
-    match (
-        function.x.mode,
-        function.x.is_const || function.x.attrs.check_recommends,
-        function.x.body.as_ref(),
-    ) {
-        (Mode::Spec, true, Some(body))
-        | (Mode::Proof, _, Some(body))
-        | (Mode::Exec, _, Some(body)) => {
+    let erasure_mode = match (function.x.mode, function.x.is_const) {
+        (Mode::Spec, true) => Mode::Exec,
+        (mode, _) => mode,
+    };
+    match (phase, erasure_mode, checking_recommends, &function.x.body) {
+        (_, _, _, None)
+        | (FuncDefPhase::CheckingSpecs, Mode::Proof | Mode::Exec, _, Some(_))
+        | (FuncDefPhase::CheckingSpecs, Mode::Spec, false, Some(_))
+        | (FuncDefPhase::CheckingProofExec, Mode::Spec, _, Some(_)) => {
+            Ok((Arc::new(vec![]), vec![]))
+        }
+        (FuncDefPhase::CheckingSpecs, Mode::Spec, true, Some(body))
+        | (FuncDefPhase::CheckingProofExec, Mode::Proof | Mode::Exec, _, Some(body)) => {
             // Note: since is_const functions serve double duty as exec and spec,
             // we generate an exec check for them here to catch any arithmetic overflows.
             let (trait_typ_substs, req_ens_function) = if let FunctionKind::TraitMethodImpl {
@@ -609,14 +625,14 @@ pub fn func_def_to_air(
                 state.declare_new_var(&param.x.name, &param.x.typ, param.x.is_mut, false);
             }
 
-            let mut req_stmts: Vec<Stm> = Vec::new();
+            let mut req_stms: Vec<Stm> = Vec::new();
             let mut reqs: Vec<Exp> = Vec::new();
             for e in req_ens_function.x.require.iter() {
                 if ctx.checking_recommends() {
                     let (stms, exp) =
                         crate::ast_to_sst::expr_to_pure_exp_check(ctx, &mut state, e)?;
-                    req_stmts.extend(stms);
-                    req_stmts.push(Spanned::new(exp.span.clone(), StmX::Assume(exp)));
+                    req_stms.extend(stms);
+                    req_stms.push(Spanned::new(exp.span.clone(), StmX::Assume(exp)));
                 } else {
                     reqs.push(crate::ast_to_sst::expr_to_exp(ctx, &req_pars, e)?);
                 }
@@ -637,11 +653,20 @@ pub fn func_def_to_air(
             let (mut stm, skip_ensures) =
                 crate::ast_to_sst::expr_to_one_stm_dest(&ctx, &mut state, &body, &dest)?;
             if ctx.checking_recommends() && trait_typ_substs.len() == 0 {
-                req_stmts.push(stm);
-                if !skip_ensures {
-                    req_stmts.extend(ens_stmts);
+                if let Some(fun) = &function.x.decrease_by {
+                    let decrease_by_fun = &ctx.func_map[fun];
+                    let (body_stms, _exp) = crate::ast_to_sst::expr_to_stm_or_error(
+                        &ctx,
+                        &mut state,
+                        decrease_by_fun.x.body.as_ref().expect("decreases_by has body"),
+                    )?;
+                    req_stms.extend(body_stms);
                 }
-                stm = crate::ast_to_sst::stms_to_one_stm(&body.span, req_stmts);
+                req_stms.push(stm);
+                if !skip_ensures {
+                    req_stms.extend(ens_stmts);
+                }
+                stm = crate::ast_to_sst::stms_to_one_stm(&body.span, req_stms);
             }
             let stm = state.finalize_stm(&stm);
             state.ret_post = None;
@@ -680,6 +705,5 @@ pub fn func_def_to_air(
             state.finalize();
             Ok((Arc::new(commands), snap_map))
         }
-        _ => Ok((Arc::new(vec![]), vec![])),
     }
 }

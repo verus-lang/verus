@@ -344,6 +344,18 @@ fn parse_else_block(input: ParseStream) -> syn::parse::Result<TransitionStmt> {
 fn parse_let(span: Span, lk: LetKind, input: ParseStream) -> syn::parse::Result<TLet> {
     let pat: Pat = input.parse()?;
 
+    match &pat {
+        Pat::Ident(syn::PatIdent { ident, .. }) => {
+            if ident.to_string() == "birds_eye" {
+                return Err(Error::new(
+                    pat.span(),
+                    "keywords in the wrong order: use `birds_eye let` instead",
+                ));
+            }
+        }
+        _ => {}
+    }
+
     let ty = if input.peek(Token![:]) {
         let _t: Token![:] = input.parse()?;
         let ty: Type = input.parse()?;

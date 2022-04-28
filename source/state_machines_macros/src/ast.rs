@@ -5,14 +5,10 @@ use syn::{Expr, FieldsNamed, Generics, Ident, ImplItemMethod, Pat, Type};
 #[derive(Clone, Debug)]
 pub struct SM {
     pub name: Ident,
-
     pub generics: Option<Generics>,
-
     pub fields: Vec<Field>,
     pub fields_named_ast: FieldsNamed,
-
     pub transitions: Vec<Transition>,
-
     pub concurrent: bool,
 }
 

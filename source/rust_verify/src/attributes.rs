@@ -259,7 +259,9 @@ pub(crate) fn parse_attrs(attrs: &[Attribute]) -> Result<Vec<Attr>, VirErr> {
                 Some(box [AttrTree::Fun(_, arg, None)]) if arg == "bit_vector" => {
                     v.push(Attr::BitVector)
                 }
-                Some(box [AttrTree::Fun(_, arg, None)]) if arg == "decreases_by" => {
+                Some(box [AttrTree::Fun(_, arg, None)])
+                    if arg == "decreases_by" || arg == "recommends_by" =>
+                {
                     v.push(Attr::DecreasesBy)
                 }
                 Some(box [AttrTree::Fun(_, arg, Some(box [AttrTree::Fun(_, name, None)]))])

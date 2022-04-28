@@ -21,8 +21,8 @@ use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
 use syn::token::Semi;
 use syn::{
-    Attribute, Block, Expr, ExprBlock, FieldsNamed, FnArg, GenericParam, Generics, Ident,
-    ImplItemMethod, Meta, MetaList, Pat, Stmt, Type,
+    Attribute, Block, Expr, ExprBlock, FnArg, GenericParam, Generics, Ident, ImplItemMethod, Meta,
+    MetaList, Pat, Stmt, Type,
 };
 
 pub fn output_token_stream(bundle: SMBundle, concurrent: bool) -> syn::parse::Result<TokenStream> {
@@ -80,6 +80,11 @@ pub fn get_self_ty_turbofish(sm: &SM) -> Type {
     name_with_type_args_turbofish(&name, sm)
 }
 
+pub fn get_self_ty_turbofish_path(sm: &SM) -> syn::Path {
+    let name = Ident::new("State", sm.name.span());
+    name_with_type_args_turbofish_path(&name, sm)
+}
+
 pub fn name_with_type_args(name: &Ident, sm: &SM) -> Type {
     Type::Verbatim(match &sm.generics {
         None => quote! { #name },
@@ -95,32 +100,50 @@ pub fn name_with_type_args(name: &Ident, sm: &SM) -> Type {
     })
 }
 
-pub fn name_with_type_args_turbofish(name: &Ident, sm: &SM) -> Type {
-    Type::Verbatim(match &sm.generics {
-        None => quote! { #name },
+fn name_with_type_args_turbofish_path(name: &Ident, sm: &SM) -> syn::Path {
+    let span = name.span();
+    let arguments = match &sm.generics {
+        None => syn::PathArguments::None,
         Some(gen) => {
             if gen.params.len() > 0 {
-                //let ids = gen.params.iter().map(|gp|
                 let args = get_generic_args(&gen.params);
-                quote! { #name::<#args> }
+                syn::PathArguments::AngleBracketed(syn::AngleBracketedGenericArguments {
+                    colon2_token: Some(syn::token::Colon2 { spans: [span, span] }),
+                    lt_token: gen.lt_token.expect("expected lt token"),
+                    args,
+                    gt_token: gen.gt_token.expect("expected gt token"),
+                })
             } else {
-                quote! { #name }
+                syn::PathArguments::None
             }
         }
-    })
+    };
+
+    let mut segments = Punctuated::<syn::PathSegment, syn::token::Colon2>::new();
+    segments.push(syn::PathSegment { ident: name.clone(), arguments });
+    syn::Path { leading_colon: None, segments }
 }
 
-pub fn get_generic_args(params: &Punctuated<GenericParam, syn::token::Comma>) -> TokenStream {
-    let args = params.iter().map(|gp| {
-        match gp {
+pub fn name_with_type_args_turbofish(name: &Ident, sm: &SM) -> Type {
+    let p = name_with_type_args_turbofish_path(name, sm);
+    Type::Path(syn::TypePath { qself: None, path: p })
+}
+
+pub fn get_generic_args(
+    params: &Punctuated<GenericParam, syn::token::Comma>,
+) -> Punctuated<syn::GenericArgument, syn::token::Comma> {
+    let mut args = Punctuated::<syn::GenericArgument, syn::token::Comma>::new();
+    for gp in params.iter() {
+        let id = match gp {
             GenericParam::Type(type_param) => type_param.ident.clone(),
             _ => {
                 // should have been checked already
                 panic!("unsupported generic param type");
             }
-        }
-    });
-    quote! { #(#args),* }
+        };
+        args.push(syn::GenericArgument::Type(Type::Verbatim(quote! {#id})));
+    }
+    args
 }
 
 fn generic_components_for_fn(generics: &Option<Generics>) -> (TokenStream, TokenStream) {
@@ -183,28 +206,32 @@ pub fn fix_attrs(attrs: &mut Vec<Attribute>) {
     }
 }
 
-pub fn fields_named_fix_attrs(fields_named: &mut FieldsNamed) {
-    for field in fields_named.named.iter_mut() {
-        fix_attrs(&mut field.attrs);
-    }
-}
-
 pub fn output_primary_stuff(
     root_stream: &mut TokenStream,
     impl_stream: &mut TokenStream,
     sm: &SM,
 ) -> HashMap<String, Ident> {
-    let mut fields_named = sm.fields_named_ast.clone();
-    fields_named_fix_attrs(&mut fields_named);
-
     let gen = match &sm.generics {
         Some(gen) => quote! { #gen },
         None => TokenStream::new(),
     };
 
-    // Note: #fields_named will include the braces.
-    let code: TokenStream = quote_spanned! { fields_named.span() =>
-        pub struct State #gen #fields_named
+    let fields: Vec<TokenStream> = sm
+        .fields
+        .iter()
+        .map(|f| {
+            let name = &f.name;
+            let ty = shardable_type_to_type(f.type_span, &f.stype);
+            quote_spanned! { f.name.span() =>
+                pub #name: #ty
+            }
+        })
+        .collect();
+
+    let code: TokenStream = quote_spanned! { sm.fields_named_ast.span() =>
+        pub struct State #gen {
+            #(#fields),*
+        }
     };
     root_stream.extend(code);
 

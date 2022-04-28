@@ -10,7 +10,7 @@ use pervasive::cell::*;
 use state_machines_macros::tokenized_state_machine;
 
 // TODO make T generic
-struct T {
+pub struct T {
     t: u8,
 }
 

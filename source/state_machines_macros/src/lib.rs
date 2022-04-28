@@ -13,6 +13,7 @@ mod lemmas;
 mod parse_token_stream;
 mod parse_transition;
 mod safety_conditions;
+mod self_type_visitor;
 mod simplification;
 mod simplify_assigns;
 mod to_relation;
