@@ -90,6 +90,9 @@ fn next_refines_next(pre: A::State, post: A::State) {
 
             B::show::add(interp(pre), interp(post), 2 * n);
         }
+        A::Step::dummy_to_use_type_params(_) => {
+            assume(false); // TODO
+        }
     }
 }
 
