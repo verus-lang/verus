@@ -1643,7 +1643,7 @@ pub fn body_stm_to_air(
     };
     state.commands.push(CommandsWithContextX::new(
         func_span.clone(),
-        "function body".to_string(),
+        "function body check".to_string(),
         Arc::new(commands),
     ));
     (state.commands, state.snap_map)

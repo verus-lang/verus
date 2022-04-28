@@ -231,7 +231,7 @@ impl Verifier {
         assign_map: &HashMap<*const air::ast::Span, HashSet<Arc<std::string::String>>>,
         snap_map: &Vec<(air::ast::Span, SnapPos)>,
         command: &Command,
-        context: &(&air::ast::Span, String),
+        context: &(&air::ast::Span, &str),
     ) -> bool {
         let report_long_running = || {
             let mut counter = 0;
@@ -288,7 +288,7 @@ impl Verifier {
 
                     self.errors.push(vec![ErrorSpan::new_from_air_span(
                         compiler.session().source_map(),
-                        &context.1,
+                        &context.1.to_string(),
                         &context.0,
                     )]);
                     break;
@@ -399,7 +399,7 @@ impl Verifier {
                     assign_map,
                     snap_map,
                     &command,
-                    &(span, desc.clone()), // TODO string clone
+                    &(span, desc),
                 );
                 invalidity = invalidity || result_invalidity;
                 let time1 = Instant::now();
@@ -556,11 +556,6 @@ impl Verifier {
                     compiler,
                     error_as,
                     air_context,
-                    // TODO if check_recommends {
-                    // TODO     "recommends check"
-                    // TODO } else {
-                    // TODO     "function definition check"
-                    // TODO }
                     &commands,
                     &HashMap::new(),
                     &snap_map,
