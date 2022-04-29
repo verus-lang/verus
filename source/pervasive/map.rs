@@ -192,13 +192,13 @@ macro_rules! map {
 /// Prove two maps equal by extensionality. Usage is:
 ///
 /// ```rust,ignore
-/// map_ext!(map1, map2);
+/// assert_maps_equal!(map1, map2);
 /// ```
 /// 
 /// or,
 /// 
 /// ```rust,ignore
-/// map_ext!(map1, map2, k: Key => {
+/// assert_maps_equal!(map1, map2, k: Key => {
 ///     // proof goes here that `map1` and `map2` agree on key `k`,
 ///     // i.e., `k` is in the domain of `map`` iff it is in the domain of `map2`
 ///     // and if so, then their values agree.
@@ -206,15 +206,17 @@ macro_rules! map {
 /// ```
 
 #[macro_export]
-macro_rules! map_ext {
+macro_rules! assert_maps_equal {
     ($m1:expr, $m2:expr $(,)?) => {
-        map_ext!($m1, $m2, key => { })
+        assert_maps_equal!($m1, $m2, key => { })
     };
     ($m1:expr, $m2:expr, $k:ident $( : $t:ty )? => $bblock:block) => {
         #[spec] let m1 = $m1;
         #[spec] let m2 = $m2;
         ::builtin::assert_by(::builtin::equal(m1, m2), {
             ::builtin::assert_forall_by(|$k $( : $t )?| {
+                // TODO better error message here: show the individual conjunct that fails,
+                // and maybe give an error message in english as well
                 ::builtin::ensures([
                     ((#[trigger] m1.dom().contains($k)) >>= m2.dom().contains($k))
                     && (m2.dom().contains($k) >>= m1.dom().contains($k))

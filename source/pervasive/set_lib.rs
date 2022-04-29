@@ -147,21 +147,21 @@ pub fn lemma_int_range(lo: int, hi: int) {
 /// Prove two sets equal by extensionality. Usage is:
 ///
 /// ```rust,ignore
-/// set_ext!(set1, set2);
+/// assert_sets_equal!(set1, set2);
 /// ```
 /// 
 /// or,
 /// 
 /// ```rust,ignore
-/// seq_ext!(set1, set2, elem => {
+/// assert_sets_equal!(set1, set2, elem => {
 ///     // prove that set1.contains(elem) iff set2.contains(elem)
 /// });
 /// ```
 
 #[macro_export]
-macro_rules! set_ext {
+macro_rules! assert_sets_equal {
     ($s1:expr, $s2:expr $(,)?) => {
-        set_ext!($s1, $s2, elem => { })
+        assert_sets_equal!($s1, $s2, elem => { })
     };
     ($s1:expr, $s2:expr, $elem:ident $( : $t:ty )? => $bblock:block) => {
         let s1 = $s1;

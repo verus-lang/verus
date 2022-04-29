@@ -224,7 +224,7 @@ fn next_refines_next_with_macro(pre: ShardedKVProtocol::State, post: ShardedKVPr
 
     case_on_next!{pre, post, ShardedKVProtocol => {
         insert(idx, key, value) => {
-            map_ext!(pre.interp_map().insert(key, value), post.interp_map(), k => {
+            assert_maps_equal!(pre.interp_map().insert(key, value), post.interp_map(), k => {
                 if equal(k, key) {
                     assert(pre.host_has_key(idx, key));
                     assert(post.host_has_key(idx, key));
@@ -280,7 +280,7 @@ fn next_refines_next_with_macro(pre: ShardedKVProtocol::State, post: ShardedKVPr
             MapSpec::show::query_op(interp(pre), interp(post), key, value);
         }
         transfer(send_idx, recv_idx, key, value) => {
-            map_ext!(pre.interp_map(), post.interp_map(), k: Key => {
+            assert_maps_equal!(pre.interp_map(), post.interp_map(), k: Key => {
                 if equal(k, key) {
                     assert(pre.host_has_key(send_idx, key));
                     assert(post.host_has_key(recv_idx, key));
@@ -311,7 +311,7 @@ fn init_refines_init_with_macro(post: ShardedKVProtocol::State) {
 
     case_on_init!{post, ShardedKVProtocol => {
         initialize(n) => {
-            map_ext!(interp(post).map, Map::total(|k| default()), k: Key => {
+            assert_maps_equal!(interp(post).map, Map::total(|k| default()), k: Key => {
                 assert(interp(post).map.dom().contains(k));
                 assert(equal(interp(post).map.index(k), default()));
             });

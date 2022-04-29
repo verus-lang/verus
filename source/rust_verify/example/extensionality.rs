@@ -19,7 +19,7 @@ fn test_seqs(s1: Seq<u64>, s2: Seq<u64>) {
         s2.index(2) == 8,
     ]);
 
-    seq_ext!(s1, s2);
+    assert_seqs_equal!(s1, s2);
 
     assert(equal(s1, s2));
 }
@@ -32,7 +32,7 @@ fn pop_and_push(s: Seq<u64>) {
 
     let t = s.subrange(0, s.len() as int - 1).push(s.index(s.len() as int - 1));
 
-    seq_ext!(s, t);
+    assert_seqs_equal!(s, t);
 
     assert(equal(s, t));
 }
@@ -47,7 +47,7 @@ fn subrange_concat(s: Seq<u64>, i: int) {
     let t2 = s.subrange(i, s.len());
     let t = t1.add(t2);
 
-    seq_ext!(s, t);
+    assert_seqs_equal!(s, t);
 
     assert(equal(s, t));
 }
@@ -58,13 +58,13 @@ fn are_equal(s: Seq<u64>, t: Seq<u64>, i: int) -> bool {
 }
 
 #[proof]
-fn seq_ext_with_proof(s: Seq<u64>, t: Seq<u64>) {
+fn assert_seqs_equal_with_proof(s: Seq<u64>, t: Seq<u64>) {
     requires([
         s.len() == t.len(),
         forall(|i| 0 <= i && i < s.len() as int >>= are_equal(s, t, i))
     ]);
 
-    seq_ext!(s, t, i => {
+    assert_seqs_equal!(s, t, i => {
         assert(are_equal(s, t, i)); // trigger
     });
 
@@ -81,7 +81,7 @@ fn test_map(m: Map<int, int>) {
 
     let q = m.remove(5).insert(5, 17);
 
-    map_ext!(m, q);
+    assert_maps_equal!(m, q);
 
     assert(equal(m, q));
 }
@@ -93,12 +93,12 @@ fn maps_are_equal_on(m: Map<int, int>, q: Map<int, int>, i: int) -> bool {
 }
 
 #[proof]
-fn map_ext_with_proof(m: Map<int, int>, q: Map<int, int>) {
+fn assert_maps_equal_with_proof(m: Map<int, int>, q: Map<int, int>) {
     requires(
         forall(|i| maps_are_equal_on(m, q, i))
     );
 
-    map_ext!(m, q, i => {
+    assert_maps_equal!(m, q, i => {
         assert(maps_are_equal_on(m, q, i)); // trigger
     });
 
@@ -106,11 +106,11 @@ fn map_ext_with_proof(m: Map<int, int>, q: Map<int, int>) {
 }
 
 #[proof]
-fn map_ext_with_proof2() {
+fn assert_maps_equal_with_proof2() {
     let m = Map::<u64, u64>::total(|t| t & 184);
     let q = Map::<u64, u64>::new(|t| t ^ t == 0, |t| 184 & t);
 
-    map_ext!(m, q, t => {
+    assert_maps_equal!(m, q, t => {
         // show that the `q` map is total:
         assert_bit_vector(t ^ t == 0); 
 
@@ -125,7 +125,7 @@ fn map_ext_with_proof2() {
 
 #[proof]
 fn test_set(s: Set<int>, t: Set<int>) {
-    set_ext!(
+    assert_sets_equal!(
         s.union(t),
         t.union(s),
     );
@@ -137,11 +137,11 @@ fn test_set(s: Set<int>, t: Set<int>) {
 }
 
 #[proof]
-fn set_ext_with_proof() {
+fn assert_sets_equal_with_proof() {
     let s = Set::<u64>::new(|i: u64| i ^ 25 < 100);
     let t = Set::<u64>::new(|i: u64| 25 ^ i < 100);
 
-    set_ext!(s, t, i => {
+    assert_sets_equal!(s, t, i => {
         assert_bit_vector(i ^ 25 == 25 ^ i);
     });
 

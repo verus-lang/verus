@@ -27,22 +27,22 @@ impl<A> Seq<A> {
 /// Prove two sequences equal by extensionality. Usage is:
 ///
 /// ```rust,ignore
-/// seq_ext!(map1, map2);
+/// assert_seqs_equal!(map1, map2);
 /// ```
 /// 
 /// or,
 /// 
 /// ```rust,ignore
-/// seq_ext!(seq1, seq2, i => {
+/// assert_seqs_equal!(seq1, seq2, i => {
 ///     // assuming that i is in-bounds for the sequences
 ///     // prove that seq1[i] == seq2[i]
 /// });
 /// ```
 
 #[macro_export]
-macro_rules! seq_ext {
+macro_rules! assert_seqs_equal {
     ($s1:expr, $s2:expr) => {
-        seq_ext!($s1, $s2, idx => { })
+        assert_seqs_equal!($s1, $s2, idx => { })
     };
     ($s1:expr, $s2:expr, $idx:ident => $bblock:block) => {
         let s1 = $s1;
