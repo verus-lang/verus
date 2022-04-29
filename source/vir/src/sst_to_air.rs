@@ -1563,13 +1563,16 @@ pub fn body_stm_to_air(
         mask,
     };
 
+    let mut _modified = HashSet::new();
+
     let stm = crate::sst_vars::stm_assign(
         &mut state.assign_map,
         &declared,
         &mut assigned,
-        &mut HashSet::new(),
+        &mut _modified,
         stm,
     );
+
     let mut stmts = stm_to_stmts(ctx, &mut state, &stm);
 
     if has_mut_params {

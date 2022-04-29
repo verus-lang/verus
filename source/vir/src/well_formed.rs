@@ -2,10 +2,11 @@ use crate::ast::{
     CallTarget, Datatype, Expr, ExprX, FieldOpr, Fun, FunX, Function, FunctionKind, Krate,
     MaskSpec, Mode, Path, PathX, TypX, UnaryOpr, VirErr,
 };
-use crate::ast_util::{err_str, err_string};
+use crate::ast_util::{err_str, err_string, error, referenced_vars_expr};
 use crate::datatype_to_air::is_datatype_transparent;
 use crate::early_exit_cf::assert_no_early_exit_in_inv_block;
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::sync::Arc;
 
 struct Ctxt {
@@ -94,13 +95,27 @@ fn check_one_expr(
         ExprX::OpenInvariant(_inv, _binder, body, _atomicity) => {
             assert_no_early_exit_in_inv_block(&body.span, body)?;
         }
-        ExprX::AssertNonLinear { .. } => {
+        ExprX::AssertNonLinear { requires, ensure, proof } => {
             if function.x.attrs.nonlinear {
                 return err_str(
                     &expr.span,
                     "assert_by_nonlinear not allowed in #[verifier(nonlinear)] functions",
                 );
             }
+
+            let mut referenced = HashSet::new();
+            for r in requires.iter() {
+                referenced.extend(referenced_vars_expr(r).into_iter());
+            }
+            referenced.extend(referenced_vars_expr(ensure).into_iter());
+
+            crate::ast_visitor::expr_visitor_check(proof, &mut |e| match &e.x {
+                ExprX::Var(x) | ExprX::VarLoc(x) if !referenced.contains(x) => Err(error(
+                    format!("variable {} not mentioned in requires/ensures", x).as_str(),
+                    &e.span,
+                )),
+                _ => Ok(()),
+            })?;
         }
         _ => {}
     }

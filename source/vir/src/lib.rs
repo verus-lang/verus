@@ -51,6 +51,7 @@ pub mod recursive_types;
 mod scc;
 mod sst;
 mod sst_to_air;
+mod sst_util;
 mod sst_vars;
 mod sst_visitor;
 pub mod traits;

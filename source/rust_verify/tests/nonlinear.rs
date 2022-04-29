@@ -211,3 +211,15 @@ test_verify_one_file! {
         }
     } => Err(e) => assert_one_fails(e)
 }
+
+test_verify_one_file! {
+    #[test] test_unexpected_vars code! {
+        #[proof]
+        fn test6(x: int, y: int, z:int) {
+            assert_by_nonlinear(x + y == x, {
+                requires(y == 0);
+                assert(z == 0);
+            });
+        }
+    } => Err(e) => assert_vir_error(e)
+}

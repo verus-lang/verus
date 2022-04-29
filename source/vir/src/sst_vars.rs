@@ -27,27 +27,6 @@ pub(crate) fn get_loc_var(exp: &Exp) -> UniqueIdent {
     }
 }
 
-pub(crate) fn referenced_vars(
-    exp: &Exp,
-    declared: &HashMap<UniqueIdent, Typ>,
-) -> HashMap<UniqueIdent, Typ> {
-    let mut vars: HashMap<UniqueIdent, Typ> = HashMap::new();
-    crate::sst_visitor::exp_visitor_dfs::<(), _>(
-        exp,
-        &mut crate::sst_visitor::VisitorScopeMap::new(),
-        &mut |e, _| {
-            match &e.x {
-                ExpX::Var(x) | ExpX::VarLoc(x) => {
-                    vars.insert(x.clone(), declared[x].clone());
-                }
-                _ => (),
-            }
-            crate::sst_visitor::VisitorControlFlow::Recurse
-        },
-    );
-    vars
-}
-
 pub(crate) fn stm_assign(
     assign_map: &mut AssignMap,
     declared: &HashMap<UniqueIdent, Typ>,
@@ -67,6 +46,7 @@ pub(crate) fn stm_assign(
         StmX::Call(..)
         | StmX::Assert(..)
         | StmX::AssertBV(..)
+        | StmX::AssertNonLinear { .. }
         | StmX::Assume(_)
         | StmX::Fuel(..) => stm.clone(),
         StmX::Assign { lhs: Dest { dest, is_init }, rhs: _ } => {
@@ -134,28 +114,6 @@ pub(crate) fn stm_assign(
                 modified_vars: Arc::new(modified_vars),
             };
             Spanned::new(stm.span.clone(), while_x)
-        }
-        StmX::AssertNonLinear { requires, ensure, proof, vars } => {
-            assert!(vars.len() == 0);
-            let mut vars: Vec<(UniqueIdent, Typ)> = Vec::new();
-            for r in requires.iter() {
-                vars.extend(referenced_vars(r, declared).into_iter());
-            }
-            vars.extend(referenced_vars(ensure, declared).into_iter());
-            vars.sort_by(|a, b| {
-                let str1: &String = &*(((*a).0).0);
-                let str2: &String = &*(((*b).0).0);
-                str1.cmp(str2)
-            });
-            Spanned::new(
-                stm.span.clone(),
-                StmX::AssertNonLinear {
-                    requires: requires.clone(),
-                    ensure: ensure.clone(),
-                    proof: proof.clone(),
-                    vars: Arc::new(vars),
-                },
-            )
         }
         StmX::OpenInvariant(inv, ident, ty, body_stm, atomicity) => {
             assigned.insert(ident.clone());
