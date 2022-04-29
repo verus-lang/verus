@@ -103,19 +103,19 @@ fn check_one_expr(
                 );
             }
 
-            let mut referenced = HashSet::new();
-            for r in requires.iter() {
-                referenced.extend(referenced_vars_expr(r).into_iter());
-            }
-            referenced.extend(referenced_vars_expr(ensure).into_iter());
+            // let mut referenced = HashSet::new();
+            // for r in requires.iter() {
+            //     referenced.extend(referenced_vars_expr(r).into_iter());
+            // }
+            // referenced.extend(referenced_vars_expr(ensure).into_iter());
 
-            crate::ast_visitor::expr_visitor_check(proof, &mut |e| match &e.x {
-                ExprX::Var(x) | ExprX::VarLoc(x) if !referenced.contains(x) => Err(error(
-                    format!("variable {} not mentioned in requires/ensures", x).as_str(),
-                    &e.span,
-                )),
-                _ => Ok(()),
-            })?;
+            // crate::ast_visitor::expr_visitor_check(proof, &mut |e| match &e.x {
+            //     ExprX::Var(x) | ExprX::VarLoc(x) if !referenced.contains(x) => Err(error(
+            //         format!("variable {} not mentioned in requires/ensures", x).as_str(),
+            //         &e.span,
+            //     )),
+            //     _ => Ok(()),
+            // })?;
         }
         _ => {}
     }

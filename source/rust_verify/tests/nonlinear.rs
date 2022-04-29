@@ -239,3 +239,16 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] test_new_vars code! {
+        #[proof]
+        fn test6(x: int) {
+            assert_by_nonlinear(x * 2 == 10, {
+                requires({let z = 5; x == z});
+                let y = x * 2;
+                assert(y == 10);
+            });
+        }
+    } => Ok(())
+}
