@@ -43,7 +43,7 @@ impl<A> Seq<A> {
         recommends([
             0 <= start_inclusive,
             start_inclusive <= end_exclusive,
-            end_exclusive < self.len(),
+            end_exclusive <= self.len(),
         ]);
         unimplemented!()
     }

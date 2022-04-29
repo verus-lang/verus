@@ -91,3 +91,26 @@ pub fn unreached<A>() -> A {
 pub fn print_u64(i: u64) {
     println!("{}", i);
 }
+
+/// Allows you to prove a boolean predicate by assuming its negation and proving
+/// a contradiction. Equivalent to writing `if !b { /* proof here */; assert(false); }`
+/// but is more concise and documents intent.
+///
+/// ```rust,ignore
+/// assert_by_contradiction!(b, {
+///     // assume !b here
+///     // prove `false`
+/// });
+/// ```
+
+#[macro_export]
+macro_rules! assert_by_contradiction {
+    ($predicate:expr, $bblock:block) => {
+        ::builtin::assert_by($predicate, {
+            if !$predicate {
+                $bblock
+                crate::pervasive::assert(false);
+            }
+        });
+    }
+}
