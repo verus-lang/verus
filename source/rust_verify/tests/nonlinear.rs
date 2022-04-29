@@ -249,6 +249,7 @@ test_verify_one_file! {
                 let y = x * 2;
                 assert(y == 10);
             });
+            assert(x * 2 == 10);
         }
     } => Ok(())
 }
