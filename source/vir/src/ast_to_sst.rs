@@ -15,7 +15,7 @@ use crate::util::{vec_map, vec_map_result};
 use air::ast::{Binder, BinderX, Binders, Quant, Span};
 use air::errors::error_with_label;
 use air::scope_map::ScopeMap;
-use std::collections::{BTreeSet, HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::Arc;
 
 type Arg = (Exp, Typ);
@@ -42,18 +42,6 @@ pub(crate) struct State {
     pub(crate) ret_post: Option<(Option<UniqueIdent>, Vec<Stm>, Exps)>,
     // If > 0, disable checking recommends (used to make sure pure expressions stay pure)
     disable_recommends: u64,
-}
-
-impl State {
-    pub(crate) fn indexed_local_decls(&self) -> HashMap<UniqueIdent, LocalDecl> {
-        self.local_decls
-            .iter()
-            .map(|ld| {
-                let LocalDeclX { ident, .. } = &**ld;
-                (ident.clone(), ld.clone())
-            })
-            .collect()
-    }
 }
 
 #[derive(Clone)]
@@ -1090,7 +1078,7 @@ fn expr_to_stm_opt(
         ExprX::AssertNonLinear { requires, ensure, proof } => {
             let requires = Arc::new(vec_map_result(requires, |e| expr_to_pure_exp(ctx, state, e))?);
             let ensure = expr_to_pure_exp(ctx, state, &ensure)?;
-            let mut vars = BTreeSet::new(); // order vars by UniqueIdent
+            let mut vars = BTreeMap::new(); // order vars by UniqueIdent
             for r in requires.iter() {
                 vars.extend(referenced_vars_exp(&r).into_iter());
             }
@@ -1099,14 +1087,7 @@ fn expr_to_stm_opt(
             for s in proof_stms.iter() {
                 vars.extend(referenced_vars_stm(&s).into_iter());
             }
-            let local_decls = state.indexed_local_decls();
-            let vars = vars
-                .into_iter()
-                .map(|v| {
-                    let LocalDeclX { typ, .. } = &*local_decls[&v];
-                    (v, typ.clone())
-                })
-                .collect();
+            let vars = vars.into_iter().collect();
             if let ReturnValue::Some(_) = e {
                 return err_str(&expr.span, "assert_by_nonlinear cannot end with an expression");
             };

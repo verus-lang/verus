@@ -223,3 +223,19 @@ test_verify_one_file! {
         }
     } => Err(e) => assert_vir_error(e)
 }
+
+test_verify_one_file! {
+    #[test] test_complex_vars code! {
+        #[proof]
+        fn test6(a1: int, a2: int) {
+            let (b1, b2) = if a1 <= a2 {
+                (a1, a2)
+            } else {
+                (a2, a1)
+            };
+            assert_by_nonlinear(b1 <= b2, {
+                requires(b1 <= b2);
+            });
+        }
+    } => Ok(())
+}
