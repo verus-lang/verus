@@ -1,6 +1,6 @@
 Here, we provide justification for the concurrent state machine features in terms of a (pen-and-paper) monoid formalism.
 
-Let the state machine have state `S = { f1: T1, f2: T2, ... }` which an invariant `Inv : S -> bool`.
+Let the state machine have state `S = { f1: T1, f2: T2, ... }` with an invariant `Inv : S -> bool`.
 
 We define a monoid `M`:
 

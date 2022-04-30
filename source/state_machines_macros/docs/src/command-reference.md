@@ -1,5 +1,7 @@
 # Core state machine semantics
 
+(TODO - notation is outdated)
+
 The core state machine language supports `require` and `assert`, which take on their usual meaning (e.g., as in IVy). `update(f, x)` means `post.f := x`.
 
 We implicitly set `post.x := self.x` at the beginning of the transition definition; thus, a field which is never updated is implicitly not changed for the transition.

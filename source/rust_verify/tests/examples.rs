@@ -34,6 +34,11 @@ fn summer_school() {
     run_examples_in_directory("example/summer_school");
 }
 
+#[test]
+fn tutorial() {
+    run_examples_in_directory("example/state_machines/tutorial");
+}
+
 fn run_examples_in_directory(dir_path: &str) {
     let entries = std::fs::read_dir(dir_path).expect("cannot find example directory");
 

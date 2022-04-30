@@ -1,0 +1,11 @@
+[book]
+language = "en"
+multilingual = false
+src = "src"
+title = "Verus Transition Systems"
+
+[output.html]
+curly-quotes = true
+
+[output.html.playground]
+runnable = false
