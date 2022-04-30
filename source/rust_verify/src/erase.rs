@@ -617,6 +617,17 @@ fn erase_expr_opt(ctxt: &Ctxt, mctxt: &mut MCtxt, expect: Mode, expr: &Expr) -> 
                     }
                 },
                 ResolvedCall::Spec => return None,
+                ResolvedCall::CompilableOperator => {
+                    if keep_mode(ctxt, expect) {
+                        ExprKind::MethodCall(
+                            m_path.clone(),
+                            vec_map(args, |e| P(erase_expr(ctxt, mctxt, expect, e))),
+                            span.clone(),
+                        )
+                    } else {
+                        return None;
+                    }
+                }
                 _ => panic!("internal error: MethodCall ResolvedCall {:?}", call),
             }
         }

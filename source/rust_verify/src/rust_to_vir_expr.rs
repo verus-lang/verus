@@ -5,8 +5,9 @@ use crate::context::BodyCtxt;
 use crate::erase::ResolvedCall;
 use crate::rust_to_vir_base::{
     def_id_to_vir_path, def_to_path_ident, get_function_def, get_range, hack_get_def_name,
-    ident_to_var, is_smt_arith, is_smt_equality, mid_ty_simplify, mid_ty_to_vir, mk_range,
-    typ_of_node, typ_of_node_expect_mut_ref, typ_path_and_ident_to_vir_path,
+    ident_to_var, is_smt_arith, is_smt_equality, is_type_std_rc_or_arc, mid_ty_simplify,
+    mid_ty_to_vir, mk_range, typ_of_node, typ_of_node_expect_mut_ref,
+    typ_path_and_ident_to_vir_path,
 };
 use crate::util::{
     err_span_str, err_span_string, slice_vec_map_result, spanned_new, spanned_typed_new,
@@ -374,7 +375,7 @@ fn fn_call_to_vir<'tcx>(
         }
     };
 
-    let f_name = path_as_rust_name(&def_id_to_vir_path(tcx, f));
+    let f_name = tcx.def_path_str(f);
     let is_admit = f_name == "builtin::admit";
     let is_no_method_body = f_name == "builtin::no_method_body";
     let is_requires = f_name == "builtin::requires";
@@ -431,6 +432,11 @@ fn fn_call_to_vir<'tcx>(
     let is_directive = is_extra_dependency || is_hide || is_reveal || is_reveal_fuel;
     let is_cmp = is_equal || is_eq || is_ne || is_le || is_ge || is_lt || is_gt;
     let is_arith_binary = is_add || is_sub || is_mul;
+
+    // These functions are all no-ops in the SMT encoding, so we don't emit any VIR
+    let is_ignored_fn = f_name == "std::box::Box::<T>::new"
+        || f_name == "std::rc::Rc::<T>::new"
+        || f_name == "std::sync::Arc::<T>::new";
 
     if f_name == BUILTIN_INV_BEGIN || f_name == BUILTIN_INV_LOCAL_BEGIN || f_name == BUILTIN_INV_END
     {
@@ -498,7 +504,7 @@ fn fn_call_to_vir<'tcx>(
             || is_assert_bit_vector
             || is_old
             || is_get_variant.is_some(),
-        is_implies,
+        is_implies || is_ignored_fn,
     );
 
     let len = args.len();
@@ -690,6 +696,13 @@ fn fn_call_to_vir<'tcx>(
     if is_assert_bit_vector {
         let expr = expr_to_vir(bctx, &args[0], ExprModifier::REGULAR)?;
         return Ok(mk_expr(ExprX::AssertBV(expr)));
+    }
+
+    if is_ignored_fn {
+        unsupported_err_unless!(len == 1, expr.span, "expected 1 argument", &args);
+        let arg = expr_to_vir(bctx, &args[0], ExprModifier::REGULAR)?;
+
+        return Ok(arg);
     }
 
     let inputs: Box<dyn Iterator<Item = Option<_>>> = if let Some(f_local) = f.as_local() {
@@ -1880,20 +1893,46 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
             erasure_info.resolved_calls.push((expr.span.data(), resolved_call));
             Ok(mk_expr(ExprX::Ctor(path, variant_name, vir_fields, update)))
         }
-        ExprKind::MethodCall(_name_and_generics, _call_span_0, all_args, call_span_1) => {
+        ExprKind::MethodCall(_name_and_generics, _call_span_0, all_args, fn_span) => {
             let fn_def_id = bctx
                 .types
                 .type_dependent_def_id(expr.hir_id)
                 .expect("def id of the method definition");
-            match tcx.hir().get_if_local(fn_def_id).expect("fn def for method in hir") {
-                rustc_hir::Node::ImplItem(rustc_hir::ImplItem {
+
+            match tcx.hir().get_if_local(fn_def_id) {
+                Some(rustc_hir::Node::ImplItem(rustc_hir::ImplItem {
                     kind: rustc_hir::ImplItemKind::Fn(..),
                     ..
-                }) => {}
-                rustc_hir::Node::TraitItem(rustc_hir::TraitItem {
+                })) => {}
+                Some(rustc_hir::Node::TraitItem(rustc_hir::TraitItem {
                     kind: rustc_hir::TraitItemKind::Fn(..),
                     ..
-                }) => {}
+                })) => {}
+                None => {
+                    // Special case `clone` for standard Rc and Arc types
+                    // (Could also handle it for other types where cloning is the identity
+                    // operation in the SMT encoding.)
+                    let f_name = tcx.def_path_str(fn_def_id);
+                    if f_name == "std::clone::Clone::clone" {
+                        assert!(all_args.len() == 1);
+                        let arg_typ = bctx.types.node_type(all_args[0].hir_id);
+                        if is_type_std_rc_or_arc(bctx.ctxt.tcx, &arg_typ) {
+                            let mut erasure_info = bctx.ctxt.erasure_info.borrow_mut();
+                            erasure_info
+                                .resolved_calls
+                                .push((fn_span.data(), ResolvedCall::CompilableOperator));
+
+                            let arg = expr_to_vir(bctx, &all_args[0], ExprModifier::REGULAR)?;
+                            return Ok(arg);
+                        }
+                    }
+
+                    unsupported_err!(
+                        expr.span,
+                        format!("method call to method not defined in this crate"),
+                        expr
+                    );
+                }
                 _ => panic!("unexpected hir for method impl item"),
             }
             let autoview_typ = bctx.ctxt.autoviewed_call_typs.get(&expr.hir_id);
@@ -1902,7 +1941,7 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                 expr,
                 fn_def_id,
                 bctx.types.node_substs(expr.hir_id),
-                *call_span_1,
+                *fn_span,
                 all_args,
                 autoview_typ,
             )
