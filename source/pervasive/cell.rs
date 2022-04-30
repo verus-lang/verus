@@ -17,6 +17,19 @@ pub struct PCell<#[verifier(strictly_positive)] V> {
     ucell: UnsafeCell<MaybeUninit<V>>,
 }
 
+// PCell is always safe to Send/Sync. It's the Permission object where Send/Sync matters.
+// (It doesn't matter if you move the bytes to another thread if you can't access them.)
+
+#[verifier(external_body)]
+unsafe impl<T> Sync for PCell<T> {}
+
+#[verifier(external_body)]
+unsafe impl<T> Send for PCell<T> {}
+
+// Permission<V>, on the other hand, needs to inherit both Send and Sync from the V,
+// which it does by default in the given definition.
+// (Note: this depends on the current behavior that #[spec] fields are still counted for marker traits)
+
 #[proof]
 #[verifier(unforgeable)]
 pub struct Permission<V> {

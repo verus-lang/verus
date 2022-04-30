@@ -361,3 +361,13 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] unsafe_impl_fail code! {
+        struct Foo {
+            x: u32,
+        }
+
+        unsafe impl Send for Foo { }
+    } => Err(e) => assert_vir_error_msg(e, "the verifier does not support `unsafe` here")
+}
