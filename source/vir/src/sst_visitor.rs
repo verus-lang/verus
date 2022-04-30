@@ -152,7 +152,6 @@ where
                 | StmX::Assume(_)
                 | StmX::Assign { .. }
                 | StmX::AssertBV { .. }
-                | StmX::AssertNonLinear { .. }
                 | StmX::Fuel(..) => (),
                 StmX::DeadEnd(s) => {
                     expr_visitor_control_flow!(stm_visitor_dfs(s, f));
@@ -162,6 +161,9 @@ where
                     if let Some(rhs) = rhs {
                         expr_visitor_control_flow!(stm_visitor_dfs(rhs, f));
                     }
+                }
+                StmX::AssertQuery { body, mode: _, typ_inv_vars: _ } => {
+                    expr_visitor_control_flow!(stm_visitor_dfs(body, f));
                 }
                 StmX::While {
                     cond_stms,
@@ -208,15 +210,7 @@ where
             StmX::AssertBV(exp) => {
                 expr_visitor_control_flow!(exp_visitor_dfs(exp, &mut ScopeMap::new(), f))
             }
-            StmX::AssertNonLinear { requires, ensure, proof, vars: _ } => {
-                for r in requires.iter() {
-                    expr_visitor_control_flow!(exp_visitor_dfs(r, &mut ScopeMap::new(), f));
-                }
-                expr_visitor_control_flow!(exp_visitor_dfs(ensure, &mut ScopeMap::new(), f));
-                for p in proof.iter() {
-                    expr_visitor_control_flow!(stm_exp_visitor_dfs(p, f));
-                }
-            }
+            StmX::AssertQuery { body: _, typ_inv_vars: _, mode: _ } => (),
             StmX::Assume(exp) => {
                 expr_visitor_control_flow!(exp_visitor_dfs(exp, &mut ScopeMap::new(), f))
             }
@@ -418,7 +412,7 @@ where
         StmX::Assume(_) => f(stm),
         StmX::Assign { .. } => f(stm),
         StmX::AssertBV { .. } => f(stm),
-        StmX::AssertNonLinear { .. } => f(stm),
+        StmX::AssertQuery { .. } => f(stm),
         StmX::Fuel(..) => f(stm),
         StmX::DeadEnd(s) => {
             let s = map_stm_visitor(s, f)?;
@@ -491,7 +485,7 @@ where
                 let rhs = f(rhs);
                 Spanned::new(span, StmX::Assign { lhs: Dest { dest, is_init: *is_init }, rhs })
             }
-            StmX::AssertNonLinear { .. } => stm.clone(),
+            StmX::AssertQuery { .. } => stm.clone(),
             StmX::Fuel(..) => stm.clone(),
             StmX::DeadEnd(..) => stm.clone(),
             StmX::If(exp, s1, s2) => {

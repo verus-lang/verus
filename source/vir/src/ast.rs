@@ -313,6 +313,11 @@ pub enum InvAtomicity {
     NonAtomic,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum AssertQueryMode {
+    NonLinear,
+}
+
 /// Expression, similar to rustc_hir::Expr
 pub type Expr = Arc<SpannedTyped<ExprX>>;
 pub type Exprs = Arc<Vec<Expr>>;
@@ -380,7 +385,7 @@ pub enum ExprX {
     /// Sequence of statements, optionally including an expression at the end
     Block(Stmts, Option<Expr>),
     /// assert_by with smt.arith.nl=true
-    AssertNonLinear { requires: Exprs, ensure: Expr, proof: Expr },
+    AssertQuery { requires: Exprs, ensures: Exprs, proof: Expr, mode: AssertQueryMode },
 }
 
 /// Statement, similar to rustc_hir::Stmt

@@ -169,7 +169,7 @@ pub fn assert_by(_: bool, _: ()) {
 }
 
 #[proof]
-pub fn assert_by_nonlinear(_: bool, _: ()) {
+pub fn assert_nonlinear_by(_: ()) {
     unimplemented!();
 }
 

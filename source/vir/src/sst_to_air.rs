@@ -1,6 +1,6 @@
 use crate::ast::{
-    ArithOp, BinaryOp, FieldOpr, Fun, Ident, Idents, IntRange, InvAtomicity, MaskSpec, Mode,
-    Params, Path, PathX, SpannedTyped, Typ, TypX, Typs, UnaryOp, UnaryOpr, VarAt,
+    ArithOp, AssertQueryMode, BinaryOp, FieldOpr, Fun, Ident, Idents, IntRange, InvAtomicity,
+    MaskSpec, Mode, Params, Path, PathX, SpannedTyped, Typ, TypX, Typs, UnaryOp, UnaryOpr, VarAt,
 };
 use crate::ast_util::{bitwidth_from_type, get_field, get_variant};
 use crate::context::Ctx;
@@ -1105,49 +1105,42 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
             }
             vec![Arc::new(StmtX::Assert(error, air_expr))]
         }
-        StmX::AssertNonLinear { requires, ensure, proof, vars } => {
-            let requires: Vec<(Span, Expr)> =
-                requires.iter().map(|e| (e.span.clone(), exp_to_expr(ctx, e, expr_ctxt))).collect();
-            let ensure = (ensure.span.clone(), exp_to_expr(ctx, ensure, expr_ctxt));
-            let proof_stmts: Vec<Stmt> =
-                proof.iter().map(|s| stm_to_stmts(ctx, state, s)).flatten().collect();
+        StmX::AssertQuery { typ_inv_vars, body, mode } => {
+            if ctx.debug {
+                unimplemented!("assert query is unsupported in debugger mode");
+            }
 
-            // Push type invariants and requires as axiom for separate query
             let mut local = state.local_shared.clone();
-            for (x, typ) in vars.iter() {
+            for (x, typ) in typ_inv_vars.iter() {
                 let typ_inv = typ_invariant(ctx, typ, &ident_var(&suffix_local_unique_id(x)));
                 if let Some(expr) = typ_inv {
                     local.push(Arc::new(DeclX::Axiom(expr)));
                 }
             }
-            for (_, req) in requires.iter() {
-                local.push(Arc::new(DeclX::Axiom(req.clone())));
-            }
 
-            // assert_by_nonlinear body assertions and ensures
+            state.push_scope();
+            let proof_stmts: Vec<Stmt> = stm_to_stmts(ctx, state, body);
+            state.pop_scope();
             let mut air_body: Vec<Stmt> = Vec::new();
             air_body.append(&mut proof_stmts.clone());
-            let error = error("assertion failed", &ensure.0);
-            let ensure_stmt = StmtX::Assert(error, ensure.1.clone());
-            air_body.push(Arc::new(ensure_stmt));
             let assertion = one_stmt(air_body);
 
-            let query = Arc::new(QueryX { local: Arc::new(local), assertion });
-            state.commands.push(CommandsWithContextX::new(
-                stm.span.clone(),
-                "assert_by_nonlinear".to_string(),
-                Arc::new(vec![
-                    mk_option_command("smt.arith.nl", "true"),
-                    Arc::new(CommandX::CheckValid(query)),
-                    mk_option_command("smt.arith.nl", "false"),
-                ]),
-            ));
+            match mode {
+                AssertQueryMode::NonLinear => {
+                    let query = Arc::new(QueryX { local: Arc::new(local), assertion });
+                    state.commands.push(CommandsWithContextX::new(
+                        stm.span.clone(),
+                        "assert_nonlinear_by".to_string(),
+                        Arc::new(vec![
+                            mk_option_command("smt.arith.nl", "true"),
+                            Arc::new(CommandX::CheckValid(query)),
+                            mk_option_command("smt.arith.nl", "false"),
+                        ]),
+                    ));
+                }
+            }
 
-            // At main query, assume `requires => ensure`
-            let reqs: Vec<Arc<ExprX>> = requires.iter().map(|x| x.1.clone()).collect();
-            let req = mk_and(&reqs);
-            let expr = mk_implies(&req, &ensure.1);
-            vec![(Arc::new(StmtX::Assume(expr)))]
+            vec![]
         }
         StmX::AssertBV(expr) => {
             // here expr is boxed/unboxed in poly::poly_expr

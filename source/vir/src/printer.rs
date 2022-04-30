@@ -294,8 +294,8 @@ fn expr_to_node(expr: &Expr) -> Node {
         ExprX::Forall { vars, require, ensure, proof } => {
             nodes!(forall {binders_node(vars, &typ_to_node)} {str_to_node(":require")} {expr_to_node(require)} {str_to_node(":ensure")} {expr_to_node(ensure)} {str_to_node(":proof")} {expr_to_node(proof)})
         }
-        ExprX::AssertNonLinear { requires, ensure, proof } => {
-            nodes!(assertNonLinear {str_to_node(":requires")} {exprs_to_node(requires)} {str_to_node(":ensure")} {expr_to_node(ensure)} {str_to_node(":proof")} {expr_to_node(proof)})
+        ExprX::AssertQuery { requires, ensures, proof, mode } => {
+            nodes!(assertQuery {str_to_node(":requires")} {exprs_to_node(requires)} {str_to_node(":ensures")} {exprs_to_node(ensures)} {str_to_node(":proof")} {expr_to_node(proof)} {str_to_node(":mode")} {str_to_node(&format!("{:?}", mode))})
         }
         ExprX::AssertBV(expr) => nodes!(assertbv {expr_to_node(expr)}),
         ExprX::If(e0, e1, e2) => {

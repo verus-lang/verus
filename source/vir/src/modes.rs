@@ -504,11 +504,13 @@ fn check_expr(
             typing.in_forall_stmt = in_forall_stmt;
             Ok(Mode::Proof)
         }
-        ExprX::AssertNonLinear { requires, ensure, proof } => {
+        ExprX::AssertQuery { requires, ensures, proof, mode: _ } => {
             for req in requires.iter() {
                 check_expr_has_mode(typing, Mode::Spec, req, Mode::Spec)?;
             }
-            check_expr_has_mode(typing, Mode::Spec, ensure, Mode::Spec)?;
+            for ens in ensures.iter() {
+                check_expr_has_mode(typing, Mode::Spec, ens, Mode::Spec)?;
+            }
             check_expr_has_mode(typing, Mode::Proof, proof, Mode::Proof)?;
             Ok(Mode::Proof)
         }

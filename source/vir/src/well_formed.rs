@@ -95,27 +95,51 @@ fn check_one_expr(
         ExprX::OpenInvariant(_inv, _binder, body, _atomicity) => {
             assert_no_early_exit_in_inv_block(&body.span, body)?;
         }
-        ExprX::AssertNonLinear { requires, ensure, proof } => {
+        ExprX::AssertQuery { requires, ensures, proof, mode: _ } => {
             if function.x.attrs.nonlinear {
                 return err_str(
                     &expr.span,
-                    "assert_by_nonlinear not allowed in #[verifier(nonlinear)] functions",
+                    "assert_by_query not allowed in #[verifier(nonlinear)] functions",
                 );
             }
 
-            // TODO? let mut referenced = HashSet::new();
-            // TODO? for r in requires.iter() {
-            // TODO?     referenced.extend(referenced_vars_expr(r).into_iter());
-            // TODO? }
-            // TODO? referenced.extend(referenced_vars_expr(ensure).into_iter());
+            let mut referenced = HashSet::new();
+            for r in requires.iter() {
+                referenced.extend(referenced_vars_expr(r).into_iter());
+            }
+            for r in ensures.iter() {
+                referenced.extend(referenced_vars_expr(r).into_iter());
+            }
 
-            // TODO? crate::ast_visitor::expr_visitor_check(proof, &mut |e| match &e.x {
-            // TODO?     ExprX::Var(x) | ExprX::VarLoc(x) if !referenced.contains(x) => Err(error(
-            // TODO?         format!("variable {} not mentioned in requires/ensures", x).as_str(),
-            // TODO?         &e.span,
-            // TODO?     )),
-            // TODO?     _ => Ok(()),
-            // TODO? })?;
+            fn check(expr: &Expr, referenced: &HashSet<crate::ast::Ident>) -> Result<(), VirErr> {
+                use crate::visitor::VisitorControlFlow;
+
+                match crate::ast_visitor::expr_visitor_dfs(
+                    expr,
+                    &mut crate::ast_visitor::VisitorScopeMap::new(),
+                    &mut |scope_map, e| match &e.x {
+                        ExprX::Var(x) | ExprX::VarLoc(x) => {
+                            match scope_map.scope_and_index_of_key(&x) {
+                                None if !referenced.contains(x) => VisitorControlFlow::Stop(error(
+                                    format!("variable {} not mentioned in requires", x).as_str(),
+                                    &e.span,
+                                )),
+                                _ => VisitorControlFlow::Recurse,
+                            }
+                        }
+                        _ => VisitorControlFlow::Recurse,
+                    },
+                ) {
+                    VisitorControlFlow::Recurse => Ok(()),
+                    VisitorControlFlow::Return => unreachable!(),
+                    VisitorControlFlow::Stop(e) => Err(e),
+                }
+            }
+
+            check(proof, &referenced)?;
+            for ens in ensures.iter() {
+                check(ens, &referenced)?;
+            }
         }
         _ => {}
     }
