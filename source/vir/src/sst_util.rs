@@ -13,12 +13,9 @@ fn referenced_vars_exp_sm(
     let mut vars: HashMap<UniqueIdent, Typ> = HashMap::new();
     crate::sst_visitor::exp_visitor_dfs::<(), _>(exp, scope_map, &mut |e, scope_map| {
         match &e.x {
-            ExpX::Var(x) | ExpX::VarLoc(x) => match scope_map.scope_and_index_of_key(&x.0) {
-                Some(_) => {}
-                None => {
-                    vars.insert(x.clone(), e.typ.clone());
-                }
-            },
+            ExpX::Var(x) | ExpX::VarLoc(x) if !scope_map.contains_key(&x.0) => {
+                vars.insert(x.clone(), e.typ.clone());
+            }
             _ => (),
         }
         crate::sst_visitor::VisitorControlFlow::Recurse

@@ -111,35 +111,27 @@ fn check_one_expr(
                 referenced.extend(referenced_vars_expr(r).into_iter());
             }
 
-            fn check(expr: &Expr, referenced: &HashSet<crate::ast::Ident>) -> Result<(), VirErr> {
-                use crate::visitor::VisitorControlFlow;
+            use crate::visitor::VisitorControlFlow;
 
-                match crate::ast_visitor::expr_visitor_dfs(
-                    expr,
-                    &mut crate::ast_visitor::VisitorScopeMap::new(),
-                    &mut |scope_map, e| match &e.x {
-                        ExprX::Var(x) | ExprX::VarLoc(x) => {
-                            match scope_map.scope_and_index_of_key(&x) {
-                                None if !referenced.contains(x) => VisitorControlFlow::Stop(error(
-                                    format!("variable {} not mentioned in requires", x).as_str(),
-                                    &e.span,
-                                )),
-                                _ => VisitorControlFlow::Recurse,
-                            }
-                        }
-                        _ => VisitorControlFlow::Recurse,
-                    },
-                ) {
-                    VisitorControlFlow::Recurse => Ok(()),
-                    VisitorControlFlow::Return => unreachable!(),
-                    VisitorControlFlow::Stop(e) => Err(e),
-                }
-            }
-
-            check(proof, &referenced)?;
-            for ens in ensures.iter() {
-                check(ens, &referenced)?;
-            }
+            match crate::ast_visitor::expr_visitor_dfs(
+                proof,
+                &mut crate::ast_visitor::VisitorScopeMap::new(),
+                &mut |scope_map, e| match &e.x {
+                    ExprX::Var(x) | ExprX::VarLoc(x)
+                        if !scope_map.contains_key(&x) && !referenced.contains(x) =>
+                    {
+                        VisitorControlFlow::Stop(error(
+                            format!("variable {} not mentioned in requires/ensures", x).as_str(),
+                            &e.span,
+                        ))
+                    }
+                    _ => VisitorControlFlow::Recurse,
+                },
+            ) {
+                VisitorControlFlow::Recurse => Ok(()),
+                VisitorControlFlow::Return => unreachable!(),
+                VisitorControlFlow::Stop(e) => Err(e),
+            }?;
         }
         _ => {}
     }

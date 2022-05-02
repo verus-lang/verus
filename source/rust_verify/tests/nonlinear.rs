@@ -232,6 +232,8 @@ test_verify_one_file! {
     #[test] test_unexpected_vars code! {
         #[proof]
         fn test6(x: int, y: int, z:int) {
+            requires(y == 0);
+            requires(z == 0);
             assert_nonlinear_by({
                 requires(y == 0);
                 ensures(x + y == x);
