@@ -260,6 +260,15 @@ where
                     expr_visitor_control_flow!(expr_visitor_dfs(proof, map, mf));
                     map.pop_scope();
                 }
+                ExprX::AssertQuery { requires, ensures, proof, mode: _ } => {
+                    for req in requires.iter() {
+                        expr_visitor_control_flow!(expr_visitor_dfs(req, map, mf));
+                    }
+                    for ens in ensures.iter() {
+                        expr_visitor_control_flow!(expr_visitor_dfs(ens, map, mf));
+                    }
+                    expr_visitor_control_flow!(expr_visitor_dfs(proof, map, mf));
+                }
                 ExprX::If(e1, e2, e3) => {
                     expr_visitor_control_flow!(expr_visitor_dfs(e1, map, mf));
                     expr_visitor_control_flow!(expr_visitor_dfs(e2, map, mf));
@@ -552,6 +561,16 @@ where
             let proof = map_expr_visitor_env(proof, map, env, fe, fs, ft)?;
             map.pop_scope();
             ExprX::Forall { vars: Arc::new(vars), require, ensure, proof }
+        }
+        ExprX::AssertQuery { requires, ensures, proof, mode } => {
+            let requires = Arc::new(vec_map_result(requires, |e| {
+                map_expr_visitor_env(e, map, env, fe, fs, ft)
+            })?);
+            let ensures = Arc::new(vec_map_result(ensures, |e| {
+                map_expr_visitor_env(e, map, env, fe, fs, ft)
+            })?);
+            let proof = map_expr_visitor_env(proof, map, env, fe, fs, ft)?;
+            ExprX::AssertQuery { requires, ensures, proof, mode: *mode }
         }
         ExprX::AssertBV(e) => {
             let expr1 = map_expr_visitor_env(e, map, env, fe, fs, ft)?;

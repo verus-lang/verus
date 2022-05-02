@@ -7,7 +7,8 @@ use crate::sst::{Par, Pars};
 use crate::util::vec_map;
 use air::ast::{Binder, BinderX, Binders, Span};
 pub use air::ast_util::{ident_binder, str_ident};
-use air::errors::error;
+pub use air::errors::error;
+use std::collections::HashSet;
 use std::fmt;
 use std::sync::Arc;
 
@@ -217,4 +218,22 @@ impl DatatypeX {
     pub fn get_variant(&self, variant: &Ident) -> &Variant {
         get_variant(&self.variants, variant)
     }
+}
+
+pub(crate) fn referenced_vars_expr(exp: &Expr) -> HashSet<Ident> {
+    let mut vars: HashSet<Ident> = HashSet::new();
+    crate::ast_visitor::expr_visitor_dfs::<(), _>(
+        exp,
+        &mut crate::ast_visitor::VisitorScopeMap::new(),
+        &mut |_, e| {
+            match &e.x {
+                ExprX::Var(x) | ExprX::VarLoc(x) => {
+                    vars.insert(x.clone());
+                }
+                _ => (),
+            }
+            crate::sst_visitor::VisitorControlFlow::Recurse
+        },
+    );
+    vars
 }

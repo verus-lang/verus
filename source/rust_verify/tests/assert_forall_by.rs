@@ -261,3 +261,36 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_one_fails(err)
 }
+
+test_verify_one_file! {
+    #[test] test_assertby1_let code! {
+        #[spec]
+        #[verifier(opaque)]
+        fn f1(i: int) -> int {
+            i + 1
+        }
+
+        fn assertby_test() {
+            assert_by({ #[spec] let a = 3; f1(a) > a }, reveal(f1));
+            assert(f1(3) > 3);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_forallstmt_let code! {
+        #[spec]
+        #[verifier(opaque)]
+        fn f1(i: int) -> int {
+            i + 1
+        }
+
+        fn forallstmt_test() {
+            assert_forall_by(|x: nat| {
+                ensures({ #[spec] let a = 1; a <= #[trigger] f1(x) });
+                reveal(f1);
+            });
+            assert(f1(3) > 0);
+        }
+    } => Ok(())
+}

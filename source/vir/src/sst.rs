@@ -7,8 +7,8 @@
 //! SST is designed to make the translation to AIR as straightforward as possible.
 
 use crate::ast::{
-    BinaryOp, Constant, Fun, InvAtomicity, Mode, Path, SpannedTyped, Typ, Typs, UnaryOp, UnaryOpr,
-    VarAt,
+    AssertQueryMode, BinaryOp, Constant, Fun, InvAtomicity, Mode, Path, SpannedTyped, Typ, Typs,
+    UnaryOp, UnaryOpr, VarAt,
 };
 use crate::def::Spanned;
 use air::ast::{Binders, Ident, Quant};
@@ -105,6 +105,11 @@ pub enum StmX {
     },
     OpenInvariant(Exp, UniqueIdent, Typ, Stm, InvAtomicity),
     Block(Stms),
+    AssertQuery {
+        mode: AssertQueryMode,
+        typ_inv_vars: Arc<Vec<(UniqueIdent, Typ)>>,
+        body: Stm,
+    },
 }
 
 pub type LocalDecl = Arc<LocalDeclX>;

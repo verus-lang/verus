@@ -21,6 +21,7 @@ use std::time::{Duration, Instant};
 use vir::ast::{Fun, Function, InferMode, Krate, Mode, VirErr, Visibility};
 use vir::ast_util::{fun_as_rust_dbg, is_visible_to};
 use vir::def::SnapPos;
+use vir::def::{CommandsWithContext, CommandsWithContextX};
 use vir::recursion::Node;
 
 const RLIMIT_PER_SECOND: u32 = 3000000;
@@ -230,7 +231,7 @@ impl Verifier {
         assign_map: &HashMap<*const air::ast::Span, HashSet<Arc<std::string::String>>>,
         snap_map: &Vec<(air::ast::Span, SnapPos)>,
         command: &Command,
-        context: &(&air::ast::Span, String),
+        context: &(&air::ast::Span, &str),
     ) -> bool {
         let report_long_running = || {
             let mut counter = 0;
@@ -287,7 +288,7 @@ impl Verifier {
 
                     self.errors.push(vec![ErrorSpan::new_from_air_span(
                         compiler.session().source_map(),
-                        &context.1,
+                        &context.1.to_string(),
                         &context.0,
                     )]);
                     break;
@@ -378,31 +379,32 @@ impl Verifier {
         compiler: &Compiler,
         error_as: ErrorAs,
         air_context: &mut air::context::Context,
-        commands: &Vec<Command>,
+        commands: &Arc<Vec<CommandsWithContext>>,
         assign_map: &HashMap<*const air::ast::Span, HashSet<Arc<String>>>,
         snap_map: &Vec<(air::ast::Span, SnapPos)>,
         comment: &str,
-        context: &(&air::ast::Span, String),
     ) -> bool {
         let mut invalidity = false;
         if commands.len() > 0 {
             air_context.blank_line();
             air_context.comment(comment);
         }
-        for command in commands.iter() {
-            let time0 = Instant::now();
-            let result_invalidity = self.check_result_validity(
-                compiler,
-                error_as,
-                air_context,
-                assign_map,
-                snap_map,
-                &command,
-                context,
-            );
-            invalidity = invalidity || result_invalidity;
-            let time1 = Instant::now();
-            self.time_air += time1 - time0;
+        for CommandsWithContextX { span, desc, commands } in commands.iter().map(|x| &**x) {
+            for command in commands.iter() {
+                let time0 = Instant::now();
+                let result_invalidity = self.check_result_validity(
+                    compiler,
+                    error_as,
+                    air_context,
+                    assign_map,
+                    snap_map,
+                    &command,
+                    &(span, desc),
+                );
+                invalidity = invalidity || result_invalidity;
+                let time1 = Instant::now();
+                self.time_air += time1 - time0;
+            }
         }
         invalidity
     }
@@ -521,11 +523,14 @@ impl Verifier {
                     compiler,
                     ErrorAs::Error,
                     air_context,
-                    &check_commands,
+                    &Arc::new(vec![Arc::new(CommandsWithContextX {
+                        span: function.span.clone(),
+                        desc: "termination proof".to_string(),
+                        commands: check_commands,
+                    })]),
                     &HashMap::new(),
                     &vec![],
                     &("Function-Termination ".to_string() + &fun_as_rust_dbg(f)),
-                    &(&function.span, "termination proof".to_string()),
                 );
                 let check_recommends = function.x.attrs.check_recommends;
                 if (invalidity && !self.args.no_auto_recommends_check) || check_recommends {
@@ -549,7 +554,6 @@ impl Verifier {
                         &HashMap::new(),
                         &snap_map,
                         &(s.to_string() + &fun_as_rust_dbg(&function.x.name)),
-                        &(&function.span, "recommends check".to_string()),
                     );
                 }
             }
@@ -595,15 +599,6 @@ impl Verifier {
                     &HashMap::new(),
                     &snap_map,
                     &(s.to_string() + &fun_as_rust_dbg(&function.x.name)),
-                    &(
-                        &function.span,
-                        if recommends_rerun {
-                            "recommends check"
-                        } else {
-                            "function definition check"
-                        }
-                        .to_string(),
-                    ),
                 );
                 if invalidity && !recommends_rerun && !self.args.no_auto_recommends_check {
                     // Rerun failed query to report possible recommends violations

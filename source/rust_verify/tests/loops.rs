@@ -273,3 +273,18 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_one_fails(err)
 }
+
+test_verify_one_file! {
+    #[test] basic_loop_new_vars code! {
+        fn test() {
+            #[spec] let mut a: int = 5;
+            loop {
+                invariant([
+                    {#[spec] let b = 0; a > b},
+                    {#[spec] let b = 0; a > b},
+                ]);
+                a = a + 1;
+            }
+        }
+    } => Ok(())
+}

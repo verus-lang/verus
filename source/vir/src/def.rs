@@ -1,7 +1,7 @@
 use crate::ast::{Fun, FunX, InvAtomicity, Path, PathX};
 use crate::sst::UniqueIdent;
 use crate::util::vec_map;
-use air::ast::{Ident, Span};
+use air::ast::{Commands, Ident, Span};
 use air::ast_util::str_ident;
 use std::fmt::Debug;
 use std::sync::Arc;
@@ -384,6 +384,20 @@ impl<X: Debug> Debug for Spanned<X> {
         f.debug_tuple("Spanned").field(&self.span.as_string).field(&self.x).finish()
     }
 }
+
+pub struct CommandsWithContextX {
+    pub span: air::ast::Span,
+    pub desc: String,
+    pub commands: Commands,
+}
+
+impl CommandsWithContextX {
+    pub fn new(span: Span, desc: String, commands: Commands) -> CommandsWithContext {
+        Arc::new(CommandsWithContextX { span: span, desc: desc, commands: commands })
+    }
+}
+
+pub type CommandsWithContext = Arc<CommandsWithContextX>;
 
 fn atomicity_type_name(atomicity: InvAtomicity) -> Ident {
     match atomicity {

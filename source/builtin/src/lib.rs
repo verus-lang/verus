@@ -169,6 +169,11 @@ pub fn assert_by(_: bool, _: ()) {
 }
 
 #[proof]
+pub fn assert_nonlinear_by(_: ()) {
+    unimplemented!();
+}
+
+#[proof]
 pub fn assert_forall_by<A>(_a: A) {
     unimplemented!();
 }

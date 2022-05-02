@@ -162,6 +162,9 @@ where
                         expr_visitor_control_flow!(stm_visitor_dfs(rhs, f));
                     }
                 }
+                StmX::AssertQuery { body, mode: _, typ_inv_vars: _ } => {
+                    expr_visitor_control_flow!(stm_visitor_dfs(body, f));
+                }
                 StmX::While {
                     cond_stms,
                     cond_exp: _,
@@ -207,6 +210,7 @@ where
             StmX::AssertBV(exp) => {
                 expr_visitor_control_flow!(exp_visitor_dfs(exp, &mut ScopeMap::new(), f))
             }
+            StmX::AssertQuery { body: _, typ_inv_vars: _, mode: _ } => (),
             StmX::Assume(exp) => {
                 expr_visitor_control_flow!(exp_visitor_dfs(exp, &mut ScopeMap::new(), f))
             }
@@ -439,6 +443,14 @@ where
             );
             f(&stm)
         }
+        StmX::AssertQuery { mode, typ_inv_vars, body } => {
+            let body = map_stm_visitor(body, f)?;
+            let stm = Spanned::new(
+                stm.span.clone(),
+                StmX::AssertQuery { mode: *mode, typ_inv_vars: typ_inv_vars.clone(), body },
+            );
+            f(&stm)
+        }
         StmX::OpenInvariant(inv, ident, ty, body, atomicity) => {
             let body = map_stm_visitor(body, f)?;
             let stm = Spanned::new(
@@ -480,6 +492,7 @@ where
                 let rhs = f(rhs);
                 Spanned::new(span, StmX::Assign { lhs: Dest { dest, is_init: *is_init }, rhs })
             }
+            StmX::AssertQuery { .. } => stm.clone(),
             StmX::Fuel(..) => stm.clone(),
             StmX::DeadEnd(..) => stm.clone(),
             StmX::If(exp, s1, s2) => {

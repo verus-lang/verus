@@ -504,6 +504,16 @@ fn check_expr(
             typing.in_forall_stmt = in_forall_stmt;
             Ok(Mode::Proof)
         }
+        ExprX::AssertQuery { requires, ensures, proof, mode: _ } => {
+            for req in requires.iter() {
+                check_expr_has_mode(typing, Mode::Spec, req, Mode::Spec)?;
+            }
+            for ens in ensures.iter() {
+                check_expr_has_mode(typing, Mode::Spec, ens, Mode::Spec)?;
+            }
+            check_expr_has_mode(typing, Mode::Proof, proof, Mode::Proof)?;
+            Ok(Mode::Proof)
+        }
         ExprX::AssertBV(e) => {
             check_expr_has_mode(typing, Mode::Spec, e, Mode::Spec)?;
             Ok(Mode::Proof)

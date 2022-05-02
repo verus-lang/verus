@@ -313,6 +313,11 @@ pub enum InvAtomicity {
     NonAtomic,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum AssertQueryMode {
+    NonLinear,
+}
+
 /// Expression, similar to rustc_hir::Expr
 pub type Expr = Arc<SpannedTyped<ExprX>>;
 pub type Exprs = Arc<Vec<Expr>>;
@@ -379,6 +384,8 @@ pub enum ExprX {
     Return(Option<Expr>),
     /// Sequence of statements, optionally including an expression at the end
     Block(Stmts, Option<Expr>),
+    /// assert_by with smt.arith.nl=true
+    AssertQuery { requires: Exprs, ensures: Exprs, proof: Expr, mode: AssertQueryMode },
 }
 
 /// Statement, similar to rustc_hir::Stmt
@@ -442,7 +449,7 @@ pub struct FunctionAttrsX {
     /// In a spec function, check the body for violations of recommends
     pub check_recommends: bool,
     /// set option smt.arith.nl=true
-    pub non_linear: bool,
+    pub nonlinear: bool,
 }
 
 /// Function specification of its invariant mask

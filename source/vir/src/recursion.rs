@@ -359,6 +359,7 @@ pub(crate) fn check_termination_exp(
     local_decls.append(&mut decls);
     let (commands, _snap_map) = crate::sst_to_air::body_stm_to_air(
         ctx,
+        &function.span,
         &vec![],
         &function.x.typ_params(),
         &function.x.params,
@@ -373,6 +374,9 @@ pub(crate) fn check_termination_exp(
         false,
         false,
     );
+
+    assert_eq!(commands.len(), 1);
+    let commands = commands.into_iter().next().unwrap().commands.clone();
 
     // New body: substitute rec%f(args, fuel) for f(args)
     let body = map_exp_visitor(&body, &mut |exp| match &exp.x {

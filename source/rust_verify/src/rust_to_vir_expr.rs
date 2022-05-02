@@ -27,9 +27,9 @@ use rustc_span::def_id::DefId;
 use rustc_span::Span;
 use std::sync::Arc;
 use vir::ast::{
-    ArithOp, ArmX, BinaryOp, CallTarget, Constant, ExprX, FieldOpr, FunX, HeaderExpr, HeaderExprX,
-    Ident, IntRange, InvAtomicity, Mode, PatternX, SpannedTyped, StmtX, Stmts, Typ, TypX, UnaryOp,
-    UnaryOpr, VarAt, VirErr,
+    ArithOp, ArmX, AssertQueryMode, BinaryOp, CallTarget, Constant, ExprX, FieldOpr, FunX,
+    HeaderExpr, HeaderExprX, Ident, IntRange, InvAtomicity, Mode, PatternX, SpannedTyped, StmtX,
+    Stmts, Typ, TypX, UnaryOp, UnaryOpr, VarAt, VirErr,
 };
 use vir::ast_util::{ident_binder, path_as_rust_name};
 use vir::def::positional_field_ident;
@@ -400,6 +400,7 @@ fn fn_call_to_vir<'tcx>(
     let is_reveal_fuel = f_name == "builtin::reveal_with_fuel";
     let is_implies = f_name == "builtin::imply";
     let is_assert_by = f_name == "builtin::assert_by";
+    let is_assert_nonlinear_by = f_name == "builtin::assert_nonlinear_by";
     let is_assert_forall_by = f_name == "builtin::assert_forall_by";
     let is_assert_bit_vector = f_name == "builtin::assert_bit_vector";
     let is_old = f_name == "builtin::old";
@@ -492,6 +493,7 @@ fn fn_call_to_vir<'tcx>(
             || is_choose_tuple
             || is_with_triggers
             || is_assert_by
+            || is_assert_nonlinear_by
             || is_assert_forall_by
             || is_assert_bit_vector
             || is_old
@@ -649,6 +651,36 @@ fn fn_call_to_vir<'tcx>(
         let ensure = expr_to_vir(bctx, &args[0], ExprModifier::REGULAR)?;
         let proof = expr_to_vir(bctx, &args[1], ExprModifier::REGULAR)?;
         return Ok(mk_expr(ExprX::Forall { vars, require, ensure, proof }));
+    }
+    if is_assert_nonlinear_by {
+        unsupported_err_unless!(
+            len == 1,
+            expr.span,
+            "expected assert_nonlinear_by with one argument",
+            &args
+        );
+        let mut vir_expr = expr_to_vir(bctx, &args[0], ExprModifier::REGULAR)?;
+        let header = vir::headers::read_header(&mut vir_expr)?;
+        let requires = if header.require.len() >= 1 {
+            header.require
+        } else {
+            Arc::new(vec![spanned_typed_new(
+                expr.span,
+                &Arc::new(TypX::Bool),
+                ExprX::Const(Constant::Bool(true)),
+            )])
+        };
+        if header.ensure.len() == 0 {
+            return err_span_str(expr.span, "assert_nonlinear_by must have at least one ensures");
+        }
+        let ensures = header.ensure;
+        let proof = vir_expr;
+        return Ok(mk_expr(ExprX::AssertQuery {
+            requires,
+            ensures,
+            proof,
+            mode: AssertQueryMode::NonLinear,
+        }));
     }
     if is_assert_forall_by {
         unsupported_err_unless!(len == 1, expr.span, "expected assert_forall_by", &args);

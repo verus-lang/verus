@@ -5,8 +5,9 @@ use crate::ast::{
 use crate::context::Ctx;
 use crate::def::{
     prefix_ensures, prefix_fuel_id, prefix_fuel_nat, prefix_pre_var, prefix_recursive_fun,
-    prefix_requires, suffix_global_id, suffix_local_stmt_id, suffix_typ_param_id, SnapPos, Spanned,
-    FUEL_BOOL, FUEL_BOOL_DEFAULT, FUEL_LOCAL, FUEL_TYPE, SUCC, ZERO,
+    prefix_requires, suffix_global_id, suffix_local_stmt_id, suffix_typ_param_id,
+    CommandsWithContext, SnapPos, Spanned, FUEL_BOOL, FUEL_BOOL_DEFAULT, FUEL_LOCAL, FUEL_TYPE,
+    SUCC, ZERO,
 };
 use crate::sst::{BndX, Exp, ExpX, Par, ParPurpose, ParX, Pars, Stm, StmX};
 use crate::sst_to_air::{
@@ -567,7 +568,7 @@ pub fn func_def_to_air(
     function: &Function,
     phase: FuncDefPhase,
     checking_recommends: bool,
-) -> Result<(Commands, Vec<(Span, SnapPos)>), VirErr> {
+) -> Result<(Arc<Vec<CommandsWithContext>>, Vec<(Span, SnapPos)>), VirErr> {
     let erasure_mode = match (function.x.mode, function.x.is_const) {
         (Mode::Spec, true) => Mode::Exec,
         (mode, _) => mode,
@@ -685,6 +686,7 @@ pub fn func_def_to_air(
 
             let (commands, snap_map) = crate::sst_to_air::body_stm_to_air(
                 ctx,
+                &function.span,
                 &trait_typ_substs,
                 &function.x.typ_params(),
                 &function.x.params,
@@ -697,11 +699,11 @@ pub fn func_def_to_air(
                 &stm,
                 function.x.attrs.bit_vector,
                 skip_ensures,
-                function.x.attrs.non_linear,
+                function.x.attrs.nonlinear,
             );
 
             state.finalize();
-            Ok((commands, snap_map))
+            Ok((Arc::new(commands), snap_map))
         }
     }
 }
