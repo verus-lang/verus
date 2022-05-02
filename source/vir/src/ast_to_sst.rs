@@ -1111,9 +1111,7 @@ fn expr_to_stm_opt(
                 }
             }
 
-            // REVIEW is this the right place for finalize_stm?
-            let inner_body = state
-                .finalize_stm(&Spanned::new(expr.span.clone(), StmX::Block(Arc::new(inner_body))));
+            let inner_body = Spanned::new(expr.span.clone(), StmX::Block(Arc::new(inner_body)));
             state.pop_scope();
 
             let mut outer: Vec<Stm> = Vec::new();

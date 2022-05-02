@@ -412,7 +412,6 @@ where
         StmX::Assume(_) => f(stm),
         StmX::Assign { .. } => f(stm),
         StmX::AssertBV { .. } => f(stm),
-        StmX::AssertQuery { .. } => f(stm),
         StmX::Fuel(..) => f(stm),
         StmX::DeadEnd(s) => {
             let s = map_stm_visitor(s, f)?;
@@ -441,6 +440,14 @@ where
                     typ_inv_vars: typ_inv_vars.clone(),
                     modified_vars: modified_vars.clone(),
                 },
+            );
+            f(&stm)
+        }
+        StmX::AssertQuery { mode, typ_inv_vars, body } => {
+            let body = map_stm_visitor(body, f)?;
+            let stm = Spanned::new(
+                stm.span.clone(),
+                StmX::AssertQuery { mode: *mode, typ_inv_vars: typ_inv_vars.clone(), body },
             );
             f(&stm)
         }

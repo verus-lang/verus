@@ -266,7 +266,7 @@ test_verify_one_file! {
             assert_nonlinear_by({
                 requires({let z = 5; x == z});
                 ensures({let z = 2; x * z == 10});
-                let y = x * 2;
+                let y: nat = x as nat * 2;
                 assert(y == 10);
             });
             assert(x * 2 == 10);
