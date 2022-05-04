@@ -820,8 +820,8 @@ fn erase_expr_opt(ctxt: &Ctxt, mctxt: &mut MCtxt, expect: Mode, expr: &Expr) -> 
         }
         ExprKind::Ret(None) => ExprKind::Ret(None),
         ExprKind::Ret(Some(e1)) => {
-            let e1 = erase_expr(ctxt, mctxt, mctxt.ret_mode.expect("erase: ret_mode"), e1);
-            ExprKind::Ret(Some(P(e1)))
+            let e1 = erase_expr_opt(ctxt, mctxt, mctxt.ret_mode.expect("erase: ret_mode"), e1);
+            ExprKind::Ret(e1.map(|e1| P(e1)))
         }
         ExprKind::Block(block, None) => {
             let is_inv_block = attrs_is_invariant_block(&expr.attrs).expect("attrs fail");
