@@ -274,10 +274,6 @@ pub(crate) fn prelude_nodes() -> Vec<Node> {
             :pattern (([Mul] x y))
         )))
         (axiom (forall ((x Int) (y Int)) (!
-            (= ([Mul] x y) ([Mul] y x))
-            :pattern (([Mul] x y))
-        )))
-        (axiom (forall ((x Int) (y Int)) (!
             (= ([EucDiv] x y) (div x y))
             :pattern (([EucDiv] x y))
         )))
