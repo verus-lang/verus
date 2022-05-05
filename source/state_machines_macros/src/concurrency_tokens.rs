@@ -569,7 +569,7 @@ pub fn exchange_stream(
             }
 
             // Sanity check some assumptions that should hold for any well-formed
-            // 'init' routine. In particular, there should be no occurrences to `pre.field`
+            // 'init' routine. In particular, there should be no occurrences of `pre.field`
             // and every field should be written.
 
             assert!(!use_explicit_lifetime);
@@ -1899,16 +1899,17 @@ fn bool_not_expr(e: &Expr) -> Expr {
 
 fn with_prequel(pre: &Vec<PrequelElement>, include_assert_conditions: bool, e: Expr) -> Expr {
     let mut e = e;
+    let span = e.span();
     for p in pre.iter().rev() {
         match p {
             PrequelElement::Let(pat, None, init_e) => {
-                e = Expr::Verbatim(quote! { { let #pat = #init_e; #e } });
+                e = Expr::Verbatim(quote_spanned! { span => { let #pat = #init_e; #e } });
             }
             PrequelElement::Let(pat, Some(ty), init_e) => {
-                e = Expr::Verbatim(quote! { { let #pat: #ty = #init_e; #e } });
+                e = Expr::Verbatim(quote_spanned! { span => { let #pat: #ty = #init_e; #e } });
             }
             PrequelElement::Condition(cond_e) => {
-                e = Expr::Verbatim(quote! { ::builtin::imply(#cond_e, #e) });
+                e = Expr::Verbatim(quote_spanned! { span => ::builtin::imply(#cond_e, #e) });
             }
             PrequelElement::Match(match_e, arms, idx) => {
                 // Create something that looks like
@@ -1923,11 +1924,11 @@ fn with_prequel(pre: &Vec<PrequelElement>, include_assert_conditions: bool, e: E
                 // matches this particular case, then ..."
                 let mut arm_exprs = vec![Expr::Verbatim(quote! {true}); arms.len()];
                 arm_exprs[*idx] = e;
-                e = emit_match(match_e.span(), match_e, arms, &arm_exprs);
+                e = emit_match(span, match_e, arms, &arm_exprs);
             }
             PrequelElement::AssertCondition(cond_e) => {
                 if include_assert_conditions {
-                    e = Expr::Verbatim(quote! { ::builtin::imply(#cond_e, #e) });
+                    e = Expr::Verbatim(quote_spanned! { span => ::builtin::imply(#cond_e, #e) });
                 }
             }
         }
