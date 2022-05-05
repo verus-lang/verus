@@ -16,12 +16,26 @@ impl<A> Vec<A> {
     fndecl!(pub fn view(&self) -> Seq<A>);
 
     #[verifier(external_body)]
+    pub fn empty() -> Self {
+        ensures(|v: Self| equal(v.view(), Seq::empty()));
+
+        Vec { vec: std::vec::Vec::new() }
+    }
+
+    #[verifier(external_body)]
     #[verifier(autoview)]
     pub fn index(&self, i: usize) -> &A {
         requires(i < self.view().len());
         ensures(|r: A| equal(r, self.view().index(i)));
 
         &self.vec[i]
+    }
+
+    #[verifier(external_body)]
+    pub fn push(&mut self, elem: A) {
+        ensures(equal(self.view(), old(self).view().push(elem)));
+
+        self.vec.push(elem);
     }
 
     #[verifier(external_body)]
