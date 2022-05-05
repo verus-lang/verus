@@ -9,36 +9,7 @@ use crate::pervasive::{modes::*};
 use crate::pervasive::{thread::*};
 use state_machines_macros::tokenized_state_machine;
 use crate::pervasive::result::*;
-
-// Arc lib (stub)
-// TODO support Rust's std::sync::Arc instead
-
-#[verifier(external_body)]
-pub struct Arc<#[verifier(strictly_positive)] T> {
-    dummy: std::marker::PhantomData<T>,
-}
-
-impl<T> Arc<T> {
-    fndecl!(pub fn view(&self) -> T);
-
-    #[verifier(external_body)]
-    pub fn borrow(&self) -> &T {
-        ensures(|t: T| equal(t, self.view()));
-        unimplemented!();
-    }
-
-    #[verifier(external_body)]
-    pub fn new(t: T) -> Arc<T> {
-        ensures(|a: Arc<T>| equal(t, a.view()));
-        unimplemented!();
-    }
-
-    #[verifier(external_body)]
-    pub fn clone(&self) -> Arc<T> {
-        ensures(|a: Arc<T>| equal(a, *self));
-        unimplemented!();
-    }
-}
+use std::sync::Arc;
 
 tokenized_state_machine!(
     X {
@@ -145,20 +116,20 @@ pub struct Thread1Data {
 impl Spawnable<Proof<X::inc_a>> for Thread1Data {
     #[spec]
     fn pre(self) -> bool {
-        self.globals.view().wf()
-        && equal(self.token.instance, self.globals.view().instance)
+        (*self.globals).wf()
+        && equal(self.token.instance, (*self.globals).instance)
         && !self.token.value
     }
 
     #[spec]
     fn post(self, new_token: Proof<X::inc_a>) -> bool {
-        equal(new_token.0.instance, self.globals.view().instance)
+        equal(new_token.0.instance, (*self.globals).instance)
         && new_token.0.value
     }
 
     fn run(self) -> Proof<X::inc_a> {
         let Thread1Data { globals: globals, mut token } = self;
-        let globals = globals.borrow();
+        let globals = &*globals;
 
         open_invariant!(&globals.inv => g => {
             #[proof] let G { counter: mut c, perm: mut p } = g;
@@ -186,20 +157,20 @@ pub struct Thread2Data {
 impl Spawnable<Proof<X::inc_b>> for Thread2Data {
     #[spec]
     fn pre(self) -> bool {
-        self.globals.view().wf()
-        && equal(self.token.instance, self.globals.view().instance)
+        (*self.globals).wf()
+        && equal(self.token.instance, (*self.globals).instance)
         && !self.token.value
     }
 
     #[spec]
     fn post(self, new_token: Proof<X::inc_b>) -> bool {
-        equal(new_token.0.instance, self.globals.view().instance)
+        equal(new_token.0.instance, (*self.globals).instance)
         && new_token.0.value
     }
 
     fn run(self) -> Proof<X::inc_b> {
         let Thread2Data { globals: globals, mut token } = self;
-        let globals = globals.borrow();
+        let globals = &*globals;
 
         open_invariant!(&globals.inv => g => {
             #[proof] let G { counter: mut c, perm: mut p } = g;
@@ -261,7 +232,7 @@ fn main() {
 
   // Join threads, load the atomic again
 
-  let global = global_arc.borrow();
+  let global = &*global_arc;
   let x;
   open_invariant!(&global.inv => g => {
     #[proof] let G { counter: c3, perm: p3 } = g;

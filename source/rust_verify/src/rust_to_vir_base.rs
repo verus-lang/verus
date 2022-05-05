@@ -287,6 +287,12 @@ pub(crate) fn mid_ty_to_vir<'tcx>(
                 if Some(*did) == tcx.lang_items().owned_box() && typ_args.len() == 2 {
                     return typ_args[0].clone();
                 }
+                let def_name = vir::ast_util::path_as_rust_name(&def_id_to_vir_path(tcx, *did));
+                if (def_name == "alloc::rc::Rc" || def_name == "alloc::sync::Arc")
+                    && typ_args.len() == 1
+                {
+                    return typ_args[0].clone();
+                }
                 def_id_to_datatype(tcx, *did, Arc::new(typ_args))
             }
         }),
@@ -305,6 +311,22 @@ pub(crate) fn mid_ty_to_vir<'tcx>(
             unsupported!(format!("type {:?}", ty))
         }
     }
+}
+
+pub(crate) fn is_type_std_rc_or_arc<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    ty: rustc_middle::ty::Ty<'tcx>,
+) -> bool {
+    match ty.kind() {
+        TyKind::Adt(AdtDef { did, .. }, _args) => {
+            let def_name = vir::ast_util::path_as_rust_name(&def_id_to_vir_path(tcx, *did));
+            if def_name == "alloc::rc::Rc" || def_name == "alloc::sync::Arc" {
+                return true;
+            }
+        }
+        _ => {}
+    }
+    false
 }
 
 // TODO remove if unused
@@ -375,10 +397,13 @@ pub(crate) fn ty_to_vir<'tcx>(tcx: TyCtxt<'tcx>, ty: &Ty) -> Typ {
                     TypX::Int(IntRange::Int)
                 } else if def_name == "builtin::nat" {
                     TypX::Int(IntRange::Nat)
-                } else if Some(def_id) == tcx.lang_items().owned_box() {
-                    match &path.segments[0].args.expect("Box arg").args[0] {
+                } else if Some(def_id) == tcx.lang_items().owned_box()
+                    || def_name == "alloc::rc::Rc"
+                    || def_name == "alloc::sync::Arc"
+                {
+                    match &path.segments[0].args.expect("Box/Rc/Arc arg").args[0] {
                         rustc_hir::GenericArg::Type(t) => return ty_to_vir(tcx, t),
-                        _ => panic!("unexpected arg to Box"),
+                        _ => panic!("unexpected arg to Box/Rc/Arc"),
                     }
                 } else {
                     def_id_to_datatype_typx(tcx, def_id, &path.segments)
