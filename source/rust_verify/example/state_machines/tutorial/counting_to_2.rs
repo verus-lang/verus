@@ -90,7 +90,7 @@ pub struct G {
 impl G {
     #[spec]
     pub fn wf(self, instance: X::Instance, patomic: PAtomicU32) -> bool {
-        equal(self.perm.patomic, patomic.view())
+        equal(self.perm.patomic, patomic.id())
         && equal(self.perm.value as int, self.counter.value)
         && equal(self.counter.instance, instance)
     }

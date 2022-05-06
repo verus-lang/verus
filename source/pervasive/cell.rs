@@ -42,7 +42,7 @@ impl<V> PCell<V> {
     #[verifier(external_body)]
     pub fn empty() -> (PCell<V>, Proof<Permission<V>>) {
         ensures(|pt : (PCell<V>, Proof<Permission<V>>)|
-            equal(pt.1, Proof(Permission{ pcell: pt.0.view(), value: option::Option::None }))
+            equal(pt.1, Proof(Permission{ pcell: pt.0.id(), value: option::Option::None }))
         );
 
         let p = PCell { ucell: UnsafeCell::new(MaybeUninit::uninit()) };
@@ -50,13 +50,16 @@ impl<V> PCell<V> {
         (p, Proof(t))
     }
 
-    fndecl!(pub fn view(&self) -> int);
+    // A unique ID for the cell.
+    // This does not correspond to a pointer address
+    // because the ID needs to stay the same even if the cell moves.
+    fndecl!(pub fn id(&self) -> int);
 
     #[inline(always)]
     #[verifier(external_body)]
     pub fn put(&self, #[proof] perm: &mut Permission<V>, v: V) {
         requires([
-            equal(self.view(), old(perm).pcell),
+            equal(self.id(), old(perm).pcell),
             equal(old(perm).value, option::Option::None),
         ]);
         ensures(
@@ -74,7 +77,7 @@ impl<V> PCell<V> {
     #[verifier(external_body)]
     pub fn take(&self, #[proof] perm: &mut Permission<V>) -> V {
         requires([
-            equal(self.view(), old(perm).pcell),
+            equal(self.id(), old(perm).pcell),
             old(perm).value.is_Some(),
         ]);
         ensures(|v: V| [
@@ -95,7 +98,7 @@ impl<V> PCell<V> {
     #[verifier(external_body)]
     pub fn replace(&self, #[proof] perm: &mut Permission<V>, in_v: V) -> V {
         requires([
-            equal(self.view(), old(perm).pcell),
+            equal(self.id(), old(perm).pcell),
             old(perm).value.is_Some(),
         ]);
         ensures(|out_v: V| [
@@ -119,7 +122,7 @@ impl<V> PCell<V> {
     #[verifier(external_body)]
     pub fn borrow<'a>(&'a self, #[proof] perm: &'a Permission<V>) -> &'a V {
         requires([
-            equal(self.view(), perm.pcell),
+            equal(self.id(), perm.pcell),
             perm.value.is_Some(),
         ]);
         ensures(|v: V|
@@ -138,7 +141,7 @@ impl<V> PCell<V> {
     #[inline(always)]
     pub fn into_inner(self, #[proof] perm: Permission<V>) -> V {
         requires([
-            equal(self.view(), perm.pcell),
+            equal(self.id(), perm.pcell),
             perm.value.is_Some(),
         ]);
         ensures(|v|
@@ -153,7 +156,7 @@ impl<V> PCell<V> {
     #[inline(always)]
     pub fn new(v: V) -> (PCell<V>, Proof<Permission<V>>) {
         ensures(|pt : (PCell<V>, Proof<Permission<V>>)|
-            equal(pt.1, Proof(Permission{ pcell: pt.0.view(), value: option::Option::Some(v) }))
+            equal(pt.1, Proof(Permission{ pcell: pt.0.id(), value: option::Option::Some(v) }))
         );
 
         let (p, Proof(mut t)) = Self::empty();

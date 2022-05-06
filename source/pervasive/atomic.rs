@@ -101,7 +101,7 @@ macro_rules! atomic_types {
         impl $p_ident {
             #[spec] #[verifier(publish)]
             pub fn is_for(&self, patomic: $at_ident) -> bool {
-                self.patomic == patomic.view()
+                self.patomic == patomic.id()
             }
 
             #[spec] #[verifier(publish)]
@@ -114,13 +114,13 @@ macro_rules! atomic_types {
 
 macro_rules! atomic_common_methods {
     ($at_ident:ident, $p_ident:ident, $rust_ty: ty, $value_ty: ty) => {
-        fndecl!(pub fn view(&self) -> int);
+        fndecl!(pub fn id(&self) -> int);
 
         #[inline(always)]
         #[verifier(external_body)]
         pub fn new(i: $value_ty) -> ($at_ident, Proof<$p_ident>) {
             ensures(|res : ($at_ident, Proof<$p_ident>)|
-                equal(res.1, Proof($p_ident{ patomic: res.0.view(), value: i }))
+                equal(res.1, Proof($p_ident{ patomic: res.0.id(), value: i }))
             );
 
             let p = $at_ident { ato: <$rust_ty>::new(i) };
@@ -133,7 +133,7 @@ macro_rules! atomic_common_methods {
         #[verifier(atomic)]
         pub fn load(&self, #[proof] perm: &$p_ident) -> $value_ty {
             requires([
-                equal(self.view(), perm.patomic),
+                equal(self.id(), perm.patomic),
             ]);
             ensures(|ret: $value_ty| equal(perm.value, ret));
             opens_invariants_none();
@@ -146,9 +146,9 @@ macro_rules! atomic_common_methods {
         #[verifier(atomic)]
         pub fn store(&self, #[proof] perm: &mut $p_ident, v: $value_ty) {
             requires([
-                equal(self.view(), old(perm).patomic),
+                equal(self.id(), old(perm).patomic),
             ]);
-            ensures(equal(perm.value, v) && equal(self.view(), perm.patomic));
+            ensures(equal(perm.value, v) && equal(self.id(), perm.patomic));
             opens_invariants_none();
 
             self.ato.store(v, Ordering::SeqCst);
@@ -159,10 +159,10 @@ macro_rules! atomic_common_methods {
         #[verifier(atomic)]
         pub fn compare_exchange(&self, #[proof] perm: &mut $p_ident, current: $value_ty, new: $value_ty) -> Result<$value_ty, $value_ty> {
             requires([
-                equal(self.view(), old(perm).patomic),
+                equal(self.id(), old(perm).patomic),
             ]);
             ensures(|ret: Result<$value_ty, $value_ty>|
-                equal(self.view(), perm.patomic)
+                equal(self.id(), perm.patomic)
                 && match ret {
                     Result::Ok(r) =>
                            current == old(perm).value
@@ -187,10 +187,10 @@ macro_rules! atomic_common_methods {
         #[verifier(atomic)]
         pub fn compare_exchange_weak(&self, #[proof] perm: &mut $p_ident, current: $value_ty, new: $value_ty) -> Result<$value_ty, $value_ty> {
             requires([
-                equal(self.view(), old(perm).patomic),
+                equal(self.id(), old(perm).patomic),
             ]);
             ensures(|ret: Result<$value_ty, $value_ty>|
-                equal(self.view(), perm.patomic)
+                equal(self.id(), perm.patomic)
                 && match ret {
                     Result::Ok(r) =>
                            current == old(perm).value
@@ -214,12 +214,12 @@ macro_rules! atomic_common_methods {
         #[verifier(atomic)]
         pub fn swap(&self, #[proof] perm: &mut $p_ident, v: $value_ty) -> $value_ty {
             requires([
-                equal(self.view(), old(perm).patomic),
+                equal(self.id(), old(perm).patomic),
             ]);
             ensures(|ret: $value_ty|
                    equal(perm.value, v)
                 && equal(old(perm).value, ret)
-                && equal(self.view(), perm.patomic)
+                && equal(self.id(), perm.patomic)
             );
             opens_invariants_none();
 
@@ -230,7 +230,7 @@ macro_rules! atomic_common_methods {
         #[verifier(external_body)]
         pub fn into_inner(self, #[proof] perm: $p_ident) -> $value_ty {
             requires([
-                equal(self.view(), perm.patomic),
+                equal(self.id(), perm.patomic),
             ]);
             ensures(|ret: $value_ty| equal(perm.value, ret));
             opens_invariants_none();
@@ -250,7 +250,7 @@ macro_rules! atomic_integer_methods {
         #[verifier(atomic)]
         pub fn fetch_add_wrapping(&self, #[proof] perm: &mut $p_ident, n: $value_ty) -> $value_ty {
             requires([
-                equal(self.view(), old(perm).patomic),
+                equal(self.id(), old(perm).patomic),
             ]);
             ensures(|ret: $value_ty| equal(old(perm).value, ret)
                 && perm.patomic == old(perm).patomic
@@ -266,7 +266,7 @@ macro_rules! atomic_integer_methods {
         #[verifier(atomic)]
         pub fn fetch_sub_wrapping(&self, #[proof] perm: &mut $p_ident, n: $value_ty) -> $value_ty {
             requires([
-                equal(self.view(), old(perm).patomic),
+                equal(self.id(), old(perm).patomic),
             ]);
             ensures(|ret: $value_ty| equal(old(perm).value, ret)
                 && perm.patomic == old(perm).patomic
@@ -284,7 +284,7 @@ macro_rules! atomic_integer_methods {
         #[verifier(atomic)]
         pub fn fetch_add(&self, #[proof] perm: &mut $p_ident, n: $value_ty) -> $value_ty {
             requires([
-                equal(self.view(), old(perm).patomic),
+                equal(self.id(), old(perm).patomic),
                 ($int_min as $value_ty) as int <= old(perm).value as int + n as int,
                 old(perm).value as int + n as int <= ($int_max as $value_ty) as int,
             ]);
@@ -301,7 +301,7 @@ macro_rules! atomic_integer_methods {
         #[verifier(atomic)]
         pub fn fetch_sub(&self, #[proof] perm: &mut $p_ident, n: $value_ty) -> $value_ty {
             requires([
-                equal(self.view(), old(perm).patomic),
+                equal(self.id(), old(perm).patomic),
                 ($int_min as $value_ty) as int <= old(perm).value as int - n as int,
                 old(perm).value as int - n  as int <= ($int_max as $value_ty) as int,
             ]);
@@ -319,7 +319,7 @@ macro_rules! atomic_integer_methods {
         #[verifier(atomic)]
         pub fn fetch_and(&self, #[proof] perm: &mut $p_ident, n: $value_ty) -> $value_ty {
             requires([
-                equal(self.view(), old(perm).patomic),
+                equal(self.id(), old(perm).patomic),
             ]);
             ensures(|ret: $value_ty| equal(old(perm).value, ret)
                 && perm.patomic == old(perm).patomic
@@ -335,7 +335,7 @@ macro_rules! atomic_integer_methods {
         #[verifier(atomic)]
         pub fn fetch_or(&self, #[proof] perm: &mut $p_ident, n: $value_ty) -> $value_ty {
             requires([
-                equal(self.view(), old(perm).patomic),
+                equal(self.id(), old(perm).patomic),
             ]);
             ensures(|ret: $value_ty| equal(old(perm).value, ret)
                 && perm.patomic == old(perm).patomic
@@ -351,7 +351,7 @@ macro_rules! atomic_integer_methods {
         #[verifier(atomic)]
         pub fn fetch_xor(&self, #[proof] perm: &mut $p_ident, n: $value_ty) -> $value_ty {
             requires([
-                equal(self.view(), old(perm).patomic),
+                equal(self.id(), old(perm).patomic),
             ]);
             ensures(|ret: $value_ty| equal(old(perm).value, ret)
                 && perm.patomic == old(perm).patomic
@@ -367,7 +367,7 @@ macro_rules! atomic_integer_methods {
         #[verifier(atomic)]
         pub fn fetch_nand(&self, #[proof] perm: &mut $p_ident, n: $value_ty) -> $value_ty {
             requires([
-                equal(self.view(), old(perm).patomic),
+                equal(self.id(), old(perm).patomic),
             ]);
             ensures(|ret: $value_ty| equal(old(perm).value, ret)
                 && perm.patomic == old(perm).patomic
@@ -383,7 +383,7 @@ macro_rules! atomic_integer_methods {
         #[verifier(atomic)]
         pub fn fetch_max(&self, #[proof] perm: &mut $p_ident, n: $value_ty) -> $value_ty {
             requires([
-                equal(self.view(), old(perm).patomic),
+                equal(self.id(), old(perm).patomic),
             ]);
             ensures(|ret: $value_ty| equal(old(perm).value, ret)
                 && perm.patomic == old(perm).patomic
@@ -399,7 +399,7 @@ macro_rules! atomic_integer_methods {
         #[verifier(atomic)]
         pub fn fetch_min(&self, #[proof] perm: &mut $p_ident, n: $value_ty) -> $value_ty {
             requires([
-                equal(self.view(), old(perm).patomic),
+                equal(self.id(), old(perm).patomic),
             ]);
             ensures(|ret: $value_ty| equal(old(perm).value, ret)
                 && perm.patomic == old(perm).patomic
@@ -419,7 +419,7 @@ macro_rules! atomic_bool_methods {
         #[verifier(atomic)]
         pub fn fetch_and(&self, #[proof] perm: &mut $p_ident, n: $value_ty) -> $value_ty {
             requires([
-                equal(self.view(), old(perm).patomic),
+                equal(self.id(), old(perm).patomic),
             ]);
             ensures(|ret: $value_ty| equal(old(perm).value, ret)
                 && perm.patomic == old(perm).patomic
@@ -435,7 +435,7 @@ macro_rules! atomic_bool_methods {
         #[verifier(atomic)]
         pub fn fetch_or(&self, #[proof] perm: &mut $p_ident, n: $value_ty) -> $value_ty {
             requires([
-                equal(self.view(), old(perm).patomic),
+                equal(self.id(), old(perm).patomic),
             ]);
             ensures(|ret: $value_ty| equal(old(perm).value, ret)
                 && perm.patomic == old(perm).patomic
@@ -451,7 +451,7 @@ macro_rules! atomic_bool_methods {
         #[verifier(atomic)]
         pub fn fetch_xor(&self, #[proof] perm: &mut $p_ident, n: $value_ty) -> $value_ty {
             requires([
-                equal(self.view(), old(perm).patomic),
+                equal(self.id(), old(perm).patomic),
             ]);
             ensures(|ret: $value_ty| equal(old(perm).value, ret)
                 && perm.patomic == old(perm).patomic
@@ -467,7 +467,7 @@ macro_rules! atomic_bool_methods {
         #[verifier(atomic)]
         pub fn fetch_nand(&self, #[proof] perm: &mut $p_ident, n: $value_ty) -> $value_ty {
             requires([
-                equal(self.view(), old(perm).patomic),
+                equal(self.id(), old(perm).patomic),
             ]);
             ensures(|ret: $value_ty| equal(old(perm).value, ret)
                 && perm.patomic == old(perm).patomic

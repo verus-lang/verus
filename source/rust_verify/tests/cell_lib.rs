@@ -23,15 +23,15 @@ fn test_body(tests: &str, contradiction_smoke_test: bool) -> String {
 
 const CELL_TEST: &str = code_str! {
     let (cell, Proof(mut token)) = PCell::<u32>::empty();
-    assert(equal(token.pcell, cell.view()));
+    assert(equal(token.pcell, cell.id()));
     assert(equal(token.value, option::Option::None));
 
     cell.put(&mut token, 5);
-    assert(equal(token.pcell, cell.view()));
+    assert(equal(token.pcell, cell.id()));
     assert(equal(token.value, option::Option::Some(5)));
 
     let x = cell.replace(&mut token, 7);
-    assert(equal(token.pcell, cell.view()));
+    assert(equal(token.pcell, cell.id()));
     assert(equal(token.value, option::Option::Some(7)));
     assert(equal(x, 5));
 
@@ -39,7 +39,7 @@ const CELL_TEST: &str = code_str! {
     assert(equal(*t, 7));
 
     let x = cell.take(&mut token);
-    assert(equal(token.pcell, cell.view()));
+    assert(equal(token.pcell, cell.id()));
     assert(equal(token.value, option::Option::None));
     assert(equal(x, 7));
 };
@@ -54,15 +54,15 @@ test_verify_one_file! {
 
 const PTR_TEST: &str = code_str! {
     let (ptr, Proof(mut token)) = PPtr::<u32>::empty();
-    assert(equal(token.pptr, ptr.view()));
+    assert(equal(token.pptr, ptr.id()));
     assert(equal(token.value, option::Option::None));
 
     ptr.put(&mut token, 5);
-    assert(equal(token.pptr, ptr.view()));
+    assert(equal(token.pptr, ptr.id()));
     assert(equal(token.value, option::Option::Some(5)));
 
     let x = ptr.replace(&mut token, 7);
-    assert(equal(token.pptr, ptr.view()));
+    assert(equal(token.pptr, ptr.id()));
     assert(equal(token.value, option::Option::Some(7)));
     assert(equal(x, 5));
 
@@ -70,7 +70,7 @@ const PTR_TEST: &str = code_str! {
     assert(equal(*t, 7));
 
     let x = ptr.take(&mut token);
-    assert(equal(token.pptr, ptr.view()));
+    assert(equal(token.pptr, ptr.id()));
     assert(equal(token.value, option::Option::None));
     assert(equal(x, 7));
 

@@ -228,7 +228,7 @@ struct GhostStuff<S> {
 impl<S> GhostStuff<S> {
     #[spec]
     fn wf(self, inst: RefCounter::Instance<ptr::Permission<InnerRc<S>>>, cell: PCell<u64>) -> bool {
-        equal(self.rc_perm.pcell, cell.view())
+        equal(self.rc_perm.pcell, cell.id())
         && equal(self.rc_token.instance, inst)
         && self.rc_perm.value.is_Some()
         && self.rc_perm.value.get_Some_0() as nat == self.rc_token.value
@@ -252,7 +252,7 @@ struct MyRc<S> {
 impl<S> MyRc<S> {
     #[spec]
     fn wf(self) -> bool {
-        equal(self.reader.value.pptr, self.ptr.view())
+        equal(self.reader.value.pptr, self.ptr.id())
         && equal(self.reader.instance, self.inst)
         && self.reader.value.value.is_Some()
         && self.inv.wf()

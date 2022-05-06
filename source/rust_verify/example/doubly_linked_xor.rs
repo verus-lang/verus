@@ -58,7 +58,7 @@ impl<V> DListXor<V> {
         if i == 0 {
             0
         } else {
-            self.ptrs.index(i as int - 1).view() as u64
+            self.ptrs.index(i as int - 1).id() as u64
         }
     }
 
@@ -69,7 +69,7 @@ impl<V> DListXor<V> {
         if i + 1 == self.ptrs.len() {
             0
         } else {
-            self.ptrs.index(i as int + 1).view() as u64
+            self.ptrs.index(i as int + 1).id() as u64
         }
     }
 
@@ -80,11 +80,11 @@ impl<V> DListXor<V> {
 
         self.perms.dom().contains(i)
         &&
-        equal(self.perms.index(i).pptr, self.ptrs.index(i).view())
+        equal(self.perms.index(i).pptr, self.ptrs.index(i).id())
         &&
-        0 < self.ptrs.index(i).view()
+        0 < self.ptrs.index(i).id()
         &&
-        self.ptrs.index(i).view() < 0x10000000000000000
+        self.ptrs.index(i).id() < 0x10000000000000000
         &&
         self.perms.index(i).value.is_Some()
         &&
@@ -98,7 +98,7 @@ impl<V> DListXor<V> {
         if self.ptrs.len() == 0 {
             self.head == 0
         } else {
-            self.head as int == self.ptrs.index(0).view()
+            self.head as int == self.ptrs.index(0).id()
         }
     }
 
@@ -107,7 +107,7 @@ impl<V> DListXor<V> {
         if self.ptrs.len() == 0 {
             self.tail == 0
         } else {
-            self.tail as int == self.ptrs.index(self.ptrs.len() as int - 1).view()
+            self.tail as int == self.ptrs.index(self.ptrs.len() as int - 1).id()
         }
     }
 

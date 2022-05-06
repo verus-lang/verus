@@ -50,7 +50,7 @@ impl<V> PPtr<V> {
     #[verifier(external_body)]
     #[exec]
     pub fn to_usize(&self) -> usize {
-        ensures(|u: usize| u as int == self.view());
+        ensures(|u: usize| u as int == self.id());
         self.uptr as usize
     }
 
@@ -58,7 +58,7 @@ impl<V> PPtr<V> {
     #[verifier(external_body)]
     #[exec]
     pub fn from_usize(u: usize) -> Self {
-        ensures(|p: Self| p.view() == u as int);
+        ensures(|p: Self| p.id() == u as int);
         let uptr = u as *mut MaybeUninit<V>;
         PPtr { uptr }
     }
@@ -67,7 +67,7 @@ impl<V> PPtr<V> {
     #[verifier(external_body)]
     pub fn empty() -> (PPtr<V>, Proof<Permission<V>>) {
         ensures(|pt : (PPtr<V>, Proof<Permission<V>>)|
-            equal(pt.1, Proof(Permission{ pptr: pt.0.view(), value: option::Option::None }))
+            equal(pt.1, Proof(Permission{ pptr: pt.0.id(), value: option::Option::None }))
         );
         opens_invariants_none();
 
@@ -78,12 +78,13 @@ impl<V> PPtr<V> {
         (p, Proof(t))
     }
 
-    fndecl!(pub fn view(&self) -> int);
+    // integer address of the pointer
+    fndecl!(pub fn id(&self) -> int);
 
     #[inline(always)]
     #[verifier(external_body)]
     pub fn clone(&self) -> PPtr<V> {
-        ensures(|pt: PPtr<V>| equal(pt.view(), self.view()));
+        ensures(|pt: PPtr<V>| equal(pt.id(), self.id()));
         opens_invariants_none();
 
         PPtr { uptr: self.uptr }
@@ -93,7 +94,7 @@ impl<V> PPtr<V> {
     #[verifier(external_body)]
     pub fn put(&self, #[proof] perm: &mut Permission<V>, v: V) {
         requires([
-            equal(self.view(), old(perm).pptr),
+            equal(self.id(), old(perm).pptr),
             equal(old(perm).value, option::Option::None),
         ]);
         ensures([
@@ -111,7 +112,7 @@ impl<V> PPtr<V> {
     #[verifier(external_body)]
     pub fn take(&self, #[proof] perm: &mut Permission<V>) -> V {
         requires([
-            equal(self.view(), old(perm).pptr),
+            equal(self.id(), old(perm).pptr),
             old(perm).value.is_Some(),
         ]);
         ensures(|v: V| [
@@ -132,7 +133,7 @@ impl<V> PPtr<V> {
     #[verifier(external_body)]
     pub fn replace(&self, #[proof] perm: &mut Permission<V>, in_v: V) -> V {
         requires([
-            equal(self.view(), old(perm).pptr),
+            equal(self.id(), old(perm).pptr),
             old(perm).value.is_Some(),
         ]);
         ensures(|out_v: V| [
@@ -156,7 +157,7 @@ impl<V> PPtr<V> {
     #[verifier(external_body)]
     pub fn borrow<'a>(&self, #[proof] perm: &'a Permission<V>) -> &'a V {
         requires([
-            equal(self.view(), perm.pptr),
+            equal(self.id(), perm.pptr),
             perm.value.is_Some(),
         ]);
         ensures(|v: V|
@@ -173,7 +174,7 @@ impl<V> PPtr<V> {
     #[verifier(external_body)]
     pub fn dispose(&self, #[proof] perm: Permission<V>) {
         requires([
-            equal(self.view(), perm.pptr),
+            equal(self.id(), perm.pptr),
             equal(perm.value, option::Option::None),
         ]);
         opens_invariants_none();
@@ -189,7 +190,7 @@ impl<V> PPtr<V> {
     #[inline(always)]
     pub fn into_inner(self, #[proof] perm: Permission<V>) -> V {
         requires([
-            equal(self.view(), perm.pptr),
+            equal(self.id(), perm.pptr),
             perm.value.is_Some(),
         ]);
         ensures(|v|
@@ -206,7 +207,7 @@ impl<V> PPtr<V> {
     #[inline(always)]
     pub fn new(v: V) -> (PPtr<V>, Proof<Permission<V>>) {
         ensures(|pt : (PPtr<V>, Proof<Permission<V>>)|
-            equal(pt.1, Proof(Permission{ pptr: pt.0.view(), value: option::Option::Some(v) }))
+            equal(pt.1, Proof(Permission{ pptr: pt.0.id(), value: option::Option::Some(v) }))
         );
 
         let (p, Proof(mut t)) = Self::empty();

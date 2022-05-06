@@ -514,11 +514,11 @@ impl<T> Queue<T> {
         self.instance.backing_cells().len() == self.buffer.view().len()
         && forall(|i: int| 0 <= i && i < self.buffer.view().len() as int >>=
             self.instance.backing_cells().index(i) ==
-                self.buffer.view().index(i).view())
+                self.buffer.view().index(i).id())
 
         // HeadTailTokens are well-formed:
         && forall(|v| self.inv.inv(v) ==
-            v.wf(self.instance, self.head.view(), self.tail.view()))
+            v.wf(self.instance, self.head.id(), self.tail.id()))
     }
 }
 // ANCHOR_END: impl_queue_struct
@@ -581,7 +581,7 @@ pub fn new_queue<T>(len: usize) -> (Producer<T>, Consumer<T>) {
             forall(|j: int| 0 <= j && j < backing_cells_vec.len() as int >>=
                 #[trigger] perms.dom().contains(j as nat)
                 &&
-                backing_cells_vec.index(j as nat).view() == perms.index(j as nat).pcell
+                backing_cells_vec.index(j as nat).id() == perms.index(j as nat).pcell
                 &&
                 perms.index(j as nat).value.is_None()
             )
@@ -598,7 +598,7 @@ pub fn new_queue<T>(len: usize) -> (Producer<T>, Consumer<T>) {
     // Vector for ids
     #[spec] let mut backing_cells_ids = Seq::<int>::new(
         backing_cells_vec.view().len(),
-        |i| backing_cells_vec.view().index(i).view());
+        |i| backing_cells_vec.view().index(i).id());
 
     // Initialize an instance of the FIFO queue
     #[proof] let (instance, head_token, tail_token, producer_token, consumer_token)
@@ -616,7 +616,7 @@ pub fn new_queue<T>(len: usize) -> (Producer<T>, Consumer<T>) {
             head_perm,
             tail_perm,
         },
-        |v| v.wf(instance, head_atomic.view(), tail_atomic.view()),
+        |v| v.wf(instance, head_atomic.id(), tail_atomic.id()),
         0,
     );
 
