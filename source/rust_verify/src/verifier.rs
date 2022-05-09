@@ -379,6 +379,7 @@ impl Verifier {
         compiler: &Compiler,
         error_as: ErrorAs,
         air_context: &mut air::context::Context,
+        mut air_contexts: Vec<air::context::Context>,
         commands: &Arc<Vec<CommandsWithContext>>,
         assign_map: &HashMap<*const air::ast::Span, HashSet<Arc<String>>>,
         snap_map: &Vec<(air::ast::Span, SnapPos)>,
@@ -389,13 +390,29 @@ impl Verifier {
             air_context.blank_line();
             air_context.comment(comment);
         }
-        for CommandsWithContextX { span, desc, commands } in commands.iter().map(|x| &**x) {
+        let mut z3_idx = 0;
+        let increment = |num: &mut usize| {
+            *num = *num + 1;
+        };
+        for CommandsWithContextX { span, desc, commands, spinoff_z3 } in
+            commands.iter().map(|x| &**x)
+        {
+            let context = if *spinoff_z3 {
+                assert!(z3_idx < air_contexts.len());
+                let c2 = &mut air_contexts[z3_idx];
+                increment(&mut z3_idx);
+                c2
+            } else {
+                &mut *air_context
+            };
+
             for command in commands.iter() {
                 let time0 = Instant::now();
+
                 let result_invalidity = self.check_result_validity(
                     compiler,
                     error_as,
-                    air_context,
+                    context,
                     assign_map,
                     snap_map,
                     &command,
@@ -409,6 +426,82 @@ impl Verifier {
         invalidity
     }
 
+    fn new_air_context_with_module_context(
+        &mut self,
+        ctx: &vir::context::Ctx,
+        module: &vir::ast::Path,
+        datatype_commands: Vec<Arc<CommandX>>,
+        function_decl_commands: Vec<(Commands, String)>,
+        function_spec_commands: Vec<(Commands, String)>,
+        function_axiom_commands: Vec<(Commands, String)>,
+        module_name: &String,
+        idx: &i32,
+        desc: &String,
+        span: &air::ast::Span,
+    ) -> Result<air::context::Context, VirErr> {
+        let mut air_context = air::context::Context::new(air::smt_manager::SmtManager::new());
+        air_context.set_ignore_unexpected_smt(self.args.ignore_unexpected_smt);
+        air_context.set_debug(self.args.debug);
+
+        if self.args.log_all || self.args.log_air_initial {
+            let file = self.create_log_file(
+                Some(module),
+                format!("-{}-{}{}", desc, idx, crate::config::AIR_INITIAL_FILE_SUFFIX).as_str(),
+            )?;
+            air_context.set_air_initial_log(Box::new(file));
+        }
+        if self.args.log_all || self.args.log_air_final {
+            let file = self.create_log_file(
+                Some(module),
+                format!("-{}-{}{}", desc, idx, crate::config::AIR_FINAL_FILE_SUFFIX).as_str(),
+            )?;
+            air_context.set_air_final_log(Box::new(file));
+        }
+        if self.args.log_all || self.args.log_smt {
+            let file = self.create_log_file(
+                Some(module),
+                format!("-{}-{}{}", desc, idx, crate::config::SMT_FILE_SUFFIX).as_str(),
+            )?;
+            air_context.set_smt_log(Box::new(file));
+        }
+        air_context.comment(&span.as_string);
+
+        // air_recommended_options causes AIR to apply a preset collection of Z3 options
+        air_context.set_z3_param("air_recommended_options", "true");
+        air_context.set_rlimit(self.args.rlimit.saturating_mul(RLIMIT_PER_SECOND));
+        for (option, value) in self.args.smt_options.iter() {
+            air_context.set_z3_param(&option, &value);
+        }
+
+        air_context.blank_line();
+        air_context.comment("Prelude");
+        for command in vir::context::Ctx::prelude().iter() {
+            Self::check_internal_result(air_context.command(&command, Default::default()));
+        }
+
+        air_context.blank_line();
+        air_context.comment(&("MODULE '".to_string() + &module_name + "'"));
+
+        air_context.blank_line();
+        air_context.comment("Fuel");
+        for command in ctx.fuel().iter() {
+            Self::check_internal_result(air_context.command(&command, Default::default()));
+        }
+
+        // set up module context
+        self.run_commands(&mut air_context, &datatype_commands, &("Datatypes".to_string()));
+        for commands in function_decl_commands {
+            self.run_commands(&mut air_context, &commands.0, &commands.1);
+        }
+        for commands in function_spec_commands {
+            self.run_commands(&mut air_context, &commands.0, &commands.1);
+        }
+        for commands in function_axiom_commands {
+            self.run_commands(&mut air_context, &commands.0, &commands.1);
+        }
+        Ok(air_context)
+    }
+
     // Verify a single module
     fn verify_module(
         &mut self,
@@ -416,6 +509,7 @@ impl Verifier {
         krate: &Krate,
         air_context: &mut air::context::Context,
         ctx: &mut vir::context::Ctx,
+        module_name: String,
     ) -> Result<(), VirErr> {
         let module = &ctx.module();
         air_context.blank_line();
@@ -442,6 +536,10 @@ impl Verifier {
             })
         };
 
+        let mut function_decl_commands = vec![];
+        let mut function_spec_commands = vec![];
+        let mut function_axiom_commands = vec![];
+
         // Declare the function symbols
         for function in &krate.functions {
             ctx.fun = mk_fun_ctx(&function, false);
@@ -449,11 +547,9 @@ impl Verifier {
                 continue;
             }
             let commands = vir::func_to_air::func_name_to_air(ctx, &function)?;
-            self.run_commands(
-                air_context,
-                &commands,
-                &("Function-Decl ".to_string() + &fun_as_rust_dbg(&function.x.name)),
-            );
+            let comment = "Function-Decl ".to_string() + &fun_as_rust_dbg(&function.x.name);
+            self.run_commands(air_context, &commands, &comment);
+            function_decl_commands.push((commands.clone(), comment.clone()));
         }
         ctx.fun = None;
 
@@ -494,11 +590,9 @@ impl Verifier {
                 ctx.fun = mk_fun_ctx(&function, false);
                 let decl_commands = vir::func_to_air::func_decl_to_air(ctx, &function)?;
                 ctx.fun = None;
-                self.run_commands(
-                    air_context,
-                    &decl_commands,
-                    &("Function-Specs ".to_string() + &fun_as_rust_dbg(f)),
-                );
+                let comment = "Function-Specs ".to_string() + &fun_as_rust_dbg(f);
+                self.run_commands(air_context, &decl_commands, &comment);
+                function_spec_commands.push((decl_commands.clone(), comment.clone()));
             }
             // Check termination
             for f in scc_fun_nodes.iter() {
@@ -523,10 +617,12 @@ impl Verifier {
                     compiler,
                     ErrorAs::Error,
                     air_context,
+                    vec![],
                     &Arc::new(vec![Arc::new(CommandsWithContextX {
                         span: function.span.clone(),
                         desc: "termination proof".to_string(),
                         commands: check_commands,
+                        spinoff_z3: false,
                     })]),
                     &HashMap::new(),
                     &vec![],
@@ -550,6 +646,7 @@ impl Verifier {
                         compiler,
                         error_as,
                         air_context,
+                        vec![],
                         &commands,
                         &HashMap::new(),
                         &snap_map,
@@ -564,17 +661,20 @@ impl Verifier {
                     continue;
                 }
                 let decl_commands = &fun_axioms[f];
-                self.run_commands(
-                    air_context,
-                    &decl_commands,
-                    &("Function-Axioms ".to_string() + &fun_as_rust_dbg(f)),
-                );
+                let comment = "Function-Axioms ".to_string() + &fun_as_rust_dbg(f);
+                self.run_commands(air_context, &decl_commands, &comment);
+                function_axiom_commands.push((decl_commands.clone(), comment.clone()));
                 funs.remove(f);
             }
         }
         assert!(funs.len() == 0);
 
         // Create queries to check the validity of proof/exec function bodies
+        let mut restart_count = 0;
+        let increment = |num: &mut i32| {
+            *num = *num + 1;
+        };
+        // let mut air_context: &mut air::context::Context = air_context
         for function in &krate.functions {
             if Some(module.clone()) != function.x.visibility.owning_module {
                 continue;
@@ -591,10 +691,35 @@ impl Verifier {
                 let error_as = if recommends_rerun { ErrorAs::Note } else { ErrorAs::Error };
                 let s =
                     if recommends_rerun { "Function-Check-Recommends " } else { "Function-Def " };
+
+                // spawn new Z3 with module context
+                let mut air_contexts: Vec<air::context::Context> = vec![];
+                for CommandsWithContextX { span, desc, commands: _, spinoff_z3 } in
+                    commands.iter().map(|x| &**x)
+                {
+                    if *spinoff_z3 {
+                        let desc_recommends = desc.to_string() + "-rerun";
+                        increment(&mut restart_count);
+                        air_contexts.push(self.new_air_context_with_module_context(
+                            ctx,
+                            module,
+                            datatype_commands.to_vec(),
+                            function_decl_commands.to_vec(),
+                            function_spec_commands.to_vec(),
+                            function_axiom_commands.to_vec(),
+                            &module_name,
+                            &restart_count,
+                            if recommends_rerun { &desc_recommends } else { desc },
+                            span,
+                        )?)
+                    };
+                }
+
                 let invalidity = self.run_commands_queries(
                     compiler,
                     error_as,
                     air_context,
+                    air_contexts,
                     &commands,
                     &HashMap::new(),
                     &snap_map,
@@ -672,6 +797,7 @@ impl Verifier {
 
         air_context.blank_line();
         air_context.comment(&("MODULE '".to_string() + &module_name + "'"));
+
         let (pruned_krate, mono_abstract_datatypes, lambda_types) =
             vir::prune::prune_krate_for_module(&krate, &module);
         let mut ctx = vir::context::Ctx::new(
@@ -688,7 +814,8 @@ impl Verifier {
                 self.create_log_file(Some(&module), crate::config::VIR_POLY_FILE_SUFFIX)?;
             vir::printer::write_krate(&mut file, &poly_krate);
         }
-        self.verify_module(compiler, &poly_krate, &mut air_context, &mut ctx)?;
+
+        self.verify_module(compiler, &poly_krate, &mut air_context, &mut ctx, module_name)?;
         global_ctx = ctx.free();
 
         let (time_smt_init, time_smt_run) = air_context.get_time();

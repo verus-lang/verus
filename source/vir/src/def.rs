@@ -389,11 +389,22 @@ pub struct CommandsWithContextX {
     pub span: air::ast::Span,
     pub desc: String,
     pub commands: Commands,
+    pub spinoff_z3: bool,
 }
 
 impl CommandsWithContextX {
-    pub fn new(span: Span, desc: String, commands: Commands) -> CommandsWithContext {
-        Arc::new(CommandsWithContextX { span: span, desc: desc, commands: commands })
+    pub fn new(
+        span: Span,
+        desc: String,
+        commands: Commands,
+        spinoff_z3: bool,
+    ) -> CommandsWithContext {
+        Arc::new(CommandsWithContextX {
+            span: span,
+            desc: desc,
+            commands: commands,
+            spinoff_z3: spinoff_z3,
+        })
     }
 }
 

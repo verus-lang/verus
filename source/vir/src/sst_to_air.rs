@@ -1136,6 +1136,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
                             Arc::new(CommandX::CheckValid(query)),
                             mk_option_command("smt.arith.nl", "false"),
                         ]),
+                        true,
                     ));
                 }
             }
@@ -1165,6 +1166,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
                     Arc::new(CommandX::CheckValid(query)),
                     mk_option_command("smt.case_split", "3"),
                 ]),
+                true,
             ));
 
             vec![Arc::new(StmtX::Assume(exp_to_expr(ctx, &expr, expr_ctxt)))]
@@ -1323,6 +1325,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
                 span: stm.span.clone(),
                 desc: "while loop".to_string(),
                 commands: Arc::new(vec![Arc::new(CommandX::CheckValid(query))]),
+                spinoff_z3: false,
             }));
 
             // At original site of while loop, assert invariant, havoc, assume invariant + neg_cond
@@ -1495,6 +1498,7 @@ pub fn body_stm_to_air(
     is_bit_vector_mode: bool,
     skip_ensures: bool,
     is_nonlinear: bool,
+    is_spinoff_z3: bool,
 ) -> (Vec<CommandsWithContext>, Vec<(Span, SnapPos)>) {
     // Verifying a single function can generate multiple SMT queries.
     // Some declarations (local_shared) are shared among the queries.
@@ -1641,6 +1645,7 @@ pub fn body_stm_to_air(
         func_span.clone(),
         "function body check".to_string(),
         Arc::new(commands),
+        is_bit_vector_mode || is_nonlinear || is_spinoff_z3,
     ));
     (state.commands, state.snap_map)
 }
