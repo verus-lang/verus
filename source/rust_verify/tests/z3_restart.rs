@@ -46,3 +46,18 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] test1_fails code! {
+        #[proof]
+        #[verifier(spinoff_z3)]
+        fn test6(b: u32, b2: u32) {
+            assert_nonlinear_by({
+                ensures(b*b2 == b2*b);
+            });
+
+            assert_bit_vector(b<<2 == b*4);
+            assert(((b<<2) as int) == (b as int) *4);  // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}

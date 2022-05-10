@@ -1136,7 +1136,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
                             Arc::new(CommandX::CheckValid(query)),
                             mk_option_command("smt.arith.nl", "false"),
                         ]),
-                        true,
+                        false,
                     ));
                 }
             }
@@ -1166,7 +1166,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
                     Arc::new(CommandX::CheckValid(query)),
                     mk_option_command("smt.case_split", "3"),
                 ]),
-                true,
+                false,
             ));
 
             vec![Arc::new(StmtX::Assume(exp_to_expr(ctx, &expr, expr_ctxt)))]
@@ -1645,7 +1645,7 @@ pub fn body_stm_to_air(
         func_span.clone(),
         "function body check".to_string(),
         Arc::new(commands),
-        is_bit_vector_mode || is_nonlinear || is_spinoff_z3,
+        is_spinoff_z3,
     ));
     (state.commands, state.snap_map)
 }
