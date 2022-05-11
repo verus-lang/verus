@@ -317,25 +317,20 @@ impl Printer {
         Node::List(nodes)
     }
 
-    pub(crate) fn multibinders_to_node<A: Clone, F: Fn(&A) -> Node>(
-        &self,
-        binders: &Binders<Arc<Vec<A>>>,
-        f: &F,
-    ) -> Node {
-        Node::List(vec_map(binders, |b| self.multibinder_to_node(b, f)))
-    }
-
     pub fn sort_decl_to_node(&self, x: &Ident) -> Node {
-        node!((declare-sort {str_to_node(x)}))
+        node!((declare-sort {str_to_node(x)} 0))
     }
 
     pub fn datatypes_decl_to_node(&self, datatypes: &Datatypes) -> Node {
-        let ds = self.multibinders_to_node(&datatypes, &|variant| {
-            self.multibinder_to_node(&variant, &|field| {
-                self.binder_to_node(&field, &|t| self.typ_to_node(t))
-            })
-        });
-        node!((declare-datatypes () {ds}))
+        let decls = Node::List(vec_map(datatypes, |d| nodes!({str_to_node(&d.name)} 0)));
+        let defns = Node::List(vec_map(datatypes, |d| {
+            Node::List(vec_map(&d.a, |variant| {
+                self.multibinder_to_node(&variant, &|field| {
+                    self.binder_to_node(&field, &|t| self.typ_to_node(t))
+                })
+            }))
+        }));
+        node!((declare-datatypes {decls} {defns}))
     }
 
     pub fn const_decl_to_node(&self, x: &Ident, typ: &Typ) -> Node {
