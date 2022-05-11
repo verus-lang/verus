@@ -23,8 +23,8 @@ fn run_nodes_as_test(should_typecheck: bool, should_be_valid: bool, nodes: &[Nod
                     }
                     (_, _, true, ValidityResult::Valid) => {}
                     (_, _, false, ValidityResult::Invalid(..)) => {}
-                    (CommandX::CheckValid(_), _, _, _) => {
-                        panic!("unexpected result");
+                    (CommandX::CheckValid(_), _, _, res) => {
+                        panic!("unexpected result {:?}", res);
                     }
                     _ => {}
                 }
@@ -992,8 +992,8 @@ fn untyped_distinct() {
 #[test]
 fn yes_datatype1() {
     yes!(
-        (declare-datatypes () (
-            (IntPair
+        (declare-datatypes ((IntPair 0)) (
+            (
                 (int_pair
                     (ip1 Int)
                     (ip2 Int)
@@ -1013,14 +1013,14 @@ fn yes_datatype1() {
 #[test]
 fn yes_datatype2() {
     yes!(
-        (declare-datatypes () (
-            (Tree
+        (declare-datatypes ((Tree 0) (Pair 0)) (
+            (
                 (empty)
                 (full
                     (children Pair)
                 )
             )
-            (Pair
+            (
                 (pair
                     (fst Tree)
                     (snd Tree)
