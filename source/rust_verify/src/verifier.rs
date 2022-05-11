@@ -398,10 +398,14 @@ impl Verifier {
             commands.iter().map(|x| &**x)
         {
             let context = if *spinoff_z3 {
-                assert!(z3_idx < air_contexts.len());
-                let c2 = &mut air_contexts[z3_idx];
+                if z3_idx >= air_contexts.len() {
+                    panic!("Internal Error: Run out of spunoff Z3")
+                }
+                let spunoff_z3_context = &mut air_contexts[z3_idx];
                 increment(&mut z3_idx);
-                c2
+                spunoff_z3_context.blank_line();
+                spunoff_z3_context.comment(comment);
+                spunoff_z3_context
             } else {
                 &mut *air_context
             };
