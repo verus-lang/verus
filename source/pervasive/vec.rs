@@ -25,7 +25,7 @@ impl<A> Vec<A> {
     pub fn empty() -> Self {
         ensures(|v: Self| equal(v.view(), Seq::empty()));
 
-        new()
+        Vec::new()
     }
 
     #[verifier(external_body)]
@@ -48,13 +48,6 @@ impl<A> Vec<A> {
         ensures(|r: A| equal(r, self.view().index(i)));
 
         &self.vec[i]
-    }
-
-    #[verifier(external_body)]
-    pub fn push(&mut self, elem: A) {
-        ensures(equal(self.view(), old(self).view().push(elem)));
-
-        self.vec.push(elem);
     }
 
     #[verifier(external_body)]
