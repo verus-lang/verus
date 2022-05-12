@@ -40,13 +40,12 @@ fn validate_idents_transition_stmt(
                 validate_idents_transition_stmt(t, kind)?;
             }
         }
-        TransitionStmt::Let(_, pat, _ty, _lk, e, child) => {
-            validate_idents_pat(pat, kind)?;
-            validate_idents_expr(e, kind)?;
-            validate_idents_transition_stmt(child, kind)?;
-        }
         TransitionStmt::Split(_, split_kind, es) => {
             match split_kind {
+                SplitKind::Let(pat, _ty, _lk, e) => {
+                    validate_idents_pat(pat, kind)?;
+                    validate_idents_expr(e, kind)?;
+                }
                 SplitKind::If(cond) => {
                     validate_idents_expr(cond, kind)?;
                 }
@@ -59,6 +58,16 @@ fn validate_idents_transition_stmt(
                                 validate_idents_expr(guard_e, kind)?;
                             }
                             None => {}
+                        }
+                    }
+                }
+                SplitKind::Special(f, op, _proof, pat_opt) => {
+                    validate_ident(f)?;
+                    validate_idents_op(op, kind)?;
+                    match pat_opt {
+                        None => {}
+                        Some(pat) => {
+                            validate_idents_pat(pat, kind)?;
                         }
                     }
                 }
@@ -91,10 +100,6 @@ fn validate_idents_transition_stmt(
             validate_ident(f)?;
             validate_idents_expr(e, kind)?;
         }
-        TransitionStmt::Special(_, f, op, _proof) => {
-            validate_ident(f)?;
-            validate_idents_op(op, kind)?;
-        }
         TransitionStmt::PostCondition(_, e) => {
             validate_idents_expr(e, kind)?;
         }
@@ -104,12 +109,18 @@ fn validate_idents_transition_stmt(
 
 fn validate_idents_op(op: &SpecialOp, kind: TransitionKind) -> syn::parse::Result<()> {
     match &op.elt {
-        MonoidElt::OptionSome(e) | MonoidElt::SingletonMultiset(e) | MonoidElt::General(e) => {
+        MonoidElt::OptionSome(None) => {}
+        MonoidElt::OptionSome(Some(e))
+        | MonoidElt::SingletonMultiset(e)
+        | MonoidElt::General(e) => {
             validate_idents_expr(e, kind)?;
         }
-        MonoidElt::SingletonKV(e1, e2) => {
+        MonoidElt::SingletonKV(e1, Some(e2)) => {
             validate_idents_expr(e1, kind)?;
             validate_idents_expr(e2, kind)?;
+        }
+        MonoidElt::SingletonKV(e1, None) => {
+            validate_idents_expr(e1, kind)?;
         }
     }
     Ok(())

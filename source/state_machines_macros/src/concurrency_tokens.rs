@@ -9,6 +9,7 @@ use crate::ast::{
     Arm, Field, Lemma, LetKind, MonoidElt, MonoidStmtType, ShardableType, SpecialOp, SplitKind,
     Transition, TransitionKind, TransitionStmt, SM,
 };
+use crate::check_bind_stmts::get_binding_ty;
 use crate::field_access_visitor::{find_all_accesses, visit_field_accesses};
 use crate::parse_token_stream::SMBundle;
 use crate::to_relation::{asserts_to_single_predicate, emit_match};
@@ -324,7 +325,7 @@ pub fn output_token_types_and_fns(
     Ok(())
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 enum InoutType {
     In,
     Out,
@@ -1309,10 +1310,6 @@ fn determine_outputs(ctxt: &mut Ctxt, ts: &TransitionStmt) -> syn::parse::Result
             }
             Ok(())
         }
-        TransitionStmt::Let(_span, _pat, _ty, _lk, _init_e, child) => {
-            determine_outputs(ctxt, child)?;
-            Ok(())
-        }
         TransitionStmt::Split(_span, _split_kind, splits) => {
             for split in splits {
                 determine_outputs(ctxt, split)?;
@@ -1345,7 +1342,6 @@ fn determine_outputs(ctxt: &mut Ctxt, ts: &TransitionStmt) -> syn::parse::Result
             ctxt.fields_written.insert(id.to_string());
             Ok(())
         }
-        TransitionStmt::Special(_span, _id, _op, _) => Ok(()),
         TransitionStmt::PostCondition(..) => {
             panic!("PostCondition statement shouldn't exist yet");
         }
@@ -1390,19 +1386,63 @@ fn translate_transition(
             }
             return Ok(());
         }
-        TransitionStmt::Let(_span, _pat, _ty, lk, e, child) => {
-            let birds_eye = *lk == LetKind::BirdsEye;
-            let init_e = translate_expr(ctxt, e, birds_eye, errors);
-            *e = init_e;
-            translate_transition(ctxt, child, errors)?;
-            return Ok(());
-        }
-        TransitionStmt::Split(_span, split_kind, splits) => {
-            translate_split_kind(ctxt, split_kind, errors);
-            for split in splits.iter_mut() {
-                translate_transition(ctxt, split, errors)?;
+        TransitionStmt::Split(span, split_kind, splits) => {
+            match split_kind {
+                SplitKind::Special(id, op, _proof, pat_opt) => {
+                    let field = ctxt.get_field_or_panic(id);
+                    let condition_ts_opt =
+                        translate_special_condition(ctxt, *span, &field, op, errors);
+                    let assignment_opt = if pat_opt.is_some() {
+                        // The relevant token param should be the last one in the params
+                        // (having been added by the above call to
+                        // `translate_special_condition`)
+                        let param_vec = &ctxt.params[&field.name.to_string()];
+                        let param = &param_vec[param_vec.len() - 1];
+
+                        Some(translate_special_assignment(op, &param))
+                    } else {
+                        None
+                    };
+
+                    // Do this _after_ calling translate_special_condition so the params end up
+                    // in the right order.
+                    for split in splits.iter_mut() {
+                        translate_transition(ctxt, split, errors)?;
+                    }
+
+                    let assignment_ts_opt = match assignment_opt {
+                        None => {
+                            assert!(splits.len() == 1 && splits[0].is_trivial());
+                            assert!(pat_opt.is_none());
+                            None
+                        }
+                        Some(assign_e) => {
+                            assert!(splits.len() == 1);
+
+                            let pat = pat_opt.clone().expect("expected pat");
+                            let ty = get_binding_ty(&field.stype);
+                            let kind = SplitKind::Let(pat, ty, LetKind::Normal, assign_e);
+                            Some(TransitionStmt::Split(*span, kind, splits.clone()))
+                        }
+                    };
+
+                    match (condition_ts_opt, assignment_ts_opt) {
+                        (None, None) => {
+                            panic!("no op should be completely trivial");
+                        }
+                        (Some(ts), None) => ts,
+                        (None, Some(ts)) => ts,
+                        (Some(ts1), Some(ts2)) => TransitionStmt::Block(*span, vec![ts1, ts2]),
+                    }
+                }
+                _ => {
+                    translate_split_kind(ctxt, split_kind, errors);
+                    for split in splits.iter_mut() {
+                        translate_transition(ctxt, split, errors)?;
+                    }
+                    return Ok(());
+                }
             }
-            return Ok(());
         }
         TransitionStmt::Require(_span, e) => {
             let req_e = translate_expr(ctxt, e, false, errors);
@@ -1424,139 +1464,6 @@ fn translate_transition(
             return Ok(());
         }
 
-        TransitionStmt::Special(span, id, SpecialOp { stmt: MonoidStmtType::Have, elt }, _) => {
-            let elt = translate_elt(ctxt, elt, false, errors);
-
-            let ident = ctxt.get_numbered_token_ident(id);
-            let field = ctxt.get_field_or_panic(id);
-            let is_collection = elt.is_general();
-            let ty = if is_collection {
-                field_token_collection_type(&ctxt.sm, &field)
-            } else {
-                field_token_type(&ctxt.sm, &field)
-            };
-
-            ctxt.params.get_mut(&field.name.to_string()).expect("get_mut").push(TokenParam {
-                inout_type: InoutType::BorrowIn,
-                name: ident.clone(),
-                ty: ty,
-                is_collection,
-            });
-
-            TransitionStmt::Require(*span, token_matches_elt(true, &ident, &elt, ctxt, &field))
-        }
-
-        TransitionStmt::Special(span, id, SpecialOp { stmt: MonoidStmtType::Add, elt }, _) => {
-            let elt = translate_elt(ctxt, elt, false, errors);
-
-            let ident = ctxt.get_numbered_token_ident(id);
-            let field = ctxt.get_field_or_panic(id);
-            let is_collection = elt.is_general();
-            let ty = if is_collection {
-                field_token_collection_type(&ctxt.sm, &field)
-            } else {
-                field_token_type(&ctxt.sm, &field)
-            };
-
-            ctxt.params.get_mut(&field.name.to_string()).expect("get_mut").push(TokenParam {
-                inout_type: InoutType::Out,
-                name: ident.clone(),
-                ty: ty,
-                is_collection,
-            });
-
-            TransitionStmt::PostCondition(
-                *span,
-                token_matches_elt(false, &ident, &elt, ctxt, &field),
-            )
-        }
-
-        TransitionStmt::Special(span, id, SpecialOp { stmt: MonoidStmtType::Remove, elt }, _) => {
-            let elt = translate_elt(ctxt, elt, false, errors);
-
-            let ident = ctxt.get_numbered_token_ident(id);
-            let field = ctxt.get_field_or_panic(id);
-            let is_collection = elt.is_general();
-            let ty = if is_collection {
-                field_token_collection_type(&ctxt.sm, &field)
-            } else {
-                field_token_type(&ctxt.sm, &field)
-            };
-
-            ctxt.params.get_mut(&field.name.to_string()).expect("get_mut").push(TokenParam {
-                inout_type: InoutType::In,
-                name: ident.clone(),
-                ty: ty,
-                is_collection,
-            });
-
-            TransitionStmt::Require(*span, token_matches_elt(false, &ident, &elt, ctxt, &field))
-        }
-
-        TransitionStmt::Special(span, id, SpecialOp { stmt: MonoidStmtType::Guard, elt }, _) => {
-            // note: ignore 'key' expression for the KV case
-            let e = translate_value_expr(ctxt, elt, false, errors);
-
-            let ident = ctxt.get_numbered_token_ident(id);
-            let field = ctxt.get_field_or_panic(id);
-            let ty = if elt.is_general() {
-                shardable_type_to_type(field.type_span, &field.stype)
-            } else {
-                stored_object_type(&field)
-            };
-
-            ctxt.params.get_mut(&field.name.to_string()).expect("get_mut").push(TokenParam {
-                inout_type: InoutType::BorrowOut,
-                name: ident.clone(),
-                ty: ty,
-                is_collection: false,
-            });
-
-            TransitionStmt::PostCondition(*span, mk_eq(&Expr::Verbatim(quote! {*#ident}), &e))
-        }
-
-        TransitionStmt::Special(span, id, SpecialOp { stmt: MonoidStmtType::Deposit, elt }, _) => {
-            let e = translate_value_expr(ctxt, elt, false, errors);
-
-            let ident = ctxt.get_numbered_token_ident(id);
-            let field = ctxt.get_field_or_panic(id);
-            let ty = if elt.is_general() {
-                shardable_type_to_type(field.type_span, &field.stype)
-            } else {
-                stored_object_type(&field)
-            };
-
-            ctxt.params.get_mut(&field.name.to_string()).expect("get_mut").push(TokenParam {
-                inout_type: InoutType::In,
-                name: ident.clone(),
-                ty: ty,
-                is_collection: false,
-            });
-
-            TransitionStmt::Require(*span, mk_eq(&Expr::Verbatim(quote! {#ident}), &e))
-        }
-
-        TransitionStmt::Special(span, id, SpecialOp { stmt: MonoidStmtType::Withdraw, elt }, _) => {
-            let e = translate_value_expr(ctxt, elt, false, errors);
-
-            let ident = ctxt.get_numbered_token_ident(id);
-            let field = ctxt.get_field_or_panic(id);
-            let ty = if elt.is_general() {
-                shardable_type_to_type(field.type_span, &field.stype)
-            } else {
-                stored_object_type(&field)
-            };
-
-            ctxt.params.get_mut(&field.name.to_string()).expect("get_mut").push(TokenParam {
-                inout_type: InoutType::Out,
-                name: ident.clone(),
-                ty: ty,
-                is_collection: false,
-            });
-
-            TransitionStmt::PostCondition(*span, mk_eq(&Expr::Verbatim(quote! {#ident}), &e))
-        }
-
         TransitionStmt::PostCondition(..) => {
             return Ok(());
         }
@@ -1569,6 +1476,11 @@ fn translate_transition(
 
 fn translate_split_kind(ctxt: &mut Ctxt, sk: &mut SplitKind, errors: &mut Vec<Error>) {
     match sk {
+        SplitKind::Let(_pat, _ty, lk, init_e) => {
+            let birds_eye = *lk == LetKind::BirdsEye;
+            let e = translate_expr(ctxt, init_e, birds_eye, errors);
+            *init_e = e;
+        }
         SplitKind::If(cond) => {
             translate_expr(ctxt, cond, false, errors);
         }
@@ -1582,6 +1494,9 @@ fn translate_split_kind(ctxt: &mut Ctxt, sk: &mut SplitKind, errors: &mut Vec<Er
                     }
                 }
             }
+        }
+        SplitKind::Special(..) => {
+            panic!("handled separately");
         }
     }
 }
@@ -1615,10 +1530,15 @@ fn token_matches_elt(
     field: &Field,
 ) -> Expr {
     match elt {
-        MonoidElt::OptionSome(e) | MonoidElt::SingletonMultiset(e) => {
+        MonoidElt::OptionSome(None) => {
+            // TODO for cleaner output, avoid emitting anything here
+            Expr::Verbatim(quote! { true })
+        }
+        MonoidElt::OptionSome(Some(e)) | MonoidElt::SingletonMultiset(e) => {
             mk_eq(&Expr::Verbatim(quote! {#token_name.value}), &e)
         }
-        MonoidElt::SingletonKV(key, val) => mk_and(
+        MonoidElt::SingletonKV(key, None) => mk_eq(&Expr::Verbatim(quote! {#token_name.key}), &key),
+        MonoidElt::SingletonKV(key, Some(val)) => mk_and(
             mk_eq(&Expr::Verbatim(quote! {#token_name.key}), &key),
             mk_eq(&Expr::Verbatim(quote! {#token_name.value}), &val),
         ),
@@ -1639,6 +1559,178 @@ fn token_matches_elt(
     }
 }
 
+fn translate_special_condition(
+    ctxt: &mut Ctxt,
+    span: Span,
+    field: &Field,
+    op: &SpecialOp,
+    errors: &mut Vec<Error>,
+) -> Option<TransitionStmt> {
+    match op {
+        SpecialOp { stmt: MonoidStmtType::Have, elt } => {
+            let elt = translate_elt(ctxt, elt, false, errors);
+
+            let ident = ctxt.get_numbered_token_ident(&field.name);
+            let is_collection = elt.is_general();
+            let ty = if is_collection {
+                field_token_collection_type(&ctxt.sm, &field)
+            } else {
+                field_token_type(&ctxt.sm, &field)
+            };
+
+            ctxt.params.get_mut(&field.name.to_string()).expect("get_mut").push(TokenParam {
+                inout_type: InoutType::BorrowIn,
+                name: ident.clone(),
+                ty: ty,
+                is_collection,
+            });
+
+            Some(TransitionStmt::Require(span, token_matches_elt(true, &ident, &elt, ctxt, &field)))
+        }
+
+        SpecialOp { stmt: MonoidStmtType::Add, elt } => {
+            let elt = translate_elt(ctxt, elt, false, errors);
+
+            let ident = ctxt.get_numbered_token_ident(&field.name);
+            let is_collection = elt.is_general();
+            let ty = if is_collection {
+                field_token_collection_type(&ctxt.sm, &field)
+            } else {
+                field_token_type(&ctxt.sm, &field)
+            };
+
+            ctxt.params.get_mut(&field.name.to_string()).expect("get_mut").push(TokenParam {
+                inout_type: InoutType::Out,
+                name: ident.clone(),
+                ty: ty,
+                is_collection,
+            });
+
+            Some(TransitionStmt::PostCondition(
+                span,
+                token_matches_elt(false, &ident, &elt, ctxt, &field),
+            ))
+        }
+
+        SpecialOp { stmt: MonoidStmtType::Remove, elt } => {
+            let elt = translate_elt(ctxt, elt, false, errors);
+
+            let ident = ctxt.get_numbered_token_ident(&field.name);
+            let is_collection = elt.is_general();
+            let ty = if is_collection {
+                field_token_collection_type(&ctxt.sm, &field)
+            } else {
+                field_token_type(&ctxt.sm, &field)
+            };
+
+            ctxt.params.get_mut(&field.name.to_string()).expect("get_mut").push(TokenParam {
+                inout_type: InoutType::In,
+                name: ident.clone(),
+                ty: ty,
+                is_collection,
+            });
+
+            Some(TransitionStmt::Require(
+                span,
+                token_matches_elt(false, &ident, &elt, ctxt, &field),
+            ))
+        }
+
+        SpecialOp { stmt: MonoidStmtType::Guard, elt } => {
+            // note: ignore 'key' expression for the KV case
+            let e = translate_value_expr(ctxt, elt, false, errors)
+                .expect("value must exist (can't bind in guard)");
+
+            let ident = ctxt.get_numbered_token_ident(&field.name);
+            let ty = if elt.is_general() {
+                shardable_type_to_type(field.type_span, &field.stype)
+            } else {
+                stored_object_type(&field)
+            };
+
+            ctxt.params.get_mut(&field.name.to_string()).expect("get_mut").push(TokenParam {
+                inout_type: InoutType::BorrowOut,
+                name: ident.clone(),
+                ty: ty,
+                is_collection: false,
+            });
+
+            Some(TransitionStmt::PostCondition(span, mk_eq(&Expr::Verbatim(quote! {*#ident}), &e)))
+        }
+
+        SpecialOp { stmt: MonoidStmtType::Deposit, elt } => {
+            let e = translate_value_expr(ctxt, elt, false, errors)
+                .expect("value must exist (can't bind in guard)");
+
+            let ident = ctxt.get_numbered_token_ident(&field.name);
+            let ty = if elt.is_general() {
+                shardable_type_to_type(field.type_span, &field.stype)
+            } else {
+                stored_object_type(&field)
+            };
+
+            ctxt.params.get_mut(&field.name.to_string()).expect("get_mut").push(TokenParam {
+                inout_type: InoutType::In,
+                name: ident.clone(),
+                ty: ty,
+                is_collection: false,
+            });
+
+            Some(TransitionStmt::Require(span, mk_eq(&Expr::Verbatim(quote! {#ident}), &e)))
+        }
+
+        SpecialOp { stmt: MonoidStmtType::Withdraw, elt } => {
+            let e_opt = translate_value_expr(ctxt, elt, false, errors);
+
+            let ident = ctxt.get_numbered_token_ident(&field.name);
+            let ty = if elt.is_general() {
+                shardable_type_to_type(field.type_span, &field.stype)
+            } else {
+                stored_object_type(&field)
+            };
+
+            ctxt.params.get_mut(&field.name.to_string()).expect("get_mut").push(TokenParam {
+                inout_type: InoutType::Out,
+                name: ident.clone(),
+                ty: ty,
+                is_collection: false,
+            });
+
+            if let Some(e) = e_opt {
+                Some(TransitionStmt::PostCondition(
+                    span,
+                    mk_eq(&Expr::Verbatim(quote! {#ident}), &e),
+                ))
+            } else {
+                None
+            }
+        }
+    }
+}
+
+fn translate_special_assignment(op: &SpecialOp, param: &TokenParam) -> Expr {
+    let name = &param.name;
+
+    match op.stmt {
+        MonoidStmtType::Have => {
+            assert!(param.inout_type == InoutType::BorrowIn);
+            Expr::Verbatim(quote! { #name.value })
+        }
+        MonoidStmtType::Remove => {
+            assert!(param.inout_type == InoutType::In);
+            Expr::Verbatim(quote! { #name.value })
+        }
+        MonoidStmtType::Withdraw => {
+            assert!(param.inout_type == InoutType::Out);
+            Expr::Verbatim(quote! { #name })
+        }
+
+        MonoidStmtType::Add | MonoidStmtType::Guard | MonoidStmtType::Deposit => {
+            panic!("unexpected monoid type");
+        }
+    }
+}
+
 fn translate_elt(
     ctxt: &Ctxt,
     elt: &MonoidElt,
@@ -1646,18 +1738,23 @@ fn translate_elt(
     errors: &mut Vec<Error>,
 ) -> MonoidElt {
     match elt {
-        MonoidElt::OptionSome(e) => {
+        MonoidElt::OptionSome(None) => MonoidElt::OptionSome(None),
+        MonoidElt::OptionSome(Some(e)) => {
             let e = translate_expr(ctxt, e, birds_eye, errors);
-            MonoidElt::OptionSome(e)
+            MonoidElt::OptionSome(Some(e))
         }
         MonoidElt::SingletonMultiset(e) => {
             let e = translate_expr(ctxt, e, birds_eye, errors);
             MonoidElt::SingletonMultiset(e)
         }
-        MonoidElt::SingletonKV(e1, e2) => {
+        MonoidElt::SingletonKV(e1, None) => {
+            let e1 = translate_expr(ctxt, e1, birds_eye, errors);
+            MonoidElt::SingletonKV(e1, None)
+        }
+        MonoidElt::SingletonKV(e1, Some(e2)) => {
             let e1 = translate_expr(ctxt, e1, birds_eye, errors);
             let e2 = translate_expr(ctxt, e2, birds_eye, errors);
-            MonoidElt::SingletonKV(e1, e2)
+            MonoidElt::SingletonKV(e1, Some(e2))
         }
         MonoidElt::General(e) => {
             let e = translate_expr(ctxt, e, birds_eye, errors);
@@ -1666,17 +1763,22 @@ fn translate_elt(
     }
 }
 
+/// Gets the "value" expression from the MonoidElt
+/// (whichever corresponds to the 'value' field of the token struct).
+/// (For a map element, it's the value of the key-value pair;
+/// for anything else, where there's only expression, it's that one.)
 fn translate_value_expr(
     ctxt: &Ctxt,
     elt: &MonoidElt,
     birds_eye: bool,
     errors: &mut Vec<Error>,
-) -> Expr {
+) -> Option<Expr> {
     match elt {
-        MonoidElt::OptionSome(e)
+        MonoidElt::OptionSome(Some(e))
         | MonoidElt::General(e)
         | MonoidElt::SingletonMultiset(e)
-        | MonoidElt::SingletonKV(_, e) => translate_expr(ctxt, e, birds_eye, errors),
+        | MonoidElt::SingletonKV(_, Some(e)) => Some(translate_expr(ctxt, e, birds_eye, errors)),
+        MonoidElt::OptionSome(None) | MonoidElt::SingletonKV(_, None) => None,
     }
 }
 
@@ -1824,7 +1926,10 @@ fn exchange_collect(
             }
             Ok(p)
         }
-        TransitionStmt::Let(_span, pat, ty, _lk, init_e, child) => {
+        TransitionStmt::Split(_span, SplitKind::Let(pat, ty, _lk, init_e), es) => {
+            assert!(es.len() == 1);
+            let child = &es[0];
+
             let mut p = prequel.clone();
             p.push(PrequelElement::Let(pat.clone(), ty.clone(), init_e.clone()));
             let _ = exchange_collect(ctxt, child, p);
@@ -1869,6 +1974,9 @@ fn exchange_collect(
             }
             Ok(prequel)
         }
+        TransitionStmt::Split(_span, SplitKind::Special(..), _) => {
+            panic!("should have been removed in preprocessing");
+        }
         TransitionStmt::Require(_span, req_e) => {
             ctxt.requires.push(with_prequel(&prequel, true, req_e.clone()));
             Ok(prequel)
@@ -1886,10 +1994,6 @@ fn exchange_collect(
         TransitionStmt::Update(..) => Ok(prequel),
         TransitionStmt::SubUpdate(..) => Ok(prequel),
         TransitionStmt::Initialize(..) => Ok(prequel),
-
-        TransitionStmt::Special(..) => {
-            panic!("should have been removed in preprocessing");
-        }
     }
 }
 
@@ -1958,18 +2062,18 @@ fn prune_irrelevant_ops_rec(ctxt: &Ctxt, ts: TransitionStmt) -> Option<Transitio
                 v.into_iter().filter_map(|t| prune_irrelevant_ops_rec(ctxt, t)).collect();
             if res.len() == 0 { None } else { Some(TransitionStmt::Block(span, res)) }
         }
-        TransitionStmt::Let(span, pat, ty, lk, init_e, box child) => {
-            match prune_irrelevant_ops_rec(ctxt, child) {
-                None => None,
-                Some(new_child) => {
-                    Some(TransitionStmt::Let(span, pat, ty, lk, init_e, Box::new(new_child)))
-                }
-            }
-        }
         TransitionStmt::Split(span, split_kind, splits) => {
             let pruned_splits: Vec<Option<TransitionStmt>> =
                 splits.into_iter().map(|split| prune_irrelevant_ops_rec(ctxt, split)).collect();
-            let is_nontrivial = pruned_splits.iter().any(|s| s.is_some());
+
+            let mut is_nontrivial = pruned_splits.iter().any(|s| s.is_some());
+            match split_kind {
+                SplitKind::Special(..) => {
+                    is_nontrivial = true;
+                }
+                SplitKind::Let(..) | SplitKind::If(..) | SplitKind::Match(..) => {}
+            }
+
             if !is_nontrivial {
                 None
             } else {
@@ -2010,9 +2114,6 @@ fn prune_irrelevant_ops_rec(ctxt: &Ctxt, ts: TransitionStmt) -> Option<Transitio
         TransitionStmt::PostCondition(span, post_e) => {
             Some(TransitionStmt::PostCondition(span, post_e))
         }
-        TransitionStmt::Special(span, id, op, proof) => {
-            Some(TransitionStmt::Special(span, id, op, proof.clone()))
-        }
     }
 }
 
@@ -2043,19 +2144,6 @@ fn get_post_value_for_variable(ctxt: &Ctxt, ts: &TransitionStmt, field: &Field) 
             }
             opt
         }
-        TransitionStmt::Let(_span, pat, ty, _lk, e, child) => {
-            let o = get_post_value_for_variable(ctxt, child, field);
-            let ty_tokens = match ty {
-                None => TokenStream::new(),
-                Some(ty) => quote! { : #ty },
-            };
-            match o {
-                None => None,
-                Some(child_e) => Some(Expr::Verbatim(quote! {
-                    { let #pat #ty_tokens = #e; #child_e }
-                })),
-            }
-        }
         TransitionStmt::Split(span, split_kind, es) => {
             let opts: Vec<Option<Expr>> =
                 es.iter().map(|e| get_post_value_for_variable(ctxt, e, field)).collect();
@@ -2079,6 +2167,20 @@ fn get_post_value_for_variable(ctxt: &Ctxt, ts: &TransitionStmt, field: &Field) 
                     SplitKind::Match(match_e, arms) => {
                         Some(emit_match(*span, match_e, arms, &cases))
                     }
+                    SplitKind::Let(pat, ty, _lk, init_e) => {
+                        let ty_tokens = match ty {
+                            None => TokenStream::new(),
+                            Some(ty) => quote! { : #ty },
+                        };
+                        assert!(cases.len() == 1);
+                        let child_e = &cases[0];
+                        Some(Expr::Verbatim(quote! {
+                            { let #pat #ty_tokens = #init_e; #child_e }
+                        }))
+                    }
+                    SplitKind::Special(..) => {
+                        panic!("should have been translated out");
+                    }
                 }
             } else {
                 None
@@ -2092,7 +2194,6 @@ fn get_post_value_for_variable(ctxt: &Ctxt, ts: &TransitionStmt, field: &Field) 
         }
         TransitionStmt::Require(..)
         | TransitionStmt::Assert(..)
-        | TransitionStmt::Special(..)
         | TransitionStmt::PostCondition(..) => None,
     }
 }

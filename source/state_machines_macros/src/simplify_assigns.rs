@@ -84,11 +84,7 @@ fn simplify_assigns_vec(
 fn simplify_assigns_stmt(sm: &SM, sop: &SimplStmt, used_ids: &mut HashSet<String>) -> SimplStmt {
     match sop {
         SimplStmt::Let(span, pat, ty, e, inner) => {
-            // Note: right now we assume that assign-vars can only be 'used' from
-            // require/assert/update (because that is how they are added in
-            // the simplification pass). So we don't call `add_used_ids` here.
-            // That might change later.
-
+            add_used_ids_from_expr(used_ids, e);
             let mut inner_used_ids: HashSet<String> = HashSet::new();
             let simpl_inner = simplify_assigns_vec(sm, inner, &mut inner_used_ids);
             set_union(used_ids, inner_used_ids);

@@ -1,7 +1,7 @@
 //! More sanity checks on transitions, checking properties specifically for
 //! concurrency_tokens.rs
 
-use crate::ast::{TransitionStmt, SM};
+use crate::ast::{SplitKind, TransitionStmt, SM};
 use syn::parse::Error;
 
 /// Check if any SpecialOp is inside a conditional, which is currently unsupported.
@@ -24,11 +24,15 @@ pub fn check_unsupported_updates(ts: &TransitionStmt) -> syn::parse::Result<()> 
             }
             Ok(())
         }
-        TransitionStmt::Let(_span, _pat, _ty, _lk, _init_e, child) => {
-            check_unsupported_updates(child)?;
+        TransitionStmt::Split(_span, SplitKind::Let(..), es)
+        | TransitionStmt::Split(_span, SplitKind::Special(..), es) => {
+            for e in es {
+                check_unsupported_updates(e)?;
+            }
             Ok(())
         }
-        TransitionStmt::Split(_span, _split_kind, es) => {
+        TransitionStmt::Split(_span, SplitKind::If(..), es)
+        | TransitionStmt::Split(_span, SplitKind::Match(..), es) => {
             for e in es {
                 check_unsupported_updates_helper(e)?;
             }
@@ -42,7 +46,6 @@ pub fn check_unsupported_updates(ts: &TransitionStmt) -> syn::parse::Result<()> 
             format!("field updates and index updates are not supported in tokenized transitions"),
         )),
         TransitionStmt::Initialize(..) => Ok(()),
-        TransitionStmt::Special(..) => Ok(()),
         TransitionStmt::PostCondition(..) => Ok(()),
     }
 }
@@ -55,7 +58,13 @@ fn check_unsupported_updates_helper(ts: &TransitionStmt) -> syn::parse::Result<(
             }
             Ok(())
         }
-        TransitionStmt::Let(_, _, _, _, _, child) => check_unsupported_updates_helper(child),
+        TransitionStmt::Split(span, SplitKind::Special(..), _) => {
+            let name = ts.statement_name();
+            return Err(Error::new(
+                *span,
+                format!("currently, '{name:}' statements are not supported inside conditionals"),
+            ));
+        }
         TransitionStmt::Split(_, _, es) => {
             for e in es {
                 check_unsupported_updates_helper(e)?;
@@ -68,14 +77,6 @@ fn check_unsupported_updates_helper(ts: &TransitionStmt) -> syn::parse::Result<(
         TransitionStmt::SubUpdate(..) => Ok(()),
         TransitionStmt::Initialize(_, _, _) => Ok(()),
         TransitionStmt::PostCondition(..) => Ok(()),
-
-        TransitionStmt::Special(span, _, _, _) => {
-            let name = ts.statement_name();
-            return Err(Error::new(
-                *span,
-                format!("currently, '{name:}' statements are not supported inside conditionals"),
-            ));
-        }
     }
 }
 
@@ -130,12 +131,35 @@ pub fn check_ordering_remove_have_add_rec(
             }
             Ok((seen_have, seen_add))
         }
-        TransitionStmt::Let(_, _, _, _, _, child) => {
-            check_ordering_remove_have_add_rec(child, field_name, seen_have, seen_add)
-        }
-        TransitionStmt::Split(_, _, es) => {
+        TransitionStmt::Split(span, split_kind, es) => {
+            let mut seen_have = seen_have;
+            let mut seen_add = seen_add;
+
+            match split_kind {
+                SplitKind::Special(id, op, _, _) => {
+                    let msg = "updates for a field should always go in order 'remove -> have -> add'; otherwise, the transition relation may be weaker than necessary";
+                    if id.to_string() == *field_name {
+                        if op.is_remove() {
+                            if seen_have || seen_add {
+                                return Err(Error::new(*span, msg));
+                            }
+                        } else if op.is_have() {
+                            if seen_add {
+                                return Err(Error::new(*span, msg));
+                            }
+                            seen_have = true;
+                        } else if op.is_add() {
+                            seen_add = true;
+                        }
+                    }
+                }
+                _ => {}
+            }
+
             let mut h = false;
             let mut a = false;
+
+            assert!(es.len() > 0);
             for e in es {
                 let (h1, a1) =
                     check_ordering_remove_have_add_rec(e, field_name, seen_have, seen_add)?;
@@ -151,28 +175,5 @@ pub fn check_ordering_remove_have_add_rec(
         | TransitionStmt::SubUpdate(..)
         | TransitionStmt::Initialize(..)
         | TransitionStmt::PostCondition(..) => Ok((seen_have, seen_add)),
-
-        TransitionStmt::Special(span, id, op, _) => {
-            let msg = "updates for a field should always go in order 'remove -> have -> add'; otherwise, the transition relation may be weaker than necessary";
-            if id.to_string() == *field_name {
-                if op.is_remove() {
-                    if seen_have || seen_add {
-                        return Err(Error::new(*span, msg));
-                    }
-                    Ok((seen_have, seen_add))
-                } else if op.is_have() {
-                    if seen_add {
-                        return Err(Error::new(*span, msg));
-                    }
-                    Ok((true, seen_add))
-                } else if op.is_add() {
-                    Ok((seen_have, true))
-                } else {
-                    Ok((seen_have, seen_add))
-                }
-            } else {
-                Ok((seen_have, seen_add))
-            }
-        }
     }
 }

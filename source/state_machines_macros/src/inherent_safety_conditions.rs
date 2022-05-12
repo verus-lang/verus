@@ -1,4 +1,4 @@
-use crate::ast::{MonoidStmtType, ShardableType, SpecialOp, TransitionStmt, SM};
+use crate::ast::{MonoidStmtType, ShardableType, SpecialOp, SplitKind, TransitionStmt, SM};
 use proc_macro2::Span;
 use syn::parse::Error;
 
@@ -127,10 +127,26 @@ pub fn check_inherent_conditions(sm: &SM, ts: &mut TransitionStmt, errors: &mut 
                 check_inherent_conditions(sm, t, errors);
             }
         }
-        TransitionStmt::Let(_span, _pat, _ty, _, _, child) => {
-            check_inherent_conditions(sm, child, errors);
-        }
-        TransitionStmt::Split(_, _, splits) => {
+        TransitionStmt::Split(span, kind, splits) => {
+            match kind {
+                SplitKind::Special(ident, op, proof, _) => {
+                    let field = crate::transitions::get_field(&sm.fields, ident);
+                    let checked = check_inherent_condition_for_special_op(
+                        *span,
+                        op,
+                        &field.stype,
+                        proof.proof.is_some(),
+                    );
+                    match checked {
+                        Err(err) => errors.push(err),
+                        Ok(failure_msg) => {
+                            proof.error_msg = failure_msg;
+                        }
+                    }
+                }
+                _ => {}
+            }
+
             for split in splits {
                 check_inherent_conditions(sm, split, errors);
             }
@@ -141,20 +157,5 @@ pub fn check_inherent_conditions(sm: &SM, ts: &mut TransitionStmt, errors: &mut 
         TransitionStmt::SubUpdate(..) => {}
         TransitionStmt::Initialize(..) => {}
         TransitionStmt::PostCondition(..) => {}
-        TransitionStmt::Special(span, ident, op, proof) => {
-            let field = crate::transitions::get_field(&sm.fields, ident);
-            let checked = check_inherent_condition_for_special_op(
-                *span,
-                op,
-                &field.stype,
-                proof.proof.is_some(),
-            );
-            match checked {
-                Err(err) => errors.push(err),
-                Ok(failure_msg) => {
-                    proof.error_msg = failure_msg;
-                }
-            }
-        }
     }
 }

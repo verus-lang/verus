@@ -85,10 +85,12 @@ fn parse_arg_typed(input: ParseStream) -> syn::parse::Result<(Ident, Type)> {
 }
 
 struct TLet(Span, Pat, Option<Type>, LetKind, Expr);
+struct TSpecial(Span, Ident, SpecialOp, AssertProof, Pat);
 
 enum StmtOrLet {
     Stmt(TransitionStmt),
     Let(TLet),
+    Special(TSpecial),
 }
 
 /// Parse any kind of transition statement. Note that 'let' statements aren't turned
@@ -134,17 +136,17 @@ fn parse_transition_stmt(input: ParseStream) -> syn::parse::Result<StmtOrLet> {
     } else if ident.to_string() == "assert" {
         Ok(StmtOrLet::Stmt(parse_assert(ident, input)?))
     } else if ident.to_string() == "have" {
-        Ok(StmtOrLet::Stmt(parse_monoid_stmt(ident, input, MonoidStmtType::Have)?))
+        Ok(parse_monoid_stmt(ident, input, MonoidStmtType::Have)?)
     } else if ident.to_string() == "add" {
-        Ok(StmtOrLet::Stmt(parse_monoid_stmt(ident, input, MonoidStmtType::Add)?))
+        Ok(parse_monoid_stmt(ident, input, MonoidStmtType::Add)?)
     } else if ident.to_string() == "remove" {
-        Ok(StmtOrLet::Stmt(parse_monoid_stmt(ident, input, MonoidStmtType::Remove)?))
+        Ok(parse_monoid_stmt(ident, input, MonoidStmtType::Remove)?)
     } else if ident.to_string() == "guard" {
-        Ok(StmtOrLet::Stmt(parse_monoid_stmt(ident, input, MonoidStmtType::Guard)?))
+        Ok(parse_monoid_stmt(ident, input, MonoidStmtType::Guard)?)
     } else if ident.to_string() == "deposit" {
-        Ok(StmtOrLet::Stmt(parse_monoid_stmt(ident, input, MonoidStmtType::Deposit)?))
+        Ok(parse_monoid_stmt(ident, input, MonoidStmtType::Deposit)?)
     } else if ident.to_string() == "withdraw" {
-        Ok(StmtOrLet::Stmt(parse_monoid_stmt(ident, input, MonoidStmtType::Withdraw)?))
+        Ok(parse_monoid_stmt(ident, input, MonoidStmtType::Withdraw)?)
     } else if ident.to_string() == "birds_eye" {
         let let_token: Token![let] = input.parse()?;
         return Ok(StmtOrLet::Let(parse_let(let_token.span, LetKind::BirdsEye, input)?));
@@ -160,8 +162,8 @@ fn parse_transition_block(input: ParseStream) -> syn::parse::Result<TransitionSt
     let brace_token = braced!(content in input);
     let mut stmts = Vec::new();
     while !content.is_empty() {
-        let stmt = parse_transition_stmt(&content)?;
-        stmts.push(stmt);
+        let new_stmt = parse_transition_stmt(&content)?;
+        stmts.push(new_stmt);
     }
     Ok(stmts_or_lets_to_block(brace_token.span, stmts))
 }
@@ -191,14 +193,18 @@ fn stmts_or_lets_to_block(span: Span, tstmts: Vec<StmtOrLet>) -> TransitionStmt 
     for stmt_or_let in tstmts.into_iter().rev() {
         match stmt_or_let {
             StmtOrLet::Stmt(s) => cur_block.push(s),
-            StmtOrLet::Let(TLet(span, pat, ty, lk, e)) => {
-                cur_block = vec![TransitionStmt::Let(
+            StmtOrLet::Let(TLet(span, pat, ty, lk, lv)) => {
+                cur_block = vec![TransitionStmt::Split(
                     span,
-                    pat,
-                    ty,
-                    lk,
-                    e,
-                    Box::new(TransitionStmt::Block(span, cur_block.into_iter().rev().collect())),
+                    SplitKind::Let(pat, ty, lk, lv),
+                    vec![TransitionStmt::Block(span, cur_block.into_iter().rev().collect())],
+                )];
+            }
+            StmtOrLet::Special(TSpecial(span, ident, op, proof, pat)) => {
+                cur_block = vec![TransitionStmt::Split(
+                    span,
+                    SplitKind::Special(ident, op, proof, Some(pat)),
+                    vec![TransitionStmt::Block(span, cur_block.into_iter().rev().collect())],
                 )];
             }
         }
@@ -215,7 +221,7 @@ fn parse_monoid_stmt(
     kw: Ident,
     input: ParseStream,
     monoid_stmt_type: MonoidStmtType,
-) -> syn::parse::Result<TransitionStmt> {
+) -> syn::parse::Result<StmtOrLet> {
     // Parse the field name we are operating on.
     let field: Ident = input.parse()?;
 
@@ -234,7 +240,16 @@ fn parse_monoid_stmt(
 
     // Parse the part after the operator. The syntax used here determines what "type"
     // the data is (e.g., multiset, option, or map).
-    let elem = parse_monoid_elt(input, monoid_stmt_type)?;
+    let (elem, pat_opt) = parse_monoid_elt(input, monoid_stmt_type)?;
+
+    if pat_opt.is_some() {
+        match monoid_stmt_type {
+            MonoidStmtType::Have | MonoidStmtType::Remove | MonoidStmtType::Withdraw => {
+                // okay
+            }
+            MonoidStmtType::Guard | MonoidStmtType::Add | MonoidStmtType::Deposit => {}
+        }
+    }
 
     // Parse a proof block after the 'by' keyword, if it's there.
     let proof_block = if peek_keyword(input.cursor(), "by") {
@@ -264,7 +279,23 @@ fn parse_monoid_stmt(
     let op = SpecialOp { stmt: monoid_stmt_type, elt: elem };
 
     let proof = AssertProof { proof: proof_block, error_msg };
-    Ok(TransitionStmt::Special(stmt_span, field, op, proof))
+
+    match pat_opt {
+        None => {
+            // No bindings: return special op as a standalone statement with no child statement
+            let kind = SplitKind::Special(field, op, proof, None);
+            Ok(StmtOrLet::Stmt(TransitionStmt::Split(
+                stmt_span,
+                kind,
+                vec![TransitionStmt::Block(stmt_span, vec![])],
+            )))
+        }
+        Some(pat) => {
+            // Bindings: Return TSpecial, so that all statements after the special op
+            // end up in the scope of the pattern bindings
+            Ok(StmtOrLet::Special(TSpecial(stmt_span, field, op, proof, pat)))
+        }
+    }
 }
 
 /// Parse the element to be added, removed, etc. Looks like one of:
@@ -276,30 +307,42 @@ fn parse_monoid_stmt(
 fn parse_monoid_elt(
     input: ParseStream,
     monoid_stmt_type: MonoidStmtType,
-) -> syn::parse::Result<MonoidElt> {
+) -> syn::parse::Result<(MonoidElt, Option<Pat>)> {
     if input.peek(syn::token::Brace) {
         let content;
         let _ = braced!(content in input);
         let e: Expr = content.parse()?;
-        Ok(MonoidElt::SingletonMultiset(e))
+        Ok((MonoidElt::SingletonMultiset(e), None))
     } else if input.peek(syn::token::Bracket) {
         let content;
         let _ = bracketed!(content in input);
         let key: Expr = content.parse()?;
         let _: Token![=>] = content.parse()?;
-        let val: Expr = content.parse()?;
-        Ok(MonoidElt::SingletonKV(key, val))
+        if content.peek(Token![let]) {
+            let _: Token![let] = content.parse()?;
+            let pat: Pat = content.parse()?;
+            Ok((MonoidElt::SingletonKV(key, None), Some(pat)))
+        } else {
+            let val: Expr = content.parse()?;
+            Ok((MonoidElt::SingletonKV(key, Some(val)), None))
+        }
     } else if peek_keyword(input.cursor(), "Some") {
         let _ = keyword(input, "Some");
         let content;
         let _ = parenthesized!(content in input);
-        let e: Expr = content.parse()?;
-        Ok(MonoidElt::OptionSome(e))
+        if content.peek(Token![let]) {
+            let _: Token![let] = content.parse()?;
+            let pat: Pat = content.parse()?;
+            Ok((MonoidElt::OptionSome(None), Some(pat)))
+        } else {
+            let e: Expr = content.parse()?;
+            Ok((MonoidElt::OptionSome(Some(e)), None))
+        }
     } else if input.peek(syn::token::Paren) {
         let content;
         let _ = parenthesized!(content in input);
         let e: Expr = content.parse()?;
-        Ok(MonoidElt::General(e))
+        Ok((MonoidElt::General(e), None))
     } else {
         let name = monoid_stmt_type.name();
         Err(input.error(format!("malformed {name:} statement")))

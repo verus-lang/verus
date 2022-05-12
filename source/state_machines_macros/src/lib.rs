@@ -4,6 +4,7 @@ extern crate proc_macro;
 
 mod ast;
 mod case_macro;
+mod check_bind_stmts;
 mod check_birds_eye;
 mod concurrency_tokens;
 mod field_access_visitor;
