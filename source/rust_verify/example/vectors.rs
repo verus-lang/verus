@@ -2,7 +2,7 @@
 use builtin::*;
 mod pervasive;
 #[allow(unused_imports)]
-use crate::pervasive::{*, vec::*};
+use crate::pervasive::{*, vec::*, seq::*};
 
 fn binary_search(v: &Vec<u64>, k: u64) -> usize {
     requires([
@@ -59,6 +59,24 @@ fn reverse(v: &mut Vec<u64>) {
     }
 }
 
+fn pusher() -> Vec<u64> {
+    let mut v = Vec::new();
+    v.push(0);
+    v.push(1);
+    v.push(2);
+    v.push(3);
+    v.push(4);
+    #[spec] let goal = Seq::new(5, |i:int| i as u64);
+    assert(v.view().ext_equal(goal));
+    assert(v.index(2) == 2);
+
+    v.pop();
+    v.push(4);
+    assert(v.view().ext_equal(goal));
+
+    v
+}
+
 #[verifier(external)]
 fn main() {
     let mut v = Vec{vec: vec![0, 10, 20, 30, 40, 50, 60, 70, 80, 90]};
@@ -66,6 +84,11 @@ fn main() {
     println!();
     reverse(&mut v);
     for x in v.vec {
+        println!("{}", x);
+    }
+
+    println!("Pushed 5 values:");
+    for x in pusher().vec {
         println!("{}", x);
     }
 }
