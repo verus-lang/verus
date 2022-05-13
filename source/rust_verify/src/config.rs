@@ -29,6 +29,7 @@ pub struct Args {
     pub pervasive_path: Option<String>,
     pub verify_root: bool,
     pub verify_module: Option<String>,
+    pub verify_function: Option<String>,
     pub verify_pervasive: bool,
     pub no_verify: bool,
     pub no_lifetime: bool,
@@ -65,6 +66,7 @@ pub fn parse_args(program: &String, args: impl Iterator<Item = String>) -> (Args
     const OPT_PERVASIVE_PATH: &str = "pervasive-path";
     const OPT_VERIFY_ROOT: &str = "verify-root";
     const OPT_VERIFY_MODULE: &str = "verify-module";
+    const OPT_VERIFY_FUNCTION: &str = "verify-function";
     const OPT_VERIFY_PERVASIVE: &str = "verify-pervasive";
     const OPT_NO_VERIFY: &str = "no-verify";
     const OPT_NO_LIFETIME: &str = "no-lifetime";
@@ -99,6 +101,12 @@ pub fn parse_args(program: &String, args: impl Iterator<Item = String>) -> (Args
         "",
         OPT_VERIFY_MODULE,
         "Verify just one submodule within crate (e.g. 'foo' or 'foo::bar')",
+        "MODULE",
+    );
+    opts.optopt(
+        "",
+        OPT_VERIFY_FUNCTION,
+        "Verify just one function (e.g. 'foo' or 'foo::bar') within the one module specified by verify-module or verify-root",
         "MODULE",
     );
     opts.optflag("", OPT_VERIFY_PERVASIVE, "Verify trusted pervasive modules");
@@ -175,6 +183,7 @@ pub fn parse_args(program: &String, args: impl Iterator<Item = String>) -> (Args
         pervasive_path: matches.opt_str(OPT_PERVASIVE_PATH),
         verify_root: matches.opt_present(OPT_VERIFY_ROOT),
         verify_module: matches.opt_str(OPT_VERIFY_MODULE),
+        verify_function: matches.opt_str(OPT_VERIFY_FUNCTION),
         verify_pervasive: matches.opt_present(OPT_VERIFY_PERVASIVE),
         no_verify: matches.opt_present(OPT_NO_VERIFY),
         no_lifetime: matches.opt_present(OPT_NO_LIFETIME),

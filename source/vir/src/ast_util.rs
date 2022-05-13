@@ -106,6 +106,16 @@ pub fn fun_as_rust_dbg(fun: &Fun) -> String {
     }
 }
 
+pub fn fun_name_crate_relative(module: &Path, fun: &Fun) -> String {
+    let full_name = fun_as_rust_dbg(fun);
+    let module_prefix = path_as_rust_name(module) + "::";
+    if full_name.starts_with(&module_prefix) {
+        full_name[module_prefix.len()..].to_string()
+    } else {
+        full_name
+    }
+}
+
 // Can source_module see an item owned by owning_module?
 pub fn is_visible_to_of_owner(owning_module: &Option<Path>, source_module: &Path) -> bool {
     let sources = &source_module.segments;

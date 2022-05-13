@@ -19,7 +19,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use vir::ast::{Fun, Function, InferMode, Krate, Mode, VirErr, Visibility};
-use vir::ast_util::{fun_as_rust_dbg, is_visible_to};
+use vir::ast_util::{fun_as_rust_dbg, fun_name_crate_relative, is_visible_to};
 use vir::def::SnapPos;
 use vir::def::{CommandsWithContext, CommandsWithContextX};
 use vir::recursion::Node;
@@ -98,10 +98,6 @@ enum ErrorAs {
 }
 
 fn report_error(compiler: &Compiler, error: &Error, error_as: ErrorAs) {
-    if error.spans.len() == 0 {
-        panic!("internal error: found Error with no span")
-    }
-
     let mut v = Vec::new();
     for sp in &error.spans {
         let span: Span = from_raw_span(&sp.raw_span);
@@ -382,8 +378,20 @@ impl Verifier {
         commands: &Arc<Vec<CommandsWithContext>>,
         assign_map: &HashMap<*const air::ast::Span, HashSet<Arc<String>>>,
         snap_map: &Vec<(air::ast::Span, SnapPos)>,
+        module: &vir::ast::Path,
+        function_name: Option<&Fun>,
         comment: &str,
     ) -> bool {
+        if let Some(verify_function) = &self.args.verify_function {
+            if let Some(function_name) = function_name {
+                let name = fun_name_crate_relative(&module, function_name);
+                if &name != verify_function {
+                    return false;
+                }
+            } else {
+                return false;
+            }
+        }
         let mut invalidity = false;
         if commands.len() > 0 {
             air_context.blank_line();
@@ -470,6 +478,27 @@ impl Verifier {
             funs.insert(function.x.name.clone(), (function.clone(), vis_abs));
         }
 
+        if let Some(verify_function) = &self.args.verify_function {
+            let module_funs = funs
+                .iter()
+                .map(|(_, (f, _))| f)
+                .filter(|f| Some(module.clone()) == f.x.visibility.owning_module);
+            let module_fun_names: Vec<String> =
+                module_funs.map(|f| fun_name_crate_relative(&module, &f.x.name)).collect();
+            if !module_fun_names.iter().any(|f| f == verify_function) {
+                eprintln!(
+                    "Error: could not find function {}.  Available functions are:",
+                    verify_function
+                );
+                for f in module_fun_names {
+                    eprintln!("  {f}");
+                }
+                let msg = "could not find function specified by --verify-function".to_string();
+                let err = Arc::new(air::errors::ErrorX { msg, spans: vec![], labels: vec![] });
+                return Err(err);
+            }
+        }
+
         // For spec functions, check termination and declare consequence axioms.
         // For proof/exec functions, declare requires/ensures.
         // Declare them in SCC (strongly connected component) sorted order so that
@@ -530,6 +559,8 @@ impl Verifier {
                     })]),
                     &HashMap::new(),
                     &vec![],
+                    module,
+                    Some(&function.x.name),
                     &("Function-Termination ".to_string() + &fun_as_rust_dbg(f)),
                 );
                 let check_recommends = function.x.attrs.check_recommends;
@@ -553,6 +584,8 @@ impl Verifier {
                         &commands,
                         &HashMap::new(),
                         &snap_map,
+                        module,
+                        Some(&function.x.name),
                         &(s.to_string() + &fun_as_rust_dbg(&function.x.name)),
                     );
                 }
@@ -598,6 +631,8 @@ impl Verifier {
                     &commands,
                     &HashMap::new(),
                     &snap_map,
+                    module,
+                    Some(&function.x.name),
                     &(s.to_string() + &fun_as_rust_dbg(&function.x.name)),
                 );
                 if invalidity && !recommends_rerun && !self.args.no_auto_recommends_check {
@@ -720,6 +755,15 @@ impl Verifier {
 
         #[cfg(debug_assertions)]
         vir::check_ast_flavor::check_krate_simplified(&krate);
+
+        if self.args.verify_function.is_some() {
+            if self.args.verify_module.is_none() && !self.args.verify_root {
+                let msg = "--verify-function option requires --verify-module or --verify-root";
+                let msg = msg.to_string();
+                let err = Arc::new(air::errors::ErrorX { msg, spans: vec![], labels: vec![] });
+                return Err(err);
+            }
+        }
 
         let mut verified_modules = HashSet::new();
         for module in &krate.module_ids {
