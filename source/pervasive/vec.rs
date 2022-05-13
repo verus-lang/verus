@@ -17,7 +17,7 @@ impl<A> Vec<A> {
 
     #[verifier(external_body)]
     pub fn new() -> Self {
-        ensures(|v:Vec<A>| v.len() == 0);
+        ensures(|v: Self| equal(v.view(), Seq::empty()));
 
         Vec { vec: std::vec::Vec::new() }
     }
