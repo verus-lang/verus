@@ -11,6 +11,9 @@ use std::sync::Arc;
 struct State {
     // use results from triggers_auto, no questions asked
     auto_trigger: bool,
+    // parameters boxed = true: enables triggers on functions
+    // parameters boxed = false: enables triggers on arithmetic
+    boxed_params: bool,
     // variables the triggers must cover
     trigger_vars: HashSet<Ident>,
     // user-specified triggers (for sortedness stability, use BTreeMap rather than HashMap)
@@ -28,15 +31,30 @@ fn remove_boxing(exp: &Exp) -> Exp {
     }
 }
 
-fn check_trigger_expr(exp: &Exp, free_vars: &mut HashSet<Ident>) -> Result<(), VirErr> {
-    match &exp.x {
-        ExpX::Call(..)
-        | ExpX::UnaryOpr(UnaryOpr::Field { .. }, _)
-        | ExpX::Unary(UnaryOp::Trigger(_), _) => {}
-        // allow triggers for bitvector operators
-        ExpX::Binary(BinaryOp::Bitwise(_), _, _) | ExpX::Unary(UnaryOp::BitNot, _) => {}
-        _ => {
-            return err_str(&exp.span, "trigger must be a function call or a field access");
+fn check_trigger_expr(
+    state: &State,
+    exp: &Exp,
+    free_vars: &mut HashSet<Ident>,
+) -> Result<(), VirErr> {
+    if state.boxed_params {
+        match &exp.x {
+            ExpX::Call(..)
+            | ExpX::UnaryOpr(UnaryOpr::Field { .. }, _)
+            | ExpX::Unary(UnaryOp::Trigger(_), _) => {}
+            // allow triggers for bitvector operators
+            ExpX::Binary(BinaryOp::Bitwise(_), _, _) | ExpX::Unary(UnaryOp::BitNot, _) => {}
+            _ => {
+                return err_str(&exp.span, "trigger must be a function call a field access");
+            }
+        }
+    } else {
+        match &exp.x {
+            ExpX::Unary(UnaryOp::Trigger(_), _) => {}
+            ExpX::Unary(UnaryOp::Clip(_), _) => {}
+            ExpX::Binary(BinaryOp::Arith(..), _, _) => {}
+            _ => {
+                return err_str(&exp.span, "trigger must be an integer arithmetic operator");
+            }
         }
     }
     let mut scope_map = ScopeMap::new();
@@ -119,7 +137,7 @@ fn get_manual_triggers(state: &mut State, exp: &Exp) -> Result<(), VirErr> {
             ExpX::Unary(UnaryOp::Trigger(TriggerAnnotation::Trigger(group)), e1) => {
                 let mut free_vars: HashSet<Ident> = HashSet::new();
                 let e1 = remove_boxing(&e1);
-                check_trigger_expr(&e1, &mut free_vars)?;
+                check_trigger_expr(state, &e1, &mut free_vars)?;
                 for x in &free_vars {
                     if map.get(x).cloned() == Some(true) && !state.trigger_vars.contains(x) {
                         // If the trigger contains variables declared by a nested quantifier,
@@ -147,7 +165,7 @@ fn get_manual_triggers(state: &mut State, exp: &Exp) -> Result<(), VirErr> {
                         let es: Vec<Exp> = trigger.iter().map(remove_boxing).collect();
                         for e in &es {
                             let mut free_vars: HashSet<Ident> = HashSet::new();
-                            check_trigger_expr(e, &mut free_vars)?;
+                            check_trigger_expr(state, e, &mut free_vars)?;
                             for x in free_vars {
                                 if state.trigger_vars.contains(&x) {
                                     coverage.insert(x);
@@ -189,9 +207,11 @@ pub(crate) fn build_triggers(
     span: &Span,
     vars: &Vec<Ident>,
     exp: &Exp,
+    boxed_params: bool,
 ) -> Result<Trigs, VirErr> {
     let mut state = State {
         auto_trigger: false,
+        boxed_params,
         trigger_vars: vars.iter().cloned().collect(),
         triggers: BTreeMap::new(),
         coverage: HashMap::new(),
@@ -221,7 +241,9 @@ pub(crate) fn build_triggers(
             trigs.push(Arc::new(trig.clone()));
         }
         Ok(Arc::new(trigs))
-    } else {
+    } else if boxed_params {
         crate::triggers_auto::build_triggers(ctx, span, vars, exp, state.auto_trigger)
+    } else {
+        return err_str(span, "manual trigger (#[trigger] or with_triggers) is required");
     }
 }

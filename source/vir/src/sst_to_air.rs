@@ -681,7 +681,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: ExprCtxt) -> Expr {
                     }
                 }
                 let inv = mk_and(&invs);
-                let expr = match quant {
+                let expr = match quant.quant {
                     Quant::Forall => mk_implies(&inv, &expr),
                     Quant::Exists => mk_and(&vec![inv, expr]),
                 };
@@ -703,7 +703,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: ExprCtxt) -> Expr {
                 let triggers = vec_map(&*trigs, |trig| {
                     Arc::new(vec_map(trig, |x| exp_to_expr(ctx, x, expr_ctxt)))
                 });
-                air::ast_util::mk_quantifier(*quant, &binders, &triggers, &expr)
+                air::ast_util::mk_quantifier(quant.quant, &binders, &triggers, &expr)
             }
             (BndX::Lambda(binders), false) => {
                 let expr = exp_to_expr(ctx, exp, expr_ctxt);

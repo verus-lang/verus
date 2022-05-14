@@ -6,7 +6,7 @@
 //! for verification.
 
 use crate::def::Spanned;
-use air::ast::{Quant, Span};
+use air::ast::Span;
 use air::errors::Error;
 use std::sync::Arc;
 
@@ -322,6 +322,12 @@ pub enum InvAtomicity {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum AssertQueryMode {
     NonLinear,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct Quant {
+    pub quant: air::ast::Quant,
+    pub boxed_params: bool,
 }
 
 /// Expression, similar to rustc_hir::Expr

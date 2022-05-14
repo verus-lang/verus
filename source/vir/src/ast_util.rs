@@ -1,7 +1,7 @@
 use crate::ast::{
     BinaryOp, Constant, DatatypeX, Expr, ExprX, Fun, FunX, FunctionX, GenericBound, GenericBoundX,
-    Ident, Idents, IntRange, Mode, Param, ParamX, Params, Path, PathX, SpannedTyped, Typ, TypX,
-    Typs, Variant, Variants, VirErr, Visibility,
+    Ident, Idents, IntRange, Mode, Param, ParamX, Params, Path, PathX, Quant, SpannedTyped, Typ,
+    TypX, Typs, Variant, Variants, VirErr, Visibility,
 };
 use crate::sst::{Par, Pars};
 use crate::util::vec_map;
@@ -58,6 +58,8 @@ pub fn types_equal(typ1: &Typ, typ2: &Typ) -> bool {
 pub fn n_types_equal(typs1: &Typs, typs2: &Typs) -> bool {
     typs1.len() == typs2.len() && typs1.iter().zip(typs2.iter()).all(|(t1, t2)| types_equal(t1, t2))
 }
+
+pub const QUANT_FORALL: Quant = Quant { quant: air::ast::Quant::Forall, boxed_params: true };
 
 pub fn params_equal(param1: &Param, param2: &Param) -> bool {
     let ParamX { name: name1, typ: typ1, mode: mode1, is_mut: is_mut1 } = &param1.x;
