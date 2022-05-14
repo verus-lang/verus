@@ -122,6 +122,11 @@ pub fn exists<A>(_a: A) -> bool {
     unimplemented!();
 }
 
+#[spec]
+pub fn forall_arith<A>(_a: A) -> bool {
+    unimplemented!();
+}
+
 // choose(|x: t| P(x))
 #[spec]
 pub fn choose<A, F: Fn(A) -> bool>(_f: F) -> A {

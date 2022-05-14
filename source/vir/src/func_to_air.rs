@@ -2,6 +2,7 @@ use crate::ast::{
     Function, FunctionKind, GenericBoundX, Ident, Idents, Mode, Param, ParamX, Params,
     SpannedTyped, Typ, TypX, Typs, VirErr,
 };
+use crate::ast_util::QUANT_FORALL;
 use crate::context::Ctx;
 use crate::def::{
     prefix_ensures, prefix_fuel_id, prefix_fuel_nat, prefix_pre_var, prefix_recursive_fun,
@@ -541,8 +542,8 @@ pub fn func_axioms_to_air(
                     vars.push(param.x.name.clone());
                     binders.push(crate::ast_util::par_to_binder(&param));
                 }
-                let triggers = crate::triggers::build_triggers(ctx, span, &vars, &exp)?;
-                let bndx = BndX::Quant(Quant::Forall, Arc::new(binders), triggers);
+                let triggers = crate::triggers::build_triggers(ctx, span, &vars, &exp, true)?;
+                let bndx = BndX::Quant(QUANT_FORALL, Arc::new(binders), triggers);
                 let forallx = ExpX::Bind(Spanned::new(span.clone(), bndx), exp);
                 let forall = SpannedTyped::new(&span, &Arc::new(TypX::Bool), forallx);
                 let expr = exp_to_expr(

@@ -265,7 +265,7 @@ fn expr_to_node(expr: &Expr) -> Node {
             }
         },
         ExprX::Quant(quant, binders, expr) => {
-            nodes!({str_to_node(&format!("{:?}", quant).to_lowercase())} {binders_node(binders, &typ_to_node)} {expr_to_node(expr)})
+            nodes!({str_to_node(&format!("{:?}", quant.quant).to_lowercase())} {binders_node(binders, &typ_to_node)} {expr_to_node(expr)})
         }
         ExprX::Closure(binders, expr) => {
             nodes!(closure {binders_node(binders, &typ_to_node)} {expr_to_node(expr)})

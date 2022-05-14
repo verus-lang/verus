@@ -358,7 +358,11 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
             let mut bs: Vec<Binder<Typ>> = Vec::new();
             state.types.push_scope(true);
             for binder in binders.iter() {
-                let typ = coerce_typ_to_poly(ctx, &binder.a);
+                let typ = if quant.boxed_params {
+                    coerce_typ_to_poly(ctx, &binder.a)
+                } else {
+                    coerce_typ_to_native(ctx, &binder.a)
+                };
                 let _ = state.types.insert(binder.name.clone(), typ.clone());
                 bs.push(binder.new_a(typ));
             }

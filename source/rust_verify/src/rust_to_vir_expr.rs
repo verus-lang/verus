@@ -14,7 +14,7 @@ use crate::util::{
     unsupported_err_span, vec_map, vec_map_result,
 };
 use crate::{unsupported, unsupported_err, unsupported_err_unless, unsupported_unless};
-use air::ast::{Binder, BinderX, Quant};
+use air::ast::{Binder, BinderX};
 use air::ast_util::str_ident;
 use rustc_ast::{Attribute, BorrowKind, Mutability};
 use rustc_hir::def::{DefKind, Res};
@@ -29,8 +29,8 @@ use rustc_span::Span;
 use std::sync::Arc;
 use vir::ast::{
     ArithOp, ArmX, AssertQueryMode, BinaryOp, BitwiseOp, CallTarget, Constant, ExprX, FieldOpr,
-    FunX, HeaderExpr, HeaderExprX, Ident, IntRange, InvAtomicity, Mode, PatternX, SpannedTyped,
-    StmtX, Stmts, Typ, TypX, UnaryOp, UnaryOpr, VarAt, VirErr,
+    FunX, HeaderExpr, HeaderExprX, Ident, IntRange, InvAtomicity, Mode, PatternX, Quant,
+    SpannedTyped, StmtX, Stmts, Typ, TypX, UnaryOp, UnaryOpr, VarAt, VirErr,
 };
 use vir::ast_util::{ident_binder, path_as_rust_name};
 use vir::def::positional_field_ident;
@@ -391,6 +391,7 @@ fn fn_call_to_vir<'tcx>(
     let is_opens_invariants_except = f_name == "builtin::opens_invariants_except";
     let is_forall = f_name == "builtin::forall";
     let is_exists = f_name == "builtin::exists";
+    let is_forall_arith = f_name == "builtin::forall_arith";
     let is_choose = f_name == "builtin::choose";
     let is_choose_tuple = f_name == "builtin::choose_tuple";
     let is_with_triggers = f_name == "builtin::with_triggers";
@@ -428,7 +429,7 @@ fn fn_call_to_vir<'tcx>(
         || is_opens_invariants_any
         || is_opens_invariants
         || is_opens_invariants_except;
-    let is_quant = is_forall || is_exists;
+    let is_quant = is_forall || is_exists || is_forall_arith;
     let is_directive = is_extra_dependency || is_hide || is_reveal || is_reveal_fuel;
     let is_cmp = is_equal || is_eq || is_ne || is_le || is_ge || is_lt || is_gt;
     let is_arith_binary = is_add || is_sub || is_mul;
@@ -567,9 +568,14 @@ fn fn_call_to_vir<'tcx>(
         unsupported_err_unless!(len == 1, expr.span, "expected decreases", &args);
         args = extract_tuple(args[0]);
     }
-    if is_forall || is_exists {
+    if is_forall || is_exists || is_forall_arith {
         unsupported_err_unless!(len == 1, expr.span, "expected forall/exists", &args);
-        let quant = if is_forall { Quant::Forall } else { Quant::Exists };
+        let quant = if is_forall || is_forall_arith {
+            air::ast::Quant::Forall
+        } else {
+            air::ast::Quant::Exists
+        };
+        let quant = Quant { quant, boxed_params: !is_forall_arith };
         return extract_quant(bctx, expr.span, quant, args[0]);
     }
     if is_choose {

@@ -7,11 +7,11 @@
 //! SST is designed to make the translation to AIR as straightforward as possible.
 
 use crate::ast::{
-    AssertQueryMode, BinaryOp, Constant, Fun, InvAtomicity, Mode, Path, SpannedTyped, Typ, Typs,
-    UnaryOp, UnaryOpr, VarAt,
+    AssertQueryMode, BinaryOp, Constant, Fun, InvAtomicity, Mode, Path, Quant, SpannedTyped, Typ,
+    Typs, UnaryOp, UnaryOpr, VarAt,
 };
 use crate::def::Spanned;
-use air::ast::{Binders, Ident, Quant};
+use air::ast::{Binders, Ident};
 use air::errors::Error;
 use std::sync::Arc;
 

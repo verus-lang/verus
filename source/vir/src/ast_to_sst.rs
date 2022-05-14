@@ -2,7 +2,7 @@ use crate::ast::{
     ArithOp, BinaryOp, CallTarget, Constant, Expr, ExprX, Fun, Function, Ident, IntRange, Mode,
     PatternX, SpannedTyped, Stmt, StmtX, Typ, TypX, Typs, UnaryOp, UnaryOpr, VarAt, VirErr,
 };
-use crate::ast_util::{err_str, err_string, types_equal};
+use crate::ast_util::{err_str, err_string, types_equal, QUANT_FORALL};
 use crate::context::Ctx;
 use crate::def::Spanned;
 use crate::sst::{
@@ -12,7 +12,7 @@ use crate::sst::{
 use crate::sst_util::{referenced_vars_exp, referenced_vars_stm};
 use crate::sst_visitor::{map_exp_visitor, map_stm_exp_visitor};
 use crate::util::{vec_map, vec_map_result};
-use air::ast::{Binder, BinderX, Binders, Quant, Span};
+use air::ast::{Binder, BinderX, Binders, Span};
 use air::errors::error_with_label;
 use air::scope_map::ScopeMap;
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -942,7 +942,8 @@ fn expr_to_stm_opt(
                     _ => vars.push(b.name.clone()),
                 }
             }
-            let trigs = crate::triggers::build_triggers(ctx, &expr.span, &vars, &exp)?;
+            let trigs =
+                crate::triggers::build_triggers(ctx, &expr.span, &vars, &exp, quant.boxed_params)?;
             let bnd = Spanned::new(body.span.clone(), BndX::Quant(*quant, binders.clone(), trigs));
             Ok((check_recommends_stms, ReturnValue::Some(mk_exp(ExpX::Bind(bnd, exp)))))
         }
@@ -998,7 +999,7 @@ fn expr_to_stm_opt(
             let body_exp = expr_to_pure_exp(ctx, state, body)?;
             state.pop_scope();
             let vars = vec_map(params, |p| p.name.clone());
-            let trigs = crate::triggers::build_triggers(ctx, &expr.span, &vars, &cond_exp)?;
+            let trigs = crate::triggers::build_triggers(ctx, &expr.span, &vars, &cond_exp, true)?;
             let bnd =
                 Spanned::new(body.span.clone(), BndX::Choose(params.clone(), trigs, cond_exp));
             Ok((check_recommends_stms, ReturnValue::Some(mk_exp(ExpX::Bind(bnd, body_exp)))))
@@ -1068,7 +1069,7 @@ fn expr_to_stm_opt(
             // Translate ensure into an assume
             let implyx = ExprX::Binary(BinaryOp::Implies, require.clone(), ensure.clone());
             let imply = SpannedTyped::new(&ensure.span, &Arc::new(TypX::Bool), implyx);
-            let forallx = ExprX::Quant(Quant::Forall, vars.clone(), imply);
+            let forallx = ExprX::Quant(QUANT_FORALL, vars.clone(), imply);
             let forall = SpannedTyped::new(&ensure.span, &Arc::new(TypX::Bool), forallx);
             let forall_exp = expr_to_pure_exp(ctx, state, &forall)?;
             let assume = Spanned::new(ensure.span.clone(), StmX::Assume(forall_exp));
