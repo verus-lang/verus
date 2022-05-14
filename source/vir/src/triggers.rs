@@ -44,79 +44,122 @@ fn check_trigger_expr(
             // allow triggers for bitvector operators
             ExpX::Binary(BinaryOp::Bitwise(_), _, _) | ExpX::Unary(UnaryOp::BitNot, _) => {}
             _ => {
-                return err_str(&exp.span, "trigger must be a function call a field access");
+                return err_str(
+                    &exp.span,
+                    "trigger must be a function call, a field access, or a bitwise operator",
+                );
             }
         }
     } else {
         match &exp.x {
-            ExpX::Unary(UnaryOp::Trigger(_), _) => {}
-            ExpX::Unary(UnaryOp::Clip(_), _) => {}
-            ExpX::Binary(BinaryOp::Arith(..), _, _) => {}
+            ExpX::Unary(UnaryOp::Trigger(_), _)
+            | ExpX::Unary(UnaryOp::Clip(_), _)
+            | ExpX::Binary(BinaryOp::Arith(..), _, _) => {}
             _ => {
-                return err_str(&exp.span, "trigger must be an integer arithmetic operator");
+                return err_str(
+                    &exp.span,
+                    "trigger in forall_arith must be an integer arithmetic operator",
+                );
             }
         }
     }
+
     let mut scope_map = ScopeMap::new();
-    crate::sst_visitor::exp_visitor_check(
-        exp,
-        &mut scope_map,
-        &mut |exp, _scope_map| match &exp.x {
-            ExpX::Const(_)
-            | ExpX::CallLambda(..)
-            | ExpX::Ctor(..)
-            | ExpX::Loc(..)
-            | ExpX::VarLoc(..) => Ok(()),
-            ExpX::Call(_, typs, _) => {
-                for typ in typs.iter() {
-                    let ft = |free_vars: &mut HashSet<Ident>, t: &Typ| match &**t {
-                        TypX::TypParam(x) => {
-                            free_vars.insert(crate::def::suffix_typ_param_id(x));
-                            Ok(t.clone())
-                        }
-                        _ => Ok(t.clone()),
-                    };
-                    crate::ast_visitor::map_typ_visitor_env(typ, free_vars, &ft).unwrap();
-                }
-                Ok(())
-            }
-            ExpX::Var((x, None)) => {
-                free_vars.insert(x.clone());
-                Ok(())
-            }
-            ExpX::Var((_, Some(_))) => Ok(()),
-            ExpX::VarAt(_, VarAt::Pre) => Ok(()),
-            ExpX::Old(_, _) => panic!("internal error: Old"),
-            ExpX::Unary(op, _) => match op {
-                UnaryOp::Trigger(_) | UnaryOp::Clip(_) | UnaryOp::BitNot => Ok(()),
-                UnaryOp::Not => err_str(&exp.span, "triggers cannot contain boolean operators"),
-            },
-            ExpX::UnaryOpr(op, _) => match op {
-                UnaryOpr::Box(_)
-                | UnaryOpr::Unbox(_)
-                | UnaryOpr::IsVariant { .. }
-                | UnaryOpr::TupleField { .. }
-                | UnaryOpr::Field { .. } => Ok(()),
-                UnaryOpr::HasType(_) => panic!("internal error: trigger on HasType"),
-            },
-            ExpX::Binary(op, _, _) => {
-                use BinaryOp::*;
-                match op {
-                    And | Or | Xor | Implies | Eq(_) | Ne => {
-                        err_str(&exp.span, "triggers cannot contain boolean operators")
+    if state.boxed_params {
+        crate::sst_visitor::exp_visitor_check(
+            exp,
+            &mut scope_map,
+            &mut |exp, _scope_map| match &exp.x {
+                ExpX::Const(_)
+                | ExpX::CallLambda(..)
+                | ExpX::Ctor(..)
+                | ExpX::Loc(..)
+                | ExpX::VarLoc(..) => Ok(()),
+                ExpX::Call(_, typs, _) => {
+                    for typ in typs.iter() {
+                        let ft = |free_vars: &mut HashSet<Ident>, t: &Typ| match &**t {
+                            TypX::TypParam(x) => {
+                                free_vars.insert(crate::def::suffix_typ_param_id(x));
+                                Ok(t.clone())
+                            }
+                            _ => Ok(t.clone()),
+                        };
+                        crate::ast_visitor::map_typ_visitor_env(typ, free_vars, &ft).unwrap();
                     }
-                    Le | Ge | Lt | Gt => Ok(()),
-                    Arith(..) => err_str(&exp.span, "triggers cannot contain integer arithmetic"),
-                    Bitwise(..) => Ok(()),
+                    Ok(())
                 }
+                ExpX::Var((x, None)) => {
+                    free_vars.insert(x.clone());
+                    Ok(())
+                }
+                ExpX::Var((_, Some(_))) => Ok(()),
+                ExpX::VarAt(_, VarAt::Pre) => Ok(()),
+                ExpX::Old(_, _) => panic!("internal error: Old"),
+                ExpX::Unary(op, _) => match op {
+                    UnaryOp::Trigger(_) | UnaryOp::Clip(_) | UnaryOp::BitNot => Ok(()),
+                    UnaryOp::Not => err_str(&exp.span, "triggers cannot contain boolean operators"),
+                },
+                ExpX::UnaryOpr(op, _) => match op {
+                    UnaryOpr::Box(_)
+                    | UnaryOpr::Unbox(_)
+                    | UnaryOpr::IsVariant { .. }
+                    | UnaryOpr::TupleField { .. }
+                    | UnaryOpr::Field { .. } => Ok(()),
+                    UnaryOpr::HasType(_) => panic!("internal error: trigger on HasType"),
+                },
+                ExpX::Binary(op, _, _) => {
+                    use BinaryOp::*;
+                    match op {
+                        And | Or | Xor | Implies | Eq(_) | Ne => {
+                            err_str(&exp.span, "triggers cannot contain boolean operators")
+                        }
+                        Le | Ge | Lt | Gt => Ok(()),
+                        Arith(..) => err_str(
+                            &exp.span,
+                            "triggers cannot contain integer arithmetic\nuse forall_arith for quantifiers on integer arithmetic",
+                        ),
+                        Bitwise(..) => Ok(()),
+                    }
+                }
+                ExpX::If(_, _, _) => err_str(&exp.span, "triggers cannot contain if/else"),
+                ExpX::WithTriggers(..) => {
+                    err_str(&exp.span, "triggers cannot contain with_triggers")
+                }
+                ExpX::Bind(_, _) => {
+                    err_str(&exp.span, "triggers cannot contain let/forall/exists/lambda/choose")
+                }
+            },
+        )
+    } else {
+        crate::sst_visitor::exp_visitor_check(exp, &mut scope_map, &mut |exp, _scope_map| {
+            if match &exp.x {
+                ExpX::Const(_) | ExpX::Loc(..) | ExpX::VarLoc(..) => true,
+                ExpX::Var((x, None)) => {
+                    free_vars.insert(x.clone());
+                    true
+                }
+                ExpX::Var((_, Some(_))) => true,
+                ExpX::VarAt(_, VarAt::Pre) => true,
+                ExpX::Old(_, _) => panic!("internal error: Old"),
+                ExpX::Unary(op, _) => match op {
+                    UnaryOp::Trigger(_) | UnaryOp::Clip(_) => true,
+                    UnaryOp::Not | UnaryOp::BitNot => false,
+                },
+                ExpX::Binary(op, _, _) => {
+                    use BinaryOp::*;
+                    match op {
+                        Arith(..) => true,
+                        _ => false,
+                    }
+                }
+                _ => false,
+            } {
+                Ok(())
+            } else {
+                err_str(&exp.span, "triggers in forall_arith can only contain arithmetic")
             }
-            ExpX::If(_, _, _) => err_str(&exp.span, "triggers cannot contain if/else"),
-            ExpX::WithTriggers(..) => err_str(&exp.span, "triggers cannot contain with_triggers"),
-            ExpX::Bind(_, _) => {
-                err_str(&exp.span, "triggers cannot contain let/forall/exists/lambda/choose")
-            }
-        },
-    )
+        })
+    }
 }
 
 fn get_manual_triggers(state: &mut State, exp: &Exp) -> Result<(), VirErr> {

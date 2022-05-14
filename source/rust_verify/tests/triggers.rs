@@ -34,3 +34,44 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_vir_error(err)
 }
+
+test_verify_one_file! {
+    #[test] test_mul_distrib_pass code! {
+        #[proof] #[verifier(nonlinear)]
+        fn mul_distributive_auto() {
+            ensures(forall_arith(|a: nat, b: nat, c: nat| #[trigger] ((a + b) * c) == a * c + b * c));
+        }
+
+        #[proof]
+        fn test1(a: nat, b: nat, c: nat) {
+            requires([
+                (a + b) * c == 20,
+                a * c == 10,
+            ]);
+            ensures([
+                b * c == 10,
+            ]);
+            mul_distributive_auto();
+            assert((a + b) * c == a * c + b * c);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] test_mul_distrib_forall_fail code! {
+        #[proof] #[verifier(nonlinear)]
+        fn mul_distributive_auto() {
+            ensures(forall(|a: nat, b: nat, c: nat| #[trigger] ((a + b) * c) == a * c + b * c));
+        }
+    } => Err(e) => assert_vir_error(e)
+}
+
+test_verify_one_file! {
+    #[test] test_arith_and_ord_fail code! {
+        #[proof]
+        fn quant() {
+            ensures(forall_arith(|a: nat, b: nat, c: nat| #[trigger] a + b <= c));
+            assume(false)
+        }
+    } => Err(e) => assert_vir_error(e)
+}
