@@ -2,7 +2,7 @@ use crate::config::{Args, ShowTriggers};
 use crate::context::{ContextX, ErasureInfo};
 use crate::debugger::Debugger;
 use crate::unsupported;
-use crate::util::{from_raw_span, signalling};
+use crate::util::{error, from_raw_span, signalling};
 use air::ast::{Command, CommandX, Commands};
 use air::context::{QueryContext, ValidityResult};
 use air::errors::{Error, ErrorLabel};
@@ -19,7 +19,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use vir::ast::{Fun, Function, InferMode, Krate, Mode, VirErr, Visibility};
-use vir::ast_util::{fun_as_rust_dbg, is_visible_to};
+use vir::ast_util::{fun_as_rust_dbg, fun_name_crate_relative, is_visible_to};
 use vir::def::SnapPos;
 use vir::def::{CommandsWithContext, CommandsWithContextX};
 use vir::recursion::Node;
@@ -97,35 +97,35 @@ enum ErrorAs {
     Note,
 }
 
-fn report_error(compiler: &Compiler, error: &Error, error_as: ErrorAs) {
-    if error.spans.len() == 0 {
-        panic!("internal error: found Error with no span")
+trait Diagnostics {
+    fn diagnostic(&self) -> &rustc_errors::Handler;
+
+    fn report_error(&self, error: &Error, error_as: ErrorAs);
+}
+
+impl Diagnostics for Compiler {
+    fn diagnostic(&self) -> &rustc_errors::Handler {
+        self.session().diagnostic()
     }
 
-    let mut v = Vec::new();
-    for sp in &error.spans {
-        let span: Span = from_raw_span(&sp.raw_span);
-        v.push(span);
-    }
-
-    let mut multispan = MultiSpan::from_spans(v);
-
-    for ErrorLabel { msg, span: sp } in &error.labels {
-        let span: Span = from_raw_span(&sp.raw_span);
-        multispan.push_span_label(span, msg.clone());
-    }
-
-    match error_as {
-        ErrorAs::Note => compiler
-            .session()
-            .parse_sess
-            .span_diagnostic
-            .span_note_without_error(multispan, &error.msg),
-        ErrorAs::Warning => {
-            compiler.session().parse_sess.span_diagnostic.span_warn(multispan, &error.msg)
+    fn report_error(&self, error: &Error, error_as: ErrorAs) {
+        let mut v = Vec::new();
+        for sp in &error.spans {
+            let span: Span = from_raw_span(&sp.raw_span);
+            v.push(span);
         }
-        ErrorAs::Error => {
-            compiler.session().parse_sess.span_diagnostic.span_err(multispan, &error.msg)
+
+        let mut multispan = MultiSpan::from_spans(v);
+
+        for ErrorLabel { msg, span: sp } in &error.labels {
+            let span: Span = from_raw_span(&sp.raw_span);
+            multispan.push_span_label(span, msg.clone());
+        }
+
+        match error_as {
+            ErrorAs::Note => self.diagnostic().span_note_without_error(multispan, &error.msg),
+            ErrorAs::Warning => self.diagnostic().span_warn(multispan, &error.msg),
+            ErrorAs::Error => self.diagnostic().span_err(multispan, &error.msg),
         }
     }
 }
@@ -133,19 +133,22 @@ fn report_error(compiler: &Compiler, error: &Error, error_as: ErrorAs) {
 fn report_chosen_triggers(compiler: &Compiler, chosen: &vir::context::ChosenTriggers) {
     let span: Span = from_raw_span(&chosen.span.raw_span);
     let msg = "automatically chose triggers for this expression:";
-    compiler.session().parse_sess.span_diagnostic.span_note_without_error(span, msg);
+    compiler.diagnostic().span_note_without_error(span, msg);
     for (n, trigger) in chosen.triggers.iter().enumerate() {
         let spans = MultiSpan::from_spans(
             trigger.iter().map(|(s, _)| from_raw_span(&s.raw_span)).collect(),
         );
         let msg = format!("  trigger {} of {}:", n + 1, chosen.triggers.len());
-        compiler.session().parse_sess.span_diagnostic.span_note_without_error(spans, &msg);
+        compiler.diagnostic().span_note_without_error(spans, &msg);
     }
 }
 
 fn io_vir_err(msg: String, err: std::io::Error) -> VirErr {
-    let msg = format!("{msg}: {err}");
-    Arc::new(air::errors::ErrorX { msg, spans: vec![], labels: vec![] })
+    error(format!("{msg}: {err}"))
+}
+
+fn module_name(module: &vir::ast::Path) -> String {
+    module.segments.iter().map(|s| s.to_string()).collect::<Vec<_>>().join("::")
 }
 
 impl Verifier {
@@ -240,13 +243,9 @@ impl Verifier {
                     format!("{} has been running for {} seconds", context.1, elapsed.as_secs());
                 if counter % 5 == 0 {
                     let span = from_raw_span(&context.0.raw_span);
-                    compiler
-                        .session()
-                        .parse_sess
-                        .span_diagnostic
-                        .span_note_without_error(span, &msg);
+                    compiler.diagnostic().span_note_without_error(span, &msg);
                 } else {
-                    compiler.session().note_without_error(&msg);
+                    compiler.diagnostic().note_without_error(&msg);
                 }
                 counter += 1;
             });
@@ -281,9 +280,7 @@ impl Verifier {
                     v.push(from_raw_span(&context.0.raw_span));
                     let multispan = MultiSpan::from_spans(v);
                     compiler
-                        .session()
-                        .parse_sess
-                        .span_diagnostic
+                        .diagnostic()
                         .span_err(multispan, &format!("{}: rlimit exceeded", context.1));
 
                     self.errors.push(vec![ErrorSpan::new_from_air_span(
@@ -298,7 +295,7 @@ impl Verifier {
                         self.count_errors += 1;
                         invalidity = true;
                     }
-                    report_error(compiler, &error, error_as);
+                    compiler.report_error(&error, error_as);
 
                     if error_as == ErrorAs::Error {
                         let mut errors = vec![ErrorSpan::new_from_air_span(
@@ -382,8 +379,20 @@ impl Verifier {
         commands: &Arc<Vec<CommandsWithContext>>,
         assign_map: &HashMap<*const air::ast::Span, HashSet<Arc<String>>>,
         snap_map: &Vec<(air::ast::Span, SnapPos)>,
+        module: &vir::ast::Path,
+        function_name: Option<&Fun>,
         comment: &str,
     ) -> bool {
+        if let Some(verify_function) = &self.args.verify_function {
+            if let Some(function_name) = function_name {
+                let name = fun_name_crate_relative(&module, function_name);
+                if &name != verify_function {
+                    return false;
+                }
+            } else {
+                return false;
+            }
+        }
         let mut invalidity = false;
         if commands.len() > 0 {
             air_context.blank_line();
@@ -470,6 +479,28 @@ impl Verifier {
             funs.insert(function.x.name.clone(), (function.clone(), vis_abs));
         }
 
+        if let Some(verify_function) = &self.args.verify_function {
+            let module_funs = funs
+                .iter()
+                .map(|(_, (f, _))| f)
+                .filter(|f| Some(module.clone()) == f.x.visibility.owning_module);
+            let module_fun_names: Vec<String> =
+                module_funs.map(|f| fun_name_crate_relative(&module, &f.x.name)).collect();
+            if !module_fun_names.iter().any(|f| f == verify_function) {
+                let msg = vec![
+                    format!(
+                        "could not find function {verify_function} specified by --verify-function"
+                    ),
+                    format!("available functions are:"),
+                ]
+                .into_iter()
+                .chain(module_fun_names.iter().map(|f| format!("  - {f}")))
+                .collect::<Vec<String>>()
+                .join("\n");
+                return Err(error(msg));
+            }
+        }
+
         // For spec functions, check termination and declare consequence axioms.
         // For proof/exec functions, declare requires/ensures.
         // Declare them in SCC (strongly connected component) sorted order so that
@@ -530,6 +561,8 @@ impl Verifier {
                     })]),
                     &HashMap::new(),
                     &vec![],
+                    module,
+                    Some(&function.x.name),
                     &("Function-Termination ".to_string() + &fun_as_rust_dbg(f)),
                 );
                 let check_recommends = function.x.attrs.check_recommends;
@@ -553,6 +586,8 @@ impl Verifier {
                         &commands,
                         &HashMap::new(),
                         &snap_map,
+                        module,
+                        Some(&function.x.name),
                         &(s.to_string() + &fun_as_rust_dbg(&function.x.name)),
                     );
                 }
@@ -598,6 +633,8 @@ impl Verifier {
                     &commands,
                     &HashMap::new(),
                     &snap_map,
+                    module,
+                    Some(&function.x.name),
                     &(s.to_string() + &fun_as_rust_dbg(&function.x.name)),
                 );
                 if invalidity && !recommends_rerun && !self.args.no_auto_recommends_check {
@@ -619,24 +656,12 @@ impl Verifier {
         krate: &Krate,
         module: &vir::ast::Path,
         mut global_ctx: vir::context::GlobalCtx,
-    ) -> Result<(bool, vir::context::GlobalCtx), VirErr> {
-        let verify_entire_crate = !self.args.verify_root && self.args.verify_module.is_none();
-        let module_name =
-            module.segments.iter().map(|s| s.to_string()).collect::<Vec<_>>().join("::");
+    ) -> Result<vir::context::GlobalCtx, VirErr> {
+        let module_name = module_name(module);
         if module.segments.len() == 0 {
-            if !verify_entire_crate && !self.args.verify_root {
-                return Ok((false, global_ctx));
-            }
-            eprintln!("Verifying root module");
+            compiler.diagnostic().note_without_error("verifying root module");
         } else {
-            if !verify_entire_crate && self.args.verify_module != Some(module_name.clone()) {
-                return Ok((false, global_ctx));
-            }
-            let is_pervasive = module_name.starts_with("pervasive::") || module_name == "pervasive";
-            if !self.args.verify_pervasive && is_pervasive {
-                return Ok((false, global_ctx));
-            }
-            eprintln!("Verifying module {}", &module_name);
+            compiler.diagnostic().note_without_error(&format!("verifying module {}", &module_name));
         }
 
         let mut air_context = air::context::Context::new(air::smt_manager::SmtManager::new());
@@ -695,7 +720,7 @@ impl Verifier {
         self.time_smt_init += time_smt_init;
         self.time_smt_run += time_smt_run;
 
-        Ok((true, global_ctx))
+        Ok(global_ctx)
     }
 
     // Verify one or more modules in a crate
@@ -721,15 +746,72 @@ impl Verifier {
         #[cfg(debug_assertions)]
         vir::check_ast_flavor::check_krate_simplified(&krate);
 
-        let mut verified_modules = HashSet::new();
-        for module in &krate.module_ids {
-            let (did_verify, new_global_ctx) =
-                self.verify_module_outer(compiler, &krate, module, global_ctx)?;
-            if did_verify {
-                verified_modules.insert(module.clone());
-            }
-            global_ctx = new_global_ctx;
+        if (if self.args.verify_module.is_some() { 1 } else { 0 }
+            + if self.args.verify_root { 1 } else { 0 }
+            + if self.args.verify_pervasive { 1 } else { 0 })
+            > 1
+        {
+            return Err(error(
+                "only one of --verify-module, --verify-root, or --verify-pervasive allowed",
+            ));
         }
+
+        if self.args.verify_function.is_some() {
+            if self.args.verify_module.is_none() && !self.args.verify_root {
+                return Err(error(
+                    "--verify-function option requires --verify-module or --verify-root",
+                ));
+            }
+        }
+
+        let module_ids_to_verify: Vec<vir::ast::Path> = {
+            if self.args.verify_root {
+                let root_mod_id = krate
+                    .module_ids
+                    .iter()
+                    .find(|m| m.segments.len() == 0)
+                    .expect("missing root module");
+                vec![root_mod_id.clone()]
+            } else if let Some(mod_name) = &self.args.verify_module {
+                if let Some(id) = krate.module_ids.iter().find(|m| &module_name(m) == mod_name) {
+                    vec![id.clone()]
+                } else {
+                    let msg = vec![
+                        format!("could not find module {mod_name} specified by --verify-module"),
+                        format!("available modules are:"),
+                    ]
+                    .into_iter()
+                    .chain(krate.module_ids.iter().filter_map(|m| {
+                        let name = module_name(m);
+                        (!(name.starts_with("pervasive::") || name == "pervasive")
+                            && m.segments.len() > 0)
+                            .then(|| format!("- {name}"))
+                    }))
+                    .chain(Some(format!("or use --verify-root, --verify-pervasive")).into_iter())
+                    .collect::<Vec<_>>()
+                    .join("\n");
+
+                    return Err(error(msg));
+                }
+            } else {
+                krate
+                    .module_ids
+                    .iter()
+                    .filter(|m| {
+                        let name = module_name(m);
+                        !(name.starts_with("pervasive::") || name == "pervasive")
+                            ^ self.args.verify_pervasive
+                    })
+                    .cloned()
+                    .collect()
+            }
+        };
+
+        for module in &module_ids_to_verify {
+            global_ctx = self.verify_module_outer(compiler, &krate, module, global_ctx)?;
+        }
+
+        let verified_modules: HashSet<_> = module_ids_to_verify.iter().collect();
 
         // Log/display triggers
         if self.args.log_all || self.args.log_triggers {
@@ -772,7 +854,7 @@ impl Verifier {
                 the theorem prover instantiates a quantifier whenever some expression matches the\n\
                 pattern specified by one of the quantifier's triggers.)\
                 ";
-            compiler.session().parse_sess.span_diagnostic.span_note_without_error(span, &msg);
+            compiler.diagnostic().span_note_without_error(span, &msg);
         }
 
         Ok(())
@@ -956,7 +1038,7 @@ impl rustc_driver::Callbacks for VerifierCallbacks {
             {
                 let mut verifier = self.verifier.lock().expect("verifier mutex");
                 if let Err(err) = verifier.construct_vir_crate(tcx) {
-                    report_error(compiler, &err, ErrorAs::Error);
+                    compiler.report_error(&err, ErrorAs::Error);
                     verifier.encountered_vir_error = true;
                     return;
                 }
@@ -978,7 +1060,7 @@ impl rustc_driver::Callbacks for VerifierCallbacks {
                 match verifier.verify_crate(compiler) {
                     Ok(_) => {}
                     Err(err) => {
-                        report_error(compiler, &err, ErrorAs::Error);
+                        compiler.report_error(&err, ErrorAs::Error);
                         verifier.encountered_vir_error = true;
                     }
                 }

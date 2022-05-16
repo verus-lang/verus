@@ -110,6 +110,11 @@ macro_rules! unsupported_unless {
     };
 }
 
+/// Basic error, with just a message
+pub fn error<S: Into<String>>(msg: S) -> VirErr {
+    Arc::new(air::errors::ErrorX { msg: msg.into(), spans: vec![], labels: Vec::new() })
+}
+
 #[allow(dead_code)]
 pub(crate) fn vec_map<A, B, F: FnMut(&A) -> B>(v: &Vec<A>, f: F) -> Vec<B> {
     v.iter().map(f).collect()
