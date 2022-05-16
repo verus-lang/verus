@@ -109,7 +109,7 @@ pub fn parse_args(program: &String, args: impl Iterator<Item = String>) -> (Args
         "Verify just one function (e.g. 'foo' or 'foo::bar') within the one module specified by verify-module or verify-root",
         "MODULE",
     );
-    opts.optflag("", OPT_VERIFY_PERVASIVE, "Verify trusted pervasive modules");
+    opts.optflag("", OPT_VERIFY_PERVASIVE, "Verify trusted pervasive modules (and nothing else)");
     opts.optflag("", OPT_NO_VERIFY, "Do not run verification");
     opts.optflag("", OPT_NO_LIFETIME, "Do not run lifetime checking on proofs");
     opts.optflag(
