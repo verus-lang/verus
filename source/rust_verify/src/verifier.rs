@@ -433,41 +433,60 @@ impl Verifier {
     fn new_air_context_with_module_context(
         &mut self,
         ctx: &vir::context::Ctx,
-        module: &vir::ast::Path,
+        module_name: &String,
+        func_path: &vir::ast::Path,
         datatype_commands: Vec<Arc<CommandX>>,
         function_decl_commands: Vec<(Commands, String)>,
         function_spec_commands: Vec<(Commands, String)>,
         function_axiom_commands: Vec<(Commands, String)>,
-        module_name: &String,
         idx: &i32,
-        desc: &String,
+        is_rerun: bool,
         span: &air::ast::Span,
     ) -> Result<air::context::Context, VirErr> {
         let mut air_context = air::context::Context::new(air::smt_manager::SmtManager::new());
         air_context.set_ignore_unexpected_smt(self.args.ignore_unexpected_smt);
         air_context.set_debug(self.args.debug);
 
+        let rerun_msg = if is_rerun { "rerun" } else { "" };
+        let module_name = if module_name == "" { "root".to_string() } else { module_name.clone() };
         if self.args.log_all || self.args.log_air_initial {
             let file = self.create_log_file(
-                Some(module),
-                format!("-{}-{}{}", desc, idx, crate::config::AIR_INITIAL_FILE_SUFFIX).as_str(),
+                Some(func_path),
+                format!(
+                    "-{}-{}-{}{}",
+                    module_name,
+                    rerun_msg,
+                    idx,
+                    crate::config::AIR_INITIAL_FILE_SUFFIX
+                )
+                .as_str(),
             )?;
             air_context.set_air_initial_log(Box::new(file));
         }
         if self.args.log_all || self.args.log_air_final {
             let file = self.create_log_file(
-                Some(module),
-                format!("-{}-{}{}", desc, idx, crate::config::AIR_FINAL_FILE_SUFFIX).as_str(),
+                Some(func_path),
+                format!(
+                    "-{}-{}-{}{}",
+                    module_name,
+                    rerun_msg,
+                    idx,
+                    crate::config::AIR_FINAL_FILE_SUFFIX
+                )
+                .as_str(),
             )?;
             air_context.set_air_final_log(Box::new(file));
         }
         if self.args.log_all || self.args.log_smt {
             let file = self.create_log_file(
-                Some(module),
-                format!("-{}-{}{}", desc, idx, crate::config::SMT_FILE_SUFFIX).as_str(),
+                Some(func_path),
+                format!("-{}-{}-{}{}", module_name, rerun_msg, idx, crate::config::SMT_FILE_SUFFIX)
+                    .as_str(),
             )?;
             air_context.set_smt_log(Box::new(file));
         }
+
+        // At the top line of logs, write the span of spun-off query
         air_context.comment(&span.as_string);
 
         // air_recommended_options causes AIR to apply a preset collection of Z3 options
@@ -698,22 +717,21 @@ impl Verifier {
 
                 // spawn new Z3 with module context
                 let mut air_contexts: Vec<air::context::Context> = vec![];
-                for CommandsWithContextX { span, desc, commands: _, spinoff_z3 } in
+                for CommandsWithContextX { span, desc: _, commands: _, spinoff_z3 } in
                     commands.iter().map(|x| &**x)
                 {
                     if *spinoff_z3 {
-                        let desc_recommends = desc.to_string() + "-rerun";
                         increment(&mut restart_count);
                         air_contexts.push(self.new_air_context_with_module_context(
                             ctx,
-                            module,
+                            &module_name,
+                            &(function.x.name).path,
                             datatype_commands.to_vec(),
                             function_decl_commands.to_vec(),
                             function_spec_commands.to_vec(),
                             function_axiom_commands.to_vec(),
-                            &module_name,
                             &restart_count,
-                            if recommends_rerun { &desc_recommends } else { desc },
+                            recommends_rerun,
                             span,
                         )?)
                     };
