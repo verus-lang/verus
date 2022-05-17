@@ -46,6 +46,7 @@ pub(crate) fn stm_assign(
         StmX::Call(..)
         | StmX::Assert(..)
         | StmX::AssertBV(..)
+        | StmX::AssertBitVector { .. }
         | StmX::AssertQuery { .. }
         | StmX::Assume(_)
         | StmX::Fuel(..) => stm.clone(),

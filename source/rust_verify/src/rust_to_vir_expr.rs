@@ -402,6 +402,7 @@ fn fn_call_to_vir<'tcx>(
     let is_implies = f_name == "builtin::imply";
     let is_assert_by = f_name == "builtin::assert_by";
     let is_assert_nonlinear_by = f_name == "builtin::assert_nonlinear_by";
+    let is_assert_bitvector_by = f_name == "builtin::assert_bitvector_by";
     let is_assert_forall_by = f_name == "builtin::assert_forall_by";
     let is_assert_bit_vector = f_name == "builtin::assert_bit_vector";
     let is_old = f_name == "builtin::old";
@@ -500,6 +501,7 @@ fn fn_call_to_vir<'tcx>(
             || is_with_triggers
             || is_assert_by
             || is_assert_nonlinear_by
+            || is_assert_bitvector_by
             || is_assert_forall_by
             || is_assert_bit_vector
             || is_old
@@ -658,7 +660,7 @@ fn fn_call_to_vir<'tcx>(
         let proof = expr_to_vir(bctx, &args[1], ExprModifier::REGULAR)?;
         return Ok(mk_expr(ExprX::Forall { vars, require, ensure, proof }));
     }
-    if is_assert_nonlinear_by {
+    if is_assert_nonlinear_by || is_assert_bitvector_by {
         unsupported_err_unless!(
             len == 1,
             expr.span,
@@ -685,7 +687,11 @@ fn fn_call_to_vir<'tcx>(
             requires,
             ensures,
             proof,
-            mode: AssertQueryMode::NonLinear,
+            mode: if is_assert_nonlinear_by {
+                AssertQueryMode::NonLinear
+            } else {
+                AssertQueryMode::BitVector
+            },
         }));
     }
     if is_assert_forall_by {

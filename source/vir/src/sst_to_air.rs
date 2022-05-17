@@ -371,7 +371,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: ExprCtxt) -> Expr {
             }
             panic!("error: unable to get bit-width from constant of type {:?}", exp.typ);
         }
-        (ExpX::Const(c), false) => {
+        (ExpX::Const(c), _) => {
             let expr = constant_to_expr(ctx, c);
             expr
         }
@@ -1138,10 +1138,48 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
                         ]),
                     ));
                 }
+                _ => unreachable!("bitvector mode in wrong place"),
             }
 
             vec![]
         }
+        StmX::AssertBitVector { requires, ensures } => {
+            if ctx.debug {
+                unimplemented!("AssertBitVector is unsupported in debugger mode");
+            }
+            let expr_ctxt = ExprCtxt { mode: ExprMode::Body, is_bit_vector: true };
+
+            let requires_air: Vec<(Span, Expr)> =
+                requires.iter().map(|e| (e.span.clone(), exp_to_expr(ctx, e, expr_ctxt))).collect();
+            let ensures_air: Vec<(Span, Expr)> =
+                ensures.iter().map(|e| (e.span.clone(), exp_to_expr(ctx, e, expr_ctxt))).collect();
+
+            let mut local = state.local_bv_shared.clone();
+            for (_, req) in requires_air.iter() {
+                local.push(Arc::new(DeclX::Axiom(req.clone())));
+            }
+
+            let mut air_body: Vec<Stmt> = Vec::new();
+            for (span, ens) in ensures_air.iter() {
+                let error = error("bitvector ensures not satisfied", span);
+                let ens_stmt = StmtX::Assert(error, ens.clone());
+                air_body.push(Arc::new(ens_stmt));
+            }
+            let assertion = one_stmt(air_body);
+
+            let query = Arc::new(QueryX { local: Arc::new(local), assertion });
+            state.commands.push(CommandsWithContextX::new(
+                stm.span.clone(),
+                "assert_bitvector_by".to_string(),
+                Arc::new(vec![
+                    mk_option_command("smt.case_split", "0"),
+                    Arc::new(CommandX::CheckValid(query)),
+                    mk_option_command("smt.case_split", "3"),
+                ]),
+            ));
+            vec![]
+        }
+
         StmX::AssertBV(expr) => {
             // here expr is boxed/unboxed in poly::poly_expr
             // this is for integer version

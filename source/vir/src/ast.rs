@@ -316,6 +316,7 @@ pub enum InvAtomicity {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum AssertQueryMode {
     NonLinear,
+    BitVector,
 }
 
 /// Expression, similar to rustc_hir::Expr
