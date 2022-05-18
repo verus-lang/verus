@@ -28,9 +28,9 @@ use rustc_span::def_id::DefId;
 use rustc_span::Span;
 use std::sync::Arc;
 use vir::ast::{
-    ArithOp, ArmX, AssertQueryMode, BinaryOp, CallTarget, Constant, ExprX, FieldOpr, FunX,
-    HeaderExpr, HeaderExprX, Ident, IntRange, InvAtomicity, Mode, PatternX, SpannedTyped, StmtX,
-    Stmts, Typ, TypX, UnaryOp, UnaryOpr, VarAt, VirErr,
+    ArithOp, ArmX, AssertQueryMode, BinaryOp, BitwiseOp, CallTarget, Constant, ExprX, FieldOpr,
+    FunX, HeaderExpr, HeaderExprX, Ident, IntRange, InvAtomicity, Mode, PatternX, SpannedTyped,
+    StmtX, Stmts, Typ, TypX, UnaryOp, UnaryOpr, VarAt, VirErr,
 };
 use vir::ast_util::{ident_binder, path_as_rust_name};
 use vir::def::positional_field_ident;
@@ -1535,8 +1535,8 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                 BinOpKind::BitXor => {
                     match ((tc.node_type(lhs.hir_id)).kind(), (tc.node_type(rhs.hir_id)).kind()) {
                         (TyKind::Bool, TyKind::Bool) => BinaryOp::Xor,
-                        (TyKind::Int(_), TyKind::Int(_)) => BinaryOp::BitXor,
-                        (TyKind::Uint(_), TyKind::Uint(_)) => BinaryOp::BitXor,
+                        (TyKind::Int(_), TyKind::Int(_)) => BinaryOp::Bitwise(BitwiseOp::BitXor),
+                        (TyKind::Uint(_), TyKind::Uint(_)) => BinaryOp::Bitwise(BitwiseOp::BitXor),
                         _ => panic!("bitwise XOR for this type not supported"),
                     }
                 }
@@ -1547,8 +1547,8 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                                 "bitwise AND for bools (i.e., the not-short-circuited version) not supported"
                             );
                         }
-                        (TyKind::Int(_), TyKind::Int(_)) => BinaryOp::BitAnd,
-                        (TyKind::Uint(_), TyKind::Uint(_)) => BinaryOp::BitAnd,
+                        (TyKind::Int(_), TyKind::Int(_)) => BinaryOp::Bitwise(BitwiseOp::BitAnd),
+                        (TyKind::Uint(_), TyKind::Uint(_)) => BinaryOp::Bitwise(BitwiseOp::BitAnd),
                         t => panic!("bitwise AND for this type not supported {:#?}", t),
                     }
                 }
@@ -1559,13 +1559,13 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                                 "bitwise OR for bools (i.e., the not-short-circuited version) not supported"
                             );
                         }
-                        (TyKind::Int(_), TyKind::Int(_)) => BinaryOp::BitOr,
-                        (TyKind::Uint(_), TyKind::Uint(_)) => BinaryOp::BitOr,
+                        (TyKind::Int(_), TyKind::Int(_)) => BinaryOp::Bitwise(BitwiseOp::BitOr),
+                        (TyKind::Uint(_), TyKind::Uint(_)) => BinaryOp::Bitwise(BitwiseOp::BitOr),
                         _ => panic!("bitwise OR for this type not supported"),
                     }
                 }
-                BinOpKind::Shr => BinaryOp::Shr,
-                BinOpKind::Shl => BinaryOp::Shl,
+                BinOpKind::Shr => BinaryOp::Bitwise(BitwiseOp::Shr),
+                BinOpKind::Shl => BinaryOp::Bitwise(BitwiseOp::Shl),
             };
             let e = mk_expr(ExprX::Binary(vop, vlhs, vrhs));
             match op.node {

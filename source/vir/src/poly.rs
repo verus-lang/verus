@@ -343,7 +343,7 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
                 And | Or | Xor | Implies | Le | Ge | Lt | Gt => true,
                 Arith(..) => true,
                 Eq(_) | Ne => false,
-                BitXor | BitAnd | BitOr | Shr | Shl => true,
+                Bitwise(..) => true,
             };
             if native {
                 let e1 = coerce_expr_to_native(ctx, &e1);
