@@ -1,5 +1,6 @@
 use crate::ast::{
-    BinaryOp, Constant, FieldOpr, Fun, Ident, Path, Typ, TypX, UnaryOp, UnaryOpr, VarAt, VirErr,
+    BinaryOp, BitwiseOp, Constant, FieldOpr, Fun, Ident, Path, Typ, TypX, UnaryOp, UnaryOpr, VarAt,
+    VirErr,
 };
 use crate::ast_util::{err_str, path_as_rust_name};
 use crate::context::{ChosenTriggers, Ctx, FunctionCtx};
@@ -335,19 +336,18 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
             let depth = match op {
                 And | Or | Xor | Implies | Eq(_) => 0,
                 Ne | Le | Ge | Lt | Gt | Arith(..) => 1,
-                BitXor | BitAnd | BitOr | Shr | Shl => 1,
+                Bitwise(..) => 1,
             };
             let (_, term1) = gather_terms(ctxt, ctx, e1, depth);
             let (_, term2) = gather_terms(ctxt, ctx, e2, depth);
             match op {
-                BitXor | BitAnd | BitOr | Shr | Shl => {
-                    let bop = match op {
-                        BitXor => BitOpName::BitXor,
-                        BitAnd => BitOpName::BitAnd,
-                        Shr => BitOpName::Shr,
-                        Shl => BitOpName::Shl,
-                        BitOr => BitOpName::BitOr,
-                        _ => unreachable!(),
+                Bitwise(bp) => {
+                    let bop = match bp {
+                        BitwiseOp::BitXor => BitOpName::BitXor,
+                        BitwiseOp::BitAnd => BitOpName::BitAnd,
+                        BitwiseOp::Shr => BitOpName::Shr,
+                        BitwiseOp::Shl => BitOpName::Shl,
+                        BitwiseOp::BitOr => BitOpName::BitOr,
                     };
                     (true, Arc::new(TermX::App(App::BitOp(bop), Arc::new(vec![term1, term2]))))
                 }

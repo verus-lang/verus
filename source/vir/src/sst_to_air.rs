@@ -1,6 +1,7 @@
 use crate::ast::{
-    ArithOp, AssertQueryMode, BinaryOp, FieldOpr, Fun, Ident, Idents, IntRange, InvAtomicity,
-    MaskSpec, Mode, Params, Path, PathX, SpannedTyped, Typ, TypX, Typs, UnaryOp, UnaryOpr, VarAt,
+    ArithOp, AssertQueryMode, BinaryOp, BitwiseOp, FieldOpr, Fun, Ident, Idents, IntRange,
+    InvAtomicity, MaskSpec, Mode, Params, Path, PathX, SpannedTyped, Typ, TypX, Typs, UnaryOp,
+    UnaryOpr, VarAt,
 };
 use crate::ast_util::{bitwidth_from_type, get_field, get_variant};
 use crate::context::Ctx;
@@ -514,7 +515,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: ExprCtxt) -> Expr {
             // disallow signed integer from bitvec reasoning. However, allow that for shift
             // TODO: sanity check for shift
             let _ = match op {
-                BinaryOp::Shl | BinaryOp::Shr => (),
+                BinaryOp::Bitwise(BitwiseOp::Shl | BitwiseOp::Shr) => (),
                 _ => {
                     assert_unsigned(&lhs);
                     assert_unsigned(&rhs);
@@ -543,11 +544,11 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: ExprCtxt) -> Expr {
                 BinaryOp::Gt => air::ast::BinaryOp::BitUGt,
                 BinaryOp::Le => air::ast::BinaryOp::BitULe,
                 BinaryOp::Ge => air::ast::BinaryOp::BitUGe,
-                BinaryOp::BitXor => air::ast::BinaryOp::BitXor,
-                BinaryOp::BitAnd => air::ast::BinaryOp::BitAnd,
-                BinaryOp::BitOr => air::ast::BinaryOp::BitOr,
-                BinaryOp::Shl => air::ast::BinaryOp::Shl,
-                BinaryOp::Shr => air::ast::BinaryOp::LShr,
+                BinaryOp::Bitwise(BitwiseOp::BitXor) => air::ast::BinaryOp::BitXor,
+                BinaryOp::Bitwise(BitwiseOp::BitAnd) => air::ast::BinaryOp::BitAnd,
+                BinaryOp::Bitwise(BitwiseOp::BitOr) => air::ast::BinaryOp::BitOr,
+                BinaryOp::Bitwise(BitwiseOp::Shl) => air::ast::BinaryOp::Shl,
+                BinaryOp::Bitwise(BitwiseOp::Shr) => air::ast::BinaryOp::LShr,
                 BinaryOp::Implies => air::ast::BinaryOp::Implies,
                 BinaryOp::And => unreachable!(),
                 BinaryOp::Or => unreachable!(),
@@ -600,23 +601,18 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: ExprCtxt) -> Expr {
                 }
                 // here the binary bitvector Ops are translated into the integer versions
                 // Similar to typ_invariant(), make obvious range according to bit-width
-                BinaryOp::BitXor
-                | BinaryOp::BitAnd
-                | BinaryOp::BitOr
-                | BinaryOp::Shl
-                | BinaryOp::Shr => {
+                BinaryOp::Bitwise(bo) => {
                     let box_lh = try_box(ctx, lh, &lhs.typ).expect("Box");
                     let box_rh = try_box(ctx, rh, &rhs.typ).expect("Box");
                     let width = bitwidth_from_type(&lhs.typ).expect("Binary Bit Op Width");
                     let width_exp =
                         Arc::new(ExprX::Const(Constant::Nat(Arc::new(width.to_string()))));
-                    let fname = match op {
-                        BinaryOp::BitXor => crate::def::UINT_XOR,
-                        BinaryOp::BitAnd => crate::def::UINT_AND,
-                        BinaryOp::BitOr => crate::def::UINT_OR,
-                        BinaryOp::Shl => crate::def::UINT_SHL,
-                        BinaryOp::Shr => crate::def::UINT_SHR,
-                        _ => unreachable!(),
+                    let fname = match bo {
+                        BitwiseOp::BitXor => crate::def::UINT_XOR,
+                        BitwiseOp::BitAnd => crate::def::UINT_AND,
+                        BitwiseOp::BitOr => crate::def::UINT_OR,
+                        BitwiseOp::Shl => crate::def::UINT_SHL,
+                        BitwiseOp::Shr => crate::def::UINT_SHR,
                     };
                     let bit_expr = ExprX::Apply(
                         Arc::new(fname.to_string()),
@@ -645,11 +641,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: ExprCtxt) -> Expr {
                         BinaryOp::Arith(ArithOp::EuclideanMod, _) => {
                             air::ast::BinaryOp::EuclideanMod
                         }
-                        BinaryOp::BitOr => unreachable!(),
-                        BinaryOp::Shr => unreachable!(),
-                        BinaryOp::Shl => unreachable!(),
-                        BinaryOp::BitAnd => unreachable!(),
-                        BinaryOp::BitXor => unreachable!(),
+                        BinaryOp::Bitwise(..) => unreachable!(),
                     };
                     ExprX::Binary(aop, lh, rh)
                 }

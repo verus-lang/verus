@@ -34,12 +34,7 @@ fn check_trigger_expr(exp: &Exp, free_vars: &mut HashSet<Ident>) -> Result<(), V
         | ExpX::UnaryOpr(UnaryOpr::Field { .. }, _)
         | ExpX::Unary(UnaryOp::Trigger(_), _) => {}
         // allow triggers for bitvector operators
-        ExpX::Binary(BinaryOp::BitAnd, _, _)
-        | ExpX::Binary(BinaryOp::BitOr, _, _)
-        | ExpX::Binary(BinaryOp::BitXor, _, _)
-        | ExpX::Binary(BinaryOp::Shr, _, _)
-        | ExpX::Binary(BinaryOp::Shl, _, _)
-        | ExpX::Unary(UnaryOp::BitNot, _) => {}
+        ExpX::Binary(BinaryOp::Bitwise(_), _, _) | ExpX::Unary(UnaryOp::BitNot, _) => {}
         // REVIEW: Z3 allows some arithmetic, but it's not clear we want to allow it
         _ => {
             return err_str(&exp.span, "trigger must be a function call or a field access");
@@ -95,7 +90,7 @@ fn check_trigger_expr(exp: &Exp, free_vars: &mut HashSet<Ident>) -> Result<(), V
                     }
                     Le | Ge | Lt | Gt => Ok(()),
                     Arith(..) => Ok(()),
-                    BitXor | BitAnd | BitOr | Shr | Shl => Ok(()),
+                    Bitwise(..) => Ok(()),
                 }
             }
             ExpX::If(_, _, _) => err_str(&exp.span, "triggers cannot contain if/else"),
