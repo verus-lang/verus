@@ -35,7 +35,6 @@ fn check_trigger_expr(exp: &Exp, free_vars: &mut HashSet<Ident>) -> Result<(), V
         | ExpX::Unary(UnaryOp::Trigger(_), _) => {}
         // allow triggers for bitvector operators
         ExpX::Binary(BinaryOp::Bitwise(_), _, _) | ExpX::Unary(UnaryOp::BitNot, _) => {}
-        // REVIEW: Z3 allows some arithmetic, but it's not clear we want to allow it
         _ => {
             return err_str(&exp.span, "trigger must be a function call or a field access");
         }
@@ -89,7 +88,7 @@ fn check_trigger_expr(exp: &Exp, free_vars: &mut HashSet<Ident>) -> Result<(), V
                         err_str(&exp.span, "triggers cannot contain boolean operators")
                     }
                     Le | Ge | Lt | Gt => Ok(()),
-                    Arith(..) => Ok(()),
+                    Arith(..) => err_str(&exp.span, "triggers cannot contain integer arithmetic"),
                     Bitwise(..) => Ok(()),
                 }
             }
