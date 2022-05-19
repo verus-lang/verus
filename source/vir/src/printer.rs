@@ -260,6 +260,9 @@ fn expr_to_node(expr: &Expr) -> Node {
             BinaryOp::Arith(op, _) => {
                 nodes!({str_to_node(&format!("{:?}", op))} {expr_to_node(e1)} {expr_to_node(e2)})
             }
+            BinaryOp::Bitwise(op) => {
+                nodes!({str_to_node(&format!("{:?}", op))} {expr_to_node(e1)} {expr_to_node(e2)})
+            }
             _ => {
                 nodes!({str_to_node(&format!("{:?}", binary_op).to_lowercase())} {expr_to_node(e1)} {expr_to_node(e2)})
             }
