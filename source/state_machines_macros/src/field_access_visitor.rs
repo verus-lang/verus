@@ -52,14 +52,12 @@ use syn::{Expr, ExprField, ExprPath, Ident, Member};
 /// of a state machine field. For example, `pre.associated_method()` is
 /// not allowed, nor is using `pre` without a "dot" access.
 
-pub fn visit_field_accesses<F>(
+pub fn visit_field_accesses(
     e: &mut Expr,
-    f: F,
+    f: impl FnMut(&mut Vec<Error>, &Field, &mut Expr) -> (),
     errors: &mut Vec<Error>,
     ident_to_field: &HashMap<String, Field>,
-) where
-    F: FnMut(&mut Vec<Error>, &Field, &mut Expr) -> (),
-{
+) {
     let mut f = FieldAccessVisitor { errors, user_fn: f, ident_to_field };
 
     f.visit_expr_mut(e);
@@ -140,14 +138,12 @@ fn get_field_by_ident<'a>(
 /// (This ONLY applies to the StorageMap, not the ordinary Map; i.e., for
 /// RemoveKV, AddKV, and HaveKV, we check the 'key' expression like you'd expect.)
 
-pub fn visit_field_accesses_all_exprs<F>(
+pub fn visit_field_accesses_all_exprs(
     ts: &mut TransitionStmt,
-    f: &mut F,
+    f: &mut impl FnMut(&mut Vec<Error>, &Field, &mut Expr, bool) -> (),
     errors: &mut Vec<Error>,
     ident_to_field: &HashMap<String, Field>,
-) where
-    F: FnMut(&mut Vec<Error>, &Field, &mut Expr, bool) -> (),
-{
+) {
     match ts {
         TransitionStmt::Block(_span, v) => {
             for child in v.iter_mut() {
@@ -238,14 +234,12 @@ pub fn visit_field_accesses_all_exprs<F>(
     }
 }
 
-fn visit_special_op<F>(
+fn visit_special_op(
     op: &mut SpecialOp,
-    f: &mut F,
+    f: &mut impl FnMut(&mut Vec<Error>, &Field, &mut Expr, bool) -> (),
     errors: &mut Vec<Error>,
     ident_to_field: &HashMap<String, Field>,
-) where
-    F: FnMut(&mut Vec<Error>, &Field, &mut Expr, bool) -> (),
-{
+) {
     match op {
         SpecialOp { stmt: _, elt: MonoidElt::OptionSome(Some(e)) }
         | SpecialOp { stmt: _, elt: MonoidElt::General(e) }

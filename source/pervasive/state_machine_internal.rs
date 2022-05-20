@@ -22,6 +22,10 @@ pub fn assert_add_option(b: bool) { requires(b); ensures(b); }
 pub fn assert_add_map(b: bool) { requires(b); ensures(b); }
 
 #[proof]
+#[verifier(custom_req_err("unable to prove inherent safety condition: if the key is already in the map, its existing value must agree with the provided value"))]
+pub fn assert_add_persistent_map(b: bool) { requires(b); ensures(b); }
+
+#[proof]
 #[verifier(custom_req_err("unable to prove inherent safety condition: the given value to be withdrawn must be stored before the withdraw"))]
 pub fn assert_withdraw_option(b: bool) { requires(b); ensures(b); }
 
@@ -54,6 +58,10 @@ pub fn assert_general_add_option(b: bool) { requires(b); ensures(b); }
 #[proof]
 #[verifier(custom_req_err("unable to prove inherent safety condition: the key domains of the maps being composed must be disjoint"))]
 pub fn assert_general_add_map(b: bool) { requires(b); ensures(b); }
+
+#[proof]
+#[verifier(custom_req_err("unable to prove inherent safety condition: the maps being composed must agree on their values for any key in both domains"))]
+pub fn assert_general_add_persistent_map(b: bool) { requires(b); ensures(b); }
 
 #[proof]
 #[verifier(custom_req_err("unable to prove inherent safety condition: the optional value to be withdrawn must be stored before the withdraw"))]

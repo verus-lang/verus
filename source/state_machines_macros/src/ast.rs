@@ -58,6 +58,8 @@ pub enum ShardableType {
     Multiset(Type),
     StorageOption(Type),
     StorageMap(Type, Type),
+    PersistentMap(Type, Type),
+    Count,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Copy)]
@@ -381,6 +383,15 @@ impl ShardableType {
             ShardableType::Map(_, _) => "map",
             ShardableType::StorageOption(_) => "storage_option",
             ShardableType::StorageMap(_, _) => "storage_map",
+            ShardableType::PersistentMap(_, _) => "persistent_map",
+            ShardableType::Count => "count",
+        }
+    }
+
+    pub fn is_count(&self) -> bool {
+        match self {
+            ShardableType::Count => true,
+            _ => false,
         }
     }
 
@@ -394,6 +405,24 @@ impl ShardableType {
             ShardableType::Map(_, _) => false,
             ShardableType::StorageOption(_) => true,
             ShardableType::StorageMap(_, _) => true,
+            ShardableType::PersistentMap(_, _) => false,
+            ShardableType::Count => false,
+        }
+    }
+
+    pub fn is_persistent(&self) -> bool {
+        match self {
+            ShardableType::PersistentMap(_, _) => true,
+
+            ShardableType::Variable(_)
+            | ShardableType::Constant(_)
+            | ShardableType::NotTokenized(_)
+            | ShardableType::Multiset(_)
+            | ShardableType::Option(_)
+            | ShardableType::Map(_, _)
+            | ShardableType::StorageOption(_)
+            | ShardableType::StorageMap(_, _)
+            | ShardableType::Count => false,
         }
     }
 

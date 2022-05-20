@@ -1,4 +1,6 @@
-#[allow(unused_imports)]
+#![allow(unused_imports)]
+
+// ANCHOR: full
 use builtin::*;
 use builtin_macros::*;
 mod pervasive;
@@ -249,3 +251,4 @@ fn main() {
 
   assert(equal(x, 2));
 }
+// ANCHOR_END: full

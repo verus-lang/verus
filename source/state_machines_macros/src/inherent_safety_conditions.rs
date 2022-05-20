@@ -41,8 +41,10 @@ fn check_inherent_condition_for_special_op(
         ShardableType::Multiset(_) => CollectionType::Multiset,
         ShardableType::Option(_) => CollectionType::Option,
         ShardableType::Map(_, _) => CollectionType::Map,
+        ShardableType::PersistentMap(_, _) => CollectionType::PersistentMap,
         ShardableType::StorageOption(_) => CollectionType::Option,
         ShardableType::StorageMap(_, _) => CollectionType::Map,
+        ShardableType::Count => CollectionType::Nat,
 
         ShardableType::Variable(_)
         | ShardableType::Constant(_)
@@ -77,20 +79,21 @@ fn check_inherent_condition_for_special_op(
             }
         }
         MonoidStmtType::Add | MonoidStmtType::Deposit => match coll_type {
-            CollectionType::Multiset => {
+            CollectionType::Multiset | CollectionType::Nat => {
                 if user_gave_proof_body {
                     let name = op.stmt.name();
+                    let cname = coll_type.name();
                     return Err(Error::new(
                         span,
                         format!(
-                            "'{name:}' statement for multisets has no nontrivial inherent safety condition (as composition is total and thus this statement never fails); adding a proof body is meaningless"
+                            "'{name:}' statement for `{cname:}` has no nontrivial inherent safety condition (as composition is total and thus this statement never fails); adding a proof body is meaningless"
                         ),
                     ));
                 } else {
                     Ok("".to_string())
                 }
             }
-            CollectionType::Option | CollectionType::Map => {
+            CollectionType::Option | CollectionType::Map | CollectionType::PersistentMap => {
                 let name = op.stmt.name();
                 let type_name = coll_type.name();
                 if is_general {
@@ -106,14 +109,18 @@ fn check_inherent_condition_for_special_op(
 #[derive(Copy, Clone)]
 enum CollectionType {
     Map,
+    PersistentMap,
     Multiset,
     Option,
+    Nat,
 }
 
 impl CollectionType {
     fn name(self) -> &'static str {
         match self {
+            CollectionType::Nat => "nat",
             CollectionType::Map => "map",
+            CollectionType::PersistentMap => "persistent_map",
             CollectionType::Multiset => "multiset",
             CollectionType::Option => "option",
         }

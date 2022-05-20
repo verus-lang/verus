@@ -80,5 +80,7 @@ pub fn get_binding_ty(stype: &ShardableType) -> Option<Type> {
         ShardableType::Multiset(_) => None,
         ShardableType::StorageOption(ty) => Some(ty.clone()),
         ShardableType::StorageMap(_, ty) => Some(ty.clone()),
+        ShardableType::PersistentMap(_, ty) => Some(ty.clone()),
+        ShardableType::Count => None,
     }
 }

@@ -15,8 +15,11 @@
    - [Tutorial by example](tutorial-by-example.md)
 
      - [Counting to 2](./examples/counting-to-2.md)
+       - [Unverified Source](./examples/rust-counting-to-2.md)
+       - [Verified Source](./examples/src-counting-to-2.md)
      - [Producer-consumer queue](./examples/producer-consumer-queue.md)
-       - [Source](./examples/src-producer-consumer-queue.md)
+       - [Unverified Source](./examples/rust-producer-consumer-queue.md)
+       - [Verified Source](./examples/src-producer-consumer-queue.md)
 
    - [Tutorial TODO](tutorial-by-example.md)
 
