@@ -422,10 +422,10 @@ impl Verifier {
         ctx: &vir::context::Ctx,
         module_path: &vir::ast::Path,
         function_path: &vir::ast::Path,
-        datatype_commands: Vec<Arc<CommandX>>,
-        function_decl_commands: Vec<(Commands, String)>,
-        function_spec_commands: Vec<(Commands, String)>,
-        function_axiom_commands: Vec<(Commands, String)>,
+        datatype_commands: Arc<Vec<Arc<CommandX>>>,
+        function_decl_commands: Arc<Vec<(Commands, String)>>,
+        function_spec_commands: Arc<Vec<(Commands, String)>>,
+        function_axiom_commands: Arc<Vec<(Commands, String)>>,
         is_rerun: bool,
         span: &air::ast::Span,
     ) -> Result<air::context::Context, VirErr> {
@@ -488,13 +488,13 @@ impl Verifier {
 
         // set up module context
         self.run_commands(&mut air_context, &datatype_commands, &("Datatypes".to_string()));
-        for commands in function_decl_commands {
+        for commands in &*function_decl_commands {
             self.run_commands(&mut air_context, &commands.0, &commands.1);
         }
-        for commands in function_spec_commands {
+        for commands in &*function_spec_commands {
             self.run_commands(&mut air_context, &commands.0, &commands.1);
         }
-        for commands in function_axiom_commands {
+        for commands in &*function_axiom_commands {
             self.run_commands(&mut air_context, &commands.0, &commands.1);
         }
         Ok(air_context)
@@ -666,6 +666,9 @@ impl Verifier {
         }
         assert!(funs.len() == 0);
 
+        let function_decl_commands = Arc::new(function_decl_commands);
+        let function_spec_commands = Arc::new(function_spec_commands);
+        let function_axiom_commands = Arc::new(function_axiom_commands);
         // Create queries to check the validity of proof/exec function bodies
         for function in &krate.functions {
             if Some(module.clone()) != function.x.visibility.owning_module {
@@ -688,39 +691,33 @@ impl Verifier {
                 for command in commands.iter().map(|x| &*x) {
                     let CommandsWithContextX { span, desc: _, commands: _, spinoff_z3 } =
                         &**command;
-                    let command_invalidity: bool;
-                    if *spinoff_z3 {
-                        let mut spinoff_air_context = self.new_air_context_with_module_context(
+                    let mut spinoff_z3_context;
+                    let query_air_context = if *spinoff_z3 {
+                        spinoff_z3_context = self.new_air_context_with_module_context(
                             ctx,
                             module,
                             &(function.x.name).path,
-                            datatype_commands.to_vec(),
-                            function_decl_commands.to_vec(),
-                            function_spec_commands.to_vec(),
-                            function_axiom_commands.to_vec(),
-                            false,
+                            datatype_commands.clone(),
+                            function_decl_commands.clone(),
+                            function_spec_commands.clone(),
+                            function_axiom_commands.clone(),
+                            recommends_rerun,
                             &span,
                         )?;
-                        command_invalidity = self.run_commands_queries(
-                            compiler,
-                            error_as,
-                            &mut spinoff_air_context,
-                            command.clone(),
-                            &HashMap::new(),
-                            &snap_map,
-                            &(s.to_string() + &fun_as_rust_dbg(&function.x.name)),
-                        );
+                        &mut spinoff_z3_context
                     } else {
-                        command_invalidity = self.run_commands_queries(
-                            compiler,
-                            error_as,
-                            air_context,
-                            command.clone(),
-                            &HashMap::new(),
-                            &snap_map,
-                            &(s.to_string() + &fun_as_rust_dbg(&function.x.name)),
-                        );
-                    }
+                        &mut *air_context
+                    };
+                    let command_invalidity = self.run_commands_queries(
+                        compiler,
+                        error_as,
+                        query_air_context,
+                        command.clone(),
+                        &HashMap::new(),
+                        &snap_map,
+                        &(s.to_string() + &fun_as_rust_dbg(&function.x.name)),
+                    );
+
                     function_invalidity = function_invalidity || command_invalidity;
                 }
 
