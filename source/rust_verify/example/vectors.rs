@@ -77,6 +77,23 @@ fn pusher() -> Vec<u64> {
     v
 }
 
+#[spec]
+#[verifier(external_body)]
+fn uninterp_fn(x: u64) -> bool { unimplemented!() }
+
+fn pop_test(t: Vec<u64>) {
+    requires([
+        t.view().len() > 0,
+        forall(|i: int| 0 <= i && i < t.view().len() >>= uninterp_fn(t.view().index(i))),
+    ]);
+
+    let mut t = t;
+    let x = t.pop();
+
+    assert(uninterp_fn(x));
+    assert(forall(|i: int| 0 <= i && i < t.view().len() >>= uninterp_fn(t.view().index(i))));
+}
+
 #[verifier(external)]
 fn main() {
     let mut v = Vec{vec: vec![0, 10, 20, 30, 40, 50, 60, 70, 80, 90]};

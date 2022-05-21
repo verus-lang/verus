@@ -37,7 +37,10 @@ impl<A> Vec<A> {
     #[verifier(external_body)]
     pub fn pop(&mut self) -> A {
         requires(old(self).len() > 0);
-        ensures(|value| equal(self.view().push(value), old(self).view()));
+        ensures(|value| [
+            equal(value, old(self).view().index(old(self).view().len() as int - 1)),
+            equal(self.view(), old(self).view().subrange(0, old(self).view().len() as int - 1))
+        ]);
         self.vec.pop().unwrap_unchecked()  // Safe to unwrap given the precondition above
     }
 
