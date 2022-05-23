@@ -426,17 +426,11 @@ impl Verifier {
         invalidity
     }
 
-    fn new_air_context_with_module_context(
+    fn new_air_context_with_prelude(
         &mut self,
-        ctx: &vir::context::Ctx,
         module_path: &vir::ast::Path,
-        function_path: &vir::ast::Path,
-        datatype_commands: Arc<Vec<Arc<CommandX>>>,
-        function_decl_commands: Arc<Vec<(Commands, String)>>,
-        function_spec_commands: Arc<Vec<(Commands, String)>>,
-        function_axiom_commands: Arc<Vec<(Commands, String)>>,
+        function_path: Option<&vir::ast::Path>,
         is_rerun: bool,
-        span: &air::ast::Span,
     ) -> Result<air::context::Context, VirErr> {
         let mut air_context = air::context::Context::new(air::smt_manager::SmtManager::new());
         air_context.set_ignore_unexpected_smt(self.args.ignore_unexpected_smt);
@@ -446,7 +440,7 @@ impl Verifier {
         if self.args.log_all || self.args.log_air_initial {
             let file = self.create_log_file(
                 Some(module_path),
-                Some(function_path),
+                function_path,
                 format!("{}{}", rerun_msg, crate::config::AIR_INITIAL_FILE_SUFFIX).as_str(),
             )?;
             air_context.set_air_initial_log(Box::new(file));
@@ -454,7 +448,7 @@ impl Verifier {
         if self.args.log_all || self.args.log_air_final {
             let file = self.create_log_file(
                 Some(module_path),
-                Some(function_path),
+                function_path,
                 format!("{}{}", rerun_msg, crate::config::AIR_FINAL_FILE_SUFFIX).as_str(),
             )?;
             air_context.set_air_final_log(Box::new(file));
@@ -462,14 +456,11 @@ impl Verifier {
         if self.args.log_all || self.args.log_smt {
             let file = self.create_log_file(
                 Some(module_path),
-                Some(function_path),
+                function_path,
                 format!("{}{}", rerun_msg, crate::config::SMT_FILE_SUFFIX).as_str(),
             )?;
             air_context.set_smt_log(Box::new(file));
         }
-
-        // At the top line of logs, write the span of spun-off query
-        air_context.comment(&span.as_string);
 
         // air_recommended_options causes AIR to apply a preset collection of Z3 options
         air_context.set_z3_param("air_recommended_options", "true");
@@ -488,6 +479,27 @@ impl Verifier {
             module_path.segments.iter().map(|s| s.to_string()).collect::<Vec<_>>().join("::");
         air_context.blank_line();
         air_context.comment(&("MODULE '".to_string() + &module_name + "'"));
+
+        Ok(air_context)
+    }
+
+    fn new_air_context_with_module_context(
+        &mut self,
+        ctx: &vir::context::Ctx,
+        module_path: &vir::ast::Path,
+        function_path: &vir::ast::Path,
+        datatype_commands: Arc<Vec<Arc<CommandX>>>,
+        function_decl_commands: Arc<Vec<(Commands, String)>>,
+        function_spec_commands: Arc<Vec<(Commands, String)>>,
+        function_axiom_commands: Arc<Vec<(Commands, String)>>,
+        is_rerun: bool,
+        span: &air::ast::Span,
+    ) -> Result<air::context::Context, VirErr> {
+        let mut air_context =
+            self.new_air_context_with_prelude(module_path, Some(function_path), is_rerun)?;
+
+        // Write the span of spun-off query
+        air_context.comment(&span.as_string);
 
         air_context.blank_line();
         air_context.comment("Fuel");
@@ -785,40 +797,7 @@ impl Verifier {
             compiler.diagnostic().note_without_error(&format!("verifying module {}", &module_name));
         }
 
-        let mut air_context = air::context::Context::new(air::smt_manager::SmtManager::new());
-        air_context.set_ignore_unexpected_smt(self.args.ignore_unexpected_smt);
-        air_context.set_debug(self.args.debug);
-
-        if self.args.log_all || self.args.log_air_initial {
-            let file =
-                self.create_log_file(Some(module), None, crate::config::AIR_INITIAL_FILE_SUFFIX)?;
-            air_context.set_air_initial_log(Box::new(file));
-        }
-        if self.args.log_all || self.args.log_air_final {
-            let file =
-                self.create_log_file(Some(module), None, crate::config::AIR_FINAL_FILE_SUFFIX)?;
-            air_context.set_air_final_log(Box::new(file));
-        }
-        if self.args.log_all || self.args.log_smt {
-            let file = self.create_log_file(Some(module), None, crate::config::SMT_FILE_SUFFIX)?;
-            air_context.set_smt_log(Box::new(file));
-        }
-
-        // air_recommended_options causes AIR to apply a preset collection of Z3 options
-        air_context.set_z3_param("air_recommended_options", "true");
-        air_context.set_rlimit(self.args.rlimit.saturating_mul(RLIMIT_PER_SECOND));
-        for (option, value) in self.args.smt_options.iter() {
-            air_context.set_z3_param(&option, &value);
-        }
-
-        air_context.blank_line();
-        air_context.comment("Prelude");
-        for command in vir::context::Ctx::prelude().iter() {
-            Self::check_internal_result(air_context.command(&command, Default::default()));
-        }
-
-        air_context.blank_line();
-        air_context.comment(&("MODULE '".to_string() + &module_name + "'"));
+        let mut air_context = self.new_air_context_with_prelude(module, None, false)?;
 
         let (pruned_krate, mono_abstract_datatypes, lambda_types) =
             vir::prune::prune_krate_for_module(&krate, &module);
