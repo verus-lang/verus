@@ -1,5 +1,5 @@
 use crate::ast::{
-    BinaryOp, BindX, Binder, Binders, Constant, Decl, DeclX, Expr, ExprX, Ident, MultiOp, Quant,
+    BinaryOp, BindX, Binder, Binders, Constant, Decl, DeclX, Expr, ExprX, Ident, MultiOp, Qid, Quant,
     Stmt, StmtX, Stmts, Trigger, Triggers, Typ, TypX, Typs, UnaryOp,
 };
 use crate::ast_util::{ident_binder, mk_and, mk_eq, mk_forall};
@@ -250,6 +250,7 @@ fn simplify_choose(
     state: &mut State,
     binders: &Binders<Typ>,
     triggers: &Triggers,
+    qid: &Qid,
     cond: &Expr,
     body: &Expr,
 ) -> (Typ, Expr, Option<Term>) {
@@ -322,14 +323,20 @@ fn simplify_choose(
             }
             let call = Arc::new(ExprX::Apply(closure_fun.clone(), Arc::new(xholes)));
             let and = mk_and(&vec![cond.clone(), mk_eq(&call, &body)]);
-            let existsbind =
-                Arc::new(BindX::Quant(Quant::Exists, binders.clone(), Arc::new(new_triggers), None));
-            let exists1 = Arc::new(ExprX::Bind(existsbind.clone(), cond));
-            let exists2 = Arc::new(ExprX::Bind(existsbind, and));
+            let existsbind1 =
+                Arc::new(BindX::Quant(Quant::Exists, binders.clone(), Arc::new(new_triggers.clone()), qid.clone()));
+            // The triggers for exists2 are irrelevant because the exists is on the right hand side
+            // of the implication
+            let exists2_qid = None;  
+            let existsbind2 =
+                Arc::new(BindX::Quant(Quant::Exists, binders.clone(), Arc::new(new_triggers), exists2_qid));
+            let exists1 = Arc::new(ExprX::Bind(existsbind1, cond));
+            let exists2 = Arc::new(ExprX::Bind(existsbind2, and));
             let imply = Arc::new(ExprX::Binary(BinaryOp::Implies, exists1, exists2));
             let trig = Arc::new(vec![call]);
             let trigs = Arc::new(vec![trig]);
-            let forall = mk_forall(&bs, &trigs, None, &imply);
+            let forall_qid = None;  // The forall uses a trivial trigger, so no need to profile
+            let forall = mk_forall(&bs, &trigs, forall_qid, &imply);
             let decl = Arc::new(DeclX::Axiom(forall));
             state.generated_decls.push(decl);
 
@@ -507,7 +514,6 @@ fn simplify_expr(ctxt: &mut Context, state: &mut State, expr: &Expr) -> (Typ, Ex
                 (typ1, expr, t)
             }
             BindX::Quant(quant, binders, triggers, qid) => {
-// TODO: Figure out how qid propagates
                 ctxt.typing.decls.push_scope(true);
                 let mut typs: Vec<Typ> = Vec::new();
                 for binder in binders.iter() {
@@ -541,14 +547,12 @@ fn simplify_expr(ctxt: &mut Context, state: &mut State, expr: &Expr) -> (Typ, Ex
                 }
                 let e1 = es[i].clone();
                 let typ = Arc::new(TypX::Bool);
-// TODO: What Qid should this use (if any)?
-                let bind = BindX::Quant(*quant, binders.clone(), Arc::new(new_triggers), None);
+                let bind = BindX::Quant(*quant, binders.clone(), Arc::new(new_triggers), qid.clone());
                 (typ, Arc::new(ExprX::Bind(Arc::new(bind), e1)), t)
             }
             BindX::Lambda(binders) => simplify_lambda(ctxt, state, binders, e1),
             BindX::Choose(binders, triggers, qid, cond) => {
-// TODO: Figure out how qid propagates
-                simplify_choose(ctxt, state, binders, triggers, cond, e1)
+                simplify_choose(ctxt, state, binders, triggers, qid, cond, e1)
             }
         },
         ExprX::LabeledAssertion(l, e1) => {
