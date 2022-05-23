@@ -11,8 +11,8 @@ fndecl!(fn g(x: nat) -> bool);
 fn choose_example() {
     requires (exists(|x| g(x)));
 
-    let x = choose(|x| g(x));
-    assert(g(x));
+    let z = choose(|y| g(y));
+    assert(g(z));
 }
 
 #[proof] 
