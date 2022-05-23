@@ -402,7 +402,8 @@ impl Verifier {
             }
         }
         let mut invalidity = false;
-        let CommandsWithContextX { span, desc, commands, spinoff_z3: _ } = &*commands_with_context;
+        let CommandsWithContextX { span, desc, commands, spinoff_prover: _ } =
+            &*commands_with_context;
         if commands.len() > 0 {
             air_context.blank_line();
             air_context.comment(comment);
@@ -661,7 +662,7 @@ impl Verifier {
                         span: function.span.clone(),
                         desc: "termination proof".to_string(),
                         commands: check_commands,
-                        spinoff_z3: false,
+                        spinoff_prover: false,
                     }),
                     &HashMap::new(),
                     &vec![],
@@ -736,10 +737,10 @@ impl Verifier {
 
                 let mut function_invalidity = false;
                 for command in commands.iter().map(|x| &*x) {
-                    let CommandsWithContextX { span, desc: _, commands: _, spinoff_z3 } =
+                    let CommandsWithContextX { span, desc: _, commands: _, spinoff_prover } =
                         &**command;
                     let mut spinoff_z3_context;
-                    let query_air_context = if *spinoff_z3 {
+                    let query_air_context = if *spinoff_prover {
                         spinoff_z3_context = self.new_air_context_with_module_context(
                             ctx,
                             module,
