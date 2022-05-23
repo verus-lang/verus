@@ -701,6 +701,7 @@ pub fn func_def_to_air(
                 function.x.attrs.bit_vector,
                 skip_ensures,
                 function.x.attrs.nonlinear,
+                function.x.attrs.spinoff_z3,
             );
 
             state.finalize();

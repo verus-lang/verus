@@ -413,6 +413,7 @@ fn function_to_node(function: &FunctionX) -> Node {
             is_decrease_by,
             check_recommends,
             nonlinear,
+            spinoff_z3,
         } = &**attrs;
 
         let mut nodes = vec![
@@ -447,6 +448,9 @@ fn function_to_node(function: &FunctionX) -> Node {
         }
         if *nonlinear {
             nodes.push(str_to_node("+nonlinear"));
+        }
+        if *spinoff_z3 {
+            nodes.push(str_to_node("+spinoff_z3"));
         }
 
         Node::List(nodes)
