@@ -23,6 +23,7 @@ fn trigger_forever() {
 
 #[exec]
 fn bad_loop() {
+    requires(forall(|x: nat, y: nat| f(x + 1, 2 * y) && f(2 * x, y + x) || f(y, x) >>= (#[trigger] f(x, y))));
     let mut x = 10;
     while (x > 10) {
         invariant(forall(|x: nat, y: nat| f(x + 1, 2 * y) && f(2 * x, y + x) || f(y, x) >>= (#[trigger] f(x, y))));
