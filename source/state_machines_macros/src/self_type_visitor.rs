@@ -65,17 +65,16 @@ fn replace_self_ts(ts: &mut TransitionStmt, path: &Path) {
                 replace_self_ts(t, path);
             }
         }
-        TransitionStmt::Let(_, pat, ty, _lk, e, child) => {
-            replace_self_pat(pat, path);
-            match ty {
-                None => {}
-                Some(ty) => replace_self_type(ty, path),
-            }
-            replace_self_expr(e, path);
-            replace_self_ts(child, path);
-        }
         TransitionStmt::Split(_, split_kind, es) => {
             match split_kind {
+                SplitKind::Let(pat, ty, _lk, e) => {
+                    replace_self_pat(pat, path);
+                    match ty {
+                        None => {}
+                        Some(ty) => replace_self_type(ty, path),
+                    }
+                    replace_self_expr(e, path);
+                }
                 SplitKind::If(cond) => {
                     replace_self_expr(cond, path);
                 }
@@ -88,6 +87,15 @@ fn replace_self_ts(ts: &mut TransitionStmt, path: &Path) {
                                 replace_self_expr(guard_e, path);
                             }
                             None => {}
+                        }
+                    }
+                }
+                SplitKind::Special(_f, op, _proof, pat_opt) => {
+                    replace_self_op(op, path);
+                    match pat_opt {
+                        None => {}
+                        Some(pat) => {
+                            replace_self_pat(pat, path);
                         }
                     }
                 }
@@ -116,9 +124,6 @@ fn replace_self_ts(ts: &mut TransitionStmt, path: &Path) {
         TransitionStmt::Update(_, _f, e) | TransitionStmt::Initialize(_, _f, e) => {
             replace_self_expr(e, path);
         }
-        TransitionStmt::Special(_, _f, op, _proof) => {
-            replace_self_op(op, path);
-        }
         TransitionStmt::PostCondition(_, e) => {
             replace_self_expr(e, path);
         }
@@ -127,10 +132,14 @@ fn replace_self_ts(ts: &mut TransitionStmt, path: &Path) {
 
 fn replace_self_op(op: &mut SpecialOp, path: &Path) {
     match &mut op.elt {
-        MonoidElt::OptionSome(e) | MonoidElt::SingletonMultiset(e) | MonoidElt::General(e) => {
+        MonoidElt::OptionSome(None) => {}
+        MonoidElt::OptionSome(Some(e))
+        | MonoidElt::SingletonMultiset(e)
+        | MonoidElt::General(e)
+        | MonoidElt::SingletonKV(e, None) => {
             replace_self_expr(e, path);
         }
-        MonoidElt::SingletonKV(e1, e2) => {
+        MonoidElt::SingletonKV(e1, Some(e2)) => {
             replace_self_expr(e1, path);
             replace_self_expr(e2, path);
         }

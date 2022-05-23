@@ -47,7 +47,7 @@ pub fn main() {
 
     if !verifier.encountered_vir_error {
         println!(
-            "Verification results:: verified: {} errors: {}",
+            "verification results:: verified: {} errors: {}",
             verifier.count_verified, verifier.count_errors
         );
     }

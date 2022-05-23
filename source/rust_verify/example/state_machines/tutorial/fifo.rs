@@ -247,8 +247,7 @@ tokenized_state_machine!{FifoQueue<T> {
             // Withdraw ("check out") the permission stored at index `tail`.
             // This creates a proof obligation for the transition system to prove that
             // there is actually a permission stored at this index.
-            birds_eye let perm = pre.storage.index(tail);
-            withdraw storage -= [tail => perm] by {
+            withdraw storage -= [tail => let perm] by {
                 assert(pre.valid_storage_at_idx(tail));
             };
 
@@ -679,7 +678,7 @@ impl<T> Producer<T> {
                 // If so, we proceed with the `produce_start` transition
                 // and obtain the cell permission.
                 cell_perm = if head != next_tail as u64 {
-                    #[proof] let (_, cp) = queue.instance.produce_start(&htt.head, &mut self.producer);
+                    #[proof] let cp = queue.instance.produce_start(&htt.head, &mut self.producer);
                     Option::Some(cp)
                 } else {
                     Option::None

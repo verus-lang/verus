@@ -71,6 +71,23 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_withdraw_bind_guard IMPORTS.to_string() + code_str! {
+        tokenized_state_machine!{ X {
+            fields {
+                #[sharding(storage_option)] pub so: Option<int>
+            }
+
+            readonly!{
+                tr() {
+                    withdraw so -= Some(let y);
+                    guard so >= Some(x); // error: guard depends on withdraw binding
+                }
+            }
+        }}
+    } => Err(e) => assert_error_msg(e, "a guard value must be a deterministic function")
+}
+
+test_verify_one_file! {
     #[test] test_birds_eye_req IMPORTS.to_string() + code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -85,6 +102,23 @@ test_verify_one_file! {
             }
         }}
     } => Err(e) => assert_error_msg(e, "'require' statements should not be in the scope of a `birds_eye` let-binding")
+}
+
+test_verify_one_file! {
+    #[test] test_withdraw_bind_req IMPORTS.to_string() + code_str! {
+        tokenized_state_machine!{ X {
+            fields {
+                #[sharding(storage_option)] pub so: Option<int>
+            }
+
+            readonly!{
+                tr() {
+                    withdraw so -= Some(let x);
+                    require(x == 5); // error: require depends on birds_eye variable
+                }
+            }
+        }}
+    } => Err(e) => assert_error_msg(e, "'require' statements should not be in the scope of a `withdraw` let-binding")
 }
 
 test_verify_one_file! {
@@ -108,6 +142,26 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_withdraw_bind_req2 IMPORTS.to_string() + code_str! {
+        tokenized_state_machine!{ X {
+            fields {
+                #[sharding(storage_option)] pub so: Option<int>
+            }
+
+            readonly!{
+                tr() {
+                    if 0 == 0 {
+                        withdraw so -= Some(let x);
+                        assert(x == 5);
+                    }
+                    require(x == 5); // error: require depends on withdraw binding
+                }
+            }
+        }}
+    } => Err(e) => assert_error_msg(e, "'require' statements should not be preceeded by an assert which is in the scope of")
+}
+
+test_verify_one_file! {
     #[test] test_birds_eye_special IMPORTS.to_string() + code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -122,6 +176,23 @@ test_verify_one_file! {
             }
         }}
     } => Err(e) => assert_error_msg(e, "'remove' statements should not be in the scope of a `birds_eye` let-binding")
+}
+
+test_verify_one_file! {
+    #[test] test_withdraw_binding_remove IMPORTS.to_string() + code_str! {
+        tokenized_state_machine!{ X {
+            fields {
+                #[sharding(option)] pub so: Option<int>
+            }
+
+            transition!{
+                tr() {
+                    withdraw so -= Some(let x);
+                    remove so -= Some(x); // error: depends on birds_eye variable
+                }
+            }
+        }}
+    } => Err(e) => assert_error_msg(e, "'remove' statements should not be in the scope of a `withdraw` let-binding")
 }
 
 test_verify_one_file! {
@@ -338,7 +409,7 @@ test_verify_one_file! {
                 }
             }
         }}
-    } => Err(e) => assert_error_msg(e, "'pre' cannot be used opaquely")
+    } => Err(e) => assert_error_msg(e, "`pre` cannot be used opaquely")
 }
 
 test_verify_one_file! {
@@ -469,6 +540,22 @@ test_verify_one_file! {
 
             transition!{
                 tr(token_a: int) {
+                }
+            }
+        }}
+    } => Err(e) => assert_error_msg(e, "reserved identifier")
+}
+
+test_verify_one_file! {
+    #[test] binding_reserved_ident1 IMPORTS.to_string() + code_str! {
+        tokenized_state_machine!{ X {
+            fields {
+                #[sharding(option)] pub t: Option<int>,
+            }
+
+            transition!{
+                tr() {
+                    remove t -= Some(let instance);
                 }
             }
         }}
@@ -1034,6 +1121,25 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] special_op_binding_conditional IMPORTS.to_string() + code_str! {
+        tokenized_state_machine!{ X {
+            fields {
+                #[sharding(option)]
+                pub t: Option<int>,
+            }
+
+            transition!{
+                tr() {
+                    if true {
+                        remove t -= Some(let x);
+                    }
+                }
+            }
+        }}
+    } => Err(e) => assert_error_msg(e, "statements are not supported inside conditionals")
+}
+
+test_verify_one_file! {
     #[test] special_op_match IMPORTS.to_string() + code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -1068,6 +1174,24 @@ test_verify_one_file! {
                 tr() {
                     have t >= Some(5);
                     remove t -= Some(5);
+                }
+            }
+        }}
+    } => Err(e) => assert_error_msg(e, "remove -> have -> add")
+}
+
+test_verify_one_file! {
+    #[test] remove_after_have_with_binding IMPORTS.to_string() + code_str! {
+        tokenized_state_machine!{ X {
+            fields {
+                #[sharding(option)]
+                pub t: Option<int>,
+            }
+
+            transition!{
+                tr() {
+                    have t >= Some(let z);
+                    remove t -= Some(let x);
                 }
             }
         }}
@@ -1322,6 +1446,23 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] init_wf_special_with_binding IMPORTS.to_string() + code_str! {
+        tokenized_state_machine!{ X {
+            fields {
+                #[sharding(option)]
+                pub t: Option<int>,
+            }
+
+            init!{
+                init() {
+                    remove t -= Some(let x);
+                }
+            }
+        }}
+    } => Err(e) => assert_error_msg(e, "use 'init' instead")
+}
+
+test_verify_one_file! {
     #[test] init_wf_assert IMPORTS.to_string() + code_str! {
         state_machine!{ X {
             fields {
@@ -1500,6 +1641,23 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] readonly_wf_remove_with_binding IMPORTS.to_string() + code_str! {
+        tokenized_state_machine!{ X {
+            fields {
+                #[sharding(option)]
+                pub t: Option<int>,
+            }
+
+            readonly!{
+                tr() {
+                    remove t -= Some(let x);
+                }
+            }
+        }}
+    } => Err(e) => assert_error_msg(e, "statement not allowed in readonly transition")
+}
+
+test_verify_one_file! {
     #[test] readonly_wf_remove IMPORTS.to_string() + code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -1577,6 +1735,23 @@ test_verify_one_file! {
             transition!{
                 tr() {
                     remove t -= Some(5) by { };
+                }
+            }
+        }}
+    } => Err(e) => assert_error_msg(e, "adding a proof body is meaningless")
+}
+
+test_verify_one_file! {
+    #[test] inherent_safety_condition_option_remove_with_binding IMPORTS.to_string() + code_str! {
+        tokenized_state_machine!{ X {
+            fields {
+                #[sharding(option)]
+                pub t: Option<int>
+            }
+
+            transition!{
+                tr() {
+                    remove t -= Some(let y) by { };
                 }
             }
         }}
@@ -1840,6 +2015,29 @@ test_verify_one_file! {
             pub fn is_inductive(pre: Self, post: Self) {
                 assert(pre.t.dom().contains(5));
                 assert(pre.t.index(5) == 7);
+                assert(!post.t.dom().contains(5));
+            }
+        }}
+    } => Err(e) => assert_one_fails(e)
+}
+
+test_verify_one_file! {
+    #[test] inherent_safety_condition_map_withdraw_with_binding IMPORTS.to_string() + code_str! {
+        tokenized_state_machine!{ X {
+            fields {
+                #[sharding(storage_map)]
+                pub t: Map<int, int>
+            }
+
+            transition!{
+                tr() {
+                    withdraw t -= [5 => let z] by { }; // FAILS
+                }
+            }
+
+            #[inductive(tr)]
+            pub fn is_inductive(pre: Self, post: Self) {
+                assert(pre.t.dom().contains(5));
                 assert(!post.t.dom().contains(5));
             }
         }}
@@ -2127,6 +2325,23 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] wrong_op_multiset_add_option_with_binding IMPORTS.to_string() + code_str! {
+        tokenized_state_machine!{ X {
+            fields {
+                #[sharding(multiset)]
+                pub t: Multiset<int>,
+            }
+
+            transition!{
+                tr() {
+                    add t += Some(let z);
+                }
+            }
+        }}
+    } => Err(e) => assert_error_msg(e, "element but the given field has sharding strategy 'multiset'")
+}
+
+test_verify_one_file! {
     #[test] wrong_op_map_add_option IMPORTS.to_string() + code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -2309,6 +2524,23 @@ test_verify_one_file! {
             transition!{
                 tr(x: int) {
                     let x = 5;
+                }
+            }
+        }}
+    } => Err(e) => assert_error_msg(e, "bound variables with the same name")
+}
+
+test_verify_one_file! {
+    #[test] no_let_repeated_idents4 IMPORTS.to_string() + code_str! {
+        tokenized_state_machine!{ X {
+            fields {
+                #[sharding(option)]
+                pub t: Option<int>,
+            }
+
+            transition!{
+                tr(x: int) {
+                    remove t -= Some(let x);
                 }
             }
         }}
@@ -3720,4 +3952,300 @@ test_verify_one_file! {
             assert(equal(Option::<Box<Y::State>>::None, r_tok.value));
         }
     } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] bind_codegen IMPORTS.to_string() + code_str! {
+
+        tokenized_state_machine!{ Y {
+            fields {
+                #[sharding(option)]
+                pub opt: Option<int>,
+
+                #[sharding(map)]
+                pub map: Map<int, u64>,
+
+                #[sharding(storage_map)]
+                pub storage_map: Map<int, u64>,
+            }
+
+            init!{
+                initialize() {
+                    init opt = Option::Some(2);
+                    init map = Map::<int,u64>::empty().insert(1, 5);
+                    init storage_map = Map::<int,u64>::empty().insert(1, 6);
+                }
+            }
+
+            #[invariant]
+            pub fn maps_eq(&self) -> bool {
+                equal(self.map.dom(), self.storage_map.dom())
+            }
+
+            #[invariant]
+            pub fn maps_6(&self) -> bool {
+                forall(|k| self.storage_map.dom().contains(k) >>=
+                    self.storage_map.index(k) == 6)
+            }
+
+            transition!{
+                tr1() {
+                    remove opt -= Some(let x);
+                    require(x == 2);
+                }
+            }
+
+            transition!{
+                tr2(key: int) {
+                    remove map -= [key => let x];
+                    require(x == 5);
+
+                    withdraw storage_map -= [key => let y];
+                    assert(y == 6);
+                }
+            }
+
+            readonly!{
+                tr3(key: int) {
+                    have map >= [key => let x];
+                    require(x == 5);
+
+                    guard storage_map >= [key => 6];
+                }
+            }
+
+            #[inductive(initialize)]
+            fn initialize_inductive(post: Self) { }
+
+            #[inductive(tr1)]
+            fn tr1_inductive(pre: Self, post: Self) { }
+
+            #[inductive(tr2)]
+            fn tr2_inductive(pre: Self, post: Self, key: int) { }
+        }}
+
+        #[spec]
+        fn rel_tr1(pre: Y::State, post: Y::State) -> bool {
+            equal(pre.opt, Option::Some(2))
+            && equal(post.opt, Option::None)
+            && equal(post.map, pre.map)
+            && equal(post.storage_map, pre.storage_map)
+        }
+
+        #[spec]
+        fn rel_tr1_strong(pre: Y::State, post: Y::State) -> bool {
+            equal(pre.opt, Option::Some(2))
+            && equal(post.opt, Option::None)
+            && equal(post.map, pre.map)
+            && equal(post.storage_map, pre.storage_map)
+        }
+
+        #[spec]
+        fn rel_tr2(pre: Y::State, post: Y::State, key: int) -> bool {
+            pre.map.dom().contains(key)
+            && pre.map.index(key) == 5
+
+            && (
+              (pre.storage_map.dom().contains(key) && pre.storage_map.index(key) == 6)
+              >>= (
+                   equal(post.map, pre.map.remove(key))
+                && equal(post.storage_map, pre.storage_map.remove(key))
+                && equal(post.opt, pre.opt)
+              )
+           )
+        }
+
+        #[spec]
+        fn rel_tr2_strong(pre: Y::State, post: Y::State, key: int) -> bool {
+            pre.map.dom().contains(key)
+            && pre.map.index(key) == 5
+
+            && (
+              (pre.storage_map.dom().contains(key) && pre.storage_map.index(key) == 6)
+              && (
+                   equal(post.map, pre.map.remove(key))
+                && equal(post.storage_map, pre.storage_map.remove(key))
+                && equal(post.opt, pre.opt)
+              )
+           )
+        }
+
+        #[spec]
+        fn rel_tr3(pre: Y::State, post: Y::State, key: int) -> bool {
+            pre.map.dom().contains(key)
+            && pre.map.index(key) == 5
+
+            && (
+              (pre.storage_map.dom().contains(key) && pre.storage_map.index(key) == 6)
+              >>= (
+                   equal(post.map, pre.map)
+                && equal(post.storage_map, pre.storage_map)
+                && equal(post.opt, pre.opt)
+              )
+           )
+        }
+
+        #[spec]
+        fn rel_tr3_strong(pre: Y::State, post: Y::State, key: int) -> bool {
+            pre.map.dom().contains(key)
+            && pre.map.index(key) == 5
+
+            && (
+              (pre.storage_map.dom().contains(key) && pre.storage_map.index(key) == 6)
+              && (
+                   equal(post.map, pre.map)
+                && equal(post.storage_map, pre.storage_map)
+                && equal(post.opt, pre.opt)
+              )
+           )
+        }
+
+        #[proof]
+        fn correct_tr1(pre: Y::State, post: Y::State) {
+            requires(Y::State::tr1(pre, post));
+            ensures(rel_tr1(pre, post));
+        }
+
+        #[proof]
+        fn rev_tr1(pre: Y::State, post: Y::State) {
+            requires(rel_tr1(pre, post));
+            ensures(Y::State::tr1(pre, post));
+        }
+
+        #[proof]
+        fn correct_tr1_strong(pre: Y::State, post: Y::State) {
+            requires(Y::State::tr1_strong(pre, post));
+            ensures(rel_tr1_strong(pre, post));
+        }
+
+        #[proof]
+        fn rev_tr1_strong(pre: Y::State, post: Y::State) {
+            requires(rel_tr1_strong(pre, post));
+            ensures(Y::State::tr1_strong(pre, post));
+        }
+
+        #[proof]
+        fn correct_tr2(pre: Y::State, post: Y::State, key: int) {
+            requires(Y::State::tr2(pre, post, key));
+            ensures(rel_tr2(pre, post, key));
+        }
+
+        #[proof]
+        fn rev_tr2(pre: Y::State, post: Y::State, key: int) {
+            requires(rel_tr2(pre, post, key));
+            ensures(Y::State::tr2(pre, post, key));
+        }
+
+        #[proof]
+        fn correct_tr2_strong(pre: Y::State, post: Y::State, key: int) {
+            requires(Y::State::tr2_strong(pre, post, key));
+            ensures(rel_tr2_strong(pre, post, key));
+        }
+
+        #[proof]
+        fn rev_tr2_strong(pre: Y::State, post: Y::State, key: int) {
+            requires(rel_tr2_strong(pre, post, key));
+            ensures(Y::State::tr2_strong(pre, post, key));
+        }
+
+        #[proof]
+        fn correct_tr3(pre: Y::State, post: Y::State, key: int) {
+            requires(Y::State::tr3(pre, post, key));
+            ensures(rel_tr3(pre, post, key));
+        }
+
+        #[proof]
+        fn rev_tr3(pre: Y::State, post: Y::State, key: int) {
+            requires(rel_tr3(pre, post, key));
+            ensures(Y::State::tr3(pre, post, key));
+        }
+
+        #[proof]
+        fn correct_tr3_strong(pre: Y::State, post: Y::State, key: int) {
+            requires(Y::State::tr3_strong(pre, post, key));
+            ensures(rel_tr3_strong(pre, post, key));
+        }
+
+        #[proof]
+        fn rev_tr3_strong(pre: Y::State, post: Y::State, key: int) {
+            requires(rel_tr3_strong(pre, post, key));
+            ensures(Y::State::tr3_strong(pre, post, key));
+        }
+
+        fn do_tokens() {
+            #[proof] let mut m: Map<int, u64> = Map::proof_empty();
+            m.proof_insert(1, 6);
+            #[proof] let (inst, opt_token, mut map_tokens) = Y::Instance::initialize(m);
+
+            match opt_token {
+                Option::None => { assert(false); }
+                Option::Some(opt_token) => {
+                    inst.tr1(opt_token);
+
+                    #[proof] let map_token = map_tokens.proof_remove(1);
+
+                    #[proof] let the_guard = inst.tr3(1, &map_token);
+                    assert(*the_guard == 6);
+
+                    #[proof] let t = inst.tr2(1, map_token);
+                    assert(t == 6);
+                }
+            };
+        }
+
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] bind_fail_add IMPORTS.to_string() + code_str! {
+
+        tokenized_state_machine!{ Y {
+            fields {
+                #[sharding(option)]
+                pub opt: Option<int>,
+            }
+
+            transition!{
+                tr1() {
+                    add opt += Some(let x);
+                }
+            }
+        }}
+    } => Err(e) => assert_error_msg(e, "pattern-binding cannot be used in an 'add' statement")
+}
+
+test_verify_one_file! {
+    #[test] bind_fail_deposit IMPORTS.to_string() + code_str! {
+
+        tokenized_state_machine!{ Y {
+            fields {
+                #[sharding(storage_option)]
+                pub opt: Option<int>,
+            }
+
+            transition!{
+                tr1() {
+                    deposit opt += Some(let x);
+                }
+            }
+        }}
+    } => Err(e) => assert_error_msg(e, "pattern-binding cannot be used in a 'deposit' statement")
+}
+
+test_verify_one_file! {
+    #[test] bind_fail_guard IMPORTS.to_string() + code_str! {
+
+        tokenized_state_machine!{ Y {
+            fields {
+                #[sharding(storage_option)]
+                pub opt: Option<int>,
+            }
+
+            transition!{
+                tr1() {
+                    guard opt >= Some(let x);
+                }
+            }
+        }}
+    } => Err(e) => assert_error_msg(e, "pattern-binding cannot be used in a 'guard' statement")
 }

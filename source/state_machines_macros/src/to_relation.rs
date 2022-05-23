@@ -5,7 +5,7 @@ use quote::{quote, quote_spanned};
 use syn::spanned::Spanned;
 use syn::Expr;
 
-/// Converts a transition description into a relation between `self` and `post`.
+/// Converts a transition description into a relation between `pre` and `post`.
 /// Overall, this process has two steps:
 ///
 /// 1. Process all 'update' statements and special ops, turning them into
@@ -133,6 +133,9 @@ fn to_relation_stmt(
                 conjunct_opt(t, p)
             }
         }
+        SimplStmt::Split(..) => {
+            panic!("this SplitKind should have been translated out");
+        }
         SimplStmt::PostCondition(_span, e) | SimplStmt::Require(_span, e) => match p {
             None => Some(quote_spanned! { e.span() => (#e) }),
             Some(r) => Some(quote_spanned! { e.span() => ((#e) && #r) }),
@@ -221,6 +224,9 @@ pub fn asserts_to_single_predicate_simpl(sop: &SimplStmt) -> Option<TokenStream>
                 None
             }
         }
+        SimplStmt::Split(..) => {
+            panic!("other 'split' kinds should have been translated out");
+        }
         SimplStmt::Assert(_span, e, _) => Some(quote_spanned! { e.span() => (#e) }),
         SimplStmt::Require(..) => None,
         SimplStmt::PostCondition(..) => None,
@@ -239,11 +245,13 @@ pub fn asserts_to_single_predicate(ts: &TransitionStmt) -> Option<TokenStream> {
             }
             o
         }
-        TransitionStmt::Let(_span, pat, ty, _, e, child) => {
+        TransitionStmt::Split(_span, SplitKind::Let(pat, ty, _, e), es) => {
             let ty_tokens = match ty {
                 None => TokenStream::new(),
                 Some(ty) => quote! { : #ty },
             };
+            assert!(es.len() == 1);
+            let child = &es[0];
             match asserts_to_single_predicate(child) {
                 None => None,
                 Some(r) => Some(quote! { { let #pat #ty_tokens = #e; #r } }),
@@ -274,13 +282,15 @@ pub fn asserts_to_single_predicate(ts: &TransitionStmt) -> Option<TokenStream> {
                 None
             }
         }
+        TransitionStmt::Split(_span, SplitKind::Special(..), _es) => {
+            panic!("Special should have been translated out");
+        }
         TransitionStmt::Assert(_span, e, _) => Some(quote_spanned! { e.span() => (#e) }),
         TransitionStmt::PostCondition(..)
         | TransitionStmt::Require(..)
         | TransitionStmt::Initialize(..)
         | TransitionStmt::Update(..)
-        | TransitionStmt::SubUpdate(..)
-        | TransitionStmt::Special(..) => None,
+        | TransitionStmt::SubUpdate(..) => None,
     }
 }
 

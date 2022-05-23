@@ -5,7 +5,9 @@
 //!
 //! Concurrent-state-machine-specific stuff is in concurrency_tokens.rs
 
-use crate::ast::{Invariant, Lemma, ShardableType, TransitionKind, TransitionParam, SM};
+use crate::ast::{
+    Invariant, Lemma, ShardableType, Transition, TransitionKind, TransitionParam, SM,
+};
 use crate::concurrency_tokens::output_token_types_and_fns;
 use crate::lemmas::get_transition;
 use crate::parse_token_stream::SMBundle;
@@ -250,7 +252,7 @@ pub fn output_primary_stuff(
         // Output the 'weak' transition relation.
         // (or for the 'Init' case, a single-state predicate).
 
-        if trans.kind != TransitionKind::Readonly {
+        {
             let f = to_relation(&simplified_body, true /* weak */);
             let name = &trans.name;
             let rel_fn;
@@ -280,7 +282,7 @@ pub fn output_primary_stuff(
         // Note that 'init' routines don't allow asserts, so there is no need for an
         // additional 'strong' relation.
 
-        if trans.kind == TransitionKind::Transition {
+        if trans.kind != TransitionKind::Init {
             let params = pre_post_params(&trans.params);
             let name = Ident::new(&(trans.name.to_string() + "_strong"), trans.name.span());
 
@@ -342,14 +344,21 @@ fn output_step_datatype(
     sm: &SM,
     is_init: bool,
 ) {
-    let kind = if is_init { TransitionKind::Init } else { TransitionKind::Transition };
+    let filter_fn = |t: &Transition| {
+        if is_init {
+            t.kind == TransitionKind::Init
+        } else {
+            t.kind == TransitionKind::Transition || t.kind == TransitionKind::Readonly
+        }
+    };
+
     let type_name = if is_init { "Config" } else { "Step" };
     let type_ident = Ident::new(type_name, sm.name.span());
 
     let variants: Vec<TokenStream> = sm
         .transitions
         .iter()
-        .filter(|t| t.kind == kind)
+        .filter(|t| filter_fn(t))
         .map(|t| {
             let p = step_params(&t.params);
             let tr_name = &t.name;
@@ -375,7 +384,7 @@ fn output_step_datatype(
     let arms: Vec<TokenStream> = sm
         .transitions
         .iter()
-        .filter(|t| t.kind == kind)
+        .filter(|t| filter_fn(t))
         .map(|t| {
             let step_args = just_args(&t.params);
             let tr_args = if is_init { post_args(&t.params) } else { pre_post_args(&t.params) };
@@ -424,7 +433,7 @@ fn output_step_datatype(
     let (gen1, gen2) = generic_components_for_fn(&sm.generics);
 
     for trans in &sm.transitions {
-        if trans.kind == kind {
+        if filter_fn(&trans) {
             let tr_name = &trans.name;
             if is_init {
                 let params = post_assoc_params(&super_self_ty, &trans.params);
@@ -463,22 +472,6 @@ fn output_step_datatype(
             }
         }
     }
-
-    /*
-    if is_init {
-    } else {
-        root_stream.extend(quote!{
-            #[proof]
-            #[verifier(returns(proof))]
-            #[verifier(external_body)]
-            pub fn get_step(pre: #self_ty, post: #self_ty) -> crate::pervasive::modes::Spec<#step_ty> {
-                requires(State::next(pre, post));
-                ensures(|step: crate::pervasive::modes::Spec<#step_ty>| State::next_by(pre, post, step.value()));
-                ::std::unimplemented!();
-            }
-        });
-    }
-    */
 }
 
 /// pre: Self, post: Self, params...

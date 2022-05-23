@@ -1,4 +1,4 @@
-use crate::ast::{LetKind, SpecialOp, Transition, TransitionKind, TransitionStmt};
+use crate::ast::{LetKind, SpecialOp, SplitKind, Transition, TransitionKind, TransitionStmt};
 use syn::parse::Error;
 
 // Here we check the following rules related to `birds_eye` let-bindings:
@@ -15,6 +15,8 @@ use syn::parse::Error;
 // 5. A 'requires', or any special op that might expand to a 'requires'
 //    cannot be sequenced after any 'assert' which is in
 //    the scope of a `birds_eye let`.
+//
+// Note also that for these purposes, a variable bound in a 'withdraw' counts as birds_eye.
 //
 // The rationale for these rules is as follows:
 //
@@ -73,8 +75,8 @@ pub fn check_birds_eye(trans: &Transition, concurrent: bool, errors: &mut Vec<Er
         &trans.body,
         trans.kind == TransitionKind::Init,
         concurrent,
-        false,
-        &mut false,
+        None,
+        &mut None,
         errors,
     );
 }
@@ -83,8 +85,8 @@ fn check_birds_eye_rec(
     ts: &TransitionStmt,
     is_init: bool,
     concurrent: bool,
-    scoped_in_birds_eye: bool,
-    past_assert: &mut bool,
+    scoped_in_birds_eye: Option<&'static str>,
+    past_assert: &mut Option<&'static str>,
     errors: &mut Vec<Error>,
 ) {
     match ts {
@@ -100,7 +102,10 @@ fn check_birds_eye_rec(
                 );
             }
         }
-        TransitionStmt::Let(span, _pat, _ty, lk, _init_e, child) => {
+        TransitionStmt::Split(span, SplitKind::Let(_pat, _ty, lk, _init_e), splits) => {
+            assert!(splits.len() == 1);
+            let child = &splits[0];
+
             let mut is_birds_eye = *lk == LetKind::BirdsEye;
             if is_birds_eye {
                 if !concurrent {
@@ -121,13 +126,49 @@ fn check_birds_eye_rec(
                 child,
                 is_init,
                 concurrent,
-                scoped_in_birds_eye || is_birds_eye,
+                opt_or(scoped_in_birds_eye, is_birds_eye, "birds_eye"),
                 past_assert,
                 errors,
             );
         }
+        TransitionStmt::Split(span, SplitKind::Special(_, op, _, _), splits) => {
+            let name = op.stmt.name();
+            if op.is_guard() {
+                if let Some(m) = scoped_in_birds_eye {
+                    errors.push(Error::new(
+                        *span,
+                        format!("'{name:}' statements should not be in the scope of a `{m:}` let-binding; a guard value must be a deterministic function of the local inputs")));
+                }
+            } else if affects_precondition(op) {
+                if let Some(m) = scoped_in_birds_eye {
+                    errors.push(Error::new(
+                        *span,
+                        format!("'{name:}' statements should not be in the scope of a `{m:}` let-binding; preconditions of an exchange cannot depend on such bindings")));
+                } else if let Some(m) = *past_assert {
+                    errors.push(Error::new(
+                        *span,
+                        format!("'{name:}' statements should not be preceeded by an assert which is in the scope of a `{m:}` let-binding; preconditions of an exchange cannot depend on such bindings")));
+                }
+            }
+
+            if splits.len() > 0 {
+                assert!(splits.len() == 1);
+                let child = &splits[0];
+
+                let is_withdraw = op.stmt.is_withdraw();
+
+                check_birds_eye_rec(
+                    child,
+                    is_init,
+                    concurrent,
+                    opt_or(scoped_in_birds_eye, is_withdraw, "withdraw"),
+                    past_assert,
+                    errors,
+                );
+            }
+        }
         TransitionStmt::Split(_span, _split_kind, splits) => {
-            let mut new_past_assert = false;
+            let mut new_past_assert = None;
             for split in splits {
                 let mut past_assert1 = *past_assert;
                 check_birds_eye_rec(
@@ -138,44 +179,25 @@ fn check_birds_eye_rec(
                     &mut past_assert1,
                     errors,
                 );
-                new_past_assert |= past_assert1;
+                new_past_assert = new_past_assert.or(past_assert1);
             }
             *past_assert = new_past_assert;
         }
         TransitionStmt::Assert(..) => {
-            if scoped_in_birds_eye {
-                *past_assert = true;
+            if scoped_in_birds_eye.is_some() {
+                *past_assert = scoped_in_birds_eye;
             }
         }
-        TransitionStmt::Special(span, _, op, _) => {
-            let name = op.stmt.name();
-            if op.is_guard() {
-                if scoped_in_birds_eye {
-                    errors.push(Error::new(
-                        *span,
-                        format!("'{name:}' statements should not be in the scope of a `birds_eye` let-binding; a guard value must be a deterministic function of the local inputs")));
-                }
-            } else if affects_precondition(op) {
-                if scoped_in_birds_eye {
-                    errors.push(Error::new(
-                        *span,
-                        format!("'{name:}' statements should not be in the scope of a `birds_eye` let-binding; preconditions of an exchange cannot depend on such bindings")));
-                } else if *past_assert {
-                    errors.push(Error::new(
-                        *span,
-                        format!("'{name:}' statements should not be preceeded by an assert which is in the scope of a `birds_eye` let-binding; preconditions of an exchange cannot depend on such bindings")));
-                }
-            }
-        }
+
         TransitionStmt::Require(span, _) => {
-            if scoped_in_birds_eye {
+            if let Some(m) = scoped_in_birds_eye {
                 errors.push(Error::new(
                     *span,
-                    "'require' statements should not be in the scope of a `birds_eye` let-binding; preconditions of an exchange cannot depend on such bindings"));
-            } else if *past_assert {
+                    format!("'require' statements should not be in the scope of a `{m:}` let-binding; preconditions of an exchange cannot depend on such bindings")));
+            } else if let Some(m) = *past_assert {
                 errors.push(Error::new(
                     *span,
-                    "'require' statements should not be preceeded by an assert which is in the scope of a `birds_eye` let-binding; preconditions of an exchange cannot depend on such bindings"));
+                    format!("'require' statements should not be preceeded by an assert which is in the scope of a `{m:}` let-binding; preconditions of an exchange cannot depend on such bindings")));
             }
         }
 
@@ -191,4 +213,17 @@ fn check_birds_eye_rec(
 /// Should return 'true' for remove, have, and deposit ops.
 fn affects_precondition(op: &SpecialOp) -> bool {
     op.is_remove() || op.is_have() || op.is_deposit()
+}
+
+fn opt_or<'a>(o: Option<&'a str>, b: bool, s: &'a str) -> Option<&'a str> {
+    match o {
+        Some(_) => o,
+        None => {
+            if b {
+                Some(s)
+            } else {
+                None
+            }
+        }
+    }
 }

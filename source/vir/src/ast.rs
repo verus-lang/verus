@@ -6,7 +6,7 @@
 //! for verification.
 
 use crate::def::Spanned;
-use air::ast::{Quant, Span};
+use air::ast::Span;
 use air::errors::Error;
 use std::sync::Arc;
 
@@ -162,6 +162,16 @@ pub enum ArithOp {
     EuclideanMod,
 }
 
+/// Bitwise operation
+#[derive(Copy, Clone, Debug)]
+pub enum BitwiseOp {
+    BitXor,
+    BitAnd,
+    BitOr,
+    Shr,
+    Shl,
+}
+
 /// Primitive binary operations
 /// (not arbitrary user-defined functions -- these are represented by ExprX::Call)
 /// Note that all integer operations are on mathematic integers (IntRange::Int),
@@ -194,11 +204,7 @@ pub enum BinaryOp {
     /// IntRange operations that may require overflow or divide-by zero checks
     Arith(ArithOp, InferMode),
     /// Bit Vector Operators
-    BitXor,
-    BitAnd,
-    BitOr,
-    Shr,
-    Shl,
+    Bitwise(BitwiseOp),
 }
 
 /// Ghost annotations on functions and while loops; must appear at the beginning of function body
@@ -316,6 +322,12 @@ pub enum InvAtomicity {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum AssertQueryMode {
     NonLinear,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct Quant {
+    pub quant: air::ast::Quant,
+    pub boxed_params: bool,
 }
 
 /// Expression, similar to rustc_hir::Expr

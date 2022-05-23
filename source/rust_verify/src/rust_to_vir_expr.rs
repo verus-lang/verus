@@ -14,7 +14,7 @@ use crate::util::{
     unsupported_err_span, vec_map, vec_map_result,
 };
 use crate::{unsupported, unsupported_err, unsupported_err_unless, unsupported_unless};
-use air::ast::{Binder, BinderX, Quant};
+use air::ast::{Binder, BinderX};
 use air::ast_util::str_ident;
 use rustc_ast::{Attribute, BorrowKind, Mutability};
 use rustc_hir::def::{DefKind, Res};
@@ -28,9 +28,9 @@ use rustc_span::def_id::DefId;
 use rustc_span::Span;
 use std::sync::Arc;
 use vir::ast::{
-    ArithOp, ArmX, AssertQueryMode, BinaryOp, CallTarget, Constant, ExprX, FieldOpr, FunX,
-    HeaderExpr, HeaderExprX, Ident, IntRange, InvAtomicity, Mode, PatternX, SpannedTyped, StmtX,
-    Stmts, Typ, TypX, UnaryOp, UnaryOpr, VarAt, VirErr,
+    ArithOp, ArmX, AssertQueryMode, BinaryOp, BitwiseOp, CallTarget, Constant, ExprX, FieldOpr,
+    FunX, HeaderExpr, HeaderExprX, Ident, IntRange, InvAtomicity, Mode, PatternX, Quant,
+    SpannedTyped, StmtX, Stmts, Typ, TypX, UnaryOp, UnaryOpr, VarAt, VirErr,
 };
 use vir::ast_util::{ident_binder, path_as_rust_name};
 use vir::def::positional_field_ident;
@@ -391,6 +391,7 @@ fn fn_call_to_vir<'tcx>(
     let is_opens_invariants_except = f_name == "builtin::opens_invariants_except";
     let is_forall = f_name == "builtin::forall";
     let is_exists = f_name == "builtin::exists";
+    let is_forall_arith = f_name == "builtin::forall_arith";
     let is_choose = f_name == "builtin::choose";
     let is_choose_tuple = f_name == "builtin::choose_tuple";
     let is_with_triggers = f_name == "builtin::with_triggers";
@@ -428,7 +429,7 @@ fn fn_call_to_vir<'tcx>(
         || is_opens_invariants_any
         || is_opens_invariants
         || is_opens_invariants_except;
-    let is_quant = is_forall || is_exists;
+    let is_quant = is_forall || is_exists || is_forall_arith;
     let is_directive = is_extra_dependency || is_hide || is_reveal || is_reveal_fuel;
     let is_cmp = is_equal || is_eq || is_ne || is_le || is_ge || is_lt || is_gt;
     let is_arith_binary = is_add || is_sub || is_mul;
@@ -567,9 +568,14 @@ fn fn_call_to_vir<'tcx>(
         unsupported_err_unless!(len == 1, expr.span, "expected decreases", &args);
         args = extract_tuple(args[0]);
     }
-    if is_forall || is_exists {
+    if is_forall || is_exists || is_forall_arith {
         unsupported_err_unless!(len == 1, expr.span, "expected forall/exists", &args);
-        let quant = if is_forall { Quant::Forall } else { Quant::Exists };
+        let quant = if is_forall || is_forall_arith {
+            air::ast::Quant::Forall
+        } else {
+            air::ast::Quant::Exists
+        };
+        let quant = Quant { quant, boxed_params: !is_forall_arith };
         return extract_quant(bctx, expr.span, quant, args[0]);
     }
     if is_choose {
@@ -1535,8 +1541,8 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                 BinOpKind::BitXor => {
                     match ((tc.node_type(lhs.hir_id)).kind(), (tc.node_type(rhs.hir_id)).kind()) {
                         (TyKind::Bool, TyKind::Bool) => BinaryOp::Xor,
-                        (TyKind::Int(_), TyKind::Int(_)) => BinaryOp::BitXor,
-                        (TyKind::Uint(_), TyKind::Uint(_)) => BinaryOp::BitXor,
+                        (TyKind::Int(_), TyKind::Int(_)) => BinaryOp::Bitwise(BitwiseOp::BitXor),
+                        (TyKind::Uint(_), TyKind::Uint(_)) => BinaryOp::Bitwise(BitwiseOp::BitXor),
                         _ => panic!("bitwise XOR for this type not supported"),
                     }
                 }
@@ -1547,8 +1553,8 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                                 "bitwise AND for bools (i.e., the not-short-circuited version) not supported"
                             );
                         }
-                        (TyKind::Int(_), TyKind::Int(_)) => BinaryOp::BitAnd,
-                        (TyKind::Uint(_), TyKind::Uint(_)) => BinaryOp::BitAnd,
+                        (TyKind::Int(_), TyKind::Int(_)) => BinaryOp::Bitwise(BitwiseOp::BitAnd),
+                        (TyKind::Uint(_), TyKind::Uint(_)) => BinaryOp::Bitwise(BitwiseOp::BitAnd),
                         t => panic!("bitwise AND for this type not supported {:#?}", t),
                     }
                 }
@@ -1559,13 +1565,13 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                                 "bitwise OR for bools (i.e., the not-short-circuited version) not supported"
                             );
                         }
-                        (TyKind::Int(_), TyKind::Int(_)) => BinaryOp::BitOr,
-                        (TyKind::Uint(_), TyKind::Uint(_)) => BinaryOp::BitOr,
+                        (TyKind::Int(_), TyKind::Int(_)) => BinaryOp::Bitwise(BitwiseOp::BitOr),
+                        (TyKind::Uint(_), TyKind::Uint(_)) => BinaryOp::Bitwise(BitwiseOp::BitOr),
                         _ => panic!("bitwise OR for this type not supported"),
                     }
                 }
-                BinOpKind::Shr => BinaryOp::Shr,
-                BinOpKind::Shl => BinaryOp::Shl,
+                BinOpKind::Shr => BinaryOp::Bitwise(BitwiseOp::Shr),
+                BinOpKind::Shl => BinaryOp::Bitwise(BitwiseOp::Shl),
             };
             let e = mk_expr(ExprX::Binary(vop, vlhs, vrhs));
             match op.node {

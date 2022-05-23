@@ -106,7 +106,7 @@ fn run_examples_in_directory(dir_path: &str) {
         };
 
         use regex::Regex;
-        let re = Regex::new(r"Verification results:: verified: (\d+) errors: (\d+)").unwrap();
+        let re = Regex::new(r"verification results:: verified: (\d+) errors: (\d+)").unwrap();
         let stdout = std::str::from_utf8(&output.stdout).expect("invalid stdout encoding");
         let verifier_output: Option<(u64, u64)> = re.captures_iter(stdout).next().map(|x| {
             (

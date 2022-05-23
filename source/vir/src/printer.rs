@@ -260,12 +260,15 @@ fn expr_to_node(expr: &Expr) -> Node {
             BinaryOp::Arith(op, _) => {
                 nodes!({str_to_node(&format!("{:?}", op))} {expr_to_node(e1)} {expr_to_node(e2)})
             }
+            BinaryOp::Bitwise(op) => {
+                nodes!({str_to_node(&format!("{:?}", op))} {expr_to_node(e1)} {expr_to_node(e2)})
+            }
             _ => {
                 nodes!({str_to_node(&format!("{:?}", binary_op).to_lowercase())} {expr_to_node(e1)} {expr_to_node(e2)})
             }
         },
         ExprX::Quant(quant, binders, expr) => {
-            nodes!({str_to_node(&format!("{:?}", quant).to_lowercase())} {binders_node(binders, &typ_to_node)} {expr_to_node(expr)})
+            nodes!({str_to_node(&format!("{:?}", quant.quant).to_lowercase())} {binders_node(binders, &typ_to_node)} {expr_to_node(expr)})
         }
         ExprX::Closure(binders, expr) => {
             nodes!(closure {binders_node(binders, &typ_to_node)} {expr_to_node(expr)})

@@ -112,9 +112,9 @@ impl MonoidStmtType {
 #[derive(Clone, Debug)]
 pub enum MonoidElt {
     /// Represents the element Some(e)
-    OptionSome(Expr),
+    OptionSome(Option<Expr>),
     /// Represents the singleton map [k => v]
-    SingletonKV(Expr, Expr),
+    SingletonKV(Expr, Option<Expr>),
     /// Represents the singleton multiset {e}
     SingletonMultiset(Expr),
     /// Represents e
@@ -185,6 +185,9 @@ pub struct Arm {
 pub enum SplitKind {
     If(Expr),
     Match(Expr, Vec<Arm>),
+    Let(Pat, Option<Type>, LetKind, Expr),
+    /// concurrent-state-machine-specific stuff
+    Special(Ident, SpecialOp, AssertProof, Option<Pat>),
 }
 
 #[derive(Clone, Debug)]
@@ -196,16 +199,12 @@ pub enum SubIdx {
 #[derive(Clone, Debug)]
 pub enum TransitionStmt {
     Block(Span, Vec<TransitionStmt>),
-    Let(Span, Pat, Option<Type>, LetKind, Expr, Box<TransitionStmt>),
     Split(Span, SplitKind, Vec<TransitionStmt>),
     Require(Span, Expr),
     Assert(Span, Expr, AssertProof),
     Update(Span, Ident, Expr),
     SubUpdate(Span, Ident, Vec<SubIdx>, Expr),
     Initialize(Span, Ident, Expr),
-
-    /// concurrent-state-machine-specific stuff
-    Special(Span, Ident, SpecialOp, AssertProof),
 
     /// Different than an Assert - this statement is allowed to depend on output values.
     /// Used internally by various transformations in `concurrency_tokens.rs`.
@@ -215,7 +214,7 @@ pub enum TransitionStmt {
 #[derive(Clone, Debug)]
 pub enum SimplStmt {
     Let(Span, Pat, Option<Type>, Expr, Vec<SimplStmt>),
-    Split(Span, SplitKind, Vec<Vec<SimplStmt>>),
+    Split(Span, SplitKind, Vec<Vec<SimplStmt>>), // only for If, Match
 
     Require(Span, Expr),
     PostCondition(Span, Expr),
@@ -301,20 +300,25 @@ impl MonoidStmtType {
             _ => false,
         }
     }
+
+    pub fn is_withdraw(self) -> bool {
+        match self {
+            MonoidStmtType::Withdraw => true,
+            _ => false,
+        }
+    }
 }
 
 impl TransitionStmt {
     pub fn get_span<'a>(&'a self) -> &'a Span {
         match self {
             TransitionStmt::Block(span, _) => span,
-            TransitionStmt::Let(span, _, _, _, _, _) => span,
             TransitionStmt::Split(span, _, _) => span,
             TransitionStmt::Require(span, _) => span,
             TransitionStmt::Assert(span, _, _) => span,
             TransitionStmt::Update(span, _, _) => span,
             TransitionStmt::SubUpdate(span, _, _, _) => span,
             TransitionStmt::Initialize(span, _, _) => span,
-            TransitionStmt::Special(span, _, _, _) => span,
             TransitionStmt::PostCondition(span, _) => span,
         }
     }
@@ -322,16 +326,23 @@ impl TransitionStmt {
     pub fn statement_name(&self) -> &'static str {
         match self {
             TransitionStmt::Block(..) => "block",
-            TransitionStmt::Let(..) => "let",
+            TransitionStmt::Split(_, SplitKind::Let(..), _) => "let",
             TransitionStmt::Split(_, SplitKind::If(..), _) => "if",
             TransitionStmt::Split(_, SplitKind::Match(..), _) => "match",
+            TransitionStmt::Split(_, SplitKind::Special(_, op, _, _), _) => op.stmt.name(),
             TransitionStmt::Require(..) => "require",
             TransitionStmt::Assert(..) => "assert",
             TransitionStmt::Update(..) => "update",
             TransitionStmt::SubUpdate(..) => "update",
             TransitionStmt::Initialize(..) => "init",
-            TransitionStmt::Special(_, _, op, _) => op.stmt.name(),
             TransitionStmt::PostCondition(..) => "post_condition",
+        }
+    }
+
+    pub fn is_trivial(&self) -> bool {
+        match self {
+            TransitionStmt::Block(_, vs) => vs.len() == 0,
+            _ => false,
         }
     }
 }
