@@ -1,6 +1,6 @@
 use crate::ast::{
     BinaryOp, BindX, Binder, Binders, Constant, Datatypes, Decl, DeclX, Expr, ExprX, Exprs, Ident,
-    MultiOp, Quant, Query, QueryX, Stmt, StmtX, Triggers, Typ, TypX, Typs, UnaryOp,
+    MultiOp, Qid, Quant, Query, QueryX, Stmt, StmtX, Triggers, Typ, TypX, Typs, UnaryOp,
 };
 use crate::errors::all_msgs_from_error;
 use crate::util::vec_map;
@@ -225,8 +225,8 @@ impl Printer {
                 nodes!(ite {self.expr_to_node(expr1)} {self.expr_to_node(expr2)} {self.expr_to_node(expr3)})
             }
             ExprX::Bind(bind, expr) => {
-                let with_triggers = |expr: &Expr, triggers: &Triggers| {
-                    if triggers.len() == 0 {
+                let with_triggers = |expr: &Expr, triggers: &Triggers, qid: &Qid| {
+                    if triggers.len() == 0 && qid.is_none() {
                         self.expr_to_node(expr)
                     } else {
                         let mut nodes: Vec<Node> = Vec::new();
@@ -236,6 +236,10 @@ impl Printer {
                             nodes.push(str_to_node(":pattern"));
                             nodes.push(self.exprs_to_node(trigger));
                         }
+                        if let Some(s) = qid {
+                            nodes.push(str_to_node(":qid"));
+                            nodes.push(str_to_node(s));
+                        }
                         Node::List(nodes)
                     }
                 };
@@ -244,21 +248,21 @@ impl Printer {
                         let s_binders = self.binders_to_node(binders, &|e| self.expr_to_node(e));
                         nodes!(let {s_binders} {self.expr_to_node(expr)})
                     }
-                    BindX::Quant(quant, binders, triggers) => {
+                    BindX::Quant(quant, binders, triggers, qid) => {
                         let s_quant = match quant {
                             Quant::Forall => "forall",
                             Quant::Exists => "exists",
                         };
                         let s_binders = self.binders_to_node(binders, &|t| self.typ_to_node(t));
-                        let body = with_triggers(expr, triggers);
+                        let body = with_triggers(expr, triggers, qid);
                         nodes!({str_to_node(s_quant)} {s_binders} {body})
                     }
                     BindX::Lambda(binders) => {
                         nodes!(lambda {self.binders_to_node(binders, &|t| self.typ_to_node(t))} {self.expr_to_node(expr)})
                     }
-                    BindX::Choose(binders, triggers, expr_cond) => {
+                    BindX::Choose(binders, triggers, qid, expr_cond) => {
                         let s_binders = self.binders_to_node(binders, &|t| self.typ_to_node(t));
-                        let cond = with_triggers(expr_cond, triggers);
+                        let cond = with_triggers(expr_cond, triggers, qid);
                         let body = self.expr_to_node(expr);
                         nodes!(choose {s_binders} {cond} {body})
                     }

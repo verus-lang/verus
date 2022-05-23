@@ -224,7 +224,7 @@ fn simplify_lambda(
             let eq = Arc::new(ExprX::Binary(BinaryOp::Eq, apply.clone(), e1));
             let trig = Arc::new(vec![apply]);
             let trigs = Arc::new(vec![trig]);
-            let forall = mk_forall(&bs, &trigs, &eq);
+            let forall = mk_forall(&bs, &trigs, None, &eq);
             let decl = Arc::new(DeclX::Axiom(forall));
             state.generated_decls.push(decl);
 
@@ -323,13 +323,13 @@ fn simplify_choose(
             let call = Arc::new(ExprX::Apply(closure_fun.clone(), Arc::new(xholes)));
             let and = mk_and(&vec![cond.clone(), mk_eq(&call, &body)]);
             let existsbind =
-                Arc::new(BindX::Quant(Quant::Exists, binders.clone(), Arc::new(new_triggers)));
+                Arc::new(BindX::Quant(Quant::Exists, binders.clone(), Arc::new(new_triggers), None));
             let exists1 = Arc::new(ExprX::Bind(existsbind.clone(), cond));
             let exists2 = Arc::new(ExprX::Bind(existsbind, and));
             let imply = Arc::new(ExprX::Binary(BinaryOp::Implies, exists1, exists2));
             let trig = Arc::new(vec![call]);
             let trigs = Arc::new(vec![trig]);
-            let forall = mk_forall(&bs, &trigs, &imply);
+            let forall = mk_forall(&bs, &trigs, None, &imply);
             let decl = Arc::new(DeclX::Axiom(forall));
             state.generated_decls.push(decl);
 
@@ -506,7 +506,8 @@ fn simplify_expr(ctxt: &mut Context, state: &mut State, expr: &Expr) -> (Typ, Ex
                 let expr = Arc::new(ExprX::Bind(bind, e1.clone()));
                 (typ1, expr, t)
             }
-            BindX::Quant(quant, binders, triggers) => {
+            BindX::Quant(quant, binders, triggers, qid) => {
+// TODO: Figure out how qid propagates
                 ctxt.typing.decls.push_scope(true);
                 let mut typs: Vec<Typ> = Vec::new();
                 for binder in binders.iter() {
@@ -540,11 +541,13 @@ fn simplify_expr(ctxt: &mut Context, state: &mut State, expr: &Expr) -> (Typ, Ex
                 }
                 let e1 = es[i].clone();
                 let typ = Arc::new(TypX::Bool);
-                let bind = BindX::Quant(*quant, binders.clone(), Arc::new(new_triggers));
+// TODO: What Qid should this use (if any)?
+                let bind = BindX::Quant(*quant, binders.clone(), Arc::new(new_triggers), None);
                 (typ, Arc::new(ExprX::Bind(Arc::new(bind), e1)), t)
             }
             BindX::Lambda(binders) => simplify_lambda(ctxt, state, binders, e1),
-            BindX::Choose(binders, triggers, cond) => {
+            BindX::Choose(binders, triggers, qid, cond) => {
+// TODO: Figure out how qid propagates
                 simplify_choose(ctxt, state, binders, triggers, cond, e1)
             }
         },

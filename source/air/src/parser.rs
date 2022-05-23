@@ -1,6 +1,6 @@
 use crate::ast::{
     BinaryOp, BindX, Binder, BinderX, Binders, Command, CommandX, Commands, Constant, Decl, DeclX,
-    Decls, Expr, ExprX, Exprs, MultiOp, Quant, QueryX, Span, Stmt, StmtX, Stmts, Trigger, Triggers,
+    Decls, Expr, ExprX, Exprs, MultiOp, Qid, Quant, QueryX, Span, Stmt, StmtX, Stmts, Trigger, Triggers,
     Typ, TypX, UnaryOp,
 };
 use crate::errors::{error_from_labels, error_from_spans};
@@ -284,25 +284,37 @@ impl Parser {
         Ok(crate::ast_util::mk_let(&binders, &self.node_to_expr(expr)?))
     }
 
-    fn nodes_to_triggers(&self, nodes: &[Node]) -> Result<Triggers, String> {
+    fn nodes_to_triggers_and_qid(&self, nodes: &[Node]) -> Result<(Triggers, Qid), String> {
         let mut triggers: Vec<Trigger> = Vec::new();
-        let mut expect_pattern = true;
+        let mut qid = None;
+        let mut consume_pattern = false;
+        let mut consume_qid = false;
+
         for node in nodes {
             match node {
-                Node::Atom(s) if s.to_string() == ":pattern" && expect_pattern => {}
-                Node::List(trigger_nodes) if !expect_pattern => {
+                Node::Atom(s) if s.to_string() == ":pattern" => {
+                    consume_pattern = true;
+                }
+                Node::Atom(s) if s.to_string() == ":qid" => {
+                    consume_qid = true;
+                }
+                Node::Atom(s) if consume_qid && qid.is_none() => {
+                    qid = Some(s.clone());
+                    consume_qid = false;
+                }
+                Node::List(trigger_nodes) if consume_pattern => {
                     triggers.push(self.nodes_to_exprs(trigger_nodes)?);
+                    consume_pattern = false;
                 }
                 _ => {
                     return Err(format!(
-                        "expected quantifier pattern, found {}",
+                        "expected quantifier pattern or qid, found {}",
                         node_to_string(node)
                     ));
                 }
             }
-            expect_pattern = !expect_pattern;
         }
-        Ok(Arc::new(triggers))
+        Ok((Arc::new(triggers), qid))
     }
 
     fn node_to_quant_expr(
@@ -312,19 +324,20 @@ impl Parser {
         expr: &Node,
     ) -> Result<Expr, String> {
         let binders = self.nodes_to_binders(binder_nodes, &|n| self.node_to_typ(n))?;
-        let (expr, triggers) = match &expr {
+        let (expr, triggers, qid) = match &expr {
             Node::List(nodes) if nodes.len() >= 2 => match &nodes[0] {
                 Node::Atom(s) if s.to_string() == "!" => {
-                    (&nodes[1], self.nodes_to_triggers(&nodes[2..])?)
+                    let (triggers, qid) = self.nodes_to_triggers_and_qid(&nodes[2..])?;
+                    (&nodes[1], triggers, qid)
                 }
-                _ => (expr, Arc::new(vec![])),
+                _ => (expr, Arc::new(vec![]), None),
             },
-            _ => (expr, Arc::new(vec![])),
+            _ => (expr, Arc::new(vec![]), None),
         };
         let expr = self.node_to_expr(expr)?;
         let (body, bind) = match quant_or_choose {
-            QuantOrChoose::Quant(quant) => (expr, BindX::Quant(quant, binders, triggers)),
-            QuantOrChoose::Choose(body) => (body, BindX::Choose(binders, triggers, expr)),
+            QuantOrChoose::Quant(quant) => (expr, BindX::Quant(quant, binders, triggers, qid)),
+            QuantOrChoose::Choose(body) => (body, BindX::Choose(binders, triggers, qid, expr)),
         };
         Ok(Arc::new(ExprX::Bind(Arc::new(bind), body)))
     }

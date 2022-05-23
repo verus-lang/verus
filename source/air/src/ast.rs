@@ -98,14 +98,16 @@ pub enum Quant {
 pub type Trigger = Exprs;
 pub type Triggers = Arc<Vec<Trigger>>;
 
+pub type Qid = Option<String>;
+
 pub type Bind = Arc<BindX>;
 #[derive(Clone, Debug)]
 pub enum BindX {
     Let(Binders<Expr>),
-    Quant(Quant, Binders<Typ>, Triggers),
+    Quant(Quant, Binders<Typ>, Triggers, Qid),
     Lambda(Binders<Typ>),
     // choose Binders s.t. Expr is true
-    Choose(Binders<Typ>, Triggers, Expr),
+    Choose(Binders<Typ>, Triggers, Qid, Expr),
 }
 
 pub type Expr = Arc<ExprX>;

@@ -1,6 +1,6 @@
 use crate::ast::{
     BinaryOp, Bind, BindX, Binder, BinderX, Command, CommandX, Constant, DeclX, Expr, ExprX, Exprs,
-    Ident, MultiOp, Quant, Span, Trigger, Typ, TypX, Typs, UnaryOp,
+    Ident, MultiOp, Qid, Quant, Span, Trigger, Typ, TypX, Typs, UnaryOp,
 };
 use crate::errors::ErrorX;
 use std::fmt::Debug;
@@ -129,7 +129,7 @@ pub fn ident_binder<A: Clone>(x: &Ident, a: &A) -> Binder<A> {
 pub fn mk_bind_expr(bind: &Bind, body: &Expr) -> Expr {
     let n = match &**bind {
         BindX::Let(bs) => bs.len(),
-        BindX::Quant(_, bs, _) => bs.len(),
+        BindX::Quant(_, bs, _, _) => bs.len(),
         BindX::Lambda(..) | BindX::Choose(..) => 1,
     };
     if n == 0 { body.clone() } else { Arc::new(ExprX::Bind(bind.clone(), body.clone())) }
@@ -147,24 +147,25 @@ pub fn mk_quantifier(
     quant: Quant,
     binders: &Vec<Binder<Typ>>,
     triggers: &Vec<Trigger>,
+    qid: Qid,
     body: &Expr,
 ) -> Expr {
     if binders.len() == 0 {
         body.clone()
     } else {
         Arc::new(ExprX::Bind(
-            Arc::new(BindX::Quant(quant, Arc::new(binders.clone()), Arc::new(triggers.clone()))),
+            Arc::new(BindX::Quant(quant, Arc::new(binders.clone()), Arc::new(triggers.clone()), qid)),
             body.clone(),
         ))
     }
 }
 
-pub fn mk_forall(binders: &Vec<Binder<Typ>>, triggers: &Vec<Trigger>, body: &Expr) -> Expr {
-    mk_quantifier(Quant::Forall, binders, triggers, body)
+pub fn mk_forall(binders: &Vec<Binder<Typ>>, triggers: &Vec<Trigger>, qid:Qid, body: &Expr) -> Expr {
+    mk_quantifier(Quant::Forall, binders, triggers, qid, body)
 }
 
-pub fn mk_exists(binders: &Vec<Binder<Typ>>, triggers: &Vec<Trigger>, body: &Expr) -> Expr {
-    mk_quantifier(Quant::Exists, binders, triggers, body)
+pub fn mk_exists(binders: &Vec<Binder<Typ>>, triggers: &Vec<Trigger>, qid:Qid, body: &Expr) -> Expr {
+    mk_quantifier(Quant::Exists, binders, triggers, qid, body)
 }
 
 pub fn mk_lambda(binders: &Vec<Binder<Typ>>, body: &Expr) -> Expr {
