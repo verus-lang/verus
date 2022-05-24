@@ -441,6 +441,7 @@ impl Verifier {
         let mut air_context = air::context::Context::new(air::smt_manager::SmtManager::new());
         air_context.set_ignore_unexpected_smt(self.args.ignore_unexpected_smt);
         air_context.set_debug(self.args.debug);
+        air_context.set_profile(self.args.profile);
 
         let rerun_msg = if is_rerun { "_rerun" } else { "" };
         if self.args.log_all || self.args.log_air_initial {
@@ -789,6 +790,7 @@ impl Verifier {
         let mut air_context = air::context::Context::new(air::smt_manager::SmtManager::new());
         air_context.set_ignore_unexpected_smt(self.args.ignore_unexpected_smt);
         air_context.set_debug(self.args.debug);
+        air_context.set_profile(self.args.profile);
 
         if self.args.log_all || self.args.log_air_initial {
             let file =

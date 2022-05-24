@@ -37,6 +37,7 @@ pub fn main() {
     opts.optopt("", "log-smt", "Log SMT queries", "FILENAME");
     opts.optflag("", "ignore-unexpected-smt", "Ignore unexpected SMT output");
     opts.optflag("d", "debug", "Debug verification failures");
+    opts.optflag("p", "profile", "Collect and report prover performance data");
     opts.optflag("h", "help", "print this help menu");
 
     let print_usage = || {
@@ -95,6 +96,8 @@ pub fn main() {
     let mut air_context = Context::new(air::smt_manager::SmtManager::new());
     let debug = matches.opt_present("debug");
     air_context.set_debug(debug);
+    let profile = matches.opt_present("profile");
+    air_context.set_profile(profile);
     let ignore_unexpected_smt = matches.opt_present("ignore-unexpected-smt");
     air_context.set_ignore_unexpected_smt(ignore_unexpected_smt);
 

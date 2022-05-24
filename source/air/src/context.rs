@@ -69,6 +69,7 @@ pub struct Context {
     pub(crate) apply_count: u64,
     pub(crate) typing: Typing,
     pub(crate) debug: bool,
+    pub(crate) profile: bool,
     pub(crate) ignore_unexpected_smt: bool,
     pub(crate) rlimit: u32,
     pub(crate) air_initial_log: Emitter,
@@ -94,6 +95,7 @@ impl Context {
             apply_count: 0,
             typing: Typing { decls: crate::scope_map::ScopeMap::new(), snapshots: HashSet::new() },
             debug: false,
+            profile: false,
             ignore_unexpected_smt: false,
             rlimit: 0,
             air_initial_log: Emitter::new(false, false, None),
@@ -134,6 +136,14 @@ impl Context {
 
     pub fn get_debug(&self) -> bool {
         self.debug
+    }
+
+    pub fn set_profile(&mut self, profile: bool) {
+        self.profile = profile;
+    }
+
+    pub fn get_profile(&self) -> bool {
+        self.profile
     }
 
     pub fn set_ignore_unexpected_smt(&mut self, ignore_unexpected_smt: bool) {
@@ -243,6 +253,10 @@ impl Context {
     fn ensure_started(&mut self) {
         match self.state {
             ContextState::NotStarted => {
+                if self.profile {
+                    self.set_z3_param("trace", "true");
+                    // TODO: Pass along a dedicated value we can hand to :trace_file_name
+                }
                 self.blank_line();
                 self.comment("AIR prelude");
                 self.smt_log.log_node(&node!((declare-sort {str_to_node(crate::def::FUNCTION)})));
