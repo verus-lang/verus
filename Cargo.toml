@@ -1,5 +1,5 @@
 [package]
-name = "syn"
+name = "syn_verus"
 version = "1.0.95" # don't forget to update html_root_url and syn.json
 authors = ["David Tolnay <dtolnay@gmail.com>"]
 license = "MIT OR Apache-2.0"
@@ -33,7 +33,7 @@ fold = []
 clone-impls = []
 extra-traits = []
 proc-macro = ["proc-macro2/proc-macro", "quote/proc-macro"]
-test = ["syn-test-suite/all-features"]
+# test = ["syn-test-suite/all-features"]
 
 [dependencies]
 proc-macro2 = { version = "1.0.39", default-features = false }
@@ -49,7 +49,7 @@ rayon = "1.0"
 ref-cast = "1.0"
 regex = "1.0"
 reqwest = { version = "0.11", features = ["blocking"] }
-syn-test-suite = { version = "0", path = "tests/features" }
+# syn-test-suite = { version = "0", path = "tests/features" }
 tar = "0.4.16"
 termcolor = "1.0"
 walkdir = "2.1"
@@ -71,5 +71,5 @@ rustdoc-args = ["--cfg", "doc_cfg"]
 [package.metadata.playground]
 features = ["full", "visit", "visit-mut", "fold", "extra-traits"]
 
-[workspace]
-members = ["dev", "json", "tests/crates", "tests/features"]
+# [workspace]
+# members = ["dev", "json", "tests/crates", "tests/features"]
