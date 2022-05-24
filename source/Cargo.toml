@@ -4,6 +4,7 @@ members = [
   "builtin",
   "builtin_macros",
   "vir",
+  "syn",
   "rust_verify",
   "rust_verify_test_macros",
   "state_machines_macros",
