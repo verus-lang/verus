@@ -13,6 +13,8 @@ use air::ast::{Command, CommandX, Commands, DeclX, MultiOp, Span};
 use air::ast_util::str_typ;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
+use std::cell::Cell;
+use std::cell::RefCell;
 
 pub type ChosenTrigger = Vec<(Span, String)>;
 #[derive(Debug, Clone)]
@@ -32,6 +34,8 @@ pub struct GlobalCtx {
     pub(crate) no_span: Span,
     pub func_call_graph: Graph<Node>,
     pub func_call_sccs: Vec<Node>,
+    // Connects quantifier identifiers to the original expression's span
+    pub qid_map: RefCell<HashMap<String, Span>>, // TODO: Put this in a State type for exp_to_expr in sst_to_air
     pub method_map: HashMap<(Fun, Path), Fun>,
     pub(crate) inferred_modes: HashMap<InferMode, Mode>,
 }
@@ -42,6 +46,8 @@ pub struct FunctionCtx {
     pub checking_recommends: bool,
     // used to print diagnostics for triggers
     pub module_for_chosen_triggers: Option<Path>,
+    // used to create quantifier identifiers
+    pub current_fun: Fun,
 }
 
 // Context for verifying one module
@@ -53,6 +59,8 @@ pub struct Ctx {
     pub(crate) lambda_types: Vec<usize>,
     pub functions: Vec<Function>,
     pub func_map: HashMap<Fun, Function>,
+    // Ensure a unique identifier for each quantifier in a given function
+    pub quantifier_count: Cell<u64>, // TODO: Put this in a State type for exp_to_expr in sst_to_air
     pub(crate) funcs_with_ensure_predicate: HashSet<Fun>,
     pub(crate) datatype_map: HashMap<Path, Datatype>,
     pub(crate) trait_map: HashMap<Path, Trait>,
@@ -184,6 +192,7 @@ impl GlobalCtx {
                 }
             }
         }
+        let qid_map = RefCell::new(HashMap::new());
 
         Ok(GlobalCtx {
             chosen_triggers,
@@ -192,6 +201,7 @@ impl GlobalCtx {
             no_span,
             func_call_graph,
             func_call_sccs,
+            qid_map,
             method_map,
             inferred_modes,
         })
@@ -234,6 +244,7 @@ impl Ctx {
         for tr in krate.traits.iter() {
             trait_map.insert(tr.x.name.clone(), tr.clone());
         }
+        let quantifier_count = Cell::new(0);
         Ok(Ctx {
             module,
             datatype_is_transparent,
@@ -242,6 +253,7 @@ impl Ctx {
             lambda_types,
             functions,
             func_map,
+            quantifier_count,
             funcs_with_ensure_predicate,
             datatype_map,
             trait_map,

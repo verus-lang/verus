@@ -3,7 +3,7 @@ use crate::ast::{
     InvAtomicity, MaskSpec, Mode, Params, Path, PathX, SpannedTyped, Typ, TypX, Typs, UnaryOp,
     UnaryOpr, VarAt,
 };
-use crate::ast_util::{bitwidth_from_type, get_field, get_variant};
+use crate::ast_util::{bitwidth_from_type, fun_as_rust_dbg, get_field, get_variant};
 use crate::context::Ctx;
 use crate::def::{fn_inv_name, fn_namespace_name};
 use crate::def::{
@@ -364,6 +364,19 @@ fn assert_unsigned(exp: &Exp) {
     };
 }
 
+// Generate a unique quantifier ID and map it to the quantifier's span
+fn new_qid(ctx: &Ctx, span: &Span) -> String {
+    let fun_name = fun_as_rust_dbg(&ctx.fun.as_ref().expect("Expressions are expected to be within a function").current_fun);
+    // In SMTLIB, unquoted attribute values cannot contain colons,
+    // and sise cannot handle quoting with vertical bars
+    let fun_name = str::replace(&fun_name, ":", "_");
+    let qcount = ctx.quantifier_count.get();
+    let qid = format!("{}_{}", fun_name, qcount);
+    ctx.quantifier_count.set(qcount + 1);
+    ctx.global.qid_map.borrow_mut().insert(qid.clone(), span.clone());
+    qid
+}
+
 pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: ExprCtxt) -> Expr {
     match (&exp.x, expr_ctxt.is_bit_vector) {
         (ExpX::Const(crate::ast::Constant::Nat(s)), true) => {
@@ -703,7 +716,8 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: ExprCtxt) -> Expr {
                 let triggers = vec_map(&*trigs, |trig| {
                     Arc::new(vec_map(trig, |x| exp_to_expr(ctx, x, expr_ctxt)))
                 });
-                air::ast_util::mk_quantifier(quant.quant, &binders, &triggers, &expr)
+                let qid = new_qid(ctx, &exp.span);
+                air::ast_util::mk_quantifier(quant.quant, &binders, &triggers, Some(qid), &expr)
             }
             (BndX::Lambda(binders), false) => {
                 let expr = exp_to_expr(ctx, exp, expr_ctxt);
@@ -735,7 +749,8 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: ExprCtxt) -> Expr {
                     Arc::new(vec_map(trig, |x| exp_to_expr(ctx, x, expr_ctxt)))
                 });
                 let binders = Arc::new(bs);
-                let bind = Arc::new(BindX::Choose(binders, Arc::new(triggers), cond_expr));
+                let qid = new_qid(ctx, &exp.span);
+                let bind = Arc::new(BindX::Choose(binders, Arc::new(triggers), Some(qid), cond_expr));
                 let mut choose_expr = Arc::new(ExprX::Bind(bind, body_expr));
                 match typ_inv {
                     Some(_) => {
@@ -1421,7 +1436,8 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
                     &added_fuel,
                 );
                 let binder = ident_binder(&str_ident(FUEL_PARAM), &str_typ(FUEL_TYPE));
-                stmts.push(Arc::new(StmtX::Assume(mk_exists(&vec![binder], &vec![], &eq))));
+                let qid = None;  // We don't profile internal quantifiers (at least for now)
+                stmts.push(Arc::new(StmtX::Assume(mk_exists(&vec![binder], &vec![], qid, &eq))));
             }
             if ctx.debug {
                 state.map_span(&stm, SpanKind::Full);
@@ -1467,7 +1483,8 @@ fn set_fuel(local: &mut Vec<Decl>, hidden: &Vec<Fun>) {
         let trigger: Trigger = Arc::new(vec![fuel_bool.clone()]);
         let triggers: Triggers = Arc::new(vec![trigger]);
         let binders: Binders<air::ast::Typ> = Arc::new(vec![ident_binder(&id, &str_typ(FUEL_ID))]);
-        let bind = Arc::new(BindX::Quant(Quant::Forall, binders, triggers));
+        let qid = None;  // We don't profile internal quantifiers (at least for now)
+        let bind = Arc::new(BindX::Quant(Quant::Forall, binders, triggers, qid));
         let or = Arc::new(ExprX::Multi(air::ast::MultiOp::Or, Arc::new(disjuncts)));
         mk_bind_expr(&bind, &or)
     };

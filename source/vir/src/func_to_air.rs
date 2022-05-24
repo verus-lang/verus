@@ -51,7 +51,8 @@ pub(crate) fn func_bind_trig(
     }
     let trigger: Trigger = Arc::new(trig_exprs.clone());
     let triggers: Triggers = Arc::new(vec![trigger]);
-    Arc::new(BindX::Quant(Quant::Forall, Arc::new(binders), triggers))
+    let qid = None;  // We don't profile internal quantifiers (at least for now)
+    Arc::new(BindX::Quant(Quant::Forall, Arc::new(binders), triggers, qid))
 }
 
 // binder for forall (typ_params params)

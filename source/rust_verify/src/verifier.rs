@@ -539,6 +539,7 @@ impl Verifier {
             Some(vir::context::FunctionCtx {
                 checking_recommends,
                 module_for_chosen_triggers: f.x.visibility.owning_module.clone(),
+                current_fun: f.x.name.clone()
             })
         };
 
