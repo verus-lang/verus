@@ -253,7 +253,7 @@ fn no_global() {
 fn yes_type() {
     yes!(
         (check-valid
-            (declare-sort T)
+            (declare-sort T 0)
             (declare-const x T)
             (assert
                 (= x x)
@@ -266,7 +266,7 @@ fn yes_type() {
 fn no_type() {
     no!(
         (check-valid
-            (declare-sort T)
+            (declare-sort T 0)
             (declare-const x T)
             (declare-const y T)
             (assert
@@ -734,7 +734,7 @@ fn untyped_let3() {
 #[test]
 fn untyped_let4() {
     untyped!(
-        (declare-sort y)
+        (declare-sort y 0)
         (check-valid
             (assert (let ((x 10) (y 20)) true)) // cannot shadow global name
         )
