@@ -138,7 +138,7 @@ pub fn main() {
             }
             ValidityResult::Canceled => {
                 count_errors += 1;
-                println!("Canceled");
+                println!("Resource limit (rlimit) exceeded; consider rerunning with --profile for more details");
             }
             ValidityResult::UnexpectedSmtOutput(err) => {
                 panic!("Unexpected SMT output: {}", err);

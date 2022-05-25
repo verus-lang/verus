@@ -287,9 +287,13 @@ impl Verifier {
                     let mut v = Vec::new();
                     v.push(from_raw_span(&context.0.raw_span));
                     let multispan = MultiSpan::from_spans(v);
+                    let mut msg = format!("{}: Resource limit (rlimit) exceeded", context.1);
+                    if !air_context.get_profile() {
+                        msg.push_str("; consider rerunning with --profile for more details");
+                    }
                     compiler
                         .diagnostic()
-                        .span_err(multispan, &format!("{}: rlimit exceeded", context.1));
+                        .span_err(multispan, &msg);
 
                     self.errors.push(vec![ErrorSpan::new_from_air_span(
                         compiler.session().source_map(),
