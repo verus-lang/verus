@@ -83,21 +83,7 @@ From `source`, use the script `./tools/get-z3.sh` to download Z3.
 The `./tools/cargo.sh` script will correctly set the `VERUS_Z3_PATH` environment variable for the verifier to find Z3.
 If you run the verifier manually, set `VERUS_Z3_PATH` to `path_to/verify/z3`.
 
-### Step 3: Get syn_verus, which implements Verus's syntax
-
-Go to the directory `source`, if you aren't already there:
-
-```
-cd source
-```
-
-Clone the [syn_verus fork of Syn](https://github.com/secure-foundations/syn):
-
-```
-git clone https://github.com/secure-foundations/syn
-```
-
-### Step 4: Build the verifier
+### Step 3: Build the verifier
 
 You should be in the `source` subdirectory.
 
