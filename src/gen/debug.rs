@@ -1201,6 +1201,34 @@ impl Debug for FnArg {
         }
     }
 }
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Debug for FnMode {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            FnMode::Spec(v0) => {
+                let mut formatter = formatter.debug_tuple("Spec");
+                formatter.field(v0);
+                formatter.finish()
+            }
+            FnMode::SpecChecked(v0) => {
+                let mut formatter = formatter.debug_tuple("SpecChecked");
+                formatter.field(v0);
+                formatter.finish()
+            }
+            FnMode::Proof(v0) => {
+                let mut formatter = formatter.debug_tuple("Proof");
+                formatter.field(v0);
+                formatter.finish()
+            }
+            FnMode::Exec(v0) => {
+                let mut formatter = formatter.debug_tuple("Exec");
+                formatter.field(v0);
+                formatter.finish()
+            }
+            FnMode::Default => formatter.write_str("Default"),
+        }
+    }
+}
 #[cfg(feature = "full")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
 impl Debug for ForeignItem {
@@ -2013,6 +2041,63 @@ impl Debug for MethodTurbofish {
         formatter.finish()
     }
 }
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Debug for Mode {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Mode::Spec(v0) => {
+                let mut formatter = formatter.debug_tuple("Spec");
+                formatter.field(v0);
+                formatter.finish()
+            }
+            Mode::Proof(v0) => {
+                let mut formatter = formatter.debug_tuple("Proof");
+                formatter.field(v0);
+                formatter.finish()
+            }
+            Mode::Exec(v0) => {
+                let mut formatter = formatter.debug_tuple("Exec");
+                formatter.field(v0);
+                formatter.finish()
+            }
+            Mode::Default => formatter.write_str("Default"),
+        }
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Debug for ModeExec {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let mut formatter = formatter.debug_struct("ModeExec");
+        formatter.field("exec_token", &self.exec_token);
+        formatter.finish()
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Debug for ModeProof {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let mut formatter = formatter.debug_struct("ModeProof");
+        formatter.field("proof_token", &self.proof_token);
+        formatter.finish()
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Debug for ModeSpec {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let mut formatter = formatter.debug_struct("ModeSpec");
+        formatter.field("spec_token", &self.spec_token);
+        formatter.finish()
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Debug for ModeSpecChecked {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let mut formatter = formatter.debug_struct("ModeSpecChecked");
+        formatter.field("spec_token", &self.spec_token);
+        formatter.field("paren_token", &self.paren_token);
+        formatter.field("checked", &self.checked);
+        formatter.finish()
+    }
+}
 #[cfg(any(feature = "derive", feature = "full"))]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
 impl Debug for NestedMeta {
@@ -2440,6 +2525,7 @@ impl Debug for Signature {
         formatter.field("asyncness", &self.asyncness);
         formatter.field("unsafety", &self.unsafety);
         formatter.field("abi", &self.abi);
+        formatter.field("mode", &self.mode);
         formatter.field("fn_token", &self.fn_token);
         formatter.field("ident", &self.ident);
         formatter.field("generics", &self.generics);

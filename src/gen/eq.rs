@@ -809,6 +809,21 @@ impl PartialEq for FnArg {
         }
     }
 }
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Eq for FnMode {}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl PartialEq for FnMode {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (FnMode::Spec(self0), FnMode::Spec(other0)) => self0 == other0,
+            (FnMode::SpecChecked(self0), FnMode::SpecChecked(other0)) => self0 == other0,
+            (FnMode::Proof(self0), FnMode::Proof(other0)) => self0 == other0,
+            (FnMode::Exec(self0), FnMode::Exec(other0)) => self0 == other0,
+            (FnMode::Default, FnMode::Default) => true,
+            _ => false,
+        }
+    }
+}
 #[cfg(feature = "full")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
 impl Eq for ForeignItem {}
@@ -1366,6 +1381,52 @@ impl PartialEq for MethodTurbofish {
         self.args == other.args
     }
 }
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Eq for Mode {}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl PartialEq for Mode {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Mode::Spec(self0), Mode::Spec(other0)) => self0 == other0,
+            (Mode::Proof(self0), Mode::Proof(other0)) => self0 == other0,
+            (Mode::Exec(self0), Mode::Exec(other0)) => self0 == other0,
+            (Mode::Default, Mode::Default) => true,
+            _ => false,
+        }
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Eq for ModeExec {}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl PartialEq for ModeExec {
+    fn eq(&self, _other: &Self) -> bool {
+        true
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Eq for ModeProof {}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl PartialEq for ModeProof {
+    fn eq(&self, _other: &Self) -> bool {
+        true
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Eq for ModeSpec {}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl PartialEq for ModeSpec {
+    fn eq(&self, _other: &Self) -> bool {
+        true
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Eq for ModeSpecChecked {}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl PartialEq for ModeSpecChecked {
+    fn eq(&self, other: &Self) -> bool {
+        self.checked == other.checked
+    }
+}
 #[cfg(any(feature = "derive", feature = "full"))]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
 impl Eq for NestedMeta {}
@@ -1707,9 +1768,9 @@ impl PartialEq for Signature {
     fn eq(&self, other: &Self) -> bool {
         self.constness == other.constness && self.asyncness == other.asyncness
             && self.unsafety == other.unsafety && self.abi == other.abi
-            && self.ident == other.ident && self.generics == other.generics
-            && self.inputs == other.inputs && self.variadic == other.variadic
-            && self.output == other.output
+            && self.mode == other.mode && self.ident == other.ident
+            && self.generics == other.generics && self.inputs == other.inputs
+            && self.variadic == other.variadic && self.output == other.output
     }
 }
 #[cfg(feature = "full")]

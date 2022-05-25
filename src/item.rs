@@ -892,6 +892,7 @@ ast_struct! {
         pub asyncness: Option<Token![async]>,
         pub unsafety: Option<Token![unsafe]>,
         pub abi: Option<Abi>,
+        pub mode: FnMode,
         pub fn_token: Token![fn],
         pub ident: Ident,
         pub generics: Generics,
@@ -1494,6 +1495,7 @@ pub mod parsing {
             && fork.parse::<Option<Token![async]>>().is_ok()
             && fork.parse::<Option<Token![unsafe]>>().is_ok()
             && fork.parse::<Option<Abi>>().is_ok()
+            && fork.parse::<FnMode>().is_ok()
             && fork.peek(Token![fn])
     }
 
@@ -1504,6 +1506,7 @@ pub mod parsing {
             let asyncness: Option<Token![async]> = input.parse()?;
             let unsafety: Option<Token![unsafe]> = input.parse()?;
             let abi: Option<Abi> = input.parse()?;
+            let mode: FnMode = input.parse()?;
             let fn_token: Token![fn] = input.parse()?;
             let ident: Ident = input.parse()?;
             let mut generics: Generics = input.parse()?;
@@ -1521,6 +1524,7 @@ pub mod parsing {
                 asyncness,
                 unsafety,
                 abi,
+                mode,
                 fn_token,
                 ident,
                 generics,

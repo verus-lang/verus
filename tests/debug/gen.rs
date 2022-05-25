@@ -2078,6 +2078,42 @@ impl Debug for Lite<syn::FnArg> {
         }
     }
 }
+impl Debug for Lite<syn::FnMode> {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let _val = &self.value;
+        match _val {
+            syn::FnMode::Spec(_val) => {
+                formatter.write_str("Spec")?;
+                formatter.write_str("(")?;
+                Debug::fmt(Lite(_val), formatter)?;
+                formatter.write_str(")")?;
+                Ok(())
+            }
+            syn::FnMode::SpecChecked(_val) => {
+                formatter.write_str("SpecChecked")?;
+                formatter.write_str("(")?;
+                Debug::fmt(Lite(_val), formatter)?;
+                formatter.write_str(")")?;
+                Ok(())
+            }
+            syn::FnMode::Proof(_val) => {
+                formatter.write_str("Proof")?;
+                formatter.write_str("(")?;
+                Debug::fmt(Lite(_val), formatter)?;
+                formatter.write_str(")")?;
+                Ok(())
+            }
+            syn::FnMode::Exec(_val) => {
+                formatter.write_str("Exec")?;
+                formatter.write_str("(")?;
+                Debug::fmt(Lite(_val), formatter)?;
+                formatter.write_str(")")?;
+                Ok(())
+            }
+            syn::FnMode::Default => formatter.write_str("Default"),
+        }
+    }
+}
 impl Debug for Lite<syn::ForeignItem> {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         let _val = &self.value;
@@ -3654,6 +3690,55 @@ impl Debug for Lite<syn::MethodTurbofish> {
         formatter.finish()
     }
 }
+impl Debug for Lite<syn::Mode> {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let _val = &self.value;
+        match _val {
+            syn::Mode::Spec(_val) => {
+                let mut formatter = formatter.debug_struct("Mode::Spec");
+                formatter.finish()
+            }
+            syn::Mode::Proof(_val) => {
+                let mut formatter = formatter.debug_struct("Mode::Proof");
+                formatter.finish()
+            }
+            syn::Mode::Exec(_val) => {
+                let mut formatter = formatter.debug_struct("Mode::Exec");
+                formatter.finish()
+            }
+            syn::Mode::Default => formatter.write_str("Default"),
+        }
+    }
+}
+impl Debug for Lite<syn::ModeExec> {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let _val = &self.value;
+        let mut formatter = formatter.debug_struct("ModeExec");
+        formatter.finish()
+    }
+}
+impl Debug for Lite<syn::ModeProof> {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let _val = &self.value;
+        let mut formatter = formatter.debug_struct("ModeProof");
+        formatter.finish()
+    }
+}
+impl Debug for Lite<syn::ModeSpec> {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let _val = &self.value;
+        let mut formatter = formatter.debug_struct("ModeSpec");
+        formatter.finish()
+    }
+}
+impl Debug for Lite<syn::ModeSpecChecked> {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let _val = &self.value;
+        let mut formatter = formatter.debug_struct("ModeSpecChecked");
+        formatter.field("checked", Lite(&_val.checked));
+        formatter.finish()
+    }
+}
 impl Debug for Lite<syn::NestedMeta> {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         let _val = &self.value;
@@ -4475,6 +4560,7 @@ impl Debug for Lite<syn::Signature> {
             }
             formatter.field("abi", Print::ref_cast(val));
         }
+        formatter.field("mode", Lite(&_val.mode));
         formatter.field("ident", Lite(&_val.ident));
         formatter.field("generics", Lite(&_val.generics));
         if !_val.inputs.is_empty() {

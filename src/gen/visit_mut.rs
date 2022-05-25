@@ -295,6 +295,9 @@ pub trait VisitMut {
     fn visit_fn_arg_mut(&mut self, i: &mut FnArg) {
         visit_fn_arg_mut(self, i);
     }
+    fn visit_fn_mode_mut(&mut self, i: &mut FnMode) {
+        visit_fn_mode_mut(self, i);
+    }
     #[cfg(feature = "full")]
     fn visit_foreign_item_mut(&mut self, i: &mut ForeignItem) {
         visit_foreign_item_mut(self, i);
@@ -492,6 +495,21 @@ pub trait VisitMut {
     #[cfg(feature = "full")]
     fn visit_method_turbofish_mut(&mut self, i: &mut MethodTurbofish) {
         visit_method_turbofish_mut(self, i);
+    }
+    fn visit_mode_mut(&mut self, i: &mut Mode) {
+        visit_mode_mut(self, i);
+    }
+    fn visit_mode_exec_mut(&mut self, i: &mut ModeExec) {
+        visit_mode_exec_mut(self, i);
+    }
+    fn visit_mode_proof_mut(&mut self, i: &mut ModeProof) {
+        visit_mode_proof_mut(self, i);
+    }
+    fn visit_mode_spec_mut(&mut self, i: &mut ModeSpec) {
+        visit_mode_spec_mut(self, i);
+    }
+    fn visit_mode_spec_checked_mut(&mut self, i: &mut ModeSpecChecked) {
+        visit_mode_spec_checked_mut(self, i);
     }
     #[cfg(any(feature = "derive", feature = "full"))]
     fn visit_nested_meta_mut(&mut self, i: &mut NestedMeta) {
@@ -1903,6 +1921,26 @@ where
         }
     }
 }
+pub fn visit_fn_mode_mut<V>(v: &mut V, node: &mut FnMode)
+where
+    V: VisitMut + ?Sized,
+{
+    match node {
+        FnMode::Spec(_binding_0) => {
+            v.visit_mode_spec_mut(_binding_0);
+        }
+        FnMode::SpecChecked(_binding_0) => {
+            v.visit_mode_spec_checked_mut(_binding_0);
+        }
+        FnMode::Proof(_binding_0) => {
+            v.visit_mode_proof_mut(_binding_0);
+        }
+        FnMode::Exec(_binding_0) => {
+            v.visit_mode_exec_mut(_binding_0);
+        }
+        FnMode::Default => {}
+    }
+}
 #[cfg(feature = "full")]
 pub fn visit_foreign_item_mut<V>(v: &mut V, node: &mut ForeignItem)
 where
@@ -2739,6 +2777,49 @@ where
     }
     tokens_helper(v, &mut node.gt_token.spans);
 }
+pub fn visit_mode_mut<V>(v: &mut V, node: &mut Mode)
+where
+    V: VisitMut + ?Sized,
+{
+    match node {
+        Mode::Spec(_binding_0) => {
+            v.visit_mode_spec_mut(_binding_0);
+        }
+        Mode::Proof(_binding_0) => {
+            v.visit_mode_proof_mut(_binding_0);
+        }
+        Mode::Exec(_binding_0) => {
+            v.visit_mode_exec_mut(_binding_0);
+        }
+        Mode::Default => {}
+    }
+}
+pub fn visit_mode_exec_mut<V>(v: &mut V, node: &mut ModeExec)
+where
+    V: VisitMut + ?Sized,
+{
+    tokens_helper(v, &mut node.exec_token.span);
+}
+pub fn visit_mode_proof_mut<V>(v: &mut V, node: &mut ModeProof)
+where
+    V: VisitMut + ?Sized,
+{
+    tokens_helper(v, &mut node.proof_token.span);
+}
+pub fn visit_mode_spec_mut<V>(v: &mut V, node: &mut ModeSpec)
+where
+    V: VisitMut + ?Sized,
+{
+    tokens_helper(v, &mut node.spec_token.span);
+}
+pub fn visit_mode_spec_checked_mut<V>(v: &mut V, node: &mut ModeSpecChecked)
+where
+    V: VisitMut + ?Sized,
+{
+    tokens_helper(v, &mut node.spec_token.span);
+    tokens_helper(v, &mut node.paren_token.span);
+    v.visit_ident_mut(&mut *node.checked);
+}
 #[cfg(any(feature = "derive", feature = "full"))]
 pub fn visit_nested_meta_mut<V>(v: &mut V, node: &mut NestedMeta)
 where
@@ -3193,6 +3274,7 @@ where
     if let Some(it) = &mut node.abi {
         v.visit_abi_mut(it);
     }
+    v.visit_fn_mode_mut(&mut node.mode);
     tokens_helper(v, &mut node.fn_token.span);
     v.visit_ident_mut(&mut node.ident);
     v.visit_generics_mut(&mut node.generics);

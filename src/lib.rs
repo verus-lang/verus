@@ -456,6 +456,9 @@ pub mod spanned;
 mod whitespace;
 
 mod verus;
+pub use crate::verus::{
+    Mode, FnMode, ModeSpec, ModeProof, ModeExec, ModeSpecChecked,
+};
 
 mod gen {
     /// Syntax tree traversal to walk a shared borrow of a syntax tree.

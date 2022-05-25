@@ -1106,6 +1106,35 @@ impl Hash for FnArg {
         }
     }
 }
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Hash for FnMode {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
+        match self {
+            FnMode::Spec(v0) => {
+                state.write_u8(0u8);
+                v0.hash(state);
+            }
+            FnMode::SpecChecked(v0) => {
+                state.write_u8(1u8);
+                v0.hash(state);
+            }
+            FnMode::Proof(v0) => {
+                state.write_u8(2u8);
+                v0.hash(state);
+            }
+            FnMode::Exec(v0) => {
+                state.write_u8(3u8);
+                v0.hash(state);
+            }
+            FnMode::Default => {
+                state.write_u8(4u8);
+            }
+        }
+    }
+}
 #[cfg(feature = "full")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
 impl Hash for ForeignItem {
@@ -1843,6 +1872,61 @@ impl Hash for MethodTurbofish {
         self.args.hash(state);
     }
 }
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Hash for Mode {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
+        match self {
+            Mode::Spec(v0) => {
+                state.write_u8(0u8);
+                v0.hash(state);
+            }
+            Mode::Proof(v0) => {
+                state.write_u8(1u8);
+                v0.hash(state);
+            }
+            Mode::Exec(v0) => {
+                state.write_u8(2u8);
+                v0.hash(state);
+            }
+            Mode::Default => {
+                state.write_u8(3u8);
+            }
+        }
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Hash for ModeExec {
+    fn hash<H>(&self, _state: &mut H)
+    where
+        H: Hasher,
+    {}
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Hash for ModeProof {
+    fn hash<H>(&self, _state: &mut H)
+    where
+        H: Hasher,
+    {}
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Hash for ModeSpec {
+    fn hash<H>(&self, _state: &mut H)
+    where
+        H: Hasher,
+    {}
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Hash for ModeSpecChecked {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
+        self.checked.hash(state);
+    }
+}
 #[cfg(any(feature = "derive", feature = "full"))]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
 impl Hash for NestedMeta {
@@ -2273,6 +2357,7 @@ impl Hash for Signature {
         self.asyncness.hash(state);
         self.unsafety.hash(state);
         self.abi.hash(state);
+        self.mode.hash(state);
         self.ident.hash(state);
         self.generics.hash(state);
         self.inputs.hash(state);

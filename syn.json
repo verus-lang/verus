@@ -2110,6 +2110,35 @@
       }
     },
     {
+      "ident": "FnMode",
+      "features": {
+        "any": []
+      },
+      "variants": {
+        "Spec": [
+          {
+            "syn": "ModeSpec"
+          }
+        ],
+        "SpecChecked": [
+          {
+            "syn": "ModeSpecChecked"
+          }
+        ],
+        "Proof": [
+          {
+            "syn": "ModeProof"
+          }
+        ],
+        "Exec": [
+          {
+            "syn": "ModeExec"
+          }
+        ],
+        "Default": []
+      }
+    },
+    {
       "ident": "ForeignItem",
       "features": {
         "any": [
@@ -3644,6 +3673,82 @@
       }
     },
     {
+      "ident": "Mode",
+      "features": {
+        "any": []
+      },
+      "variants": {
+        "Spec": [
+          {
+            "syn": "ModeSpec"
+          }
+        ],
+        "Proof": [
+          {
+            "syn": "ModeProof"
+          }
+        ],
+        "Exec": [
+          {
+            "syn": "ModeExec"
+          }
+        ],
+        "Default": []
+      }
+    },
+    {
+      "ident": "ModeExec",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "exec_token": {
+          "token": "Exec"
+        }
+      }
+    },
+    {
+      "ident": "ModeProof",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "proof_token": {
+          "token": "Proof"
+        }
+      }
+    },
+    {
+      "ident": "ModeSpec",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "spec_token": {
+          "token": "Spec"
+        }
+      }
+    },
+    {
+      "ident": "ModeSpecChecked",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "spec_token": {
+          "token": "Spec"
+        },
+        "paren_token": {
+          "group": "Paren"
+        },
+        "checked": {
+          "box": {
+            "proc_macro2": "Ident"
+          }
+        }
+      }
+    },
+    {
       "ident": "NestedMeta",
       "features": {
         "any": [
@@ -4435,6 +4540,9 @@
           "option": {
             "syn": "Abi"
           }
+        },
+        "mode": {
+          "syn": "FnMode"
         },
         "fn_token": {
           "token": "Fn"

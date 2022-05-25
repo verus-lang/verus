@@ -292,6 +292,9 @@ pub trait Fold {
     fn fold_fn_arg(&mut self, i: FnArg) -> FnArg {
         fold_fn_arg(self, i)
     }
+    fn fold_fn_mode(&mut self, i: FnMode) -> FnMode {
+        fold_fn_mode(self, i)
+    }
     #[cfg(feature = "full")]
     fn fold_foreign_item(&mut self, i: ForeignItem) -> ForeignItem {
         fold_foreign_item(self, i)
@@ -492,6 +495,21 @@ pub trait Fold {
     #[cfg(feature = "full")]
     fn fold_method_turbofish(&mut self, i: MethodTurbofish) -> MethodTurbofish {
         fold_method_turbofish(self, i)
+    }
+    fn fold_mode(&mut self, i: Mode) -> Mode {
+        fold_mode(self, i)
+    }
+    fn fold_mode_exec(&mut self, i: ModeExec) -> ModeExec {
+        fold_mode_exec(self, i)
+    }
+    fn fold_mode_proof(&mut self, i: ModeProof) -> ModeProof {
+        fold_mode_proof(self, i)
+    }
+    fn fold_mode_spec(&mut self, i: ModeSpec) -> ModeSpec {
+        fold_mode_spec(self, i)
+    }
+    fn fold_mode_spec_checked(&mut self, i: ModeSpecChecked) -> ModeSpecChecked {
+        fold_mode_spec_checked(self, i)
     }
     #[cfg(any(feature = "derive", feature = "full"))]
     fn fold_nested_meta(&mut self, i: NestedMeta) -> NestedMeta {
@@ -1718,6 +1736,20 @@ where
         FnArg::Typed(_binding_0) => FnArg::Typed(f.fold_pat_type(_binding_0)),
     }
 }
+pub fn fold_fn_mode<F>(f: &mut F, node: FnMode) -> FnMode
+where
+    F: Fold + ?Sized,
+{
+    match node {
+        FnMode::Spec(_binding_0) => FnMode::Spec(f.fold_mode_spec(_binding_0)),
+        FnMode::SpecChecked(_binding_0) => {
+            FnMode::SpecChecked(f.fold_mode_spec_checked(_binding_0))
+        }
+        FnMode::Proof(_binding_0) => FnMode::Proof(f.fold_mode_proof(_binding_0)),
+        FnMode::Exec(_binding_0) => FnMode::Exec(f.fold_mode_exec(_binding_0)),
+        FnMode::Default => FnMode::Default,
+    }
+}
 #[cfg(feature = "full")]
 pub fn fold_foreign_item<F>(f: &mut F, node: ForeignItem) -> ForeignItem
 where
@@ -2469,6 +2501,51 @@ where
         gt_token: Token![>](tokens_helper(f, &node.gt_token.spans)),
     }
 }
+pub fn fold_mode<F>(f: &mut F, node: Mode) -> Mode
+where
+    F: Fold + ?Sized,
+{
+    match node {
+        Mode::Spec(_binding_0) => Mode::Spec(f.fold_mode_spec(_binding_0)),
+        Mode::Proof(_binding_0) => Mode::Proof(f.fold_mode_proof(_binding_0)),
+        Mode::Exec(_binding_0) => Mode::Exec(f.fold_mode_exec(_binding_0)),
+        Mode::Default => Mode::Default,
+    }
+}
+pub fn fold_mode_exec<F>(f: &mut F, node: ModeExec) -> ModeExec
+where
+    F: Fold + ?Sized,
+{
+    ModeExec {
+        exec_token: Token![exec](tokens_helper(f, &node.exec_token.span)),
+    }
+}
+pub fn fold_mode_proof<F>(f: &mut F, node: ModeProof) -> ModeProof
+where
+    F: Fold + ?Sized,
+{
+    ModeProof {
+        proof_token: Token![proof](tokens_helper(f, &node.proof_token.span)),
+    }
+}
+pub fn fold_mode_spec<F>(f: &mut F, node: ModeSpec) -> ModeSpec
+where
+    F: Fold + ?Sized,
+{
+    ModeSpec {
+        spec_token: Token![spec](tokens_helper(f, &node.spec_token.span)),
+    }
+}
+pub fn fold_mode_spec_checked<F>(f: &mut F, node: ModeSpecChecked) -> ModeSpecChecked
+where
+    F: Fold + ?Sized,
+{
+    ModeSpecChecked {
+        spec_token: Token![spec](tokens_helper(f, &node.spec_token.span)),
+        paren_token: Paren(tokens_helper(f, &node.paren_token.span)),
+        checked: Box::new(f.fold_ident(*node.checked)),
+    }
+}
 #[cfg(any(feature = "derive", feature = "full"))]
 pub fn fold_nested_meta<F>(f: &mut F, node: NestedMeta) -> NestedMeta
 where
@@ -2839,6 +2916,7 @@ where
         asyncness: (node.asyncness).map(|it| Token![async](tokens_helper(f, &it.span))),
         unsafety: (node.unsafety).map(|it| Token![unsafe](tokens_helper(f, &it.span))),
         abi: (node.abi).map(|it| f.fold_abi(it)),
+        mode: f.fold_fn_mode(node.mode),
         fn_token: Token![fn](tokens_helper(f, &node.fn_token.span)),
         ident: f.fold_ident(node.ident),
         generics: f.fold_generics(node.generics),

@@ -294,6 +294,9 @@ pub trait Visit<'ast> {
     fn visit_fn_arg(&mut self, i: &'ast FnArg) {
         visit_fn_arg(self, i);
     }
+    fn visit_fn_mode(&mut self, i: &'ast FnMode) {
+        visit_fn_mode(self, i);
+    }
     #[cfg(feature = "full")]
     fn visit_foreign_item(&mut self, i: &'ast ForeignItem) {
         visit_foreign_item(self, i);
@@ -491,6 +494,21 @@ pub trait Visit<'ast> {
     #[cfg(feature = "full")]
     fn visit_method_turbofish(&mut self, i: &'ast MethodTurbofish) {
         visit_method_turbofish(self, i);
+    }
+    fn visit_mode(&mut self, i: &'ast Mode) {
+        visit_mode(self, i);
+    }
+    fn visit_mode_exec(&mut self, i: &'ast ModeExec) {
+        visit_mode_exec(self, i);
+    }
+    fn visit_mode_proof(&mut self, i: &'ast ModeProof) {
+        visit_mode_proof(self, i);
+    }
+    fn visit_mode_spec(&mut self, i: &'ast ModeSpec) {
+        visit_mode_spec(self, i);
+    }
+    fn visit_mode_spec_checked(&mut self, i: &'ast ModeSpecChecked) {
+        visit_mode_spec_checked(self, i);
     }
     #[cfg(any(feature = "derive", feature = "full"))]
     fn visit_nested_meta(&mut self, i: &'ast NestedMeta) {
@@ -1902,6 +1920,26 @@ where
         }
     }
 }
+pub fn visit_fn_mode<'ast, V>(v: &mut V, node: &'ast FnMode)
+where
+    V: Visit<'ast> + ?Sized,
+{
+    match node {
+        FnMode::Spec(_binding_0) => {
+            v.visit_mode_spec(_binding_0);
+        }
+        FnMode::SpecChecked(_binding_0) => {
+            v.visit_mode_spec_checked(_binding_0);
+        }
+        FnMode::Proof(_binding_0) => {
+            v.visit_mode_proof(_binding_0);
+        }
+        FnMode::Exec(_binding_0) => {
+            v.visit_mode_exec(_binding_0);
+        }
+        FnMode::Default => {}
+    }
+}
 #[cfg(feature = "full")]
 pub fn visit_foreign_item<'ast, V>(v: &mut V, node: &'ast ForeignItem)
 where
@@ -2739,6 +2777,49 @@ where
     }
     tokens_helper(v, &node.gt_token.spans);
 }
+pub fn visit_mode<'ast, V>(v: &mut V, node: &'ast Mode)
+where
+    V: Visit<'ast> + ?Sized,
+{
+    match node {
+        Mode::Spec(_binding_0) => {
+            v.visit_mode_spec(_binding_0);
+        }
+        Mode::Proof(_binding_0) => {
+            v.visit_mode_proof(_binding_0);
+        }
+        Mode::Exec(_binding_0) => {
+            v.visit_mode_exec(_binding_0);
+        }
+        Mode::Default => {}
+    }
+}
+pub fn visit_mode_exec<'ast, V>(v: &mut V, node: &'ast ModeExec)
+where
+    V: Visit<'ast> + ?Sized,
+{
+    tokens_helper(v, &node.exec_token.span);
+}
+pub fn visit_mode_proof<'ast, V>(v: &mut V, node: &'ast ModeProof)
+where
+    V: Visit<'ast> + ?Sized,
+{
+    tokens_helper(v, &node.proof_token.span);
+}
+pub fn visit_mode_spec<'ast, V>(v: &mut V, node: &'ast ModeSpec)
+where
+    V: Visit<'ast> + ?Sized,
+{
+    tokens_helper(v, &node.spec_token.span);
+}
+pub fn visit_mode_spec_checked<'ast, V>(v: &mut V, node: &'ast ModeSpecChecked)
+where
+    V: Visit<'ast> + ?Sized,
+{
+    tokens_helper(v, &node.spec_token.span);
+    tokens_helper(v, &node.paren_token.span);
+    v.visit_ident(&*node.checked);
+}
 #[cfg(any(feature = "derive", feature = "full"))]
 pub fn visit_nested_meta<'ast, V>(v: &mut V, node: &'ast NestedMeta)
 where
@@ -3193,6 +3274,7 @@ where
     if let Some(it) = &node.abi {
         v.visit_abi(it);
     }
+    v.visit_fn_mode(&node.mode);
     tokens_helper(v, &node.fn_token.span);
     v.visit_ident(&node.ident);
     v.visit_generics(&node.generics);

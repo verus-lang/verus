@@ -836,6 +836,18 @@ impl Clone for FnArg {
         }
     }
 }
+#[cfg_attr(doc_cfg, doc(cfg(feature = "clone-impls")))]
+impl Clone for FnMode {
+    fn clone(&self) -> Self {
+        match self {
+            FnMode::Spec(v0) => FnMode::Spec(v0.clone()),
+            FnMode::SpecChecked(v0) => FnMode::SpecChecked(v0.clone()),
+            FnMode::Proof(v0) => FnMode::Proof(v0.clone()),
+            FnMode::Exec(v0) => FnMode::Exec(v0.clone()),
+            FnMode::Default => FnMode::Default,
+        }
+    }
+}
 #[cfg(feature = "full")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "clone-impls")))]
 impl Clone for ForeignItem {
@@ -1436,6 +1448,51 @@ impl Clone for MethodTurbofish {
         }
     }
 }
+#[cfg_attr(doc_cfg, doc(cfg(feature = "clone-impls")))]
+impl Clone for Mode {
+    fn clone(&self) -> Self {
+        match self {
+            Mode::Spec(v0) => Mode::Spec(v0.clone()),
+            Mode::Proof(v0) => Mode::Proof(v0.clone()),
+            Mode::Exec(v0) => Mode::Exec(v0.clone()),
+            Mode::Default => Mode::Default,
+        }
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "clone-impls")))]
+impl Clone for ModeExec {
+    fn clone(&self) -> Self {
+        ModeExec {
+            exec_token: self.exec_token.clone(),
+        }
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "clone-impls")))]
+impl Clone for ModeProof {
+    fn clone(&self) -> Self {
+        ModeProof {
+            proof_token: self.proof_token.clone(),
+        }
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "clone-impls")))]
+impl Clone for ModeSpec {
+    fn clone(&self) -> Self {
+        ModeSpec {
+            spec_token: self.spec_token.clone(),
+        }
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "clone-impls")))]
+impl Clone for ModeSpecChecked {
+    fn clone(&self) -> Self {
+        ModeSpecChecked {
+            spec_token: self.spec_token.clone(),
+            paren_token: self.paren_token.clone(),
+            checked: self.checked.clone(),
+        }
+    }
+}
 #[cfg(any(feature = "derive", feature = "full"))]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "clone-impls")))]
 impl Clone for NestedMeta {
@@ -1772,6 +1829,7 @@ impl Clone for Signature {
             asyncness: self.asyncness.clone(),
             unsafety: self.unsafety.clone(),
             abi: self.abi.clone(),
+            mode: self.mode.clone(),
             fn_token: self.fn_token.clone(),
             ident: self.ident.clone(),
             generics: self.generics.clone(),
