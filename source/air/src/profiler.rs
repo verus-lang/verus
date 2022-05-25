@@ -13,15 +13,20 @@ impl Profiler {
     /// Instantiate a new (singleton) profiler
     pub fn new() -> Profiler {
         let path = "z3.log";
+//        println!("Going to sleep");
+//        std::thread::sleep(std::time::Duration::from_secs(5));
         let file = std::io::BufReader::new(std::fs::File::open(path).expect("Failed to open Z3 trace log"));
         let mut model_config = ModelConfig::default();
         model_config.parser_config.skip_z3_version_check = true;
-//        model_config.parser_config.ignore_invalid_lines = true;
+//        println!("Config: {:?}", model_config);
+        model_config.parser_config.ignore_invalid_lines = true;
         //let mut model = Model::default();
         let mut model = Model::new(model_config);
         //model.config = ModelConfig { parser_config = ParserConfig { skip_z3_version_check = true, model.config.parser_config
         //model.config.parser_config.skip_z3_version_check = true;
+        println!("Analyzing Z3 log...");
         let _ = model.process(Some(path.to_string()), file).expect("Error processing Z3 trace");
+        println!("... analysis complete");
         Profiler {
             model,
         }
