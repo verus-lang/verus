@@ -2976,6 +2976,16 @@ impl Debug for UnOp {
                 formatter.field(v0);
                 formatter.finish()
             }
+            UnOp::Spec(v0) => {
+                let mut formatter = formatter.debug_tuple("Spec");
+                formatter.field(v0);
+                formatter.finish()
+            }
+            UnOp::Proof(v0) => {
+                let mut formatter = formatter.debug_tuple("Proof");
+                formatter.field(v0);
+                formatter.finish()
+            }
         }
     }
 }

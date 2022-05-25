@@ -90,6 +90,8 @@ ast_enum! {
         // verus
         BigAnd(Token![&&&]),
         BigOr(Token![|||]),
+        Spec(Token![spec]),
+        Proof(Token![proof]),
     }
 }
 
@@ -199,6 +201,10 @@ pub mod parsing {
                 input.parse().map(UnOp::Not)
             } else if lookahead.peek(Token![-]) {
                 input.parse().map(UnOp::Neg)
+            } else if lookahead.peek(Token![spec]) {
+                input.parse().map(UnOp::Spec)
+            } else if lookahead.peek(Token![proof]) {
+                input.parse().map(UnOp::Proof)
             } else {
                 Err(lookahead.error())
             }
@@ -268,6 +274,8 @@ mod printing {
                 // verus
                 UnOp::BigAnd(t) => t.to_tokens(tokens),
                 UnOp::BigOr(t) => t.to_tokens(tokens),
+                UnOp::Spec(t) => t.to_tokens(tokens),
+                UnOp::Proof(t) => t.to_tokens(tokens),
             }
         }
     }

@@ -5529,6 +5529,14 @@ impl Debug for Lite<syn::UnOp> {
                 formatter.write_str("BigOr")?;
                 Ok(())
             }
+            syn::UnOp::Spec(_val) => {
+                formatter.write_str("Spec")?;
+                Ok(())
+            }
+            syn::UnOp::Proof(_val) => {
+                formatter.write_str("Proof")?;
+                Ok(())
+            }
         }
     }
 }

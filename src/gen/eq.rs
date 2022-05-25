@@ -2094,6 +2094,8 @@ impl PartialEq for UnOp {
             (UnOp::Neg(_), UnOp::Neg(_)) => true,
             (UnOp::BigAnd(_), UnOp::BigAnd(_)) => true,
             (UnOp::BigOr(_), UnOp::BigOr(_)) => true,
+            (UnOp::Spec(_), UnOp::Spec(_)) => true,
+            (UnOp::Proof(_), UnOp::Proof(_)) => true,
             _ => false,
         }
     }

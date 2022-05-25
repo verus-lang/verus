@@ -3722,6 +3722,12 @@ where
         UnOp::BigOr(_binding_0) => {
             tokens_helper(v, &mut _binding_0.spans);
         }
+        UnOp::Spec(_binding_0) => {
+            tokens_helper(v, &mut _binding_0.span);
+        }
+        UnOp::Proof(_binding_0) => {
+            tokens_helper(v, &mut _binding_0.span);
+        }
     }
 }
 #[cfg(feature = "full")]

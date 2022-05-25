@@ -3283,6 +3283,12 @@ where
         UnOp::BigOr(_binding_0) => {
             UnOp::BigOr(Token![|||](tokens_helper(f, &_binding_0.spans)))
         }
+        UnOp::Spec(_binding_0) => {
+            UnOp::Spec(Token![spec](tokens_helper(f, &_binding_0.span)))
+        }
+        UnOp::Proof(_binding_0) => {
+            UnOp::Proof(Token![proof](tokens_helper(f, &_binding_0.span)))
+        }
     }
 }
 #[cfg(feature = "full")]

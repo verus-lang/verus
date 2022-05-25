@@ -5332,6 +5332,16 @@
           {
             "token": "BigOr"
           }
+        ],
+        "Spec": [
+          {
+            "token": "Spec"
+          }
+        ],
+        "Proof": [
+          {
+            "token": "Proof"
+          }
         ]
       }
     },
