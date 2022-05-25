@@ -22,6 +22,12 @@ impl IntoSpans<[Span; 3]> for Span {
     }
 }
 
+impl IntoSpans<[Span; 4]> for Span {
+    fn into_spans(self) -> [Span; 4] {
+        [self, self, self, self]
+    }
+}
+
 impl IntoSpans<[Span; 1]> for [Span; 1] {
     fn into_spans(self) -> [Span; 1] {
         self
@@ -36,6 +42,12 @@ impl IntoSpans<[Span; 2]> for [Span; 2] {
 
 impl IntoSpans<[Span; 3]> for [Span; 3] {
     fn into_spans(self) -> [Span; 3] {
+        self
+    }
+}
+
+impl IntoSpans<[Span; 4]> for [Span; 4] {
+    fn into_spans(self) -> [Span; 4] {
         self
     }
 }
@@ -63,5 +75,12 @@ impl FromSpans for [Span; 2] {
 impl FromSpans for [Span; 3] {
     fn from_spans(spans: &[Span]) -> Self {
         [spans[0], spans[1], spans[2]]
+    }
+}
+
+#[cfg(feature = "parsing")]
+impl FromSpans for [Span; 4] {
+    fn from_spans(spans: &[Span]) -> Self {
+        [spans[0], spans[1], spans[2], spans[3]]
     }
 }

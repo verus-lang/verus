@@ -69,6 +69,17 @@ pub mod fold {
             ]
         }
     }
+
+    impl Spans for [Span; 4] {
+        fn fold<F: Fold + ?Sized>(&self, folder: &mut F) -> Self {
+            [
+                folder.fold_span(self[0]),
+                folder.fold_span(self[1]),
+                folder.fold_span(self[2]),
+                folder.fold_span(self[3]),
+            ]
+        }
+    }
 }
 
 #[cfg(feature = "visit")]
@@ -110,6 +121,15 @@ pub mod visit {
             visitor.visit_span(&self[2]);
         }
     }
+
+    impl Spans for [Span; 4] {
+        fn visit<'ast, V: Visit<'ast> + ?Sized>(&self, visitor: &mut V) {
+            visitor.visit_span(&self[0]);
+            visitor.visit_span(&self[1]);
+            visitor.visit_span(&self[2]);
+            visitor.visit_span(&self[3]);
+        }
+    }
 }
 
 #[cfg(feature = "visit-mut")]
@@ -149,6 +169,15 @@ pub mod visit_mut {
             visitor.visit_span_mut(&mut self[0]);
             visitor.visit_span_mut(&mut self[1]);
             visitor.visit_span_mut(&mut self[2]);
+        }
+    }
+
+    impl Spans for [Span; 4] {
+        fn visit_mut<V: VisitMut + ?Sized>(&mut self, visitor: &mut V) {
+            visitor.visit_span_mut(&mut self[0]);
+            visitor.visit_span_mut(&mut self[1]);
+            visitor.visit_span_mut(&mut self[2]);
+            visitor.visit_span_mut(&mut self[3]);
         }
     }
 }

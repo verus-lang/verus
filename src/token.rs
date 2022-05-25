@@ -702,6 +702,28 @@ define_keywords! {
     "where"       pub struct Where        /// `where`
     "while"       pub struct While        /// `while`
     "yield"       pub struct Yield        /// `yield`
+
+    // verus
+    "spec"        pub struct Spec         /// `spec`
+    "proof"       pub struct Proof        /// `proof`
+    "exec"        pub struct Exec         /// `exec`
+    "open"        pub struct Open         /// `open`
+    "closed"      pub struct Closed       /// `closed`
+    "ghost"       pub struct Ghost        /// `ghost`
+    "tracked"     pub struct Tracked      /// `tracked`
+    "requires"    pub struct Requires     /// `requires`
+    "recommends"  pub struct Recommends   /// `recommends`
+    "ensures"     pub struct Ensures      /// `ensures`
+    "decreases"   pub struct Decreases    /// `decreases`
+    "invariant"   pub struct Invariant    /// `invariant`
+    "assert"      pub struct Assert       /// `assert`
+    "assume"      pub struct Assume       /// `assume`
+    "implies"     pub struct Implies      /// `implies`
+    "by"          pub struct By           /// `by`
+    "forall"      pub struct Forall       /// `forall`
+    "exists"      pub struct Exists       /// `exists`
+    "choose"      pub struct Choose       /// `choose`
+    "is"          pub struct Is           /// `is`
 }
 
 define_punctuation! {
@@ -751,6 +773,15 @@ define_punctuation! {
     "-"           pub struct Sub/1        /// `-`
     "-="          pub struct SubEq/2      /// `-=`
     "~"           pub struct Tilde/1      /// `~`
+
+    // verus
+    "&&&"         pub struct BigAnd/3     /// `&&&`
+    "|||"         pub struct BigOr/3      /// `|||`
+    "<==>"        pub struct Equiv/4      /// `<==>`
+    "==>"         pub struct Imply/3      /// `==>`
+    "<=="         pub struct Exply/3      /// `<==`
+    "==="         pub struct EqEqEq/3     /// `===`
+    "!=="         pub struct NeEq/3       /// `!==`
 }
 
 define_delimiters! {
@@ -871,6 +902,33 @@ macro_rules! export_token_macro {
             [-=]          => { $crate::token::SubEq };
             [~]           => { $crate::token::Tilde };
             [_]           => { $crate::token::Underscore };
+
+            // verus
+            [spec]        => { $crate::token::Spec };
+            [proof]       => { $crate::token::Proof };
+            [exec]        => { $crate::token::Exec };
+            [ghost]       => { $crate::token::Ghost };
+            [tracked]     => { $crate::token::Tracked };
+            [requires]    => { $crate::token::Requires };
+            [recommends]  => { $crate::token::Recommends };
+            [ensures]     => { $crate::token::Ensures };
+            [decreases]   => { $crate::token::Decreases };
+            [invariant]   => { $crate::token::Invariant };
+            [assert]      => { $crate::token::Assert };
+            [assume]      => { $crate::token::Assume };
+            [implies]     => { $crate::token::Implies };
+            [by]          => { $crate::token::By };
+            [forall]      => { $crate::token::Forall };
+            [exists]      => { $crate::token::Exists };
+            [choose]      => { $crate::token::Choose };
+            [is]          => { $crate::token::Is };
+            [&&&]         => { $crate::token::BigAnd };
+            [|||]         => { $crate::token::BigOr };
+            [<==>]        => { $crate::token::Equiv };
+            [==>]         => { $crate::token::Imply };
+            [<==]         => { $crate::token::Exply };
+            [===]         => { $crate::token::EqEqEq };
+            [!==]         => { $crate::token::NeEq };
         }
     };
 }
@@ -913,12 +971,12 @@ pub mod parsing {
     }
 
     pub fn punct<S: FromSpans>(input: ParseStream, token: &str) -> Result<S> {
-        let mut spans = [input.span(); 3];
+        let mut spans = [input.span(); 4];
         punct_helper(input, token, &mut spans)?;
         Ok(S::from_spans(&spans))
     }
 
-    fn punct_helper(input: ParseStream, token: &str, spans: &mut [Span; 3]) -> Result<()> {
+    fn punct_helper(input: ParseStream, token: &str, spans: &mut [Span; 4]) -> Result<()> {
         input.step(|cursor| {
             let mut cursor = *cursor;
             assert!(token.len() <= spans.len());
