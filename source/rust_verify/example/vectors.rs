@@ -94,6 +94,20 @@ fn pop_test(t: Vec<u64>) {
     assert(forall(|i: int| 0 <= i && i < t.view().len() >>= uninterp_fn(t.view().index(i))));
 }
 
+fn pust_test(t: Vec<u64>, y: u64) {
+    requires([
+        forall(|i: int| 0 <= i && i < t.view().len() >>= uninterp_fn(t.view().index(i))),
+        uninterp_fn(y),
+    ]);
+
+    let mut t = t;
+    t.push(y);
+
+    assert(
+        forall(|i: int| 0 <= i && i < t.view().len() >>= uninterp_fn(t.view().index(i))),
+    );
+}
+
 #[verifier(external)]
 fn main() {
     let mut v = Vec{vec: vec![0, 10, 20, 30, 40, 50, 60, 70, 80, 90]};

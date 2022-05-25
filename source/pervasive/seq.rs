@@ -93,8 +93,9 @@ pub fn axiom_seq_push_len<A>(s: Seq<A>, a: A) {
 #[proof]
 #[verifier(external_body)]
 #[verifier(broadcast_forall)]
-pub fn axiom_seq_push_index_same<A>(s: Seq<A>, a: A) {
-    ensures(equal(#[trigger] s.push(a).index(s.len()), a));
+pub fn axiom_seq_push_index_same<A>(s: Seq<A>, a: A, i: int) {
+    requires(i == s.len());
+    ensures(equal(#[trigger] s.push(a).index(i), a));
 }
 
 #[proof]
