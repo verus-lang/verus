@@ -5,6 +5,7 @@ use crate::errors::{Error, ErrorLabels};
 use crate::model::Model;
 use crate::node;
 use crate::printer::{macro_push_node, str_to_node};
+use crate::profiler::Profiler;
 use crate::scope_map::ScopeMap;
 use crate::smt_manager::SmtManager;
 use crate::smt_verify::ReportLongRunning;
@@ -324,6 +325,13 @@ impl Context {
             model,
             query_context.report_long_running,
         );
+
+        if let ValidityResult::Canceled = validity {
+            if self.profile {
+                // Display profiling results
+                let profiler = Profiler::new();
+            }
+        }
 
         validity
     }

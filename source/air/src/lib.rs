@@ -5,6 +5,7 @@ pub mod emitter;
 pub mod errors;
 pub mod model;
 pub mod parser;
+pub mod profiler;
 pub mod scope_map;
 pub mod smt_manager;
 
