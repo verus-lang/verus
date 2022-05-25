@@ -73,3 +73,118 @@ features = ["full", "visit", "visit-mut", "fold", "extra-traits"]
 
 # [workspace]
 # members = ["dev", "json", "tests/crates", "tests/features"]
+
+[lib]
+doctest = false
+
+[[test]]
+name = "crates"
+test = false
+
+[[test]]
+name = "regression"
+test = false
+
+[[test]]
+name = "test_asyncness"
+test = false
+
+[[test]]
+name = "test_attribute"
+test = false
+
+[[test]]
+name = "test_derive_input"
+test = false
+
+[[test]]
+name = "test_expr"
+test = false
+
+[[test]]
+name = "test_generics"
+test = false
+
+[[test]]
+name = "test_grouping"
+test = false
+
+[[test]]
+name = "test_ident"
+test = false
+
+[[test]]
+name = "test_item"
+test = false
+
+[[test]]
+name = "test_iterators"
+test = false
+
+[[test]]
+name = "test_lit"
+test = false
+
+[[test]]
+name = "test_meta"
+test = false
+
+[[test]]
+name = "test_parse_buffer"
+test = false
+
+[[test]]
+name = "test_parse_stream"
+test = false
+
+[[test]]
+name = "test_pat"
+test = false
+
+[[test]]
+name = "test_path"
+test = false
+
+[[test]]
+name = "test_precedence"
+test = false
+
+[[test]]
+name = "test_receiver"
+test = false
+
+[[test]]
+name = "test_round_trip"
+test = false
+
+[[test]]
+name = "test_shebang"
+test = false
+
+[[test]]
+name = "test_should_parse"
+test = false
+
+[[test]]
+name = "test_size"
+test = false
+
+[[test]]
+name = "test_stmt"
+test = false
+
+[[test]]
+name = "test_token_trees"
+test = false
+
+[[test]]
+name = "test_ty"
+test = false
+
+[[test]]
+name = "test_visibility"
+test = false
+
+[[test]]
+name = "zzz_stable"
+test = false
