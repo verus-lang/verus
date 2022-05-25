@@ -106,6 +106,13 @@ impl PartialEq for BinOp {
             (BinOp::BitOrEq(_), BinOp::BitOrEq(_)) => true,
             (BinOp::ShlEq(_), BinOp::ShlEq(_)) => true,
             (BinOp::ShrEq(_), BinOp::ShrEq(_)) => true,
+            (BinOp::BigAnd(_), BinOp::BigAnd(_)) => true,
+            (BinOp::BigOr(_), BinOp::BigOr(_)) => true,
+            (BinOp::Equiv(_), BinOp::Equiv(_)) => true,
+            (BinOp::Imply(_), BinOp::Imply(_)) => true,
+            (BinOp::Exply(_), BinOp::Exply(_)) => true,
+            (BinOp::BigEq(_), BinOp::BigEq(_)) => true,
+            (BinOp::BigNe(_), BinOp::BigNe(_)) => true,
             _ => false,
         }
     }
@@ -2024,6 +2031,8 @@ impl PartialEq for UnOp {
             (UnOp::Deref(_), UnOp::Deref(_)) => true,
             (UnOp::Not(_), UnOp::Not(_)) => true,
             (UnOp::Neg(_), UnOp::Neg(_)) => true,
+            (UnOp::BigAnd(_), UnOp::BigAnd(_)) => true,
+            (UnOp::BigOr(_), UnOp::BigOr(_)) => true,
             _ => false,
         }
     }

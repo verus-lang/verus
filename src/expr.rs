@@ -1111,6 +1111,11 @@ pub(crate) mod parsing {
         Any,
         Assign,
         Range,
+        BigOr,
+        BigAnd,
+        Equiv,
+        Exply,
+        Imply,
         Or,
         And,
         Compare,
@@ -1157,6 +1162,15 @@ pub(crate) mod parsing {
                 | BinOp::BitOrEq(_)
                 | BinOp::ShlEq(_)
                 | BinOp::ShrEq(_) => Precedence::Assign,
+
+                // verus
+                BinOp::BigAnd(_) => Precedence::BigAnd,
+                BinOp::BigOr(_) => Precedence::BigOr,
+                BinOp::Equiv(_) => Precedence::Equiv,
+                BinOp::Imply(_) => Precedence::Imply,
+                BinOp::Exply(_) => Precedence::Exply,
+                BinOp::BigEq(_) => Precedence::Compare,
+                BinOp::BigNe(_) => Precedence::Compare,
             }
         }
     }
@@ -1164,9 +1178,13 @@ pub(crate) mod parsing {
     impl Associativity {
         fn of(precedence: Precedence) -> Self {
             match precedence {
-                Precedence::Assign => Associativity::Right,
+                Precedence::Assign | Precedence::Imply => Associativity::Right,
+                Precedence::Equiv => Associativity::None,
                 Precedence::Any
                 | Precedence::Range
+                | Precedence::BigOr
+                | Precedence::BigAnd
+                | Precedence::Exply
                 | Precedence::Or
                 | Precedence::And
                 | Precedence::Compare
@@ -1541,6 +1559,7 @@ pub(crate) mod parsing {
     fn unary_expr(input: ParseStream, allow_struct: AllowStruct) -> Result<Expr> {
         let begin = input.fork();
         let attrs = input.call(expr_attrs)?;
+        crate::verus::disallow_prefix_binop(input)?;
         if input.peek(Token![&]) {
             let and_token: Token![&] = input.parse()?;
             let raw: Option<raw> =
@@ -1576,6 +1595,7 @@ pub(crate) mod parsing {
 
     #[cfg(not(feature = "full"))]
     fn unary_expr(input: ParseStream, allow_struct: AllowStruct) -> Result<Expr> {
+        crate::verus::disallow_prefix_binop(input)?;
         if input.peek(Token![*]) || input.peek(Token![!]) || input.peek(Token![-]) {
             Ok(Expr::Unary(ExprUnary {
                 attrs: Vec::new(),
@@ -2042,7 +2062,28 @@ pub(crate) mod parsing {
 
     #[cfg(feature = "full")]
     pub(crate) fn expr_early(input: ParseStream) -> Result<Expr> {
-        let mut attrs = input.call(expr_attrs)?;
+        let attrs = input.call(expr_attrs)?;
+        expr_early_inner(input, attrs)
+    }
+
+    #[cfg(feature = "full")]
+    pub(crate) fn expr_early_block(input: ParseStream) -> Result<Expr> {
+        let attrs = input.call(expr_attrs)?;
+        let prefix_binop = verus::parse_prefix_binop(input, &attrs)?;
+        match prefix_binop {
+            Some((op, binop)) => {
+                let allow_struct = AllowStruct(true);
+                let expr = unary_expr(input, allow_struct)?;
+                let expr = parse_expr(input, expr, allow_struct, Precedence::of(&binop))?;
+                let expr = Box::new(expr);
+                Ok(Expr::Unary(ExprUnary { attrs, expr, op }))
+            }
+            None => expr_early_inner(input, attrs),
+        }
+    }
+
+    #[cfg(feature = "full")]
+    pub(crate) fn expr_early_inner(input: ParseStream, mut attrs: Vec<Attribute>) -> Result<Expr> {
         let mut expr = if input.peek(Token![if]) {
             Expr::If(input.parse()?)
         } else if input.peek(Token![while]) {

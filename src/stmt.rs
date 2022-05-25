@@ -273,7 +273,7 @@ pub mod parsing {
         allow_nosemi: bool,
         mut attrs: Vec<Attribute>,
     ) -> Result<Stmt> {
-        let mut e = expr::parsing::expr_early(input)?;
+        let mut e = expr::parsing::expr_early_block(input)?;
 
         let mut attr_target = &mut e;
         loop {

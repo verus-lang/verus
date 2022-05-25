@@ -173,6 +173,27 @@ impl Hash for BinOp {
             BinOp::ShrEq(_) => {
                 state.write_u8(27u8);
             }
+            BinOp::BigAnd(_) => {
+                state.write_u8(28u8);
+            }
+            BinOp::BigOr(_) => {
+                state.write_u8(29u8);
+            }
+            BinOp::Equiv(_) => {
+                state.write_u8(30u8);
+            }
+            BinOp::Imply(_) => {
+                state.write_u8(31u8);
+            }
+            BinOp::Exply(_) => {
+                state.write_u8(32u8);
+            }
+            BinOp::BigEq(_) => {
+                state.write_u8(33u8);
+            }
+            BinOp::BigNe(_) => {
+                state.write_u8(34u8);
+            }
         }
     }
 }
@@ -2673,6 +2694,12 @@ impl Hash for UnOp {
             }
             UnOp::Neg(_) => {
                 state.write_u8(2u8);
+            }
+            UnOp::BigAnd(_) => {
+                state.write_u8(3u8);
+            }
+            UnOp::BigOr(_) => {
+                state.write_u8(4u8);
             }
         }
     }

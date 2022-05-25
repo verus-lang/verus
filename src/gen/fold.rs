@@ -953,6 +953,27 @@ where
         BinOp::ShrEq(_binding_0) => {
             BinOp::ShrEq(Token![>>=](tokens_helper(f, &_binding_0.spans)))
         }
+        BinOp::BigAnd(_binding_0) => {
+            BinOp::BigAnd(Token![&&&](tokens_helper(f, &_binding_0.spans)))
+        }
+        BinOp::BigOr(_binding_0) => {
+            BinOp::BigOr(Token![|||](tokens_helper(f, &_binding_0.spans)))
+        }
+        BinOp::Equiv(_binding_0) => {
+            BinOp::Equiv(Token![<==>](tokens_helper(f, &_binding_0.spans)))
+        }
+        BinOp::Imply(_binding_0) => {
+            BinOp::Imply(Token![==>](tokens_helper(f, &_binding_0.spans)))
+        }
+        BinOp::Exply(_binding_0) => {
+            BinOp::Exply(Token![<==](tokens_helper(f, &_binding_0.spans)))
+        }
+        BinOp::BigEq(_binding_0) => {
+            BinOp::BigEq(Token![===](tokens_helper(f, &_binding_0.spans)))
+        }
+        BinOp::BigNe(_binding_0) => {
+            BinOp::BigNe(Token![!==](tokens_helper(f, &_binding_0.spans)))
+        }
     }
 }
 #[cfg(any(feature = "derive", feature = "full"))]
@@ -3177,6 +3198,12 @@ where
         }
         UnOp::Neg(_binding_0) => {
             UnOp::Neg(Token![-](tokens_helper(f, &_binding_0.spans)))
+        }
+        UnOp::BigAnd(_binding_0) => {
+            UnOp::BigAnd(Token![&&&](tokens_helper(f, &_binding_0.spans)))
+        }
+        UnOp::BigOr(_binding_0) => {
+            UnOp::BigOr(Token![|||](tokens_helper(f, &_binding_0.spans)))
         }
     }
 }

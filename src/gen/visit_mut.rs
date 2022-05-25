@@ -953,6 +953,27 @@ where
         BinOp::ShrEq(_binding_0) => {
             tokens_helper(v, &mut _binding_0.spans);
         }
+        BinOp::BigAnd(_binding_0) => {
+            tokens_helper(v, &mut _binding_0.spans);
+        }
+        BinOp::BigOr(_binding_0) => {
+            tokens_helper(v, &mut _binding_0.spans);
+        }
+        BinOp::Equiv(_binding_0) => {
+            tokens_helper(v, &mut _binding_0.spans);
+        }
+        BinOp::Imply(_binding_0) => {
+            tokens_helper(v, &mut _binding_0.spans);
+        }
+        BinOp::Exply(_binding_0) => {
+            tokens_helper(v, &mut _binding_0.spans);
+        }
+        BinOp::BigEq(_binding_0) => {
+            tokens_helper(v, &mut _binding_0.spans);
+        }
+        BinOp::BigNe(_binding_0) => {
+            tokens_helper(v, &mut _binding_0.spans);
+        }
     }
 }
 #[cfg(any(feature = "derive", feature = "full"))]
@@ -3611,6 +3632,12 @@ where
             tokens_helper(v, &mut _binding_0.spans);
         }
         UnOp::Neg(_binding_0) => {
+            tokens_helper(v, &mut _binding_0.spans);
+        }
+        UnOp::BigAnd(_binding_0) => {
+            tokens_helper(v, &mut _binding_0.spans);
+        }
+        UnOp::BigOr(_binding_0) => {
             tokens_helper(v, &mut _binding_0.spans);
         }
     }

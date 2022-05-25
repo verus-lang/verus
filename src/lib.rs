@@ -455,6 +455,8 @@ pub mod spanned;
 #[cfg(all(feature = "parsing", feature = "full"))]
 mod whitespace;
 
+mod verus;
+
 mod gen {
     /// Syntax tree traversal to walk a shared borrow of a syntax tree.
     ///

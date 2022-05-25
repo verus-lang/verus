@@ -222,6 +222,41 @@ impl Debug for BinOp {
                 formatter.field(v0);
                 formatter.finish()
             }
+            BinOp::BigAnd(v0) => {
+                let mut formatter = formatter.debug_tuple("BigAnd");
+                formatter.field(v0);
+                formatter.finish()
+            }
+            BinOp::BigOr(v0) => {
+                let mut formatter = formatter.debug_tuple("BigOr");
+                formatter.field(v0);
+                formatter.finish()
+            }
+            BinOp::Equiv(v0) => {
+                let mut formatter = formatter.debug_tuple("Equiv");
+                formatter.field(v0);
+                formatter.finish()
+            }
+            BinOp::Imply(v0) => {
+                let mut formatter = formatter.debug_tuple("Imply");
+                formatter.field(v0);
+                formatter.finish()
+            }
+            BinOp::Exply(v0) => {
+                let mut formatter = formatter.debug_tuple("Exply");
+                formatter.field(v0);
+                formatter.finish()
+            }
+            BinOp::BigEq(v0) => {
+                let mut formatter = formatter.debug_tuple("BigEq");
+                formatter.field(v0);
+                formatter.finish()
+            }
+            BinOp::BigNe(v0) => {
+                let mut formatter = formatter.debug_tuple("BigNe");
+                formatter.field(v0);
+                formatter.finish()
+            }
         }
     }
 }
@@ -2842,6 +2877,16 @@ impl Debug for UnOp {
             }
             UnOp::Neg(v0) => {
                 let mut formatter = formatter.debug_tuple("Neg");
+                formatter.field(v0);
+                formatter.finish()
+            }
+            UnOp::BigAnd(v0) => {
+                let mut formatter = formatter.debug_tuple("BigAnd");
+                formatter.field(v0);
+                formatter.finish()
+            }
+            UnOp::BigOr(v0) => {
+                let mut formatter = formatter.debug_tuple("BigOr");
                 formatter.field(v0);
                 formatter.finish()
             }

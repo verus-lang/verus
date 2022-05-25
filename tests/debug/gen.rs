@@ -253,6 +253,34 @@ impl Debug for Lite<syn::BinOp> {
                 formatter.write_str("ShrEq")?;
                 Ok(())
             }
+            syn::BinOp::BigAnd(_val) => {
+                formatter.write_str("BigAnd")?;
+                Ok(())
+            }
+            syn::BinOp::BigOr(_val) => {
+                formatter.write_str("BigOr")?;
+                Ok(())
+            }
+            syn::BinOp::Equiv(_val) => {
+                formatter.write_str("Equiv")?;
+                Ok(())
+            }
+            syn::BinOp::Imply(_val) => {
+                formatter.write_str("Imply")?;
+                Ok(())
+            }
+            syn::BinOp::Exply(_val) => {
+                formatter.write_str("Exply")?;
+                Ok(())
+            }
+            syn::BinOp::BigEq(_val) => {
+                formatter.write_str("BigEq")?;
+                Ok(())
+            }
+            syn::BinOp::BigNe(_val) => {
+                formatter.write_str("BigNe")?;
+                Ok(())
+            }
         }
     }
 }
@@ -5405,6 +5433,14 @@ impl Debug for Lite<syn::UnOp> {
             }
             syn::UnOp::Neg(_val) => {
                 formatter.write_str("Neg")?;
+                Ok(())
+            }
+            syn::UnOp::BigAnd(_val) => {
+                formatter.write_str("BigAnd")?;
+                Ok(())
+            }
+            syn::UnOp::BigOr(_val) => {
+                formatter.write_str("BigOr")?;
                 Ok(())
             }
         }

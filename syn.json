@@ -317,6 +317,41 @@
           {
             "token": "ShrEq"
           }
+        ],
+        "BigAnd": [
+          {
+            "token": "BigAnd"
+          }
+        ],
+        "BigOr": [
+          {
+            "token": "BigOr"
+          }
+        ],
+        "Equiv": [
+          {
+            "token": "Equiv"
+          }
+        ],
+        "Imply": [
+          {
+            "token": "Imply"
+          }
+        ],
+        "Exply": [
+          {
+            "token": "Exply"
+          }
+        ],
+        "BigEq": [
+          {
+            "token": "EqEqEq"
+          }
+        ],
+        "BigNe": [
+          {
+            "token": "NeEq"
+          }
         ]
       }
     },
@@ -5178,6 +5213,16 @@
         "Neg": [
           {
             "token": "Sub"
+          }
+        ],
+        "BigAnd": [
+          {
+            "token": "BigAnd"
+          }
+        ],
+        "BigOr": [
+          {
+            "token": "BigOr"
           }
         ]
       }
