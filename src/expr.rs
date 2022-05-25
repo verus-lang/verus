@@ -1123,6 +1123,13 @@ pub(crate) mod parsing {
         Cast,
     }
 
+    #[derive(PartialEq, Eq, Clone, Copy)]
+    enum Associativity {
+        Left,
+        Right,
+        None,
+    }
+
     impl Precedence {
         fn of(op: &BinOp) -> Self {
             match *op {
@@ -1150,6 +1157,26 @@ pub(crate) mod parsing {
                 | BinOp::BitOrEq(_)
                 | BinOp::ShlEq(_)
                 | BinOp::ShrEq(_) => Precedence::Assign,
+            }
+        }
+    }
+
+    impl Associativity {
+        fn of(precedence: Precedence) -> Self {
+            match precedence {
+                Precedence::Assign => Associativity::Right,
+                Precedence::Any
+                | Precedence::Range
+                | Precedence::Or
+                | Precedence::And
+                | Precedence::Compare
+                | Precedence::BitOr
+                | Precedence::BitXor
+                | Precedence::BitAnd
+                | Precedence::Shift
+                | Precedence::Arithmetic
+                | Precedence::Term
+                | Precedence::Cast => Associativity::Left,
             }
         }
     }
@@ -1298,8 +1325,17 @@ pub(crate) mod parsing {
                 let mut rhs = unary_expr(input, allow_struct)?;
                 loop {
                     let next = peek_precedence(input);
-                    if next > precedence || next == precedence && precedence == Precedence::Assign {
+                    if next > precedence
+                        || (next == precedence
+                            && Associativity::of(precedence) == Associativity::Right)
+                    {
                         rhs = parse_expr(input, rhs, allow_struct, next)?;
+                    } else if next == precedence
+                        && Associativity::of(precedence) == Associativity::None
+                    {
+                        return Err(
+                            input.error("non-associative operator requires additional parentheses")
+                        );
                     } else {
                         break;
                     }
@@ -1413,8 +1449,17 @@ pub(crate) mod parsing {
                 let mut rhs = unary_expr(input, allow_struct)?;
                 loop {
                     let next = peek_precedence(input);
-                    if next > precedence || next == precedence && precedence == Precedence::Assign {
+                    if next > precedence
+                        || (next == precedence
+                            && Associativity::of(precedence) == Associativity::Right)
+                    {
                         rhs = parse_expr(input, rhs, allow_struct, next)?;
+                    } else if next == precedence
+                        && Associativity::of(precedence) == Associativity::None
+                    {
+                        return Err(
+                            input.error("non-associative operator requires additional parentheses")
+                        );
                     } else {
                         break;
                     }
