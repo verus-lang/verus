@@ -1,7 +1,7 @@
 #[allow(unused_imports)]
 use builtin::*;
 use builtin_macros::*;
-use pervasive::*;
+//use pervasive::*;
 mod pervasive;
 
 fndecl!(fn f(x: nat, y: nat) -> bool);

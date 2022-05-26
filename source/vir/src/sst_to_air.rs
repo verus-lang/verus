@@ -667,9 +667,9 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: ExprCtxt) -> Expr {
             &exp_to_expr(ctx, e3, expr_ctxt),
         ),
         (ExpX::WithTriggers(_triggers, body), _) => exp_to_expr(ctx, body, expr_ctxt),
-        (ExpX::Bind(bnd, exp), _) => match (&bnd.x, expr_ctxt.is_bit_vector) {
+        (ExpX::Bind(bnd, e), _) => match (&bnd.x, expr_ctxt.is_bit_vector) {
             (BndX::Let(binders), _) => {
-                let expr = exp_to_expr(ctx, exp, expr_ctxt);
+                let expr = exp_to_expr(ctx, e, expr_ctxt);
                 let binders = vec_map(&*binders, |b| {
                     Arc::new(BinderX {
                         name: suffix_local_expr_id(&b.name),
@@ -679,7 +679,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: ExprCtxt) -> Expr {
                 air::ast_util::mk_let(&binders, &expr)
             }
             (BndX::Quant(quant, binders, trigs), _) => {
-                let expr = exp_to_expr(ctx, exp, expr_ctxt);
+                let expr = exp_to_expr(ctx, e, expr_ctxt);
                 let mut invs: Vec<Expr> = Vec::new();
                 if !expr_ctxt.is_bit_vector {
                     for binder in binders.iter() {

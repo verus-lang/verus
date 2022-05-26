@@ -34,7 +34,7 @@ pub(crate) struct AxiomInfo {
 pub enum ValidityResult {
     Valid,
     Invalid(Model, Error),
-    Canceled,
+    Canceled(Option<Profiler>),
     TypeError(TypeError),
     UnexpectedSmtOutput(String),
 }
@@ -326,14 +326,17 @@ impl Context {
             query_context.report_long_running,
         );
 
-        if let ValidityResult::Canceled = validity {
+        if let ValidityResult::Canceled(_) = validity {
             if self.profile {
                 // Display profiling results
                 let profiler = Profiler::new();
+                ValidityResult::Canceled(Some(profiler))
+            } else {
+                validity
             }
+        } else {
+            validity
         }
-
-        validity
     }
 
     /// After receiving ValidityResult::Invalid, try to find another error.

@@ -239,7 +239,7 @@ pub(crate) fn smt_check_assertion<'ctx>(
             match reason.expect("expected :reason-unknown") {
                 SmtReasonUnknown::Canceled | SmtReasonUnknown::Unknown => {
                     context.state = ContextState::Canceled;
-                    return ValidityResult::Canceled;
+                    return ValidityResult::Canceled(None);
                 }
                 SmtReasonUnknown::Incomplete => false,
             }

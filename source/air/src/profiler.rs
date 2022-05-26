@@ -4,12 +4,14 @@ use z3tracer::{Model, ModelConfig};
 use z3tracer::syntax::Term;
 //use std::collections::binary_heap::IntoIterSorted;
 use std::io::BufRead;
+//use crate::ast::Span;
+//use std::collections::HashMap;
 
 #[derive(Debug)]
 /// Profiler for processing and displaying SMT performance data
 pub struct Profiler {
     //log_path: String,
-    model: Model,
+    quantifier_stats: Vec<(String, usize)>,
 }
 
 impl Profiler {
@@ -33,7 +35,7 @@ impl Profiler {
         let _ = model.process(Some(path.to_string()), file, line_count).expect("Error processing Z3 trace");
         println!("... analysis complete");
         let instantiated_term_counts = model.most_instantiated_terms();
-        println!("Found {} instantiated_term_counts", instantiated_term_counts.len());
+        //println!("Found {} instantiated_term_counts", instantiated_term_counts.len());
 //        let top = instantiated_term_counts.into_iter_sorted().take(20).collect::<Vec<_>>();  //IntoIterSorted::from(instantiated_term_counts.clone()).take(20).collect::<Vec<_>>();
 //        println!("Top 20 instantiated_term_counts are: {:?}", top);
 
@@ -45,7 +47,7 @@ impl Profiler {
                         match term {
                             Term::Quant { name, .. } => 
                                 if name.starts_with("crate__") {
-                                    Some((name, count))
+                                    Some((name.clone(), count))
                                 } else {
                                     None
                                 },
@@ -59,22 +61,41 @@ impl Profiler {
 //                        std::format!("{:?}", ident).starts_with("crate__")
 //                    });
 //match term { z3tracer::syntax::Term::Quant{_,_,_,_,_} => true, _ => false});
-        println!("Of those, {} were quantifiers", quantifiers_sorted.len());
+        //println!("Of those, {} were quantifiers", quantifiers_sorted.len());
 
-        let total_instantiations = quantifiers_sorted.iter().fold(0, |acc, (_qid, count)| acc + count);
-        for (qid, count) in quantifiers_sorted {
-            println!("Instantiated {} {} times ({}% of the total)", qid, count, 100 * count / total_instantiations);
-        }
 //        // Find quantifier instantiations
 //        for (count, term) in instantiated_term_counts.into_iter_sorted() {
 //
 //        }
 
         Profiler {
-            model,
+            quantifier_stats: quantifiers_sorted,
         }
     }
-//    pub fn translate_variable(&self, sid: &Ident, name: &Ident) -> Option<String> {
-//
+
+    pub fn quant_count(&self) -> usize {
+        self.quantifier_stats.len()
+    }
+    
+    pub fn total_instantiations(&self) -> usize {
+        self.quantifier_stats.iter().fold(0, |acc, (_qid, count)| acc + count)
+    }
+
+    pub fn print_raw_stats(&self) {
+        for (qid, count) in &self.quantifier_stats {
+            println!("Instantiated {} {} times ({}% of the total)", qid, count, 100 * count / self.total_instantiations());
+        }
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item=&(String, usize)> + '_ {
+        self.quantifier_stats.iter()
+    }
+
+//    pub fn print_stats(&self, qid_map: &HashMap<String, Span>) {
+//        let total_instantiations = self.quantifier_stats.iter().fold(0, |acc, (_qid, count)| acc + count);
+//        for (qid, count) in &self.quantifier_stats {
+//            let qspan = qid_map.get(qid).expect(format!("Failed to find quantifier {}", qid).as_str());
+//            println!("Instantiated {:?} {} times ({}% of the total)", qspan, count, 100 * count / total_instantiations);
+//        }
 //    }
 }

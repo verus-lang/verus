@@ -137,9 +137,17 @@ pub fn main() {
                     println!("Additional error detail at {}", msg);
                 }
             }
-            ValidityResult::Canceled => {
+            ValidityResult::Canceled(profiler) => {
                 count_errors += 1;
-                println!("Resource limit (rlimit) exceeded; consider rerunning with --profile for more details");
+                if profile {
+                    println!("Resource limit (rlimit) exceeded");
+                    match profiler {
+                        Some(p) => p.print_raw_stats(),
+                        None => {}
+                    }
+                } else {
+                    println!("Resource limit (rlimit) exceeded; consider rerunning with --profile for more details");
+                }
             }
             ValidityResult::UnexpectedSmtOutput(err) => {
                 panic!("Unexpected SMT output: {}", err);

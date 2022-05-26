@@ -6,6 +6,7 @@ use crate::util::{error, from_raw_span, signalling};
 use air::ast::{Command, CommandX, Commands};
 use air::context::{QueryContext, ValidityResult};
 use air::errors::{Error, ErrorLabel};
+use air::profiler::Profiler;
 use rustc_hir::OwnerNode;
 use rustc_interface::interface::Compiler;
 
@@ -231,6 +232,18 @@ impl Verifier {
         }
     }
 
+    fn print_profile_stats(&self, compiler: &Compiler, profiler: Profiler, qid_map: &HashMap<String, air::ast::Span>) {
+        let num_quants = profiler.quant_count();
+        let total = profiler.total_instantiations();
+        let max = 10;
+        for (index, (qid, count)) in profiler.iter().take(max).enumerate() {
+            let qspan = qid_map.get(qid).expect(format!("Failed to find quantifier {}", qid).as_str());
+            let span = from_raw_span(&qspan.raw_span);
+            let msg = format!("Instantiated {} times ({}% of the total), top {} of {} user-level quantifiers", count, 100 * count / total, index + 1, num_quants);
+            compiler.diagnostic().span_note_without_error(span, &msg);
+        }
+    }
+
     /// Check the result of a query that was based on user input.
     /// Success/failure will (eventually) be communicated back to the user.
     /// Returns true if there was at least one Invalid resulting in an error.
@@ -241,6 +254,7 @@ impl Verifier {
         air_context: &mut air::context::Context,
         assign_map: &HashMap<*const air::ast::Span, HashSet<Arc<std::string::String>>>,
         snap_map: &Vec<(air::ast::Span, SnapPos)>,
+        qid_map: &HashMap<String, air::ast::Span>,
         command: &Command,
         context: &(&air::ast::Span, &str),
     ) -> bool {
@@ -279,7 +293,7 @@ impl Verifier {
                 ValidityResult::TypeError(err) => {
                     panic!("internal error: generated ill-typed AIR code: {}", err);
                 }
-                ValidityResult::Canceled => {
+                ValidityResult::Canceled(profiler) => {
                     if is_first_check && error_as == ErrorAs::Error {
                         self.count_errors += 1;
                         invalidity = true;
@@ -300,6 +314,10 @@ impl Verifier {
                         &context.1.to_string(),
                         &context.0,
                     )]);
+
+                    if let Some(p) = profiler {
+                        self.print_profile_stats(compiler, p, qid_map);
+                    }
                     break;
                 }
                 ValidityResult::Invalid(air_model, error) => {
@@ -391,6 +409,7 @@ impl Verifier {
         commands_with_context: CommandsWithContext,
         assign_map: &HashMap<*const air::ast::Span, HashSet<Arc<String>>>,
         snap_map: &Vec<(air::ast::Span, SnapPos)>,
+        qid_map: &HashMap<String, air::ast::Span>,
         module: &vir::ast::Path,
         function_name: Option<&Fun>,
         comment: &str,
@@ -419,6 +438,7 @@ impl Verifier {
                 air_context,
                 assign_map,
                 snap_map,
+                qid_map,
                 &command,
                 &(span, desc),
             );
@@ -659,6 +679,7 @@ impl Verifier {
                     }),
                     &HashMap::new(),
                     &vec![],
+                    &ctx.global.qid_map.borrow(),
                     module,
                     Some(&function.x.name),
                     &("Function-Termination ".to_string() + &fun_as_rust_dbg(f)),
@@ -685,6 +706,7 @@ impl Verifier {
                             command.clone(),
                             &HashMap::new(),
                             &snap_map,
+                            &ctx.global.qid_map.borrow(),
                             module,
                             Some(&function.x.name),
                             &(s.to_string() + &fun_as_rust_dbg(&function.x.name)),
@@ -756,6 +778,7 @@ impl Verifier {
                         command.clone(),
                         &HashMap::new(),
                         &snap_map,
+                        &ctx.global.qid_map.borrow(),
                         module,
                         Some(&function.x.name),
                         &(s.to_string() + &fun_as_rust_dbg(&function.x.name)),
