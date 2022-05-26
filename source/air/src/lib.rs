@@ -1,3 +1,4 @@
+#![feature(binary_heap_into_iter_sorted)]
 pub mod ast;
 pub mod ast_util;
 pub mod context;

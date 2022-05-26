@@ -1,3 +1,4 @@
+#![feature(binary_heap_into_iter_sorted)]
 use air::ast::CommandX;
 use air::context::{Context, ValidityResult};
 use air::errors::ErrorLabel;

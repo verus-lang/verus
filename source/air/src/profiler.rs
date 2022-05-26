@@ -1,6 +1,7 @@
 //! Analyzes prover performance of the SMT solver
 
 use z3tracer::{Model, ModelConfig}; 
+//use std::collections::binary_heap::IntoIterSorted;
 
 #[derive(Debug)]
 /// Profiler for processing and displaying SMT performance data
@@ -27,6 +28,16 @@ impl Profiler {
         println!("Analyzing Z3 log...");
         let _ = model.process(Some(path.to_string()), file).expect("Error processing Z3 trace");
         println!("... analysis complete");
+        let instantiated_term_counts = model.most_instantiated_terms();
+        println!("Found {} instantiated_term_counts", instantiated_term_counts.len());
+//        let top = instantiated_term_counts.into_iter_sorted().take(20).collect::<Vec<_>>();  //IntoIterSorted::from(instantiated_term_counts.clone()).take(20).collect::<Vec<_>>();
+//        println!("Top 20 instantiated_term_counts are: {:?}", top);
+
+        // Find quantifier instantiations
+        for (count, term) in instantiated_term_counts.into_iter_sorted() {
+
+        }
+
         Profiler {
             model,
         }
