@@ -23,10 +23,20 @@ fndecl!(fn g(x: nat) -> bool);
 //    assert(g(z));
 //}
 //
+//#[proof] 
+//fn trigger_forever() {
+//   requires(forall(|x: nat, y: nat| f(x + 1, 2 * y) && f(2 * x, y + x) || f(y, x) >>= (#[trigger] f(x, y))));
+//   ensures(forall(|x: nat, y: nat| x > 2318 && y < 100 >>= f(x, y)));
+//}
+
+fndecl!(fn h(x:nat, y: nat) -> bool);
+
+// Split the triggering over two different quantifiers
 #[proof] 
-fn trigger_forever() {
-   requires(forall(|x: nat, y: nat| f(x + 1, 2 * y) && f(2 * x, y + x) || f(y, x) >>= (#[trigger] f(x, y))));
-   ensures(forall(|x: nat, y: nat| x > 2318 && y < 100 >>= f(x, y)));
+fn trigger_forever2() {
+   requires([forall(|x: nat, y: nat| h(x, y) == f(x, y)),
+             forall(|x: nat, y: nat| f(x + 1, 2 * y) && f(2 * x, y + x) || f(y, x) >>= (#[trigger] f(x, y)))]);
+   ensures(forall(|x: nat, y: nat| x > 2318 && y < 100 >>= h(x, y)));
 }
 //
 //#[exec]
