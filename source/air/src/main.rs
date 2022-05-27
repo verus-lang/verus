@@ -1,6 +1,7 @@
 #![feature(binary_heap_into_iter_sorted)]
 use air::ast::CommandX;
 use air::context::{Context, ValidityResult};
+use air::profiler::Profiler;
 use air::errors::ErrorLabel;
 use getopts::Options;
 use sise::Node;
@@ -137,14 +138,12 @@ pub fn main() {
                     println!("Additional error detail at {}", msg);
                 }
             }
-            ValidityResult::Canceled(profiler) => {
+            ValidityResult::Canceled => {
                 count_errors += 1;
                 if profile {
                     println!("Resource limit (rlimit) exceeded");
-                    match profiler {
-                        Some(p) => p.print_raw_stats(),
-                        None => {}
-                    }
+                    let profiler = Profiler::new();
+                    profiler.print_raw_stats();
                 } else {
                     println!("Resource limit (rlimit) exceeded; consider rerunning with --profile for more details");
                 }

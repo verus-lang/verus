@@ -5,7 +5,6 @@ use crate::errors::{Error, ErrorLabels};
 use crate::model::Model;
 use crate::node;
 use crate::printer::{macro_push_node, str_to_node};
-use crate::profiler::Profiler;
 use crate::scope_map::ScopeMap;
 use crate::smt_manager::SmtManager;
 use crate::smt_verify::ReportLongRunning;
@@ -34,7 +33,7 @@ pub(crate) struct AxiomInfo {
 pub enum ValidityResult {
     Valid,
     Invalid(Model, Error),
-    Canceled(Option<Profiler>),
+    Canceled,
     TypeError(TypeError),
     UnexpectedSmtOutput(String),
 }
@@ -326,17 +325,7 @@ impl Context {
             query_context.report_long_running,
         );
 
-        if let ValidityResult::Canceled(_) = validity {
-            if self.profile {
-                // Display profiling results
-                let profiler = Profiler::new();
-                ValidityResult::Canceled(Some(profiler))
-            } else {
-                validity
-            }
-        } else {
-            validity
-        }
+        validity
     }
 
     /// After receiving ValidityResult::Invalid, try to find another error.

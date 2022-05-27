@@ -314,7 +314,7 @@ impl Verifier {
                 ValidityResult::TypeError(err) => {
                     panic!("internal error: generated ill-typed AIR code: {}", err);
                 }
-                ValidityResult::Canceled(profiler) => {
+                ValidityResult::Canceled => {
                     if is_first_check && error_as == ErrorAs::Error {
                         self.count_errors += 1;
                         invalidity = true;
@@ -336,8 +336,9 @@ impl Verifier {
                         &context.0,
                     )]);
 
-                    if let Some(p) = profiler {
-                        self.print_profile_stats(compiler, p, qid_map);
+                    if air_context.get_profile() {
+                        let profiler = Profiler::new();
+                        self.print_profile_stats(compiler, profiler, qid_map);
                     }
                     break;
                 }
