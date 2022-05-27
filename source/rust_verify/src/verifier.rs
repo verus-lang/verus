@@ -236,7 +236,9 @@ impl Verifier {
         let num_quants = profiler.quant_count();
         let total = profiler.total_instantiations();
         let max = 10;
+        let delimiter = "-".repeat(100);
         for (index, (qid, count)) in profiler.iter().take(max).enumerate() {
+            println!("{}", delimiter);
             // Report the quantifier
             let qexp = qid_map.get(qid).expect(format!("Failed to find quantifier {}", qid).as_str());
             let span = from_raw_span(&qexp.span.raw_span);
