@@ -232,15 +232,36 @@ impl Verifier {
         }
     }
 
-    fn print_profile_stats(&self, compiler: &Compiler, profiler: Profiler, qid_map: &HashMap<String, air::ast::Span>) {
+    fn print_profile_stats(&self, compiler: &Compiler, profiler: Profiler, qid_map: &HashMap<String, vir::sst::Exp>) {
         let num_quants = profiler.quant_count();
         let total = profiler.total_instantiations();
         let max = 10;
         for (index, (qid, count)) in profiler.iter().take(max).enumerate() {
-            let qspan = qid_map.get(qid).expect(format!("Failed to find quantifier {}", qid).as_str());
-            let span = from_raw_span(&qspan.raw_span);
-            let msg = format!("Instantiated {} times ({}% of the total), top {} of {} user-level quantifiers", count, 100 * count / total, index + 1, num_quants);
+            // Report the quantifier
+            let qexp = qid_map.get(qid).expect(format!("Failed to find quantifier {}", qid).as_str());
+            let span = from_raw_span(&qexp.span.raw_span);
+            let msg = format!("Instantiated {} times ({}% of the total), top {} of {} user-level quantifiers.\n", count, 100 * count / total, index + 1, num_quants);
             compiler.diagnostic().span_note_without_error(span, &msg);
+
+            let triggers = match &qexp.x {
+                vir::sst::ExpX::Bind(bnd, _) => {
+                    match &bnd.x {
+                        vir::sst::BndX::Quant(_, _, trigs) => trigs,
+                        vir::sst::BndX::Choose(_, trigs, _) => trigs,
+                        _ => panic!("internal error: qid_map expressions should only be Quant or Choose; found {:?}", bnd.x),
+                    }
+                },
+                _ => panic!("internal error: qid_map should only contain Bind expressions; found {:?}", qexp.x),
+            };
+
+            // Summarize the triggers it used
+            for (n, trigger) in triggers.iter().enumerate() {
+                let spans = MultiSpan::from_spans(
+                    trigger.iter().map(|e| from_raw_span(&e.span.raw_span)).collect(),
+                );
+                let msg = format!("  trigger {} of {}:", n + 1, triggers.len());
+                compiler.diagnostic().span_note_without_error(spans, &msg);
+            }
         }
     }
 
@@ -254,7 +275,7 @@ impl Verifier {
         air_context: &mut air::context::Context,
         assign_map: &HashMap<*const air::ast::Span, HashSet<Arc<std::string::String>>>,
         snap_map: &Vec<(air::ast::Span, SnapPos)>,
-        qid_map: &HashMap<String, air::ast::Span>,
+        qid_map: &HashMap<String, vir::sst::Exp>,
         command: &Command,
         context: &(&air::ast::Span, &str),
     ) -> bool {
@@ -409,7 +430,7 @@ impl Verifier {
         commands_with_context: CommandsWithContext,
         assign_map: &HashMap<*const air::ast::Span, HashSet<Arc<String>>>,
         snap_map: &Vec<(air::ast::Span, SnapPos)>,
-        qid_map: &HashMap<String, air::ast::Span>,
+        qid_map: &HashMap<String, vir::sst::Exp>,
         module: &vir::ast::Path,
         function_name: Option<&Fun>,
         comment: &str,
