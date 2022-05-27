@@ -720,7 +720,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: ExprCtxt) -> Expr {
                 air::ast_util::mk_quantifier(quant.quant, &binders, &triggers, Some(qid), &expr)
             }
             (BndX::Lambda(binders), false) => {
-                let expr = exp_to_expr(ctx, exp, expr_ctxt);
+                let expr = exp_to_expr(ctx, e, expr_ctxt);
                 let binders = vec_map(&*binders, |b| {
                     let name = suffix_local_expr_id(&b.name);
                     Arc::new(BinderX { name, a: typ_to_air(ctx, &b.a) })
@@ -740,10 +740,10 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: ExprCtxt) -> Expr {
                     bs.push(Arc::new(BinderX { name, a: typ_to_air(ctx, &b.a) }));
                 }
                 let cond_expr = exp_to_expr(ctx, cond, expr_ctxt);
-                let body_expr = exp_to_expr(ctx, exp, expr_ctxt);
+                let body_expr = exp_to_expr(ctx, e, expr_ctxt);
                 invs.push(cond_expr.clone());
                 let cond_expr = mk_and(&invs);
-                let typ = &exp.typ;
+                let typ = &e.typ;
                 let typ_inv = typ_invariant(ctx, typ, &body_expr);
                 let triggers = vec_map(&*trigs, |trig| {
                     Arc::new(vec_map(trig, |x| exp_to_expr(ctx, x, expr_ctxt)))
