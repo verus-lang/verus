@@ -287,8 +287,10 @@ impl Parser {
     fn nodes_to_triggers_and_qid(&self, nodes: &[Node]) -> Result<(Triggers, Qid), String> {
         let mut triggers: Vec<Trigger> = Vec::new();
         let mut qid = None;
+        let mut skolemid = None;  // We don't currently use this, since we emit skolemid = qid
         let mut consume_pattern = false;
         let mut consume_qid = false;
+        let mut consume_skolemid = false;
 
         for node in nodes {
             match node {
@@ -298,9 +300,16 @@ impl Parser {
                 Node::Atom(s) if s.to_string() == ":qid" => {
                     consume_qid = true;
                 }
+                Node::Atom(s) if s.to_string() == ":skolemid" => {
+                    consume_skolemid = true;
+                }
                 Node::Atom(s) if consume_qid && qid.is_none() => {
                     qid = Some(s.clone());
                     consume_qid = false;
+                }
+                Node::Atom(s) if consume_skolemid && skolemid.is_none() => {
+                    skolemid = Some(s.clone());
+                    consume_skolemid = false;
                 }
                 Node::List(trigger_nodes) if consume_pattern => {
                     triggers.push(self.nodes_to_exprs(trigger_nodes)?);
@@ -308,7 +317,7 @@ impl Parser {
                 }
                 _ => {
                     return Err(format!(
-                        "expected quantifier pattern or qid, found {}",
+                        "expected quantifier pattern, qid, or skolemid; found {}",
                         node_to_string(node)
                     ));
                 }

@@ -239,6 +239,8 @@ impl Printer {
                         if let Some(s) = qid {
                             nodes.push(str_to_node(":qid"));
                             nodes.push(str_to_node(s));
+                            nodes.push(str_to_node(":skolemid"));
+                            nodes.push(str_to_node(s));
                         }
                         Node::List(nodes)
                     }
