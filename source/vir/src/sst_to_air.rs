@@ -371,7 +371,7 @@ fn new_qid(ctx: &Ctx, exp: &Exp) -> String {
     // and sise cannot handle quoting with vertical bars
     let fun_name = str::replace(&fun_name, ":", "_");
     let qcount = ctx.quantifier_count.get();
-    let qid = format!("{}_{}", fun_name, qcount);
+    let qid = format!("{}{}_{}", air::profiler::USER_QUANT_PREFIX, fun_name, qcount);
     ctx.quantifier_count.set(qcount + 1);
     ctx.global.qid_map.borrow_mut().insert(qid.clone(), exp.clone());
     qid

@@ -7,6 +7,8 @@ use std::io::BufRead;
 //use crate::ast::Span;
 //use std::collections::HashMap;
 
+pub const USER_QUANT_PREFIX: &str = "user_";
+
 #[derive(Debug)]
 /// Profiler for processing and displaying SMT performance data
 pub struct Profiler {
@@ -46,7 +48,7 @@ impl Profiler {
                         //println!("Examining {:?}", term); 
                         match term {
                             Term::Quant { name, .. } => 
-                                if name.starts_with("crate__") {
+                                if name.starts_with(USER_QUANT_PREFIX) {
                                     Some((name.clone(), count))
                                 } else {
                                     None
