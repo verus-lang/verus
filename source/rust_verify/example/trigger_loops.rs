@@ -6,38 +6,48 @@ mod pervasive;
 
 fndecl!(fn f(x: nat, y: nat) -> bool);
 fndecl!(fn g(x: nat) -> bool);
+fndecl!(fn j(x: nat) -> bool);
+
+//#[proof]
+//fn quantifier_example() {
+//    requires(forall(|x| g(x)));
+//    ensures(exists(|y| g(y)));
+//    let w = choose(|z| g(z));
+//    assert(g(w));
+//}
+//
+//#[proof] 
+//fn choose_example() {
+//    requires(exists(|x| g(x)));
+//
+//    let z = choose(|y| g(y));
+//    assert(g(z));
+//}
 
 #[proof]
-fn quantifier_example() {
-    requires(forall(|x| g(x)));
-    ensures(exists(|y| g(y)));
-    let w = choose(|z| g(z));
-    assert(g(w));
+fn cost_example() {
+    requires([f(1,2),
+              forall(|x, y| #[trigger] f(x, y) == (g(x) && g(y))),
+              forall(|z| #[trigger] g(z) == j(z + 2))]);
+    assert(j(3) && j(4));
 }
 
-#[proof] 
-fn choose_example() {
-    requires(exists(|x| g(x)));
-
-    let z = choose(|y| g(y));
-    assert(g(z));
-}
 //
 //#[proof] 
 //fn trigger_forever() {
 //   requires(forall(|x: nat, y: nat| f(x + 1, 2 * y) && f(2 * x, y + x) || f(y, x) >>= (#[trigger] f(x, y))));
 //   ensures(forall(|x: nat, y: nat| x > 2318 && y < 100 >>= f(x, y)));
 //}
-
-fndecl!(fn h(x:nat, y: nat) -> bool);
-
-// Split the triggering over two different quantifiers
-#[proof] 
-fn trigger_forever2() {
-   requires([forall(|x: nat, y: nat| h(x, y) == f(x, y)),
-             forall(|x: nat, y: nat| f(x + 1, 2 * y) && f(2 * x, y + x) || f(y, x) >>= (#[trigger] f(x, y)))]);
-   ensures(forall(|x: nat, y: nat| x > 2318 && y < 100 >>= h(x, y)));
-}
+//
+//fndecl!(fn h(x:nat, y: nat) -> bool);
+//
+//// Split the triggering over two different quantifiers
+//#[proof] 
+//fn trigger_forever2() {
+//   requires([forall(|x: nat, y: nat| h(x, y) == f(x, y)),
+//             forall(|x: nat, y: nat| f(x + 1, 2 * y) && f(2 * x, y + x) || f(y, x) >>= (#[trigger] f(x, y)))]);
+//   ensures(forall(|x: nat, y: nat| x > 2318 && y < 100 >>= h(x, y)));
+//}
 //
 //#[exec]
 //fn bad_loop() {
