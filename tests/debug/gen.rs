@@ -2060,15 +2060,35 @@ impl Debug for Lite<syn::File> {
 impl Debug for Lite<syn::FnArg> {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         let _val = &self.value;
+        let mut formatter = formatter.debug_struct("FnArg");
+        if let Some(val) = &_val.tracked {
+            #[derive(RefCast)]
+            #[repr(transparent)]
+            struct Print(syn::token::Tracked);
+            impl Debug for Print {
+                fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                    formatter.write_str("Some")?;
+                    Ok(())
+                }
+            }
+            formatter.field("tracked", Print::ref_cast(val));
+        }
+        formatter.field("kind", Lite(&_val.kind));
+        formatter.finish()
+    }
+}
+impl Debug for Lite<syn::FnArgKind> {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let _val = &self.value;
         match _val {
-            syn::FnArg::Receiver(_val) => {
+            syn::FnArgKind::Receiver(_val) => {
                 formatter.write_str("Receiver")?;
                 formatter.write_str("(")?;
                 Debug::fmt(Lite(_val), formatter)?;
                 formatter.write_str(")")?;
                 Ok(())
             }
-            syn::FnArg::Typed(_val) => {
+            syn::FnArgKind::Typed(_val) => {
                 formatter.write_str("Typed")?;
                 formatter.write_str("(")?;
                 Debug::fmt(Lite(_val), formatter)?;
@@ -4496,9 +4516,30 @@ impl Debug for Lite<syn::ReturnType> {
         let _val = &self.value;
         match _val {
             syn::ReturnType::Default => formatter.write_str("Default"),
-            syn::ReturnType::Type(_v0, _v1) => {
+            syn::ReturnType::Type(_v0, _v1, _v2) => {
                 let mut formatter = formatter.debug_tuple("Type");
-                formatter.field(Lite(_v1));
+                formatter
+                    .field({
+                        #[derive(RefCast)]
+                        #[repr(transparent)]
+                        struct Print(Option<syn::token::Tracked>);
+                        impl Debug for Print {
+                            fn fmt(
+                                &self,
+                                formatter: &mut fmt::Formatter,
+                            ) -> fmt::Result {
+                                match &self.0 {
+                                    Some(_val) => {
+                                        formatter.write_str("Some")?;
+                                        Ok(())
+                                    }
+                                    None => formatter.write_str("None"),
+                                }
+                            }
+                        }
+                        Print::ref_cast(_v1)
+                    });
+                formatter.field(Lite(_v2));
                 formatter.finish()
             }
         }
@@ -5535,6 +5576,10 @@ impl Debug for Lite<syn::UnOp> {
             }
             syn::UnOp::Proof(_val) => {
                 formatter.write_str("Proof")?;
+                Ok(())
+            }
+            syn::UnOp::Tracked(_val) => {
+                formatter.write_str("Tracked")?;
                 Ok(())
             }
         }

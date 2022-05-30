@@ -292,6 +292,10 @@ pub trait Fold {
     fn fold_fn_arg(&mut self, i: FnArg) -> FnArg {
         fold_fn_arg(self, i)
     }
+    #[cfg(feature = "full")]
+    fn fold_fn_arg_kind(&mut self, i: FnArgKind) -> FnArgKind {
+        fold_fn_arg_kind(self, i)
+    }
     fn fold_fn_mode(&mut self, i: FnMode) -> FnMode {
         fold_fn_mode(self, i)
     }
@@ -1731,9 +1735,21 @@ pub fn fold_fn_arg<F>(f: &mut F, node: FnArg) -> FnArg
 where
     F: Fold + ?Sized,
 {
+    FnArg {
+        tracked: (node.tracked).map(|it| Token![tracked](tokens_helper(f, &it.span))),
+        kind: f.fold_fn_arg_kind(node.kind),
+    }
+}
+#[cfg(feature = "full")]
+pub fn fold_fn_arg_kind<F>(f: &mut F, node: FnArgKind) -> FnArgKind
+where
+    F: Fold + ?Sized,
+{
     match node {
-        FnArg::Receiver(_binding_0) => FnArg::Receiver(f.fold_receiver(_binding_0)),
-        FnArg::Typed(_binding_0) => FnArg::Typed(f.fold_pat_type(_binding_0)),
+        FnArgKind::Receiver(_binding_0) => {
+            FnArgKind::Receiver(f.fold_receiver(_binding_0))
+        }
+        FnArgKind::Typed(_binding_0) => FnArgKind::Typed(f.fold_pat_type(_binding_0)),
     }
 }
 pub fn fold_fn_mode<F>(f: &mut F, node: FnMode) -> FnMode
@@ -2898,10 +2914,11 @@ where
 {
     match node {
         ReturnType::Default => ReturnType::Default,
-        ReturnType::Type(_binding_0, _binding_1) => {
+        ReturnType::Type(_binding_0, _binding_1, _binding_2) => {
             ReturnType::Type(
                 Token![->](tokens_helper(f, &_binding_0.spans)),
-                Box::new(f.fold_type(*_binding_1)),
+                (_binding_1).map(|it| Token![tracked](tokens_helper(f, &it.span))),
+                Box::new(f.fold_type(*_binding_2)),
             )
         }
     }
@@ -3288,6 +3305,9 @@ where
         }
         UnOp::Proof(_binding_0) => {
             UnOp::Proof(Token![proof](tokens_helper(f, &_binding_0.span)))
+        }
+        UnOp::Tracked(_binding_0) => {
+            UnOp::Tracked(Token![tracked](tokens_helper(f, &_binding_0.span)))
         }
     }
 }

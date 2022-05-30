@@ -327,7 +327,7 @@ ast_enum! {
         /// Functions default to `()` and closures default to type inference.
         Default,
         /// A particular type is returned.
-        Type(Token![->], Box<Type>),
+        Type(Token![->], Option<Token![tracked]>, Box<Type>),
     }
 }
 
@@ -844,8 +844,9 @@ pub mod parsing {
         pub(crate) fn parse(input: ParseStream, allow_plus: bool) -> Result<Self> {
             if input.peek(Token![->]) {
                 let arrow = input.parse()?;
+                let tracked = input.parse()?;
                 let ty = ambig_ty(input, allow_plus)?;
-                Ok(ReturnType::Type(arrow, Box::new(ty)))
+                Ok(ReturnType::Type(arrow, tracked, Box::new(ty)))
             } else {
                 Ok(ReturnType::Default)
             }
@@ -1217,8 +1218,9 @@ mod printing {
         fn to_tokens(&self, tokens: &mut TokenStream) {
             match self {
                 ReturnType::Default => {}
-                ReturnType::Type(arrow, ty) => {
+                ReturnType::Type(arrow, tracked, ty) => {
                     arrow.to_tokens(tokens);
+                    tracked.to_tokens(tokens);
                     ty.to_tokens(tokens);
                 }
             }

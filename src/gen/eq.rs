@@ -802,9 +802,19 @@ impl Eq for FnArg {}
 #[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
 impl PartialEq for FnArg {
     fn eq(&self, other: &Self) -> bool {
+        self.tracked == other.tracked && self.kind == other.kind
+    }
+}
+#[cfg(feature = "full")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Eq for FnArgKind {}
+#[cfg(feature = "full")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl PartialEq for FnArgKind {
+    fn eq(&self, other: &Self) -> bool {
         match (self, other) {
-            (FnArg::Receiver(self0), FnArg::Receiver(other0)) => self0 == other0,
-            (FnArg::Typed(self0), FnArg::Typed(other0)) => self0 == other0,
+            (FnArgKind::Receiver(self0), FnArgKind::Receiver(other0)) => self0 == other0,
+            (FnArgKind::Typed(self0), FnArgKind::Typed(other0)) => self0 == other0,
             _ => false,
         }
     }
@@ -1754,7 +1764,9 @@ impl PartialEq for ReturnType {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
             (ReturnType::Default, ReturnType::Default) => true,
-            (ReturnType::Type(_, self1), ReturnType::Type(_, other1)) => self1 == other1,
+            (ReturnType::Type(_, self1, self2), ReturnType::Type(_, other1, other2)) => {
+                self1 == other1 && self2 == other2
+            }
             _ => false,
         }
     }
@@ -2096,6 +2108,7 @@ impl PartialEq for UnOp {
             (UnOp::BigOr(_), UnOp::BigOr(_)) => true,
             (UnOp::Spec(_), UnOp::Spec(_)) => true,
             (UnOp::Proof(_), UnOp::Proof(_)) => true,
+            (UnOp::Tracked(_), UnOp::Tracked(_)) => true,
             _ => false,
         }
     }

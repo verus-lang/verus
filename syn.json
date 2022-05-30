@@ -2096,6 +2096,24 @@
           "full"
         ]
       },
+      "fields": {
+        "tracked": {
+          "option": {
+            "token": "Tracked"
+          }
+        },
+        "kind": {
+          "syn": "FnArgKind"
+        }
+      }
+    },
+    {
+      "ident": "FnArgKind",
+      "features": {
+        "any": [
+          "full"
+        ]
+      },
       "variants": {
         "Receiver": [
           {
@@ -4506,6 +4524,11 @@
             "token": "RArrow"
           },
           {
+            "option": {
+              "token": "Tracked"
+            }
+          },
+          {
             "box": {
               "syn": "Type"
             }
@@ -5341,6 +5364,11 @@
         "Proof": [
           {
             "token": "Proof"
+          }
+        ],
+        "Tracked": [
+          {
+            "token": "Tracked"
           }
         ]
       }

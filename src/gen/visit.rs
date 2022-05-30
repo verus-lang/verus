@@ -294,6 +294,10 @@ pub trait Visit<'ast> {
     fn visit_fn_arg(&mut self, i: &'ast FnArg) {
         visit_fn_arg(self, i);
     }
+    #[cfg(feature = "full")]
+    fn visit_fn_arg_kind(&mut self, i: &'ast FnArgKind) {
+        visit_fn_arg_kind(self, i);
+    }
     fn visit_fn_mode(&mut self, i: &'ast FnMode) {
         visit_fn_mode(self, i);
     }
@@ -1911,11 +1915,21 @@ pub fn visit_fn_arg<'ast, V>(v: &mut V, node: &'ast FnArg)
 where
     V: Visit<'ast> + ?Sized,
 {
+    if let Some(it) = &node.tracked {
+        tokens_helper(v, &it.span);
+    }
+    v.visit_fn_arg_kind(&node.kind);
+}
+#[cfg(feature = "full")]
+pub fn visit_fn_arg_kind<'ast, V>(v: &mut V, node: &'ast FnArgKind)
+where
+    V: Visit<'ast> + ?Sized,
+{
     match node {
-        FnArg::Receiver(_binding_0) => {
+        FnArgKind::Receiver(_binding_0) => {
             v.visit_receiver(_binding_0);
         }
-        FnArg::Typed(_binding_0) => {
+        FnArgKind::Typed(_binding_0) => {
             v.visit_pat_type(_binding_0);
         }
     }
@@ -3251,9 +3265,12 @@ where
 {
     match node {
         ReturnType::Default => {}
-        ReturnType::Type(_binding_0, _binding_1) => {
+        ReturnType::Type(_binding_0, _binding_1, _binding_2) => {
             tokens_helper(v, &_binding_0.spans);
-            v.visit_type(&**_binding_1);
+            if let Some(it) = &*_binding_1 {
+                tokens_helper(v, &it.span);
+            }
+            v.visit_type(&**_binding_2);
         }
     }
 }
@@ -3726,6 +3743,9 @@ where
             tokens_helper(v, &_binding_0.span);
         }
         UnOp::Proof(_binding_0) => {
+            tokens_helper(v, &_binding_0.span);
+        }
+        UnOp::Tracked(_binding_0) => {
             tokens_helper(v, &_binding_0.span);
         }
     }

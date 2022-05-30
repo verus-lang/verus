@@ -249,6 +249,7 @@
 //! - **`proc-macro`** *(enabled by default)* — Runtime dependency on the
 //!   dynamic library libproc_macro from rustc toolchain.
 
+#![feature(box_patterns)]
 // Syn types in rustdoc of other crates get linked to here.
 #![doc(html_root_url = "https://docs.rs/syn/1.0.95")]
 #![cfg_attr(doc_cfg, feature(doc_cfg))]
@@ -358,12 +359,12 @@ pub use crate::generics::{ImplGenerics, Turbofish, TypeGenerics};
 mod item;
 #[cfg(feature = "full")]
 pub use crate::item::{
-    FnArg, ForeignItem, ForeignItemFn, ForeignItemMacro, ForeignItemStatic, ForeignItemType,
-    ImplItem, ImplItemConst, ImplItemMacro, ImplItemMethod, ImplItemType, Item, ItemConst,
-    ItemEnum, ItemExternCrate, ItemFn, ItemForeignMod, ItemImpl, ItemMacro, ItemMacro2, ItemMod,
-    ItemStatic, ItemStruct, ItemTrait, ItemTraitAlias, ItemType, ItemUnion, ItemUse, Receiver,
-    Signature, TraitItem, TraitItemConst, TraitItemMacro, TraitItemMethod, TraitItemType, UseGlob,
-    UseGroup, UseName, UsePath, UseRename, UseTree,
+    FnArg, FnArgKind, ForeignItem, ForeignItemFn, ForeignItemMacro, ForeignItemStatic,
+    ForeignItemType, ImplItem, ImplItemConst, ImplItemMacro, ImplItemMethod, ImplItemType, Item,
+    ItemConst, ItemEnum, ItemExternCrate, ItemFn, ItemForeignMod, ItemImpl, ItemMacro, ItemMacro2,
+    ItemMod, ItemStatic, ItemStruct, ItemTrait, ItemTraitAlias, ItemType, ItemUnion, ItemUse,
+    Receiver, Signature, TraitItem, TraitItemConst, TraitItemMacro, TraitItemMethod, TraitItemType,
+    UseGlob, UseGroup, UseName, UsePath, UseRename, UseTree,
 };
 
 #[cfg(feature = "full")]

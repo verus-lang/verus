@@ -1187,13 +1187,23 @@ impl Debug for File {
 #[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
 impl Debug for FnArg {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let mut formatter = formatter.debug_struct("FnArg");
+        formatter.field("tracked", &self.tracked);
+        formatter.field("kind", &self.kind);
+        formatter.finish()
+    }
+}
+#[cfg(feature = "full")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Debug for FnArgKind {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            FnArg::Receiver(v0) => {
+            FnArgKind::Receiver(v0) => {
                 let mut formatter = formatter.debug_tuple("Receiver");
                 formatter.field(v0);
                 formatter.finish()
             }
-            FnArg::Typed(v0) => {
+            FnArgKind::Typed(v0) => {
                 let mut formatter = formatter.debug_tuple("Typed");
                 formatter.field(v0);
                 formatter.finish()
@@ -2507,10 +2517,11 @@ impl Debug for ReturnType {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         match self {
             ReturnType::Default => formatter.write_str("Default"),
-            ReturnType::Type(v0, v1) => {
+            ReturnType::Type(v0, v1, v2) => {
                 let mut formatter = formatter.debug_tuple("Type");
                 formatter.field(v0);
                 formatter.field(v1);
+                formatter.field(v2);
                 formatter.finish()
             }
         }
@@ -2983,6 +2994,11 @@ impl Debug for UnOp {
             }
             UnOp::Proof(v0) => {
                 let mut formatter = formatter.debug_tuple("Proof");
+                formatter.field(v0);
+                formatter.finish()
+            }
+            UnOp::Tracked(v0) => {
+                let mut formatter = formatter.debug_tuple("Tracked");
                 formatter.field(v0);
                 formatter.finish()
             }

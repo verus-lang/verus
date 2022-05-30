@@ -830,9 +830,19 @@ impl Clone for File {
 #[cfg_attr(doc_cfg, doc(cfg(feature = "clone-impls")))]
 impl Clone for FnArg {
     fn clone(&self) -> Self {
+        FnArg {
+            tracked: self.tracked.clone(),
+            kind: self.kind.clone(),
+        }
+    }
+}
+#[cfg(feature = "full")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "clone-impls")))]
+impl Clone for FnArgKind {
+    fn clone(&self) -> Self {
         match self {
-            FnArg::Receiver(v0) => FnArg::Receiver(v0.clone()),
-            FnArg::Typed(v0) => FnArg::Typed(v0.clone()),
+            FnArgKind::Receiver(v0) => FnArgKind::Receiver(v0.clone()),
+            FnArgKind::Typed(v0) => FnArgKind::Typed(v0.clone()),
         }
     }
 }
@@ -1816,7 +1826,9 @@ impl Clone for ReturnType {
     fn clone(&self) -> Self {
         match self {
             ReturnType::Default => ReturnType::Default,
-            ReturnType::Type(v0, v1) => ReturnType::Type(v0.clone(), v1.clone()),
+            ReturnType::Type(v0, v1, v2) => {
+                ReturnType::Type(v0.clone(), v1.clone(), v2.clone())
+            }
         }
     }
 }

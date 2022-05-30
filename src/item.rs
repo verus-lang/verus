@@ -907,9 +907,9 @@ impl Signature {
     /// A method's `self` receiver, such as `&self` or `self: Box<Self>`.
     pub fn receiver(&self) -> Option<&FnArg> {
         let arg = self.inputs.first()?;
-        match arg {
-            FnArg::Receiver(_) => Some(arg),
-            FnArg::Typed(PatType { pat, .. }) => {
+        match &arg.kind {
+            FnArgKind::Receiver(_) => Some(arg),
+            FnArgKind::Typed(PatType { pat, .. }) => {
                 if let Pat::Ident(PatIdent { ident, .. }) = &**pat {
                     if ident == "self" {
                         return Some(arg);
@@ -921,17 +921,25 @@ impl Signature {
     }
 }
 
+ast_struct! {
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "full")))]
+    pub struct FnArg {
+        pub tracked: Option<Token![tracked]>,
+        pub kind: FnArgKind,
+    }
+}
+
 ast_enum_of_structs! {
     /// An argument in a function signature: the `n: usize` in `fn f(n: usize)`.
     ///
     /// *This type is available only if Syn is built with the `"full"` feature.*
     #[cfg_attr(doc_cfg, doc(cfg(feature = "full")))]
-    pub enum FnArg {
+    pub enum FnArgKind {
         /// The `self` argument of an associated method, whether taken by value
         /// or by reference.
         ///
         /// Note that `self` receivers with a specified type, such as `self:
-        /// Box<Self>`, are parsed as a `FnArg::Typed`.
+        /// Box<Self>`, are parsed as a `FnArgKind::Typed`.
         Receiver(Receiver),
 
         /// A function argument accepted by pattern and type.
@@ -944,7 +952,7 @@ ast_struct! {
     /// or by reference.
     ///
     /// Note that `self` receivers with a specified type, such as `self:
-    /// Box<Self>`, are parsed as a `FnArg::Typed`.
+    /// Box<Self>`, are parsed as a `FnArgKind::Typed`.
     ///
     /// *This type is available only if Syn is built with the `"full"` feature.*
     #[cfg_attr(doc_cfg, doc(cfg(feature = "full")))]
@@ -1444,8 +1452,8 @@ pub mod parsing {
     fn pop_variadic(args: &mut Punctuated<FnArg, Token![,]>) -> Option<Variadic> {
         let trailing_punct = args.trailing_punct();
 
-        let last = match args.last_mut()? {
-            FnArg::Typed(last) => last,
+        let last = match &mut args.last_mut()?.kind {
+            FnArgKind::Typed(last) => last,
             _ => return None,
         };
 
@@ -1569,19 +1577,26 @@ pub mod parsing {
     impl Parse for FnArg {
         fn parse(input: ParseStream) -> Result<Self> {
             let attrs = input.call(Attribute::parse_outer)?;
+            let tracked: Option<Token![tracked]> = input.parse()?;
 
             let ahead = input.fork();
             if let Ok(mut receiver) = ahead.parse::<Receiver>() {
                 if !ahead.peek(Token![:]) {
                     input.advance_to(&ahead);
                     receiver.attrs = attrs;
-                    return Ok(FnArg::Receiver(receiver));
+                    return Ok(FnArg {
+                        tracked,
+                        kind: FnArgKind::Receiver(receiver),
+                    });
                 }
             }
 
             let mut typed = input.call(fn_arg_typed)?;
             typed.attrs = attrs;
-            Ok(FnArg::Typed(typed))
+            Ok(FnArg {
+                tracked,
+                kind: FnArgKind::Typed(typed),
+            })
         }
     }
 
@@ -1611,32 +1626,35 @@ pub mod parsing {
             let attrs = input.call(Attribute::parse_outer)?;
 
             let arg = if let Some(dots) = input.parse::<Option<Token![...]>>()? {
-                FnArg::Typed(PatType {
-                    attrs,
-                    pat: Box::new(Pat::Verbatim(variadic_to_tokens(&dots))),
-                    colon_token: Token![:](dots.spans[0]),
-                    ty: Box::new(Type::Verbatim(variadic_to_tokens(&dots))),
-                })
+                FnArg {
+                    tracked: None,
+                    kind: FnArgKind::Typed(PatType {
+                        attrs,
+                        pat: Box::new(Pat::Verbatim(variadic_to_tokens(&dots))),
+                        colon_token: Token![:](dots.spans[0]),
+                        ty: Box::new(Type::Verbatim(variadic_to_tokens(&dots))),
+                    }),
+                }
             } else {
                 let mut arg: FnArg = input.parse()?;
-                match &mut arg {
-                    FnArg::Receiver(receiver) if has_receiver => {
+                match &mut arg.kind {
+                    FnArgKind::Receiver(receiver) if has_receiver => {
                         return Err(Error::new(
                             receiver.self_token.span,
                             "unexpected second method receiver",
                         ));
                     }
-                    FnArg::Receiver(receiver) if !args.is_empty() => {
+                    FnArgKind::Receiver(receiver) if !args.is_empty() => {
                         return Err(Error::new(
                             receiver.self_token.span,
                             "unexpected method receiver",
                         ));
                     }
-                    FnArg::Receiver(receiver) => {
+                    FnArgKind::Receiver(receiver) => {
                         has_receiver = true;
                         receiver.attrs = attrs;
                     }
-                    FnArg::Typed(arg) => arg.attrs = attrs,
+                    FnArgKind::Typed(arg) => arg.attrs = attrs,
                 }
                 arg
             };
@@ -3249,9 +3267,11 @@ mod printing {
     }
 
     fn maybe_variadic_to_tokens(arg: &FnArg, tokens: &mut TokenStream) -> bool {
-        let arg = match arg {
-            FnArg::Typed(arg) => arg,
-            FnArg::Receiver(receiver) => {
+        arg.tracked.to_tokens(tokens);
+
+        let arg = match &arg.kind {
+            FnArgKind::Typed(arg) => arg,
+            FnArgKind::Receiver(receiver) => {
                 receiver.to_tokens(tokens);
                 return false;
             }

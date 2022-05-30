@@ -1094,12 +1094,23 @@ impl Hash for FnArg {
     where
         H: Hasher,
     {
+        self.tracked.hash(state);
+        self.kind.hash(state);
+    }
+}
+#[cfg(feature = "full")]
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Hash for FnArgKind {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
         match self {
-            FnArg::Receiver(v0) => {
+            FnArgKind::Receiver(v0) => {
                 state.write_u8(0u8);
                 v0.hash(state);
             }
-            FnArg::Typed(v0) => {
+            FnArgKind::Typed(v0) => {
                 state.write_u8(1u8);
                 v0.hash(state);
             }
@@ -2339,9 +2350,10 @@ impl Hash for ReturnType {
             ReturnType::Default => {
                 state.write_u8(0u8);
             }
-            ReturnType::Type(_, v1) => {
+            ReturnType::Type(_, v1, v2) => {
                 state.write_u8(1u8);
                 v1.hash(state);
+                v2.hash(state);
             }
         }
     }
@@ -2791,6 +2803,9 @@ impl Hash for UnOp {
             }
             UnOp::Proof(_) => {
                 state.write_u8(6u8);
+            }
+            UnOp::Tracked(_) => {
+                state.write_u8(7u8);
             }
         }
     }

@@ -1078,6 +1078,11 @@ pub(crate) fn requires_terminator(expr: &Expr) -> bool {
     match *expr {
         Expr::Unsafe(..)
         | Expr::Block(..)
+        | Expr::Unary(ExprUnary {
+            expr: box Expr::Block(..),
+            op: UnOp::Proof(..),
+            ..
+        })
         | Expr::If(..)
         | Expr::Match(..)
         | Expr::While(..)
@@ -1588,7 +1593,11 @@ pub(crate) mod parsing {
             expr_box(input, attrs, allow_struct).map(Expr::Box)
         } else if input.peek(Token![*]) || input.peek(Token![!]) || input.peek(Token![-]) {
             expr_unary(input, attrs, allow_struct).map(Expr::Unary)
-        } else if (input.peek(Token![spec]) || input.peek(Token![proof])) && (input.peek2(token::Brace) || input.peek2(token::Paren)) {
+        } else if (input.peek(Token![spec]) || input.peek(Token![proof]))
+            && (input.peek2(token::Brace) || input.peek2(token::Paren))
+        {
+            expr_unary(input, attrs, allow_struct).map(Expr::Unary)
+        } else if input.peek(Token![tracked]) {
             expr_unary(input, attrs, allow_struct).map(Expr::Unary)
         } else {
             trailer_expr(attrs, input, allow_struct)
@@ -2072,16 +2081,25 @@ pub(crate) mod parsing {
     pub(crate) fn expr_early_block(input: ParseStream) -> Result<Expr> {
         let attrs = input.call(expr_attrs)?;
         let prefix_binop = verus::parse_prefix_binop(input, &attrs)?;
-        match prefix_binop {
-            Some((op, binop)) => {
-                let allow_struct = AllowStruct(true);
-                let expr = unary_expr(input, allow_struct)?;
-                let expr = parse_expr(input, expr, allow_struct, Precedence::of(&binop))?;
-                let expr = Box::new(expr);
-                Ok(Expr::Unary(ExprUnary { attrs, expr, op }))
-            }
-            None => expr_early_inner(input, attrs),
+        if let Some((op, binop)) = prefix_binop {
+            let allow_struct = AllowStruct(true);
+            let expr = unary_expr(input, allow_struct)?;
+            let expr = parse_expr(input, expr, allow_struct, Precedence::of(&binop))?;
+            let expr = Box::new(expr);
+            return Ok(Expr::Unary(ExprUnary { attrs, expr, op }));
         }
+        if input.peek(Token![proof]) && input.peek2(token::Brace) {
+            let token: Token![proof] = input.parse()?;
+            let op = op::UnOp::Proof(token);
+            let expr = expr_early_inner(input, attrs)?;
+            let expr = Box::new(expr);
+            return Ok(Expr::Unary(ExprUnary {
+                attrs: vec![],
+                expr,
+                op,
+            }));
+        }
+        expr_early_inner(input, attrs)
     }
 
     #[cfg(feature = "full")]
@@ -2534,9 +2552,10 @@ pub(crate) mod parsing {
 
         let (output, body) = if input.peek(Token![->]) {
             let arrow_token: Token![->] = input.parse()?;
+            let tracked: Option<Token![tracked]> = input.parse()?;
             let ty: Type = input.parse()?;
             let body: Block = input.parse()?;
-            let output = ReturnType::Type(arrow_token, Box::new(ty));
+            let output = ReturnType::Type(arrow_token, tracked, Box::new(ty));
             let block = Expr::Block(ExprBlock {
                 attrs: Vec::new(),
                 label: None,
