@@ -18,6 +18,7 @@ use std::fs::File;
 use std::io::Write;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
+use num_format::{Locale, ToFormattedString};
 
 use vir::ast::{Fun, Function, InferMode, Krate, Mode, VirErr, Visibility};
 use vir::ast_util::{fun_as_rust_dbg, fun_name_crate_relative, is_visible_to};
@@ -237,12 +238,14 @@ impl Verifier {
         let total = profiler.total_instantiations();
         let max = 10;
         let delimiter = "-".repeat(100);
+        let msg = format!("Observed {} total instantiations of user-level quantifiers", total.to_formatted_string(&Locale::en));
+        compiler.diagnostic().note_without_error(&msg);
         for (index, (qid, count)) in profiler.iter().take(max).enumerate() {
             println!("{}", delimiter);
             // Report the quantifier
             let qexp = qid_map.get(qid).expect(format!("Failed to find quantifier {}", qid).as_str());
             let span = from_raw_span(&qexp.span.raw_span);
-            let msg = format!("Instantiated {} times ({}% of the total), top {} of {} user-level quantifiers.\n", count, 100 * count / total, index + 1, num_quants);
+            let msg = format!("Instantiated {} times ({}% of the total), top {} of {} user-level quantifiers.\n", count.to_formatted_string(&Locale::en), 100 * count / total, index + 1, num_quants);
             compiler.diagnostic().span_note_without_error(span, &msg);
 
             let triggers = match &qexp.x {
