@@ -282,6 +282,7 @@ fn simplify_one_expr(ctx: &GlobalCtx, state: &mut State, expr: &Expr) -> Result<
                 err_str(&expr.span, "not yet implemented: zero-arm match expressions")
             }
         }
+        ExprX::Ghost(_, expr1) => Ok(expr1.clone()),
         _ => Ok(expr.clone()),
     }
 }

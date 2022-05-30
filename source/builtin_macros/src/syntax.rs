@@ -4,9 +4,14 @@ use syn_verus::punctuated::Punctuated;
 use syn_verus::token::Paren;
 use syn_verus::visit_mut::{visit_expr_mut, visit_item_fn_mut, VisitMut};
 use syn_verus::{
-    parse_macro_input, parse_quote_spanned, Attribute, Expr, ExprBinary, ExprCall, FnMode, Item,
-    ItemFn,
+    parse_macro_input, parse_quote_spanned, Attribute, BinOp, Expr, ExprBinary, ExprCall,
+    FnArgKind, FnMode, Item, ItemFn, ReturnType, UnOp,
 };
+
+fn take_expr(expr: &mut Expr) -> Expr {
+    let dummy: Expr = syn_verus::parse_quote!(());
+    std::mem::replace(expr, dummy)
+}
 
 struct Visitor {}
 
@@ -17,48 +22,67 @@ impl VisitMut for Visitor {
             use syn_verus::spanned::Spanned;
             let span = unary.span();
             let low_prec_op = match unary.op {
-                syn_verus::UnOp::BigAnd(syn_verus::token::BigAnd { .. }) => true,
-                syn_verus::UnOp::BigOr(syn_verus::token::BigOr { .. }) => true,
+                UnOp::BigAnd(..) => true,
+                UnOp::BigOr(..) => true,
                 _ => false,
             };
+            let mode_block = match unary.op {
+                UnOp::Spec(..) | UnOp::Proof(..) => Some(false),
+                UnOp::Tracked(..) => Some(true),
+                _ => None,
+            };
+
             if low_prec_op {
-                let dummy: Expr = parse_quote_spanned!(span => ());
-                let inner = std::mem::replace(&mut *unary.expr, dummy.clone());
-                *expr = inner;
+                *expr = take_expr(&mut *unary.expr);
+            } else if let Some(mode_block) = mode_block {
+                match (mode_block, &*unary.expr) {
+                    (false, Expr::Paren(..)) => {
+                        let inner = take_expr(&mut *unary.expr);
+                        *expr = parse_quote_spanned!(span => #[spec] { #inner });
+                    }
+                    (false, Expr::Block(..)) => {
+                        let inner = take_expr(&mut *unary.expr);
+                        *expr = parse_quote_spanned!(span => #[spec] #inner);
+                    }
+                    (true, _) => {
+                        let inner = take_expr(&mut *unary.expr);
+                        *expr = parse_quote_spanned!(span => #[proof] { #inner });
+                    }
+                    _ => panic!("internal error: unexpected mode block"),
+                }
             }
         } else if let Expr::Binary(binary) = expr {
             use syn_verus::spanned::Spanned;
             let span = binary.span();
             let low_prec_op = match binary.op {
-                syn_verus::BinOp::BigAnd(syn_verus::token::BigAnd { spans }) => {
+                BinOp::BigAnd(syn_verus::token::BigAnd { spans }) => {
                     let spans = [spans[0], spans[1]];
-                    Some(syn_verus::BinOp::And(syn_verus::token::AndAnd { spans }))
+                    Some(BinOp::And(syn_verus::token::AndAnd { spans }))
                 }
-                syn_verus::BinOp::BigOr(syn_verus::token::BigOr { spans }) => {
+                BinOp::BigOr(syn_verus::token::BigOr { spans }) => {
                     let spans = [spans[0], spans[1]];
-                    Some(syn_verus::BinOp::Or(syn_verus::token::OrOr { spans }))
+                    Some(BinOp::Or(syn_verus::token::OrOr { spans }))
                 }
-                syn_verus::BinOp::Equiv(syn_verus::token::Equiv { spans }) => {
+                BinOp::Equiv(syn_verus::token::Equiv { spans }) => {
                     let spans = [spans[1], spans[2]];
-                    Some(syn_verus::BinOp::Eq(syn_verus::token::EqEq { spans }))
+                    Some(BinOp::Eq(syn_verus::token::EqEq { spans }))
                 }
                 _ => None,
             };
             let ply = match binary.op {
-                syn_verus::BinOp::Imply(_) => Some(true),
-                syn_verus::BinOp::Exply(_) => Some(false),
+                BinOp::Imply(_) => Some(true),
+                BinOp::Exply(_) => Some(false),
                 _ => None,
             };
             let big_eq = match binary.op {
-                syn_verus::BinOp::BigEq(_) => Some(true),
-                syn_verus::BinOp::BigNe(_) => Some(false),
+                BinOp::BigEq(_) => Some(true),
+                BinOp::BigNe(_) => Some(false),
                 _ => None,
             };
             if let Some(op) = low_prec_op {
                 let attrs = std::mem::take(&mut binary.attrs);
-                let dummy: Expr = parse_quote_spanned!(span => ());
-                let left = Box::new(std::mem::replace(&mut *binary.left, dummy.clone()));
-                let right = Box::new(std::mem::replace(&mut *binary.right, dummy));
+                let left = Box::new(take_expr(&mut *binary.left));
+                let right = Box::new(take_expr(&mut *binary.right));
                 let left = parse_quote_spanned!(span => (#left));
                 let right = parse_quote_spanned!(span => (#right));
                 let bin = ExprBinary { attrs, op, left, right };
@@ -68,13 +92,12 @@ impl VisitMut for Visitor {
                 let func = parse_quote_spanned!(span => ::builtin::imply);
                 let paren_token = Paren { span };
                 let mut args = Punctuated::new();
-                let dummy: Expr = parse_quote_spanned!(span => ());
                 if imply {
-                    args.push(std::mem::replace(&mut *binary.left, dummy.clone()));
-                    args.push(std::mem::replace(&mut *binary.right, dummy));
+                    args.push(take_expr(&mut *binary.left));
+                    args.push(take_expr(&mut *binary.right));
                 } else {
-                    args.push(std::mem::replace(&mut *binary.right, dummy.clone()));
-                    args.push(std::mem::replace(&mut *binary.left, dummy));
+                    args.push(take_expr(&mut *binary.right));
+                    args.push(take_expr(&mut *binary.left));
                 }
                 *expr = Expr::Call(ExprCall { attrs, func, paren_token, args });
             } else if let Some(eq) = big_eq {
@@ -82,9 +105,8 @@ impl VisitMut for Visitor {
                 let func = parse_quote_spanned!(span => ::builtin::equal);
                 let paren_token = Paren { span };
                 let mut args = Punctuated::new();
-                let dummy: Expr = parse_quote_spanned!(span => ());
-                args.push(std::mem::replace(&mut *binary.left, dummy.clone()));
-                args.push(std::mem::replace(&mut *binary.right, dummy));
+                args.push(take_expr(&mut *binary.left));
+                args.push(take_expr(&mut *binary.right));
                 let call = Expr::Call(ExprCall { attrs, func, paren_token, args });
                 if eq {
                     *expr = call;
@@ -96,7 +118,28 @@ impl VisitMut for Visitor {
     }
 
     fn visit_item_fn_mut(&mut self, fun: &mut ItemFn) {
-        visit_item_fn_mut(self, fun);
+        fun.attrs.push(parse_quote_spanned!(fun.sig.fn_token.span => #[verifier(verus_macro)]));
+
+        for arg in &mut fun.sig.inputs {
+            match (arg.tracked, &mut arg.kind) {
+                (None, _) => {}
+                (Some(_), FnArgKind::Receiver(..)) => todo!("support tracked self"),
+                (Some(token), FnArgKind::Typed(typed)) => {
+                    typed.attrs.push(parse_quote_spanned!(token.span => #[proof]));
+                }
+            }
+            arg.tracked = None;
+        }
+        match &mut fun.sig.output {
+            ReturnType::Default => {}
+            ReturnType::Type(_, ref mut tracked, _) => {
+                if let Some(token) = tracked {
+                    fun.attrs.push(parse_quote_spanned!(token.span => #[verifier(returns(proof))]));
+                    *tracked = None;
+                }
+            }
+        }
+
         let mode_attrs: Vec<Attribute> = match &fun.sig.mode {
             FnMode::Default => vec![],
             FnMode::Spec(token) => {
@@ -112,6 +155,7 @@ impl VisitMut for Visitor {
                 vec![parse_quote_spanned!(token.exec_token.span => #[exec])]
             }
         };
+        visit_item_fn_mut(self, fun);
         fun.attrs.extend(mode_attrs);
         fun.sig.mode = FnMode::Default;
     }

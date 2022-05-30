@@ -51,6 +51,15 @@ pub enum Mode {
 /// (A unique id marks the place that needs to be filled in.)
 pub type InferMode = u64;
 
+/// Represents Rust ghost blocks
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum Ghost {
+    /// Not in a ghost block
+    Exec,
+    /// In a ghost block, and lifetime checking is enabled iff tracked == true
+    Ghost { tracked: bool },
+}
+
 /// Describes integer types
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum IntRange {
@@ -394,6 +403,12 @@ pub enum ExprX {
     OpenInvariant(Expr, Binder<Typ>, Expr, InvAtomicity),
     /// Return from function
     Return(Option<Expr>),
+    /// Enter a Rust ghost block, which will be erased during compilation.
+    /// In principle, this is not needed, because we can infer which code to erase using modes.
+    /// However, we can't easily communicate the inferred modes back to rustc for erasure
+    /// and lifetime checking -- rustc needs syntactic annotations for these, and the mode checker
+    /// needs to confirm that these annotations agree with what would have been inferred.
+    Ghost(Ghost, Expr),
     /// Sequence of statements, optionally including an expression at the end
     Block(Stmts, Option<Expr>),
     /// assert_by with smt.arith.nl=true
@@ -442,6 +457,8 @@ pub type TypPositiveBounds = Arc<Vec<(Ident, GenericBound, bool)>>;
 pub type FunctionAttrs = Arc<FunctionAttrsX>;
 #[derive(Debug, Default, Clone)]
 pub struct FunctionAttrsX {
+    /// Erasure and lifetime checking based on ghost blocks
+    pub uses_ghost_blocks: bool,
     /// List of functions that this function wants to view as opaque
     pub hidden: Arc<Vec<Fun>>,
     /// Create a global axiom saying forall params, require ==> ensure

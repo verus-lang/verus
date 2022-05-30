@@ -1,5 +1,5 @@
 use crate::attributes::{
-    get_trigger, get_var_mode, get_verifier_attrs, parse_attrs, Attr, GetVariantField,
+    get_mode_opt, get_trigger, get_var_mode, get_verifier_attrs, parse_attrs, Attr, GetVariantField,
 };
 use crate::context::BodyCtxt;
 use crate::erase::ResolvedCall;
@@ -1380,7 +1380,20 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
             if is_invariant_block(bctx, expr)? {
                 invariant_block_to_vir(bctx, expr, modifier)
             } else {
-                block_to_vir(bctx, body, &expr.span, &expr_typ(), modifier)
+                let block = block_to_vir(bctx, body, &expr.span, &expr_typ(), modifier);
+                if let Some(mode) = get_mode_opt(bctx.ctxt.tcx.hir().attrs(expr.hir_id)) {
+                    // confusing HACK until we have real ghost blocks: encode with #[spec], #[proof]
+                    let ghost = match mode {
+                        Mode::Spec => vir::ast::Ghost::Ghost { tracked: false },
+                        Mode::Proof => vir::ast::Ghost::Ghost { tracked: true },
+                        Mode::Exec => {
+                            return err_span_str(expr.span, "exec blocks are not supported");
+                        }
+                    };
+                    Ok(mk_expr(ExprX::Ghost(ghost, block?)))
+                } else {
+                    block
+                }
             }
         }
         ExprKind::Call(fun, args_slice) => {

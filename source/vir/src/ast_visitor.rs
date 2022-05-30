@@ -304,6 +304,9 @@ where
                     None => (),
                     Some(e) => expr_visitor_control_flow!(expr_visitor_dfs(e, map, mf)),
                 },
+                ExprX::Ghost(_mode, e1) => {
+                    expr_visitor_control_flow!(expr_visitor_dfs(e1, map, mf))
+                }
                 ExprX::Block(ss, e1) => {
                     for stmt in ss.iter() {
                         expr_visitor_control_flow!(stmt_visitor_dfs(stmt, map, mf));
@@ -609,6 +612,10 @@ where
                 Some(e) => Some(map_expr_visitor_env(e, map, env, fe, fs, ft)?),
             };
             ExprX::Return(e1)
+        }
+        ExprX::Ghost(mode, e1) => {
+            let expr1 = map_expr_visitor_env(e1, map, env, fe, fs, ft)?;
+            ExprX::Ghost(*mode, expr1)
         }
         ExprX::Block(ss, e1) => {
             let mut stmts: Vec<Stmt> = Vec::new();

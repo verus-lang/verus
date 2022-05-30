@@ -239,6 +239,7 @@ pub(crate) fn check_item_fn<'tcx>(
     };
     let publish = get_publish(&vattrs);
     let fattrs = FunctionAttrsX {
+        uses_ghost_blocks: vattrs.verus_macro,
         hidden: Arc::new(header.hidden),
         custom_req_err: vattrs.custom_req_err,
         no_auto_trigger: vattrs.no_auto_trigger,

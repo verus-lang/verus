@@ -330,6 +330,14 @@ fn expr_to_node(expr: &Expr) -> Node {
             }
             Node::List(nodes)
         }
+        ExprX::Ghost(ghost, expr) => {
+            let ghost = match ghost {
+                Ghost::Exec => "ghost_exec",
+                Ghost::Ghost { tracked: true } => "ghost_tracked",
+                Ghost::Ghost { tracked: false } => "ghost_untracked",
+            };
+            Node::List(nodes_vec!({str_to_node(ghost)} {expr_to_node(expr)}))
+        }
         ExprX::Block(stmts, expr) => {
             let mut nodes = nodes_vec!(block {
             Node::List(stmts.iter().map(|stmt| {
@@ -403,6 +411,7 @@ fn function_to_node(function: &FunctionX) -> Node {
     }});
     let function_attrs_node = {
         let FunctionAttrsX {
+            uses_ghost_blocks,
             hidden,
             broadcast_forall,
             no_auto_trigger,
@@ -421,6 +430,9 @@ fn function_to_node(function: &FunctionX) -> Node {
             str_to_node(":hidden"),
             Node::List(hidden.iter().map(|f| fun_to_node(&**f)).collect()),
         ];
+        if *uses_ghost_blocks {
+            nodes.push(str_to_node("+uses_ghost_blocks"));
+        }
         if *broadcast_forall {
             nodes.push(str_to_node("+broadcast_forall"));
         }
