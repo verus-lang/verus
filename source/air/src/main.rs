@@ -39,7 +39,8 @@ pub fn main() {
     opts.optopt("", "log-smt", "Log SMT queries", "FILENAME");
     opts.optflag("", "ignore-unexpected-smt", "Ignore unexpected SMT output");
     opts.optflag("d", "debug", "Debug verification failures");
-    opts.optflag("p", "profile", "Collect and report prover performance data");
+    opts.optflag("p", "profile", "Collect and report prover performance data when resource limits are hit");
+    opts.optflag("p", "profile_all", "Always collect and report prover performance data");
     opts.optflag("h", "help", "print this help menu");
 
     let print_usage = || {
@@ -100,6 +101,8 @@ pub fn main() {
     air_context.set_debug(debug);
     let profile = matches.opt_present("profile");
     air_context.set_profile(profile);
+    let profile_all = matches.opt_present("profile_all");
+    air_context.set_profile_all(profile_all);
     let ignore_unexpected_smt = matches.opt_present("ignore-unexpected-smt");
     air_context.set_ignore_unexpected_smt(ignore_unexpected_smt);
 
@@ -144,8 +147,10 @@ pub fn main() {
                     println!("Resource limit (rlimit) exceeded");
                     let profiler = Profiler::new();
                     profiler.print_raw_stats();
-                } else {
+                } else if !profile_all {
                     println!("Resource limit (rlimit) exceeded; consider rerunning with --profile for more details");
+                } else {
+                    println!("Resource limit (rlimit) exceeded");
                 }
             }
             ValidityResult::UnexpectedSmtOutput(err) => {
@@ -155,6 +160,10 @@ pub fn main() {
         if matches!(**command, CommandX::CheckValid(..)) {
             air_context.finish_query();
         }
+    }
+    if profile_all {
+        let profiler = Profiler::new();
+        profiler.print_raw_stats();
     }
     println!("Verification results:: verified: {} errors: {}", count_verified, count_errors);
 }

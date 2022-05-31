@@ -328,7 +328,7 @@ impl Verifier {
                     v.push(from_raw_span(&context.0.raw_span));
                     let multispan = MultiSpan::from_spans(v);
                     let mut msg = format!("{}: Resource limit (rlimit) exceeded", context.1);
-                    if !air_context.get_profile() {
+                    if !self.args.profile && !self.args.profile_all {
                         msg.push_str("; consider rerunning with --profile for more details");
                     }
                     compiler
@@ -341,7 +341,7 @@ impl Verifier {
                         &context.0,
                     )]);
 
-                    if air_context.get_profile() {
+                    if self.args.profile {
                         let profiler = Profiler::new();
                         self.print_profile_stats(compiler, profiler, qid_map);
                     }
@@ -493,6 +493,7 @@ impl Verifier {
         air_context.set_ignore_unexpected_smt(self.args.ignore_unexpected_smt);
         air_context.set_debug(self.args.debug);
         air_context.set_profile(self.args.profile);
+        air_context.set_profile_all(self.args.profile_all);
 
         let rerun_msg = if is_rerun { "_rerun" } else { "" };
         if self.args.log_all || self.args.log_air_initial {
@@ -845,6 +846,7 @@ impl Verifier {
         air_context.set_ignore_unexpected_smt(self.args.ignore_unexpected_smt);
         air_context.set_debug(self.args.debug);
         air_context.set_profile(self.args.profile);
+        air_context.set_profile_all(self.args.profile_all);
 
         if self.args.log_all || self.args.log_air_initial {
             let file =
@@ -995,6 +997,10 @@ impl Verifier {
 
         let verified_modules: HashSet<_> = module_ids_to_verify.iter().collect();
 
+        if self.args.profile_all {
+            let profiler = Profiler::new();
+            self.print_profile_stats(compiler, profiler, &global_ctx.qid_map.borrow());
+        }
         // Log/display triggers
         if self.args.log_all || self.args.log_triggers {
             let mut file = self.create_log_file(None, None, crate::config::TRIGGERS_FILE_SUFFIX)?;

@@ -70,6 +70,7 @@ pub struct Context {
     pub(crate) typing: Typing,
     pub(crate) debug: bool,
     pub(crate) profile: bool,
+    pub(crate) profile_all: bool,
     pub(crate) ignore_unexpected_smt: bool,
     pub(crate) rlimit: u32,
     pub(crate) air_initial_log: Emitter,
@@ -96,6 +97,7 @@ impl Context {
             typing: Typing { decls: crate::scope_map::ScopeMap::new(), snapshots: HashSet::new() },
             debug: false,
             profile: false,
+            profile_all: false,
             ignore_unexpected_smt: false,
             rlimit: 0,
             air_initial_log: Emitter::new(false, false, None),
@@ -144,6 +146,14 @@ impl Context {
 
     pub fn get_profile(&self) -> bool {
         self.profile
+    }
+
+    pub fn set_profile_all(&mut self, profile_all: bool) {
+        self.profile_all = profile_all;
+    }
+
+    pub fn get_profile_all(&self) -> bool {
+        self.profile_all
     }
 
     pub fn set_ignore_unexpected_smt(&mut self, ignore_unexpected_smt: bool) {
@@ -253,8 +263,9 @@ impl Context {
     fn ensure_started(&mut self) {
         match self.state {
             ContextState::NotStarted => {
-                if self.profile {
+                if self.profile || self.profile_all {
                     self.set_z3_param("trace", "true");
+                    self.set_z3_param("proof", "true");
                     // TODO: Pass along a dedicated value we can hand to :trace_file_name
                 }
                 self.blank_line();
