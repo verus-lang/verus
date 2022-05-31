@@ -8,6 +8,7 @@ use std::io::BufRead;
 //use std::collections::HashMap;
 
 pub const USER_QUANT_PREFIX: &str = "user_";
+pub const INTERNAL_QUANT_PREFIX: &str = "internal_";
 
 #[derive(Debug)]
 /// Profiler for processing and displaying SMT performance data

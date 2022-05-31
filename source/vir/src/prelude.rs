@@ -70,6 +70,7 @@ pub(crate) fn prelude_nodes() -> Vec<Node> {
             (forall ((id [FuelId])) (!
                 (= ([fuel_bool] id) ([fuel_bool_default] id))
                 :pattern (([fuel_bool] id))
+                :qid prelude_fuel_defaults
             ))
         ))
 
@@ -99,18 +100,22 @@ pub(crate) fn prelude_nodes() -> Vec<Node> {
                 )
             )
             :pattern (([as_type] x t))
+            :qid prelude_as_type
         )))
         (axiom (forall ((x Fun)) (!
             (= (mk_fun x) x)
             :pattern (([mk_fun] x))
+            :qid prelude_mk_fun
         )))
         (axiom (forall ((x Bool)) (!
             (= x ([unbox_bool] ([box_bool] x)))
             :pattern (([box_bool] x))
+            :qid prelude_unbox_box_bool
         )))
         (axiom (forall ((x Int)) (!
             (= x ([unbox_int] ([box_int] x)))
             :pattern (([box_int] x))
+            :qid prelude_unbox_box_int
         )))
         (axiom (forall ((x [Poly])) (!
             (=>
@@ -118,6 +123,7 @@ pub(crate) fn prelude_nodes() -> Vec<Node> {
                 (= x ([box_bool] ([unbox_bool] x)))
             )
             :pattern (([has_type] x [type_id_bool]))
+            :qid prelude_box_unbox_bool
         )))
         (axiom (forall ((x [Poly])) (!
             (=>
@@ -125,6 +131,7 @@ pub(crate) fn prelude_nodes() -> Vec<Node> {
                 (= x ([box_int] ([unbox_int] x)))
             )
             :pattern (([has_type] x [type_id_int]))
+            :qid prelude_box_unbox_int
         )))
         (axiom (forall ((x [Poly])) (!
             (=>
@@ -132,6 +139,7 @@ pub(crate) fn prelude_nodes() -> Vec<Node> {
                 (= x ([box_int] ([unbox_int] x)))
             )
             :pattern (([has_type] x [type_id_nat]))
+            :qid prelude_box_unbox_nat
         )))
         (axiom (forall ((bits Int) (x [Poly])) (!
             (=>
@@ -139,6 +147,7 @@ pub(crate) fn prelude_nodes() -> Vec<Node> {
                 (= x ([box_int] ([unbox_int] x)))
             )
             :pattern (([has_type] x ([type_id_uint] bits)))
+            :qid prelude_box_unbox_uint
         )))
         (axiom (forall ((bits Int) (x [Poly])) (!
             (=>
@@ -146,6 +155,7 @@ pub(crate) fn prelude_nodes() -> Vec<Node> {
                 (= x ([box_int] ([unbox_int] x)))
             )
             :pattern (([has_type] x ([type_id_sint] bits)))
+            :qid prelude_box_unbox_sint
         )))
 
         // Integers
@@ -180,6 +190,7 @@ pub(crate) fn prelude_nodes() -> Vec<Node> {
                 (=> (<= 0 i) (= i ([nat_clip] i)))
             )
             :pattern (([nat_clip] i))
+            :qid prelude_nat_clip
         )))
         (axiom (forall ((bits Int) (i Int)) (!
             (and
@@ -190,6 +201,7 @@ pub(crate) fn prelude_nodes() -> Vec<Node> {
                 )
             )
             :pattern (([u_clip] bits i))
+            :qid prelude_u_clip
         )))
         (axiom (forall ((bits Int) (i Int)) (!
             (and
@@ -200,6 +212,7 @@ pub(crate) fn prelude_nodes() -> Vec<Node> {
                 )
             )
             :pattern (([i_clip] bits i))
+            :qid prelude_i_clip
         )))
         // type invariants inv(num_bits, value)
         (declare-fun [u_inv] (Int Int) Bool)
@@ -209,16 +222,19 @@ pub(crate) fn prelude_nodes() -> Vec<Node> {
                 (and (<= 0 i) (< i ([u_hi] bits))
             ))
             :pattern (([u_inv] bits i))
+            :qid prelude_u_inv
         )))
         (axiom (forall ((bits Int) (i Int)) (!
             (= ([i_inv] bits i)
                 (and (<= ([i_lo] bits) i) (< i ([i_hi] bits))
             ))
             :pattern (([i_inv] bits i))
+            :qid prelude_i_inv
         )))
         (axiom (forall ((x Int)) (!
             ([has_type] ([box_int] x) [type_id_int])
             :pattern (([has_type] ([box_int] x) [type_id_int]))
+            :qid prelude_has_type_int
         )))
         (axiom (forall ((x Int)) (!
             (=>
@@ -226,6 +242,7 @@ pub(crate) fn prelude_nodes() -> Vec<Node> {
                 ([has_type] ([box_int] x) [type_id_nat])
             )
             :pattern (([has_type] ([box_int] x) [type_id_nat]))
+            :qid prelude_has_type_nat
         )))
         (axiom (forall ((bits Int) (x Int)) (!
             (=>
@@ -233,6 +250,7 @@ pub(crate) fn prelude_nodes() -> Vec<Node> {
                 ([has_type] ([box_int] x) ([type_id_uint] bits))
             )
             :pattern (([has_type] ([box_int] x) ([type_id_uint] bits)))
+            :qid prelude_has_type_uint
         )))
         (axiom (forall ((bits Int) (x Int)) (!
             (=>
@@ -240,6 +258,7 @@ pub(crate) fn prelude_nodes() -> Vec<Node> {
                 ([has_type] ([box_int] x) ([type_id_sint] bits))
             )
             :pattern (([has_type] ([box_int] x) ([type_id_sint] bits)))
+            :qid prelude_has_type_sint
         )))
         (axiom (forall ((x Poly)) (!
             (=>
@@ -247,6 +266,7 @@ pub(crate) fn prelude_nodes() -> Vec<Node> {
                 (<= 0 ([unbox_int] x))
             )
             :pattern (([has_type] x [type_id_nat]))
+            :qid prelude_unbox_int
         )))
         (axiom (forall ((bits Int) (x Poly)) (!
             (=>
@@ -254,6 +274,7 @@ pub(crate) fn prelude_nodes() -> Vec<Node> {
                 ([u_inv] bits ([unbox_int] x))
             )
             :pattern (([has_type] x ([type_id_uint] bits)))
+            :qid prelude_unbox_uint
         )))
         (axiom (forall ((bits Int) (x Poly)) (!
             (=>
@@ -261,6 +282,7 @@ pub(crate) fn prelude_nodes() -> Vec<Node> {
                 ([i_inv] bits ([unbox_int] x))
             )
             :pattern (([has_type] x ([type_id_sint] bits)))
+            :qid prelude_unbox_sint
         )))
 
         // With smt.arith.nl=false, Z3 sometimes fails to prove obvious formulas
@@ -272,14 +294,17 @@ pub(crate) fn prelude_nodes() -> Vec<Node> {
         (axiom (forall ((x Int) (y Int)) (!
             (= ([Mul] x y) (* x y))
             :pattern (([Mul] x y))
+            :qid prelude_mul
         )))
         (axiom (forall ((x Int) (y Int)) (!
             (= ([EucDiv] x y) (div x y))
             :pattern (([EucDiv] x y))
+            :qid prelude_eucdiv
         )))
         (axiom (forall ((x Int) (y Int)) (!
             (= ([EucMod] x y) (mod x y))
             :pattern (([EucMod] x y))
+            :qid prelude_eucmod
         )))
 
         // Decreases
@@ -292,11 +317,13 @@ pub(crate) fn prelude_nodes() -> Vec<Node> {
                 )
             )
             :pattern (([check_decrease_int] cur prev otherwise))
+            :qid prelude_check_decreases
         )))
         (declare-fun [height] (Poly) Int)
         (axiom (forall ((x Poly)) (!
             (<= 0 ([height] x))
             :pattern (([height] x))
+            :qid prelude_height
         )))
 
         // uninterpreted integer versions for bitvector Ops. first argument is bit-width
@@ -322,6 +349,7 @@ pub(crate) fn datatype_height_axiom(typ_name1: &Path, typ_name2: &Path, field: &
                 ([height] ([box_t1] x))
             )
             :pattern (([height] ([box_t2] ([field] x))))
+            :qid prelude_datatype_height
         )))
     )
 }

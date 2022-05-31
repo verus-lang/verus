@@ -2,7 +2,7 @@ use crate::ast::{
     Function, FunctionKind, GenericBoundX, Ident, Idents, Mode, Param, ParamX, Params,
     SpannedTyped, Typ, TypX, Typs, VirErr,
 };
-use crate::ast_util::QUANT_FORALL;
+use crate::ast_util::{new_internal_qid, QUANT_FORALL};
 use crate::context::Ctx;
 use crate::def::{
     prefix_ensures, prefix_fuel_id, prefix_fuel_nat, prefix_pre_var, prefix_recursive_fun,
@@ -29,6 +29,7 @@ use std::sync::Arc;
 // binder for forall (typ_params params)
 pub(crate) fn func_bind_trig(
     ctx: &Ctx,
+    name: String,
     typ_params: &Idents,
     params: &Pars,
     trig_exprs: &Vec<Expr>,
@@ -51,19 +52,20 @@ pub(crate) fn func_bind_trig(
     }
     let trigger: Trigger = Arc::new(trig_exprs.clone());
     let triggers: Triggers = Arc::new(vec![trigger]);
-    let qid = None;  // We don't profile internal quantifiers (at least for now)
+    let qid = new_internal_qid(name);
     Arc::new(BindX::Quant(Quant::Forall, Arc::new(binders), triggers, qid))
 }
 
 // binder for forall (typ_params params)
 pub(crate) fn func_bind(
     ctx: &Ctx,
+    name: String,
     typ_params: &Idents,
     params: &Pars,
     trig_expr: &Expr,
     add_fuel: bool,
 ) -> Bind {
-    func_bind_trig(ctx, typ_params, params, &vec![trig_expr.clone()], add_fuel)
+    func_bind_trig(ctx, name, typ_params, params, &vec![trig_expr.clone()], add_fuel)
 }
 
 // arguments for function call f(typ_args, params)
@@ -103,7 +105,7 @@ fn func_def_quant(
     let f_app = string_apply(name, &Arc::new(f_args));
     let f_eq = Arc::new(ExprX::Binary(BinaryOp::Eq, f_app.clone(), body));
     let f_imply = mk_implies(&mk_and(pre), &f_eq);
-    Ok(mk_bind_expr(&func_bind(ctx, typ_params, params, &f_app, false), &f_imply))
+    Ok(mk_bind_expr(&func_bind(ctx, name.to_string(), typ_params, params, &f_app, false), &f_imply))
 }
 
 fn func_body_to_air(
@@ -210,8 +212,10 @@ fn func_body_to_air(
         let rec_f_def = ident_apply(&rec_f, &args_def);
         let eq_zero = mk_eq(&rec_f_fuel, &rec_f_zero);
         let eq_body = mk_eq(&rec_f_succ, &body_expr);
-        let bind_zero = func_bind(ctx, &function.x.typ_params(), &pars, &rec_f_fuel, true);
-        let bind_body = func_bind(ctx, &function.x.typ_params(), &pars, &rec_f_succ, true);
+        let name_zero = format!("{}_fuel_to_zero", &fun_to_air_ident(&name));
+        let name_body = format!("{}_fuel_to_body", &fun_to_air_ident(&name));
+        let bind_zero = func_bind(ctx, name_zero, &function.x.typ_params(), &pars, &rec_f_fuel, true);
+        let bind_body = func_bind(ctx, name_body, &function.x.typ_params(), &pars, &rec_f_succ, true);
         let implies_body = mk_implies(&mk_and(&decrease_by_reqs), &eq_body);
         let forall_zero = mk_bind_expr(&bind_zero, &eq_zero);
         let forall_body = mk_bind_expr(&bind_body, &implies_body);
@@ -457,9 +461,11 @@ pub fn func_axioms_to_air(
             let f_app = ident_apply(&name, &Arc::new(f_args));
             if let Some(post) = typ_invariant(ctx, &function.x.ret.x.typ, &f_app) {
                 // (axiom (forall (...) (=> pre post)))
+                let name = format!("{}_pre_post", name);
                 let e_forall = mk_bind_expr(
                     &func_bind(
                         ctx,
+                        name,
                         &function.x.typ_params(),
                         &params_to_pars(&function.x.params, false),
                         &f_app,
