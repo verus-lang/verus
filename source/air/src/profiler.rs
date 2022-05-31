@@ -1,7 +1,7 @@
 //! Analyzes prover performance of the SMT solver
 
 use z3tracer::{Model, ModelConfig}; 
-use z3tracer::syntax::Term;
+use z3tracer::model::QuantCost;
 //use std::collections::binary_heap::IntoIterSorted;
 use std::io::BufRead;
 //use crate::ast::Span;
@@ -14,7 +14,7 @@ pub const INTERNAL_QUANT_PREFIX: &str = "internal_";
 /// Profiler for processing and displaying SMT performance data
 pub struct Profiler {
     //log_path: String,
-    quantifier_stats: Vec<(String, usize)>,
+    quantifier_stats: Vec<QuantCost>,
 }
 
 impl Profiler {
@@ -37,6 +37,13 @@ impl Profiler {
         println!("Analyzing prover log...");
         let _ = model.process(Some(path.to_string()), file, line_count).expect("Error processing prover trace");
         println!("... analysis complete\n");
+
+        let quant_costs = model.quant_costs();
+        let mut user_quant_costs = quant_costs.into_iter().filter(|cost| cost.quant.starts_with(USER_QUANT_PREFIX)).collect::<Vec<_>>();
+        user_quant_costs.sort_by_key(|v| v.instantiations * v.cost);
+        user_quant_costs.reverse();
+
+/*
         let instantiated_term_counts = model.most_instantiated_terms();
         //println!("Found {} instantiated_term_counts", instantiated_term_counts.len());
 //        let top = instantiated_term_counts.into_iter_sorted().take(20).collect::<Vec<_>>();  //IntoIterSorted::from(instantiated_term_counts.clone()).take(20).collect::<Vec<_>>();
@@ -70,9 +77,10 @@ impl Profiler {
 //        for (count, term) in instantiated_term_counts.into_iter_sorted() {
 //
 //        }
+*/
 
         Profiler {
-            quantifier_stats: quantifiers_sorted,
+            quantifier_stats: user_quant_costs,
         }
     }
 
@@ -80,17 +88,18 @@ impl Profiler {
         self.quantifier_stats.len()
     }
     
-    pub fn total_instantiations(&self) -> usize {
-        self.quantifier_stats.iter().fold(0, |acc, (_qid, count)| acc + count)
+    pub fn total_instantiations(&self) -> u64 {
+        self.quantifier_stats.iter().fold(0, |acc, cost| acc + cost.instantiations)
     }
 
     pub fn print_raw_stats(&self) {
-        for (qid, count) in &self.quantifier_stats {
-            println!("Instantiated {} {} times ({}% of the total)", qid, count, 100 * count / self.total_instantiations());
+        for cost in &self.quantifier_stats {
+            let count = cost.instantiations;
+            println!("Instantiated {} {} times ({}% of the total)", cost.quant, count, 100 * count / self.total_instantiations());
         }
     }
 
-    pub fn iter(&self) -> impl Iterator<Item=&(String, usize)> + '_ {
+    pub fn iter(&self) -> impl Iterator<Item=&QuantCost> + '_ {
         self.quantifier_stats.iter()
     }
 

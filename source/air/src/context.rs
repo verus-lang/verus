@@ -265,7 +265,8 @@ impl Context {
             ContextState::NotStarted => {
                 if self.profile || self.profile_all {
                     self.set_z3_param("trace", "true");
-                    self.set_z3_param("proof", "true");
+                    // Very expensive.  May be needed to support more detailed log analysis.
+                    //self.set_z3_param("proof", "true");
                     // TODO: Pass along a dedicated value we can hand to :trace_file_name
                 }
                 self.blank_line();

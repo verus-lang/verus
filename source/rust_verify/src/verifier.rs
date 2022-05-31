@@ -240,12 +240,13 @@ impl Verifier {
         let delimiter = "-".repeat(100);
         let msg = format!("Observed {} total instantiations of user-level quantifiers", total.to_formatted_string(&Locale::en));
         compiler.diagnostic().note_without_error(&msg);
-        for (index, (qid, count)) in profiler.iter().take(max).enumerate() {
+        for (index, cost) in profiler.iter().take(max).enumerate() {
             println!("{}", delimiter);
             // Report the quantifier
-            let qexp = qid_map.get(qid).expect(format!("Failed to find quantifier {}", qid).as_str());
+            let qexp = qid_map.get(&cost.quant).expect(format!("Failed to find quantifier {}", cost.quant).as_str());
             let span = from_raw_span(&qexp.span.raw_span);
-            let msg = format!("Instantiated {} times ({}% of the total), top {} of {} user-level quantifiers.\n", count.to_formatted_string(&Locale::en), 100 * count / total, index + 1, num_quants);
+            let count = cost.instantiations;
+            let msg = format!("Cost * Instantiations: {} (Instantiated {} times - {}% of the total, cost {}) top {} of {} user-level quantifiers.\n", count*cost.cost, count.to_formatted_string(&Locale::en), 100 * count / total, cost.cost, index + 1, num_quants);
             compiler.diagnostic().span_note_without_error(span, &msg);
 
             let triggers = match &qexp.x {
