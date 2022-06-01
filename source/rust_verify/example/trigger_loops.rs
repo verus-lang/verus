@@ -23,15 +23,15 @@ fndecl!(fn j(x: nat) -> bool);
 //    let z = choose(|y| g(y));
 //    assert(g(z));
 //}
-
-#[proof]
-fn cost_example() {
-    requires([f(1,2),
-              forall(|x, y| #[trigger] f(x, y) == (g(x) && g(y))),
-              forall(|z| #[trigger] g(z) == j(z + 2))]);
-    assert(j(3) && j(4));
-}
-
+//
+//#[proof]
+//fn cost_example() {
+//    requires([f(1,2),
+//              forall(|x, y| #[trigger] f(x, y) == (g(x) && g(y))),
+//              forall(|z| #[trigger] g(z) == j(z + 2))]);
+//    assert(j(3) && j(4));
+//}
+//
 //
 //#[proof] 
 //fn trigger_forever() {
@@ -44,9 +44,11 @@ fndecl!(fn h(x:nat, y: nat) -> bool);
 // Split the triggering over two different quantifiers
 #[proof] 
 fn trigger_forever2() {
-   requires([forall(|x: nat, y: nat| h(x, y) == f(x, y)),
+   requires([forall(|x: nat| g(x)),
+             forall(|x: nat, y: nat| h(x, y) == f(x, y)),
              forall(|x: nat, y: nat| f(x + 1, 2 * y) && f(2 * x, y + x) || f(y, x) >>= (#[trigger] f(x, y)))]);
    ensures(forall(|x: nat, y: nat| x > 2318 && y < 100 >>= h(x, y)));
+   assert(g(4));
 }
 //
 //#[exec]
