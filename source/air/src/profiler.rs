@@ -30,6 +30,7 @@ impl Profiler {
         let mut model_config = ModelConfig::default();
         model_config.parser_config.skip_z3_version_check = true;
         model_config.parser_config.ignore_invalid_lines = true;
+        model_config.skip_log_consistency_checks = true;
         let mut model = Model::new(model_config);
         println!("Analyzing prover log...");
         let _ = model.process(Some(path.to_string()), file, line_count).expect("Error processing prover trace");
