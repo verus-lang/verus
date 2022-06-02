@@ -115,19 +115,19 @@ test_verify_one_file! {
     } => Err(err) => assert_one_fails(err)
 }
 
-const TEST_REQUIRES1: &str = code_str! {
-    #[proof]
-    fn test_requires1(a: int, b: int, c: int) {
-        requires([a <= b, b <= c]);
-
+const TEST_REQUIRES1: &str = verus_code_str! {
+    proof fn test_requires1(a: int, b: int, c: int)
+        requires
+            a <= b,
+            b <= c,
+    {
         assert(a <= c);
     }
 };
 
 test_verify_one_file! {
-    #[test] test_requires2 TEST_REQUIRES1.to_string() + code_str! {
-        #[proof]
-        fn test_requires2(a: int, b: int, c: int) {
+    #[test] test_requires2 TEST_REQUIRES1.to_string() + verus_code_str! {
+        proof fn test_requires2(a: int, b: int, c: int) {
             assume(a <= b);
             assume(b <= c);
             test_requires1(a + a, b + b, c + c);
@@ -147,16 +147,15 @@ test_verify_one_file! {
     } => Err(err) => assert_one_fails(err)
 }
 
-const TEST_RET: &str = code_str! {
-    #[proof]
-    fn test_ret(a: int, b: int) -> int {
-        requires(a <= b);
-        ensures(|ret: int| [
+const TEST_RET: &str = verus_code_str! {
+    proof fn test_ret(a: int, b: int) -> (ret: int)
+        requires
+            a <= b,
+        ensures
             ret <= a + b,
             ret <= a + a, // FAILS
             ret <= b + b,
-        ]);
-
+    {
         a + b
     }
 };
@@ -166,16 +165,15 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_ret2 TEST_RET.to_string() + code_str! {
-        #[proof]
-        fn test_ret2(a: int, b: int) -> int {
-            requires(a <= b);
-            ensures(|ret: int| [
+    #[test] test_ret2 TEST_RET.to_string() + verus_code_str! {
+        proof fn test_ret2(a: int, b: int) -> (ret: int)
+            requires
+                a <= b,
+            ensures
                 ret <= a + b,
                 ret <= a + a,
                 ret <= b + b,
-            ]);
-
+        {
             let mut x = test_ret(a, a);
             x = test_ret(x, x);
             assert(x <= 4 * a);

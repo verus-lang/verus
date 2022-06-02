@@ -584,7 +584,7 @@ test_verify_one_file! {
     #[test] test_verify_2 code! {
         trait T {
             fn f(&self) {
-                ensures(false);
+                ensures(false); // TRAIT
                 no_method_body()
             }
         }
@@ -624,7 +624,7 @@ test_verify_one_file! {
             #[spec]
             fn ens(&self) -> bool { no_method_body() }
             fn f(&self) {
-                ensures(self.ens());
+                ensures(self.ens()); // TRAIT
                 no_method_body()
             }
         }
@@ -673,7 +673,7 @@ test_verify_one_file! {
 
             fn f(&self, a: &A) -> A {
                 requires(self.req(*a));
-                ensures(|ra: A| self.ens(*a, ra));
+                ensures(|ra: A| self.ens(*a, ra)); // TRAIT
                 no_method_body()
             }
         }
@@ -992,7 +992,7 @@ test_verify_one_file! {
             fn f<'a>(&'a self, x: &'a Self, b: bool) -> &'a Self {
                 ensures(|r: &'a Self| [
                     b >>= equal(r, self),
-                    !b >>= equal(r, x),
+                    !b >>= equal(r, x), // TRAIT
                 ]);
                 no_method_body()
             }
