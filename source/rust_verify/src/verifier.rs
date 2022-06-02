@@ -105,6 +105,9 @@ trait Diagnostics {
     fn report_error(&self, error: &Error, error_as: ErrorAs);
 }
 
+/// N.B.: The compiler deduplication, so reporting an error twice,
+/// or emitting the same note twice will be surpressed 
+/// (even if separated in time by other errors/notes)
 impl Diagnostics for Compiler {
     fn diagnostic(&self) -> &rustc_errors::Handler {
         self.session().diagnostic()
@@ -240,6 +243,7 @@ impl Verifier {
         let delimiter = "-".repeat(100);
         let msg = format!("Observed {} total instantiations of user-level quantifiers", total.to_formatted_string(&Locale::en));
         compiler.diagnostic().note_without_error(&msg);
+
         for (index, cost) in profiler.iter().take(max).enumerate() {
             println!("{}", delimiter);
             // Report the quantifier
