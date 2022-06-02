@@ -1,3 +1,4 @@
+#![feature(box_patterns)]
 use synstructure::{decl_attribute, decl_derive};
 mod fndecl;
 mod is_variant;

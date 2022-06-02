@@ -3,8 +3,11 @@ use builtin::*;
 mod pervasive;
 use pervasive::*;
 
-pub fn foo(a: u64) -> u64 {
-    requires(a < 100);
+verus! {
+
+pub fn foo(a: u64) -> u64
+    requires a < 100
+{
     a + 1
 }
 
@@ -14,3 +17,5 @@ fn main() {
     b = 4;
     b = foo(c);
 }
+
+} // verus!

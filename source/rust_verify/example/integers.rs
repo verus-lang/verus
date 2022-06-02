@@ -1,33 +1,32 @@
+use builtin_macros::*;
 use builtin::*;
 mod pervasive;
 use pervasive::*;
 
+verus! {
+
 fn main() {}
 
-#[spec]
-fn add1_int(i: int) -> int {
+spec fn add1_int(i: int) -> int {
     i + 1
 }
 
-#[spec]
-fn add1_nat(i: nat) -> nat {
+spec fn add1_nat(i: nat) -> nat {
     i + 1
 }
 
-#[spec]
 #[verifier(opaque)]
-fn add1_nat_opaque(i: nat) -> nat {
+spec fn add1_nat_opaque(i: nat) -> nat {
     i + 1
 }
 
-#[proof]
-fn test0() -> nat {
-    ensures(|n: nat| true);
+proof fn test0() -> (n:nat)
+    ensures true
+{
     100
 }
 
-#[proof]
-fn test1(i: int, n: nat, u: u8) {
+proof fn test1(i: int, n: nat, u: u8) {
     assert(n >= 0);
     assert(u >= 0);
     assert(n + n >= 0);
@@ -45,6 +44,8 @@ fn test1(i: int, n: nat, u: u8) {
     assert(u / 2 <= u);
     assert(u % 10 < 10);
 }
+
+} // verus!
 
 /*
 fn typing(u: u64, i: int, n: nat) -> int {

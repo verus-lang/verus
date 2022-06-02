@@ -4,8 +4,8 @@ use syn_verus::punctuated::Punctuated;
 use syn_verus::token::Paren;
 use syn_verus::visit_mut::{visit_expr_mut, visit_item_fn_mut, VisitMut};
 use syn_verus::{
-    parse_macro_input, parse_quote_spanned, Attribute, BinOp, Expr, ExprBinary, ExprCall,
-    FnArgKind, FnMode, Item, ItemFn, ReturnType, UnOp,
+    parse_macro_input, parse_quote_spanned, Attribute, BinOp, Decreases, Ensures, Expr, ExprBinary,
+    ExprCall, FnArgKind, FnMode, Item, ItemFn, Pat, Recommends, Requires, ReturnType, Stmt, UnOp,
 };
 
 fn take_expr(expr: &mut Expr) -> Expr {
@@ -130,15 +130,28 @@ impl VisitMut for Visitor {
             }
             arg.tracked = None;
         }
-        match &mut fun.sig.output {
-            ReturnType::Default => {}
-            ReturnType::Type(_, ref mut tracked, _) => {
+        let ret_var = match &mut fun.sig.output {
+            ReturnType::Default => None,
+            ReturnType::Type(_, ref mut tracked, ref mut ret_opt, ty) => {
                 if let Some(token) = tracked {
                     fun.attrs.push(parse_quote_spanned!(token.span => #[verifier(returns(proof))]));
                     *tracked = None;
                 }
+                match std::mem::take(ret_opt) {
+                    None => None,
+                    Some(box (_, Pat::Ident(id), _))
+                        if id.by_ref.is_none()
+                            && id.mutability.is_none()
+                            && id.subpat.is_none() =>
+                    {
+                        Some((id.ident, ty.clone()))
+                    }
+                    Some(_) => {
+                        unimplemented!("TODO: support return patterns")
+                    }
+                }
             }
-        }
+        };
 
         let mode_attrs: Vec<Attribute> = match &fun.sig.mode {
             FnMode::Default => vec![],
@@ -155,6 +168,30 @@ impl VisitMut for Visitor {
                 vec![parse_quote_spanned!(token.exec_token.span => #[exec])]
             }
         };
+
+        let mut stmts: Vec<Stmt> = Vec::new();
+        let requires = std::mem::take(&mut fun.sig.requires);
+        let recommends = std::mem::take(&mut fun.sig.recommends);
+        let ensures = std::mem::take(&mut fun.sig.ensures);
+        let decreases = std::mem::take(&mut fun.sig.decreases);
+        if let Some(Requires { token, exprs }) = requires {
+            stmts.push(parse_quote_spanned!(token.span => requires([#exprs]);));
+        }
+        if let Some(Recommends { token, exprs }) = recommends {
+            stmts.push(parse_quote_spanned!(token.span => recommends([#exprs]);));
+        }
+        if let Some(Ensures { token, exprs }) = ensures {
+            if let Some((x, ty)) = ret_var {
+                stmts.push(parse_quote_spanned!(token.span => ensures(|#x: #ty| [#exprs]);));
+            } else {
+                stmts.push(parse_quote_spanned!(token.span => ensures([#exprs]);));
+            }
+        }
+        if let Some(Decreases { token, exprs }) = decreases {
+            stmts.push(parse_quote_spanned!(token.span => decreases((#exprs));));
+        }
+        fun.block.stmts.splice(0..0, stmts);
+
         visit_item_fn_mut(self, fun);
         fun.attrs.extend(mode_attrs);
         fun.sig.mode = FnMode::Default;
@@ -166,10 +203,10 @@ struct Items {
 }
 
 impl Parse for Items {
-    fn parse(input_rev: ParseStream) -> syn_verus::parse::Result<Items> {
+    fn parse(input: ParseStream) -> syn_verus::parse::Result<Items> {
         let mut items = Vec::new();
-        while !input_rev.is_empty() {
-            items.push(input_rev.parse()?);
+        while !input.is_empty() {
+            items.push(input.parse()?);
         }
         Ok(Items { items })
     }
