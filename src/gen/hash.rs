@@ -307,6 +307,15 @@ impl Hash for DataUnion {
         self.fields.hash(state);
     }
 }
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Hash for Decreases {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
+        self.exprs.hash(state);
+    }
+}
 #[cfg(feature = "derive")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
 impl Hash for DeriveInput {
@@ -319,6 +328,15 @@ impl Hash for DeriveInput {
         self.ident.hash(state);
         self.generics.hash(state);
         self.data.hash(state);
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Hash for Ensures {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
+        self.exprs.hash(state);
     }
 }
 #[cfg(any(feature = "derive", feature = "full"))]
@@ -2339,6 +2357,24 @@ impl Hash for Receiver {
         self.mutability.hash(state);
     }
 }
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Hash for Recommends {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
+        self.exprs.hash(state);
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Hash for Requires {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
+        self.exprs.hash(state);
+    }
+}
 #[cfg(any(feature = "derive", feature = "full"))]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
 impl Hash for ReturnType {
@@ -2350,10 +2386,11 @@ impl Hash for ReturnType {
             ReturnType::Default => {
                 state.write_u8(0u8);
             }
-            ReturnType::Type(_, v1, v2) => {
+            ReturnType::Type(_, v1, v2, v3) => {
                 state.write_u8(1u8);
                 v1.hash(state);
                 v2.hash(state);
+                v3.hash(state);
             }
         }
     }
@@ -2375,6 +2412,19 @@ impl Hash for Signature {
         self.inputs.hash(state);
         self.variadic.hash(state);
         self.output.hash(state);
+        self.requires.hash(state);
+        self.recommends.hash(state);
+        self.ensures.hash(state);
+        self.decreases.hash(state);
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Hash for Specification {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
+        self.exprs.hash(state);
     }
 }
 #[cfg(feature = "full")]

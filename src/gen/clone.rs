@@ -185,6 +185,15 @@ impl Clone for DataUnion {
         }
     }
 }
+#[cfg_attr(doc_cfg, doc(cfg(feature = "clone-impls")))]
+impl Clone for Decreases {
+    fn clone(&self) -> Self {
+        Decreases {
+            token: self.token.clone(),
+            exprs: self.exprs.clone(),
+        }
+    }
+}
 #[cfg(feature = "derive")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "clone-impls")))]
 impl Clone for DeriveInput {
@@ -195,6 +204,15 @@ impl Clone for DeriveInput {
             ident: self.ident.clone(),
             generics: self.generics.clone(),
             data: self.data.clone(),
+        }
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "clone-impls")))]
+impl Clone for Ensures {
+    fn clone(&self) -> Self {
+        Ensures {
+            token: self.token.clone(),
+            exprs: self.exprs.clone(),
         }
     }
 }
@@ -1820,14 +1838,32 @@ impl Clone for Receiver {
         }
     }
 }
+#[cfg_attr(doc_cfg, doc(cfg(feature = "clone-impls")))]
+impl Clone for Recommends {
+    fn clone(&self) -> Self {
+        Recommends {
+            token: self.token.clone(),
+            exprs: self.exprs.clone(),
+        }
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "clone-impls")))]
+impl Clone for Requires {
+    fn clone(&self) -> Self {
+        Requires {
+            token: self.token.clone(),
+            exprs: self.exprs.clone(),
+        }
+    }
+}
 #[cfg(any(feature = "derive", feature = "full"))]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "clone-impls")))]
 impl Clone for ReturnType {
     fn clone(&self) -> Self {
         match self {
             ReturnType::Default => ReturnType::Default,
-            ReturnType::Type(v0, v1, v2) => {
-                ReturnType::Type(v0.clone(), v1.clone(), v2.clone())
+            ReturnType::Type(v0, v1, v2, v3) => {
+                ReturnType::Type(v0.clone(), v1.clone(), v2.clone(), v3.clone())
             }
         }
     }
@@ -1849,6 +1885,18 @@ impl Clone for Signature {
             inputs: self.inputs.clone(),
             variadic: self.variadic.clone(),
             output: self.output.clone(),
+            requires: self.requires.clone(),
+            recommends: self.recommends.clone(),
+            ensures: self.ensures.clone(),
+            decreases: self.decreases.clone(),
+        }
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "clone-impls")))]
+impl Clone for Specification {
+    fn clone(&self) -> Self {
+        Specification {
+            exprs: self.exprs.clone(),
         }
     }
 }

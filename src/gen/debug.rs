@@ -374,6 +374,15 @@ impl Debug for DataUnion {
         formatter.finish()
     }
 }
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Debug for Decreases {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let mut formatter = formatter.debug_struct("Decreases");
+        formatter.field("token", &self.token);
+        formatter.field("exprs", &self.exprs);
+        formatter.finish()
+    }
+}
 #[cfg(feature = "derive")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
 impl Debug for DeriveInput {
@@ -384,6 +393,15 @@ impl Debug for DeriveInput {
         formatter.field("ident", &self.ident);
         formatter.field("generics", &self.generics);
         formatter.field("data", &self.data);
+        formatter.finish()
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Debug for Ensures {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let mut formatter = formatter.debug_struct("Ensures");
+        formatter.field("token", &self.token);
+        formatter.field("exprs", &self.exprs);
         formatter.finish()
     }
 }
@@ -2511,17 +2529,36 @@ impl Debug for Receiver {
         formatter.finish()
     }
 }
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Debug for Recommends {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let mut formatter = formatter.debug_struct("Recommends");
+        formatter.field("token", &self.token);
+        formatter.field("exprs", &self.exprs);
+        formatter.finish()
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Debug for Requires {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let mut formatter = formatter.debug_struct("Requires");
+        formatter.field("token", &self.token);
+        formatter.field("exprs", &self.exprs);
+        formatter.finish()
+    }
+}
 #[cfg(any(feature = "derive", feature = "full"))]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
 impl Debug for ReturnType {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         match self {
             ReturnType::Default => formatter.write_str("Default"),
-            ReturnType::Type(v0, v1, v2) => {
+            ReturnType::Type(v0, v1, v2, v3) => {
                 let mut formatter = formatter.debug_tuple("Type");
                 formatter.field(v0);
                 formatter.field(v1);
                 formatter.field(v2);
+                formatter.field(v3);
                 formatter.finish()
             }
         }
@@ -2544,6 +2581,18 @@ impl Debug for Signature {
         formatter.field("inputs", &self.inputs);
         formatter.field("variadic", &self.variadic);
         formatter.field("output", &self.output);
+        formatter.field("requires", &self.requires);
+        formatter.field("recommends", &self.recommends);
+        formatter.field("ensures", &self.ensures);
+        formatter.field("decreases", &self.decreases);
+        formatter.finish()
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Debug for Specification {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let mut formatter = formatter.debug_struct("Specification");
+        formatter.field("exprs", &self.exprs);
         formatter.finish()
     }
 }

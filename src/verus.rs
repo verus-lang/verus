@@ -1,4 +1,5 @@
 use super::*;
+use crate::punctuated::Punctuated;
 
 ast_enum_of_structs! {
     pub enum Mode {
@@ -42,6 +43,40 @@ ast_struct! {
         pub spec_token: Token![spec],
         pub paren_token: token::Paren,
         pub checked: Box<Ident>,
+    }
+}
+
+ast_struct! {
+    pub struct Specification {
+        pub exprs: Punctuated<Expr, Token![,]>,
+    }
+}
+
+ast_struct! {
+    pub struct Requires {
+        pub token: Token![requires],
+        pub exprs: Specification,
+    }
+}
+
+ast_struct! {
+    pub struct Recommends {
+        pub token: Token![recommends],
+        pub exprs: Specification,
+    }
+}
+
+ast_struct! {
+    pub struct Ensures {
+        pub token: Token![ensures],
+        pub exprs: Specification,
+    }
+}
+
+ast_struct! {
+    pub struct Decreases {
+        pub token: Token![requires],
+        pub exprs: Specification,
     }
 }
 
@@ -99,6 +134,111 @@ pub mod parsing {
             }
         }
     }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
+    impl Parse for Specification {
+        fn parse(input: ParseStream) -> Result<Self> {
+            let mut exprs = Punctuated::new();
+            while !(input.is_empty()
+                || input.peek(token::Brace)
+                || input.peek(Token![ensures])
+                || input.peek(Token![decreases]))
+            {
+                let expr: Expr = input.parse()?;
+                exprs.push(expr);
+                if !input.peek(Token![,]) {
+                    break;
+                }
+                let punct = input.parse()?;
+                exprs.push_punct(punct);
+            }
+            Ok(Specification { exprs })
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
+    impl Parse for Requires {
+        fn parse(input: ParseStream) -> Result<Self> {
+            Ok(Requires {
+                token: input.parse()?,
+                exprs: input.parse()?,
+            })
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
+    impl Parse for Recommends {
+        fn parse(input: ParseStream) -> Result<Self> {
+            Ok(Recommends {
+                token: input.parse()?,
+                exprs: input.parse()?,
+            })
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
+    impl Parse for Ensures {
+        fn parse(input: ParseStream) -> Result<Self> {
+            Ok(Ensures {
+                token: input.parse()?,
+                exprs: input.parse()?,
+            })
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
+    impl Parse for Decreases {
+        fn parse(input: ParseStream) -> Result<Self> {
+            Ok(Decreases {
+                token: input.parse()?,
+                exprs: input.parse()?,
+            })
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
+    impl Parse for Option<Requires> {
+        fn parse(input: ParseStream) -> Result<Self> {
+            if input.peek(Token![requires]) {
+                input.parse().map(Some)
+            } else {
+                Ok(None)
+            }
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
+    impl Parse for Option<Recommends> {
+        fn parse(input: ParseStream) -> Result<Self> {
+            if input.peek(Token![recommends]) {
+                input.parse().map(Some)
+            } else {
+                Ok(None)
+            }
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
+    impl Parse for Option<Ensures> {
+        fn parse(input: ParseStream) -> Result<Self> {
+            if input.peek(Token![ensures]) {
+                input.parse().map(Some)
+            } else {
+                Ok(None)
+            }
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
+    impl Parse for Option<Decreases> {
+        fn parse(input: ParseStream) -> Result<Self> {
+            if input.peek(Token![decreases]) {
+                input.parse().map(Some)
+            } else {
+                Ok(None)
+            }
+        }
+    }
 }
 
 #[cfg(feature = "printing")]
@@ -135,6 +275,45 @@ mod printing {
             self.paren_token.surround(tokens, |tokens| {
                 self.checked.to_tokens(tokens);
             });
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
+    impl ToTokens for Specification {
+        fn to_tokens(&self, tokens: &mut TokenStream) {
+            self.exprs.to_tokens(tokens);
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
+    impl ToTokens for Requires {
+        fn to_tokens(&self, tokens: &mut TokenStream) {
+            self.token.to_tokens(tokens);
+            self.exprs.to_tokens(tokens);
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
+    impl ToTokens for Recommends {
+        fn to_tokens(&self, tokens: &mut TokenStream) {
+            self.token.to_tokens(tokens);
+            self.exprs.to_tokens(tokens);
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
+    impl ToTokens for Ensures {
+        fn to_tokens(&self, tokens: &mut TokenStream) {
+            self.token.to_tokens(tokens);
+            self.exprs.to_tokens(tokens);
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
+    impl ToTokens for Decreases {
+        fn to_tokens(&self, tokens: &mut TokenStream) {
+            self.token.to_tokens(tokens);
+            self.exprs.to_tokens(tokens);
         }
     }
 }

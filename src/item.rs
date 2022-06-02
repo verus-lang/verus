@@ -900,6 +900,10 @@ ast_struct! {
         pub inputs: Punctuated<FnArg, Token![,]>,
         pub variadic: Option<Variadic>,
         pub output: ReturnType,
+        pub requires: Option<Requires>,
+        pub recommends: Option<Recommends>,
+        pub ensures: Option<Ensures>,
+        pub decreases: Option<Decreases>,
     }
 }
 
@@ -1526,6 +1530,10 @@ pub mod parsing {
 
             let output: ReturnType = input.parse()?;
             generics.where_clause = input.parse()?;
+            let requires: Option<Requires> = input.parse()?;
+            let recommends: Option<Recommends> = input.parse()?;
+            let ensures: Option<Ensures> = input.parse()?;
+            let decreases: Option<Decreases> = input.parse()?;
 
             Ok(Signature {
                 constness,
@@ -1540,6 +1548,10 @@ pub mod parsing {
                 inputs,
                 variadic,
                 output,
+                requires,
+                recommends,
+                ensures,
+                decreases,
             })
         }
     }
@@ -3302,6 +3314,7 @@ mod printing {
             self.asyncness.to_tokens(tokens);
             self.unsafety.to_tokens(tokens);
             self.abi.to_tokens(tokens);
+            self.mode.to_tokens(tokens);
             self.fn_token.to_tokens(tokens);
             self.ident.to_tokens(tokens);
             self.generics.to_tokens(tokens);
@@ -3327,6 +3340,10 @@ mod printing {
             });
             self.output.to_tokens(tokens);
             self.generics.where_clause.to_tokens(tokens);
+            self.requires.to_tokens(tokens);
+            self.recommends.to_tokens(tokens);
+            self.ensures.to_tokens(tokens);
+            self.decreases.to_tokens(tokens);
         }
     }
 

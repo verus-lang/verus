@@ -327,7 +327,7 @@ ast_enum! {
         /// Functions default to `()` and closures default to type inference.
         Default,
         /// A particular type is returned.
-        Type(Token![->], Option<Token![tracked]>, Box<Type>),
+        Type(Token![->], Option<Token![tracked]>, Option<Box<(token::Paren, Pat, Token![:])>>, Box<Type>),
     }
 }
 
@@ -844,9 +844,30 @@ pub mod parsing {
         pub(crate) fn parse(input: ParseStream, allow_plus: bool) -> Result<Self> {
             if input.peek(Token![->]) {
                 let arrow = input.parse()?;
-                let tracked = input.parse()?;
-                let ty = ambig_ty(input, allow_plus)?;
-                Ok(ReturnType::Type(arrow, tracked, Box::new(ty)))
+                if input.peek(token::Paren) {
+                    // -> (pat: ty)
+                    let content;
+                    let paren_token = parenthesized!(content in input);
+                    let tracked = content.parse()?;
+                    let pat = content.parse()?;
+                    let colon = content.parse()?;
+                    let ty = ambig_ty(&content, allow_plus)?;
+                    if content.is_empty() {
+                        let pat_box = Box::new((paren_token, pat, colon));
+                        Ok(ReturnType::Type(
+                            arrow,
+                            tracked,
+                            Some(pat_box),
+                            Box::new(ty),
+                        ))
+                    } else {
+                        Err(Error::new(content.span(), "expected -> (pattern: type)"))
+                    }
+                } else {
+                    let tracked = input.parse()?;
+                    let ty = ambig_ty(input, allow_plus)?;
+                    Ok(ReturnType::Type(arrow, tracked, None, Box::new(ty)))
+                }
             } else {
                 Ok(ReturnType::Default)
             }
@@ -1218,10 +1239,20 @@ mod printing {
         fn to_tokens(&self, tokens: &mut TokenStream) {
             match self {
                 ReturnType::Default => {}
-                ReturnType::Type(arrow, tracked, ty) => {
+                ReturnType::Type(arrow, tracked, None, ty) => {
                     arrow.to_tokens(tokens);
                     tracked.to_tokens(tokens);
                     ty.to_tokens(tokens);
+                }
+                ReturnType::Type(arrow, tracked, Some(pat_box), ty) => {
+                    arrow.to_tokens(tokens);
+                    let (paren_token, pat, colon) = &**pat_box;
+                    paren_token.surround(tokens, |tokens| {
+                        tracked.to_tokens(tokens);
+                        pat.to_tokens(tokens);
+                        colon.to_tokens(tokens);
+                        ty.to_tokens(tokens);
+                    });
                 }
             }
         }

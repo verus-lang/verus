@@ -2555,7 +2555,7 @@ pub(crate) mod parsing {
             let tracked: Option<Token![tracked]> = input.parse()?;
             let ty: Type = input.parse()?;
             let body: Block = input.parse()?;
-            let output = ReturnType::Type(arrow_token, tracked, Box::new(ty));
+            let output = ReturnType::Type(arrow_token, tracked, None, Box::new(ty));
             let block = Expr::Block(ExprBlock {
                 attrs: Vec::new(),
                 label: None,

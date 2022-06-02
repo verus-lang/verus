@@ -213,6 +213,14 @@ impl PartialEq for DataUnion {
         self.fields == other.fields
     }
 }
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Eq for Decreases {}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl PartialEq for Decreases {
+    fn eq(&self, other: &Self) -> bool {
+        self.exprs == other.exprs
+    }
+}
 #[cfg(feature = "derive")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
 impl Eq for DeriveInput {}
@@ -222,6 +230,14 @@ impl PartialEq for DeriveInput {
     fn eq(&self, other: &Self) -> bool {
         self.attrs == other.attrs && self.vis == other.vis && self.ident == other.ident
             && self.generics == other.generics && self.data == other.data
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Eq for Ensures {}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl PartialEq for Ensures {
+    fn eq(&self, other: &Self) -> bool {
+        self.exprs == other.exprs
     }
 }
 #[cfg(any(feature = "derive", feature = "full"))]
@@ -1755,6 +1771,22 @@ impl PartialEq for Receiver {
             && self.mutability == other.mutability
     }
 }
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Eq for Recommends {}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl PartialEq for Recommends {
+    fn eq(&self, other: &Self) -> bool {
+        self.exprs == other.exprs
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Eq for Requires {}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl PartialEq for Requires {
+    fn eq(&self, other: &Self) -> bool {
+        self.exprs == other.exprs
+    }
+}
 #[cfg(any(feature = "derive", feature = "full"))]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
 impl Eq for ReturnType {}
@@ -1764,9 +1796,10 @@ impl PartialEq for ReturnType {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
             (ReturnType::Default, ReturnType::Default) => true,
-            (ReturnType::Type(_, self1, self2), ReturnType::Type(_, other1, other2)) => {
-                self1 == other1 && self2 == other2
-            }
+            (
+                ReturnType::Type(_, self1, self2, self3),
+                ReturnType::Type(_, other1, other2, other3),
+            ) => self1 == other1 && self2 == other2 && self3 == other3,
             _ => false,
         }
     }
@@ -1783,6 +1816,16 @@ impl PartialEq for Signature {
             && self.mode == other.mode && self.ident == other.ident
             && self.generics == other.generics && self.inputs == other.inputs
             && self.variadic == other.variadic && self.output == other.output
+            && self.requires == other.requires && self.recommends == other.recommends
+            && self.ensures == other.ensures && self.decreases == other.decreases
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Eq for Specification {}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl PartialEq for Specification {
+    fn eq(&self, other: &Self) -> bool {
+        self.exprs == other.exprs
     }
 }
 #[cfg(feature = "full")]

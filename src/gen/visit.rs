@@ -98,9 +98,15 @@ pub trait Visit<'ast> {
     fn visit_data_union(&mut self, i: &'ast DataUnion) {
         visit_data_union(self, i);
     }
+    fn visit_decreases(&mut self, i: &'ast Decreases) {
+        visit_decreases(self, i);
+    }
     #[cfg(feature = "derive")]
     fn visit_derive_input(&mut self, i: &'ast DeriveInput) {
         visit_derive_input(self, i);
+    }
+    fn visit_ensures(&mut self, i: &'ast Ensures) {
+        visit_ensures(self, i);
     }
     #[cfg(any(feature = "derive", feature = "full"))]
     fn visit_expr(&mut self, i: &'ast Expr) {
@@ -625,6 +631,12 @@ pub trait Visit<'ast> {
     fn visit_receiver(&mut self, i: &'ast Receiver) {
         visit_receiver(self, i);
     }
+    fn visit_recommends(&mut self, i: &'ast Recommends) {
+        visit_recommends(self, i);
+    }
+    fn visit_requires(&mut self, i: &'ast Requires) {
+        visit_requires(self, i);
+    }
     #[cfg(any(feature = "derive", feature = "full"))]
     fn visit_return_type(&mut self, i: &'ast ReturnType) {
         visit_return_type(self, i);
@@ -635,6 +647,9 @@ pub trait Visit<'ast> {
     }
     fn visit_span(&mut self, i: &Span) {
         visit_span(self, i);
+    }
+    fn visit_specification(&mut self, i: &'ast Specification) {
+        visit_specification(self, i);
     }
     #[cfg(feature = "full")]
     fn visit_stmt(&mut self, i: &'ast Stmt) {
@@ -1117,6 +1132,13 @@ where
     tokens_helper(v, &node.union_token.span);
     v.visit_fields_named(&node.fields);
 }
+pub fn visit_decreases<'ast, V>(v: &mut V, node: &'ast Decreases)
+where
+    V: Visit<'ast> + ?Sized,
+{
+    tokens_helper(v, &node.token.span);
+    v.visit_specification(&node.exprs);
+}
 #[cfg(feature = "derive")]
 pub fn visit_derive_input<'ast, V>(v: &mut V, node: &'ast DeriveInput)
 where
@@ -1129,6 +1151,13 @@ where
     v.visit_ident(&node.ident);
     v.visit_generics(&node.generics);
     v.visit_data(&node.data);
+}
+pub fn visit_ensures<'ast, V>(v: &mut V, node: &'ast Ensures)
+where
+    V: Visit<'ast> + ?Sized,
+{
+    tokens_helper(v, &node.token.span);
+    v.visit_specification(&node.exprs);
 }
 #[cfg(any(feature = "derive", feature = "full"))]
 pub fn visit_expr<'ast, V>(v: &mut V, node: &'ast Expr)
@@ -3258,6 +3287,20 @@ where
     }
     tokens_helper(v, &node.self_token.span);
 }
+pub fn visit_recommends<'ast, V>(v: &mut V, node: &'ast Recommends)
+where
+    V: Visit<'ast> + ?Sized,
+{
+    tokens_helper(v, &node.token.span);
+    v.visit_specification(&node.exprs);
+}
+pub fn visit_requires<'ast, V>(v: &mut V, node: &'ast Requires)
+where
+    V: Visit<'ast> + ?Sized,
+{
+    tokens_helper(v, &node.token.span);
+    v.visit_specification(&node.exprs);
+}
 #[cfg(any(feature = "derive", feature = "full"))]
 pub fn visit_return_type<'ast, V>(v: &mut V, node: &'ast ReturnType)
 where
@@ -3265,12 +3308,17 @@ where
 {
     match node {
         ReturnType::Default => {}
-        ReturnType::Type(_binding_0, _binding_1, _binding_2) => {
+        ReturnType::Type(_binding_0, _binding_1, _binding_2, _binding_3) => {
             tokens_helper(v, &_binding_0.spans);
             if let Some(it) = &*_binding_1 {
                 tokens_helper(v, &it.span);
             }
-            v.visit_type(&**_binding_2);
+            if let Some(it) = &*_binding_2 {
+                tokens_helper(v, &(**it).0.span);
+                full!(v.visit_pat(& (* * it).1));
+                tokens_helper(v, &(**it).2.spans);
+            }
+            v.visit_type(&**_binding_3);
         }
     }
 }
@@ -3307,11 +3355,35 @@ where
         v.visit_variadic(it);
     }
     v.visit_return_type(&node.output);
+    if let Some(it) = &node.requires {
+        v.visit_requires(it);
+    }
+    if let Some(it) = &node.recommends {
+        v.visit_recommends(it);
+    }
+    if let Some(it) = &node.ensures {
+        v.visit_ensures(it);
+    }
+    if let Some(it) = &node.decreases {
+        v.visit_decreases(it);
+    }
 }
 pub fn visit_span<'ast, V>(v: &mut V, node: &Span)
 where
     V: Visit<'ast> + ?Sized,
 {}
+pub fn visit_specification<'ast, V>(v: &mut V, node: &'ast Specification)
+where
+    V: Visit<'ast> + ?Sized,
+{
+    for el in Punctuated::pairs(&node.exprs) {
+        let (it, p) = el.into_tuple();
+        v.visit_expr(it);
+        if let Some(p) = p {
+            tokens_helper(v, &p.spans);
+        }
+    }
+}
 #[cfg(feature = "full")]
 pub fn visit_stmt<'ast, V>(v: &mut V, node: &'ast Stmt)
 where

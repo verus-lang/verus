@@ -96,9 +96,15 @@ pub trait Fold {
     fn fold_data_union(&mut self, i: DataUnion) -> DataUnion {
         fold_data_union(self, i)
     }
+    fn fold_decreases(&mut self, i: Decreases) -> Decreases {
+        fold_decreases(self, i)
+    }
     #[cfg(feature = "derive")]
     fn fold_derive_input(&mut self, i: DeriveInput) -> DeriveInput {
         fold_derive_input(self, i)
+    }
+    fn fold_ensures(&mut self, i: Ensures) -> Ensures {
+        fold_ensures(self, i)
     }
     #[cfg(any(feature = "derive", feature = "full"))]
     fn fold_expr(&mut self, i: Expr) -> Expr {
@@ -626,6 +632,12 @@ pub trait Fold {
     fn fold_receiver(&mut self, i: Receiver) -> Receiver {
         fold_receiver(self, i)
     }
+    fn fold_recommends(&mut self, i: Recommends) -> Recommends {
+        fold_recommends(self, i)
+    }
+    fn fold_requires(&mut self, i: Requires) -> Requires {
+        fold_requires(self, i)
+    }
     #[cfg(any(feature = "derive", feature = "full"))]
     fn fold_return_type(&mut self, i: ReturnType) -> ReturnType {
         fold_return_type(self, i)
@@ -636,6 +648,9 @@ pub trait Fold {
     }
     fn fold_span(&mut self, i: Span) -> Span {
         fold_span(self, i)
+    }
+    fn fold_specification(&mut self, i: Specification) -> Specification {
+        fold_specification(self, i)
     }
     #[cfg(feature = "full")]
     fn fold_stmt(&mut self, i: Stmt) -> Stmt {
@@ -1100,6 +1115,15 @@ where
         fields: f.fold_fields_named(node.fields),
     }
 }
+pub fn fold_decreases<F>(f: &mut F, node: Decreases) -> Decreases
+where
+    F: Fold + ?Sized,
+{
+    Decreases {
+        token: Token![requires](tokens_helper(f, &node.token.span)),
+        exprs: f.fold_specification(node.exprs),
+    }
+}
 #[cfg(feature = "derive")]
 pub fn fold_derive_input<F>(f: &mut F, node: DeriveInput) -> DeriveInput
 where
@@ -1111,6 +1135,15 @@ where
         ident: f.fold_ident(node.ident),
         generics: f.fold_generics(node.generics),
         data: f.fold_data(node.data),
+    }
+}
+pub fn fold_ensures<F>(f: &mut F, node: Ensures) -> Ensures
+where
+    F: Fold + ?Sized,
+{
+    Ensures {
+        token: Token![ensures](tokens_helper(f, &node.token.span)),
+        exprs: f.fold_specification(node.exprs),
     }
 }
 #[cfg(any(feature = "derive", feature = "full"))]
@@ -2907,6 +2940,24 @@ where
         self_token: Token![self](tokens_helper(f, &node.self_token.span)),
     }
 }
+pub fn fold_recommends<F>(f: &mut F, node: Recommends) -> Recommends
+where
+    F: Fold + ?Sized,
+{
+    Recommends {
+        token: Token![recommends](tokens_helper(f, &node.token.span)),
+        exprs: f.fold_specification(node.exprs),
+    }
+}
+pub fn fold_requires<F>(f: &mut F, node: Requires) -> Requires
+where
+    F: Fold + ?Sized,
+{
+    Requires {
+        token: Token![requires](tokens_helper(f, &node.token.span)),
+        exprs: f.fold_specification(node.exprs),
+    }
+}
 #[cfg(any(feature = "derive", feature = "full"))]
 pub fn fold_return_type<F>(f: &mut F, node: ReturnType) -> ReturnType
 where
@@ -2914,11 +2965,17 @@ where
 {
     match node {
         ReturnType::Default => ReturnType::Default,
-        ReturnType::Type(_binding_0, _binding_1, _binding_2) => {
+        ReturnType::Type(_binding_0, _binding_1, _binding_2, _binding_3) => {
             ReturnType::Type(
                 Token![->](tokens_helper(f, &_binding_0.spans)),
                 (_binding_1).map(|it| Token![tracked](tokens_helper(f, &it.span))),
-                Box::new(f.fold_type(*_binding_2)),
+                (_binding_2)
+                    .map(|it| Box::new((
+                        Paren(tokens_helper(f, &(*it).0.span)),
+                        full!(f.fold_pat((* it).1)),
+                        Token![:](tokens_helper(f, &(*it).2.spans)),
+                    ))),
+                Box::new(f.fold_type(*_binding_3)),
             )
         }
     }
@@ -2941,6 +2998,10 @@ where
         inputs: FoldHelper::lift(node.inputs, |it| f.fold_fn_arg(it)),
         variadic: (node.variadic).map(|it| f.fold_variadic(it)),
         output: f.fold_return_type(node.output),
+        requires: (node.requires).map(|it| f.fold_requires(it)),
+        recommends: (node.recommends).map(|it| f.fold_recommends(it)),
+        ensures: (node.ensures).map(|it| f.fold_ensures(it)),
+        decreases: (node.decreases).map(|it| f.fold_decreases(it)),
     }
 }
 pub fn fold_span<F>(f: &mut F, node: Span) -> Span
@@ -2948,6 +3009,14 @@ where
     F: Fold + ?Sized,
 {
     node
+}
+pub fn fold_specification<F>(f: &mut F, node: Specification) -> Specification
+where
+    F: Fold + ?Sized,
+{
+    Specification {
+        exprs: FoldHelper::lift(node.exprs, |it| f.fold_expr(it)),
+    }
 }
 #[cfg(feature = "full")]
 pub fn fold_stmt<F>(f: &mut F, node: Stmt) -> Stmt

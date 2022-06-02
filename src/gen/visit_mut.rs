@@ -99,9 +99,15 @@ pub trait VisitMut {
     fn visit_data_union_mut(&mut self, i: &mut DataUnion) {
         visit_data_union_mut(self, i);
     }
+    fn visit_decreases_mut(&mut self, i: &mut Decreases) {
+        visit_decreases_mut(self, i);
+    }
     #[cfg(feature = "derive")]
     fn visit_derive_input_mut(&mut self, i: &mut DeriveInput) {
         visit_derive_input_mut(self, i);
+    }
+    fn visit_ensures_mut(&mut self, i: &mut Ensures) {
+        visit_ensures_mut(self, i);
     }
     #[cfg(any(feature = "derive", feature = "full"))]
     fn visit_expr_mut(&mut self, i: &mut Expr) {
@@ -626,6 +632,12 @@ pub trait VisitMut {
     fn visit_receiver_mut(&mut self, i: &mut Receiver) {
         visit_receiver_mut(self, i);
     }
+    fn visit_recommends_mut(&mut self, i: &mut Recommends) {
+        visit_recommends_mut(self, i);
+    }
+    fn visit_requires_mut(&mut self, i: &mut Requires) {
+        visit_requires_mut(self, i);
+    }
     #[cfg(any(feature = "derive", feature = "full"))]
     fn visit_return_type_mut(&mut self, i: &mut ReturnType) {
         visit_return_type_mut(self, i);
@@ -636,6 +648,9 @@ pub trait VisitMut {
     }
     fn visit_span_mut(&mut self, i: &mut Span) {
         visit_span_mut(self, i);
+    }
+    fn visit_specification_mut(&mut self, i: &mut Specification) {
+        visit_specification_mut(self, i);
     }
     #[cfg(feature = "full")]
     fn visit_stmt_mut(&mut self, i: &mut Stmt) {
@@ -1118,6 +1133,13 @@ where
     tokens_helper(v, &mut node.union_token.span);
     v.visit_fields_named_mut(&mut node.fields);
 }
+pub fn visit_decreases_mut<V>(v: &mut V, node: &mut Decreases)
+where
+    V: VisitMut + ?Sized,
+{
+    tokens_helper(v, &mut node.token.span);
+    v.visit_specification_mut(&mut node.exprs);
+}
 #[cfg(feature = "derive")]
 pub fn visit_derive_input_mut<V>(v: &mut V, node: &mut DeriveInput)
 where
@@ -1130,6 +1152,13 @@ where
     v.visit_ident_mut(&mut node.ident);
     v.visit_generics_mut(&mut node.generics);
     v.visit_data_mut(&mut node.data);
+}
+pub fn visit_ensures_mut<V>(v: &mut V, node: &mut Ensures)
+where
+    V: VisitMut + ?Sized,
+{
+    tokens_helper(v, &mut node.token.span);
+    v.visit_specification_mut(&mut node.exprs);
 }
 #[cfg(any(feature = "derive", feature = "full"))]
 pub fn visit_expr_mut<V>(v: &mut V, node: &mut Expr)
@@ -3258,6 +3287,20 @@ where
     }
     tokens_helper(v, &mut node.self_token.span);
 }
+pub fn visit_recommends_mut<V>(v: &mut V, node: &mut Recommends)
+where
+    V: VisitMut + ?Sized,
+{
+    tokens_helper(v, &mut node.token.span);
+    v.visit_specification_mut(&mut node.exprs);
+}
+pub fn visit_requires_mut<V>(v: &mut V, node: &mut Requires)
+where
+    V: VisitMut + ?Sized,
+{
+    tokens_helper(v, &mut node.token.span);
+    v.visit_specification_mut(&mut node.exprs);
+}
 #[cfg(any(feature = "derive", feature = "full"))]
 pub fn visit_return_type_mut<V>(v: &mut V, node: &mut ReturnType)
 where
@@ -3265,12 +3308,17 @@ where
 {
     match node {
         ReturnType::Default => {}
-        ReturnType::Type(_binding_0, _binding_1, _binding_2) => {
+        ReturnType::Type(_binding_0, _binding_1, _binding_2, _binding_3) => {
             tokens_helper(v, &mut _binding_0.spans);
             if let Some(it) = &mut *_binding_1 {
                 tokens_helper(v, &mut it.span);
             }
-            v.visit_type_mut(&mut **_binding_2);
+            if let Some(it) = &mut *_binding_2 {
+                tokens_helper(v, &mut (**it).0.span);
+                full!(v.visit_pat_mut(& mut (* * it).1));
+                tokens_helper(v, &mut (**it).2.spans);
+            }
+            v.visit_type_mut(&mut **_binding_3);
         }
     }
 }
@@ -3307,11 +3355,35 @@ where
         v.visit_variadic_mut(it);
     }
     v.visit_return_type_mut(&mut node.output);
+    if let Some(it) = &mut node.requires {
+        v.visit_requires_mut(it);
+    }
+    if let Some(it) = &mut node.recommends {
+        v.visit_recommends_mut(it);
+    }
+    if let Some(it) = &mut node.ensures {
+        v.visit_ensures_mut(it);
+    }
+    if let Some(it) = &mut node.decreases {
+        v.visit_decreases_mut(it);
+    }
 }
 pub fn visit_span_mut<V>(v: &mut V, node: &mut Span)
 where
     V: VisitMut + ?Sized,
 {}
+pub fn visit_specification_mut<V>(v: &mut V, node: &mut Specification)
+where
+    V: VisitMut + ?Sized,
+{
+    for el in Punctuated::pairs_mut(&mut node.exprs) {
+        let (it, p) = el.into_tuple();
+        v.visit_expr_mut(it);
+        if let Some(p) = p {
+            tokens_helper(v, &mut p.spans);
+        }
+    }
+}
 #[cfg(feature = "full")]
 pub fn visit_stmt_mut<V>(v: &mut V, node: &mut Stmt)
 where

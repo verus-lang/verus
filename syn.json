@@ -571,6 +571,20 @@
       }
     },
     {
+      "ident": "Decreases",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "token": {
+          "token": "Requires"
+        },
+        "exprs": {
+          "syn": "Specification"
+        }
+      }
+    },
+    {
       "ident": "DeriveInput",
       "features": {
         "any": [
@@ -594,6 +608,20 @@
         },
         "data": {
           "syn": "Data"
+        }
+      }
+    },
+    {
+      "ident": "Ensures",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "token": {
+          "token": "Ensures"
+        },
+        "exprs": {
+          "syn": "Specification"
         }
       }
     },
@@ -4510,6 +4538,34 @@
       }
     },
     {
+      "ident": "Recommends",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "token": {
+          "token": "Recommends"
+        },
+        "exprs": {
+          "syn": "Specification"
+        }
+      }
+    },
+    {
+      "ident": "Requires",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "token": {
+          "token": "Requires"
+        },
+        "exprs": {
+          "syn": "Specification"
+        }
+      }
+    },
+    {
       "ident": "ReturnType",
       "features": {
         "any": [
@@ -4526,6 +4582,23 @@
           {
             "option": {
               "token": "Tracked"
+            }
+          },
+          {
+            "option": {
+              "box": {
+                "tuple": [
+                  {
+                    "group": "Paren"
+                  },
+                  {
+                    "syn": "Pat"
+                  },
+                  {
+                    "token": "Colon"
+                  }
+                ]
+              }
             }
           },
           {
@@ -4594,6 +4667,42 @@
         },
         "output": {
           "syn": "ReturnType"
+        },
+        "requires": {
+          "option": {
+            "syn": "Requires"
+          }
+        },
+        "recommends": {
+          "option": {
+            "syn": "Recommends"
+          }
+        },
+        "ensures": {
+          "option": {
+            "syn": "Ensures"
+          }
+        },
+        "decreases": {
+          "option": {
+            "syn": "Decreases"
+          }
+        }
+      }
+    },
+    {
+      "ident": "Specification",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "exprs": {
+          "punctuated": {
+            "element": {
+              "syn": "Expr"
+            },
+            "punct": "Comma"
+          }
         }
       }
     },

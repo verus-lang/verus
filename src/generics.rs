@@ -922,6 +922,10 @@ pub mod parsing {
                     loop {
                         if input.is_empty()
                             || input.peek(token::Brace)
+                            || input.peek(Token![requires])
+                            || input.peek(Token![recommends])
+                            || input.peek(Token![ensures])
+                            || input.peek(Token![decreases])
                             || input.peek(Token![,])
                             || input.peek(Token![;])
                             || input.peek(Token![:]) && !input.peek(Token![::])
