@@ -23,7 +23,7 @@ use syn::parse::Error;
 // 1. This is self-explanatory. `birds_eye` is a feature for tokenized state machines.
 //    It only affects the token exchange functions, not the atomic transition relations.
 //
-// 2. We can't even access 'self' in an 'init' transition, so `birds_eye` wouldn't
+// 2. We can't even access `pre` in an 'init' transition, so `birds_eye` wouldn't
 //    do anything.
 //
 // 3. This is a soundness issue. For the guarding rule to work, the guard has to be a

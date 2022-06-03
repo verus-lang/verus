@@ -11,6 +11,10 @@ pub struct SyncSendIfSyncSend<#[verifier(strictly_positive)] T> {
 #[verifier(custom_req_err("unable to prove assertion safety condition"))]
 pub fn assert_safety(b: bool) { requires(b); ensures(b); }
 
+#[proof]
+#[verifier(custom_req_err("unable to prove safety condition that the pattern matches"))]
+pub fn assert_let_pattern(b: bool) { requires(b); ensures(b); }
+
 // SpecialOps
 
 #[proof]

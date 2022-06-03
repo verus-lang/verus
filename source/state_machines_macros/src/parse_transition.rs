@@ -4,7 +4,9 @@ use crate::ast::{
 };
 use crate::parse_token_stream::{keyword, peek_keyword};
 use crate::util::combine_errors_or_ok;
+use crate::util::{expr_from_tokens, pat_from_tokens};
 use proc_macro2::Span;
+use quote::{quote, quote_spanned};
 use std::rc::Rc;
 use syn::parse::{Parse, ParseStream};
 use syn::punctuated::Punctuated;
@@ -55,6 +57,7 @@ struct TransitionInner {
 impl Parse for TransitionInner {
     fn parse(input: ParseStream) -> syn::parse::Result<TransitionInner> {
         let params_stream;
+        let mut ctxt = Ctxt { counter: 0 };
 
         // parse `name(args...)`
         let name: Ident = input.parse()?;
@@ -62,10 +65,14 @@ impl Parse for TransitionInner {
         let params = parse_params(&params_stream)?;
 
         // parse `{ block ... }`
-        let body = parse_transition_block(input)?;
+        let body = parse_transition_block(&mut ctxt, input)?;
 
         Ok(TransitionInner { name, params, body })
     }
+}
+
+struct Ctxt {
+    counter: u64,
 }
 
 fn parse_params(input: ParseStream) -> syn::parse::Result<Vec<TransitionParam>> {
@@ -93,28 +100,38 @@ enum StmtOrLet {
     Special(TSpecial),
 }
 
+#[derive(PartialEq, Eq, Clone, Copy)]
+enum Refute {
+    Exhaustive, // normal let
+    Require,    // require let
+    Assert,     // asssert let
+}
+
 /// Parse any kind of transition statement. Note that 'let' statements aren't turned
 /// into full TransitionStmts yet; instead we return the TLet stub.
-fn parse_transition_stmt(input: ParseStream) -> syn::parse::Result<StmtOrLet> {
+fn parse_transition_stmt(
+    ctxt: &mut Ctxt,
+    input: ParseStream,
+) -> syn::parse::Result<Vec<StmtOrLet>> {
     // If the next token is a brace, parse as a block.
     if input.peek(syn::token::Brace) {
-        return Ok(StmtOrLet::Stmt(parse_transition_block(input)?));
+        return Ok(vec![StmtOrLet::Stmt(parse_transition_block(ctxt, input)?)]);
     }
 
     // Try to parse as a 'let' statement (not 'let' won't parse as an identifier)
     if input.peek(Token![let]) {
         let let_token: Token![let] = input.parse()?;
-        return Ok(StmtOrLet::Let(parse_let(let_token.span, LetKind::Normal, input)?));
+        return Ok(parse_let(ctxt, let_token.span, Refute::Exhaustive, LetKind::Normal, input)?);
     }
 
     // Try to parse as an 'if' statement
     if input.peek(Token![if]) {
-        return Ok(StmtOrLet::Stmt(parse_conditional(input)?));
+        return Ok(vec![StmtOrLet::Stmt(parse_conditional(ctxt, input)?)]);
     }
 
     // Try to parse as a 'match' statement
     if input.peek(Token![match]) {
-        return Ok(StmtOrLet::Stmt(parse_match(input)?));
+        return Ok(vec![StmtOrLet::Stmt(parse_match(ctxt, input)?)]);
     }
 
     // Parse anything else by reading the next identifier and treating it as a "keyword"
@@ -127,29 +144,51 @@ fn parse_transition_stmt(input: ParseStream) -> syn::parse::Result<StmtOrLet> {
         }
     };
 
-    if ident.to_string() == "update" {
-        Ok(StmtOrLet::Stmt(parse_update(ident, input)?))
+    // first we have to handle all these:
+    //    birds_eye let
+    //    require
+    //    assert
+    //    require let
+    //    assert let
+    //    require birds_eye let   (not allowed - see explanation in check_birds_eye.rs)
+    //    assert birds_eye let
+
+    if ident.to_string() == "birds_eye" {
+        let _let_token: Token![let] = input.parse()?;
+        return Ok(parse_let(ctxt, ident.span(), Refute::Exhaustive, LetKind::BirdsEye, input)?);
+    } else if ident.to_string() == "require" || ident.to_string() == "assert" {
+        let refute = if ident.to_string() == "require" { Refute::Require } else { Refute::Assert };
+        if input.peek(Token![let]) {
+            let _let_token: Token![let] = input.parse()?;
+            Ok(parse_let(ctxt, ident.span(), refute, LetKind::Normal, input)?)
+        } else if peek_keyword(input.cursor(), "birds_eye") {
+            let _ = keyword(input, "birds_eye");
+            let _let_token: Token![let] = input.parse()?;
+            Ok(parse_let(ctxt, ident.span(), refute, LetKind::BirdsEye, input)?)
+        } else {
+            // Normal require/assert
+            if ident.to_string() == "require" {
+                Ok(vec![StmtOrLet::Stmt(parse_require(ident, input)?)])
+            } else {
+                Ok(vec![StmtOrLet::Stmt(parse_assert(ident, input)?)])
+            }
+        }
+    } else if ident.to_string() == "update" {
+        Ok(vec![StmtOrLet::Stmt(parse_update(ident, input)?)])
     } else if ident.to_string() == "init" {
-        Ok(StmtOrLet::Stmt(parse_init(ident, input)?))
-    } else if ident.to_string() == "require" {
-        Ok(StmtOrLet::Stmt(parse_require(ident, input)?))
-    } else if ident.to_string() == "assert" {
-        Ok(StmtOrLet::Stmt(parse_assert(ident, input)?))
+        Ok(vec![StmtOrLet::Stmt(parse_init(ident, input)?)])
     } else if ident.to_string() == "have" {
-        Ok(parse_monoid_stmt(ident, input, MonoidStmtType::Have)?)
+        Ok(vec![parse_monoid_stmt(ident, input, MonoidStmtType::Have)?])
     } else if ident.to_string() == "add" {
-        Ok(parse_monoid_stmt(ident, input, MonoidStmtType::Add)?)
+        Ok(vec![parse_monoid_stmt(ident, input, MonoidStmtType::Add)?])
     } else if ident.to_string() == "remove" {
-        Ok(parse_monoid_stmt(ident, input, MonoidStmtType::Remove)?)
+        Ok(vec![parse_monoid_stmt(ident, input, MonoidStmtType::Remove)?])
     } else if ident.to_string() == "guard" {
-        Ok(parse_monoid_stmt(ident, input, MonoidStmtType::Guard)?)
+        Ok(vec![parse_monoid_stmt(ident, input, MonoidStmtType::Guard)?])
     } else if ident.to_string() == "deposit" {
-        Ok(parse_monoid_stmt(ident, input, MonoidStmtType::Deposit)?)
+        Ok(vec![parse_monoid_stmt(ident, input, MonoidStmtType::Deposit)?])
     } else if ident.to_string() == "withdraw" {
-        Ok(parse_monoid_stmt(ident, input, MonoidStmtType::Withdraw)?)
-    } else if ident.to_string() == "birds_eye" {
-        let let_token: Token![let] = input.parse()?;
-        return Ok(StmtOrLet::Let(parse_let(let_token.span, LetKind::BirdsEye, input)?));
+        Ok(vec![parse_monoid_stmt(ident, input, MonoidStmtType::Withdraw)?])
     } else {
         Err(Error::new(ident.span(), "expected transition stmt"))
     }
@@ -157,13 +196,16 @@ fn parse_transition_stmt(input: ParseStream) -> syn::parse::Result<StmtOrLet> {
 
 /// Parse a block `{ transition stmts }`
 
-fn parse_transition_block(input: ParseStream) -> syn::parse::Result<TransitionStmt> {
+fn parse_transition_block(
+    ctxt: &mut Ctxt,
+    input: ParseStream,
+) -> syn::parse::Result<TransitionStmt> {
     let content;
     let brace_token = braced!(content in input);
-    let mut stmts = Vec::new();
+    let mut stmts: Vec<StmtOrLet> = Vec::new();
     while !content.is_empty() {
-        let new_stmt = parse_transition_stmt(&content)?;
-        stmts.push(new_stmt);
+        let mut new_stmts = parse_transition_stmt(ctxt, &content)?;
+        stmts.append(&mut new_stmts);
     }
     Ok(stmts_or_lets_to_block(brace_token.span, stmts))
 }
@@ -350,13 +392,13 @@ fn parse_monoid_elt(
 }
 
 /// Parse conditional `if { stmts } else { stmts }`
-fn parse_conditional(input: ParseStream) -> syn::parse::Result<TransitionStmt> {
+fn parse_conditional(ctxt: &mut Ctxt, input: ParseStream) -> syn::parse::Result<TransitionStmt> {
     let if_token: Token![if] = input.parse()?;
     // Based on implementation of syn::ExprIf::parse
     let cond: Expr = input.call(Expr::parse_without_eager_brace)?;
-    let thn = parse_transition_block(input)?;
+    let thn = parse_transition_block(ctxt, input)?;
     if input.peek(Token![else]) {
-        let els = parse_else_block(input)?;
+        let els = parse_else_block(ctxt, input)?;
         let span = if_token.span.join(*els.get_span()).unwrap_or(if_token.span);
         error_on_if_let(&cond)?;
         Ok(TransitionStmt::Split(span, SplitKind::If(cond), vec![thn, els]))
@@ -368,23 +410,33 @@ fn parse_conditional(input: ParseStream) -> syn::parse::Result<TransitionStmt> {
     }
 }
 
-fn parse_else_block(input: ParseStream) -> syn::parse::Result<TransitionStmt> {
+fn parse_else_block(ctxt: &mut Ctxt, input: ParseStream) -> syn::parse::Result<TransitionStmt> {
     let _else_token: Token![else] = input.parse()?;
 
     // handle the `else if` case
 
     let lookahead = input.lookahead1();
     if input.peek(Token![if]) {
-        parse_conditional(input)
+        parse_conditional(ctxt, input)
     } else if input.peek(syn::token::Brace) {
-        parse_transition_block(input)
+        parse_transition_block(ctxt, input)
     } else {
         Err(lookahead.error())
     }
 }
 
 /// Parse `let x = ...;` or `birds_eye let x = ...;`
-fn parse_let(span: Span, lk: LetKind, input: ParseStream) -> syn::parse::Result<TLet> {
+fn parse_let(
+    ctxt: &mut Ctxt,
+    span: Span,
+    refute: Refute,
+    lk: LetKind,
+    input: ParseStream,
+) -> syn::parse::Result<Vec<StmtOrLet>> {
+    if refute == Refute::Require && lk == LetKind::BirdsEye {
+        return Err(input.error("'require birds_eye let' is not allowed because 'require' statements should not be in the scope of a `birds_eye` let-binding; preconditions of an exchange cannot depend on such bindings"));
+    }
+
     let pat: Pat = input.parse()?;
 
     match &pat {
@@ -413,7 +465,75 @@ fn parse_let(span: Span, lk: LetKind, input: ParseStream) -> syn::parse::Result<
 
     let stmt_span = span.join(semi.span()).unwrap_or(span);
 
-    Ok(TLet(stmt_span, pat, ty, lk, e))
+    match refute {
+        Refute::Exhaustive => Ok(vec![StmtOrLet::Let(TLet(stmt_span, pat, ty, lk, e))]),
+        Refute::Require | Refute::Assert => {
+            // We immediately de-sugar a 'require let' or 'require assert' into something like
+            //    let tmp (: type)? = expr;
+            //    require(match tmp { pat => true, _ => false })
+            //    let (ids) = match tmp { pat => (ids), _ => arbitrary() }
+
+            let uniq_id = ctxt.counter;
+            ctxt.counter += 1;
+
+            let tmp_ident =
+                Ident::new(&("tmp_for_match_".to_string() + &uniq_id.to_string()), stmt_span);
+
+            let pat_tmp = Pat::Ident(syn::PatIdent {
+                attrs: vec![],
+                by_ref: None,
+                mutability: None,
+                ident: tmp_ident.clone(),
+                subpat: None,
+            });
+            let match_cond = expr_from_tokens(quote! {
+                match #tmp_ident { #pat => true, _ => false }
+            });
+            let proof = AssertProof { proof: None, error_msg: "assert_let_pattern".to_string() };
+
+            let mut v = vec![
+                StmtOrLet::Let(TLet(stmt_span, pat_tmp, ty, lk, e)),
+                if refute == Refute::Require {
+                    StmtOrLet::Stmt(TransitionStmt::Require(stmt_span, match_cond))
+                } else {
+                    StmtOrLet::Stmt(TransitionStmt::Assert(stmt_span, match_cond, proof))
+                },
+            ];
+
+            let ids = crate::ident_visitor::pattern_get_bound_idents(&pat);
+            if ids.len() > 0 {
+                let match_select;
+                let pat_tup;
+
+                if ids.len() > 1 {
+                    match_select = expr_from_tokens(quote_spanned! { stmt_span =>
+                        match #tmp_ident { #pat => (#(#ids),*) , _ => crate::pervasive::arbitrary() }
+                    });
+                    pat_tup = pat_from_tokens(quote_spanned! { stmt_span =>
+                        (#(#ids),*)
+                    });
+                } else {
+                    let id = &ids[0];
+                    match_select = expr_from_tokens(quote_spanned! { stmt_span =>
+                        match #tmp_ident { #pat => #id , _ => crate::pervasive::arbitrary() }
+                    });
+                    pat_tup = pat_from_tokens(quote_spanned! { stmt_span =>
+                        #id
+                    });
+                }
+
+                v.push(StmtOrLet::Let(TLet(
+                    stmt_span,
+                    pat_tup,
+                    None,
+                    LetKind::Normal,
+                    match_select,
+                )));
+            }
+
+            Ok(v)
+        }
+    }
 }
 
 /// Parse `update field = ...;`
@@ -494,7 +614,7 @@ fn parse_require(kw: Ident, input: ParseStream) -> syn::parse::Result<Transition
 /// but we have to modify it so that it parses a TransitionStmt instead of an Expr
 /// in each arm. However, we can re-use some of the code for parsing the patterns
 
-fn parse_match(input: ParseStream) -> syn::parse::Result<TransitionStmt> {
+fn parse_match(ctxt: &mut Ctxt, input: ParseStream) -> syn::parse::Result<TransitionStmt> {
     let match_token: Token![match] = input.parse()?;
     let expr = Expr::parse_without_eager_brace(input)?;
 
@@ -504,7 +624,7 @@ fn parse_match(input: ParseStream) -> syn::parse::Result<TransitionStmt> {
     let mut arms = Vec::new();
     let mut stmts = Vec::new();
     while !content.is_empty() {
-        let (arm, stmt) = parse_arm(&content)?;
+        let (arm, stmt) = parse_arm(ctxt, &content)?;
         arms.push(arm);
         stmts.push(stmt);
     }
@@ -517,7 +637,7 @@ fn parse_match(input: ParseStream) -> syn::parse::Result<TransitionStmt> {
 /// Parse an arm of a match statement. Based on `impl Parse for syn::Arm`
 /// (but note that we return our own ast::Arm, not the syn::Arm)
 
-fn parse_arm(input: ParseStream) -> syn::parse::Result<(Arm, TransitionStmt)> {
+fn parse_arm(ctxt: &mut Ctxt, input: ParseStream) -> syn::parse::Result<(Arm, TransitionStmt)> {
     let pat = multi_pat_with_leading_vert(input)?;
     let guard = {
         if input.peek(Token![if]) {
@@ -529,7 +649,7 @@ fn parse_arm(input: ParseStream) -> syn::parse::Result<(Arm, TransitionStmt)> {
         }
     };
     let fat_arrow_token = input.parse()?;
-    let body = parse_transition_block(input)?;
+    let body = parse_transition_block(ctxt, input)?;
 
     let requires_comma = false;
     let comma = {
