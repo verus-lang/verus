@@ -1,6 +1,11 @@
 //! Helper utilities used by the `state_machine_macros` codegen.
 
-#[allow(unused_imports)] use builtin::*;
+#![allow(unused_imports)]
+
+use builtin::*;
+use crate::pervasive::*;
+use crate::pervasive::seq::*;
+use crate::pervasive::map::*;
 
 #[verifier(external_body)]
 pub struct SyncSendIfSyncSend<#[verifier(strictly_positive)] T> {
@@ -90,3 +95,28 @@ pub fn assert_general_deposit_map(b: bool) { requires(b); ensures(b); }
 #[proof]
 #[verifier(custom_req_err("unable to prove inherent safety condition: the map being guarded must be a submap of the stored map"))]
 pub fn assert_general_guard_map(b: bool) { requires(b); ensures(b); }
+
+// used by the `update field[idx] = ...;` syntax
+//
+// note: the built-in rust trait IndexMut doesn't work here
+// (because these functions need to be 'spec' code, and IndexMut uses a &mut to do its job)
+// perhaps we'll make our own trait for this purpose some day, but regardless, this suffices
+// for our purposes
+
+impl<A> Seq<A> {
+    #[spec] #[verifier(publish)]
+    pub fn update_at_index(self, i: int, a: A) -> Self {
+        recommends(0 <= i && i < self.len());
+
+        self.update(i, a)
+    }
+}
+
+impl<K, V> Map<K, V> {
+    // note that despite the name, this is allowed to insert
+
+    #[spec] #[verifier(publish)]
+    pub fn update_at_index(self, k: K, v: V) -> Self {
+        self.insert(k, v)
+    }
+}

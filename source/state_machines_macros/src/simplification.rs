@@ -479,7 +479,7 @@ fn update_sub_expr(root: &Expr, subs: &Vec<SubIdx>, i: usize, val: &Expr) -> Exp
                 let child = Expr::Verbatim(quote_spanned! { idx_e.span() => #root.index(#idx_e) });
                 let r = update_sub_expr(&child, subs, i + 1, val);
                 Expr::Verbatim(quote_spanned! { idx_e.span() =>
-                    #root.update(#idx_e, #r)
+                    #root.update_at_index(#idx_e, #r)
                 })
             }
         }
