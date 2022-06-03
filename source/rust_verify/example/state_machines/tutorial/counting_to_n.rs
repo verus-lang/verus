@@ -1,4 +1,6 @@
-#[allow(unused_imports)]
+#![allow(unused_imports)]
+
+// ANCHOR: full
 use builtin::*;
 use builtin_macros::*;
 mod pervasive;
@@ -73,7 +75,10 @@ tokenized_state_machine!{
 // ANCHOR: finalize
         readonly!{
             finalize() {
+                // Equivalent to:
+                //    require(pre.unstamped_tickets >= pre.num_threads);
                 have stamped_tickets >= (pre.num_threads);
+
                 assert(pre.counter == pre.num_threads);
             }
         }
@@ -139,6 +144,7 @@ impl Spawnable<Proof<X::stamped_tickets>> for ThreadData {
         && new_token.0.value == 1
     }
 
+    // ANCHOR: thread_run
     fn run(self) -> Proof<X::stamped_tickets> {
         let ThreadData { globals: globals, mut token } = self;
         let globals = &*globals;
@@ -157,107 +163,107 @@ impl Spawnable<Proof<X::stamped_tickets>> for ThreadData {
 
         Proof(new_token)
     }
+    // ANCHOR_END: thread_run
 }
 
 fn do_count(num_threads: u32) {
-  // Initialize protocol 
+    // Initialize protocol 
 
-  #[proof] let (instance,
-      counter_token,
-      mut unstamped_tokens,
-      mut stamped_tokens) = X::Instance::initialize(num_threads as nat);
+    #[proof] let (instance,
+        counter_token,
+        mut unstamped_tokens,
+        mut stamped_tokens) = X::Instance::initialize(num_threads as nat);
 
-  // Initialize the counter
+    // Initialize the counter
 
-  let (atomic, Proof(perm_token)) = PAtomicU32::new(0);
+    let (atomic, Proof(perm_token)) = PAtomicU32::new(0);
 
-  #[proof] let at_inv: AtomicInvariant<G> = AtomicInvariant::new(
-      G { counter: counter_token, perm: perm_token },
-      |g: G| g.wf(instance, atomic),
-      0);
+    #[proof] let at_inv: AtomicInvariant<G> = AtomicInvariant::new(
+        G { counter: counter_token, perm: perm_token },
+        |g: G| g.wf(instance, atomic),
+        0);
 
-  let global = Global { atomic, instance: instance.clone(), inv: at_inv };
-  let global_arc = Arc::new(global);
+    let global = Global { atomic, instance: instance.clone(), inv: at_inv };
+    let global_arc = Arc::new(global);
 
-  // Spawn threads
+    // ANCHOR: loop_spawn
+    // Spawn threads
 
-  let mut join_handles: Vec<JoinHandle<Proof<X::stamped_tickets>>> = Vec::new();
+    let mut join_handles: Vec<JoinHandle<Proof<X::stamped_tickets>>> = Vec::new();
 
-  let mut i = 0;
-  while i < num_threads {
-      invariant([
-          0 <= i,
-          i <= num_threads,
-          unstamped_tokens.value + i as int == num_threads as int,
-          equal(unstamped_tokens.instance, instance),
-          join_handles.view().len() == i as int,
-          forall(|j: int, ret| 0 <= j && j < i >>=
-              join_handles.view().index(j).predicate(ret) >>=
-                  equal(ret.0.instance, instance) && ret.0.value == 1),
-          (*global_arc).wf(),
-          equal((*global_arc).instance, instance),
-      ]);
+    let mut i = 0;
+    while i < num_threads {
+        invariant([
+            0 <= i,
+            i <= num_threads,
+            unstamped_tokens.value + i as int == num_threads as int,
+            equal(unstamped_tokens.instance, instance),
+            join_handles.view().len() == i as int,
+            forall(|j: int, ret| 0 <= j && j < i >>=
+                join_handles.view().index(j).predicate(ret) >>=
+                    equal(ret.0.instance, instance) && ret.0.value == 1),
+            (*global_arc).wf(),
+            equal((*global_arc).instance, instance),
+        ]);
 
-      #[proof] let (unstamped_token, rest) = unstamped_tokens.split(1);
-      unstamped_tokens = rest;
+        #[proof] let (unstamped_token, rest) = unstamped_tokens.split(1);
+        unstamped_tokens = rest;
 
-      let thread_data = ThreadData { globals: global_arc.clone(), token: unstamped_token };
-      let join_handle = spawn(thread_data);
+        let thread_data = ThreadData { globals: global_arc.clone(), token: unstamped_token };
+        let join_handle = spawn(thread_data);
 
-      join_handles.push(join_handle);
+        join_handles.push(join_handle);
 
-      i = i + 1;
-  }
+        i = i + 1;
+    }
+    // ANCHOR_END: loop_spawn
 
-  // Join threads
+    // ANCHOR: loop_join
+    // Join threads
 
-  let mut i = 0;
-  while i < num_threads {
-      invariant([
-          0 <= i,
-          i <= num_threads,
-          stamped_tokens.value == i as int,
-          equal(stamped_tokens.instance, instance),
-          join_handles.view().len() as int + i as int == num_threads,
-          forall(|j: int, ret| 0 <= j && j < join_handles.view().len() >>=
-              #[trigger] join_handles.view().index(j).predicate(ret) >>=
-                  equal(ret.0.instance, instance) && ret.0.value == 1),
-          (*global_arc).wf(),
-          equal((*global_arc).instance, instance),
-      ]);
+    let mut i = 0;
+    while i < num_threads {
+        invariant([
+            0 <= i,
+            i <= num_threads,
+            stamped_tokens.value == i as int,
+            equal(stamped_tokens.instance, instance),
+            join_handles.view().len() as int + i as int == num_threads,
+            forall(|j: int, ret| 0 <= j && j < join_handles.view().len() >>=
+                #[trigger] join_handles.view().index(j).predicate(ret) >>=
+                    equal(ret.0.instance, instance) && ret.0.value == 1),
+            (*global_arc).wf(),
+            equal((*global_arc).instance, instance),
+        ]);
 
-      //#[spec] let oj = join_handles;
-      let join_handle = join_handles.pop();
+        let join_handle = join_handles.pop();
 
-      //assert(equal(join_handle, oj.view().index(oj.len() as int - 1)));
+        match join_handle.join() {
+            Result::Ok(Proof(token)) => {
+                stamped_tokens = stamped_tokens.join(token);
+            }
+            _ => { return; }
+        };
 
-      match join_handle.join() {
-          Result::Ok(Proof(token)) => {
-              //assert(join_handle.predicate(Proof(token)));
-              //assert(token.value == 1);
-              //assert(equal(token.instance, instance));
-              stamped_tokens = stamped_tokens.join(token);
-          }
-          _ => { return; }
-      };
+        i = i + 1;
+    }
+    // ANCHOR_END: loop_join
 
-      i = i + 1;
-  }
+    let x;
+    let global = &*global_arc;
+    open_atomic_invariant!(&global.inv => g => {
+      #[proof] let G { counter: c3, perm: p3 } = g;
 
-  let x;
-  let global = &*global_arc;
-  open_atomic_invariant!(&global.inv => g => {
-    #[proof] let G { counter: c3, perm: p3 } = g;
+      x = global.atomic.load(&p3);
+      instance.finalize(&c3, &stamped_tokens);
 
-    x = global.atomic.load(&p3);
-    instance.finalize(&c3, &stamped_tokens);
+      g = G { counter: c3, perm: p3 };
+    });
 
-    g = G { counter: c3, perm: p3 };
-  });
-
-  assert(equal(x, num_threads));
+    assert(equal(x, num_threads));
 }
 
 fn main() {
-  do_count(20);
+    do_count(20);
 }
+// ANCHOR_END: full
