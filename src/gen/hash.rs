@@ -40,6 +40,42 @@ impl Hash for Arm {
         self.comma.hash(state);
     }
 }
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Hash for Assert {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
+        self.attrs.hash(state);
+        self.expr.hash(state);
+        self.by_token.hash(state);
+        self.prover.hash(state);
+        self.body.hash(state);
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Hash for AssertForall {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
+        self.attrs.hash(state);
+        self.inputs.hash(state);
+        self.expr.hash(state);
+        self.implies.hash(state);
+        self.body.hash(state);
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Hash for Assume {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
+        self.attrs.hash(state);
+        self.expr.hash(state);
+    }
+}
 #[cfg(any(feature = "derive", feature = "full"))]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
 impl Hash for AttrStyle {
@@ -535,6 +571,21 @@ impl Hash for Expr {
             #[cfg(feature = "full")]
             Expr::Yield(v0) => {
                 state.write_u8(39u8);
+                v0.hash(state);
+            }
+            #[cfg(feature = "full")]
+            Expr::Assume(v0) => {
+                state.write_u8(40u8);
+                v0.hash(state);
+            }
+            #[cfg(feature = "full")]
+            Expr::Assert(v0) => {
+                state.write_u8(41u8);
+                v0.hash(state);
+            }
+            #[cfg(feature = "full")]
+            Expr::AssertForall(v0) => {
+                state.write_u8(42u8);
                 v0.hash(state);
             }
             #[cfg(any(syn_no_non_exhaustive, not(feature = "full")))]

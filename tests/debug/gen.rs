@@ -88,6 +88,103 @@ impl Debug for Lite<syn::Arm> {
         formatter.finish()
     }
 }
+impl Debug for Lite<syn::Assert> {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let _val = &self.value;
+        let mut formatter = formatter.debug_struct("Assert");
+        if !_val.attrs.is_empty() {
+            formatter.field("attrs", Lite(&_val.attrs));
+        }
+        formatter.field("expr", Lite(&_val.expr));
+        if let Some(val) = &_val.by_token {
+            #[derive(RefCast)]
+            #[repr(transparent)]
+            struct Print(syn::token::By);
+            impl Debug for Print {
+                fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                    formatter.write_str("Some")?;
+                    Ok(())
+                }
+            }
+            formatter.field("by_token", Print::ref_cast(val));
+        }
+        if let Some(val) = &_val.prover {
+            #[derive(RefCast)]
+            #[repr(transparent)]
+            struct Print((syn::token::Paren, proc_macro2::Ident));
+            impl Debug for Print {
+                fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                    formatter.write_str("Some")?;
+                    let _val = &self.0;
+                    formatter.write_str("(")?;
+                    Debug::fmt(Lite(&_val.1), formatter)?;
+                    formatter.write_str(")")?;
+                    Ok(())
+                }
+            }
+            formatter.field("prover", Print::ref_cast(val));
+        }
+        if let Some(val) = &_val.body {
+            #[derive(RefCast)]
+            #[repr(transparent)]
+            struct Print(Box<(Option<syn::Requires>, syn::Block)>);
+            impl Debug for Print {
+                fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                    formatter.write_str("Some")?;
+                    let _val = &self.0;
+                    formatter.write_str("(")?;
+                    Debug::fmt(Lite(_val), formatter)?;
+                    formatter.write_str(")")?;
+                    Ok(())
+                }
+            }
+            formatter.field("body", Print::ref_cast(val));
+        }
+        formatter.finish()
+    }
+}
+impl Debug for Lite<syn::AssertForall> {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let _val = &self.value;
+        let mut formatter = formatter.debug_struct("AssertForall");
+        if !_val.attrs.is_empty() {
+            formatter.field("attrs", Lite(&_val.attrs));
+        }
+        if !_val.inputs.is_empty() {
+            formatter.field("inputs", Lite(&_val.inputs));
+        }
+        formatter.field("expr", Lite(&_val.expr));
+        if let Some(val) = &_val.implies {
+            #[derive(RefCast)]
+            #[repr(transparent)]
+            struct Print((syn::token::Implies, Box<syn::Expr>));
+            impl Debug for Print {
+                fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                    formatter.write_str("Some")?;
+                    let _val = &self.0;
+                    formatter.write_str("(")?;
+                    Debug::fmt(Lite(&_val.1), formatter)?;
+                    formatter.write_str(")")?;
+                    Ok(())
+                }
+            }
+            formatter.field("implies", Print::ref_cast(val));
+        }
+        formatter.field("body", Lite(&_val.body));
+        formatter.finish()
+    }
+}
+impl Debug for Lite<syn::Assume> {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let _val = &self.value;
+        let mut formatter = formatter.debug_struct("Assume");
+        if !_val.attrs.is_empty() {
+            formatter.field("attrs", Lite(&_val.attrs));
+        }
+        formatter.field("expr", Lite(&_val.expr));
+        formatter.finish()
+    }
+}
 impl Debug for Lite<syn::AttrStyle> {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         let _val = &self.value;
@@ -1135,6 +1232,27 @@ impl Debug for Lite<syn::Expr> {
                     formatter.field("expr", Print::ref_cast(val));
                 }
                 formatter.finish()
+            }
+            syn::Expr::Assume(_val) => {
+                formatter.write_str("Assume")?;
+                formatter.write_str("(")?;
+                Debug::fmt(Lite(_val), formatter)?;
+                formatter.write_str(")")?;
+                Ok(())
+            }
+            syn::Expr::Assert(_val) => {
+                formatter.write_str("Assert")?;
+                formatter.write_str("(")?;
+                Debug::fmt(Lite(_val), formatter)?;
+                formatter.write_str(")")?;
+                Ok(())
+            }
+            syn::Expr::AssertForall(_val) => {
+                formatter.write_str("AssertForall")?;
+                formatter.write_str("(")?;
+                Debug::fmt(Lite(_val), formatter)?;
+                formatter.write_str(")")?;
+                Ok(())
             }
             _ => unreachable!(),
         }

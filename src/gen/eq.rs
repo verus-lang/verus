@@ -35,6 +35,34 @@ impl PartialEq for Arm {
             && self.body == other.body && self.comma == other.comma
     }
 }
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Eq for Assert {}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl PartialEq for Assert {
+    fn eq(&self, other: &Self) -> bool {
+        self.attrs == other.attrs && self.expr == other.expr
+            && self.by_token == other.by_token && self.prover == other.prover
+            && self.body == other.body
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Eq for AssertForall {}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl PartialEq for AssertForall {
+    fn eq(&self, other: &Self) -> bool {
+        self.attrs == other.attrs && self.inputs == other.inputs
+            && self.expr == other.expr && self.implies == other.implies
+            && self.body == other.body
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Eq for Assume {}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl PartialEq for Assume {
+    fn eq(&self, other: &Self) -> bool {
+        self.attrs == other.attrs && self.expr == other.expr
+    }
+}
 #[cfg(any(feature = "derive", feature = "full"))]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
 impl Eq for AttrStyle {}
@@ -320,6 +348,12 @@ impl PartialEq for Expr {
             (Expr::While(self0), Expr::While(other0)) => self0 == other0,
             #[cfg(feature = "full")]
             (Expr::Yield(self0), Expr::Yield(other0)) => self0 == other0,
+            #[cfg(feature = "full")]
+            (Expr::Assume(self0), Expr::Assume(other0)) => self0 == other0,
+            #[cfg(feature = "full")]
+            (Expr::Assert(self0), Expr::Assert(other0)) => self0 == other0,
+            #[cfg(feature = "full")]
+            (Expr::AssertForall(self0), Expr::AssertForall(other0)) => self0 == other0,
             _ => false,
         }
     }

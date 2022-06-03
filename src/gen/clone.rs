@@ -39,6 +39,47 @@ impl Clone for Arm {
         }
     }
 }
+#[cfg_attr(doc_cfg, doc(cfg(feature = "clone-impls")))]
+impl Clone for Assert {
+    fn clone(&self) -> Self {
+        Assert {
+            attrs: self.attrs.clone(),
+            assert_token: self.assert_token.clone(),
+            paren_token: self.paren_token.clone(),
+            expr: self.expr.clone(),
+            by_token: self.by_token.clone(),
+            prover: self.prover.clone(),
+            body: self.body.clone(),
+        }
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "clone-impls")))]
+impl Clone for AssertForall {
+    fn clone(&self) -> Self {
+        AssertForall {
+            attrs: self.attrs.clone(),
+            assert_token: self.assert_token.clone(),
+            forall_token: self.forall_token.clone(),
+            paren_token: self.paren_token.clone(),
+            inputs: self.inputs.clone(),
+            expr: self.expr.clone(),
+            implies: self.implies.clone(),
+            by_token: self.by_token.clone(),
+            body: self.body.clone(),
+        }
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "clone-impls")))]
+impl Clone for Assume {
+    fn clone(&self) -> Self {
+        Assume {
+            attrs: self.attrs.clone(),
+            assume_token: self.assume_token.clone(),
+            paren_token: self.paren_token.clone(),
+            expr: self.expr.clone(),
+        }
+    }
+}
 #[cfg(any(feature = "derive", feature = "full"))]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "clone-impls")))]
 impl Copy for AttrStyle {}
@@ -291,6 +332,12 @@ impl Clone for Expr {
             Expr::While(v0) => Expr::While(v0.clone()),
             #[cfg(feature = "full")]
             Expr::Yield(v0) => Expr::Yield(v0.clone()),
+            #[cfg(feature = "full")]
+            Expr::Assume(v0) => Expr::Assume(v0.clone()),
+            #[cfg(feature = "full")]
+            Expr::Assert(v0) => Expr::Assert(v0.clone()),
+            #[cfg(feature = "full")]
+            Expr::AssertForall(v0) => Expr::AssertForall(v0.clone()),
             #[cfg(any(syn_no_non_exhaustive, not(feature = "full")))]
             _ => unreachable!(),
         }

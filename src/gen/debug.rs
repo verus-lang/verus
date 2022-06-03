@@ -39,6 +39,47 @@ impl Debug for Arm {
         formatter.finish()
     }
 }
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Debug for Assert {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let mut formatter = formatter.debug_struct("Assert");
+        formatter.field("attrs", &self.attrs);
+        formatter.field("assert_token", &self.assert_token);
+        formatter.field("paren_token", &self.paren_token);
+        formatter.field("expr", &self.expr);
+        formatter.field("by_token", &self.by_token);
+        formatter.field("prover", &self.prover);
+        formatter.field("body", &self.body);
+        formatter.finish()
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Debug for AssertForall {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let mut formatter = formatter.debug_struct("AssertForall");
+        formatter.field("attrs", &self.attrs);
+        formatter.field("assert_token", &self.assert_token);
+        formatter.field("forall_token", &self.forall_token);
+        formatter.field("paren_token", &self.paren_token);
+        formatter.field("inputs", &self.inputs);
+        formatter.field("expr", &self.expr);
+        formatter.field("implies", &self.implies);
+        formatter.field("by_token", &self.by_token);
+        formatter.field("body", &self.body);
+        formatter.finish()
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Debug for Assume {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let mut formatter = formatter.debug_struct("Assume");
+        formatter.field("attrs", &self.attrs);
+        formatter.field("assume_token", &self.assume_token);
+        formatter.field("paren_token", &self.paren_token);
+        formatter.field("expr", &self.expr);
+        formatter.finish()
+    }
+}
 #[cfg(any(feature = "derive", feature = "full"))]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
 impl Debug for AttrStyle {
@@ -637,6 +678,24 @@ impl Debug for Expr {
             #[cfg(feature = "full")]
             Expr::Yield(v0) => {
                 let mut formatter = formatter.debug_tuple("Yield");
+                formatter.field(v0);
+                formatter.finish()
+            }
+            #[cfg(feature = "full")]
+            Expr::Assume(v0) => {
+                let mut formatter = formatter.debug_tuple("Assume");
+                formatter.field(v0);
+                formatter.finish()
+            }
+            #[cfg(feature = "full")]
+            Expr::Assert(v0) => {
+                let mut formatter = formatter.debug_tuple("Assert");
+                formatter.field(v0);
+                formatter.finish()
+            }
+            #[cfg(feature = "full")]
+            Expr::AssertForall(v0) => {
+                let mut formatter = formatter.debug_tuple("AssertForall");
                 formatter.field(v0);
                 formatter.finish()
             }

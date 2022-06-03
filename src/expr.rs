@@ -225,6 +225,11 @@ ast_enum_of_structs! {
         /// A yield expression: `yield expr`.
         Yield(ExprYield),
 
+        // verus
+        Assume(Assume),
+        Assert(Assert),
+        AssertForall(AssertForall),
+
         // Not public API.
         //
         // For testing exhaustiveness in downstream code, use the following idiom:
@@ -792,7 +797,7 @@ impl Expr {
     });
 
     #[cfg(all(feature = "parsing", feature = "full"))]
-    pub(crate) fn replace_attrs(&mut self, new: Vec<Attribute>) -> Vec<Attribute> {
+    pub fn replace_attrs(&mut self, new: Vec<Attribute>) -> Vec<Attribute> {
         match self {
             Expr::Box(ExprBox { attrs, .. })
             | Expr::Array(ExprArray { attrs, .. })
@@ -832,6 +837,9 @@ impl Expr {
             | Expr::Async(ExprAsync { attrs, .. })
             | Expr::Await(ExprAwait { attrs, .. })
             | Expr::TryBlock(ExprTryBlock { attrs, .. })
+            | Expr::Assume(Assume { attrs, .. })
+            | Expr::Assert(Assert { attrs, .. })
+            | Expr::AssertForall(AssertForall { attrs, .. })
             | Expr::Yield(ExprYield { attrs, .. }) => mem::replace(attrs, new),
             Expr::Verbatim(_) => Vec::new(),
 
@@ -1083,6 +1091,12 @@ pub(crate) fn requires_terminator(expr: &Expr) -> bool {
             op: UnOp::Proof(..),
             ..
         })
+        | Expr::Assert(Assert {
+            by_token: Some(..),
+            body: Some(..),
+            ..
+        })
+        | Expr::AssertForall(..)
         | Expr::If(..)
         | Expr::Match(..)
         | Expr::While(..)
@@ -1830,6 +1844,12 @@ pub(crate) mod parsing {
             input.parse().map(Expr::ForLoop)
         } else if input.peek(Token![loop]) {
             input.parse().map(Expr::Loop)
+        } else if input.peek(Token![assume]) {
+            input.parse().map(Expr::Assume)
+        } else if input.peek(Token![assert]) && input.peek2(Token![forall]) {
+            input.parse().map(Expr::AssertForall)
+        } else if input.peek(Token![assert]) {
+            input.parse().map(Expr::Assert)
         } else if input.peek(Token![match]) {
             input.parse().map(Expr::Match)
         } else if input.peek(Token![yield]) {
@@ -2112,6 +2132,12 @@ pub(crate) mod parsing {
             Expr::ForLoop(input.parse()?)
         } else if input.peek(Token![loop]) {
             Expr::Loop(input.parse()?)
+        } else if input.peek(Token![assume]) {
+            Expr::Assume(input.parse()?)
+        } else if input.peek(Token![assert]) && input.peek2(Token![forall]) {
+            Expr::AssertForall(input.parse()?)
+        } else if input.peek(Token![assert]) {
+            Expr::Assert(input.parse()?)
         } else if input.peek(Token![match]) {
             Expr::Match(input.parse()?)
         } else if input.peek(Token![try]) && input.peek2(token::Brace) {

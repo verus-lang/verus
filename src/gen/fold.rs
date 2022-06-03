@@ -44,6 +44,15 @@ pub trait Fold {
     fn fold_arm(&mut self, i: Arm) -> Arm {
         fold_arm(self, i)
     }
+    fn fold_assert(&mut self, i: Assert) -> Assert {
+        fold_assert(self, i)
+    }
+    fn fold_assert_forall(&mut self, i: AssertForall) -> AssertForall {
+        fold_assert_forall(self, i)
+    }
+    fn fold_assume(&mut self, i: Assume) -> Assume {
+        fold_assume(self, i)
+    }
     #[cfg(any(feature = "derive", feature = "full"))]
     fn fold_attr_style(&mut self, i: AttrStyle) -> AttrStyle {
         fold_attr_style(self, i)
@@ -860,6 +869,56 @@ where
         comma: (node.comma).map(|it| Token![,](tokens_helper(f, &it.spans))),
     }
 }
+pub fn fold_assert<F>(f: &mut F, node: Assert) -> Assert
+where
+    F: Fold + ?Sized,
+{
+    Assert {
+        attrs: FoldHelper::lift(node.attrs, |it| f.fold_attribute(it)),
+        assert_token: Token![assert](tokens_helper(f, &node.assert_token.span)),
+        paren_token: Paren(tokens_helper(f, &node.paren_token.span)),
+        expr: Box::new(f.fold_expr(*node.expr)),
+        by_token: (node.by_token).map(|it| Token![by](tokens_helper(f, &it.span))),
+        prover: (node.prover)
+            .map(|it| (Paren(tokens_helper(f, &(it).0.span)), f.fold_ident((it).1))),
+        body: (node.body)
+            .map(|it| Box::new((
+                ((*it).0).map(|it| f.fold_requires(it)),
+                full!(f.fold_block((* it).1)),
+            ))),
+    }
+}
+pub fn fold_assert_forall<F>(f: &mut F, node: AssertForall) -> AssertForall
+where
+    F: Fold + ?Sized,
+{
+    AssertForall {
+        attrs: FoldHelper::lift(node.attrs, |it| f.fold_attribute(it)),
+        assert_token: Token![assert](tokens_helper(f, &node.assert_token.span)),
+        forall_token: Token![forall](tokens_helper(f, &node.forall_token.span)),
+        paren_token: Paren(tokens_helper(f, &node.paren_token.span)),
+        inputs: FoldHelper::lift(node.inputs, |it| full!(f.fold_pat(it))),
+        expr: Box::new(f.fold_expr(*node.expr)),
+        implies: (node.implies)
+            .map(|it| (
+                Token![implies](tokens_helper(f, &(it).0.span)),
+                Box::new(f.fold_expr(*(it).1)),
+            )),
+        by_token: Token![by](tokens_helper(f, &node.by_token.span)),
+        body: Box::new(full!(f.fold_block(* node.body))),
+    }
+}
+pub fn fold_assume<F>(f: &mut F, node: Assume) -> Assume
+where
+    F: Fold + ?Sized,
+{
+    Assume {
+        attrs: FoldHelper::lift(node.attrs, |it| f.fold_attribute(it)),
+        assume_token: Token![assume](tokens_helper(f, &node.assume_token.span)),
+        paren_token: Paren(tokens_helper(f, &node.paren_token.span)),
+        expr: Box::new(f.fold_expr(*node.expr)),
+    }
+}
 #[cfg(any(feature = "derive", feature = "full"))]
 pub fn fold_attr_style<F>(f: &mut F, node: AttrStyle) -> AttrStyle
 where
@@ -1206,6 +1265,11 @@ where
         Expr::Verbatim(_binding_0) => Expr::Verbatim(_binding_0),
         Expr::While(_binding_0) => Expr::While(full!(f.fold_expr_while(_binding_0))),
         Expr::Yield(_binding_0) => Expr::Yield(full!(f.fold_expr_yield(_binding_0))),
+        Expr::Assume(_binding_0) => Expr::Assume(f.fold_assume(_binding_0)),
+        Expr::Assert(_binding_0) => Expr::Assert(f.fold_assert(_binding_0)),
+        Expr::AssertForall(_binding_0) => {
+            Expr::AssertForall(f.fold_assert_forall(_binding_0))
+        }
         #[cfg(syn_no_non_exhaustive)]
         _ => unreachable!(),
     }

@@ -96,6 +96,144 @@
       }
     },
     {
+      "ident": "Assert",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "attrs": {
+          "vec": {
+            "syn": "Attribute"
+          }
+        },
+        "assert_token": {
+          "token": "Assert"
+        },
+        "paren_token": {
+          "group": "Paren"
+        },
+        "expr": {
+          "box": {
+            "syn": "Expr"
+          }
+        },
+        "by_token": {
+          "option": {
+            "token": "By"
+          }
+        },
+        "prover": {
+          "option": {
+            "tuple": [
+              {
+                "group": "Paren"
+              },
+              {
+                "proc_macro2": "Ident"
+              }
+            ]
+          }
+        },
+        "body": {
+          "option": {
+            "box": {
+              "tuple": [
+                {
+                  "option": {
+                    "syn": "Requires"
+                  }
+                },
+                {
+                  "syn": "Block"
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "ident": "AssertForall",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "attrs": {
+          "vec": {
+            "syn": "Attribute"
+          }
+        },
+        "assert_token": {
+          "token": "Assert"
+        },
+        "forall_token": {
+          "token": "Forall"
+        },
+        "paren_token": {
+          "group": "Paren"
+        },
+        "inputs": {
+          "punctuated": {
+            "element": {
+              "syn": "Pat"
+            },
+            "punct": "Comma"
+          }
+        },
+        "expr": {
+          "box": {
+            "syn": "Expr"
+          }
+        },
+        "implies": {
+          "option": {
+            "tuple": [
+              {
+                "token": "Implies"
+              },
+              {
+                "box": {
+                  "syn": "Expr"
+                }
+              }
+            ]
+          }
+        },
+        "by_token": {
+          "token": "By"
+        },
+        "body": {
+          "box": {
+            "syn": "Block"
+          }
+        }
+      }
+    },
+    {
+      "ident": "Assume",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "attrs": {
+          "vec": {
+            "syn": "Attribute"
+          }
+        },
+        "assume_token": {
+          "token": "Assume"
+        },
+        "paren_token": {
+          "group": "Paren"
+        },
+        "expr": {
+          "box": {
+            "syn": "Expr"
+          }
+        }
+      }
+    },
+    {
       "ident": "AttrStyle",
       "features": {
         "any": [
@@ -832,6 +970,21 @@
         "Yield": [
           {
             "syn": "ExprYield"
+          }
+        ],
+        "Assume": [
+          {
+            "syn": "Assume"
+          }
+        ],
+        "Assert": [
+          {
+            "syn": "Assert"
+          }
+        ],
+        "AssertForall": [
+          {
+            "syn": "AssertForall"
           }
         ]
       },

@@ -46,6 +46,15 @@ pub trait Visit<'ast> {
     fn visit_arm(&mut self, i: &'ast Arm) {
         visit_arm(self, i);
     }
+    fn visit_assert(&mut self, i: &'ast Assert) {
+        visit_assert(self, i);
+    }
+    fn visit_assert_forall(&mut self, i: &'ast AssertForall) {
+        visit_assert_forall(self, i);
+    }
+    fn visit_assume(&mut self, i: &'ast Assume) {
+        visit_assume(self, i);
+    }
     #[cfg(any(feature = "derive", feature = "full"))]
     fn visit_attr_style(&mut self, i: &'ast AttrStyle) {
         visit_attr_style(self, i);
@@ -862,6 +871,66 @@ where
         tokens_helper(v, &it.spans);
     }
 }
+pub fn visit_assert<'ast, V>(v: &mut V, node: &'ast Assert)
+where
+    V: Visit<'ast> + ?Sized,
+{
+    for it in &node.attrs {
+        v.visit_attribute(it);
+    }
+    tokens_helper(v, &node.assert_token.span);
+    tokens_helper(v, &node.paren_token.span);
+    v.visit_expr(&*node.expr);
+    if let Some(it) = &node.by_token {
+        tokens_helper(v, &it.span);
+    }
+    if let Some(it) = &node.prover {
+        tokens_helper(v, &(it).0.span);
+        v.visit_ident(&(it).1);
+    }
+    if let Some(it) = &node.body {
+        if let Some(it) = &(**it).0 {
+            v.visit_requires(it);
+        }
+        full!(v.visit_block(& (* * it).1));
+    }
+}
+pub fn visit_assert_forall<'ast, V>(v: &mut V, node: &'ast AssertForall)
+where
+    V: Visit<'ast> + ?Sized,
+{
+    for it in &node.attrs {
+        v.visit_attribute(it);
+    }
+    tokens_helper(v, &node.assert_token.span);
+    tokens_helper(v, &node.forall_token.span);
+    tokens_helper(v, &node.paren_token.span);
+    for el in Punctuated::pairs(&node.inputs) {
+        let (it, p) = el.into_tuple();
+        full!(v.visit_pat(it));
+        if let Some(p) = p {
+            tokens_helper(v, &p.spans);
+        }
+    }
+    v.visit_expr(&*node.expr);
+    if let Some(it) = &node.implies {
+        tokens_helper(v, &(it).0.span);
+        v.visit_expr(&*(it).1);
+    }
+    tokens_helper(v, &node.by_token.span);
+    full!(v.visit_block(& * node.body));
+}
+pub fn visit_assume<'ast, V>(v: &mut V, node: &'ast Assume)
+where
+    V: Visit<'ast> + ?Sized,
+{
+    for it in &node.attrs {
+        v.visit_attribute(it);
+    }
+    tokens_helper(v, &node.assume_token.span);
+    tokens_helper(v, &node.paren_token.span);
+    v.visit_expr(&*node.expr);
+}
 #[cfg(any(feature = "derive", feature = "full"))]
 pub fn visit_attr_style<'ast, V>(v: &mut V, node: &'ast AttrStyle)
 where
@@ -1284,6 +1353,15 @@ where
         }
         Expr::Yield(_binding_0) => {
             full!(v.visit_expr_yield(_binding_0));
+        }
+        Expr::Assume(_binding_0) => {
+            v.visit_assume(_binding_0);
+        }
+        Expr::Assert(_binding_0) => {
+            v.visit_assert(_binding_0);
+        }
+        Expr::AssertForall(_binding_0) => {
+            v.visit_assert_forall(_binding_0);
         }
         #[cfg(syn_no_non_exhaustive)]
         _ => unreachable!(),
