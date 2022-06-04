@@ -1544,6 +1544,9 @@ where
     }
     tokens_helper(v, &mut node.or2_token.spans);
     v.visit_return_type_mut(&mut node.output);
+    for it in &mut node.inner_attrs {
+        v.visit_attribute_mut(it);
+    }
     v.visit_expr_mut(&mut *node.body);
 }
 #[cfg(feature = "full")]
@@ -3896,6 +3899,15 @@ where
             tokens_helper(v, &mut _binding_0.span);
         }
         UnOp::Tracked(_binding_0) => {
+            tokens_helper(v, &mut _binding_0.span);
+        }
+        UnOp::Forall(_binding_0) => {
+            tokens_helper(v, &mut _binding_0.span);
+        }
+        UnOp::Exists(_binding_0) => {
+            tokens_helper(v, &mut _binding_0.span);
+        }
+        UnOp::Choose(_binding_0) => {
             tokens_helper(v, &mut _binding_0.span);
         }
     }

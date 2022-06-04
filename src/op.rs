@@ -93,6 +93,9 @@ ast_enum! {
         Spec(Token![spec]),
         Proof(Token![proof]),
         Tracked(Token![tracked]),
+        Forall(Token![forall]),
+        Exists(Token![exists]),
+        Choose(Token![choose]),
     }
 }
 
@@ -208,6 +211,12 @@ pub mod parsing {
                 input.parse().map(UnOp::Proof)
             } else if lookahead.peek(Token![tracked]) {
                 input.parse().map(UnOp::Tracked)
+            } else if lookahead.peek(Token![forall]) {
+                input.parse().map(UnOp::Forall)
+            } else if lookahead.peek(Token![exists]) {
+                input.parse().map(UnOp::Exists)
+            } else if lookahead.peek(Token![choose]) {
+                input.parse().map(UnOp::Choose)
             } else {
                 Err(lookahead.error())
             }
@@ -280,6 +289,9 @@ mod printing {
                 UnOp::Spec(t) => t.to_tokens(tokens),
                 UnOp::Proof(t) => t.to_tokens(tokens),
                 UnOp::Tracked(t) => t.to_tokens(tokens),
+                UnOp::Forall(t) => t.to_tokens(tokens),
+                UnOp::Exists(t) => t.to_tokens(tokens),
+                UnOp::Choose(t) => t.to_tokens(tokens),
             }
         }
     }

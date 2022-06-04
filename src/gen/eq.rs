@@ -482,7 +482,7 @@ impl PartialEq for ExprClosure {
         self.attrs == other.attrs && self.movability == other.movability
             && self.asyncness == other.asyncness && self.capture == other.capture
             && self.inputs == other.inputs && self.output == other.output
-            && self.body == other.body
+            && self.inner_attrs == other.inner_attrs && self.body == other.body
     }
 }
 #[cfg(feature = "full")]
@@ -2186,6 +2186,9 @@ impl PartialEq for UnOp {
             (UnOp::Spec(_), UnOp::Spec(_)) => true,
             (UnOp::Proof(_), UnOp::Proof(_)) => true,
             (UnOp::Tracked(_), UnOp::Tracked(_)) => true,
+            (UnOp::Forall(_), UnOp::Forall(_)) => true,
+            (UnOp::Exists(_), UnOp::Exists(_)) => true,
+            (UnOp::Choose(_), UnOp::Choose(_)) => true,
             _ => false,
         }
     }

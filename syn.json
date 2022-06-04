@@ -1335,6 +1335,11 @@
         "output": {
           "syn": "ReturnType"
         },
+        "inner_attrs": {
+          "vec": {
+            "syn": "Attribute"
+          }
+        },
         "body": {
           "box": {
             "syn": "Expr"
@@ -5631,6 +5636,21 @@
         "Tracked": [
           {
             "token": "Tracked"
+          }
+        ],
+        "Forall": [
+          {
+            "token": "Forall"
+          }
+        ],
+        "Exists": [
+          {
+            "token": "Exists"
+          }
+        ],
+        "Choose": [
+          {
+            "token": "Choose"
           }
         ]
       }

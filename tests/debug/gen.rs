@@ -772,6 +772,9 @@ impl Debug for Lite<syn::Expr> {
                     formatter.field("inputs", Lite(&_val.inputs));
                 }
                 formatter.field("output", Lite(&_val.output));
+                if !_val.inner_attrs.is_empty() {
+                    formatter.field("inner_attrs", Lite(&_val.inner_attrs));
+                }
                 formatter.field("body", Lite(&_val.body));
                 formatter.finish()
             }
@@ -1496,6 +1499,9 @@ impl Debug for Lite<syn::ExprClosure> {
             formatter.field("inputs", Lite(&_val.inputs));
         }
         formatter.field("output", Lite(&_val.output));
+        if !_val.inner_attrs.is_empty() {
+            formatter.field("inner_attrs", Lite(&_val.inner_attrs));
+        }
         formatter.field("body", Lite(&_val.body));
         formatter.finish()
     }
@@ -5830,6 +5836,18 @@ impl Debug for Lite<syn::UnOp> {
             }
             syn::UnOp::Tracked(_val) => {
                 formatter.write_str("Tracked")?;
+                Ok(())
+            }
+            syn::UnOp::Forall(_val) => {
+                formatter.write_str("Forall")?;
+                Ok(())
+            }
+            syn::UnOp::Exists(_val) => {
+                formatter.write_str("Exists")?;
+                Ok(())
+            }
+            syn::UnOp::Choose(_val) => {
+                formatter.write_str("Choose")?;
                 Ok(())
             }
         }

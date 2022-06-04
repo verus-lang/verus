@@ -412,6 +412,7 @@ ast_struct! {
         pub inputs: Punctuated<Pat, Token![,]>,
         pub or2_token: Token![|],
         pub output: ReturnType,
+        pub inner_attrs: Vec<Attribute>,
         pub body: Box<Expr>,
     }
 }
@@ -1613,6 +1614,12 @@ pub(crate) mod parsing {
             expr_unary(input, attrs, allow_struct).map(Expr::Unary)
         } else if input.peek(Token![tracked]) {
             expr_unary(input, attrs, allow_struct).map(Expr::Unary)
+        } else if input.peek2(Token![|])
+            && (input.peek(Token![forall])
+                || input.peek(Token![exists])
+                || input.peek(Token![choose]))
+        {
+            expr_unary(input, attrs, allow_struct).map(Expr::Unary)
         } else {
             trailer_expr(attrs, input, allow_struct)
         }
@@ -2576,21 +2583,23 @@ pub(crate) mod parsing {
 
         let or2_token: Token![|] = input.parse()?;
 
-        let (output, body) = if input.peek(Token![->]) {
+        let (output, inner_attrs, body) = if input.peek(Token![->]) {
             let arrow_token: Token![->] = input.parse()?;
             let tracked: Option<Token![tracked]> = input.parse()?;
             let ty: Type = input.parse()?;
             let body: Block = input.parse()?;
             let output = ReturnType::Type(arrow_token, tracked, None, Box::new(ty));
+            let inner_attrs = input.call(Attribute::parse_inner)?;
             let block = Expr::Block(ExprBlock {
                 attrs: Vec::new(),
                 label: None,
                 block: body,
             });
-            (output, block)
+            (output, inner_attrs, block)
         } else {
+            let inner_attrs = input.call(Attribute::parse_inner)?;
             let body = ambiguous_expr(input, allow_struct)?;
-            (ReturnType::Default, body)
+            (ReturnType::Default, inner_attrs, body)
         };
 
         Ok(ExprClosure {
@@ -2602,6 +2611,7 @@ pub(crate) mod parsing {
             inputs,
             or2_token,
             output,
+            inner_attrs,
             body: Box::new(body),
         })
     }
@@ -3397,6 +3407,7 @@ pub(crate) mod printing {
             self.inputs.to_tokens(tokens);
             self.or2_token.to_tokens(tokens);
             self.output.to_tokens(tokens);
+            inner_attrs_to_tokens(&self.inner_attrs, tokens);
             self.body.to_tokens(tokens);
         }
     }

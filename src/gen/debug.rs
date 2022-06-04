@@ -846,6 +846,7 @@ impl Debug for ExprClosure {
         formatter.field("inputs", &self.inputs);
         formatter.field("or2_token", &self.or2_token);
         formatter.field("output", &self.output);
+        formatter.field("inner_attrs", &self.inner_attrs);
         formatter.field("body", &self.body);
         formatter.finish()
     }
@@ -3107,6 +3108,21 @@ impl Debug for UnOp {
             }
             UnOp::Tracked(v0) => {
                 let mut formatter = formatter.debug_tuple("Tracked");
+                formatter.field(v0);
+                formatter.finish()
+            }
+            UnOp::Forall(v0) => {
+                let mut formatter = formatter.debug_tuple("Forall");
+                formatter.field(v0);
+                formatter.finish()
+            }
+            UnOp::Exists(v0) => {
+                let mut formatter = formatter.debug_tuple("Exists");
+                formatter.field(v0);
+                formatter.finish()
+            }
+            UnOp::Choose(v0) => {
+                let mut formatter = formatter.debug_tuple("Choose");
                 formatter.field(v0);
                 formatter.finish()
             }

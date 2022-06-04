@@ -737,6 +737,7 @@ impl Hash for ExprClosure {
         self.capture.hash(state);
         self.inputs.hash(state);
         self.output.hash(state);
+        self.inner_attrs.hash(state);
         self.body.hash(state);
     }
 }
@@ -2907,6 +2908,15 @@ impl Hash for UnOp {
             }
             UnOp::Tracked(_) => {
                 state.write_u8(7u8);
+            }
+            UnOp::Forall(_) => {
+                state.write_u8(8u8);
+            }
+            UnOp::Exists(_) => {
+                state.write_u8(9u8);
+            }
+            UnOp::Choose(_) => {
+                state.write_u8(10u8);
             }
         }
     }

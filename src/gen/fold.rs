@@ -1418,6 +1418,7 @@ where
         inputs: FoldHelper::lift(node.inputs, |it| f.fold_pat(it)),
         or2_token: Token![|](tokens_helper(f, &node.or2_token.spans)),
         output: f.fold_return_type(node.output),
+        inner_attrs: FoldHelper::lift(node.inner_attrs, |it| f.fold_attribute(it)),
         body: Box::new(f.fold_expr(*node.body)),
     }
 }
@@ -3441,6 +3442,15 @@ where
         }
         UnOp::Tracked(_binding_0) => {
             UnOp::Tracked(Token![tracked](tokens_helper(f, &_binding_0.span)))
+        }
+        UnOp::Forall(_binding_0) => {
+            UnOp::Forall(Token![forall](tokens_helper(f, &_binding_0.span)))
+        }
+        UnOp::Exists(_binding_0) => {
+            UnOp::Exists(Token![exists](tokens_helper(f, &_binding_0.span)))
+        }
+        UnOp::Choose(_binding_0) => {
+            UnOp::Choose(Token![choose](tokens_helper(f, &_binding_0.span)))
         }
     }
 }
