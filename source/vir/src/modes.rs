@@ -883,6 +883,7 @@ fn check_function(typing: &mut Typing, function: &Function) -> Result<(), VirErr
     }
 
     for expr in function.x.require.iter() {
+        typing.block_ghostness = Ghost::Ghost { tracked: false };
         check_expr_has_mode(typing, Mode::Spec, expr, Mode::Spec)?;
     }
 
@@ -891,11 +892,13 @@ fn check_function(typing: &mut Typing, function: &Function) -> Result<(), VirErr
         typing.insert(&function.span, &function.x.ret.x.name, false, function.x.ret.x.mode);
     }
     for expr in function.x.ensure.iter() {
+        typing.block_ghostness = Ghost::Ghost { tracked: false };
         check_expr_has_mode(typing, Mode::Spec, expr, Mode::Spec)?;
     }
     typing.vars.pop_scope();
 
     for expr in function.x.decrease.iter() {
+        typing.block_ghostness = Ghost::Ghost { tracked: false };
         check_expr_has_mode(typing, Mode::Spec, expr, Mode::Spec)?;
     }
 
@@ -924,6 +927,7 @@ fn check_function(typing: &mut Typing, function: &Function) -> Result<(), VirErr
         typing.ret_mode = Some(ret_mode);
     }
     if let Some(body) = &function.x.body {
+        typing.block_ghostness = Ghost::of_mode(function.x.mode);
         check_expr_has_mode(typing, function.x.mode, body, function.x.ret.x.mode)?;
     }
     typing.ret_mode = None;
@@ -958,7 +962,6 @@ pub fn check_crate(krate: &Krate) -> Result<(ErasureModes, HashMap<InferMode, Mo
     };
     for function in krate.functions.iter() {
         typing.check_ghost_blocks = function.x.attrs.uses_ghost_blocks;
-        typing.block_ghostness = Ghost::of_mode(function.x.mode);
         typing.fun_mode = function.x.mode;
         if function.x.attrs.atomic {
             let mut my_atomic_insts = Some(AtomicInstCollector::new());

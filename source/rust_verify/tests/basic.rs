@@ -287,19 +287,19 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_ensures_type_inference code! {
+    #[test] test_ensures_type_inference verus_code! {
         struct Foo {
             pub b: bool,
         }
 
-        #[spec]
-        fn get_b(foo: Foo) -> bool {
+        spec fn get_b(foo: Foo) -> bool {
             foo.b
         }
 
-        fn test1() -> Foo {
-            ensures(|b| get_b(b));
-            Foo {b: true}
+        fn test1() -> (b: Foo)
+            ensures get_b(b)
+        {
+            Foo { b: true }
         }
     } => Ok(())
 }
