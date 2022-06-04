@@ -5,7 +5,8 @@ use syn_verus::token::Paren;
 use syn_verus::visit_mut::{visit_expr_mut, visit_item_fn_mut, VisitMut};
 use syn_verus::{
     parse_macro_input, parse_quote_spanned, Attribute, BinOp, Decreases, Ensures, Expr, ExprBinary,
-    ExprCall, FnArgKind, FnMode, Item, ItemFn, Pat, Recommends, Requires, ReturnType, Stmt, UnOp,
+    ExprCall, ExprTuple, ExprUnary, FnArgKind, FnMode, Item, ItemFn, Pat, Recommends, Requires,
+    ReturnType, Stmt, UnOp,
 };
 
 fn take_expr(expr: &mut Expr) -> Expr {
@@ -145,12 +146,96 @@ impl VisitMut for Visitor {
             }
         }
 
-        let do_replace = match &expr {
-            Expr::Assume(..) | Expr::Assert(..) | Expr::AssertForall(..) => true,
-            _ => false,
+        let (do_replace, quant) = match &expr {
+            Expr::Unary(ExprUnary { op: UnOp::Forall(..), .. }) => (true, true),
+            Expr::Unary(ExprUnary { op: UnOp::Exists(..), .. }) => (true, true),
+            Expr::Unary(ExprUnary { op: UnOp::Choose(..), .. }) => (true, true),
+            Expr::Assume(..) | Expr::Assert(..) | Expr::AssertForall(..) => (true, false),
+            _ => (false, false),
         };
         if do_replace {
             match take_expr(expr) {
+                Expr::Unary(unary) if quant => {
+                    use syn_verus::spanned::Spanned;
+                    let span = unary.span();
+                    let mut arg = unary.expr;
+                    let attrs = unary.attrs;
+                    let (inner_attrs, n_inputs) = match &mut *arg {
+                        Expr::Closure(closure) => {
+                            (std::mem::take(&mut closure.inner_attrs), closure.inputs.len())
+                        }
+                        _ => panic!("expected closure for quantifier"),
+                    };
+                    let mut triggers: Vec<Expr> = Vec::new();
+                    for attr in inner_attrs {
+                        let trigger: syn_verus::Result<syn_verus::Specification> =
+                            syn_verus::parse2(attr.tokens.clone());
+                        match (trigger, attr.path.get_ident()) {
+                            (Ok(trigger), Some(id)) if id == "auto" && trigger.exprs.len() == 0 => {
+                                match &mut *arg {
+                                    Expr::Closure(closure) => {
+                                        let body = take_expr(&mut closure.body);
+                                        closure.body =
+                                            parse_quote_spanned!(span => #[auto_trigger] #body);
+                                    }
+                                    _ => panic!("expected closure for quantifier"),
+                                }
+                            }
+                            (Ok(trigger), Some(id)) if id == "trigger" => {
+                                let tuple = ExprTuple {
+                                    attrs: vec![],
+                                    paren_token: Paren(span),
+                                    elems: trigger.exprs,
+                                };
+                                triggers.push(Expr::Tuple(tuple));
+                            }
+                            (Err(err), _) => {
+                                let span = attr.span();
+                                let err = err.to_string();
+                                *expr = parse_quote_spanned!(span => compile_error!(#err));
+                                return;
+                            }
+                            _ => {
+                                let span = attr.span();
+                                *expr = parse_quote_spanned!(span => compile_error!("expected trigger"));
+                                return;
+                            }
+                        }
+                    }
+                    if triggers.len() > 0 {
+                        let mut elems = Punctuated::new();
+                        for elem in triggers {
+                            elems.push(elem);
+                            elems.push_punct(syn_verus::Token![,](span));
+                        }
+                        let tuple = ExprTuple { attrs: vec![], paren_token: Paren(span), elems };
+                        match &mut *arg {
+                            Expr::Closure(closure) => {
+                                let body = take_expr(&mut closure.body);
+                                closure.body =
+                                    parse_quote_spanned!(span => with_triggers(#tuple, #body));
+                            }
+                            _ => panic!("expected closure for quantifier"),
+                        }
+                    }
+                    match unary.op {
+                        UnOp::Forall(..) => {
+                            *expr = parse_quote_spanned!(span => builtin::forall(#arg));
+                        }
+                        UnOp::Exists(..) => {
+                            *expr = parse_quote_spanned!(span => builtin::exists(#arg));
+                        }
+                        UnOp::Choose(..) => {
+                            if n_inputs == 1 {
+                                *expr = parse_quote_spanned!(span => builtin::choose(#arg));
+                            } else {
+                                *expr = parse_quote_spanned!(span => builtin::choose_tuple(#arg));
+                            }
+                        }
+                        _ => panic!("unary"),
+                    }
+                    expr.replace_attrs(attrs);
+                }
                 Expr::Assume(assume) => {
                     let span = assume.assume_token.span;
                     let arg = assume.expr;

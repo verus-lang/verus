@@ -96,10 +96,9 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test8 code! {
-        #[proof]
-        fn test8(b: u32) {
-            assert_bit_vector(forall(|a: u32, b: u32| #[trigger] (a&b) == b&a));
+    #[test] test8 verus_code! {
+        proof fn test8(b: u32) {
+            assert_bit_vector(forall|a: u32, b: u32| #[trigger] (a & b) == b & a);
             assert_bit_vector(b & 0xff < 0x100);
             assert(0xff & b < 0x100);
         }
