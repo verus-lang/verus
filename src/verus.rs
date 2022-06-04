@@ -180,7 +180,7 @@ pub mod parsing {
                 || input.peek(Token![ensures])
                 || input.peek(Token![decreases]))
             {
-                let expr: Expr = input.parse()?;
+                let expr = Expr::parse_without_eager_brace(input)?;
                 exprs.push(expr);
                 if !input.peek(Token![,]) {
                     break;
