@@ -4,7 +4,7 @@ mod common;
 use common::*;
 
 test_verify_one_file! {
-    #[test] test1 code! {
+    #[test] test1 verus_code! {
         fn test1() {
             assert(true);
             assert(!false);
@@ -16,7 +16,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test1_fails code! {
+    #[test] test1_fails verus_code! {
         fn test1() {
             assert(true);
             assert(true && false); // FAILS
@@ -48,7 +48,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test2_fails code! {
+    #[test] test2_fails verus_code! {
         fn test2(b: bool, x: int, y: int, z: int) {
             assume(x <= y && y <= z);
             assert(x < z); // FAILS
@@ -57,7 +57,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_assign code! {
+    #[test] test_assign verus_code! {
         fn test_assign(a: int, b: int) {
             let c = a + b;
             assert(c == a + b);
@@ -71,7 +71,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_assign_mut code! {
+    #[test] test_assign_mut verus_code! {
         fn test_assign_mut(a: int, b: int) {
             let mut c = a;
             c = c + b;
@@ -137,12 +137,14 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_requires3 TEST_REQUIRES1.to_string() + code_str! {
+    #[test] test_requires3 TEST_REQUIRES1.to_string() + verus_code_str! {
         fn test_requires3(a: int, b: int, c: int) {
             assume(a <= b);
             assume(b <= c);
-            test_requires1(a + a, b + b, c + c);
-            test_requires1(a + c, b + b, c + c); // FAILS
+            proof {
+                test_requires1(a + a, b + b, c + c);
+                test_requires1(a + c, b + b, c + c); // FAILS
+            }
         }
     } => Err(err) => assert_one_fails(err)
 }
@@ -190,13 +192,13 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_exec_fun1 code! {
+    #[test] test_exec_fun1 verus_code! {
         fn f(x: u64) -> u64 {
-          5
+            5
         }
 
         fn g(x: u64) -> u64 {
-          f(x)
+            f(x)
         }
     } => Ok(())
 }
@@ -233,7 +235,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_short_circuit2 code! {
+    #[test] test_short_circuit2 verus_code! {
         fn f1(a: bool, b: bool) {
             let mut x: u64 = 0;
             let y = a && b;
@@ -245,7 +247,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_short_circuit3 code! {
+    #[test] test_short_circuit3 verus_code! {
         fn f1(a: bool, b: bool) {
             let mut x: u64 = 0;
             let y = a && b;
@@ -257,7 +259,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_paren code! {
+    #[test] test_paren verus_code! {
         fn test_paren() {
             {{{{if true {} else {}}}}}
             ((((if true {} else {}))))
@@ -266,7 +268,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_fail_assign_non_mut code! {
+    #[test] test_fail_assign_non_mut verus_code! {
         fn test1() {
             let x: u64 = 10;
             x = 20;
@@ -275,9 +277,10 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_fail_return_value_parameter_same_name code! {
-        fn foo(x: u64) -> bool {
-            ensures(|x: bool| x || !x);
+    #[test] test_fail_return_value_parameter_same_name verus_code! {
+        fn foo(x: u64) -> (x: bool)
+            ensures x || !x
+        {
             x > 10
         }
     } => Err(TestErr { has_vir_error: true, .. })
@@ -302,7 +305,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_decl_init_let_pass code! {
+    #[test] test_decl_init_let_pass verus_code! {
         fn test1() {
             let x: u64;
             x = 23;
@@ -311,7 +314,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_decl_init_let_fail code! {
+    #[test] test_decl_init_let_fail verus_code! {
         fn test1() {
             let x: u64;
             assert(x == 23); // FAILS
@@ -332,7 +335,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] bool_xor code! {
+    #[test] bool_xor verus_code! {
         fn test1() {
             assert((true ^ true) == false);
             assert((false ^ true) == true);
@@ -343,7 +346,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] bool_xor_fails code! {
+    #[test] bool_xor_fails verus_code! {
         fn test1() {
             assert((true ^ true) == true); // FAILS
         }
@@ -368,9 +371,8 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_init_spec_param_fail_2 code! {
-        #[spec]
-        fn test1(x: u64) {
+    #[test] test_init_spec_param_fail_2 verus_code! {
+        spec fn test1(x: u64) {
             x = 5;
         }
     } => Err(e) => assert_vir_error(e)

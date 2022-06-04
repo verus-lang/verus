@@ -12,4 +12,4 @@ proc-macro2 = "1.0.39"
 quote = "1.0"
 synstructure = "0.12"
 syn = "1.0"
-syn_verus = { git = "https://github.com/secure-foundations/syn", rev = "8286d2c", features = ["full", "visit-mut", "extra-traits"] }
+syn_verus = { git = "https://github.com/secure-foundations/syn", rev = "48b2591", features = ["full", "visit-mut", "extra-traits"] }

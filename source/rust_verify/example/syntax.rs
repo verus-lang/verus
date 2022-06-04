@@ -3,20 +3,10 @@ use builtin_macros::*;
 #[allow(unused_imports)]
 use builtin::*;
 
+mod pervasive;
+
 #[verifier(external)]
 fn main() {
-}
-
-#[proof]
-fn assert(b: bool) {
-    requires(b);
-    ensures(b);
-}
-
-#[proof]
-fn assume(b: bool) {
-    ensures(b);
-    admit();
 }
 
 verus! {

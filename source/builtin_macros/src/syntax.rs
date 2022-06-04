@@ -13,11 +13,45 @@ fn take_expr(expr: &mut Expr) -> Expr {
     std::mem::replace(expr, dummy)
 }
 
-struct Visitor {}
+struct Visitor {
+    // inside_ghost > 0 means we're currently visiting ghost code
+    inside_ghost: u32,
+}
 
 impl VisitMut for Visitor {
     fn visit_expr_mut(&mut self, expr: &mut Expr) {
+        if self.inside_ghost == 0 {
+            let is_auto_proof_block = match &expr {
+                Expr::Assume(a) => Some(a.assume_token.span),
+                Expr::Assert(a) => Some(a.assert_token.span),
+                Expr::AssertForall(a) => Some(a.assert_token.span),
+                _ => None,
+            };
+            if let Some(span) = is_auto_proof_block {
+                // automatically put assert/assume in a proof block
+                let inner = take_expr(expr);
+                *expr = parse_quote_spanned!(span => proof { #inner });
+            }
+        }
+
+        let mode_block = if let Expr::Unary(unary) = expr {
+            match unary.op {
+                UnOp::Spec(..) | UnOp::Proof(..) => Some(false),
+                UnOp::Tracked(..) => Some(true),
+                _ => None,
+            }
+        } else {
+            None
+        };
+
+        if mode_block.is_some() {
+            self.inside_ghost += 1;
+        }
         visit_expr_mut(self, expr);
+        if mode_block.is_some() {
+            self.inside_ghost -= 1;
+        }
+
         if let Expr::Unary(unary) = expr {
             use syn_verus::spanned::Spanned;
             let span = unary.span();
@@ -25,11 +59,6 @@ impl VisitMut for Visitor {
                 UnOp::BigAnd(..) => true,
                 UnOp::BigOr(..) => true,
                 _ => false,
-            };
-            let mode_block = match unary.op {
-                UnOp::Spec(..) | UnOp::Proof(..) => Some(false),
-                UnOp::Tracked(..) => Some(true),
-                _ => None,
             };
 
             if low_prec_op {
@@ -115,6 +144,82 @@ impl VisitMut for Visitor {
                 }
             }
         }
+
+        let do_replace = match &expr {
+            Expr::Assume(..) | Expr::Assert(..) | Expr::AssertForall(..) => true,
+            _ => false,
+        };
+        if do_replace {
+            match take_expr(expr) {
+                Expr::Assume(assume) => {
+                    let span = assume.assume_token.span;
+                    let arg = assume.expr;
+                    let attrs = assume.attrs;
+                    *expr = parse_quote_spanned!(span => crate::pervasive::assume(#arg));
+                    expr.replace_attrs(attrs);
+                }
+                Expr::Assert(assert) => {
+                    let span = assert.assert_token.span;
+                    let arg = assert.expr;
+                    let attrs = assert.attrs;
+                    match (assert.by_token, assert.prover, assert.body) {
+                        (None, None, None) => {
+                            *expr = parse_quote_spanned!(span => crate::pervasive::assert(#arg));
+                        }
+                        (None, _, _) => panic!("missing by token"),
+                        (Some(_), None, None) => panic!("extra by token"),
+                        (Some(_), None, Some(box (None, block))) => {
+                            *expr =
+                                parse_quote_spanned!(span => {::builtin::assert_by(#arg, #block);});
+                        }
+                        (Some(_), Some((_, id)), None) if id.to_string() == "bit_vector" => {
+                            *expr =
+                                parse_quote_spanned!(span => ::builtin::assert_bit_vector(#arg));
+                        }
+                        (Some(_), Some((_, id)), None) if id.to_string() == "nonlinear_arith" => {
+                            *expr = parse_quote_spanned!(span => ::builtin::assert_nonlinear_by({ensures(#arg);}));
+                        }
+                        (Some(_), Some((_, id)), Some(box (requires, mut block)))
+                            if id.to_string() == "nonlinear_arith" =>
+                        {
+                            let mut stmts: Vec<Stmt> = Vec::new();
+                            if let Some(Requires { token, exprs }) = requires {
+                                stmts.push(parse_quote_spanned!(token.span => requires([#exprs]);));
+                            }
+                            stmts.push(parse_quote_spanned!(span => ensures(#arg);));
+                            block.stmts.splice(0..0, stmts);
+                            *expr = parse_quote_spanned!(span => {::builtin::assert_nonlinear_by(#block);});
+                        }
+                        (Some(_), Some((_, id)), _) => {
+                            let span = id.span();
+                            *expr = parse_quote_spanned!(span => compile_error!("unsupported kind of assert-by"));
+                        }
+                        _ => {
+                            *expr = parse_quote_spanned!(span => compile_error!("unsupported kind of assert-by"));
+                        }
+                    }
+                    expr.replace_attrs(attrs);
+                }
+                Expr::AssertForall(assert) => {
+                    let span = assert.assert_token.span;
+                    let attrs = assert.attrs;
+                    let arg = assert.expr;
+                    let inputs = assert.inputs;
+                    let mut block = assert.body;
+                    let mut stmts: Vec<Stmt> = Vec::new();
+                    if let Some((_, rhs)) = assert.implies {
+                        stmts.push(parse_quote_spanned!(span => requires(#arg);));
+                        stmts.push(parse_quote_spanned!(span => ensures(#rhs);));
+                    } else {
+                        stmts.push(parse_quote_spanned!(span => ensures(#arg);));
+                    }
+                    block.stmts.splice(0..0, stmts);
+                    *expr = parse_quote_spanned!(span => {::builtin::assert_forall_by(|#inputs| #block);});
+                    expr.replace_attrs(attrs);
+                }
+                _ => panic!("expected assert/assume"),
+            }
+        }
     }
 
     fn visit_item_fn_mut(&mut self, fun: &mut ItemFn) {
@@ -153,21 +258,22 @@ impl VisitMut for Visitor {
             }
         };
 
-        let mode_attrs: Vec<Attribute> = match &fun.sig.mode {
-            FnMode::Default => vec![],
+        let (inside_ghost, mode_attrs): (u32, Vec<Attribute>) = match &fun.sig.mode {
+            FnMode::Default => (0, vec![]),
             FnMode::Spec(token) => {
-                vec![parse_quote_spanned!(token.spec_token.span => #[spec])]
+                (1, vec![parse_quote_spanned!(token.spec_token.span => #[spec])])
             }
             FnMode::SpecChecked(token) => {
-                vec![parse_quote_spanned!(token.spec_token.span => #[spec(checked)])]
+                (1, vec![parse_quote_spanned!(token.spec_token.span => #[spec(checked)])])
             }
             FnMode::Proof(token) => {
-                vec![parse_quote_spanned!(token.proof_token.span => #[proof])]
+                (1, vec![parse_quote_spanned!(token.proof_token.span => #[proof])])
             }
             FnMode::Exec(token) => {
-                vec![parse_quote_spanned!(token.exec_token.span => #[exec])]
+                (0, vec![parse_quote_spanned!(token.exec_token.span => #[exec])])
             }
         };
+        self.inside_ghost = inside_ghost;
 
         let mut stmts: Vec<Stmt> = Vec::new();
         let requires = std::mem::take(&mut fun.sig.requires);
@@ -216,7 +322,7 @@ pub(crate) fn rewrite_items(stream: proc_macro::TokenStream) -> proc_macro::Toke
     use quote::ToTokens;
     let items: Items = parse_macro_input!(stream as Items);
     let mut new_stream = TokenStream::new();
-    let mut visitor = Visitor {};
+    let mut visitor = Visitor { inside_ghost: 0 };
     for mut item in items.items {
         visitor.visit_item_mut(&mut item);
         item.to_tokens(&mut new_stream);
