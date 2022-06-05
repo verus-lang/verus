@@ -100,6 +100,9 @@ pub trait VisitMut {
     fn visit_data_enum_mut(&mut self, i: &mut DataEnum) {
         visit_data_enum_mut(self, i);
     }
+    fn visit_data_mode_mut(&mut self, i: &mut DataMode) {
+        visit_data_mode_mut(self, i);
+    }
     #[cfg(feature = "derive")]
     fn visit_data_struct_mut(&mut self, i: &mut DataStruct) {
         visit_data_struct_mut(self, i);
@@ -521,6 +524,9 @@ pub trait VisitMut {
     fn visit_mode_exec_mut(&mut self, i: &mut ModeExec) {
         visit_mode_exec_mut(self, i);
     }
+    fn visit_mode_ghost_mut(&mut self, i: &mut ModeGhost) {
+        visit_mode_ghost_mut(self, i);
+    }
     fn visit_mode_proof_mut(&mut self, i: &mut ModeProof) {
         visit_mode_proof_mut(self, i);
     }
@@ -529,6 +535,9 @@ pub trait VisitMut {
     }
     fn visit_mode_spec_checked_mut(&mut self, i: &mut ModeSpecChecked) {
         visit_mode_spec_checked_mut(self, i);
+    }
+    fn visit_mode_tracked_mut(&mut self, i: &mut ModeTracked) {
+        visit_mode_tracked_mut(self, i);
     }
     #[cfg(any(feature = "derive", feature = "full"))]
     fn visit_nested_meta_mut(&mut self, i: &mut NestedMeta) {
@@ -1183,6 +1192,23 @@ where
         }
     }
 }
+pub fn visit_data_mode_mut<V>(v: &mut V, node: &mut DataMode)
+where
+    V: VisitMut + ?Sized,
+{
+    match node {
+        DataMode::Ghost(_binding_0) => {
+            v.visit_mode_ghost_mut(_binding_0);
+        }
+        DataMode::Tracked(_binding_0) => {
+            v.visit_mode_tracked_mut(_binding_0);
+        }
+        DataMode::Exec(_binding_0) => {
+            v.visit_mode_exec_mut(_binding_0);
+        }
+        DataMode::Default => {}
+    }
+}
 #[cfg(feature = "derive")]
 pub fn visit_data_struct_mut<V>(v: &mut V, node: &mut DataStruct)
 where
@@ -1218,6 +1244,7 @@ where
         v.visit_attribute_mut(it);
     }
     v.visit_visibility_mut(&mut node.vis);
+    v.visit_data_mode_mut(&mut node.mode);
     v.visit_ident_mut(&mut node.ident);
     v.visit_generics_mut(&mut node.generics);
     v.visit_data_mut(&mut node.data);
@@ -1929,6 +1956,7 @@ where
         v.visit_attribute_mut(it);
     }
     v.visit_visibility_mut(&mut node.vis);
+    v.visit_data_mode_mut(&mut node.mode);
     if let Some(it) = &mut node.ident {
         v.visit_ident_mut(it);
     }
@@ -2417,6 +2445,7 @@ where
         v.visit_attribute_mut(it);
     }
     v.visit_visibility_mut(&mut node.vis);
+    v.visit_data_mode_mut(&mut node.mode);
     tokens_helper(v, &mut node.enum_token.span);
     v.visit_ident_mut(&mut node.ident);
     v.visit_generics_mut(&mut node.generics);
@@ -2581,6 +2610,7 @@ where
         v.visit_attribute_mut(it);
     }
     v.visit_visibility_mut(&mut node.vis);
+    v.visit_data_mode_mut(&mut node.mode);
     tokens_helper(v, &mut node.struct_token.span);
     v.visit_ident_mut(&mut node.ident);
     v.visit_generics_mut(&mut node.generics);
@@ -2924,6 +2954,12 @@ where
 {
     tokens_helper(v, &mut node.exec_token.span);
 }
+pub fn visit_mode_ghost_mut<V>(v: &mut V, node: &mut ModeGhost)
+where
+    V: VisitMut + ?Sized,
+{
+    tokens_helper(v, &mut node.ghost_token.span);
+}
 pub fn visit_mode_proof_mut<V>(v: &mut V, node: &mut ModeProof)
 where
     V: VisitMut + ?Sized,
@@ -2943,6 +2979,12 @@ where
     tokens_helper(v, &mut node.spec_token.span);
     tokens_helper(v, &mut node.paren_token.span);
     v.visit_ident_mut(&mut *node.checked);
+}
+pub fn visit_mode_tracked_mut<V>(v: &mut V, node: &mut ModeTracked)
+where
+    V: VisitMut + ?Sized,
+{
+    tokens_helper(v, &mut node.tracked_token.span);
 }
 #[cfg(any(feature = "derive", feature = "full"))]
 pub fn visit_nested_meta_mut<V>(v: &mut V, node: &mut NestedMeta)

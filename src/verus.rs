@@ -20,6 +20,15 @@ ast_enum_of_structs! {
     }
 }
 
+ast_enum_of_structs! {
+    pub enum DataMode {
+        Ghost(ModeGhost),
+        Tracked(ModeTracked),
+        Exec(ModeExec),
+        Default,
+    }
+}
+
 ast_struct! {
     pub struct ModeSpec {
         pub spec_token: Token![spec],
@@ -27,8 +36,20 @@ ast_struct! {
 }
 
 ast_struct! {
+    pub struct ModeGhost {
+        pub ghost_token: Token![ghost],
+    }
+}
+
+ast_struct! {
     pub struct ModeProof {
         pub proof_token: Token![proof],
+    }
+}
+
+ast_struct! {
+    pub struct ModeTracked {
+        pub tracked_token: Token![tracked],
     }
 }
 
@@ -135,6 +156,24 @@ pub mod parsing {
                 Ok(Mode::Exec(ModeExec { exec_token }))
             } else {
                 Ok(Mode::Default)
+            }
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
+    impl Parse for DataMode {
+        fn parse(input: ParseStream) -> Result<Self> {
+            if input.peek(Token![ghost]) {
+                let ghost_token: Token![ghost] = input.parse()?;
+                Ok(DataMode::Ghost(ModeGhost { ghost_token }))
+            } else if input.peek(Token![tracked]) {
+                let tracked_token: Token![tracked] = input.parse()?;
+                Ok(DataMode::Tracked(ModeTracked { tracked_token }))
+            } else if input.peek(Token![exec]) {
+                let exec_token: Token![exec] = input.parse()?;
+                Ok(DataMode::Exec(ModeExec { exec_token }))
+            } else {
+                Ok(DataMode::Default)
             }
         }
     }
@@ -420,9 +459,23 @@ mod printing {
     }
 
     #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
+    impl ToTokens for ModeGhost {
+        fn to_tokens(&self, tokens: &mut TokenStream) {
+            self.ghost_token.to_tokens(tokens);
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
     impl ToTokens for ModeProof {
         fn to_tokens(&self, tokens: &mut TokenStream) {
             self.proof_token.to_tokens(tokens);
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
+    impl ToTokens for ModeTracked {
+        fn to_tokens(&self, tokens: &mut TokenStream) {
+            self.tracked_token.to_tokens(tokens);
         }
     }
 

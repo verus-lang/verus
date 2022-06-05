@@ -322,6 +322,31 @@ impl Hash for DataEnum {
         self.variants.hash(state);
     }
 }
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Hash for DataMode {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
+        match self {
+            DataMode::Ghost(v0) => {
+                state.write_u8(0u8);
+                v0.hash(state);
+            }
+            DataMode::Tracked(v0) => {
+                state.write_u8(1u8);
+                v0.hash(state);
+            }
+            DataMode::Exec(v0) => {
+                state.write_u8(2u8);
+                v0.hash(state);
+            }
+            DataMode::Default => {
+                state.write_u8(3u8);
+            }
+        }
+    }
+}
 #[cfg(feature = "derive")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
 impl Hash for DataStruct {
@@ -361,6 +386,7 @@ impl Hash for DeriveInput {
     {
         self.attrs.hash(state);
         self.vis.hash(state);
+        self.mode.hash(state);
         self.ident.hash(state);
         self.generics.hash(state);
         self.data.hash(state);
@@ -1072,6 +1098,7 @@ impl Hash for Field {
     {
         self.attrs.hash(state);
         self.vis.hash(state);
+        self.mode.hash(state);
         self.ident.hash(state);
         self.colon_token.hash(state);
         self.ty.hash(state);
@@ -1578,6 +1605,7 @@ impl Hash for ItemEnum {
     {
         self.attrs.hash(state);
         self.vis.hash(state);
+        self.mode.hash(state);
         self.ident.hash(state);
         self.generics.hash(state);
         self.variants.hash(state);
@@ -1701,6 +1729,7 @@ impl Hash for ItemStruct {
     {
         self.attrs.hash(state);
         self.vis.hash(state);
+        self.mode.hash(state);
         self.ident.hash(state);
         self.generics.hash(state);
         self.fields.hash(state);
@@ -1986,6 +2015,13 @@ impl Hash for ModeExec {
     {}
 }
 #[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Hash for ModeGhost {
+    fn hash<H>(&self, _state: &mut H)
+    where
+        H: Hasher,
+    {}
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
 impl Hash for ModeProof {
     fn hash<H>(&self, _state: &mut H)
     where
@@ -2007,6 +2043,13 @@ impl Hash for ModeSpecChecked {
     {
         self.checked.hash(state);
     }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Hash for ModeTracked {
+    fn hash<H>(&self, _state: &mut H)
+    where
+        H: Hasher,
+    {}
 }
 #[cfg(any(feature = "derive", feature = "full"))]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]

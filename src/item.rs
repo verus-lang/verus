@@ -122,6 +122,7 @@ ast_struct! {
     pub struct ItemEnum {
         pub attrs: Vec<Attribute>,
         pub vis: Visibility,
+        pub mode: DataMode,
         pub enum_token: Token![enum],
         pub ident: Ident,
         pub generics: Generics,
@@ -264,6 +265,7 @@ ast_struct! {
     pub struct ItemStruct {
         pub attrs: Vec<Attribute>,
         pub vis: Visibility,
+        pub mode: DataMode,
         pub struct_token: Token![struct],
         pub ident: Ident,
         pub generics: Generics,
@@ -390,6 +392,7 @@ impl From<DeriveInput> for Item {
             Data::Struct(data) => Item::Struct(ItemStruct {
                 attrs: input.attrs,
                 vis: input.vis,
+                mode: input.mode,
                 struct_token: data.struct_token,
                 ident: input.ident,
                 generics: input.generics,
@@ -399,6 +402,7 @@ impl From<DeriveInput> for Item {
             Data::Enum(data) => Item::Enum(ItemEnum {
                 attrs: input.attrs,
                 vis: input.vis,
+                mode: input.mode,
                 enum_token: data.enum_token,
                 ident: input.ident,
                 generics: input.generics,
@@ -422,6 +426,7 @@ impl From<ItemStruct> for DeriveInput {
         DeriveInput {
             attrs: input.attrs,
             vis: input.vis,
+            mode: input.mode,
             ident: input.ident,
             generics: input.generics,
             data: Data::Struct(DataStruct {
@@ -438,6 +443,7 @@ impl From<ItemEnum> for DeriveInput {
         DeriveInput {
             attrs: input.attrs,
             vis: input.vis,
+            mode: input.mode,
             ident: input.ident,
             generics: input.generics,
             data: Data::Enum(DataEnum {
@@ -454,6 +460,7 @@ impl From<ItemUnion> for DeriveInput {
         DeriveInput {
             attrs: input.attrs,
             vis: input.vis,
+            mode: DataMode::Default,
             ident: input.ident,
             generics: input.generics,
             data: Data::Union(DataUnion {
@@ -2007,6 +2014,7 @@ pub mod parsing {
         fn parse(input: ParseStream) -> Result<Self> {
             let attrs = input.call(Attribute::parse_outer)?;
             let vis = input.parse::<Visibility>()?;
+            let mode = input.parse::<DataMode>()?;
             let struct_token = input.parse::<Token![struct]>()?;
             let ident = input.parse::<Ident>()?;
             let generics = input.parse::<Generics>()?;
@@ -2014,6 +2022,7 @@ pub mod parsing {
             Ok(ItemStruct {
                 attrs,
                 vis,
+                mode,
                 struct_token,
                 ident,
                 generics: Generics {
@@ -2031,6 +2040,7 @@ pub mod parsing {
         fn parse(input: ParseStream) -> Result<Self> {
             let attrs = input.call(Attribute::parse_outer)?;
             let vis = input.parse::<Visibility>()?;
+            let mode = input.parse::<DataMode>()?;
             let enum_token = input.parse::<Token![enum]>()?;
             let ident = input.parse::<Ident>()?;
             let generics = input.parse::<Generics>()?;
@@ -2038,6 +2048,7 @@ pub mod parsing {
             Ok(ItemEnum {
                 attrs,
                 vis,
+                mode,
                 enum_token,
                 ident,
                 generics: Generics {
@@ -2925,6 +2936,7 @@ mod printing {
         fn to_tokens(&self, tokens: &mut TokenStream) {
             tokens.append_all(self.attrs.outer());
             self.vis.to_tokens(tokens);
+            self.mode.to_tokens(tokens);
             self.enum_token.to_tokens(tokens);
             self.ident.to_tokens(tokens);
             self.generics.to_tokens(tokens);
@@ -2940,6 +2952,7 @@ mod printing {
         fn to_tokens(&self, tokens: &mut TokenStream) {
             tokens.append_all(self.attrs.outer());
             self.vis.to_tokens(tokens);
+            self.mode.to_tokens(tokens);
             self.struct_token.to_tokens(tokens);
             self.ident.to_tokens(tokens);
             self.generics.to_tokens(tokens);

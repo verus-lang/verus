@@ -221,6 +221,20 @@ impl PartialEq for DataEnum {
         self.variants == other.variants
     }
 }
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Eq for DataMode {}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl PartialEq for DataMode {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (DataMode::Ghost(self0), DataMode::Ghost(other0)) => self0 == other0,
+            (DataMode::Tracked(self0), DataMode::Tracked(other0)) => self0 == other0,
+            (DataMode::Exec(self0), DataMode::Exec(other0)) => self0 == other0,
+            (DataMode::Default, DataMode::Default) => true,
+            _ => false,
+        }
+    }
+}
 #[cfg(feature = "derive")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
 impl Eq for DataStruct {}
@@ -256,8 +270,9 @@ impl Eq for DeriveInput {}
 #[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
 impl PartialEq for DeriveInput {
     fn eq(&self, other: &Self) -> bool {
-        self.attrs == other.attrs && self.vis == other.vis && self.ident == other.ident
-            && self.generics == other.generics && self.data == other.data
+        self.attrs == other.attrs && self.vis == other.vis && self.mode == other.mode
+            && self.ident == other.ident && self.generics == other.generics
+            && self.data == other.data
     }
 }
 #[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
@@ -773,8 +788,9 @@ impl Eq for Field {}
 #[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
 impl PartialEq for Field {
     fn eq(&self, other: &Self) -> bool {
-        self.attrs == other.attrs && self.vis == other.vis && self.ident == other.ident
-            && self.colon_token == other.colon_token && self.ty == other.ty
+        self.attrs == other.attrs && self.vis == other.vis && self.mode == other.mode
+            && self.ident == other.ident && self.colon_token == other.colon_token
+            && self.ty == other.ty
     }
 }
 #[cfg(feature = "full")]
@@ -1135,8 +1151,9 @@ impl Eq for ItemEnum {}
 #[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
 impl PartialEq for ItemEnum {
     fn eq(&self, other: &Self) -> bool {
-        self.attrs == other.attrs && self.vis == other.vis && self.ident == other.ident
-            && self.generics == other.generics && self.variants == other.variants
+        self.attrs == other.attrs && self.vis == other.vis && self.mode == other.mode
+            && self.ident == other.ident && self.generics == other.generics
+            && self.variants == other.variants
     }
 }
 #[cfg(feature = "full")]
@@ -1236,9 +1253,9 @@ impl Eq for ItemStruct {}
 #[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
 impl PartialEq for ItemStruct {
     fn eq(&self, other: &Self) -> bool {
-        self.attrs == other.attrs && self.vis == other.vis && self.ident == other.ident
-            && self.generics == other.generics && self.fields == other.fields
-            && self.semi_token == other.semi_token
+        self.attrs == other.attrs && self.vis == other.vis && self.mode == other.mode
+            && self.ident == other.ident && self.generics == other.generics
+            && self.fields == other.fields && self.semi_token == other.semi_token
     }
 }
 #[cfg(feature = "full")]
@@ -1464,6 +1481,14 @@ impl PartialEq for ModeExec {
     }
 }
 #[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Eq for ModeGhost {}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl PartialEq for ModeGhost {
+    fn eq(&self, _other: &Self) -> bool {
+        true
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
 impl Eq for ModeProof {}
 #[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
 impl PartialEq for ModeProof {
@@ -1485,6 +1510,14 @@ impl Eq for ModeSpecChecked {}
 impl PartialEq for ModeSpecChecked {
     fn eq(&self, other: &Self) -> bool {
         self.checked == other.checked
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Eq for ModeTracked {}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl PartialEq for ModeTracked {
+    fn eq(&self, _other: &Self) -> bool {
+        true
     }
 }
 #[cfg(any(feature = "derive", feature = "full"))]

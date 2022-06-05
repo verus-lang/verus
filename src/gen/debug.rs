@@ -394,6 +394,29 @@ impl Debug for DataEnum {
         formatter.finish()
     }
 }
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Debug for DataMode {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            DataMode::Ghost(v0) => {
+                let mut formatter = formatter.debug_tuple("Ghost");
+                formatter.field(v0);
+                formatter.finish()
+            }
+            DataMode::Tracked(v0) => {
+                let mut formatter = formatter.debug_tuple("Tracked");
+                formatter.field(v0);
+                formatter.finish()
+            }
+            DataMode::Exec(v0) => {
+                let mut formatter = formatter.debug_tuple("Exec");
+                formatter.field(v0);
+                formatter.finish()
+            }
+            DataMode::Default => formatter.write_str("Default"),
+        }
+    }
+}
 #[cfg(feature = "derive")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
 impl Debug for DataStruct {
@@ -431,6 +454,7 @@ impl Debug for DeriveInput {
         let mut formatter = formatter.debug_struct("DeriveInput");
         formatter.field("attrs", &self.attrs);
         formatter.field("vis", &self.vis);
+        formatter.field("mode", &self.mode);
         formatter.field("ident", &self.ident);
         formatter.field("generics", &self.generics);
         formatter.field("data", &self.data);
@@ -1181,6 +1205,7 @@ impl Debug for Field {
         let mut formatter = formatter.debug_struct("Field");
         formatter.field("attrs", &self.attrs);
         formatter.field("vis", &self.vis);
+        formatter.field("mode", &self.mode);
         formatter.field("ident", &self.ident);
         formatter.field("colon_token", &self.colon_token);
         formatter.field("ty", &self.ty);
@@ -1713,6 +1738,7 @@ impl Debug for ItemEnum {
         let mut formatter = formatter.debug_struct("ItemEnum");
         formatter.field("attrs", &self.attrs);
         formatter.field("vis", &self.vis);
+        formatter.field("mode", &self.mode);
         formatter.field("enum_token", &self.enum_token);
         formatter.field("ident", &self.ident);
         formatter.field("generics", &self.generics);
@@ -1841,6 +1867,7 @@ impl Debug for ItemStruct {
         let mut formatter = formatter.debug_struct("ItemStruct");
         formatter.field("attrs", &self.attrs);
         formatter.field("vis", &self.vis);
+        formatter.field("mode", &self.mode);
         formatter.field("struct_token", &self.struct_token);
         formatter.field("ident", &self.ident);
         formatter.field("generics", &self.generics);
@@ -2161,6 +2188,14 @@ impl Debug for ModeExec {
     }
 }
 #[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Debug for ModeGhost {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let mut formatter = formatter.debug_struct("ModeGhost");
+        formatter.field("ghost_token", &self.ghost_token);
+        formatter.finish()
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
 impl Debug for ModeProof {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         let mut formatter = formatter.debug_struct("ModeProof");
@@ -2183,6 +2218,14 @@ impl Debug for ModeSpecChecked {
         formatter.field("spec_token", &self.spec_token);
         formatter.field("paren_token", &self.paren_token);
         formatter.field("checked", &self.checked);
+        formatter.finish()
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Debug for ModeTracked {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let mut formatter = formatter.debug_struct("ModeTracked");
+        formatter.field("tracked_token", &self.tracked_token);
         formatter.finish()
     }
 }

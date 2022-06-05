@@ -507,6 +507,35 @@ impl Debug for Lite<syn::DataEnum> {
         formatter.finish()
     }
 }
+impl Debug for Lite<syn::DataMode> {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let _val = &self.value;
+        match _val {
+            syn::DataMode::Ghost(_val) => {
+                formatter.write_str("Ghost")?;
+                formatter.write_str("(")?;
+                Debug::fmt(Lite(_val), formatter)?;
+                formatter.write_str(")")?;
+                Ok(())
+            }
+            syn::DataMode::Tracked(_val) => {
+                formatter.write_str("Tracked")?;
+                formatter.write_str("(")?;
+                Debug::fmt(Lite(_val), formatter)?;
+                formatter.write_str(")")?;
+                Ok(())
+            }
+            syn::DataMode::Exec(_val) => {
+                formatter.write_str("Exec")?;
+                formatter.write_str("(")?;
+                Debug::fmt(Lite(_val), formatter)?;
+                formatter.write_str(")")?;
+                Ok(())
+            }
+            syn::DataMode::Default => formatter.write_str("Default"),
+        }
+    }
+}
 impl Debug for Lite<syn::DataStruct> {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         let _val = &self.value;
@@ -551,6 +580,7 @@ impl Debug for Lite<syn::DeriveInput> {
             formatter.field("attrs", Lite(&_val.attrs));
         }
         formatter.field("vis", Lite(&_val.vis));
+        formatter.field("mode", Lite(&_val.mode));
         formatter.field("ident", Lite(&_val.ident));
         formatter.field("generics", Lite(&_val.generics));
         formatter.field("data", Lite(&_val.data));
@@ -2046,6 +2076,7 @@ impl Debug for Lite<syn::Field> {
             formatter.field("attrs", Lite(&_val.attrs));
         }
         formatter.field("vis", Lite(&_val.vis));
+        formatter.field("mode", Lite(&_val.mode));
         if let Some(val) = &_val.ident {
             #[derive(RefCast)]
             #[repr(transparent)]
@@ -2794,6 +2825,7 @@ impl Debug for Lite<syn::Item> {
                     formatter.field("attrs", Lite(&_val.attrs));
                 }
                 formatter.field("vis", Lite(&_val.vis));
+                formatter.field("mode", Lite(&_val.mode));
                 formatter.field("ident", Lite(&_val.ident));
                 formatter.field("generics", Lite(&_val.generics));
                 if !_val.variants.is_empty() {
@@ -3036,6 +3068,7 @@ impl Debug for Lite<syn::Item> {
                     formatter.field("attrs", Lite(&_val.attrs));
                 }
                 formatter.field("vis", Lite(&_val.vis));
+                formatter.field("mode", Lite(&_val.mode));
                 formatter.field("ident", Lite(&_val.ident));
                 formatter.field("generics", Lite(&_val.generics));
                 formatter.field("fields", Lite(&_val.fields));
@@ -3194,6 +3227,7 @@ impl Debug for Lite<syn::ItemEnum> {
             formatter.field("attrs", Lite(&_val.attrs));
         }
         formatter.field("vis", Lite(&_val.vis));
+        formatter.field("mode", Lite(&_val.mode));
         formatter.field("ident", Lite(&_val.ident));
         formatter.field("generics", Lite(&_val.generics));
         if !_val.variants.is_empty() {
@@ -3463,6 +3497,7 @@ impl Debug for Lite<syn::ItemStruct> {
             formatter.field("attrs", Lite(&_val.attrs));
         }
         formatter.field("vis", Lite(&_val.vis));
+        formatter.field("mode", Lite(&_val.mode));
         formatter.field("ident", Lite(&_val.ident));
         formatter.field("generics", Lite(&_val.generics));
         formatter.field("fields", Lite(&_val.fields));
@@ -3877,6 +3912,13 @@ impl Debug for Lite<syn::ModeExec> {
         formatter.finish()
     }
 }
+impl Debug for Lite<syn::ModeGhost> {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let _val = &self.value;
+        let mut formatter = formatter.debug_struct("ModeGhost");
+        formatter.finish()
+    }
+}
 impl Debug for Lite<syn::ModeProof> {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         let _val = &self.value;
@@ -3896,6 +3938,13 @@ impl Debug for Lite<syn::ModeSpecChecked> {
         let _val = &self.value;
         let mut formatter = formatter.debug_struct("ModeSpecChecked");
         formatter.field("checked", Lite(&_val.checked));
+        formatter.finish()
+    }
+}
+impl Debug for Lite<syn::ModeTracked> {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let _val = &self.value;
+        let mut formatter = formatter.debug_struct("ModeTracked");
         formatter.finish()
     }
 }

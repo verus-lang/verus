@@ -672,6 +672,30 @@
       }
     },
     {
+      "ident": "DataMode",
+      "features": {
+        "any": []
+      },
+      "variants": {
+        "Ghost": [
+          {
+            "syn": "ModeGhost"
+          }
+        ],
+        "Tracked": [
+          {
+            "syn": "ModeTracked"
+          }
+        ],
+        "Exec": [
+          {
+            "syn": "ModeExec"
+          }
+        ],
+        "Default": []
+      }
+    },
+    {
       "ident": "DataStruct",
       "features": {
         "any": [
@@ -737,6 +761,9 @@
         },
         "vis": {
           "syn": "Visibility"
+        },
+        "mode": {
+          "syn": "DataMode"
         },
         "ident": {
           "proc_macro2": "Ident"
@@ -2115,6 +2142,9 @@
         "vis": {
           "syn": "Visibility"
         },
+        "mode": {
+          "syn": "DataMode"
+        },
         "ident": {
           "option": {
             "proc_macro2": "Ident"
@@ -2953,6 +2983,9 @@
         "vis": {
           "syn": "Visibility"
         },
+        "mode": {
+          "syn": "DataMode"
+        },
         "enum_token": {
           "token": "Enum"
         },
@@ -3291,6 +3324,9 @@
         },
         "vis": {
           "syn": "Visibility"
+        },
+        "mode": {
+          "syn": "DataMode"
         },
         "struct_token": {
           "token": "Struct"
@@ -3912,6 +3948,17 @@
       }
     },
     {
+      "ident": "ModeGhost",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "ghost_token": {
+          "token": "Ghost"
+        }
+      }
+    },
+    {
       "ident": "ModeProof",
       "features": {
         "any": []
@@ -3949,6 +3996,17 @@
           "box": {
             "proc_macro2": "Ident"
           }
+        }
+      }
+    },
+    {
+      "ident": "ModeTracked",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "tracked_token": {
+          "token": "Tracked"
         }
       }
     },

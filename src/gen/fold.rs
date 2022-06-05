@@ -97,6 +97,9 @@ pub trait Fold {
     fn fold_data_enum(&mut self, i: DataEnum) -> DataEnum {
         fold_data_enum(self, i)
     }
+    fn fold_data_mode(&mut self, i: DataMode) -> DataMode {
+        fold_data_mode(self, i)
+    }
     #[cfg(feature = "derive")]
     fn fold_data_struct(&mut self, i: DataStruct) -> DataStruct {
         fold_data_struct(self, i)
@@ -521,6 +524,9 @@ pub trait Fold {
     fn fold_mode_exec(&mut self, i: ModeExec) -> ModeExec {
         fold_mode_exec(self, i)
     }
+    fn fold_mode_ghost(&mut self, i: ModeGhost) -> ModeGhost {
+        fold_mode_ghost(self, i)
+    }
     fn fold_mode_proof(&mut self, i: ModeProof) -> ModeProof {
         fold_mode_proof(self, i)
     }
@@ -529,6 +535,9 @@ pub trait Fold {
     }
     fn fold_mode_spec_checked(&mut self, i: ModeSpecChecked) -> ModeSpecChecked {
         fold_mode_spec_checked(self, i)
+    }
+    fn fold_mode_tracked(&mut self, i: ModeTracked) -> ModeTracked {
+        fold_mode_tracked(self, i)
     }
     #[cfg(any(feature = "derive", feature = "full"))]
     fn fold_nested_meta(&mut self, i: NestedMeta) -> NestedMeta {
@@ -1153,6 +1162,19 @@ where
         variants: FoldHelper::lift(node.variants, |it| f.fold_variant(it)),
     }
 }
+pub fn fold_data_mode<F>(f: &mut F, node: DataMode) -> DataMode
+where
+    F: Fold + ?Sized,
+{
+    match node {
+        DataMode::Ghost(_binding_0) => DataMode::Ghost(f.fold_mode_ghost(_binding_0)),
+        DataMode::Tracked(_binding_0) => {
+            DataMode::Tracked(f.fold_mode_tracked(_binding_0))
+        }
+        DataMode::Exec(_binding_0) => DataMode::Exec(f.fold_mode_exec(_binding_0)),
+        DataMode::Default => DataMode::Default,
+    }
+}
 #[cfg(feature = "derive")]
 pub fn fold_data_struct<F>(f: &mut F, node: DataStruct) -> DataStruct
 where
@@ -1191,6 +1213,7 @@ where
     DeriveInput {
         attrs: FoldHelper::lift(node.attrs, |it| f.fold_attribute(it)),
         vis: f.fold_visibility(node.vis),
+        mode: f.fold_data_mode(node.mode),
         ident: f.fold_ident(node.ident),
         generics: f.fold_generics(node.generics),
         data: f.fold_data(node.data),
@@ -1757,6 +1780,7 @@ where
     Field {
         attrs: FoldHelper::lift(node.attrs, |it| f.fold_attribute(it)),
         vis: f.fold_visibility(node.vis),
+        mode: f.fold_data_mode(node.mode),
         ident: (node.ident).map(|it| f.fold_ident(it)),
         colon_token: (node.colon_token).map(|it| Token![:](tokens_helper(f, &it.spans))),
         ty: f.fold_type(node.ty),
@@ -2171,6 +2195,7 @@ where
     ItemEnum {
         attrs: FoldHelper::lift(node.attrs, |it| f.fold_attribute(it)),
         vis: f.fold_visibility(node.vis),
+        mode: f.fold_data_mode(node.mode),
         enum_token: Token![enum](tokens_helper(f, &node.enum_token.span)),
         ident: f.fold_ident(node.ident),
         generics: f.fold_generics(node.generics),
@@ -2313,6 +2338,7 @@ where
     ItemStruct {
         attrs: FoldHelper::lift(node.attrs, |it| f.fold_attribute(it)),
         vis: f.fold_visibility(node.vis),
+        mode: f.fold_data_mode(node.mode),
         struct_token: Token![struct](tokens_helper(f, &node.struct_token.span)),
         ident: f.fold_ident(node.ident),
         generics: f.fold_generics(node.generics),
@@ -2634,6 +2660,14 @@ where
         exec_token: Token![exec](tokens_helper(f, &node.exec_token.span)),
     }
 }
+pub fn fold_mode_ghost<F>(f: &mut F, node: ModeGhost) -> ModeGhost
+where
+    F: Fold + ?Sized,
+{
+    ModeGhost {
+        ghost_token: Token![ghost](tokens_helper(f, &node.ghost_token.span)),
+    }
+}
 pub fn fold_mode_proof<F>(f: &mut F, node: ModeProof) -> ModeProof
 where
     F: Fold + ?Sized,
@@ -2658,6 +2692,14 @@ where
         spec_token: Token![spec](tokens_helper(f, &node.spec_token.span)),
         paren_token: Paren(tokens_helper(f, &node.paren_token.span)),
         checked: Box::new(f.fold_ident(*node.checked)),
+    }
+}
+pub fn fold_mode_tracked<F>(f: &mut F, node: ModeTracked) -> ModeTracked
+where
+    F: Fold + ?Sized,
+{
+    ModeTracked {
+        tracked_token: Token![tracked](tokens_helper(f, &node.tracked_token.span)),
     }
 }
 #[cfg(any(feature = "derive", feature = "full"))]

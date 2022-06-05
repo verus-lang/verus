@@ -205,6 +205,17 @@ impl Clone for DataEnum {
         }
     }
 }
+#[cfg_attr(doc_cfg, doc(cfg(feature = "clone-impls")))]
+impl Clone for DataMode {
+    fn clone(&self) -> Self {
+        match self {
+            DataMode::Ghost(v0) => DataMode::Ghost(v0.clone()),
+            DataMode::Tracked(v0) => DataMode::Tracked(v0.clone()),
+            DataMode::Exec(v0) => DataMode::Exec(v0.clone()),
+            DataMode::Default => DataMode::Default,
+        }
+    }
+}
 #[cfg(feature = "derive")]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "clone-impls")))]
 impl Clone for DataStruct {
@@ -242,6 +253,7 @@ impl Clone for DeriveInput {
         DeriveInput {
             attrs: self.attrs.clone(),
             vis: self.vis.clone(),
+            mode: self.mode.clone(),
             ident: self.ident.clone(),
             generics: self.generics.clone(),
             data: self.data.clone(),
@@ -820,6 +832,7 @@ impl Clone for Field {
         Field {
             attrs: self.attrs.clone(),
             vis: self.vis.clone(),
+            mode: self.mode.clone(),
             ident: self.ident.clone(),
             colon_token: self.colon_token.clone(),
             ty: self.ty.clone(),
@@ -1172,6 +1185,7 @@ impl Clone for ItemEnum {
         ItemEnum {
             attrs: self.attrs.clone(),
             vis: self.vis.clone(),
+            mode: self.mode.clone(),
             enum_token: self.enum_token.clone(),
             ident: self.ident.clone(),
             generics: self.generics.clone(),
@@ -1300,6 +1314,7 @@ impl Clone for ItemStruct {
         ItemStruct {
             attrs: self.attrs.clone(),
             vis: self.vis.clone(),
+            mode: self.mode.clone(),
             struct_token: self.struct_token.clone(),
             ident: self.ident.clone(),
             generics: self.generics.clone(),
@@ -1544,6 +1559,14 @@ impl Clone for ModeExec {
     }
 }
 #[cfg_attr(doc_cfg, doc(cfg(feature = "clone-impls")))]
+impl Clone for ModeGhost {
+    fn clone(&self) -> Self {
+        ModeGhost {
+            ghost_token: self.ghost_token.clone(),
+        }
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "clone-impls")))]
 impl Clone for ModeProof {
     fn clone(&self) -> Self {
         ModeProof {
@@ -1566,6 +1589,14 @@ impl Clone for ModeSpecChecked {
             spec_token: self.spec_token.clone(),
             paren_token: self.paren_token.clone(),
             checked: self.checked.clone(),
+        }
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "clone-impls")))]
+impl Clone for ModeTracked {
+    fn clone(&self) -> Self {
+        ModeTracked {
+            tracked_token: self.tracked_token.clone(),
         }
     }
 }

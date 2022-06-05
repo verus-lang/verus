@@ -13,6 +13,8 @@ ast_struct! {
         /// Visibility of the struct or enum.
         pub vis: Visibility,
 
+        pub mode: DataMode,
+
         /// Name of the struct or enum.
         pub ident: Ident,
 
@@ -97,6 +99,7 @@ pub mod parsing {
         fn parse(input: ParseStream) -> Result<Self> {
             let attrs = input.call(Attribute::parse_outer)?;
             let vis = input.parse::<Visibility>()?;
+            let mode = input.parse::<DataMode>()?;
 
             let lookahead = input.lookahead1();
             if lookahead.peek(Token![struct]) {
@@ -107,6 +110,7 @@ pub mod parsing {
                 Ok(DeriveInput {
                     attrs,
                     vis,
+                    mode,
                     ident,
                     generics: Generics {
                         where_clause,
@@ -126,6 +130,7 @@ pub mod parsing {
                 Ok(DeriveInput {
                     attrs,
                     vis,
+                    mode,
                     ident,
                     generics: Generics {
                         where_clause,
@@ -145,6 +150,7 @@ pub mod parsing {
                 Ok(DeriveInput {
                     attrs,
                     vis,
+                    mode,
                     ident,
                     generics: Generics {
                         where_clause,
@@ -235,6 +241,7 @@ mod printing {
                 attr.to_tokens(tokens);
             }
             self.vis.to_tokens(tokens);
+            self.mode.to_tokens(tokens);
             match &self.data {
                 Data::Struct(d) => d.struct_token.to_tokens(tokens),
                 Data::Enum(d) => d.enum_token.to_tokens(tokens),
