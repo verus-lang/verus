@@ -112,9 +112,8 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] spec_struct_not_exec code! {
-        #[spec]
-        struct Set<A> {
+    #[test] spec_struct_not_exec verus_code! {
+        ghost struct Set<A> {
             pub dummy: A,
         }
 
@@ -125,9 +124,8 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] spec_enum_not_exec code! {
-        #[spec]
-        struct E {
+    #[test] spec_enum_not_exec verus_code! {
+        ghost struct E {
             A,
             B,
         }

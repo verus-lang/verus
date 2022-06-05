@@ -2,11 +2,14 @@ use proc_macro2::TokenStream;
 use syn_verus::parse::{Parse, ParseStream};
 use syn_verus::punctuated::Punctuated;
 use syn_verus::token::Paren;
-use syn_verus::visit_mut::{visit_expr_mut, visit_item_fn_mut, VisitMut};
+use syn_verus::visit_mut::{
+    visit_expr_mut, visit_field_mut, visit_item_enum_mut, visit_item_fn_mut, visit_item_struct_mut,
+    VisitMut,
+};
 use syn_verus::{
-    parse_macro_input, parse_quote_spanned, Attribute, BinOp, Decreases, Ensures, Expr, ExprBinary,
-    ExprCall, ExprTuple, ExprUnary, FnArgKind, FnMode, Item, ItemFn, Pat, Recommends, Requires,
-    ReturnType, Stmt, UnOp,
+    parse_macro_input, parse_quote_spanned, Attribute, BinOp, DataMode, Decreases, Ensures, Expr,
+    ExprBinary, ExprCall, ExprTuple, ExprUnary, Field, FnArgKind, FnMode, Item, ItemEnum, ItemFn,
+    ItemStruct, Pat, Recommends, Requires, ReturnType, Stmt, UnOp,
 };
 
 fn take_expr(expr: &mut Expr) -> Expr {
@@ -17,6 +20,21 @@ fn take_expr(expr: &mut Expr) -> Expr {
 struct Visitor {
     // inside_ghost > 0 means we're currently visiting ghost code
     inside_ghost: u32,
+}
+
+fn data_mode_attrs(mode: &DataMode) -> Vec<Attribute> {
+    match mode {
+        DataMode::Default => vec![],
+        DataMode::Ghost(token) => {
+            vec![parse_quote_spanned!(token.ghost_token.span => #[spec])]
+        }
+        DataMode::Tracked(token) => {
+            vec![parse_quote_spanned!(token.tracked_token.span => #[proof])]
+        }
+        DataMode::Exec(token) => {
+            vec![parse_quote_spanned!(token.exec_token.span => #[exec])]
+        }
+    }
 }
 
 impl VisitMut for Visitor {
@@ -386,6 +404,24 @@ impl VisitMut for Visitor {
         visit_item_fn_mut(self, fun);
         fun.attrs.extend(mode_attrs);
         fun.sig.mode = FnMode::Default;
+    }
+
+    fn visit_field_mut(&mut self, field: &mut Field) {
+        visit_field_mut(self, field);
+        field.attrs.extend(data_mode_attrs(&field.mode));
+        field.mode = DataMode::Default;
+    }
+
+    fn visit_item_enum_mut(&mut self, item: &mut ItemEnum) {
+        visit_item_enum_mut(self, item);
+        item.attrs.extend(data_mode_attrs(&item.mode));
+        item.mode = DataMode::Default;
+    }
+
+    fn visit_item_struct_mut(&mut self, item: &mut ItemStruct) {
+        visit_item_struct_mut(self, item);
+        item.attrs.extend(data_mode_attrs(&item.mode));
+        item.mode = DataMode::Default;
     }
 }
 
