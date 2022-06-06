@@ -64,6 +64,31 @@ fn test_my_funs(x: u32, y: u32)
     }
 }
 
+/* TODO
+/// spec functions with pub or pub(...) must specify whether the body of the function
+/// should also be made publicly visible (open function) or not visible (closed function).
+pub open spec fn my_pub_spec_fun1(x: u32, y: u32) -> u32 {
+    // function and body visible to all
+    x / 2 + y / 2
+}
+pub open(crate) spec fn my_pub_spec_fun2(x: u32, y: u32) -> u32 {
+    // function visible to all, body visible to crate
+    x / 2 + y / 2
+}
+pub(crate) open spec fn my_pub_spec_fun3(x: u32, y: u32) -> u32 {
+    // function and body visible to crate
+    x / 2 + y / 2
+}
+pub closed spec fn my_pub_spec_fun4(x: u32, y: u32) -> u32 {
+    // function visible to all, body visible to module
+    x / 2 + y / 2
+}
+pub(crate) closed spec fn my_pub_spec_fun5(x: u32, y: u32) -> u32 {
+    // function visible to crate, body visible to module
+    x / 2 + y / 2
+}
+*/
+
 /// variables may be exec, tracked, or ghost
 ///   - exec: compiled
 ///   - tracked: erased before compilation, checked for lifetimes (advanced feature, discussed later)
@@ -163,6 +188,44 @@ fn test_choose() {
         let (x_witness, y_witness): (int, int) = choose|x: int, y: int| f1(x) + f1(y) == 30;
         assert(f1(x_witness) + f1(y_witness) == 30);
     }
+}
+
+/// To manually specify a trigger to use for the SMT solver to match on when instantiating a forall
+/// or proving an exists, use #[trigger]:
+fn test_single_trigger1() {
+    // Use [my_spec_fun(x, y)] as the trigger
+    assume(forall|x: u32, y: u32| f1(x) < 100 && f1(y) < 100 ==> #[trigger] my_spec_fun(x, y) >= x);
+}
+fn test_single_trigger2() {
+    // Use [f1(x), f1(y)] as the trigger
+    assume(forall|x: u32, y: u32|
+        #[trigger] f1(x) < 100 && #[trigger] f1(y) < 100 ==> my_spec_fun(x, y) >= x
+    );
+}
+
+/// To manually specify multiple triggers, use #![trigger]:
+fn test_multiple_triggers() {
+    // Use both [my_spec_fun(x, y)] and [f1(x), f1(y)] as triggers
+    assume(forall|x: u32, y: u32|
+        #![trigger my_spec_fun(x, y)]
+        #![trigger f1(x), f1(y)]
+        f1(x) < 100 && f1(y) < 100 ==> #[trigger] my_spec_fun(x, y) >= x
+    );
+}
+
+/// Verus can often automatically choose a trigger if no manual trigger is given.
+/// Use the command-line option --triggers to print the chosen triggers.
+fn test_auto_trigger1() {
+    // Verus automatically chose [my_spec_fun(x, y)] as the trigger.
+    // (It considers this safer, i.e. likely to match less often, than the trigger [f1(x), f1(y)].)
+    assume(forall|x: u32, y: u32| f1(x) < 100 && f1(y) < 100 ==> my_spec_fun(x, y) >= x);
+}
+
+/// If Verus prints a note saying that it automatically chose a trigger with low confidence,
+/// you can supply manual triggers or use #![auto] to accept the automatically chosen trigger.
+fn test_auto_trigger2() {
+    // Verus chose [f1(x), f1(y)] as the trigger; go ahead and accept that
+    assume(forall|x: u32, y: u32| #![auto] f1(x) < 100 && f1(y) < 100 ==> my_spec_fun(3, y) >= 3);
 }
 
 /// &&& and ||| are like && and ||, but have low precedence (lower than all other binary operators).
