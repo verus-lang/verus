@@ -2943,10 +2943,10 @@ impl Hash for UnOp {
             UnOp::BigOr(_) => {
                 state.write_u8(4u8);
             }
-            UnOp::Spec(_) => {
+            UnOp::Proof(_) => {
                 state.write_u8(5u8);
             }
-            UnOp::Proof(_) => {
+            UnOp::Ghost(_) => {
                 state.write_u8(6u8);
             }
             UnOp::Tracked(_) => {

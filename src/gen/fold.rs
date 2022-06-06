@@ -3476,11 +3476,11 @@ where
         UnOp::BigOr(_binding_0) => {
             UnOp::BigOr(Token![|||](tokens_helper(f, &_binding_0.spans)))
         }
-        UnOp::Spec(_binding_0) => {
-            UnOp::Spec(Token![spec](tokens_helper(f, &_binding_0.span)))
-        }
         UnOp::Proof(_binding_0) => {
             UnOp::Proof(Token![proof](tokens_helper(f, &_binding_0.span)))
+        }
+        UnOp::Ghost(_binding_0) => {
+            UnOp::Ghost(Token![ghost](tokens_helper(f, &_binding_0.span)))
         }
         UnOp::Tracked(_binding_0) => {
             UnOp::Tracked(Token![tracked](tokens_helper(f, &_binding_0.span)))

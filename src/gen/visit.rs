@@ -3934,10 +3934,10 @@ where
         UnOp::BigOr(_binding_0) => {
             tokens_helper(v, &_binding_0.spans);
         }
-        UnOp::Spec(_binding_0) => {
+        UnOp::Proof(_binding_0) => {
             tokens_helper(v, &_binding_0.span);
         }
-        UnOp::Proof(_binding_0) => {
+        UnOp::Ghost(_binding_0) => {
             tokens_helper(v, &_binding_0.span);
         }
         UnOp::Tracked(_binding_0) => {
