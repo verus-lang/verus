@@ -3722,6 +3722,11 @@
         "let_token": {
           "token": "Let"
         },
+        "tracked": {
+          "option": {
+            "token": "Tracked"
+          }
+        },
         "pat": {
           "syn": "Pat"
         },

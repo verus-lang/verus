@@ -2826,6 +2826,9 @@ where
         v.visit_attribute(it);
     }
     tokens_helper(v, &node.let_token.span);
+    if let Some(it) = &node.tracked {
+        tokens_helper(v, &it.span);
+    }
     v.visit_pat(&node.pat);
     if let Some(it) = &node.init {
         tokens_helper(v, &(it).0.spans);

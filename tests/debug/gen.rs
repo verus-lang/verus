@@ -3757,6 +3757,18 @@ impl Debug for Lite<syn::Local> {
         if !_val.attrs.is_empty() {
             formatter.field("attrs", Lite(&_val.attrs));
         }
+        if let Some(val) = &_val.tracked {
+            #[derive(RefCast)]
+            #[repr(transparent)]
+            struct Print(syn::token::Tracked);
+            impl Debug for Print {
+                fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                    formatter.write_str("Some")?;
+                    Ok(())
+                }
+            }
+            formatter.field("tracked", Print::ref_cast(val));
+        }
         formatter.field("pat", Lite(&_val.pat));
         if let Some(val) = &_val.init {
             #[derive(RefCast)]

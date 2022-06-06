@@ -1384,7 +1384,8 @@ impl Eq for Local {}
 #[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
 impl PartialEq for Local {
     fn eq(&self, other: &Self) -> bool {
-        self.attrs == other.attrs && self.pat == other.pat && self.init == other.init
+        self.attrs == other.attrs && self.tracked == other.tracked
+            && self.pat == other.pat && self.init == other.init
     }
 }
 #[cfg(any(feature = "derive", feature = "full"))]

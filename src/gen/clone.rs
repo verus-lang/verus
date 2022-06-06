@@ -1455,6 +1455,7 @@ impl Clone for Local {
         Local {
             attrs: self.attrs.clone(),
             let_token: self.let_token.clone(),
+            tracked: self.tracked.clone(),
             pat: self.pat.clone(),
             init: self.init.clone(),
             semi_token: self.semi_token.clone(),

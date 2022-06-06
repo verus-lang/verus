@@ -2040,6 +2040,7 @@ impl Debug for Local {
         let mut formatter = formatter.debug_struct("Local");
         formatter.field("attrs", &self.attrs);
         formatter.field("let_token", &self.let_token);
+        formatter.field("tracked", &self.tracked);
         formatter.field("pat", &self.pat);
         formatter.field("init", &self.init);
         formatter.field("semi_token", &self.semi_token);

@@ -2826,6 +2826,9 @@ where
         v.visit_attribute_mut(it);
     }
     tokens_helper(v, &mut node.let_token.span);
+    if let Some(it) = &mut node.tracked {
+        tokens_helper(v, &mut it.span);
+    }
     v.visit_pat_mut(&mut node.pat);
     if let Some(it) = &mut node.init {
         tokens_helper(v, &mut (it).0.spans);
