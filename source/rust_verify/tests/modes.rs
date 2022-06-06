@@ -23,6 +23,26 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] verus_struct1 verus_code! {
+        use crate::pervasive::modes::*;
+        struct S {
+            i: Ghost<bool>,
+            j: bool,
+        }
+        fn test1(i: bool, j: bool) {
+            let s = S { i: ghost(i), j };
+        }
+        fn test2(i: Ghost<bool>, j: bool) {
+            let s = S { i, j };
+        }
+        fn test3(i: bool, j: Ghost<bool>) {
+            let s: Ghost<S> = ghost(S { i: Ghost::new(i), j: j.value() });
+            let jj: Ghost<bool> = ghost(s.value().j);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] struct_fails1 code! {
         struct S {
             #[spec] i: bool,
@@ -30,6 +50,19 @@ test_verify_one_file! {
         }
         fn test(i: bool, #[spec] j: bool) {
             let s = S { i, j };
+        }
+    } => Err(_) => ()
+}
+
+test_verify_one_file! {
+    #[test] verus_struct_fails1 verus_code! {
+        use crate::pervasive::modes::*;
+        struct S {
+            i: Ghost<bool>,
+            j: bool,
+        }
+        fn test(i: bool, j: Ghost<bool>) {
+            let s = S { i: ghost(i), j: j.value() };
         }
     } => Err(_) => ()
 }

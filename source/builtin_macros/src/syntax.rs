@@ -55,14 +55,16 @@ impl VisitMut for Visitor {
 
         let mode_block = if let Expr::Unary(unary) = expr {
             match unary.op {
-                UnOp::Spec(..) | UnOp::Proof(..) => Some(false),
-                UnOp::Tracked(..) => Some(true),
+                UnOp::Proof(..) => Some((false, false)),
+                UnOp::Ghost(..) => Some((true, false)),
+                UnOp::Tracked(..) => Some((true, true)),
                 _ => None,
             }
         } else {
             None
         };
 
+        let is_inside_ghost = self.inside_ghost > 0;
         if mode_block.is_some() {
             self.inside_ghost += 1;
         }
@@ -83,20 +85,31 @@ impl VisitMut for Visitor {
             if low_prec_op {
                 *expr = take_expr(&mut *unary.expr);
             } else if let Some(mode_block) = mode_block {
-                match (mode_block, &*unary.expr) {
-                    (false, Expr::Paren(..)) => {
+                match (is_inside_ghost, mode_block, &*unary.expr) {
+                    (false, (false, _), Expr::Block(..)) => {
+                        // proof { ... }
                         let inner = take_expr(&mut *unary.expr);
-                        *expr = parse_quote_spanned!(span => #[spec] { #inner });
+                        *expr = parse_quote_spanned!(span => #[verifier(proof_block)] #inner);
                     }
-                    (false, Expr::Block(..)) => {
+                    (false, (true, false), Expr::Paren(..)) => {
+                        // ghost(...)
                         let inner = take_expr(&mut *unary.expr);
-                        *expr = parse_quote_spanned!(span => #[spec] #inner);
+                        *expr = parse_quote_spanned!(span => #[verifier(ghost_wrapper)] crate::pervasive::modes::Ghost::exec(#[verifier(ghost_block_wrapped)] #inner));
                     }
-                    (true, _) => {
+                    (false, (true, true), Expr::Paren(..)) => {
+                        // tracked(...)
                         let inner = take_expr(&mut *unary.expr);
-                        *expr = parse_quote_spanned!(span => #[proof] { #inner });
+                        *expr = parse_quote_spanned!(span => #[verifier(ghost_wrapper)] crate::pervasive::modes::Tracked::exec(#[verifier(tracked_block_wrapped)] #inner));
                     }
-                    _ => panic!("internal error: unexpected mode block"),
+                    (true, (true, true), _) => {
+                        // tracked ...
+                        let inner = take_expr(&mut *unary.expr);
+                        *expr = parse_quote_spanned!(span => #[verifier(tracked_block)] { #inner });
+                    }
+                    _ => {
+                        *expr = parse_quote_spanned!(span => compile_error!("unexpected proof/ghost/tracked"));
+                        return;
+                    }
                 }
             }
         } else if let Expr::Binary(binary) = expr {

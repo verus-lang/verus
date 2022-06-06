@@ -204,7 +204,8 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_short_circuit code! {
+    #[test] test_short_circuit verus_code! {
+        use crate::pervasive::modes::*;
         fn f1(a: bool, b: bool) {
             let mut x: u64 = 0;
             let y = a && b;
@@ -222,14 +223,11 @@ test_verify_one_file! {
         }
 
         fn f3(a: bool, b: bool) {
-            #[spec]
-            let mut x: u64 = 0;
-            #[spec]
-            let y = a >>= b;
-            #[spec]
-            let z = a >>= { x = x + 1; b };
-            assert(y == z);
-            assert((x == 1) == a);
+            let mut x: Ghost<u64> = ghost(0);
+            let y: Ghost<bool> = ghost(a ==> b);
+            let z: Ghost<bool> = ghost(a ==> { x = Ghost::new(x.value() + 1); b });
+            assert(y.value() == z.value());
+            assert((x.value() == 1) == a);
         }
     } => Ok(())
 }

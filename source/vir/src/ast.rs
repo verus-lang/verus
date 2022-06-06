@@ -51,15 +51,6 @@ pub enum Mode {
 /// (A unique id marks the place that needs to be filled in.)
 pub type InferMode = u64;
 
-/// Represents Rust ghost blocks
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub enum Ghost {
-    /// Not in a ghost block
-    Exec,
-    /// In a ghost block, and lifetime checking is enabled iff tracked == true
-    Ghost { tracked: bool },
-}
-
 /// Describes integer types
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum IntRange {
@@ -408,7 +399,7 @@ pub enum ExprX {
     /// However, we can't easily communicate the inferred modes back to rustc for erasure
     /// and lifetime checking -- rustc needs syntactic annotations for these, and the mode checker
     /// needs to confirm that these annotations agree with what would have been inferred.
-    Ghost(Ghost, Expr),
+    Ghost { alloc_wrapper: Option<Fun>, tracked: bool, expr: Expr },
     /// Sequence of statements, optionally including an expression at the end
     Block(Stmts, Option<Expr>),
     /// assert_by with smt.arith.nl=true

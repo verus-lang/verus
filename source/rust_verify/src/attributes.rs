@@ -97,6 +97,15 @@ pub(crate) enum GetVariantField {
     Unnamed(usize),
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum GhostBlockAttr {
+    Proof,
+    GhostWrapped,
+    TrackedWrapped,
+    Tracked,
+    Wrapper,
+}
+
 pub(crate) enum Attr {
     // specify mode (spec, proof, exec)
     Mode(Mode),
@@ -114,6 +123,8 @@ pub(crate) enum Attr {
     Publish,
     // publish body with zero fuel
     OpaqueOutsideModule,
+    // Rust ghost block
+    GhostBlock(GhostBlockAttr),
     // type parameter is not necessarily used in strictly positive positions
     MaybeNegative,
     // type parameter is used in strictly positive positions
@@ -211,6 +222,21 @@ pub(crate) fn parse_attrs(attrs: &[Attribute]) -> Result<Vec<Attr>, VirErr> {
                 Some(box [AttrTree::Fun(_, arg, None)]) if arg == "opaque_outside_module" => {
                     v.push(Attr::OpaqueOutsideModule)
                 }
+                Some(box [AttrTree::Fun(_, arg, None)]) if arg == "proof_block" => {
+                    v.push(Attr::GhostBlock(GhostBlockAttr::Proof))
+                }
+                Some(box [AttrTree::Fun(_, arg, None)]) if arg == "ghost_block_wrapped" => {
+                    v.push(Attr::GhostBlock(GhostBlockAttr::GhostWrapped))
+                }
+                Some(box [AttrTree::Fun(_, arg, None)]) if arg == "tracked_block_wrapped" => {
+                    v.push(Attr::GhostBlock(GhostBlockAttr::TrackedWrapped))
+                }
+                Some(box [AttrTree::Fun(_, arg, None)]) if arg == "tracked_block" => {
+                    v.push(Attr::GhostBlock(GhostBlockAttr::Tracked))
+                }
+                Some(box [AttrTree::Fun(_, arg, None)]) if arg == "ghost_wrapper" => {
+                    v.push(Attr::GhostBlock(GhostBlockAttr::Wrapper))
+                }
                 Some(box [AttrTree::Fun(_, arg, None)]) if arg == "maybe_negative" => {
                     v.push(Attr::MaybeNegative)
                 }
@@ -305,6 +331,16 @@ pub(crate) fn parse_attrs_opt(attrs: &[Attribute]) -> Vec<Attr> {
         Ok(attrs) => attrs,
         Err(_) => vec![],
     }
+}
+
+pub(crate) fn get_ghost_block_opt(attrs: &[Attribute]) -> Option<GhostBlockAttr> {
+    for attr in parse_attrs_opt(attrs) {
+        match attr {
+            Attr::GhostBlock(g) => return Some(g),
+            _ => {}
+        }
+    }
+    None
 }
 
 pub(crate) fn get_mode_opt(attrs: &[Attribute]) -> Option<Mode> {

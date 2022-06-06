@@ -1295,7 +1295,7 @@ fn expr_to_stm_opt(
                 err_str(&expr.span, "return expression not allowed here")
             }
         }
-        ExprX::Ghost(..) => {
+        ExprX::Ghost { .. } => {
             panic!("internal error: ExprX::Ghost should have been simplified by ast_simplify")
         }
         ExprX::Block(stmts, body_opt) => {

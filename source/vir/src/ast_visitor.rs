@@ -304,7 +304,7 @@ where
                     None => (),
                     Some(e) => expr_visitor_control_flow!(expr_visitor_dfs(e, map, mf)),
                 },
-                ExprX::Ghost(_mode, e1) => {
+                ExprX::Ghost { alloc_wrapper: _, tracked: _, expr: e1 } => {
                     expr_visitor_control_flow!(expr_visitor_dfs(e1, map, mf))
                 }
                 ExprX::Block(ss, e1) => {
@@ -613,9 +613,9 @@ where
             };
             ExprX::Return(e1)
         }
-        ExprX::Ghost(mode, e1) => {
-            let expr1 = map_expr_visitor_env(e1, map, env, fe, fs, ft)?;
-            ExprX::Ghost(*mode, expr1)
+        ExprX::Ghost { alloc_wrapper, tracked, expr: e1 } => {
+            let expr = map_expr_visitor_env(e1, map, env, fe, fs, ft)?;
+            ExprX::Ghost { alloc_wrapper: alloc_wrapper.clone(), tracked: *tracked, expr }
         }
         ExprX::Block(ss, e1) => {
             let mut stmts: Vec<Stmt> = Vec::new();

@@ -1,7 +1,6 @@
 use crate::ast::{
-    BinaryOp, CallTarget, Datatype, Expr, ExprX, FieldOpr, Fun, Function, FunctionKind, Ghost,
-    Ident, InferMode, InvAtomicity, Krate, Mode, Path, Pattern, PatternX, Stmt, StmtX, UnaryOpr,
-    VirErr,
+    BinaryOp, CallTarget, Datatype, Expr, ExprX, FieldOpr, Fun, Function, FunctionKind, Ident,
+    InferMode, InvAtomicity, Krate, Mode, Path, Pattern, PatternX, Stmt, StmtX, UnaryOpr, VirErr,
 };
 use crate::ast_util::{err_str, err_string, get_field};
 use crate::util::vec_map_result;
@@ -31,6 +30,15 @@ pub fn mode_join(m1: Mode, m2: Mode) -> Mode {
         (m, Mode::Exec) => m,
         (Mode::Proof, Mode::Proof) => Mode::Proof,
     }
+}
+
+/// Represents Rust ghost blocks
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+enum Ghost {
+    /// Not in a ghost block
+    Exec,
+    /// In a ghost block, and lifetime checking is enabled iff tracked == true
+    Ghost { tracked: bool },
 }
 
 // Placeholder for the erasure expected mode, which is computed after first mode checking pass.
@@ -267,7 +275,13 @@ fn get_var_loc_mode(typing: &mut Typing, expr: &Expr, init_not_mut: bool) -> Res
     let x_mode = match &expr.x {
         ExprX::VarLoc(x) => {
             let (_, x_mode) = typing.get(x);
-            x_mode
+            if expr.typ.is_ghost_typ() {
+                Mode::Spec
+            } else if expr.typ.is_tracked_typ() && x_mode != Mode::Spec {
+                Mode::Proof
+            } else {
+                x_mode
+            }
         }
         ExprX::UnaryOpr(UnaryOpr::Field(FieldOpr { datatype, variant: _, field }), rcvr) => {
             let rcvr_mode = get_var_loc_mode(typing, rcvr, init_not_mut)?;
@@ -713,30 +727,42 @@ fn check_expr(
             }
             Ok(Mode::Exec)
         }
-        ExprX::Ghost(block_ghostness, e1) => {
+        ExprX::Ghost { alloc_wrapper, tracked, expr: e1 } => {
             let prev = typing.block_ghostness;
-            if prev != *block_ghostness {
-                match (prev, *block_ghostness) {
-                    (_, Ghost::Exec) => {
-                        return err_str(&expr.span, "cannot enter exec ghost block");
-                    }
-                    _ => {}
-                }
-            }
-            if prev == Ghost::Exec && *block_ghostness != Ghost::Exec {
-                match &*e1.typ {
-                    crate::ast::TypX::Tuple(ts) if ts.len() == 0 => {}
+            let block_ghostness = match (prev, alloc_wrapper, tracked) {
+                (Ghost::Exec, None, false) => match &*e1.typ {
+                    crate::ast::TypX::Tuple(ts) if ts.len() == 0 => Ghost::Ghost { tracked: false },
                     _ => {
-                        todo!("support returning values from ghost code into exec code")
+                        return err_str(&expr.span, "proof block must have type ()");
                     }
+                },
+                (_, None, false) => {
+                    return err_str(&expr.span, "already in proof mode");
                 }
-            }
-            typing.block_ghostness = *block_ghostness;
-            let outer_mode = match (outer_mode, *block_ghostness) {
+                (Ghost::Exec, None, true) => {
+                    return err_str(&expr.span, "cannot mark expression as tracked in exec mode");
+                }
+                (Ghost::Ghost { .. }, None, true) => Ghost::Ghost { tracked: true },
+                (Ghost::Exec, Some(_), _) => Ghost::Ghost { tracked: *tracked },
+                (Ghost::Ghost { .. }, Some(_), _) => {
+                    return err_str(
+                        &expr.span,
+                        "ghost(...) or tracked(...) can only be used in exec mode",
+                    );
+                }
+            };
+            typing.block_ghostness = block_ghostness;
+            let outer_mode = match (outer_mode, block_ghostness) {
                 (Mode::Exec, Ghost::Ghost { .. }) => Mode::Proof,
                 _ => outer_mode,
             };
-            let mode = check_expr(typing, outer_mode, erasure_mode, e1)?;
+            let mode = if alloc_wrapper.is_none() {
+                check_expr(typing, outer_mode, erasure_mode, e1)?
+            } else {
+                let target_mode = if *tracked { Mode::Proof } else { Mode::Spec };
+                check_expr_has_mode(typing, outer_mode, e1, target_mode)?;
+                Mode::Exec
+            };
             typing.block_ghostness = prev;
             Ok(mode)
         }

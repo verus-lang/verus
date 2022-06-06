@@ -282,7 +282,14 @@ fn simplify_one_expr(ctx: &GlobalCtx, state: &mut State, expr: &Expr) -> Result<
                 err_str(&expr.span, "not yet implemented: zero-arm match expressions")
             }
         }
-        ExprX::Ghost(_, expr1) => Ok(expr1.clone()),
+        ExprX::Ghost { alloc_wrapper: None, tracked: _, expr: expr1 } => Ok(expr1.clone()),
+        ExprX::Ghost { alloc_wrapper: Some(fun), tracked: _, expr: expr1 } => {
+            // After mode checking, restore the call to Ghost::new or Tracked::new
+            let typ_args = Arc::new(vec![expr1.typ.clone()]);
+            let target = CallTarget::Static(fun.clone(), typ_args);
+            let call = ExprX::Call(target, Arc::new(vec![expr1.clone()]));
+            Ok(SpannedTyped::new(&expr.span, &expr.typ, call))
+        }
         _ => Ok(expr.clone()),
     }
 }

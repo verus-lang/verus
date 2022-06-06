@@ -1,5 +1,6 @@
 use crate::attributes::{
-    get_mode_opt, get_trigger, get_var_mode, get_verifier_attrs, parse_attrs, Attr, GetVariantField,
+    get_ghost_block_opt, get_trigger, get_var_mode, get_verifier_attrs, parse_attrs, Attr,
+    GetVariantField, GhostBlockAttr,
 };
 use crate::context::BodyCtxt;
 use crate::erase::ResolvedCall;
@@ -416,6 +417,8 @@ fn fn_call_to_vir<'tcx>(
     let is_sub = f_name == "core::ops::arith::Sub::sub";
     let is_mul = f_name == "core::ops::arith::Mul::mul";
     let is_panic = f_name == "core::panicking::panic";
+    let is_alloc_ghost = f_name == "pervasive::modes::Ghost::<A>::exec";
+    let is_alloc_tracked = f_name == "pervasive::modes::Tracked::<A>::exec";
     let is_spec = is_admit
         || is_no_method_body
         || is_requires
@@ -623,6 +626,39 @@ fn fn_call_to_vir<'tcx>(
             expr.span,
             "only a variable binding is allowed as the argument to old",
         );
+    }
+
+    if is_alloc_ghost || is_alloc_tracked {
+        unsupported_err_unless!(len == 1, expr.span, "expected Ghost/Tracked", &args);
+        let arg = &args[0];
+        if get_ghost_block_opt(bctx.ctxt.tcx.hir().attrs(expr.hir_id))
+            == Some(GhostBlockAttr::Wrapper)
+        {
+            let vir_arg = expr_to_vir(bctx, arg, ExprModifier::REGULAR)?;
+            let alloc_wrapper = Some(name);
+            match (is_alloc_tracked, get_ghost_block_opt(bctx.ctxt.tcx.hir().attrs(arg.hir_id))) {
+                (false, Some(GhostBlockAttr::GhostWrapped)) => {
+                    return Ok(mk_expr(ExprX::Ghost {
+                        alloc_wrapper,
+                        tracked: false,
+                        expr: vir_arg,
+                    }));
+                }
+                (true, Some(GhostBlockAttr::TrackedWrapped)) => {
+                    return Ok(mk_expr(ExprX::Ghost {
+                        alloc_wrapper,
+                        tracked: true,
+                        expr: vir_arg,
+                    }));
+                }
+                (_, attr) => {
+                    return err_span_string(
+                        expr.span,
+                        format!("unexpected ghost block attribute {:?}", attr),
+                    );
+                }
+            }
+        }
     }
 
     if is_decreases_by {
@@ -1381,16 +1417,18 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                 invariant_block_to_vir(bctx, expr, modifier)
             } else {
                 let block = block_to_vir(bctx, body, &expr.span, &expr_typ(), modifier);
-                if let Some(mode) = get_mode_opt(bctx.ctxt.tcx.hir().attrs(expr.hir_id)) {
-                    // confusing HACK until we have real ghost blocks: encode with #[spec], #[proof]
-                    let ghost = match mode {
-                        Mode::Spec => vir::ast::Ghost::Ghost { tracked: false },
-                        Mode::Proof => vir::ast::Ghost::Ghost { tracked: true },
-                        Mode::Exec => {
-                            return err_span_str(expr.span, "exec blocks are not supported");
+                if let Some(g_attr) = get_ghost_block_opt(bctx.ctxt.tcx.hir().attrs(expr.hir_id)) {
+                    let tracked = match g_attr {
+                        GhostBlockAttr::Proof => false,
+                        GhostBlockAttr::Tracked => true,
+                        GhostBlockAttr::GhostWrapped | GhostBlockAttr::TrackedWrapped => {
+                            return block;
+                        }
+                        GhostBlockAttr::Wrapper => {
+                            return err_span_str(expr.span, "unexpected ghost block wrapper");
                         }
                     };
-                    Ok(mk_expr(ExprX::Ghost(ghost, block?)))
+                    Ok(mk_expr(ExprX::Ghost { alloc_wrapper: None, tracked, expr: block? }))
                 } else {
                     block
                 }

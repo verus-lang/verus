@@ -482,7 +482,10 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
             };
             mk_expr(ExprX::Return(Some(e1.clone())))
         }
-        ExprX::Ghost(mode, e1) => mk_expr(ExprX::Ghost(*mode, poly_expr(ctx, state, e1))),
+        ExprX::Ghost { alloc_wrapper, tracked, expr: e1 } => {
+            let expr = poly_expr(ctx, state, e1);
+            mk_expr(ExprX::Ghost { alloc_wrapper: alloc_wrapper.clone(), tracked: *tracked, expr })
+        }
         ExprX::Block(ss, e1) => {
             let mut stmts: Vec<Stmt> = Vec::new();
             for s in ss.iter() {

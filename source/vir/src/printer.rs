@@ -330,11 +330,12 @@ fn expr_to_node(expr: &Expr) -> Node {
             }
             Node::List(nodes)
         }
-        ExprX::Ghost(ghost, expr) => {
-            let ghost = match ghost {
-                Ghost::Exec => "ghost_exec",
-                Ghost::Ghost { tracked: true } => "ghost_tracked",
-                Ghost::Ghost { tracked: false } => "ghost_untracked",
+        ExprX::Ghost { alloc_wrapper, tracked, expr } => {
+            let ghost = match (alloc_wrapper, tracked) {
+                (None, false) => "proof",
+                (None, true) => "tracked",
+                (Some(_), false) => "Ghost",
+                (Some(_), true) => "Tracked",
             };
             Node::List(nodes_vec!({str_to_node(ghost)} {expr_to_node(expr)}))
         }
