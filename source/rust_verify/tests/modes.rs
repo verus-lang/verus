@@ -36,8 +36,8 @@ test_verify_one_file! {
             let s = S { i, j };
         }
         fn test3(i: bool, j: Ghost<bool>) {
-            let s: Ghost<S> = ghost(S { i: Ghost::new(i), j: j.value() });
-            let jj: Ghost<bool> = ghost(s.value().j);
+            let s: Ghost<S> = ghost(S { i: Ghost::new(i), j: *j });
+            let jj: Ghost<bool> = ghost((*s).j);
         }
     } => Ok(())
 }
@@ -62,7 +62,7 @@ test_verify_one_file! {
             j: bool,
         }
         fn test(i: bool, j: Ghost<bool>) {
-            let s = S { i: ghost(i), j: j.value() };
+            let s = S { i: ghost(i), j: *j };
         }
     } => Err(_) => ()
 }

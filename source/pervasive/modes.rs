@@ -63,6 +63,24 @@ impl<A> Clone for Ghost<A> {
 impl<A> Copy for Ghost<A> {
 }
 
+impl<A> std::ops::Deref for Ghost<A> {
+    type Target = A;
+    #[spec]
+    #[verifier(external)]
+    fn deref(&self) -> &A {
+        unimplemented!()
+    }
+}
+
+impl<A> std::ops::Deref for Tracked<A> {
+    type Target = A;
+    #[spec]
+    #[verifier(external)]
+    fn deref(&self) -> &A {
+        unimplemented!()
+    }
+}
+
 verus! {
 
 pub tracked struct TrackedAndGhost<T, G>(

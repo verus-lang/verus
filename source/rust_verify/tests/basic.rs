@@ -225,9 +225,9 @@ test_verify_one_file! {
         fn f3(a: bool, b: bool) {
             let mut x: Ghost<u64> = ghost(0);
             let y: Ghost<bool> = ghost(a ==> b);
-            let z: Ghost<bool> = ghost(a ==> { x = Ghost::new(x.value() + 1); b });
-            assert(y.value() == z.value());
-            assert((x.value() == 1) == a);
+            let z: Ghost<bool> = ghost(a ==> { x = Ghost::new(*x + 1); b });
+            assert(*y == *z);
+            assert((*x == 1) == a);
         }
     } => Ok(())
 }

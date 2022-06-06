@@ -30,7 +30,7 @@ use rustc_span::Span;
 use std::sync::Arc;
 use vir::ast::{
     ArithOp, ArmX, AssertQueryMode, BinaryOp, BitwiseOp, CallTarget, Constant, ExprX, FieldOpr,
-    FunX, HeaderExpr, HeaderExprX, Ident, IntRange, InvAtomicity, Mode, PatternX, Quant,
+    FunX, HeaderExpr, HeaderExprX, Ident, IntRange, InvAtomicity, Mode, PathX, PatternX, Quant,
     SpannedTyped, StmtX, Stmts, Typ, TypX, UnaryOp, UnaryOpr, VarAt, VirErr,
 };
 use vir::ast_util::{ident_binder, path_as_rust_name};
@@ -1551,7 +1551,28 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                     varg,
                 )))
             }
-            UnOp::Deref => expr_to_vir_inner(bctx, arg, is_expr_typ_mut_ref(bctx, arg, modifier)?),
+            UnOp::Deref => {
+                let inner =
+                    expr_to_vir_inner(bctx, arg, is_expr_typ_mut_ref(bctx, arg, modifier)?)?;
+                if inner.typ.is_ghost_typ() || inner.typ.is_tracked_typ() {
+                    let (path, typ) = if let TypX::Datatype(path, targs) = &*inner.typ {
+                        assert!(targs.len() == 1);
+                        (path.clone(), targs[0].clone())
+                    } else {
+                        panic!("incorrect Ghost/Tracked type")
+                    };
+                    let mut segments: Vec<Ident> = (*(path.segments)).clone();
+                    segments.push(Arc::new("value".to_string()));
+                    let segments = Arc::new(segments);
+                    let path = Arc::new(PathX { krate: path.krate.clone(), segments });
+                    let typ_args = Arc::new(vec![typ]);
+                    let fun = Arc::new(FunX { path, trait_path: None });
+                    let target = CallTarget::Static(fun, typ_args);
+                    Ok(mk_expr(ExprX::Call(target, Arc::new(vec![inner]))))
+                } else {
+                    Ok(inner)
+                }
+            }
         },
         ExprKind::Binary(op, lhs, rhs) => {
             let vlhs = expr_to_vir(bctx, lhs, modifier)?;

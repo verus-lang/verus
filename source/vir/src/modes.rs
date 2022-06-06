@@ -828,20 +828,28 @@ fn check_stmt(
             Ok(())
         }
         StmtX::Decl { pattern, mode, init } => {
+            let mode = if typing.check_ghost_blocks
+                && typing.block_ghostness != Ghost::Exec
+                && *mode == Mode::Exec
+            {
+                Mode::Spec
+            } else {
+                *mode
+            };
             if typing.check_ghost_blocks
                 && typing.block_ghostness == Ghost::Exec
-                && *mode != Mode::Exec
+                && mode != Mode::Exec
             {
                 return err_str(&stmt.span, "exec code cannot declare non-exec variables");
             }
-            if !mode_le(outer_mode, *mode) {
-                return err_string(&stmt.span, format!("pattern cannot have mode {}", *mode));
+            if !mode_le(outer_mode, mode) {
+                return err_string(&stmt.span, format!("pattern cannot have mode {}", mode));
             }
-            add_pattern(typing, *mode, pattern)?;
+            add_pattern(typing, mode, pattern)?;
             match init.as_ref() {
                 None => {}
                 Some(expr) => {
-                    check_expr_has_mode(typing, outer_mode, expr, *mode)?;
+                    check_expr_has_mode(typing, outer_mode, expr, mode)?;
                 }
             }
             Ok(())
