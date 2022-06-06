@@ -209,7 +209,7 @@ fn test_multiple_triggers() {
     assume(forall|x: u32, y: u32|
         #![trigger my_spec_fun(x, y)]
         #![trigger f1(x), f1(y)]
-        f1(x) < 100 && f1(y) < 100 ==> #[trigger] my_spec_fun(x, y) >= x
+        f1(x) < 100 && f1(y) < 100 ==> my_spec_fun(x, y) >= x
     );
 }
 
