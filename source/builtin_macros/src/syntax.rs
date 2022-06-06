@@ -4,12 +4,12 @@ use syn_verus::punctuated::Punctuated;
 use syn_verus::token::Paren;
 use syn_verus::visit_mut::{
     visit_expr_mut, visit_field_mut, visit_item_enum_mut, visit_item_fn_mut, visit_item_struct_mut,
-    VisitMut,
+    visit_local_mut, VisitMut,
 };
 use syn_verus::{
     parse_macro_input, parse_quote_spanned, Attribute, BinOp, DataMode, Decreases, Ensures, Expr,
     ExprBinary, ExprCall, ExprTuple, ExprUnary, Field, FnArgKind, FnMode, Item, ItemEnum, ItemFn,
-    ItemStruct, Pat, Recommends, Requires, ReturnType, Stmt, UnOp,
+    ItemStruct, Local, Pat, Recommends, Requires, ReturnType, Stmt, UnOp,
 };
 
 fn take_expr(expr: &mut Expr) -> Expr {
@@ -335,6 +335,13 @@ impl VisitMut for Visitor {
                 }
                 _ => panic!("expected assert/assume"),
             }
+        }
+    }
+
+    fn visit_local_mut(&mut self, local: &mut Local) {
+        visit_local_mut(self, local);
+        if let Some(tracked) = std::mem::take(&mut local.tracked) {
+            local.attrs.push(parse_quote_spanned!(tracked.span => #[proof]));
         }
     }
 

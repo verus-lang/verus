@@ -63,6 +63,14 @@ impl<A> Clone for Ghost<A> {
 impl<A> Copy for Ghost<A> {
 }
 
+verus! {
+
+pub tracked struct TrackedAndGhost<T, G>(
+    pub tracked T,
+    pub ghost G,
+);
+
+} // verus
 
 // TODO: replace Spec and Proof entirely with Ghost and Tracked
 

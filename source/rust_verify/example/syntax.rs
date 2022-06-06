@@ -4,6 +4,8 @@ use builtin_macros::*;
 use builtin::*;
 
 mod pervasive;
+#[allow(unused_imports)]
+use crate::pervasive::modes::*;
 
 #[verifier(external)]
 fn main() {
@@ -54,6 +56,16 @@ pub(crate) proof fn pf<A>(a: A, x: int, tracked t: int) {
     assert(!sf(200, 100));
     assert(!sf(x, x));
     assert(sa(a, a));
+}
+
+proof fn test_tracked(
+    tracked x: int,
+    tracked y: int,
+    z: int
+) -> tracked TrackedAndGhost<(int, int), int> {
+    let tracked tag: TrackedAndGhost<(int, int), int> = TrackedAndGhost((tracked x, tracked y), z);
+    let tracked TrackedAndGhost((a, b), c) = tracked tag;
+    TrackedAndGhost((tracked a, tracked b), c)
 }
 
 } // verus!
