@@ -386,6 +386,7 @@ pub(crate) fn check_pure_expr_bind(
     ctx: &Ctx,
     state: &mut State,
     binders: &Binders<Typ>,
+    binders_has_typ: bool,
     expr: &Expr,
 ) -> Result<Vec<Stm>, VirErr> {
     if state.checking_recommends(ctx) {
@@ -393,7 +394,9 @@ pub(crate) fn check_pure_expr_bind(
         let mut stms: Vec<Stm> = Vec::new();
         for binder in binders.iter() {
             let x = state.declare_new_var(&binder.name, &binder.a, false, true);
-            stms.push(assume_has_typ(&x, &binder.a, &expr.span));
+            if binders_has_typ {
+                stms.push(assume_has_typ(&x, &binder.a, &expr.span));
+            }
         }
         let (stms1, _exp) = expr_to_stm_or_error(ctx, state, expr)?;
         stms.extend(stms1);
@@ -930,7 +933,8 @@ fn expr_to_stm_opt(
             }
         }
         ExprX::Quant(quant, binders, body) => {
-            let check_recommends_stms = check_pure_expr_bind(ctx, state, binders, body)?;
+            let check_recommends_stms =
+                check_pure_expr_bind(ctx, state, binders, quant.boxed_params, body)?;
             state.push_scope();
             state.declare_binders(binders);
             let exp = expr_to_pure_exp(ctx, state, body)?;
@@ -991,8 +995,8 @@ fn expr_to_stm_opt(
             Ok((vec![], ReturnValue::Some(mk_exp(ExpX::Bind(bnd, exp)))))
         }
         ExprX::Choose { params, cond, body } => {
-            let mut check_recommends_stms = check_pure_expr_bind(ctx, state, params, cond)?;
-            check_recommends_stms.extend(check_pure_expr_bind(ctx, state, params, body)?);
+            let mut check_recommends_stms = check_pure_expr_bind(ctx, state, params, true, cond)?;
+            check_recommends_stms.extend(check_pure_expr_bind(ctx, state, params, true, body)?);
             state.push_scope();
             state.declare_binders(&params);
             let cond_exp = expr_to_pure_exp(ctx, state, cond)?;

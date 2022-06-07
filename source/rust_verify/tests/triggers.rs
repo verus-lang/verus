@@ -77,15 +77,15 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[ignore] #[test] test_recommends_regression_163 code! {
+    #[test] test_recommends_regression_163 code! {
         fndecl!(fn some_fn(a: int) -> bool);
 
         #[proof]
         fn p() {
             ensures([
                 forall_arith(|a: int, b: int| #[trigger] (a * b) == b * a),
-                forall(|a: int| some_fn(a)),
+                forall(|a: int| some_fn(a)), // FAILS
             ]);
         }
-    } => Ok(())
+    } => Err(e) => assert_one_fails(e)
 }
