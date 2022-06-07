@@ -73,7 +73,9 @@ fn stored_object_type(field: &Field) -> Type {
         | ShardableType::NotTokenized(_)
         | ShardableType::Option(_)
         | ShardableType::Map(_, _)
-        | ShardableType::Multiset(_) => {
+        | ShardableType::PersistentMap(_, _)
+        | ShardableType::Multiset(_)
+        | ShardableType::Count => {
             panic!("stored_object_type");
         }
     }
@@ -179,7 +181,7 @@ fn get_storage_type_tuple(sm: &SM) -> Type {
     Type::Verbatim(quote! { (#(#types),*) })
 }
 
-/// Add a `clone()` method to the Instance type.
+/// Add a `clone()` method to the Instance type (or any other type which is cloneable).
 /// This is safe, because the Instance object effectively just represents
 ///
 ///   * the fact that the protocol exists, and has been initialized
@@ -213,7 +215,11 @@ fn token_struct_stream(
     let gen = &sm.generics;
 
     let impldecl = impl_decl_stream(&field_token_type(sm, field), &sm.generics);
-    let impl_token_stream = collection_relation_fns_stream(sm, field);
+    let mut impl_token_stream = collection_relation_fns_stream(sm, field);
+
+    if field.stype.is_persistent() {
+        impl_token_stream.extend(trusted_clone());
+    }
 
     let key_field = match key_ty {
         Some(key_ty) => quote! { #[spec] pub key: #key_ty, },
@@ -288,7 +294,7 @@ pub fn output_token_types_and_fns(
             ShardableType::Option(ty) => {
                 token_stream.extend(token_struct_stream(&bundle.sm, field, None, ty));
             }
-            ShardableType::Map(key, val) => {
+            ShardableType::Map(key, val) | ShardableType::PersistentMap(key, val) => {
                 token_stream.extend(token_struct_stream(&bundle.sm, field, Some(key), val));
             }
             ShardableType::Multiset(ty) => {
@@ -297,6 +303,10 @@ pub fn output_token_types_and_fns(
             ShardableType::StorageOption(_) | ShardableType::StorageMap(_, _) => {
                 // storage types don't have tokens; the 'token type' is just the
                 // the type of the field
+            }
+            ShardableType::Count => {
+                let ty = shardable_type_to_type(field.type_span, &field.stype);
+                token_stream.extend(token_struct_stream(&bundle.sm, field, None, &ty));
             }
         }
     }
@@ -436,6 +446,8 @@ pub fn exchange_stream(
                 ShardableType::Multiset(_)
                 | ShardableType::Option(_)
                 | ShardableType::Map(_, _)
+                | ShardableType::PersistentMap(_, _)
+                | ShardableType::Count
                 | ShardableType::StorageOption(_)
                 | ShardableType::StorageMap(_, _) => {
                     init_params.insert(field.name.to_string(), Vec::new());
@@ -768,6 +780,8 @@ pub fn exchange_stream(
                 ShardableType::Multiset(_)
                 | ShardableType::Option(_)
                 | ShardableType::Map(_, _)
+                | ShardableType::PersistentMap(_, _)
+                | ShardableType::Count
                 | ShardableType::StorageOption(_)
                 | ShardableType::StorageMap(_, _) => {
                     // These sharding types all use the SpecialOps. The earlier translation
@@ -916,6 +930,8 @@ fn get_init_param_input_type(_sm: &SM, field: &Field) -> Option<Type> {
         ShardableType::Multiset(_) => None,
         ShardableType::Option(_) => None,
         ShardableType::Map(_, _) => None,
+        ShardableType::PersistentMap(_, _) => None,
+        ShardableType::Count => None,
         ShardableType::StorageOption(ty) => Some(Type::Verbatim(quote! {
             crate::pervasive::option::Option<#ty>
         })),
@@ -946,6 +962,7 @@ fn get_init_param_output_type(sm: &SM, field: &Field) -> Option<Type> {
         ShardableType::Variable(_) => Some(field_token_type(&sm, field)),
         ShardableType::Constant(_) => None, // constants handled separately
         ShardableType::NotTokenized(_) => None, // no tokens
+        ShardableType::Count => Some(field_token_type(&sm, field)),
         ShardableType::Multiset(_) => {
             let ty = field_token_type(&sm, field);
             Some(Type::Verbatim(quote! {
@@ -958,7 +975,7 @@ fn get_init_param_output_type(sm: &SM, field: &Field) -> Option<Type> {
                 crate::pervasive::option::Option<#ty>
             }))
         }
-        ShardableType::Map(key, _val) => {
+        ShardableType::Map(key, _val) | ShardableType::PersistentMap(key, _val) => {
             let ty = field_token_type(&sm, field);
             Some(Type::Verbatim(quote! {
                 crate::pervasive::map::Map<#key, #ty>
@@ -979,7 +996,7 @@ fn add_initialization_output_conditions(
     param_value: Expr,
 ) {
     match &field.stype {
-        ShardableType::Variable(_) => {
+        ShardableType::Variable(_) | ShardableType::Count => {
             inst_eq_enss.push(Expr::Verbatim(quote! {
                 ::builtin::equal(#param_value.instance, #inst_value)
             }));
@@ -988,7 +1005,10 @@ fn add_initialization_output_conditions(
                 ::builtin::equal(#param_value.#field_name, #init_value)
             }));
         }
-        ShardableType::Option(_) | ShardableType::Map(_, _) | ShardableType::Multiset(_) => {
+        ShardableType::Option(_)
+        | ShardableType::Map(_, _)
+        | ShardableType::PersistentMap(_, _)
+        | ShardableType::Multiset(_) => {
             ensures.push(relation_for_collection_of_internal_tokens(
                 sm,
                 field,
@@ -1017,7 +1037,7 @@ fn relation_for_collection_of_internal_tokens(
                 #fn_name(#param_value, #given_value, #inst_value)
             })
         }
-        ShardableType::Map(_, _) => {
+        ShardableType::Map(_, _) | ShardableType::PersistentMap(_, _) => {
             let fn_name = map_relation_post_condition_qualified_name(sm, field);
             Expr::Verbatim(quote! {
                 #fn_name(#param_value, #given_value, #inst_value)
@@ -1073,7 +1093,7 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
                 }
             }
         }
-        ShardableType::Map(key, val) => {
+        ShardableType::Map(key, val) | ShardableType::PersistentMap(key, val) => {
             let fn_name = map_relation_post_condition_name(field);
             let token_ty = field_token_type(sm, field);
             let inst_ty = inst_type(sm);
@@ -1151,6 +1171,35 @@ fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
                             ::builtin::equal(t.instance, instance)
                         )
                     )
+                }
+            }
+        }
+        ShardableType::Count => {
+            quote! {
+                #[proof]
+                #[verifier(returns(proof))]
+                #[verifier(external_body)]
+                pub fn join(#[proof] self, #[proof] other: Self) -> Self {
+                    ::builtin::requires(equal(self.instance, other.instance));
+                    ::builtin::ensures(|s: Self|
+                        equal(s.instance, self.instance)
+                        && equal(s.value, self.value + other.value)
+                    );
+                    ::std::unimplemented!();
+                }
+
+                #[proof]
+                #[verifier(returns(proof))]
+                #[verifier(external_body)]
+                pub fn split(#[proof] self, #[spec] i: nat) -> (Self, Self) {
+                    ::builtin::requires(i <= self.value);
+                    ::builtin::ensures(|s: (Self, Self)|
+                        equal(s.0.instance, self.instance)
+                        && equal(s.1.instance, self.instance)
+                        && equal(s.0.value, i)
+                        && equal(s.1.value, self.value - i)
+                    );
+                    ::std::unimplemented!();
                 }
             }
         }
@@ -1542,20 +1591,23 @@ fn token_matches_elt(
             mk_eq(&Expr::Verbatim(quote! {#token_name.key}), &key),
             mk_eq(&Expr::Verbatim(quote! {#token_name.value}), &val),
         ),
-        MonoidElt::General(e) => {
-            let token_value = if token_is_ref {
-                Expr::Verbatim(quote! { *#token_name })
-            } else {
-                Expr::Verbatim(quote! { #token_name })
-            };
-            relation_for_collection_of_internal_tokens(
-                &ctxt.sm,
-                field,
-                token_value,
-                e.clone(),
-                get_inst_value(ctxt),
-            )
-        }
+        MonoidElt::General(e) => match &field.stype {
+            ShardableType::Count => mk_eq(&Expr::Verbatim(quote! {#token_name.value}), &e),
+            _ => {
+                let token_value = if token_is_ref {
+                    Expr::Verbatim(quote! { *#token_name })
+                } else {
+                    Expr::Verbatim(quote! { #token_name })
+                };
+                relation_for_collection_of_internal_tokens(
+                    &ctxt.sm,
+                    field,
+                    token_value,
+                    e.clone(),
+                    get_inst_value(ctxt),
+                )
+            }
+        },
     }
 }
 
@@ -1571,7 +1623,7 @@ fn translate_special_condition(
             let elt = translate_elt(ctxt, elt, false, errors);
 
             let ident = ctxt.get_numbered_token_ident(&field.name);
-            let is_collection = elt.is_general();
+            let is_collection = elt.is_general() && !field.stype.is_count();
             let ty = if is_collection {
                 field_token_collection_type(&ctxt.sm, &field)
             } else {
@@ -1592,7 +1644,7 @@ fn translate_special_condition(
             let elt = translate_elt(ctxt, elt, false, errors);
 
             let ident = ctxt.get_numbered_token_ident(&field.name);
-            let is_collection = elt.is_general();
+            let is_collection = elt.is_general() && !field.stype.is_count();
             let ty = if is_collection {
                 field_token_collection_type(&ctxt.sm, &field)
             } else {
@@ -1616,7 +1668,7 @@ fn translate_special_condition(
             let elt = translate_elt(ctxt, elt, false, errors);
 
             let ident = ctxt.get_numbered_token_ident(&field.name);
-            let is_collection = elt.is_general();
+            let is_collection = elt.is_general() && !field.stype.is_count();
             let ty = if is_collection {
                 field_token_collection_type(&ctxt.sm, &field)
             } else {

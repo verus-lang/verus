@@ -272,7 +272,7 @@ impl Context {
                 }
                 self.blank_line();
                 self.comment("AIR prelude");
-                self.smt_log.log_node(&node!((declare-sort {str_to_node(crate::def::FUNCTION)})));
+                self.smt_log.log_node(&node!((declare-sort {str_to_node(crate::def::FUNCTION)} 0)));
                 self.blank_line();
                 self.state = ContextState::ReadyForQuery;
             }

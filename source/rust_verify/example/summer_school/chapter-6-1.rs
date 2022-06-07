@@ -20,14 +20,6 @@ pub struct Value { }
 #[spec]
 pub fn default() -> Value { unimplemented!() }
 
-// TODO(tjhance) this is a hack to get the transition vec/map updates working for this file
-impl<K, V> Map<K, V> {
-    #[spec] #[verifier(publish)]
-    pub fn update(self, key: K, value: V) -> Map<K, V> {
-        self.insert(key, value)
-    }
-}
-
 state_machine!{
     MapSpec {
         fields {

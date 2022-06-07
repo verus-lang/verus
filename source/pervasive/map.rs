@@ -71,6 +71,16 @@ impl<K, V> Map<K, V> {
         )
     }
 
+    /// Returns `true` if the two given maps agree on all keys that their domains
+    /// share in common.
+
+    #[spec] #[verifier(publish)]
+    pub fn agrees(self, m2: Self) -> bool {
+        forall(|k| self.dom().contains(k) && m2.dom().contains(k) >>=
+            equal(self.index(k), m2.index(k))
+        )
+    }
+
     #[proof]
     #[verifier(external_body)]
     #[verifier(returns(proof))]

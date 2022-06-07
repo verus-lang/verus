@@ -59,8 +59,8 @@ pub(crate) fn prelude_nodes() -> Vec<Node> {
 
     nodes_vec!(
         // Fuel
-        (declare-sort [FuelId])
-        (declare-sort [Fuel])
+        (declare-sort [FuelId] 0)
+        (declare-sort [Fuel] 0)
         (declare-const [zero] [Fuel])
         (declare-fun [succ] ([Fuel]) [Fuel])
         (declare-fun [fuel_bool] ([FuelId]) Bool)
@@ -75,12 +75,12 @@ pub(crate) fn prelude_nodes() -> Vec<Node> {
         ))
 
         // Polymorphism
-        (declare-sort [Poly])
+        (declare-sort [Poly] 0)
         (declare-fun [box_int] (Int) [Poly])
         (declare-fun [box_bool] (Bool) [Poly])
         (declare-fun [unbox_int] ([Poly]) Int)
         (declare-fun [unbox_bool] ([Poly]) Bool)
-        (declare-sort [typ])
+        (declare-sort [typ] 0)
         (declare-const [type_id_bool] [typ])
         (declare-const [type_id_int] [typ])
         (declare-const [type_id_nat] [typ])

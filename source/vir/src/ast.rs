@@ -463,7 +463,7 @@ pub struct FunctionAttrsX {
     /// set option smt.arith.nl=true
     pub nonlinear: bool,
     /// Use a dedicated Z3 process for this single query
-    pub spinoff_z3: bool,
+    pub spinoff_prover: bool,
 }
 
 /// Function specification of its invariant mask

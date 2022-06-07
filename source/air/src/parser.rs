@@ -407,8 +407,8 @@ impl Parser {
     fn node_to_decl(&self, node: &Node) -> Result<Decl, String> {
         match node {
             Node::List(nodes) => match &nodes[..] {
-                [Node::Atom(s), Node::Atom(x)]
-                    if s.to_string() == "declare-sort" && is_symbol(x) =>
+                [Node::Atom(s), Node::Atom(x), Node::Atom(p)]
+                    if s.to_string() == "declare-sort" && is_symbol(x) && p == "0" =>
                 {
                     Ok(Arc::new(DeclX::Sort(Arc::new(x.clone()))))
                 }

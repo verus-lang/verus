@@ -276,13 +276,16 @@ fn check_at_most_one_update_rec(
 fn is_allowed_in_update_in_normal_transition(stype: &ShardableType) -> bool {
     match stype {
         ShardableType::Variable(_) => true,
-        ShardableType::Constant(_) => false,
         ShardableType::NotTokenized(_) => true,
+
+        ShardableType::Constant(_) => false,
         ShardableType::Multiset(_) => false,
         ShardableType::Option(_) => false,
         ShardableType::Map(_, _) => false,
         ShardableType::StorageOption(_) => false,
         ShardableType::StorageMap(_, _) => false,
+        ShardableType::PersistentMap(_, _) => false,
+        ShardableType::Count => false,
     }
 }
 
@@ -313,7 +316,9 @@ fn is_allowed_in_special_op(
         | ShardableType::Option(_)
         | ShardableType::Multiset(_)
         | ShardableType::StorageOption(_)
-        | ShardableType::StorageMap(_, _) => {
+        | ShardableType::StorageMap(_, _)
+        | ShardableType::PersistentMap(_, _)
+        | ShardableType::Count => {
             if !op_matches_type(stype, &sop.elt) {
                 let syntax = sop.elt.syntax();
                 let elt_name = sop.elt.type_name();
@@ -326,8 +331,22 @@ fn is_allowed_in_special_op(
                 ));
             }
 
+            let strat_is_persistent = stype.is_persistent();
             let strat_is_storage = stype.is_storage();
             let op_is_storage = sop.stmt.is_for_storage();
+
+            assert!(!strat_is_storage || !strat_is_persistent);
+
+            if stype.is_persistent() && sop.is_remove() {
+                let stmt_name = sop.stmt.name();
+                let strat = stype.strategy_name();
+                return Err(Error::new(
+                    span,
+                    format!(
+                        "'{stmt_name:}' statement not allowed for field with sharding strategy '{strat:}'; a persistent field's value can only grow, never remove or modify its data"
+                    ),
+                ));
+            }
 
             if !strat_is_storage && op_is_storage {
                 let stmt_name = sop.stmt.name();
@@ -361,7 +380,9 @@ fn op_matches_type(stype: &ShardableType, elt: &MonoidElt) -> bool {
         | ShardableType::Variable(_)
         | ShardableType::NotTokenized(_) => false,
 
-        ShardableType::Map(_, _) | ShardableType::StorageMap(_, _) => match elt {
+        ShardableType::Map(_, _)
+        | ShardableType::PersistentMap(_, _)
+        | ShardableType::StorageMap(_, _) => match elt {
             MonoidElt::General(_) => true,
             MonoidElt::SingletonKV(_, _) => true,
             _ => false,
@@ -376,6 +397,11 @@ fn op_matches_type(stype: &ShardableType, elt: &MonoidElt) -> bool {
         ShardableType::Multiset(_) => match elt {
             MonoidElt::General(_) => true,
             MonoidElt::SingletonMultiset(_) => true,
+            _ => false,
+        },
+
+        ShardableType::Count => match elt {
+            MonoidElt::General(_) => true,
             _ => false,
         },
     }

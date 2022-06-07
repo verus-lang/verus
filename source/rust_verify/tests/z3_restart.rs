@@ -6,7 +6,7 @@ use common::*;
 test_verify_one_file! {
     #[test] test_with_bitvec_nlarith code! {
         #[proof]
-        #[verifier(spinoff_z3)]
+        #[verifier(spinoff_prover)]
         fn test6(x: u32, y: u32, z:u32) {
             requires(x < 0xfff);
 
@@ -35,7 +35,7 @@ test_verify_one_file! {
         }
 
         #[proof]
-        #[verifier(spinoff_z3)]
+        #[verifier(spinoff_prover)]
         fn one(v: int) {
             let t1 = Thing { a: v };
             let t2 = Thing { a: v };
@@ -52,7 +52,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test_with_nlarith code! {
         #[verifier(nonlinear)]
-        #[verifier(spinoff_z3)]
+        #[verifier(spinoff_prover)]
         #[proof]
         fn lemma_div_pos_is_pos(x: int, d: int) {
             requires([
@@ -68,7 +68,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test_with_bv code! {
         #[verifier(bit_vector)]
-        #[verifier(spinoff_z3)]
+        #[verifier(spinoff_prover)]
         #[proof]
         fn bit_or32_auto(){
             ensures([
@@ -85,7 +85,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test1_fails code! {
         #[proof]
-        #[verifier(spinoff_z3)]
+        #[verifier(spinoff_prover)]
         fn test6(b: u32, b2: u32) {
             assert_nonlinear_by({
                 ensures(b*b2 == b2*b);
@@ -101,7 +101,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test2_fails code! {
         #[verifier(nonlinear)]
-        #[verifier(spinoff_z3)]
+        #[verifier(spinoff_prover)]
         #[proof]
         fn wrong_lemma_2(x: int, y: int, z: int) {
             requires([
@@ -118,14 +118,14 @@ test_verify_one_file! {
     #[test] multiset_basics code! {
         use crate::pervasive::multiset::*;
 
-        #[proof] #[verifier(spinoff_z3)]
+        #[proof] #[verifier(spinoff_prover)]
         pub fn commutative<V>(a: Multiset<V>, b: Multiset<V>) {
             ensures(equal(a.add(b), b.add(a)));
 
             assert(a.add(b).ext_equal(b.add(a)));
         }
 
-        #[proof] #[verifier(spinoff_z3)]
+        #[proof] #[verifier(spinoff_prover)]
         pub fn associative<V>(a: Multiset<V>, b: Multiset<V>, c: Multiset<V>) {
             ensures(equal(
                 a.add(b.add(c)),
@@ -135,7 +135,7 @@ test_verify_one_file! {
                 a.add(b).add(c)));
         }
 
-        #[proof] #[verifier(spinoff_z3)]
+        #[proof] #[verifier(spinoff_prover)]
         pub fn insert2<V>(a: V, b: V) {
             ensures(equal(
                 Multiset::empty().insert(a).insert(b),
@@ -146,7 +146,7 @@ test_verify_one_file! {
                 Multiset::empty().insert(b).insert(a)));
         }
 
-        #[proof] #[verifier(spinoff_z3)]
+        #[proof] #[verifier(spinoff_prover)]
         pub fn insert2_count<V>(a: V, b: V, c: V) {
             requires(!equal(a, b) && !equal(b, c) && !equal(c, a));
 
@@ -155,14 +155,14 @@ test_verify_one_file! {
             assert(Multiset::empty().insert(a).insert(b).count(c) == 0);
         }
 
-        #[proof] #[verifier(spinoff_z3)]
+        #[proof] #[verifier(spinoff_prover)]
         pub fn add_sub_cancel<V>(a: Multiset<V>, b: Multiset<V>) {
             ensures(equal(a.add(b).sub(b), a));
 
             assert(a.add(b).sub(b).ext_equal(a));
         }
 
-        #[proof] #[verifier(spinoff_z3)]
+        #[proof] #[verifier(spinoff_prover)]
         pub fn sub_add_cancel<V>(a: Multiset<V>, b: Multiset<V>) {
             requires(b.le(a));
             ensures(equal(a.sub(b).add(b), a));

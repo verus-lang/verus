@@ -1,4 +1,5 @@
-use syn::Error;
+use proc_macro2::TokenStream;
+use syn::{Error, Expr, Pat};
 
 // If there is at least one error, combine them all into one
 // Else, return Ok(())
@@ -30,4 +31,18 @@ pub fn combine_results(errors: Vec<syn::parse::Result<()>>) -> syn::parse::Resul
             })
             .collect(),
     )
+}
+
+pub fn expr_from_tokens(t: TokenStream) -> Expr {
+    match syn::parse2(t) {
+        Err(_) => panic!("expr_from_tokens should not be called with user input"),
+        Ok(e) => e,
+    }
+}
+
+pub fn pat_from_tokens(t: TokenStream) -> Pat {
+    match syn::parse2(t) {
+        Err(_) => panic!("pat_from_tokens should not be called with user input"),
+        Ok(p) => p,
+    }
 }

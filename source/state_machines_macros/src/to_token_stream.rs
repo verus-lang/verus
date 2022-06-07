@@ -53,6 +53,7 @@ pub fn output_token_stream(bundle: SMBundle, concurrent: bool) -> syn::parse::Re
     let sm_name = &bundle.sm.name;
 
     let final_code = quote! {
+        #[allow(unused_parens)]
         mod #sm_name {
             use super::*;
 
@@ -623,12 +624,15 @@ pub fn shardable_type_to_type(span: Span, stype: &ShardableType) -> Type {
         ShardableType::Option(ty) | ShardableType::StorageOption(ty) => {
             Type::Verbatim(quote_spanned! { span => crate::pervasive::option::Option<#ty> })
         }
-        ShardableType::Map(key, val) | ShardableType::StorageMap(key, val) => {
+        ShardableType::Map(key, val)
+        | ShardableType::PersistentMap(key, val)
+        | ShardableType::StorageMap(key, val) => {
             Type::Verbatim(quote_spanned! { span => crate::pervasive::map::Map<#key, #val> })
         }
         ShardableType::Multiset(ty) => {
             Type::Verbatim(quote_spanned! { span => crate::pervasive::multiset::Multiset<#ty> })
         }
+        ShardableType::Count => Type::Verbatim(quote_spanned! { span => ::builtin::nat }),
     }
 }
 

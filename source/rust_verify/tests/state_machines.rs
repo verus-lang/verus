@@ -105,6 +105,23 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] require_let_birds_eye_fail IMPORTS.to_string() + code_str! {
+        tokenized_state_machine!{ Y {
+            fields {
+                #[sharding(variable)]
+                pub opt: Option<int>,
+            }
+
+            transition!{
+                tr1() {
+                    require birds_eye let x = 5;
+                }
+            }
+        }}
+    } => Err(e) => assert_error_msg(e, "'require' statements should not be in the scope of a `birds_eye` let-binding")
+}
+
+test_verify_one_file! {
     #[test] test_withdraw_bind_req IMPORTS.to_string() + code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -4248,4 +4265,203 @@ test_verify_one_file! {
             }
         }}
     } => Err(e) => assert_error_msg(e, "pattern-binding cannot be used in a 'guard' statement")
+}
+
+test_verify_one_file! {
+    #[test] assert_let_fail_1_bind IMPORTS.to_string() + code_str! {
+        tokenized_state_machine!{ Y {
+            fields {
+                #[sharding(variable)]
+                pub opt: Option<int>,
+            }
+
+            transition!{
+                tr1() {
+                    assert let Option::Some(x) = pre.opt;
+                }
+            }
+        }}
+    } => Err(e) => assert_error_msg(e, "unable to prove safety condition that the pattern matches")
+}
+
+test_verify_one_file! {
+    #[test] assert_let_fail_0_bind IMPORTS.to_string() + code_str! {
+        tokenized_state_machine!{ Y {
+            fields {
+                #[sharding(variable)]
+                pub opt: Option<int>,
+            }
+
+            transition!{
+                tr1() {
+                    assert let Option::Some(_) = pre.opt;
+                }
+            }
+        }}
+    } => Err(e) => assert_error_msg(e, "unable to prove safety condition that the pattern matches")
+}
+
+test_verify_one_file! {
+    #[test] assert_require_let_codegen IMPORTS.to_string() + code_str! {
+
+        tokenized_state_machine!{ Y {
+            fields {
+                #[sharding(variable)]
+                pub opt1: Option<int>,
+
+                #[sharding(variable)]
+                pub opt2: Option<int>,
+
+                #[sharding(variable)]
+                pub opt3: Option<int>,
+
+                #[sharding(variable)]
+                pub opt4: Option<int>,
+            }
+
+            init!{
+                initialize() {
+                    init opt1 = Option::Some(0);
+                    init opt2 = Option::Some(5);
+                    init opt3 = Option::None;
+                    init opt4 = Option::Some(5);
+                }
+            }
+
+            transition!{
+                tr1() {
+                    require let (Option::Some(x), Option::Some(y)) = (pre.opt1, pre.opt2);
+                    assert let (Option::None, Option::Some(z)) = (pre.opt3, pre.opt4);
+
+                    assert(y == z);
+
+                    update opt1 = Option::None;
+                    update opt3 = Option::Some(x + y + z);
+                }
+            }
+
+            #[invariant]
+            pub fn the_inv(&self) -> bool {
+                self.opt1.is_Some() >>= (
+                    self.opt2.is_Some()
+                        && self.opt4.is_Some()
+                        && equal(self.opt2, self.opt4)
+                        && self.opt3.is_None()
+                )
+            }
+
+            #[inductive(initialize)]
+            fn initialize_inductive(post: Self) { }
+
+            #[inductive(tr1)]
+            fn tr1_inductive(pre: Self, post: Self) { }
+        }}
+
+        #[spec]
+        fn rel_tr1(pre: Y::State, post: Y::State) -> bool {
+            match (pre.opt1, pre.opt2) {
+                (Option::Some(x), Option::Some(y)) => {
+                    match (pre.opt3, pre.opt4) {
+                        (Option::None, Option::Some(z)) => {
+                            y == z >>= (
+                                equal(post.opt1, Option::None) &&
+                                equal(post.opt2, pre.opt2) &&
+                                equal(post.opt3, Option::Some(x + y + z)) &&
+                                equal(post.opt4, pre.opt4)
+                           )
+                        }
+                        _ => {
+                            true
+                        }
+                    }
+                }
+                _ => {
+                    false
+                }
+            }
+        }
+
+        #[spec]
+        fn rel_tr1_strong(pre: Y::State, post: Y::State) -> bool {
+            match (pre.opt1, pre.opt2) {
+                (Option::Some(x), Option::Some(y)) => {
+                    match (pre.opt3, pre.opt4) {
+                        (Option::None, Option::Some(z)) => {
+                            y == z &&
+                            equal(post.opt1, Option::None) &&
+                            equal(post.opt2, pre.opt2) &&
+                            equal(post.opt3, Option::Some(x + y + z)) &&
+                            equal(post.opt4, pre.opt4)
+                        }
+                        _ => {
+                            false
+                        }
+                    }
+                }
+                _ => {
+                    false
+                }
+            }
+        }
+
+        #[proof]
+        fn correct_tr1(pre: Y::State, post: Y::State) {
+            requires(Y::State::tr1(pre, post));
+            ensures(rel_tr1(pre, post));
+        }
+
+        #[proof]
+        fn rev_tr1(pre: Y::State, post: Y::State) {
+            requires(rel_tr1(pre, post));
+            ensures(Y::State::tr1(pre, post));
+        }
+
+        #[proof]
+        fn correct_tr1_strong(pre: Y::State, post: Y::State) {
+            requires(Y::State::tr1_strong(pre, post));
+            ensures(rel_tr1_strong(pre, post));
+        }
+
+        #[proof]
+        fn rev_tr1_strong(pre: Y::State, post: Y::State) {
+            requires(rel_tr1_strong(pre, post));
+            ensures(Y::State::tr1_strong(pre, post));
+        }
+
+        fn test_transition(
+            #[proof] inst: Y::Instance,
+            #[proof] t1: Y::opt1,
+            #[proof] t2: Y::opt2,
+            #[proof] t3: Y::opt3,
+            #[proof] t4: Y::opt4
+        ) {
+            requires([
+                equal(inst, t1.instance),
+                equal(inst, t2.instance),
+                equal(inst, t3.instance),
+                equal(inst, t4.instance),
+                equal(t1.value, Option::Some(0)),
+                equal(t2.value, Option::Some(5)),
+            ]);
+
+            #[spec] let old_t1 = t1;
+            #[spec] let old_t3 = t3;
+
+            #[proof] let mut t1 = t1;
+            #[proof] let mut t3 = t3;
+
+            inst.tr1(&mut t1, &t2, &mut t3, &t4);
+
+            assert(equal(old_t3.value, Option::None));
+            assert(equal(t4.value, Option::Some(5)));
+            assert(equal(t1.value, Option::None));
+            assert(equal(t3.value, Option::Some(10)));
+        }
+
+        fn test_start() {
+            #[proof] let (inst, t1, t2, t3, t4) = Y::Instance::initialize();
+            test_transition(inst, t1, t2, t3, t4);
+        }
+
+    } => Ok(())
 }
