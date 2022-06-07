@@ -1487,6 +1487,7 @@ pub fn body_stm_to_air(
     mask_spec: &MaskSpec,
     mode: Mode,
     stm: &Stm,
+    is_integer_ring: bool,
     is_bit_vector_mode: bool,
     skip_ensures: bool,
     is_nonlinear: bool,
@@ -1601,7 +1602,7 @@ pub fn body_stm_to_air(
     }
     let assertion = one_stmt(stmts);
 
-    if !is_bit_vector_mode {
+    if !is_bit_vector_mode && !is_integer_ring {
         for param in params.iter() {
             let typ_inv =
                 typ_invariant(ctx, &param.x.typ, &ident_var(&suffix_local_stmt_id(&param.x.name)));
@@ -1617,27 +1618,62 @@ pub fn body_stm_to_air(
         local.push(Arc::new(DeclX::Axiom(e)));
     }
 
-    let query = Arc::new(QueryX { local: Arc::new(local), assertion });
-    let commands = if is_nonlinear {
-        vec![
-            mk_option_command("smt.arith.nl", "true"),
-            Arc::new(CommandX::CheckValid(query)),
-            mk_option_command("smt.arith.nl", "false"),
-        ]
-    } else if is_bit_vector_mode {
-        vec![
-            mk_option_command("smt.case_split", "0"),
-            Arc::new(CommandX::CheckValid(query)),
-            mk_option_command("smt.case_split", "3"),
-        ]
+    if is_integer_ring {
+        // parameters, requires, ensures to Singular Query
+        let mut vars: Vec<String> = vec![];
+        for param in params.iter() {
+            vars.push(param.x.name.to_string());
+        }
+
+        let mut ens_exprs: Vec<Expr> = vec![];
+        for ens in enss {
+            ens_exprs.push(exp_to_expr(
+                ctx,
+                ens,
+                ExprCtxt { mode: ExprMode::Body, is_bit_vector: is_bit_vector_mode },
+            ));
+        }
+
+        let mut req_exprs: Vec<Expr> = vec![];
+        for req in reqs {
+            req_exprs.push(exp_to_expr(
+                ctx,
+                req,
+                ExprCtxt { mode: ExprMode::BodyPre, is_bit_vector: is_bit_vector_mode },
+            ));
+        }
+        let singular_command =
+            Arc::new(CommandX::SingularCheckValid(vars, ens_exprs, req_exprs, stm.span.clone()));
+
+        state.commands.push(CommandsWithContextX::new(
+            func_span.clone(),
+            "Singular check valid".to_string(),
+            Arc::new(vec![singular_command]),
+            is_spinoff_prover
+        ));
     } else {
-        vec![Arc::new(CommandX::CheckValid(query))]
-    };
-    state.commands.push(CommandsWithContextX::new(
-        func_span.clone(),
-        "function body check".to_string(),
-        Arc::new(commands),
-        is_spinoff_prover,
-    ));
+        let query = Arc::new(QueryX { local: Arc::new(local), assertion });
+        let commands = if is_nonlinear {
+            vec![
+                mk_option_command("smt.arith.nl", "true"),
+                Arc::new(CommandX::CheckValid(query)),
+                mk_option_command("smt.arith.nl", "false"),
+            ]
+        } else if is_bit_vector_mode {
+            vec![
+                mk_option_command("smt.case_split", "0"),
+                Arc::new(CommandX::CheckValid(query)),
+                mk_option_command("smt.case_split", "3"),
+            ]
+        } else {
+            vec![Arc::new(CommandX::CheckValid(query))]
+        };
+        state.commands.push(CommandsWithContextX::new(
+            func_span.clone(),
+            "function body check".to_string(),
+            Arc::new(commands),
+            is_spinoff_prover,
+        ));
+    }
     (state.commands, state.snap_map)
 }

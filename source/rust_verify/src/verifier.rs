@@ -260,6 +260,7 @@ impl Verifier {
             (std::time::Duration::from_secs(2), report_fn)
         };
         let is_check_valid = matches!(**command, CommandX::CheckValid(_));
+        let is_singular = matches!(**command, CommandX::SingularCheckValid(..));
         let mut result = air_context.command(
             &command,
             QueryContext { report_long_running: Some(&mut report_long_running()) },
@@ -271,13 +272,20 @@ impl Verifier {
         loop {
             match result {
                 ValidityResult::Valid => {
-                    if is_check_valid && is_first_check && error_as == ErrorAs::Error {
+                    if (is_check_valid && is_first_check && error_as == ErrorAs::Error)
+                        || is_singular
+                    {
                         self.count_verified += 1;
                     }
                     break;
                 }
                 ValidityResult::TypeError(err) => {
                     panic!("internal error: generated ill-typed AIR code: {}", err);
+                }
+                ValidityResult::SingularInvalid(error) => {
+                    self.count_errors += 1;
+                    compiler.report_error(&error, error_as);
+                    break;
                 }
                 ValidityResult::Canceled => {
                     if is_first_check && error_as == ErrorAs::Error {
@@ -349,6 +357,9 @@ impl Verifier {
                 }
                 ValidityResult::UnexpectedSmtOutput(err) => {
                     panic!("unexpected SMT output: {}", err);
+                }
+                ValidityResult::UnexpectedSingularOutput(err) => {
+                    panic!("unexpected Singular output: {}", err);
                 }
             }
         }

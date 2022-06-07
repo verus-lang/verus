@@ -146,6 +146,8 @@ pub(crate) enum Attr {
     CheckRecommends,
     // set smt.arith.nl=true
     NonLinear,
+    // verify non linear arithmetic using Singular
+    IntegerRing,
     // Use a new dedicated Z3 process just for this query
     SpinoffProver,
 }
@@ -281,6 +283,9 @@ pub(crate) fn parse_attrs(attrs: &[Attribute]) -> Result<Vec<Attr>, VirErr> {
                 {
                     v.push(Attr::ReturnMode(Mode::Exec))
                 }
+                Some(box [AttrTree::Fun(_, arg, None)]) if arg == "integer_ring" => {
+                    v.push(Attr::IntegerRing)
+                }
                 Some(box [AttrTree::Fun(_, arg, None)]) if arg == "nonlinear" => {
                     v.push(Attr::NonLinear)
                 }
@@ -372,6 +377,7 @@ pub(crate) struct VerifierAttrs {
     pub(crate) bit_vector: bool,
     pub(crate) unforgeable: bool,
     pub(crate) atomic: bool,
+    pub(crate) integer_ring: bool,
     pub(crate) is_variant: Option<String>,
     pub(crate) get_variant: Option<(String, GetVariantField)>,
     pub(crate) decreases_by: bool,
@@ -396,6 +402,7 @@ pub(crate) fn get_verifier_attrs(attrs: &[Attribute]) -> Result<VerifierAttrs, V
         bit_vector: false,
         unforgeable: false,
         atomic: false,
+        integer_ring: false,
         is_variant: None,
         get_variant: None,
         decreases_by: false,
@@ -419,6 +426,7 @@ pub(crate) fn get_verifier_attrs(attrs: &[Attribute]) -> Result<VerifierAttrs, V
             Attr::BitVector => vs.bit_vector = true,
             Attr::Unforgeable => vs.unforgeable = true,
             Attr::Atomic => vs.atomic = true,
+            Attr::IntegerRing => vs.integer_ring = true,
             Attr::IsVariant(variant_ident) => vs.is_variant = Some(variant_ident),
             Attr::GetVariant(variant_ident, field_ident) => {
                 vs.get_variant = Some((variant_ident, field_ident))

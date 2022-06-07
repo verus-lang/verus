@@ -1,6 +1,6 @@
 use crate::ast::{
-    CallTarget, Datatype, Expr, ExprX, FieldOpr, Fun, FunX, Function, FunctionKind, Krate,
-    MaskSpec, Mode, Path, PathX, TypX, UnaryOpr, VirErr,
+    ArithOp, CallTarget, Datatype, Expr, ExprX, FieldOpr, Fun, FunX, Function, FunctionKind,
+    IntRange, Krate, MaskSpec, Mode, Path, PathX, TypX, UnaryOpr, VirErr,
 };
 use crate::ast_util::{err_str, err_string, error, referenced_vars_expr};
 use crate::datatype_to_air::is_datatype_transparent;
@@ -275,6 +275,18 @@ fn check_function(ctxt: &Ctxt, function: &Function) -> Result<(), VirErr> {
         }
     }
 
+    if (function.x.attrs.bit_vector
+        && (function.x.attrs.nonlinear || function.x.attrs.integer_ring))
+        || (!function.x.attrs.bit_vector
+            && function.x.attrs.nonlinear
+            && function.x.attrs.integer_ring)
+    {
+        return err_str(
+            &function.span,
+            "Select at most one verifier attribute: integer_ring, non_linear, bit_vector",
+        );
+    }
+
     if function.x.attrs.bit_vector {
         if function.x.mode != Mode::Proof {
             return err_str(&function.span, "bit-vector function mode must be declared as proof");
@@ -303,6 +315,102 @@ fn check_function(ctxt: &Ctxt, function: &Function) -> Result<(), VirErr> {
                     );
                 }
             }
+        }
+    }
+
+    if function.x.attrs.integer_ring {
+        if function.x.mode != Mode::Proof {
+            return err_str(&function.span, "integer_ring mode must be declared as proof");
+        }
+        if let Some(body) = &function.x.body {
+            crate::ast_visitor::expr_visitor_check(body, &mut |expr| {
+                match &expr.x {
+                    ExprX::Block(_, _) => {}
+                    _ => {
+                        return err_str(&function.span, "integer_ring mode cannot have a body");
+                    }
+                }
+                Ok(())
+            })?;
+        }
+        for p in function.x.params.iter() {
+            match *p.x.typ {
+                TypX::Int(IntRange::Int) => {}
+                TypX::Boxed(_) => {}
+                _ => {
+                    return err_str(&p.span, "integer_ring mode's param should be int type");
+                }
+            }
+        }
+        if function.x.ensure.len() != 1 {
+            return err_str(
+                &function.span,
+                "integer_ring mode: single ensure expression is assumed now",
+            );
+        } else {
+            let ens = function.x.ensure[0].clone();
+            if let crate::ast::ExprX::Binary(crate::ast::BinaryOp::Eq(_), lhs, rhs) = &ens.x {
+                if let crate::ast::ExprX::Binary(
+                    crate::ast::BinaryOp::Arith(ArithOp::EuclideanMod, _),
+                    _,
+                    _,
+                ) = &lhs.x
+                {
+                    match &rhs.x {
+                        crate::ast::ExprX::Const(crate::ast::Constant::Nat(zero))
+                            if "0" == (**zero).as_str() => {}
+                        _ => {
+                            return err_str(
+                                &function.span,
+                                "integer_ring mode ensure expression: `X % m == 0` or `X == Y` ",
+                            );
+                        }
+                    }
+                }
+            } else {
+                return err_str(
+                    &function.span,
+                    "integer_ring mode ensures expression: operator `==` is assumed",
+                );
+            }
+        }
+        if function.x.has_return() {
+            return err_str(
+                &function.span,
+                "integer_ring mode function cannot have a return value",
+            );
+        }
+        for req in function.x.require.iter() {
+            crate::ast_visitor::expr_visitor_check(req, &mut |expr| {
+                match *expr.typ {
+                    TypX::Int(IntRange::Int) => {}
+                    TypX::Bool => {}
+                    TypX::Boxed(_) => {}
+                    _ => {
+                        return err_str(
+                            &req.span,
+                            "integer_ring mode's expressions should be int/bool type",
+                        );
+                    }
+                }
+                Ok(())
+            })?;
+        }
+        for ens in function.x.ensure.iter() {
+            crate::ast_visitor::expr_visitor_check(ens, &mut |expr| {
+                match *expr.typ {
+                    TypX::Int(IntRange::Int) => {}
+                    TypX::Bool => {}
+                    TypX::Boxed(_) => {}
+                    _ => {
+                        return err_str(
+                            &ens.span,
+                            "integer_ring mode's expressions should be int/bool type",
+                        );
+                    }
+                }
+                Ok(())
+            })?;
         }
     }
 

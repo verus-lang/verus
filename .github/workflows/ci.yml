@@ -15,7 +15,6 @@ jobs:
         working-directory: ./source   # "cd source"   
         run: |
           /home/chanheec/local_bin/z3 --version  # 4.8.5 expected
-
       # run "cargo test" using our latest rustc binary
       - name: cargo test
         working-directory: ./source   # "cd source"   
@@ -33,3 +32,7 @@ jobs:
           export PATH=/home/chanheec/local_bin/install/bin:$PATH 
           RUSTC=../rust/install/bin/rustc ../rust/install/bin/cargo fmt -- --check
 
+      - name: non-linear with singular
+        working-directory: ./source
+        run: |
+          VERUS_SINGULAR_PATH="/usr/bin/Singular" VERUS_Z3_PATH="/home/chanheec/local_bin/z3" RUSTC=../rust/install/bin/rustc RUSTDOC=../rust/install/bin/rustdoc  ../rust/install/bin/cargo test -p rust_verify --test integer_ring -- --ignored

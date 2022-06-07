@@ -181,4 +181,5 @@ pub enum CommandX {
     SetOption(Ident, Ident), // set-option option value (no colon on the option)
     Global(Decl),            // global declarations
     CheckValid(Query),       // SMT check-sat (reporting validity rather than satisfiability)
+    SingularCheckValid(Vec<String>, Vec<Expr>, Vec<Expr>, Span), // check integer-ring proof using Singular: SingularCheckValid{params, ensures, requires, span}
 }

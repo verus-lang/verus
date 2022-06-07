@@ -126,6 +126,10 @@ pub fn main() {
             ValidityResult::TypeError(err) => {
                 panic!("Type error: {}", err);
             }
+            ValidityResult::SingularInvalid(..) => {
+                count_errors += 1;
+                println!("SingularInvalid in air main - Singular error at: TODO");
+            }
             ValidityResult::Invalid(_m, err) => {
                 count_errors += 1;
                 println!("Error at {}", err.msg);
@@ -140,8 +144,14 @@ pub fn main() {
             ValidityResult::UnexpectedSmtOutput(err) => {
                 panic!("Unexpected SMT output: {}", err);
             }
+            ValidityResult::UnexpectedSingularOutput(err) => {
+                panic!("Unexpected Singular output: {}", err);
+            }
         }
         if matches!(**command, CommandX::CheckValid(..)) {
+            air_context.finish_query();
+        }
+        if matches!(**command, CommandX::SingularCheckValid(..)) {
             air_context.finish_query();
         }
     }

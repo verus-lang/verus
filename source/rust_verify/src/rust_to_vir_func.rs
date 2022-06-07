@@ -246,6 +246,7 @@ pub(crate) fn check_item_fn<'tcx>(
         bit_vector: vattrs.bit_vector,
         autoview: vattrs.autoview,
         atomic: vattrs.atomic,
+        integer_ring: vattrs.integer_ring,
         is_decrease_by: vattrs.decreases_by,
         check_recommends: vattrs.check_recommends,
         nonlinear: vattrs.nonlinear,

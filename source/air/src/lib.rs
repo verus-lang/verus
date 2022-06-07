@@ -6,6 +6,7 @@ pub mod errors;
 pub mod model;
 pub mod parser;
 pub mod scope_map;
+pub mod singular_manager;
 pub mod smt_manager;
 
 #[macro_use]

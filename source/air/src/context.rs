@@ -1,11 +1,13 @@
-use crate::ast::{Command, CommandX, Decl, Ident, Query, Typ, TypeError, Typs};
+use crate::ast::Span;
+use crate::ast::{Command, CommandX, Decl, Expr, Ident, Query, Typ, TypeError, Typs};
 use crate::closure::ClosureTerm;
 use crate::emitter::Emitter;
 use crate::errors::{Error, ErrorLabels};
 use crate::model::Model;
 use crate::node;
-use crate::printer::{macro_push_node, str_to_node};
+use crate::printer::{macro_push_node, singular_printer, singular_query_to_node, str_to_node};
 use crate::scope_map::ScopeMap;
+use crate::singular_manager::SingularManager;
 use crate::smt_manager::SmtManager;
 use crate::smt_verify::ReportLongRunning;
 use crate::typecheck::Typing;
@@ -33,9 +35,11 @@ pub(crate) struct AxiomInfo {
 pub enum ValidityResult {
     Valid,
     Invalid(Model, Error),
+    SingularInvalid(Error),
     Canceled,
     TypeError(TypeError),
     UnexpectedSmtOutput(String),
+    UnexpectedSingularOutput(String),
 }
 
 #[derive(Clone, Debug)]
@@ -314,6 +318,47 @@ impl Context {
         validity
     }
 
+    pub fn check_singular_valid(
+        &mut self,
+        vars: Vec<String>,
+        enss: Vec<Expr>,
+        reqs: Vec<Expr>,
+        s: &Span,
+    ) -> ValidityResult {
+        let nodes = singular_query_to_node(vars.to_vec(), enss.to_vec(), reqs.to_vec());
+        self.air_initial_log.log_node(&nodes);
+        self.air_middle_log.log_node(&nodes);
+        self.air_final_log.log_node(&nodes);
+
+        let query = singular_printer(vars, enss, reqs);
+        self.air_initial_log.comment(&query);
+        self.air_middle_log.comment(&query);
+        self.air_final_log.comment(&query);
+
+        let singular_manager = SingularManager::new();
+        let mut singular_process = singular_manager.launch();
+        let res = singular_process.send_commands(query.as_bytes().to_vec());
+        if (res.len() == 1) && (res[0] == "0") {
+            ValidityResult::Valid
+        } else if res[0].contains("?") {
+            ValidityResult::UnexpectedSingularOutput(String::from(format!(
+                "{} \ngenerated singular query: {}",
+                res[0].as_str(),
+                query
+            )))
+        } else {
+            use crate::errors::error;
+            ValidityResult::SingularInvalid(error(
+                format!(
+                    "Ensures polynomial failed to be reduced to zero: reduced polynomial is {}\n generated singular query: {} ",
+                    res[0].as_str(),
+                    query
+                ),
+                s,
+            ))
+        }
+    }
+
     /// After receiving ValidityResult::Invalid, try to find another error.
     /// only_check_earlier == true means to only look for errors preceding all the previous
     /// errors, with the goal of making sure that the earliest error gets reported.
@@ -376,6 +421,9 @@ impl Context {
                 } else {
                     ValidityResult::Valid
                 }
+            }
+            CommandX::SingularCheckValid(vars, enss, reqs, span) => {
+                self.check_singular_valid(vars.to_vec(), enss.to_vec(), reqs.to_vec(), span)
             }
             CommandX::CheckValid(query) => self.check_valid(&query, query_context),
         }

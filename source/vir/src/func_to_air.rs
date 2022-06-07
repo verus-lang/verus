@@ -698,6 +698,7 @@ pub fn func_def_to_air(
                 &function.x.mask_spec,
                 function.x.mode,
                 &stm,
+                function.x.attrs.integer_ring,
                 function.x.attrs.bit_vector,
                 skip_ensures,
                 function.x.attrs.nonlinear,
