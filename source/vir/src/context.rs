@@ -36,7 +36,7 @@ pub struct GlobalCtx {
     pub func_call_graph: Graph<Node>,
     pub func_call_sccs: Vec<Node>,
     // Connects quantifier identifiers to the original expression
-    pub qid_map: RefCell<HashMap<String, Exp>>, // TODO: Put this in a State type for exp_to_expr in sst_to_air
+    pub qid_map: RefCell<HashMap<String, Exp>>,
     pub method_map: HashMap<(Fun, Path), Fun>,
     pub(crate) inferred_modes: HashMap<InferMode, Mode>,
 }
@@ -61,7 +61,7 @@ pub struct Ctx {
     pub functions: Vec<Function>,
     pub func_map: HashMap<Fun, Function>,
     // Ensure a unique identifier for each quantifier in a given function
-    pub quantifier_count: Cell<u64>, // TODO: Put this in a State type for exp_to_expr in sst_to_air
+    pub quantifier_count: Cell<u64>,
     pub(crate) funcs_with_ensure_predicate: HashSet<Fun>,
     pub(crate) datatype_map: HashMap<Path, Datatype>,
     pub(crate) trait_map: HashMap<Path, Trait>,

@@ -287,7 +287,9 @@ impl Parser {
     fn nodes_to_triggers_and_qid(&self, nodes: &[Node]) -> Result<(Triggers, Qid), String> {
         let mut triggers: Vec<Trigger> = Vec::new();
         let mut qid = None;
-        let mut skolemid = None; // We don't currently use this, since we emit skolemid = qid
+        // We don't currently use the parsed skolemid, since we emit skolemid = qid,
+        // but we still need to account for it, since it will appear in SMTLIB we produce
+        let mut skolemid = None;
         let mut consume_pattern = false;
         let mut consume_qid = false;
         let mut consume_skolemid = false;

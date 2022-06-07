@@ -105,9 +105,9 @@ trait Diagnostics {
     fn report_error(&self, error: &Error, error_as: ErrorAs);
 }
 
-/// N.B.: The compiler deduplication, so reporting an error twice,
-/// or emitting the same note twice will be surpressed
-/// (even if separated in time by other errors/notes)
+/// N.B.: The compiler performs deduplication on diagnostic messages, so reporting an error twice,
+/// or emitting the same note twice will be surpressed (even if separated in time by other
+/// errors/notes)
 impl Diagnostics for Compiler {
     fn diagnostic(&self) -> &rustc_errors::Handler {
         self.session().diagnostic()

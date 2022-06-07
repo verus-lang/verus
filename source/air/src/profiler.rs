@@ -3,8 +3,6 @@
 use std::io::BufRead;
 use z3tracer::model::QuantCost;
 use z3tracer::{Model, ModelConfig};
-//use crate::ast::Span;
-//use std::collections::HashMap;
 
 pub const USER_QUANT_PREFIX: &str = "user_";
 pub const INTERNAL_QUANT_PREFIX: &str = "internal_";

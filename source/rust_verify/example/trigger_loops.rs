@@ -17,7 +17,7 @@ fndecl!(fn j(x: nat) -> bool);
 //    assert(g(w));
 //}
 //
-//#[proof] 
+//#[proof]
 //fn choose_example() {
 //    requires(exists(|x| g(x)));
 //
@@ -34,7 +34,7 @@ fndecl!(fn j(x: nat) -> bool);
 //}
 //
 //
-//#[proof] 
+//#[proof]
 //fn trigger_forever() {
 //   requires(forall(|x: nat, y: nat| f(x + 1, 2 * y) && f(2 * x, y + x) || f(y, x) >>= (#[trigger] f(x, y))));
 //   ensures(forall(|x: nat, y: nat| x > 2318 && y < 100 >>= f(x, y)));
@@ -43,7 +43,7 @@ fndecl!(fn j(x: nat) -> bool);
 //
 //// Split the triggering over two different quantifiers
 
-#[proof] 
+#[proof]
 fn trigger_forever2() {
    requires([forall(|x: nat| g(x)),
              forall(|x: nat, y: nat| h(x, y) == f(x, y)),
