@@ -482,6 +482,12 @@ fn check_expr(
                 return err_str(&expr.span, "assignment is not allowed in forall statements");
             }
             let x_mode = get_var_loc_mode(typing, lhs, *init_not_mut)?;
+            if !mode_le(outer_mode, x_mode) {
+                return err_string(
+                    &expr.span,
+                    format!("cannot assign to {x_mode} variable from {outer_mode} mode"),
+                );
+            }
             check_expr_has_mode(typing, outer_mode, rhs, x_mode)?;
             Ok(x_mode)
         }
