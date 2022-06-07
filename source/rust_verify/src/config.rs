@@ -153,7 +153,11 @@ pub fn parse_args(program: &String, args: impl Iterator<Item = String>) -> (Args
     opts.optflag("", OPT_PRINT_ERASED_SPEC, "Print code after erasing spec");
     opts.optflag("", OPT_IGNORE_UNEXPECTED_SMT, "Ignore unexpected SMT output");
     opts.optflag("", OPT_DEBUG, "Enable debugging of proof failures");
-    opts.optflag("", OPT_PROFILE, "Collect and report prover performance data when resource limits are hit");
+    opts.optflag(
+        "",
+        OPT_PROFILE,
+        "Collect and report prover performance data when resource limits are hit",
+    );
     opts.optflag("", OPT_PROFILE_ALL, "Always collect and report prover performance data");
     opts.optflag("", OPT_COMPILE, "Run Rustc compiler after verification");
     opts.optflag("h", "help", "print this help menu");

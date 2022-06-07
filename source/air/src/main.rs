@@ -1,7 +1,7 @@
 use air::ast::CommandX;
 use air::context::{Context, ValidityResult};
-use air::profiler::Profiler;
 use air::errors::ErrorLabel;
+use air::profiler::Profiler;
 use getopts::Options;
 use sise::Node;
 use std::fs::File;
@@ -38,7 +38,11 @@ pub fn main() {
     opts.optopt("", "log-smt", "Log SMT queries", "FILENAME");
     opts.optflag("", "ignore-unexpected-smt", "Ignore unexpected SMT output");
     opts.optflag("d", "debug", "Debug verification failures");
-    opts.optflag("p", "profile", "Collect and report prover performance data when resource limits are hit");
+    opts.optflag(
+        "p",
+        "profile",
+        "Collect and report prover performance data when resource limits are hit",
+    );
     opts.optflag("p", "profile_all", "Always collect and report prover performance data");
     opts.optflag("h", "help", "print this help menu");
 
@@ -147,7 +151,9 @@ pub fn main() {
                     let profiler = Profiler::new();
                     profiler.print_raw_stats();
                 } else if !profile_all {
-                    println!("Resource limit (rlimit) exceeded; consider rerunning with --profile for more details");
+                    println!(
+                        "Resource limit (rlimit) exceeded; consider rerunning with --profile for more details"
+                    );
                 } else {
                     println!("Resource limit (rlimit) exceeded");
                 }

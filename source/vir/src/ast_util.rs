@@ -61,7 +61,7 @@ pub fn n_types_equal(typs1: &Typs, typs2: &Typs) -> bool {
 
 pub const QUANT_FORALL: Quant = Quant { quant: air::ast::Quant::Forall, boxed_params: true };
 
-// Generate a unique internal quantifier ID 
+// Generate a unique internal quantifier ID
 pub fn new_internal_qid(name: String) -> Option<String> {
     // In SMTLIB, unquoted attribute values cannot contain colons,
     // and sise cannot handle quoting with vertical bars

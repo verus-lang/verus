@@ -154,17 +154,32 @@ pub fn mk_quantifier(
         body.clone()
     } else {
         Arc::new(ExprX::Bind(
-            Arc::new(BindX::Quant(quant, Arc::new(binders.clone()), Arc::new(triggers.clone()), qid)),
+            Arc::new(BindX::Quant(
+                quant,
+                Arc::new(binders.clone()),
+                Arc::new(triggers.clone()),
+                qid,
+            )),
             body.clone(),
         ))
     }
 }
 
-pub fn mk_forall(binders: &Vec<Binder<Typ>>, triggers: &Vec<Trigger>, qid:Qid, body: &Expr) -> Expr {
+pub fn mk_forall(
+    binders: &Vec<Binder<Typ>>,
+    triggers: &Vec<Trigger>,
+    qid: Qid,
+    body: &Expr,
+) -> Expr {
     mk_quantifier(Quant::Forall, binders, triggers, qid, body)
 }
 
-pub fn mk_exists(binders: &Vec<Binder<Typ>>, triggers: &Vec<Trigger>, qid:Qid, body: &Expr) -> Expr {
+pub fn mk_exists(
+    binders: &Vec<Binder<Typ>>,
+    triggers: &Vec<Trigger>,
+    qid: Qid,
+    body: &Expr,
+) -> Expr {
     mk_quantifier(Quant::Exists, binders, triggers, qid, body)
 }
 

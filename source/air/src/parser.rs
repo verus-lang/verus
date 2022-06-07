@@ -1,7 +1,7 @@
 use crate::ast::{
     BinaryOp, BindX, Binder, BinderX, Binders, Command, CommandX, Commands, Constant, Decl, DeclX,
-    Decls, Expr, ExprX, Exprs, MultiOp, Qid, Quant, QueryX, Span, Stmt, StmtX, Stmts, Trigger, Triggers,
-    Typ, TypX, UnaryOp,
+    Decls, Expr, ExprX, Exprs, MultiOp, Qid, Quant, QueryX, Span, Stmt, StmtX, Stmts, Trigger,
+    Triggers, Typ, TypX, UnaryOp,
 };
 use crate::errors::{error_from_labels, error_from_spans};
 use crate::errors::{ErrorLabel, ErrorLabels};
@@ -287,7 +287,7 @@ impl Parser {
     fn nodes_to_triggers_and_qid(&self, nodes: &[Node]) -> Result<(Triggers, Qid), String> {
         let mut triggers: Vec<Trigger> = Vec::new();
         let mut qid = None;
-        let mut skolemid = None;  // We don't currently use this, since we emit skolemid = qid
+        let mut skolemid = None; // We don't currently use this, since we emit skolemid = qid
         let mut consume_pattern = false;
         let mut consume_qid = false;
         let mut consume_skolemid = false;

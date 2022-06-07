@@ -10,6 +10,7 @@ use air::profiler::Profiler;
 use rustc_hir::OwnerNode;
 use rustc_interface::interface::Compiler;
 
+use num_format::{Locale, ToFormattedString};
 use rustc_middle::ty::TyCtxt;
 use rustc_span::source_map::SourceMap;
 use rustc_span::{CharPos, FileName, MultiSpan, Span};
@@ -18,7 +19,6 @@ use std::fs::File;
 use std::io::Write;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
-use num_format::{Locale, ToFormattedString};
 
 use vir::ast::{Fun, Function, InferMode, Krate, Mode, VirErr, Visibility};
 use vir::ast_util::{fun_as_rust_dbg, fun_name_crate_relative, is_visible_to};
@@ -106,7 +106,7 @@ trait Diagnostics {
 }
 
 /// N.B.: The compiler deduplication, so reporting an error twice,
-/// or emitting the same note twice will be surpressed 
+/// or emitting the same note twice will be surpressed
 /// (even if separated in time by other errors/notes)
 impl Diagnostics for Compiler {
     fn diagnostic(&self) -> &rustc_errors::Handler {
@@ -236,32 +236,54 @@ impl Verifier {
         }
     }
 
-    fn print_profile_stats(&self, compiler: &Compiler, profiler: Profiler, qid_map: &HashMap<String, vir::sst::Exp>) {
+    fn print_profile_stats(
+        &self,
+        compiler: &Compiler,
+        profiler: Profiler,
+        qid_map: &HashMap<String, vir::sst::Exp>,
+    ) {
         let num_quants = profiler.quant_count();
         let total = profiler.total_instantiations();
         let max = 10;
         let delimiter = "-".repeat(100);
-        let msg = format!("Observed {} total instantiations of user-level quantifiers", total.to_formatted_string(&Locale::en));
+        let msg = format!(
+            "Observed {} total instantiations of user-level quantifiers",
+            total.to_formatted_string(&Locale::en)
+        );
         compiler.diagnostic().note_without_error(&msg);
 
         for (index, cost) in profiler.iter().take(max).enumerate() {
             println!("{}", delimiter);
             // Report the quantifier
-            let qexp = qid_map.get(&cost.quant).expect(format!("Failed to find quantifier {}", cost.quant).as_str());
+            let qexp = qid_map
+                .get(&cost.quant)
+                .expect(format!("Failed to find quantifier {}", cost.quant).as_str());
             let span = from_raw_span(&qexp.span.raw_span);
             let count = cost.instantiations;
-            let msg = format!("Cost * Instantiations: {} (Instantiated {} times - {}% of the total, cost {}) top {} of {} user-level quantifiers.\n", count*cost.cost, count.to_formatted_string(&Locale::en), 100 * count / total, cost.cost, index + 1, num_quants);
+            let msg = format!(
+                "Cost * Instantiations: {} (Instantiated {} times - {}% of the total, cost {}) top {} of {} user-level quantifiers.\n",
+                count * cost.cost,
+                count.to_formatted_string(&Locale::en),
+                100 * count / total,
+                cost.cost,
+                index + 1,
+                num_quants
+            );
             compiler.diagnostic().span_note_without_error(span, &msg);
 
             let triggers = match &qexp.x {
-                vir::sst::ExpX::Bind(bnd, _) => {
-                    match &bnd.x {
-                        vir::sst::BndX::Quant(_, _, trigs) => trigs,
-                        vir::sst::BndX::Choose(_, trigs, _) => trigs,
-                        _ => panic!("internal error: qid_map expressions should only be Quant or Choose; found {:?}", bnd.x),
-                    }
+                vir::sst::ExpX::Bind(bnd, _) => match &bnd.x {
+                    vir::sst::BndX::Quant(_, _, trigs) => trigs,
+                    vir::sst::BndX::Choose(_, trigs, _) => trigs,
+                    _ => panic!(
+                        "internal error: qid_map expressions should only be Quant or Choose; found {:?}",
+                        bnd.x
+                    ),
                 },
-                _ => panic!("internal error: qid_map should only contain Bind expressions; found {:?}", qexp.x),
+                _ => panic!(
+                    "internal error: qid_map should only contain Bind expressions; found {:?}",
+                    qexp.x
+                ),
             };
 
             // Summarize the triggers it used
@@ -336,9 +358,7 @@ impl Verifier {
                     if !self.args.profile && !self.args.profile_all {
                         msg.push_str("; consider rerunning with --profile for more details");
                     }
-                    compiler
-                        .diagnostic()
-                        .span_err(multispan, &msg);
+                    compiler.diagnostic().span_err(multispan, &msg);
 
                     self.errors.push(vec![ErrorSpan::new_from_air_span(
                         compiler.session().source_map(),
@@ -597,7 +617,7 @@ impl Verifier {
             Some(vir::context::FunctionCtx {
                 checking_recommends,
                 module_for_chosen_triggers: f.x.visibility.owning_module.clone(),
-                current_fun: f.x.name.clone()
+                current_fun: f.x.name.clone(),
             })
         };
 

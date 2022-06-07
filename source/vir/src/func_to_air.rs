@@ -214,8 +214,10 @@ fn func_body_to_air(
         let eq_body = mk_eq(&rec_f_succ, &body_expr);
         let name_zero = format!("{}_fuel_to_zero", &fun_to_air_ident(&name));
         let name_body = format!("{}_fuel_to_body", &fun_to_air_ident(&name));
-        let bind_zero = func_bind(ctx, name_zero, &function.x.typ_params(), &pars, &rec_f_fuel, true);
-        let bind_body = func_bind(ctx, name_body, &function.x.typ_params(), &pars, &rec_f_succ, true);
+        let bind_zero =
+            func_bind(ctx, name_zero, &function.x.typ_params(), &pars, &rec_f_fuel, true);
+        let bind_body =
+            func_bind(ctx, name_body, &function.x.typ_params(), &pars, &rec_f_succ, true);
         let implies_body = mk_implies(&mk_and(&decrease_by_reqs), &eq_body);
         let forall_zero = mk_bind_expr(&bind_zero, &eq_zero);
         let forall_body = mk_bind_expr(&bind_body, &implies_body);

@@ -12,10 +12,10 @@ use crate::sst_to_air::fun_to_air_ident;
 use crate::util::vec_map;
 use air::ast::{Command, CommandX, Commands, DeclX, MultiOp, Span};
 use air::ast_util::str_typ;
-use std::collections::{HashMap, HashSet};
-use std::sync::Arc;
 use std::cell::Cell;
 use std::cell::RefCell;
+use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
 
 pub type ChosenTrigger = Vec<(Span, String)>;
 #[derive(Debug, Clone)]
