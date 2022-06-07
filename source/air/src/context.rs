@@ -5,6 +5,7 @@ use crate::errors::{Error, ErrorLabels};
 use crate::model::Model;
 use crate::node;
 use crate::printer::{macro_push_node, str_to_node};
+use crate::profiler;
 use crate::scope_map::ScopeMap;
 use crate::smt_manager::SmtManager;
 use crate::smt_verify::ReportLongRunning;
@@ -267,7 +268,7 @@ impl Context {
                     self.set_z3_param("trace", "true");
                     // Very expensive.  May be needed to support more detailed log analysis.
                     //self.set_z3_param("proof", "true");
-                    // TODO: Pass along a dedicated value we can hand to :trace_file_name
+                    self.set_z3_param("trace_file_name", profiler::PROVER_LOG_FILE);
                 }
                 self.blank_line();
                 self.comment("AIR prelude");

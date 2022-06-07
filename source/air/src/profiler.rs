@@ -4,6 +4,8 @@ use std::io::BufRead;
 use z3tracer::model::QuantCost;
 use z3tracer::{Model, ModelConfig};
 
+pub const PROVER_LOG_FILE: &str = "verus-prover-trace.log";
+
 pub const USER_QUANT_PREFIX: &str = "user_";
 pub const INTERNAL_QUANT_PREFIX: &str = "internal_";
 
@@ -17,7 +19,7 @@ pub struct Profiler {
 impl Profiler {
     /// Instantiate a new (singleton) profiler
     pub fn new() -> Profiler {
-        let path = "z3.log";
+        let path = PROVER_LOG_FILE;
 
         // Count the number of lines
         let file = std::io::BufReader::new(
