@@ -268,7 +268,7 @@ impl Context {
                     self.set_z3_param("trace", "true");
                     // Very expensive.  May be needed to support more detailed log analysis.
                     //self.set_z3_param("proof", "true");
-                    self.set_z3_param("trace_file_name", profiler::PROVER_LOG_FILE);
+                    self.log_set_z3_param("trace_file_name", profiler::PROVER_LOG_FILE);
                 }
                 self.blank_line();
                 self.comment("AIR prelude");
