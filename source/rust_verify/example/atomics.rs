@@ -17,8 +17,8 @@ fn non_atomic_op() {
   opens_invariants_none();
 }
 
-pub fn do_nothing(#[proof] i: Invariant<u8>) {
-  open_invariant!(&i => inner => {
+pub fn do_nothing(#[proof] i: AtomicInvariant<u8>) {
+  open_atomic_invariant!(&i => inner => {
     atomic_op();
     //atomic_op();
   });

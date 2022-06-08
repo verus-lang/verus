@@ -923,7 +923,9 @@ fn erase_inv_block(ctxt: &Ctxt, mctxt: &mut MCtxt, expect: Mode, block: &Block) 
     let mut result_stmts = Vec::new();
 
     // First statement:
-    // let (guard, mut ident) = open_invariant_begin(arg);
+    //   let (guard, mut ident) = open_atomic_invariant_begin(arg);
+    // or
+    //   let (guard, mut ident) = open_local_invariant_begin(arg);
 
     // first, pattern match to get at the arg
 

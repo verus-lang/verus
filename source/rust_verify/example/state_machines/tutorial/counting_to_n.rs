@@ -106,7 +106,7 @@ impl G {
 pub struct Global {
     pub atomic: PAtomicU32,
     #[proof] pub instance: X::Instance,
-    #[proof] pub inv: Invariant<G>,
+    #[proof] pub inv: AtomicInvariant<G>,
 }
 
 impl Global {
@@ -144,7 +144,7 @@ impl Spawnable<Proof<X::stamped_tickets>> for ThreadData {
         let globals = &*globals;
         #[proof] let new_token;
 
-        open_invariant!(&globals.inv => g => {
+        open_atomic_invariant!(&globals.inv => g => {
             #[proof] let G { counter: mut c, perm: mut p } = g;
 
             #[spec] let now_c = c;
@@ -171,7 +171,7 @@ fn do_count(num_threads: u32) {
 
   let (atomic, Proof(perm_token)) = PAtomicU32::new(0);
 
-  #[proof] let at_inv: Invariant<G> = Invariant::new(
+  #[proof] let at_inv: AtomicInvariant<G> = AtomicInvariant::new(
       G { counter: counter_token, perm: perm_token },
       |g: G| g.wf(instance, atomic),
       0);
@@ -246,7 +246,7 @@ fn do_count(num_threads: u32) {
 
   let x;
   let global = &*global_arc;
-  open_invariant!(&global.inv => g => {
+  open_atomic_invariant!(&global.inv => g => {
     #[proof] let G { counter: c3, perm: p3 } = g;
 
     x = global.atomic.load(&p3);

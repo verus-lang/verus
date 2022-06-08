@@ -162,7 +162,7 @@ impl AtomicInstCollector {
     /// `is_atomic_fn` is for error-reporting purposes; if 'true', then the check
     /// is for a fn marked #[verifier(atomic)]. Otherwise, it's for a invariant block.
     pub fn validate(&self, inv_block_span: &Span, is_atomic_fn: bool) -> Result<(), VirErr> {
-        let context = if is_atomic_fn { "atomic function" } else { "open_invariant" };
+        let context = if is_atomic_fn { "atomic function" } else { "open_atomic_invariant" };
 
         if self.loops.len() > 0 {
             return Err(error_with_label(

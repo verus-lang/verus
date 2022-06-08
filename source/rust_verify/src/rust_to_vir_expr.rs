@@ -329,7 +329,7 @@ fn get_fn_path<'tcx>(bctx: &BodyCtxt<'tcx>, expr: &Expr<'tcx>) -> Result<vir::as
 }
 
 const BUILTIN_INV_LOCAL_BEGIN: &str = "crate::pervasive::invariant::open_local_invariant_begin";
-const BUILTIN_INV_BEGIN: &str = "crate::pervasive::invariant::open_invariant_begin";
+const BUILTIN_INV_ATOMIC_BEGIN: &str = "crate::pervasive::invariant::open_atomic_invariant_begin";
 const BUILTIN_INV_END: &str = "crate::pervasive::invariant::open_invariant_end";
 
 fn fn_call_to_vir<'tcx>(
@@ -439,7 +439,9 @@ fn fn_call_to_vir<'tcx>(
         || f_name == "std::rc::Rc::<T>::new"
         || f_name == "std::sync::Arc::<T>::new";
 
-    if f_name == BUILTIN_INV_BEGIN || f_name == BUILTIN_INV_LOCAL_BEGIN || f_name == BUILTIN_INV_END
+    if f_name == BUILTIN_INV_ATOMIC_BEGIN
+        || f_name == BUILTIN_INV_LOCAL_BEGIN
+        || f_name == BUILTIN_INV_END
     {
         // `open_invariant_begin` and `open_invariant_end` calls should only appear
         // through use of the `open_invariant!` macro, which creates an invariant block.
@@ -448,7 +450,10 @@ fn fn_call_to_vir<'tcx>(
         // not reach this point.
         return err_span_string(
             expr.span,
-            format!("{} should never be used except through open_invariant macro", f_name),
+            format!(
+                "{} should never be used except through open_atomic_invariant or open_local_invariant macro",
+                f_name
+            ),
         );
     }
 
@@ -1099,7 +1104,10 @@ fn is_invariant_block(bctx: &BodyCtxt, expr: &Expr) -> Result<bool, VirErr> {
 }
 
 fn malformed_inv_block_err<'tcx>(expr: &Expr<'tcx>) -> Result<vir::ast::Expr, VirErr> {
-    err_span_str(expr.span, "malformed invariant block; use 'open_invariant' macro instead")
+    err_span_str(
+        expr.span,
+        "malformed invariant block; use `open_atomic_invariant!` or `open_local_invariant!` macro instead",
+    )
 }
 
 fn invariant_block_to_vir<'tcx>(
@@ -1107,10 +1115,11 @@ fn invariant_block_to_vir<'tcx>(
     expr: &Expr<'tcx>,
     modifier: ExprModifier,
 ) -> Result<vir::ast::Expr, VirErr> {
-    // The open_invariant! macro produces code that looks like this
+    // The open_atomic_invariant! macro produces code that looks like this
+    // (and similarly for open_local_invariant!)
     //
     // #[verifier(invariant_block)] {
-    //      let (guard, mut $inner) = open_invariant_begin($eexpr);
+    //      let (guard, mut $inner) = open_atomic_invariant_begin($eexpr);
     //      $bblock
     //      open_invariant_end(guard, $inner);
     //  }
@@ -1123,7 +1132,7 @@ fn invariant_block_to_vir<'tcx>(
     // We also need to "recover" the $inner, $eexpr, and $bblock for converstion to VIR.
     //
     // If the AST doesn't look exactly like we expect, print an error asking the user
-    // to use the open_invariant! macro.
+    // to use the open_atomic_invariant! macro.
 
     let body = match &expr.kind {
         ExprKind::Block(body, _) => body,
@@ -1188,10 +1197,10 @@ fn invariant_block_to_vir<'tcx>(
             ..
         }) => {
             let f_name = path_as_rust_name(&def_id_to_vir_path(bctx.ctxt.tcx, *fun_id));
-            if f_name != BUILTIN_INV_BEGIN && f_name != BUILTIN_INV_LOCAL_BEGIN {
+            if f_name != BUILTIN_INV_ATOMIC_BEGIN && f_name != BUILTIN_INV_LOCAL_BEGIN {
                 return malformed_inv_block_err(expr);
             }
-            let atomicity = if f_name == BUILTIN_INV_BEGIN {
+            let atomicity = if f_name == BUILTIN_INV_ATOMIC_BEGIN {
                 InvAtomicity::Atomic
             } else {
                 InvAtomicity::NonAtomic

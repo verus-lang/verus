@@ -412,7 +412,7 @@ pub type CommandsWithContext = Arc<CommandsWithContextX>;
 
 fn atomicity_type_name(atomicity: InvAtomicity) -> Ident {
     match atomicity {
-        InvAtomicity::Atomic => Arc::new("Invariant".to_string()),
+        InvAtomicity::Atomic => Arc::new("AtomicInvariant".to_string()),
         InvAtomicity::NonAtomic => Arc::new("LocalInvariant".to_string()),
     }
 }
