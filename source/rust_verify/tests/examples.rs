@@ -39,6 +39,12 @@ fn tutorial() {
     run_examples_in_directory("example/state_machines/tutorial");
 }
 
+#[test]
+#[ignore]
+fn integer_ring() {
+    run_examples_in_directory("example/integer_ring");
+}
+
 fn run_examples_in_directory(dir_path: &str) {
     let entries = std::fs::read_dir(dir_path).expect("cannot find example directory");
 
