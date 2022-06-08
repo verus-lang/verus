@@ -36,4 +36,4 @@ jobs:
         working-directory: ./source
         run: |
           VERUS_SINGULAR_PATH="/usr/bin/Singular" VERUS_Z3_PATH="/home/chanheec/local_bin/z3" RUSTC=../rust/install/bin/rustc RUSTDOC=../rust/install/bin/rustdoc  ../rust/install/bin/cargo test -p rust_verify --test integer_ring -- --ignored
-          VERUS_SINGULAR_PATH=/usr/local/bin/Singular RUSTC=../rust/install/bin/rustc ../rust/install/bin/cargo test -p rust_verify --test examples -- --ignored
+          VERUS_SINGULAR_PATH="/usr/bin/Singular" VERUS_Z3_PATH="/home/chanheec/local_bin/z3" RUSTC=../rust/install/bin/rustc RUSTDOC=../rust/install/bin/rustdoc  ../rust/install/bin/cargo test -p rust_verify --test examples -- --ignored

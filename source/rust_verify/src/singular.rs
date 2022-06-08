@@ -52,13 +52,13 @@ pub(crate) fn expr_to_singular(
             format!("(({}))", ss.join(sop))
         }
         ExprX::Apply(fname, exprs) => {
-            if "Mul" == (**fname).as_str() {
+            if vir::def::MUL == (**fname).as_str() {
                 return expr_to_singular(
                     &Arc::new(ExprX::Multi(MultiOp::Mul, exprs.clone())),
                     tmp_idx,
                     node_map,
                 );
-            } else if "EucMod" == (**fname).as_str() {
+            } else if vir::def::EUC_MOD == (**fname).as_str() {
                 if exprs.len() != 2 {
                     panic!("internal error: singular mod translation");
                 }
@@ -129,7 +129,7 @@ pub fn singular_printer(vars: &Vec<Ident>, req_exprs: &Vec<Expr>, ens_exprs: &Ve
         // for `mod` ensure expr, "X % m == 0" assumed
         // RHS is required to be Zero to prevent proving something like `5m % m == 3m`
         match &**lhs {
-            ExprX::Apply(fname, exprs) if "EucMod" == (**fname).as_str() => {
+            ExprX::Apply(fname, exprs) if vir::def::EUC_MOD == (**fname).as_str() => {
                 // push 'm' to ideal basis
                 ideals_singular.push(expr_to_singular(&exprs[1], &mut tmp_count, &mut node_map));
                 // reduce 'X' with generated ideal
