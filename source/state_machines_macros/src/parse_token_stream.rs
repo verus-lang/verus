@@ -432,9 +432,7 @@ fn check_untemplated_type(ty: &Type, strategy: &str, type_name: &str) -> syn::pa
     let expected_form = type_name.to_string();
     return Err(Error::new(
         ty.span(),
-        format!(
-            "type of a field with sharding strategy '{strategy:}' must be of the form {expected_form:}"
-        ),
+        format!("type of a field with sharding strategy '{strategy:}' must be {expected_form:}"),
     ));
 }
 

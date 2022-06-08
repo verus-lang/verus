@@ -1557,7 +1557,7 @@ fn field_token_collection_type(sm: &SM, field: &Field) -> Type {
             Type::Verbatim(quote! { crate::pervasive::option::Option<#ty> })
         }
 
-        ShardableType::Map(key, _) => {
+        ShardableType::Map(key, _) | ShardableType::PersistentMap(key, _) => {
             Type::Verbatim(quote! { crate::pervasive::map::Map<#key, #ty> })
         }
 

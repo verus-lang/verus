@@ -507,7 +507,7 @@ fn expr_can_add(stype: &ShardableType, cur: &Expr, elt: &MonoidElt) -> Option<Ex
             })),
             MonoidElt::General(e) => match stype {
                 ShardableType::PersistentMap(_, _) => Some(Expr::Verbatim(quote! {
-                    (#cur).agrees(#e).dom()
+                    (#cur).agrees(#e)
                 })),
                 _ => {
                     panic!("expr_can_add invalid case");
