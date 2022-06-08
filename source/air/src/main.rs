@@ -126,10 +126,6 @@ pub fn main() {
             ValidityResult::TypeError(err) => {
                 panic!("Type error: {}", err);
             }
-            ValidityResult::SingularInvalid(..) => {
-                count_errors += 1;
-                println!("SingularInvalid in air main - Singular error at: TODO");
-            }
             ValidityResult::Invalid(_m, err) => {
                 count_errors += 1;
                 println!("Error at {}", err.msg);
@@ -141,16 +137,10 @@ pub fn main() {
                 count_errors += 1;
                 println!("Canceled");
             }
-            ValidityResult::UnexpectedSmtOutput(err) => {
-                panic!("Unexpected SMT output: {}", err);
-            }
-            ValidityResult::UnexpectedSingularOutput(err) => {
-                panic!("Unexpected Singular output: {}", err);
+            ValidityResult::UnexpectedOutput(err) => {
+                panic!("Unexpected output from solver: {}", err);
             }
         }
-        // if let CommandX::CheckValid(query_in) = &**command {
-        //     air_context.finish_query(query_in.is_singular);
-        // }
         if matches!(**command, CommandX::CheckValid(..)) {
             air_context.finish_query();
         }

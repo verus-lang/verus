@@ -291,11 +291,11 @@ impl Verifier {
                 ValidityResult::TypeError(err) => {
                     panic!("internal error: generated ill-typed AIR code: {}", err);
                 }
-                ValidityResult::SingularInvalid(error) => {
-                    self.count_errors += 1;
-                    compiler.report_error(&error, error_as);
-                    break;
-                }
+                // ValidityResult::SingularInvalid(error) => {
+                //     self.count_errors += 1;
+                //     compiler.report_error(&error, error_as);
+                //     break;
+                // }
                 ValidityResult::Canceled => {
                     if is_first_check && error_as == ErrorAs::Error {
                         self.count_errors += 1;
@@ -316,6 +316,14 @@ impl Verifier {
                     break;
                 }
                 ValidityResult::Invalid(air_model, error) => {
+                    if air_model.is_none() {
+                        // singular_invalid case
+                        self.count_errors += 1;
+                        compiler.report_error(&error, error_as);
+                        break;
+                    }
+                    let air_model = air_model.unwrap();
+
                     if is_first_check && error_as == ErrorAs::Error {
                         self.count_errors += 1;
                         invalidity = true;
@@ -364,11 +372,8 @@ impl Verifier {
                         QueryContext { report_long_running: Some(&mut report_long_running()) },
                     );
                 }
-                ValidityResult::UnexpectedSmtOutput(err) => {
-                    panic!("unexpected SMT output: {}", err);
-                }
-                ValidityResult::UnexpectedSingularOutput(err) => {
-                    panic!("unexpected Singular output: {}", err);
+                ValidityResult::UnexpectedOutput(err) => {
+                    panic!("unexpected output from solver: {}", err);
                 }
             }
         }

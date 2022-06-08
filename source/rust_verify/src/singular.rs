@@ -170,17 +170,20 @@ pub fn singular_printer(vars: &Vec<Ident>, req_exprs: &Vec<Expr>, ens_exprs: &Ve
 }
 
 pub fn check_singular_valid(
-    context: &mut air::context::Context,
+    _context: &mut air::context::Context,
     command: &Command,
-    query_context: QueryContext<'_, '_>,
+    _query_context: QueryContext<'_, '_>,
     // &mut self,
     // vars: Vec<String>,
     // enss: Vec<Expr>,
     // reqs: Vec<Expr>,
     // s: &Span,
 ) -> ValidityResult {
-    let query =
-        if let CommandX::CheckValid(query) = &**command { query } else { panic!("singular") };
+    let query: Query = if let CommandX::CheckValid(query) = &**command {
+        query.clone()
+    } else {
+        panic!("singular")
+    };
 
     let decl = query.local.clone();
     let statement = query.assertion.clone();
@@ -229,19 +232,22 @@ pub fn check_singular_valid(
     if (res.len() == 1) && (res[0] == "0") {
         ValidityResult::Valid
     } else if res[0].contains("?") {
-        ValidityResult::UnexpectedSingularOutput(String::from(format!(
+        ValidityResult::UnexpectedOutput(String::from(format!(
             "{} \ngenerated singular query: {}",
             res[0].as_str(),
             query
         )))
     } else {
-        ValidityResult::SingularInvalid(air::errors::error(
-            format!(
-                "Ensures polynomial failed to be reduced to zero: reduced polynomial is {}\n generated singular query: {} ",
-                res[0].as_str(),
-                query
+        ValidityResult::Invalid(
+            None,
+            air::errors::error(
+                format!(
+                    "Ensures polynomial failed to be reduced to zero: reduced polynomial is {}\n generated singular query: {} ",
+                    res[0].as_str(),
+                    query
+                ),
+                &err.spans[0], // TODO
             ),
-            &err.spans[0], // TODO
-        ))
+        )
     }
 }

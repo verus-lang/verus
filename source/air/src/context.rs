@@ -1,5 +1,4 @@
-use crate::ast::Span;
-use crate::ast::{Command, CommandX, Decl, Expr, Ident, Query, Typ, TypeError, Typs};
+use crate::ast::{Command, CommandX, Decl, Ident, Query, Typ, TypeError, Typs};
 use crate::closure::ClosureTerm;
 use crate::emitter::Emitter;
 use crate::errors::{Error, ErrorLabels};
@@ -33,12 +32,10 @@ pub(crate) struct AxiomInfo {
 #[derive(Debug)]
 pub enum ValidityResult {
     Valid,
-    Invalid(Model, Error),
-    SingularInvalid(Error),
+    Invalid(Option<Model>, Error),
     Canceled,
     TypeError(TypeError),
-    UnexpectedSmtOutput(String),
-    UnexpectedSingularOutput(String),
+    UnexpectedOutput(String),
 }
 
 #[derive(Clone, Debug)]
