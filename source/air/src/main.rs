@@ -148,10 +148,10 @@ pub fn main() {
                 panic!("Unexpected Singular output: {}", err);
             }
         }
+        // if let CommandX::CheckValid(query_in) = &**command {
+        //     air_context.finish_query(query_in.is_singular);
+        // }
         if matches!(**command, CommandX::CheckValid(..)) {
-            air_context.finish_query();
-        }
-        if matches!(**command, CommandX::SingularCheckValid(..)) {
             air_context.finish_query();
         }
     }

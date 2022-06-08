@@ -28,6 +28,9 @@ fn run_nodes_as_test(should_typecheck: bool, should_be_valid: bool, nodes: &[Nod
                     }
                     _ => {}
                 }
+                // if let CommandX::CheckValid(query_in) = &**command {
+                //     air_context.finish_query(query_in.is_singular);
+                // }
                 if matches!(**command, CommandX::CheckValid(..)) {
                     air_context.finish_query();
                 }

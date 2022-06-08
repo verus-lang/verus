@@ -345,7 +345,7 @@ fn check_function(ctxt: &Ctxt, function: &Function) -> Result<(), VirErr> {
         if function.x.ensure.len() != 1 {
             return err_str(
                 &function.span,
-                "integer_ring mode: single ensure expression is assumed now",
+                "only a single ensures is allowed in integer_ring mode",
             );
         } else {
             let ens = function.x.ensure[0].clone();

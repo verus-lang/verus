@@ -385,11 +385,19 @@ impl<X: Debug> Debug for Spanned<X> {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum ProverChoice {
+    DefaultProver,
+    Spinoff,
+    Singular,
+}
+
 pub struct CommandsWithContextX {
     pub span: air::ast::Span,
     pub desc: String,
     pub commands: Commands,
-    pub spinoff_prover: bool,
+    pub prover_choice: ProverChoice,
+    // pub spinoff_prover: bool,
 }
 
 impl CommandsWithContextX {
@@ -397,13 +405,13 @@ impl CommandsWithContextX {
         span: Span,
         desc: String,
         commands: Commands,
-        spinoff_prover: bool,
+        prover_choice: ProverChoice,
     ) -> CommandsWithContext {
         Arc::new(CommandsWithContextX {
             span: span,
             desc: desc,
             commands: commands,
-            spinoff_prover: spinoff_prover,
+            prover_choice: prover_choice,
         })
     }
 }

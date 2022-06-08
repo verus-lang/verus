@@ -10,9 +10,9 @@ use crate::def::{
     fun_to_string, path_to_string, prefix_box, prefix_ensures, prefix_fuel_id, prefix_lambda_type,
     prefix_pre_var, prefix_requires, prefix_unbox, snapshot_ident, suffix_global_id,
     suffix_local_expr_id, suffix_local_stmt_id, suffix_local_unique_id, suffix_typ_param_id,
-    variant_field_ident, variant_ident, SnapPos, SpanKind, Spanned, FUEL_BOOL, FUEL_BOOL_DEFAULT,
-    FUEL_DEFAULTS, FUEL_ID, FUEL_PARAM, FUEL_TYPE, POLY, SNAPSHOT_ASSIGN, SNAPSHOT_CALL,
-    SNAPSHOT_PRE, SUCC, SUFFIX_SNAP_JOIN, SUFFIX_SNAP_MUT, SUFFIX_SNAP_WHILE_BEGIN,
+    variant_field_ident, variant_ident, ProverChoice, SnapPos, SpanKind, Spanned, FUEL_BOOL,
+    FUEL_BOOL_DEFAULT, FUEL_DEFAULTS, FUEL_ID, FUEL_PARAM, FUEL_TYPE, POLY, SNAPSHOT_ASSIGN,
+    SNAPSHOT_CALL, SNAPSHOT_PRE, SUCC, SUFFIX_SNAP_JOIN, SUFFIX_SNAP_MUT, SUFFIX_SNAP_WHILE_BEGIN,
     SUFFIX_SNAP_WHILE_END,
 };
 use crate::def::{CommandsWithContext, CommandsWithContextX};
@@ -1128,7 +1128,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
                             Arc::new(CommandX::CheckValid(query)),
                             mk_option_command("smt.arith.nl", "false"),
                         ]),
-                        false,
+                        ProverChoice::DefaultProver,
                     ));
                 }
             }
@@ -1158,7 +1158,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
                     Arc::new(CommandX::CheckValid(query)),
                     mk_option_command("smt.case_split", "3"),
                 ]),
-                false,
+                ProverChoice::DefaultProver,
             ));
 
             vec![Arc::new(StmtX::Assume(exp_to_expr(ctx, &expr, expr_ctxt)))]
@@ -1317,7 +1317,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
                 span: stm.span.clone(),
                 desc: "while loop".to_string(),
                 commands: Arc::new(vec![Arc::new(CommandX::CheckValid(query))]),
-                spinoff_prover: false,
+                prover_choice: ProverChoice::DefaultProver,
             }));
 
             // At original site of while loop, assert invariant, havoc, assume invariant + neg_cond
@@ -1619,37 +1619,47 @@ pub fn body_stm_to_air(
     }
 
     if is_integer_ring {
+        if is_bit_vector_mode {
+            panic! {"Error: integer_ring and bit_vector should not be used together"}
+        };
         // parameters, requires, ensures to Singular Query
-        let mut vars: Vec<String> = vec![];
+        // parameters into `decl`
+        // requires into `assume` stmt
+        // ensures into `assert` stmt
+        let mut vars: Vec<Decl> = vec![];
         for param in params.iter() {
-            vars.push(param.x.name.to_string());
+            vars.push(Arc::new(DeclX::Var(param.x.name.clone(), typ_to_air(ctx, &param.x.typ))));
         }
-
-        let mut ens_exprs: Vec<Expr> = vec![];
-        for ens in enss {
-            ens_exprs.push(exp_to_expr(
-                ctx,
-                ens,
-                ExprCtxt { mode: ExprMode::Body, is_bit_vector: is_bit_vector_mode },
-            ));
-        }
-
-        let mut req_exprs: Vec<Expr> = vec![];
+        let mut stmts: Vec<Stmt> = vec![];
         for req in reqs {
-            req_exprs.push(exp_to_expr(
-                ctx,
-                req,
-                ExprCtxt { mode: ExprMode::BodyPre, is_bit_vector: is_bit_vector_mode },
-            ));
+            let air_expr =
+                exp_to_expr(ctx, req, ExprCtxt { mode: ExprMode::BodyPre, is_bit_vector: false });
+            let assume = Arc::new(StmtX::Assume(air_expr));
+            stmts.push(assume);
         }
-        let singular_command =
-            Arc::new(CommandX::SingularCheckValid(vars, ens_exprs, req_exprs, stm.span.clone()));
+        for ens in enss {
+            let error = error_with_label(
+                "singular assertion failed".to_string(),
+                &stm.span,
+                "at the ensure clause".to_string(),
+            );
+            let air_expr =
+                exp_to_expr(ctx, ens, ExprCtxt { mode: ExprMode::BodyPre, is_bit_vector: false });
+            let assert_stm = Arc::new(StmtX::Assert(error, air_expr));
+            stmts.push(assert_stm);
+        }
+
+        let query = Arc::new(QueryX {
+            local: Arc::new(vars),
+            assertion: Arc::new(air::ast::StmtX::Block(Arc::new(stmts))),
+        });
+        let singular_command = Arc::new(CommandX::CheckValid(query));
 
         state.commands.push(CommandsWithContextX::new(
             func_span.clone(),
             "Singular check valid".to_string(),
             Arc::new(vec![singular_command]),
-            is_spinoff_prover
+            ProverChoice::Singular,
         ));
     } else {
         let query = Arc::new(QueryX { local: Arc::new(local), assertion });
@@ -1672,7 +1682,7 @@ pub fn body_stm_to_air(
             func_span.clone(),
             "function body check".to_string(),
             Arc::new(commands),
-            is_spinoff_prover,
+            if is_spinoff_prover { ProverChoice::Spinoff } else { ProverChoice::DefaultProver },
         ));
     }
     (state.commands, state.snap_map)

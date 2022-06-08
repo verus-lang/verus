@@ -36,6 +36,7 @@ pub mod rust_to_vir_adts;
 pub mod rust_to_vir_base;
 pub mod rust_to_vir_expr;
 pub mod rust_to_vir_func;
+pub mod singular;
 pub mod typecheck;
 pub mod util;
 pub mod verifier;

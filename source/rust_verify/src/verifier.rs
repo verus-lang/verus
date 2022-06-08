@@ -243,6 +243,7 @@ impl Verifier {
         snap_map: &Vec<(air::ast::Span, SnapPos)>,
         command: &Command,
         context: &(&air::ast::Span, &str),
+        is_singular: bool,
     ) -> bool {
         let report_long_running = || {
             let mut counter = 0;
@@ -260,11 +261,19 @@ impl Verifier {
             (std::time::Duration::from_secs(2), report_fn)
         };
         let is_check_valid = matches!(**command, CommandX::CheckValid(_));
-        let is_singular = matches!(**command, CommandX::SingularCheckValid(..));
-        let mut result = air_context.command(
-            &command,
-            QueryContext { report_long_running: Some(&mut report_long_running()) },
-        );
+
+        let mut result = if !is_singular {
+            air_context.command(
+                &command,
+                QueryContext { report_long_running: Some(&mut report_long_running()) },
+            )
+        } else {
+            crate::singular::check_singular_valid(
+                air_context,
+                &command,
+                QueryContext { report_long_running: Some(&mut report_long_running()) },
+            )
+        };
         let mut is_first_check = true;
         let mut checks_remaining = self.args.multiple_errors;
         let mut only_check_earlier = false;
@@ -364,7 +373,7 @@ impl Verifier {
             }
         }
 
-        if is_check_valid {
+        if is_check_valid && !is_singular {
             air_context.finish_query();
         }
 
@@ -413,8 +422,7 @@ impl Verifier {
             }
         }
         let mut invalidity = false;
-        let CommandsWithContextX { span, desc, commands, spinoff_prover: _ } =
-            &*commands_with_context;
+        let CommandsWithContextX { span, desc, commands, prover_choice } = &*commands_with_context;
         if commands.len() > 0 {
             air_context.blank_line();
             air_context.comment(comment);
@@ -429,6 +437,7 @@ impl Verifier {
                 snap_map,
                 &command,
                 &(span, desc),
+                *prover_choice == vir::def::ProverChoice::Singular,
             );
             invalidity = invalidity || result_invalidity;
             let time1 = Instant::now();
@@ -673,7 +682,7 @@ impl Verifier {
                         span: function.span.clone(),
                         desc: "termination proof".to_string(),
                         commands: check_commands,
-                        spinoff_prover: false,
+                        prover_choice: vir::def::ProverChoice::DefaultProver,
                     }),
                     &HashMap::new(),
                     &vec![],
@@ -734,6 +743,7 @@ impl Verifier {
                 continue;
             }
             let mut recommends_rerun = false;
+            let mut is_singular = false;
             loop {
                 ctx.fun = mk_fun_ctx(&function, recommends_rerun);
                 let (commands, snap_map) = vir::func_to_air::func_def_to_air(
@@ -748,10 +758,13 @@ impl Verifier {
 
                 let mut function_invalidity = false;
                 for command in commands.iter().map(|x| &*x) {
-                    let CommandsWithContextX { span, desc: _, commands: _, spinoff_prover } =
+                    let CommandsWithContextX { span, desc: _, commands: _, prover_choice } =
                         &**command;
+                    if *prover_choice == vir::def::ProverChoice::Singular {
+                        is_singular = true;
+                    }
                     let mut spinoff_z3_context;
-                    let query_air_context = if *spinoff_prover {
+                    let query_air_context = if *prover_choice == vir::def::ProverChoice::Spinoff {
                         spinoff_z3_context = self.new_air_context_with_module_context(
                             ctx,
                             module,
@@ -782,7 +795,11 @@ impl Verifier {
                     function_invalidity = function_invalidity || command_invalidity;
                 }
 
-                if function_invalidity && !recommends_rerun && !self.args.no_auto_recommends_check {
+                if function_invalidity
+                    && !recommends_rerun
+                    && !self.args.no_auto_recommends_check
+                    && !is_singular
+                {
                     // Rerun failed query to report possible recommends violations
                     recommends_rerun = true;
                     continue;
