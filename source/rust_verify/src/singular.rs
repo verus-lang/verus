@@ -6,6 +6,42 @@ use sise::Node;
 use std::collections::HashMap;
 use std::sync::Arc;
 
+// Singular reserved keyword
+const RING_DECL: &str = "ring";
+const IDEAL_DECL: &str = "ideal";
+const DP_ORDERING: &str = "dp";
+const GROEBNER_APPLY: &str = "groebner";
+const REDUCE_APPLY: &str = "reduce";
+const TO_INTEGER_RING: &str = "integer";
+const QUIT_SINGULAR: &str = "quit";
+
+// Verus-side reserved variable names for encoding purposes
+const RING_R: &str = "ring_R";
+const IDEAL_I: &str = "ideal_I";
+const IDEAL_G: &str = "ideal_G";
+const TMP_PREFIX: &str = "singular_tmp_";
+
+fn assert_not_reserved(name: String) {
+    let reserved_keywords = vec![
+        RING_DECL,
+        IDEAL_DECL,
+        DP_ORDERING,
+        GROEBNER_APPLY,
+        REDUCE_APPLY,
+        TO_INTEGER_RING,
+        QUIT_SINGULAR,
+        RING_R,
+        IDEAL_I,
+        IDEAL_G,
+        TMP_PREFIX,
+    ];
+    for keyword in reserved_keywords {
+        if name == keyword {
+            panic!("Usage of reserved keyword: {}", name);
+        }
+    }
+}
+
 pub(crate) fn expr_to_singular(
     expr: &Expr,
     tmp_idx: &mut u32,
@@ -13,7 +49,10 @@ pub(crate) fn expr_to_singular(
 ) -> String {
     match &**expr {
         ExprX::Const(Constant::Nat(n)) => n.to_string(),
-        ExprX::Var(x) => x.to_string(),
+        ExprX::Var(x) => {
+            assert_not_reserved(x.to_string());
+            x.to_string()
+        }
         ExprX::Binary(BinaryOp::EuclideanMod, lhs, rhs) => {
             // x % y ->  x - y*tmp
             let pp = Printer::new(false);
@@ -22,7 +61,7 @@ pub(crate) fn expr_to_singular(
             let t = match value {
                 Some(tmp_var) => tmp_var.to_string(),
                 None => {
-                    let tmp_new = Arc::new(format!("tmp_{}", tmp_idx.to_string()));
+                    let tmp_new = Arc::new(format!("{}{}", TMP_PREFIX, tmp_idx.to_string()));
                     *tmp_idx += 1;
                     node_map.insert(key, tmp_new.clone());
                     tmp_new.to_string()
@@ -79,7 +118,7 @@ pub(crate) fn expr_to_singular(
                 match value {
                     Some(tmp_var) => tmp_var.to_string(),
                     None => {
-                        let tmp_new = Arc::new(format!("tmp_{}", tmp_idx.to_string()));
+                        let tmp_new = Arc::new(format!("{}{}", TMP_PREFIX, tmp_idx.to_string()));
                         *tmp_idx += 1;
                         node_map.insert(key, tmp_new.clone());
                         tmp_new.to_string()
@@ -112,7 +151,7 @@ pub fn singular_printer(vars: &Vec<Ident>, req_exprs: &Vec<Expr>, ens_exprs: &Ve
     let mut ideals_singular: Vec<String> = vec![];
     if req_exprs.len() == 0 {
         tmp_count = tmp_count + 1;
-        ideals_singular.push(format!("tmp_0"));
+        ideals_singular.push(format!("{}0", TMP_PREFIX));
     } else {
         for req in req_exprs {
             if let ExprX::Binary(BinaryOp::Eq, _, _) = &**req {
@@ -148,19 +187,34 @@ pub fn singular_printer(vars: &Vec<Ident>, req_exprs: &Vec<Expr>, ens_exprs: &Ve
 
     let ring_string;
     if tmp_count == 0 {
-        ring_string = format!("ring r=integer,({}),dp", vars2.join(","));
+        ring_string = format!(
+            "{} {}={},({}),{}",
+            RING_DECL,
+            RING_R,
+            TO_INTEGER_RING,
+            vars2.join(","),
+            DP_ORDERING
+        );
     } else {
         // create tmp variable for uninterpreted functions and mod operator.
         let mut tmp_vars: Vec<String> = vec![];
         for i in 0..(tmp_count + 1) {
-            tmp_vars.push(format!("tmp_{}", i.to_string()));
+            tmp_vars.push(format!("{}{}", TMP_PREFIX, i.to_string()));
         }
-        ring_string = format!("ring r=integer,({},{}),dp", vars2.join(","), tmp_vars.join(","),);
+        ring_string = format!(
+            "{} {}={},({},{}),{}",
+            RING_DECL,
+            RING_R,
+            TO_INTEGER_RING,
+            vars2.join(","),
+            tmp_vars.join(","),
+            DP_ORDERING
+        );
     }
-    let ideal_string = format!("{}{}", "ideal ideal_I = ", ideals_singular.join(","));
-    let ideal_to_groebner = String::from("ideal ideal_G = groebner(ideal_I)");
-    let reduce_string = format!("{}{}{}", "reduce(", reduces_singular[0], ", ideal_G)");
-    let quit_string = String::from("quit");
+    let ideal_string = format!("{} {} = {}", IDEAL_DECL, IDEAL_I, ideals_singular.join(","));
+    let ideal_to_groebner = format!("{} {} = {}({})", IDEAL_DECL, IDEAL_G, GROEBNER_APPLY, IDEAL_I);
+    let reduce_string = format!("{}({}, {})", REDUCE_APPLY, reduces_singular[0], IDEAL_G);
+    let quit_string = String::from(QUIT_SINGULAR);
 
     let res = format!(
         "{}; {}; {}; {}; {};",
@@ -224,6 +278,7 @@ pub fn check_singular_valid(
 
     let query = singular_printer(&vars, &reqs, &enss);
 
+    // TODO: singular logging?
     // air::singular_manager::log_singular(context, &vars, &reqs, &enss, &query);
 
     let singular_manager = SingularManager::new();

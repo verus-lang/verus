@@ -347,7 +347,10 @@ fn check_function(ctxt: &Ctxt, function: &Function) -> Result<(), VirErr> {
                 TypX::Int(IntRange::Int) => {}
                 TypX::Boxed(_) => {}
                 _ => {
-                    return err_str(&p.span, "integer_ring mode's param should be int type");
+                    return err_str(
+                        &p.span,
+                        "integer_ring proof's parameters should all be int type",
+                    );
                 }
             }
         }
@@ -371,7 +374,7 @@ fn check_function(ctxt: &Ctxt, function: &Function) -> Result<(), VirErr> {
                         _ => {
                             return err_str(
                                 &function.span,
-                                "integer_ring mode ensure expression: `X % m == 0` or `X == Y` ",
+                                "integer_ring mode ensures expression error: when the lhs is has % operator, the rhs should be zero. The ensures expression should be `Expr % m == 0` or `Expr == Expr` ",
                             );
                         }
                     }
@@ -379,7 +382,7 @@ fn check_function(ctxt: &Ctxt, function: &Function) -> Result<(), VirErr> {
             } else {
                 return err_str(
                     &function.span,
-                    "integer_ring mode ensures expression: operator `==` is assumed",
+                    "In the integer_ring's ensures expression, the outermost operator should be equality operator. For example, inequality operator is not supported",
                 );
             }
         }

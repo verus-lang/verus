@@ -180,8 +180,7 @@ pub enum CommandX {
     Pop,                     // pop temporary global declarations
     SetOption(Ident, Ident), // set-option option value (no colon on the option)
     Global(Decl),            // global declarations
-    CheckValid(Query),       // SMT check-sat (reporting validity rather than satisfiability)
-                             // SingularCheckValid(Vec<Ident>, Exprs, Exprs, Span), // check integer-ring proof using Singular: SingularCheckValid{params, ensures, requires, span}
+    CheckValid(Query), // SMT check-sat (reporting validity rather than satisfiability), Singular checks
 }
 
 // pub type SMTQuery = Arc<SMTQueryX>;
