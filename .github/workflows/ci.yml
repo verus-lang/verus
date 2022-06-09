@@ -21,9 +21,9 @@ jobs:
         run: |
           mkdir ../rust
           ln -sf ~/local_bin/install ../rust/install
-          echo rustc version `../rust/install/bin/rustc --version` # just checking if this is a right rustc
-          RUSTC=../rust/install/bin/rustc ../rust/install/bin/cargo clean  # cargo clean
-          RUSTC=../rust/install/bin/rustc ../rust/install/bin/cargo build  # cargo build    check .cargo/config.toml if this line fails
+          echo rustc version `../rust/install/bin/rustc --version`           # check rustc version
+          RUSTC=../rust/install/bin/rustc ../rust/install/bin/cargo clean    # cargo clean
+          RUSTC=../rust/install/bin/rustc ../rust/install/bin/cargo build    # cargo build   
           VERUS_Z3_PATH="/home/chanheec/local_bin/z3" RUSTC=../rust/install/bin/rustc RUSTDOC=../rust/install/bin/rustdoc  ../rust/install/bin/cargo test
       
       - name: check cargo fmt
@@ -35,5 +35,6 @@ jobs:
       - name: non-linear with singular
         working-directory: ./source
         run: |
-          VERUS_SINGULAR_PATH="/usr/bin/Singular" VERUS_Z3_PATH="/home/chanheec/local_bin/z3" RUSTC=../rust/install/bin/rustc RUSTDOC=../rust/install/bin/rustdoc  ../rust/install/bin/cargo test -p rust_verify --test integer_ring -- --ignored
-          VERUS_SINGULAR_PATH="/usr/bin/Singular" VERUS_Z3_PATH="/home/chanheec/local_bin/z3" RUSTC=../rust/install/bin/rustc RUSTDOC=../rust/install/bin/rustdoc  ../rust/install/bin/cargo test -p rust_verify --test examples -- --ignored
+          RUSTC=../rust/install/bin/rustc ../rust/install/bin/cargo build --features singular       # build with singular feature 
+          VERUS_SINGULAR_PATH="/usr/bin/Singular" VERUS_Z3_PATH="/home/chanheec/local_bin/z3" RUSTC=../rust/install/bin/rustc RUSTDOC=../rust/install/bin/rustdoc  ../rust/install/bin/cargo test -p rust_verify --features singular --test integer_ring
+          VERUS_SINGULAR_PATH="/usr/bin/Singular" VERUS_Z3_PATH="/home/chanheec/local_bin/z3" RUSTC=../rust/install/bin/rustc RUSTDOC=../rust/install/bin/rustdoc  ../rust/install/bin/cargo test -p rust_verify --features singular --test examples -- --ignored

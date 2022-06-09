@@ -6,7 +6,6 @@ pub mod errors;
 pub mod model;
 pub mod parser;
 pub mod scope_map;
-pub mod singular_manager;
 pub mod smt_manager;
 
 #[macro_use]
@@ -22,3 +21,6 @@ mod typecheck;
 mod util;
 mod var_to_const;
 mod visitor;
+
+#[cfg(feature = "singular")]
+pub mod singular_manager;

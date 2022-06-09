@@ -318,7 +318,16 @@ fn check_function(ctxt: &Ctxt, function: &Function) -> Result<(), VirErr> {
         }
     }
 
+    #[cfg(not(feature = "singular"))]
     if function.x.attrs.integer_ring {
+        panic!("Please cargo build with `--features singular` to use integer_ring attribute");
+    }
+
+    #[cfg(feature = "singular")]
+    if function.x.attrs.integer_ring {
+        let _ = std::env::var("VERUS_SINGULAR_PATH")
+            .expect("Please provide VERUS_SINGULAR_PATH to use integer_ring attribute");
+
         if function.x.mode != Mode::Proof {
             return err_str(&function.span, "integer_ring mode must be declared as proof");
         }

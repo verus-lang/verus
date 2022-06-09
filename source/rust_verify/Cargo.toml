@@ -18,3 +18,6 @@ win32job = "1"
 [dev-dependencies]
 rust_verify_test_macros = { path = "../rust_verify_test_macros" }
 regex = "1"
+
+[features]
+singular = ["vir/singular", "air/singular"]

@@ -262,6 +262,7 @@ impl Verifier {
         };
         let is_check_valid = matches!(**command, CommandX::CheckValid(_));
 
+        #[cfg(feature = "singular")]
         let mut result = if !is_singular {
             air_context.command(
                 &command,
@@ -274,6 +275,13 @@ impl Verifier {
                 QueryContext { report_long_running: Some(&mut report_long_running()) },
             )
         };
+
+        #[cfg(not(feature = "singular"))]
+        let mut result = air_context.command(
+            &command,
+            QueryContext { report_long_running: Some(&mut report_long_running()) },
+        );
+
         let mut is_first_check = true;
         let mut checks_remaining = self.args.multiple_errors;
         let mut only_check_earlier = false;

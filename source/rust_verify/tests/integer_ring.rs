@@ -3,9 +3,11 @@
 mod common;
 use common::*;
 
-// Although these are marked with #[ignore], the CI will run these tests
+// All these tests are marked as #[ignore] unless Verus is compiled with `--features singular`
 test_verify_one_file! {
-    #[test] #[ignore] test1 code! {
+    #[test]
+    #[cfg_attr(not(feature = "singular"), ignore)]
+    test1 code! {
         #[proof]
         #[verifier(integer_ring)]
         fn test1(x: int, y: int, z:int, m:int){
@@ -16,7 +18,9 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] #[ignore] test2 code! {
+    #[test]
+    #[cfg_attr(not(feature = "singular"), ignore)]
+    test2 code! {
         #[verifier(integer_ring)]
         #[proof]
         fn test2(a:int, s:int, R:int, M:int, RR:int, R_INV:int) {
@@ -31,7 +35,9 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] #[ignore] test3 code! {
+    #[test]
+    #[cfg_attr(not(feature = "singular"), ignore)]
+    test3 code! {
         #[verifier(integer_ring)]
         #[proof]
         fn test3(p2_full: int, BASE: int, ui: int, m0: int, m0d: int, p1_lh: int, p1_full: int){
@@ -47,7 +53,9 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] #[ignore] test4 code! {
+    #[test]
+    #[cfg_attr(not(feature = "singular"), ignore)]
+    test4 code! {
         #[verifier(integer_ring)]
         #[proof]
         fn test4(
@@ -85,7 +93,9 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] #[ignore] test5 code! {
+    #[test]
+    #[cfg_attr(not(feature = "singular"), ignore)]
+    test5 code! {
         #[spec]
         fn square(a:int) -> int{
             a*a
@@ -110,7 +120,9 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] #[ignore] test6 code! {
+    #[test]
+    #[cfg_attr(not(feature = "singular"), ignore)]
+    test6 code! {
         #[proof]
         #[verifier(integer_ring)]
         fn test6(x: int, y: int, z:int){
@@ -121,7 +133,9 @@ test_verify_one_file! {
 
 // Failing test cases
 test_verify_one_file! {
-    #[test] #[ignore] test1_fails code! {
+    #[test]
+    #[cfg_attr(not(feature = "singular"), ignore)]
+    test1_fails code! {
         #[proof]
         #[verifier(integer_ring)]
         fn test1_fails(x: int, y: int, z:int, m:int){
@@ -133,7 +147,9 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] #[ignore] test2_fails code! {
+    #[test]
+    #[cfg_attr(not(feature = "singular"), ignore)]
+    test2_fails code! {
         #[verifier(integer_ring)]
         #[proof]
         fn test2_fails(
@@ -171,7 +187,9 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] #[ignore] test3_fails code! {
+    #[test]
+    #[cfg_attr(not(feature = "singular"), ignore)]
+    test3_fails code! {
         #[proof]
         #[verifier(integer_ring)]
         fn test3_fails(x: u32, y: u32, z:u32, m:u32){ // should be type int
@@ -182,7 +200,9 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] #[ignore] test4_fails code! {
+    #[test]
+    #[cfg_attr(not(feature = "singular"), ignore)]
+    test4_fails code! {
         #[proof]
         #[verifier(integer_ring)]
         fn test4_fails(x: int, y: int, z:int, m:int){
