@@ -20,10 +20,10 @@ pub struct PCell<#[verifier(strictly_positive)] V> {
 // PCell is always safe to Send/Sync. It's the Permission object where Send/Sync matters.
 // (It doesn't matter if you move the bytes to another thread if you can't access them.)
 
-#[verifier(external_body)]
+#[verifier(external)]
 unsafe impl<T> Sync for PCell<T> {}
 
-#[verifier(external_body)]
+#[verifier(external)]
 unsafe impl<T> Send for PCell<T> {}
 
 // Permission<V>, on the other hand, needs to inherit both Send and Sync from the V,
