@@ -249,6 +249,38 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_add_constant IMPORTS.to_string() + code_str! {
+        tokenized_state_machine!{ X {
+            fields {
+                #[sharding(constant)] pub t: int
+            }
+
+            transition!{
+                tr() {
+                    add t += (5);
+                }
+            }
+        }}
+    } => Err(e) => assert_error_msg(e, "'add' statement not allowed for field with sharding strategy 'constant'")
+}
+
+test_verify_one_file! {
+    #[test] test_have_constant IMPORTS.to_string() + code_str! {
+        tokenized_state_machine!{ X {
+            fields {
+                #[sharding(constant)] pub t: int
+            }
+
+            transition!{
+                tr() {
+                    have t >= (5);
+                }
+            }
+        }}
+    } => Err(e) => assert_error_msg(e, "'have' statement not allowed for field with sharding strategy 'constant'")
+}
+
+test_verify_one_file! {
     #[test] test_use_option_directly IMPORTS.to_string() + code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -2472,6 +2504,23 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] wrong_op_count_add_option IMPORTS.to_string() + code_str! {
+        tokenized_state_machine!{ X {
+            fields {
+                #[sharding(count)]
+                pub t: nat,
+            }
+
+            transition!{
+                tr() {
+                    add t += Some(5);
+                }
+            }
+        }}
+    } => Err(e) => assert_error_msg(e, "element but the given field has sharding strategy 'count'")
+}
+
+test_verify_one_file! {
     #[test] wrong_op_option_deposit_option IMPORTS.to_string() + code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -2485,7 +2534,7 @@ test_verify_one_file! {
                 }
             }
         }}
-    } => Err(e) => assert_error_msg(e, "'deposit' statement not allowed for field with sharding strategy 'option'")
+    } => Err(e) => assert_error_msg(e, "is only for storage types")
 }
 
 test_verify_one_file! {
@@ -2502,7 +2551,7 @@ test_verify_one_file! {
                 }
             }
         }}
-    } => Err(e) => assert_error_msg(e, "'add' statement not allowed for field with sharding strategy 'storage_option'")
+    } => Err(e) => assert_error_msg(e, "use deposit/withdraw/guard statements for storage strategies")
 }
 
 test_verify_one_file! {
@@ -2904,8 +2953,9 @@ test_verify_one_file! {
                 tr1(foo: Foo, c: bool) {
                     match foo {
                         Foo::Bar(a) => { update z = pre.z + 1; }
-                        Foo::Qax(b) => { assert(pre.y <= pre.z); }
+                        Foo::Qax(b) if b == 20 => { assert(pre.y <= pre.z); }
                         Foo::Duck(d) => { assert(foo.is_Duck()); }
+                        _ => { }
                     }
                     require(c);
                 }
@@ -2935,12 +2985,14 @@ test_verify_one_file! {
         fn rel_tr1(pre: X::State, post: X::State, foo: Foo, c: bool) -> bool {
             (match foo {
                 Foo::Bar(a) => { post.z == pre.z + 1 }
-                Foo::Qax(b) => { pre.y <= pre.z >>= post.z == pre.z }
+                Foo::Qax(b) if b == 20 => { pre.y <= pre.z >>= post.z == pre.z }
                 Foo::Duck(d) => { post.z == pre.z }
+                _ => { post.z == pre.z }
             }) && ((match foo {
                 Foo::Bar(a) => { true }
-                Foo::Qax(b) => { pre.y <= pre.z }
+                Foo::Qax(b) if b == 20 => { pre.y <= pre.z }
                 Foo::Duck(d) => { true }
+                _ => { true }
             }) >>=
                 c && pre.x == post.x && pre.y == post.y)
         }
@@ -2949,8 +3001,9 @@ test_verify_one_file! {
         fn rel_tr1_strong(pre: X::State, post: X::State, foo: Foo, c: bool) -> bool {
             (match foo {
                 Foo::Bar(a) => { post.z == pre.z + 1 }
-                Foo::Qax(b) => { post.z == pre.z && pre.y <= pre.z }
+                Foo::Qax(b) if b == 20 => { post.z == pre.z && pre.y <= pre.z }
                 Foo::Duck(d) => { post.z == pre.z }
+                _ => { post.z == pre.z }
             })
             && (c && pre.x == post.x && pre.y == post.y)
         }

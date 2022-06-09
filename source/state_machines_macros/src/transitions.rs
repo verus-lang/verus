@@ -297,11 +297,7 @@ fn is_allowed_in_special_op(
     sop: &SpecialOp,
 ) -> syn::parse::Result<()> {
     match stype {
-        ShardableType::Constant(_) => {
-            Err(Error::new(span, "field marked 'constant' cannot be modified"))
-        }
-
-        ShardableType::Variable(_) | ShardableType::NotTokenized(_) => {
+        ShardableType::Constant(_) | ShardableType::Variable(_) | ShardableType::NotTokenized(_) => {
             let stmt_name = sop.stmt.name();
             let strat = stype.strategy_name();
             Err(Error::new(
