@@ -1,5 +1,6 @@
 use air::ast::{BinaryOp, Command, CommandX, Constant, Expr, ExprX, Ident, MultiOp, Query};
 use air::context::{QueryContext, ValidityResult};
+use air::errors::Error;
 use air::printer::Printer;
 use air::singular_manager::SingularManager;
 use sise::Node;
@@ -33,12 +34,14 @@ fn assert_not_reserved(name: String) {
         RING_R,
         IDEAL_I,
         IDEAL_G,
-        TMP_PREFIX,
     ];
     for keyword in reserved_keywords {
         if name == keyword {
-            panic!("Usage of reserved keyword: {}", name);
+            panic!("Integer_ring/Singular: Usage of reserved keyword at variable name: {}", name);
         }
+    }
+    if name.starts_with(TMP_PREFIX) {
+        panic!("Integer_ring/Singular: Usage of reserved prefix `{}` at {}", TMP_PREFIX, name);
     }
 }
 
@@ -46,8 +49,8 @@ pub(crate) fn expr_to_singular(
     expr: &Expr,
     tmp_idx: &mut u32,
     node_map: &mut HashMap<Node, Ident>,
-) -> String {
-    match &**expr {
+) -> Result<String, ()> {
+    let result_string = match &**expr {
         ExprX::Const(Constant::Nat(n)) => n.to_string(),
         ExprX::Var(x) => {
             assert_not_reserved(x.to_string());
@@ -67,28 +70,28 @@ pub(crate) fn expr_to_singular(
                     tmp_new.to_string()
                 }
             };
-            let s1 = expr_to_singular(lhs, tmp_idx, node_map);
-            let s2 = expr_to_singular(rhs, tmp_idx, node_map);
+            let s1 = expr_to_singular(lhs, tmp_idx, node_map)?;
+            let s2 = expr_to_singular(rhs, tmp_idx, node_map)?;
 
             format!("(({}) - (({})*({})))", s1, s2, t)
         }
         ExprX::Binary(BinaryOp::Eq, lhs, rhs) => {
-            let s1 = expr_to_singular(lhs, tmp_idx, node_map);
-            let s2 = expr_to_singular(rhs, tmp_idx, node_map);
+            let s1 = expr_to_singular(lhs, tmp_idx, node_map)?;
+            let s2 = expr_to_singular(rhs, tmp_idx, node_map)?;
             format!("({}) - ({})", s1, s2)
         }
         ExprX::Multi(op, exprs) => {
             let mut ss = vec![];
             let sop = match op {
-                MultiOp::Add => ") + (",
-                MultiOp::Sub => ") - (",
-                MultiOp::Mul => ") * (", // still reachable with constant multiplication
-                _ => panic!("unsupported singular multi op"),
+                MultiOp::Add => " + ",
+                MultiOp::Sub => " - ",
+                MultiOp::Mul => " * ", // still reachable with constant multiplication
+                _ => panic!("unsupported integer_ring operator: {:?}", op.clone()),
             };
             for e in &**exprs {
-                ss.push(expr_to_singular(&e, tmp_idx, node_map));
+                ss.push(format!("({})", expr_to_singular(&e, tmp_idx, node_map)?));
             }
-            format!("(({}))", ss.join(sop))
+            format!("({})", ss.join(sop))
         }
         ExprX::Apply(fname, exprs) => {
             if vir::def::MUL == (**fname).as_str() {
@@ -126,18 +129,19 @@ pub(crate) fn expr_to_singular(
                 }
             }
         }
-        _ => panic!("unsupported singular expression: {:?}", expr),
-    }
+        _ => return Err(()),
+    };
+    Ok(result_string)
 }
 
-pub fn singular_printer(vars: &Vec<Ident>, req_exprs: &Vec<Expr>, ens_exprs: &Vec<Expr>) -> String {
+pub fn singular_printer(
+    vars: &Vec<Ident>,
+    req_exprs: &Vec<(Expr, Error)>,
+    ens_expr: &(Expr, Error),
+) -> Result<String, Error> {
     let mut tmp_count: u32 = 0; // count the number of required tmp vars
     let mut vars2: Vec<String> = vec![];
     let mut node_map: HashMap<Node, Ident> = HashMap::new(); // for uninterpreted functions and mod translation
-
-    if ens_exprs.len() != 1 {
-        panic!("Singular ensures expression: only one ensures is assumed")
-    }
 
     // Using @ is safe. For example, `poly g1 = x2+y3` is translated as poly `g1 = x^2 + y^3`
     for v in vars {
@@ -153,33 +157,47 @@ pub fn singular_printer(vars: &Vec<Ident>, req_exprs: &Vec<Expr>, ens_exprs: &Ve
         tmp_count = tmp_count + 1;
         ideals_singular.push(format!("{}0", TMP_PREFIX));
     } else {
-        for req in req_exprs {
+        for (req, err) in req_exprs {
             if let ExprX::Binary(BinaryOp::Eq, _, _) = &**req {
             } else {
-                panic!("integer ring expression: equality assumed");
+                return Err(err.clone());
             }
-            ideals_singular.push(expr_to_singular(&req, &mut tmp_count, &mut node_map));
+            match expr_to_singular(&req, &mut tmp_count, &mut node_map) {
+                Ok(translated) => ideals_singular.push(translated),
+                Err(_) => return Err(err.clone()),
+            }
         }
     }
 
     let mut reduces_singular: Vec<String> = vec![];
-    let ens = ens_exprs[0].clone();
-    if let ExprX::Binary(BinaryOp::Eq, lhs, zero) = &*ens {
+    let (ens, ens_err) = ens_expr;
+    if let ExprX::Binary(BinaryOp::Eq, lhs, zero) = &**ens {
         // for `mod` ensure expr, "X % m == 0" assumed
         // RHS is required to be Zero to prevent proving something like `5m % m == 3m`
         match &**lhs {
             ExprX::Apply(fname, exprs) if vir::def::EUC_MOD == (**fname).as_str() => {
                 // push 'm' to ideal basis
-                ideals_singular.push(expr_to_singular(&exprs[1], &mut tmp_count, &mut node_map));
+                match expr_to_singular(&exprs[1], &mut tmp_count, &mut node_map) {
+                    Ok(translated) => ideals_singular.push(translated),
+                    Err(_) => return Err(ens_err.clone()),
+                };
+
                 // reduce 'X' with generated ideal
-                reduces_singular.push(expr_to_singular(&exprs[0], &mut tmp_count, &mut node_map));
+                match expr_to_singular(&exprs[0], &mut tmp_count, &mut node_map) {
+                    Ok(translated) => reduces_singular.push(translated),
+                    Err(_) => return Err(ens_err.clone()),
+                };
+
                 if let ExprX::Const(Constant::Nat(ss)) = &**zero {
                     assert_eq!(**ss, "0".to_string());
                 } else {
                     panic!("Singular expression: equality with zero assumed");
                 }
             }
-            _ => reduces_singular.push(expr_to_singular(&ens, &mut tmp_count, &mut node_map)),
+            _ => match expr_to_singular(&ens, &mut tmp_count, &mut node_map) {
+                Ok(translated) => reduces_singular.push(translated),
+                Err(_) => return Err(ens_err.clone()),
+            },
         }
     } else {
         panic!("Singular ensures expression: equality assumed");
@@ -220,63 +238,60 @@ pub fn singular_printer(vars: &Vec<Ident>, req_exprs: &Vec<Expr>, ens_exprs: &Ve
         "{}; {}; {}; {}; {};",
         ring_string, ideal_string, ideal_to_groebner, reduce_string, quit_string
     );
-    res
+    Ok(res)
 }
 
 pub fn check_singular_valid(
     _context: &mut air::context::Context,
     command: &Command,
     _query_context: QueryContext<'_, '_>,
-    // &mut self,
-    // vars: Vec<String>,
-    // enss: Vec<Expr>,
-    // reqs: Vec<Expr>,
-    // s: &Span,
 ) -> ValidityResult {
     let query: Query = if let CommandX::CheckValid(query) = &**command {
         query.clone()
     } else {
-        panic!("singular")
+        panic!("internal error: integer_ring")
     };
 
     let decl = query.local.clone();
     let statement = query.assertion.clone();
+    let stmts: air::ast::Stmts = if let air::ast::StmtX::Block(stmts) = &*statement {
+        stmts.clone()
+    } else {
+        panic!("internal error: integer_ring")
+    };
+
+    let arc_ens: &air::ast::Stmt = stmts.last().unwrap();
+    let ens = match &**arc_ens {
+        air::ast::StmtX::Assert(error, exp) => (exp.clone(), error.clone()),
+        _ => {
+            panic!("internal error");
+        }
+    };
 
     let mut vars: Vec<Ident> = vec![];
-    let mut enss = vec![];
-    let mut reqs = vec![];
-
-    // just a tmp var
-    let mut err = Arc::new(air::errors::ErrorX {
-        msg: "msg".to_string().into(),
-        spans: vec![],
-        labels: Vec::new(),
-    });
-
     for d in &**decl {
         if let air::ast::DeclX::Var(name, _typ) = &**d {
             vars.push(name.clone());
         }
     }
 
-    if let air::ast::StmtX::Block(stmts) = &*statement {
-        for stm in &**stmts {
-            match &**stm {
-                air::ast::StmtX::Assume(exp) => {
-                    reqs.push(exp.clone());
-                }
-                air::ast::StmtX::Assert(error, exp) => {
-                    enss.push(exp.clone());
-                    err = error.clone();
-                }
-                _ => {
-                    panic!("internal error");
-                }
-            };
-        }
-    };
+    let mut reqs = vec![];
+    for idx in 0..(stmts.len() - 1) {
+        let stm = &stmts[idx];
+        match &**stm {
+            air::ast::StmtX::Assert(error, exp) => {
+                reqs.push((exp.clone(), error.clone()));
+            }
+            _ => {
+                panic!("internal error");
+            }
+        };
+    }
 
-    let query = singular_printer(&vars, &reqs, &enss);
+    let query = match singular_printer(&vars, &reqs, &ens) {
+        Ok(query_string) => query_string,
+        Err(err) => return ValidityResult::Invalid(None, err),
+    };
 
     // TODO: singular logging?
     // air::singular_manager::log_singular(context, &vars, &reqs, &enss, &query);
@@ -297,11 +312,11 @@ pub fn check_singular_valid(
             None,
             air::errors::error(
                 format!(
-                    "Ensures polynomial failed to be reduced to zero: reduced polynomial is {}\n generated singular query: {} ",
+                    "postcondition not satisfied: Ensures polynomial failed to be reduced to zero, reduced polynomial is {}\n generated singular query: {} ",
                     res[0].as_str(),
                     query
                 ),
-                &err.spans[0], // TODO
+                &ens.1.spans[0],
             ),
         )
     }

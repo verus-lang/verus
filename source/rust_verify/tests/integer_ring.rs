@@ -211,3 +211,16 @@ test_verify_one_file! {
         }
     } => Err(_)
 }
+
+test_verify_one_file! {
+    #[test]
+    #[cfg_attr(not(feature = "singular"), ignore)]
+    test5_fails code! {
+        #[proof]
+        #[verifier(integer_ring)]
+        fn test1_fails(x: int, y: int, z:int, m:int){
+            requires( (x-y) % m > 0);  //FAILS
+            ensures( (x*z + y*z) % m == 0);
+        }
+    } => Err(_)
+}

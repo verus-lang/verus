@@ -1623,35 +1623,38 @@ pub fn body_stm_to_air(
             panic! {"Error: integer_ring and bit_vector should not be used together"}
         };
         // parameters, requires, ensures to Singular Query
-        // parameters into `decl`
-        // requires into `assume` stmt
-        // ensures into `assert` stmt
-        let mut vars: Vec<Decl> = vec![];
+        let mut singular_vars: Vec<Decl> = vec![];
         for param in params.iter() {
-            vars.push(Arc::new(DeclX::Var(param.x.name.clone(), typ_to_air(ctx, &param.x.typ))));
+            singular_vars
+                .push(Arc::new(DeclX::Var(param.x.name.clone(), typ_to_air(ctx, &param.x.typ))));
         }
-        let mut stmts: Vec<Stmt> = vec![];
+        let mut singular_stmts: Vec<Stmt> = vec![];
         for req in reqs {
+            let error = error_with_label(
+                "Failed to translate this expression into a singular query".to_string(),
+                &req.span,
+                "at the require clause".to_string(),
+            );
             let air_expr =
                 exp_to_expr(ctx, req, ExprCtxt { mode: ExprMode::BodyPre, is_bit_vector: false });
-            let assume = Arc::new(StmtX::Assume(air_expr));
-            stmts.push(assume);
+            let assert_stm = Arc::new(StmtX::Assert(error, air_expr));
+            singular_stmts.push(assert_stm);
         }
         for ens in enss {
             let error = error_with_label(
-                "singular assertion failed".to_string(),
-                &stm.span,
+                "Failed to translate this expression into a singular query".to_string(),
+                &ens.span,
                 "at the ensure clause".to_string(),
             );
             let air_expr =
                 exp_to_expr(ctx, ens, ExprCtxt { mode: ExprMode::BodyPre, is_bit_vector: false });
             let assert_stm = Arc::new(StmtX::Assert(error, air_expr));
-            stmts.push(assert_stm);
+            singular_stmts.push(assert_stm);
         }
 
         let query = Arc::new(QueryX {
-            local: Arc::new(vars),
-            assertion: Arc::new(air::ast::StmtX::Block(Arc::new(stmts))),
+            local: Arc::new(singular_vars),
+            assertion: Arc::new(air::ast::StmtX::Block(Arc::new(singular_stmts))),
         });
         let singular_command = Arc::new(CommandX::CheckValid(query));
 

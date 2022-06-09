@@ -180,27 +180,5 @@ pub enum CommandX {
     Pop,                     // pop temporary global declarations
     SetOption(Ident, Ident), // set-option option value (no colon on the option)
     Global(Decl),            // global declarations
-    CheckValid(Query), // SMT check-sat (reporting validity rather than satisfiability), Singular checks
+    CheckValid(Query), // SMT check-sat (reporting validity rather than satisfiability), Possibly singular checks
 }
-
-// pub type SMTQuery = Arc<SMTQueryX>;
-// #[derive(Debug)]
-// pub struct SMTQueryX {
-//     pub local: Decls,    // local declarations
-//     pub assertion: Stmt, // checked by SMT with global and local declarations
-// }
-
-// pub type SingularQuery = Arc<SingularQueryX>;
-// #[derive(Debug)]
-// pub struct SingularQueryX {
-//     pub params: Vec<Ident>,
-//     pub requires: Exprs,
-//     pub ensures: Exprs,
-//     pub span: Span,
-// }
-
-// #[derive(Debug)]
-// pub enum Query {
-//     SMTQuery(SMTQuery),
-//     SingularQuery(SingularQuery),
-// }
