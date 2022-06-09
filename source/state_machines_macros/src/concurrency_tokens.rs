@@ -9,7 +9,6 @@ use crate::ast::{
     Arm, Field, Lemma, LetKind, MonoidElt, MonoidStmtType, ShardableType, SpecialOp, SplitKind,
     Transition, TransitionKind, TransitionStmt, SM,
 };
-use crate::check_bind_stmts::get_binding_ty;
 use crate::field_access_visitor::{find_all_accesses, visit_field_accesses};
 use crate::parse_token_stream::SMBundle;
 use crate::to_relation::{asserts_to_single_predicate, emit_match};
@@ -18,7 +17,7 @@ use crate::to_token_stream::{
     name_with_type_args_turbofish, shardable_type_to_type,
 };
 use crate::token_transition_checks::{check_ordering_remove_have_add, check_unsupported_updates};
-use crate::util::combine_errors_or_ok;
+use crate::util::{combine_errors_or_ok, is_definitely_irrefutable};
 use proc_macro2::Span;
 use proc_macro2::TokenStream;
 use quote::{quote, quote_spanned};
@@ -1440,7 +1439,7 @@ fn translate_transition(
                 SplitKind::Special(id, op, _proof, pat_opt) => {
                     let field = ctxt.get_field_or_panic(id);
                     let condition_ts_opt =
-                        translate_special_condition(ctxt, *span, &field, op, errors);
+                        translate_special_condition(ctxt, *span, &field, op, pat_opt, errors);
                     let assignment_opt = if pat_opt.is_some() {
                         // The relevant token param should be the last one in the params
                         // (having been added by the above call to
@@ -1468,10 +1467,13 @@ fn translate_transition(
                         Some(assign_e) => {
                             assert!(splits.len() == 1);
 
-                            let pat = pat_opt.clone().expect("expected pat");
-                            let ty = get_binding_ty(&field.stype);
-                            let kind = SplitKind::Let(pat, ty, LetKind::Normal, assign_e);
-                            Some(TransitionStmt::Split(*span, kind, splits.clone()))
+                            let pat = pat_opt.as_ref().expect("expected pat");
+                            if let Some((pat1, init1)) = assign_pat_or_arbitrary(pat, &assign_e) {
+                                let kind = SplitKind::Let(pat1, None, LetKind::Normal, init1);
+                                Some(TransitionStmt::Split(*span, kind, splits.clone()))
+                            } else {
+                                Some(splits[0].clone())
+                            }
                         }
                     };
 
@@ -1571,22 +1573,81 @@ fn field_token_collection_type(sm: &SM, field: &Field) -> Type {
     }
 }
 
+pub fn assign_pat_or_arbitrary(pat: &Pat, init_e: &Expr) -> Option<(Pat, Expr)> {
+    let ids = crate::ident_visitor::pattern_get_bound_idents(&pat);
+    if ids.len() == 0 {
+        None
+    } else if is_definitely_irrefutable(pat) {
+        Some((pat.clone(), init_e.clone()))
+    } else {
+        let tup_pat;
+        let tup_expr;
+        if ids.len() > 1 {
+            tup_pat = Pat::Verbatim(quote_spanned! { pat.span() =>
+                (#(#ids),*)
+            });
+            tup_expr = Expr::Verbatim(quote_spanned! { pat.span() =>
+                (#(#ids),*)
+            });
+        } else {
+            let id = &ids[0];
+            tup_pat = Pat::Verbatim(quote_spanned! { pat.span() =>
+                #id
+            });
+            tup_expr = Expr::Verbatim(quote_spanned! { pat.span() =>
+                #id
+            });
+        }
+
+        let new_e = Expr::Verbatim(quote_spanned! { init_e.span() =>
+            match (#init_e) { #pat => #tup_expr , _ => crate::pervasive::arbitrary() }
+        });
+        Some((tup_pat, new_e))
+    }
+}
+
 fn token_matches_elt(
     token_is_ref: bool,
     token_name: &Ident,
     elt: &MonoidElt,
+    pat_opt: &Option<Pat>,
     ctxt: &Ctxt,
     field: &Field,
 ) -> Expr {
     match elt {
         MonoidElt::OptionSome(None) => {
-            // TODO for cleaner output, avoid emitting anything here
-            Expr::Verbatim(quote! { true })
+            let pat = pat_opt.as_ref().expect("pat should exist for a pattern-binding case");
+            if is_definitely_irrefutable(pat) {
+                // TODO for cleaner output, avoid emitting anything here
+                Expr::Verbatim(quote! { true })
+            } else {
+                Expr::Verbatim(quote! {
+                    match #token_name.value {
+                        #pat => true,
+                        _ => false,
+                    }
+                })
+            }
         }
         MonoidElt::OptionSome(Some(e)) | MonoidElt::SingletonMultiset(e) => {
             mk_eq(&Expr::Verbatim(quote! {#token_name.value}), &e)
         }
-        MonoidElt::SingletonKV(key, None) => mk_eq(&Expr::Verbatim(quote! {#token_name.key}), &key),
+        MonoidElt::SingletonKV(key, None) => {
+            let e1 = mk_eq(&Expr::Verbatim(quote! {#token_name.key}), &key);
+
+            let pat = pat_opt.as_ref().expect("pat should exist for a pattern-binding case");
+            if is_definitely_irrefutable(pat) {
+                e1
+            } else {
+                let e2 = Expr::Verbatim(quote! {
+                    match #token_name.value {
+                        #pat => true,
+                        _ => false,
+                    }
+                });
+                mk_and(e1, e2)
+            }
+        }
         MonoidElt::SingletonKV(key, Some(val)) => mk_and(
             mk_eq(&Expr::Verbatim(quote! {#token_name.key}), &key),
             mk_eq(&Expr::Verbatim(quote! {#token_name.value}), &val),
@@ -1616,6 +1677,7 @@ fn translate_special_condition(
     span: Span,
     field: &Field,
     op: &SpecialOp,
+    pat_opt: &Option<Pat>,
     errors: &mut Vec<Error>,
 ) -> Option<TransitionStmt> {
     match op {
@@ -1637,7 +1699,10 @@ fn translate_special_condition(
                 is_collection,
             });
 
-            Some(TransitionStmt::Require(span, token_matches_elt(true, &ident, &elt, ctxt, &field)))
+            Some(TransitionStmt::Require(
+                span,
+                token_matches_elt(true, &ident, &elt, pat_opt, ctxt, &field),
+            ))
         }
 
         SpecialOp { stmt: MonoidStmtType::Add, elt } => {
@@ -1660,7 +1725,7 @@ fn translate_special_condition(
 
             Some(TransitionStmt::PostCondition(
                 span,
-                token_matches_elt(false, &ident, &elt, ctxt, &field),
+                token_matches_elt(false, &ident, &elt, pat_opt, ctxt, &field),
             ))
         }
 
@@ -1684,7 +1749,7 @@ fn translate_special_condition(
 
             Some(TransitionStmt::Require(
                 span,
-                token_matches_elt(false, &ident, &elt, ctxt, &field),
+                token_matches_elt(false, &ident, &elt, pat_opt, ctxt, &field),
             ))
         }
 
@@ -1754,7 +1819,17 @@ fn translate_special_condition(
                     mk_eq(&Expr::Verbatim(quote! {#ident}), &e),
                 ))
             } else {
-                None
+                let pat = pat_opt.as_ref().expect("for pat-binding case, pat is expected");
+                if is_definitely_irrefutable(&pat) {
+                    None
+                } else {
+                    Some(TransitionStmt::PostCondition(
+                        span,
+                        Expr::Verbatim(quote! {
+                            match #ident { #pat => true, _ => false }
+                        }),
+                    ))
+                }
             }
         }
     }
