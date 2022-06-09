@@ -32,9 +32,8 @@ jobs:
           export PATH=/home/chanheec/local_bin/install/bin:$PATH 
           RUSTC=../rust/install/bin/rustc ../rust/install/bin/cargo fmt -- --check
 
-      - name: non-linear with singular
+      - name: cargo test with singular feature 
         working-directory: ./source
         run: |
           RUSTC=../rust/install/bin/rustc ../rust/install/bin/cargo build --features singular       # build with singular feature 
-          VERUS_SINGULAR_PATH="/usr/bin/Singular" VERUS_Z3_PATH="/home/chanheec/local_bin/z3" RUSTC=../rust/install/bin/rustc RUSTDOC=../rust/install/bin/rustdoc  ../rust/install/bin/cargo test -p rust_verify --features singular --test integer_ring
-          VERUS_SINGULAR_PATH="/usr/bin/Singular" VERUS_Z3_PATH="/home/chanheec/local_bin/z3" RUSTC=../rust/install/bin/rustc RUSTDOC=../rust/install/bin/rustdoc  ../rust/install/bin/cargo test -p rust_verify --features singular --test examples -- --ignored
+          VERUS_SINGULAR_PATH="/usr/bin/Singular" VERUS_Z3_PATH="/home/chanheec/local_bin/z3" RUSTC=../rust/install/bin/rustc RUSTDOC=../rust/install/bin/rustdoc  ../rust/install/bin/cargo test -p rust_verify --features singular

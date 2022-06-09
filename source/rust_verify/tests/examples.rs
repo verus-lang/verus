@@ -40,7 +40,7 @@ fn tutorial() {
 }
 
 #[test]
-#[ignore]
+#[cfg_attr(not(feature = "singular"), ignore)]
 fn integer_ring() {
     run_examples_in_directory("example/integer_ring");
 }
