@@ -397,7 +397,6 @@ pub struct CommandsWithContextX {
     pub desc: String,
     pub commands: Commands,
     pub prover_choice: ProverChoice,
-    // pub spinoff_prover: bool,
 }
 
 impl CommandsWithContextX {

@@ -299,11 +299,6 @@ impl Verifier {
                 ValidityResult::TypeError(err) => {
                     panic!("internal error: generated ill-typed AIR code: {}", err);
                 }
-                // ValidityResult::SingularInvalid(error) => {
-                //     self.count_errors += 1;
-                //     compiler.report_error(&error, error_as);
-                //     break;
-                // }
                 ValidityResult::Canceled => {
                     if is_first_check && error_as == ErrorAs::Error {
                         self.count_errors += 1;

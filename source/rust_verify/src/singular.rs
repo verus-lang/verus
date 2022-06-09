@@ -189,9 +189,11 @@ pub fn singular_printer(
                 };
 
                 if let ExprX::Const(Constant::Nat(ss)) = &**zero {
-                    assert_eq!(**ss, "0".to_string());
+                    if **ss != "0".to_string() {
+                        return Err(ens_err.clone()); // "Singular expression: equality with zero assumed"
+                    }
                 } else {
-                    panic!("Singular expression: equality with zero assumed");
+                    return Err(ens_err.clone()); // "Singular expression: equality with zero assumed"
                 }
             }
             _ => match expr_to_singular(&ens, &mut tmp_count, &mut node_map) {
@@ -200,7 +202,7 @@ pub fn singular_printer(
             },
         }
     } else {
-        panic!("Singular ensures expression: equality assumed");
+        return Err(ens_err.clone()); // "Singular ensures expression: equality assumed"
     }
 
     let ring_string;
@@ -242,7 +244,7 @@ pub fn singular_printer(
 }
 
 pub fn check_singular_valid(
-    _context: &mut air::context::Context,
+    context: &mut air::context::Context,
     command: &Command,
     _query_context: QueryContext<'_, '_>,
 ) -> ValidityResult {
@@ -293,8 +295,7 @@ pub fn check_singular_valid(
         Err(err) => return ValidityResult::Invalid(None, err),
     };
 
-    // TODO: singular logging?
-    // air::singular_manager::log_singular(context, &vars, &reqs, &enss, &query);
+    air::singular_manager::log_singular(context, &query);
 
     let singular_manager = SingularManager::new();
     let mut singular_process = singular_manager.launch();

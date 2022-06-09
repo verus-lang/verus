@@ -1623,6 +1623,7 @@ pub fn body_stm_to_air(
             panic! {"Error: integer_ring and bit_vector should not be used together"}
         };
         // parameters, requires, ensures to Singular Query
+        // in the resulting queryX::assertion, the last stmt should be ensure expression
         let mut singular_vars: Vec<Decl> = vec![];
         for param in params.iter() {
             singular_vars

@@ -1,11 +1,7 @@
-use crate::ast::{Expr, Ident};
-use crate::printer::{str_to_node, Printer};
 use crate::smt_process::writer_thread;
-use sise::Node;
 use std::io::{BufRead, BufReader};
 use std::process::ChildStdout;
 use std::sync::mpsc::{channel, Sender};
-use std::sync::Arc;
 
 pub struct SingularManager {
     pub singular_executable_name: String,
@@ -53,35 +49,7 @@ impl SingularProcess {
     }
 }
 
-// should be able to parse back using air::parser::node_to_command
-pub fn singular_query_to_node(vars: &Vec<Ident>, enss: &Vec<Expr>, reqs: &Vec<Expr>) -> Node {
-    let pp = Printer::new(false);
-    let mut nodes = Vec::new();
-    let mut var_nodes = Vec::new();
-    nodes.push(str_to_node("singular-check-valid"));
-    let ens = pp.exprs_to_node(&Arc::new(enss.to_vec()));
-    let req = pp.exprs_to_node(&Arc::new(reqs.to_vec()));
-    for v in vars {
-        var_nodes.push(Node::Atom(v.to_string()));
-    }
-    nodes.push(Node::List(var_nodes));
-    nodes.push(ens);
-    nodes.push(req);
-    Node::List(nodes)
-}
-
-pub fn log_singular(
-    context: &mut crate::context::Context,
-    vars: &Vec<Ident>,
-    reqs: &Vec<Expr>,
-    enss: &Vec<Expr>,
-    query: &String,
-) {
-    let nodes = singular_query_to_node(vars, enss, reqs);
-    context.air_initial_log.log_node(&nodes);
-    context.air_middle_log.log_node(&nodes);
-    context.air_final_log.log_node(&nodes);
-
+pub fn log_singular(context: &mut crate::context::Context, query: &String) {
     context.air_initial_log.comment(&query);
     context.air_middle_log.comment(&query);
     context.air_final_log.comment(&query);
