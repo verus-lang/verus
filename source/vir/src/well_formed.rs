@@ -2,7 +2,7 @@ use crate::ast::{
     CallTarget, Datatype, Expr, ExprX, FieldOpr, Fun, FunX, Function, FunctionKind, Krate,
     MaskSpec, Mode, Path, PathX, TypX, UnaryOpr, VirErr,
 };
-use crate::ast_util::{err_str, err_string, error, referenced_vars_expr};
+use crate::ast_util::{err_str, err_string, error, path_as_rust_name, referenced_vars_expr};
 use crate::datatype_to_air::is_datatype_transparent;
 use crate::early_exit_cf::assert_no_early_exit_in_inv_block;
 use std::collections::HashMap;
@@ -22,7 +22,18 @@ fn check_one_expr(
 ) -> Result<(), VirErr> {
     match &expr.x {
         ExprX::Call(CallTarget::Static(x, _), args) => {
-            let f = &ctxt.funs[x];
+            let f = match ctxt.funs.get(x) {
+                Some(f) => f,
+                None => {
+                    let path = path_as_rust_name(&x.path);
+                    return err_str(
+                        &expr.span,
+                        &format!(
+                            "`{path:}` is not supported (note: currently Verus does not support definitions external to the crate, including most features in std)"
+                        ),
+                    );
+                }
+            };
             if f.x.attrs.is_decrease_by {
                 // a decreases_by function isn't a real function;
                 // it's just a container for proof code that goes in the corresponding spec function
