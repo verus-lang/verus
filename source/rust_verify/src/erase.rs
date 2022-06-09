@@ -1223,35 +1223,40 @@ fn erase_item(ctxt: &Ctxt, mctxt: &mut MCtxt, item: &Item) -> Vec<P<Item>> {
             }
         }
         ItemKind::Impl(kind) => {
-            let mut items: Vec<P<AssocItem>> = Vec::new();
-            for item in &kind.items {
-                if let Some(item) = erase_assoc_item(ctxt, mctxt, &item, false) {
-                    items.push(P(item));
+            let vattrs = get_verifier_attrs(&item.attrs).expect("get_verifier_attrs");
+            if vattrs.external {
+                ItemKind::Impl(kind.clone())
+            } else {
+                let mut items: Vec<P<AssocItem>> = Vec::new();
+                for item in &kind.items {
+                    if let Some(item) = erase_assoc_item(ctxt, mctxt, &item, false) {
+                        items.push(P(item));
+                    }
                 }
+                // TODO we may need to erase some generic params
+                // for asymptotic efficiency, don't call kind.clone():
+                let Impl {
+                    unsafety,
+                    polarity,
+                    defaultness,
+                    constness,
+                    ref generics,
+                    ref of_trait,
+                    ref self_ty,
+                    ..
+                } = **kind;
+                let kind = Impl {
+                    unsafety,
+                    polarity,
+                    defaultness,
+                    constness,
+                    generics: generics.clone(),
+                    of_trait: of_trait.clone(),
+                    self_ty: self_ty.clone(),
+                    items,
+                };
+                ItemKind::Impl(Box::new(kind))
             }
-            // TODO we may need to erase some generic params
-            // for asymptotic efficiency, don't call kind.clone():
-            let Impl {
-                unsafety,
-                polarity,
-                defaultness,
-                constness,
-                ref generics,
-                ref of_trait,
-                ref self_ty,
-                ..
-            } = **kind;
-            let kind = Impl {
-                unsafety,
-                polarity,
-                defaultness,
-                constness,
-                generics: generics.clone(),
-                of_trait: of_trait.clone(),
-                self_ty: self_ty.clone(),
-                items,
-            };
-            ItemKind::Impl(Box::new(kind))
         }
         ItemKind::Const(..) => {
             if let Some(f_vir) = &ctxt.functions_by_span[&item.span] {
