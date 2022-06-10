@@ -64,17 +64,18 @@ fn test_my_funs(x: u32, y: u32)
     }
 }
 
-/* TODO
 /// spec functions with pub or pub(...) must specify whether the body of the function
 /// should also be made publicly visible (open function) or not visible (closed function).
 pub open spec fn my_pub_spec_fun1(x: u32, y: u32) -> u32 {
     // function and body visible to all
     x / 2 + y / 2
 }
+/* TODO
 pub open(crate) spec fn my_pub_spec_fun2(x: u32, y: u32) -> u32 {
     // function visible to all, body visible to crate
     x / 2 + y / 2
 }
+*/
 pub(crate) open spec fn my_pub_spec_fun3(x: u32, y: u32) -> u32 {
     // function and body visible to crate
     x / 2 + y / 2
@@ -87,7 +88,6 @@ pub(crate) closed spec fn my_pub_spec_fun5(x: u32, y: u32) -> u32 {
     // function visible to crate, body visible to module
     x / 2 + y / 2
 }
-*/
 
 /// variables may be exec, tracked, or ghost
 ///   - exec: compiled

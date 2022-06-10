@@ -9,7 +9,8 @@ use syn_verus::visit_mut::{
 use syn_verus::{
     parse_macro_input, parse_quote_spanned, Attribute, BinOp, DataMode, Decreases, Ensures, Expr,
     ExprBinary, ExprCall, ExprTuple, ExprUnary, Field, FnArgKind, FnMode, Item, ItemEnum, ItemFn,
-    ItemStruct, Local, Pat, Recommends, Requires, ReturnType, Stmt, UnOp,
+    ItemStruct, Local, ModeSpec, ModeSpecChecked, Pat, Publish, Recommends, Requires, ReturnType,
+    Stmt, UnOp, Visibility,
 };
 
 fn take_expr(expr: &mut Expr) -> Expr {
@@ -381,6 +382,30 @@ impl VisitMut for Visitor {
             }
         };
 
+        match (&fun.vis, &fun.sig.publish, &fun.sig.mode) {
+            (Visibility::Inherited, _, _) => {}
+            (
+                _,
+                Publish::Default,
+                FnMode::Spec(ModeSpec { spec_token })
+                | FnMode::SpecChecked(ModeSpecChecked { spec_token, .. }),
+            ) => {
+                let e: Expr = parse_quote_spanned!(spec_token.span =>
+                    compile_error!("non-private spec function must be marked open or closed to indicate whether the function body is public (pub open) or private (pub closed)"));
+                fun.block = parse_quote_spanned!(spec_token.span => {#e});
+            }
+            _ => {}
+        }
+
+        let publish_attrs = match &fun.sig.publish {
+            Publish::Default => vec![],
+            Publish::Closed(_) => vec![],
+            Publish::Open(o) => vec![parse_quote_spanned!(o.token.span => #[verifier(publish)])],
+            Publish::OpenRestricted(_) => {
+                unimplemented!("TODO: support open(...)")
+            }
+        };
+
         let (inside_ghost, mode_attrs): (u32, Vec<Attribute>) = match &fun.sig.mode {
             FnMode::Default => (0, vec![]),
             FnMode::Spec(token) => {
@@ -422,7 +447,9 @@ impl VisitMut for Visitor {
         fun.block.stmts.splice(0..0, stmts);
 
         visit_item_fn_mut(self, fun);
+        fun.attrs.extend(publish_attrs);
         fun.attrs.extend(mode_attrs);
+        fun.sig.publish = Publish::Default;
         fun.sig.mode = FnMode::Default;
     }
 
