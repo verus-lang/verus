@@ -563,6 +563,17 @@
       }
     },
     {
+      "ident": "Closed",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "token": {
+          "token": "Closed"
+        }
+      }
+    },
+    {
       "ident": "ConstParam",
       "features": {
         "any": [
@@ -4040,6 +4051,41 @@
       }
     },
     {
+      "ident": "Open",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "token": {
+          "token": "Open"
+        }
+      }
+    },
+    {
+      "ident": "OpenRestricted",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "open_token": {
+          "token": "Open"
+        },
+        "paren_token": {
+          "group": "Paren"
+        },
+        "in_token": {
+          "option": {
+            "token": "In"
+          }
+        },
+        "path": {
+          "box": {
+            "syn": "Path"
+          }
+        }
+      }
+    },
+    {
       "ident": "ParenthesizedGenericArguments",
       "features": {
         "any": [
@@ -4675,6 +4721,30 @@
       }
     },
     {
+      "ident": "Publish",
+      "features": {
+        "any": []
+      },
+      "variants": {
+        "Closed": [
+          {
+            "syn": "Closed"
+          }
+        ],
+        "Open": [
+          {
+            "syn": "Open"
+          }
+        ],
+        "OpenRestricted": [
+          {
+            "syn": "OpenRestricted"
+          }
+        ],
+        "Default": []
+      }
+    },
+    {
       "ident": "QSelf",
       "features": {
         "any": [
@@ -4841,6 +4911,9 @@
         ]
       },
       "fields": {
+        "publish": {
+          "syn": "Publish"
+        },
         "constness": {
           "option": {
             "token": "Const"
@@ -6051,6 +6124,7 @@
     "Caret": "^",
     "CaretEq": "^=",
     "Choose": "choose",
+    "Closed": "closed",
     "Colon": ":",
     "Colon2": "::",
     "Comma": ",",
@@ -6107,6 +6181,7 @@
     "Mut": "mut",
     "Ne": "!=",
     "NeEq": "!==",
+    "Open": "open",
     "Or": "|",
     "OrEq": "|=",
     "OrOr": "||",

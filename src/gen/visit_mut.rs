@@ -84,6 +84,9 @@ pub trait VisitMut {
     fn visit_bound_lifetimes_mut(&mut self, i: &mut BoundLifetimes) {
         visit_bound_lifetimes_mut(self, i);
     }
+    fn visit_closed_mut(&mut self, i: &mut Closed) {
+        visit_closed_mut(self, i);
+    }
     #[cfg(any(feature = "derive", feature = "full"))]
     fn visit_const_param_mut(&mut self, i: &mut ConstParam) {
         visit_const_param_mut(self, i);
@@ -543,6 +546,12 @@ pub trait VisitMut {
     fn visit_nested_meta_mut(&mut self, i: &mut NestedMeta) {
         visit_nested_meta_mut(self, i);
     }
+    fn visit_open_mut(&mut self, i: &mut Open) {
+        visit_open_mut(self, i);
+    }
+    fn visit_open_restricted_mut(&mut self, i: &mut OpenRestricted) {
+        visit_open_restricted_mut(self, i);
+    }
     #[cfg(any(feature = "derive", feature = "full"))]
     fn visit_parenthesized_generic_arguments_mut(
         &mut self,
@@ -637,6 +646,9 @@ pub trait VisitMut {
     #[cfg(any(feature = "derive", feature = "full"))]
     fn visit_predicate_type_mut(&mut self, i: &mut PredicateType) {
         visit_predicate_type_mut(self, i);
+    }
+    fn visit_publish_mut(&mut self, i: &mut Publish) {
+        visit_publish_mut(self, i);
     }
     #[cfg(any(feature = "derive", feature = "full"))]
     fn visit_qself_mut(&mut self, i: &mut QSelf) {
@@ -1126,6 +1138,12 @@ where
         }
     }
     tokens_helper(v, &mut node.gt_token.spans);
+}
+pub fn visit_closed_mut<V>(v: &mut V, node: &mut Closed)
+where
+    V: VisitMut + ?Sized,
+{
+    tokens_helper(v, &mut node.token.span);
 }
 #[cfg(any(feature = "derive", feature = "full"))]
 pub fn visit_const_param_mut<V>(v: &mut V, node: &mut ConstParam)
@@ -3004,6 +3022,23 @@ where
         }
     }
 }
+pub fn visit_open_mut<V>(v: &mut V, node: &mut Open)
+where
+    V: VisitMut + ?Sized,
+{
+    tokens_helper(v, &mut node.token.span);
+}
+pub fn visit_open_restricted_mut<V>(v: &mut V, node: &mut OpenRestricted)
+where
+    V: VisitMut + ?Sized,
+{
+    tokens_helper(v, &mut node.open_token.span);
+    tokens_helper(v, &mut node.paren_token.span);
+    if let Some(it) = &mut node.in_token {
+        tokens_helper(v, &mut it.span);
+    }
+    v.visit_path_mut(&mut *node.path);
+}
 #[cfg(any(feature = "derive", feature = "full"))]
 pub fn visit_parenthesized_generic_arguments_mut<V>(
     v: &mut V,
@@ -3368,6 +3403,23 @@ where
         }
     }
 }
+pub fn visit_publish_mut<V>(v: &mut V, node: &mut Publish)
+where
+    V: VisitMut + ?Sized,
+{
+    match node {
+        Publish::Closed(_binding_0) => {
+            v.visit_closed_mut(_binding_0);
+        }
+        Publish::Open(_binding_0) => {
+            v.visit_open_mut(_binding_0);
+        }
+        Publish::OpenRestricted(_binding_0) => {
+            v.visit_open_restricted_mut(_binding_0);
+        }
+        Publish::Default => {}
+    }
+}
 #[cfg(any(feature = "derive", feature = "full"))]
 pub fn visit_qself_mut<V>(v: &mut V, node: &mut QSelf)
 where
@@ -3454,6 +3506,7 @@ pub fn visit_signature_mut<V>(v: &mut V, node: &mut Signature)
 where
     V: VisitMut + ?Sized,
 {
+    v.visit_publish_mut(&mut node.publish);
     if let Some(it) = &mut node.constness {
         tokens_helper(v, &mut it.span);
     }

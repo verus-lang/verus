@@ -410,6 +410,13 @@ impl Debug for Lite<syn::BoundLifetimes> {
         formatter.finish()
     }
 }
+impl Debug for Lite<syn::Closed> {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let _val = &self.value;
+        let mut formatter = formatter.debug_struct("Closed");
+        formatter.finish()
+    }
+}
 impl Debug for Lite<syn::ConstParam> {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         let _val = &self.value;
@@ -3981,6 +3988,33 @@ impl Debug for Lite<syn::NestedMeta> {
         }
     }
 }
+impl Debug for Lite<syn::Open> {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let _val = &self.value;
+        let mut formatter = formatter.debug_struct("Open");
+        formatter.finish()
+    }
+}
+impl Debug for Lite<syn::OpenRestricted> {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let _val = &self.value;
+        let mut formatter = formatter.debug_struct("OpenRestricted");
+        if let Some(val) = &_val.in_token {
+            #[derive(RefCast)]
+            #[repr(transparent)]
+            struct Print(syn::token::In);
+            impl Debug for Print {
+                fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                    formatter.write_str("Some")?;
+                    Ok(())
+                }
+            }
+            formatter.field("in_token", Print::ref_cast(val));
+        }
+        formatter.field("path", Lite(&_val.path));
+        formatter.finish()
+    }
+}
 impl Debug for Lite<syn::ParenthesizedGenericArguments> {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         let _val = &self.value;
@@ -4613,6 +4647,35 @@ impl Debug for Lite<syn::PredicateType> {
         formatter.finish()
     }
 }
+impl Debug for Lite<syn::Publish> {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let _val = &self.value;
+        match _val {
+            syn::Publish::Closed(_val) => {
+                formatter.write_str("Closed")?;
+                formatter.write_str("(")?;
+                Debug::fmt(Lite(_val), formatter)?;
+                formatter.write_str(")")?;
+                Ok(())
+            }
+            syn::Publish::Open(_val) => {
+                formatter.write_str("Open")?;
+                formatter.write_str("(")?;
+                Debug::fmt(Lite(_val), formatter)?;
+                formatter.write_str(")")?;
+                Ok(())
+            }
+            syn::Publish::OpenRestricted(_val) => {
+                formatter.write_str("OpenRestricted")?;
+                formatter.write_str("(")?;
+                Debug::fmt(Lite(_val), formatter)?;
+                formatter.write_str(")")?;
+                Ok(())
+            }
+            syn::Publish::Default => formatter.write_str("Default"),
+        }
+    }
+}
 impl Debug for Lite<syn::QSelf> {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         let _val = &self.value;
@@ -4792,6 +4855,7 @@ impl Debug for Lite<syn::Signature> {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         let _val = &self.value;
         let mut formatter = formatter.debug_struct("Signature");
+        formatter.field("publish", Lite(&_val.publish));
         if let Some(val) = &_val.constness {
             #[derive(RefCast)]
             #[repr(transparent)]

@@ -2,6 +2,36 @@ use super::*;
 use crate::punctuated::Punctuated;
 
 ast_enum_of_structs! {
+    pub enum Publish {
+        Closed(Closed),
+        Open(Open),
+        OpenRestricted(OpenRestricted),
+        Default,
+    }
+}
+
+ast_struct! {
+    pub struct Closed {
+        pub token: Token![closed],
+    }
+}
+
+ast_struct! {
+    pub struct Open {
+        pub token: Token![open],
+    }
+}
+
+ast_struct! {
+    pub struct OpenRestricted {
+        pub open_token: Token![open],
+        pub paren_token: token::Paren,
+        pub in_token: Option<Token![in]>,
+        pub path: Box<Path>,
+    }
+}
+
+ast_enum_of_structs! {
     pub enum Mode {
         Spec(ModeSpec),
         Proof(ModeProof),
@@ -142,6 +172,30 @@ ast_struct! {
 pub mod parsing {
     use super::*;
     use crate::parse::{Parse, ParseStream, Result};
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
+    impl Parse for Publish {
+        fn parse(input: ParseStream) -> Result<Self> {
+            if input.peek(Token![closed]) {
+                let token = input.parse::<Token![closed]>()?;
+                Ok(Publish::Closed(Closed { token }))
+            } else if input.peek(Token![open]) {
+                let token = input.parse::<Token![open]>()?;
+                if let Some((paren_token, in_token, path)) = Visibility::parse_restricted(input)? {
+                    Ok(Publish::OpenRestricted(OpenRestricted {
+                        open_token: token,
+                        paren_token,
+                        in_token,
+                        path,
+                    }))
+                } else {
+                    Ok(Publish::Open(Open { token }))
+                }
+            } else {
+                Ok(Publish::Default)
+            }
+        }
+    }
 
     #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
     impl Parse for Mode {
@@ -452,6 +506,28 @@ mod printing {
     use super::*;
     use proc_macro2::TokenStream;
     use quote::ToTokens;
+
+    impl ToTokens for Closed {
+        fn to_tokens(&self, tokens: &mut TokenStream) {
+            self.token.to_tokens(tokens);
+        }
+    }
+
+    impl ToTokens for Open {
+        fn to_tokens(&self, tokens: &mut TokenStream) {
+            self.token.to_tokens(tokens);
+        }
+    }
+
+    impl ToTokens for OpenRestricted {
+        fn to_tokens(&self, tokens: &mut TokenStream) {
+            self.open_token.to_tokens(tokens);
+            self.paren_token.surround(tokens, |tokens| {
+                self.in_token.to_tokens(tokens);
+                self.path.to_tokens(tokens);
+            });
+        }
+    }
 
     #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
     impl ToTokens for ModeSpec {

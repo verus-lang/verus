@@ -907,6 +907,8 @@ macro_rules! export_token_macro {
             [spec]        => { $crate::token::Spec };
             [proof]       => { $crate::token::Proof };
             [exec]        => { $crate::token::Exec };
+            [open]        => { $crate::token::Open };
+            [closed]      => { $crate::token::Closed };
             [ghost]       => { $crate::token::Ghost };
             [tracked]     => { $crate::token::Tracked };
             [requires]    => { $crate::token::Requires };

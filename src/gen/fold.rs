@@ -81,6 +81,9 @@ pub trait Fold {
     fn fold_bound_lifetimes(&mut self, i: BoundLifetimes) -> BoundLifetimes {
         fold_bound_lifetimes(self, i)
     }
+    fn fold_closed(&mut self, i: Closed) -> Closed {
+        fold_closed(self, i)
+    }
     #[cfg(any(feature = "derive", feature = "full"))]
     fn fold_const_param(&mut self, i: ConstParam) -> ConstParam {
         fold_const_param(self, i)
@@ -543,6 +546,12 @@ pub trait Fold {
     fn fold_nested_meta(&mut self, i: NestedMeta) -> NestedMeta {
         fold_nested_meta(self, i)
     }
+    fn fold_open(&mut self, i: Open) -> Open {
+        fold_open(self, i)
+    }
+    fn fold_open_restricted(&mut self, i: OpenRestricted) -> OpenRestricted {
+        fold_open_restricted(self, i)
+    }
     #[cfg(any(feature = "derive", feature = "full"))]
     fn fold_parenthesized_generic_arguments(
         &mut self,
@@ -637,6 +646,9 @@ pub trait Fold {
     #[cfg(any(feature = "derive", feature = "full"))]
     fn fold_predicate_type(&mut self, i: PredicateType) -> PredicateType {
         fold_predicate_type(self, i)
+    }
+    fn fold_publish(&mut self, i: Publish) -> Publish {
+        fold_publish(self, i)
     }
     #[cfg(any(feature = "derive", feature = "full"))]
     fn fold_qself(&mut self, i: QSelf) -> QSelf {
@@ -1113,6 +1125,14 @@ where
         lt_token: Token![<](tokens_helper(f, &node.lt_token.spans)),
         lifetimes: FoldHelper::lift(node.lifetimes, |it| f.fold_lifetime_def(it)),
         gt_token: Token![>](tokens_helper(f, &node.gt_token.spans)),
+    }
+}
+pub fn fold_closed<F>(f: &mut F, node: Closed) -> Closed
+where
+    F: Fold + ?Sized,
+{
+    Closed {
+        token: Token![closed](tokens_helper(f, &node.token.span)),
     }
 }
 #[cfg(any(feature = "derive", feature = "full"))]
@@ -2714,6 +2734,25 @@ where
         NestedMeta::Lit(_binding_0) => NestedMeta::Lit(f.fold_lit(_binding_0)),
     }
 }
+pub fn fold_open<F>(f: &mut F, node: Open) -> Open
+where
+    F: Fold + ?Sized,
+{
+    Open {
+        token: Token![open](tokens_helper(f, &node.token.span)),
+    }
+}
+pub fn fold_open_restricted<F>(f: &mut F, node: OpenRestricted) -> OpenRestricted
+where
+    F: Fold + ?Sized,
+{
+    OpenRestricted {
+        open_token: Token![open](tokens_helper(f, &node.open_token.span)),
+        paren_token: Paren(tokens_helper(f, &node.paren_token.span)),
+        in_token: (node.in_token).map(|it| Token![in](tokens_helper(f, &it.span))),
+        path: Box::new(f.fold_path(*node.path)),
+    }
+}
 #[cfg(any(feature = "derive", feature = "full"))]
 pub fn fold_parenthesized_generic_arguments<F>(
     f: &mut F,
@@ -3006,6 +3045,19 @@ where
         bounds: FoldHelper::lift(node.bounds, |it| f.fold_type_param_bound(it)),
     }
 }
+pub fn fold_publish<F>(f: &mut F, node: Publish) -> Publish
+where
+    F: Fold + ?Sized,
+{
+    match node {
+        Publish::Closed(_binding_0) => Publish::Closed(f.fold_closed(_binding_0)),
+        Publish::Open(_binding_0) => Publish::Open(f.fold_open(_binding_0)),
+        Publish::OpenRestricted(_binding_0) => {
+            Publish::OpenRestricted(f.fold_open_restricted(_binding_0))
+        }
+        Publish::Default => Publish::Default,
+    }
+}
 #[cfg(any(feature = "derive", feature = "full"))]
 pub fn fold_qself<F>(f: &mut F, node: QSelf) -> QSelf
 where
@@ -3095,6 +3147,7 @@ where
     F: Fold + ?Sized,
 {
     Signature {
+        publish: f.fold_publish(node.publish),
         constness: (node.constness).map(|it| Token![const](tokens_helper(f, &it.span))),
         asyncness: (node.asyncness).map(|it| Token![async](tokens_helper(f, &it.span))),
         unsafety: (node.unsafety).map(|it| Token![unsafe](tokens_helper(f, &it.span))),

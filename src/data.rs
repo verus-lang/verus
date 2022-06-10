@@ -353,9 +353,9 @@ pub mod parsing {
     }
 
     impl Visibility {
-        fn parse_pub(input: ParseStream) -> Result<Self> {
-            let pub_token = input.parse::<Token![pub]>()?;
-
+        pub(crate) fn parse_restricted(
+            input: ParseStream,
+        ) -> Result<Option<(token::Paren, Option<Token![in]>, Box<Path>)>> {
             if input.peek(token::Paren) {
                 let ahead = input.fork();
 
@@ -373,25 +373,29 @@ pub mod parsing {
                     // e.g. `pub (crate::A, crate::B)` (Issue #720).
                     if content.is_empty() {
                         input.advance_to(&ahead);
-                        return Ok(Visibility::Restricted(VisRestricted {
-                            pub_token,
-                            paren_token,
-                            in_token: None,
-                            path: Box::new(Path::from(path)),
-                        }));
+                        return Ok(Some((paren_token, None, Box::new(Path::from(path)))));
                     }
                 } else if content.peek(Token![in]) {
                     let in_token: Token![in] = content.parse()?;
                     let path = content.call(Path::parse_mod_style)?;
 
                     input.advance_to(&ahead);
-                    return Ok(Visibility::Restricted(VisRestricted {
-                        pub_token,
-                        paren_token,
-                        in_token: Some(in_token),
-                        path: Box::new(path),
-                    }));
+                    return Ok(Some((paren_token, Some(in_token), Box::new(path))));
                 }
+            }
+            Ok(None)
+        }
+
+        fn parse_pub(input: ParseStream) -> Result<Self> {
+            let pub_token = input.parse::<Token![pub]>()?;
+
+            if let Some((paren_token, in_token, path)) = Self::parse_restricted(input)? {
+                return Ok(Visibility::Restricted(VisRestricted {
+                    pub_token,
+                    paren_token,
+                    in_token,
+                    path,
+                }));
             }
 
             Ok(Visibility::Public(VisPublic { pub_token }))

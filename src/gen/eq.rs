@@ -175,6 +175,14 @@ impl PartialEq for BoundLifetimes {
         self.lifetimes == other.lifetimes
     }
 }
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Eq for Closed {}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl PartialEq for Closed {
+    fn eq(&self, _other: &Self) -> bool {
+        true
+    }
+}
 #[cfg(any(feature = "derive", feature = "full"))]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
 impl Eq for ConstParam {}
@@ -1535,6 +1543,22 @@ impl PartialEq for NestedMeta {
         }
     }
 }
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Eq for Open {}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl PartialEq for Open {
+    fn eq(&self, _other: &Self) -> bool {
+        true
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Eq for OpenRestricted {}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl PartialEq for OpenRestricted {
+    fn eq(&self, other: &Self) -> bool {
+        self.in_token == other.in_token && self.path == other.path
+    }
+}
 #[cfg(any(feature = "derive", feature = "full"))]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
 impl Eq for ParenthesizedGenericArguments {}
@@ -1803,6 +1827,22 @@ impl PartialEq for PredicateType {
             && self.bounds == other.bounds
     }
 }
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Eq for Publish {}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl PartialEq for Publish {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Publish::Closed(self0), Publish::Closed(other0)) => self0 == other0,
+            (Publish::Open(self0), Publish::Open(other0)) => self0 == other0,
+            (Publish::OpenRestricted(self0), Publish::OpenRestricted(other0)) => {
+                self0 == other0
+            }
+            (Publish::Default, Publish::Default) => true,
+            _ => false,
+        }
+    }
+}
 #[cfg(any(feature = "derive", feature = "full"))]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
 impl Eq for QSelf {}
@@ -1879,13 +1919,14 @@ impl Eq for Signature {}
 #[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
 impl PartialEq for Signature {
     fn eq(&self, other: &Self) -> bool {
-        self.constness == other.constness && self.asyncness == other.asyncness
-            && self.unsafety == other.unsafety && self.abi == other.abi
-            && self.mode == other.mode && self.ident == other.ident
-            && self.generics == other.generics && self.inputs == other.inputs
-            && self.variadic == other.variadic && self.output == other.output
-            && self.requires == other.requires && self.recommends == other.recommends
-            && self.ensures == other.ensures && self.decreases == other.decreases
+        self.publish == other.publish && self.constness == other.constness
+            && self.asyncness == other.asyncness && self.unsafety == other.unsafety
+            && self.abi == other.abi && self.mode == other.mode
+            && self.ident == other.ident && self.generics == other.generics
+            && self.inputs == other.inputs && self.variadic == other.variadic
+            && self.output == other.output && self.requires == other.requires
+            && self.recommends == other.recommends && self.ensures == other.ensures
+            && self.decreases == other.decreases
     }
 }
 #[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]

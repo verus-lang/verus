@@ -264,6 +264,13 @@ impl Hash for BoundLifetimes {
         self.lifetimes.hash(state);
     }
 }
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Hash for Closed {
+    fn hash<H>(&self, _state: &mut H)
+    where
+        H: Hasher,
+    {}
+}
 #[cfg(any(feature = "derive", feature = "full"))]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
 impl Hash for ConstParam {
@@ -2071,6 +2078,23 @@ impl Hash for NestedMeta {
         }
     }
 }
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Hash for Open {
+    fn hash<H>(&self, _state: &mut H)
+    where
+        H: Hasher,
+    {}
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Hash for OpenRestricted {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
+        self.in_token.hash(state);
+        self.path.hash(state);
+    }
+}
 #[cfg(any(feature = "derive", feature = "full"))]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
 impl Hash for ParenthesizedGenericArguments {
@@ -2412,6 +2436,31 @@ impl Hash for PredicateType {
         self.bounds.hash(state);
     }
 }
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Hash for Publish {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
+        match self {
+            Publish::Closed(v0) => {
+                state.write_u8(0u8);
+                v0.hash(state);
+            }
+            Publish::Open(v0) => {
+                state.write_u8(1u8);
+                v0.hash(state);
+            }
+            Publish::OpenRestricted(v0) => {
+                state.write_u8(2u8);
+                v0.hash(state);
+            }
+            Publish::Default => {
+                state.write_u8(3u8);
+            }
+        }
+    }
+}
 #[cfg(any(feature = "derive", feature = "full"))]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
 impl Hash for QSelf {
@@ -2498,6 +2547,7 @@ impl Hash for Signature {
     where
         H: Hasher,
     {
+        self.publish.hash(state);
         self.constness.hash(state);
         self.asyncness.hash(state);
         self.unsafety.hash(state);

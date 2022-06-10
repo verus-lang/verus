@@ -158,6 +158,14 @@ impl Clone for BoundLifetimes {
         }
     }
 }
+#[cfg_attr(doc_cfg, doc(cfg(feature = "clone-impls")))]
+impl Clone for Closed {
+    fn clone(&self) -> Self {
+        Closed {
+            token: self.token.clone(),
+        }
+    }
+}
 #[cfg(any(feature = "derive", feature = "full"))]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "clone-impls")))]
 impl Clone for ConstParam {
@@ -1612,6 +1620,23 @@ impl Clone for NestedMeta {
         }
     }
 }
+#[cfg_attr(doc_cfg, doc(cfg(feature = "clone-impls")))]
+impl Clone for Open {
+    fn clone(&self) -> Self {
+        Open { token: self.token.clone() }
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "clone-impls")))]
+impl Clone for OpenRestricted {
+    fn clone(&self) -> Self {
+        OpenRestricted {
+            open_token: self.open_token.clone(),
+            paren_token: self.paren_token.clone(),
+            in_token: self.in_token.clone(),
+            path: self.path.clone(),
+        }
+    }
+}
 #[cfg(any(feature = "derive", feature = "full"))]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "clone-impls")))]
 impl Clone for ParenthesizedGenericArguments {
@@ -1884,6 +1909,17 @@ impl Clone for PredicateType {
         }
     }
 }
+#[cfg_attr(doc_cfg, doc(cfg(feature = "clone-impls")))]
+impl Clone for Publish {
+    fn clone(&self) -> Self {
+        match self {
+            Publish::Closed(v0) => Publish::Closed(v0.clone()),
+            Publish::Open(v0) => Publish::Open(v0.clone()),
+            Publish::OpenRestricted(v0) => Publish::OpenRestricted(v0.clone()),
+            Publish::Default => Publish::Default,
+        }
+    }
+}
 #[cfg(any(feature = "derive", feature = "full"))]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "clone-impls")))]
 impl Clone for QSelf {
@@ -1954,6 +1990,7 @@ impl Clone for ReturnType {
 impl Clone for Signature {
     fn clone(&self) -> Self {
         Signature {
+            publish: self.publish.clone(),
             constness: self.constness.clone(),
             asyncness: self.asyncness.clone(),
             unsafety: self.unsafety.clone(),

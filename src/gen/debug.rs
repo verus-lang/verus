@@ -335,6 +335,14 @@ impl Debug for BoundLifetimes {
         formatter.finish()
     }
 }
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Debug for Closed {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let mut formatter = formatter.debug_struct("Closed");
+        formatter.field("token", &self.token);
+        formatter.finish()
+    }
+}
 #[cfg(any(feature = "derive", feature = "full"))]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
 impl Debug for ConstParam {
@@ -2249,6 +2257,25 @@ impl Debug for NestedMeta {
         }
     }
 }
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Debug for Open {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let mut formatter = formatter.debug_struct("Open");
+        formatter.field("token", &self.token);
+        formatter.finish()
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Debug for OpenRestricted {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let mut formatter = formatter.debug_struct("OpenRestricted");
+        formatter.field("open_token", &self.open_token);
+        formatter.field("paren_token", &self.paren_token);
+        formatter.field("in_token", &self.in_token);
+        formatter.field("path", &self.path);
+        formatter.finish()
+    }
+}
 #[cfg(any(feature = "derive", feature = "full"))]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
 impl Debug for ParenthesizedGenericArguments {
@@ -2591,6 +2618,29 @@ impl Debug for PredicateType {
         formatter.finish()
     }
 }
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Debug for Publish {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            Publish::Closed(v0) => {
+                let mut formatter = formatter.debug_tuple("Closed");
+                formatter.field(v0);
+                formatter.finish()
+            }
+            Publish::Open(v0) => {
+                let mut formatter = formatter.debug_tuple("Open");
+                formatter.field(v0);
+                formatter.finish()
+            }
+            Publish::OpenRestricted(v0) => {
+                let mut formatter = formatter.debug_tuple("OpenRestricted");
+                formatter.field(v0);
+                formatter.finish()
+            }
+            Publish::Default => formatter.write_str("Default"),
+        }
+    }
+}
 #[cfg(any(feature = "derive", feature = "full"))]
 #[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
 impl Debug for QSelf {
@@ -2674,6 +2724,7 @@ impl Debug for ReturnType {
 impl Debug for Signature {
     fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         let mut formatter = formatter.debug_struct("Signature");
+        formatter.field("publish", &self.publish);
         formatter.field("constness", &self.constness);
         formatter.field("asyncness", &self.asyncness);
         formatter.field("unsafety", &self.unsafety);

@@ -895,6 +895,7 @@ ast_struct! {
     /// *This type is available only if Syn is built with the `"full"` feature.*
     #[cfg_attr(doc_cfg, doc(cfg(feature = "full")))]
     pub struct Signature {
+        pub publish: Publish,
         pub constness: Option<Token![const]>,
         pub asyncness: Option<Token![async]>,
         pub unsafety: Option<Token![unsafe]>,
@@ -1511,7 +1512,8 @@ pub mod parsing {
 
     fn peek_signature(input: ParseStream) -> bool {
         let fork = input.fork();
-        fork.parse::<Option<Token![const]>>().is_ok()
+        fork.parse::<Publish>().is_ok()
+            && fork.parse::<Option<Token![const]>>().is_ok()
             && fork.parse::<Option<Token![async]>>().is_ok()
             && fork.parse::<Option<Token![unsafe]>>().is_ok()
             && fork.parse::<Option<Abi>>().is_ok()
@@ -1522,6 +1524,7 @@ pub mod parsing {
     #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
     impl Parse for Signature {
         fn parse(input: ParseStream) -> Result<Self> {
+            let publish: Publish = input.parse()?;
             let constness: Option<Token![const]> = input.parse()?;
             let asyncness: Option<Token![async]> = input.parse()?;
             let unsafety: Option<Token![unsafe]> = input.parse()?;
@@ -1544,6 +1547,7 @@ pub mod parsing {
             let decreases: Option<Decreases> = input.parse()?;
 
             Ok(Signature {
+                publish,
                 constness,
                 asyncness,
                 unsafety,
@@ -3324,6 +3328,7 @@ mod printing {
     #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
     impl ToTokens for Signature {
         fn to_tokens(&self, tokens: &mut TokenStream) {
+            self.publish.to_tokens(tokens);
             self.constness.to_tokens(tokens);
             self.asyncness.to_tokens(tokens);
             self.unsafety.to_tokens(tokens);
