@@ -36,6 +36,13 @@ impl<K: std::cmp::Eq + std::hash::Hash, V> Dict<K, V> {
     }
 
     #[verifier(external_body)]
+    pub fn remove(&mut self, key: &K) {
+        ensures(equal(self.view(), old(self).view().remove(key)));
+
+        self.dict.remove(key);
+    }
+
+    #[verifier(external_body)]
     #[verifier(autoview)]    
     pub fn contain(&self, key: &K) -> bool {
         ensures(|r: bool|[
@@ -51,11 +58,11 @@ impl<K: std::cmp::Eq + std::hash::Hash, V> Dict<K, V> {
 
     #[verifier(external_body)]
     #[verifier(autoview)]
-    pub fn index(&self, key: K) -> &V {
+    pub fn index(&self, key: &K) -> &V {
         requires(self.view().dom().contains(key));
         ensures(|r: V| equal(r, self.view().index(key)));
 
-        match self.dict.get(&key) {
+        match self.dict.get(key) {
             Some(v) => &v,
             None => panic!("Never reach here"),
         }
