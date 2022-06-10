@@ -5,7 +5,7 @@ Suppose we want to verify a program like the following:
  * The main thread instantiates a counter to 0.
  * The main thread forks two child threads.
    * Each child thread (atomically) increments the counter.
- * The main thread joins the two threads (i.e., wait for them to complete).
+ * The main thread joins the two threads (i.e., waits for them to complete).
  * The main thread reads the counter.
 
 **Our objective:** Prove the counter read in the final step has value 2.

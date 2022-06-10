@@ -250,7 +250,7 @@ pub(crate) fn check_item_fn<'tcx>(
         is_decrease_by: vattrs.decreases_by,
         check_recommends: vattrs.check_recommends,
         nonlinear: vattrs.nonlinear,
-        spinoff_z3: vattrs.spinoff_z3,
+        spinoff_prover: vattrs.spinoff_prover,
     };
 
     let mut recommend: Vec<vir::ast::Expr> = (*header.recommend).clone();

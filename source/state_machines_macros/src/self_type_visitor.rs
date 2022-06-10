@@ -45,6 +45,10 @@ fn replace_self_shardable_type(stype: &mut ShardableType, path: &Path) {
             replace_self_type(key, path);
             replace_self_type(val, path);
         }
+        ShardableType::PersistentMap(key, val) => {
+            replace_self_type(key, path);
+            replace_self_type(val, path);
+        }
         ShardableType::Multiset(ty) => {
             replace_self_type(ty, path);
         }
@@ -55,6 +59,7 @@ fn replace_self_shardable_type(stype: &mut ShardableType, path: &Path) {
             replace_self_type(key, path);
             replace_self_type(val, path);
         }
+        ShardableType::Count => {}
     }
 }
 

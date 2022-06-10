@@ -41,7 +41,9 @@ impl<A> Vec<A> {
             equal(value, old(self).view().index(old(self).view().len() as int - 1)),
             equal(self.view(), old(self).view().subrange(0, old(self).view().len() as int - 1))
         ]);
-        self.vec.pop().unwrap_unchecked()  // Safe to unwrap given the precondition above
+        unsafe {
+            self.vec.pop().unwrap_unchecked()  // Safe to unwrap given the precondition above
+        }
     }
 
     #[verifier(external_body)]

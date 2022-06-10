@@ -160,7 +160,7 @@ pub(crate) enum Attr {
     // set smt.arith.nl=true
     NonLinear,
     // Use a new dedicated Z3 process just for this query
-    SpinoffZ3,
+    SpinoffProver,
 }
 
 fn get_trigger_arg(span: Span, attr_tree: &AttrTree) -> Result<u64, VirErr> {
@@ -315,8 +315,8 @@ pub(crate) fn parse_attrs(attrs: &[Attribute]) -> Result<Vec<Attr>, VirErr> {
                 Some(box [AttrTree::Fun(_, arg, None)]) if arg == "nonlinear" => {
                     v.push(Attr::NonLinear)
                 }
-                Some(box [AttrTree::Fun(_, arg, None)]) if arg == "spinoff_z3" => {
-                    v.push(Attr::SpinoffZ3)
+                Some(box [AttrTree::Fun(_, arg, None)]) if arg == "spinoff_prover" => {
+                    v.push(Attr::SpinoffProver)
                 }
                 _ => return err_span_str(*span, "unrecognized verifier attribute"),
             },
@@ -422,7 +422,7 @@ pub(crate) struct VerifierAttrs {
     pub(crate) decreases_by: bool,
     pub(crate) check_recommends: bool,
     pub(crate) nonlinear: bool,
-    pub(crate) spinoff_z3: bool,
+    pub(crate) spinoff_prover: bool,
 }
 
 pub(crate) fn get_verifier_attrs(attrs: &[Attribute]) -> Result<VerifierAttrs, VirErr> {
@@ -447,7 +447,7 @@ pub(crate) fn get_verifier_attrs(attrs: &[Attribute]) -> Result<VerifierAttrs, V
         decreases_by: false,
         check_recommends: false,
         nonlinear: false,
-        spinoff_z3: false,
+        spinoff_prover: false,
     };
     for attr in parse_attrs(attrs)? {
         match attr {
@@ -473,7 +473,7 @@ pub(crate) fn get_verifier_attrs(attrs: &[Attribute]) -> Result<VerifierAttrs, V
             Attr::DecreasesBy => vs.decreases_by = true,
             Attr::CheckRecommends => vs.check_recommends = true,
             Attr::NonLinear => vs.nonlinear = true,
-            Attr::SpinoffZ3 => vs.spinoff_z3 = true,
+            Attr::SpinoffProver => vs.spinoff_prover = true,
             _ => {}
         }
     }

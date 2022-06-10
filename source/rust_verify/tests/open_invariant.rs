@@ -4,7 +4,7 @@
 mod common;
 use common::*;
 
-// Run each test for both Invariant/open_invariant and LocalInvariant/open_local_invariant
+// Run each test for both AtomicInvariant/open_atomic_invariant and LocalInvariant/open_local_invariant
 
 macro_rules! test_both {
     ($name:ident $name2:ident $test:expr => $p:pat) => {
@@ -14,8 +14,8 @@ macro_rules! test_both {
 
         test_verify_one_file! {
             #[test] $name2 ($test
-                .replace("Invariant", "LocalInvariant")
-                .replace("open_invariant", "open_local_invariant")) => $p
+                .replace("AtomicInvariant", "LocalInvariant")
+                .replace("open_atomic_invariant", "open_local_invariant")) => $p
         }
     };
     ($name:ident $name2:ident $test:expr => $p:pat => $e:expr) => {
@@ -25,8 +25,8 @@ macro_rules! test_both {
 
         test_verify_one_file! {
             #[test] $name2 ($test
-                .replace("Invariant", "LocalInvariant")
-                .replace("open_invariant", "open_local_invariant")) => $p => $e
+                .replace("AtomicInvariant", "LocalInvariant")
+                .replace("open_atomic_invariant", "open_local_invariant")) => $p => $e
         }
     };
 }
@@ -35,11 +35,11 @@ test_both! {
     basic_usage basic_usage_local code! {
         use crate::pervasive::invariant::*;
 
-        pub fn X(#[proof] i: Invariant<u8>) {
+        pub fn X(#[proof] i: AtomicInvariant<u8>) {
             requires([
                 i.inv(0)
             ]);
-            open_invariant!(&i => inner => {
+            open_atomic_invariant!(&i => inner => {
                 #[proof] let x = 5;
                 #[proof] let x = 6;
                 inner = 0;
@@ -52,8 +52,8 @@ test_both! {
     basic_usage2 basic_usage2_local code! {
         use crate::pervasive::invariant::*;
 
-        pub fn X(#[proof] i: Invariant<u8>) {
-            open_invariant!(&i => inner => {
+        pub fn X(#[proof] i: AtomicInvariant<u8>) {
+            open_atomic_invariant!(&i => inner => {
             });
         }
     } => Ok(())
@@ -62,8 +62,8 @@ test_both! {
 test_both! {
     inv_fail inv_fail_local code! {
         use crate::pervasive::invariant::*;
-        pub fn X(#[proof] i: Invariant<u8>) {
-            open_invariant!(&i => inner => {
+        pub fn X(#[proof] i: AtomicInvariant<u8>) {
+            open_atomic_invariant!(&i => inner => {
                 #[proof] let x = 5;
                 #[proof] let x = 6;
                 inner = 0;
@@ -75,12 +75,12 @@ test_both! {
 test_both! {
     nested_failure nested_failure_local code! {
         use crate::pervasive::invariant::*;
-        pub fn nested(#[proof] i: Invariant<u8>) {
+        pub fn nested(#[proof] i: AtomicInvariant<u8>) {
             requires([
                 i.inv(0)
             ]);
-            open_invariant!(&i => inner => { // FAILS
-                open_invariant!(&i => inner2 => {
+            open_atomic_invariant!(&i => inner => { // FAILS
+                open_atomic_invariant!(&i => inner2 => {
                     inner2 = 0;
                 });
                 inner = 0;
@@ -92,16 +92,16 @@ test_both! {
 test_both! {
     nested_good nested_good_local code! {
         use crate::pervasive::invariant::*;
-        pub fn nested_good(#[proof] i: Invariant<u8>, #[proof] j: Invariant<u8>) {
+        pub fn nested_good(#[proof] i: AtomicInvariant<u8>, #[proof] j: AtomicInvariant<u8>) {
             requires([
                 i.inv(0),
                 j.inv(1),
                 i.namespace() == 0,
                 j.namespace() == 1,
             ]);
-            open_invariant!(&i => inner => {
+            open_atomic_invariant!(&i => inner => {
                 inner = 0;
-                open_invariant!(&j => inner => {
+                open_atomic_invariant!(&j => inner => {
                     inner = 1;
                 });
             });
@@ -116,8 +116,8 @@ test_both! {
         pub fn callee_mask_empty() {
           opens_invariants_none(); // will not open any invariant
         }
-        pub fn t1(#[proof] i: Invariant<u8>) {
-          open_invariant!(&i => inner => {
+        pub fn t1(#[proof] i: AtomicInvariant<u8>) {
+          open_atomic_invariant!(&i => inner => {
             callee_mask_empty();
           });
         }
@@ -131,8 +131,8 @@ test_both! {
         pub fn callee_mask_full() {
           opens_invariants_any(); // can open any invariant
         }
-        pub fn t2(#[proof] i: Invariant<u8>) {
-          open_invariant!(&i => inner => { // FAILS
+        pub fn t2(#[proof] i: AtomicInvariant<u8>) {
+          open_atomic_invariant!(&i => inner => { // FAILS
             callee_mask_full();
           });
         }
@@ -146,9 +146,9 @@ test_both! {
         pub fn callee_mask_empty() {
           opens_invariants_none(); // will not open any invariant
         }
-        pub fn t3(#[proof] i: Invariant<u8>) {
+        pub fn t3(#[proof] i: AtomicInvariant<u8>) {
           opens_invariants_none();
-          open_invariant!(&i => inner => { // FAILS
+          open_atomic_invariant!(&i => inner => { // FAILS
           });
         }
     } => Err(err) => assert_one_fails(err)
@@ -161,8 +161,8 @@ test_both! {
         use crate::pervasive::invariant::*;
 
         #[spec]
-        pub fn open_inv_in_spec(i: Invariant<u8>) {
-          open_invariant!(&i => inner => {
+        pub fn open_inv_in_spec(i: AtomicInvariant<u8>) {
+          open_atomic_invariant!(&i => inner => {
           });
         }
     } => Err(err) => assert_vir_error(err)
@@ -173,7 +173,7 @@ test_both! {
         use crate::pervasive::invariant::*;
 
         #[spec]
-        pub fn inv_header_in_spec(i: Invariant<u8>) {
+        pub fn inv_header_in_spec(i: AtomicInvariant<u8>) {
           opens_invariants_any();
         }
     } => Err(err) => assert_vir_error(err)
@@ -184,9 +184,9 @@ test_both! {
         use crate::pervasive::invariant::*;
 
         #[proof]
-        pub fn open_inv_in_proof(#[proof] i: Invariant<u8>) {
+        pub fn open_inv_in_proof(#[proof] i: AtomicInvariant<u8>) {
           opens_invariants_any();
-          open_invariant!(&i => inner => {
+          open_atomic_invariant!(&i => inner => {
           });
         }
     } => Ok(())
@@ -196,8 +196,8 @@ test_both! {
     inv_cannot_be_exec inv_cannot_be_exec_local code! {
         use crate::pervasive::invariant::*;
 
-        pub fn X(#[exec] i: Invariant<u8>) {
-            open_invariant!(&i => inner => {
+        pub fn X(#[exec] i: AtomicInvariant<u8>) {
+            open_atomic_invariant!(&i => inner => {
             });
         }
 
@@ -208,8 +208,8 @@ test_both! {
     inv_cannot_be_spec inv_cannot_be_spec_local code! {
         use crate::pervasive::invariant::*;
 
-        pub fn X(#[spec] i: Invariant<u8>) {
-            open_invariant!(&i => inner => {
+        pub fn X(#[spec] i: AtomicInvariant<u8>) {
+            open_atomic_invariant!(&i => inner => {
             });
         }
 
@@ -223,8 +223,8 @@ test_verify_one_file! {
 
         pub fn exec_fn() { }
 
-        pub fn X(#[proof] i: Invariant<u8>) {
-            open_invariant!(&i => inner => {
+        pub fn X(#[proof] i: AtomicInvariant<u8>) {
+            open_atomic_invariant!(&i => inner => {
                 exec_fn();
             });
         }
@@ -236,14 +236,14 @@ test_both! {
         use crate::pervasive::invariant::*;
 
         #[proof]
-        fn throw_away(#[proof] i: Invariant<u8>) {
+        fn throw_away(#[proof] i: AtomicInvariant<u8>) {
         }
 
-        pub fn do_nothing(#[proof] i: Invariant<u8>) {
+        pub fn do_nothing(#[proof] i: AtomicInvariant<u8>) {
           requires([
             i.inv(0)
           ]);
-          open_invariant!(&i => inner => {
+          open_atomic_invariant!(&i => inner => {
             throw_away(i);
           });
         }
@@ -254,8 +254,8 @@ test_both! {
     return_early return_early_local code! {
         use crate::pervasive::invariant::*;
 
-        pub fn blah(#[proof] i: Invariant<u8>) {
-          open_invariant!(&i => inner => {
+        pub fn blah(#[proof] i: AtomicInvariant<u8>) {
+          open_atomic_invariant!(&i => inner => {
             return;
           });
         }
@@ -266,9 +266,9 @@ test_both! {
     return_early_nested return_early_nested_local code! {
         use crate::pervasive::invariant::*;
 
-        pub fn blah(#[proof] i: Invariant<u8>, #[proof] j: Invariant<u8>) {
-          open_invariant!(&i => inner => {
-            open_invariant!(&j => inner => {
+        pub fn blah(#[proof] i: AtomicInvariant<u8>, #[proof] j: AtomicInvariant<u8>) {
+          open_atomic_invariant!(&i => inner => {
+            open_atomic_invariant!(&j => inner => {
               return;
             });
           });
@@ -280,10 +280,10 @@ test_both! {
     break_early break_early_local code! {
         use crate::pervasive::invariant::*;
 
-        pub fn blah(#[proof] i: Invariant<u8>) {
+        pub fn blah(#[proof] i: AtomicInvariant<u8>) {
           let mut idx = 0;
           while idx < 5 {
-            open_invariant!(&i => inner => {
+            open_atomic_invariant!(&i => inner => {
               break;
             });
           }
@@ -296,10 +296,10 @@ test_both! {
     continue_early continue_early_local code! {
         use crate::pervasive::invariant::*;
 
-        pub fn blah(#[proof] i: Invariant<u8>) {
+        pub fn blah(#[proof] i: AtomicInvariant<u8>) {
           let mut idx = 0;
           while idx < 5 {
-            open_invariant!(&i => inner => {
+            open_atomic_invariant!(&i => inner => {
               break;
             });
           }
@@ -313,8 +313,8 @@ test_both! {
         use crate::pervasive::invariant::*;
 
         #[proof]
-        pub fn blah(#[proof] i: Invariant<u8>) {
-          open_invariant!(&i => inner => {
+        pub fn blah(#[proof] i: AtomicInvariant<u8>) {
+          open_atomic_invariant!(&i => inner => {
             return;
           });
         }
@@ -326,10 +326,10 @@ test_both! {
         use crate::pervasive::invariant::*;
 
         #[proof]
-        pub fn blah(#[proof] i: Invariant<u8>) {
+        pub fn blah(#[proof] i: AtomicInvariant<u8>) {
           let mut idx = 0;
           while idx < 5 {
-            open_invariant!(&i => inner => {
+            open_atomic_invariant!(&i => inner => {
               break;
             });
           }
@@ -343,10 +343,10 @@ test_both! {
         use crate::pervasive::invariant::*;
 
         #[proof]
-        pub fn blah(#[proof] i: Invariant<u8>) {
+        pub fn blah(#[proof] i: AtomicInvariant<u8>) {
           let mut idx = 0;
           while idx < 5 {
-            open_invariant!(&i => inner => {
+            open_atomic_invariant!(&i => inner => {
               break;
             });
           }
@@ -355,14 +355,14 @@ test_both! {
     } => Err(err) => assert_vir_error(err)
 }
 
-// Check that we can't open a normal Invariant with open_local_invariant and vice-versa
+// Check that we can't open a AtomicInvariant with open_local_invariant and vice-versa
 
 test_verify_one_file! {
     #[test] mixup1 code! {
         use crate::pervasive::invariant::*;
 
         pub fn X(#[proof] i: LocalInvariant<u8>) {
-            open_invariant!(&i => inner => {
+            open_atomic_invariant!(&i => inner => {
             });
         }
     } => Err(err)
@@ -372,7 +372,7 @@ test_verify_one_file! {
     #[test] mixup2 code! {
         use crate::pervasive::invariant::*;
 
-        pub fn X(#[proof] i: Invariant<u8>) {
+        pub fn X(#[proof] i: AtomicInvariant<u8>) {
             open_local_invariant!(&i => inner => {
             });
         }

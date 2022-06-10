@@ -389,7 +389,7 @@ pub struct CommandsWithContextX {
     pub span: air::ast::Span,
     pub desc: String,
     pub commands: Commands,
-    pub spinoff_z3: bool,
+    pub spinoff_prover: bool,
 }
 
 impl CommandsWithContextX {
@@ -397,13 +397,13 @@ impl CommandsWithContextX {
         span: Span,
         desc: String,
         commands: Commands,
-        spinoff_z3: bool,
+        spinoff_prover: bool,
     ) -> CommandsWithContext {
         Arc::new(CommandsWithContextX {
             span: span,
             desc: desc,
             commands: commands,
-            spinoff_z3: spinoff_z3,
+            spinoff_prover: spinoff_prover,
         })
     }
 }
@@ -412,7 +412,7 @@ pub type CommandsWithContext = Arc<CommandsWithContextX>;
 
 fn atomicity_type_name(atomicity: InvAtomicity) -> Ident {
     match atomicity {
-        InvAtomicity::Atomic => Arc::new("Invariant".to_string()),
+        InvAtomicity::Atomic => Arc::new("AtomicInvariant".to_string()),
         InvAtomicity::NonAtomic => Arc::new("LocalInvariant".to_string()),
     }
 }

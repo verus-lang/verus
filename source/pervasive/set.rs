@@ -274,6 +274,7 @@ pub fn axiom_set_choose_len<A>(s: Set<A>) {
 
 // Macros
 
+#[doc(hidden)]
 #[macro_export]
 macro_rules! set_insert_rec {
     [$val:expr;] => {

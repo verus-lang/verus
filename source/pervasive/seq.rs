@@ -5,7 +5,24 @@ use builtin_macros::*;
 #[allow(unused_imports)]
 use crate::pervasive::*;
 
-/// sequence type for specifications
+/// `Seq<A>` is a sequence type for specifications.
+/// To use a "sequence" in compiled code, use an `exec` type like [`vec::Vec`]
+/// that has `Seq<A>` as its specification type.
+///
+/// An object `seq: Seq<A>` has a length, given by [`seq.len()`](Seq::len),
+/// and a value at each `i` for `0 <= i < seq.len()`, given by [`seq.index(i)`](Seq::index).
+///
+/// Sequences can be constructed in a few different ways:
+///  * [`Seq::empty`] construct an empty sequence (`len() == 0`)
+///  * [`Seq::new`] construct a sequence of a given length, initialized according
+///     to a given function mapping indices `i` to values `A`.
+///  * The [`seq!`] macro, to construct small sequences of a fixed size (analagous to the
+///     [`std::vec!`] macro).
+///  * By manipulating an existing sequence with [`Seq::push`], [`Seq::update`],
+///    or [`Seq::add`].
+///
+/// To prove that two sequences are equal, it is usually easiest to use the [`assert_seqs_equal!`] macro.
+
 #[verifier(external_body)]
 pub struct Seq<#[verifier(strictly_positive)] A> {
     dummy: std::marker::PhantomData<A>,
@@ -18,6 +35,11 @@ impl<A> Seq<A> {
 
     fndecl!(pub fn len(self) -> nat);
 
+    /// Gets the value at the given index `i`.
+    ///
+    /// If `i` is not in the range `[0, self.len())`, then the resulting value
+    /// is meaningless and arbitrary.
+
     #[spec] #[verifier(external_body)]
     pub fn index(self, i: int) -> A {
         recommends([0 <= i, i < self.len()]);
@@ -26,17 +48,53 @@ impl<A> Seq<A> {
 
     fndecl!(pub fn push(self, a: A) -> Seq<A>);
 
+    /// Updates the sequence at the given index, replacing the element with the given
+    /// value, and otherwise leaves it unchanged.
+    ///
+    /// ## Example
+    ///
+    /// ```rust
+    /// #[proof]
+    /// fn update_test() {
+    ///     let s = seq![10, 11, 12, 13, 14];
+    ///     let t = s.update(2, -5);
+    ///     assert_seqs_equal!(t, seq![10, 11, -5, 13, 14]);
+    /// }
+    /// ```
+
     #[spec] #[verifier(external_body)]
     pub fn update(self, i: int, a: A) -> Seq<A> {
         recommends([0 <= i, i < self.len()]);
         unimplemented!()
     }
 
+    /// Returns true if the two sequences are pointwise equal, i.e.,
+    /// they have the same length and the corresponding values are equal
+    /// at each index. This is equivalent to the sequences being actually equal
+    /// by [`axiom_seq_ext_equal`].
+    ///
+    /// To prove that two sequences are equal via extensionality, it is generally easier
+    /// to use the [`assert_seqs_equal!`] macro, rather than using `ext_equal` directly.
+
     #[spec] #[verifier(publish)]
     pub fn ext_equal(self, s2: Seq<A>) -> bool {
         self.len() == s2.len() &&
         forall(|i: int| 0 <= i && i < self.len() >>= equal(self.index(i), s2.index(i)))
     }
+
+    /// Returns a sequence for the given subrange.
+    ///
+    /// ## Example
+    ///
+    /// ```rust
+    /// #[proof]
+    /// fn subrange_test() {
+    ///     let s = seq![10, 11, 12, 13, 14];
+    ///     //                  ^-------^
+    ///     //          0   1   2   3   4   5
+    ///     let sub = s.subrange(2, 4);
+    ///     assert_seqs_equal!(sub, seq![12, 13]);
+    /// }
 
     #[spec] #[verifier(external_body)]
     pub fn subrange(self, start_inclusive: int, end_exclusive: int) -> Seq<A> {
@@ -50,8 +108,11 @@ impl<A> Seq<A> {
 
     fndecl!(pub fn add(self, rhs: Seq<A>) -> Seq<A>);
 
+    /// Returns the last element of the sequence.
+
     #[spec] #[verifier(publish)]
     pub fn last(self) -> A {
+        recommends([self.len() > 0]);
         self.index(self.len() as int - 1)
     }
 }
@@ -93,8 +154,9 @@ pub fn axiom_seq_push_len<A>(s: Seq<A>, a: A) {
 #[proof]
 #[verifier(external_body)]
 #[verifier(broadcast_forall)]
-pub fn axiom_seq_push_index_same<A>(s: Seq<A>, a: A) {
-    ensures(equal(#[trigger] s.push(a).index(s.len()), a));
+pub fn axiom_seq_push_index_same<A>(s: Seq<A>, a: A, i: int) {
+    requires(i == s.len());
+    ensures(equal(#[trigger] s.push(a).index(i), a));
 }
 
 #[proof]
@@ -206,6 +268,7 @@ pub fn axiom_seq_add_index2<A>(s1: Seq<A>, s2: Seq<A>, i: int) {
     ensures(equal(s1.add(s2).index(i), s2.index(i - s1.len())));
 }
 
+#[doc(hidden)]
 #[macro_export]
 macro_rules! seq_insert_rec {
     [$val:expr;] => {
@@ -218,6 +281,19 @@ macro_rules! seq_insert_rec {
         seq_insert_rec![$val.push($elem);$($tail)*]
     }
 }
+
+/// Creates a [`Seq`] containing the given elements.
+///
+/// ## Example
+///
+/// ```rust
+/// let s = seq![11, 12, 13];
+///
+/// assert(s.len() == 3);
+/// assert(s.index(0) == 11);
+/// assert(s.index(1) == 12);
+/// assert(s.index(2) == 13);
+/// ```
 
 #[macro_export]
 macro_rules! seq {

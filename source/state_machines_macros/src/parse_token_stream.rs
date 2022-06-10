@@ -306,6 +306,8 @@ enum ShardingType {
     Map,
     StorageOption,
     StorageMap,
+    PersistentMap,
+    Count,
 }
 
 /// Get the sharding type from the attributes of the field.
@@ -345,10 +347,12 @@ fn get_sharding_type(
                                 "variable" => ShardingType::Variable,
                                 "constant" => ShardingType::Constant,
                                 "multiset" => ShardingType::Multiset,
+                                "count" => ShardingType::Count,
                                 "option" => ShardingType::Option,
                                 "map" => ShardingType::Map,
                                 "storage_option" => ShardingType::StorageOption,
                                 "storage_map" => ShardingType::StorageMap,
+                                "persistent_map" => ShardingType::PersistentMap,
                                 "not_tokenized" => ShardingType::NotTokenized,
                                 name => {
                                     return Err(Error::new(
@@ -404,6 +408,32 @@ fn get_sharding_type(
     } else {
         Ok(ShardingType::Variable)
     }
+}
+
+/// Checks the given type to be of the form `type_name`.
+/// Returns an Error (using the given strategy name in the error message) if the given
+/// type is not of the right form.
+fn check_untemplated_type(ty: &Type, strategy: &str, type_name: &str) -> syn::parse::Result<()> {
+    match ty {
+        Type::Path(TypePath { qself: None, path }) if path.segments.len() == 1 => {
+            let path_segment = &path.segments[0];
+            if path_segment.ident.to_string() == type_name {
+                match &path_segment.arguments {
+                    PathArguments::None => {
+                        return Ok(());
+                    }
+                    _ => {}
+                }
+            }
+        }
+        _ => {}
+    }
+
+    let expected_form = type_name.to_string();
+    return Err(Error::new(
+        ty.span(),
+        format!("type of a field with sharding strategy '{strategy:}' must be {expected_form:}"),
+    ));
 }
 
 /// Checks the given type to be of the form `type_name<...>` and if so, extracts
@@ -489,6 +519,10 @@ fn to_fields(
             ShardingType::Variable => ShardableType::Variable(field.ty.clone()),
             ShardingType::Constant => ShardableType::Constant(field.ty.clone()),
             ShardingType::NotTokenized => ShardableType::NotTokenized(field.ty.clone()),
+            ShardingType::Count => {
+                check_untemplated_type(&field.ty, "count", "nat")?;
+                ShardableType::Count
+            }
             ShardingType::Multiset => {
                 let v = extract_template_params(&field.ty, "multiset", "Multiset", 1)?;
                 ShardableType::Multiset(v[0].clone())
@@ -508,6 +542,10 @@ fn to_fields(
             ShardingType::StorageMap => {
                 let v = extract_template_params(&field.ty, "map", "Map", 2)?;
                 ShardableType::StorageMap(v[0].clone(), v[1].clone())
+            }
+            ShardingType::PersistentMap => {
+                let v = extract_template_params(&field.ty, "map", "Map", 2)?;
+                ShardableType::PersistentMap(v[0].clone(), v[1].clone())
             }
         };
 

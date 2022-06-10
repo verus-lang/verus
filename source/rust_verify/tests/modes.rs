@@ -406,3 +406,15 @@ test_verify_one_file! {
         }
     } => Err(_)
 }
+
+test_verify_one_file! {
+    #[test] assign_from_proof code! {
+        fn myfun(#[spec] a: bool) -> bool {
+            let mut b = false;
+            if a {
+                b = true;
+            }
+            b
+        }
+    } => Err(e) => assert_vir_error(e)
+}

@@ -146,13 +146,13 @@ pub fn lemma_int_range(lo: int, hi: int) {
 
 /// Prove two sets equal by extensionality. Usage is:
 ///
-/// ```rust,ignore
+/// ```rust
 /// assert_sets_equal!(set1, set2);
 /// ```
 /// 
 /// or,
 /// 
-/// ```rust,ignore
+/// ```rust
 /// assert_sets_equal!(set1, set2, elem => {
 ///     // prove that set1.contains(elem) iff set2.contains(elem)
 /// });

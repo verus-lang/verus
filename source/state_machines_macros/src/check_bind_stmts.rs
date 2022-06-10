@@ -1,6 +1,5 @@
-use crate::ast::{MonoidElt, MonoidStmtType, ShardableType, SplitKind, TransitionStmt, SM};
+use crate::ast::{MonoidElt, MonoidStmtType, SplitKind, TransitionStmt, SM};
 use syn::parse::Error;
-use syn::Type;
 
 pub fn check_bind_stmts(sm: &SM, ts: &mut TransitionStmt, errors: &mut Vec<Error>) {
     match ts {
@@ -67,18 +66,5 @@ pub fn uses_bind(elt: &MonoidElt) -> bool {
         MonoidElt::SingletonKV(_, Some(_)) => false,
         MonoidElt::SingletonMultiset(_) => false,
         MonoidElt::General(_) => false,
-    }
-}
-
-pub fn get_binding_ty(stype: &ShardableType) -> Option<Type> {
-    match stype {
-        ShardableType::Variable(_) => None,
-        ShardableType::Constant(_) => None,
-        ShardableType::NotTokenized(_) => None,
-        ShardableType::Option(ty) => Some(ty.clone()),
-        ShardableType::Map(_, ty) => Some(ty.clone()),
-        ShardableType::Multiset(_) => None,
-        ShardableType::StorageOption(ty) => Some(ty.clone()),
-        ShardableType::StorageMap(_, ty) => Some(ty.clone()),
     }
 }

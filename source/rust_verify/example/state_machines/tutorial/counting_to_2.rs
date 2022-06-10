@@ -1,4 +1,6 @@
-#[allow(unused_imports)]
+#![allow(unused_imports)]
+
+// ANCHOR: full
 use builtin::*;
 use builtin_macros::*;
 mod pervasive;
@@ -99,7 +101,7 @@ impl G {
 pub struct Global {
     pub atomic: PAtomicU32,
     #[proof] pub instance: X::Instance,
-    #[proof] pub inv: Invariant<G>,
+    #[proof] pub inv: AtomicInvariant<G>,
 }
 
 impl Global {
@@ -135,7 +137,7 @@ impl Spawnable<Proof<X::inc_a>> for Thread1Data {
         let Thread1Data { globals: globals, mut token } = self;
         let globals = &*globals;
 
-        open_invariant!(&globals.inv => g => {
+        open_atomic_invariant!(&globals.inv => g => {
             #[proof] let G { counter: mut c, perm: mut p } = g;
 
             #[spec] let now_c = c;
@@ -176,7 +178,7 @@ impl Spawnable<Proof<X::inc_b>> for Thread2Data {
         let Thread2Data { globals: globals, mut token } = self;
         let globals = &*globals;
 
-        open_invariant!(&globals.inv => g => {
+        open_atomic_invariant!(&globals.inv => g => {
             #[proof] let G { counter: mut c, perm: mut p } = g;
 
             #[spec] let now_c = c;
@@ -204,7 +206,7 @@ fn main() {
 
   let (atomic, Proof(perm_token)) = PAtomicU32::new(0);
 
-  #[proof] let at_inv: Invariant<G> = Invariant::new(
+  #[proof] let at_inv: AtomicInvariant<G> = AtomicInvariant::new(
       G { counter: counter_token, perm: perm_token },
       |g: G| g.wf(instance, atomic),
       0);
@@ -238,7 +240,7 @@ fn main() {
 
   let global = &*global_arc;
   let x;
-  open_invariant!(&global.inv => g => {
+  open_atomic_invariant!(&global.inv => g => {
     #[proof] let G { counter: c3, perm: p3 } = g;
 
     x = global.atomic.load(&p3);
@@ -249,3 +251,4 @@ fn main() {
 
   assert(equal(x, 2));
 }
+// ANCHOR_END: full
