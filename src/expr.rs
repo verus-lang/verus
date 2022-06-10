@@ -542,6 +542,10 @@ ast_struct! {
         pub attrs: Vec<Attribute>,
         pub label: Option<Label>,
         pub loop_token: Token![loop],
+        pub requires: Option<Requires>,
+        pub invariant: Option<Invariant>,
+        pub ensures: Option<Ensures>,
+        pub decreases: Option<Decreases>,
         pub body: Block,
     }
 }
@@ -770,6 +774,8 @@ ast_struct! {
         pub label: Option<Label>,
         pub while_token: Token![while],
         pub cond: Box<Expr>,
+        pub invariant: Option<Invariant>,
+        pub decreases: Option<Decreases>,
         pub body: Block,
     }
 }
@@ -2359,6 +2365,10 @@ pub(crate) mod parsing {
             let mut attrs = input.call(Attribute::parse_outer)?;
             let label: Option<Label> = input.parse()?;
             let loop_token: Token![loop] = input.parse()?;
+            let requires = input.parse()?;
+            let invariant = input.parse()?;
+            let ensures = input.parse()?;
+            let decreases = input.parse()?;
 
             let content;
             let brace_token = braced!(content in input);
@@ -2369,6 +2379,10 @@ pub(crate) mod parsing {
                 attrs,
                 label,
                 loop_token,
+                requires,
+                invariant,
+                ensures,
+                decreases,
                 body: Block { brace_token, stmts },
             })
         }
@@ -2675,6 +2689,8 @@ pub(crate) mod parsing {
             let label: Option<Label> = input.parse()?;
             let while_token: Token![while] = input.parse()?;
             let cond = Expr::parse_without_eager_brace(input)?;
+            let invariant = input.parse()?;
+            let decreases = input.parse()?;
 
             let content;
             let brace_token = braced!(content in input);
@@ -2686,6 +2702,8 @@ pub(crate) mod parsing {
                 label,
                 while_token,
                 cond: Box::new(cond),
+                invariant,
+                decreases,
                 body: Block { brace_token, stmts },
             })
         }
@@ -3293,6 +3311,8 @@ pub(crate) mod printing {
             self.label.to_tokens(tokens);
             self.while_token.to_tokens(tokens);
             wrap_bare_struct(tokens, &self.cond);
+            self.invariant.to_tokens(tokens);
+            self.decreases.to_tokens(tokens);
             self.body.brace_token.surround(tokens, |tokens| {
                 inner_attrs_to_tokens(&self.attrs, tokens);
                 tokens.append_all(&self.body.stmts);
@@ -3324,6 +3344,10 @@ pub(crate) mod printing {
             outer_attrs_to_tokens(&self.attrs, tokens);
             self.label.to_tokens(tokens);
             self.loop_token.to_tokens(tokens);
+            self.requires.to_tokens(tokens);
+            self.invariant.to_tokens(tokens);
+            self.ensures.to_tokens(tokens);
+            self.decreases.to_tokens(tokens);
             self.body.brace_token.surround(tokens, |tokens| {
                 inner_attrs_to_tokens(&self.attrs, tokens);
                 tokens.append_all(&self.body.stmts);

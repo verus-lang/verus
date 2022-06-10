@@ -753,7 +753,7 @@
       },
       "fields": {
         "token": {
-          "token": "Requires"
+          "token": "Decreases"
         },
         "exprs": {
           "syn": "Specification"
@@ -1636,6 +1636,26 @@
         "loop_token": {
           "token": "Loop"
         },
+        "requires": {
+          "option": {
+            "syn": "Requires"
+          }
+        },
+        "invariant": {
+          "option": {
+            "syn": "Invariant"
+          }
+        },
+        "ensures": {
+          "option": {
+            "syn": "Ensures"
+          }
+        },
+        "decreases": {
+          "option": {
+            "syn": "Decreases"
+          }
+        },
         "body": {
           "syn": "Block"
         }
@@ -2107,6 +2127,16 @@
         "cond": {
           "box": {
             "syn": "Expr"
+          }
+        },
+        "invariant": {
+          "option": {
+            "syn": "Invariant"
+          }
+        },
+        "decreases": {
+          "option": {
+            "syn": "Decreases"
           }
         },
         "body": {
@@ -2844,6 +2874,20 @@
         },
         "span": {
           "proc_macro2": "Span"
+        }
+      }
+    },
+    {
+      "ident": "Invariant",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "token": {
+          "token": "Invariant"
+        },
+        "exprs": {
+          "syn": "Specification"
         }
       }
     },

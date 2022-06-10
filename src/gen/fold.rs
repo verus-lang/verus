@@ -386,6 +386,9 @@ pub trait Fold {
     fn fold_index(&mut self, i: Index) -> Index {
         fold_index(self, i)
     }
+    fn fold_invariant(&mut self, i: Invariant) -> Invariant {
+        fold_invariant(self, i)
+    }
     #[cfg(feature = "full")]
     fn fold_item(&mut self, i: Item) -> Item {
         fold_item(self, i)
@@ -1222,7 +1225,7 @@ where
     F: Fold + ?Sized,
 {
     Decreases {
-        token: Token![requires](tokens_helper(f, &node.token.span)),
+        token: Token![decreases](tokens_helper(f, &node.token.span)),
         exprs: f.fold_specification(node.exprs),
     }
 }
@@ -1576,6 +1579,10 @@ where
         attrs: FoldHelper::lift(node.attrs, |it| f.fold_attribute(it)),
         label: (node.label).map(|it| f.fold_label(it)),
         loop_token: Token![loop](tokens_helper(f, &node.loop_token.span)),
+        requires: (node.requires).map(|it| f.fold_requires(it)),
+        invariant: (node.invariant).map(|it| f.fold_invariant(it)),
+        ensures: (node.ensures).map(|it| f.fold_ensures(it)),
+        decreases: (node.decreases).map(|it| f.fold_decreases(it)),
         body: f.fold_block(node.body),
     }
 }
@@ -1779,6 +1786,8 @@ where
         label: (node.label).map(|it| f.fold_label(it)),
         while_token: Token![while](tokens_helper(f, &node.while_token.span)),
         cond: Box::new(f.fold_expr(*node.cond)),
+        invariant: (node.invariant).map(|it| f.fold_invariant(it)),
+        decreases: (node.decreases).map(|it| f.fold_decreases(it)),
         body: f.fold_block(node.body),
     }
 }
@@ -2157,6 +2166,15 @@ where
     Index {
         index: node.index,
         span: f.fold_span(node.span),
+    }
+}
+pub fn fold_invariant<F>(f: &mut F, node: Invariant) -> Invariant
+where
+    F: Fold + ?Sized,
+{
+    Invariant {
+        token: Token![invariant](tokens_helper(f, &node.token.span)),
+        exprs: f.fold_specification(node.exprs),
     }
 }
 #[cfg(feature = "full")]

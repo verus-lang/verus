@@ -125,6 +125,13 @@ ast_struct! {
 }
 
 ast_struct! {
+    pub struct Invariant {
+        pub token: Token![invariant],
+        pub exprs: Specification,
+    }
+}
+
+ast_struct! {
     pub struct Decreases {
         pub token: Token![decreases],
         pub exprs: Specification,
@@ -317,6 +324,16 @@ pub mod parsing {
     }
 
     #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
+    impl Parse for Invariant {
+        fn parse(input: ParseStream) -> Result<Self> {
+            Ok(Invariant {
+                token: input.parse()?,
+                exprs: input.parse()?,
+            })
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
     impl Parse for Decreases {
         fn parse(input: ParseStream) -> Result<Self> {
             Ok(Decreases {
@@ -352,6 +369,17 @@ pub mod parsing {
     impl Parse for Option<Ensures> {
         fn parse(input: ParseStream) -> Result<Self> {
             if input.peek(Token![ensures]) {
+                input.parse().map(Some)
+            } else {
+                Ok(None)
+            }
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "parsing")))]
+    impl Parse for Option<Invariant> {
+        fn parse(input: ParseStream) -> Result<Self> {
+            if input.peek(Token![invariant]) {
                 input.parse().map(Some)
             } else {
                 Ok(None)
@@ -599,6 +627,14 @@ mod printing {
 
     #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
     impl ToTokens for Ensures {
+        fn to_tokens(&self, tokens: &mut TokenStream) {
+            self.token.to_tokens(tokens);
+            self.exprs.to_tokens(tokens);
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
+    impl ToTokens for Invariant {
         fn to_tokens(&self, tokens: &mut TokenStream) {
             self.token.to_tokens(tokens);
             self.exprs.to_tokens(tokens);

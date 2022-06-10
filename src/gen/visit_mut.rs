@@ -386,6 +386,9 @@ pub trait VisitMut {
     fn visit_index_mut(&mut self, i: &mut Index) {
         visit_index_mut(self, i);
     }
+    fn visit_invariant_mut(&mut self, i: &mut Invariant) {
+        visit_invariant_mut(self, i);
+    }
     #[cfg(feature = "full")]
     fn visit_item_mut(&mut self, i: &mut Item) {
         visit_item_mut(self, i);
@@ -1711,6 +1714,18 @@ where
         v.visit_label_mut(it);
     }
     tokens_helper(v, &mut node.loop_token.span);
+    if let Some(it) = &mut node.requires {
+        v.visit_requires_mut(it);
+    }
+    if let Some(it) = &mut node.invariant {
+        v.visit_invariant_mut(it);
+    }
+    if let Some(it) = &mut node.ensures {
+        v.visit_ensures_mut(it);
+    }
+    if let Some(it) = &mut node.decreases {
+        v.visit_decreases_mut(it);
+    }
     v.visit_block_mut(&mut node.body);
 }
 #[cfg(feature = "full")]
@@ -1951,6 +1966,12 @@ where
     }
     tokens_helper(v, &mut node.while_token.span);
     v.visit_expr_mut(&mut *node.cond);
+    if let Some(it) = &mut node.invariant {
+        v.visit_invariant_mut(it);
+    }
+    if let Some(it) = &mut node.decreases {
+        v.visit_decreases_mut(it);
+    }
     v.visit_block_mut(&mut node.body);
 }
 #[cfg(feature = "full")]
@@ -2379,6 +2400,13 @@ where
 {
     skip!(node.index);
     v.visit_span_mut(&mut node.span);
+}
+pub fn visit_invariant_mut<V>(v: &mut V, node: &mut Invariant)
+where
+    V: VisitMut + ?Sized,
+{
+    tokens_helper(v, &mut node.token.span);
+    v.visit_specification_mut(&mut node.exprs);
 }
 #[cfg(feature = "full")]
 pub fn visit_item_mut<V>(v: &mut V, node: &mut Item)

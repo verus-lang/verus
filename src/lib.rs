@@ -458,9 +458,9 @@ mod whitespace;
 
 mod verus;
 pub use crate::verus::{
-    Assert, AssertForall, Assume, Closed, DataMode, Decreases, Ensures, FnMode, Mode, ModeExec,
-    ModeGhost, ModeProof, ModeSpec, ModeSpecChecked, ModeTracked, Open, OpenRestricted, Publish,
-    Recommends, Requires, Specification,
+    Assert, AssertForall, Assume, Closed, DataMode, Decreases, Ensures, FnMode, Invariant, Mode,
+    ModeExec, ModeGhost, ModeProof, ModeSpec, ModeSpecChecked, ModeTracked, Open, OpenRestricted,
+    Publish, Recommends, Requires, Specification,
 };
 
 mod gen {
