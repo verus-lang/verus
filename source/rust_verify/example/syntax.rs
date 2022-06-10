@@ -160,14 +160,14 @@ fn test_quantifier() {
 
 /// "assert forall by" may be used to prove foralls:
 fn test_assert_forall_by() {
-    assert forall(x: int, y: int) f1(x) + f1(y) == x + y + 2 by {
+    assert forall|x: int, y: int| f1(x) + f1(y) == x + y + 2 by {
         reveal(f1);
     }
     assert(f1(1) + f1(2) == 5);
     assert(f1(3) + f1(4) == 9);
 
-    // to prove forall|...| P ==> Q, write assert forall(...) P implies Q by {...}
-    assert forall(x: int) x < 10 implies f1(x) < 11 by {
+    // to prove forall|...| P ==> Q, write assert forall|...| P implies Q by {...}
+    assert forall|x: int| x < 10 implies f1(x) < 11 by {
         assert(x < 10);
         reveal(f1);
         assert(f1(x) < 11);
