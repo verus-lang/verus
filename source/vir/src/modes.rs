@@ -685,7 +685,10 @@ fn check_expr(
             check_expr_has_mode(typing, outer_mode, cond, Mode::Exec)?;
             check_expr_has_mode(typing, outer_mode, body, Mode::Exec)?;
             for inv in invs.iter() {
+                let prev = typing.block_ghostness;
+                typing.block_ghostness = Ghost::Ghost { tracked: false };
                 check_expr_has_mode(typing, Mode::Spec, inv, Mode::Spec)?;
+                typing.block_ghostness = prev;
             }
             Ok(Mode::Exec)
         }

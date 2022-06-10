@@ -3,15 +3,16 @@ use syn_verus::parse::{Parse, ParseStream};
 use syn_verus::punctuated::Punctuated;
 use syn_verus::token::{Brace, Paren};
 use syn_verus::visit_mut::{
-    visit_expr_mut, visit_field_mut, visit_impl_item_method_mut, visit_item_enum_mut,
-    visit_item_fn_mut, visit_item_struct_mut, visit_local_mut, visit_trait_item_method_mut,
-    VisitMut,
+    visit_expr_loop_mut, visit_expr_mut, visit_expr_while_mut, visit_field_mut,
+    visit_impl_item_method_mut, visit_item_enum_mut, visit_item_fn_mut, visit_item_struct_mut,
+    visit_local_mut, visit_trait_item_method_mut, VisitMut,
 };
 use syn_verus::{
     parse_macro_input, parse_quote_spanned, Attribute, BinOp, Block, DataMode, Decreases, Ensures,
-    Expr, ExprBinary, ExprCall, ExprTuple, ExprUnary, Field, FnArgKind, FnMode, ImplItemMethod,
-    Item, ItemEnum, ItemFn, ItemStruct, Local, ModeSpec, ModeSpecChecked, Publish, Recommends,
-    Requires, ReturnType, Signature, Stmt, TraitItemMethod, UnOp, Visibility,
+    Expr, ExprBinary, ExprCall, ExprLoop, ExprTuple, ExprUnary, ExprWhile, Field, FnArgKind,
+    FnMode, ImplItemMethod, Invariant, Item, ItemEnum, ItemFn, ItemStruct, Local, ModeSpec,
+    ModeSpecChecked, Publish, Recommends, Requires, ReturnType, Signature, Stmt, TraitItemMethod,
+    UnOp, Visibility,
 };
 
 fn take_expr(expr: &mut Expr) -> Expr {
@@ -130,6 +131,7 @@ impl Visitor {
         let recommends = std::mem::take(&mut sig.recommends);
         let ensures = std::mem::take(&mut sig.ensures);
         let decreases = std::mem::take(&mut sig.decreases);
+        // TODO: wrap specs inside ghost blocks
         if let Some(Requires { token, exprs }) = requires {
             stmts.push(parse_quote_spanned!(token.span => requires([#exprs]);));
         }
@@ -455,6 +457,44 @@ impl VisitMut for Visitor {
                 _ => panic!("expected assert/assume"),
             }
         }
+    }
+
+    fn visit_expr_while_mut(&mut self, expr_while: &mut ExprWhile) {
+        visit_expr_while_mut(self, expr_while);
+        let invariants = std::mem::take(&mut expr_while.invariant);
+        let decreases = std::mem::take(&mut expr_while.decreases);
+        let mut stmts: Vec<Stmt> = Vec::new();
+        // TODO: wrap specs inside ghost blocks
+        if let Some(Invariant { token, exprs }) = invariants {
+            stmts.push(parse_quote_spanned!(token.span => invariant([#exprs]);));
+        }
+        if let Some(Decreases { token, exprs }) = decreases {
+            stmts.push(parse_quote_spanned!(token.span => decreases((#exprs));));
+        }
+        expr_while.body.stmts.splice(0..0, stmts);
+    }
+
+    fn visit_expr_loop_mut(&mut self, expr_loop: &mut ExprLoop) {
+        visit_expr_loop_mut(self, expr_loop);
+        let requires = std::mem::take(&mut expr_loop.requires);
+        let invariants = std::mem::take(&mut expr_loop.invariant);
+        let ensures = std::mem::take(&mut expr_loop.ensures);
+        let decreases = std::mem::take(&mut expr_loop.decreases);
+        let mut stmts: Vec<Stmt> = Vec::new();
+        // TODO: wrap specs inside ghost blocks
+        if let Some(Requires { token, exprs }) = requires {
+            stmts.push(parse_quote_spanned!(token.span => requires([#exprs]);));
+        }
+        if let Some(Invariant { token, exprs }) = invariants {
+            stmts.push(parse_quote_spanned!(token.span => invariant([#exprs]);));
+        }
+        if let Some(Ensures { token, exprs }) = ensures {
+            stmts.push(parse_quote_spanned!(token.span => ensures([#exprs]);));
+        }
+        if let Some(Decreases { token, exprs }) = decreases {
+            stmts.push(parse_quote_spanned!(token.span => decreases((#exprs));));
+        }
+        expr_loop.body.stmts.splice(0..0, stmts);
     }
 
     fn visit_local_mut(&mut self, local: &mut Local) {
