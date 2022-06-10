@@ -783,7 +783,6 @@ impl Verifier {
                             let file = self.create_log_file(
                                 Some(module),
                                 None,
-                                // Some(&(function.x.name).path),
                                 crate::config::SINGULAR_FILE_SUFFIX,
                             )?;
                             air_context.singular_log = Some(file);
