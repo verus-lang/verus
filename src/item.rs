@@ -158,6 +158,7 @@ ast_struct! {
         pub vis: Visibility,
         pub sig: Signature,
         pub block: Box<Block>,
+        pub semi_token: Option<Token![;]>,
     }
 }
 
@@ -855,6 +856,7 @@ ast_struct! {
         pub defaultness: Option<Token![default]>,
         pub sig: Signature,
         pub block: Block,
+        pub semi_token: Option<Token![;]>,
     }
 }
 
@@ -1007,12 +1009,7 @@ pub mod parsing {
             let mut item = if lookahead.peek(Token![fn]) || peek_signature(&ahead) {
                 let vis: Visibility = input.parse()?;
                 let sig: Signature = input.parse()?;
-                if input.peek(Token![;]) {
-                    input.parse::<Token![;]>()?;
-                    Ok(Item::Verbatim(verbatim::between(begin, input)))
-                } else {
-                    parse_rest_of_fn(input, Vec::new(), vis, sig).map(Item::Fn)
-                }
+                parse_rest_of_fn(input, Vec::new(), vis, sig).map(Item::Fn)
             } else if lookahead.peek(Token![extern]) {
                 ahead.parse::<Token![extern]>()?;
                 let lookahead = ahead.lookahead1();
@@ -1584,16 +1581,23 @@ pub mod parsing {
         vis: Visibility,
         sig: Signature,
     ) -> Result<ItemFn> {
-        let content;
-        let brace_token = braced!(content in input);
-        attr::parsing::parse_inner(&content, &mut attrs)?;
-        let stmts = content.call(Block::parse_within)?;
+        let (brace_token, stmts, semi_token) = if input.peek(Token![;]) {
+            let semi_token: Token![;] = input.parse()?;
+            (Brace(semi_token.span), vec![], Some(semi_token))
+        } else {
+            let content;
+            let brace_token = braced!(content in input);
+            attr::parsing::parse_inner(&content, &mut attrs)?;
+            let stmts = content.call(Block::parse_within)?;
+            (brace_token, stmts, None)
+        };
 
         Ok(ItemFn {
             attrs,
             vis,
             sig,
             block: Box::new(Block { brace_token, stmts }),
+            semi_token,
         })
     }
 
@@ -2683,26 +2687,25 @@ pub mod parsing {
             let defaultness: Option<Token![default]> = input.parse()?;
             let sig: Signature = input.parse()?;
 
-            let block = if let Some(semi) = input.parse::<Option<Token![;]>>()? {
+            let (block, semi_token) = if let Some(semi) = input.parse::<Option<Token![;]>>()? {
                 // Accept methods without a body in an impl block because
                 // rustc's *parser* does not reject them (the compilation error
                 // is emitted later than parsing) and it can be useful for macro
                 // DSLs.
-                let mut punct = Punct::new(';', Spacing::Alone);
-                punct.set_span(semi.span);
-                let tokens = TokenStream::from_iter(vec![TokenTree::Punct(punct)]);
-                Block {
+                let block = Block {
                     brace_token: Brace { span: semi.span },
-                    stmts: vec![Stmt::Item(Item::Verbatim(tokens))],
-                }
+                    stmts: vec![],
+                };
+                (block, Some(semi))
             } else {
                 let content;
                 let brace_token = braced!(content in input);
                 attrs.extend(content.call(Attribute::parse_inner)?);
-                Block {
+                let block = Block {
                     brace_token,
                     stmts: content.call(Block::parse_within)?,
-                }
+                };
+                (block, None)
             };
 
             Ok(ImplItemMethod {
@@ -2711,6 +2714,7 @@ pub mod parsing {
                 defaultness,
                 sig,
                 block,
+                semi_token,
             })
         }
     }
@@ -2884,6 +2888,10 @@ mod printing {
             tokens.append_all(self.attrs.outer());
             self.vis.to_tokens(tokens);
             self.sig.to_tokens(tokens);
+            if let Some(semi_token) = self.semi_token {
+                semi_token.to_tokens(tokens);
+                return;
+            }
             self.block.brace_token.surround(tokens, |tokens| {
                 tokens.append_all(self.attrs.inner());
                 tokens.append_all(&self.block.stmts);
@@ -3212,13 +3220,9 @@ mod printing {
             self.vis.to_tokens(tokens);
             self.defaultness.to_tokens(tokens);
             self.sig.to_tokens(tokens);
-            if self.block.stmts.len() == 1 {
-                if let Stmt::Item(Item::Verbatim(verbatim)) = &self.block.stmts[0] {
-                    if verbatim.to_string() == ";" {
-                        verbatim.to_tokens(tokens);
-                        return;
-                    }
-                }
+            if let Some(semi_token) = self.semi_token {
+                semi_token.to_tokens(tokens);
+                return;
             }
             self.block.brace_token.surround(tokens, |tokens| {
                 tokens.append_all(self.attrs.inner());

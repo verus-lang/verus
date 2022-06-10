@@ -2781,6 +2781,11 @@
         },
         "block": {
           "syn": "Block"
+        },
+        "semi_token": {
+          "option": {
+            "token": "Semi"
+          }
         }
       }
     },
@@ -3086,6 +3091,11 @@
         "block": {
           "box": {
             "syn": "Block"
+          }
+        },
+        "semi_token": {
+          "option": {
+            "token": "Semi"
           }
         }
       }

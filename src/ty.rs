@@ -841,11 +841,28 @@ pub mod parsing {
             Self::parse(input, allow_plus)
         }
 
+        fn is_pat_return(input: ParseStream) -> Result<bool> {
+            if input.peek(token::Paren) {
+                let content;
+                let _ = parenthesized!(content in input);
+                // if one of the trees is a comma, this is a tuple, not a pattern return:
+                Ok(!content
+                    .cursor()
+                    .token_stream()
+                    .into_iter()
+                    .any(|t| matches!(t, TokenTree::Punct(p) if p.as_char() == ',')))
+            } else {
+                Ok(false)
+            }
+        }
+
         pub(crate) fn parse(input: ParseStream, allow_plus: bool) -> Result<Self> {
             if input.peek(Token![->]) {
                 let arrow = input.parse()?;
-                if input.peek(token::Paren) {
-                    // -> (pat: ty)
+                if Self::is_pat_return(&input.fork())? {
+                    // One of:
+                    //   -> (pat: ty)
+                    //   -> (ty, ..., ty)
                     let content;
                     let paren_token = parenthesized!(content in input);
                     let tracked = content.parse()?;

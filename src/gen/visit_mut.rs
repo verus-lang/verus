@@ -2349,6 +2349,9 @@ where
     }
     v.visit_signature_mut(&mut node.sig);
     v.visit_block_mut(&mut node.block);
+    if let Some(it) = &mut node.semi_token {
+        tokens_helper(v, &mut it.spans);
+    }
 }
 #[cfg(feature = "full")]
 pub fn visit_impl_item_type_mut<V>(v: &mut V, node: &mut ImplItemType)
@@ -2506,6 +2509,9 @@ where
     v.visit_visibility_mut(&mut node.vis);
     v.visit_signature_mut(&mut node.sig);
     v.visit_block_mut(&mut *node.block);
+    if let Some(it) = &mut node.semi_token {
+        tokens_helper(v, &mut it.spans);
+    }
 }
 #[cfg(feature = "full")]
 pub fn visit_item_foreign_mod_mut<V>(v: &mut V, node: &mut ItemForeignMod)

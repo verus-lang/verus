@@ -2128,6 +2128,7 @@ where
             .map(|it| Token![default](tokens_helper(f, &it.span))),
         sig: f.fold_signature(node.sig),
         block: f.fold_block(node.block),
+        semi_token: (node.semi_token).map(|it| Token![;](tokens_helper(f, &it.spans))),
     }
 }
 #[cfg(feature = "full")]
@@ -2253,6 +2254,7 @@ where
         vis: f.fold_visibility(node.vis),
         sig: f.fold_signature(node.sig),
         block: Box::new(f.fold_block(*node.block)),
+        semi_token: (node.semi_token).map(|it| Token![;](tokens_helper(f, &it.spans))),
     }
 }
 #[cfg(feature = "full")]

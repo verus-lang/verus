@@ -1113,6 +1113,7 @@ impl Clone for ImplItemMethod {
             defaultness: self.defaultness.clone(),
             sig: self.sig.clone(),
             block: self.block.clone(),
+            semi_token: self.semi_token.clone(),
         }
     }
 }
@@ -1227,6 +1228,7 @@ impl Clone for ItemFn {
             vis: self.vis.clone(),
             sig: self.sig.clone(),
             block: self.block.clone(),
+            semi_token: self.semi_token.clone(),
         }
     }
 }

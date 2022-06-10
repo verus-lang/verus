@@ -126,7 +126,7 @@ ast_struct! {
 
 ast_struct! {
     pub struct Decreases {
-        pub token: Token![requires],
+        pub token: Token![decreases],
         pub exprs: Specification,
     }
 }

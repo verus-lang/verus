@@ -1491,6 +1491,7 @@ impl Hash for ImplItemMethod {
         self.defaultness.hash(state);
         self.sig.hash(state);
         self.block.hash(state);
+        self.semi_token.hash(state);
     }
 }
 #[cfg(feature = "full")]
@@ -1642,6 +1643,7 @@ impl Hash for ItemFn {
         self.vis.hash(state);
         self.sig.hash(state);
         self.block.hash(state);
+        self.semi_token.hash(state);
     }
 }
 #[cfg(feature = "full")]

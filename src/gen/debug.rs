@@ -1598,6 +1598,7 @@ impl Debug for ImplItemMethod {
         formatter.field("defaultness", &self.defaultness);
         formatter.field("sig", &self.sig);
         formatter.field("block", &self.block);
+        formatter.field("semi_token", &self.semi_token);
         formatter.finish()
     }
 }
@@ -1780,6 +1781,7 @@ impl Debug for ItemFn {
         formatter.field("vis", &self.vis);
         formatter.field("sig", &self.sig);
         formatter.field("block", &self.block);
+        formatter.field("semi_token", &self.semi_token);
         formatter.finish()
     }
 }

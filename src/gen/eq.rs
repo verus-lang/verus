@@ -1095,7 +1095,7 @@ impl PartialEq for ImplItemMethod {
     fn eq(&self, other: &Self) -> bool {
         self.attrs == other.attrs && self.vis == other.vis
             && self.defaultness == other.defaultness && self.sig == other.sig
-            && self.block == other.block
+            && self.block == other.block && self.semi_token == other.semi_token
     }
 }
 #[cfg(feature = "full")]
@@ -1183,7 +1183,7 @@ impl Eq for ItemFn {}
 impl PartialEq for ItemFn {
     fn eq(&self, other: &Self) -> bool {
         self.attrs == other.attrs && self.vis == other.vis && self.sig == other.sig
-            && self.block == other.block
+            && self.block == other.block && self.semi_token == other.semi_token
     }
 }
 #[cfg(feature = "full")]

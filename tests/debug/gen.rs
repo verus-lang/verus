@@ -2647,6 +2647,18 @@ impl Debug for Lite<syn::ImplItem> {
                 }
                 formatter.field("sig", Lite(&_val.sig));
                 formatter.field("block", Lite(&_val.block));
+                if let Some(val) = &_val.semi_token {
+                    #[derive(RefCast)]
+                    #[repr(transparent)]
+                    struct Print(syn::token::Semi);
+                    impl Debug for Print {
+                        fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                            formatter.write_str("Some")?;
+                            Ok(())
+                        }
+                    }
+                    formatter.field("semi_token", Print::ref_cast(val));
+                }
                 formatter.finish()
             }
             syn::ImplItem::Type(_val) => {
@@ -2774,6 +2786,18 @@ impl Debug for Lite<syn::ImplItemMethod> {
         }
         formatter.field("sig", Lite(&_val.sig));
         formatter.field("block", Lite(&_val.block));
+        if let Some(val) = &_val.semi_token {
+            #[derive(RefCast)]
+            #[repr(transparent)]
+            struct Print(syn::token::Semi);
+            impl Debug for Print {
+                fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                    formatter.write_str("Some")?;
+                    Ok(())
+                }
+            }
+            formatter.field("semi_token", Print::ref_cast(val));
+        }
         formatter.finish()
     }
 }
@@ -2873,6 +2897,18 @@ impl Debug for Lite<syn::Item> {
                 formatter.field("vis", Lite(&_val.vis));
                 formatter.field("sig", Lite(&_val.sig));
                 formatter.field("block", Lite(&_val.block));
+                if let Some(val) = &_val.semi_token {
+                    #[derive(RefCast)]
+                    #[repr(transparent)]
+                    struct Print(syn::token::Semi);
+                    impl Debug for Print {
+                        fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                            formatter.write_str("Some")?;
+                            Ok(())
+                        }
+                    }
+                    formatter.field("semi_token", Print::ref_cast(val));
+                }
                 formatter.finish()
             }
             syn::Item::ForeignMod(_val) => {
@@ -3281,6 +3317,18 @@ impl Debug for Lite<syn::ItemFn> {
         formatter.field("vis", Lite(&_val.vis));
         formatter.field("sig", Lite(&_val.sig));
         formatter.field("block", Lite(&_val.block));
+        if let Some(val) = &_val.semi_token {
+            #[derive(RefCast)]
+            #[repr(transparent)]
+            struct Print(syn::token::Semi);
+            impl Debug for Print {
+                fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                    formatter.write_str("Some")?;
+                    Ok(())
+                }
+            }
+            formatter.field("semi_token", Print::ref_cast(val));
+        }
         formatter.finish()
     }
 }
