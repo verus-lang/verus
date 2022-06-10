@@ -272,6 +272,7 @@ impl Verifier {
             crate::singular::check_singular_valid(
                 air_context,
                 &command,
+                context.0,
                 QueryContext { report_long_running: Some(&mut report_long_running()) },
             )
         };
@@ -770,6 +771,23 @@ impl Verifier {
                         &**command;
                     if *prover_choice == vir::def::ProverChoice::Singular {
                         is_singular = true;
+                        #[cfg(not(feature = "singular"))]
+                        if is_singular {
+                            panic!(
+                                "Found singular command when Verus is compiled without Singular feature"
+                            );
+                        }
+
+                        #[cfg(feature = "singular")]
+                        if air_context.singular_log.is_none() {
+                            let file = self.create_log_file(
+                                Some(module),
+                                None,
+                                // Some(&(function.x.name).path),
+                                crate::config::SINGULAR_FILE_SUFFIX,
+                            )?;
+                            air_context.singular_log = Some(file);
+                        }
                     }
                     let mut spinoff_z3_context;
                     let query_air_context = if *prover_choice == vir::def::ProverChoice::Spinoff {

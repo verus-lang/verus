@@ -1,5 +1,5 @@
 use crate::smt_process::writer_thread;
-use std::io::{BufRead, BufReader};
+use std::io::{BufRead, BufReader, Write};
 use std::process::ChildStdout;
 use std::sync::mpsc::{channel, Sender};
 
@@ -49,8 +49,20 @@ impl SingularProcess {
     }
 }
 
-pub fn log_singular(context: &mut crate::context::Context, query: &String) {
+pub fn log_singular(
+    context: &mut crate::context::Context,
+    query: &String,
+    func_span: &crate::ast::Span,
+) {
     context.air_initial_log.comment(&query);
     context.air_middle_log.comment(&query);
     context.air_final_log.comment(&query);
+
+    context
+        .singular_log
+        .as_mut()
+        .unwrap()
+        .write(format!("// {}\n", func_span.as_string).as_bytes())
+        .unwrap();
+    context.singular_log.as_mut().unwrap().write(format!("{}\n", query).as_bytes()).unwrap();
 }

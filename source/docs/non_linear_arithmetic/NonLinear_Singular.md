@@ -67,3 +67,6 @@ This `integer_ring` functionality is conditionally compiled when `singular` feat
 - Since it is only with `int`, users need to check bounds when they want to prove properties about bounded integers. One example for this is at `source/rust_verify/examples/integer_ring/integer_ring_bound_check.rs`.
 - Proving about inequalities and division is not supported. However, users might be able to use Singular by adding additional variables. One example for this is at `source/rust_verify/examples/integer_ring/integer_ring.rs, line 115: multiple_offsed_mod_gt_0_int`.
    
+
+### Examining the encoding
+Singular queries will be logged in a separate file with `.singular` suffix. Users can directly run this file with Singular. For example, `Singular .verus-log/root.singular --q`. The output `0` is expected when the query is verified.

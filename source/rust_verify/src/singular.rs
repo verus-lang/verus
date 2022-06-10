@@ -61,6 +61,7 @@ pub(crate) fn expr_to_singular(
     let result_string = match &**expr {
         ExprX::Const(Constant::Nat(n)) => n.to_string(),
         ExprX::Var(x) => {
+            // during SST -> AIR translation, '@' is already added in x
             let _ = assert_not_reserved(x.to_string())?;
             x.to_string()
         }
@@ -272,18 +273,16 @@ pub fn singular_printer(
     let ideal_string = format!("{} {} = {}", IDEAL_DECL, IDEAL_I, ideals_singular.join(","));
     let ideal_to_groebner = format!("{} {} = {}({})", IDEAL_DECL, IDEAL_G, GROEBNER_APPLY, IDEAL_I);
     let reduce_string = format!("{}({}, {})", REDUCE_APPLY, reduces_singular[0], IDEAL_G);
-    let quit_string = String::from(QUIT_SINGULAR);
 
-    let res = format!(
-        "{}; {}; {}; {}; {};",
-        ring_string, ideal_string, ideal_to_groebner, reduce_string, quit_string
-    );
+    let res =
+        format!("{}; {}; {}; {};", ring_string, ideal_string, ideal_to_groebner, reduce_string);
     Ok(res)
 }
 
 pub fn check_singular_valid(
     context: &mut air::context::Context,
     command: &Command,
+    func_span: &air::ast::Span,
     _query_context: QueryContext<'_, '_>,
 ) -> ValidityResult {
     let query: Query = if let CommandX::CheckValid(query) = &**command {
@@ -334,7 +333,10 @@ pub fn check_singular_valid(
         Err(err) => return ValidityResult::Invalid(None, err),
     };
 
-    air::singular_manager::log_singular(context, &query);
+    air::singular_manager::log_singular(context, &query, func_span);
+
+    let quit_string = format!("{};", QUIT_SINGULAR);
+    let query = format!("{} {}", query, quit_string);
 
     let singular_manager = SingularManager::new();
     let mut singular_process = singular_manager.launch();

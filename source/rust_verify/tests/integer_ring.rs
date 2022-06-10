@@ -231,9 +231,9 @@ test_verify_one_file! {
     test6_fails_reserved_keyword code! {
         #[proof]
         #[verifier(integer_ring)]
-        fn test1(ring_R : int, y: int, z:int, m:int){
-            requires( (ring_R - y) % m == 0);
-            ensures( (ring_R _R*z- y*z) % m == 0);
+        fn test1(singular_tmp_1 : int, y: int, z:int, m:int){
+            requires( (singular_tmp_1 - y) % m == 0);
+            ensures( (singular_tmp_1 * z- y*z) % m == 0);
         }
     } => Err(_)
 }

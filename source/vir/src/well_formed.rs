@@ -1,6 +1,6 @@
 use crate::ast::{
-    ArithOp, CallTarget, Datatype, Expr, ExprX, FieldOpr, Fun, FunX, Function, FunctionKind,
-    IntRange, Krate, MaskSpec, Mode, Path, PathX, TypX, UnaryOpr, VirErr,
+    CallTarget, Datatype, Expr, ExprX, FieldOpr, Fun, FunX, Function, FunctionKind, Krate,
+    MaskSpec, Mode, Path, PathX, TypX, UnaryOpr, VirErr,
 };
 use crate::ast_util::{err_str, err_string, error, referenced_vars_expr};
 use crate::datatype_to_air::is_datatype_transparent;
@@ -354,7 +354,7 @@ fn check_function(ctxt: &Ctxt, function: &Function) -> Result<(), VirErr> {
         }
         for p in function.x.params.iter() {
             match *p.x.typ {
-                TypX::Int(IntRange::Int) => {}
+                TypX::Int(crate::ast::IntRange::Int) => {}
                 TypX::Boxed(_) => {}
                 _ => {
                     return err_str(
@@ -373,7 +373,7 @@ fn check_function(ctxt: &Ctxt, function: &Function) -> Result<(), VirErr> {
             let ens = function.x.ensure[0].clone();
             if let crate::ast::ExprX::Binary(crate::ast::BinaryOp::Eq(_), lhs, rhs) = &ens.x {
                 if let crate::ast::ExprX::Binary(
-                    crate::ast::BinaryOp::Arith(ArithOp::EuclideanMod, _),
+                    crate::ast::BinaryOp::Arith(crate::ast::ArithOp::EuclideanMod, _),
                     _,
                     _,
                 ) = &lhs.x
@@ -405,7 +405,7 @@ fn check_function(ctxt: &Ctxt, function: &Function) -> Result<(), VirErr> {
         for req in function.x.require.iter() {
             crate::ast_visitor::expr_visitor_check(req, &mut |expr| {
                 match *expr.typ {
-                    TypX::Int(IntRange::Int) => {}
+                    TypX::Int(crate::ast::IntRange::Int) => {}
                     TypX::Bool => {}
                     TypX::Boxed(_) => {}
                     _ => {
@@ -421,7 +421,7 @@ fn check_function(ctxt: &Ctxt, function: &Function) -> Result<(), VirErr> {
         for ens in function.x.ensure.iter() {
             crate::ast_visitor::expr_visitor_check(ens, &mut |expr| {
                 match *expr.typ {
-                    TypX::Int(IntRange::Int) => {}
+                    TypX::Int(crate::ast::IntRange::Int) => {}
                     TypX::Bool => {}
                     TypX::Boxed(_) => {}
                     _ => {

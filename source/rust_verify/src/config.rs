@@ -22,6 +22,7 @@ pub const VIR_POLY_FILE_SUFFIX: &str = "-poly.vir";
 pub const AIR_INITIAL_FILE_SUFFIX: &str = ".air";
 pub const AIR_FINAL_FILE_SUFFIX: &str = "-final.air";
 pub const SMT_FILE_SUFFIX: &str = ".smt2";
+pub const SINGULAR_FILE_SUFFIX: &str = ".singular";
 pub const TRIGGERS_FILE_SUFFIX: &str = ".triggers";
 
 #[derive(Debug, Default)]
