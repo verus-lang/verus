@@ -913,7 +913,7 @@ where
     }
     tokens_helper(v, &node.assert_token.span);
     tokens_helper(v, &node.forall_token.span);
-    tokens_helper(v, &node.paren_token.span);
+    tokens_helper(v, &node.or1_token.spans);
     for el in Punctuated::pairs(&node.inputs) {
         let (it, p) = el.into_tuple();
         full!(v.visit_pat(it));
@@ -921,6 +921,7 @@ where
             tokens_helper(v, &p.spans);
         }
     }
+    tokens_helper(v, &node.or2_token.spans);
     v.visit_expr(&*node.expr);
     if let Some(it) = &node.implies {
         tokens_helper(v, &(it).0.span);

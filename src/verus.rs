@@ -119,8 +119,9 @@ ast_struct! {
         pub attrs: Vec<Attribute>,
         pub assert_token: Token![assert],
         pub forall_token: Token![forall],
-        pub paren_token: token::Paren,
+        pub or1_token: Token![|],
         pub inputs: Punctuated<Pat, Token![,]>,
+        pub or2_token: Token![|],
         pub expr: Box<Expr>,
         pub implies: Option<(Token![implies], Box<Expr>)>,
         pub by_token: Token![by],
@@ -398,14 +399,13 @@ pub mod parsing {
             let attrs = Vec::new();
             let assert_token: Token![assert] = input.parse()?;
             let forall_token: Token![forall] = input.parse()?;
-            let content;
-            let paren_token = parenthesized!(content in input);
+            let or1_token: Token![|] = input.parse()?;
             let mut inputs = Punctuated::new();
-            while !content.is_empty() {
-                let mut pat = content.parse()?;
-                if content.peek(Token![:]) {
-                    let colon_token = content.parse()?;
-                    let ty = content.parse()?;
+            while !input.peek(Token![|]) {
+                let mut pat = input.parse()?;
+                if input.peek(Token![:]) {
+                    let colon_token = input.parse()?;
+                    let ty = input.parse()?;
                     pat = Pat::Type(PatType {
                         attrs: vec![],
                         pat: Box::new(pat),
@@ -414,12 +414,13 @@ pub mod parsing {
                     });
                 }
                 inputs.push_value(pat);
-                if content.is_empty() {
+                if input.peek(Token![|]) {
                     break;
                 }
-                let comma: Token![,] = content.parse()?;
+                let comma: Token![,] = input.parse()?;
                 inputs.push_punct(comma);
             }
+            let or2_token: Token![|] = input.parse()?;
             let expr = input.parse()?;
             let implies = if input.peek(Token![implies]) {
                 let implies_token = input.parse()?;
@@ -434,8 +435,9 @@ pub mod parsing {
                 attrs,
                 assert_token,
                 forall_token,
-                paren_token,
+                or1_token,
                 inputs,
+                or2_token,
                 expr,
                 implies,
                 by_token,
@@ -577,9 +579,9 @@ mod printing {
             crate::expr::printing::outer_attrs_to_tokens(&self.attrs, tokens);
             self.assert_token.to_tokens(tokens);
             self.forall_token.to_tokens(tokens);
-            self.paren_token.surround(tokens, |tokens| {
-                self.inputs.to_tokens(tokens);
-            });
+            self.or1_token.to_tokens(tokens);
+            self.inputs.to_tokens(tokens);
+            self.or2_token.to_tokens(tokens);
             self.expr.to_tokens(tokens);
             if let Some((implies, expr)) = &self.implies {
                 implies.to_tokens(tokens);

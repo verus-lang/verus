@@ -914,7 +914,7 @@ where
     }
     tokens_helper(v, &mut node.assert_token.span);
     tokens_helper(v, &mut node.forall_token.span);
-    tokens_helper(v, &mut node.paren_token.span);
+    tokens_helper(v, &mut node.or1_token.spans);
     for el in Punctuated::pairs_mut(&mut node.inputs) {
         let (it, p) = el.into_tuple();
         full!(v.visit_pat_mut(it));
@@ -922,6 +922,7 @@ where
             tokens_helper(v, &mut p.spans);
         }
     }
+    tokens_helper(v, &mut node.or2_token.spans);
     v.visit_expr_mut(&mut *node.expr);
     if let Some(it) = &mut node.implies {
         tokens_helper(v, &mut (it).0.span);

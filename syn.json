@@ -169,8 +169,8 @@
         "forall_token": {
           "token": "Forall"
         },
-        "paren_token": {
-          "group": "Paren"
+        "or1_token": {
+          "token": "Or"
         },
         "inputs": {
           "punctuated": {
@@ -179,6 +179,9 @@
             },
             "punct": "Comma"
           }
+        },
+        "or2_token": {
+          "token": "Or"
         },
         "expr": {
           "box": {

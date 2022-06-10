@@ -60,8 +60,9 @@ impl Debug for AssertForall {
         formatter.field("attrs", &self.attrs);
         formatter.field("assert_token", &self.assert_token);
         formatter.field("forall_token", &self.forall_token);
-        formatter.field("paren_token", &self.paren_token);
+        formatter.field("or1_token", &self.or1_token);
         formatter.field("inputs", &self.inputs);
+        formatter.field("or2_token", &self.or2_token);
         formatter.field("expr", &self.expr);
         formatter.field("implies", &self.implies);
         formatter.field("by_token", &self.by_token);

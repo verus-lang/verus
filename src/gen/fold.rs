@@ -905,8 +905,9 @@ where
         attrs: FoldHelper::lift(node.attrs, |it| f.fold_attribute(it)),
         assert_token: Token![assert](tokens_helper(f, &node.assert_token.span)),
         forall_token: Token![forall](tokens_helper(f, &node.forall_token.span)),
-        paren_token: Paren(tokens_helper(f, &node.paren_token.span)),
+        or1_token: Token![|](tokens_helper(f, &node.or1_token.spans)),
         inputs: FoldHelper::lift(node.inputs, |it| full!(f.fold_pat(it))),
+        or2_token: Token![|](tokens_helper(f, &node.or2_token.spans)),
         expr: Box::new(f.fold_expr(*node.expr)),
         implies: (node.implies)
             .map(|it| (
