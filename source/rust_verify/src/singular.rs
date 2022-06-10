@@ -22,38 +22,46 @@ const IDEAL_I: &str = "ideal_I";
 const IDEAL_G: &str = "ideal_G";
 const TMP_PREFIX: &str = "singular_tmp_";
 
-fn assert_not_reserved(name: String) {
-    let reserved_keywords = vec![
-        RING_DECL,
-        IDEAL_DECL,
-        DP_ORDERING,
-        GROEBNER_APPLY,
-        REDUCE_APPLY,
-        TO_INTEGER_RING,
-        QUIT_SINGULAR,
-        RING_R,
-        IDEAL_I,
-        IDEAL_G,
-    ];
-    for keyword in reserved_keywords {
+const RESERVED_KEYWORDS: [&str; 10] = [
+    RING_DECL,
+    IDEAL_DECL,
+    DP_ORDERING,
+    GROEBNER_APPLY,
+    REDUCE_APPLY,
+    TO_INTEGER_RING,
+    QUIT_SINGULAR,
+    RING_R,
+    IDEAL_I,
+    IDEAL_G,
+];
+
+fn assert_not_reserved(name: String) -> Result<(), String> {
+    for keyword in RESERVED_KEYWORDS {
         if name == keyword {
-            panic!("Integer_ring/Singular: Usage of reserved keyword at variable name: {}", name);
+            return Err(format!(
+                "Integer_ring/Singular: Usage of reserved keyword at variable name: {}",
+                name
+            ));
         }
     }
     if name.starts_with(TMP_PREFIX) {
-        panic!("Integer_ring/Singular: Usage of reserved prefix `{}` at {}", TMP_PREFIX, name);
+        return Err(format!(
+            "Integer_ring/Singular: Usage of reserved prefix `{}` at {}",
+            TMP_PREFIX, name
+        ));
     }
+    Ok(())
 }
 
 pub(crate) fn expr_to_singular(
     expr: &Expr,
     tmp_idx: &mut u32,
     node_map: &mut HashMap<Node, Ident>,
-) -> Result<String, ()> {
+) -> Result<String, String> {
     let result_string = match &**expr {
         ExprX::Const(Constant::Nat(n)) => n.to_string(),
         ExprX::Var(x) => {
-            assert_not_reserved(x.to_string());
+            let _ = assert_not_reserved(x.to_string())?;
             x.to_string()
         }
         ExprX::Binary(BinaryOp::EuclideanMod, lhs, rhs) => {
@@ -86,7 +94,7 @@ pub(crate) fn expr_to_singular(
                 MultiOp::Add => " + ",
                 MultiOp::Sub => " - ",
                 MultiOp::Mul => " * ", // still reachable with constant multiplication
-                _ => panic!("unsupported integer_ring operator: {:?}", op.clone()),
+                _ => return Err(format!("unsupported integer_ring operator: {:?}", op.clone())),
             };
             for e in &**exprs {
                 ss.push(format!("({})", expr_to_singular(&e, tmp_idx, node_map)?));
@@ -113,6 +121,10 @@ pub(crate) fn expr_to_singular(
                     tmp_idx,
                     node_map,
                 );
+            } else if vir::def::EUC_DIV == (**fname).as_str() {
+                return Err(format!(
+                    "unsupported operator: division. Consider registering the division result as a new variable before calling integer_ring lemma"
+                ));
             } else {
                 // treat as uninterpreted functions
                 let pp = Printer::new(false);
@@ -129,7 +141,7 @@ pub(crate) fn expr_to_singular(
                 }
             }
         }
-        _ => return Err(()),
+        _ => return Err(format!("Unsupported Expression: {:?}", expr)),
     };
     Ok(result_string)
 }
@@ -160,11 +172,16 @@ pub fn singular_printer(
         for (req, err) in req_exprs {
             if let ExprX::Binary(BinaryOp::Eq, _, _) = &**req {
             } else {
-                return Err(err.clone());
+                return Err(err.clone().secondary_label(
+                    &err.spans[0].clone(),
+                    "Inequality operator is not supported",
+                ));
             }
             match expr_to_singular(&req, &mut tmp_count, &mut node_map) {
                 Ok(translated) => ideals_singular.push(translated),
-                Err(_) => return Err(err.clone()),
+                Err(error_info) => {
+                    return Err(err.clone().secondary_label(&err.spans[0].clone(), error_info));
+                }
             }
         }
     }
@@ -179,30 +196,51 @@ pub fn singular_printer(
                 // push 'm' to ideal basis
                 match expr_to_singular(&exprs[1], &mut tmp_count, &mut node_map) {
                     Ok(translated) => ideals_singular.push(translated),
-                    Err(_) => return Err(ens_err.clone()),
+                    Err(error_info) => {
+                        return Err(ens_err
+                            .clone()
+                            .secondary_label(&ens_err.spans[0].clone(), error_info));
+                    }
                 };
 
                 // reduce 'X' with generated ideal
                 match expr_to_singular(&exprs[0], &mut tmp_count, &mut node_map) {
                     Ok(translated) => reduces_singular.push(translated),
-                    Err(_) => return Err(ens_err.clone()),
+                    Err(error_info) => {
+                        return Err(ens_err
+                            .clone()
+                            .secondary_label(&ens_err.spans[0].clone(), error_info));
+                    }
                 };
 
                 if let ExprX::Const(Constant::Nat(ss)) = &**zero {
                     if **ss != "0".to_string() {
-                        return Err(ens_err.clone()); // "Singular expression: equality with zero assumed"
+                        return Err(ens_err.clone().secondary_label(
+                            &ens_err.spans[0].clone(),
+                            "Singular expression: equality with zero assumed",
+                        ));
                     }
                 } else {
-                    return Err(ens_err.clone()); // "Singular expression: equality with zero assumed"
+                    return Err(ens_err.clone().secondary_label(
+                        &ens_err.spans[0].clone(),
+                        "Singular expression: equality with zero assumed",
+                    ));
                 }
             }
             _ => match expr_to_singular(&ens, &mut tmp_count, &mut node_map) {
                 Ok(translated) => reduces_singular.push(translated),
-                Err(_) => return Err(ens_err.clone()),
+                Err(error_info) => {
+                    return Err(ens_err
+                        .clone()
+                        .secondary_label(&ens_err.spans[0].clone(), error_info));
+                }
             },
         }
     } else {
-        return Err(ens_err.clone()); // "Singular ensures expression: equality assumed"
+        return Err(ens_err.clone().secondary_label(
+            &ens_err.spans[0].clone(),
+            "Singular ensures expression: equality assumed",
+        ));
     }
 
     let ring_string;
@@ -279,6 +317,7 @@ pub fn check_singular_valid(
 
     let mut reqs = vec![];
     for idx in 0..(stmts.len() - 1) {
+        // last element is ensures clause
         let stm = &stmts[idx];
         match &**stm {
             air::ast::StmtX::Assert(error, exp) => {

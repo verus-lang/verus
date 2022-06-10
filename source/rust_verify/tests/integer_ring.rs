@@ -138,7 +138,7 @@ test_verify_one_file! {
     test1_fails code! {
         #[proof]
         #[verifier(integer_ring)]
-        fn test1_fails(x: int, y: int, z:int, m:int){
+        fn test1_fails_smoke_test(x: int, y: int, z:int, m:int){
             requires( (x-y) % m == 0);
             ensures( (x*z + y*z) % m == 0); //FAILS
         }
@@ -152,7 +152,7 @@ test_verify_one_file! {
     test2_fails code! {
         #[verifier(integer_ring)]
         #[proof]
-        fn test2_fails(
+        fn test2_fails_smoke_test(
             B: int,
             p0: int, p1: int, p2: int, p3: int,
             p4: int, p5: int, p6: int, p7: int,
@@ -192,7 +192,7 @@ test_verify_one_file! {
     test3_fails code! {
         #[proof]
         #[verifier(integer_ring)]
-        fn test3_fails(x: u32, y: u32, z:u32, m:u32){ // should be type int
+        fn test3_fails_param_type(x: u32, y: u32, z:u32, m:u32){ // should be type int
             requires((x-y) % m == 0);
             ensures((x*z - y*z) % m == 0);
         }
@@ -205,7 +205,7 @@ test_verify_one_file! {
     test4_fails code! {
         #[proof]
         #[verifier(integer_ring)]
-        fn test4_fails(x: int, y: int, z:int, m:int){
+        fn test4_fails_modulo_rhs_nonzero(x: int, y: int, z:int, m:int){
             requires( (x*y) % m == 0);
             ensures( (x*y) % m == m);
         }
@@ -215,12 +215,25 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test]
     #[cfg_attr(not(feature = "singular"), ignore)]
-    test5_fails code! {
+    test5_fails_inequality code! {
         #[proof]
         #[verifier(integer_ring)]
         fn test1_fails(x: int, y: int, z:int, m:int){
             requires( (x-y) % m > 0);  //FAILS
             ensures( (x*z + y*z) % m == 0);
+        }
+    } => Err(_)
+}
+
+test_verify_one_file! {
+    #[test]
+    #[cfg_attr(not(feature = "singular"), ignore)]
+    test6_fails_reserved_keyword code! {
+        #[proof]
+        #[verifier(integer_ring)]
+        fn test1(ring_R : int, y: int, z:int, m:int){
+            requires( (ring_R - y) % m == 0);
+            ensures( (ring_R _R*z- y*z) % m == 0);
         }
     } => Err(_)
 }
