@@ -4,7 +4,7 @@ mod common;
 use common::*;
 
 test_verify_one_file! {
-    #[test] test_not_yet_supported_1 code! {
+    #[test] test_not_yet_supported_1 verus_code! {
         trait T1 {}
         trait T2 {
             // need to add A: T1 to termination checking before supporting this
@@ -15,7 +15,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_not_yet_supported_2 code! {
+    #[test] test_not_yet_supported_2 verus_code! {
         trait T1 {}
         // need to add A: T1 to termination checking before supporting this
         trait T2<A: T1> {
@@ -24,7 +24,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_not_yet_supported_3 code! {
+    #[test] test_not_yet_supported_3 verus_code! {
         trait T1 {}
         // might need to add A: T1 to termination checking before supporting this
         struct S2<A: T1> {
@@ -34,12 +34,10 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_not_yet_supported_4 code! {
+    #[test] test_not_yet_supported_4 verus_code! {
         trait T1 {}
         trait T2 {
-            fn f(&self) {
-                no_method_body()
-            }
+            fn f(&self);
         }
         struct S2<A> {
             a: A,
@@ -53,29 +51,25 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_not_yet_supported_5 code! {
+    #[test] test_not_yet_supported_5 verus_code! {
         trait T1 {
             // methods without a self argument are still todo
-            fn f(b: bool) {
-                no_method_body()
-            }
+            fn f(b: bool);
         }
     } => Err(err) => assert_vir_error(err)
 }
 
 test_verify_one_file! {
-    #[test] test_not_yet_supported_6 code! {
+    #[test] test_not_yet_supported_6 verus_code! {
         trait T1 {
             // methods without a self argument are still todo
-            fn f(not_named_self: &Self) {
-                no_method_body()
-            }
+            fn f(not_named_self: &Self);
         }
     } => Err(err) => assert_vir_error(err)
 }
 
 test_verify_one_file! {
-    #[test] test_not_yet_supported_7 code! {
+    #[test] test_not_yet_supported_7 verus_code! {
         // might need to add F: Fn(...) to termination checking before supporting this
         struct S<F: Fn(bool) -> bool> {
             f: F,
@@ -84,11 +78,9 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_not_yet_supported_8 code! {
+    #[test] test_not_yet_supported_8 verus_code! {
         trait T<A> {
-            fn f(&self, a: &A) {
-                no_method_body()
-            }
+            fn f(&self, a: &A);
         }
         struct S<A> { a: A }
         // not yet supported: multiple implementations of same trait for single datatype:
@@ -102,9 +94,9 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_not_yet_supported_9 code! {
+    #[test] test_not_yet_supported_9 verus_code! {
         trait T<A> {
-            fn f(&self, a: A) -> A { no_method_body() }
+            fn f(&self, a: A) -> A;
         }
         struct S {}
         // not yet supported: multiple implementations of same trait for single datatype:
@@ -257,12 +249,9 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_mode_matches_1 code! {
+    #[test] test_mode_matches_1 verus_code! {
         trait T1 {
-            #[spec]
-            fn f(&self) {
-                no_method_body()
-            }
+            spec fn f(&self);
         }
         struct S {}
         impl T1 for S {
@@ -273,16 +262,13 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_mode_matches_2 code! {
+    #[test] test_mode_matches_2 verus_code! {
         trait T1 {
-            fn f(&self) {
-                no_method_body()
-            }
+            fn f(&self);
         }
         struct S {}
         impl T1 for S {
-            #[spec]
-            fn f(&self) {
+            spec fn f(&self) {
             }
         }
     } => Err(err) => assert_vir_error(err)
@@ -319,46 +305,39 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_mode_matches_5 code! {
+    #[test] test_mode_matches_5 verus_code! {
         trait T1 {
-            fn f(&self, #[spec] b: bool) {
-                no_method_body()
-            }
+            proof fn f(&self, tracked b: bool);
         }
         struct S {}
         impl T1 for S {
-            fn f(&self, b: bool) {
+            proof fn f(&self, b: bool) {
             }
         }
     } => Err(err) => assert_vir_error(err)
 }
 
 test_verify_one_file! {
-    #[test] test_mode_matches_6 code! {
+    #[test] test_mode_matches_6 verus_code! {
         trait T1 {
-            fn f(&self, b: bool) {
-                no_method_body()
-            }
+            proof fn f(&self, b: bool);
         }
         struct S {}
         impl T1 for S {
-            fn f(&self, #[spec] b: bool) {
+            proof fn f(&self, tracked b: bool) {
             }
         }
     } => Err(err) => assert_vir_error(err)
 }
 
 test_verify_one_file! {
-    #[test] test_mode_matches_7 code! {
+    #[test] test_mode_matches_7 verus_code! {
         trait T1 {
-            #[verifier(returns(spec))]
-            fn f(&self) -> bool {
-                no_method_body()
-            }
+            proof fn f(&self) -> tracked bool;
         }
         struct S {}
         impl T1 for S {
-            fn f(&self) -> bool {
+            proof fn f(&self) -> bool {
                 true
             }
         }
@@ -383,28 +362,24 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_termination_1 code! {
+    #[test] test_termination_1 verus_code! {
         trait T {
-            #[spec]
-            fn f(&self) { no_method_body() }
+            spec fn f(&self);
         }
 
-        #[spec]
-        fn rec<A: T>(x: &A) {
+        spec fn rec<A: T>(x: &A) {
             x.f();
         }
 
         struct S {}
 
         impl T for S {
-            #[spec]
-            fn f(&self) {
+            spec fn f(&self) {
                 rec(self);
             }
         }
 
-        #[proof]
-        fn test() {
+        proof fn test() {
             let s = S {};
             s.f();
         }
@@ -412,23 +387,20 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_termination_2 code! {
+    #[test] test_termination_2 verus_code! {
         trait T {
-            #[spec]
-            fn f<A: T>(&self, x: &A);
+            spec fn f<A: T>(&self, x: &A);
         }
 
         struct S {}
 
         impl T for S {
-            #[spec]
-            fn f<A: T>(&self, x: &A) {
+            spec fn f<A: T>(&self, x: &A) {
                 x.f(x)
             }
         }
 
-        #[proof]
-        fn test() {
+        proof fn test() {
             let s = S {};
             s.f(&s);
         }
@@ -436,17 +408,15 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_termination_3 code! {
+    #[test] test_termination_3 verus_code! {
         trait T {
-            #[spec]
-            fn f(&self) { no_method_body() }
+            spec fn f(&self);
         }
 
         struct S {}
 
         impl T for S {
-            #[spec]
-            fn f(&self) {
+            spec fn f(&self) {
                 self.f();
             }
         }
@@ -454,16 +424,15 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_termination_4_ok code! {
+    #[test] test_termination_4_ok verus_code! {
         trait T {
-            fn f(&self, x: &Self, n: u64) {
-                no_method_body()
-            }
+            fn f(&self, x: &Self, n: u64);
         }
         struct S {}
         impl T for S {
-            fn f(&self, x: &Self, n: u64) {
-                decreases(n);
+            fn f(&self, x: &Self, n: u64)
+                decreases n
+            {
                 if n > 0 {
                     self.f(x, n - 1);
                     x.f(self, n - 1);
@@ -474,11 +443,9 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_termination_4_fail_1a code! {
+    #[test] test_termination_4_fail_1a verus_code! {
         trait T {
-            fn f(&self, x: &Self, n: u64) {
-                no_method_body()
-            }
+            fn f(&self, x: &Self, n: u64);
         }
         struct S {}
         impl T for S {
@@ -490,16 +457,15 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_termination_4_fail_1b code! {
+    #[test] test_termination_4_fail_1b verus_code! {
         trait T {
-            fn f(&self, x: &Self, n: u64) {
-                no_method_body()
-            }
+            fn f(&self, x: &Self, n: u64);
         }
         struct S {}
         impl T for S {
-            fn f(&self, x: &Self, n: u64) {
-                decreases(n);
+            fn f(&self, x: &Self, n: u64)
+                decreases n
+            {
                 self.f(x, n - 1); // FAILS
             }
         }
@@ -507,16 +473,15 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_termination_4_fail_1c code! {
+    #[test] test_termination_4_fail_1c verus_code! {
         trait T {
-            fn f(&self, x: &Self, n: u64) {
-                no_method_body()
-            }
+            fn f(&self, x: &Self, n: u64);
         }
         struct S {}
         impl T for S {
-            fn f(&self, x: &Self, n: u64) {
-                decreases(n);
+            fn f(&self, x: &Self, n: u64)
+                decreases n
+            {
                 g(self, x, n - 1); // FAILS
             }
         }
@@ -529,11 +494,9 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_termination_4_fail_2a code! {
+    #[test] test_termination_4_fail_2a verus_code! {
         trait T {
-            fn f(&self, x: &Self, n: u64) {
-                no_method_body()
-            }
+            fn f(&self, x: &Self, n: u64);
         }
         struct S {}
         impl T for S {
@@ -545,16 +508,15 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_termination_4_fail_2b code! {
+    #[test] test_termination_4_fail_2b verus_code! {
         trait T {
-            fn f(&self, x: &Self, n: u64) {
-                no_method_body()
-            }
+            fn f(&self, x: &Self, n: u64);
         }
         struct S {}
         impl T for S {
-            fn f(&self, x: &Self, n: u64) {
-                decreases(n);
+            fn f(&self, x: &Self, n: u64)
+                decreases n
+            {
                 x.f(self, n - 1); // FAILS
             }
         }
@@ -562,12 +524,10 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_verify_1 code! {
+    #[test] test_verify_1 verus_code! {
         trait T {
-            fn f(&self) {
-                requires(false);
-                no_method_body()
-            }
+            fn f(&self)
+                requires false;
         }
         struct S {}
         impl T for S {
@@ -581,12 +541,10 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_verify_2 code! {
+    #[test] test_verify_2 verus_code! {
         trait T {
-            fn f(&self) {
-                ensures(false); // TRAIT
-                no_method_body()
-            }
+            fn f(&self)
+                ensures false; // TRAIT
         }
         struct S {}
         impl T for S {
@@ -596,19 +554,15 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_verify_3 code! {
+    #[test] test_verify_3 verus_code! {
         trait T {
-            #[spec]
-            fn req(&self) -> bool { no_method_body() }
-            fn f(&self) {
-                requires(self.req());
-                no_method_body()
-            }
+            spec fn req(&self) -> bool;
+            fn f(&self)
+                requires self.req();
         }
         struct S {}
         impl T for S {
-            #[spec]
-            fn req(&self) -> bool { false }
+            spec fn req(&self) -> bool { false }
             fn f(&self) {}
         }
         fn test() {
@@ -619,38 +573,30 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_verify_4 code! {
+    #[test] test_verify_4 verus_code! {
         trait T {
-            #[spec]
-            fn ens(&self) -> bool { no_method_body() }
-            fn f(&self) {
-                ensures(self.ens()); // TRAIT
-                no_method_body()
-            }
+            spec fn ens(&self) -> bool;
+            fn f(&self)
+                ensures self.ens(); // TRAIT
         }
         struct S {}
         impl T for S {
-            #[spec]
-            fn ens(&self) -> bool { false }
+            spec fn ens(&self) -> bool { false }
             fn f(&self) {} // FAILS
         }
     } => Err(err) => assert_one_fails(err)
 }
 
 test_verify_one_file! {
-    #[test] test_verify_5 code! {
+    #[test] test_verify_5 verus_code! {
         trait T {
-            #[spec]
-            fn req(&self) -> bool { no_method_body() }
-            fn f(&self) {
-                requires(self.req());
-                no_method_body()
-            }
+            spec fn req(&self) -> bool;
+            fn f(&self)
+                requires self.req();
         }
         struct S {}
         impl T for S {
-            #[spec]
-            fn req(&self) -> bool { true }
+            spec fn req(&self) -> bool { true }
             fn f(&self) {}
         }
         fn test1(s: &S) {
@@ -663,19 +609,14 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_verify_6 code! {
+    #[test] test_verify_6 verus_code! {
         trait T<A> {
-            #[spec]
-            fn req(&self, a: A) -> bool { no_method_body() }
+            spec fn req(&self, a: A) -> bool;
+            spec fn ens(&self, a: A, r: A) -> bool;
 
-            #[spec]
-            fn ens(&self, a: A, r: A) -> bool { no_method_body() }
-
-            fn f(&self, a: &A) -> A {
-                requires(self.req(*a));
-                ensures(|ra: A| self.ens(*a, ra)); // TRAIT
-                no_method_body()
-            }
+            fn f(&self, a: &A) -> (ra: A)
+                requires self.req(*a)
+                ensures self.ens(*a, ra); // TRAIT
         }
 
         struct B {
@@ -687,13 +628,11 @@ test_verify_one_file! {
         }
 
         impl T<bool> for B {
-            #[spec]
-            fn req(&self, a: bool) -> bool {
+            spec fn req(&self, a: bool) -> bool {
                 a
             }
 
-            #[spec]
-            fn ens(&self, a: bool, r: bool) -> bool {
+            spec fn ens(&self, a: bool, r: bool) -> bool {
                 r == (a && self.x)
             }
 
@@ -703,13 +642,11 @@ test_verify_one_file! {
         }
 
         impl T<u64> for I {
-            #[spec]
-            fn req(&self, a: u64) -> bool {
+            spec fn req(&self, a: u64) -> bool {
                 self.x < a && a < 100
             }
 
-            #[spec]
-            fn ens(&self, a: u64, r: u64) -> bool {
+            spec fn ens(&self, a: u64, r: u64) -> bool {
                 self.x <= r && r < 100
             }
 
@@ -718,9 +655,10 @@ test_verify_one_file! {
             } // FAILS
         }
 
-        fn p<A, Z: T<A>>(a: &A, z: &Z) -> A {
-            requires(z.req(*a));
-            ensures(|rz: A| z.ens(*a, rz));
+        fn p<A, Z: T<A>>(a: &A, z: &Z) -> (rz: A)
+            requires z.req(*a)
+            ensures z.ens(*a, rz)
+        {
             z.f(a)
         }
 
@@ -732,18 +670,14 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_multiple code! {
+    #[test] test_multiple verus_code! {
         trait T1 {
-            fn f1(&self, u: u64) {
-                requires(u > 10);
-                no_method_body()
-            }
+            fn f1(&self, u: u64)
+                requires u > 10;
         }
         trait T2 {
-            fn f2(&self, u: u64) {
-                requires(u > 20);
-                no_method_body()
-            }
+            fn f2(&self, u: u64)
+                requires u > 20;
         }
         struct S {}
         impl T1 for S {
@@ -762,26 +696,22 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_generic_1_ok code! {
+    #[test] test_generic_1_ok verus_code! {
         trait T<A> {
-            #[spec]
-            fn apple(&self, #[spec] b: A) -> bool {
-                no_method_body()
-            }
+            spec fn apple(&self, b: A) -> bool;
         }
 
         struct S<A, B>(A, B);
 
         impl<C> T<(C, u16)> for S<bool, C> {
-            #[spec]
-            fn apple(&self, #[spec] b: (C, u16)) -> bool {
+            spec fn apple(&self, b: (C, u16)) -> bool {
                 b.1 > 10
             }
         }
 
-        #[proof]
-        fn test() -> bool {
-            ensures(|b: bool| b);
+        proof fn test() -> (b: bool)
+            ensures b
+        {
 
             let i: u8 = 10;
             let s = S(true, i);
@@ -792,26 +722,22 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_generic_1_ok_markers code! {
+    #[test] test_generic_1_ok_markers verus_code! {
         trait T<A: Sized> : Sized {
-            #[spec]
-            fn apple(&self, #[spec] b: A) -> bool {
-                no_method_body()
-            }
+            spec fn apple(&self, b: A) -> bool;
         }
 
         struct S<A: Sized, B: Sized>(A, B);
 
         impl<C: Sized> T<(C, u16)> for S<bool, C> {
-            #[spec]
-            fn apple(&self, #[spec] b: (C, u16)) -> bool {
+            spec fn apple(&self, b: (C, u16)) -> bool {
                 b.1 > 10
             }
         }
 
-        #[proof]
-        fn test() -> bool {
-            ensures(|b: bool| b);
+        proof fn test() -> (b: bool)
+            ensures b
+        {
 
             let i: u8 = 10;
             let s = S(true, i);
@@ -822,22 +748,16 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_generic_1_fail code! {
+    #[test] test_generic_1_fail verus_code! {
         trait T<A> {
-            #[spec]
-            fn apple(&self, #[spec] b: A) -> bool {
-                no_method_body()
-            }
-            fn banana(&self, b: A) -> A {
-                no_method_body()
-            }
+            spec fn apple(&self, b: A) -> bool;
+            fn banana(&self, b: A) -> A;
         }
 
         struct S<A, B>(A, B);
 
         impl<C> T<(C, u16)> for S<bool, C> {
-            #[spec]
-            fn apple(&self, #[spec] b: (C, u16)) -> bool {
+            spec fn apple(&self, b: (C, u16)) -> bool {
                 b.1 > 10
             }
             fn banana(&self, b: (C, u16)) -> (C, u16) {
@@ -845,9 +765,9 @@ test_verify_one_file! {
             }
         }
 
-        #[proof]
-        fn test() -> bool {
-            ensures(|b: bool| b); // FAILS
+        proof fn test() -> (b: bool)
+            ensures b // FAILS
+        {
 
             let i: u8 = 10;
             let s = S(true, i);
@@ -858,22 +778,16 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_generic_2 code! {
+    #[test] test_generic_2 verus_code! {
         trait T<A> {
-            #[spec]
-            fn apple(&self, #[spec] b: A) -> bool {
-                no_method_body()
-            }
-            fn banana(&self, b: A) -> A {
-                no_method_body()
-            }
+            spec fn apple(&self, b: A) -> bool;
+            fn banana(&self, b: A) -> A;
         }
 
         struct S<A, B>(A, B);
 
         impl T<u8> for S<u16, u32> {
-            #[spec]
-            fn apple(&self, #[spec] b: u8) -> bool {
+            spec fn apple(&self, b: u8) -> bool {
                 b > 10
             }
             fn banana(&self, b: u8) -> u8 {
@@ -881,9 +795,9 @@ test_verify_one_file! {
             }
         }
 
-        #[proof]
-        fn test() -> bool {
-            ensures(|b: bool| b); // FAILS
+        proof fn test() -> (b: bool)
+            ensures b // FAILS
+        {
 
             let s = S(10, 20);
             let b: bool = s.apple(5);
@@ -893,30 +807,25 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_generic_3 code! {
+    #[test] test_generic_3 verus_code! {
         trait T {
-            #[spec]
-            fn apple(&self, #[spec] b: bool) -> bool {
-                no_method_body()
-            }
+            spec fn apple(&self, b: bool) -> bool;
 
-            fn banana(&self) {
-                requires(self.apple(true));
-                ensures(true);
-                no_method_body()
-            }
+            fn banana(&self)
+                requires self.apple(true)
+                ensures true;
         }
 
         struct S<A, B>(A, B);
 
-        fn f1<A: T>(a: &A) {
-            requires(a.apple(true));
+        fn f1<A: T>(a: &A)
+            requires a.apple(true)
+        {
             a.banana();
         }
 
         impl T for S<bool, bool> {
-            #[spec]
-            fn apple(&self, #[spec] b: bool) -> bool {
+            spec fn apple(&self, b: bool) -> bool {
                 self.0 && self.1 && b
             }
 
@@ -943,36 +852,31 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_self_ok code! {
+    #[test] test_self_ok verus_code! {
         trait T {
-            #[spec]
-            fn r<'a>(&'a self, x: &'a Self, b: bool) -> &'a Self { no_method_body() }
+            spec fn r<'a>(&'a self, x: &'a Self, b: bool) -> &'a Self;
 
-            fn f<'a>(&'a self, x: &'a Self, b: bool) -> &'a Self {
-                ensures(|r: &'a Self| [
-                    b >>= equal(r, self),
-                    !b >>= equal(r, x),
-                ]);
-                no_method_body()
-            }
+            fn f<'a>(&'a self, x: &'a Self, b: bool) -> (r: &'a Self)
+                ensures
+                    b ==> r === self,
+                    !b ==> r === x;
         }
 
         fn p<A: T>(a1: &A, a2: &A) {
             let a3 = a1.f(a2, true);
-            assert(equal(a3, a1));
+            assert(a3 === a1);
         }
 
         struct S(u8);
 
         impl T for S {
-            #[spec]
-            fn r<'a>(&'a self, x: &'a Self, b: bool) -> &'a Self {
+            spec fn r<'a>(&'a self, x: &'a Self, b: bool) -> &'a Self {
                 if b { self } else { x }
             }
 
             fn f<'a>(&'a self, x: &'a Self, b: bool) -> &'a Self {
                 let x = if b { self } else { x };
-                assert(equal(x, self.r(x, b)));
+                assert(x === self.r(x, b));
                 x
             }
         }
@@ -987,20 +891,17 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_self_fail code! {
+    #[test] test_self_fail verus_code! {
         trait T {
-            fn f<'a>(&'a self, x: &'a Self, b: bool) -> &'a Self {
-                ensures(|r: &'a Self| [
-                    b >>= equal(r, self),
-                    !b >>= equal(r, x), // TRAIT
-                ]);
-                no_method_body()
-            }
+            fn f<'a>(&'a self, x: &'a Self, b: bool) -> (r: &'a Self)
+                ensures
+                    b ==> r === self,
+                    !b ==> r === x; // TRAIT
         }
 
         fn p<A: T>(a1: &A, a2: &A) {
             let a3 = a1.f(a2, false);
-            assert(equal(a3, a1)); // FAILS
+            assert(a3 === a1); // FAILS
         }
 
         struct S(u8);

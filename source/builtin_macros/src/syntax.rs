@@ -1,16 +1,17 @@
 use proc_macro2::TokenStream;
 use syn_verus::parse::{Parse, ParseStream};
 use syn_verus::punctuated::Punctuated;
-use syn_verus::token::Paren;
+use syn_verus::token::{Brace, Paren};
 use syn_verus::visit_mut::{
-    visit_expr_mut, visit_field_mut, visit_item_enum_mut, visit_item_fn_mut, visit_item_struct_mut,
-    visit_local_mut, VisitMut,
+    visit_expr_mut, visit_field_mut, visit_impl_item_method_mut, visit_item_enum_mut,
+    visit_item_fn_mut, visit_item_struct_mut, visit_local_mut, visit_trait_item_method_mut,
+    VisitMut,
 };
 use syn_verus::{
-    parse_macro_input, parse_quote_spanned, Attribute, BinOp, DataMode, Decreases, Ensures, Expr,
-    ExprBinary, ExprCall, ExprTuple, ExprUnary, Field, FnArgKind, FnMode, Item, ItemEnum, ItemFn,
-    ItemStruct, Local, ModeSpec, ModeSpecChecked, Pat, Publish, Recommends, Requires, ReturnType,
-    Stmt, UnOp, Visibility,
+    parse_macro_input, parse_quote_spanned, Attribute, BinOp, Block, DataMode, Decreases, Ensures,
+    Expr, ExprBinary, ExprCall, ExprTuple, ExprUnary, Field, FnArgKind, FnMode, ImplItemMethod,
+    Item, ItemEnum, ItemFn, ItemStruct, Local, ModeSpec, ModeSpecChecked, Publish, Recommends,
+    Requires, ReturnType, Signature, Stmt, TraitItemMethod, UnOp, Visibility,
 };
 
 fn take_expr(expr: &mut Expr) -> Expr {
@@ -35,6 +36,123 @@ fn data_mode_attrs(mode: &DataMode) -> Vec<Attribute> {
         DataMode::Exec(token) => {
             vec![parse_quote_spanned!(token.exec_token.span => #[exec])]
         }
+    }
+}
+
+impl Visitor {
+    fn visit_fn(
+        &mut self,
+        attrs: &mut Vec<Attribute>,
+        vis: Option<&Visibility>,
+        sig: &mut Signature,
+        semi_token: Option<syn_verus::Token![;]>,
+        is_trait: bool,
+    ) -> Vec<Stmt> {
+        let mut stmts: Vec<Stmt> = Vec::new();
+
+        attrs.push(parse_quote_spanned!(sig.fn_token.span => #[verifier(verus_macro)]));
+
+        for arg in &mut sig.inputs {
+            match (arg.tracked, &mut arg.kind) {
+                (None, _) => {}
+                (Some(_), FnArgKind::Receiver(..)) => todo!("support tracked self"),
+                (Some(token), FnArgKind::Typed(typed)) => {
+                    typed.attrs.push(parse_quote_spanned!(token.span => #[proof]));
+                }
+            }
+            arg.tracked = None;
+        }
+        let ret_pat = match &mut sig.output {
+            ReturnType::Default => None,
+            ReturnType::Type(_, ref mut tracked, ref mut ret_opt, ty) => {
+                if let Some(token) = tracked {
+                    attrs.push(parse_quote_spanned!(token.span => #[verifier(returns(proof))]));
+                    *tracked = None;
+                }
+                match std::mem::take(ret_opt) {
+                    None => None,
+                    Some(box (_, p, _)) => Some((p.clone(), ty.clone())),
+                }
+            }
+        };
+
+        match (vis, &sig.publish, &sig.mode, &semi_token) {
+            (Some(Visibility::Inherited), _, _, _) => {}
+            (
+                Some(_),
+                Publish::Default,
+                FnMode::Spec(ModeSpec { spec_token })
+                | FnMode::SpecChecked(ModeSpecChecked { spec_token, .. }),
+                None,
+            ) => {
+                let e: Expr = parse_quote_spanned!(spec_token.span =>
+                    compile_error!("non-private spec function must be marked open or closed to indicate whether the function body is public (pub open) or private (pub closed)"));
+                stmts.push(parse_quote_spanned!(spec_token.span => {#e}));
+            }
+            _ => {}
+        }
+
+        let publish_attrs = match &sig.publish {
+            Publish::Default => vec![],
+            Publish::Closed(_) => vec![],
+            Publish::Open(o) => vec![parse_quote_spanned!(o.token.span => #[verifier(publish)])],
+            Publish::OpenRestricted(_) => {
+                unimplemented!("TODO: support open(...)")
+            }
+        };
+
+        let (unimpl, ext_attrs) = match (&sig.mode, semi_token, is_trait) {
+            (FnMode::Spec(_) | FnMode::SpecChecked(_), Some(semi), false) => (
+                vec![Stmt::Expr(parse_quote_spanned!(semi.span => unimplemented!()))],
+                vec![parse_quote_spanned!(semi.span => #[verifier(external_body)])],
+            ),
+            _ => (vec![], vec![]),
+        };
+
+        let (inside_ghost, mode_attrs): (u32, Vec<Attribute>) = match &sig.mode {
+            FnMode::Default => (0, vec![]),
+            FnMode::Spec(token) => {
+                (1, vec![parse_quote_spanned!(token.spec_token.span => #[spec])])
+            }
+            FnMode::SpecChecked(token) => {
+                (1, vec![parse_quote_spanned!(token.spec_token.span => #[spec(checked)])])
+            }
+            FnMode::Proof(token) => {
+                (1, vec![parse_quote_spanned!(token.proof_token.span => #[proof])])
+            }
+            FnMode::Exec(token) => {
+                (0, vec![parse_quote_spanned!(token.exec_token.span => #[exec])])
+            }
+        };
+        self.inside_ghost = inside_ghost;
+
+        let requires = std::mem::take(&mut sig.requires);
+        let recommends = std::mem::take(&mut sig.recommends);
+        let ensures = std::mem::take(&mut sig.ensures);
+        let decreases = std::mem::take(&mut sig.decreases);
+        if let Some(Requires { token, exprs }) = requires {
+            stmts.push(parse_quote_spanned!(token.span => requires([#exprs]);));
+        }
+        if let Some(Recommends { token, exprs }) = recommends {
+            stmts.push(parse_quote_spanned!(token.span => recommends([#exprs]);));
+        }
+        if let Some(Ensures { token, exprs }) = ensures {
+            if let Some((p, ty)) = ret_pat {
+                stmts.push(parse_quote_spanned!(token.span => ensures(|#p: #ty| [#exprs]);));
+            } else {
+                stmts.push(parse_quote_spanned!(token.span => ensures([#exprs]);));
+            }
+        }
+        if let Some(Decreases { token, exprs }) = decreases {
+            stmts.push(parse_quote_spanned!(token.span => decreases((#exprs));));
+        }
+        sig.publish = Publish::Default;
+        sig.mode = FnMode::Default;
+        attrs.extend(publish_attrs);
+        attrs.extend(mode_attrs);
+        attrs.extend(ext_attrs);
+        stmts.extend(unimpl);
+        stmts
     }
 }
 
@@ -252,16 +370,16 @@ impl VisitMut for Visitor {
                     }
                     match unary.op {
                         UnOp::Forall(..) => {
-                            *expr = parse_quote_spanned!(span => builtin::forall(#arg));
+                            *expr = parse_quote_spanned!(span => ::builtin::forall(#arg));
                         }
                         UnOp::Exists(..) => {
-                            *expr = parse_quote_spanned!(span => builtin::exists(#arg));
+                            *expr = parse_quote_spanned!(span => ::builtin::exists(#arg));
                         }
                         UnOp::Choose(..) => {
                             if n_inputs == 1 {
-                                *expr = parse_quote_spanned!(span => builtin::choose(#arg));
+                                *expr = parse_quote_spanned!(span => ::builtin::choose(#arg));
                             } else {
-                                *expr = parse_quote_spanned!(span => builtin::choose_tuple(#arg));
+                                *expr = parse_quote_spanned!(span => ::builtin::choose_tuple(#arg));
                             }
                         }
                         _ => panic!("unary"),
@@ -347,110 +465,39 @@ impl VisitMut for Visitor {
     }
 
     fn visit_item_fn_mut(&mut self, fun: &mut ItemFn) {
-        fun.attrs.push(parse_quote_spanned!(fun.sig.fn_token.span => #[verifier(verus_macro)]));
-
-        for arg in &mut fun.sig.inputs {
-            match (arg.tracked, &mut arg.kind) {
-                (None, _) => {}
-                (Some(_), FnArgKind::Receiver(..)) => todo!("support tracked self"),
-                (Some(token), FnArgKind::Typed(typed)) => {
-                    typed.attrs.push(parse_quote_spanned!(token.span => #[proof]));
-                }
-            }
-            arg.tracked = None;
-        }
-        let ret_var = match &mut fun.sig.output {
-            ReturnType::Default => None,
-            ReturnType::Type(_, ref mut tracked, ref mut ret_opt, ty) => {
-                if let Some(token) = tracked {
-                    fun.attrs.push(parse_quote_spanned!(token.span => #[verifier(returns(proof))]));
-                    *tracked = None;
-                }
-                match std::mem::take(ret_opt) {
-                    None => None,
-                    Some(box (_, Pat::Ident(id), _))
-                        if id.by_ref.is_none()
-                            && id.mutability.is_none()
-                            && id.subpat.is_none() =>
-                    {
-                        Some((id.ident, ty.clone()))
-                    }
-                    Some(_) => {
-                        unimplemented!("TODO: support return patterns")
-                    }
-                }
-            }
-        };
-
-        match (&fun.vis, &fun.sig.publish, &fun.sig.mode) {
-            (Visibility::Inherited, _, _) => {}
-            (
-                _,
-                Publish::Default,
-                FnMode::Spec(ModeSpec { spec_token })
-                | FnMode::SpecChecked(ModeSpecChecked { spec_token, .. }),
-            ) => {
-                let e: Expr = parse_quote_spanned!(spec_token.span =>
-                    compile_error!("non-private spec function must be marked open or closed to indicate whether the function body is public (pub open) or private (pub closed)"));
-                fun.block = parse_quote_spanned!(spec_token.span => {#e});
-            }
-            _ => {}
-        }
-
-        let publish_attrs = match &fun.sig.publish {
-            Publish::Default => vec![],
-            Publish::Closed(_) => vec![],
-            Publish::Open(o) => vec![parse_quote_spanned!(o.token.span => #[verifier(publish)])],
-            Publish::OpenRestricted(_) => {
-                unimplemented!("TODO: support open(...)")
-            }
-        };
-
-        let (inside_ghost, mode_attrs): (u32, Vec<Attribute>) = match &fun.sig.mode {
-            FnMode::Default => (0, vec![]),
-            FnMode::Spec(token) => {
-                (1, vec![parse_quote_spanned!(token.spec_token.span => #[spec])])
-            }
-            FnMode::SpecChecked(token) => {
-                (1, vec![parse_quote_spanned!(token.spec_token.span => #[spec(checked)])])
-            }
-            FnMode::Proof(token) => {
-                (1, vec![parse_quote_spanned!(token.proof_token.span => #[proof])])
-            }
-            FnMode::Exec(token) => {
-                (0, vec![parse_quote_spanned!(token.exec_token.span => #[exec])])
-            }
-        };
-        self.inside_ghost = inside_ghost;
-
-        let mut stmts: Vec<Stmt> = Vec::new();
-        let requires = std::mem::take(&mut fun.sig.requires);
-        let recommends = std::mem::take(&mut fun.sig.recommends);
-        let ensures = std::mem::take(&mut fun.sig.ensures);
-        let decreases = std::mem::take(&mut fun.sig.decreases);
-        if let Some(Requires { token, exprs }) = requires {
-            stmts.push(parse_quote_spanned!(token.span => requires([#exprs]);));
-        }
-        if let Some(Recommends { token, exprs }) = recommends {
-            stmts.push(parse_quote_spanned!(token.span => recommends([#exprs]);));
-        }
-        if let Some(Ensures { token, exprs }) = ensures {
-            if let Some((x, ty)) = ret_var {
-                stmts.push(parse_quote_spanned!(token.span => ensures(|#x: #ty| [#exprs]);));
-            } else {
-                stmts.push(parse_quote_spanned!(token.span => ensures([#exprs]);));
-            }
-        }
-        if let Some(Decreases { token, exprs }) = decreases {
-            stmts.push(parse_quote_spanned!(token.span => decreases((#exprs));));
-        }
+        let stmts =
+            self.visit_fn(&mut fun.attrs, Some(&fun.vis), &mut fun.sig, fun.semi_token, false);
         fun.block.stmts.splice(0..0, stmts);
-
+        fun.semi_token = None;
         visit_item_fn_mut(self, fun);
-        fun.attrs.extend(publish_attrs);
-        fun.attrs.extend(mode_attrs);
-        fun.sig.publish = Publish::Default;
-        fun.sig.mode = FnMode::Default;
+    }
+
+    fn visit_impl_item_method_mut(&mut self, method: &mut ImplItemMethod) {
+        let stmts = self.visit_fn(
+            &mut method.attrs,
+            Some(&method.vis),
+            &mut method.sig,
+            method.semi_token,
+            false,
+        );
+        method.block.stmts.splice(0..0, stmts);
+        method.semi_token = None;
+        visit_impl_item_method_mut(self, method);
+    }
+
+    fn visit_trait_item_method_mut(&mut self, method: &mut TraitItemMethod) {
+        let mut stmts =
+            self.visit_fn(&mut method.attrs, None, &mut method.sig, method.semi_token, true);
+        if let Some(block) = &mut method.default {
+            block.stmts.splice(0..0, stmts);
+        } else {
+            let span = method.sig.fn_token.span;
+            stmts.push(Stmt::Expr(parse_quote_spanned!(span => ::builtin::no_method_body())));
+            let block = Block { brace_token: Brace(span), stmts };
+            method.default = Some(block);
+        }
+        method.semi_token = None;
+        visit_trait_item_method_mut(self, method);
     }
 
     fn visit_field_mut(&mut self, field: &mut Field) {

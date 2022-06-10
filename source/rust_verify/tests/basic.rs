@@ -27,9 +27,8 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test2 code! {
-        #[spec] #[verifier(external_body)]
-        fn f(i: int, j: int) -> bool { unimplemented!() }
+    #[test] test2 verus_code! {
+        spec fn f(i: int, j: int) -> bool;
 
         fn test2(b: bool, x: int, y: int, z: int) {
             assert(b || !b);
@@ -82,22 +81,19 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_spec_fn code! {
-        #[spec]
-        fn f1(i: int, j: int) -> bool {
+    #[test] test_spec_fn verus_code! {
+        spec fn f1(i: int, j: int) -> bool {
             i <= j
         }
 
-        #[spec]
-        fn f2(i: int, j: int) -> bool {
+        spec fn f2(i: int, j: int) -> bool {
             let x = i;
             let y = j;
             x < y
         }
 
-        #[spec]
         #[verifier(opaque)]
-        fn f3(i: int, j: int) -> bool {
+        spec fn f3(i: int, j: int) -> bool {
             f1(j, i)
         }
 
