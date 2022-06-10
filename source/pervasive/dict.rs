@@ -8,8 +8,7 @@ use crate::pervasive::*;
 use crate::pervasive::map::*;
 
 #[verifier(external_body)]
-pub struct Dict<#[verifier(maybe_negative)] K, #[verifier(strictly_positive)] V> 
-{
+pub struct Dict<#[verifier(maybe_negative)] K, #[verifier(strictly_positive)] V> {
     pub dict: std::collections::HashMap<K, V>,
 }
 
@@ -38,13 +37,13 @@ impl<K: std::cmp::Eq + std::hash::Hash, V> Dict<K, V> {
 
     #[verifier(external_body)]
     #[verifier(autoview)]    
-    pub fn contain(&self, key: K) -> bool {
+    pub fn contain(&self, key: &K) -> bool {
         ensures(|r: bool|[
             r >>= self.view().dom().contains(key),
             self.view().dom().contains(key) >>= r,
             ]);
 
-        match self.dict.get(&key) {
+        match self.dict.get(key) {
             Some(v) => true,
             None => false,
         }
