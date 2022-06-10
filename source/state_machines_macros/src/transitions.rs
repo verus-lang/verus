@@ -275,17 +275,17 @@ fn check_at_most_one_update_rec(
 
 fn is_allowed_in_update_in_normal_transition(stype: &ShardableType) -> bool {
     match stype {
-        ShardableType::Variable(_) => true,
-        ShardableType::NotTokenized(_) => true,
+        ShardableType::Variable(_) | ShardableType::NotTokenized(_) => true,
 
-        ShardableType::Constant(_) => false,
-        ShardableType::Multiset(_) => false,
-        ShardableType::Option(_) => false,
-        ShardableType::Map(_, _) => false,
-        ShardableType::StorageOption(_) => false,
-        ShardableType::StorageMap(_, _) => false,
-        ShardableType::PersistentMap(_, _) => false,
-        ShardableType::Count => false,
+        ShardableType::Constant(_)
+        | ShardableType::Multiset(_)
+        | ShardableType::Option(_)
+        | ShardableType::Map(_, _)
+        | ShardableType::StorageOption(_)
+        | ShardableType::StorageMap(_, _)
+        | ShardableType::PersistentMap(_, _)
+        | ShardableType::PersistentOption(_)
+        | ShardableType::Count => false,
     }
 }
 
@@ -316,6 +316,7 @@ fn is_allowed_in_special_op(
         | ShardableType::StorageOption(_)
         | ShardableType::StorageMap(_, _)
         | ShardableType::PersistentMap(_, _)
+        | ShardableType::PersistentOption(_)
         | ShardableType::Count => {
             if !op_matches_type(stype, &sop.elt) {
                 let syntax = sop.elt.syntax();
@@ -386,7 +387,9 @@ fn op_matches_type(stype: &ShardableType, elt: &MonoidElt) -> bool {
             _ => false,
         },
 
-        ShardableType::Option(_) | ShardableType::StorageOption(_) => match elt {
+        ShardableType::Option(_)
+        | ShardableType::PersistentOption(_)
+        | ShardableType::StorageOption(_) => match elt {
             MonoidElt::General(_) => true,
             MonoidElt::OptionSome(_) => true,
             _ => false,

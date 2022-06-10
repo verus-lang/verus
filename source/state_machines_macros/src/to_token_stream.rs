@@ -621,7 +621,9 @@ pub fn shardable_type_to_type(span: Span, stype: &ShardableType) -> Type {
         ShardableType::Variable(ty) => ty.clone(),
         ShardableType::Constant(ty) => ty.clone(),
         ShardableType::NotTokenized(ty) => ty.clone(),
-        ShardableType::Option(ty) | ShardableType::StorageOption(ty) => {
+        ShardableType::Option(ty)
+        | ShardableType::PersistentOption(ty)
+        | ShardableType::StorageOption(ty) => {
             Type::Verbatim(quote_spanned! { span => crate::pervasive::option::Option<#ty> })
         }
         ShardableType::Map(key, val)
