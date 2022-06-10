@@ -1,6 +1,7 @@
 //! Helper utilities used by the `state_machine_macros` codegen.
 
 #![allow(unused_imports)]
+#![doc(hidden)]
 
 use builtin::*;
 use crate::pervasive::*;
@@ -103,6 +104,7 @@ pub fn assert_general_guard_map(b: bool) { requires(b); ensures(b); }
 // perhaps we'll make our own trait for this purpose some day, but regardless, this suffices
 // for our purposes
 
+#[doc(hidden)]
 impl<A> Seq<A> {
     #[spec] #[verifier(publish)]
     pub fn update_at_index(self, i: int, a: A) -> Self {
@@ -112,6 +114,7 @@ impl<A> Seq<A> {
     }
 }
 
+#[doc(hidden)]
 impl<K, V> Map<K, V> {
     // note that despite the name, this is allowed to insert
 

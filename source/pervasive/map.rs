@@ -7,7 +7,25 @@ use crate::pervasive::*;
 #[allow(unused_imports)]
 use crate::pervasive::set::*;
 
-/// map type for specifications
+/// `Map<K, V>` is an abstract map type for specifications.
+/// To use a "map" in compiled code, use an `exec` type like HashMap (TODO)
+/// that has a `Map<K, V>` as its specification type.
+///
+/// An object `map: Map<K, V>` has a _domain_, a set of keys given by [`map.dom()`](Map::dom),
+/// and a mapping for keys in the domain to values, given by [`map.index(key)`](Map::index).
+/// Alternatively, a map can be thought of as a set of `(K, V)` pairs where each key
+/// appears in at most entry.
+/// In general, a map might be infinite.
+///
+/// Maps can be constructed in a few different ways:
+///  * [`Map::empty()`] construct an empty map.
+///  * [`Map::new`] and [`Map::total`] construct a map given functions that specify its domain and the mapping
+///     from keys to values (a _map comprehension_).
+///  * The [`map!`] macro, to construct small maps of a fixed size.
+///  * By manipulating an existing map with [`Map::insert`] or [`Map::remove`].
+///
+/// To prove that two maps are equal, it is usually easiest to use the [`assert_maps_equal!`] macro.
+
 #[verifier(external_body)]
 #[proof]
 pub struct Map<#[verifier(maybe_negative)] K, #[verifier(strictly_positive)] V> {
@@ -17,10 +35,16 @@ pub struct Map<#[verifier(maybe_negative)] K, #[verifier(strictly_positive)] V> 
 impl<K, V> Map<K, V> {
     fndecl!(pub fn empty() -> Map<K, V>);
 
+    /// Gives a `Map<K, V>` whose domain contains every key, and maps each key
+    /// to the value given by `fv`.
+
     #[spec] #[verifier(publish)]
-    pub fn total<F: Fn(K) -> V>(f: F) -> Map<K, V> {
-        Set::full().mk_map(f)
+    pub fn total<F: Fn(K) -> V>(fv: F) -> Map<K, V> {
+        Set::full().mk_map(fv)
     }
+
+    /// Gives a `Map<K, V>` whose domain is given by the boolean predicate on keys `fk`,
+    /// and maps each key to the value given by `fv`.
 
     #[spec] #[verifier(publish)]
     pub fn new<FK: Fn(K) -> bool, FV: Fn(K) -> V>(fk: FK, fv: FV) -> Map<K, V> {
@@ -28,6 +52,9 @@ impl<K, V> Map<K, V> {
     }
 
     fndecl!(pub fn dom(self) -> Set<K>);
+
+    /// Gets the value that the given key `key` maps to.
+    /// For keys not in the domain, the result is meaningless and arbitrary.
 
     #[spec] #[verifier(external_body)]
     pub fn index(self, key: K) -> V {
@@ -39,22 +66,58 @@ impl<K, V> Map<K, V> {
 
     fndecl!(pub fn remove(self, key: K) -> Map<K, V>);
 
+    /// Returns true if the two maps are pointwise equal, i.e.,
+    /// they have the same domains and the corresponding values are equal
+    /// for each key. This is equivalent to the maps being actually equal
+    /// by [`axiom_map_ext_equal`].
+    ///
+    /// To prove that two maps are equal via extensionality, it is generally easier
+    /// to use the [`assert_maps_equal!`] macro, rather than using `ext_equal` directly.
+
     #[spec] #[verifier(publish)]
     pub fn ext_equal(self, m2: Map<K, V>) -> bool {
         self.dom().ext_equal(m2.dom()) &&
         forall(|k: K| self.dom().contains(k) >>= equal(self.index(k), m2.index(k)))
     }
 
+    /// Returns true if the key `k` is in the domain of `self`, and it maps to the value `v`.
+
     #[spec] #[verifier(publish)]
     pub fn contains_pair(self, k: K, v: V) -> bool {
         self.dom().contains(k) && equal(self.index(k), v)
     }
+
+    /// Returns true if `m1` is _contained in_ `m2`, i.e., the domain of `m1` is a subset
+    /// of the domain of `m2`, and they agree on all values in `m1`.
+    ///
+    /// ## Example
+    ///
+    /// ```rust
+    /// assert(
+    ///    map![1 => 10, 2 => 11].le(map![1 => 10, 2 => 11, 3 => 12])
+    /// );
+    /// ```
 
     #[spec] #[verifier(publish)]
     pub fn le(self, m2: Self) -> bool {
         forall(|k: K| #[trigger] self.dom().contains(k) >>=
             #[trigger] m2.dom().contains(k) && equal(self.index(k), m2.index(k)))
     }
+
+    /// Gives the union of two maps, defined as:
+    ///  * The domain is the union of the two input maps
+    ///  * For a given key in _both_ input maps, it maps to the same value that it maps to in the _right_ map (`m2`).
+    ///  * For any other key in either input map (but not both), it maps to the same value
+    ///    as it does in that map.
+    ///
+    /// ## Example
+    ///
+    /// ```rust
+    /// assert_maps_equal!(
+    ///    map![1 => 10, 2 => 11].union_prefer_right(map![1 => 20, 3 => 13]),
+    ///    map![1 => 20, 2 => 11, 3 => 13],
+    /// );
+    /// ```
 
     #[spec] #[verifier(publish)]
     pub fn union_prefer_right(self, m2: Self) -> Self {
@@ -178,6 +241,7 @@ pub fn axiom_map_ext_equal<K, V>(m1: Map<K, V>, m2: Map<K, V>) {
 
 // Macros
 
+#[doc(hidden)]
 #[macro_export]
 macro_rules! map_insert_rec {
     [$val:expr;] => {
@@ -200,15 +264,15 @@ macro_rules! map {
     }
 } 
 
-/// Prove two maps equal by extensionality. Usage is:
+/// Prove two maps equal by _extensionality_. Usage is:
 ///
-/// ```rust,ignore
+/// ```rust
 /// assert_maps_equal!(map1, map2);
 /// ```
 /// 
 /// or,
 /// 
-/// ```rust,ignore
+/// ```rust
 /// assert_maps_equal!(map1, map2, k: Key => {
 ///     // proof goes here that `map1` and `map2` agree on key `k`,
 ///     // i.e., `k` is in the domain of `map`` iff it is in the domain of `map2`
