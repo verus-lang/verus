@@ -7,6 +7,8 @@ use crate::pervasive::*;
 #[allow(unused_imports)]
 use crate::pervasive::set::*;
 
+verus! {
+
 /// `Map<K, V>` is an abstract map type for specifications.
 /// To use a "map" in compiled code, use an `exec` type like HashMap (TODO)
 /// that has a `Map<K, V>` as its specification type.
@@ -27,44 +29,38 @@ use crate::pervasive::set::*;
 /// To prove that two maps are equal, it is usually easiest to use the [`assert_maps_equal!`] macro.
 
 #[verifier(external_body)]
-#[proof]
-pub struct Map<#[verifier(maybe_negative)] K, #[verifier(strictly_positive)] V> {
+pub tracked struct Map<#[verifier(maybe_negative)] K, #[verifier(strictly_positive)] V> {
     dummy: std::marker::PhantomData<(K, V)>,
 }
 
 impl<K, V> Map<K, V> {
-    fndecl!(pub fn empty() -> Map<K, V>);
+    pub spec fn empty() -> Map<K, V>;
 
     /// Gives a `Map<K, V>` whose domain contains every key, and maps each key
     /// to the value given by `fv`.
 
-    #[spec] #[verifier(publish)]
-    pub fn total<F: Fn(K) -> V>(fv: F) -> Map<K, V> {
+    pub open spec fn total<F: Fn(K) -> V>(fv: F) -> Map<K, V> {
         Set::full().mk_map(fv)
     }
 
     /// Gives a `Map<K, V>` whose domain is given by the boolean predicate on keys `fk`,
     /// and maps each key to the value given by `fv`.
 
-    #[spec] #[verifier(publish)]
-    pub fn new<FK: Fn(K) -> bool, FV: Fn(K) -> V>(fk: FK, fv: FV) -> Map<K, V> {
+    pub open spec fn new<FK: Fn(K) -> bool, FV: Fn(K) -> V>(fk: FK, fv: FV) -> Map<K, V> {
         Set::new(fk).mk_map(fv)
     }
 
-    fndecl!(pub fn dom(self) -> Set<K>);
+    pub spec fn dom(self) -> Set<K>;
 
     /// Gets the value that the given key `key` maps to.
     /// For keys not in the domain, the result is meaningless and arbitrary.
 
-    #[spec] #[verifier(external_body)]
-    pub fn index(self, key: K) -> V {
-        recommends(self.dom().contains(key));
-        unimplemented!()
-    }
+    pub spec fn index(self, key: K) -> V
+        recommends self.dom().contains(key);
 
-    fndecl!(pub fn insert(self, key: K, value: V) -> Map<K, V>);
+    pub spec fn insert(self, key: K, value: V) -> Map<K, V>;
 
-    fndecl!(pub fn remove(self, key: K) -> Map<K, V>);
+    pub spec fn remove(self, key: K) -> Map<K, V>;
 
     /// Returns true if the two maps are pointwise equal, i.e.,
     /// they have the same domains and the corresponding values are equal
@@ -74,17 +70,15 @@ impl<K, V> Map<K, V> {
     /// To prove that two maps are equal via extensionality, it is generally easier
     /// to use the [`assert_maps_equal!`] macro, rather than using `ext_equal` directly.
 
-    #[spec] #[verifier(publish)]
-    pub fn ext_equal(self, m2: Map<K, V>) -> bool {
-        self.dom().ext_equal(m2.dom()) &&
-        forall(|k: K| self.dom().contains(k) >>= equal(self.index(k), m2.index(k)))
+    pub open spec fn ext_equal(self, m2: Map<K, V>) -> bool {
+        &&& self.dom().ext_equal(m2.dom())
+        &&& (forall|k: K| #![auto] self.dom().contains(k) ==> self.index(k) === m2.index(k))
     }
 
     /// Returns true if the key `k` is in the domain of `self`, and it maps to the value `v`.
 
-    #[spec] #[verifier(publish)]
-    pub fn contains_pair(self, k: K, v: V) -> bool {
-        self.dom().contains(k) && equal(self.index(k), v)
+    pub open spec fn contains_pair(self, k: K, v: V) -> bool {
+        self.dom().contains(k) && self.index(k) === v
     }
 
     /// Returns true if `m1` is _contained in_ `m2`, i.e., the domain of `m1` is a subset
@@ -98,10 +92,9 @@ impl<K, V> Map<K, V> {
     /// );
     /// ```
 
-    #[spec] #[verifier(publish)]
-    pub fn le(self, m2: Self) -> bool {
-        forall(|k: K| #[trigger] self.dom().contains(k) >>=
-            #[trigger] m2.dom().contains(k) && equal(self.index(k), m2.index(k)))
+    pub open spec fn le(self, m2: Self) -> bool {
+        forall|k: K| #[trigger] self.dom().contains(k) ==>
+            #[trigger] m2.dom().contains(k) && self.index(k) === m2.index(k)
     }
 
     /// Gives the union of two maps, defined as:
@@ -119,16 +112,14 @@ impl<K, V> Map<K, V> {
     /// );
     /// ```
 
-    #[spec] #[verifier(publish)]
-    pub fn union_prefer_right(self, m2: Self) -> Self {
+    pub open spec fn union_prefer_right(self, m2: Self) -> Self {
         Self::new(
             |k: K| self.dom().contains(k) || m2.dom().contains(k),
             |k: K| if m2.dom().contains(k) { m2.index(k) } else { self.index(k) }
         )
     }
 
-    #[spec] #[verifier(publish)]
-    pub fn remove_keys(self, keys: Set<K>) -> Self {
+    pub open spec fn remove_keys(self, keys: Set<K>) -> Self {
         Self::new(
             |k: K| self.dom().contains(k) && !keys.contains(k),
             |k: K| self.index(k)
@@ -138,105 +129,101 @@ impl<K, V> Map<K, V> {
     /// Returns `true` if the two given maps agree on all keys that their domains
     /// share in common.
 
-    #[spec] #[verifier(publish)]
-    pub fn agrees(self, m2: Self) -> bool {
-        forall(|k| self.dom().contains(k) && m2.dom().contains(k) >>=
-            equal(self.index(k), m2.index(k))
-        )
+    pub open spec fn agrees(self, m2: Self) -> bool {
+        forall|k| #![auto] self.dom().contains(k) && m2.dom().contains(k) ==>
+            self.index(k) === m2.index(k)
     }
 
-    #[proof]
     #[verifier(external_body)]
-    #[verifier(returns(proof))]
-    pub fn proof_empty() -> Self {
-        ensures(|out_v: Self|
-            equal(out_v, Map::empty())
-        );
-
+    pub proof fn proof_empty() -> (tracked out_v: Self)
+        ensures
+            out_v === Map::empty(),
+    {
         unimplemented!();
     }
 
-    #[proof]
     #[verifier(external_body)]
-    pub fn proof_insert(#[proof] &mut self, #[spec] key: K, #[proof] value: V) {
-        ensures(
-            equal(*self, Map::insert(*old(self), key, value))
-        );
-
+    pub proof fn proof_insert(tracked &mut self, key: K, tracked value: V)
+        ensures
+            *self === Map::insert(*old(self), key, value),
+    {
         unimplemented!();
     }
 
-    #[proof]
     #[verifier(external_body)]
-    #[verifier(returns(proof))]
-    pub fn proof_remove(#[proof] &mut self, #[spec] key: K) -> V {
-        requires(old(self).dom().contains(key));
-        ensures(|v: V| [
-            equal(*self, Map::remove(*old(self), key)),
-            equal(v, old(self).index(key)),
-        ]);
-
+    pub proof fn proof_remove(tracked &mut self, key: K) -> (tracked v: V)
+        requires
+            old(self).dom().contains(key),
+        ensures
+            *self === Map::remove(*old(self), key),
+            v === old(self).index(key),
+    {
         unimplemented!();
     }
 }
 
 // Trusted axioms
 
-#[proof]
 #[verifier(external_body)]
 #[verifier(broadcast_forall)]
-pub fn axiom_map_empty<K, V>() {
-    ensures(equal(Map::<K, V>::empty().dom(), Set::empty()));
+pub proof fn axiom_map_empty<K, V>()
+    ensures
+        #[trigger] Map::<K, V>::empty().dom() === Set::empty(),
+{
 }
 
-#[proof]
 #[verifier(external_body)]
 #[verifier(broadcast_forall)]
-pub fn axiom_map_insert_domain<K, V>(m: Map<K, V>, key: K, value: V) {
-    ensures(equal(#[trigger] m.insert(key, value).dom(), m.dom().insert(key)));
+pub proof fn axiom_map_insert_domain<K, V>(m: Map<K, V>, key: K, value: V)
+    ensures
+        #[trigger] m.insert(key, value).dom() === m.dom().insert(key),
+{
 }
 
-#[proof]
 #[verifier(external_body)]
 #[verifier(broadcast_forall)]
-pub fn axiom_map_insert_same<K, V>(m: Map<K, V>, key: K, value: V) {
-    ensures(equal(#[trigger] m.insert(key, value).index(key), value));
+pub proof fn axiom_map_insert_same<K, V>(m: Map<K, V>, key: K, value: V)
+    ensures
+        #[trigger] m.insert(key, value).index(key) === value,
+{
 }
 
-#[proof]
 #[verifier(external_body)]
 #[verifier(broadcast_forall)]
-pub fn axiom_map_insert_different<K, V>(m: Map<K, V>, key1: K, key2: K, value: V) {
-    requires([
+pub proof fn axiom_map_insert_different<K, V>(m: Map<K, V>, key1: K, key2: K, value: V)
+    requires
         m.dom().contains(key1),
-        !equal(key1, key2),
-    ]);
-    ensures(equal(m.insert(key2, value).index(key1), m.index(key1)));
+        key1 !== key2,
+    ensures
+        m.insert(key2, value).index(key1) === m.index(key1),
+{
 }
 
-#[proof]
 #[verifier(external_body)]
 #[verifier(broadcast_forall)]
-pub fn axiom_map_remove_domain<K, V>(m: Map<K, V>, key: K) {
-    ensures(equal(#[trigger] m.remove(key).dom(), m.dom().remove(key)));
+pub proof fn axiom_map_remove_domain<K, V>(m: Map<K, V>, key: K)
+    ensures
+        #[trigger] m.remove(key).dom() === m.dom().remove(key),
+{
 }
 
-#[proof]
 #[verifier(external_body)]
 #[verifier(broadcast_forall)]
-pub fn axiom_map_remove_different<K, V>(m: Map<K, V>, key1: K, key2: K) {
-    requires([
+pub proof fn axiom_map_remove_different<K, V>(m: Map<K, V>, key1: K, key2: K)
+    requires
         m.dom().contains(key1),
-        !equal(key1, key2),
-    ]);
-    ensures(equal(m.remove(key2).index(key1), m.index(key1)));
+        key1 !== key2,
+    ensures
+        m.remove(key2).index(key1) === m.index(key1),
+{
 }
 
-#[proof]
 #[verifier(external_body)]
 #[verifier(broadcast_forall)]
-pub fn axiom_map_ext_equal<K, V>(m1: Map<K, V>, m2: Map<K, V>) {
-    ensures(m1.ext_equal(m2) == equal(m1, m2));
+pub proof fn axiom_map_ext_equal<K, V>(m1: Map<K, V>, m2: Map<K, V>)
+    ensures
+        m1.ext_equal(m2) == (m1 === m2),
+{
 }
 
 // Macros
@@ -304,3 +291,5 @@ macro_rules! assert_maps_equal {
         });
     }
 }
+
+} // verus!

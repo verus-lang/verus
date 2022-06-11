@@ -56,7 +56,9 @@ impl Visitor {
         for arg in &mut sig.inputs {
             match (arg.tracked, &mut arg.kind) {
                 (None, _) => {}
-                (Some(_), FnArgKind::Receiver(..)) => todo!("support tracked self"),
+                (Some(token), FnArgKind::Receiver(receiver)) => {
+                    receiver.attrs.push(parse_quote_spanned!(token.span => #[proof]));
+                }
                 (Some(token), FnArgKind::Typed(typed)) => {
                     typed.attrs.push(parse_quote_spanned!(token.span => #[proof]));
                 }

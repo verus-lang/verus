@@ -50,7 +50,7 @@ impl<A> Tracked<A> {
 #[verifier(external_body)]
 #[verifier(broadcast_forall)]
 pub fn axiom_ghost_new<A>(a: A) {
-    ensures(equal(Ghost::new(a).value(), a));
+    ensures(equal(#[trigger] Ghost::new(a).value(), a));
 }
 
 impl<A> Clone for Ghost<A> {
