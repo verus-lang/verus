@@ -168,6 +168,40 @@ pub fn old<A>(_: A) -> A {
     unimplemented!();
 }
 
+pub struct Chain<A: PartialOrd> {
+    data: std::marker::PhantomData<A>,
+}
+
+#[spec]
+pub fn chained_value<A: PartialOrd>(_a: A) -> Chain<A> {
+    unimplemented!()
+}
+
+#[spec]
+pub fn chained_le<A: PartialOrd>(_left: Chain<A>, _right: A) -> Chain<A> {
+    unimplemented!()
+}
+
+#[spec]
+pub fn chained_lt<A: PartialOrd>(_left: Chain<A>, _right: A) -> Chain<A> {
+    unimplemented!()
+}
+
+#[spec]
+pub fn chained_ge<A: PartialOrd>(_left: Chain<A>, _right: A) -> Chain<A> {
+    unimplemented!()
+}
+
+#[spec]
+pub fn chained_gt<A: PartialOrd>(_left: Chain<A>, _right: A) -> Chain<A> {
+    unimplemented!()
+}
+
+#[spec]
+pub fn chained_cmp<A: PartialOrd>(_chain: Chain<A>) -> bool {
+    unimplemented!()
+}
+
 #[proof]
 pub fn assert_by(_: bool, _: ()) {
     unimplemented!();

@@ -205,6 +205,11 @@ where
                     expr_visitor_control_flow!(expr_visitor_dfs(e1, map, mf));
                     expr_visitor_control_flow!(expr_visitor_dfs(e2, map, mf));
                 }
+                ExprX::Multi(_op, es) => {
+                    for e in es.iter() {
+                        expr_visitor_control_flow!(expr_visitor_dfs(e, map, mf));
+                    }
+                }
                 ExprX::Quant(_quant, binders, e1) => {
                     map.push_scope(true);
                     for binder in binders.iter() {
@@ -496,6 +501,13 @@ where
             let expr1 = map_expr_visitor_env(e1, map, env, fe, fs, ft)?;
             let expr2 = map_expr_visitor_env(e2, map, env, fe, fs, ft)?;
             ExprX::Binary(*op, expr1, expr2)
+        }
+        ExprX::Multi(op, es) => {
+            let mut exprs: Vec<Expr> = Vec::new();
+            for e in es.iter() {
+                exprs.push(map_expr_visitor_env(e, map, env, fe, fs, ft)?);
+            }
+            ExprX::Multi(op.clone(), Arc::new(exprs))
         }
         ExprX::Quant(quant, binders, e1) => {
             let binders =

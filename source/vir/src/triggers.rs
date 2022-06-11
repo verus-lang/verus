@@ -113,7 +113,7 @@ fn check_trigger_expr(
                         And | Or | Xor | Implies | Eq(_) | Ne => {
                             err_str(&exp.span, "triggers cannot contain boolean operators")
                         }
-                        Le | Ge | Lt | Gt => Ok(()),
+                        Inequality(_) => Ok(()),
                         Arith(..) => err_str(
                             &exp.span,
                             "triggers cannot contain integer arithmetic\nuse forall_arith for quantifiers on integer arithmetic",

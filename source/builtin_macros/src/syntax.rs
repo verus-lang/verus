@@ -11,8 +11,8 @@ use syn_verus::{
     parse_macro_input, parse_quote_spanned, Attribute, BinOp, Block, DataMode, Decreases, Ensures,
     Expr, ExprBinary, ExprCall, ExprLoop, ExprTuple, ExprUnary, ExprWhile, Field, FnArgKind,
     FnMode, ImplItemMethod, Invariant, Item, ItemEnum, ItemFn, ItemStruct, Local, ModeSpec,
-    ModeSpecChecked, Publish, Recommends, Requires, ReturnType, Signature, Stmt, TraitItemMethod,
-    UnOp, Visibility,
+    ModeSpecChecked, Path, Publish, Recommends, Requires, ReturnType, Signature, Stmt,
+    TraitItemMethod, UnOp, Visibility,
 };
 
 fn take_expr(expr: &mut Expr) -> Expr {
@@ -158,8 +158,61 @@ impl Visitor {
     }
 }
 
+fn chain_count(expr: &Expr) -> u32 {
+    if let Expr::Binary(binary) = expr {
+        match binary.op {
+            BinOp::Le(_) | BinOp::Lt(_) | BinOp::Ge(_) | BinOp::Gt(_) => {
+                1 + chain_count(&binary.left)
+            }
+            _ => 0,
+        }
+    } else {
+        0
+    }
+}
+
+fn chain_operators(expr: &mut Expr) {
+    use syn_verus::spanned::Spanned;
+    let count = chain_count(expr);
+    if count < 2 {
+        return;
+    }
+    let mut rights: Vec<(Expr, Path, proc_macro2::Span)> = Vec::new();
+    for _ in 0..count {
+        if let Expr::Binary(binary) = take_expr(expr) {
+            let span = binary.span();
+            let op = match binary.op {
+                BinOp::Le(_) => parse_quote_spanned!(span => ::builtin::chained_le),
+                BinOp::Lt(_) => parse_quote_spanned!(span => ::builtin::chained_lt),
+                BinOp::Ge(_) => parse_quote_spanned!(span => ::builtin::chained_ge),
+                BinOp::Gt(_) => parse_quote_spanned!(span => ::builtin::chained_gt),
+                _ => panic!("chain_operators"),
+            };
+            rights.push((*binary.right, op, span));
+            *expr = *binary.left;
+        } else {
+            panic!("chain_operators");
+        }
+    }
+    // example:
+    //   ((e0 <= e1) <= e2) <= e3
+    //   count == 3
+    //   expr = e0
+    //   rights = [e3, e2, e1]
+    // goal:
+    //   chained_cmp(chained_le(chained_le(chained_le(chained_value(e0), e1), e2), e3))
+    let span = expr.span();
+    *expr = parse_quote_spanned!(span => ::builtin::chained_value(#expr));
+    while let Some((right, op, span)) = rights.pop() {
+        *expr = parse_quote_spanned!(span => #op(#expr, #right));
+    }
+    *expr = parse_quote_spanned!(span => ::builtin::chained_cmp(#expr));
+}
+
 impl VisitMut for Visitor {
     fn visit_expr_mut(&mut self, expr: &mut Expr) {
+        chain_operators(expr);
+
         if self.inside_ghost == 0 {
             let is_auto_proof_block = match &expr {
                 Expr::Assume(a) => Some(a.assume_token.span),

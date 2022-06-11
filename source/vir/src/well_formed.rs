@@ -1,6 +1,6 @@
 use crate::ast::{
     CallTarget, Datatype, Expr, ExprX, FieldOpr, Fun, FunX, Function, FunctionKind, Krate,
-    MaskSpec, Mode, Path, PathX, TypX, UnaryOpr, VirErr,
+    MaskSpec, Mode, MultiOp, Path, PathX, TypX, UnaryOpr, VirErr,
 };
 use crate::ast_util::{err_str, err_string, error, path_as_rust_name, referenced_vars_expr};
 use crate::datatype_to_air::is_datatype_transparent;
@@ -101,6 +101,14 @@ fn check_one_expr(
                 }
             } else {
                 panic!("field access of undefined datatype");
+            }
+        }
+        ExprX::Multi(MultiOp::Chained(ops), _) => {
+            if ops.len() < 1 {
+                return err_str(
+                    &expr.span,
+                    "chained inequalities must have at least one inequality",
+                );
             }
         }
         ExprX::OpenInvariant(_inv, _binder, body, _atomicity) => {

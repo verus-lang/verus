@@ -30,8 +30,9 @@ use rustc_span::Span;
 use std::sync::Arc;
 use vir::ast::{
     ArithOp, ArmX, AssertQueryMode, BinaryOp, BitwiseOp, CallTarget, Constant, ExprX, FieldOpr,
-    FunX, HeaderExpr, HeaderExprX, Ident, IntRange, InvAtomicity, Mode, PathX, PatternX, Quant,
-    SpannedTyped, StmtX, Stmts, Typ, TypX, UnaryOp, UnaryOpr, VarAt, VirErr,
+    FunX, HeaderExpr, HeaderExprX, Ident, InequalityOp, IntRange, InvAtomicity, Mode, MultiOp,
+    PathX, PatternX, Quant, SpannedTyped, StmtX, Stmts, Typ, TypX, UnaryOp, UnaryOpr, VarAt,
+    VirErr,
 };
 use vir::ast_util::{ident_binder, path_as_rust_name};
 use vir::def::positional_field_ident;
@@ -397,6 +398,12 @@ fn fn_call_to_vir<'tcx>(
     let is_choose_tuple = f_name == "builtin::choose_tuple";
     let is_with_triggers = f_name == "builtin::with_triggers";
     let is_equal = f_name == "builtin::equal";
+    let is_chained_value = f_name == "builtin::chained_value";
+    let is_chained_le = f_name == "builtin::chained_le";
+    let is_chained_lt = f_name == "builtin::chained_lt";
+    let is_chained_ge = f_name == "builtin::chained_ge";
+    let is_chained_gt = f_name == "builtin::chained_gt";
+    let is_chained_cmp = f_name == "builtin::chained_cmp";
     let is_hide = f_name == "builtin::hide";
     let is_extra_dependency = f_name == "builtin::extra_dependency";
     let is_reveal = f_name == "builtin::reveal";
@@ -436,6 +443,7 @@ fn fn_call_to_vir<'tcx>(
     let is_directive = is_extra_dependency || is_hide || is_reveal || is_reveal_fuel;
     let is_cmp = is_equal || is_eq || is_ne || is_le || is_ge || is_lt || is_gt;
     let is_arith_binary = is_add || is_sub || is_mul;
+    let is_chained_ineq = is_chained_le || is_chained_lt || is_chained_ge || is_chained_gt;
 
     // These functions are all no-ops in the SMT encoding, so we don't emit any VIR
     let is_ignored_fn = f_name == "std::box::Box::<T>::new"
@@ -875,13 +883,13 @@ fn fn_call_to_vir<'tcx>(
         } else if is_ne {
             BinaryOp::Ne
         } else if is_le {
-            BinaryOp::Le
+            BinaryOp::Inequality(InequalityOp::Le)
         } else if is_ge {
-            BinaryOp::Ge
+            BinaryOp::Inequality(InequalityOp::Ge)
         } else if is_lt {
-            BinaryOp::Lt
+            BinaryOp::Inequality(InequalityOp::Lt)
         } else if is_gt {
-            BinaryOp::Gt
+            BinaryOp::Inequality(InequalityOp::Gt)
         } else if is_add {
             BinaryOp::Arith(ArithOp::Add, bctx.ctxt.infer_mode())
         } else if is_sub {
@@ -895,6 +903,55 @@ fn fn_call_to_vir<'tcx>(
         };
         let e = mk_expr(ExprX::Binary(vop, lhs, rhs));
         if is_arith_binary { Ok(mk_ty_clip(&expr_typ(), &e)) } else { Ok(e) }
+    } else if is_chained_value {
+        unsupported_err_unless!(len == 1, expr.span, "chained_value", &args);
+        unsupported_err_unless!(
+            matches!(*vir_args[0].typ, TypX::Int(_)),
+            expr.span,
+            "chained inequalities for non-integer types",
+            &args
+        );
+        let exprx =
+            ExprX::Multi(MultiOp::Chained(Arc::new(vec![])), Arc::new(vec![vir_args[0].clone()]));
+        Ok(spanned_typed_new(expr.span, &Arc::new(TypX::Bool), exprx))
+    } else if is_chained_ineq {
+        unsupported_err_unless!(len == 2, expr.span, "chained inequality", &args);
+        unsupported_err_unless!(
+            matches!(&vir_args[0].x, ExprX::Multi(MultiOp::Chained(_), _)),
+            expr.span,
+            "chained inequalities for non-integer types",
+            &args
+        );
+        unsupported_err_unless!(
+            matches!(*vir_args[1].typ, TypX::Int(_)),
+            expr.span,
+            "chained inequalities for non-integer types",
+            &args
+        );
+        let op = if is_chained_le {
+            InequalityOp::Le
+        } else if is_chained_lt {
+            InequalityOp::Lt
+        } else if is_chained_ge {
+            InequalityOp::Ge
+        } else if is_chained_gt {
+            InequalityOp::Gt
+        } else {
+            panic!("is_chained_ineq")
+        };
+        if let ExprX::Multi(MultiOp::Chained(ops), es) = &vir_args[0].x {
+            let mut ops = (**ops).clone();
+            let mut es = (**es).clone();
+            ops.push(op);
+            es.push(vir_args[1].clone());
+            let exprx = ExprX::Multi(MultiOp::Chained(Arc::new(ops)), Arc::new(es));
+            Ok(spanned_typed_new(expr.span, &Arc::new(TypX::Bool), exprx))
+        } else {
+            panic!("is_chained_ineq")
+        }
+    } else if is_chained_cmp {
+        unsupported_err_unless!(len == 1, expr.span, "chained_cmp", args);
+        Ok(vir_args[0].clone())
     } else {
         // filter out the Fn type parameters
         let mut fn_params: Vec<Ident> = Vec::new();
@@ -1610,10 +1667,10 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                 BinOpKind::Or => BinaryOp::Or,
                 BinOpKind::Eq => BinaryOp::Eq(Mode::Exec),
                 BinOpKind::Ne => BinaryOp::Ne,
-                BinOpKind::Le => BinaryOp::Le,
-                BinOpKind::Ge => BinaryOp::Ge,
-                BinOpKind::Lt => BinaryOp::Lt,
-                BinOpKind::Gt => BinaryOp::Gt,
+                BinOpKind::Le => BinaryOp::Inequality(InequalityOp::Le),
+                BinOpKind::Ge => BinaryOp::Inequality(InequalityOp::Ge),
+                BinOpKind::Lt => BinaryOp::Inequality(InequalityOp::Lt),
+                BinOpKind::Gt => BinaryOp::Inequality(InequalityOp::Gt),
                 BinOpKind::Add => BinaryOp::Arith(ArithOp::Add, bctx.ctxt.infer_mode()),
                 BinOpKind::Sub => BinaryOp::Arith(ArithOp::Sub, bctx.ctxt.infer_mode()),
                 BinOpKind::Mul => BinaryOp::Arith(ArithOp::Mul, bctx.ctxt.infer_mode()),

@@ -932,6 +932,9 @@ fn expr_to_stm_opt(
                 }
             }
         }
+        ExprX::Multi(..) => {
+            panic!("internal error: Multi should have been simplified by ast_simplify")
+        }
         ExprX::Quant(quant, binders, body) => {
             let check_recommends_stms =
                 check_pure_expr_bind(ctx, state, binders, quant.boxed_params, body)?;

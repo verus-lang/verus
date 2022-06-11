@@ -71,8 +71,8 @@ Therefore, the expression Unbox(Box(1)) explicitly introduces a superfluous Unbo
 
 use crate::ast::{
     BinaryOp, CallTarget, Datatype, DatatypeX, Expr, ExprX, Exprs, FieldOpr, Function,
-    FunctionKind, FunctionX, Ident, IntRange, Krate, KrateX, MaskSpec, Mode, Param, ParamX, Path,
-    PatternX, SpannedTyped, Stmt, StmtX, Typ, TypX, UnaryOp, UnaryOpr,
+    FunctionKind, FunctionX, Ident, IntRange, Krate, KrateX, MaskSpec, Mode, MultiOp, Param,
+    ParamX, Path, PatternX, SpannedTyped, Stmt, StmtX, Typ, TypX, UnaryOp, UnaryOpr,
 };
 use crate::context::Ctx;
 use crate::def::Spanned;
@@ -340,7 +340,7 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
             let e2 = poly_expr(ctx, state, e2);
             use BinaryOp::*;
             let native = match op {
-                And | Or | Xor | Implies | Le | Ge | Lt | Gt => true,
+                And | Or | Xor | Implies | Inequality(_) => true,
                 Arith(..) => true,
                 Eq(_) | Ne => false,
                 Bitwise(..) => true,
@@ -353,6 +353,11 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
                 let (e1, e2) = coerce_exprs_to_agree(ctx, &e1, &e2);
                 mk_expr(ExprX::Binary(*op, e1, e2))
             }
+        }
+        ExprX::Multi(MultiOp::Chained(ops), es) => {
+            let es =
+                es.iter().map(|e| coerce_expr_to_native(ctx, &poly_expr(ctx, state, e))).collect();
+            mk_expr(ExprX::Multi(MultiOp::Chained(ops.clone()), Arc::new(es)))
         }
         ExprX::Quant(quant, binders, e1) => {
             let mut bs: Vec<Binder<Typ>> = Vec::new();

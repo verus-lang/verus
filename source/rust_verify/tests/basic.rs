@@ -36,7 +36,7 @@ test_verify_one_file! {
             assume(b);
             assert(b);
 
-            assert(x == y >>= f(x, y) == f(y, x));
+            assert(x == y ==> f(x, y) == f(y, x));
 
             assert(x + y == y + x);
 
@@ -322,7 +322,7 @@ test_verify_one_file! {
             } else {
                 x = 2;
             }
-            assert(a >>= (x == 1));
+            assert(a ==> (x == 1));
             assert(false); // FAILS
         }
     } => Err(e) => assert_fails(e, 2)

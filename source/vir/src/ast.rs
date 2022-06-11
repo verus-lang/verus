@@ -172,6 +172,18 @@ pub enum BitwiseOp {
     Shl,
 }
 
+#[derive(Copy, Clone, Debug)]
+pub enum InequalityOp {
+    /// IntRange::Int <=
+    Le,
+    /// IntRange::Int >=
+    Ge,
+    /// IntRange::Int <
+    Lt,
+    /// IntRange::Int >
+    Gt,
+}
+
 /// Primitive binary operations
 /// (not arbitrary user-defined functions -- these are represented by ExprX::Call)
 /// Note that all integer operations are on mathematic integers (IntRange::Int),
@@ -193,18 +205,17 @@ pub enum BinaryOp {
     Eq(Mode),
     /// not Eq
     Ne,
-    /// IntRange::Int <=
-    Le,
-    /// IntRange::Int >=
-    Ge,
-    /// IntRange::Int <
-    Lt,
-    /// IntRange::Int >
-    Gt,
+    ///
+    Inequality(InequalityOp),
     /// IntRange operations that may require overflow or divide-by zero checks
     Arith(ArithOp, InferMode),
     /// Bit Vector Operators
     Bitwise(BitwiseOp),
+}
+
+#[derive(Clone, Debug)]
+pub enum MultiOp {
+    Chained(Arc<Vec<InequalityOp>>),
 }
 
 /// Ghost annotations on functions and while loops; must appear at the beginning of function body
@@ -362,6 +373,8 @@ pub enum ExprX {
     UnaryOpr(UnaryOpr, Expr),
     /// Primitive binary operation
     Binary(BinaryOp, Expr, Expr),
+    /// Primitive multi-operand operation
+    Multi(MultiOp, Exprs),
     /// Quantifier (forall/exists), binding the variables in Binders, with body Expr
     Quant(Quant, Binders<Typ>, Expr),
     /// Specification closure

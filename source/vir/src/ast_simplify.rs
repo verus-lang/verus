@@ -2,8 +2,9 @@
 
 use crate::ast::{
     BinaryOp, Binder, CallTarget, Constant, Datatype, DatatypeTransparency, DatatypeX, Expr, ExprX,
-    Field, FieldOpr, Function, GenericBound, GenericBoundX, Ident, Krate, KrateX, Mode, Path,
-    Pattern, PatternX, SpannedTyped, Stmt, StmtX, Typ, TypX, UnaryOp, UnaryOpr, VirErr, Visibility,
+    Field, FieldOpr, Function, GenericBound, GenericBoundX, Ident, Krate, KrateX, Mode, MultiOp,
+    Path, Pattern, PatternX, SpannedTyped, Stmt, StmtX, Typ, TypX, UnaryOp, UnaryOpr, VirErr,
+    Visibility,
 };
 use crate::ast_util::{err_str, err_string};
 use crate::context::GlobalCtx;
@@ -239,6 +240,40 @@ fn simplify_one_expr(ctx: &GlobalCtx, state: &mut State, expr: &Expr) -> Result<
             let field_exp =
                 SpannedTyped::new(&expr.span, &expr.typ, ExprX::UnaryOpr(op, expr0.clone()));
             Ok(field_exp)
+        }
+        ExprX::Multi(MultiOp::Chained(ops), args) => {
+            assert!(args.len() == ops.len() + 1);
+            let mut stmts: Vec<Stmt> = Vec::new();
+            let mut es: Vec<Expr> = Vec::new();
+            for i in 0..args.len() {
+                if i == 0 || i == args.len() - 1 {
+                    es.push(args[i].clone());
+                } else {
+                    let (decls, e) = small_or_temp(state, &args[i]);
+                    stmts.extend(decls);
+                    es.push(e);
+                }
+            }
+            let mut conjunction: Expr = es[0].clone();
+            for i in 0..ops.len() {
+                let op = BinaryOp::Inequality(ops[i]);
+                let left = es[i].clone();
+                let right = es[i + 1].clone();
+                let span = left.span.clone();
+                let binary = SpannedTyped::new(&span, &expr.typ, ExprX::Binary(op, left, right));
+                if i == 0 {
+                    conjunction = binary;
+                } else {
+                    let exprx = ExprX::Binary(BinaryOp::And, conjunction, binary);
+                    conjunction = SpannedTyped::new(&span, &expr.typ, exprx);
+                }
+            }
+            if stmts.len() == 0 {
+                Ok(conjunction)
+            } else {
+                let block = ExprX::Block(Arc::new(stmts), Some(conjunction));
+                Ok(SpannedTyped::new(&expr.span, &expr.typ, block))
+            }
         }
         ExprX::Match(expr0, arms1) => {
             let (temp_decl, expr0) = small_or_temp(state, &expr0);

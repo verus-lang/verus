@@ -260,6 +260,9 @@ fn expr_to_node(expr: &Expr) -> Node {
             BinaryOp::Arith(op, _) => {
                 nodes!({str_to_node(&format!("{:?}", op))} {expr_to_node(e1)} {expr_to_node(e2)})
             }
+            BinaryOp::Inequality(op) => {
+                nodes!({str_to_node(&format!("{:?}", op))} {expr_to_node(e1)} {expr_to_node(e2)})
+            }
             BinaryOp::Bitwise(op) => {
                 nodes!({str_to_node(&format!("{:?}", op))} {expr_to_node(e1)} {expr_to_node(e2)})
             }
@@ -267,6 +270,11 @@ fn expr_to_node(expr: &Expr) -> Node {
                 nodes!({str_to_node(&format!("{:?}", binary_op).to_lowercase())} {expr_to_node(e1)} {expr_to_node(e2)})
             }
         },
+        ExprX::Multi(MultiOp::Chained(ops), es) => {
+            let ops: Vec<Node> = ops.iter().map(|op| str_to_node(&format!("{:?}", op))).collect();
+            let es: Vec<Node> = es.iter().map(expr_to_node).collect();
+            nodes!(multi {Node::List(ops)} {Node::List(es)})
+        }
         ExprX::Quant(quant, binders, expr) => {
             nodes!({str_to_node(&format!("{:?}", quant.quant).to_lowercase())} {binders_node(binders, &typ_to_node)} {expr_to_node(expr)})
         }

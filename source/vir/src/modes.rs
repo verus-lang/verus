@@ -1,6 +1,7 @@
 use crate::ast::{
     BinaryOp, CallTarget, Datatype, Expr, ExprX, FieldOpr, Fun, Function, FunctionKind, Ident,
-    InferMode, InvAtomicity, Krate, Mode, Path, Pattern, PatternX, Stmt, StmtX, UnaryOpr, VirErr,
+    InferMode, InvAtomicity, Krate, Mode, MultiOp, Path, Pattern, PatternX, Stmt, StmtX, UnaryOpr,
+    VirErr,
 };
 use crate::ast_util::{err_str, err_string, get_field};
 use crate::util::vec_map_result;
@@ -500,6 +501,12 @@ fn check_expr(
             let mode1 = check_expr(typing, outer_mode, erasure_mode, e1)?;
             let mode2 = check_expr(typing, outer_mode, erasure_mode, e2)?;
             Ok(mode_join(op_mode, mode_join(mode1, mode2)))
+        }
+        ExprX::Multi(MultiOp::Chained(_), es) => {
+            for e in es.iter() {
+                check_expr_has_mode(typing, Mode::Spec, e, Mode::Spec)?;
+            }
+            Ok(Mode::Spec)
         }
         ExprX::Quant(_, binders, e1) => {
             if typing.check_ghost_blocks && typing.block_ghostness == Ghost::Exec {
