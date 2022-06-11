@@ -306,6 +306,7 @@ enum ShardingType {
     Map,
     StorageOption,
     StorageMap,
+    PersistentOption,
     PersistentMap,
     Count,
 }
@@ -352,6 +353,7 @@ fn get_sharding_type(
                                 "map" => ShardingType::Map,
                                 "storage_option" => ShardingType::StorageOption,
                                 "storage_map" => ShardingType::StorageMap,
+                                "persistent_option" => ShardingType::PersistentOption,
                                 "persistent_map" => ShardingType::PersistentMap,
                                 "not_tokenized" => ShardingType::NotTokenized,
                                 name => {
@@ -542,6 +544,10 @@ fn to_fields(
             ShardingType::StorageMap => {
                 let v = extract_template_params(&field.ty, "map", "Map", 2)?;
                 ShardableType::StorageMap(v[0].clone(), v[1].clone())
+            }
+            ShardingType::PersistentOption => {
+                let v = extract_template_params(&field.ty, "option", "Option", 1)?;
+                ShardableType::PersistentOption(v[0].clone())
             }
             ShardingType::PersistentMap => {
                 let v = extract_template_params(&field.ty, "map", "Map", 2)?;

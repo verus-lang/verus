@@ -72,6 +72,7 @@ fn stored_object_type(field: &Field) -> Type {
         | ShardableType::NotTokenized(_)
         | ShardableType::Option(_)
         | ShardableType::Map(_, _)
+        | ShardableType::PersistentOption(_)
         | ShardableType::PersistentMap(_, _)
         | ShardableType::Multiset(_)
         | ShardableType::Count => {
@@ -290,7 +291,7 @@ pub fn output_token_types_and_fns(
             ShardableType::NotTokenized(_) => {
                 // don't need to add a struct in this case
             }
-            ShardableType::Option(ty) => {
+            ShardableType::Option(ty) | ShardableType::PersistentOption(ty) => {
                 token_stream.extend(token_struct_stream(&bundle.sm, field, None, ty));
             }
             ShardableType::Map(key, val) | ShardableType::PersistentMap(key, val) => {
@@ -445,6 +446,7 @@ pub fn exchange_stream(
                 ShardableType::Multiset(_)
                 | ShardableType::Option(_)
                 | ShardableType::Map(_, _)
+                | ShardableType::PersistentOption(_)
                 | ShardableType::PersistentMap(_, _)
                 | ShardableType::Count
                 | ShardableType::StorageOption(_)
@@ -779,6 +781,7 @@ pub fn exchange_stream(
                 ShardableType::Multiset(_)
                 | ShardableType::Option(_)
                 | ShardableType::Map(_, _)
+                | ShardableType::PersistentOption(_)
                 | ShardableType::PersistentMap(_, _)
                 | ShardableType::Count
                 | ShardableType::StorageOption(_)
@@ -929,6 +932,7 @@ fn get_init_param_input_type(_sm: &SM, field: &Field) -> Option<Type> {
         ShardableType::Multiset(_) => None,
         ShardableType::Option(_) => None,
         ShardableType::Map(_, _) => None,
+        ShardableType::PersistentOption(_) => None,
         ShardableType::PersistentMap(_, _) => None,
         ShardableType::Count => None,
         ShardableType::StorageOption(ty) => Some(Type::Verbatim(quote! {
@@ -968,7 +972,7 @@ fn get_init_param_output_type(sm: &SM, field: &Field) -> Option<Type> {
                 crate::pervasive::multiset::Multiset<#ty>
             }))
         }
-        ShardableType::Option(_) => {
+        ShardableType::Option(_) | ShardableType::PersistentOption(_) => {
             let ty = field_token_type(&sm, field);
             Some(Type::Verbatim(quote! {
                 crate::pervasive::option::Option<#ty>
@@ -1006,6 +1010,7 @@ fn add_initialization_output_conditions(
         }
         ShardableType::Option(_)
         | ShardableType::Map(_, _)
+        | ShardableType::PersistentOption(_)
         | ShardableType::PersistentMap(_, _)
         | ShardableType::Multiset(_) => {
             ensures.push(relation_for_collection_of_internal_tokens(
@@ -1030,7 +1035,7 @@ fn relation_for_collection_of_internal_tokens(
     inst_value: Expr,
 ) -> Expr {
     match &field.stype {
-        ShardableType::Option(_) => {
+        ShardableType::Option(_) | ShardableType::PersistentOption(_) => {
             let fn_name = option_relation_post_condition_qualified_name(sm, field);
             Expr::Verbatim(quote! {
                 #fn_name(#param_value, #given_value, #inst_value)
@@ -1058,7 +1063,7 @@ fn relation_for_collection_of_internal_tokens(
 /// generated conditions (e.g., see `add_initialization_output_conditions`)
 fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
     match &field.stype {
-        ShardableType::Option(ty) => {
+        ShardableType::Option(ty) | ShardableType::PersistentOption(ty) => {
             let fn_name = option_relation_post_condition_name(field);
             let token_ty = field_token_type(sm, field);
             let inst_ty = inst_type(sm);
@@ -1555,7 +1560,7 @@ fn translate_split_kind(ctxt: &mut Ctxt, sk: &mut SplitKind, errors: &mut Vec<Er
 fn field_token_collection_type(sm: &SM, field: &Field) -> Type {
     let ty = field_token_type(sm, field);
     match &field.stype {
-        ShardableType::Option(_) => {
+        ShardableType::Option(_) | ShardableType::PersistentOption(_) => {
             Type::Verbatim(quote! { crate::pervasive::option::Option<#ty> })
         }
 

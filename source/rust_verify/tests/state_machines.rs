@@ -4640,6 +4640,23 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] persistent_option_remove_fail IMPORTS.to_string() + code_str! {
+        tokenized_state_machine!{ Y {
+            fields {
+                #[sharding(persistent_option)]
+                pub c: Option<int>,
+            }
+
+            transition!{
+                tr_remove() {
+                    remove c -= Some(1);
+                }
+            }
+        }}
+    } => Err(e) => assert_error_msg(e, "a persistent field's value can only grow, never remove or modify its data")
+}
+
+test_verify_one_file! {
     #[test] persistent_map_remove_fail IMPORTS.to_string() + code_str! {
         tokenized_state_machine!{ Y {
             fields {
@@ -4654,6 +4671,179 @@ test_verify_one_file! {
             }
         }}
     } => Err(e) => assert_error_msg(e, "a persistent field's value can only grow, never remove or modify its data")
+}
+
+test_verify_one_file! {
+    #[test] persistent_option_codegen IMPORTS.to_string() + code_str! {
+        tokenized_state_machine!{ Y {
+            fields {
+                #[sharding(persistent_option)]
+                pub c: Option<int>,
+
+                #[sharding(persistent_option)]
+                pub d: Option<int>,
+            }
+
+            init!{
+                initialize() {
+                    init c = Option::None;
+                    init d = Option::Some(7);
+                }
+            }
+
+            transition!{
+                tr1() {
+                    have d >= Some(7);
+                    add c += Some(3);
+                }
+            }
+
+            transition!{
+                tr2() {
+                    add c += ( Option::Some(3) );
+                }
+            }
+
+            transition!{
+                tr3() {
+                    have c >= (
+                        Option::Some(3)
+                    );
+                }
+            }
+
+            #[invariant]
+            pub fn the_inv(&self) -> bool {
+                (match self.c {
+                    Option::Some(x) => x == 3,
+                    _ => true,
+                })
+                &&
+                (match self.d {
+                    Option::Some(x) => x == 7,
+                    _ => true,
+                })
+            }
+
+            #[inductive(initialize)]
+            fn initialize_inductive(post: Self) { }
+
+            #[inductive(tr1)]
+            fn tr1_inductive(pre: Self, post: Self) { }
+
+            #[inductive(tr2)]
+            fn tr2_inductive(pre: Self, post: Self) { }
+
+            #[inductive(tr3)]
+            fn tr3_inductive(pre: Self, post: Self) { }
+        }}
+
+        #[spec]
+        fn rel_tr1(pre: Y::State, post: Y::State) -> bool {
+            equal(pre.d, Option::Some(7))
+            && (
+                (match pre.c {
+                    Option::Some(x) => x == 3,
+                    Option::None => true,
+                })
+                >>= (
+                    equal(pre.d, post.d)
+                    && equal(post.c, Option::Some(3))
+                )
+            )
+        }
+
+        #[spec]
+        fn rel_tr1_strong(pre: Y::State, post: Y::State) -> bool {
+            equal(pre.d, Option::Some(7))
+            && (
+                (match pre.c {
+                    Option::Some(x) => x == 3,
+                    Option::None => true,
+                })
+                && (
+                    equal(pre.d, post.d)
+                    && equal(post.c, Option::Some(3))
+                )
+            )
+        }
+
+        #[spec]
+        fn rel_tr2(pre: Y::State, post: Y::State) -> bool {
+            (match pre.c {
+                Option::Some(x) => x == 3,
+                Option::None => true,
+            })
+            >>= (
+                equal(pre.d, post.d)
+                && equal(post.c, Option::Some(3))
+            )
+        }
+
+        #[spec]
+        fn rel_tr2_strong(pre: Y::State, post: Y::State) -> bool {
+            (match pre.c {
+                Option::Some(x) => x == 3,
+                Option::None => true,
+            })
+            && (
+                equal(pre.d, post.d)
+                && equal(post.c, Option::Some(3))
+            )
+        }
+
+        #[spec]
+        fn rel_tr3(pre: Y::State, post: Y::State) -> bool {
+            equal(pre.c, Option::Some(3))
+            && equal(post.c, pre.c)
+            && equal(post.d, pre.d)
+        }
+
+        #[spec]
+        fn rel_tr3_strong(pre: Y::State, post: Y::State) -> bool {
+            rel_tr3(pre, post)
+        }
+
+        #[proof]
+        fn correct_tr(pre: Y::State, post: Y::State) {
+            ensures([
+                rel_tr1(pre, post) == Y::State::tr1(pre, post),
+                rel_tr1_strong(pre, post) == Y::State::tr1_strong(pre, post),
+                rel_tr2(pre, post) == Y::State::tr2(pre, post),
+                rel_tr2_strong(pre, post) == Y::State::tr2_strong(pre, post),
+                rel_tr3(pre, post) == Y::State::tr3(pre, post),
+                rel_tr3_strong(pre, post) == Y::State::tr3_strong(pre, post),
+            ]);
+        }
+
+        fn test_inst() {
+            #[proof] let (inst, _c, d_opt) = Y::Instance::initialize();
+
+            #[proof] let d = match d_opt {
+                Option::Some(d) => d,
+                Option::None => proof_from_false(),
+            };
+
+            #[proof] let cloned = d.clone();
+            assert(equal(cloned.instance, inst));
+            assert(d.value == 7);
+
+            #[proof] let c = inst.tr1(&d);
+            assert(c.value == 3);
+            assert(equal(c.instance, inst));
+
+            #[proof] let c2_opt = inst.tr2();
+            #[proof] let c2 = match c2_opt {
+                Option::Some(c2) => c2,
+                Option::None => proof_from_false(),
+            };
+            assert(c2.value == 3);
+            assert(equal(c2.instance, inst));
+
+            #[proof] let c_opt = Option::Some(c);
+            inst.tr3(&c_opt);
+        }
+    } => Ok(())
 }
 
 test_verify_one_file! {

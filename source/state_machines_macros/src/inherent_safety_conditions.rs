@@ -41,6 +41,7 @@ fn check_inherent_condition_for_special_op(
         ShardableType::Multiset(_) => CollectionType::Multiset,
         ShardableType::Option(_) => CollectionType::Option,
         ShardableType::Map(_, _) => CollectionType::Map,
+        ShardableType::PersistentOption(_) => CollectionType::PersistentOption,
         ShardableType::PersistentMap(_, _) => CollectionType::PersistentMap,
         ShardableType::StorageOption(_) => CollectionType::Option,
         ShardableType::StorageMap(_, _) => CollectionType::Map,
@@ -93,7 +94,10 @@ fn check_inherent_condition_for_special_op(
                     Ok("".to_string())
                 }
             }
-            CollectionType::Option | CollectionType::Map | CollectionType::PersistentMap => {
+            CollectionType::Option
+            | CollectionType::PersistentOption
+            | CollectionType::Map
+            | CollectionType::PersistentMap => {
                 let name = op.stmt.name();
                 let type_name = coll_type.name();
                 if is_general {
@@ -112,6 +116,7 @@ enum CollectionType {
     PersistentMap,
     Multiset,
     Option,
+    PersistentOption,
     Nat,
 }
 
@@ -121,6 +126,7 @@ impl CollectionType {
             CollectionType::Nat => "nat",
             CollectionType::Map => "map",
             CollectionType::PersistentMap => "persistent_map",
+            CollectionType::PersistentOption => "persistent_option",
             CollectionType::Multiset => "multiset",
             CollectionType::Option => "option",
         }

@@ -499,6 +499,7 @@ fn get_opt_type(stype: &ShardableType) -> Type {
     match stype {
         ShardableType::Option(ty) => ty.clone(),
         ShardableType::StorageOption(ty) => ty.clone(),
+        ShardableType::PersistentOption(ty) => ty.clone(),
         _ => {
             panic!("get_opt_type expected option");
         }
@@ -514,9 +515,21 @@ fn expr_can_add(stype: &ShardableType, cur: &Expr, elt: &MonoidElt) -> Option<Ex
                     ::builtin::equal((#cur).index(#key), #val),
                 )
             })),
+            MonoidElt::OptionSome(e) => Some(Expr::Verbatim(quote! {
+                ::builtin::imply(
+                    (#cur).is_Some(),
+                    ::builtin::equal((#cur).get_Some_0(), #e),
+                )
+            })),
             MonoidElt::General(e) => match stype {
                 ShardableType::PersistentMap(_, _) => Some(Expr::Verbatim(quote! {
                     (#cur).agrees(#e)
+                })),
+                ShardableType::PersistentOption(_) => Some(Expr::Verbatim(quote! {
+                    ::builtin::imply(
+                        (#cur).is_Some() && (#e).is_Some(),
+                        ::builtin::equal((#cur).get_Some_0(), (#e).get_Some_0()),
+                    )
                 })),
                 _ => {
                     panic!("expr_can_add invalid case");
@@ -566,10 +579,17 @@ fn expr_add(stype: &ShardableType, cur: &Expr, elt: &MonoidElt) -> Expr {
             MonoidElt::SingletonKV(key, val) => {
                 Expr::Verbatim(quote! { (#cur).insert(#key, #val) })
             }
+            MonoidElt::OptionSome(e) => {
+                let ty = get_opt_type(stype);
+                Expr::Verbatim(quote! {
+                    crate::pervasive::option::Option::<#ty>::Some(#e)
+                })
+            }
             MonoidElt::General(e) => match stype {
                 ShardableType::PersistentMap(_, _) => {
                     Expr::Verbatim(quote! { (#cur).union_prefer_right(#e) })
                 }
+                ShardableType::PersistentOption(_) => Expr::Verbatim(quote! { (#e).or(#cur) }),
                 _ => {
                     panic!("expr_can_add invalid case");
                 }
@@ -675,7 +695,9 @@ fn expr_ge(stype: &ShardableType, cur: &Expr, elt: &MonoidElt, pat_opt: &Option<
             (#cur).count(#e) >= 1
         }),
         MonoidElt::General(e) => match stype {
-            ShardableType::Option(_) | ShardableType::StorageOption(_) => Expr::Verbatim(quote! {
+            ShardableType::Option(_)
+            | ShardableType::PersistentOption(_)
+            | ShardableType::StorageOption(_) => Expr::Verbatim(quote! {
                 ((#e).is_Some() >>= ::builtin::equal(#cur, #e))
             }),
 
