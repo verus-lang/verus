@@ -1026,6 +1026,7 @@ impl Verifier {
         let time1 = Instant::now();
         let vir_crate = crate::rust_to_vir::crate_to_vir(&ctxt)?;
         let time2 = Instant::now();
+        let vir_crate = vir::ast_sort::sort_krate(&vir_crate);
 
         if self.args.log_all || self.args.log_vir {
             let mut file = self.create_log_file(None, None, crate::config::VIR_FILE_SUFFIX)?;
