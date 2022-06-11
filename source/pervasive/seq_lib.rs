@@ -1,20 +1,22 @@
 #[allow(unused_imports)]
 use builtin::*;
 #[allow(unused_imports)]
+use builtin_macros::*;
+#[allow(unused_imports)]
 use crate::pervasive::*;
 #[allow(unused_imports)]
 use crate::pervasive::seq::*;
 
+verus! {
+
 impl<A> Seq<A> {
-    #[spec] #[verifier(publish)]
-    pub fn map<B, F: Fn(int, A) -> B>(self, f: F) -> Seq<B> {
+    pub open spec fn map<B, F: Fn(int, A) -> B>(self, f: F) -> Seq<B> {
         Seq::new(self.len(), |i: int| f(i, self.index(i)))
     }
 
     // TODO is_sorted -- extract from summer_school e22
-    #[spec] #[verifier(publish)]
-    pub fn contains(self, needle: A) -> bool {
-        exists(|i: nat| i < self.len() && equal(self.index(i), needle))
+    pub open spec fn contains(self, needle: A) -> bool {
+        exists|i: nat| i < self.len() && self.index(i) === needle
     }
 
     /// Drops the last element of a sequence and returns a sequence whose length is
@@ -22,9 +24,9 @@ impl<A> Seq<A> {
     ///
     /// If the input sequence is empty, the result is meaningless and arbitrary.
 
-    #[spec] #[verifier(publish)]
-    pub fn drop_last(self) -> Seq<A> {
-        recommends(self.len() >= 1);
+    pub open spec fn drop_last(self) -> Seq<A>
+        recommends self.len() >= 1
+    {
         self.subrange(0, self.len() as int - 1)
     } 
 }
@@ -94,3 +96,5 @@ macro_rules! assert_seqs_equal {
         });
     }
 }
+
+} // verus!
