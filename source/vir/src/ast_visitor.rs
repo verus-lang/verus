@@ -371,13 +371,14 @@ where
         mode: _,
         fuel: _,
         typ_bounds: _,
-        params: _,
+        params,
         ret: _,
         require,
         ensure,
         decrease,
         decrease_when,
         decrease_by: _,
+        broadcast_forall,
         mask_spec,
         is_const: _,
         publish: _,
@@ -385,6 +386,10 @@ where
         body,
         extra_dependencies: _,
     } = &function.x;
+    map.push_scope(true);
+    for p in params.iter() {
+        let _ = map.insert(p.x.name.clone(), p.x.typ.clone());
+    }
     for e in require.iter() {
         expr_visitor_control_flow!(expr_visitor_dfs(e, map, mf));
     }
@@ -408,6 +413,17 @@ where
     if let Some(e) = body {
         expr_visitor_control_flow!(expr_visitor_dfs(e, map, mf));
     }
+    map.pop_scope();
+
+    if let Some((params, req_ens)) = broadcast_forall {
+        map.push_scope(true);
+        for p in params.iter() {
+            let _ = map.insert(p.x.name.clone(), p.x.typ.clone());
+        }
+        expr_visitor_control_flow!(expr_visitor_dfs(req_ens, map, mf));
+        map.pop_scope();
+    }
+
     VisitorControlFlow::Recurse
 }
 
@@ -748,6 +764,7 @@ where
         decrease,
         decrease_when,
         decrease_by,
+        broadcast_forall,
         mask_spec,
         is_const,
         publish,
@@ -830,6 +847,20 @@ where
     let publish = *publish;
     let body = body.as_ref().map(|e| map_expr_visitor_env(e, map, env, fe, fs, ft)).transpose()?;
     map.pop_scope();
+
+    let broadcast_forall = if let Some((params, req_ens)) = broadcast_forall {
+        map.push_scope(true);
+        let params = Arc::new(vec_map_result(params, |p| map_param_visitor(p, env, ft))?);
+        for p in params.iter() {
+            let _ = map.insert(p.x.name.clone(), p.x.typ.clone());
+        }
+        let req_ens = map_expr_visitor_env(req_ens, map, env, fe, fs, ft)?;
+        map.pop_scope();
+        Some((params, req_ens))
+    } else {
+        None
+    };
+
     let functionx = FunctionX {
         name,
         kind,
@@ -844,6 +875,7 @@ where
         decrease,
         decrease_when,
         decrease_by,
+        broadcast_forall,
         mask_spec,
         is_const,
         publish,

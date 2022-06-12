@@ -549,6 +549,9 @@ pub struct FunctionX {
     pub decrease_when: Option<Expr>,
     /// Prove termination with a separate proof function
     pub decrease_by: Option<Fun>,
+    /// For broadcast_forall functions, poly sets this to Some((params, reqs ==> enss))
+    /// where params and reqs ==> enss use coerce_typ_to_poly rather than coerce_typ_to_native
+    pub broadcast_forall: Option<(Params, Expr)>,
     /// MaskSpec that specifies what invariants the function is allowed to open
     pub mask_spec: MaskSpec,
     /// is_const == true means that this function is actually a const declaration;

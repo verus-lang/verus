@@ -386,6 +386,7 @@ fn function_to_node(function: &FunctionX) -> Node {
         decrease,
         decrease_when,
         decrease_by,
+        broadcast_forall: _,
         mask_spec,
         is_const,
         publish,
