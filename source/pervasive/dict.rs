@@ -16,39 +16,50 @@ impl<K: std::cmp::Eq + std::hash::Hash, V> Dict<K, V> {
     fndecl!(pub fn view(&self) -> Map<K, V>);
 
     #[verifier(external_body)]
-    fn new() -> Self {
+    pub fn new() -> Self {
         ensures(|d: Self| equal(d.view(), Map::empty()));
 
         Dict { dict: std::collections::HashMap::new() }
     }
 
-    pub fn empty() -> Self {
-        ensures(|d: Self| equal(d.view(), Map::empty()));
+    #[verifier(external_body)]
+    pub fn insert(&mut self, key: K, value: V) -> crate::pervasive::option::Option<V> {
+        ensures(|r: crate::pervasive::option::Option<V>| [
+            equal(r, if old(self).view().dom().contains(key) {
+                crate::pervasive::option::Option::Some(old(self).view().index(key))
+            } else {
+                crate::pervasive::option::Option::None
+            }),
+            equal(self.view(), old(self).view().insert(key, value)),
+        ]);
 
-        Dict::new()
+        match self.dict.insert(key, value) {
+            Some(v) => crate::pervasive::option::Option::Some(v),
+            None => crate::pervasive::option::Option::None,
+        }
     }
 
     #[verifier(external_body)]
-    pub fn insert(&mut self, key: K, value: V) {
-        ensures(equal(self.view(), old(self).view().insert(key, value)));
+    pub fn remove(&mut self, key: &K) -> crate::pervasive::option::Option<V> {
+        ensures(|r: crate::pervasive::option::Option<V>| [
+            equal(r, if old(self).view().dom().contains(*key) {
+                crate::pervasive::option::Option::Some(old(self).view().index(*key))
+            } else {
+                crate::pervasive::option::Option::None
+            }),
+            equal(self.view(), old(self).view().remove(*key)),
+        ]);
 
-        self.dict.insert(key, value);
-    }
-
-    #[verifier(external_body)]
-    pub fn remove(&mut self, key: &K) {
-        ensures(equal(self.view(), old(self).view().remove(key)));
-
-        self.dict.remove(key);
+        match self.dict.remove(key) {
+            Some(v) => crate::pervasive::option::Option::Some(v),
+            None => crate::pervasive::option::Option::None,
+        }
     }
 
     #[verifier(external_body)]
     #[verifier(autoview)]    
-    pub fn contain(&self, key: &K) -> bool {
-        ensures(|r: bool|[
-            r >>= self.view().dom().contains(key),
-            self.view().dom().contains(key) >>= r,
-            ]);
+    pub fn contains(&self, key: &K) -> bool {
+        ensures(|r: bool| r == self.view().dom().contains(*key));
 
         match self.dict.get(key) {
             Some(v) => true,
@@ -59,8 +70,8 @@ impl<K: std::cmp::Eq + std::hash::Hash, V> Dict<K, V> {
     #[verifier(external_body)]
     #[verifier(autoview)]
     pub fn index(&self, key: &K) -> &V {
-        requires(self.view().dom().contains(key));
-        ensures(|r: V| equal(r, self.view().index(key)));
+        requires(self.view().dom().contains(*key));
+        ensures(|r: V| equal(r, self.view().index(*key)));
 
         match self.dict.get(key) {
             Some(v) => &v,
