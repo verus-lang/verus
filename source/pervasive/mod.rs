@@ -20,6 +20,8 @@ pub mod ptr;
 pub mod string;
 #[cfg(not(feature = "no_global_allocator"))] 
 pub mod vec;
+#[cfg(not(feature = "no_global_allocator"))] 
+pub mod dict;
 
 #[allow(unused_imports)]
 use builtin::*;
