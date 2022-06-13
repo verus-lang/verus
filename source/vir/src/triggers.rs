@@ -35,6 +35,7 @@ fn check_trigger_expr(
     state: &State,
     exp: &Exp,
     free_vars: &mut HashSet<Ident>,
+    lets: &HashSet<Ident>,
 ) -> Result<(), VirErr> {
     if state.boxed_params {
         match &exp.x {
@@ -92,7 +93,16 @@ fn check_trigger_expr(
                     free_vars.insert(x.clone());
                     Ok(())
                 }
-                ExpX::Var((_, Some(_))) => Ok(()),
+                ExpX::Var((x, Some(_))) => {
+                    if lets.contains(x) {
+                        err_str(
+                            &exp.span,
+                            "let variables in triggers not supported, use with_triggers! instead",
+                        )
+                    } else {
+                        Ok(())
+                    }
+                }
                 ExpX::VarAt(_, VarAt::Pre) => Ok(()),
                 ExpX::Old(_, _) => panic!("internal error: Old"),
                 ExpX::Unary(op, _) => match op {
@@ -138,7 +148,16 @@ fn check_trigger_expr(
                     free_vars.insert(x.clone());
                     true
                 }
-                ExpX::Var((_, Some(_))) => true,
+                ExpX::Var((x, Some(_))) => {
+                    if lets.contains(x) {
+                        err_str(
+                            &exp.span,
+                            "let variables in triggers not supported, use with_triggers! instead",
+                        )?
+                    } else {
+                        true
+                    }
+                }
                 ExpX::VarAt(_, VarAt::Pre) => true,
                 ExpX::Old(_, _) => panic!("internal error: Old"),
                 ExpX::Unary(op, _) => match op {
@@ -164,6 +183,7 @@ fn check_trigger_expr(
 
 fn get_manual_triggers(state: &mut State, exp: &Exp) -> Result<(), VirErr> {
     let mut map: ScopeMap<Ident, bool> = ScopeMap::new();
+    let mut lets: HashSet<Ident> = HashSet::new();
     map.push_scope(false);
     for x in &state.trigger_vars {
         map.insert(x.clone(), true).expect("duplicate bound variables");
@@ -180,9 +200,9 @@ fn get_manual_triggers(state: &mut State, exp: &Exp) -> Result<(), VirErr> {
             ExpX::Unary(UnaryOp::Trigger(TriggerAnnotation::Trigger(group)), e1) => {
                 let mut free_vars: HashSet<Ident> = HashSet::new();
                 let e1 = remove_boxing(&e1);
-                check_trigger_expr(state, &e1, &mut free_vars)?;
+                check_trigger_expr(state, &e1, &mut free_vars, &lets)?;
                 for x in &free_vars {
-                    if map.get(x).cloned() == Some(true) && !state.trigger_vars.contains(x) {
+                    if map.get(x) == Some(&true) && !state.trigger_vars.contains(x) {
                         // If the trigger contains variables declared by a nested quantifier,
                         // it must be the nested quantifier's trigger, not ours.
                         return Ok(());
@@ -208,7 +228,7 @@ fn get_manual_triggers(state: &mut State, exp: &Exp) -> Result<(), VirErr> {
                         let es: Vec<Exp> = trigger.iter().map(remove_boxing).collect();
                         for e in &es {
                             let mut free_vars: HashSet<Ident> = HashSet::new();
-                            check_trigger_expr(state, e, &mut free_vars)?;
+                            check_trigger_expr(state, e, &mut free_vars, &lets)?;
                             for x in free_vars {
                                 if state.trigger_vars.contains(&x) {
                                     coverage.insert(x);
@@ -234,6 +254,9 @@ fn get_manual_triggers(state: &mut State, exp: &Exp) -> Result<(), VirErr> {
                     if map.contains_key(&x) {
                         return err_str(&bnd.span, "variable shadowing not yet supported");
                     }
+                }
+                if let BndX::Let(binders) = &bnd.x {
+                    lets.extend(binders.iter().map(|b| b.name.clone()));
                 }
                 Ok(())
             }
