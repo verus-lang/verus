@@ -365,7 +365,7 @@ test_verify_one_file! {
             open_atomic_invariant!(&i => inner => {
             });
         }
-    } => Err(err)
+    } => Err(err) => assert_error_msg(err, "mismatched types")
 }
 
 test_verify_one_file! {
@@ -376,7 +376,7 @@ test_verify_one_file! {
             open_local_invariant!(&i => inner => {
             });
         }
-    } => Err(err)
+    } => Err(err) => assert_error_msg(err, "mismatched types")
 }
 
 test_verify_one_file! {
