@@ -240,7 +240,9 @@ impl Printer {
                             nodes.push(str_to_node(":qid"));
                             nodes.push(str_to_node(s));
                             nodes.push(str_to_node(":skolemid"));
-                            nodes.push(str_to_node(format!("skolem_{}", s).as_str()));
+                            nodes.push(str_to_node(
+                                format!("{}_{}", crate::def::SKOLEM_ID_PREFIX, s).as_str(),
+                            ));
                         }
                         Node::List(nodes)
                     }

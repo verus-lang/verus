@@ -7,7 +7,7 @@ use crate::def::FUEL_ID;
 use crate::poly::MonoTyp;
 use crate::recursion::Node;
 use crate::scc::Graph;
-use crate::sst::Exp;
+use crate::sst::BndInfo;
 use crate::sst_to_air::fun_to_air_ident;
 use crate::util::vec_map;
 use air::ast::{Command, CommandX, Commands, DeclX, MultiOp, Span};
@@ -36,7 +36,7 @@ pub struct GlobalCtx {
     pub func_call_graph: Graph<Node>,
     pub func_call_sccs: Vec<Node>,
     // Connects quantifier identifiers to the original expression
-    pub qid_map: RefCell<HashMap<String, Exp>>,
+    pub qid_map: RefCell<HashMap<String, BndInfo>>,
     pub method_map: HashMap<(Fun, Path), Fun>,
     pub(crate) inferred_modes: HashMap<InferMode, Mode>,
 }

@@ -6,7 +6,8 @@ use crate::context::Ctx;
 use crate::def::{
     prefix_box, prefix_lambda_type, prefix_tuple_param, prefix_type_id, prefix_unbox,
     suffix_local_stmt_id, variant_field_ident, variant_field_ident_internal, variant_ident,
-    Spanned,
+    Spanned, QID_ACCESSOR, QID_APPLY, QID_BOX_AXIOM, QID_CONSTRUCTOR, QID_CONSTRUCTOR_INNER,
+    QID_HAS_TYPE_ALWAYS, QID_INVARIANT, QID_UNBOX_AXIOM,
 };
 use crate::func_to_air::{func_bind, func_bind_trig, func_def_args};
 use crate::sst::{Par, ParPurpose, ParX};
@@ -139,7 +140,7 @@ fn datatype_or_fun_to_air_commands(
         // box axiom:
         //   forall x. x == unbox(box(x))
         // trigger on box(x)
-        let name = format!("{}_box_axiom", path_as_rust_name(dpath));
+        let name = format!("{}_{}", path_as_rust_name(dpath), QID_BOX_AXIOM);
         let bind = func_bind(ctx, name, &Arc::new(vec![]), &x_params(&datatyp), &box_x, false);
         let forall = mk_bind_expr(&bind, &mk_eq(&x_var, &unbox_box_x));
         axiom_commands.push(Arc::new(CommandX::Global(Arc::new(DeclX::Axiom(forall)))));
@@ -147,7 +148,7 @@ fn datatype_or_fun_to_air_commands(
         // unbox axiom:
         //   forall typs, x. has_type(x, T(typs)) => x == box(unbox(x))
         // trigger on has_type(x, T(typs))
-        let name = format!("{}_unbox_axiom", path_as_rust_name(dpath));
+        let name = format!("{}_{}", path_as_rust_name(dpath), QID_UNBOX_AXIOM);
         let bind = func_bind(ctx, name, tparams, &x_params(&vpolytyp), &has, false);
         let forall = mk_bind_expr(&bind, &mk_implies(&has, &mk_eq(&x_var, &box_unbox_x)));
         axiom_commands.push(Arc::new(CommandX::Global(Arc::new(DeclX::Axiom(forall)))));
@@ -184,7 +185,7 @@ fn datatype_or_fun_to_air_commands(
         //   has_type(box(mk_fun(x)), FUN(typ1...typn, tret))
         // trigger on has_type(box(mk_fun(x)), FUN(typ1...typn, tret))
         let inner_trigs = vec![has_app.clone()];
-        let name = format!("{}_constructor_inner", path_as_rust_name(dpath));
+        let name = format!("{}_{}", path_as_rust_name(dpath), QID_CONSTRUCTOR_INNER);
         let inner_bind = func_bind_trig(
             ctx,
             name,
@@ -199,7 +200,7 @@ fn datatype_or_fun_to_air_commands(
         let box_mk_fun = ident_apply(&prefix_box(&dpath), &vec![mk_fun]);
         let has_box_mk_fun = expr_has_type(&id, &box_mk_fun);
         let trigs = vec![has_box_mk_fun.clone()];
-        let name = format!("{}_constructor", path_as_rust_name(dpath));
+        let name = format!("{}_{}", path_as_rust_name(dpath), QID_CONSTRUCTOR);
         let bind =
             func_bind_trig(ctx, name, tparams, &Arc::new(vec![x_param(&datatyp)]), &trigs, false);
         let imply = mk_implies(&inner_forall, &has_box_mk_fun);
@@ -214,7 +215,7 @@ fn datatype_or_fun_to_air_commands(
         params.push(x_param(&datatyp));
         pre.insert(0, has_box.clone());
         let trigs = vec![app, has_box.clone()];
-        let name = format!("{}_apply", path_as_rust_name(dpath));
+        let name = format!("{}_{}", path_as_rust_name(dpath), QID_APPLY);
         let bind = func_bind_trig(ctx, name, tparams, &Arc::new(params), &trigs, false);
         let imply = mk_implies(&mk_and(&pre), &has_app);
         let forall = mk_bind_expr(&bind, &imply);
@@ -243,7 +244,7 @@ fn datatype_or_fun_to_air_commands(
                     pre.push(inv);
                 }
             }
-            let name = format!("{}_constructor", &variant_ident(&dpath, &variant.name));
+            let name = format!("{}_{}", &variant_ident(&dpath, &variant.name), QID_CONSTRUCTOR);
             let bind = func_bind(ctx, name, tparams, &params, &has_ctor, false);
             let imply = mk_implies(&mk_and(&pre), &has_ctor);
             let forall = mk_bind_expr(&bind, &imply);
@@ -272,7 +273,7 @@ fn datatype_or_fun_to_air_commands(
             ));
             field_commands.push(Arc::new(CommandX::Global(decl_field)));
             let trigs = vec![xfield.clone()];
-            let name = format!("{}_accessor", id);
+            let name = format!("{}_{}", id, QID_ACCESSOR);
             let bind =
                 func_bind_trig(ctx, name, &Arc::new(vec![]), &x_params(&datatyp), &trigs, false);
             let eq = mk_eq(&xfield, &xfield_internal);
@@ -286,7 +287,7 @@ fn datatype_or_fun_to_air_commands(
                     //   forall typs, x. has_type(x, T(typs)) => inv_f(unbox(x).f)
                     // trigger on unbox(x).f, has_type(x, T(typs))
                     let trigs = vec![xfield_unbox.clone(), has.clone()];
-                    let name = format!("{}_invariant", id);
+                    let name = format!("{}_{}", id, QID_INVARIANT);
                     let bind =
                         func_bind_trig(ctx, name, tparams, &x_params(&vpolytyp), &trigs, false);
                     let imply = mk_implies(&has, &inv_f);
@@ -303,7 +304,7 @@ fn datatype_or_fun_to_air_commands(
         // or type is completely abstract to us), then has_type always holds:
         //   forall typs, x. has_type(box(x), T(typs))
         // trigger on has_type(box(x), T(typs))
-        let name = format!("{}_has_type_always", path_as_rust_name(dpath));
+        let name = format!("{}_{}", path_as_rust_name(dpath), QID_HAS_TYPE_ALWAYS);
         let bind = func_bind(ctx, name, tparams, &x_params(&datatyp), &has_box, false);
         let forall = mk_bind_expr(&bind, &has_box);
         axiom_commands.push(Arc::new(CommandX::Global(Arc::new(DeclX::Axiom(forall)))));

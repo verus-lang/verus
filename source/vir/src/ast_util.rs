@@ -61,16 +61,6 @@ pub fn n_types_equal(typs1: &Typs, typs2: &Typs) -> bool {
 
 pub const QUANT_FORALL: Quant = Quant { quant: air::ast::Quant::Forall, boxed_params: true };
 
-// Generate a unique internal quantifier ID
-pub fn new_internal_qid(name: String) -> Option<String> {
-    // In SMTLIB, unquoted attribute values cannot contain colons,
-    // and sise cannot handle quoting with vertical bars
-    let name = str::replace(&name, ":", "_");
-    let name = str::replace(&name, "%", "__");
-    let qid = format!("{}{}_definition", air::profiler::INTERNAL_QUANT_PREFIX, name);
-    Some(qid)
-}
-
 pub fn params_equal(param1: &Param, param2: &Param) -> bool {
     let ParamX { name: name1, typ: typ1, mode: mode1, is_mut: is_mut1 } = &param1.x;
     let ParamX { name: name2, typ: typ2, mode: mode2, is_mut: is_mut2 } = &param2.x;

@@ -2,13 +2,13 @@ use crate::ast::{
     Function, FunctionKind, GenericBoundX, Ident, Idents, Mode, Param, ParamX, Params,
     SpannedTyped, Typ, TypX, Typs, VirErr,
 };
-use crate::ast_util::{new_internal_qid, QUANT_FORALL};
+use crate::ast_util::QUANT_FORALL;
 use crate::context::Ctx;
 use crate::def::{
-    prefix_ensures, prefix_fuel_id, prefix_fuel_nat, prefix_pre_var, prefix_recursive_fun,
-    prefix_requires, suffix_global_id, suffix_local_stmt_id, suffix_typ_param_id,
-    CommandsWithContext, SnapPos, Spanned, FUEL_BOOL, FUEL_BOOL_DEFAULT, FUEL_LOCAL, FUEL_TYPE,
-    SUCC, ZERO,
+    new_internal_qid, prefix_ensures, prefix_fuel_id, prefix_fuel_nat, prefix_pre_var,
+    prefix_recursive_fun, prefix_requires, suffix_global_id, suffix_local_stmt_id,
+    suffix_typ_param_id, CommandsWithContext, SnapPos, Spanned, FUEL_BOOL, FUEL_BOOL_DEFAULT,
+    FUEL_LOCAL, FUEL_TYPE, SUCC, ZERO,
 };
 use crate::sst::{BndX, Exp, ExpX, Par, ParPurpose, ParX, Pars, Stm, StmX};
 use crate::sst_to_air::{

@@ -240,7 +240,7 @@ impl Verifier {
         &self,
         compiler: &Compiler,
         profiler: Profiler,
-        qid_map: &HashMap<String, vir::sst::Exp>,
+        qid_map: &HashMap<String, vir::sst::BndInfo>,
     ) {
         let num_quants = profiler.quant_count();
         let total = profiler.total_instantiations();
@@ -253,15 +253,16 @@ impl Verifier {
         compiler.diagnostic().note_without_error(&msg);
 
         for (index, cost) in profiler.iter().take(max).enumerate() {
-            println!("{}", delimiter);
+            //println!("{}", delimiter);
             // Report the quantifier
-            let qexp = qid_map
+            let bnd_info = qid_map
                 .get(&cost.quant)
                 .expect(format!("Failed to find quantifier {}", cost.quant).as_str());
-            let span = from_raw_span(&qexp.span.raw_span);
+            let span = from_raw_span(&bnd_info.span.raw_span);
             let count = cost.instantiations;
             let msg = format!(
-                "Cost * Instantiations: {} (Instantiated {} times - {}% of the total, cost {}) top {} of {} user-level quantifiers.\n",
+                "{}\nCost * Instantiations: {} (Instantiated {} times - {}% of the total, cost {}) top {} of {} user-level quantifiers.\n",
+                delimiter,
                 count * cost.cost,
                 count.to_formatted_string(&Locale::en),
                 100 * count / total,
@@ -271,22 +272,8 @@ impl Verifier {
             );
             compiler.diagnostic().span_note_without_error(span, &msg);
 
-            let triggers = match &qexp.x {
-                vir::sst::ExpX::Bind(bnd, _) => match &bnd.x {
-                    vir::sst::BndX::Quant(_, _, trigs) => trigs,
-                    vir::sst::BndX::Choose(_, trigs, _) => trigs,
-                    _ => panic!(
-                        "internal error: qid_map expressions should only be Quant or Choose; found {:?}",
-                        bnd.x
-                    ),
-                },
-                _ => panic!(
-                    "internal error: qid_map should only contain Bind expressions; found {:?}",
-                    qexp.x
-                ),
-            };
-
             // Summarize the triggers it used
+            let triggers = &bnd_info.trigs;
             for (n, trigger) in triggers.iter().enumerate() {
                 let spans = MultiSpan::from_spans(
                     trigger.iter().map(|e| from_raw_span(&e.span.raw_span)).collect(),
@@ -307,7 +294,7 @@ impl Verifier {
         air_context: &mut air::context::Context,
         assign_map: &HashMap<*const air::ast::Span, HashSet<Arc<std::string::String>>>,
         snap_map: &Vec<(air::ast::Span, SnapPos)>,
-        qid_map: &HashMap<String, vir::sst::Exp>,
+        qid_map: &HashMap<String, vir::sst::BndInfo>,
         command: &Command,
         context: &(&air::ast::Span, &str),
     ) -> bool {
@@ -461,7 +448,7 @@ impl Verifier {
         commands_with_context: CommandsWithContext,
         assign_map: &HashMap<*const air::ast::Span, HashSet<Arc<String>>>,
         snap_map: &Vec<(air::ast::Span, SnapPos)>,
-        qid_map: &HashMap<String, vir::sst::Exp>,
+        qid_map: &HashMap<String, vir::sst::BndInfo>,
         module: &vir::ast::Path,
         function_name: Option<&Fun>,
         comment: &str,

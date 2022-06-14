@@ -98,7 +98,7 @@ pub enum Quant {
 pub type Trigger = Exprs;
 pub type Triggers = Arc<Vec<Trigger>>;
 
-pub type Qid = Option<String>;
+pub type Qid = Option<Ident>;
 
 pub type Bind = Arc<BindX>;
 #[derive(Clone, Debug)]

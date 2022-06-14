@@ -122,6 +122,16 @@ pub const UINT_SHR: &str = "uintshr";
 pub const UINT_SHL: &str = "uintshl";
 pub const UINT_NOT: &str = "uintnot";
 
+// List of QID suffixes we add to internally generated quantifiers
+pub const QID_BOX_AXIOM: &str = "box_axiom";
+pub const QID_UNBOX_AXIOM: &str = "unbox_axiom";
+pub const QID_CONSTRUCTOR_INNER: &str = "constructor_inner";
+pub const QID_CONSTRUCTOR: &str = "constructor";
+pub const QID_APPLY: &str = "apply";
+pub const QID_ACCESSOR: &str = "accessor";
+pub const QID_INVARIANT: &str = "invariant";
+pub const QID_HAS_TYPE_ALWAYS: &str = "has_type_always";
+
 // We assume that usize is at least ARCH_SIZE_MIN_BITS wide
 pub const ARCH_SIZE_MIN_BITS: u32 = 32;
 
@@ -343,6 +353,16 @@ pub fn monotyp_apply(datatype: &Path, args: &Vec<Path>) -> Path {
         *last = ident;
         Arc::new(PathX { krate: datatype.krate.clone(), segments: Arc::new(segments) })
     }
+}
+
+// Generate a unique internal quantifier ID
+pub fn new_internal_qid(name: String) -> Option<Ident> {
+    // In SMTLIB, unquoted attribute values cannot contain colons,
+    // and sise cannot handle quoting with vertical bars
+    let name = str::replace(&name, ":", "_");
+    let name = str::replace(&name, "%", "__");
+    let qid = format!("{}{}_definition", air::profiler::INTERNAL_QUANT_PREFIX, name);
+    Some(Arc::new(qid))
 }
 
 pub fn snapshot_ident(name: &str) -> Ident {

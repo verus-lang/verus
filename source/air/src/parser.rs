@@ -306,7 +306,7 @@ impl Parser {
                     consume_skolemid = true;
                 }
                 Node::Atom(s) if consume_qid && qid.is_none() => {
-                    qid = Some(s.clone());
+                    qid = Some(Arc::new(s.clone()));
                     consume_qid = false;
                 }
                 Node::Atom(s) if consume_skolemid && skolemid.is_none() => {

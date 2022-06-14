@@ -11,7 +11,6 @@ edition = "2018"
 sise = "0.6.0"
 getopts = { git = "https://github.com/utaal/getopts.git", branch = "parse-partial" }
 z3tracer = { git = "https://github.com/secure-foundations/smt2utils.git", branch = "main" }
-#z3tracer = { path = "../../../z3tracer/z3tracer" }
 
 [target.'cfg(windows)'.dependencies]
 win32job = "1"
