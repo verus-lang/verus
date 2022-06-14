@@ -247,7 +247,7 @@ macro_rules! map_insert_rec {
 #[macro_export]
 macro_rules! map {
     [$($tail:tt)*] => {
-        map_insert_rec![$crate::pervasive::map::Map::empty();$($tail)*]
+        ::builtin_macros::verus_proof_macro_exprs!(map_insert_rec![$crate::pervasive::map::Map::empty();$($tail)*])
     }
 } 
 

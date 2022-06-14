@@ -291,6 +291,6 @@ macro_rules! set_insert_rec {
 #[macro_export]
 macro_rules! set {
     [$($tail:tt)*] => {
-        set_insert_rec![$crate::pervasive::set::Set::empty();$($tail)*]
+        ::builtin_macros::verus_proof_macro_exprs!(set_insert_rec![$crate::pervasive::set::Set::empty();$($tail)*])
     }
 }

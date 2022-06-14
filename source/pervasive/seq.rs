@@ -280,7 +280,7 @@ macro_rules! seq_insert_rec {
 #[macro_export]
 macro_rules! seq {
     [$($tail:tt)*] => {
-        seq_insert_rec![$crate::pervasive::seq::Seq::empty();$($tail)*]
+        ::builtin_macros::verus_proof_macro_exprs!(seq_insert_rec![$crate::pervasive::seq::Seq::empty();$($tail)*])
     }
 }
 

@@ -1,18 +1,18 @@
 use proc_macro2::TokenStream;
 use syn_verus::parse::{Parse, ParseStream};
 use syn_verus::punctuated::Punctuated;
-use syn_verus::token::{Brace, Paren};
+use syn_verus::token::{Brace, Bracket, Paren};
 use syn_verus::visit_mut::{
     visit_expr_loop_mut, visit_expr_mut, visit_expr_while_mut, visit_field_mut,
     visit_impl_item_method_mut, visit_item_enum_mut, visit_item_fn_mut, visit_item_struct_mut,
     visit_local_mut, visit_trait_item_method_mut, VisitMut,
 };
 use syn_verus::{
-    parse_macro_input, parse_quote_spanned, Attribute, BinOp, Block, DataMode, Decreases, Ensures,
-    Expr, ExprBinary, ExprCall, ExprLoop, ExprTuple, ExprUnary, ExprWhile, Field, FnArgKind,
-    FnMode, ImplItemMethod, Invariant, Item, ItemEnum, ItemFn, ItemStruct, Local, ModeSpec,
-    ModeSpecChecked, Path, Publish, Recommends, Requires, ReturnType, Signature, Stmt,
-    TraitItemMethod, UnOp, Visibility,
+    braced, bracketed, parenthesized, parse_macro_input, parse_quote_spanned, Attribute, BinOp,
+    Block, DataMode, Decreases, Ensures, Expr, ExprBinary, ExprCall, ExprLoop, ExprTuple,
+    ExprUnary, ExprWhile, Field, FnArgKind, FnMode, ImplItemMethod, Invariant, Item, ItemEnum,
+    ItemFn, ItemStruct, Local, ModeSpec, ModeSpecChecked, Path, Publish, Recommends, Requires,
+    ReturnType, Signature, Stmt, Token, TraitItemMethod, UnOp, Visibility,
 };
 
 fn take_expr(expr: &mut Expr) -> Expr {
@@ -46,7 +46,7 @@ impl Visitor {
         attrs: &mut Vec<Attribute>,
         vis: Option<&Visibility>,
         sig: &mut Signature,
-        semi_token: Option<syn_verus::Token![;]>,
+        semi_token: Option<Token![;]>,
         is_trait: bool,
     ) -> Vec<Stmt> {
         let mut stmts: Vec<Stmt> = Vec::new();
@@ -413,7 +413,7 @@ impl VisitMut for Visitor {
                         let mut elems = Punctuated::new();
                         for elem in triggers {
                             elems.push(elem);
-                            elems.push_punct(syn_verus::Token![,](span));
+                            elems.push_punct(Token![,](span));
                         }
                         let tuple = ExprTuple { attrs: vec![], paren_token: Paren(span), elems };
                         match &mut *arg {
@@ -628,6 +628,122 @@ impl Parse for Items {
     }
 }
 
+#[derive(Debug)]
+enum MacroElement {
+    Comma(Token![,]),
+    Semi(Token![;]),
+    FatArrow(Token![=>]),
+    Expr(Expr),
+}
+
+#[derive(Debug)]
+struct MacroElements {
+    elements: Vec<MacroElement>,
+}
+
+#[derive(Debug)]
+enum Delimiter {
+    Paren(Paren),
+    Bracket(Bracket),
+    Brace(Brace),
+}
+
+#[derive(Debug)]
+struct MacroInvoke {
+    path: Path,
+    bang: Token![!],
+    delimiter: Delimiter,
+    elements: MacroElements,
+}
+
+impl Parse for MacroElement {
+    fn parse(input: ParseStream) -> syn_verus::parse::Result<MacroElement> {
+        if input.peek(Token![,]) {
+            Ok(MacroElement::Comma(input.parse()?))
+        } else if input.peek(Token![;]) {
+            Ok(MacroElement::Semi(input.parse()?))
+        } else if input.peek(Token![=>]) {
+            Ok(MacroElement::FatArrow(input.parse()?))
+        } else {
+            Ok(MacroElement::Expr(input.parse()?))
+        }
+    }
+}
+
+impl Parse for MacroElements {
+    fn parse(input: ParseStream) -> syn_verus::parse::Result<MacroElements> {
+        let mut elements = Vec::new();
+        while !input.is_empty() {
+            elements.push(input.parse()?);
+        }
+        Ok(MacroElements { elements })
+    }
+}
+
+impl Parse for MacroInvoke {
+    fn parse(input: ParseStream) -> syn_verus::parse::Result<MacroInvoke> {
+        let path = input.parse()?;
+        let bang = input.parse()?;
+        let content;
+        if input.peek(syn_verus::token::Paren) {
+            let paren = parenthesized!(content in input);
+            let elements = content.parse()?;
+            Ok(MacroInvoke { path, bang, delimiter: Delimiter::Paren(paren), elements })
+        } else if input.peek(syn_verus::token::Bracket) {
+            let bracket = bracketed!(content in input);
+            let elements = content.parse()?;
+            Ok(MacroInvoke { path, bang, delimiter: Delimiter::Bracket(bracket), elements })
+        } else {
+            let brace = braced!(content in input);
+            let elements = content.parse()?;
+            Ok(MacroInvoke { path, bang, delimiter: Delimiter::Brace(brace), elements })
+        }
+    }
+}
+
+impl quote::ToTokens for MacroElement {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        match self {
+            MacroElement::Comma(e) => e.to_tokens(tokens),
+            MacroElement::Semi(e) => e.to_tokens(tokens),
+            MacroElement::FatArrow(e) => e.to_tokens(tokens),
+            MacroElement::Expr(e) => e.to_tokens(tokens),
+        }
+    }
+}
+
+impl quote::ToTokens for MacroElements {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        for element in &self.elements {
+            element.to_tokens(tokens);
+        }
+    }
+}
+
+impl quote::ToTokens for MacroInvoke {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        self.path.to_tokens(tokens);
+        self.bang.to_tokens(tokens);
+        match self.delimiter {
+            Delimiter::Paren(d) => {
+                d.surround(tokens, |tokens| {
+                    self.elements.to_tokens(tokens);
+                });
+            }
+            Delimiter::Bracket(d) => {
+                d.surround(tokens, |tokens| {
+                    self.elements.to_tokens(tokens);
+                });
+            }
+            Delimiter::Brace(d) => {
+                d.surround(tokens, |tokens| {
+                    self.elements.to_tokens(tokens);
+                });
+            }
+        }
+    }
+}
+
 pub(crate) fn rewrite_items(stream: proc_macro::TokenStream) -> proc_macro::TokenStream {
     use quote::ToTokens;
     let items: Items = parse_macro_input!(stream as Items);
@@ -637,5 +753,93 @@ pub(crate) fn rewrite_items(stream: proc_macro::TokenStream) -> proc_macro::Toke
         visitor.visit_item_mut(&mut item);
         item.to_tokens(&mut new_stream);
     }
+    proc_macro::TokenStream::from(new_stream)
+}
+
+pub(crate) fn rewrite_expr(
+    inside_ghost: bool,
+    stream: proc_macro::TokenStream,
+) -> proc_macro::TokenStream {
+    use quote::ToTokens;
+    let mut expr: Expr = parse_macro_input!(stream as Expr);
+    let mut new_stream = TokenStream::new();
+    let mut visitor = Visitor { inside_ghost: if inside_ghost { 1 } else { 0 } };
+    visitor.visit_expr_mut(&mut expr);
+    expr.to_tokens(&mut new_stream);
+    proc_macro::TokenStream::from(new_stream)
+}
+
+// Unfortunatelly, the macro_rules tt tokenizer breaks tokens like &&& and ==> into smaller tokens.
+// Try to put the original tokens back together here.
+fn rejoin_tokens(stream: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    use proc_macro::{Group, Punct, Spacing::*, Span, TokenTree};
+    use std::iter::FromIterator;
+    let mut tokens: Vec<TokenTree> = stream.into_iter().collect();
+    let pun = |t: &TokenTree| match t {
+        TokenTree::Punct(p) => Some((p.as_char(), p.spacing(), p.span())),
+        _ => None,
+    };
+    let adjacent = |s1: Span, s2: Span| {
+        let l1 = s1.end();
+        let l2 = s2.start();
+        s1.source_file() == s2.source_file() && l1 == l2
+    };
+    for i in 0..(if tokens.len() >= 2 { tokens.len() - 2 } else { 0 }) {
+        let t0 = pun(&tokens[i]);
+        let t1 = pun(&tokens[i + 1]);
+        let t2 = pun(&tokens[i + 2]);
+        let t3 = if i + 3 < tokens.len() { pun(&tokens[i + 3]) } else { None };
+        match (t0, t1, t2, t3) {
+            (
+                Some(('<', Joint, _)),
+                Some(('=', Alone, s1)),
+                Some(('=', Joint, s2)),
+                Some(('>', Alone, _)),
+            )
+            | (Some(('=', Joint, _)), Some(('=', Alone, s1)), Some(('=', Alone, s2)), _)
+            | (Some(('!', Joint, _)), Some(('=', Alone, s1)), Some(('=', Alone, s2)), _)
+            | (Some(('=', Joint, _)), Some(('=', Alone, s1)), Some(('>', Alone, s2)), _)
+            | (Some(('<', Joint, _)), Some(('=', Alone, s1)), Some(('=', Alone, s2)), _)
+            | (Some(('&', Joint, _)), Some(('&', Alone, s1)), Some(('&', Alone, s2)), _)
+            | (Some(('|', Joint, _)), Some(('|', Alone, s1)), Some(('|', Alone, s2)), _) => {
+                if adjacent(s1, s2) {
+                    let (op, _, span) = t1.unwrap();
+                    let mut punct = Punct::new(op, Joint);
+                    punct.set_span(span);
+                    tokens[i + 1] = TokenTree::Punct(punct);
+                }
+            }
+            _ => {}
+        }
+    }
+    for tt in &mut tokens {
+        match tt {
+            TokenTree::Group(group) => {
+                let mut new_group = Group::new(group.delimiter(), rejoin_tokens(group.stream()));
+                new_group.set_span(group.span());
+                *group = new_group;
+            }
+            _ => {}
+        }
+    }
+    proc_macro::TokenStream::from_iter(tokens.into_iter())
+}
+
+pub(crate) fn proof_macro_exprs(
+    inside_ghost: bool,
+    stream: proc_macro::TokenStream,
+) -> proc_macro::TokenStream {
+    use quote::ToTokens;
+    let stream = rejoin_tokens(stream);
+    let mut invoke: MacroInvoke = parse_macro_input!(stream as MacroInvoke);
+    let mut new_stream = TokenStream::new();
+    let mut visitor = Visitor { inside_ghost: if inside_ghost { 1 } else { 0 } };
+    for element in &mut invoke.elements.elements {
+        match element {
+            MacroElement::Expr(expr) => visitor.visit_expr_mut(expr),
+            _ => {}
+        }
+    }
+    invoke.to_tokens(&mut new_stream);
     proc_macro::TokenStream::from(new_stream)
 }
