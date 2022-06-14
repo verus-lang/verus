@@ -371,3 +371,13 @@ test_verify_one_file! {
         }
     } => Err(e) => assert_vir_error(e)
 }
+
+test_verify_one_file! {
+    // TODO restore this test when erasure is overhauled
+    #[ignore] #[test] equal_regression_148 code! {
+        #[proof]
+        fn f() {
+            equal(1 as nat, 1);
+        }
+    } => Ok(())
+}

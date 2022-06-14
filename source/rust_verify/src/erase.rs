@@ -370,6 +370,14 @@ fn erase_call(
     f_name: &Fun,
     args: &Vec<P<Expr>>,
 ) -> Option<Option<(PathSegment, Vec<P<Expr>>)>> {
+    // TODO this is a temporary diagnostic until the erasure code is refactored
+    if !ctxt.functions.contains_key(f_name) {
+        let f_name = vir::ast_util::path_as_rust_name(&f_name.path);
+        panic!(
+            "function {} is unknown to erasure; possibly an uncaught mode-checking error",
+            f_name
+        );
+    }
     let f = &ctxt.functions[f_name];
     if let Some(f) = f {
         let mut segment = segment.clone();

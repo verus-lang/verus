@@ -125,6 +125,8 @@ pub const UINT_NOT: &str = "uintnot";
 // We assume that usize is at least ARCH_SIZE_MIN_BITS wide
 pub const ARCH_SIZE_MIN_BITS: u32 = 32;
 
+pub const SUPPORTED_CRATES: [&str; 2] = ["builtin", "pervasive"];
+
 pub fn path_to_string(path: &Path) -> String {
     let s = vec_map(&path.segments, |s| s.to_string()).join(PATH_SEPARATOR) + SUFFIX_PATH;
     if let Some(krate) = &path.krate { krate.to_string() + KRATE_SEPARATOR + &s } else { s }
