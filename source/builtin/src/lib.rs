@@ -168,37 +168,37 @@ pub fn old<A>(_: A) -> A {
     unimplemented!();
 }
 
-pub struct Chain<A: PartialOrd> {
-    data: std::marker::PhantomData<A>,
+pub struct Chain {
+    data: std::marker::PhantomData<int>,
 }
 
 #[spec]
-pub fn chained_value<A: PartialOrd>(_a: A) -> Chain<A> {
+pub fn chained_value(_a: int) -> Chain {
     unimplemented!()
 }
 
 #[spec]
-pub fn chained_le<A: PartialOrd>(_left: Chain<A>, _right: A) -> Chain<A> {
+pub fn chained_le(_left: Chain, _right: int) -> Chain {
     unimplemented!()
 }
 
 #[spec]
-pub fn chained_lt<A: PartialOrd>(_left: Chain<A>, _right: A) -> Chain<A> {
+pub fn chained_lt(_left: Chain, _right: int) -> Chain {
     unimplemented!()
 }
 
 #[spec]
-pub fn chained_ge<A: PartialOrd>(_left: Chain<A>, _right: A) -> Chain<A> {
+pub fn chained_ge(_left: Chain, _right: int) -> Chain {
     unimplemented!()
 }
 
 #[spec]
-pub fn chained_gt<A: PartialOrd>(_left: Chain<A>, _right: A) -> Chain<A> {
+pub fn chained_gt(_left: Chain, _right: int) -> Chain {
     unimplemented!()
 }
 
 #[spec]
-pub fn chained_cmp<A: PartialOrd>(_chain: Chain<A>) -> bool {
+pub fn chained_cmp(_chain: Chain) -> bool {
     unimplemented!()
 }
 
