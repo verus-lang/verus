@@ -6,7 +6,7 @@ pub mod errors;
 pub mod model;
 pub mod parser;
 pub mod scope_map;
-pub mod smt_manager;
+pub mod smt_process;
 
 #[macro_use]
 pub mod printer;
@@ -14,7 +14,6 @@ pub mod printer;
 mod block_to_assert;
 mod closure;
 mod def;
-mod smt_process;
 mod smt_verify;
 mod tests;
 mod typecheck;

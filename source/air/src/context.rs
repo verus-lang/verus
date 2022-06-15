@@ -6,7 +6,7 @@ use crate::model::Model;
 use crate::node;
 use crate::printer::{macro_push_node, str_to_node};
 use crate::scope_map::ScopeMap;
-use crate::smt_manager::SmtManager;
+use crate::smt_process::SmtProcess;
 use crate::smt_verify::ReportLongRunning;
 use crate::typecheck::Typing;
 use sise::Node;
@@ -58,7 +58,7 @@ impl<'a, 'b: 'a> Default for QueryContext<'a, 'b> {
 }
 
 pub struct Context {
-    pub(crate) smt_manager: SmtManager,
+    pub(crate) smt_process: SmtProcess,
     pub(crate) axiom_infos: ScopeMap<Ident, Arc<AxiomInfo>>,
     pub(crate) axiom_infos_count: u64,
     pub(crate) lambda_map: ScopeMap<ClosureTerm, Ident>,
@@ -81,9 +81,9 @@ pub struct Context {
 }
 
 impl Context {
-    pub fn new(smt_manager: SmtManager) -> Context {
+    pub fn new(smt_process: SmtProcess) -> Context {
         let mut context = Context {
-            smt_manager,
+            smt_process,
             axiom_infos: ScopeMap::new(),
             axiom_infos_count: 0,
             lambda_map: ScopeMap::new(),
@@ -344,8 +344,7 @@ impl Context {
 
     pub fn eval_expr(&mut self, expr: sise::Node) -> String {
         self.smt_log.log_eval(expr);
-        let smt_output =
-            self.smt_manager.get_smt_process().send_commands(self.smt_log.take_pipe_data());
+        let smt_output = self.smt_process.send_commands(self.smt_log.take_pipe_data());
         if smt_output.len() != 1 {
             panic!("unexpected output from SMT eval {:?}", &smt_output);
         }
