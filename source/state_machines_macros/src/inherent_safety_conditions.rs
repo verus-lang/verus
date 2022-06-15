@@ -1,5 +1,6 @@
 use crate::ast::{MonoidStmtType, ShardableType, SpecialOp, SplitKind, TransitionStmt, SM};
 use proc_macro2::Span;
+use syn::parse;
 use syn::parse::Error;
 
 /// Many of the "special ops" have inherent safety conditions.
@@ -36,7 +37,7 @@ fn check_inherent_condition_for_special_op(
     op: &SpecialOp,
     stype: &ShardableType,
     user_gave_proof_body: bool,
-) -> syn::parse::Result<String> {
+) -> parse::Result<String> {
     let coll_type = match stype {
         ShardableType::Multiset(_) => CollectionType::Multiset,
         ShardableType::Option(_) => CollectionType::Option,

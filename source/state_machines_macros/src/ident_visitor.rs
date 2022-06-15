@@ -3,6 +3,7 @@ use crate::ast::{
 };
 use crate::simplification::UPDATE_TMP_PREFIX;
 use crate::util::combine_errors_or_ok;
+use syn::parse;
 use syn::spanned::Spanned;
 use syn::visit::Visit;
 use syn::{Error, Expr, ExprMacro, Ident, Macro, Pat, PatIdent, Path, Type};
@@ -20,7 +21,7 @@ use syn::{Error, Expr, ExprMacro, Ident, Macro, Pat, PatIdent, Path, Type};
 /// Also errors if the user incorrectly uses `self` or `pre` (for the sake of a nicer
 /// error message).
 
-pub fn validate_idents_transition(trans: &Transition) -> syn::parse::Result<()> {
+pub fn validate_idents_transition(trans: &Transition) -> parse::Result<()> {
     let Transition { name, kind, params, body } = trans;
     validate_ident(name)?;
     for param in params {
@@ -30,10 +31,7 @@ pub fn validate_idents_transition(trans: &Transition) -> syn::parse::Result<()> 
     Ok(())
 }
 
-fn validate_idents_transition_stmt(
-    ts: &TransitionStmt,
-    kind: TransitionKind,
-) -> syn::parse::Result<()> {
+fn validate_idents_transition_stmt(ts: &TransitionStmt, kind: TransitionKind) -> parse::Result<()> {
     match ts {
         TransitionStmt::Block(_, v) => {
             for t in v.iter() {
@@ -107,7 +105,7 @@ fn validate_idents_transition_stmt(
     Ok(())
 }
 
-fn validate_idents_op(op: &SpecialOp, kind: TransitionKind) -> syn::parse::Result<()> {
+fn validate_idents_op(op: &SpecialOp, kind: TransitionKind) -> parse::Result<()> {
     match &op.elt {
         MonoidElt::OptionSome(None) => {}
         MonoidElt::OptionSome(Some(e))
@@ -126,14 +124,14 @@ fn validate_idents_op(op: &SpecialOp, kind: TransitionKind) -> syn::parse::Resul
     Ok(())
 }
 
-fn validate_idents_expr(e: &Expr, kind: TransitionKind) -> syn::parse::Result<()> {
+fn validate_idents_expr(e: &Expr, kind: TransitionKind) -> parse::Result<()> {
     let mut idv = IdentVisitor::new(kind);
     idv.visit_expr(e);
 
     combine_errors_or_ok(idv.errors)
 }
 
-fn validate_idents_pat(pat: &Pat, kind: TransitionKind) -> syn::parse::Result<()> {
+fn validate_idents_pat(pat: &Pat, kind: TransitionKind) -> parse::Result<()> {
     let mut idv = IdentVisitor::new(kind);
     idv.visit_pat(pat);
 
@@ -234,7 +232,7 @@ impl<'ast> Visit<'ast> for PatIdentVisitor {
 
 /// Error if the type contains a `super::...` path.
 
-pub fn error_on_super_path(ty: &Type) -> syn::parse::Result<()> {
+pub fn error_on_super_path(ty: &Type) -> parse::Result<()> {
     let mut sv = SuperVisitor { errors: Vec::new() };
     sv.visit_type(ty);
     combine_errors_or_ok(sv.errors)

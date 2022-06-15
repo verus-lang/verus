@@ -2,6 +2,7 @@
 //! concurrency_tokens.rs
 
 use crate::ast::{SplitKind, TransitionStmt, SM};
+use syn::parse;
 use syn::parse::Error;
 
 /// Check if any SpecialOp is inside a conditional, which is currently unsupported.
@@ -16,7 +17,7 @@ use syn::parse::Error;
 ///
 /// Also checks to make sure there are no sub-updates.
 
-pub fn check_unsupported_updates(ts: &TransitionStmt) -> syn::parse::Result<()> {
+pub fn check_unsupported_updates(ts: &TransitionStmt) -> parse::Result<()> {
     match ts {
         TransitionStmt::Block(_span, v) => {
             for child in v.iter() {
@@ -50,7 +51,7 @@ pub fn check_unsupported_updates(ts: &TransitionStmt) -> syn::parse::Result<()> 
     }
 }
 
-fn check_unsupported_updates_helper(ts: &TransitionStmt) -> syn::parse::Result<()> {
+fn check_unsupported_updates_helper(ts: &TransitionStmt) -> parse::Result<()> {
     match ts {
         TransitionStmt::Block(_, v) => {
             for t in v {
@@ -106,7 +107,7 @@ fn check_unsupported_updates_helper(ts: &TransitionStmt) -> syn::parse::Result<(
 /// So those can't interact at all. For another, there could conceivably be reason
 /// to put 'withdraw' and 'deposit' in either order.
 
-pub fn check_ordering_remove_have_add(sm: &SM, ts: &TransitionStmt) -> syn::parse::Result<()> {
+pub fn check_ordering_remove_have_add(sm: &SM, ts: &TransitionStmt) -> parse::Result<()> {
     for field in &sm.fields {
         check_ordering_remove_have_add_rec(ts, &field.name.to_string(), false, false)?;
     }
@@ -118,7 +119,7 @@ pub fn check_ordering_remove_have_add_rec(
     field_name: &String,
     seen_have: bool,
     seen_add: bool,
-) -> syn::parse::Result<(bool, bool)> {
+) -> parse::Result<(bool, bool)> {
     match ts {
         TransitionStmt::Block(_, v) => {
             let mut seen_have = seen_have;

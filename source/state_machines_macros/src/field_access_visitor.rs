@@ -36,8 +36,10 @@ use crate::ast::{
 };
 use proc_macro2::Span;
 use std::collections::{HashMap, HashSet};
+use syn::parse;
 use syn::parse::Error;
 use syn::spanned::Spanned;
+use syn::visit_mut;
 use syn::visit_mut::VisitMut;
 use syn::{Expr, ExprField, ExprPath, Ident, Member};
 
@@ -106,7 +108,7 @@ where
                     self.errors.push(Error::new(span, "expected a named field"));
                 }
             },
-            _ => syn::visit_mut::visit_expr_mut(self, node),
+            _ => visit_mut::visit_expr_mut(self, node),
         }
     }
 }
@@ -115,7 +117,7 @@ fn get_field_by_ident<'a>(
     ident_to_field: &'a HashMap<String, Field>,
     span: Span,
     ident: &Ident,
-) -> syn::parse::Result<&'a Field> {
+) -> parse::Result<&'a Field> {
     match ident_to_field.get(&ident.to_string()) {
         Some(f) => Ok(f),
         None => Err(Error::new(

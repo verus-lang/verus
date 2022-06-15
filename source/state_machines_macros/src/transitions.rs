@@ -8,6 +8,7 @@ use crate::ident_visitor::validate_idents_transition;
 use crate::inherent_safety_conditions::check_inherent_conditions;
 use crate::util::{combine_errors_or_ok, combine_results};
 use proc_macro2::Span;
+use syn::parse;
 use syn::spanned::Spanned;
 use syn::{Error, Ident};
 
@@ -94,10 +95,7 @@ fn check_exactly_one_init(sm: &SM, ts: &TransitionStmt, errors: &mut Vec<Error>)
     }
 }
 
-fn check_exactly_one_init_rec(
-    field: &Field,
-    ts: &TransitionStmt,
-) -> syn::parse::Result<Option<Span>> {
+fn check_exactly_one_init_rec(field: &Field, ts: &TransitionStmt) -> parse::Result<Option<Span>> {
     match ts {
         TransitionStmt::Block(_, v) => {
             let mut o = None;
@@ -216,10 +214,7 @@ fn check_at_most_one_update(sm: &SM, ts: &TransitionStmt, errors: &mut Vec<Error
     }
 }
 
-fn check_at_most_one_update_rec(
-    field: &Field,
-    ts: &TransitionStmt,
-) -> syn::parse::Result<Option<Span>> {
+fn check_at_most_one_update_rec(field: &Field, ts: &TransitionStmt) -> parse::Result<Option<Span>> {
     match ts {
         TransitionStmt::Block(_, v) => {
             let mut o = None;
@@ -295,7 +290,7 @@ fn is_allowed_in_special_op(
     span: Span,
     stype: &ShardableType,
     sop: &SpecialOp,
-) -> syn::parse::Result<()> {
+) -> parse::Result<()> {
     match stype {
         ShardableType::Constant(_)
         | ShardableType::Variable(_)
@@ -612,8 +607,8 @@ fn stmt_get_bound_idents(ts: &TransitionStmt) -> Vec<Ident> {
 
 /// Check simple well-formedness properties of the transitions.
 
-pub fn check_transitions(sm: &mut SM) -> syn::parse::Result<()> {
-    let mut results: Vec<syn::parse::Result<()>> = Vec::new();
+pub fn check_transitions(sm: &mut SM) -> parse::Result<()> {
+    let mut results: Vec<parse::Result<()>> = Vec::new();
 
     let mut transitions = Vec::new();
     std::mem::swap(&mut transitions, &mut sm.transitions);
@@ -627,7 +622,7 @@ pub fn check_transitions(sm: &mut SM) -> syn::parse::Result<()> {
     combine_results(results)
 }
 
-pub fn check_transition(sm: &SM, tr: &mut Transition) -> syn::parse::Result<()> {
+pub fn check_transition(sm: &SM, tr: &mut Transition) -> parse::Result<()> {
     validate_idents_transition(tr)?;
 
     let mut errors = Vec::new();

@@ -3,8 +3,10 @@ use crate::ast::{
 };
 use crate::to_token_stream::get_self_ty_turbofish_path;
 use syn::punctuated::Punctuated;
+use syn::token;
+use syn::visit_mut;
 use syn::visit_mut::VisitMut;
-use syn::{Expr, Ident, Pat, Path, Type};
+use syn::{Expr, Ident, Pat, Path, PathSegment, Type};
 
 /// If the user ever uses 'Self' in a transition, then change it out for the explicit
 /// self type so that it's safe to use these expressions and types in other places
@@ -177,7 +179,7 @@ impl<'a> VisitMut for SelfVisitor<'a> {
     fn visit_path_mut(&mut self, path: &mut Path) {
         if path.leading_colon.is_none() && path.segments[0].ident.to_string() == "Self" {
             let orig_span = path.segments[0].ident.span();
-            let mut segments = Punctuated::<syn::PathSegment, syn::token::Colon2>::new();
+            let mut segments = Punctuated::<PathSegment, token::Colon2>::new();
             for seg in self.subst_path.segments.iter() {
                 let mut seg = seg.clone();
                 seg.ident = Ident::new(&seg.ident.to_string(), orig_span);
@@ -189,6 +191,6 @@ impl<'a> VisitMut for SelfVisitor<'a> {
             path.segments = segments;
         }
 
-        syn::visit_mut::visit_path_mut(self, path)
+        visit_mut::visit_path_mut(self, path)
     }
 }

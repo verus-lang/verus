@@ -23,6 +23,7 @@ use proc_macro2::TokenStream;
 use quote::{quote, quote_spanned};
 use std::collections::HashMap;
 use std::collections::HashSet;
+use syn::parse;
 use syn::parse::Error;
 use syn::spanned::Spanned;
 use syn::{Expr, Ident, Pat, Type};
@@ -274,7 +275,7 @@ pub fn output_token_types_and_fns(
     token_stream: &mut TokenStream,
     bundle: &SMBundle,
     safety_condition_lemmas: &HashMap<String, Ident>,
-) -> syn::parse::Result<()> {
+) -> parse::Result<()> {
     let mut inst_impl_token_stream = TokenStream::new();
 
     token_stream.extend(instance_struct_stream(&bundle.sm));
@@ -428,7 +429,7 @@ pub fn exchange_stream(
     bundle: &SMBundle,
     tr: &Transition,
     safety_condition_lemmas: &HashMap<String, Ident>,
-) -> syn::parse::Result<TokenStream> {
+) -> parse::Result<TokenStream> {
     let sm = &bundle.sm;
 
     let is_init = tr.kind == TransitionKind::Init;
@@ -1355,7 +1356,7 @@ fn get_main_lemma_for_transition_opt<'a>(
 
 // Find things that updated
 
-fn determine_outputs(ctxt: &mut Ctxt, ts: &TransitionStmt) -> syn::parse::Result<()> {
+fn determine_outputs(ctxt: &mut Ctxt, ts: &TransitionStmt) -> parse::Result<()> {
     match ts {
         TransitionStmt::Block(_span, v) => {
             for child in v.iter() {
@@ -1431,7 +1432,7 @@ fn translate_transition(
     ctxt: &mut Ctxt,
     ts: &mut TransitionStmt,
     errors: &mut Vec<Error>,
-) -> syn::parse::Result<()> {
+) -> parse::Result<()> {
     let new_ts = match ts {
         TransitionStmt::Block(_span, v) => {
             for child in v.iter_mut() {
@@ -2048,7 +2049,7 @@ fn exchange_collect(
     ctxt: &mut Ctxt,
     ts: &TransitionStmt,
     prequel: Vec<PrequelElement>,
-) -> syn::parse::Result<Vec<PrequelElement>> {
+) -> parse::Result<Vec<PrequelElement>> {
     match ts {
         TransitionStmt::Block(_span, v) => {
             let mut p = prequel;

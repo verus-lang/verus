@@ -1,6 +1,7 @@
 use proc_macro2::Span;
 use std::rc::Rc;
-use syn::{Expr, FieldsNamed, Generics, Ident, ImplItemMethod, Pat, Type};
+use syn::token;
+use syn::{Block, Expr, FieldsNamed, Generics, Ident, ImplItemMethod, Pat, Type};
 
 #[derive(Clone, Debug)]
 pub struct SM {
@@ -171,7 +172,7 @@ pub enum LetKind {
 /// Extra info for generating the verification condition of a safety condition
 #[derive(Clone, Debug)]
 pub struct AssertProof {
-    pub proof: Option<Rc<syn::Block>>,
+    pub proof: Option<Rc<Block>>,
     pub error_msg: String,
 }
 
@@ -179,9 +180,9 @@ pub struct AssertProof {
 #[derive(Clone, Debug)]
 pub struct Arm {
     pub pat: Pat,
-    pub guard: Option<(syn::token::If, Box<Expr>)>,
-    pub fat_arrow_token: syn::token::FatArrow,
-    pub comma: Option<syn::token::Comma>,
+    pub guard: Option<(token::If, Box<Expr>)>,
+    pub fat_arrow_token: token::FatArrow,
+    pub comma: Option<token::Comma>,
 }
 
 #[derive(Clone, Debug)]

@@ -2,6 +2,7 @@ use crate::ast::{SimplStmt, SM};
 use proc_macro2::{TokenStream, TokenTree};
 use quote::quote;
 use std::collections::HashSet;
+use syn::visit;
 use syn::visit::Visit;
 use syn::{Expr, Ident, Pat};
 
@@ -157,7 +158,7 @@ impl<'ast> Visit<'ast> for UseGetter<'ast> {
     }
 
     fn visit_expr(&mut self, node: &'ast Expr) {
-        syn::visit::visit_expr(self, node);
+        visit::visit_expr(self, node);
 
         match node {
             Expr::Verbatim(stream) => {

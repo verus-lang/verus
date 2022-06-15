@@ -1,9 +1,10 @@
 use proc_macro2::TokenStream;
 use quote::quote;
+use syn::parse;
 use syn::parse::{Parse, ParseStream};
 use syn::parse_macro_input;
 use syn::punctuated::Punctuated;
-use syn::token::Comma;
+use syn::token;
 use syn::{braced, parenthesized, Expr, ExprBlock, Ident, Path, Token};
 
 pub fn case_on(input: proc_macro::TokenStream, is_init: bool) -> proc_macro::TokenStream {
@@ -87,7 +88,7 @@ struct Arm {
 }
 
 impl Parse for MatchPost {
-    fn parse(input: ParseStream) -> syn::parse::Result<MatchPost> {
+    fn parse(input: ParseStream) -> parse::Result<MatchPost> {
         let post: Expr = input.parse()?;
         let _: Token![,] = input.parse()?;
         let name: Path = input.parse()?;
@@ -106,7 +107,7 @@ impl Parse for MatchPost {
 }
 
 impl Parse for MatchPrePost {
-    fn parse(input: ParseStream) -> syn::parse::Result<MatchPrePost> {
+    fn parse(input: ParseStream) -> parse::Result<MatchPrePost> {
         let pre: Expr = input.parse()?;
         let _: Token![,] = input.parse()?;
         let post: Expr = input.parse()?;
@@ -126,12 +127,12 @@ impl Parse for MatchPrePost {
     }
 }
 
-fn parse_arm(input: ParseStream) -> syn::parse::Result<Arm> {
+fn parse_arm(input: ParseStream) -> parse::Result<Arm> {
     let step_name: Ident = input.parse()?;
 
     let param_stream;
     let _ = parenthesized!(param_stream in input);
-    let params: Punctuated<Ident, Comma> = param_stream.parse_terminated(Ident::parse)?;
+    let params: Punctuated<Ident, token::Comma> = param_stream.parse_terminated(Ident::parse)?;
 
     let _: Token![=>] = input.parse()?;
     let block: ExprBlock = input.parse()?;
