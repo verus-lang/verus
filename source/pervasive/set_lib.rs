@@ -1,20 +1,23 @@
 #[allow(unused_imports)]
 use builtin::*;
 #[allow(unused_imports)]
+use builtin_macros::*;
+#[allow(unused_imports)]
 use crate::pervasive::*;
 #[allow(unused_imports)]
 use crate::pervasive::set::*;
 
+verus! {
+
 impl<A> Set<A> {
-    #[spec] #[verifier(publish)]
-    pub fn map<B, F: Fn(A) -> B>(self, f: F) -> Set<B> {
-        Set::new(|a: B| exists(|x: A| self.contains(x) && equal(a, f(x))))
+    pub open spec fn map<B, F: Fn(A) -> B>(self, f: F) -> Set<B> {
+        Set::new(|a: B| exists|x: A| self.contains(x) && a === f(x))
     }
 
-    #[spec] #[verifier(publish)]
-    pub fn fold<E, F: Fn(E, A) -> E>(self, init: E, f: F) -> E {
-        decreases(self.len());
-
+    pub open spec fn fold<E, F: Fn(E, A) -> E>(self, init: E, f: F) -> E
+        decreases
+            self.len(),
+    {
         if self.finite() {
             if self.len() == 0 {
                 init
@@ -28,27 +31,29 @@ impl<A> Set<A> {
     }
 }
 
-#[proof]
-pub fn lemma_len0_is_empty<A>(s: Set<A>) {
-    requires(s.finite() && s.len() == 0);
-    ensures(equal(s, Set::empty()));
-
-    if exists(|a: A| s.contains(a)) {
+pub proof fn lemma_len0_is_empty<A>(s: Set<A>)
+    requires
+        s.finite(),
+        s.len() == 0,
+    ensures
+        s === Set::empty(),
+{
+    if exists|a: A| s.contains(a) {
         // derive contradiction:
         assert(s.remove(s.choose()).len() + 1 == 0);
     }
     assert(s.ext_equal(Set::empty()));
 }
 
-#[proof]
-pub fn lemma_len_union<A>(s1: Set<A>, s2: Set<A>) {
-    requires([
+pub proof fn lemma_len_union<A>(s1: Set<A>, s2: Set<A>)
+    requires
         s1.finite(),
         s2.finite(),
-    ]);
-    ensures(s1.union(s2).len() <= s1.len() + s2.len());
-    decreases(s1.len());
-
+    ensures
+        s1.union(s2).len() <= s1.len() + s2.len(),
+    decreases
+        s1.len(),
+{
     if s1.len() == 0 {
         lemma_len0_is_empty::<A>(s1);
         assert(s1.union(s2).ext_equal(s2));
@@ -63,12 +68,14 @@ pub fn lemma_len_union<A>(s1: Set<A>, s2: Set<A>) {
     }
 }
 
-#[proof]
-pub fn lemma_len_intersect<A>(s1: Set<A>, s2: Set<A>) {
-    requires(s1.finite());
-    ensures(s1.intersect(s2).len() <= s1.len());
-    decreases(s1.len());
-
+pub proof fn lemma_len_intersect<A>(s1: Set<A>, s2: Set<A>)
+    requires
+        s1.finite(),
+    ensures
+        s1.intersect(s2).len() <= s1.len(),
+    decreases
+        s1.len(),
+{
     if s1.len() == 0 {
         lemma_len0_is_empty::<A>(s1);
         assert(s1.intersect(s2).ext_equal(s1));
@@ -79,27 +86,26 @@ pub fn lemma_len_intersect<A>(s1: Set<A>, s2: Set<A>) {
     }
 }
 
-#[proof]
-pub fn lemma_len_subset<A>(s1: Set<A>, s2: Set<A>) {
-    requires([
+pub proof fn lemma_len_subset<A>(s1: Set<A>, s2: Set<A>)
+    requires
         s2.finite(),
         s1.subset_of(s2),
-    ]);
-    ensures([
+    ensures
         s1.len() <= s2.len(),
         s1.finite(),
-    ]);
-
+{
     lemma_len_intersect::<A>(s2, s1);
     assert(s2.intersect(s1).ext_equal(s1));
 }
 
-#[proof]
-pub fn lemma_len_difference<A>(s1: Set<A>, s2: Set<A>) {
-    requires(s1.finite());
-    ensures(s1.difference(s2).len() <= s1.len());
-    decreases(s1.len());
-
+pub proof fn lemma_len_difference<A>(s1: Set<A>, s2: Set<A>)
+    requires
+        s1.finite(),
+    ensures
+        s1.difference(s2).len() <= s1.len(),
+    decreases
+        s1.len(),
+{
     if s1.len() == 0 {
         lemma_len0_is_empty::<A>(s1);
         assert(s1.difference(s2).ext_equal(s1));
@@ -110,32 +116,31 @@ pub fn lemma_len_difference<A>(s1: Set<A>, s2: Set<A>) {
     }
 }
 
-#[proof]
-pub fn lemma_len_filter<A, F: Fn(A) -> bool>(s: Set<A>, f: F) {
-    requires(s.finite());
-    ensures([
+pub proof fn lemma_len_filter<A, F: Fn(A) -> bool>(s: Set<A>, f: F)
+    requires
+        s.finite(),
+    ensures
         s.filter(f).finite(),
         s.filter(f).len() <= s.len(),
-    ]);
-    decreases(s.len());
-
+    decreases
+        s.len(),
+{
     lemma_len_intersect::<A>(s, Set::new(f));
 }
 
-#[spec] #[verifier(publish)]
-pub fn set_int_range(lo: int, hi: int) -> Set<int> {
+pub open spec fn set_int_range(lo: int, hi: int) -> Set<int> {
     Set::new(|i: int| lo <= i && i < hi)
 }
 
-#[proof]
-pub fn lemma_int_range(lo: int, hi: int) {
-    requires(lo <= hi);
-    ensures([
+pub proof fn lemma_int_range(lo: int, hi: int)
+    requires
+        lo <= hi,
+    ensures
         set_int_range(lo, hi).finite(),
         set_int_range(lo, hi).len() == hi - lo,
-    ]);
-    decreases(hi - lo);
-
+    decreases
+        hi - lo,
+{
     if lo == hi {
         assert(set_int_range(lo, hi).ext_equal(Set::empty()));
     } else {
@@ -179,3 +184,5 @@ macro_rules! assert_sets_equal {
         });
     }
 }
+
+} // verus!

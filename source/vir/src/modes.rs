@@ -276,9 +276,12 @@ fn get_var_loc_mode(typing: &mut Typing, expr: &Expr, init_not_mut: bool) -> Res
     let x_mode = match &expr.x {
         ExprX::VarLoc(x) => {
             let (_, x_mode) = typing.get(x);
-            if expr.typ.is_ghost_typ() {
+            if typing.block_ghostness != Ghost::Exec && expr.typ.is_ghost_typ() {
                 Mode::Spec
-            } else if expr.typ.is_tracked_typ() && x_mode != Mode::Spec {
+            } else if typing.block_ghostness != Ghost::Exec
+                && expr.typ.is_tracked_typ()
+                && x_mode != Mode::Spec
+            {
                 Mode::Proof
             } else {
                 x_mode

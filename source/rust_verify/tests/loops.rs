@@ -267,9 +267,7 @@ test_verify_one_file! {
             loop
                 invariant *a > 0
             {
-                // TODO: a = ghost(*a + 1);
-                let _a: Ghost<int> = ghost(*a + 1);
-                a = _a;
+                a = ghost(*a + 1);
             }
         }
     } => Ok(())
