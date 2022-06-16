@@ -8,3 +8,7 @@ pub const CHOOSE: &str = "%%choose%%";
 pub const HOLE: &str = "%%hole%%";
 pub const APPLY: &str = "%%apply%%";
 pub const SKOLEM_ID_PREFIX: &str = "skolem";
+
+pub fn mk_skolem_id(qid: &str) -> String {
+    format!("{}_{}", crate::def::SKOLEM_ID_PREFIX, qid)
+}

@@ -2,6 +2,7 @@ use crate::ast::{
     BinaryOp, BindX, Binder, Binders, Constant, Datatypes, Decl, DeclX, Expr, ExprX, Exprs, Ident,
     MultiOp, Qid, Quant, Query, QueryX, Stmt, StmtX, Triggers, Typ, TypX, Typs, UnaryOp,
 };
+use crate::def::mk_skolem_id;
 use crate::errors::all_msgs_from_error;
 use crate::util::vec_map;
 use sise::{Node, Writer};
@@ -240,9 +241,7 @@ impl Printer {
                             nodes.push(str_to_node(":qid"));
                             nodes.push(str_to_node(s));
                             nodes.push(str_to_node(":skolemid"));
-                            nodes.push(str_to_node(
-                                format!("{}_{}", crate::def::SKOLEM_ID_PREFIX, s).as_str(),
-                            ));
+                            nodes.push(str_to_node(&mk_skolem_id(s)));
                         }
                         Node::List(nodes)
                     }

@@ -3,6 +3,7 @@ use crate::ast::{
     Decls, Expr, ExprX, Exprs, MultiOp, Qid, Quant, QueryX, Span, Stmt, StmtX, Stmts, Trigger,
     Triggers, Typ, TypX, UnaryOp,
 };
+use crate::def::mk_skolem_id;
 use crate::errors::{error_from_labels, error_from_spans};
 use crate::errors::{ErrorLabel, ErrorLabels};
 use crate::model::{ModelDef, ModelDefX, ModelDefs};
@@ -325,7 +326,26 @@ impl Parser {
                 }
             }
         }
-        Ok((Arc::new(triggers), qid))
+        match (qid.clone(), skolemid) {
+            (Some(q), Some(skolem)) => {
+                let expected_skolemid = mk_skolem_id(&q);
+                if skolem == expected_skolemid {
+                    Ok((Arc::new(triggers), qid))
+                } else {
+                    Err(format!(
+                        "for qid {}, expected skolemid {}; found {}",
+                        q, expected_skolemid, skolem
+                    ))
+                }
+            }
+            (Some(q), None) => Err(format!(
+                "for qid {}, expected skolemid {} but found no skolemid at all",
+                q,
+                mk_skolem_id(&q)
+            )),
+            (None, Some(_)) => Err(format!("skolemid must be accompanied by a qid")),
+            (None, None) => Ok((Arc::new(triggers), qid)),
+        }
     }
 
     fn node_to_quant_expr(
