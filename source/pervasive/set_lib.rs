@@ -185,4 +185,6 @@ macro_rules! assert_sets_equal {
     }
 }
 
+pub use assert_sets_equal;
+
 } // verus!

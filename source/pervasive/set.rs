@@ -310,8 +310,11 @@ macro_rules! set_insert_rec {
 #[macro_export]
 macro_rules! set {
     [$($tail:tt)*] => {
-        ::builtin_macros::verus_proof_macro_exprs!(set_insert_rec![$crate::pervasive::set::Set::empty();$($tail)*])
+        ::builtin_macros::verus_proof_macro_exprs!($crate::pervasive::set::set_insert_rec![$crate::pervasive::set::Set::empty();$($tail)*])
     }
 }
+
+pub use set_insert_rec;
+pub use set;
 
 } // verus!
