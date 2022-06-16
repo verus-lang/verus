@@ -54,14 +54,18 @@ pub fn case_on(input: proc_macro::TokenStream, is_init: bool) -> proc_macro::Tok
         .collect();
 
     let res = quote! {
-        ::builtin::reveal(#next);
-        match ::builtin::choose(|step: #step| #next_by(#pre_post, step)) {
-            #step::dummy_to_use_type_params(_) => {
-                ::builtin::assert_by(false, {
-                    ::builtin::reveal(#next_by);
-                });
+        ::builtin_macros::verus_proof_expr!{
+            {
+                ::builtin::reveal(#next);
+                match ::builtin::choose(|step: #step| #next_by(#pre_post, step)) {
+                    #step::dummy_to_use_type_params(_) => {
+                        ::builtin::assert_by(false, {
+                            ::builtin::reveal(#next_by);
+                        });
+                    }
+                    #( #arms )*
+                }
             }
-            #( #arms )*
         }
     };
 

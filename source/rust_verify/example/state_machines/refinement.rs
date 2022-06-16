@@ -108,6 +108,7 @@ fn next_refines_next_with_macro(pre: A::State, post: A::State) {
 
     case_on_next!{pre, post, A => {
         add(n) => {
+            assert(0 === 0); // test verus syntax
             B::show::add(interp(pre), interp(post), 2 * n);
         }
     }}
