@@ -118,10 +118,10 @@ pub fn safety_condition_body_simpl(sop: &SimplStmt, let_skip_brace: bool) -> Opt
         SimplStmt::Assert(span, e, AssertProof { proof: Some(proof), error_msg }) => {
             let assert_fn = Ident::new(error_msg, *span);
             Some(Expr::Verbatim(quote_spanned! {*span =>
-                ::builtin::assert_by(#e, {
+                assert(#e) by {
                     #proof
                     crate::pervasive::state_machine_internal::#assert_fn(#e);
-                });
+                };
             }))
         }
         SimplStmt::Assign(..) => {

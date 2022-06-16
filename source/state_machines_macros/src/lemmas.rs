@@ -8,7 +8,8 @@ use syn_verus::punctuated::Punctuated;
 use syn_verus::spanned::Spanned;
 use syn_verus::token;
 use syn_verus::{
-    Error, Expr, ExprCall, ExprPath, FnArg, Ident, Pat, PatIdent, PatType, ReturnType, Stmt, Type,
+    Error, Expr, ExprCall, ExprPath, FnArg, FnArgKind, FnMode, Ident, Pat, PatIdent, PatType,
+    ReturnType, Stmt, Type,
 };
 
 /// Check that the declarations of 'inductive' lemmas are well-formed.
@@ -79,6 +80,28 @@ fn check_each_lemma_valid(bundle: &SMBundle) -> parse::Result<()> {
             _ => {}
         }
 
+        match &l.func.sig.mode {
+            FnMode::Default | FnMode::Proof(_) => {}
+            FnMode::Spec(mode_spec) => {
+                return Err(Error::new(
+                    mode_spec.span(),
+                    "an inductiveness lemma should be `proof`",
+                ));
+            }
+            FnMode::SpecChecked(mode_spec_checked) => {
+                return Err(Error::new(
+                    mode_spec_checked.span(),
+                    "an inductiveness lemma should be `proof`",
+                ));
+            }
+            FnMode::Exec(mode_exec) => {
+                return Err(Error::new(
+                    mode_exec.span(),
+                    "an inductiveness lemma should be `proof`",
+                ));
+            }
+        }
+
         if l.func.sig.generics.params.len() > 0 {
             return Err(Error::new(
                 l.func.sig.generics.span(),
@@ -97,7 +120,9 @@ fn check_each_lemma_valid(bundle: &SMBundle) -> parse::Result<()> {
         }
 
         let expected_params = get_expected_params(t);
-        if let Some(err_span) = params_match(&expected_params, &l.func.sig.inputs) {
+        if let Some(err_span) =
+            params_match(&expected_params, &l.func.sig.inputs, l.func.sig.span())
+        {
             return Err(Error::new(
                 err_span,
                 format!(
@@ -144,16 +169,27 @@ fn get_expected_params(t: &Transition) -> Vec<TransitionParam> {
 fn params_match(
     expected: &Vec<TransitionParam>,
     actual: &Punctuated<FnArg, token::Comma>,
+    sig_span: Span,
 ) -> Option<Span> {
     for (i, fn_arg) in actual.iter().enumerate() {
         if i >= expected.len() {
-            return Some(actual[i].span());
+            return Some(actual[i].kind.span());
         }
         match fn_arg {
-            FnArg::Receiver(_) => {
-                return Some(fn_arg.span());
+            FnArg { tracked: _, kind: FnArgKind::Receiver(_) } => {
+                return Some(fn_arg.kind.span());
             }
-            FnArg::Typed(PatType { attrs, pat, colon_token: _, ty }) => {
+            FnArg {
+                tracked,
+                kind: FnArgKind::Typed(PatType { attrs, pat, colon_token: _, ty }),
+            } => {
+                match tracked {
+                    Some(token::Tracked { span }) => {
+                        return Some(*span);
+                    }
+                    None => {}
+                }
+
                 if attrs.len() > 0 {
                     return Some(attrs[0].span());
                 }
@@ -172,7 +208,7 @@ fn params_match(
     }
 
     if actual.len() != expected.len() {
-        return Some(actual.span());
+        return Some(sig_span);
     }
 
     return None;

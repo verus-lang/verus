@@ -15,9 +15,9 @@ use syn_verus::parse::{Parse, ParseStream};
 use syn_verus::spanned::Spanned;
 use syn_verus::Token;
 use syn_verus::{
-    braced, AttrStyle, Attribute, Error, FieldsNamed, FnArg, GenericArgument, GenericParam,
-    Generics, Ident, ImplItem, ImplItemMethod, Meta, MetaList, NestedMeta, PathArguments, Receiver,
-    ReturnType, Type, TypePath, Visibility, WhereClause,
+    braced, AttrStyle, Attribute, Error, FieldsNamed, FnArg, FnArgKind, FnMode, GenericArgument,
+    GenericParam, Generics, Ident, ImplItem, ImplItemMethod, Meta, MetaList, NestedMeta,
+    PathArguments, Receiver, ReturnType, Type, TypePath, Visibility, WhereClause,
 };
 
 pub struct SMBundle {
@@ -240,19 +240,33 @@ fn to_invariant(impl_item_method: ImplItemMethod) -> parse::Result<Invariant> {
         &impl_item_method,
         "an invariant fn is implied to be 'spec'; it should not be explicitly labelled",
     )?;
+
     if impl_item_method.sig.inputs.len() != 1 {
         return Err(Error::new(
-            impl_item_method.sig.inputs.span(),
+            impl_item_method.sig.span(),
             "an invariant function must take exactly 1 argument (self)",
         ));
     }
 
+    match &impl_item_method.sig.mode {
+        FnMode::Default | FnMode::Spec(_) | FnMode::SpecChecked(_) => {}
+        FnMode::Proof(mode_proof) => {
+            return Err(Error::new(mode_proof.span(), "an invariant function should be `spec`"));
+        }
+        FnMode::Exec(mode_exec) => {
+            return Err(Error::new(mode_exec.span(), "an invariant function should be `spec`"));
+        }
+    }
+
     let one_arg = impl_item_method.sig.inputs.iter().next().expect("one_arg");
     match one_arg {
-        FnArg::Receiver(Receiver { mutability: None, .. }) => {}
+        FnArg { tracked: _, kind: FnArgKind::Receiver(Receiver { mutability: None, .. }) } => {
+            // don't need to check for 'tracked' or anything
+            // (would be caught by mode checking later)
+        }
         _ => {
             return Err(Error::new(
-                one_arg.span(),
+                one_arg.kind.span(),
                 "an invariant function must take 1 argument (self)",
             ));
         }
@@ -273,7 +287,7 @@ fn to_invariant(impl_item_method: ImplItemMethod) -> parse::Result<Invariant> {
                 "an invariant function must return a bool",
             ));
         }
-        ReturnType::Type(_, ty) => {
+        ReturnType::Type(_, _tracked, _return_name, ty) => {
             match &**ty {
                 Type::Path(TypePath { qself: None, path }) if path.is_ident("bool") => {
                     // ok

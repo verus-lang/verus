@@ -363,7 +363,7 @@ tokenized_state_machine!{
                 let response_opt = pre.combiner.get_Responding_elems().index(j);
 
                 // The response we return has to have the right request ID
-                require(equal(response_opt, Option::Some(response.rid)));
+                require(response_opt === Option::Some(response.rid));
 
                 // Set the slot back to false
                 remove slots -= [j => cur_slot];
