@@ -9,8 +9,8 @@ use crate::transitions::get_field;
 use crate::util::is_definitely_irrefutable;
 use proc_macro2::Span;
 use quote::{quote, quote_spanned};
-use syn::spanned::Spanned;
-use syn::{Expr, Ident, Pat, Type};
+use syn_verus::spanned::Spanned;
+use syn_verus::{Expr, Ident, Pat, Type};
 
 /// Simplify out `update` statements, including `add_element` etc.
 ///

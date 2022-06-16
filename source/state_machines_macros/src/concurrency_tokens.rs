@@ -23,10 +23,10 @@ use proc_macro2::TokenStream;
 use quote::{quote, quote_spanned};
 use std::collections::HashMap;
 use std::collections::HashSet;
-use syn::parse;
-use syn::parse::Error;
-use syn::spanned::Spanned;
-use syn::{Expr, Ident, Pat, Type};
+use syn_verus::parse;
+use syn_verus::parse::Error;
+use syn_verus::spanned::Spanned;
+use syn_verus::{Expr, Ident, Pat, Type};
 
 // Misc. definitions for various identifiers we use
 // Note that everything is going to be inside a module, so for example,

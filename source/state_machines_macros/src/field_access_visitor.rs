@@ -36,12 +36,12 @@ use crate::ast::{
 };
 use proc_macro2::Span;
 use std::collections::{HashMap, HashSet};
-use syn::parse;
-use syn::parse::Error;
-use syn::spanned::Spanned;
-use syn::visit_mut;
-use syn::visit_mut::VisitMut;
-use syn::{Expr, ExprField, ExprPath, Ident, Member};
+use syn_verus::parse;
+use syn_verus::parse::Error;
+use syn_verus::spanned::Spanned;
+use syn_verus::visit_mut;
+use syn_verus::visit_mut::VisitMut;
+use syn_verus::{Expr, ExprField, ExprPath, Ident, Member};
 
 /// Given a (Rust AST) Expr `e`, visits the subexpressions of the form
 /// `pre.foo` where `foo` is a state machine field, and calls the given

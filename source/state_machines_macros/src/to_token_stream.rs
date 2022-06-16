@@ -19,14 +19,14 @@ use proc_macro2::TokenStream;
 use quote::{quote, quote_spanned, ToTokens};
 use std::collections::HashMap;
 use std::mem::swap;
-use syn::parse;
-use syn::punctuated::Punctuated;
-use syn::spanned::Spanned;
-use syn::token;
-use syn::{
-    AngleBracketedGenericArguments, Attribute, Block, Expr, ExprBlock, FnArg, GenericArgument,
-    GenericParam, Generics, Ident, ImplItemMethod, Meta, MetaList, Pat, Path, PathArguments,
-    PathSegment, Stmt, Type, TypePath,
+use syn_verus::parse;
+use syn_verus::punctuated::Punctuated;
+use syn_verus::spanned::Spanned;
+use syn_verus::token;
+use syn_verus::{
+    AngleBracketedGenericArguments, Attribute, Block, Expr, ExprBlock, FnArg, FnArgKind, FnMode,
+    GenericArgument, GenericParam, Generics, Ident, ImplItemMethod, Meta, MetaList, ModeProof, Pat,
+    Path, PathArguments, PathSegment, Signature, Stmt, Type, TypePath,
 };
 
 pub fn output_token_stream(bundle: SMBundle, concurrent: bool) -> parse::Result<TokenStream> {
@@ -55,14 +55,16 @@ pub fn output_token_stream(bundle: SMBundle, concurrent: bool) -> parse::Result<
     let sm_name = &bundle.sm.name;
 
     let final_code = quote! {
-        #[allow(unused_parens)]
-        mod #sm_name {
-            use super::*;
+        ::builtin_macros::verus!{
+            #[allow(unused_parens)]
+            mod #sm_name {
+                use super::*;
 
-            #root_stream
+                #root_stream
 
-            #impl_decl {
-                #impl_stream
+                #impl_decl {
+                    #impl_stream
+                }
             }
         }
     };
@@ -211,6 +213,17 @@ pub fn fix_attrs(attrs: &mut Vec<Attribute>) {
     }
 }
 
+pub fn set_mode_proof(sig: &mut Signature, span: Span) {
+    match &sig.mode {
+        FnMode::Proof(_mode_proof) => {
+            return;
+        }
+        _ => {}
+    }
+
+    sig.mode = FnMode::Proof(ModeProof { proof_token: token::Proof { span } });
+}
+
 pub fn output_primary_stuff(
     root_stream: &mut TokenStream,
     impl_stream: &mut TokenStream,
@@ -316,8 +329,7 @@ pub fn output_primary_stuff(
                 None => TokenStream::new(),
             };
             impl_stream.extend(quote! {
-                #[proof]
-                pub fn #name(#params) {
+                pub proof fn #name(#params) {
                     crate::pervasive::assume(pre.invariant());
                     #b
                 }
@@ -686,9 +698,10 @@ fn output_other_fns(
     }
 
     for lemma in lemmas {
-        impl_stream.extend(quote! { #[proof] });
         let mut f = lemma.func.clone();
         lemma_update_body(bundle, lemma, &mut f);
+        let span = f.sig.span(); // TODO better span choice
+        set_mode_proof(&mut f.sig, span);
         fix_attrs(&mut f.attrs);
         f.to_tokens(impl_stream);
     }
@@ -698,9 +711,9 @@ fn output_other_fns(
 }
 
 fn left_of_colon<'a>(fn_arg: &'a FnArg) -> &'a Pat {
-    match fn_arg {
-        FnArg::Receiver(_) => panic!("should have been ruled out by lemma well-formedness"),
-        FnArg::Typed(pat_type) => &pat_type.pat,
+    match &fn_arg.kind {
+        FnArgKind::Receiver(_) => panic!("should have been ruled out by lemma well-formedness"),
+        FnArgKind::Typed(pat_type) => &pat_type.pat,
     }
 }
 

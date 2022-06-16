@@ -1,7 +1,7 @@
 use crate::ast::{AssertProof, SimplStmt, SplitKind};
 use crate::to_relation::emit_match;
 use quote::{quote, quote_spanned};
-use syn::{Expr, Ident};
+use syn_verus::{Expr, Ident};
 
 // Given a transition, we convert it into a lemma that will create the correct
 // verification conditions for its 'assert' statement.
@@ -118,10 +118,10 @@ pub fn safety_condition_body_simpl(sop: &SimplStmt, let_skip_brace: bool) -> Opt
         SimplStmt::Assert(span, e, AssertProof { proof: Some(proof), error_msg }) => {
             let assert_fn = Ident::new(error_msg, *span);
             Some(Expr::Verbatim(quote_spanned! {*span =>
-                ::builtin::assert_by(#e, {
+                assert(#e) by {
                     #proof
                     crate::pervasive::state_machine_internal::#assert_fn(#e);
-                });
+                };
             }))
         }
         SimplStmt::Assign(..) => {

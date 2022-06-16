@@ -918,6 +918,52 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] wrong_mode_inv IMPORTS.to_string() + code_str! {
+        tokenized_state_machine!{ X {
+            fields {
+                #[sharding(variable)] pub t: int,
+            }
+
+            init!{
+                tr(x: int) {
+                    init t = x;
+                }
+            }
+
+            #[invariant]
+            pub proof fn the_inv(self) -> bool {
+                true
+            }
+        }}
+    } => Err(e) => assert_error_msg(e, "an invariant function should be `spec`")
+}
+
+test_verify_one_file! {
+    #[test] wrong_mode_inductive IMPORTS.to_string() + code_str! {
+        tokenized_state_machine!{ X {
+            fields {
+                #[sharding(variable)] pub t: int,
+            }
+
+            init!{
+                tr(x: int) {
+                    init t = x;
+                }
+            }
+
+            #[invariant]
+            pub fn the_inv(self) -> bool {
+                true
+            }
+
+            #[inductive(tr)]
+            pub spec fn lemma_tr1(post: Self, x: int) {
+            }
+        }}
+    } => Err(e) => assert_error_msg(e, "an inductiveness lemma should be `proof`")
+}
+
+test_verify_one_file! {
     #[test] explicit_mode_field IMPORTS.to_string() + code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -948,7 +994,7 @@ test_verify_one_file! {
             #[inductive(tr)]
             #[proof]
             pub fn lemma_tr1(post: Self, x: int) {
-            } // FAILS
+            }
         }}
     } => Err(e) => assert_error_msg(e, "should not be explicitly labelled")
 }
@@ -2678,8 +2724,8 @@ test_verify_one_file! {
 
             #[inductive(initialize)]
             fn inductive_init(post: Self) {
-                #[proof] let (inst, token) = X::Instance::initialize();
-                inst.ro(&token);
+                #[proof] let tracked (inst, token) = X::Instance::initialize();
+                tracked inst.ro(&token);
                 // this should derive a contradiction if not for the recursion checking
             }
         }}

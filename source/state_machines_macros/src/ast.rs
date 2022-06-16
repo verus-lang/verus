@@ -1,7 +1,7 @@
 use proc_macro2::Span;
 use std::rc::Rc;
-use syn::token;
-use syn::{Block, Expr, FieldsNamed, Generics, Ident, ImplItemMethod, Pat, Type};
+use syn_verus::token;
+use syn_verus::{Block, Expr, FieldsNamed, Generics, Ident, ImplItemMethod, Pat, Type};
 
 #[derive(Clone, Debug)]
 pub struct SM {

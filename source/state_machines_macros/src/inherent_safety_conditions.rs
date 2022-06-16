@@ -1,7 +1,7 @@
 use crate::ast::{MonoidStmtType, ShardableType, SpecialOp, SplitKind, TransitionStmt, SM};
 use proc_macro2::Span;
-use syn::parse;
-use syn::parse::Error;
+use syn_verus::parse;
+use syn_verus::parse::Error;
 
 /// Many of the "special ops" have inherent safety conditions.
 /// (That is, they contain an 'assert' when expanded out.)
