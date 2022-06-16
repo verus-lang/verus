@@ -260,10 +260,13 @@ impl Verifier {
             (std::time::Duration::from_secs(2), report_fn)
         };
         let is_check_valid = matches!(**command, CommandX::CheckValid(_));
+        let time0 = Instant::now();
         let mut result = air_context.command(
             &command,
             QueryContext { report_long_running: Some(&mut report_long_running()) },
         );
+        let time1 = Instant::now();
+        self.time_air += time1 - time0;
         let mut is_first_check = true;
         let mut checks_remaining = self.args.multiple_errors;
         let mut only_check_earlier = false;
@@ -342,10 +345,13 @@ impl Verifier {
                         }
                     }
 
+                    let time0 = Instant::now();
                     result = air_context.check_valid_again(
                         only_check_earlier,
                         QueryContext { report_long_running: Some(&mut report_long_running()) },
                     );
+                    let time1 = Instant::now();
+                    self.time_air += time1 - time0;
                 }
                 ValidityResult::UnexpectedSmtOutput(err) => {
                     panic!("unexpected SMT output: {}", err);
@@ -409,7 +415,6 @@ impl Verifier {
             air_context.comment(comment);
         }
         for command in commands.iter() {
-            let time0 = Instant::now();
             let result_invalidity = self.check_result_validity(
                 compiler,
                 error_as,
@@ -420,8 +425,6 @@ impl Verifier {
                 &(span, desc),
             );
             invalidity = invalidity || result_invalidity;
-            let time1 = Instant::now();
-            self.time_air += time1 - time0;
         }
 
         invalidity
@@ -772,7 +775,7 @@ impl Verifier {
                         &(s.to_string() + &fun_as_rust_dbg(&function.x.name)),
                     );
                     if *spinoff_prover {
-                        let (time_smt_init, time_smt_run) = air_context.get_time();
+                        let (time_smt_init, time_smt_run) = query_air_context.get_time();
                         spunoff_time_smt_init += time_smt_init;
                         spunoff_time_smt_run += time_smt_run;
                     }
