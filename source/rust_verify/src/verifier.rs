@@ -436,7 +436,7 @@ impl Verifier {
         function_path: Option<&vir::ast::Path>,
         is_rerun: bool,
     ) -> Result<air::context::Context, VirErr> {
-        let mut air_context = air::context::Context::new(air::smt_process::SmtProcess::launch());
+        let mut air_context = air::context::Context::new();
         air_context.set_ignore_unexpected_smt(self.args.ignore_unexpected_smt);
         air_context.set_debug(self.args.debug);
 
