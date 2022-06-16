@@ -5,7 +5,7 @@ use crate::ast::{
 };
 use crate::ast_util::{bitwidth_from_type, fun_as_rust_dbg, get_field, get_variant};
 use crate::context::Ctx;
-use crate::def::{fn_inv_name, fn_namespace_name};
+use crate::def::{fn_inv_name, fn_namespace_name, new_user_qid_name};
 use crate::def::{
     fun_to_string, new_internal_qid, path_to_string, prefix_box, prefix_ensures, prefix_fuel_id,
     prefix_lambda_type, prefix_pre_var, prefix_requires, prefix_unbox, snapshot_ident,
@@ -369,11 +369,8 @@ fn new_user_qid(ctx: &Ctx, exp: &Exp) -> Qid {
     let fun_name = fun_as_rust_dbg(
         &ctx.fun.as_ref().expect("Expressions are expected to be within a function").current_fun,
     );
-    // In SMTLIB, unquoted attribute values cannot contain colons,
-    // and sise cannot handle quoting with vertical bars
-    let fun_name = str::replace(&fun_name, ":", "_");
     let qcount = ctx.quantifier_count.get();
-    let qid = format!("{}{}_{}", air::profiler::USER_QUANT_PREFIX, fun_name, qcount);
+    let qid = new_user_qid_name(&fun_name, qcount);
     ctx.quantifier_count.set(qcount + 1);
     let trigs = match &exp.x {
         ExpX::Bind(bnd, _) => match &bnd.x {

@@ -355,6 +355,15 @@ pub fn monotyp_apply(datatype: &Path, args: &Vec<Path>) -> Path {
     }
 }
 
+// Generate a unique quantifier name
+pub fn new_user_qid_name(fun_name: &str, q_count: u64) -> String {
+    // In SMTLIB, unquoted attribute values cannot contain colons,
+    // and sise cannot handle quoting with vertical bars
+    let fun_name = str::replace(&fun_name, ":", "_");
+    let qid = format!("{}{}_{}", air::profiler::USER_QUANT_PREFIX, fun_name, q_count);
+    qid
+}
+
 // Generate a unique internal quantifier ID
 pub fn new_internal_qid(name: String) -> Option<Ident> {
     // In SMTLIB, unquoted attribute values cannot contain colons,
