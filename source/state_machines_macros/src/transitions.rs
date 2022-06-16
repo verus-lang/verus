@@ -8,9 +8,9 @@ use crate::ident_visitor::validate_idents_transition;
 use crate::inherent_safety_conditions::check_inherent_conditions;
 use crate::util::{combine_errors_or_ok, combine_results};
 use proc_macro2::Span;
-use syn::parse;
-use syn::spanned::Spanned;
-use syn::{Error, Ident};
+use syn_verus::parse;
+use syn_verus::spanned::Spanned;
+use syn_verus::{Error, Ident};
 
 pub fn fields_contain(fields: &Vec<Field>, ident: &Ident) -> bool {
     for f in fields {

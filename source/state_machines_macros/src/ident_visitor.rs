@@ -3,10 +3,10 @@ use crate::ast::{
 };
 use crate::simplification::UPDATE_TMP_PREFIX;
 use crate::util::combine_errors_or_ok;
-use syn::parse;
-use syn::spanned::Spanned;
-use syn::visit::Visit;
-use syn::{Error, Expr, ExprMacro, Ident, Macro, Pat, PatIdent, Path, Type};
+use syn_verus::parse;
+use syn_verus::spanned::Spanned;
+use syn_verus::visit::Visit;
+use syn_verus::{Error, Expr, ExprMacro, Ident, Macro, Pat, PatIdent, Path, Type};
 
 /// Error if any identifiers conflict with reserved IDs used by macro expanion.
 ///

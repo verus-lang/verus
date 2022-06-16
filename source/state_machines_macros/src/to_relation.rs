@@ -2,8 +2,8 @@ use crate::ast::{Arm, SimplStmt, SplitKind, TransitionStmt};
 use proc_macro2::Span;
 use proc_macro2::TokenStream;
 use quote::{quote, quote_spanned};
-use syn::spanned::Spanned;
-use syn::Expr;
+use syn_verus::spanned::Spanned;
+use syn_verus::Expr;
 
 /// Converts a transition description into a relation between `pre` and `post`.
 /// Overall, this process has two steps:

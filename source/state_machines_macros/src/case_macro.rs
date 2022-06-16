@@ -1,11 +1,11 @@
 use proc_macro2::TokenStream;
 use quote::quote;
-use syn::parse;
-use syn::parse::{Parse, ParseStream};
-use syn::parse_macro_input;
-use syn::punctuated::Punctuated;
-use syn::token;
-use syn::{braced, parenthesized, Expr, ExprBlock, Ident, Path, Token};
+use syn_verus::parse;
+use syn_verus::parse::{Parse, ParseStream};
+use syn_verus::parse_macro_input;
+use syn_verus::punctuated::Punctuated;
+use syn_verus::token;
+use syn_verus::{braced, parenthesized, Expr, ExprBlock, Ident, Path, Token};
 
 pub fn case_on(input: proc_macro::TokenStream, is_init: bool) -> proc_macro::TokenStream {
     let (pre_post, name, arms) = if is_init {

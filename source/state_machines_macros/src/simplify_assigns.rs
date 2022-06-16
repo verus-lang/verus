@@ -2,9 +2,9 @@ use crate::ast::{SimplStmt, SM};
 use proc_macro2::{TokenStream, TokenTree};
 use quote::quote;
 use std::collections::HashSet;
-use syn::visit;
-use syn::visit::Visit;
-use syn::{Expr, Ident, Pat};
+use syn_verus::visit;
+use syn_verus::visit::Visit;
+use syn_verus::{Expr, Ident, Pat};
 
 /// Returns an equivalent SimplStmt sequence that has no 'assign' statements in it.
 

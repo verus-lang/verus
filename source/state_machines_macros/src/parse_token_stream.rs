@@ -9,12 +9,12 @@ use crate::self_type_visitor::replace_self_sm;
 use crate::to_token_stream::shardable_type_to_type;
 use crate::transitions::check_transitions;
 use proc_macro2::Span;
-use syn::buffer::Cursor;
-use syn::parse;
-use syn::parse::{Parse, ParseStream};
-use syn::spanned::Spanned;
-use syn::Token;
-use syn::{
+use syn_verus::buffer::Cursor;
+use syn_verus::parse;
+use syn_verus::parse::{Parse, ParseStream};
+use syn_verus::spanned::Spanned;
+use syn_verus::Token;
+use syn_verus::{
     braced, AttrStyle, Attribute, Error, FieldsNamed, FnArg, GenericArgument, GenericParam,
     Generics, Ident, ImplItem, ImplItemMethod, Meta, MetaList, NestedMeta, PathArguments, Receiver,
     ReturnType, Type, TypePath, Visibility, WhereClause,

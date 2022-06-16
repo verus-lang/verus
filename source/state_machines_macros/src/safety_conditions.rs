@@ -1,7 +1,7 @@
 use crate::ast::{AssertProof, SimplStmt, SplitKind};
 use crate::to_relation::emit_match;
 use quote::{quote, quote_spanned};
-use syn::{Expr, Ident};
+use syn_verus::{Expr, Ident};
 
 // Given a transition, we convert it into a lemma that will create the correct
 // verification conditions for its 'assert' statement.

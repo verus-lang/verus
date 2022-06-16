@@ -3,11 +3,11 @@ use crate::parse_token_stream::SMBundle;
 use proc_macro2::Span;
 use quote::{quote, ToTokens};
 use std::collections::{HashMap, HashSet};
-use syn::parse;
-use syn::punctuated::Punctuated;
-use syn::spanned::Spanned;
-use syn::token;
-use syn::{
+use syn_verus::parse;
+use syn_verus::punctuated::Punctuated;
+use syn_verus::spanned::Spanned;
+use syn_verus::token;
+use syn_verus::{
     Error, Expr, ExprCall, ExprPath, FnArg, Ident, Pat, PatIdent, PatType, ReturnType, Stmt, Type,
 };
 

@@ -1,7 +1,7 @@
 use proc_macro2::TokenStream;
-use syn::parse;
-use syn::parse2;
-use syn::{Error, Expr, Pat, PatIdent, PatTuple};
+use syn_verus::parse;
+use syn_verus::parse2;
+use syn_verus::{Error, Expr, Pat, PatIdent, PatTuple};
 
 // If there is at least one error, combine them all into one
 // Else, return Ok(())
