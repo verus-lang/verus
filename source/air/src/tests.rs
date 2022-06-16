@@ -9,7 +9,7 @@ use sise::Node;
 
 #[allow(dead_code)]
 fn run_nodes_as_test(should_typecheck: bool, should_be_valid: bool, nodes: &[Node]) {
-    let mut air_context = crate::context::Context::new(crate::smt_process::SmtProcess::launch());
+    let mut air_context = crate::context::Context::new();
     air_context.set_z3_param("air_recommended_options", "true");
     match Parser::new().nodes_to_commands(&nodes) {
         Ok(commands) => {

@@ -151,8 +151,8 @@ pub(crate) fn smt_check_assertion<'ctx>(
     // Run SMT solver
     let time0 = std::time::Instant::now();
     let time1 = std::time::Instant::now();
-    let mut commands_handle =
-        context.smt_process.send_commands_async(context.smt_log.take_pipe_data());
+    let smt_data = context.smt_log.take_pipe_data();
+    let mut commands_handle = context.get_smt_process().send_commands_async(smt_data);
     let smt_output = if let Some((report_interval, report_fn)) = report_long_running {
         loop {
             match commands_handle.wait_timeout(*report_interval) {
@@ -205,7 +205,8 @@ pub(crate) fn smt_check_assertion<'ctx>(
         SmtOutput::Sat => false,
         SmtOutput::Unknown => {
             context.smt_log.log_get_info("reason-unknown");
-            let smt_output = context.smt_process.send_commands(context.smt_log.take_pipe_data());
+            let smt_data = context.smt_log.take_pipe_data();
+            let smt_output = context.get_smt_process().send_commands(smt_data);
 
             #[derive(PartialEq, Eq)]
             enum SmtReasonUnknown {
@@ -248,7 +249,8 @@ pub(crate) fn smt_check_assertion<'ctx>(
         ValidityResult::Valid
     } else {
         context.smt_log.log_word("get-model");
-        let smt_output = context.smt_process.send_commands(context.smt_log.take_pipe_data());
+        let smt_data = context.smt_log.take_pipe_data();
+        let smt_output = context.get_smt_process().send_commands(smt_data);
         let model = crate::parser::Parser::new().lines_to_model(&smt_output);
         let mut model_defs: HashMap<Ident, ModelDef> = HashMap::new();
         for def in model.iter() {
