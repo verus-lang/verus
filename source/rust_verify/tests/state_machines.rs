@@ -2248,7 +2248,9 @@ test_verify_one_file! {
                     guard t >= (Map::<int,int>::empty().insert(5, 7)) by { }; // FAILS
 
                     birds_eye let t = pre.t;
-                    assert(t.dom().contains(5) && t.index(5) == 7);
+                    assert(t.dom().contains(5) && t.index(5) == 7) by {
+                        assert(Map::<int,int>::empty().insert(5, 7).dom().contains(5));
+                    };
                 }
             }
         }}
@@ -4306,6 +4308,8 @@ test_verify_one_file! {
                 Option::Some(opt_token) => {
                     inst.tr1(opt_token);
 
+                    assert(map_tokens.dom().contains(1));
+
                     #[proof] let map_token = map_tokens.proof_remove(1);
 
                     #[proof] let the_guard = inst.tr3(1, &map_token);
@@ -5043,6 +5047,7 @@ test_verify_one_file! {
 
         fn test_inst() {
             #[proof] let (inst, mut init_m) = Y::Instance::initialize();
+            assert(init_m.dom().contains(1));
             #[proof] let m_1 = init_m.proof_remove(1);
             assert(m_1.value == 2);
 
@@ -5608,6 +5613,7 @@ test_verify_one_file! {
                 Option::Some(Goo::Bar),
             );
 
+            assert(m_token.dom().contains(1));
             #[proof] let kv = m_token.proof_remove(1);
             #[proof] let o = match opt_token {
                 Option::None => proof_from_false(),
@@ -5634,6 +5640,7 @@ test_verify_one_file! {
                 Option::Some(Goo::Qux(8)),
             );
 
+            assert(m_token.dom().contains(1));
             #[proof] let kv = m_token.proof_remove(1);
             #[proof] let o = match opt_token {
                 Option::None => proof_from_false(),
@@ -5660,6 +5667,7 @@ test_verify_one_file! {
                 Option::Some(Goo::Tal(8, 9)),
             );
 
+            assert(m_token.dom().contains(1));
             #[proof] let kv = m_token.proof_remove(1);
             #[proof] let o = match opt_token {
                 Option::None => proof_from_false(),
