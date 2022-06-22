@@ -2670,9 +2670,7 @@ test_verify_one_file! {
     } => Err(e) => assert_error_msg(e, "bound variables with the same name")
 }
 
-// TODO this current panics but should just be a normal error
-/*
-test_verify_one_file!{
+test_verify_one_file! {
     #[test] type_recursion_fail IMPORTS.to_string() + code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -2680,9 +2678,8 @@ test_verify_one_file!{
                 pub t: X::Instance,
             }
         }}
-    } => Err(e)
+    } => Err(e) => assert_error_msg(e, "recursive type")
 }
-*/
 
 test_verify_one_file! {
     #[test] type_recursion_fail_negative IMPORTS.to_string() + code_str! {
