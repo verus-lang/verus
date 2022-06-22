@@ -163,3 +163,38 @@ test_verify_one_file! {
         }
     } => Err(err) => assert_one_fails(err)
 }
+
+test_verify_one_file! {
+    #[ignore] #[test] test_nested_assert_forall_by_regression_155 code! {
+        use crate::pervasive::map::*;
+
+        #[proof]
+        pub fn test_forall_forall<S, T>() {
+            assert_forall_by(|m1: Map<S, T>, m2: Map<S, T>, n: S| {
+                requires(m1.dom().contains(n) && !m2.dom().contains(n));
+                ensures(equal(m1.remove(n).union_prefer_right(m2), m1.union_prefer_right(m2).remove(n)));
+
+                let union1 = m1.remove(n).union_prefer_right(m2);
+                let union2 = m1.union_prefer_right(m2).remove(n);
+                #[spec] let m1 = union1;
+                #[spec] let m2 = union2;
+
+                ::builtin::assert_by(::builtin::equal(m1, m2), {
+                    ::builtin::assert_forall_by(|key| {
+                        ::builtin::ensures([((#[trigger]
+                        m1.dom().contains(key)) >>= m2.dom().contains(key))
+                            && (m2.dom().contains(key) >>= m1.dom().contains(key))
+                            && (m1.dom().contains(key) && m2.dom().contains(key) >>=
+                                ::builtin::equal(m1.index(key), m2.index(key)))]);
+                        { {} }
+                    });
+                    crate::pervasive::assert(m1.ext_equal(m2));
+                });
+
+                assume(equal(union1, union2));
+                assert(equal(m1.remove(n).union_prefer_right(m2), union2));
+                assert(equal(union1, m1.union_prefer_right(m2).remove(n)));
+            });
+        }
+    } => Ok(())
+}
