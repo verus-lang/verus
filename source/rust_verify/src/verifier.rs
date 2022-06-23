@@ -278,7 +278,7 @@ impl Verifier {
         };
 
         #[cfg(not(feature = "singular"))]
-         let mut result = air_context.command(
+        let mut result = air_context.command(
             &command,
             QueryContext { report_long_running: Some(&mut report_long_running()) },
         );
