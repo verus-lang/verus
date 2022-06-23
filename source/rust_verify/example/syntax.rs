@@ -89,6 +89,33 @@ pub(crate) closed spec fn my_pub_spec_fun5(x: u32, y: u32) -> u32 {
     x / 2 + y / 2
 }
 
+/// Recursive functions must have decreases clauses so that Verus can verify that the functions
+/// terminate.
+fn test_rec(x: u64, y: u64)
+    requires
+        0 < x < 100,
+        y < 100 - x,
+    decreases x
+{
+    if x > 1 {
+        test_rec(x - 1, y + 1);
+    }
+}
+
+/// Multiple decreases clauses are ordered lexicographically, so that later clauses may
+/// increase when earlier clauses decrease.
+spec fn test_rec2(x: int, y: int) -> int
+    decreases x, y
+{
+    if y > 0 {
+        1 + test_rec2(x, y - 1)
+    } else if x > 0 {
+        2 + test_rec2(x - 1, 100)
+    } else {
+        3
+    }
+}
+
 /// variables may be exec, tracked, or ghost
 ///   - exec: compiled
 ///   - tracked: erased before compilation, checked for lifetimes (advanced feature, discussed later)
@@ -271,6 +298,18 @@ pub(crate) proof fn binary_ops<A>(a: A, x: int) {
     assert(false <==> true && false);
 }
 
+/// In specs, <=, <, >=, and > may be chained together so that, for example, a <= b < c means
+/// a <= b && b < c.  (Note on efficiency: if b is a complex expression,
+/// Verus will automatically introduce a temporary variable under the hood so that
+/// the expression doesn't duplicate b: {let x_b = b; a <= x_b && x_b < c}.)
+proof fn chained_comparisons(i: int, j: int, k: int)
+    requires
+        0 <= i + 1 <= j + 10 < k + 7,
+    ensures
+        j < k,
+{
+}
+
 /// struct and enum declarations may be declared exec (default), tracked, or ghost,
 /// and fields may be declared exec (default), tracked or ghost.
 tracked struct TrackedAndGhost<T, G>(
@@ -329,5 +368,28 @@ fn test_consume(t: Tracked<int>)
     }
 }
 */
+
+/// Spec functions may omit their body, in which case they are considered
+/// uninterpreted (returning an arbitrary value of the return type depending on the input values).
+/// This is safe, since spec functions (unlike proof and exec functions) may always
+/// return arbitrary values of any type,
+/// where the value may be special "bottom" value for otherwise uninhabited types.
+spec fn my_uninterpreted_fun1(i: int, j: int) -> int;
+
+spec fn my_uninterpreted_fun2(i: int, j: int) -> int
+    recommends
+        0 <= i < 10,
+        0 <= j < 10;
+
+/// Trait functions may have specifications
+trait T {
+    proof fn my_uninterpreted_fun2(&self, i: int, j: int) -> (r: int)
+        requires
+            0 <= i < 10,
+            0 <= j < 10,
+        ensures
+            i <= r,
+            j <= r;
+}
 
 } // verus!
