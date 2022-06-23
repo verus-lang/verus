@@ -1,5 +1,6 @@
 use crate::attributes::{
-    get_trigger, get_var_mode, get_verifier_attrs, parse_attrs, Attr, GetVariantField,
+    get_ghost_block_opt, get_trigger, get_var_mode, get_verifier_attrs, parse_attrs, Attr,
+    GetVariantField, GhostBlockAttr,
 };
 use crate::context::BodyCtxt;
 use crate::erase::ResolvedCall;
@@ -29,8 +30,9 @@ use rustc_span::Span;
 use std::sync::Arc;
 use vir::ast::{
     ArithOp, ArmX, AssertQueryMode, BinaryOp, BitwiseOp, CallTarget, Constant, ExprX, FieldOpr,
-    FunX, HeaderExpr, HeaderExprX, Ident, IntRange, InvAtomicity, Mode, PatternX, Quant,
-    SpannedTyped, StmtX, Stmts, Typ, TypX, UnaryOp, UnaryOpr, VarAt, VirErr,
+    FunX, HeaderExpr, HeaderExprX, Ident, InequalityOp, IntRange, InvAtomicity, Mode, MultiOp,
+    PathX, PatternX, Quant, SpannedTyped, StmtX, Stmts, Typ, TypX, UnaryOp, UnaryOpr, VarAt,
+    VirErr,
 };
 use vir::ast_util::{ident_binder, path_as_rust_name};
 use vir::def::positional_field_ident;
@@ -329,7 +331,7 @@ fn get_fn_path<'tcx>(bctx: &BodyCtxt<'tcx>, expr: &Expr<'tcx>) -> Result<vir::as
 }
 
 const BUILTIN_INV_LOCAL_BEGIN: &str = "crate::pervasive::invariant::open_local_invariant_begin";
-const BUILTIN_INV_BEGIN: &str = "crate::pervasive::invariant::open_invariant_begin";
+const BUILTIN_INV_ATOMIC_BEGIN: &str = "crate::pervasive::invariant::open_atomic_invariant_begin";
 const BUILTIN_INV_END: &str = "crate::pervasive::invariant::open_invariant_end";
 
 fn fn_call_to_vir<'tcx>(
@@ -396,6 +398,12 @@ fn fn_call_to_vir<'tcx>(
     let is_choose_tuple = f_name == "builtin::choose_tuple";
     let is_with_triggers = f_name == "builtin::with_triggers";
     let is_equal = f_name == "builtin::equal";
+    let is_chained_value = f_name == "builtin::chained_value";
+    let is_chained_le = f_name == "builtin::chained_le";
+    let is_chained_lt = f_name == "builtin::chained_lt";
+    let is_chained_ge = f_name == "builtin::chained_ge";
+    let is_chained_gt = f_name == "builtin::chained_gt";
+    let is_chained_cmp = f_name == "builtin::chained_cmp";
     let is_hide = f_name == "builtin::hide";
     let is_extra_dependency = f_name == "builtin::extra_dependency";
     let is_reveal = f_name == "builtin::reveal";
@@ -416,6 +424,8 @@ fn fn_call_to_vir<'tcx>(
     let is_sub = f_name == "core::ops::arith::Sub::sub";
     let is_mul = f_name == "core::ops::arith::Mul::mul";
     let is_panic = f_name == "core::panicking::panic";
+    let is_alloc_ghost = f_name == "pervasive::modes::Ghost::<A>::exec";
+    let is_alloc_tracked = f_name == "pervasive::modes::Tracked::<A>::exec";
     let is_spec = is_admit
         || is_no_method_body
         || is_requires
@@ -433,13 +443,16 @@ fn fn_call_to_vir<'tcx>(
     let is_directive = is_extra_dependency || is_hide || is_reveal || is_reveal_fuel;
     let is_cmp = is_equal || is_eq || is_ne || is_le || is_ge || is_lt || is_gt;
     let is_arith_binary = is_add || is_sub || is_mul;
+    let is_chained_ineq = is_chained_le || is_chained_lt || is_chained_ge || is_chained_gt;
 
     // These functions are all no-ops in the SMT encoding, so we don't emit any VIR
     let is_ignored_fn = f_name == "std::box::Box::<T>::new"
         || f_name == "std::rc::Rc::<T>::new"
         || f_name == "std::sync::Arc::<T>::new";
 
-    if f_name == BUILTIN_INV_BEGIN || f_name == BUILTIN_INV_LOCAL_BEGIN || f_name == BUILTIN_INV_END
+    if f_name == BUILTIN_INV_ATOMIC_BEGIN
+        || f_name == BUILTIN_INV_LOCAL_BEGIN
+        || f_name == BUILTIN_INV_END
     {
         // `open_invariant_begin` and `open_invariant_end` calls should only appear
         // through use of the `open_invariant!` macro, which creates an invariant block.
@@ -448,7 +461,10 @@ fn fn_call_to_vir<'tcx>(
         // not reach this point.
         return err_span_string(
             expr.span,
-            format!("{} should never be used except through open_invariant macro", f_name),
+            format!(
+                "{} should never be used except through open_atomic_invariant or open_local_invariant macro",
+                f_name
+            ),
         );
     }
 
@@ -623,6 +639,39 @@ fn fn_call_to_vir<'tcx>(
             expr.span,
             "only a variable binding is allowed as the argument to old",
         );
+    }
+
+    if is_alloc_ghost || is_alloc_tracked {
+        unsupported_err_unless!(len == 1, expr.span, "expected Ghost/Tracked", &args);
+        let arg = &args[0];
+        if get_ghost_block_opt(bctx.ctxt.tcx.hir().attrs(expr.hir_id))
+            == Some(GhostBlockAttr::Wrapper)
+        {
+            let vir_arg = expr_to_vir(bctx, arg, ExprModifier::REGULAR)?;
+            let alloc_wrapper = Some(name);
+            match (is_alloc_tracked, get_ghost_block_opt(bctx.ctxt.tcx.hir().attrs(arg.hir_id))) {
+                (false, Some(GhostBlockAttr::GhostWrapped)) => {
+                    return Ok(mk_expr(ExprX::Ghost {
+                        alloc_wrapper,
+                        tracked: false,
+                        expr: vir_arg,
+                    }));
+                }
+                (true, Some(GhostBlockAttr::TrackedWrapped)) => {
+                    return Ok(mk_expr(ExprX::Ghost {
+                        alloc_wrapper,
+                        tracked: true,
+                        expr: vir_arg,
+                    }));
+                }
+                (_, attr) => {
+                    return err_span_string(
+                        expr.span,
+                        format!("unexpected ghost block attribute {:?}", attr),
+                    );
+                }
+            }
+        }
     }
 
     if is_decreases_by {
@@ -834,13 +883,13 @@ fn fn_call_to_vir<'tcx>(
         } else if is_ne {
             BinaryOp::Ne
         } else if is_le {
-            BinaryOp::Le
+            BinaryOp::Inequality(InequalityOp::Le)
         } else if is_ge {
-            BinaryOp::Ge
+            BinaryOp::Inequality(InequalityOp::Ge)
         } else if is_lt {
-            BinaryOp::Lt
+            BinaryOp::Inequality(InequalityOp::Lt)
         } else if is_gt {
-            BinaryOp::Gt
+            BinaryOp::Inequality(InequalityOp::Gt)
         } else if is_add {
             BinaryOp::Arith(ArithOp::Add, bctx.ctxt.infer_mode())
         } else if is_sub {
@@ -854,6 +903,55 @@ fn fn_call_to_vir<'tcx>(
         };
         let e = mk_expr(ExprX::Binary(vop, lhs, rhs));
         if is_arith_binary { Ok(mk_ty_clip(&expr_typ(), &e)) } else { Ok(e) }
+    } else if is_chained_value {
+        unsupported_err_unless!(len == 1, expr.span, "chained_value", &args);
+        unsupported_err_unless!(
+            matches!(*vir_args[0].typ, TypX::Int(_)),
+            expr.span,
+            "chained inequalities for non-integer types",
+            &args
+        );
+        let exprx =
+            ExprX::Multi(MultiOp::Chained(Arc::new(vec![])), Arc::new(vec![vir_args[0].clone()]));
+        Ok(spanned_typed_new(expr.span, &Arc::new(TypX::Bool), exprx))
+    } else if is_chained_ineq {
+        unsupported_err_unless!(len == 2, expr.span, "chained inequality", &args);
+        unsupported_err_unless!(
+            matches!(&vir_args[0].x, ExprX::Multi(MultiOp::Chained(_), _)),
+            expr.span,
+            "chained inequalities for non-integer types",
+            &args
+        );
+        unsupported_err_unless!(
+            matches!(*vir_args[1].typ, TypX::Int(_)),
+            expr.span,
+            "chained inequalities for non-integer types",
+            &args
+        );
+        let op = if is_chained_le {
+            InequalityOp::Le
+        } else if is_chained_lt {
+            InequalityOp::Lt
+        } else if is_chained_ge {
+            InequalityOp::Ge
+        } else if is_chained_gt {
+            InequalityOp::Gt
+        } else {
+            panic!("is_chained_ineq")
+        };
+        if let ExprX::Multi(MultiOp::Chained(ops), es) = &vir_args[0].x {
+            let mut ops = (**ops).clone();
+            let mut es = (**es).clone();
+            ops.push(op);
+            es.push(vir_args[1].clone());
+            let exprx = ExprX::Multi(MultiOp::Chained(Arc::new(ops)), Arc::new(es));
+            Ok(spanned_typed_new(expr.span, &Arc::new(TypX::Bool), exprx))
+        } else {
+            panic!("is_chained_ineq")
+        }
+    } else if is_chained_cmp {
+        unsupported_err_unless!(len == 1, expr.span, "chained_cmp", args);
+        Ok(vir_args[0].clone())
     } else {
         // filter out the Fn type parameters
         let mut fn_params: Vec<Ident> = Vec::new();
@@ -1099,7 +1197,10 @@ fn is_invariant_block(bctx: &BodyCtxt, expr: &Expr) -> Result<bool, VirErr> {
 }
 
 fn malformed_inv_block_err<'tcx>(expr: &Expr<'tcx>) -> Result<vir::ast::Expr, VirErr> {
-    err_span_str(expr.span, "malformed invariant block; use 'open_invariant' macro instead")
+    err_span_str(
+        expr.span,
+        "malformed invariant block; use `open_atomic_invariant!` or `open_local_invariant!` macro instead",
+    )
 }
 
 fn invariant_block_to_vir<'tcx>(
@@ -1107,10 +1208,11 @@ fn invariant_block_to_vir<'tcx>(
     expr: &Expr<'tcx>,
     modifier: ExprModifier,
 ) -> Result<vir::ast::Expr, VirErr> {
-    // The open_invariant! macro produces code that looks like this
+    // The open_atomic_invariant! macro produces code that looks like this
+    // (and similarly for open_local_invariant!)
     //
     // #[verifier(invariant_block)] {
-    //      let (guard, mut $inner) = open_invariant_begin($eexpr);
+    //      let (guard, mut $inner) = open_atomic_invariant_begin($eexpr);
     //      $bblock
     //      open_invariant_end(guard, $inner);
     //  }
@@ -1123,7 +1225,7 @@ fn invariant_block_to_vir<'tcx>(
     // We also need to "recover" the $inner, $eexpr, and $bblock for converstion to VIR.
     //
     // If the AST doesn't look exactly like we expect, print an error asking the user
-    // to use the open_invariant! macro.
+    // to use the open_atomic_invariant! macro.
 
     let body = match &expr.kind {
         ExprKind::Block(body, _) => body,
@@ -1188,10 +1290,10 @@ fn invariant_block_to_vir<'tcx>(
             ..
         }) => {
             let f_name = path_as_rust_name(&def_id_to_vir_path(bctx.ctxt.tcx, *fun_id));
-            if f_name != BUILTIN_INV_BEGIN && f_name != BUILTIN_INV_LOCAL_BEGIN {
+            if f_name != BUILTIN_INV_ATOMIC_BEGIN && f_name != BUILTIN_INV_LOCAL_BEGIN {
                 return malformed_inv_block_err(expr);
             }
-            let atomicity = if f_name == BUILTIN_INV_BEGIN {
+            let atomicity = if f_name == BUILTIN_INV_ATOMIC_BEGIN {
                 InvAtomicity::Atomic
             } else {
                 InvAtomicity::NonAtomic
@@ -1380,7 +1482,22 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
             if is_invariant_block(bctx, expr)? {
                 invariant_block_to_vir(bctx, expr, modifier)
             } else {
-                block_to_vir(bctx, body, &expr.span, &expr_typ(), modifier)
+                let block = block_to_vir(bctx, body, &expr.span, &expr_typ(), modifier);
+                if let Some(g_attr) = get_ghost_block_opt(bctx.ctxt.tcx.hir().attrs(expr.hir_id)) {
+                    let tracked = match g_attr {
+                        GhostBlockAttr::Proof => false,
+                        GhostBlockAttr::Tracked => true,
+                        GhostBlockAttr::GhostWrapped | GhostBlockAttr::TrackedWrapped => {
+                            return block;
+                        }
+                        GhostBlockAttr::Wrapper => {
+                            return err_span_str(expr.span, "unexpected ghost block wrapper");
+                        }
+                    };
+                    Ok(mk_expr(ExprX::Ghost { alloc_wrapper: None, tracked, expr: block? }))
+                } else {
+                    block
+                }
             }
         }
         ExprKind::Call(fun, args_slice) => {
@@ -1500,7 +1617,28 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                     varg,
                 )))
             }
-            UnOp::Deref => expr_to_vir_inner(bctx, arg, is_expr_typ_mut_ref(bctx, arg, modifier)?),
+            UnOp::Deref => {
+                let inner =
+                    expr_to_vir_inner(bctx, arg, is_expr_typ_mut_ref(bctx, arg, modifier)?)?;
+                if inner.typ.is_ghost_typ() || inner.typ.is_tracked_typ() {
+                    let (path, typ) = if let TypX::Datatype(path, targs) = &*inner.typ {
+                        assert!(targs.len() == 1);
+                        (path.clone(), targs[0].clone())
+                    } else {
+                        panic!("incorrect Ghost/Tracked type")
+                    };
+                    let mut segments: Vec<Ident> = (*(path.segments)).clone();
+                    segments.push(Arc::new("value".to_string()));
+                    let segments = Arc::new(segments);
+                    let path = Arc::new(PathX { krate: path.krate.clone(), segments });
+                    let typ_args = Arc::new(vec![typ]);
+                    let fun = Arc::new(FunX { path, trait_path: None });
+                    let target = CallTarget::Static(fun, typ_args);
+                    Ok(mk_expr(ExprX::Call(target, Arc::new(vec![inner]))))
+                } else {
+                    Ok(inner)
+                }
+            }
         },
         ExprKind::Binary(op, lhs, rhs) => {
             let vlhs = expr_to_vir(bctx, lhs, modifier)?;
@@ -1529,10 +1667,10 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                 BinOpKind::Or => BinaryOp::Or,
                 BinOpKind::Eq => BinaryOp::Eq(Mode::Exec),
                 BinOpKind::Ne => BinaryOp::Ne,
-                BinOpKind::Le => BinaryOp::Le,
-                BinOpKind::Ge => BinaryOp::Ge,
-                BinOpKind::Lt => BinaryOp::Lt,
-                BinOpKind::Gt => BinaryOp::Gt,
+                BinOpKind::Le => BinaryOp::Inequality(InequalityOp::Le),
+                BinOpKind::Ge => BinaryOp::Inequality(InequalityOp::Ge),
+                BinOpKind::Lt => BinaryOp::Inequality(InequalityOp::Lt),
+                BinOpKind::Gt => BinaryOp::Inequality(InequalityOp::Gt),
                 BinOpKind::Add => BinaryOp::Arith(ArithOp::Add, bctx.ctxt.infer_mode()),
                 BinOpKind::Sub => BinaryOp::Arith(ArithOp::Sub, bctx.ctxt.infer_mode()),
                 BinOpKind::Mul => BinaryOp::Arith(ArithOp::Mul, bctx.ctxt.infer_mode()),

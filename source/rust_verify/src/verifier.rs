@@ -261,7 +261,7 @@ impl Verifier {
             (std::time::Duration::from_secs(2), report_fn)
         };
         let is_check_valid = matches!(**command, CommandX::CheckValid(_));
-
+        let time0 = Instant::now();
         #[cfg(feature = "singular")]
         let mut result = if !is_singular {
             air_context.command(
@@ -278,11 +278,13 @@ impl Verifier {
         };
 
         #[cfg(not(feature = "singular"))]
-        let mut result = air_context.command(
+         let mut result = air_context.command(
             &command,
             QueryContext { report_long_running: Some(&mut report_long_running()) },
         );
 
+        let time1 = Instant::now();
+        self.time_air += time1 - time0;
         let mut is_first_check = true;
         let mut checks_remaining = self.args.multiple_errors;
         let mut only_check_earlier = false;
@@ -371,10 +373,13 @@ impl Verifier {
                         }
                     }
 
+                    let time0 = Instant::now();
                     result = air_context.check_valid_again(
                         only_check_earlier,
                         QueryContext { report_long_running: Some(&mut report_long_running()) },
                     );
+                    let time1 = Instant::now();
+                    self.time_air += time1 - time0;
                 }
                 ValidityResult::UnexpectedOutput(err) => {
                     panic!("unexpected output from solver: {}", err);
@@ -437,7 +442,6 @@ impl Verifier {
             air_context.comment(comment);
         }
         for command in commands.iter() {
-            let time0 = Instant::now();
             let result_invalidity = self.check_result_validity(
                 compiler,
                 error_as,
@@ -449,8 +453,6 @@ impl Verifier {
                 *prover_choice == vir::def::ProverChoice::Singular,
             );
             invalidity = invalidity || result_invalidity;
-            let time1 = Instant::now();
-            self.time_air += time1 - time0;
         }
 
         invalidity
@@ -462,7 +464,7 @@ impl Verifier {
         function_path: Option<&vir::ast::Path>,
         is_rerun: bool,
     ) -> Result<air::context::Context, VirErr> {
-        let mut air_context = air::context::Context::new(air::smt_manager::SmtManager::new());
+        let mut air_context = air::context::Context::new();
         air_context.set_ignore_unexpected_smt(self.args.ignore_unexpected_smt);
         air_context.set_debug(self.args.debug);
 
@@ -556,9 +558,13 @@ impl Verifier {
         &mut self,
         compiler: &Compiler,
         krate: &Krate,
-        air_context: &mut air::context::Context,
+        module: &vir::ast::Path,
         ctx: &mut vir::context::Ctx,
-    ) -> Result<(), VirErr> {
+    ) -> Result<(Duration, Duration), VirErr> {
+        let mut air_context = self.new_air_context_with_prelude(module, None, false)?;
+        let mut spunoff_time_smt_init = Duration::ZERO;
+        let mut spunoff_time_smt_run = Duration::ZERO;
+
         let module = &ctx.module();
         air_context.blank_line();
         air_context.comment("Fuel");
@@ -575,7 +581,7 @@ impl Verifier {
                 .filter(|d| is_visible_to(&d.x.visibility, module))
                 .collect(),
         );
-        self.run_commands(air_context, &datatype_commands, &("Datatypes".to_string()));
+        self.run_commands(&mut air_context, &datatype_commands, &("Datatypes".to_string()));
 
         let mk_fun_ctx = |f: &Function, checking_recommends: bool| {
             Some(vir::context::FunctionCtx {
@@ -596,7 +602,7 @@ impl Verifier {
             }
             let commands = vir::func_to_air::func_name_to_air(ctx, &function)?;
             let comment = "Function-Decl ".to_string() + &fun_as_rust_dbg(&function.x.name);
-            self.run_commands(air_context, &commands, &comment);
+            self.run_commands(&mut air_context, &commands, &comment);
             function_decl_commands.push((commands.clone(), comment.clone()));
         }
         ctx.fun = None;
@@ -661,7 +667,7 @@ impl Verifier {
                 let decl_commands = vir::func_to_air::func_decl_to_air(ctx, &function)?;
                 ctx.fun = None;
                 let comment = "Function-Specs ".to_string() + &fun_as_rust_dbg(f);
-                self.run_commands(air_context, &decl_commands, &comment);
+                self.run_commands(&mut air_context, &decl_commands, &comment);
                 function_spec_commands.push((decl_commands.clone(), comment.clone()));
             }
             // Check termination
@@ -686,7 +692,7 @@ impl Verifier {
                 let invalidity = self.run_commands_queries(
                     compiler,
                     ErrorAs::Error,
-                    air_context,
+                    &mut air_context,
                     Arc::new(CommandsWithContextX {
                         span: function.span.clone(),
                         desc: "termination proof".to_string(),
@@ -717,7 +723,7 @@ impl Verifier {
                         self.run_commands_queries(
                             compiler,
                             error_as,
-                            air_context,
+                            &mut air_context,
                             command.clone(),
                             &HashMap::new(),
                             &snap_map,
@@ -736,7 +742,7 @@ impl Verifier {
                 }
                 let decl_commands = &fun_axioms[f];
                 let comment = "Function-Axioms ".to_string() + &fun_as_rust_dbg(f);
-                self.run_commands(air_context, &decl_commands, &comment);
+                self.run_commands(&mut air_context, &decl_commands, &comment);
                 function_axiom_commands.push((decl_commands.clone(), comment.clone()));
                 funs.remove(f);
             }
@@ -803,7 +809,7 @@ impl Verifier {
                         )?;
                         &mut spinoff_z3_context
                     } else {
-                        &mut *air_context
+                        &mut air_context
                     };
                     let command_invalidity = self.run_commands_queries(
                         compiler,
@@ -816,6 +822,11 @@ impl Verifier {
                         Some(&function.x.name),
                         &(s.to_string() + &fun_as_rust_dbg(&function.x.name)),
                     );
+                    if *prover_choice == vir::def::ProverChoice::Spinoff {
+                        let (time_smt_init, time_smt_run) = query_air_context.get_time();
+                        spunoff_time_smt_init += time_smt_init;
+                        spunoff_time_smt_run += time_smt_run;
+                    }
 
                     function_invalidity = function_invalidity || command_invalidity;
                 }
@@ -834,7 +845,9 @@ impl Verifier {
         }
         ctx.fun = None;
 
-        Ok(())
+        let (time_smt_init, time_smt_run) = air_context.get_time();
+
+        Ok((time_smt_init + spunoff_time_smt_init, time_smt_run + spunoff_time_smt_run))
     }
 
     fn verify_module_outer(
@@ -850,8 +863,6 @@ impl Verifier {
         } else {
             compiler.diagnostic().note_without_error(&format!("verifying module {}", &module_name));
         }
-
-        let mut air_context = self.new_air_context_with_prelude(module, None, false)?;
 
         let (pruned_krate, mono_abstract_datatypes, lambda_types) =
             vir::prune::prune_krate_for_module(&krate, &module);
@@ -870,10 +881,10 @@ impl Verifier {
             vir::printer::write_krate(&mut file, &poly_krate);
         }
 
-        self.verify_module(compiler, &poly_krate, &mut air_context, &mut ctx)?;
+        let (time_smt_init, time_smt_run) =
+            self.verify_module(compiler, &poly_krate, module, &mut ctx)?;
         global_ctx = ctx.free();
 
-        let (time_smt_init, time_smt_run) = air_context.get_time();
         self.time_smt_init += time_smt_init;
         self.time_smt_run += time_smt_run;
 
@@ -1079,6 +1090,7 @@ impl Verifier {
         let time1 = Instant::now();
         let vir_crate = crate::rust_to_vir::crate_to_vir(&ctxt)?;
         let time2 = Instant::now();
+        let vir_crate = vir::ast_sort::sort_krate(&vir_crate);
 
         if self.args.log_all || self.args.log_vir {
             let mut file = self.create_log_file(None, None, crate::config::VIR_FILE_SUFFIX)?;

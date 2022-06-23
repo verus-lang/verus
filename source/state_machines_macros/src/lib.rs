@@ -27,7 +27,7 @@ use case_macro::case_on;
 use lemmas::check_lemmas;
 use parse_token_stream::{parse_result_to_smir, ParseResult};
 use proc_macro::TokenStream;
-use syn::parse_macro_input;
+use syn_verus::parse_macro_input;
 use to_token_stream::output_token_stream;
 
 fn construct_state_machine(input: TokenStream, concurrent: bool) -> TokenStream {

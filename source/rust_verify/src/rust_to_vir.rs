@@ -90,12 +90,14 @@ fn check_item<'tcx>(
             )?;
         }
         ItemKind::Impl(impll) => {
+            let attrs = ctxt.tcx.hir().attrs(item.hir_id());
+            let vattrs = get_verifier_attrs(attrs)?;
+
+            if vattrs.external {
+                return Ok(());
+            }
             if impll.unsafety != Unsafety::Normal {
-                let attrs = ctxt.tcx.hir().attrs(item.hir_id());
-                let vattrs = get_verifier_attrs(attrs)?;
-                if !vattrs.external_body {
-                    return err_span_str(item.span, "the verifier does not support `unsafe` here");
-                }
+                return err_span_str(item.span, "the verifier does not support `unsafe` here");
             }
 
             if let Some(TraitRef { path, hir_ref_id: _ }) = impll.of_trait {

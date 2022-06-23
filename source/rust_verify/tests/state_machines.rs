@@ -249,6 +249,38 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_add_constant IMPORTS.to_string() + code_str! {
+        tokenized_state_machine!{ X {
+            fields {
+                #[sharding(constant)] pub t: int
+            }
+
+            transition!{
+                tr() {
+                    add t += (5);
+                }
+            }
+        }}
+    } => Err(e) => assert_error_msg(e, "'add' statement not allowed for field with sharding strategy 'constant'")
+}
+
+test_verify_one_file! {
+    #[test] test_have_constant IMPORTS.to_string() + code_str! {
+        tokenized_state_machine!{ X {
+            fields {
+                #[sharding(constant)] pub t: int
+            }
+
+            transition!{
+                tr() {
+                    have t >= (5);
+                }
+            }
+        }}
+    } => Err(e) => assert_error_msg(e, "'have' statement not allowed for field with sharding strategy 'constant'")
+}
+
+test_verify_one_file! {
     #[test] test_use_option_directly IMPORTS.to_string() + code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -886,6 +918,52 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] wrong_mode_inv IMPORTS.to_string() + code_str! {
+        tokenized_state_machine!{ X {
+            fields {
+                #[sharding(variable)] pub t: int,
+            }
+
+            init!{
+                tr(x: int) {
+                    init t = x;
+                }
+            }
+
+            #[invariant]
+            pub proof fn the_inv(self) -> bool {
+                true
+            }
+        }}
+    } => Err(e) => assert_error_msg(e, "an invariant function should be `spec`")
+}
+
+test_verify_one_file! {
+    #[test] wrong_mode_inductive IMPORTS.to_string() + code_str! {
+        tokenized_state_machine!{ X {
+            fields {
+                #[sharding(variable)] pub t: int,
+            }
+
+            init!{
+                tr(x: int) {
+                    init t = x;
+                }
+            }
+
+            #[invariant]
+            pub fn the_inv(self) -> bool {
+                true
+            }
+
+            #[inductive(tr)]
+            pub spec fn lemma_tr1(post: Self, x: int) {
+            }
+        }}
+    } => Err(e) => assert_error_msg(e, "an inductiveness lemma should be `proof`")
+}
+
+test_verify_one_file! {
     #[test] explicit_mode_field IMPORTS.to_string() + code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -916,7 +994,7 @@ test_verify_one_file! {
             #[inductive(tr)]
             #[proof]
             pub fn lemma_tr1(post: Self, x: int) {
-            } // FAILS
+            }
         }}
     } => Err(e) => assert_error_msg(e, "should not be explicitly labelled")
 }
@@ -1116,6 +1194,17 @@ test_verify_one_file! {
             }
         }}
     } => Err(e) => assert_error_msg(e, "must be of the form Multiset<_>")
+}
+
+test_verify_one_file! {
+    #[test] wrong_form_count IMPORTS.to_string() + code_str! {
+        tokenized_state_machine!{ X {
+            fields {
+                #[sharding(count)]
+                pub t: int,
+            }
+        }}
+    } => Err(e) => assert_error_msg(e, "must be nat")
 }
 
 test_verify_one_file! {
@@ -2461,6 +2550,23 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] wrong_op_count_add_option IMPORTS.to_string() + code_str! {
+        tokenized_state_machine!{ X {
+            fields {
+                #[sharding(count)]
+                pub t: nat,
+            }
+
+            transition!{
+                tr() {
+                    add t += Some(5);
+                }
+            }
+        }}
+    } => Err(e) => assert_error_msg(e, "element but the given field has sharding strategy 'count'")
+}
+
+test_verify_one_file! {
     #[test] wrong_op_option_deposit_option IMPORTS.to_string() + code_str! {
         tokenized_state_machine!{ X {
             fields {
@@ -2474,7 +2580,7 @@ test_verify_one_file! {
                 }
             }
         }}
-    } => Err(e) => assert_error_msg(e, "'deposit' statement not allowed for field with sharding strategy 'option'")
+    } => Err(e) => assert_error_msg(e, "is only for storage types")
 }
 
 test_verify_one_file! {
@@ -2491,7 +2597,7 @@ test_verify_one_file! {
                 }
             }
         }}
-    } => Err(e) => assert_error_msg(e, "'add' statement not allowed for field with sharding strategy 'storage_option'")
+    } => Err(e) => assert_error_msg(e, "use deposit/withdraw/guard statements for storage strategies")
 }
 
 test_verify_one_file! {
@@ -2618,8 +2724,8 @@ test_verify_one_file! {
 
             #[inductive(initialize)]
             fn inductive_init(post: Self) {
-                #[proof] let (inst, token) = X::Instance::initialize();
-                inst.ro(&token);
+                #[proof] let tracked (inst, token) = X::Instance::initialize();
+                tracked inst.ro(&token);
                 // this should derive a contradiction if not for the recursion checking
             }
         }}
@@ -2893,8 +2999,9 @@ test_verify_one_file! {
                 tr1(foo: Foo, c: bool) {
                     match foo {
                         Foo::Bar(a) => { update z = pre.z + 1; }
-                        Foo::Qax(b) => { assert(pre.y <= pre.z); }
+                        Foo::Qax(b) if b == 20 => { assert(pre.y <= pre.z); }
                         Foo::Duck(d) => { assert(foo.is_Duck()); }
+                        _ => { }
                     }
                     require(c);
                 }
@@ -2924,12 +3031,14 @@ test_verify_one_file! {
         fn rel_tr1(pre: X::State, post: X::State, foo: Foo, c: bool) -> bool {
             (match foo {
                 Foo::Bar(a) => { post.z == pre.z + 1 }
-                Foo::Qax(b) => { pre.y <= pre.z >>= post.z == pre.z }
+                Foo::Qax(b) if b == 20 => { pre.y <= pre.z >>= post.z == pre.z }
                 Foo::Duck(d) => { post.z == pre.z }
+                _ => { post.z == pre.z }
             }) && ((match foo {
                 Foo::Bar(a) => { true }
-                Foo::Qax(b) => { pre.y <= pre.z }
+                Foo::Qax(b) if b == 20 => { pre.y <= pre.z }
                 Foo::Duck(d) => { true }
+                _ => { true }
             }) >>=
                 c && pre.x == post.x && pre.y == post.y)
         }
@@ -2938,8 +3047,9 @@ test_verify_one_file! {
         fn rel_tr1_strong(pre: X::State, post: X::State, foo: Foo, c: bool) -> bool {
             (match foo {
                 Foo::Bar(a) => { post.z == pre.z + 1 }
-                Foo::Qax(b) => { post.z == pre.z && pre.y <= pre.z }
+                Foo::Qax(b) if b == 20 => { post.z == pre.z && pre.y <= pre.z }
                 Foo::Duck(d) => { post.z == pre.z }
+                _ => { post.z == pre.z }
             })
             && (c && pre.x == post.x && pre.y == post.y)
         }
@@ -4464,4 +4574,1174 @@ test_verify_one_file! {
         }
 
     } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] count_codegen IMPORTS.to_string() + code_str! {
+
+        tokenized_state_machine!{ Y {
+            fields {
+                #[sharding(count)]
+                pub c: nat,
+            }
+
+            init!{
+                initialize() {
+                    init c = 9;
+                }
+            }
+
+            transition!{
+                tr_add() {
+                    add c += (2);
+                }
+            }
+
+            transition!{
+                tr_have() {
+                    have c >= (2);
+                }
+            }
+
+            transition!{
+                tr_remove() {
+                    remove c -= (2);
+                }
+            }
+        }}
+
+        #[spec]
+        fn rel_tr1(pre: Y::State, post: Y::State) -> bool {
+            post.c == pre.c + 2
+        }
+
+        #[spec]
+        fn rel_tr1_strong(pre: Y::State, post: Y::State) -> bool {
+            post.c == pre.c + 2
+        }
+
+        #[spec]
+        fn rel_tr2(pre: Y::State, post: Y::State) -> bool {
+            pre.c >= 2 && post.c == pre.c
+        }
+
+        #[spec]
+        fn rel_tr2_strong(pre: Y::State, post: Y::State) -> bool {
+            pre.c >= 2 && post.c == pre.c
+        }
+
+        #[spec]
+        fn rel_tr3(pre: Y::State, post: Y::State) -> bool {
+            pre.c >= 2 && post.c == pre.c - 2
+        }
+
+        #[spec]
+        fn rel_tr3_strong(pre: Y::State, post: Y::State) -> bool {
+            pre.c >= 2 && post.c == pre.c - 2
+        }
+
+        #[proof]
+        fn correct_tr(pre: Y::State, post: Y::State) {
+            ensures([
+                rel_tr1(pre, post) == Y::State::tr_add(pre, post),
+                rel_tr1_strong(pre, post) == Y::State::tr_add_strong(pre, post),
+                rel_tr2(pre, post) == Y::State::tr_have(pre, post),
+                rel_tr2_strong(pre, post) == Y::State::tr_have_strong(pre, post),
+                rel_tr3(pre, post) == Y::State::tr_remove(pre, post),
+                rel_tr3_strong(pre, post) == Y::State::tr_remove_strong(pre, post),
+            ]);
+        }
+
+        fn test_inst() {
+            #[proof] let (inst, t1) = Y::Instance::initialize();
+            assert(t1.value == 9);
+
+            #[proof] let (t2, t3) = t1.split(2);
+
+            assert(t2.value == 2);
+            assert(t3.value == 7);
+
+            inst.tr_have(&t2);
+            inst.tr_remove(t2);
+
+            #[proof] let t4 = inst.tr_add();
+            assert(t4.value == 2);
+
+            #[proof] let q = t4.join(t3);
+            assert(q.value == 9);
+        }
+
+        fn test_join_fail() {
+            #[proof] let (inst1, t1) = Y::Instance::initialize();
+            #[proof] let (inst2, t2) = Y::Instance::initialize();
+            #[proof] let t = t1.join(t2); // FAILS
+        }
+
+        fn test_split_fail() {
+            #[proof] let (inst, t1) = Y::Instance::initialize();
+
+            #[proof] let (t2, t3) = t1.split(10); // FAILS
+        }
+    } => Err(e) => assert_fails(e, 2)
+}
+
+test_verify_one_file! {
+    #[test] persistent_option_remove_fail IMPORTS.to_string() + code_str! {
+        tokenized_state_machine!{ Y {
+            fields {
+                #[sharding(persistent_option)]
+                pub c: Option<int>,
+            }
+
+            transition!{
+                tr_remove() {
+                    remove c -= Some(1);
+                }
+            }
+        }}
+    } => Err(e) => assert_error_msg(e, "a persistent field's value can only grow, never remove or modify its data")
+}
+
+test_verify_one_file! {
+    #[test] persistent_map_remove_fail IMPORTS.to_string() + code_str! {
+        tokenized_state_machine!{ Y {
+            fields {
+                #[sharding(persistent_map)]
+                pub c: Map<int, int>,
+            }
+
+            transition!{
+                tr_remove() {
+                    remove c -= [1 => 2];
+                }
+            }
+        }}
+    } => Err(e) => assert_error_msg(e, "a persistent field's value can only grow, never remove or modify its data")
+}
+
+test_verify_one_file! {
+    #[test] persistent_option_codegen IMPORTS.to_string() + code_str! {
+        tokenized_state_machine!{ Y {
+            fields {
+                #[sharding(persistent_option)]
+                pub c: Option<int>,
+
+                #[sharding(persistent_option)]
+                pub d: Option<int>,
+            }
+
+            init!{
+                initialize() {
+                    init c = Option::None;
+                    init d = Option::Some(7);
+                }
+            }
+
+            transition!{
+                tr1() {
+                    have d >= Some(7);
+                    add c += Some(3);
+                }
+            }
+
+            transition!{
+                tr2() {
+                    add c += ( Option::Some(3) );
+                }
+            }
+
+            transition!{
+                tr3() {
+                    have c >= (
+                        Option::Some(3)
+                    );
+                }
+            }
+
+            #[invariant]
+            pub fn the_inv(&self) -> bool {
+                (match self.c {
+                    Option::Some(x) => x == 3,
+                    _ => true,
+                })
+                &&
+                (match self.d {
+                    Option::Some(x) => x == 7,
+                    _ => true,
+                })
+            }
+
+            #[inductive(initialize)]
+            fn initialize_inductive(post: Self) { }
+
+            #[inductive(tr1)]
+            fn tr1_inductive(pre: Self, post: Self) { }
+
+            #[inductive(tr2)]
+            fn tr2_inductive(pre: Self, post: Self) { }
+
+            #[inductive(tr3)]
+            fn tr3_inductive(pre: Self, post: Self) { }
+        }}
+
+        #[spec]
+        fn rel_tr1(pre: Y::State, post: Y::State) -> bool {
+            equal(pre.d, Option::Some(7))
+            && (
+                (match pre.c {
+                    Option::Some(x) => x == 3,
+                    Option::None => true,
+                })
+                >>= (
+                    equal(pre.d, post.d)
+                    && equal(post.c, Option::Some(3))
+                )
+            )
+        }
+
+        #[spec]
+        fn rel_tr1_strong(pre: Y::State, post: Y::State) -> bool {
+            equal(pre.d, Option::Some(7))
+            && (
+                (match pre.c {
+                    Option::Some(x) => x == 3,
+                    Option::None => true,
+                })
+                && (
+                    equal(pre.d, post.d)
+                    && equal(post.c, Option::Some(3))
+                )
+            )
+        }
+
+        #[spec]
+        fn rel_tr2(pre: Y::State, post: Y::State) -> bool {
+            (match pre.c {
+                Option::Some(x) => x == 3,
+                Option::None => true,
+            })
+            >>= (
+                equal(pre.d, post.d)
+                && equal(post.c, Option::Some(3))
+            )
+        }
+
+        #[spec]
+        fn rel_tr2_strong(pre: Y::State, post: Y::State) -> bool {
+            (match pre.c {
+                Option::Some(x) => x == 3,
+                Option::None => true,
+            })
+            && (
+                equal(pre.d, post.d)
+                && equal(post.c, Option::Some(3))
+            )
+        }
+
+        #[spec]
+        fn rel_tr3(pre: Y::State, post: Y::State) -> bool {
+            equal(pre.c, Option::Some(3))
+            && equal(post.c, pre.c)
+            && equal(post.d, pre.d)
+        }
+
+        #[spec]
+        fn rel_tr3_strong(pre: Y::State, post: Y::State) -> bool {
+            rel_tr3(pre, post)
+        }
+
+        #[proof]
+        fn correct_tr(pre: Y::State, post: Y::State) {
+            ensures([
+                rel_tr1(pre, post) == Y::State::tr1(pre, post),
+                rel_tr1_strong(pre, post) == Y::State::tr1_strong(pre, post),
+                rel_tr2(pre, post) == Y::State::tr2(pre, post),
+                rel_tr2_strong(pre, post) == Y::State::tr2_strong(pre, post),
+                rel_tr3(pre, post) == Y::State::tr3(pre, post),
+                rel_tr3_strong(pre, post) == Y::State::tr3_strong(pre, post),
+            ]);
+        }
+
+        fn test_inst() {
+            #[proof] let (inst, _c, d_opt) = Y::Instance::initialize();
+
+            #[proof] let d = match d_opt {
+                Option::Some(d) => d,
+                Option::None => proof_from_false(),
+            };
+
+            #[proof] let cloned = d.clone();
+            assert(equal(cloned.instance, inst));
+            assert(d.value == 7);
+
+            #[proof] let c = inst.tr1(&d);
+            assert(c.value == 3);
+            assert(equal(c.instance, inst));
+
+            #[proof] let c2_opt = inst.tr2();
+            #[proof] let c2 = match c2_opt {
+                Option::Some(c2) => c2,
+                Option::None => proof_from_false(),
+            };
+            assert(c2.value == 3);
+            assert(equal(c2.instance, inst));
+
+            #[proof] let c_opt = Option::Some(c);
+            inst.tr3(&c_opt);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] persistent_map_codegen IMPORTS.to_string() + code_str! {
+        tokenized_state_machine!{ Y {
+            fields {
+                #[sharding(persistent_map)]
+                pub c: Map<int, int>,
+            }
+
+            init!{
+                initialize() {
+                    init c = Map::empty().insert(1, 2);
+                }
+            }
+
+            transition!{
+                tr1() {
+                    have c >= [1 => 2];
+                    add c += [3 => 4];
+                }
+            }
+
+            transition!{
+                tr2() {
+                    add c += (
+                        Map::empty().insert(5, 9).insert(12, 15)
+                    );
+                }
+            }
+
+            transition!{
+                tr3() {
+                    have c >= (
+                        Map::empty().insert(5, 9).insert(12, 15)
+                    );
+                }
+            }
+
+            #[invariant]
+            pub fn the_inv(&self) -> bool {
+                (self.c.dom().contains(5) >>= self.c.index(5) == 9)
+                &&
+                (self.c.dom().contains(12) >>= self.c.index(12) == 15)
+                &&
+                (self.c.dom().contains(3) >>= self.c.index(3) == 4)
+            }
+
+            #[inductive(initialize)]
+            fn initialize_inductive(post: Self) { }
+
+            #[inductive(tr1)]
+            fn tr1_inductive(pre: Self, post: Self) { }
+
+            #[inductive(tr2)]
+            fn tr2_inductive(pre: Self, post: Self) { }
+
+            #[inductive(tr3)]
+            fn tr3_inductive(pre: Self, post: Self) { }
+        }}
+
+        #[spec]
+        fn rel_tr1(pre: Y::State, post: Y::State) -> bool {
+            pre.c.dom().contains(1)
+            && pre.c.index(1) == 2
+            && (
+              (pre.c.dom().contains(3) >>= pre.c.index(3) == 4)
+              >>= (
+                equal(post.c, pre.c.insert(3, 4))
+              )
+            )
+        }
+
+        #[spec]
+        fn rel_tr1_strong(pre: Y::State, post: Y::State) -> bool {
+            pre.c.dom().contains(1)
+            && pre.c.index(1) == 2
+            && (
+              (pre.c.dom().contains(3) >>= pre.c.index(3) == 4)
+              && (
+                equal(post.c, pre.c.insert(3, 4))
+              )
+            )
+        }
+
+        #[spec]
+        fn rel_tr2(pre: Y::State, post: Y::State) -> bool {
+            ((pre.c.dom().contains(5) >>= pre.c.index(5) == 9)
+            && (pre.c.dom().contains(12) >>= pre.c.index(12) == 15))
+            >>= equal(post.c,
+                  pre.c.insert(5, 9).insert(12, 15)
+                )
+        }
+
+        #[spec]
+        fn rel_tr2_strong(pre: Y::State, post: Y::State) -> bool {
+            ((pre.c.dom().contains(5) >>= pre.c.index(5) == 9)
+            && (pre.c.dom().contains(12) >>= pre.c.index(12) == 15))
+            && equal(post.c,
+                  pre.c.insert(5, 9).insert(12, 15)
+                )
+        }
+
+        #[spec]
+        fn rel_tr3(pre: Y::State, post: Y::State) -> bool {
+            ((pre.c.dom().contains(5) && pre.c.index(5) == 9)
+            && (pre.c.dom().contains(12) && pre.c.index(12) == 15))
+            && equal(pre.c, post.c)
+        }
+
+        #[spec]
+        fn rel_tr3_strong(pre: Y::State, post: Y::State) -> bool {
+            ((pre.c.dom().contains(5) && pre.c.index(5) == 9)
+            && (pre.c.dom().contains(12) && pre.c.index(12) == 15))
+            && equal(pre.c, post.c)
+        }
+
+        #[proof]
+        fn correct_tr(pre: Y::State, post: Y::State) {
+            ensures([
+                rel_tr1(pre, post) == Y::State::tr1(pre, post),
+                rel_tr1_strong(pre, post) == Y::State::tr1_strong(pre, post),
+                rel_tr2(pre, post) == Y::State::tr2(pre, post),
+                rel_tr2_strong(pre, post) == Y::State::tr2_strong(pre, post),
+                rel_tr3(pre, post) == Y::State::tr3(pre, post),
+                rel_tr3_strong(pre, post) == Y::State::tr3_strong(pre, post),
+            ]);
+
+            assert_maps_equal!(
+                pre.c.insert(5, 9).insert(12, 15),
+                pre.c.union_prefer_right(
+                    Map::empty().insert(5, 9).insert(12, 15)
+                )
+            );
+
+            if rel_tr3(pre, post) {
+                assert(
+                  Map::empty().insert(5, 9).insert(12, 15).le(pre.c)
+                );
+                assert(Y::State::tr3(pre, post));
+            }
+            if Y::State::tr3(pre, post) {
+                assert(
+                  Map::<int, int>::empty().insert(5, 9).insert(12, 15).dom().contains(5)
+                );
+                assert(
+                  Map::<int, int>::empty().insert(5, 9).insert(12, 15).dom().contains(12)
+                );
+                assert(pre.c.dom().contains(5));
+                assert(pre.c.dom().contains(12));
+                assert(rel_tr3(pre, post));
+            }
+        }
+
+        fn test_inst() {
+            #[proof] let (inst, mut init_m) = Y::Instance::initialize();
+            #[proof] let m_1 = init_m.proof_remove(1);
+            assert(m_1.value == 2);
+
+            #[proof] let cloned = m_1.clone();
+            assert(equal(cloned.instance, inst));
+            assert(cloned.key == 1);
+            assert(cloned.value == 2);
+
+            #[proof] let m_3 = inst.tr1(&m_1);
+            assert(m_3.value == 4);
+
+            #[proof] let m_5_12 = inst.tr2();
+            assert(m_5_12.dom().contains(5));
+            assert(m_5_12.index(5).value == 9);
+            assert(m_5_12.dom().contains(12));
+            assert(m_5_12.index(12).value == 15);
+
+            inst.tr3(&m_5_12);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] pattern_binding_withdraw_assert_fails IMPORTS.to_string() + code_str! {
+        pub enum Goo {
+            Bar,
+            Qux(u64),
+            Tal(u64, u64),
+        }
+
+        tokenized_state_machine!{ Y {
+            fields {
+                #[sharding(storage_map)]
+                pub storage_m: Map<int, Goo>,
+
+                #[sharding(storage_option)]
+                pub storage_opt: Option<Goo>,
+            }
+
+            transition!{
+                tr1() {
+                    withdraw storage_opt -= Some(let Goo::Bar) by { // FAILS
+                        assume(pre.storage_opt.is_Some());
+                    };
+                }
+            }
+
+            transition!{
+                tr2() {
+                    withdraw storage_opt -= Some(let Goo::Qux(id1)) by { // FAILS
+                        assume(pre.storage_opt.is_Some());
+                    };
+                }
+            }
+
+            transition!{
+                tr3() {
+                    withdraw storage_opt -= Some(let Goo::Tal(id1, id2)) by { // FAILS
+                        assume(pre.storage_opt.is_Some());
+                    };
+                }
+            }
+
+            transition!{
+                tr4() {
+                    withdraw storage_m -= [1 => let Goo::Bar] by { // FAILS
+                        assume(pre.storage_m.dom().contains(1));
+                    };
+                }
+            }
+
+            transition!{
+                tr5() {
+                    withdraw storage_m -= [1 => let Goo::Qux(id1)] by { // FAILS
+                        assume(pre.storage_m.dom().contains(1));
+                    };
+                }
+            }
+
+            transition!{
+                tr6() {
+                    withdraw storage_m -= [1 => let Goo::Tal(id1, id2)] by { // FAILS
+                        assume(pre.storage_m.dom().contains(1));
+                    };
+                }
+            }
+        }}
+    } => Err(e) => assert_fails(e, 6)
+}
+
+test_verify_one_file! {
+    #[test] special_refutable_pattern_binding_codegen IMPORTS.to_string() + code_str! {
+        pub enum Goo {
+            Bar,
+            Qux(u64),
+            Tal(u64, u64),
+        }
+
+        tokenized_state_machine!{ Y {
+            fields {
+                #[sharding(map)]
+                pub m: Map<int, Goo>,
+
+                #[sharding(storage_map)]
+                pub storage_m: Map<int, Goo>,
+
+                #[sharding(option)]
+                pub opt: Option<Goo>,
+
+                #[sharding(storage_option)]
+                pub storage_opt: Option<Goo>,
+            }
+
+            init!{
+                initialize(m: Map<int, Goo>, opt: Option<Goo>) {
+                    init m = m;
+                    init storage_m = m;
+                    init opt = opt;
+                    init storage_opt = opt;
+                }
+            }
+
+            #[inductive(initialize)]
+            fn initialize_inductive(post: Self, m: Map<int, Goo>, opt: Option<Goo>) { }
+
+            transition!{
+                tr1() {
+                    remove opt -= Some(let Goo::Bar);
+                    withdraw storage_opt -= Some(let Goo::Bar);
+                }
+            }
+
+            transition!{
+                tr2() {
+                    remove opt -= Some(let Goo::Qux(i1));
+                    withdraw storage_opt -= Some(let Goo::Qux(j1));
+                    assert(i1 == j1);
+                }
+            }
+
+            transition!{
+                tr3() {
+                    remove opt -= Some(let Goo::Tal(i1, i2));
+                    withdraw storage_opt -= Some(let Goo::Tal(j1, j2));
+                    assert(i1 == j1);
+                    assert(i2 == j2);
+                }
+            }
+
+            transition!{
+                tr4(key: int) {
+                    remove m -= [key => let Goo::Bar];
+                    withdraw storage_m -= [key => let Goo::Bar];
+                }
+            }
+
+            transition!{
+                tr5(key: int) {
+                    remove m -= [key => let Goo::Qux(i1)];
+                    withdraw storage_m -= [key => let Goo::Qux(j1)];
+                    assert(i1 == j1);
+                }
+            }
+
+            transition!{
+                tr6(key: int) {
+                    remove m -= [key => let Goo::Tal(i1, i2)];
+                    withdraw storage_m -= [key => let Goo::Tal(j1, j2)];
+                    assert(i1 == j1);
+                    assert(i2 == j2);
+                }
+            }
+
+            transition!{
+                tr7(key: int) {
+                    have opt >= Some(let Goo::Bar);
+                    have m >= [key => let Goo::Bar];
+                }
+            }
+
+            transition!{
+                tr8(key: int) {
+                    have opt >= Some(let Goo::Qux(i1));
+                    have m >= [key => let Goo::Qux(j1)];
+                    require(i1 == j1);
+                }
+            }
+
+            transition!{
+                tr9(key: int) {
+                    have opt >= Some(let Goo::Tal(i1, i2));
+                    have m >= [key => let Goo::Tal(j1, j2)];
+                    require(i1 == j1);
+                    require(i2 == j2);
+                }
+            }
+
+            #[invariant]
+            pub fn the_inv(&self) -> bool {
+                equal(self.m, self.storage_m)
+                && equal(self.opt, self.storage_opt)
+            }
+
+                #[inductive(tr1)]
+                fn tr1_inductive(pre: Self, post: Self) { }
+
+                #[inductive(tr2)]
+                fn tr2_inductive(pre: Self, post: Self) { }
+
+                #[inductive(tr3)]
+                fn tr3_inductive(pre: Self, post: Self) { }
+
+                #[inductive(tr4)]
+                fn tr4_inductive(pre: Self, post: Self, key: int) { }
+
+                #[inductive(tr5)]
+                fn tr5_inductive(pre: Self, post: Self, key: int) { }
+
+                #[inductive(tr6)]
+                fn tr6_inductive(pre: Self, post: Self, key: int) { }
+
+                #[inductive(tr7)]
+                fn tr7_inductive(pre: Self, post: Self, key: int) { }
+
+                #[inductive(tr8)]
+                fn tr8_inductive(pre: Self, post: Self, key: int) { }
+
+                #[inductive(tr9)]
+                fn tr9_inductive(pre: Self, post: Self, key: int) { }
+        }}
+
+        #[spec]
+        fn rel_tr1(pre: Y::State, post: Y::State) -> bool {
+            match pre.opt {
+                Option::Some(Goo::Bar) => {
+                    match pre.storage_opt {
+                        Option::Some(Goo::Bar) => {
+                            equal(post.opt, Option::None)
+                            && equal(post.storage_opt, Option::None)
+                            && equal(post.m, pre.m)
+                            && equal(post.storage_m, pre.storage_m)
+                        }
+                        _ => true,
+                    }
+                }
+                _ => false,
+            }
+        }
+
+        #[spec]
+        fn rel_tr1_strong(pre: Y::State, post: Y::State) -> bool {
+            match pre.opt {
+                Option::Some(Goo::Bar) => {
+                    match pre.storage_opt {
+                        Option::Some(Goo::Bar) => {
+                            equal(post.opt, Option::None)
+                            && equal(post.storage_opt, Option::None)
+                            && equal(post.m, pre.m)
+                            && equal(post.storage_m, pre.storage_m)
+                        }
+                        _ => false,
+                    }
+                }
+                _ => false,
+            }
+        }
+
+        #[spec]
+        fn rel_tr2(pre: Y::State, post: Y::State) -> bool {
+            match pre.opt {
+                Option::Some(Goo::Qux(i1)) => {
+                    match pre.storage_opt {
+                        Option::Some(Goo::Qux(j1)) => {
+                            (i1 == j1) >>= (
+                            equal(post.opt, Option::None)
+                            && equal(post.storage_opt, Option::None)
+                            && equal(post.m, pre.m)
+                            && equal(post.storage_m, pre.storage_m)
+                            )
+                        }
+                        _ => true,
+                    }
+                }
+                _ => false,
+            }
+        }
+
+        #[spec]
+        fn rel_tr2_strong(pre: Y::State, post: Y::State) -> bool {
+            match pre.opt {
+                Option::Some(Goo::Qux(i1)) => {
+                    match pre.storage_opt {
+                        Option::Some(Goo::Qux(j1)) => {
+                            i1 == j1
+                            && equal(post.opt, Option::None)
+                            && equal(post.storage_opt, Option::None)
+                            && equal(post.m, pre.m)
+                            && equal(post.storage_m, pre.storage_m)
+                        }
+                        _ => false,
+                    }
+                }
+                _ => false,
+            }
+        }
+
+        #[spec]
+        fn rel_tr3(pre: Y::State, post: Y::State) -> bool {
+            match pre.opt {
+                Option::Some(Goo::Tal(i1, i2)) => {
+                    match pre.storage_opt {
+                        Option::Some(Goo::Tal(j1, j2)) => {
+                            (i1 == j1 && i2 == j2) >>= (
+                            equal(post.opt, Option::None)
+                            && equal(post.storage_opt, Option::None)
+                            && equal(post.m, pre.m)
+                            && equal(post.storage_m, pre.storage_m)
+                            )
+                        }
+                        _ => true,
+                    }
+                }
+                _ => false,
+            }
+        }
+
+        #[spec]
+        fn rel_tr3_strong(pre: Y::State, post: Y::State) -> bool {
+            match pre.opt {
+                Option::Some(Goo::Tal(i1, i2)) => {
+                    match pre.storage_opt {
+                        Option::Some(Goo::Tal(j1, j2)) => {
+                            i1 == j1 && i2 == j2
+                            && equal(post.opt, Option::None)
+                            && equal(post.storage_opt, Option::None)
+                            && equal(post.m, pre.m)
+                            && equal(post.storage_m, pre.storage_m)
+                        }
+                        _ => false,
+                    }
+                }
+                _ => false,
+            }
+        }
+
+        #[spec]
+        fn rel_tr4(pre: Y::State, post: Y::State, key: int) -> bool {
+            pre.m.dom().contains(key)
+            && match pre.m.index(key) {
+                Goo::Bar => {
+                    pre.storage_m.dom().contains(key)
+                    >>= match pre.storage_m.index(key) {
+                        Goo::Bar => {
+                            equal(post.opt, pre.opt)
+                            && equal(post.storage_opt, pre.storage_opt)
+                            && equal(post.m, pre.m.remove(key))
+                            && equal(post.storage_m, pre.storage_m.remove(key))
+                        }
+                        _ => true,
+                    }
+                }
+                _ => false,
+            }
+        }
+
+        #[spec]
+        fn rel_tr4_strong(pre: Y::State, post: Y::State, key: int) -> bool {
+            pre.m.dom().contains(key)
+            && match pre.m.index(key) {
+                Goo::Bar => {
+                    pre.storage_m.dom().contains(key)
+                    && match pre.storage_m.index(key) {
+                        Goo::Bar => {
+                            equal(post.opt, pre.opt)
+                            && equal(post.storage_opt, pre.storage_opt)
+                            && equal(post.m, pre.m.remove(key))
+                            && equal(post.storage_m, pre.storage_m.remove(key))
+                        }
+                        _ => false,
+                    }
+                }
+                _ => false,
+            }
+        }
+
+        #[spec]
+        fn rel_tr5(pre: Y::State, post: Y::State, key: int) -> bool {
+            pre.m.dom().contains(key)
+            && match pre.m.index(key) {
+                Goo::Qux(i1) => {
+                    pre.storage_m.dom().contains(key)
+                    >>= match pre.storage_m.index(key) {
+                        Goo::Qux(j1) => {
+                            (i1 == j1) >>= (
+                            equal(post.opt, pre.opt)
+                            && equal(post.storage_opt, pre.storage_opt)
+                            && equal(post.m, pre.m.remove(key))
+                            && equal(post.storage_m, pre.storage_m.remove(key))
+                            )
+                        }
+                        _ => true,
+                    }
+                }
+                _ => false,
+            }
+        }
+
+        #[spec]
+        fn rel_tr5_strong(pre: Y::State, post: Y::State, key: int) -> bool {
+            pre.m.dom().contains(key)
+            && match pre.m.index(key) {
+                Goo::Qux(i1) => {
+                    pre.storage_m.dom().contains(key)
+                    && match pre.storage_m.index(key) {
+                        Goo::Qux(j1) => {
+                            i1 == j1
+                            && equal(post.opt, pre.opt)
+                            && equal(post.storage_opt, pre.storage_opt)
+                            && equal(post.m, pre.m.remove(key))
+                            && equal(post.storage_m, pre.storage_m.remove(key))
+                        }
+                        _ => false,
+                    }
+                }
+                _ => false,
+            }
+        }
+
+        #[spec]
+        fn rel_tr6(pre: Y::State, post: Y::State, key: int) -> bool {
+            pre.m.dom().contains(key)
+            && match pre.m.index(key) {
+                Goo::Tal(i1, i2) => {
+                    pre.storage_m.dom().contains(key)
+                    >>= match pre.storage_m.index(key) {
+                        Goo::Tal(j1, j2) => {
+                            (i1 == j1 && i2 == j2) >>= (
+                            equal(post.opt, pre.opt)
+                            && equal(post.storage_opt, pre.storage_opt)
+                            && equal(post.m, pre.m.remove(key))
+                            && equal(post.storage_m, pre.storage_m.remove(key))
+                            )
+                        }
+                        _ => true,
+                    }
+                }
+                _ => false,
+            }
+        }
+
+        #[spec]
+        fn rel_tr6_strong(pre: Y::State, post: Y::State, key: int) -> bool {
+            pre.m.dom().contains(key)
+            && match pre.m.index(key) {
+                Goo::Tal(i1, i2) => {
+                    pre.storage_m.dom().contains(key)
+                    && match pre.storage_m.index(key) {
+                        Goo::Tal(j1, j2) => {
+                            i1 == j1 && i2 == j2
+                            && equal(post.opt, pre.opt)
+                            && equal(post.storage_opt, pre.storage_opt)
+                            && equal(post.m, pre.m.remove(key))
+                            && equal(post.storage_m, pre.storage_m.remove(key))
+                        }
+                        _ => false,
+                    }
+                }
+                _ => false,
+            }
+        }
+
+        #[spec]
+        fn rel_tr7(pre: Y::State, post: Y::State, key: int) -> bool {
+            match pre.opt {
+                Option::Some(Goo::Bar) => {
+                    pre.m.dom().contains(key)
+                    && match pre.m.index(key) {
+                        Goo::Bar => equal(post, pre),
+                        _ => false,
+                    }
+                }
+                _ => false,
+            }
+        }
+
+        #[spec]
+        fn rel_tr7_strong(pre: Y::State, post: Y::State, key: int) -> bool {
+            rel_tr7(pre, post, key)
+        }
+
+        #[spec]
+        fn rel_tr8(pre: Y::State, post: Y::State, key: int) -> bool {
+            match pre.opt {
+                Option::Some(Goo::Qux(i1)) => {
+                    pre.m.dom().contains(key)
+                    && match pre.m.index(key) {
+                        Goo::Qux(j1) => i1 == j1 && equal(post, pre),
+                        _ => false,
+                    }
+                }
+                _ => false,
+            }
+        }
+
+        #[spec]
+        fn rel_tr8_strong(pre: Y::State, post: Y::State, key: int) -> bool {
+            rel_tr8(pre, post, key)
+        }
+
+        #[spec]
+        fn rel_tr9(pre: Y::State, post: Y::State, key: int) -> bool {
+            match pre.opt {
+                Option::Some(Goo::Tal(i1, i2)) => {
+                    pre.m.dom().contains(key)
+                    && match pre.m.index(key) {
+                        Goo::Tal(j1, j2) => i1 == j1 && i2 == j2 && equal(post, pre),
+                        _ => false,
+                    }
+                }
+                _ => false,
+            }
+        }
+
+        #[spec]
+        fn rel_tr9_strong(pre: Y::State, post: Y::State, key: int) -> bool {
+            rel_tr9(pre, post, key)
+        }
+
+
+
+        #[proof]
+        fn correct_tr(pre: Y::State, post: Y::State, key: int) {
+          ensures([
+              rel_tr1(pre, post) == Y::State::tr1(pre, post),
+              rel_tr1_strong(pre, post) == Y::State::tr1_strong(pre, post),
+              rel_tr2(pre, post) == Y::State::tr2(pre, post),
+              rel_tr2_strong(pre, post) == Y::State::tr2_strong(pre, post),
+              rel_tr3(pre, post) == Y::State::tr3(pre, post),
+              rel_tr3_strong(pre, post) == Y::State::tr3_strong(pre, post),
+              rel_tr4(pre, post, key) == Y::State::tr4(pre, post, key),
+              rel_tr4_strong(pre, post, key) == Y::State::tr4_strong(pre, post, key),
+              rel_tr5(pre, post, key) == Y::State::tr5(pre, post, key),
+              rel_tr5_strong(pre, post, key) == Y::State::tr5_strong(pre, post, key),
+              rel_tr6(pre, post, key) == Y::State::tr6(pre, post, key),
+              rel_tr6_strong(pre, post, key) == Y::State::tr6_strong(pre, post, key),
+              rel_tr7(pre, post, key) == Y::State::tr7(pre, post, key),
+              rel_tr7_strong(pre, post, key) == Y::State::tr7_strong(pre, post, key),
+              rel_tr8(pre, post, key) == Y::State::tr8(pre, post, key),
+              rel_tr8_strong(pre, post, key) == Y::State::tr8_strong(pre, post, key),
+              rel_tr9(pre, post, key) == Y::State::tr9(pre, post, key),
+              rel_tr9_strong(pre, post, key) == Y::State::tr9_strong(pre, post, key),
+          ]);
+        }
+
+        fn test_inst1() {
+            #[proof] let mut p_m = Map::proof_empty();
+            p_m.proof_insert(1, Goo::Bar);
+
+            #[proof] let (inst, mut m_token, opt_token) = Y::Instance::initialize(
+                map![1 => Goo::Bar],
+                Option::Some(Goo::Bar),
+                p_m,
+                Option::Some(Goo::Bar),
+            );
+
+            #[proof] let kv = m_token.proof_remove(1);
+            #[proof] let o = match opt_token {
+                Option::None => proof_from_false(),
+                Option::Some(t) => t,
+            };
+
+            inst.tr7(1, &kv, &o);
+
+            #[proof] let wi = inst.tr1(o);
+            assert(equal(wi, Goo::Bar));
+
+            #[proof] let wi2 = inst.tr4(1, kv);
+            assert(equal(wi2, Goo::Bar));
+        }
+
+        fn test_inst2() {
+            #[proof] let mut p_m = Map::proof_empty();
+            p_m.proof_insert(1, Goo::Qux(8));
+
+            #[proof] let (inst, mut m_token, opt_token) = Y::Instance::initialize(
+                map![1 => Goo::Qux(8)],
+                Option::Some(Goo::Qux(8)),
+                p_m,
+                Option::Some(Goo::Qux(8)),
+            );
+
+            #[proof] let kv = m_token.proof_remove(1);
+            #[proof] let o = match opt_token {
+                Option::None => proof_from_false(),
+                Option::Some(t) => t,
+            };
+
+            inst.tr8(1, &kv, &o);
+
+            #[proof] let wi = inst.tr2(o);
+            assert(equal(wi, Goo::Qux(8)));
+
+            #[proof] let wi2 = inst.tr5(1, kv);
+            assert(equal(wi2, Goo::Qux(8)));
+        }
+
+        fn test_inst3() {
+            #[proof] let mut p_m = Map::proof_empty();
+            p_m.proof_insert(1, Goo::Tal(8, 9));
+
+            #[proof] let (inst, mut m_token, opt_token) = Y::Instance::initialize(
+                map![1 => Goo::Tal(8, 9)],
+                Option::Some(Goo::Tal(8, 9)),
+                p_m,
+                Option::Some(Goo::Tal(8, 9)),
+            );
+
+            #[proof] let kv = m_token.proof_remove(1);
+            #[proof] let o = match opt_token {
+                Option::None => proof_from_false(),
+                Option::Some(t) => t,
+            };
+
+            inst.tr9(1, &kv, &o);
+
+            #[proof] let wi = inst.tr3(o);
+            assert(equal(wi, Goo::Tal(8, 9)));
+
+            #[proof] let wi2 = inst.tr6(1, kv);
+            assert(equal(wi2, Goo::Tal(8, 9)));
+        }
+
+        fn test_precondition_remove1(inst: Y::Instance, t: Y::opt)
+        {
+          requires(equal(t.instance, inst));
+          #[proof] let k = inst.tr1(t); // FAILS
+        }
+
+        fn test_precondition_remove2(inst: Y::Instance, t: Y::opt)
+        {
+          requires(equal(t.instance, inst));
+          #[proof] let k = inst.tr2(t); // FAILS
+        }
+
+        fn test_precondition_remove3(inst: Y::Instance, t: Y::opt)
+        {
+          requires(equal(t.instance, inst));
+          #[proof] let k = inst.tr3(t); // FAILS
+        }
+
+        fn test_precondition_map_remove1(inst: Y::Instance, t: Y::m)
+        {
+          requires(equal(t.instance, inst) && t.key == 1);
+          #[proof] let k = inst.tr4(1, t); // FAILS
+        }
+
+        fn test_precondition_map_remove2(inst: Y::Instance, t: Y::m)
+        {
+          requires(equal(t.instance, inst) && t.key == 1);
+          #[proof] let k = inst.tr5(1, t); // FAILS
+        }
+
+        fn test_precondition_map_remove3(inst: Y::Instance, t: Y::m)
+        {
+          requires(equal(t.instance, inst) && t.key == 1);
+          #[proof] let k = inst.tr6(1, t); // FAILS
+        }
+
+        fn test_precondition_have1(inst: Y::Instance, t: Y::opt, u: Y::m)
+        {
+          requires(equal(t.instance, inst) && equal(u.instance, inst) && u.key == 1
+              && equal(t.value, Goo::Bar)
+          );
+          #[proof] let k = inst.tr7(1, &u, &t); // FAILS
+        }
+
+        fn test_precondition_have2(inst: Y::Instance, t: Y::opt, u: Y::m)
+        {
+          requires(equal(t.instance, inst) && equal(u.instance, inst) && u.key == 1
+              && equal(u.value, Goo::Bar)
+          );
+          #[proof] let k = inst.tr7(1, &u, &t); // FAILS
+        }
+
+        fn test_precondition_have3(inst: Y::Instance, t: Y::opt, u: Y::m)
+        {
+          requires(equal(t.instance, inst) && equal(u.instance, inst) && u.key == 1
+              && equal(u.value, t.value));
+          #[proof] let k = inst.tr8(1, &u, &t); // FAILS
+        }
+
+        fn test_precondition_have4(inst: Y::Instance, t: Y::opt, u: Y::m)
+        {
+          requires(equal(t.instance, inst) && equal(u.instance, inst) && u.key == 1
+              && equal(u.value, t.value));
+          #[proof] let k = inst.tr9(1, &u, &t); // FAILS
+        }
+    } => Err(e) => assert_fails(e, 10)
 }

@@ -1,6 +1,7 @@
 use proc_macro2::Span;
 use std::rc::Rc;
-use syn::{Expr, FieldsNamed, Generics, Ident, ImplItemMethod, Pat, Type};
+use syn_verus::token;
+use syn_verus::{Block, Expr, FieldsNamed, Generics, Ident, ImplItemMethod, Pat, Type};
 
 #[derive(Clone, Debug)]
 pub struct SM {
@@ -59,6 +60,7 @@ pub enum ShardableType {
     StorageOption(Type),
     StorageMap(Type, Type),
     PersistentMap(Type, Type),
+    PersistentOption(Type),
     Count,
 }
 
@@ -170,7 +172,7 @@ pub enum LetKind {
 /// Extra info for generating the verification condition of a safety condition
 #[derive(Clone, Debug)]
 pub struct AssertProof {
-    pub proof: Option<Rc<syn::Block>>,
+    pub proof: Option<Rc<Block>>,
     pub error_msg: String,
 }
 
@@ -178,9 +180,9 @@ pub struct AssertProof {
 #[derive(Clone, Debug)]
 pub struct Arm {
     pub pat: Pat,
-    pub guard: Option<(syn::token::If, Box<Expr>)>,
-    pub fat_arrow_token: syn::token::FatArrow,
-    pub comma: Option<syn::token::Comma>,
+    pub guard: Option<(token::If, Box<Expr>)>,
+    pub fat_arrow_token: token::FatArrow,
+    pub comma: Option<token::Comma>,
 }
 
 #[derive(Clone, Debug)]
@@ -384,6 +386,7 @@ impl ShardableType {
             ShardableType::StorageOption(_) => "storage_option",
             ShardableType::StorageMap(_, _) => "storage_map",
             ShardableType::PersistentMap(_, _) => "persistent_map",
+            ShardableType::PersistentOption(_) => "persistent_option",
             ShardableType::Count => "count",
         }
     }
@@ -397,22 +400,23 @@ impl ShardableType {
 
     pub fn is_storage(&self) -> bool {
         match self {
-            ShardableType::Variable(_) => false,
-            ShardableType::Constant(_) => false,
-            ShardableType::NotTokenized(_) => false,
-            ShardableType::Multiset(_) => false,
-            ShardableType::Option(_) => false,
-            ShardableType::Map(_, _) => false,
-            ShardableType::StorageOption(_) => true,
-            ShardableType::StorageMap(_, _) => true,
-            ShardableType::PersistentMap(_, _) => false,
-            ShardableType::Count => false,
+            ShardableType::StorageOption(_) | ShardableType::StorageMap(_, _) => true,
+
+            ShardableType::Variable(_)
+            | ShardableType::Constant(_)
+            | ShardableType::NotTokenized(_)
+            | ShardableType::Multiset(_)
+            | ShardableType::Option(_)
+            | ShardableType::Map(_, _)
+            | ShardableType::PersistentMap(_, _)
+            | ShardableType::PersistentOption(_)
+            | ShardableType::Count => false,
         }
     }
 
     pub fn is_persistent(&self) -> bool {
         match self {
-            ShardableType::PersistentMap(_, _) => true,
+            ShardableType::PersistentMap(_, _) | ShardableType::PersistentOption(_) => true,
 
             ShardableType::Variable(_)
             | ShardableType::Constant(_)

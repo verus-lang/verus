@@ -96,7 +96,7 @@ pub fn print_u64(i: u64) {
 /// a contradiction. Equivalent to writing `if !b { /* proof here */; assert(false); }`
 /// but is more concise and documents intent.
 ///
-/// ```rust,ignore
+/// ```rust
 /// assert_by_contradiction!(b, {
 ///     // assume !b here
 ///     // prove `false`

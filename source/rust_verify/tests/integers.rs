@@ -86,6 +86,15 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] test_chained verus_code! {
+        proof fn test1(n: nat) {
+            assert(0 <= n < n as int + 1 < n as int + 2);
+            assert(0 <= n as int + 1 < n < n as int + 2); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
     #[test] test4 code! {
         #[proof]
         fn typing(u: u64, i: int, n: nat) -> int {

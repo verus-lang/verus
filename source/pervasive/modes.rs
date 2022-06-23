@@ -4,6 +4,95 @@
 use std::marker::PhantomData;
 
 #[verifier(external_body)]
+pub struct Ghost<#[verifier(strictly_positive)] A> {
+    phantom: PhantomData<A>,
+}
+
+#[verifier(external_body)]
+pub struct Tracked<#[verifier(strictly_positive)] A> {
+    phantom: PhantomData<A>,
+}
+
+impl<A> Ghost<A> {
+    fndecl!(pub fn value(self) -> A);
+
+    #[spec]
+    #[verifier(external_body)]
+    pub fn new(a: A) -> Ghost<A> {
+        Ghost { phantom: PhantomData }
+    }
+
+    #[verifier(external_body)]
+    pub fn exec(#[spec] a: A) -> Ghost<A> {
+        ensures(|s: Ghost<A>| equal(a, s.value()));
+        Ghost { phantom: PhantomData }
+    }
+}
+
+impl<A> Tracked<A> {
+    fndecl!(pub fn value(self) -> A);
+
+    #[verifier(external_body)]
+    pub fn exec(#[proof] a: A) -> Tracked<A> {
+        ensures(|s: Tracked<A>| equal(a, s.value()));
+        Tracked { phantom: PhantomData }
+    }
+
+    #[proof]
+    #[verifier(external_body)]
+    #[verifier(returns(proof))]
+    pub fn get(self) -> A {
+        unimplemented!()
+    }
+}
+
+#[proof]
+#[verifier(external_body)]
+#[verifier(broadcast_forall)]
+pub fn axiom_ghost_new<A>(a: A) {
+    ensures(equal(#[trigger] Ghost::new(a).value(), a));
+}
+
+impl<A> Clone for Ghost<A> {
+    #[verifier(external_body)]
+    fn clone(&self) -> Self {
+        Ghost { phantom: PhantomData }
+    }
+}
+
+impl<A> Copy for Ghost<A> {
+}
+
+impl<A> std::ops::Deref for Ghost<A> {
+    type Target = A;
+    #[spec]
+    #[verifier(external)]
+    fn deref(&self) -> &A {
+        unimplemented!()
+    }
+}
+
+impl<A> std::ops::Deref for Tracked<A> {
+    type Target = A;
+    #[spec]
+    #[verifier(external)]
+    fn deref(&self) -> &A {
+        unimplemented!()
+    }
+}
+
+verus! {
+
+pub tracked struct TrackedAndGhost<T, G>(
+    pub tracked T,
+    pub ghost G,
+);
+
+} // verus
+
+// TODO: replace Spec and Proof entirely with Ghost and Tracked
+
+#[verifier(external_body)]
 pub struct Spec<#[verifier(strictly_positive)] A> {
     phantom: PhantomData<A>,
 }

@@ -4,13 +4,12 @@ use crate::context::ValidityResult;
 use crate::parser::Parser;
 #[allow(unused_imports)]
 use crate::printer::macro_push_node;
-use crate::smt_manager::SmtManager;
 #[allow(unused_imports)]
 use sise::Node;
 
 #[allow(dead_code)]
 fn run_nodes_as_test(should_typecheck: bool, should_be_valid: bool, nodes: &[Node]) {
-    let mut air_context = crate::context::Context::new(SmtManager::new());
+    let mut air_context = crate::context::Context::new();
     air_context.set_z3_param("air_recommended_options", "true");
     match Parser::new().nodes_to_commands(&nodes) {
         Ok(commands) => {

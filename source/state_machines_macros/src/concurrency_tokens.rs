@@ -9,7 +9,6 @@ use crate::ast::{
     Arm, Field, Lemma, LetKind, MonoidElt, MonoidStmtType, ShardableType, SpecialOp, SplitKind,
     Transition, TransitionKind, TransitionStmt, SM,
 };
-use crate::check_bind_stmts::get_binding_ty;
 use crate::field_access_visitor::{find_all_accesses, visit_field_accesses};
 use crate::parse_token_stream::SMBundle;
 use crate::to_relation::{asserts_to_single_predicate, emit_match};
@@ -18,15 +17,16 @@ use crate::to_token_stream::{
     name_with_type_args_turbofish, shardable_type_to_type,
 };
 use crate::token_transition_checks::{check_ordering_remove_have_add, check_unsupported_updates};
-use crate::util::combine_errors_or_ok;
+use crate::util::{combine_errors_or_ok, is_definitely_irrefutable};
 use proc_macro2::Span;
 use proc_macro2::TokenStream;
 use quote::{quote, quote_spanned};
 use std::collections::HashMap;
 use std::collections::HashSet;
-use syn::parse::Error;
-use syn::spanned::Spanned;
-use syn::{Expr, Ident, Pat, Type};
+use syn_verus::parse;
+use syn_verus::parse::Error;
+use syn_verus::spanned::Spanned;
+use syn_verus::{Expr, Ident, Pat, Type};
 
 // Misc. definitions for various identifiers we use
 // Note that everything is going to be inside a module, so for example,
@@ -73,6 +73,7 @@ fn stored_object_type(field: &Field) -> Type {
         | ShardableType::NotTokenized(_)
         | ShardableType::Option(_)
         | ShardableType::Map(_, _)
+        | ShardableType::PersistentOption(_)
         | ShardableType::PersistentMap(_, _)
         | ShardableType::Multiset(_)
         | ShardableType::Count => {
@@ -274,7 +275,7 @@ pub fn output_token_types_and_fns(
     token_stream: &mut TokenStream,
     bundle: &SMBundle,
     safety_condition_lemmas: &HashMap<String, Ident>,
-) -> syn::parse::Result<()> {
+) -> parse::Result<()> {
     let mut inst_impl_token_stream = TokenStream::new();
 
     token_stream.extend(instance_struct_stream(&bundle.sm));
@@ -291,7 +292,7 @@ pub fn output_token_types_and_fns(
             ShardableType::NotTokenized(_) => {
                 // don't need to add a struct in this case
             }
-            ShardableType::Option(ty) => {
+            ShardableType::Option(ty) | ShardableType::PersistentOption(ty) => {
                 token_stream.extend(token_struct_stream(&bundle.sm, field, None, ty));
             }
             ShardableType::Map(key, val) | ShardableType::PersistentMap(key, val) => {
@@ -428,7 +429,7 @@ pub fn exchange_stream(
     bundle: &SMBundle,
     tr: &Transition,
     safety_condition_lemmas: &HashMap<String, Ident>,
-) -> syn::parse::Result<TokenStream> {
+) -> parse::Result<TokenStream> {
     let sm = &bundle.sm;
 
     let is_init = tr.kind == TransitionKind::Init;
@@ -446,6 +447,7 @@ pub fn exchange_stream(
                 ShardableType::Multiset(_)
                 | ShardableType::Option(_)
                 | ShardableType::Map(_, _)
+                | ShardableType::PersistentOption(_)
                 | ShardableType::PersistentMap(_, _)
                 | ShardableType::Count
                 | ShardableType::StorageOption(_)
@@ -780,6 +782,7 @@ pub fn exchange_stream(
                 ShardableType::Multiset(_)
                 | ShardableType::Option(_)
                 | ShardableType::Map(_, _)
+                | ShardableType::PersistentOption(_)
                 | ShardableType::PersistentMap(_, _)
                 | ShardableType::Count
                 | ShardableType::StorageOption(_)
@@ -930,6 +933,7 @@ fn get_init_param_input_type(_sm: &SM, field: &Field) -> Option<Type> {
         ShardableType::Multiset(_) => None,
         ShardableType::Option(_) => None,
         ShardableType::Map(_, _) => None,
+        ShardableType::PersistentOption(_) => None,
         ShardableType::PersistentMap(_, _) => None,
         ShardableType::Count => None,
         ShardableType::StorageOption(ty) => Some(Type::Verbatim(quote! {
@@ -969,7 +973,7 @@ fn get_init_param_output_type(sm: &SM, field: &Field) -> Option<Type> {
                 crate::pervasive::multiset::Multiset<#ty>
             }))
         }
-        ShardableType::Option(_) => {
+        ShardableType::Option(_) | ShardableType::PersistentOption(_) => {
             let ty = field_token_type(&sm, field);
             Some(Type::Verbatim(quote! {
                 crate::pervasive::option::Option<#ty>
@@ -1007,6 +1011,7 @@ fn add_initialization_output_conditions(
         }
         ShardableType::Option(_)
         | ShardableType::Map(_, _)
+        | ShardableType::PersistentOption(_)
         | ShardableType::PersistentMap(_, _)
         | ShardableType::Multiset(_) => {
             ensures.push(relation_for_collection_of_internal_tokens(
@@ -1031,7 +1036,7 @@ fn relation_for_collection_of_internal_tokens(
     inst_value: Expr,
 ) -> Expr {
     match &field.stype {
-        ShardableType::Option(_) => {
+        ShardableType::Option(_) | ShardableType::PersistentOption(_) => {
             let fn_name = option_relation_post_condition_qualified_name(sm, field);
             Expr::Verbatim(quote! {
                 #fn_name(#param_value, #given_value, #inst_value)
@@ -1059,7 +1064,7 @@ fn relation_for_collection_of_internal_tokens(
 /// generated conditions (e.g., see `add_initialization_output_conditions`)
 fn collection_relation_fns_stream(sm: &SM, field: &Field) -> TokenStream {
     match &field.stype {
-        ShardableType::Option(ty) => {
+        ShardableType::Option(ty) | ShardableType::PersistentOption(ty) => {
             let fn_name = option_relation_post_condition_name(field);
             let token_ty = field_token_type(sm, field);
             let inst_ty = inst_type(sm);
@@ -1351,7 +1356,7 @@ fn get_main_lemma_for_transition_opt<'a>(
 
 // Find things that updated
 
-fn determine_outputs(ctxt: &mut Ctxt, ts: &TransitionStmt) -> syn::parse::Result<()> {
+fn determine_outputs(ctxt: &mut Ctxt, ts: &TransitionStmt) -> parse::Result<()> {
     match ts {
         TransitionStmt::Block(_span, v) => {
             for child in v.iter() {
@@ -1427,7 +1432,7 @@ fn translate_transition(
     ctxt: &mut Ctxt,
     ts: &mut TransitionStmt,
     errors: &mut Vec<Error>,
-) -> syn::parse::Result<()> {
+) -> parse::Result<()> {
     let new_ts = match ts {
         TransitionStmt::Block(_span, v) => {
             for child in v.iter_mut() {
@@ -1440,7 +1445,7 @@ fn translate_transition(
                 SplitKind::Special(id, op, _proof, pat_opt) => {
                     let field = ctxt.get_field_or_panic(id);
                     let condition_ts_opt =
-                        translate_special_condition(ctxt, *span, &field, op, errors);
+                        translate_special_condition(ctxt, *span, &field, op, pat_opt, errors);
                     let assignment_opt = if pat_opt.is_some() {
                         // The relevant token param should be the last one in the params
                         // (having been added by the above call to
@@ -1468,10 +1473,13 @@ fn translate_transition(
                         Some(assign_e) => {
                             assert!(splits.len() == 1);
 
-                            let pat = pat_opt.clone().expect("expected pat");
-                            let ty = get_binding_ty(&field.stype);
-                            let kind = SplitKind::Let(pat, ty, LetKind::Normal, assign_e);
-                            Some(TransitionStmt::Split(*span, kind, splits.clone()))
+                            let pat = pat_opt.as_ref().expect("expected pat");
+                            if let Some((pat1, init1)) = assign_pat_or_arbitrary(pat, &assign_e) {
+                                let kind = SplitKind::Let(pat1, None, LetKind::Normal, init1);
+                                Some(TransitionStmt::Split(*span, kind, splits.clone()))
+                            } else {
+                                Some(splits[0].clone())
+                            }
                         }
                     };
 
@@ -1553,11 +1561,11 @@ fn translate_split_kind(ctxt: &mut Ctxt, sk: &mut SplitKind, errors: &mut Vec<Er
 fn field_token_collection_type(sm: &SM, field: &Field) -> Type {
     let ty = field_token_type(sm, field);
     match &field.stype {
-        ShardableType::Option(_) => {
+        ShardableType::Option(_) | ShardableType::PersistentOption(_) => {
             Type::Verbatim(quote! { crate::pervasive::option::Option<#ty> })
         }
 
-        ShardableType::Map(key, _) => {
+        ShardableType::Map(key, _) | ShardableType::PersistentMap(key, _) => {
             Type::Verbatim(quote! { crate::pervasive::map::Map<#key, #ty> })
         }
 
@@ -1571,22 +1579,81 @@ fn field_token_collection_type(sm: &SM, field: &Field) -> Type {
     }
 }
 
+pub fn assign_pat_or_arbitrary(pat: &Pat, init_e: &Expr) -> Option<(Pat, Expr)> {
+    let ids = crate::ident_visitor::pattern_get_bound_idents(&pat);
+    if ids.len() == 0 {
+        None
+    } else if is_definitely_irrefutable(pat) {
+        Some((pat.clone(), init_e.clone()))
+    } else {
+        let tup_pat;
+        let tup_expr;
+        if ids.len() > 1 {
+            tup_pat = Pat::Verbatim(quote_spanned! { pat.span() =>
+                (#(#ids),*)
+            });
+            tup_expr = Expr::Verbatim(quote_spanned! { pat.span() =>
+                (#(#ids),*)
+            });
+        } else {
+            let id = &ids[0];
+            tup_pat = Pat::Verbatim(quote_spanned! { pat.span() =>
+                #id
+            });
+            tup_expr = Expr::Verbatim(quote_spanned! { pat.span() =>
+                #id
+            });
+        }
+
+        let new_e = Expr::Verbatim(quote_spanned! { init_e.span() =>
+            match (#init_e) { #pat => #tup_expr , _ => crate::pervasive::arbitrary() }
+        });
+        Some((tup_pat, new_e))
+    }
+}
+
 fn token_matches_elt(
     token_is_ref: bool,
     token_name: &Ident,
     elt: &MonoidElt,
+    pat_opt: &Option<Pat>,
     ctxt: &Ctxt,
     field: &Field,
 ) -> Expr {
     match elt {
         MonoidElt::OptionSome(None) => {
-            // TODO for cleaner output, avoid emitting anything here
-            Expr::Verbatim(quote! { true })
+            let pat = pat_opt.as_ref().expect("pat should exist for a pattern-binding case");
+            if is_definitely_irrefutable(pat) {
+                // TODO for cleaner output, avoid emitting anything here
+                Expr::Verbatim(quote! { true })
+            } else {
+                Expr::Verbatim(quote! {
+                    match #token_name.value {
+                        #pat => true,
+                        _ => false,
+                    }
+                })
+            }
         }
         MonoidElt::OptionSome(Some(e)) | MonoidElt::SingletonMultiset(e) => {
             mk_eq(&Expr::Verbatim(quote! {#token_name.value}), &e)
         }
-        MonoidElt::SingletonKV(key, None) => mk_eq(&Expr::Verbatim(quote! {#token_name.key}), &key),
+        MonoidElt::SingletonKV(key, None) => {
+            let e1 = mk_eq(&Expr::Verbatim(quote! {#token_name.key}), &key);
+
+            let pat = pat_opt.as_ref().expect("pat should exist for a pattern-binding case");
+            if is_definitely_irrefutable(pat) {
+                e1
+            } else {
+                let e2 = Expr::Verbatim(quote! {
+                    match #token_name.value {
+                        #pat => true,
+                        _ => false,
+                    }
+                });
+                mk_and(e1, e2)
+            }
+        }
         MonoidElt::SingletonKV(key, Some(val)) => mk_and(
             mk_eq(&Expr::Verbatim(quote! {#token_name.key}), &key),
             mk_eq(&Expr::Verbatim(quote! {#token_name.value}), &val),
@@ -1616,6 +1683,7 @@ fn translate_special_condition(
     span: Span,
     field: &Field,
     op: &SpecialOp,
+    pat_opt: &Option<Pat>,
     errors: &mut Vec<Error>,
 ) -> Option<TransitionStmt> {
     match op {
@@ -1637,7 +1705,10 @@ fn translate_special_condition(
                 is_collection,
             });
 
-            Some(TransitionStmt::Require(span, token_matches_elt(true, &ident, &elt, ctxt, &field)))
+            Some(TransitionStmt::Require(
+                span,
+                token_matches_elt(true, &ident, &elt, pat_opt, ctxt, &field),
+            ))
         }
 
         SpecialOp { stmt: MonoidStmtType::Add, elt } => {
@@ -1660,7 +1731,7 @@ fn translate_special_condition(
 
             Some(TransitionStmt::PostCondition(
                 span,
-                token_matches_elt(false, &ident, &elt, ctxt, &field),
+                token_matches_elt(false, &ident, &elt, pat_opt, ctxt, &field),
             ))
         }
 
@@ -1684,7 +1755,7 @@ fn translate_special_condition(
 
             Some(TransitionStmt::Require(
                 span,
-                token_matches_elt(false, &ident, &elt, ctxt, &field),
+                token_matches_elt(false, &ident, &elt, pat_opt, ctxt, &field),
             ))
         }
 
@@ -1754,7 +1825,17 @@ fn translate_special_condition(
                     mk_eq(&Expr::Verbatim(quote! {#ident}), &e),
                 ))
             } else {
-                None
+                let pat = pat_opt.as_ref().expect("for pat-binding case, pat is expected");
+                if is_definitely_irrefutable(&pat) {
+                    None
+                } else {
+                    Some(TransitionStmt::PostCondition(
+                        span,
+                        Expr::Verbatim(quote! {
+                            match #ident { #pat => true, _ => false }
+                        }),
+                    ))
+                }
             }
         }
     }
@@ -1968,7 +2049,7 @@ fn exchange_collect(
     ctxt: &mut Ctxt,
     ts: &TransitionStmt,
     prequel: Vec<PrequelElement>,
-) -> syn::parse::Result<Vec<PrequelElement>> {
+) -> parse::Result<Vec<PrequelElement>> {
     match ts {
         TransitionStmt::Block(_span, v) => {
             let mut p = prequel;

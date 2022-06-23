@@ -25,8 +25,8 @@ const COMMON: &str = code_str! {
 test_verify_one_file! {
     #[test] one_atomic_ok
     COMMON.to_string() + code_str! {
-        pub fn do_nothing(#[proof] i: Invariant<u8>) {
-            open_invariant!(&i => inner => {
+        pub fn do_nothing(#[proof] i: AtomicInvariant<u8>) {
+            open_atomic_invariant!(&i => inner => {
                 atomic_op();
             });
         }
@@ -36,8 +36,8 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] two_atomic_fail
     COMMON.to_string() + code_str! {
-        pub fn do_nothing(#[proof] i: Invariant<u8>) {
-            open_invariant!(&i => inner => {
+        pub fn do_nothing(#[proof] i: AtomicInvariant<u8>) {
+            open_atomic_invariant!(&i => inner => {
                 atomic_op();
                 atomic_op();
             });
@@ -48,8 +48,8 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] non_atomic_fail
     COMMON.to_string() + code_str! {
-        pub fn do_nothing(#[proof] i: Invariant<u8>) {
-            open_invariant!(&i => inner => {
+        pub fn do_nothing(#[proof] i: AtomicInvariant<u8>) {
+            open_atomic_invariant!(&i => inner => {
                 non_atomic_op();
             });
         }
@@ -59,8 +59,8 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] if_ok
     COMMON.to_string() + code_str! {
-        pub fn do_nothing(#[proof] i: Invariant<u8>, j: u64) {
-            open_invariant!(&i => inner => {
+        pub fn do_nothing(#[proof] i: AtomicInvariant<u8>, j: u64) {
+            open_atomic_invariant!(&i => inner => {
                 if j == 1 {
                     atomic_op();
                 }
@@ -72,8 +72,8 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] proof_call_ok
     COMMON.to_string() + code_str! {
-        pub fn do_nothing(#[proof] i: Invariant<u8>, j: u64) {
-            open_invariant!(&i => inner => {
+        pub fn do_nothing(#[proof] i: AtomicInvariant<u8>, j: u64) {
+            open_atomic_invariant!(&i => inner => {
                 proof_op();
                 atomic_op();
             });
@@ -84,9 +84,9 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] assign_ok
     COMMON.to_string() + code_str! {
-        pub fn do_nothing(#[proof] i: Invariant<u8>) -> u32 {
+        pub fn do_nothing(#[proof] i: AtomicInvariant<u8>) -> u32 {
             let mut x: u32 = 5;
-            open_invariant!(&i => inner => {
+            open_atomic_invariant!(&i => inner => {
                 atomic_op();
                 x = 7;
             });
@@ -98,9 +98,9 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] loop_fail
     COMMON.to_string() + code_str! {
-        pub fn do_nothing(#[proof] i: Invariant<u8>) -> u32 {
+        pub fn do_nothing(#[proof] i: AtomicInvariant<u8>) -> u32 {
             let mut x: u32 = 5;
-            open_invariant!(&i => inner => {
+            open_atomic_invariant!(&i => inner => {
                 while x < 10 {
                     x = x + 1;
                 }
@@ -169,9 +169,9 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] two_atomic_fail_nest1
     COMMON.to_string() + code_str! {
-        pub fn do_nothing(#[proof] i: Invariant<u8>, #[proof] j: LocalInvariant<u8>) {
+        pub fn do_nothing(#[proof] i: AtomicInvariant<u8>, #[proof] j: LocalInvariant<u8>) {
             open_local_invariant!(&j => inner => {
-                open_invariant!(&i => inner => {
+                open_atomic_invariant!(&i => inner => {
                     atomic_op();
                     atomic_op();
                 });
@@ -183,8 +183,8 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] two_atomic_fail_nest2
     COMMON.to_string() + code_str! {
-        pub fn do_nothing(#[proof] i: Invariant<u8>, #[proof] j: LocalInvariant<u8>) {
-            open_invariant!(&i => inner => {
+        pub fn do_nothing(#[proof] i: AtomicInvariant<u8>, #[proof] j: LocalInvariant<u8>) {
+            open_atomic_invariant!(&i => inner => {
                 open_local_invariant!(&j => inner => {
                     atomic_op();
                     atomic_op();

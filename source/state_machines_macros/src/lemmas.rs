@@ -3,16 +3,18 @@ use crate::parse_token_stream::SMBundle;
 use proc_macro2::Span;
 use quote::{quote, ToTokens};
 use std::collections::{HashMap, HashSet};
-use syn::punctuated::Punctuated;
-use syn::spanned::Spanned;
-use syn::token::Comma;
-use syn::{
-    Error, Expr, ExprCall, ExprPath, FnArg, Ident, Pat, PatIdent, PatType, ReturnType, Stmt, Type,
+use syn_verus::parse;
+use syn_verus::punctuated::Punctuated;
+use syn_verus::spanned::Spanned;
+use syn_verus::token;
+use syn_verus::{
+    Error, Expr, ExprCall, ExprPath, FnArg, FnArgKind, FnMode, Ident, Pat, PatIdent, PatType,
+    ReturnType, Stmt, Type,
 };
 
 /// Check that the declarations of 'inductive' lemmas are well-formed.
 
-pub fn check_lemmas(bundle: &SMBundle) -> syn::parse::Result<()> {
+pub fn check_lemmas(bundle: &SMBundle) -> parse::Result<()> {
     check_each_lemma_valid(bundle)?;
     if bundle.extras.invariants.len() > 0 {
         check_lemmas_cover_all_cases(bundle)?;
@@ -44,7 +46,7 @@ pub fn get_transition<'a>(
 /// Make sure the error message is helpful. On error, just tell the user exactly
 /// what params they can copy-paste in.
 
-fn check_each_lemma_valid(bundle: &SMBundle) -> syn::parse::Result<()> {
+fn check_each_lemma_valid(bundle: &SMBundle) -> parse::Result<()> {
     let mut seen_lemmas = HashSet::new();
 
     for l in &bundle.extras.lemmas {
@@ -78,6 +80,28 @@ fn check_each_lemma_valid(bundle: &SMBundle) -> syn::parse::Result<()> {
             _ => {}
         }
 
+        match &l.func.sig.mode {
+            FnMode::Default | FnMode::Proof(_) => {}
+            FnMode::Spec(mode_spec) => {
+                return Err(Error::new(
+                    mode_spec.span(),
+                    "an inductiveness lemma should be `proof`",
+                ));
+            }
+            FnMode::SpecChecked(mode_spec_checked) => {
+                return Err(Error::new(
+                    mode_spec_checked.span(),
+                    "an inductiveness lemma should be `proof`",
+                ));
+            }
+            FnMode::Exec(mode_exec) => {
+                return Err(Error::new(
+                    mode_exec.span(),
+                    "an inductiveness lemma should be `proof`",
+                ));
+            }
+        }
+
         if l.func.sig.generics.params.len() > 0 {
             return Err(Error::new(
                 l.func.sig.generics.span(),
@@ -96,7 +120,9 @@ fn check_each_lemma_valid(bundle: &SMBundle) -> syn::parse::Result<()> {
         }
 
         let expected_params = get_expected_params(t);
-        if let Some(err_span) = params_match(&expected_params, &l.func.sig.inputs) {
+        if let Some(err_span) =
+            params_match(&expected_params, &l.func.sig.inputs, l.func.sig.span())
+        {
             return Err(Error::new(
                 err_span,
                 format!(
@@ -142,17 +168,28 @@ fn get_expected_params(t: &Transition) -> Vec<TransitionParam> {
 
 fn params_match(
     expected: &Vec<TransitionParam>,
-    actual: &Punctuated<FnArg, Comma>,
+    actual: &Punctuated<FnArg, token::Comma>,
+    sig_span: Span,
 ) -> Option<Span> {
     for (i, fn_arg) in actual.iter().enumerate() {
         if i >= expected.len() {
-            return Some(actual[i].span());
+            return Some(actual[i].kind.span());
         }
         match fn_arg {
-            FnArg::Receiver(_) => {
-                return Some(fn_arg.span());
+            FnArg { tracked: _, kind: FnArgKind::Receiver(_) } => {
+                return Some(fn_arg.kind.span());
             }
-            FnArg::Typed(PatType { attrs, pat, colon_token: _, ty }) => {
+            FnArg {
+                tracked,
+                kind: FnArgKind::Typed(PatType { attrs, pat, colon_token: _, ty }),
+            } => {
+                match tracked {
+                    Some(token::Tracked { span }) => {
+                        return Some(*span);
+                    }
+                    None => {}
+                }
+
                 if attrs.len() > 0 {
                     return Some(attrs[0].span());
                 }
@@ -171,7 +208,7 @@ fn params_match(
     }
 
     if actual.len() != expected.len() {
-        return Some(actual.span());
+        return Some(sig_span);
     }
 
     return None;
@@ -194,7 +231,7 @@ fn pat_is_ident(pat: &Pat, ident: &Ident) -> bool {
 /// Check that every transition has a corresponding 'inductive' lemma.
 /// On error, print out a list of stubs that the user can directly copy-paste into their source.
 
-fn check_lemmas_cover_all_cases(bundle: &SMBundle) -> syn::parse::Result<()> {
+fn check_lemmas_cover_all_cases(bundle: &SMBundle) -> parse::Result<()> {
     let mut names = HashMap::new();
     for t in bundle.sm.transitions.iter() {
         if t.kind != TransitionKind::Readonly {
@@ -270,7 +307,7 @@ fn transition_params_to_string(is_init: bool, params: &Vec<TransitionParam>) -> 
 
 /// Error if the user tried to add 'requires' or 'ensures' to an inductiveness lemma.
 
-fn check_no_explicit_conditions(bundle: &SMBundle) -> syn::parse::Result<()> {
+fn check_no_explicit_conditions(bundle: &SMBundle) -> parse::Result<()> {
     // Note that this check isn't strictly necessary. If the user tries to write something like:
     //
     //    fn foo() {

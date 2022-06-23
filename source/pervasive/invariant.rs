@@ -11,10 +11,10 @@
 //
 // Furthermore, for either type:
 //
-//  * If (Local?)Invariant<T> is Sync, then T must be Send
+//  * If an Invariant<T> is Sync, then T must be Send
 //      * We could put the T in an Invariant, sync the invariant to another thread,
 //        and then extract the T, having effectively send it to the other thread.
-//  * If (Local?)Invariant<T> is Send, then T must be Send
+//  * If Invariant<T> is Send, then T must be Send
 //      * We could put the T in an Invariant, send the invariant to another thread,
 //        and then take the T out.
 //
@@ -24,7 +24,7 @@
 //
 // In conclusion, we should have:
 //
-//    T                   Invariant<T>        LocalInvariant<T>
+//    T                   AtomicInvariant<T>  LocalInvariant<T>
 //
 //    {}          ==>     {}                  {}
 //    Send        ==>     Send+Sync           Send
@@ -33,7 +33,7 @@
 
 #[proof]
 #[verifier(external_body)]
-pub struct Invariant<#[verifier(maybe_negative)] V> {
+pub struct AtomicInvariant<#[verifier(maybe_negative)] V> {
     dummy: builtin::SyncSendIfSend<V>,
 }
 
@@ -76,7 +76,7 @@ macro_rules! declare_invariant_impl {
     }
 }
 
-declare_invariant_impl!(Invariant);
+declare_invariant_impl!(AtomicInvariant);
 declare_invariant_impl!(LocalInvariant);
 
 #[proof]
@@ -89,7 +89,7 @@ pub struct InvariantBlockGuard;
 //
 // An example usage of the macro is like
 //
-//   i: Invariant<X>
+//   i: AtomicInvariant<X>
 //
 //   open_invariant!(&i => inner => {
 //      { modify `inner` here }
@@ -101,7 +101,7 @@ pub struct InvariantBlockGuard;
 //  last the entire block.
 
 #[verifier(external_body)]
-pub fn open_invariant_begin<'a, V>(_inv: &'a Invariant<V>) -> (&'a InvariantBlockGuard, V) {
+pub fn open_atomic_invariant_begin<'a, V>(_inv: &'a AtomicInvariant<V>) -> (&'a InvariantBlockGuard, V) {
     requires([false]);
     unimplemented!();
 }
@@ -119,10 +119,10 @@ pub fn open_invariant_end<V>(_guard: &InvariantBlockGuard, _v: V) {
 }
 
 #[macro_export]
-macro_rules! open_invariant {
+macro_rules! open_atomic_invariant {
     ($eexpr:expr => $iident:ident => $bblock:block) => {
         #[verifier(invariant_block)] {
-            #[allow(unused_mut)] let (guard, mut $iident) = $crate::pervasive::invariant::open_invariant_begin($eexpr);
+            #[allow(unused_mut)] let (guard, mut $iident) = $crate::pervasive::invariant::open_atomic_invariant_begin($eexpr);
             $bblock
             $crate::pervasive::invariant::open_invariant_end(guard, $iident);
         }

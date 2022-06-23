@@ -8,8 +8,9 @@ use crate::ident_visitor::validate_idents_transition;
 use crate::inherent_safety_conditions::check_inherent_conditions;
 use crate::util::{combine_errors_or_ok, combine_results};
 use proc_macro2::Span;
-use syn::spanned::Spanned;
-use syn::{Error, Ident};
+use syn_verus::parse;
+use syn_verus::spanned::Spanned;
+use syn_verus::{Error, Ident};
 
 pub fn fields_contain(fields: &Vec<Field>, ident: &Ident) -> bool {
     for f in fields {
@@ -94,10 +95,7 @@ fn check_exactly_one_init(sm: &SM, ts: &TransitionStmt, errors: &mut Vec<Error>)
     }
 }
 
-fn check_exactly_one_init_rec(
-    field: &Field,
-    ts: &TransitionStmt,
-) -> syn::parse::Result<Option<Span>> {
+fn check_exactly_one_init_rec(field: &Field, ts: &TransitionStmt) -> parse::Result<Option<Span>> {
     match ts {
         TransitionStmt::Block(_, v) => {
             let mut o = None;
@@ -216,10 +214,7 @@ fn check_at_most_one_update(sm: &SM, ts: &TransitionStmt, errors: &mut Vec<Error
     }
 }
 
-fn check_at_most_one_update_rec(
-    field: &Field,
-    ts: &TransitionStmt,
-) -> syn::parse::Result<Option<Span>> {
+fn check_at_most_one_update_rec(field: &Field, ts: &TransitionStmt) -> parse::Result<Option<Span>> {
     match ts {
         TransitionStmt::Block(_, v) => {
             let mut o = None;
@@ -275,17 +270,17 @@ fn check_at_most_one_update_rec(
 
 fn is_allowed_in_update_in_normal_transition(stype: &ShardableType) -> bool {
     match stype {
-        ShardableType::Variable(_) => true,
-        ShardableType::NotTokenized(_) => true,
+        ShardableType::Variable(_) | ShardableType::NotTokenized(_) => true,
 
-        ShardableType::Constant(_) => false,
-        ShardableType::Multiset(_) => false,
-        ShardableType::Option(_) => false,
-        ShardableType::Map(_, _) => false,
-        ShardableType::StorageOption(_) => false,
-        ShardableType::StorageMap(_, _) => false,
-        ShardableType::PersistentMap(_, _) => false,
-        ShardableType::Count => false,
+        ShardableType::Constant(_)
+        | ShardableType::Multiset(_)
+        | ShardableType::Option(_)
+        | ShardableType::Map(_, _)
+        | ShardableType::StorageOption(_)
+        | ShardableType::StorageMap(_, _)
+        | ShardableType::PersistentMap(_, _)
+        | ShardableType::PersistentOption(_)
+        | ShardableType::Count => false,
     }
 }
 
@@ -295,13 +290,11 @@ fn is_allowed_in_special_op(
     span: Span,
     stype: &ShardableType,
     sop: &SpecialOp,
-) -> syn::parse::Result<()> {
+) -> parse::Result<()> {
     match stype {
-        ShardableType::Constant(_) => {
-            Err(Error::new(span, "field marked 'constant' cannot be modified"))
-        }
-
-        ShardableType::Variable(_) | ShardableType::NotTokenized(_) => {
+        ShardableType::Constant(_)
+        | ShardableType::Variable(_)
+        | ShardableType::NotTokenized(_) => {
             let stmt_name = sop.stmt.name();
             let strat = stype.strategy_name();
             Err(Error::new(
@@ -318,6 +311,7 @@ fn is_allowed_in_special_op(
         | ShardableType::StorageOption(_)
         | ShardableType::StorageMap(_, _)
         | ShardableType::PersistentMap(_, _)
+        | ShardableType::PersistentOption(_)
         | ShardableType::Count => {
             if !op_matches_type(stype, &sop.elt) {
                 let syntax = sop.elt.syntax();
@@ -388,7 +382,9 @@ fn op_matches_type(stype: &ShardableType, elt: &MonoidElt) -> bool {
             _ => false,
         },
 
-        ShardableType::Option(_) | ShardableType::StorageOption(_) => match elt {
+        ShardableType::Option(_)
+        | ShardableType::PersistentOption(_)
+        | ShardableType::StorageOption(_) => match elt {
             MonoidElt::General(_) => true,
             MonoidElt::OptionSome(_) => true,
             _ => false,
@@ -611,8 +607,8 @@ fn stmt_get_bound_idents(ts: &TransitionStmt) -> Vec<Ident> {
 
 /// Check simple well-formedness properties of the transitions.
 
-pub fn check_transitions(sm: &mut SM) -> syn::parse::Result<()> {
-    let mut results: Vec<syn::parse::Result<()>> = Vec::new();
+pub fn check_transitions(sm: &mut SM) -> parse::Result<()> {
+    let mut results: Vec<parse::Result<()>> = Vec::new();
 
     let mut transitions = Vec::new();
     std::mem::swap(&mut transitions, &mut sm.transitions);
@@ -626,7 +622,7 @@ pub fn check_transitions(sm: &mut SM) -> syn::parse::Result<()> {
     combine_results(results)
 }
 
-pub fn check_transition(sm: &SM, tr: &mut Transition) -> syn::parse::Result<()> {
+pub fn check_transition(sm: &SM, tr: &mut Transition) -> parse::Result<()> {
     validate_idents_transition(tr)?;
 
     let mut errors = Vec::new();

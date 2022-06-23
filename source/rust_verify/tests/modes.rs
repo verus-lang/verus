@@ -23,6 +23,26 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] verus_struct1 verus_code! {
+        use crate::pervasive::modes::*;
+        struct S {
+            i: Ghost<bool>,
+            j: bool,
+        }
+        fn test1(i: bool, j: bool) {
+            let s = S { i: ghost(i), j };
+        }
+        fn test2(i: Ghost<bool>, j: bool) {
+            let s = S { i, j };
+        }
+        fn test3(i: bool, j: Ghost<bool>) {
+            let s: Ghost<S> = ghost(S { i: Ghost::new(i), j: *j });
+            let jj: Ghost<bool> = ghost((*s).j);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] struct_fails1 code! {
         struct S {
             #[spec] i: bool,
@@ -30,6 +50,19 @@ test_verify_one_file! {
         }
         fn test(i: bool, #[spec] j: bool) {
             let s = S { i, j };
+        }
+    } => Err(_) => ()
+}
+
+test_verify_one_file! {
+    #[test] verus_struct_fails1 verus_code! {
+        use crate::pervasive::modes::*;
+        struct S {
+            i: Ghost<bool>,
+            j: bool,
+        }
+        fn test(i: bool, j: Ghost<bool>) {
+            let s = S { i: ghost(i), j: *j };
         }
     } => Err(_) => ()
 }
@@ -112,9 +145,8 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] spec_struct_not_exec code! {
-        #[spec]
-        struct Set<A> {
+    #[test] spec_struct_not_exec verus_code! {
+        ghost struct Set<A> {
             pub dummy: A,
         }
 
@@ -125,9 +157,8 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] spec_enum_not_exec code! {
-        #[spec]
-        struct E {
+    #[test] spec_enum_not_exec verus_code! {
+        ghost struct E {
             A,
             B,
         }
@@ -374,4 +405,16 @@ test_verify_one_file! {
             }
         }
     } => Err(_)
+}
+
+test_verify_one_file! {
+    #[test] assign_from_proof code! {
+        fn myfun(#[spec] a: bool) -> bool {
+            let mut b = false;
+            if a {
+                b = true;
+            }
+            b
+        }
+    } => Err(e) => assert_vir_error(e)
 }

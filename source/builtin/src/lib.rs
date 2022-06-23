@@ -168,6 +168,40 @@ pub fn old<A>(_: A) -> A {
     unimplemented!();
 }
 
+pub struct Chain {
+    data: std::marker::PhantomData<int>,
+}
+
+#[spec]
+pub fn chained_value(_a: int) -> Chain {
+    unimplemented!()
+}
+
+#[spec]
+pub fn chained_le(_left: Chain, _right: int) -> Chain {
+    unimplemented!()
+}
+
+#[spec]
+pub fn chained_lt(_left: Chain, _right: int) -> Chain {
+    unimplemented!()
+}
+
+#[spec]
+pub fn chained_ge(_left: Chain, _right: int) -> Chain {
+    unimplemented!()
+}
+
+#[spec]
+pub fn chained_gt(_left: Chain, _right: int) -> Chain {
+    unimplemented!()
+}
+
+#[spec]
+pub fn chained_cmp(_chain: Chain) -> bool {
+    unimplemented!()
+}
+
 #[proof]
 pub fn assert_by(_: bool, _: ()) {
     unimplemented!();

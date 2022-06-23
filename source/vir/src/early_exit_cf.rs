@@ -61,9 +61,11 @@ fn expr_get_early_exits_rec(
             | ExprX::Unary(..)
             | ExprX::UnaryOpr(..)
             | ExprX::Binary(..)
+            | ExprX::Multi(..)
             | ExprX::Assign { .. }
             | ExprX::If(..)
             | ExprX::Match(..)
+            | ExprX::Ghost { .. }
             | ExprX::Block(..) => VisitorControlFlow::Recurse,
             ExprX::Quant(..)
             | ExprX::Closure(..)

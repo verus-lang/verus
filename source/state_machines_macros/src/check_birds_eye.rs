@@ -1,5 +1,5 @@
 use crate::ast::{LetKind, SpecialOp, SplitKind, Transition, TransitionKind, TransitionStmt};
-use syn::parse::Error;
+use syn_verus::parse::Error;
 
 // Here we check the following rules related to `birds_eye` let-bindings:
 //

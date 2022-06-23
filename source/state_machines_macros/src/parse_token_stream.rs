@@ -9,14 +9,15 @@ use crate::self_type_visitor::replace_self_sm;
 use crate::to_token_stream::shardable_type_to_type;
 use crate::transitions::check_transitions;
 use proc_macro2::Span;
-use syn::buffer::Cursor;
-use syn::parse::{Parse, ParseStream};
-use syn::spanned::Spanned;
-use syn::Token;
-use syn::{
-    braced, AttrStyle, Attribute, Error, FieldsNamed, FnArg, GenericArgument, GenericParam,
-    Generics, Ident, ImplItem, ImplItemMethod, Meta, MetaList, NestedMeta, PathArguments, Receiver,
-    ReturnType, Type, TypePath, Visibility, WhereClause,
+use syn_verus::buffer::Cursor;
+use syn_verus::parse;
+use syn_verus::parse::{Parse, ParseStream};
+use syn_verus::spanned::Spanned;
+use syn_verus::Token;
+use syn_verus::{
+    braced, AttrStyle, Attribute, Error, FieldsNamed, FnArg, FnArgKind, FnMode, GenericArgument,
+    GenericParam, Generics, Ident, ImplItem, ImplItemMethod, Meta, MetaList, NestedMeta,
+    PathArguments, Receiver, ReturnType, Type, TypePath, Visibility, WhereClause,
 };
 
 pub struct SMBundle {
@@ -42,7 +43,7 @@ pub struct ParseResult {
 }
 
 impl Parse for ParseResult {
-    fn parse(input: ParseStream) -> syn::parse::Result<Self> {
+    fn parse(input: ParseStream) -> parse::Result<Self> {
         // parse
         //
         // IDENT <...> {
@@ -114,7 +115,7 @@ impl Parse for ParseResult {
     }
 }
 
-pub fn keyword(input: ParseStream, token: &str) -> syn::parse::Result<Span> {
+pub fn keyword(input: ParseStream, token: &str) -> parse::Result<Span> {
     input.step(|cursor| {
         if let Some((ident, rest)) = cursor.ident() {
             if ident == token {
@@ -143,14 +144,14 @@ enum FnAttrInfo {
     Lemma(LemmaPurpose),
 }
 
-fn err_on_dupe(info: &FnAttrInfo, span: Span) -> syn::parse::Result<()> {
+fn err_on_dupe(info: &FnAttrInfo, span: Span) -> parse::Result<()> {
     match info {
         FnAttrInfo::NoneFound => Ok(()),
         _ => Err(Error::new(span, "conflicting attributes")),
     }
 }
 
-fn parse_fn_attr_info(attrs: &Vec<Attribute>) -> syn::parse::Result<FnAttrInfo> {
+fn parse_fn_attr_info(attrs: &Vec<Attribute>) -> parse::Result<FnAttrInfo> {
     let mut fn_attr_info = FnAttrInfo::NoneFound;
 
     for attr in attrs {
@@ -224,7 +225,7 @@ fn attr_is_any_mode(attr: &Attribute) -> bool {
 // Check that the user did not apply an explicit mode. We will apply the modes ourselves
 // during macro expansion.
 
-fn ensure_no_mode(impl_item_method: &ImplItemMethod, msg: &str) -> syn::parse::Result<()> {
+fn ensure_no_mode(impl_item_method: &ImplItemMethod, msg: &str) -> parse::Result<()> {
     for attr in &impl_item_method.attrs {
         if attr_is_any_mode(attr) {
             return Err(Error::new(attr.span(), msg));
@@ -234,24 +235,38 @@ fn ensure_no_mode(impl_item_method: &ImplItemMethod, msg: &str) -> syn::parse::R
     return Ok(());
 }
 
-fn to_invariant(impl_item_method: ImplItemMethod) -> syn::parse::Result<Invariant> {
+fn to_invariant(impl_item_method: ImplItemMethod) -> parse::Result<Invariant> {
     ensure_no_mode(
         &impl_item_method,
         "an invariant fn is implied to be 'spec'; it should not be explicitly labelled",
     )?;
+
     if impl_item_method.sig.inputs.len() != 1 {
         return Err(Error::new(
-            impl_item_method.sig.inputs.span(),
+            impl_item_method.sig.span(),
             "an invariant function must take exactly 1 argument (self)",
         ));
     }
 
+    match &impl_item_method.sig.mode {
+        FnMode::Default | FnMode::Spec(_) | FnMode::SpecChecked(_) => {}
+        FnMode::Proof(mode_proof) => {
+            return Err(Error::new(mode_proof.span(), "an invariant function should be `spec`"));
+        }
+        FnMode::Exec(mode_exec) => {
+            return Err(Error::new(mode_exec.span(), "an invariant function should be `spec`"));
+        }
+    }
+
     let one_arg = impl_item_method.sig.inputs.iter().next().expect("one_arg");
     match one_arg {
-        FnArg::Receiver(Receiver { mutability: None, .. }) => {}
+        FnArg { tracked: _, kind: FnArgKind::Receiver(Receiver { mutability: None, .. }) } => {
+            // don't need to check for 'tracked' or anything
+            // (would be caught by mode checking later)
+        }
         _ => {
             return Err(Error::new(
-                one_arg.span(),
+                one_arg.kind.span(),
                 "an invariant function must take 1 argument (self)",
             ));
         }
@@ -272,7 +287,7 @@ fn to_invariant(impl_item_method: ImplItemMethod) -> syn::parse::Result<Invarian
                 "an invariant function must return a bool",
             ));
         }
-        ReturnType::Type(_, ty) => {
+        ReturnType::Type(_, _tracked, _return_name, ty) => {
             match &**ty {
                 Type::Path(TypePath { qself: None, path }) if path.is_ident("bool") => {
                     // ok
@@ -287,7 +302,7 @@ fn to_invariant(impl_item_method: ImplItemMethod) -> syn::parse::Result<Invarian
     return Ok(Invariant { func: impl_item_method });
 }
 
-fn to_lemma(impl_item_method: ImplItemMethod, purpose: LemmaPurpose) -> syn::parse::Result<Lemma> {
+fn to_lemma(impl_item_method: ImplItemMethod, purpose: LemmaPurpose) -> parse::Result<Lemma> {
     ensure_no_mode(
         &impl_item_method,
         "an inductivity lemma is implied to be 'proof'; it should not be explicitly labelled",
@@ -306,6 +321,7 @@ enum ShardingType {
     Map,
     StorageOption,
     StorageMap,
+    PersistentOption,
     PersistentMap,
     Count,
 }
@@ -319,7 +335,7 @@ fn get_sharding_type(
     field_span: Span,
     attrs: &[Attribute],
     concurrent: bool,
-) -> syn::parse::Result<ShardingType> {
+) -> parse::Result<ShardingType> {
     let mut res = None;
 
     for attr in attrs {
@@ -352,6 +368,7 @@ fn get_sharding_type(
                                 "map" => ShardingType::Map,
                                 "storage_option" => ShardingType::StorageOption,
                                 "storage_map" => ShardingType::StorageMap,
+                                "persistent_option" => ShardingType::PersistentOption,
                                 "persistent_map" => ShardingType::PersistentMap,
                                 "not_tokenized" => ShardingType::NotTokenized,
                                 name => {
@@ -413,7 +430,7 @@ fn get_sharding_type(
 /// Checks the given type to be of the form `type_name`.
 /// Returns an Error (using the given strategy name in the error message) if the given
 /// type is not of the right form.
-fn check_untemplated_type(ty: &Type, strategy: &str, type_name: &str) -> syn::parse::Result<()> {
+fn check_untemplated_type(ty: &Type, strategy: &str, type_name: &str) -> parse::Result<()> {
     match ty {
         Type::Path(TypePath { qself: None, path }) if path.segments.len() == 1 => {
             let path_segment = &path.segments[0];
@@ -432,9 +449,7 @@ fn check_untemplated_type(ty: &Type, strategy: &str, type_name: &str) -> syn::pa
     let expected_form = type_name.to_string();
     return Err(Error::new(
         ty.span(),
-        format!(
-            "type of a field with sharding strategy '{strategy:}' must be of the form {expected_form:}"
-        ),
+        format!("type of a field with sharding strategy '{strategy:}' must be {expected_form:}"),
     ));
 }
 
@@ -447,7 +462,7 @@ fn extract_template_params(
     strategy: &str,
     type_name: &str,
     num_expected_args: usize,
-) -> syn::parse::Result<Vec<Type>> {
+) -> parse::Result<Vec<Type>> {
     match ty {
         Type::Path(TypePath { qself: None, path }) if path.segments.len() == 1 => {
             let path_segment = &path.segments[0];
@@ -489,7 +504,7 @@ fn extract_template_params(
 fn to_fields(
     fields_named: &mut FieldsNamed,
     concurrent: bool,
-) -> syn::parse::Result<Vec<crate::ast::Field>> {
+) -> parse::Result<Vec<crate::ast::Field>> {
     let mut v: Vec<crate::ast::Field> = Vec::new();
     for field in fields_named.named.iter_mut() {
         let ident = match &field.ident {
@@ -545,6 +560,10 @@ fn to_fields(
                 let v = extract_template_params(&field.ty, "map", "Map", 2)?;
                 ShardableType::StorageMap(v[0].clone(), v[1].clone())
             }
+            ShardingType::PersistentOption => {
+                let v = extract_template_params(&field.ty, "option", "Option", 1)?;
+                ShardableType::PersistentOption(v[0].clone())
+            }
             ShardingType::PersistentMap => {
                 let v = extract_template_params(&field.ty, "map", "Map", 2)?;
                 ShardableType::PersistentMap(v[0].clone(), v[1].clone())
@@ -559,7 +578,7 @@ fn to_fields(
     return Ok(v);
 }
 
-pub fn parse_result_to_smir(pr: ParseResult, concurrent: bool) -> syn::parse::Result<SMBundle> {
+pub fn parse_result_to_smir(pr: ParseResult, concurrent: bool) -> parse::Result<SMBundle> {
     let ParseResult { name, generics, items, fields } = pr;
 
     let mut normal_fns = Vec::new();

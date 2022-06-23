@@ -92,7 +92,7 @@ pub fn main() {
     let commands = air::parser::Parser::new().nodes_to_commands(&nodes).expect("parse error");
 
     // Start AIR
-    let mut air_context = Context::new(air::smt_manager::SmtManager::new());
+    let mut air_context = Context::new();
     let debug = matches.opt_present("debug");
     air_context.set_debug(debug);
     let ignore_unexpected_smt = matches.opt_present("ignore-unexpected-smt");

@@ -503,7 +503,7 @@ struct Queue<T> {
     tail: PAtomicU64,
 
     #[proof] instance: FifoQueue::Instance<T>,
-    #[proof] inv: Invariant<HeadTailTokens<T>>,
+    #[proof] inv: AtomicInvariant<HeadTailTokens<T>>,
 }
 
 impl<T> Queue<T> {
@@ -608,7 +608,7 @@ pub fn new_queue<T>(len: usize) -> (Producer<T>, Consumer<T>) {
     let (tail_atomic, Proof(tail_perm)) = PAtomicU64::new(0);
 
     // Initialize the atomic invariant to store atomic tokens
-    #[proof] let inv = Invariant::new(
+    #[proof] let inv = AtomicInvariant::new(
         HeadTailTokens {
             head: head_token,
             tail: tail_token,
@@ -669,12 +669,12 @@ impl<T> Producer<T> {
 
             let head;
             #[proof] let cell_perm;
-            open_invariant!(&queue.inv => htt => {
+            open_atomic_invariant!(&queue.inv => htt => {
                 // Get the current `head` value from the shared atomic.
                 head = queue.head.load(&htt.head_perm);
 
                 // If `head != next_tail`, then we proceed with the operation.
-                // We check here, ghostily, in the `open_invariant` block if that's the case.
+                // We check here, ghostily, in the `open_atomic_invariant` block if that's the case.
                 // If so, we proceed with the `produce_start` transition
                 // and obtain the cell permission.
                 cell_perm = if head != next_tail as u64 {
@@ -699,7 +699,7 @@ impl<T> Producer<T> {
 
                 // Store the updated tail to the shared `tail` atomic,
                 // while performing the `produce_end` transition.
-                open_invariant!(&queue.inv => htt => {
+                open_atomic_invariant!(&queue.inv => htt => {
                     queue.tail.store(&mut htt.tail_perm, next_tail as u64);
                     queue.instance.produce_end(cell_perm,
                         cell_perm, &mut htt.tail, &mut self.producer);
@@ -732,7 +732,7 @@ impl<T> Consumer<T> {
 
             let tail;
             #[proof] let cell_perm;
-            open_invariant!(&queue.inv => htt => {
+            open_atomic_invariant!(&queue.inv => htt => {
                 tail = queue.tail.load(&htt.tail_perm);
 
                 cell_perm = if self.head as u64 != tail {
@@ -750,7 +750,7 @@ impl<T> Consumer<T> {
                 };
                 let t = queue.buffer.index(self.head).take(&mut cell_perm);
 
-                open_invariant!(&queue.inv => htt => {
+                open_atomic_invariant!(&queue.inv => htt => {
                     queue.head.store(&mut htt.head_perm, next_head as u64);
                     queue.instance.consume_end(cell_perm,
                         cell_perm, &mut htt.head, &mut self.consumer);

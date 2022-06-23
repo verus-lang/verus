@@ -87,7 +87,7 @@ If you run the verifier manually, set `VERUS_Z3_PATH` to `path_to/verify/z3`.
 
 You should be in the `source` subdirectory.
 
-Set the RUSTC environment variable to point to `../rust/install/bin/rustc` and use `cargo` to build the verifier:
+Set the RUSTC environment variable to point to `../rust/install/bin/rustc` and use `cargo build` to build the verifier:
 
 For example, on **macOS and Linux**:
 ```

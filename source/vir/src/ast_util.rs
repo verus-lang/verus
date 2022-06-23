@@ -85,6 +85,24 @@ pub fn bitwidth_from_type(et: &Typ) -> Option<u32> {
     }
 }
 
+impl TypX {
+    pub fn is_ghost_typ(&self) -> bool {
+        match self {
+            TypX::Datatype(path, _) => path_as_rust_name(path) == "crate::pervasive::modes::Ghost",
+            _ => false,
+        }
+    }
+
+    pub fn is_tracked_typ(&self) -> bool {
+        match self {
+            TypX::Datatype(path, _) => {
+                path_as_rust_name(path) == "crate::pervasive::modes::Tracked"
+            }
+            _ => false,
+        }
+    }
+}
+
 pub fn path_as_rust_name(path: &Path) -> String {
     let krate = match &path.krate {
         None => "crate".to_string(),
