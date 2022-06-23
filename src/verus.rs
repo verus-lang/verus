@@ -248,7 +248,10 @@ pub mod parsing {
                 if input.peek(token::Paren) {
                     let content;
                     let paren_token = parenthesized!(content in input);
-                    let checked = Box::new(input.parse()?);
+                    let checked = Box::new(content.parse()?);
+                    if !matches!(&*checked, Ident { .. }) || checked.to_string() != "checked" {
+                        return Err(content.error("expected `spec(checked)`"));
+                    }
                     if !content.is_empty() {
                         return Err(content.error("expected `)`"));
                     }
