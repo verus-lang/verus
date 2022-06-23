@@ -429,6 +429,7 @@ fn function_to_node(function: &FunctionX) -> Node {
             autoview,
             bit_vector,
             atomic,
+            integer_ring,
             is_decrease_by,
             check_recommends,
             nonlinear,
@@ -461,6 +462,9 @@ fn function_to_node(function: &FunctionX) -> Node {
         }
         if *atomic {
             nodes.push(str_to_node("+atomic"));
+        }
+        if *integer_ring {
+            nodes.push(str_to_node("+integer_ring"));
         }
         if *is_decrease_by {
             nodes.push(str_to_node("+is_decrease_by"));

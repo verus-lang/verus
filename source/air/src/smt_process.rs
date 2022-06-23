@@ -22,7 +22,7 @@ const DONE: &str = "<<DONE>>";
 
 /// A separate thread writes data to the SMT solver over a pipe.
 /// (Rust's documentation says you need a separate thread; otherwise, it lets the pipes deadlock.)
-fn writer_thread(requests: Receiver<Vec<u8>>, mut smt_pipe_stdin: ChildStdin) {
+pub(crate) fn writer_thread(requests: Receiver<Vec<u8>>, mut smt_pipe_stdin: ChildStdin) {
     while let Ok(req) = requests.recv() {
         smt_pipe_stdin
             .write_all(&req)

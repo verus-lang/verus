@@ -119,7 +119,7 @@ impl Printer {
         }
     }
 
-    pub(crate) fn expr_to_node(&self, expr: &Expr) -> Node {
+    pub fn expr_to_node(&self, expr: &Expr) -> Node {
         match &**expr {
             ExprX::Const(Constant::Bool(b)) => Node::Atom(b.to_string()),
             ExprX::Const(Constant::Nat(n)) => Node::Atom((**n).clone()),
@@ -284,7 +284,7 @@ impl Printer {
         }
     }
 
-    pub(crate) fn exprs_to_node(&self, exprs: &Exprs) -> Node {
+    pub fn exprs_to_node(&self, exprs: &Exprs) -> Node {
         Node::List(vec_map(exprs, |e| self.expr_to_node(e)))
     }
 

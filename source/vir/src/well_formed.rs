@@ -323,6 +323,18 @@ fn check_function(ctxt: &Ctxt, function: &Function) -> Result<(), VirErr> {
         }
     }
 
+    if (function.x.attrs.bit_vector
+        && (function.x.attrs.nonlinear || function.x.attrs.integer_ring))
+        || (!function.x.attrs.bit_vector
+            && function.x.attrs.nonlinear
+            && function.x.attrs.integer_ring)
+    {
+        return err_str(
+            &function.span,
+            "Select at most one verifier attribute: integer_ring, non_linear, bit_vector",
+        );
+    }
+
     if function.x.attrs.bit_vector {
         if function.x.mode != Mode::Proof {
             return err_str(&function.span, "bit-vector function mode must be declared as proof");
@@ -351,6 +363,124 @@ fn check_function(ctxt: &Ctxt, function: &Function) -> Result<(), VirErr> {
                     );
                 }
             }
+        }
+    }
+
+    #[cfg(not(feature = "singular"))]
+    if function.x.attrs.integer_ring {
+        return err_str(
+            &function.span,
+            "Please cargo build with `--features singular` to use integer_ring attribute",
+        );
+    }
+
+    #[cfg(feature = "singular")]
+    if function.x.attrs.integer_ring {
+        let _ = match std::env::var("VERUS_SINGULAR_PATH") {
+            Ok(_) => {}
+            Err(_) => {
+                return err_str(
+                    &function.span,
+                    "Please provide VERUS_SINGULAR_PATH to use integer_ring attribute",
+                );
+            }
+        };
+
+        if function.x.mode != Mode::Proof {
+            return err_str(&function.span, "integer_ring mode must be declared as proof");
+        }
+        if let Some(body) = &function.x.body {
+            crate::ast_visitor::expr_visitor_check(body, &mut |expr| {
+                match &expr.x {
+                    ExprX::Block(_, _) => {}
+                    _ => {
+                        return err_str(&function.span, "integer_ring mode cannot have a body");
+                    }
+                }
+                Ok(())
+            })?;
+        }
+        for p in function.x.params.iter() {
+            match *p.x.typ {
+                TypX::Int(crate::ast::IntRange::Int) => {}
+                TypX::Boxed(_) => {}
+                _ => {
+                    return err_str(
+                        &p.span,
+                        "integer_ring proof's parameters should all be int type",
+                    );
+                }
+            }
+        }
+        if function.x.ensure.len() != 1 {
+            return err_str(
+                &function.span,
+                "only a single ensures is allowed in integer_ring mode",
+            );
+        } else {
+            let ens = function.x.ensure[0].clone();
+            if let crate::ast::ExprX::Binary(crate::ast::BinaryOp::Eq(_), lhs, rhs) = &ens.x {
+                if let crate::ast::ExprX::Binary(
+                    crate::ast::BinaryOp::Arith(crate::ast::ArithOp::EuclideanMod, _),
+                    _,
+                    _,
+                ) = &lhs.x
+                {
+                    match &rhs.x {
+                        crate::ast::ExprX::Const(crate::ast::Constant::Nat(zero))
+                            if "0" == (**zero).as_str() => {}
+                        _ => {
+                            return err_str(
+                                &function.span,
+                                "integer_ring mode ensures expression error: when the lhs is has % operator, the rhs should be zero. The ensures expression should be `Expr % m == 0` or `Expr == Expr` ",
+                            );
+                        }
+                    }
+                }
+            } else {
+                return err_str(
+                    &function.span,
+                    "In the integer_ring's ensures expression, the outermost operator should be equality operator. For example, inequality operator is not supported",
+                );
+            }
+        }
+        if function.x.has_return() {
+            return err_str(
+                &function.span,
+                "integer_ring mode function cannot have a return value",
+            );
+        }
+        for req in function.x.require.iter() {
+            crate::ast_visitor::expr_visitor_check(req, &mut |expr| {
+                match *expr.typ {
+                    TypX::Int(crate::ast::IntRange::Int) => {}
+                    TypX::Bool => {}
+                    TypX::Boxed(_) => {}
+                    _ => {
+                        return err_str(
+                            &req.span,
+                            "integer_ring mode's expressions should be int/bool type",
+                        );
+                    }
+                }
+                Ok(())
+            })?;
+        }
+        for ens in function.x.ensure.iter() {
+            crate::ast_visitor::expr_visitor_check(ens, &mut |expr| {
+                match *expr.typ {
+                    TypX::Int(crate::ast::IntRange::Int) => {}
+                    TypX::Bool => {}
+                    TypX::Boxed(_) => {}
+                    _ => {
+                        return err_str(
+                            &ens.span,
+                            "integer_ring mode's expressions should be int/bool type",
+                        );
+                    }
+                }
+                Ok(())
+            })?;
         }
     }
 

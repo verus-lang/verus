@@ -32,10 +32,10 @@ pub(crate) struct AxiomInfo {
 #[derive(Debug)]
 pub enum ValidityResult {
     Valid,
-    Invalid(Model, Error),
+    Invalid(Option<Model>, Error),
     Canceled,
     TypeError(TypeError),
-    UnexpectedSmtOutput(String),
+    UnexpectedOutput(String),
 }
 
 #[derive(Clone, Debug)]
@@ -75,6 +75,7 @@ pub struct Context {
     pub(crate) air_middle_log: Emitter,
     pub(crate) air_final_log: Emitter,
     pub(crate) smt_log: Emitter,
+    pub singular_log: Option<std::fs::File>,
     pub(crate) time_smt_init: Duration,
     pub(crate) time_smt_run: Duration,
     pub(crate) state: ContextState,
@@ -100,6 +101,7 @@ impl Context {
             air_middle_log: Emitter::new(false, false, None),
             air_final_log: Emitter::new(false, false, None),
             smt_log: Emitter::new(true, true, None),
+            singular_log: None,
             time_smt_init: Duration::new(0, 0),
             time_smt_run: Duration::new(0, 0),
             state: ContextState::NotStarted,

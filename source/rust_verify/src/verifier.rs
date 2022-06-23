@@ -243,6 +243,7 @@ impl Verifier {
         snap_map: &Vec<(air::ast::Span, SnapPos)>,
         command: &Command,
         context: &(&air::ast::Span, &str),
+        is_singular: bool,
     ) -> bool {
         let report_long_running = || {
             let mut counter = 0;
@@ -261,10 +262,27 @@ impl Verifier {
         };
         let is_check_valid = matches!(**command, CommandX::CheckValid(_));
         let time0 = Instant::now();
+        #[cfg(feature = "singular")]
+        let mut result = if !is_singular {
+            air_context.command(
+                &command,
+                QueryContext { report_long_running: Some(&mut report_long_running()) },
+            )
+        } else {
+            crate::singular::check_singular_valid(
+                air_context,
+                &command,
+                context.0,
+                QueryContext { report_long_running: Some(&mut report_long_running()) },
+            )
+        };
+
+        #[cfg(not(feature = "singular"))]
         let mut result = air_context.command(
             &command,
             QueryContext { report_long_running: Some(&mut report_long_running()) },
         );
+
         let time1 = Instant::now();
         self.time_air += time1 - time0;
         let mut is_first_check = true;
@@ -274,7 +292,9 @@ impl Verifier {
         loop {
             match result {
                 ValidityResult::Valid => {
-                    if is_check_valid && is_first_check && error_as == ErrorAs::Error {
+                    if (is_check_valid && is_first_check && error_as == ErrorAs::Error)
+                        || is_singular
+                    {
                         self.count_verified += 1;
                     }
                     break;
@@ -302,6 +322,14 @@ impl Verifier {
                     break;
                 }
                 ValidityResult::Invalid(air_model, error) => {
+                    if air_model.is_none() {
+                        // singular_invalid case
+                        self.count_errors += 1;
+                        compiler.report_error(&error, error_as);
+                        break;
+                    }
+                    let air_model = air_model.unwrap();
+
                     if is_first_check && error_as == ErrorAs::Error {
                         self.count_errors += 1;
                         invalidity = true;
@@ -353,13 +381,13 @@ impl Verifier {
                     let time1 = Instant::now();
                     self.time_air += time1 - time0;
                 }
-                ValidityResult::UnexpectedSmtOutput(err) => {
-                    panic!("unexpected SMT output: {}", err);
+                ValidityResult::UnexpectedOutput(err) => {
+                    panic!("unexpected output from solver: {}", err);
                 }
             }
         }
 
-        if is_check_valid {
+        if is_check_valid && !is_singular {
             air_context.finish_query();
         }
 
@@ -408,8 +436,7 @@ impl Verifier {
             }
         }
         let mut invalidity = false;
-        let CommandsWithContextX { span, desc, commands, spinoff_prover: _ } =
-            &*commands_with_context;
+        let CommandsWithContextX { span, desc, commands, prover_choice } = &*commands_with_context;
         if commands.len() > 0 {
             air_context.blank_line();
             air_context.comment(comment);
@@ -423,6 +450,7 @@ impl Verifier {
                 snap_map,
                 &command,
                 &(span, desc),
+                *prover_choice == vir::def::ProverChoice::Singular,
             );
             invalidity = invalidity || result_invalidity;
         }
@@ -669,7 +697,7 @@ impl Verifier {
                         span: function.span.clone(),
                         desc: "termination proof".to_string(),
                         commands: check_commands,
-                        spinoff_prover: false,
+                        prover_choice: vir::def::ProverChoice::DefaultProver,
                     }),
                     &HashMap::new(),
                     &vec![],
@@ -730,6 +758,7 @@ impl Verifier {
                 continue;
             }
             let mut recommends_rerun = false;
+            let mut is_singular = false;
             loop {
                 ctx.fun = mk_fun_ctx(&function, recommends_rerun);
                 let (commands, snap_map) = vir::func_to_air::func_def_to_air(
@@ -744,10 +773,29 @@ impl Verifier {
 
                 let mut function_invalidity = false;
                 for command in commands.iter().map(|x| &*x) {
-                    let CommandsWithContextX { span, desc: _, commands: _, spinoff_prover } =
+                    let CommandsWithContextX { span, desc: _, commands: _, prover_choice } =
                         &**command;
+                    if *prover_choice == vir::def::ProverChoice::Singular {
+                        is_singular = true;
+                        #[cfg(not(feature = "singular"))]
+                        if is_singular {
+                            panic!(
+                                "Found singular command when Verus is compiled without Singular feature"
+                            );
+                        }
+
+                        #[cfg(feature = "singular")]
+                        if air_context.singular_log.is_none() {
+                            let file = self.create_log_file(
+                                Some(module),
+                                None,
+                                crate::config::SINGULAR_FILE_SUFFIX,
+                            )?;
+                            air_context.singular_log = Some(file);
+                        }
+                    }
                     let mut spinoff_z3_context;
-                    let query_air_context = if *spinoff_prover {
+                    let query_air_context = if *prover_choice == vir::def::ProverChoice::Spinoff {
                         spinoff_z3_context = self.new_air_context_with_module_context(
                             ctx,
                             module,
@@ -774,7 +822,7 @@ impl Verifier {
                         Some(&function.x.name),
                         &(s.to_string() + &fun_as_rust_dbg(&function.x.name)),
                     );
-                    if *spinoff_prover {
+                    if *prover_choice == vir::def::ProverChoice::Spinoff {
                         let (time_smt_init, time_smt_run) = query_air_context.get_time();
                         spunoff_time_smt_init += time_smt_init;
                         spunoff_time_smt_run += time_smt_run;
@@ -783,7 +831,11 @@ impl Verifier {
                     function_invalidity = function_invalidity || command_invalidity;
                 }
 
-                if function_invalidity && !recommends_rerun && !self.args.no_auto_recommends_check {
+                if function_invalidity
+                    && !recommends_rerun
+                    && !self.args.no_auto_recommends_check
+                    && !is_singular
+                {
                     // Rerun failed query to report possible recommends violations
                     recommends_rerun = true;
                     continue;

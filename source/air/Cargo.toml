@@ -13,3 +13,6 @@ getopts = { git = "https://github.com/utaal/getopts.git", branch = "parse-partia
 
 [target.'cfg(windows)'.dependencies]
 win32job = "1"
+
+[features]
+singular = []

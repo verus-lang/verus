@@ -192,7 +192,7 @@ pub(crate) fn smt_check_assertion<'ctx>(
         } else if context.ignore_unexpected_smt {
             println!("warning: unexpected SMT output: {}", line);
         } else {
-            return ValidityResult::UnexpectedSmtOutput(line);
+            return ValidityResult::UnexpectedOutput(line);
         }
     }
 
@@ -230,7 +230,7 @@ pub(crate) fn smt_check_assertion<'ctx>(
                 } else if context.ignore_unexpected_smt {
                     println!("warning: unexpected SMT output: {}", line);
                 } else {
-                    return ValidityResult::UnexpectedSmtOutput(line);
+                    return ValidityResult::UnexpectedOutput(line);
                 }
             }
 
@@ -293,7 +293,7 @@ pub(crate) fn smt_check_assertion<'ctx>(
         let error = discovered_error.expect("discovered_error");
         let e = error.append_labels(&discovered_additional_info);
         context.state = ContextState::FoundInvalid(infos, air_model.clone());
-        ValidityResult::Invalid(air_model, e)
+        ValidityResult::Invalid(Some(air_model), e)
     }
 }
 

@@ -477,6 +477,8 @@ pub struct FunctionAttrsX {
     pub bit_vector: bool,
     /// Is atomic (i.e., can be inside an invariant block)
     pub atomic: bool,
+    /// Verify non_linear arithmetic using Singular
+    pub integer_ring: bool,
     /// This is a proof of termination for another spec function
     pub is_decrease_by: bool,
     /// In a spec function, check the body for violations of recommends

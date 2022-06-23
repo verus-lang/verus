@@ -137,8 +137,8 @@ pub fn main() {
                 count_errors += 1;
                 println!("Canceled");
             }
-            ValidityResult::UnexpectedSmtOutput(err) => {
-                panic!("Unexpected SMT output: {}", err);
+            ValidityResult::UnexpectedOutput(err) => {
+                panic!("Unexpected output from solver: {}", err);
             }
         }
         if matches!(**command, CommandX::CheckValid(..)) {
