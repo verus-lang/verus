@@ -369,6 +369,18 @@ fn test_consume(t: Tracked<int>)
 }
 */
 
+/// Spec functions are not checked for correctness (although they are checked for termination).
+/// However, marking a spec function as "spec(checked)" enables lightweight "recommends checking"
+/// inside the spec function.
+spec(checked) fn my_spec_fun2(x: u32, y: u32) -> u32
+    recommends
+        x < 100,
+        y < 100,
+{
+    // Because of spec(checked), Verus checks that my_spec_fun's recommends clauses are satisfied here:
+    my_spec_fun(x, y)
+}
+
 /// Spec functions may omit their body, in which case they are considered
 /// uninterpreted (returning an arbitrary value of the return type depending on the input values).
 /// This is safe, since spec functions (unlike proof and exec functions) may always
