@@ -9,55 +9,124 @@ use crate::pervasive::map::*;
 
 verus! {
 
-/// set type for specifications
+/// `Set<A>` is a set type for specifications.
+///
+/// An object `set: Set<A>` is a subset of the set of all values `a: A`.
+/// Equivalently, it can be thought of as a boolean predicate on `A`.
+///
+/// In general, a set might be infinite.
+/// To work specifically with finite sets, see the [`self.finite()`](Set::finite) predicate.
+/// 
+/// Sets can be constructed in a few different ways:
+///  * [`Set::empty`] gives an empty set
+///  * [`Set::full`] gives the set of all elements in `A`
+///  * [`Set::new`] constructs a set from a boolean predicate
+///  * The [`set!`] macro, to construct small sets of a fixed size
+///  * By manipulating an existing sequence with [`Set::union`], [`Set::intersect`],
+///    [`Set::difference`], [`Set::complement`], [`Set::filter`], [`Set::insert`],
+///    or [`Set::remove`].
+///
+/// To prove that two sequences are equal, it is usually easiest to use the [`assert_seqs_equal!`] macro.
+
 #[verifier(external_body)]
 pub struct Set<#[verifier(maybe_negative)] A> {
     dummy: std::marker::PhantomData<A>,
 }
 
 impl<A> Set<A> {
+    /// The "empty" set. 
+
     pub spec fn empty() -> Set<A>;
+
+    /// Set whose membership is determined by the given boolean predicate.
+
     pub spec fn new<F: Fn(A) -> bool>(f: F) -> Set<A>;
+
+    /// The "full" set, i.e., set containing every element of type `A`.
 
     pub open spec fn full() -> Set<A> {
         Set::empty().complement()
     }
 
+    /// Predicate indicating if the set contains the given element.
+
     pub spec fn contains(self, a: A) -> bool;
+
+    /// Returns `true` if for every value `a: A`, it is either in both input sets or neither.
+    /// This is equivalent to the sets being actually equal
+    /// by [`axiom_set_ext_equal`].
+    ///
+    /// To prove that two sets are equal via extensionality, it is generally easier
+    /// to use the [`assert_sets_equal!`] macro, rather than using `ext_equal` directly.
 
     pub open spec fn ext_equal(self, s2: Set<A>) -> bool {
         forall|a: A| self.contains(a) == s2.contains(a)
     }
 
+    /// Returns `true` if the first argument is a subset of the second.
+
     pub open spec fn subset_of(self, s2: Set<A>) -> bool {
         forall|a: A| self.contains(a) ==> s2.contains(a)
     }
 
+    /// Returns a new set with the given element inserted.
+    /// If that element is already in the set, then an identical set is returned.
+
     pub spec fn insert(self, a: A) -> Set<A>;
+
+    /// Returns a new set with the given element removed.
+    /// If that element is already absent from the set, then an identical set is returned.
 
     pub spec fn remove(self, a: A) -> Set<A>;
 
+    /// Union of two sets.
+
     pub spec fn union(self, s2: Set<A>) -> Set<A>;
+
+    /// Intersection of two sets.
 
     pub spec fn intersect(self, s2: Set<A>) -> Set<A>;
 
+    /// Set difference, i.e., the set of all elements in the first one but not in the second.
+
     pub spec fn difference(self, s2: Set<A>) -> Set<A>;
 
+    /// Set complement (within the space of all possible elements in `A`).
+
     pub spec fn complement(self) -> Set<A>;
+
+    /// Set of all elements in the given set which satisfy the predicate `f`.
 
     pub open spec fn filter<F: Fn(A) -> bool>(self, f: F) -> Set<A> {
         self.intersect(Self::new(f))
     }
 
+    /// Returns `true` if the set is finite.
+
     pub spec fn finite(self) -> bool;
 
+    /// Cardinality of the set. (Only meaningful if a set is finite.)
+
     pub spec fn len(self) -> nat;
+
+    /// Chooses an arbitrary element of the set.
+    ///
+    /// This is often useful for proofs by induction.
+    ///
+    /// (Note that, although the result is arbitrary, it is still a _deterministic_ function
+    /// like any other `spec` function.)
 
     pub open spec fn choose(self) -> A {
         choose|a: A| self.contains(a)
     }
 
+    /// Creates a [`Map`](map::Map) whose domain is the given set.
+    /// The values of the map are given by `f`, a function of the keys.
+
     pub spec fn mk_map<V, F: Fn(A) -> V>(self, f: F) -> Map<A, V>;
+
+    /// Returns `true` if the sets are disjoint, i.e., if their interesection is
+    /// the empty set.
 
     pub open spec fn disjoint(self, s2: Self) -> bool {
         forall(|a: A| self.contains(a) ==> !s2.contains(a))

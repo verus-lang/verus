@@ -31,9 +31,15 @@ pub struct Seq<#[verifier(strictly_positive)] A> {
 }
 
 impl<A> Seq<A> {
+    /// An empty sequence (i.e., a sequence of length 0).
+
     pub spec fn empty() -> Seq<A>;
 
+    /// Construct a sequence `s` of length `len` where entry `s.index(i)` is given by `f(i)`.
+
     pub spec fn new<F: Fn(int) -> A>(len: nat, f: F) -> Seq<A>;
+
+    /// The length of a sequence.
 
     pub spec fn len(self) -> nat;
 
@@ -45,10 +51,25 @@ impl<A> Seq<A> {
     pub spec fn index(self, i: int) -> A
         recommends 0 <= i < self.len();
 
+    /// Appends the value `a` to the end of the sequence.
+    /// This always increases the length of the sequence by 1.
+    ///
+    /// ## Example
+    ///
+    /// ```rust
+    /// #[proof]
+    /// fn push_test() {
+    ///     assert_seqs_equal!(
+    ///           seq![10, 11, 12].push(13),
+    ///           seq![10, 11, 12, 13],
+    ///     );
+    /// }
+    /// ```
+
     pub spec fn push(self, a: A) -> Seq<A>;
 
     /// Updates the sequence at the given index, replacing the element with the given
-    /// value, and otherwise leaves it unchanged.
+    /// value, and leaves all other entries unchanged.
     ///
     /// ## Example
     ///
@@ -64,7 +85,7 @@ impl<A> Seq<A> {
     pub spec fn update(self, i: int, a: A) -> Seq<A>
         recommends 0 <= i < self.len();
 
-    /// Returns true if the two sequences are pointwise equal, i.e.,
+    /// Returns `true` if the two sequences are pointwise equal, i.e.,
     /// they have the same length and the corresponding values are equal
     /// at each index. This is equivalent to the sequences being actually equal
     /// by [`axiom_seq_ext_equal`].
@@ -90,9 +111,24 @@ impl<A> Seq<A> {
     ///     let sub = s.subrange(2, 4);
     ///     assert_seqs_equal!(sub, seq![12, 13]);
     /// }
+    /// ```
 
     pub spec fn subrange(self, start_inclusive: int, end_exclusive: int) -> Seq<A>
         recommends 0 <= start_inclusive <= end_exclusive <= self.len();
+
+    /// Concatenates the sequences.
+    ///
+    /// ## Example
+    ///
+    /// ```rust
+    /// #[proof]
+    /// fn add_test() {
+    ///     assert_seqs_equal!(
+    ///         seq![10, 11].push(seq![12, 13, 14]),
+    ///         seq![10, 11, 12, 13, 14],
+    ///     );
+    /// }
+    /// ```
 
     pub spec fn add(self, rhs: Seq<A>) -> Seq<A>;
 

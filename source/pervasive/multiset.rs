@@ -7,13 +7,22 @@ use crate::pervasive::*;
 #[allow(unused_imports)]
 use crate::pervasive::set::*;
 
-/// Axioms for a _finite_ Multiset datatype.
-/// Although we represent it as a map from elements to natural numbers,
-/// that map must have finite support (i.e., finite number of elements that map to
-/// a nonzero value).
+/// `Multiset<V>` is an abstract multiset type for specifications.
 ///
-/// As such, we could in principle implement the Multiset via an inductive datatype
-/// and so we can mark its type argument as strictly_positive.
+/// `Multiset<V>` can be encoded as a (total) map from elements to natural numbers,
+/// where the number of nonzero entries is finite.
+///
+/// Multisets can be constructed in a few different ways:
+///  * [`Multiset::empty()`] constructs an empty multiset.
+///  * By manipulating existings multisets with [`Multiset::add`], [`Multiset::insert`],
+///    [`Multiset::sub`], [`Multiset::remove`], or [`Multiset::filter`].
+///  * TODO: `multiset!` constructor macro, multiset from set, from map, etc.
+///
+/// To prove that two multisets are equal, it is usually easiest to use the 
+/// [`assert_multisets_equal!`] macro.
+
+// We could in principle implement the Multiset via an inductive datatype
+// and so we can mark its type argument as strictly_positive.
 
 #[verifier(external_body)]
 pub struct Multiset<#[verifier(strictly_positive)] V> {
@@ -28,20 +37,40 @@ impl<V> Multiset<V> {
     fndecl!(pub fn add(self, m2: Self) -> Self);
     fndecl!(pub fn sub(self, m2: Self) -> Self);
 
+    /// Inserts one instance the value `v` into the multiset.
+    ///
+    /// This always increases the total size of the multiset by 1.
+
     #[spec] #[verifier(publish)]
     pub fn insert(self, v: V) -> Self {
         self.add(Self::singleton(v))
     }
+
+    /// Removes one instance of the value `v` from the multiset.
+    ///
+    /// If `v` was absent from the multiset, then the multiset is unchanged.
 
     #[spec] #[verifier(publish)]
     pub fn remove(self, v: V) -> Self {
         self.sub(Self::singleton(v))
     }
 
+    /// Returns `true` is the left argument is contained in the right argument,
+    /// that is, if for each value `v`, the number of occurences in the left
+    /// is at most the number of occurences in the right.
+
     #[spec] #[verifier(publish)]
     pub fn le(self, m2: Self) -> bool {
         forall(|v: V| self.count(v) <= m2.count(v))
     }
+
+    /// Returns true if the two multisets are pointwise equal, i.e.,
+    /// for every value `v: V`, the counts are the same in each multiset.
+    /// This is equivalent to the multisets actually being equal
+    /// by [`axiom_multiset_ext_equal`].
+    ///
+    /// To prove that two maps are equal via extensionality, it is generally easier
+    /// to use the [`assert_multisets_equal!`] macro, rather than using `ext_equal` directly.
 
     #[spec] #[verifier(publish)]
     pub fn ext_equal(self, m2: Self) -> bool {
@@ -54,6 +83,7 @@ impl<V> Multiset<V> {
     fndecl!(pub fn filter<F: Fn(V) -> bool>(self, f: F) -> Self);
 
     // TODO(tjhance) flesh out remaining proof-mode functions
+    // (note: for collections of 'proof' objects I usually advise using maps when possible)
 
     #[proof]
     #[verifier(external_body)]

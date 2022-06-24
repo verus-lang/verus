@@ -10,6 +10,10 @@ use crate::pervasive::seq::*;
 verus! {
 
 impl<A> Seq<A> {
+    /// Applies the function `f` to each element of the sequence, and returns
+    /// the resulting sequence.
+    /// The `int` parameter of `f` is the index of the element being mapped.
+
     pub open spec fn map<B, F: Fn(int, A) -> B>(self, f: F) -> Seq<B> {
         Seq::new(self.len(), |i: int| f(i, self.index(i)))
     }

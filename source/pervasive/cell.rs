@@ -12,6 +12,43 @@ use std::mem::MaybeUninit;
 // TODO Identifier should be some opaque type, not necessarily an int
 //type Identifier = int;
 
+/// `PCell<V>` (which stands for "permissioned call") is the primitive Verus `Cell` type.
+///
+/// Technically, it is a wrapper around
+/// `std::cell::UnsafeCell<std::mem::MaybeUninit<V>>`, and thus has the same runtime
+/// properties: there are no runtime checks (as there would be for Rust's traditional
+/// [`std::cell::RefCell`](https://doc.rust-lang.org/std/cell/struct.RefCell.html)).
+/// Its data may be uninitialized.
+///
+/// Furthermore (and unlike both
+/// [`std::cell::Cell`](https://doc.rust-lang.org/std/cell/struct.Cell.html) and
+/// [`std::cell::RefCell`](https://doc.rust-lang.org/std/cell/struct.RefCell.html)),
+/// a `PCell<V>` may be `Sync` (depending on `V`).
+/// Thanks to verification, Verus ensures that access to the cell is data-race-free.
+///
+/// `PCell` uses a _ghost permission token_ similar to [`ptr::PPtr`] -- see the [`ptr::PPtr`]
+/// documentation for the basics.
+/// For `PCell`, the associated type of the permission token is [`cell::Permission`].
+///
+/// ### Differences from `PPtr`.
+///
+/// The key difference is that, whereas [`ptr::PPtr`] represents a fixed address in memory,
+/// a `PCell` has _no_ fixed address because a `PCell` might be moved.
+/// As such, the [`pcell.id()`](PCell::id) does not correspond to a memory address; rather,
+/// it is a unique identifier that is fixed for a given cell, even when it is moved.
+///
+/// The arbitrary ID given by [`pcell.id()`](PCell::id)
+/// does not support any meangingful arithmetic,
+/// is not necessarily bounded,
+/// has no concept of a "null ID",
+/// and has no runtime representation.
+///
+/// Also note that the `PCell` might be dropped before the `Permission` token is dropped,
+/// although in that case it will no longer be possible to use the `Permission` in `exec` code
+/// to extract data from the cell.
+///
+/// ### Example (TODO)
+
 #[verifier(external_body)]
 pub struct PCell<#[verifier(strictly_positive)] V> {
     ucell: UnsafeCell<MaybeUninit<V>>,

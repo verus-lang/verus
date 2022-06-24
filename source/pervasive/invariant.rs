@@ -79,6 +79,7 @@ macro_rules! declare_invariant_impl {
 declare_invariant_impl!(AtomicInvariant);
 declare_invariant_impl!(LocalInvariant);
 
+#[doc(hidden)]
 #[proof]
 pub struct InvariantBlockGuard;
 
@@ -100,18 +101,21 @@ pub struct InvariantBlockGuard;
 //  The purpose of the `guard` object, used below, is to ensure the borrow on `i` will
 //  last the entire block.
 
+#[doc(hidden)]
 #[verifier(external_body)]
 pub fn open_atomic_invariant_begin<'a, V>(_inv: &'a AtomicInvariant<V>) -> (&'a InvariantBlockGuard, V) {
     requires([false]);
     unimplemented!();
 }
 
+#[doc(hidden)]
 #[verifier(external_body)]
 pub fn open_local_invariant_begin<'a, V>(_inv: &'a LocalInvariant<V>) -> (&'a InvariantBlockGuard, V) {
     requires([false]);
     unimplemented!();
 }
 
+#[doc(hidden)]
 #[verifier(external_body)]
 pub fn open_invariant_end<V>(_guard: &InvariantBlockGuard, _v: V) {
     requires([false]);

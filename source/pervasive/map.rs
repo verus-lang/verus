@@ -17,10 +17,12 @@ verus! {
 /// and a mapping for keys in the domain to values, given by [`map.index(key)`](Map::index).
 /// Alternatively, a map can be thought of as a set of `(K, V)` pairs where each key
 /// appears in at most entry.
+///
 /// In general, a map might be infinite.
+/// To work specifically with finite maps, see the [`self.finite()`](Set::finite) predicate.
 ///
 /// Maps can be constructed in a few different ways:
-///  * [`Map::empty()`] construct an empty map.
+///  * [`Map::empty()`] constructs an empty map.
 ///  * [`Map::new`] and [`Map::total`] construct a map given functions that specify its domain and the mapping
 ///     from keys to values (a _map comprehension_).
 ///  * The [`map!`] macro, to construct small maps of a fixed size.
@@ -50,6 +52,8 @@ impl<K, V> Map<K, V> {
         Set::new(fk).mk_map(fv)
     }
 
+    /// The domain of the map as a set.
+
     pub spec fn dom(self) -> Set<K>;
 
     /// Gets the value that the given key `key` maps to.
@@ -58,7 +62,16 @@ impl<K, V> Map<K, V> {
     pub spec fn index(self, key: K) -> V
         recommends self.dom().contains(key);
 
+    /// Inserts the given (key, value) pair into the map.
+    ///
+    /// If the key is already present from the map, then its existing value is overwritten
+    /// by the new value.
+
     pub spec fn insert(self, key: K, value: V) -> Map<K, V>;
+
+    /// Removes the given key and its associated value from the map.
+    ///
+    /// If the key is already absent from the map, then the map is left unchanged.
 
     pub spec fn remove(self, key: K) -> Map<K, V>;
 
@@ -98,7 +111,7 @@ impl<K, V> Map<K, V> {
     }
 
     /// Gives the union of two maps, defined as:
-    ///  * The domain is the union of the two input maps
+    ///  * The domain is the union of the two input maps.
     ///  * For a given key in _both_ input maps, it maps to the same value that it maps to in the _right_ map (`m2`).
     ///  * For any other key in either input map (but not both), it maps to the same value
     ///    as it does in that map.
@@ -118,6 +131,19 @@ impl<K, V> Map<K, V> {
             |k: K| if m2.dom().contains(k) { m2.index(k) } else { self.index(k) }
         )
     }
+
+    /// Removes the given keys and their associated values from the map.
+    ///
+    /// Ignores any key in `keys` which is not in the domain of `self`.
+    ///
+    /// ## Example
+    ///
+    /// ```rust
+    /// assert_maps_equal!(
+    ///    map![1 => 10, 2 => 11, 3 => 12].remove_keys(set!{2, 3, 4}),
+    ///    map![1 => 10],
+    /// );
+    /// ```
 
     pub open spec fn remove_keys(self, keys: Set<K>) -> Self {
         Self::new(
@@ -242,7 +268,12 @@ macro_rules! map_insert_rec {
     }
 }
 
-/// Create a map using syntax like `map![key => val, key2 => val, ...]`.
+/// Create a map using syntax like `map![key1 => val1, key2 => val, ...]`.
+///
+/// This is equivalent to `Map::empty().insert(key1, val1).insert(key2, val2)...`.
+///
+/// Note that this does _not_ require all keys to be distinct. In the case that two
+/// or more keys are equal, the resulting map uses the value of the rightmost entry.
 
 #[macro_export]
 macro_rules! map {
