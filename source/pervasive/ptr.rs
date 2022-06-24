@@ -63,6 +63,15 @@ pub struct PPtr<#[verifier(strictly_positive)] V> {
     uptr: *mut MaybeUninit<V>,
 }
 
+// PPtr is always safe to Send/Sync. It's the Permission object where Send/Sync matters.
+// It doesn't matter if you send the pointer to another thread if you can't access it.
+
+#[verifier(external)]
+unsafe impl<T> Sync for PPtr<T> {}
+
+#[verifier(external)]
+unsafe impl<T> Send for PPtr<T> {}
+
 // TODO split up the "deallocation" permission and the "access" permission?
 
 /// A `tracked` ghost object that gives the user permission to dereference a pointer
@@ -94,6 +103,13 @@ impl<V> Permission<V> {
     #[verifier(external_body)]
     pub fn is_nonnull(#[proof] &self) {
         ensures(self.pptr != 0);
+        unimplemented!();
+    }
+
+    #[proof]
+    #[verifier(external_body)]
+    pub fn leak_contents(#[proof] &mut self) {
+        ensures(self.pptr == old(self).pptr && self.value.is_None());
         unimplemented!();
     }
 }
