@@ -9,6 +9,7 @@ use pervasive::multiset::*;
 use pervasive::map::*;
 use pervasive::seq::*;
 use pervasive::option::*;
+use pervasive::atomic_ghost::*;
 
 use state_machines_macros::tokenized_state_machine;
 
@@ -282,6 +283,88 @@ tokenized_state_machine!{
                     );
                 }
             }
+        }
+    }
+}
+
+struct RwLock<T> {
+    #[proof] inst: DistRwLock::Instance<T>,
+    exc_locked: AtomicBool<DistRwLock::exc_locked<T>>,
+    ref_counts: Vec<AtomicU64<DistRwLock::ref_counts<T>>>,
+}
+
+impl<T> RwLock<T> {
+    #[spec]
+    fn wf(&self) -> bool {
+        self.inst.rc_width() == self.ref_counts.view().len()
+        && self.exc_locked.has_inv_fn(|b: bool| DistRwLock::exc_locked {
+            instance: self.inst,
+            value: b
+        })
+        && forall(|i: int| { (0 <= i && i < self.ref_counts.view().len()) >>=
+            self.ref_counts.view().index(i).has_inv_fn(|r: u64| DistRwLock::ref_counts {
+                instance: self.inst,
+                key: i,
+                value: r,
+            })
+        })
+    }
+
+    fn new(rc_width: usize, t: T) -> Self {
+        requires(0 < rc_width);
+        ensures(|s: Self| s.wf());
+        
+        #[proof] let (inst, exc_locked_token, mut ref_counts_tokens, _, _, _, _) =
+            DistRwLock::Instance::initialize(rc_width, t, Option::Some(t));
+
+        let exc_locked_atomic = AtomicBool::new(false, exc_locked_token,
+            |b, g| equal(g, DistRwLock::exc_locked {
+                instance: inst,
+                value: b,
+            })
+        );
+
+        let mut v: Vec<AtomicU64<DistRwLock::ref_counts<T>>> = Vec::new();
+        let mut i: usize = 0;
+
+        while i < rc_width {
+            invariant([
+                v.len() == i as int,
+                forall(|j: int| 0 <= j && j < i >>=
+                    v.view().index(j).has_inv_fn(|r: u64| DistRwLock::ref_counts {
+                        instance: inst,
+                        key: j,
+                        value: r,
+                    })
+                ),
+                forall(|j: int| i <= j && j < rc_width >>= (
+                    #[trigger] ref_counts_tokens.dom().contains(j)
+                    && equal(ref_counts_tokens.index(j).instance, inst)
+                    && equal(ref_counts_tokens.index(j).key, j)
+                    && equal(ref_counts_tokens.index(j).value, 0)
+                )),
+            ]);
+
+            assert(ref_counts_tokens.dom().contains(i));
+
+            #[proof] let ref_count_token = ref_counts_tokens.proof_remove(i as int);
+
+            let rc_atomic = AtomicU64::new(0, ref_count_token,
+                |r: u64, g| equal(g, DistRwLock::ref_counts {
+                    instance: inst,
+                    key: i,
+                    value: r,
+                })
+            );
+            v.push(rc_atomic);
+
+            i = i + 1;
+        }
+
+        RwLock {
+            inst,
+            exc_locked: exc_locked_atomic,
+            ref_counts: v,
         }
     }
 }

@@ -10,6 +10,7 @@ pub mod cell;
 pub mod ptr;
 pub mod invariant;
 pub mod atomic;
+pub mod atomic_ghost;
 pub mod modes;
 pub mod multiset;
 pub mod state_machine_internal;

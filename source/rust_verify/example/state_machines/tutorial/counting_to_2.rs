@@ -5,8 +5,7 @@ use builtin::*;
 use builtin_macros::*;
 mod pervasive;
 use pervasive::*;
-use crate::pervasive::{invariant::*};
-use crate::pervasive::{atomic::*};
+use crate::pervasive::{atomic_ghost::*};
 use crate::pervasive::{modes::*};
 use crate::pervasive::{thread::*};
 use state_machines_macros::tokenized_state_machine;
@@ -83,33 +82,30 @@ tokenized_state_machine!(
     }
 );
 
-#[proof]
-pub struct G {
-    #[proof] pub counter: X::counter,
-    #[proof] pub perm: PermissionU32,
-}
-
-impl G {
-    #[spec]
-    pub fn wf(self, instance: X::Instance, patomic: PAtomicU32) -> bool {
-        equal(self.perm.patomic, patomic.id())
-        && equal(self.perm.value as int, self.counter.value)
-        && equal(self.counter.instance, instance)
-    }
-}
-
+// ANCHOR: global_struct
 pub struct Global {
-    pub atomic: PAtomicU32,
+    // An AtomicU32 that matches with the `counter` field of the ghost protocol.
+    pub atomic: AtomicU32<X::counter>,
+
+    // The instance of the protocol that the `counter` is part of.
     #[proof] pub instance: X::Instance,
-    #[proof] pub inv: AtomicInvariant<G>,
 }
 
 impl Global {
+    // Specify the invariant that should hold on the AtomicU32<X::counter>.
+    // Specifically the ghost token (`g`) should have
+    // the same value as the atomic (`v`).
+    // Furthermore, the ghost token should have the appropriate `instance`.
+
     #[spec]
     pub fn wf(self) -> bool {
-        forall(|g: G| self.inv.inv(g) == g.wf(self.instance, self.atomic))
+        self.atomic.has_inv(|v, g|
+            equal(g.instance, self.instance)
+            && equal(g.value, v as int)
+        )
     }
 }
+// ANCHOR_END: global_struct
 
 //// thread 1
 
@@ -137,16 +133,11 @@ impl Spawnable<Proof<X::inc_a>> for Thread1Data {
         let Thread1Data { globals: globals, mut token } = self;
         let globals = &*globals;
 
-        open_atomic_invariant!(&globals.inv => g => {
-            #[proof] let G { counter: mut c, perm: mut p } = g;
-
-            #[spec] let now_c = c;
-
-            globals.instance.tr_inc_a(&mut c, &mut token); // atomic increment
-            globals.atomic.fetch_add(&mut p, 1);
-
-            g = G { counter: c, perm: p };
-        });
+        let _ = atomic_with_ghost!(&globals.atomic => fetch_add(1);
+            ghost c => {
+                globals.instance.tr_inc_a(&mut c, &mut token); // atomic increment
+            }
+        );
 
         Proof(token)
     }
@@ -178,17 +169,11 @@ impl Spawnable<Proof<X::inc_b>> for Thread2Data {
         let Thread2Data { globals: globals, mut token } = self;
         let globals = &*globals;
 
-        open_atomic_invariant!(&globals.inv => g => {
-            #[proof] let G { counter: mut c, perm: mut p } = g;
-
-            #[spec] let now_c = c;
-
-            globals.instance.tr_inc_b(&mut c, &mut token); // atomic increment
-            globals.atomic.fetch_add(&mut p, 1);
-
-        
-            g = G { counter: c, perm: p };
-        });
+        let _ = atomic_with_ghost!(&globals.atomic => fetch_add(1);
+            ghost c => {
+                globals.instance.tr_inc_b(&mut c, &mut token); // atomic increment
+            }
+        );
 
         Proof(token)
     }
@@ -204,14 +189,11 @@ fn main() {
 
   // Initialize the counter
 
-  let (atomic, Proof(perm_token)) = PAtomicU32::new(0);
+  let atomic = AtomicU32::new(0, counter_token, |v, g| {
+      equal(g.instance, instance) && equal(g.value, v as int)
+  });
 
-  #[proof] let at_inv: AtomicInvariant<G> = AtomicInvariant::new(
-      G { counter: counter_token, perm: perm_token },
-      |g: G| g.wf(instance, atomic),
-      0);
-
-  let global = Global { atomic, instance: instance.clone(), inv: at_inv };
+  let global = Global { atomic, instance: instance.clone() };
   let global_arc = Arc::new(global);
 
   // Spawn threads
@@ -239,15 +221,12 @@ fn main() {
   // Join threads, load the atomic again
 
   let global = &*global_arc;
-  let x;
-  open_atomic_invariant!(&global.inv => g => {
-    #[proof] let G { counter: c3, perm: p3 } = g;
-
-    x = global.atomic.load(&p3);
-    instance.finalize(&c3, &inc_a_token, &inc_b_token);
-
-    g = G { counter: c3, perm: p3 };
-  });
+  
+  let x = atomic_with_ghost!(&global.atomic => load();
+      ghost c => {
+          instance.finalize(&c, &inc_a_token, &inc_b_token);
+      }
+  );
 
   assert(equal(x, 2));
 }

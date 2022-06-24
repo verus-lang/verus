@@ -15,9 +15,8 @@ use pervasive::map::*;
 use pervasive::ptr::*;
 use pervasive::seq::*;
 use pervasive::cell::*;
-use pervasive::atomic::*;
+use pervasive::atomic_ghost::*;
 use pervasive::modes::*;
-use pervasive::invariant::*;
 use std::sync::Arc;
 
 use state_machines_macros::tokenized_state_machine;
@@ -475,35 +474,13 @@ tokenized_state_machine!{FifoQueue<T> {
 }}
 
 // ANCHOR: impl_queue_struct
-#[proof]
-struct HeadTailTokens<T> {
-    #[proof] head: FifoQueue::head<T>,
-    #[proof] tail: FifoQueue::tail<T>,
-
-    #[proof] head_perm: PermissionU64,
-    #[proof] tail_perm: PermissionU64,
-}
-
-impl<T> HeadTailTokens<T> {
-    #[spec]
-    pub fn wf(&self, instance: FifoQueue::Instance<T>,
-            head_id: int, tail_id: int) -> bool {
-           equal(self.head.instance, instance)
-        && equal(self.tail.instance, instance)
-        && equal(self.head_perm.patomic, head_id)
-        && equal(self.tail_perm.patomic, tail_id)
-        && equal(self.head_perm.value as nat, self.head.value)
-        && equal(self.tail_perm.value as nat, self.tail.value)
-    }
-}
 
 struct Queue<T> {
     buffer: Vec<PCell<T>>,
-    head: PAtomicU64,
-    tail: PAtomicU64,
+    head: AtomicU64<FifoQueue::head<T>>,
+    tail: AtomicU64<FifoQueue::tail<T>>,
 
     #[proof] instance: FifoQueue::Instance<T>,
-    #[proof] inv: AtomicInvariant<HeadTailTokens<T>>,
 }
 
 impl<T> Queue<T> {
@@ -516,8 +493,14 @@ impl<T> Queue<T> {
                 self.buffer.view().index(i).id())
 
         // HeadTailTokens are well-formed:
-        && forall(|v| self.inv.inv(v) ==
-            v.wf(self.instance, self.head.id(), self.tail.id()))
+        && self.head.has_inv(|v, g|
+            equal(g.instance, self.instance)
+            && g.value == v as int
+        )
+        && self.tail.has_inv(|v, g|
+            equal(g.instance, self.instance)
+            && g.value == v as int
+        )
     }
 }
 // ANCHOR_END: impl_queue_struct
@@ -604,27 +587,16 @@ pub fn new_queue<T>(len: usize) -> (Producer<T>, Consumer<T>) {
         = FifoQueue::Instance::initialize(backing_cells_ids, perms, perms);
 
     // Initialize atomics
-    let (head_atomic, Proof(head_perm)) = PAtomicU64::new(0);
-    let (tail_atomic, Proof(tail_perm)) = PAtomicU64::new(0);
-
-    // Initialize the atomic invariant to store atomic tokens
-    #[proof] let inv = AtomicInvariant::new(
-        HeadTailTokens {
-            head: head_token,
-            tail: tail_token,
-            head_perm,
-            tail_perm,
-        },
-        |v| v.wf(instance, head_atomic.id(), tail_atomic.id()),
-        0,
-    );
+    let head_atomic = AtomicU64::new(0, head_token,
+        |v, g| equal(g.instance, instance) && g.value == v as int);
+    let tail_atomic = AtomicU64::new(0, tail_token,
+        |v, g| equal(g.instance, instance) && g.value == v as int);
 
     // Initialize the queue
     let queue = Queue::<T> {
         instance,
         head: head_atomic,
         tail: tail_atomic,
-        inv: inv,
         buffer: backing_cells_vec,
     };
 
@@ -667,23 +639,24 @@ impl<T> Producer<T> {
             // the `tail` to this value.
             let next_tail = if self.tail + 1 == len { 0 } else { self.tail + 1 };
 
-            let head;
             #[proof] let cell_perm;
-            open_atomic_invariant!(&queue.inv => htt => {
-                // Get the current `head` value from the shared atomic.
-                head = queue.head.load(&htt.head_perm);
 
-                // If `head != next_tail`, then we proceed with the operation.
-                // We check here, ghostily, in the `open_atomic_invariant` block if that's the case.
-                // If so, we proceed with the `produce_start` transition
-                // and obtain the cell permission.
-                cell_perm = if head != next_tail as u64 {
-                    #[proof] let cp = queue.instance.produce_start(&htt.head, &mut self.producer);
-                    Option::Some(cp)
-                } else {
-                    Option::None
-                };
-            });
+            // Get the current `head` value from the shared atomic.
+            let head = atomic_with_ghost!(&queue.head => load();
+                returning head;
+                ghost head_token => {
+                    // If `head != next_tail`, then we proceed with the operation.
+                    // We check here, ghostily, in the `open_atomic_invariant` block if that's the case.
+                    // If so, we proceed with the `produce_start` transition
+                    // and obtain the cell permission.
+                    cell_perm = if head != next_tail as u64 {
+                        #[proof] let cp = queue.instance.produce_start(&head_token, &mut self.producer);
+                        Option::Some(cp)
+                    } else {
+                        Option::None
+                    };
+                }
+            );
 
             // Here's where we "actually" do the `head != next_tail` check:
             if head != next_tail as u64 {
@@ -699,10 +672,9 @@ impl<T> Producer<T> {
 
                 // Store the updated tail to the shared `tail` atomic,
                 // while performing the `produce_end` transition.
-                open_atomic_invariant!(&queue.inv => htt => {
-                    queue.tail.store(&mut htt.tail_perm, next_tail as u64);
+                atomic_with_ghost!(&queue.tail => store(next_tail as u64); ghost tail_token => {
                     queue.instance.produce_end(cell_perm,
-                        cell_perm, &mut htt.tail, &mut self.producer);
+                        cell_perm, &mut tail_token, &mut self.producer);
                 });
 
                 self.tail = next_tail;
@@ -716,7 +688,7 @@ impl<T> Producer<T> {
 
 // ANCHOR: impl_consumer
 impl<T> Consumer<T> {
-    fn deque(&mut self) -> T {
+    fn dequeue(&mut self) -> T {
         requires(old(self).wf());
         ensures(|t: T| self.wf());
 
@@ -730,18 +702,18 @@ impl<T> Consumer<T> {
 
             let next_head = if self.head + 1 == len { 0 } else { self.head + 1 };
 
-            let tail;
             #[proof] let cell_perm;
-            open_atomic_invariant!(&queue.inv => htt => {
-                tail = queue.tail.load(&htt.tail_perm);
-
-                cell_perm = if self.head as u64 != tail {
-                    #[proof] let (_, cp) = queue.instance.consume_start(&htt.tail, &mut self.consumer);
-                    Option::Some(cp)
-                } else {
-                    Option::None
-                };
-            });
+            let tail = atomic_with_ghost!(&queue.tail => load();
+                returning tail;
+                ghost tail_token => {
+                    cell_perm = if self.head as u64 != tail {
+                        #[proof] let (_, cp) = queue.instance.consume_start(&tail_token, &mut self.consumer);
+                        Option::Some(cp)
+                    } else {
+                        Option::None
+                    };
+                }
+            );
 
             if self.head as u64 != tail {
                 #[proof] let mut cell_perm = match cell_perm {
@@ -750,10 +722,9 @@ impl<T> Consumer<T> {
                 };
                 let t = queue.buffer.index(self.head).take(&mut cell_perm);
 
-                open_atomic_invariant!(&queue.inv => htt => {
-                    queue.head.store(&mut htt.head_perm, next_head as u64);
+                atomic_with_ghost!(&queue.head => store(next_head as u64); ghost head_token => {
                     queue.instance.consume_end(cell_perm,
-                        cell_perm, &mut htt.head, &mut self.consumer);
+                        cell_perm, &mut head_token, &mut self.consumer);
                 });
 
                 self.head = next_head;
@@ -766,4 +737,8 @@ impl<T> Consumer<T> {
 // ANCHOR_END: impl_consumer
 // ANCHOR_END: full
 
-fn main() { }
+fn main() {
+    let (mut producer, mut consumer) = new_queue(20);
+    producer.enqueue(5);
+    let _x = consumer.dequeue();
+}
