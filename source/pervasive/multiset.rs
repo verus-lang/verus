@@ -48,6 +48,11 @@ impl<V> Multiset<V> {
         forall(|v: V| self.count(v) == m2.count(v))
     }
 
+    fndecl!(pub fn len(self) -> nat);
+
+    // TODO define this in terms of a more general constructor?
+    fndecl!(pub fn filter<F: Fn(V) -> bool>(self, f: F) -> Self);
+
     // TODO(tjhance) flesh out remaining proof-mode functions
 
     #[proof]
@@ -114,4 +119,63 @@ pub fn axiom_multiset_sub<V>(m1: Multiset<V>, m2: Multiset<V>, v: V) {
 #[verifier(broadcast_forall)]
 pub fn axiom_multiset_ext_equal<V>(m1: Multiset<V>, m2: Multiset<V>) {
     ensures(m1.ext_equal(m2) == equal(m1, m2));
+}
+
+verus!{
+
+// Specification of `len`
+
+#[verifier(external_body)]
+#[verifier(broadcast_forall)]
+pub proof fn axiom_len_empty<V>()
+    ensures (#[trigger] Multiset::<V>::empty().len()) == 0,
+{}
+
+#[verifier(external_body)]
+#[verifier(broadcast_forall)]
+pub proof fn axiom_len_singleton<V>(v: V)
+    ensures (#[trigger] Multiset::<V>::singleton(v).len()) == 1,
+{}
+
+#[verifier(external_body)]
+#[verifier(broadcast_forall)]
+pub proof fn axiom_len_add<V>(m1: Multiset<V>, m2: Multiset<V>)
+    ensures (#[trigger] m1.add(m2).len()) == m1.len() + m2.len(),
+{}
+
+#[verifier(external_body)]
+#[verifier(broadcast_forall)]
+pub proof fn axiom_count_le_len<V>(m: Multiset<V>, v: V)
+    ensures #[trigger] m.count(v) <= #[trigger] m.len()
+{}
+
+// Specification of `filter`
+
+#[verifier(external_body)]
+#[verifier(broadcast_forall)]
+pub proof fn axiom_filter_count<V, F: Fn(V) -> bool>(m: Multiset<V>, f: F, v: V)
+    ensures (#[trigger] m.filter(f).count(v)) ==
+        if f(v) { m.count(v) } else { 0 }
+{}
+
+}
+
+#[macro_export]
+macro_rules! assert_multisets_equal {
+    ($m1:expr, $m2:expr $(,)?) => {
+        assert_multisets_equal!($m1, $m2, key => { })
+    };
+    ($m1:expr, $m2:expr, $k:ident $( : $t:ty )? => $bblock:block) => {
+        #[spec] let m1 = $m1;
+        #[spec] let m2 = $m2;
+        ::builtin::assert_by(::builtin::equal(m1, m2), {
+            ::builtin::assert_forall_by(|$k $( : $t )?| {
+                ::builtin::ensures([
+                    ::builtin::equal(m1.count($k), m2.count($k))
+                ]);
+                { $bblock }
+            });
+            $crate::pervasive::assert(m1.ext_equal(m2));
+        });
+    }
 }
