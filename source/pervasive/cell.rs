@@ -6,11 +6,7 @@ use std::mem::MaybeUninit;
 #[allow(unused_imports)] use crate::pervasive::*;
 #[allow(unused_imports)] use crate::pervasive::modes::*;
 
-
 // TODO implement: borrow_mut; figure out Drop, see if we can avoid leaking?
-
-// TODO Identifier should be some opaque type, not necessarily an int
-//type Identifier = int;
 
 /// `PCell<V>` (which stands for "permissioned call") is the primitive Verus `Cell` type.
 ///
@@ -37,9 +33,9 @@ use std::mem::MaybeUninit;
 /// As such, the [`pcell.id()`](PCell::id) does not correspond to a memory address; rather,
 /// it is a unique identifier that is fixed for a given cell, even when it is moved.
 ///
-/// The arbitrary ID given by [`pcell.id()`](PCell::id)
-/// does not support any meangingful arithmetic,
-/// is not necessarily bounded,
+/// The arbitrary ID given by [`pcell.id()`](PCell::id) is of type [`CellId`].
+/// Despite the fact that it is, in some ways, "like a pointer", note that
+/// `CellId` does not support any meangingful arithmetic,
 /// has no concept of a "null ID",
 /// and has no runtime representation.
 ///
@@ -70,8 +66,13 @@ unsafe impl<T> Send for PCell<T> {}
 #[proof]
 #[verifier(unforgeable)]
 pub struct Permission<V> {
-    #[spec] pub pcell: int,
+    #[spec] pub pcell: CellId,
     #[spec] pub value: option::Option<V>,
+}
+
+#[verifier(external_body)]
+pub struct CellId {
+    id: int,
 }
 
 impl<V> PCell<V> {
@@ -90,7 +91,7 @@ impl<V> PCell<V> {
     // A unique ID for the cell.
     // This does not correspond to a pointer address
     // because the ID needs to stay the same even if the cell moves.
-    fndecl!(pub fn id(&self) -> int);
+    fndecl!(pub fn id(&self) -> CellId);
 
     #[inline(always)]
     #[verifier(external_body)]

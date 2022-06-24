@@ -42,7 +42,7 @@ tokenized_state_machine!{FifoQueue<T> {
         // These are fixed throughout the protocol.
 
         #[sharding(constant)]
-        pub backing_cells: Seq<int>,
+        pub backing_cells: Seq<CellId>,
 
         // All the stored permissions
 
@@ -195,7 +195,7 @@ tokenized_state_machine!{FifoQueue<T> {
     }
 
     init!{
-        initialize(backing_cells: Seq<int>, storage: Map<nat, cell::Permission<T>>) {
+        initialize(backing_cells: Seq<CellId>, storage: Map<nat, cell::Permission<T>>) {
             // Upon initialization, the user needs to deposit _all_ the relevant
             // cell permissions to start with. Each permission should indicate
             // an empty cell.
@@ -360,7 +360,7 @@ tokenized_state_machine!{FifoQueue<T> {
     }
 
     #[inductive(initialize)]
-    fn initialize_inductive(post: Self, backing_cells: Seq<int>, storage: Map<nat, cell::Permission<T>>) {
+    fn initialize_inductive(post: Self, backing_cells: Seq<CellId>, storage: Map<nat, cell::Permission<T>>) {
         assert_forall_by(|i| {
             requires(0 <= i && i < post.len());
             ensures(post.valid_storage_at_idx(i));
@@ -483,25 +483,27 @@ struct Queue<T> {
     #[proof] instance: FifoQueue::Instance<T>,
 }
 
+verus!{
 impl<T> Queue<T> {
     #[spec]
     pub fn wf(&self) -> bool {
         // The Cell IDs in the instance protocol match the cell IDs in the actual vector:
-        self.instance.backing_cells().len() == self.buffer.view().len()
-        && forall(|i: int| 0 <= i && i < self.buffer.view().len() as int >>=
-            self.instance.backing_cells().index(i) ==
+        &&& self.instance.backing_cells().len() == self.buffer.view().len()
+        &&& (forall|i: int| 0 <= i && i < self.buffer.view().len() as int ==>
+            self.instance.backing_cells().index(i) ===
                 self.buffer.view().index(i).id())
 
         // HeadTailTokens are well-formed:
-        && self.head.has_inv(|v, g|
+        &&& self.head.has_inv(|v, g|
             equal(g.instance, self.instance)
             && g.value == v as int
         )
-        && self.tail.has_inv(|v, g|
+        &&& self.tail.has_inv(|v, g|
             equal(g.instance, self.instance)
             && g.value == v as int
         )
     }
+}
 }
 // ANCHOR_END: impl_queue_struct
 
@@ -563,7 +565,7 @@ pub fn new_queue<T>(len: usize) -> (Producer<T>, Consumer<T>) {
             forall(|j: int| 0 <= j && j < backing_cells_vec.len() as int >>=
                 #[trigger] perms.dom().contains(j as nat)
                 &&
-                backing_cells_vec.index(j as nat).id() == perms.index(j as nat).pcell
+                equal(backing_cells_vec.index(j as nat).id(), perms.index(j as nat).pcell)
                 &&
                 perms.index(j as nat).value.is_None()
             )
@@ -578,7 +580,7 @@ pub fn new_queue<T>(len: usize) -> (Producer<T>, Consumer<T>) {
     }
 
     // Vector for ids
-    #[spec] let mut backing_cells_ids = Seq::<int>::new(
+    #[spec] let mut backing_cells_ids = Seq::<CellId>::new(
         backing_cells_vec.view().len(),
         |i| backing_cells_vec.view().index(i).id());
 
