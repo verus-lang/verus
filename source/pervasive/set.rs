@@ -30,7 +30,7 @@ verus! {
 
 #[verifier(external_body)]
 pub struct Set<#[verifier(maybe_negative)] A> {
-    dummy: std::marker::PhantomData<A>,
+    dummy: core::marker::PhantomData<A>,
 }
 
 impl<A> Set<A> {

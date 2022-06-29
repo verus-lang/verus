@@ -19,7 +19,7 @@ verus! {
 ///  * [`Seq::new`] construct a sequence of a given length, initialized according
 ///     to a given function mapping indices `i` to values `A`.
 ///  * The [`seq!`] macro, to construct small sequences of a fixed size (analagous to the
-///     [`std::vec!`] macro).
+///     [`alloc::vec!`] macro).
 ///  * By manipulating an existing sequence with [`Seq::push`], [`Seq::update`],
 ///    or [`Seq::add`].
 ///
@@ -27,7 +27,7 @@ verus! {
 
 #[verifier(external_body)]
 pub struct Seq<#[verifier(strictly_positive)] A> {
-    dummy: std::marker::PhantomData<A>,
+    dummy: core::marker::PhantomData<A>,
 }
 
 impl<A> Seq<A> {

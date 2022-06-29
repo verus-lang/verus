@@ -32,7 +32,7 @@ verus! {
 
 #[verifier(external_body)]
 pub tracked struct Map<#[verifier(maybe_negative)] K, #[verifier(strictly_positive)] V> {
-    dummy: std::marker::PhantomData<(K, V)>,
+    dummy: core::marker::PhantomData<(K, V)>,
 }
 
 impl<K, V> Map<K, V> {

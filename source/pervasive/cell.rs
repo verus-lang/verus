@@ -1,5 +1,5 @@
-use std::cell::UnsafeCell;
-use std::mem::MaybeUninit;
+use core::cell::UnsafeCell;
+use core::mem::MaybeUninit;
 
 #[allow(unused_imports)] use builtin::*;
 #[allow(unused_imports)] use builtin_macros::*;
@@ -13,14 +13,14 @@ verus!{
 /// `PCell<V>` (which stands for "permissioned call") is the primitive Verus `Cell` type.
 ///
 /// Technically, it is a wrapper around
-/// `std::cell::UnsafeCell<std::mem::MaybeUninit<V>>`, and thus has the same runtime
+/// `core::cell::UnsafeCell<core::mem::MaybeUninit<V>>`, and thus has the same runtime
 /// properties: there are no runtime checks (as there would be for Rust's traditional
-/// [`std::cell::RefCell`](https://doc.rust-lang.org/std/cell/struct.RefCell.html)).
+/// [`core::cell::RefCell`](https://doc.rust-lang.org/core/cell/struct.RefCell.html)).
 /// Its data may be uninitialized.
 ///
 /// Furthermore (and unlike both
-/// [`std::cell::Cell`](https://doc.rust-lang.org/std/cell/struct.Cell.html) and
-/// [`std::cell::RefCell`](https://doc.rust-lang.org/std/cell/struct.RefCell.html)),
+/// [`core::cell::Cell`](https://doc.rust-lang.org/core/cell/struct.Cell.html) and
+/// [`core::cell::RefCell`](https://doc.rust-lang.org/core/cell/struct.RefCell.html)),
 /// a `PCell<V>` may be `Sync` (depending on `V`).
 /// Thanks to verification, Verus ensures that access to the cell is data-race-free.
 ///
@@ -67,7 +67,7 @@ unsafe impl<T> Send for PCell<T> {}
 
 #[verifier(external_body)]
 pub tracked struct PermissionOpt<#[verifier(strictly_positive)] V> {
-    phantom: std::marker::PhantomData<V>,
+    phantom: core::marker::PhantomData<V>,
 }
 
 pub ghost struct PermissionOptData<V> {
@@ -156,7 +156,7 @@ impl<V> PCell<V> {
 
         unsafe {
             let mut m = MaybeUninit::uninit();
-            std::mem::swap(&mut m, &mut *self.ucell.get());
+            core::mem::swap(&mut m, &mut *self.ucell.get());
             m.assume_init()
         }
     }
@@ -176,7 +176,7 @@ impl<V> PCell<V> {
 
         unsafe {
             let mut m = MaybeUninit::new(in_v);
-            std::mem::swap(&mut m, &mut *self.ucell.get());
+            core::mem::swap(&mut m, &mut *self.ucell.get());
             m.assume_init()
         }
     }

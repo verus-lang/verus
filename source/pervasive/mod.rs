@@ -1,13 +1,13 @@
 pub mod map;
 pub mod option;
 pub mod result;
-pub mod vec;
+//pub mod vec;
 pub mod seq;
 pub mod seq_lib;
 pub mod set;
 pub mod set_lib;
 pub mod cell;
-pub mod ptr;
+//pub mod ptr;
 pub mod invariant;
 pub mod atomic;
 pub mod atomic_ghost;
@@ -19,6 +19,13 @@ pub mod string;
 
 #[allow(unused_imports)]
 use builtin::*;
+
+macro_rules! println {
+    () => {
+    };
+    ($($arg:tt)*) => {{
+    }};
+}
 
 #[proof]
 pub fn assume(b: bool) {
