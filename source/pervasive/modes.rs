@@ -41,7 +41,8 @@ impl<A> Tracked<A> {
     #[proof]
     #[verifier(external_body)]
     #[verifier(returns(proof))]
-    pub fn get(self) -> A {
+    pub fn get(#[proof] self) -> A {
+        ensures(|a: A| equal(a, self.value()));
         unimplemented!()
     }
 }
