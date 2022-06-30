@@ -427,8 +427,8 @@ fn check_function(ctxt: &Ctxt, function: &Function) -> Result<(), VirErr> {
                 ) = &lhs.x
                 {
                     match &rhs.x {
-                        crate::ast::ExprX::Const(crate::ast::Constant::Nat(zero))
-                            if "0" == (**zero).as_str() => {}
+                        crate::ast::ExprX::Const(crate::ast::Constant::Int(zero))
+                            if "0" == zero.to_string() => {}
                         _ => {
                             return err_str(
                                 &function.span,
