@@ -12,7 +12,7 @@ use crate::rust_to_vir_base::{
 };
 use crate::util::{
     err_span_str, err_span_string, slice_vec_map_result, spanned_new, spanned_typed_new,
-    unsupported_err_span, vec_map, vec_map_result,
+    to_air_span, unsupported_err_span, vec_map, vec_map_result,
 };
 use crate::{unsupported, unsupported_err, unsupported_err_unless, unsupported_unless};
 use air::ast::{Binder, BinderX};
@@ -697,8 +697,8 @@ fn fn_call_to_vir<'tcx>(
         unsupported_err_unless!(len == 2, expr.span, "expected reveal_fuel", &args);
         let x = get_fn_path(bctx, &args[0])?;
         match &expr_to_vir(bctx, &args[1], ExprModifier::REGULAR)?.x {
-            ExprX::Const(Constant::Nat(s)) => {
-                let n = s.parse::<u32>().expect(&format!("internal error: parse {}", s));
+            ExprX::Const(Constant::Int(i)) => {
+                let n = vir::ast_util::const_int_to_u32(&to_air_span(expr.span), i)?;
                 return Ok(mk_expr(ExprX::Fuel(x, n)));
             }
             _ => panic!("internal error: is_reveal_fuel"),
@@ -1451,7 +1451,7 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
     let modifier = ExprModifier { deref_mut: false, ..current_modifier };
 
     let mk_lit_int = |in_negative_literal: bool, i: u128, typ: Typ| {
-        let c = vir::ast::Constant::Nat(Arc::new(i.to_string()));
+        let c = vir::ast_util::const_int_from_u128(i);
         let i_bump = if in_negative_literal { 1 } else { 0 };
         if let TypX::Int(range) = *typ {
             match range {
@@ -1600,7 +1600,7 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                 Ok(mk_expr(ExprX::Unary(not_op, varg)))
             }
             UnOp::Neg => {
-                let zero_const = vir::ast::Constant::Nat(Arc::new("0".to_string()));
+                let zero_const = vir::ast_util::const_int_from_u128(0);
                 let zero = mk_expr(ExprX::Const(zero_const));
                 let varg = if let ExprKind::Lit(rustc_span::source_map::Spanned {
                     node: rustc_ast::LitKind::Int(i, _),

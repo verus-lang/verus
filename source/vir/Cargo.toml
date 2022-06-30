@@ -10,6 +10,7 @@ edition = "2018"
 [dependencies]
 air = { path = "../air" }
 sise = "0.6.0"
+num-bigint = "0.4.3"
 
 [features]
 singular = ["air/singular"]

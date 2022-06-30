@@ -310,7 +310,9 @@ pub(crate) fn ctor_to_apply<'a>(
 pub(crate) fn constant_to_expr(_ctx: &Ctx, constant: &crate::ast::Constant) -> Expr {
     match constant {
         crate::ast::Constant::Bool(b) => Arc::new(ExprX::Const(Constant::Bool(*b))),
-        crate::ast::Constant::Nat(s) => Arc::new(ExprX::Const(Constant::Nat(s.clone()))),
+        crate::ast::Constant::Int(i) => {
+            Arc::new(ExprX::Const(Constant::Nat(Arc::new(i.to_string()))))
+        }
     }
 }
 
@@ -366,9 +368,9 @@ fn assert_unsigned(exp: &Exp) {
 
 pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: ExprCtxt) -> Expr {
     match (&exp.x, expr_ctxt.is_bit_vector) {
-        (ExpX::Const(crate::ast::Constant::Nat(s)), true) => {
+        (ExpX::Const(crate::ast::Constant::Int(i)), true) => {
             if let Some(width) = bitwidth_from_type(&exp.typ) {
-                return Arc::new(ExprX::Const(Constant::BitVec(s.clone(), width)));
+                return Arc::new(ExprX::Const(Constant::BitVec(Arc::new(i.to_string()), width)));
             }
             panic!("error: unable to get bit-width from constant of type {:?}", exp.typ);
         }

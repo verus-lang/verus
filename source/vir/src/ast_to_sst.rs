@@ -15,6 +15,7 @@ use crate::util::{vec_map, vec_map_result};
 use air::ast::{Binder, BinderX, Binders, Span};
 use air::errors::error_with_label;
 use air::scope_map::ScopeMap;
+use num_bigint::ToBigInt;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::Arc;
 
@@ -908,7 +909,7 @@ fn expr_to_stm_opt(
                                     }
                                     ArithOp::EuclideanDiv | ArithOp::EuclideanMod => {
                                         let zero =
-                                            ExpX::Const(Constant::Nat(Arc::new("0".to_string())));
+                                            ExpX::Const(Constant::Int(0.to_bigint().unwrap()));
                                         let ne =
                                             ExpX::Binary(BinaryOp::Ne, e2.clone(), e2.new_x(zero));
                                         let ne = SpannedTyped::new(

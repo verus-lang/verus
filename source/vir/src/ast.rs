@@ -8,6 +8,7 @@
 use crate::def::Spanned;
 use air::ast::Span;
 use air::errors::Error;
+use num_bigint::BigInt;
 use std::sync::Arc;
 
 pub use air::ast::{Binder, Binders};
@@ -257,8 +258,8 @@ pub enum HeaderExprX {
 pub enum Constant {
     /// true or false
     Bool(bool),
-    /// non-negative integer of arbitrary size (IntRange::Nat); use subtraction to get negative numbers
-    Nat(Arc<String>),
+    /// integer of arbitrary size
+    Int(BigInt),
 }
 
 #[derive(Debug)]
