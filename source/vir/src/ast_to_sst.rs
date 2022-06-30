@@ -1168,6 +1168,18 @@ fn expr_to_stm_opt(
             let assert = Spanned::new(e.span.clone(), StmX::AssertBV(expr));
             Ok((vec![assert], ret))
         }
+        ExprX::AssertCompute(e) => {
+            let expr = expr_to_pure_exp(ctx, state, &e)?;
+            let ret = ReturnValue::ImplicitUnit(expr.span.clone());
+            // We assert the (hopefully simplified) result of calling the interpreter
+            // but assume the original expression, so we get the benefits
+            // of any ensures, triggers, etc., that it might provide
+            // TODO: This will eventually call the interpreter
+            let interp_expr = expr.clone();
+            let assert = Spanned::new(e.span.clone(), StmX::Assert(None, interp_expr));
+            let assume = Spanned::new(e.span.clone(), StmX::Assume(expr));
+            Ok((vec![assert, assume], ret))
+        }
         ExprX::If(expr0, expr1, None) => {
             let (stms0, e0) = expr_to_stm_opt(ctx, state, expr0)?;
             let (stms1, e1) = expr_to_stm_opt(ctx, state, expr1)?;

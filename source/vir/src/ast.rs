@@ -418,6 +418,8 @@ pub enum ExprX {
     Block(Stmts, Option<Expr>),
     /// assert_by with smt.arith.nl=true
     AssertQuery { requires: Exprs, ensures: Exprs, proof: Expr, mode: AssertQueryMode },
+    /// Assertion discharged via computation
+    AssertCompute(Expr),
 }
 
 /// Statement, similar to rustc_hir::Stmt

@@ -410,6 +410,7 @@ fn fn_call_to_vir<'tcx>(
     let is_reveal_fuel = f_name == "builtin::reveal_with_fuel";
     let is_implies = f_name == "builtin::imply";
     let is_assert_by = f_name == "builtin::assert_by";
+    let is_assert_by_compute = f_name == "builtin::assert_by_compute";
     let is_assert_nonlinear_by = f_name == "builtin::assert_nonlinear_by";
     let is_assert_forall_by = f_name == "builtin::assert_forall_by";
     let is_assert_bit_vector = f_name == "builtin::assert_bit_vector";
@@ -516,6 +517,7 @@ fn fn_call_to_vir<'tcx>(
             || is_choose_tuple
             || is_with_triggers
             || is_assert_by
+            || is_assert_by_compute
             || is_assert_nonlinear_by
             || is_assert_forall_by
             || is_assert_bit_vector
@@ -712,6 +714,11 @@ fn fn_call_to_vir<'tcx>(
         let ensure = expr_to_vir(bctx, &args[0], ExprModifier::REGULAR)?;
         let proof = expr_to_vir(bctx, &args[1], ExprModifier::REGULAR)?;
         return Ok(mk_expr(ExprX::Forall { vars, require, ensure, proof }));
+    }
+    if is_assert_by_compute {
+        unsupported_err_unless!(len == 1, expr.span, "expected assert_by_compute", &args);
+        let exp = expr_to_vir(bctx, &args[0], ExprModifier::REGULAR)?;
+        return Ok(mk_expr(ExprX::AssertCompute(exp)));
     }
     if is_assert_nonlinear_by {
         unsupported_err_unless!(

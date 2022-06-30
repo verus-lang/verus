@@ -208,6 +208,11 @@ pub fn assert_by(_: bool, _: ()) {
 }
 
 #[proof]
+pub fn assert_by_compute(_: bool) {
+    unimplemented!();
+}
+
+#[proof]
 pub fn assert_nonlinear_by(_: ()) {
     unimplemented!();
 }
