@@ -7,7 +7,7 @@
 
 #[allow(unused_imports)]
 use crate::ast::{
-    ArithOp, BinaryOp, Constant, InequalityOp, IntRange, SpannedTyped, UnaryOp, VirErr,
+    ArithOp, BinaryOp, BitwiseOp, Constant, InequalityOp, IntRange, SpannedTyped, UnaryOp, VirErr,
 };
 use crate::ast_util::err_string;
 #[allow(unused_imports)]
@@ -129,8 +129,11 @@ fn eval_expr_internal(env: &Env, exp: &Exp, _map: &mut VisitorScopeMap) -> Resul
                     (_, Const(Bool(false))) => exp_new(Unary(UnaryOp::Not, e1.clone())),
                     _ => ok,
                 },
-                //                Eq(mode) => TODO
-                //                Ne => TODO
+                Eq(_mode) => ok, // TODO: Implement a syntactic check for equality
+                Ne => match (&e1.x, &e2.x) {
+                    (Const(c1), Const(c2)) => exp_new(Const(Bool(c1 != c2))),
+                    _ => ok, // In the presence of free variables, this is not the same as !Eq
+                },
                 Inequality(op) => match (&e1.x, &e2.x) {
                     (Const(Int(i1)), Const(Int(i2))) => {
                         use InequalityOp::*;
@@ -231,7 +234,35 @@ fn eval_expr_internal(env: &Env, exp: &Exp, _map: &mut VisitorScopeMap) -> Resul
                         _ => ok,
                     }
                 }
-                _ => ok,
+                Bitwise(op) => {
+                    use BitwiseOp::*;
+                    match (&e1.x, &e2.x) {
+                        // Ideal case where both sides are concrete
+                        (Const(Int(i1)), Const(Int(i2))) => match op {
+                            BitXor => exp_new(Const(Int(i1 ^ i2))),
+                            BitAnd => exp_new(Const(Int(i1 & i2))),
+                            BitOr => exp_new(Const(Int(i1 | i2))),
+                            _ => ok,
+                            // TODO: Handle the case where the shift amount is small enough
+                            //                            Shr    => exp_new(Const(Int(i1 >> Into::<u128>::into(i2)))),
+                            //                            Shl    => exp_new(Const(Int(i1 << i2.into()))),
+                        },
+                        // Special cases for certain concrete values
+                        (Const(Int(i)), _) | (_, Const(Int(i)))
+                            if i.is_zero() && matches!(op, BitAnd) =>
+                        {
+                            exp_new(Const(Int(BigInt::zero())))
+                        }
+                        (Const(Int(i1)), _) if i1.is_zero() && matches!(op, BitOr) => {
+                            Ok(e2.clone())
+                        }
+                        (_, Const(Int(i2))) if i2.is_zero() && matches!(op, BitOr) => {
+                            Ok(e1.clone())
+                        }
+                        // TODO: Add additional cases here if we implement syntactic Eq check
+                        _ => ok,
+                    }
+                }
             }
         }
         //                Eq(_) => ,
