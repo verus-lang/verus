@@ -5,6 +5,7 @@ use crate::ast::{
 use crate::ast_util::{err_str, err_string, types_equal, QUANT_FORALL};
 use crate::context::Ctx;
 use crate::def::Spanned;
+use crate::interpreter::eval_expr;
 use crate::sst::{
     Bnd, BndX, Dest, Exp, ExpX, Exps, LocalDecl, LocalDeclX, ParPurpose, Pars, Stm, StmX,
     UniqueIdent,
@@ -1174,8 +1175,7 @@ fn expr_to_stm_opt(
             // We assert the (hopefully simplified) result of calling the interpreter
             // but assume the original expression, so we get the benefits
             // of any ensures, triggers, etc., that it might provide
-            // TODO: This will eventually call the interpreter
-            let interp_expr = expr.clone();
+            let interp_expr = eval_expr(&expr)?;
             let assert = Spanned::new(e.span.clone(), StmX::Assert(None, interp_expr));
             let assume = Spanned::new(e.span.clone(), StmX::Assume(expr));
             Ok((vec![assert, assume], ret))

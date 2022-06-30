@@ -11,6 +11,7 @@ edition = "2018"
 air = { path = "../air" }
 sise = "0.6.0"
 num-bigint = "0.4.3"
+num-traits= "0.2.15"
 
 [features]
 singular = ["air/singular"]
