@@ -6,6 +6,7 @@
 //! for verification.
 
 use crate::def::Spanned;
+use crate::custom_error_messages::CustomErrors;
 use air::ast::Span;
 use air::errors::Error;
 use std::sync::Arc;
@@ -470,7 +471,7 @@ pub struct FunctionAttrsX {
     /// In triggers_auto, don't use this function as a trigger
     pub no_auto_trigger: bool,
     /// Custom error message to display when a pre-condition fails
-    pub custom_req_err: Option<String>,
+    pub custom_req_err: CustomErrors,
     /// coerce f(e, ...) to f(e.view(), ...)
     pub autoview: bool,
     /// Verify using bitvector theory
