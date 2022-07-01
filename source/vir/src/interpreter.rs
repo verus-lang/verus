@@ -5,31 +5,23 @@
 //! Current target is supporting proof by computation
 //! https://github.com/secure-foundations/verus/discussions/120
 
-#[allow(unused_imports)]
 use crate::ast::{
-    ArithOp, BinaryOp, BitwiseOp, Constant, InequalityOp, IntRange, SpannedTyped, UnaryOp,
-    UnaryOpr, VirErr,
+    ArithOp, BinaryOp, BitwiseOp, Constant, InequalityOp, IntRange, SpannedTyped, UnaryOp, VirErr,
 };
 use crate::ast_util::err_string;
 use crate::def::SstMap;
-#[allow(unused_imports)]
-use crate::sst::{BndX, Dest, Exp, ExpX, Stm, StmX, UniqueIdent};
-#[allow(unused_imports)]
-use crate::sst_visitor::{map_exp_visitor_bind, map_stm_visitor, VisitorScopeMap};
-#[allow(unused_imports)]
-use crate::visitor::VisitorControlFlow;
+use crate::sst::{Exp, ExpX, UniqueIdent};
 use air::scope_map::ScopeMap;
 use num_bigint::{BigInt, Sign};
 use num_traits::identities::Zero;
 use num_traits::{One, Signed, ToPrimitive};
-use std::collections::HashMap;
-//use std::convert::TryInto;
 
-type Env = HashMap<UniqueIdent, Exp>;
+type Env = ScopeMap<UniqueIdent, Exp>;
 
 // TODO: Add support for function evaluation memoization
+// TODO: Bound the running time, based on rlimit
 
-fn eval_expr_internal(env: &Env, exp: &Exp, _map: &mut VisitorScopeMap) -> Result<Exp, VirErr> {
+fn eval_expr_internal(env: &mut Env, fun_ssts: &SstMap, exp: &Exp) -> Result<Exp, VirErr> {
     let exp_new = |e: ExpX| Ok(SpannedTyped::new(&exp.span, &exp.typ, e));
     let ok = Ok(exp.clone());
     use ExpX::*;
@@ -42,37 +34,42 @@ fn eval_expr_internal(env: &Env, exp: &Exp, _map: &mut VisitorScopeMap) -> Resul
         Unary(op, e) => {
             use Constant::*;
             use UnaryOp::*;
+            let e = eval_expr_internal(env, fun_ssts, e)?;
+            let ok = exp_new(Unary(*op, e.clone()));
             match &e.x {
-                Const(Bool(b)) =>
-                // Explicitly enumerate UnaryOps, in case more are added
-                {
+                Const(Bool(b)) => {
+                    // Explicitly enumerate UnaryOps, in case more are added
                     match op {
                         Not => exp_new(Const(Bool(!b))),
                         BitNot | Clip(_) | Trigger(_) => ok,
                     }
                 }
-                Const(Int(i)) =>
-                // Explicitly enumerate UnaryOps, in case more are added
-                {
+                Const(Int(i)) => {
+                    // Explicitly enumerate UnaryOps, in case more are added
                     match op {
                         BitNot => exp_new(Const(Int(!i))),
                         Clip(range) => {
+                            println!("Clipping {:} to range {:?}", i, range);
                             let apply_range = |lower: BigInt, upper: BigInt| {
                                 if i <= &lower {
                                     exp_new(Const(Int(lower)))
                                 } else if i >= &upper {
                                     exp_new(Const(Int(upper)))
                                 } else {
-                                    Ok(exp.clone())
+                                    Ok(e.clone())
                                 }
                             };
                             match range {
                                 IntRange::Int => ok,
                                 IntRange::Nat => apply_range(BigInt::zero(), i.clone()),
-                                IntRange::U(n) => apply_range(
-                                    BigInt::zero(),
-                                    (BigInt::one() << n) - BigInt::one(),
-                                ),
+                                IntRange::U(n) => {
+                                    let u = apply_range(
+                                        BigInt::zero(),
+                                        (BigInt::one() << n) - BigInt::one(),
+                                    );
+                                    println!("\tClipped to {:?}", u);
+                                    u
+                                }
                                 IntRange::I(n) => apply_range(
                                     BigInt::one() << (n - 1),
                                     (BigInt::one() << (n - 1)) - BigInt::one(),
@@ -91,29 +88,31 @@ fn eval_expr_internal(env: &Env, exp: &Exp, _map: &mut VisitorScopeMap) -> Resul
                 _ => ok,
             }
         }
-        UnaryOpr(op, e1) => {
+        UnaryOpr(op, e) => {
+            let e = eval_expr_internal(env, fun_ssts, e)?;
+            let ok = exp_new(UnaryOpr(op.clone(), e.clone()));
             use crate::ast::UnaryOpr::*;
             match op {
                 Box(_) => ok,
-                Unbox(_) => 
-                    match &e1.x {
-                        UnaryOpr(Box(_), inner_e) => Ok(inner_e.clone()),
-                        _ => ok,
-                    }
+                Unbox(_) => match &e.x {
+                    UnaryOpr(Box(_), inner_e) => Ok(inner_e.clone()),
+                    _ => ok,
+                },
                 HasType(_) => ok,
-                IsVariant { datatype, variant } => match &e1.x {
+                IsVariant { datatype, variant } => match &e.x {
                     Ctor(dt, var, _) => {
                         exp_new(Const(Constant::Bool(dt == datatype && var == variant)))
                     }
                     _ => ok,
                 },
                 TupleField { .. } => panic!("TupleField should have been removed by ast_simplify!"),
-                Field(f) => match &e1.x {
-                    Ctor(_dt, var, binders) => match binders.iter().position(|b| b.name == f.field)
-                    {
-                        None => ok,
-                        Some(i) => Ok(binders.get(i).unwrap().a.clone()),
-                    },
+                Field(f) => match &e.x {
+                    Ctor(_dt, _var, binders) => {
+                        match binders.iter().position(|b| b.name == f.field) {
+                            None => ok,
+                            Some(i) => Ok(binders.get(i).unwrap().a.clone()),
+                        }
+                    }
                     _ => ok,
                 },
             }
@@ -121,6 +120,9 @@ fn eval_expr_internal(env: &Env, exp: &Exp, _map: &mut VisitorScopeMap) -> Resul
         Binary(op, e1, e2) => {
             use BinaryOp::*;
             use Constant::*;
+            let e1 = eval_expr_internal(env, fun_ssts, e1)?;
+            let e2 = eval_expr_internal(env, fun_ssts, e2)?;
+            let ok = exp_new(Binary(*op, e1.clone(), e2.clone()));
             match op {
                 And => match (&e1.x, &e2.x) {
                     (Const(Bool(true)), _) => Ok(e2.clone()),
@@ -299,20 +301,25 @@ fn eval_expr_internal(env: &Env, exp: &Exp, _map: &mut VisitorScopeMap) -> Resul
                 }
             }
         }
-        If(e1, e2, e3) => match &e1.x {
-            Const(Constant::Bool(b)) => {
-                if *b {
-                    Ok(e2.clone())
-                } else {
-                    Ok(e3.clone())
+        If(e1, e2, e3) => {
+            let e1 = eval_expr_internal(env, fun_ssts, e1)?;
+            let e2 = eval_expr_internal(env, fun_ssts, e2)?;
+            let e3 = eval_expr_internal(env, fun_ssts, e3)?;
+            match &e1.x {
+                Const(Constant::Bool(b)) => {
+                    if *b {
+                        Ok(e2.clone())
+                    } else {
+                        Ok(e3.clone())
+                    }
                 }
+                _ => exp_new(If(e1, e2, e3)),
             }
-            _ => ok,
-        },
+        }
         // TODO: Fill these in
-        Call(x, typs, es) => ok,
-        CallLambda(typ, e0, es) => ok,
-        Bind(bnd, e1) => ok,
+        Call(_x, _typs, _es) => ok,
+        CallLambda(_typ, _e0, _es) => ok,
+        Bind(_bnd, _e1) => ok,
 
         // Ignored by the interpreter at present (i.e., treated as symbolic)
         VarAt(..) | VarLoc(..) | Loc(..) | Old(..) | Ctor(..) | WithTriggers(..) => ok,
@@ -320,7 +327,6 @@ fn eval_expr_internal(env: &Env, exp: &Exp, _map: &mut VisitorScopeMap) -> Resul
 }
 
 pub fn eval_expr(exp: &Exp, fun_ssts: &SstMap) -> Result<Exp, VirErr> {
-    let env = HashMap::new();
-    let mut scope_map = ScopeMap::new();
-    map_exp_visitor_bind(exp, &mut scope_map, &mut |e, m| eval_expr_internal(&env, e, m))
+    let mut env = ScopeMap::new();
+    eval_expr_internal(&mut env, fun_ssts, exp)
 }
