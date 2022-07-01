@@ -4,7 +4,7 @@ use crate::ast::{
 };
 use crate::ast_util::{err_str, err_string, types_equal, QUANT_FORALL};
 use crate::context::Ctx;
-use crate::def::Spanned;
+use crate::def::{Spanned, SstMap};
 use crate::interpreter::eval_expr;
 use crate::sst::{
     Bnd, BndX, Dest, Exp, ExpX, Exps, LocalDecl, LocalDeclX, ParPurpose, Pars, Stm, StmX,
@@ -44,6 +44,8 @@ pub(crate) struct State {
     pub(crate) ret_post: Option<(Option<UniqueIdent>, Vec<Stm>, Exps)>,
     // If > 0, disable checking recommends (used to make sure pure expressions stay pure)
     disable_recommends: u64,
+    // Mapping from a function's name to the SST version of its body.  Used by the interpreter.
+    pub fun_ssts: SstMap,
 }
 
 #[derive(Clone)]
@@ -102,6 +104,7 @@ impl State {
             dont_rename: HashSet::new(),
             ret_post: None,
             disable_recommends: 0,
+            fun_ssts: HashMap::new(),
         }
     }
 
@@ -1175,7 +1178,7 @@ fn expr_to_stm_opt(
             // We assert the (hopefully simplified) result of calling the interpreter
             // but assume the original expression, so we get the benefits
             // of any ensures, triggers, etc., that it might provide
-            let interp_expr = eval_expr(&expr)?;
+            let interp_expr = eval_expr(&expr, &state.fun_ssts)?;
             let assert = Spanned::new(e.span.clone(), StmX::Assert(None, interp_expr));
             let assume = Spanned::new(e.span.clone(), StmX::Assume(expr));
             Ok((vec![assert, assume], ret))

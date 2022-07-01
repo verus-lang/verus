@@ -1,8 +1,9 @@
 use crate::ast::{Fun, FunX, InvAtomicity, Path, PathX};
-use crate::sst::UniqueIdent;
+use crate::sst::{Exp, UniqueIdent};
 use crate::util::vec_map;
 use air::ast::{Commands, Ident, Span};
 use air::ast_util::str_ident;
+use std::collections::HashMap;
 use std::fmt::Debug;
 use std::sync::Arc;
 
@@ -126,6 +127,8 @@ pub const UINT_NOT: &str = "uintnot";
 pub const ARCH_SIZE_MIN_BITS: u32 = 32;
 
 pub const SUPPORTED_CRATES: [&str; 2] = ["builtin", "pervasive"];
+
+pub type SstMap = HashMap<Fun, Exp>;
 
 pub fn path_to_string(path: &Path) -> String {
     let s = vec_map(&path.segments, |s| s.to_string()).join(PATH_SEPARATOR) + SUFFIX_PATH;

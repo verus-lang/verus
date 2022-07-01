@@ -11,6 +11,7 @@ use crate::ast::{
     UnaryOpr, VirErr,
 };
 use crate::ast_util::err_string;
+use crate::def::SstMap;
 #[allow(unused_imports)]
 use crate::sst::{BndX, Dest, Exp, ExpX, Stm, StmX, UniqueIdent};
 #[allow(unused_imports)]
@@ -314,7 +315,7 @@ fn eval_expr_internal(env: &Env, exp: &Exp, _map: &mut VisitorScopeMap) -> Resul
     }
 }
 
-pub fn eval_expr(exp: &Exp) -> Result<Exp, VirErr> {
+pub fn eval_expr(exp: &Exp, fun_ssts: &SstMap) -> Result<Exp, VirErr> {
     let env = HashMap::new();
     let mut scope_map = ScopeMap::new();
     map_exp_visitor_bind(exp, &mut scope_map, &mut |e, m| eval_expr_internal(&env, e, m))

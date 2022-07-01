@@ -7,8 +7,8 @@ use crate::context::Ctx;
 use crate::def::{
     prefix_ensures, prefix_fuel_id, prefix_fuel_nat, prefix_pre_var, prefix_recursive_fun,
     prefix_requires, suffix_global_id, suffix_local_stmt_id, suffix_typ_param_id,
-    CommandsWithContext, SnapPos, Spanned, FUEL_BOOL, FUEL_BOOL_DEFAULT, FUEL_LOCAL, FUEL_TYPE,
-    SUCC, ZERO,
+    CommandsWithContext, SnapPos, Spanned, SstMap, FUEL_BOOL, FUEL_BOOL_DEFAULT, FUEL_LOCAL,
+    FUEL_TYPE, SUCC, ZERO,
 };
 use crate::sst::{BndX, Exp, ExpX, Par, ParPurpose, ParX, Pars, Stm, StmX};
 use crate::sst_to_air::{
@@ -107,11 +107,12 @@ fn func_def_quant(
 
 fn func_body_to_air(
     ctx: &Ctx,
+    fun_ssts: SstMap,
     decl_commands: &mut Vec<Command>,
     check_commands: &mut Vec<Command>,
     function: &Function,
     body: &crate::ast::Expr,
-) -> Result<(), VirErr> {
+) -> Result<SstMap, VirErr> {
     let id_fuel = prefix_fuel_id(&fun_to_air_ident(&function.x.name));
 
     let pars = params_to_pars(&function.x.params, false);
@@ -120,8 +121,10 @@ fn func_body_to_air(
     let mut state = crate::ast_to_sst::State::new();
     state.declare_params(&pars);
     state.view_as_spec = true;
+    state.fun_ssts = fun_ssts;
     let body_exp = crate::ast_to_sst::expr_to_pure_exp(&ctx, &mut state, &body)?;
     let body_exp = state.finalize_exp(&body_exp);
+    state.fun_ssts.insert(function.x.name.clone(), body_exp.clone());
 
     let mut decrease_by_stms: Vec<Stm> = Vec::new();
     let decrease_by_reqs = if let Some(req) = &function.x.decrease_when {
@@ -235,7 +238,7 @@ fn func_body_to_air(
     let fuel_bool = str_apply(FUEL_BOOL, &vec![ident_var(&id_fuel)]);
     let def_axiom = Arc::new(DeclX::Axiom(mk_implies(&fuel_bool, &e_forall)));
     decl_commands.push(Arc::new(CommandX::Global(def_axiom)));
-    Ok(())
+    Ok(state.fun_ssts)
 }
 
 pub fn req_ens_to_air(
@@ -409,9 +412,10 @@ pub fn func_decl_to_air(ctx: &mut Ctx, function: &Function) -> Result<Commands, 
 
 pub fn func_axioms_to_air(
     ctx: &mut Ctx,
+    fun_ssts: SstMap,
     function: &Function,
     public_body: bool,
-) -> Result<(Commands, Commands), VirErr> {
+) -> Result<(Commands, Commands, SstMap), VirErr> {
     let mut ens_typs: Vec<_> = function
         .x
         .params
@@ -423,19 +427,27 @@ pub fn func_axioms_to_air(
         .collect();
     let mut decl_commands: Vec<Command> = Vec::new();
     let mut check_commands: Vec<Command> = Vec::new();
+    let mut new_fun_ssts = fun_ssts;
     match function.x.mode {
         Mode::Spec => {
             // Body
             if public_body {
                 if let Some(body) = &function.x.body {
-                    func_body_to_air(ctx, &mut decl_commands, &mut check_commands, function, body)?;
+                    new_fun_ssts = func_body_to_air(
+                        ctx,
+                        new_fun_ssts,
+                        &mut decl_commands,
+                        &mut check_commands,
+                        function,
+                        body,
+                    )?;
                 }
             }
 
             if let FunctionKind::TraitMethodImpl { .. } = &function.x.kind {
                 // For a trait method implementation, we just need to supply a body axiom
                 // for the existing trait method declaration function, so we can return here.
-                return Ok((Arc::new(decl_commands), Arc::new(check_commands)));
+                return Ok((Arc::new(decl_commands), Arc::new(check_commands), new_fun_ssts));
             }
 
             let name = suffix_global_id(&fun_to_air_ident(&function.x.name));
@@ -476,7 +488,7 @@ pub fn func_axioms_to_air(
             if let FunctionKind::TraitMethodImpl { .. } = &function.x.kind {
                 // For a trait method implementation, we inherit the trait requires/ensures,
                 // so we can just return here.
-                return Ok((Arc::new(decl_commands), Arc::new(check_commands)));
+                return Ok((Arc::new(decl_commands), Arc::new(check_commands), new_fun_ssts));
             }
 
             let params = params_to_pre_post_pars(&function.x.params, false);
@@ -554,7 +566,7 @@ pub fn func_axioms_to_air(
             }
         }
     }
-    Ok((Arc::new(decl_commands), Arc::new(check_commands)))
+    Ok((Arc::new(decl_commands), Arc::new(check_commands), new_fun_ssts))
 }
 
 pub enum FuncDefPhase {
