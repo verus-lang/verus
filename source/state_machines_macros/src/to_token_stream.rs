@@ -427,6 +427,21 @@ fn output_step_datatype(
             }
         });
     } else {
+        let arms_strong: Vec<TokenStream> = sm
+            .transitions
+            .iter()
+            .filter(|t| filter_fn(t))
+            .map(|t| {
+                let step_args = just_args(&t.params);
+                let tr_args = if is_init { post_args(&t.params) } else { pre_post_args(&t.params) };
+                let tr_name = &t.name;
+                let tr_name_strong = Ident::new(&(tr_name.to_string() + "_strong"), tr_name.span());
+                quote! {
+                    #type_ident::#tr_name(#step_args) => Self::#tr_name_strong(#tr_args),
+                }
+            })
+            .collect();
+
         impl_stream.extend(quote!{
             #[spec] #[verifier(opaque)] #[verifier(publish)]
             pub fn next_by(pre: #self_ty, post: #self_ty, step: #step_ty) -> ::std::primitive::bool {
@@ -438,6 +453,19 @@ fn output_step_datatype(
 
             #[spec] #[verifier(opaque)] #[verifier(publish)]
             pub fn next(pre: #self_ty, post: #self_ty) -> ::std::primitive::bool {
+                ::builtin::exists(|step: #step_ty| Self::next_by(pre, post, step))
+            }
+
+            #[spec] #[verifier(opaque)] #[verifier(publish)]
+            pub fn next_strong_by(pre: #self_ty, post: #self_ty, step: #step_ty) -> ::std::primitive::bool {
+                match step {
+                    #(#arms_strong)*
+                    #type_ident::dummy_to_use_type_params(_) => false,
+                }
+            }
+
+            #[spec] #[verifier(opaque)] #[verifier(publish)]
+            pub fn next_strong(pre: #self_ty, post: #self_ty) -> ::std::primitive::bool {
                 ::builtin::exists(|step: #step_ty| Self::next_by(pre, post, step))
             }
         });

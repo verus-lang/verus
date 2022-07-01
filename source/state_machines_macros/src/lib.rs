@@ -70,10 +70,15 @@ pub fn tokenized_state_machine(input: TokenStream) -> TokenStream {
 
 #[proc_macro]
 pub fn case_on_next(input: TokenStream) -> TokenStream {
-    case_on(input, false)
+    case_on(input, false, false)
+}
+
+#[proc_macro]
+pub fn case_on_next_strong(input: TokenStream) -> TokenStream {
+    case_on(input, false, true)
 }
 
 #[proc_macro]
 pub fn case_on_init(input: TokenStream) -> TokenStream {
-    case_on(input, true)
+    case_on(input, true, false)
 }

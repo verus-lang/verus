@@ -7,7 +7,13 @@ use syn_verus::punctuated::Punctuated;
 use syn_verus::token;
 use syn_verus::{braced, parenthesized, Expr, ExprBlock, Ident, Path, Token};
 
-pub fn case_on(input: proc_macro::TokenStream, is_init: bool) -> proc_macro::TokenStream {
+pub fn case_on(
+    input: proc_macro::TokenStream,
+    is_init: bool,
+    is_strong: bool,
+) -> proc_macro::TokenStream {
+    assert!(!is_init || !is_strong);
+
     let (pre_post, name, arms) = if is_init {
         let m: MatchPost = parse_macro_input!(input as MatchPost);
         let MatchPost { post, name, arms } = m;
@@ -23,13 +29,21 @@ pub fn case_on(input: proc_macro::TokenStream, is_init: bool) -> proc_macro::Tok
     let next_by = if is_init {
         quote! { #name::State::init_by }
     } else {
-        quote! { #name::State::next_by }
+        if is_strong {
+            quote! { #name::State::next_strong_by }
+        } else {
+            quote! { #name::State::next_by }
+        }
     };
 
     let next = if is_init {
         quote! { #name::State::init }
     } else {
-        quote! { #name::State::next }
+        if is_strong {
+            quote! { #name::State::next_strong }
+        } else {
+            quote! { #name::State::next }
+        }
     };
 
     let step = if is_init {
@@ -42,9 +56,14 @@ pub fn case_on(input: proc_macro::TokenStream, is_init: bool) -> proc_macro::Tok
         .into_iter()
         .map(|arm| {
             let Arm { step_name, params, block } = arm;
+            let relation_name = if is_strong {
+                Ident::new(&(step_name.to_string() + "_strong"), step_name.span())
+            } else {
+                step_name.clone()
+            };
             quote! {
                 #step::#step_name(#(#params),*) => {
-                    ::builtin::assert_by(#name::State::#step_name(#pre_post, #(#params),*), {
+                    ::builtin::assert_by(#name::State::#relation_name(#pre_post, #(#params),*), {
                         ::builtin::reveal(#next_by);
                     });
                     #block
