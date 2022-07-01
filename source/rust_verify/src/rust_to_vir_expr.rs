@@ -1222,7 +1222,7 @@ fn invariant_block_to_vir<'tcx>(
     // are the same as in the first statement. This is what the giant
     // `match` statements below are for.
     //
-    // We also need to "recover" the $inner, $eexpr, and $bblock for converstion to VIR.
+    // We also need to "recover" the $inner, $eexpr, and $bblock for conversion to VIR.
     //
     // If the AST doesn't look exactly like we expect, print an error asking the user
     // to use the open_atomic_invariant! macro.
@@ -1583,7 +1583,18 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
             }
         },
         ExprKind::Cast(source, _) => {
-            Ok(mk_ty_clip(&expr_typ(), &expr_to_vir(bctx, source, modifier)?))
+            let source_vir = &expr_to_vir(bctx, source, modifier)?;
+            let source_ty = &source_vir.typ;
+            let to_ty = expr_typ();
+            match (&**source_ty, &*to_ty) {
+                (TypX::Int(_), TypX::Int(_)) => Ok(mk_ty_clip(&to_ty, &source_vir)),
+                _ => {
+                    return err_span_str(
+                        expr.span,
+                        "Verus currently only supports casts from integer types to integer types",
+                    );
+                }
+            }
         }
         ExprKind::AddrOf(BorrowKind::Ref, Mutability::Not, e) => {
             expr_to_vir_inner(bctx, e, ExprModifier::REGULAR)
