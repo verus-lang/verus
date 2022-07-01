@@ -94,9 +94,13 @@ fn eval_expr_internal(env: &Env, exp: &Exp, _map: &mut VisitorScopeMap) -> Resul
         UnaryOpr(op, e1) => {
             use crate::ast::UnaryOpr::*;
             match op {
-                Box(_) => Ok(e1.clone()),
-                Unbox(_) => Ok(e1.clone()),
-                HasType(_) => Ok(e1.clone()),
+                Box(_) => ok,
+                Unbox(_) => 
+                    match &e1.x {
+                        UnaryOpr(Box(_), inner_e) => Ok(inner_e.clone()),
+                        _ => ok,
+                    }
+                HasType(_) => ok,
                 IsVariant { datatype, variant } => match &e1.x {
                     Ctor(dt, var, _) => {
                         exp_new(Const(Constant::Bool(dt == datatype && var == variant)))

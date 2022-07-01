@@ -1,5 +1,6 @@
 use builtin::*;
 mod pervasive;
+use pervasive::option::Option;
 use pervasive::*;
 
 fn main() {}
@@ -22,3 +23,13 @@ fn compute_ite() {
     // but it doesn't "upgrade" the expression to Spec
     //assert_by_compute(9 == if (7 + 7 * 2 > 20) { 7 + 2 } else { 22 - 5 + 10*10 });
 }
+
+fn compute_datatype() {
+    // TODO: Doesn't yet reduce, b/c the match is turned into a let
+    assert_by_compute(
+        match Option::Some(42) {
+            Option::Some(i) => i > 3,
+            _ => 10 > 20,
+        });
+}
+
