@@ -39,6 +39,7 @@ pub mod context;
 pub mod datatype_to_air;
 pub mod def;
 mod early_exit_cf;
+pub mod fn_call_error_messages;
 pub mod func_to_air;
 pub mod headers;
 mod inv_masks;

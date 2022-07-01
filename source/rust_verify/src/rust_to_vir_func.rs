@@ -19,6 +19,7 @@ use vir::ast::{
     ParamX, Typ, TypX, VirErr,
 };
 use vir::def::RETURN_VALUE;
+use vir::fn_call_error_messages::FnCallErrors;
 
 pub(crate) fn body_to_vir<'tcx>(
     ctxt: &Context<'tcx>,
@@ -241,7 +242,10 @@ pub(crate) fn check_item_fn<'tcx>(
     let fattrs = FunctionAttrsX {
         uses_ghost_blocks: vattrs.verus_macro,
         hidden: Arc::new(header.hidden),
-        custom_req_err: vattrs.custom_req_err,
+        custom_req_err: FnCallErrors::from_attrs(
+            vattrs.custom_req_err_main,
+            vattrs.custom_req_err_idxs,
+        ),
         no_auto_trigger: vattrs.no_auto_trigger,
         broadcast_forall: vattrs.broadcast_forall,
         bit_vector: vattrs.bit_vector,

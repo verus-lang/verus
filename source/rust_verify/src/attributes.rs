@@ -141,6 +141,8 @@ pub(crate) enum Attr {
     Trigger(Option<Vec<u64>>),
     // custom error string to report for precondition failures
     CustomReqErr(String),
+    // custom error string to report for precondition failures for a specific precondition
+    CustomReqErrIdx(String, usize),
     // verify using bitvector theory
     BitVector,
     // for unforgeable token types
@@ -291,6 +293,25 @@ pub(crate) fn parse_attrs(attrs: &[Attribute]) -> Result<Vec<Attr>, VirErr> {
                 {
                     v.push(Attr::CustomReqErr(msg.clone()))
                 }
+                Some(
+                    box [
+                        AttrTree::Fun(
+                            span,
+                            arg,
+                            Some(box [AttrTree::Fun(_, msg, None), AttrTree::Fun(_, idx, None)]),
+                        ),
+                    ],
+                ) if arg == "custom_req_err" => match idx.parse::<usize>() {
+                    Err(_) => {
+                        return err_span_string(
+                            span.clone(),
+                            format!("expected integer constant as second argument"),
+                        );
+                    }
+                    Ok(i) => {
+                        v.push(Attr::CustomReqErrIdx(msg.clone(), i));
+                    }
+                },
                 Some(box [AttrTree::Fun(_, arg, None)]) if arg == "bit_vector" => {
                     v.push(Attr::BitVector)
                 }
@@ -418,7 +439,8 @@ pub(crate) struct VerifierAttrs {
     pub(crate) broadcast_forall: bool,
     pub(crate) no_auto_trigger: bool,
     pub(crate) autoview: bool,
-    pub(crate) custom_req_err: Option<String>,
+    pub(crate) custom_req_err_main: Option<String>,
+    pub(crate) custom_req_err_idxs: Vec<(String, usize)>,
     pub(crate) bit_vector: bool,
     pub(crate) unforgeable: bool,
     pub(crate) atomic: bool,
@@ -444,7 +466,8 @@ pub(crate) fn get_verifier_attrs(attrs: &[Attribute]) -> Result<VerifierAttrs, V
         broadcast_forall: false,
         no_auto_trigger: false,
         autoview: false,
-        custom_req_err: None,
+        custom_req_err_main: None,
+        custom_req_err_idxs: vec![],
         bit_vector: false,
         unforgeable: false,
         atomic: false,
@@ -469,7 +492,8 @@ pub(crate) fn get_verifier_attrs(attrs: &[Attribute]) -> Result<VerifierAttrs, V
             Attr::BroadcastForall => vs.broadcast_forall = true,
             Attr::NoAutoTrigger => vs.no_auto_trigger = true,
             Attr::Autoview => vs.autoview = true,
-            Attr::CustomReqErr(s) => vs.custom_req_err = Some(s.clone()),
+            Attr::CustomReqErr(s) => vs.custom_req_err_main = Some(s.clone()),
+            Attr::CustomReqErrIdx(s, i) => vs.custom_req_err_idxs.push((s.clone(), i)),
             Attr::BitVector => vs.bit_vector = true,
             Attr::Unforgeable => vs.unforgeable = true,
             Attr::Atomic => vs.atomic = true,

@@ -24,3 +24,21 @@ fn fails_post() {
     let x = 5;
     let y = 7;
 }
+
+#[verifier(custom_req_err("failed first arg", 0))]
+#[verifier(custom_req_err("failed second arg", 1))]
+fn detailed(b: bool, c: bool)
+{
+    requires([
+        b,
+        c,
+    ]);
+}
+
+fn fails1() {
+    detailed(false, true);
+}
+
+fn fails2() {
+    detailed(true, false);
+}

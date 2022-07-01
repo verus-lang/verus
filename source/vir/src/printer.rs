@@ -450,10 +450,11 @@ fn function_to_node(function: &FunctionX) -> Node {
         if *no_auto_trigger {
             nodes.push(str_to_node("+no_auto_trigger"));
         }
-        if let Some(re) = custom_req_err {
+        // TODO
+        /*if let Some(re) = custom_req_err {
             nodes.push(str_to_node(":custom_req_err"));
             nodes.push(str_node(re));
-        }
+        }*/
         if *autoview {
             nodes.push(str_to_node("+autoview"));
         }

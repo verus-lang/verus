@@ -10,6 +10,7 @@ use crate::def::{
     CommandsWithContext, SnapPos, Spanned, FUEL_BOOL, FUEL_BOOL_DEFAULT, FUEL_LOCAL, FUEL_TYPE,
     SUCC, ZERO,
 };
+use crate::fn_call_error_messages::FnCallErrors;
 use crate::sst::{BndX, Exp, ExpX, Par, ParPurpose, ParX, Pars, Stm, StmX};
 use crate::sst_to_air::{
     exp_to_expr, fun_to_air_ident, typ_invariant, typ_to_air, ExprCtxt, ExprMode,
@@ -23,7 +24,6 @@ use air::ast_util::{
     bool_typ, ident_apply, ident_binder, ident_var, mk_and, mk_bind_expr, mk_eq, mk_implies,
     str_apply, str_ident, str_typ, str_var, string_apply,
 };
-use air::errors::ErrorLabel;
 use std::sync::Arc;
 
 // binder for forall (typ_params params)
@@ -247,7 +247,8 @@ pub fn req_ens_to_air(
     typ_params: &Idents,
     typs: &air::ast::Typs,
     name: &Ident,
-    msg: &Option<String>,
+    msg: Option<&FnCallErrors>,
+    mode: Mode,
 ) -> Result<bool, VirErr> {
     if specs.len() + typing_invs.len() > 0 {
         let mut all_typs = (**typs).clone();
@@ -260,15 +261,14 @@ pub fn req_ens_to_air(
         for e in typing_invs {
             exprs.push(e.clone());
         }
-        for e in specs.iter() {
+        for (idx, e) in specs.iter().enumerate() {
             let exp = crate::ast_to_sst::expr_to_exp(ctx, params, e)?;
             let expr =
                 exp_to_expr(ctx, &exp, ExprCtxt { mode: ExprMode::Spec, is_bit_vector: false });
             let loc_expr = match msg {
                 None => expr,
                 Some(msg) => {
-                    let l = ErrorLabel { span: e.span.clone(), msg: msg.clone() };
-                    let ls = Arc::new(vec![l]);
+                    let ls = Arc::new(msg.labels_for_req_defn(mode, idx, &e.span));
                     Arc::new(ExprX::LabeledAxiom(ls, expr))
                 }
             };
@@ -384,13 +384,6 @@ pub fn func_decl_to_air(ctx: &mut Ctx, function: &Function) -> Result<Commands, 
         Arc::new(function.x.params.iter().map(|param| typ_to_air(ctx, &param.x.typ)).collect());
     let mut decl_commands: Vec<Command> = Vec::new();
     if function.x.require.len() > 0 {
-        let msg = match (function.x.mode, &function.x.attrs.custom_req_err) {
-            // We don't highlight the failed precondition if the programmer supplied their own msg
-            (_, Some(_)) => None,
-            // Standard message
-            (Mode::Spec, None) => Some("recommendation not met".to_string()),
-            (_, None) => Some("failed precondition".to_string()),
-        };
         let req_params = params_to_pre_post_pars(&function.x.params, true);
         let _ = req_ens_to_air(
             ctx,
@@ -401,7 +394,8 @@ pub fn func_decl_to_air(ctx: &mut Ctx, function: &Function) -> Result<Commands, 
             &function.x.typ_params(),
             &req_typs,
             &prefix_requires(&fun_to_air_ident(&function.x.name)),
-            &msg,
+            Some(&function.x.attrs.custom_req_err),
+            function.x.mode,
         )?;
     }
     Ok(Arc::new(decl_commands))
@@ -511,7 +505,8 @@ pub fn func_axioms_to_air(
                 &function.x.typ_params(),
                 &Arc::new(ens_typs),
                 &prefix_ensures(&fun_to_air_ident(&function.x.name)),
-                &None,
+                None,
+                function.x.mode,
             )?;
             if has_ens_pred {
                 ctx.funcs_with_ensure_predicate.insert(function.x.name.clone());
