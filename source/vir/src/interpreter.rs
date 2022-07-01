@@ -89,23 +89,23 @@ fn eval_expr_internal(env: &Env, exp: &Exp, _map: &mut VisitorScopeMap) -> Resul
             }
         }
         UnaryOpr(op, e1) => {
-            using UnaryOpr::*;
+            use crate::ast::UnaryOpr::*;
             match op {
                 Box(_) => Ok(e1.clone()),
                 Unbox(_) => Ok(e1.clone()),
                 HasType(_) => Ok(e1.clone()),
                 IsVariant { datatype, variant } =>
-                    match e1 {
-                        Ctor(dt, var, _) => exp_new(Const(Bool(dt == datatype && var == variant))),
+                    match &e1.x {
+                        Ctor(dt, var, _) => exp_new(Const(Constant::Bool(dt == datatype && var == variant))),
                         _ => ok,
                     },
-                TupleField { tuple_arity, field } => panic!("TupleField should have been removed by ast_simplify!"),
+                TupleField { .. } => panic!("TupleField should have been removed by ast_simplify!"),
                 Field(f) =>
-                    match e1 {
-                        Ctor(dt, var, binders) =>
-                            match binders.position(|b| b.name == f.field) {
+                    match &e1.x {
+                        Ctor(_dt, var, binders) =>
+                            match binders.iter().position(|b| b.name == f.field) {
                                 None => ok,
-                                Some(i) => exp_new(binders[i].a.clone()),
+                                Some(i) => Ok(binders.get(i).unwrap().a.clone()),
                             },
                         _ => ok,
                     },
@@ -287,25 +287,24 @@ fn eval_expr_internal(env: &Env, exp: &Exp, _map: &mut VisitorScopeMap) -> Resul
                 }
             }
         },
-        //        Call(x, typs, es) => {
-        //        }
-        //        CallLambda(typ, e0, es) =>
         If(e1, e2, e3) => {
             match &e1.x {
-                Const(Bool(b)) => if b { Ok(e2.clone()) } else { Ok(e3.clone()) },
+                Const(Constant::Bool(b)) => if *b { Ok(e2.clone()) } else { Ok(e3.clone()) },
                 _ => ok,
             }
         },
-        //        Bind(bnd, e1) =>
+        // TODO: Fill these in
+        Call(x, typs, es) => ok,
+        CallLambda(typ, e0, es) => ok,
+        Bind(bnd, e1) => ok,
 
         // Ignored by the interpreter at present (i.e., treated as symbolic)
         VarAt(..) |
         VarLoc(..) |
-        Loc(e1) |
+        Loc(..) |
         Old(..) |
-        Ctor(path, ident, binders) |
-        WithTriggers(..) =>
-        _ => ok,
+        Ctor(..) |
+        WithTriggers(..) => ok,
     }
 }
 
