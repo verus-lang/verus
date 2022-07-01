@@ -7,7 +7,8 @@
 
 #[allow(unused_imports)]
 use crate::ast::{
-    ArithOp, BinaryOp, BitwiseOp, Constant, InequalityOp, IntRange, SpannedTyped, UnaryOp, UnaryOpr, VirErr,
+    ArithOp, BinaryOp, BitwiseOp, Constant, InequalityOp, IntRange, SpannedTyped, UnaryOp,
+    UnaryOpr, VirErr,
 };
 use crate::ast_util::err_string;
 #[allow(unused_imports)]
@@ -94,23 +95,23 @@ fn eval_expr_internal(env: &Env, exp: &Exp, _map: &mut VisitorScopeMap) -> Resul
                 Box(_) => Ok(e1.clone()),
                 Unbox(_) => Ok(e1.clone()),
                 HasType(_) => Ok(e1.clone()),
-                IsVariant { datatype, variant } =>
-                    match &e1.x {
-                        Ctor(dt, var, _) => exp_new(Const(Constant::Bool(dt == datatype && var == variant))),
-                        _ => ok,
-                    },
+                IsVariant { datatype, variant } => match &e1.x {
+                    Ctor(dt, var, _) => {
+                        exp_new(Const(Constant::Bool(dt == datatype && var == variant)))
+                    }
+                    _ => ok,
+                },
                 TupleField { .. } => panic!("TupleField should have been removed by ast_simplify!"),
-                Field(f) =>
-                    match &e1.x {
-                        Ctor(_dt, var, binders) =>
-                            match binders.iter().position(|b| b.name == f.field) {
-                                None => ok,
-                                Some(i) => Ok(binders.get(i).unwrap().a.clone()),
-                            },
-                        _ => ok,
+                Field(f) => match &e1.x {
+                    Ctor(_dt, var, binders) => match binders.iter().position(|b| b.name == f.field)
+                    {
+                        None => ok,
+                        Some(i) => Ok(binders.get(i).unwrap().a.clone()),
                     },
+                    _ => ok,
+                },
             }
-        },
+        }
         Binary(op, e1, e2) => {
             use BinaryOp::*;
             use Constant::*;
@@ -286,12 +287,16 @@ fn eval_expr_internal(env: &Env, exp: &Exp, _map: &mut VisitorScopeMap) -> Resul
                     }
                 }
             }
-        },
-        If(e1, e2, e3) => {
-            match &e1.x {
-                Const(Constant::Bool(b)) => if *b { Ok(e2.clone()) } else { Ok(e3.clone()) },
-                _ => ok,
+        }
+        If(e1, e2, e3) => match &e1.x {
+            Const(Constant::Bool(b)) => {
+                if *b {
+                    Ok(e2.clone())
+                } else {
+                    Ok(e3.clone())
+                }
             }
+            _ => ok,
         },
         // TODO: Fill these in
         Call(x, typs, es) => ok,
@@ -299,12 +304,7 @@ fn eval_expr_internal(env: &Env, exp: &Exp, _map: &mut VisitorScopeMap) -> Resul
         Bind(bnd, e1) => ok,
 
         // Ignored by the interpreter at present (i.e., treated as symbolic)
-        VarAt(..) |
-        VarLoc(..) |
-        Loc(..) |
-        Old(..) |
-        Ctor(..) |
-        WithTriggers(..) => ok,
+        VarAt(..) | VarLoc(..) | Loc(..) | Old(..) | Ctor(..) | WithTriggers(..) => ok,
     }
 }
 
