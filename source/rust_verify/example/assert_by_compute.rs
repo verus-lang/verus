@@ -4,12 +4,15 @@ use pervasive::*;
 
 fn main() {}
 
-fn compute_arith() {
-    assert_by_compute((7 + 7 * 2 > 20) && (22 - 5 <= 10*10));
+fn compute_arith(x:u64) {
+    assert_by_compute((7 + 7 * 2 > 20) && (22 - 5 <= 10*10)); // true
+    assert_by_compute(x * 0 == 0);  // 0 == 0
+    // TODO: This currently produces: uClip(64, x) == x
+    assert_by_compute(x * 1 == x);  // x == x
 }
 
 fn compute_ite() {
-    assert_by_compute(9 == if 7 > 3 { 9 } else { 5 });
+    assert_by_compute(9 == if 7 > 3 { 9 } else { 5 });  // 9 == 9
     // TODO: This fails the expr_to_pure_exp check, due to the overflow checks that are inserted
     // 1. Why doesn't this apply to compute_arith?
     // 2. Why isn't the mode inferred to be spec?

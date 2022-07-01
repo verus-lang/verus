@@ -254,6 +254,7 @@ fn eval_expr_internal(env: &Env, exp: &Exp, _map: &mut VisitorScopeMap) -> Resul
                         {
                             Ok(e1.clone())
                         }
+                        // TODO: Once we have Eq, add a case for Minus(x, x) == 0
                         _ => ok,
                     }
                 }
