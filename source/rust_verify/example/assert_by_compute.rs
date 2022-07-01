@@ -4,7 +4,7 @@ use pervasive::option::Option;
 use pervasive::*;
 
 fn main() {}
-
+/*
 fn compute_arith(x:u64) {
     assert_by_compute((7 + 7 * 2 > 20) && (22 - 5 <= 10*10)); // true
     assert_by_compute(x * 0 == 0);  // 0 == 0
@@ -23,7 +23,13 @@ fn compute_ite() {
     // but it doesn't "upgrade" the expression to Spec
     //assert_by_compute(9 == if (7 + 7 * 2 > 20) { 7 + 2 } else { 22 - 5 + 10*10 });
 }
+*/
 
+fn compute_let() {
+    assert_by_compute({#[spec]let x = 7 == 7; x});
+}
+
+/*
 fn compute_datatype() {
     // TODO: Doesn't yet reduce, b/c the match is turned into a let
     assert_by_compute(
@@ -32,4 +38,4 @@ fn compute_datatype() {
             _ => 10 > 20,
         });
 }
-
+*/

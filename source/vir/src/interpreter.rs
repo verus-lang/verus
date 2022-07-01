@@ -10,7 +10,7 @@ use crate::ast::{
 };
 use crate::ast_util::err_string;
 use crate::def::SstMap;
-use crate::sst::{Exp, ExpX, UniqueIdent};
+use crate::sst::{BndX, Exp, ExpX, UniqueIdent};
 use air::scope_map::ScopeMap;
 use num_bigint::{BigInt, Sign};
 use num_traits::identities::Zero;
@@ -49,7 +49,6 @@ fn eval_expr_internal(env: &mut Env, fun_ssts: &SstMap, exp: &Exp) -> Result<Exp
                     match op {
                         BitNot => exp_new(Const(Int(!i))),
                         Clip(range) => {
-                            println!("Clipping {:} to range {:?}", i, range);
                             let apply_range = |lower: BigInt, upper: BigInt| {
                                 if i <= &lower {
                                     exp_new(Const(Int(lower)))
@@ -67,7 +66,6 @@ fn eval_expr_internal(env: &mut Env, fun_ssts: &SstMap, exp: &Exp) -> Result<Exp
                                         BigInt::zero(),
                                         (BigInt::one() << n) - BigInt::one(),
                                     );
-                                    println!("\tClipped to {:?}", u);
                                     u
                                 }
                                 IntRange::I(n) => apply_range(
@@ -319,8 +317,19 @@ fn eval_expr_internal(env: &mut Env, fun_ssts: &SstMap, exp: &Exp) -> Result<Exp
         // TODO: Fill these in
         Call(_x, _typs, _es) => ok,
         CallLambda(_typ, _e0, _es) => ok,
-        Bind(_bnd, _e1) => ok,
-
+        Bind(bnd, e) => match &bnd.x {
+            BndX::Let(bnds) => {
+                env.push_scope(true);
+                for b in bnds.iter() {
+                    // TODO: Is None the right choice here?
+                    env.insert((b.name.clone(), None), b.a.clone()).unwrap();
+                }
+                let e = eval_expr_internal(env, fun_ssts, e);
+                env.pop_scope();
+                e
+            },
+            _ => ok,
+        },
         // Ignored by the interpreter at present (i.e., treated as symbolic)
         VarAt(..) | VarLoc(..) | Loc(..) | Old(..) | Ctor(..) | WithTriggers(..) => ok,
     }
