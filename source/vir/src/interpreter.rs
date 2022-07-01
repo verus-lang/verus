@@ -7,7 +7,7 @@
 
 #[allow(unused_imports)]
 use crate::ast::{
-    ArithOp, BinaryOp, BitwiseOp, Constant, InequalityOp, IntRange, SpannedTyped, UnaryOp, VirErr,
+    ArithOp, BinaryOp, BitwiseOp, Constant, InequalityOp, IntRange, SpannedTyped, UnaryOp, UnaryOpr, VirErr,
 };
 use crate::ast_util::err_string;
 #[allow(unused_imports)]
@@ -88,7 +88,29 @@ fn eval_expr_internal(env: &Env, exp: &Exp, _map: &mut VisitorScopeMap) -> Resul
                 _ => ok,
             }
         }
-        //UnaryOpr(op, e1) => ok, // TODO
+        UnaryOpr(op, e1) => {
+            using UnaryOpr::*;
+            match op {
+                Box(_) => Ok(e1.clone()),
+                Unbox(_) => Ok(e1.clone()),
+                HasType(_) => Ok(e1.clone()),
+                IsVariant { datatype, variant } =>
+                    match e1 {
+                        Ctor(dt, var, _) => exp_new(Const(Bool(dt == datatype && var == variant))),
+                        _ => ok,
+                    },
+                TupleField { tuple_arity, field } => panic!("TupleField should have been removed by ast_simplify!"),
+                Field(f) =>
+                    match e1 {
+                        Ctor(dt, var, binders) =>
+                            match binders.position(|b| b.name == f.field) {
+                                None => ok,
+                                Some(i) => exp_new(binders[i].a.clone()),
+                            },
+                        _ => ok,
+                    },
+            }
+        },
         Binary(op, e1, e2) => {
             use BinaryOp::*;
             use Constant::*;
@@ -264,29 +286,25 @@ fn eval_expr_internal(env: &Env, exp: &Exp, _map: &mut VisitorScopeMap) -> Resul
                     }
                 }
             }
-        }
-        //                Eq(_) => ,
-        //                Ne => ,
-        //                Inequality(ineq_op) => ,
-        //                Bitwise(bit_op) => ,
-        //
-        //            },
+        },
         //        Call(x, typs, es) => {
         //        }
         //        CallLambda(typ, e0, es) =>
-        //
-        //        If(e1, e2, e3) => {
-        //        }
-        //
+        If(e1, e2, e3) => {
+            match &e1.x {
+                Const(Bool(b)) => if b { Ok(e2.clone()) } else { Ok(e3.clone()) },
+                _ => ok,
+            }
+        },
         //        Bind(bnd, e1) =>
 
         // Ignored by the interpreter at present (i.e., treated as symbolic)
-        //        VarAt(..) |
-        //        VarLoc(..) |
-        //        Loc(e1) |
-        //        Old(..) |
-        //        Ctor(path, ident, binders) |
-        //        WithTriggers(..) =>
+        VarAt(..) |
+        VarLoc(..) |
+        Loc(e1) |
+        Old(..) |
+        Ctor(path, ident, binders) |
+        WithTriggers(..) =>
         _ => ok,
     }
 }
