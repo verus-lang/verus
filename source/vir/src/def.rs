@@ -1,4 +1,4 @@
-use crate::ast::{Fun, FunX, InvAtomicity, Path, PathX};
+use crate::ast::{Fun, FunX, InvAtomicity, Params, Path, PathX};
 use crate::sst::{Exp, UniqueIdent};
 use crate::util::vec_map;
 use air::ast::{Commands, Ident, Span};
@@ -128,7 +128,7 @@ pub const ARCH_SIZE_MIN_BITS: u32 = 32;
 
 pub const SUPPORTED_CRATES: [&str; 2] = ["builtin", "pervasive"];
 
-pub type SstMap = HashMap<Fun, Exp>;
+pub type SstMap = HashMap<Fun, (Params, Exp)>;
 
 pub fn path_to_string(path: &Path) -> String {
     let s = vec_map(&path.segments, |s| s.to_string()).join(PATH_SEPARATOR) + SUFFIX_PATH;

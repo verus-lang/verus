@@ -113,6 +113,7 @@ fn func_body_to_air(
     function: &Function,
     body: &crate::ast::Expr,
 ) -> Result<SstMap, VirErr> {
+    println!("Converting func_body_to_air for {:?}", function.x.name);
     let id_fuel = prefix_fuel_id(&fun_to_air_ident(&function.x.name));
 
     let pars = params_to_pars(&function.x.params, false);
@@ -124,7 +125,7 @@ fn func_body_to_air(
     state.fun_ssts = fun_ssts;
     let body_exp = crate::ast_to_sst::expr_to_pure_exp(&ctx, &mut state, &body)?;
     let body_exp = state.finalize_exp(&body_exp);
-    state.fun_ssts.insert(function.x.name.clone(), body_exp.clone());
+    state.fun_ssts.insert(function.x.name.clone(), (function.x.params.clone(), body_exp.clone()));
 
     let mut decrease_by_stms: Vec<Stm> = Vec::new();
     let decrease_by_reqs = if let Some(req) = &function.x.decrease_when {

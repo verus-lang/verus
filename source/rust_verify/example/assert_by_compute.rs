@@ -23,13 +23,12 @@ fn compute_ite() {
     // but it doesn't "upgrade" the expression to Spec
     //assert_by_compute(9 == if (7 + 7 * 2 > 20) { 7 + 2 } else { 22 - 5 + 10*10 });
 }
-*/
 
 fn compute_let() {
-    assert_by_compute({#[spec]let x = 7 == 7; x});
+    assert_by_compute({#[spec]let x = true; x});    // true
+    assert_by_compute({#[spec]let x = 7; x > 4});   // TODO: Error!
 }
 
-/*
 fn compute_datatype() {
     // TODO: Doesn't yet reduce, b/c the match is turned into a let
     assert_by_compute(
@@ -39,3 +38,14 @@ fn compute_datatype() {
         });
 }
 */
+
+#[spec]
+fn sum(x: nat) -> nat {
+    decreases(x);
+    if x == 0 { 0 }
+    else { 1 + sum(x - 1) }
+}
+
+fn compute_call() {
+    assert_by_compute(sum(5) == 5);
+}

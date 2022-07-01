@@ -678,6 +678,7 @@ impl Verifier {
                 let (function, vis_abs) = &funs[f];
 
                 ctx.fun = mk_fun_ctx(&function, false);
+                println!("Verifier processing {:?} with fun_ssts = {:?}", f.x.name, fun_ssts);
                 let (decl_commands, check_commands, new_fun_ssts) =
                     vir::func_to_air::func_axioms_to_air(
                         ctx,

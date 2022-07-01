@@ -15,6 +15,7 @@ use air::scope_map::ScopeMap;
 use num_bigint::{BigInt, Sign};
 use num_traits::identities::Zero;
 use num_traits::{One, Signed, ToPrimitive};
+use std::sync::Arc;
 
 type Env = ScopeMap<UniqueIdent, Exp>;
 
@@ -27,10 +28,12 @@ fn eval_expr_internal(env: &mut Env, fun_ssts: &SstMap, exp: &Exp) -> Result<Exp
     use ExpX::*;
     match &exp.x {
         Const(_) => ok,
-        Var(id) => match env.get(id) {
+        Var(id) => {
+            println!("Looking up {:?} in {:?}", id, env.map());
+            match env.get(id) {
             None => ok,
-            Some(e) => Ok(e.clone()),
-        },
+            Some(e) => { println!("\tGot {:?}", e); Ok(e.clone()) },
+        }},
         Unary(op, e) => {
             use Constant::*;
             use UnaryOp::*;
@@ -314,15 +317,32 @@ fn eval_expr_internal(env: &mut Env, fun_ssts: &SstMap, exp: &Exp) -> Result<Exp
                 _ => exp_new(If(e1, e2, e3)),
             }
         }
-        // TODO: Fill these in
-        Call(_x, _typs, _es) => ok,
+        Call(fun, typs, exps) => {
+            let new_exps: Result<Vec<Exp>, VirErr> = exps.iter().map(|e| eval_expr_internal(env, fun_ssts, e)).collect();
+            let new_exps = new_exps?;
+            match fun_ssts.get(fun) {
+                None => { 
+                    println!("Failed to find func {:?} in {:?}", fun, fun_ssts); 
+                    exp_new(Call(fun.clone(), typs.clone(), Arc::new(new_exps)))},
+                Some((params, body)) => {
+                    println!("Found func!");
+                    env.push_scope(true);
+                    for (formal, actual) in params.iter().zip(new_exps) {
+                        env.insert((formal.x.name.clone(), Some(0)), actual.clone()).unwrap();
+                    }
+                    let e = eval_expr_internal(env, fun_ssts, body);
+                    env.pop_scope();
+                    e
+                },
+            }
+        },
+        // TODO: Fill this in
         CallLambda(_typ, _e0, _es) => ok,
         Bind(bnd, e) => match &bnd.x {
             BndX::Let(bnds) => {
                 env.push_scope(true);
                 for b in bnds.iter() {
-                    // TODO: Is None the right choice here?
-                    env.insert((b.name.clone(), None), b.a.clone()).unwrap();
+                    env.insert((b.name.clone(), Some(0)), b.a.clone()).unwrap();
                 }
                 let e = eval_expr_internal(env, fun_ssts, e);
                 env.pop_scope();
@@ -337,5 +357,6 @@ fn eval_expr_internal(env: &mut Env, fun_ssts: &SstMap, exp: &Exp) -> Result<Exp
 
 pub fn eval_expr(exp: &Exp, fun_ssts: &SstMap) -> Result<Exp, VirErr> {
     let mut env = ScopeMap::new();
+    println!("Starting with fun_ssts = {:?}", fun_ssts);
     eval_expr_internal(&mut env, fun_ssts, exp)
 }
