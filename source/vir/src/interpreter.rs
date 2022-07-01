@@ -20,8 +20,9 @@ use crate::visitor::VisitorControlFlow;
 use air::scope_map::ScopeMap;
 use num_bigint::{BigInt, Sign};
 use num_traits::identities::Zero;
-use num_traits::{One, Signed};
+use num_traits::{One, Signed, ToPrimitive};
 use std::collections::HashMap;
+//use std::convert::TryInto;
 
 type Env = HashMap<UniqueIdent, Exp>;
 
@@ -266,10 +267,14 @@ fn eval_expr_internal(env: &Env, exp: &Exp, _map: &mut VisitorScopeMap) -> Resul
                             BitXor => exp_new(Const(Int(i1 ^ i2))),
                             BitAnd => exp_new(Const(Int(i1 & i2))),
                             BitOr => exp_new(Const(Int(i1 | i2))),
-                            _ => ok,
-                            // TODO: Handle the case where the shift amount is small enough
-                            //                            Shr    => exp_new(Const(Int(i1 >> Into::<u128>::into(i2)))),
-                            //                            Shl    => exp_new(Const(Int(i1 << i2.into()))),
+                            Shr => match i2.to_u128() {
+                                None => ok,
+                                Some(shift) => exp_new(Const(Int(i1 >> shift))),
+                            },
+                            Shl => match i2.to_u128() {
+                                None => ok,
+                                Some(shift) => exp_new(Const(Int(i1 << shift))),
+                            },
                         },
                         // Special cases for certain concrete values
                         (Const(Int(i)), _) | (_, Const(Int(i)))
