@@ -9,7 +9,7 @@ fn compute_arith() {
 }
 
 fn compute_ite() {
-    assert_by_compute(9 == if true { 9 } else { 5 });
+    assert_by_compute(9 == if 7 > 3 { 9 } else { 5 });
     // TODO: This fails the expr_to_pure_exp check, due to the overflow checks that are inserted
     // 1. Why doesn't this apply to compute_arith?
     // 2. Why isn't the mode inferred to be spec?
