@@ -22,6 +22,32 @@ type Env = ScopeMap<UniqueIdent, Exp>;
 // TODO: Add support for function evaluation memoization
 // TODO: Bound the running time, based on rlimit
 
+// Computes the syntactic equality of two expressions
+// Some(b) means b is exp1 == exp2
+// None means we can't tell
+/*
+fn equal_exprs(left: &Exp, right: &Exp) -> Option<bool> {
+    use ExpX::*;
+    match (&left.x, &right.x) {
+        (Const(l), Const(r)) => Some(l == r),
+        (Var(l), Var(r)) => if l == r { Some(true) } else { None },
+        (Unary(op_l, e_l), Unary(op_r, e_r)) => Some(op_l == op_r && equal_exprs(e_l, e_r)?),
+        (UnaryOpr(op_l, e_l), UnaryOpr(op_r, e_r)) => Some(op_l == op_r && equal_exprs(e_l, e_r)?),
+        (Binary(op_l, e1_l, e2_l), Binary(op_r, e1_r, e2_r)) => Some(op_l == op_r && equal_exprs(e1_l, e1_r)? && equal_exprs(e2_l, e2_r)?),
+        (If(e1_l, e2_l, e3_l), If(e1_r, e2_r, e3_r)) =>
+            equal_exprs(e1_l, e1_r)? && equal_exprs(e2_l, e2_r)? && equal_exprs(e3_l, e3_r)?,
+        (Call(f_l, _, exps_l), Call(f_r, _, exps_r)) => {
+            if f_l == f_r && exps_l.len() == exps_r.len() {
+                let eq = exps_l.iter().zip(exps_r.iter()).fold(true, |b, |(e_l, r_r)| b && equal_exprs(e_l, e_r))
+
+
+            }
+        }
+
+    }
+}
+*/
+
 fn eval_expr_internal(env: &mut Env, fun_ssts: &SstMap, exp: &Exp) -> Result<Exp, VirErr> {
     let exp_new = |e: ExpX| Ok(SpannedTyped::new(&exp.span, &exp.typ, e));
     let ok = Ok(exp.clone());
