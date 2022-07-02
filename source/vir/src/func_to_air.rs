@@ -113,7 +113,6 @@ fn func_body_to_air(
     function: &Function,
     body: &crate::ast::Expr,
 ) -> Result<SstMap, VirErr> {
-    println!("Converting func_body_to_air for {:?}", function.x.name);
     let id_fuel = prefix_fuel_id(&fun_to_air_ident(&function.x.name));
 
     let pars = params_to_pars(&function.x.params, false);
@@ -577,10 +576,11 @@ pub enum FuncDefPhase {
 
 pub fn func_def_to_air(
     ctx: &Ctx,
+    fun_ssts: SstMap,
     function: &Function,
     phase: FuncDefPhase,
     checking_recommends: bool,
-) -> Result<(Arc<Vec<CommandsWithContext>>, Vec<(Span, SnapPos)>), VirErr> {
+) -> Result<(Arc<Vec<CommandsWithContext>>, Vec<(Span, SnapPos)>, SstMap), VirErr> {
     let erasure_mode = match (function.x.mode, function.x.is_const) {
         (Mode::Spec, true) => Mode::Exec,
         (mode, _) => mode,
@@ -590,7 +590,7 @@ pub fn func_def_to_air(
         | (FuncDefPhase::CheckingSpecs, Mode::Proof | Mode::Exec, _, Some(_))
         | (FuncDefPhase::CheckingSpecs, Mode::Spec, false, Some(_))
         | (FuncDefPhase::CheckingProofExec, Mode::Spec, _, Some(_)) => {
-            Ok((Arc::new(vec![]), vec![]))
+            Ok((Arc::new(vec![]), vec![], fun_ssts))
         }
         (FuncDefPhase::CheckingSpecs, Mode::Spec, true, Some(body))
         | (FuncDefPhase::CheckingProofExec, Mode::Proof | Mode::Exec, _, Some(body)) => {
@@ -620,6 +620,7 @@ pub fn func_def_to_air(
             };
 
             let mut state = crate::ast_to_sst::State::new();
+            state.fun_ssts = fun_ssts;
             let mut ens_params = (*function.x.params).clone();
             let dest = if function.x.has_return() {
                 let ParamX { name, typ, .. } = &function.x.ret.x;
@@ -717,7 +718,7 @@ pub fn func_def_to_air(
             );
 
             state.finalize();
-            Ok((Arc::new(commands), snap_map))
+            Ok((Arc::new(commands), snap_map, state.fun_ssts))
         }
     }
 }

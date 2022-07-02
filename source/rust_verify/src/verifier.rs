@@ -678,7 +678,6 @@ impl Verifier {
                 let (function, vis_abs) = &funs[f];
 
                 ctx.fun = mk_fun_ctx(&function, false);
-                println!("Verifier processing {:?} with fun_ssts = {:?}", f, fun_ssts);
                 let (decl_commands, check_commands, new_fun_ssts) =
                     vir::func_to_air::func_axioms_to_air(
                         ctx,
@@ -714,13 +713,15 @@ impl Verifier {
                     // Rerun failed query to report possible recommends violations
                     // or (optionally) check recommends for spec function bodies
                     ctx.fun = mk_fun_ctx(&function, true);
-                    let (commands, snap_map) = vir::func_to_air::func_def_to_air(
+                    let (commands, snap_map, new_fun_ssts) = vir::func_to_air::func_def_to_air(
                         ctx,
+                        fun_ssts,
                         &function,
                         vir::func_to_air::FuncDefPhase::CheckingSpecs,
                         true,
                     )?;
                     ctx.fun = None;
+                    fun_ssts = new_fun_ssts;
                     let error_as = if invalidity { ErrorAs::Note } else { ErrorAs::Warning };
                     let s = "Function-Decl-Check-Recommends ";
                     for command in commands.iter().map(|x| &*x) {
@@ -765,12 +766,14 @@ impl Verifier {
             let mut is_singular = false;
             loop {
                 ctx.fun = mk_fun_ctx(&function, recommends_rerun);
-                let (commands, snap_map) = vir::func_to_air::func_def_to_air(
+                let (commands, snap_map, new_fun_ssts) = vir::func_to_air::func_def_to_air(
                     ctx,
+                    fun_ssts,
                     &function,
                     vir::func_to_air::FuncDefPhase::CheckingProofExec,
                     recommends_rerun,
                 )?;
+                fun_ssts = new_fun_ssts;
                 let error_as = if recommends_rerun { ErrorAs::Note } else { ErrorAs::Error };
                 let s =
                     if recommends_rerun { "Function-Check-Recommends " } else { "Function-Def " };
