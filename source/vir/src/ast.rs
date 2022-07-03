@@ -94,7 +94,7 @@ pub enum TypX {
     Air(air::ast::Typ),
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum TriggerAnnotation {
     /// Automatically choose triggers for the expression containing this annotation,
     /// with no diagnostics printed
@@ -109,7 +109,7 @@ pub enum TriggerAnnotation {
 
 /// Primitive unary operations
 /// (not arbitrary user-defined functions -- these are represented by ExprX::Call)
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum UnaryOp {
     /// boolean not
     Not,
@@ -149,7 +149,7 @@ pub enum UnaryOpr {
 }
 
 /// Arithmetic operation that might fail (overflow or divide by zero)
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum ArithOp {
     /// IntRange::Int +
     Add,
@@ -164,7 +164,7 @@ pub enum ArithOp {
 }
 
 /// Bitwise operation
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum BitwiseOp {
     BitXor,
     BitAnd,
@@ -173,7 +173,7 @@ pub enum BitwiseOp {
     Shl,
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum InequalityOp {
     /// IntRange::Int <=
     Le,
@@ -191,7 +191,7 @@ pub enum InequalityOp {
 /// not on finite-width integer types or nat.
 /// Finite-width and nat operations are represented with a combination of IntRange::Int operations
 /// and UnaryOp::Clip.
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum BinaryOp {
     /// boolean and (short-circuiting: right side is evaluated only if left side is true)
     And,

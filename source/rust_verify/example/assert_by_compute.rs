@@ -47,5 +47,5 @@ fn sum(x: nat) -> nat {
 }
 
 fn compute_call() {
-    assert_by_compute(sum(5) == 5);
+    assert_by_compute(sum(5) == 5);  // true
 }

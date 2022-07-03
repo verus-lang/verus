@@ -25,28 +25,91 @@ type Env = ScopeMap<UniqueIdent, Exp>;
 // Computes the syntactic equality of two expressions
 // Some(b) means b is exp1 == exp2
 // None means we can't tell
-/*
+// We expect to only call this after eval_expr has been called on both expressions
 fn equal_exprs(left: &Exp, right: &Exp) -> Option<bool> {
     use ExpX::*;
     match (&left.x, &right.x) {
         (Const(l), Const(r)) => Some(l == r),
-        (Var(l), Var(r)) => if l == r { Some(true) } else { None },
-        (Unary(op_l, e_l), Unary(op_r, e_r)) => Some(op_l == op_r && equal_exprs(e_l, e_r)?),
-        (UnaryOpr(op_l, e_l), UnaryOpr(op_r, e_r)) => Some(op_l == op_r && equal_exprs(e_l, e_r)?),
-        (Binary(op_l, e1_l, e2_l), Binary(op_r, e1_r, e2_r)) => Some(op_l == op_r && equal_exprs(e1_l, e1_r)? && equal_exprs(e2_l, e2_r)?),
-        (If(e1_l, e2_l, e3_l), If(e1_r, e2_r, e3_r)) =>
-            equal_exprs(e1_l, e1_r)? && equal_exprs(e2_l, e2_r)? && equal_exprs(e3_l, e3_r)?,
-        (Call(f_l, _, exps_l), Call(f_r, _, exps_r)) => {
-            if f_l == f_r && exps_l.len() == exps_r.len() {
-                let eq = exps_l.iter().zip(exps_r.iter()).fold(true, |b, |(e_l, r_r)| b && equal_exprs(e_l, e_r))
-
-
+        (Var(l), Var(r)) => {
+            if l == r {
+                Some(true)
+            } else {
+                None
             }
         }
-
+        (VarLoc(l), VarLoc(r)) => {
+            if l == r {
+                Some(true)
+            } else {
+                None
+            }
+        }
+        (VarAt(l, at_l), VarAt(r, at_r)) => {
+            if l == r && at_l == at_r {
+                Some(true)
+            } else {
+                None
+            }
+        }
+        (Loc(l), Loc(r)) => equal_exprs(l, r),
+        (Old(id_l, unique_id_l), Old(id_r, unique_id_r)) => {
+            if id_l == id_r && unique_id_l == unique_id_r {
+                Some(true)
+            } else {
+                None
+            }
+        }
+        (Call(f_l, _, exps_l), Call(f_r, _, exps_r)) => {
+            if f_l == f_r && exps_l.len() == exps_r.len() {
+                let eq: Option<bool> = exps_l
+                    .iter()
+                    .zip(exps_r.iter())
+                    .fold(Some(true), |b, (e_l, e_r)| Some(b? && equal_exprs(e_l, e_r)?));
+                eq
+            } else {
+                None
+            }
+        }
+        (CallLambda(..), CallLambda(..)) => None, // TODO: Can we do better here?
+        (Ctor(path_l, id_l, bnds_l), Ctor(path_r, id_r, bnds_r)) => {
+            if path_l != path_r || id_l != id_r {
+                Some(false)
+            } else {
+                None
+                // TODO
+            }
+        }
+        (Unary(op_l, e_l), Unary(op_r, e_r)) => Some(op_l == op_r && equal_exprs(e_l, e_r)?),
+        (UnaryOpr(op_l, e_l), UnaryOpr(op_r, e_r)) => {
+            use crate::ast::UnaryOpr::*;
+            let op_eq = match (op_l, op_r) {
+                // Safe to ignore types on these?
+                (Box(_), Box(_)) => true,
+                (Unbox(_), Unbox(_)) => true,
+                (HasType(_), HasType(_)) => true,
+                (
+                    IsVariant { datatype: dt_l, variant: var_l },
+                    IsVariant { datatype: dt_r, variant: var_r },
+                ) => dt_l == dt_r && var_l == var_r,
+                (TupleField { .. }, TupleField { .. }) => {
+                    panic!("TupleField should have been removed by ast_simplify!")
+                }
+                (Field(l), Field(r)) => l == r,
+                _ => false,
+            };
+            Some(op_eq && equal_exprs(e_l, e_r)?)
+        }
+        (Binary(op_l, e1_l, e2_l), Binary(op_r, e1_r, e2_r)) => {
+            Some(op_l == op_r && equal_exprs(e1_l, e1_r)? && equal_exprs(e2_l, e2_r)?)
+        }
+        (If(e1_l, e2_l, e3_l), If(e1_r, e2_r, e3_r)) => {
+            Some(equal_exprs(e1_l, e1_r)? && equal_exprs(e2_l, e2_r)? && equal_exprs(e3_l, e3_r)?)
+        }
+        (WithTriggers(_trigs_l, e_l), WithTriggers(_trigs_r, e_r)) => equal_exprs(e_l, e_r),
+        (Bind(bnd_l, e_l), Bind(bnd_r, e_r)) => None, // TODO: Deep comparison?
+        _ => None,
     }
 }
-*/
 
 fn eval_expr_internal(env: &mut Env, fun_ssts: &SstMap, exp: &Exp) -> Result<Exp, VirErr> {
     let exp_new = |e: ExpX| Ok(SpannedTyped::new(&exp.span, &exp.typ, e));
@@ -54,16 +117,10 @@ fn eval_expr_internal(env: &mut Env, fun_ssts: &SstMap, exp: &Exp) -> Result<Exp
     use ExpX::*;
     match &exp.x {
         Const(_) => ok,
-        Var(id) => {
-            println!("Looking up {:?} in {:?}", id, env.map());
-            match env.get(id) {
-                None => ok,
-                Some(e) => {
-                    println!("\tGot {:?}", e);
-                    Ok(e.clone())
-                }
-            }
-        }
+        Var(id) => match env.get(id) {
+            None => ok,
+            Some(e) => Ok(e.clone()),
+        },
         Unary(op, e) => {
             use Constant::*;
             use UnaryOp::*;
@@ -154,7 +211,7 @@ fn eval_expr_internal(env: &mut Env, fun_ssts: &SstMap, exp: &Exp) -> Result<Exp
             // We initially evaluate only e1, since op may short circuit
             // e.g., x != 0 && y == 5 / x
             let e1 = eval_expr_internal(env, fun_ssts, e1)?;
-            //let e2 = eval_expr_internal(env, fun_ssts, e2)?;
+            // TODO: Need to update ok below to use reduced e2
             let ok = exp_new(Binary(*op, e1.clone(), e2.clone()));
             match op {
                 And => match &e1.x {
@@ -181,48 +238,67 @@ fn eval_expr_internal(env: &mut Env, fun_ssts: &SstMap, exp: &Exp) -> Result<Exp
                         }
                     }
                 },
-                Xor => match (&e1.x, &e2.x) {
-                    (Const(Bool(b1)), Const(Bool(b2))) => {
-                        let r = (*b1 && !b2) || (!b1 && *b2);
-                        exp_new(Const(Bool(r)))
+                Xor => {
+                    let e2 = eval_expr_internal(env, fun_ssts, e2)?;
+                    match (&e1.x, &e2.x) {
+                        (Const(Bool(b1)), Const(Bool(b2))) => {
+                            let r = (*b1 && !b2) || (!b1 && *b2);
+                            exp_new(Const(Bool(r)))
+                        }
+                        (Const(Bool(true)), _) => exp_new(Unary(UnaryOp::Not, e2.clone())),
+                        (Const(Bool(false)), _) => Ok(e2.clone()),
+                        (_, Const(Bool(true))) => exp_new(Unary(UnaryOp::Not, e1.clone())),
+                        (_, Const(Bool(false))) => Ok(e1.clone()),
+                        _ => ok,
                     }
-                    (Const(Bool(true)), _) => exp_new(Unary(UnaryOp::Not, e2.clone())),
-                    (Const(Bool(false)), _) => Ok(e2.clone()),
-                    (_, Const(Bool(true))) => exp_new(Unary(UnaryOp::Not, e1.clone())),
-                    (_, Const(Bool(false))) => Ok(e1.clone()),
-                    _ => ok,
-                },
+                }
                 // TODO: Does Implies short-circuit?
-                Implies => match (&e1.x, &e2.x) {
-                    (Const(Bool(b1)), Const(Bool(b2))) => {
-                        let r = !b1 || *b2;
-                        exp_new(Const(Bool(r)))
+                Implies => {
+                    let e2 = eval_expr_internal(env, fun_ssts, e2)?;
+                    match (&e1.x, &e2.x) {
+                        (Const(Bool(b1)), Const(Bool(b2))) => {
+                            let r = !b1 || *b2;
+                            exp_new(Const(Bool(r)))
+                        }
+                        (Const(Bool(true)), _) => Ok(e2.clone()),
+                        (Const(Bool(false)), _) => exp_new(Const(Bool(true))),
+                        (_, Const(Bool(true))) => exp_new(Const(Bool(true))),
+                        (_, Const(Bool(false))) => exp_new(Unary(UnaryOp::Not, e1.clone())),
+                        _ => ok,
                     }
-                    (Const(Bool(true)), _) => Ok(e2.clone()),
-                    (Const(Bool(false)), _) => exp_new(Const(Bool(true))),
-                    (_, Const(Bool(true))) => exp_new(Const(Bool(true))),
-                    (_, Const(Bool(false))) => exp_new(Unary(UnaryOp::Not, e1.clone())),
-                    _ => ok,
-                },
-                Eq(_mode) => ok, // TODO: Implement a syntactic check for equality
-                Ne => match (&e1.x, &e2.x) {
-                    (Const(c1), Const(c2)) => exp_new(Const(Bool(c1 != c2))),
-                    _ => ok, // In the presence of free variables, this is not the same as !Eq
-                },
-                Inequality(op) => match (&e1.x, &e2.x) {
-                    (Const(Int(i1)), Const(Int(i2))) => {
-                        use InequalityOp::*;
-                        let b = match op {
-                            Le => i1 <= i2,
-                            Ge => i1 >= i2,
-                            Lt => i1 < i2,
-                            Gt => i1 > i2,
-                        };
-                        exp_new(Const(Bool(b)))
+                }
+                Eq(_mode) => {
+                    let e2 = eval_expr_internal(env, fun_ssts, e2)?;
+                    match equal_exprs(&e1, &e2) {
+                        None => ok,
+                        Some(b) => exp_new(Const(Bool(b))),
                     }
-                    _ => ok,
-                },
+                }
+                Ne => {
+                    let e2 = eval_expr_internal(env, fun_ssts, e2)?;
+                    match equal_exprs(&e1, &e2) {
+                        None => ok,
+                        Some(b) => exp_new(Const(Bool(!b))),
+                    }
+                }
+                Inequality(op) => {
+                    let e2 = eval_expr_internal(env, fun_ssts, e2)?;
+                    match (&e1.x, &e2.x) {
+                        (Const(Int(i1)), Const(Int(i2))) => {
+                            use InequalityOp::*;
+                            let b = match op {
+                                Le => i1 <= i2,
+                                Ge => i1 >= i2,
+                                Lt => i1 < i2,
+                                Gt => i1 > i2,
+                            };
+                            exp_new(Const(Bool(b)))
+                        }
+                        _ => ok,
+                    }
+                }
                 Arith(op, _mode) => {
+                    let e2 = eval_expr_internal(env, fun_ssts, e2)?;
                     use ArithOp::*;
                     match (&e1.x, &e2.x) {
                         // Ideal case where both sides are concrete
@@ -312,6 +388,7 @@ fn eval_expr_internal(env: &mut Env, fun_ssts: &SstMap, exp: &Exp) -> Result<Exp
                 }
                 Bitwise(op) => {
                     use BitwiseOp::*;
+                    let e2 = eval_expr_internal(env, fun_ssts, e2)?;
                     match (&e1.x, &e2.x) {
                         // Ideal case where both sides are concrete
                         (Const(Int(i1)), Const(Int(i2))) => match op {
@@ -363,12 +440,8 @@ fn eval_expr_internal(env: &mut Env, fun_ssts: &SstMap, exp: &Exp) -> Result<Exp
                 exps.iter().map(|e| eval_expr_internal(env, fun_ssts, e)).collect();
             let new_exps = new_exps?;
             match fun_ssts.get(fun) {
-                None => {
-                    println!("Failed to find func {:?} in {:?}", fun, fun_ssts);
-                    exp_new(Call(fun.clone(), typs.clone(), Arc::new(new_exps)))
-                }
+                None => exp_new(Call(fun.clone(), typs.clone(), Arc::new(new_exps))),
                 Some((params, body)) => {
-                    println!("Found func!");
                     env.push_scope(true);
                     for (formal, actual) in params.iter().zip(new_exps) {
                         env.insert((formal.x.name.clone(), Some(0)), actual.clone()).unwrap();
@@ -400,6 +473,5 @@ fn eval_expr_internal(env: &mut Env, fun_ssts: &SstMap, exp: &Exp) -> Result<Exp
 
 pub fn eval_expr(exp: &Exp, fun_ssts: &SstMap) -> Result<Exp, VirErr> {
     let mut env = ScopeMap::new();
-    println!("Starting with fun_ssts = {:?}", fun_ssts);
     eval_expr_internal(&mut env, fun_ssts, exp)
 }
