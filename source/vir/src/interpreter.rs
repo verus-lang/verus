@@ -21,6 +21,7 @@ type Env = ScopeMap<UniqueIdent, Exp>;
 
 // TODO: Add support for function evaluation memoization
 // TODO: Bound the running time, based on rlimit
+// TODO: Swap to CPS with enforced tail-call optimization to avoid exhausting the stack
 
 // Computes the syntactic equality of two expressions
 // Some(b) means b is exp1 == exp2
@@ -34,6 +35,8 @@ fn equal_exprs(left: &Exp, right: &Exp) -> Option<bool> {
             if l == r {
                 Some(true)
             } else {
+                // These are free variables, so we can't know for sure
+                // if they are equal (applies to cases below, too)
                 None
             }
         }
@@ -53,11 +56,7 @@ fn equal_exprs(left: &Exp, right: &Exp) -> Option<bool> {
         }
         (Loc(l), Loc(r)) => equal_exprs(l, r),
         (Old(id_l, unique_id_l), Old(id_r, unique_id_r)) => {
-            if id_l == id_r && unique_id_l == unique_id_r {
-                Some(true)
-            } else {
-                None
-            }
+            if id_l == id_r && unique_id_l == unique_id_r { Some(true) } else { None }
         }
         (Call(f_l, _, exps_l), Call(f_r, _, exps_r)) => {
             if f_l == f_r && exps_l.len() == exps_r.len() {
@@ -75,8 +74,11 @@ fn equal_exprs(left: &Exp, right: &Exp) -> Option<bool> {
             if path_l != path_r || id_l != id_r {
                 Some(false)
             } else {
-                None
-                // TODO
+                let eq: Option<bool> =
+                    bnds_l.iter().zip(bnds_r.iter()).fold(Some(true), |b, (bnd_l, bnd_r)| {
+                        Some(b? && bnd_l.name == bnd_r.name && equal_exprs(&bnd_l.a, &bnd_r.a)?)
+                    });
+                eq
             }
         }
         (Unary(op_l, e_l), Unary(op_r, e_r)) => Some(op_l == op_r && equal_exprs(e_l, e_r)?),
@@ -108,6 +110,13 @@ fn equal_exprs(left: &Exp, right: &Exp) -> Option<bool> {
         (WithTriggers(_trigs_l, e_l), WithTriggers(_trigs_r, e_r)) => equal_exprs(e_l, e_r),
         (Bind(bnd_l, e_l), Bind(bnd_r, e_r)) => None, // TODO: Deep comparison?
         _ => None,
+    }
+}
+
+fn definitely_equal(left: &Exp, right: &Exp) -> bool {
+    match equal_exprs(left, right) {
+        None => false,
+        Some(b) => b,
     }
 }
 
@@ -211,8 +220,7 @@ fn eval_expr_internal(env: &mut Env, fun_ssts: &SstMap, exp: &Exp) -> Result<Exp
             // We initially evaluate only e1, since op may short circuit
             // e.g., x != 0 && y == 5 / x
             let e1 = eval_expr_internal(env, fun_ssts, e1)?;
-            // TODO: Need to update ok below to use reduced e2
-            let ok = exp_new(Binary(*op, e1.clone(), e2.clone()));
+            let ok_e2 = |e2: Exp| exp_new(Binary(*op, e1.clone(), e2.clone()));
             match op {
                 And => match &e1.x {
                     Const(Bool(true)) => eval_expr_internal(env, fun_ssts, e2),
@@ -222,7 +230,7 @@ fn eval_expr_internal(env: &mut Env, fun_ssts: &SstMap, exp: &Exp) -> Result<Exp
                         match &e2.x {
                             Const(Bool(true)) => Ok(e1.clone()),
                             Const(Bool(false)) => exp_new(Const(Bool(false))),
-                            _ => ok,
+                            _ => ok_e2(e2),
                         }
                     }
                 },
@@ -234,7 +242,7 @@ fn eval_expr_internal(env: &mut Env, fun_ssts: &SstMap, exp: &Exp) -> Result<Exp
                         match &e2.x {
                             Const(Bool(true)) => exp_new(Const(Bool(true))),
                             Const(Bool(false)) => Ok(e1.clone()),
-                            _ => ok,
+                            _ => ok_e2(e2),
                         }
                     }
                 },
@@ -249,7 +257,7 @@ fn eval_expr_internal(env: &mut Env, fun_ssts: &SstMap, exp: &Exp) -> Result<Exp
                         (Const(Bool(false)), _) => Ok(e2.clone()),
                         (_, Const(Bool(true))) => exp_new(Unary(UnaryOp::Not, e1.clone())),
                         (_, Const(Bool(false))) => Ok(e1.clone()),
-                        _ => ok,
+                        _ => ok_e2(e2),
                     }
                 }
                 // TODO: Does Implies short-circuit?
@@ -264,20 +272,20 @@ fn eval_expr_internal(env: &mut Env, fun_ssts: &SstMap, exp: &Exp) -> Result<Exp
                         (Const(Bool(false)), _) => exp_new(Const(Bool(true))),
                         (_, Const(Bool(true))) => exp_new(Const(Bool(true))),
                         (_, Const(Bool(false))) => exp_new(Unary(UnaryOp::Not, e1.clone())),
-                        _ => ok,
+                        _ => ok_e2(e2),
                     }
                 }
                 Eq(_mode) => {
                     let e2 = eval_expr_internal(env, fun_ssts, e2)?;
                     match equal_exprs(&e1, &e2) {
-                        None => ok,
+                        None => ok_e2(e2),
                         Some(b) => exp_new(Const(Bool(b))),
                     }
                 }
                 Ne => {
                     let e2 = eval_expr_internal(env, fun_ssts, e2)?;
                     match equal_exprs(&e1, &e2) {
-                        None => ok,
+                        None => ok_e2(e2),
                         Some(b) => exp_new(Const(Bool(!b))),
                     }
                 }
@@ -294,7 +302,7 @@ fn eval_expr_internal(env: &mut Env, fun_ssts: &SstMap, exp: &Exp) -> Result<Exp
                             };
                             exp_new(Const(Bool(b)))
                         }
-                        _ => ok,
+                        _ => ok_e2(e2),
                     }
                 }
                 Arith(op, _mode) => {
@@ -382,8 +390,15 @@ fn eval_expr_internal(env: &mut Env, fun_ssts: &SstMap, exp: &Exp) -> Result<Exp
                         {
                             Ok(e1.clone())
                         }
-                        // TODO: Once we have Eq, add a case for Minus(x, x) == 0
-                        _ => ok,
+                        _ => {
+                            match op {
+                                // X - X => 0
+                                ArithOp::Sub if definitely_equal(&e1, &e2) => {
+                                    exp_new(Const(Int(BigInt::zero())))
+                                }
+                                _ => ok_e2(e2),
+                            }
+                        }
                     }
                 }
                 Bitwise(op) => {
@@ -396,11 +411,11 @@ fn eval_expr_internal(env: &mut Env, fun_ssts: &SstMap, exp: &Exp) -> Result<Exp
                             BitAnd => exp_new(Const(Int(i1 & i2))),
                             BitOr => exp_new(Const(Int(i1 | i2))),
                             Shr => match i2.to_u128() {
-                                None => ok,
+                                None => ok_e2(e2),
                                 Some(shift) => exp_new(Const(Int(i1 >> shift))),
                             },
                             Shl => match i2.to_u128() {
-                                None => ok,
+                                None => ok_e2(e2),
                                 Some(shift) => exp_new(Const(Int(i1 << shift))),
                             },
                         },
@@ -416,8 +431,17 @@ fn eval_expr_internal(env: &mut Env, fun_ssts: &SstMap, exp: &Exp) -> Result<Exp
                         (_, Const(Int(i2))) if i2.is_zero() && matches!(op, BitOr) => {
                             Ok(e1.clone())
                         }
-                        // TODO: Add additional cases here if we implement syntactic Eq check
-                        _ => ok,
+                        _ => {
+                            match op {
+                                // X ^ X => 0
+                                BitXor if definitely_equal(&e1, &e2) => {
+                                    exp_new(Const(Int(BigInt::zero())))
+                                }
+                                // X & X = X, X | X = X
+                                BitAnd | BitOr if definitely_equal(&e1, &e2) => Ok(e1.clone()),
+                                _ => ok_e2(e2),
+                            }
+                        }
                     }
                 }
             }
