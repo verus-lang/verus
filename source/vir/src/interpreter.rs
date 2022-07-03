@@ -57,9 +57,13 @@ fn eval_expr_internal(env: &mut Env, fun_ssts: &SstMap, exp: &Exp) -> Result<Exp
         Var(id) => {
             println!("Looking up {:?} in {:?}", id, env.map());
             match env.get(id) {
-            None => ok,
-            Some(e) => { println!("\tGot {:?}", e); Ok(e.clone()) },
-        }},
+                None => ok,
+                Some(e) => {
+                    println!("\tGot {:?}", e);
+                    Ok(e.clone())
+                }
+            }
+        }
         Unary(op, e) => {
             use Constant::*;
             use UnaryOp::*;
@@ -147,23 +151,35 @@ fn eval_expr_internal(env: &mut Env, fun_ssts: &SstMap, exp: &Exp) -> Result<Exp
         Binary(op, e1, e2) => {
             use BinaryOp::*;
             use Constant::*;
+            // We initially evaluate only e1, since op may short circuit
+            // e.g., x != 0 && y == 5 / x
             let e1 = eval_expr_internal(env, fun_ssts, e1)?;
-            let e2 = eval_expr_internal(env, fun_ssts, e2)?;
+            //let e2 = eval_expr_internal(env, fun_ssts, e2)?;
             let ok = exp_new(Binary(*op, e1.clone(), e2.clone()));
             match op {
-                And => match (&e1.x, &e2.x) {
-                    (Const(Bool(true)), _) => Ok(e2.clone()),
-                    (Const(Bool(false)), _) => exp_new(Const(Bool(false))),
-                    (_, Const(Bool(true))) => Ok(e1.clone()),
-                    (_, Const(Bool(false))) => exp_new(Const(Bool(false))),
-                    _ => ok,
+                And => match &e1.x {
+                    Const(Bool(true)) => eval_expr_internal(env, fun_ssts, e2),
+                    Const(Bool(false)) => exp_new(Const(Bool(false))),
+                    _ => {
+                        let e2 = eval_expr_internal(env, fun_ssts, e2)?;
+                        match &e2.x {
+                            Const(Bool(true)) => Ok(e1.clone()),
+                            Const(Bool(false)) => exp_new(Const(Bool(false))),
+                            _ => ok,
+                        }
+                    }
                 },
-                Or => match (&e1.x, &e2.x) {
-                    (Const(Bool(true)), _) => exp_new(Const(Bool(true))),
-                    (Const(Bool(false)), _) => Ok(e2.clone()),
-                    (_, Const(Bool(true))) => exp_new(Const(Bool(true))),
-                    (_, Const(Bool(false))) => Ok(e1.clone()),
-                    _ => ok,
+                Or => match &e1.x {
+                    Const(Bool(true)) => exp_new(Const(Bool(true))),
+                    Const(Bool(false)) => eval_expr_internal(env, fun_ssts, e2),
+                    _ => {
+                        let e2 = eval_expr_internal(env, fun_ssts, e2)?;
+                        match &e2.x {
+                            Const(Bool(true)) => exp_new(Const(Bool(true))),
+                            Const(Bool(false)) => Ok(e1.clone()),
+                            _ => ok,
+                        }
+                    }
                 },
                 Xor => match (&e1.x, &e2.x) {
                     (Const(Bool(b1)), Const(Bool(b2))) => {
@@ -176,6 +192,7 @@ fn eval_expr_internal(env: &mut Env, fun_ssts: &SstMap, exp: &Exp) -> Result<Exp
                     (_, Const(Bool(false))) => Ok(e1.clone()),
                     _ => ok,
                 },
+                // TODO: Does Implies short-circuit?
                 Implies => match (&e1.x, &e2.x) {
                     (Const(Bool(b1)), Const(Bool(b2))) => {
                         let r = !b1 || *b2;
@@ -330,26 +347,26 @@ fn eval_expr_internal(env: &mut Env, fun_ssts: &SstMap, exp: &Exp) -> Result<Exp
         }
         If(e1, e2, e3) => {
             let e1 = eval_expr_internal(env, fun_ssts, e1)?;
-            let e2 = eval_expr_internal(env, fun_ssts, e2)?;
-            let e3 = eval_expr_internal(env, fun_ssts, e3)?;
             match &e1.x {
                 Const(Constant::Bool(b)) => {
                     if *b {
-                        Ok(e2.clone())
+                        eval_expr_internal(env, fun_ssts, e2)
                     } else {
-                        Ok(e3.clone())
+                        eval_expr_internal(env, fun_ssts, e3)
                     }
                 }
-                _ => exp_new(If(e1, e2, e3)),
+                _ => exp_new(If(e1, e2.clone(), e3.clone())),
             }
         }
         Call(fun, typs, exps) => {
-            let new_exps: Result<Vec<Exp>, VirErr> = exps.iter().map(|e| eval_expr_internal(env, fun_ssts, e)).collect();
+            let new_exps: Result<Vec<Exp>, VirErr> =
+                exps.iter().map(|e| eval_expr_internal(env, fun_ssts, e)).collect();
             let new_exps = new_exps?;
             match fun_ssts.get(fun) {
-                None => { 
-                    println!("Failed to find func {:?} in {:?}", fun, fun_ssts); 
-                    exp_new(Call(fun.clone(), typs.clone(), Arc::new(new_exps)))},
+                None => {
+                    println!("Failed to find func {:?} in {:?}", fun, fun_ssts);
+                    exp_new(Call(fun.clone(), typs.clone(), Arc::new(new_exps)))
+                }
                 Some((params, body)) => {
                     println!("Found func!");
                     env.push_scope(true);
@@ -359,9 +376,9 @@ fn eval_expr_internal(env: &mut Env, fun_ssts: &SstMap, exp: &Exp) -> Result<Exp
                     let e = eval_expr_internal(env, fun_ssts, body);
                     env.pop_scope();
                     e
-                },
+                }
             }
-        },
+        }
         // TODO: Fill this in
         CallLambda(_typ, _e0, _es) => ok,
         Bind(bnd, e) => match &bnd.x {
@@ -373,7 +390,7 @@ fn eval_expr_internal(env: &mut Env, fun_ssts: &SstMap, exp: &Exp) -> Result<Exp
                 let e = eval_expr_internal(env, fun_ssts, e);
                 env.pop_scope();
                 e
-            },
+            }
             _ => ok,
         },
         // Ignored by the interpreter at present (i.e., treated as symbolic)
