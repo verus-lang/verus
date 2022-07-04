@@ -567,14 +567,17 @@ pub(crate) fn check_generics_bounds<'tcx>(
                 "type parameter cannot be both maybe_negative and strictly_positive",
             );
         }
-        if check_that_external_body_datatype_declares_positivity && !neg && !pos {
-            return err_span_str(
-                param.span,
-                "in external_body datatype, each type parameter must be either #[verifier(maybe_negative)] or #[verifier(strictly_positive)] (maybe_negative is always safe to use)",
-            );
-        }
         let strictly_positive = !neg; // strictly_positive is the default
         let GenericParam { hir_id: _, name, bounds, span, pure_wrt_drop, kind } = param;
+
+        if let GenericParamKind::Type { .. } = kind {
+            if check_that_external_body_datatype_declares_positivity && !neg && !pos {
+                return err_span_str(
+                    param.span,
+                    "in external_body datatype, each type parameter must be either #[verifier(maybe_negative)] or #[verifier(strictly_positive)] (maybe_negative is always safe to use)",
+                );
+            }
+        }
 
         unsupported_err_unless!(!pure_wrt_drop, *span, "generic pure_wrt_drop");
         match (name, kind) {
