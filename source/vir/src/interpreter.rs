@@ -126,12 +126,17 @@ fn definitely_equal(left: &Exp, right: &Exp) -> bool {
     }
 }
 
+/// Symbolically execute the expression as far as we can,
+/// stopping when we hit a symbolic control-flow decision
 fn eval_expr_internal(state: &mut State, fun_ssts: &SstMap, exp: &Exp) -> Result<Exp, VirErr> {
     if state.debug {
         println!("{}Evaluating {:?}", "\t".repeat(state.depth), exp.x);
     }
     state.depth += 1;
     let exp_new = |e: ExpX| Ok(SpannedTyped::new(&exp.span, &exp.typ, e));
+    let bool_new = |b: bool| Ok(SpannedTyped::new(&exp.span, &exp.typ, Const(Constant::Bool(b))));
+    let int_new = |i: BigInt| Ok(SpannedTyped::new(&exp.span, &exp.typ, Const(Constant::Int(i))));
+    let zero = Ok(SpannedTyped::new(&exp.span, &exp.typ, Const(Constant::Int(BigInt::zero()))));
     let ok = Ok(exp.clone());
     use ExpX::*;
     let r = match &exp.x {
@@ -159,20 +164,20 @@ fn eval_expr_internal(state: &mut State, fun_ssts: &SstMap, exp: &Exp) -> Result
                 Const(Bool(b)) => {
                     // Explicitly enumerate UnaryOps, in case more are added
                     match op {
-                        Not => exp_new(Const(Bool(!b))),
+                        Not => bool_new(!b),
                         BitNot | Clip(_) | Trigger(_) => ok,
                     }
                 }
                 Const(Int(i)) => {
                     // Explicitly enumerate UnaryOps, in case more are added
                     match op {
-                        BitNot => exp_new(Const(Int(!i))),
+                        BitNot => int_new(!i),
                         Clip(range) => {
                             let apply_range = |lower: BigInt, upper: BigInt| {
                                 if i <= &lower {
-                                    exp_new(Const(Int(lower)))
+                                    int_new(lower)
                                 } else if i >= &upper {
-                                    exp_new(Const(Int(upper)))
+                                    int_new(upper)
                                 } else {
                                     Ok(e.clone())
                                 }
@@ -226,7 +231,7 @@ fn eval_expr_internal(state: &mut State, fun_ssts: &SstMap, exp: &Exp) -> Result
                         if state.debug {
                             println!("IsVariant found matching Ctor!");
                         };
-                        exp_new(Const(Constant::Bool(dt == datatype && var == variant)))
+                        bool_new(dt == datatype && var == variant)
                     }
                     _ => ok,
                 },
@@ -252,23 +257,23 @@ fn eval_expr_internal(state: &mut State, fun_ssts: &SstMap, exp: &Exp) -> Result
             match op {
                 And => match &e1.x {
                     Const(Bool(true)) => eval_expr_internal(state, fun_ssts, e2),
-                    Const(Bool(false)) => exp_new(Const(Bool(false))),
+                    Const(Bool(false)) => bool_new(false),
                     _ => {
                         let e2 = eval_expr_internal(state, fun_ssts, e2)?;
                         match &e2.x {
                             Const(Bool(true)) => Ok(e1.clone()),
-                            Const(Bool(false)) => exp_new(Const(Bool(false))),
+                            Const(Bool(false)) => bool_new(false),
                             _ => ok_e2(e2),
                         }
                     }
                 },
                 Or => match &e1.x {
-                    Const(Bool(true)) => exp_new(Const(Bool(true))),
+                    Const(Bool(true)) => bool_new(true),
                     Const(Bool(false)) => eval_expr_internal(state, fun_ssts, e2),
                     _ => {
                         let e2 = eval_expr_internal(state, fun_ssts, e2)?;
                         match &e2.x {
-                            Const(Bool(true)) => exp_new(Const(Bool(true))),
+                            Const(Bool(true)) => bool_new(true),
                             Const(Bool(false)) => Ok(e1.clone()),
                             _ => ok_e2(e2),
                         }
@@ -279,7 +284,7 @@ fn eval_expr_internal(state: &mut State, fun_ssts: &SstMap, exp: &Exp) -> Result
                     match (&e1.x, &e2.x) {
                         (Const(Bool(b1)), Const(Bool(b2))) => {
                             let r = (*b1 && !b2) || (!b1 && *b2);
-                            exp_new(Const(Bool(r)))
+                            bool_new(r)
                         }
                         (Const(Bool(true)), _) => exp_new(Unary(UnaryOp::Not, e2.clone())),
                         (Const(Bool(false)), _) => Ok(e2.clone()),
@@ -294,11 +299,11 @@ fn eval_expr_internal(state: &mut State, fun_ssts: &SstMap, exp: &Exp) -> Result
                     match (&e1.x, &e2.x) {
                         (Const(Bool(b1)), Const(Bool(b2))) => {
                             let r = !b1 || *b2;
-                            exp_new(Const(Bool(r)))
+                            bool_new(r)
                         }
                         (Const(Bool(true)), _) => Ok(e2.clone()),
-                        (Const(Bool(false)), _) => exp_new(Const(Bool(true))),
-                        (_, Const(Bool(true))) => exp_new(Const(Bool(true))),
+                        (Const(Bool(false)), _) => bool_new(true),
+                        (_, Const(Bool(true))) => bool_new(true),
                         (_, Const(Bool(false))) => exp_new(Unary(UnaryOp::Not, e1.clone())),
                         _ => ok_e2(e2),
                     }
@@ -307,14 +312,14 @@ fn eval_expr_internal(state: &mut State, fun_ssts: &SstMap, exp: &Exp) -> Result
                     let e2 = eval_expr_internal(state, fun_ssts, e2)?;
                     match equal_exprs(&e1, &e2) {
                         None => ok_e2(e2),
-                        Some(b) => exp_new(Const(Bool(b))),
+                        Some(b) => bool_new(b),
                     }
                 }
                 Ne => {
                     let e2 = eval_expr_internal(state, fun_ssts, e2)?;
                     match equal_exprs(&e1, &e2) {
                         None => ok_e2(e2),
-                        Some(b) => exp_new(Const(Bool(!b))),
+                        Some(b) => bool_new(!b),
                     }
                 }
                 Inequality(op) => {
@@ -328,7 +333,7 @@ fn eval_expr_internal(state: &mut State, fun_ssts: &SstMap, exp: &Exp) -> Result
                                 Lt => i1 < i2,
                                 Gt => i1 > i2,
                             };
-                            exp_new(Const(Bool(b)))
+                            bool_new(b)
                         }
                         _ => ok_e2(e2),
                     }
@@ -341,9 +346,9 @@ fn eval_expr_internal(state: &mut State, fun_ssts: &SstMap, exp: &Exp) -> Result
                         (Const(Int(i1)), Const(Int(i2))) => {
                             use ArithOp::*;
                             match op {
-                                Add => exp_new(Const(Int(i1 + i2))),
-                                Sub => exp_new(Const(Int(i1 - i2))),
-                                Mul => exp_new(Const(Int(i1 * i2))),
+                                Add => int_new(i1 + i2),
+                                Sub => int_new(i1 - i2),
+                                Mul => int_new(i1 * i2),
                                 EuclideanDiv => {
                                     if i2.is_zero() {
                                         err_string(
@@ -362,7 +367,7 @@ fn eval_expr_internal(state: &mut State, fun_ssts: &SstMap, exp: &Exp) -> Result
                                             }
                                             (Minus, Minus) => ((-i1 - BigInt::one()) / (-i2)) + 1,
                                         };
-                                        exp_new(Const(Int(r)))
+                                        int_new(r)
                                     }
                                 }
                                 EuclideanMod => {
@@ -387,22 +392,20 @@ fn eval_expr_internal(state: &mut State, fun_ssts: &SstMap, exp: &Exp) -> Result
                                                 }
                                             }
                                         };
-                                        exp_new(Const(Int(r)))
+                                        int_new(r)
                                     }
                                 }
                             }
                         }
                         // Special cases for certain concrete values
                         (Const(Int(i1)), _) if i1.is_zero() && matches!(op, Add) => Ok(e2.clone()),
-                        (Const(Int(i1)), _) if i1.is_zero() && matches!(op, Mul) => {
-                            exp_new(Const(Int(BigInt::zero())))
-                        }
+                        (Const(Int(i1)), _) if i1.is_zero() && matches!(op, Mul) => zero,
                         (Const(Int(i1)), _) if i1.is_one() && matches!(op, Mul) => Ok(e2.clone()),
                         (_, Const(Int(i2))) if i2.is_zero() => {
                             use ArithOp::*;
                             match op {
                                 Add | Sub => Ok(e1.clone()),
-                                Mul => exp_new(Const(Int(BigInt::zero()))),
+                                Mul => zero,
                                 EuclideanDiv => err_string(
                                     &exp.span,
                                     "computation tried to divide by 0".to_string(),
@@ -421,9 +424,7 @@ fn eval_expr_internal(state: &mut State, fun_ssts: &SstMap, exp: &Exp) -> Result
                         _ => {
                             match op {
                                 // X - X => 0
-                                ArithOp::Sub if definitely_equal(&e1, &e2) => {
-                                    exp_new(Const(Int(BigInt::zero())))
-                                }
+                                ArithOp::Sub if definitely_equal(&e1, &e2) => zero,
                                 _ => ok_e2(e2),
                             }
                         }
@@ -435,23 +436,23 @@ fn eval_expr_internal(state: &mut State, fun_ssts: &SstMap, exp: &Exp) -> Result
                     match (&e1.x, &e2.x) {
                         // Ideal case where both sides are concrete
                         (Const(Int(i1)), Const(Int(i2))) => match op {
-                            BitXor => exp_new(Const(Int(i1 ^ i2))),
-                            BitAnd => exp_new(Const(Int(i1 & i2))),
-                            BitOr => exp_new(Const(Int(i1 | i2))),
+                            BitXor => int_new(i1 ^ i2),
+                            BitAnd => int_new(i1 & i2),
+                            BitOr => int_new(i1 | i2),
                             Shr => match i2.to_u128() {
                                 None => ok_e2(e2),
-                                Some(shift) => exp_new(Const(Int(i1 >> shift))),
+                                Some(shift) => int_new(i1 >> shift),
                             },
                             Shl => match i2.to_u128() {
                                 None => ok_e2(e2),
-                                Some(shift) => exp_new(Const(Int(i1 << shift))),
+                                Some(shift) => int_new(i1 << shift),
                             },
                         },
                         // Special cases for certain concrete values
                         (Const(Int(i)), _) | (_, Const(Int(i)))
                             if i.is_zero() && matches!(op, BitAnd) =>
                         {
-                            exp_new(Const(Int(BigInt::zero())))
+                            zero
                         }
                         (Const(Int(i1)), _) if i1.is_zero() && matches!(op, BitOr) => {
                             Ok(e2.clone())
@@ -462,9 +463,7 @@ fn eval_expr_internal(state: &mut State, fun_ssts: &SstMap, exp: &Exp) -> Result
                         _ => {
                             match op {
                                 // X ^ X => 0
-                                BitXor if definitely_equal(&e1, &e2) => {
-                                    exp_new(Const(Int(BigInt::zero())))
-                                }
+                                BitXor if definitely_equal(&e1, &e2) => zero,
                                 // X & X = X, X | X = X
                                 BitAnd | BitOr if definitely_equal(&e1, &e2) => Ok(e1.clone()),
                                 _ => ok_e2(e2),
