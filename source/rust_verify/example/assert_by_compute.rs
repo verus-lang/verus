@@ -4,7 +4,7 @@ use pervasive::option::Option;
 use pervasive::*;
 
 fn main() {}
-/*
+
 fn compute_arith(x:u64) {
     assert_by_compute((7 + 7 * 2 > 20) && (22 - 5 <= 10*10)); // true
     assert_by_compute(x * 0 == 0);  // 0 == 0
@@ -28,7 +28,6 @@ fn compute_let() {
     assert_by_compute({#[spec]let x = true; x});    // true
     assert_by_compute({#[spec]let x = 7; x > 4});   // TODO: Error!
 }
-*/
 
 fn compute_datatype() {
     assert_by_compute(
@@ -38,7 +37,6 @@ fn compute_datatype() {
         });
 }
 
-/*
 #[spec]
 fn sum(x: nat) -> nat {
     decreases(x);
@@ -49,4 +47,3 @@ fn sum(x: nat) -> nat {
 fn compute_call() {
     assert_by_compute(sum(10) == 10);  // true
 }
-*/

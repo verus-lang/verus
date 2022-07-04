@@ -475,7 +475,8 @@ fn eval_expr_internal(env: &mut Env, state: &mut State, fun_ssts: &SstMap, exp: 
                 Some((params, body)) => {
                     env.push_scope(true);
                     for (formal, actual) in params.iter().zip(new_exps) {
-                        env.insert((formal.x.name.clone(), None), actual.clone()).unwrap();
+                        println!("Binding {:?} to {:?}", formal, actual.x);
+                        env.insert((formal.x.name.clone(), Some(0)), actual.clone()).unwrap();
                     }
                     let e = eval_expr_internal(env, state, fun_ssts, body);
                     env.pop_scope();
