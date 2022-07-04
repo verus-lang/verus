@@ -19,6 +19,12 @@ use std::sync::Arc;
 
 type Env = ScopeMap<UniqueIdent, Exp>;
 
+struct State {
+    depth: usize,
+    env: Env,
+    debug: bool,
+}
+
 // TODO: Add support for function evaluation memoization
 // TODO: Bound the running time, based on rlimit
 // TODO: Swap to CPS with enforced tail-call optimization to avoid exhausting the stack
@@ -120,26 +126,34 @@ fn definitely_equal(left: &Exp, right: &Exp) -> bool {
     }
 }
 
-struct State {
-    depth: usize,
-}
-
-fn eval_expr_internal(env: &mut Env, state: &mut State, fun_ssts: &SstMap, exp: &Exp) -> Result<Exp, VirErr> {
-    println!("{}Evaluating {:?}", "\t".repeat(state.depth), exp.x);
+fn eval_expr_internal(state: &mut State, fun_ssts: &SstMap, exp: &Exp) -> Result<Exp, VirErr> {
+    if state.debug {
+        println!("{}Evaluating {:?}", "\t".repeat(state.depth), exp.x);
+    }
     state.depth += 1;
     let exp_new = |e: ExpX| Ok(SpannedTyped::new(&exp.span, &exp.typ, e));
     let ok = Ok(exp.clone());
     use ExpX::*;
     let r = match &exp.x {
         Const(_) => ok,
-        Var(id) => match env.get(id) {
-            None => { println!("Failed to find a match for {:?}", id); ok },
-            Some(e) => { println!("Found match for {:?}", id); Ok(e.clone())},
+        Var(id) => match state.env.get(id) {
+            None => {
+                if state.debug {
+                    println!("Failed to find a match for {:?}", id);
+                };
+                ok
+            }
+            Some(e) => {
+                if state.debug {
+                    println!("Found match for {:?}", id);
+                };
+                Ok(e.clone())
+            }
         },
         Unary(op, e) => {
             use Constant::*;
             use UnaryOp::*;
-            let e = eval_expr_internal(env, state, fun_ssts, e)?;
+            let e = eval_expr_internal(state, fun_ssts, e)?;
             let ok = exp_new(Unary(*op, e.clone()));
             match &e.x {
                 Const(Bool(b)) => {
@@ -192,19 +206,26 @@ fn eval_expr_internal(env: &mut Env, state: &mut State, fun_ssts: &SstMap, exp: 
             }
         }
         UnaryOpr(op, e) => {
-            let e = eval_expr_internal(env, state, fun_ssts, e)?;
+            let e = eval_expr_internal(state, fun_ssts, e)?;
             let ok = exp_new(UnaryOpr(op.clone(), e.clone()));
             use crate::ast::UnaryOpr::*;
             match op {
                 Box(_) => ok,
                 Unbox(_) => match &e.x {
-                    UnaryOpr(Box(_), inner_e) => { println!("Unbox found matching box"); Ok(inner_e.clone()) },
+                    UnaryOpr(Box(_), inner_e) => {
+                        if state.debug {
+                            println!("Unbox found matching box");
+                        };
+                        Ok(inner_e.clone())
+                    }
                     _ => ok,
                 },
                 HasType(_) => ok,
                 IsVariant { datatype, variant } => match &e.x {
                     Ctor(dt, var, _) => {
-                        println!("IsVariant found matching Ctor!");
+                        if state.debug {
+                            println!("IsVariant found matching Ctor!");
+                        };
                         exp_new(Const(Constant::Bool(dt == datatype && var == variant)))
                     }
                     _ => ok,
@@ -226,14 +247,14 @@ fn eval_expr_internal(env: &mut Env, state: &mut State, fun_ssts: &SstMap, exp: 
             use Constant::*;
             // We initially evaluate only e1, since op may short circuit
             // e.g., x != 0 && y == 5 / x
-            let e1 = eval_expr_internal(env, state, fun_ssts, e1)?;
+            let e1 = eval_expr_internal(state, fun_ssts, e1)?;
             let ok_e2 = |e2: Exp| exp_new(Binary(*op, e1.clone(), e2.clone()));
             match op {
                 And => match &e1.x {
-                    Const(Bool(true)) => eval_expr_internal(env, state, fun_ssts, e2),
+                    Const(Bool(true)) => eval_expr_internal(state, fun_ssts, e2),
                     Const(Bool(false)) => exp_new(Const(Bool(false))),
                     _ => {
-                        let e2 = eval_expr_internal(env, state, fun_ssts, e2)?;
+                        let e2 = eval_expr_internal(state, fun_ssts, e2)?;
                         match &e2.x {
                             Const(Bool(true)) => Ok(e1.clone()),
                             Const(Bool(false)) => exp_new(Const(Bool(false))),
@@ -243,9 +264,9 @@ fn eval_expr_internal(env: &mut Env, state: &mut State, fun_ssts: &SstMap, exp: 
                 },
                 Or => match &e1.x {
                     Const(Bool(true)) => exp_new(Const(Bool(true))),
-                    Const(Bool(false)) => eval_expr_internal(env, state, fun_ssts, e2),
+                    Const(Bool(false)) => eval_expr_internal(state, fun_ssts, e2),
                     _ => {
-                        let e2 = eval_expr_internal(env, state, fun_ssts, e2)?;
+                        let e2 = eval_expr_internal(state, fun_ssts, e2)?;
                         match &e2.x {
                             Const(Bool(true)) => exp_new(Const(Bool(true))),
                             Const(Bool(false)) => Ok(e1.clone()),
@@ -254,7 +275,7 @@ fn eval_expr_internal(env: &mut Env, state: &mut State, fun_ssts: &SstMap, exp: 
                     }
                 },
                 Xor => {
-                    let e2 = eval_expr_internal(env, state, fun_ssts, e2)?;
+                    let e2 = eval_expr_internal(state, fun_ssts, e2)?;
                     match (&e1.x, &e2.x) {
                         (Const(Bool(b1)), Const(Bool(b2))) => {
                             let r = (*b1 && !b2) || (!b1 && *b2);
@@ -269,7 +290,7 @@ fn eval_expr_internal(env: &mut Env, state: &mut State, fun_ssts: &SstMap, exp: 
                 }
                 // TODO: Does Implies short-circuit?
                 Implies => {
-                    let e2 = eval_expr_internal(env, state, fun_ssts, e2)?;
+                    let e2 = eval_expr_internal(state, fun_ssts, e2)?;
                     match (&e1.x, &e2.x) {
                         (Const(Bool(b1)), Const(Bool(b2))) => {
                             let r = !b1 || *b2;
@@ -283,21 +304,21 @@ fn eval_expr_internal(env: &mut Env, state: &mut State, fun_ssts: &SstMap, exp: 
                     }
                 }
                 Eq(_mode) => {
-                    let e2 = eval_expr_internal(env, state, fun_ssts, e2)?;
+                    let e2 = eval_expr_internal(state, fun_ssts, e2)?;
                     match equal_exprs(&e1, &e2) {
                         None => ok_e2(e2),
                         Some(b) => exp_new(Const(Bool(b))),
                     }
                 }
                 Ne => {
-                    let e2 = eval_expr_internal(env, state, fun_ssts, e2)?;
+                    let e2 = eval_expr_internal(state, fun_ssts, e2)?;
                     match equal_exprs(&e1, &e2) {
                         None => ok_e2(e2),
                         Some(b) => exp_new(Const(Bool(!b))),
                     }
                 }
                 Inequality(op) => {
-                    let e2 = eval_expr_internal(env, state, fun_ssts, e2)?;
+                    let e2 = eval_expr_internal(state, fun_ssts, e2)?;
                     match (&e1.x, &e2.x) {
                         (Const(Int(i1)), Const(Int(i2))) => {
                             use InequalityOp::*;
@@ -313,7 +334,7 @@ fn eval_expr_internal(env: &mut Env, state: &mut State, fun_ssts: &SstMap, exp: 
                     }
                 }
                 Arith(op, _mode) => {
-                    let e2 = eval_expr_internal(env, state, fun_ssts, e2)?;
+                    let e2 = eval_expr_internal(state, fun_ssts, e2)?;
                     use ArithOp::*;
                     match (&e1.x, &e2.x) {
                         // Ideal case where both sides are concrete
@@ -410,7 +431,7 @@ fn eval_expr_internal(env: &mut Env, state: &mut State, fun_ssts: &SstMap, exp: 
                 }
                 Bitwise(op) => {
                     use BitwiseOp::*;
-                    let e2 = eval_expr_internal(env, state, fun_ssts, e2)?;
+                    let e2 = eval_expr_internal(state, fun_ssts, e2)?;
                     match (&e1.x, &e2.x) {
                         // Ideal case where both sides are concrete
                         (Const(Int(i1)), Const(Int(i2))) => match op {
@@ -454,13 +475,13 @@ fn eval_expr_internal(env: &mut Env, state: &mut State, fun_ssts: &SstMap, exp: 
             }
         }
         If(e1, e2, e3) => {
-            let e1 = eval_expr_internal(env, state, fun_ssts, e1)?;
+            let e1 = eval_expr_internal(state, fun_ssts, e1)?;
             match &e1.x {
                 Const(Constant::Bool(b)) => {
                     if *b {
-                        eval_expr_internal(env, state, fun_ssts, e2)
+                        eval_expr_internal(state, fun_ssts, e2)
                     } else {
-                        eval_expr_internal(env, state, fun_ssts, e3)
+                        eval_expr_internal(state, fun_ssts, e3)
                     }
                 }
                 _ => exp_new(If(e1, e2.clone(), e3.clone())),
@@ -468,18 +489,20 @@ fn eval_expr_internal(env: &mut Env, state: &mut State, fun_ssts: &SstMap, exp: 
         }
         Call(fun, typs, exps) => {
             let new_exps: Result<Vec<Exp>, VirErr> =
-                exps.iter().map(|e| eval_expr_internal(env, state, fun_ssts, e)).collect();
+                exps.iter().map(|e| eval_expr_internal(state, fun_ssts, e)).collect();
             let new_exps = new_exps?;
             match fun_ssts.get(fun) {
                 None => exp_new(Call(fun.clone(), typs.clone(), Arc::new(new_exps))),
                 Some((params, body)) => {
-                    env.push_scope(true);
+                    state.env.push_scope(true);
                     for (formal, actual) in params.iter().zip(new_exps) {
-                        println!("Binding {:?} to {:?}", formal, actual.x);
-                        env.insert((formal.x.name.clone(), Some(0)), actual.clone()).unwrap();
+                        if state.debug {
+                            println!("Binding {:?} to {:?}", formal, actual.x);
+                        }
+                        state.env.insert((formal.x.name.clone(), Some(0)), actual.clone()).unwrap();
                     }
-                    let e = eval_expr_internal(env, state, fun_ssts, body);
-                    env.pop_scope();
+                    let e = eval_expr_internal(state, fun_ssts, body);
+                    state.env.pop_scope();
                     e
                 }
             }
@@ -488,13 +511,13 @@ fn eval_expr_internal(env: &mut Env, state: &mut State, fun_ssts: &SstMap, exp: 
         CallLambda(_typ, _e0, _es) => ok,
         Bind(bnd, e) => match &bnd.x {
             BndX::Let(bnds) => {
-                env.push_scope(true);
+                state.env.push_scope(true);
                 for b in bnds.iter() {
-                    let val = eval_expr_internal(env, state, fun_ssts, &b.a)?;
-                    env.insert((b.name.clone(), None), val).unwrap();
+                    let val = eval_expr_internal(state, fun_ssts, &b.a)?;
+                    state.env.insert((b.name.clone(), None), val).unwrap();
                 }
-                let e = eval_expr_internal(env, state, fun_ssts, e);
-                env.pop_scope();
+                let e = eval_expr_internal(state, fun_ssts, e);
+                state.env.pop_scope();
                 e
             }
             _ => ok,
@@ -504,12 +527,14 @@ fn eval_expr_internal(env: &mut Env, state: &mut State, fun_ssts: &SstMap, exp: 
     };
     let res = r?;
     state.depth -= 1;
-    println!("{}=> {:?}", "\t".repeat(state.depth), &res.x);
+    if state.debug {
+        println!("{}=> {:?}", "\t".repeat(state.depth), &res.x);
+    }
     Ok(res)
 }
 
 pub fn eval_expr(exp: &Exp, fun_ssts: &SstMap) -> Result<Exp, VirErr> {
-    let mut env = ScopeMap::new();
-    let mut state = State { depth: 0 };
-    eval_expr_internal(&mut env, &mut state, fun_ssts, exp)
+    let env = ScopeMap::new();
+    let mut state = State { depth: 0, env, debug: true };
+    eval_expr_internal(&mut state, fun_ssts, exp)
 }
