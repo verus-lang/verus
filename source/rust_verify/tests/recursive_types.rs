@@ -219,3 +219,12 @@ test_verify_one_file! {
         }
     } => Err(_)
 }
+
+test_verify_one_file! {
+    #[test] lifetimes_no_positivity code! {
+        #[verifier(external_body)]
+        struct Str<'a> {
+            inner: &'a str,
+        }
+    } => Ok(())
+}
