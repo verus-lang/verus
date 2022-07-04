@@ -1178,7 +1178,7 @@ fn expr_to_stm_opt(
             // We assert the (hopefully simplified) result of calling the interpreter
             // but assume the original expression, so we get the benefits
             // of any ensures, triggers, etc., that it might provide
-            let interp_expr = eval_expr(&expr, &state.fun_ssts)?;
+            let interp_expr = eval_expr(&state.finalize_exp(&expr), &state.fun_ssts)?;
             let assert = Spanned::new(e.span.clone(), StmX::Assert(None, interp_expr));
             let assume = Spanned::new(e.span.clone(), StmX::Assume(expr));
             Ok((vec![assert, assume], ret))

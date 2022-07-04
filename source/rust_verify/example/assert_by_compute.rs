@@ -28,17 +28,17 @@ fn compute_let() {
     assert_by_compute({#[spec]let x = true; x});    // true
     assert_by_compute({#[spec]let x = 7; x > 4});   // TODO: Error!
 }
+*/
 
 fn compute_datatype() {
-    // TODO: Doesn't yet reduce, b/c the match is turned into a let
     assert_by_compute(
-        match Option::Some(42) {
-            Option::Some(i) => i > 3,
+        match Option::Some(true) {
+            Option::Some(b) => b,
             _ => 10 > 20,
         });
 }
-*/
 
+/*
 #[spec]
 fn sum(x: nat) -> nat {
     decreases(x);
@@ -47,5 +47,6 @@ fn sum(x: nat) -> nat {
 }
 
 fn compute_call() {
-    assert_by_compute(sum(5) == 5);  // true
+    assert_by_compute(sum(10) == 10);  // true
 }
+*/
