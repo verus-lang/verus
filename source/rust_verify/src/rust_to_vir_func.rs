@@ -105,6 +105,13 @@ pub(crate) fn check_item_fn<'tcx>(
     body_id: &BodyId,
 ) -> Result<Option<Fun>, VirErr> {
     let path = def_id_to_vir_path(ctxt.tcx, id);
+    dbg!(&path);
+    let is_str_new = matches!(path.krate, None) &&
+            path.segments.len() == 4 &&
+            *path.segments[0] == "pervasive" &&
+            *path.segments[1] == "string" &&
+            *path.segments[2] == "StrSlice" &&
+            *path.segments[3] == "new";
     let name = Arc::new(FunX { path, trait_path: trait_path });
     let mode = get_mode(Mode::Exec, attrs);
     let self_typ_params = if let Some(cg) = self_generics {
@@ -130,6 +137,7 @@ pub(crate) fn check_item_fn<'tcx>(
             check_fn_decl(ctxt.tcx, &sig.span, decl, self_typ.clone(), attrs, mode)?
         }
     };
+    dbg!(&name);
     let sig_typ_bounds = check_generics_bounds_fun(ctxt.tcx, generics)?;
     let vattrs = get_verifier_attrs(attrs)?;
     let fuel = get_fuel(&vattrs);
@@ -141,6 +149,17 @@ pub(crate) fn check_item_fn<'tcx>(
     let body = find_body(ctxt, body_id);
     let Body { params, value: _, generator_kind } = body;
     let mut vir_params: Vec<vir::ast::Param> = Vec::new();
+
+    if is_str_new {
+        unsupported_err_unless!(vattrs.external_body, sig.span, "StrSlice::new must be external_body");
+        todo!();
+        // - make sure types are correct
+        // - return type is correct
+        let mut erasure_info = ctxt.erasure_info.borrow_mut();
+        erasure_info.external_functions.push(name);
+        return Ok(None);
+    }
+
     for (param, input) in params.iter().zip(sig.decl.inputs.iter()) {
         let Param { hir_id, pat, ty_span: _, span } = param;
         let name = Arc::new(pat_to_var(pat));
