@@ -37,6 +37,101 @@ struct Ctx<'a> {
 // TODO: Potential optimizations:
 //  - Add support for function evaluation memoization
 //  - Swap to CPS with enforced tail-call optimization to avoid exhausting the stack
+//    - See crates musttail and with_locals
+
+/*
+fn print_exp(exp: Exp) {
+    use ExpX::*;
+    match &exp.x {
+        Const(c) => match c {
+            Constant::Bool(b) => print!("{}", b),
+            Constant::Int(i) => print!("{}", i),
+        }
+        Var(id) => print!("{}", id),
+        Call(fun, _, exps) => {
+            print!("{}", fun.path.segments.last());
+            for exp in &exps {
+                print_exp(exp);
+            }
+            print!(")")
+        }
+        Unary(op, exp) => match op {
+            UnaryOp::Not => { print!("!"); print_exp(exp) },
+            UnaryOp::BitNot => { print!("!"); print_exp(exp) } ,
+            UnaryOp::Trigger(..) => ()),
+            UnaryOp::Clip(range) => print!("clip("); print_exp(exp); print!(")"),
+        }
+        UnaryOpr(op, exp) => {
+            use crate::ast::UnaryOpr::*;
+            match op {
+                Box(_) => { print!("box("); print_exp(exp); print!(")") },
+                Unbox(_) => { print!("unbox("); print_exp(exp); print!(")") },
+                HasType(t) => { print_exp(exp); print!(".has_type({})", t),
+                IsVariant { _datatype, variant } => { print_exp(exp); print!("is_type({})", variant) },
+                TupleField {..} => panic!("TupleField should have been removed by ast_simplify!"),
+                Field(field) => { print_exp(exp); print!(".{}", field.field) }
+            }
+        }
+        Binary(op, e1, e2) => {
+            use BinaryOp::*;
+            use ArithOp::*;
+            use InequalityOp::*;
+            use BitwiseOp::*;
+            print_exp(e1);
+            match op {
+                And => print!(" && "),
+                Or  => print!(" || "),
+                Xor => print!(" ^ "),
+                Implies => print!(" ==> "),
+                Eq(_) => print!(" == "),
+                Ne => print!(" != "),
+                Inequality(o) => match o {
+                    Le => print!(" <= "),
+                    Ge => print!(" >= "),
+                    Lt => print!(" < "),
+                    Gt => print!(" > "),
+                }
+                Arith(o, _) => match o {
+                    Add => print!(" + "),
+                    Sub => print!(" - "),
+                    Mul => print!(" * "),
+                    EuclideanDiv => print!(" / "),
+                    EuclideanMod => print!(" % "),
+                }
+                Bitwise(o) => match o {
+                    BitXor => print!(" ^ "),
+                    BitAnd => print!(" & "),
+                    BitOr  => print!(" | "),
+                    Shr => print!(" >> "),
+                    Shl => print!(" << "),
+                }
+            };
+            print_exp(e2);
+        },
+        If(e1, e2, e3) => { print!("if "); print_exp(e1); print!(" then "); print_exp(e2); print!("
+                                                                 {} else {}", e1, e2, e3),
+        Bind(bnd, exp) => match bnd {
+            Bnd::Let(bnds) => {
+                print!("let ");
+                for b in bnds.iter() {
+                    print!("{} = {}, ", b.name, b.a);
+                }
+                print!("in {}", exp)
+            },
+            Bnd::Quant(..) | Bnd::Lambda(..) | Bnd::Choose(..) => print!("Unexpected: {:?}", exp.x),
+        },
+        Ctor(_path, id, bnds) => {
+            print!("{}(", id);
+            for b in bnds.iter() {
+                print!("{}, ", b.a);
+            }
+            print!(")")
+        }
+        CallLambda(..) | VarLoc(..) | VarAt(..) | Loc(..) | Old(..) | WithTriggers(..) => print!("Unexpected: {:?}", self.x)
+
+    }
+}
+*/
 
 // Computes the syntactic equality of two types
 // Some(b) means b is exp1 == exp2
@@ -206,6 +301,8 @@ fn definitely_equal(left: &Exp, right: &Exp) -> bool {
     }
 }
 
+
+
 /// Symbolically execute the expression as far as we can,
 /// stopping when we hit a symbolic control-flow decision
 fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, VirErr> {
@@ -213,7 +310,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
         return err_str(&exp.span, "assert_by_compute timed out");
     }
     if state.debug {
-        println!("{}Evaluating {:?}", "\t".repeat(state.depth), exp.x);
+        println!("{}Evaluating {:}", "\t".repeat(state.depth), exp);
     }
     state.depth += 1;
     let exp_new = |e: ExpX| Ok(SpannedTyped::new(&exp.span, &exp.typ, e));
@@ -587,7 +684,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                     state.env.push_scope(true);
                     for (formal, actual) in params.iter().zip(new_exps) {
                         if state.debug {
-                            println!("Binding {:?} to {:?}", formal, actual.x);
+                            //println!("Binding {:?} to {:?}", formal, actual.x);
                         }
                         state.env.insert((formal.x.name.clone(), Some(0)), actual.clone()).unwrap();
                     }
@@ -617,7 +714,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
     let res = r?;
     state.depth -= 1;
     if state.debug {
-        println!("{}=> {:?}", "\t".repeat(state.depth), &res.x);
+        println!("{}=> {:}", "\t".repeat(state.depth), &res);
     }
     Ok(res)
 }
@@ -631,5 +728,6 @@ pub fn eval_expr(exp: &Exp, fun_ssts: &SstMap) -> Result<Exp, VirErr> {
     let ctx = Ctx { fun_ssts, time_start, time_limit };
     let env = ScopeMap::new();
     let mut state = State { depth: 0, env, debug: true };
+    println!("Starting...");
     eval_expr_internal(&ctx, &mut state, exp)
 }

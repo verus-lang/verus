@@ -9,6 +9,7 @@ use crate::def::Spanned;
 use air::ast::Span;
 use air::errors::Error;
 use num_bigint::BigInt;
+use std::fmt::Display;
 use std::sync::Arc;
 
 pub use air::ast::{Binder, Binders};
@@ -267,6 +268,12 @@ pub struct SpannedTyped<X> {
     pub span: Span,
     pub typ: Typ,
     pub x: X,
+}
+
+impl<X: Display> Display for SpannedTyped<X> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.x)
+    }
 }
 
 /// Patterns for match expressions

@@ -5,6 +5,21 @@ use pervasive::*;
 
 fn main() {}
 
+/*
+#[spec]
+fn shifter(x: u64, amt: usize) -> u64 {
+    decreases(amt);
+    if amt == 0 { x }
+    else { shifter(x << 1, amt - 1) }
+}
+
+fn compute_bv(x:u64) {
+    assert_by_compute(2 << 1 == 4); // true
+    assert_by_compute(x ^ x == 0);  // true
+    assert_by_compute(x & x == x);  // true
+    assert_by_compute(shifter(1, 10) == 1024); // true
+}
+
 fn compute_arith(x:u64) {
     assert_by_compute((7 + 7 * 2 > 20) && (22 - 5 <= 10*10)); // true
     assert_by_compute(x * 0 == 0);  // 0 == 0
@@ -45,5 +60,96 @@ fn sum(x: nat) -> nat {
 }
 
 fn compute_call() {
+    // assert(sum(10) == 10);  // fails without more fuel
     assert_by_compute(sum(10) == 10);  // true
+}
+
+#[spec]
+fn fib(x: nat) -> nat {
+    decreases(x);
+    if x == 0 { 0 }
+    else if x == 1 { 1 }
+    else { fib(x - 1) + fib(x - 2) }
+}
+
+fn compute_fib() {
+    assert_by_compute(fib(10) == 55);   // true
+    //assert_by_compute(fib(100) == 354224848179261915075);   // TODO: times out
+}
+
+// VeriTitan example
+#[spec]
+fn pow(base: nat, exp: nat) -> nat {
+    decreases(exp);
+    if exp == 0 { 1 }
+    else { base * pow(base, exp - 1) }
+}
+
+const Q: nat = 12289;
+const L: nat = 11;
+const G: nat = 7;
+
+fn compute_verititan() {
+    assert_by_compute(pow(G, pow(2, L) / 2) % Q == Q - 1);  // TODO: stack overflow
+}
+*/
+
+// VeriBetrKV example:
+// https://github.com/vmware-labs/verified-betrfs/blob/ee4b18d553933440bb5ecda037c6a1c411a49a5f/lib/Crypto/CRC32Lut.i.dfy
+/*
+function pow_mod_crc(n: nat) : seq<bool>
+  requires n >= 33
+  {
+    reverse(mod_F2_X(zeroes(n-33) + [true], bits_of_int(0x1_1EDC_6F41, 33)))
+  }
+
+assert (forall n | 1 <= n <= 256 :: bits_of_int(lut[n-1] as int, 64) == pow_mod_crc(2*64*n) + pow_mod_crc(64*n))
+    by(computation);
+*/
+/*
+ * TODO: Does Verus support Box?
+ */
+#[derive(PartialEq, Eq)]
+enum List<T> {
+    Nil,
+    Cons(T, Box<List<T>>),
+}
+
+#[spec]
+fn len<T>(l: List<T>) -> nat {
+    decreases(l);
+    match l {
+        List::Nil => 0,
+        List::Cons(_, tl) => 1 + len(*tl),
+    }
+}
+
+//#[spec]
+//fn append<T>(l: List<T>, x: T) -> List<T> {
+//    decreases(l);
+//    match l {
+//        List::Nil => List::Cons(x, box List::Nil),
+//        List::Cons(hd, tl) => 
+//            List::Cons(hd, box append(*tl, x)),
+//    }
+//}
+//
+//#[spec]
+//fn reverse<T>(l: List<T>) -> List<T> {
+//    decreases(l);
+//    match l {
+//        List::Nil => List::Nil,
+//        List::Cons(hd, tl) => append(reverse(*tl), hd),
+//    }
+//}
+
+#[spec]
+fn ex1() -> List<nat> {
+    List::Cons(1, box List::Nil)
+    //List::Cons(1, box List::Cons(2, box List::Cons(3, box List::Cons(4, box List::Cons(5, box List::Nil)))));
+}
+
+fn compute_list() {
+    assert_by_compute(len(ex1()) == 5);
+    //let rev1 = List::Cons(5, Box::new(List::Cons(4, Box::new(List::Cons(3, Box::new(List::Cons(2, Box::new(List::Cons(1, Box::new(List::Nil))))))))));
 }
