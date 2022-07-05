@@ -9,7 +9,7 @@ use crate::ast::{
     ArithOp, BinaryOp, BitwiseOp, Constant, InequalityOp, IntRange, SpannedTyped, Typ, TypX, Typs,
     UnaryOp, VirErr,
 };
-use crate::ast_util::err_string;
+use crate::ast_util::err_str;
 use crate::def::SstMap;
 use crate::sst::{Bnd, BndX, Exp, ExpX, Exps, UniqueIdent};
 use air::ast::Binders;
@@ -17,6 +17,7 @@ use air::scope_map::ScopeMap;
 use num_bigint::{BigInt, Sign};
 use num_traits::identities::Zero;
 use num_traits::{One, Signed, ToPrimitive};
+use std::time::{Duration, Instant};
 use std::sync::Arc;
 
 type Env = ScopeMap<UniqueIdent, Exp>;
@@ -27,9 +28,15 @@ struct State {
     debug: bool,
 }
 
-// TODO: Add support for function evaluation memoization
-// TODO: Bound the running time, based on rlimit
-// TODO: Swap to CPS with enforced tail-call optimization to avoid exhausting the stack
+struct Ctx<'a> {
+    fun_ssts: &'a SstMap,
+    time_start: Instant,
+    time_limit: Duration,
+}
+
+// TODO: Potential optimizations:
+//  - Add support for function evaluation memoization
+//  - Swap to CPS with enforced tail-call optimization to avoid exhausting the stack
 
 // Computes the syntactic equality of two types
 // Some(b) means b is exp1 == exp2
@@ -201,7 +208,10 @@ fn definitely_equal(left: &Exp, right: &Exp) -> bool {
 
 /// Symbolically execute the expression as far as we can,
 /// stopping when we hit a symbolic control-flow decision
-fn eval_expr_internal(state: &mut State, fun_ssts: &SstMap, exp: &Exp) -> Result<Exp, VirErr> {
+fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, VirErr> {
+    if ctx.time_start.elapsed() > ctx.time_limit {
+        return err_str(&exp.span, "assert_by_compute timed out");
+    }
     if state.debug {
         println!("{}Evaluating {:?}", "\t".repeat(state.depth), exp.x);
     }
@@ -231,7 +241,7 @@ fn eval_expr_internal(state: &mut State, fun_ssts: &SstMap, exp: &Exp) -> Result
         Unary(op, e) => {
             use Constant::*;
             use UnaryOp::*;
-            let e = eval_expr_internal(state, fun_ssts, e)?;
+            let e = eval_expr_internal(ctx, state, e)?;
             let ok = exp_new(Unary(*op, e.clone()));
             match &e.x {
                 Const(Bool(b)) => {
@@ -286,7 +296,7 @@ fn eval_expr_internal(state: &mut State, fun_ssts: &SstMap, exp: &Exp) -> Result
             }
         }
         UnaryOpr(op, e) => {
-            let e = eval_expr_internal(state, fun_ssts, e)?;
+            let e = eval_expr_internal(ctx, state, e)?;
             let ok = exp_new(UnaryOpr(op.clone(), e.clone()));
             use crate::ast::UnaryOpr::*;
             match op {
@@ -327,14 +337,14 @@ fn eval_expr_internal(state: &mut State, fun_ssts: &SstMap, exp: &Exp) -> Result
             use Constant::*;
             // We initially evaluate only e1, since op may short circuit
             // e.g., x != 0 && y == 5 / x
-            let e1 = eval_expr_internal(state, fun_ssts, e1)?;
+            let e1 = eval_expr_internal(ctx, state, e1)?;
             let ok_e2 = |e2: Exp| exp_new(Binary(*op, e1.clone(), e2.clone()));
             match op {
                 And => match &e1.x {
-                    Const(Bool(true)) => eval_expr_internal(state, fun_ssts, e2),
+                    Const(Bool(true)) => eval_expr_internal(ctx, state, e2),
                     Const(Bool(false)) => bool_new(false),
                     _ => {
-                        let e2 = eval_expr_internal(state, fun_ssts, e2)?;
+                        let e2 = eval_expr_internal(ctx, state, e2)?;
                         match &e2.x {
                             Const(Bool(true)) => Ok(e1.clone()),
                             Const(Bool(false)) => bool_new(false),
@@ -344,9 +354,9 @@ fn eval_expr_internal(state: &mut State, fun_ssts: &SstMap, exp: &Exp) -> Result
                 },
                 Or => match &e1.x {
                     Const(Bool(true)) => bool_new(true),
-                    Const(Bool(false)) => eval_expr_internal(state, fun_ssts, e2),
+                    Const(Bool(false)) => eval_expr_internal(ctx, state, e2),
                     _ => {
-                        let e2 = eval_expr_internal(state, fun_ssts, e2)?;
+                        let e2 = eval_expr_internal(ctx, state, e2)?;
                         match &e2.x {
                             Const(Bool(true)) => bool_new(true),
                             Const(Bool(false)) => Ok(e1.clone()),
@@ -355,7 +365,7 @@ fn eval_expr_internal(state: &mut State, fun_ssts: &SstMap, exp: &Exp) -> Result
                     }
                 },
                 Xor => {
-                    let e2 = eval_expr_internal(state, fun_ssts, e2)?;
+                    let e2 = eval_expr_internal(ctx, state, e2)?;
                     match (&e1.x, &e2.x) {
                         (Const(Bool(b1)), Const(Bool(b2))) => {
                             let r = (*b1 && !b2) || (!b1 && *b2);
@@ -370,18 +380,18 @@ fn eval_expr_internal(state: &mut State, fun_ssts: &SstMap, exp: &Exp) -> Result
                 }
                 Implies => {
                     match &e1.x {
-                        Const(Bool(true)) => eval_expr_internal(state, fun_ssts, e2),
+                        Const(Bool(true)) => eval_expr_internal(ctx, state, e2),
                         Const(Bool(false)) => bool_new(true),
                         _ => {
-                            let e2 = eval_expr_internal(state, fun_ssts, e2)?;
+                            let e2 = eval_expr_internal(ctx, state, e2)?;
                             match &e2.x {
                                 Const(Bool(true)) => bool_new(false),
                                 Const(Bool(false)) =>
                                 // Recurse in case we can simplify the new negation
                                 {
                                     eval_expr_internal(
+                                        ctx,
                                         state,
-                                        fun_ssts,
                                         &exp_new(Unary(UnaryOp::Not, e1.clone()))?,
                                     )
                                 }
@@ -391,21 +401,21 @@ fn eval_expr_internal(state: &mut State, fun_ssts: &SstMap, exp: &Exp) -> Result
                     }
                 }
                 Eq(_mode) => {
-                    let e2 = eval_expr_internal(state, fun_ssts, e2)?;
+                    let e2 = eval_expr_internal(ctx, state, e2)?;
                     match equal_expr(&e1, &e2) {
                         None => ok_e2(e2),
                         Some(b) => bool_new(b),
                     }
                 }
                 Ne => {
-                    let e2 = eval_expr_internal(state, fun_ssts, e2)?;
+                    let e2 = eval_expr_internal(ctx, state, e2)?;
                     match equal_expr(&e1, &e2) {
                         None => ok_e2(e2),
                         Some(b) => bool_new(!b),
                     }
                 }
                 Inequality(op) => {
-                    let e2 = eval_expr_internal(state, fun_ssts, e2)?;
+                    let e2 = eval_expr_internal(ctx, state, e2)?;
                     match (&e1.x, &e2.x) {
                         (Const(Int(i1)), Const(Int(i2))) => {
                             use InequalityOp::*;
@@ -421,7 +431,7 @@ fn eval_expr_internal(state: &mut State, fun_ssts: &SstMap, exp: &Exp) -> Result
                     }
                 }
                 Arith(op, _mode) => {
-                    let e2 = eval_expr_internal(state, fun_ssts, e2)?;
+                    let e2 = eval_expr_internal(ctx, state, e2)?;
                     use ArithOp::*;
                     match (&e1.x, &e2.x) {
                         // Ideal case where both sides are concrete
@@ -433,9 +443,9 @@ fn eval_expr_internal(state: &mut State, fun_ssts: &SstMap, exp: &Exp) -> Result
                                 Mul => int_new(i1 * i2),
                                 EuclideanDiv => {
                                     if i2.is_zero() {
-                                        err_string(
+                                        err_str(
                                             &exp.span,
-                                            "computation tried to divide by 0".to_string(),
+                                            "computation tried to divide by 0",
                                         )
                                     } else {
                                         // Based on Dafny's C# implementation:
@@ -454,10 +464,9 @@ fn eval_expr_internal(state: &mut State, fun_ssts: &SstMap, exp: &Exp) -> Result
                                 }
                                 EuclideanMod => {
                                     if i2.is_zero() {
-                                        err_string(
+                                        err_str(
                                             &exp.span,
                                             "tried to compute a remainder with respect to 0"
-                                                .to_string(),
                                         )
                                     } else {
                                         // Based on Dafny's C# implementation:
@@ -488,13 +497,13 @@ fn eval_expr_internal(state: &mut State, fun_ssts: &SstMap, exp: &Exp) -> Result
                             match op {
                                 Add | Sub => Ok(e1.clone()),
                                 Mul => zero,
-                                EuclideanDiv => err_string(
+                                EuclideanDiv => err_str(
                                     &exp.span,
-                                    "computation tried to divide by 0".to_string(),
+                                    "computation tried to divide by 0",
                                 ),
-                                EuclideanMod => err_string(
+                                EuclideanMod => err_str(
                                     &exp.span,
-                                    "tried to compute a remainder with respect to 0".to_string(),
+                                    "tried to compute a remainder with respect to 0",
                                 ),
                             }
                         }
@@ -514,7 +523,7 @@ fn eval_expr_internal(state: &mut State, fun_ssts: &SstMap, exp: &Exp) -> Result
                 }
                 Bitwise(op) => {
                     use BitwiseOp::*;
-                    let e2 = eval_expr_internal(state, fun_ssts, e2)?;
+                    let e2 = eval_expr_internal(ctx, state, e2)?;
                     match (&e1.x, &e2.x) {
                         // Ideal case where both sides are concrete
                         (Const(Int(i1)), Const(Int(i2))) => match op {
@@ -556,13 +565,13 @@ fn eval_expr_internal(state: &mut State, fun_ssts: &SstMap, exp: &Exp) -> Result
             }
         }
         If(e1, e2, e3) => {
-            let e1 = eval_expr_internal(state, fun_ssts, e1)?;
+            let e1 = eval_expr_internal(ctx, state, e1)?;
             match &e1.x {
                 Const(Constant::Bool(b)) => {
                     if *b {
-                        eval_expr_internal(state, fun_ssts, e2)
+                        eval_expr_internal(ctx, state, e2)
                     } else {
-                        eval_expr_internal(state, fun_ssts, e3)
+                        eval_expr_internal(ctx, state, e3)
                     }
                 }
                 _ => exp_new(If(e1, e2.clone(), e3.clone())),
@@ -570,9 +579,9 @@ fn eval_expr_internal(state: &mut State, fun_ssts: &SstMap, exp: &Exp) -> Result
         }
         Call(fun, typs, exps) => {
             let new_exps: Result<Vec<Exp>, VirErr> =
-                exps.iter().map(|e| eval_expr_internal(state, fun_ssts, e)).collect();
+                exps.iter().map(|e| eval_expr_internal(ctx, state, e)).collect();
             let new_exps = new_exps?;
-            match fun_ssts.get(fun) {
+            match ctx.fun_ssts.get(fun) {
                 None => exp_new(Call(fun.clone(), typs.clone(), Arc::new(new_exps))),
                 Some((params, body)) => {
                     state.env.push_scope(true);
@@ -582,7 +591,7 @@ fn eval_expr_internal(state: &mut State, fun_ssts: &SstMap, exp: &Exp) -> Result
                         }
                         state.env.insert((formal.x.name.clone(), Some(0)), actual.clone()).unwrap();
                     }
-                    let e = eval_expr_internal(state, fun_ssts, body);
+                    let e = eval_expr_internal(ctx, state, body);
                     state.env.pop_scope();
                     e
                 }
@@ -592,10 +601,10 @@ fn eval_expr_internal(state: &mut State, fun_ssts: &SstMap, exp: &Exp) -> Result
             BndX::Let(bnds) => {
                 state.env.push_scope(true);
                 for b in bnds.iter() {
-                    let val = eval_expr_internal(state, fun_ssts, &b.a)?;
+                    let val = eval_expr_internal(ctx, state, &b.a)?;
                     state.env.insert((b.name.clone(), None), val).unwrap();
                 }
-                let e = eval_expr_internal(state, fun_ssts, e);
+                let e = eval_expr_internal(ctx, state, e);
                 state.env.pop_scope();
                 e
             }
@@ -614,7 +623,13 @@ fn eval_expr_internal(state: &mut State, fun_ssts: &SstMap, exp: &Exp) -> Result
 }
 
 pub fn eval_expr(exp: &Exp, fun_ssts: &SstMap) -> Result<Exp, VirErr> {
+    // Don't run for more than 1 second
+    // (we could base this on rlimit, but we would need to plumb that
+    //  all the way here from rust_verify)
+    let time_limit = Duration::new(1, 0);
+    let time_start = Instant::now();
+    let ctx = Ctx { fun_ssts, time_start, time_limit };
     let env = ScopeMap::new();
     let mut state = State { depth: 0, env, debug: true };
-    eval_expr_internal(&mut state, fun_ssts, exp)
+    eval_expr_internal(&ctx, &mut state, exp)
 }
