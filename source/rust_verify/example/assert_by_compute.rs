@@ -1,4 +1,5 @@
 use builtin::*;
+use builtin_macros::*;
 mod pervasive;
 use pervasive::option::Option;
 use pervasive::*;
@@ -106,10 +107,12 @@ function pow_mod_crc(n: nat) : seq<bool>
 assert (forall n | 1 <= n <= 256 :: bits_of_int(lut[n-1] as int, 64) == pow_mod_crc(2*64*n) + pow_mod_crc(64*n))
     by(computation);
 */
+
+
 /*
- * TODO: Does Verus support Box?
+ * Examples traversing recursive data structures
  */
-#[derive(PartialEq, Eq)]
+#[derive(Structural,PartialEq,Eq)]
 enum List<T> {
     Nil,
     Cons(T, Box<List<T>>),
@@ -124,32 +127,36 @@ fn len<T>(l: List<T>) -> nat {
     }
 }
 
-//#[spec]
-//fn append<T>(l: List<T>, x: T) -> List<T> {
-//    decreases(l);
-//    match l {
-//        List::Nil => List::Cons(x, box List::Nil),
-//        List::Cons(hd, tl) => 
-//            List::Cons(hd, box append(*tl, x)),
-//    }
-//}
-//
-//#[spec]
-//fn reverse<T>(l: List<T>) -> List<T> {
-//    decreases(l);
-//    match l {
-//        List::Nil => List::Nil,
-//        List::Cons(hd, tl) => append(reverse(*tl), hd),
-//    }
-//}
+#[spec]
+fn append<T>(l: List<T>, x: T) -> List<T> {
+    decreases(l);
+    match l {
+        List::Nil => List::Cons(x, box List::Nil),
+        List::Cons(hd, tl) => 
+            List::Cons(hd, box append(*tl, x)),
+    }
+}
+
+#[spec]
+fn reverse<T>(l: List<T>) -> List<T> {
+    decreases(l);
+    match l {
+        List::Nil => List::Nil,
+        List::Cons(hd, tl) => append(reverse(*tl), hd),
+    }
+}
 
 #[spec]
 fn ex1() -> List<nat> {
-    List::Cons(1, box List::Nil)
-    //List::Cons(1, box List::Cons(2, box List::Cons(3, box List::Cons(4, box List::Cons(5, box List::Nil)))));
+    List::Cons(1, box List::Cons(2, box List::Cons(3, box List::Cons(4, box List::Cons(5, box List::Nil)))))
+}
+
+#[spec]
+fn ex1_rev() -> List<nat> {
+    List::Cons(5, box List::Cons(4, box List::Cons(3, box List::Cons(2, box List::Cons(1, box List::Nil)))))
 }
 
 fn compute_list() {
     assert_by_compute(len(ex1()) == 5);
-    //let rev1 = List::Cons(5, Box::new(List::Cons(4, Box::new(List::Cons(3, Box::new(List::Cons(2, Box::new(List::Cons(1, Box::new(List::Nil))))))))));
+    assert_by_compute(equal(reverse(ex1()), ex1_rev()));
 }

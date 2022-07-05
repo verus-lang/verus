@@ -12,13 +12,13 @@ use crate::ast::{
 use crate::ast_util::err_str;
 use crate::def::SstMap;
 use crate::sst::{Bnd, BndX, Exp, ExpX, Exps, UniqueIdent};
-use air::ast::Binders;
+use air::ast::{BinderX, Binders};
 use air::scope_map::ScopeMap;
 use num_bigint::{BigInt, Sign};
 use num_traits::identities::Zero;
 use num_traits::{One, Signed, ToPrimitive};
-use std::time::{Duration, Instant};
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 type Env = ScopeMap<UniqueIdent, Exp>;
 
@@ -301,8 +301,6 @@ fn definitely_equal(left: &Exp, right: &Exp) -> bool {
     }
 }
 
-
-
 /// Symbolically execute the expression as far as we can,
 /// stopping when we hit a symbolic control-flow decision
 fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, VirErr> {
@@ -330,7 +328,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
             }
             Some(e) => {
                 if state.debug {
-                    println!("Found match for {:?}", id);
+                    //println!("Found match for {:?}", id);
                 };
                 Ok(e.clone())
             }
@@ -401,7 +399,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                 Unbox(_) => match &e.x {
                     UnaryOpr(Box(_), inner_e) => {
                         if state.debug {
-                            println!("Unbox found matching box");
+                            //println!("Unbox found matching box");
                         };
                         Ok(inner_e.clone())
                     }
@@ -411,7 +409,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                 IsVariant { datatype, variant } => match &e.x {
                     Ctor(dt, var, _) => {
                         if state.debug {
-                            println!("IsVariant found matching Ctor!");
+                            //println!("IsVariant found matching Ctor!");
                         };
                         bool_new(dt == datatype && var == variant)
                     }
@@ -540,10 +538,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                                 Mul => int_new(i1 * i2),
                                 EuclideanDiv => {
                                     if i2.is_zero() {
-                                        err_str(
-                                            &exp.span,
-                                            "computation tried to divide by 0",
-                                        )
+                                        err_str(&exp.span, "computation tried to divide by 0")
                                     } else {
                                         // Based on Dafny's C# implementation:
                                         // https://github.com/dafny-lang/dafny/blob/08744a797296897f4efd486083579e484f57b9dc/Source/DafnyRuntime/DafnyRuntime.cs#L1383
@@ -563,7 +558,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                                     if i2.is_zero() {
                                         err_str(
                                             &exp.span,
-                                            "tried to compute a remainder with respect to 0"
+                                            "tried to compute a remainder with respect to 0",
                                         )
                                     } else {
                                         // Based on Dafny's C# implementation:
@@ -594,10 +589,9 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                             match op {
                                 Add | Sub => Ok(e1.clone()),
                                 Mul => zero,
-                                EuclideanDiv => err_str(
-                                    &exp.span,
-                                    "computation tried to divide by 0",
-                                ),
+                                EuclideanDiv => {
+                                    err_str(&exp.span, "computation tried to divide by 0")
+                                }
                                 EuclideanMod => err_str(
                                     &exp.span,
                                     "tried to compute a remainder with respect to 0",
@@ -707,9 +701,24 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
             }
             _ => ok,
         },
+        Ctor(path, id, bnds) => {
+            let mut new_bnds = Vec::new();
+            for b in bnds.iter() {
+                let name = b.name.clone();
+                let a = eval_expr_internal(ctx, state, &b.a)?;
+                let bnd = Arc::new(BinderX { name, a });
+                new_bnds.push(bnd);
+            }
+            //            let new_bnds: Result<Binders<Exp>, VirErr> =
+            //                bnds.iter().map(|b| {
+            //                    let name = b.name;
+            //                    let a =  eval_expr_internal(ctx, state, &b.a);
+            //                    Arc::new(BinderX{ name, a })}).collect();
+            //            let new_bnds = new_bnds?;
+            exp_new(Ctor(path.clone(), id.clone(), Arc::new(new_bnds)))
+        }
         // Ignored by the interpreter at present (i.e., treated as symbolic)
-        VarAt(..) | VarLoc(..) | Loc(..) | Old(..) | Ctor(..) | CallLambda(..)
-        | WithTriggers(..) => ok,
+        VarAt(..) | VarLoc(..) | Loc(..) | Old(..) | CallLambda(..) | WithTriggers(..) => ok,
     };
     let res = r?;
     state.depth -= 1;
@@ -728,6 +737,5 @@ pub fn eval_expr(exp: &Exp, fun_ssts: &SstMap) -> Result<Exp, VirErr> {
     let ctx = Ctx { fun_ssts, time_start, time_limit };
     let env = ScopeMap::new();
     let mut state = State { depth: 0, env, debug: true };
-    println!("Starting...");
     eval_expr_internal(&ctx, &mut state, exp)
 }

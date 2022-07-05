@@ -7,8 +7,8 @@
 //! SST is designed to make the translation to AIR as straightforward as possible.
 
 use crate::ast::{
-    ArithOp, AssertQueryMode, BinaryOp, BitwiseOp, Constant, Fun, InequalityOp, InvAtomicity, Mode, Path, Quant, SpannedTyped, Typ,
-    Typs, UnaryOp, UnaryOpr, VarAt,
+    ArithOp, AssertQueryMode, BinaryOp, BitwiseOp, Constant, Fun, InequalityOp, InvAtomicity, Mode,
+    Path, Quant, SpannedTyped, Typ, Typs, UnaryOp, UnaryOpr, VarAt,
 };
 use crate::def::Spanned;
 use air::ast::{Binders, Ident};
@@ -128,10 +128,10 @@ impl fmt::Display for ExpX {
             Const(c) => match c {
                 Constant::Bool(b) => write!(f, "{}", b),
                 Constant::Int(i) => write!(f, "{}", i),
-            }
+            },
             Var(id) => write!(f, "{}", id.0),
             Call(fun, _, exps) => {
-                let args = exps.iter().map(|e| e.to_string()). collect::<Vec<_>>().join(", ");
+                let args = exps.iter().map(|e| e.to_string()).collect::<Vec<_>>().join(", ");
                 write!(f, "{}({})", fun.path.segments.last().unwrap(), args)
             }
             Unary(op, exp) => match op {
@@ -139,7 +139,7 @@ impl fmt::Display for ExpX {
                 UnaryOp::BitNot => write!(f, "!{}", exp),
                 UnaryOp::Trigger(..) => Ok(()),
                 UnaryOp::Clip(_range) => write!(f, "clip({})", exp),
-            }
+            },
             UnaryOpr(op, exp) => {
                 use crate::ast::UnaryOpr::*;
                 match op {
@@ -152,13 +152,13 @@ impl fmt::Display for ExpX {
                 }
             }
             Binary(op, e1, e2) => {
-                use BinaryOp::*;
                 use ArithOp::*;
-                use InequalityOp::*;
+                use BinaryOp::*;
                 use BitwiseOp::*;
+                use InequalityOp::*;
                 match op {
                     And => write!(f, "{} && {}", e1, e2),
-                    Or  => write!(f, "{} || {}", e1, e2),
+                    Or => write!(f, "{} || {}", e1, e2),
                     Xor => write!(f, "{} ^ {}", e1, e2),
                     Implies => write!(f, "{} ==> {}", e1, e2),
                     Eq(_) => write!(f, "{} == {}", e1, e2),
@@ -168,37 +168,44 @@ impl fmt::Display for ExpX {
                         Ge => write!(f, "{} >= {}", e1, e2),
                         Lt => write!(f, "{} < {}", e1, e2),
                         Gt => write!(f, "{} > {}", e1, e2),
-                    }
+                    },
                     Arith(o, _) => match o {
                         Add => write!(f, "{} + {}", e1, e2),
                         Sub => write!(f, "{} - {}", e1, e2),
                         Mul => write!(f, "{} * {}", e1, e2),
                         EuclideanDiv => write!(f, "{} / {}", e1, e2),
                         EuclideanMod => write!(f, "{} % {}", e1, e2),
-                    }
+                    },
                     Bitwise(o) => match o {
                         BitXor => write!(f, "{} ^ {}", e1, e2),
                         BitAnd => write!(f, "{} & {}", e1, e2),
-                        BitOr  => write!(f, "{} | {}", e1, e2),
+                        BitOr => write!(f, "{} | {}", e1, e2),
                         Shr => write!(f, "{} >> {}", e1, e2),
                         Shl => write!(f, "{} << {}", e1, e2),
-                    }
+                    },
                 }
-            },
+            }
             If(e1, e2, e3) => write!(f, "if {} then {} else {}", e1, e2, e3),
             Bind(bnd, exp) => match &bnd.x {
                 BndX::Let(bnds) => {
-                    let assigns = bnds.iter().map(|b| format!("{} = {}, ", b.name, b.a)).collect::<Vec<_>>().join(", ");
+                    let assigns = bnds
+                        .iter()
+                        .map(|b| format!("{} = {}, ", b.name, b.a))
+                        .collect::<Vec<_>>()
+                        .join(", ");
                     write!(f, "let {} in {}", assigns, exp)
-                },
-                BndX::Quant(..) | BndX::Lambda(..) | BndX::Choose(..) => write!(f, "Unexpected: {:?}", self),
+                }
+                BndX::Quant(..) | BndX::Lambda(..) | BndX::Choose(..) => {
+                    write!(f, "Unexpected: {:?}", self)
+                }
             },
             Ctor(_path, id, bnds) => {
                 let args = bnds.iter().map(|b| b.a.to_string()).collect::<Vec<_>>().join(", ");
                 write!(f, "{}({})", id, args)
             }
-            CallLambda(..) | VarLoc(..) | VarAt(..) | Loc(..) | Old(..) | WithTriggers(..) => write!(f, "Unexpected: {:?}", self)
-
+            CallLambda(..) | VarLoc(..) | VarAt(..) | Loc(..) | Old(..) | WithTriggers(..) => {
+                write!(f, "Unexpected: {:?}", self)
+            }
         }
     }
 }
