@@ -336,7 +336,7 @@ pub enum AssertQueryMode {
     NonLinear,
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Quant {
     pub quant: air::ast::Quant,
     pub boxed_params: bool,

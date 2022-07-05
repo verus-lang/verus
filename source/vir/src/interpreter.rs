@@ -6,11 +6,13 @@
 //! https://github.com/secure-foundations/verus/discussions/120
 
 use crate::ast::{
-    ArithOp, BinaryOp, BitwiseOp, Constant, InequalityOp, IntRange, SpannedTyped, UnaryOp, VirErr,
+    ArithOp, BinaryOp, BitwiseOp, Constant, InequalityOp, IntRange, SpannedTyped, Typ, TypX, Typs,
+    UnaryOp, VirErr,
 };
 use crate::ast_util::err_string;
 use crate::def::SstMap;
-use crate::sst::{BndX, Exp, ExpX, UniqueIdent};
+use crate::sst::{Bnd, BndX, Exp, ExpX, Exps, UniqueIdent};
+use air::ast::Binders;
 use air::scope_map::ScopeMap;
 use num_bigint::{BigInt, Sign};
 use num_traits::identities::Zero;
@@ -29,11 +31,74 @@ struct State {
 // TODO: Bound the running time, based on rlimit
 // TODO: Swap to CPS with enforced tail-call optimization to avoid exhausting the stack
 
+// Computes the syntactic equality of two types
+// Some(b) means b is exp1 == exp2
+// None means we can't tell
+fn equal_typ(left: &Typ, right: &Typ) -> Option<bool> {
+    use TypX::*;
+    match (&**left, &**right) {
+        (Bool, Bool) => Some(true),
+        (Int(l), Int(r)) => Some(l == r),
+        (Tuple(typs_l), Tuple(typs_r)) => equal_typs(typs_l, typs_r),
+        (Lambda(formals_l, res_l), Lambda(formals_r, res_r)) => {
+            Some(equal_typs(formals_l, formals_r)? && equal_typ(res_l, res_r)?)
+        }
+        (Datatype(path_l, typs_l), Datatype(path_r, typs_r)) => {
+            Some(path_l == path_r && equal_typs(typs_l, typs_r)?)
+        }
+        (Boxed(l), Boxed(r)) => equal_typ(l, r),
+        (TypParam(l), TypParam(r)) => Some(l == r),
+        (TypeId, TypeId) => Some(true),
+        (Air(l), Air(r)) => Some(l == r),
+        _ => None,
+    }
+}
+
+fn equal_typs(left: &Typs, right: &Typs) -> Option<bool> {
+    let eq: Option<bool> = left
+        .iter()
+        .zip(right.iter())
+        .fold(Some(true), |b, (t_l, t_r)| Some(b? && equal_typ(&*t_l, &*t_r)?));
+    eq
+}
+
+// Computes the syntactic equality of two binders
+// Some(b) means b is exp1 == exp2
+// None means we can't tell
+fn equal_bnd(left: &Bnd, right: &Bnd) -> Option<bool> {
+    use BndX::*;
+    match (&left.x, &right.x) {
+        (Let(bnds_l), Let(bnds_r)) => equal_bnds_exp(bnds_l, bnds_r),
+        (Quant(q_l, bnds_l, _trigs_l), Quant(q_r, bnds_r, _trigs_r)) => {
+            Some(q_l == q_r && equal_bnds_typ(bnds_l, bnds_r)?)
+        }
+        (Lambda(bnds_l), Lambda(bnds_r)) => equal_bnds_typ(bnds_l, bnds_r),
+        (Choose(bnds_l, _trigs_l, e_l), Choose(bnds_r, _trigs_r, e_r)) => {
+            Some(equal_bnds_typ(bnds_l, bnds_r)? && equal_expr(e_l, e_r)?)
+        }
+        _ => None,
+    }
+}
+
+fn equal_bnds_typ(left: &Binders<Typ>, right: &Binders<Typ>) -> Option<bool> {
+    let eq: Option<bool> = left.iter().zip(right.iter()).fold(Some(true), |b, (bnd_l, bnd_r)| {
+        Some(b? && bnd_l.name == bnd_r.name && equal_typ(&bnd_l.a, &bnd_r.a)?)
+    });
+    eq
+}
+
+fn equal_bnds_exp(left: &Binders<Exp>, right: &Binders<Exp>) -> Option<bool> {
+    let eq: Option<bool> = left.iter().zip(right.iter()).fold(Some(true), |b, (bnd_l, bnd_r)| {
+        Some(b? && bnd_l.name == bnd_r.name && equal_expr(&bnd_l.a, &bnd_r.a)?)
+    });
+    eq
+}
+
 // Computes the syntactic equality of two expressions
 // Some(b) means b is exp1 == exp2
 // None means we can't tell
 // We expect to only call this after eval_expr has been called on both expressions
-fn equal_exprs(left: &Exp, right: &Exp) -> Option<bool> {
+fn equal_expr(left: &Exp, right: &Exp) -> Option<bool> {
     use ExpX::*;
     match (&left.x, &right.x) {
         (Const(l), Const(r)) => Some(l == r),
@@ -60,67 +125,75 @@ fn equal_exprs(left: &Exp, right: &Exp) -> Option<bool> {
                 None
             }
         }
-        (Loc(l), Loc(r)) => equal_exprs(l, r),
+        (Loc(l), Loc(r)) => equal_expr(l, r),
         (Old(id_l, unique_id_l), Old(id_r, unique_id_r)) => {
             if id_l == id_r && unique_id_l == unique_id_r { Some(true) } else { None }
         }
         (Call(f_l, _, exps_l), Call(f_r, _, exps_r)) => {
             if f_l == f_r && exps_l.len() == exps_r.len() {
-                let eq: Option<bool> = exps_l
-                    .iter()
-                    .zip(exps_r.iter())
-                    .fold(Some(true), |b, (e_l, e_r)| Some(b? && equal_exprs(e_l, e_r)?));
-                eq
+                equal_exprs(exps_l, exps_r)
             } else {
+                // We don't know if a function call on symbolic values
+                // will return the same or different values
                 None
             }
         }
-        (CallLambda(..), CallLambda(..)) => None, // TODO: Can we do better here?
+        (CallLambda(typ_l, exp_l, exps_l), CallLambda(typ_r, exp_r, exps_r)) => Some(
+            equal_typ(typ_l, typ_r)? && equal_expr(exp_l, exp_r)? && equal_exprs(exps_l, exps_r)?,
+        ),
+
         (Ctor(path_l, id_l, bnds_l), Ctor(path_r, id_r, bnds_r)) => {
             if path_l != path_r || id_l != id_r {
+                // These are definitely different datatypes or different
+                // constructors of the same datatype
                 Some(false)
             } else {
-                let eq: Option<bool> =
-                    bnds_l.iter().zip(bnds_r.iter()).fold(Some(true), |b, (bnd_l, bnd_r)| {
-                        Some(b? && bnd_l.name == bnd_r.name && equal_exprs(&bnd_l.a, &bnd_r.a)?)
-                    });
-                eq
+                equal_bnds_exp(bnds_l, bnds_r)
             }
         }
-        (Unary(op_l, e_l), Unary(op_r, e_r)) => Some(op_l == op_r && equal_exprs(e_l, e_r)?),
+        (Unary(op_l, e_l), Unary(op_r, e_r)) => Some(op_l == op_r && equal_expr(e_l, e_r)?),
         (UnaryOpr(op_l, e_l), UnaryOpr(op_r, e_r)) => {
             use crate::ast::UnaryOpr::*;
             let op_eq = match (op_l, op_r) {
-                // Safe to ignore types on these?
-                (Box(_), Box(_)) => true,
-                (Unbox(_), Unbox(_)) => true,
-                (HasType(_), HasType(_)) => true,
+                (Box(l), Box(r)) => equal_typ(l, r),
+                (Unbox(l), Unbox(r)) => equal_typ(l, r),
+                (HasType(l), HasType(r)) => equal_typ(l, r),
                 (
                     IsVariant { datatype: dt_l, variant: var_l },
                     IsVariant { datatype: dt_r, variant: var_r },
-                ) => dt_l == dt_r && var_l == var_r,
+                ) => Some(dt_l == dt_r && var_l == var_r),
                 (TupleField { .. }, TupleField { .. }) => {
                     panic!("TupleField should have been removed by ast_simplify!")
                 }
-                (Field(l), Field(r)) => l == r,
-                _ => false,
+                (Field(l), Field(r)) => Some(l == r),
+                _ => Some(false),
             };
-            Some(op_eq && equal_exprs(e_l, e_r)?)
+            Some(op_eq? && equal_expr(e_l, e_r)?)
         }
         (Binary(op_l, e1_l, e2_l), Binary(op_r, e1_r, e2_r)) => {
-            Some(op_l == op_r && equal_exprs(e1_l, e1_r)? && equal_exprs(e2_l, e2_r)?)
+            Some(op_l == op_r && equal_expr(e1_l, e1_r)? && equal_expr(e2_l, e2_r)?)
         }
         (If(e1_l, e2_l, e3_l), If(e1_r, e2_r, e3_r)) => {
-            Some(equal_exprs(e1_l, e1_r)? && equal_exprs(e2_l, e2_r)? && equal_exprs(e3_l, e3_r)?)
+            Some(equal_expr(e1_l, e1_r)? && equal_expr(e2_l, e2_r)? && equal_expr(e3_l, e3_r)?)
         }
-        (WithTriggers(_trigs_l, e_l), WithTriggers(_trigs_r, e_r)) => equal_exprs(e_l, e_r),
-        (Bind(bnd_l, e_l), Bind(bnd_r, e_r)) => None, // TODO: Deep comparison?
+        (WithTriggers(_trigs_l, e_l), WithTriggers(_trigs_r, e_r)) => equal_expr(e_l, e_r),
+        (Bind(bnd_l, e_l), Bind(bnd_r, e_r)) => {
+            Some(equal_bnd(bnd_l, bnd_r)? && equal_expr(e_l, e_r)?)
+        }
         _ => None,
     }
 }
 
+fn equal_exprs(left: &Exps, right: &Exps) -> Option<bool> {
+    let eq: Option<bool> = left
+        .iter()
+        .zip(right.iter())
+        .fold(Some(true), |b, (e_l, e_r)| Some(b? && equal_expr(e_l, e_r)?));
+    eq
+}
+
 fn definitely_equal(left: &Exp, right: &Exp) -> bool {
-    match equal_exprs(left, right) {
+    match equal_expr(left, right) {
         None => false,
         Some(b) => b,
     }
@@ -134,9 +207,9 @@ fn eval_expr_internal(state: &mut State, fun_ssts: &SstMap, exp: &Exp) -> Result
     }
     state.depth += 1;
     let exp_new = |e: ExpX| Ok(SpannedTyped::new(&exp.span, &exp.typ, e));
-    let bool_new = |b: bool| Ok(SpannedTyped::new(&exp.span, &exp.typ, Const(Constant::Bool(b))));
-    let int_new = |i: BigInt| Ok(SpannedTyped::new(&exp.span, &exp.typ, Const(Constant::Int(i))));
-    let zero = Ok(SpannedTyped::new(&exp.span, &exp.typ, Const(Constant::Int(BigInt::zero()))));
+    let bool_new = |b: bool| exp_new(Const(Constant::Bool(b)));
+    let int_new = |i: BigInt| exp_new(Const(Constant::Int(i)));
+    let zero = int_new(BigInt::zero());
     let ok = Ok(exp.clone());
     use ExpX::*;
     let r = match &exp.x {
@@ -207,6 +280,8 @@ fn eval_expr_internal(state: &mut State, fun_ssts: &SstMap, exp: &Exp) -> Result
                         Not | Trigger(_) => ok,
                     }
                 }
+                // !(!(e_inner)) == e_inner
+                Unary(Not, e_inner) if matches!(op, Not) => Ok(e_inner.clone()),
                 _ => ok,
             }
         }
@@ -293,31 +368,38 @@ fn eval_expr_internal(state: &mut State, fun_ssts: &SstMap, exp: &Exp) -> Result
                         _ => ok_e2(e2),
                     }
                 }
-                // TODO: Does Implies short-circuit?
                 Implies => {
-                    let e2 = eval_expr_internal(state, fun_ssts, e2)?;
-                    match (&e1.x, &e2.x) {
-                        (Const(Bool(b1)), Const(Bool(b2))) => {
-                            let r = !b1 || *b2;
-                            bool_new(r)
+                    match &e1.x {
+                        Const(Bool(true)) => eval_expr_internal(state, fun_ssts, e2),
+                        Const(Bool(false)) => bool_new(true),
+                        _ => {
+                            let e2 = eval_expr_internal(state, fun_ssts, e2)?;
+                            match &e2.x {
+                                Const(Bool(true)) => bool_new(false),
+                                Const(Bool(false)) =>
+                                // Recurse in case we can simplify the new negation
+                                {
+                                    eval_expr_internal(
+                                        state,
+                                        fun_ssts,
+                                        &exp_new(Unary(UnaryOp::Not, e1.clone()))?,
+                                    )
+                                }
+                                _ => ok_e2(e2),
+                            }
                         }
-                        (Const(Bool(true)), _) => Ok(e2.clone()),
-                        (Const(Bool(false)), _) => bool_new(true),
-                        (_, Const(Bool(true))) => bool_new(true),
-                        (_, Const(Bool(false))) => exp_new(Unary(UnaryOp::Not, e1.clone())),
-                        _ => ok_e2(e2),
                     }
                 }
                 Eq(_mode) => {
                     let e2 = eval_expr_internal(state, fun_ssts, e2)?;
-                    match equal_exprs(&e1, &e2) {
+                    match equal_expr(&e1, &e2) {
                         None => ok_e2(e2),
                         Some(b) => bool_new(b),
                     }
                 }
                 Ne => {
                     let e2 = eval_expr_internal(state, fun_ssts, e2)?;
-                    match equal_exprs(&e1, &e2) {
+                    match equal_expr(&e1, &e2) {
                         None => ok_e2(e2),
                         Some(b) => bool_new(!b),
                     }
@@ -506,8 +588,6 @@ fn eval_expr_internal(state: &mut State, fun_ssts: &SstMap, exp: &Exp) -> Result
                 }
             }
         }
-        // TODO: Fill this in
-        CallLambda(_typ, _e0, _es) => ok,
         Bind(bnd, e) => match &bnd.x {
             BndX::Let(bnds) => {
                 state.env.push_scope(true);
@@ -522,7 +602,8 @@ fn eval_expr_internal(state: &mut State, fun_ssts: &SstMap, exp: &Exp) -> Result
             _ => ok,
         },
         // Ignored by the interpreter at present (i.e., treated as symbolic)
-        VarAt(..) | VarLoc(..) | Loc(..) | Old(..) | Ctor(..) | WithTriggers(..) => ok,
+        VarAt(..) | VarLoc(..) | Loc(..) | Old(..) | Ctor(..) | CallLambda(..)
+        | WithTriggers(..) => ok,
     };
     let res = r?;
     state.depth -= 1;
