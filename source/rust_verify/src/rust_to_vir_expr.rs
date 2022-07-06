@@ -1578,6 +1578,10 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
             rustc_ast::LitKind::Int(i, _) => {
                 mk_lit_int(false, i, typ_of_node(bctx, &expr.hir_id, false))
             }
+            rustc_ast::LitKind::Str(s, cooked) => {
+                let c = vir::ast::Constant::StrSlice(Arc::new(s.to_string()));
+                Ok(mk_expr(ExprX::Const(c)))
+            }
             _ => {
                 panic!("unexpected constant: {:?}", lit)
             }

@@ -21,8 +21,8 @@ test_verify_one_file! {
         use pervasive::string::*;
 
         fn string_lit() {
-            let a: StrSlice<'_> = StrSlice::new("this");
-            let b: StrSlice<'_> = StrSlice::new("this");
+            let a: StrSlice<'_> = StrSlice::new("strlit1");
+            let b: StrSlice<'_> = StrSlice::new("strlit2");
 
             assert(a === b);
         }

@@ -9,7 +9,7 @@ use crate::rust_to_vir_expr::{expr_to_vir, pat_to_var, ExprModifier};
 use crate::util::{err_span_str, err_span_string, spanned_new, unsupported_err_span};
 use crate::{unsupported, unsupported_err, unsupported_err_unless, unsupported_unless};
 use rustc_ast::Attribute;
-use rustc_hir::{Body, BodyId, FnDecl, FnHeader, FnSig, Generics, Param, Unsafety};
+use rustc_hir::{Body, BodyId, FnDecl, FnHeader, FnSig, Generics, Param, TyKind, Unsafety, QPath, PrimTy, def::Res, FnRetTy, Ty};
 use rustc_middle::ty::TyCtxt;
 use rustc_span::symbol::Ident;
 use rustc_span::Span;
@@ -90,6 +90,55 @@ fn find_body<'tcx>(ctxt: &Context<'tcx>, body_id: &BodyId) -> &'tcx Body<'tcx> {
     panic!("Body not found");
 }
 
+
+fn check_strslice_new<'tcx>(sig: &'tcx FnSig<'tcx>) -> Result<(), VirErr> {
+
+    let (decl, span) = match sig {
+        FnSig { header: _, decl, span } => (decl, span),
+        _ => {
+            crate::err!(sig.span, format!("Expected a function signature"));
+        }
+    };
+    let sig_span = span;
+
+    if decl.inputs.len() != 1 {
+        crate::err!(*span, format!("Expected 1 input for StrSlice::new but got {}", decl.inputs.len()));
+    }
+
+
+    let (kind, span) = match &decl.inputs[0].kind {
+        TyKind::Rptr(_, muty) => (&muty.ty.kind, muty.ty.span),
+        _ => crate::err!(decl.inputs[0].span, format!("Expected a Rptr") ),
+    };
+
+    let (res, span) = match kind {
+        TyKind::Path( QPath::Resolved(_, path)) => (path.res, path.span),
+        _ => crate::err!(span, format!("Expected a resolved path"))
+    };
+
+    if res != Res::PrimTy(PrimTy::Str) {
+        crate::err!(span, format!("Expected primitive type str"));
+    }
+    
+    let (kind, span) = match decl.output {
+        FnRetTy::Return( Ty {hir_id: _, kind, span} ) => (kind, span),
+        _ => crate::err!(*sig_span, format!(""))
+    };
+
+
+
+    let (res, span) = match kind {
+        TyKind::Path( QPath::Resolved(_, path)) => (path.res, path.span), 
+        _ => crate::err!(*span, format!("Expected a resolved path"))
+    };
+
+    match res {
+        Res::SelfTy(_, _) => {}, 
+        _ => crate::err!(span, format!("Expected a Self, while StrSlice<'a> is a valid return type, this isn't suppported at the moment"))
+    };
+    Ok(())
+}
+
 pub(crate) fn check_item_fn<'tcx>(
     ctxt: &Context<'tcx>,
     vir: &mut KrateX,
@@ -105,14 +154,17 @@ pub(crate) fn check_item_fn<'tcx>(
     body_id: &BodyId,
 ) -> Result<Option<Fun>, VirErr> {
     let path = def_id_to_vir_path(ctxt.tcx, id);
-    dbg!(&path);
-    let is_str_new = matches!(path.krate, None) &&
-            path.segments.len() == 4 &&
-            *path.segments[0] == "pervasive" &&
-            *path.segments[1] == "string" &&
-            *path.segments[2] == "StrSlice" &&
-            *path.segments[3] == "new";
-    let name = Arc::new(FunX { path, trait_path: trait_path });
+
+    // this is ugly but probably better than converting the Vec<Arc<String>> to a Vec<String> and
+    // comparing that
+    let is_str_new = matches!(path.krate, None) && path.segments.len() == 4 && {
+        *path.segments[0] == "pervasive"
+            && *path.segments[1] == "string"
+            && *path.segments[2] == "StrSlice"
+            && *path.segments[3] == "new"
+    };
+
+    let name = Arc::new(FunX { path, trait_path });
     let mode = get_mode(Mode::Exec, attrs);
     let self_typ_params = if let Some(cg) = self_generics {
         Some(check_generics_bounds_fun(ctxt.tcx, cg)?)
@@ -137,7 +189,6 @@ pub(crate) fn check_item_fn<'tcx>(
             check_fn_decl(ctxt.tcx, &sig.span, decl, self_typ.clone(), attrs, mode)?
         }
     };
-    dbg!(&name);
     let sig_typ_bounds = check_generics_bounds_fun(ctxt.tcx, generics)?;
     let vattrs = get_verifier_attrs(attrs)?;
     let fuel = get_fuel(&vattrs);
@@ -151,10 +202,12 @@ pub(crate) fn check_item_fn<'tcx>(
     let mut vir_params: Vec<vir::ast::Param> = Vec::new();
 
     if is_str_new {
-        unsupported_err_unless!(vattrs.external_body, sig.span, "StrSlice::new must be external_body");
-        todo!();
-        // - make sure types are correct
-        // - return type is correct
+        unsupported_err_unless!(
+            vattrs.external_body,
+            sig.span,
+            "StrSlice::new must be external_body"
+        ); 
+        check_strslice_new(sig)?;
         let mut erasure_info = ctxt.erasure_info.borrow_mut();
         erasure_info.external_functions.push(name);
         return Ok(None);
