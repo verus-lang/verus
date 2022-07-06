@@ -1,4 +1,7 @@
 // rust_verify/tests/example.rs ignore
+// This file is used to test Verus' quantifier profiler,
+// so several of the examples below are expected to timeout 
+// (i.e., exceed their rlimit).
 #[allow(unused_imports)]
 use builtin::*;
 use builtin_macros::*;
