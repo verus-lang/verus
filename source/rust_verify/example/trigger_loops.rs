@@ -29,7 +29,17 @@ fn choose_example() {
 #[proof]
 fn cost_example() {
     requires([f(1,2),
-              forall(|x, y| #[trigger] f(x, y) == (g(x) && g(y))),
+              forall(|x, y| #[trigger] f(x, y) 
+                     == (g(x) && g(y))),
+              forall(|z| #[trigger] g(z) == j(z + 2))]);
+    assert(j(3) && j(4));
+}
+
+#[proof]
+fn cost_example2() {
+    requires([g(1), g(2),
+              forall(|x, y| f(x, y) == 
+                     (#[trigger] g(x) && #[trigger] g(y))),
               forall(|z| #[trigger] g(z) == j(z + 2))]);
     assert(j(3) && j(4));
 }

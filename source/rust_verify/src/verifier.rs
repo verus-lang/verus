@@ -245,7 +245,6 @@ impl Verifier {
         let num_quants = profiler.quant_count();
         let total = profiler.total_instantiations();
         let max = 10;
-        let delimiter = "-".repeat(100);
         let msg = format!(
             "Observed {} total instantiations of user-level quantifiers",
             total.to_formatted_string(&Locale::en)
@@ -253,16 +252,16 @@ impl Verifier {
         compiler.diagnostic().note_without_error(&msg);
 
         for (index, cost) in profiler.iter().take(max).enumerate() {
-            //println!("{}", delimiter);
             // Report the quantifier
             let bnd_info = qid_map
                 .get(&cost.quant)
                 .expect(format!("Failed to find quantifier {}", cost.quant).as_str());
             let span = from_raw_span(&bnd_info.span.raw_span);
+            let mut spans = Vec::new();
+            //spans.push(span);
             let count = cost.instantiations;
             let msg = format!(
-                "{}\nCost * Instantiations: {} (Instantiated {} times - {}% of the total, cost {}) top {} of {} user-level quantifiers.\n",
-                delimiter,
+                "Cost * Instantiations: {} (Instantiated {} times - {}% of the total, cost {}) top {} of {} user-level quantifiers.\n",
                 count * cost.cost,
                 count.to_formatted_string(&Locale::en),
                 100 * count / total,
@@ -270,17 +269,15 @@ impl Verifier {
                 index + 1,
                 num_quants
             );
-            compiler.diagnostic().span_note_without_error(span, &msg);
 
             // Summarize the triggers it used
             let triggers = &bnd_info.trigs;
-            for (n, trigger) in triggers.iter().enumerate() {
-                let spans = MultiSpan::from_spans(
-                    trigger.iter().map(|e| from_raw_span(&e.span.raw_span)).collect(),
-                );
-                let msg = format!("  trigger {} of {}:", n + 1, triggers.len());
-                compiler.diagnostic().span_note_without_error(spans, &msg);
+            for trigger in triggers.iter() {
+                spans.extend(trigger.iter().map(|e| from_raw_span(&e.span.raw_span)));
             }
+            let mut multi = MultiSpan::from_spans(spans);
+            multi.push_span_label(span, "Triggers selected for this quantifier".to_string());
+            compiler.diagnostic().span_note_without_error(multi, &msg);
         }
     }
 
