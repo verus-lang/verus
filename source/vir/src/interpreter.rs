@@ -736,6 +736,6 @@ pub fn eval_expr(exp: &Exp, fun_ssts: &SstMap) -> Result<Exp, VirErr> {
     let time_start = Instant::now();
     let ctx = Ctx { fun_ssts, time_start, time_limit };
     let env = ScopeMap::new();
-    let mut state = State { depth: 0, env, debug: true };
+    let mut state = State { depth: 0, env, debug: false };
     eval_expr_internal(&ctx, &mut state, exp)
 }

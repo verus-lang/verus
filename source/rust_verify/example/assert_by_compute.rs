@@ -1,12 +1,14 @@
+#[allow(unused_imports)]
 use builtin::*;
 use builtin_macros::*;
 mod pervasive;
+#[allow(unused_imports)]
 use pervasive::option::Option;
+#[allow(unused_imports)]
 use pervasive::*;
 
 fn main() {}
 
-/*
 #[spec]
 fn shifter(x: u64, amt: usize) -> u64 {
     decreases(amt);
@@ -26,7 +28,7 @@ fn compute_arith(x:u64) {
     assert_by_compute(x * 0 == 0);  // 0 == 0
     // TODO: This currently produces: uClip(64, x) == x,
     // due to the same issue mentioned below
-    assert_by_compute(x * 1 == x);  // x == x
+    assert_by_compute(x * 1 == x);
 }
 
 fn compute_ite() {
@@ -36,17 +38,18 @@ fn compute_ite() {
     // They are inserted because the mode checker treats constants as Exec,
     // which leads to the arith being marked as Exec, and the mode checker
     // confirms that an Exec expression can be passed as a Spec arg,
-    // but it doesn't "upgrade" the expression to Spec
+    // but it doesn't "upgrade" the expression to Spec.
+    // This should be addressed when we move to the new syntax.
     //assert_by_compute(9 == if (7 + 7 * 2 > 20) { 7 + 2 } else { 22 - 5 + 10*10 });
 }
 
 fn compute_let() {
     assert_by_compute({#[spec]let x = true; x});    // true
-    assert_by_compute({#[spec]let x = 7; x > 4});   // TODO: Error!
+    assert_by_compute({#[spec]let x = 7; x > 4});   // true
 }
 
 fn compute_datatype() {
-    assert_by_compute(
+    assert_by_compute(  // true
         match Option::Some(true) {
             Option::Some(b) => b,
             _ => 10 > 20,
@@ -79,6 +82,7 @@ fn compute_fib() {
 }
 
 // VeriTitan example
+/*
 #[spec]
 fn pow(base: nat, exp: nat) -> nat {
     decreases(exp);
