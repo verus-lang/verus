@@ -598,9 +598,10 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                                 ),
                             }
                         }
-                        (_, Const(Int(i2)))
-                            if i2.is_one() && matches!(op, Mul | EuclideanDiv | EuclideanMod) =>
-                        {
+                        (_, Const(Int(i2))) if i2.is_one() && matches!(op, EuclideanMod) => {
+                            int_new(BigInt::one())
+                        }
+                        (_, Const(Int(i2))) if i2.is_one() && matches!(op, Mul | EuclideanDiv) => {
                             Ok(e1.clone())
                         }
                         _ => {
