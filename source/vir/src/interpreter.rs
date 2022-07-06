@@ -12,7 +12,7 @@ use crate::ast::{
 use crate::ast_util::err_str;
 use crate::def::SstMap;
 use crate::sst::{Bnd, BndX, Exp, ExpX, Exps, UniqueIdent};
-use air::ast::{BinderX, Binders};
+use air::ast::{Binder, BinderX, Binders};
 use air::scope_map::ScopeMap;
 use num_bigint::{BigInt, Sign};
 use num_traits::identities::Zero;
@@ -702,19 +702,15 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
             _ => ok,
         },
         Ctor(path, id, bnds) => {
-            let mut new_bnds = Vec::new();
-            for b in bnds.iter() {
-                let name = b.name.clone();
-                let a = eval_expr_internal(ctx, state, &b.a)?;
-                let bnd = Arc::new(BinderX { name, a });
-                new_bnds.push(bnd);
-            }
-            //            let new_bnds: Result<Binders<Exp>, VirErr> =
-            //                bnds.iter().map(|b| {
-            //                    let name = b.name;
-            //                    let a =  eval_expr_internal(ctx, state, &b.a);
-            //                    Arc::new(BinderX{ name, a })}).collect();
-            //            let new_bnds = new_bnds?;
+            let new_bnds: Result<Vec<Binder<Exp>>, VirErr> = bnds
+                .iter()
+                .map(|b| {
+                    let name = b.name.clone();
+                    let a = eval_expr_internal(ctx, state, &b.a)?;
+                    Ok(Arc::new(BinderX { name, a }))
+                })
+                .collect();
+            let new_bnds = new_bnds?;
             exp_new(Ctor(path.clone(), id.clone(), Arc::new(new_bnds)))
         }
         // Ignored by the interpreter at present (i.e., treated as symbolic)
