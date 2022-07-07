@@ -16,7 +16,8 @@ use crate::util::{vec_map, vec_map_result};
 use air::ast::{Binder, BinderX, Binders, Span};
 use air::errors::error_with_label;
 use air::scope_map::ScopeMap;
-use num_bigint::ToBigInt;
+use num_bigint::BigInt;
+use num_traits::identities::Zero;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::Arc;
 
@@ -913,7 +914,7 @@ fn expr_to_stm_opt(
                                     }
                                     ArithOp::EuclideanDiv | ArithOp::EuclideanMod => {
                                         let zero =
-                                            ExpX::Const(Constant::Int(0.to_bigint().unwrap()));
+                                            ExpX::Const(Constant::Int(BigInt::zero()));
                                         let ne =
                                             ExpX::Binary(BinaryOp::Ne, e2.clone(), e2.new_x(zero));
                                         let ne = SpannedTyped::new(
@@ -1178,7 +1179,7 @@ fn expr_to_stm_opt(
             // We assert the (hopefully simplified) result of calling the interpreter
             // but assume the original expression, so we get the benefits
             // of any ensures, triggers, etc., that it might provide
-            let interp_expr = eval_expr(&state.finalize_exp(&expr), &state.fun_ssts)?;
+            let interp_expr = eval_expr(&state.finalize_exp(&expr), &state.fun_ssts, ctx.global.rlimit)?;
             let assert = Spanned::new(e.span.clone(), StmX::Assert(None, interp_expr));
             let assume = Spanned::new(e.span.clone(), StmX::Assume(expr));
             Ok((vec![assert, assume], ret))

@@ -741,11 +741,9 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
     Ok(res)
 }
 
-pub fn eval_expr(exp: &Exp, fun_ssts: &SstMap) -> Result<Exp, VirErr> {
-    // Don't run for more than 1 second
-    // (we could base this on rlimit, but we would need to plumb that
-    //  all the way here from rust_verify)
-    let time_limit = Duration::new(1, 0);
+pub fn eval_expr(exp: &Exp, fun_ssts: &SstMap, rlimit: u32) -> Result<Exp, VirErr> {
+    // Don't run for more than rlimit seconds
+    let time_limit = Duration::new(rlimit as u64, 0);
     let time_start = Instant::now();
     let ctx = Ctx { fun_ssts, time_start, time_limit };
     let env = ScopeMap::new();

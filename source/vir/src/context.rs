@@ -34,6 +34,7 @@ pub struct GlobalCtx {
     pub func_call_sccs: Vec<Node>,
     pub method_map: HashMap<(Fun, Path), Fun>,
     pub(crate) inferred_modes: HashMap<InferMode, Mode>,
+    pub(crate) rlimit: u32,
 }
 
 // Context for verifying one function
@@ -139,6 +140,7 @@ impl GlobalCtx {
         krate: &Krate,
         no_span: Span,
         inferred_modes: HashMap<InferMode, Mode>,
+        rlimit: u32,
     ) -> Result<Self, VirErr> {
         let chosen_triggers: std::cell::RefCell<Vec<ChosenTriggers>> =
             std::cell::RefCell::new(Vec::new());
@@ -194,6 +196,7 @@ impl GlobalCtx {
             func_call_sccs,
             method_map,
             inferred_modes,
+            rlimit,
         })
     }
 
