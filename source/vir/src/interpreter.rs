@@ -444,13 +444,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                         }
                         Clip(range) => {
                             let apply_range = |lower: BigInt, upper: BigInt| {
-                                if i <= &lower {
-                                    int_new(lower)
-                                } else if i >= &upper {
-                                    int_new(upper)
-                                } else {
-                                    Ok(e.clone())
-                                }
+                                if i < &lower || i > &upper { ok.clone() } else { Ok(e.clone()) }
                             };
                             match range {
                                 IntRange::Int => ok,
@@ -467,11 +461,16 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                                     (BigInt::one() << (n - 1)) - BigInt::one(),
                                 ),
                                 IntRange::USize => {
-                                    apply_range(BigInt::from(usize::MIN), BigInt::from(usize::MAX))
+                                    let u = apply_range(
+                                        BigInt::zero(),
+                                        (BigInt::one() << ARCH_SIZE_MIN_BITS) - BigInt::one(),
+                                    );
+                                    u
                                 }
-                                IntRange::ISize => {
-                                    apply_range(BigInt::from(isize::MIN), BigInt::from(isize::MAX))
-                                }
+                                IntRange::ISize => apply_range(
+                                    BigInt::one() << (ARCH_SIZE_MIN_BITS - 1),
+                                    (BigInt::one() << (ARCH_SIZE_MIN_BITS - 1)) - BigInt::one(),
+                                ),
                             }
                         }
                         Not | Trigger(_) => ok,
