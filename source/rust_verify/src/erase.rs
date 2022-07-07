@@ -1266,6 +1266,7 @@ fn erase_item(ctxt: &Ctxt, mctxt: &mut MCtxt, item: &Item) -> Vec<P<Item>> {
                 ItemKind::Impl(Box::new(kind))
             }
         }
+        ItemKind::Static(..) => item.kind.clone(),
         ItemKind::Const(..) => {
             if let Some(f_vir) = &ctxt.functions_by_span[&item.span] {
                 if keep_mode(ctxt, f_vir.x.ret.x.mode) {

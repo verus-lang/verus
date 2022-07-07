@@ -332,6 +332,11 @@ fn check_item<'tcx>(
                 }
             }
         }
+        ItemKind::Static(..)
+            if get_verifier_attrs(ctxt.tcx.hir().attrs(item.hir_id()))?.external =>
+        {
+            return Ok(());
+        }
         ItemKind::Const(ty, body_id) => {
             if hack_get_def_name(ctxt.tcx, body_id.hir_id.owner.to_def_id())
                 .starts_with("_DERIVE_builtin_Structural_FOR_")
