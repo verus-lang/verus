@@ -630,17 +630,14 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                                 Mul => int_new(i1 * i2),
                                 EuclideanDiv => {
                                     if i2.is_zero() {
-                                        err_str(&exp.span, "computation tried to divide by 0")
+                                        ok_e2(e2) // Treat as symbolic instead of erroring
                                     } else {
                                         int_new(euclidean_div(i1, i2))
                                     }
                                 }
                                 EuclideanMod => {
                                     if i2.is_zero() {
-                                        err_str(
-                                            &exp.span,
-                                            "tried to compute a remainder with respect to 0",
-                                        )
+                                        ok_e2(e2) // Treat as symbolic instead of erroring
                                     } else {
                                         int_new(euclidean_mod(i1, i2))
                                     }
@@ -657,12 +654,11 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                                 Add | Sub => Ok(e1.clone()),
                                 Mul => zero,
                                 EuclideanDiv => {
-                                    err_str(&exp.span, "computation tried to divide by 0")
+                                    ok_e2(e2) // Treat as symbolic instead of erroring
                                 }
-                                EuclideanMod => err_str(
-                                    &exp.span,
-                                    "tried to compute a remainder with respect to 0",
-                                ),
+                                EuclideanMod => {
+                                    ok_e2(e2) // Treat as symbolic instead of erroring
+                                }
                             }
                         }
                         (_, Const(Int(i2))) if i2.is_one() && matches!(op, EuclideanMod) => {
