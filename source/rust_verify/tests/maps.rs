@@ -16,6 +16,9 @@ test_verify_one_file! {
             let s2 = Set::<int>::empty().insert(1).insert(3).insert(2);
             let m2 = s2.mk_map(|k: int| 3 * k + 7 * k);
             assert(m1.ext_equal(m2));
+            let m3 = map![10 => true ==> false, 20 => false ==> true];
+            assert(!m3.index(10));
+            assert(m3.index(20));
         }
 
         #[proof]

@@ -3,13 +3,14 @@ use crate::ast::{
     AssertProof, MonoidElt, MonoidStmtType, ShardableType, SimplStmt, SpecialOp, SplitKind, SubIdx,
     TransitionKind, TransitionStmt, SM,
 };
-use crate::check_bind_stmts::get_binding_ty;
 use crate::check_bind_stmts::uses_bind;
+use crate::concurrency_tokens::assign_pat_or_arbitrary;
 use crate::transitions::get_field;
+use crate::util::is_definitely_irrefutable;
 use proc_macro2::Span;
 use quote::{quote, quote_spanned};
-use syn::spanned::Spanned;
-use syn::{Expr, Ident, Type};
+use syn_verus::spanned::Spanned;
+use syn_verus::{Expr, Ident, Pat, Type};
 
 /// Simplify out `update` statements, including `add_element` etc.
 ///
@@ -310,7 +311,8 @@ fn simplify_ops_rec(ts: &TransitionStmt, sm: &SM) -> Vec<SimplStmt> {
             }
             SplitKind::Special(f, op, proof, pat_opt) => {
                 let field = get_field(&sm.fields, f);
-                let (cond_ops, mut update_ops) = simplify_special_op(*span, &field, op, proof);
+                let (cond_ops, mut update_ops) =
+                    simplify_special_op(*span, &field, op, pat_opt, proof);
 
                 match pat_opt {
                     None => {
@@ -329,11 +331,16 @@ fn simplify_ops_rec(ts: &TransitionStmt, sm: &SM) -> Vec<SimplStmt> {
                         let mut all_children = update_ops;
                         all_children.append(&mut new_child);
 
-                        let ty = get_binding_ty(&field.stype);
                         let initializer = get_initializer_expr(f, op);
 
+                        let opt = assign_pat_or_arbitrary(pat, &initializer);
+
                         let mut res = cond_ops;
-                        res.push(SimplStmt::Let(*span, pat.clone(), ty, initializer, all_children));
+                        if let Some((pat1, init1)) = opt {
+                            res.push(SimplStmt::Let(*span, pat1, None, init1, all_children));
+                        } else {
+                            res.append(&mut all_children);
+                        }
                         res
                     }
                 }
@@ -370,12 +377,13 @@ fn simplify_special_op(
     span: Span,
     field: &Field,
     op: &SpecialOp,
+    pat_opt: &Option<Pat>,
     proof: &AssertProof,
 ) -> (Vec<SimplStmt>, Vec<SimplStmt>) {
     match op {
         SpecialOp { stmt: MonoidStmtType::Have, elt } => {
             let cur = get_cur(&field.name);
-            let prec = expr_ge(&field.stype, &cur, elt);
+            let prec = expr_ge(&field.stype, &cur, elt, pat_opt);
             (vec![SimplStmt::Require(span, prec)], vec![])
         }
 
@@ -400,7 +408,7 @@ fn simplify_special_op(
         SpecialOp { stmt: MonoidStmtType::Remove, elt } => {
             let cur = get_cur(&field.name);
             let new_val = expr_remove(&field.stype, &cur, elt);
-            let prec = expr_ge(&field.stype, &cur, elt);
+            let prec = expr_ge(&field.stype, &cur, elt, pat_opt);
             (
                 vec![SimplStmt::Require(span, prec)],
                 vec![SimplStmt::Assign(
@@ -414,7 +422,8 @@ fn simplify_special_op(
 
         SpecialOp { stmt: MonoidStmtType::Guard, elt } => {
             let cur = get_cur(&field.name);
-            let prec = expr_ge(&field.stype, &cur, elt);
+            assert!(pat_opt.is_none());
+            let prec = expr_ge(&field.stype, &cur, elt, pat_opt);
             (vec![SimplStmt::Assert(span, prec, proof.clone())], vec![])
         }
 
@@ -438,7 +447,7 @@ fn simplify_special_op(
         SpecialOp { stmt: MonoidStmtType::Withdraw, elt } => {
             let cur = get_cur(&field.name);
             let new_val = expr_remove(&field.stype, &cur, elt);
-            let prec = expr_ge(&field.stype, &cur, elt);
+            let prec = expr_ge(&field.stype, &cur, elt, pat_opt);
             (
                 vec![SimplStmt::Assert(span, prec, proof.clone())],
                 vec![SimplStmt::Assign(
@@ -490,6 +499,7 @@ fn get_opt_type(stype: &ShardableType) -> Type {
     match stype {
         ShardableType::Option(ty) => ty.clone(),
         ShardableType::StorageOption(ty) => ty.clone(),
+        ShardableType::PersistentOption(ty) => ty.clone(),
         _ => {
             panic!("get_opt_type expected option");
         }
@@ -505,9 +515,21 @@ fn expr_can_add(stype: &ShardableType, cur: &Expr, elt: &MonoidElt) -> Option<Ex
                     ::builtin::equal((#cur).index(#key), #val),
                 )
             })),
+            MonoidElt::OptionSome(e) => Some(Expr::Verbatim(quote! {
+                ::builtin::imply(
+                    (#cur).is_Some(),
+                    ::builtin::equal((#cur).get_Some_0(), #e),
+                )
+            })),
             MonoidElt::General(e) => match stype {
                 ShardableType::PersistentMap(_, _) => Some(Expr::Verbatim(quote! {
-                    (#cur).agrees(#e).dom()
+                    (#cur).agrees(#e)
+                })),
+                ShardableType::PersistentOption(_) => Some(Expr::Verbatim(quote! {
+                    ::builtin::imply(
+                        (#cur).is_Some() && (#e).is_Some(),
+                        ::builtin::equal((#cur).get_Some_0(), (#e).get_Some_0()),
+                    )
                 })),
                 _ => {
                     panic!("expr_can_add invalid case");
@@ -557,10 +579,17 @@ fn expr_add(stype: &ShardableType, cur: &Expr, elt: &MonoidElt) -> Expr {
             MonoidElt::SingletonKV(key, val) => {
                 Expr::Verbatim(quote! { (#cur).insert(#key, #val) })
             }
+            MonoidElt::OptionSome(e) => {
+                let ty = get_opt_type(stype);
+                Expr::Verbatim(quote! {
+                    crate::pervasive::option::Option::<#ty>::Some(#e)
+                })
+            }
             MonoidElt::General(e) => match stype {
                 ShardableType::PersistentMap(_, _) => {
                     Expr::Verbatim(quote! { (#cur).union_prefer_right(#e) })
                 }
+                ShardableType::PersistentOption(_) => Expr::Verbatim(quote! { (#e).or(#cur) }),
                 _ => {
                     panic!("expr_can_add invalid case");
                 }
@@ -618,11 +647,25 @@ fn expr_add(stype: &ShardableType, cur: &Expr, elt: &MonoidElt) -> Expr {
     }
 }
 
-fn expr_ge(stype: &ShardableType, cur: &Expr, elt: &MonoidElt) -> Expr {
+fn expr_matches(e: &Expr, pat: &Pat) -> Expr {
+    Expr::Verbatim(quote_spanned! { pat.span() =>
+        match (#e) { #pat => true, _ => false }
+    })
+}
+
+fn expr_ge(stype: &ShardableType, cur: &Expr, elt: &MonoidElt, pat_opt: &Option<Pat>) -> Expr {
     // note: persistent case should always be the same as the normal case
 
     match elt {
-        MonoidElt::OptionSome(None) => Expr::Verbatim(quote! { (#cur).is_Some() }),
+        MonoidElt::OptionSome(None) => {
+            let pat = pat_opt.as_ref().unwrap();
+            if !is_definitely_irrefutable(pat) {
+                let e = expr_matches(&Expr::Verbatim(quote! { (#cur).get_Some_0() }), pat);
+                Expr::Verbatim(quote! { (#cur).is_Some() && (#e) })
+            } else {
+                Expr::Verbatim(quote! { (#cur).is_Some() })
+            }
+        }
         MonoidElt::OptionSome(Some(e)) => {
             let ty = get_opt_type(stype);
             Expr::Verbatim(quote! {
@@ -632,9 +675,19 @@ fn expr_ge(stype: &ShardableType, cur: &Expr, elt: &MonoidElt) -> Expr {
                 )
             })
         }
-        MonoidElt::SingletonKV(key, None) => Expr::Verbatim(quote! {
-            (#cur).dom().contains(#key)
-        }),
+        MonoidElt::SingletonKV(key, None) => {
+            let pat = pat_opt.as_ref().unwrap();
+            if !is_definitely_irrefutable(pat) {
+                let e = expr_matches(&Expr::Verbatim(quote! { (#cur).index(#key) }), pat);
+                Expr::Verbatim(quote! {
+                    (#cur).dom().contains(#key) && (#e)
+                })
+            } else {
+                Expr::Verbatim(quote! {
+                    (#cur).dom().contains(#key)
+                })
+            }
+        }
         MonoidElt::SingletonKV(key, Some(val)) => Expr::Verbatim(quote! {
             (#cur).contains_pair(#key, #val)
         }),
@@ -642,7 +695,9 @@ fn expr_ge(stype: &ShardableType, cur: &Expr, elt: &MonoidElt) -> Expr {
             (#cur).count(#e) >= 1
         }),
         MonoidElt::General(e) => match stype {
-            ShardableType::Option(_) | ShardableType::StorageOption(_) => Expr::Verbatim(quote! {
+            ShardableType::Option(_)
+            | ShardableType::PersistentOption(_)
+            | ShardableType::StorageOption(_) => Expr::Verbatim(quote! {
                 ((#e).is_Some() >>= ::builtin::equal(#cur, #e))
             }),
 

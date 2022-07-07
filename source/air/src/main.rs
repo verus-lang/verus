@@ -99,7 +99,7 @@ pub fn main() {
     let commands = air::parser::Parser::new().nodes_to_commands(&nodes).expect("parse error");
 
     // Start AIR
-    let mut air_context = Context::new(air::smt_manager::SmtManager::new());
+    let mut air_context = Context::new();
     let debug = matches.opt_present("debug");
     air_context.set_debug(debug);
     let profile = matches.opt_present("profile");
@@ -158,8 +158,8 @@ pub fn main() {
                     println!("Resource limit (rlimit) exceeded");
                 }
             }
-            ValidityResult::UnexpectedSmtOutput(err) => {
-                panic!("Unexpected SMT output: {}", err);
+            ValidityResult::UnexpectedOutput(err) => {
+                panic!("Unexpected output from solver: {}", err);
             }
         }
         if matches!(**command, CommandX::CheckValid(..)) {

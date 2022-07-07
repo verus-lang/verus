@@ -27,6 +27,9 @@ test_verify_one_file! {
             let s6 = s4.map(|i: int, a: int| 2 * i + a);
             assert(s6.len() == s4.len());
             assert(s6.index(2) == 34);
+            let s7 = seq![true ==> false, false ==> true];
+            assert(!s7.index(0));
+            assert(s7.index(1));
         }
     } => Ok(())
 }

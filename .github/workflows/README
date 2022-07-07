@@ -1,5 +1,3 @@
-Chanhee Cho, chanheec(at)andrew.cmu.edu
-    
 Both CI for "rustc repo" and "verus repo" runs on a CMU server. It is connected as a "self-hosted runner" on github action.
 Adding a self-hosted runner is possible on the settings tab on github repository. "Settings->Actions->Runners".
 
@@ -17,10 +15,10 @@ In the compile-rust.yml file, it is assumed that
 prefix = "install" in config.toml.verify 
 search "General install configuration options" and "[install]" in config.toml file for detailed information on this.
    
-For verus repo, it first graps the latest binary from above repo. 
+For Verus repo, it first graps the latest binary from above repo. 
 However, since two CI is running on the same machine, it can be simply done by "ln -s" or "cp -r".
 
-When making changes for Dust CI, make sure to pass the z3 binary path("DUST_Z3_PATH") to run tests.
+Note that Z3 binary path("VERUS_Z3_PATH") and Singular binary path("VERUS_SINGULAR_PATH") are needed to run tests.
 If something breaks, it is worth checking .cargo/config.toml file.
 
 

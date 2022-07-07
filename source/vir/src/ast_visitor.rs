@@ -205,6 +205,11 @@ where
                     expr_visitor_control_flow!(expr_visitor_dfs(e1, map, mf));
                     expr_visitor_control_flow!(expr_visitor_dfs(e2, map, mf));
                 }
+                ExprX::Multi(_op, es) => {
+                    for e in es.iter() {
+                        expr_visitor_control_flow!(expr_visitor_dfs(e, map, mf));
+                    }
+                }
                 ExprX::Quant(_quant, binders, e1) => {
                     map.push_scope(true);
                     for binder in binders.iter() {
@@ -304,6 +309,9 @@ where
                     None => (),
                     Some(e) => expr_visitor_control_flow!(expr_visitor_dfs(e, map, mf)),
                 },
+                ExprX::Ghost { alloc_wrapper: _, tracked: _, expr: e1 } => {
+                    expr_visitor_control_flow!(expr_visitor_dfs(e1, map, mf))
+                }
                 ExprX::Block(ss, e1) => {
                     for stmt in ss.iter() {
                         expr_visitor_control_flow!(stmt_visitor_dfs(stmt, map, mf));
@@ -363,13 +371,14 @@ where
         mode: _,
         fuel: _,
         typ_bounds: _,
-        params: _,
+        params,
         ret: _,
         require,
         ensure,
         decrease,
         decrease_when,
         decrease_by: _,
+        broadcast_forall,
         mask_spec,
         is_const: _,
         publish: _,
@@ -377,6 +386,10 @@ where
         body,
         extra_dependencies: _,
     } = &function.x;
+    map.push_scope(true);
+    for p in params.iter() {
+        let _ = map.insert(p.x.name.clone(), p.x.typ.clone());
+    }
     for e in require.iter() {
         expr_visitor_control_flow!(expr_visitor_dfs(e, map, mf));
     }
@@ -400,6 +413,17 @@ where
     if let Some(e) = body {
         expr_visitor_control_flow!(expr_visitor_dfs(e, map, mf));
     }
+    map.pop_scope();
+
+    if let Some((params, req_ens)) = broadcast_forall {
+        map.push_scope(true);
+        for p in params.iter() {
+            let _ = map.insert(p.x.name.clone(), p.x.typ.clone());
+        }
+        expr_visitor_control_flow!(expr_visitor_dfs(req_ens, map, mf));
+        map.pop_scope();
+    }
+
     VisitorControlFlow::Recurse
 }
 
@@ -493,6 +517,13 @@ where
             let expr1 = map_expr_visitor_env(e1, map, env, fe, fs, ft)?;
             let expr2 = map_expr_visitor_env(e2, map, env, fe, fs, ft)?;
             ExprX::Binary(*op, expr1, expr2)
+        }
+        ExprX::Multi(op, es) => {
+            let mut exprs: Vec<Expr> = Vec::new();
+            for e in es.iter() {
+                exprs.push(map_expr_visitor_env(e, map, env, fe, fs, ft)?);
+            }
+            ExprX::Multi(op.clone(), Arc::new(exprs))
         }
         ExprX::Quant(quant, binders, e1) => {
             let binders =
@@ -609,6 +640,10 @@ where
                 Some(e) => Some(map_expr_visitor_env(e, map, env, fe, fs, ft)?),
             };
             ExprX::Return(e1)
+        }
+        ExprX::Ghost { alloc_wrapper, tracked, expr: e1 } => {
+            let expr = map_expr_visitor_env(e1, map, env, fe, fs, ft)?;
+            ExprX::Ghost { alloc_wrapper: alloc_wrapper.clone(), tracked: *tracked, expr }
         }
         ExprX::Block(ss, e1) => {
             let mut stmts: Vec<Stmt> = Vec::new();
@@ -729,6 +764,7 @@ where
         decrease,
         decrease_when,
         decrease_by,
+        broadcast_forall,
         mask_spec,
         is_const,
         publish,
@@ -811,6 +847,20 @@ where
     let publish = *publish;
     let body = body.as_ref().map(|e| map_expr_visitor_env(e, map, env, fe, fs, ft)).transpose()?;
     map.pop_scope();
+
+    let broadcast_forall = if let Some((params, req_ens)) = broadcast_forall {
+        map.push_scope(true);
+        let params = Arc::new(vec_map_result(params, |p| map_param_visitor(p, env, ft))?);
+        for p in params.iter() {
+            let _ = map.insert(p.x.name.clone(), p.x.typ.clone());
+        }
+        let req_ens = map_expr_visitor_env(req_ens, map, env, fe, fs, ft)?;
+        map.pop_scope();
+        Some((params, req_ens))
+    } else {
+        None
+    };
+
     let functionx = FunctionX {
         name,
         kind,
@@ -825,6 +875,7 @@ where
         decrease,
         decrease_when,
         decrease_by,
+        broadcast_forall,
         mask_spec,
         is_const,
         publish,

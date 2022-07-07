@@ -135,6 +135,8 @@ pub const QID_HAS_TYPE_ALWAYS: &str = "has_type_always";
 // We assume that usize is at least ARCH_SIZE_MIN_BITS wide
 pub const ARCH_SIZE_MIN_BITS: u32 = 32;
 
+pub const SUPPORTED_CRATES: [&str; 2] = ["builtin", "pervasive"];
+
 pub fn path_to_string(path: &Path) -> String {
     let s = vec_map(&path.segments, |s| s.to_string()).join(PATH_SEPARATOR) + SUFFIX_PATH;
     if let Some(krate) = &path.krate { krate.to_string() + KRATE_SEPARATOR + &s } else { s }
@@ -414,11 +416,18 @@ impl<X: Debug> Debug for Spanned<X> {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum ProverChoice {
+    DefaultProver,
+    Spinoff,
+    Singular,
+}
+
 pub struct CommandsWithContextX {
     pub span: air::ast::Span,
     pub desc: String,
     pub commands: Commands,
-    pub spinoff_prover: bool,
+    pub prover_choice: ProverChoice,
 }
 
 impl CommandsWithContextX {
@@ -426,13 +435,13 @@ impl CommandsWithContextX {
         span: Span,
         desc: String,
         commands: Commands,
-        spinoff_prover: bool,
+        prover_choice: ProverChoice,
     ) -> CommandsWithContext {
         Arc::new(CommandsWithContextX {
             span: span,
             desc: desc,
             commands: commands,
-            spinoff_prover: spinoff_prover,
+            prover_choice: prover_choice,
         })
     }
 }
@@ -441,7 +450,7 @@ pub type CommandsWithContext = Arc<CommandsWithContextX>;
 
 fn atomicity_type_name(atomicity: InvAtomicity) -> Ident {
     match atomicity {
-        InvAtomicity::Atomic => Arc::new("Invariant".to_string()),
+        InvAtomicity::Atomic => Arc::new("AtomicInvariant".to_string()),
         InvAtomicity::NonAtomic => Arc::new("LocalInvariant".to_string()),
     }
 }

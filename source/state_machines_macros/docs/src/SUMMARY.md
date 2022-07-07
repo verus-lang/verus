@@ -17,14 +17,16 @@
      - [Counting to 2](./examples/counting-to-2.md)
        - [Unverified Source](./examples/rust-counting-to-2.md)
        - [Verified Source](./examples/src-counting-to-2.md)
+     - [Counting to _n_](./examples/counting-to-n.md)
+       - [Unverified Source](./examples/rust-counting-to-n.md)
+       - [Verified Source](./examples/src-counting-to-n.md)
      - [Producer-consumer queue](./examples/producer-consumer-queue.md)
        - [Unverified Source](./examples/rust-producer-consumer-queue.md)
        - [Verified Source](./examples/src-producer-consumer-queue.md)
 
    - [Tutorial TODO](tutorial-by-example.md)
 
-     - [Counting to n (TODO)](./examples/counting-to-n.md)
-     - [Counting to n (again) (TODO)](./examples/counting-to-n-again.md)
+     - [Counting to _n_ (again) (TODO)](./examples/counting-to-n-again.md)
      - [Hash table (TODO)](./examples/hash-table.md)
      - [Reader-writer lock (TODO)](./examples/rwlock.md)
      - [Reference-counted memory (TODO)](./examples/refcount.md)

@@ -1,12 +1,19 @@
 use proc_macro2::TokenStream;
 use quote::quote;
-use syn::parse::{Parse, ParseStream};
-use syn::parse_macro_input;
-use syn::punctuated::Punctuated;
-use syn::token::Comma;
-use syn::{braced, parenthesized, Expr, ExprBlock, Ident, Path, Token};
+use syn_verus::parse;
+use syn_verus::parse::{Parse, ParseStream};
+use syn_verus::parse_macro_input;
+use syn_verus::punctuated::Punctuated;
+use syn_verus::token;
+use syn_verus::{braced, parenthesized, Expr, ExprBlock, Ident, Path, Token};
 
-pub fn case_on(input: proc_macro::TokenStream, is_init: bool) -> proc_macro::TokenStream {
+pub fn case_on(
+    input: proc_macro::TokenStream,
+    is_init: bool,
+    is_strong: bool,
+) -> proc_macro::TokenStream {
+    assert!(!is_init || !is_strong);
+
     let (pre_post, name, arms) = if is_init {
         let m: MatchPost = parse_macro_input!(input as MatchPost);
         let MatchPost { post, name, arms } = m;
@@ -22,13 +29,21 @@ pub fn case_on(input: proc_macro::TokenStream, is_init: bool) -> proc_macro::Tok
     let next_by = if is_init {
         quote! { #name::State::init_by }
     } else {
-        quote! { #name::State::next_by }
+        if is_strong {
+            quote! { #name::State::next_strong_by }
+        } else {
+            quote! { #name::State::next_by }
+        }
     };
 
     let next = if is_init {
         quote! { #name::State::init }
     } else {
-        quote! { #name::State::next }
+        if is_strong {
+            quote! { #name::State::next_strong }
+        } else {
+            quote! { #name::State::next }
+        }
     };
 
     let step = if is_init {
@@ -41,9 +56,14 @@ pub fn case_on(input: proc_macro::TokenStream, is_init: bool) -> proc_macro::Tok
         .into_iter()
         .map(|arm| {
             let Arm { step_name, params, block } = arm;
+            let relation_name = if is_strong {
+                Ident::new(&(step_name.to_string() + "_strong"), step_name.span())
+            } else {
+                step_name.clone()
+            };
             quote! {
                 #step::#step_name(#(#params),*) => {
-                    ::builtin::assert_by(#name::State::#step_name(#pre_post, #(#params),*), {
+                    ::builtin::assert_by(#name::State::#relation_name(#pre_post, #(#params),*), {
                         ::builtin::reveal(#next_by);
                     });
                     #block
@@ -53,14 +73,18 @@ pub fn case_on(input: proc_macro::TokenStream, is_init: bool) -> proc_macro::Tok
         .collect();
 
     let res = quote! {
-        ::builtin::reveal(#next);
-        match ::builtin::choose(|step: #step| #next_by(#pre_post, step)) {
-            #step::dummy_to_use_type_params(_) => {
-                ::builtin::assert_by(false, {
-                    ::builtin::reveal(#next_by);
-                });
+        ::builtin_macros::verus_proof_expr!{
+            {
+                ::builtin::reveal(#next);
+                match ::builtin::choose(|step: #step| #next_by(#pre_post, step)) {
+                    #step::dummy_to_use_type_params(_) => {
+                        ::builtin::assert_by(false, {
+                            ::builtin::reveal(#next_by);
+                        });
+                    }
+                    #( #arms )*
+                }
             }
-            #( #arms )*
         }
     };
 
@@ -87,7 +111,7 @@ struct Arm {
 }
 
 impl Parse for MatchPost {
-    fn parse(input: ParseStream) -> syn::parse::Result<MatchPost> {
+    fn parse(input: ParseStream) -> parse::Result<MatchPost> {
         let post: Expr = input.parse()?;
         let _: Token![,] = input.parse()?;
         let name: Path = input.parse()?;
@@ -106,7 +130,7 @@ impl Parse for MatchPost {
 }
 
 impl Parse for MatchPrePost {
-    fn parse(input: ParseStream) -> syn::parse::Result<MatchPrePost> {
+    fn parse(input: ParseStream) -> parse::Result<MatchPrePost> {
         let pre: Expr = input.parse()?;
         let _: Token![,] = input.parse()?;
         let post: Expr = input.parse()?;
@@ -126,12 +150,12 @@ impl Parse for MatchPrePost {
     }
 }
 
-fn parse_arm(input: ParseStream) -> syn::parse::Result<Arm> {
+fn parse_arm(input: ParseStream) -> parse::Result<Arm> {
     let step_name: Ident = input.parse()?;
 
     let param_stream;
     let _ = parenthesized!(param_stream in input);
-    let params: Punctuated<Ident, Comma> = param_stream.parse_terminated(Ident::parse)?;
+    let params: Punctuated<Ident, token::Comma> = param_stream.parse_terminated(Ident::parse)?;
 
     let _: Token![=>] = input.parse()?;
     let block: ExprBlock = input.parse()?;

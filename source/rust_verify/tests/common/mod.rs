@@ -3,7 +3,7 @@ extern crate rustc_errors;
 extern crate rustc_span;
 
 pub use rust_verify::verifier::ErrorSpan;
-pub use rust_verify_test_macros::{code, code_str};
+pub use rust_verify_test_macros::{code, code_str, verus_code, verus_code_str};
 
 use rust_verify::config::{enable_default_features, parse_args, Args};
 use rust_verify::verifier::Verifier;
@@ -210,11 +210,23 @@ macro_rules! test_verify_one_file {
     };
 }
 
+fn relevant_error_span(err: &Vec<ErrorSpan>) -> &ErrorSpan {
+    if let Some(e) = err.iter().find(|e| e.description == Some("at this exit".to_string())) {
+        return e;
+    } else if let Some(e) = err.iter().find(|e| {
+        e.description == Some("failed this postcondition".to_string())
+            && !e.test_span_line.contains("TRAIT")
+    }) {
+        return e;
+    }
+    err.first().expect("span")
+}
+
 /// Assert that one verification failure happened on source lines containin the string "FAILS".
 #[allow(dead_code)]
 pub fn assert_one_fails(err: TestErr) {
     assert_eq!(err.errors.len(), 1);
-    assert!(err.errors[0].first().expect("span").test_span_line.contains("FAILS"));
+    assert!(relevant_error_span(&err.errors[0]).test_span_line.contains("FAILS"));
 }
 
 /// Assert that `count` verification failures happened on source lines containin the string "FAILS".
@@ -222,7 +234,7 @@ pub fn assert_one_fails(err: TestErr) {
 pub fn assert_fails(err: TestErr, count: usize) {
     assert_eq!(err.errors.len(), count);
     for c in 0..count {
-        assert!(err.errors[c].first().expect("span").test_span_line.contains("FAILS"));
+        assert!(relevant_error_span(&err.errors[c]).test_span_line.contains("FAILS"));
     }
 }
 

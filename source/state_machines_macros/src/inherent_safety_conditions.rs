@@ -1,6 +1,7 @@
 use crate::ast::{MonoidStmtType, ShardableType, SpecialOp, SplitKind, TransitionStmt, SM};
 use proc_macro2::Span;
-use syn::parse::Error;
+use syn_verus::parse;
+use syn_verus::parse::Error;
 
 /// Many of the "special ops" have inherent safety conditions.
 /// (That is, they contain an 'assert' when expanded out.)
@@ -36,11 +37,12 @@ fn check_inherent_condition_for_special_op(
     op: &SpecialOp,
     stype: &ShardableType,
     user_gave_proof_body: bool,
-) -> syn::parse::Result<String> {
+) -> parse::Result<String> {
     let coll_type = match stype {
         ShardableType::Multiset(_) => CollectionType::Multiset,
         ShardableType::Option(_) => CollectionType::Option,
         ShardableType::Map(_, _) => CollectionType::Map,
+        ShardableType::PersistentOption(_) => CollectionType::PersistentOption,
         ShardableType::PersistentMap(_, _) => CollectionType::PersistentMap,
         ShardableType::StorageOption(_) => CollectionType::Option,
         ShardableType::StorageMap(_, _) => CollectionType::Map,
@@ -93,7 +95,10 @@ fn check_inherent_condition_for_special_op(
                     Ok("".to_string())
                 }
             }
-            CollectionType::Option | CollectionType::Map | CollectionType::PersistentMap => {
+            CollectionType::Option
+            | CollectionType::PersistentOption
+            | CollectionType::Map
+            | CollectionType::PersistentMap => {
                 let name = op.stmt.name();
                 let type_name = coll_type.name();
                 if is_general {
@@ -112,6 +117,7 @@ enum CollectionType {
     PersistentMap,
     Multiset,
     Option,
+    PersistentOption,
     Nat,
 }
 
@@ -121,6 +127,7 @@ impl CollectionType {
             CollectionType::Nat => "nat",
             CollectionType::Map => "map",
             CollectionType::PersistentMap => "persistent_map",
+            CollectionType::PersistentOption => "persistent_option",
             CollectionType::Multiset => "multiset",
             CollectionType::Option => "option",
         }

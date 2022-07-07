@@ -77,32 +77,35 @@ where
     let time1 = Instant::now();
 
     if let Err(()) = {
-        let verifier = verifier.lock().unwrap();
         if compiler_err {
             Err(())
-        } else if !verifier.args.no_lifetime {
-            // Run borrow checker with both #[exec] and #[proof]
-            let erasure_hints = verifier.erasure_hints.clone().expect("erasure_hints");
-            let mut callbacks = CompilerCallbacks {
-                erasure_hints,
-                lifetimes_only: true,
-                print: verifier.args.print_erased_spec,
-                time_erasure: Arc::new(Mutex::new(Duration::new(0, 0))),
-            };
-            let status = mk_compiler(&rustc_args, &mut callbacks, &file_loader).run();
-            time_erasure1 = *callbacks.time_erasure.lock().unwrap();
-            status.map_err(|_| ())
         } else {
-            Ok(())
+            verifier.lock().map_err(|_| ()).and_then(|verifier| {
+                if !verifier.args.no_lifetime {
+                    // Run borrow checker with both #[exec] and #[proof]
+                    let erasure_hints = verifier.erasure_hints.clone().expect("erasure_hints");
+                    let mut callbacks = CompilerCallbacks {
+                        erasure_hints,
+                        lifetimes_only: true,
+                        print: verifier.args.print_erased_spec,
+                        time_erasure: Arc::new(Mutex::new(Duration::new(0, 0))),
+                    };
+                    let status = mk_compiler(&rustc_args, &mut callbacks, &file_loader).run();
+                    time_erasure1 = *callbacks.time_erasure.lock().unwrap();
+                    status.map_err(|_| ())
+                } else {
+                    Ok(())
+                }
+            })
         }
     } {
         now_verify_s.signal(true);
         let _status = compiler_thread.join().expect("join compiler thread");
         let verifier = Arc::try_unwrap(verifier)
             .map_err(|_| ())
-            .expect("only one reference to the verifier expected")
+            .expect("only one Arc reference to the verifier")
             .into_inner()
-            .expect("valid Mutex for verifier");
+            .unwrap_or_else(|e| e.into_inner());
         return (verifier, Err(()));
     }
 
@@ -117,7 +120,7 @@ where
         .map_err(|_| ())
         .expect("only one Arc reference to the verifier")
         .into_inner()
-        .expect("valid Mutex for verifier");
+        .unwrap_or_else(|e| e.into_inner());
 
     if let Err(()) = status {
         return (verifier, Err(()));

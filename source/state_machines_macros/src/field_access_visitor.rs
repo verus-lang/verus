@@ -36,10 +36,12 @@ use crate::ast::{
 };
 use proc_macro2::Span;
 use std::collections::{HashMap, HashSet};
-use syn::parse::Error;
-use syn::spanned::Spanned;
-use syn::visit_mut::VisitMut;
-use syn::{Expr, ExprField, ExprPath, Ident, Member};
+use syn_verus::parse;
+use syn_verus::parse::Error;
+use syn_verus::spanned::Spanned;
+use syn_verus::visit_mut;
+use syn_verus::visit_mut::VisitMut;
+use syn_verus::{Expr, ExprField, ExprPath, Ident, Member};
 
 /// Given a (Rust AST) Expr `e`, visits the subexpressions of the form
 /// `pre.foo` where `foo` is a state machine field, and calls the given
@@ -106,7 +108,7 @@ where
                     self.errors.push(Error::new(span, "expected a named field"));
                 }
             },
-            _ => syn::visit_mut::visit_expr_mut(self, node),
+            _ => visit_mut::visit_expr_mut(self, node),
         }
     }
 }
@@ -115,7 +117,7 @@ fn get_field_by_ident<'a>(
     ident_to_field: &'a HashMap<String, Field>,
     span: Span,
     ident: &Ident,
-) -> syn::parse::Result<&'a Field> {
+) -> parse::Result<&'a Field> {
     match ident_to_field.get(&ident.to_string()) {
         Some(f) => Ok(f),
         None => Err(Error::new(

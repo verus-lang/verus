@@ -1,6 +1,7 @@
 //! Helper utilities used by the `state_machine_macros` codegen.
 
 #![allow(unused_imports)]
+#![doc(hidden)]
 
 use builtin::*;
 use crate::pervasive::*;
@@ -33,6 +34,10 @@ pub fn assert_add_map(b: bool) { requires(b); ensures(b); }
 #[proof]
 #[verifier(custom_req_err("unable to prove inherent safety condition: if the key is already in the map, its existing value must agree with the provided value"))]
 pub fn assert_add_persistent_map(b: bool) { requires(b); ensures(b); }
+
+#[proof]
+#[verifier(custom_req_err("unable to prove inherent safety condition: if the previous value is Some(_), then this existing value must agree with the newly provided value"))]
+pub fn assert_add_persistent_option(b: bool) { requires(b); ensures(b); }
 
 #[proof]
 #[verifier(custom_req_err("unable to prove inherent safety condition: the given value to be withdrawn must be stored before the withdraw"))]
@@ -72,6 +77,11 @@ pub fn assert_general_add_map(b: bool) { requires(b); ensures(b); }
 #[verifier(custom_req_err("unable to prove inherent safety condition: the maps being composed must agree on their values for any key in both domains"))]
 pub fn assert_general_add_persistent_map(b: bool) { requires(b); ensures(b); }
 
+
+#[proof]
+#[verifier(custom_req_err("unable to prove inherent safety condition: if the previous value and the newly added values are both Some(_), then their values must agree"))]
+pub fn assert_general_add_persistent_option(b: bool) { requires(b); ensures(b); }
+
 #[proof]
 #[verifier(custom_req_err("unable to prove inherent safety condition: the optional value to be withdrawn must be stored before the withdraw"))]
 pub fn assert_general_withdraw_option(b: bool) { requires(b); ensures(b); }
@@ -103,6 +113,7 @@ pub fn assert_general_guard_map(b: bool) { requires(b); ensures(b); }
 // perhaps we'll make our own trait for this purpose some day, but regardless, this suffices
 // for our purposes
 
+#[doc(hidden)]
 impl<A> Seq<A> {
     #[spec] #[verifier(publish)]
     pub fn update_at_index(self, i: int, a: A) -> Self {
@@ -112,6 +123,7 @@ impl<A> Seq<A> {
     }
 }
 
+#[doc(hidden)]
 impl<K, V> Map<K, V> {
     // note that despite the name, this is allowed to insert
 

@@ -4,7 +4,7 @@ mod common;
 use common::*;
 
 test_verify_one_file! {
-    #[test] test1 code! {
+    #[test] test1 verus_code! {
         fn test1() {
             assert(true);
             assert(!false);
@@ -16,7 +16,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test1_fails code! {
+    #[test] test1_fails verus_code! {
         fn test1() {
             assert(true);
             assert(true && false); // FAILS
@@ -27,9 +27,8 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test2 code! {
-        #[spec] #[verifier(external_body)]
-        fn f(i: int, j: int) -> bool { unimplemented!() }
+    #[test] test2 verus_code! {
+        spec fn f(i: int, j: int) -> bool;
 
         fn test2(b: bool, x: int, y: int, z: int) {
             assert(b || !b);
@@ -37,7 +36,7 @@ test_verify_one_file! {
             assume(b);
             assert(b);
 
-            assert(x == y >>= f(x, y) == f(y, x));
+            assert(x == y ==> f(x, y) == f(y, x));
 
             assert(x + y == y + x);
 
@@ -48,7 +47,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test2_fails code! {
+    #[test] test2_fails verus_code! {
         fn test2(b: bool, x: int, y: int, z: int) {
             assume(x <= y && y <= z);
             assert(x < z); // FAILS
@@ -57,7 +56,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_assign code! {
+    #[test] test_assign verus_code! {
         fn test_assign(a: int, b: int) {
             let c = a + b;
             assert(c == a + b);
@@ -71,7 +70,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_assign_mut code! {
+    #[test] test_assign_mut verus_code! {
         fn test_assign_mut(a: int, b: int) {
             let mut c = a;
             c = c + b;
@@ -82,22 +81,19 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_spec_fn code! {
-        #[spec]
-        fn f1(i: int, j: int) -> bool {
+    #[test] test_spec_fn verus_code! {
+        spec fn f1(i: int, j: int) -> bool {
             i <= j
         }
 
-        #[spec]
-        fn f2(i: int, j: int) -> bool {
+        spec fn f2(i: int, j: int) -> bool {
             let x = i;
             let y = j;
             x < y
         }
 
-        #[spec]
         #[verifier(opaque)]
-        fn f3(i: int, j: int) -> bool {
+        spec fn f3(i: int, j: int) -> bool {
             f1(j, i)
         }
 
@@ -115,19 +111,19 @@ test_verify_one_file! {
     } => Err(err) => assert_one_fails(err)
 }
 
-const TEST_REQUIRES1: &str = code_str! {
-    #[proof]
-    fn test_requires1(a: int, b: int, c: int) {
-        requires([a <= b, b <= c]);
-
+const TEST_REQUIRES1: &str = verus_code_str! {
+    proof fn test_requires1(a: int, b: int, c: int)
+        requires
+            a <= b,
+            b <= c,
+    {
         assert(a <= c);
     }
 };
 
 test_verify_one_file! {
-    #[test] test_requires2 TEST_REQUIRES1.to_string() + code_str! {
-        #[proof]
-        fn test_requires2(a: int, b: int, c: int) {
+    #[test] test_requires2 TEST_REQUIRES1.to_string() + verus_code_str! {
+        proof fn test_requires2(a: int, b: int, c: int) {
             assume(a <= b);
             assume(b <= c);
             test_requires1(a + a, b + b, c + c);
@@ -137,26 +133,27 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_requires3 TEST_REQUIRES1.to_string() + code_str! {
+    #[test] test_requires3 TEST_REQUIRES1.to_string() + verus_code_str! {
         fn test_requires3(a: int, b: int, c: int) {
             assume(a <= b);
             assume(b <= c);
-            test_requires1(a + a, b + b, c + c);
-            test_requires1(a + c, b + b, c + c); // FAILS
+            proof {
+                test_requires1(a + a, b + b, c + c);
+                test_requires1(a + c, b + b, c + c); // FAILS
+            }
         }
     } => Err(err) => assert_one_fails(err)
 }
 
-const TEST_RET: &str = code_str! {
-    #[proof]
-    fn test_ret(a: int, b: int) -> int {
-        requires(a <= b);
-        ensures(|ret: int| [
+const TEST_RET: &str = verus_code_str! {
+    proof fn test_ret(a: int, b: int) -> (ret: int)
+        requires
+            a <= b,
+        ensures
             ret <= a + b,
             ret <= a + a, // FAILS
             ret <= b + b,
-        ]);
-
+    {
         a + b
     }
 };
@@ -166,16 +163,15 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_ret2 TEST_RET.to_string() + code_str! {
-        #[proof]
-        fn test_ret2(a: int, b: int) -> int {
-            requires(a <= b);
-            ensures(|ret: int| [
+    #[test] test_ret2 TEST_RET.to_string() + verus_code_str! {
+        proof fn test_ret2(a: int, b: int) -> (ret: int)
+            requires
+                a <= b,
+            ensures
                 ret <= a + b,
                 ret <= a + a,
                 ret <= b + b,
-            ]);
-
+        {
             let mut x = test_ret(a, a);
             x = test_ret(x, x);
             assert(x <= 4 * a);
@@ -192,19 +188,20 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_exec_fun1 code! {
+    #[test] test_exec_fun1 verus_code! {
         fn f(x: u64) -> u64 {
-          5
+            5
         }
 
         fn g(x: u64) -> u64 {
-          f(x)
+            f(x)
         }
     } => Ok(())
 }
 
 test_verify_one_file! {
-    #[test] test_short_circuit code! {
+    #[test] test_short_circuit verus_code! {
+        use crate::pervasive::modes::*;
         fn f1(a: bool, b: bool) {
             let mut x: u64 = 0;
             let y = a && b;
@@ -222,20 +219,17 @@ test_verify_one_file! {
         }
 
         fn f3(a: bool, b: bool) {
-            #[spec]
-            let mut x: u64 = 0;
-            #[spec]
-            let y = a >>= b;
-            #[spec]
-            let z = a >>= { x = x + 1; b };
-            assert(y == z);
-            assert((x == 1) == a);
+            let mut x: Ghost<u64> = ghost(0);
+            let y: Ghost<bool> = ghost(a ==> b);
+            let z: Ghost<bool> = ghost(a ==> { x = Ghost::new(*x + 1); b });
+            assert(*y == *z);
+            assert((*x == 1) == a);
         }
     } => Ok(())
 }
 
 test_verify_one_file! {
-    #[test] test_short_circuit2 code! {
+    #[test] test_short_circuit2 verus_code! {
         fn f1(a: bool, b: bool) {
             let mut x: u64 = 0;
             let y = a && b;
@@ -247,7 +241,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_short_circuit3 code! {
+    #[test] test_short_circuit3 verus_code! {
         fn f1(a: bool, b: bool) {
             let mut x: u64 = 0;
             let y = a && b;
@@ -259,7 +253,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_paren code! {
+    #[test] test_paren verus_code! {
         fn test_paren() {
             {{{{if true {} else {}}}}}
             ((((if true {} else {}))))
@@ -268,7 +262,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_fail_assign_non_mut code! {
+    #[test] test_fail_assign_non_mut verus_code! {
         fn test1() {
             let x: u64 = 10;
             x = 20;
@@ -277,34 +271,35 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_fail_return_value_parameter_same_name code! {
-        fn foo(x: u64) -> bool {
-            ensures(|x: bool| x || !x);
+    #[test] test_fail_return_value_parameter_same_name verus_code! {
+        fn foo(x: u64) -> (x: bool)
+            ensures x || !x
+        {
             x > 10
         }
     } => Err(TestErr { has_vir_error: true, .. })
 }
 
 test_verify_one_file! {
-    #[test] test_ensures_type_inference code! {
+    #[test] test_ensures_type_inference verus_code! {
         struct Foo {
             pub b: bool,
         }
 
-        #[spec]
-        fn get_b(foo: Foo) -> bool {
+        spec fn get_b(foo: Foo) -> bool {
             foo.b
         }
 
-        fn test1() -> Foo {
-            ensures(|b| get_b(b));
-            Foo {b: true}
+        fn test1() -> (b: Foo)
+            ensures get_b(b)
+        {
+            Foo { b: true }
         }
     } => Ok(())
 }
 
 test_verify_one_file! {
-    #[test] test_decl_init_let_pass code! {
+    #[test] test_decl_init_let_pass verus_code! {
         fn test1() {
             let x: u64;
             x = 23;
@@ -313,7 +308,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_decl_init_let_fail code! {
+    #[test] test_decl_init_let_fail verus_code! {
         fn test1() {
             let x: u64;
             assert(x == 23); // FAILS
@@ -327,14 +322,14 @@ test_verify_one_file! {
             } else {
                 x = 2;
             }
-            assert(a >>= (x == 1));
+            assert(a ==> (x == 1));
             assert(false); // FAILS
         }
     } => Err(e) => assert_fails(e, 2)
 }
 
 test_verify_one_file! {
-    #[test] bool_xor code! {
+    #[test] bool_xor verus_code! {
         fn test1() {
             assert((true ^ true) == false);
             assert((false ^ true) == true);
@@ -345,7 +340,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] bool_xor_fails code! {
+    #[test] bool_xor_fails verus_code! {
         fn test1() {
             assert((true ^ true) == true); // FAILS
         }
@@ -370,10 +365,19 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] test_init_spec_param_fail_2 code! {
-        #[spec]
-        fn test1(x: u64) {
+    #[test] test_init_spec_param_fail_2 verus_code! {
+        spec fn test1(x: u64) {
             x = 5;
         }
     } => Err(e) => assert_vir_error(e)
+}
+
+test_verify_one_file! {
+    // TODO restore this test when erasure is overhauled
+    #[ignore] #[test] equal_regression_148 code! {
+        #[proof]
+        fn f() {
+            equal(1 as nat, 1);
+        }
+    } => Ok(())
 }

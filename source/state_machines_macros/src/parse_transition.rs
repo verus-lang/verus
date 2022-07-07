@@ -8,19 +8,24 @@ use crate::util::{expr_from_tokens, pat_from_tokens};
 use proc_macro2::Span;
 use quote::{quote, quote_spanned};
 use std::rc::Rc;
-use syn::parse::{Parse, ParseStream};
-use syn::punctuated::Punctuated;
-use syn::spanned::Spanned;
-use syn::token::Comma;
-use syn::visit::Visit;
-use syn::{braced, bracketed, parenthesized, Block, Error, Expr, Ident, Macro, Pat, Token, Type};
+use syn_verus::parse;
+use syn_verus::parse::{Parse, ParseStream};
+use syn_verus::parse2;
+use syn_verus::punctuated::Punctuated;
+use syn_verus::spanned::Spanned;
+use syn_verus::token;
+use syn_verus::visit::Visit;
+use syn_verus::{
+    braced, bracketed, parenthesized, Block, Error, Expr, ExprBlock, ExprLet, Ident, Macro, Pat,
+    PatIdent, PatOr, Token, Type,
+};
 
 /// Translate Rust AST into a transition AST by parsing our transition DSL.
 /// Every statement should be one of:
 ///   let, if, match (similar to the same statements in Rust)
 ///   init, update, add, remove, have, deposit, withdraw, guard (statements specific to our DSL)
 
-pub fn parse_transition(mac: Macro) -> syn::parse::Result<Transition> {
+pub fn parse_transition(mac: Macro) -> parse::Result<Transition> {
     // A transition definition looks like
     //    init!{ name(args) { ... } }
     // First, we determine the TransitionKind from the name of the macro,
@@ -39,7 +44,7 @@ pub fn parse_transition(mac: Macro) -> syn::parse::Result<Transition> {
         ));
     };
 
-    let ti: TransitionInner = syn::parse2(mac.tokens)?;
+    let ti: TransitionInner = parse2(mac.tokens)?;
 
     let TransitionInner { name, params, body } = ti;
     Ok(Transition { kind, name, params, body })
@@ -55,7 +60,7 @@ struct TransitionInner {
 }
 
 impl Parse for TransitionInner {
-    fn parse(input: ParseStream) -> syn::parse::Result<TransitionInner> {
+    fn parse(input: ParseStream) -> parse::Result<TransitionInner> {
         let params_stream;
         let mut ctxt = Ctxt { counter: 0 };
 
@@ -75,8 +80,8 @@ struct Ctxt {
     counter: u64,
 }
 
-fn parse_params(input: ParseStream) -> syn::parse::Result<Vec<TransitionParam>> {
-    let args: Punctuated<(Ident, Type), Comma> = input.parse_terminated(parse_arg_typed)?;
+fn parse_params(input: ParseStream) -> parse::Result<Vec<TransitionParam>> {
+    let args: Punctuated<(Ident, Type), token::Comma> = input.parse_terminated(parse_arg_typed)?;
     let mut v = Vec::new();
     for (ident, ty) in args.into_iter() {
         v.push(TransitionParam { name: ident, ty });
@@ -84,7 +89,7 @@ fn parse_params(input: ParseStream) -> syn::parse::Result<Vec<TransitionParam>> 
     Ok(v)
 }
 
-fn parse_arg_typed(input: ParseStream) -> syn::parse::Result<(Ident, Type)> {
+fn parse_arg_typed(input: ParseStream) -> parse::Result<(Ident, Type)> {
     let ident: Ident = input.parse()?;
     let _: Token![:] = input.parse()?;
     let ty: Type = input.parse()?;
@@ -109,12 +114,9 @@ enum Refute {
 
 /// Parse any kind of transition statement. Note that 'let' statements aren't turned
 /// into full TransitionStmts yet; instead we return the TLet stub.
-fn parse_transition_stmt(
-    ctxt: &mut Ctxt,
-    input: ParseStream,
-) -> syn::parse::Result<Vec<StmtOrLet>> {
+fn parse_transition_stmt(ctxt: &mut Ctxt, input: ParseStream) -> parse::Result<Vec<StmtOrLet>> {
     // If the next token is a brace, parse as a block.
-    if input.peek(syn::token::Brace) {
+    if input.peek(token::Brace) {
         return Ok(vec![StmtOrLet::Stmt(parse_transition_block(ctxt, input)?)]);
     }
 
@@ -196,10 +198,7 @@ fn parse_transition_stmt(
 
 /// Parse a block `{ transition stmts }`
 
-fn parse_transition_block(
-    ctxt: &mut Ctxt,
-    input: ParseStream,
-) -> syn::parse::Result<TransitionStmt> {
+fn parse_transition_block(ctxt: &mut Ctxt, input: ParseStream) -> parse::Result<TransitionStmt> {
     let content;
     let brace_token = braced!(content in input);
     let mut stmts: Vec<StmtOrLet> = Vec::new();
@@ -263,7 +262,7 @@ fn parse_monoid_stmt(
     kw: Ident,
     input: ParseStream,
     monoid_stmt_type: MonoidStmtType,
-) -> syn::parse::Result<StmtOrLet> {
+) -> parse::Result<StmtOrLet> {
     // Parse the field name we are operating on.
     let field: Ident = input.parse()?;
 
@@ -349,13 +348,13 @@ fn parse_monoid_stmt(
 fn parse_monoid_elt(
     input: ParseStream,
     monoid_stmt_type: MonoidStmtType,
-) -> syn::parse::Result<(MonoidElt, Option<Pat>)> {
-    if input.peek(syn::token::Brace) {
+) -> parse::Result<(MonoidElt, Option<Pat>)> {
+    if input.peek(token::Brace) {
         let content;
         let _ = braced!(content in input);
         let e: Expr = content.parse()?;
         Ok((MonoidElt::SingletonMultiset(e), None))
-    } else if input.peek(syn::token::Bracket) {
+    } else if input.peek(token::Bracket) {
         let content;
         let _ = bracketed!(content in input);
         let key: Expr = content.parse()?;
@@ -380,7 +379,7 @@ fn parse_monoid_elt(
             let e: Expr = content.parse()?;
             Ok((MonoidElt::OptionSome(Some(e)), None))
         }
-    } else if input.peek(syn::token::Paren) {
+    } else if input.peek(token::Paren) {
         let content;
         let _ = parenthesized!(content in input);
         let e: Expr = content.parse()?;
@@ -392,7 +391,7 @@ fn parse_monoid_elt(
 }
 
 /// Parse conditional `if { stmts } else { stmts }`
-fn parse_conditional(ctxt: &mut Ctxt, input: ParseStream) -> syn::parse::Result<TransitionStmt> {
+fn parse_conditional(ctxt: &mut Ctxt, input: ParseStream) -> parse::Result<TransitionStmt> {
     let if_token: Token![if] = input.parse()?;
     // Based on implementation of syn::ExprIf::parse
     let cond: Expr = input.call(Expr::parse_without_eager_brace)?;
@@ -410,7 +409,7 @@ fn parse_conditional(ctxt: &mut Ctxt, input: ParseStream) -> syn::parse::Result<
     }
 }
 
-fn parse_else_block(ctxt: &mut Ctxt, input: ParseStream) -> syn::parse::Result<TransitionStmt> {
+fn parse_else_block(ctxt: &mut Ctxt, input: ParseStream) -> parse::Result<TransitionStmt> {
     let _else_token: Token![else] = input.parse()?;
 
     // handle the `else if` case
@@ -418,7 +417,7 @@ fn parse_else_block(ctxt: &mut Ctxt, input: ParseStream) -> syn::parse::Result<T
     let lookahead = input.lookahead1();
     if input.peek(Token![if]) {
         parse_conditional(ctxt, input)
-    } else if input.peek(syn::token::Brace) {
+    } else if input.peek(token::Brace) {
         parse_transition_block(ctxt, input)
     } else {
         Err(lookahead.error())
@@ -432,7 +431,7 @@ fn parse_let(
     refute: Refute,
     lk: LetKind,
     input: ParseStream,
-) -> syn::parse::Result<Vec<StmtOrLet>> {
+) -> parse::Result<Vec<StmtOrLet>> {
     if refute == Refute::Require && lk == LetKind::BirdsEye {
         return Err(input.error("'require birds_eye let' is not allowed because 'require' statements should not be in the scope of a `birds_eye` let-binding; preconditions of an exchange cannot depend on such bindings"));
     }
@@ -440,7 +439,7 @@ fn parse_let(
     let pat: Pat = input.parse()?;
 
     match &pat {
-        Pat::Ident(syn::PatIdent { ident, .. }) => {
+        Pat::Ident(PatIdent { ident, .. }) => {
             if ident.to_string() == "birds_eye" {
                 return Err(Error::new(
                     pat.span(),
@@ -479,7 +478,7 @@ fn parse_let(
             let tmp_ident =
                 Ident::new(&("tmp_for_match_".to_string() + &uniq_id.to_string()), stmt_span);
 
-            let pat_tmp = Pat::Ident(syn::PatIdent {
+            let pat_tmp = Pat::Ident(PatIdent {
                 attrs: vec![],
                 by_ref: None,
                 mutability: None,
@@ -537,7 +536,7 @@ fn parse_let(
 }
 
 /// Parse `update field = ...;`
-fn parse_update(kw: Ident, input: ParseStream) -> syn::parse::Result<TransitionStmt> {
+fn parse_update(kw: Ident, input: ParseStream) -> parse::Result<TransitionStmt> {
     let field: Ident = input.parse()?;
 
     let mut subs = Vec::new();
@@ -546,7 +545,7 @@ fn parse_update(kw: Ident, input: ParseStream) -> syn::parse::Result<TransitionS
             let _: Token![.] = input.parse()?;
             let sub_field: Ident = input.parse()?;
             subs.push(SubIdx::Field(sub_field));
-        } else if input.peek(syn::token::Bracket) {
+        } else if input.peek(token::Bracket) {
             let content;
             let _ = bracketed!(content in input);
             let idx_expr: Expr = content.parse()?;
@@ -570,7 +569,7 @@ fn parse_update(kw: Ident, input: ParseStream) -> syn::parse::Result<TransitionS
 }
 
 /// Parse `init field = ...;`
-fn parse_init(kw: Ident, input: ParseStream) -> syn::parse::Result<TransitionStmt> {
+fn parse_init(kw: Ident, input: ParseStream) -> parse::Result<TransitionStmt> {
     let field: Ident = input.parse()?;
     let _t: Token![=] = input.parse()?;
     let e: Expr = input.parse()?;
@@ -582,7 +581,7 @@ fn parse_init(kw: Ident, input: ParseStream) -> syn::parse::Result<TransitionStm
 }
 
 /// Parse `assert ...;` or `assert ... by { ... }`
-fn parse_assert(kw: Ident, input: ParseStream) -> syn::parse::Result<TransitionStmt> {
+fn parse_assert(kw: Ident, input: ParseStream) -> parse::Result<TransitionStmt> {
     let e: Expr = input.parse()?;
 
     let proof_block = if peek_keyword(input.cursor(), "by") {
@@ -602,7 +601,7 @@ fn parse_assert(kw: Ident, input: ParseStream) -> syn::parse::Result<TransitionS
 }
 
 /// Parse `require ...;`
-fn parse_require(kw: Ident, input: ParseStream) -> syn::parse::Result<TransitionStmt> {
+fn parse_require(kw: Ident, input: ParseStream) -> parse::Result<TransitionStmt> {
     let e: Expr = input.parse()?;
     let semi: Token![;] = input.parse()?;
     let stmt_span = kw.span().join(semi.span()).unwrap_or(kw.span());
@@ -614,7 +613,7 @@ fn parse_require(kw: Ident, input: ParseStream) -> syn::parse::Result<Transition
 /// but we have to modify it so that it parses a TransitionStmt instead of an Expr
 /// in each arm. However, we can re-use some of the code for parsing the patterns
 
-fn parse_match(ctxt: &mut Ctxt, input: ParseStream) -> syn::parse::Result<TransitionStmt> {
+fn parse_match(ctxt: &mut Ctxt, input: ParseStream) -> parse::Result<TransitionStmt> {
     let match_token: Token![match] = input.parse()?;
     let expr = Expr::parse_without_eager_brace(input)?;
 
@@ -637,7 +636,7 @@ fn parse_match(ctxt: &mut Ctxt, input: ParseStream) -> syn::parse::Result<Transi
 /// Parse an arm of a match statement. Based on `impl Parse for syn::Arm`
 /// (but note that we return our own ast::Arm, not the syn::Arm)
 
-fn parse_arm(ctxt: &mut Ctxt, input: ParseStream) -> syn::parse::Result<(Arm, TransitionStmt)> {
+fn parse_arm(ctxt: &mut Ctxt, input: ParseStream) -> parse::Result<(Arm, TransitionStmt)> {
     let pat = multi_pat_with_leading_vert(input)?;
     let guard = {
         if input.peek(Token![if]) {
@@ -662,12 +661,12 @@ fn parse_arm(ctxt: &mut Ctxt, input: ParseStream) -> syn::parse::Result<(Arm, Tr
 
 // these are (private) functions from syn, used for parsing patterns in a `match` statement
 
-fn multi_pat_with_leading_vert(input: ParseStream) -> syn::parse::Result<Pat> {
+fn multi_pat_with_leading_vert(input: ParseStream) -> parse::Result<Pat> {
     let leading_vert: Option<Token![|]> = input.parse()?;
     multi_pat_impl(input, leading_vert)
 }
 
-fn multi_pat_impl(input: ParseStream, leading_vert: Option<Token![|]>) -> syn::parse::Result<Pat> {
+fn multi_pat_impl(input: ParseStream, leading_vert: Option<Token![|]>) -> parse::Result<Pat> {
     let mut pat: Pat = input.parse()?;
     if leading_vert.is_some()
         || input.peek(Token![|]) && !input.peek(Token![||]) && !input.peek(Token![|=])
@@ -680,14 +679,14 @@ fn multi_pat_impl(input: ParseStream, leading_vert: Option<Token![|]>) -> syn::p
             let pat: Pat = input.parse()?;
             cases.push_value(pat);
         }
-        pat = Pat::Or(syn::PatOr { attrs: Vec::new(), leading_vert, cases });
+        pat = Pat::Or(PatOr { attrs: Vec::new(), leading_vert, cases });
     }
     Ok(pat)
 }
 
 /// Error if the user writes `if let ... = ... { ... }` which is unsupported.
 /// Descend into the expression to check for chained if-let as well.
-fn error_on_if_let(cond: &Expr) -> syn::parse::Result<()> {
+fn error_on_if_let(cond: &Expr) -> parse::Result<()> {
     let mut ilv = IfLetVisitor { errors: Vec::new() };
     ilv.visit_expr(cond);
     combine_errors_or_ok(ilv.errors)
@@ -698,11 +697,11 @@ struct IfLetVisitor {
 }
 
 impl<'ast> Visit<'ast> for IfLetVisitor {
-    fn visit_expr_block(&mut self, _node: &'ast syn::ExprBlock) {
+    fn visit_expr_block(&mut self, _node: &'ast ExprBlock) {
         // do nothing here; don't recurse into block expressions
     }
 
-    fn visit_expr_let(&mut self, node: &'ast syn::ExprLet) {
+    fn visit_expr_let(&mut self, node: &'ast ExprLet) {
         self.errors.push(Error::new(
             node.span(),
             "transition definitions do not support if-let conditionals",

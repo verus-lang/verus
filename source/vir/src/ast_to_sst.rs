@@ -932,6 +932,9 @@ fn expr_to_stm_opt(
                 }
             }
         }
+        ExprX::Multi(..) => {
+            panic!("internal error: Multi should have been simplified by ast_simplify")
+        }
         ExprX::Quant(quant, binders, body) => {
             let check_recommends_stms =
                 check_pure_expr_bind(ctx, state, binders, quant.boxed_params, body)?;
@@ -1298,6 +1301,9 @@ fn expr_to_stm_opt(
             } else {
                 err_str(&expr.span, "return expression not allowed here")
             }
+        }
+        ExprX::Ghost { .. } => {
+            panic!("internal error: ExprX::Ghost should have been simplified by ast_simplify")
         }
         ExprX::Block(stmts, body_opt) => {
             let mut stms: Vec<Stm> = Vec::new();

@@ -525,12 +525,10 @@ pub fn func_axioms_to_air(
             if has_ens_pred {
                 ctx.funcs_with_ensure_predicate.insert(function.x.name.clone());
             }
-            if function.x.attrs.broadcast_forall {
+            if let Some((params, req_ens)) = &function.x.broadcast_forall {
                 let span = &function.span;
-                let req = crate::ast_util::conjoin(span, &*function.x.require);
-                let ens = crate::ast_util::conjoin(span, &*function.x.ensure);
-                let req_ens = crate::ast_util::mk_implies(span, &req, &ens);
-                let exp = crate::ast_to_sst::expr_to_bind_decls_exp(ctx, &params, &req_ens)?;
+                let params = params_to_pre_post_pars(params, false);
+                let exp = crate::ast_to_sst::expr_to_bind_decls_exp(ctx, &params, req_ens)?;
                 let mut vars: Vec<Ident> = Vec::new();
                 let mut binders: Vec<Binder<Typ>> = Vec::new();
                 for (name, bound) in function.x.typ_bounds.iter() {
@@ -707,6 +705,7 @@ pub fn func_def_to_air(
                 &function.x.mask_spec,
                 function.x.mode,
                 &stm,
+                function.x.attrs.integer_ring,
                 function.x.attrs.bit_vector,
                 skip_ensures,
                 function.x.attrs.nonlinear,

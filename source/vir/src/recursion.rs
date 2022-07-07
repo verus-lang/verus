@@ -374,6 +374,7 @@ pub(crate) fn check_termination_exp(
         false,
         false,
         false,
+        false,
     );
 
     assert_eq!(commands.len(), 1);

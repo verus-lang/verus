@@ -1,0 +1,136 @@
+\documentclass[10pt]{article}
+\usepackage[margin=0.75in,columnsep=1cm]{geometry}
+\usepackage{titling}
+\usepackage[tiny]{titlesec}
+\usepackage[utf8]{inputenc}
+\usepackage{times}
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage{float}
+\usepackage{tikz}
+
+\newcommand{\codesize}{\fontsize{8pt}{9pt}\selectfont}
+\newcommand{\textcode}[1]{{\codesize\ttfamily{#1}}}
+\newcommand{\divider}[0]{\begin{center}\rule{0.48\linewidth}{0.48pt}\end{center}}
+\titlespacing{\paragraph}{0pt}{0.5\baselineskip}{1em}
+\renewcommand{\section}[1]{\paragraph{#1.}}
+
+\newcommand*\circled[1]{\,\tikz[baseline=(char.base)]{
+            \node[shape=circle,draw,inner sep=.7pt] (char) {\textcode{#1}};}\,}
+\newcounter{clnumcounter}
+% \counterwithin{clnumcounter}{figure}
+
+\renewcommand{\theclnumcounter}{\Alph{clnumcounter}}
+\newcommand{\clnum}{\refstepcounter{clnumcounter}\circled{\theclnumcounter}}
+\newcommand{\clref}[1]{\circled{\ref{#1}}}
+
+\predate{}
+\postdate{}
+\pretitle{\begin{flushleft}\Large\vspace{-3em}}
+\posttitle{\end{flushleft}}
+\preauthor{\begin{flushleft}}
+\postauthor{\end{flushleft}\vspace{-1.2em}\rule{2cm}{0.2pt}\vspace{-.8em}}
+\date{}
+
+\title{Verus --- SMT-based verification of low-level systems code\\\small github.com/secure-foundations/verus}
+
+\author{Andrea Lattuada -- ETH Zurich \\
+Chris Hawblitzel -- Microsoft Research \\
+Bryan Parno, Yi Zhou, Chanhee Cho, Travis Hance -- Carnegie Mellon University \\
+Jon Howell -- VMware Research}
+
+\begin{document}
+
+\maketitle
+
+\section{Abstract}\label{abstract}
+
+The Rust programming language, with its combination of high-level
+features, memory safety, and low-level ``unsafe'' primitives has proven
+to be an excellent tool to write high-performance systems software, with
+direct interactions with the hardware.
+When looking at Rust in the context of software verification
+we observed that functions using the safe subset of Rust without
+interior mutability are pure, deterministic transformations, even when
+they manipulate mutable references (as they can be logically rewritten
+as consuming the initial value of the reference, and returning the new
+value).
+
+We leverage this intuition in the design of our new tool for SMT-based
+verification of Rust code, Verus.
+We are building Verus to efficiently verify full functional correctness
+of low-level systems code written in a safe Rust dialect that supports
+expressing specifications and proofs.
+
+\section{Verus' design}\label{verus-design}
+
+By statically preventing aliased mutable references Rust
+relieves the burden on the developer of reasoning about data races.
+When verifying imperative code in languages that do not restric aliasing, the
+developer similarly has to explicitly manage the heap and potential
+aliasing. In our experience, a Rust-like linear type system can be an
+excellent aid to Floyd-Hoare SMT-based verification of executable code.
+
+Verus leverages the fact that safe Rust has a natural, direct encoding
+in SMT (for code without interior mutability, which we need to address
+separately). Algebraic data types (ADTs) and sound generics complement
+safe Rust to make it a solid basis for a mathematical language for
+expressing specifications and proofs.
+
+Other tools, like Dafny, need complex encodings in SMT to support the
+semantics of the language, and in our
+experience this can be the cause of unpredictable prover performance.
+We choose to prioritize efficient, straighforward encoding of Rust to Z3 in
+Verus (without an intermediate language like Boogie).
+Thanks to Rust's linear typing guarantees we can
+often encode potentially mutable, complex objects, as immutable SMT
+datatypes, rather than having to rely on complex rules and axioms. Even
+objects with interior mutability that expose an ``immutable''
+interface can often be directly encoded.
+
+Additionally, Rust's memory management story removes a significant
+challenge of other tools, like Dafny, that need to encode and manage the
+heap to handle potential aliasing. Heap-reasoning is notoriously costly in SMT-based tools.
+For example, in our experience building and verifying VeriBetrKV, a verified crash-safe
+high-performance key-value store, we were able to reduce proof burden
+(in terms of LOCs and verification time) by up to 30\% by integrating a
+linear type system into a fork of Dafny.%
+\footnote{\textit{Linear Types for Large-Scale Systems Verification}, Jialin Li, Andrea Lattuada, Yi Zhou, Jonathan Cameron, Jon Howell, Bryan Parno, Chris Hawblitzel, Proceedings of the ACM on Programming Languages (OOPSLA'22)}
+
+This design principle of prioritizing efficient Z3 queries
+by relying on safe Rust and the linear type system
+comes with a necessary compromise:
+we do not intend to support all Rust features and libraries,
+instead excluding those that would
+require complicated encoding.
+
+\section{Borrow-checking proofs}\label{borrow-checking-proofs}
+
+As part of recent work, we recognized the value
+of tracking ownership of ghost variables, which do not appear in the
+emitted code, but aid verification. For example, in concurrent code,
+linear ghost variables can facilitate tracking of ghost permissions to
+access non-atomic memory, represent a thread's knowledge of a
+concurrent, shared-memory protocol state, or represent limited
+aliasing domains, for example as a mechanism to encapsulate and prove
+non-linear data-structures that require aliased references such as
+\texttt{Rc}. To enable using linearity to track these assertions,
+Verus supports three modes for variables and functions,
+\textbf{\textcode{\#{[}spec{]}}}, \textbf{\textcode{\#{[}proof{]}}}, and
+\textbf{\textcode{\#{[}exec{]}}}.
+
+Code and variables in \textbf{\textcode{\#{[}spec{]}} mode} are always
+ghost and make up the pure mathematical language used to write specifications.
+Code in this mode is not checked for linearity and borrow rules,
+and is always erased before compilation.
+
+Code in \textbf{\textcode{\#{[}proof{]}} mode} is ghost code used to
+define lemmas and prove postconditions.
+To support using linear ghost variables to track permissions and
+other singly-owned tokens that can aid verification, \textcode{proof}
+code supports linear types and is checked by the borrow checker; it
+is also erased, like \textcode{spec}.
+Executable code (\textbf{\textcode{\#{[}exec{]}}} mode) is used for the
+actual implementation, and abides by the same rules as regular Rust code.
+
+\end{document}

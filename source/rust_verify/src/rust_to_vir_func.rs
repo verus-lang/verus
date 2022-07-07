@@ -239,6 +239,7 @@ pub(crate) fn check_item_fn<'tcx>(
     };
     let publish = get_publish(&vattrs);
     let fattrs = FunctionAttrsX {
+        uses_ghost_blocks: vattrs.verus_macro,
         hidden: Arc::new(header.hidden),
         custom_req_err: vattrs.custom_req_err,
         no_auto_trigger: vattrs.no_auto_trigger,
@@ -246,6 +247,7 @@ pub(crate) fn check_item_fn<'tcx>(
         bit_vector: vattrs.bit_vector,
         autoview: vattrs.autoview,
         atomic: vattrs.atomic,
+        integer_ring: vattrs.integer_ring,
         is_decrease_by: vattrs.decreases_by,
         check_recommends: vattrs.check_recommends,
         nonlinear: vattrs.nonlinear,
@@ -272,6 +274,7 @@ pub(crate) fn check_item_fn<'tcx>(
         decrease: header.decrease,
         decrease_when: header.decrease_when,
         decrease_by: header.decrease_by,
+        broadcast_forall: None,
         mask_spec: header.invariant_mask,
         is_const: false,
         publish,
@@ -334,6 +337,7 @@ pub(crate) fn check_item_const<'tcx>(
         decrease: Arc::new(vec![]),
         decrease_when: None,
         decrease_by: None,
+        broadcast_forall: None,
         mask_spec: MaskSpec::NoSpec,
         is_const: true,
         publish: get_publish(&vattrs),
@@ -400,6 +404,7 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
         decrease: Arc::new(vec![]),
         decrease_when: None,
         decrease_by: None,
+        broadcast_forall: None,
         mask_spec: MaskSpec::NoSpec,
         is_const: false,
         publish: None,
