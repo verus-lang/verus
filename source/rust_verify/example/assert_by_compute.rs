@@ -184,8 +184,14 @@ fn compute_list() {
 #[spec] const empty: Seq<u32> = Seq::empty();
 
 fn compute_seq() {
-    assert_by_compute(empty.len() == 0);
-    assert_by_compute(empty.push(4).len() == 1);
-    assert_by_compute(empty.push(4).last() == 4);
-    assert_by_compute(seq![1, 2, 3].len() == 3);
+//    assert_by_compute(empty.len() == 0);
+//    assert_by_compute(empty.push(4).len() == 1);
+//    assert_by_compute(empty.push(4).last() == 4);
+//    assert_by_compute(seq![1, 2, 3].len() == 3);
+//    assert_by_compute(seq![1, 2, 3].index(1) == 2);
+//    assert_by_compute(seq![1, 2, 3].index(2) == 3);
+//    assert_by_compute(seq![1, 2, 3].update(1, 5).index(1) == 5);
+//    assert_by_compute(seq![1, 2, 3].update(1, 5).index(2) == 3);
+//    assert_by_compute(seq![1, 2, 3].add(seq![4, 5]).len() == 5);
+    assert_by_compute(seq![1, 2, 3].ext_equal(seq![1].add(seq![2, 3])));
 }
