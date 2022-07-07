@@ -6,9 +6,10 @@ mod pervasive;
 use pervasive::option::Option;
 #[allow(unused_imports)]
 use pervasive::*;
+use seq::Seq;
 
 fn main() {}
-
+/*
 #[spec]
 fn shifter(x: u64, amt: usize) -> u64 {
     decreases(amt);
@@ -32,7 +33,7 @@ fn compute_bv(x:u64) {
     assert_by_compute(x & x == x);  // true
     assert_by_compute(shifter(1, 10) == 1024); // true
 }
-/*
+
 fn compute_arith(x:u64) {
     assert_by_compute((7 + 7 * 2 > 20) && (22 - 5 <= 10*10)); // true
     assert_by_compute(x * 0 == 0);  // 0 == 0
@@ -175,3 +176,16 @@ fn compute_list() {
     assert_by_compute(equal(reverse(ex1()), ex1_rev()));
 }
 */
+
+/*
+ * Computing on sequences
+ */
+
+#[spec] const empty: Seq<u32> = Seq::empty();
+
+fn compute_seq() {
+    assert_by_compute(empty.len() == 0);
+    assert_by_compute(empty.push(4).len() == 1);
+    assert_by_compute(empty.push(4).last() == 4);
+    assert_by_compute(seq![1, 2, 3].len() == 3);
+}

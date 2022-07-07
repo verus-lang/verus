@@ -6,10 +6,10 @@
 //! https://github.com/secure-foundations/verus/discussions/120
 
 use crate::ast::{
-    ArithOp, BinaryOp, BitwiseOp, Constant, InequalityOp, IntRange, SpannedTyped, Typ, TypX, Typs,
-    UnaryOp, VirErr,
+    ArithOp, BinaryOp, BitwiseOp, Constant, Fun, InequalityOp, IntRange, SpannedTyped, Typ, TypX,
+    Typs, UnaryOp, VirErr,
 };
-use crate::ast_util::err_str;
+use crate::ast_util::{err_str, path_as_rust_name};
 use crate::def::{SstMap, ARCH_SIZE_MIN_BITS};
 use crate::sst::{Bnd, BndX, Exp, ExpX, Exps, UniqueIdent};
 use air::ast::{Binder, BinderX, Binders};
@@ -366,6 +366,162 @@ fn i128_to_fixed_width(i: i128, width: u32) -> BigInt {
         _ => panic!("Unexpected fixed-width integer type U({})", width),
     }
     .unwrap()
+}
+
+//fn is_sequence_producing(fun: &Fun) -> bool {
+//    // TODO: Handle Seq::new; this would require handling lambdas in eval_expr_internal
+//    match path_as_rust_name(&fun.path).as_str() {
+//        "crate::seq::Seq::empty"
+//        | "crate::seq::Seq::push"
+//        | "crate::seq::Seq::update"
+//        | "crate::seq::Seq::add" => true,
+//        _ => false,
+//    }
+//}
+
+fn is_sequence_consuming(fun: &Fun) -> bool {
+    match path_as_rust_name(&fun.path).as_str() {
+        "crate::pervasive::seq::Seq::len"
+        | "crate::pervasive::seq::Seq::index"
+        | "crate::pervasive::seq::Seq::ext_equal"
+        | "crate::pervasive::seq::Seq::last" => true,
+        _ => false,
+    }
+}
+
+enum SeqResult {
+    Concrete(Vec<Exp>),
+    Symbolic,
+}
+
+fn eval_seq_producing(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<SeqResult, VirErr> {
+    use ExpX::*;
+    use SeqResult::*;
+    match &exp.x {
+        Call(fun, _typs, args) => {
+            let new_args: Result<Vec<Exp>, VirErr> =
+                args.iter().map(|e| eval_expr_internal(ctx, state, e)).collect();
+            let new_args = new_args?;
+            let ok = Ok(Symbolic);
+
+            // TODO: Handle Seq::new; this would require handling lambdas in eval_expr_internal
+            match path_as_rust_name(&fun.path).as_str() {
+                "crate::pervasive::seq::Seq::empty" => Ok(Concrete(Vec::new())),
+                "crate::pervasive::seq::Seq::push" => {
+                    let res = eval_seq_producing(ctx, state, &new_args[0])?;
+                    match res {
+                        Concrete(mut res) => {
+                            res.push(new_args[1].clone());
+                            Ok(Concrete(res))
+                        }
+                        Symbolic => ok,
+                    }
+                }
+                "crate::pervasive::seq::Seq::update" => {
+                    let res = eval_seq_producing(ctx, state, &new_args[0])?;
+                    match res {
+                        Concrete(mut res) => match &new_args[1].x {
+                            Const(Constant::Int(index)) => {
+                                let index = BigInt::to_usize(index).unwrap();
+                                if index < res.len() {
+                                    res[index] = new_args[2].clone();
+                                    Ok(Concrete(res))
+                                } else {
+                                    ok
+                                }
+                            }
+                            _ => ok,
+                        },
+                        Symbolic => ok,
+                    }
+                }
+                "crate::pervasive::seq::Seq::add" => {
+                    let s1 = eval_seq_producing(ctx, state, &new_args[0])?;
+                    let s2 = eval_seq_producing(ctx, state, &new_args[1])?;
+                    match (s1, s2) {
+                        (Concrete(mut s1), Concrete(mut s2)) => {
+                            s1.append(&mut s2);
+                            Ok(Concrete(s1))
+                        }
+                        _ => ok,
+                    }
+                }
+                _ => ok,
+            }
+        }
+        UnaryOpr(crate::ast::UnaryOpr::Box(_), e) => eval_seq_producing(ctx, state, e),
+        UnaryOpr(crate::ast::UnaryOpr::Unbox(_), e) => eval_seq_producing(ctx, state, e),
+        _ => panic!("Expected sequence expression to be a Call.  Got {:} instead.", exp),
+    }
+}
+
+fn eval_seq_consuming(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, VirErr> {
+    use Constant::*;
+    use ExpX::*;
+    use SeqResult::*;
+    let exp_new = |e: ExpX| Ok(SpannedTyped::new(&exp.span, &exp.typ, e));
+    let bool_new = |b: bool| exp_new(Const(Bool(b)));
+    let int_new = |i: BigInt| exp_new(Const(Int(i)));
+    match &exp.x {
+        Call(fun, typs, args) => {
+            let new_args: Result<Vec<Exp>, VirErr> =
+                args.iter().map(|e| eval_expr_internal(ctx, state, e)).collect();
+            let new_args = new_args?;
+            let ok = exp_new(Call(fun.clone(), typs.clone(), Arc::new(new_args.clone())));
+
+            match path_as_rust_name(&fun.path).as_str() {
+                "crate::pervasive::seq::Seq::len" => {
+                    match eval_seq_producing(ctx, state, &new_args[0])? {
+                        Concrete(s) => int_new(BigInt::from_usize(s.len()).unwrap()),
+                        Symbolic => ok,
+                    }
+                }
+                "crate::pervasive::seq::Seq::index" => {
+                    match eval_seq_producing(ctx, state, &new_args[0])? {
+                        Concrete(s) => match &new_args[1].x {
+                            Const(Int(index)) => {
+                                let index = BigInt::to_usize(index).unwrap();
+                                if index < s.len() { Ok(s[index].clone()) } else { ok }
+                            }
+                            _ => ok,
+                        },
+                        Symbolic => ok,
+                    }
+                }
+                "crate::pervasive::seq::Seq::ext_equal" => {
+                    let left = eval_seq_producing(ctx, state, &new_args[0])?;
+                    let right = eval_seq_producing(ctx, state, &new_args[1])?;
+                    match (left, right) {
+                        (Concrete(l), Concrete(r)) => {
+                            let eq = l
+                                .iter()
+                                .zip(r.iter())
+                                .fold(Some(true), |b, (l, r)| Some(b? && equal_expr(l, r)?));
+                            match eq {
+                                None => ok,
+                                Some(b) => bool_new(b),
+                            }
+                        }
+                        _ => ok,
+                    }
+                }
+                "crate::pervasive::seq::Seq::last" => {
+                    match eval_seq_producing(ctx, state, &new_args[0])? {
+                        Concrete(s) => {
+                            if s.len() > 0 {
+                                Ok(s.last().unwrap().clone())
+                            } else {
+                                ok
+                            }
+                        }
+                        Symbolic => ok,
+                    }
+                }
+                _ => ok,
+            }
+        }
+        _ => panic!("Expected sequence expression to be a Call.  Got {:?} instead.", exp),
+    }
 }
 
 /// Symbolically execute the expression as far as we can,
@@ -773,22 +929,32 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
             }
         }
         Call(fun, typs, exps) => {
-            let new_exps: Result<Vec<Exp>, VirErr> =
-                exps.iter().map(|e| eval_expr_internal(ctx, state, e)).collect();
-            let new_exps = new_exps?;
-            match ctx.fun_ssts.get(fun) {
-                None => exp_new(Call(fun.clone(), typs.clone(), Arc::new(new_exps))),
-                Some((params, body)) => {
-                    state.env.push_scope(true);
-                    for (formal, actual) in params.iter().zip(new_exps) {
-                        if state.debug {
-                            //println!("Binding {:?} to {:?}", formal, actual.x);
+            //            if is_sequence_producing(&fun) {
+            //                eval_seq_producing(ctx, state, exp)
+            //            } else
+            if is_sequence_consuming(&fun) {
+                eval_seq_consuming(ctx, state, exp)
+            } else {
+                let new_exps: Result<Vec<Exp>, VirErr> =
+                    exps.iter().map(|e| eval_expr_internal(ctx, state, e)).collect();
+                let new_exps = new_exps?;
+                match ctx.fun_ssts.get(fun) {
+                    None => exp_new(Call(fun.clone(), typs.clone(), Arc::new(new_exps))),
+                    Some((params, body)) => {
+                        state.env.push_scope(true);
+                        for (formal, actual) in params.iter().zip(new_exps) {
+                            if state.debug {
+                                //println!("Binding {:?} to {:?}", formal, actual.x);
+                            }
+                            state
+                                .env
+                                .insert((formal.x.name.clone(), Some(0)), actual.clone())
+                                .unwrap();
                         }
-                        state.env.insert((formal.x.name.clone(), Some(0)), actual.clone()).unwrap();
+                        let e = eval_expr_internal(ctx, state, body);
+                        state.env.pop_scope();
+                        e
                     }
-                    let e = eval_expr_internal(ctx, state, body);
-                    state.env.pop_scope();
-                    e
                 }
             }
         }
@@ -834,7 +1000,7 @@ pub fn eval_expr(exp: &Exp, fun_ssts: &SstMap, rlimit: u32) -> Result<Exp, VirEr
     let time_start = Instant::now();
     let ctx = Ctx { fun_ssts, time_start, time_limit };
     let env = ScopeMap::new();
-    let mut state = State { depth: 0, env, debug: false };
-    // println!("Starting from {:?}", exp);
+    let mut state = State { depth: 0, env, debug: true };
+    println!("Starting from {:?}", exp);
     eval_expr_internal(&ctx, &mut state, exp)
 }
