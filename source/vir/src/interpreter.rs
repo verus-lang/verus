@@ -403,13 +403,23 @@ fn eval_seq_producing(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<SeqResu
                 args.iter().map(|e| eval_expr_internal(ctx, state, e)).collect();
             let new_args = new_args?;
             let ok = Ok(Symbolic);
+            let get_int = |e: &Exp| match &e.x {
+                UnaryOpr(crate::ast::UnaryOpr::Box(_), e) => match &e.x {
+                    Const(Constant::Int(index)) => Some(BigInt::to_usize(index).unwrap()),
+                    _ => None,
+                },
+                _ => None,
+            };
 
             // TODO: Handle Seq::new; this would require handling lambdas in eval_expr_internal
             match path_as_rust_name(&fun.path).as_str() {
-                "crate::pervasive::seq::Seq::empty" => Ok(Concrete(Vec::new())),
+                "crate::pervasive::seq::Seq::empty" => {
+                    println!("Producing empty");
+                    Ok(Concrete(Vec::new()))
+                }
                 "crate::pervasive::seq::Seq::push" => {
-                    let res = eval_seq_producing(ctx, state, &new_args[0])?;
-                    match res {
+                    println!("producing push");
+                    match eval_seq_producing(ctx, state, &new_args[0])? {
                         Concrete(mut res) => {
                             res.push(new_args[1].clone());
                             Ok(Concrete(res))
@@ -418,20 +428,29 @@ fn eval_seq_producing(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<SeqResu
                     }
                 }
                 "crate::pervasive::seq::Seq::update" => {
-                    let res = eval_seq_producing(ctx, state, &new_args[0])?;
-                    match res {
-                        Concrete(mut res) => match &new_args[1].x {
-                            Const(Constant::Int(index)) => {
-                                let index = BigInt::to_usize(index).unwrap();
-                                if index < res.len() {
-                                    res[index] = new_args[2].clone();
-                                    Ok(Concrete(res))
-                                } else {
-                                    ok
-                                }
+                    match eval_seq_producing(ctx, state, &new_args[0])? {
+                        Concrete(mut res) => match get_int(&new_args[1]) {
+                            Some(index) if index < res.len() => {
+                                res[index] = new_args[2].clone();
+                                Ok(Concrete(res))
                             }
                             _ => ok,
                         },
+                        Symbolic => ok,
+                    }
+                }
+                "crate::pervasive::seq::Seq::subrange" => {
+                    match eval_seq_producing(ctx, state, &new_args[0])? {
+                        Concrete(mut res) => {
+                            let start = get_int(&new_args[1]);
+                            let end = get_int(&new_args[2]);
+                            match (start, end) {
+                                (Some(start), Some(end)) if start <= end && end <= res.len() => {
+                                    Ok(Concrete(res[start..end]))
+                                }
+                                _ => ok,
+                            }
+                        }
                         Symbolic => ok,
                     }
                 }
@@ -446,7 +465,10 @@ fn eval_seq_producing(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<SeqResu
                         _ => ok,
                     }
                 }
-                _ => ok,
+                _ => {
+                    println!("***Failed to match {} ***", path_as_rust_name(&fun.path));
+                    ok
+                }
             }
         }
         UnaryOpr(crate::ast::UnaryOpr::Box(_), e) => eval_seq_producing(ctx, state, e),
@@ -478,13 +500,19 @@ fn eval_seq_consuming(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                 }
                 "crate::pervasive::seq::Seq::index" => {
                     match eval_seq_producing(ctx, state, &new_args[0])? {
-                        Concrete(s) => match &new_args[1].x {
-                            Const(Int(index)) => {
-                                let index = BigInt::to_usize(index).unwrap();
-                                if index < s.len() { Ok(s[index].clone()) } else { ok }
+                        Concrete(s) => {
+                            println!("Concrete {:?}", s);
+                            match &new_args[1].x {
+                                UnaryOpr(crate::ast::UnaryOpr::Box(_), e) => match &e.x {
+                                    Const(Constant::Int(index)) => {
+                                        let index = BigInt::to_usize(index).unwrap();
+                                        if index < s.len() { Ok(s[index].clone()) } else { ok }
+                                    }
+                                    _ => ok,
+                                },
+                                _ => ok,
                             }
-                            _ => ok,
-                        },
+                        }
                         Symbolic => ok,
                     }
                 }
