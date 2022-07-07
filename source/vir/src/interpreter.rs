@@ -149,7 +149,7 @@ fn equal_typ(left: &Typ, right: &Typ) -> Option<bool> {
             Some(path_l == path_r && equal_typs(typs_l, typs_r)?)
         }
         (Boxed(l), Boxed(r)) => equal_typ(l, r),
-        (TypParam(l), TypParam(r)) => Some(l == r),
+        (TypParam(l), TypParam(r)) => if l == r { Some(true) } else { None },
         (TypeId, TypeId) => Some(true),
         (Air(l), Air(r)) => Some(l == r),
         _ => None,
@@ -169,14 +169,16 @@ fn equal_typs(left: &Typs, right: &Typs) -> Option<bool> {
 // None means we can't tell
 fn equal_bnd(left: &Bnd, right: &Bnd) -> Option<bool> {
     use BndX::*;
+    // If we can't definitively establish equality, we conservatively return None
+    let def_eq = |bnds_l, bnds_r| if equal_bnds_typ(bnds_l, bnds_r)? { Some(true) } else { None };
     match (&left.x, &right.x) {
-        (Let(bnds_l), Let(bnds_r)) => equal_bnds_exp(bnds_l, bnds_r),
+        (Let(bnds_l), Let(bnds_r)) => if equal_bnds_exp(bnds_l, bnds_r)? { Some(true) } else { None },
         (Quant(q_l, bnds_l, _trigs_l), Quant(q_r, bnds_r, _trigs_r)) => {
-            Some(q_l == q_r && equal_bnds_typ(bnds_l, bnds_r)?)
+            Some(q_l == q_r && def_eq(bnds_l, bnds_r)?)
         }
-        (Lambda(bnds_l), Lambda(bnds_r)) => equal_bnds_typ(bnds_l, bnds_r),
+        (Lambda(bnds_l), Lambda(bnds_r)) => def_eq(bnds_l, bnds_r),
         (Choose(bnds_l, _trigs_l, e_l), Choose(bnds_r, _trigs_r, e_r)) => {
-            Some(equal_bnds_typ(bnds_l, bnds_r)? && equal_expr(e_l, e_r)?)
+            Some(def_eq(bnds_l, bnds_r)? && equal_expr(e_l, e_r)?)
         }
         _ => None,
     }
@@ -201,6 +203,8 @@ fn equal_bnds_exp(left: &Binders<Exp>, right: &Binders<Exp>) -> Option<bool> {
 // None means we can't tell
 // We expect to only call this after eval_expr has been called on both expressions
 fn equal_expr(left: &Exp, right: &Exp) -> Option<bool> {
+    // If we can't definitively establish equality, we conservatively return None
+    let def_eq = |b| if b { Some(true) } else { None };
     use ExpX::*;
     match (&left.x, &right.x) {
         (Const(l), Const(r)) => Some(l == r),
@@ -253,7 +257,7 @@ fn equal_expr(left: &Exp, right: &Exp) -> Option<bool> {
                 equal_bnds_exp(bnds_l, bnds_r)
             }
         }
-        (Unary(op_l, e_l), Unary(op_r, e_r)) => Some(op_l == op_r && equal_expr(e_l, e_r)?),
+        (Unary(op_l, e_l), Unary(op_r, e_r)) => def_eq(op_l == op_r && equal_expr(e_l, e_r)?),
         (UnaryOpr(op_l, e_l), UnaryOpr(op_r, e_r)) => {
             use crate::ast::UnaryOpr::*;
             let op_eq = match (op_l, op_r) {
@@ -268,13 +272,12 @@ fn equal_expr(left: &Exp, right: &Exp) -> Option<bool> {
                     panic!("TupleField should have been removed by ast_simplify!")
                 }
                 (Field(l), Field(r)) => Some(l == r),
-                _ => Some(false),
+                _ => None,
             };
-            Some(op_eq? && equal_expr(e_l, e_r)?)
+            def_eq(op_eq? && equal_expr(e_l, e_r)?)
         }
-        (Binary(op_l, e1_l, e2_l), Binary(op_r, e1_r, e2_r)) => {
-            Some(op_l == op_r && equal_expr(e1_l, e1_r)? && equal_expr(e2_l, e2_r)?)
-        }
+        (Binary(op_l, e1_l, e2_l), Binary(op_r, e1_r, e2_r)) => 
+            def_eq(op_l == op_r && equal_expr(e1_l, e1_r)? && equal_expr(e2_l, e2_r)?),
         (If(e1_l, e2_l, e3_l), If(e1_r, e2_r, e3_r)) => {
             Some(equal_expr(e1_l, e1_r)? && equal_expr(e2_l, e2_r)? && equal_expr(e3_l, e3_r)?)
         }
