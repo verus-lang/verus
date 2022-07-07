@@ -149,7 +149,13 @@ fn equal_typ(left: &Typ, right: &Typ) -> Option<bool> {
             Some(path_l == path_r && equal_typs(typs_l, typs_r)?)
         }
         (Boxed(l), Boxed(r)) => equal_typ(l, r),
-        (TypParam(l), TypParam(r)) => if l == r { Some(true) } else { None },
+        (TypParam(l), TypParam(r)) => {
+            if l == r {
+                Some(true)
+            } else {
+                None
+            }
+        }
         (TypeId, TypeId) => Some(true),
         (Air(l), Air(r)) => Some(l == r),
         _ => None,
@@ -172,7 +178,13 @@ fn equal_bnd(left: &Bnd, right: &Bnd) -> Option<bool> {
     // If we can't definitively establish equality, we conservatively return None
     let def_eq = |bnds_l, bnds_r| if equal_bnds_typ(bnds_l, bnds_r)? { Some(true) } else { None };
     match (&left.x, &right.x) {
-        (Let(bnds_l), Let(bnds_r)) => if equal_bnds_exp(bnds_l, bnds_r)? { Some(true) } else { None },
+        (Let(bnds_l), Let(bnds_r)) => {
+            if equal_bnds_exp(bnds_l, bnds_r)? {
+                Some(true)
+            } else {
+                None
+            }
+        }
         (Quant(q_l, bnds_l, _trigs_l), Quant(q_r, bnds_r, _trigs_r)) => {
             Some(q_l == q_r && def_eq(bnds_l, bnds_r)?)
         }
@@ -261,23 +273,24 @@ fn equal_expr(left: &Exp, right: &Exp) -> Option<bool> {
         (UnaryOpr(op_l, e_l), UnaryOpr(op_r, e_r)) => {
             use crate::ast::UnaryOpr::*;
             let op_eq = match (op_l, op_r) {
-                (Box(l), Box(r)) => equal_typ(l, r),
-                (Unbox(l), Unbox(r)) => equal_typ(l, r),
-                (HasType(l), HasType(r)) => equal_typ(l, r),
+                (Box(l), Box(r)) => def_eq(equal_typ(l, r)?),
+                (Unbox(l), Unbox(r)) => def_eq(equal_typ(l, r)?),
+                (HasType(l), HasType(r)) => def_eq(equal_typ(l, r)?),
                 (
                     IsVariant { datatype: dt_l, variant: var_l },
                     IsVariant { datatype: dt_r, variant: var_r },
-                ) => Some(dt_l == dt_r && var_l == var_r),
+                ) => def_eq(dt_l == dt_r && var_l == var_r),
                 (TupleField { .. }, TupleField { .. }) => {
                     panic!("TupleField should have been removed by ast_simplify!")
                 }
-                (Field(l), Field(r)) => Some(l == r),
+                (Field(l), Field(r)) => def_eq(l == r),
                 _ => None,
             };
             def_eq(op_eq? && equal_expr(e_l, e_r)?)
         }
-        (Binary(op_l, e1_l, e2_l), Binary(op_r, e1_r, e2_r)) => 
-            def_eq(op_l == op_r && equal_expr(e1_l, e1_r)? && equal_expr(e2_l, e2_r)?),
+        (Binary(op_l, e1_l, e2_l), Binary(op_r, e1_r, e2_r)) => {
+            def_eq(op_l == op_r && equal_expr(e1_l, e1_r)? && equal_expr(e2_l, e2_r)?)
+        }
         (If(e1_l, e2_l, e3_l), If(e1_r, e2_r, e3_r)) => {
             Some(equal_expr(e1_l, e1_r)? && equal_expr(e2_l, e2_r)? && equal_expr(e3_l, e3_r)?)
         }
