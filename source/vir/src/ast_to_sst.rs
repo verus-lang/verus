@@ -913,8 +913,7 @@ fn expr_to_stm_opt(
                                         (has_type, "possible arithmetic underflow/overflow")
                                     }
                                     ArithOp::EuclideanDiv | ArithOp::EuclideanMod => {
-                                        let zero =
-                                            ExpX::Const(Constant::Int(BigInt::zero()));
+                                        let zero = ExpX::Const(Constant::Int(BigInt::zero()));
                                         let ne =
                                             ExpX::Binary(BinaryOp::Ne, e2.clone(), e2.new_x(zero));
                                         let ne = SpannedTyped::new(
@@ -1179,7 +1178,8 @@ fn expr_to_stm_opt(
             // We assert the (hopefully simplified) result of calling the interpreter
             // but assume the original expression, so we get the benefits
             // of any ensures, triggers, etc., that it might provide
-            let interp_expr = eval_expr(&state.finalize_exp(&expr), &state.fun_ssts, ctx.global.rlimit)?;
+            let interp_expr =
+                eval_expr(&state.finalize_exp(&expr), &state.fun_ssts, ctx.global.rlimit)?;
             let assert = Spanned::new(e.span.clone(), StmX::Assert(None, interp_expr));
             let assume = Spanned::new(e.span.clone(), StmX::Assume(expr));
             Ok((vec![assert, assume], ret))

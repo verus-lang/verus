@@ -10,13 +10,13 @@ use crate::ast::{
     UnaryOp, VirErr,
 };
 use crate::ast_util::err_str;
-use crate::def::SstMap;
+use crate::def::{SstMap, ARCH_SIZE_MIN_BITS};
 use crate::sst::{Bnd, BndX, Exp, ExpX, Exps, UniqueIdent};
 use air::ast::{Binder, BinderX, Binders};
 use air::scope_map::ScopeMap;
 use num_bigint::{BigInt, Sign};
 use num_traits::identities::Zero;
-use num_traits::{One, Signed, ToPrimitive};
+use num_traits::{FromPrimitive, One, Signed, ToPrimitive};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -317,6 +317,57 @@ fn definitely_equal(left: &Exp, right: &Exp) -> bool {
     }
 }
 
+// Based on Dafny's C# implementation:
+// https://github.com/dafny-lang/dafny/blob/08744a797296897f4efd486083579e484f57b9dc/Source/DafnyRuntime/DafnyRuntime.cs#L1383
+fn euclidean_div(i1: &BigInt, i2: &BigInt) -> BigInt {
+    use Sign::*;
+    match (i1.sign(), i2.sign()) {
+        (Plus | NoSign, Plus | NoSign) => i1 / i2,
+        (Plus | NoSign, Minus) => -(i1 / (-i2)),
+        (Minus, Plus | NoSign) => -(-i1 - BigInt::one() / i2) - BigInt::one(),
+        (Minus, Minus) => ((-i1 - BigInt::one()) / (-i2)) + 1,
+    }
+}
+
+// Based on Dafny's C# implementation:
+// https://github.com/dafny-lang/dafny/blob/08744a797296897f4efd486083579e484f57b9dc/Source/DafnyRuntime/DafnyRuntime.cs#L1436
+fn euclidean_mod(i1: &BigInt, i2: &BigInt) -> BigInt {
+    use Sign::*;
+    match i1.sign() {
+        Plus | NoSign => i1 / i2.abs(),
+        Minus => {
+            let c = (-i1) % i2.abs();
+            if c.is_zero() { BigInt::zero() } else { i2.abs() - c }
+        }
+    }
+}
+
+/// Truncate a u128 to a fixed width BigInt
+fn u128_to_fixed_width(u: u128, width: u32) -> BigInt {
+    match width {
+        8 => BigInt::from_u8(u as u8),
+        16 => BigInt::from_u16(u as u16),
+        32 => BigInt::from_u32(u as u32),
+        64 => BigInt::from_u64(u as u64),
+        128 => BigInt::from_u128(u as u128),
+        _ => panic!("Unexpected fixed-width integer type U({})", width),
+    }
+    .unwrap()
+}
+
+/// Truncate an i128 to a fixed width BigInt
+fn i128_to_fixed_width(i: i128, width: u32) -> BigInt {
+    match width {
+        8 => BigInt::from_i8(i as i8),
+        16 => BigInt::from_i16(i as i16),
+        32 => BigInt::from_i32(i as i32),
+        64 => BigInt::from_i64(i as i64),
+        128 => BigInt::from_i128(i as i128),
+        _ => panic!("Unexpected fixed-width integer type U({})", width),
+    }
+    .unwrap()
+}
+
 /// Symbolically execute the expression as far as we can,
 /// stopping when we hit a symbolic control-flow decision
 fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, VirErr> {
@@ -365,7 +416,32 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                 Const(Int(i)) => {
                     // Explicitly enumerate UnaryOps, in case more are added
                     match op {
-                        BitNot => int_new(!i),
+                        BitNot => {
+                            use IntRange::*;
+                            let r = match *e.typ {
+                                TypX::Int(U(n)) => {
+                                    let i = i.to_u128().unwrap();
+                                    u128_to_fixed_width(!i, n)
+                                }
+                                TypX::Int(I(n)) => {
+                                    let i = i.to_i128().unwrap();
+                                    i128_to_fixed_width(!i, n)
+                                }
+                                TypX::Int(USize) => {
+                                    let i = i.to_u128().unwrap();
+                                    u128_to_fixed_width(!i, ARCH_SIZE_MIN_BITS)
+                                }
+                                TypX::Int(ISize) => {
+                                    let i = i.to_i128().unwrap();
+                                    i128_to_fixed_width(!i, ARCH_SIZE_MIN_BITS)
+                                }
+
+                                _ => panic!(
+                                    "Type checker should not allow bitwise ops on non-fixed-width types"
+                                ),
+                            };
+                            int_new(r)
+                        }
                         Clip(range) => {
                             let apply_range = |lower: BigInt, upper: BigInt| {
                                 if i <= &lower {
@@ -449,6 +525,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
             // We initially evaluate only e1, since op may short circuit
             // e.g., x != 0 && y == 5 / x
             let e1 = eval_expr_internal(ctx, state, e1)?;
+            // Create the default value with a possibly updated value for e2
             let ok_e2 = |e2: Exp| exp_new(Binary(*op, e1.clone(), e2.clone()));
             match op {
                 And => match &e1.x {
@@ -556,18 +633,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                                     if i2.is_zero() {
                                         err_str(&exp.span, "computation tried to divide by 0")
                                     } else {
-                                        // Based on Dafny's C# implementation:
-                                        // https://github.com/dafny-lang/dafny/blob/08744a797296897f4efd486083579e484f57b9dc/Source/DafnyRuntime/DafnyRuntime.cs#L1383
-                                        use Sign::*;
-                                        let r = match (i1.sign(), i2.sign()) {
-                                            (Plus | NoSign, Plus | NoSign) => i1 / i2,
-                                            (Plus | NoSign, Minus) => -(i1 / (-i2)),
-                                            (Minus, Plus | NoSign) => {
-                                                -(-i1 - BigInt::one() / i2) - BigInt::one()
-                                            }
-                                            (Minus, Minus) => ((-i1 - BigInt::one()) / (-i2)) + 1,
-                                        };
-                                        int_new(r)
+                                        int_new(euclidean_div(i1, i2))
                                     }
                                 }
                                 EuclideanMod => {
@@ -577,21 +643,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                                             "tried to compute a remainder with respect to 0",
                                         )
                                     } else {
-                                        // Based on Dafny's C# implementation:
-                                        // https://github.com/dafny-lang/dafny/blob/08744a797296897f4efd486083579e484f57b9dc/Source/DafnyRuntime/DafnyRuntime.cs#L1436
-                                        use Sign::*;
-                                        let r = match i1.sign() {
-                                            Plus | NoSign => i1 / i2.abs(),
-                                            Minus => {
-                                                let c = (-i1) % i2.abs();
-                                                if c.is_zero() {
-                                                    BigInt::zero()
-                                                } else {
-                                                    i2.abs() - c
-                                                }
-                                            }
-                                        };
-                                        int_new(r)
+                                        int_new(euclidean_mod(i1, i2))
                                     }
                                 }
                             }
@@ -638,13 +690,53 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                             BitXor => int_new(i1 ^ i2),
                             BitAnd => int_new(i1 & i2),
                             BitOr => int_new(i1 | i2),
-                            Shr => match i2.to_u128() {
+                            Shr | Shl => match i2.to_u128() {
                                 None => ok_e2(e2),
-                                Some(shift) => int_new(i1 >> shift),
-                            },
-                            Shl => match i2.to_u128() {
-                                None => ok_e2(e2),
-                                Some(shift) => int_new(i1 << shift),
+                                Some(shift) => {
+                                    use IntRange::*;
+                                    let r = match *exp.typ {
+                                        TypX::Int(U(n)) => {
+                                            let i1 = i1.to_u128().unwrap();
+                                            let res = if matches!(op, Shr) {
+                                                i1 >> shift
+                                            } else {
+                                                i1 << shift
+                                            };
+                                            u128_to_fixed_width(res, n)
+                                        }
+                                        TypX::Int(I(n)) => {
+                                            let i1 = i1.to_i128().unwrap();
+                                            let res = if matches!(op, Shr) {
+                                                i1 >> shift
+                                            } else {
+                                                i1 << shift
+                                            };
+                                            i128_to_fixed_width(res, n)
+                                        }
+                                        TypX::Int(USize) => {
+                                            let i1 = i1.to_u128().unwrap();
+                                            let res = if matches!(op, Shr) {
+                                                i1 >> shift
+                                            } else {
+                                                i1 << shift
+                                            };
+                                            u128_to_fixed_width(res, ARCH_SIZE_MIN_BITS)
+                                        }
+                                        TypX::Int(ISize) => {
+                                            let i1 = i1.to_i128().unwrap();
+                                            let res = if matches!(op, Shr) {
+                                                i1 >> shift
+                                            } else {
+                                                i1 << shift
+                                            };
+                                            i128_to_fixed_width(res, ARCH_SIZE_MIN_BITS)
+                                        }
+                                        _ => panic!(
+                                            "Type checker should not allow bitwise ops on non-fixed-width types"
+                                        ),
+                                    };
+                                    int_new(r)
+                                }
                             },
                         },
                         // Special cases for certain concrete values
@@ -748,5 +840,6 @@ pub fn eval_expr(exp: &Exp, fun_ssts: &SstMap, rlimit: u32) -> Result<Exp, VirEr
     let ctx = Ctx { fun_ssts, time_start, time_limit };
     let env = ScopeMap::new();
     let mut state = State { depth: 0, env, debug: false };
+    // println!("Starting from {:?}", exp);
     eval_expr_internal(&ctx, &mut state, exp)
 }

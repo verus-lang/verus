@@ -908,8 +908,12 @@ impl Verifier {
         #[cfg(debug_assertions)]
         vir::check_ast_flavor::check_krate(&krate);
 
-        let mut global_ctx =
-            vir::context::GlobalCtx::new(&krate, air_no_span.clone(), inferred_modes, self.args.rlimit)?;
+        let mut global_ctx = vir::context::GlobalCtx::new(
+            &krate,
+            air_no_span.clone(),
+            inferred_modes,
+            self.args.rlimit,
+        )?;
         vir::recursive_types::check_traits(&krate, &global_ctx)?;
         let krate = vir::ast_simplify::simplify_krate(&mut global_ctx, &krate)?;
 

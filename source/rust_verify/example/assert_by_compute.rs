@@ -16,13 +16,23 @@ fn shifter(x: u64, amt: usize) -> u64 {
     else { shifter(x << 1, amt - 1) }
 }
 
+const one32: u32 = 1;
+const two32: u32 = 2;
+const one64: u64 = 1;
+const two64: u64 = 2;
 fn compute_bv(x:u64) {
-    assert_by_compute(2 << 1 == 4); // true
+    assert_by_compute(!(-1) == 0); // true
+    assert_by_compute(!(-2) == 1); // true
+    assert_by_compute(!one32 == 0xFFFF_FFFE); // true
+    assert_by_compute(!two32 == 0xFFFF_FFFD); // true
+    assert_by_compute(!one64 == 0xFFFF_FFFF_FFFF_FFFE); // true
+    assert_by_compute(!two64 == 0xFFFF_FFFF_FFFF_FFFD); // true
+    assert_by_compute(-1 << 3 == -8); // true
     assert_by_compute(x ^ x == 0);  // true
     assert_by_compute(x & x == x);  // true
     assert_by_compute(shifter(1, 10) == 1024); // true
 }
-
+/*
 fn compute_arith(x:u64) {
     assert_by_compute((7 + 7 * 2 > 20) && (22 - 5 <= 10*10)); // true
     assert_by_compute(x * 0 == 0);  // 0 == 0
@@ -164,3 +174,4 @@ fn compute_list() {
     assert_by_compute(len(ex1()) == 5);
     assert_by_compute(equal(reverse(ex1()), ex1_rev()));
 }
+*/
