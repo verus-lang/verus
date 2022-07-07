@@ -3,27 +3,27 @@ use crate::ast::{
     IntRange, InvAtomicity, MaskSpec, Mode, Params, Path, PathX, SpannedTyped, Typ, TypX, Typs,
     UnaryOp, UnaryOpr, VarAt,
 };
-use crate::ast_util::{bitwidth_from_type, get_field, get_variant};
+use crate::ast_util::{bitwidth_from_type, fun_as_rust_dbg, get_field, get_variant};
 use crate::context::Ctx;
-use crate::def::{fn_inv_name, fn_namespace_name};
+use crate::def::{fn_inv_name, fn_namespace_name, new_user_qid_name};
 use crate::def::{
-    fun_to_string, path_to_string, prefix_box, prefix_ensures, prefix_fuel_id, prefix_lambda_type,
-    prefix_pre_var, prefix_requires, prefix_unbox, snapshot_ident, suffix_global_id,
-    suffix_local_expr_id, suffix_local_stmt_id, suffix_local_unique_id, suffix_typ_param_id,
-    variant_field_ident, variant_ident, ProverChoice, SnapPos, SpanKind, Spanned, FUEL_BOOL,
-    FUEL_BOOL_DEFAULT, FUEL_DEFAULTS, FUEL_ID, FUEL_PARAM, FUEL_TYPE, POLY, SNAPSHOT_ASSIGN,
-    SNAPSHOT_CALL, SNAPSHOT_PRE, SUCC, SUFFIX_SNAP_JOIN, SUFFIX_SNAP_MUT, SUFFIX_SNAP_WHILE_BEGIN,
-    SUFFIX_SNAP_WHILE_END,
+    fun_to_string, new_internal_qid, path_to_string, prefix_box, prefix_ensures, prefix_fuel_id,
+    prefix_lambda_type, prefix_pre_var, prefix_requires, prefix_unbox, snapshot_ident,
+    suffix_global_id, suffix_local_expr_id, suffix_local_stmt_id, suffix_local_unique_id,
+    suffix_typ_param_id, variant_field_ident, variant_ident, ProverChoice, SnapPos, SpanKind,
+    Spanned, FUEL_BOOL, FUEL_BOOL_DEFAULT, FUEL_DEFAULTS, FUEL_ID, FUEL_PARAM, FUEL_TYPE, POLY,
+    SNAPSHOT_ASSIGN, SNAPSHOT_CALL, SNAPSHOT_PRE, SUCC, SUFFIX_SNAP_JOIN, SUFFIX_SNAP_MUT,
+    SUFFIX_SNAP_WHILE_BEGIN, SUFFIX_SNAP_WHILE_END,
 };
 use crate::def::{CommandsWithContext, CommandsWithContextX};
 use crate::inv_masks::MaskSet;
 use crate::poly::{typ_as_mono, MonoTyp, MonoTypX};
-use crate::sst::{BndX, Dest, Exp, ExpX, LocalDecl, Stm, StmX, UniqueIdent};
+use crate::sst::{BndInfo, BndX, Dest, Exp, ExpX, LocalDecl, Stm, StmX, UniqueIdent};
 use crate::sst_vars::{get_loc_var, AssignMap};
 use crate::util::vec_map;
 use air::ast::{
-    BindX, Binder, BinderX, Binders, CommandX, Constant, Decl, DeclX, Expr, ExprX, MultiOp, Quant,
-    QueryX, Span, Stmt, StmtX, Trigger, Triggers,
+    BindX, Binder, BinderX, Binders, CommandX, Constant, Decl, DeclX, Expr, ExprX, MultiOp, Qid,
+    Quant, QueryX, Span, Stmt, StmtX, Trigger, Triggers,
 };
 use air::ast_util::{
     bool_typ, bv_typ, ident_apply, ident_binder, ident_typ, ident_var, int_typ, mk_and,
@@ -364,6 +364,33 @@ fn assert_unsigned(exp: &Exp) {
     };
 }
 
+// Generate a unique quantifier ID and map it to the quantifier's span
+fn new_user_qid(ctx: &Ctx, exp: &Exp) -> Qid {
+    let fun_name = fun_as_rust_dbg(
+        &ctx.fun.as_ref().expect("Expressions are expected to be within a function").current_fun,
+    );
+    let qcount = ctx.quantifier_count.get();
+    let qid = new_user_qid_name(&fun_name, qcount);
+    ctx.quantifier_count.set(qcount + 1);
+    let trigs = match &exp.x {
+        ExpX::Bind(bnd, _) => match &bnd.x {
+            BndX::Quant(_, _, trigs) => trigs,
+            BndX::Choose(_, trigs, _) => trigs,
+            _ => panic!(
+                "internal error: user quantifier expressions should only be Quant or Choose; found {:?}",
+                bnd.x
+            ),
+        },
+        _ => panic!(
+            "internal error: user quantifier expressions should only be Bind expressions; found {:?}",
+            exp.x
+        ),
+    };
+    let bnd_info = BndInfo { span: exp.span.clone(), trigs: trigs.clone() };
+    ctx.global.qid_map.borrow_mut().insert(qid.clone(), bnd_info);
+    Some(Arc::new(qid))
+}
+
 pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: ExprCtxt) -> Expr {
     match (&exp.x, expr_ctxt.is_bit_vector) {
         (ExpX::Const(crate::ast::Constant::Nat(s)), true) => {
@@ -654,9 +681,9 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: ExprCtxt) -> Expr {
             &exp_to_expr(ctx, e3, expr_ctxt),
         ),
         (ExpX::WithTriggers(_triggers, body), _) => exp_to_expr(ctx, body, expr_ctxt),
-        (ExpX::Bind(bnd, exp), _) => match (&bnd.x, expr_ctxt.is_bit_vector) {
+        (ExpX::Bind(bnd, e), _) => match (&bnd.x, expr_ctxt.is_bit_vector) {
             (BndX::Let(binders), _) => {
-                let expr = exp_to_expr(ctx, exp, expr_ctxt);
+                let expr = exp_to_expr(ctx, e, expr_ctxt);
                 let binders = vec_map(&*binders, |b| {
                     Arc::new(BinderX {
                         name: suffix_local_expr_id(&b.name),
@@ -666,7 +693,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: ExprCtxt) -> Expr {
                 air::ast_util::mk_let(&binders, &expr)
             }
             (BndX::Quant(quant, binders, trigs), _) => {
-                let expr = exp_to_expr(ctx, exp, expr_ctxt);
+                let expr = exp_to_expr(ctx, e, expr_ctxt);
                 let mut invs: Vec<Expr> = Vec::new();
                 if !expr_ctxt.is_bit_vector {
                     for binder in binders.iter() {
@@ -703,10 +730,11 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: ExprCtxt) -> Expr {
                 let triggers = vec_map(&*trigs, |trig| {
                     Arc::new(vec_map(trig, |x| exp_to_expr(ctx, x, expr_ctxt)))
                 });
-                air::ast_util::mk_quantifier(quant.quant, &binders, &triggers, &expr)
+                let qid = new_user_qid(ctx, &exp);
+                air::ast_util::mk_quantifier(quant.quant, &binders, &triggers, qid, &expr)
             }
             (BndX::Lambda(binders), false) => {
-                let expr = exp_to_expr(ctx, exp, expr_ctxt);
+                let expr = exp_to_expr(ctx, e, expr_ctxt);
                 let binders = vec_map(&*binders, |b| {
                     let name = suffix_local_expr_id(&b.name);
                     Arc::new(BinderX { name, a: typ_to_air(ctx, &b.a) })
@@ -726,16 +754,17 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: ExprCtxt) -> Expr {
                     bs.push(Arc::new(BinderX { name, a: typ_to_air(ctx, &b.a) }));
                 }
                 let cond_expr = exp_to_expr(ctx, cond, expr_ctxt);
-                let body_expr = exp_to_expr(ctx, exp, expr_ctxt);
+                let body_expr = exp_to_expr(ctx, e, expr_ctxt);
                 invs.push(cond_expr.clone());
                 let cond_expr = mk_and(&invs);
-                let typ = &exp.typ;
+                let typ = &e.typ;
                 let typ_inv = typ_invariant(ctx, typ, &body_expr);
                 let triggers = vec_map(&*trigs, |trig| {
                     Arc::new(vec_map(trig, |x| exp_to_expr(ctx, x, expr_ctxt)))
                 });
                 let binders = Arc::new(bs);
-                let bind = Arc::new(BindX::Choose(binders, Arc::new(triggers), cond_expr));
+                let qid = new_user_qid(ctx, &exp);
+                let bind = Arc::new(BindX::Choose(binders, Arc::new(triggers), qid, cond_expr));
                 let mut choose_expr = Arc::new(ExprX::Bind(bind, body_expr));
                 match typ_inv {
                     Some(_) => {
@@ -1421,7 +1450,8 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
                     &added_fuel,
                 );
                 let binder = ident_binder(&str_ident(FUEL_PARAM), &str_typ(FUEL_TYPE));
-                stmts.push(Arc::new(StmtX::Assume(mk_exists(&vec![binder], &vec![], &eq))));
+                let qid = None; // Introduces a variable name but shouldn't otherwise be instantiated
+                stmts.push(Arc::new(StmtX::Assume(mk_exists(&vec![binder], &vec![], qid, &eq))));
             }
             if ctx.debug {
                 state.map_span(&stm, SpanKind::Full);
@@ -1443,7 +1473,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
     }
 }
 
-fn set_fuel(local: &mut Vec<Decl>, hidden: &Vec<Fun>) {
+fn set_fuel(ctx: &Ctx, local: &mut Vec<Decl>, hidden: &Vec<Fun>) {
     let fuel_expr = if hidden.len() == 0 {
         str_var(&FUEL_DEFAULTS)
     } else {
@@ -1467,7 +1497,12 @@ fn set_fuel(local: &mut Vec<Decl>, hidden: &Vec<Fun>) {
         let trigger: Trigger = Arc::new(vec![fuel_bool.clone()]);
         let triggers: Triggers = Arc::new(vec![trigger]);
         let binders: Binders<air::ast::Typ> = Arc::new(vec![ident_binder(&id, &str_typ(FUEL_ID))]);
-        let bind = Arc::new(BindX::Quant(Quant::Forall, binders, triggers));
+
+        let fun_name = fun_as_rust_dbg(
+            &ctx.fun.as_ref().expect("Missing a current function value").current_fun,
+        );
+        let qid = new_internal_qid(format!("{}_nondefault_fuel", fun_name));
+        let bind = Arc::new(BindX::Quant(Quant::Forall, binders, triggers, qid));
         let or = Arc::new(ExprX::Multi(air::ast::MultiOp::Or, Arc::new(disjuncts)));
         mk_bind_expr(&bind, &or)
     };
@@ -1522,7 +1557,7 @@ pub fn body_stm_to_air(
         }
     }
 
-    set_fuel(&mut local_shared, hidden);
+    set_fuel(ctx, &mut local_shared, hidden);
 
     let mut declared: HashMap<UniqueIdent, Typ> = HashMap::new();
     let mut assigned: HashSet<UniqueIdent> = HashSet::new();
