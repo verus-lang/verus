@@ -414,11 +414,11 @@ fn eval_seq_producing(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<SeqResu
             // TODO: Handle Seq::new; this would require handling lambdas in eval_expr_internal
             match path_as_rust_name(&fun.path).as_str() {
                 "crate::pervasive::seq::Seq::empty" => {
-                    println!("Producing empty");
+                    //println!("Producing empty");
                     Ok(Concrete(Vec::new()))
                 }
                 "crate::pervasive::seq::Seq::push" => {
-                    println!("producing push");
+                    //println!("producing push");
                     match eval_seq_producing(ctx, state, &new_args[0])? {
                         Concrete(mut res) => {
                             res.push(new_args[1].clone());
@@ -501,7 +501,6 @@ fn eval_seq_consuming(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                 "crate::pervasive::seq::Seq::index" => {
                     match eval_seq_producing(ctx, state, &new_args[0])? {
                         Concrete(s) => {
-                            println!("Concrete {:?}", s);
                             match &new_args[1].x {
                                 UnaryOpr(crate::ast::UnaryOpr::Box(_), e) => match &e.x {
                                     Const(Constant::Int(index)) => {
@@ -1028,7 +1027,7 @@ pub fn eval_expr(exp: &Exp, fun_ssts: &SstMap, rlimit: u32) -> Result<Exp, VirEr
     let time_start = Instant::now();
     let ctx = Ctx { fun_ssts, time_start, time_limit };
     let env = ScopeMap::new();
-    let mut state = State { depth: 0, env, debug: true };
-    println!("Starting from {:?}", exp);
+    let mut state = State { depth: 0, env, debug: false };
+    //println!("Starting from {:?}", exp);
     eval_expr_internal(&ctx, &mut state, exp)
 }
