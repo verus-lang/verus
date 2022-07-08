@@ -1,7 +1,7 @@
 use crate::algorithm::Printer;
 use crate::INDENT;
 use proc_macro2::{Delimiter, TokenStream, TokenTree};
-use syn::{AttrStyle, Attribute, Lit, PathArguments};
+use syn_verus::{AttrStyle, Attribute, Lit, PathArguments};
 
 impl Printer {
     pub fn outer_attrs(&mut self, attrs: &[Attribute]) {

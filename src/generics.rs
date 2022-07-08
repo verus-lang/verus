@@ -1,7 +1,7 @@
 use crate::algorithm::Printer;
 use crate::iter::IterDelimited;
 use crate::INDENT;
-use syn::{
+use syn_verus::{
     BoundLifetimes, ConstParam, GenericParam, Generics, LifetimeDef, PredicateEq,
     PredicateLifetime, PredicateType, TraitBound, TraitBoundModifier, TypeParam, TypeParamBound,
     WhereClause, WherePredicate,

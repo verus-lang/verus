@@ -4,8 +4,8 @@ use crate::iter::IterDelimited;
 use crate::stmt;
 use crate::INDENT;
 use proc_macro2::TokenStream;
-use syn::punctuated::Punctuated;
-use syn::{
+use syn_verus::punctuated::Punctuated;
+use syn_verus::{
     token, Arm, Attribute, BinOp, Block, Expr, ExprArray, ExprAssign, ExprAssignOp, ExprAsync,
     ExprAwait, ExprBinary, ExprBlock, ExprBox, ExprBreak, ExprCall, ExprCast, ExprClosure,
     ExprContinue, ExprField, ExprForLoop, ExprGroup, ExprIf, ExprIndex, ExprLet, ExprLit, ExprLoop,
@@ -294,7 +294,7 @@ impl Printer {
                     self.expr(&expr.body);
                 }
             }
-            ReturnType::Type(_arrow, ty) => {
+            ReturnType::Type(_arrow, _, _, ty) => {
                 if !expr.inputs.is_empty() {
                     self.trailing_comma(true);
                     self.offset(-INDENT);
@@ -1051,6 +1051,13 @@ impl Printer {
             BinOp::BitOrEq(_) => "|=",
             BinOp::ShlEq(_) => "<<=",
             BinOp::ShrEq(_) => ">>=",
+            BinOp::BigAnd(_) => "&&&",
+            BinOp::BigOr(_) => "|||",
+            BinOp::Equiv(_) => "<==>",
+            BinOp::Imply(_) => "==>",
+            BinOp::Exply(_) => "<==",
+            BinOp::BigEq(_) => "===",
+            BinOp::BigNe(_) => "!==",
         });
     }
 
@@ -1059,6 +1066,14 @@ impl Printer {
             UnOp::Deref(_) => "*",
             UnOp::Not(_) => "!",
             UnOp::Neg(_) => "-",
+            UnOp::BigAnd(_) => "&&& ",
+            UnOp::BigOr(_) => "||| ",
+            UnOp::Proof(_) => "proof ",
+            UnOp::Ghost(_) => "ghost ",
+            UnOp::Tracked(_) => "tracked ",
+            UnOp::Forall(_) => "forall ",
+            UnOp::Exists(_) => "exists ",
+            UnOp::Choose(_) => "choose ",
         });
     }
 

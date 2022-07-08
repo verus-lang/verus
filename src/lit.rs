@@ -1,6 +1,6 @@
 use crate::algorithm::Printer;
 use proc_macro2::Literal;
-use syn::{Lit, LitBool, LitByte, LitByteStr, LitChar, LitFloat, LitInt, LitStr};
+use syn_verus::{Lit, LitBool, LitByte, LitByteStr, LitChar, LitFloat, LitInt, LitStr};
 
 impl Printer {
     pub fn lit(&mut self, lit: &Lit) {

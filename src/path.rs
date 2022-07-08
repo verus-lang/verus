@@ -1,7 +1,7 @@
 use crate::algorithm::Printer;
 use crate::iter::IterDelimited;
 use crate::INDENT;
-use syn::{
+use syn_verus::{
     AngleBracketedGenericArguments, Binding, Constraint, Expr, GenericArgument,
     ParenthesizedGenericArguments, Path, PathArguments, PathSegment, QSelf,
 };

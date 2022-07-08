@@ -1,5 +1,5 @@
 use crate::algorithm::Printer;
-use syn::File;
+use syn_verus::File;
 
 impl Printer {
     pub fn file(&mut self, file: &File) {

@@ -1,5 +1,5 @@
 use crate::algorithm::Printer;
-use syn::{Expr, Stmt};
+use syn_verus::{Expr, Stmt};
 
 impl Printer {
     pub fn stmt(&mut self, stmt: &Stmt) {

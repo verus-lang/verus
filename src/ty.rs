@@ -2,7 +2,7 @@ use crate::algorithm::Printer;
 use crate::iter::IterDelimited;
 use crate::INDENT;
 use proc_macro2::TokenStream;
-use syn::{
+use syn_verus::{
     Abi, BareFnArg, ReturnType, Type, TypeArray, TypeBareFn, TypeGroup, TypeImplTrait, TypeInfer,
     TypeMacro, TypeNever, TypeParen, TypePath, TypePtr, TypeReference, TypeSlice, TypeTraitObject,
     TypeTuple, Variadic,
@@ -171,8 +171,8 @@ impl Printer {
 
     #[cfg(feature = "verbatim")]
     fn type_verbatim(&mut self, tokens: &TokenStream) {
-        use syn::parse::{Parse, ParseStream, Result};
-        use syn::{token, ExprBlock, Lit};
+        use syn_verus::parse::{Parse, ParseStream, Result};
+        use syn_verus::{token, ExprBlock, Lit};
 
         enum TypeVerbatim {
             Lit(Lit),
@@ -192,7 +192,7 @@ impl Printer {
             }
         }
 
-        let ty: TypeVerbatim = match syn::parse2(tokens.clone()) {
+        let ty: TypeVerbatim = match syn_verus::parse2(tokens.clone()) {
             Ok(ty) => ty,
             Err(_) => unimplemented!("Type::Verbatim `{}`", tokens),
         };
@@ -210,7 +210,7 @@ impl Printer {
     pub fn return_type(&mut self, ty: &ReturnType) {
         match ty {
             ReturnType::Default => {}
-            ReturnType::Type(_arrow, ty) => {
+            ReturnType::Type(_arrow, _, _, ty) => {
                 self.word(" -> ");
                 self.ty(ty);
             }
