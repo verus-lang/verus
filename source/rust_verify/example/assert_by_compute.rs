@@ -7,10 +7,11 @@ mod pervasive;
 use pervasive::option::Option;
 #[allow(unused_imports)]
 use pervasive::*;
+#[allow(unused_imports)]
 use seq::Seq;
 
 fn main() {}
-/*
+
 #[spec]
 fn shifter(x: u64, amt: usize) -> u64 {
     decreases(amt);
@@ -162,27 +163,26 @@ fn compute_list() {
     assert_by_compute(len(ex1()) == 5);
     assert_by_compute(equal(reverse(ex1()), ex1_rev()));
 }
-*/
 
 /*
  * Computing on sequences
  */
 
-//#[spec] const empty: Seq<u32> = Seq::empty();
-//
-//fn compute_seq() {
-//    assert_by_compute(empty.len() == 0);
-//    assert_by_compute(empty.push(4).len() == 1);
-//    assert_by_compute(empty.push(4).last() == 4);
-//    assert_by_compute(seq![1, 2, 3].len() == 3);
-//    assert_by_compute(seq![1, 2, 3].index(1) == 2);
-//    assert_by_compute(seq![1, 2, 3].index(2) == 3);
-//    assert_by_compute(seq![1, 2, 3].update(1, 5).index(1) == 5);
-//    assert_by_compute(seq![1, 2, 3].update(1, 5).index(2) == 3);
-//    assert_by_compute(seq![1, 2, 3].add(seq![4, 5]).len() == 5);
-//    assert_by_compute(seq![1, 2, 3].ext_equal(seq![1].add(seq![2, 3])));
-//    assert_by_compute(seq![1, 2, 3, 4, 5].subrange(2,4).ext_equal(seq![3, 4]));
-//}
+#[spec] const empty: Seq<u32> = Seq::empty();
+
+fn compute_seq() {
+    assert_by_compute(empty.len() == 0);
+    assert_by_compute(empty.push(4).len() == 1);
+    assert_by_compute(empty.push(4).last() == 4);
+    assert_by_compute(seq![1, 2, 3].len() == 3);
+    assert_by_compute(seq![1, 2, 3].index(1) == 2);
+    assert_by_compute(seq![1, 2, 3].index(2) == 3);
+    assert_by_compute(seq![1, 2, 3].update(1, 5).index(1) == 5);
+    assert_by_compute(seq![1, 2, 3].update(1, 5).index(2) == 3);
+    assert_by_compute(seq![1, 2, 3].add(seq![4, 5]).len() == 5);
+    assert_by_compute(seq![1, 2, 3].ext_equal(seq![1].add(seq![2, 3])));
+    assert_by_compute(seq![1, 2, 3, 4, 5].subrange(2,4).ext_equal(seq![3, 4]));
+}
 
 /*
 // VeriBetrKV example:
