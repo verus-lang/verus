@@ -500,18 +500,16 @@ fn eval_seq_consuming(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                 }
                 "crate::pervasive::seq::Seq::index" => {
                     match eval_seq_producing(ctx, state, &new_args[0])? {
-                        Concrete(s) => {
-                            match &new_args[1].x {
-                                UnaryOpr(crate::ast::UnaryOpr::Box(_), e) => match &e.x {
-                                    Const(Constant::Int(index)) => {
-                                        let index = BigInt::to_usize(index).unwrap();
-                                        if index < s.len() { Ok(s[index].clone()) } else { ok }
-                                    }
-                                    _ => ok,
-                                },
+                        Concrete(s) => match &new_args[1].x {
+                            UnaryOpr(crate::ast::UnaryOpr::Box(_), e) => match &e.x {
+                                Const(Constant::Int(index)) => {
+                                    let index = BigInt::to_usize(index).unwrap();
+                                    if index < s.len() { Ok(s[index].clone()) } else { ok }
+                                }
                                 _ => ok,
-                            }
-                        }
+                            },
+                            _ => ok,
+                        },
                         Symbolic => ok,
                     }
                 }
