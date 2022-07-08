@@ -49,11 +49,6 @@ fn main() {
 }
 
 fn process_file(path: &Path) {
-    let filename = path.file_name().unwrap();
-    if filename.to_string_lossy().starts_with("fn.") {
-        return;
-    }
-
     let html = std::fs::read_to_string(path).expect("read file");
 
     if !html.contains("verusdoc_special_attr") {
@@ -300,8 +295,15 @@ fn update_mode_info(docblock_elem: &NodeRef, info: &DocModeInfo) {
     // collected all in the 'splices' vec.
     // Then we add the content.
 
-    let summary = docblock_elem.previous_sibling().unwrap();
-    let full_text = summary.text_contents();
+    let mut summary = docblock_elem.previous_sibling().unwrap();
+    let mut full_text = summary.text_contents();
+
+    if full_text == "Expand description" {
+        // This is applicable to pages devoted to a single fn not inside an impl
+        let details = summary.parent().unwrap();
+        summary = details.previous_sibling().unwrap();
+        full_text = summary.text_contents();
+    }
 
     let mut splices: Vec<(usize, String)> = vec![];
 
