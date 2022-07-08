@@ -441,12 +441,12 @@ fn eval_seq_producing(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<SeqResu
                 }
                 "crate::pervasive::seq::Seq::subrange" => {
                     match eval_seq_producing(ctx, state, &new_args[0])? {
-                        Concrete(mut res) => {
+                        Concrete(res) => {
                             let start = get_int(&new_args[1]);
                             let end = get_int(&new_args[2]);
                             match (start, end) {
                                 (Some(start), Some(end)) if start <= end && end <= res.len() => {
-                                    Ok(Concrete(res[start..end]))
+                                    Ok(Concrete(res[start..end].to_vec()))
                                 }
                                 _ => ok,
                             }

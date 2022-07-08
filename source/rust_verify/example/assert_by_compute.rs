@@ -193,5 +193,6 @@ fn compute_seq() {
 //    assert_by_compute(seq![1, 2, 3].update(1, 5).index(1) == 5);
 //    assert_by_compute(seq![1, 2, 3].update(1, 5).index(2) == 3);
 //    assert_by_compute(seq![1, 2, 3].add(seq![4, 5]).len() == 5);
-    assert_by_compute(seq![1, 2, 3].ext_equal(seq![1].add(seq![2, 3])));
+//    assert_by_compute(seq![1, 2, 3].ext_equal(seq![1].add(seq![2, 3])));
+    assert_by_compute(seq![1, 2, 3, 4, 5].subrange(2,4).ext_equal(seq![3, 4]));
 }
