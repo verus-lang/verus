@@ -296,14 +296,30 @@ fn update_mode_info(docblock_elem: &NodeRef, info: &DocModeInfo) {
     // Then we add the content.
 
     let mut summary = docblock_elem.previous_sibling().unwrap();
-    let mut full_text = summary.text_contents();
 
-    if full_text == "Expand description" {
+    if summary.text_contents() == "Expand description" {
         // This is applicable to pages devoted to a single fn not inside an impl
         let details = summary.parent().unwrap();
         summary = details.previous_sibling().unwrap();
-        full_text = summary.text_contents();
     }
+
+    let code_header = summary.select_first(".code-header");
+    match code_header {
+        Ok(ch) => {
+            summary = ch.as_node().clone();
+        }
+        Err(_) => {
+            let code_block = summary.select_first("code");
+            match code_block {
+                Ok(cb) => {
+                    summary = cb.as_node().clone();
+                }
+                Err(_) => {}
+            }
+        }
+    }
+
+    let full_text = summary.text_contents();
 
     let mut splices: Vec<(usize, String)> = vec![];
 
