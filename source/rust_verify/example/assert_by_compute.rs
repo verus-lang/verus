@@ -80,7 +80,7 @@ fn compute_call() {
     // assert(sum(10) == 10);  // fails without more fuel
     assert_by_compute(sum(10) == 10);  // true
 }
-
+*/
 #[spec]
 fn fib(x: nat) -> nat {
     decreases(x);
@@ -91,9 +91,9 @@ fn fib(x: nat) -> nat {
 
 fn compute_fib() {
     assert_by_compute(fib(10) == 55);   // true
-    //assert_by_compute(fib(100) == 354224848179261915075);   // TODO: times out
+    assert_by_compute(fib(100) == 354224848179261915075);
 }
-
+/*
 // VeriTitan example
 /*
 #[spec]
@@ -183,7 +183,6 @@ fn compute_seq() {
     assert_by_compute(seq![1, 2, 3].ext_equal(seq![1].add(seq![2, 3])));
     assert_by_compute(seq![1, 2, 3, 4, 5].subrange(2,4).ext_equal(seq![3, 4]));
 }
-*/
 
 #[spec]
 fn use_seq(s: &Seq<u32>) -> u32 {
@@ -197,7 +196,6 @@ fn test_seq_modification() {
         use_seq(&v) == 42 && v.index(1) == 1});
 }
 
-/*
 // VeriBetrKV example:
 // https://github.com/vmware-labs/verified-betrfs/blob/ee4b18d553933440bb5ecda037c6a1c411a49a5f/lib/Crypto/CRC32Lut.i.dfy
 // Currently pops the stack if we use the full lut definition

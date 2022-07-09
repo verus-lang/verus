@@ -18,6 +18,7 @@ use im::Vector;
 use num_bigint::{BigInt, Sign};
 use num_traits::identities::Zero;
 use num_traits::{FromPrimitive, One, Signed, ToPrimitive};
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -27,6 +28,33 @@ struct State {
     depth: usize,
     env: Env,
     debug: bool,
+    cache: HashMap<Fun, Vec<(Exps, Exp)>>,
+}
+
+impl State {
+    fn insert_call(&mut self, f: &Fun, args: &Exps, result: &Exp) {
+        match self.cache.get_mut(f) {
+            None => {
+                self.cache.insert(f.clone(), vec![(args.clone(), result.clone())]);
+                ()
+            }
+            Some(prev_results) => prev_results.push((args.clone(), result.clone())),
+        }
+    }
+
+    fn lookup_call(&self, f: &Fun, args: &Exps) -> Option<Exp> {
+        for (prev_args, prev_result) in self.cache.get(f)? {
+            match equal_exprs(prev_args, &args) {
+                None => (),
+                Some(b) => {
+                    if b {
+                        return Some(prev_result.clone());
+                    }
+                }
+            }
+        }
+        None
+    }
 }
 
 struct Ctx<'a> {
@@ -955,32 +983,36 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
             }
         }
         Call(fun, typs, exps) => {
-            //            if is_sequence_producing(&fun) {
-            //                eval_seq_producing(ctx, state, exp)
-            //            } else
-            if is_sequence_consuming(&fun) {
-                eval_seq_consuming(ctx, state, exp)
-            } else {
-                let new_exps: Result<Vec<Exp>, VirErr> =
-                    exps.iter().map(|e| eval_expr_internal(ctx, state, e)).collect();
-                let new_exps = new_exps?;
-                match ctx.fun_ssts.get(fun) {
-                    None => exp_new(Call(fun.clone(), typs.clone(), Arc::new(new_exps))),
-                    Some((params, body)) => {
-                        state.env.push_scope(true);
-                        for (formal, actual) in params.iter().zip(new_exps) {
-                            if state.debug {
-                                //println!("Binding {:?} to {:?}", formal, actual.x);
+            let new_exps: Result<Vec<Exp>, VirErr> =
+                exps.iter().map(|e| eval_expr_internal(ctx, state, e)).collect();
+            let new_exps = Arc::new(new_exps?);
+            match state.lookup_call(&fun, &new_exps) {
+                Some(prev_result) => Ok(prev_result),
+                None => {
+                    let result = if is_sequence_consuming(&fun) {
+                        eval_seq_consuming(ctx, state, exp)
+                    } else {
+                        match ctx.fun_ssts.get(fun) {
+                            None => exp_new(Call(fun.clone(), typs.clone(), new_exps.clone())),
+                            Some((params, body)) => {
+                                state.env.push_scope(true);
+                                for (formal, actual) in params.iter().zip(new_exps.iter()) {
+                                    if state.debug {
+                                        //println!("Binding {:?} to {:?}", formal, actual.x);
+                                    }
+                                    state
+                                        .env
+                                        .insert((formal.x.name.clone(), Some(0)), actual.clone())
+                                        .unwrap();
+                                }
+                                let e = eval_expr_internal(ctx, state, body);
+                                state.env.pop_scope();
+                                e
                             }
-                            state
-                                .env
-                                .insert((formal.x.name.clone(), Some(0)), actual.clone())
-                                .unwrap();
                         }
-                        let e = eval_expr_internal(ctx, state, body);
-                        state.env.pop_scope();
-                        e
-                    }
+                    };
+                    state.insert_call(fun, &new_exps, &result.clone()?);
+                    result
                 }
             }
         }
@@ -1021,12 +1053,13 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
 }
 
 pub fn eval_expr(exp: &Exp, fun_ssts: &SstMap, rlimit: u32) -> Result<Exp, VirErr> {
+    let env = ScopeMap::new();
+    let cache = HashMap::new();
+    let mut state = State { depth: 0, env, debug: false, cache };
     // Don't run for more than rlimit seconds
     let time_limit = Duration::new(rlimit as u64, 0);
     let time_start = Instant::now();
     let ctx = Ctx { fun_ssts, time_start, time_limit };
-    let env = ScopeMap::new();
-    let mut state = State { depth: 0, env, debug: false };
     //println!("Starting from {:?}", exp);
     eval_expr_internal(&ctx, &mut state, exp)
 }
