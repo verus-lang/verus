@@ -7,7 +7,7 @@ use crate::pervasive::*;
 #[allow(unused_imports)]
 use crate::pervasive::seq::*;
 
-verus! {
+verus2! {
 
 #[verifier(external_body)]
 pub struct Vec<#[verifier(strictly_positive)] A> {
@@ -59,7 +59,7 @@ impl<A> Vec<A> {
         requires
             i < self.view().len(),
         ensures
-            *r === self.view().index(i),
+            *r === self.view().index(i as int),
     {
         &self.vec[i]
     }
@@ -69,7 +69,7 @@ impl<A> Vec<A> {
         requires
             i < old(self).view().len(),
         ensures
-            self.view() === old(self).view().update(i, a),
+            self.view() === old(self).view().update(i as int, a),
     {
         self.vec[i] = a;
     }

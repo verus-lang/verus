@@ -7,7 +7,7 @@ use crate::pervasive::*;
 #[allow(unused_imports)]
 use crate::pervasive::seq::*;
 
-verus! {
+verus2! {
 
 impl<A> Seq<A> {
     /// Applies the function `f` to each element of the sequence, and returns
@@ -20,7 +20,7 @@ impl<A> Seq<A> {
 
     // TODO is_sorted -- extract from summer_school e22
     pub open spec fn contains(self, needle: A) -> bool {
-        exists|i: nat| i < self.len() && self.index(i) === needle
+        exists|i: int| 0 <= i < self.len() && self.index(i) === needle
     }
 
     /// Drops the last element of a sequence and returns a sequence whose length is

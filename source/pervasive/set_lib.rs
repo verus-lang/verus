@@ -7,7 +7,7 @@ use crate::pervasive::*;
 #[allow(unused_imports)]
 use crate::pervasive::set::*;
 
-verus! {
+verus2! {
 
 impl<A> Set<A> {
     pub open spec fn map<B, F: Fn(A) -> B>(self, f: F) -> Set<B> {

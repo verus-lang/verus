@@ -11,7 +11,7 @@ use crate::pervasive::modes::*;
 fn main() {
 }
 
-verus! {
+verus2! {
 
 /// functions may be declared exec (default), proof, or spec, which contain
 /// exec code, proof code, and spec code, respectively.
@@ -29,7 +29,7 @@ fn my_exec_fun(x: u32, y: u32) -> (sum: u32)
     x + y
 }
 
-proof fn my_proof_fun(x: u32, y: u32) -> (sum: u32)
+proof fn my_proof_fun(x: int, y: int) -> (sum: int)
     requires
         x < 100,
         y < 100,
@@ -39,7 +39,7 @@ proof fn my_proof_fun(x: u32, y: u32) -> (sum: u32)
     x + y
 }
 
-spec fn my_spec_fun(x: u32, y: u32) -> u32
+spec fn my_spec_fun(x: int, y: int) -> int
     recommends
         x < 100,
         y < 100,
@@ -59,14 +59,14 @@ fn test_my_funs(x: u32, y: u32)
     // my_proof_fun(x, y); // not allowed in exec code
     // let u = my_spec_fun(x, y); // not allowed exec code
     proof {
-        let u = my_spec_fun(x, y); // allowed in proof code
-        my_proof_fun(u / 2, y); // allowed in proof code
+        let u = my_spec_fun(x as int, y as int); // allowed in proof code
+        my_proof_fun(u / 2, y as int); // allowed in proof code
     }
 }
 
 /// spec functions with pub or pub(...) must specify whether the body of the function
 /// should also be made publicly visible (open function) or not visible (closed function).
-pub open spec fn my_pub_spec_fun1(x: u32, y: u32) -> u32 {
+pub open spec fn my_pub_spec_fun1(x: int, y: int) -> int {
     // function and body visible to all
     x / 2 + y / 2
 }
@@ -76,15 +76,15 @@ pub open(crate) spec fn my_pub_spec_fun2(x: u32, y: u32) -> u32 {
     x / 2 + y / 2
 }
 */
-pub(crate) open spec fn my_pub_spec_fun3(x: u32, y: u32) -> u32 {
+pub(crate) open spec fn my_pub_spec_fun3(x: int, y: int) -> int {
     // function and body visible to crate
     x / 2 + y / 2
 }
-pub closed spec fn my_pub_spec_fun4(x: u32, y: u32) -> u32 {
+pub closed spec fn my_pub_spec_fun4(x: int, y: int) -> int {
     // function visible to all, body visible to module
     x / 2 + y / 2
 }
-pub(crate) closed spec fn my_pub_spec_fun5(x: u32, y: u32) -> u32 {
+pub(crate) closed spec fn my_pub_spec_fun5(x: int, y: int) -> int {
     // function visible to crate, body visible to module
     x / 2 + y / 2
 }
@@ -136,7 +136,7 @@ fn test_my_funs2(
     let s = a + b; // s is an exec variable
     proof {
         let u = a + b; // u is a ghost variable
-        my_proof_fun(u / 2, b); // my_proof_fun(x, y) takes ghost parameters x and y
+        my_proof_fun(u / 2, b as int); // my_proof_fun(x, y) takes ghost parameters x and y
     }
 }
 
@@ -156,7 +156,7 @@ fn assert_by_test() {
 
 /// "assert by" can also invoke specialized provers for bit-vector reasoning or nonlinear arithmetic.
 fn assert_by_provers(x: u32) {
-    assert(x ^ x == 0) by(bit_vector);
+    assert(x ^ x == 0u32) by(bit_vector);
     assert(2 <= x && x < 10 ==> x * x > x) by(nonlinear_arith);
 }
 
@@ -180,9 +180,9 @@ proof fn test5_bound_checking(x: u32, y: u32, z: u32)
 
 /// The syntax for forall and exists quantifiers is based on closures:
 fn test_quantifier() {
-    assert(forall|x: u32, y: u32| x < 100 && y < 100 ==> my_spec_fun(x, y) >= x);
+    assert(forall|x: int, y: int| 0 <= x < 100 && 0 <= y < 100 ==> my_spec_fun(x, y) >= x);
     assert(my_spec_fun(10, 20) == 30);
-    assert(exists|x: u32, y: u32| my_spec_fun(x, y) == 30);
+    assert(exists|x: int, y: int| my_spec_fun(x, y) == 30);
 }
 
 /// "assert forall by" may be used to prove foralls:
@@ -221,11 +221,11 @@ fn test_choose() {
 /// or proving an exists, use #[trigger]:
 fn test_single_trigger1() {
     // Use [my_spec_fun(x, y)] as the trigger
-    assume(forall|x: u32, y: u32| f1(x) < 100 && f1(y) < 100 ==> #[trigger] my_spec_fun(x, y) >= x);
+    assume(forall|x: int, y: int| f1(x) < 100 && f1(y) < 100 ==> #[trigger] my_spec_fun(x, y) >= x);
 }
 fn test_single_trigger2() {
     // Use [f1(x), f1(y)] as the trigger
-    assume(forall|x: u32, y: u32|
+    assume(forall|x: int, y: int|
         #[trigger] f1(x) < 100 && #[trigger] f1(y) < 100 ==> my_spec_fun(x, y) >= x
     );
 }
@@ -233,7 +233,7 @@ fn test_single_trigger2() {
 /// To manually specify multiple triggers, use #![trigger]:
 fn test_multiple_triggers() {
     // Use both [my_spec_fun(x, y)] and [f1(x), f1(y)] as triggers
-    assume(forall|x: u32, y: u32|
+    assume(forall|x: int, y: int|
         #![trigger my_spec_fun(x, y)]
         #![trigger f1(x), f1(y)]
         f1(x) < 100 && f1(y) < 100 ==> my_spec_fun(x, y) >= x
@@ -245,14 +245,14 @@ fn test_multiple_triggers() {
 fn test_auto_trigger1() {
     // Verus automatically chose [my_spec_fun(x, y)] as the trigger.
     // (It considers this safer, i.e. likely to match less often, than the trigger [f1(x), f1(y)].)
-    assume(forall|x: u32, y: u32| f1(x) < 100 && f1(y) < 100 ==> my_spec_fun(x, y) >= x);
+    assume(forall|x: int, y: int| f1(x) < 100 && f1(y) < 100 ==> my_spec_fun(x, y) >= x);
 }
 
 /// If Verus prints a note saying that it automatically chose a trigger with low confidence,
 /// you can supply manual triggers or use #![auto] to accept the automatically chosen trigger.
 fn test_auto_trigger2() {
     // Verus chose [f1(x), f1(y)] as the trigger; go ahead and accept that
-    assume(forall|x: u32, y: u32| #![auto] f1(x) < 100 && f1(y) < 100 ==> my_spec_fun(3, y) >= 3);
+    assume(forall|x: int, y: int| #![auto] f1(x) < 100 && f1(y) < 100 ==> my_spec_fun(3, y) >= 3);
 }
 
 /// &&& and ||| are like && and ||, but have low precedence (lower than all other binary operators).
@@ -343,13 +343,13 @@ fn test_ghost(x: u32, y: u32)
         x < 100,
         y < 100,
 {
-    let u: Ghost<u32> = ghost(my_spec_fun(x, y));
-    let mut v: Ghost<u32> = ghost(*u + 1);
+    let u: Ghost<int> = ghost(my_spec_fun(x as int, y as int));
+    let mut v: Ghost<int> = ghost(*u + 1);
     assert(*v == x + y + 1);
     proof {
         v = Ghost::new(*v + 1); // proof code may assign to exec variables of type Ghost/Tracked
     }
-    let w: Ghost<u32> = ghost({
+    let w: Ghost<int> = ghost({
         // proof block that returns a ghost value
         let temp = *v + 1;
         temp + 1
@@ -372,7 +372,7 @@ fn test_consume(t: Tracked<int>)
 /// Spec functions are not checked for correctness (although they are checked for termination).
 /// However, marking a spec function as "spec(checked)" enables lightweight "recommends checking"
 /// inside the spec function.
-spec(checked) fn my_spec_fun2(x: u32, y: u32) -> u32
+spec(checked) fn my_spec_fun2(x: int, y: int) -> int
     recommends
         x < 100,
         y < 100,

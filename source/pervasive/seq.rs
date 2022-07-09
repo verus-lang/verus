@@ -5,7 +5,7 @@ use builtin_macros::*;
 #[allow(unused_imports)]
 use crate::pervasive::*;
 
-verus! {
+verus2! {
 
 /// `Seq<A>` is a sequence type for specifications.
 /// To use a "sequence" in compiled code, use an `exec` type like [`vec::Vec`]

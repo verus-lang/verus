@@ -16,7 +16,7 @@ test_verify_one_file! {
 
         proof fn test1_inference() {
             assert(tr(300));
-            assert(exists|i| i >= 0 && tr(i));
+            assert(exists|i| 0 <= i && tr(i));
         }
     } => Ok(())
 }

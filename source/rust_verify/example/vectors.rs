@@ -6,7 +6,7 @@ mod pervasive;
 #[allow(unused_imports)]
 use crate::pervasive::{*, vec::*, seq::*, modes::*};
 
-verus! {
+verus2! {
 
 fn binary_search(v: &Vec<u64>, k: u64) -> (r: usize)
     requires
@@ -14,7 +14,7 @@ fn binary_search(v: &Vec<u64>, k: u64) -> (r: usize)
         exists|i:int| 0 <= i < v.len() && k == v.index(i),
     ensures
         r < v.len(),
-        k == v.index(r),
+        k == v.index(r as int),
 {
     let mut i1: usize = 0;
     let mut i2: usize = v.len() - 1;
@@ -24,7 +24,7 @@ fn binary_search(v: &Vec<u64>, k: u64) -> (r: usize)
             exists|i:int| i1 <= i <= i2 && k == v.index(i),
             forall|i:int, j:int| 0 <= i <= j < v.len() ==> v.index(i) <= v.index(j),
     {
-        let d: Ghost<usize> = ghost(i2 - i1);
+        let d: Ghost<int> = ghost(i2 - i1);
 
         let ix = i1 + (i2 - i1) / 2;
         if *v.index(ix) < k {

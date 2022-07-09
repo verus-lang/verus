@@ -178,7 +178,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test4_fails verus_code! {
         proof fn test4_fails(x: u32, y: u32, z: u32) {
-            assert((x as int) * (z as int) == ((x * z) as int)) by(nonlinear_arith); // FAILS
+            assert((x as int) * (z as int) == (mul(x, z) as int)) by(nonlinear_arith); // FAILS
         }
     } => Err(e) => assert_one_fails(e)
 }
@@ -244,10 +244,10 @@ test_verify_one_file! {
         proof fn test6(x: int)
             requires x == 5
         {
-            assert({let z = 2; x * z == 10}) by(nonlinear_arith)
-                requires ({let z = 5; x == z})
+            assert({let z: int = 2; x * z == 10}) by(nonlinear_arith)
+                requires ({let z: int = 5; x == z})
             {
-                let y: nat = x as nat * 2;
+                let y: nat = mul(x as nat, 2);
                 assert(y == 10);
             }
             assert(x * 2 == 10);

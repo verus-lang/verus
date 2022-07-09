@@ -490,7 +490,7 @@ fn check_expr(
                 _ => Mode::Exec,
             };
             match op {
-                BinaryOp::Arith(_, id) => {
+                BinaryOp::Arith(_, Some(id)) => {
                     assert!(!typing.inferred_modes.contains_key(id));
                     typing.inferred_modes.insert(*id, erasure_mode.clone());
                 }

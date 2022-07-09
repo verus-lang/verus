@@ -15,6 +15,7 @@ pub(crate) const BUILTIN_NAT: &str = "builtin::nat";
 pub(crate) struct Typecheck {
     pub int_ty_id: Option<DefId>,
     pub nat_ty_id: Option<DefId>,
+    pub enhanced_int: bool,
     pub exprs_in_spec: Arc<Mutex<HashSet<HirId>>>,
     pub autoviewed_calls: HashSet<HirId>,
     pub autoviewed_call_typs: Arc<Mutex<HashMap<HirId, Typ>>>,
@@ -107,6 +108,9 @@ impl FormalVerifierTyping for Typecheck {
         ty: Ty<'tcx>,
         expected_ty: &Option<Ty<'tcx>>,
     ) -> Ty<'tcx> {
+        if !self.enhanced_int {
+            return ty;
+        }
         // For convenience, allow implicit coercions from integral types to int in some situations.
         // This is strictly opportunistic; in many situations you still need "as int".
         match (ty.kind(), expected_ty, allow_widen(expr)) {
@@ -135,6 +139,10 @@ impl FormalVerifierTyping for Typecheck {
                 }
                 _ => return None,
             }
+        }
+
+        if !self.enhanced_int {
+            return None;
         }
 
         // For convenience, allow implicit coercions from integral types to int in some situations.

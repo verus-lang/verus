@@ -1117,6 +1117,7 @@ impl Verifier {
         let _ = tcx.formal_verifier_callback.replace(Some(Box::new(crate::typecheck::Typecheck {
             int_ty_id: None,
             nat_ty_id: None,
+            enhanced_int: !self.args.no_enhanced_typecheck,
             exprs_in_spec: Arc::new(std::sync::Mutex::new(HashSet::new())),
             autoviewed_calls: HashSet::new(),
             autoviewed_call_typs: autoviewed_call_typs.clone(),
