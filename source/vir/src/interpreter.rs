@@ -14,6 +14,7 @@ use crate::def::{SstMap, ARCH_SIZE_MIN_BITS};
 use crate::sst::{Bnd, BndX, Exp, ExpX, Exps, UniqueIdent};
 use air::ast::{Binder, BinderX, Binders};
 use air::scope_map::ScopeMap;
+use im::Vector;
 use num_bigint::{BigInt, Sign};
 use num_traits::identities::Zero;
 use num_traits::{FromPrimitive, One, Signed, ToPrimitive};
@@ -390,7 +391,7 @@ fn is_sequence_consuming(fun: &Fun) -> bool {
 }
 
 enum SeqResult {
-    Concrete(Vec<Exp>),
+    Concrete(Vector<Exp>),
     Symbolic,
 }
 
@@ -415,13 +416,13 @@ fn eval_seq_producing(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<SeqResu
             match path_as_rust_name(&fun.path).as_str() {
                 "crate::pervasive::seq::Seq::empty" => {
                     //println!("Producing empty");
-                    Ok(Concrete(Vec::new()))
+                    Ok(Concrete(Vector::new()))
                 }
                 "crate::pervasive::seq::Seq::push" => {
                     //println!("producing push");
                     match eval_seq_producing(ctx, state, &new_args[0])? {
                         Concrete(mut res) => {
-                            res.push(new_args[1].clone());
+                            res.push_back(new_args[1].clone());
                             Ok(Concrete(res))
                         }
                         Symbolic => ok,
@@ -446,7 +447,7 @@ fn eval_seq_producing(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<SeqResu
                             let end = get_int(&new_args[2]);
                             match (start, end) {
                                 (Some(start), Some(end)) if start <= end && end <= res.len() => {
-                                    Ok(Concrete(res[start..end].to_vec()))
+                                    Ok(Concrete(res.clone().slice(start..end)))
                                 }
                                 _ => ok,
                             }
@@ -458,8 +459,8 @@ fn eval_seq_producing(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<SeqResu
                     let s1 = eval_seq_producing(ctx, state, &new_args[0])?;
                     let s2 = eval_seq_producing(ctx, state, &new_args[1])?;
                     match (s1, s2) {
-                        (Concrete(mut s1), Concrete(mut s2)) => {
-                            s1.append(&mut s2);
+                        (Concrete(mut s1), Concrete(s2)) => {
+                            s1.append(s2);
                             Ok(Concrete(s1))
                         }
                         _ => ok,
