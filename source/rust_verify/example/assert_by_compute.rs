@@ -11,7 +11,7 @@ use pervasive::*;
 use seq::Seq;
 
 fn main() {}
-
+/*
 #[spec]
 fn shifter(x: u64, amt: usize) -> u64 {
     decreases(amt);
@@ -182,6 +182,19 @@ fn compute_seq() {
     assert_by_compute(seq![1, 2, 3].add(seq![4, 5]).len() == 5);
     assert_by_compute(seq![1, 2, 3].ext_equal(seq![1].add(seq![2, 3])));
     assert_by_compute(seq![1, 2, 3, 4, 5].subrange(2,4).ext_equal(seq![3, 4]));
+}
+*/
+
+#[spec]
+fn use_seq(s: &Seq<u32>) -> u32 {
+    let s_new = s.update(1, 42);
+    s_new.index(1)
+}
+
+fn test_seq_modification() {
+    assert(
+        { #[spec] let v = seq![0, 1, 2];
+        use_seq(&v) == 42 && v.index(1) == 1});
 }
 
 /*
