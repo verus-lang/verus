@@ -585,13 +585,14 @@ fn display_perf_stats(state: &State) {
     let sum = state.cache_hits + state.cache_misses;
     let hit_perc = 100.0 * (state.cache_hits as f64 / sum as f64);
     println!("Call result cache had {} hits out of {} ({}%)", state.cache_hits, sum, hit_perc);
-    let mut cache_stats:Vec<(&Fun, usize)> = state.cache.iter().map(|(fun, vec)| (fun, vec.len())).collect();
+    let mut cache_stats: Vec<(&Fun, usize)> =
+        state.cache.iter().map(|(fun, vec)| (fun, vec.len())).collect();
     cache_stats.sort_by(|a, b| b.1.cmp(&a.1));
     for (fun, calls) in &cache_stats {
         println!("{:?} cached {} distinct invocations", fun.path, calls);
     }
     println!("\nRaw call numbers:");
-    let mut fun_call_stats:Vec<(&Fun, _)> = state.fun_calls.iter().collect();
+    let mut fun_call_stats: Vec<(&Fun, _)> = state.fun_calls.iter().collect();
     fun_call_stats.sort_by(|a, b| b.1.cmp(&a.1));
     for (fun, count) in fun_call_stats {
         println!("{:?} called {} times", fun.path, count);
@@ -1008,11 +1009,18 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                 exps.iter().map(|e| eval_expr_internal(ctx, state, e)).collect();
             let new_exps = Arc::new(new_exps?);
             match state.fun_calls.get_mut(fun) {
-                None => { state.fun_calls.insert(fun.clone(), 1); }
-                Some(count) => { *count += 1; }
+                None => {
+                    state.fun_calls.insert(fun.clone(), 1);
+                }
+                Some(count) => {
+                    *count += 1;
+                }
             }
             match state.lookup_call(&fun, &new_exps) {
-                Some(prev_result) => { state.cache_hits += 1; Ok(prev_result) },
+                Some(prev_result) => {
+                    state.cache_hits += 1;
+                    Ok(prev_result)
+                }
                 None => {
                     state.cache_misses += 1;
                     let result = if is_sequence_consuming(&fun) {
@@ -1081,7 +1089,15 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
 pub fn eval_expr(exp: &Exp, fun_ssts: &SstMap, rlimit: u32) -> Result<Exp, VirErr> {
     let env = ScopeMap::new();
     let cache = HashMap::new();
-    let mut state = State { depth: 0, env, debug: false, cache, cache_hits: 0, cache_misses: 0, fun_calls: HashMap::new() };
+    let mut state = State {
+        depth: 0,
+        env,
+        debug: false,
+        cache,
+        cache_hits: 0,
+        cache_misses: 0,
+        fun_calls: HashMap::new(),
+    };
     // Don't run for more than rlimit seconds
     let time_limit = Duration::new(rlimit as u64, 0);
     let time_start = Instant::now();
