@@ -1005,9 +1005,12 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
             }
         }
         Call(fun, typs, exps) => {
+            println!("{}Calling {}", "\t".repeat(state.depth), exp);
             let new_exps: Result<Vec<Exp>, VirErr> =
                 exps.iter().map(|e| eval_expr_internal(ctx, state, e)).collect();
             let new_exps = Arc::new(new_exps?);
+            let new_exps_string = new_exps.iter().map(|e| e.to_string()).collect::<Vec<_>>().join(", ");
+            println!("{} simplified args to {}", "\t".repeat(state.depth), new_exps_string);
             match state.fun_calls.get_mut(fun) {
                 None => {
                     state.fun_calls.insert(fun.clone(), 1);
