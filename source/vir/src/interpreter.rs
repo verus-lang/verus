@@ -585,10 +585,15 @@ fn display_perf_stats(state: &State) {
     let sum = state.cache_hits + state.cache_misses;
     let hit_perc = 100.0 * (state.cache_hits as f64 / sum as f64);
     println!("Call result cache had {} hits out of {} ({}%)", state.cache_hits, sum, hit_perc);
-    for (fun, prev) in &state.cache { //.iter().collect::<(&Fun, &Vec<_>)>().sort_by(|a, b| a.1.len().cmp(b.1.len()))  {
-        println!("{:?} cached {} distinct invocations", fun.path, prev.len());
+    let mut cache_stats:Vec<(&Fun, usize)> = state.cache.iter().map(|(fun, vec)| (fun, vec.len())).collect();
+    cache_stats.sort_by(|a, b| b.1.cmp(&a.1));
+    for (fun, calls) in &cache_stats {
+        println!("{:?} cached {} distinct invocations", fun.path, calls);
     }
-    for (fun, count) in &state.fun_calls {
+    println!("\nRaw call numbers:");
+    let mut fun_call_stats:Vec<(&Fun, _)> = state.fun_calls.iter().collect();
+    fun_call_stats.sort_by(|a, b| b.1.cmp(&a.1));
+    for (fun, count) in fun_call_stats {
         println!("{:?} called {} times", fun.path, count);
     }
 }

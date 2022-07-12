@@ -193,6 +193,7 @@ fn test_seq_modification() {
         use_seq(&v) == 42 && v.index(1) == 1});
 }
 
+*/
 // VeriBetrKV example:
 // https://github.com/vmware-labs/verified-betrfs/blob/ee4b18d553933440bb5ecda037c6a1c411a49a5f/lib/Crypto/CRC32Lut.i.dfy
 // Currently pops the stack if we use the full lut definition
@@ -289,10 +290,10 @@ fn pow_mod_crc(n: nat) -> Seq<bool> {
 }
 
 #[spec] const lut: Seq<u64> = seq![
-    0x00000001493c7d27, 0x493c7d27ba4fc28e, 0xf20c0dfeddc0152b, 0xba4fc28e9e4addf8,
-    0x3da6d0cb39d3b296, 0xddc0152b0715ce53, 0x1c291d0447db8317, 0x9e4addf80d3b6092,
-    0x740eef02c96cfdc0, 0x39d3b296878a92a7, 0x083a6eecdaece73e, 0x0715ce53ab7aff2a,
-    0xc49f4f672162d385, 0x47db831783348832, 0x2ad91c30299847d5, 0x0d3b6092b9e02b86];
+    0x00000001493c7d27, 0x493c7d27ba4fc28e, 0xf20c0dfeddc0152b, 0xba4fc28e9e4addf8];
+//    0x3da6d0cb39d3b296, 0xddc0152b0715ce53, 0x1c291d0447db8317, 0x9e4addf80d3b6092,
+//    0x740eef02c96cfdc0, 0x39d3b296878a92a7, 0x083a6eecdaece73e, 0x0715ce53ab7aff2a,
+//    0xc49f4f672162d385, 0x47db831783348832, 0x2ad91c30299847d5, 0x0d3b6092b9e02b86,
 //    0x6992cea218b33a4e, 0xc96cfdc0b6dd949b, 0x7e90804878d9ccb7, 0x878a92a7bac2fd7b,
 //    0x1b3d8f29a60ce07b, 0xdaece73ece7f39f4, 0xf1d0f55e61d82e56, 0xab7aff2ad270f1a2,
 //    0xa87ab8a8c619809d, 0x2162d3852b3cac5d, 0x8462d80065863b64, 0x833488321b03397f,
@@ -361,6 +362,4 @@ fn pow_mod_crc(n: nat) -> Seq<bool> {
 fn crc_compute() {
     assert_by_compute(bits_of_int(lut.index(v-1) as nat, 64).ext_equal(pow_mod_crc(2*64*v as nat).add(pow_mod_crc(64*v as nat))));
 }
-*/
-
 
