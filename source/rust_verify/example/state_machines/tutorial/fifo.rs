@@ -579,7 +579,7 @@ pub fn new_queue<T>(len: usize) -> (Producer<T>, Consumer<T>) {
         perms.proof_insert(i, cell_perm);
 
         assert(perms.dom().contains(i as nat));
-        assert(backing_cells_vec.index(i as nat).id() == perms.index(i as nat).pcell);
+        assert(equal(backing_cells_vec.index(i as nat).id(), perms.index(i as nat).pcell));
         assert(perms.index(i as nat).value.is_None());
     }
 
