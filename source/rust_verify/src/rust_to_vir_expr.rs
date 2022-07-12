@@ -21,8 +21,10 @@ use rustc_ast::{Attribute, BorrowKind, Mutability};
 use rustc_hir::def::{DefKind, Res};
 use rustc_hir::{
     BinOpKind, BindingAnnotation, Block, Destination, Expr, ExprKind, Guard, Local, LoopSource,
-    Node, Pat, PatKind, QPath, Stmt, StmtKind, UnOp,
+    Node, Pat, PatKind, QPath, QPath::TypeRelative, Stmt, StmtKind, UnOp, PathSegment, Ty, 
 };
+
+use rustc_hir::TyKind as HIRTyKind;
 use rustc_middle::ty::subst::GenericArgKind;
 use rustc_middle::ty::{PredicateKind, TyCtxt, TyKind};
 use rustc_span::def_id::DefId;
@@ -1506,27 +1508,40 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                 ExprKind::Path(QPath::Resolved(
                     None,
                     rustc_hir::Path { res: res @ Res::Def(DefKind::Ctor(_, _), _), .. },
-                )) => Some(expr_tuple_datatype_ctor_to_vir(
-                    bctx,
-                    expr,
-                    res,
-                    *args_slice,
-                    fun.span,
-                    modifier,
-                )),
+                )) => {
+
+                    Some(expr_tuple_datatype_ctor_to_vir(
+                        bctx,
+                        expr,
+                        res,
+                        *args_slice,
+                        fun.span,
+                        modifier,
+                    ))
+                },
                 ExprKind::Path(qpath) => {
+                    // TODO: clean this up, this is cursed
+                    if let TypeRelative(Ty{hir_id: _, kind: HIRTyKind::Path(QPath::Resolved(None, rustc_hir::Path{res: Res::Def(_, struct_defid), ..})), span:_}, PathSegment{ident: func_ident, hir_id,..} ) = qpath {
+                       let s_name = tcx.def_path_str(*struct_defid);
+                       if s_name == "pervasive::string::StrSlice" && func_ident.as_str() == "new#0" {
+                           // Check if value is all ascii or not
+                       }
+                    }    
                     let def = bctx.types.qpath_res(&qpath, fun.hir_id);
                     match def {
                         // a statically resolved function
-                        rustc_hir::def::Res::Def(_, def_id) => Some(fn_call_to_vir(
-                            bctx,
-                            expr,
-                            def_id,
-                            bctx.types.node_substs(fun.hir_id),
-                            fun.span,
-                            args_slice,
-                            None,
-                        )),
+                        rustc_hir::def::Res::Def(_, def_id) => {
+
+                            Some(fn_call_to_vir(
+                                bctx,
+                                expr,
+                                def_id,
+                                bctx.types.node_substs(fun.hir_id),
+                                fun.span,
+                                args_slice,
+                                None,
+                            ))
+                        },
                         rustc_hir::def::Res::Local(_) => {
                             None // dynamically computed function, see below
                         }
@@ -1577,11 +1592,11 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
             }
             rustc_ast::LitKind::Int(i, _) => {
                 mk_lit_int(false, i, typ_of_node(bctx, &expr.hir_id, false))
-            }
+            },
             rustc_ast::LitKind::Str(s, cooked) => {
                 let c = vir::ast::Constant::StrSlice(Arc::new(s.to_string()));
                 Ok(mk_expr(ExprX::Const(c)))
-            }
+            },
             _ => {
                 panic!("unexpected constant: {:?}", lit)
             }
