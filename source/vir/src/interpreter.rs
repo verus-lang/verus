@@ -29,6 +29,9 @@ struct State {
     env: Env,
     debug: bool,
     cache: HashMap<Fun, Vec<(Exps, Exp)>>,
+    cache_hits: u64,
+    cache_misses: u64,
+    fun_calls: HashMap<Fun, u64>,
 }
 
 impl State {
@@ -578,10 +581,23 @@ fn eval_seq_consuming(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
     }
 }
 
+fn display_perf_stats(state: &State) {
+    let sum = state.cache_hits + state.cache_misses;
+    let hit_perc = 100.0 * (state.cache_hits as f64 / sum as f64);
+    println!("Call result cache had {} hits out of {} ({}%)", state.cache_hits, sum, hit_perc);
+    for (fun, prev) in &state.cache { //.iter().collect::<(&Fun, &Vec<_>)>().sort_by(|a, b| a.1.len().cmp(b.1.len()))  {
+        println!("{:?} cached {} distinct invocations", fun.path, prev.len());
+    }
+    for (fun, count) in &state.fun_calls {
+        println!("{:?} called {} times", fun.path, count);
+    }
+}
+
 /// Symbolically execute the expression as far as we can,
 /// stopping when we hit a symbolic control-flow decision
 fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, VirErr> {
     if ctx.time_start.elapsed() > ctx.time_limit {
+        display_perf_stats(state);
         return err_str(&exp.span, "assert_by_compute timed out");
     }
     if state.debug {
@@ -986,9 +1002,14 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
             let new_exps: Result<Vec<Exp>, VirErr> =
                 exps.iter().map(|e| eval_expr_internal(ctx, state, e)).collect();
             let new_exps = Arc::new(new_exps?);
+            match state.fun_calls.get_mut(fun) {
+                None => { state.fun_calls.insert(fun.clone(), 1); }
+                Some(count) => { *count += 1; }
+            }
             match state.lookup_call(&fun, &new_exps) {
-                Some(prev_result) => Ok(prev_result),
+                Some(prev_result) => { state.cache_hits += 1; Ok(prev_result) },
                 None => {
+                    state.cache_misses += 1;
                     let result = if is_sequence_consuming(&fun) {
                         eval_seq_consuming(ctx, state, exp)
                     } else {
@@ -1055,7 +1076,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
 pub fn eval_expr(exp: &Exp, fun_ssts: &SstMap, rlimit: u32) -> Result<Exp, VirErr> {
     let env = ScopeMap::new();
     let cache = HashMap::new();
-    let mut state = State { depth: 0, env, debug: false, cache };
+    let mut state = State { depth: 0, env, debug: false, cache, cache_hits: 0, cache_misses: 0, fun_calls: HashMap::new() };
     // Don't run for more than rlimit seconds
     let time_limit = Duration::new(rlimit as u64, 0);
     let time_start = Instant::now();
