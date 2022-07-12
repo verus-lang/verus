@@ -3,18 +3,18 @@
 #[allow(unused_imports)] use crate::pervasive::*;
 #[allow(unused_imports)] use crate::pervasive::result::*;
 
-pub trait Spawnable<Ret: Sized> : Sized {
-    #[spec]
-    fn pre(self) -> bool { no_method_body() }
+verus!{
 
-    #[spec]
-    fn post(self, ret: Ret) -> bool { no_method_body() }
+pub trait Spawnable<Ret: Sized> : Sized {
+    spec fn pre(self) -> bool;
+
+    spec fn post(self, ret: Ret) -> bool;
     
-    fn run(self) -> Ret {
-        requires(self.pre());
-        ensures(|r: Ret| self.post(r));
-        no_method_body()
-    }
+    exec fn run(self) -> (r: Ret)
+        requires self.pre(),
+        ensures self.post(r);
+}
+
 }
 
 #[verifier(external_body)]

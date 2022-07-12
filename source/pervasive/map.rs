@@ -176,6 +176,8 @@ impl<K, V> Map<K, V> {
         unimplemented!();
     }
 
+    /// todo fill in documentation
+
     #[verifier(external_body)]
     pub proof fn proof_remove(tracked &mut self, key: K) -> (tracked v: V)
         requires
