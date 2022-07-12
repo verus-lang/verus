@@ -247,6 +247,10 @@ fn equal_bnds_exp(left: &Binders<Exp>, right: &Binders<Exp>) -> Option<bool> {
 // None means we can't tell
 // We expect to only call this after eval_expr has been called on both expressions
 fn equal_expr(left: &Exp, right: &Exp) -> Option<bool> {
+    // Easy case where the pointers match
+    if Arc::ptr_eq(left, right) {
+        return Some(true);
+    }
     // If we can't definitively establish equality, we conservatively return None
     let def_eq = |b| if b { Some(true) } else { None };
     use ExpX::*;
@@ -1005,51 +1009,60 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
             }
         }
         Call(fun, typs, exps) => {
-            println!("{}Calling {}", "\t".repeat(state.depth), exp);
-            let new_exps: Result<Vec<Exp>, VirErr> =
-                exps.iter().map(|e| eval_expr_internal(ctx, state, e)).collect();
-            let new_exps = Arc::new(new_exps?);
-            let new_exps_string = new_exps.iter().map(|e| e.to_string()).collect::<Vec<_>>().join(", ");
-            println!("{} simplified args to {}", "\t".repeat(state.depth), new_exps_string);
-            match state.fun_calls.get_mut(fun) {
-                None => {
-                    state.fun_calls.insert(fun.clone(), 1);
-                }
-                Some(count) => {
-                    *count += 1;
-                }
-            }
-            match state.lookup_call(&fun, &new_exps) {
+            match state.lookup_call(&fun, &exps) {
                 Some(prev_result) => {
                     state.cache_hits += 1;
-                    Ok(prev_result)
+                    return Ok(prev_result);
                 }
                 None => {
                     state.cache_misses += 1;
-                    let result = if is_sequence_consuming(&fun) {
-                        eval_seq_consuming(ctx, state, exp)
-                    } else {
-                        match ctx.fun_ssts.get(fun) {
-                            None => exp_new(Call(fun.clone(), typs.clone(), new_exps.clone())),
-                            Some((params, body)) => {
-                                state.env.push_scope(true);
-                                for (formal, actual) in params.iter().zip(new_exps.iter()) {
-                                    if state.debug {
-                                        //println!("Binding {:?} to {:?}", formal, actual.x);
-                                    }
-                                    state
-                                        .env
-                                        .insert((formal.x.name.clone(), Some(0)), actual.clone())
-                                        .unwrap();
-                                }
-                                let e = eval_expr_internal(ctx, state, body);
-                                state.env.pop_scope();
-                                e
-                            }
+                    //println!("{}Calling {}", "\t".repeat(state.depth), exp);
+                    let new_exps: Result<Vec<Exp>, VirErr> =
+                        exps.iter().map(|e| eval_expr_internal(ctx, state, e)).collect();
+                    let new_exps = Arc::new(new_exps?);
+                    //let new_exps_string = new_exps.iter().map(|e| e.to_string()).collect::<Vec<_>>().join(", ");
+                    //println!("{} simplified args to {}", "\t".repeat(state.depth), new_exps_string);
+                    match state.fun_calls.get_mut(fun) {
+                        None => {
+                            state.fun_calls.insert(fun.clone(), 1);
                         }
-                    };
-                    state.insert_call(fun, &new_exps, &result.clone()?);
-                    result
+                        Some(count) => {
+                            *count += 1;
+                        }
+                    }
+                    match state.lookup_call(&fun, &new_exps) {
+                        Some(prev_result) => {
+                            state.cache_hits += 1;
+                            Ok(prev_result)
+                        }
+                        None => {
+                            state.cache_misses += 1;
+                            let result = if is_sequence_consuming(&fun) {
+                                eval_seq_consuming(ctx, state, exp)
+                            } else {
+                                match ctx.fun_ssts.get(fun) {
+                                    None => exp_new(Call(fun.clone(), typs.clone(), new_exps.clone())),
+                                    Some((params, body)) => {
+                                        state.env.push_scope(true);
+                                        for (formal, actual) in params.iter().zip(new_exps.iter()) {
+                                            if state.debug {
+                                                //println!("Binding {:?} to {:?}", formal, actual.x);
+                                            }
+                                            state
+                                                .env
+                                                .insert((formal.x.name.clone(), Some(0)), actual.clone())
+                                                .unwrap();
+                                        }
+                                        let e = eval_expr_internal(ctx, state, body);
+                                        state.env.pop_scope();
+                                        e
+                                    }
+                                }
+                            };
+                            state.insert_call(fun, &new_exps, &result.clone()?);
+                            result
+                        }
+                    }
                 }
             }
         }
