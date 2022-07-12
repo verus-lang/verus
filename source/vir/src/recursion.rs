@@ -375,7 +375,7 @@ pub(crate) fn check_termination_exp(
         false,
         false,
         false,
-    );
+    )?;
 
     assert_eq!(commands.len(), 1);
     let commands = commands.into_iter().next().unwrap().commands.clone();

@@ -129,7 +129,7 @@ fn func_body_to_air(
     let mut decrease_by_stms: Vec<Stm> = Vec::new();
     let decrease_by_reqs = if let Some(req) = &function.x.decrease_when {
         let exp = crate::ast_to_sst::expr_to_exp(ctx, &pars, req)?;
-        let expr = exp_to_expr(ctx, &exp, ExprCtxt { mode: ExprMode::Spec, is_bit_vector: false });
+        let expr = exp_to_expr(ctx, &exp, ExprCtxt { mode: ExprMode::Spec, is_bit_vector: false })?;
         decrease_by_stms.push(Spanned::new(req.span.clone(), StmX::Assume(exp)));
         vec![expr]
     } else {
@@ -191,7 +191,7 @@ fn func_body_to_air(
     //   (axiom (forall (... fuel) (= (rec%f ... (succ fuel)) body[rec%f ... fuel] )))
     //   (axiom (=> (fuel_bool fuel%f) (forall (...) (= (f ...) (rec%f ... (succ fuel_nat%f))))))
     let body_expr =
-        exp_to_expr(&ctx, &body_exp, ExprCtxt { mode: ExprMode::Body, is_bit_vector: false });
+        exp_to_expr(&ctx, &body_exp, ExprCtxt { mode: ExprMode::Body, is_bit_vector: false })?;
     let def_body = if !is_recursive {
         body_expr
     } else {
@@ -270,7 +270,7 @@ pub fn req_ens_to_air(
         for e in specs.iter() {
             let exp = crate::ast_to_sst::expr_to_exp(ctx, params, e)?;
             let expr =
-                exp_to_expr(ctx, &exp, ExprCtxt { mode: ExprMode::Spec, is_bit_vector: false });
+                exp_to_expr(ctx, &exp, ExprCtxt { mode: ExprMode::Spec, is_bit_vector: false })?;
             let loc_expr = match msg {
                 None => expr,
                 Some(msg) => {
@@ -557,7 +557,7 @@ pub fn func_axioms_to_air(
                     ctx,
                     &forall,
                     ExprCtxt { mode: ExprMode::Spec, is_bit_vector: false },
-                );
+                )?;
                 let axiom = Arc::new(DeclX::Axiom(expr));
                 decl_commands.push(Arc::new(CommandX::Global(axiom)));
             }
@@ -710,7 +710,7 @@ pub fn func_def_to_air(
                 skip_ensures,
                 function.x.attrs.nonlinear,
                 function.x.attrs.spinoff_prover,
-            );
+            )?;
 
             state.finalize();
             Ok((Arc::new(commands), snap_map))

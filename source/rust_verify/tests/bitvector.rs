@@ -178,11 +178,42 @@ test_verify_one_file! {
     } => Err(err) => assert_one_fails(err)
 }
 
-// test_verify_one_file! {
-//     #[test] test6_fails code! {
-//         #[proof]
-//         fn test6(b: i32) {
-//             assert_bit_vector(b < b); // FAILS, signed int
-//         }
-//     } => Err(err) => assert_one_fails(err)
-// }
+test_verify_one_file! {
+    #[test] test8_fails code! {
+        #[proof]
+        fn test8(b: i32) {
+            assert_bit_vector(b <= b); // VIR Error: signed int
+        }
+    } => Err(err) => assert_vir_error(err)
+}
+
+test_verify_one_file! {
+    #[test] test9_fails code! {
+        use crate::pervasive::seq::*;
+        #[proof]
+        fn test9() {
+            let s1 = Seq::new(5, |i: int| 10 * i);
+            assert_bit_vector(0 < s1.index(0)); // VIR Error: cannot get bit-width from type Int
+        }
+    } => Err(err) => assert_vir_error(err)
+}
+
+test_verify_one_file! {
+    //https://github.com/secure-foundations/verus/issues/191 (@matthias-brun)
+    #[test] test10_fails code! {
+        #[proof] #[verifier(bit_vector)]
+        fn f() {
+            ensures((1 as u64) << 1 > 0); // VIR Error: bit-width mismatch(1 from rhs is 32-bit)
+        }
+    } => Err(err) => assert_vir_error(err)
+}
+
+test_verify_one_file! {
+    //https://github.com/secure-foundations/verus/issues/191 (@matthias-brun)
+    #[test] test11_fails code! {
+        #[proof] #[verifier(bit_vector)]
+        fn f() {
+            ensures(forall(|i: u64| ((1 as u64) << i > 0))); // FAILS: should not panic
+        }
+    } => Err(err) => assert_one_fails(err)
+}
