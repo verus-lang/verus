@@ -99,7 +99,7 @@ test_verify_one_file! {
         #[proof]
         fn cnat() {
             assert(choose(|n: nat| cnatf(n)) >= 0);
-            assert(choose(|n: nat| cintf(n) && n < 0) >= 0);
+            assert(choose(|n: nat| cintf(n as int) && n < 0) >= 0);
         }
     } => Ok(())
 }
@@ -114,7 +114,7 @@ test_verify_one_file! {
         #[proof]
         fn cnat() {
             assert(cintf(-10));
-            assert(choose(|n: nat| cintf(n) && n < 0) < 0); // FAILS
+            assert(choose(|n: nat| cintf(n as int) && n < 0) < 0); // FAILS
         }
     } => Err(err) => assert_one_fails(err)
 }
@@ -239,7 +239,7 @@ test_verify_one_file! {
         #[proof]
         fn cnat() {
             assert(choose_tuple::<(nat, nat), _>(|m: nat, n: nat| cnatf(m, n)).0 >= 0);
-            assert(choose_tuple::<(nat, nat), _>(|m: nat, n: nat| cintf(m, n) && m < 0 && n < 0).0 >= 0);
+            assert(choose_tuple::<(nat, nat), _>(|m: nat, n: nat| cintf(m as int, n as int) && m < 0 && n < 0).0 >= 0);
         }
     } => Ok(())
 }
@@ -254,7 +254,7 @@ test_verify_one_file! {
         #[proof]
         fn cnat() {
             assert(cintf(-10, -10));
-            assert(choose_tuple::<(nat, nat), _>(|m: nat, n: nat| cintf(m, n) && m < 0 && n < 0).0 < 0); // FAILS
+            assert(choose_tuple::<(nat, nat), _>(|m: nat, n: nat| cintf(m as int, n as int) && m < 0 && n < 0).0 < 0); // FAILS
         }
     } => Err(err) => assert_one_fails(err)
 }

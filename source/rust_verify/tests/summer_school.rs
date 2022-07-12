@@ -228,15 +228,13 @@ test_verify_one_file! {
 // -- e07 --
 
 test_verify_one_file! {
-    #[test] e07_pass code! {
+    #[test] e07_pass verus_code! {
         #[allow(unused_imports)]
         use seq::*;
         #[allow(unused_imports)]
         use set::*;
 
-        #[proof]
-        fn experiments_with_sequences()
-        {
+        proof fn experiments_with_sequences() {
             let fibo: Seq<int> = seq![1, 1, 2, 3, 5, 8, 13, 21, 34];
 
             // TODO(utaal) index trait impl Index<nat> for Seq
@@ -255,7 +253,7 @@ test_verify_one_file! {
 
             assert(fibo.subrange(0, 3).ext_equal(seq![1, 1, 2]));
 
-            assert(fibo.subrange(7, fibo.len()).ext_equal(seq![21, 34]));
+            assert(fibo.subrange(7, fibo.len() as int).ext_equal(seq![21, 34]));
 
             assert(fibo.subrange(2, 5).len() == 3);
 
@@ -853,63 +851,63 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] e18_pass code! {
-        #[spec]
-        fn fibo(val:nat) -> nat
-        {
+    #[test] e18_pass verus_code! {
+        spec fn fibo(val: nat) -> nat
             // TODO I think Dafny is pretty successful at inferring decreases.
-            decreases(val);
+            decreases val
+        {
             if val == 0 { 0 }
             else if val == 1 { 1 }
-            else { fibo(val - 2) + fibo(val - 1) }
+            else { (fibo((val - 2) as nat) + fibo((val - 1) as nat)) as nat }
         }
 
-        #[spec]
-        fn max_u64_fibo_arg() -> nat
-        {
+        spec fn max_u64_fibo_arg() -> nat {
             20
         }
 
-        #[proof]
-        fn fibo_monotonic(i:nat, j:nat) {
-            requires(i<=j);
-            ensures(fibo(i) <= fibo(j));
-            decreases(j-i);
-
-            if i<2 && j<2 {
-            } else if i==j {
-            } else if i==j-1 {
+        proof fn fibo_monotonic(i: nat, j: nat)
+            requires
+                i <= j,
+            ensures
+                fibo(i) <= fibo(j),
+            decreases j - i
+        {
+            if i < 2 && j < 2 {
+            } else if i == j {
+            } else if i == j - 1 {
                 reveal_with_fuel(fibo, 2);
-                fibo_monotonic(i, j-1);
+                fibo_monotonic(i, (j - 1) as nat);
             } else {
-                fibo_monotonic(i, j-1);
-                fibo_monotonic(i, j-2);
+                fibo_monotonic(i, (j - 1) as nat);
+                fibo_monotonic(i, (j - 2) as nat);
             }
         }
 
-        fn max_u64_fibo_arg_bound() {
-            ensures(forall(|i:nat| i < max_u64_fibo_arg() >>= fibo(i) < 7000));
-
-            assert_by(fibo(20) == 6765, reveal_with_fuel(fibo, 11));
+        fn max_u64_fibo_arg_bound()
+            ensures
+                forall|i: nat| i < max_u64_fibo_arg() ==> fibo(i) < 7000,
+        {
+            assert(fibo(20) == 6765) by {
+                reveal_with_fuel(fibo, 11);
+            }
 
             // TODO(chris): "Could not automatically infer triggers for this quantifer." but there's fibo
             // RIGHT THERE! Error should say "matching loop" instead.
             // assume(forall(|i:nat| fibo(i) < fibo(i+1)));
 
-            assert_forall_by(|i:nat, j:nat| {
-                requires(i <= j);
-                ensures(fibo(i) <= fibo(j));
-
+            assert forall|i: nat, j: nat| i <= j implies fibo(i) <= fibo(j) by {
                 fibo_monotonic(i, j);
-            });
+            }
         }
 
-        fn fibo_recursive_impl(val:u64) -> u64
+        fn fibo_recursive_impl(val: u64) -> (f: u64)
+            requires
+                val < max_u64_fibo_arg(),
+            ensures
+                fibo(val as nat) == f,
+            decreases val
         {
-            requires(val < max_u64_fibo_arg());
-            decreases(val);
-            ensures(|f:u64| fibo(val) == f);
-            assume(val as nat > 1);
+            assume(val > 1);
 
             max_u64_fibo_arg_bound();
 
@@ -918,24 +916,20 @@ test_verify_one_file! {
             else { fibo_recursive_impl(val - 2) + fibo_recursive_impl(val - 1) }
         }
 
-        #[proof]
-        fn check()
-        {
-            ensures([
+        proof fn check()
+            ensures
                 fibo(0) == 0,
                 fibo(20) == 6765,
-            ]);
+        {
             // Dafny gives lots of fuel for application on literals, which makes examples
             // like this go through like magic. Verus needs you to goose the throttle manually.
             reveal_with_fuel(fibo, 11); // Apparently we get 2 recursions for each drop of fuel.
         }
 
-        fn main()
-        {
-            let mut x:u64 = 0;
-            while x<20 {
+        fn main() {
+            let mut x: u64 = 0;
+            while x < 20 {
                 let f = fibo_recursive_impl(x);
-
                 x = x + 1;
             }
         }
@@ -943,30 +937,30 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] e19_pass code! {
+    #[test] e19_pass verus_code! {
         use vec::*; // TODO(chris): Want pervasive::Vec & std::vec::Vec to not be different types to make interop with ordinary rust code not clunky.
 
         // The summer school uses executable methods that work with nats & ints (here and above in
         // ex17). We dislike that feature of Dafny, because nobody actually wants it.
 
-        fn find_max(int_vec: &Vec<u64>) -> usize
-        {
-            requires(int_vec.len() > 0);
-            ensures(|max_index_rc:usize| [
+        fn find_max(int_vec: &Vec<u64>) -> (max_index_rc: usize)
+            requires
+                int_vec.len() > 0,
+            ensures
                 max_index_rc < int_vec.len(),
-                forall(|idx:nat| idx < int_vec.len() >>= int_vec.index(idx) <= int_vec.index(max_index_rc)),
-            ]);
-
-            let mut count:usize = 0;
-            let mut max_index:usize = 0;
+                forall|idx: int|
+                    0 <= idx < int_vec.len() ==>
+                    int_vec.index(idx) <= int_vec.index(max_index_rc as int),
+        {
+            let mut count: usize = 0;
+            let mut max_index: usize = 0;
             while count < int_vec.len()
-            {
-                invariant([
+                invariant
                     max_index < int_vec.len(),
-                    forall(|prioridx:nat| prioridx < count >>=
-                            int_vec.index(prioridx) <= int_vec.index(max_index)),
-                ]);
-
+                    forall|prioridx: int|
+                        0 <= prioridx < count ==>
+                        int_vec.index(prioridx) <= int_vec.index(max_index as int),
+            {
                 if int_vec.index(max_index) < int_vec.index(count) {
                     max_index = count;
                 }
@@ -983,34 +977,33 @@ test_verify_one_file! {
 // TODO prevent panics for underflow/overflow in debug mode
 
 test_verify_one_file! {
-    #[test] e20_pass code! {
+    #[test] e20_pass verus_code! {
         #[allow(unused_imports)]
         use seq::*;
         #[allow(unused_imports)]
         use vec::*;
 
-        #[spec]
-        fn is_sorted(seq: Seq<u64>) -> bool {
-            forall(|i: nat, j: nat| i < j && j < seq.len() >>= seq.index(i) <= seq.index(j))
+        spec fn is_sorted(seq: Seq<u64>) -> bool {
+            forall|i: int, j: int| 0 <= i < j < seq.len() ==> seq.index(i) <= seq.index(j)
         }
 
-        fn is_seq_sorted(vec: Vec<u64>) -> bool {
-            ensures(|ret: bool| ret == is_sorted(vec.view()));
-
+        fn is_seq_sorted(vec: Vec<u64>) -> (ret: bool)
+            ensures
+                ret == is_sorted(vec.view()),
+        {
             if vec.len() < 2 {
                 return true;
             }
 
             let mut idx: usize = 0;
             while idx < vec.len() - 1
-            {
-                invariant([
+                invariant
                     idx < vec.len(),
                     // dafny had: idx <= vec.len() - 1,
                     // which needs an additional invariant: vec.len() != 0,
                     // because vec.len() == 0 then idx <= arbitrary()
-                    forall(|i: nat, j: nat| i < j && j < idx as nat + 1 >>= vec.index(i) <= vec.index(j)),
-                ]);
+                    forall|i: int, j: int| 0 <= i < j <= idx ==> vec.index(i) <= vec.index(j),
+            {
                 if vec.index(idx) > vec.index(idx + 1) { // vec[idx]
                     return false;
                 }
@@ -1022,7 +1015,7 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] e20_pass_with_ints code! {
+    #[test] e20_pass_with_ints verus_code! {
         // This version of e20 uses `Seq<int>` in `is_sorted`, which requires a manual conversion
 
         #[allow(unused_imports)]
@@ -1030,36 +1023,33 @@ test_verify_one_file! {
         #[allow(unused_imports)]
         use vec::*;
 
-        #[spec]
-        fn is_sorted(intseq: Seq<int>) -> bool {
-            forall(|i:nat,j:nat| i<j && j<intseq.len() >>= intseq.index(i) <= intseq.index(j))
+        spec fn is_sorted(intseq: Seq<int>) -> bool {
+            forall|i: int, j: int| 0 <= i < j < intseq.len() ==> intseq.index(i) <= intseq.index(j)
         }
 
-        #[spec]
-        fn view_u64(u64seq: Seq<u64>) -> Seq<int> {
-            u64seq.map(|_index:int, u:u64| u as int)
+        spec fn view_u64(u64seq: Seq<u64>) -> Seq<int> {
+            u64seq.map(|_index: int, u: u64| u as int)
                 /* TODO(chris): The verifier does not yet support the following Rust feature: pattern Wild (_index as _)*/
         }
 
-        fn is_seq_sorted(intvec: Vec<u64>) -> bool
+        fn is_seq_sorted(intvec: Vec<u64>) -> (out: bool)
+            ensures
+                out == is_sorted(view_u64(intvec.view())),
         {
-            ensures(|out:bool| out == is_sorted(view_u64(intvec.view())));
             if intvec.len() < 2 {
                 true
             } else {
-                let mut idx:usize = 0;
-                while idx < intvec.len()-1
-                {
-                    invariant([
+                let mut idx: usize = 0;
+                while idx < intvec.len() - 1
+                    invariant
                         idx < intvec.len(),
-                        forall(|i:nat,j:nat| imply(i<j && j<idx as nat +1, intvec.index(i) <= intvec.index(j)))
-                    ]);
-
-                    if intvec.index(idx) > intvec.index(idx+1) {
+                        forall|i: int, j: int| 0 <= i < j <= idx ==> intvec.index(i) <= intvec.index(j)
+                {
+                    if intvec.index(idx) > intvec.index(idx + 1) {
                         // TODO(chris): Maybe there's a way to not need this manual trigger.
                         // Pull this knowledge through the view/view_u64 so it'll trigger the
                         // exists (!forall) of !is_sorted.
-                        assert(view_u64(intvec.view()).index(idx) > view_u64(intvec.view()).index(idx as int+1));
+                        assert(view_u64(intvec.view()).index(idx as int) > view_u64(intvec.view()).index(idx + 1));
                         return false;
                     }
                     idx = idx + 1;
@@ -1072,63 +1062,57 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
-    #[test] e21_pass code! {
+    #[test] e21_pass verus_code! {
         #[allow(unused_imports)]
         use seq::*;
         #[allow(unused_imports)]
         use vec::*;
+        #[allow(unused_imports)]
+        use modes::*;
 
-        #[spec]
-        fn is_sorted(intseq: Seq<int>) -> bool {
-            forall(|i:nat,j:nat| imply(i<j && j<intseq.len(), intseq.index(i) <= intseq.index(j)))
+        spec fn is_sorted(intseq: Seq<int>) -> bool {
+            forall|i: int, j: int| 0 <= i < j < intseq.len() ==> intseq.index(i) <= intseq.index(j)
         }
 
-        #[spec]
-        fn view_u64(u64seq: Seq<u64>) -> Seq<int> {
-            u64seq.map(|_index:int, u:u64| u as int)
+        spec fn view_u64(u64seq: Seq<u64>) -> Seq<int> {
+            u64seq.map(|_index: int, u: u64| u as int)
                 /* TODO(chris): The verifier does not yet support the following Rust feature: pattern Wild (_index as _)*/
         }
 
-        fn binary_search(haystack: Vec<u64>, needle:u64) -> usize
+        fn binary_search(haystack: Vec<u64>, needle: u64) -> (index: usize)
+            requires
+                is_sorted(view_u64(haystack.view())),
+            ensures
+                index <= haystack.len(),
+                forall|i: int| 0 <= i < index ==> haystack.index(i) < needle,
+                forall|i: int| index <= i < haystack.len() ==> needle <= haystack.index(i),
         {
-            requires(is_sorted(view_u64(haystack.view())));
-            ensures(|index:usize| [
-                    index <= haystack.len(),
-                    forall(|i:int| 0 <= i && i<index >>= haystack.index(i) < needle),
-                    forall(|i:int| index<=i && i<haystack.len() >>= needle <= haystack.index(i)),
-            ]);
-
-            let mut low:usize = 0;
-            let mut high:usize = haystack.len();
-            while low < high {
-                invariant([
+            let mut low: usize = 0;
+            let mut high: usize = haystack.len();
+            while low < high
+                invariant
                     is_sorted(view_u64(haystack.view())),   // siiiiiiiigh
                     low <= high,
                     high <= haystack.len(),
-                    forall(|i:int| 0 <= i && i < low as int >>= haystack.index(i) < needle),
-                    forall(|i:int| high as int <= i && i < haystack.len() >>= needle <= haystack.index(i)),
-                ]);
-                #[spec] let decreases = high - low;
+                    forall|i:int| 0 <= i < low ==> haystack.index(i) < needle,
+                    forall|i:int| high <= i < haystack.len() ==> needle <= haystack.index(i),
+            {
+                let decreases: Ghost<int> = ghost(high - low);
                 let mid = low + (high - low) / 2;
                 if *haystack.index(mid) < needle {
-                    #[spec] let old_low = low;
+                    let old_low: Ghost<usize> = ghost(low);
                     low = mid + 1;
-                    assert_forall_by(|i:int| {
-                        requires(0 <= i && i < low);
-                        ensures(haystack.index(i) < needle);
-                        assert(view_u64(haystack.view()).index(i) <= view_u64(haystack.view()).index(mid));
-                    });
+                    assert forall|i: int| 0 <= i < low implies haystack.index(i) < needle by {
+                        assert(view_u64(haystack.view()).index(i) <= view_u64(haystack.view()).index(mid as int));
+                    }
                 } else {
-                    #[spec] let old_high = high;
+                    let old_high: Ghost<usize> = ghost(high);
                     high = mid;
-                    // TODO(chris): i2 is a workaround for name collision with prior forall
-                    assert_forall_by(|i2:int| {
-                        requires(high < i2 && i2 < haystack.len());
-                        ensures(needle <= haystack.index(i2));
-                        assert(view_u64(haystack.view()).index(mid) <= view_u64(haystack.view()).index(i2));
-                    });
+                    assert forall|i: int| high < i < haystack.len() implies needle <= haystack.index(i) by {
+                        assert(view_u64(haystack.view()).index(mid as int) <= view_u64(haystack.view()).index(i));
+                    }
                 }
-                assert(high - low < decreases); // Termination check
+                assert(high - low < *decreases); // Termination check
             }
             low
         }

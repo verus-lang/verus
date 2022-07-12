@@ -440,9 +440,12 @@ fn fn_call_to_vir<'tcx>(
     let is_ge = f_name == "core::cmp::PartialOrd::ge";
     let is_lt = f_name == "core::cmp::PartialOrd::lt";
     let is_gt = f_name == "core::cmp::PartialOrd::gt";
-    let is_add = f_name == "std::ops::Add::add" || f_name == "builtin::add";
-    let is_sub = f_name == "std::ops::Sub::sub" || f_name == "builtin::sub";
-    let is_mul = f_name == "std::ops::Mul::mul" || f_name == "builtin::mul";
+    let is_builtin_add = f_name == "builtin::add";
+    let is_builtin_sub = f_name == "builtin::sub";
+    let is_builtin_mul = f_name == "builtin::mul";
+    let is_add = f_name == "std::ops::Add::add";
+    let is_sub = f_name == "std::ops::Sub::sub";
+    let is_mul = f_name == "std::ops::Mul::mul";
     let is_spec_eq = f_name == "builtin::spec_eq";
     let is_spec_le = f_name == "builtin::SpecOrd::spec_le";
     let is_spec_ge = f_name == "builtin::SpecOrd::spec_ge";
@@ -477,7 +480,8 @@ fn fn_call_to_vir<'tcx>(
     let is_quant = is_forall || is_exists || is_forall_arith;
     let is_directive = is_extra_dependency || is_hide || is_reveal || is_reveal_fuel;
     let is_cmp = is_equal || is_eq || is_ne || is_le || is_ge || is_lt || is_gt;
-    let is_arith_binary = is_add || is_sub || is_mul;
+    let is_arith_binary =
+        is_builtin_add || is_builtin_sub || is_builtin_mul || is_add || is_sub || is_mul;
     let is_spec_cmp = is_spec_eq || is_spec_le || is_spec_ge || is_spec_lt || is_spec_gt;
     let is_spec_arith_binary =
         is_spec_add || is_spec_sub || is_spec_mul || is_spec_euclidean_div || is_spec_euclidean_mod;
@@ -559,6 +563,9 @@ fn fn_call_to_vir<'tcx>(
         &name,
         is_spec
             || is_spec_op
+            || is_builtin_add
+            || is_builtin_sub
+            || is_builtin_mul
             || is_quant
             || is_directive
             || is_choose
@@ -1009,11 +1016,11 @@ fn fn_call_to_vir<'tcx>(
             BinaryOp::Inequality(InequalityOp::Lt)
         } else if is_gt || is_spec_gt {
             BinaryOp::Inequality(InequalityOp::Gt)
-        } else if is_add {
+        } else if is_add || is_builtin_add {
             BinaryOp::Arith(ArithOp::Add, Some(bctx.ctxt.infer_mode()))
-        } else if is_sub {
+        } else if is_sub || is_builtin_sub {
             BinaryOp::Arith(ArithOp::Sub, Some(bctx.ctxt.infer_mode()))
-        } else if is_mul {
+        } else if is_mul || is_builtin_mul {
             BinaryOp::Arith(ArithOp::Mul, Some(bctx.ctxt.infer_mode()))
         } else if is_spec_add {
             BinaryOp::Arith(ArithOp::Add, None)
