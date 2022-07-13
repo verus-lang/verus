@@ -5,7 +5,7 @@ Suppose we want to verify a program like the following:
  * The main thread instantiates a counter to 0.
  * The main thread forks two child threads.
    * Each child thread (atomically) increments the counter.
- * The main thread joins the two threads (i.e., wait for them to complete).
+ * The main thread joins the two threads (i.e., waits for them to complete).
  * The main thread reads the counter.
 
 **Our objective:** Prove the counter read in the final step has value 2.
@@ -133,7 +133,7 @@ Our invariant is pretty straightforward: The value of the counter should be equa
 
 Now that we've completed our abstraction, let's turn towards the implementation.
 
-### The Token API
+### The Auto-generated Token API
 
 Given a `tokenized_state_machine!` like the above, Verus will analyze it and produce a series of _token types_ representing pieces of the state, and a series of _exchange functions_ that perform the transitions on the tokens.
 
@@ -304,4 +304,30 @@ Finally, we come to the `finalize` operation. Again this is a “no-op” transi
 }
 ```
 
-TODO finish the explanation
+### Writing the verified implementation
+
+To verify the implementation, our plan is to instantiate this ghost protocol and associate
+the `counter` field of the protocol to the atomic memory location we use in our code.
+
+To do this, we'll use the Verus library `atomic_ghost`.
+Specifically, we'll use the type `atomic_ghost::AtomicU32<X::counter>`.
+This is a wrapper around an `AtomicU32` location which associates it to a `tracked`
+ghost token `X::counter`.
+
+More specifically, all threads will share this global state:
+
+```rust,ignore
+{{#include ../../../../rust_verify/example/state_machines/tutorial/counting_to_2.rs:global_struct}}
+```
+
+Note that we track `instance` as a separate field. This ensures that all threads agree
+on which instance of the protocol they are running.
+
+(Keep in mind that whenever we perform a transition on the ghost tokens, all the tokens
+have to have the same instance. Why does Verus enforce restriction? Because if it did not,
+then the programmer could instantiate two instances of the protocol, the mix-and-match to get
+into an invalid state. For example, they could increment the counter twice, using up
+both "tickets" of that instance, and then use the ticket of another instance to increment
+it a third time.)
+
+TODO finish writing the explanation

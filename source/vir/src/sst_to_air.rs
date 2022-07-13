@@ -1,28 +1,29 @@
 use crate::ast::{
-    ArithOp, AssertQueryMode, BinaryOp, FieldOpr, Fun, Ident, Idents, IntRange, InvAtomicity,
-    MaskSpec, Mode, Params, Path, PathX, SpannedTyped, Typ, TypX, Typs, UnaryOp, UnaryOpr, VarAt,
+    ArithOp, AssertQueryMode, BinaryOp, BitwiseOp, FieldOpr, Fun, Ident, Idents, InequalityOp,
+    IntRange, InvAtomicity, MaskSpec, Mode, Params, Path, PathX, SpannedTyped, Typ, TypX, Typs,
+    UnaryOp, UnaryOpr, VarAt,
 };
-use crate::ast_util::{bitwidth_from_type, get_field, get_variant};
+use crate::ast_util::{bitwidth_from_type, fun_as_rust_dbg, get_field, get_variant};
 use crate::context::Ctx;
-use crate::def::{fn_inv_name, fn_namespace_name};
+use crate::def::{fn_inv_name, fn_namespace_name, new_user_qid_name};
 use crate::def::{
-    fun_to_string, path_to_string, prefix_box, prefix_ensures, prefix_fuel_id, prefix_lambda_type,
-    prefix_pre_var, prefix_requires, prefix_unbox, snapshot_ident, suffix_global_id,
-    suffix_local_expr_id, suffix_local_stmt_id, suffix_local_unique_id, suffix_typ_param_id,
-    variant_field_ident, variant_ident, SnapPos, SpanKind, Spanned, FUEL_BOOL, FUEL_BOOL_DEFAULT,
-    FUEL_DEFAULTS, FUEL_ID, FUEL_PARAM, FUEL_TYPE, POLY, SNAPSHOT_ASSIGN, SNAPSHOT_CALL,
-    SNAPSHOT_PRE, SUCC, SUFFIX_SNAP_JOIN, SUFFIX_SNAP_MUT, SUFFIX_SNAP_WHILE_BEGIN,
-    SUFFIX_SNAP_WHILE_END,
+    fun_to_string, new_internal_qid, path_to_string, prefix_box, prefix_ensures, prefix_fuel_id,
+    prefix_lambda_type, prefix_pre_var, prefix_requires, prefix_unbox, snapshot_ident,
+    suffix_global_id, suffix_local_expr_id, suffix_local_stmt_id, suffix_local_unique_id,
+    suffix_typ_param_id, variant_field_ident, variant_ident, ProverChoice, SnapPos, SpanKind,
+    Spanned, FUEL_BOOL, FUEL_BOOL_DEFAULT, FUEL_DEFAULTS, FUEL_ID, FUEL_PARAM, FUEL_TYPE, POLY,
+    SNAPSHOT_ASSIGN, SNAPSHOT_CALL, SNAPSHOT_PRE, SUCC, SUFFIX_SNAP_JOIN, SUFFIX_SNAP_MUT,
+    SUFFIX_SNAP_WHILE_BEGIN, SUFFIX_SNAP_WHILE_END,
 };
 use crate::def::{CommandsWithContext, CommandsWithContextX};
 use crate::inv_masks::MaskSet;
 use crate::poly::{typ_as_mono, MonoTyp, MonoTypX};
-use crate::sst::{BndX, Dest, Exp, ExpX, LocalDecl, Stm, StmX, UniqueIdent};
+use crate::sst::{BndInfo, BndX, Dest, Exp, ExpX, LocalDecl, Stm, StmX, UniqueIdent};
 use crate::sst_vars::{get_loc_var, AssignMap};
 use crate::util::vec_map;
 use air::ast::{
-    BindX, Binder, BinderX, Binders, CommandX, Constant, Decl, DeclX, Expr, ExprX, MultiOp, Quant,
-    QueryX, Span, Stmt, StmtX, Trigger, Triggers,
+    BindX, Binder, BinderX, Binders, CommandX, Constant, Decl, DeclX, Expr, ExprX, MultiOp, Qid,
+    Quant, QueryX, Span, Stmt, StmtX, Trigger, Triggers,
 };
 use air::ast_util::{
     bool_typ, bv_typ, ident_apply, ident_binder, ident_typ, ident_var, int_typ, mk_and,
@@ -363,6 +364,33 @@ fn assert_unsigned(exp: &Exp) {
     };
 }
 
+// Generate a unique quantifier ID and map it to the quantifier's span
+fn new_user_qid(ctx: &Ctx, exp: &Exp) -> Qid {
+    let fun_name = fun_as_rust_dbg(
+        &ctx.fun.as_ref().expect("Expressions are expected to be within a function").current_fun,
+    );
+    let qcount = ctx.quantifier_count.get();
+    let qid = new_user_qid_name(&fun_name, qcount);
+    ctx.quantifier_count.set(qcount + 1);
+    let trigs = match &exp.x {
+        ExpX::Bind(bnd, _) => match &bnd.x {
+            BndX::Quant(_, _, trigs) => trigs,
+            BndX::Choose(_, trigs, _) => trigs,
+            _ => panic!(
+                "internal error: user quantifier expressions should only be Quant or Choose; found {:?}",
+                bnd.x
+            ),
+        },
+        _ => panic!(
+            "internal error: user quantifier expressions should only be Bind expressions; found {:?}",
+            exp.x
+        ),
+    };
+    let bnd_info = BndInfo { span: exp.span.clone(), trigs: trigs.clone() };
+    ctx.global.qid_map.borrow_mut().insert(qid.clone(), bnd_info);
+    Some(Arc::new(qid))
+}
+
 pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: ExprCtxt) -> Expr {
     match (&exp.x, expr_ctxt.is_bit_vector) {
         (ExpX::Const(crate::ast::Constant::Nat(s)), true) => {
@@ -514,7 +542,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: ExprCtxt) -> Expr {
             // disallow signed integer from bitvec reasoning. However, allow that for shift
             // TODO: sanity check for shift
             let _ = match op {
-                BinaryOp::Shl | BinaryOp::Shr => (),
+                BinaryOp::Bitwise(BitwiseOp::Shl | BitwiseOp::Shr) => (),
                 _ => {
                     assert_unsigned(&lhs);
                     assert_unsigned(&rhs);
@@ -539,15 +567,15 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: ExprCtxt) -> Expr {
                 BinaryOp::Arith(ArithOp::Mul, _) => air::ast::BinaryOp::BitMul,
                 BinaryOp::Arith(ArithOp::EuclideanDiv, _) => air::ast::BinaryOp::BitUDiv,
                 BinaryOp::Arith(ArithOp::EuclideanMod, _) => air::ast::BinaryOp::BitUMod,
-                BinaryOp::Lt => air::ast::BinaryOp::BitULt,
-                BinaryOp::Gt => air::ast::BinaryOp::BitUGt,
-                BinaryOp::Le => air::ast::BinaryOp::BitULe,
-                BinaryOp::Ge => air::ast::BinaryOp::BitUGe,
-                BinaryOp::BitXor => air::ast::BinaryOp::BitXor,
-                BinaryOp::BitAnd => air::ast::BinaryOp::BitAnd,
-                BinaryOp::BitOr => air::ast::BinaryOp::BitOr,
-                BinaryOp::Shl => air::ast::BinaryOp::Shl,
-                BinaryOp::Shr => air::ast::BinaryOp::LShr,
+                BinaryOp::Inequality(InequalityOp::Le) => air::ast::BinaryOp::BitULe,
+                BinaryOp::Inequality(InequalityOp::Lt) => air::ast::BinaryOp::BitULt,
+                BinaryOp::Inequality(InequalityOp::Ge) => air::ast::BinaryOp::BitUGe,
+                BinaryOp::Inequality(InequalityOp::Gt) => air::ast::BinaryOp::BitUGt,
+                BinaryOp::Bitwise(BitwiseOp::BitXor) => air::ast::BinaryOp::BitXor,
+                BinaryOp::Bitwise(BitwiseOp::BitAnd) => air::ast::BinaryOp::BitAnd,
+                BinaryOp::Bitwise(BitwiseOp::BitOr) => air::ast::BinaryOp::BitOr,
+                BinaryOp::Bitwise(BitwiseOp::Shl) => air::ast::BinaryOp::Shl,
+                BinaryOp::Bitwise(BitwiseOp::Shr) => air::ast::BinaryOp::LShr,
                 BinaryOp::Implies => air::ast::BinaryOp::Implies,
                 BinaryOp::And => unreachable!(),
                 BinaryOp::Or => unreachable!(),
@@ -600,23 +628,18 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: ExprCtxt) -> Expr {
                 }
                 // here the binary bitvector Ops are translated into the integer versions
                 // Similar to typ_invariant(), make obvious range according to bit-width
-                BinaryOp::BitXor
-                | BinaryOp::BitAnd
-                | BinaryOp::BitOr
-                | BinaryOp::Shl
-                | BinaryOp::Shr => {
+                BinaryOp::Bitwise(bo) => {
                     let box_lh = try_box(ctx, lh, &lhs.typ).expect("Box");
                     let box_rh = try_box(ctx, rh, &rhs.typ).expect("Box");
                     let width = bitwidth_from_type(&lhs.typ).expect("Binary Bit Op Width");
                     let width_exp =
                         Arc::new(ExprX::Const(Constant::Nat(Arc::new(width.to_string()))));
-                    let fname = match op {
-                        BinaryOp::BitXor => crate::def::UINT_XOR,
-                        BinaryOp::BitAnd => crate::def::UINT_AND,
-                        BinaryOp::BitOr => crate::def::UINT_OR,
-                        BinaryOp::Shl => crate::def::UINT_SHL,
-                        BinaryOp::Shr => crate::def::UINT_SHR,
-                        _ => unreachable!(),
+                    let fname = match bo {
+                        BitwiseOp::BitXor => crate::def::UINT_XOR,
+                        BitwiseOp::BitAnd => crate::def::UINT_AND,
+                        BitwiseOp::BitOr => crate::def::UINT_OR,
+                        BitwiseOp::Shl => crate::def::UINT_SHL,
+                        BitwiseOp::Shr => crate::def::UINT_SHR,
                     };
                     let bit_expr = ExprX::Apply(
                         Arc::new(fname.to_string()),
@@ -632,10 +655,10 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: ExprCtxt) -> Expr {
                         BinaryOp::Implies => unreachable!(),
                         BinaryOp::Eq(_) => air::ast::BinaryOp::Eq,
                         BinaryOp::Ne => unreachable!(),
-                        BinaryOp::Le => air::ast::BinaryOp::Le,
-                        BinaryOp::Ge => air::ast::BinaryOp::Ge,
-                        BinaryOp::Lt => air::ast::BinaryOp::Lt,
-                        BinaryOp::Gt => air::ast::BinaryOp::Gt,
+                        BinaryOp::Inequality(InequalityOp::Le) => air::ast::BinaryOp::Le,
+                        BinaryOp::Inequality(InequalityOp::Lt) => air::ast::BinaryOp::Lt,
+                        BinaryOp::Inequality(InequalityOp::Ge) => air::ast::BinaryOp::Ge,
+                        BinaryOp::Inequality(InequalityOp::Gt) => air::ast::BinaryOp::Gt,
                         BinaryOp::Arith(ArithOp::Add, _) => unreachable!(),
                         BinaryOp::Arith(ArithOp::Sub, _) => unreachable!(),
                         BinaryOp::Arith(ArithOp::Mul, _) => unreachable!(),
@@ -645,11 +668,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: ExprCtxt) -> Expr {
                         BinaryOp::Arith(ArithOp::EuclideanMod, _) => {
                             air::ast::BinaryOp::EuclideanMod
                         }
-                        BinaryOp::BitOr => unreachable!(),
-                        BinaryOp::Shr => unreachable!(),
-                        BinaryOp::Shl => unreachable!(),
-                        BinaryOp::BitAnd => unreachable!(),
-                        BinaryOp::BitXor => unreachable!(),
+                        BinaryOp::Bitwise(..) => unreachable!(),
                     };
                     ExprX::Binary(aop, lh, rh)
                 }
@@ -662,9 +681,9 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: ExprCtxt) -> Expr {
             &exp_to_expr(ctx, e3, expr_ctxt),
         ),
         (ExpX::WithTriggers(_triggers, body), _) => exp_to_expr(ctx, body, expr_ctxt),
-        (ExpX::Bind(bnd, exp), _) => match (&bnd.x, expr_ctxt.is_bit_vector) {
+        (ExpX::Bind(bnd, e), _) => match (&bnd.x, expr_ctxt.is_bit_vector) {
             (BndX::Let(binders), _) => {
-                let expr = exp_to_expr(ctx, exp, expr_ctxt);
+                let expr = exp_to_expr(ctx, e, expr_ctxt);
                 let binders = vec_map(&*binders, |b| {
                     Arc::new(BinderX {
                         name: suffix_local_expr_id(&b.name),
@@ -674,7 +693,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: ExprCtxt) -> Expr {
                 air::ast_util::mk_let(&binders, &expr)
             }
             (BndX::Quant(quant, binders, trigs), _) => {
-                let expr = exp_to_expr(ctx, exp, expr_ctxt);
+                let expr = exp_to_expr(ctx, e, expr_ctxt);
                 let mut invs: Vec<Expr> = Vec::new();
                 if !expr_ctxt.is_bit_vector {
                     for binder in binders.iter() {
@@ -689,7 +708,7 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: ExprCtxt) -> Expr {
                     }
                 }
                 let inv = mk_and(&invs);
-                let expr = match quant {
+                let expr = match quant.quant {
                     Quant::Forall => mk_implies(&inv, &expr),
                     Quant::Exists => mk_and(&vec![inv, expr]),
                 };
@@ -711,10 +730,11 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: ExprCtxt) -> Expr {
                 let triggers = vec_map(&*trigs, |trig| {
                     Arc::new(vec_map(trig, |x| exp_to_expr(ctx, x, expr_ctxt)))
                 });
-                air::ast_util::mk_quantifier(*quant, &binders, &triggers, &expr)
+                let qid = new_user_qid(ctx, &exp);
+                air::ast_util::mk_quantifier(quant.quant, &binders, &triggers, qid, &expr)
             }
             (BndX::Lambda(binders), false) => {
-                let expr = exp_to_expr(ctx, exp, expr_ctxt);
+                let expr = exp_to_expr(ctx, e, expr_ctxt);
                 let binders = vec_map(&*binders, |b| {
                     let name = suffix_local_expr_id(&b.name);
                     Arc::new(BinderX { name, a: typ_to_air(ctx, &b.a) })
@@ -734,16 +754,17 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: ExprCtxt) -> Expr {
                     bs.push(Arc::new(BinderX { name, a: typ_to_air(ctx, &b.a) }));
                 }
                 let cond_expr = exp_to_expr(ctx, cond, expr_ctxt);
-                let body_expr = exp_to_expr(ctx, exp, expr_ctxt);
+                let body_expr = exp_to_expr(ctx, e, expr_ctxt);
                 invs.push(cond_expr.clone());
                 let cond_expr = mk_and(&invs);
-                let typ = &exp.typ;
+                let typ = &e.typ;
                 let typ_inv = typ_invariant(ctx, typ, &body_expr);
                 let triggers = vec_map(&*trigs, |trig| {
                     Arc::new(vec_map(trig, |x| exp_to_expr(ctx, x, expr_ctxt)))
                 });
                 let binders = Arc::new(bs);
-                let bind = Arc::new(BindX::Choose(binders, Arc::new(triggers), cond_expr));
+                let qid = new_user_qid(ctx, &exp);
+                let bind = Arc::new(BindX::Choose(binders, Arc::new(triggers), qid, cond_expr));
                 let mut choose_expr = Arc::new(ExprX::Bind(bind, body_expr));
                 match typ_inv {
                     Some(_) => {
@@ -1136,6 +1157,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
                             Arc::new(CommandX::CheckValid(query)),
                             mk_option_command("smt.arith.nl", "false"),
                         ]),
+                        ProverChoice::DefaultProver,
                     ));
                 }
                 _ => unreachable!("bitvector mode in wrong place"),
@@ -1203,6 +1225,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
                     Arc::new(CommandX::CheckValid(query)),
                     mk_option_command("smt.case_split", "3"),
                 ]),
+                ProverChoice::DefaultProver,
             ));
 
             vec![Arc::new(StmtX::Assume(exp_to_expr(ctx, &expr, expr_ctxt)))]
@@ -1361,6 +1384,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
                 span: stm.span.clone(),
                 desc: "while loop".to_string(),
                 commands: Arc::new(vec![Arc::new(CommandX::CheckValid(query))]),
+                prover_choice: ProverChoice::DefaultProver,
             }));
 
             // At original site of while loop, assert invariant, havoc, assume invariant + neg_cond
@@ -1464,7 +1488,8 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
                     &added_fuel,
                 );
                 let binder = ident_binder(&str_ident(FUEL_PARAM), &str_typ(FUEL_TYPE));
-                stmts.push(Arc::new(StmtX::Assume(mk_exists(&vec![binder], &vec![], &eq))));
+                let qid = None; // Introduces a variable name but shouldn't otherwise be instantiated
+                stmts.push(Arc::new(StmtX::Assume(mk_exists(&vec![binder], &vec![], qid, &eq))));
             }
             if ctx.debug {
                 state.map_span(&stm, SpanKind::Full);
@@ -1486,7 +1511,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
     }
 }
 
-fn set_fuel(local: &mut Vec<Decl>, hidden: &Vec<Fun>) {
+fn set_fuel(ctx: &Ctx, local: &mut Vec<Decl>, hidden: &Vec<Fun>) {
     let fuel_expr = if hidden.len() == 0 {
         str_var(&FUEL_DEFAULTS)
     } else {
@@ -1510,7 +1535,12 @@ fn set_fuel(local: &mut Vec<Decl>, hidden: &Vec<Fun>) {
         let trigger: Trigger = Arc::new(vec![fuel_bool.clone()]);
         let triggers: Triggers = Arc::new(vec![trigger]);
         let binders: Binders<air::ast::Typ> = Arc::new(vec![ident_binder(&id, &str_typ(FUEL_ID))]);
-        let bind = Arc::new(BindX::Quant(Quant::Forall, binders, triggers));
+
+        let fun_name = fun_as_rust_dbg(
+            &ctx.fun.as_ref().expect("Missing a current function value").current_fun,
+        );
+        let qid = new_internal_qid(format!("{}_nondefault_fuel", fun_name));
+        let bind = Arc::new(BindX::Quant(Quant::Forall, binders, triggers, qid));
         let or = Arc::new(ExprX::Multi(air::ast::MultiOp::Or, Arc::new(disjuncts)));
         mk_bind_expr(&bind, &or)
     };
@@ -1530,9 +1560,11 @@ pub fn body_stm_to_air(
     mask_spec: &MaskSpec,
     mode: Mode,
     stm: &Stm,
+    is_integer_ring: bool,
     is_bit_vector_mode: bool,
     skip_ensures: bool,
     is_nonlinear: bool,
+    is_spinoff_prover: bool,
 ) -> (Vec<CommandsWithContext>, Vec<(Span, SnapPos)>) {
     // Verifying a single function can generate multiple SMT queries.
     // Some declarations (local_shared) are shared among the queries.
@@ -1563,7 +1595,7 @@ pub fn body_stm_to_air(
         }
     }
 
-    set_fuel(&mut local_shared, hidden);
+    set_fuel(ctx, &mut local_shared, hidden);
 
     let mut declared: HashMap<UniqueIdent, Typ> = HashMap::new();
     let mut assigned: HashSet<UniqueIdent> = HashSet::new();
@@ -1643,7 +1675,7 @@ pub fn body_stm_to_air(
     }
     let assertion = one_stmt(stmts);
 
-    if !is_bit_vector_mode {
+    if !is_bit_vector_mode && !is_integer_ring {
         for param in params.iter() {
             let typ_inv =
                 typ_invariant(ctx, &param.x.typ, &ident_var(&suffix_local_stmt_id(&param.x.name)));
@@ -1659,26 +1691,76 @@ pub fn body_stm_to_air(
         local.push(Arc::new(DeclX::Axiom(e)));
     }
 
-    let query = Arc::new(QueryX { local: Arc::new(local), assertion });
-    let commands = if is_nonlinear {
-        vec![
-            mk_option_command("smt.arith.nl", "true"),
-            Arc::new(CommandX::CheckValid(query)),
-            mk_option_command("smt.arith.nl", "false"),
-        ]
-    } else if is_bit_vector_mode {
-        vec![
-            mk_option_command("smt.case_split", "0"),
-            Arc::new(CommandX::CheckValid(query)),
-            mk_option_command("smt.case_split", "3"),
-        ]
+    if is_integer_ring {
+        if is_bit_vector_mode {
+            panic! {"Error: integer_ring and bit_vector should not be used together"}
+        };
+        // parameters, requires, ensures to Singular Query
+        // in the resulting queryX::assertion, the last stmt should be ensure expression
+        let mut singular_vars: Vec<Decl> = vec![];
+        for param in params.iter() {
+            singular_vars
+                .push(Arc::new(DeclX::Var(param.x.name.clone(), typ_to_air(ctx, &param.x.typ))));
+        }
+        let mut singular_stmts: Vec<Stmt> = vec![];
+        for req in reqs {
+            let error = error_with_label(
+                "Failed to translate this expression into a singular query".to_string(),
+                &req.span,
+                "at the require clause".to_string(),
+            );
+            let air_expr =
+                exp_to_expr(ctx, req, ExprCtxt { mode: ExprMode::BodyPre, is_bit_vector: false });
+            let assert_stm = Arc::new(StmtX::Assert(error, air_expr));
+            singular_stmts.push(assert_stm);
+        }
+        for ens in enss {
+            let error = error_with_label(
+                "Failed to translate this expression into a singular query".to_string(),
+                &ens.span,
+                "at the ensure clause".to_string(),
+            );
+            let air_expr =
+                exp_to_expr(ctx, ens, ExprCtxt { mode: ExprMode::BodyPre, is_bit_vector: false });
+            let assert_stm = Arc::new(StmtX::Assert(error, air_expr));
+            singular_stmts.push(assert_stm);
+        }
+
+        let query = Arc::new(QueryX {
+            local: Arc::new(singular_vars),
+            assertion: Arc::new(air::ast::StmtX::Block(Arc::new(singular_stmts))),
+        });
+        let singular_command = Arc::new(CommandX::CheckValid(query));
+
+        state.commands.push(CommandsWithContextX::new(
+            func_span.clone(),
+            "Singular check valid".to_string(),
+            Arc::new(vec![singular_command]),
+            ProverChoice::Singular,
+        ));
     } else {
-        vec![Arc::new(CommandX::CheckValid(query))]
-    };
-    state.commands.push(CommandsWithContextX::new(
-        func_span.clone(),
-        "function body check".to_string(),
-        Arc::new(commands),
-    ));
+        let query = Arc::new(QueryX { local: Arc::new(local), assertion });
+        let commands = if is_nonlinear {
+            vec![
+                mk_option_command("smt.arith.nl", "true"),
+                Arc::new(CommandX::CheckValid(query)),
+                mk_option_command("smt.arith.nl", "false"),
+            ]
+        } else if is_bit_vector_mode {
+            vec![
+                mk_option_command("smt.case_split", "0"),
+                Arc::new(CommandX::CheckValid(query)),
+                mk_option_command("smt.case_split", "3"),
+            ]
+        } else {
+            vec![Arc::new(CommandX::CheckValid(query))]
+        };
+        state.commands.push(CommandsWithContextX::new(
+            func_span.clone(),
+            "function body check".to_string(),
+            Arc::new(commands),
+            if is_spinoff_prover { ProverChoice::Spinoff } else { ProverChoice::DefaultProver },
+        ));
+    }
     (state.commands, state.snap_map)
 }

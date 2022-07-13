@@ -236,19 +236,18 @@ tokenized_state_machine!{
         }
             
         transition!{
-            client_recv(j: nat, rid: int) {
+            client_recv(j: nat) {
                 require(0 <= j && j < pre.num_clients);
 
                 // Move client to 'idle' state
-                remove clients -= [j => Client::Waiting{rid}];
+                remove clients -= [j => let Client::Waiting{rid}];
                 add    clients += [j => Client::Idle];
 
                 // Check that the slot has been set back to 'false'
                 have slots >= [j => false];
 
                 // withdraw the response
-                birds_eye let response = pre.responses.index(j);
-                withdraw responses -= [j => response] by {
+                withdraw responses -= [j => let response] by {
                     assert(pre.client_waiting(j));
                     //assert(!pre.request_stored(j));
                     //assert(!pre.combiner_has(j));
@@ -263,7 +262,7 @@ tokenized_state_machine!{
         }
 
         #[inductive(client_recv)]
-        fn client_recv_inductive(pre: Self, post: Self, j: nat, rid: int) {
+        fn client_recv_inductive(pre: Self, post: Self, j: nat) {
             assert(forall(|i| post.valid_idx(i) >>= pre.valid_idx(i)));
             assert(pre.valid_idx(j));
             assert(forall(|i| post.client_waiting(i) >>= pre.client_waiting(i)));
@@ -286,8 +285,7 @@ tokenized_state_machine!{
                 have slots >= [j => true];
 
                 // Withdraw a request
-                birds_eye let request = pre.requests.index(j);
-                withdraw requests -= [j => request] by {
+                withdraw requests -= [j => let request] by {
                     assert(pre.valid_idx(j));
                     assert(pre.client_waiting(j));
                     assert(pre.request_stored(j));
@@ -305,6 +303,8 @@ tokenized_state_machine!{
             let j = pre.combiner.get_Collecting_elems().len();
             assert(forall(|i| post.valid_idx(i) >>= pre.valid_idx(i)));
             assert(post.valid_idx(j));
+            assert(pre.client_waiting(j));
+            assert(pre.request_stored(j));
             assert(forall(|i| post.client_waiting(i) >>= pre.client_waiting(i)));
             assert(forall(|i| post.combiner_has(i) && i != j >>= pre.combiner_has(i)));
             assert(forall(|i| post.request_stored(i) >>= pre.request_stored(i)));
@@ -363,7 +363,7 @@ tokenized_state_machine!{
                 let response_opt = pre.combiner.get_Responding_elems().index(j);
 
                 // The response we return has to have the right request ID
-                require(equal(response_opt, Option::Some(response.rid)));
+                require(response_opt === Option::Some(response.rid));
 
                 // Set the slot back to false
                 remove slots -= [j => cur_slot];

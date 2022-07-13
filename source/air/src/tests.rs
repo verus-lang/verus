@@ -4,13 +4,12 @@ use crate::context::ValidityResult;
 use crate::parser::Parser;
 #[allow(unused_imports)]
 use crate::printer::macro_push_node;
-use crate::smt_manager::SmtManager;
 #[allow(unused_imports)]
 use sise::Node;
 
 #[allow(dead_code)]
 fn run_nodes_as_test(should_typecheck: bool, should_be_valid: bool, nodes: &[Node]) {
-    let mut air_context = crate::context::Context::new(SmtManager::new());
+    let mut air_context = crate::context::Context::new();
     air_context.set_z3_param("air_recommended_options", "true");
     match Parser::new().nodes_to_commands(&nodes) {
         Ok(commands) => {
@@ -23,8 +22,8 @@ fn run_nodes_as_test(should_typecheck: bool, should_be_valid: bool, nodes: &[Nod
                     }
                     (_, _, true, ValidityResult::Valid) => {}
                     (_, _, false, ValidityResult::Invalid(..)) => {}
-                    (CommandX::CheckValid(_), _, _, _) => {
-                        panic!("unexpected result");
+                    (CommandX::CheckValid(_), _, _, res) => {
+                        panic!("unexpected result {:?}", res);
                     }
                     _ => {}
                 }
@@ -253,7 +252,7 @@ fn no_global() {
 fn yes_type() {
     yes!(
         (check-valid
-            (declare-sort T)
+            (declare-sort T 0)
             (declare-const x T)
             (assert
                 (= x x)
@@ -266,7 +265,7 @@ fn yes_type() {
 fn no_type() {
     no!(
         (check-valid
-            (declare-sort T)
+            (declare-sort T 0)
             (declare-const x T)
             (declare-const y T)
             (assert
@@ -734,7 +733,7 @@ fn untyped_let3() {
 #[test]
 fn untyped_let4() {
     untyped!(
-        (declare-sort y)
+        (declare-sort y 0)
         (check-valid
             (assert (let ((x 10) (y 20)) true)) // cannot shadow global name
         )
@@ -992,8 +991,8 @@ fn untyped_distinct() {
 #[test]
 fn yes_datatype1() {
     yes!(
-        (declare-datatypes () (
-            (IntPair
+        (declare-datatypes ((IntPair 0)) (
+            (
                 (int_pair
                     (ip1 Int)
                     (ip2 Int)
@@ -1013,14 +1012,14 @@ fn yes_datatype1() {
 #[test]
 fn yes_datatype2() {
     yes!(
-        (declare-datatypes () (
-            (Tree
+        (declare-datatypes ((Tree 0) (Pair 0)) (
+            (
                 (empty)
                 (full
                     (children Pair)
                 )
             )
-            (Pair
+            (
                 (pair
                     (fst Tree)
                     (snd Tree)

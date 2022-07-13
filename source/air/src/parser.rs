@@ -1,8 +1,9 @@
 use crate::ast::{
     BinaryOp, BindX, Binder, BinderX, Binders, Command, CommandX, Commands, Constant, Decl, DeclX,
-    Decls, Expr, ExprX, Exprs, MultiOp, Quant, QueryX, Span, Stmt, StmtX, Stmts, Trigger, Triggers,
-    Typ, TypX, UnaryOp,
+    Decls, Expr, ExprX, Exprs, MultiOp, Qid, Quant, QueryX, Span, Stmt, StmtX, Stmts, Trigger,
+    Triggers, Typ, TypX, UnaryOp,
 };
+use crate::def::mk_skolem_id;
 use crate::errors::{error_from_labels, error_from_spans};
 use crate::errors::{ErrorLabel, ErrorLabels};
 use crate::model::{ModelDef, ModelDefX, ModelDefs};
@@ -279,46 +280,72 @@ impl Parser {
         Ok(Arc::new(binders))
     }
 
-    fn nodes_to_multibinders<A, F>(
-        &self,
-        nodes: &[Node],
-        f: &F,
-    ) -> Result<Binders<Arc<Vec<A>>>, String>
-    where
-        A: Clone,
-        F: Fn(&Node) -> Result<A, String>,
-    {
-        let mut binders: Vec<Binder<Arc<Vec<A>>>> = Vec::new();
-        for node in nodes {
-            binders.push(self.node_to_multibinder(node, f)?);
-        }
-        Ok(Arc::new(binders))
-    }
-
     fn node_to_let_expr(&self, binder_nodes: &[Node], expr: &Node) -> Result<Expr, String> {
         let binders = self.nodes_to_binders(binder_nodes, &|n| self.node_to_expr(n))?;
         Ok(crate::ast_util::mk_let(&binders, &self.node_to_expr(expr)?))
     }
 
-    fn nodes_to_triggers(&self, nodes: &[Node]) -> Result<Triggers, String> {
+    fn nodes_to_triggers_and_qid(&self, nodes: &[Node]) -> Result<(Triggers, Qid), String> {
         let mut triggers: Vec<Trigger> = Vec::new();
-        let mut expect_pattern = true;
+        let mut qid = None;
+        // We don't currently use the parsed skolemid, since we emit skolemid = qid,
+        // but we still need to account for it, since it will appear in SMTLIB we produce
+        let mut skolemid = None;
+        let mut consume_pattern = false;
+        let mut consume_qid = false;
+        let mut consume_skolemid = false;
+
         for node in nodes {
             match node {
-                Node::Atom(s) if s.to_string() == ":pattern" && expect_pattern => {}
-                Node::List(trigger_nodes) if !expect_pattern => {
+                Node::Atom(s) if s.to_string() == ":pattern" => {
+                    consume_pattern = true;
+                }
+                Node::Atom(s) if s.to_string() == ":qid" => {
+                    consume_qid = true;
+                }
+                Node::Atom(s) if s.to_string() == ":skolemid" => {
+                    consume_skolemid = true;
+                }
+                Node::Atom(s) if consume_qid && qid.is_none() => {
+                    qid = Some(Arc::new(s.clone()));
+                    consume_qid = false;
+                }
+                Node::Atom(s) if consume_skolemid && skolemid.is_none() => {
+                    skolemid = Some(s.clone());
+                    consume_skolemid = false;
+                }
+                Node::List(trigger_nodes) if consume_pattern => {
                     triggers.push(self.nodes_to_exprs(trigger_nodes)?);
+                    consume_pattern = false;
                 }
                 _ => {
                     return Err(format!(
-                        "expected quantifier pattern, found {}",
+                        "expected quantifier pattern, qid, or skolemid; found {}",
                         node_to_string(node)
                     ));
                 }
             }
-            expect_pattern = !expect_pattern;
         }
-        Ok(Arc::new(triggers))
+        match (qid.clone(), skolemid) {
+            (Some(q), Some(skolem)) => {
+                let expected_skolemid = mk_skolem_id(&q);
+                if skolem == expected_skolemid {
+                    Ok((Arc::new(triggers), qid))
+                } else {
+                    Err(format!(
+                        "for qid {}, expected skolemid {}; found {}",
+                        q, expected_skolemid, skolem
+                    ))
+                }
+            }
+            (Some(q), None) => Err(format!(
+                "for qid {}, expected skolemid {} but found no skolemid at all",
+                q,
+                mk_skolem_id(&q)
+            )),
+            (None, Some(_)) => Err(format!("skolemid must be accompanied by a qid")),
+            (None, None) => Ok((Arc::new(triggers), qid)),
+        }
     }
 
     fn node_to_quant_expr(
@@ -328,19 +355,20 @@ impl Parser {
         expr: &Node,
     ) -> Result<Expr, String> {
         let binders = self.nodes_to_binders(binder_nodes, &|n| self.node_to_typ(n))?;
-        let (expr, triggers) = match &expr {
+        let (expr, triggers, qid) = match &expr {
             Node::List(nodes) if nodes.len() >= 2 => match &nodes[0] {
                 Node::Atom(s) if s.to_string() == "!" => {
-                    (&nodes[1], self.nodes_to_triggers(&nodes[2..])?)
+                    let (triggers, qid) = self.nodes_to_triggers_and_qid(&nodes[2..])?;
+                    (&nodes[1], triggers, qid)
                 }
-                _ => (expr, Arc::new(vec![])),
+                _ => (expr, Arc::new(vec![]), None),
             },
-            _ => (expr, Arc::new(vec![])),
+            _ => (expr, Arc::new(vec![]), None),
         };
         let expr = self.node_to_expr(expr)?;
         let (body, bind) = match quant_or_choose {
-            QuantOrChoose::Quant(quant) => (expr, BindX::Quant(quant, binders, triggers)),
-            QuantOrChoose::Choose(body) => (body, BindX::Choose(binders, triggers, expr)),
+            QuantOrChoose::Quant(quant) => (expr, BindX::Quant(quant, binders, triggers, qid)),
+            QuantOrChoose::Choose(body) => (body, BindX::Choose(binders, triggers, qid, expr)),
         };
         Ok(Arc::new(ExprX::Bind(Arc::new(bind), body)))
     }
@@ -399,20 +427,66 @@ impl Parser {
     fn node_to_decl(&self, node: &Node) -> Result<Decl, String> {
         match node {
             Node::List(nodes) => match &nodes[..] {
-                [Node::Atom(s), Node::Atom(x)]
-                    if s.to_string() == "declare-sort" && is_symbol(x) =>
+                [Node::Atom(s), Node::Atom(x), Node::Atom(p)]
+                    if s.to_string() == "declare-sort" && is_symbol(x) && p == "0" =>
                 {
                     Ok(Arc::new(DeclX::Sort(Arc::new(x.clone()))))
                 }
-                [Node::Atom(s), Node::List(l), Node::List(datatypes)]
-                    if s.to_string() == "declare-datatypes" && l.len() == 0 =>
+                [Node::Atom(s), Node::List(decls), Node::List(defns)]
+                    if s.to_string() == "declare-datatypes" && decls.len() == defns.len() =>
                 {
-                    let ds = self.nodes_to_multibinders(datatypes, &|variant| {
-                        self.node_to_multibinder(variant, &|field| {
-                            self.node_to_binder(field, &|t| self.node_to_typ(t))
+                    // ((Datatype1 0) (Datatype2 0) ...)
+                    let decls = decls
+                        .iter()
+                        .map(|node| {
+                            match node {
+                                Node::List(kv) => match &kv[..] {
+                                    [Node::Atom(name), Node::Atom(params)] if params == "0" => {
+                                        return Ok(name.clone());
+                                    }
+                                    _ => {}
+                                },
+                                _ => {}
+                            }
+                            Err(format!(
+                                "expected datatype declaration, found: {}",
+                                node_to_string(node)
+                            ))
                         })
-                    })?;
-                    Ok(Arc::new(DeclX::Datatypes(ds)))
+                        .collect::<Result<Vec<String>, String>>()?;
+
+                    // (
+                    //      ( (Datatype1Variant1 <fields>) (Datatype1Variant2 <fields) )
+                    //      ( (Datatype2Variant1 <fields>) )
+                    //      ...
+                    // )
+                    let defns = defns
+                        .iter()
+                        .map(|node| match node {
+                            Node::List(variants) => variants
+                                .iter()
+                                .map(|variant| {
+                                    self.node_to_multibinder(variant, &|field| {
+                                        self.node_to_binder(field, &|t| self.node_to_typ(t))
+                                    })
+                                })
+                                .collect::<Result<Vec<crate::ast::Variant>, String>>()
+                                .map(Arc::new),
+                            _ => Err(format!(
+                                "expected list of variants, found: {}",
+                                node_to_string(node)
+                            )),
+                        })
+                        .collect::<Result<Vec<crate::ast::Variants>, String>>()?;
+
+                    let ds = decls
+                        .into_iter()
+                        .zip(defns.into_iter())
+                        .map(|(name, variants)| {
+                            Arc::new(BinderX { name: Arc::new(name), a: variants })
+                        })
+                        .collect();
+                    Ok(Arc::new(DeclX::Datatypes(Arc::new(ds))))
                 }
                 [Node::Atom(s), Node::Atom(x), t]
                     if s.to_string() == "declare-const" && is_symbol(x) =>

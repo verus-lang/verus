@@ -5,7 +5,9 @@
 //!
 //! Concurrent-state-machine-specific stuff is in concurrency_tokens.rs
 
-use crate::ast::{Invariant, Lemma, ShardableType, TransitionKind, TransitionParam, SM};
+use crate::ast::{
+    Invariant, Lemma, ShardableType, Transition, TransitionKind, TransitionParam, SM,
+};
 use crate::concurrency_tokens::output_token_types_and_fns;
 use crate::lemmas::get_transition;
 use crate::parse_token_stream::SMBundle;
@@ -17,15 +19,17 @@ use proc_macro2::TokenStream;
 use quote::{quote, quote_spanned, ToTokens};
 use std::collections::HashMap;
 use std::mem::swap;
-use syn::punctuated::Punctuated;
-use syn::spanned::Spanned;
-use syn::token::Semi;
-use syn::{
-    Attribute, Block, Expr, ExprBlock, FnArg, GenericParam, Generics, Ident, ImplItemMethod, Meta,
-    MetaList, Pat, Stmt, Type,
+use syn_verus::parse;
+use syn_verus::punctuated::Punctuated;
+use syn_verus::spanned::Spanned;
+use syn_verus::token;
+use syn_verus::{
+    AngleBracketedGenericArguments, Attribute, Block, Expr, ExprBlock, FnArg, FnArgKind, FnMode,
+    GenericArgument, GenericParam, Generics, Ident, ImplItemMethod, Meta, MetaList, ModeProof, Pat,
+    Path, PathArguments, PathSegment, Signature, Stmt, Type, TypePath,
 };
 
-pub fn output_token_stream(bundle: SMBundle, concurrent: bool) -> syn::parse::Result<TokenStream> {
+pub fn output_token_stream(bundle: SMBundle, concurrent: bool) -> parse::Result<TokenStream> {
     let mut root_stream = TokenStream::new();
     let mut impl_stream = TokenStream::new();
 
@@ -51,13 +55,16 @@ pub fn output_token_stream(bundle: SMBundle, concurrent: bool) -> syn::parse::Re
     let sm_name = &bundle.sm.name;
 
     let final_code = quote! {
-        mod #sm_name {
-            use super::*;
+        ::builtin_macros::verus!{
+            #[allow(unused_parens)]
+            mod #sm_name {
+                use super::*;
 
-            #root_stream
+                #root_stream
 
-            #impl_decl {
-                #impl_stream
+                #impl_decl {
+                    #impl_stream
+                }
             }
         }
     };
@@ -80,7 +87,7 @@ pub fn get_self_ty_turbofish(sm: &SM) -> Type {
     name_with_type_args_turbofish(&name, sm)
 }
 
-pub fn get_self_ty_turbofish_path(sm: &SM) -> syn::Path {
+pub fn get_self_ty_turbofish_path(sm: &SM) -> Path {
     let name = Ident::new("State", sm.name.span());
     name_with_type_args_turbofish_path(&name, sm)
 }
@@ -100,39 +107,39 @@ pub fn name_with_type_args(name: &Ident, sm: &SM) -> Type {
     })
 }
 
-fn name_with_type_args_turbofish_path(name: &Ident, sm: &SM) -> syn::Path {
+fn name_with_type_args_turbofish_path(name: &Ident, sm: &SM) -> Path {
     let span = name.span();
     let arguments = match &sm.generics {
-        None => syn::PathArguments::None,
+        None => PathArguments::None,
         Some(gen) => {
             if gen.params.len() > 0 {
                 let args = get_generic_args(&gen.params);
-                syn::PathArguments::AngleBracketed(syn::AngleBracketedGenericArguments {
-                    colon2_token: Some(syn::token::Colon2 { spans: [span, span] }),
+                PathArguments::AngleBracketed(AngleBracketedGenericArguments {
+                    colon2_token: Some(token::Colon2 { spans: [span, span] }),
                     lt_token: gen.lt_token.expect("expected lt token"),
                     args,
                     gt_token: gen.gt_token.expect("expected gt token"),
                 })
             } else {
-                syn::PathArguments::None
+                PathArguments::None
             }
         }
     };
 
-    let mut segments = Punctuated::<syn::PathSegment, syn::token::Colon2>::new();
-    segments.push(syn::PathSegment { ident: name.clone(), arguments });
-    syn::Path { leading_colon: None, segments }
+    let mut segments = Punctuated::<PathSegment, token::Colon2>::new();
+    segments.push(PathSegment { ident: name.clone(), arguments });
+    Path { leading_colon: None, segments }
 }
 
 pub fn name_with_type_args_turbofish(name: &Ident, sm: &SM) -> Type {
     let p = name_with_type_args_turbofish_path(name, sm);
-    Type::Path(syn::TypePath { qself: None, path: p })
+    Type::Path(TypePath { qself: None, path: p })
 }
 
 pub fn get_generic_args(
-    params: &Punctuated<GenericParam, syn::token::Comma>,
-) -> Punctuated<syn::GenericArgument, syn::token::Comma> {
-    let mut args = Punctuated::<syn::GenericArgument, syn::token::Comma>::new();
+    params: &Punctuated<GenericParam, token::Comma>,
+) -> Punctuated<GenericArgument, token::Comma> {
+    let mut args = Punctuated::<GenericArgument, token::Comma>::new();
     for gp in params.iter() {
         let id = match gp {
             GenericParam::Type(type_param) => type_param.ident.clone(),
@@ -141,7 +148,7 @@ pub fn get_generic_args(
                 panic!("unsupported generic param type");
             }
         };
-        args.push(syn::GenericArgument::Type(Type::Verbatim(quote! {#id})));
+        args.push(GenericArgument::Type(Type::Verbatim(quote! {#id})));
     }
     args
 }
@@ -206,6 +213,17 @@ pub fn fix_attrs(attrs: &mut Vec<Attribute>) {
     }
 }
 
+pub fn set_mode_proof(sig: &mut Signature, span: Span) {
+    match &sig.mode {
+        FnMode::Proof(_mode_proof) => {
+            return;
+        }
+        _ => {}
+    }
+
+    sig.mode = FnMode::Proof(ModeProof { proof_token: token::Proof { span } });
+}
+
 pub fn output_primary_stuff(
     root_stream: &mut TokenStream,
     impl_stream: &mut TokenStream,
@@ -250,7 +268,7 @@ pub fn output_primary_stuff(
         // Output the 'weak' transition relation.
         // (or for the 'Init' case, a single-state predicate).
 
-        if trans.kind != TransitionKind::Readonly {
+        {
             let f = to_relation(&simplified_body, true /* weak */);
             let name = &trans.name;
             let rel_fn;
@@ -280,7 +298,7 @@ pub fn output_primary_stuff(
         // Note that 'init' routines don't allow asserts, so there is no need for an
         // additional 'strong' relation.
 
-        if trans.kind == TransitionKind::Transition {
+        if trans.kind != TransitionKind::Init {
             let params = pre_post_params(&trans.params);
             let name = Ident::new(&(trans.name.to_string() + "_strong"), trans.name.span());
 
@@ -311,8 +329,7 @@ pub fn output_primary_stuff(
                 None => TokenStream::new(),
             };
             impl_stream.extend(quote! {
-                #[proof]
-                pub fn #name(#params) {
+                pub proof fn #name(#params) {
                     crate::pervasive::assume(pre.invariant());
                     #b
                 }
@@ -342,14 +359,21 @@ fn output_step_datatype(
     sm: &SM,
     is_init: bool,
 ) {
-    let kind = if is_init { TransitionKind::Init } else { TransitionKind::Transition };
+    let filter_fn = |t: &Transition| {
+        if is_init {
+            t.kind == TransitionKind::Init
+        } else {
+            t.kind == TransitionKind::Transition || t.kind == TransitionKind::Readonly
+        }
+    };
+
     let type_name = if is_init { "Config" } else { "Step" };
     let type_ident = Ident::new(type_name, sm.name.span());
 
     let variants: Vec<TokenStream> = sm
         .transitions
         .iter()
-        .filter(|t| t.kind == kind)
+        .filter(|t| filter_fn(t))
         .map(|t| {
             let p = step_params(&t.params);
             let tr_name = &t.name;
@@ -375,7 +399,7 @@ fn output_step_datatype(
     let arms: Vec<TokenStream> = sm
         .transitions
         .iter()
-        .filter(|t| t.kind == kind)
+        .filter(|t| filter_fn(t))
         .map(|t| {
             let step_args = just_args(&t.params);
             let tr_args = if is_init { post_args(&t.params) } else { pre_post_args(&t.params) };
@@ -403,6 +427,21 @@ fn output_step_datatype(
             }
         });
     } else {
+        let arms_strong: Vec<TokenStream> = sm
+            .transitions
+            .iter()
+            .filter(|t| filter_fn(t))
+            .map(|t| {
+                let step_args = just_args(&t.params);
+                let tr_args = if is_init { post_args(&t.params) } else { pre_post_args(&t.params) };
+                let tr_name = &t.name;
+                let tr_name_strong = Ident::new(&(tr_name.to_string() + "_strong"), tr_name.span());
+                quote! {
+                    #type_ident::#tr_name(#step_args) => Self::#tr_name_strong(#tr_args),
+                }
+            })
+            .collect();
+
         impl_stream.extend(quote!{
             #[spec] #[verifier(opaque)] #[verifier(publish)]
             pub fn next_by(pre: #self_ty, post: #self_ty, step: #step_ty) -> ::std::primitive::bool {
@@ -416,6 +455,19 @@ fn output_step_datatype(
             pub fn next(pre: #self_ty, post: #self_ty) -> ::std::primitive::bool {
                 ::builtin::exists(|step: #step_ty| Self::next_by(pre, post, step))
             }
+
+            #[spec] #[verifier(opaque)] #[verifier(publish)]
+            pub fn next_strong_by(pre: #self_ty, post: #self_ty, step: #step_ty) -> ::std::primitive::bool {
+                match step {
+                    #(#arms_strong)*
+                    #type_ident::dummy_to_use_type_params(_) => false,
+                }
+            }
+
+            #[spec] #[verifier(opaque)] #[verifier(publish)]
+            pub fn next_strong(pre: #self_ty, post: #self_ty) -> ::std::primitive::bool {
+                ::builtin::exists(|step: #step_ty| Self::next_by(pre, post, step))
+            }
         });
     }
 
@@ -424,7 +476,7 @@ fn output_step_datatype(
     let (gen1, gen2) = generic_components_for_fn(&sm.generics);
 
     for trans in &sm.transitions {
-        if trans.kind == kind {
+        if filter_fn(&trans) {
             let tr_name = &trans.name;
             if is_init {
                 let params = post_assoc_params(&super_self_ty, &trans.params);
@@ -463,22 +515,6 @@ fn output_step_datatype(
             }
         }
     }
-
-    /*
-    if is_init {
-    } else {
-        root_stream.extend(quote!{
-            #[proof]
-            #[verifier(returns(proof))]
-            #[verifier(external_body)]
-            pub fn get_step(pre: #self_ty, post: #self_ty) -> crate::pervasive::modes::Spec<#step_ty> {
-                requires(State::next(pre, post));
-                ensures(|step: crate::pervasive::modes::Spec<#step_ty>| State::next_by(pre, post, step.value()));
-                ::std::unimplemented!();
-            }
-        });
-    }
-    */
 }
 
 /// pre: Self, post: Self, params...
@@ -627,15 +663,20 @@ pub fn shardable_type_to_type(span: Span, stype: &ShardableType) -> Type {
         ShardableType::Variable(ty) => ty.clone(),
         ShardableType::Constant(ty) => ty.clone(),
         ShardableType::NotTokenized(ty) => ty.clone(),
-        ShardableType::Option(ty) | ShardableType::StorageOption(ty) => {
+        ShardableType::Option(ty)
+        | ShardableType::PersistentOption(ty)
+        | ShardableType::StorageOption(ty) => {
             Type::Verbatim(quote_spanned! { span => crate::pervasive::option::Option<#ty> })
         }
-        ShardableType::Map(key, val) | ShardableType::StorageMap(key, val) => {
+        ShardableType::Map(key, val)
+        | ShardableType::PersistentMap(key, val)
+        | ShardableType::StorageMap(key, val) => {
             Type::Verbatim(quote_spanned! { span => crate::pervasive::map::Map<#key, #val> })
         }
         ShardableType::Multiset(ty) => {
             Type::Verbatim(quote_spanned! { span => crate::pervasive::multiset::Multiset<#ty> })
         }
+        ShardableType::Count => Type::Verbatim(quote_spanned! { span => ::builtin::nat }),
     }
 }
 
@@ -685,9 +726,10 @@ fn output_other_fns(
     }
 
     for lemma in lemmas {
-        impl_stream.extend(quote! { #[proof] });
         let mut f = lemma.func.clone();
         lemma_update_body(bundle, lemma, &mut f);
+        let span = f.sig.span(); // TODO better span choice
+        set_mode_proof(&mut f.sig, span);
         fix_attrs(&mut f.attrs);
         f.to_tokens(impl_stream);
     }
@@ -697,9 +739,9 @@ fn output_other_fns(
 }
 
 fn left_of_colon<'a>(fn_arg: &'a FnArg) -> &'a Pat {
-    match fn_arg {
-        FnArg::Receiver(_) => panic!("should have been ruled out by lemma well-formedness"),
-        FnArg::Typed(pat_type) => &pat_type.pat,
+    match &fn_arg.kind {
+        FnArgKind::Receiver(_) => panic!("should have been ruled out by lemma well-formedness"),
+        FnArgKind::Typed(pat_type) => &pat_type.pat,
     }
 }
 
@@ -742,7 +784,7 @@ fn lemma_update_body(bundle: &SMBundle, l: &Lemma, func: &mut ImplItemMethod) {
                     #precondition
                 )
             }),
-            Semi { spans: [l.func.span()] },
+            token::Semi { spans: [l.func.span()] },
         ),
         Stmt::Semi(
             Expr::Verbatim(quote! {
@@ -750,7 +792,7 @@ fn lemma_update_body(bundle: &SMBundle, l: &Lemma, func: &mut ImplItemMethod) {
                     post.invariant()
                 )
             }),
-            Semi { spans: [l.func.span()] },
+            token::Semi { spans: [l.func.span()] },
         ),
         Stmt::Expr(Expr::Block(ExprBlock {
             attrs: vec![],
@@ -767,7 +809,7 @@ fn lemma_update_body(bundle: &SMBundle, l: &Lemma, func: &mut ImplItemMethod) {
             Expr::Verbatim(quote_spanned! { span =>
                 Self::#lemma_msg_ident(post)
             }),
-            Semi { spans: [l.func.span()] },
+            token::Semi { spans: [l.func.span()] },
         ));
     }
 

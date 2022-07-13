@@ -357,9 +357,9 @@ fn check_expr(typing: &mut Typing, expr: &Expr) -> Result<Typ, TypeError> {
                     }
                     Arc::new(binders)
                 }
-                BindX::Quant(_, binders, _) => binders.clone(),
+                BindX::Quant(_, binders, _, _) => binders.clone(),
                 BindX::Lambda(binders) => binders.clone(),
-                BindX::Choose(binders, _, _) => binders.clone(),
+                BindX::Choose(binders, _, _, _) => binders.clone(),
             };
             // Collect all binder names, make sure they are unique
             typing.decls.push_scope(true);
@@ -371,7 +371,7 @@ fn check_expr(typing: &mut Typing, expr: &Expr) -> Result<Typ, TypeError> {
             // Type-check triggers
             match &**bind {
                 BindX::Let(_) | BindX::Lambda(_) => {}
-                BindX::Quant(_, _, triggers) | BindX::Choose(_, triggers, _) => {
+                BindX::Quant(_, _, triggers, _) | BindX::Choose(_, triggers, _, _) => {
                     for trigger in triggers.iter() {
                         for expr in trigger.iter() {
                             check_expr(typing, expr)?;
@@ -380,7 +380,7 @@ fn check_expr(typing: &mut Typing, expr: &Expr) -> Result<Typ, TypeError> {
                 }
             }
             // Type-check inner expressions
-            if let BindX::Choose(_, _, e2) = &**bind {
+            if let BindX::Choose(_, _, _, e2) = &**bind {
                 let t2 = check_expr(typing, e2)?;
                 if !typ_eq(&t2, &bt()) {
                     return Err(format!(
@@ -393,7 +393,7 @@ fn check_expr(typing: &mut Typing, expr: &Expr) -> Result<Typ, TypeError> {
             let t1 = check_expr(typing, e1)?;
             let tb = match &**bind {
                 BindX::Let(_) => t1,
-                BindX::Quant(_, _, _) => {
+                BindX::Quant(_, _, _, _) => {
                     expect_typ(&t1, &bt(), "forall/exists body must have type bool")?;
                     t1
                 }

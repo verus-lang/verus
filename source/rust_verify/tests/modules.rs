@@ -3,16 +3,14 @@
 mod common;
 use common::*;
 
-const M1: &str = code_str! {
+const M1: &str = verus_code_str! {
     mod M1 {
         #[derive(PartialEq, Eq)]
         pub struct Car {
             pub four_doors: bool,
         }
 
-        #[spec]
-        #[verifier(publish)]
-        pub fn is_four_doors(c: Car) -> bool {
+        pub open spec fn is_four_doors(c: Car) -> bool {
             c.four_doors
         }
     }

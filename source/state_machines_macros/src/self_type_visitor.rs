@@ -2,9 +2,11 @@ use crate::ast::{
     MonoidElt, ShardableType, SpecialOp, SplitKind, SubIdx, Transition, TransitionStmt, SM,
 };
 use crate::to_token_stream::get_self_ty_turbofish_path;
-use syn::punctuated::Punctuated;
-use syn::visit_mut::VisitMut;
-use syn::{Expr, Ident, Pat, Path, Type};
+use syn_verus::punctuated::Punctuated;
+use syn_verus::token;
+use syn_verus::visit_mut;
+use syn_verus::visit_mut::VisitMut;
+use syn_verus::{Expr, Ident, Pat, Path, PathSegment, Type};
 
 /// If the user ever uses 'Self' in a transition, then change it out for the explicit
 /// self type so that it's safe to use these expressions and types in other places
@@ -41,7 +43,14 @@ fn replace_self_shardable_type(stype: &mut ShardableType, path: &Path) {
         ShardableType::Option(ty) => {
             replace_self_type(ty, path);
         }
+        ShardableType::PersistentOption(ty) => {
+            replace_self_type(ty, path);
+        }
         ShardableType::Map(key, val) => {
+            replace_self_type(key, path);
+            replace_self_type(val, path);
+        }
+        ShardableType::PersistentMap(key, val) => {
             replace_self_type(key, path);
             replace_self_type(val, path);
         }
@@ -55,6 +64,7 @@ fn replace_self_shardable_type(stype: &mut ShardableType, path: &Path) {
             replace_self_type(key, path);
             replace_self_type(val, path);
         }
+        ShardableType::Count => {}
     }
 }
 
@@ -65,17 +75,16 @@ fn replace_self_ts(ts: &mut TransitionStmt, path: &Path) {
                 replace_self_ts(t, path);
             }
         }
-        TransitionStmt::Let(_, pat, ty, _lk, e, child) => {
-            replace_self_pat(pat, path);
-            match ty {
-                None => {}
-                Some(ty) => replace_self_type(ty, path),
-            }
-            replace_self_expr(e, path);
-            replace_self_ts(child, path);
-        }
         TransitionStmt::Split(_, split_kind, es) => {
             match split_kind {
+                SplitKind::Let(pat, ty, _lk, e) => {
+                    replace_self_pat(pat, path);
+                    match ty {
+                        None => {}
+                        Some(ty) => replace_self_type(ty, path),
+                    }
+                    replace_self_expr(e, path);
+                }
                 SplitKind::If(cond) => {
                     replace_self_expr(cond, path);
                 }
@@ -88,6 +97,15 @@ fn replace_self_ts(ts: &mut TransitionStmt, path: &Path) {
                                 replace_self_expr(guard_e, path);
                             }
                             None => {}
+                        }
+                    }
+                }
+                SplitKind::Special(_f, op, _proof, pat_opt) => {
+                    replace_self_op(op, path);
+                    match pat_opt {
+                        None => {}
+                        Some(pat) => {
+                            replace_self_pat(pat, path);
                         }
                     }
                 }
@@ -116,9 +134,6 @@ fn replace_self_ts(ts: &mut TransitionStmt, path: &Path) {
         TransitionStmt::Update(_, _f, e) | TransitionStmt::Initialize(_, _f, e) => {
             replace_self_expr(e, path);
         }
-        TransitionStmt::Special(_, _f, op, _proof) => {
-            replace_self_op(op, path);
-        }
         TransitionStmt::PostCondition(_, e) => {
             replace_self_expr(e, path);
         }
@@ -127,10 +142,14 @@ fn replace_self_ts(ts: &mut TransitionStmt, path: &Path) {
 
 fn replace_self_op(op: &mut SpecialOp, path: &Path) {
     match &mut op.elt {
-        MonoidElt::OptionSome(e) | MonoidElt::SingletonMultiset(e) | MonoidElt::General(e) => {
+        MonoidElt::OptionSome(None) => {}
+        MonoidElt::OptionSome(Some(e))
+        | MonoidElt::SingletonMultiset(e)
+        | MonoidElt::General(e)
+        | MonoidElt::SingletonKV(e, None) => {
             replace_self_expr(e, path);
         }
-        MonoidElt::SingletonKV(e1, e2) => {
+        MonoidElt::SingletonKV(e1, Some(e2)) => {
             replace_self_expr(e1, path);
             replace_self_expr(e2, path);
         }
@@ -160,7 +179,7 @@ impl<'a> VisitMut for SelfVisitor<'a> {
     fn visit_path_mut(&mut self, path: &mut Path) {
         if path.leading_colon.is_none() && path.segments[0].ident.to_string() == "Self" {
             let orig_span = path.segments[0].ident.span();
-            let mut segments = Punctuated::<syn::PathSegment, syn::token::Colon2>::new();
+            let mut segments = Punctuated::<PathSegment, token::Colon2>::new();
             for seg in self.subst_path.segments.iter() {
                 let mut seg = seg.clone();
                 seg.ident = Ident::new(&seg.ident.to_string(), orig_span);
@@ -172,6 +191,6 @@ impl<'a> VisitMut for SelfVisitor<'a> {
             path.segments = segments;
         }
 
-        syn::visit_mut::visit_path_mut(self, path)
+        visit_mut::visit_path_mut(self, path)
     }
 }

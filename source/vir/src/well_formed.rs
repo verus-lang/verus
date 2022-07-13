@@ -1,8 +1,8 @@
 use crate::ast::{
     CallTarget, Datatype, Expr, ExprX, FieldOpr, Fun, FunX, Function, FunctionKind, Krate,
-    MaskSpec, Mode, Path, PathX, TypX, UnaryOpr, VirErr,
+    MaskSpec, Mode, MultiOp, Path, PathX, TypX, UnaryOpr, VirErr,
 };
-use crate::ast_util::{err_str, err_string, error, referenced_vars_expr};
+use crate::ast_util::{err_str, err_string, error, path_as_rust_name, referenced_vars_expr};
 use crate::datatype_to_air::is_datatype_transparent;
 use crate::early_exit_cf::assert_no_early_exit_in_inv_block;
 use std::collections::HashMap;
@@ -14,6 +14,34 @@ struct Ctxt {
     pub(crate) dts: HashMap<Path, Datatype>,
 }
 
+#[warn(unused_must_use)]
+fn check_typ(
+    _ctxt: &Ctxt,
+    _function: &Function,
+    typ: &Arc<TypX>,
+    span: &air::ast::Span,
+) -> Result<(), VirErr> {
+    crate::ast_visitor::typ_visitor_check(typ, &mut |t| {
+        if let crate::ast::TypX::Datatype(path, _) = &**t {
+            let PathX { krate, segments: _ } = &**path;
+            match krate {
+                None => Ok(()),
+                Some(krate_name)
+                    if crate::def::SUPPORTED_CRATES.contains(&&krate_name.as_str()) =>
+                {
+                    Ok(())
+                }
+                Some(_) => err_str(
+                    span,
+                    "`{path:}` is not supported (note: currently Verus does not support definitions external to the crate, including most features in std)",
+                ),
+            }
+        } else {
+            Ok(())
+        }
+    })
+}
+
 fn check_one_expr(
     ctxt: &Ctxt,
     function: &Function,
@@ -22,7 +50,18 @@ fn check_one_expr(
 ) -> Result<(), VirErr> {
     match &expr.x {
         ExprX::Call(CallTarget::Static(x, _), args) => {
-            let f = &ctxt.funs[x];
+            let f = match ctxt.funs.get(x) {
+                Some(f) => f,
+                None => {
+                    let path = path_as_rust_name(&x.path);
+                    return err_str(
+                        &expr.span,
+                        &format!(
+                            "`{path:}` is not supported (note: currently Verus does not support definitions external to the crate, including most features in std)"
+                        ),
+                    );
+                }
+            };
             if f.x.attrs.is_decrease_by {
                 // a decreases_by function isn't a real function;
                 // it's just a container for proof code that goes in the corresponding spec function
@@ -90,6 +129,14 @@ fn check_one_expr(
                 }
             } else {
                 panic!("field access of undefined datatype");
+            }
+        }
+        ExprX::Multi(MultiOp::Chained(ops), _) => {
+            if ops.len() < 1 {
+                return err_str(
+                    &expr.span,
+                    "chained inequalities must have at least one inequality",
+                );
             }
         }
         ExprX::OpenInvariant(_inv, _binder, body, _atomicity) => {
@@ -234,6 +281,7 @@ fn check_function(ctxt: &Ctxt, function: &Function) -> Result<(), VirErr> {
     }
 
     for p in function.x.params.iter() {
+        check_typ(ctxt, function, &p.x.typ, &p.span)?;
         if p.x.name == function.x.ret.x.name {
             return err_str(&p.span, "parameter name cannot be same as return value name");
         }
@@ -275,6 +323,18 @@ fn check_function(ctxt: &Ctxt, function: &Function) -> Result<(), VirErr> {
         }
     }
 
+    if (function.x.attrs.bit_vector
+        && (function.x.attrs.nonlinear || function.x.attrs.integer_ring))
+        || (!function.x.attrs.bit_vector
+            && function.x.attrs.nonlinear
+            && function.x.attrs.integer_ring)
+    {
+        return err_str(
+            &function.span,
+            "Select at most one verifier attribute: integer_ring, non_linear, bit_vector",
+        );
+    }
+
     if function.x.attrs.bit_vector {
         if function.x.mode != Mode::Proof {
             return err_str(&function.span, "bit-vector function mode must be declared as proof");
@@ -303,6 +363,124 @@ fn check_function(ctxt: &Ctxt, function: &Function) -> Result<(), VirErr> {
                     );
                 }
             }
+        }
+    }
+
+    #[cfg(not(feature = "singular"))]
+    if function.x.attrs.integer_ring {
+        return err_str(
+            &function.span,
+            "Please cargo build with `--features singular` to use integer_ring attribute",
+        );
+    }
+
+    #[cfg(feature = "singular")]
+    if function.x.attrs.integer_ring {
+        let _ = match std::env::var("VERUS_SINGULAR_PATH") {
+            Ok(_) => {}
+            Err(_) => {
+                return err_str(
+                    &function.span,
+                    "Please provide VERUS_SINGULAR_PATH to use integer_ring attribute",
+                );
+            }
+        };
+
+        if function.x.mode != Mode::Proof {
+            return err_str(&function.span, "integer_ring mode must be declared as proof");
+        }
+        if let Some(body) = &function.x.body {
+            crate::ast_visitor::expr_visitor_check(body, &mut |expr| {
+                match &expr.x {
+                    ExprX::Block(_, _) => {}
+                    _ => {
+                        return err_str(&function.span, "integer_ring mode cannot have a body");
+                    }
+                }
+                Ok(())
+            })?;
+        }
+        for p in function.x.params.iter() {
+            match *p.x.typ {
+                TypX::Int(crate::ast::IntRange::Int) => {}
+                TypX::Boxed(_) => {}
+                _ => {
+                    return err_str(
+                        &p.span,
+                        "integer_ring proof's parameters should all be int type",
+                    );
+                }
+            }
+        }
+        if function.x.ensure.len() != 1 {
+            return err_str(
+                &function.span,
+                "only a single ensures is allowed in integer_ring mode",
+            );
+        } else {
+            let ens = function.x.ensure[0].clone();
+            if let crate::ast::ExprX::Binary(crate::ast::BinaryOp::Eq(_), lhs, rhs) = &ens.x {
+                if let crate::ast::ExprX::Binary(
+                    crate::ast::BinaryOp::Arith(crate::ast::ArithOp::EuclideanMod, _),
+                    _,
+                    _,
+                ) = &lhs.x
+                {
+                    match &rhs.x {
+                        crate::ast::ExprX::Const(crate::ast::Constant::Nat(zero))
+                            if "0" == (**zero).as_str() => {}
+                        _ => {
+                            return err_str(
+                                &function.span,
+                                "integer_ring mode ensures expression error: when the lhs is has % operator, the rhs should be zero. The ensures expression should be `Expr % m == 0` or `Expr == Expr` ",
+                            );
+                        }
+                    }
+                }
+            } else {
+                return err_str(
+                    &function.span,
+                    "In the integer_ring's ensures expression, the outermost operator should be equality operator. For example, inequality operator is not supported",
+                );
+            }
+        }
+        if function.x.has_return() {
+            return err_str(
+                &function.span,
+                "integer_ring mode function cannot have a return value",
+            );
+        }
+        for req in function.x.require.iter() {
+            crate::ast_visitor::expr_visitor_check(req, &mut |expr| {
+                match *expr.typ {
+                    TypX::Int(crate::ast::IntRange::Int) => {}
+                    TypX::Bool => {}
+                    TypX::Boxed(_) => {}
+                    _ => {
+                        return err_str(
+                            &req.span,
+                            "integer_ring mode's expressions should be int/bool type",
+                        );
+                    }
+                }
+                Ok(())
+            })?;
+        }
+        for ens in function.x.ensure.iter() {
+            crate::ast_visitor::expr_visitor_check(ens, &mut |expr| {
+                match *expr.typ {
+                    TypX::Int(crate::ast::IntRange::Int) => {}
+                    TypX::Bool => {}
+                    TypX::Boxed(_) => {}
+                    _ => {
+                        return err_str(
+                            &ens.span,
+                            "integer_ring mode's expressions should be int/bool type",
+                        );
+                    }
+                }
+                Ok(())
+            })?;
         }
     }
 

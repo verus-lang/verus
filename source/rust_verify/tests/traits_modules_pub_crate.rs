@@ -623,7 +623,7 @@ test_verify_one_file! {
         mod M1 {
             pub(crate) trait T {
                 fn f(&self) {
-                    builtin::ensures(false);
+                    builtin::ensures(false); // TRAIT
                     builtin::no_method_body()
                 }
             }
@@ -674,7 +674,7 @@ test_verify_one_file! {
                 #[spec]
                 fn ens(&self) -> bool { builtin::no_method_body() }
                 fn f(&self) {
-                    builtin::ensures(self.ens());
+                    builtin::ensures(self.ens()); // TRAIT
                     builtin::no_method_body()
                 }
             }
@@ -771,7 +771,7 @@ test_verify_one_file! {
 
                 fn f(&self, a: &A) -> A {
                     builtin::requires(self.req(*a));
-                    builtin::ensures(|ra: A| self.ens(*a, ra));
+                    builtin::ensures(|ra: A| self.ens(*a, ra)); // TRAIT
                     builtin::no_method_body()
                 }
             }
@@ -1212,7 +1212,7 @@ test_verify_one_file! {
                 fn f<'a>(&'a self, x: &'a Self, b: bool) -> &'a Self {
                     builtin::ensures(|r: &'a Self| [
                         b >>= builtin::equal(r, self),
-                        !b >>= builtin::equal(r, x),
+                        !b >>= builtin::equal(r, x), // TRAIT
                     ]);
                     builtin::no_method_body()
                 }

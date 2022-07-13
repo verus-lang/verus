@@ -6,7 +6,7 @@
 //! for verification.
 
 use crate::def::Spanned;
-use air::ast::{Quant, Span};
+use air::ast::Span;
 use air::errors::Error;
 use std::sync::Arc;
 
@@ -162,6 +162,28 @@ pub enum ArithOp {
     EuclideanMod,
 }
 
+/// Bitwise operation
+#[derive(Copy, Clone, Debug)]
+pub enum BitwiseOp {
+    BitXor,
+    BitAnd,
+    BitOr,
+    Shr,
+    Shl,
+}
+
+#[derive(Copy, Clone, Debug)]
+pub enum InequalityOp {
+    /// IntRange::Int <=
+    Le,
+    /// IntRange::Int >=
+    Ge,
+    /// IntRange::Int <
+    Lt,
+    /// IntRange::Int >
+    Gt,
+}
+
 /// Primitive binary operations
 /// (not arbitrary user-defined functions -- these are represented by ExprX::Call)
 /// Note that all integer operations are on mathematic integers (IntRange::Int),
@@ -183,22 +205,17 @@ pub enum BinaryOp {
     Eq(Mode),
     /// not Eq
     Ne,
-    /// IntRange::Int <=
-    Le,
-    /// IntRange::Int >=
-    Ge,
-    /// IntRange::Int <
-    Lt,
-    /// IntRange::Int >
-    Gt,
+    ///
+    Inequality(InequalityOp),
     /// IntRange operations that may require overflow or divide-by zero checks
     Arith(ArithOp, InferMode),
     /// Bit Vector Operators
-    BitXor,
-    BitAnd,
-    BitOr,
-    Shr,
-    Shl,
+    Bitwise(BitwiseOp),
+}
+
+#[derive(Clone, Debug)]
+pub enum MultiOp {
+    Chained(Arc<Vec<InequalityOp>>),
 }
 
 /// Ghost annotations on functions and while loops; must appear at the beginning of function body
@@ -319,6 +336,12 @@ pub enum AssertQueryMode {
     BitVector,
 }
 
+#[derive(Clone, Copy, Debug)]
+pub struct Quant {
+    pub quant: air::ast::Quant,
+    pub boxed_params: bool,
+}
+
 /// Expression, similar to rustc_hir::Expr
 pub type Expr = Arc<SpannedTyped<ExprX>>;
 pub type Exprs = Arc<Vec<Expr>>;
@@ -351,6 +374,8 @@ pub enum ExprX {
     UnaryOpr(UnaryOpr, Expr),
     /// Primitive binary operation
     Binary(BinaryOp, Expr, Expr),
+    /// Primitive multi-operand operation
+    Multi(MultiOp, Exprs),
     /// Quantifier (forall/exists), binding the variables in Binders, with body Expr
     Quant(Quant, Binders<Typ>, Expr),
     /// Specification closure
@@ -383,6 +408,12 @@ pub enum ExprX {
     OpenInvariant(Expr, Binder<Typ>, Expr, InvAtomicity),
     /// Return from function
     Return(Option<Expr>),
+    /// Enter a Rust ghost block, which will be erased during compilation.
+    /// In principle, this is not needed, because we can infer which code to erase using modes.
+    /// However, we can't easily communicate the inferred modes back to rustc for erasure
+    /// and lifetime checking -- rustc needs syntactic annotations for these, and the mode checker
+    /// needs to confirm that these annotations agree with what would have been inferred.
+    Ghost { alloc_wrapper: Option<Fun>, tracked: bool, expr: Expr },
     /// Sequence of statements, optionally including an expression at the end
     Block(Stmts, Option<Expr>),
     /// assert_by with smt.arith.nl=true
@@ -431,6 +462,8 @@ pub type TypPositiveBounds = Arc<Vec<(Ident, GenericBound, bool)>>;
 pub type FunctionAttrs = Arc<FunctionAttrsX>;
 #[derive(Debug, Default, Clone)]
 pub struct FunctionAttrsX {
+    /// Erasure and lifetime checking based on ghost blocks
+    pub uses_ghost_blocks: bool,
     /// List of functions that this function wants to view as opaque
     pub hidden: Arc<Vec<Fun>>,
     /// Create a global axiom saying forall params, require ==> ensure
@@ -445,12 +478,16 @@ pub struct FunctionAttrsX {
     pub bit_vector: bool,
     /// Is atomic (i.e., can be inside an invariant block)
     pub atomic: bool,
+    /// Verify non_linear arithmetic using Singular
+    pub integer_ring: bool,
     /// This is a proof of termination for another spec function
     pub is_decrease_by: bool,
     /// In a spec function, check the body for violations of recommends
     pub check_recommends: bool,
     /// set option smt.arith.nl=true
     pub nonlinear: bool,
+    /// Use a dedicated Z3 process for this single query
+    pub spinoff_prover: bool,
 }
 
 /// Function specification of its invariant mask
@@ -515,6 +552,9 @@ pub struct FunctionX {
     pub decrease_when: Option<Expr>,
     /// Prove termination with a separate proof function
     pub decrease_by: Option<Fun>,
+    /// For broadcast_forall functions, poly sets this to Some((params, reqs ==> enss))
+    /// where params and reqs ==> enss use coerce_typ_to_poly rather than coerce_typ_to_native
+    pub broadcast_forall: Option<(Params, Expr)>,
     /// MaskSpec that specifies what invariants the function is allowed to open
     pub mask_spec: MaskSpec,
     /// is_const == true means that this function is actually a const declaration;

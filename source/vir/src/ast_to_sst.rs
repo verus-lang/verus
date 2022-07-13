@@ -3,7 +3,7 @@ use crate::ast::{
     IntRange, Mode, PatternX, SpannedTyped, Stmt, StmtX, Typ, TypX, Typs, UnaryOp, UnaryOpr, VarAt,
     VirErr,
 };
-use crate::ast_util::{err_str, err_string, types_equal};
+use crate::ast_util::{err_str, err_string, types_equal, QUANT_FORALL};
 use crate::context::Ctx;
 use crate::def::Spanned;
 use crate::sst::{
@@ -13,7 +13,7 @@ use crate::sst::{
 use crate::sst_util::{referenced_vars_exp, referenced_vars_stm};
 use crate::sst_visitor::{map_exp_visitor, map_stm_exp_visitor};
 use crate::util::{vec_map, vec_map_result};
-use air::ast::{Binder, BinderX, Binders, Quant, Span};
+use air::ast::{Binder, BinderX, Binders, Span};
 use air::errors::error_with_label;
 use air::scope_map::ScopeMap;
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -387,6 +387,7 @@ pub(crate) fn check_pure_expr_bind(
     ctx: &Ctx,
     state: &mut State,
     binders: &Binders<Typ>,
+    binders_has_typ: bool,
     expr: &Expr,
 ) -> Result<Vec<Stm>, VirErr> {
     if state.checking_recommends(ctx) {
@@ -394,7 +395,9 @@ pub(crate) fn check_pure_expr_bind(
         let mut stms: Vec<Stm> = Vec::new();
         for binder in binders.iter() {
             let x = state.declare_new_var(&binder.name, &binder.a, false, true);
-            stms.push(assume_has_typ(&x, &binder.a, &expr.span));
+            if binders_has_typ {
+                stms.push(assume_has_typ(&x, &binder.a, &expr.span));
+            }
         }
         let (stms1, _exp) = expr_to_stm_or_error(ctx, state, expr)?;
         stms.extend(stms1);
@@ -930,8 +933,12 @@ fn expr_to_stm_opt(
                 }
             }
         }
+        ExprX::Multi(..) => {
+            panic!("internal error: Multi should have been simplified by ast_simplify")
+        }
         ExprX::Quant(quant, binders, body) => {
-            let check_recommends_stms = check_pure_expr_bind(ctx, state, binders, body)?;
+            let check_recommends_stms =
+                check_pure_expr_bind(ctx, state, binders, quant.boxed_params, body)?;
             state.push_scope();
             state.declare_binders(binders);
             let exp = expr_to_pure_exp(ctx, state, body)?;
@@ -943,7 +950,8 @@ fn expr_to_stm_opt(
                     _ => vars.push(b.name.clone()),
                 }
             }
-            let trigs = crate::triggers::build_triggers(ctx, &expr.span, &vars, &exp)?;
+            let trigs =
+                crate::triggers::build_triggers(ctx, &expr.span, &vars, &exp, quant.boxed_params)?;
             let bnd = Spanned::new(body.span.clone(), BndX::Quant(*quant, binders.clone(), trigs));
             Ok((check_recommends_stms, ReturnValue::Some(mk_exp(ExpX::Bind(bnd, exp)))))
         }
@@ -991,15 +999,15 @@ fn expr_to_stm_opt(
             Ok((vec![], ReturnValue::Some(mk_exp(ExpX::Bind(bnd, exp)))))
         }
         ExprX::Choose { params, cond, body } => {
-            let mut check_recommends_stms = check_pure_expr_bind(ctx, state, params, cond)?;
-            check_recommends_stms.extend(check_pure_expr_bind(ctx, state, params, body)?);
+            let mut check_recommends_stms = check_pure_expr_bind(ctx, state, params, true, cond)?;
+            check_recommends_stms.extend(check_pure_expr_bind(ctx, state, params, true, body)?);
             state.push_scope();
             state.declare_binders(&params);
             let cond_exp = expr_to_pure_exp(ctx, state, cond)?;
             let body_exp = expr_to_pure_exp(ctx, state, body)?;
             state.pop_scope();
             let vars = vec_map(params, |p| p.name.clone());
-            let trigs = crate::triggers::build_triggers(ctx, &expr.span, &vars, &cond_exp)?;
+            let trigs = crate::triggers::build_triggers(ctx, &expr.span, &vars, &cond_exp, true)?;
             let bnd =
                 Spanned::new(body.span.clone(), BndX::Choose(params.clone(), trigs, cond_exp));
             Ok((check_recommends_stms, ReturnValue::Some(mk_exp(ExpX::Bind(bnd, body_exp)))))
@@ -1069,7 +1077,7 @@ fn expr_to_stm_opt(
             // Translate ensure into an assume
             let implyx = ExprX::Binary(BinaryOp::Implies, require.clone(), ensure.clone());
             let imply = SpannedTyped::new(&ensure.span, &Arc::new(TypX::Bool), implyx);
-            let forallx = ExprX::Quant(Quant::Forall, vars.clone(), imply);
+            let forallx = ExprX::Quant(QUANT_FORALL, vars.clone(), imply);
             let forall = SpannedTyped::new(&ensure.span, &Arc::new(TypX::Bool), forallx);
             let forall_exp = expr_to_pure_exp(ctx, state, &forall)?;
             let assume = Spanned::new(ensure.span.clone(), StmX::Assume(forall_exp));
@@ -1368,6 +1376,9 @@ fn expr_to_stm_opt(
             } else {
                 err_str(&expr.span, "return expression not allowed here")
             }
+        }
+        ExprX::Ghost { .. } => {
+            panic!("internal error: ExprX::Ghost should have been simplified by ast_simplify")
         }
         ExprX::Block(stmts, body_opt) => {
             let mut stms: Vec<Stm> = Vec::new();

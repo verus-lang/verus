@@ -1,6 +1,7 @@
 use air::ast::CommandX;
 use air::context::{Context, ValidityResult};
 use air::errors::ErrorLabel;
+use air::profiler::Profiler;
 use getopts::Options;
 use sise::Node;
 use std::fs::File;
@@ -37,6 +38,12 @@ pub fn main() {
     opts.optopt("", "log-smt", "Log SMT queries", "FILENAME");
     opts.optflag("", "ignore-unexpected-smt", "Ignore unexpected SMT output");
     opts.optflag("d", "debug", "Debug verification failures");
+    opts.optflag(
+        "p",
+        "profile",
+        "Collect and report prover performance data when resource limits are hit",
+    );
+    opts.optflag("p", "profile_all", "Always collect and report prover performance data");
     opts.optflag("h", "help", "print this help menu");
 
     let print_usage = || {
@@ -92,9 +99,13 @@ pub fn main() {
     let commands = air::parser::Parser::new().nodes_to_commands(&nodes).expect("parse error");
 
     // Start AIR
-    let mut air_context = Context::new(air::smt_manager::SmtManager::new());
+    let mut air_context = Context::new();
     let debug = matches.opt_present("debug");
     air_context.set_debug(debug);
+    let profile = matches.opt_present("profile");
+    air_context.set_profile(profile);
+    let profile_all = matches.opt_present("profile_all");
+    air_context.set_profile_all(profile_all);
     let ignore_unexpected_smt = matches.opt_present("ignore-unexpected-smt");
     air_context.set_ignore_unexpected_smt(ignore_unexpected_smt);
 
@@ -135,15 +146,29 @@ pub fn main() {
             }
             ValidityResult::Canceled => {
                 count_errors += 1;
-                println!("Canceled");
+                if profile {
+                    println!("Resource limit (rlimit) exceeded");
+                    let profiler = Profiler::new();
+                    profiler.print_raw_stats();
+                } else if !profile_all {
+                    println!(
+                        "Resource limit (rlimit) exceeded; consider rerunning with --profile for more details"
+                    );
+                } else {
+                    println!("Resource limit (rlimit) exceeded");
+                }
             }
-            ValidityResult::UnexpectedSmtOutput(err) => {
-                panic!("Unexpected SMT output: {}", err);
+            ValidityResult::UnexpectedOutput(err) => {
+                panic!("Unexpected output from solver: {}", err);
             }
         }
         if matches!(**command, CommandX::CheckValid(..)) {
             air_context.finish_query();
         }
+    }
+    if profile_all {
+        let profiler = Profiler::new();
+        profiler.print_raw_stats();
     }
     println!("Verification results:: verified: {} errors: {}", count_verified, count_errors);
 }

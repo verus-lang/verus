@@ -36,10 +36,12 @@ use crate::ast::{
 };
 use proc_macro2::Span;
 use std::collections::{HashMap, HashSet};
-use syn::parse::Error;
-use syn::spanned::Spanned;
-use syn::visit_mut::VisitMut;
-use syn::{Expr, ExprField, ExprPath, Ident, Member};
+use syn_verus::parse;
+use syn_verus::parse::Error;
+use syn_verus::spanned::Spanned;
+use syn_verus::visit_mut;
+use syn_verus::visit_mut::VisitMut;
+use syn_verus::{Expr, ExprField, ExprPath, Ident, Member};
 
 /// Given a (Rust AST) Expr `e`, visits the subexpressions of the form
 /// `pre.foo` where `foo` is a state machine field, and calls the given
@@ -52,14 +54,12 @@ use syn::{Expr, ExprField, ExprPath, Ident, Member};
 /// of a state machine field. For example, `pre.associated_method()` is
 /// not allowed, nor is using `pre` without a "dot" access.
 
-pub fn visit_field_accesses<F>(
+pub fn visit_field_accesses(
     e: &mut Expr,
-    f: F,
+    f: impl FnMut(&mut Vec<Error>, &Field, &mut Expr) -> (),
     errors: &mut Vec<Error>,
     ident_to_field: &HashMap<String, Field>,
-) where
-    F: FnMut(&mut Vec<Error>, &Field, &mut Expr) -> (),
-{
+) {
     let mut f = FieldAccessVisitor { errors, user_fn: f, ident_to_field };
 
     f.visit_expr_mut(e);
@@ -88,7 +88,7 @@ where
             }
             Expr::Path(ExprPath { attrs: _, qself: None, path }) if path.is_ident("pre") => {
                 self.errors.push(Error::new(span,
-                    "in a tokenized state machine, 'pre' cannot be used opaquely; it may only be used by accessing its fields"));
+                    "in a tokenized state machine, `pre` cannot be used opaquely; it may only be used by accessing its fields"));
             }
             Expr::Field(ExprField {
                 base: box Expr::Path(ExprPath { attrs: _, qself: None, path }),
@@ -108,7 +108,7 @@ where
                     self.errors.push(Error::new(span, "expected a named field"));
                 }
             },
-            _ => syn::visit_mut::visit_expr_mut(self, node),
+            _ => visit_mut::visit_expr_mut(self, node),
         }
     }
 }
@@ -117,7 +117,7 @@ fn get_field_by_ident<'a>(
     ident_to_field: &'a HashMap<String, Field>,
     span: Span,
     ident: &Ident,
-) -> syn::parse::Result<&'a Field> {
+) -> parse::Result<&'a Field> {
     match ident_to_field.get(&ident.to_string()) {
         Some(f) => Ok(f),
         None => Err(Error::new(
@@ -140,32 +140,29 @@ fn get_field_by_ident<'a>(
 /// (This ONLY applies to the StorageMap, not the ordinary Map; i.e., for
 /// RemoveKV, AddKV, and HaveKV, we check the 'key' expression like you'd expect.)
 
-pub fn visit_field_accesses_all_exprs<F>(
+pub fn visit_field_accesses_all_exprs(
     ts: &mut TransitionStmt,
-    f: &mut F,
+    f: &mut impl FnMut(&mut Vec<Error>, &Field, &mut Expr, bool) -> (),
     errors: &mut Vec<Error>,
     ident_to_field: &HashMap<String, Field>,
-) where
-    F: FnMut(&mut Vec<Error>, &Field, &mut Expr, bool) -> (),
-{
+) {
     match ts {
         TransitionStmt::Block(_span, v) => {
             for child in v.iter_mut() {
                 visit_field_accesses_all_exprs(child, f, errors, ident_to_field);
             }
         }
-        TransitionStmt::Let(_span, _pat, _ty, lk, init_e, child) => {
-            let is_birds_eye = *lk == LetKind::BirdsEye;
-            visit_field_accesses(
-                init_e,
-                |errors, field, e| f(errors, field, e, is_birds_eye),
-                errors,
-                ident_to_field,
-            );
-            visit_field_accesses_all_exprs(child, f, errors, ident_to_field);
-        }
         TransitionStmt::Split(_span, split_kind, splits) => {
             match split_kind {
+                SplitKind::Let(_pat, _ty, lk, init_e) => {
+                    let is_birds_eye = *lk == LetKind::BirdsEye;
+                    visit_field_accesses(
+                        init_e,
+                        |errors, field, e| f(errors, field, e, is_birds_eye),
+                        errors,
+                        ident_to_field,
+                    );
+                }
                 SplitKind::If(cond_e) => {
                     visit_field_accesses(
                         cond_e,
@@ -195,6 +192,9 @@ pub fn visit_field_accesses_all_exprs<F>(
                         }
                     }
                 }
+                SplitKind::Special(_, op, _, _) => {
+                    visit_special_op(op, f, errors, ident_to_field);
+                }
             }
             for split in splits {
                 visit_field_accesses_all_exprs(split, f, errors, ident_to_field);
@@ -204,15 +204,7 @@ pub fn visit_field_accesses_all_exprs<F>(
         | TransitionStmt::Assert(_, e, _)
         | TransitionStmt::Initialize(_, _, e)
         | TransitionStmt::Update(_, _, e)
-        | TransitionStmt::PostCondition(_, e)
-        | TransitionStmt::Special(_, _, SpecialOp { stmt: _, elt: MonoidElt::OptionSome(e) }, _)
-        | TransitionStmt::Special(_, _, SpecialOp { stmt: _, elt: MonoidElt::General(e) }, _)
-        | TransitionStmt::Special(
-            _,
-            _,
-            SpecialOp { stmt: _, elt: MonoidElt::SingletonMultiset(e) },
-            _,
-        ) => {
+        | TransitionStmt::PostCondition(_, e) => {
             visit_field_accesses(
                 e,
                 |errors, field, e| f(errors, field, e, false),
@@ -241,12 +233,30 @@ pub fn visit_field_accesses_all_exprs<F>(
                 }
             }
         }
-        TransitionStmt::Special(
-            _,
-            _,
-            SpecialOp { stmt, elt: MonoidElt::SingletonKV(key, val) },
-            _,
-        ) => {
+    }
+}
+
+fn visit_special_op(
+    op: &mut SpecialOp,
+    f: &mut impl FnMut(&mut Vec<Error>, &Field, &mut Expr, bool) -> (),
+    errors: &mut Vec<Error>,
+    ident_to_field: &HashMap<String, Field>,
+) {
+    match op {
+        SpecialOp { stmt: _, elt: MonoidElt::OptionSome(Some(e)) }
+        | SpecialOp { stmt: _, elt: MonoidElt::General(e) }
+        | SpecialOp { stmt: _, elt: MonoidElt::SingletonMultiset(e) } => {
+            visit_field_accesses(
+                e,
+                |errors, field, e| f(errors, field, e, false),
+                errors,
+                ident_to_field,
+            );
+        }
+        SpecialOp { stmt: _, elt: MonoidElt::OptionSome(None) } => {
+            // nothing to do
+        }
+        SpecialOp { stmt, elt: MonoidElt::SingletonKV(key, val_opt) } => {
             // We skip the processing of the key in some cases because in those cases,
             // this expresson will not appear in the signature of the exchange fn at all.
             let skip_key = match stmt {
@@ -265,12 +275,14 @@ pub fn visit_field_accesses_all_exprs<F>(
                     ident_to_field,
                 );
             }
-            visit_field_accesses(
-                val,
-                |errors, field, e| f(errors, field, e, false),
-                errors,
-                ident_to_field,
-            );
+            if let Some(val) = val_opt {
+                visit_field_accesses(
+                    val,
+                    |errors, field, e| f(errors, field, e, false),
+                    errors,
+                    ident_to_field,
+                );
+            }
         }
     }
 }

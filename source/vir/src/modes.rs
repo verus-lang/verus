@@ -1,6 +1,7 @@
 use crate::ast::{
     BinaryOp, CallTarget, Datatype, Expr, ExprX, FieldOpr, Fun, Function, FunctionKind, Ident,
-    InferMode, InvAtomicity, Krate, Mode, Path, Pattern, PatternX, Stmt, StmtX, UnaryOpr, VirErr,
+    InferMode, InvAtomicity, Krate, Mode, MultiOp, Path, Pattern, PatternX, Stmt, StmtX, UnaryOpr,
+    VirErr,
 };
 use crate::ast_util::{err_str, err_string, get_field};
 use crate::util::vec_map_result;
@@ -30,6 +31,15 @@ pub fn mode_join(m1: Mode, m2: Mode) -> Mode {
         (m, Mode::Exec) => m,
         (Mode::Proof, Mode::Proof) => Mode::Proof,
     }
+}
+
+/// Represents Rust ghost blocks
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+enum Ghost {
+    /// Not in a ghost block
+    Exec,
+    /// In a ghost block, and lifetime checking is enabled iff tracked == true
+    Ghost { tracked: bool },
 }
 
 // Placeholder for the erasure expected mode, which is computed after first mode checking pass.
@@ -87,6 +97,23 @@ pub struct ErasureModes {
     pub var_modes: Vec<(Span, Mode)>,
 }
 
+impl Ghost {
+    fn of_mode(mode: Mode) -> Ghost {
+        match mode {
+            Mode::Spec | Mode::Proof => Ghost::Ghost { tracked: false },
+            Mode::Exec => Ghost::Exec,
+        }
+    }
+
+    fn to_mode(self) -> Mode {
+        match self {
+            Ghost::Ghost { tracked: false } => Mode::Spec,
+            Ghost::Ghost { tracked: true } => Mode::Proof,
+            Ghost::Exec => Mode::Exec,
+        }
+    }
+}
+
 struct Typing {
     pub(crate) funs: HashMap<Fun, Function>,
     pub(crate) datatypes: HashMap<Path, Datatype>,
@@ -96,6 +123,14 @@ struct Typing {
     pub(crate) erasure_modes: ErasureModes,
     inferred_modes: HashMap<InferMode, ErasureMode>,
     pub(crate) in_forall_stmt: bool,
+    pub(crate) check_ghost_blocks: bool,
+    // Are we in a syntactic ghost block?
+    // If not, Ghost::Exec (corresponds to exec mode).
+    // If yes (corresponding to proof/spec mode), say whether variables are tracked or not.
+    // (note that tracked may be false even in proof mode,
+    // and tracked is allowed in spec mode, although that would be needlessly constraining)
+    pub(crate) block_ghostness: Ghost,
+    pub(crate) fun_mode: Mode,
     pub(crate) ret_mode: Option<Mode>,
     pub(crate) atomic_insts: Option<AtomicInstCollector>,
 }
@@ -162,7 +197,7 @@ impl AtomicInstCollector {
     /// `is_atomic_fn` is for error-reporting purposes; if 'true', then the check
     /// is for a fn marked #[verifier(atomic)]. Otherwise, it's for a invariant block.
     pub fn validate(&self, inv_block_span: &Span, is_atomic_fn: bool) -> Result<(), VirErr> {
-        let context = if is_atomic_fn { "atomic function" } else { "open_invariant" };
+        let context = if is_atomic_fn { "atomic function" } else { "open_atomic_invariant" };
 
         if self.loops.len() > 0 {
             return Err(error_with_label(
@@ -199,6 +234,10 @@ fn check_expr_has_mode(
     expected: Mode,
 ) -> Result<(), VirErr> {
     let mode = check_expr(typing, outer_mode, &ErasureModeX::new(Some(expected)), expr)?;
+    match &*expr.typ {
+        crate::ast::TypX::Tuple(ts) if ts.len() == 0 => return Ok(()),
+        _ => {}
+    }
     if !mode_le(mode, expected) {
         err_string(&expr.span, format!("expression has mode {}, expected mode {}", mode, expected))
     } else {
@@ -237,7 +276,16 @@ fn get_var_loc_mode(typing: &mut Typing, expr: &Expr, init_not_mut: bool) -> Res
     let x_mode = match &expr.x {
         ExprX::VarLoc(x) => {
             let (_, x_mode) = typing.get(x);
-            x_mode
+            if typing.block_ghostness != Ghost::Exec && expr.typ.is_ghost_typ() {
+                Mode::Spec
+            } else if typing.block_ghostness != Ghost::Exec
+                && expr.typ.is_tracked_typ()
+                && x_mode != Mode::Spec
+            {
+                Mode::Proof
+            } else {
+                x_mode
+            }
         }
         ExprX::UnaryOpr(UnaryOpr::Field(FieldOpr { datatype, variant: _, field }), rcvr) => {
             let rcvr_mode = get_var_loc_mode(typing, rcvr, init_not_mut)?;
@@ -287,6 +335,11 @@ fn check_expr(
                     "cannot use proof variable inside forall/assert_by statements",
                 );
             }
+            let mode = if typing.check_ghost_blocks {
+                mode_join(mode, typing.block_ghostness.to_mode())
+            } else {
+                mode
+            };
             typing.erasure_modes.var_modes.push((expr.span.clone(), mode));
             Ok(mode)
         }
@@ -299,6 +352,11 @@ fn check_expr(
                 Some(f) => f.clone(),
             };
             let mode = function.x.ret.x.mode;
+            let mode = if typing.check_ghost_blocks {
+                mode_join(mode, typing.block_ghostness.to_mode())
+            } else {
+                mode
+            };
             typing.erasure_modes.var_modes.push((expr.span.clone(), mode));
             Ok(mode)
         }
@@ -320,6 +378,14 @@ fn check_expr(
                             ai.add_non_atomic(&expr.span);
                         }
                     }
+                }
+            }
+            if typing.check_ghost_blocks {
+                if (function.x.mode == Mode::Exec) != (typing.block_ghostness == Ghost::Exec) {
+                    return err_string(
+                        &expr.span,
+                        format!("cannot call function with mode {}", function.x.mode),
+                    );
                 }
             }
             if !mode_le(outer_mode, function.x.mode) {
@@ -356,6 +422,9 @@ fn check_expr(
         }
         ExprX::Call(CallTarget::FnSpec(e0), es) => {
             // TODO call `add_non_atomic` if this is ever supported for exec-mode functions
+            if typing.check_ghost_blocks && typing.block_ghostness == Ghost::Exec {
+                return err_str(&expr.span, "cannot call spec function from exec mode");
+            }
             check_expr_has_mode(typing, Mode::Spec, e0, Mode::Spec)?;
             for arg in es.iter() {
                 check_expr_has_mode(typing, Mode::Spec, arg, Mode::Spec)?;
@@ -400,6 +469,9 @@ fn check_expr(
         ExprX::UnaryOpr(UnaryOpr::Unbox(_), e1) => check_expr(typing, outer_mode, erasure_mode, e1),
         ExprX::UnaryOpr(UnaryOpr::HasType(_), _) => panic!("internal error: HasType in modes.rs"),
         ExprX::UnaryOpr(UnaryOpr::IsVariant { .. }, e1) => {
+            if typing.check_ghost_blocks && typing.block_ghostness == Ghost::Exec {
+                return err_str(&expr.span, "cannot test variant in exec mode");
+            }
             check_expr(typing, outer_mode, erasure_mode, e1)
         }
         ExprX::UnaryOpr(UnaryOpr::TupleField { .. }, e1) => {
@@ -433,7 +505,16 @@ fn check_expr(
             let mode2 = check_expr(typing, outer_mode, erasure_mode, e2)?;
             Ok(mode_join(op_mode, mode_join(mode1, mode2)))
         }
+        ExprX::Multi(MultiOp::Chained(_), es) => {
+            for e in es.iter() {
+                check_expr_has_mode(typing, Mode::Spec, e, Mode::Spec)?;
+            }
+            Ok(Mode::Spec)
+        }
         ExprX::Quant(_, binders, e1) => {
+            if typing.check_ghost_blocks && typing.block_ghostness == Ghost::Exec {
+                return err_str(&expr.span, "cannot use forall/exists in exec mode");
+            }
             typing.vars.push_scope(true);
             for binder in binders.iter() {
                 typing.insert(&expr.span, &binder.name, false, Mode::Spec);
@@ -443,6 +524,9 @@ fn check_expr(
             Ok(Mode::Spec)
         }
         ExprX::Closure(params, body) => {
+            if typing.check_ghost_blocks && typing.block_ghostness == Ghost::Exec {
+                return err_str(&expr.span, "not supported yet: closures in exec mode");
+            }
             typing.vars.push_scope(true);
             for binder in params.iter() {
                 typing.insert(&expr.span, &binder.name, false, Mode::Spec);
@@ -459,6 +543,9 @@ fn check_expr(
             Ok(Mode::Spec)
         }
         ExprX::Choose { params, cond, body } => {
+            if typing.check_ghost_blocks && typing.block_ghostness == Ghost::Exec {
+                return err_str(&expr.span, "cannot use choose in exec mode");
+            }
             typing.vars.push_scope(true);
             for binder in params.iter() {
                 typing.insert(&expr.span, &binder.name, false, Mode::Spec);
@@ -482,13 +569,27 @@ fn check_expr(
                 return err_str(&expr.span, "assignment is not allowed in forall statements");
             }
             let x_mode = get_var_loc_mode(typing, lhs, *init_not_mut)?;
+            if !mode_le(outer_mode, x_mode) {
+                return err_string(
+                    &expr.span,
+                    format!("cannot assign to {x_mode} variable from {outer_mode} mode"),
+                );
+            }
             check_expr_has_mode(typing, outer_mode, rhs, x_mode)?;
             Ok(x_mode)
         }
         ExprX::Fuel(_, _) => Ok(outer_mode),
         ExprX::Header(_) => panic!("internal error: Header shouldn't exist here"),
-        ExprX::Admit => Ok(outer_mode),
+        ExprX::Admit => {
+            if typing.check_ghost_blocks && typing.block_ghostness == Ghost::Exec {
+                return err_str(&expr.span, "cannot use admit in exec mode");
+            }
+            Ok(outer_mode)
+        }
         ExprX::Forall { vars, require, ensure, proof } => {
+            if typing.check_ghost_blocks && typing.block_ghostness == Ghost::Exec {
+                return err_str(&expr.span, "cannot use assert_forall in exec mode");
+            }
             let in_forall_stmt = typing.in_forall_stmt;
             // REVIEW: we could allow proof vars when vars.len() == 0,
             // but we'd have to implement the proper lifetime checking in erase.rs
@@ -505,6 +606,9 @@ fn check_expr(
             Ok(Mode::Proof)
         }
         ExprX::AssertQuery { requires, ensures, proof, mode: _ } => {
+            if typing.check_ghost_blocks && typing.block_ghostness == Ghost::Exec {
+                return err_str(&expr.span, "cannot use assert in exec mode");
+            }
             for req in requires.iter() {
                 check_expr_has_mode(typing, Mode::Spec, req, Mode::Spec)?;
             }
@@ -515,12 +619,21 @@ fn check_expr(
             Ok(Mode::Proof)
         }
         ExprX::AssertBV(e) => {
+            if typing.check_ghost_blocks && typing.block_ghostness == Ghost::Exec {
+                return err_str(&expr.span, "cannot use assert in exec mode");
+            }
             check_expr_has_mode(typing, Mode::Spec, e, Mode::Spec)?;
             Ok(Mode::Proof)
         }
         ExprX::If(e1, e2, e3) => {
             let erasure_mode1 = ErasureModeX::new(None);
             let mode1 = check_expr(typing, outer_mode, &erasure_mode1, e1)?;
+            if typing.check_ghost_blocks
+                && typing.block_ghostness == Ghost::Exec
+                && mode1 != Mode::Exec
+            {
+                return err_str(&expr.span, "condition must have mode exec");
+            }
             erasure_mode1.set(mode1);
             typing.erasure_modes.condition_modes.push((expr.span.clone(), mode1));
 
@@ -540,6 +653,12 @@ fn check_expr(
         ExprX::Match(e1, arms) => {
             let erasure_mode1 = ErasureModeX::new(None);
             let mode1 = check_expr(typing, outer_mode, &erasure_mode1, e1)?;
+            if typing.check_ghost_blocks
+                && typing.block_ghostness == Ghost::Exec
+                && mode1 != Mode::Exec
+            {
+                return err_str(&expr.span, "exec code cannot match on non-exec value");
+            }
             erasure_mode1.set(mode1);
             typing.erasure_modes.condition_modes.push((expr.span.clone(), mode1));
 
@@ -572,6 +691,9 @@ fn check_expr(
         }
         ExprX::While { cond, body, invs } => {
             // We could also allow this for proof, if we check it for termination
+            if typing.check_ghost_blocks && typing.block_ghostness != Ghost::Exec {
+                return err_str(&expr.span, "cannot use while in proof or spec mode");
+            }
             match &mut typing.atomic_insts {
                 None => {}
                 Some(ai) => ai.add_loop(&expr.span),
@@ -579,11 +701,39 @@ fn check_expr(
             check_expr_has_mode(typing, outer_mode, cond, Mode::Exec)?;
             check_expr_has_mode(typing, outer_mode, body, Mode::Exec)?;
             for inv in invs.iter() {
+                let prev = typing.block_ghostness;
+                typing.block_ghostness = Ghost::Ghost { tracked: false };
                 check_expr_has_mode(typing, Mode::Spec, inv, Mode::Spec)?;
+                typing.block_ghostness = prev;
             }
             Ok(Mode::Exec)
         }
         ExprX::Return(e1) => {
+            if typing.check_ghost_blocks {
+                match (typing.fun_mode, typing.block_ghostness) {
+                    (Mode::Exec, Ghost::Exec) => {}
+                    (Mode::Proof, _) => {}
+                    (Mode::Spec, _) => {}
+                    (Mode::Exec, _) => {
+                        return err_str(
+                            &expr.span,
+                            "cannot return from non-exec code in exec function",
+                        );
+                    }
+                }
+            } else {
+                match (typing.fun_mode, outer_mode) {
+                    (Mode::Exec, Mode::Exec) => {}
+                    (Mode::Proof, _) => {}
+                    (Mode::Spec, _) => {}
+                    (Mode::Exec, _) => {
+                        return err_str(
+                            &expr.span,
+                            "cannot return from non-exec code in exec function",
+                        );
+                    }
+                }
+            }
             if typing.in_forall_stmt {
                 return err_str(&expr.span, "return is not allowed in forall statements");
             }
@@ -595,6 +745,45 @@ fn check_expr(
                 }
             }
             Ok(Mode::Exec)
+        }
+        ExprX::Ghost { alloc_wrapper, tracked, expr: e1 } => {
+            let prev = typing.block_ghostness;
+            let block_ghostness = match (prev, alloc_wrapper, tracked) {
+                (Ghost::Exec, None, false) => match &*e1.typ {
+                    crate::ast::TypX::Tuple(ts) if ts.len() == 0 => Ghost::Ghost { tracked: false },
+                    _ => {
+                        return err_str(&expr.span, "proof block must have type ()");
+                    }
+                },
+                (_, None, false) => {
+                    return err_str(&expr.span, "already in proof mode");
+                }
+                (Ghost::Exec, None, true) => {
+                    return err_str(&expr.span, "cannot mark expression as tracked in exec mode");
+                }
+                (Ghost::Ghost { .. }, None, true) => Ghost::Ghost { tracked: true },
+                (Ghost::Exec, Some(_), _) => Ghost::Ghost { tracked: *tracked },
+                (Ghost::Ghost { .. }, Some(_), _) => {
+                    return err_str(
+                        &expr.span,
+                        "ghost(...) or tracked(...) can only be used in exec mode",
+                    );
+                }
+            };
+            typing.block_ghostness = block_ghostness;
+            let outer_mode = match (outer_mode, block_ghostness) {
+                (Mode::Exec, Ghost::Ghost { .. }) => Mode::Proof,
+                _ => outer_mode,
+            };
+            let mode = if alloc_wrapper.is_none() {
+                check_expr(typing, outer_mode, erasure_mode, e1)?
+            } else {
+                let target_mode = if *tracked { Mode::Proof } else { Mode::Spec };
+                check_expr_has_mode(typing, outer_mode, e1, target_mode)?;
+                Mode::Exec
+            };
+            typing.block_ghostness = prev;
+            Ok(mode)
         }
         ExprX::Block(ss, e1) => {
             for stmt in ss.iter() {
@@ -658,14 +847,28 @@ fn check_stmt(
             Ok(())
         }
         StmtX::Decl { pattern, mode, init } => {
-            if !mode_le(outer_mode, *mode) {
-                return err_string(&stmt.span, format!("pattern cannot have mode {}", *mode));
+            let mode = if typing.check_ghost_blocks
+                && typing.block_ghostness != Ghost::Exec
+                && *mode == Mode::Exec
+            {
+                Mode::Spec
+            } else {
+                *mode
+            };
+            if typing.check_ghost_blocks
+                && typing.block_ghostness == Ghost::Exec
+                && mode != Mode::Exec
+            {
+                return err_str(&stmt.span, "exec code cannot declare non-exec variables");
             }
-            add_pattern(typing, *mode, pattern)?;
+            if !mode_le(outer_mode, mode) {
+                return err_string(&stmt.span, format!("pattern cannot have mode {}", mode));
+            }
+            add_pattern(typing, mode, pattern)?;
             match init.as_ref() {
                 None => {}
                 Some(expr) => {
-                    check_expr_has_mode(typing, outer_mode, expr, *mode)?;
+                    check_expr_has_mode(typing, outer_mode, expr, mode)?;
                 }
             }
             Ok(())
@@ -733,6 +936,7 @@ fn check_function(typing: &mut Typing, function: &Function) -> Result<(), VirErr
     }
 
     for expr in function.x.require.iter() {
+        typing.block_ghostness = Ghost::Ghost { tracked: false };
         check_expr_has_mode(typing, Mode::Spec, expr, Mode::Spec)?;
     }
 
@@ -741,11 +945,13 @@ fn check_function(typing: &mut Typing, function: &Function) -> Result<(), VirErr
         typing.insert(&function.span, &function.x.ret.x.name, false, function.x.ret.x.mode);
     }
     for expr in function.x.ensure.iter() {
+        typing.block_ghostness = Ghost::Ghost { tracked: false };
         check_expr_has_mode(typing, Mode::Spec, expr, Mode::Spec)?;
     }
     typing.vars.pop_scope();
 
     for expr in function.x.decrease.iter() {
+        typing.block_ghostness = Ghost::Ghost { tracked: false };
         check_expr_has_mode(typing, Mode::Spec, expr, Mode::Spec)?;
     }
 
@@ -774,6 +980,7 @@ fn check_function(typing: &mut Typing, function: &Function) -> Result<(), VirErr
         typing.ret_mode = Some(ret_mode);
     }
     if let Some(body) = &function.x.body {
+        typing.block_ghostness = Ghost::of_mode(function.x.mode);
         check_expr_has_mode(typing, function.x.mode, body, function.x.ret.x.mode)?;
     }
     typing.ret_mode = None;
@@ -800,10 +1007,15 @@ pub fn check_crate(krate: &Krate) -> Result<(ErasureModes, HashMap<InferMode, Mo
         erasure_modes,
         inferred_modes: HashMap::new(),
         in_forall_stmt: false,
+        check_ghost_blocks: false,
+        block_ghostness: Ghost::Exec,
+        fun_mode: Mode::Exec,
         ret_mode: None,
         atomic_insts: None,
     };
     for function in krate.functions.iter() {
+        typing.check_ghost_blocks = function.x.attrs.uses_ghost_blocks;
+        typing.fun_mode = function.x.mode;
         if function.x.attrs.atomic {
             let mut my_atomic_insts = Some(AtomicInstCollector::new());
             swap(&mut my_atomic_insts, &mut typing.atomic_insts);

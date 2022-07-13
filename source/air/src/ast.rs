@@ -98,14 +98,16 @@ pub enum Quant {
 pub type Trigger = Exprs;
 pub type Triggers = Arc<Vec<Trigger>>;
 
+pub type Qid = Option<Ident>;
+
 pub type Bind = Arc<BindX>;
 #[derive(Clone, Debug)]
 pub enum BindX {
     Let(Binders<Expr>),
-    Quant(Quant, Binders<Typ>, Triggers),
+    Quant(Quant, Binders<Typ>, Triggers, Qid),
     Lambda(Binders<Typ>),
     // choose Binders s.t. Expr is true
-    Choose(Binders<Typ>, Triggers, Expr),
+    Choose(Binders<Typ>, Triggers, Qid, Expr),
 }
 
 pub type Expr = Arc<ExprX>;
@@ -180,5 +182,5 @@ pub enum CommandX {
     Pop,                     // pop temporary global declarations
     SetOption(Ident, Ident), // set-option option value (no colon on the option)
     Global(Decl),            // global declarations
-    CheckValid(Query),       // SMT check-sat (reporting validity rather than satisfiability)
+    CheckValid(Query), // SMT check-sat (reporting validity rather than satisfiability), Possibly singular checks
 }

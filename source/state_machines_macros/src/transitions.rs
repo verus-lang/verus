@@ -2,13 +2,15 @@ use crate::ast::{
     Field, MonoidElt, ShardableType, SpecialOp, SplitKind, Transition, TransitionKind,
     TransitionStmt, SM,
 };
+use crate::check_bind_stmts::check_bind_stmts;
 use crate::check_birds_eye::check_birds_eye;
 use crate::ident_visitor::validate_idents_transition;
 use crate::inherent_safety_conditions::check_inherent_conditions;
 use crate::util::{combine_errors_or_ok, combine_results};
 use proc_macro2::Span;
-use syn::spanned::Spanned;
-use syn::{Error, Ident};
+use syn_verus::parse;
+use syn_verus::spanned::Spanned;
+use syn_verus::{Error, Ident};
 
 pub fn fields_contain(fields: &Vec<Field>, ident: &Ident) -> bool {
     for f in fields {
@@ -42,10 +44,18 @@ fn check_updates_refer_to_valid_fields(
                 check_updates_refer_to_valid_fields(fields, t, errors);
             }
         }
-        TransitionStmt::Let(_, _, _, _, _, child) => {
-            check_updates_refer_to_valid_fields(fields, child, errors);
-        }
-        TransitionStmt::Split(_, _, splits) => {
+        TransitionStmt::Split(span, kind, splits) => {
+            match kind {
+                SplitKind::Special(f, _, _, _) => {
+                    if !fields_contain(fields, f) {
+                        errors.push(Error::new(
+                            span.span(),
+                            format!("field '{}' not found", f.to_string()),
+                        ));
+                    }
+                }
+                _ => {}
+            }
             for split in splits {
                 check_updates_refer_to_valid_fields(fields, split, errors);
             }
@@ -54,8 +64,7 @@ fn check_updates_refer_to_valid_fields(
         TransitionStmt::Assert(..) => {}
         TransitionStmt::Update(span, f, _)
         | TransitionStmt::SubUpdate(span, f, _, _)
-        | TransitionStmt::Initialize(span, f, _)
-        | TransitionStmt::Special(span, f, _, _) => {
+        | TransitionStmt::Initialize(span, f, _) => {
             if !fields_contain(fields, f) {
                 errors
                     .push(Error::new(span.span(), format!("field '{}' not found", f.to_string())));
@@ -86,10 +95,7 @@ fn check_exactly_one_init(sm: &SM, ts: &TransitionStmt, errors: &mut Vec<Error>)
     }
 }
 
-fn check_exactly_one_init_rec(
-    field: &Field,
-    ts: &TransitionStmt,
-) -> syn::parse::Result<Option<Span>> {
+fn check_exactly_one_init_rec(field: &Field, ts: &TransitionStmt) -> parse::Result<Option<Span>> {
     match ts {
         TransitionStmt::Block(_, v) => {
             let mut o = None;
@@ -112,7 +118,11 @@ fn check_exactly_one_init_rec(
             }
             Ok(o)
         }
-        TransitionStmt::Let(_, _, _, _, _, child) => check_exactly_one_init_rec(field, child),
+        TransitionStmt::Split(_, SplitKind::Let(..), es) => {
+            assert!(es.len() == 1);
+            let child = &es[0];
+            check_exactly_one_init_rec(field, child)
+        }
         TransitionStmt::Split(if_span, SplitKind::If(_), es) => {
             assert!(es.len() == 2);
             let o1 = check_exactly_one_init_rec(field, &es[0])?;
@@ -172,6 +182,7 @@ fn check_exactly_one_init_rec(
             }
             Ok(o1)
         }
+        TransitionStmt::Split(_, SplitKind::Special(..), _) => Ok(None),
         TransitionStmt::Require(_, _) => Ok(None),
         TransitionStmt::Assert(..) => Ok(None),
         TransitionStmt::Initialize(span, id, _) => {
@@ -183,7 +194,6 @@ fn check_exactly_one_init_rec(
         }
         TransitionStmt::Update(..) => Ok(None),
         TransitionStmt::SubUpdate(..) => Ok(None),
-        TransitionStmt::Special(..) => Ok(None),
         TransitionStmt::PostCondition(..) => Ok(None),
     }
 }
@@ -204,10 +214,7 @@ fn check_at_most_one_update(sm: &SM, ts: &TransitionStmt, errors: &mut Vec<Error
     }
 }
 
-fn check_at_most_one_update_rec(
-    field: &Field,
-    ts: &TransitionStmt,
-) -> syn::parse::Result<Option<Span>> {
+fn check_at_most_one_update_rec(field: &Field, ts: &TransitionStmt) -> parse::Result<Option<Span>> {
     match ts {
         TransitionStmt::Block(_, v) => {
             let mut o = None;
@@ -230,7 +237,6 @@ fn check_at_most_one_update_rec(
             }
             Ok(o)
         }
-        TransitionStmt::Let(_, _, _, _, _, child) => check_at_most_one_update_rec(field, child),
         TransitionStmt::Split(_, _, es) => {
             // In contrast to the initialization case,
             // it _is_ allowed to perform an 'update' in only one branch.
@@ -253,7 +259,6 @@ fn check_at_most_one_update_rec(
                 Ok(None)
             }
         }
-        TransitionStmt::Special(..) => Ok(None),
         TransitionStmt::PostCondition(..) => Ok(None),
     }
 }
@@ -265,14 +270,17 @@ fn check_at_most_one_update_rec(
 
 fn is_allowed_in_update_in_normal_transition(stype: &ShardableType) -> bool {
     match stype {
-        ShardableType::Variable(_) => true,
-        ShardableType::Constant(_) => false,
-        ShardableType::NotTokenized(_) => true,
-        ShardableType::Multiset(_) => false,
-        ShardableType::Option(_) => false,
-        ShardableType::Map(_, _) => false,
-        ShardableType::StorageOption(_) => false,
-        ShardableType::StorageMap(_, _) => false,
+        ShardableType::Variable(_) | ShardableType::NotTokenized(_) => true,
+
+        ShardableType::Constant(_)
+        | ShardableType::Multiset(_)
+        | ShardableType::Option(_)
+        | ShardableType::Map(_, _)
+        | ShardableType::StorageOption(_)
+        | ShardableType::StorageMap(_, _)
+        | ShardableType::PersistentMap(_, _)
+        | ShardableType::PersistentOption(_)
+        | ShardableType::Count => false,
     }
 }
 
@@ -282,13 +290,11 @@ fn is_allowed_in_special_op(
     span: Span,
     stype: &ShardableType,
     sop: &SpecialOp,
-) -> syn::parse::Result<()> {
+) -> parse::Result<()> {
     match stype {
-        ShardableType::Constant(_) => {
-            Err(Error::new(span, "field marked 'constant' cannot be modified"))
-        }
-
-        ShardableType::Variable(_) | ShardableType::NotTokenized(_) => {
+        ShardableType::Constant(_)
+        | ShardableType::Variable(_)
+        | ShardableType::NotTokenized(_) => {
             let stmt_name = sop.stmt.name();
             let strat = stype.strategy_name();
             Err(Error::new(
@@ -303,7 +309,10 @@ fn is_allowed_in_special_op(
         | ShardableType::Option(_)
         | ShardableType::Multiset(_)
         | ShardableType::StorageOption(_)
-        | ShardableType::StorageMap(_, _) => {
+        | ShardableType::StorageMap(_, _)
+        | ShardableType::PersistentMap(_, _)
+        | ShardableType::PersistentOption(_)
+        | ShardableType::Count => {
             if !op_matches_type(stype, &sop.elt) {
                 let syntax = sop.elt.syntax();
                 let elt_name = sop.elt.type_name();
@@ -316,8 +325,22 @@ fn is_allowed_in_special_op(
                 ));
             }
 
+            let strat_is_persistent = stype.is_persistent();
             let strat_is_storage = stype.is_storage();
             let op_is_storage = sop.stmt.is_for_storage();
+
+            assert!(!strat_is_storage || !strat_is_persistent);
+
+            if stype.is_persistent() && sop.is_remove() {
+                let stmt_name = sop.stmt.name();
+                let strat = stype.strategy_name();
+                return Err(Error::new(
+                    span,
+                    format!(
+                        "'{stmt_name:}' statement not allowed for field with sharding strategy '{strat:}'; a persistent field's value can only grow, never remove or modify its data"
+                    ),
+                ));
+            }
 
             if !strat_is_storage && op_is_storage {
                 let stmt_name = sop.stmt.name();
@@ -351,13 +374,17 @@ fn op_matches_type(stype: &ShardableType, elt: &MonoidElt) -> bool {
         | ShardableType::Variable(_)
         | ShardableType::NotTokenized(_) => false,
 
-        ShardableType::Map(_, _) | ShardableType::StorageMap(_, _) => match elt {
+        ShardableType::Map(_, _)
+        | ShardableType::PersistentMap(_, _)
+        | ShardableType::StorageMap(_, _) => match elt {
             MonoidElt::General(_) => true,
             MonoidElt::SingletonKV(_, _) => true,
             _ => false,
         },
 
-        ShardableType::Option(_) | ShardableType::StorageOption(_) => match elt {
+        ShardableType::Option(_)
+        | ShardableType::PersistentOption(_)
+        | ShardableType::StorageOption(_) => match elt {
             MonoidElt::General(_) => true,
             MonoidElt::OptionSome(_) => true,
             _ => false,
@@ -366,6 +393,11 @@ fn op_matches_type(stype: &ShardableType, elt: &MonoidElt) -> bool {
         ShardableType::Multiset(_) => match elt {
             MonoidElt::General(_) => true,
             MonoidElt::SingletonMultiset(_) => true,
+            _ => false,
+        },
+
+        ShardableType::Count => match elt {
+            MonoidElt::General(_) => true,
             _ => false,
         },
     }
@@ -393,8 +425,30 @@ fn check_valid_ops(
                 check_valid_ops(fields, t, is_readonly, errors);
             }
         }
-        TransitionStmt::Let(_, _, _, _, _, child) => {
-            check_valid_ops(fields, child, is_readonly, errors);
+        TransitionStmt::Split(span, SplitKind::Special(f, op, _, _), es) => {
+            let field = get_field(fields, f);
+            match is_allowed_in_special_op(*span, &field.stype, op) {
+                Ok(()) => {}
+                Err(err) => {
+                    errors.push(err);
+                }
+            }
+            if is_readonly && op.is_modifier() {
+                errors.push(Error::new(
+                    *span,
+                    format!("'{:}' statement not allowed in readonly transition", op.stmt.name()),
+                ));
+            }
+            if !is_readonly && op.is_only_allowed_in_readonly() {
+                errors.push(Error::new(
+                    *span,
+                    format!("'{:}' statement only allowed in readonly transition", op.stmt.name()),
+                ));
+            }
+
+            for e in es {
+                check_valid_ops(fields, e, is_readonly, errors);
+            }
         }
         TransitionStmt::Split(_, _, es) => {
             for e in es {
@@ -427,27 +481,6 @@ fn check_valid_ops(
                 ));
             }
         }
-        TransitionStmt::Special(span, f, op, _) => {
-            let field = get_field(fields, f);
-            match is_allowed_in_special_op(*span, &field.stype, op) {
-                Ok(()) => {}
-                Err(err) => {
-                    errors.push(err);
-                }
-            }
-            if is_readonly && op.is_modifier() {
-                errors.push(Error::new(
-                    span.span(),
-                    format!("'{:}' statement not allowed in readonly transition", op.stmt.name()),
-                ));
-            }
-            if !is_readonly && op.is_only_allowed_in_readonly() {
-                errors.push(Error::new(
-                    span.span(),
-                    format!("'{:}' statement only allowed in readonly transition", op.stmt.name()),
-                ));
-            }
-        }
         TransitionStmt::PostCondition(..) => {
             panic!("should not have created any PostCondition statement yet");
         }
@@ -465,10 +498,20 @@ fn check_valid_ops_init(fields: &Vec<Field>, ts: &TransitionStmt, errors: &mut V
                 check_valid_ops_init(fields, t, errors);
             }
         }
-        TransitionStmt::Let(_, _, _, _, _, child) => {
-            check_valid_ops_init(fields, child, errors);
-        }
-        TransitionStmt::Split(_, _, es) => {
+        TransitionStmt::Split(span, kind, es) => {
+            match kind {
+                SplitKind::Special(..) => {
+                    errors.push(Error::new(
+                        *span,
+                        format!(
+                            "'{:}' statement not allowed in initialization; use 'init' instead",
+                            ts.statement_name()
+                        ),
+                    ));
+                }
+                _ => {}
+            }
+
             for e in es {
                 check_valid_ops_init(fields, e, errors);
             }
@@ -482,15 +525,6 @@ fn check_valid_ops_init(fields: &Vec<Field>, ts: &TransitionStmt, errors: &mut V
             errors.push(Error::new(
                 *span,
                 "'update' statement not allowed in initialization; use 'init' instead",
-            ));
-        }
-        TransitionStmt::Special(span, _, _, _) => {
-            errors.push(Error::new(
-                *span,
-                format!(
-                    "'{:}' statement not allowed in initialization; use 'init' instead",
-                    ts.statement_name()
-                ),
             ));
         }
         TransitionStmt::PostCondition(..) => {
@@ -529,9 +563,6 @@ fn check_let_shadowing_rec(ts: &TransitionStmt, ids: &mut Vec<String>, errors: &
                 check_let_shadowing_rec(t, ids, errors);
             }
         }
-        TransitionStmt::Let(_span, _pat, _, _, _, child) => {
-            check_let_shadowing_rec(child, ids, errors);
-        }
         TransitionStmt::Split(_, _, es) => {
             for e in es {
                 check_let_shadowing_rec(e, ids, errors);
@@ -543,14 +574,17 @@ fn check_let_shadowing_rec(ts: &TransitionStmt, ids: &mut Vec<String>, errors: &
         TransitionStmt::Update(..) => {}
         TransitionStmt::Initialize(..) => {}
         TransitionStmt::PostCondition(..) => {}
-        TransitionStmt::Special(..) => {}
     }
 }
 
 fn stmt_get_bound_idents(ts: &TransitionStmt) -> Vec<Ident> {
     match ts {
         TransitionStmt::Block(_, _) => {}
-        TransitionStmt::Let(_span, pat, _, _, _, _) => {
+        TransitionStmt::Split(_span, SplitKind::Let(pat, _, _, _), _) => {
+            return crate::ident_visitor::pattern_get_bound_idents(pat);
+        }
+        TransitionStmt::Split(_span, SplitKind::Special(_, _, _, None), _) => {}
+        TransitionStmt::Split(_span, SplitKind::Special(_, _, _, Some(pat)), _) => {
             return crate::ident_visitor::pattern_get_bound_idents(pat);
         }
         TransitionStmt::Split(_, SplitKind::If(_), _) => {}
@@ -567,15 +601,14 @@ fn stmt_get_bound_idents(ts: &TransitionStmt) -> Vec<Ident> {
         TransitionStmt::Update(..) => {}
         TransitionStmt::Initialize(..) => {}
         TransitionStmt::PostCondition(..) => {}
-        TransitionStmt::Special(..) => {}
     }
     Vec::new()
 }
 
 /// Check simple well-formedness properties of the transitions.
 
-pub fn check_transitions(sm: &mut SM) -> syn::parse::Result<()> {
-    let mut results: Vec<syn::parse::Result<()>> = Vec::new();
+pub fn check_transitions(sm: &mut SM) -> parse::Result<()> {
+    let mut results: Vec<parse::Result<()>> = Vec::new();
 
     let mut transitions = Vec::new();
     std::mem::swap(&mut transitions, &mut sm.transitions);
@@ -589,7 +622,7 @@ pub fn check_transitions(sm: &mut SM) -> syn::parse::Result<()> {
     combine_results(results)
 }
 
-pub fn check_transition(sm: &SM, tr: &mut Transition) -> syn::parse::Result<()> {
+pub fn check_transition(sm: &SM, tr: &mut Transition) -> parse::Result<()> {
     validate_idents_transition(tr)?;
 
     let mut errors = Vec::new();
@@ -618,6 +651,7 @@ pub fn check_transition(sm: &SM, tr: &mut Transition) -> syn::parse::Result<()> 
     check_let_shadowing(tr, &mut errors);
     check_birds_eye(tr, sm.concurrent, &mut errors);
     check_inherent_conditions(sm, &mut tr.body, &mut errors);
+    check_bind_stmts(sm, &mut tr.body, &mut errors);
 
     for p in &tr.params {
         match crate::ident_visitor::error_on_super_path(&p.ty) {

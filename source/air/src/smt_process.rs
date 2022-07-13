@@ -1,19 +1,28 @@
 use std::io::{BufRead, BufReader, Write};
-use std::process::{ChildStdin, ChildStdout};
+use std::process::{Child, ChildStdin, ChildStdout};
 use std::sync::mpsc::{channel, Receiver, Sender};
 
-pub(crate) struct SmtProcess {
-    requests: Sender<Vec<u8>>,
+fn smt_executable_name() -> String {
+    if let Ok(path) = std::env::var("VERUS_Z3_PATH") {
+        path
+    } else {
+        if cfg!(windows) { "z3.exe" } else { "z3" }.to_string()
+    }
+}
+
+pub struct SmtProcess {
+    requests: Option<Sender<Vec<u8>>>,
     responses_buf_recv:
         Option<(BufReader<ChildStdout>, Receiver<(BufReader<ChildStdout>, Vec<String>)>)>,
     recv_requests: Sender<BufReader<ChildStdout>>,
+    child: Child,
 }
 
 const DONE: &str = "<<DONE>>";
 
 /// A separate thread writes data to the SMT solver over a pipe.
 /// (Rust's documentation says you need a separate thread; otherwise, it lets the pipes deadlock.)
-fn writer_thread(requests: Receiver<Vec<u8>>, mut smt_pipe_stdin: ChildStdin) {
+pub(crate) fn writer_thread(requests: Receiver<Vec<u8>>, mut smt_pipe_stdin: ChildStdin) {
     while let Ok(req) = requests.recv() {
         smt_pipe_stdin
             .write_all(&req)
@@ -53,8 +62,8 @@ fn reader_thread(
 }
 
 impl SmtProcess {
-    pub(crate) fn launch(smt_executable_name: &String) -> Self {
-        let mut child = std::process::Command::new(smt_executable_name)
+    pub fn launch() -> Self {
+        let mut child = std::process::Command::new(smt_executable_name())
             .args(&["-smt2", "-in"])
             .stdin(std::process::Stdio::piped())
             .stdout(std::process::Stdio::piped())
@@ -68,9 +77,10 @@ impl SmtProcess {
         std::thread::spawn(move || writer_thread(requests_receiver, child_stdin));
         std::thread::spawn(move || reader_thread(recv_responses_receiver, responses_sender));
         SmtProcess {
-            requests: requests_sender,
+            requests: Some(requests_sender),
             responses_buf_recv: Some((smt_pipe_stdout, responses_receiver)),
             recv_requests: recv_responses_sender,
+            child: child,
         }
     }
 
@@ -82,7 +92,11 @@ impl SmtProcess {
     /// Send commands to Z3
     pub(crate) fn send_commands_async<'a>(&'a mut self, commands: Vec<u8>) -> CommandsHandle<'a> {
         // Send request to writer thread
-        self.requests.send(commands).expect("internal error: failed to send to writer thread");
+        self.requests
+            .as_mut()
+            .unwrap()
+            .send(commands)
+            .expect("internal error: failed to send to writer thread");
 
         let (smt_pipe_stdout, receiver) = self
             .responses_buf_recv
@@ -121,6 +135,16 @@ impl<'a> CommandsHandle<'a> {
             Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
                 panic!("internal error: Z3 reader thread disconnected")
             }
+        }
+    }
+}
+
+impl Drop for SmtProcess {
+    fn drop(&mut self) {
+        // send EOF to stdin
+        std::mem::drop(self.requests.take());
+        if let Err(e) = self.child.wait() {
+            panic!("smt process exited with error: {:?}", e);
         }
     }
 }

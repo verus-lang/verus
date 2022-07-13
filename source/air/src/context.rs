@@ -5,8 +5,9 @@ use crate::errors::{Error, ErrorLabels};
 use crate::model::Model;
 use crate::node;
 use crate::printer::{macro_push_node, str_to_node};
+use crate::profiler;
 use crate::scope_map::ScopeMap;
-use crate::smt_manager::SmtManager;
+use crate::smt_process::SmtProcess;
 use crate::smt_verify::ReportLongRunning;
 use crate::typecheck::Typing;
 use sise::Node;
@@ -32,10 +33,10 @@ pub(crate) struct AxiomInfo {
 #[derive(Debug)]
 pub enum ValidityResult {
     Valid,
-    Invalid(Model, Error),
+    Invalid(Option<Model>, Error),
     Canceled,
     TypeError(TypeError),
-    UnexpectedSmtOutput(String),
+    UnexpectedOutput(String),
 }
 
 #[derive(Clone, Debug)]
@@ -58,7 +59,7 @@ impl<'a, 'b: 'a> Default for QueryContext<'a, 'b> {
 }
 
 pub struct Context {
-    pub(crate) smt_manager: SmtManager,
+    smt_process: Option<SmtProcess>,
     pub(crate) axiom_infos: ScopeMap<Ident, Arc<AxiomInfo>>,
     pub(crate) axiom_infos_count: u64,
     pub(crate) lambda_map: ScopeMap<ClosureTerm, Ident>,
@@ -69,21 +70,24 @@ pub struct Context {
     pub(crate) apply_count: u64,
     pub(crate) typing: Typing,
     pub(crate) debug: bool,
+    pub(crate) profile: bool,
+    pub(crate) profile_all: bool,
     pub(crate) ignore_unexpected_smt: bool,
     pub(crate) rlimit: u32,
     pub(crate) air_initial_log: Emitter,
     pub(crate) air_middle_log: Emitter,
     pub(crate) air_final_log: Emitter,
     pub(crate) smt_log: Emitter,
+    pub singular_log: Option<std::fs::File>,
     pub(crate) time_smt_init: Duration,
     pub(crate) time_smt_run: Duration,
     pub(crate) state: ContextState,
 }
 
 impl Context {
-    pub fn new(smt_manager: SmtManager) -> Context {
+    pub fn new() -> Context {
         let mut context = Context {
-            smt_manager,
+            smt_process: None,
             axiom_infos: ScopeMap::new(),
             axiom_infos_count: 0,
             lambda_map: ScopeMap::new(),
@@ -94,12 +98,15 @@ impl Context {
             apply_count: 0,
             typing: Typing { decls: crate::scope_map::ScopeMap::new(), snapshots: HashSet::new() },
             debug: false,
+            profile: false,
+            profile_all: false,
             ignore_unexpected_smt: false,
             rlimit: 0,
             air_initial_log: Emitter::new(false, false, None),
             air_middle_log: Emitter::new(false, false, None),
             air_final_log: Emitter::new(false, false, None),
             smt_log: Emitter::new(true, true, None),
+            singular_log: None,
             time_smt_init: Duration::new(0, 0),
             time_smt_run: Duration::new(0, 0),
             state: ContextState::NotStarted,
@@ -110,6 +117,14 @@ impl Context {
         context.apply_map.push_scope(false);
         context.typing.decls.push_scope(false);
         context
+    }
+
+    pub fn get_smt_process(&mut self) -> &mut SmtProcess {
+        // Only start the smt process if there are queries to run
+        if self.smt_process.is_none() {
+            self.smt_process = Some(SmtProcess::launch());
+        }
+        self.smt_process.as_mut().unwrap()
     }
 
     pub fn set_air_initial_log(&mut self, writer: Box<dyn std::io::Write>) {
@@ -134,6 +149,22 @@ impl Context {
 
     pub fn get_debug(&self) -> bool {
         self.debug
+    }
+
+    pub fn set_profile(&mut self, profile: bool) {
+        self.profile = profile;
+    }
+
+    pub fn get_profile(&self) -> bool {
+        self.profile
+    }
+
+    pub fn set_profile_all(&mut self, profile_all: bool) {
+        self.profile_all = profile_all;
+    }
+
+    pub fn get_profile_all(&self) -> bool {
+        self.profile_all
     }
 
     pub fn set_ignore_unexpected_smt(&mut self, ignore_unexpected_smt: bool) {
@@ -243,9 +274,15 @@ impl Context {
     fn ensure_started(&mut self) {
         match self.state {
             ContextState::NotStarted => {
+                if self.profile || self.profile_all {
+                    self.set_z3_param("trace", "true");
+                    // Very expensive.  May be needed to support more detailed log analysis.
+                    //self.set_z3_param("proof", "true");
+                    self.log_set_z3_param("trace_file_name", profiler::PROVER_LOG_FILE);
+                }
                 self.blank_line();
                 self.comment("AIR prelude");
-                self.smt_log.log_node(&node!((declare-sort {str_to_node(crate::def::FUNCTION)})));
+                self.smt_log.log_node(&node!((declare-sort {str_to_node(crate::def::FUNCTION)} 0)));
                 self.blank_line();
                 self.state = ContextState::ReadyForQuery;
             }
@@ -344,8 +381,8 @@ impl Context {
 
     pub fn eval_expr(&mut self, expr: sise::Node) -> String {
         self.smt_log.log_eval(expr);
-        let smt_output =
-            self.smt_manager.get_smt_process().send_commands(self.smt_log.take_pipe_data());
+        let smt_data = self.smt_log.take_pipe_data();
+        let smt_output = self.get_smt_process().send_commands(smt_data);
         if smt_output.len() != 1 {
             panic!("unexpected output from SMT eval {:?}", &smt_output);
         }

@@ -10,6 +10,10 @@ edition = "2018"
 [dependencies]
 sise = "0.6.0"
 getopts = { git = "https://github.com/utaal/getopts.git", branch = "parse-partial" }
+z3tracer = { git = "https://github.com/secure-foundations/smt2utils.git", branch = "main" }
 
 [target.'cfg(windows)'.dependencies]
 win32job = "1"
+
+[features]
+singular = []

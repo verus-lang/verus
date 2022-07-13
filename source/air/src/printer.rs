@@ -1,7 +1,8 @@
 use crate::ast::{
     BinaryOp, BindX, Binder, Binders, Constant, Datatypes, Decl, DeclX, Expr, ExprX, Exprs, Ident,
-    MultiOp, Quant, Query, QueryX, Stmt, StmtX, Triggers, Typ, TypX, Typs, UnaryOp,
+    MultiOp, Qid, Quant, Query, QueryX, Stmt, StmtX, Triggers, Typ, TypX, Typs, UnaryOp,
 };
+use crate::def::mk_skolem_id;
 use crate::errors::all_msgs_from_error;
 use crate::util::vec_map;
 use sise::{Node, Writer};
@@ -119,7 +120,7 @@ impl Printer {
         }
     }
 
-    pub(crate) fn expr_to_node(&self, expr: &Expr) -> Node {
+    pub fn expr_to_node(&self, expr: &Expr) -> Node {
         match &**expr {
             ExprX::Const(Constant::Bool(b)) => Node::Atom(b.to_string()),
             ExprX::Const(Constant::Nat(n)) => Node::Atom((**n).clone()),
@@ -225,8 +226,8 @@ impl Printer {
                 nodes!(ite {self.expr_to_node(expr1)} {self.expr_to_node(expr2)} {self.expr_to_node(expr3)})
             }
             ExprX::Bind(bind, expr) => {
-                let with_triggers = |expr: &Expr, triggers: &Triggers| {
-                    if triggers.len() == 0 {
+                let with_triggers = |expr: &Expr, triggers: &Triggers, qid: &Qid| {
+                    if triggers.len() == 0 && qid.is_none() {
                         self.expr_to_node(expr)
                     } else {
                         let mut nodes: Vec<Node> = Vec::new();
@@ -236,6 +237,12 @@ impl Printer {
                             nodes.push(str_to_node(":pattern"));
                             nodes.push(self.exprs_to_node(trigger));
                         }
+                        if let Some(s) = qid {
+                            nodes.push(str_to_node(":qid"));
+                            nodes.push(str_to_node(s));
+                            nodes.push(str_to_node(":skolemid"));
+                            nodes.push(str_to_node(&mk_skolem_id(s)));
+                        }
                         Node::List(nodes)
                     }
                 };
@@ -244,21 +251,21 @@ impl Printer {
                         let s_binders = self.binders_to_node(binders, &|e| self.expr_to_node(e));
                         nodes!(let {s_binders} {self.expr_to_node(expr)})
                     }
-                    BindX::Quant(quant, binders, triggers) => {
+                    BindX::Quant(quant, binders, triggers, qid) => {
                         let s_quant = match quant {
                             Quant::Forall => "forall",
                             Quant::Exists => "exists",
                         };
                         let s_binders = self.binders_to_node(binders, &|t| self.typ_to_node(t));
-                        let body = with_triggers(expr, triggers);
+                        let body = with_triggers(expr, triggers, qid);
                         nodes!({str_to_node(s_quant)} {s_binders} {body})
                     }
                     BindX::Lambda(binders) => {
                         nodes!(lambda {self.binders_to_node(binders, &|t| self.typ_to_node(t))} {self.expr_to_node(expr)})
                     }
-                    BindX::Choose(binders, triggers, expr_cond) => {
+                    BindX::Choose(binders, triggers, qid, expr_cond) => {
                         let s_binders = self.binders_to_node(binders, &|t| self.typ_to_node(t));
-                        let cond = with_triggers(expr_cond, triggers);
+                        let cond = with_triggers(expr_cond, triggers, qid);
                         let body = self.expr_to_node(expr);
                         nodes!(choose {s_binders} {cond} {body})
                     }
@@ -284,7 +291,7 @@ impl Printer {
         }
     }
 
-    pub(crate) fn exprs_to_node(&self, exprs: &Exprs) -> Node {
+    pub fn exprs_to_node(&self, exprs: &Exprs) -> Node {
         Node::List(vec_map(exprs, |e| self.expr_to_node(e)))
     }
 
@@ -317,25 +324,20 @@ impl Printer {
         Node::List(nodes)
     }
 
-    pub(crate) fn multibinders_to_node<A: Clone, F: Fn(&A) -> Node>(
-        &self,
-        binders: &Binders<Arc<Vec<A>>>,
-        f: &F,
-    ) -> Node {
-        Node::List(vec_map(binders, |b| self.multibinder_to_node(b, f)))
-    }
-
     pub fn sort_decl_to_node(&self, x: &Ident) -> Node {
-        node!((declare-sort {str_to_node(x)}))
+        node!((declare-sort {str_to_node(x)} 0))
     }
 
     pub fn datatypes_decl_to_node(&self, datatypes: &Datatypes) -> Node {
-        let ds = self.multibinders_to_node(&datatypes, &|variant| {
-            self.multibinder_to_node(&variant, &|field| {
-                self.binder_to_node(&field, &|t| self.typ_to_node(t))
-            })
-        });
-        node!((declare-datatypes () {ds}))
+        let decls = Node::List(vec_map(datatypes, |d| nodes!({str_to_node(&d.name)} 0)));
+        let defns = Node::List(vec_map(datatypes, |d| {
+            Node::List(vec_map(&d.a, |variant| {
+                self.multibinder_to_node(&variant, &|field| {
+                    self.binder_to_node(&field, &|t| self.typ_to_node(t))
+                })
+            }))
+        }));
+        node!((declare-datatypes {decls} {defns}))
     }
 
     pub fn const_decl_to_node(&self, x: &Ident, typ: &Typ) -> Node {

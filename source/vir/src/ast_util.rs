@@ -1,7 +1,7 @@
 use crate::ast::{
     BinaryOp, Constant, DatatypeX, Expr, ExprX, Fun, FunX, FunctionX, GenericBound, GenericBoundX,
-    Ident, Idents, IntRange, Mode, Param, ParamX, Params, Path, PathX, SpannedTyped, Typ, TypX,
-    Typs, Variant, Variants, VirErr, Visibility,
+    Ident, Idents, IntRange, Mode, Param, ParamX, Params, Path, PathX, Quant, SpannedTyped, Typ,
+    TypX, Typs, Variant, Variants, VirErr, Visibility,
 };
 use crate::sst::{Par, Pars};
 use crate::util::vec_map;
@@ -59,6 +59,8 @@ pub fn n_types_equal(typs1: &Typs, typs2: &Typs) -> bool {
     typs1.len() == typs2.len() && typs1.iter().zip(typs2.iter()).all(|(t1, t2)| types_equal(t1, t2))
 }
 
+pub const QUANT_FORALL: Quant = Quant { quant: air::ast::Quant::Forall, boxed_params: true };
+
 pub fn params_equal(param1: &Param, param2: &Param) -> bool {
     let ParamX { name: name1, typ: typ1, mode: mode1, is_mut: is_mut1 } = &param1.x;
     let ParamX { name: name2, typ: typ2, mode: mode2, is_mut: is_mut2 } = &param2.x;
@@ -83,6 +85,24 @@ pub fn bitwidth_from_type(et: &Typ) -> Option<u32> {
     }
 }
 
+impl TypX {
+    pub fn is_ghost_typ(&self) -> bool {
+        match self {
+            TypX::Datatype(path, _) => path_as_rust_name(path) == "crate::pervasive::modes::Ghost",
+            _ => false,
+        }
+    }
+
+    pub fn is_tracked_typ(&self) -> bool {
+        match self {
+            TypX::Datatype(path, _) => {
+                path_as_rust_name(path) == "crate::pervasive::modes::Tracked"
+            }
+            _ => false,
+        }
+    }
+}
+
 pub fn path_as_rust_name(path: &Path) -> String {
     let krate = match &path.krate {
         None => "crate".to_string(),
@@ -103,6 +123,16 @@ pub fn fun_as_rust_dbg(fun: &Fun) -> String {
         format!("{}<{}>", path_str, trait_path_str)
     } else {
         path_str
+    }
+}
+
+pub fn fun_name_crate_relative(module: &Path, fun: &Fun) -> String {
+    let full_name = fun_as_rust_dbg(fun);
+    let module_prefix = path_as_rust_name(module) + "::";
+    if full_name.starts_with(&module_prefix) {
+        full_name[module_prefix.len()..].to_string()
+    } else {
+        full_name
     }
 }
 

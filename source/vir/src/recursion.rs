@@ -3,7 +3,7 @@ use crate::ast::{
     MaskSpec, Path, SpannedTyped, TypX, Typs, UnaryOp, UnaryOpr, VirErr,
 };
 use crate::ast_to_sst::expr_to_exp;
-use crate::ast_util::err_str;
+use crate::ast_util::{err_str, QUANT_FORALL};
 use crate::context::Ctx;
 use crate::def::{
     check_decrease_int, decrease_at_entry, height, prefix_recursive_fun, suffix_rename, Spanned,
@@ -17,7 +17,7 @@ use crate::sst_visitor::{
     stm_visitor_dfs, VisitorControlFlow,
 };
 use crate::util::vec_map_result;
-use air::ast::{Binder, Commands, Quant, Span};
+use air::ast::{Binder, Commands, Span};
 use air::ast_util::{ident_binder, str_ident, str_typ};
 use air::errors::error;
 use air::scope_map::ScopeMap;
@@ -232,7 +232,7 @@ fn terminates(ctxt: &Ctxt, exp: &Exp) -> Result<Exp, VirErr> {
                 BndX::Quant(_, binders, triggers) => Ok(bool_exp(ExpX::Bind(
                     Spanned::new(
                         bnd.span.clone(),
-                        BndX::Quant(Quant::Forall, binders.clone(), triggers.clone()),
+                        BndX::Quant(QUANT_FORALL, binders.clone(), triggers.clone()),
                     ),
                     t_e1,
                 ))),
@@ -370,6 +370,8 @@ pub(crate) fn check_termination_exp(
         &MaskSpec::NoSpec,
         function.x.mode,
         &stm_block,
+        false,
+        false,
         false,
         false,
         false,

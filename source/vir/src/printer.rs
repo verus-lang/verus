@@ -260,12 +260,23 @@ fn expr_to_node(expr: &Expr) -> Node {
             BinaryOp::Arith(op, _) => {
                 nodes!({str_to_node(&format!("{:?}", op))} {expr_to_node(e1)} {expr_to_node(e2)})
             }
+            BinaryOp::Inequality(op) => {
+                nodes!({str_to_node(&format!("{:?}", op))} {expr_to_node(e1)} {expr_to_node(e2)})
+            }
+            BinaryOp::Bitwise(op) => {
+                nodes!({str_to_node(&format!("{:?}", op))} {expr_to_node(e1)} {expr_to_node(e2)})
+            }
             _ => {
                 nodes!({str_to_node(&format!("{:?}", binary_op).to_lowercase())} {expr_to_node(e1)} {expr_to_node(e2)})
             }
         },
+        ExprX::Multi(MultiOp::Chained(ops), es) => {
+            let ops: Vec<Node> = ops.iter().map(|op| str_to_node(&format!("{:?}", op))).collect();
+            let es: Vec<Node> = es.iter().map(expr_to_node).collect();
+            nodes!(multi {Node::List(ops)} {Node::List(es)})
+        }
         ExprX::Quant(quant, binders, expr) => {
-            nodes!({str_to_node(&format!("{:?}", quant).to_lowercase())} {binders_node(binders, &typ_to_node)} {expr_to_node(expr)})
+            nodes!({str_to_node(&format!("{:?}", quant.quant).to_lowercase())} {binders_node(binders, &typ_to_node)} {expr_to_node(expr)})
         }
         ExprX::Closure(binders, expr) => {
             nodes!(closure {binders_node(binders, &typ_to_node)} {expr_to_node(expr)})
@@ -327,6 +338,15 @@ fn expr_to_node(expr: &Expr) -> Node {
             }
             Node::List(nodes)
         }
+        ExprX::Ghost { alloc_wrapper, tracked, expr } => {
+            let ghost = match (alloc_wrapper, tracked) {
+                (None, false) => "proof",
+                (None, true) => "tracked",
+                (Some(_), false) => "Ghost",
+                (Some(_), true) => "Tracked",
+            };
+            Node::List(nodes_vec!({str_to_node(ghost)} {expr_to_node(expr)}))
+        }
         ExprX::Block(stmts, expr) => {
             let mut nodes = nodes_vec!(block {
             Node::List(stmts.iter().map(|stmt| {
@@ -366,6 +386,7 @@ fn function_to_node(function: &FunctionX) -> Node {
         decrease,
         decrease_when,
         decrease_by,
+        broadcast_forall: _,
         mask_spec,
         is_const,
         publish,
@@ -400,6 +421,7 @@ fn function_to_node(function: &FunctionX) -> Node {
     }});
     let function_attrs_node = {
         let FunctionAttrsX {
+            uses_ghost_blocks,
             hidden,
             broadcast_forall,
             no_auto_trigger,
@@ -407,9 +429,11 @@ fn function_to_node(function: &FunctionX) -> Node {
             autoview,
             bit_vector,
             atomic,
+            integer_ring,
             is_decrease_by,
             check_recommends,
             nonlinear,
+            spinoff_prover,
         } = &**attrs;
 
         let mut nodes = vec![
@@ -417,6 +441,9 @@ fn function_to_node(function: &FunctionX) -> Node {
             str_to_node(":hidden"),
             Node::List(hidden.iter().map(|f| fun_to_node(&**f)).collect()),
         ];
+        if *uses_ghost_blocks {
+            nodes.push(str_to_node("+uses_ghost_blocks"));
+        }
         if *broadcast_forall {
             nodes.push(str_to_node("+broadcast_forall"));
         }
@@ -436,6 +463,9 @@ fn function_to_node(function: &FunctionX) -> Node {
         if *atomic {
             nodes.push(str_to_node("+atomic"));
         }
+        if *integer_ring {
+            nodes.push(str_to_node("+integer_ring"));
+        }
         if *is_decrease_by {
             nodes.push(str_to_node("+is_decrease_by"));
         }
@@ -444,6 +474,9 @@ fn function_to_node(function: &FunctionX) -> Node {
         }
         if *nonlinear {
             nodes.push(str_to_node("+nonlinear"));
+        }
+        if *spinoff_prover {
+            nodes.push(str_to_node("+spinoff_prover"));
         }
 
         Node::List(nodes)

@@ -1,6 +1,7 @@
-use crate::ast::{MonoidStmtType, ShardableType, SpecialOp, TransitionStmt, SM};
+use crate::ast::{MonoidStmtType, ShardableType, SpecialOp, SplitKind, TransitionStmt, SM};
 use proc_macro2::Span;
-use syn::parse::Error;
+use syn_verus::parse;
+use syn_verus::parse::Error;
 
 /// Many of the "special ops" have inherent safety conditions.
 /// (That is, they contain an 'assert' when expanded out.)
@@ -36,13 +37,16 @@ fn check_inherent_condition_for_special_op(
     op: &SpecialOp,
     stype: &ShardableType,
     user_gave_proof_body: bool,
-) -> syn::parse::Result<String> {
+) -> parse::Result<String> {
     let coll_type = match stype {
         ShardableType::Multiset(_) => CollectionType::Multiset,
         ShardableType::Option(_) => CollectionType::Option,
         ShardableType::Map(_, _) => CollectionType::Map,
+        ShardableType::PersistentOption(_) => CollectionType::PersistentOption,
+        ShardableType::PersistentMap(_, _) => CollectionType::PersistentMap,
         ShardableType::StorageOption(_) => CollectionType::Option,
         ShardableType::StorageMap(_, _) => CollectionType::Map,
+        ShardableType::Count => CollectionType::Nat,
 
         ShardableType::Variable(_)
         | ShardableType::Constant(_)
@@ -77,20 +81,24 @@ fn check_inherent_condition_for_special_op(
             }
         }
         MonoidStmtType::Add | MonoidStmtType::Deposit => match coll_type {
-            CollectionType::Multiset => {
+            CollectionType::Multiset | CollectionType::Nat => {
                 if user_gave_proof_body {
                     let name = op.stmt.name();
+                    let cname = coll_type.name();
                     return Err(Error::new(
                         span,
                         format!(
-                            "'{name:}' statement for multisets has no nontrivial inherent safety condition (as composition is total and thus this statement never fails); adding a proof body is meaningless"
+                            "'{name:}' statement for `{cname:}` has no nontrivial inherent safety condition (as composition is total and thus this statement never fails); adding a proof body is meaningless"
                         ),
                     ));
                 } else {
                     Ok("".to_string())
                 }
             }
-            CollectionType::Option | CollectionType::Map => {
+            CollectionType::Option
+            | CollectionType::PersistentOption
+            | CollectionType::Map
+            | CollectionType::PersistentMap => {
                 let name = op.stmt.name();
                 let type_name = coll_type.name();
                 if is_general {
@@ -106,14 +114,20 @@ fn check_inherent_condition_for_special_op(
 #[derive(Copy, Clone)]
 enum CollectionType {
     Map,
+    PersistentMap,
     Multiset,
     Option,
+    PersistentOption,
+    Nat,
 }
 
 impl CollectionType {
     fn name(self) -> &'static str {
         match self {
+            CollectionType::Nat => "nat",
             CollectionType::Map => "map",
+            CollectionType::PersistentMap => "persistent_map",
+            CollectionType::PersistentOption => "persistent_option",
             CollectionType::Multiset => "multiset",
             CollectionType::Option => "option",
         }
@@ -127,10 +141,26 @@ pub fn check_inherent_conditions(sm: &SM, ts: &mut TransitionStmt, errors: &mut 
                 check_inherent_conditions(sm, t, errors);
             }
         }
-        TransitionStmt::Let(_span, _pat, _ty, _, _, child) => {
-            check_inherent_conditions(sm, child, errors);
-        }
-        TransitionStmt::Split(_, _, splits) => {
+        TransitionStmt::Split(span, kind, splits) => {
+            match kind {
+                SplitKind::Special(ident, op, proof, _) => {
+                    let field = crate::transitions::get_field(&sm.fields, ident);
+                    let checked = check_inherent_condition_for_special_op(
+                        *span,
+                        op,
+                        &field.stype,
+                        proof.proof.is_some(),
+                    );
+                    match checked {
+                        Err(err) => errors.push(err),
+                        Ok(failure_msg) => {
+                            proof.error_msg = failure_msg;
+                        }
+                    }
+                }
+                _ => {}
+            }
+
             for split in splits {
                 check_inherent_conditions(sm, split, errors);
             }
@@ -141,20 +171,5 @@ pub fn check_inherent_conditions(sm: &SM, ts: &mut TransitionStmt, errors: &mut 
         TransitionStmt::SubUpdate(..) => {}
         TransitionStmt::Initialize(..) => {}
         TransitionStmt::PostCondition(..) => {}
-        TransitionStmt::Special(span, ident, op, proof) => {
-            let field = crate::transitions::get_field(&sm.fields, ident);
-            let checked = check_inherent_condition_for_special_op(
-                *span,
-                op,
-                &field.stype,
-                proof.proof.is_some(),
-            );
-            match checked {
-                Err(err) => errors.push(err),
-                Ok(failure_msg) => {
-                    proof.error_msg = failure_msg;
-                }
-            }
-        }
     }
 }

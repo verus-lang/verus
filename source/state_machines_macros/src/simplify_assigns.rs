@@ -2,8 +2,9 @@ use crate::ast::{SimplStmt, SM};
 use proc_macro2::{TokenStream, TokenTree};
 use quote::quote;
 use std::collections::HashSet;
-use syn::visit::Visit;
-use syn::{Expr, Ident, Pat};
+use syn_verus::visit;
+use syn_verus::visit::Visit;
+use syn_verus::{Expr, Ident, Pat};
 
 /// Returns an equivalent SimplStmt sequence that has no 'assign' statements in it.
 
@@ -84,11 +85,7 @@ fn simplify_assigns_vec(
 fn simplify_assigns_stmt(sm: &SM, sop: &SimplStmt, used_ids: &mut HashSet<String>) -> SimplStmt {
     match sop {
         SimplStmt::Let(span, pat, ty, e, inner) => {
-            // Note: right now we assume that assign-vars can only be 'used' from
-            // require/assert/update (because that is how they are added in
-            // the simplification pass). So we don't call `add_used_ids` here.
-            // That might change later.
-
+            add_used_ids_from_expr(used_ids, e);
             let mut inner_used_ids: HashSet<String> = HashSet::new();
             let simpl_inner = simplify_assigns_vec(sm, inner, &mut inner_used_ids);
             set_union(used_ids, inner_used_ids);
@@ -161,7 +158,7 @@ impl<'ast> Visit<'ast> for UseGetter<'ast> {
     }
 
     fn visit_expr(&mut self, node: &'ast Expr) {
-        syn::visit::visit_expr(self, node);
+        visit::visit_expr(self, node);
 
         match node {
             Expr::Verbatim(stream) => {

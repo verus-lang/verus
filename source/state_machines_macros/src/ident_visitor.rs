@@ -3,9 +3,10 @@ use crate::ast::{
 };
 use crate::simplification::UPDATE_TMP_PREFIX;
 use crate::util::combine_errors_or_ok;
-use syn::spanned::Spanned;
-use syn::visit::Visit;
-use syn::{Error, Expr, ExprMacro, Ident, Macro, Pat, PatIdent, Path, Type};
+use syn_verus::parse;
+use syn_verus::spanned::Spanned;
+use syn_verus::visit::Visit;
+use syn_verus::{Error, Expr, ExprMacro, Ident, Macro, Pat, PatIdent, Path, Type};
 
 /// Error if any identifiers conflict with reserved IDs used by macro expanion.
 ///
@@ -20,7 +21,7 @@ use syn::{Error, Expr, ExprMacro, Ident, Macro, Pat, PatIdent, Path, Type};
 /// Also errors if the user incorrectly uses `self` or `pre` (for the sake of a nicer
 /// error message).
 
-pub fn validate_idents_transition(trans: &Transition) -> syn::parse::Result<()> {
+pub fn validate_idents_transition(trans: &Transition) -> parse::Result<()> {
     let Transition { name, kind, params, body } = trans;
     validate_ident(name)?;
     for param in params {
@@ -30,23 +31,19 @@ pub fn validate_idents_transition(trans: &Transition) -> syn::parse::Result<()> 
     Ok(())
 }
 
-fn validate_idents_transition_stmt(
-    ts: &TransitionStmt,
-    kind: TransitionKind,
-) -> syn::parse::Result<()> {
+fn validate_idents_transition_stmt(ts: &TransitionStmt, kind: TransitionKind) -> parse::Result<()> {
     match ts {
         TransitionStmt::Block(_, v) => {
             for t in v.iter() {
                 validate_idents_transition_stmt(t, kind)?;
             }
         }
-        TransitionStmt::Let(_, pat, _ty, _lk, e, child) => {
-            validate_idents_pat(pat, kind)?;
-            validate_idents_expr(e, kind)?;
-            validate_idents_transition_stmt(child, kind)?;
-        }
         TransitionStmt::Split(_, split_kind, es) => {
             match split_kind {
+                SplitKind::Let(pat, _ty, _lk, e) => {
+                    validate_idents_pat(pat, kind)?;
+                    validate_idents_expr(e, kind)?;
+                }
                 SplitKind::If(cond) => {
                     validate_idents_expr(cond, kind)?;
                 }
@@ -59,6 +56,16 @@ fn validate_idents_transition_stmt(
                                 validate_idents_expr(guard_e, kind)?;
                             }
                             None => {}
+                        }
+                    }
+                }
+                SplitKind::Special(f, op, _proof, pat_opt) => {
+                    validate_ident(f)?;
+                    validate_idents_op(op, kind)?;
+                    match pat_opt {
+                        None => {}
+                        Some(pat) => {
+                            validate_idents_pat(pat, kind)?;
                         }
                     }
                 }
@@ -91,10 +98,6 @@ fn validate_idents_transition_stmt(
             validate_ident(f)?;
             validate_idents_expr(e, kind)?;
         }
-        TransitionStmt::Special(_, f, op, _proof) => {
-            validate_ident(f)?;
-            validate_idents_op(op, kind)?;
-        }
         TransitionStmt::PostCondition(_, e) => {
             validate_idents_expr(e, kind)?;
         }
@@ -102,27 +105,33 @@ fn validate_idents_transition_stmt(
     Ok(())
 }
 
-fn validate_idents_op(op: &SpecialOp, kind: TransitionKind) -> syn::parse::Result<()> {
+fn validate_idents_op(op: &SpecialOp, kind: TransitionKind) -> parse::Result<()> {
     match &op.elt {
-        MonoidElt::OptionSome(e) | MonoidElt::SingletonMultiset(e) | MonoidElt::General(e) => {
+        MonoidElt::OptionSome(None) => {}
+        MonoidElt::OptionSome(Some(e))
+        | MonoidElt::SingletonMultiset(e)
+        | MonoidElt::General(e) => {
             validate_idents_expr(e, kind)?;
         }
-        MonoidElt::SingletonKV(e1, e2) => {
+        MonoidElt::SingletonKV(e1, Some(e2)) => {
             validate_idents_expr(e1, kind)?;
             validate_idents_expr(e2, kind)?;
+        }
+        MonoidElt::SingletonKV(e1, None) => {
+            validate_idents_expr(e1, kind)?;
         }
     }
     Ok(())
 }
 
-fn validate_idents_expr(e: &Expr, kind: TransitionKind) -> syn::parse::Result<()> {
+fn validate_idents_expr(e: &Expr, kind: TransitionKind) -> parse::Result<()> {
     let mut idv = IdentVisitor::new(kind);
     idv.visit_expr(e);
 
     combine_errors_or_ok(idv.errors)
 }
 
-fn validate_idents_pat(pat: &Pat, kind: TransitionKind) -> syn::parse::Result<()> {
+fn validate_idents_pat(pat: &Pat, kind: TransitionKind) -> parse::Result<()> {
     let mut idv = IdentVisitor::new(kind);
     idv.visit_pat(pat);
 
@@ -223,7 +232,7 @@ impl<'ast> Visit<'ast> for PatIdentVisitor {
 
 /// Error if the type contains a `super::...` path.
 
-pub fn error_on_super_path(ty: &Type) -> syn::parse::Result<()> {
+pub fn error_on_super_path(ty: &Type) -> parse::Result<()> {
     let mut sv = SuperVisitor { errors: Vec::new() };
     sv.visit_type(ty);
     combine_errors_or_ok(sv.errors)

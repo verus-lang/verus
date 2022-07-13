@@ -7,16 +7,21 @@
 //! SST is designed to make the translation to AIR as straightforward as possible.
 
 use crate::ast::{
-    AssertQueryMode, BinaryOp, Constant, Fun, InvAtomicity, Mode, Path, SpannedTyped, Typ, Typs,
-    UnaryOp, UnaryOpr, VarAt,
+    AssertQueryMode, BinaryOp, Constant, Fun, InvAtomicity, Mode, Path, Quant, SpannedTyped, Typ,
+    Typs, UnaryOp, UnaryOpr, VarAt,
 };
 use crate::def::Spanned;
-use air::ast::{Binders, Ident, Quant};
+use air::ast::{Binders, Ident, Span};
 use air::errors::Error;
 use std::sync::Arc;
 
 pub type Trig = Exps;
 pub type Trigs = Arc<Vec<Trig>>;
+
+pub struct BndInfo {
+    pub span: Span,
+    pub trigs: Trigs,
+}
 
 pub type Bnd = Arc<Spanned<BndX>>;
 #[derive(Clone, Debug)]

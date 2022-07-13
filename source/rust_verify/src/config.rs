@@ -22,6 +22,7 @@ pub const VIR_POLY_FILE_SUFFIX: &str = "-poly.vir";
 pub const AIR_INITIAL_FILE_SUFFIX: &str = ".air";
 pub const AIR_FINAL_FILE_SUFFIX: &str = "-final.air";
 pub const SMT_FILE_SUFFIX: &str = ".smt2";
+pub const SINGULAR_FILE_SUFFIX: &str = ".singular";
 pub const TRIGGERS_FILE_SUFFIX: &str = ".triggers";
 
 #[derive(Debug, Default)]
@@ -29,6 +30,7 @@ pub struct Args {
     pub pervasive_path: Option<String>,
     pub verify_root: bool,
     pub verify_module: Option<String>,
+    pub verify_function: Option<String>,
     pub verify_pervasive: bool,
     pub no_verify: bool,
     pub no_lifetime: bool,
@@ -51,6 +53,8 @@ pub struct Args {
     pub print_erased_spec: bool,
     pub ignore_unexpected_smt: bool,
     pub debug: bool,
+    pub profile: bool,
+    pub profile_all: bool,
     pub compile: bool,
 }
 
@@ -65,6 +69,7 @@ pub fn parse_args(program: &String, args: impl Iterator<Item = String>) -> (Args
     const OPT_PERVASIVE_PATH: &str = "pervasive-path";
     const OPT_VERIFY_ROOT: &str = "verify-root";
     const OPT_VERIFY_MODULE: &str = "verify-module";
+    const OPT_VERIFY_FUNCTION: &str = "verify-function";
     const OPT_VERIFY_PERVASIVE: &str = "verify-pervasive";
     const OPT_NO_VERIFY: &str = "no-verify";
     const OPT_NO_LIFETIME: &str = "no-lifetime";
@@ -90,6 +95,8 @@ pub fn parse_args(program: &String, args: impl Iterator<Item = String>) -> (Args
     const OPT_PRINT_ERASED_SPEC: &str = "print-erased-spec";
     const OPT_IGNORE_UNEXPECTED_SMT: &str = "ignore-unexpected-smt";
     const OPT_DEBUG: &str = "debug";
+    const OPT_PROFILE: &str = "profile";
+    const OPT_PROFILE_ALL: &str = "profile-all";
     const OPT_COMPILE: &str = "compile";
 
     let mut opts = Options::new();
@@ -101,7 +108,13 @@ pub fn parse_args(program: &String, args: impl Iterator<Item = String>) -> (Args
         "Verify just one submodule within crate (e.g. 'foo' or 'foo::bar')",
         "MODULE",
     );
-    opts.optflag("", OPT_VERIFY_PERVASIVE, "Verify trusted pervasive modules");
+    opts.optopt(
+        "",
+        OPT_VERIFY_FUNCTION,
+        "Verify just one function (e.g. 'foo' or 'foo::bar') within the one module specified by verify-module or verify-root",
+        "MODULE",
+    );
+    opts.optflag("", OPT_VERIFY_PERVASIVE, "Verify trusted pervasive modules (and nothing else)");
     opts.optflag("", OPT_NO_VERIFY, "Do not run verification");
     opts.optflag("", OPT_NO_LIFETIME, "Do not run lifetime checking on proofs");
     opts.optflag(
@@ -141,6 +154,12 @@ pub fn parse_args(program: &String, args: impl Iterator<Item = String>) -> (Args
     opts.optflag("", OPT_PRINT_ERASED_SPEC, "Print code after erasing spec");
     opts.optflag("", OPT_IGNORE_UNEXPECTED_SMT, "Ignore unexpected SMT output");
     opts.optflag("", OPT_DEBUG, "Enable debugging of proof failures");
+    opts.optflag(
+        "",
+        OPT_PROFILE,
+        "Collect and report prover performance data when resource limits are hit",
+    );
+    opts.optflag("", OPT_PROFILE_ALL, "Always collect and report prover performance data");
     opts.optflag("", OPT_COMPILE, "Run Rustc compiler after verification");
     opts.optflag("h", "help", "print this help menu");
 
@@ -175,6 +194,7 @@ pub fn parse_args(program: &String, args: impl Iterator<Item = String>) -> (Args
         pervasive_path: matches.opt_str(OPT_PERVASIVE_PATH),
         verify_root: matches.opt_present(OPT_VERIFY_ROOT),
         verify_module: matches.opt_str(OPT_VERIFY_MODULE),
+        verify_function: matches.opt_str(OPT_VERIFY_FUNCTION),
         verify_pervasive: matches.opt_present(OPT_VERIFY_PERVASIVE),
         no_verify: matches.opt_present(OPT_NO_VERIFY),
         no_lifetime: matches.opt_present(OPT_NO_LIFETIME),
@@ -224,6 +244,8 @@ pub fn parse_args(program: &String, args: impl Iterator<Item = String>) -> (Args
         print_erased_spec: matches.opt_present(OPT_PRINT_ERASED_SPEC),
         ignore_unexpected_smt: matches.opt_present(OPT_IGNORE_UNEXPECTED_SMT),
         debug: matches.opt_present(OPT_DEBUG),
+        profile: matches.opt_present(OPT_PROFILE),
+        profile_all: matches.opt_present(OPT_PROFILE_ALL),
         compile: matches.opt_present(OPT_COMPILE),
     };
 
