@@ -4,7 +4,6 @@ use crate::context::Ctx;
 use crate::def::Spanned;
 use crate::sst::{Bnd, BndX, Exp, ExpX, Exps, Stm, StmX};
 use air::ast::{Binder, BinderX, Span};
-use core::panic;
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -124,6 +123,15 @@ pub(crate) fn tr_inline_expression(
     params: &Params,
     exps: &Exps,
 ) -> Result<Exp, (Span, String)> {
+    match *body_exp.typ {
+        TypX::Bool => (),
+        _ => {
+            return Err((
+                body_exp.span.clone(),
+                "Skip inlining for non-boolean expreesion".to_string(),
+            ));
+        }
+    };
     let mut arg_map: HashMap<Arc<String>, Exp> = HashMap::new();
     let mut count = 0;
     for param in &**params {
@@ -248,9 +256,9 @@ fn negate_atom(exp: TracedExp) -> TracedExp {
 macro_rules! return_atom {
     ($e:expr, $negated:expr) => {
         if $negated {
-            return Arc::new(vec![negate_atom($e)]);
+            return Ok(Arc::new(vec![negate_atom($e)]));
         } else {
-            return Arc::new(vec![$e]);
+            return Ok(Arc::new(vec![$e]));
         }
     };
 }
@@ -268,10 +276,15 @@ fn merge_two_es(es1: TracedExps, es2: TracedExps) -> TracedExps {
 
 // Note: this splitting referenced Dafny
 // https://github.com/dafny-lang/dafny/blob/cf285b9282499c46eb24f05c7ecc7c72423cd878/Source/Dafny/Verifier/Translator.cs#L11100
-pub(crate) fn split_expr(ctx: &Ctx, state: &State, exp: &TracedExp, negated: bool) -> TracedExps {
+pub(crate) fn split_expr(
+    ctx: &Ctx,
+    state: &State,
+    exp: &TracedExp,
+    negated: bool,
+) -> Result<TracedExps, String> {
     match *exp.e.typ {
         TypX::Bool => (),
-        _ => panic!("cannot split non boolean expression"),
+        _ => return Err("cannot split non boolean expression".to_string()),
     }
     match &exp.e.x {
         ExpX::Unary(UnaryOp::Not, e1) => {
@@ -292,14 +305,14 @@ pub(crate) fn split_expr(ctx: &Ctx, state: &State, exp: &TracedExp, negated: boo
                         state,
                         &TracedExpX::new(e1.clone(), exp.trace.clone()),
                         false,
-                    );
+                    )?;
                     let es2 = split_expr(
                         ctx,
                         state,
                         &TracedExpX::new(e2.clone(), exp.trace.clone()),
                         false,
-                    );
-                    return merge_two_es(es1, es2);
+                    )?;
+                    return Ok(merge_two_es(es1, es2));
                 }
                 // apply DeMorgan's Law
                 BinaryOp::Or if negated => {
@@ -308,14 +321,14 @@ pub(crate) fn split_expr(ctx: &Ctx, state: &State, exp: &TracedExp, negated: boo
                         state,
                         &TracedExpX::new(e1.clone(), exp.trace.clone()),
                         true,
-                    );
+                    )?;
                     let es2 = split_expr(
                         ctx,
                         state,
                         &TracedExpX::new(e2.clone(), exp.trace.clone()),
                         true,
-                    );
-                    return merge_two_es(es1, es2);
+                    )?;
+                    return Ok(merge_two_es(es1, es2));
                 }
                 // in case of implies, split rhs. (e.g.  A => (B && C)  to  [ (A => B) , (A => C) ] )
                 BinaryOp::Implies if !negated => {
@@ -324,7 +337,7 @@ pub(crate) fn split_expr(ctx: &Ctx, state: &State, exp: &TracedExp, negated: boo
                         state,
                         &TracedExpX::new(e2.clone(), exp.trace.clone()),
                         negated,
-                    );
+                    )?;
                     let mut splitted: Vec<TracedExp> = vec![];
                     for e in &*es2 {
                         let new_e = ExpX::Binary(BinaryOp::Implies, e1.clone(), e.e.clone());
@@ -332,7 +345,7 @@ pub(crate) fn split_expr(ctx: &Ctx, state: &State, exp: &TracedExp, negated: boo
                         let new_tr_exp = TracedExpX::new(new_exp, e.trace.clone());
                         splitted.push(new_tr_exp);
                     }
-                    return Arc::new(splitted);
+                    return Ok(Arc::new(splitted));
                 }
                 // TODO
                 // BinaryOp::Implies if negated
@@ -376,18 +389,18 @@ pub(crate) fn split_expr(ctx: &Ctx, state: &State, exp: &TracedExp, negated: boo
                 state,
                 &TracedExpX::new(then_exp.clone(), exp.trace.clone()),
                 negated,
-            );
+            )?;
             let es2 = split_expr(
                 ctx,
                 state,
                 &TracedExpX::new(else_exp.clone(), exp.trace.clone()),
                 negated,
-            );
-            return merge_two_es(es1, es2);
+            )?;
+            return Ok(merge_two_es(es1, es2));
         }
         ExpX::UnaryOpr(uop, e1) => {
             let es1 =
-                split_expr(ctx, state, &TracedExpX::new(e1.clone(), exp.trace.clone()), negated);
+                split_expr(ctx, state, &TracedExpX::new(e1.clone(), exp.trace.clone()), negated)?;
             let mut splitted: Vec<TracedExp> = vec![];
             for e in &*es1 {
                 let new_e = ExpX::UnaryOpr(uop.clone(), e.e.clone());
@@ -395,7 +408,7 @@ pub(crate) fn split_expr(ctx: &Ctx, state: &State, exp: &TracedExp, negated: boo
                 let new_tr_exp = TracedExpX::new(new_exp, e.trace.clone());
                 splitted.push(new_tr_exp);
             }
-            return Arc::new(splitted);
+            return Ok(Arc::new(splitted));
         }
         ExpX::Bind(bnd, e1) => {
             // TODO: split on `exists` when negated
@@ -411,7 +424,7 @@ pub(crate) fn split_expr(ctx: &Ctx, state: &State, exp: &TracedExp, negated: boo
                 _ => return_atom!(exp.clone(), negated),
             };
             let es1 =
-                split_expr(ctx, state, &TracedExpX::new(e1.clone(), exp.trace.clone()), negated);
+                split_expr(ctx, state, &TracedExpX::new(e1.clone(), exp.trace.clone()), negated)?;
             let mut splitted: Vec<TracedExp> = vec![];
             for e in &*es1 {
                 // REVIEW: should I split expression in `let sth = exp`?
@@ -420,7 +433,7 @@ pub(crate) fn split_expr(ctx: &Ctx, state: &State, exp: &TracedExp, negated: boo
                 let new_tr_exp = TracedExpX::new(new_exp, e.trace.clone());
                 splitted.push(new_tr_exp);
             }
-            return Arc::new(splitted);
+            return Ok(Arc::new(splitted));
         }
 
         // TODO: more cases

@@ -666,9 +666,16 @@ pub fn func_def_to_air(
                             ),
                             false,
                         );
-                        small_ens_assertions.extend(
-                            crate::split_expression::register_splitted_assertions(splitted_exprs),
-                        );
+                        if splitted_exprs.is_err() {
+                            ()
+                        } else {
+                            let splitted_exprs = splitted_exprs.unwrap();
+                            small_ens_assertions.extend(
+                                crate::split_expression::register_splitted_assertions(
+                                    splitted_exprs,
+                                ),
+                            );
+                        }
                         enss.push(ens_exp);
                     } else {
                         enss.push(crate::ast_to_sst::expr_to_exp(ctx, &ens_pars, e)?);

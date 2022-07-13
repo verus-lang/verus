@@ -608,7 +608,14 @@ fn stm_call(
                 &crate::split_expression::TracedExpX::new(args[0].0.clone(), error.clone()),
                 false,
             );
-            stms = crate::split_expression::register_splitted_assertions(exprs);
+            if exprs.is_err() {
+                (); // TODO: instead of silent continue, report user that this is not inlined
+            } else {
+                let exprs = exprs.unwrap();
+                stms.extend(
+                    crate::split_expression::register_splitted_assertions(exprs).into_iter(),
+                );
+            }
         } else {
             // we are spliting the `requires` expression on the call site.
             // If we split the `requires` expression on the function itself,
@@ -618,10 +625,11 @@ fn stm_call(
                 let exp = crate::split_expression::pure_ast_expression_to_sst(ctx, e, params);
                 let arg_exps = Arc::new(vec_map(&args, |x| x.0.clone()));
                 let exp_subsituted =
-                    match crate::split_expression::tr_inline_expression(&exp, params, &arg_exps) {
-                        Ok(e) => e,
-                        Err(..) => panic!("remove this panic: failed requires substitution"),
-                    };
+                    crate::split_expression::tr_inline_expression(&exp, params, &arg_exps);
+                if exp_subsituted.is_err() {
+                    continue; // TODO: instead of silent continue, report user that this is not inlined
+                }
+                let exp_subsituted = exp_subsituted.unwrap();
                 let error = air::errors::error("splitted requires failure", span);
                 let exprs = crate::split_expression::split_expr(
                     ctx,
@@ -629,7 +637,13 @@ fn stm_call(
                     &crate::split_expression::TracedExpX::new(exp_subsituted, error.clone()),
                     false,
                 );
-                stms = crate::split_expression::register_splitted_assertions(exprs);
+                if exprs.is_err() {
+                    continue; // TODO: instead of silent continue, report user that this is not inlined
+                }
+                let exprs = exprs.unwrap();
+                stms.extend(
+                    crate::split_expression::register_splitted_assertions(exprs).into_iter(),
+                );
             }
         }
     }
