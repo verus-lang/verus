@@ -153,22 +153,22 @@ impl Visitor {
         let decreases = std::mem::take(&mut sig.decreases);
         // TODO: wrap specs inside ghost blocks
         if let Some(Requires { token, exprs }) = requires {
-            stmts.push(parse_quote_spanned!(token.span => builtin::requires([#exprs]);));
+            stmts.push(parse_quote_spanned!(token.span => ::builtin::requires([#exprs]);));
         }
         if let Some(Recommends { token, exprs }) = recommends {
-            stmts.push(parse_quote_spanned!(token.span => builtin::recommends([#exprs]);));
+            stmts.push(parse_quote_spanned!(token.span => ::builtin::recommends([#exprs]);));
         }
         if let Some(Ensures { token, exprs }) = ensures {
             if let Some((p, ty)) = ret_pat {
                 stmts.push(
-                    parse_quote_spanned!(token.span => builtin::ensures(|#p: #ty| [#exprs]);),
+                    parse_quote_spanned!(token.span => ::builtin::ensures(|#p: #ty| [#exprs]);),
                 );
             } else {
-                stmts.push(parse_quote_spanned!(token.span => builtin::ensures([#exprs]);));
+                stmts.push(parse_quote_spanned!(token.span => ::builtin::ensures([#exprs]);));
             }
         }
         if let Some(Decreases { token, exprs }) = decreases {
-            stmts.push(parse_quote_spanned!(token.span => builtin::decreases((#exprs));));
+            stmts.push(parse_quote_spanned!(token.span => ::builtin::decreases((#exprs));));
         }
         sig.publish = Publish::Default;
         sig.mode = FnMode::Default;
@@ -472,13 +472,13 @@ impl VisitMut for Visitor {
                             InsideArith::None => {
                                 // We don't know which integer type to use,
                                 // so defer the decision to type inference.
-                                *expr =
-                                    parse_quote_spanned!(span => builtin::spec_literal_integer(#n));
+                                *expr = parse_quote_spanned!(span => ::builtin::spec_literal_integer(#n));
                                 expr.replace_attrs(attrs);
                             }
                             InsideArith::Widen => {
                                 // Use int inside +, -, etc., since these promote to int anyway
-                                *expr = parse_quote_spanned!(span => builtin::spec_literal_int(#n));
+                                *expr =
+                                    parse_quote_spanned!(span => ::builtin::spec_literal_int(#n));
                                 expr.replace_attrs(attrs);
                             }
                             InsideArith::Fixed => {
@@ -488,10 +488,10 @@ impl VisitMut for Visitor {
                             }
                         }
                     } else if lit.suffix() == "int" {
-                        *expr = parse_quote_spanned!(span => builtin::spec_literal_int(#n));
+                        *expr = parse_quote_spanned!(span => ::builtin::spec_literal_int(#n));
                         expr.replace_attrs(attrs);
                     } else if lit.suffix() == "nat" {
-                        *expr = parse_quote_spanned!(span => builtin::spec_literal_nat(#n));
+                        *expr = parse_quote_spanned!(span => ::builtin::spec_literal_nat(#n));
                         expr.replace_attrs(attrs);
                     } else {
                         // Has a native Rust integer suffix, so leave it as a native Rust literal
@@ -505,7 +505,7 @@ impl VisitMut for Visitor {
                     let attrs = cast.attrs;
                     let ty = cast.ty;
                     *expr =
-                        parse_quote_spanned!(span => builtin::spec_cast_integer::<_, #ty>(#src));
+                        parse_quote_spanned!(span => ::builtin::spec_cast_integer::<_, #ty>(#src));
                     expr.replace_attrs(attrs);
                 }
                 Expr::Unary(unary) if quant => {
@@ -674,16 +674,16 @@ impl VisitMut for Visitor {
                                 parse_quote_spanned!(span => ::builtin::assert_bit_vector(#arg));
                         }
                         (Some(_), Some((_, id)), None) if id.to_string() == "nonlinear_arith" => {
-                            *expr = parse_quote_spanned!(span => ::builtin::assert_nonlinear_by({builtin::ensures(#arg);}));
+                            *expr = parse_quote_spanned!(span => ::builtin::assert_nonlinear_by({::builtin::ensures(#arg);}));
                         }
                         (Some(_), Some((_, id)), Some(box (requires, mut block)))
                             if id.to_string() == "nonlinear_arith" =>
                         {
                             let mut stmts: Vec<Stmt> = Vec::new();
                             if let Some(Requires { token, exprs }) = requires {
-                                stmts.push(parse_quote_spanned!(token.span => builtin::requires([#exprs]);));
+                                stmts.push(parse_quote_spanned!(token.span => ::builtin::requires([#exprs]);));
                             }
-                            stmts.push(parse_quote_spanned!(span => builtin::ensures(#arg);));
+                            stmts.push(parse_quote_spanned!(span => ::builtin::ensures(#arg);));
                             block.stmts.splice(0..0, stmts);
                             *expr = parse_quote_spanned!(span => {::builtin::assert_nonlinear_by(#block);});
                         }
@@ -705,10 +705,10 @@ impl VisitMut for Visitor {
                     let mut block = assert.body;
                     let mut stmts: Vec<Stmt> = Vec::new();
                     if let Some((_, rhs)) = assert.implies {
-                        stmts.push(parse_quote_spanned!(span => builtin::requires(#arg);));
-                        stmts.push(parse_quote_spanned!(span => builtin::ensures(#rhs);));
+                        stmts.push(parse_quote_spanned!(span => ::builtin::requires(#arg);));
+                        stmts.push(parse_quote_spanned!(span => ::builtin::ensures(#rhs);));
                     } else {
-                        stmts.push(parse_quote_spanned!(span => builtin::ensures(#arg);));
+                        stmts.push(parse_quote_spanned!(span => ::builtin::ensures(#arg);));
                     }
                     block.stmts.splice(0..0, stmts);
                     *expr = parse_quote_spanned!(span => {::builtin::assert_forall_by(|#inputs| #block);});
@@ -725,10 +725,10 @@ impl VisitMut for Visitor {
         let mut stmts: Vec<Stmt> = Vec::new();
         // TODO: wrap specs inside ghost blocks
         if let Some(Invariant { token, exprs }) = invariants {
-            stmts.push(parse_quote_spanned!(token.span => builtin::invariant([#exprs]);));
+            stmts.push(parse_quote_spanned!(token.span => ::builtin::invariant([#exprs]);));
         }
         if let Some(Decreases { token, exprs }) = decreases {
-            stmts.push(parse_quote_spanned!(token.span => builtin::decreases((#exprs));));
+            stmts.push(parse_quote_spanned!(token.span => ::builtin::decreases((#exprs));));
         }
         expr_while.body.stmts.splice(0..0, stmts);
         visit_expr_while_mut(self, expr_while);
@@ -742,16 +742,16 @@ impl VisitMut for Visitor {
         let mut stmts: Vec<Stmt> = Vec::new();
         // TODO: wrap specs inside ghost blocks
         if let Some(Requires { token, exprs }) = requires {
-            stmts.push(parse_quote_spanned!(token.span => builtin::requires([#exprs]);));
+            stmts.push(parse_quote_spanned!(token.span => ::builtin::requires([#exprs]);));
         }
         if let Some(Invariant { token, exprs }) = invariants {
-            stmts.push(parse_quote_spanned!(token.span => builtin::invariant([#exprs]);));
+            stmts.push(parse_quote_spanned!(token.span => ::builtin::invariant([#exprs]);));
         }
         if let Some(Ensures { token, exprs }) = ensures {
-            stmts.push(parse_quote_spanned!(token.span => builtin::ensures([#exprs]);));
+            stmts.push(parse_quote_spanned!(token.span => ::builtin::ensures([#exprs]);));
         }
         if let Some(Decreases { token, exprs }) = decreases {
-            stmts.push(parse_quote_spanned!(token.span => builtin::decreases((#exprs));));
+            stmts.push(parse_quote_spanned!(token.span => ::builtin::decreases((#exprs));));
         }
         expr_loop.body.stmts.splice(0..0, stmts);
         visit_expr_loop_mut(self, expr_loop);

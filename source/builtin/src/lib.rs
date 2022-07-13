@@ -450,15 +450,6 @@ pub fn spec_cast_integer<From: Integer, To: Integer>(_from: From) -> To {
     unimplemented!()
 }
 
-/*
-pub trait SpecEq<Rhs = Self> {
-    #[spec]
-    fn spec_eq(self, other: Rhs) -> bool;
-    #[spec]
-    fn spec_ne(self, other: Rhs) -> bool;
-}
-*/
-
 #[spec]
 pub fn spec_eq<Lhs: Structural, Rhs: Structural>(_lhs: Lhs, _rhs: Rhs) -> bool {
     unimplemented!()
@@ -505,20 +496,6 @@ pub trait SpecMul<Rhs = Self> {
     fn spec_mul(self, rhs: Rhs) -> Self::Output;
 }
 
-/*
-pub trait SpecEuclideanDiv<Rhs = Self> {
-    type Output;
-    #[spec]
-    fn spec_euclidean_div(self, rhs: Rhs) -> Self::Output;
-}
-
-pub trait SpecEuclideanMod<Rhs = Self> {
-    type Output;
-    #[spec]
-    fn spec_euclidean_mod(self, rhs: Rhs) -> Self::Output;
-}
-*/
-
 // Chained inequalities x <= y < z
 pub struct SpecChain {
     data: std::marker::PhantomData<int>,
@@ -553,25 +530,6 @@ pub fn spec_chained_gt<IntegerType: Integer>(_left: SpecChain, _right: IntegerTy
 pub fn spec_chained_cmp(_chain: SpecChain) -> bool {
     unimplemented!()
 }
-
-/*
-macro_rules! impl_eq {
-    ([$($t:ty)*]) => {
-        $(
-            impl<Rhs: Integer> SpecEq<Rhs> for $t {
-                #[spec]
-                fn spec_eq(self, _rhs: Rhs) -> bool {
-                    unimplemented!()
-                }
-                #[spec]
-                fn spec_ne(self, _rhs: Rhs) -> bool {
-                    unimplemented!()
-                }
-            }
-        )*
-    }
-}
-*/
 
 macro_rules! impl_ord {
     ([$($t:ty)*]) => {
@@ -626,14 +584,6 @@ macro_rules! impl_binary_op {
     }
 }
 
-/*
-impl_eq!([
-    int nat
-    usize u8 u16 u32 u64 u128
-    isize i8 i16 i32 i64 i128
-]);
-*/
-
 impl_ord!([
     int nat
     usize u8 u16 u32 u64 u128
@@ -663,17 +613,3 @@ impl_binary_op!(SpecMul, spec_mul, int, [
     usize u8 u16 u32 u64 u128
     isize i8 i16 i32 i64 i128
 ]);
-
-/*
-impl_binary_op!(SpecEuclideanDiv, spec_euclidean_div, int, [
-    int nat
-    usize u8 u16 u32 u64 u128
-    isize i8 i16 i32 i64 i128
-]);
-
-impl_binary_op!(SpecEuclideanMod, spec_euclidean_mod, int, [
-    int nat
-    usize u8 u16 u32 u64 u128
-    isize i8 i16 i32 i64 i128
-]);
-*/
