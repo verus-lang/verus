@@ -1523,7 +1523,7 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                 },
                 ExprKind::Path(qpath) => {
                     // TODO: clean this up, this is cursed
-                    if let TypeRelative(Ty{hir_id: _, kind: HIRTyKind::Path(QPath::Resolved(None, rustc_hir::Path{res: Res::Def(_, struct_defid), ..})), span:_}, PathSegment{ident: func_ident, hir_id,..} ) = qpath {
+                    /* if let TypeRelative(Ty{hir_id: _, kind: HIRTyKind::Path(QPath::Resolved(None, rustc_hir::Path{res: Res::Def(_, struct_defid), ..})), span:_}, PathSegment{ident: func_ident, hir_id,..} ) = qpath {
                         let is_strslice = tcx.is_diagnostic_item(Symbol::intern("pervasive::string::StrSlice"), *struct_defid);
  
                         // HACK: This is horribly ugly, I am sorry you had to witness this. 
@@ -1536,7 +1536,7 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                             todo!();
                             // Check if value is all ascii or not
                         }
-                    }    
+                    }     */
                     let def = bctx.types.qpath_res(&qpath, fun.hir_id);
                     match def {
                         // a statically resolved function

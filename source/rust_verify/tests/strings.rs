@@ -18,12 +18,10 @@ test_verify_one_file! {
 
 test_verify_one_file! {
     #[test] test_string_literal verus_code! {
-        use pervasive::string::*;
-
+        use pervasive::string::*; 
+        const GREETING: StrSlice<'static> = StrSlice::new("Hello World");
         fn string_lit() {
-            let a: StrSlice<'_> = StrSlice::new("strlit1");
-            let b: StrSlice<'_> = StrSlice::new("strlit2");
-            assert(a === b);
+            GREETING.reveal();
         }
     } => Ok(())
 }

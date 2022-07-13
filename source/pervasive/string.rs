@@ -18,5 +18,10 @@ impl<'a> StrSlice<'a> {
     pub fn new(s: &'a str) -> Self {
         Self { inner: s }
     }
+    
+    #[verifier(external_body)]
+    pub fn reveal(&self) {
+
+    }
 }
 
