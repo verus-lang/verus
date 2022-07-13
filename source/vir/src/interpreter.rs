@@ -698,7 +698,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                                     u
                                 }
                                 IntRange::I(n) => apply_range(
-                                    BigInt::one() << (n - 1),
+                                    -1 * (BigInt::one() << (n - 1)),
                                     (BigInt::one() << (n - 1)) - BigInt::one(),
                                 ),
                                 IntRange::USize => {
@@ -709,7 +709,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                                     u
                                 }
                                 IntRange::ISize => apply_range(
-                                    BigInt::one() << (ARCH_SIZE_MIN_BITS - 1),
+                                    -1 * (BigInt::one() << (ARCH_SIZE_MIN_BITS - 1)),
                                     (BigInt::one() << (ARCH_SIZE_MIN_BITS - 1)) - BigInt::one(),
                                 ),
                             }
