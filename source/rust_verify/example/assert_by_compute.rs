@@ -193,7 +193,6 @@ fn test_seq_modification() {
         use_seq(&v) == 42 && v.index(1) == 1});
 }
 
-*/
 // VeriBetrKV example:
 // https://github.com/vmware-labs/verified-betrfs/blob/ee4b18d553933440bb5ecda037c6a1c411a49a5f/lib/Crypto/CRC32Lut.i.dfy
 // Currently pops the stack if we use the full lut definition
@@ -363,3 +362,11 @@ fn crc_compute() {
     assert_by_compute(bits_of_int(lut.index(v-1) as nat, 64).ext_equal(pow_mod_crc(2*64*v as nat).add(pow_mod_crc(64*v as nat))));
 }
 
+*/
+
+fn compute_lambda() {
+    assert_by_compute( (|x| x + 1)(5) == 6);
+
+    let y = 5;
+    assert_by_compute( (|x| x + y)(5) == 10);
+}

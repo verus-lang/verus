@@ -190,12 +190,20 @@ impl fmt::Display for ExpX {
                 BndX::Let(bnds) => {
                     let assigns = bnds
                         .iter()
-                        .map(|b| format!("{} = {}, ", b.name, b.a))
+                        .map(|b| format!("{} = {}", b.name, b.a))
                         .collect::<Vec<_>>()
                         .join(", ");
                     write!(f, "let {} in {}", assigns, exp)
                 }
-                BndX::Quant(..) | BndX::Lambda(..) | BndX::Choose(..) => {
+                BndX::Lambda(bnds) => {
+                    let assigns = bnds
+                        .iter()
+                        .map(|b| format!("{}", b.name))
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    write!(f, "(|{}| {})", assigns, exp)
+                }
+                BndX::Quant(..) | BndX::Choose(..) => {
                     write!(f, "Unexpected: {:?}", self)
                 }
             },
@@ -203,7 +211,11 @@ impl fmt::Display for ExpX {
                 let args = bnds.iter().map(|b| b.a.to_string()).collect::<Vec<_>>().join(", ");
                 write!(f, "{}({})", id, args)
             }
-            CallLambda(..) | VarLoc(..) | VarAt(..) | Loc(..) | Old(..) | WithTriggers(..) => {
+            CallLambda(_typ, e, args) => {
+                let args = args.iter().map(|e| e.to_string()).collect::<Vec<_>>().join(", ");
+                write!(f, "{}({})", e, args)
+            }
+            VarLoc(..) | VarAt(..) | Loc(..) | Old(..) | WithTriggers(..) => {
                 write!(f, "Unexpected: {:?}", self)
             }
         }
