@@ -4297,8 +4297,8 @@ test_verify_one_file! {
         }
 
         fn do_tokens() {
-            #[proof] let mut m: Map<int, u64> = Map::proof_empty();
-            m.proof_insert(1, 6);
+            #[proof] let mut m: Map<int, u64> = Map::tracked_empty();
+            m.tracked_insert(1, 6);
             #[proof] let (inst, opt_token, mut map_tokens) = Y::Instance::initialize(m);
 
             match opt_token {
@@ -4306,7 +4306,7 @@ test_verify_one_file! {
                 Option::Some(opt_token) => {
                     inst.tr1(opt_token);
 
-                    #[proof] let map_token = map_tokens.proof_remove(1);
+                    #[proof] let map_token = map_tokens.tracked_remove(1);
 
                     #[proof] let the_guard = inst.tr3(1, &map_token);
                     assert(*the_guard == 6);
@@ -5043,7 +5043,7 @@ test_verify_one_file! {
 
         fn test_inst() {
             #[proof] let (inst, mut init_m) = Y::Instance::initialize();
-            #[proof] let m_1 = init_m.proof_remove(1);
+            #[proof] let m_1 = init_m.tracked_remove(1);
             assert(m_1.value == 2);
 
             #[proof] let cloned = m_1.clone();
@@ -5598,8 +5598,8 @@ test_verify_one_file! {
         }
 
         fn test_inst1() {
-            #[proof] let mut p_m = Map::proof_empty();
-            p_m.proof_insert(1, Goo::Bar);
+            #[proof] let mut p_m = Map::tracked_empty();
+            p_m.tracked_insert(1, Goo::Bar);
 
             #[proof] let (inst, mut m_token, opt_token) = Y::Instance::initialize(
                 map![1 => Goo::Bar],
@@ -5608,7 +5608,7 @@ test_verify_one_file! {
                 Option::Some(Goo::Bar),
             );
 
-            #[proof] let kv = m_token.proof_remove(1);
+            #[proof] let kv = m_token.tracked_remove(1);
             #[proof] let o = match opt_token {
                 Option::None => proof_from_false(),
                 Option::Some(t) => t,
@@ -5624,8 +5624,8 @@ test_verify_one_file! {
         }
 
         fn test_inst2() {
-            #[proof] let mut p_m = Map::proof_empty();
-            p_m.proof_insert(1, Goo::Qux(8));
+            #[proof] let mut p_m = Map::tracked_empty();
+            p_m.tracked_insert(1, Goo::Qux(8));
 
             #[proof] let (inst, mut m_token, opt_token) = Y::Instance::initialize(
                 map![1 => Goo::Qux(8)],
@@ -5634,7 +5634,7 @@ test_verify_one_file! {
                 Option::Some(Goo::Qux(8)),
             );
 
-            #[proof] let kv = m_token.proof_remove(1);
+            #[proof] let kv = m_token.tracked_remove(1);
             #[proof] let o = match opt_token {
                 Option::None => proof_from_false(),
                 Option::Some(t) => t,
@@ -5650,8 +5650,8 @@ test_verify_one_file! {
         }
 
         fn test_inst3() {
-            #[proof] let mut p_m = Map::proof_empty();
-            p_m.proof_insert(1, Goo::Tal(8, 9));
+            #[proof] let mut p_m = Map::tracked_empty();
+            p_m.tracked_insert(1, Goo::Tal(8, 9));
 
             #[proof] let (inst, mut m_token, opt_token) = Y::Instance::initialize(
                 map![1 => Goo::Tal(8, 9)],
@@ -5660,7 +5660,7 @@ test_verify_one_file! {
                 Option::Some(Goo::Tal(8, 9)),
             );
 
-            #[proof] let kv = m_token.proof_remove(1);
+            #[proof] let kv = m_token.tracked_remove(1);
             #[proof] let o = match opt_token {
                 Option::None => proof_from_false(),
                 Option::Some(t) => t,

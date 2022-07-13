@@ -88,7 +88,7 @@ impl<V> Multiset<V> {
     #[proof]
     #[verifier(external_body)]
     #[verifier(returns(proof))]
-    pub fn proof_remove(#[proof] &mut self, #[spec] v: V) -> V {
+    pub fn tracked_remove(#[proof] &mut self, #[spec] v: V) -> V {
         requires(old(self).count(v) >= 1);
         ensures(|out_v: V|
             equal(out_v, v) && equal(*self, old(self).remove(v))

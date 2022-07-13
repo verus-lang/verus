@@ -558,7 +558,7 @@ pub fn new_queue<T>(len: usize) -> (Producer<T>, Consumer<T>) {
 
     // Initialize map for the permissions to the cells
     // (keyed by the indices into the vector)
-    #[proof] let mut perms = Map::<nat, cell::Permission<T>>::proof_empty();
+    #[proof] let mut perms = Map::<nat, cell::Permission<T>>::tracked_empty();
 
     while backing_cells_vec.len() < len {
         invariant(
@@ -576,7 +576,7 @@ pub fn new_queue<T>(len: usize) -> (Producer<T>, Consumer<T>) {
         let (cell, Proof(cell_perm)) = PCell::empty();
         backing_cells_vec.push(cell);
 
-        perms.proof_insert(i, cell_perm);
+        perms.tracked_insert(i, cell_perm);
     }
 
     // Vector for ids

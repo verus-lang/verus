@@ -36,6 +36,8 @@ pub tracked struct Map<#[verifier(maybe_negative)] K, #[verifier(strictly_positi
 }
 
 impl<K, V> Map<K, V> {
+    /// An empty map.
+
     pub spec fn empty() -> Map<K, V>;
 
     /// Gives a `Map<K, V>` whose domain contains every key, and maps each key
@@ -161,7 +163,7 @@ impl<K, V> Map<K, V> {
     }
 
     #[verifier(external_body)]
-    pub proof fn proof_empty() -> (tracked out_v: Self)
+    pub proof fn tracked_empty() -> (tracked out_v: Self)
         ensures
             out_v === Map::empty(),
     {
@@ -169,7 +171,7 @@ impl<K, V> Map<K, V> {
     }
 
     #[verifier(external_body)]
-    pub proof fn proof_insert(tracked &mut self, key: K, tracked value: V)
+    pub proof fn tracked_insert(tracked &mut self, key: K, tracked value: V)
         ensures
             *self === Map::insert(*old(self), key, value),
     {
@@ -179,7 +181,7 @@ impl<K, V> Map<K, V> {
     /// todo fill in documentation
 
     #[verifier(external_body)]
-    pub proof fn proof_remove(tracked &mut self, key: K) -> (tracked v: V)
+    pub proof fn tracked_remove(tracked &mut self, key: K) -> (tracked v: V)
         requires
             old(self).dom().contains(key),
         ensures

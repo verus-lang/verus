@@ -347,7 +347,7 @@ impl<T> RwLock<T> {
 
             assert(ref_counts_tokens.dom().contains(i));
 
-            #[proof] let ref_count_token = ref_counts_tokens.proof_remove(i as int);
+            #[proof] let ref_count_token = ref_counts_tokens.tracked_remove(i as int);
 
             let rc_atomic = AtomicU64::new(0, ref_count_token,
                 |r: u64, g| equal(g, DistRwLock::ref_counts {
