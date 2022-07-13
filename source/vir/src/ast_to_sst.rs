@@ -1173,19 +1173,23 @@ fn expr_to_stm_opt(
                 AssertQueryMode::BitVector => {
                     // check if assertion block is consisted only with requires/ensures
                     let (proof_stms, e) = expr_to_stm_opt(ctx, state, proof)?;
-                    let err = err_str(&expr.span, "assert_bitvector_by cannot proof");
+                    let proof_block_err =
+                        err_str(&expr.span, "assert_bitvector_by cannot contain a proof block");
                     if let ReturnValue::Some(_) = e {
-                        return err;
+                        return err_str(
+                            &expr.span,
+                            "assert_bitvector_by cannot contain a return value",
+                        );
                     }
                     if proof_stms.len() > 1 {
-                        return err;
+                        return proof_block_err;
                     }
                     if let StmX::Block(st) = &proof_stms[0].x {
                         if st.len() > 0 {
-                            return err;
+                            return proof_block_err;
                         }
                     } else {
-                        return err;
+                        return proof_block_err;
                     }
 
                     // translate requires/ensures expression
