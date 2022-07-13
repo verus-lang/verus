@@ -92,13 +92,14 @@ fn left_shift_by_one(bv:u32, e:u32) {
 }
 
 
-#[verifier(nonlinear)]
 #[proof]
+#[verifier(nonlinear)]
+#[verifier(spinoff_prover)]
 fn lemma_mul_upper_bound(x: nat, y: nat, z: nat) {
     requires([
         x < y,
     ]);
-    ensures (x * z <= y * z);
+    ensures (z * x <= z * y);
 }
 
 #[proof]
@@ -135,6 +136,8 @@ fn left_shift_is_pow2(bv:u32, e:u32) {
         lemma_pow2_increase(e);
         assert(pow2((e-1) as nat) < pow2(e as nat));
         lemma_mul_upper_bound( pow2((e-1) as nat), pow2(e as nat), bv as nat);
+        assert((bv as nat) * pow2( (e-1) as nat) <= (bv as nat) * pow2(e as nat));
+        assert((bv as nat) * pow2( (e-1) as nat) < (0x1_0000_0000 as nat));
         left_shift_is_pow2(bv, e-1);
         assert( (bv << (e-1)) as nat == bv * pow2((e-1) as nat) );  
 
@@ -144,6 +147,7 @@ fn left_shift_is_pow2(bv:u32, e:u32) {
 
         assert_nonlinear_by({
             requires([
+                e > 0,
                 pow2(e as nat) ==   2 * pow2((e-1) as nat),
                 (bv << (e-1)) as nat == bv * pow2((e-1) as nat),
                 (bv as nat) * pow2(e as nat) < (0x1_0000_0000 as nat),
@@ -161,6 +165,7 @@ fn left_shift_is_pow2(bv:u32, e:u32) {
 
         assert_nonlinear_by({
             requires([
+                e > 0,
                 (bv << (e-1)) as nat == bv * pow2((e-1) as nat),
                 (bv << e) as nat == 2 * (bv << (e-1)) as nat,
                 pow2(e as nat) ==   2 * pow2((e-1) as nat),
