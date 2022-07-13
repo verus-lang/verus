@@ -1,6 +1,6 @@
 #! /bin/bash
 
-z3_version="4.8.17"
+z3_version="4.9.1"
 
 if [ `uname` == "Darwin" ]; then
     filename=z3-$z3_version-x64-osx-10.16
