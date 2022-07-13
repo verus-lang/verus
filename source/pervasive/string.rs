@@ -13,9 +13,9 @@ pub struct StrSlice<'a> {
 
 impl<'a> StrSlice<'a> {
 
-    // #[rustc_diagnostic_item ="pervasive::string::StrSlice::new"]
+    #[rustc_diagnostic_item ="pervasive::string::StrSlice::new"]
     #[verifier(external_body)]
-    pub fn new(s: &'a str) -> Self {
+    pub const fn new(s: &'a str) -> Self {
         Self { inner: s }
     }
     

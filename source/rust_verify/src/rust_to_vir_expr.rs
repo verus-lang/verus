@@ -430,6 +430,7 @@ fn fn_call_to_vir<'tcx>(
     let is_panic = f_name == "core::panicking::panic";
     let is_alloc_ghost = f_name == "pervasive::modes::Ghost::<A>::exec";
     let is_alloc_tracked = f_name == "pervasive::modes::Tracked::<A>::exec";
+    let is_strslice_new = tcx.is_diagnostic_item(Symbol::intern("pervasive::string::StrSlice::new"), f);
     let is_spec = is_admit
         || is_no_method_body
         || is_requires
@@ -771,6 +772,17 @@ fn fn_call_to_vir<'tcx>(
     } else {
         Box::new(std::iter::repeat(None))
     };
+
+    if is_strslice_new {
+        let arg = args.first().expect("argument to StrSlice::new");
+        if let ExprKind::Lit(lit) = &arg.kind {
+            if let rustc_ast::LitKind::Str(s, cooked) = lit.node {
+                let c = vir::ast::Constant::StrSlice(Arc::new(s.to_string()));
+                return Ok(mk_expr(ExprX::Const(c)));
+            }
+        }
+    }
+
     let mut vir_args = args
         .iter()
         .zip(inputs)
@@ -1522,26 +1534,10 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                     ))
                 },
                 ExprKind::Path(qpath) => {
-                    // TODO: clean this up, this is cursed
-                    /* if let TypeRelative(Ty{hir_id: _, kind: HIRTyKind::Path(QPath::Resolved(None, rustc_hir::Path{res: Res::Def(_, struct_defid), ..})), span:_}, PathSegment{ident: func_ident, hir_id,..} ) = qpath {
-                        let is_strslice = tcx.is_diagnostic_item(Symbol::intern("pervasive::string::StrSlice"), *struct_defid);
- 
-                        // HACK: This is horribly ugly, I am sorry you had to witness this. 
-                        // Unfortunately because infer_args == true (I think), it is not 
-                        // possible to use the rustc_diagnostic_item since the res is Some(Err) 
-                        // instead of an actual DefId (which we need)
-                        // TODO: find a better way to check for a function name
-                        let re = Regex::new(r"^new(#[0-9]+)?$").unwrap();
-                        if is_strslice && re.is_match(&func_ident.as_str()) {
-                            todo!();
-                            // Check if value is all ascii or not
-                        }
-                    }     */
                     let def = bctx.types.qpath_res(&qpath, fun.hir_id);
                     match def {
                         // a statically resolved function
                         rustc_hir::def::Res::Def(_, def_id) => {
-
                             Some(fn_call_to_vir(
                                 bctx,
                                 expr,
@@ -1602,10 +1598,6 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
             }
             rustc_ast::LitKind::Int(i, _) => {
                 mk_lit_int(false, i, typ_of_node(bctx, &expr.hir_id, false))
-            },
-            rustc_ast::LitKind::Str(s, cooked) => {
-                let c = vir::ast::Constant::StrSlice(Arc::new(s.to_string()));
-                Ok(mk_expr(ExprX::Const(c)))
             },
             _ => {
                 panic!("unexpected constant: {:?}", lit)
