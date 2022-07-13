@@ -18,7 +18,7 @@ use im::Vector;
 use num_bigint::{BigInt, Sign};
 use num_traits::identities::Zero;
 use num_traits::{FromPrimitive, One, Signed, ToPrimitive};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -32,6 +32,7 @@ struct State {
     cache_hits: u64,
     cache_misses: u64,
     fun_calls: HashMap<Fun, u64>,
+    simplified: HashSet<*const SpannedTyped<ExpX>>,
 }
 
 impl State {
@@ -613,12 +614,16 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
     if state.debug {
         println!("{}Evaluating {:}", "\t".repeat(state.depth), exp);
     }
+    let ok = Ok(exp.clone());
+    if state.simplified.contains(&Arc::as_ptr(exp)) {
+        // We've already simplified this expression as much as we can
+        return Ok(exp.clone());
+    }
     state.depth += 1;
     let exp_new = |e: ExpX| Ok(SpannedTyped::new(&exp.span, &exp.typ, e));
     let bool_new = |b: bool| exp_new(Const(Constant::Bool(b)));
     let int_new = |i: BigInt| exp_new(Const(Constant::Int(i)));
     let zero = int_new(BigInt::zero());
-    let ok = Ok(exp.clone());
     use ExpX::*;
     let r = match &exp.x {
         Const(_) => ok,
@@ -1099,6 +1104,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
     if state.debug {
         println!("{}=> {:}", "\t".repeat(state.depth), &res);
     }
+    state.simplified.insert(Arc::as_ptr(&res));
     Ok(res)
 }
 
@@ -1113,6 +1119,7 @@ pub fn eval_expr(exp: &Exp, fun_ssts: &SstMap, rlimit: u32) -> Result<Exp, VirEr
         cache_hits: 0,
         cache_misses: 0,
         fun_calls: HashMap::new(),
+        simplified: HashSet::new(),
     };
     // Don't run for more than rlimit seconds
     let time_limit = Duration::new(rlimit as u64, 0);
