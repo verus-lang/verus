@@ -1,6 +1,5 @@
 use crate::config::{Args, ShowTriggers};
 use crate::context::{ContextX, ErasureInfo};
-use crate::debugger::Debugger;
 use crate::unsupported;
 use crate::util::{error, from_raw_span, signalling};
 use air::ast::{Command, CommandX, Commands};
@@ -54,6 +53,11 @@ pub struct Verifier {
     vir_crate: Option<Krate>,
     air_no_span: Option<air::ast::Span>,
     inferred_modes: Option<HashMap<InferMode, Mode>>,
+
+    // debugging aid purposes
+    expand_flag: bool,
+    pub expand_targets: Vec<air::errors::Error>,
+    pub expanded_errors: Vec<Vec<ErrorSpan>>,
 }
 
 #[derive(Debug)]
@@ -177,6 +181,10 @@ impl Verifier {
             vir_crate: None,
             air_no_span: None,
             inferred_modes: None,
+
+            expand_flag: false,
+            expand_targets: vec![],
+            expanded_errors: vec![],
         }
     }
 
@@ -289,8 +297,8 @@ impl Verifier {
         compiler: &Compiler,
         error_as: ErrorAs,
         air_context: &mut air::context::Context,
-        assign_map: &HashMap<*const air::ast::Span, HashSet<Arc<std::string::String>>>,
-        snap_map: &Vec<(air::ast::Span, SnapPos)>,
+        _assign_map: &HashMap<*const air::ast::Span, HashSet<Arc<std::string::String>>>,
+        _snap_map: &Vec<(air::ast::Span, SnapPos)>,
         qid_map: &HashMap<String, vir::sst::BndInfo>,
         command: &Command,
         context: &(&air::ast::Span, &str),
@@ -386,7 +394,7 @@ impl Verifier {
                         compiler.report_error(&error, error_as);
                         break;
                     }
-                    let air_model = air_model.unwrap();
+                    let _air_model = air_model.unwrap();
 
                     if is_first_check && error_as == ErrorAs::Error {
                         self.count_errors += 1;
@@ -408,16 +416,22 @@ impl Verifier {
                             ));
                         }
 
-                        self.errors.push(errors);
-                        if self.args.debug {
-                            let mut debugger = Debugger::new(
-                                air_model,
-                                assign_map,
-                                snap_map,
-                                compiler.session().source_map(),
-                            );
-                            debugger.start_shell(air_context);
+                        if !self.expand_flag {
+                            self.errors.push(errors);
+                            self.expand_targets.push(error.clone());
+                        } else {
+                            self.expanded_errors.push(errors);
                         }
+
+                        // if self.args.debug {
+                        //     let mut debugger = Debugger::new(
+                        //         air_model,
+                        //         assign_map,
+                        //         snap_map,
+                        //         compiler.session().source_map(),
+                        //     );
+                        //     debugger.start_shell(air_context);
+                        // }
                     }
 
                     if self.args.multiple_errors == 0 {
@@ -947,8 +961,23 @@ impl Verifier {
             vir::printer::write_krate(&mut file, &poly_krate);
         }
 
+        let before_err_count = self.count_errors;
+        self.expand_targets = vec![]; // flush old errors
+        self.expand_flag = false;
         let (time_smt_init, time_smt_run) =
             self.verify_module(compiler, &poly_krate, module, &mut ctx)?;
+
+        // In the presence of error, re-verify this module with "splitted expressions" of failing assertions/requires/ensures
+        // to get more precise error message.
+        // TODO: might separate into `self.debug_module(..)`
+        if !self.encountered_vir_error && before_err_count < self.count_errors {
+            // TODO: log in a different file?
+            ctx.debug_expand_targets = self.expand_targets.to_vec(); // TODO: avoid copying
+            ctx.debug = true;
+            self.expand_flag = true;
+            self.verify_module(compiler, &poly_krate, module, &mut ctx)?; // maybe report error it is new?(not reporting if it had no impact)
+        }
+
         global_ctx = ctx.free();
 
         self.time_smt_init += time_smt_init;
