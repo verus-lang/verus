@@ -29,6 +29,8 @@ use rustc_middle::ty::subst::GenericArgKind;
 use rustc_middle::ty::{PredicateKind, TyCtxt, TyKind};
 use rustc_span::def_id::DefId;
 use rustc_span::Span;
+use rustc_span::symbol::Symbol;
+use regex::Regex;
 use std::sync::Arc;
 use vir::ast::{
     ArithOp, ArmX, AssertQueryMode, BinaryOp, BitwiseOp, CallTarget, Constant, ExprX, FieldOpr,
@@ -1522,10 +1524,18 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                 ExprKind::Path(qpath) => {
                     // TODO: clean this up, this is cursed
                     if let TypeRelative(Ty{hir_id: _, kind: HIRTyKind::Path(QPath::Resolved(None, rustc_hir::Path{res: Res::Def(_, struct_defid), ..})), span:_}, PathSegment{ident: func_ident, hir_id,..} ) = qpath {
-                       let s_name = tcx.def_path_str(*struct_defid);
-                       if s_name == "pervasive::string::StrSlice" && func_ident.as_str() == "new#0" {
-                           // Check if value is all ascii or not
-                       }
+                        let is_strslice = tcx.is_diagnostic_item(Symbol::intern("pervasive::string::StrSlice"), *struct_defid);
+ 
+                        // HACK: This is horribly ugly, I am sorry you had to witness this. 
+                        // Unfortunately because infer_args == true (I think), it is not 
+                        // possible to use the rustc_diagnostic_item since the res is Some(Err) 
+                        // instead of an actual DefId (which we need)
+                        // TODO: find a better way to check for a function name
+                        let re = Regex::new(r"^new(#[0-9]+)?$").unwrap();
+                        if is_strslice && re.is_match(&func_ident.as_str()) {
+                            todo!();
+                            // Check if value is all ascii or not
+                        }
                     }    
                     let def = bctx.types.qpath_res(&qpath, fun.hir_id);
                     match def {

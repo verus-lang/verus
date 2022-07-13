@@ -101,7 +101,7 @@ fn check_strslice_new<'tcx>(sig: &'tcx FnSig<'tcx>) -> Result<(), VirErr> {
     };
     let sig_span = span;
     
-    let expected_input_num = 2;
+    let expected_input_num = 1;
     if decl.inputs.len() != expected_input_num {
         crate::err!(*span, format!("Expected {} input for StrSlice::new but got {}", expected_input_num, decl.inputs.len()));
     }
@@ -124,14 +124,6 @@ fn check_strslice_new<'tcx>(sig: &'tcx FnSig<'tcx>) -> Result<(), VirErr> {
         crate::err!(span, format!("Expected primitive type str"));
     }
     
-    let (res, span) = match &decl.inputs[1].kind {
-        TyKind::Path(QPath::Resolved(_, path)) => (path.res, path.span),
-       _ => crate::err!(*sig_span, format!("Wrong type for the second input, input must be a bool"))
-    };
-
-    if res != Res::PrimTy(PrimTy::Bool) {
-        crate::err!(span, format!("Wrong type for the second input, input must be a bool"));
-    }
     
     let (kind, span) = match decl.output {
         FnRetTy::Return( Ty {hir_id: _, kind, span} ) => (kind, span),

@@ -20,6 +20,7 @@ extern crate rustc_span;
 extern crate rustc_trait_selection;
 extern crate rustc_typeck;
 extern crate smallvec;
+extern crate regex;
 
 mod attributes;
 pub mod config;
