@@ -381,6 +381,7 @@ where
         broadcast_forall,
         mask_spec,
         is_const: _,
+        is_string_literal: _,
         publish: _,
         attrs: _,
         body,
@@ -767,6 +768,7 @@ where
         broadcast_forall,
         mask_spec,
         is_const,
+        is_string_literal,
         publish,
         attrs,
         body,
@@ -844,6 +846,7 @@ where
     let attrs = attrs.clone();
     let extra_dependencies = extra_dependencies.clone();
     let is_const = *is_const;
+    let is_string_literal = *is_string_literal;
     let publish = *publish;
     let body = body.as_ref().map(|e| map_expr_visitor_env(e, map, env, fe, fs, ft)).transpose()?;
     map.pop_scope();
@@ -878,6 +881,7 @@ where
         broadcast_forall,
         mask_spec,
         is_const,
+        is_string_literal,
         publish,
         attrs,
         body,

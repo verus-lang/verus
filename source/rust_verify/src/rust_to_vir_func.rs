@@ -354,6 +354,7 @@ pub(crate) fn check_item_fn<'tcx>(
         broadcast_forall: None,
         mask_spec: header.invariant_mask,
         is_const: false,
+        is_string_literal: false,
         publish,
         attrs: Arc::new(fattrs),
         body: if vattrs.external_body || header.no_method_body { None } else { Some(vir_body) },
@@ -397,6 +398,7 @@ pub(crate) fn check_item_const<'tcx>(
     }
     let body = find_body(ctxt, body_id);
     let vir_body = body_to_vir(ctxt, body_id, body, mode, vattrs.external_body)?;
+    let is_string_literal = matches!(vir_body.x, vir::ast::ExprX::Const(vir::ast::Constant::StrSlice(_)));
     let ret_name = Arc::new(RETURN_VALUE.to_string());
     let ret =
         spanned_new(span, ParamX { name: ret_name, typ: typ.clone(), mode: mode, is_mut: false });
@@ -417,6 +419,7 @@ pub(crate) fn check_item_const<'tcx>(
         broadcast_forall: None,
         mask_spec: MaskSpec::NoSpec,
         is_const: true,
+        is_string_literal,
         publish: get_publish(&vattrs),
         attrs: Default::default(),
         body: if vattrs.external_body { None } else { Some(vir_body) },
@@ -484,6 +487,7 @@ pub(crate) fn check_foreign_item_fn<'tcx>(
         broadcast_forall: None,
         mask_spec: MaskSpec::NoSpec,
         is_const: false,
+        is_string_literal: false,
         publish: None,
         attrs: Default::default(),
         body: None,
