@@ -426,7 +426,7 @@ pub fn func_axioms_to_air(
     match function.x.mode {
         Mode::Spec => {
             // Body
-            if public_body {
+            if public_body && !function.x.is_string_literal {
                 if let Some(body) = &function.x.body {
                     func_body_to_air(ctx, &mut decl_commands, &mut check_commands, function, body)?;
                 }
@@ -681,6 +681,10 @@ pub fn func_def_to_air(
             for decl in decls {
                 state.new_statement_var(&decl.ident.0);
                 state.local_decls.push(decl.clone());
+            }
+
+            if function.x.is_const && function.x.is_string_literal {
+                todo!();
             }
 
             let (commands, snap_map) = crate::sst_to_air::body_stm_to_air(
