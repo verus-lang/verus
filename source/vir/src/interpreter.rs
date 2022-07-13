@@ -1046,7 +1046,9 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                                 eval_seq_consuming(ctx, state, exp)
                             } else {
                                 match ctx.fun_ssts.get(fun) {
-                                    None => exp_new(Call(fun.clone(), typs.clone(), new_exps.clone())),
+                                    None => {
+                                        exp_new(Call(fun.clone(), typs.clone(), new_exps.clone()))
+                                    }
                                     Some((params, body)) => {
                                         state.env.push_scope(true);
                                         for (formal, actual) in params.iter().zip(new_exps.iter()) {
@@ -1055,7 +1057,10 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                                             }
                                             state
                                                 .env
-                                                .insert((formal.x.name.clone(), Some(0)), actual.clone())
+                                                .insert(
+                                                    (formal.x.name.clone(), Some(0)),
+                                                    actual.clone(),
+                                                )
                                                 .unwrap();
                                         }
                                         let e = eval_expr_internal(ctx, state, body);
