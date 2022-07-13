@@ -214,7 +214,7 @@ pub(crate) fn check_item_fn<'tcx>(
         ); 
         check_strslice_new(sig)?;
         let mut erasure_info = ctxt.erasure_info.borrow_mut();
-        erasure_info.external_functions.push(name);
+        erasure_info.ignored_functions.push(sig.span.data());
         return Ok(None);
     }
 
