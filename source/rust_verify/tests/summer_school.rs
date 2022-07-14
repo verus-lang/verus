@@ -858,7 +858,7 @@ test_verify_one_file! {
         {
             if val == 0 { 0 }
             else if val == 1 { 1 }
-            else { (fibo((val - 2) as nat) + fibo((val - 1) as nat)) as nat }
+            else { fibo((val - 2) as nat) + fibo((val - 1) as nat) }
         }
 
         spec fn max_u64_fibo_arg() -> nat {

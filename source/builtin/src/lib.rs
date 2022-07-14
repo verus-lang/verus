@@ -596,6 +596,20 @@ macro_rules! impl_binary_op {
     }
 }
 
+macro_rules! impl_binary_op_nat {
+    ($trt:ident, $fun:ident, $ret:ty, [$($t:ty)*]) => {
+        $(
+            impl $trt<$t> for nat {
+                type Output = $ret;
+                #[spec]
+                fn $fun(self, _rhs: $t) -> Self::Output {
+                    unimplemented!()
+                }
+            }
+        )*
+    }
+}
+
 macro_rules! impl_binary_op_rhs {
     ($trt:ident, $fun:ident, $rhs: ty, $ret:ty, [$($t:ty)*]) => {
         $(
@@ -623,8 +637,18 @@ impl_unary_op!(SpecNeg, spec_neg, int, [
 ]);
 
 impl_binary_op!(SpecAdd, spec_add, int, [
-    int nat
+    int
     usize u8 u16 u32 u64 u128
+    isize i8 i16 i32 i64 i128
+]);
+
+impl_binary_op_nat!(SpecAdd, spec_add, nat, [
+    nat
+    usize u8 u16 u32 u64 u128
+]);
+
+impl_binary_op_nat!(SpecAdd, spec_add, int, [
+    int
     isize i8 i16 i32 i64 i128
 ]);
 
@@ -635,8 +659,18 @@ impl_binary_op!(SpecSub, spec_sub, int, [
 ]);
 
 impl_binary_op!(SpecMul, spec_mul, int, [
-    int nat
+    int
     usize u8 u16 u32 u64 u128
+    isize i8 i16 i32 i64 i128
+]);
+
+impl_binary_op_nat!(SpecMul, spec_mul, nat, [
+    nat
+    usize u8 u16 u32 u64 u128
+]);
+
+impl_binary_op_nat!(SpecMul, spec_mul, int, [
+    int
     isize i8 i16 i32 i64 i128
 ]);
 

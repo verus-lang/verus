@@ -81,7 +81,7 @@ test_verify_one_file! {
         {
             match list {
                 List::Nil => 0,
-                List::Cons(_, tl) => (1 + len(tl)) as nat,
+                List::Cons(_, tl) => 1 + len(tl),
             }
         }
 
@@ -128,7 +128,7 @@ test_verify_one_file! {
         {
             match list {
                 List::Nil => 0,
-                List::Cons { hd: _, tl } => (1 + len(tl)) as nat,
+                List::Cons { hd: _, tl } => 1 + len(tl),
             }
         }
 
@@ -175,7 +175,7 @@ test_verify_one_file! {
         {
             match list {
                 List::Nil => 0,
-                List::Cons(_, tl) => (1 + len(tl)) as nat,
+                List::Cons(_, tl) => 1 + len(tl),
             }
         }
 

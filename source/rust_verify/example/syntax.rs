@@ -168,13 +168,13 @@ proof fn test5_bound_checking(x: u32, y: u32, z: u32)
         y <= 0xffff,
         z <= 0xffff,
 {
-    assert((x as int) * (z as int) == ((x * z) as int)) by(nonlinear_arith)
+    assert(x * z == mul(x, z)) by(nonlinear_arith)
         requires
             x <= 0xffff,
             z <= 0xffff,
     {
-        assert(0 <= (x as int) * (z as int));
-        assert((x as int) * (z as int) <= 0xffff * 0xffff);
+        assert(0 <= x * z);
+        assert(x * z <= 0xffff * 0xffff);
     }
 }
 

@@ -481,10 +481,16 @@ impl VisitMut for Visitor {
                                 *expr = parse_quote_spanned!(span => ::builtin::spec_literal_integer(#n));
                                 expr.replace_attrs(attrs);
                             }
-                            InsideArith::Widen => {
+                            InsideArith::Widen if n.starts_with("-") => {
                                 // Use int inside +, -, etc., since these promote to int anyway
                                 *expr =
                                     parse_quote_spanned!(span => ::builtin::spec_literal_int(#n));
+                                expr.replace_attrs(attrs);
+                            }
+                            InsideArith::Widen => {
+                                // Use int inside +, -, etc., since these promote to int anyway
+                                *expr =
+                                    parse_quote_spanned!(span => ::builtin::spec_literal_nat(#n));
                                 expr.replace_attrs(attrs);
                             }
                             InsideArith::Fixed => {

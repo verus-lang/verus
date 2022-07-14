@@ -12,12 +12,12 @@ spec fn add1_int(i: int) -> int {
 }
 
 spec fn add1_nat(i: nat) -> nat {
-    (i + 1) as nat
+    i + 1
 }
 
 #[verifier(opaque)]
 spec fn add1_nat_opaque(i: nat) -> nat {
-    (i + 1) as nat
+    i + 1
 }
 
 proof fn test0() -> (n:nat)

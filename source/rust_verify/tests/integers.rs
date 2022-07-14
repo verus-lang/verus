@@ -10,12 +10,12 @@ test_verify_one_file! {
         }
 
         spec fn add1_nat(i: nat) -> nat {
-            (i + 1) as nat
+            i + 1
         }
 
         #[verifier(opaque)]
         spec fn add1_nat_opaque(i: nat) -> nat {
-            (i + 1) as nat
+            i + 1
         }
 
         proof fn test0() -> (n: nat)
@@ -95,7 +95,7 @@ test_verify_one_file! {
             let i5: int = n as int;
             let n3: nat = 10;
             let i6: int = -10;
-            let x = 2 + 2;
+            let x = 2int + 2;
             let b1: bool = u <= i; // implicit coercion ok
             let b2: bool = i <= u; // implicit coercion ok
             let b3: bool = u <= i + 1; // implicit coercion ok
