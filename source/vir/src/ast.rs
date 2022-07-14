@@ -259,6 +259,8 @@ pub enum Constant {
     Bool(bool),
     /// non-negative integer of arbitrary size (IntRange::Nat); use subtraction to get negative numbers
     Nat(Arc<String>),
+    /// A constant string the second argument is used to indicate 
+    /// if the compiler should "reveal" it or not. 
     StrSlice(Arc<String>)
 }
 

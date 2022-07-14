@@ -195,7 +195,7 @@ fn expr_to_node(expr: &Expr) -> Node {
                 match cnst {
                     Constant::Bool(val) => str_to_node(&format!("{}", val)),
                     Constant::Nat(val) => str_to_node(&format!("{}", val)),
-                    Constant::StrSlice(_val) => todo!("Support for &'_ str is not yet implemented")
+                    Constant::StrSlice(val) => str_to_node(&format!("\"{}\"", val))
                 }
             }
         ),

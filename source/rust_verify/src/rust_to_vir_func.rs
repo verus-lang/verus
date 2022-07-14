@@ -95,10 +95,8 @@ fn check_strslice_new<'tcx>(sig: &'tcx FnSig<'tcx>) -> Result<(), VirErr> {
 
     let (decl, span) = match sig {
         FnSig { header: _, decl, span } => (decl, span),
-        _ => {
-            crate::err!(sig.span, format!("Expected a function signature"));
-        }
     };
+
     let sig_span = span;
     
     let expected_input_num = 1;
@@ -198,6 +196,7 @@ pub(crate) fn check_item_fn<'tcx>(
     let vattrs = get_verifier_attrs(attrs)?;
     let fuel = get_fuel(&vattrs);
     if vattrs.external {
+        dbg!(&sig);
         let mut erasure_info = ctxt.erasure_info.borrow_mut();
         erasure_info.external_functions.push(name);
         return Ok(None);
@@ -207,6 +206,12 @@ pub(crate) fn check_item_fn<'tcx>(
     let mut vir_params: Vec<vir::ast::Param> = Vec::new();
 
     if is_str_new {
+        // HACK: figure out what is going on here 
+        // external should not be false
+        if vattrs.external == false {
+
+        }
+
         unsupported_err_unless!(
             vattrs.external_body,
             sig.span,
@@ -215,6 +220,7 @@ pub(crate) fn check_item_fn<'tcx>(
         check_strslice_new(sig)?;
         let mut erasure_info = ctxt.erasure_info.borrow_mut();
         erasure_info.ignored_functions.push(sig.span.data());
+        todo!("die");
         return Ok(None);
     }
 

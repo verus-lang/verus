@@ -21,16 +21,14 @@ use rustc_ast::{Attribute, BorrowKind, Mutability};
 use rustc_hir::def::{DefKind, Res};
 use rustc_hir::{
     BinOpKind, BindingAnnotation, Block, Destination, Expr, ExprKind, Guard, Local, LoopSource,
-    Node, Pat, PatKind, QPath, QPath::TypeRelative, Stmt, StmtKind, UnOp, PathSegment, Ty, 
+    Node, Pat, PatKind, QPath, Stmt, StmtKind, UnOp
 };
 
-use rustc_hir::TyKind as HIRTyKind;
 use rustc_middle::ty::subst::GenericArgKind;
 use rustc_middle::ty::{PredicateKind, TyCtxt, TyKind};
 use rustc_span::def_id::DefId;
 use rustc_span::Span;
 use rustc_span::symbol::Symbol;
-use regex::Regex;
 use std::sync::Arc;
 use vir::ast::{
     ArithOp, ArmX, AssertQueryMode, BinaryOp, BitwiseOp, CallTarget, Constant, ExprX, FieldOpr,
@@ -430,7 +428,8 @@ fn fn_call_to_vir<'tcx>(
     let is_panic = f_name == "core::panicking::panic";
     let is_alloc_ghost = f_name == "pervasive::modes::Ghost::<A>::exec";
     let is_alloc_tracked = f_name == "pervasive::modes::Tracked::<A>::exec";
-    let is_strslice_new = tcx.is_diagnostic_item(Symbol::intern("pervasive::string::StrSlice::new"), f);
+    let is_strslice_new = tcx.is_diagnostic_item(Symbol::intern("pervasive::string::StrSlice::new"), f);  
+    let is_strslice_reveal = tcx.is_diagnostic_item(Symbol::intern("pervasive::string::StrSlice::reveal"), f);
     let is_spec = is_admit
         || is_no_method_body
         || is_requires
@@ -776,11 +775,16 @@ fn fn_call_to_vir<'tcx>(
     if is_strslice_new {
         let arg = args.first().expect("argument to StrSlice::new");
         if let ExprKind::Lit(lit) = &arg.kind {
-            if let rustc_ast::LitKind::Str(s, cooked) = lit.node {
+            if let rustc_ast::LitKind::Str(s, _) = lit.node {
                 let c = vir::ast::Constant::StrSlice(Arc::new(s.to_string()));
                 return Ok(mk_expr(ExprX::Const(c)));
             }
         }
+    }
+
+    if is_strslice_reveal {
+        dbg!(expr);
+        todo!("here");
     }
 
     let mut vir_args = args

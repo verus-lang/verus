@@ -57,6 +57,7 @@ pub struct Ctx {
     pub(crate) datatype_map: HashMap<Path, Datatype>,
     pub(crate) trait_map: HashMap<Path, Trait>,
     pub(crate) debug: bool,
+    pub(crate) interned_strings: HashSet<Arc<String>>,
     pub fun: Option<FunctionCtx>,
     pub global: GlobalCtx,
 }
@@ -248,6 +249,7 @@ impl Ctx {
             debug,
             fun: None,
             global,
+            interned_strings: HashSet::new()
         })
     }
 

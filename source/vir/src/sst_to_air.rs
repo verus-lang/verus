@@ -1562,8 +1562,7 @@ pub fn body_stm_to_air(
         &mut assigned,
         &mut _modified,
         stm,
-    );
-
+    );    
     let mut stmts = stm_to_stmts(ctx, &mut state, &stm);
 
     if has_mut_params {

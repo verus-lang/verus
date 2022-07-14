@@ -450,7 +450,7 @@ fn check_foreign_item<'tcx>(
     Ok(())
 }
 
-pub fn crate_to_vir<'tcx>(ctxt: &Context<'tcx>) -> Result<Krate, VirErr> {
+pub fn crate_to_vir<'tcx>(ctxt: & Context<'tcx>) -> Result<Krate, VirErr> {
     let mut vir: KrateX = Default::default();
     let mut item_to_module: HashMap<ItemId, Path> = HashMap::new();
     for (owner_id, owner_opt) in ctxt.krate.owners.iter_enumerated() {
