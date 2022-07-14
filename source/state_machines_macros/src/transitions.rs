@@ -417,12 +417,13 @@ fn check_valid_ops(
     fields: &Vec<Field>,
     ts: &TransitionStmt,
     is_readonly: bool,
+    is_property: bool,
     errors: &mut Vec<Error>,
 ) {
     match ts {
         TransitionStmt::Block(_, v) => {
             for t in v.iter() {
-                check_valid_ops(fields, t, is_readonly, errors);
+                check_valid_ops(fields, t, is_readonly, is_property, errors);
             }
         }
         TransitionStmt::Split(span, SplitKind::Special(f, op, _, _), es) => {
@@ -439,20 +440,26 @@ fn check_valid_ops(
                     format!("'{:}' statement not allowed in readonly transition", op.stmt.name()),
                 ));
             }
-            if !is_readonly && op.is_only_allowed_in_readonly() {
+            if is_property && op.is_modifier() {
                 errors.push(Error::new(
                     *span,
-                    format!("'{:}' statement only allowed in readonly transition", op.stmt.name()),
+                    format!("'{:}' statement not allowed in 'property' definition", op.stmt.name()),
+                ));
+            }
+            if !is_readonly && !is_property && op.is_only_allowed_in_property_or_readonly() {
+                errors.push(Error::new(
+                    *span,
+                    format!("'{:}' statement only allowed in 'readonly' transition or 'property' definition", op.stmt.name()),
                 ));
             }
 
             for e in es {
-                check_valid_ops(fields, e, is_readonly, errors);
+                check_valid_ops(fields, e, is_readonly, is_property, errors);
             }
         }
         TransitionStmt::Split(_, _, es) => {
             for e in es {
-                check_valid_ops(fields, e, is_readonly, errors);
+                check_valid_ops(fields, e, is_readonly, is_property, errors);
             }
         }
         TransitionStmt::Require(_, _) => {}
@@ -478,6 +485,12 @@ fn check_valid_ops(
                 errors.push(Error::new(
                     span.span(),
                     format!("'update' statement not allowed in readonly transition"),
+                ));
+            }
+            if is_property {
+                errors.push(Error::new(
+                    span.span(),
+                    format!("'update' statement not allowed in property definition"),
                 ));
             }
         }
@@ -633,11 +646,14 @@ pub fn check_transition(sm: &SM, tr: &mut Transition) -> parse::Result<()> {
     }
 
     match &tr.kind {
-        TransitionKind::Readonly => {
-            check_valid_ops(&sm.fields, &tr.body, true, &mut errors);
+        TransitionKind::ReadonlyTransition => {
+            check_valid_ops(&sm.fields, &tr.body, true, false, &mut errors);
+        }
+        TransitionKind::Property => {
+            check_valid_ops(&sm.fields, &tr.body, false, true, &mut errors);
         }
         TransitionKind::Transition => {
-            check_valid_ops(&sm.fields, &tr.body, false, &mut errors);
+            check_valid_ops(&sm.fields, &tr.body, false, false, &mut errors);
             check_at_most_one_update(sm, &tr.body, &mut errors);
         }
         TransitionKind::Init => {

@@ -314,6 +314,10 @@ pub fn output_token_types_and_fns(
 
     let mut errors = Vec::new();
     for tr in &bundle.sm.transitions {
+        if tr.kind == TransitionKind::ReadonlyTransition {
+            continue;
+        }
+
         match exchange_stream(bundle, tr, safety_condition_lemmas) {
             Ok(stream) => {
                 inst_impl_token_stream.extend(stream);
@@ -1326,7 +1330,7 @@ fn get_all_lemmas_for_transition(
 ) -> Vec<Ident> {
     let mut v = Vec::new();
 
-    if trans.kind != TransitionKind::Readonly {
+    if trans.kind.requires_invariant_lemma() {
         match get_main_lemma_for_transition_opt(&bundle.extras.lemmas, &trans.name) {
             Some(l) => v.push(l.func.sig.ident.clone()),
             None => {}

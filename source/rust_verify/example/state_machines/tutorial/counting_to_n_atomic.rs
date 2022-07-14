@@ -42,7 +42,7 @@ state_machine!{
             }
         }
 
-        readonly!{
+        property!{
             finalize() {
                 require(pre.stamped_tickets >= pre.num_threads);
                 assert(pre.counter == pre.num_threads);

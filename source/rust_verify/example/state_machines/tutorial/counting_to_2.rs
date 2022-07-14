@@ -58,7 +58,7 @@ tokenized_state_machine!(
             }
         }
 
-        readonly!{
+        property!{
             finalize() {
                 require(pre.inc_a);
                 require(pre.inc_b);

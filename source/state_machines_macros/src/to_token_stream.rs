@@ -268,7 +268,7 @@ pub fn output_primary_stuff(
         // Output the 'weak' transition relation.
         // (or for the 'Init' case, a single-state predicate).
 
-        {
+        if trans.kind != TransitionKind::Property {
             let f = to_relation(&simplified_body, true /* weak */);
             let name = &trans.name;
             let rel_fn;
@@ -298,7 +298,7 @@ pub fn output_primary_stuff(
         // Note that 'init' routines don't allow asserts, so there is no need for an
         // additional 'strong' relation.
 
-        if trans.kind != TransitionKind::Init {
+        if trans.kind != TransitionKind::Init && trans.kind != TransitionKind::Property {
             let params = pre_post_params(&trans.params);
             let name = Ident::new(&(trans.name.to_string() + "_strong"), trans.name.span());
 
@@ -363,7 +363,7 @@ fn output_step_datatype(
         if is_init {
             t.kind == TransitionKind::Init
         } else {
-            t.kind == TransitionKind::Transition || t.kind == TransitionKind::Readonly
+            t.kind == TransitionKind::Transition || t.kind == TransitionKind::ReadonlyTransition
         }
     };
 

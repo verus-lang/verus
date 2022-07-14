@@ -41,7 +41,7 @@ tokenized_state_machine!(Dupe<T> {
         }
     }
 
-    readonly!{
+    property!{
         borrow(t: T) {
             have reader >= {t};
             guard storage >= Some(t);
@@ -163,7 +163,7 @@ tokenized_state_machine!(RefCounter<#[verifier(maybe_negative)] T> {
     #[inductive(do_deposit)]
     fn do_deposit_inductive(pre: Self, post: Self, x: T) { }
 
-    readonly!{
+    property!{
         reader_guard(x: T) {
             have reader >= {x};
             guard storage >= Some(x);

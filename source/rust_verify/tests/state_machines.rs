@@ -60,7 +60,7 @@ test_verify_one_file! {
                 #[sharding(storage_option)] pub so: Option<int>
             }
 
-            readonly!{
+            property!{
                 tr() {
                     birds_eye let x = 5;
                     guard so >= Some(x); // error: guard depends on birds_eye variable
@@ -77,7 +77,7 @@ test_verify_one_file! {
                 #[sharding(storage_option)] pub so: Option<int>
             }
 
-            readonly!{
+            property!{
                 tr() {
                     withdraw so -= Some(let y);
                     guard so >= Some(x); // error: guard depends on withdraw binding
@@ -94,7 +94,7 @@ test_verify_one_file! {
                 #[sharding(storage_option)] pub so: Option<int>
             }
 
-            readonly!{
+            property!{
                 tr() {
                     birds_eye let x = 5;
                     require(x == 5); // error: require depends on birds_eye variable
@@ -128,7 +128,7 @@ test_verify_one_file! {
                 #[sharding(storage_option)] pub so: Option<int>
             }
 
-            readonly!{
+            property!{
                 tr() {
                     withdraw so -= Some(let x);
                     require(x == 5); // error: require depends on birds_eye variable
@@ -145,7 +145,7 @@ test_verify_one_file! {
                 #[sharding(storage_option)] pub so: Option<int>
             }
 
-            readonly!{
+            property!{
                 tr() {
                     if 0 == 0 {
                         birds_eye let x = 5;
@@ -165,7 +165,7 @@ test_verify_one_file! {
                 #[sharding(storage_option)] pub so: Option<int>
             }
 
-            readonly!{
+            property!{
                 tr() {
                     if 0 == 0 {
                         withdraw so -= Some(let x);
@@ -694,6 +694,25 @@ test_verify_one_file! {
             }
         }}
     } => Err(e) => assert_error_msg(e, "'inductive' lemma does not make sense for a 'readonly' transition")
+}
+
+test_verify_one_file! {
+    #[test] inductive_lemma_property IMPORTS.to_string() + code_str! {
+        tokenized_state_machine!{ X {
+            fields {
+                #[sharding(variable)] pub t: int,
+            }
+
+            property!{
+                tr(x: int) {
+                }
+            }
+
+            #[inductive(tr)]
+            pub fn lemma_tr1(pre: Self, post: Self, x: int) {
+            }
+        }}
+    } => Err(e) => assert_error_msg(e, "'inductive' lemma does not make sense for a 'property' definition")
 }
 
 test_verify_one_file! {
@@ -1694,7 +1713,7 @@ test_verify_one_file! {
                 }
             }
         }}
-    } => Err(e) => assert_error_msg(e, "statement only allowed in readonly transition")
+    } => Err(e) => assert_error_msg(e, "'guard' statement only allowed in 'readonly' transition or 'property' definition")
 }
 
 test_verify_one_file! {
@@ -1714,6 +1733,22 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] property_wf_update IMPORTS.to_string() + code_str! {
+        state_machine!{ X {
+            fields {
+                pub t: int,
+            }
+
+            property!{
+                tr() {
+                    update t = 5;
+                }
+            }
+        }}
+    } => Err(e) => assert_error_msg(e, "statement not allowed in property definition")
+}
+
+test_verify_one_file! {
     #[test] readonly_wf_init IMPORTS.to_string() + code_str! {
         state_machine!{ X {
             fields {
@@ -1721,6 +1756,22 @@ test_verify_one_file! {
             }
 
             readonly!{
+                tr() {
+                    init t = 5;
+                }
+            }
+        }}
+    } => Err(e) => assert_error_msg(e, "statement not allowed outside 'init' routine")
+}
+
+test_verify_one_file! {
+    #[test] property_wf_init IMPORTS.to_string() + code_str! {
+        state_machine!{ X {
+            fields {
+                pub t: int,
+            }
+
+            property!{
                 tr() {
                     init t = 5;
                 }
@@ -1744,6 +1795,23 @@ test_verify_one_file! {
             }
         }}
     } => Err(e) => assert_error_msg(e, "statement not allowed in readonly transition")
+}
+
+test_verify_one_file! {
+    #[test] property_wf_add IMPORTS.to_string() + code_str! {
+        tokenized_state_machine!{ X {
+            fields {
+                #[sharding(option)]
+                pub t: Option<int>,
+            }
+
+            property!{
+                tr() {
+                    add t += Some(5);
+                }
+            }
+        }}
+    } => Err(e) => assert_error_msg(e, "statement not allowed in 'property' definition")
 }
 
 test_verify_one_file! {
@@ -2183,7 +2251,7 @@ test_verify_one_file! {
                 pub t: Option<int>
             }
 
-            readonly!{
+            property!{
                 tr() {
                     guard t >= Some(5) by { }; // FAILS
 
@@ -2203,7 +2271,7 @@ test_verify_one_file! {
                 pub t: Map<int, int>
             }
 
-            readonly!{
+            property!{
                 tr() {
                     guard t >= [5 => 7] by { }; // FAILS
 
@@ -2223,7 +2291,7 @@ test_verify_one_file! {
                 pub t: Option<int>
             }
 
-            readonly!{
+            property!{
                 tr() {
                     guard t >= (Option::Some(5)) by { }; // FAILS
 
@@ -2243,7 +2311,7 @@ test_verify_one_file! {
                 pub t: Map<int, int>
             }
 
-            readonly!{
+            property!{
                 tr() {
                     guard t >= (Map::<int,int>::empty().insert(5, 7)) by { }; // FAILS
 
@@ -2263,7 +2331,7 @@ test_verify_one_file! {
                 pub t: Multiset<int>
             }
 
-            readonly!{
+            property!{
                 tr() {
                     guard t >= { 5 } by { }; // FAILS
 
@@ -2285,7 +2353,7 @@ test_verify_one_file! {
                 pub t: Multiset<int>
             }
 
-            readonly!{
+            property!{
                 tr() {
                     guard t >= (Multiset::singleton(5)) by { }; // FAILS
 
@@ -2388,6 +2456,22 @@ test_verify_one_file! {
             }
 
             readonly!{
+                tr() {
+                    assert(pre.t == 0); // FAILS
+                }
+            }
+        }}
+    } => Err(e) => assert_one_fails(e)
+}
+
+test_verify_one_file! {
+    #[test] assert_safety_condition_property_fail IMPORTS.to_string() + code_str! {
+        state_machine!{ X {
+            fields {
+                pub t: int,
+            }
+
+            property!{
                 tr() {
                     assert(pre.t == 0); // FAILS
                 }
@@ -2540,7 +2624,7 @@ test_verify_one_file! {
                 pub t: Map<int, int>
             }
 
-            readonly!{
+            property!{
                 tr() {
                     guard t >= Some(5);
                 }
@@ -2708,7 +2792,7 @@ test_verify_one_file! {
                 }
             }
 
-            readonly!{
+            property!{
                 ro() {
                     assert(pre.t == 2);
                 }
@@ -2743,7 +2827,7 @@ test_verify_one_file! {
                 }
             }
 
-            readonly!{
+            property!{
                 ro() {
                     assert(pre.t == 2) by {
                         foo_lemma();
@@ -3653,7 +3737,7 @@ test_verify_one_file! {
                 pub storage_opt: Option<int>,
             }
 
-            readonly!{
+            property!{
                 ro() {
                     guard storage_opt >= (Option::<int>::None);
                 }
@@ -3966,7 +4050,7 @@ test_verify_one_file! {
                 #[sharding(storage_option)] pub so: Option<int>
             }
 
-            readonly!{
+            property!{
                 tr() {
                     if let x = 5 {
                         assert(x == 5);
@@ -3984,7 +4068,7 @@ test_verify_one_file! {
                 #[sharding(storage_option)] pub so: Option<int>
             }
 
-            readonly!{
+            property!{
                 tr() {
                     if let x = 5 {
                         assert(x == 5);
@@ -4004,7 +4088,7 @@ test_verify_one_file! {
                 #[sharding(storage_option)] pub so: Option<int>
             }
 
-            readonly!{
+            property!{
                 tr() {
                     if true && let x = 5 {
                         assert(x == 5);
@@ -4131,6 +4215,15 @@ test_verify_one_file! {
 
             readonly!{
                 tr3(key: int) {
+                    have map >= [key => let x];
+                    require(x == 5);
+
+                    guard storage_map >= [key => 6];
+                }
+            }
+
+            property!{
+                tr4(key: int) {
                     have map >= [key => let x];
                     require(x == 5);
 
@@ -4308,7 +4401,7 @@ test_verify_one_file! {
 
                     #[proof] let map_token = map_tokens.tracked_remove(1);
 
-                    #[proof] let the_guard = inst.tr3(1, &map_token);
+                    #[proof] let the_guard = inst.tr4(1, &map_token);
                     assert(*the_guard == 6);
 
                     #[proof] let t = inst.tr2(1, map_token);

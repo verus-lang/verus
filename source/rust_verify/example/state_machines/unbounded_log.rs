@@ -270,7 +270,7 @@ tokenized_state_machine!{
             }
         }
 
-        readonly!{
+        property!{
             pre_exec_dispatch_local(
                   node_id: nat,
             ) {

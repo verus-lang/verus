@@ -68,7 +68,18 @@ pub enum ShardableType {
 pub enum TransitionKind {
     Init,
     Transition,
-    Readonly,
+
+    /// Like a transition, but it can't update anything.
+    /// Can still be useful if there's a transition label
+    /// (e.g., for "query" transitions).
+    ReadonlyTransition,
+
+    /// This is sort of like a readonly transition, but it
+    /// does not actually create a transition relation and
+    /// it never has an associated label.
+    /// You can use this to define extra safety conditions,
+    /// like guard properties.
+    Property,
 }
 
 #[derive(Clone, Debug)]
@@ -233,7 +244,7 @@ impl SpecialOp {
         self.stmt.is_modifier()
     }
 
-    pub fn is_only_allowed_in_readonly(&self) -> bool {
+    pub fn is_only_allowed_in_property_or_readonly(&self) -> bool {
         self.stmt.is_guard()
     }
 
@@ -469,5 +480,16 @@ impl ShardableType {
 impl Field {
     pub fn get_type(&self) -> Type {
         crate::to_token_stream::shardable_type_to_type(self.type_span, &self.stype)
+    }
+}
+
+impl TransitionKind {
+    pub fn requires_invariant_lemma(&self) -> bool {
+        match self {
+            TransitionKind::Init => true,
+            TransitionKind::Transition => true,
+            TransitionKind::ReadonlyTransition => false,
+            TransitionKind::Property => false,
+        }
     }
 }
