@@ -557,6 +557,7 @@ fn eval_seq_producing(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<SeqResu
                 "crate::pervasive::seq::Seq::new" => {
                     match get_int(&new_args[0]) {
                         Some(len) => {
+                            // Extract the boxed lambda argument passed to Seq::new
                             let lambda = match &new_args[1].x {
                                 UnaryOpr(crate::ast::UnaryOpr::Box(_), e) => e,
                                 _ => panic!(
@@ -564,20 +565,20 @@ fn eval_seq_producing(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<SeqResu
                                     new_args[1]
                                 ),
                             };
+                            // Apply the lambda to each index of the new sequence
                             let vec: Result<Vec<Exp>, VirErr> = (0..len)
                                 .map(|i| {
-                                    let args = Arc::new(vec![exp_new(Const(Constant::Int(
-                                        BigInt::from(i),
-                                    )))]);
+                                    let int_typ = Arc::new(TypX::Int(IntRange::Int));
+                                    let int_i = exp_new(Const(Constant::Int(BigInt::from(i))));
+                                    let boxed_i = exp_new(UnaryOpr(
+                                        crate::ast::UnaryOpr::Box(int_typ),
+                                        int_i,
+                                    ));
+                                    let args = Arc::new(vec![boxed_i]);
                                     // TODO: What's the right typ to pass here?
                                     let call =
                                         exp_new(CallLambda(typs[0].clone(), lambda.clone(), args));
-                                    // TODO: What's the right typ to pass here?
-                                    let boxed_call = exp_new(UnaryOpr(
-                                        crate::ast::UnaryOpr::Box(typs[0].clone()),
-                                        call,
-                                    ));
-                                    eval_expr_internal(ctx, state, &boxed_call)
+                                    eval_expr_internal(ctx, state, &call)
                                 })
                                 .collect();
                             let vec: Vec<Exp> = vec?;
@@ -1262,7 +1263,7 @@ pub fn eval_expr(exp: &Exp, fun_ssts: &SstMap, rlimit: u32) -> Result<Exp, VirEr
     let mut state = State {
         depth: 0,
         env,
-        debug: false,
+        debug: true,
         cache,
         cache_hits: 0,
         cache_misses: 0,

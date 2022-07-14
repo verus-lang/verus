@@ -94,13 +94,6 @@ fn compute_fib() {
     assert_by_compute(fib(100) == 354224848179261915075);
 }
 
-fn compute_lambda() {
-    assert_by_compute( (|x| x + 1)(5) == 6);  // true
-    let y = 5;
-    assert_by_compute((|x| x + y)(5) == 10); // clip(5 + y) == 10, since the let is outside the assert
-    assert_by_compute({ #[spec] let y = 5; (|x| x + y)(5) == 10 }); // true
-}
-
 // VeriTitan example
 #[spec]
 fn pow(base: nat, exp: nat) -> nat {
@@ -207,6 +200,7 @@ fn test_seq_modification() {
 // Currently pops the stack if we use the full lut definition
 // or times out with a smaller lut, even when given 30 seconds
 
+/*
 #[spec] 
 fn bits_of_int(n: nat, len: nat) -> Seq<bool> {
     decreases(len);
@@ -375,7 +369,6 @@ fn crc_compute() {
 // VeriBetrKV example using sequence comprehension:
 // https://github.com/vmware-labs/verified-betrfs/blob/ee4b18d553933440bb5ecda037c6a1c411a49a5f/lib/Crypto/CRC32Lut.i.dfy
 // Currently pops the stack 
-/*
 #[spec] 
 fn bits_of_int(n: nat, len: nat) -> Seq<bool> {
     decreases(len);
@@ -448,7 +441,16 @@ fn pow_mod_crc(n: nat) -> Seq<bool> {
 //    assert_by_compute(xor(zeroes(10), zeroes(10)).ext_equal(zeroes(10)));
 //}
 
+*/
+
+fn compute_closure() {
+    assert_by_compute( (|x| x + 1)(5) == 6);  // true
+    let y = 5;
+    assert_by_compute((|x| x + y)(5) == 10); // clip(5 + y) == 10, since the let is outside the assert
+    assert_by_compute({ #[spec] let y = 5; (|x| x + y)(5) == 10 }); // true
+}
+
+
 fn compute_seq() {
     assert_by_compute(Seq::new(5, |x| x+x).index(3) == 6);
 }
-*/
