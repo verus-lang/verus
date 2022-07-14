@@ -22,6 +22,10 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+// TODO: Potential optimizations:
+//  - Swap to CPS with enforced tail-call optimization to avoid exhausting the stack
+//    - See crates musttail and with_locals
+
 type Env = ScopeMap<UniqueIdent, Exp>;
 
 struct State {
@@ -35,6 +39,7 @@ struct State {
     simplified: HashSet<*const SpannedTyped<ExpX>>,
 }
 
+// Define the function-call cache's API
 impl State {
     fn insert_call(&mut self, f: &Fun, args: &Exps, result: &Exp) {
         match self.cache.get_mut(f) {
@@ -67,104 +72,9 @@ struct Ctx<'a> {
     time_limit: Duration,
 }
 
-// TODO: Potential optimizations:
-//  - Add support for function evaluation memoization
-//  - Swap to CPS with enforced tail-call optimization to avoid exhausting the stack
-//    - See crates musttail and with_locals
-
-/*
-fn print_exp(exp: Exp) {
-    use ExpX::*;
-    match &exp.x {
-        Const(c) => match c {
-            Constant::Bool(b) => print!("{}", b),
-            Constant::Int(i) => print!("{}", i),
-        }
-        Var(id) => print!("{}", id),
-        Call(fun, _, exps) => {
-            print!("{}", fun.path.segments.last());
-            for exp in &exps {
-                print_exp(exp);
-            }
-            print!(")")
-        }
-        Unary(op, exp) => match op {
-            UnaryOp::Not => { print!("!"); print_exp(exp) },
-            UnaryOp::BitNot => { print!("!"); print_exp(exp) } ,
-            UnaryOp::Trigger(..) => ()),
-            UnaryOp::Clip(range) => print!("clip("); print_exp(exp); print!(")"),
-        }
-        UnaryOpr(op, exp) => {
-            use crate::ast::UnaryOpr::*;
-            match op {
-                Box(_) => { print!("box("); print_exp(exp); print!(")") },
-                Unbox(_) => { print!("unbox("); print_exp(exp); print!(")") },
-                HasType(t) => { print_exp(exp); print!(".has_type({})", t),
-                IsVariant { _datatype, variant } => { print_exp(exp); print!("is_type({})", variant) },
-                TupleField {..} => panic!("TupleField should have been removed by ast_simplify!"),
-                Field(field) => { print_exp(exp); print!(".{}", field.field) }
-            }
-        }
-        Binary(op, e1, e2) => {
-            use BinaryOp::*;
-            use ArithOp::*;
-            use InequalityOp::*;
-            use BitwiseOp::*;
-            print_exp(e1);
-            match op {
-                And => print!(" && "),
-                Or  => print!(" || "),
-                Xor => print!(" ^ "),
-                Implies => print!(" ==> "),
-                Eq(_) => print!(" == "),
-                Ne => print!(" != "),
-                Inequality(o) => match o {
-                    Le => print!(" <= "),
-                    Ge => print!(" >= "),
-                    Lt => print!(" < "),
-                    Gt => print!(" > "),
-                }
-                Arith(o, _) => match o {
-                    Add => print!(" + "),
-                    Sub => print!(" - "),
-                    Mul => print!(" * "),
-                    EuclideanDiv => print!(" / "),
-                    EuclideanMod => print!(" % "),
-                }
-                Bitwise(o) => match o {
-                    BitXor => print!(" ^ "),
-                    BitAnd => print!(" & "),
-                    BitOr  => print!(" | "),
-                    Shr => print!(" >> "),
-                    Shl => print!(" << "),
-                }
-            };
-            print_exp(e2);
-        },
-        If(e1, e2, e3) => { print!("if "); print_exp(e1); print!(" then "); print_exp(e2); print!("
-                                                                 {} else {}", e1, e2, e3),
-        Bind(bnd, exp) => match bnd {
-            Bnd::Let(bnds) => {
-                print!("let ");
-                for b in bnds.iter() {
-                    print!("{} = {}, ", b.name, b.a);
-                }
-                print!("in {}", exp)
-            },
-            Bnd::Quant(..) | Bnd::Lambda(..) | Bnd::Choose(..) => print!("Unexpected: {:?}", exp.x),
-        },
-        Ctor(_path, id, bnds) => {
-            print!("{}(", id);
-            for b in bnds.iter() {
-                print!("{}, ", b.a);
-            }
-            print!(")")
-        }
-        CallLambda(..) | VarLoc(..) | VarAt(..) | Loc(..) | Old(..) | WithTriggers(..) => print!("Unexpected: {:?}", self.x)
-
-    }
-}
-*/
+/*****************************************************************
+ * Functionality needed to compute equality between expressions  *
+ *****************************************************************/
 
 // Computes the syntactic equality of two types
 // Some(b) means b is exp1 == exp2
@@ -354,6 +264,11 @@ fn definitely_equal(left: &Exp, right: &Exp) -> bool {
     }
 }
 
+
+/**********************
+ * Utility functions  *
+ **********************/
+
 // Based on Dafny's C# implementation:
 // https://github.com/dafny-lang/dafny/blob/08744a797296897f4efd486083579e484f57b9dc/Source/DafnyRuntime/DafnyRuntime.cs#L1383
 fn euclidean_div(i1: &BigInt, i2: &BigInt) -> BigInt {
@@ -404,6 +319,28 @@ fn i128_to_fixed_width(i: i128, width: u32) -> BigInt {
     }
     .unwrap()
 }
+
+fn display_perf_stats(state: &State) {
+    let sum = state.cache_hits + state.cache_misses;
+    let hit_perc = 100.0 * (state.cache_hits as f64 / sum as f64);
+    println!("Call result cache had {} hits out of {} ({}%)", state.cache_hits, sum, hit_perc);
+    let mut cache_stats: Vec<(&Fun, usize)> =
+        state.cache.iter().map(|(fun, vec)| (fun, vec.len())).collect();
+    cache_stats.sort_by(|a, b| b.1.cmp(&a.1));
+    for (fun, calls) in &cache_stats {
+        println!("{:?} cached {} distinct invocations", fun.path, calls);
+    }
+    println!("\nRaw call numbers:");
+    let mut fun_call_stats: Vec<(&Fun, _)> = state.fun_calls.iter().collect();
+    fun_call_stats.sort_by(|a, b| b.1.cmp(&a.1));
+    for (fun, count) in fun_call_stats {
+        println!("{:?} called {} times", fun.path, count);
+    }
+}
+
+/***********************************************
+ * Special handling for interpreting sequences *
+ ***********************************************/
 
 //fn is_sequence_producing(fun: &Fun) -> bool {
 //    // TODO: Handle Seq::new; this would require handling lambdas in eval_expr_internal
@@ -617,23 +554,9 @@ fn eval_seq_consuming(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
     }
 }
 
-fn display_perf_stats(state: &State) {
-    let sum = state.cache_hits + state.cache_misses;
-    let hit_perc = 100.0 * (state.cache_hits as f64 / sum as f64);
-    println!("Call result cache had {} hits out of {} ({}%)", state.cache_hits, sum, hit_perc);
-    let mut cache_stats: Vec<(&Fun, usize)> =
-        state.cache.iter().map(|(fun, vec)| (fun, vec.len())).collect();
-    cache_stats.sort_by(|a, b| b.1.cmp(&a.1));
-    for (fun, calls) in &cache_stats {
-        println!("{:?} cached {} distinct invocations", fun.path, calls);
-    }
-    println!("\nRaw call numbers:");
-    let mut fun_call_stats: Vec<(&Fun, _)> = state.fun_calls.iter().collect();
-    fun_call_stats.sort_by(|a, b| b.1.cmp(&a.1));
-    for (fun, count) in fun_call_stats {
-        println!("{:?} called {} times", fun.path, count);
-    }
-}
+/********************
+ * Core interpreter *
+ ********************/
 
 /// Symbolically execute the expression as far as we can,
 /// stopping when we hit a symbolic control-flow decision
@@ -1048,6 +971,10 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
             match state.lookup_call(&fun, &exps) {
                 Some(prev_result) => {
                     state.cache_hits += 1;
+                    state.depth -= 1;
+                    if state.debug {
+                        println!("{}=> {:}", "\t".repeat(state.depth), &prev_result);
+                    }
                     return Ok(prev_result);
                 }
                 None => {
@@ -1169,7 +1096,7 @@ pub fn eval_expr(exp: &Exp, fun_ssts: &SstMap, rlimit: u32) -> Result<Exp, VirEr
     let mut state = State {
         depth: 0,
         env,
-        debug: false,
+        debug: true,
         cache,
         cache_hits: 0,
         cache_misses: 0,

@@ -206,6 +206,7 @@ fn test_seq_modification() {
 // https://github.com/vmware-labs/verified-betrfs/blob/ee4b18d553933440bb5ecda037c6a1c411a49a5f/lib/Crypto/CRC32Lut.i.dfy
 // Currently pops the stack if we use the full lut definition
 // or times out with a smaller lut, even when given 30 seconds
+
 #[spec] 
 fn bits_of_int(n: nat, len: nat) -> Seq<bool> {
     decreases(len);
@@ -438,7 +439,16 @@ fn pow_mod_crc(n: nat) -> Seq<bool> {
 //assert (forall n | 1 <= n <= 256 :: bits_of_int(lut[n-1] as int, 64) == pow_mod_crc(2*64*n) + pow_mod_crc(64*n))
 //    by(computation);
 #[spec] const v: int = 1;
-fn crc_compute() {
-    assert_by_compute(bits_of_int(lut.index(v-1) as nat, 64).ext_equal(pow_mod_crc(2*64*v as nat).add(pow_mod_crc(64*v as nat))));
+//fn crc_compute() {
+//    assert_by_compute(bits_of_int(lut.index(v-1) as nat, 64).ext_equal(pow_mod_crc(2*64*v as nat).add(pow_mod_crc(64*v as nat))));
+//}
+//
+
+//fn xor_test() {
+//    assert_by_compute(xor(zeroes(10), zeroes(10)).ext_equal(zeroes(10)));
+//}
+
+fn compute_seq() {
+    assert_by_compute(Seq::new(5, |x| x+x).index(3) == 6);
 }
 */
