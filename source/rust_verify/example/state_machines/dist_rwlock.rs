@@ -127,7 +127,7 @@ tokenized_state_machine!{
             }
         }
 
-        readonly!{
+        property!{
             do_guard(val: (int, T)) {
                 have shared_guard >= {val};
                 guard storage >= Some(val.1);
