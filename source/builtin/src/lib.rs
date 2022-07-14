@@ -596,6 +596,20 @@ macro_rules! impl_binary_op {
     }
 }
 
+macro_rules! impl_binary_op_rhs {
+    ($trt:ident, $fun:ident, $rhs: ty, $ret:ty, [$($t:ty)*]) => {
+        $(
+            impl $trt<$rhs> for $t {
+                type Output = $ret;
+                #[spec]
+                fn $fun(self, _rhs: $rhs) -> Self::Output {
+                    unimplemented!()
+                }
+            }
+        )*
+    }
+}
+
 impl_ord!([
     int nat
     usize u8 u16 u32 u64 u128
@@ -626,13 +640,16 @@ impl_binary_op!(SpecMul, spec_mul, int, [
     isize i8 i16 i32 i64 i128
 ]);
 
-impl_binary_op!(SpecEuclideanDiv, spec_euclidean_div, Self, [
+impl_binary_op_rhs!(SpecEuclideanDiv, spec_euclidean_div, Self, Self, [
     int nat
     usize u8 u16 u32 u64 u128
+]);
+
+impl_binary_op_rhs!(SpecEuclideanDiv, spec_euclidean_div, Self, int, [
     isize i8 i16 i32 i64 i128
 ]);
 
-impl_binary_op!(SpecEuclideanMod, spec_euclidean_mod, Self, [
+impl_binary_op_rhs!(SpecEuclideanMod, spec_euclidean_mod, Self, Self, [
     int nat
     usize u8 u16 u32 u64 u128
     isize i8 i16 i32 i64 i128

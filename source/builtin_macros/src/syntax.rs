@@ -299,7 +299,7 @@ impl VisitMut for Visitor {
                 | BinOp::Le(..)
                 | BinOp::Gt(..)
                 | BinOp::Ge(..) => InsideArith::Widen,
-                BinOp::Div(..) | BinOp::Rem(..) => InsideArith::Fixed,
+                BinOp::Div(..) | BinOp::Rem(..) => InsideArith::None,
                 BinOp::BitXor(..)
                 | BinOp::BitAnd(..)
                 | BinOp::BitOr(..)

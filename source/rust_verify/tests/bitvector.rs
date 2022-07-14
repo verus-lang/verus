@@ -6,7 +6,7 @@ use common::*;
 test_verify_one_file! {
     #[test] test1 verus_code! {
         proof fn test1(b: u32) {
-            assert(b & 7 == b % 8u32) by(bit_vector);
+            assert(b & 7 == b % 8) by(bit_vector);
             assert(b & 7 == b % 8);
 
             assert(b ^ b == 0u32) by(bit_vector);
@@ -34,7 +34,7 @@ test_verify_one_file! {
             assert(b << 2 == mul(b, 4));
             assert(b < 256 ==> ((b << 2) as int) == (b as int) * 4);
 
-            assert(b >> 1 == b / 2u32) by(bit_vector);
+            assert(b >> 1 == b / 2) by(bit_vector);
             assert(b >> 1 == b / 2);
         }
     } => Ok(())
