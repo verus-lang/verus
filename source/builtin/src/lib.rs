@@ -496,6 +496,18 @@ pub trait SpecMul<Rhs = Self> {
     fn spec_mul(self, rhs: Rhs) -> Self::Output;
 }
 
+pub trait SpecEuclideanDiv<Rhs = Self> {
+    type Output;
+    #[spec]
+    fn spec_euclidean_div(self, rhs: Rhs) -> Self::Output;
+}
+
+pub trait SpecEuclideanMod<Rhs = Self> {
+    type Output;
+    #[spec]
+    fn spec_euclidean_mod(self, rhs: Rhs) -> Self::Output;
+}
+
 // Chained inequalities x <= y < z
 pub struct SpecChain {
     data: std::marker::PhantomData<int>,
@@ -609,6 +621,18 @@ impl_binary_op!(SpecSub, spec_sub, int, [
 ]);
 
 impl_binary_op!(SpecMul, spec_mul, int, [
+    int nat
+    usize u8 u16 u32 u64 u128
+    isize i8 i16 i32 i64 i128
+]);
+
+impl_binary_op!(SpecEuclideanDiv, spec_euclidean_div, Self, [
+    int nat
+    usize u8 u16 u32 u64 u128
+    isize i8 i16 i32 i64 i128
+]);
+
+impl_binary_op!(SpecEuclideanMod, spec_euclidean_mod, Self, [
     int nat
     usize u8 u16 u32 u64 u128
     isize i8 i16 i32 i64 i128

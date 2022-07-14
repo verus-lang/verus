@@ -456,7 +456,9 @@ impl VisitMut for Visitor {
                     | BinOp::Gt(..)
                     | BinOp::Add(..)
                     | BinOp::Sub(..)
-                    | BinOp::Mul(..),
+                    | BinOp::Mul(..)
+                    | BinOp::Div(..)
+                    | BinOp::Rem(..),
                 ..
             }) if use_spec_traits => (true, false),
             Expr::Assume(..) | Expr::Assert(..) | Expr::AssertForall(..) => (true, false),
