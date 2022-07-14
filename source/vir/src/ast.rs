@@ -39,7 +39,7 @@ pub struct Visibility {
 }
 
 /// Describes whether a variable, function, etc. is compiled or just used for verification
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Mode {
     /// Ghost (not compiled), used to represent specifications (requires, ensures, invariant)
     Spec,
@@ -74,7 +74,7 @@ pub enum IntRange {
 pub type Typ = Arc<TypX>;
 pub type Typs = Arc<Vec<Typ>>;
 // Deliberately not marked Eq -- use explicit match instead, so we know where types are compared
-#[derive(Debug)]
+#[derive(Debug, Hash)]
 pub enum TypX {
     /// Bool, Int, Datatype are translated directly into corresponding SMT types (they are not SMT-boxed)
     Bool,
@@ -95,7 +95,7 @@ pub enum TypX {
     Air(air::ast::Typ),
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum TriggerAnnotation {
     /// Automatically choose triggers for the expression containing this annotation,
     /// with no diagnostics printed
@@ -110,7 +110,7 @@ pub enum TriggerAnnotation {
 
 /// Primitive unary operations
 /// (not arbitrary user-defined functions -- these are represented by ExprX::Call)
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum UnaryOp {
     /// boolean not
     Not,
@@ -123,7 +123,7 @@ pub enum UnaryOp {
     Clip(IntRange),
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct FieldOpr {
     pub datatype: Path,
     pub variant: Ident,
@@ -132,7 +132,7 @@ pub struct FieldOpr {
 
 /// More complex unary operations (requires Clone rather than Copy)
 /// (Below, "boxed" refers to boxing types in the SMT encoding, not the Rust Box type)
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Hash)]
 pub enum UnaryOpr {
     /// coerce Typ --> Boxed(Typ)
     Box(Typ),
@@ -150,7 +150,7 @@ pub enum UnaryOpr {
 }
 
 /// Arithmetic operation that might fail (overflow or divide by zero)
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum ArithOp {
     /// IntRange::Int +
     Add,
@@ -165,7 +165,7 @@ pub enum ArithOp {
 }
 
 /// Bitwise operation
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum BitwiseOp {
     BitXor,
     BitAnd,
@@ -174,7 +174,7 @@ pub enum BitwiseOp {
     Shl,
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum InequalityOp {
     /// IntRange::Int <=
     Le,
@@ -192,7 +192,7 @@ pub enum InequalityOp {
 /// not on finite-width integer types or nat.
 /// Finite-width and nat operations are represented with a combination of IntRange::Int operations
 /// and UnaryOp::Clip.
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum BinaryOp {
     /// boolean and (short-circuiting: right side is evaluated only if left side is true)
     And,
@@ -343,7 +343,7 @@ pub enum AssertQueryMode {
     NonLinear,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct Quant {
     pub quant: air::ast::Quant,
     pub boxed_params: bool,

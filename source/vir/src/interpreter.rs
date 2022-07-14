@@ -11,7 +11,7 @@ use crate::ast::{
 };
 use crate::ast_util::{err_str, path_as_rust_name};
 use crate::def::{SstMap, ARCH_SIZE_MIN_BITS};
-use crate::sst::{Bnd, BndX, Exp, ExpX, Exps, UniqueIdent};
+use crate::sst::{Bnd, BndX, Exp, ExpX, Exps, Trigs, UniqueIdent};
 use air::ast::{Binder, BinderX, Binders};
 use air::scope_map::ScopeMap;
 use im::Vector;
@@ -19,6 +19,7 @@ use num_bigint::{BigInt, Sign};
 use num_traits::identities::Zero;
 use num_traits::{FromPrimitive, One, Signed, ToPrimitive};
 use std::collections::{HashMap, HashSet};
+use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -28,11 +29,29 @@ use std::time::{Duration, Instant};
 
 type Env = ScopeMap<UniqueIdent, Exp>;
 
+struct ExpsKey {
+    e: Exps,
+}
+
+impl Hash for ExpsKey {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        hash_exps(state, &self.e);
+    }
+}
+
+impl PartialEq for ExpsKey {
+    fn eq(&self, other: &Self) -> bool {
+        definitely_equal_exprs(&self.e, &other.e)
+    }
+}
+
+impl Eq for ExpsKey {}
+
 struct State {
     depth: usize,
     env: Env,
     debug: bool,
-    cache: HashMap<Fun, Vec<(Exps, Exp)>>,
+    cache: HashMap<Fun, HashMap<ExpsKey, Exp>>,
     cache_hits: u64,
     cache_misses: u64,
     fun_calls: HashMap<Fun, u64>,
@@ -44,25 +63,23 @@ impl State {
     fn insert_call(&mut self, f: &Fun, args: &Exps, result: &Exp) {
         match self.cache.get_mut(f) {
             None => {
-                self.cache.insert(f.clone(), vec![(args.clone(), result.clone())]);
-                ()
+                let mut map = HashMap::new();
+                let key = ExpsKey { e: args.clone() };
+                map.insert(key, result.clone());
+                self.cache.insert(f.clone(), map);
             }
-            Some(prev_results) => prev_results.push((args.clone(), result.clone())),
+            Some(prev_results) => {
+                let key = ExpsKey { e: args.clone() };
+                prev_results.insert(key, result.clone());
+            }
         }
     }
 
     fn lookup_call(&self, f: &Fun, args: &Exps) -> Option<Exp> {
-        for (prev_args, prev_result) in self.cache.get(f)? {
-            match equal_exprs(prev_args, &args) {
-                None => (),
-                Some(b) => {
-                    if b {
-                        return Some(prev_result.clone());
-                    }
-                }
-            }
-        }
-        None
+        let map = self.cache.get(f)?;
+        let key = ExpsKey { e: args.clone() };
+        let res = map.get(&key)?;
+        Some(res.clone())
     }
 }
 
@@ -264,6 +281,155 @@ fn definitely_equal(left: &Exp, right: &Exp) -> bool {
     }
 }
 
+fn definitely_equal_exprs(left: &Exps, right: &Exps) -> bool {
+    match equal_exprs(left, right) {
+        None => false,
+        Some(b) => b,
+    }
+}
+
+/*********************************************
+ * Functionality needed to hash expressions  *
+ *********************************************/
+
+fn hash_exps<H: Hasher>(state: &mut H, exps: &Exps) {
+    for (i, e) in exps.iter().enumerate() {
+        (i + 100).hash(state);
+        hash_exp(state, e);
+    }
+}
+
+fn hash_trigs<H: Hasher>(state: &mut H, trigs: &Trigs) {
+    for (i, exps) in trigs.iter().enumerate() {
+        (i + 200).hash(state);
+        hash_exps(state, &exps);
+    }
+}
+
+fn hash_binders_typ<H: Hasher>(state: &mut H, bnds: &Binders<Typ>) {
+    for b in bnds.iter() {
+        b.name.hash(state);
+        b.a.hash(state);
+    }
+}
+
+fn hash_binders_exp<H: Hasher>(state: &mut H, bnds: &Binders<Exp>) {
+    for b in bnds.iter() {
+        b.name.hash(state);
+        hash_exp(state, &b.a);
+    }
+}
+
+fn hash_bnd<H: Hasher>(state: &mut H, bnd: &Bnd) {
+    use BndX::*;
+    match &bnd.x {
+        Let(bnds) => {
+            300.hash(state);
+            hash_binders_exp(state, &bnds);
+        }
+        Quant(quant, bnds, trigs) => {
+            301.hash(state);
+            quant.hash(state);
+            hash_binders_typ(state, &bnds);
+            hash_trigs(state, &trigs);
+        }
+        Lambda(bnds) => {
+            302.hash(state);
+            hash_binders_typ(state, &bnds);
+        }
+        Choose(bnds, trigs, e) => {
+            302.hash(state);
+            hash_binders_typ(state, &bnds);
+            hash_trigs(state, &trigs);
+            hash_exp(state, &e);
+        }
+    }
+}
+
+fn hash_exp<H: Hasher>(state: &mut H, exp: &Exp) {
+    use ExpX::*;
+    match &exp.x {
+        Const(c) => {
+            0.hash(state);
+            c.hash(state)
+        }
+        Var(id) => {
+            1.hash(state);
+            id.hash(state)
+        }
+        VarLoc(id) => {
+            2.hash(state);
+            id.hash(state)
+        }
+        VarAt(id, va) => {
+            3.hash(state);
+            id.hash(state);
+            va.hash(state)
+        }
+        Loc(e) => {
+            4.hash(state);
+            hash_exp(state, e)
+        }
+        Old(id, uid) => {
+            5.hash(state);
+            id.hash(state);
+            uid.hash(state)
+        }
+        Call(fun, typs, exps) => {
+            6.hash(state);
+            fun.hash(state);
+            typs.hash(state);
+            hash_exps(state, exps);
+        }
+        CallLambda(typ, lambda, args) => {
+            7.hash(state);
+            typ.hash(state);
+            hash_exp(state, lambda);
+            for (i, e) in args.iter().enumerate() {
+                (i + 400).hash(state);
+                hash_exp(state, &e);
+            }
+        }
+        Ctor(path, id, bnds) => {
+            8.hash(state);
+            path.hash(state);
+            id.hash(state);
+            hash_binders_exp(state, bnds);
+        }
+        Unary(op, e) => {
+            9.hash(state);
+            op.hash(state);
+            hash_exp(state, e)
+        }
+        UnaryOpr(op, e) => {
+            10.hash(state);
+            op.hash(state);
+            hash_exp(state, e)
+        }
+        Binary(op, e1, e2) => {
+            11.hash(state);
+            op.hash(state);
+            hash_exp(state, e1);
+            hash_exp(state, e2)
+        }
+        If(e1, e2, e3) => {
+            12.hash(state);
+            hash_exp(state, e1);
+            hash_exp(state, e2);
+            hash_exp(state, e3);
+        }
+        WithTriggers(trigs, e) => {
+            13.hash(state);
+            hash_trigs(state, &trigs);
+            hash_exp(state, e);
+        }
+        Bind(bnd, e) => {
+            14.hash(state);
+            hash_bnd(state, bnd);
+            hash_exp(state, e);
+        }
+    }
+}
 
 /**********************
  * Utility functions  *
@@ -1096,7 +1262,7 @@ pub fn eval_expr(exp: &Exp, fun_ssts: &SstMap, rlimit: u32) -> Result<Exp, VirEr
     let mut state = State {
         depth: 0,
         env,
-        debug: true,
+        debug: false,
         cache,
         cache_hits: 0,
         cache_misses: 0,
