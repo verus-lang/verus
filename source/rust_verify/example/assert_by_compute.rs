@@ -175,23 +175,20 @@ fn compute_list() {
 
 #[spec] const empty: Seq<u32> = Seq::empty();
 
-*/
 fn compute_seq() {
-//    assert_by_compute(empty.len() == 0);
-//    assert_by_compute(empty.push(4).len() == 1);
-//    assert_by_compute(empty.push(4).last() == 4);
-//    assert_by_compute(seq![1, 2, 3].len() == 3);
-//    assert_by_compute(seq![1, 2, 3].index(1) == 2);
-//    assert_by_compute(seq![1, 2, 3].index(2) == 3);
-//    assert_by_compute(seq![1, 2, 3].update(1, 5).index(1) == 5);
-//    assert_by_compute(seq![1, 2, 3].update(1, 5).index(2) == 3);
-//    assert_by_compute(seq![1, 2, 3].add(seq![4, 5]).len() == 5);
-//    assert_by_compute(seq![1, 2, 3].ext_equal(seq![1].add(seq![2, 3])));
-//    assert_by_compute(seq![1, 2, 3, 4, 5].subrange(2,4).ext_equal(seq![3, 4]));
+    assert_by_compute(empty.len() == 0);
+    assert_by_compute(empty.push(4).len() == 1);
+    assert_by_compute(empty.push(4).last() == 4);
+    assert_by_compute(seq![1, 2, 3].len() == 3);
+    assert_by_compute(seq![1, 2, 3].index(1) == 2);
+    assert_by_compute(seq![1, 2, 3].index(2) == 3);
+    assert_by_compute(seq![1, 2, 3].update(1, 5).index(1) == 5);
+    assert_by_compute(seq![1, 2, 3].update(1, 5).index(2) == 3);
+    assert_by_compute(seq![1, 2, 3].add(seq![4, 5]).len() == 5);
+    assert_by_compute(seq![1, 2, 3].ext_equal(seq![1].add(seq![2, 3])));
+    assert_by_compute(seq![1, 2, 3, 4, 5].subrange(2,4).ext_equal(seq![3, 4]));
     assert_by_compute(Seq::new(5, |x| x).index(3) == 3);
 }
-
-/*
 
 #[spec]
 fn use_seq(s: &Seq<u32>) -> u32 {
@@ -204,8 +201,8 @@ fn test_seq_modification() {
         { #[spec] let v = seq![0, 1, 2];
         use_seq(&v) == 42 && v.index(1) == 1});
 }
-
-// VeriBetrKV example:
+*/
+// VeriBetrKV example original:
 // https://github.com/vmware-labs/verified-betrfs/blob/ee4b18d553933440bb5ecda037c6a1c411a49a5f/lib/Crypto/CRC32Lut.i.dfy
 // Currently pops the stack if we use the full lut definition
 // or times out with a smaller lut, even when given 30 seconds
@@ -374,4 +371,74 @@ fn crc_compute() {
     assert_by_compute(bits_of_int(lut.index(v-1) as nat, 64).ext_equal(pow_mod_crc(2*64*v as nat).add(pow_mod_crc(64*v as nat))));
 }
 
+// VeriBetrKV example using sequence comprehension:
+// https://github.com/vmware-labs/verified-betrfs/blob/ee4b18d553933440bb5ecda037c6a1c411a49a5f/lib/Crypto/CRC32Lut.i.dfy
+// Currently pops the stack 
+/*
+#[spec] 
+fn bits_of_int(n: nat, len: nat) -> Seq<bool> {
+    decreases(len);
+    if len == 0 {
+        Seq::empty()
+    } else {
+        seq![n % 2 == 1].add(bits_of_int(n / 2, len - 1))
+    }
+}
+
+#[spec]
+fn zeroes(l: nat) -> Seq<bool> {
+    Seq::new(l, |i| false)
+}
+
+#[spec]
+fn shift(p: Seq<bool>, t: nat) -> Seq<bool> {
+    zeroes(t).add(p)
+}
+
+#[spec]
+fn xor(p: Seq<bool>, q: Seq<bool>) -> Seq<bool> {
+    recommends(p.len() == q.len());
+    Seq::new(p.len(), |i| p.index(i) ^ q.index(i))
+}
+
+#[spec]
+fn mod_F2_X(p: Seq<bool>, q: Seq<bool>) -> Seq<bool> {
+    recommends(q.len() > 0);
+    decreases(p.len());
+    //recommends_by(mod_F2_X_rec);
+    if p.len() <= q.len() - 1 {
+        p.add(zeroes(q.len() - 1 - p.len()))
+    } else {
+        if p.last() {
+            mod_F2_X(xor(p, shift(q, p.len() - q.len())).subrange(0, p.len() as int - 1), q)
+        } else {
+            mod_F2_X(p.subrange(0, p.len() as int - 1), q)
+        }
+    }
+}
+
+#[spec]
+fn reverse(s: Seq<bool>) -> Seq<bool> {
+    decreases(s.len());
+    if s.len() == 0 {
+        Seq::empty()
+    } else {
+        reverse(s.subrange(1, s.len())).push(s.index(0))
+    }
+}
+
+#[spec]
+fn pow_mod_crc(n: nat) -> Seq<bool> {
+    reverse(mod_F2_X(zeroes(n-33).push(true), bits_of_int(0x1_1EDC_6F41, 33)))
+}
+
+#[spec] const lut: Seq<u64> = seq![
+    0x00000001493c7d27, 0x493c7d27ba4fc28e, 0xf20c0dfeddc0152b, 0xba4fc28e9e4addf8];
+
+//assert (forall n | 1 <= n <= 256 :: bits_of_int(lut[n-1] as int, 64) == pow_mod_crc(2*64*n) + pow_mod_crc(64*n))
+//    by(computation);
+#[spec] const v: int = 1;
+fn crc_compute() {
+    assert_by_compute(bits_of_int(lut.index(v-1) as nat, 64).ext_equal(pow_mod_crc(2*64*v as nat).add(pow_mod_crc(64*v as nat))));
+}
 */

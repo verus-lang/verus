@@ -1115,7 +1115,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                     let new_args = Arc::new(new_args?);
                     state.env.push_scope(true);
                     for (formal, actual) in bnds.iter().zip(new_args.iter()) {
-                        println!("Binding {:?} to {:?}", formal.name, actual.x);
+                        //println!("Binding {:?} to {:?}", formal.name, actual.x);
                         state.env.insert((formal.name.clone(), None), actual.clone()).unwrap();
                     }
                     let e = eval_expr_internal(ctx, state, body);
@@ -1169,7 +1169,7 @@ pub fn eval_expr(exp: &Exp, fun_ssts: &SstMap, rlimit: u32) -> Result<Exp, VirEr
     let mut state = State {
         depth: 0,
         env,
-        debug: true,
+        debug: false,
         cache,
         cache_hits: 0,
         cache_misses: 0,
@@ -1180,7 +1180,6 @@ pub fn eval_expr(exp: &Exp, fun_ssts: &SstMap, rlimit: u32) -> Result<Exp, VirEr
     let time_limit = Duration::new(rlimit as u64, 0);
     let time_start = Instant::now();
     let ctx = Ctx { fun_ssts, time_start, time_limit };
-    println!("Starting from {:?}", exp);
-    println!("Starting from {}", exp);
+    //println!("Starting from {}", exp);
     eval_expr_internal(&ctx, &mut state, exp)
 }
