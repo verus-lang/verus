@@ -444,7 +444,6 @@ pub(crate) fn split_expr(
 }
 
 pub(crate) fn register_splitted_assertions(traced_exprs: TracedExps) -> Vec<Stm> {
-    // maybe check some condition here before registering every small exps
     let mut stms: Vec<Stm> = Vec::new();
     for small_exp in &*traced_exprs {
         let new_error = small_exp.trace.primary_span(&small_exp.e.span);
@@ -456,13 +455,10 @@ pub(crate) fn register_splitted_assertions(traced_exprs: TracedExps) -> Vec<Stm>
 
 pub(crate) fn need_split_expression(ctx: &Ctx, span: &Span) -> bool {
     for err in &*ctx.debug_expand_targets {
-        // println!("target error msg: {:?}", err.msg);
         // TODO: make this message in a def.rs somewhere
-        if err.msg == "postcondition not satisfied".to_string() {
+        if err.msg == crate::def::POSTCONDITION_FAILURE.to_string() {
             for label in &err.labels {
-                // println!("label msg {:?}", label.msg);
-                // println!("label span {:?}", label.span);
-                if label.msg == "failed this postcondition".to_string() {
+                if label.msg == crate::def::THIS_POST_FAILED.to_string() {
                     if label.span.as_string == span.as_string {
                         return true;
                     }
@@ -470,7 +466,6 @@ pub(crate) fn need_split_expression(ctx: &Ctx, span: &Span) -> bool {
             }
         } else {
             for sp in &err.spans {
-                // println!("error span: {:?}", sp);
                 // TODO: is this string matching desirable??
                 if sp.as_string == span.as_string {
                     return true;
@@ -478,6 +473,5 @@ pub(crate) fn need_split_expression(ctx: &Ctx, span: &Span) -> bool {
             }
         }
     }
-    // println!("chose not to split. query span: {:?}", span);
     false
 }

@@ -595,7 +595,7 @@ fn stm_call(
 ) -> Result<Stm, VirErr> {
     let fun = get_function(ctx, span, &name)?;
     let mut stms: Vec<Stm> = Vec::new();
-    if ctx.debug && crate::split_expression::need_split_expression(ctx, span) {
+    if ctx.expand_flag && crate::split_expression::need_split_expression(ctx, span) {
         if name.path.segments[0].to_string() == "pervasive".to_string()
             && name.path.segments[1].to_string() == "assert".to_string()
         {
@@ -1382,11 +1382,11 @@ fn expr_to_stm_opt(
                 }
                 for ens in enss.iter() {
                     let error = error_with_label(
-                        "postcondition not satisfied".to_string(),
+                        crate::def::POSTCONDITION_FAILURE.to_string(),
                         &expr.span,
                         "at this exit".to_string(),
                     )
-                    .secondary_label(&ens.span, "failed this postcondition".to_string());
+                    .secondary_label(&ens.span, crate::def::THIS_POST_FAILED.to_string());
                     stms.push(Spanned::new(
                         expr.span.clone(),
                         StmX::Assert(Some(error), ens.clone()),

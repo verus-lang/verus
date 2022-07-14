@@ -654,7 +654,9 @@ pub fn func_def_to_air(
                     ens_stmts.extend(crate::ast_to_sst::check_pure_expr(ctx, &mut state, e)?);
                 } else {
                     // split failing ensures expressions into additional assertions
-                    if ctx.debug && crate::split_expression::need_split_expression(ctx, &e.span) {
+                    if ctx.expand_flag
+                        && crate::split_expression::need_split_expression(ctx, &e.span)
+                    {
                         let ens_exp = crate::ast_to_sst::expr_to_exp(ctx, &ens_pars, e)?;
                         let error = air::errors::error("splitted ensures failure", &ens_exp.span);
                         let splitted_exprs = crate::split_expression::split_expr(
@@ -705,7 +707,7 @@ pub fn func_def_to_air(
                 stm = crate::ast_to_sst::stms_to_one_stm(&body.span, req_stms);
             }
             // add splitted ensures expressions for error localization
-            let stm = if ctx.debug {
+            let stm = if ctx.expand_flag {
                 let mut my_stms = vec![stm.clone()];
                 my_stms.extend(small_ens_assertions);
                 crate::ast_to_sst::stms_to_one_stm(&stm.span, my_stms)

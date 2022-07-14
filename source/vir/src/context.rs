@@ -65,10 +65,12 @@ pub struct Ctx {
     pub(crate) funcs_with_ensure_predicate: HashSet<Fun>,
     pub(crate) datatype_map: HashMap<Path, Datatype>,
     pub(crate) trait_map: HashMap<Path, Trait>,
-    pub debug: bool,
-    pub debug_expand_targets: Vec<air::errors::Error>,
-    pub fun: Option<FunctionCtx>,
     pub global: GlobalCtx,
+    pub fun: Option<FunctionCtx>,
+    // proof debug purposes
+    pub debug: bool,
+    pub expand_flag: bool,
+    pub debug_expand_targets: Vec<air::errors::Error>,
 }
 
 impl Ctx {
@@ -259,10 +261,11 @@ impl Ctx {
             funcs_with_ensure_predicate,
             datatype_map,
             trait_map,
-            debug,
-            debug_expand_targets: vec![],
             fun: None,
             global,
+            debug,
+            expand_flag: false,
+            debug_expand_targets: vec![],
         })
     }
 

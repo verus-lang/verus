@@ -1623,11 +1623,11 @@ pub fn body_stm_to_air(
 
         for ens in enss {
             let error = error_with_label(
-                "postcondition not satisfied".to_string(),
+                crate::def::POSTCONDITION_FAILURE.to_string(),
                 &stm.span,
                 "at the end of the function body".to_string(),
             )
-            .secondary_label(&ens.span, "failed this postcondition".to_string());
+            .secondary_label(&ens.span, crate::def::THIS_POST_FAILED.to_string());
 
             let expr_ctxt = ExprCtxt { mode: ExprMode::Body, is_bit_vector: is_bit_vector_mode };
             let e = mk_let(&trait_typ_bind, &exp_to_expr(ctx, ens, expr_ctxt));

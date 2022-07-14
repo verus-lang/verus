@@ -132,6 +132,10 @@ pub const QID_ACCESSOR: &str = "accessor";
 pub const QID_INVARIANT: &str = "invariant";
 pub const QID_HAS_TYPE_ALWAYS: &str = "has_type_always";
 
+// List of pre-defined error messages
+pub const POSTCONDITION_FAILURE: &str = "postcondition not satisfied";
+pub const THIS_POST_FAILED: &str = "failed this postcondition";
+
 // We assume that usize is at least ARCH_SIZE_MIN_BITS wide
 pub const ARCH_SIZE_MIN_BITS: u32 = 32;
 

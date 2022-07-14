@@ -54,7 +54,7 @@ pub struct Verifier {
     air_no_span: Option<air::ast::Span>,
     inferred_modes: Option<HashMap<InferMode, Mode>>,
 
-    // debugging aid purposes
+    // proof debugging purposes
     expand_flag: bool,
     pub expand_targets: Vec<air::errors::Error>,
     pub expanded_errors: Vec<Vec<ErrorSpan>>,
@@ -969,11 +969,10 @@ impl Verifier {
 
         // In the presence of error, re-verify this module with "splitted expressions" of failing assertions/requires/ensures
         // to get more precise error message.
-        // TODO: might separate into `self.debug_module(..)`
         if !self.encountered_vir_error && before_err_count < self.count_errors {
             // TODO: log in a different file?
             ctx.debug_expand_targets = self.expand_targets.to_vec(); // TODO: avoid copying
-            ctx.debug = true;
+            ctx.expand_flag = true;
             self.expand_flag = true;
             self.verify_module(compiler, &poly_krate, module, &mut ctx)?; // maybe report error it is new?(not reporting if it had no impact)
         }
