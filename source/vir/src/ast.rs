@@ -349,6 +349,16 @@ pub struct Quant {
     pub boxed_params: bool,
 }
 
+/// Computation mode for assert_by_compute
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum ComputeMode {
+    /// After simplifying an expression as far as possible,
+    /// pass the remainder as an assertion to Z3
+    Z3,
+    /// Asserted expression must simplify all the way to True
+    ComputeOnly,
+}
+
 /// Expression, similar to rustc_hir::Expr
 pub type Expr = Arc<SpannedTyped<ExprX>>;
 pub type Exprs = Arc<Vec<Expr>>;
@@ -426,7 +436,7 @@ pub enum ExprX {
     /// assert_by with smt.arith.nl=true
     AssertQuery { requires: Exprs, ensures: Exprs, proof: Expr, mode: AssertQueryMode },
     /// Assertion discharged via computation
-    AssertCompute(Expr),
+    AssertCompute(Expr, ComputeMode),
 }
 
 /// Statement, similar to rustc_hir::Stmt

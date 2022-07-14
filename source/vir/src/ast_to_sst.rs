@@ -1,6 +1,7 @@
 use crate::ast::{
-    ArithOp, BinaryOp, CallTarget, Constant, Expr, ExprX, Fun, Function, Ident, IntRange, Mode,
-    PatternX, SpannedTyped, Stmt, StmtX, Typ, TypX, Typs, UnaryOp, UnaryOpr, VarAt, VirErr,
+    ArithOp, BinaryOp, CallTarget, ComputeMode, Constant, Expr, ExprX, Fun, Function, Ident,
+    IntRange, Mode, PatternX, SpannedTyped, Stmt, StmtX, Typ, TypX, Typs, UnaryOp, UnaryOpr, VarAt,
+    VirErr,
 };
 use crate::ast_util::{err_str, err_string, types_equal, QUANT_FORALL};
 use crate::context::Ctx;
@@ -1172,17 +1173,22 @@ fn expr_to_stm_opt(
             let assert = Spanned::new(e.span.clone(), StmX::AssertBV(expr));
             Ok((vec![assert], ret))
         }
-        ExprX::AssertCompute(e) => {
+        ExprX::AssertCompute(e, mode) => {
             let expr = expr_to_pure_exp(ctx, state, &e)?;
             let ret = ReturnValue::ImplicitUnit(expr.span.clone());
             // We assert the (hopefully simplified) result of calling the interpreter
             // but assume the original expression, so we get the benefits
             // of any ensures, triggers, etc., that it might provide
             let interp_expr =
-                eval_expr(&state.finalize_exp(&expr), &state.fun_ssts, ctx.global.rlimit)?;
-            let assert = Spanned::new(e.span.clone(), StmX::Assert(None, interp_expr));
+                eval_expr(&state.finalize_exp(&expr), &state.fun_ssts, ctx.global.rlimit, *mode)?;
+            let mut stmts = Vec::new();
+            if matches!(mode, ComputeMode::Z3) {
+                let assert = Spanned::new(e.span.clone(), StmX::Assert(None, interp_expr));
+                stmts.push(assert);
+            }
             let assume = Spanned::new(e.span.clone(), StmX::Assume(expr));
-            Ok((vec![assert, assume], ret))
+            stmts.push(assume);
+            Ok((stmts, ret))
         }
         ExprX::If(expr0, expr1, None) => {
             let (stms0, e0) = expr_to_stm_opt(ctx, state, expr0)?;

@@ -6,8 +6,8 @@
 //! https://github.com/secure-foundations/verus/discussions/120
 
 use crate::ast::{
-    ArithOp, BinaryOp, BitwiseOp, Constant, Fun, InequalityOp, IntRange, SpannedTyped, Typ, TypX,
-    Typs, UnaryOp, VirErr,
+    ArithOp, BinaryOp, BitwiseOp, ComputeMode, Constant, Fun, InequalityOp, IntRange, SpannedTyped,
+    Typ, TypX, Typs, UnaryOp, VirErr,
 };
 use crate::ast_util::{err_str, path_as_rust_name};
 use crate::def::{SstMap, ARCH_SIZE_MIN_BITS};
@@ -1257,13 +1257,18 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
     Ok(res)
 }
 
-pub fn eval_expr(exp: &Exp, fun_ssts: &SstMap, rlimit: u32) -> Result<Exp, VirErr> {
+pub fn eval_expr(
+    exp: &Exp,
+    fun_ssts: &SstMap,
+    rlimit: u32,
+    mode: ComputeMode,
+) -> Result<Exp, VirErr> {
     let env = ScopeMap::new();
     let cache = HashMap::new();
     let mut state = State {
         depth: 0,
         env,
-        debug: true,
+        debug: false,
         cache,
         cache_hits: 0,
         cache_misses: 0,
@@ -1275,5 +1280,17 @@ pub fn eval_expr(exp: &Exp, fun_ssts: &SstMap, rlimit: u32) -> Result<Exp, VirEr
     let time_start = Instant::now();
     let ctx = Ctx { fun_ssts, time_start, time_limit };
     //println!("Starting from {}", exp);
-    eval_expr_internal(&ctx, &mut state, exp)
+    let res = eval_expr_internal(&ctx, &mut state, exp);
+    match mode {
+        // Send partial result to Z3
+        ComputeMode::Z3 => res,
+        // Proof must succeed purely through computation
+        ComputeMode::ComputeOnly => {
+            let res = res?;
+            match res.x {
+                ExpX::Const(Constant::Bool(true)) => Ok(res),
+                _ => err_str(&exp.span, "assert_by_compute_only failed to result in true"),
+            }
+        }
+    }
 }

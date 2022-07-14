@@ -11,7 +11,7 @@ use pervasive::*;
 use seq::*;
 
 fn main() {}
-/*
+
 #[spec]
 fn shifter(x: u64, amt: usize) -> u64 {
     decreases(amt);
@@ -24,28 +24,28 @@ const two32: u32 = 2;
 const one64: u64 = 1;
 const two64: u64 = 2;
 fn compute_bv(x:u64) {
-    assert_by_compute(!(-1) == 0); // true
-    assert_by_compute(!(-2) == 1); // true
-    assert_by_compute(!one32 == 0xFFFF_FFFE); // true
-    assert_by_compute(!two32 == 0xFFFF_FFFD); // true
-    assert_by_compute(!one64 == 0xFFFF_FFFF_FFFF_FFFE); // true
-    assert_by_compute(!two64 == 0xFFFF_FFFF_FFFF_FFFD); // true
-    assert_by_compute(-1 << 3 == -8); // true
-    assert_by_compute(x ^ x == 0);  // true
-    assert_by_compute(x & x == x);  // true
-    assert_by_compute(shifter(1, 10) == 1024); // true
+    assert_by_compute_only(!(-1) == 0);
+    assert_by_compute_only(!(-2) == 1);
+    assert_by_compute_only(!one32 == 0xFFFF_FFFE);
+    assert_by_compute_only(!two32 == 0xFFFF_FFFD);
+    assert_by_compute_only(!one64 == 0xFFFF_FFFF_FFFF_FFFE);
+    assert_by_compute_only(!two64 == 0xFFFF_FFFF_FFFF_FFFD);
+    assert_by_compute_only(-1 << 3 == -8);
+    assert_by_compute_only(x ^ x == 0);
+    assert_by_compute_only(x & x == x);
+    assert_by_compute_only(shifter(1, 10) == 1024);
 }
 
 fn compute_arith(x:u64) {
-    assert_by_compute((7 + 7 * 2 > 20) && (22 - 5 <= 10*10)); // true
-    assert_by_compute(x * 0 == 0);  // 0 == 0
+    assert_by_compute_only((7 + 7 * 2 > 20) && (22 - 5 <= 10*10));
+    assert_by_compute_only(x * 0 == 0);
     // TODO: This currently produces: uClip(64, x) == x,
     // due to the same issue mentioned below
     assert_by_compute(x * 1 == x);
 }
 
 fn compute_ite() {
-    assert_by_compute(9 == if 7 > 3 { 9 } else { 5 });  // 9 == 9
+    assert_by_compute_only(9 == if 7 > 3 { 9 } else { 5 });
     // TODO: The example below fails the expr_to_pure_exp check,
     // due to the overflow checks that are inserted.
     // They are inserted because the mode checker treats constants as Exec,
@@ -53,20 +53,27 @@ fn compute_ite() {
     // confirms that an Exec expression can be passed as a Spec arg,
     // but it doesn't "upgrade" the expression to Spec.
     // This should be addressed when we move to the new syntax.
-    //assert_by_compute(9 == if (7 + 7 * 2 > 20) { 7 + 2 } else { 22 - 5 + 10*10 });
+    //assert_by_compute_only(9 == if (7 + 7 * 2 > 20) { 7 + 2 } else { 22 - 5 + 10*10 });
 }
 
 fn compute_let() {
-    assert_by_compute({#[spec]let x = true; x});    // true
-    assert_by_compute({#[spec]let x = 7; x > 4});   // true
+    assert_by_compute_only({#[spec]let x = true; x});
+    assert_by_compute_only({#[spec]let x = 7; x > 4});
 }
 
 fn compute_datatype() {
-    assert_by_compute(  // true
+    assert_by_compute_only(
         match Option::Some(true) {
             Option::Some(b) => b,
             _ => 10 > 20,
         });
+}
+
+fn compute_closure() {
+    assert_by_compute_only( (|x| x + 1)(5) == 6); 
+    let y = 5;
+    assert_by_compute((|x| x + y)(5) == 10); // clip(5 + y) == 10, since the let is outside the assert
+    assert_by_compute_only({ #[spec] let y = 5; (|x| x + y)(5) == 10 });
 }
 
 #[spec]
@@ -78,7 +85,7 @@ fn sum(x: nat) -> nat {
 
 fn compute_call() {
     // assert(sum(10) == 10);  // fails without more fuel
-    assert_by_compute(sum(10) == 10);  // true
+    assert_by_compute_only(sum(10) == 10);
 }
 
 #[spec]
@@ -90,8 +97,8 @@ fn fib(x: nat) -> nat {
 }
 
 fn compute_fib() {
-    assert_by_compute(fib(10) == 55);   // true
-    assert_by_compute(fib(100) == 354224848179261915075);
+    assert_by_compute_only(fib(10) == 55);
+    assert_by_compute_only(fib(100) == 354224848179261915075);
 }
 
 // VeriTitan example
@@ -106,9 +113,9 @@ const Q: nat = 12289;
 const L: nat = 11;
 const G: nat = 7;
 
-fn compute_verititan() {
-    assert_by_compute(pow(G, pow(2, L) / 2) % Q == Q - 1);  // TODO: stack overflow
-}
+//fn compute_verititan() {
+//    assert_by_compute_only(pow(G, pow(2, L) / 2) % Q == Q - 1);  // TODO: stack overflow
+//}
 
 /*
  * Examples traversing recursive data structures
@@ -158,8 +165,8 @@ fn ex1_rev() -> List<nat> {
 }
 
 fn compute_list() {
-    assert_by_compute(len(ex1()) == 5);
-    assert_by_compute(equal(reverse(ex1()), ex1_rev()));
+    assert_by_compute_only(len(ex1()) == 5);
+    assert_by_compute_only(equal(reverse(ex1()), ex1_rev()));
 }
 
 /*
@@ -169,18 +176,19 @@ fn compute_list() {
 #[spec] const empty: Seq<u32> = Seq::empty();
 
 fn compute_seq() {
-    assert_by_compute(empty.len() == 0);
-    assert_by_compute(empty.push(4).len() == 1);
-    assert_by_compute(empty.push(4).last() == 4);
-    assert_by_compute(seq![1, 2, 3].len() == 3);
-    assert_by_compute(seq![1, 2, 3].index(1) == 2);
-    assert_by_compute(seq![1, 2, 3].index(2) == 3);
-    assert_by_compute(seq![1, 2, 3].update(1, 5).index(1) == 5);
-    assert_by_compute(seq![1, 2, 3].update(1, 5).index(2) == 3);
-    assert_by_compute(seq![1, 2, 3].add(seq![4, 5]).len() == 5);
-    assert_by_compute(seq![1, 2, 3].ext_equal(seq![1].add(seq![2, 3])));
-    assert_by_compute(seq![1, 2, 3, 4, 5].subrange(2,4).ext_equal(seq![3, 4]));
-    assert_by_compute(Seq::new(5, |x| x).index(3) == 3);
+    assert_by_compute_only(empty.len() == 0);
+    assert_by_compute_only(empty.push(4).len() == 1);
+    assert_by_compute_only(empty.push(4).last() == 4);
+    assert_by_compute_only(seq![1, 2, 3].len() == 3);
+    assert_by_compute_only(seq![1, 2, 3].index(1) == 2);
+    assert_by_compute_only(seq![1, 2, 3].index(2) == 3);
+    assert_by_compute_only(seq![1, 2, 3].update(1, 5).index(1) == 5);
+    assert_by_compute_only(seq![1, 2, 3].update(1, 5).index(2) == 3);
+    assert_by_compute_only(seq![1, 2, 3].add(seq![4, 5]).len() == 5);
+    assert_by_compute_only(seq![1, 2, 3].ext_equal(seq![1].add(seq![2, 3])));
+    assert_by_compute_only(seq![1, 2, 3, 4, 5].subrange(2,4).ext_equal(seq![3, 4]));
+    assert_by_compute_only(Seq::new(5, |x| x).index(3) == 3);
+    assert_by_compute_only(Seq::new(5, |x| x+x).index(3) == 6);
 }
 
 #[spec]
@@ -194,7 +202,7 @@ fn test_seq_modification() {
         { #[spec] let v = seq![0, 1, 2];
         use_seq(&v) == 42 && v.index(1) == 1});
 }
-*/
+
 // VeriBetrKV example original:
 // https://github.com/vmware-labs/verified-betrfs/blob/ee4b18d553933440bb5ecda037c6a1c411a49a5f/lib/Crypto/CRC32Lut.i.dfy
 // Currently pops the stack if we use the full lut definition
@@ -363,7 +371,7 @@ fn pow_mod_crc(n: nat) -> Seq<bool> {
 //    by(computation);
 #[spec] const v: int = 1;
 fn crc_compute() {
-    assert_by_compute(bits_of_int(lut.index(v-1) as nat, 64).ext_equal(pow_mod_crc(2*64*v as nat).add(pow_mod_crc(64*v as nat))));
+    assert_by_compute_only(bits_of_int(lut.index(v-1) as nat, 64).ext_equal(pow_mod_crc(2*64*v as nat).add(pow_mod_crc(64*v as nat))));
 }
 
 // VeriBetrKV example using sequence comprehension:
@@ -433,24 +441,12 @@ fn pow_mod_crc(n: nat) -> Seq<bool> {
 //    by(computation);
 #[spec] const v: int = 1;
 //fn crc_compute() {
-//    assert_by_compute(bits_of_int(lut.index(v-1) as nat, 64).ext_equal(pow_mod_crc(2*64*v as nat).add(pow_mod_crc(64*v as nat))));
+//    assert_by_compute_only(bits_of_int(lut.index(v-1) as nat, 64).ext_equal(pow_mod_crc(2*64*v as nat).add(pow_mod_crc(64*v as nat))));
 //}
 //
 
 //fn xor_test() {
-//    assert_by_compute(xor(zeroes(10), zeroes(10)).ext_equal(zeroes(10)));
+//    assert_by_compute_only(xor(zeroes(10), zeroes(10)).ext_equal(zeroes(10)));
 //}
 
 */
-
-fn compute_closure() {
-    assert_by_compute( (|x| x + 1)(5) == 6);  // true
-    let y = 5;
-    assert_by_compute((|x| x + y)(5) == 10); // clip(5 + y) == 10, since the let is outside the assert
-    assert_by_compute({ #[spec] let y = 5; (|x| x + y)(5) == 10 }); // true
-}
-
-
-fn compute_seq() {
-    assert_by_compute(Seq::new(5, |x| x+x).index(3) == 6);
-}

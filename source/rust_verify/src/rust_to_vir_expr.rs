@@ -29,10 +29,10 @@ use rustc_span::def_id::DefId;
 use rustc_span::Span;
 use std::sync::Arc;
 use vir::ast::{
-    ArithOp, ArmX, AssertQueryMode, BinaryOp, BitwiseOp, CallTarget, Constant, ExprX, FieldOpr,
-    FunX, HeaderExpr, HeaderExprX, Ident, InequalityOp, IntRange, InvAtomicity, Mode, MultiOp,
-    PathX, PatternX, Quant, SpannedTyped, StmtX, Stmts, Typ, TypX, UnaryOp, UnaryOpr, VarAt,
-    VirErr,
+    ArithOp, ArmX, AssertQueryMode, BinaryOp, BitwiseOp, CallTarget, ComputeMode, Constant, ExprX,
+    FieldOpr, FunX, HeaderExpr, HeaderExprX, Ident, InequalityOp, IntRange, InvAtomicity, Mode,
+    MultiOp, PathX, PatternX, Quant, SpannedTyped, StmtX, Stmts, Typ, TypX, UnaryOp, UnaryOpr,
+    VarAt, VirErr,
 };
 use vir::ast_util::{ident_binder, path_as_rust_name};
 use vir::def::positional_field_ident;
@@ -411,6 +411,7 @@ fn fn_call_to_vir<'tcx>(
     let is_implies = f_name == "builtin::imply";
     let is_assert_by = f_name == "builtin::assert_by";
     let is_assert_by_compute = f_name == "builtin::assert_by_compute";
+    let is_assert_by_compute_only = f_name == "builtin::assert_by_compute_only";
     let is_assert_nonlinear_by = f_name == "builtin::assert_nonlinear_by";
     let is_assert_forall_by = f_name == "builtin::assert_forall_by";
     let is_assert_bit_vector = f_name == "builtin::assert_bit_vector";
@@ -518,6 +519,7 @@ fn fn_call_to_vir<'tcx>(
             || is_with_triggers
             || is_assert_by
             || is_assert_by_compute
+            || is_assert_by_compute_only
             || is_assert_nonlinear_by
             || is_assert_forall_by
             || is_assert_bit_vector
@@ -718,7 +720,12 @@ fn fn_call_to_vir<'tcx>(
     if is_assert_by_compute {
         unsupported_err_unless!(len == 1, expr.span, "expected assert_by_compute", &args);
         let exp = expr_to_vir(bctx, &args[0], ExprModifier::REGULAR)?;
-        return Ok(mk_expr(ExprX::AssertCompute(exp)));
+        return Ok(mk_expr(ExprX::AssertCompute(exp, ComputeMode::Z3)));
+    }
+    if is_assert_by_compute_only {
+        unsupported_err_unless!(len == 1, expr.span, "expected assert_by_compute_only", &args);
+        let exp = expr_to_vir(bctx, &args[0], ExprModifier::REGULAR)?;
+        return Ok(mk_expr(ExprX::AssertCompute(exp, ComputeMode::ComputeOnly)));
     }
     if is_assert_nonlinear_by {
         unsupported_err_unless!(

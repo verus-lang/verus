@@ -625,7 +625,7 @@ fn check_expr(
             check_expr_has_mode(typing, Mode::Spec, e, Mode::Spec)?;
             Ok(Mode::Proof)
         }
-        ExprX::AssertCompute(e) => {
+        ExprX::AssertCompute(e, _) => {
             if typing.check_ghost_blocks && typing.block_ghostness == Ghost::Exec {
                 return err_str(&expr.span, "cannot use assert in exec mode");
             }

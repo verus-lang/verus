@@ -250,7 +250,7 @@ where
                 ExprX::AssertBV(e) => {
                     expr_visitor_control_flow!(expr_visitor_dfs(e, map, mf));
                 }
-                ExprX::AssertCompute(e) => {
+                ExprX::AssertCompute(e, _) => {
                     expr_visitor_control_flow!(expr_visitor_dfs(e, map, mf));
                 }
                 ExprX::Fuel(_, _) => (),
@@ -610,9 +610,9 @@ where
             let expr1 = map_expr_visitor_env(e, map, env, fe, fs, ft)?;
             ExprX::AssertBV(expr1)
         }
-        ExprX::AssertCompute(e) => {
+        ExprX::AssertCompute(e, m) => {
             let expr1 = map_expr_visitor_env(e, map, env, fe, fs, ft)?;
-            ExprX::AssertCompute(expr1)
+            ExprX::AssertCompute(expr1, *m)
         }
         ExprX::If(e1, e2, e3) => {
             let expr1 = map_expr_visitor_env(e1, map, env, fe, fs, ft)?;
