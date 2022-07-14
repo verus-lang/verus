@@ -196,11 +196,8 @@ impl fmt::Display for ExpX {
                     write!(f, "let {} in {}", assigns, exp)
                 }
                 BndX::Lambda(bnds) => {
-                    let assigns = bnds
-                        .iter()
-                        .map(|b| format!("{}", b.name))
-                        .collect::<Vec<_>>()
-                        .join(", ");
+                    let assigns =
+                        bnds.iter().map(|b| format!("{}", b.name)).collect::<Vec<_>>().join(", ");
                     write!(f, "(|{}| {})", assigns, exp)
                 }
                 BndX::Quant(..) | BndX::Choose(..) => {

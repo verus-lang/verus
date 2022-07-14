@@ -435,10 +435,11 @@ fn eval_seq_producing(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<SeqResu
     use ExpX::*;
     use SeqResult::*;
     match &exp.x {
-        Call(fun, _typs, args) => {
+        Call(fun, typs, args) => {
             let new_args: Result<Vec<Exp>, VirErr> =
                 args.iter().map(|e| eval_expr_internal(ctx, state, e)).collect();
             let new_args = new_args?;
+            let exp_new = |e: ExpX| SpannedTyped::new(&exp.span, &exp.typ, e);
             let ok = Ok(Symbolic);
             let get_int = |e: &Exp| match &e.x {
                 UnaryOpr(crate::ast::UnaryOpr::Box(_), e) => match &e.x {
@@ -448,11 +449,41 @@ fn eval_seq_producing(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<SeqResu
                 _ => None,
             };
 
-            // TODO: Handle Seq::new; this would require handling lambdas in eval_expr_internal
             match path_as_rust_name(&fun.path).as_str() {
-                "crate::pervasive::seq::Seq::empty" => {
-                    //println!("Producing empty");
-                    Ok(Concrete(Vector::new()))
+                "crate::pervasive::seq::Seq::empty" => Ok(Concrete(Vector::new())),
+                "crate::pervasive::seq::Seq::new" => {
+                    match get_int(&new_args[0]) {
+                        Some(len) => {
+                            let lambda = match &new_args[1].x {
+                                UnaryOpr(crate::ast::UnaryOpr::Box(_), e) => e,
+                                _ => panic!(
+                                    "Expected Seq::new's second argument to be boxed.  Got {:?} instead",
+                                    new_args[1]
+                                ),
+                            };
+                            let vec: Result<Vec<Exp>, VirErr> = (0..len)
+                                .map(|i| {
+                                    let args = Arc::new(vec![exp_new(Const(Constant::Int(
+                                        BigInt::from(i),
+                                    )))]);
+                                    // TODO: What's the right typ to pass here?
+                                    let call =
+                                        exp_new(CallLambda(typs[0].clone(), lambda.clone(), args));
+                                    // TODO: What's the right typ to pass here?
+                                    let boxed_call = exp_new(UnaryOpr(
+                                        crate::ast::UnaryOpr::Box(typs[0].clone()),
+                                        call,
+                                    ));
+                                    eval_expr_internal(ctx, state, &boxed_call)
+                                })
+                                .collect();
+                            let vec: Vec<Exp> = vec?;
+                            let mut im_vec: Vector<Exp> = Vector::new();
+                            im_vec.extend(vec.into_iter());
+                            Ok(Concrete(im_vec))
+                        }
+                        _ => ok,
+                    }
                 }
                 "crate::pervasive::seq::Seq::push" => {
                     //println!("producing push");
@@ -1076,6 +1107,25 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                 }
             }
         }
+        CallLambda(_typ, lambda, args) => match &lambda.x {
+            Bind(bnd, body) => match &bnd.x {
+                BndX::Lambda(bnds) => {
+                    let new_args: Result<Vec<Exp>, VirErr> =
+                        args.iter().map(|e| eval_expr_internal(ctx, state, e)).collect();
+                    let new_args = Arc::new(new_args?);
+                    state.env.push_scope(true);
+                    for (formal, actual) in bnds.iter().zip(new_args.iter()) {
+                        println!("Binding {:?} to {:?}", formal.name, actual.x);
+                        state.env.insert((formal.name.clone(), None), actual.clone()).unwrap();
+                    }
+                    let e = eval_expr_internal(ctx, state, body);
+                    state.env.pop_scope();
+                    e
+                }
+                _ => panic!("CallLambda's binder to contain a lambda.  Instead found {:?}", bnd),
+            },
+            _ => panic!("CallLambda to contain a lambda.  Instead found {:}", lambda),
+        },
         Bind(bnd, e) => match &bnd.x {
             BndX::Let(bnds) => {
                 state.env.push_scope(true);
@@ -1102,7 +1152,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
             exp_new(Ctor(path.clone(), id.clone(), Arc::new(new_bnds)))
         }
         // Ignored by the interpreter at present (i.e., treated as symbolic)
-        VarAt(..) | VarLoc(..) | Loc(..) | Old(..) | CallLambda(..) | WithTriggers(..) => ok,
+        VarAt(..) | VarLoc(..) | Loc(..) | Old(..) | WithTriggers(..) => ok,
     };
     let res = r?;
     state.depth -= 1;
@@ -1119,7 +1169,7 @@ pub fn eval_expr(exp: &Exp, fun_ssts: &SstMap, rlimit: u32) -> Result<Exp, VirEr
     let mut state = State {
         depth: 0,
         env,
-        debug: false,
+        debug: true,
         cache,
         cache_hits: 0,
         cache_misses: 0,
@@ -1130,6 +1180,7 @@ pub fn eval_expr(exp: &Exp, fun_ssts: &SstMap, rlimit: u32) -> Result<Exp, VirEr
     let time_limit = Duration::new(rlimit as u64, 0);
     let time_start = Instant::now();
     let ctx = Ctx { fun_ssts, time_start, time_limit };
-    //println!("Starting from {:?}", exp);
+    println!("Starting from {:?}", exp);
+    println!("Starting from {}", exp);
     eval_expr_internal(&ctx, &mut state, exp)
 }

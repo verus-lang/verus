@@ -93,6 +93,14 @@ fn compute_fib() {
     assert_by_compute(fib(10) == 55);   // true
     assert_by_compute(fib(100) == 354224848179261915075);
 }
+
+fn compute_lambda() {
+    assert_by_compute( (|x| x + 1)(5) == 6);  // true
+    let y = 5;
+    assert_by_compute((|x| x + y)(5) == 10); // clip(5 + y) == 10, since the let is outside the assert
+    assert_by_compute({ #[spec] let y = 5; (|x| x + y)(5) == 10 }); // true
+}
+
 // VeriTitan example
 #[spec]
 fn pow(base: nat, exp: nat) -> nat {
@@ -167,19 +175,23 @@ fn compute_list() {
 
 #[spec] const empty: Seq<u32> = Seq::empty();
 
+*/
 fn compute_seq() {
-    assert_by_compute(empty.len() == 0);
-    assert_by_compute(empty.push(4).len() == 1);
-    assert_by_compute(empty.push(4).last() == 4);
-    assert_by_compute(seq![1, 2, 3].len() == 3);
-    assert_by_compute(seq![1, 2, 3].index(1) == 2);
-    assert_by_compute(seq![1, 2, 3].index(2) == 3);
-    assert_by_compute(seq![1, 2, 3].update(1, 5).index(1) == 5);
-    assert_by_compute(seq![1, 2, 3].update(1, 5).index(2) == 3);
-    assert_by_compute(seq![1, 2, 3].add(seq![4, 5]).len() == 5);
-    assert_by_compute(seq![1, 2, 3].ext_equal(seq![1].add(seq![2, 3])));
-    assert_by_compute(seq![1, 2, 3, 4, 5].subrange(2,4).ext_equal(seq![3, 4]));
+//    assert_by_compute(empty.len() == 0);
+//    assert_by_compute(empty.push(4).len() == 1);
+//    assert_by_compute(empty.push(4).last() == 4);
+//    assert_by_compute(seq![1, 2, 3].len() == 3);
+//    assert_by_compute(seq![1, 2, 3].index(1) == 2);
+//    assert_by_compute(seq![1, 2, 3].index(2) == 3);
+//    assert_by_compute(seq![1, 2, 3].update(1, 5).index(1) == 5);
+//    assert_by_compute(seq![1, 2, 3].update(1, 5).index(2) == 3);
+//    assert_by_compute(seq![1, 2, 3].add(seq![4, 5]).len() == 5);
+//    assert_by_compute(seq![1, 2, 3].ext_equal(seq![1].add(seq![2, 3])));
+//    assert_by_compute(seq![1, 2, 3, 4, 5].subrange(2,4).ext_equal(seq![3, 4]));
+    assert_by_compute(Seq::new(5, |x| x).index(3) == 3);
 }
+
+/*
 
 #[spec]
 fn use_seq(s: &Seq<u32>) -> u32 {
@@ -319,7 +331,7 @@ fn pow_mod_crc(n: nat) -> Seq<bool> {
 //    0x143387548ae00689, 0x49c3cc9c17f27698, 0x5bd2011f58ca5f00, 0x68bce87aaa7c7ad5,
 //    0xdd07448eb5cfca28, 0x57a3d037ded288f8, 0xdde8f5b959f229bc, 0x6956fc3b6d390dec,
 //    0xa3e3e02c37170390, 0x42d988886353c1cc, 0xd73c7beac4584f5c, 0x3771e98ff48642e9,
-//    0x80ff0093531377e2, 0xb42ae3d9dd35bc8d, 0x8fe4c34db25b29f2, 0x2178513a9a5ede41,
+//    0: Result<Vec<Exp>, VirErr>x80ff0093531377e2, 0xb42ae3d9dd35bc8d, 0x8fe4c34db25b29f2, 0x2178513a9a5ede41,
 //    0xdf99fc11a563905d, 0xe0ac139e45cddf4e, 0x6c23e841acfa3103, 0x170076faa51b6135,
 //    0xfe314258dfd94fb2, 0x444dd41380f2886b, 0x0d8373a067969a6a, 0x6f345e45021ac5ef,
 //    0x19e3635ee8310afa, 0x41d17b6475451b04, 0x29f268b48e1450f7, 0xff0dba97cbbe4ee1,
@@ -363,10 +375,3 @@ fn crc_compute() {
 }
 
 */
-
-fn compute_lambda() {
-    assert_by_compute( (|x| x + 1)(5) == 6);
-
-    let y = 5;
-    assert_by_compute( (|x| x + y)(5) == 10);
-}
