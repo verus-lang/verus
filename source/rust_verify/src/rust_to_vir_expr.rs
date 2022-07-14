@@ -1038,7 +1038,11 @@ fn fn_call_to_vir<'tcx>(
             panic!("internal error")
         };
         let e = mk_expr(ExprX::Binary(vop, lhs, rhs));
-        if is_arith_binary { Ok(mk_ty_clip(&expr_typ(), &e)) } else { Ok(e) }
+        if is_arith_binary || is_spec_arith_binary {
+            Ok(mk_ty_clip(&expr_typ(), &e))
+        } else {
+            Ok(e)
+        }
     } else if is_chained_value {
         unsupported_err_unless!(len == 1, expr.span, "spec_chained_value", &args);
         unsupported_err_unless!(
