@@ -12,13 +12,10 @@ fn subsitute_argument(
     arg_map: &HashMap<Arc<String>, Exp>,
 ) -> Result<Exp, (Span, String)> {
     let result = match &exp.x {
-        ExpX::Var((id, _num)) => {
-            // println!("id: {:?}", id);
-            match arg_map.get(id) {
-                Some(e) => e.clone(),
-                None => exp.clone(),
-            }
-        }
+        ExpX::Var((id, _num)) => match arg_map.get(id) {
+            Some(e) => e.clone(),
+            None => exp.clone(),
+        },
         ExpX::Call(x, typs, es) => {
             let mut es_replaced = vec![];
             for e in es.iter() {
@@ -143,14 +140,7 @@ pub(crate) fn tr_inline_expression(
     return subsitute_argument(body_exp, &arg_map);
 }
 
-// TODO: see if I can use `expr_to_exp_as_spec` instead of below one
 pub(crate) fn pure_ast_expression_to_sst(ctx: &Ctx, body: &Expr, params: &Params) -> Exp {
-    // let pars = crate::func_to_air::params_to_pars(params, false);
-    // let mut state = crate::ast_to_sst::State::new();
-    // state.declare_params(&pars);
-    // state.view_as_spec = true;
-    // let body_exp = expr_to_pure_exp(&ctx, &mut state, &body).expect("pure_ast_expression_to_sst");
-    // state.finalize_exp(&body_exp)
     crate::ast_to_sst::expr_to_exp_as_spec(
         &ctx,
         &crate::func_to_air::params_to_pars(params, false),
@@ -348,12 +338,9 @@ pub(crate) fn split_expr(
         }
         ExpX::Call(fun_name, _typs, exps) => {
             let fun = get_function(ctx, &exp.e.span, fun_name).unwrap();
-            // println!("{:?}", &fun.span.as_string);
-            // println!("{:?}", exps[0].span.as_string);
             let res_inlined_exp = tr_inline_function(ctx, state, fun, exps, &exp.e.span);
             match res_inlined_exp {
                 Ok(inlined_exp) => {
-                    // println!("inlined exp: {:?}", inlined_exp);
                     let inlined_tr_exp = TracedExpX::new(
                         inlined_exp,
                         exp.trace.secondary_label(&exp.e.span, "inlining this function call"), // TODO: pretty print inlined expr
@@ -405,24 +392,34 @@ pub(crate) fn split_expr(
             return Ok(Arc::new(splitted));
         }
         ExpX::Bind(bnd, e1) => {
-            // TODO: split on `exists` when negated
-            // TODO: Lambda, Choose
-            // split on `forall` when !neagted,
-            match bnd.x {
-                BndX::Quant(Quant { quant: air::ast::Quant::Forall, boxed_params: _ }, _, _)
+            let new_bnd = match &bnd.x {
+                BndX::Let(..)
+                | BndX::Quant(Quant { quant: air::ast::Quant::Forall, boxed_params: _ }, _, _)
                     if !negated =>
                 {
-                    ()
+                    bnd.clone()
                 }
-                BndX::Let(..) => (),
+                // TODO: check if I can find an example that uses this path
+                BndX::Quant(
+                    Quant { quant: air::ast::Quant::Exists, boxed_params },
+                    bndrs,
+                    expr_in,
+                ) if negated => {
+                    let new_bndx = BndX::Quant(
+                        Quant { quant: air::ast::Quant::Forall, boxed_params: *boxed_params },
+                        bndrs.clone(),
+                        expr_in.clone(),
+                    );
+                    Spanned::new(bnd.span.clone(), new_bndx)
+                }
+                // TODO: consider splittig further: Lambda, Choose
                 _ => return Ok(mk_atom(exp.clone(), negated)),
             };
             let es1 =
                 split_expr(ctx, state, &TracedExpX::new(e1.clone(), exp.trace.clone()), negated)?;
             let mut splitted: Vec<TracedExp> = vec![];
             for e in &*es1 {
-                // REVIEW: should I split expression in `let sth = exp`?
-                let new_expx = ExpX::Bind(bnd.clone(), e.e.clone());
+                let new_expx = ExpX::Bind(new_bnd.clone(), e.e.clone());
                 let new_exp = SpannedTyped::new(&e.e.span, &exp.e.typ, new_expx);
                 let new_tr_exp = TracedExpX::new(new_exp, e.trace.clone());
                 splitted.push(new_tr_exp);
@@ -430,8 +427,7 @@ pub(crate) fn split_expr(
             return Ok(Arc::new(splitted));
         }
 
-        // TODO: more cases
-
+        // TODO: consider splitting further cases
         // cases that cannot be splitted. "atom" boolean expressions
         _ => return Ok(mk_atom(exp.clone(), negated)),
     }
