@@ -78,7 +78,7 @@ impl<T> Duplicable<T> {
         ensures(|s: Self| s.wf() && equal(s.view(), t));
 
         #[proof] let (inst, mut readers) = Dupe::Instance::initialize_one(/* spec */ t, Option::Some(t));
-        #[proof] let reader = readers.proof_remove(Dupe::reader { value: t, instance: inst });
+        #[proof] let reader = readers.tracked_remove(Dupe::reader { value: t, instance: inst });
         Duplicable {
             inst, reader
         }

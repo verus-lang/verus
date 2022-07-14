@@ -1,3 +1,4 @@
+use crate::rustdoc::env_rustdoc;
 use proc_macro2::TokenStream;
 use syn_verus::parse::{Parse, ParseStream};
 use syn_verus::punctuated::Punctuated;
@@ -41,6 +42,9 @@ struct Visitor {
     // Fixed is used for bitwise operations, where we use Rust's native integer literals
     // rather than an int literal.
     inside_arith: InsideArith,
+
+    // Add extra verus signature information to the docstring
+    rustdoc: bool,
 }
 
 fn data_mode_attrs(mode: &DataMode) -> Vec<Attribute> {
@@ -767,6 +771,13 @@ impl VisitMut for Visitor {
     }
 
     fn visit_item_fn_mut(&mut self, fun: &mut ItemFn) {
+        // Process rustdoc before processing the ItemFn itself.
+        // That way, the generated rustdoc gets the prettier syntax instead of the
+        // de-sugared syntax.
+        if self.rustdoc {
+            crate::rustdoc::process_item_fn(fun);
+        }
+
         let stmts =
             self.visit_fn(&mut fun.attrs, Some(&fun.vis), &mut fun.sig, fun.semi_token, false);
         fun.block.stmts.splice(0..0, stmts);
@@ -775,6 +786,10 @@ impl VisitMut for Visitor {
     }
 
     fn visit_impl_item_method_mut(&mut self, method: &mut ImplItemMethod) {
+        if self.rustdoc {
+            crate::rustdoc::process_impl_item_method(method);
+        }
+
         let stmts = self.visit_fn(
             &mut method.attrs,
             Some(&method.vis),
@@ -788,6 +803,10 @@ impl VisitMut for Visitor {
     }
 
     fn visit_trait_item_method_mut(&mut self, method: &mut TraitItemMethod) {
+        if self.rustdoc {
+            crate::rustdoc::process_trait_item_method(method);
+        }
+
         let mut stmts =
             self.visit_fn(&mut method.attrs, None, &mut method.sig, method.semi_token, true);
         if let Some(block) = &mut method.default {
@@ -958,7 +977,7 @@ pub(crate) fn rewrite_items(
     use quote::ToTokens;
     let items: Items = parse_macro_input!(stream as Items);
     let mut new_stream = TokenStream::new();
-    let mut visitor = Visitor { use_spec_traits, inside_ghost: 0, inside_arith: InsideArith::None };
+    let mut visitor = Visitor { use_spec_traits, inside_ghost: 0, inside_arith: InsideArith::None, rustdoc: env_rustdoc() };
     for mut item in items.items {
         visitor.visit_item_mut(&mut item);
         item.to_tokens(&mut new_stream);
@@ -977,6 +996,7 @@ pub(crate) fn rewrite_expr(
         use_spec_traits: false,
         inside_ghost: if inside_ghost { 1 } else { 0 },
         inside_arith: InsideArith::None,
+        rustdoc: env_rustdoc(),
     };
     visitor.visit_expr_mut(&mut expr);
     expr.to_tokens(&mut new_stream);
@@ -1051,6 +1071,7 @@ pub(crate) fn proof_macro_exprs(
         use_spec_traits: false,
         inside_ghost: if inside_ghost { 1 } else { 0 },
         inside_arith: InsideArith::None,
+        rustdoc: env_rustdoc(),
     };
     for element in &mut invoke.elements.elements {
         match element {

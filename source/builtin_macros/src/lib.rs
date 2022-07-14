@@ -1,8 +1,11 @@
 #![feature(box_patterns)]
 #![feature(proc_macro_span)]
+#![feature(proc_macro_tracked_env)]
+
 use synstructure::{decl_attribute, decl_derive};
 mod fndecl;
 mod is_variant;
+mod rustdoc;
 mod structural;
 mod syntax;
 
