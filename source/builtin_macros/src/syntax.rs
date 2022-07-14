@@ -977,7 +977,12 @@ pub(crate) fn rewrite_items(
     use quote::ToTokens;
     let items: Items = parse_macro_input!(stream as Items);
     let mut new_stream = TokenStream::new();
-    let mut visitor = Visitor { use_spec_traits, inside_ghost: 0, inside_arith: InsideArith::None, rustdoc: env_rustdoc() };
+    let mut visitor = Visitor {
+        use_spec_traits,
+        inside_ghost: 0,
+        inside_arith: InsideArith::None,
+        rustdoc: env_rustdoc(),
+    };
     for mut item in items.items {
         visitor.visit_item_mut(&mut item);
         item.to_tokens(&mut new_stream);
