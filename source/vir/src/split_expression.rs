@@ -253,14 +253,8 @@ fn negate_atom(exp: TracedExp) -> TracedExp {
     TracedExpX::new(negated_exp, exp.trace.clone())
 }
 
-macro_rules! return_atom {
-    ($e:expr, $negated:expr) => {
-        if $negated {
-            return Ok(Arc::new(vec![negate_atom($e)]));
-        } else {
-            return Ok(Arc::new(vec![$e]));
-        }
-    };
+fn mk_atom(e: TracedExp, negated: bool) -> TracedExps {
+    if negated { Arc::new(vec![negate_atom(e)]) } else { Arc::new(vec![e]) }
 }
 
 fn merge_two_es(es1: TracedExps, es2: TracedExps) -> TracedExps {
@@ -349,7 +343,7 @@ pub(crate) fn split_expr(
                 }
                 // TODO
                 // BinaryOp::Implies if negated
-                _ => return_atom!(exp.clone(), negated),
+                _ => return Ok(mk_atom(exp.clone(), negated)),
             }
         }
         ExpX::Call(fun_name, _typs, exps) => {
@@ -371,7 +365,7 @@ pub(crate) fn split_expr(
                     let not_inlined_exp =
                         TracedExpX::new(exp.e.clone(), exp.trace.secondary_label(&sp, msg));
                     // stop inlining. treat as atom
-                    return_atom!(not_inlined_exp, negated);
+                    return Ok(mk_atom(not_inlined_exp, negated));
                 }
             }
         }
@@ -421,7 +415,7 @@ pub(crate) fn split_expr(
                     ()
                 }
                 BndX::Let(..) => (),
-                _ => return_atom!(exp.clone(), negated),
+                _ => return Ok(mk_atom(exp.clone(), negated)),
             };
             let es1 =
                 split_expr(ctx, state, &TracedExpX::new(e1.clone(), exp.trace.clone()), negated)?;
@@ -439,7 +433,7 @@ pub(crate) fn split_expr(
         // TODO: more cases
 
         // cases that cannot be splitted. "atom" boolean expressions
-        _ => return_atom!(exp.clone(), negated),
+        _ => return Ok(mk_atom(exp.clone(), negated)),
     }
 }
 
@@ -455,7 +449,6 @@ pub(crate) fn register_splitted_assertions(traced_exprs: TracedExps) -> Vec<Stm>
 
 pub(crate) fn need_split_expression(ctx: &Ctx, span: &Span) -> bool {
     for err in &*ctx.debug_expand_targets {
-        // TODO: make this message in a def.rs somewhere
         if err.msg == crate::def::POSTCONDITION_FAILURE.to_string() {
             for label in &err.labels {
                 if label.msg == crate::def::THIS_POST_FAILED.to_string() {
