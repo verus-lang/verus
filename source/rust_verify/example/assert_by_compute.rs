@@ -12,6 +12,7 @@ use seq::*;
 
 fn main() {}
 
+/*
 #[spec]
 fn shifter(x: u64, amt: usize) -> u64 {
     decreases(amt);
@@ -203,13 +204,12 @@ fn test_seq_modification() {
         { #[spec] let v = seq![0, 1, 2];
         use_seq(&v) == 42 && v.index(1) == 1});
 }
-
+*/
 // VeriBetrKV example original:
 // https://github.com/vmware-labs/verified-betrfs/blob/ee4b18d553933440bb5ecda037c6a1c411a49a5f/lib/Crypto/CRC32Lut.i.dfy
 // Currently pops the stack if we use the full lut definition
 // or times out with a smaller lut, even when given 30 seconds
 
-/*
 #[spec] 
 fn bits_of_int(n: nat, len: nat) -> Seq<bool> {
     decreases(len);
@@ -372,9 +372,9 @@ fn pow_mod_crc(n: nat) -> Seq<bool> {
 //    by(computation);
 #[spec] const v: int = 1;
 fn crc_compute() {
-    assert_by_compute_only(bits_of_int(lut.index(v-1) as nat, 64).ext_equal(pow_mod_crc(2*64*v as nat).add(pow_mod_crc(64*v as nat))));
+    assert_by_compute(bits_of_int(lut.index(v-1) as nat, 64).ext_equal(pow_mod_crc(2*64*v as nat).add(pow_mod_crc(64*v as nat))));
 }
-
+/*
 // VeriBetrKV example using sequence comprehension:
 // https://github.com/vmware-labs/verified-betrfs/blob/ee4b18d553933440bb5ecda037c6a1c411a49a5f/lib/Crypto/CRC32Lut.i.dfy
 // Currently pops the stack 

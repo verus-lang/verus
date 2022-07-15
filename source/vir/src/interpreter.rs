@@ -149,6 +149,12 @@ impl<T: SyntacticEquality> SyntacticEquality for Arc<Vec<T>> {
     }
 }
 
+impl<T: SyntacticEquality> SyntacticEquality for Vector<T> {
+    fn syntactic_eq(&self, other: &Self) -> Option<bool> {
+        self.iter().zip(other.iter()).try_fold(true, |acc, (l, r)| Some(acc && l.syntactic_eq(r)?))
+    }
+}
+
 impl SyntacticEquality for Typ {
     fn syntactic_eq(&self, other: &Self) -> Option<bool> {
         use TypX::*;
@@ -290,7 +296,7 @@ impl SyntacticEquality for Exp {
             }
             (Interp(l), Interp(r)) => match (l, r) {
                 (InterpExp::FreeVar(l), InterpExp::FreeVar(r)) => def_eq(l == r),
-                (InterpExp::Seq(_l), InterpExp::Seq(_r)) => None, // TODO: equal_exprs_vector(l, r),
+                (InterpExp::Seq(l), InterpExp::Seq(r)) => l.syntactic_eq(r),
                 _ => None,
             },
             _ => None,
