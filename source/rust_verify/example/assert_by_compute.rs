@@ -11,7 +11,7 @@ use pervasive::*;
 use seq::*;
 
 fn main() {}
-
+/*
 #[spec]
 fn shifter(x: u64, amt: usize) -> u64 {
     decreases(amt);
@@ -450,3 +450,7 @@ fn pow_mod_crc(n: nat) -> Seq<bool> {
 //}
 
 */
+*/
+fn test() {
+    assert_by_compute_only(Seq::new(5, |x| x+x).index(3) == 6);
+}

@@ -754,6 +754,9 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: ExprCtxt) -> Expr {
                 panic!("unsupported for bit-vector: bind conversion, {:?} ", exp.x)
             }
         },
+        (ExpX::Interp(_), _) => {
+            panic!("Found an interpreter expression {:?} outside the interpreter", exp)
+        }
         (_, true) => {
             panic!("unsupported for bit-vector: expression conversion {:?}", exp.x)
         }

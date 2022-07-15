@@ -11,6 +11,7 @@ use crate::ast::{
     Path, Quant, SpannedTyped, Typ, Typs, UnaryOp, UnaryOpr, VarAt,
 };
 use crate::def::Spanned;
+use crate::interpreter::InterpExp;
 use air::ast::{Binders, Ident};
 use air::errors::Error;
 use std::fmt;
@@ -52,6 +53,8 @@ pub enum ExpX {
     If(Exp, Exp, Exp),
     WithTriggers(Trigs, Exp),
     Bind(Bnd, Exp),
+    // only used internally by the interpreter; should never be seen outside it
+    Interp(InterpExp),
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -215,6 +218,7 @@ impl fmt::Display for ExpX {
             VarLoc(..) | VarAt(..) | Loc(..) | Old(..) | WithTriggers(..) => {
                 write!(f, "Unexpected: {:?}", self)
             }
+            Interp(e) => write!(f, "{:?}", e),
         }
     }
 }

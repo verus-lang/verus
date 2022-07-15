@@ -368,6 +368,9 @@ fn gather_terms(ctxt: &mut Ctxt, ctx: &Ctx, exp: &Exp, depth: u64) -> (bool, Ter
             // REVIEW: we could at least look for matching loops here
             (false, Arc::new(TermX::App(ctxt.other(), Arc::new(vec![]))))
         }
+        ExpX::Interp(_) => {
+            panic!("Found an interpreter expression {:?} outside the interpreter", exp)
+        }
     };
     if let TermX::Var(..) = *term {
         return (is_pure, term);

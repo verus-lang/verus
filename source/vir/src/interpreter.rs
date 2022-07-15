@@ -89,6 +89,12 @@ struct Ctx<'a> {
     time_limit: Duration,
 }
 
+/// Interpreter-internal expressions
+#[derive(Debug, Hash)]
+pub enum InterpExp {
+    FreeVar(UniqueIdent),
+}
+
 /*****************************************************************
  * Functionality needed to compute equality between expressions  *
  *****************************************************************/
@@ -184,32 +190,12 @@ fn equal_expr(left: &Exp, right: &Exp) -> Option<bool> {
     use ExpX::*;
     match (&left.x, &right.x) {
         (Const(l), Const(r)) => Some(l == r),
-        (Var(l), Var(r)) => {
-            if l == r {
-                Some(true)
-            } else {
-                // These are free variables, so we can't know for sure
-                // if they are equal (applies to cases below, too)
-                None
-            }
-        }
-        (VarLoc(l), VarLoc(r)) => {
-            if l == r {
-                Some(true)
-            } else {
-                None
-            }
-        }
-        (VarAt(l, at_l), VarAt(r, at_r)) => {
-            if l == r && at_l == at_r {
-                Some(true)
-            } else {
-                None
-            }
-        }
+        (Var(l), Var(r)) => def_eq(l == r),
+        (VarLoc(l), VarLoc(r)) => def_eq(l == r),
+        (VarAt(l, at_l), VarAt(r, at_r)) => def_eq(l == r && at_l == at_r),
         (Loc(l), Loc(r)) => equal_expr(l, r),
         (Old(id_l, unique_id_l), Old(id_r, unique_id_r)) => {
-            if id_l == id_r && unique_id_l == unique_id_r { Some(true) } else { None }
+            def_eq(id_l == id_r && unique_id_l == unique_id_r)
         }
         (Call(f_l, _, exps_l), Call(f_r, _, exps_r)) => {
             if f_l == f_r && exps_l.len() == exps_r.len() {
@@ -262,6 +248,10 @@ fn equal_expr(left: &Exp, right: &Exp) -> Option<bool> {
         (Bind(bnd_l, e_l), Bind(bnd_r, e_r)) => {
             Some(equal_bnd(bnd_l, bnd_r)? && equal_expr(e_l, e_r)?)
         }
+        (Interp(l), Interp(r)) => match (l, r) {
+            (InterpExp::FreeVar(l), InterpExp::FreeVar(r)) => def_eq(l == r),
+            _ => None,
+        },
         _ => None,
     }
 }
@@ -427,6 +417,13 @@ fn hash_exp<H: Hasher>(state: &mut H, exp: &Exp) {
             14.hash(state);
             hash_bnd(state, bnd);
             hash_exp(state, e);
+        }
+        Interp(e) => {
+            15.hash(state);
+            e.hash(state);
+            //            match e {
+            //                InterpExp::FreeVar(id) => id.hash(state),
+            //            }
         }
     }
 }
@@ -737,6 +734,9 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
     }
     let ok = Ok(exp.clone());
     if state.simplified.contains(&Arc::as_ptr(exp)) {
+        if state.debug {
+            println!("{}=> already simplified as far as it will go", "\t".repeat(state.depth));
+        }
         // We've already simplified this expression as much as we can
         return Ok(exp.clone());
     }
@@ -753,7 +753,9 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                 if state.debug {
                     println!("Failed to find a match for {:?}", id);
                 };
-                ok
+                // "Hide" the variable, so that we don't accidentally
+                // mix free and bound variables while interpreting
+                exp_new(Interp(InterpExp::FreeVar(id.clone())))
             }
             Some(e) => {
                 if state.debug {
@@ -1245,6 +1247,9 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
             let new_bnds = new_bnds?;
             exp_new(Ctor(path.clone(), id.clone(), Arc::new(new_bnds)))
         }
+        Interp(e) => match e {
+            InterpExp::FreeVar(_) => ok,
+        },
         // Ignored by the interpreter at present (i.e., treated as symbolic)
         VarAt(..) | VarLoc(..) | Loc(..) | Old(..) | WithTriggers(..) => ok,
     };
@@ -1268,7 +1273,7 @@ pub fn eval_expr(
     let mut state = State {
         depth: 0,
         env,
-        debug: false,
+        debug: true,
         cache,
         cache_hits: 0,
         cache_misses: 0,
@@ -1280,17 +1285,22 @@ pub fn eval_expr(
     let time_start = Instant::now();
     let ctx = Ctx { fun_ssts, time_start, time_limit };
     //println!("Starting from {}", exp);
-    let res = eval_expr_internal(&ctx, &mut state, exp);
+    let res = eval_expr_internal(&ctx, &mut state, exp)?;
     match mode {
         // Send partial result to Z3
-        ComputeMode::Z3 => res,
-        // Proof must succeed purely through computation
-        ComputeMode::ComputeOnly => {
-            let res = res?;
-            match res.x {
-                ExpX::Const(Constant::Bool(true)) => Ok(res),
-                _ => err_str(&exp.span, "assert_by_compute_only failed to result in true"),
-            }
+        ComputeMode::Z3 => {
+            // Restore the free variables we hid during interpretation
+            Ok(crate::sst_visitor::map_exp_visitor(&res, &mut |e| match &e.x {
+                ExpX::Interp(InterpExp::FreeVar(v)) => {
+                    SpannedTyped::new(&e.span, &e.typ, ExpX::Var(v.clone()))
+                }
+                _ => e.clone(),
+            }))
         }
+        // Proof must succeed purely through computation
+        ComputeMode::ComputeOnly => match res.x {
+            ExpX::Const(Constant::Bool(true)) => Ok(res),
+            _ => err_str(&exp.span, "assert_by_compute_only failed to result in true"),
+        },
     }
 }

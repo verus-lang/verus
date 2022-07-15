@@ -132,6 +132,7 @@ where
                     expr_visitor_control_flow!(exp_visitor_dfs(e1, map, f));
                     map.pop_scope();
                 }
+                ExpX::Interp(_) => (),
             }
             VisitorControlFlow::Recurse
         }
@@ -382,6 +383,7 @@ where
             let exp = exp_new(expx);
             f(&exp, map)
         }
+        ExpX::Interp(_) => f(exp, map),
     }
 }
 

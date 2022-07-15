@@ -138,6 +138,9 @@ fn check_trigger_expr(
                 ExpX::Bind(_, _) => {
                     err_str(&exp.span, "triggers cannot contain let/forall/exists/lambda/choose")
                 }
+                ExpX::Interp(_) => {
+                    panic!("Found an interpreter expression {:?} outside the interpreter", exp)
+                }
             },
         )
     } else {
