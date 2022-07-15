@@ -337,4 +337,24 @@ proof fn test_reveal_at_ensures(b: bool) -> (good_msg: Message)
 }
 
 
+// example14: respect binder when function inlining
+spec fn positive(yy: int) -> bool {
+  0 < yy
+//^^^^^^
+}
+
+spec fn is_good_integer_14(yy: int) -> bool 
+{
+  forall |yy:int| positive(yy)      // shouldn't replace `yy` with `1` 
+//                ^^^^^^^^^^^^  
+}
+
+proof fn test_binder_inlining(b: bool) 
+{
+  assert(is_good_integer_14(1));
+//^^^^^^ ^^^^^^^^^^^^^^^^^^^^^
+}
+
+
+
 }

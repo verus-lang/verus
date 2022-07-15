@@ -1,4 +1,6 @@
-use crate::ast::{BinaryOp, Expr, Function, Params, Quant, SpannedTyped, Typ, TypX, UnaryOp};
+use crate::ast::{
+    BinaryOp, Expr, Function, Ident, Params, Quant, SpannedTyped, Typ, TypX, UnaryOp,
+};
 use crate::ast_to_sst::{get_function, State};
 use crate::context::Ctx;
 use crate::def::Spanned;
@@ -49,15 +51,26 @@ fn subsitute_argument(
             SpannedTyped::new(&exp.span, &exp.typ, new_exp)
         }
         ExpX::Bind(bnd, e1) => {
-            // TODO: check if binded name and  `var to replace` is same.
-            let e1_replaced = subsitute_argument(e1, arg_map)?;
+            // In the arg_map, remove names that will be binded locally
+            let mut arg_map = arg_map.clone();
+            arg_map.retain(|name, _| {
+                let binded_names: Vec<Ident> = match &bnd.x {
+                    BndX::Let(binders) => binders.iter().map(|b| b.name.clone()).collect(),
+                    BndX::Quant(_, binders, _) => binders.iter().map(|b| b.name.clone()).collect(),
+                    BndX::Choose(binders, _, _) => binders.iter().map(|b| b.name.clone()).collect(),
+                    BndX::Lambda(binders) => binders.iter().map(|b| b.name.clone()).collect(),
+                };
+                !binded_names.iter().any(|bname| **bname == **name)
+            });
+            let arg_map = arg_map;
+            let e1_replaced = subsitute_argument(e1, &arg_map)?;
             let bnd_replaced: Bnd = match &bnd.x {
                 BndX::Let(binders) => {
                     let mut new_binders: Vec<Binder<Exp>> = vec![];
                     for old_b in &**binders {
                         let new_b = BinderX {
                             name: old_b.name.clone(),
-                            a: subsitute_argument(&old_b.a, arg_map)?,
+                            a: subsitute_argument(&old_b.a, &arg_map)?,
                         };
                         new_binders.push(Arc::new(new_b));
                     }
@@ -69,7 +82,7 @@ fn subsitute_argument(
                     for ts in &***trigs {
                         let mut replaced_ts: Vec<Exp> = vec![];
                         for t in &**ts {
-                            replaced_ts.push(subsitute_argument(t, arg_map)?);
+                            replaced_ts.push(subsitute_argument(t, &arg_map)?);
                         }
                         replaced_trigs.push(Arc::new(replaced_ts));
                     }
