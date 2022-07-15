@@ -207,7 +207,12 @@ fn tr_inline_function(
                 };
             }
         }
-        None => (), // should I panic instead?
+        None => {
+            return Err((
+                span.clone(),
+                "Internal error: cannot find the owning function of this function call".to_string(),
+            ));
+        }
     };
 
     if fuel == 0 || (!found_local_fuel && hidden) {
@@ -294,10 +299,10 @@ pub(crate) fn split_expr(
     state: &State,
     exp: &TracedExp,
     negated: bool,
-) -> Result<TracedExps, String> {
+) -> Result<TracedExps, (Span, String)> {
     match *exp.e.typ {
         TypX::Bool => (),
-        _ => return Err("cannot split non boolean expression".to_string()),
+        _ => return Err((exp.e.span.clone(), "cannot split non boolean expression".to_string())),
     }
     match &exp.e.x {
         ExpX::Unary(UnaryOp::Not, e1) => {
@@ -443,7 +448,7 @@ pub(crate) fn split_expr(
                 {
                     bnd.clone()
                 }
-                // TODO: check if I can find an example that uses this path
+                // REVIEW: is this actually useful?
                 BndX::Quant(
                     Quant { quant: air::ast::Quant::Exists, boxed_params },
                     bndrs,
@@ -499,7 +504,7 @@ pub(crate) fn need_split_expression(ctx: &Ctx, span: &Span) -> bool {
             }
         } else {
             for sp in &err.spans {
-                // TODO: is this string matching desirable??
+                // REVIEW: is this string matching desirable?
                 if sp.as_string == span.as_string {
                     return true;
                 }

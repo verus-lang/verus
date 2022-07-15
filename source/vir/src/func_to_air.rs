@@ -687,16 +687,14 @@ pub fn func_def_to_air(
                         let error = air::errors::error("splitted ensures failure", &ens_exp.span);
                         let splitted_exprs = crate::split_expression::split_expr(
                             ctx,
-                            &state,
+                            &state, // use the state after `body` translation to get the fuel info
                             &crate::split_expression::TracedExpX::new(
                                 ens_exp.clone(),
                                 error.clone(),
                             ),
                             false,
                         );
-                        if splitted_exprs.is_err() {
-                            ()
-                        } else {
+                        if splitted_exprs.is_ok() {
                             let splitted_exprs = splitted_exprs.unwrap();
                             small_ens_assertions.extend(
                                 crate::split_expression::register_splitted_assertions(
