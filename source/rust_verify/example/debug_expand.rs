@@ -356,5 +356,20 @@ proof fn test_binder_inlining(b: bool)
 }
 
 
+// example15: recursive function
+spec fn is_even(p:nat) -> bool
+//   ------------------------- Note: this function is recursive with fuel 10
+{
+   decreases(p);
+   if p == 0 { true }
+   else {!is_even(p-1)}
+}
+
+proof fn test_rec() {
+  reveal_with_fuel(is_even, 10);
+  assert(is_even(1));
+//^^^^^^ ^^^^^^^^^^
+}
+
 
 }

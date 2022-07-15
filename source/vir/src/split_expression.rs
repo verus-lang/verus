@@ -178,7 +178,6 @@ fn tr_inline_function(
     exps: &Exps,
     span: &Span,
 ) -> Result<Exp, (Span, String)> {
-    // TODO: recursive function inline. don't inline
     let opaque_err = Err((fun_to_inline.span.clone(), "Note: this function is opaque".to_string()));
     let closed_err = Err((
         fun_to_inline.span.clone(),
@@ -240,13 +239,21 @@ fn tr_inline_function(
         };
         let params = &fun_to_inline.x.params;
         let body_exp = pure_ast_expression_to_sst(ctx, body, params);
-        return tr_inline_expression(&body_exp, params, exps);
+
+        if crate::recursion::is_recursive_exp(ctx, &fun_to_inline.x.name, &body_exp) {
+            return Err((
+                fun_to_inline.span.clone(),
+                format!("Note: this function is recursive with fuel {fuel}"),
+            ));
+        } else {
+            return tr_inline_expression(&body_exp, params, exps);
+        }
     }
 }
 
-// trace
-// 1) when inlining function, log call stack into `trace`
-// 2) boolean negation
+// Record relevant information when splitting expressions:
+//   1) when inlining function, log call stack into `trace`
+//   2) boolean negation
 pub type TracedExp = Arc<TracedExpX>;
 pub type TracedExps = Arc<Vec<TracedExp>>;
 pub struct TracedExpX {
