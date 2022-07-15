@@ -7,7 +7,7 @@
 
 use crate::ast::{
     ArithOp, BinaryOp, BitwiseOp, ComputeMode, Constant, Fun, InequalityOp, IntRange, SpannedTyped,
-    Typ, TypX, Typs, UnaryOp, VirErr,
+    Typ, TypX, UnaryOp, VirErr,
 };
 use crate::ast_util::{err_str, path_as_rust_name};
 use crate::def::{SstMap, ARCH_SIZE_MIN_BITS};
@@ -29,6 +29,7 @@ use std::time::{Duration, Instant};
 
 type Env = ScopeMap<UniqueIdent, Exp>;
 
+/// `Exps` that support `Hash` and `Eq`. Intended to never leave this module.
 struct ExpsKey {
     e: Exps,
 }
@@ -41,11 +42,22 @@ impl Hash for ExpsKey {
 
 impl PartialEq for ExpsKey {
     fn eq(&self, other: &Self) -> bool {
-        definitely_equal_exprs(&self.e, &other.e)
+        self.e.definitely_eq(&other.e)
     }
 }
 
 impl Eq for ExpsKey {}
+
+impl From<Exps> for ExpsKey {
+    fn from(e: Exps) -> Self {
+        Self { e }
+    }
+}
+impl From<&Exps> for ExpsKey {
+    fn from(e: &Exps) -> Self {
+        Self { e: e.clone() }
+    }
+}
 
 /// A set that allows membership queries to `Arc`'d values, such that pointer equality is necessary
 /// to be called a member.
@@ -88,25 +100,11 @@ struct State {
 // Define the function-call cache's API
 impl State {
     fn insert_call(&mut self, f: &Fun, args: &Exps, result: &Exp) {
-        match self.cache.get_mut(f) {
-            None => {
-                let mut map = HashMap::new();
-                let key = ExpsKey { e: args.clone() };
-                map.insert(key, result.clone());
-                self.cache.insert(f.clone(), map);
-            }
-            Some(prev_results) => {
-                let key = ExpsKey { e: args.clone() };
-                prev_results.insert(key, result.clone());
-            }
-        }
+        self.cache.entry(f.clone()).or_default().insert(args.into(), result.clone());
     }
 
     fn lookup_call(&self, f: &Fun, args: &Exps) -> Option<Exp> {
-        let map = self.cache.get(f)?;
-        let key = ExpsKey { e: args.clone() };
-        let res = map.get(&key)?;
-        Some(res.clone())
+        self.cache.get(f)?.get(&args.into()).cloned()
     }
 }
 
@@ -127,183 +125,176 @@ pub enum InterpExp {
  * Functionality needed to compute equality between expressions  *
  *****************************************************************/
 
-// Computes the syntactic equality of two types
-// Some(b) means b is exp1 == exp2
-// None means we can't tell
-fn equal_typ(left: &Typ, right: &Typ) -> Option<bool> {
-    use TypX::*;
-    match (&**left, &**right) {
-        (Bool, Bool) => Some(true),
-        (Int(l), Int(r)) => Some(l == r),
-        (Tuple(typs_l), Tuple(typs_r)) => equal_typs(typs_l, typs_r),
-        (Lambda(formals_l, res_l), Lambda(formals_r, res_r)) => {
-            Some(equal_typs(formals_l, formals_r)? && equal_typ(res_l, res_r)?)
-        }
-        (Datatype(path_l, typs_l), Datatype(path_r, typs_r)) => {
-            Some(path_l == path_r && equal_typs(typs_l, typs_r)?)
-        }
-        (Boxed(l), Boxed(r)) => equal_typ(l, r),
-        (TypParam(l), TypParam(r)) => {
-            if l == r {
-                Some(true)
-            } else {
-                None
-            }
-        }
-        (TypeId, TypeId) => Some(true),
-        (Air(l), Air(r)) => Some(l == r),
-        _ => None,
+/// Trait to compute syntactic equality of two objects.
+trait SyntacticEquality {
+    /// Compute syntactic equality. Returns `Some(b)` if syntactically, equality can be guaranteed,
+    /// where `b` iff `self == other`. Otherwise, returns `None`.
+    fn syntactic_eq(&self, other: &Self) -> Option<bool>;
+    fn definitely_eq(&self, other: &Self) -> bool {
+        matches!(self.syntactic_eq(other), Some(true))
+    }
+    fn definitely_ne(&self, other: &Self) -> bool {
+        matches!(self.syntactic_eq(other), Some(false))
+    }
+    /// If we cannot definitively establish equality, we conservatively return `None`
+    fn conservative_eq(&self, other: &Self) -> Option<bool> {
+        self.definitely_eq(other).then(|| true)
     }
 }
 
-fn equal_typs(left: &Typs, right: &Typs) -> Option<bool> {
-    let eq: Option<bool> = left
-        .iter()
-        .zip(right.iter())
-        .fold(Some(true), |b, (t_l, t_r)| Some(b? && equal_typ(&*t_l, &*t_r)?));
-    eq
-}
-
-// Computes the syntactic equality of two binders
-// Some(b) means b is exp1 == exp2
-// None means we can't tell
-fn equal_bnd(left: &Bnd, right: &Bnd) -> Option<bool> {
-    use BndX::*;
-    // If we can't definitively establish equality, we conservatively return None
-    let def_eq = |bnds_l, bnds_r| if equal_bnds_typ(bnds_l, bnds_r)? { Some(true) } else { None };
-    match (&left.x, &right.x) {
-        (Let(bnds_l), Let(bnds_r)) => {
-            if equal_bnds_exp(bnds_l, bnds_r)? {
-                Some(true)
-            } else {
-                None
-            }
-        }
-        (Quant(q_l, bnds_l, _trigs_l), Quant(q_r, bnds_r, _trigs_r)) => {
-            Some(q_l == q_r && def_eq(bnds_l, bnds_r)?)
-        }
-        (Lambda(bnds_l), Lambda(bnds_r)) => def_eq(bnds_l, bnds_r),
-        (Choose(bnds_l, _trigs_l, e_l), Choose(bnds_r, _trigs_r, e_r)) => {
-            Some(def_eq(bnds_l, bnds_r)? && equal_expr(e_l, e_r)?)
-        }
-        _ => None,
+// Automatically get syntactic equality over typs, exps, ... once we know syntactic equality over typ, exp, ...
+impl<T: SyntacticEquality> SyntacticEquality for Arc<Vec<T>> {
+    fn syntactic_eq(&self, other: &Self) -> Option<bool> {
+        self.iter().zip(other.iter()).try_fold(true, |acc, (l, r)| Some(acc && l.syntactic_eq(r)?))
     }
 }
 
-fn equal_bnds_typ(left: &Binders<Typ>, right: &Binders<Typ>) -> Option<bool> {
-    let eq: Option<bool> = left.iter().zip(right.iter()).fold(Some(true), |b, (bnd_l, bnd_r)| {
-        Some(b? && bnd_l.name == bnd_r.name && equal_typ(&bnd_l.a, &bnd_r.a)?)
-    });
-    eq
-}
-
-fn equal_bnds_exp(left: &Binders<Exp>, right: &Binders<Exp>) -> Option<bool> {
-    let eq: Option<bool> = left.iter().zip(right.iter()).fold(Some(true), |b, (bnd_l, bnd_r)| {
-        Some(b? && bnd_l.name == bnd_r.name && equal_expr(&bnd_l.a, &bnd_r.a)?)
-    });
-    eq
-}
-
-// Computes the syntactic equality of two expressions
-// Some(b) means b is exp1 == exp2
-// None means we can't tell
-// We expect to only call this after eval_expr has been called on both expressions
-fn equal_expr(left: &Exp, right: &Exp) -> Option<bool> {
-    // Easy case where the pointers match
-    if Arc::ptr_eq(left, right) {
-        return Some(true);
-    }
-    // If we can't definitively establish equality, we conservatively return None
-    let def_eq = |b| if b { Some(true) } else { None };
-    use ExpX::*;
-    match (&left.x, &right.x) {
-        (Const(l), Const(r)) => Some(l == r),
-        (Var(l), Var(r)) => def_eq(l == r),
-        (VarLoc(l), VarLoc(r)) => def_eq(l == r),
-        (VarAt(l, at_l), VarAt(r, at_r)) => def_eq(l == r && at_l == at_r),
-        (Loc(l), Loc(r)) => equal_expr(l, r),
-        (Old(id_l, unique_id_l), Old(id_r, unique_id_r)) => {
-            def_eq(id_l == id_r && unique_id_l == unique_id_r)
-        }
-        (Call(f_l, _, exps_l), Call(f_r, _, exps_r)) => {
-            if f_l == f_r && exps_l.len() == exps_r.len() {
-                equal_exprs(exps_l, exps_r)
-            } else {
-                // We don't know if a function call on symbolic values
-                // will return the same or different values
-                None
+impl SyntacticEquality for Typ {
+    fn syntactic_eq(&self, other: &Self) -> Option<bool> {
+        use TypX::*;
+        match (self.as_ref(), other.as_ref()) {
+            (Bool, Bool) => Some(true),
+            (Int(l), Int(r)) => Some(l == r),
+            (Tuple(typs_l), Tuple(typs_r)) => typs_l.syntactic_eq(typs_r),
+            (Lambda(formals_l, res_l), Lambda(formals_r, res_r)) => {
+                Some(formals_l.syntactic_eq(formals_r)? && res_l.syntactic_eq(res_r)?)
             }
-        }
-        (CallLambda(typ_l, exp_l, exps_l), CallLambda(typ_r, exp_r, exps_r)) => Some(
-            equal_typ(typ_l, typ_r)? && equal_expr(exp_l, exp_r)? && equal_exprs(exps_l, exps_r)?,
-        ),
-
-        (Ctor(path_l, id_l, bnds_l), Ctor(path_r, id_r, bnds_r)) => {
-            if path_l != path_r || id_l != id_r {
-                // These are definitely different datatypes or different
-                // constructors of the same datatype
-                Some(false)
-            } else {
-                equal_bnds_exp(bnds_l, bnds_r)
+            (Datatype(path_l, typs_l), Datatype(path_r, typs_r)) => {
+                Some(path_l == path_r && typs_l.syntactic_eq(typs_r)?)
             }
-        }
-        (Unary(op_l, e_l), Unary(op_r, e_r)) => def_eq(op_l == op_r && equal_expr(e_l, e_r)?),
-        (UnaryOpr(op_l, e_l), UnaryOpr(op_r, e_r)) => {
-            use crate::ast::UnaryOpr::*;
-            let op_eq = match (op_l, op_r) {
-                (Box(l), Box(r)) => def_eq(equal_typ(l, r)?),
-                (Unbox(l), Unbox(r)) => def_eq(equal_typ(l, r)?),
-                (HasType(l), HasType(r)) => def_eq(equal_typ(l, r)?),
-                (
-                    IsVariant { datatype: dt_l, variant: var_l },
-                    IsVariant { datatype: dt_r, variant: var_r },
-                ) => def_eq(dt_l == dt_r && var_l == var_r),
-                (TupleField { .. }, TupleField { .. }) => {
-                    panic!("TupleField should have been removed by ast_simplify!")
+            (Boxed(l), Boxed(r)) => l.syntactic_eq(r),
+            (TypParam(l), TypParam(r)) => {
+                if l == r {
+                    Some(true)
+                } else {
+                    None
                 }
-                (Field(l), Field(r)) => def_eq(l == r),
-                _ => None,
-            };
-            def_eq(op_eq? && equal_expr(e_l, e_r)?)
-        }
-        (Binary(op_l, e1_l, e2_l), Binary(op_r, e1_r, e2_r)) => {
-            def_eq(op_l == op_r && equal_expr(e1_l, e1_r)? && equal_expr(e2_l, e2_r)?)
-        }
-        (If(e1_l, e2_l, e3_l), If(e1_r, e2_r, e3_r)) => {
-            Some(equal_expr(e1_l, e1_r)? && equal_expr(e2_l, e2_r)? && equal_expr(e3_l, e3_r)?)
-        }
-        (WithTriggers(_trigs_l, e_l), WithTriggers(_trigs_r, e_r)) => equal_expr(e_l, e_r),
-        (Bind(bnd_l, e_l), Bind(bnd_r, e_r)) => {
-            Some(equal_bnd(bnd_l, bnd_r)? && equal_expr(e_l, e_r)?)
-        }
-        (Interp(l), Interp(r)) => match (l, r) {
-            (InterpExp::FreeVar(l), InterpExp::FreeVar(r)) => def_eq(l == r),
-            (InterpExp::Seq(l), InterpExp::Seq(r)) => None, // TODO: equal_exprs_vector(l, r),
+            }
+            (TypeId, TypeId) => Some(true),
+            (Air(l), Air(r)) => Some(l == r),
             _ => None,
-        },
-        _ => None,
+        }
     }
 }
 
-fn equal_exprs(left: &Exps, right: &Exps) -> Option<bool> {
-    let eq: Option<bool> = left
-        .iter()
-        .zip(right.iter())
-        .fold(Some(true), |b, (e_l, e_r)| Some(b? && equal_expr(e_l, e_r)?));
-    eq
-}
-
-fn definitely_equal(left: &Exp, right: &Exp) -> bool {
-    match equal_expr(left, right) {
-        None => false,
-        Some(b) => b,
+impl SyntacticEquality for Bnd {
+    fn syntactic_eq(&self, other: &Self) -> Option<bool> {
+        use BndX::*;
+        match (&self.x, &other.x) {
+            (Let(bnds_l), Let(bnds_r)) => {
+                if bnds_l.syntactic_eq(bnds_r)? {
+                    Some(true)
+                } else {
+                    None
+                }
+            }
+            (Quant(q_l, bnds_l, _trigs_l), Quant(q_r, bnds_r, _trigs_r)) => {
+                Some(q_l == q_r && bnds_l.conservative_eq(bnds_r)?)
+            }
+            (Lambda(bnds_l), Lambda(bnds_r)) => bnds_l.conservative_eq(bnds_r),
+            (Choose(bnds_l, _trigs_l, e_l), Choose(bnds_r, _trigs_r, e_r)) => {
+                Some(bnds_l.conservative_eq(bnds_r)? && e_l.syntactic_eq(e_r)?)
+            }
+            _ => None,
+        }
     }
 }
 
-fn definitely_equal_exprs(left: &Exps, right: &Exps) -> bool {
-    match equal_exprs(left, right) {
-        None => false,
-        Some(b) => b,
+// XXX: Generalize over `Binders<T>`?
+impl SyntacticEquality for Binders<Typ> {
+    fn syntactic_eq(&self, other: &Self) -> Option<bool> {
+        self.iter().zip(other.iter()).try_fold(true, |acc, (bnd_l, bnd_r)| {
+            Some(acc && bnd_l.name == bnd_r.name && bnd_l.a.syntactic_eq(&bnd_r.a)?)
+        })
+    }
+}
+impl SyntacticEquality for Binders<Exp> {
+    fn syntactic_eq(&self, other: &Self) -> Option<bool> {
+        self.iter().zip(other.iter()).try_fold(true, |acc, (bnd_l, bnd_r)| {
+            Some(acc && bnd_l.name == bnd_r.name && bnd_l.a.syntactic_eq(&bnd_r.a)?)
+        })
+    }
+}
+
+impl SyntacticEquality for Exp {
+    // We expect to only call this after eval_expr has been called on both expressions
+    fn syntactic_eq(&self, other: &Self) -> Option<bool> {
+        // Easy case where the pointers match
+        if Arc::ptr_eq(self, other) {
+            return Some(true);
+        }
+        // If we can't definitively establish equality, we conservatively return None
+        let def_eq = |b| if b { Some(true) } else { None };
+        use ExpX::*;
+        match (&self.x, &other.x) {
+            (Const(l), Const(r)) => Some(l == r),
+            (Var(l), Var(r)) => def_eq(l == r),
+            (VarLoc(l), VarLoc(r)) => def_eq(l == r),
+            (VarAt(l, at_l), VarAt(r, at_r)) => def_eq(l == r && at_l == at_r),
+            (Loc(l), Loc(r)) => l.syntactic_eq(r),
+            (Old(id_l, unique_id_l), Old(id_r, unique_id_r)) => {
+                def_eq(id_l == id_r && unique_id_l == unique_id_r)
+            }
+            (Call(f_l, _, exps_l), Call(f_r, _, exps_r)) => {
+                if f_l == f_r && exps_l.len() == exps_r.len() {
+                    exps_l.syntactic_eq(exps_r)
+                } else {
+                    // We don't know if a function call on symbolic values
+                    // will return the same or different values
+                    None
+                }
+            }
+            (CallLambda(typ_l, exp_l, exps_l), CallLambda(typ_r, exp_r, exps_r)) => Some(
+                typ_l.syntactic_eq(typ_r)?
+                    && exp_l.syntactic_eq(exp_r)?
+                    && exps_l.syntactic_eq(exps_r)?,
+            ),
+
+            (Ctor(path_l, id_l, bnds_l), Ctor(path_r, id_r, bnds_r)) => {
+                if path_l != path_r || id_l != id_r {
+                    // These are definitely different datatypes or different
+                    // constructors of the same datatype
+                    Some(false)
+                } else {
+                    bnds_l.syntactic_eq(bnds_r)
+                }
+            }
+            (Unary(op_l, e_l), Unary(op_r, e_r)) => def_eq(op_l == op_r && e_l.syntactic_eq(e_r)?),
+            (UnaryOpr(op_l, e_l), UnaryOpr(op_r, e_r)) => {
+                use crate::ast::UnaryOpr::*;
+                let op_eq = match (op_l, op_r) {
+                    (Box(l), Box(r)) => def_eq(l.syntactic_eq(r)?),
+                    (Unbox(l), Unbox(r)) => def_eq(l.syntactic_eq(r)?),
+                    (HasType(l), HasType(r)) => def_eq(l.syntactic_eq(r)?),
+                    (
+                        IsVariant { datatype: dt_l, variant: var_l },
+                        IsVariant { datatype: dt_r, variant: var_r },
+                    ) => def_eq(dt_l == dt_r && var_l == var_r),
+                    (TupleField { .. }, TupleField { .. }) => {
+                        panic!("TupleField should have been removed by ast_simplify!")
+                    }
+                    (Field(l), Field(r)) => def_eq(l == r),
+                    _ => None,
+                };
+                def_eq(op_eq? && e_l.syntactic_eq(e_r)?)
+            }
+            (Binary(op_l, e1_l, e2_l), Binary(op_r, e1_r, e2_r)) => {
+                def_eq(op_l == op_r && e1_l.syntactic_eq(e1_r)? && e2_l.syntactic_eq(e2_r)?)
+            }
+            (If(e1_l, e2_l, e3_l), If(e1_r, e2_r, e3_r)) => Some(
+                e1_l.syntactic_eq(e1_r)? && e2_l.syntactic_eq(e2_r)? && e3_l.syntactic_eq(e3_r)?,
+            ),
+            (WithTriggers(_trigs_l, e_l), WithTriggers(_trigs_r, e_r)) => e_l.syntactic_eq(e_r),
+            (Bind(bnd_l, e_l), Bind(bnd_r, e_r)) => {
+                Some(bnd_l.syntactic_eq(bnd_r)? && e_l.syntactic_eq(e_r)?)
+            }
+            (Interp(l), Interp(r)) => match (l, r) {
+                (InterpExp::FreeVar(l), InterpExp::FreeVar(r)) => def_eq(l == r),
+                (InterpExp::Seq(_l), InterpExp::Seq(_r)) => None, // TODO: equal_exprs_vector(l, r),
+                _ => None,
+            },
+            _ => None,
+        }
     }
 }
 
@@ -683,7 +674,7 @@ fn eval_seq(ctx: &Ctx, state: &mut State, exp: &Exp, args: &Exps) -> Result<Exp,
                         let eq = l
                             .iter()
                             .zip(r.iter())
-                            .fold(Some(true), |b, (l, r)| Some(b? && equal_expr(l, r)?));
+                            .fold(Some(true), |b, (l, r)| Some(b? && l.syntactic_eq(r)?));
                         match eq {
                             None => ok,
                             Some(b) => bool_new(b),
@@ -954,14 +945,14 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                 }
                 Eq(_mode) => {
                     let e2 = eval_expr_internal(ctx, state, e2)?;
-                    match equal_expr(&e1, &e2) {
+                    match e1.syntactic_eq(&e2) {
                         None => ok_e2(e2),
                         Some(b) => bool_new(b),
                     }
                 }
                 Ne => {
                     let e2 = eval_expr_internal(ctx, state, e2)?;
-                    match equal_expr(&e1, &e2) {
+                    match e1.syntactic_eq(&e2) {
                         None => ok_e2(e2),
                         Some(b) => bool_new(!b),
                     }
@@ -1035,7 +1026,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                         _ => {
                             match op {
                                 // X - X => 0
-                                ArithOp::Sub if definitely_equal(&e1, &e2) => zero,
+                                ArithOp::Sub if e1.definitely_eq(&e2) => zero,
                                 _ => ok_e2(e2),
                             }
                         }
@@ -1114,9 +1105,9 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                         _ => {
                             match op {
                                 // X ^ X => 0
-                                BitXor if definitely_equal(&e1, &e2) => zero,
+                                BitXor if e1.definitely_eq(&e2) => zero,
                                 // X & X = X, X | X = X
-                                BitAnd | BitOr if definitely_equal(&e1, &e2) => Ok(e1.clone()),
+                                BitAnd | BitOr if e1.definitely_eq(&e2) => Ok(e1.clone()),
                                 _ => ok_e2(e2),
                             }
                         }
