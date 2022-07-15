@@ -90,9 +90,10 @@ struct Ctx<'a> {
 }
 
 /// Interpreter-internal expressions
-#[derive(Debug, Hash)]
+#[derive(Debug)]
 pub enum InterpExp {
     FreeVar(UniqueIdent),
+    Seq(Vector<Exp>),
 }
 
 /*****************************************************************
@@ -250,6 +251,7 @@ fn equal_expr(left: &Exp, right: &Exp) -> Option<bool> {
         }
         (Interp(l), Interp(r)) => match (l, r) {
             (InterpExp::FreeVar(l), InterpExp::FreeVar(r)) => def_eq(l == r),
+            (InterpExp::Seq(l), InterpExp::Seq(r)) => None, // TODO: equal_exprs_vector(l, r),
             _ => None,
         },
         _ => None,
@@ -285,6 +287,13 @@ fn definitely_equal_exprs(left: &Exps, right: &Exps) -> bool {
 fn hash_exps<H: Hasher>(state: &mut H, exps: &Exps) {
     for (i, e) in exps.iter().enumerate() {
         (i + 100).hash(state);
+        hash_exp(state, e);
+    }
+}
+
+fn hash_exps_vector<H: Hasher>(state: &mut H, exps: &Vector<Exp>) {
+    for (i, e) in exps.iter().enumerate() {
+        (i + 150).hash(state);
         hash_exp(state, e);
     }
 }
@@ -420,10 +429,16 @@ fn hash_exp<H: Hasher>(state: &mut H, exp: &Exp) {
         }
         Interp(e) => {
             15.hash(state);
-            e.hash(state);
-            //            match e {
-            //                InterpExp::FreeVar(id) => id.hash(state),
-            //            }
+            match e {
+                InterpExp::FreeVar(id) => {
+                    16.hash(state);
+                    id.hash(state);
+                }
+                InterpExp::Seq(exps) => {
+                    17.hash(state);
+                    hash_exps_vector(state, exps);
+                }
+            }
         }
     }
 }
@@ -434,6 +449,7 @@ fn hash_exp<H: Hasher>(state: &mut H, exp: &Exp) {
 
 // Based on Dafny's C# implementation:
 // https://github.com/dafny-lang/dafny/blob/08744a797296897f4efd486083579e484f57b9dc/Source/DafnyRuntime/DafnyRuntime.cs#L1383
+/// Proper Euclidean division on BigInt
 fn euclidean_div(i1: &BigInt, i2: &BigInt) -> BigInt {
     use Sign::*;
     match (i1.sign(), i2.sign()) {
@@ -446,6 +462,7 @@ fn euclidean_div(i1: &BigInt, i2: &BigInt) -> BigInt {
 
 // Based on Dafny's C# implementation:
 // https://github.com/dafny-lang/dafny/blob/08744a797296897f4efd486083579e484f57b9dc/Source/DafnyRuntime/DafnyRuntime.cs#L1436
+/// Proper Euclidean mod on BigInt
 fn euclidean_mod(i1: &BigInt, i2: &BigInt) -> BigInt {
     use Sign::*;
     match i1.sign() {
@@ -483,6 +500,7 @@ fn i128_to_fixed_width(i: i128, width: u32) -> BigInt {
     .unwrap()
 }
 
+/// Displays data for profiling/debugging the interpreter
 fn display_perf_stats(state: &State) {
     let sum = state.cache_hits + state.cache_misses;
     let hit_perc = 100.0 * (state.cache_hits as f64 / sum as f64);
@@ -505,42 +523,33 @@ fn display_perf_stats(state: &State) {
  * Special handling for interpreting sequences *
  ***********************************************/
 
-//fn is_sequence_producing(fun: &Fun) -> bool {
-//    // TODO: Handle Seq::new; this would require handling lambdas in eval_expr_internal
-//    match path_as_rust_name(&fun.path).as_str() {
-//        "crate::seq::Seq::empty"
-//        | "crate::seq::Seq::push"
-//        | "crate::seq::Seq::update"
-//        | "crate::seq::Seq::add" => true,
-//        _ => false,
-//    }
-//}
-
-fn is_sequence_consuming(fun: &Fun) -> bool {
+// TODO: Have this return an Option<Enum> to indicate which function it found
+fn is_sequence_fn(fun: &Fun) -> bool {
     match path_as_rust_name(&fun.path).as_str() {
         "crate::pervasive::seq::Seq::len"
         | "crate::pervasive::seq::Seq::index"
         | "crate::pervasive::seq::Seq::ext_equal"
-        | "crate::pervasive::seq::Seq::last" => true,
+        | "crate::pervasive::seq::Seq::last"
+        | "crate::pervasive::seq::Seq::empty"
+        | "crate::pervasive::seq::Seq::new"
+        | "crate::pervasive::seq::Seq::push"
+        | "crate::pervasive::seq::Seq::update"
+        | "crate::pervasive::seq::Seq::subrange"
+        | "crate::pervasive::seq::Seq::add" => true,
         _ => false,
     }
 }
 
-enum SeqResult {
-    Concrete(Vector<Exp>),
-    Symbolic,
-}
-
-fn eval_seq_producing(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<SeqResult, VirErr> {
+fn eval_seq(ctx: &Ctx, state: &mut State, exp: &Exp, args: &Exps) -> Result<Exp, VirErr> {
     use ExpX::*;
-    use SeqResult::*;
+    use InterpExp::*;
     match &exp.x {
-        Call(fun, typs, args) => {
-            let new_args: Result<Vec<Exp>, VirErr> =
-                args.iter().map(|e| eval_expr_internal(ctx, state, e)).collect();
-            let new_args = new_args?;
+        Call(fun, typs, _old_args) => {
             let exp_new = |e: ExpX| SpannedTyped::new(&exp.span, &exp.typ, e);
-            let ok = Ok(Symbolic);
+            let bool_new = |b: bool| Ok(exp_new(Const(Constant::Bool(b))));
+            let int_new = |i: BigInt| Ok(exp_new(Const(Constant::Int(i))));
+            let seq_new = |v| Ok(exp_new(Interp(Seq(v))));
+            let ok = Ok(exp.clone());
             let get_int = |e: &Exp| match &e.x {
                 UnaryOpr(crate::ast::UnaryOpr::Box(_), e) => match &e.x {
                     Const(Constant::Int(index)) => Some(BigInt::to_usize(index).unwrap()),
@@ -550,16 +559,16 @@ fn eval_seq_producing(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<SeqResu
             };
 
             match path_as_rust_name(&fun.path).as_str() {
-                "crate::pervasive::seq::Seq::empty" => Ok(Concrete(Vector::new())),
+                "crate::pervasive::seq::Seq::empty" => seq_new(Vector::new()),
                 "crate::pervasive::seq::Seq::new" => {
-                    match get_int(&new_args[0]) {
+                    match get_int(&args[0]) {
                         Some(len) => {
                             // Extract the boxed lambda argument passed to Seq::new
-                            let lambda = match &new_args[1].x {
+                            let lambda = match &args[1].x {
                                 UnaryOpr(crate::ast::UnaryOpr::Box(_), e) => e,
                                 _ => panic!(
                                     "Expected Seq::new's second argument to be boxed.  Got {:?} instead",
-                                    new_args[1]
+                                    args[1]
                                 ),
                             };
                             // Apply the lambda to each index of the new sequence
@@ -581,140 +590,99 @@ fn eval_seq_producing(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<SeqResu
                             let vec: Vec<Exp> = vec?;
                             let mut im_vec: Vector<Exp> = Vector::new();
                             im_vec.extend(vec.into_iter());
-                            Ok(Concrete(im_vec))
+                            seq_new(im_vec)
                         }
                         _ => ok,
                     }
                 }
-                "crate::pervasive::seq::Seq::push" => {
-                    //println!("producing push");
-                    match eval_seq_producing(ctx, state, &new_args[0])? {
-                        Concrete(mut res) => {
-                            res.push_back(new_args[1].clone());
-                            Ok(Concrete(res))
-                        }
-                        Symbolic => ok,
+                "crate::pervasive::seq::Seq::push" => match &args[0].x {
+                    Interp(Seq(s)) => {
+                        let mut s = s.clone();
+                        s.push_back(args[1].clone());
+                        seq_new(s)
                     }
-                }
-                "crate::pervasive::seq::Seq::update" => {
-                    match eval_seq_producing(ctx, state, &new_args[0])? {
-                        Concrete(mut res) => match get_int(&new_args[1]) {
-                            Some(index) if index < res.len() => {
-                                res[index] = new_args[2].clone();
-                                Ok(Concrete(res))
+                    _ => ok,
+                },
+                "crate::pervasive::seq::Seq::update" => match &args[0].x {
+                    Interp(Seq(s)) => match get_int(&args[1]) {
+                        Some(index) if index < s.len() => {
+                            let s = s.update(index, args[2].clone());
+                            seq_new(s)
+                        }
+                        _ => ok,
+                    },
+                    _ => ok,
+                },
+                "crate::pervasive::seq::Seq::subrange" => match &args[0].x {
+                    Interp(Seq(s)) => {
+                        let start = get_int(&args[1]);
+                        let end = get_int(&args[2]);
+                        match (start, end) {
+                            (Some(start), Some(end)) if start <= end && end <= s.len() => {
+                                seq_new(s.clone().slice(start..end))
+                            }
+                            _ => ok,
+                        }
+                    }
+                    _ => ok,
+                },
+                "crate::pervasive::seq::Seq::add" => match (&args[0].x, &args[1].x) {
+                    (Interp(Seq(s1)), Interp(Seq(s2))) => {
+                        let mut s = s1.clone();
+                        s.append(s2.clone());
+                        seq_new(s)
+                    }
+                    _ => ok,
+                },
+                "crate::pervasive::seq::Seq::len" => match &args[0].x {
+                    Interp(Seq(s)) => int_new(BigInt::from_usize(s.len()).unwrap()),
+                    _ => ok,
+                },
+                "crate::pervasive::seq::Seq::index" => match &args[0].x {
+                    Interp(Seq(s)) => match &args[1].x {
+                        UnaryOpr(crate::ast::UnaryOpr::Box(_), e) => match &e.x {
+                            Const(Constant::Int(index)) => {
+                                let index = BigInt::to_usize(index).unwrap();
+                                if index < s.len() { Ok(s[index].clone()) } else { ok }
                             }
                             _ => ok,
                         },
-                        Symbolic => ok,
-                    }
-                }
-                "crate::pervasive::seq::Seq::subrange" => {
-                    match eval_seq_producing(ctx, state, &new_args[0])? {
-                        Concrete(res) => {
-                            let start = get_int(&new_args[1]);
-                            let end = get_int(&new_args[2]);
-                            match (start, end) {
-                                (Some(start), Some(end)) if start <= end && end <= res.len() => {
-                                    Ok(Concrete(res.clone().slice(start..end)))
-                                }
-                                _ => ok,
-                            }
-                        }
-                        Symbolic => ok,
-                    }
-                }
-                "crate::pervasive::seq::Seq::add" => {
-                    let s1 = eval_seq_producing(ctx, state, &new_args[0])?;
-                    let s2 = eval_seq_producing(ctx, state, &new_args[1])?;
-                    match (s1, s2) {
-                        (Concrete(mut s1), Concrete(s2)) => {
-                            s1.append(s2);
-                            Ok(Concrete(s1))
-                        }
                         _ => ok,
+                    },
+                    _ => ok,
+                },
+                "crate::pervasive::seq::Seq::ext_equal" => match (&args[0].x, &args[1].x) {
+                    (Interp(Seq(l)), Interp(Seq(r))) => {
+                        let eq = l
+                            .iter()
+                            .zip(r.iter())
+                            .fold(Some(true), |b, (l, r)| Some(b? && equal_expr(l, r)?));
+                        match eq {
+                            None => ok,
+                            Some(b) => bool_new(b),
+                        }
                     }
-                }
+                    _ => ok,
+                },
+                "crate::pervasive::seq::Seq::last" => match &args[0].x {
+                    Interp(Seq(s)) => {
+                        if s.len() > 0 {
+                            Ok(s.last().unwrap().clone())
+                        } else {
+                            ok
+                        }
+                    }
+                    _ => ok,
+                },
                 _ => {
                     println!("***Failed to match {} ***", path_as_rust_name(&fun.path));
                     ok
                 }
             }
         }
-        UnaryOpr(crate::ast::UnaryOpr::Box(_), e) => eval_seq_producing(ctx, state, e),
-        UnaryOpr(crate::ast::UnaryOpr::Unbox(_), e) => eval_seq_producing(ctx, state, e),
+        //        UnaryOpr(crate::ast::UnaryOpr::Box(_), e) => eval_seq_producing(ctx, state, e),
+        //        UnaryOpr(crate::ast::UnaryOpr::Unbox(_), e) => eval_seq_producing(ctx, state, e),
         _ => panic!("Expected sequence expression to be a Call.  Got {:} instead.", exp),
-    }
-}
-
-fn eval_seq_consuming(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, VirErr> {
-    use Constant::*;
-    use ExpX::*;
-    use SeqResult::*;
-    let exp_new = |e: ExpX| Ok(SpannedTyped::new(&exp.span, &exp.typ, e));
-    let bool_new = |b: bool| exp_new(Const(Bool(b)));
-    let int_new = |i: BigInt| exp_new(Const(Int(i)));
-    match &exp.x {
-        Call(fun, typs, args) => {
-            let new_args: Result<Vec<Exp>, VirErr> =
-                args.iter().map(|e| eval_expr_internal(ctx, state, e)).collect();
-            let new_args = new_args?;
-            let ok = exp_new(Call(fun.clone(), typs.clone(), Arc::new(new_args.clone())));
-
-            match path_as_rust_name(&fun.path).as_str() {
-                "crate::pervasive::seq::Seq::len" => {
-                    match eval_seq_producing(ctx, state, &new_args[0])? {
-                        Concrete(s) => int_new(BigInt::from_usize(s.len()).unwrap()),
-                        Symbolic => ok,
-                    }
-                }
-                "crate::pervasive::seq::Seq::index" => {
-                    match eval_seq_producing(ctx, state, &new_args[0])? {
-                        Concrete(s) => match &new_args[1].x {
-                            UnaryOpr(crate::ast::UnaryOpr::Box(_), e) => match &e.x {
-                                Const(Constant::Int(index)) => {
-                                    let index = BigInt::to_usize(index).unwrap();
-                                    if index < s.len() { Ok(s[index].clone()) } else { ok }
-                                }
-                                _ => ok,
-                            },
-                            _ => ok,
-                        },
-                        Symbolic => ok,
-                    }
-                }
-                "crate::pervasive::seq::Seq::ext_equal" => {
-                    let left = eval_seq_producing(ctx, state, &new_args[0])?;
-                    let right = eval_seq_producing(ctx, state, &new_args[1])?;
-                    match (left, right) {
-                        (Concrete(l), Concrete(r)) => {
-                            let eq = l
-                                .iter()
-                                .zip(r.iter())
-                                .fold(Some(true), |b, (l, r)| Some(b? && equal_expr(l, r)?));
-                            match eq {
-                                None => ok,
-                                Some(b) => bool_new(b),
-                            }
-                        }
-                        _ => ok,
-                    }
-                }
-                "crate::pervasive::seq::Seq::last" => {
-                    match eval_seq_producing(ctx, state, &new_args[0])? {
-                        Concrete(s) => {
-                            if s.len() > 0 {
-                                Ok(s.last().unwrap().clone())
-                            } else {
-                                ok
-                            }
-                        }
-                        Symbolic => ok,
-                    }
-                }
-                _ => ok,
-            }
-        }
-        _ => panic!("Expected sequence expression to be a Call.  Got {:?} instead.", exp),
     }
 }
 
@@ -850,7 +818,11 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
             let ok = exp_new(UnaryOpr(op.clone(), e.clone()));
             use crate::ast::UnaryOpr::*;
             match op {
-                Box(_) => ok,
+                Box(_) => match &e.x {
+                    // Sequences move through box
+                    Interp(InterpExp::Seq(s)) => exp_new(Interp(InterpExp::Seq(s.clone()))),
+                    _ => ok,
+                },
                 Unbox(_) => match &e.x {
                     UnaryOpr(Box(_), inner_e) => {
                         if state.debug {
@@ -858,6 +830,8 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                         };
                         Ok(inner_e.clone())
                     }
+                    // Sequences move through unbox
+                    Interp(InterpExp::Seq(s)) => exp_new(Interp(InterpExp::Seq(s.clone()))),
                     _ => ok,
                 },
                 HasType(_) => ok,
@@ -1136,8 +1110,8 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                 _ => exp_new(If(e1, e2.clone(), e3.clone())),
             }
         }
-        Call(fun, typs, exps) => {
-            match state.lookup_call(&fun, &exps) {
+        Call(fun, typs, args) => {
+            match state.lookup_call(&fun, &args) {
                 Some(prev_result) => {
                     state.cache_hits += 1;
                     state.depth -= 1;
@@ -1149,11 +1123,11 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                 None => {
                     state.cache_misses += 1;
                     //println!("{}Calling {}", "\t".repeat(state.depth), exp);
-                    let new_exps: Result<Vec<Exp>, VirErr> =
-                        exps.iter().map(|e| eval_expr_internal(ctx, state, e)).collect();
-                    let new_exps = Arc::new(new_exps?);
-                    //let new_exps_string = new_exps.iter().map(|e| e.to_string()).collect::<Vec<_>>().join(", ");
-                    //println!("{} simplified args to {}", "\t".repeat(state.depth), new_exps_string);
+                    let new_args: Result<Vec<Exp>, VirErr> =
+                        args.iter().map(|e| eval_expr_internal(ctx, state, e)).collect();
+                    let new_args = Arc::new(new_args?);
+                    //let new_args_string = new_args.iter().map(|e| e.to_string()).collect::<Vec<_>>().join(", ");
+                    //println!("{} simplified args to {}", "\t".repeat(state.depth), new_args_string);
                     match state.fun_calls.get_mut(fun) {
                         None => {
                             state.fun_calls.insert(fun.clone(), 1);
@@ -1162,23 +1136,23 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                             *count += 1;
                         }
                     }
-                    match state.lookup_call(&fun, &new_exps) {
+                    match state.lookup_call(&fun, &new_args) {
                         Some(prev_result) => {
                             state.cache_hits += 1;
                             Ok(prev_result)
                         }
                         None => {
                             state.cache_misses += 1;
-                            let result = if is_sequence_consuming(&fun) {
-                                eval_seq_consuming(ctx, state, exp)
+                            let result = if is_sequence_fn(&fun) {
+                                eval_seq(ctx, state, exp, &new_args)
                             } else {
                                 match ctx.fun_ssts.get(fun) {
                                     None => {
-                                        exp_new(Call(fun.clone(), typs.clone(), new_exps.clone()))
+                                        exp_new(Call(fun.clone(), typs.clone(), new_args.clone()))
                                     }
                                     Some((params, body)) => {
                                         state.env.push_scope(true);
-                                        for (formal, actual) in params.iter().zip(new_exps.iter()) {
+                                        for (formal, actual) in params.iter().zip(new_args.iter()) {
                                             if state.debug {
                                                 //println!("Binding {:?} to {:?}", formal, actual.x);
                                             }
@@ -1196,7 +1170,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                                     }
                                 }
                             };
-                            state.insert_call(fun, &new_exps, &result.clone()?);
+                            state.insert_call(fun, &new_args, &result.clone()?);
                             result
                         }
                     }
@@ -1249,6 +1223,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
         }
         Interp(e) => match e {
             InterpExp::FreeVar(_) => ok,
+            InterpExp::Seq(_) => ok,
         },
         // Ignored by the interpreter at present (i.e., treated as symbolic)
         VarAt(..) | VarLoc(..) | Loc(..) | Old(..) | WithTriggers(..) => ok,

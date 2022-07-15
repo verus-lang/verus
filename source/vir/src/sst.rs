@@ -218,7 +218,16 @@ impl fmt::Display for ExpX {
             VarLoc(..) | VarAt(..) | Loc(..) | Old(..) | WithTriggers(..) => {
                 write!(f, "Unexpected: {:?}", self)
             }
-            Interp(e) => write!(f, "{:?}", e),
+            Interp(e) => {
+                use InterpExp::*;
+                match e {
+                    FreeVar(id) => write!(f, "{}", id.0),
+                    Seq(s) => {
+                        let v = s.iter().map(|e| e.to_string()).collect::<Vec<_>>().join(", ");
+                        write!(f, "[{}]", v)
+                    }
+                }
+            }
         }
     }
 }
