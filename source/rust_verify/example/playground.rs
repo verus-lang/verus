@@ -4,7 +4,7 @@ use pervasive::string::StrSlice;
 
 const GREETING: StrSlice<'static> = StrSlice::new("Hello World");
 fn myconstfn() {
-    GREETING.reveal();
+    let _:() = GREETING.reveal();
 }
 
 fn main() {}

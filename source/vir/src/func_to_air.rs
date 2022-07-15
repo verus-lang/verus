@@ -689,10 +689,9 @@ pub fn func_def_to_air(
                 let mut valid = false;
                 if let FunctionX { body: Some(arc_val), .. } = x {
                     let val = &(&*arc_val.clone()).x;
-                    /* if let crate::ast::ExprX::Const(Constant::StrSlice(strlit, reveal)) = val {
-                        ctx.interned_strings.insert(Arc::new(strlit.to_string()));
+                    if let crate::ast::ExprX::Const(Constant::StrSlice(_,_)) = val {
                         valid = true;
-                    } */
+                    }
                 }
                 if !valid {
                     panic!("Expected a strlit");
