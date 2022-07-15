@@ -479,19 +479,19 @@ fn display_perf_stats(state: &State) {
 
 // TODO: Have this return an Option<Enum> to indicate which function it found
 fn is_sequence_fn(fun: &Fun) -> bool {
-    match path_as_rust_name(&fun.path).as_str() {
+    matches!(
+        path_as_rust_name(&fun.path).as_str(),
         "crate::pervasive::seq::Seq::len"
-        | "crate::pervasive::seq::Seq::index"
-        | "crate::pervasive::seq::Seq::ext_equal"
-        | "crate::pervasive::seq::Seq::last"
-        | "crate::pervasive::seq::Seq::empty"
-        | "crate::pervasive::seq::Seq::new"
-        | "crate::pervasive::seq::Seq::push"
-        | "crate::pervasive::seq::Seq::update"
-        | "crate::pervasive::seq::Seq::subrange"
-        | "crate::pervasive::seq::Seq::add" => true,
-        _ => false,
-    }
+            | "crate::pervasive::seq::Seq::index"
+            | "crate::pervasive::seq::Seq::ext_equal"
+            | "crate::pervasive::seq::Seq::last"
+            | "crate::pervasive::seq::Seq::empty"
+            | "crate::pervasive::seq::Seq::new"
+            | "crate::pervasive::seq::Seq::push"
+            | "crate::pervasive::seq::Seq::update"
+            | "crate::pervasive::seq::Seq::subrange"
+            | "crate::pervasive::seq::Seq::add"
+    )
 }
 
 fn eval_seq(ctx: &Ctx, state: &mut State, exp: &Exp, args: &Exps) -> Result<Exp, VirErr> {
@@ -541,9 +541,7 @@ fn eval_seq(ctx: &Ctx, state: &mut State, exp: &Exp, args: &Exps) -> Result<Exp,
                                     eval_expr_internal(ctx, state, &call)
                                 })
                                 .collect();
-                            let vec: Vec<Exp> = vec?;
-                            let mut im_vec: Vector<Exp> = Vector::new();
-                            im_vec.extend(vec.into_iter());
+                            let im_vec: Vector<Exp> = vec?.into_iter().collect();
                             seq_new(im_vec)
                         }
                         _ => ok,
