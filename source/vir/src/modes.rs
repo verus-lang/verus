@@ -89,7 +89,7 @@ impl ErasureModeX {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct ErasureModes {
     // Modes of conditions in If
     pub condition_modes: Vec<(Span, Mode)>,

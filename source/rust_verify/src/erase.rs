@@ -88,7 +88,7 @@ pub enum ResolvedCall {
     Ctor(Path, vir::ast::Ident),
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct ErasureHints {
     /// Copy of the entire VIR crate that was created in the first run's HIR -> VIR transformation
     pub vir_crate: Krate,
@@ -1395,7 +1395,7 @@ impl rustc_lint::FormalVerifierRewrite for CompilerCallbacks {
         use crate::rustc_ast::mut_visit::MutVisitor;
         let mut krate = krate.clone();
         let mut visitor = crate::erase_rewrite::Visitor::new();
-        visitor.visit_crate(&mut krate);
+        visitor.visit_crate(&mut krate);            
 
         let ctxt = mk_ctxt(&self.erasure_hints, &visitor.spans, self.lifetimes_only);
         let mut mctxt = MCtxt {

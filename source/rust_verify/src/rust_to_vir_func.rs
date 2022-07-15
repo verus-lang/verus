@@ -11,7 +11,7 @@ use crate::{unsupported, unsupported_err, unsupported_err_unless, unsupported_un
 use rustc_ast::Attribute;
 use rustc_hir::{Body, BodyId, FnDecl, FnHeader, FnSig, Generics, Param, TyKind, Unsafety, QPath, PrimTy, def::Res, FnRetTy, Ty};
 use rustc_middle::ty::TyCtxt;
-use rustc_span::symbol::Ident;
+use rustc_span::symbol::{Ident, Symbol};
 use rustc_span::Span;
 use std::sync::Arc;
 use vir::ast::{
@@ -157,17 +157,9 @@ pub(crate) fn check_item_fn<'tcx>(
     body_id: &BodyId,
 ) -> Result<Option<Fun>, VirErr> {
     let path = def_id_to_vir_path(ctxt.tcx, id);
+    let is_str_new = ctxt.tcx.is_diagnostic_item(Symbol::intern("pervasive::string::StrSlice::new"), id);
 
-    // this is ugly but probably better than converting the Vec<Arc<String>> to a Vec<String> and
-    // comparing that
-    let is_str_new = matches!(path.krate, None) && path.segments.len() == 4 && {
-        *path.segments[0] == "pervasive"
-            && *path.segments[1] == "string"
-            && *path.segments[2] == "StrSlice"
-            && *path.segments[3] == "new"
-    };
-
-    let name = Arc::new(FunX { path, trait_path });
+    let name = Arc::new(FunX { path: path.clone(), trait_path });
     let mode = get_mode(Mode::Exec, attrs);
     let self_typ_params = if let Some(cg) = self_generics {
         Some(check_generics_bounds_fun(ctxt.tcx, cg)?)
@@ -195,8 +187,22 @@ pub(crate) fn check_item_fn<'tcx>(
     let sig_typ_bounds = check_generics_bounds_fun(ctxt.tcx, generics)?;
     let vattrs = get_verifier_attrs(attrs)?;
     let fuel = get_fuel(&vattrs);
+    
+    if is_str_new {
+        let mut erasure_info = ctxt.erasure_info.borrow_mut();
+        unsupported_err_unless!(
+            vattrs.external_body,
+            sig.span,
+            "StrSlice::new must be external_body"
+        ); 
+
+        check_strslice_new(sig)?;
+        erasure_info.ignored_functions.push(sig.span.data());
+        erasure_info.external_functions.push(name);
+        return Ok(None);
+    }
+
     if vattrs.external {
-        dbg!(&sig);
         let mut erasure_info = ctxt.erasure_info.borrow_mut();
         erasure_info.external_functions.push(name);
         return Ok(None);
@@ -204,25 +210,7 @@ pub(crate) fn check_item_fn<'tcx>(
     let body = find_body(ctxt, body_id);
     let Body { params, value: _, generator_kind } = body;
     let mut vir_params: Vec<vir::ast::Param> = Vec::new();
-
-    if is_str_new {
-        // HACK: figure out what is going on here 
-        // external should not be false
-        if vattrs.external == false {
-
-        }
-
-        unsupported_err_unless!(
-            vattrs.external_body,
-            sig.span,
-            "StrSlice::new must be external_body"
-        ); 
-        check_strslice_new(sig)?;
-        let mut erasure_info = ctxt.erasure_info.borrow_mut();
-        erasure_info.ignored_functions.push(sig.span.data());
-        todo!("die");
-        return Ok(None);
-    }
+    
 
     for (param, input) in params.iter().zip(sig.decl.inputs.iter()) {
         let Param { hir_id, pat, ty_span: _, span } = param;
@@ -404,7 +392,16 @@ pub(crate) fn check_item_const<'tcx>(
     }
     let body = find_body(ctxt, body_id);
     let vir_body = body_to_vir(ctxt, body_id, body, mode, vattrs.external_body)?;
-    let is_string_literal = matches!(vir_body.x, vir::ast::ExprX::Const(vir::ast::Constant::StrSlice(_)));
+
+    let is_string_literal = match &vir_body.x {
+        vir::ast::ExprX::Const(vir::ast::Constant::StrSlice(val, _)) => {
+            let mut global_strings = ctxt.global_strings.borrow_mut();
+            global_strings.insert(id, val.clone());
+            true
+        }, 
+        _ => false
+    };
+    
     let ret_name = Arc::new(RETURN_VALUE.to_string());
     let ret =
         spanned_new(span, ParamX { name: ret_name, typ: typ.clone(), mode: mode, is_mut: false });

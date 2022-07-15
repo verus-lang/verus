@@ -776,14 +776,21 @@ fn fn_call_to_vir<'tcx>(
         let arg = args.first().expect("argument to StrSlice::new");
         if let ExprKind::Lit(lit) = &arg.kind {
             if let rustc_ast::LitKind::Str(s, _) = lit.node {
-                let c = vir::ast::Constant::StrSlice(Arc::new(s.to_string()));
+                let c = vir::ast::Constant::StrSlice(Arc::new(s.to_string()), false);
                 return Ok(mk_expr(ExprX::Const(c)));
             }
         }
     }
 
     if is_strslice_reveal {
-        dbg!(expr);
+        dbg!(&expr.kind);
+        match &expr.kind {
+            ExprKind::MethodCall(_, _, [Expr {hir_id, kind: ExprKind::Path(path), .. }], _) => {  
+                let self_id = bctx.types.qpath_res(path, *hir_id).def_id();
+                let strval = bctx.ctxt.global_strings.borrow().get(&self_id);
+            },
+            _ => panic!("Expected a method call for StrSlice::reveal with one argument but did not receive it")
+        };
         todo!("here");
     }
 

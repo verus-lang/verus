@@ -261,7 +261,7 @@ pub enum Constant {
     Nat(Arc<String>),
     /// A constant string the second argument is used to indicate 
     /// if the compiler should "reveal" it or not. 
-    StrSlice(Arc<String>)
+    StrSlice(Arc<String>, bool)
 }
 
 #[derive(Debug)]

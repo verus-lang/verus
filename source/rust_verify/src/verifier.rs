@@ -1084,6 +1084,7 @@ impl Verifier {
             erasure_info,
             autoviewed_call_typs,
             unique_id: std::cell::Cell::new(0),
+            global_strings: std::rc::Rc::new(std::cell::RefCell::new(HashMap::new()))
         });
 
         // Convert HIR -> VIR
