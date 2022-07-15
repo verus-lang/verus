@@ -307,4 +307,34 @@ mod M4 {
   }
 }
 
+
+// example13: reveal at ensures
+#[verifier(opaque)]
+spec fn is_good_integer_13(x: int) -> bool 
+//   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ Note: this function is opaque
+{
+  x >= 0 && x != 5
+}
+
+#[verifier(opaque)]
+spec fn is_good_message_13(msg:Message) -> bool {
+  match msg {
+      Message::Quit(b) => b,
+      Message::Move{x, y} => is_good_integer_13( (x as int)  - (y as int)),
+//                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+      Message::Write(b) => b,
+  }
+}
+
+proof fn test_reveal_at_ensures(b: bool) -> (good_msg: Message)
+  ensures
+    is_good_message_13(good_msg), 
+//  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+{
+    let good_msg = Message::Move{x: 0, y: 0};
+    reveal(is_good_message_13);
+    good_msg
+}
+
+
 }

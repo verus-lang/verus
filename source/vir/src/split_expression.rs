@@ -49,7 +49,7 @@ fn subsitute_argument(
             SpannedTyped::new(&exp.span, &exp.typ, new_exp)
         }
         ExpX::Bind(bnd, e1) => {
-            // TODO: check if binded name and  `var to replace` is same
+            // TODO: check if binded name and  `var to replace` is same.
             let e1_replaced = subsitute_argument(e1, arg_map)?;
             let bnd_replaced: Bnd = match &bnd.x {
                 BndX::Let(binders) => {
@@ -78,7 +78,12 @@ fn subsitute_argument(
                         BndX::Quant(quant.clone(), bndrs.clone(), Arc::new(replaced_trigs)),
                     )
                 }
-                _ => return Err((exp.span.clone(), format!("TODO: binders, subsitute_argument"))),
+                _ => {
+                    return Err((
+                        exp.span.clone(),
+                        format!("Unsupported binder during subsitution"),
+                    ));
+                }
             };
             let new_exp = ExpX::Bind(bnd_replaced, e1_replaced);
             SpannedTyped::new(&exp.span, &exp.typ, new_exp)
@@ -93,28 +98,27 @@ fn subsitute_argument(
             // CallLambda(Typ, Exp, Exps),
             // Ctor(Path, Ident, Binders<Exp>),
             // WithTriggers(Trigs, Exp),
-            return Err((exp.span.clone(), format!("TODO: unsubsituted exp, subsitute_argument ")));
+            return Err((exp.span.clone(), format!("Unsupported expression during subsitution")));
         }
     };
     Ok(result)
 }
 
-// e1: param, e2: exp_to_replace
-fn assert_same_type(param_typ: &Typ, e2: &Exp) -> Result<(), (Span, String)> {
-    match (&**param_typ, &*e2.typ) {
-        (TypX::Bool, TypX::Bool) |
-        (TypX::Int(_),TypX::Int(_)) |
-        (TypX::Tuple(_), TypX::Tuple(_)) |
-        (TypX::Lambda(_, _), TypX::Lambda(_,_)) |
-        (TypX::Datatype(_, _), TypX::Datatype(_,_)) |
-        // TODO: recursive check instead
-        (TypX::Boxed(_), TypX::Boxed(_)) |
-        (TypX::TypParam(_), TypX::TypParam(_)) |
-        (TypX::TypeId, TypX::TypeId) |
-        (TypX::Air(_), TypX::Air(_)) => Ok(()),
-        _ => return Err((e2.span.clone(), "TODO or interal error: arg type mismatch during function inlining".to_string())),
+fn is_same_type(t1: &Typ, t2: &Typ) -> bool {
+    match (&**t1, &**t2) {
+        (TypX::Bool, TypX::Bool)
+        | (TypX::Int(_), TypX::Int(_))
+        | (TypX::Tuple(_), TypX::Tuple(_))
+        | (TypX::Lambda(_, _), TypX::Lambda(_, _))
+        | (TypX::Datatype(_, _), TypX::Datatype(_, _))
+        | (TypX::TypParam(_), TypX::TypParam(_))
+        | (TypX::TypeId, TypX::TypeId)
+        | (TypX::Air(_), TypX::Air(_)) => true,
+        (TypX::Boxed(b1), TypX::Boxed(b2)) => is_same_type(b1, b2),
+        _ => false,
     }
 }
+
 pub(crate) fn tr_inline_expression(
     body_exp: &Exp,
     params: &Params,
@@ -133,7 +137,12 @@ pub(crate) fn tr_inline_expression(
     let mut count = 0;
     for param in &**params {
         let exp_to_insert = &exps[count];
-        assert_same_type(&param.x.typ, exp_to_insert)?;
+        if !is_same_type(&param.x.typ, &exp_to_insert.typ) {
+            return Err((
+                exp_to_insert.span.clone(),
+                "Error: arg type mismatch during expression inlining".to_string(),
+            ));
+        }
         arg_map.insert(param.x.name.clone(), exp_to_insert.clone());
         count = count + 1;
     }
@@ -348,10 +357,9 @@ pub(crate) fn split_expr(
                     return split_expr(ctx, state, &inlined_tr_exp, negated);
                 }
                 Err((sp, msg)) => {
-                    println!("inline failed for {:?}", fun_name);
+                    // if the function inlining failed, treat as atom
                     let not_inlined_exp =
                         TracedExpX::new(exp.e.clone(), exp.trace.secondary_label(&sp, msg));
-                    // stop inlining. treat as atom
                     return Ok(mk_atom(not_inlined_exp, negated));
                 }
             }

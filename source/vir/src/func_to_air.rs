@@ -648,40 +648,11 @@ pub fn func_def_to_air(
             }
             let mut ens_stmts: Vec<Stm> = Vec::new();
             let mut enss: Vec<Exp> = Vec::new();
-            let mut small_ens_assertions = vec![];
             for e in req_ens_function.x.ensure.iter() {
                 if ctx.checking_recommends() {
                     ens_stmts.extend(crate::ast_to_sst::check_pure_expr(ctx, &mut state, e)?);
                 } else {
-                    // split failing ensures expressions into additional assertions
-                    if ctx.expand_flag
-                        && crate::split_expression::need_split_expression(ctx, &e.span)
-                    {
-                        let ens_exp = crate::ast_to_sst::expr_to_exp(ctx, &ens_pars, e)?;
-                        let error = air::errors::error("splitted ensures failure", &ens_exp.span);
-                        let splitted_exprs = crate::split_expression::split_expr(
-                            ctx,
-                            &mut crate::ast_to_sst::State::new(), // TODO: get the final state from this body's translation
-                            &crate::split_expression::TracedExpX::new(
-                                ens_exp.clone(),
-                                error.clone(),
-                            ),
-                            false,
-                        );
-                        if splitted_exprs.is_err() {
-                            ()
-                        } else {
-                            let splitted_exprs = splitted_exprs.unwrap();
-                            small_ens_assertions.extend(
-                                crate::split_expression::register_splitted_assertions(
-                                    splitted_exprs,
-                                ),
-                            );
-                        }
-                        enss.push(ens_exp);
-                    } else {
-                        enss.push(crate::ast_to_sst::expr_to_exp(ctx, &ens_pars, e)?);
-                    }
+                    enss.push(crate::ast_to_sst::expr_to_exp(ctx, &ens_pars, e)?);
                 }
             }
             let enss = Arc::new(enss);
@@ -706,8 +677,35 @@ pub fn func_def_to_air(
                 }
                 stm = crate::ast_to_sst::stms_to_one_stm(&body.span, req_stms);
             }
-            // add splitted ensures expressions for error localization
-            let stm = if ctx.expand_flag {
+
+            let stm = if !ctx.checking_recommends() && ctx.expand_flag {
+                // split ensures expressions for error localization
+                let mut small_ens_assertions = vec![];
+                for e in req_ens_function.x.ensure.iter() {
+                    if crate::split_expression::need_split_expression(ctx, &e.span) {
+                        let ens_exp = crate::ast_to_sst::expr_to_exp(ctx, &ens_pars, e)?;
+                        let error = air::errors::error("splitted ensures failure", &ens_exp.span);
+                        let splitted_exprs = crate::split_expression::split_expr(
+                            ctx,
+                            &state,
+                            &crate::split_expression::TracedExpX::new(
+                                ens_exp.clone(),
+                                error.clone(),
+                            ),
+                            false,
+                        );
+                        if splitted_exprs.is_err() {
+                            ()
+                        } else {
+                            let splitted_exprs = splitted_exprs.unwrap();
+                            small_ens_assertions.extend(
+                                crate::split_expression::register_splitted_assertions(
+                                    splitted_exprs,
+                                ),
+                            );
+                        }
+                    }
+                }
                 let mut my_stms = vec![stm.clone()];
                 my_stms.extend(small_ens_assertions);
                 crate::ast_to_sst::stms_to_one_stm(&stm.span, my_stms)
