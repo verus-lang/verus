@@ -149,7 +149,7 @@ impl<T: SyntacticEquality> SyntacticEquality for Arc<Vec<T>> {
     }
 }
 
-impl<T: SyntacticEquality> SyntacticEquality for Vector<T> {
+impl<T: Clone + SyntacticEquality> SyntacticEquality for Vector<T> {
     fn syntactic_eq(&self, other: &Self) -> Option<bool> {
         self.iter().zip(other.iter()).try_fold(true, |acc, (l, r)| Some(acc && l.syntactic_eq(r)?))
     }
