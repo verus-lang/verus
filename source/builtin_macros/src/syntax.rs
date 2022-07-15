@@ -462,7 +462,12 @@ impl VisitMut for Visitor {
                     | BinOp::Sub(..)
                     | BinOp::Mul(..)
                     | BinOp::Div(..)
-                    | BinOp::Rem(..),
+                    | BinOp::Rem(..)
+                    | BinOp::BitAnd(..)
+                    | BinOp::BitOr(..)
+                    | BinOp::BitXor(..)
+                    | BinOp::Shl(..)
+                    | BinOp::Shr(..),
                 ..
             }) if use_spec_traits => (true, false),
             Expr::Assume(..) | Expr::Assert(..) | Expr::AssertForall(..) => (true, false),
@@ -655,6 +660,21 @@ impl VisitMut for Visitor {
                         BinOp::Rem(..) => {
                             *expr =
                                 parse_quote_spanned!(span => (#left).spec_euclidean_mod(#right));
+                        }
+                        BinOp::BitAnd(..) => {
+                            *expr = parse_quote_spanned!(span => (#left).spec_bitand(#right));
+                        }
+                        BinOp::BitOr(..) => {
+                            *expr = parse_quote_spanned!(span => (#left).spec_bitor(#right));
+                        }
+                        BinOp::BitXor(..) => {
+                            *expr = parse_quote_spanned!(span => (#left).spec_bitxor(#right));
+                        }
+                        BinOp::Shl(..) => {
+                            *expr = parse_quote_spanned!(span => (#left).spec_shl(#right));
+                        }
+                        BinOp::Shr(..) => {
+                            *expr = parse_quote_spanned!(span => (#left).spec_shr(#right));
                         }
                         _ => panic!("binary"),
                     }

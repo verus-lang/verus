@@ -9,19 +9,19 @@ test_verify_one_file! {
             assert(b & 7 == b % 8) by(bit_vector);
             assert(b & 7 == b % 8);
 
-            assert(b ^ b == 0u32) by(bit_vector);
+            assert(b ^ b == 0) by(bit_vector);
             assert(b ^ b == 0);
 
             assert(b & b == b) by(bit_vector);
             assert(b & b == b);
 
-            assert(add(add(b, !b), 1) == 0u32) by(bit_vector);
+            assert(add(add(b, !b), 1) == 0) by(bit_vector);
             assert(add(add(b, !b), 1) == 0);
 
             assert(b | b == b) by(bit_vector);
             assert(b | b == b);
 
-            assert(b & 0xff < 0x100u32) by(bit_vector);
+            assert(b & 0xff < 0x100) by(bit_vector);
             assert(b & 0xff < 0x100);
         }
     } => Ok(())
@@ -32,7 +32,7 @@ test_verify_one_file! {
         proof fn test2(b: u32) {
             assert(b << 2 == mul(b, 4)) by(bit_vector);
             assert(b << 2 == mul(b, 4));
-            assert(b < 256 ==> ((b << 2) as int) == (b as int) * 4);
+            assert(b < 256 ==> b << 2 == b * 4);
 
             assert(b >> 1 == b / 2) by(bit_vector);
             assert(b >> 1 == b / 2);
@@ -68,9 +68,9 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test5 verus_code! {
         proof fn test5(u:u64) {
-            assert( (u >> 32u64) as u32  ==  (u / 0x100000000u64) as u32)
+            assert( (u >> 32) as u32  ==  (u / 0x100000000) as u32)
                 by(bit_vector);
-            assert( (u >> (32 as u64)) as u32  ==  (u / (0x100000000 as u64)) as u32);
+            assert( (u >> 32) as u32  ==  (u / 0x100000000) as u32);
         }
     } => Ok(())
 }
@@ -99,7 +99,7 @@ test_verify_one_file! {
     #[test] test8 verus_code! {
         proof fn test8(b: u32) {
             assert_bit_vector(forall|a: u32, b: u32| #[trigger] (a & b) == b & a);
-            assert_bit_vector(b & 0xff < 0x100u32);
+            assert_bit_vector(b & 0xff < 0x100);
             assert(0xff & b < 0x100);
         }
     } => Ok(())
@@ -137,7 +137,7 @@ test_verify_one_file! {
 test_verify_one_file! {
     #[test] test3_fails verus_code! {
         proof fn test3(b: u32) {
-            assert(b & 0 > 0u32) by(bit_vector); // FAILS
+            assert(b & 0 > 0) by(bit_vector); // FAILS
         }
     } => Err(err) => assert_one_fails(err)
 }
@@ -163,7 +163,7 @@ test_verify_one_file! {
     #[test] test6_fails verus_code! {
         proof fn test6(b: u32) {
             assert(b << 2 == mul(b, 4)) by(bit_vector);
-            assert(((b << 2) as int) == (b as int) * 4);  // FAILS
+            assert(b << 2 == b * 4);  // FAILS
         }
     } => Err(err) => assert_one_fails(err)
 }

@@ -508,6 +508,36 @@ pub trait SpecEuclideanMod<Rhs = Self> {
     fn spec_euclidean_mod(self, rhs: Rhs) -> Self::Output;
 }
 
+pub trait SpecBitAnd<Rhs = Self> {
+    type Output;
+    #[spec]
+    fn spec_bitand(self, rhs: Rhs) -> Self::Output;
+}
+
+pub trait SpecBitOr<Rhs = Self> {
+    type Output;
+    #[spec]
+    fn spec_bitor(self, rhs: Rhs) -> Self::Output;
+}
+
+pub trait SpecBitXor<Rhs = Self> {
+    type Output;
+    #[spec]
+    fn spec_bitxor(self, rhs: Rhs) -> Self::Output;
+}
+
+pub trait SpecShl<Rhs = Self> {
+    type Output;
+    #[spec]
+    fn spec_shl(self, rhs: Rhs) -> Self::Output;
+}
+
+pub trait SpecShr<Rhs = Self> {
+    type Output;
+    #[spec]
+    fn spec_shr(self, rhs: Rhs) -> Self::Output;
+}
+
 // Chained inequalities x <= y < z
 pub struct SpecChain {
     data: std::marker::PhantomData<int>,
@@ -685,6 +715,32 @@ impl_binary_op_rhs!(SpecEuclideanDiv, spec_euclidean_div, Self, int, [
 
 impl_binary_op_rhs!(SpecEuclideanMod, spec_euclidean_mod, Self, Self, [
     int nat
+    usize u8 u16 u32 u64 u128
+    isize i8 i16 i32 i64 i128
+]);
+
+impl_binary_op_rhs!(SpecBitAnd, spec_bitand, Self, Self, [
+    usize u8 u16 u32 u64 u128
+    isize i8 i16 i32 i64 i128
+]);
+
+impl_binary_op_rhs!(SpecBitOr, spec_bitor, Self, Self, [
+    usize u8 u16 u32 u64 u128
+    isize i8 i16 i32 i64 i128
+]);
+
+impl_binary_op_rhs!(SpecBitXor, spec_bitxor, Self, Self, [
+    bool
+    usize u8 u16 u32 u64 u128
+    isize i8 i16 i32 i64 i128
+]);
+
+impl_binary_op_rhs!(SpecShl, spec_shl, Self, Self, [
+    usize u8 u16 u32 u64 u128
+    isize i8 i16 i32 i64 i128
+]);
+
+impl_binary_op_rhs!(SpecShr, spec_shr, Self, Self, [
     usize u8 u16 u32 u64 u128
     isize i8 i16 i32 i64 i128
 ]);

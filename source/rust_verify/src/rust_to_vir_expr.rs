@@ -457,6 +457,11 @@ fn fn_call_to_vir<'tcx>(
     let is_spec_mul = f_name == "builtin::SpecMul::spec_mul";
     let is_spec_euclidean_div = f_name == "builtin::SpecEuclideanDiv::spec_euclidean_div";
     let is_spec_euclidean_mod = f_name == "builtin::SpecEuclideanMod::spec_euclidean_mod";
+    let is_spec_bitand = f_name == "builtin::SpecBitAnd::spec_bitand";
+    let is_spec_bitor = f_name == "builtin::SpecBitOr::spec_bitor";
+    let is_spec_bitxor = f_name == "builtin::SpecBitXor::spec_bitxor";
+    let is_spec_shl = f_name == "builtin::SpecShl::spec_shl";
+    let is_spec_shr = f_name == "builtin::SpecShr::spec_shr";
     let is_spec_literal_integer = f_name == "builtin::spec_literal_integer";
     let is_spec_literal_int = f_name == "builtin::spec_literal_int";
     let is_spec_literal_nat = f_name == "builtin::spec_literal_nat";
@@ -485,11 +490,14 @@ fn fn_call_to_vir<'tcx>(
     let is_spec_cmp = is_spec_eq || is_spec_le || is_spec_ge || is_spec_lt || is_spec_gt;
     let is_spec_arith_binary =
         is_spec_add || is_spec_sub || is_spec_mul || is_spec_euclidean_div || is_spec_euclidean_mod;
+    let is_spec_bitwise_binary =
+        is_spec_bitand || is_spec_bitor || is_spec_bitxor || is_spec_shl || is_spec_shr;
     let is_chained_ineq = is_chained_le || is_chained_lt || is_chained_ge || is_chained_gt;
     let is_spec_literal = is_spec_literal_int || is_spec_literal_nat || is_spec_literal_integer;
     let is_spec_op = is_spec_cast_integer
         || is_spec_cmp
         || is_spec_arith_binary
+        || is_spec_bitwise_binary
         || is_spec_neg
         || is_chained_ineq
         || is_spec_literal
@@ -955,7 +963,13 @@ fn fn_call_to_vir<'tcx>(
         }
     } else if is_eq || is_ne {
         is_smt_equality(bctx, expr.span, &args[0].hir_id, &args[1].hir_id)
-    } else if is_cmp || is_arith_binary || is_implies || is_spec_cmp || is_spec_arith_binary {
+    } else if is_cmp
+        || is_arith_binary
+        || is_implies
+        || is_spec_cmp
+        || is_spec_arith_binary
+        || is_spec_bitwise_binary
+    {
         is_smt_arith(bctx, &args[0].hir_id, &args[1].hir_id)
     } else {
         false
@@ -1032,6 +1046,20 @@ fn fn_call_to_vir<'tcx>(
             BinaryOp::Arith(ArithOp::EuclideanDiv, None)
         } else if is_spec_euclidean_mod {
             BinaryOp::Arith(ArithOp::EuclideanMod, None)
+        } else if is_spec_bitand {
+            BinaryOp::Bitwise(BitwiseOp::BitAnd)
+        } else if is_spec_bitor {
+            BinaryOp::Bitwise(BitwiseOp::BitOr)
+        } else if is_spec_bitxor {
+            if matches!(*vir_args[0].typ, TypX::Bool) {
+                BinaryOp::Xor
+            } else {
+                BinaryOp::Bitwise(BitwiseOp::BitXor)
+            }
+        } else if is_spec_shl {
+            BinaryOp::Bitwise(BitwiseOp::Shl)
+        } else if is_spec_shr {
+            BinaryOp::Bitwise(BitwiseOp::Shr)
         } else if is_implies {
             BinaryOp::Implies
         } else {

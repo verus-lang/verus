@@ -85,6 +85,21 @@ pub fn bitwidth_from_type(et: &Typ) -> Option<u32> {
     }
 }
 
+pub(crate) fn fixed_integer_const(n: &String, typ: &Typ) -> bool {
+    if let TypX::Int(IntRange::U(bits)) = &**typ {
+        if let Ok(u) = n.parse::<u128>() {
+            return *bits == 128 || u < 2u128 << bits;
+        }
+    }
+    if let TypX::Int(IntRange::I(bits)) = &**typ {
+        if let Ok(i) = n.parse::<i128>() {
+            return *bits == 128
+                || -((2u128 << (bits - 1)) as i128) <= i && i < (2u128 << (bits - 1)) as i128;
+        }
+    }
+    false
+}
+
 impl TypX {
     pub fn is_ghost_typ(&self) -> bool {
         match self {
