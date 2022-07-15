@@ -82,7 +82,7 @@ impl<A> std::ops::Deref for Tracked<A> {
     }
 }
 
-verus! {
+verus2! {
 
 pub tracked struct TrackedAndGhost<T, G>(
     pub tracked T,

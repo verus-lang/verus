@@ -5,7 +5,7 @@ mod pervasive;
 
 fn main() {}
 
-verus! {
+verus2! {
 
 spec fn f1(i: int, j: int) -> bool {
     i <= j
@@ -109,10 +109,10 @@ spec fn tr(i: int) -> bool {
 }
 
 fn test_nat() {
-    assert(forall|i: nat| i >= 0 && tr(i));
+    assert(forall|i: nat| i >= 0 && tr(i as int));
     assert(tr(300));
-    assert(exists|i: nat| i >= 0 && tr(i));
-    assert(exists|i: u16| i >= 300 && tr(i));
+    assert(exists|i: nat| i >= 0 && tr(i as int));
+    assert(exists|i: u16| i >= 300 && tr(i as int));
 }
 
 }

@@ -7,7 +7,7 @@ use crate::pervasive::*;
 #[allow(unused_imports)]
 use crate::pervasive::map::*;
 
-verus! {
+verus2! {
 
 /// `Set<A>` is a set type for specifications.
 ///

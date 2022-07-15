@@ -207,8 +207,9 @@ pub enum BinaryOp {
     Ne,
     ///
     Inequality(InequalityOp),
-    /// IntRange operations that may require overflow or divide-by zero checks
-    Arith(ArithOp, InferMode),
+    /// IntRange operations that may require overflow or divide-by-zero checks
+    /// (None for InferMode means always mode Spec)
+    Arith(ArithOp, Option<InferMode>),
     /// Bit Vector Operators
     Bitwise(BitwiseOp),
 }

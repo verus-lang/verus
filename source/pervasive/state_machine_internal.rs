@@ -117,7 +117,7 @@ pub fn assert_general_guard_map(b: bool) { requires(b); ensures(b); }
 impl<A> Seq<A> {
     #[spec] #[verifier(publish)]
     pub fn update_at_index(self, i: int, a: A) -> Self {
-        recommends(0 <= i && i < self.len());
+        recommends(0 <= i && i < self.len() as int);
 
         self.update(i, a)
     }

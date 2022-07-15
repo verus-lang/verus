@@ -884,10 +884,15 @@ fn expr_to_stm_opt(
                     let bin = mk_exp(ExpX::Binary(*op, e1, e2.clone()));
 
                     if let BinaryOp::Arith(arith, inferred_mode) = op {
+                        let arith_mode = if let Some(inferred_mode) = inferred_mode {
+                            ctx.global.inferred_modes[inferred_mode]
+                        } else {
+                            Mode::Spec
+                        };
                         // Insert bounds check
                         match (
                             state.view_as_spec,
-                            ctx.global.inferred_modes[inferred_mode],
+                            arith_mode,
                             &*expr.typ,
                             state.checking_recommends(ctx),
                         ) {

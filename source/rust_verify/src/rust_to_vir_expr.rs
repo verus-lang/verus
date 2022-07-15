@@ -17,7 +17,7 @@ use crate::util::{
 use crate::{unsupported, unsupported_err, unsupported_err_unless, unsupported_unless};
 use air::ast::{Binder, BinderX};
 use air::ast_util::str_ident;
-use rustc_ast::{Attribute, BorrowKind, Mutability};
+use rustc_ast::{Attribute, BorrowKind, LitKind, Mutability};
 use rustc_hir::def::{DefKind, Res};
 use rustc_hir::{
     BinOpKind, BindingAnnotation, Block, Destination, Expr, ExprKind, Guard, Local, LoopSource,
@@ -26,6 +26,7 @@ use rustc_hir::{
 use rustc_middle::ty::subst::GenericArgKind;
 use rustc_middle::ty::{PredicateKind, TyCtxt, TyKind};
 use rustc_span::def_id::DefId;
+use rustc_span::source_map::Spanned;
 use rustc_span::Span;
 use std::sync::Arc;
 use vir::ast::{
@@ -284,6 +285,24 @@ fn mk_ty_clip<'tcx>(typ: &Typ, expr: &vir::ast::Expr) -> vir::ast::Expr {
     mk_clip(&get_range(typ), expr)
 }
 
+fn check_lit_int(span: Span, in_negative_literal: bool, i: u128, typ: &Typ) -> Result<(), VirErr> {
+    let i_bump = if in_negative_literal { 1 } else { 0 };
+    if let TypX::Int(range) = **typ {
+        match range {
+            IntRange::Int | IntRange::Nat => Ok(()),
+            IntRange::U(n) if n == 128 || (n < 128 && i < (1u128 << n)) => Ok(()),
+            IntRange::I(n) if n - 1 < 128 && i < (1u128 << (n - 1)) + i_bump => Ok(()),
+            IntRange::USize if i < (1u128 << vir::def::ARCH_SIZE_MIN_BITS) => Ok(()),
+            IntRange::ISize if i < (1u128 << (vir::def::ARCH_SIZE_MIN_BITS - 1)) + i_bump => Ok(()),
+            _ => {
+                return err_span_str(span, "integer literal out of range");
+            }
+        }
+    } else {
+        return err_span_str(span, "expected integer type");
+    }
+}
+
 pub(crate) fn expr_to_vir<'tcx>(
     bctx: &BodyCtxt<'tcx>,
     expr: &Expr<'tcx>,
@@ -342,6 +361,7 @@ fn fn_call_to_vir<'tcx>(
     fn_span: Span,
     args_slice: &'tcx [Expr<'tcx>],
     autoview_typ: Option<&Typ>,
+    defined_locally: bool,
 ) -> Result<vir::ast::Expr, VirErr> {
     let mut args: Vec<&'tcx Expr<'tcx>> = args_slice.iter().collect();
 
@@ -398,12 +418,12 @@ fn fn_call_to_vir<'tcx>(
     let is_choose_tuple = f_name == "builtin::choose_tuple";
     let is_with_triggers = f_name == "builtin::with_triggers";
     let is_equal = f_name == "builtin::equal";
-    let is_chained_value = f_name == "builtin::chained_value";
-    let is_chained_le = f_name == "builtin::chained_le";
-    let is_chained_lt = f_name == "builtin::chained_lt";
-    let is_chained_ge = f_name == "builtin::chained_ge";
-    let is_chained_gt = f_name == "builtin::chained_gt";
-    let is_chained_cmp = f_name == "builtin::chained_cmp";
+    let is_chained_value = f_name == "builtin::spec_chained_value";
+    let is_chained_le = f_name == "builtin::spec_chained_le";
+    let is_chained_lt = f_name == "builtin::spec_chained_lt";
+    let is_chained_ge = f_name == "builtin::spec_chained_ge";
+    let is_chained_gt = f_name == "builtin::spec_chained_gt";
+    let is_chained_cmp = f_name == "builtin::spec_chained_cmp";
     let is_hide = f_name == "builtin::hide";
     let is_extra_dependency = f_name == "builtin::extra_dependency";
     let is_reveal = f_name == "builtin::reveal";
@@ -420,9 +440,32 @@ fn fn_call_to_vir<'tcx>(
     let is_ge = f_name == "core::cmp::PartialOrd::ge";
     let is_lt = f_name == "core::cmp::PartialOrd::lt";
     let is_gt = f_name == "core::cmp::PartialOrd::gt";
-    let is_add = f_name == "core::ops::arith::Add::add";
-    let is_sub = f_name == "core::ops::arith::Sub::sub";
-    let is_mul = f_name == "core::ops::arith::Mul::mul";
+    let is_builtin_add = f_name == "builtin::add";
+    let is_builtin_sub = f_name == "builtin::sub";
+    let is_builtin_mul = f_name == "builtin::mul";
+    let is_add = f_name == "std::ops::Add::add";
+    let is_sub = f_name == "std::ops::Sub::sub";
+    let is_mul = f_name == "std::ops::Mul::mul";
+    let is_spec_eq = f_name == "builtin::spec_eq";
+    let is_spec_le = f_name == "builtin::SpecOrd::spec_le";
+    let is_spec_ge = f_name == "builtin::SpecOrd::spec_ge";
+    let is_spec_lt = f_name == "builtin::SpecOrd::spec_lt";
+    let is_spec_gt = f_name == "builtin::SpecOrd::spec_gt";
+    let is_spec_neg = f_name == "builtin::SpecNeg::spec_neg";
+    let is_spec_add = f_name == "builtin::SpecAdd::spec_add";
+    let is_spec_sub = f_name == "builtin::SpecSub::spec_sub";
+    let is_spec_mul = f_name == "builtin::SpecMul::spec_mul";
+    let is_spec_euclidean_div = f_name == "builtin::SpecEuclideanDiv::spec_euclidean_div";
+    let is_spec_euclidean_mod = f_name == "builtin::SpecEuclideanMod::spec_euclidean_mod";
+    let is_spec_bitand = f_name == "builtin::SpecBitAnd::spec_bitand";
+    let is_spec_bitor = f_name == "builtin::SpecBitOr::spec_bitor";
+    let is_spec_bitxor = f_name == "builtin::SpecBitXor::spec_bitxor";
+    let is_spec_shl = f_name == "builtin::SpecShl::spec_shl";
+    let is_spec_shr = f_name == "builtin::SpecShr::spec_shr";
+    let is_spec_literal_integer = f_name == "builtin::spec_literal_integer";
+    let is_spec_literal_int = f_name == "builtin::spec_literal_int";
+    let is_spec_literal_nat = f_name == "builtin::spec_literal_nat";
+    let is_spec_cast_integer = f_name == "builtin::spec_cast_integer";
     let is_panic = f_name == "core::panicking::panic";
     let is_alloc_ghost = f_name == "pervasive::modes::Ghost::<A>::exec";
     let is_alloc_tracked = f_name == "pervasive::modes::Tracked::<A>::exec";
@@ -442,8 +485,25 @@ fn fn_call_to_vir<'tcx>(
     let is_quant = is_forall || is_exists || is_forall_arith;
     let is_directive = is_extra_dependency || is_hide || is_reveal || is_reveal_fuel;
     let is_cmp = is_equal || is_eq || is_ne || is_le || is_ge || is_lt || is_gt;
-    let is_arith_binary = is_add || is_sub || is_mul;
+    let is_arith_binary =
+        is_builtin_add || is_builtin_sub || is_builtin_mul || is_add || is_sub || is_mul;
+    let is_spec_cmp = is_spec_eq || is_spec_le || is_spec_ge || is_spec_lt || is_spec_gt;
+    let is_spec_arith_binary =
+        is_spec_add || is_spec_sub || is_spec_mul || is_spec_euclidean_div || is_spec_euclidean_mod;
+    let is_spec_bitwise_binary =
+        is_spec_bitand || is_spec_bitor || is_spec_bitxor || is_spec_shl || is_spec_shr;
     let is_chained_ineq = is_chained_le || is_chained_lt || is_chained_ge || is_chained_gt;
+    let is_spec_literal = is_spec_literal_int || is_spec_literal_nat || is_spec_literal_integer;
+    let is_spec_op = is_spec_cast_integer
+        || is_spec_cmp
+        || is_spec_arith_binary
+        || is_spec_bitwise_binary
+        || is_spec_neg
+        || is_chained_ineq
+        || is_spec_literal
+        || is_chained_cmp
+        || is_chained_value
+        || is_chained_ineq;
 
     // These functions are all no-ops in the SMT encoding, so we don't emit any VIR
     let is_ignored_fn = f_name == "std::box::Box::<T>::new"
@@ -510,6 +570,10 @@ fn fn_call_to_vir<'tcx>(
         fn_span,
         &name,
         is_spec
+            || is_spec_op
+            || is_builtin_add
+            || is_builtin_sub
+            || is_builtin_mul
             || is_quant
             || is_directive
             || is_choose
@@ -529,6 +593,36 @@ fn fn_call_to_vir<'tcx>(
     let mk_expr = |x: ExprX| spanned_typed_new(expr.span, &expr_typ(), x);
     let mk_expr_span = |span: Span, x: ExprX| spanned_typed_new(span, &expr_typ(), x);
 
+    if is_spec_literal_int || is_spec_literal_nat || is_spec_literal_integer {
+        unsupported_err_unless!(len == 1, expr.span, "expected spec_literal_*", &args);
+        let arg = &args[0];
+        let is_num = |s: &String| s.chars().count() > 0 && s.chars().all(|c| c.is_digit(10));
+        match &args[0] {
+            Expr { kind: ExprKind::Lit(Spanned { node: LitKind::Str(s, _), .. }), .. }
+                if is_num(&s.to_string()) =>
+            {
+                // TODO: negative literals for is_spec_literal_int and is_spec_literal_integer
+                if is_spec_literal_integer {
+                    // TODO: big integers for int, nat
+                    let i: u128 = match s.to_string().parse() {
+                        Ok(i) => i,
+                        Err(err) => {
+                            return err_span_string(
+                                arg.span,
+                                format!("integer out of range {}", err),
+                            );
+                        }
+                    };
+                    let in_negative_literal = false;
+                    check_lit_int(expr.span, in_negative_literal, i, &expr_typ())?
+                }
+                return Ok(mk_expr(ExprX::Const(vir::ast::Constant::Nat(Arc::new(s.to_string())))));
+            }
+            _ => {
+                return err_span_str(arg.span, "spec_literal_* requires a string literal");
+            }
+        }
+    }
     if is_no_method_body {
         return Ok(mk_expr(ExprX::Header(Arc::new(HeaderExprX::NoMethodBody))));
     }
@@ -767,6 +861,7 @@ fn fn_call_to_vir<'tcx>(
     } else {
         Box::new(std::iter::repeat(None))
     };
+
     let mut vir_args = args
         .iter()
         .zip(inputs)
@@ -849,11 +944,32 @@ fn fn_call_to_vir<'tcx>(
         None => {}
     }
 
+    let is_smt_unary = if is_spec_neg {
+        match *typ_of_node(bctx, &args[0].hir_id, false) {
+            TypX::Int(_) => true,
+            _ => false,
+        }
+    } else {
+        false
+    };
+
     let is_smt_binary = if is_equal {
         true
+    } else if is_spec_eq {
+        if is_smt_equality(bctx, expr.span, &args[0].hir_id, &args[1].hir_id) {
+            true
+        } else {
+            return err_span_str(expr.span, "types must be compatible to use == or !=");
+        }
     } else if is_eq || is_ne {
         is_smt_equality(bctx, expr.span, &args[0].hir_id, &args[1].hir_id)
-    } else if is_cmp || is_arith_binary || is_implies {
+    } else if is_cmp
+        || is_arith_binary
+        || is_implies
+        || is_spec_cmp
+        || is_spec_arith_binary
+        || is_spec_bitwise_binary
+    {
         is_smt_arith(bctx, &args[0].hir_id, &args[1].hir_id)
     } else {
         false
@@ -872,39 +988,91 @@ fn fn_call_to_vir<'tcx>(
     } else if is_admit {
         unsupported_err_unless!(len == 0, expr.span, "expected admit", args);
         Ok(mk_expr(ExprX::Admit))
+    } else if is_spec_cast_integer {
+        unsupported_err_unless!(len == 1, expr.span, "spec_cast_integer", args);
+        let source_vir = vir_args[0].clone();
+        let source_ty = &source_vir.typ;
+        let to_ty = expr_typ();
+        match (&**source_ty, &*to_ty) {
+            (TypX::Int(_), TypX::Int(_)) => return Ok(mk_ty_clip(&to_ty, &source_vir)),
+            _ => {
+                return err_span_str(
+                    expr.span,
+                    "Verus currently only supports casts from integer types to integer types",
+                );
+            }
+        }
+    } else if is_smt_unary {
+        unsupported_err_unless!(len == 1, expr.span, "expected unary op", args);
+        let varg = vir_args[0].clone();
+        if is_spec_neg {
+            let zero_const = vir::ast::Constant::Nat(Arc::new("0".to_string()));
+            let zero = mk_expr(ExprX::Const(zero_const));
+            Ok(mk_expr(ExprX::Binary(BinaryOp::Arith(ArithOp::Sub, None), zero, varg)))
+        } else {
+            panic!("internal error")
+        }
     } else if is_smt_binary {
         unsupported_err_unless!(len == 2, expr.span, "expected binary op", args);
         let lhs = vir_args[0].clone();
         let rhs = vir_args[1].clone();
-        let vop = if is_equal {
+        let vop = if is_equal || is_spec_eq {
             BinaryOp::Eq(Mode::Spec)
         } else if is_eq {
             BinaryOp::Eq(Mode::Exec)
         } else if is_ne {
             BinaryOp::Ne
-        } else if is_le {
+        } else if is_le || is_spec_le {
             BinaryOp::Inequality(InequalityOp::Le)
-        } else if is_ge {
+        } else if is_ge || is_spec_ge {
             BinaryOp::Inequality(InequalityOp::Ge)
-        } else if is_lt {
+        } else if is_lt || is_spec_lt {
             BinaryOp::Inequality(InequalityOp::Lt)
-        } else if is_gt {
+        } else if is_gt || is_spec_gt {
             BinaryOp::Inequality(InequalityOp::Gt)
-        } else if is_add {
-            BinaryOp::Arith(ArithOp::Add, bctx.ctxt.infer_mode())
-        } else if is_sub {
-            BinaryOp::Arith(ArithOp::Sub, bctx.ctxt.infer_mode())
-        } else if is_mul {
-            BinaryOp::Arith(ArithOp::Mul, bctx.ctxt.infer_mode())
+        } else if is_add || is_builtin_add {
+            BinaryOp::Arith(ArithOp::Add, Some(bctx.ctxt.infer_mode()))
+        } else if is_sub || is_builtin_sub {
+            BinaryOp::Arith(ArithOp::Sub, Some(bctx.ctxt.infer_mode()))
+        } else if is_mul || is_builtin_mul {
+            BinaryOp::Arith(ArithOp::Mul, Some(bctx.ctxt.infer_mode()))
+        } else if is_spec_add {
+            BinaryOp::Arith(ArithOp::Add, None)
+        } else if is_spec_sub {
+            BinaryOp::Arith(ArithOp::Sub, None)
+        } else if is_spec_mul {
+            BinaryOp::Arith(ArithOp::Mul, None)
+        } else if is_spec_euclidean_div {
+            BinaryOp::Arith(ArithOp::EuclideanDiv, None)
+        } else if is_spec_euclidean_mod {
+            BinaryOp::Arith(ArithOp::EuclideanMod, None)
+        } else if is_spec_bitand {
+            BinaryOp::Bitwise(BitwiseOp::BitAnd)
+        } else if is_spec_bitor {
+            BinaryOp::Bitwise(BitwiseOp::BitOr)
+        } else if is_spec_bitxor {
+            if matches!(*vir_args[0].typ, TypX::Bool) {
+                BinaryOp::Xor
+            } else {
+                BinaryOp::Bitwise(BitwiseOp::BitXor)
+            }
+        } else if is_spec_shl {
+            BinaryOp::Bitwise(BitwiseOp::Shl)
+        } else if is_spec_shr {
+            BinaryOp::Bitwise(BitwiseOp::Shr)
         } else if is_implies {
             BinaryOp::Implies
         } else {
             panic!("internal error")
         };
         let e = mk_expr(ExprX::Binary(vop, lhs, rhs));
-        if is_arith_binary { Ok(mk_ty_clip(&expr_typ(), &e)) } else { Ok(e) }
+        if is_arith_binary || is_spec_arith_binary {
+            Ok(mk_ty_clip(&expr_typ(), &e))
+        } else {
+            Ok(e)
+        }
     } else if is_chained_value {
-        unsupported_err_unless!(len == 1, expr.span, "chained_value", &args);
+        unsupported_err_unless!(len == 1, expr.span, "spec_chained_value", &args);
         unsupported_err_unless!(
             matches!(*vir_args[0].typ, TypX::Int(_)),
             expr.span,
@@ -950,9 +1118,17 @@ fn fn_call_to_vir<'tcx>(
             panic!("is_chained_ineq")
         }
     } else if is_chained_cmp {
-        unsupported_err_unless!(len == 1, expr.span, "chained_cmp", args);
+        unsupported_err_unless!(len == 1, expr.span, "spec_chained_cmp", args);
         Ok(vir_args[0].clone())
     } else {
+        if !defined_locally {
+            unsupported_err!(
+                expr.span,
+                format!("method call to method not defined in this crate"),
+                expr
+            );
+        }
+
         // filter out the Fn type parameters
         let mut fn_params: Vec<Ident> = Vec::new();
         for (x, _) in tcx.predicates_of(f).predicates {
@@ -1451,30 +1627,8 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
     let modifier = ExprModifier { deref_mut: false, ..current_modifier };
 
     let mk_lit_int = |in_negative_literal: bool, i: u128, typ: Typ| {
-        let c = vir::ast::Constant::Nat(Arc::new(i.to_string()));
-        let i_bump = if in_negative_literal { 1 } else { 0 };
-        if let TypX::Int(range) = *typ {
-            match range {
-                IntRange::Int | IntRange::Nat => Ok(mk_expr(ExprX::Const(c))),
-                IntRange::U(n) if n == 128 || (n < 128 && i < (1u128 << n)) => {
-                    Ok(mk_expr(ExprX::Const(c)))
-                }
-                IntRange::I(n) if n - 1 < 128 && i < (1u128 << (n - 1)) + i_bump => {
-                    Ok(mk_expr(ExprX::Const(c)))
-                }
-                IntRange::USize if i < (1u128 << vir::def::ARCH_SIZE_MIN_BITS) => {
-                    Ok(mk_expr(ExprX::Const(c)))
-                }
-                IntRange::ISize if i < (1u128 << (vir::def::ARCH_SIZE_MIN_BITS - 1)) + i_bump => {
-                    Ok(mk_expr(ExprX::Const(c)))
-                }
-                _ => {
-                    return err_span_str(expr.span, "integer literal out of range");
-                }
-            }
-        } else {
-            panic!("unexpected constant: {:?} {:?}", i, typ)
-        }
+        check_lit_int(expr.span, in_negative_literal, i, &typ)?;
+        Ok(mk_expr(ExprX::Const(vir::ast::Constant::Nat(Arc::new(i.to_string())))))
     };
 
     match &expr.kind {
@@ -1526,6 +1680,7 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                             fun.span,
                             args_slice,
                             None,
+                            true,
                         )),
                         rustc_hir::def::Res::Local(_) => {
                             None // dynamically computed function, see below
@@ -1571,13 +1726,11 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
             Ok(mk_expr(ExprX::Tuple(Arc::new(args?))))
         }
         ExprKind::Lit(lit) => match lit.node {
-            rustc_ast::LitKind::Bool(b) => {
+            LitKind::Bool(b) => {
                 let c = vir::ast::Constant::Bool(b);
                 Ok(mk_expr(ExprX::Const(c)))
             }
-            rustc_ast::LitKind::Int(i, _) => {
-                mk_lit_int(false, i, typ_of_node(bctx, &expr.hir_id, false))
-            }
+            LitKind::Int(i, _) => mk_lit_int(false, i, typ_of_node(bctx, &expr.hir_id, false)),
             _ => {
                 panic!("unexpected constant: {:?}", lit)
             }
@@ -1613,17 +1766,14 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
             UnOp::Neg => {
                 let zero_const = vir::ast::Constant::Nat(Arc::new("0".to_string()));
                 let zero = mk_expr(ExprX::Const(zero_const));
-                let varg = if let ExprKind::Lit(rustc_span::source_map::Spanned {
-                    node: rustc_ast::LitKind::Int(i, _),
-                    ..
-                }) = &arg.kind
-                {
-                    mk_lit_int(true, *i, typ_of_node(bctx, &expr.hir_id, false))?
-                } else {
-                    expr_to_vir(bctx, arg, modifier)?
-                };
+                let varg =
+                    if let ExprKind::Lit(Spanned { node: LitKind::Int(i, _), .. }) = &arg.kind {
+                        mk_lit_int(true, *i, typ_of_node(bctx, &expr.hir_id, false))?
+                    } else {
+                        expr_to_vir(bctx, arg, modifier)?
+                    };
                 Ok(mk_expr(ExprX::Binary(
-                    BinaryOp::Arith(ArithOp::Sub, bctx.ctxt.infer_mode()),
+                    BinaryOp::Arith(ArithOp::Sub, Some(bctx.ctxt.infer_mode())),
                     zero,
                     varg,
                 )))
@@ -1682,11 +1832,15 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                 BinOpKind::Ge => BinaryOp::Inequality(InequalityOp::Ge),
                 BinOpKind::Lt => BinaryOp::Inequality(InequalityOp::Lt),
                 BinOpKind::Gt => BinaryOp::Inequality(InequalityOp::Gt),
-                BinOpKind::Add => BinaryOp::Arith(ArithOp::Add, bctx.ctxt.infer_mode()),
-                BinOpKind::Sub => BinaryOp::Arith(ArithOp::Sub, bctx.ctxt.infer_mode()),
-                BinOpKind::Mul => BinaryOp::Arith(ArithOp::Mul, bctx.ctxt.infer_mode()),
-                BinOpKind::Div => BinaryOp::Arith(ArithOp::EuclideanDiv, bctx.ctxt.infer_mode()),
-                BinOpKind::Rem => BinaryOp::Arith(ArithOp::EuclideanMod, bctx.ctxt.infer_mode()),
+                BinOpKind::Add => BinaryOp::Arith(ArithOp::Add, Some(bctx.ctxt.infer_mode())),
+                BinOpKind::Sub => BinaryOp::Arith(ArithOp::Sub, Some(bctx.ctxt.infer_mode())),
+                BinOpKind::Mul => BinaryOp::Arith(ArithOp::Mul, Some(bctx.ctxt.infer_mode())),
+                BinOpKind::Div => {
+                    BinaryOp::Arith(ArithOp::EuclideanDiv, Some(bctx.ctxt.infer_mode()))
+                }
+                BinOpKind::Rem => {
+                    BinaryOp::Arith(ArithOp::EuclideanMod, Some(bctx.ctxt.infer_mode()))
+                }
                 BinOpKind::BitXor => {
                     match ((tc.node_type(lhs.hir_id)).kind(), (tc.node_type(rhs.hir_id)).kind()) {
                         (TyKind::Bool, TyKind::Bool) => BinaryOp::Xor,
@@ -1740,11 +1894,7 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                 _ => Ok(e),
             }
         }
-        ExprKind::AssignOp(
-            rustc_span::source_map::Spanned { node: BinOpKind::Shr, .. },
-            lhs,
-            rhs,
-        ) => {
+        ExprKind::AssignOp(Spanned { node: BinOpKind::Shr, .. }, lhs, rhs) => {
             let vlhs = expr_to_vir(bctx, lhs, modifier)?;
             let vrhs = expr_to_vir(bctx, rhs, modifier)?;
             if matches!(*vlhs.typ, TypX::Bool) {
@@ -2054,15 +2204,15 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                 .type_dependent_def_id(expr.hir_id)
                 .expect("def id of the method definition");
 
-            match tcx.hir().get_if_local(fn_def_id) {
+            let defined_locally = match tcx.hir().get_if_local(fn_def_id) {
                 Some(rustc_hir::Node::ImplItem(rustc_hir::ImplItem {
                     kind: rustc_hir::ImplItemKind::Fn(..),
                     ..
-                })) => {}
+                })) => true,
                 Some(rustc_hir::Node::TraitItem(rustc_hir::TraitItem {
                     kind: rustc_hir::TraitItemKind::Fn(..),
                     ..
-                })) => {}
+                })) => true,
                 None => {
                     // Special case `clone` for standard Rc and Arc types
                     // (Could also handle it for other types where cloning is the identity
@@ -2081,15 +2231,10 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                             return Ok(arg);
                         }
                     }
-
-                    unsupported_err!(
-                        expr.span,
-                        format!("method call to method not defined in this crate"),
-                        expr
-                    );
+                    false
                 }
                 _ => panic!("unexpected hir for method impl item"),
-            }
+            };
             let autoview_typ = bctx.ctxt.autoviewed_call_typs.get(&expr.hir_id);
             fn_call_to_vir(
                 bctx,
@@ -2099,6 +2244,7 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                 *fn_span,
                 all_args,
                 autoview_typ,
+                defined_locally,
             )
         }
         ExprKind::Closure(_, _fn_decl, body_id, _, _) => {

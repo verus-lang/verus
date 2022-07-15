@@ -7,7 +7,7 @@ use crate::pervasive::*;
 #[allow(unused_imports)]
 use crate::pervasive::set::*;
 
-verus! {
+verus2! {
 
 /// `Map<K, V>` is an abstract map type for specifications.
 /// To use a "map" in compiled code, use an `exec` type like HashMap (TODO)

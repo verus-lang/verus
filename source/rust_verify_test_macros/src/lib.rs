@@ -13,7 +13,7 @@ pub fn code(input: TokenStream) -> TokenStream {
 
 #[proc_macro]
 pub fn verus_code(input: TokenStream) -> TokenStream {
-    let src = "verus!{\n".to_string() + &rust_code::rust_code_core(input) + "}\n";
+    let src = "verus2!{\n".to_string() + &rust_code::rust_code_core(input) + "}\n";
     quote!(#src.to_string()).into()
 }
 
@@ -25,6 +25,6 @@ pub fn code_str(input: TokenStream) -> TokenStream {
 
 #[proc_macro]
 pub fn verus_code_str(input: TokenStream) -> TokenStream {
-    let src = "verus!{\n".to_string() + &rust_code::rust_code_core(input) + "}\n";
+    let src = "verus2!{\n".to_string() + &rust_code::rust_code_core(input) + "}\n";
     quote!(#src).into()
 }
