@@ -1200,7 +1200,7 @@ pub fn eval_expr(
     let mut state = State {
         depth: 0,
         env,
-        debug: true,
+        debug: false,
         cache,
         cache_hits: 0,
         cache_misses: 0,
@@ -1217,12 +1217,28 @@ pub fn eval_expr(
         // Send partial result to Z3
         ComputeMode::Z3 => {
             // Restore the free variables we hid during interpretation
-            Ok(crate::sst_visitor::map_exp_visitor(&res, &mut |e| match &e.x {
+            let res = crate::sst_visitor::map_exp_visitor(&res, &mut |e| match &e.x {
                 ExpX::Interp(InterpExp::FreeVar(v)) => {
                     SpannedTyped::new(&e.span, &e.typ, ExpX::Var(v.clone()))
                 }
                 _ => e.clone(),
-            }))
+            });
+            if state.debug {
+                if exp.definitely_eq(&res) {
+                    println!();
+                    println!(
+                        "Could not take advantage of compute to simplify expression before sending to z3"
+                    );
+                    println!("  Unchanged: {}", exp);
+                    println!();
+                } else {
+                    println!("Was able to simplify before sending to Z3");
+                    println!("  Old: {}", exp);
+                    println!("  New: {}", res);
+                    println!();
+                }
+            }
+            Ok(res)
         }
         // Proof must succeed purely through computation
         ComputeMode::ComputeOnly => match res.x {
