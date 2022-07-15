@@ -302,160 +302,96 @@ impl SyntacticEquality for Exp {
  * Functionality needed to hash expressions  *
  *********************************************/
 
+// Convenience function to simplify repetitive hashing behavior over an iterator.
+fn hash_iter<H: Hasher, K: Hash, V>(
+    state: &mut H,
+    it: impl Iterator<Item = (K, V)>,
+    f: impl Fn(&mut H, V),
+) {
+    it.for_each(|(k, v)| {
+        k.hash(state);
+        f(state, v);
+    })
+}
+
 fn hash_exps<H: Hasher>(state: &mut H, exps: &Exps) {
-    for (i, e) in exps.iter().enumerate() {
-        (i + 100).hash(state);
-        hash_exp(state, e);
-    }
+    hash_iter(state, exps.iter().enumerate(), hash_exp)
 }
 
 fn hash_exps_vector<H: Hasher>(state: &mut H, exps: &Vector<Exp>) {
-    for (i, e) in exps.iter().enumerate() {
-        (i + 150).hash(state);
-        hash_exp(state, e);
-    }
+    hash_iter(state, exps.iter().enumerate(), hash_exp)
 }
 
 fn hash_trigs<H: Hasher>(state: &mut H, trigs: &Trigs) {
-    for (i, exps) in trigs.iter().enumerate() {
-        (i + 200).hash(state);
-        hash_exps(state, &exps);
-    }
+    hash_iter(state, trigs.iter().enumerate(), hash_exps)
 }
 
 fn hash_binders_typ<H: Hasher>(state: &mut H, bnds: &Binders<Typ>) {
-    for b in bnds.iter() {
-        b.name.hash(state);
-        b.a.hash(state);
-    }
+    hash_iter(state, bnds.iter().map(|b| (&b.name, &b.a)), |st, v| v.hash(st))
 }
 
 fn hash_binders_exp<H: Hasher>(state: &mut H, bnds: &Binders<Exp>) {
-    for b in bnds.iter() {
-        b.name.hash(state);
-        hash_exp(state, &b.a);
-    }
+    hash_iter(state, bnds.iter().map(|b| (&b.name, &b.a)), hash_exp)
 }
 
 fn hash_bnd<H: Hasher>(state: &mut H, bnd: &Bnd) {
     use BndX::*;
+    macro_rules! dohash {
+        // See exact same macro in `hash_exp`
+        ($($x:expr),* $(; $($f:ident($y:ident)),*)?) => {{
+            $($x.hash(state);)*
+            $($($f(state, $y);)*)?
+        }}
+    }
     match &bnd.x {
-        Let(bnds) => {
-            300.hash(state);
-            hash_binders_exp(state, &bnds);
-        }
-        Quant(quant, bnds, trigs) => {
-            301.hash(state);
-            quant.hash(state);
-            hash_binders_typ(state, &bnds);
-            hash_trigs(state, &trigs);
-        }
-        Lambda(bnds) => {
-            302.hash(state);
-            hash_binders_typ(state, &bnds);
-        }
-        Choose(bnds, trigs, e) => {
-            302.hash(state);
-            hash_binders_typ(state, &bnds);
-            hash_trigs(state, &trigs);
-            hash_exp(state, &e);
-        }
+        Let(bnds) => dohash!(0; hash_binders_exp(bnds)),
+        Quant(quant, bnds, trigs) => dohash!(1, quant; hash_binders_typ(bnds), hash_trigs(trigs)),
+        Lambda(bnds) => dohash!(2; hash_binders_typ(bnds)),
+        Choose(bnds, trigs, e) => dohash!(3;
+                    hash_binders_typ(bnds), hash_trigs(trigs), hash_exp(e)),
     }
 }
 
 fn hash_exp<H: Hasher>(state: &mut H, exp: &Exp) {
     use ExpX::*;
+    macro_rules! dohash {
+        // A simple macro to reduce the highly repetitive code. Use `dohash!(a, b; c(d), e(f))` to
+        // hash components `a`, `b`, ... that implement `Hash`; The `c(d)`, `e(f)` components after
+        // the semi-colon can be used for components that do not implement `Hash` but have an
+        // equivalent function for them.
+        //
+        // TODO: Remove all the "equivalent functions" replacing them with wrapper structs
+        // instead. It is not computationally different, but would allow cleaner code overall (eg:
+        // auto-derive `hash_exps` from `hash_exp`)
+        ($($x:expr),* $(; $($f:ident($y:ident)),*)?) => {{
+            $($x.hash(state);)*
+            $($($f(state, $y);)*)?
+        }}
+    }
     match &exp.x {
-        Const(c) => {
-            0.hash(state);
-            c.hash(state)
-        }
-        Var(id) => {
-            1.hash(state);
-            id.hash(state)
-        }
-        VarLoc(id) => {
-            2.hash(state);
-            id.hash(state)
-        }
-        VarAt(id, va) => {
-            3.hash(state);
-            id.hash(state);
-            va.hash(state)
-        }
-        Loc(e) => {
-            4.hash(state);
-            hash_exp(state, e)
-        }
-        Old(id, uid) => {
-            5.hash(state);
-            id.hash(state);
-            uid.hash(state)
-        }
-        Call(fun, typs, exps) => {
-            6.hash(state);
-            fun.hash(state);
-            typs.hash(state);
-            hash_exps(state, exps);
-        }
+        Const(c) => dohash!(0, c),
+        Var(id) => dohash!(1, id),
+        VarLoc(id) => dohash!(2, id),
+        VarAt(id, va) => dohash!(3, id, va),
+        Loc(e) => dohash!(4; hash_exp(e)),
+        Old(id, uid) => dohash!(5, id, uid),
+        Call(fun, typs, exps) => dohash!(6, fun, typs; hash_exps(exps)),
         CallLambda(typ, lambda, args) => {
-            7.hash(state);
-            typ.hash(state);
-            hash_exp(state, lambda);
-            for (i, e) in args.iter().enumerate() {
-                (i + 400).hash(state);
-                hash_exp(state, &e);
-            }
+            dohash!(7, typ; hash_exp(lambda));
+            hash_iter(state, args.iter().enumerate(), hash_exp);
         }
-        Ctor(path, id, bnds) => {
-            8.hash(state);
-            path.hash(state);
-            id.hash(state);
-            hash_binders_exp(state, bnds);
-        }
-        Unary(op, e) => {
-            9.hash(state);
-            op.hash(state);
-            hash_exp(state, e)
-        }
-        UnaryOpr(op, e) => {
-            10.hash(state);
-            op.hash(state);
-            hash_exp(state, e)
-        }
-        Binary(op, e1, e2) => {
-            11.hash(state);
-            op.hash(state);
-            hash_exp(state, e1);
-            hash_exp(state, e2)
-        }
-        If(e1, e2, e3) => {
-            12.hash(state);
-            hash_exp(state, e1);
-            hash_exp(state, e2);
-            hash_exp(state, e3);
-        }
-        WithTriggers(trigs, e) => {
-            13.hash(state);
-            hash_trigs(state, &trigs);
-            hash_exp(state, e);
-        }
-        Bind(bnd, e) => {
-            14.hash(state);
-            hash_bnd(state, bnd);
-            hash_exp(state, e);
-        }
+        Ctor(path, id, bnds) => dohash!(8, path, id; hash_binders_exp(bnds)),
+        Unary(op, e) => dohash!(9, op; hash_exp(e)),
+        UnaryOpr(op, e) => dohash!(10, op; hash_exp(e)),
+        Binary(op, e1, e2) => dohash!(11, op; hash_exp(e1), hash_exp(e2)),
+        If(e1, e2, e3) => dohash!(12; hash_exp(e1), hash_exp(e2), hash_exp(e3)),
+        WithTriggers(trigs, e) => dohash!(13; hash_trigs(trigs), hash_exp(e)),
+        Bind(bnd, e) => dohash!(14; hash_bnd(bnd), hash_exp(e)),
         Interp(e) => {
-            15.hash(state);
+            dohash!(15);
             match e {
-                InterpExp::FreeVar(id) => {
-                    16.hash(state);
-                    id.hash(state);
-                }
-                InterpExp::Seq(exps) => {
-                    17.hash(state);
-                    hash_exps_vector(state, exps);
-                }
+                InterpExp::FreeVar(id) => dohash!(0, id),
+                InterpExp::Seq(exps) => dohash!(1; hash_exps_vector(exps)),
             }
         }
     }
