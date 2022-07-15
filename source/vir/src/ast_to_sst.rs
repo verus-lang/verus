@@ -42,9 +42,9 @@ pub(crate) struct State {
     pub(crate) ret_post: Option<(Option<UniqueIdent>, Vec<Stm>, Exps)>,
     // If > 0, disable checking recommends (used to make sure pure expressions stay pure)
     disable_recommends: u64,
-    // For debug purpose, track the status of fuel for each function. Since `reveal` statement can change the fuel locally.
+    // For proof debug purpose, track the status of fuel for each function. Since `reveal`, `reveal_with_fuel` can change the fuel locally.
     reveal_map: Vec<HashMap<Fun, u32>>, //  HashMap<Fun, fuel>
-    // For debug purporse, track the function that is being translated
+    // For proof debug purporse, track the function that is being translated
     pub(crate) fun: Option<Fun>,
 }
 

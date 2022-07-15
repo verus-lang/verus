@@ -343,13 +343,13 @@ pub(crate) fn split_expr(
                     )?;
                     return Ok(merge_two_es(es1, es2));
                 }
-                // in case of implies, split rhs. (e.g.  A => (B && C)  to  [ (A => B) , (A => C) ] )
+                // split rhs (e.g.  A => (B && C)  to  (A => B) && (A => C) )
                 BinaryOp::Implies if !negated => {
                     let es2 = split_expr(
                         ctx,
                         state,
                         &TracedExpX::new(e2.clone(), exp.trace.clone()),
-                        negated,
+                        false,
                     )?;
                     let mut splitted: Vec<TracedExp> = vec![];
                     for e in &*es2 {
@@ -360,8 +360,24 @@ pub(crate) fn split_expr(
                     }
                     return Ok(Arc::new(splitted));
                 }
-                // TODO
-                // BinaryOp::Implies if negated
+                // split lhs (e.g. !((A && B) => C) to !(A=>C) && !(B=>C) )
+                // REVIEW: is this actually useful?
+                BinaryOp::Implies if negated => {
+                    let es1 = split_expr(
+                        ctx,
+                        state,
+                        &TracedExpX::new(e1.clone(), exp.trace.clone()),
+                        false, // instead of pushing negation, wrap negation outside
+                    )?;
+                    let mut splitted: Vec<TracedExp> = vec![];
+                    for e in &*es1 {
+                        let new_e = ExpX::Binary(BinaryOp::Implies, e.e.clone(), e2.clone());
+                        let new_exp = SpannedTyped::new(&e.e.span, &exp.e.typ, new_e);
+                        let new_tr_exp = TracedExpX::new(new_exp, e.trace.clone());
+                        splitted.push(negate_atom(new_tr_exp)); // negate here
+                    }
+                    return Ok(Arc::new(splitted));
+                }
                 _ => return Ok(mk_atom(exp.clone(), negated)),
             }
         }
