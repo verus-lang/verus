@@ -11,7 +11,7 @@ use pervasive::*;
 use seq::*;
 
 fn main() {}
-/*
+
 #[spec]
 fn shifter(x: u64, amt: usize) -> u64 {
     decreases(amt);
@@ -168,7 +168,7 @@ fn compute_list() {
     assert_by_compute_only(len(ex1()) == 5);
     assert_by_compute_only(equal(reverse(ex1()), ex1_rev()));
 }
-*/
+
 /*
  * Computing on sequences
  */
@@ -191,7 +191,7 @@ fn compute_seq() {
     assert_by_compute_only(Seq::new(5, |x| x).index(3) == 3);
     assert_by_compute_only(Seq::new(5, |x| x+x).index(3) == 6);
 }
-/*
+
 #[spec]
 fn use_seq(s: &Seq<u32>) -> u32 {
     let s_new = s.update(1, 42);
@@ -450,8 +450,4 @@ fn pow_mod_crc(n: nat) -> Seq<bool> {
 //    assert_by_compute_only(xor(zeroes(10), zeroes(10)).ext_equal(zeroes(10)));
 //}
 
-*/
-fn test() {
-    assert_by_compute_only(Seq::new(5, |x| x+x).index(3) == 6);
-}
 */
