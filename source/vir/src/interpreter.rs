@@ -18,7 +18,7 @@ use im::Vector;
 use num_bigint::{BigInt, Sign};
 use num_traits::identities::Zero;
 use num_traits::{FromPrimitive, One, Signed, ToPrimitive};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -47,6 +47,33 @@ impl PartialEq for ExpsKey {
 
 impl Eq for ExpsKey {}
 
+/// A set that allows membership queries to `Arc`'d values, such that pointer equality is necessary
+/// to be called a member.
+///
+/// This container is intended as a safer replacement to `HashSet<*const T>`, which (while
+/// memory-safe) can lead to surprising logic bugs, since the `*const` does not imply ownership,
+/// leading to accidental clashes as objects appear and disappear from existence. `PtrSet` ensures
+/// that such clashes cannot occur, by ensuring that every object in the set is kept alive until the
+/// set itself is free'd.
+#[derive(Default)]
+struct PtrSet<T> {
+    // Invariant: each pointer key in this set always points at its corresponding value, which
+    // ensures that the strong count can never go below 0.
+    store: HashMap<*const T, Arc<T>>,
+}
+
+impl<T> PtrSet<T> {
+    fn new() -> Self {
+        Self { store: HashMap::new() }
+    }
+    fn insert(&mut self, v: &Arc<T>) {
+        self.store.insert(Arc::as_ptr(&v), v.clone());
+    }
+    fn contains(&mut self, v: &Arc<T>) -> bool {
+        self.store.contains_key(&Arc::as_ptr(&v))
+    }
+}
+
 struct State {
     depth: usize,
     env: Env,
@@ -55,7 +82,7 @@ struct State {
     cache_hits: u64,
     cache_misses: u64,
     fun_calls: HashMap<Fun, u64>,
-    simplified: HashSet<*const SpannedTyped<ExpX>>,
+    simplified: PtrSet<SpannedTyped<ExpX>>,
 }
 
 // Define the function-call cache's API
@@ -701,7 +728,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
         println!("{}Evaluating {:}", "\t".repeat(state.depth), exp);
     }
     let ok = Ok(exp.clone());
-    if state.simplified.contains(&Arc::as_ptr(exp)) {
+    if state.simplified.contains(exp) {
         if state.debug {
             println!("{}=> already simplified as far as it will go", "\t".repeat(state.depth));
         }
@@ -1233,7 +1260,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
     if state.debug {
         println!("{}=> {:}", "\t".repeat(state.depth), &res);
     }
-    state.simplified.insert(Arc::as_ptr(&res));
+    state.simplified.insert(&res);
     Ok(res)
 }
 
@@ -1253,7 +1280,7 @@ pub fn eval_expr(
         cache_hits: 0,
         cache_misses: 0,
         fun_calls: HashMap::new(),
-        simplified: HashSet::new(),
+        simplified: PtrSet::new(),
     };
     // Don't run for more than rlimit seconds
     let time_limit = Duration::new(rlimit as u64, 0);
