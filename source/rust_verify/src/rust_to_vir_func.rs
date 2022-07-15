@@ -158,7 +158,6 @@ pub(crate) fn check_item_fn<'tcx>(
 ) -> Result<Option<Fun>, VirErr> {
     let path = def_id_to_vir_path(ctxt.tcx, id);
     let is_str_new = ctxt.tcx.is_diagnostic_item(Symbol::intern("pervasive::string::StrSlice::new"), id);
-    let is_str_reveal = ctxt.tcx.is_diagnostic_item(Symbol::intern("pervasive::string::StrSlice::reveal"), id);
 
     let name = Arc::new(FunX { path: path.clone(), trait_path });
     let mode = get_mode(Mode::Exec, attrs);
@@ -201,19 +200,6 @@ pub(crate) fn check_item_fn<'tcx>(
         erasure_info.ignored_functions.push(sig.span.data());
         erasure_info.external_functions.push(name);
         return Ok(None);
-    }
-
-    if is_str_reveal {
-        let mut erasure_info = ctxt.erasure_info.borrow_mut();
-        unsupported_err_unless!(vattrs.external_body, 
-                                sig.span, 
-                                "StrSlice::reveal must be external body");
-        
-        erasure_info.ignored_functions.push(sig.span.data());
-        erasure_info.external_functions.push(name);
-
-        return Ok(None);
-        
     }
 
     if vattrs.external {
