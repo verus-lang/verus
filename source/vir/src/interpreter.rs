@@ -411,6 +411,8 @@ fn hash_exp<H: Hasher>(state: &mut H, exp: &Exp) {
 // https://github.com/dafny-lang/dafny/blob/08744a797296897f4efd486083579e484f57b9dc/Source/DafnyRuntime/DafnyRuntime.cs#L1383
 /// Proper Euclidean division on BigInt
 fn euclidean_div(i1: &BigInt, i2: &BigInt) -> BigInt {
+    // Note: Can be replaced with an inbuilt method on BigInts once
+    // https://github.com/rust-num/num-bigint/pull/245 is merged.
     use Sign::*;
     match (i1.sign(), i2.sign()) {
         (Plus | NoSign, Plus | NoSign) => i1 / i2,
@@ -424,6 +426,8 @@ fn euclidean_div(i1: &BigInt, i2: &BigInt) -> BigInt {
 // https://github.com/dafny-lang/dafny/blob/08744a797296897f4efd486083579e484f57b9dc/Source/DafnyRuntime/DafnyRuntime.cs#L1436
 /// Proper Euclidean mod on BigInt
 fn euclidean_mod(i1: &BigInt, i2: &BigInt) -> BigInt {
+    // Note: Can be replaced with an inbuilt method on BigInts once
+    // https://github.com/rust-num/num-bigint/pull/245 is merged.
     use Sign::*;
     match i1.sign() {
         Plus | NoSign => i1 % i2.abs(),
