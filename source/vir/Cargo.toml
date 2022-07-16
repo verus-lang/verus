@@ -12,7 +12,6 @@ air = { path = "../air" }
 sise = "0.6.0"
 num-bigint = "0.4.3"
 num-traits= "0.2.15"
-num-integer = "0.1.45"
 im = "15.1.0"
 
 [features]

@@ -15,10 +15,9 @@ use crate::sst::{Bnd, BndX, Exp, ExpX, Exps, Trigs, UniqueIdent};
 use air::ast::{Binder, BinderX, Binders};
 use air::scope_map::ScopeMap;
 use im::Vector;
-use num_bigint::BigInt;
-use num_integer::Integer;
+use num_bigint::{BigInt, Sign};
 use num_traits::identities::Zero;
-use num_traits::{FromPrimitive, One, ToPrimitive};
+use num_traits::{FromPrimitive, One, Signed, ToPrimitive};
 use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
@@ -408,14 +407,31 @@ fn hash_exp<H: Hasher>(state: &mut H, exp: &Exp) {
  * Utility functions  *
  **********************/
 
+// Based on Dafny's C# implementation:
+// https://github.com/dafny-lang/dafny/blob/08744a797296897f4efd486083579e484f57b9dc/Source/DafnyRuntime/DafnyRuntime.cs#L1383
 /// Proper Euclidean division on BigInt
 fn euclidean_div(i1: &BigInt, i2: &BigInt) -> BigInt {
-    i1.div_floor(i2)
+    use Sign::*;
+    match (i1.sign(), i2.sign()) {
+        (Plus | NoSign, Plus | NoSign) => i1 / i2,
+        (Plus | NoSign, Minus) => -(i1 / (-i2)),
+        (Minus, Plus | NoSign) => -(-i1 - BigInt::one() / i2) - BigInt::one(),
+        (Minus, Minus) => ((-i1 - BigInt::one()) / (-i2)) + 1,
+    }
 }
 
+// Based on Dafny's C# implementation:
+// https://github.com/dafny-lang/dafny/blob/08744a797296897f4efd486083579e484f57b9dc/Source/DafnyRuntime/DafnyRuntime.cs#L1436
 /// Proper Euclidean mod on BigInt
 fn euclidean_mod(i1: &BigInt, i2: &BigInt) -> BigInt {
-    i1.mod_floor(i2)
+    use Sign::*;
+    match i1.sign() {
+        Plus | NoSign => i1 % i2.abs(),
+        Minus => {
+            let c = (-i1) % i2.abs();
+            if c.is_zero() { BigInt::zero() } else { i2.abs() - c }
+        }
+    }
 }
 
 /// Truncate a u128 to a fixed width BigInt
