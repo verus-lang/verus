@@ -26,7 +26,7 @@ mod always_disabled {
     }
 }
 
-// #[cfg(any())]
+#[cfg(any())]
 mod simple_assert_by_compute_tests {
     use super::*;
 
@@ -152,7 +152,7 @@ mod verititan_example {
     }
 }
 
-// #[cfg(any())]
+#[cfg(any())]
 mod recursive_data_structures {
     use super::*;
 
@@ -217,7 +217,7 @@ mod recursive_data_structures {
     }
 }
 
-// #[cfg(any())]
+#[cfg(any())]
 mod sequences {
     use super::*;
 
@@ -256,7 +256,7 @@ mod sequences {
     }
 }
 
-#[cfg(any())]
+//#[cfg(any())]
 mod veribetrkv_example_original {
     use super::*;
     // VeriBetrKV example original:

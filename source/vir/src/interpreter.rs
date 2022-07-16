@@ -100,11 +100,11 @@ struct State {
 // Define the function-call cache's API
 impl State {
     fn insert_call(&mut self, f: &Fun, args: &Exps, result: &Exp) {
-        self.cache.entry(f.clone()).or_default().insert(args.into(), result.clone());
+        //self.cache.entry(f.clone()).or_default().insert(args.into(), result.clone());
     }
 
     fn lookup_call(&self, f: &Fun, args: &Exps) -> Option<Exp> {
-        self.cache.get(f)?.get(&args.into()).cloned()
+        None //self.cache.get(f)?.get(&args.into()).cloned()
     }
 }
 
@@ -296,8 +296,22 @@ impl SyntacticEquality for Exp {
             }
             (Interp(l), Interp(r)) => match (l, r) {
                 (InterpExp::FreeVar(l), InterpExp::FreeVar(r)) => def_eq(l == r),
-                (InterpExp::Seq(l), InterpExp::Seq(r)) => l.syntactic_eq(r),
-                _ => None,
+                (InterpExp::Seq(l), InterpExp::Seq(r)) => {
+                    let e = l.syntactic_eq(r);
+                    match e {
+                        Some(b) => println!("Sequence equality was determined to be {}", b),
+                        None => {
+                            println!("Couldn't determine eq status of:");
+                            print_vector(l);
+                            print_vector(r);
+                        }
+                    };
+                    e
+                }
+                _ => {
+                    println!("Couldn't determine match for {:?} and {:?}", l, r);
+                    None
+                }
             },
             _ => None,
         }
@@ -464,6 +478,11 @@ fn i128_to_fixed_width(i: i128, width: u32) -> BigInt {
     .unwrap()
 }
 
+fn print_vector(vec: &Vector<Exp>) {
+    let s = vec.iter().map(|e| e.to_string()).collect::<Vec<_>>().join(", ");
+    println!("[{}]", s)
+}
+
 /// Displays data for profiling/debugging the interpreter
 fn display_perf_stats(state: &State) {
     let sum = state.cache_hits + state.cache_misses;
@@ -513,6 +532,9 @@ fn eval_seq(ctx: &Ctx, state: &mut State, exp: &Exp, args: &Exps) -> Result<Exp,
             let bool_new = |b: bool| Ok(exp_new(Const(Constant::Bool(b))));
             let int_new = |i: BigInt| Ok(exp_new(Const(Constant::Int(i))));
             let seq_new = |v| Ok(exp_new(Interp(Seq(v))));
+            // We return the original (unsimplified) expression, since the simplified
+            // version may contains InterpExp::Seq expressions, which we can't safely
+            // return to AIR
             let ok = Ok(exp.clone());
             let get_int = |e: &Exp| match &e.x {
                 UnaryOpr(crate::ast::UnaryOpr::Box(_), e) => match &e.x {
@@ -620,7 +642,12 @@ fn eval_seq(ctx: &Ctx, state: &mut State, exp: &Exp, args: &Exps) -> Result<Exp,
                             .zip(r.iter())
                             .fold(Some(true), |b, (l, r)| Some(b? && l.syntactic_eq(r)?));
                         match eq {
-                            None => ok,
+                            None => {
+                                println!("Eq check couldn't determine equality for:");
+                                print_vector(l);
+                                print_vector(r);
+                                ok
+                            }
                             Some(b) => bool_new(b),
                         }
                     }
