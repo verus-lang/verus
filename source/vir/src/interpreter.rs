@@ -100,11 +100,11 @@ struct State {
 // Define the function-call cache's API
 impl State {
     fn insert_call(&mut self, f: &Fun, args: &Exps, result: &Exp) {
-        //self.cache.entry(f.clone()).or_default().insert(args.into(), result.clone());
+        self.cache.entry(f.clone()).or_default().insert(args.into(), result.clone());
     }
 
     fn lookup_call(&self, f: &Fun, args: &Exps) -> Option<Exp> {
-        None //self.cache.get(f)?.get(&args.into()).cloned()
+        self.cache.get(f)?.get(&args.into()).cloned()
     }
 }
 
@@ -145,13 +145,25 @@ trait SyntacticEquality {
 // Automatically get syntactic equality over typs, exps, ... once we know syntactic equality over typ, exp, ...
 impl<T: SyntacticEquality> SyntacticEquality for Arc<Vec<T>> {
     fn syntactic_eq(&self, other: &Self) -> Option<bool> {
-        self.iter().zip(other.iter()).try_fold(true, |acc, (l, r)| Some(acc && l.syntactic_eq(r)?))
+        if self.len() != other.len() {
+            Some(false)
+        } else {
+            self.iter()
+                .zip(other.iter())
+                .try_fold(true, |acc, (l, r)| Some(acc && l.syntactic_eq(r)?))
+        }
     }
 }
 
 impl<T: Clone + SyntacticEquality> SyntacticEquality for Vector<T> {
     fn syntactic_eq(&self, other: &Self) -> Option<bool> {
-        self.iter().zip(other.iter()).try_fold(true, |acc, (l, r)| Some(acc && l.syntactic_eq(r)?))
+        if self.len() != other.len() {
+            Some(false)
+        } else {
+            self.iter()
+                .zip(other.iter())
+                .try_fold(true, |acc, (l, r)| Some(acc && l.syntactic_eq(r)?))
+        }
     }
 }
 
@@ -298,14 +310,14 @@ impl SyntacticEquality for Exp {
                 (InterpExp::FreeVar(l), InterpExp::FreeVar(r)) => def_eq(l == r),
                 (InterpExp::Seq(l), InterpExp::Seq(r)) => {
                     let e = l.syntactic_eq(r);
-                    match e {
-                        Some(b) => println!("Sequence equality was determined to be {}", b),
-                        None => {
-                            println!("Couldn't determine eq status of:");
-                            print_vector(l);
-                            print_vector(r);
-                        }
-                    };
+                    //                    match e {
+                    //                        Some(b) => println!("Sequence equality was determined to be {}", b),
+                    //                        None => {
+                    //                            println!("Couldn't determine eq status of:");
+                    //                            print_vector(l);
+                    //                            print_vector(r);
+                    //                        }
+                    //                    };
                     e
                 }
                 _ => {
@@ -636,21 +648,15 @@ fn eval_seq(ctx: &Ctx, state: &mut State, exp: &Exp, args: &Exps) -> Result<Exp,
                     _ => ok,
                 },
                 "crate::pervasive::seq::Seq::ext_equal" => match (&args[0].x, &args[1].x) {
-                    (Interp(Seq(l)), Interp(Seq(r))) => {
-                        let eq = l
-                            .iter()
-                            .zip(r.iter())
-                            .fold(Some(true), |b, (l, r)| Some(b? && l.syntactic_eq(r)?));
-                        match eq {
-                            None => {
-                                println!("Eq check couldn't determine equality for:");
-                                print_vector(l);
-                                print_vector(r);
-                                ok
-                            }
-                            Some(b) => bool_new(b),
+                    (Interp(Seq(l)), Interp(Seq(r))) => match l.syntactic_eq(r) {
+                        None => {
+                            println!("Eq check couldn't determine equality for:");
+                            print_vector(l);
+                            print_vector(r);
+                            ok
                         }
-                    }
+                        Some(b) => bool_new(b),
+                    },
                     _ => ok,
                 },
                 "crate::pervasive::seq::Seq::last" => match &args[0].x {
