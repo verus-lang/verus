@@ -426,7 +426,7 @@ fn euclidean_div(i1: &BigInt, i2: &BigInt) -> BigInt {
 fn euclidean_mod(i1: &BigInt, i2: &BigInt) -> BigInt {
     use Sign::*;
     match i1.sign() {
-        Plus | NoSign => i1 / i2.abs(),
+        Plus | NoSign => i1 % i2.abs(),
         Minus => {
             let c = (-i1) % i2.abs();
             if c.is_zero() { BigInt::zero() } else { i2.abs() - c }
