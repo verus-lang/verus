@@ -155,7 +155,7 @@ impl<T: SyntacticEquality> SyntacticEquality for Arc<Vec<T>> {
     }
 }
 
-impl<T: Clone + SyntacticEquality + std::fmt::Display> SyntacticEquality for Vector<T> {
+impl<T: Clone + SyntacticEquality> SyntacticEquality for Vector<T> {
     fn syntactic_eq(&self, other: &Self) -> Option<bool> {
         if self.len() != other.len() {
             Some(false)
