@@ -505,28 +505,47 @@ fn display_perf_stats(state: &State) {
  * Special handling for interpreting sequences *
  ***********************************************/
 
-// TODO: Have this return an Option<Enum> to indicate which function it found
-fn is_sequence_fn(fun: &Fun) -> bool {
-    matches!(
-        path_as_rust_name(&fun.path).as_str(),
-        "crate::pervasive::seq::Seq::len"
-            | "crate::pervasive::seq::Seq::index"
-            | "crate::pervasive::seq::Seq::ext_equal"
-            | "crate::pervasive::seq::Seq::last"
-            | "crate::pervasive::seq::Seq::empty"
-            | "crate::pervasive::seq::Seq::new"
-            | "crate::pervasive::seq::Seq::push"
-            | "crate::pervasive::seq::Seq::update"
-            | "crate::pervasive::seq::Seq::subrange"
-            | "crate::pervasive::seq::Seq::add"
-    )
+enum SeqFn {
+    Empty,
+    New,
+    Push,
+    Update,
+    Subrange,
+    Add,
+    Len,
+    Index,
+    ExtEqual,
+    Last,
 }
 
-fn eval_seq(ctx: &Ctx, state: &mut State, exp: &Exp, args: &Exps) -> Result<Exp, VirErr> {
+fn is_sequence_fn(fun: &Fun) -> Option<SeqFn> {
+    use SeqFn::*;
+    match path_as_rust_name(&fun.path).as_str() {
+        "crate::pervasive::seq::Seq::empty" => Some(Empty),
+        "crate::pervasive::seq::Seq::new" => Some(New),
+        "crate::pervasive::seq::Seq::push" => Some(Push),
+        "crate::pervasive::seq::Seq::update" => Some(Update),
+        "crate::pervasive::seq::Seq::subrange" => Some(Subrange),
+        "crate::pervasive::seq::Seq::add" => Some(Add),
+        "crate::pervasive::seq::Seq::len" => Some(Len),
+        "crate::pervasive::seq::Seq::index" => Some(Index),
+        "crate::pervasive::seq::Seq::ext_equal" => Some(ExtEqual),
+        "crate::pervasive::seq::Seq::last" => Some(Last),
+        _ => None,
+    }
+}
+
+fn eval_seq(
+    ctx: &Ctx,
+    state: &mut State,
+    seq_fn: SeqFn,
+    exp: &Exp,
+    args: &Exps,
+) -> Result<Exp, VirErr> {
     use ExpX::*;
     use InterpExp::*;
     match &exp.x {
-        Call(fun, typs, _old_args) => {
+        Call(_fun, typs, _old_args) => {
             let exp_new = |e: ExpX| SpannedTyped::new(&exp.span, &exp.typ, e);
             let bool_new = |b: bool| Ok(exp_new(Const(Constant::Bool(b))));
             let int_new = |i: BigInt| Ok(exp_new(Const(Constant::Int(i))));
@@ -542,10 +561,10 @@ fn eval_seq(ctx: &Ctx, state: &mut State, exp: &Exp, args: &Exps) -> Result<Exp,
                 },
                 _ => None,
             };
-
-            match path_as_rust_name(&fun.path).as_str() {
-                "crate::pervasive::seq::Seq::empty" => seq_new(Vector::new()),
-                "crate::pervasive::seq::Seq::new" => {
+            use SeqFn::*;
+            match seq_fn {
+                Empty => seq_new(Vector::new()),
+                New => {
                     match get_int(&args[0]) {
                         Some(len) => {
                             // Extract the boxed lambda argument passed to Seq::new
@@ -578,7 +597,7 @@ fn eval_seq(ctx: &Ctx, state: &mut State, exp: &Exp, args: &Exps) -> Result<Exp,
                         _ => ok,
                     }
                 }
-                "crate::pervasive::seq::Seq::push" => match &args[0].x {
+                Push => match &args[0].x {
                     Interp(Seq(s)) => {
                         let mut s = s.clone();
                         s.push_back(args[1].clone());
@@ -586,7 +605,7 @@ fn eval_seq(ctx: &Ctx, state: &mut State, exp: &Exp, args: &Exps) -> Result<Exp,
                     }
                     _ => ok,
                 },
-                "crate::pervasive::seq::Seq::update" => match &args[0].x {
+                Update => match &args[0].x {
                     Interp(Seq(s)) => match get_int(&args[1]) {
                         Some(index) if index < s.len() => {
                             let s = s.update(index, args[2].clone());
@@ -596,7 +615,7 @@ fn eval_seq(ctx: &Ctx, state: &mut State, exp: &Exp, args: &Exps) -> Result<Exp,
                     },
                     _ => ok,
                 },
-                "crate::pervasive::seq::Seq::subrange" => match &args[0].x {
+                Subrange => match &args[0].x {
                     Interp(Seq(s)) => {
                         let start = get_int(&args[1]);
                         let end = get_int(&args[2]);
@@ -609,7 +628,7 @@ fn eval_seq(ctx: &Ctx, state: &mut State, exp: &Exp, args: &Exps) -> Result<Exp,
                     }
                     _ => ok,
                 },
-                "crate::pervasive::seq::Seq::add" => match (&args[0].x, &args[1].x) {
+                Add => match (&args[0].x, &args[1].x) {
                     (Interp(Seq(s1)), Interp(Seq(s2))) => {
                         let mut s = s1.clone();
                         s.append(s2.clone());
@@ -617,11 +636,11 @@ fn eval_seq(ctx: &Ctx, state: &mut State, exp: &Exp, args: &Exps) -> Result<Exp,
                     }
                     _ => ok,
                 },
-                "crate::pervasive::seq::Seq::len" => match &args[0].x {
+                Len => match &args[0].x {
                     Interp(Seq(s)) => int_new(BigInt::from_usize(s.len()).unwrap()),
                     _ => ok,
                 },
-                "crate::pervasive::seq::Seq::index" => match &args[0].x {
+                Index => match &args[0].x {
                     Interp(Seq(s)) => match &args[1].x {
                         UnaryOpr(crate::ast::UnaryOpr::Box(_), e) => match &e.x {
                             Const(Constant::Int(index)) => {
@@ -634,7 +653,7 @@ fn eval_seq(ctx: &Ctx, state: &mut State, exp: &Exp, args: &Exps) -> Result<Exp,
                     },
                     _ => ok,
                 },
-                "crate::pervasive::seq::Seq::ext_equal" => match (&args[0].x, &args[1].x) {
+                ExtEqual => match (&args[0].x, &args[1].x) {
                     (Interp(Seq(l)), Interp(Seq(r))) => match l.syntactic_eq(r) {
                         None => {
                             println!("Eq check couldn't determine equality for:");
@@ -646,7 +665,7 @@ fn eval_seq(ctx: &Ctx, state: &mut State, exp: &Exp, args: &Exps) -> Result<Exp,
                     },
                     _ => ok,
                 },
-                "crate::pervasive::seq::Seq::last" => match &args[0].x {
+                Last => match &args[0].x {
                     Interp(Seq(s)) => {
                         if s.len() > 0 {
                             Ok(s.last().unwrap().clone())
@@ -656,10 +675,6 @@ fn eval_seq(ctx: &Ctx, state: &mut State, exp: &Exp, args: &Exps) -> Result<Exp,
                     }
                     _ => ok,
                 },
-                _ => {
-                    println!("***Failed to match {} ***", path_as_rust_name(&fun.path));
-                    ok
-                }
             }
         }
         //        UnaryOpr(crate::ast::UnaryOpr::Box(_), e) => eval_seq_producing(ctx, state, e),
@@ -1125,30 +1140,35 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                         }
                         None => {
                             state.cache_misses += 1;
-                            let result = if is_sequence_fn(&fun) {
-                                eval_seq(ctx, state, exp, &new_args)
-                            } else {
-                                match ctx.fun_ssts.get(fun) {
-                                    None => {
-                                        exp_new(Call(fun.clone(), typs.clone(), new_args.clone()))
-                                    }
-                                    Some((params, body)) => {
-                                        state.env.push_scope(true);
-                                        for (formal, actual) in params.iter().zip(new_args.iter()) {
-                                            if state.debug {
-                                                //println!("Binding {:?} to {:?}", formal, actual.x);
+                            let result = match is_sequence_fn(&fun) {
+                                Some(seq_fn) => eval_seq(ctx, state, seq_fn, exp, &new_args),
+                                None => {
+                                    match ctx.fun_ssts.get(fun) {
+                                        None => exp_new(Call(
+                                            fun.clone(),
+                                            typs.clone(),
+                                            new_args.clone(),
+                                        )),
+                                        Some((params, body)) => {
+                                            state.env.push_scope(true);
+                                            for (formal, actual) in
+                                                params.iter().zip(new_args.iter())
+                                            {
+                                                if state.debug {
+                                                    //println!("Binding {:?} to {:?}", formal, actual.x);
+                                                }
+                                                state
+                                                    .env
+                                                    .insert(
+                                                        (formal.x.name.clone(), Some(0)),
+                                                        actual.clone(),
+                                                    )
+                                                    .unwrap();
                                             }
-                                            state
-                                                .env
-                                                .insert(
-                                                    (formal.x.name.clone(), Some(0)),
-                                                    actual.clone(),
-                                                )
-                                                .unwrap();
+                                            let e = eval_expr_internal(ctx, state, body);
+                                            state.env.pop_scope();
+                                            e
                                         }
-                                        let e = eval_expr_internal(ctx, state, body);
-                                        state.env.pop_scope();
-                                        e
                                     }
                                 }
                             };
