@@ -466,12 +466,6 @@ pub trait SpecOrd<Rhs = Self> {
     fn spec_ge(self, rhs: Rhs) -> bool;
 }
 
-pub trait SpecIndex<Idx> {
-    type Output;
-    #[spec]
-    fn index(self, index: Idx) -> Self::Output;
-}
-
 pub trait SpecNeg {
     type Output;
     #[spec]

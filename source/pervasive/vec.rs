@@ -45,12 +45,17 @@ impl<A> Vec<A> {
         requires
             old(self).len() > 0,
         ensures
-            value === old(self).view().index(old(self).view().len() as int - 1),
+            value === old(self).view()[old(self).view().len() as int - 1],
             self.view() === old(self).view().subrange(0, old(self).view().len() as int - 1),
     {
         unsafe {
             self.vec.pop().unwrap_unchecked()  // Safe to unwrap given the precondition above
         }
+    }
+
+    #[verifier(inline)]
+    pub open spec fn spec_index(self, i: int) -> A {
+        self.view()[i]
     }
 
     #[verifier(external_body)]
@@ -59,7 +64,7 @@ impl<A> Vec<A> {
         requires
             i < self.view().len(),
         ensures
-            *r === self.view().index(i as int),
+            *r === self.view()[i as int],
     {
         &self.vec[i]
     }

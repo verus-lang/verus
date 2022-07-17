@@ -188,7 +188,7 @@ pub(crate) fn subst_exp(
     for (x, v) in &substs {
         scope_substs.insert(x.clone(), v.clone()).expect("subst_exp scope_substs.insert");
         for (y, _) in free_vars_exp(v) {
-            free_vars.insert(y.clone(), ()).expect("subst_exp free_vars.insert");
+            let _ = free_vars.insert(y.clone(), ());
         }
     }
     let e = subst_exp_rec(&typ_substs, &mut scope_substs, &mut free_vars, exp);

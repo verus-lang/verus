@@ -237,17 +237,16 @@ test_verify_one_file! {
         proof fn experiments_with_sequences() {
             let fibo: Seq<int> = seq![1, 1, 2, 3, 5, 8, 13, 21, 34];
 
-            // TODO(utaal) index trait impl Index<nat> for Seq
             // TODO(utaal) index trait impl Index<Range<nat>> for Seq
-            assert(fibo.index(4) == 5);
+            assert(fibo[4] == 5);
 
             assert(fibo.len() == 9);
 
-            assert(fibo.index(0) == 1);
+            assert(fibo[0] == 1);
 
-            assert(fibo.index(8) == 34);
+            assert(fibo[8] == 34);
 
-            assert(fibo.index(7) == 21);
+            assert(fibo[7] == 21);
 
             assert(fibo.subrange(2, 4).ext_equal(seq![2, 3]));
 
@@ -265,7 +264,7 @@ test_verify_one_file! {
 
             assert(seq_of_sets.len() == 3);
 
-            assert(seq_of_sets.index(1).len() == 2);
+            assert(seq_of_sets[1].len() == 2);
         }
     } => Ok(())
 }
@@ -950,7 +949,7 @@ test_verify_one_file! {
                 max_index_rc < int_vec.len(),
                 forall|idx: int|
                     0 <= idx < int_vec.len() ==>
-                    int_vec.index(idx) <= int_vec.index(max_index_rc as int),
+                    int_vec[idx] <= int_vec[max_index_rc as int],
         {
             let mut count: usize = 0;
             let mut max_index: usize = 0;
@@ -959,7 +958,7 @@ test_verify_one_file! {
                     max_index < int_vec.len(),
                     forall|prioridx: int|
                         0 <= prioridx < count ==>
-                        int_vec.index(prioridx) <= int_vec.index(max_index as int),
+                        int_vec[prioridx] <= int_vec[max_index as int],
             {
                 if int_vec.index(max_index) < int_vec.index(count) {
                     max_index = count;
@@ -984,7 +983,7 @@ test_verify_one_file! {
         use vec::*;
 
         spec fn is_sorted(seq: Seq<u64>) -> bool {
-            forall|i: int, j: int| 0 <= i < j < seq.len() ==> seq.index(i) <= seq.index(j)
+            forall|i: int, j: int| 0 <= i < j < seq.len() ==> seq[i] <= seq[j]
         }
 
         fn is_seq_sorted(vec: Vec<u64>) -> (ret: bool)
@@ -1002,7 +1001,7 @@ test_verify_one_file! {
                     // dafny had: idx <= vec.len() - 1,
                     // which needs an additional invariant: vec.len() != 0,
                     // because vec.len() == 0 then idx <= arbitrary()
-                    forall|i: int, j: int| 0 <= i < j <= idx ==> vec.index(i) <= vec.index(j),
+                    forall|i: int, j: int| 0 <= i < j <= idx ==> vec[i] <= vec[j],
             {
                 if vec.index(idx) > vec.index(idx + 1) { // vec[idx]
                     return false;
@@ -1024,7 +1023,7 @@ test_verify_one_file! {
         use vec::*;
 
         spec fn is_sorted(intseq: Seq<int>) -> bool {
-            forall|i: int, j: int| 0 <= i < j < intseq.len() ==> intseq.index(i) <= intseq.index(j)
+            forall|i: int, j: int| 0 <= i < j < intseq.len() ==> intseq[i] <= intseq[j]
         }
 
         spec fn view_u64(u64seq: Seq<u64>) -> Seq<int> {
@@ -1043,13 +1042,13 @@ test_verify_one_file! {
                 while idx < intvec.len() - 1
                     invariant
                         idx < intvec.len(),
-                        forall|i: int, j: int| 0 <= i < j <= idx ==> intvec.index(i) <= intvec.index(j)
+                        forall|i: int, j: int| 0 <= i < j <= idx ==> intvec[i] <= intvec[j]
                 {
                     if intvec.index(idx) > intvec.index(idx + 1) {
                         // TODO(chris): Maybe there's a way to not need this manual trigger.
                         // Pull this knowledge through the view/view_u64 so it'll trigger the
                         // exists (!forall) of !is_sorted.
-                        assert(view_u64(intvec.view()).index(idx as int) > view_u64(intvec.view()).index(idx + 1));
+                        assert(view_u64(intvec.view())[idx as int] > view_u64(intvec.view())[idx + 1]);
                         return false;
                     }
                     idx = idx + 1;
@@ -1071,7 +1070,7 @@ test_verify_one_file! {
         use modes::*;
 
         spec fn is_sorted(intseq: Seq<int>) -> bool {
-            forall|i: int, j: int| 0 <= i < j < intseq.len() ==> intseq.index(i) <= intseq.index(j)
+            forall|i: int, j: int| 0 <= i < j < intseq.len() ==> intseq[i] <= intseq[j]
         }
 
         spec fn view_u64(u64seq: Seq<u64>) -> Seq<int> {
@@ -1084,8 +1083,8 @@ test_verify_one_file! {
                 is_sorted(view_u64(haystack.view())),
             ensures
                 index <= haystack.len(),
-                forall|i: int| 0 <= i < index ==> haystack.index(i) < needle,
-                forall|i: int| index <= i < haystack.len() ==> needle <= haystack.index(i),
+                forall|i: int| 0 <= i < index ==> haystack[i] < needle,
+                forall|i: int| index <= i < haystack.len() ==> needle <= haystack[i],
         {
             let mut low: usize = 0;
             let mut high: usize = haystack.len();
@@ -1094,22 +1093,22 @@ test_verify_one_file! {
                     is_sorted(view_u64(haystack.view())),   // siiiiiiiigh
                     low <= high,
                     high <= haystack.len(),
-                    forall|i:int| 0 <= i < low ==> haystack.index(i) < needle,
-                    forall|i:int| high <= i < haystack.len() ==> needle <= haystack.index(i),
+                    forall|i:int| 0 <= i < low ==> haystack[i] < needle,
+                    forall|i:int| high <= i < haystack.len() ==> needle <= haystack[i],
             {
                 let decreases: Ghost<int> = ghost(high - low);
                 let mid = low + (high - low) / 2;
                 if *haystack.index(mid) < needle {
                     let old_low: Ghost<usize> = ghost(low);
                     low = mid + 1;
-                    assert forall|i: int| 0 <= i < low implies haystack.index(i) < needle by {
-                        assert(view_u64(haystack.view()).index(i) <= view_u64(haystack.view()).index(mid as int));
+                    assert forall|i: int| 0 <= i < low implies haystack[i] < needle by {
+                        assert(view_u64(haystack.view())[i] <= view_u64(haystack.view())[mid as int]);
                     }
                 } else {
                     let old_high: Ghost<usize> = ghost(high);
                     high = mid;
-                    assert forall|i: int| high < i < haystack.len() implies needle <= haystack.index(i) by {
-                        assert(view_u64(haystack.view()).index(mid as int) <= view_u64(haystack.view()).index(i));
+                    assert forall|i: int| high < i < haystack.len() implies needle <= haystack[i] by {
+                        assert(view_u64(haystack.view())[mid as int] <= view_u64(haystack.view())[i]);
                     }
                 }
                 assert(high - low < *decreases); // Termination check

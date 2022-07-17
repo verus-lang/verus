@@ -241,7 +241,7 @@ pub proof fn axiom_mk_map_index<K, V, F: Fn(K) -> V>(s: Set<K>, f: F, key: K)
     requires
         s.contains(key),
     ensures
-        s.mk_map(f).index(key) === f(key),
+        s.mk_map(f)[key] === f(key),
 {
 }
 

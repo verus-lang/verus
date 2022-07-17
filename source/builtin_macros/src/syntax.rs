@@ -446,6 +446,7 @@ impl VisitMut for Visitor {
         let (do_replace, quant) = match &expr {
             Expr::Lit(ExprLit { lit: Lit::Int(..), .. }) if use_spec_traits => (true, false),
             Expr::Cast(..) if use_spec_traits => (true, false),
+            Expr::Index(..) if use_spec_traits => (true, false),
             Expr::Unary(ExprUnary { op: UnOp::Forall(..), .. }) => (true, true),
             Expr::Unary(ExprUnary { op: UnOp::Exists(..), .. }) => (true, true),
             Expr::Unary(ExprUnary { op: UnOp::Choose(..), .. }) => (true, true),
@@ -523,6 +524,15 @@ impl VisitMut for Visitor {
                     let ty = cast.ty;
                     *expr =
                         parse_quote_spanned!(span => ::builtin::spec_cast_integer::<_, #ty>(#src));
+                    expr.replace_attrs(attrs);
+                }
+                Expr::Index(idx) => {
+                    use syn_verus::spanned::Spanned;
+                    let span = idx.span();
+                    let src = idx.expr;
+                    let attrs = idx.attrs;
+                    let index = idx.index;
+                    *expr = parse_quote_spanned!(span => #src.spec_index(#index));
                     expr.replace_attrs(attrs);
                 }
                 Expr::Unary(unary) if quant => {

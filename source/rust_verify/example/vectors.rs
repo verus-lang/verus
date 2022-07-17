@@ -10,19 +10,19 @@ verus2! {
 
 fn binary_search(v: &Vec<u64>, k: u64) -> (r: usize)
     requires
-        forall|i:int, j:int| 0 <= i <= j < v.len() ==> v.index(i) <= v.index(j),
-        exists|i:int| 0 <= i < v.len() && k == v.index(i),
+        forall|i:int, j:int| 0 <= i <= j < v.len() ==> v[i] <= v[j],
+        exists|i:int| 0 <= i < v.len() && k == v[i],
     ensures
         r < v.len(),
-        k == v.index(r as int),
+        k == v[r as int],
 {
     let mut i1: usize = 0;
     let mut i2: usize = v.len() - 1;
     while i1 != i2
         invariant
             i2 < v.len(),
-            exists|i:int| i1 <= i <= i2 && k == v.index(i),
-            forall|i:int, j:int| 0 <= i <= j < v.len() ==> v.index(i) <= v.index(j),
+            exists|i:int| i1 <= i <= i2 && k == v[i],
+            forall|i:int, j:int| 0 <= i <= j < v.len() ==> v[i] <= v[j],
     {
         let d: Ghost<int> = ghost(i2 - i1);
 
@@ -41,7 +41,7 @@ fn binary_search(v: &Vec<u64>, k: u64) -> (r: usize)
 fn reverse(v: &mut Vec<u64>)
     ensures
         v.len() == old(v).len(),
-        forall|i: int| 0 <= i < old(v).len() ==> v.index(i) == old(v).index(old(v).len() - i - 1),
+        forall|i: int| 0 <= i < old(v).len() ==> v[i] == old(v)[old(v).len() - i - 1],
 {
     let length = v.len();
     let v1: Ghost<Seq<u64>> = ghost(v.view());
@@ -49,9 +49,9 @@ fn reverse(v: &mut Vec<u64>)
     while n < length / 2
         invariant
             length == v.len(),
-            forall|i: int| n <= i && i + n < length ==> v.index(i) == (*v1).index(i),
-            forall|i: int| 0 <= i < n ==> v.index(i) == (*v1).index(length - i - 1),
-            forall|i: int| 0 <= i < n ==> (*v1).index(i) == v.index(length - i - 1),
+            forall|i: int| n <= i && i + n < length ==> v[i] == (*v1)[i],
+            forall|i: int| 0 <= i < n ==> v[i] == (*v1)[length - i - 1],
+            forall|i: int| 0 <= i < n ==> (*v1)[i] == v[length - i - 1],
     {
         let x = *v.index(n);
         let y = *v.index(length - 1 - n);
@@ -71,7 +71,7 @@ fn pusher() -> Vec<u64> {
     v.push(4);
     let goal: Ghost<Seq<u64>> = ghost(Seq::new(5, |i: int| i as u64));
     assert(v.view().ext_equal(*goal));
-    assert(v.index(2) == 2);
+    assert(v[2] == 2);
 
     v.pop();
     v.push(4);
@@ -85,25 +85,25 @@ spec fn uninterp_fn(x: u64) -> bool;
 fn pop_test(t: Vec<u64>)
     requires
         t.len() > 0,
-        forall|i: int| #![auto] 0 <= i < t.len() ==> uninterp_fn(t.index(i)),
+        forall|i: int| #![auto] 0 <= i < t.len() ==> uninterp_fn(t[i]),
 {
     let mut t = t;
     let x = t.pop();
 
     assert(uninterp_fn(x));
-    assert(forall|i: int| #![auto] 0 <= i < t.len() ==> uninterp_fn(t.index(i)));
+    assert(forall|i: int| #![auto] 0 <= i < t.len() ==> uninterp_fn(t[i]));
 }
 
 fn pust_test(t: Vec<u64>, y: u64)
     requires
-        forall|i: int| #![auto] 0 <= i < t.len() ==> uninterp_fn(t.index(i)),
+        forall|i: int| #![auto] 0 <= i < t.len() ==> uninterp_fn(t[i]),
         uninterp_fn(y),
 {
     let mut t = t;
     t.push(y);
 
     assert(
-        forall|i: int| #![auto] 0 <= i < t.len() ==> uninterp_fn(t.index(i))
+        forall|i: int| #![auto] 0 <= i < t.len() ==> uninterp_fn(t[i])
     );
 }
 

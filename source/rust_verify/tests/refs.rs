@@ -287,13 +287,13 @@ test_verify_one_file! {
 
         fn add1(v: &mut Vec<u64>)
             requires
-                forall|i: int| 0 <= i < old(v).len() ==> old(v).index(i) < 10,
+                forall|i: int| 0 <= i < old(v).len() ==> old(v)[i] < 10,
         {
         }
 
         fn test(v: Vec<u64>)
             requires
-                forall|i: int| 0 <= i < v.len() ==> v.index(i) < 5,
+                forall|i: int| 0 <= i < v.len() ==> v[i] < 5,
         {
             let mut v1 = v;
             add1(&mut v1);
