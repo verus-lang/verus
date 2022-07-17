@@ -119,6 +119,9 @@ pub enum UnaryOp {
     Trigger(TriggerAnnotation),
     /// Force integer value into range given by IntRange (e.g. by using mod)
     Clip(IntRange),
+    /// Internal consistency check to make sure finalize_exp gets called
+    /// (appears only briefly in SST before finalize_exp is called)
+    MustBeFinalized,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]

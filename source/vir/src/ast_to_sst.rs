@@ -214,6 +214,8 @@ impl State {
                 }
                 exp.clone()
             }
+            // remove MustBeFinalized marker to vouch that finalize_exp was called
+            ExpX::Unary(UnaryOp::MustBeFinalized, e1) => e1.clone(),
             _ => exp.clone(),
         });
         exp
@@ -722,7 +724,9 @@ fn expr_to_stm_opt(
         ExprX::Const(c) => Ok((vec![], ReturnValue::Some(mk_exp(ExpX::Const(c.clone()))))),
         ExprX::Var(x) => {
             let unique_id = state.get_var_unique_id(&x);
-            Ok((vec![], ReturnValue::Some(mk_exp(ExpX::Var(unique_id)))))
+            let e = mk_exp(ExpX::Var(unique_id));
+            let e = mk_exp(ExpX::Unary(UnaryOp::MustBeFinalized, e));
+            Ok((vec![], ReturnValue::Some(e)))
         }
         ExprX::VarLoc(x) => {
             let unique_id = state.get_var_unique_id(&x);
@@ -1002,7 +1006,9 @@ fn expr_to_stm_opt(
             let trigs =
                 crate::triggers::build_triggers(ctx, &expr.span, &vars, &exp, quant.boxed_params)?;
             let bnd = Spanned::new(body.span.clone(), BndX::Quant(*quant, binders.clone(), trigs));
-            Ok((check_recommends_stms, ReturnValue::Some(mk_exp(ExpX::Bind(bnd, exp)))))
+            let e = mk_exp(ExpX::Bind(bnd, exp));
+            let e = mk_exp(ExpX::Unary(UnaryOp::MustBeFinalized, e));
+            Ok((check_recommends_stms, ReturnValue::Some(e)))
         }
         ExprX::Closure(params, body) => {
             state.push_scope();
@@ -1059,7 +1065,9 @@ fn expr_to_stm_opt(
             let trigs = crate::triggers::build_triggers(ctx, &expr.span, &vars, &cond_exp, true)?;
             let bnd =
                 Spanned::new(body.span.clone(), BndX::Choose(params.clone(), trigs, cond_exp));
-            Ok((check_recommends_stms, ReturnValue::Some(mk_exp(ExpX::Bind(bnd, body_exp)))))
+            let e = mk_exp(ExpX::Bind(bnd, body_exp));
+            let e = mk_exp(ExpX::Unary(UnaryOp::MustBeFinalized, e));
+            Ok((check_recommends_stms, ReturnValue::Some(e)))
         }
         ExprX::WithTriggers { triggers, body } => {
             let mut trigs: Vec<crate::sst::Trig> = Vec::new();

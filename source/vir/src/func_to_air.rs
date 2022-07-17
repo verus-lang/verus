@@ -161,6 +161,8 @@ fn func_body_to_air(
             &mut state,
             decrease_by_fun.x.body.as_ref().expect("decreases_by has body"),
         )?;
+        let body_stms: Vec<Stm> =
+            body_stms.iter().map(|s| state.finalize_stm(s, &state.fun_ssts)).collect();
         decrease_by_stms.extend(body_stms);
     }
     state.finalize();

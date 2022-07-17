@@ -297,6 +297,7 @@ fn poly_expr(ctx: &Ctx, state: &mut State, expr: &Expr) -> Expr {
                     mk_expr(ExprX::Unary(*op, e1))
                 }
                 UnaryOp::Trigger(_) => mk_expr_typ(&e1.typ, ExprX::Unary(*op, e1.clone())),
+                UnaryOp::MustBeFinalized => panic!("internal error: MustBeFinalized in AST"),
             }
         }
         ExprX::UnaryOpr(op, e1) => {

@@ -512,6 +512,9 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Expr {
                     exp.typ
                 ),
                 UnaryOp::Trigger(_) => exp_to_expr(ctx, exp, expr_ctxt),
+                UnaryOp::MustBeFinalized => {
+                    panic!("internal error: Exp not finalized: {:?}", exp)
+                }
             }
         }
         (ExpX::Unary(op, exp), false) => match op {
@@ -538,6 +541,9 @@ pub(crate) fn exp_to_expr(ctx: &Ctx, exp: &Exp, expr_ctxt: &ExprCtxt) -> Expr {
                     IntRange::I(_) | IntRange::ISize => crate::def::I_CLIP,
                 };
                 apply_range_fun(&f_name, &range, vec![expr])
+            }
+            UnaryOp::MustBeFinalized => {
+                panic!("internal error: Exp not finalized: {:?}", exp)
             }
         },
         (ExpX::UnaryOpr(UnaryOpr::Box(_) | UnaryOpr::Unbox(_), exp), true) => {

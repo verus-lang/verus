@@ -231,6 +231,7 @@ fn expr_to_node(expr: &Expr) -> Node {
                     nodes
                 }
                 UnaryOp::Clip(range) => nodes_vec!(clip {int_range_to_node(range)}),
+                UnaryOp::MustBeFinalized => nodes_vec!(MustBeFinalized),
             };
             nodes.push(expr_to_node(expr));
             nodes
