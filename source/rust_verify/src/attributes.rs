@@ -123,6 +123,8 @@ pub(crate) enum Attr {
     Publish,
     // publish body with zero fuel
     OpaqueOutsideModule,
+    // inline spec function in SMT query
+    Inline,
     // Rust ghost block
     GhostBlock(GhostBlockAttr),
     // type parameter is not necessarily used in strictly positive positions
@@ -224,6 +226,7 @@ pub(crate) fn parse_attrs(attrs: &[Attribute]) -> Result<Vec<Attr>, VirErr> {
                 Some(box [AttrTree::Fun(_, arg, None)]) if arg == "opaque_outside_module" => {
                     v.push(Attr::OpaqueOutsideModule)
                 }
+                Some(box [AttrTree::Fun(_, arg, None)]) if arg == "inline" => v.push(Attr::Inline),
                 Some(box [AttrTree::Fun(_, arg, None)]) if arg == "proof_block" => {
                     v.push(Attr::GhostBlock(GhostBlockAttr::Proof))
                 }
@@ -413,6 +416,7 @@ pub(crate) struct VerifierAttrs {
     pub(crate) opaque: bool,
     pub(crate) publish: bool,
     pub(crate) opaque_outside_module: bool,
+    pub(crate) inline: bool,
     pub(crate) strictly_positive: bool,
     pub(crate) maybe_negative: bool,
     pub(crate) broadcast_forall: bool,
@@ -439,6 +443,7 @@ pub(crate) fn get_verifier_attrs(attrs: &[Attribute]) -> Result<VerifierAttrs, V
         opaque: false,
         publish: false,
         opaque_outside_module: false,
+        inline: false,
         maybe_negative: false,
         strictly_positive: false,
         broadcast_forall: false,
@@ -464,6 +469,7 @@ pub(crate) fn get_verifier_attrs(attrs: &[Attribute]) -> Result<VerifierAttrs, V
             Attr::Opaque => vs.opaque = true,
             Attr::Publish => vs.publish = true,
             Attr::OpaqueOutsideModule => vs.opaque_outside_module = true,
+            Attr::Inline => vs.inline = true,
             Attr::MaybeNegative => vs.maybe_negative = true,
             Attr::StrictlyPositive => vs.strictly_positive = true,
             Attr::BroadcastForall => vs.broadcast_forall = true,

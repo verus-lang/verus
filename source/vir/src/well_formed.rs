@@ -287,6 +287,25 @@ fn check_function(ctxt: &Ctxt, function: &Function) -> Result<(), VirErr> {
         }
     }
 
+    if function.x.attrs.inline {
+        if function.x.mode != Mode::Spec {
+            return err_str(&function.span, "'inline' is only allowed for 'spec' functions");
+        }
+        // make sure we don't leak private bodies by inlining
+        if !function.x.visibility.is_private && function.x.publish != Some(true) {
+            return err_str(
+                &function.span,
+                "'inline' is only allowed for private or 'open spec' functions",
+            );
+        }
+        if function.x.decrease.len() != 0 {
+            return err_str(&function.span, "'inline' functions cannot be recursive");
+        }
+        if function.x.body.is_none() {
+            return err_str(&function.span, "'inline' functions must have a body");
+        }
+    }
+
     if function.x.attrs.atomic {
         if function.x.mode != Mode::Exec {
             return err_str(&function.span, "'atomic' only makes sense on an 'exec' function");

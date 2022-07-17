@@ -88,6 +88,13 @@ where
     }
 }
 
+pub(crate) fn map_typ_visitor<FT>(typ: &Typ, ft: &FT) -> Result<Typ, VirErr>
+where
+    FT: Fn(&Typ) -> Result<Typ, VirErr>,
+{
+    map_typ_visitor_env(typ, &mut (), &|_: &mut (), t: &Typ| ft(t))
+}
+
 pub(crate) fn map_pattern_visitor_env<E, FT>(
     pattern: &Pattern,
     env: &mut E,

@@ -10,9 +10,9 @@ use crate::def::{
     fun_to_string, new_internal_qid, path_to_string, prefix_box, prefix_ensures, prefix_fuel_id,
     prefix_lambda_type, prefix_pre_var, prefix_requires, prefix_unbox, snapshot_ident,
     suffix_global_id, suffix_local_expr_id, suffix_local_stmt_id, suffix_local_unique_id,
-    suffix_typ_param_id, variant_field_ident, variant_ident, ProverChoice, SnapPos, SpanKind,
-    Spanned, FUEL_BOOL, FUEL_BOOL_DEFAULT, FUEL_DEFAULTS, FUEL_ID, FUEL_PARAM, FUEL_TYPE, POLY,
-    SNAPSHOT_ASSIGN, SNAPSHOT_CALL, SNAPSHOT_PRE, SUCC, SUFFIX_SNAP_JOIN, SUFFIX_SNAP_MUT,
+    suffix_typ_param_id, unique_local, variant_field_ident, variant_ident, ProverChoice, SnapPos,
+    SpanKind, Spanned, FUEL_BOOL, FUEL_BOOL_DEFAULT, FUEL_DEFAULTS, FUEL_ID, FUEL_PARAM, FUEL_TYPE,
+    POLY, SNAPSHOT_ASSIGN, SNAPSHOT_CALL, SNAPSHOT_PRE, SUCC, SUFFIX_SNAP_JOIN, SUFFIX_SNAP_MUT,
     SUFFIX_SNAP_WHILE_BEGIN, SUFFIX_SNAP_WHILE_END,
 };
 use crate::def::{CommandsWithContext, CommandsWithContextX};
@@ -1604,8 +1604,8 @@ pub fn body_stm_to_air(
     let mut assigned: HashSet<UniqueIdent> = HashSet::new();
     let mut has_mut_params = false;
     for param in params.iter() {
-        declared.insert((param.x.name.clone(), Some(0)), param.x.typ.clone());
-        assigned.insert((param.x.name.clone(), Some(0)));
+        declared.insert(unique_local(&param.x.name), param.x.typ.clone());
+        assigned.insert(unique_local(&param.x.name));
         if param.x.is_mut {
             has_mut_params = true;
         }

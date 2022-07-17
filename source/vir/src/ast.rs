@@ -464,6 +464,8 @@ pub type FunctionAttrs = Arc<FunctionAttrsX>;
 pub struct FunctionAttrsX {
     /// Erasure and lifetime checking based on ghost blocks
     pub uses_ghost_blocks: bool,
+    /// Inline spec function for SMT
+    pub inline: bool,
     /// List of functions that this function wants to view as opaque
     pub hidden: Arc<Vec<Fun>>,
     /// Create a global axiom saying forall params, require ==> ensure

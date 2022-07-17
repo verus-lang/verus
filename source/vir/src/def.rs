@@ -54,6 +54,7 @@ const PREFIX_TUPLE_PARAM: &str = "T%";
 const PREFIX_TUPLE_FIELD: &str = "field%";
 const PREFIX_LAMBDA_TYPE: &str = "fun%";
 const PREFIX_SNAPSHOT: &str = "snap%";
+const SUBST_RENAME_SEPARATOR: &str = "$$";
 const KRATE_SEPARATOR: &str = "!";
 const PATH_SEPARATOR: &str = ".";
 const PATHS_SEPARATOR: &str = "/";
@@ -189,8 +190,16 @@ pub fn suffix_local_stmt_id(ident: &Ident) -> Ident {
     Arc::new(ident.to_string() + SUFFIX_LOCAL_STMT)
 }
 
+pub(crate) fn unique_bound(id: &Ident) -> UniqueIdent {
+    UniqueIdent { name: id.clone(), local: None }
+}
+
+pub(crate) fn unique_local(id: &Ident) -> UniqueIdent {
+    UniqueIdent { name: id.clone(), local: Some(0) }
+}
+
 pub fn suffix_local_unique_id(ident: &UniqueIdent) -> Ident {
-    let (x, id) = ident;
+    let UniqueIdent { name: x, local: id } = ident;
     match id {
         None => suffix_local_expr_id(x),
         Some(0) => suffix_local_stmt_id(x),
@@ -212,6 +221,10 @@ pub fn rm_suffix_local_id(ident: &Ident) -> Ident {
         }
     }
     Arc::new(name)
+}
+
+pub fn subst_rename_ident(x: &Ident, n: u64) -> Ident {
+    Arc::new(format!("{}{}{}", x.to_string(), SUBST_RENAME_SEPARATOR, n))
 }
 
 pub fn suffix_typ_param_id(ident: &Ident) -> Ident {

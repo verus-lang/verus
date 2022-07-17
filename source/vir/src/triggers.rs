@@ -1,7 +1,7 @@
 use crate::ast::{BinaryOp, Ident, TriggerAnnotation, Typ, TypX, UnaryOp, UnaryOpr, VarAt, VirErr};
 use crate::ast_util::{err_str, err_string};
 use crate::context::Ctx;
-use crate::sst::{BndX, Exp, ExpX, Trig, Trigs};
+use crate::sst::{BndX, Exp, ExpX, Trig, Trigs, UniqueIdent};
 use air::ast::Span;
 use air::scope_map::ScopeMap;
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -89,11 +89,11 @@ fn check_trigger_expr(
                     }
                     Ok(())
                 }
-                ExpX::Var((x, None)) => {
+                ExpX::Var(UniqueIdent { name: x, local: None }) => {
                     free_vars.insert(x.clone());
                     Ok(())
                 }
-                ExpX::Var((x, Some(_))) => {
+                ExpX::Var(UniqueIdent { name: x, local: Some(_) }) => {
                     if lets.contains(x) {
                         err_str(
                             &exp.span,
@@ -144,11 +144,11 @@ fn check_trigger_expr(
         crate::sst_visitor::exp_visitor_check(exp, &mut scope_map, &mut |exp, _scope_map| {
             if match &exp.x {
                 ExpX::Const(_) | ExpX::Loc(..) | ExpX::VarLoc(..) => true,
-                ExpX::Var((x, None)) => {
+                ExpX::Var(UniqueIdent { name: x, local: None }) => {
                     free_vars.insert(x.clone());
                     true
                 }
-                ExpX::Var((x, Some(_))) => {
+                ExpX::Var(UniqueIdent { name: x, local: Some(_) }) => {
                     if lets.contains(x) {
                         err_str(
                             &exp.span,

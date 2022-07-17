@@ -32,8 +32,12 @@ pub enum BndX {
     Choose(Binders<Typ>, Trigs, Exp),
 }
 
-// variable name with optional unique id for renaming (equal to unique_id in LocalDeclX)
-pub type UniqueIdent = (Ident, Option<u64>);
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct UniqueIdent {
+    pub name: Ident,
+    // None for bound vars, Some disambiguating integer for local vars
+    pub local: Option<u64>,
+}
 
 pub type Exp = Arc<SpannedTyped<ExpX>>;
 pub type Exps = Arc<Vec<Exp>>;

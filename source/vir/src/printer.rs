@@ -422,6 +422,7 @@ fn function_to_node(function: &FunctionX) -> Node {
     let function_attrs_node = {
         let FunctionAttrsX {
             uses_ghost_blocks,
+            inline,
             hidden,
             broadcast_forall,
             no_auto_trigger,
@@ -443,6 +444,9 @@ fn function_to_node(function: &FunctionX) -> Node {
         ];
         if *uses_ghost_blocks {
             nodes.push(str_to_node("+uses_ghost_blocks"));
+        }
+        if *inline {
+            nodes.push(str_to_node("+inline"));
         }
         if *broadcast_forall {
             nodes.push(str_to_node("+broadcast_forall"));

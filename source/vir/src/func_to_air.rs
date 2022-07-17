@@ -1,14 +1,14 @@
 use crate::ast::{
-    Function, FunctionKind, GenericBoundX, Ident, Idents, Mode, Param, ParamX, Params,
-    SpannedTyped, Typ, TypX, Typs, VirErr,
+    Fun, Function, FunctionKind, GenericBoundX, Ident, Idents, Mode, Param, ParamX, Params,
+    SpannedTyped, Typ, TypBounds, TypX, Typs, VirErr,
 };
 use crate::ast_util::QUANT_FORALL;
 use crate::context::Ctx;
 use crate::def::{
     new_internal_qid, prefix_ensures, prefix_fuel_id, prefix_fuel_nat, prefix_pre_var,
     prefix_recursive_fun, prefix_requires, suffix_global_id, suffix_local_stmt_id,
-    suffix_typ_param_id, CommandsWithContext, SnapPos, Spanned, FUEL_BOOL, FUEL_BOOL_DEFAULT,
-    FUEL_LOCAL, FUEL_TYPE, SUCC, ZERO,
+    suffix_typ_param_id, unique_local, CommandsWithContext, SnapPos, Spanned, FUEL_BOOL,
+    FUEL_BOOL_DEFAULT, FUEL_LOCAL, FUEL_TYPE, SUCC, ZERO,
 };
 use crate::sst::{BndX, Exp, ExpX, Par, ParPurpose, ParX, Pars, Stm, StmX};
 use crate::sst_to_air::{
@@ -24,7 +24,14 @@ use air::ast_util::{
     str_apply, str_ident, str_typ, str_var, string_apply,
 };
 use air::errors::ErrorLabel;
+use std::collections::HashMap;
 use std::sync::Arc;
+
+pub struct SstInline {
+    pub(crate) typ_bounds: TypBounds,
+    pub(crate) params: Params,
+}
+pub type SstMap = HashMap<Fun, (Option<SstInline>, Exp)>;
 
 // binder for forall (typ_params params)
 pub(crate) fn func_bind_trig(
@@ -110,11 +117,12 @@ fn func_def_quant(
 
 fn func_body_to_air(
     ctx: &Ctx,
+    fun_ssts: SstMap,
     decl_commands: &mut Vec<Command>,
     check_commands: &mut Vec<Command>,
     function: &Function,
     body: &crate::ast::Expr,
-) -> Result<(), VirErr> {
+) -> Result<SstMap, VirErr> {
     let id_fuel = prefix_fuel_id(&fun_to_air_ident(&function.x.name));
 
     let pars = params_to_pars(&function.x.params, false);
@@ -123,12 +131,22 @@ fn func_body_to_air(
     let mut state = crate::ast_to_sst::State::new();
     state.declare_params(&pars);
     state.view_as_spec = true;
+    state.fun_ssts = fun_ssts;
     let body_exp = crate::ast_to_sst::expr_to_pure_exp(&ctx, &mut state, &body)?;
-    let body_exp = state.finalize_exp(&body_exp);
+    let body_exp = state.finalize_exp(&body_exp, &state.fun_ssts);
+    let inline = if function.x.attrs.inline {
+        Some(SstInline {
+            typ_bounds: function.x.typ_bounds.clone(),
+            params: function.x.params.clone(),
+        })
+    } else {
+        None
+    };
+    state.fun_ssts.insert(function.x.name.clone(), (inline, body_exp.clone()));
 
     let mut decrease_by_stms: Vec<Stm> = Vec::new();
     let decrease_by_reqs = if let Some(req) = &function.x.decrease_when {
-        let exp = crate::ast_to_sst::expr_to_exp(ctx, &pars, req)?;
+        let exp = crate::ast_to_sst::expr_to_exp(ctx, &state.fun_ssts, &pars, req)?;
         let expr = exp_to_expr(ctx, &exp, &ExprCtxt::new_mode(ExprMode::Spec));
         decrease_by_stms.push(Spanned::new(req.span.clone(), StmX::Assume(exp)));
         vec![expr]
@@ -150,6 +168,7 @@ fn func_body_to_air(
     // Check termination
     let (is_recursive, termination_commands, body_exp) = crate::recursion::check_termination_exp(
         ctx,
+        &state.fun_ssts,
         function,
         state.local_decls,
         &body_exp,
@@ -241,11 +260,12 @@ fn func_body_to_air(
     let fuel_bool = str_apply(FUEL_BOOL, &vec![ident_var(&id_fuel)]);
     let def_axiom = Arc::new(DeclX::Axiom(mk_implies(&fuel_bool, &e_forall)));
     decl_commands.push(Arc::new(CommandX::Global(def_axiom)));
-    Ok(())
+    Ok(state.fun_ssts)
 }
 
 pub fn req_ens_to_air(
     ctx: &Ctx,
+    fun_ssts: &SstMap,
     commands: &mut Vec<Command>,
     params: &Pars,
     typing_invs: &Vec<Expr>,
@@ -267,7 +287,7 @@ pub fn req_ens_to_air(
             exprs.push(e.clone());
         }
         for e in specs.iter() {
-            let exp = crate::ast_to_sst::expr_to_exp(ctx, params, e)?;
+            let exp = crate::ast_to_sst::expr_to_exp(ctx, fun_ssts, params, e)?;
             let expr = exp_to_expr(ctx, &exp, &ExprCtxt::new_mode(ExprMode::Spec));
             let loc_expr = match msg {
                 None => expr,
@@ -317,6 +337,7 @@ pub fn func_name_to_air(ctx: &Ctx, function: &Function) -> Result<Commands, VirE
         if let Some(body) = &function.x.body {
             let body_exp = crate::ast_to_sst::expr_to_exp_as_spec(
                 &ctx,
+                &SstMap::new(),
                 &params_to_pars(&function.x.params, false),
                 &body,
             )?;
@@ -383,7 +404,11 @@ fn params_to_pre_post_pars(params: &Params, pre: bool) -> Pars {
     )
 }
 
-pub fn func_decl_to_air(ctx: &mut Ctx, function: &Function) -> Result<Commands, VirErr> {
+pub fn func_decl_to_air(
+    ctx: &mut Ctx,
+    fun_ssts: &SstMap,
+    function: &Function,
+) -> Result<Commands, VirErr> {
     // let typ_params: Vec<_> = funxtion.x.typ_bounds.iter().map(|_| str_typ(crate::def::TYPE)).collect();
     let req_typs: Arc<Vec<_>> =
         Arc::new(function.x.params.iter().map(|param| typ_to_air(ctx, &param.x.typ)).collect());
@@ -399,6 +424,7 @@ pub fn func_decl_to_air(ctx: &mut Ctx, function: &Function) -> Result<Commands, 
         let req_params = params_to_pre_post_pars(&function.x.params, true);
         let _ = req_ens_to_air(
             ctx,
+            fun_ssts,
             &mut decl_commands,
             &req_params,
             &vec![],
@@ -414,9 +440,10 @@ pub fn func_decl_to_air(ctx: &mut Ctx, function: &Function) -> Result<Commands, 
 
 pub fn func_axioms_to_air(
     ctx: &mut Ctx,
+    fun_ssts: SstMap,
     function: &Function,
     public_body: bool,
-) -> Result<(Commands, Commands), VirErr> {
+) -> Result<(Commands, Commands, SstMap), VirErr> {
     let mut ens_typs: Vec<_> = function
         .x
         .params
@@ -428,19 +455,27 @@ pub fn func_axioms_to_air(
         .collect();
     let mut decl_commands: Vec<Command> = Vec::new();
     let mut check_commands: Vec<Command> = Vec::new();
+    let mut new_fun_ssts = fun_ssts;
     match function.x.mode {
         Mode::Spec => {
             // Body
             if public_body {
                 if let Some(body) = &function.x.body {
-                    func_body_to_air(ctx, &mut decl_commands, &mut check_commands, function, body)?;
+                    new_fun_ssts = func_body_to_air(
+                        ctx,
+                        new_fun_ssts,
+                        &mut decl_commands,
+                        &mut check_commands,
+                        function,
+                        body,
+                    )?;
                 }
             }
 
             if let FunctionKind::TraitMethodImpl { .. } = &function.x.kind {
                 // For a trait method implementation, we just need to supply a body axiom
                 // for the existing trait method declaration function, so we can return here.
-                return Ok((Arc::new(decl_commands), Arc::new(check_commands)));
+                return Ok((Arc::new(decl_commands), Arc::new(check_commands), new_fun_ssts));
             }
 
             let name = suffix_global_id(&fun_to_air_ident(&function.x.name));
@@ -483,7 +518,7 @@ pub fn func_axioms_to_air(
             if let FunctionKind::TraitMethodImpl { .. } = &function.x.kind {
                 // For a trait method implementation, we inherit the trait requires/ensures,
                 // so we can just return here.
-                return Ok((Arc::new(decl_commands), Arc::new(check_commands)));
+                return Ok((Arc::new(decl_commands), Arc::new(check_commands), new_fun_ssts));
             }
 
             let params = params_to_pre_post_pars(&function.x.params, false);
@@ -511,6 +546,7 @@ pub fn func_axioms_to_air(
             }
             let has_ens_pred = req_ens_to_air(
                 ctx,
+                &new_fun_ssts,
                 &mut decl_commands,
                 &Arc::new(ens_params),
                 &ens_typing_invs,
@@ -526,7 +562,12 @@ pub fn func_axioms_to_air(
             if let Some((params, req_ens)) = &function.x.broadcast_forall {
                 let span = &function.span;
                 let params = params_to_pre_post_pars(params, false);
-                let exp = crate::ast_to_sst::expr_to_bind_decls_exp(ctx, &params, req_ens)?;
+                let exp = crate::ast_to_sst::expr_to_bind_decls_exp(
+                    ctx,
+                    &new_fun_ssts,
+                    &params,
+                    req_ens,
+                )?;
                 let mut vars: Vec<Ident> = Vec::new();
                 let mut binders: Vec<Binder<Typ>> = Vec::new();
                 for (name, bound) in function.x.typ_bounds.iter() {
@@ -557,7 +598,7 @@ pub fn func_axioms_to_air(
             }
         }
     }
-    Ok((Arc::new(decl_commands), Arc::new(check_commands)))
+    Ok((Arc::new(decl_commands), Arc::new(check_commands), new_fun_ssts))
 }
 
 pub enum FuncDefPhase {
@@ -567,10 +608,11 @@ pub enum FuncDefPhase {
 
 pub fn func_def_to_air(
     ctx: &Ctx,
+    fun_ssts: SstMap,
     function: &Function,
     phase: FuncDefPhase,
     checking_recommends: bool,
-) -> Result<(Arc<Vec<CommandsWithContext>>, Vec<(Span, SnapPos)>), VirErr> {
+) -> Result<(Arc<Vec<CommandsWithContext>>, Vec<(Span, SnapPos)>, SstMap), VirErr> {
     let erasure_mode = match (function.x.mode, function.x.is_const) {
         (Mode::Spec, true) => Mode::Exec,
         (mode, _) => mode,
@@ -580,7 +622,7 @@ pub fn func_def_to_air(
         | (FuncDefPhase::CheckingSpecs, Mode::Proof | Mode::Exec, _, Some(_))
         | (FuncDefPhase::CheckingSpecs, Mode::Spec, false, Some(_))
         | (FuncDefPhase::CheckingProofExec, Mode::Spec, _, Some(_)) => {
-            Ok((Arc::new(vec![]), vec![]))
+            Ok((Arc::new(vec![]), vec![], fun_ssts))
         }
         (FuncDefPhase::CheckingSpecs, Mode::Spec, true, Some(body))
         | (FuncDefPhase::CheckingProofExec, Mode::Proof | Mode::Exec, _, Some(body)) => {
@@ -610,12 +652,13 @@ pub fn func_def_to_air(
             };
 
             let mut state = crate::ast_to_sst::State::new();
+            state.fun_ssts = fun_ssts;
             let mut ens_params = (*function.x.params).clone();
             let dest = if function.x.has_return() {
                 let ParamX { name, typ, .. } = &function.x.ret.x;
                 ens_params.push(function.x.ret.clone());
                 state.declare_new_var(name, typ, false, false);
-                Some((name.clone(), Some(0)))
+                Some(unique_local(name))
             } else {
                 None
             };
@@ -636,7 +679,7 @@ pub fn func_def_to_air(
                     req_stms.extend(stms);
                     req_stms.push(Spanned::new(exp.span.clone(), StmX::Assume(exp)));
                 } else {
-                    reqs.push(crate::ast_to_sst::expr_to_exp(ctx, &req_pars, e)?);
+                    reqs.push(crate::ast_to_sst::expr_to_exp(ctx, &state.fun_ssts, &req_pars, e)?);
                 }
             }
             let mut ens_stmts: Vec<Stm> = Vec::new();
@@ -645,7 +688,7 @@ pub fn func_def_to_air(
                 if ctx.checking_recommends() {
                     ens_stmts.extend(crate::ast_to_sst::check_pure_expr(ctx, &mut state, e)?);
                 } else {
-                    enss.push(crate::ast_to_sst::expr_to_exp(ctx, &ens_pars, e)?);
+                    enss.push(crate::ast_to_sst::expr_to_exp(ctx, &state.fun_ssts, &ens_pars, e)?);
                 }
             }
             let enss = Arc::new(enss);
@@ -670,19 +713,19 @@ pub fn func_def_to_air(
                 }
                 stm = crate::ast_to_sst::stms_to_one_stm(&body.span, req_stms);
             }
-            let stm = state.finalize_stm(&stm);
+            let stm = state.finalize_stm(&stm, &state.fun_ssts);
             state.ret_post = None;
 
             // Check termination
             let (decls, stm) = if ctx.checking_recommends() {
                 (vec![], stm)
             } else {
-                crate::recursion::check_termination_stm(ctx, function, &stm)?
+                crate::recursion::check_termination_stm(ctx, &state.fun_ssts, function, &stm)?
             };
 
             // SST --> AIR
             for decl in decls {
-                state.new_statement_var(&decl.ident.0);
+                state.new_statement_var(&decl.ident.name);
                 state.local_decls.push(decl.clone());
             }
 
@@ -707,7 +750,7 @@ pub fn func_def_to_air(
             );
 
             state.finalize();
-            Ok((Arc::new(commands), snap_map))
+            Ok((Arc::new(commands), snap_map, state.fun_ssts))
         }
     }
 }
