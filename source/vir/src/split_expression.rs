@@ -104,14 +104,6 @@ fn subsitute_argument(
         }
         ExpX::Const(_) => exp.clone(),
         _ => {
-            // | ExpX::WithTriggers(_, _) => exp.clone()
-            // VarLoc(UniqueIdent),
-            // VarAt(UniqueIdent, VarAt),
-            // Loc(Exp),
-            // Old(Ident, UniqueIdent),
-            // CallLambda(Typ, Exp, Exps),
-            // Ctor(Path, Ident, Binders<Exp>),
-            // WithTriggers(Trigs, Exp),
             return Err((exp.span.clone(), format!("Unsupported expression during subsitution")));
         }
     };
@@ -394,7 +386,7 @@ pub(crate) fn split_expr(
                 Ok(inlined_exp) => {
                     let inlined_tr_exp = TracedExpX::new(
                         inlined_exp,
-                        exp.trace.secondary_label(&exp.e.span, "inlining this function call"), // TODO: pretty print inlined expr
+                        exp.trace.secondary_label(&exp.e.span, "inlining this function call"), // TODO(channy1413): pretty print inlined expr
                     );
                     return split_expr(ctx, state, &inlined_tr_exp, negated);
                 }
@@ -462,7 +454,7 @@ pub(crate) fn split_expr(
                     );
                     Spanned::new(bnd.span.clone(), new_bndx)
                 }
-                // TODO: consider splittig further: Lambda, Choose
+                // TODO(channy1413): consider splittig further: Lambda, Choose
                 _ => return Ok(mk_atom(exp.clone(), negated)),
             };
             let es1 =
@@ -476,8 +468,8 @@ pub(crate) fn split_expr(
             }
             return Ok(Arc::new(splitted));
         }
+        // TODO(channy1413): consider splitting further cases
 
-        // TODO: consider splitting further cases
         // cases that cannot be splitted. "atom" boolean expressions
         _ => return Ok(mk_atom(exp.clone(), negated)),
     }
@@ -521,7 +513,6 @@ pub(crate) fn need_split_expression(ctx: &Ctx, span: &Span) -> bool {
     false
 }
 
-//  find the corresponding old error and check if the new error contains new information on proof failure
 pub fn is_split_error(error: &Error) -> bool {
     if error.msg == crate::def::SPLIT_ASSERT_FAILURE {
         true
