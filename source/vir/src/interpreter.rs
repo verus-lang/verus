@@ -86,14 +86,22 @@ impl<T> PtrSet<T> {
     }
 }
 
+/// Mutable interpreter state
 struct State {
+    /// Depth of our current recursion; used for formatting debug output
     depth: usize,
+    /// Symbol table mapping bound variables to their values
     env: Env,
+    /// Toggle debug output
     debug: bool,
+    /// Cache function invocations, based on their arguments, so we can directly return the
+    /// previously computed result.  Necessary for examples like Fibonacci.
     cache: HashMap<Fun, HashMap<ExpsKey, Exp>>,
     cache_hits: u64,
     cache_misses: u64,
+    /// Profiling data that counts function invocations
     fun_calls: HashMap<Fun, u64>,
+    /// Cache of expressions we have already simplified
     simplified: PtrSet<SpannedTyped<ExpX>>,
 }
 
@@ -108,8 +116,11 @@ impl State {
     }
 }
 
+/// Static context for the interpreter
 struct Ctx<'a> {
+    /// Maps each function to the SST expression representing its body
     fun_ssts: &'a SstMap,
+    /// We avoid infinite loops by imposing a fixed time limit
     time_start: Instant,
     time_limit: Duration,
 }
@@ -117,7 +128,10 @@ struct Ctx<'a> {
 /// Interpreter-internal expressions
 #[derive(Debug)]
 pub enum InterpExp {
+    /// Track free variables (those not introduced inside an assert_by_compute),
+    /// so they don't get confused with bound variables.
     FreeVar(UniqueIdent),
+    /// Optimized representation of intermediate sequence results
     Seq(Vector<Exp>),
 }
 
@@ -518,6 +532,7 @@ enum SeqFn {
     Last,
 }
 
+/// Identify sequence functions for which we provide custom interpretation
 fn is_sequence_fn(fun: &Fun) -> Option<SeqFn> {
     use SeqFn::*;
     match path_as_rust_name(&fun.path).as_str() {
@@ -535,6 +550,10 @@ fn is_sequence_fn(fun: &Fun) -> Option<SeqFn> {
     }
 }
 
+/// Custom interpretation for sequence functions.
+/// Expects to be called after is_sequence_fn has already identified
+/// the relevant sequence function.  We still pass in the original Call Exp,
+/// so that we can return it as a default if we encounter symbolic values
 fn eval_seq(
     ctx: &Ctx,
     state: &mut State,
@@ -545,7 +564,7 @@ fn eval_seq(
     use ExpX::*;
     use InterpExp::*;
     match &exp.x {
-        Call(_fun, typs, _old_args) => {
+        Call(_fun, _typs, _old_args) => {
             let exp_new = |e: ExpX| SpannedTyped::new(&exp.span, &exp.typ, e);
             let bool_new = |b: bool| Ok(exp_new(Const(Constant::Bool(b))));
             let int_new = |i: BigInt| Ok(exp_new(Const(Constant::Int(i))));
@@ -585,9 +604,11 @@ fn eval_seq(
                                         int_i,
                                     ));
                                     let args = Arc::new(vec![boxed_i]);
-                                    // TODO: What's the right typ to pass here?
-                                    let call =
-                                        exp_new(CallLambda(typs[0].clone(), lambda.clone(), args));
+                                    let call = exp_new(CallLambda(
+                                        lambda.typ.clone(),
+                                        lambda.clone(),
+                                        args,
+                                    ));
                                     eval_expr_internal(ctx, state, &call)
                                 })
                                 .collect();
@@ -677,8 +698,6 @@ fn eval_seq(
                 },
             }
         }
-        //        UnaryOpr(crate::ast::UnaryOpr::Box(_), e) => eval_seq_producing(ctx, state, e),
-        //        UnaryOpr(crate::ast::UnaryOpr::Unbox(_), e) => eval_seq_producing(ctx, state, e),
         _ => panic!("Expected sequence expression to be a Call.  Got {:} instead.", exp),
     }
 }
@@ -833,12 +852,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                 },
                 HasType(_) => ok,
                 IsVariant { datatype, variant } => match &e.x {
-                    Ctor(dt, var, _) => {
-                        if state.debug {
-                            //println!("IsVariant found matching Ctor!");
-                        };
-                        bool_new(dt == datatype && var == variant)
-                    }
+                    Ctor(dt, var, _) => bool_new(dt == datatype && var == variant),
                     _ => ok,
                 },
                 TupleField { .. } => panic!("TupleField should have been removed by ast_simplify!"),
@@ -1108,6 +1122,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
             }
         }
         Call(fun, typs, args) => {
+            // Initially try to match on the "raw" arguments, to save effort simplifying them
             match state.lookup_call(&fun, &args) {
                 Some(prev_result) => {
                     state.cache_hits += 1;
@@ -1118,13 +1133,11 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                     return Ok(prev_result);
                 }
                 None => {
+                    // Failing that, simplify the arguments and check the cache again
                     state.cache_misses += 1;
-                    //println!("{}Calling {}", "\t".repeat(state.depth), exp);
                     let new_args: Result<Vec<Exp>, VirErr> =
                         args.iter().map(|e| eval_expr_internal(ctx, state, e)).collect();
                     let new_args = Arc::new(new_args?);
-                    //let new_args_string = new_args.iter().map(|e| e.to_string()).collect::<Vec<_>>().join(", ");
-                    //println!("{} simplified args to {}", "\t".repeat(state.depth), new_args_string);
                     match state.fun_calls.get_mut(fun) {
                         None => {
                             state.fun_calls.insert(fun.clone(), 1);
@@ -1142,35 +1155,26 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                             state.cache_misses += 1;
                             let result = match is_sequence_fn(&fun) {
                                 Some(seq_fn) => eval_seq(ctx, state, seq_fn, exp, &new_args),
-                                None => {
-                                    match ctx.fun_ssts.get(fun) {
-                                        None => exp_new(Call(
-                                            fun.clone(),
-                                            typs.clone(),
-                                            new_args.clone(),
-                                        )),
-                                        Some((params, body)) => {
-                                            state.env.push_scope(true);
-                                            for (formal, actual) in
-                                                params.iter().zip(new_args.iter())
-                                            {
-                                                if state.debug {
-                                                    //println!("Binding {:?} to {:?}", formal, actual.x);
-                                                }
-                                                state
-                                                    .env
-                                                    .insert(
-                                                        (formal.x.name.clone(), Some(0)),
-                                                        actual.clone(),
-                                                    )
-                                                    .unwrap();
-                                            }
-                                            let e = eval_expr_internal(ctx, state, body);
-                                            state.env.pop_scope();
-                                            e
-                                        }
+                                None => match ctx.fun_ssts.get(fun) {
+                                    None => {
+                                        exp_new(Call(fun.clone(), typs.clone(), new_args.clone()))
                                     }
-                                }
+                                    Some((params, body)) => {
+                                        state.env.push_scope(true);
+                                        for (formal, actual) in params.iter().zip(new_args.iter()) {
+                                            state
+                                                .env
+                                                .insert(
+                                                    (formal.x.name.clone(), Some(0)),
+                                                    actual.clone(),
+                                                )
+                                                .unwrap();
+                                        }
+                                        let e = eval_expr_internal(ctx, state, body);
+                                        state.env.pop_scope();
+                                        e
+                                    }
+                                },
                             };
                             state.insert_call(fun, &new_args, &result.clone()?);
                             result
@@ -1187,7 +1191,6 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                     let new_args = Arc::new(new_args?);
                     state.env.push_scope(true);
                     for (formal, actual) in bnds.iter().zip(new_args.iter()) {
-                        //println!("Binding {:?} to {:?}", formal.name, actual.x);
                         state.env.insert((formal.name.clone(), None), actual.clone()).unwrap();
                     }
                     let e = eval_expr_internal(ctx, state, body);
@@ -1239,6 +1242,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
     Ok(res)
 }
 
+/// Symbolically evaluate an expression, simplifying it as much as possible
 pub fn eval_expr(
     exp: &Exp,
     fun_ssts: &SstMap,
@@ -1293,7 +1297,7 @@ pub fn eval_expr(
         // Proof must succeed purely through computation
         ComputeMode::ComputeOnly => match res.x {
             ExpX::Const(Constant::Bool(true)) => Ok(res),
-            _ => err_str(&exp.span, "assert_by_compute_only failed to result in true"),
+            _ => err_str(&exp.span, "assert_by_compute_only failed to simplify down to true"),
         },
     }
 }
