@@ -155,7 +155,7 @@ impl<T: SyntacticEquality> SyntacticEquality for Arc<Vec<T>> {
     }
 }
 
-impl<T: Clone + SyntacticEquality> SyntacticEquality for Vector<T> {
+impl<T: Clone + SyntacticEquality + std::fmt::Display> SyntacticEquality for Vector<T> {
     fn syntactic_eq(&self, other: &Self) -> Option<bool> {
         if self.len() != other.len() {
             Some(false)
@@ -281,7 +281,8 @@ impl SyntacticEquality for Exp {
             (UnaryOpr(op_l, e_l), UnaryOpr(op_r, e_r)) => {
                 use crate::ast::UnaryOpr::*;
                 let op_eq = match (op_l, op_r) {
-                    (Box(l), Box(r)) => def_eq(l.syntactic_eq(r)?),
+                    // Short circuit, since in this case x != y ==> box(x) != box(y)
+                    (Box(l), Box(r)) => return Some(l.syntactic_eq(r)? && e_l.syntactic_eq(e_r)?),
                     (Unbox(l), Unbox(r)) => def_eq(l.syntactic_eq(r)?),
                     (HasType(l), HasType(r)) => def_eq(l.syntactic_eq(r)?),
                     (
@@ -308,22 +309,8 @@ impl SyntacticEquality for Exp {
             }
             (Interp(l), Interp(r)) => match (l, r) {
                 (InterpExp::FreeVar(l), InterpExp::FreeVar(r)) => def_eq(l == r),
-                (InterpExp::Seq(l), InterpExp::Seq(r)) => {
-                    let e = l.syntactic_eq(r);
-                    //                    match e {
-                    //                        Some(b) => println!("Sequence equality was determined to be {}", b),
-                    //                        None => {
-                    //                            println!("Couldn't determine eq status of:");
-                    //                            print_vector(l);
-                    //                            print_vector(r);
-                    //                        }
-                    //                    };
-                    e
-                }
-                _ => {
-                    println!("Couldn't determine match for {:?} and {:?}", l, r);
-                    None
-                }
+                (InterpExp::Seq(l), InterpExp::Seq(r)) => l.syntactic_eq(r),
+                _ => None,
             },
             _ => None,
         }
