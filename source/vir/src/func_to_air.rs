@@ -684,7 +684,7 @@ pub fn func_def_to_air(
                 for e in req_ens_function.x.ensure.iter() {
                     if crate::split_expression::need_split_expression(ctx, &e.span) {
                         let ens_exp = crate::ast_to_sst::expr_to_exp(ctx, &ens_pars, e)?;
-                        let error = air::errors::error("splitted ensures failure", &ens_exp.span);
+                        let error = air::errors::error(crate::def::SPLIT_POST_FAILURE, &e.span);
                         let splitted_exprs = crate::split_expression::split_expr(
                             ctx,
                             &state, // use the state after `body` translation to get the fuel info

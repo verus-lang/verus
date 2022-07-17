@@ -601,7 +601,8 @@ fn stm_call(
         {
             // take the boolean argument, and split this expressino into pieces.
             // then push all these as extra assertions
-            let error = air::errors::error("splitted assertion failure", span);
+            // original span needed for later use -- to check if this additional assertion produces additional info
+            let error = air::errors::error(crate::def::SPLIT_ASSERT_FAILURE, span);
             let exprs = crate::split_expression::split_expr(
                 ctx,
                 state,
@@ -628,7 +629,7 @@ fn stm_call(
                     continue;
                 }
                 let exp_subsituted = exp_subsituted.unwrap();
-                let error = air::errors::error("splitted requires failure", span);
+                let error = air::errors::error(crate::def::SPLIT_PRE_FAILURE.to_string(), span);
                 let exprs = crate::split_expression::split_expr(
                     ctx,
                     state,

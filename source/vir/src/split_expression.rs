@@ -6,6 +6,7 @@ use crate::context::Ctx;
 use crate::def::Spanned;
 use crate::sst::{Bnd, BndX, Exp, ExpX, Exps, Stm, StmX};
 use air::ast::{Binder, BinderX, Span};
+use air::errors::Error;
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -484,6 +485,12 @@ pub(crate) fn split_expr(
 
 pub(crate) fn register_splitted_assertions(traced_exprs: TracedExps) -> Vec<Stm> {
     let mut stms: Vec<Stm> = Vec::new();
+    if traced_exprs.len() == 1 && traced_exprs[0].trace.labels.len() == 0 {
+        // if the length of the vector is 1, this indicate split failure
+        // however, if this includes message like "this function is opaque",
+        // if is worth reporting to the user
+        return vec![];
+    }
     for small_exp in &*traced_exprs {
         let new_error = small_exp.trace.primary_span(&small_exp.e.span);
         let additional_assert = StmX::Assert(Some(new_error), small_exp.e.clone());
@@ -512,4 +519,17 @@ pub(crate) fn need_split_expression(ctx: &Ctx, span: &Span) -> bool {
         }
     }
     false
+}
+
+//  find the corresponding old error and check if the new error contains new information on proof failure
+pub fn is_split_error(error: &Error) -> bool {
+    if error.msg == crate::def::SPLIT_ASSERT_FAILURE {
+        true
+    } else if error.msg == crate::def::SPLIT_PRE_FAILURE {
+        true
+    } else if error.msg == crate::def::SPLIT_POST_FAILURE {
+        true
+    } else {
+        false
+    }
 }

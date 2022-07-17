@@ -133,8 +133,13 @@ pub const QID_INVARIANT: &str = "invariant";
 pub const QID_HAS_TYPE_ALWAYS: &str = "has_type_always";
 
 // List of pre-defined error messages
+pub const ASSERTION_FAILURE: &str = "assertion failure";
+pub const PRECONDITION_FAILURE: &str = "precondition not satisfied";
 pub const POSTCONDITION_FAILURE: &str = "postcondition not satisfied";
 pub const THIS_POST_FAILED: &str = "failed this postcondition";
+pub const SPLIT_ASSERT_FAILURE: &str = "splitted assertion failure";
+pub const SPLIT_PRE_FAILURE: &str = "splitted precondition failure";
+pub const SPLIT_POST_FAILURE: &str = "splitted postcondition failure";
 
 // We assume that usize is at least ARCH_SIZE_MIN_BITS wide
 pub const ARCH_SIZE_MIN_BITS: u32 = 32;

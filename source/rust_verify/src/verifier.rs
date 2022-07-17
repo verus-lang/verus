@@ -1,5 +1,6 @@
 use crate::config::{Args, ShowTriggers};
 use crate::context::{ContextX, ErasureInfo};
+use crate::debugger::Debugger;
 use crate::unsupported;
 use crate::util::{error, from_raw_span, signalling};
 use air::ast::{Command, CommandX, Commands};
@@ -297,8 +298,8 @@ impl Verifier {
         compiler: &Compiler,
         error_as: ErrorAs,
         air_context: &mut air::context::Context,
-        _assign_map: &HashMap<*const air::ast::Span, HashSet<Arc<std::string::String>>>,
-        _snap_map: &Vec<(air::ast::Span, SnapPos)>,
+        assign_map: &HashMap<*const air::ast::Span, HashSet<Arc<std::string::String>>>,
+        snap_map: &Vec<(air::ast::Span, SnapPos)>,
         qid_map: &HashMap<String, vir::sst::BndInfo>,
         command: &Command,
         context: &(&air::ast::Span, &str),
@@ -394,13 +395,16 @@ impl Verifier {
                         compiler.report_error(&error, error_as);
                         break;
                     }
-                    let _air_model = air_model.unwrap();
+                    let air_model = air_model.unwrap();
 
                     if is_first_check && error_as == ErrorAs::Error {
                         self.count_errors += 1;
                         invalidity = true;
                     }
-                    compiler.report_error(&error, error_as);
+
+                    if !self.expand_flag || vir::split_expression::is_split_error(&error) {
+                        compiler.report_error(&error, error_as);
+                    }
 
                     if error_as == ErrorAs::Error {
                         let mut errors = vec![ErrorSpan::new_from_air_span(
@@ -423,15 +427,15 @@ impl Verifier {
                             self.expanded_errors.push(errors);
                         }
 
-                        // if self.args.debug {
-                        //     let mut debugger = Debugger::new(
-                        //         air_model,
-                        //         assign_map,
-                        //         snap_map,
-                        //         compiler.session().source_map(),
-                        //     );
-                        //     debugger.start_shell(air_context);
-                        // }
+                        if self.args.debug {
+                            let mut debugger = Debugger::new(
+                                air_model,
+                                assign_map,
+                                snap_map,
+                                compiler.session().source_map(),
+                            );
+                            debugger.start_shell(air_context);
+                        }
                     }
 
                     if self.args.multiple_errors == 0 {
@@ -545,11 +549,13 @@ impl Verifier {
         air_context.set_profile_all(self.args.profile_all);
 
         let rerun_msg = if is_rerun { "_rerun" } else { "" };
+        let expand_msg = if self.expand_flag { "_expand" } else { "" };
         if self.args.log_all || self.args.log_air_initial {
             let file = self.create_log_file(
                 Some(module_path),
                 function_path,
-                format!("{}{}", rerun_msg, crate::config::AIR_INITIAL_FILE_SUFFIX).as_str(),
+                format!("{}{}{}", rerun_msg, expand_msg, crate::config::AIR_INITIAL_FILE_SUFFIX)
+                    .as_str(),
             )?;
             air_context.set_air_initial_log(Box::new(file));
         }
@@ -557,7 +563,8 @@ impl Verifier {
             let file = self.create_log_file(
                 Some(module_path),
                 function_path,
-                format!("{}{}", rerun_msg, crate::config::AIR_FINAL_FILE_SUFFIX).as_str(),
+                format!("{}{}{}", rerun_msg, expand_msg, crate::config::AIR_FINAL_FILE_SUFFIX)
+                    .as_str(),
             )?;
             air_context.set_air_final_log(Box::new(file));
         }
@@ -565,7 +572,7 @@ impl Verifier {
             let file = self.create_log_file(
                 Some(module_path),
                 function_path,
-                format!("{}{}", rerun_msg, crate::config::SMT_FILE_SUFFIX).as_str(),
+                format!("{}{}{}", rerun_msg, expand_msg, crate::config::SMT_FILE_SUFFIX).as_str(),
             )?;
             air_context.set_smt_log(Box::new(file));
         }
@@ -967,14 +974,12 @@ impl Verifier {
         let (time_smt_init, time_smt_run) =
             self.verify_module(compiler, &poly_krate, module, &mut ctx)?;
 
-        // In the presence of error, re-verify this module with "splitted expressions" of failing assertions/requires/ensures
-        // to get more precise error message.
+        // In the presence of proof error, re-verify this module with splitted failing assertions to get more precise error message.
         if !self.encountered_vir_error && before_err_count < self.count_errors {
-            // TODO: log in a different file?
-            ctx.debug_expand_targets = self.expand_targets.to_vec(); // TODO: avoid copying
+            ctx.debug_expand_targets = self.expand_targets.to_vec();
             ctx.expand_flag = true;
             self.expand_flag = true;
-            self.verify_module(compiler, &poly_krate, module, &mut ctx)?; // maybe report error it is new?(not reporting if it had no impact)
+            self.verify_module(compiler, &poly_krate, module, &mut ctx)?;
         }
 
         global_ctx = ctx.free();

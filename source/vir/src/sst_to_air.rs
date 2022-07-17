@@ -1005,7 +1005,7 @@ fn stm_to_stmts(ctx: &Ctx, state: &mut State, stm: &Stm) -> Vec<Stmt> {
                 let e_req = Arc::new(ExprX::Apply(f_req, Arc::new(req_args)));
                 let description = match (ctx.checking_recommends(), &func.x.attrs.custom_req_err) {
                     (true, None) => "recommendation not met".to_string(),
-                    (_, None) => "precondition not satisfied".to_string(),
+                    (_, None) => crate::def::PRECONDITION_FAILURE.to_string(),
                     (_, Some(s)) => s.clone(),
                 };
                 let error = error(description, &stm.span);
