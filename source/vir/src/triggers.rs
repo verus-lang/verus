@@ -90,19 +90,16 @@ fn check_trigger_expr(
                     Ok(())
                 }
                 ExpX::Var(UniqueIdent { name: x, local: None }) => {
+                    if lets.contains(x) {
+                        return err_str(
+                            &exp.span,
+                            "let variables in triggers not supported, use with_triggers! instead",
+                        );
+                    }
                     free_vars.insert(x.clone());
                     Ok(())
                 }
-                ExpX::Var(UniqueIdent { name: x, local: Some(_) }) => {
-                    if lets.contains(x) {
-                        err_str(
-                            &exp.span,
-                            "let variables in triggers not supported, use with_triggers! instead",
-                        )
-                    } else {
-                        Ok(())
-                    }
-                }
+                ExpX::Var(UniqueIdent { name: _, local: Some(_) }) => Ok(()),
                 ExpX::VarAt(_, VarAt::Pre) => Ok(()),
                 ExpX::Old(_, _) => panic!("internal error: Old"),
                 ExpX::Unary(op, _) => match op {
@@ -146,19 +143,16 @@ fn check_trigger_expr(
             if match &exp.x {
                 ExpX::Const(_) | ExpX::Loc(..) | ExpX::VarLoc(..) => true,
                 ExpX::Var(UniqueIdent { name: x, local: None }) => {
+                    if lets.contains(x) {
+                        return err_str(
+                            &exp.span,
+                            "let variables in triggers not supported, use with_triggers! instead",
+                        );
+                    }
                     free_vars.insert(x.clone());
                     true
                 }
-                ExpX::Var(UniqueIdent { name: x, local: Some(_) }) => {
-                    if lets.contains(x) {
-                        err_str(
-                            &exp.span,
-                            "let variables in triggers not supported, use with_triggers! instead",
-                        )?
-                    } else {
-                        true
-                    }
-                }
+                ExpX::Var(UniqueIdent { name: _, local: Some(_) }) => true,
                 ExpX::VarAt(_, VarAt::Pre) => true,
                 ExpX::Old(_, _) => panic!("internal error: Old"),
                 ExpX::Unary(op, _) => match op {

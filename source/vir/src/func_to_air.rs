@@ -133,7 +133,7 @@ fn func_body_to_air(
     state.view_as_spec = true;
     state.fun_ssts = fun_ssts;
     let body_exp = crate::ast_to_sst::expr_to_pure_exp(&ctx, &mut state, &body)?;
-    let body_exp = state.finalize_exp(&body_exp, &state.fun_ssts);
+    let body_exp = state.finalize_exp(ctx, &state.fun_ssts, &body_exp)?;
     let inline = if function.x.attrs.inline {
         Some(SstInline {
             typ_bounds: function.x.typ_bounds.clone(),
@@ -161,9 +161,9 @@ fn func_body_to_air(
             &mut state,
             decrease_by_fun.x.body.as_ref().expect("decreases_by has body"),
         )?;
-        let body_stms: Vec<Stm> =
-            body_stms.iter().map(|s| state.finalize_stm(s, &state.fun_ssts)).collect();
-        decrease_by_stms.extend(body_stms);
+        let body_stms: Result<Vec<Stm>, VirErr> =
+            body_stms.iter().map(|s| state.finalize_stm(ctx, &state.fun_ssts, s)).collect();
+        decrease_by_stms.extend(body_stms?);
     }
     state.finalize();
 
@@ -715,7 +715,7 @@ pub fn func_def_to_air(
                 }
                 stm = crate::ast_to_sst::stms_to_one_stm(&body.span, req_stms);
             }
-            let stm = state.finalize_stm(&stm, &state.fun_ssts);
+            let stm = state.finalize_stm(&ctx, &state.fun_ssts, &stm)?;
             state.ret_post = None;
 
             // Check termination

@@ -1,7 +1,7 @@
 use crate::ast::{Ident, SpannedTyped, Typ, UnaryOpr, VirErr};
 use crate::def::Spanned;
 use crate::sst::{BndX, Dest, Exp, ExpX, Exps, Stm, StmX, Trig, Trigs, UniqueIdent};
-use crate::util::{vec_map, vec_map_result};
+use crate::util::vec_map_result;
 use crate::visitor::expr_visitor_control_flow;
 pub(crate) use crate::visitor::VisitorControlFlow;
 use air::ast::{Binder, BinderX, Binders};
@@ -383,6 +383,14 @@ where
     }
 }
 
+pub(crate) fn map_exp_visitor_result<F>(exp: &Exp, f: &mut F) -> Result<Exp, VirErr>
+where
+    F: FnMut(&Exp) -> Result<Exp, VirErr>,
+{
+    let mut map: VisitorScopeMap = ScopeMap::new();
+    map_exp_visitor_bind(exp, &mut map, &mut |e, _| f(e))
+}
+
 pub(crate) fn map_exp_visitor<F>(exp: &Exp, f: &mut F) -> Exp
 where
     F: FnMut(&Exp) -> Exp,
@@ -569,36 +577,36 @@ where
 
 pub(crate) fn map_stm_exp_visitor<F>(stm: &Stm, fe: &F) -> Result<Stm, VirErr>
 where
-    F: Fn(&Exp) -> Exp,
+    F: Fn(&Exp) -> Result<Exp, VirErr>,
 {
     map_stm_visitor(stm, &mut |stm| {
         let span = stm.span.clone();
         let stm = match &stm.x {
             StmX::Call(path, mode, typs, exps, dest) => {
-                let exps = Arc::new(vec_map(exps, fe));
+                let exps = Arc::new(vec_map_result(exps, fe)?);
                 Spanned::new(
                     span,
                     StmX::Call(path.clone(), *mode, typs.clone(), exps, (*dest).clone()),
                 )
             }
-            StmX::Assert(span2, exp) => Spanned::new(span, StmX::Assert(span2.clone(), fe(exp))),
-            StmX::AssertBV(exp) => Spanned::new(span, StmX::AssertBV(fe(exp))),
-            StmX::Assume(exp) => Spanned::new(span, StmX::Assume(fe(exp))),
+            StmX::Assert(span2, exp) => Spanned::new(span, StmX::Assert(span2.clone(), fe(exp)?)),
+            StmX::AssertBV(exp) => Spanned::new(span, StmX::AssertBV(fe(exp)?)),
+            StmX::Assume(exp) => Spanned::new(span, StmX::Assume(fe(exp)?)),
             StmX::Assign { lhs: Dest { dest, is_init }, rhs } => {
-                let dest = fe(dest);
-                let rhs = fe(rhs);
+                let dest = fe(dest)?;
+                let rhs = fe(rhs)?;
                 Spanned::new(span, StmX::Assign { lhs: Dest { dest, is_init: *is_init }, rhs })
             }
             StmX::AssertQuery { .. } => stm.clone(),
             StmX::Fuel(..) => stm.clone(),
             StmX::DeadEnd(..) => stm.clone(),
             StmX::If(exp, s1, s2) => {
-                let exp = fe(exp);
+                let exp = fe(exp)?;
                 Spanned::new(span, StmX::If(exp, s1.clone(), s2.clone()))
             }
             StmX::While { cond_stms, cond_exp, body, invs, typ_inv_vars, modified_vars } => {
-                let cond_exp = fe(cond_exp);
-                let invs = Arc::new(vec_map(invs, fe));
+                let cond_exp = fe(cond_exp)?;
+                let invs = Arc::new(vec_map_result(invs, fe)?);
                 Spanned::new(
                     span,
                     StmX::While {
@@ -612,7 +620,7 @@ where
                 )
             }
             StmX::OpenInvariant(inv, ident, ty, body, atomicity) => {
-                let inv = fe(inv);
+                let inv = fe(inv)?;
                 Spanned::new(
                     span,
                     StmX::OpenInvariant(inv, ident.clone(), ty.clone(), body.clone(), *atomicity),

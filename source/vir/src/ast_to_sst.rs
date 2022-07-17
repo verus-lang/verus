@@ -185,14 +185,19 @@ impl State {
     }
 
     // Erase unused unique ids from Vars and process inline functions
-    pub(crate) fn finalize_exp(&self, exp: &Exp, fun_ssts: &SstMap) -> Exp {
+    pub(crate) fn finalize_exp(
+        &self,
+        ctx: &Ctx,
+        fun_ssts: &SstMap,
+        exp: &Exp,
+    ) -> Result<Exp, VirErr> {
         let exp = map_exp_visitor(exp, &mut |exp| match &exp.x {
             ExpX::Var(x) if self.dont_rename.contains(&x) => {
                 SpannedTyped::new(&exp.span, &exp.typ, ExpX::Var(unique_bound(&x.name)))
             }
             _ => exp.clone(),
         });
-        let exp = map_exp_visitor(&exp, &mut |exp| match &exp.x {
+        let exp = crate::sst_visitor::map_exp_visitor_result(&exp, &mut |exp| match &exp.x {
             ExpX::Call(fun, typs, args) => {
                 if let Some((Some(inline), body)) = fun_ssts.get(fun) {
                     let params = &inline.params;
@@ -210,20 +215,59 @@ impl State {
                         assert!(!substs.contains_key(&unique));
                         substs.insert(unique, arg.clone());
                     }
-                    return crate::sst_util::subst_exp(typ_substs, substs, body);
+                    return Ok(crate::sst_util::subst_exp(typ_substs, substs, body));
                 }
-                exp.clone()
+                Ok(exp.clone())
             }
+            ExpX::Bind(bnd, body) => match &bnd.x {
+                BndX::Quant(quant, bs, trigs) => {
+                    assert!(trigs.len() == 0);
+                    let mut vars: Vec<Ident> = Vec::new();
+                    for b in bs.iter() {
+                        match &*b.a {
+                            TypX::TypeId => vars.push(crate::def::suffix_typ_param_id(&b.name)),
+                            _ => vars.push(b.name.clone()),
+                        }
+                    }
+                    let trigs = crate::triggers::build_triggers(
+                        ctx,
+                        &exp.span,
+                        &vars,
+                        &body,
+                        quant.boxed_params,
+                    )?;
+                    let bnd =
+                        Spanned::new(bnd.span.clone(), BndX::Quant(*quant, bs.clone(), trigs));
+                    Ok(SpannedTyped::new(&exp.span, &exp.typ, ExpX::Bind(bnd, body.clone())))
+                }
+                BndX::Choose(bs, trigs, cond) => {
+                    assert!(trigs.len() == 0);
+                    let vars = vec_map(bs, |b| b.name.clone());
+                    let trigs =
+                        crate::triggers::build_triggers(ctx, &exp.span, &vars, &cond, true)?;
+                    let bnd = Spanned::new(
+                        bnd.span.clone(),
+                        BndX::Choose(bs.clone(), trigs, cond.clone()),
+                    );
+                    Ok(SpannedTyped::new(&exp.span, &exp.typ, ExpX::Bind(bnd, body.clone())))
+                }
+                _ => Ok(exp.clone()),
+            },
             // remove MustBeFinalized marker to vouch that finalize_exp was called
-            ExpX::Unary(UnaryOp::MustBeFinalized, e1) => e1.clone(),
-            _ => exp.clone(),
+            ExpX::Unary(UnaryOp::MustBeFinalized, e1) => Ok(e1.clone()),
+            _ => Ok(exp.clone()),
         });
         exp
     }
 
     // Erase unused unique ids from Vars
-    pub(crate) fn finalize_stm(&self, stm: &Stm, fun_ssts: &SstMap) -> Stm {
-        map_stm_exp_visitor(stm, &|exp| self.finalize_exp(exp, fun_ssts)).expect("finalize_stm")
+    pub(crate) fn finalize_stm(
+        &self,
+        ctx: &Ctx,
+        fun_ssts: &SstMap,
+        stm: &Stm,
+    ) -> Result<Stm, VirErr> {
+        map_stm_exp_visitor(stm, &|exp| self.finalize_exp(ctx, fun_ssts, exp))
     }
 
     pub(crate) fn finalize(&mut self) {
@@ -449,7 +493,7 @@ pub(crate) fn expr_to_decls_exp(
     state.view_as_spec = view_as_spec;
     state.declare_params(params);
     let exp = expr_to_pure_exp(ctx, &mut state, expr)?;
-    let exp = state.finalize_exp(&exp, fun_ssts);
+    let exp = state.finalize_exp(ctx, fun_ssts, &exp)?;
     state.finalize();
     Ok((state.local_decls, exp))
 }
@@ -466,7 +510,7 @@ pub(crate) fn expr_to_bind_decls_exp(
         state.dont_rename.insert(id);
     }
     let exp = expr_to_pure_exp(ctx, &mut state, expr)?;
-    let exp = state.finalize_exp(&exp, fun_ssts);
+    let exp = state.finalize_exp(ctx, &fun_ssts, &exp)?;
     state.finalize();
     Ok(exp)
 }
@@ -996,15 +1040,7 @@ fn expr_to_stm_opt(
             state.declare_binders(binders);
             let exp = expr_to_pure_exp(ctx, state, body)?;
             state.pop_scope();
-            let mut vars: Vec<Ident> = Vec::new();
-            for b in binders.iter() {
-                match &*b.a {
-                    TypX::TypeId => vars.push(crate::def::suffix_typ_param_id(&b.name)),
-                    _ => vars.push(b.name.clone()),
-                }
-            }
-            let trigs =
-                crate::triggers::build_triggers(ctx, &expr.span, &vars, &exp, quant.boxed_params)?;
+            let trigs = Arc::new(vec![]); // real triggers will be set by finalize_exp
             let bnd = Spanned::new(body.span.clone(), BndX::Quant(*quant, binders.clone(), trigs));
             let e = mk_exp(ExpX::Bind(bnd, exp));
             let e = mk_exp(ExpX::Unary(UnaryOp::MustBeFinalized, e));
@@ -1061,8 +1097,7 @@ fn expr_to_stm_opt(
             let cond_exp = expr_to_pure_exp(ctx, state, cond)?;
             let body_exp = expr_to_pure_exp(ctx, state, body)?;
             state.pop_scope();
-            let vars = vec_map(params, |p| p.name.clone());
-            let trigs = crate::triggers::build_triggers(ctx, &expr.span, &vars, &cond_exp, true)?;
+            let trigs = Arc::new(vec![]); // real triggers will be set by finalize_exp
             let bnd =
                 Spanned::new(body.span.clone(), BndX::Choose(params.clone(), trigs, cond_exp));
             let e = mk_exp(ExpX::Bind(bnd, body_exp));
