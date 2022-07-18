@@ -1286,7 +1286,7 @@ pub fn eval_expr(
     let ctx = Ctx { fun_ssts, time_start, time_limit };
     //println!("Starting from {}", exp);
     let res = eval_expr_internal(&ctx, &mut state, exp)?;
-    display_perf_stats(&state);
+    //display_perf_stats(&state);
     match mode {
         // Send partial result to Z3
         ComputeMode::Z3 => {

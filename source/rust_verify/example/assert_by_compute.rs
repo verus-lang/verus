@@ -17,7 +17,7 @@ fn main() {}
 /// `#[cfg(any())]` which simply turns off a module.
 /// Any module with its `#[cfg(any())]` line commented out is valid to run.
 
-//#[cfg(any())]
+#[cfg(any())]
 mod fib {
     use super::*;
 
@@ -393,7 +393,4 @@ mod veribetrkv_example_list_comprehension {
         );
     }
 
-    fn xor_test() {
-        assert_by_compute_only(xor(zeroes(10), zeroes(10)).ext_equal(zeroes(10)));
-    }
 }
