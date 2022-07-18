@@ -346,6 +346,22 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] fn_calls_bad3 code! {
+        mod privacy_invasion {
+            use builtin::assert_by_compute;
+
+            mod mostly_private {
+                #[spec] pub fn f() -> u32 { 1 }
+            }
+
+            fn test() {
+                assert_by_compute(mostly_private::f() == 1); // FAILS
+            }
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
     #[test] sequences code! {
         #[allow(unused_imports)]
         use crate::pervasive::seq::*;
