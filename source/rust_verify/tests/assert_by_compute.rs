@@ -48,7 +48,6 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-
 test_verify_one_file! {
     #[test] arith code! {
         fn test(x: u64) {
@@ -170,7 +169,6 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-
 test_verify_one_file! {
     #[test] closures code! {
 
@@ -178,7 +176,7 @@ test_verify_one_file! {
             assert_by_compute_only((|x| x + 1)(5) == 6);
             let y = 5;
             // Reduces to clip(5 + y) == 10, since the let is outside the assert
-            assert_by_compute((|x| x + y)(5) == 10); 
+            assert_by_compute((|x| x + y)(5) == 10);
             assert_by_compute_only({
                 #[spec]
                 let y = 10;
@@ -250,7 +248,6 @@ test_verify_one_file! {
 //        }
 //    } => Err(err) => assert_one_fails(err)
 //}
-
 
 test_verify_one_file! {
     #[test] fib code! {
