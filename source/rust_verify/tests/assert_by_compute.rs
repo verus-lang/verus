@@ -247,7 +247,6 @@ test_verify_one_file! {
     } => Err(err) => assert_one_fails(err)
 }
 
-
 test_verify_one_file! {
     #[test] closures code! {
 
@@ -344,28 +343,6 @@ test_verify_one_file! {
             assert_by_compute(f_no_body(5) == g_no_body(5)); // FAILS
         }
     } => Err(err) => assert_one_fails(err)
-}
-
-test_verify_one_file! {
-    #[test] fib code! {
-
-        #[spec]
-        fn fib(x: nat) -> nat {
-            decreases(x);
-            if x == 0 {
-                0
-            } else if x == 1 {
-                1
-            } else {
-                fib(x - 1) + fib(x - 2)
-            }
-        }
-
-        fn test() {
-            assert_by_compute_only(fib(10) == 55);
-            assert_by_compute_only(fib(100) == 354224848179261915075);
-        }
-    } => Ok(())
 }
 
 test_verify_one_file! {

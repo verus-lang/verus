@@ -17,6 +17,31 @@ fn main() {}
 /// `#[cfg(any())]` which simply turns off a module.
 /// Any module with its `#[cfg(any())]` line commented out is valid to run.
 
+//#[cfg(any())]
+mod fib {
+    use super::*;
+
+   #[spec]
+    fn fib(x: nat) -> nat {
+        decreases(x);
+        if x == 0 {
+            0
+        } else if x == 1 {
+            1
+        } else {
+            fib(x - 1) + fib(x - 2)
+        }
+    }
+
+    fn test() {
+        //assert(fib(10) == 55);  // Fails without more fuel
+        //assert_by_compute_only(fib(10) == 55);
+        assert_by_compute_only(fib(100) == 354224848179261915075);
+        assert_by_compute_only(fib(101) == 573147844013817084101);
+        assert(fib(102) == 927372692193078999176);  // Succeeds based on the two results above
+    }
+}
+
 #[cfg(any())] // XXX: Disabled due to a stack overflow.
 mod verititan_example {
     use super::*;
@@ -36,7 +61,7 @@ mod verititan_example {
     }
 }
 
-//#[cfg(any())]
+#[cfg(any())]
 mod recursive_data_structures {
     use super::*;
 
@@ -102,7 +127,7 @@ mod recursive_data_structures {
     }
 }
 
-//#[cfg(any())]
+#[cfg(any())]
 mod sequences {
     use super::*;
 
@@ -127,8 +152,6 @@ mod veribetrkv_example_original {
     use super::*;
     // VeriBetrKV example original:
     // https://github.com/vmware-labs/verified-betrfs/blob/ee4b18d553933440bb5ecda037c6a1c411a49a5f/lib/Crypto/CRC32Lut.i.dfy
-    // Currently pops the stack if we use the full lut definition
-    // or times out with a smaller lut, even when given 30 seconds
 
     #[spec]
     fn bits_of_int(n: nat, len: nat) -> Seq<bool> {
@@ -218,6 +241,7 @@ mod veribetrkv_example_original {
         reverse(mod_F2_X(zeroes(n - 33).push(true), bits_of_int(0x1_1EDC_6F41, 33)))
     }
 
+    // TODO: pops the stack if we use the full lut definition
     #[spec]
     const lut: Seq<u64> =
         seq![0x00000001493c7d27, 0x493c7d27ba4fc28e, 0xf20c0dfeddc0152b, 0xba4fc28e9e4addf8];
@@ -304,7 +328,6 @@ mod veribetrkv_example_list_comprehension {
 
     // VeriBetrKV example using sequence comprehension:
     // https://github.com/vmware-labs/verified-betrfs/blob/ee4b18d553933440bb5ecda037c6a1c411a49a5f/lib/Crypto/CRC32Lut.i.dfy
-    // Currently pops the stack
     #[spec]
     fn bits_of_int(n: nat, len: nat) -> Seq<bool> {
         decreases(len);
@@ -354,6 +377,7 @@ mod veribetrkv_example_list_comprehension {
         reverse(mod_F2_X(zeroes(n - 33).push(true), bits_of_int(0x1_1EDC_6F41, 33)))
     }
 
+    // TODO: pops the stack if we use the full lut definition
     #[spec]
     const lut: Seq<u64> =
         seq![0x00000001493c7d27, 0x493c7d27ba4fc28e, 0xf20c0dfeddc0152b, 0xba4fc28e9e4addf8];

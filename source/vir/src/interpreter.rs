@@ -99,6 +99,10 @@ struct State {
     cache: HashMap<Fun, HashMap<ExpsKey, Exp>>,
     cache_hits: u64,
     cache_misses: u64,
+    raw_cache_hits: u64,
+    raw_cache_misses: u64,
+    ptr_hits: u64,
+    ptr_misses: u64,
     /// Profiling data that counts function invocations
     fun_calls: HashMap<Fun, u64>,
     /// Cache of expressions we have already simplified
@@ -500,7 +504,16 @@ fn print_vector(vec: &Vector<Exp>) {
 fn display_perf_stats(state: &State) {
     let sum = state.cache_hits + state.cache_misses;
     let hit_perc = 100.0 * (state.cache_hits as f64 / sum as f64);
-    println!("Call result cache had {} hits out of {} ({}%)", state.cache_hits, sum, hit_perc);
+    println!("\nCall result cache had {} hits out of {} ({:.1}%)", state.cache_hits, sum, hit_perc);
+    let sum = state.raw_cache_hits + state.raw_cache_misses;
+    let hit_perc = 100.0 * (state.raw_cache_hits as f64 / sum as f64);
+    println!(
+        "Call result raw cache had {} hits out of {} ({:.1}%)",
+        state.raw_cache_hits, sum, hit_perc
+    );
+    let sum = state.ptr_hits + state.ptr_misses;
+    let hit_perc = 100.0 * (state.ptr_hits as f64 / sum as f64);
+    println!("Ptr cache had {} hits out of {} ({:.1}%)", state.ptr_hits, sum, hit_perc);
     let mut cache_stats: Vec<(&Fun, usize)> =
         state.cache.iter().map(|(fun, vec)| (fun, vec.len())).collect();
     cache_stats.sort_by(|a, b| b.1.cmp(&a.1));
@@ -718,12 +731,14 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
     }
     let ok = Ok(exp.clone());
     if state.simplified.contains(exp) {
+        state.ptr_hits += 1;
         if state.debug {
             println!("{}=> already simplified as far as it will go", "\t".repeat(state.depth));
         }
         // We've already simplified this expression as much as we can
         return Ok(exp.clone());
     }
+    state.ptr_misses += 1;
     state.depth += 1;
     let exp_new = |e: ExpX| Ok(SpannedTyped::new(&exp.span, &exp.typ, e));
     let bool_new = |b: bool| exp_new(Const(Constant::Bool(b)));
@@ -1125,7 +1140,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
             // Initially try to match on the "raw" arguments, to save effort simplifying them
             match state.lookup_call(&fun, &args) {
                 Some(prev_result) => {
-                    state.cache_hits += 1;
+                    state.raw_cache_hits += 1;
                     state.depth -= 1;
                     if state.debug {
                         println!("{}=> {:}", "\t".repeat(state.depth), &prev_result);
@@ -1134,7 +1149,7 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                 }
                 None => {
                     // Failing that, simplify the arguments and check the cache again
-                    state.cache_misses += 1;
+                    state.raw_cache_misses += 1;
                     let new_args: Result<Vec<Exp>, VirErr> =
                         args.iter().map(|e| eval_expr_internal(ctx, state, e)).collect();
                     let new_args = Arc::new(new_args?);
@@ -1258,6 +1273,10 @@ pub fn eval_expr(
         cache,
         cache_hits: 0,
         cache_misses: 0,
+        raw_cache_hits: 0,
+        raw_cache_misses: 0,
+        ptr_hits: 0,
+        ptr_misses: 0,
         fun_calls: HashMap::new(),
         simplified: PtrSet::new(),
     };
@@ -1267,6 +1286,7 @@ pub fn eval_expr(
     let ctx = Ctx { fun_ssts, time_start, time_limit };
     //println!("Starting from {}", exp);
     let res = eval_expr_internal(&ctx, &mut state, exp)?;
+    display_perf_stats(&state);
     match mode {
         // Send partial result to Z3
         ComputeMode::Z3 => {
