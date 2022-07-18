@@ -1281,7 +1281,7 @@ pub fn eval_expr(
         simplified: PtrSet::new(),
     };
     // Don't run for more than rlimit seconds
-    let time_limit = Duration::new(rlimit as u64, 0);
+    let time_limit = if rlimit == 0 { Duration::MAX } else { Duration::new(rlimit as u64, 0) };
     let time_start = Instant::now();
     let ctx = Ctx { fun_ssts, time_start, time_limit };
     //println!("Starting from {}", exp);
