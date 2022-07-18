@@ -269,7 +269,7 @@ impl SyntacticEquality for Exp {
             }
             (Call(f_l, _, exps_l), Call(f_r, _, exps_r)) => {
                 if f_l == f_r && exps_l.len() == exps_r.len() {
-                    exps_l.syntactic_eq(exps_r)
+                    def_eq(exps_l.syntactic_eq(exps_r)?)
                 } else {
                     // We don't know if a function call on symbolic values
                     // will return the same or different values
@@ -444,8 +444,8 @@ fn euclidean_div(i1: &BigInt, i2: &BigInt) -> BigInt {
     match (i1.sign(), i2.sign()) {
         (Plus | NoSign, Plus | NoSign) => i1 / i2,
         (Plus | NoSign, Minus) => -(i1 / (-i2)),
-        (Minus, Plus | NoSign) => -(-i1 - BigInt::one() / i2) - BigInt::one(),
-        (Minus, Minus) => ((-i1 - BigInt::one()) / (-i2)) + 1,
+        (Minus, Plus | NoSign) => -(((-i1) - BigInt::one()) / i2) - BigInt::one(),
+        (Minus, Minus) => (((-i1) - BigInt::one()) / (-i2)) + 1,
     }
 }
 

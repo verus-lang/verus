@@ -26,7 +26,7 @@ mod always_disabled {
     }
 }
 
-#[cfg(any())]
+//#[cfg(any())]
 mod simple_assert_by_compute_tests {
     use super::*;
 
@@ -38,6 +38,7 @@ mod simple_assert_by_compute_tests {
 
     const one32: u32 = 1;
     const two32: u32 = 2;
+    const two_to_31: u32 = 0x8000_0000;
     const one64: u64 = 1;
     const two64: u64 = 2;
     fn compute_bv(x: u64) {
@@ -47,22 +48,72 @@ mod simple_assert_by_compute_tests {
         assert_by_compute_only(!two32 == 0xFFFF_FFFD);
         assert_by_compute_only(!one64 == 0xFFFF_FFFF_FFFF_FFFE);
         assert_by_compute_only(!two64 == 0xFFFF_FFFF_FFFF_FFFD);
+        assert_by_compute_only(one32 ^ two32 == 3);
+        assert_by_compute_only(two32 ^ one32 == 3);
+        assert_by_compute_only(one32 & two32 == 0);
+        assert_by_compute_only(one32 | two32 == 3);
+        assert_by_compute_only(one32 << 3 == 8);
+        assert_by_compute_only(two32 << 3 == 16);
+        assert_by_compute_only(one32 >> 1 == 0);
+        assert_by_compute_only(two32 >> 1 == 1);
+        assert_by_compute_only(two32 >> 2 == 0);
+        assert_by_compute_only(two_to_31 >> 1 == 0x4000_0000);
+        assert_by_compute_only(two_to_31 << 1 == 0);
         assert_by_compute_only(-1 << 3 == -8);
         assert_by_compute_only(x ^ x == 0);
         assert_by_compute_only(x & x == x);
+        assert_by_compute_only(0 & x == 0);
+        assert_by_compute_only(x & 0 == 0);
+        assert_by_compute_only(0 | x == x);
+        assert_by_compute_only(x | 0 == x);
+        assert_by_compute_only(x | x == x);
         assert_by_compute_only(shifter(1, 10) == 1024);
     }
 
     fn compute_arith(x: u64) {
         assert_by_compute_only((7 + 7 * 2 > 20) && (22 - 5 <= 10 * 10));
-        assert_by_compute_only(x * 0 == 0);
-        // TODO: This currently produces: uClip(64, x) == x,
-        // due to the same issue mentioned below
+        // TODO: The examples below that don't use the "_only" version
+        // result in something like: uClip(64, x) == x,
+        // due to the same issue mentioned in compute_ite()
+        assert_by_compute(x + 0 == x);
+        assert_by_compute(0 + x == x);
+        assert_by_compute(x - 0 == x);
         assert_by_compute(x * 1 == x);
+        assert_by_compute(1 * x == x);
+        assert_by_compute_only(x * 0 == 0);
+        assert_by_compute_only(0 * x == 0);
+        assert_by_compute_only(x - x == 0);
+        assert_by_compute(x / 1 == x);
+        assert_by_compute_only(x % 1 == 0);
+
+        // Make sure we've implemented Euclidean div and mod
+        assert_by_compute_only(( 8 as int) / ( 3 as int) == 2);
+        assert_by_compute_only(( 8 as int) / (-3 as int) == -2);
+        assert_by_compute_only((-8 as int) / ( 3 as int) == -3);
+        assert_by_compute_only((-8 as int) / (-3 as int) == 3);
+
+        assert_by_compute_only(( 1 as int) / ( 2 as int) == 0);
+        assert_by_compute_only(( 1 as int) / (-2 as int) == 0);
+        assert_by_compute_only((-1 as int) / ( 2 as int) == -1);
+        assert_by_compute_only((-1 as int) / (-2 as int) == 1);
+
+        assert_by_compute_only(( 8 as int) % ( 3 as int) == 2);
+        assert_by_compute_only(( 8 as int) % (-3 as int) == 2);
+        assert_by_compute_only((-8 as int) % ( 3 as int) == 1);
+        assert_by_compute_only((-8 as int) % (-3 as int) == 1);
+
+        assert_by_compute_only(( 1 as int) % ( 2 as int) == 1);
+        assert_by_compute_only(( 1 as int) % (-2 as int) == 1);
+        assert_by_compute_only((-1 as int) % ( 2 as int) == 1);
+        assert_by_compute_only((-1 as int) % (-2 as int) == 1);
+
     }
 
     fn compute_ite() {
         assert_by_compute_only(9 == if 7 > 3 { 9 } else { 5 });
+        assert_by_compute_only(if true { true } else { false });
+        assert_by_compute_only(if !true { false } else { true });
+        assert_by_compute_only(if !!true { true } else { false });
         // TODO: The example below fails the expr_to_pure_exp check,
         // due to the overflow checks that are inserted.
         // They are inserted because the mode checker treats constants as Exec,
@@ -79,10 +130,27 @@ mod simple_assert_by_compute_tests {
             let x = true;
             x
         });
+
         assert_by_compute_only({
             #[spec]
             let x = 7;
             x > 4
+        });
+
+        assert_by_compute_only({
+            #[spec]
+            let x: u32 = 7;
+            #[spec]
+            let y = 14;
+            x + y > 20
+        });
+
+        assert_by_compute_only({
+            #[spec]
+            let x: u32 = 7;
+            #[spec]
+            let y: u32 = x + 1;
+            x + y == 15
         });
     }
 
@@ -90,6 +158,16 @@ mod simple_assert_by_compute_tests {
         assert_by_compute_only(match Option::Some(true) {
             Option::Some(b) => b,
             _ => 10 > 20,
+        });
+
+        assert_by_compute_only(match Option::Some(false) {
+            Option::Some(b) => !b,
+            _ => 10 > 20,
+        });
+
+        assert_by_compute_only(match Option::<bool>::None {
+            Option::Some(_) => false,
+            _ => 20 > 10,
         });
     }
 
@@ -99,10 +177,17 @@ mod simple_assert_by_compute_tests {
         assert_by_compute((|x| x + y)(5) == 10); // clip(5 + y) == 10, since the let is outside the assert
         assert_by_compute_only({
             #[spec]
-            let y = 5;
-            (|x| x + y)(5) == 10
+            let y = 10;
+            (|x| x + y)(5) == 15
         });
+        assert_by_compute_only((|x,y| x + y)(40, 2) == 42);
     }
+
+    #[spec]
+    fn f(x: int, y: int) -> bool { x == y }
+
+    #[spec]
+    fn g(x: int) -> bool { f(3, x) }
 
     #[spec]
     fn sum(x: nat) -> nat {
@@ -110,9 +195,31 @@ mod simple_assert_by_compute_tests {
         if x == 0 { 0 } else { 1 + sum(x - 1) }
     }
 
+    #[spec]
+    #[verifier(external_body)]
+    fn f_no_body(x: nat) -> nat {
+        0
+    }
+
+    #[spec]
+    #[verifier(external_body)]
+    fn g_no_body(x: nat) -> nat {
+        0
+    }
+
     fn compute_call() {
         // assert(sum(10) == 10);  // fails without more fuel
+        assert_by_compute_only(sum(20) == 20);
         assert_by_compute_only(sum(10) == 10);
+        assert_by_compute_only(sum(0) == 0);
+        assert_by_compute_only({
+            #[spec] let x = 22;
+            #[spec] let z = g(x);
+            !!!z    // Exercise an unusual recursive case inside the interpreter
+        });
+        assert_by_compute_only(f_no_body(5) == f_no_body(5));
+        //assert_by_compute_only(f_no_body(5) != f_no_body(6)); // FAIL
+        //assert_by_compute_only(f_no_body(5) == g_no_body(5)); // FAIL
     }
 
     #[spec]
@@ -152,7 +259,7 @@ mod verititan_example {
     }
 }
 
-#[cfg(any())]
+//#[cfg(any())]
 mod recursive_data_structures {
     use super::*;
 
@@ -213,24 +320,26 @@ mod recursive_data_structures {
 
     fn compute_list() {
         assert_by_compute_only(len(ex1()) == 5);
+        assert_by_compute_only(len(append(ex1(), 6)) == 6);
         assert_by_compute_only(equal(reverse(ex1()), ex1_rev()));
     }
 }
 
-#[cfg(any())]
+//#[cfg(any())]
 mod sequences {
     use super::*;
 
-    #[spec]
-    const empty_seq: Seq<u32> = Seq::empty();
-
     fn compute_seq() {
-        assert_by_compute_only(empty_seq.len() == 0);
-        assert_by_compute_only(empty_seq.push(4).len() == 1);
-        assert_by_compute_only(empty_seq.push(4).last() == 4);
+        assert_by_compute_only(Seq::<u32>::empty().len() == 0);
+        assert_by_compute_only(Seq::empty().push(4).len() == 1);
+        assert_by_compute_only(Seq::empty().push(4).last() == 4);
+        assert_by_compute_only(Seq::empty().push(1).push(2).index(1) == 2);
         assert_by_compute_only(seq![1, 2, 3].len() == 3);
+        assert_by_compute_only(seq![1, 2, 3].index(0) == 1);
         assert_by_compute_only(seq![1, 2, 3].index(1) == 2);
         assert_by_compute_only(seq![1, 2, 3].index(2) == 3);
+        assert_by_compute_only(seq![1, 2, 3].last() == 3);
+        assert_by_compute_only(seq![1, 2, 3].update(1, 5).index(0) == 1);
         assert_by_compute_only(seq![1, 2, 3].update(1, 5).index(1) == 5);
         assert_by_compute_only(seq![1, 2, 3].update(1, 5).index(2) == 3);
         assert_by_compute_only(seq![1, 2, 3].add(seq![4, 5]).len() == 5);
@@ -239,19 +348,36 @@ mod sequences {
         assert_by_compute_only(seq![1, 2, 3, 4, 5].subrange(2, 4).ext_equal(seq![3, 4]));
         assert_by_compute_only(Seq::new(5, |x| x).index(3) == 3);
         assert_by_compute_only(Seq::new(5, |x| x + x).index(3) == 6);
+        assert_by_compute_only(Seq::new(5, |x| x + x).last() == 8);
+        assert_by_compute_only(Seq::new(5, |x| x + x).subrange(1,4).ext_equal(seq![2, 4, 6]));
     }
 
     #[spec]
-    fn use_seq(s: &Seq<u32>) -> u32 {
+    fn reverse<T>(s: Seq<T>) -> Seq<T> {
+        decreases(s.len());
+        if s.len() == 0 { Seq::empty() } else { reverse(s.subrange(1, s.len())).push(s.index(0)) }
+    }
+
+    fn compute_seq_symbolic<T>(a: T, b: T, c: T, d: T) {
+        assert_by_compute_only(seq![a, b, c, d].len() == 4);
+        assert_by_compute_only(seq![a, b, c, d].ext_equal(seq![a, b].add(seq![c, d])));
+        assert_by_compute_only(seq![a, b, c, d].ext_equal(seq![a, b].push(c).push(d)));
+        assert_by_compute_only(seq![a, b, c, d].subrange(1, 3).ext_equal(seq![b].push(c)));
+        assert_by_compute_only(seq![a, b, c, d].ext_equal(reverse(seq![d, c, b, a])));
+    }
+
+    #[spec]
+    fn use_seq(s: &Seq<u32>) -> (u32, u32) {
         let s_new = s.update(1, 42);
-        s_new.index(1)
+        let s_add = s.push(13).add(seq![14, 15, 16]);
+        (s_new.index(1), s_add.index(4))
     }
 
     fn test_seq_modification() {
         assert({
             #[spec]
             let v = seq![0, 1, 2];
-            use_seq(&v) == 42 && v.index(1) == 1
+            use_seq(&v).0 == 42 && use_seq(&v).1 == 14 && v.index(1) == 1
         });
     }
 }
@@ -432,7 +558,7 @@ mod veribetrkv_example_original {
     }
 }
 
-#[cfg(any())]
+//#[cfg(any())]
 mod veribetrkv_example_list_comprehension {
     use super::*;
 
