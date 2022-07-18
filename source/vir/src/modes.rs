@@ -332,7 +332,7 @@ fn check_expr(
                 // multiple times for different instantiations of the forall variables.
                 return err_str(
                     &expr.span,
-                    "cannot use proof variable inside forall/assert_by statements",
+                    "cannot use tracked variable inside 'assert ... by' statements",
                 );
             }
             let mode = if typing.check_ghost_blocks {
@@ -400,7 +400,7 @@ fn check_expr(
                     if typing.in_forall_stmt {
                         return err_str(
                             &arg.span,
-                            "cannot call function with &mut parameter inside forall/assert_by statements",
+                            "cannot call function with &mut parameter inside 'assert ... by' statements",
                         );
                     }
                     let arg_erasure = ErasureModeX::new(Some(param.x.mode));
@@ -566,7 +566,10 @@ fn check_expr(
         }
         ExprX::Assign { init_not_mut, lhs, rhs } => {
             if typing.in_forall_stmt {
-                return err_str(&expr.span, "assignment is not allowed in forall statements");
+                return err_str(
+                    &expr.span,
+                    "assignment is not allowed in 'assert ... by' statement",
+                );
             }
             let x_mode = get_var_loc_mode(typing, lhs, *init_not_mut)?;
             if !mode_le(outer_mode, x_mode) {
@@ -588,7 +591,7 @@ fn check_expr(
         }
         ExprX::Forall { vars, require, ensure, proof } => {
             if typing.check_ghost_blocks && typing.block_ghostness == Ghost::Exec {
-                return err_str(&expr.span, "cannot use assert_forall in exec mode");
+                return err_str(&expr.span, "cannot use 'assert ... by' in exec mode");
             }
             let in_forall_stmt = typing.in_forall_stmt;
             // REVIEW: we could allow proof vars when vars.len() == 0,
@@ -735,7 +738,7 @@ fn check_expr(
                 }
             }
             if typing.in_forall_stmt {
-                return err_str(&expr.span, "return is not allowed in forall statements");
+                return err_str(&expr.span, "return is not allowed in 'assert ... by' statements");
             }
             match (e1, typing.ret_mode) {
                 (None, _) => {}

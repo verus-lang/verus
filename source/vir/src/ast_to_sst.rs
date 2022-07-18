@@ -1147,7 +1147,7 @@ fn expr_to_stm_opt(
             }
             let (mut proof_stms, e) = expr_to_stm_opt(ctx, state, proof)?;
             if let ReturnValue::Some(_) = e {
-                return err_str(&expr.span, "forall/assert-by cannot end with an expression");
+                return err_str(&expr.span, "'assert ... by' block cannot end with an expression");
             }
             let (check_recommends, require_exp) = expr_to_pure_exp_check(ctx, state, &require)?;
             body.extend(check_recommends);
@@ -1193,7 +1193,7 @@ fn expr_to_stm_opt(
 
             let (proof_stms, e) = expr_to_stm_opt(ctx, state, proof)?;
             if let ReturnValue::Some(_) = e {
-                return err_str(&expr.span, "forall/assert-by cannot end with an expression");
+                return err_str(&expr.span, "'assert ... by' block cannot end with an expression");
             }
             inner_body.extend(proof_stms);
 
