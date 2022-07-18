@@ -170,6 +170,54 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] tuples code! {
+        #[spec]
+        fn mk_tuple() -> (u32, u32, u64, bool) {
+            (42, 330, 0x1_0000_0000, false)
+        }
+
+        fn test() {
+            assert_by_compute_only(mk_tuple().0 == 42);
+            assert_by_compute_only(mk_tuple().1 == 330);
+            assert_by_compute_only(mk_tuple().2 - 0xFFFF_FFFF == 1);
+            assert_by_compute_only(!mk_tuple().3); 
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] structs code! {
+        struct Example {
+            u1: u32,
+            u2: u64,
+            b: bool,
+        }
+
+        fn test(e: Example) {
+            assert_by_compute_only(e.u1 == e.u1);
+            assert_by_compute_only(e.u2 == e.u2);
+            assert_by_compute_only(e.b == e.b);
+
+            assert_by_compute_only({
+                #[spec]
+                let e1 = Example { u1: 42, u2: 0x1_0000_0000, b: false };
+                e1.u1 > 5
+            });
+            assert_by_compute_only({
+                #[spec]
+                let e1 = Example { u1: 42, u2: 0x1_0000_0000, b: false };
+                e1.u2 == 0x1_0000_0000
+            });
+            assert_by_compute_only({
+                #[spec]
+                let e1 = Example { u1: 42, u2: 0x1_0000_0000, b: false };
+                !e1.b
+            });
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
     #[test] closures code! {
 
         fn test(x: u64) {
@@ -227,27 +275,45 @@ test_verify_one_file! {
     } => Ok(())
 }
 
-// TODO: Can we capture VIR errors?
-//test_verify_one_file! {
-//    #[test] fn_calls_bad code! {
-//        #[spec]
-//        #[verifier(external_body)]
-//        fn f_no_body(x: nat) -> nat {
-//            0
-//        }
-//
-//        #[spec]
-//        #[verifier(external_body)]
-//        fn g_no_body(x: nat) -> nat {
-//            0
-//        }
-//
-//        fn test() {
-//            assert_by_compute_only(f_no_body(5) != f_no_body(6)); // FAILS
-//            //assert_by_compute_only(f_no_body(5) == g_no_body(5)); // FAILS
-//        }
-//    } => Err(err) => assert_one_fails(err)
-//}
+test_verify_one_file! {
+    #[test] fn_calls_bad1 code! {
+        #[spec]
+        #[verifier(external_body)]
+        fn f_no_body(x: nat) -> nat {
+            0
+        }
+
+        #[spec]
+        #[verifier(external_body)]
+        fn g_no_body(x: nat) -> nat {
+            0
+        }
+
+        fn test() {
+            assert_by_compute(f_no_body(5) != f_no_body(6)); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
+    #[test] fn_calls_bad2 code! {
+        #[spec]
+        #[verifier(external_body)]
+        fn f_no_body(x: nat) -> nat {
+            0
+        }
+
+        #[spec]
+        #[verifier(external_body)]
+        fn g_no_body(x: nat) -> nat {
+            0
+        }
+
+        fn test() {
+            assert_by_compute(f_no_body(5) == g_no_body(5)); // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
 
 test_verify_one_file! {
     #[test] fib code! {
