@@ -102,8 +102,15 @@ fn check_one_expr(
                     if !is_datatype_transparent(&module, dt) {
                         return err_str(
                             &expr.span,
-                            "constructor of datatype with unencoded fields here",
+                            "constructor of datatype with inaccessible fields here",
                         );
+                    }
+                }
+                match (disallow_private_access, &dt.x.transparency, dt.x.visibility.is_private) {
+                    (None, _, _) => {}
+                    (_, crate::ast::DatatypeTransparency::Always, false) => {}
+                    (Some(msg), _, _) => {
+                        return err_str(&expr.span, msg);
                     }
                 }
             } else {
@@ -116,7 +123,7 @@ fn check_one_expr(
                     if !is_datatype_transparent(&module, dt) {
                         return err_str(
                             &expr.span,
-                            "field access of datatype with unencoded fields here",
+                            "field access of datatype with inaccessible fields here",
                         );
                     }
                 }
