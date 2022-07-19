@@ -25,7 +25,7 @@ use std::time::{Duration, Instant};
 
 // TODO: Potential optimizations:
 //  - Swap to CPS with enforced tail-call optimization to avoid exhausting the stack
-//    - See crates musttail and with_locals
+//    - See crates tailcall and with_locals
 
 type Env = ScopeMap<UniqueIdent, Exp>;
 
@@ -1191,6 +1191,8 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                                     }
                                 },
                             };
+                            // Cache the raw arguments and the simplified arguments
+                            state.insert_call(fun, &args, &result.clone()?);
                             state.insert_call(fun, &new_args, &result.clone()?);
                             result
                         }
@@ -1269,7 +1271,7 @@ pub fn eval_expr(
     let mut state = State {
         depth: 0,
         env,
-        debug: false,
+        debug: true,
         cache,
         cache_hits: 0,
         cache_misses: 0,
