@@ -7,7 +7,7 @@ use crate::context::Ctx;
 use crate::def::{
     prefix_ensures, prefix_fuel_id, prefix_fuel_nat, prefix_pre_var, prefix_recursive_fun,
     prefix_requires, suffix_global_id, suffix_local_stmt_id, suffix_typ_param_id,
-    CommandsWithContext, SnapPos, Spanned, FUEL_BOOL, FUEL_BOOL_DEFAULT, FUEL_LOCAL, FUEL_TYPE,
+    CommandsWithContext, CommandsWithContextX, SnapPos, Spanned, FUEL_BOOL, FUEL_BOOL_DEFAULT, FUEL_LOCAL, FUEL_TYPE,
     SUCC, ZERO,
 };
 use crate::sst::{BndX, Exp, ExpX, Par, ParPurpose, ParX, Pars, Stm, StmX};
@@ -698,8 +698,8 @@ pub fn func_def_to_air(
                 if vstring.inner_str.is_ascii() == false {
                     return err_str(&function.span, "Only ASCII characters are supported for verification purposes at the moment");
                 }
-                return Ok(string_to_air(vstring.inner_str.clone()));
-            }
+                return Ok(string_to_air(vstring.inner_str.clone(), function.span.clone()));
+            } 
 
             let (commands, snap_map) = crate::sst_to_air::body_stm_to_air(
                 ctx,
@@ -727,9 +727,29 @@ pub fn func_def_to_air(
 }
 
 
-fn string_to_air(string: Arc<String>) -> (Arc<Vec<CommandsWithContext>>, Vec<(Span, SnapPos)>) {
+fn string_index_to_air(c: i8, commands: &mut Vec<Command>) {
+     
+}
+
+fn string_to_air(string: Arc<String>, span: Span) -> (Arc<Vec<CommandsWithContext>>, Vec<(Span, SnapPos)>) {
     let mut ccs = Vec::new();
     let mut spans = Vec::new();
+    
+    let mut commands = Vec::new();
+
+    for c in string.chars() {
+        let digit_value = c as i8;
+        string_index_to_air(digit_value, &mut commands);
+
+    }
+
+    let cc = CommandsWithContextX {
+        commands: Arc::new(commands),
+        desc: "StrSlice".to_string(),
+        span,
+        prover_choice: crate::def::ProverChoice::DefaultProver
+    };
+
     
     (Arc::new(ccs), spans)
 }
