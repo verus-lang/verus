@@ -23,10 +23,6 @@ use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-// TODO: Potential optimizations:
-//  - Swap to CPS with enforced tail-call optimization to avoid exhausting the stack
-//    - See crates tailcall and with_locals
-
 type Env = ScopeMap<UniqueIdent, Exp>;
 
 /// `Exps` that support `Hash` and `Eq`. Intended to never leave this module.
