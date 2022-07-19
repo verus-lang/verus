@@ -92,35 +92,45 @@ struct State {
     depth: usize,
     /// Symbol table mapping bound variables to their values
     env: Env,
-    /// Toggle debug output
+    /// Enable debug output
     debug: bool,
     /// Collect and display performance data
     perf: bool,
     /// Cache function invocations, based on their arguments, so we can directly return the
     /// previously computed result.  Necessary for examples like Fibonacci.
     cache: HashMap<Fun, HashMap<ExpsKey, Exp>>,
+    enable_cache: bool,
+    /// Cache of expressions we have already simplified
+    simplified: PtrSet<SpannedTyped<ExpX>>,
+    enable_simplified_cache: bool,
+
+    /// Performance profiling data
     cache_hits: u64,
     cache_misses: u64,
     ptr_hits: u64,
     ptr_misses: u64,
-    /// Profiling data that counts function invocations
+    /// Number of calls for each function
     fun_calls: HashMap<Fun, u64>,
-    /// Cache of expressions we have already simplified
-    simplified: PtrSet<SpannedTyped<ExpX>>,
 }
 
 // Define the function-call cache's API
 impl State {
     fn insert_call(&mut self, f: &Fun, args: &Exps, result: &Exp) {
-        self.cache.entry(f.clone()).or_default().insert(args.into(), result.clone());
+        if self.enable_cache {
+            self.cache.entry(f.clone()).or_default().insert(args.into(), result.clone());
+        }
     }
 
     fn lookup_call(&mut self, f: &Fun, args: &Exps) -> Option<Exp> {
-        if self.perf {
-            let count = self.fun_calls.entry(f.clone()).or_default();
-            *count += 1;
+        if self.enable_cache {
+            if self.perf {
+                let count = self.fun_calls.entry(f.clone()).or_default();
+                *count += 1;
+            }
+            self.cache.get(f)?.get(&args.into()).cloned()
+        } else {
+            None
         }
-        self.cache.get(f)?.get(&args.into()).cloned()
     }
 }
 
@@ -507,17 +517,26 @@ fn print_vector(vec: &Vector<Exp>) {
 /// Displays data for profiling/debugging the interpreter
 fn display_perf_stats(state: &State) {
     if state.perf {
-        let sum = state.cache_hits + state.cache_misses;
-        let hit_perc = 100.0 * (state.cache_hits as f64 / sum as f64);
-        println!("\nCall result cache had {} hits out of {} ({:.1}%)", state.cache_hits, sum, hit_perc);
-        let sum = state.ptr_hits + state.ptr_misses;
-        let hit_perc = 100.0 * (state.ptr_hits as f64 / sum as f64);
-        println!("Ptr cache had {} hits out of {} ({:.1}%)", state.ptr_hits, sum, hit_perc);
-        let mut cache_stats: Vec<(&Fun, usize)> =
-            state.cache.iter().map(|(fun, vec)| (fun, vec.len())).collect();
-        cache_stats.sort_by(|a, b| b.1.cmp(&a.1));
-        for (fun, calls) in &cache_stats {
-            println!("{:?} cached {} distinct invocations", fun.path, calls);
+        if state.enable_simplified_cache {
+            let sum = state.ptr_hits + state.ptr_misses;
+            let hit_perc = 100.0 * (state.ptr_hits as f64 / sum as f64);
+            println!("Simplified cache had {} hits out of {} ({:.1}%)", state.ptr_hits, sum, hit_perc);
+        } else {
+            println!("Simplified cache was disabled");
+        }
+        if state.enable_cache {
+            let sum = state.cache_hits + state.cache_misses;
+            let hit_perc = 100.0 * (state.cache_hits as f64 / sum as f64);
+            println!("Call result cache had {} hits out of {} ({:.1}%)", state.cache_hits, sum, hit_perc);
+
+            let mut cache_stats: Vec<(&Fun, usize)> =
+                state.cache.iter().map(|(fun, vec)| (fun, vec.len())).collect();
+            cache_stats.sort_by(|a, b| b.1.cmp(&a.1));
+            for (fun, calls) in &cache_stats {
+                println!("{:?} cached {} distinct invocations", fun.path, calls);
+            }
+        } else {
+            println!("Function-call cache was disabled");
         }
         println!("\nRaw call numbers:");
         let mut fun_call_stats: Vec<(&Fun, _)> = state.fun_calls.iter().collect();
@@ -730,12 +749,11 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
         println!("{}Evaluating {:}", "\t".repeat(state.depth), exp);
     }
     let ok = Ok(exp.clone());
-    if state.simplified.contains(exp) {
+    if state.enable_simplified_cache && state.simplified.contains(exp) {
         state.ptr_hits += 1;
         if state.debug {
             println!("{}=> already simplified as far as it will go", "\t".repeat(state.depth));
         }
-        // We've already simplified this expression as much as we can
         return Ok(exp.clone());
     }
     state.ptr_misses += 1;
@@ -1239,7 +1257,9 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
     if state.debug {
         println!("{}=> {:}", "\t".repeat(state.depth), &res);
     }
-    state.simplified.insert(&res);
+    if state.enable_simplified_cache {
+        state.simplified.insert(&res);
+    }
     Ok(res)
 }
 
@@ -1258,12 +1278,14 @@ pub fn eval_expr(
         debug: false,
         perf: true,
         cache,
+        enable_cache: true,
         cache_hits: 0,
         cache_misses: 0,
+        simplified: PtrSet::new(),
+        enable_simplified_cache: true,
         ptr_hits: 0,
         ptr_misses: 0,
         fun_calls: HashMap::new(),
-        simplified: PtrSet::new(),
     };
     // Don't run for more than rlimit seconds
     let time_limit = if rlimit == 0 { Duration::MAX } else { Duration::new(rlimit as u64, 0) };
