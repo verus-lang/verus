@@ -21,7 +21,7 @@ use rustc_ast::{Attribute, BorrowKind, Mutability};
 use rustc_hir::def::{DefKind, Res};
 use rustc_hir::{
     BinOpKind, BindingAnnotation, Block, Destination, Expr, ExprKind, Guard, Local, LoopSource,
-    Node, Pat, PatKind, QPath, Stmt, StmtKind, UnOp
+    Node, Pat, PatKind, QPath, Stmt, StmtKind, UnOp, Path
 };
 
 use rustc_middle::ty::subst::GenericArgKind;
@@ -36,6 +36,7 @@ use vir::ast::{
     PathX, PatternX, Quant, SpannedTyped, StmtX, Stmts, Typ, TypX, UnaryOp, UnaryOpr, VarAt,
     VirErr,
 };
+use vir::context::VerifiableString;
 use vir::ast_util::{ident_binder, path_as_rust_name};
 use vir::def::positional_field_ident;
 
@@ -776,24 +777,39 @@ fn fn_call_to_vir<'tcx>(
         let arg = args.first().expect("argument to StrSlice::new");
         if let ExprKind::Lit(lit) = &arg.kind {
             if let rustc_ast::LitKind::Str(s, _) = lit.node {
-                let c = vir::ast::Constant::StrSlice(Arc::new(s.to_string()), false);
+                let c = vir::ast::Constant::StrSlice(Arc::new(s.to_string()));
                 return Ok(mk_expr(ExprX::Const(c)));
             }
         }
     }
 
+
     if is_strslice_reveal {
-        dbg!(&expr.kind);
         return match &expr.kind {
-            ExprKind::MethodCall(_, _, [Expr {hir_id, kind: ExprKind::Path(path), .. }], _) => {  
-                let self_id = bctx.types.qpath_res(path, *hir_id).def_id();
-                let strval = (bctx.ctxt.global_strings.borrow().get(&self_id).unwrap()).clone();
-                let c = vir::ast::Constant::StrSlice(strval, true);
-                Ok(mk_expr(ExprX::Const(c)))
+            ExprKind::MethodCall(_, _, [arg0 @ Expr {hir_id:_, kind: ExprKind::Path(QPath::Resolved(_,Path {res: Res::Def(_, id), ..}) ), .. }], _) => {
+                let cvir = expr_to_vir(bctx, &arg0, ExprModifier::REGULAR)?; 
+                let mypath = def_id_to_vir_path(bctx.ctxt.tcx, *id);
+                let vstring = (bctx.ctxt.global_strings.lock()
+                                    .expect("expected to have a lock on global_strings")
+                                    .get(&mypath)
+                                    .expect("reveal called on a variable not present in the global_strings dictionary")).clone();
+
+                let strval = vstring.inner_str.clone();
+
+                if vstring.emitted == false {
+                    let new_vstring = VerifiableString {
+                        inner_str: strval.clone(), 
+                        emitted: true
+                    };
+                    drop(vstring);
+                    bctx.ctxt.global_strings.lock()
+                        .expect("expected to have a lock on global_strings")
+                        .insert(mypath, Arc::new(new_vstring));
+                }
+                Ok(cvir)
             },
             _ => panic!("Expected a method call for StrSlice::reveal with one argument but did not receive it")
         };
-
     }
 
     let mut vir_args = args
@@ -2125,7 +2141,7 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                 _ => panic!("unexpected hir for method impl item"),
             }
             let autoview_typ = bctx.ctxt.autoviewed_call_typs.get(&expr.hir_id);
-            fn_call_to_vir(
+            let res = fn_call_to_vir(
                 bctx,
                 expr,
                 fn_def_id,
@@ -2133,7 +2149,8 @@ pub(crate) fn expr_to_vir_inner<'tcx>(
                 *fn_span,
                 all_args,
                 autoview_typ,
-            )
+            );
+            res
         }
         ExprKind::Closure(_, _fn_decl, body_id, _, _) => {
             let body = tcx.hir().body(*body_id);

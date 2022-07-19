@@ -1,8 +1,8 @@
 use crate::ast::{
-    Constant, Function, FunctionKind, FunctionX, GenericBoundX, Ident, Idents, Mode, Param, ParamX,
+    Function, FunctionKind, GenericBoundX, Ident, Idents, Mode, Param, ParamX,
     Params, SpannedTyped, Typ, TypX, Typs, VirErr,
 };
-use crate::ast_util::QUANT_FORALL;
+use crate::ast_util::{QUANT_FORALL, err_str};
 use crate::context::Ctx;
 use crate::def::{
     prefix_ensures, prefix_fuel_id, prefix_fuel_nat, prefix_pre_var, prefix_recursive_fun,
@@ -684,20 +684,21 @@ pub fn func_def_to_air(
             }
 
             if function.x.is_const && function.x.is_string_literal {
+                // we look up in the global strings if emitted is ever true here 
+                // if true then we emit the string and set the emitted to false. 
                 let spanned = &*function.clone();
                 let x = &spanned.x;
-                let mut valid = false;
-                if let FunctionX { body: Some(arc_val), .. } = x {
-                    let val = &(&*arc_val.clone()).x;
-                    if let crate::ast::ExprX::Const(Constant::StrSlice(_,_)) = val {
-                        valid = true;
-                    }
+                let vstring = ctx.global_strings.lock()
+                        .expect("expected lock on global_strings")
+                        .get(&x.name.path)
+                        .expect("expected a value in global_strings").clone();
+                if vstring.emitted == false {
+                    return Ok((Arc::new(vec![]), vec![]))
                 }
-                if !valid {
-                    panic!("Expected a strlit");
+                if vstring.inner_str.is_ascii() == false {
+                    return err_str(&function.span, "Only ASCII characters are supported for verification purposes at the moment");
                 }
-
-                return Ok((Arc::new(vec![]), vec![]));
+                return Ok(string_to_air(vstring.inner_str.clone()));
             }
 
             let (commands, snap_map) = crate::sst_to_air::body_stm_to_air(
@@ -723,4 +724,12 @@ pub fn func_def_to_air(
             Ok((Arc::new(commands), snap_map))
         }
     }
+}
+
+
+fn string_to_air(string: Arc<String>) -> (Arc<Vec<CommandsWithContext>>, Vec<(Span, SnapPos)>) {
+    let mut ccs = Vec::new();
+    let mut spans = Vec::new();
+    
+    (Arc::new(ccs), spans)
 }

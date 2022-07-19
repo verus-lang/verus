@@ -23,6 +23,7 @@ use vir::ast_util::{fun_as_rust_dbg, fun_name_crate_relative, is_visible_to};
 use vir::def::SnapPos;
 use vir::def::{CommandsWithContext, CommandsWithContextX};
 use vir::recursion::Node;
+use vir::context::GlobalStrings;
 
 const RLIMIT_PER_SECOND: u32 = 3000000;
 
@@ -40,6 +41,7 @@ pub struct Verifier {
     pub args: Args,
     pub test_capture_output: Option<std::sync::Arc<std::sync::Mutex<Vec<u8>>>>,
     pub erasure_hints: Option<crate::erase::ErasureHints>,
+    pub global_strings: Option<GlobalStrings>,
     pub time_vir: Duration,
     pub time_vir_rust_to_vir: Duration,
     pub time_vir_verify: Duration,
@@ -161,6 +163,7 @@ impl Verifier {
             args,
             test_capture_output: None,
             erasure_hints: None,
+            global_strings: None,
             time_vir: Duration::new(0, 0),
             time_vir_rust_to_vir: Duration::new(0, 0),
             time_vir_verify: Duration::new(0, 0),
@@ -606,7 +609,7 @@ impl Verifier {
             function_decl_commands.push((commands.clone(), comment.clone()));
         }
         ctx.fun = None;
-
+        
         // Collect function definitions
         let mut funs: HashMap<Fun, (Function, Visibility)> = HashMap::new();
         for function in &krate.functions {
@@ -869,6 +872,7 @@ impl Verifier {
         let mut ctx = vir::context::Ctx::new(
             &pruned_krate,
             global_ctx,
+            self.global_strings.as_ref().expect("expected global_strings").clone(),
             module.clone(),
             mono_abstract_datatypes,
             lambda_types,
@@ -905,7 +909,6 @@ impl Verifier {
             vir::context::GlobalCtx::new(&krate, air_no_span.clone(), inferred_modes)?;
         vir::recursive_types::check_traits(&krate, &global_ctx)?;
         let krate = vir::ast_simplify::simplify_krate(&mut global_ctx, &krate)?;
-
         if self.args.log_all || self.args.log_vir_simple {
             let mut file =
                 self.create_log_file(None, None, crate::config::VIR_SIMPLE_FILE_SUFFIX)?;
@@ -1084,7 +1087,7 @@ impl Verifier {
             erasure_info,
             autoviewed_call_typs,
             unique_id: std::cell::Cell::new(0),
-            global_strings: std::rc::Rc::new(std::cell::RefCell::new(HashMap::new()))
+            global_strings: std::sync::Arc::new(std::sync::Mutex::new(HashMap::new()))
         });
 
         // Convert HIR -> VIR
@@ -1137,6 +1140,7 @@ impl Verifier {
             ignored_functions,
         };
         self.erasure_hints = Some(erasure_hints);
+        self.global_strings = Some(ctxt.global_strings.clone());
 
         let time4 = Instant::now();
         self.time_vir = time4 - time0;

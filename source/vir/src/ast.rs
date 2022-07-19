@@ -9,7 +9,6 @@ use crate::def::Spanned;
 use air::ast::Span;
 use air::errors::Error;
 use std::sync::Arc;
-
 pub use air::ast::{Binder, Binders};
 
 /// Result<T, VirErr> is used when an error might need to be reported to the user
@@ -259,9 +258,8 @@ pub enum Constant {
     Bool(bool),
     /// non-negative integer of arbitrary size (IntRange::Nat); use subtraction to get negative numbers
     Nat(Arc<String>),
-    /// A constant string the second argument is used to indicate 
-    /// if the compiler should "reveal" it or not. 
-    StrSlice(Arc<String>, bool)
+    /// Hold generated string slices in here
+    StrSlice(Arc<String>)
 }
 
 #[derive(Debug)]

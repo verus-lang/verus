@@ -14,6 +14,7 @@ use air::ast_util::str_typ;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
+
 pub type ChosenTrigger = Vec<(Span, String)>;
 #[derive(Debug, Clone)]
 pub struct ChosenTriggers {
@@ -44,6 +45,17 @@ pub struct FunctionCtx {
     pub module_for_chosen_triggers: Option<Path>,
 }
 
+
+/// This stores information about whether a string should be emitted or not. 
+/// To make a string verifiable, one must simply call "reveal" on that string.
+#[derive(Clone, Debug)]
+pub struct VerifiableString {
+    pub inner_str: Arc<String>,
+    pub emitted: bool
+}
+
+pub type GlobalStrings = std::sync::Arc<std::sync::Mutex<HashMap<Path, Arc<VerifiableString>>>>;
+
 // Context for verifying one module
 pub struct Ctx {
     pub(crate) module: Path,
@@ -52,6 +64,7 @@ pub struct Ctx {
     pub(crate) mono_abstract_datatypes: Vec<MonoTyp>,
     pub(crate) lambda_types: Vec<usize>,
     pub functions: Vec<Function>,
+    pub global_strings: GlobalStrings, 
     pub func_map: HashMap<Fun, Function>,
     pub(crate) funcs_with_ensure_predicate: HashSet<Fun>,
     pub(crate) datatype_map: HashMap<Path, Datatype>,
@@ -207,6 +220,7 @@ impl Ctx {
     pub fn new(
         krate: &Krate,
         global: GlobalCtx,
+        global_strings: GlobalStrings, 
         module: Path,
         mono_abstract_datatypes: Vec<MonoTyp>,
         lambda_types: Vec<usize>,
@@ -236,6 +250,7 @@ impl Ctx {
         }
         Ok(Ctx {
             module,
+            global_strings,
             datatype_is_transparent,
             datatypes_with_invariant,
             mono_abstract_datatypes,

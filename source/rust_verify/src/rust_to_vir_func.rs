@@ -18,6 +18,7 @@ use vir::ast::{
     Fun, FunX, FunctionAttrsX, FunctionKind, FunctionX, GenericBoundX, KrateX, MaskSpec, Mode,
     ParamX, Typ, TypX, VirErr,
 };
+use vir::context::VerifiableString;
 use vir::def::RETURN_VALUE;
 
 pub(crate) fn body_to_vir<'tcx>(
@@ -394,9 +395,14 @@ pub(crate) fn check_item_const<'tcx>(
     let vir_body = body_to_vir(ctxt, body_id, body, mode, vattrs.external_body)?;
 
     let is_string_literal = match &vir_body.x {
-        vir::ast::ExprX::Const(vir::ast::Constant::StrSlice(val, _)) => {
-            let mut global_strings = ctxt.global_strings.borrow_mut();
-            global_strings.insert(id, val.clone());
+        vir::ast::ExprX::Const(vir::ast::Constant::StrSlice(val)) => {
+            let mut global_strings = ctxt.global_strings.lock().expect("expected lock on global_strings");
+            let vstring: VerifiableString = VerifiableString {
+                inner_str: val.clone(), 
+                emitted: false
+            };
+            let path = name.path.clone();
+            global_strings.insert(path, Arc::new(vstring));
             true
         }, 
         _ => false

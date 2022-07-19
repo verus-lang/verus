@@ -2,10 +2,10 @@ use crate::erase::ResolvedCall;
 use rustc_hir::{Crate, HirId};
 use rustc_middle::ty::{TyCtxt, TypeckResults};
 use rustc_span::SpanData;
-use rustc_span::def_id::DefId;
 use std::collections::HashMap;
 use std::sync::Arc;
 use vir::ast::{Expr, InferMode, Mode, Pattern, Typ};
+use vir::context::GlobalStrings;
 
 #[derive(Debug)]
 pub struct ErasureInfo {
@@ -17,7 +17,6 @@ pub struct ErasureInfo {
 }
 
 type ErasureInfoRef = std::rc::Rc<std::cell::RefCell<ErasureInfo>>;
-type GlobalStrings = std::rc::Rc<std::cell::RefCell<HashMap<DefId, Arc<String>>>>;
 
 pub type Context<'tcx> = Arc<ContextX<'tcx>>;
 pub struct ContextX<'tcx> {
