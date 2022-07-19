@@ -17,7 +17,7 @@ fn main() {}
 /// `#[cfg(any())]` which simply turns off a module.
 /// Any module with its `#[cfg(any())]` line commented out is valid to run.
 
-#[cfg(any())]
+//#[cfg(any())]
 mod fib {
     use super::*;
 
@@ -42,14 +42,35 @@ mod fib {
     }
 }
 
-#[cfg(any())] // XXX: Disabled due to a stack overflow.
+//#[cfg(any())]
 mod verititan_example {
     use super::*;
 
+    // Naive definition of exponentiation
     #[spec]
     fn pow(base: nat, exp: nat) -> nat {
         decreases(exp);
         if exp == 0 { 1 } else { base * pow(base, exp - 1) }
+    }
+
+    // Optimized square-and-multiply definition
+    #[spec]
+    fn optimized_pow(base: nat, exp: nat) -> nat {
+        decreases(exp);
+        if exp == 0 {
+            1
+        } else if exp % 2 == 0 {
+            optimized_pow(base * base, exp / 2)
+        } else {
+            base * optimized_pow(base * base, (exp - 1) / 2)
+        }
+    }
+
+    // Assumed for this example, but proven in "real life"
+    #[proof]
+    #[verifier(external_body)]
+    fn equiv() {
+        ensures(forall(|base: nat, exp: nat| optimized_pow(base, exp) == pow(base, exp)));
     }
 
     const Q: nat = 12289;
@@ -57,11 +78,19 @@ mod verititan_example {
     const G: nat = 7;
 
     fn compute_verititan() {
-        assert_by_compute_only(pow(G, pow(2, L) / 2) % Q == Q - 1); // TODO: stack overflow
+        // Fails, since Z3 doesn't have nearly enough fuel to calculate this
+        // assert(pow(G, pow(2, L) / 2) % Q == Q - 1); 
+        
+        // Fails due to overflowing Rust's stack inside the interpreter
+        // assert_by_compute_only(pow(G, pow(2, L) / 2) % Q == Q - 1); 
+        
+        assert_by_compute_only(optimized_pow(G, optimized_pow(2, L) / 2) % Q == Q - 1);
+        equiv(); // Thanks to this lemma, we can now conclude:
+        assert(pow(G, pow(2, L) / 2) % Q == Q - 1); 
     }
 }
 
-#[cfg(any())]
+//#[cfg(any())]
 mod recursive_data_structures {
     use super::*;
 
@@ -127,7 +156,7 @@ mod recursive_data_structures {
     }
 }
 
-#[cfg(any())]
+//#[cfg(any())]
 mod sequences {
     use super::*;
 
