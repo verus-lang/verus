@@ -94,13 +94,13 @@ struct State {
     env: Env,
     /// Toggle debug output
     debug: bool,
+    /// Collect and display performance data
+    perf: bool,
     /// Cache function invocations, based on their arguments, so we can directly return the
     /// previously computed result.  Necessary for examples like Fibonacci.
     cache: HashMap<Fun, HashMap<ExpsKey, Exp>>,
     cache_hits: u64,
     cache_misses: u64,
-    raw_cache_hits: u64,
-    raw_cache_misses: u64,
     ptr_hits: u64,
     ptr_misses: u64,
     /// Profiling data that counts function invocations
@@ -115,7 +115,11 @@ impl State {
         self.cache.entry(f.clone()).or_default().insert(args.into(), result.clone());
     }
 
-    fn lookup_call(&self, f: &Fun, args: &Exps) -> Option<Exp> {
+    fn lookup_call(&mut self, f: &Fun, args: &Exps) -> Option<Exp> {
+        if self.perf {
+            let count = self.fun_calls.entry(f.clone()).or_default();
+            *count += 1;
+        }
         self.cache.get(f)?.get(&args.into()).cloned()
     }
 }
@@ -502,29 +506,25 @@ fn print_vector(vec: &Vector<Exp>) {
 
 /// Displays data for profiling/debugging the interpreter
 fn display_perf_stats(state: &State) {
-    let sum = state.cache_hits + state.cache_misses;
-    let hit_perc = 100.0 * (state.cache_hits as f64 / sum as f64);
-    println!("\nCall result cache had {} hits out of {} ({:.1}%)", state.cache_hits, sum, hit_perc);
-    let sum = state.raw_cache_hits + state.raw_cache_misses;
-    let hit_perc = 100.0 * (state.raw_cache_hits as f64 / sum as f64);
-    println!(
-        "Call result raw cache had {} hits out of {} ({:.1}%)",
-        state.raw_cache_hits, sum, hit_perc
-    );
-    let sum = state.ptr_hits + state.ptr_misses;
-    let hit_perc = 100.0 * (state.ptr_hits as f64 / sum as f64);
-    println!("Ptr cache had {} hits out of {} ({:.1}%)", state.ptr_hits, sum, hit_perc);
-    let mut cache_stats: Vec<(&Fun, usize)> =
-        state.cache.iter().map(|(fun, vec)| (fun, vec.len())).collect();
-    cache_stats.sort_by(|a, b| b.1.cmp(&a.1));
-    for (fun, calls) in &cache_stats {
-        println!("{:?} cached {} distinct invocations", fun.path, calls);
-    }
-    println!("\nRaw call numbers:");
-    let mut fun_call_stats: Vec<(&Fun, _)> = state.fun_calls.iter().collect();
-    fun_call_stats.sort_by(|a, b| b.1.cmp(&a.1));
-    for (fun, count) in fun_call_stats {
-        println!("{:?} called {} times", fun.path, count);
+    if state.perf {
+        let sum = state.cache_hits + state.cache_misses;
+        let hit_perc = 100.0 * (state.cache_hits as f64 / sum as f64);
+        println!("\nCall result cache had {} hits out of {} ({:.1}%)", state.cache_hits, sum, hit_perc);
+        let sum = state.ptr_hits + state.ptr_misses;
+        let hit_perc = 100.0 * (state.ptr_hits as f64 / sum as f64);
+        println!("Ptr cache had {} hits out of {} ({:.1}%)", state.ptr_hits, sum, hit_perc);
+        let mut cache_stats: Vec<(&Fun, usize)> =
+            state.cache.iter().map(|(fun, vec)| (fun, vec.len())).collect();
+        cache_stats.sort_by(|a, b| b.1.cmp(&a.1));
+        for (fun, calls) in &cache_stats {
+            println!("{:?} cached {} distinct invocations", fun.path, calls);
+        }
+        println!("\nRaw call numbers:");
+        let mut fun_call_stats: Vec<(&Fun, _)> = state.fun_calls.iter().collect();
+        fun_call_stats.sort_by(|a, b| b.1.cmp(&a.1));
+        for (fun, count) in fun_call_stats {
+            println!("{:?} called {} times", fun.path, count);
+        }
     }
 }
 
@@ -1137,66 +1137,50 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
             }
         }
         Call(fun, typs, args) => {
-            // Initially try to match on the "raw" arguments, to save effort simplifying them
-            match state.lookup_call(&fun, &args) {
+            // Simplify arguments and check whether we've seen this call before
+            let new_args: Result<Vec<Exp>, VirErr> =
+                args.iter().map(|e| eval_expr_internal(ctx, state, e)).collect();
+            let new_args = Arc::new(new_args?);
+            match state.fun_calls.get_mut(fun) {
+                None => {
+                    state.fun_calls.insert(fun.clone(), 1);
+                }
+                Some(count) => {
+                    *count += 1;
+                }
+            }
+            match state.lookup_call(&fun, &new_args) {
                 Some(prev_result) => {
-                    state.raw_cache_hits += 1;
-                    state.depth -= 1;
-                    if state.debug {
-                        println!("{}=> {:}", "\t".repeat(state.depth), &prev_result);
-                    }
-                    return Ok(prev_result);
+                    state.cache_hits += 1;
+                    Ok(prev_result)
                 }
                 None => {
-                    // Failing that, simplify the arguments and check the cache again
-                    state.raw_cache_misses += 1;
-                    let new_args: Result<Vec<Exp>, VirErr> =
-                        args.iter().map(|e| eval_expr_internal(ctx, state, e)).collect();
-                    let new_args = Arc::new(new_args?);
-                    match state.fun_calls.get_mut(fun) {
-                        None => {
-                            state.fun_calls.insert(fun.clone(), 1);
-                        }
-                        Some(count) => {
-                            *count += 1;
-                        }
-                    }
-                    match state.lookup_call(&fun, &new_args) {
-                        Some(prev_result) => {
-                            state.cache_hits += 1;
-                            Ok(prev_result)
-                        }
-                        None => {
-                            state.cache_misses += 1;
-                            let result = match is_sequence_fn(&fun) {
-                                Some(seq_fn) => eval_seq(ctx, state, seq_fn, exp, &new_args),
-                                None => match ctx.fun_ssts.get(fun) {
-                                    None => {
-                                        exp_new(Call(fun.clone(), typs.clone(), new_args.clone()))
-                                    }
-                                    Some((params, body)) => {
-                                        state.env.push_scope(true);
-                                        for (formal, actual) in params.iter().zip(new_args.iter()) {
-                                            state
-                                                .env
-                                                .insert(
-                                                    (formal.x.name.clone(), Some(0)),
-                                                    actual.clone(),
-                                                )
-                                                .unwrap();
-                                        }
-                                        let e = eval_expr_internal(ctx, state, body);
-                                        state.env.pop_scope();
-                                        e
-                                    }
-                                },
-                            };
-                            // Cache the raw arguments and the simplified arguments
-                            state.insert_call(fun, &args, &result.clone()?);
-                            state.insert_call(fun, &new_args, &result.clone()?);
-                            result
-                        }
-                    }
+                    state.cache_misses += 1;
+                    let result = match is_sequence_fn(&fun) {
+                        Some(seq_fn) => eval_seq(ctx, state, seq_fn, exp, &new_args),
+                        None => match ctx.fun_ssts.get(fun) {
+                            None => {
+                                exp_new(Call(fun.clone(), typs.clone(), new_args.clone()))
+                            }
+                            Some((params, body)) => {
+                                state.env.push_scope(true);
+                                for (formal, actual) in params.iter().zip(new_args.iter()) {
+                                    state
+                                        .env
+                                        .insert(
+                                            (formal.x.name.clone(), Some(0)),
+                                            actual.clone(),
+                                        )
+                                        .unwrap();
+                                }
+                                let e = eval_expr_internal(ctx, state, body);
+                                state.env.pop_scope();
+                                e
+                            }
+                        },
+                    };
+                    state.insert_call(fun, &new_args, &result.clone()?);
+                    result
                 }
             }
         }
@@ -1271,12 +1255,11 @@ pub fn eval_expr(
     let mut state = State {
         depth: 0,
         env,
-        debug: true,
+        debug: false,
+        perf: true,
         cache,
         cache_hits: 0,
         cache_misses: 0,
-        raw_cache_hits: 0,
-        raw_cache_misses: 0,
         ptr_hits: 0,
         ptr_misses: 0,
         fun_calls: HashMap::new(),
@@ -1288,7 +1271,7 @@ pub fn eval_expr(
     let ctx = Ctx { fun_ssts, time_start, time_limit };
     //println!("Starting from {}", exp);
     let res = eval_expr_internal(&ctx, &mut state, exp)?;
-    //display_perf_stats(&state);
+    display_perf_stats(&state);
     match mode {
         // Send partial result to Z3
         ComputeMode::Z3 => {

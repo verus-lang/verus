@@ -146,6 +146,30 @@ test_verify_one_file! {
 }
 
 test_verify_one_file! {
+    #[test] lets_bad code! {
+
+        #[spec]
+        fn f(n:nat) -> nat {
+            n + 1
+        }
+
+        fn test() {
+            assert_by_compute({
+                #[spec]
+                let x = 4;
+                #[spec]
+                let r1 = f(x);
+                #[spec]
+                let x = 5;
+                #[spec]
+                let r2 = f(x);
+                r1 == r2
+            });     // FAILS
+        }
+    } => Err(err) => assert_one_fails(err)
+}
+
+test_verify_one_file! {
     #[test] datatype code! {
         #[allow(unused_imports)]
         use pervasive::option::Option;

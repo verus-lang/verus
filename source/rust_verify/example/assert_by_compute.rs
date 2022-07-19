@@ -322,7 +322,7 @@ mod veribetrkv_example_original {
     }
 }
 
-//#[cfg(any())]
+#[cfg(any())]
 mod veribetrkv_example_list_comprehension {
     use super::*;
 
