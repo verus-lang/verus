@@ -520,14 +520,20 @@ fn display_perf_stats(state: &State) {
         if state.enable_simplified_cache {
             let sum = state.ptr_hits + state.ptr_misses;
             let hit_perc = 100.0 * (state.ptr_hits as f64 / sum as f64);
-            println!("Simplified cache had {} hits out of {} ({:.1}%)", state.ptr_hits, sum, hit_perc);
+            println!(
+                "Simplified cache had {} hits out of {} ({:.1}%)",
+                state.ptr_hits, sum, hit_perc
+            );
         } else {
             println!("Simplified cache was disabled");
         }
         if state.enable_cache {
             let sum = state.cache_hits + state.cache_misses;
             let hit_perc = 100.0 * (state.cache_hits as f64 / sum as f64);
-            println!("Call result cache had {} hits out of {} ({:.1}%)", state.cache_hits, sum, hit_perc);
+            println!(
+                "Call result cache had {} hits out of {} ({:.1}%)",
+                state.cache_hits, sum, hit_perc
+            );
 
             let mut cache_stats: Vec<(&Fun, usize)> =
                 state.cache.iter().map(|(fun, vec)| (fun, vec.len())).collect();
@@ -1177,18 +1183,13 @@ fn eval_expr_internal(ctx: &Ctx, state: &mut State, exp: &Exp) -> Result<Exp, Vi
                     let result = match is_sequence_fn(&fun) {
                         Some(seq_fn) => eval_seq(ctx, state, seq_fn, exp, &new_args),
                         None => match ctx.fun_ssts.get(fun) {
-                            None => {
-                                exp_new(Call(fun.clone(), typs.clone(), new_args.clone()))
-                            }
+                            None => exp_new(Call(fun.clone(), typs.clone(), new_args.clone())),
                             Some((params, body)) => {
                                 state.env.push_scope(true);
                                 for (formal, actual) in params.iter().zip(new_args.iter()) {
                                     state
                                         .env
-                                        .insert(
-                                            (formal.x.name.clone(), Some(0)),
-                                            actual.clone(),
-                                        )
+                                        .insert((formal.x.name.clone(), Some(0)), actual.clone())
                                         .unwrap();
                                 }
                                 let e = eval_expr_internal(ctx, state, body);
