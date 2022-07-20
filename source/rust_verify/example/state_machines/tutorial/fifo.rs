@@ -573,10 +573,10 @@ pub fn new_queue<T>(len: usize) -> (Producer<T>, Consumer<T>) {
 
         #[spec] let i = backing_cells_vec.len();
         
-        let (cell, Proof(cell_perm)) = PCell::empty();
+        let (cell, cell_perm) = PCell::empty();
         backing_cells_vec.push(cell);
 
-        perms.tracked_insert(i, cell_perm);
+        perms.tracked_insert(i, cell_perm.get());
     }
 
     // Vector for ids
@@ -663,14 +663,16 @@ impl<T> Producer<T> {
             // Here's where we "actually" do the `head != next_tail` check:
             if head != next_tail as u64 {
                 // Unwrap the cell_perm from the option.
-                #[proof] let mut cell_perm = match cell_perm {
+                #[proof] let cell_perm = match cell_perm {
                     Option::Some(cp) => cp,
                     Option::None => { assert(false); proof_from_false() }
                 };
 
                 // Write the element t into the buffer, updating the cell
                 // from uninitialized to initialized (to the value t).
+                let mut cell_perm = Tracked::exec(cell_perm);
                 queue.buffer.index(self.tail).put(&mut cell_perm, t);
+                #[proof] let cell_perm = cell_perm.get();
 
                 // Store the updated tail to the shared `tail` atomic,
                 // while performing the `produce_end` transition.
@@ -718,11 +720,13 @@ impl<T> Consumer<T> {
             );
 
             if self.head as u64 != tail {
-                #[proof] let mut cell_perm = match cell_perm {
+                #[proof] let cell_perm = match cell_perm {
                     Option::Some(cp) => cp,
                     Option::None => { assert(false); proof_from_false() }
                 };
+                let mut cell_perm = Tracked::exec(cell_perm);
                 let t = queue.buffer.index(self.head).take(&mut cell_perm);
+                #[proof] let cell_perm = cell_perm.get();
 
                 atomic_with_ghost!(&queue.head => store(next_head as u64); ghost head_token => {
                     queue.instance.consume_end(cell_perm,
