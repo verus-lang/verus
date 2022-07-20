@@ -747,3 +747,59 @@ test_verify_one_file! {
         }
     } => Ok(())
 }
+
+test_verify_one_file! {
+    #[test] type_alias_basic code!{
+        struct Foo {
+            u: u64,
+        }
+
+        type X = Foo;
+
+        fn test1(x: X) {
+            requires(x.u == 5);
+
+            let u = x.u;
+            assert(u == 5);
+        }
+    } => Ok(())
+}
+
+test_verify_one_file! {
+    #[test] #[ignore] type_alias_with_params code!{
+        struct Bar<T> {
+            u: T,
+        }
+
+        type Y<T> = Bar<T>;
+
+        fn test2<T>(x: Y<T>, t: T) {
+            requires(equal(x.u, t));
+
+            let u = x.u;
+            assert(equal(u, t));
+        }
+
+        fn test3<S>(x: Y<S>, t: S) {
+            requires(equal(x.u, t));
+
+            let u = x.u;
+            assert(equal(u, t));
+        }
+
+
+        fn test4<T>(x: Y<u64>) {
+            requires(x.u == 5);
+
+            let u = x.u;
+            assert(u == 5);
+        }
+
+        fn test5(x: Y<Bar<u64>>, b: Bar<u64>) {
+            requires(equal(x.u, b));
+
+            let u = x.u;
+            assert(equal(u, b));
+        }
+    } => Ok(())
+}

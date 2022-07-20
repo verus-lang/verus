@@ -143,6 +143,7 @@ pub(crate) fn check_item_fn<'tcx>(
     let mut vir_params: Vec<vir::ast::Param> = Vec::new();
     for (param, input) in params.iter().zip(sig.decl.inputs.iter()) {
         let Param { hir_id, pat, ty_span: _, span } = param;
+
         let name = Arc::new(pat_to_var(pat));
         let param_mode = get_var_mode(mode, ctxt.tcx.hir().attrs(*hir_id));
         let is_mut = is_mut_ty(&input);
