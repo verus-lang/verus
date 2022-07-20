@@ -175,6 +175,14 @@ ast_struct! {
     }
 }
 
+ast_struct! {
+    pub struct View {
+        pub attrs: Vec<Attribute>,
+        pub expr: Box<Expr>,
+        pub at_token: Token![@],
+    }
+}
+
 #[cfg(feature = "parsing")]
 pub mod parsing {
     use super::*;
@@ -704,6 +712,15 @@ mod printing {
             }
             self.by_token.to_tokens(tokens);
             self.body.to_tokens(tokens);
+        }
+    }
+
+    #[cfg_attr(doc_cfg, doc(cfg(feature = "printing")))]
+    impl ToTokens for View {
+        fn to_tokens(&self, tokens: &mut TokenStream) {
+            crate::expr::printing::outer_attrs_to_tokens(&self.attrs, tokens);
+            self.expr.to_tokens(tokens);
+            self.at_token.to_tokens(tokens);
         }
     }
 }

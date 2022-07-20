@@ -359,6 +359,8 @@ impl Clone for Expr {
             Expr::Assert(v0) => Expr::Assert(v0.clone()),
             #[cfg(feature = "full")]
             Expr::AssertForall(v0) => Expr::AssertForall(v0.clone()),
+            #[cfg(feature = "full")]
+            Expr::View(v0) => Expr::View(v0.clone()),
             #[cfg(any(syn_no_non_exhaustive, not(feature = "full")))]
             _ => unreachable!(),
         }
@@ -2426,6 +2428,16 @@ impl Clone for Variant {
             ident: self.ident.clone(),
             fields: self.fields.clone(),
             discriminant: self.discriminant.clone(),
+        }
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "clone-impls")))]
+impl Clone for View {
+    fn clone(&self) -> Self {
+        View {
+            attrs: self.attrs.clone(),
+            expr: self.expr.clone(),
+            at_token: self.at_token.clone(),
         }
     }
 }

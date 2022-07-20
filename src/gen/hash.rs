@@ -621,6 +621,11 @@ impl Hash for Expr {
                 state.write_u8(42u8);
                 v0.hash(state);
             }
+            #[cfg(feature = "full")]
+            Expr::View(v0) => {
+                state.write_u8(43u8);
+                v0.hash(state);
+            }
             #[cfg(any(syn_no_non_exhaustive, not(feature = "full")))]
             _ => unreachable!(),
         }
@@ -3134,6 +3139,16 @@ impl Hash for Variant {
         self.ident.hash(state);
         self.fields.hash(state);
         self.discriminant.hash(state);
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Hash for View {
+    fn hash<H>(&self, state: &mut H)
+    where
+        H: Hasher,
+    {
+        self.attrs.hash(state);
+        self.expr.hash(state);
     }
 }
 #[cfg(any(feature = "derive", feature = "full"))]

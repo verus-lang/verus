@@ -732,6 +732,12 @@ impl Debug for Expr {
                 formatter.field(v0);
                 formatter.finish()
             }
+            #[cfg(feature = "full")]
+            Expr::View(v0) => {
+                let mut formatter = formatter.debug_tuple("View");
+                formatter.field(v0);
+                formatter.finish()
+            }
             #[cfg(any(syn_no_non_exhaustive, not(feature = "full")))]
             _ => unreachable!(),
         }
@@ -3344,6 +3350,16 @@ impl Debug for Variant {
         formatter.field("ident", &self.ident);
         formatter.field("fields", &self.fields);
         formatter.field("discriminant", &self.discriminant);
+        formatter.finish()
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Debug for View {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let mut formatter = formatter.debug_struct("View");
+        formatter.field("attrs", &self.attrs);
+        formatter.field("expr", &self.expr);
+        formatter.field("at_token", &self.at_token);
         formatter.finish()
     }
 }

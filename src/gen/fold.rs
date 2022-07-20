@@ -824,6 +824,9 @@ pub trait Fold {
     fn fold_variant(&mut self, i: Variant) -> Variant {
         fold_variant(self, i)
     }
+    fn fold_view(&mut self, i: View) -> View {
+        fold_view(self, i)
+    }
     #[cfg(any(feature = "derive", feature = "full"))]
     fn fold_vis_crate(&mut self, i: VisCrate) -> VisCrate {
         fold_vis_crate(self, i)
@@ -1317,6 +1320,7 @@ where
         Expr::AssertForall(_binding_0) => {
             Expr::AssertForall(f.fold_assert_forall(_binding_0))
         }
+        Expr::View(_binding_0) => Expr::View(f.fold_view(_binding_0)),
         #[cfg(syn_no_non_exhaustive)]
         _ => unreachable!(),
     }
@@ -3655,6 +3659,16 @@ where
         fields: f.fold_fields(node.fields),
         discriminant: (node.discriminant)
             .map(|it| (Token![=](tokens_helper(f, &(it).0.spans)), f.fold_expr((it).1))),
+    }
+}
+pub fn fold_view<F>(f: &mut F, node: View) -> View
+where
+    F: Fold + ?Sized,
+{
+    View {
+        attrs: FoldHelper::lift(node.attrs, |it| f.fold_attribute(it)),
+        expr: Box::new(f.fold_expr(*node.expr)),
+        at_token: Token![@](tokens_helper(f, &node.at_token.spans)),
     }
 }
 #[cfg(any(feature = "derive", feature = "full"))]

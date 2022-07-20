@@ -229,6 +229,7 @@ ast_enum_of_structs! {
         Assume(Assume),
         Assert(Assert),
         AssertForall(AssertForall),
+        View(View),
 
         // Not public API.
         //
@@ -847,6 +848,7 @@ impl Expr {
             | Expr::Assume(Assume { attrs, .. })
             | Expr::Assert(Assert { attrs, .. })
             | Expr::AssertForall(AssertForall { attrs, .. })
+            | Expr::View(View { attrs, .. })
             | Expr::Yield(ExprYield { attrs, .. }) => mem::replace(attrs, new),
             Expr::Verbatim(_) => Vec::new(),
 
@@ -1747,6 +1749,12 @@ pub(crate) mod parsing {
                     expr: Box::new(e),
                     question_token: input.parse()?,
                 });
+            } else if input.peek(Token![@]) {
+                e = Expr::View(View {
+                    attrs: Vec::new(),
+                    expr: Box::new(e),
+                    at_token: input.parse()?,
+                });
             } else {
                 break;
             }
@@ -2454,6 +2462,7 @@ pub(crate) mod parsing {
         ExprTry, Try, "expected try expression",
         ExprTuple, Tuple, "expected tuple expression",
         ExprType, Type, "expected type ascription expression",
+        View, View, "expected view expression",
     }
 
     #[cfg(feature = "full")]

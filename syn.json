@@ -1027,6 +1027,11 @@
           {
             "syn": "AssertForall"
           }
+        ],
+        "View": [
+          {
+            "syn": "View"
+          }
         ]
       },
       "exhaustive": false
@@ -6020,6 +6025,27 @@
               }
             ]
           }
+        }
+      }
+    },
+    {
+      "ident": "View",
+      "features": {
+        "any": []
+      },
+      "fields": {
+        "attrs": {
+          "vec": {
+            "syn": "Attribute"
+          }
+        },
+        "expr": {
+          "box": {
+            "syn": "Expr"
+          }
+        },
+        "at_token": {
+          "token": "At"
         }
       }
     },

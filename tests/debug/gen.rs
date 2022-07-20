@@ -1390,6 +1390,13 @@ impl Debug for Lite<syn::Expr> {
                 formatter.write_str(")")?;
                 Ok(())
             }
+            syn::Expr::View(_val) => {
+                formatter.write_str("View")?;
+                formatter.write_str("(")?;
+                Debug::fmt(Lite(_val), formatter)?;
+                formatter.write_str(")")?;
+                Ok(())
+            }
             _ => unreachable!(),
         }
     }
@@ -6346,6 +6353,17 @@ impl Debug for Lite<syn::Variant> {
             }
             formatter.field("discriminant", Print::ref_cast(val));
         }
+        formatter.finish()
+    }
+}
+impl Debug for Lite<syn::View> {
+    fn fmt(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+        let _val = &self.value;
+        let mut formatter = formatter.debug_struct("View");
+        if !_val.attrs.is_empty() {
+            formatter.field("attrs", Lite(&_val.attrs));
+        }
+        formatter.field("expr", Lite(&_val.expr));
         formatter.finish()
     }
 }

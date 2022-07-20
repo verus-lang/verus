@@ -377,6 +377,8 @@ impl PartialEq for Expr {
             (Expr::Assert(self0), Expr::Assert(other0)) => self0 == other0,
             #[cfg(feature = "full")]
             (Expr::AssertForall(self0), Expr::AssertForall(other0)) => self0 == other0,
+            #[cfg(feature = "full")]
+            (Expr::View(self0), Expr::View(other0)) => self0 == other0,
             _ => false,
         }
     }
@@ -2366,6 +2368,14 @@ impl PartialEq for Variant {
     fn eq(&self, other: &Self) -> bool {
         self.attrs == other.attrs && self.ident == other.ident
             && self.fields == other.fields && self.discriminant == other.discriminant
+    }
+}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl Eq for View {}
+#[cfg_attr(doc_cfg, doc(cfg(feature = "extra-traits")))]
+impl PartialEq for View {
+    fn eq(&self, other: &Self) -> bool {
+        self.attrs == other.attrs && self.expr == other.expr
     }
 }
 #[cfg(any(feature = "derive", feature = "full"))]

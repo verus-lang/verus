@@ -820,6 +820,9 @@ pub trait Visit<'ast> {
     fn visit_variant(&mut self, i: &'ast Variant) {
         visit_variant(self, i);
     }
+    fn visit_view(&mut self, i: &'ast View) {
+        visit_view(self, i);
+    }
     #[cfg(any(feature = "derive", feature = "full"))]
     fn visit_vis_crate(&mut self, i: &'ast VisCrate) {
         visit_vis_crate(self, i);
@@ -1411,6 +1414,9 @@ where
         }
         Expr::AssertForall(_binding_0) => {
             v.visit_assert_forall(_binding_0);
+        }
+        Expr::View(_binding_0) => {
+            v.visit_view(_binding_0);
         }
         #[cfg(syn_no_non_exhaustive)]
         _ => unreachable!(),
@@ -4138,6 +4144,16 @@ where
         tokens_helper(v, &(it).0.spans);
         v.visit_expr(&(it).1);
     }
+}
+pub fn visit_view<'ast, V>(v: &mut V, node: &'ast View)
+where
+    V: Visit<'ast> + ?Sized,
+{
+    for it in &node.attrs {
+        v.visit_attribute(it);
+    }
+    v.visit_expr(&*node.expr);
+    tokens_helper(v, &node.at_token.spans);
 }
 #[cfg(any(feature = "derive", feature = "full"))]
 pub fn visit_vis_crate<'ast, V>(v: &mut V, node: &'ast VisCrate)
